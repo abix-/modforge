@@ -43,6 +43,7 @@ Two worked examples in this document:
 - [Mod interaction analysis: AIO + Bigger Backpack](#mod-interaction-analysis-aio--bigger-backpack)
 - [Building our own backpack mod -- requirements](#building-our-own-backpack-mod----requirements)
 - [SDK research findings (definitive technical path)](#sdk-research-findings-definitive-technical-path)
+- [Current state (end of 2026-05-04 session)](#current-state-end-of-2026-05-04-session)
 - [Caveats](#caveats)
 
 ## Mod locations on this machine
@@ -1304,16 +1305,107 @@ Now that we know the exact property, class, and offset:
   time. That's the same constraint the existing 60-slot Player
   Tweaks variant has.
 
+## Current state (end of 2026-05-04 session)
+
+This section is a literal snapshot of where the investigation
+stopped, so the next session can pick up cold. **No mod has been
+installed.** Build artifacts exist on disk but reflect assumed
+requirements only -- the actual mod spec from the user has not
+been gathered yet.
+
+### What is verified and reusable
+
+- Property identity: `Maine.UInventoryComponent::DefaultMaxSize`,
+  offset `0x01E0`, type `int32`. Stable between game versions
+  0.4.0.1 and 0.4.0.2.
+- AIO Player Tweaks v13.1.6 byte offsets (in the post-`to-legacy`
+  `.uexp` at `C:\Tools\work\mod_unpacked\BP_SurvivalPlayerCharacter.uexp`):
+  - `0x2B73A` (decimal `178138`) -- main `InventoryComponent` value, currently `40`.
+  - `0x2B79E` (decimal `178238`) -- `MountInventoryComponent` value, currently `48`.
+- Patch verified: editing the byte at `178138` from `0x28` to
+  `0x3C` and re-reading via `scripts/read_property.py` reports
+  the value as `60`.
+- Repack pipeline that produces a container metadata-identical
+  to vanilla AIO (`container_id: 1f082a50f287f91c`, TOC version
+  `ReplaceIoChunkHashWithIoHash`, header version
+  `SoftPackageReferencesOffset`):
+  ```bash
+  /c/Tools/repak/repak.exe pack /c/Tools/work/patched /c/Tools/work/aio_60_legacy.pak
+  /c/Tools/retoc/retoc.exe to-zen --version UE5_6 \
+      /c/Tools/work/aio_60_legacy.pak \
+      /c/Tools/work/output/AIOPlayerTweaks_00012_P.utoc
+  ```
+
+### retoc to-zen version gotcha (important)
+
+`retoc to-zen --version UE5_4` produces an OLDER TOC version
+(`OnDemandMetaData` / `NoExportInfo`) than what the shipping
+Grounded 2 build (UE 5.4) actually uses. To match vanilla's
+`ReplaceIoChunkHashWithIoHash` + `SoftPackageReferencesOffset`,
+pass `--version UE5_6`. retoc's `--version` flag names are
+approximate; the right value is empirically the one that makes
+`retoc info` match vanilla -- not the literal engine version
+of the target game.
+
+### Build artifacts on disk (NOT installed)
+
+```
+C:\Tools\work\patched\
+  BP_SurvivalPlayerCharacter.uasset     (unchanged)
+  BP_SurvivalPlayerCharacter.uexp       (40 -> 60 patched at offset 178138)
+  scriptobjects.bin                     (unchanged retoc bookkeeping)
+
+C:\Tools\work\output\
+  AIOPlayerTweaks_00012_P.pak           (legacy mount stub)
+  AIOPlayerTweaks_00012_P.ucas          (Zen payload)
+  AIOPlayerTweaks_00012_P.utoc          (Zen TOC -- matches vanilla format)
+```
+
+These artifacts encode an **assumed spec** (60 main backpack +
+keep AIO cheats + leave mount at 48). The user has not
+confirmed this spec. Do NOT install over Vortex without
+explicit go-ahead.
+
+### Open requirements (must gather before installing)
+
+1. Target slot count for the player's main backpack
+   (50 / 60 / 80 / 100 / other?).
+2. Mount/saddlebag handling: leave at AIO's 48, change, or
+   restore to vanilla?
+3. Keep AIO's cheats? If yes, patch the existing AIO file. If
+   no, build a clean override mod -- either choice means only
+   one Player Tweaks variant can be installed at a time
+   because both touch `BP_SurvivalPlayerCharacter`.
+4. Pair with Bigger Backpack widget mod? Without it, slots
+   beyond 40 work for storage but only the first 40 render in
+   the inventory UI grid.
+5. Any additional tweaks the user wants in scope (stack sizes,
+   other capacity-affecting changes).
+
+### What the next session can do immediately
+
+- Discard the current build artifacts (or rebuild against new
+  numbers) once requirements are confirmed.
+- The repack pipeline is ready to run with new int32 values --
+  patch the `.uexp` byte, re-run repak + retoc with `--version UE5_6`.
+- Vortex install path is
+  `C:\Users\Abix\AppData\Roaming\Vortex\grounded2\mods\All-in-One Player Tweaks-13-1-6-1776519922\Augusta\Content\Paks\`
+  (replace the three `AIOPlayerTweaks_00012_P.{pak,ucas,utoc}`
+  files; back up first as
+  `<name>.original_40slots`).
+
 ## Caveats
 
 - Grounded 2 ships UE 5.4+ (TOC version `ReplaceIoChunkHashWithIoHash`,
   container header `SoftPackageReferencesOffset`). Set FModel's parser
   to UE 5.4 -- using the wrong version yields unreadable property
-  blocks.
+  blocks. For `retoc to-zen` use `--version UE5_6` to match this
+  format; `--version UE5_4` produces an older TOC the shipping
+  game does not use.
 - Grounded 2 ships **unencrypted** containers (verified 2026-05-04 via
   `retoc info`: `container_flags: 0x0` on global,
   `container_flags: Indexed` on the mod, no Encrypted flag). No AES
   key handling needed in FModel.
 - This document covers inspection only. Editing values and repacking
-  back into a working mod is a separate workflow (UAssetGUI for the
-  edit, retoc `to-zen` for the repack).
+  back into a working mod is a separate workflow (the byte-patch
+  technique above plus retoc `to-zen` for the repack).
