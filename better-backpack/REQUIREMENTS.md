@@ -120,10 +120,15 @@ Field semantics:
    - `repak pack` the patched `.uasset` plus `.uexp` files (both assets) into a single legacy pak.
    - `retoc to-zen --version UE5_6` to convert into the IoStore format the shipping game uses.
 5. **Output**
-   - `<output_basename>_<priority>_P.pak`
-   - `<output_basename>_<priority>_P.ucas`
-   - `<output_basename>_<priority>_P.utoc`
-   - Drop into `dist/` for distribution.
+   - Loose files (for non-Vortex / manual install):
+     - `<output_basename>_<priority>_P.pak`
+     - `<output_basename>_<priority>_P.ucas`
+     - `<output_basename>_<priority>_P.utoc`
+   - Vortex-installable archive (recommended):
+     - `<output_basename>-<slot_count>slots.zip`
+     - Internal layout: `Augusta/Content/Paks/<output_basename>_<priority>_P.{pak,ucas,utoc}`
+     - User drags the zip onto Vortex, or uses Mods -> Install From File. Vortex extracts into its own staging dir and deploys via symlink/copy into the game's Paks folder.
+   - All artifacts go to `dist/` for distribution.
 
 The output pak contains exactly two overridden assets: the player Blueprint (data-side capacity) and the host backpack container widget (visible-side row count). No other vanilla files are touched.
 

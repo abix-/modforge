@@ -30,6 +30,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
 
 # Tools (single-binary CLI downloads from GitHub releases).
@@ -273,7 +274,25 @@ def main() -> int:
         else:
             print(f"  !! missing: {f}")
 
-    print("\nInstall by copying the three dist/ files into:")
+    # Bundle a Vortex-installable archive. Vortex (and similar mod managers)
+    # accept a zip with the in-game Paks layout at the root, and deploy it
+    # into the game folder via symlink or copy on activate.
+    archive_name = f"{output_basename}-{slot_count}slots.zip"
+    archive = dist / archive_name
+    if archive.exists():
+        archive.unlink()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as z:
+        for ext in ("pak", "ucas", "utoc"):
+            src = dist / f"{pak_basename}.{ext}"
+            if src.exists():
+                z.write(src, f"Augusta/Content/Paks/{pak_basename}.{ext}")
+    print(f"\nBundled Vortex archive:")
+    print(f"  {archive}  ({archive.stat().st_size:,} bytes)")
+
+    print("\nInstall (Vortex):")
+    print(f"  drag {archive_name} onto the Vortex window, or use Mods -> Install From File.")
+    print("\nInstall (manual, no mod manager):")
+    print(f"  copy the three loose .pak / .ucas / .utoc files in dist/ into")
     print("  C:\\Games\\Steam\\steamapps\\common\\Grounded2\\Augusta\\Content\\Paks\\")
     return 0
 

@@ -8,10 +8,9 @@ See [REQUIREMENTS.md](REQUIREMENTS.md) for the full design spec.
 
 1. Edit `settings.json`. Default is 60 slots.
 2. Run `python build.py`. Output is in `dist/`.
-3. Copy the three files in `dist/` (`*.pak`, `*.ucas`, `*.utoc`) into your Grounded 2 Paks folder:
-   ```
-   C:\Games\Steam\steamapps\common\Grounded2\Augusta\Content\Paks\
-   ```
+3. Install the mod:
+   - **With Vortex (recommended):** drag `dist/BetterBackpack-<N>slots.zip` onto the Vortex window, or use Mods -> Install From File. Enable in the mods list, click Deploy.
+   - **Manual (no mod manager):** copy the three loose `.pak` + `.ucas` + `.utoc` files in `dist/` into `C:\Games\Steam\steamapps\common\Grounded2\Augusta\Content\Paks\`.
 4. Launch the game.
 
 ## Prerequisites
