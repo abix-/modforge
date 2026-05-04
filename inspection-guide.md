@@ -909,44 +909,23 @@ using only the structural information we have on disk.
   that component or on a per-instance default that the player
   Blueprint sets.
 
-### Open research questions (must answer before authoring)
+### Open research questions (now answered, see SDK section below)
 
-These answers are obtainable from the vanilla pak we already have
-on disk -- no further tooling needed beyond `retoc list --path`,
-`retoc to-legacy` for targeted assets, and `repak unpack` plus the
-string-dump script `C:\Tools\work\dump_strings.py`.
+The questions below were the original open list. All four are now resolved by the SDK research and the property-tag scan; answers are inline. The full evidence is in the [SDK research findings](#sdk-research-findings-definitive-technical-path) section.
 
 1. **Where is the player's backpack capacity set?**
-   - Is it a property default on `BP_SurvivalPlayerCharacter`'s
-     inventory subcomponent?
-   - Is it on the `UMountInventoryComponent` C++ class default
-     (which we cannot mod) or on a Blueprint subclass like
-     `BP_PlayerInventoryComponent` (which we can)?
-   - Is it driven by a DataTable / DataAsset (e.g.
-     `DT_PlayerInventoryConfig`)?
-   - Is it driven by a player-upgrade gameplay tag the way mount
-     capacity is driven by `BuggyInventorySize`?
+   **Answer:** on the **main `InventoryComponent`** instanced sub-object of `BP_SurvivalPlayerCharacter`, inherited from the C++ parent `ASurvivalCharacter`. Specifically the CDO defaults of that sub-object inside the player BP. Not in a DataTable, not in a DataAsset, not driven by a player upgrade tag.
 
-2. **What is the property called?** Candidates suggested by the
-   widget bindings: `MaxRows`, `NumRows`, `MaxItems`, `Capacity`,
-   `SlotCount`, `MaxInventorySize`. Need to find the actual name.
+2. **What is the property called?**
+   **Answer:** `DefaultMaxSize`. It is an `int32` on `Maine.UInventoryComponent` at offset `0x01E0`. UPROPERTY flags are `Edit, BlueprintVisible, BlueprintReadOnly`, which means the default is settable in the BP editor but the runtime cannot mutate it (only CDO patching changes it).
 
 3. **Is the upgrade-tag system involved?**
-   - Is there a `PlayerBackpackSize` or `BackpackCapacity` tag
-     analogous to `BuggyInventorySize`?
-   - If yes, does AIO Player Tweaks already unlock it? (Looking at
-     AIO's tag list -- `UnlockPlayerUpgrade Health|healing|perks|stamina|thirst`
-     -- there is no backpack/inventory entry, so AIO does NOT
-     unlock player backpack capacity even if a tag exists.)
-   - If a tag exists and unlocks levels, what level value does
-     vanilla cap at? Can we add a tag-unlock that grants a
-     higher-than-vanilla level?
+   **Answer:** no. `Table_PlayerUpgrades.uasset` only contains rows for `Health`, `Mutations`, `Stamina`, `Healing`, and `Rates`. There is no inventory or backpack row. `UnlockPlayerUpgrade <name>` cannot grow the player backpack because there is no such upgrade to unlock. Mount-side capacity goes through `UnlockBuggyUpgrade BuggyInventorySize`, but that is `MountInventoryComponent`, not the player's main backpack.
 
-4. **Are there hard caps elsewhere?** Even if we find the property,
-   the game might cap requested capacity at a hardcoded ceiling
-   in C++. We can't verify that statically -- only by testing.
+4. **Are there hard caps elsewhere?**
+   **Answer:** unknown statically; the SDK does not expose any explicit ceiling. Only verifiable by in-game test. A practical ceiling is probably 100 to 200 based on UI and serialisation assumptions, but treat this as untested until the build is launched.
 
-### Approach options (to be picked after research)
+### Approach options (decision)
 
 | Option | Strategy                                                        | Pros                                | Cons                                       |
 |--------|-----------------------------------------------------------------|-------------------------------------|--------------------------------------------|
@@ -956,11 +935,9 @@ string-dump script `C:\Tools\work\dump_strings.py`.
 | D      | Override `BP_SurvivalPlayerCharacter` (replaces AIO)           | Maximum control                     | Conflicts with AIO at the same asset path  |
 | E      | Hybrid: data-side capacity bump + widget MaxRows raise         | Belt-and-braces                     | More files to maintain, potential conflict surface |
 
-We will not pick an option until research questions 1-3 are
-answered. Tentative ranking based on what we already know: C > A
-> B > D > E. C is most consistent with the proven mechanism
-(gameplay-tag commands) and avoids overriding any vanilla file at
-all -- maximum forward compatibility.
+**Decision:** Option A (with D as the practical implementation, since `DefaultMaxSize` lives on the inventory sub-object inside `BP_SurvivalPlayerCharacter` and overriding the property requires overriding that BP). C is ruled out by the answer to Q3 (no player-side capacity tag exists). B is ruled out (no DataTable drives it). E is over-engineered for our standalone-mod requirement.
+
+The Better Backpack mod under [`better-backpack/`](better-backpack/) implements Option A.
 
 ### Acceptance criteria
 
