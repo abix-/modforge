@@ -538,12 +538,29 @@ hash matches, so the override works. The stripped-down path is
 cosmetic -- likely a side-effect of how the modder packaged the
 files. Not the cause of the breakage.
 
-### What it actually changes
+### What it actually changes (UPDATED with verified values)
 
 A string-dump of all three modded widgets shows that out of every
 grid-dimension property name UE supports (NumColumns, NumRows,
 MaxRows, MaxColumns, RowCount, ColumnCount, GridSize, SlotCount,
 CellSize, etc.), exactly **one** appears: `MaxRows`.
+
+Reading the modded widget's actual int32 value via
+`scripts/read_property.py`:
+
+```
+UI_Container_BackpackSide.MaxRows: vanilla = 4, modded = 6
+UI_Container_ContainerSide.MaxRows: not overridden by the mod
+UI_ContainerInterface.MaxRows:     not overridden by the mod
+```
+
+Reading the inner grid widget for full picture:
+
+```
+UI_InventoryGrid CDO defaults: MaxColumns = 10, MaxRows = 3
+```
+
+So the visible slot grid is `min(InventoryComponent.MaxSize, host.MaxRows * 10)`. Vanilla 4 rows x 10 cols = 40, matching the reported vanilla 40. Bigger Backpack's 6 x 10 = 60, matching the mod's "60 slots" claim.
 
 Plus references to relevant inventory-side concepts:
 

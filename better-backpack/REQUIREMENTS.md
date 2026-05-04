@@ -53,21 +53,29 @@ For `slot_count = 60` and assumed `MaxColumns = 8`, set `MaxRows = 8` (giving 64
 
 If `slot_count` is configured differently in `settings.json`, the build script must compute `MaxRows` from `slot_count` and the actual vanilla `MaxColumns` value.
 
-### Q1a. What is vanilla `MaxColumns` on `UI_Container_BackpackSide`?
+### Q1a. Vanilla `MaxColumns` on `UI_InventoryGrid` (ANSWERED)
 
-Pending. The broken Bigger Backpack mod does not override `MaxColumns`, so we cannot read it from the modded widget. Need to extract vanilla `UI_Container_BackpackSide` and read `MaxColumns` directly. Until done, we assume `MaxColumns = 8` (industry standard for inventory grids and consistent with vanilla 40 = 8 x 5 layout). If vanilla is something else (e.g. 10 columns x 4 rows = 40), the build script will compute the wrong `MaxRows`. **Verify before building.**
+`MaxColumns = 10`, `MaxRows = 3` are the CDO defaults on `UI_InventoryGrid` itself. The host `UI_Container_BackpackSide` does not override `MaxColumns` (not in its Name Table), but does override `MaxRows = 4` to give the vanilla 4 x 10 = 40 visible slot grid.
 
-### Q2. What does vanilla actually set `DefaultMaxSize` to?
+Bigger Backpack mod's `MaxRows = 6` was therefore correctly designed for 60 visible slots (6 x 10). Earlier guess that BB was "designed for only 48 visible" was wrong; it was designed for 60 visible, but the visible count is clamped by the inventory component's `MaxSize` (vanilla 40), so without the 60-slot Player Tweaks variant providing data-side capacity, BB has zero visible effect.
 
-Assumed to be 40 based on community-reported player-inventory size. Not yet read directly from the vanilla `BP_SurvivalPlayerCharacter`. Easy to confirm: extract the vanilla chunk via `retoc get`, run `scripts/read_property.py` on it. Until confirmed, "we are bumping from 40 to 60" is a folk-knowledge claim, not a verified one.
+For Better Backpack with `slot_count = 60`: set `UI_Container_BackpackSide.MaxRows = 6` (matches BB's value).
 
-### Q3. What does vanilla set `MountInventoryComponent`'s `DefaultMaxSize` to?
+For other slot counts: `target_max_rows = ceil(slot_count / 10)`.
 
-We saw AIO v13.1.6 sets it to 48. We do not know if vanilla is also 48 (AIO is a no-op on this property) or whether vanilla is different (AIO is bumping the saddlebag). Affects whether our mod, by leaving this property alone in our override, restores the saddlebag to vanilla or accidentally reverts an AIO change a user might want.
+### Q2. Vanilla `DefaultMaxSize` on player main backpack (ANSWERED)
 
-### Q4. Hard caps on `DefaultMaxSize`.
+Confirmed `40`. Read directly from vanilla `BP_SurvivalPlayerCharacter.uexp` via `scripts/read_property.py`.
 
-Same as before: not statically determinable. Will need an in-game test. Acceptance test should include trying a value at the top of the requested range to confirm the game does not silently clamp.
+### Q3. Vanilla `DefaultMaxSize` on `MountInventoryComponent` (ANSWERED)
+
+Confirmed `30`. AIO Player Tweaks v13.1.6 bumps it to 48 (a real +18 saddlebag bump). Better Backpack leaves the vanilla 30 in place because mount capacity is out of scope; if a user wants both bigger main backpack AND bigger saddlebag, they install AIO separately and accept that AIO's BP override gets shadowed by ours (so saddlebag returns to vanilla 30 unless we also patch the mount value into our override).
+
+Decision for Better Backpack: leave the saddlebag at vanilla 30 in our override. If a user wants 48 saddlebag too, that becomes a separate `settings.json` field in a future iteration.
+
+### Q4. Hard caps on `DefaultMaxSize`. (Still open, in-game only)
+
+Not statically determinable. Will need an in-game test. Acceptance test should include trying a value at the top of the requested range to confirm the game does not silently clamp.
 
 ## Configuration: `settings.json`
 
