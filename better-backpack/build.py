@@ -274,7 +274,7 @@ def main() -> int:
             print(f"  !! missing: {f}")
 
     print("\nInstall by copying the three dist/ files into:")
-    print(r"  C:\Games\Steam\steamapps\common\Grounded2\Augusta\Content\Paks\")
+    print("  C:\\Games\\Steam\\steamapps\\common\\Grounded2\\Augusta\\Content\\Paks\\")
     return 0
 
 
