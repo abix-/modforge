@@ -33,6 +33,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <array>
 #include <string>
 #include <thread>
 #include <vector>
@@ -115,6 +116,29 @@ constexpr int  kInitMaxRetries = 60;
 static std::atomic<bool> g_running{ true };
 static FILE*             g_logFile = nullptr;
 static char              g_logPath[MAX_PATH] = {};
+static SDK::UClass*      g_invIfaceClass = nullptr;
+
+using ProcessEventFn = void(*)(const SDK::UObject*, SDK::UFunction*, void*);
+struct ProcessEventHookSurface {
+    const char*    className;
+    void**         slot;
+    void**         vtable;
+    ProcessEventFn original;
+};
+
+static std::array<ProcessEventHookSurface, 5> g_processEventHooks{{
+    { "Widget", nullptr, nullptr, nullptr },
+    { "UserWidget", nullptr, nullptr, nullptr },
+    { "GameUserWidget", nullptr, nullptr, nullptr },
+    { "InventoryWidget", nullptr, nullptr, nullptr },
+    { "WBP_InventoryInterface_C", nullptr, nullptr, nullptr },
+}};
+
+static bool            g_processEventHooksInstalled = false;
+static bool            g_processEventHookFailureLogged = false;
+static bool            g_widgetProbeDumped = false;
+static bool            g_invIfaceMethodTraceEnabled = true;
+static thread_local bool g_inInvIfaceHook = false;
 
 // ---- logging --------------------------------------------------------------
 
@@ -139,6 +163,15 @@ static void Log(const char* fmt, ...) {
     if (g_logFile) {
         fwrite(buf, 1, total, g_logFile);
         fflush(g_logFile);
+    }
+}
+
+static void WriteVTableSlot(void** slot, void* value) {
+    DWORD oldProtect = 0;
+    if (VirtualProtect(slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        *slot = value;
+        DWORD ignored = 0;
+        VirtualProtect(slot, sizeof(void*), oldProtect, &ignored);
     }
 }
 
@@ -207,6 +240,200 @@ static std::vector<InventoryFinding> ScanInventoryComponents() {
     return results;
 }
 
+// ---- inventory interface hook --------------------------------------------
+
+static void DumpLoadedObjectsContaining(const char* needle, bool classesOnly = false) {
+    if (!SDK::UObject::GObjects) return;
+
+    SDK::UClass* classClass = SDK::UClass::StaticClass();
+    int hits = 0;
+    int N = SDK::UObject::GObjects->Num();
+    for (int i = 0; i < N; ++i) {
+        SDK::UObject* obj = SDK::UObject::GObjects->GetByIndex(i);
+        if (!obj) continue;
+        if (classesOnly && !obj->IsA(classClass)) continue;
+
+        std::string name = classesOnly ? obj->GetName() : obj->GetFullName();
+        if (name.find(needle) == std::string::npos) continue;
+
+        Log("  probe[%s] %s", classesOnly ? "class" : "obj", name.c_str());
+        if (++hits >= 24) {
+            Log("  probe[%s] ... more elided", classesOnly ? "class" : "obj");
+            break;
+        }
+    }
+    if (hits == 0) {
+        Log("  probe[%s] no matches for '%s'", classesOnly ? "class" : "obj", needle);
+    }
+}
+
+static void DumpInventoryWidgetProbe() {
+    Log("inventory-widget probe: loaded class/object candidates");
+    DumpLoadedObjectsContaining("InventoryInterface", true);
+    DumpLoadedObjectsContaining("InventoryInterface", false);
+    DumpLoadedObjectsContaining("InventoryGrid", true);
+    DumpLoadedObjectsContaining("InventoryGrid", false);
+    DumpLoadedObjectsContaining("Backpack", true);
+    DumpLoadedObjectsContaining("Backpack", false);
+}
+
+static SDK::UClass* GetInventoryInterfaceClass() {
+    if (g_invIfaceClass) return g_invIfaceClass;
+    g_invIfaceClass = SDK::UObject::FindClassFast("WBP_InventoryInterface_C");
+    return g_invIfaceClass;
+}
+
+static ProcessEventFn FindOriginalProcessEventForObject(const SDK::UObject* obj) {
+    if (!obj) return nullptr;
+
+    void*** vtablePtr = reinterpret_cast<void***>(const_cast<SDK::UObject*>(obj));
+    if (!vtablePtr || !*vtablePtr) return nullptr;
+
+    void** liveVtable = *vtablePtr;
+    for (const auto& hook : g_processEventHooks) {
+        if (hook.vtable == liveVtable) {
+            return hook.original;
+        }
+    }
+    return nullptr;
+}
+
+static bool ShouldTraceInventoryInterfaceMethod(const std::string& fnName) {
+    if (fnName == "PopulateItemGrid") return true;
+    if (fnName == "Construct") return true;
+    if (fnName == "OnMouseWheel") return true;
+    if (fnName == "OnInventoryChanged") return true;
+    if (fnName == "OnInventoryCountChanged") return true;
+    if (fnName == "OnWidgetStackChanged") return true;
+    if (fnName.find("Populate") != std::string::npos) return true;
+    if (fnName.find("Refresh") != std::string::npos) return true;
+    return false;
+}
+
+static void HookedInventoryInterfaceProcessEvent(const SDK::UObject* obj,
+                                                 SDK::UFunction* function,
+                                                 void* parms) {
+    ProcessEventFn original = FindOriginalProcessEventForObject(obj);
+    if (!original) return;
+
+    if (!g_inInvIfaceHook && obj && function) {
+        g_inInvIfaceHook = true;
+        SDK::UClass* invIfaceClass = GetInventoryInterfaceClass();
+        if (invIfaceClass && obj->IsA(invIfaceClass)) {
+            std::string fnName = function->GetName();
+
+            if (g_invIfaceMethodTraceEnabled && ShouldTraceInventoryInterfaceMethod(fnName)) {
+                Log("widget TRACE %s.%s",
+                    obj->GetFullName().c_str(),
+                    fnName.c_str());
+            }
+
+            // Force the live inventory widget to build a 6x10 grid whenever the
+            // game itself asks it to populate. This stays on the game thread and
+            // avoids the worker-thread UMG race that crashed earlier attempts.
+            if (fnName == "PopulateItemGrid" && parms) {
+                auto* ints = reinterpret_cast<int32_t*>(parms);
+                int32_t oldRows = ints[0];
+                int32_t oldCols = ints[1];
+                ints[0] = kTargetMaxRows;
+                ints[1] = kVanillaMaxColumns;
+                if (oldRows != ints[0] || oldCols != ints[1]) {
+                    Log("widget HOOK %s.PopulateItemGrid(%d, %d) -> (%d, %d)",
+                        obj->GetFullName().c_str(),
+                        oldRows,
+                        oldCols,
+                        ints[0],
+                        ints[1]);
+                }
+            }
+        }
+
+        g_inInvIfaceHook = false;
+    }
+
+    original(obj, function, parms);
+}
+
+static bool TryInstallProcessEventHook(ProcessEventHookSurface& hook) {
+    SDK::UClass* cls = SDK::UObject::FindClassFast(hook.className);
+    if (!cls) {
+        Log("hook install pending: FindClassFast(\"%s\") returned null", hook.className);
+        return false;
+    }
+
+    SDK::UObject* cdo = cls->ClassDefaultObject;
+    if (!cdo) {
+        Log("hook install failed: %s has no ClassDefaultObject", hook.className);
+        return false;
+    }
+
+    void*** vtablePtr = reinterpret_cast<void***>(cdo);
+    if (!vtablePtr || !*vtablePtr) {
+        Log("hook install failed: %s CDO vtable missing", hook.className);
+        return false;
+    }
+
+    void** vtable = *vtablePtr;
+    void** slot = &vtable[SDK::Offsets::ProcessEventIdx];
+    if (!slot || !*slot) {
+        Log("hook install failed: ProcessEvent slot %d missing on %s CDO",
+            SDK::Offsets::ProcessEventIdx,
+            hook.className);
+        return false;
+    }
+
+    hook.original = reinterpret_cast<ProcessEventFn>(*slot);
+    hook.slot = slot;
+    hook.vtable = vtable;
+    WriteVTableSlot(slot, reinterpret_cast<void*>(&HookedInventoryInterfaceProcessEvent));
+    Log("installed %s::ProcessEvent hook at vtable slot %d (vtable=0x%p, original=0x%p)",
+        hook.className,
+        SDK::Offsets::ProcessEventIdx,
+        vtable,
+        reinterpret_cast<void*>(hook.original));
+    return true;
+}
+
+static bool EnsureInventoryInterfaceHookInstalled() {
+    if (g_processEventHooksInstalled) return true;
+
+    bool installedAny = false;
+    bool allInstalled = true;
+    for (auto& hook : g_processEventHooks) {
+        if (hook.slot && hook.original && hook.vtable) {
+            installedAny = true;
+            continue;
+        }
+        if (!TryInstallProcessEventHook(hook)) {
+            allInstalled = false;
+            continue;
+        }
+        installedAny = true;
+    }
+
+    if (!installedAny) {
+        g_processEventHookFailureLogged = true;
+        return false;
+    }
+    if (g_processEventHookFailureLogged) {
+        Log("hook install resumed: at least one widget ProcessEvent surface is now installed");
+        g_processEventHookFailureLogged = false;
+    }
+    g_processEventHooksInstalled = allInstalled;
+    return true;
+}
+
+static void RemoveInventoryInterfaceHook() {
+    for (auto& hook : g_processEventHooks) {
+        if (!hook.slot || !hook.original) continue;
+        WriteVTableSlot(hook.slot, reinterpret_cast<void*>(hook.original));
+        hook.slot = nullptr;
+        hook.vtable = nullptr;
+        hook.original = nullptr;
+    }
+    g_processEventHooksInstalled = false;
+}
+
 // ---- diagnostic phases ----------------------------------------------------
 
 static bool WaitForGObjects() {
@@ -239,20 +466,17 @@ static void DumpFindings(const std::vector<InventoryFinding>& comps) {
 
 // ---- widget patch --------------------------------------------------------
 //
-// Earlier revisions tried to invoke
-// `UWBP_InventoryInterface_C::PopulateItemGrid(RowMax, ColumnMax)` via
-// ProcessEvent from this worker thread. It worked visually (6 rows
-// rendered) but raced the engine's UMG material lifecycle and crashed
-// with `MaterialRenderProxy.cpp:520 Cannot queue the Expression Cache
-// for Material MID_M_UI_FreshFill_<id> when it is about to be deleted`.
-// UMG functions are game-thread only; calling them from our worker is
-// not safe regardless of how rarely we call them.
+// Earlier revisions tried to invoke `UWBP_InventoryInterface_C::
+// PopulateItemGrid(RowMax, ColumnMax)` from this worker thread. It worked
+// visually (6 rows rendered) but raced the engine's UMG material lifecycle
+// and crashed with `MaterialRenderProxy.cpp:520 Cannot queue the Expression
+// Cache for Material MID_M_UI_FreshFill_<id> when it is about to be deleted`.
+// UMG functions are game-thread only.
 //
-// We now ship data-side only. The game's own BP graph will refresh the
-// inventory UI on its normal triggers (open/close, item add/remove);
-// when it does, it reads `inventory.GetMaxSize()` (which returns our
-// patched 60) and computes `Rows = ceil(60/10) = 6`. Worst case the
-// player's first session shows 4 rows until they trigger a refresh.
+// The safer path is to hook a native widget `ProcessEvent` surface shared by
+// live inventory widget instances and rewrite the
+// `PopulateItemGrid(RowMax, ColumnMax)` inputs in-place when the game itself
+// calls it on the game thread.
 
 // Patch the UUI_InventoryGrid_C CDO's MaxRows. The player inventory in this
 // Grounded 2 build does NOT use UUI_InventoryGrid_C (it uses
@@ -320,6 +544,7 @@ static void DiagnosticLoop() {
         return;
     }
     Log("GObjects count   = %d", SDK::UObject::GObjects->Num());
+    EnsureInventoryInterfaceHookInstalled();
 
     // Engine-side log/save/mods directory resolution.
     {
@@ -361,22 +586,18 @@ static void DiagnosticLoop() {
                 current.size(), lastSize, repatched);
             lastSize = current.size();
         }
+        if (!g_processEventHooksInstalled) {
+            EnsureInventoryInterfaceHookInstalled();
+            if (!g_processEventHooksInstalled && !g_widgetProbeDumped) {
+                DumpInventoryWidgetProbe();
+                g_widgetProbeDumped = true;
+            }
+        }
         // Re-scan grids (CDO only).
         int gridsPatched = PatchInventoryGridMaxRows();
         if (gridsPatched > 0) {
             Log("rescan: %d new/reset UUI_InventoryGrid_C objects patched", gridsPatched);
         }
-
-        // We deliberately do NOT call WBP_InventoryInterface_C::
-        // PopulateItemGrid from this worker thread. Empirically that races
-        // the engine's UMG material lifecycle (MID_M_UI_FreshFill instances)
-        // and crashes with a MaterialRenderProxy.cpp:520 fatal "Cannot
-        // queue the Expression Cache for Material ... when it is about to
-        // be deleted". The data-side DefaultMaxSize patch is enough by
-        // itself: when the player opens the inventory, the BP graph runs
-        // its own refresh (which DOES call PopulateItemGrid, but on the
-        // game thread, safely) and reads GetMaxSize()=60, which leads to
-        // ceil(60/10)=6 rows.
     }
     Log("worker thread exiting");
 }
@@ -409,6 +630,7 @@ BOOL APIENTRY DllMain(HMODULE hMod, DWORD reason, LPVOID) {
         HANDLE h = CreateThread(NULL, 0, BBD::WorkerEntry, NULL, 0, NULL);
         if (h) CloseHandle(h);
     } else if (reason == DLL_PROCESS_DETACH) {
+        BBD::RemoveInventoryInterfaceHook();
         BBD::g_running.store(false);
     }
     return TRUE;

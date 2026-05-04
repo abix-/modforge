@@ -75,6 +75,71 @@ Acceptance criteria when implemented:
 - Inventory refreshes caused by item movement or count changes do not reset the viewport to page 0.
 - No duplicate slot widgets, no repeated grid growth, and no obvious flicker while scrolling.
 
+### Current blocker: safe visible-side refresh / 6-row display
+
+This is the immediate prerequisite work before the scroll viewport plan can be finished cleanly.
+
+What has been verified:
+
+- Data-side patch works reliably:
+  - log shows player `InventoryComponent` instances patched `40 -> 60`
+  - extra capacity exists in memory
+- SDK-backed widget facts:
+  - `WBP_InventoryInterface_C` is the player inventory widget and inherits from native `UInventoryWidget`
+  - `WBP_InventoryInterface_C` directly owns `ItemGrid : UGridPanel*`
+  - there is no reflected `UScrollBox` field on this widget
+  - `PopulateItemGrid(int32 RowMax, int32 ColumnMax)` is a real reflected method on the widget
+  - `BPF_InventoryFunctions_C::RefreshInventoryGrid(...)` and `PopulateInventoryGrid(...)` explicitly take `ItemStartIndex`, `RowMax`, `ColumnMax`, and `GridPanel`
+  - `UObject::ProcessEvent` is dispatched through the universal SDK vtable slot `Offsets::ProcessEventIdx`
+- Current runtime log from a real test now shows:
+  - the broadened native widget hook now reaches live instances
+  - `widget TRACE WBP_InventoryInterface_C ... Construct`
+  - `initial patch round: 3 / 45 components patched`
+  - `widget PATCH UI_InventoryGrid_C ... MaxRows: 3 -> 6 (CDO only)`
+  - `initial widget patch round: 1 UUI_InventoryGrid_C objects bumped to MaxRows=6`
+  - after opening/using inventory, still no `widget HOOK ... PopulateItemGrid(...)->(6, 10)` line
+  - after opening/using inventory, no reflected `Populate*` / `Refresh*` / `OnInventoryChanged` path was seen on the live widget; only `Construct`
+- Result: capacity patch succeeds, and the broadened native `ProcessEvent` hook does reach live `WBP_InventoryInterface_C` instances. However, the visible inventory redraw path still does not appear as a reflected Blueprint call with the expected method names. Current best conclusion: the real grid rebuild path is native or otherwise bypasses the reflected `ProcessEvent` methods we were targeting.
+
+What has already failed:
+
+- Calling `WBP_InventoryInterface_C::PopulateItemGrid(...)` directly from the DLL worker thread.
+  - Visually promising, but it crashed in UMG/material lifecycle code.
+  - Conclusion: do not call player inventory UMG rebuild functions from the worker thread.
+- Relying on `UI_InventoryGrid_C.MaxRows` CDO patch alone.
+  - This is not sufficient to make the live player inventory show 6 rows in the current build.
+- First attempt at a `WBP_InventoryInterface_C::ProcessEvent` vtable hook.
+  - Build succeeded.
+  - Runtime evidence now says the hook *does* install.
+  - However, neither `PopulateItemGrid` nor broader widget trace logging fires through that hook during actual inventory usage.
+  - New conclusion: class lookup succeeded, but the BP CDO vtable is the wrong observation surface for live instances.
+- Broadened native widget-chain `ProcessEvent` hook (`Widget` / `UserWidget` / `GameUserWidget` / `InventoryWidget` / `WBP_InventoryInterface_C`).
+  - Build succeeded.
+  - Runtime evidence now says live `WBP_InventoryInterface_C` instances do trace through this surface.
+  - But the only observed reflected method during inventory open is `Construct`.
+  - New conclusion: the inventory redraw/repopulation path is probably native-direct or otherwise not exposed as the reflected `Populate*` / `Refresh*` methods we expected.
+
+Immediate next debugging steps:
+
+1. Keep the broadened widget-chain `ProcessEvent` hook as the verified live-instance observation surface.
+2. Stop assuming the redraw path must be a reflected Blueprint method on `WBP_InventoryInterface_C`.
+3. Review SDK-native candidates that can rebuild the visible grid without a Blueprint `ProcessEvent` call:
+   - `BPF_InventoryFunctions_C::RefreshInventoryGrid(...)`
+   - `BPF_InventoryFunctions_C::PopulateInventoryGrid(...)`
+   - `UGridPanel` child-management/update path
+   - any native inventory/widget helpers adjacent to `UInventoryWidget` / `UWidgetManager` / `WBP_InventoryInterface_C`
+4. Identify where the live widget gets its slot children populated after `Construct`, and hook or patch that native path instead of waiting for a reflected `Populate*` call.
+5. Once the real redraw path is found, retarget the 6-row rewrite there.
+6. After the visible 6-row path is understood, use the already-confirmed `ItemStartIndex` helpers for the later scrollable 4x10 viewport implementation.
+
+Acceptance criteria for this blocker:
+
+- Log shows the hook installation succeeded.
+- Opening the inventory produces filtered trace lines from live `WBP_InventoryInterface_C` instances through the broadened native widget hook.
+- The real player-inventory redraw path is identified, even if it is native and not a reflected Blueprint method.
+- The inventory visibly shows 6 rows without calling UMG rebuilds from the worker thread.
+- No `MaterialRenderProxy` / UMG lifecycle crash during inventory open, close, or item movement.
+
 ## Player thirst and hunger rate tweaks
 
 Goal: let the user dial down (or off) how fast the player gets hungry and thirsty. Same vehicle as Better Backpack: a runtime patch via the injected DLL.
