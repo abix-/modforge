@@ -16,18 +16,58 @@ Replicate "more usable backpack slots" without:
 ## Functional requirements
 
 1. **Capacity bump.** Increase the int32 value of `DefaultMaxSize` on the **main** `InventoryComponent` sub-object of `BP_SurvivalPlayerCharacter` from vanilla's `40` to a configurable value (default `60`).
-2. **No other property changes.** Do not touch `MountInventoryComponent`'s `DefaultMaxSize`. Do not touch stack sizes, tech tree, perks, recipes, or anything else. Single-purpose mod.
-3. **Configurable slot count.** The desired capacity is read from a `settings.json` file in the mod's source tree at **build time**. Re-running the build script regenerates the pak with the new value.
-4. **Standalone deployment.** A single `.pak` plus `.ucas` plus `.utoc` triple, dropped into the game's `Augusta\Content\Paks\` directory or into Vortex as a self-contained mod. No companion files. No depending on other mods being present.
-5. **Survives no-mod sessions.** If the user uninstalls the mod, the game returns to vanilla 40 slots with no save corruption (provided the player emptied any extra slots first, which is a standard UE pak override property).
-6. **Save-load preservation.** Items placed in slots beyond vanilla 40 must persist across a save, quit, and reload cycle.
+2. **Visible rendering of all N slots.** All `slot_count` slots must render in the player's inventory UI grid and be individually clickable, hover-able, and drag-target-able for items. No hidden slots accessible only indirectly via hot-pouch or building.
+3. **No other gameplay changes.** Do not touch `MountInventoryComponent`'s `DefaultMaxSize`. Do not touch stack sizes, tech tree, perks, recipes, or anything else gameplay related. Single-purpose mod.
+4. **Configurable slot count.** The desired capacity is read from a `settings.json` file in the mod's source tree at **build time**. Re-running the build script regenerates the pak with the new value.
+5. **Standalone deployment.** A single `.pak` plus `.ucas` plus `.utoc` triple, dropped into the game's `Augusta\Content\Paks\` directory or into Vortex as a self-contained mod. No companion files. No depending on other mods being present.
+6. **Survives no-mod sessions.** If the user uninstalls the mod, the game returns to vanilla 40 slots with no save corruption (provided the player emptied any extra slots first, which is a standard UE pak override property).
+7. **Save-load preservation.** Items placed in slots beyond vanilla 40 must persist across a save, quit, and reload cycle.
 
 ## Non-goals
 
-- **No UI mod.** We do NOT modify the inventory widget. As a result, the inventory grid in the main inventory UI will visually max out at vanilla rendering capacity (likely 40 slots visible). The mod grows STORAGE: pickup and hold work for slots 41 through N, but those slots may not be individually clickable in the main grid. This is the same trade-off the broken Bigger Backpack mod made; we accept it.
 - **No cheats.** This is not a Player Tweaks replacement. No perk unlocks, no recipe unlocks, no point grants.
 - **No mount saddlebag changes.** That is `MountInventoryComponent`, a different sub-object and a separate concern.
 - **No multiplayer host enforcement layer.** Server-side caps may override client-side capacity in multiplayer; that is a documented limitation, not something we work around.
+
+## Open questions (must answer before build)
+
+These are blockers for the build pipeline. The first one is the largest unknown.
+
+### Q1. How does `UI_InventoryGrid` decide how many slots to render? (ANSWERED)
+
+The model is **option 2 from the original three-option list**: the grid renders `min(component.DefaultMaxSize, MaxRows * MaxColumns)`, where `MaxRows` lives on the host container widget (`UI_Container_BackpackSide`) and `MaxColumns` is its sibling.
+
+Evidence:
+
+- `UUI_InventoryGrid_C` has its own `MaxRows` and `MaxColumns` (offset 0x0388 and 0x0390, both `int32, Edit, BlueprintVisible`).
+- The host widget `UI_Container_BackpackSide` ALSO has a `MaxRows` property that the broken Bigger Backpack mod overrides. It does NOT override `MaxColumns`. The host widget hosts the grid as a sub-widget and configures it via these two values.
+- `UpdateRowsAndColumnsForInventory(InventoryComponent, out Columns, out Rows, out MaxSlots)` is a function on the grid widget. Naming and parameter shape are consistent with computing the effective grid based on both the widget's own MaxRows/MaxColumns and the component's MaxSize.
+- The broken Bigger Backpack mod sets `UI_Container_BackpackSide.MaxRows = 6`. Assuming vanilla `MaxColumns = 8`, that gives 48 visible slots, not the advertised 60. This matches user reports that "only 40 are clickable" when the data-side cap is also vanilla 40: the visible cap is `min(40, 48) = 40`. With the 60-slot Player Tweaks variant data-side, the visible cap becomes `min(60, 48) = 48`. Neither configuration reaches 60 visible. The original mod's design only ever supported up to 48 visible.
+
+For Better Backpack to render all 60 slots clickable, the build must override BOTH:
+
+1. `BP_SurvivalPlayerCharacter`: bump main `InventoryComponent.DefaultMaxSize` to `slot_count` (60).
+2. `UI_Container_BackpackSide`: bump `MaxRows` to `ceil(slot_count / MaxColumns)`.
+
+For `slot_count = 60` and assumed `MaxColumns = 8`, set `MaxRows = 8` (giving 64 grid positions, of which 60 are usable).
+
+If `slot_count` is configured differently in `settings.json`, the build script must compute `MaxRows` from `slot_count` and the actual vanilla `MaxColumns` value.
+
+### Q1a. What is vanilla `MaxColumns` on `UI_Container_BackpackSide`?
+
+Pending. The broken Bigger Backpack mod does not override `MaxColumns`, so we cannot read it from the modded widget. Need to extract vanilla `UI_Container_BackpackSide` and read `MaxColumns` directly. Until done, we assume `MaxColumns = 8` (industry standard for inventory grids and consistent with vanilla 40 = 8 x 5 layout). If vanilla is something else (e.g. 10 columns x 4 rows = 40), the build script will compute the wrong `MaxRows`. **Verify before building.**
+
+### Q2. What does vanilla actually set `DefaultMaxSize` to?
+
+Assumed to be 40 based on community-reported player-inventory size. Not yet read directly from the vanilla `BP_SurvivalPlayerCharacter`. Easy to confirm: extract the vanilla chunk via `retoc get`, run `scripts/read_property.py` on it. Until confirmed, "we are bumping from 40 to 60" is a folk-knowledge claim, not a verified one.
+
+### Q3. What does vanilla set `MountInventoryComponent`'s `DefaultMaxSize` to?
+
+We saw AIO v13.1.6 sets it to 48. We do not know if vanilla is also 48 (AIO is a no-op on this property) or whether vanilla is different (AIO is bumping the saddlebag). Affects whether our mod, by leaving this property alone in our override, restores the saddlebag to vanilla or accidentally reverts an AIO change a user might want.
+
+### Q4. Hard caps on `DefaultMaxSize`.
+
+Same as before: not statically determinable. Will need an in-game test. Acceptance test should include trying a value at the top of the requested range to confirm the game does not silently clamp.
 
 ## Configuration: `settings.json`
 
@@ -55,20 +95,29 @@ Field semantics:
 
 1. **Inputs**
    - `settings.json` (slot count and metadata).
-   - Vanilla `BP_SurvivalPlayerCharacter` chunk (`aee653a2e9c280ed00000001`) extracted from `Augusta-WinGRTS.utoc` via `retoc to-legacy` once and cached.
-2. **Patch step**
+   - Vanilla `BP_SurvivalPlayerCharacter` chunk (`aee653a2e9c280ed00000001`).
+   - Vanilla `UI_Container_BackpackSide` chunk (`9776fd889ac44a7c00000001`).
+   - Both extracted from `Augusta-WinGRTS.utoc` and converted to legacy via `retoc to-legacy`, cached.
+2. **Patch step (BP_SurvivalPlayerCharacter)**
    - Locate the FName index for `DefaultMaxSize` in the vanilla `.uasset` Name Table.
    - Walk the `.uexp` for PropertyTag entries matching that FName plus `IntProperty` type.
    - The first hit is the main `InventoryComponent`'s `DefaultMaxSize`; patch its int32 value to `settings.slot_count`.
    - Leave the second hit (`MountInventoryComponent`) at its vanilla value.
-3. **Repack**
-   - `repak pack` the patched `.uasset` plus `.uexp` into a legacy pak.
+3. **Patch step (UI_Container_BackpackSide)**
+   - Read vanilla `MaxColumns` from this widget's `.uexp` (one-shot lookup, cached).
+   - Compute `target_max_rows = ceil(settings.slot_count / vanilla_max_columns)`.
+   - Patch the `MaxRows` int32 in the widget's `.uexp` to `target_max_rows`.
+   - Leave `MaxColumns` at vanilla.
+4. **Repack**
+   - `repak pack` the patched `.uasset` plus `.uexp` files (both assets) into a single legacy pak.
    - `retoc to-zen --version UE5_6` to convert into the IoStore format the shipping game uses.
-4. **Output**
+5. **Output**
    - `<output_basename>_<priority>_P.pak`
    - `<output_basename>_<priority>_P.ucas`
    - `<output_basename>_<priority>_P.utoc`
    - Drop into `dist/` for distribution.
+
+The output pak contains exactly two overridden assets: the player Blueprint (data-side capacity) and the host backpack container widget (visible-side row count). No other vanilla files are touched.
 
 ## Acceptance criteria
 
@@ -85,7 +134,7 @@ Stretch acceptance: optional pairing with the existing **Bigger Backpack** Nexus
 ## Known constraints and risks
 
 1. **Single-asset override conflicts with AIO Player Tweaks.** Our mod and AIO Player Tweaks both override `BP_SurvivalPlayerCharacter` (chunk `aee653a2e9c280ed`). At runtime UE picks one based on load priority. Our mod at priority 99 will SHADOW AIO at priority 12, meaning if both are installed, AIO's cheat-tag commands will not fire because the BP that contains them is shadowed. This is acceptable per the "standalone, no reliance on other mods" requirement.
-2. **UI render cap.** Without the existing Bigger Backpack widget mod, the inventory UI panel is laid out for 40 slots and does not auto-grow. Slots 41 through N work in storage but may not be individually clickable in the main UI grid (they remain accessible indirectly via building, hot-pouch, and similar, per the existing Bigger Backpack mod's known behaviour).
+2. **UI render path is the open unknown.** See Q1 above. Until that is answered, we do not know if data-side capacity is sufficient for visible rendering, or whether we also need to override one or more widgets. The build pipeline is structured to add the widget overrides cleanly if needed.
 3. **Game patches may shift offsets.** The build pipeline re-derives byte offsets at build time from the vanilla asset's FName table, not from a hardcoded offset. So a game patch that re-orders FNames will not break the build as long as `DefaultMaxSize` and `IntProperty` still exist in the table.
 4. **Hard caps unknown.** UE-side or Obsidian-side hard caps on inventory size may exist in C++ that the SDK does not expose. Verifiable only by in-game test. A sensible `slot_count` ceiling is probably 100 to 200; very large values may have undefined behaviour.
 5. **Multiplayer.** Server-authoritative capacity enforcement may clamp client-side capacity in multiplayer sessions where the host does not have the same mod. Not in scope to work around.
