@@ -1388,6 +1388,50 @@ explicit go-ahead.
   files; back up first as
   `<name>.original_40slots`).
 
+## Logging infrastructure in Grounded 2 (what the SDK proves)
+
+The SDK Dumper-7 release for Grounded 2 v0.4.0.2 contains reflected types and methods that prove the game ships with full UE logging infrastructure compiled in. Not stripped. Concrete evidence from the SDK headers:
+
+| Symbol | Location | What it proves |
+|---|---|---|
+| `class UConsole final : public UObject` | `Engine_classes.hpp:41010` | The in-game text console class is compiled in and reflected. |
+| `class UVisualLoggerKismetLibrary final : public UBlueprintFunctionLibrary` | `Engine_classes.hpp:41185` | Visual logger with Blueprint-callable `LogText`, `LogLocation`, `LogBox`, `LogCapsule`, `LogCone`, `LogCylinder`, `LogOrientedBox`, `LogSphere`. |
+| `static class FString ProjectLogDir();` | `Engine_classes.hpp:32500` | UE resolves the log directory at runtime via this method. For Grounded 2 this returns the standard `<game>/Augusta/Saved/Logs/`. |
+| `class UVisualLoggerAutomationTests final : public UObject` | `Engine_classes.hpp:29413` | VLog test fixtures shipped, supporting infra is present. |
+| `class UConsoleSettings final : public UObject` | `EngineSettings_classes.hpp:22` | Console UI settings (MaxScrollbackSize, autocomplete list, colors) are config-driven and reflected. |
+| `class USurvivalCheatManager final : public UCheatManager` | `Maine_classes.hpp:36524` | Game-specific cheat manager with explicit log-emitting commands: `LogActorAndFoliageCount`, `LogFactionReputations`, `PopulationMonitorDump`, `DumpGlobalVariables`, `DumpAlwaysReplicatedClasses`, `DumpMobileReplicatedActors`, `DumpOnlyRelevantToOwnerClasses`, `DumpPreplacedNotProxyableObjects`. |
+| `enum class ELogTimes : uint8` | `CoreUObject_structs.hpp:299` | Log timestamp formatting enum, reflected. |
+
+What the SDK does NOT directly prove:
+
+- Whether the `-log` command-line flag actually enables file output in this shipping build. That is decided by the launcher's argument parser at runtime, which is not reflected metadata.
+- The exact final path used by `ProjectLogDir()`. Static SDK reads cannot resolve it; only running the engine prints it. Standard UE convention is `<ProjectRoot>/Saved/Logs/<ProjectName>.log`, which would be `<game>/Augusta/Saved/Logs/Augusta.log`.
+- Whether `DefaultEngine.ini` overrides log file output via `[Core.Log]` settings such as `bSuppressLogToFile`. Those config files live in `<game>/Augusta/Config/` and would need direct inspection.
+
+How to use this (consumption patterns we control without bytecode editing):
+
+1. **Launch flags (zero mod required).** UE shipping builds honor command-line flags for log verbosity. Concrete example we use against Grounded 2:
+
+    ```
+    -log -LogCmds="LogPak Verbose, LogIoStore Verbose"
+    ```
+
+    `-log` enables file output to `<game>/Augusta/Saved/Logs/Augusta.log`. `-LogCmds=` sets per-category verbosity at startup. With `LogPak` and `LogIoStore` at Verbose, every mod pak that mounts produces a log line; rejected paks produce a different log line. This is the fastest way to verify whether our pak is being mounted at all.
+
+2. **`-ExecCmds=` runs console commands at startup.** Combine with the visual logger:
+
+    ```
+    -log -ExecCmds="Vislog record"
+    ```
+
+    `Vislog` is a real UE console command that toggles `UVisualLoggerKismetLibrary::EnableRecording`. With recording on from launch, every native or Blueprint call to `LogText`/`LogLocation`/etc. produces entries in `<game>/Augusta/Saved/VisualLogger/*.vlog`.
+
+3. **In-game dev console.** If `UInputSettings::ConsoleKeys` is non-empty in this build (config-driven), pressing the bound key (default backtick or tilde) opens the dev console. From there, type any of: `Vislog record`, `Vislog stop`, `Log LogPak Verbose`, `obj list class=InventoryComponent`, etc. The console is plumbing for invoking console commands at runtime.
+
+4. **Adding our own log calls** (NOT available to a pak-only mod). `UVisualLoggerKismetLibrary::LogText` is Blueprint-callable, but inserting a new call into an existing Blueprint requires editing Kismet bytecode. Property-defaults patching does not extend the BP graph.
+
+5. **INI config check** (static, no game launch needed). `<game>/Augusta/Config/DefaultEngine.ini` plain-text. Look for `[Core.Log]` section, `bSuppressLogToFile=true`, or any custom log routing. The SDK cannot tell us this; only the INI does.
+
 ## Vortex deployment gotcha (worth knowing for any UE5 mod)
 
 If a mod looks enabled and "deployed" in Vortex but does not take effect in-game, check Vortex's actual deployment target:
