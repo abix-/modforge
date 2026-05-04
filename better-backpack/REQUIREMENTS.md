@@ -137,12 +137,92 @@ The output pak contains exactly two overridden assets: the player Blueprint (dat
 The mod is "working" when, with the mod installed and **no other mods** in the Paks folder, against game version `0.4.0.2`:
 
 - The game launches without load-time errors related to the modded asset.
-- The player's backpack has effective storage of `slot_count` slots: items pick up and persist past slot 40.
+- The player's inventory UI renders `ceil(slot_count / 10)` rows of 10 slots, all clickable.
+- Items pick up into slots 1 through `slot_count` and the inventory does not refuse pickup until full.
 - Items placed in slots 41 through `slot_count` survive save, quit, and reload.
-- The first 40 slots remain visible and usable in the inventory UI (the rendering cap of the unmodded UI).
 - Removing the mod returns the player to a vanilla 40-slot inventory (with the standard caveat: empty extra slots before uninstalling).
 
-Stretch acceptance: optional pairing with the existing **Bigger Backpack** Nexus widget mod renders all 60 slots in the inventory UI grid. Verifying this is informational, not required.
+## Verification plan (how to tell if it works)
+
+There are three layers of "works", each with a different test.
+
+### Layer 1: did the mod load at all?
+
+This is the most basic signal. If the game launches normally and there are no load errors, the pak got mounted. If the game crashes at launch or fails to load a save, the pak is malformed or our chunk ID conflicts with something else.
+
+What to check:
+- **Game launches** to the main menu without crashing.
+- **Saves load** without "asset failed to load" popups.
+- **Game log file** at `%LOCALAPPDATA%\Augusta\Saved\Logs\Augusta.log` (open in a text editor, search for `LogPak` and `LogIoStore`). Look for the line that mounts our pak. Look for any errors mentioning `BP_SurvivalPlayerCharacter` or `UI_Container_BackpackSide`.
+
+If layer 1 fails, layers 2 and 3 don't matter; revert and debug.
+
+### Layer 2: did the visible-side change apply?
+
+Open the inventory UI in-game. Count the slots.
+
+Expected with `slot_count = 60`:
+- 6 rows of 10 slots, all rendered.
+- All 60 slots clickable, hoverable, drag-target-able.
+
+Failure modes:
+- **4 rows visible (vanilla 40):** widget patch did not apply. Possible causes: priority too low, vanilla `MaxRows` is not 4 in your build, our zip's path layout is wrong, Vortex did not deploy the file.
+- **6 rows visible but slots 41 through 60 greyed out / not interactive:** widget rendering applied but the inventory component is still vanilla 40, so the grid clamps the extra slots.
+
+### Layer 3: did the data-side change apply?
+
+Try to fill the inventory past 40 items. Then save, quit, reload.
+
+Expected:
+- Pick up items 41 through 60 normally; the inventory does not refuse pickup at 40.
+- Saving does not produce errors.
+- Reloading the save shows items 41 through 60 still in their slots.
+
+Failure modes:
+- **Pickup refused at slot 40:** data patch did not apply. Most likely the widget patch DID apply (you see 60 slots) but the BP patch did not, so storage caps at vanilla 40.
+- **Items vanish after save/reload:** save serialization is rejecting capacities above some hard cap, OR the patched component's MaxSize is being reset by some runtime initialiser. Try a smaller slot_count (e.g. 50) to see if there's a ceiling. (This is the empirical answer to Q4.)
+
+### Quick combined test (5 minutes, no item-spawning required)
+
+1. Install the mod via Vortex.
+2. Launch a save where the player normally has a near-full inventory.
+3. Press the inventory key. Count the rows.
+   - Expect 6 rows. If you see 4, layer 2 failed.
+4. Drop everything into a chest, walk around picking up grass and sap stems until past slot 40.
+   - Expect pickup to keep working past 40. If items get refused at 40, layer 3 failed.
+5. Save, quit to main menu, reload.
+   - Expect items in slots 41+ to still be there. If gone, layer 3 has a serialization caveat.
+
+Pass on all three steps means the mod works as designed.
+
+### Static verification (does not require launching the game)
+
+Before launching, you can sanity-check the build artifacts:
+
+```bash
+# Confirm the patched values are actually written.
+python ../scripts/read_property.py \
+  better-backpack/build/Augusta/Content/Blueprints/Player/BP_SurvivalPlayerCharacter.uasset \
+  better-backpack/build/Augusta/Content/Blueprints/Player/BP_SurvivalPlayerCharacter.uexp \
+  DefaultMaxSize
+# Expect: hit 1 VALUE=60 (slot_count), hit 2 VALUE=30 (mount, vanilla)
+
+python ../scripts/read_property.py \
+  better-backpack/build/Augusta/Content/UI/Container/UI_Container_BackpackSide.uasset \
+  better-backpack/build/Augusta/Content/UI/Container/UI_Container_BackpackSide.uexp \
+  MaxRows
+# Expect: hit 1 VALUE=6 (target_max_rows for slot_count=60)
+
+# Confirm the output container has the right format.
+retoc info dist/BetterBackpack_00099_P.utoc
+# Expect: version: ReplaceIoChunkHashWithIoHash
+#         container_header_version: Some(SoftPackageReferencesOffset)
+#         packages: 2
+```
+
+If static checks pass and layer 1 fails, the issue is upstream of the mod (Vortex deploy, game version mismatch, or chunk-ID collision with another mod).
+
+Stretch acceptance: optional pairing with the existing **Bigger Backpack** Nexus widget mod is redundant once Better Backpack is installed; both touch `UI_Container_BackpackSide` and the higher-priority one wins. Verifying that pairing does not break anything is informational, not required.
 
 ## Known constraints and risks
 
