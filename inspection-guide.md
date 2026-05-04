@@ -1408,29 +1408,29 @@ What the SDK does NOT directly prove:
 - The exact final path used by `ProjectLogDir()`. Static SDK reads cannot resolve it; only running the engine prints it. Standard UE convention is `<ProjectRoot>/Saved/Logs/<ProjectName>.log`, which would be `<game>/Augusta/Saved/Logs/Augusta.log`.
 - Whether `DefaultEngine.ini` overrides log file output via `[Core.Log]` settings such as `bSuppressLogToFile`. Those config files live in `<game>/Augusta/Config/` and would need direct inspection.
 
-How to use this (consumption patterns we control without bytecode editing):
+How to use this (corrected after testing):
 
-1. **Launch flags (zero mod required).** UE shipping builds honor command-line flags for log verbosity. Concrete example we use against Grounded 2:
+**The hard truth:** UE5 shipping builds strip the dev console binary code entirely (`ALLOW_CONSOLE_IN_SHIPPING=0` is the default). The `UConsole` UClass survives in the SDK because reflection metadata is preserved, but runtime handling is compiled out. Confirmed for Grounded 2 by testing: `-log`, `-LogCmds=`, `-ExecCmds=`, `-EnableCheats`, `-cheats`, `-console` all do nothing in this shipping build. `Augusta.log` is never created. Tilde and backtick do not open a console even though `UInputSettings::ConsoleKeys` is populated in `DefaultInput.ini`.
 
-    ```
-    -log -LogCmds="LogPak Verbose, LogIoStore Verbose"
-    ```
+This is not Grounded 2 being weird; it is the standard UE5 shipping configuration. See [Epic forums on the subject](https://forums.unrealengine.com/t/ue5-0-how-to-enable-console-command-in-shipping-build/541210).
 
-    `-log` enables file output to `<game>/Augusta/Saved/Logs/Augusta.log`. `-LogCmds=` sets per-category verbosity at startup. With `LogPak` and `LogIoStore` at Verbose, every mod pak that mounts produces a log line; rejected paks produce a different log line. This is the fastest way to verify whether our pak is being mounted at all.
+So for log/console-based verification, your options are:
 
-2. **`-ExecCmds=` runs console commands at startup.** Combine with the visual logger:
+1. **Universal Unreal Engine 5 Unlocker (UUU).** Third-party DLL injector that re-enables the console at runtime. Generic across UE5 games.
+2. **[Cheat Manager and Console Unlocker](https://www.nexusmods.com/grounded2/mods/70)** on Nexus. A Grounded 2-specific runtime mod that unlocks the console.
+3. **`x0reaxeax/Grounded2Minimal`** ([repo](https://github.com/x0reaxeax/Grounded2Minimal)). A debug DLL with its own embedded console, injected into the running game.
+4. **A pak-side mod that injects Kismet bytecode** to call `UVisualLoggerKismetLibrary::LogText` from BeginPlay. Heavy lift, requires UAssetGUI-level bytecode editing, and the resulting log goes nowhere unless one of (1)/(2)/(3) is also active to surface it.
 
-    ```
-    -log -ExecCmds="Vislog record"
-    ```
+For "did my pak load?" without runtime injection, two pak-only diagnostics:
 
-    `Vislog` is a real UE console command that toggles `UVisualLoggerKismetLibrary::EnableRecording`. With recording on from launch, every native or Blueprint call to `LogText`/`LogLocation`/etc. produces entries in `<game>/Augusta/Saved/VisualLogger/*.vlog`.
+- **Read-back the deployed pak.** Convert the pak in `<game>/Augusta/Content/Paks/` back to legacy via `retoc to-legacy` and re-read property values via `scripts/read_property.py`. If the patched value is in the deployed bytes, the build pipeline is fine and any failure is on the runtime side (which we cannot diagnose without injection).
+- **Indirect functional check.** Install another mod whose effect is visible (a known-good Bigger Stacks or recipe unlock). If that other mod's effect is also missing in-game, pak loading itself is broken (Vortex deploy, paths, priority). If the other mod works but ours does not, our specific patch is being rejected for a content reason.
 
-3. **In-game dev console.** If `UInputSettings::ConsoleKeys` is non-empty in this build (config-driven), pressing the bound key (default backtick or tilde) opens the dev console. From there, type any of: `Vislog record`, `Vislog stop`, `Log LogPak Verbose`, `obj list class=InventoryComponent`, etc. The console is plumbing for invoking console commands at runtime.
+What the SDK does and does not tell us:
 
-4. **Adding our own log calls** (NOT available to a pak-only mod). `UVisualLoggerKismetLibrary::LogText` is Blueprint-callable, but inserting a new call into an existing Blueprint requires editing Kismet bytecode. Property-defaults patching does not extend the BP graph.
-
-5. **INI config check** (static, no game launch needed). `<game>/Augusta/Config/DefaultEngine.ini` plain-text. Look for `[Core.Log]` section, `bSuppressLogToFile=true`, or any custom log routing. The SDK cannot tell us this; only the INI does.
+- Reflection metadata is preserved in shipping. `UConsole`, `UVisualLoggerKismetLibrary`, `USurvivalCheatManager` all appear as real UClasses. This is misleading: their existence in the SDK does NOT prove they are runtime-callable in shipping.
+- The `UCheatManager` subclass is the proof point. UE only instantiates `UCheatManager` on the player controller in non-shipping builds OR when `ALLOW_CHEAT_CHEATS_IN_SHIPPING` is defined at compile time. Just because `USurvivalCheatManager` exists as a reflected type does not mean it is wired in at runtime.
+- Static analysis of cooked `.ini` files (e.g. `<game>/Augusta/Config/DefaultEngine.ini`, `DefaultInput.ini`) tells us configuration intent but not whether the corresponding runtime code path exists in this binary.
 
 ## Vortex deployment gotcha (worth knowing for any UE5 mod)
 
