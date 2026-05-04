@@ -1,2 +1,8 @@
 build/
 dist/
+*.log
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib

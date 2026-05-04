@@ -2,15 +2,51 @@
 
 Notes, tooling, and worked examples for inspecting, debugging, and authoring mods for Grounded 2 (Obsidian, Unreal Engine 5.4).
 
-This repo started as a focused investigation of why "Bigger Backpack" stopped working, and ended up covering generic UE5 modding methodology applied to Grounded 2 specifically.
+This repo started as a focused investigation of why "Bigger Backpack" stopped working and ended up shipping a working replacement (Better Backpack) plus a generic UE5 modding methodology.
 
 ## Contents
 
-- [inspection-guide.md](inspection-guide.md): the main document. Workflow, tooling, two worked examples (All-in-One Player Tweaks and Bigger Backpack), the SDK-derived path to a DIY backpack mod, and external-resource references.
-- [better-backpack/](better-backpack/): a standalone backpack capacity mod under construction. See [better-backpack/REQUIREMENTS.md](better-backpack/REQUIREMENTS.md) for the spec.
-- [scripts/](scripts/): small Python utilities used during the investigation.
-  - `dump_strings.py`: pull readable strings out of a cooked `.uasset` and `.uexp` pair, bucketed by pattern (UE names, paths, prose).
-  - `read_property.py`: decode a specific UE PropertyTag value from a cooked legacy `.uasset` plus `.uexp`. Used here to read `DefaultMaxSize` directly without UAssetGUI or a `.usmap` mappings file.
+- [Quick links](#quick-links)
+- [Repo layout](#repo-layout)
+- [TL;DR for "I want a bigger backpack"](#tldr-for-i-want-a-bigger-backpack)
+- [Tooling installed locally for this work](#tooling-installed-locally-for-this-work)
+- [Game build referenced in this doc](#game-build-referenced-in-this-doc)
+- [Credits](#credits)
+
+## Quick links
+
+| If you want... | Go to |
+|---|---|
+| To install and use the Better Backpack mod | [better-backpack/INSTALL.md](better-backpack/INSTALL.md) |
+| To diagnose a problem with the mod | [better-backpack/TROUBLESHOOTING.md](better-backpack/TROUBLESHOOTING.md) |
+| To build, modify, or port the mod | [better-backpack/BUILDING.md](better-backpack/BUILDING.md) |
+| The mod's design + research + verification plan | [better-backpack/REQUIREMENTS.md](better-backpack/REQUIREMENTS.md) |
+| The generic UE5 mod inspection methodology | [better-backpack/inspection-guide.md](better-backpack/inspection-guide.md) |
+| Why UE5 shipping doesn't write log files | [better-backpack/SHIPPING-BUILD-NOTES.md](better-backpack/SHIPPING-BUILD-NOTES.md) |
+
+## Repo layout
+
+```
+grounded2mods/
+  README.md                 You are here.
+  better-backpack/          The mod.
+    README.md               Landing page + nav for everything below.
+    INSTALL.md              End-user install/use guide.
+    TROUBLESHOOTING.md      Failure modes and fixes.
+    BUILDING.md             Build, configuration, internals, porting.
+    REQUIREMENTS.md         Design spec, research, verification plan.
+    SHIPPING-BUILD-NOTES.md UE5 shipping logging/console quirks.
+    inspection-guide.md     Generic UE5 modding methodology + worked examples.
+    dllmain.cpp             Main DLL source.
+    basic_impl.cpp          Slim Dumper-7 Basic.cpp re-implementation.
+    inject.c                Standalone external injector source.
+    build.bat               MSVC build script.
+  scripts/
+    dump_strings.py         Pull readable strings out of cooked .uasset/.uexp.
+    read_property.py        Decode a specific UE PropertyTag from a legacy .uasset+.uexp.
+```
+
+The repo previously shipped a pak-based prototype of Better Backpack at the top level. That was retired in favour of the DLL because shipping-build verification required runtime injection anyway: there is no `Augusta.log` or in-game console to confirm a pak's effect. The DLL gives us live readout + active patch + retry on reset, all from one artifact. The methodology document was moved to `better-backpack/inspection-guide.md` because the worked examples and SDK research are inseparable from the mod's design.
 
 ## TL;DR for "I want a bigger backpack"
 
@@ -23,17 +59,22 @@ Property:  int32 DefaultMaxSize  (offset 0x01E0)
 
 `BP_SurvivalPlayerCharacter` instantiates a main `InventoryComponent` (40 vanilla) and a `MountInventoryComponent` (saddlebag) as instanced sub-objects. To grow the main backpack, override `DefaultMaxSize` on the main `InventoryComponent` sub-object's CDO defaults.
 
-The plain "AIO Player Tweaks v13.1.6" Nexus mod does NOT do this (verified: main backpack stays at 40, only saddlebag is bumped to 48). The "60-slot" variant in the same mod's Optional Files does this single byte-level override. See [inspection-guide.md](inspection-guide.md) for the byte offset and the exact one-shot patch.
+The plain "AIO Player Tweaks v13.1.6" Nexus mod does NOT do this (verified: main backpack stays at 40, only saddlebag is bumped to 48). The "60-slot" variant in the same mod's Optional Files does this single byte-level override. See [better-backpack/inspection-guide.md](better-backpack/inspection-guide.md) for the byte offset and the exact one-shot patch.
+
+For a working implementation, see [better-backpack/](better-backpack/): a tiny DLL that walks `GObjects` for every `UInventoryComponent` owned by `BP_SurvivalPlayerCharacter*` and patches `DefaultMaxSize` from 40 to 60. It also patches `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`) on every grid CDO and live instance so the visible grid scales to 6 rows. Ships its own injector. Build, launch the game, load a save, run `inject.exe`. Done.
 
 ## Tooling installed locally for this work
 
 ```
-C:\Tools\retoc\retoc.exe       v0.1.5      (CLI Zen IoStore packer)
-C:\Tools\repak\repak.exe       v0.2.3      (CLI legacy pak packer)
-C:\Tools\FModel\FModel.exe     Dec 2025    (GUI cooked-asset browser)
+C:\Tools\retoc\retoc.exe                      v0.1.5    (CLI Zen IoStore packer)
+C:\Tools\repak\repak.exe                      v0.2.3    (CLI legacy pak packer)
+C:\Tools\FModel\FModel.exe                    Dec 2025  (GUI cooked-asset browser)
+C:\Tools\work\sdk\                            Dumper-7  (Grounded 2 v0.4.0.2 SDK headers)
+C:\Tools\work\sdk_research\Grounded2Minimal\  reference (DLL-injection pattern + logging)
+Visual Studio 2022 Community                            (cl.exe v14.x for the DLL build)
 ```
 
-All three are portable single-binary downloads from GitHub releases.
+The first three are portable single-binary downloads from GitHub releases. The Dumper-7 SDK and Grounded2Minimal sources came from the credited repos. VS2022 Community is the standard MSVC toolchain.
 
 ## Game build referenced in this doc
 

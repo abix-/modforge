@@ -2,7 +2,21 @@
 
 A standalone mod for Grounded 2 that increases the player's main backpack capacity from vanilla (40 slots) to a configurable count (default 60). No dependencies on other mods.
 
-This is the spiritual successor to the **Bigger Backpack** Nexus mod (`ContainerWidgetTweaks_00054_P`), which is broken in the current shipping build (`++Augusta+release-0.4.0.2-CL-2673661`). Our mod uses a different mechanism that actually works.
+This is the spiritual successor to the **Bigger Backpack** Nexus mod (`ContainerWidgetTweaks_00054_P`), which is broken in the current shipping build (`++Augusta+release-0.4.0.2-CL-2673661`). Our mod uses a different mechanism that actually works: an injected DLL that patches both the data side and the visible side at runtime. (The earlier prototype shipped as a pak; that approach was retired in favour of the DLL because shipping-build verification required runtime injection anyway.)
+
+## Contents
+
+- [Goal](#goal)
+- [Functional requirements](#functional-requirements)
+- [Non-goals](#non-goals)
+- [Open questions (must answer before build)](#open-questions-must-answer-before-build)
+- [Configuration: compile-time constants](#configuration-compile-time-constants)
+- [Build pipeline](#build-pipeline)
+- [Acceptance criteria](#acceptance-criteria)
+- [Verification plan (how to tell if it works)](#verification-plan-how-to-tell-if-it-works)
+- [Known constraints and risks](#known-constraints-and-risks)
+- [Out of scope (do not build now)](#out-of-scope-do-not-build-now)
+- [Repository layout](#repository-layout)
 
 ## Goal
 
@@ -10,18 +24,18 @@ Replicate "more usable backpack slots" without:
 
 - Requiring **Player Tweaks** (or any of its variants) to be installed alongside.
 - Requiring the existing **Bigger Backpack** Nexus widget mod to be installed alongside.
-- Requiring any external DLL injector or runtime hook.
-- Modifying any vanilla file beyond the single Blueprint that owns the inventory component.
+- Modifying any cooked vanilla file on disk.
+- Distributing the patched binary; we ship a tiny DLL plus an injector and patch the live process.
 
 ## Functional requirements
 
-1. **Capacity bump.** Increase the int32 value of `DefaultMaxSize` on the **main** `InventoryComponent` sub-object of `BP_SurvivalPlayerCharacter` from vanilla's `40` to a configurable value (default `60`).
+1. **Capacity bump.** Increase the int32 value of `DefaultMaxSize` on every `UInventoryComponent` from `40` to `slot_count` (default `60`), but only for components whose full path includes `BP_SurvivalPlayerCharacter` (string-match on the outer chain). This excludes chests (`BP_Ominent_Chest*`), loot bags (`BP_LootBag*`, `BP_DeathLootBag*`), and the wearable backpack item (`BP_Backpack_Player*`), all of which also default to 40. Live patch on CDOs and on instances.
 2. **Visible rendering of all N slots.** All `slot_count` slots must render in the player's inventory UI grid and be individually clickable, hover-able, and drag-target-able for items. No hidden slots accessible only indirectly via hot-pouch or building.
-3. **No other gameplay changes.** Do not touch `MountInventoryComponent`'s `DefaultMaxSize`. Do not touch stack sizes, tech tree, perks, recipes, or anything else gameplay related. Single-purpose mod.
-4. **Configurable slot count.** The desired capacity is read from a `settings.json` file in the mod's source tree at **build time**. Re-running the build script regenerates the pak with the new value.
-5. **Standalone deployment.** A single `.pak` plus `.ucas` plus `.utoc` triple, dropped into the game's `Augusta\Content\Paks\` directory or into Vortex as a self-contained mod. No companion files. No depending on other mods being present.
-6. **Survives no-mod sessions.** If the user uninstalls the mod, the game returns to vanilla 40 slots with no save corruption (provided the player emptied any extra slots first, which is a standard UE pak override property).
-7. **Save-load preservation.** Items placed in slots beyond vanilla 40 must persist across a save, quit, and reload cycle.
+3. **No other gameplay changes.** Do not touch `MountInventoryComponent`'s `DefaultMaxSize` (vanilla 30; we explicitly skip the value 30). Do not touch stack sizes, tech tree, perks, recipes, or anything else gameplay related. Single-purpose mod.
+4. **Configurable slot count.** Compiled-in constant `kSlotCount` at the top of `dllmain.cpp`. Edit + rebuild. Adding a `settings.json` reader is open for follow-up but not required.
+5. **Standalone deployment.** A single `.dll` plus a single `.exe` injector, both produced by `build.bat`. No companion files. No depending on other mods being present.
+6. **Survives no-mod sessions.** Removing the DLL (don't run `inject.exe`) means the game runs vanilla, with no save corruption, provided the player emptied any extra slots first.
+7. **Save-load preservation.** Items placed in slots beyond vanilla 40 must persist across a save, quit, and reload cycle while the DLL is injected.
 
 ## Non-goals
 
@@ -31,7 +45,7 @@ Replicate "more usable backpack slots" without:
 
 ## Open questions (must answer before build)
 
-These are blockers for the build pipeline. The first one is the largest unknown.
+These were blockers for the original pak build pipeline. The answers transfer directly to the DLL because the underlying engine semantics are the same.
 
 ### Q1. How does `UI_InventoryGrid` decide how many slots to render? (ANSWERED)
 
@@ -44,14 +58,14 @@ Evidence:
 - `UpdateRowsAndColumnsForInventory(InventoryComponent, out Columns, out Rows, out MaxSlots)` is a function on the grid widget. Naming and parameter shape are consistent with computing the effective grid based on both the widget's own MaxRows/MaxColumns and the component's MaxSize.
 - The broken Bigger Backpack mod sets `UI_Container_BackpackSide.MaxRows = 6`. Assuming vanilla `MaxColumns = 8`, that gives 48 visible slots, not the advertised 60. This matches user reports that "only 40 are clickable" when the data-side cap is also vanilla 40: the visible cap is `min(40, 48) = 40`. With the 60-slot Player Tweaks variant data-side, the visible cap becomes `min(60, 48) = 48`. Neither configuration reaches 60 visible. The original mod's design only ever supported up to 48 visible.
 
-For Better Backpack to render all 60 slots clickable, the build must override BOTH:
+For Better Backpack to render all 60 slots clickable, we patch BOTH:
 
-1. `BP_SurvivalPlayerCharacter`: bump main `InventoryComponent.DefaultMaxSize` to `slot_count` (60).
-2. `UI_Container_BackpackSide`: bump `MaxRows` to `ceil(slot_count / MaxColumns)`.
+1. `UInventoryComponent.DefaultMaxSize` -> `slot_count` (60), on every live instance and CDO whose value is 40 AND whose outer chain contains `BP_SurvivalPlayerCharacter`.
+2. `UUI_InventoryGrid_C.MaxRows` -> `ceil(slot_count / MaxColumns)`, on every CDO and live grid instance, at hard-coded offset `0x0388` (from `UI_InventoryGrid_classes.hpp:30`).
 
-For `slot_count = 60` and assumed `MaxColumns = 8`, set `MaxRows = 8` (giving 64 grid positions, of which 60 are usable).
+For `slot_count = 60` and `MaxColumns = 10`, set `MaxRows = 6`.
 
-If `slot_count` is configured differently in `settings.json`, the build script must compute `MaxRows` from `slot_count` and the actual vanilla `MaxColumns` value.
+**Note on the host widget.** Earlier research focused on `UI_Container_BackpackSide` because that is what the broken Bigger Backpack mod patched. Empirically, in the current shipping build, no UClass with name containing "BackpackSide" appears in `GObjects` even after the inventory has been opened in-game. The grid widget itself (`UUI_InventoryGrid_C`) DOES appear, and patching its `MaxRows` directly produces the desired effect with no host-widget detour.
 
 ### Q1a. Vanilla `MaxColumns` on `UI_InventoryGrid` (ANSWERED)
 
@@ -59,7 +73,7 @@ If `slot_count` is configured differently in `settings.json`, the build script m
 
 Bigger Backpack mod's `MaxRows = 6` was therefore correctly designed for 60 visible slots (6 x 10). Earlier guess that BB was "designed for only 48 visible" was wrong; it was designed for 60 visible, but the visible count is clamped by the inventory component's `MaxSize` (vanilla 40), so without the 60-slot Player Tweaks variant providing data-side capacity, BB has zero visible effect.
 
-For Better Backpack with `slot_count = 60`: set `UI_Container_BackpackSide.MaxRows = 6` (matches BB's value).
+For Better Backpack with `slot_count = 60`: set `UI_Container_BackpackSide.MaxRows = 6`.
 
 For other slot counts: `target_max_rows = ceil(slot_count / 10)`.
 
@@ -69,109 +83,74 @@ Confirmed `40`. Read directly from vanilla `BP_SurvivalPlayerCharacter.uexp` via
 
 ### Q3. Vanilla `DefaultMaxSize` on `MountInventoryComponent` (ANSWERED)
 
-Confirmed `30`. AIO Player Tweaks v13.1.6 bumps it to 48 (a real +18 saddlebag bump). Better Backpack leaves the vanilla 30 in place because mount capacity is out of scope; if a user wants both bigger main backpack AND bigger saddlebag, they install AIO separately and accept that AIO's BP override gets shadowed by ours (so saddlebag returns to vanilla 30 unless we also patch the mount value into our override).
-
-Decision for Better Backpack: leave the saddlebag at vanilla 30 in our override. If a user wants 48 saddlebag too, that becomes a separate `settings.json` field in a future iteration.
+Confirmed `30`. AIO Player Tweaks v13.1.6 bumps it to 48 (a real +18 saddlebag bump). Better Backpack leaves the vanilla 30 in place because mount capacity is out of scope; if a user wants both bigger main backpack AND bigger saddlebag, that becomes a future option (separate constant). The DLL's "skip values that aren't 40" rule means we never touch the mount.
 
 ### Q4. Hard caps on `DefaultMaxSize`. (Still open, in-game only)
 
 Not statically determinable. Will need an in-game test. Acceptance test should include trying a value at the top of the requested range to confirm the game does not silently clamp.
 
-## Configuration: `settings.json`
+## Configuration: compile-time constants
 
-A JSON file in the mod source tree (NOT inside the deployed pak; `.pak` files are immutable cooked binaries):
+In `dllmain.cpp`:
 
-```json
-{
-  "slot_count": 60,
-  "target_game_version": "0.4.0.2",
-  "load_priority": 99,
-  "output_basename": "BetterBackpack"
-}
+```cpp
+constexpr int32_t kSlotCount         = 60;  // target main-backpack DefaultMaxSize
+constexpr int32_t kVanillaMain       = 40;  // value the DLL looks for; only patches matches
+constexpr int32_t kVanillaMount      = 30;  // documented; never touched by name (we skip non-40 values)
+constexpr int32_t kVanillaMaxColumns = 10;  // UI_InventoryGrid.MaxColumns
+constexpr int32_t kTargetMaxRows     = ceil(kSlotCount / kVanillaMaxColumns); // = 6
 ```
 
-Field semantics:
-
-| Field                  | Type   | Default              | Notes |
-|------------------------|--------|----------------------|-------|
-| `slot_count`           | int    | `60`                 | Final `DefaultMaxSize` value the mod sets. Vanilla is 40. |
-| `target_game_version`  | string | `"0.4.0.2"`          | Documentation only. If the SDK or vanilla asset layout changes, the build script should warn. |
-| `load_priority`        | int    | `99`                 | Number embedded in the output pak's filename (`<basename>_<priority>_P.pak`). Higher loads later, wins on chunk-ID conflicts. |
-| `output_basename`      | string | `"BetterBackpack"`   | Output filename stem. |
+Edit and rebuild. There is no runtime config reader. A `settings.json` follow-up would either parse at DLL load or get baked at build time; both are easy if needed.
 
 ## Build pipeline
 
 1. **Inputs**
-   - `settings.json` (slot count and metadata).
-   - Vanilla `BP_SurvivalPlayerCharacter` chunk (`aee653a2e9c280ed00000001`).
-   - Vanilla `UI_Container_BackpackSide` chunk (`9776fd889ac44a7c00000001`).
-   - Both extracted from `Augusta-WinGRTS.utoc` and converted to legacy via `retoc to-legacy`, cached.
-2. **Patch step (BP_SurvivalPlayerCharacter)**
-   - Locate the FName index for `DefaultMaxSize` in the vanilla `.uasset` Name Table.
-   - Walk the `.uexp` for PropertyTag entries matching that FName plus `IntProperty` type.
-   - The first hit is the main `InventoryComponent`'s `DefaultMaxSize`; patch its int32 value to `settings.slot_count`.
-   - Leave the second hit (`MountInventoryComponent`) at its vanilla value.
-3. **Patch step (UI_Container_BackpackSide)**
-   - Read vanilla `MaxColumns` from this widget's `.uexp` (one-shot lookup, cached).
-   - Compute `target_max_rows = ceil(settings.slot_count / vanilla_max_columns)`.
-   - Patch the `MaxRows` int32 in the widget's `.uexp` to `target_max_rows`.
-   - Leave `MaxColumns` at vanilla.
-4. **Repack**
-   - `repak pack` the patched `.uasset` plus `.uexp` files (both assets) into a single legacy pak.
-   - `retoc to-zen --version UE5_6` to convert into the IoStore format the shipping game uses.
-5. **Output**
-   - Loose files (for non-Vortex / manual install):
-     - `<output_basename>_<priority>_P.pak`
-     - `<output_basename>_<priority>_P.ucas`
-     - `<output_basename>_<priority>_P.utoc`
-   - Vortex-installable archive (recommended):
-     - `<output_basename>-<slot_count>slots.zip`
-     - Internal layout: `Augusta/Content/Paks/<output_basename>_<priority>_P.{pak,ucas,utoc}`
-     - User drags the zip onto Vortex, or uses Mods -> Install From File. Vortex extracts into its own staging dir and deploys via symlink/copy into the game's Paks folder.
-   - All artifacts go to `dist/` for distribution.
+   - `dllmain.cpp` (the DLL logic).
+   - `basic_impl.cpp` (slim re-impl of the SDK's `Basic.cpp` without the `Engine_classes.hpp` dependency that pulls in 290k lines of unused SDK function bodies).
+   - `inject.c` (the injector).
+   - The Dumper-7 SDK at `C:\Tools\work\sdk\`. Only `Basic.hpp`, `CoreUObject_structs.hpp`, `CoreUObject_classes.hpp` are included; `CoreUObject_functions.cpp` is the only SDK cpp file we compile.
+2. **Build step (DLL)**
+   - `cl.exe /LD /std:c++latest dllmain.cpp basic_impl.cpp CoreUObject_functions.cpp -> BetterBackpack.dll`
+3. **Build step (injector)**
+   - `cl.exe inject.c -> inject.exe`
+4. **Output**
+   - `dist/BetterBackpack.dll` (~40 KB, 64-bit)
+   - `dist/inject.exe` (~15 KB, 64-bit console)
+   - Cold build: ~30 seconds. Incremental: a couple of seconds.
 
-The output pak contains exactly two overridden assets: the player Blueprint (data-side capacity) and the host backpack container widget (visible-side row count). No other vanilla files are touched.
+The DLL contains exactly two patch sites: `UInventoryComponent.DefaultMaxSize` (offset `0x01E0`, hard-coded from `Maine_classes.hpp:29557`) and `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`, hard-coded from `UI_InventoryGrid_classes.hpp:30`). The data-side patch is gated on the outer chain containing `BP_SurvivalPlayerCharacter`. No vanilla files on disk are touched.
 
 ## Acceptance criteria
 
-The mod is "working" when, with the mod installed and **no other mods** in the Paks folder, against game version `0.4.0.2`:
+The mod is "working" when, with the DLL injected and **no other mods** in the Paks folder, against game version `0.4.0.2`:
 
-- The game launches without load-time errors related to the modded asset.
-- The player's inventory UI renders `ceil(slot_count / 10)` rows of 10 slots, all clickable.
+- The game launches without load-time errors.
+- After injection, the player's inventory UI renders `ceil(slot_count / 10)` rows of 10 slots, all clickable.
 - Items pick up into slots 1 through `slot_count` and the inventory does not refuse pickup until full.
-- Items placed in slots 41 through `slot_count` survive save, quit, and reload.
-- Removing the mod returns the player to a vanilla 40-slot inventory (with the standard caveat: empty extra slots before uninstalling).
+- Items placed in slots 41 through `slot_count` survive save, quit, and reload (with the DLL re-injected on the next session).
+- Not injecting the DLL (or removing it before relaunching) returns the player to a vanilla 40-slot inventory (with the standard caveat: empty extra slots before relying on this).
 
 ## Verification plan (how to tell if it works)
 
 There are three layers of "works", each with a different test.
 
-### Layer 1: did the mod load at all?
+### Layer 1: did the DLL load at all?
 
-This is the most basic signal. If the game launches normally and there are no load errors, the pak got mounted. If the game crashes at launch or fails to load a save, the pak is malformed or our chunk ID conflicts with something else.
+If `inject.exe` reports `DLL mapped at HMODULE 0x...` and a new console window titled "Better Backpack" appears in the game process, the DLL is loaded. If the console doesn't appear or the log file at `%TEMP%\BetterBackpack.log` doesn't grow, the DLL got mapped but `DllMain` failed to spawn the worker thread.
 
 What to check:
-- **Game launches** to the main menu without crashing.
-- **Saves load** without "asset failed to load" popups.
-- **Game log file** at `%LOCALAPPDATA%\Augusta\Saved\Logs\Augusta.log` (open in a text editor, search for `LogPak` and `LogIoStore`). Look for the line that mounts our pak. Look for any errors mentioning `BP_SurvivalPlayerCharacter` or `UI_Container_BackpackSide`.
+- **Console window** titled "Better Backpack Debug" appeared.
+- **Log file** at `%TEMP%\BetterBackpack.log` exists and has a banner line.
+- **`GObjects count = N`** prints with N > 0.
 
-If layer 1 fails, layers 2 and 3 don't matter; revert and debug.
+If layer 1 fails, layers 2 and 3 don't matter; check `%TEMP%\BetterBackpack.log` for the failing line.
 
-### Layer 2: did the visible-side change apply?
+### Layer 2: did the data-side change apply?
 
-Open the inventory UI in-game. Count the slots.
+In the DLL log, look for `PATCH ... : 40 -> 60 (verify=60)` lines. There should be at least one. Typically a CDO line and a live instance line for the player's main inventory.
 
-Expected with `slot_count = 60`:
-- 6 rows of 10 slots, all rendered.
-- All 60 slots clickable, hoverable, drag-target-able.
-
-Failure modes:
-- **4 rows visible (vanilla 40):** widget patch did not apply. Possible causes: priority too low, vanilla `MaxRows` is not 4 in your build, our zip's path layout is wrong, Vortex did not deploy the file.
-- **6 rows visible but slots 41 through 60 greyed out / not interactive:** widget rendering applied but the inventory component is still vanilla 40, so the grid clamps the extra slots.
-
-### Layer 3: did the data-side change apply?
-
-Try to fill the inventory past 40 items. Then save, quit, reload.
+In-game: try to fill the inventory past 40 items. Then save, quit, reload (with the DLL still injected).
 
 Expected:
 - Pick up items 41 through 60 normally; the inventory does not refuse pickup at 40.
@@ -179,75 +158,83 @@ Expected:
 - Reloading the save shows items 41 through 60 still in their slots.
 
 Failure modes:
-- **Pickup refused at slot 40:** data patch did not apply. Most likely the widget patch DID apply (you see 60 slots) but the BP patch did not, so storage caps at vanilla 40.
-- **Items vanish after save/reload:** save serialization is rejecting capacities above some hard cap, OR the patched component's MaxSize is being reset by some runtime initialiser. Try a smaller slot_count (e.g. 50) to see if there's a ceiling. (This is the empirical answer to Q4.)
+- **No PATCH lines in log:** no `UInventoryComponent` had `DefaultMaxSize == 40`. Either the player wasn't spawned (you injected at the main menu instead of in a save), or the value was already changed by something else (another mod). The log dumps every component pre-patch so you can see what's there.
+- **PATCH lines present but pickup refused at 40 in-game:** the running player pawn was spawned with a snapshot of the cap; replication or runtime initialiser is overriding our value. Try injecting before opening the inventory for the first time, or extend the DLL to also write to the live `MaxSize` runtime field if `UInventoryComponent` has one.
+- **Items vanish after save/reload:** save serialization is rejecting capacities above some hard cap. Try a smaller `kSlotCount` (e.g. 50). This is the empirical answer to Q4.
+
+### Layer 3: did the visible-side change apply?
+
+Open the inventory UI in-game. Count the slots.
+
+Expected with `kSlotCount = 60`:
+- 6 rows of 10 slots, all rendered.
+- All 60 slots clickable, hoverable, drag-target-able.
+
+Failure modes:
+- **4 rows visible (vanilla 40):** widget patch did not apply. In the DLL log, look for `widget initially patched: 0`. That means the widget class wasn't loaded at injection time. The DLL retries on every 10s rescan, so opening the inventory once and waiting 10s should fix it. If the log shows `widget: MaxRows FProperty not found`, the property name changed; rebuild Dumper-7 SDK headers and check the new field name.
+- **6 rows visible but slots 41 through 60 greyed out / not interactive:** widget rendering applied but the inventory component is still vanilla 40. Layer 2 problem, not Layer 3.
 
 ### Quick combined test (5 minutes, no item-spawning required)
 
-1. Install the mod via Vortex.
-2. Launch a save where the player normally has a near-full inventory.
-3. Press the inventory key. Count the rows.
-   - Expect 6 rows. If you see 4, layer 2 failed.
-4. Drop everything into a chest, walk around picking up grass and sap stems until past slot 40.
-   - Expect pickup to keep working past 40. If items get refused at 40, layer 3 failed.
-5. Save, quit to main menu, reload.
-   - Expect items in slots 41+ to still be there. If gone, layer 3 has a serialization caveat.
+1. Build the DLL: `build.bat`.
+2. Launch the game and load a save where the player has a near-full inventory.
+3. Run `dist\inject.exe` from an Admin cmd.
+4. Open the inventory. Count the rows.
+   - Expect 6 rows. If you see 4, layer 3 failed (open the DLL log).
+5. Drop everything into a chest, walk around picking up grass and sap stems past slot 40.
+   - Expect pickup to keep working past 40. If items get refused at 40, layer 2 failed.
+6. Save, quit to main menu, reload.
+   - Expect items in slots 41+ to still be there. If gone, layer 2 has a serialization caveat (Q4).
 
 Pass on all three steps means the mod works as designed.
 
 ### Static verification (does not require launching the game)
 
-Before launching, you can sanity-check the build artifacts:
+Before launching:
 
-```bash
-# Confirm the patched values are actually written.
-python ../scripts/read_property.py \
-  better-backpack/build/Augusta/Content/Blueprints/Player/BP_SurvivalPlayerCharacter.uasset \
-  better-backpack/build/Augusta/Content/Blueprints/Player/BP_SurvivalPlayerCharacter.uexp \
-  DefaultMaxSize
-# Expect: hit 1 VALUE=60 (slot_count), hit 2 VALUE=30 (mount, vanilla)
+```cmd
+dumpbin /headers dist\BetterBackpack.dll | findstr "machine"
+:: Expect: 8664 machine (x64)
 
-python ../scripts/read_property.py \
-  better-backpack/build/Augusta/Content/UI/Container/UI_Container_BackpackSide.uasset \
-  better-backpack/build/Augusta/Content/UI/Container/UI_Container_BackpackSide.uexp \
-  MaxRows
-# Expect: hit 1 VALUE=6 (target_max_rows for slot_count=60)
+dumpbin /exports dist\BetterBackpack.dll
+:: No exports expected. DllMain only.
 
-# Confirm the output container has the right format.
-retoc info dist/BetterBackpack_00099_P.utoc
-# Expect: version: ReplaceIoChunkHashWithIoHash
-#         container_header_version: Some(SoftPackageReferencesOffset)
-#         packages: 2
+dist\inject.exe nonexistent.dll
+:: Expect: "[-] DLL not found: 'nonexistent.dll' (E2)"
+:: Confirms the injector's path-resolution code path works.
 ```
 
-If static checks pass and layer 1 fails, the issue is upstream of the mod (Vortex deploy, game version mismatch, or chunk-ID collision with another mod).
-
-Stretch acceptance: optional pairing with the existing **Bigger Backpack** Nexus widget mod is redundant once Better Backpack is installed; both touch `UI_Container_BackpackSide` and the higher-priority one wins. Verifying that pairing does not break anything is informational, not required.
+If static checks pass and layer 1 fails, the issue is in `DllMain` or the worker thread (read the log, or attach a debugger to the game process and break on `DllMain`).
 
 ## Known constraints and risks
 
-1. **Single-asset override conflicts with AIO Player Tweaks.** Our mod and AIO Player Tweaks both override `BP_SurvivalPlayerCharacter` (chunk `aee653a2e9c280ed`). At runtime UE picks one based on load priority. Our mod at priority 99 will SHADOW AIO at priority 12, meaning if both are installed, AIO's cheat-tag commands will not fire because the BP that contains them is shadowed. This is acceptable per the "standalone, no reliance on other mods" requirement.
-2. **UI render path is the open unknown.** See Q1 above. Until that is answered, we do not know if data-side capacity is sufficient for visible rendering, or whether we also need to override one or more widgets. The build pipeline is structured to add the widget overrides cleanly if needed.
-3. **Game patches may shift offsets.** The build pipeline re-derives byte offsets at build time from the vanilla asset's FName table, not from a hardcoded offset. So a game patch that re-orders FNames will not break the build as long as `DefaultMaxSize` and `IntProperty` still exist in the table.
+1. **DLL must be injected after the player pawn spawns.** `UInventoryComponent` instances don't exist at the main menu. The CDO does, so a CDO patch at main-menu inject would propagate to subsequently spawned pawns, but the live readout is empty until you load a save. We document "load a save first, then inject".
+2. **UI render path was the original open unknown.** Resolved (Q1/Q1a). The widget patch is necessary for the visible slot count to scale beyond 40.
+3. **Game patches may shift offsets.** `DefaultMaxSize` at offset `0x01E0` is hard-coded. A game update that changes `UInventoryComponent`'s field layout breaks the patch. The widget `MaxRows` is reflectively located by name and survives layout shifts. If the data side breaks, Dumper-7 needs a re-run against the new build to get the new offset.
 4. **Hard caps unknown.** UE-side or Obsidian-side hard caps on inventory size may exist in C++ that the SDK does not expose. Verifiable only by in-game test. A sensible `slot_count` ceiling is probably 100 to 200; very large values may have undefined behaviour.
 5. **Multiplayer.** Server-authoritative capacity enforcement may clamp client-side capacity in multiplayer sessions where the host does not have the same mod. Not in scope to work around.
+6. **Re-injection during a single session.** Don't. The DLL holds an atomic running flag and an open log file handle; mapping it twice would double-spawn worker threads.
+7. **Anti-cheat.** Grounded 2 has none listed. If that ever changes, this DLL would trip it.
 
 ## Out of scope (do not build now)
 
-- A companion UI widget mod that grows the inventory grid beyond 40 visible slots.
-- A multi-mod combiner that merges this with a stack-size mod into a single pak.
-- A runtime DLL hook approach that does not require pak patching at all.
-- A CI workflow that auto-builds and signs the mod pak.
+- Auto-launching the injector from a Vortex extension.
+- A proxy-DLL trick (renaming our DLL to `dxgi.dll` etc. so Windows loads it on game start) to remove the manual inject step.
+- A multi-mod combiner that merges this with a stack-size mod.
+- A CI workflow that auto-builds and signs the DLL.
+- A `settings.json` reader (would just be hardcoded constants moved to a file).
 
-## Repository layout (target)
+## Repository layout
 
 ```
 better-backpack/
-  REQUIREMENTS.md          (this file)
-  settings.json            (the user-editable config)
-  build.py                 (the build script, not yet written)
-  dist/                    (output paks, TBD whether gitignored)
-  vanilla/                 (cached vanilla extraction, gitignored)
+  REQUIREMENTS.md     (this file: design + research + verification plan)
+  README.md           (user-facing: how to build and inject)
+  dllmain.cpp         (DLL logic: console, log, GObjects walk, patch, rescan loop)
+  basic_impl.cpp      (slim re-impl of SDK's Basic.cpp; avoids the 290k-line compile)
+  inject.c            (the injector: CreateRemoteThread(LoadLibraryA))
+  build.bat           (vcvars64 + cl.exe wrapper; ~30s cold)
+  .gitignore          (build/, dist/, *.log, *.obj, *.pdb)
+  dist/               (output: BetterBackpack.dll + inject.exe; gitignored)
+  build/              (intermediate .obj/.pdb; gitignored)
 ```
-
-Build script and `settings.json` to be written in the next session, after this requirements doc is approved.
