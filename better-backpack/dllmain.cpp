@@ -237,81 +237,100 @@ static void DumpFindings(const std::vector<InventoryFinding>& comps) {
     }
 }
 
-// ---- widget patch --------------------------------------------------------
+// ---- inventory interface widget call -------------------------------------
 
-// One-time fallback: enumerate every UClass whose name contains a needle and
-// log the matches, so if Dumper-7's expected name is wrong we can see what
-// the actual name is.
-static void DumpClassesContaining(const char* needle) {
-    if (!SDK::UObject::GObjects) return;
-    SDK::UClass* classClass = SDK::UClass::StaticClass();
+// Call WBP_InventoryInterface_C::PopulateItemGrid(RowMax, ColumnMax) on every
+// live instance we haven't called it on yet. The PopulateItemGrid Params
+// struct (from WBP_InventoryInterface_parameters.hpp) is 0xB0 bytes; the
+// first two int32s at offset 0x00 / 0x04 are the input RowMax / ColumnMax.
+// Everything else is BP local state, zero-initialised.
+//
+// This is the actual visible-rows handle. The class layout
+// (WBP_InventoryInterface_classes.hpp) shows ItemGrid is a UGridPanel and
+// the SDK exposes PopulateItemGrid(RowMax, ColumnMax) as the BP-callable
+// method that fills the grid with slot widgets. Calling it with (6, 10) on
+// the live instance after our DefaultMaxSize patch is in place gives us 60
+// visible slots laid out as 6 rows of 10.
+//
+// We track which instance pointers we've already called it on so we don't
+// re-fire every rescan tick (re-calling causes the inventory grid to re-
+// build and flicker). Pointers are not stable across world reloads, but we
+// don't track that; if the user reloads a save and the same pointer is
+// reused for a new instance, the worst case is we don't repopulate it. The
+// user can re-inject if needed.
+static int CallPopulateItemGridOnLiveInstances(int32_t rowMax, int32_t colMax) {
+    static std::vector<SDK::UObject*> calledOn;
+
+    SDK::UClass* invIfaceClass = SDK::UObject::FindClassFast("WBP_InventoryInterface_C");
+    if (!invIfaceClass) return -1;
+
+    SDK::UFunction* fn = invIfaceClass->GetFunction(
+        "WBP_InventoryInterface_C", "PopulateItemGrid");
+    if (!fn) {
+        Log("widget: PopulateItemGrid UFunction not found on WBP_InventoryInterface_C");
+        return -1;
+    }
+
+    int called = 0;
     int N = SDK::UObject::GObjects->Num();
-    int hits = 0;
     for (int i = 0; i < N; ++i) {
         SDK::UObject* obj = SDK::UObject::GObjects->GetByIndex(i);
         if (!obj) continue;
-        if (!obj->IsA(classClass)) continue;
-        std::string n = obj->GetName();
-        if (n.find(needle) == std::string::npos) continue;
-        Log("  candidate class: %s", n.c_str());
-        if (++hits >= 16) { Log("  (... more elided)"); break; }
+        if (!obj->IsA(invIfaceClass)) continue;
+        std::string fnName = obj->GetFullName();
+        // Skip CDO; calling PopulateItemGrid on a default object is meaningless.
+        if (fnName.find("Default__") != std::string::npos) continue;
+        // Skip if we've already called it on this instance.
+        bool already = false;
+        for (auto p : calledOn) { if (p == obj) { already = true; break; } }
+        if (already) continue;
+
+        // Params buffer 0xB0 bytes, first two int32s are inputs.
+        alignas(8) uint8_t parms[0xB0] = {};
+        *reinterpret_cast<int32_t*>(&parms[0x00]) = rowMax;
+        *reinterpret_cast<int32_t*>(&parms[0x04]) = colMax;
+
+        auto savedFlags = fn->FunctionFlags;
+        fn->FunctionFlags |= 0x400;
+        obj->ProcessEvent(fn, parms);
+        fn->FunctionFlags = savedFlags;
+
+        Log("widget CALL %s.PopulateItemGrid(%d, %d)",
+            fnName.c_str(), rowMax, colMax);
+        calledOn.push_back(obj);
+        ++called;
     }
-    if (hits == 0) Log("  no UClass with name containing '%s' currently loaded", needle);
+    return called;
 }
 
-// Track whether we've dumped class candidates already, to avoid spam.
-static bool g_widgetCandidatesDumped = false;
-// Coarse rate limit on the "not loaded yet" message; once per minute.
-static int g_widgetNotLoadedTicks = 0;
+// ---- widget patch --------------------------------------------------------
 
-// Patch every UUI_InventoryGrid_C CDO and instance: MaxRows = kTargetMaxRows.
-// Returns the number of objects whose MaxRows we actually changed.
-//
-// Why the grid and not UI_Container_BackpackSide_C: in this Grounded 2 build
-// the Container_BackpackSide host widget either doesn't exist or is named
-// differently. Empirical: even after opening the inventory in-game, no
-// UClass with name containing "BackpackSide" is in GObjects. The grid IS
-// loaded once the inventory has been opened, and its MaxRows is what
-// controls the visible row count anyway.
+// Patch the UUI_InventoryGrid_C CDO's MaxRows. The player inventory in this
+// Grounded 2 build does NOT use UUI_InventoryGrid_C (it uses
+// WBP_InventoryInterface_C with a UGridPanel; see
+// CallPopulateItemGridOnLiveInstances above). The CDO patch is kept as
+// belt-and-braces in case a future game build re-introduces a grid widget
+// for the player inventory. We deliberately do NOT walk all live instances
+// any more, because that hits unrelated grids (production recipe widgets)
+// without affecting the player inventory.
 static int PatchInventoryGridMaxRows() {
     SDK::UClass* gridClass = SDK::UObject::FindClassFast("UI_InventoryGrid_C");
     if (!gridClass) {
-        if (!g_widgetCandidatesDumped) {
-            Log("widget: UI_InventoryGrid_C not loaded yet. Open the inventory in-game to force the widget class to load. Searching for related classes:");
-            DumpClassesContaining("InventoryGrid");
-            g_widgetCandidatesDumped = true;
-        } else if (++g_widgetNotLoadedTicks % 6 == 0) {
-            Log("widget: still not loaded (open the inventory in-game to load it)");
-        }
+        // Not loaded yet. Will retry on next rescan; not fatal because the
+        // real visible-rows handle is PopulateItemGrid, which we call
+        // separately.
         return 0;
     }
-
-    // We patch every UUI_InventoryGrid_C instance found, including the CDO
-    // and any sub-grids embedded in other widget trees (production recipes,
-    // crafting, etc.). Filtering these out by name was an earlier attempt;
-    // it backfired because the player's actual inventory grid lives under
-    // a host widget whose name doesn't contain "Backpack" or "Inventory" in
-    // a stable way. Wide-net is reliable; collateral on production UIs is
-    // visual only (more rows showing the same recipe content).
-    int patched = 0;
-    int N = SDK::UObject::GObjects->Num();
-    for (int i = 0; i < N; ++i) {
-        SDK::UObject* obj = SDK::UObject::GObjects->GetByIndex(i);
-        if (!obj) continue;
-        if (!obj->IsA(gridClass)) continue;
-
-        int32_t* rowsAddr = reinterpret_cast<int32_t*>(
-            reinterpret_cast<uint8_t*>(obj) + kGridMaxRowsOffset);
-        int32_t before = *rowsAddr;
-        if (before == kTargetMaxRows) continue;
-        *rowsAddr = kTargetMaxRows;
-        int32_t verify = *rowsAddr;
-        std::string fn = obj->GetFullName();
-        Log("widget PATCH %s.MaxRows: %d -> %d (verify=%d)",
-            fn.c_str(), before, kTargetMaxRows, verify);
-        ++patched;
-    }
-    return patched;
+    SDK::UObject* cdo = gridClass->ClassDefaultObject;
+    if (!cdo) return 0;
+    int32_t* rowsAddr = reinterpret_cast<int32_t*>(
+        reinterpret_cast<uint8_t*>(cdo) + kGridMaxRowsOffset);
+    int32_t before = *rowsAddr;
+    if (before == kTargetMaxRows) return 0;
+    *rowsAddr = kTargetMaxRows;
+    Log("widget PATCH %s.MaxRows: %d -> %d (CDO only)",
+        cdo->GetFullName().c_str(), before, kTargetMaxRows);
+    return 1;
 }
 
 static int PatchVanillaMains(const std::vector<InventoryFinding>& comps) {
@@ -393,12 +412,17 @@ static void DiagnosticLoop() {
                 current.size(), lastSize, repatched);
             lastSize = current.size();
         }
-        // Re-scan grids: catches newly created widgets and any reset from
-        // engine reinitialisation. PatchInventoryGridMaxRows skips grids
-        // already at the target value, so it's idempotent and quiet.
+        // Re-scan grids (CDO + the few stragglers).
         int gridsPatched = PatchInventoryGridMaxRows();
         if (gridsPatched > 0) {
             Log("rescan: %d new/reset UUI_InventoryGrid_C objects patched", gridsPatched);
+        }
+        // Trigger a re-populate on every live WBP_InventoryInterface_C with
+        // (RowMax=6, ColumnMax=10). This is what actually changes the visible
+        // slot grid in the player's inventory window.
+        int populated = CallPopulateItemGridOnLiveInstances(kTargetMaxRows, kVanillaMaxColumns);
+        if (populated > 0) {
+            Log("rescan: PopulateItemGrid called on %d live WBP_InventoryInterface_C instances", populated);
         }
     }
     Log("worker thread exiting");

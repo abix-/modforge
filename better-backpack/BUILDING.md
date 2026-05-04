@@ -81,18 +81,18 @@ Two patch sites:
 - Scope: every `UInventoryComponent` in `GObjects`. Both class default objects (CDOs) and live instances.
 - Cadence: once on first scan after `GObjects` populates, then every 10 s.
 
-### 2. `UI_InventoryGrid_C.MaxRows` (visible side)
+### 2. `UWBP_InventoryInterface_C::PopulateItemGrid(6, 10)` (visible side)
 
-- Class: looked up by short name via `SDK::UObject::FindClassFast("UI_InventoryGrid_C")`.
-- Offset: `0x0388`. Hard-coded from `UI_InventoryGrid_classes.hpp:30`.
-- Patched on every `UI_InventoryGrid_C` UObject in `GObjects` (CDO + every live instance).
-- Target value: `ceil(kSlotCount / kVanillaMaxColumns)` = 6 for `kSlotCount=60`.
-- Skip-if-already-correct: a grid that already reads 6 is left alone, so the rescan loop only logs for objects that actually changed.
-- Retry: every rescan tick. New widget instances get patched as they spawn.
+- Class: looked up by short name via `SDK::UObject::FindClassFast("WBP_InventoryInterface_C")`.
+- Function: `PopulateItemGrid(int32 RowMax, int32 ColumnMax)`, declared at `WBP_InventoryInterface_classes.hpp:205`. The Params struct is at `WBP_InventoryInterface_parameters.hpp` (0xB0 bytes; `RowMax` at offset 0x00, `ColumnMax` at offset 0x04, locals beyond).
+- Invoked via `ProcessEvent` on every live instance whose full name does NOT contain `Default__`. We track the set of pointers we've already called it on and skip them on subsequent rescans (re-calling triggers a grid rebuild and flickers the UI).
+- Cadence: rescan every 10 s. The very first time a live `WBP_InventoryInterface_C` instance shows up after the inventory has been opened in-game, the next tick fires the call and the visible grid immediately rebuilds at the new row count.
 
-Why the grid and not `UI_Container_BackpackSide_C`: in the current Grounded 2 shipping build, no UClass with `BackpackSide` in its name appears in `GObjects` even after the inventory has been opened. The grid widget class itself (`UI_InventoryGrid_C`) is what loads when the inventory UI is constructed, and its `MaxRows` is the value that actually drives row count. The original Bigger Backpack pak mod targeted the host widget; that's why it was a no-op even when the data side was patched.
+Why this and not `UI_InventoryGrid_C`: empirically, the player inventory in this build does not use `UUI_InventoryGrid_C` at all. The class layout (`WBP_InventoryInterface_classes.hpp:50`) has `class UGridPanel* ItemGrid` instead, populated by the BP-callable `PopulateItemGrid`. Patching `UUI_InventoryGrid_C.MaxRows` had no visible effect; calling `PopulateItemGrid(6, 10)` works on the first try.
 
-Both patch sites use hard-coded offsets, so both are fragile to game updates that reorder fields. See [After a game update](#after-a-game-update).
+The DLL still patches `UUI_InventoryGrid_C.MaxRows` on the CDO (offset `0x0388`) as belt-and-braces in case a future game update reintroduces a grid widget here. That patch is CDO-only; we no longer walk live instances of that class.
+
+The data-side patch uses a hard-coded property offset and is fragile to game updates that reorder fields. The visible-side call is reflective (looks up the function by name) and survives field-layout changes. See [After a game update](#after-a-game-update).
 
 ## Configuration
 

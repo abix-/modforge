@@ -58,14 +58,14 @@ Evidence:
 - `UpdateRowsAndColumnsForInventory(InventoryComponent, out Columns, out Rows, out MaxSlots)` is a function on the grid widget. Naming and parameter shape are consistent with computing the effective grid based on both the widget's own MaxRows/MaxColumns and the component's MaxSize.
 - The broken Bigger Backpack mod sets `UI_Container_BackpackSide.MaxRows = 6`. Assuming vanilla `MaxColumns = 8`, that gives 48 visible slots, not the advertised 60. This matches user reports that "only 40 are clickable" when the data-side cap is also vanilla 40: the visible cap is `min(40, 48) = 40`. With the 60-slot Player Tweaks variant data-side, the visible cap becomes `min(60, 48) = 48`. Neither configuration reaches 60 visible. The original mod's design only ever supported up to 48 visible.
 
-For Better Backpack to render all 60 slots clickable, we patch BOTH:
+For Better Backpack to render all 60 slots clickable, we do TWO things:
 
 1. `UInventoryComponent.DefaultMaxSize` -> `slot_count` (60), on every live instance and CDO whose value is 40 AND whose outer chain contains `BP_SurvivalPlayerCharacter`.
-2. `UUI_InventoryGrid_C.MaxRows` -> `ceil(slot_count / MaxColumns)`, on every CDO and live grid instance, at hard-coded offset `0x0388` (from `UI_InventoryGrid_classes.hpp:30`).
+2. Call `UWBP_InventoryInterface_C::PopulateItemGrid(RowMax=ceil(slot_count/10), ColumnMax=10)` via `ProcessEvent` on every live inventory-interface instance, once per instance. The Params struct (from `WBP_InventoryInterface_parameters.hpp`) is 0xB0 bytes with two int32 inputs at offsets 0x00 and 0x04.
 
-For `slot_count = 60` and `MaxColumns = 10`, set `MaxRows = 6`.
+For `slot_count = 60` and `ColumnMax = 10`, the call is `PopulateItemGrid(6, 10)`.
 
-**Note on the host widget.** Earlier research focused on `UI_Container_BackpackSide` because that is what the broken Bigger Backpack mod patched. Empirically, in the current shipping build, no UClass with name containing "BackpackSide" appears in `GObjects` even after the inventory has been opened in-game. The grid widget itself (`UUI_InventoryGrid_C`) DOES appear, and patching its `MaxRows` directly produces the desired effect with no host-widget detour.
+**Note on widgets that aren't the answer.** Earlier research focused on `UI_Container_BackpackSide` (what the broken Bigger Backpack pak mod patched). That class is not present in `GObjects` in this shipping build, before or after the inventory is opened. We then tried patching `UUI_InventoryGrid_C.MaxRows` at offset `0x0388`, which exists at runtime and includes a `Default__UI_InventoryGrid_C` CDO. That had no visible effect on the player inventory either, because the player inventory is rendered by `UWBP_InventoryInterface_C` directly, using its own `UGridPanel ItemGrid` (line 50 of `WBP_InventoryInterface_classes.hpp`) and the BP-callable method `PopulateItemGrid(RowMax, ColumnMax)` (line 205). The DLL still patches the `UUI_InventoryGrid_C` CDO as belt-and-braces in case a future build reintroduces a grid widget here, but the `PopulateItemGrid` call is what actually delivers six rows in-game.
 
 ### Q1a. Vanilla `MaxColumns` on `UI_InventoryGrid` (ANSWERED)
 
@@ -119,7 +119,12 @@ Edit and rebuild. There is no runtime config reader. A `settings.json` follow-up
    - `dist/inject.exe` (~15 KB, 64-bit console)
    - Cold build: ~30 seconds. Incremental: a couple of seconds.
 
-The DLL contains exactly two patch sites: `UInventoryComponent.DefaultMaxSize` (offset `0x01E0`, hard-coded from `Maine_classes.hpp:29557`) and `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`, hard-coded from `UI_InventoryGrid_classes.hpp:30`). The data-side patch is gated on the outer chain containing `BP_SurvivalPlayerCharacter`. No vanilla files on disk are touched.
+The DLL has two patch surfaces:
+
+1. **Data side**: `UInventoryComponent.DefaultMaxSize` at offset `0x01E0` (from `Maine_classes.hpp:29557`). Hard-coded write. Gated on the outer chain containing `BP_SurvivalPlayerCharacter`.
+2. **Visible side**: `UWBP_InventoryInterface_C::PopulateItemGrid(6, 10)` invoked via `ProcessEvent`. Reflective UFunction call, no hard-coded offset. Once per live instance.
+
+Plus a defensive CDO write on `UUI_InventoryGrid_C.MaxRows` at offset `0x0388` for future-proofing. No vanilla files on disk are touched.
 
 ## Acceptance criteria
 

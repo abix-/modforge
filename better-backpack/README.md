@@ -40,7 +40,8 @@ Full step-by-step is in [INSTALL.md](INSTALL.md).
 Two patch sites:
 
 - `UInventoryComponent.DefaultMaxSize` (offset `0x01E0`): every component reading vanilla 40 gets bumped to 60. The mount saddlebag at vanilla 30 is left alone.
-- `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`, hard-coded from `UI_InventoryGrid_classes.hpp:30`): set to 6 on every CDO + live instance so the inventory grid renders 6 rows of 10. Original Bigger Backpack mod targeted a host widget `UI_Container_BackpackSide`, but that class doesn't exist in this build (verified empirically via `GObjects` walk). The grid widget itself is the right target.
+- `UWBP_InventoryInterface_C::PopulateItemGrid(RowMax=6, ColumnMax=10)`: called via `ProcessEvent` on every live inventory-interface instance. The player inventory in this build is a `UWBP_InventoryInterface_C` whose `ItemGrid` is a plain `UGridPanel`, not a `UUI_InventoryGrid_C`. The Blueprint-callable `PopulateItemGrid` method is the surface that actually rebuilds the visible slot grid. We invoke it once per instance after the inventory widget has been constructed in-game. The Params struct is from `WBP_InventoryInterface_parameters.hpp` (0xB0 bytes; first two int32s are the inputs).
+- `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`, CDO only): kept as belt-and-braces. Empirically the player inventory does not use this widget class at all; the original Bigger Backpack pak mod targeted a host widget `UI_Container_BackpackSide` that doesn't exist in this build either. We patch the CDO so that any future game update that reintroduces this widget for the player inventory still picks up our value.
 
 Internals, configuration constants, and how to fix the data-side offset after a game update are in [BUILDING.md](BUILDING.md).
 
