@@ -59,3 +59,43 @@ Two assets, single output pak:
 
 - Hard caps on `DefaultMaxSize` are unknown. Game may silently clamp very large values. The build will accept any int; in-game testing decides what actually works.
 - A save with items in the extra slots becomes mostly recoverable but not guaranteed if the mod is uninstalled. Empty extra slots before uninstalling.
+
+## Troubleshooting
+
+### Mod is enabled in Vortex but the game shows only 40 slots
+
+Vortex may be deploying to the wrong game directory. This bit us once: the Grounded 2 Vortex extension had its `basePath` pointed at `C:\Games\Steam\steamapps\common\Schedule I\Augusta\Content\Paks` instead of Grounded 2's. Mods looked deployed in the Vortex UI, but the files never reached Grounded 2.
+
+To diagnose:
+
+```bash
+# Look at Vortex's deployment snapshot:
+cat "$APPDATA/Vortex/grounded2/snapshots/snapshot.json"
+```
+
+The `basePath` field should be your Grounded 2 install's Paks folder (for a standard Steam install: `C:\Games\Steam\steamapps\common\Grounded2\Augusta\Content\Paks`). If it points anywhere else, fix it in Vortex's per-game settings.
+
+To verify the mod actually landed in the game folder:
+
+```bash
+ls "/c/Games/Steam/steamapps/common/Grounded2/Augusta/Content/Paks/" | grep BetterBackpack
+# Expect: three files BetterBackpack_<priority>_P.{pak,ucas,utoc}
+```
+
+If the files are not there, Vortex did not deploy. Hit Deploy in Vortex (or use Mods -> Manage Mods -> deploy from the dropdown).
+
+### Mod files in Paks but game still shows 40 slots
+
+Confirm the right values are inside the deployed pak:
+
+```bash
+# Convert deployed pak back to legacy and inspect.
+retoc to-legacy /c/Games/Steam/steamapps/common/Grounded2/Augusta/Content/Paks /tmp/all_legacy.pak
+# (slow; alternative is to read directly via FModel)
+```
+
+A faster check is to look at the `build/` directory the build script left behind. The patched `.uexp` files there should show the right values via `scripts/read_property.py`. If the deployed `.ucas` was generated from those, it should be consistent.
+
+### Multiple mods overriding `BP_SurvivalPlayerCharacter`
+
+If you have AIO Player Tweaks (or any Player Tweaks variant) enabled alongside Better Backpack, only the higher-priority one applies. Better Backpack at priority 99 wins over AIO at priority 12, so AIO's cheats will not fire. Pick one.

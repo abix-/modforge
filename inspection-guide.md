@@ -1388,6 +1388,18 @@ explicit go-ahead.
   files; back up first as
   `<name>.original_40slots`).
 
+## Vortex deployment gotcha (worth knowing for any UE5 mod)
+
+If a mod looks enabled and "deployed" in Vortex but does not take effect in-game, check Vortex's actual deployment target:
+
+```bash
+cat "$APPDATA/Vortex/<game>/snapshots/snapshot.json"
+```
+
+The `basePath` field is where Vortex thinks the game's Paks folder is. The Grounded 2 Vortex extension misidentified ours and pointed at Schedule 1's path during this session, which silently meant zero of the user's "Grounded 2 mods" were ever applied to Grounded 2. Verifying basePath = the correct game Paks dir is a 30-second sanity check that should be the first step on any "my mod is not loading" debug.
+
+This is purely a Vortex configuration concern and not specific to our mod. Worth doing before more elaborate debugging like reading game logs or inspecting cooked-asset internals.
+
 ## Caveats
 
 - Grounded 2 ships UE 5.4+ (TOC version `ReplaceIoChunkHashWithIoHash`,
