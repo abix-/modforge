@@ -237,73 +237,22 @@ static void DumpFindings(const std::vector<InventoryFinding>& comps) {
     }
 }
 
-// ---- inventory interface widget call -------------------------------------
-
-// Call WBP_InventoryInterface_C::PopulateItemGrid(RowMax, ColumnMax) on every
-// live instance we haven't called it on yet. The PopulateItemGrid Params
-// struct (from WBP_InventoryInterface_parameters.hpp) is 0xB0 bytes; the
-// first two int32s at offset 0x00 / 0x04 are the input RowMax / ColumnMax.
-// Everything else is BP local state, zero-initialised.
-//
-// This is the actual visible-rows handle. The class layout
-// (WBP_InventoryInterface_classes.hpp) shows ItemGrid is a UGridPanel and
-// the SDK exposes PopulateItemGrid(RowMax, ColumnMax) as the BP-callable
-// method that fills the grid with slot widgets. Calling it with (6, 10) on
-// the live instance after our DefaultMaxSize patch is in place gives us 60
-// visible slots laid out as 6 rows of 10.
-//
-// We track which instance pointers we've already called it on so we don't
-// re-fire every rescan tick (re-calling causes the inventory grid to re-
-// build and flicker). Pointers are not stable across world reloads, but we
-// don't track that; if the user reloads a save and the same pointer is
-// reused for a new instance, the worst case is we don't repopulate it. The
-// user can re-inject if needed.
-static int CallPopulateItemGridOnLiveInstances(int32_t rowMax, int32_t colMax) {
-    static std::vector<SDK::UObject*> calledOn;
-
-    SDK::UClass* invIfaceClass = SDK::UObject::FindClassFast("WBP_InventoryInterface_C");
-    if (!invIfaceClass) return -1;
-
-    SDK::UFunction* fn = invIfaceClass->GetFunction(
-        "WBP_InventoryInterface_C", "PopulateItemGrid");
-    if (!fn) {
-        Log("widget: PopulateItemGrid UFunction not found on WBP_InventoryInterface_C");
-        return -1;
-    }
-
-    int called = 0;
-    int N = SDK::UObject::GObjects->Num();
-    for (int i = 0; i < N; ++i) {
-        SDK::UObject* obj = SDK::UObject::GObjects->GetByIndex(i);
-        if (!obj) continue;
-        if (!obj->IsA(invIfaceClass)) continue;
-        std::string fnName = obj->GetFullName();
-        // Skip CDO; calling PopulateItemGrid on a default object is meaningless.
-        if (fnName.find("Default__") != std::string::npos) continue;
-        // Skip if we've already called it on this instance.
-        bool already = false;
-        for (auto p : calledOn) { if (p == obj) { already = true; break; } }
-        if (already) continue;
-
-        // Params buffer 0xB0 bytes, first two int32s are inputs.
-        alignas(8) uint8_t parms[0xB0] = {};
-        *reinterpret_cast<int32_t*>(&parms[0x00]) = rowMax;
-        *reinterpret_cast<int32_t*>(&parms[0x04]) = colMax;
-
-        auto savedFlags = fn->FunctionFlags;
-        fn->FunctionFlags |= 0x400;
-        obj->ProcessEvent(fn, parms);
-        fn->FunctionFlags = savedFlags;
-
-        Log("widget CALL %s.PopulateItemGrid(%d, %d)",
-            fnName.c_str(), rowMax, colMax);
-        calledOn.push_back(obj);
-        ++called;
-    }
-    return called;
-}
-
 // ---- widget patch --------------------------------------------------------
+//
+// Earlier revisions tried to invoke
+// `UWBP_InventoryInterface_C::PopulateItemGrid(RowMax, ColumnMax)` via
+// ProcessEvent from this worker thread. It worked visually (6 rows
+// rendered) but raced the engine's UMG material lifecycle and crashed
+// with `MaterialRenderProxy.cpp:520 Cannot queue the Expression Cache
+// for Material MID_M_UI_FreshFill_<id> when it is about to be deleted`.
+// UMG functions are game-thread only; calling them from our worker is
+// not safe regardless of how rarely we call them.
+//
+// We now ship data-side only. The game's own BP graph will refresh the
+// inventory UI on its normal triggers (open/close, item add/remove);
+// when it does, it reads `inventory.GetMaxSize()` (which returns our
+// patched 60) and computes `Rows = ceil(60/10) = 6`. Worst case the
+// player's first session shows 4 rows until they trigger a refresh.
 
 // Patch the UUI_InventoryGrid_C CDO's MaxRows. The player inventory in this
 // Grounded 2 build does NOT use UUI_InventoryGrid_C (it uses
@@ -412,18 +361,22 @@ static void DiagnosticLoop() {
                 current.size(), lastSize, repatched);
             lastSize = current.size();
         }
-        // Re-scan grids (CDO + the few stragglers).
+        // Re-scan grids (CDO only).
         int gridsPatched = PatchInventoryGridMaxRows();
         if (gridsPatched > 0) {
             Log("rescan: %d new/reset UUI_InventoryGrid_C objects patched", gridsPatched);
         }
-        // Trigger a re-populate on every live WBP_InventoryInterface_C with
-        // (RowMax=6, ColumnMax=10). This is what actually changes the visible
-        // slot grid in the player's inventory window.
-        int populated = CallPopulateItemGridOnLiveInstances(kTargetMaxRows, kVanillaMaxColumns);
-        if (populated > 0) {
-            Log("rescan: PopulateItemGrid called on %d live WBP_InventoryInterface_C instances", populated);
-        }
+
+        // We deliberately do NOT call WBP_InventoryInterface_C::
+        // PopulateItemGrid from this worker thread. Empirically that races
+        // the engine's UMG material lifecycle (MID_M_UI_FreshFill instances)
+        // and crashes with a MaterialRenderProxy.cpp:520 fatal "Cannot
+        // queue the Expression Cache for Material ... when it is about to
+        // be deleted". The data-side DefaultMaxSize patch is enough by
+        // itself: when the player opens the inventory, the BP graph runs
+        // its own refresh (which DOES call PopulateItemGrid, but on the
+        // game thread, safely) and reads GetMaxSize()=60, which leads to
+        // ceil(60/10)=6 rows.
     }
     Log("worker thread exiting");
 }
