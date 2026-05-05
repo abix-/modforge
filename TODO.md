@@ -38,7 +38,19 @@ not the user-facing knob.
    spec into a skill, stat actually changes. Without it, XP just
    sits there.
 
-2. **ImGui tab via `register_tab` (DECIDED 2026-05-05).**
+2. **ImGui tab via `register_tab` DONE (2026-05-05).** Tab
+   visible in-game, level / XP / skill rows render correctly,
+   `+1` buttons spend points and trigger live re-apply. ImGui
+   v1.92.1 vendored to match UE4SS. C-ABI surface in
+   `rpg/ffi.rs`. Symbol mangling gotcha: register_tab is
+   protected, MSVC mangling differs by access (Q vs I); had to
+   move it to a protected section of the CppUserModBase mirror.
+
+   Original plan kept below for reference.
+
+   ---
+
+   _2026-05-05 design notes:_
 
    Researched three options:
    - (a) `register_tab` + ImGui: adds a tab to UE4SS's debug

@@ -274,13 +274,32 @@ Open items for the loop:
 - Skill catalog: BUILT 2026-05-05 in `rpg/skills.rs`. Three
   skills (backpack, hunger, thirst). Per-rank math:
   backpack +5/rank max 12, hunger/thirst -7.5%/rank max 10.
-- ImGui tab via `register_tab` in the C++ shim. NEXT.
-  Decided on option (a) `register_tab` + ImGui after
-  researching alternatives (UMG widget via `_P.pak`, BPModLoader
-  + cross-process events). It's the documented CPPMod surface
-  and used by every shipped UE4SS C++ mod example. See TODO
-  section 0 step 2 for full rationale and the C-ABI surface
-  plan.
+- ImGui tab via `register_tab` in the C++ shim: DONE
+  (2026-05-05). Vendored upstream ocornut/imgui v1.92.1 into
+  `better-backpack/cpp/imgui/` (matches UE4SS's version), wired
+  into build.rs as 4 .cpp sources alongside shim.cpp. Forward-
+  declared `RC::UE4SSProgram::get_current_imgui_context` and
+  `get_current_imgui_allocator_functions` with `RC_UE4SS_API`
+  (dllimport, resolves through UE4SS.lib at link). Lambda calls
+  `rpg_enable_imgui()` to point our linked imgui at UE4SS's
+  context, then renders Level / XP bar / skill rows with `+1`
+  buttons.
+
+  C-ABI surface in `better-backpack/src/rpg/ffi.rs`: 8 functions
+  the lambda calls (has_active_slot, get_level, get_xp,
+  get_xp_for_current_level, get_xp_for_next_level,
+  get_skill_points, get_skill_count, get_skill, spend).
+  Each wrapped in catch_unwind so a Rust panic can't take down
+  UE4SS's render thread.
+
+  Symbol mangling gotcha (resolved): UE4SS exports
+  `register_tab` as a *protected* method
+  (`CppUserModBase.hpp:212`). MSVC C++ name mangling encodes
+  access (Q=public, I=protected). First attempt with public
+  caused LNK2019; moved to protected section of our mirror.
+
+  In-game confirmed: tab visible, live XP updates after kills,
+  Buggy attribution + persistence loop working across launches.
 
 Settings as base, skills layered on top: settings.json defaults
 flipped to vanilla (slot_count=40, hunger/thirst_mult=1.0).
