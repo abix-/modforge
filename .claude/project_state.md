@@ -106,6 +106,16 @@ grounded2mods/
   via AllocConsole. Build with `--no-default-features` for a
   console-free shipping DLL. File log unaffected.
 
+## Distribution plan (2026-05-05)
+Pivot from "DLL + inject.exe" to a self-loading DLL proxy named
+`winhttp.dll` so the mod ships through Vortex like UE4SS/ReShade/ENB.
+Rationale: Vortex doesn't fit the inject.exe model; pak distribution
+inherits the conflict/breakage problems we observed on Player Tweaks
+(Nexus #13). winhttp.dll picked because it's loaded early by UE5
+shipping binaries and has near-zero conflict risk vs other UE-game
+mods. Plan in TODO.md #1. Mod runtime logic untouched; only the
+packaging changes.
+
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
   treating `image_base + g_objects` as a pointer-to-pointer and

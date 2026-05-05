@@ -22,10 +22,32 @@ All numeric settings are runtime-configurable via
 
 - **Player Tweaks (Caites)** ships a pre-baked `.pak` with hardcoded
   values. Each preset is a separate file. To change a number you swap
-  the `.pak`. No runtime config.
-- **Better Backpack** ships a runtime DLL injected into the game
-  process. Patches Class Default Objects directly. Numbers come from
-  `settings.json` at DLL load. Single binary; user edits a JSON.
+  the `.pak`. No runtime config. Pak-based mods conflict at the
+  data-table level (only the last loaded pak wins for any overlapping
+  field), and break when a game patch shifts the underlying tables.
+  Both failure modes are visible in the Nexus comments on Player
+  Tweaks today.
+- **Better Backpack** patches Class Default Objects from a runtime DLL.
+  Numbers come from `settings.json` at DLL load. No pak conflicts.
+  Survives game patches as long as the offsets in `sdk/offsets.rs`
+  stay stable; on those rare patches that shift offsets, we update one
+  Rust file and ship a new DLL.
+
+## Distribution
+
+Two shipping shapes have existed for this mod during development; the
+second is the one that ends up on Nexus / Vortex:
+
+1. **DLL + injector exe** (current dev shape). User runs `inject.exe`
+   to load the DLL into a running game. Good for development
+   iteration, bad for end users (manual step every session).
+2. **DLL proxy named `winhttp.dll`** (target shape, see TODO #1). Drops
+   into `Grounded2\Augusta\Binaries\Win64\`. Windows auto-loads it
+   when the game starts because the filename matches a system DLL the
+   game already imports; our DLL forwards the real `winhttp` exports
+   to `C:\Windows\System32\winhttp.dll` so the game still has working
+   network calls. This is how UE4SS, ReShade, ENB all distribute.
+   Vortex installs it as a regular file drop.
 
 ## Comparison vs Player Tweaks (Caites, Nexus #13)
 

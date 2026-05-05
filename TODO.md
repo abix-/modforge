@@ -1,8 +1,63 @@
 # TODO
 
-Current state: Rust port of the mod is feature-complete. All planned
-work done. Nothing actionable left -- only future feature ideas if any
-come up.
+Current state: Rust port of the mod is feature-complete on the runtime
+side. Open work below is **distribution**, not features: switching from
+"DLL + separate inject.exe" to a self-loading DLL proxy so the mod ships
+through Vortex like every other actively-maintained UE-game DLL mod.
+
+## 1. Repackage as a DLL proxy (winhttp.dll)
+
+Why: our current shape doesn't fit Vortex. Users expect "install mod ->
+launch game -> mod is active." Today we require a manual `inject.exe`
+run every session. Pak-based mods solve that but inherit the
+conflict/breakage hell visible in the Nexus comments on Player Tweaks.
+DLL proxy is the standard third path: Windows auto-loads the DLL
+because it shares a filename with a system DLL the game already
+imports, and we forward the real exports to the system copy. UE4SS,
+ReShade, ENB all do this.
+
+Plan:
+
+1. **Pick proxy target.** `winhttp.dll`. Low conflict risk vs other UE
+   mods (ReShade owns dxgi.dll, UE4SS owns dwmapi.dll). Small export
+   surface (~20 functions). Loaded early in process startup so our
+   DllMain runs before the inventory UI ever spawns.
+2. **Rename cdylib output.** Change `[lib] name` so cargo emits
+   `winhttp.dll`.
+3. **Generate forwarder exports.** `dumpbin /exports
+   C:\Windows\System32\winhttp.dll` -> hand-edit a `winhttp.def` file
+   that re-exports every name to the system copy via
+   `EXPORTS  Foo = C:\Windows\System32\winhttp.Foo`. Commit the def
+   file; Cargo invokes the linker with it.
+4. **Verify game still talks to real winhttp.** Launch with our proxy
+   in place, confirm the game's network/telemetry calls (if any) still
+   work. If we drop a forwarder, those calls fail silently.
+5. **Drop injector from user-facing distribution.** `inject.exe` stays
+   in the repo as a dev-time iteration tool, not shipped.
+6. **Write Vortex manifest** (`info.json` etc) so the user can
+   one-click install via Vortex and the file lands in
+   `Grounded2\Augusta\Binaries\Win64\winhttp.dll`.
+7. **Ship a Nexus release** with: the proxy DLL, `settings.json`
+   (defaults), README, and the Vortex installer metadata.
+
+Risks / things to verify:
+- Anti-cheat. Grounded 2 has none today. If that changes, proxy DLLs
+  may trip detection; revisit then.
+- DllMain TLS hazard. Already handled: our DllMain just spawns a
+  thread, all std work happens in the worker.
+- Forwarder correctness. A missing export means a missing function for
+  the game -> potential crash. The `dumpbin` -> `.def` pipeline is
+  well-trodden; we just need to keep it complete.
+
+Effort: ~half a day. Mod logic is untouched.
+
+## 2. (later) Port more Player Tweaks features
+
+See `FEATURES.md` for the comparison table and the prioritized list.
+Quick wins identified: stamina regen, sprint/walk/swim speed, hauling
+stack size, death delay. Each is the same shape as the existing
+hunger/thirst patch -- find the offset in the SDK, add a section to
+`settings.json`, write a 50-line module. Order them by user demand.
 
 ## Out of scope (kept for context)
 
