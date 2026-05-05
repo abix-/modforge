@@ -14,6 +14,19 @@ A Cargo workspace with two crates:
 
 Single `cargo build` produces both artifacts.
 
+## One mod, all testing inside it
+
+Project rule: there is exactly one mod -- `BetterBackpack` -- and
+every diagnostic, probe, trace, and feature lives inside it. Do not
+drop side-channel Lua probe mods or separate debug DLLs into the
+game install. Everything routes through our Rust code, gated behind
+skill levels, cargo features, or `cfg!(debug_assertions)` so the
+user gets one log file (`<DLL_dir>/better_backpack.log`) and one
+place to read what is happening. If you need a transient probe to
+diagnose something, gate it behind a skill flag (e.g. unlock the
+probe by leveling the relevant skill) or behind a debug build, then
+strip it once the diagnosis is done.
+
 ## Prerequisites
 
 - Windows 10/11 x64.

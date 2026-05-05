@@ -8,6 +8,17 @@ truth; apply step writes skill values to game CDOs.
 For docs see `docs/` (each file is authority on one subject).
 Open work in `docs/todo.md`. History in `docs/changelog.md`.
 
+## Project rule: ONE mod, all testing inside it
+
+There is exactly one mod -- `BetterBackpack` (the Rust cdylib +
+C++ shim, loaded by UE4SS as a CPPMod). Diagnostics, probes,
+traces, and feature work all live inside this single mod. Do
+**not** drop side-channel Lua mods or separate probe DLLs into
+the game install -- everything routes through our Rust code,
+gated behind cargo features, skill levels, or
+`cfg!(debug_assertions)` so the user gets exactly one log file
+and one place to read what is happening.
+
 Fall Damage Resistance landed at level 100 via velocity-stomp in
 `fall_hook.rs`'s `OnLanded` PE hook. Scales
 `CharMovementComponent.Velocity.Z` by `(1 - reduction)`; native
