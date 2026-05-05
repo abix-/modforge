@@ -169,6 +169,15 @@ read the dying actor + damage amount + flags, and apply
 lifesteal (heal player by % damage dealt) / evasion (zero out
 incoming damage with % roll) / crit (multiply damage on roll).
 
+**apply optimization (2026-05-05):** apply.rs split into 5
+per-skill helpers (`apply_backpack`, `apply_attack_damage`,
+`apply_armor`, `apply_hunger`, `apply_thirst`) plus the
+existing `apply()` that calls all of them at activate time.
+New `apply_one(state, settings, skill_id)` runs just the one
+helper for a given skill. `tracker::spend_skill_point` now
+calls `apply_one` so a single +1 click writes only the changed
+field and produces one log line, not five.
+
 
 
 This is now the project. Items 3-7 below (gear durability, enemy

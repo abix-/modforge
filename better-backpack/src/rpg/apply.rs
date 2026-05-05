@@ -86,103 +86,130 @@ pub fn capture_vanilla() {
 /// Apply skill-layered values for the given PlayerState. Called from
 /// `tracker::activate_slot` after the state is loaded.
 pub fn apply(state: &PlayerState, settings: &Settings) {
-    let backpack_rank = state
+    apply_backpack(state, settings);
+    apply_attack_damage(state);
+    apply_armor(state);
+    apply_hunger(state, settings);
+    apply_thirst(state, settings);
+}
+
+/// Re-apply only the skill identified by `skill_id`. Used by spend()
+/// after a single rank change so we don't run all 5 apply branches
+/// (and produce 5 lines of log) when only one skill actually changed.
+pub fn apply_one(state: &PlayerState, settings: &Settings, skill_id: &str) {
+    match skill_id {
+        skills::SKILL_BACKPACK => apply_backpack(state, settings),
+        skills::SKILL_ATTACK_DAMAGE => apply_attack_damage(state),
+        skills::SKILL_ARMOR => apply_armor(state),
+        skills::SKILL_HUNGER => apply_hunger(state, settings),
+        skills::SKILL_THIRST => apply_thirst(state, settings),
+        other => bbp_log!("rpg/apply: apply_one unknown skill '{}'", other),
+    }
+}
+
+fn apply_backpack(state: &PlayerState, settings: &Settings) {
+    let rank = state
         .skill_ranks
         .get(skills::SKILL_BACKPACK)
         .copied()
         .unwrap_or(0);
-    let hunger_rank = state
-        .skill_ranks
-        .get(skills::SKILL_HUNGER)
-        .copied()
-        .unwrap_or(0);
-    let thirst_rank = state
-        .skill_ranks
-        .get(skills::SKILL_THIRST)
-        .copied()
-        .unwrap_or(0);
-
-    if backpack_rank > 0 {
-        let target = settings
-            .inventory
-            .slot_count
-            .saturating_add(skills::backpack_bonus(backpack_rank));
-        bbp_log!(
-            "rpg/apply: backpack rank={} target={} (base={} + bonus={})",
-            backpack_rank,
-            target,
-            settings.inventory.slot_count,
-            skills::backpack_bonus(backpack_rank)
-        );
-        let stats = patch::run(target);
-        bbp_log!(
-            "rpg/apply: backpack patched={} skipped_non_player={}",
-            stats.patched,
-            stats.skipped_non_player
-        );
+    if rank == 0 {
+        return;
     }
+    let target = settings
+        .inventory
+        .slot_count
+        .saturating_add(skills::backpack_bonus(rank));
+    let stats = patch::run(target);
+    bbp_log!(
+        "rpg/apply: backpack rank={} target={} (base={} + bonus={}) patched={}",
+        rank,
+        target,
+        settings.inventory.slot_count,
+        skills::backpack_bonus(rank),
+        stats.patched
+    );
+}
 
-    let attack_rank = state
+fn apply_attack_damage(state: &PlayerState) {
+    let rank = state
         .skill_ranks
         .get(skills::SKILL_ATTACK_DAMAGE)
         .copied()
         .unwrap_or(0);
-    if attack_rank > 0 {
-        let mult = skills::attack_damage_multiplier(attack_rank);
-        let count = apply_to_player_character_cdos(|player_cdo| {
-            write_f32(
-                player_cdo,
-                SURVIVAL_CHARACTER_CUSTOM_DAMAGE_MULTIPLIER,
-                mult,
-            );
-        });
-        bbp_log!(
-            "rpg/apply: attack_damage rank={} mult={:.3} written to {} player CDO(s)",
-            attack_rank,
+    if rank == 0 {
+        return;
+    }
+    let mult = skills::attack_damage_multiplier(rank);
+    let count = apply_to_player_character_cdos(|player_cdo| {
+        write_f32(
+            player_cdo,
+            SURVIVAL_CHARACTER_CUSTOM_DAMAGE_MULTIPLIER,
             mult,
-            count
         );
-    }
+    });
+    bbp_log!(
+        "rpg/apply: attack_damage rank={} mult={:.3} written to {} player CDO(s)",
+        rank,
+        mult,
+        count
+    );
+}
 
-    let armor_rank = state.skill_ranks.get(skills::SKILL_ARMOR).copied().unwrap_or(0);
-    if armor_rank > 0 {
-        let reduction = skills::armor_reduction(armor_rank);
-        let count = apply_to_player_character_cdos(|player_cdo| {
-            let hc_ptr: *mut UObject = unsafe {
-                player_cdo
-                    .field_ptr(SURVIVAL_CHARACTER_HEALTH_COMPONENT)
-                    .cast::<*mut UObject>()
-                    .read_unaligned()
-            };
-            if hc_ptr.is_null() {
-                return;
-            }
-            let hc = unsafe { &*hc_ptr };
-            write_f32(hc, HEALTH_COMPONENT_BASE_DAMAGE_REDUCTION, reduction);
-        });
-        bbp_log!(
-            "rpg/apply: armor rank={} reduction={:.3} written to {} player HealthComponent CDO(s)",
-            armor_rank,
-            reduction,
-            count
-        );
+fn apply_armor(state: &PlayerState) {
+    let rank = state.skill_ranks.get(skills::SKILL_ARMOR).copied().unwrap_or(0);
+    if rank == 0 {
+        return;
     }
+    let reduction = skills::armor_reduction(rank);
+    let count = apply_to_player_character_cdos(|player_cdo| {
+        let hc_ptr: *mut UObject = unsafe {
+            player_cdo
+                .field_ptr(SURVIVAL_CHARACTER_HEALTH_COMPONENT)
+                .cast::<*mut UObject>()
+                .read_unaligned()
+        };
+        if hc_ptr.is_null() {
+            return;
+        }
+        let hc = unsafe { &*hc_ptr };
+        write_f32(hc, HEALTH_COMPONENT_BASE_DAMAGE_REDUCTION, reduction);
+    });
+    bbp_log!(
+        "rpg/apply: armor rank={} reduction={:.3} written to {} player HealthComponent CDO(s)",
+        rank,
+        reduction,
+        count
+    );
+}
 
-    if hunger_rank > 0 || thirst_rank > 0 {
-        if let Some(target_hunger) = compute_survival_target(
-            VANILLA_HUNGER.get().copied(),
-            settings.survival.hunger_multiplier,
-            hunger_rank,
-        ) {
-            apply_survival_field(survival::HUNGER_ADJUSTMENT_OFFSET, target_hunger, "HUNGER");
-        }
-        if let Some(target_thirst) = compute_survival_target(
-            VANILLA_THIRST.get().copied(),
-            settings.survival.thirst_multiplier,
-            thirst_rank,
-        ) {
-            apply_survival_field(survival::THIRST_ADJUSTMENT_OFFSET, target_thirst, "THIRST");
-        }
+fn apply_hunger(state: &PlayerState, settings: &Settings) {
+    let rank = state
+        .skill_ranks
+        .get(skills::SKILL_HUNGER)
+        .copied()
+        .unwrap_or(0);
+    if let Some(target) = compute_survival_target(
+        VANILLA_HUNGER.get().copied(),
+        settings.survival.hunger_multiplier,
+        rank,
+    ) {
+        apply_survival_field(survival::HUNGER_ADJUSTMENT_OFFSET, target, "HUNGER");
+    }
+}
+
+fn apply_thirst(state: &PlayerState, settings: &Settings) {
+    let rank = state
+        .skill_ranks
+        .get(skills::SKILL_THIRST)
+        .copied()
+        .unwrap_or(0);
+    if let Some(target) = compute_survival_target(
+        VANILLA_THIRST.get().copied(),
+        settings.survival.thirst_multiplier,
+        rank,
+    ) {
+        apply_survival_field(survival::THIRST_ADJUSTMENT_OFFSET, target, "THIRST");
     }
 }
 

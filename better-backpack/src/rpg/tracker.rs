@@ -113,7 +113,7 @@ pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
         .state
         .skill_ranks
         .insert(skill.id.to_string(), new_rank);
-    crate::rpg::apply::apply(&tracker.state, &tracker.settings);
+    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
     crate::rpg::state::save(&tracker.slot, &tracker.state);
     bbp_log!(
         "rpg/state: spent point on {}: rank {} -> {} ({} points left)",
