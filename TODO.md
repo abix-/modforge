@@ -40,103 +40,160 @@ sliders.
 - Show level / XP / next-perk in a UE4SS imgui tab (start). Later:
   in-world UMG overlay.
 
-### Research questions (BLOCKING -- must answer before coding)
+### Research answers (from SDK dump at C:\tools\work\sdk)
 
-These are unknowns. Each one has to be answered in-game with
-Dumper-7 + UE4SS Live View + ProcessEvent traces before we write
-RPG code. None are speculative; they're concrete things to look up.
+All six unknowns answered against the Dumper-7 SDK. File:line
+citations are into `C:\tools\work\sdk\SDK\` unless noted.
 
-**R1. Kill detection.**
-  - Which UFunction fires on enemy death? Candidates from typical
-    UE5 survival games:
-    - `OnDeath` / `OnDied` event on a `UHealthComponent`.
-    - `Die` / `HandleDeath` method on the enemy character class.
-    - A damage-dispatch function on `BP_SurvivalNonPlayerCharacter`
-      (or whatever Grounded 2's enemy base is named -- need to
-      confirm via SDK dump).
-  - Does the death event carry a "killer" reference? If yes, we
-    filter to player-killed events directly. If no, we have to
-    correlate with the last damage instigator (more fragile).
-  - In multiplayer: does the host get every kill event, or only
-    its own? Document the limitation.
-  - Method: install a ProcessEvent trace gated to UFunction names
-    matching `*Death*|*Died*|*Kill*` on `BP_SurvivalNonPlayer*`,
-    play 5 minutes of combat, grep the log.
+**R1. Kill detection -- ANSWERED.**
 
-**R2. Enemy class hierarchy.**
-  - What's the enemy base class actually named in Grounded 2?
-    (`BP_SurvivalNonPlayerCharacter_C`? `BP_Bug_Base_C`? etc.)
-  - Is there one base or several disjoint trees (creatures vs
-    BURG.L bots vs bosses)?
-  - Do enemies carry a "tier" or "difficulty" property we can use
-    for XP weighting, or do we hardcode a table per-class?
-  - Method: dump-7, search for "NonPlayerCharacter", walk
-    super_class chain.
+Hook UFunction `Maine.HealthComponent.Kill` via ProcessEvent. It's
+declared at `Maine_classes.hpp:42304` (`void Kill(bool bAllowHandleKnockOut)`)
+and dispatched through ProcessEvent (`Maine_functions.cpp:138415`).
 
-**R3. XP / level persistence.**
-  - The game has multiple save slots. We need a stable per-slot
-    key. Options:
-    - Save file name (read from game's `USaveGame` system if
-      reachable -- need to find the function/object that exposes
-      current slot name).
-    - World seed / PlayerState GUID -- if exposed, more reliable
-      across renames.
-    - Single global file (simpler, breaks for users with multiple
-      characters; ship this first, upgrade later).
-  - Where to store: `<DLL_dir>/saves/<slot>.json` is fine; the mod
-    folder is writeable.
-  - Method: dump-7, search for "SaveGame", "SlotName", "PlayerState".
+When fired:
+- `this` (UObject*) = the `UHealthComponent` whose owner is dying.
+- The dying actor is `this->GetOwner()` (UActorComponent's owner
+  field; standard UE5 layout).
+- Read `LastDamageInfo` at offset `0x3B0` on the HealthComponent
+  (`Maine_classes.hpp:42287`). It's an `FDamageInfo` struct.
+- `FDamageInfo.InstigatorController` at offset `0x20`
+  (`Maine_structs.hpp:4815`, `TWeakObjectPtr<AController>`) tells
+  us who fired the killing blow. Filter to local PlayerController.
+- Bonus: `FDamageInfo.Tier` at `0x5C`, `FDamageInfo.OriginAttack`
+  at `0x4C` -- usable for XP weighting.
 
-**R4. Stat re-application.**
-  - Current CDO patches happen once at mod load. With levels,
-    every level-up changes the multiplier. We need to either:
-    - (a) Re-walk the CDO tree on every level-up and re-patch
-      (cheap; a few ms once per level-up).
-    - (b) Patch only the live player's components (not the CDO);
-      requires finding the local `PlayerController` /
-      `PlayerCharacter`, walking its instance components.
-    - (a) is simpler and matches our existing infra. Newly-spawned
-      instances inherit the latest CDO. Already-spawned enemies
-      keep stale values, but for *player* stats this is fine
-      because the player character is the one we're tweaking and
-      it reads CDO at component construction.
-  - Open question: does the player's max-backpack-size get cached
-    at character spawn, or read live from the inventory component?
-    If cached, we may need an instance patch on level-up.
-  - Method: experimentally, set capacity at runtime on a live
-    component and check whether the inventory UI updates without
-    a save reload.
+OnDeath delegate (`Maine_classes.hpp:42224`,
+`TMulticastInlineDelegate<void(const FDamageInfo&)>`) is
+`BlueprintAssignable | BlueprintAuthorityOnly` -- fires on the
+server only. Multiplayer: only the host gets kill events.
+Acceptable; document and move on.
 
-**R5. UI surface.**
-  - UE4SS supports imgui tabs via `register_tab` on the C++ mod
-    base. We already have the vtable slot wired. Confirm the
-    rendering path works in our shim (does the C++ shim need to
-    actually call `register_tab` from Rust? what's the UE4SS
-    convention?).
-  - Imgui is the cheap MVP: shows level, XP/next-level bar, list
-    of perks with clickable +1 buttons.
-  - In-world UMG (a custom widget rendered alongside the survival
-    HUD) is a separate, much harder project. Defer.
-  - Open question: can imgui receive input while game has focus,
-    or do we need a hotkey to summon it? UE4SS's default behavior
-    is to bind `~` (or similar) to toggle the UE4SS console, which
-    also surfaces tabs.
+`UHealthComponent::ServerKill` (`Maine_functions.cpp:138724`) is
+the multiplayer-replicated entry point. Hooking `Kill` covers
+both single-player and host. Don't double-count -- pick one.
 
-**R6. XP curve + perk economy design.**
-  - Not a code question -- a game-design question. But we need an
-    answer before plumbing values:
-    - Max level: 50? 100?
-    - XP curve: linear / quadratic / exponential?
-    - Perk points per level: 1? Or 1 every N levels?
-    - Per-perk cap: every perk maxes at rank 10? Different caps
-      per perk?
-    - Respec: free, paid (with what?), or none?
-  - Reasonable starting numbers (placeholder until tuned):
-    - Levels 1-50, quadratic XP curve (level N requires
-      `100 * N^1.8` total XP).
-    - 1 perk point per level.
-    - Each perk maxes at rank 10.
-    - Respec: free for now (settings flag).
+**R2. Enemy class hierarchy -- ANSWERED.**
+
+Inheritance from `Maine_classes.hpp`:
+- `ACharacter -> ASurvivalCharacter` (line 5713) -> `ASurvivalCreature`
+  (line 6276) -> `ABP_SurvivalCreature_Base_C` and per-species
+  blueprints (`ABP_Aphid_C`, `ABP_Spider_Tarantula_Boss_C`, etc).
+- Players use the same `ASurvivalCharacter` base, but go through
+  `ABP_SurvivalPlayerCharacter_C` -- NOT a subclass of
+  `ASurvivalCreature`.
+
+Filter: in the Kill hook, walk the dying actor's class chain. If
+it's an `ASurvivalCreature` (or subclass) AND not the player's
+character class, award XP. If it's a player, ignore (player
+death). Buildings, props, etc. won't fire `HealthComponent.Kill`
+the same way -- they have separate damage paths through
+`ABuilding::GetHealthComponent` (`Maine_functions.cpp:5884`); we
+only want creatures so this filter is correct.
+
+XP weighting: read the dying creature's class name (FName via
+`UObject::GetName`) and look up a per-species table (small JSON).
+Fallback: use `FDamageInfo.Tier` or the creature's MaxHealth as a
+proxy.
+
+**R3. Persistence -- ANSWERED.**
+
+Use `USaveLoadManager.SaveInProgressSaveGameHeaderData` (offset
+0x90, `Maine_classes.hpp:1786`). It points to a
+`USaveGameHeaderData` (line 42944) with these stable fields:
+- `PlaythroughGuid` at `0x48` (`FGuid`, 16 bytes) -- STABLE across
+  renames. Use as our filename key.
+- `PlaythroughName` at `0xA8` (FString) -- display only.
+- `SaveFolderName` at `0x198` (FString) -- the folder Obsidian
+  uses; we don't need it.
+
+Find the singleton via GObjects scan: walk for any UObject whose
+class is `SaveLoadManager`. Cache the pointer; refresh on world
+change.
+
+Storage: `<DLL_dir>/saves/<playthrough-guid>.json`. Schema:
+`{ level, xp, perk_ranks: { backpack: 5, hunger: 3, ... } }`.
+
+If `SaveInProgressSaveGameHeaderData` is null (main menu, between
+saves), defer load until it's populated. Hook
+`USaveLoadManager.OnSaveBegin` (line 1787) and on load via the
+existing `on_unreal_init` retry loop.
+
+**R4. Live stat re-application -- ANSWERED.**
+
+`UInventoryComponent.DefaultMaxSize` at offset `0x1E0`
+(`Maine_classes.hpp:29557`) is a regular field on every instance,
+not just the CDO. Patching the live player's
+`InventoryComponent.DefaultMaxSize` directly on level-up changes
+the cap immediately for that instance.
+
+Live-instance access path:
+```
+UWorld::GetWorld()
+  -> GameState->PlayerArray[i] (APlayerState*)
+  -> PawnPrivate (APawn*) downcast to ABP_SurvivalPlayerCharacter_C*
+  -> InventoryComponent (offset 0x13B8 on ASurvivalCharacter,
+     line 5797)
+  -> DefaultMaxSize (offset 0x1E0)
+```
+
+`UInventoryComponent::GetMaxSize()` (line 29635) is the public
+read accessor; UI calls that, so writing `DefaultMaxSize` is the
+right surface. There's also a per-instance `Items` array
+(`TArray<UItem*>` at 0x1C8); the existing `WBP_InventoryInterface_C`
+hook already handles viewport rebind for grow/shrink.
+
+Other stats live the same way:
+- Hunger / thirst rates: `SurvivalComponent` at offset 0x1448 on
+  `ASurvivalCharacter` (line 5815). Existing patch works on CDO;
+  swap to instance for level-up.
+- Stamina: `StaminaComponent` at 0x1358 (line 5785).
+- Max health (player buff perk): `HealthComponent.MaxHealth` at
+  offset 0x328 on the live UHealthComponent (line 42263).
+
+Approach: patch BOTH the CDO (so future spawns inherit) AND the
+live player instance (so the current run sees it instantly). The
+CDO patch is what we already do; add a parallel instance-walk
+called from level-up.
+
+**R5. UI -- ANSWERED.**
+
+UE4SS's `register_tab(name, lambda)` is a protected method on
+`CppUserModBase` (declared at
+`RE-UE4SS/UE4SS/include/Mod/CppUserModBase.hpp:212`). Reference
+implementation:
+`RE-UE4SS/CppMods/EventViewerMod/src/EventViewer.cpp:22`. Pattern:
+```cpp
+register_tab(STR("RPG"), [](CppUserModBase* mod) {
+    UE4SS_ENABLE_IMGUI();
+    ImGui::Text("Level: %d", state.level);
+    ImGui::ProgressBar(state.xp_ratio);
+    if (ImGui::Button("Spend perk")) { rust_spend_perk(...); }
+});
+```
+
+Tab is called on UE4SS's debug overlay (default toggle is the
+UE4SS console hotkey, `Insert` by default per
+UE4SS-settings.ini).
+
+Plan: keep ImGui rendering in C++ shim. Expose Rust state via
+narrow C-ABI getters/setters
+(`get_player_state(out_buf, len)`, `spend_perk(perk_id)`, etc.)
+so the lambda doesn't need to know Rust types. Avoids dragging
+imgui through cxx-style FFI.
+
+In-world UMG overlay: deferred. Out of scope for v1.
+
+**R6. XP curve + perk economy (design, no code answer needed).**
+
+Placeholder values until in-game tuning:
+- Levels 1-50, quadratic XP curve: level N requires
+  `100 * N^1.8` total XP.
+- 1 perk point per level.
+- Each perk maxes at rank 10.
+- Respec: free for now; `settings.json` flag `respec_cost: 0`.
+- Per-creature XP: aphid=5, weevil=10, spider=50, boss=500
+  (placeholders; tune by playing).
 
 ### Architecture sketch (post-research)
 
@@ -167,23 +224,36 @@ Lifecycle:
    multipliers, re-apply CDO patches, save to disk.
 5. On exit / save event: flush PlayerState to disk.
 
-### Build sequence (DO NOT START BEFORE R1-R5 ANSWERED)
+### Build sequence
 
-- [ ] Spike A: kill detection. Hook the suspected death function,
-  log every fire with the killer reference, play in-game, confirm
-  the "player killed enemy X" signal is reliable. **One evening.**
-- [ ] Spike B: persistence. Find the current save slot name from
-  the game. If too hard, fall back to single global file with a
-  TODO. **One evening.**
-- [ ] Spike C: live stat re-apply. Confirm we can change backpack
-  capacity at runtime without a save reload. **One evening.**
-- [ ] Once A+B+C are green: write `state.rs`, `xp.rs`, `perks.rs`
-  with the placeholder curve from R6. Wire up.
-- [ ] UE4SS imgui tab. Read the UE4SS samples in
-  `C:\code\RE-UE4SS\` for the canonical pattern.
+R1-R5 answered (see above). Each spike below is a concrete
+implementation against known field offsets and UFunction names,
+not exploratory.
+
+- [ ] Spike A: kill detection. Hook `Maine.HealthComponent.Kill`
+  via existing ProcessEvent infra. Log `(this->GetOwner()->Class
+  name, this+0x3B0->InstigatorController)` for every fire. Confirm
+  in-game: kill an aphid, see the line; player death does NOT
+  fire a kill credit. **One evening.**
+- [ ] Spike B: persistence. Find `USaveLoadManager` in GObjects,
+  read `SaveInProgressSaveGameHeaderData->PlaythroughGuid`,
+  write/read a JSON file at `<DLL_dir>/saves/<guid>.json`. Handle
+  null (main menu) gracefully. **One evening.**
+- [ ] Spike C: live stat re-apply. Walk
+  `World->GameState->PlayerArray[i]->PawnPrivate->InventoryComponent`,
+  bump `DefaultMaxSize` at runtime, confirm the inventory UI
+  updates without a save reload. **One evening.**
+- [ ] Once A+B+C green: write `state.rs`, `xp.rs`, `perks.rs`
+  with the placeholder curve from R6. Wire enemy-kill -> XP
+  award -> level threshold -> perk-point grant.
+- [ ] UE4SS imgui tab. Add `register_tab(STR("RPG"), ...)` in
+  the C++ shim ctor (model:
+  `RE-UE4SS/CppMods/EventViewerMod/src/EventViewer.cpp:22`).
+  Lambda reads Rust state via C-ABI getters, renders ImGui,
+  posts perk-spend via setters.
 - [ ] Tune XP curve and perk economy through actual play.
 - [ ] Polish: respec, settings.json overrides for the curve,
-  per-enemy XP table.
+  per-enemy XP table loaded from JSON.
 
 ### What we keep from the old direction
 
