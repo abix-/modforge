@@ -92,16 +92,44 @@ also fires after each landing. **Player still takes fall damage.** So:
   false` and `FallDamageRatio = 0`, damage still applies.
 
 Conclusion: Grounded 2's fall damage path is implemented in native code
-that does not read the public BP-exposed fields. The next attack surface
-is the actual damage entry on the health component:
+that does not read any of the public BP-exposed fall-damage fields, and
+raw memory writes to the replicated `FCustomGameModeSettings` struct
+also do not affect runtime damage. The native code is reading from a
+cached value that ignores both surfaces.
+
+Pivot: stop trying to write the field. Instead, mimic exactly what the
+in-game difficulty UI does -- it changes fall damage scaling LIVE
+without restart, so whatever code path it uses must be the seam. The
+SDK exposes that surface directly:
+
+- `USurvivalModeManagerComponent::UpdateCustomSettings(FCustomGameModeSettings)`
+  -- `Final, Native, Public, BlueprintCallable`
+- `USurvivalModeManagerComponent::OnRep_CustomSettings()`
+  -- `Final, Native, Protected`
+- `USurvivalGameInstance::SetCustomGameSettings(FCustomGameModeSettings)`
+  -- game-instance-level entry point
+
+The mod now resolves `UpdateCustomSettings` as a UFunction on the
+`USurvivalModeManagerComponent` class, snapshots the live
+`FCustomGameModeSettings` struct from the component (32 bytes at
++0x114), mutates only `FallDamageMultiplier` (+0x1C inside the struct),
+and calls back into the UFunction via `UObject::process_event` on the
+live component. That triggers the engine's own setter, which runs
+`OnRep_CustomSettings` on the server side and invalidates whatever
+cached value the native fall-damage path is reading. Raw memory writes
+skipped that cache invalidation entirely, which is why every previous
+attempt failed despite landing on the right struct.
+
+Pending in-game validation. The expected log surface line includes
+`UpdateCustomSettings invoked on N component(s)` next to the existing
+write counts.
+
+Parallel surface kept on the radar in case `UpdateCustomSettings` does
+not propagate the change: hook
 `UHealthComponent::ApplyDamageFromInfo` (Final, Native,
-BlueprintCallable). Parm layout is known
-(`Damage : float` at +0x00, `DamageEvent` at +0x08, `DamageInfo` at
-+0x18). If a ProcessEvent hook on HealthComponent's
-`ApplyDamageFromInfo` fires when the player takes fall damage, we can
-zero the `Damage` out parameter at level 100 and skip the original
-call. If it doesn't fire, we are out of ProcessEvent options and the
-remaining path is to detour the native function directly.
+BlueprintCallable) and zero the `Damage` out parameter at the moment
+of impact. Parm layout: `Damage : float` at +0x00, `DamageEvent` at
++0x08, `DamageInfo : FDamageInfo` at +0x18.
 
 ### Movement skill fix verified
 

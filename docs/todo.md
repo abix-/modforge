@@ -171,25 +171,36 @@ fall-damage code does not consult any BP-exposed field we can find, and
 `ApplyFallDamage` UFunction never fires via ProcessEvent during a
 natural fall (engine calls the native function pointer directly).
 
-Two open angles for the next attack:
+Current attempt (in build, **awaiting in-game validation**): mirror the
+in-game difficulty UI's runtime fall-damage change. The UI changes the
+multiplier live without a restart, so the underlying code path must
+flush whatever cache the native fall code reads. The SDK exposes that
+path directly as a `Final, Native, BlueprintCallable` UFunction:
+`USurvivalModeManagerComponent::UpdateCustomSettings(FCustomGameModeSettings)`.
 
-1. **Hook `UHealthComponent::ApplyDamageFromInfo`** (Final, Native,
-   BlueprintCallable). If this fires via ProcessEvent on fall damage,
-   we can zero the `Damage` out parameter at level 100 and skip the
-   original. Parm layout: `Damage : float` at +0x00,
-   `DamageEvent : FDamageEvent` at +0x08, `DamageInfo : FDamageInfo`
-   at +0x18. Easy to wire up since we already hook this component for
-   `MulticastHandleEffectsWithDamageFlags`.
-2. **Mirror what the difficulty / custom-settings UI does at runtime**.
-   The game offers an in-game "change difficulty" path that does
-   change fall damage scaling live. Whatever
-   `USurvivalModeManagerComponent::UpdateCustomSettings(...)` /
-   `UpdateDifficulty(...)` /
-   `ASurvivalGameInstance::SetCustomGameSettings(...)` do internally,
-   that is by definition the right code path to flip the value the
-   native fall code reads. Reverse-engineer the SDK functions to
-   identify which fields they touch, then mimic those writes from the
-   apply step.
+`apply.rs::invoke_update_custom_settings_for_fall_damage`:
+
+1. Walks live `USurvivalModeManagerComponent` instances.
+2. Snapshots the live `FCustomGameModeSettings` struct at +0x114
+   (32 bytes) so all other fields are preserved.
+3. Mutates only `FallDamageMultiplier` at +0x1C inside the struct.
+4. Resolves the `UpdateCustomSettings` UFunction via
+   `UClass::get_function`.
+5. Calls it via `UObject::process_event` on the live component,
+   passing the modified parm struct.
+
+The native handler runs the engine's setter logic and triggers
+`OnRep_CustomSettings`, which is the cache-invalidation step raw
+memory writes skipped. That is why every previous in-place write
+failed: the runtime was reading a cached copy, not the struct field.
+
+Fallback if `UpdateCustomSettings` does not propagate: hook
+`UHealthComponent::ApplyDamageFromInfo` (Final, Native,
+BlueprintCallable). If a ProcessEvent hook on this fires when the
+player takes fall damage, zero the `Damage` out parameter at level 100
+and skip the original. Parm layout: `Damage : float` at +0x00,
+`DamageEvent : FDamageEvent` at +0x08, `DamageInfo : FDamageInfo` at
++0x18.
 
 Lower-priority seams kept on the radar:
 

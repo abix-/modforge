@@ -287,21 +287,43 @@ also never fires via ProcessEvent during a natural fall (engine native
 code calls the C++ function pointer directly, bypassing our dispatch
 hook).
 
-Next step: hook `UHealthComponent::ApplyDamageFromInfo` (Final, Native,
-BlueprintCallable) and zero the `Damage` out parameter when the
-recipient is the player and fall_resistance is active. Parm layout from
-the SDK:
+Key insight: the in-game difficulty UI changes fall damage scaling
+LIVE -- without restart. Whatever code path that UI uses is, by
+definition, the right surface to mimic. The SDK exposes that surface
+directly:
 
-| Offset | Field        | Type        | Notes                          |
-| ------ | ------------ | ----------- | ------------------------------ |
-| 0x00   | Damage       | float       | Parm + OutParm (we zero this)  |
-| 0x08   | DamageEvent  | FDamageEvent | ConstParm + Parm + Ref         |
-| 0x18   | DamageInfo   | FDamageInfo | Parm + OutParm                 |
+- `USurvivalModeManagerComponent::UpdateCustomSettings(FCustomGameModeSettings)`
+  -- `Final, Native, Public, BlueprintCallable`
+- `USurvivalModeManagerComponent::OnRep_CustomSettings()`
+  -- `Final, Native, Protected` (the cache-invalidation side effect)
+- `USurvivalGameInstance::SetCustomGameSettings(FCustomGameModeSettings)`
+  -- the game-instance-level entry point
 
-If ApplyDamageFromInfo also fires only via direct native dispatch (i.e.
-the hook never fires), the remaining option is detouring the native
-function pointer in the UFunction's native_func slot, which is more
-involved than the current ProcessEvent vtable hook.
+Critical difference from the raw memory write at +0x130: a memory write
+sets the byte but does not run any native side effects. The UFunction
+runs the engine's own setter logic, which on the server triggers
+`OnRep_CustomSettings` and any cached value the runtime fall-damage
+code is actually reading. That cache is presumably what was
+sticky on every prior write attempt.
+
+Implementation in `apply.rs` (`invoke_update_custom_settings_for_fall_damage`):
+
+1. Walk live `USurvivalModeManagerComponent` instances.
+2. Snapshot the live `FCustomGameModeSettings` struct at +0x114 (32
+   bytes) to preserve every other field.
+3. Mutate `FallDamageMultiplier` at struct offset +0x1C to
+   `vanilla * (1 - reduction)`.
+4. Resolve `UpdateCustomSettings` UFunction via
+   `UClass::get_function`.
+5. Call it via `UObject::process_event` on the live component, with
+   the modified 32-byte parm struct.
+
+Awaiting in-game validation. If `UpdateCustomSettings` does not fire
+via ProcessEvent, the parallel attack surface is
+`UHealthComponent::ApplyDamageFromInfo` (Final, Native,
+BlueprintCallable) -- a hook that zeros the `Damage` out parameter for
+fall events. Parm layout: `Damage : float` at +0x00, `DamageEvent` at
++0x08, `DamageInfo : FDamageInfo` at +0x18.
 
 Adjacent fall-specific SDK surfaces still on the radar if neither path
 is the seam:

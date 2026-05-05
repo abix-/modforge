@@ -98,6 +98,51 @@ fn on_event(
     let fn_id = function as *const UFunction as usize;
     let is_target = fn_id == state.multicast_handle_effects_with_damage_flags;
 
+    // Diagnostic: log every PE event arriving on a player's HealthComponent
+    // so we can identify which function/flags carry fall damage. Before
+    // forwarding so we observe the call as it arrives.
+    if !parms.is_null()
+        && let Some(owner) = this.outer()
+        && owner.full_name().contains("BP_SurvivalPlayerCharacter")
+    {
+        let fn_name = function.as_object().name();
+        match fn_name.as_str() {
+            "MulticastHandleEffectsWithDamageFlags" => {
+                let damage = unsafe { (parms as *const u8).add(0x18).cast::<f32>().read_unaligned() };
+                let dflags = unsafe { (parms as *const u8).add(0x1C).cast::<i32>().read_unaligned() };
+                let dtflags = unsafe { (parms as *const u8).add(0x20).cast::<u32>().read_unaligned() };
+                bbp_log!(
+                    "rpg/dmg-trace: player hit fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
+                    fn_name,
+                    damage,
+                    dflags,
+                    dtflags
+                );
+            }
+            "MulticastHandleEffectsWithDamageFlagsAtOwnerLocation"
+            | "MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation" => {
+                let damage = unsafe { (parms as *const u8).add(0x00).cast::<f32>().read_unaligned() };
+                let dflags = unsafe { (parms as *const u8).add(0x04).cast::<i32>().read_unaligned() };
+                let dtflags = unsafe { (parms as *const u8).add(0x08).cast::<u32>().read_unaligned() };
+                bbp_log!(
+                    "rpg/dmg-trace: player hit fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
+                    fn_name,
+                    damage,
+                    dflags,
+                    dtflags
+                );
+            }
+            "ApplyDamageFromInfo" => {
+                let damage = unsafe { (parms as *const u8).add(0x00).cast::<f32>().read_unaligned() };
+                bbp_log!("rpg/dmg-trace: player hit fn={} damage={:.2}", fn_name, damage);
+            }
+            "ApplyHit" | "ApplyDamage" => {
+                bbp_log!("rpg/dmg-trace: player hit fn={}", fn_name);
+            }
+            _ => {}
+        }
+    }
+
     // Read parms before forwarding so we don't race with anything that
     // might mutate them (the multicast handler is read-only on parms in
     // practice, but be safe).
