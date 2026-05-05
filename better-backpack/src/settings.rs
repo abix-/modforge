@@ -45,11 +45,17 @@ pub struct RpgSettings {
 }
 
 fn default_slot_count() -> i32 {
-    100
+    // Vanilla baseline. Skills layer additive on top (backpack rank 12
+    // adds +60 -> 100). User can set this higher in settings.json for
+    // a starter buff.
+    40
 }
 
 fn default_survival_multiplier() -> f32 {
-    0.5
+    // Vanilla baseline (no slowdown). Skills further multiply (hunger/
+    // thirst rank 10 -> 0.25x). User can set lower in settings.json
+    // for a starter easy mode.
+    1.0
 }
 
 fn default_buggy_kill_xp_multiplier() -> f32 {

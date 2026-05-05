@@ -13,8 +13,10 @@
 // PlayerState that the kill hook bumps; flushes to disk after each
 // change.
 
+pub mod apply;
 pub mod kill_hook;
 pub mod save_slot;
+pub mod skills;
 pub mod state;
 pub mod tracker;
 pub mod world_loader;

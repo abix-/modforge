@@ -11,9 +11,10 @@
 use std::sync::Mutex;
 
 use crate::bbp_log;
+use crate::rpg::apply;
 use crate::rpg::state::{self, PlayerState};
 use crate::rpg::xp;
-use crate::settings::RpgSettings;
+use crate::settings::Settings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KillSource {
@@ -24,14 +25,15 @@ pub enum KillSource {
 struct Tracker {
     slot: String,
     state: PlayerState,
-    rpg_settings: RpgSettings,
+    settings: Settings,
 }
 
 static TRACKER: Mutex<Option<Tracker>> = Mutex::new(None);
 
 /// Bind the tracker to `slot` and load any prior state from disk.
-/// Replaces any prior binding.
-pub fn activate_slot(slot: String, rpg_settings: RpgSettings) {
+/// Replaces any prior binding. Triggers `apply::apply` so skill ranks
+/// are reflected in CDOs immediately.
+pub fn activate_slot(slot: String, settings: Settings) {
     let mut state = state::load_one(&slot);
     // If the loaded state has xp but no level (first run after schema
     // bump, or hand-edited file), recompute level from xp.
@@ -48,10 +50,13 @@ pub fn activate_slot(slot: String, rpg_settings: RpgSettings) {
         state.kill_count,
         if state.last_killed.is_empty() { "<none>" } else { state.last_killed.as_str() }
     );
+
+    apply::apply(&state, &settings);
+
     *lock() = Some(Tracker {
         slot,
         state,
-        rpg_settings,
+        settings,
     });
 }
 
@@ -84,7 +89,7 @@ pub fn record_kill(creature_class_name: &str, source: KillSource) {
     let scaled = match source {
         KillSource::Player => base_xp,
         KillSource::Buggy => {
-            let mult = tracker.rpg_settings.buggy_kill_xp_multiplier.max(0.0);
+            let mult = tracker.settings.rpg.buggy_kill_xp_multiplier.max(0.0);
             (base_xp as f32 * mult).round() as u32
         }
     };

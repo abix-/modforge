@@ -142,6 +142,10 @@ unsafe fn worker() {
     // initialized, so GObjects is already populated. No retry loop
     // needed.
 
+    // Capture vanilla survival rates before any patching so the RPG
+    // apply step can multiply them later without compounding.
+    rpg::apply::capture_vanilla();
+
     let initial = patch::run(settings.inventory.slot_count);
     bbp_log!(
         "initial patch round: scanned={}, patched={}, skipped_non_player={}",
@@ -197,7 +201,7 @@ unsafe fn worker() {
     // thread so PlayerState is bound to the active save the moment the
     // player enters the world. Future skill-driven CDO patches will run
     // on the same activation transition.
-    rpg::world_loader::spawn(settings.rpg.clone());
+    rpg::world_loader::spawn(settings.clone());
 
     bbp_log!("init complete; worker thread exiting");
 }

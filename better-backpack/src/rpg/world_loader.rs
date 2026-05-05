@@ -1,10 +1,10 @@
 // Eager state load on world entry.
 //
-// At worker startup the player is usually still at the main menu --
+// At worker startup the player is usually still at the main menu,
 // AInGameGameState doesn't exist yet, so save_slot::current_slot_key()
 // returns None. The kill hook can run as soon as the player enters the
 // world, and (future) skill-driven CDO patches need to apply at world
-// entry too -- before the first kill, before any combat. So we can't
+// entry too, before the first kill, before any combat. So we can't
 // wait for record_kill to lazy-load.
 //
 // This module spawns a low-frequency poller that watches
@@ -26,13 +26,13 @@ use windows_sys::Win32::System::Threading::CreateThread;
 
 use crate::bbp_log;
 use crate::rpg::{save_slot, tracker};
-use crate::settings::RpgSettings;
+use crate::settings::Settings;
 
 const POLL_INTERVAL_MS: u64 = 1_000;
 
-static SETTINGS: OnceLock<RpgSettings> = OnceLock::new();
+static SETTINGS: OnceLock<Settings> = OnceLock::new();
 
-pub fn spawn(settings: RpgSettings) {
+pub fn spawn(settings: Settings) {
     let _ = SETTINGS.set(settings);
     unsafe {
         let h = CreateThread(
@@ -77,6 +77,6 @@ fn run() {
     }
 }
 
-fn settings_clone() -> RpgSettings {
+fn settings_clone() -> Settings {
     SETTINGS.get().cloned().unwrap_or_default()
 }

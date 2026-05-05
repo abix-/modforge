@@ -17,7 +17,20 @@ not the user-facing knob.
 
 ### Next three items to close the RPG loop (2026-05-05)
 
-1. **Skill catalog + apply step (do together).** Define 4-5 skills
+1. **Skill catalog + apply step (BUILT 2026-05-05, untested).**
+   New `rpg/skills.rs` (catalog: backpack/hunger/thirst with
+   per-rank math) and `rpg/apply.rs` (capture vanilla baselines at
+   init, write skill-layered values at activate_slot). Wired
+   through tracker, world_loader, lib.rs.
+
+   Behavior change: settings defaults are now vanilla (slot_count=40,
+   hunger/thirst_mult=1.0). Existing users see vanilla on next
+   launch unless they level skills or write a settings.json.
+   Spending skill points before the imgui tab lands: hand-edit
+   `<DLL_dir>/saves/<guid>.json` and add e.g.
+   `"skill_ranks": {"backpack": 5}`, then reload the save.
+
+   Original definition: define 4-5 skills
    (backpack capacity, hunger, thirst, glide, gear durability),
    each with id / max_rank / per-rank-value. When state activates
    or skill ranks change, walk player CDO + live pawn instance and
@@ -32,13 +45,36 @@ not the user-facing knob.
    `get_skill_rank(id)`, `spend_point(id)`, etc.). Gives the
    player a way to interact instead of editing JSON.
 
-3. **Reconcile with existing settings.** `inventory.slot_count=100`
-   and `survival.thirst/hunger_multiplier=0.5` are static today;
-   with skills driving the same fields they conflict. Choices:
-   (a) drop the static knobs and let skills fully own those
-   stats; (b) treat the static value as the cap skills scale up
-   to. (a) is cleaner and matches the RPG pivot's intent. Worth a
-   brief discussion before picking.
+3. **Reconcile with existing settings (DECIDED 2026-05-05).**
+   settings.json defines the BASE values for each stat. Defaults
+   bake in if a key is omitted. The user can override defaults in
+   settings if they want a starter buff. The RPG system then
+   layers ON TOP of those bases.
+
+   Concretely:
+   - `settings.inventory.slot_count` defaults to **40** (vanilla).
+     The skill `backpack` adds +5 slots per rank, so final =
+     `slot_count + 5 * rank`. User who wants the old behavior
+     (100 slots from start) sets slot_count = 100; with rank 12
+     in the skill on top, they get 160.
+   - `settings.survival.hunger_multiplier` and `thirst_multiplier`
+     default to **1.0** (vanilla). The skill `hunger` /
+     `thirst` further multiplies by (1.0 - 0.075 * rank), so
+     final rate = `vanilla * settings_mult * skill_mult`. User
+     who wants the old "easy mode" sets the settings_mult to 0.5;
+     rank 10 then gives 0.5 * 0.25 = 0.125x drain.
+   - Init-time patching is removed. patch.rs / survival.rs become
+     pure "apply helpers" called from `rpg::apply::apply`, which
+     runs at `activate_slot` time (after world entry, after
+     PlayerState load). This single-source-of-truth path
+     eliminates the double-apply hazard.
+
+   Default behavior change for existing users: settings defaults
+   were 100 / 0.5 / 0.5; they're now 40 / 1.0 / 1.0. Users with a
+   pre-existing settings.json that doesn't set those fields will
+   suddenly see vanilla values. Mitigation: ship a defaults shift
+   note in CHANGELOG, recommend they add the keys back if they
+   want the prior baseline.
 
 **User picked #1 first (2026-05-05).** Highest-leverage change,
 without it level-ups are meaningless. ImGui tab and settings
