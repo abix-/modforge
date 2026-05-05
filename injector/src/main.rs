@@ -63,7 +63,7 @@ fn resolve_dll_path() -> Result<PathBuf> {
         None => {
             let mut exe = env::current_exe().context("locating injector exe")?;
             exe.pop();
-            exe.push("BetterBackpack.dll");
+            exe.push("better_backpack.dll");
             exe
         }
     };
