@@ -5,8 +5,8 @@
 //     specifying the kill source (player vs Buggy) so we can apply the
 //     right XP multiplier.
 //
-// Eager activation is required because (future) skill ranks affect
-// player stats from spawn, not from the first kill.
+// Eager activation is required because skill levels affect player
+// stats from spawn, not from the first kill.
 
 use std::sync::Mutex;
 
@@ -31,8 +31,8 @@ struct Tracker {
 static TRACKER: Mutex<Option<Tracker>> = Mutex::new(None);
 
 /// Bind the tracker to `slot` and load any prior state from disk.
-/// Replaces any prior binding. Triggers `apply::apply` so skill ranks
-/// are reflected in CDOs immediately.
+/// Replaces any prior binding. Triggers `apply::apply` so skill
+/// levels are reflected in CDOs immediately.
 pub fn activate_slot(slot: String, settings: Settings) {
     let mut state = state::load_one(&slot);
     // If the loaded state has xp but no level (first run after schema
@@ -82,7 +82,7 @@ pub fn with_state<R>(f: impl FnOnce(&PlayerState) -> R) -> Option<R> {
 }
 
 /// Spend one skill point on `skill`. Returns true if applied, false if
-/// preconditions fail (no slot, no points, rank already at max).
+/// preconditions fail (no slot, no points, level already at max).
 pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
     let mut g = lock();
     let Some(tracker) = g.as_mut() else {
@@ -93,33 +93,33 @@ pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
         bbp_log!("rpg/state: spend({}) ignored, no skill points", skill.id);
         return false;
     }
-    let cur_rank = tracker
+    let cur_level = tracker
         .state
-        .skill_ranks
+        .skill_levels
         .get(skill.id)
         .copied()
         .unwrap_or(0);
-    if cur_rank >= skill.max_rank {
+    if cur_level >= skill.max_level {
         bbp_log!(
-            "rpg/state: spend({}) ignored, already at max rank {}",
+            "rpg/state: spend({}) ignored, already at max level {}",
             skill.id,
-            skill.max_rank
+            skill.max_level
         );
         return false;
     }
     tracker.state.skill_points -= 1;
-    let new_rank = cur_rank + 1;
+    let new_level = cur_level + 1;
     tracker
         .state
-        .skill_ranks
-        .insert(skill.id.to_string(), new_rank);
+        .skill_levels
+        .insert(skill.id.to_string(), new_level);
     crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
     crate::rpg::state::save(&tracker.slot, &tracker.state);
     bbp_log!(
-        "rpg/state: spent point on {}: rank {} -> {} ({} points left)",
+        "rpg/state: spent point on {}: level {} -> {} ({} points left)",
         skill.id,
-        cur_rank,
-        new_rank,
+        cur_level,
+        new_level,
         tracker.state.skill_points
     );
     true

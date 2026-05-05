@@ -212,12 +212,12 @@ extern "C" int      bbp_rpg_get_skill(uint32_t index,
                                        size_t   id_buf_len,
                                        char*    name_buf,
                                        size_t   name_buf_len,
-                                       uint32_t* out_rank,
+                                       uint32_t* out_level,
                                        uint32_t* out_max);
 extern "C" int      bbp_rpg_spend(const char* skill_id);
 extern "C" int      bbp_rpg_debug_grant_skill_points(uint32_t count);
 extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
-                                                  uint32_t    rank,
+                                                  uint32_t    level,
                                                   char*       out_buf,
                                                   size_t      out_buf_len);
 
@@ -305,11 +305,11 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
     for (uint32_t i = 0; i < count; ++i) {
         char     id[32];
         char     name[64];
-        uint32_t rank = 0;
+        uint32_t level = 0;
         uint32_t max  = 0;
         if (!bbp_rpg_get_skill(i, id, sizeof(id),
                                   name, sizeof(name),
-                                  &rank, &max)) {
+                                  &level, &max)) {
             continue;
         }
 
@@ -318,31 +318,31 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
         // Current effect (always shown).
         char cur_effect[96];
         cur_effect[0] = 0;
-        bbp_rpg_format_skill_effect(id, rank, cur_effect, sizeof(cur_effect));
+        bbp_rpg_format_skill_effect(id, level, cur_effect, sizeof(cur_effect));
 
-        // Preview of NEXT rank, only when we can actually spend.
-        bool can_spend = (skill_points > 0) && (rank < max);
+        // Preview of NEXT level, only when we can actually spend.
+        bool can_spend = (skill_points > 0) && (level < max);
         char next_effect[96];
         next_effect[0] = 0;
-        if (rank < max) {
-            bbp_rpg_format_skill_effect(id, rank + 1, next_effect, sizeof(next_effect));
+        if (level < max) {
+            bbp_rpg_format_skill_effect(id, level + 1, next_effect, sizeof(next_effect));
         }
 
-        if (rank == 0) {
-            ImGui::Text("%-20s rank 0 / %u  (next: %s)",
+        if (level == 0) {
+            ImGui::Text("%-20s level 0 / %u  (next: %s)",
                         name,
                         static_cast<unsigned>(max),
                         next_effect);
-        } else if (rank >= max) {
-            ImGui::Text("%-20s rank %u / %u  MAX  %s",
+        } else if (level >= max) {
+            ImGui::Text("%-20s level %u / %u  MAX  %s",
                         name,
-                        static_cast<unsigned>(rank),
+                        static_cast<unsigned>(level),
                         static_cast<unsigned>(max),
                         cur_effect);
         } else {
-            ImGui::Text("%-20s rank %u / %u  %s  (next: %s)",
+            ImGui::Text("%-20s level %u / %u  %s  (next: %s)",
                         name,
-                        static_cast<unsigned>(rank),
+                        static_cast<unsigned>(level),
                         static_cast<unsigned>(max),
                         cur_effect,
                         next_effect);

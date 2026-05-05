@@ -74,8 +74,8 @@ pub extern "C" fn bbp_rpg_get_skill_count() -> u32 {
 
 /// Look up the skill at `index` in the catalog. On success writes the
 /// skill's id and display name into the caller's buffers (NUL
-/// terminated, truncated if too small) and writes current rank and
-/// max rank to the out_* pointers. Returns 1 on success, 0 if index
+/// terminated, truncated if too small) and writes current level and
+/// max level to the out_* pointers. Returns 1 on success, 0 if index
 /// is out of range or no slot active.
 ///
 /// All pointers may be null on the C side; we only write non-null
@@ -83,7 +83,7 @@ pub extern "C" fn bbp_rpg_get_skill_count() -> u32 {
 ///
 /// # Safety
 /// Caller must ensure id_buf has space for `id_buf_len` bytes (same
-/// for name_buf), and out_rank / out_max are valid u32* if non-null.
+/// for name_buf), and out_level / out_max are valid u32* if non-null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bbp_rpg_get_skill(
     index: u32,
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn bbp_rpg_get_skill(
     id_buf_len: usize,
     name_buf: *mut c_char,
     name_buf_len: usize,
-    out_rank: *mut u32,
+    out_level: *mut u32,
     out_max: *mut u32,
 ) -> i32 {
     safe(|| {
@@ -102,14 +102,14 @@ pub unsafe extern "C" fn bbp_rpg_get_skill(
             write_cstr(id_buf, id_buf_len, skill.id);
             write_cstr(name_buf, name_buf_len, skill.display_name);
             if !out_max.is_null() {
-                out_max.write_unaligned(skill.max_rank);
+                out_max.write_unaligned(skill.max_level);
             }
-            if !out_rank.is_null() {
-                let rank = tracker::with_state(|s| {
-                    s.skill_ranks.get(skill.id).copied().unwrap_or(0)
+            if !out_level.is_null() {
+                let level = tracker::with_state(|s| {
+                    s.skill_levels.get(skill.id).copied().unwrap_or(0)
                 })
                 .unwrap_or(0);
-                out_rank.write_unaligned(rank);
+                out_level.write_unaligned(level);
             }
         }
         1
@@ -118,10 +118,10 @@ pub unsafe extern "C" fn bbp_rpg_get_skill(
 
 /// Spend one skill point on the skill identified by the NUL-terminated
 /// `skill_id` C-string. Returns 1 on success, 0 if the spend was
-/// invalid (no slot, no points, unknown skill, or rank already at
+/// invalid (no slot, no points, unknown skill, or level already at
 /// max).
 ///
-/// On success: increments the rank, decrements skill_points, runs the
+/// On success: increments the level, decrements skill_points, runs the
 /// apply step so the new value takes effect immediately, and saves to
 /// disk.
 ///
@@ -150,9 +150,9 @@ pub extern "C" fn bbp_rpg_debug_grant_skill_points(count: u32) -> i32 {
     safe(|| if tracker::debug_grant_skill_points(count) { 1 } else { 0 })
 }
 
-/// Format the skill's effect at `rank` into the caller's buffer.
+/// Format the skill's effect at `level` into the caller's buffer.
 /// Returns 1 on success, 0 if skill_id is unknown. Used by the ImGui
-/// tab to show "+25 slots" etc. next to the rank number.
+/// tab to show "+25 slots" etc. next to the level number.
 ///
 /// # Safety
 /// `skill_id` must be a valid NUL-terminated UTF-8 C string. `out_buf`
@@ -160,7 +160,7 @@ pub extern "C" fn bbp_rpg_debug_grant_skill_points(count: u32) -> i32 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn bbp_rpg_format_skill_effect(
     skill_id: *const c_char,
-    rank: u32,
+    level: u32,
     out_buf: *mut c_char,
     out_buf_len: usize,
 ) -> i32 {
@@ -173,7 +173,7 @@ pub unsafe extern "C" fn bbp_rpg_format_skill_effect(
         if skills::lookup(id).is_none() {
             return 0;
         }
-        let s = skills::format_effect(id, rank);
+        let s = skills::format_effect(id, level);
         unsafe { write_cstr(out_buf, out_buf_len, &s) };
         1
     })

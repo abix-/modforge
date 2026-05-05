@@ -1,9 +1,9 @@
 // Persisted player RPG state.
 //
-// Schema: xp / level / skill_points / skill_ranks plus diagnostic
-// counters (kill_count, last_killed). "Skill" / "skill point" naming
-// follows the dominant Factorio-RPG convention (RPG System mod) and
-// matches Diablo expectations.
+// Schema: xp / level / skill_points / skill_levels plus diagnostic
+// counters (kill_count, last_killed). "Skill" / "skill point" /
+// "skill level" naming follows the dominant Factorio-RPG convention
+// (RPG System mod) and matches Diablo expectations.
 //
 // Storage: <DLL_dir>/saves/<playthrough-guid>.json. One file per save
 // slot, keyed by the stable PlaythroughGuid from AInGameGameState.
@@ -30,10 +30,11 @@ pub struct PlayerState {
     /// `RPG System` convention.)
     #[serde(default)]
     pub skill_points: u32,
-    /// Map of skill_id -> rank. Open-shape so we can add skills
-    /// without breaking existing save files.
+    /// Map of skill_id -> level (how many points the player has spent
+    /// on this skill). Open-shape so we can add skills without
+    /// breaking existing save files.
     #[serde(default)]
-    pub skill_ranks: std::collections::BTreeMap<String, u32>,
+    pub skill_levels: std::collections::BTreeMap<String, u32>,
 
     /// Total kills (any source: player + Buggy). Diagnostic only.
     #[serde(default)]
