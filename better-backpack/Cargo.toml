@@ -10,6 +10,13 @@ publish.workspace = true
 name = "better_backpack"
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Spawn a "Better Backpack" console window inside the game process for
+# live log output. Off by default for shipping; the file log at
+# <DLL_dir>/better_backpack.log is the durable record.
+console = []
+default = ["console"]
+
 [dependencies]
 anyhow = { workspace = true }
 widestring = { workspace = true }

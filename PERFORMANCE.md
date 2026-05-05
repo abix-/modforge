@@ -177,10 +177,9 @@ Strictly optional. None of these are visible in a profile today.
    class pointer (`g_invClass` style), but the lookup walks `GObjects`
    the first time. We do that walk on the first rescan only; subsequent
    rescans use the cached pointer. Already optimal.
-3. **Gate `AllocConsole` behind a Cargo feature** (`console` or `debug`)
-   so shipping users don't get a second window in their game. The file
-   log at `%TEMP%\BetterBackpack.log` is the durable record; the live
-   console is a developer convenience. UX fix more than perf.
+3. **(done)** AllocConsole is now gated behind the `console` Cargo
+   feature (default on). `cargo build --release --no-default-features`
+   produces a console-free shipping DLL.
 4. **Add `FUObjectArray::AddUObjectCreateListener` integration** if a
    real CDO-revert scenario is ever observed in a play session. Today
    we patch once and exit; if a Blueprint hot-reload or replication

@@ -16,6 +16,9 @@ use std::ptr;
 use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result, anyhow, bail};
+
+mod config;
+mod launcher;
 use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, GetLastError, HANDLE};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32, Process32First, Process32Next, TH32CS_SNAPPROCESS,
@@ -101,8 +104,22 @@ fn run() -> Result<()> {
     let dll_path = resolve_dll_path()?;
     log_line("[+] ", &format!("DLL: {}", dll_path.display()));
 
-    let (pid, matched) = find_target_pid()
-        .context("Grounded 2 not running. Launch the game and load a save first.")?;
+    let cfg = config::load();
+    let no_launch = env::args().any(|a| a == "--no-launch");
+
+    // Try injecting whatever is already running first.
+    let (pid, matched) = match find_target_pid() {
+        Some(found) => found,
+        None => {
+            if no_launch {
+                bail!(
+                    "Grounded 2 not running and --no-launch given. \
+                     Launch the game and load a save first."
+                );
+            }
+            launcher::launch_and_wait(&cfg)?
+        }
+    };
     log_line("[+] ", &format!("target: {matched} (PID {pid})"));
 
     inject(pid, &dll_path)
@@ -137,11 +154,11 @@ fn strip_unc(p: PathBuf) -> PathBuf {
     }
 }
 
-fn find_target_pid() -> Result<(u32, &'static str)> {
+pub fn find_target_pid() -> Option<(u32, &'static str)> {
     unsafe {
         let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
         if snap.is_null() || snap == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-            bail!("CreateToolhelp32Snapshot failed: E{}", GetLastError());
+            return None;
         }
         let _snap_guard = HandleGuard(snap);
 
@@ -149,14 +166,14 @@ fn find_target_pid() -> Result<(u32, &'static str)> {
         entry.dwSize = std::mem::size_of::<PROCESSENTRY32>() as u32;
 
         if Process32First(snap, &mut entry) == 0 {
-            bail!("Process32First failed: E{}", GetLastError());
+            return None;
         }
 
         loop {
             let name = entry_name(&entry);
             for target in TARGET_PROCESSES {
                 if name.eq_ignore_ascii_case(target) {
-                    return Ok((entry.th32ProcessID, target));
+                    return Some((entry.th32ProcessID, target));
                 }
             }
             if Process32Next(snap, &mut entry) == 0 {
@@ -164,10 +181,7 @@ fn find_target_pid() -> Result<(u32, &'static str)> {
             }
         }
     }
-    Err(anyhow!(
-        "no matching process found. Looking for: {}",
-        TARGET_PROCESSES.join(", ")
-    ))
+    None
 }
 
 fn entry_name(entry: &PROCESSENTRY32) -> String {

@@ -1,60 +1,20 @@
 # TODO
 
-Current state: Rust port of the mod is functional in-game. Backpack
-capacity, scrolling, settings file, hunger/thirst rate patch, and
-log-next-to-DLL all working. See `RUST_PORT_PLAN.md` for the migration
-steps and `PERFORMANCE.md` for the runtime cost analysis.
+Current state: Rust port of the mod is feature-complete for the planned
+work. All five originally-listed features done. Remaining items are
+optional polish.
 
 What's left:
 
-## 1. Auto-launch from inject.exe
+## 1. Mutex -> atomic in the ProcessEvent hot path (polish)
 
-Right now `inject.exe` requires Grounded to already be running. User
-wants `inject.exe` to launch the game then inject.
-
-Open design questions:
-
-- Steam vs Xbox launch path. Steam uses `steam://rungameid/<appid>` (need
-  to confirm Grounded 2's Steam app id and put it in settings). Xbox
-  Game Pass UWP launches are trickier; possibly via the
-  `gamingservices`-style protocol URI.
-- Direct exe launch as fallback: if Steam isn't running, accept a path
-  to `Grounded2-WinGRTS-Shipping.exe`? Bypasses Steam overlay /
-  achievements.
-
-Proposed flow:
-
-- `inject.exe` reads `<inject.exe dir>/inject.json`:
-  ```json
-  {
-    "launch": {
-      "steam_app_id": 12345,
-      "fallback_exe": "",
-      "poll_interval_ms": 250,
-      "poll_timeout_sec": 60
-    }
-  }
-  ```
-- New behavior with no args:
-  1. If a target Grounded process is already running -> inject.
-  2. Otherwise launch via `steam://rungameid/<id>`. Fall back to
-     `fallback_exe` if Steam is unavailable.
-  3. Poll `CreateToolhelp32Snapshot` every `poll_interval_ms` until the
-     process appears or `poll_timeout_sec` elapses.
-  4. Once found, inject as before.
-- Add `--no-launch` to disable the launch step.
-- Existing positional DLL path arg still works.
-
-Note: keep JSON consistent with the DLL's `settings.json` (no TOML).
-
-## 2. Polish (lower priority)
-
-- Gate `AllocConsole` behind a Cargo feature (`console`, default off for
-  shipping). The file log is the durable record; the console window is
-  developer-only.
-- Replace the two `Mutex` locks in the ProcessEvent hot path with
-  atomics. Saves ~20-40 ns per dispatch. Strictly tidy-up; not
-  user-visible.
+The two `Mutex` locks in `hook::ProcessEventHook::trampoline` and
+`inv_hook::on_event` are uncontended (game thread only) but cost ~20-40 ns
+per dispatch. Replace `REGISTRY: Mutex<Vec<&'static Entry>>` with an
+immutable `&'static [&'static Entry]` written once at the first install,
+and `in_synthetic_refresh: Mutex<bool>` with `AtomicBool` (or
+`thread_local!` since dispatch is single-threaded in practice). Saves a
+few ns per inventory event. Strictly tidy-up; not user-visible.
 
 ## Out of scope (kept for context)
 
@@ -73,6 +33,11 @@ Note: keep JSON consistent with the DLL's `settings.json` (no TOML).
   stay empty, no upward compaction).
 - Worker thread terminates after init -- no recurring overhead.
 - `inject.exe` writes its own log, exits without pausing.
+- `inject.exe` auto-launches the game via Steam (or fallback exe) when
+  it's not already running, then polls until the process appears, then
+  injects. `--no-launch` to opt out. Configured via `inject.json` next
+  to inject.exe (`inject.example.json` is the schema). Default Steam
+  app id: `3104110`.
 - `settings.json` next to the DLL controls slot count + thirst/hunger
   multipliers. `better-backpack/settings.example.json` is the schema.
   Defaults: slot_count=100, thirst/hunger multipliers=0.5.
@@ -83,4 +48,7 @@ Note: keep JSON consistent with the DLL's `settings.json` (no TOML).
 - DLL log file moved from `%TEMP%\BetterBackpack.log` to
   `<DLL_dir>\better_backpack.log`. Both binaries now log next to
   themselves.
+- `AllocConsole` gated behind a Cargo `console` feature. Default-on so
+  development still gets the live window; `cargo build --release
+  --no-default-features` produces a console-free shipping build.
 - `BUILDING.md` + `PERFORMANCE.md` at repo root.

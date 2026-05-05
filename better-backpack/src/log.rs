@@ -8,12 +8,16 @@ use std::fs::File;
 use std::io::Write;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
+#[cfg(feature = "console")]
 use std::ptr;
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use windows_sys::Win32::Foundation::{HANDLE, HMODULE};
+use windows_sys::Win32::Foundation::HMODULE;
+#[cfg(feature = "console")]
+use windows_sys::Win32::Foundation::HANDLE;
+#[cfg(feature = "console")]
 use windows_sys::Win32::System::Console::{
     AllocConsole, GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleTitleW, WriteConsoleA,
 };
@@ -23,6 +27,7 @@ use crate::DLL_HMODULE;
 
 struct Sink {
     file: Mutex<Option<File>>,
+    #[cfg(feature = "console")]
     console: HANDLE,
 }
 
@@ -35,6 +40,7 @@ pub fn init() {
     if SINK.get().is_some() {
         return;
     }
+    #[cfg(feature = "console")]
     let console = unsafe {
         AllocConsole();
         let title: Vec<u16> = "Better Backpack\0".encode_utf16().collect();
@@ -45,6 +51,7 @@ pub fn init() {
     let file = File::create(&path).ok();
     let _ = SINK.set(Sink {
         file: Mutex::new(file),
+        #[cfg(feature = "console")]
         console,
     });
     log(format_args!("log file: {}", path.display()));
@@ -77,6 +84,7 @@ pub fn dll_dir() -> Option<PathBuf> {
 pub fn log(args: std::fmt::Arguments<'_>) {
     let Some(sink) = SINK.get() else { return };
     let line = format_line(args);
+    #[cfg(feature = "console")]
     if !sink.console.is_null() {
         let mut written: u32 = 0;
         unsafe {

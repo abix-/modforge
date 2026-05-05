@@ -96,6 +96,15 @@ grounded2mods/
   thirst/hunger multipliers. Defaults baked in: slot_count=100,
   thirst_multiplier=0.5, hunger_multiplier=0.5. So out of the box
   (no settings file): 100-slot backpack + half-rate hunger and thirst.
+- `<inject.exe dir>/inject.json` (optional). Schema in
+  `injector/inject.example.json`. Drives auto-launch behavior:
+  Steam app id (default 3104110), optional fallback exe path, poll
+  interval and timeout for waiting on the game process.
+
+## Cargo features (better-backpack)
+- `console` (default on): spawns the "Better Backpack" console window
+  via AllocConsole. Build with `--no-default-features` for a
+  console-free shipping DLL. File log unaffected.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was

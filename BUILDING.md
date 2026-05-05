@@ -47,8 +47,16 @@ process, Windows holds the file lock until the process exits.
    Xbox Game Pass is `Grounded2-WinGDK-Shipping.exe`. Either is auto
    detected.
 2. Load a save and let the world finish loading.
-3. From `target/x86_64-pc-windows-msvc/release/`, run `inject.exe`. With
-   no arguments it picks `better_backpack.dll` next to itself.
+3. From `target/x86_64-pc-windows-msvc/release/`, run `inject.exe`.
+   With no arguments it:
+   - Picks `better_backpack.dll` next to itself as the DLL to inject.
+   - If Grounded is already running, injects into that process.
+   - Otherwise launches Grounded via Steam
+     (`steam://rungameid/<steam_app_id>`), polls until the process
+     appears, then injects. Configure via `inject.json` next to
+     inject.exe (see `injector/inject.example.json`).
+   - Pass `--no-launch` to disable auto-launch and require the game to
+     already be running.
 
 What you should see:
 
@@ -137,6 +145,16 @@ Compile-time constants:
 - `inv_hook.rs` -- viewport size (4 rows x 10 cols), scroll step (one row).
 - `survival.rs` -- offsets for `USurvivalComponent` hunger/thirst
   fields.
+
+## Cargo features
+
+- `console` (default on) -- the DLL spawns a "Better Backpack" console
+  window via `AllocConsole` for live log output. Useful for development.
+  Build a console-free shipping DLL with:
+  ```
+  cargo build --release --no-default-features
+  ```
+  The file log at `<DLL_dir>\better_backpack.log` is unaffected.
 
 Trace logging in `inv_hook.rs` is gated by `cfg!(debug_assertions)`. To
 enable it, build without `--release`:
