@@ -764,6 +764,59 @@ linear `RowMap` walk over an active player's StatusEffects array:
   TMap walk required) for read; only walk the map directly when we
   need to inject a new row.
 
+#### Concrete spike plan (status-effect write+apply)
+
+Five steps. Step 1 gates everything; cheap (~25 LOC) and proves the
+read path. Steps 2-4 are the proof-of-concept; Step 5 is the
+catalog migration.
+
+1. **Fix the linear `RowMap` walk**
+   (`better-backpack/src/rpg/fall_hook.rs::lookup_data_table_row`).
+   `TMap<K,V>` is backed by `TSet<TPair<K,V>>` whose element is
+   `TSetElement<TPair> { pair: 16, HashNextId: i32, HashIndex: i32 }`
+   = 24 bytes, stored in a `TSparseArray` with a separate
+   `TBitArray AllocationFlags`. Current walk uses stride 16 and
+   ignores the bitarray, which is why it finds 4/13 rows. Fix:
+   stride = 24, consult the bitarray (or cross-check against
+   `GetDataTableRowFromName` once during validation, then trust
+   the walk).
+   - Validation: re-run `probe_player_status_effects`, expect
+     13/13 rows to resolve with `Type=N Value=F.FFF`, no
+     `<row-not-found>`.
+2. **Mutate one row's `Value`.** Linear walk now returns a *live*
+   `uint8*` into the engine's RowMap. Test against
+   `MaxHealthSmall` (currently `Type=5 Value=10.000`): write 100.0
+   to `+0x34` on slot activation.
+3. **Apply via `CreateAndAddEffect`.** Resolve
+   `UStatusEffectComponent::CreateAndAddEffect` UFunction (player's
+   component is at `+0x1378`). Build
+   `FDataTableRowHandle { DataTable*, FName }` (16 bytes), call via
+   `process_event`.
+4. **Witness.** Existing `probe_status_effect_values` already logs
+   `MaxHealth(5)=30.000/add` on every fall (sum of vanilla
+   `PlayerUpgradeHealth1=20` + `MaxHealthSmall=10`). After Step 2
+   mutates the small row to 100, the line should jump to
+   `MaxHealth(5)=120.000/add`. That single observation proves the
+   full pipeline.
+5. **Generalize.** Add
+   `SkillEffect::PlayerStatusEffect { stat_type, max_value, format }`
+   in `skills.rs`. `apply.rs` gains an arm: pick row per stat (cache
+   once), mutate `Value` to `skill_bonus(max_value, level)`,
+   AddEffect. Migrate in this order:
+   - `fall_resistance` -> Type=14 (FallDamage), mul stat. Velocity-
+     stomp in `fall_hook.rs` stays as fallback until in-game
+     validated, then deletes.
+   - `impact_resistance` -> Type=30 (DamageReductionMultiplier) or
+     reuse Type=14. Replaces the binary
+     `RequiredDamageTypeFlags = 0xFFFFFFFF` hack with a real curve.
+   - `lifesteal` -> Type=38, removes the `Runtime` no-op.
+   - Remaining catalog (armor, attack damage, future crit, thorns,
+     max health) follow the same shape, ~5 LOC each.
+
+Touched files for the spike (Steps 1-4): `fall_hook.rs` (~80),
+`apply.rs` (~30), `skills.rs` (~5 for a throwaway `maxhp_test`
+skill or just hardcoded behind `impact_resistance > 0`).
+
 3. **Build the row handle** as
    `FDataTableRowHandle { DataTable* = ourTable, FName = ourRowName }`
    (16 bytes). Note `UStatusEffect` stores the
