@@ -1,49 +1,52 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Build, package, and optionally install the Better Backpack
-    winhttp.dll proxy.
+    Build, package, and optionally install the Better Backpack mod
+    as a UE4SS C++ mod.
 
 .DESCRIPTION
-    Default behavior (-Package): builds the release cdylib and zips it
-    up at `dist\better-backpack-<version>.zip` for upload to Nexus and
-    install via Vortex. The zip also carries an INSTALL.txt and a
-    setup.ps1 that the user (or Vortex's run-after-deploy hook) can
-    execute to drop a copy of System32\winhttp.dll into the game
-    folder as winhttp_orig.dll, which is required for the proxy's
-    forwarders to resolve.
+    Default behavior (-Package): builds the release cdylib and zips
+    a UE4SS-mod-folder-shaped archive at
+    `dist\better-backpack-<version>.zip` for upload to Nexus and
+    install via Vortex. Zip layout (mirrors the path Vortex deploys
+    to inside the game install):
 
-    -Install does a direct local install to the game folder instead of
-    building a zip. Useful for iterating on the proxy without going
+        Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
+            dlls/main.dll
+            settings.json
+
+    Vortex's UE4SS extension knows about that path and merges the
+    mods.txt registration entry on deploy. Manual install: extract
+    over the game's root and add `BetterBackpack : 1` to mods.txt.
+
+    -Install does a direct local install to the game folder instead
+    of building a zip. Useful for iterating on the mod without going
     through Vortex.
 
-    -Uninstall removes the proxy from the local game install.
+    -Uninstall removes the mod from the local game install.
 
 .PARAMETER Package
     Build a Vortex-installable zip in `dist\` (default mode).
 
 .PARAMETER Install
-    Skip packaging; deploy directly into the local game install.
+    Skip packaging; copy the mod folder directly into the local game
+    install's UE4SS Mods directory.
 
 .PARAMETER Uninstall
-    Remove the proxy from the local game install.
+    Remove the mod folder from the local game install. Leaves
+    settings.json.
 
 .PARAMETER GamePath
-    Override game folder auto-detection. Path to
-    `<game>\Augusta\Binaries\Win64`. Used by -Install and -Uninstall.
+    Override game install auto-detection. Path to the game's root
+    (the folder containing `Augusta\Binaries\WinGRTS\`).
 
 .PARAMETER SkipBuild
     Skip the cargo build step. Use when iterating on this script
     against an already-built DLL.
 
-.PARAMETER PurgeOrig
-    With -Uninstall, also remove winhttp_orig.dll. Default leaves it
-    so a future reinstall doesn't need the System32 copy step again.
-
 .EXAMPLE
     .\scripts\deploy.ps1
-    Build and produce `dist\better-backpack-<version>.zip` ready to
-    upload to Nexus.
+    Build and produce `dist\better-backpack-<version>.zip`.
 
 .EXAMPLE
     .\scripts\deploy.ps1 -Install
@@ -51,7 +54,7 @@
 
 .EXAMPLE
     .\scripts\deploy.ps1 -Uninstall
-    Remove the proxy from the local Grounded 2 install.
+    Remove the mod from the local Grounded 2 install.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Package')]
@@ -66,15 +69,19 @@ param(
     [switch]$Uninstall,
 
     [string]$GamePath,
-    [switch]$SkipBuild,
-    [switch]$PurgeOrig
+    [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$BuiltDll = Join-Path $RepoRoot 'target\x86_64-pc-windows-msvc\release\winhttp.dll'
+$BuiltDll = Join-Path $RepoRoot 'target\x86_64-pc-windows-msvc\release\main.dll'
 $ExampleSettings = Join-Path $RepoRoot 'better-backpack\settings.example.json'
 $DistDir = Join-Path $RepoRoot 'dist'
+
+# Inside the zip / inside the game install, the mod folder is named
+# this and lives at the path below relative to the game root.
+$ModFolderName = 'BetterBackpack'
+$RelModParent = 'Augusta\Binaries\WinGRTS\ue4ss\Mods'
 
 function Get-ModVersion {
     $cargoToml = Join-Path $RepoRoot 'Cargo.toml'
@@ -85,7 +92,7 @@ function Get-ModVersion {
     return '0.0.0'
 }
 
-function Find-GroundedPath {
+function Find-GroundedRoot {
     $steamRoot = $null
     foreach ($key in @(
         'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
@@ -98,7 +105,6 @@ function Find-GroundedPath {
     if (-not $steamRoot) {
         throw "Steam install not found in registry. Pass -GamePath explicitly."
     }
-
     $vdf = Join-Path $steamRoot 'steamapps\libraryfolders.vdf'
     if (-not (Test-Path $vdf)) {
         throw "Steam library config not found at $vdf. Pass -GamePath explicitly."
@@ -107,20 +113,45 @@ function Find-GroundedPath {
     $libraries = [regex]::Matches($vdfText, '"path"\s*"([^"]+)"') |
         ForEach-Object { $_.Groups[1].Value -replace '\\\\', '\' }
     foreach ($lib in $libraries) {
-        $candidate = Join-Path $lib 'steamapps\common\Grounded 2\Augusta\Binaries\Win64'
-        if (Test-Path $candidate) { return $candidate }
+        $candidate = Join-Path $lib 'steamapps\common\Grounded 2'
+        if (Test-Path (Join-Path $candidate 'Augusta\Binaries\WinGRTS')) {
+            return $candidate
+        }
     }
     throw "Grounded 2 install not found in any Steam library. Pass -GamePath explicitly."
 }
 
-function Resolve-GamePath {
+function Resolve-GameRoot {
     if ($GamePath) {
         if (-not (Test-Path $GamePath)) {
             throw "Provided -GamePath does not exist: $GamePath"
         }
         return (Resolve-Path $GamePath).Path
     }
-    return Find-GroundedPath
+    return Find-GroundedRoot
+}
+
+function Test-UE4SSInstalled {
+    param([string]$GameRoot)
+    $ue4ssDll = Join-Path $GameRoot 'Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll'
+    return Test-Path $ue4ssDll
+}
+
+function Update-ModsTxt {
+    param([string]$ModsDir)
+    $modsTxt = Join-Path $ModsDir 'mods.txt'
+    if (-not (Test-Path $modsTxt)) {
+        Write-Host "    mods.txt not found at $modsTxt; skipping registration" -ForegroundColor DarkYellow
+        return
+    }
+    $content = Get-Content $modsTxt
+    $entry = "$ModFolderName : 1"
+    if ($content -match "^\s*$ModFolderName\s*:") {
+        Write-Host "    mods.txt already registers $ModFolderName" -ForegroundColor DarkGray
+        return
+    }
+    Write-Host "    appending '$entry' to mods.txt"
+    Add-Content -Path $modsTxt -Value $entry
 }
 
 function Invoke-Build {
@@ -134,47 +165,8 @@ function Invoke-Build {
         Pop-Location
     }
     if (-not (Test-Path $BuiltDll)) {
-        throw "winhttp.dll not produced at $BuiltDll"
+        throw "main.dll not produced at $BuiltDll"
     }
-}
-
-function Copy-OrigWinhttp {
-    param([string]$Dest)
-
-    $orig = Join-Path $Dest 'winhttp_orig.dll'
-    if (Test-Path $orig) {
-        Write-Host "    winhttp_orig.dll already in place, skipping" -ForegroundColor DarkGray
-        return
-    }
-    $system = Join-Path $env:WINDIR 'System32\winhttp.dll'
-    Write-Host "    copying $system -> $orig"
-    Copy-Item -Path $system -Destination $orig -Force
-}
-
-function Copy-DefaultSettings {
-    param([string]$Dest)
-
-    $settings = Join-Path $Dest 'settings.json'
-    if (Test-Path $settings) {
-        Write-Host "    settings.json already present, leaving user edits in place" -ForegroundColor DarkGray
-        return
-    }
-    if (-not (Test-Path $ExampleSettings)) {
-        Write-Host "    no example settings file at $ExampleSettings, skipping" -ForegroundColor DarkYellow
-        return
-    }
-    Write-Host "    seeding default settings.json from example"
-    Copy-Item -Path $ExampleSettings -Destination $settings -Force
-}
-
-function Get-StagingContent {
-    # Files that go into the zip / direct-install. Returns
-    # @{ Source=<abs path>; Name=<filename in zip / dest> } pairs.
-    $items = @(
-        @{ Source = $BuiltDll;        Name = 'winhttp.dll' },
-        @{ Source = $ExampleSettings; Name = 'settings.json' }
-    )
-    return $items
 }
 
 function Write-PackageReadme {
@@ -185,31 +177,40 @@ function Write-PackageReadme {
 Better Backpack v$version
 =========================
 
-Grounded 2 runtime mod. Patches the player's main backpack capacity
-and the per-second hunger / thirst drain rates. Configurable at
-runtime via settings.json next to the DLL.
+Grounded 2 mod loaded by UE4SS. Patches the player's main backpack
+capacity, hunger / thirst drain rates, and (planned) other player /
+combat / movement tweaks. Configurable at runtime via settings.json
+next to the DLL.
+
+Prerequisite
+------------
+You need UE4SS for Grounded 2 installed first. Get it from Nexus
+(https://www.nexusmods.com/grounded2/mods/52). Easiest path: install
+via Vortex.
 
 Install (Vortex)
 ----------------
-1. Drop this archive into Vortex's mod list and deploy.
-2. Run setup.ps1 from the deployed folder ONCE. It copies
-   C:\Windows\System32\winhttp.dll alongside as winhttp_orig.dll so
-   our proxy's WinHTTP forwarders resolve. (Vortex cannot do this
-   step itself because it never touches system files.)
-3. Launch Grounded 2 normally.
+1. Drop this archive into Vortex's mod list and deploy. Vortex's
+   UE4SS extension will:
+   - Copy BetterBackpack/ into the game's UE4SS Mods directory.
+   - Add 'BetterBackpack : 1' to mods.txt.
+2. Launch Grounded 2.
 
 Install (manual)
 ----------------
-1. Extract this archive into:
-       <Grounded 2>\Augusta\Binaries\Win64\
-   You should now have winhttp.dll and settings.json in that folder.
-2. Right-click setup.ps1 -> Run with PowerShell.
-3. Launch Grounded 2 normally.
+1. Extract this archive over the game's root, so the contents land
+   at:
+       <Grounded 2>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\
+2. Open
+       <Grounded 2>\Augusta\Binaries\WinGRTS\ue4ss\Mods\mods.txt
+   and add a new line:
+       BetterBackpack : 1
+3. Launch Grounded 2.
 
 Uninstall
 ---------
-Delete winhttp.dll from <Grounded 2>\Augusta\Binaries\Win64\.
-You can leave winhttp_orig.dll behind; it is harmless.
+Delete the BetterBackpack folder. Optional: remove its line from
+mods.txt.
 
 Defaults (with no settings.json edits)
 --------------------------------------
@@ -219,8 +220,8 @@ Defaults (with no settings.json edits)
 - Hunger drain: 50% of vanilla.
 - Thirst drain: 50% of vanilla.
 
-Edit settings.json to change. See FEATURES.md in the source repo for
-full documentation.
+Edit BetterBackpack/settings.json to change. See FEATURES.md in the
+source repo for full documentation.
 
 Source / issues
 ---------------
@@ -229,31 +230,21 @@ https://github.com/abix-/Grounded2Mods
     Set-Content -Path $Path -Value $body -Encoding utf8
 }
 
-function Write-PackageSetup {
-    param([string]$Path)
+function Build-StageTree {
+    param([string]$StageRoot)
 
-    $body = @'
-# Better Backpack post-install setup. Run once after Vortex deploys
-# the mod. Copies C:\Windows\System32\winhttp.dll alongside as
-# winhttp_orig.dll so our proxy's WinHTTP forwarders resolve.
+    # Stage layout matches the path Vortex / manual install expects
+    # inside the game folder.
+    $modRoot = Join-Path $StageRoot $RelModParent | Join-Path -ChildPath $ModFolderName
+    $dllsDir = Join-Path $modRoot 'dlls'
+    New-Item -ItemType Directory -Path $dllsDir -Force | Out-Null
+    Copy-Item -Path $BuiltDll -Destination (Join-Path $dllsDir 'main.dll') -Force
+    Write-Host "    + $ModFolderName/dlls/main.dll"
 
-$ErrorActionPreference = 'Stop'
-$here = $PSScriptRoot
-$dest = Join-Path $here 'winhttp_orig.dll'
-$src  = Join-Path $env:WINDIR 'System32\winhttp.dll'
+    Copy-Item -Path $ExampleSettings -Destination (Join-Path $modRoot 'settings.json') -Force
+    Write-Host "    + $ModFolderName/settings.json"
 
-if (Test-Path $dest) {
-    Write-Host "winhttp_orig.dll already exists at $dest -- nothing to do."
-    return
-}
-if (-not (Test-Path $src)) {
-    throw "System winhttp.dll not found at $src. Are you on Windows?"
-}
-Write-Host "copying $src -> $dest"
-Copy-Item -Path $src -Destination $dest -Force
-Write-Host "done. Launch Grounded 2 to activate the mod."
-'@
-    Set-Content -Path $Path -Value $body -Encoding utf8
+    return $modRoot
 }
 
 function Invoke-Package {
@@ -268,16 +259,10 @@ function Invoke-Package {
     }
     New-Item -ItemType Directory -Path $stageDir | Out-Null
 
-    Write-Host "==> staging files in $stageDir" -ForegroundColor Cyan
-    foreach ($item in Get-StagingContent) {
-        $dst = Join-Path $stageDir $item.Name
-        Copy-Item -Path $item.Source -Destination $dst -Force
-        Write-Host "    + $($item.Name)"
-    }
-    Write-PackageReadme  -Path (Join-Path $stageDir 'README.txt')
-    Write-PackageSetup   -Path (Join-Path $stageDir 'setup.ps1')
-    Write-Host "    + README.txt"
-    Write-Host "    + setup.ps1"
+    Write-Host "==> staging $ModFolderName at $stageDir" -ForegroundColor Cyan
+    $modRoot = Build-StageTree -StageRoot $stageDir
+    Write-PackageReadme -Path (Join-Path $modRoot 'README.txt')
+    Write-Host "    + $ModFolderName/README.txt"
 
     $zipPath = Join-Path $DistDir "better-backpack-v$version.zip"
     if (Test-Path $zipPath) {
@@ -294,47 +279,61 @@ function Invoke-Package {
 
 function Invoke-Install {
     Invoke-Build
-    $dest = Resolve-GamePath
-    Write-Host "==> deploying to: $dest" -ForegroundColor Cyan
-
-    foreach ($item in Get-StagingContent) {
-        $dst = Join-Path $dest $item.Name
-        if ($item.Name -eq 'settings.json' -and (Test-Path $dst)) {
-            Write-Host "    settings.json already present, leaving user edits" -ForegroundColor DarkGray
-            continue
-        }
-        Write-Host "    copying $($item.Name)"
-        Copy-Item -Path $item.Source -Destination $dst -Force
+    $gameRoot = Resolve-GameRoot
+    if (-not (Test-UE4SSInstalled $gameRoot)) {
+        throw @"
+UE4SS is not installed at $gameRoot\Augusta\Binaries\WinGRTS\ue4ss\
+Install it first from https://www.nexusmods.com/grounded2/mods/52
+(easiest via Vortex), then re-run.
+"@
     }
-    Copy-OrigWinhttp -Dest $dest
 
-    Write-Host "==> done" -ForegroundColor Green
-    Write-Host "Files in $dest :" -ForegroundColor DarkGray
-    Get-ChildItem -Path $dest -Filter 'winhttp*.dll' | ForEach-Object { Write-Host "    $($_.Name)" }
-    if (Test-Path (Join-Path $dest 'settings.json')) {
-        Write-Host "    settings.json"
+    $modsDir = Join-Path $gameRoot $RelModParent
+    $modDir = Join-Path $modsDir $ModFolderName
+    Write-Host "==> deploying to $modDir" -ForegroundColor Cyan
+
+    $dllsDir = Join-Path $modDir 'dlls'
+    New-Item -ItemType Directory -Path $dllsDir -Force | Out-Null
+    Copy-Item -Path $BuiltDll -Destination (Join-Path $dllsDir 'main.dll') -Force
+    Write-Host "    copied main.dll"
+
+    $settingsDest = Join-Path $modDir 'settings.json'
+    if (Test-Path $settingsDest) {
+        Write-Host "    settings.json already present, leaving user edits" -ForegroundColor DarkGray
+    } else {
+        Copy-Item -Path $ExampleSettings -Destination $settingsDest -Force
+        Write-Host "    seeded settings.json"
     }
+
+    Update-ModsTxt -ModsDir $modsDir
+
+    Write-Host "==> done. Launch Grounded 2 to load the mod." -ForegroundColor Green
 }
 
 function Invoke-Uninstall {
-    $dest = Resolve-GamePath
-    Write-Host "==> uninstalling from: $dest" -ForegroundColor Cyan
+    $gameRoot = Resolve-GameRoot
+    $modsDir = Join-Path $gameRoot $RelModParent
+    $modDir = Join-Path $modsDir $ModFolderName
 
-    $proxy = Join-Path $dest 'winhttp.dll'
-    if (Test-Path $proxy) {
-        Write-Host "    removing winhttp.dll"
-        Remove-Item -Path $proxy -Force
-    } else {
-        Write-Host "    winhttp.dll not present" -ForegroundColor DarkGray
+    if (-not (Test-Path $modDir)) {
+        Write-Host "==> no $ModFolderName folder at $modDir; nothing to remove" -ForegroundColor DarkGray
+        return
     }
 
-    if ($PurgeOrig) {
-        $orig = Join-Path $dest 'winhttp_orig.dll'
-        if (Test-Path $orig) {
-            Write-Host "    removing winhttp_orig.dll (-PurgeOrig)"
-            Remove-Item -Path $orig -Force
+    Write-Host "==> removing $modDir" -ForegroundColor Cyan
+    Remove-Item -Recurse -Force $modDir
+
+    # Strip the mods.txt entry too. Leaves other mods alone.
+    $modsTxt = Join-Path $modsDir 'mods.txt'
+    if (Test-Path $modsTxt) {
+        $lines = Get-Content $modsTxt
+        $filtered = $lines | Where-Object { $_ -notmatch "^\s*$ModFolderName\s*:" }
+        if ($filtered.Count -ne $lines.Count) {
+            Write-Host "    removing $ModFolderName from mods.txt"
+            Set-Content -Path $modsTxt -Value $filtered
         }
     }
+
     Write-Host "==> done" -ForegroundColor Green
 }
 
