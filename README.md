@@ -121,8 +121,30 @@ grounded2mods/
 
 ## Credits
 
-- [UE4SS-RE / RE-UE4SS](https://github.com/UE4SS-RE/RE-UE4SS)
-- [Encryqed / Dumper-7](https://github.com/Encryqed/Dumper-7)
-- [x0reaxeax / Grounded2Minimal](https://github.com/x0reaxeax/Grounded2Minimal)
-- [RLGingerBiscuit / G2Utils](https://github.com/RLGingerBiscuit/G2Utils)
-- [Factorio RPG System](https://mods.factorio.com/mod/RPGsystem) for the design inspiration
+- **UE4SS-RE** for [RE-UE4SS](https://github.com/UE4SS-RE/RE-UE4SS),
+  the CPPMod host we now target for loading, UI integration, and
+  standard Grounded 2 mod distribution.
+- **x0reaxeax** for [Grounded2Minimal](https://github.com/x0reaxeax/Grounded2Minimal)
+  (DLL-injection pattern) and [G2Dumper](https://github.com/x0reaxeax/G2Dumper).
+- **Encryqed** for [Dumper-7](https://github.com/Encryqed/Dumper-7),
+  the SDK generator that produced our reference headers.
+- **RLGingerBiscuit** for [G2Utils](https://github.com/RLGingerBiscuit/G2Utils),
+  which corroborated class names and inventory component bindings.
+- **Trumank** for [retoc](https://github.com/trumank/retoc) and
+  [repak](https://github.com/trumank/repak), used during early
+  pak-prototype work.
+- **4sval** for [FModel](https://github.com/4sval/FModel), used for
+  cooked asset inspection.
+- **Caites** for [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
+  on Nexus, whose feature list is the reference point in
+  [docs/features.md](docs/features.md).
+- The author of [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37),
+  whose mod's breakage motivated the rewrite this repo represents.
+- The author of [RPG System](https://mods.factorio.com/mod/RPGsystem)
+  for Factorio, the headline RPG-style level-up mod that inspired
+  the direction this project is now taking. Our XP / level / skill /
+  skill-point vocabulary is borrowed directly from theirs (and the
+  broader Diablo-like RPG mod tradition on the Factorio mod portal).
+- [Grounded 2](https://grounded2.obsidian.net/) by Obsidian
+  Entertainment. We modify only what the official game ships under
+  fair-use modding norms; no game assets are redistributed.
