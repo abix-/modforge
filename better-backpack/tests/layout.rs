@@ -4,7 +4,7 @@
 // own #[repr(C)] mirrors -- not the live game layout. The live layout is
 // validated implicitly the first time we read fields successfully.
 
-use better_backpack::sdk::{FName, FString, TArray};
+use winhttp::sdk::{FName, FString, TArray};
 use std::mem::size_of;
 
 #[test]
