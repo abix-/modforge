@@ -4,7 +4,7 @@
 > skills, kill detection, persistence, the ImGui tab, and how the
 > apply step writes skill values into the running game.
 
-For the project's open work see [`../TODO.md`](../TODO.md). For the
+For the project's open work see [`todo.md`](todo.md). For the
 distribution / loader story see [`ue4ss-port.md`](ue4ss-port.md).
 For build instructions see [`building.md`](building.md).
 
@@ -158,7 +158,7 @@ catches nothing. The multicast path was the right answer; see
 Some legitimate player kills resolve `InstigatorController` to
 `/Script/CoreUObject (Package)` (object index 0, the
 default-constructed FWeakObjectPtr). Player loses XP for those
-kills. Tracked in [`../TODO.md`](../TODO.md). Investigation plan:
+kills. Tracked in [`todo.md`](todo.md). Investigation plan:
 hook `ApplyDamageFromInfo` upstream and cache the killer per
 HealthComponent before the multicast fires.
 
@@ -218,7 +218,7 @@ in `rpg/apply.rs`. Two public entry points:
 CDO writes propagate to newly-spawned instances. Effect on the
 *current* player session for combat / movement skills requires a
 save reload; live-instance writes are a TODO (see
-[`../TODO.md`](../TODO.md)).
+[`todo.md`](todo.md)).
 
 ## ImGui tab
 
@@ -263,7 +263,7 @@ on top of the user's base.
 
 ## What's next
 
-Open work tracked in [`../TODO.md`](../TODO.md). Highlights:
+Open work tracked in [`todo.md`](todo.md). Highlights:
 
 - Live-instance writes for combat / movement skills (currently
   CDO-only, requires save reload to take effect on the active

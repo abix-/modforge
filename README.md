@@ -106,8 +106,7 @@ grounded2mods/
   docs/                   Subject-authority docs
   scripts/deploy.ps1      Build/package/install helper for UE4SS layout
   better-backpack-cpp/    Original C++ implementation kept for reference
-  TODO.md                 Canonical open-work list
-  docs/todo.md            Docs entry point for open work
+  docs/todo.md            Canonical open-work list
 ```
 
 ## Notes

@@ -2,7 +2,7 @@
 
 > **Authoritative on:** chronological history of milestones,
 > investigations, and design pivots. Things that are DONE.
-> For what's next see [`../TODO.md`](../TODO.md). For per-subject
+> For what's next see [`todo.md`](todo.md). For per-subject
 > deep dives see the other files in this directory.
 
 Newest first.

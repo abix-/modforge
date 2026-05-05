@@ -6,7 +6,7 @@ RPG / level-up mod for Grounded 2. Loaded by UE4SS as a CPPMod
 truth; apply step writes skill values to game CDOs.
 
 For docs see `docs/` (each file is authority on one subject).
-Open work in `TODO.md`. History in `docs/changelog.md`.
+Open work in `docs/todo.md`. History in `docs/changelog.md`.
 
 ## Layout
 
@@ -199,8 +199,8 @@ slots during init -> jumped past our vtable -> crash.
   UE4SS.lib doesn't export this symbol. Using local inline body.
 
 **Next:**
-- TODO.md item 1 step 8 (archive winhttp proxy material).
-- TODO.md item 2 (project rename) and items 3-7 (new feature
+- docs/todo.md item 1 step 8 (archive winhttp proxy material).
+- docs/todo.md item 2 (project rename) and items 3-7 (new feature
   multipliers).
 
 ## RPG pivot (2026-05-05)
@@ -208,7 +208,7 @@ slots during init -> jumped past our vtable -> crash.
 Direction shift: turning the mod into a Factorio-RPG-style
 level-up mod. Kills -> XP -> levels -> skills that drive the
 existing CDO patches. Research questions R1-R5 answered against
-the SDK at `C:\tools\work\sdk\`, see TODO.md section 0.
+the SDK at `C:\tools\work\sdk\`, see docs/todo.md section 0.
 
 ### Spike B: persistence working (2026-05-05)
 
