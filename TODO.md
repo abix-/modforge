@@ -57,7 +57,141 @@ The current winhttp.dll proxy work (already shipped, commits
 514e2b1..bfb3447) is **not wasted**: it's the tested fallback.
 Archive, not delete.
 
-## 2. (later) Port more Player Tweaks features
+## 2. Rename the project
+
+`better-backpack` no longer describes what we're building. The mod is
+turning into a sandbox-tweaks toolkit -- backpack capacity is one of
+many JSON-configurable knobs, alongside hunger/thirst rates,
+upcoming gear durability, and the queue of Player-Tweaks-style
+features below. Pick a name that reflects "everything is a slider".
+
+Candidates to consider (final pick TBD):
+- `g2-sandbox` -- implies the configurable, save-the-game-yourself feel.
+- `g2-tweaks` -- accurate, generic.
+- `grounded2-tweaks` -- explicit about the game.
+- `bigger-better` / `bigger-better-grounded` -- callback to the
+  original Bigger Backpack lineage.
+- `groundwork` -- pun on Grounded.
+
+When the rename happens, update:
+- Repo name (rename on GitHub, update remote in local clones).
+- Crate package name (`Cargo.toml` -> `[package] name`).
+- Workspace member dir (`better-backpack/` -> new name).
+- Settings file is fine to keep as `settings.json` (next to the DLL).
+- Branding strings inside the DLL (`ModName`, console title, log
+  header).
+- All docs (README, BUILDING, FEATURES, PERFORMANCE, TODO,
+  UE4SS_PORT_PLAN, project_state).
+
+## 3. Gear durability tweak
+
+User-facing: a multiplier on how fast equipped gear takes damage from
+use. Same shape as the existing thirst / hunger multipliers. Default
+0.5 means gear lasts twice as long; 0.0 means gear never breaks.
+
+Lives in `settings.json`:
+
+```json
+{
+  "survival": {
+    "gear_durability_multiplier": 0.5
+  }
+}
+```
+
+Implementation outline:
+
+- Find the relevant CDO field. Search Dumper-7 SDK for "Durability",
+  "DurabilityRate", "DurabilityLoss", "WearRate" or similar floats on
+  weapon / tool / armor item classes. Likely one of:
+  - `UItemComponent` or `UEquipableComponent` with a per-second wear
+    rate
+  - A multiplier on attack/use that decrements item durability
+  - Something in a survival or crafting subsystem
+- If the field is a single float on a base class, patch it the same
+  way `survival.rs` patches `ThirstSettings.AdjustmentPerSecond`.
+- If it's a per-item-type table (each weapon defining its own rate),
+  walk every CDO that has the field and apply the multiplier.
+- Add a `gear.rs` module mirroring `survival.rs`. Plumb the new
+  multiplier through `settings.rs`.
+
+Open question: does the game even use a per-second decay model, or
+is durability purely per-use (each swing, each block)? If per-use,
+we may need to scale the per-action damage instead of a per-second
+rate.
+
+## 4. Enemy health multiplier
+
+User-facing: scale the max health of every enemy in the world.
+Default 1.0 = vanilla; 0.5 = half-health (faster kills); 2.0 =
+twice as tanky (harder fights). Settings.json key:
+
+```json
+{
+  "combat": {
+    "enemy_health_multiplier": 1.0
+  }
+}
+```
+
+Implementation outline:
+
+- Find the health-component CDO field. Search Dumper-7 SDK for
+  "Health", "MaxHealth" floats on enemy character base classes.
+  Likely candidates:
+  - A `UHealthComponent` or `UDamageComponent` on
+    `BP_SurvivalNonPlayerCharacter` (or similar enemy base).
+  - `MaxHealth` directly on the character class.
+  - A health curve indexed by level.
+- Critical decision: scale `MaxHealth` *only*, or also scale
+  `CurrentHealth` to keep ratio? Game probably initializes
+  `CurrentHealth = MaxHealth` at spawn, so patching CDO's MaxHealth
+  is enough for newly-spawned enemies.
+- Player must be excluded. Use the same pattern as `patch.rs`'s
+  player-only filter: walk only CDOs whose full name does NOT
+  contain `BP_SurvivalPlayerCharacter`.
+- Add `combat.rs` module. Plumb through `settings.rs`.
+
+Open questions:
+- Does enemy health replicate from server? In multiplayer this only
+  takes effect for hosts (same caveat as hunger/thirst).
+- Does the game scale enemy health by player level / progression? If
+  so, our static multiplier interacts non-linearly. May need to
+  document or tune.
+
+## 5. Flying / gliding speed
+
+User-facing: scale how fast the player moves while gliding (the
+dandelion / leaf glider mechanic in Grounded 2). Default 1.0 = vanilla;
+higher = faster flight; lower = slower. Settings.json key:
+
+```json
+{
+  "movement": {
+    "glide_speed_multiplier": 1.0
+  }
+}
+```
+
+Implementation outline:
+
+- Caites' Player Tweaks already touches `MaxFlySpeed` (1600 -> 1900),
+  so the field exists and is reachable. Find it in the SDK:
+  - Search Dumper-7 dump for "FlySpeed", "MaxFlySpeed", "GlideSpeed",
+    "AirSpeed".
+  - Likely on a `UCharacterMovementComponent` subclass owned by the
+    player character, OR on a glider-specific component.
+- Apply multiplier the same way as the existing patches: walk player
+  CDOs, multiply the field, log before/after.
+- May need to also touch acceleration / velocity caps if the visible
+  effect is gated by something other than the raw speed.
+- Add a `movement.rs` module. Plumb through `settings.rs`.
+
+If the field is the same one Caites uses (sprint / walk / swim live
+on the same component), tackle this together with the other movement
+multipliers from #6 below to avoid scanning the same CDOs twice.
+
+## 6. (later) Port more Player Tweaks features
 
 See `FEATURES.md` for the comparison table and the prioritized list.
 Quick wins identified: stamina regen, sprint/walk/swim speed, hauling

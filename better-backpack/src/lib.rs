@@ -1,19 +1,26 @@
-// Better Backpack -- Grounded 2 runtime DLL mod.
+// Better Backpack -- Grounded 2 mod, loaded by UE4SS as a CPPMod.
 //
-// Main flow:
-//   1. DllMain spawns the worker thread and returns.
-//   2. Worker initializes log, detects platform, init's the SDK runtime.
-//   3. Waits for GObjects to populate.
-//   4. Patches the player UInventoryComponent CDO's DefaultMaxSize once.
-//      Future instance constructions (including those triggered by save
-//      loads) inherit from the patched CDO automatically -- no rescan
-//      loop needed. UE doesn't re-load CDOs from disk during a session,
-//      so the patch is sticky for the lifetime of the DLL.
-//   5. Lazily installs the WBP_InventoryInterface_C ProcessEvent hook
-//      with backoff retry until the inventory UI loads. Once installed,
-//      the worker exits.
+// UE4SS lifecycle for our DLL:
+//   1. UE4SS loads main.dll. DllMain captures our HMODULE so log + settings
+//      can resolve their on-disk path.
+//   2. UE4SS calls our exported start_mod() -> a C++ shim
+//      (cpp/shim.cpp) returns a heap-allocated BetterBackpackMod
+//      instance derived from RC::CppUserModBase.
+//   3. Once the engine is initialized, UE4SS calls
+//      BetterBackpackMod::on_unreal_init(), which calls
+//      better_backpack_start() defined here. That spins up the worker
+//      thread.
+//   4. The worker patches CDOs (backpack capacity, hunger/thirst
+//      rates), installs the WBP_InventoryInterface_C ProcessEvent
+//      hook with exponential backoff, and exits.
+//   5. On unload, UE4SS calls uninstall_mod which deletes the shim
+//      instance, which calls better_backpack_stop() (currently a
+//      no-op).
 //
 // Net runtime cost after init: zero. Worker thread terminates.
+// Earlier "wait_for_gobjects" loop is gone -- UE4SS calls
+// on_unreal_init after the engine is init'd, GObjects is already
+// populated.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -35,7 +42,7 @@ use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HMODULE};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
-use windows_sys::Win32::System::SystemServices::{DLL_PROCESS_ATTACH, DLL_PROCESS_DETACH};
+use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
 
 use crate::sdk::offsets::{Platform, STEAM, XBOX};
@@ -44,8 +51,6 @@ use crate::sdk::offsets::{Platform, STEAM, XBOX};
 type BOOL = i32;
 const TRUE: BOOL = 1;
 
-const INIT_RETRY_DELAY: Duration = Duration::from_millis(500);
-const INIT_MAX_RETRIES: u32 = 60;
 const HOOK_RETRY_BASE_DELAY_MS: u64 = 500;
 const HOOK_RETRY_MAX_DELAY_MS: u64 = 5_000;
 const HOOK_RETRY_TIMEOUT_SEC: u64 = 600; // 10 min hard cap before giving up
@@ -57,28 +62,38 @@ pub static DLL_HMODULE: AtomicUsize = AtomicUsize::new(0);
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub extern "system" fn DllMain(hmod: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
-    match reason {
-        DLL_PROCESS_ATTACH => unsafe {
-            DLL_HMODULE.store(hmod as usize, Ordering::Release);
-            let h = CreateThread(
-                ptr::null(),
-                0,
-                Some(worker_entry),
-                ptr::null(),
-                0,
-                ptr::null_mut(),
-            );
-            if !h.is_null() {
-                CloseHandle(h);
-            }
-        },
-        DLL_PROCESS_DETACH => {
-            // future: signal worker shutdown, RAII drop hooks
-        }
-        _ => {}
+    if reason == DLL_PROCESS_ATTACH {
+        DLL_HMODULE.store(hmod as usize, Ordering::Release);
     }
     TRUE
 }
+
+/// Entry point called from the C++ UE4SS shim's
+/// BetterBackpackMod::on_unreal_init.
+#[unsafe(no_mangle)]
+pub extern "C" fn better_backpack_start() {
+    // Spawn the worker thread off the engine init thread so any panic
+    // we might hit doesn't propagate up into UE4SS.
+    unsafe {
+        let h = CreateThread(
+            ptr::null(),
+            0,
+            Some(worker_entry),
+            ptr::null(),
+            0,
+            ptr::null_mut(),
+        );
+        if !h.is_null() {
+            CloseHandle(h);
+        }
+    }
+}
+
+/// Entry point called from the C++ UE4SS shim's
+/// BetterBackpackMod::~BetterBackpackMod. Currently a no-op -- our
+/// hooks are leaked intentionally so they survive worker thread exit.
+#[unsafe(no_mangle)]
+pub extern "C" fn better_backpack_stop() {}
 
 unsafe extern "system" fn worker_entry(_lpv: *mut c_void) -> u32 {
     let _ = std::panic::catch_unwind(|| unsafe { worker() });
@@ -122,13 +137,9 @@ unsafe fn worker() {
 
     let _rt = unsafe { sdk::init_runtime(image_base, offsets) };
 
-    if !wait_for_gobjects(image_base, offsets) {
-        bbp_log!(
-            "FATAL: GObjects never populated after {} retries; aborting",
-            INIT_MAX_RETRIES
-        );
-        return;
-    }
+    // UE4SS only calls our on_unreal_init after the engine has fully
+    // initialized, so GObjects is already populated. No retry loop
+    // needed.
 
     let initial = patch::run(settings.inventory.slot_count);
     bbp_log!(
@@ -192,18 +203,6 @@ fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHo
         thread::sleep(Duration::from_millis(delay_ms));
         delay_ms = (delay_ms * 2).min(HOOK_RETRY_MAX_DELAY_MS);
     }
-}
-
-fn wait_for_gobjects(image_base: usize, offsets: &sdk::PlatformOffsets) -> bool {
-    for _ in 0..INIT_MAX_RETRIES {
-        let view = unsafe { sdk::GObjectsView::from_image(image_base, offsets) };
-        if view.is_valid() && view.num() > 0 {
-            bbp_log!("GObjects populated, count = {}", view.num());
-            return true;
-        }
-        thread::sleep(INIT_RETRY_DELAY);
-    }
-    false
 }
 
 unsafe fn sdk_image_base() -> usize {

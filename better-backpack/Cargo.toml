@@ -7,16 +7,13 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# Output filename is `winhttp.dll` so this DLL doubles as a Windows DLL
-# proxy: dropped into the game's Binaries\Win64 folder, Windows
-# preferentially loads it over System32\winhttp.dll because of DLL
-# search-order rules. The exports listed in winhttp.def are forwarded
-# to `winhttp_orig.dll` (a copy of System32\winhttp.dll the user or
-# Vortex installer places alongside), so the game's network calls keep
-# working unchanged.
-#
-# The Rust crate name (`winhttp`) is what tests/dependents import.
-name = "winhttp"
+# Output is `main.dll`, dropped at
+# <game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\dlls\main.dll.
+# UE4SS loads CPPMods from that path. The cdylib carries our Rust mod
+# logic plus a tiny C++ shim (cpp/shim.cpp) that satisfies UE4SS's
+# RC::CppUserModBase ABI and forwards lifecycle calls to extern "C"
+# Rust entry points.
+name = "main"
 crate-type = ["cdylib", "rlib"]
 
 [features]
