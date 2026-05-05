@@ -359,11 +359,62 @@ patching them.
 
 ## Status Effect system (the canonical extension surface)
 
-Grounded 2 ships a full status-effect system as
-`UStatusEffectComponent` on `ASurvivalCharacter` at +0x1378
-(`Maine_classes.hpp:35888`). This is the *intended* extension point
-for any per-stat / per-damage-type modifier the game can natively
-support. Skills that should ultimately be backed by status effects:
+### Plain-language overview (read this first)
+
+In Grounded 2, **every gameplay modifier you've ever seen is a
+"status effect"** under the hood. You don't think of them that way
+because the UI calls them perks, gear bonuses, food buffs, sizzle,
+chill, etc. -- but the game wires all of those through one shared
+mechanism:
+
+- The **bonemeal helmet's +10 Max HP** -> a status effect with
+  `Type=MaxHealth, Value=10`.
+- A **"Crit Punch" perk's +5% crit chance** -> a status effect
+  with `Type=CriticalHitChance, Value=0.05`.
+- A **spicy meal's +10% damage for 60s** -> a status effect with
+  `Type=AttackDamage, Value=0.10, Duration=60`.
+- **Sizzle ticking heat damage** -> a status effect.
+- **A bee bringing 30% lifesteal for 10s** -> a status effect.
+
+The icons in the corner of your screen showing buffs / debuffs are
+status effects with `bShowInUI = true`. Most status effects (like
+gear bonuses) don't have a UI icon -- they are invisible passive
+modifiers stacked silently on the character.
+
+The character object that tracks "what's currently active on this
+player" is a `UStatusEffectComponent`. It is just a list of every
+effect currently stuck on you. Equip a helmet -> the helmet adds
+its effect to the list. Take it off -> the effect is removed.
+
+The game's data side -- the **catalog** of every status-effect
+template that exists in the game -- lives in one big spreadsheet
+(a "data table") at
+`/Game/Blueprints/Attacks/Table_StatusEffects`. Each row is one
+effect template, with columns like `Type`, `Value`, `Duration`,
+and so on. Every active effect on every character points at one
+of these rows.
+
+When the native game code asks "what's this player's current
+fall damage modifier?" it walks the player's status-effect list,
+sums up every entry whose `Type = FallDamage`, and applies that
+to the damage. Same for HP, attack damage, lifesteal, etc. The
+list is the public API; the engine consults it on every damage
+event.
+
+Our skills should plug into the same system. Setting `FallDamage`
+to `0.0` via a status effect is *exactly* the channel the engine
+uses to express "this player ignores fall damage" -- we do not
+need to fight the engine, we use its own designer-facing knob.
+
+The rest of this section is the technical detail of how to add a
+status effect to the player from our mod.
+
+### The component
+
+`UStatusEffectComponent` lives on `ASurvivalCharacter` at +0x1378
+(`Maine_classes.hpp:35888`). This is the *intended* extension
+point for any per-stat / per-damage-type modifier the game can
+natively support. Skills that should be backed by status effects:
 fall damage, impact damage, lifesteal, crit chance, crit damage,
 thorns, attack damage, stun resist -- nearly every entry in our
 catalog has a matching `EStatusEffectType` enum value.
@@ -378,6 +429,33 @@ they are binary or coarse, and they do not scale per-skill-level
 along the `sqrt(level/100)` curve the rest of the catalog uses.
 The status effect system is *built* for proportional, type-aware,
 stackable scaling -- the engine reads it on every damage event.
+
+### Data table 101 (skip if you know UE)
+
+A **data table** in Unreal Engine is a spreadsheet baked into
+the game. Each row is one record, each column is a property of
+that record. Game programmers use them when they have many
+similar things and don't want to hard-code each one separately.
+Examples elsewhere in Grounded 2:
+
+- Every weapon has a row in some weapons data table (columns:
+  damage, durability, swing speed).
+- Every creature has a row in a creatures data table (columns:
+  HP, drops, XP value).
+- **Every status effect has a row in `Table_StatusEffects`**
+  (columns: `Type`, `Value`, `Duration`, etc.).
+
+A row is identified by its **row name** (an `FName`) -- the same
+way a spreadsheet identifies a row by a primary key column.
+"Pointing at a row" is done with an `FDataTableRowHandle =
+{ DataTable*, FName }`. That is what `UStatusEffect.StatusEffectRowHandle`
+holds: a reference to which template in `Table_StatusEffects`
+this effect was instantiated from.
+
+To add a new status-effect template, we either (a) write a new
+row to `Table_StatusEffects`, or (b) repurpose an existing row.
+Then we hand the engine a row handle pointing at it and call
+`CreateAndAddEffect`. The engine does the rest.
 
 ### The component
 

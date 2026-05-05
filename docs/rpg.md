@@ -232,6 +232,36 @@ order, every approach tried that did not work, and the velocity-stomp
 fix -- lives in [`damage.md`](damage.md). Read that doc before adding
 any skill that touches damage.
 
+### How damage skills attach to the engine (plain language)
+
+Most of our skills modify some stat on the player -- damage taken,
+damage dealt, lifesteal, max HP, etc. Grounded 2 already has a
+built-in mechanism for "this player has +X to stat Y": **status
+effects**. Every gear bonus, perk, food buff, and environmental
+debuff in the game is implemented as one of these. The bonemeal
+helmet's +HP, a perk's +crit chance, a sour candy's lifesteal --
+all status effects under the hood.
+
+Each effect is a row in a single big spreadsheet (a "data table")
+the game ships called `Table_StatusEffects`. Rows have columns
+like `Type` (which stat), `Value` (how much), and `Duration`. The
+engine continuously sums up active effects per stat type and
+applies the result to gameplay -- e.g. fall damage is multiplied
+by the player's current `FallDamage` modifier, which is the sum
+of every active status effect of that type.
+
+When we want a skill like Fall Damage Resistance to do something,
+the cleanest path is to add a status effect to the player whose
+`Type` and `Value` match what we want. The engine's existing
+designer-facing knobs do the rest.
+
+[`damage.md`](damage.md) "Status Effect system" has the full
+reference: which stat types exist, which combine semantic each
+one uses (additive vs multiplicative), the data table layout,
+and the implementation plan for adding effects from our mod.
+That doc is the load-bearing one for any future skill that
+modifies a player stat.
+
 Skill-side wiring for the two damage-mitigation skills (different
 mechanisms because the underlying damage paths differ -- see
 [`damage.md`](damage.md)):
