@@ -54,15 +54,16 @@ grounded2mods/
      process_event.rs (RAII ProcessEventHook with registry-based dispatch
      and catch_unwind around the closure). Log module (file-only at
      %TEMP%\BetterBackpack.log).
-- [x] 6. Patch loop wired in. Worker: log init -> platform detect ->
-     SDK runtime init -> wait for GObjects -> patch every player-owned
-     UInventoryComponent.DefaultMaxSize to 100 -> rescan every 10s.
-     **Code complete; in-game parity verification pending.**
+- [x] 6. Patch loop wired in. **Validated in-game**: patch line
+     `Default__BP_SurvivalPlayerCharacter_C.InventoryComponent: 40 -> 100,
+     verify=100`. AllocConsole brought back so the live mod log surfaces
+     in a "Better Backpack" console window the way the C++ build did.
 - [x] 7. Inventory-interface hook + viewport rebind. inv_hook.rs +
      parms.rs. Cached UFunction* identity dispatch (no name compares).
-     Trace gated by cfg!(debug_assertions). Single hook surface
-     (WBP_InventoryInterface_C). Code complete; scrolling parity in-game
-     pending.
+     Trace gated by cfg!(debug_assertions). Single hook surface.
+     **Hook installs in-game** -- log shows
+     `inv hook: installed on WBP_InventoryInterface_C` once inventory UI
+     loads.
 - [ ] 8. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
 - [ ] 9. Side-by-side parity test C++ vs Rust DLL.
 - [ ] 10. Archive better-backpack-cpp/.
@@ -89,11 +90,27 @@ grounded2mods/
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
   treating `image_base + g_objects` as a pointer-to-pointer and
-  dereferencing once. The address IS the TUObjectArray struct directly --
-  matching the C++ wrapper's `reinterpret_cast<TUObjectArray*>(addr)` in
-  `operator->`. Symptom: log halted after platform detection because num()
-  was reading bytes inside FUObjectItem[0] instead of the array header.
-  Fix in better-backpack/src/sdk/uobject.rs.
+  dereferencing once. The address IS the TUObjectArray struct directly.
+  Symptom: log halted after platform detection. Fixed in sdk/uobject.rs.
+- **find_class_fast missed Blueprint classes** (2026-05-04): meta-class
+  filter only matched native `Class`. Blueprint-generated classes have
+  meta-class `WidgetBlueprintGeneratedClass` (a subclass of `Class`).
+  Symptom: inventory hook never installed. Fix: walk meta-class
+  super_class chain.
+- **Injector default DLL name PascalCase mismatch**: cdylib output is
+  `better_backpack.dll`; injector default was `BetterBackpack.dll`. Fixed
+  injector to match cdylib output.
+- **Live console missing**: C++ DLL spawned a console via AllocConsole;
+  Rust DLL had to too. Re-added with WriteConsoleA + file mirror.
+- **Injector closed too fast**: added pause-before-exit (--no-pause to
+  skip) and per-run inject.log.
+
+## Known minor issues
+- Patch.rs logs "skipped N non-player components" on every rescan tick,
+  even when nothing changed. Cleanup pending.
+- The CDO patch only reaches inventory instances constructed AFTER the
+  DLL loads. If the player's inventory was constructed before injection,
+  a save reload may be required to see 100 slots in-game.
 
 ## Open questions
 - Step 6 needs validation that calling `original` ProcessEvent from a Rust

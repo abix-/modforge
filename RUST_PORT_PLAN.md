@@ -328,16 +328,19 @@ Numbered so we can check them off.
   inlined into `lib.rs` since there's only one DllMain to write.
 - [x] **6.** Wire up the patch loop. Worker does log init -> platform
   detect (Steam/Xbox by exe name) -> SDK runtime init -> wait for
-  GObjects -> initial DefaultMaxSize patch -> 10s rescan loop. **Code
-  side complete; in-game parity verification still pending.**
+  GObjects -> initial DefaultMaxSize patch -> 10s rescan loop. **Validated
+  in-game**: log shows
+  `Default__BP_SurvivalPlayerCharacter_C.InventoryComponent: 40 -> 100,
+  verify=100`. AllocConsole brought back so the live mod log surfaces in
+  a "Better Backpack" console window the way the C++ build did.
 - [x] **7.** Port the inventory-interface hook + viewport rebind in
   `inv_hook.rs` + `parms.rs`. Single hook surface
   (`WBP_InventoryInterface_C`). All function dispatch goes through cached
   `&UFunction` pointer identity, not name compares. Trace logs gated by
-  `cfg!(debug_assertions)` -- silent in release. The worker installs the
-  hook after the initial patch and retries every rescan tick if the
-  inventory class isn't loaded yet. **Code complete; in-game scrolling
-  parity verification still pending.**
+  `cfg!(debug_assertions)` -- silent in release. **Hook installs in-game**:
+  log shows `inv hook: installed on WBP_InventoryInterface_C` once the
+  inventory UI loads. (Required two bug fixes during testing -- see "Bugs
+  found and fixed" below.)
 - [ ] **8.** Port the BPF / grid / menu trace surfaces only as
   `cfg!(debug_assertions)` helpers. Ship build doesn't compile them in.
 - [ ] **9.** Side-by-side test: run C++ DLL one session, Rust DLL the next.
@@ -354,6 +357,44 @@ Each step lands as its own commit.
 
 - The Dumper-7 generated SDK headers we keep as offset reference material.
   Live in `reference/SDK/` or similar; never compiled.
+
+## Bugs found and fixed during testing
+
+1. **GObjects extra indirection** (better-backpack/src/sdk/uobject.rs).
+   `GObjectsView::from_image` was treating `image_base + g_objects` as a
+   pointer-to-pointer and dereferencing once, so `array` was actually
+   `Objects[0]` (the first FUObjectItem) and `num()` read random bytes.
+   Symptom: log halted after platform detection because num() returned 0
+   (or junk) forever. Fix: use the address directly as the
+   `TUObjectArray` struct, matching the C++ wrapper's
+   `reinterpret_cast<TUObjectArray*>(addr)`.
+
+2. **find_class_fast missed Blueprint classes** (same file). The
+   meta-class filter was `cls.as_object().name() == "Class"`, which only
+   matches *native* UClass instances. Blueprint-generated classes like
+   `WBP_InventoryInterface_C` have meta-class
+   `WidgetBlueprintGeneratedClass`, a subclass of `Class`. Symptom: the
+   inventory hook never installed even after the inventory UI was opened.
+   Fix: walk the meta-class's `super_class` chain looking for an ancestor
+   named `"Class"`.
+
+3. **Injector defaulted to PascalCase DLL name**. Rust cdylib output is
+   `better_backpack.dll` (lib name -> snake_case), but the injector's
+   default lookup was `BetterBackpack.dll`, so a flag-less invocation
+   loaded the old C++ DLL or failed silently. Fix: injector default
+   lowered to match the cdylib output.
+
+4. **Console window for live output**. The C++ build called
+   `AllocConsole` from the DLL so users got a live "Better Backpack"
+   console window. The first Rust pass dropped this for build simplicity,
+   which broke the user's expected debug surface. Fix: AllocConsole +
+   `WriteConsoleA` brought back; logs also go to
+   `%TEMP%\BetterBackpack.log` for durability.
+
+5. **Injector closed too fast to read**. Double-clicking inject.exe
+   spawned a console that closed when the process exited, making errors
+   invisible. Fix: pause-before-exit by default (skip with `--no-pause`)
+   and a per-run `inject.log` next to the exe.
 
 ## Open questions
 
