@@ -1,10 +1,12 @@
-// Spike B: persisted player RPG state.
+// Persisted player RPG state.
 //
-// Minimal placeholder schema for the spike. Real schema (level, xp,
-// perk_ranks, etc.) lands when the level math + perk catalog ship.
+// Schema: xp / level / skill_points / skill_ranks plus diagnostic
+// counters (kill_count, last_killed). "Skill" / "skill point" naming
+// follows the dominant Factorio-RPG convention (RPG System mod) and
+// matches Diablo expectations.
 //
 // Storage: <DLL_dir>/saves/<playthrough-guid>.json. One file per save
-// slot, keyed by the stable PlaythroughGuid from USaveGameHeaderData.
+// slot, keyed by the stable PlaythroughGuid from AInGameGameState.
 
 use std::fs;
 use std::path::PathBuf;
@@ -24,13 +26,14 @@ pub struct PlayerState {
     /// curve change doesn't retroactively de-level the player.
     #[serde(default)]
     pub level: u32,
-    /// Unspent perk points.
+    /// Unspent skill points. (Naming follows Diablo / Factorio's
+    /// `RPG System` convention.)
     #[serde(default)]
-    pub perk_points: u32,
-    /// Map of perk_id -> rank. Open-shape so we can add perks without
-    /// breaking existing save files.
+    pub skill_points: u32,
+    /// Map of skill_id -> rank. Open-shape so we can add skills
+    /// without breaking existing save files.
     #[serde(default)]
-    pub perk_ranks: std::collections::BTreeMap<String, u32>,
+    pub skill_ranks: std::collections::BTreeMap<String, u32>,
 
     /// Total kills (any source: player + Buggy). Diagnostic only.
     #[serde(default)]

@@ -17,15 +17,15 @@ not the user-facing knob.
 
 This is now the project. Items 3-7 below (gear durability, enemy
 health/damage, glide speed, Player Tweaks ports) become *upgradeable
-stat surfaces* that level perks drive, instead of independent
+stat surfaces* that level skills drive, instead of independent
 sliders.
 
 ### Vision
 
 - Player kills enemies -> XP awarded based on enemy type / difficulty.
 - XP threshold per level (curve TBD: linear, polynomial, etc.).
-- On level-up, player gets N perk points.
-- Spend perk points on upgrades. Each upgrade = a function of level
+- On level-up, player gets N skill points.
+- Spend skill points on upgrades. Each upgrade = a function of level
   applied to one of our existing CDO-patch surfaces:
   - Backpack capacity (40 base, +5 per rank, max rank 12 -> 100).
   - Hunger drain rate (1.0 base, -5%/rank, max rank 10 -> 0.5x).
@@ -36,8 +36,8 @@ sliders.
   - Damage taken from enemies (later).
   - Stamina regen / sprint speed / swim speed (later, from Player
     Tweaks port queue).
-- Persist XP / level / perk allocation per save slot.
-- Show level / XP / next-perk in a UE4SS imgui tab (start). Later:
+- Persist XP / level / skill allocation per save slot.
+- Show level / XP / next-skill in a UE4SS imgui tab (start). Later:
   in-world UMG overlay.
 
 ### Research answers (from SDK dump at C:\tools\work\sdk)
@@ -112,7 +112,7 @@ class is `SaveLoadManager`. Cache the pointer; refresh on world
 change.
 
 Storage: `<DLL_dir>/saves/<playthrough-guid>.json`. Schema:
-`{ level, xp, perk_ranks: { backpack: 5, hunger: 3, ... } }`.
+`{ level, xp, skill_ranks: { backpack: 5, hunger: 3, ... } }`.
 
 If `SaveInProgressSaveGameHeaderData` is null (main menu, between
 saves), defer load until it's populated. Hook
@@ -148,7 +148,7 @@ Other stats live the same way:
   `ASurvivalCharacter` (line 5815). Existing patch works on CDO;
   swap to instance for level-up.
 - Stamina: `StaminaComponent` at 0x1358 (line 5785).
-- Max health (player buff perk): `HealthComponent.MaxHealth` at
+- Max health (player buff skill): `HealthComponent.MaxHealth` at
   offset 0x328 on the live UHealthComponent (line 42263).
 
 Approach: patch BOTH the CDO (so future spawns inherit) AND the
@@ -174,7 +174,7 @@ across the top -- our tab is just one of them.
 We can NOT extend UE4SS's built-in tabs (their rendering lives
 inside UE4SS.dll and isn't exposed). What we have is: register a
 new tab next to them. That's the right shape -- the RPG tab is
-a distinct view (level / XP / perk grid), not something that
+a distinct view (level / XP / skill grid), not something that
 fits under "Live View" or "Dumpers".
 
 Reference implementation:
@@ -184,26 +184,26 @@ register_tab(STR("RPG"), [](CppUserModBase* mod) {
     UE4SS_ENABLE_IMGUI();
     ImGui::Text("Level: %d", state.level);
     ImGui::ProgressBar(state.xp_ratio);
-    if (ImGui::Button("Spend perk")) { rust_spend_perk(...); }
+    if (ImGui::Button("Spend skill")) { rust_spend_skill(...); }
 });
 ```
 
 Plan: keep ImGui rendering in C++ shim. Expose Rust state via
 narrow C-ABI getters/setters
-(`get_player_state(out_buf, len)`, `spend_perk(perk_id)`, etc.)
+(`get_player_state(out_buf, len)`, `spend_skill(skill_id)`, etc.)
 so the lambda doesn't need to know Rust types. Avoids dragging
 imgui through cxx-style FFI.
 
 In-world UMG overlay (a HUD widget visible without summoning the
 UE4SS overlay): deferred. Out of scope for v1.
 
-**R6. XP curve + perk economy (design, no code answer needed).**
+**R6. XP curve + skill economy (design, no code answer needed).**
 
 Placeholder values until in-game tuning:
 - Levels 1-50, quadratic XP curve: level N requires
   `100 * N^1.8` total XP.
-- 1 perk point per level.
-- Each perk maxes at rank 10.
+- 1 skill point per level.
+- Each skill maxes at rank 10.
 - Respec: free for now; `settings.json` flag `respec_cost: 0`.
 - Per-creature XP: aphid=5, weevil=10, spider=50, boss=500
   (placeholders; tune by playing).
@@ -215,25 +215,25 @@ Modules (Rust side, all in `better-backpack/src/`):
 rpg/
   mod.rs            entry: glue init, level-up event loop
   xp.rs             XP awarding, level threshold table, on_kill
-  perks.rs          perk catalog, rank -> stat-multiplier function
-  state.rs          struct PlayerState { level, xp, perk_ranks }
+  skills.rs          skill catalog, rank -> stat-multiplier function
+  state.rs          struct PlayerState { level, xp, skill_ranks }
                     serde, load/save to <DLL_dir>/saves/<slot>.json
-  ui.rs             UE4SS imgui tab wiring (level/XP/perks)
+  ui.rs             UE4SS imgui tab wiring (level/XP/skills)
   events.rs         hooks: enemy-death ProcessEvent hook,
                     player-load detection
 ```
 
 Existing modules (`survival.rs`, `inv_hook.rs`, the future
 `combat.rs`, `gear.rs`, `movement.rs`) become **stat surfaces**
-driven by `perks.rs::current_multipliers(state)`.
+driven by `skills.rs::current_multipliers(state)`.
 
 Lifecycle:
 1. `on_unreal_init`: load PlayerState from disk (key = save slot).
    Apply current multipliers to all CDOs.
 2. Install ProcessEvent hook on enemy-death UFunction.
 3. On kill: award XP to PlayerState, check threshold, on level-up
-   bump perk-points.
-4. On perk allocation (UI click): update PlayerState, recompute
+   bump skill-points.
+4. On skill allocation (UI click): update PlayerState, recompute
    multipliers, re-apply CDO patches, save to disk.
 5. On exit / save event: flush PlayerState to disk.
 
@@ -264,10 +264,10 @@ not exploratory.
   `state::load_one(slot)` -- the loader now owns slot
   resolution; state.rs is just file I/O.
 
-  Future perk-driven CDO/instance reapply hooks into the same
+  Future skill-driven CDO/instance reapply hooks into the same
   activation transition: when activate_slot fires, run the
-  apply step using the freshly loaded PlayerState's perk
-  ranks. Stub for now since perks don't exist yet.
+  apply step using the freshly loaded PlayerState's skill
+  ranks. Stub for now since skills don't exist yet.
 
 - [x] **Kill attribution + XP math layer DONE (2026-05-05).**
   Attribution confirmed in-game: PLAYER bucket fired correctly
@@ -284,15 +284,15 @@ not exploratory.
   level cap 50, per-creature XP table (~20 species,
   placeholders -- aphid 5, weevil 15, spider 75, boss 750).
 
-  PlayerState bumped: `xp`, `level`, `perk_points`,
-  `perk_ranks: BTreeMap<String, u32>`. Old fields
+  PlayerState bumped: `xp`, `level`, `skill_points`,
+  `skill_ranks: BTreeMap<String, u32>`. Old fields
   (`kill_count`, `last_killed`) retained as diagnostics. All
   new fields use `#[serde(default)]` so existing save files
   load fine.
 
   `tracker::record_kill` takes `KillSource`, applies
   `rpg.buggy_kill_xp_multiplier` (settings, default 1.0) to
-  Buggy-source kills, awards XP, recomputes level, grants perk
+  Buggy-source kills, awards XP, recomputes level, grants skill
   points on level-up.
 
   In-game test pending. Open question: are AICs that hostile
@@ -473,15 +473,15 @@ not exploratory.
   `World->GameState->PlayerArray[i]->PawnPrivate->InventoryComponent`,
   bump `DefaultMaxSize` at runtime, confirm the inventory UI
   updates without a save reload. **One evening.**
-- [ ] Once A+B+C green: write `state.rs`, `xp.rs`, `perks.rs`
+- [ ] Once A+B+C green: write `state.rs`, `xp.rs`, `skills.rs`
   with the placeholder curve from R6. Wire enemy-kill -> XP
-  award -> level threshold -> perk-point grant.
+  award -> level threshold -> skill-point grant.
 - [ ] UE4SS imgui tab. Add `register_tab(STR("RPG"), ...)` in
   the C++ shim ctor (model:
   `RE-UE4SS/CppMods/EventViewerMod/src/EventViewer.cpp:22`).
   Lambda reads Rust state via C-ABI getters, renders ImGui,
-  posts perk-spend via setters.
-- [ ] Tune XP curve and perk economy through actual play.
+  posts skill-spend via setters.
+- [ ] Tune XP curve and skill economy through actual play.
 - [ ] Polish: respec, settings.json overrides for the curve,
   per-enemy XP table loaded from JSON.
 
@@ -489,16 +489,16 @@ not exploratory.
 
 The "stat surfaces" sections below (#3-7) are still the right
 implementations -- we just don't ship them as user-facing sliders.
-They become the math behind perks. Sequence:
+They become the math behind skills. Sequence:
 - Get gear durability (#3) and enemy health (#4) found in the SDK
   during R2 anyway, since those CDOs live on the same enemy tree.
 - Glide speed (#6) is a pure player-stat, bundled with backpack
-  capacity for the player-side perks.
+  capacity for the player-side skills.
 
 The settings.json schema flips inside out: instead of
 `{ "thirst_multiplier": 0.5 }`, we have
 `{ "rpg": { "starting_level": 1, "xp_curve": "quadratic" } }`,
-and per-perk live values are in `<save-slot>.json`, not user
+and per-skill live values are in `<save-slot>.json`, not user
 settings.
 
 ## 1. Repackage as a UE4SS CPPMod
@@ -559,7 +559,7 @@ Archive, not delete.
 
 `better-backpack` no longer describes what we're building. The new
 direction is an RPG / level-up mod (see #0). Pick a name that
-reflects "kill stuff -> level up -> perks".
+reflects "kill stuff -> level up -> skills".
 
 Candidates to consider (final pick TBD):
 - `grounded-rpg` -- explicit about the game and the mechanic.

@@ -156,6 +156,11 @@ freshly dumped SDK. Mod logic stays the same.
   [FEATURES.md](FEATURES.md).
 - The author of [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37),
   whose mod's breakage motivated the rewrite this repo represents.
+- The author of [RPG System](https://mods.factorio.com/mod/RPGsystem)
+  for Factorio -- the headline RPG-style level-up mod that inspired
+  the direction this project is now taking. Our XP / level / skill /
+  skill-point vocabulary is borrowed directly from theirs (and the
+  broader Diablo-like RPG mod tradition on the Factorio mod portal).
 - [Grounded 2](https://grounded2.obsidian.net/) by Obsidian
   Entertainment. We modify only what the official game ships under
   fair-use modding norms; no game assets are redistributed.

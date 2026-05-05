@@ -5,7 +5,7 @@
 //     specifying the kill source (player vs Buggy) so we can apply the
 //     right XP multiplier.
 //
-// Eager activation is required because (future) level/perk ranks affect
+// Eager activation is required because (future) skill ranks affect
 // player stats from spawn, not from the first kill.
 
 use std::sync::Mutex;
@@ -40,11 +40,11 @@ pub fn activate_slot(slot: String, rpg_settings: RpgSettings) {
         state.level = derived_level;
     }
     bbp_log!(
-        "rpg/state: activated slot={} level={} xp={} perk_points={} kills={} last={}",
+        "rpg/state: activated slot={} level={} xp={} skill_points={} kills={} last={}",
         short(&slot),
         state.level,
         state.xp,
-        state.perk_points,
+        state.skill_points,
         state.kill_count,
         if state.last_killed.is_empty() { "<none>" } else { state.last_killed.as_str() }
     );
@@ -98,13 +98,13 @@ pub fn record_kill(creature_class_name: &str, source: KillSource) {
     if levelled {
         let gained = new_level - tracker.state.level;
         tracker.state.level = new_level;
-        tracker.state.perk_points = tracker.state.perk_points.saturating_add(gained);
+        tracker.state.skill_points = tracker.state.skill_points.saturating_add(gained);
         bbp_log!(
-            "rpg/level: LEVEL UP! {} -> {} (+{} perk points; total {})",
+            "rpg/level: LEVEL UP! {} -> {} (+{} skill points; total {})",
             new_level - gained,
             new_level,
             gained,
-            tracker.state.perk_points
+            tracker.state.skill_points
         );
     }
 

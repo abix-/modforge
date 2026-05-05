@@ -202,7 +202,7 @@ slots during init -> jumped past our vtable -> crash.
 ## RPG pivot (2026-05-05)
 
 Direction shift: turning the mod into a Factorio-RPG-style
-level-up mod. Kills -> XP -> levels -> perks that drive the
+level-up mod. Kills -> XP -> levels -> skills that drive the
 existing CDO patches. Research questions R1-R5 answered against
 the SDK at `C:\tools\work\sdk\` -- see TODO.md section 0.
 
@@ -239,10 +239,10 @@ loader activates within 1s of world entry, well before the
 player enters combat. State.rs collapsed to a simple
 load_one(slot) -- loader owns slot resolution.
 
-Future perk-driven CDO/instance reapply will plug into the
+Future skill-driven CDO/instance reapply will plug into the
 activation transition: when activate_slot fires with a freshly
 loaded PlayerState, walk the player CDO + live pawn instances
-and apply current perk multipliers. Stubbed until perks exist.
+and apply current skill multipliers. Stubbed until skills exist.
 
 ### Buggy kill attribution + XP layer: DONE (2026-05-05)
 
@@ -260,17 +260,17 @@ players' Buggies) deferred -- single-player works correctly.
 
 XP layer landed alongside: `rpg/xp.rs` (100 * N^1.8 cumulative
 curve, cap 50, ~20-species placeholder table). PlayerState
-schema bumped to (xp, level, perk_points, perk_ranks)
+schema bumped to (xp, level, skill_points, skill_ranks)
 backwards-compatibly via `#[serde(default)]`. tracker awards
-XP on kill, recomputes level, grants perk points on level-up.
+XP on kill, recomputes level, grants skill points on level-up.
 buggy_kill_xp_multiplier setting (default 1.0) scales Buggy
 kills.
 
 Open items for the loop:
 - Apply step: when activate_slot loads a state with non-zero
-  perk ranks, walk the player CDO + live pawn instances and
-  set fields per perk math. Currently a stub.
-- Perk catalog itself: which perks exist, max ranks, what
+  skill ranks, walk the player CDO + live pawn instances and
+  set fields per skill math. Currently a stub.
+- Perk catalog itself: which skills exist, max ranks, what
   stat each one drives. Backpack/hunger/thirst/glide are
   obvious starters.
 - ImGui tab via `register_tab` in the C++ shim. Pending.

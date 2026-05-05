@@ -195,7 +195,7 @@ unsafe fn worker() {
 
     // RPG spike B + eager load: poll for AInGameGameState on a separate
     // thread so PlayerState is bound to the active save the moment the
-    // player enters the world. Future perk-driven CDO patches will run
+    // player enters the world. Future skill-driven CDO patches will run
     // on the same activation transition.
     rpg::world_loader::spawn(settings.rpg.clone());
 

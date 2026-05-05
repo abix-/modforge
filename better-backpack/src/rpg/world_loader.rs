@@ -3,7 +3,7 @@
 // At worker startup the player is usually still at the main menu --
 // AInGameGameState doesn't exist yet, so save_slot::current_slot_key()
 // returns None. The kill hook can run as soon as the player enters the
-// world, and (future) perk-driven CDO patches need to apply at world
+// world, and (future) skill-driven CDO patches need to apply at world
 // entry too -- before the first kill, before any combat. So we can't
 // wait for record_kill to lazy-load.
 //
