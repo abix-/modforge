@@ -99,7 +99,8 @@ grounded2mods/
   `=== Better Backpack DLL (rust) ===`.
 
 ## Settings
-- `<DLL_dir>/settings.json` (optional). Schema in
+- `<DLL_dir>/settings.json` (optional; for UE4SS installs this is
+  `Mods/BetterBackpack/dlls/settings.json`). Schema in
   `better-backpack/settings.example.json`. Drives slot_count and
   thirst/hunger multipliers. Defaults baked in: slot_count=100,
   thirst_multiplier=0.5, hunger_multiplier=0.5. So out of the box
@@ -163,7 +164,7 @@ Distribution layout:
   ```
   Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
     dlls/main.dll
-    settings.json
+    dlls/settings.json
   ```
 
 The earlier winhttp.dll proxy work will be archived to
@@ -285,8 +286,8 @@ Open items for the loop:
   `get_current_imgui_allocator_functions` with `RC_UE4SS_API`
   (dllimport, resolves through UE4SS.lib at link). Lambda calls
   `rpg_enable_imgui()` to point our linked imgui at UE4SS's
-  context, then renders Level / XP bar / skill rows with `+1`
-  buttons.
+  context, then renders Level / XP bar / skill rows with `+1` /
+  `+10` buttons.
 
   C-ABI surface in `better-backpack/src/rpg/ffi.rs`: 8 functions
   the lambda calls (has_active_slot, get_level, get_xp,

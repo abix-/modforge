@@ -84,14 +84,21 @@ pub fn with_state<R>(f: impl FnOnce(&PlayerState) -> R) -> Option<R> {
 /// Spend one skill point on `skill`. Returns true if applied, false if
 /// preconditions fail (no slot, no points, level already at max).
 pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
+    spend_skill_points(skill, 1) > 0
+}
+
+/// Spend up to `count` skill points on `skill`. Returns the number of
+/// points actually spent, which may be lower if we run out of points
+/// or hit the max level cap.
+pub fn spend_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 {
     let mut g = lock();
     let Some(tracker) = g.as_mut() else {
         bbp_log!("rpg/state: spend({}) ignored, no slot active", skill.id);
-        return false;
+        return 0;
     };
-    if tracker.state.skill_points == 0 {
+    if tracker.state.skill_points == 0 || count == 0 {
         bbp_log!("rpg/state: spend({}) ignored, no skill points", skill.id);
-        return false;
+        return 0;
     }
     let cur_level = tracker
         .state
@@ -105,10 +112,15 @@ pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
             skill.id,
             skill.max_level
         );
-        return false;
+        return 0;
     }
-    tracker.state.skill_points -= 1;
-    let new_level = cur_level + 1;
+    let max_by_level = skill.max_level - cur_level;
+    let spend = count.min(tracker.state.skill_points).min(max_by_level);
+    if spend == 0 {
+        return 0;
+    }
+    tracker.state.skill_points -= spend;
+    let new_level = cur_level + spend;
     tracker
         .state
         .skill_levels
@@ -116,13 +128,14 @@ pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
     crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
     crate::rpg::state::save(&tracker.slot, &tracker.state);
     bbp_log!(
-        "rpg/state: spent point on {}: level {} -> {} ({} points left)",
+        "rpg/state: spent {} point(s) on {}: level {} -> {} ({} points left)",
+        spend,
         skill.id,
         cur_level,
         new_level,
         tracker.state.skill_points
     );
-    true
+    spend
 }
 
 /// Debug: grant `count` skill points and save. Used by the debug

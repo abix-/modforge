@@ -26,6 +26,7 @@
 use std::sync::OnceLock;
 
 use crate::bbp_log;
+use crate::inv_hook;
 use crate::patch;
 use crate::rpg::skills::{self, Skill, SkillEffect, SurvivalField};
 use crate::rpg::state::PlayerState;
@@ -134,6 +135,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             let bonus = skills::backpack_bonus_at(level, *max_bonus_slots);
             let target = settings.inventory.slot_count.saturating_add(bonus);
             let stats = patch::run(target);
+            inv_hook::update_slot_count(target);
             bbp_log!(
                 "rpg/apply: {} level={} target={} (base={} + bonus={}) patched={}",
                 skill.id,

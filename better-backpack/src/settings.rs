@@ -120,7 +120,24 @@ pub fn load() -> Settings {
 }
 
 fn settings_path() -> Option<PathBuf> {
-    Some(dll_dir()?.join(SETTINGS_FILE))
+    let dll_dir = dll_dir()?;
+    let local = dll_dir.join(SETTINGS_FILE);
+    if local.is_file() {
+        return Some(local);
+    }
+
+    // Back-compat for installs created before settings.json was moved
+    // next to main.dll.
+    let legacy = dll_dir.parent()?.join(SETTINGS_FILE);
+    if legacy.is_file() {
+        bbp_log!(
+            "settings: using legacy path {} (move it next to main.dll to match current layout)",
+            legacy.display()
+        );
+        return Some(legacy);
+    }
+
+    Some(local)
 }
 
 impl Settings {

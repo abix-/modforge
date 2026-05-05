@@ -67,7 +67,7 @@ extracts directly into the game install:
 ```
 Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
   dlls/main.dll
-  settings.json
+  dlls/settings.json
   README.txt
 ```
 
@@ -87,8 +87,9 @@ Builds, auto-detects the local Grounded 2 install (Steam library
 registry), verifies UE4SS is installed at
 `<game>\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`, copies `main.dll`
 and `settings.json` into
-`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\`, and
-appends `BetterBackpack : 1` to `mods.txt` if it isn't there.
+`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\`, seeds
+`dlls\settings.json`, and appends `BetterBackpack : 1` to `mods.txt`
+if it isn't there.
 Existing user-edited `settings.json` is preserved.
 
 Override the auto-detect with `-GamePath <path-to-game-root>`.
@@ -131,7 +132,7 @@ What you should see:
 - A new console window titled "Better Backpack" pops up in the game
   process. It tails the live mod log.
 - `<DLL_dir>\better_backpack.log` mirrors that output (file lives next
-  to the DLL, not in `%TEMP%`).
+  to `main.dll`, not in `%TEMP%`).
 - `inject.log` next to `inject.exe` captures the injector's own steps.
   inject.exe runs and exits without pausing, read `inject.log` if you
   need to see what happened.
@@ -177,7 +178,8 @@ Useful when iterating on the DLL without rebuilding the injector.
 
 ## Configuration
 
-Runtime config lives in `<DLL_dir>\settings.json`. Defaults are baked
+Runtime config lives in `Mods\BetterBackpack\dlls\settings.json`.
+Defaults are baked
 in, so the file is optional. Schema:
 
 ```json
@@ -203,7 +205,7 @@ Defaults (used when `settings.json` is missing or a key is absent):
 - `thirst_multiplier = 0.5`
 - `hunger_multiplier = 0.5`
 
-Copy `better-backpack/settings.example.json` to your install dir as
+Copy `better-backpack/settings.example.json` next to `main.dll` as
 `settings.json` if you want to override these.
 
 Compile-time constants:

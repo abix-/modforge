@@ -224,8 +224,9 @@ save reload; live-instance writes are a TODO (see
 
 UE4SS exposes an ImGui debug overlay; we register an "RPG" tab via
 `CppUserModBase::register_tab`. The tab shows level, XP progress
-bar, unspent skill points, and a row per skill with `+1` button
-and effect text ("rank 5 / 100  +30 slots  (next: +33 slots)").
+bar, unspent skill points, and a row per skill with left-anchored
+`+1` / `+10` buttons and effect text ("level 5 / 100  +30 slots
+ (next: +33 slots)").
 Always-visible HUD overlay (e.g. XP bar in the corner during
 gameplay) would need a custom UMG/HUD path; deferred.
 

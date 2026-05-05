@@ -13,7 +13,7 @@
 
         Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
             dlls/main.dll
-            settings.json
+            dlls/settings.json
 
     Vortex's UE4SS extension knows about that path and merges the
     mods.txt registration entry on deploy. Manual install: extract
@@ -34,7 +34,7 @@
 
 .PARAMETER Uninstall
     Remove the mod folder from the local game install. Leaves
-    settings.json.
+    settings.json next to main.dll.
 
 .PARAMETER GamePath
     Override game install auto-detection. Path to the game's root
@@ -188,7 +188,7 @@ Better Backpack v$version
 Grounded 2 mod loaded by UE4SS. Patches the player's main backpack
 capacity, hunger / thirst drain rates, and (planned) other player /
 combat / movement tweaks. Configurable at runtime via settings.json
-next to the DLL.
+next to main.dll.
 
 Prerequisite
 ------------
@@ -228,7 +228,7 @@ Defaults (with no settings.json edits)
 - Hunger drain: 50% of vanilla.
 - Thirst drain: 50% of vanilla.
 
-Edit BetterBackpack/settings.json to change. See FEATURES.md in the
+Edit BetterBackpack/dlls/settings.json to change. See FEATURES.md in the
 source repo for full documentation.
 
 Source / issues
@@ -249,8 +249,8 @@ function Build-StageTree {
     Copy-Item -Path $BuiltDll -Destination (Join-Path $dllsDir 'main.dll') -Force
     Write-Host "    + $ModFolderName/dlls/main.dll"
 
-    Copy-Item -Path $ExampleSettings -Destination (Join-Path $modRoot 'settings.json') -Force
-    Write-Host "    + $ModFolderName/settings.json"
+    Copy-Item -Path $ExampleSettings -Destination (Join-Path $dllsDir 'settings.json') -Force
+    Write-Host "    + $ModFolderName/dlls/settings.json"
 
     return $modRoot
 }
@@ -305,7 +305,7 @@ Install it first from https://www.nexusmods.com/grounded2/mods/52
     Copy-Item -Path $BuiltDll -Destination (Join-Path $dllsDir 'main.dll') -Force
     Write-Host "    copied main.dll"
 
-    $settingsDest = Join-Path $modDir 'settings.json'
+    $settingsDest = Join-Path $dllsDir 'settings.json'
     if (Test-Path $settingsDest) {
         Write-Host "    settings.json already present, leaving user edits" -ForegroundColor DarkGray
     } else {

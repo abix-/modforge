@@ -12,7 +12,7 @@
 #![allow(dead_code)]
 
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::bbp_log;
@@ -67,7 +67,7 @@ struct State {
     panel: PanelFns,
     bpf: BpfFns,
     kismet: KismetInputFns,
-    slot_count: i32,
+    slot_count: AtomicI32,
     viewport_starts: Mutex<Vec<(usize, i32)>>, // (widget_ptr_as_usize, start_index)
     in_synthetic_refresh: AtomicBool,
 }
@@ -116,13 +116,20 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
         panel,
         bpf,
         kismet,
-        slot_count,
+        slot_count: AtomicI32::new(slot_count),
         viewport_starts: Mutex::new(Vec::new()),
         in_synthetic_refresh: AtomicBool::new(false),
     });
 
     bbp_log!("inv hook: installing on WBP_InventoryInterface_C");
     ProcessEventHook::install("WBP_InventoryInterface_C", on_event)
+}
+
+pub fn update_slot_count(slot_count: i32) {
+    if let Some(state) = STATE.get() {
+        state.slot_count.store(slot_count, Ordering::Release);
+        bbp_log!("inv hook: slot_count updated to {}", slot_count);
+    }
 }
 
 fn lookup(cls: &UClass, owner: &str, name: &str) -> Result<usize, &'static str> {
@@ -176,7 +183,8 @@ fn matches_any(fn_id: usize, set: &[usize]) -> bool {
 }
 
 fn handle_mouse_wheel(state: &State, widget: &UObject, parms: *mut c_void) {
-    if state.slot_count <= VIEWPORT_PAGE_SIZE || parms.is_null() {
+    let slot_count = state.slot_count.load(Ordering::Acquire);
+    if slot_count <= VIEWPORT_PAGE_SIZE || parms.is_null() {
         return;
     }
     let view = unsafe { &*(parms as *const OnMouseWheelInputView) };
@@ -186,9 +194,9 @@ fn handle_mouse_wheel(state: &State, widget: &UObject, parms: *mut c_void) {
 
     let cur = get_viewport_start(state, widget);
     let next = if delta > 0.001 {
-        clamp_start_with(cur - SCROLL_STEP_SLOTS, state.slot_count)
+        clamp_start_with(cur - SCROLL_STEP_SLOTS, slot_count)
     } else if delta < -0.001 {
-        clamp_start_with(cur + SCROLL_STEP_SLOTS, state.slot_count)
+        clamp_start_with(cur + SCROLL_STEP_SLOTS, slot_count)
     } else {
         cur
     };
@@ -242,7 +250,8 @@ fn rebind(state: &State, widget: &UObject, new_start: i32, reason: &str) -> Resu
         return Err("unexpected child count");
     }
 
-    let clamped = clamp_start_with(new_start, state.slot_count);
+    let slot_count = state.slot_count.load(Ordering::Acquire);
+    let clamped = clamp_start_with(new_start, slot_count);
     let old_start = get_viewport_start(state, widget);
 
     state.in_synthetic_refresh.store(true, Ordering::Release);

@@ -109,7 +109,7 @@ zip-root/
             BetterBackpack/
               dlls/
                 main.dll
-              settings.json
+              dlls/settings.json
 ```
 
 `mods.txt` registration is handled by Vortex's UE4SS extension on
@@ -131,7 +131,7 @@ installs the README instructs the user to append
 ## What stays the same
 
 - Mod feature set, settings.json schema, defaults, log file location
-  (`<DLL_dir>\better_backpack.log`).
+  (`<DLL_dir>\better_backpack.log`, next to `main.dll`).
 - Performance characteristics. `performance.md` numbers don't move
   meaningfully, we're still doing one CDO patch + one ProcessEvent
   hook. UE4SS adds maybe ~10us of additional latency at start (it
@@ -330,9 +330,9 @@ Numbered for tracking. Each step is its own commit.
   - Default `-Package`: produces a Vortex-installable zip at
     `dist\better-backpack-v<version>.zip` with the contents at
     `Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/{dlls/main.dll,
-    settings.json, README.txt}`. Generated zip is 132 KB.
+    dlls/settings.json, README.txt}`. Generated zip is 132 KB.
   - `-Install`: auto-detects the local Steam install, verifies UE4SS
-    is present, copies `main.dll` and `settings.json` into the live
+    is present, copies `main.dll` and `dlls/settings.json` into the live
     Mods folder, appends `BetterBackpack : 1` to `mods.txt` if it
     isn't already there.
   - `-Uninstall`: removes the BetterBackpack folder and strips its

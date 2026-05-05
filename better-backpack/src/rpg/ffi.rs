@@ -142,6 +142,27 @@ pub unsafe extern "C" fn bbp_rpg_spend(skill_id: *const c_char) -> i32 {
     })
 }
 
+/// Spend up to `count` skill points on the skill identified by the
+/// NUL-terminated `skill_id` C-string. Returns the number of points
+/// actually spent.
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_spend_many(skill_id: *const c_char, count: u32) -> u32 {
+    safe(|| {
+        if skill_id.is_null() || count == 0 {
+            return 0;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 0 };
+        let Some(skill) = skills::lookup(id) else {
+            return 0;
+        };
+        tracker::spend_skill_points(skill, count)
+    })
+}
+
 /// Debug: grant `count` extra skill points immediately. Used by the
 /// debug button in the ImGui tab so combat skills can be tested
 /// without grinding XP. Returns 1 on success, 0 if no slot active.

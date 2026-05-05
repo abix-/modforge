@@ -215,6 +215,7 @@ extern "C" int      bbp_rpg_get_skill(uint32_t index,
                                        uint32_t* out_level,
                                        uint32_t* out_max);
 extern "C" int      bbp_rpg_spend(const char* skill_id);
+extern "C" uint32_t bbp_rpg_spend_many(const char* skill_id, uint32_t count);
 extern "C" int      bbp_rpg_debug_grant_skill_points(uint32_t count);
 extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
                                                   uint32_t    level,
@@ -261,7 +262,7 @@ static void rpg_enable_imgui() {
 // ---------------------------------------------------------------------
 // RPG render lambda. Called by UE4SS each frame the RPG tab is open.
 // Reads PlayerState through the FFI surface, renders rows of skills
-// with a +1 button each, and a header showing level / XP progress.
+// with left-anchored +1 / +10 buttons, and a header showing level / XP progress.
 // ---------------------------------------------------------------------
 
 static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
@@ -328,6 +329,17 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
             bbp_rpg_format_skill_effect(id, level + 1, next_effect, sizeof(next_effect));
         }
 
+        ImGui::BeginDisabled(!can_spend);
+        if (ImGui::Button("+1")) {
+            bbp_rpg_spend(id);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("+10")) {
+            bbp_rpg_spend_many(id, 10);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+
         if (level == 0) {
             ImGui::Text("%-20s level 0 / %u  (next: %s)",
                         name,
@@ -347,13 +359,6 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
                         cur_effect,
                         next_effect);
         }
-        ImGui::SameLine();
-
-        ImGui::BeginDisabled(!can_spend);
-        if (ImGui::Button("+1")) {
-            bbp_rpg_spend(id);
-        }
-        ImGui::EndDisabled();
         ImGui::PopID();
     }
 
