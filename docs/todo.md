@@ -202,28 +202,54 @@ damage paths:
 So fall damage is uniquely identifiable by `DamageType==null` on the
 multicast, even though the parm flag fields are zero.
 
-**Current diagnostic in the build**: the multicast hook now snapshots
-`CurrentDamage` before and after `original.call` and logs the delta
-when nonzero. One controlled fall tells us which side of the multicast
-the damage is written on:
+**Diagnostic confirmed**: the `before/after CurrentDamage` log line
+*did not* fire on a controlled fall. Damage is committed upstream of
+the multicast. The multicast UFunction is also flagged `Const`, so it
+cannot be the application path. Skipping `original.call` on it would
+only break cosmetic effects, not damage.
 
-- `delta > 0` -> the multicast handler IS the damage-application path.
-  Skip `original.call` for fall damage at level 100 and damage is
-  suppressed cleanly with no HP flicker. Five-line implementation.
-- `delta == 0` -> native code already wrote `CurrentDamage` upstream
-  before the multicast fired. Forced into either heal-back (rejected
-  for HP flicker) or a native function detour.
+**Walk-backwards instrumentation pass** (next change):
 
-**Native detour fallback** (only if the delta is zero): replace the
+The fall sequence inside one engine tick:
+
+1. `UCharacterMovementComponent::ProcessLanded` (native, no PE)
+2. `ACharacter::Landed(Hit)` -> fires `OnLanded` BP event (PE,
+   suppressed by our fall_hook)
+3. `ASurvivalCharacter::ApplyFallDamage()` (native, no PE for natural
+   falls -- engine bypasses the dispatch table)
+4. `UHealthComponent::ApplyDamage(...)` writes `CurrentDamage` (native,
+   no PE)
+5. `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` -> we hook,
+   damage already applied
+6. `MulticastFallEffects(SurfaceType, VelocityZ)` -- untested, may or
+   may not fire via PE, may fire before or after step 4
+7. `BndEvt__HealthComponent_..._DamagedDelegate` on the BP class --
+   untested
+
+Broaden the existing `fall_hook.rs` ProcessEvent hook on
+`BP_SurvivalPlayerCharacter_*` to log every PE call hitting that
+class during a fall, then take one fall and read the trace. Goal:
+identify any PE-reachable event between step 2 (`OnLanded`) and step 5
+(the multicast we already see). If something in that window fires on
+the BP class's vtable, we may be able to restore `CurrentDamage`
+synchronously *inside the same frame*, which does not flicker --
+the UI does not render between native calls in one tick.
+
+**Same-frame heal-back** (now back on the table): not the deferred /
+next-frame heal-back that does flicker. If steps 4 and 5 both run
+inside one ProcessEvent dispatch chain on the same thread, snapshotting
+`CurrentDamage` at OnLanded suppression and restoring it at the
+multicast (or at any later in-tick PE event) all happen before the
+engine renders the next frame. UI cannot draw the lowered HP value
+between two synchronous native calls. Worth a five-line test.
+
+**Native detour fallback** (only if same-frame heal-back also flickers
+or the call chain is split across ticks): replace the
 `UFunction::native_func` slot for `ASurvivalCharacter::ApplyFallDamage`
 or `UHealthComponent::ApplyDamage` so the engine's direct C++ dispatch
-lands in our trampoline. Materially more code (executable trampoline
+lands in our trampoline. Materially more code: executable trampoline
 via `VirtualAlloc(PAGE_EXECUTE_READWRITE)`, register-preserving
-prologue/epilogue, return-to-original path), kept on the table only
-because it is the one option upstream of the `CurrentDamage` write.
-
-Heal-back is the third fallback and rejected unless we run out of
-options -- HP flicker is worse UX than just taking damage.
+prologue/epilogue, return-to-original path. Kept as last resort.
 
 Separate skill: **Collision / Impact Damage Resistance** is a real
 distinct mitigation now that we have evidence plant collision is its

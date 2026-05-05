@@ -344,21 +344,71 @@ Two big findings:
    path, different mitigation strategy entirely from fall damage. That
    becomes its own skill (Collision / Impact Damage Resistance).
 
-The multicast we hook still fires for fall damage as a cosmetic
-notification with the right `Damage` value (92.51), but ordering is the
-open question: does the multicast hook run *before* the
-`CurrentDamage` write (server-applies damage as part of the multicast
-dispatch), or *after* (write happened upstream and multicast is purely
-notification)? The kill_hook now snapshots `CurrentDamage` before and
-after `original.call` and logs the delta only when nonzero, so one
-controlled fall settles the question:
+The kill_hook now snapshots `CurrentDamage` before and after
+`original.call` and logs the delta only when nonzero. One controlled
+fall produced **no delta line at all** -- meaning
+`(after - before).abs() <= 0.001`. Damage is therefore applied
+*upstream* of the multicast call. That is also consistent with the
+function's UFunction flags: `Net|Reliable|Native|Event|NetMulticast|Public|Const`
+where `Const` explicitly forbids state changes. The multicast is
+purely a replication notification and skipping `original.call` would
+break only cosmetic effects, not damage.
 
-- delta > 0 -> the multicast call IS the application path; skip
-  `original.call` for player fall damage at level 100 and damage is
-  suppressed cleanly (no flicker)
-- delta == 0 -> damage applied upstream; we are forced into either
-  heal-back (rejected, HP flicker) or a native function detour on
-  whatever upstream native function writes `CurrentDamage`
+So the multicast is a dead end for upstream interception. The damage
+is committed to `CurrentDamage` (+0x32C) by some earlier native code
+that runs without a ProcessEvent entry. To stop it we have to either
+(a) intercept that native call, or (b) restore `CurrentDamage` after
+it lands.
+
+### Walking the fall backwards
+
+Known events during one fall, in actual call order, with whether each
+is reachable via ProcessEvent:
+
+| Step | Event | PE-reachable? | Source |
+| ---- | ----- | ------------- | ------ |
+| 1 | `UCharacterMovementComponent::PhysFalling` ticks | no (native virtual) | Engine |
+| 2 | `UCharacterMovementComponent::ProcessLanded` | no (native virtual) | Engine |
+| 3 | `ACharacter::Landed(Hit)` -> `OnLanded` BP event | YES (we suppress) | Maine SDK |
+| 4 | `ASurvivalCharacter::ApplyFallDamage()` (Final, Native) | NO (called via direct C++ dispatch, not via PE) | Maine SDK |
+| 5 | `UHealthComponent::ApplyDamage(...)` writes `CurrentDamage` | NO (Final, Native, called directly) | Maine SDK |
+| 6 | `UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` | YES (we hook) | Maine SDK |
+| 7 | `ASurvivalCharacter::MulticastFallEffects(SurfaceType, VelocityZ)` | YES, untested | Maine SDK |
+| 8 | `BndEvt__HealthComponent_..._DamagedDelegate` BP handler | YES, untested (fires on BP class vtable, not HealthComponent) | Maine SDK |
+
+Step 4 (`ApplyFallDamage`) is the natural intercept point. Per SDK
+hpp it is a UFunction, but our PE hook on its UFunction id never
+fires for natural falls -- so the engine reaches the native function
+pointer directly, bypassing the dispatch table. The same is true of
+step 5.
+
+Two diagnostic moves still on the table before committing to a native
+detour:
+
+1. **Broaden the player BP-class hook** to log every PE event firing
+   on `BP_SurvivalPlayerCharacter_C` / `_Female02_C` during a fall.
+   That tells us whether `MulticastFallEffects`, the BP damaged
+   delegate handler, or `NotifyOnLandAnimBegin` actually fires, and
+   in what order relative to the damage write. If the BP damaged
+   delegate fires *after* the `CurrentDamage` write but its handler
+   does additional state work (animation triggers, sound), we may
+   find a window to restore `CurrentDamage` synchronously inside the
+   same frame -- which would not flicker, since UI does not render
+   between native calls in one tick.
+2. **Hook `MulticastFallEffects` specifically** and snapshot
+   `CurrentDamage` around it. If damage is committed in between
+   `OnLanded` and `MulticastFallEffects` the windows tighten.
+
+Heal-back is still rejected only as a *deferred / next-frame*
+mechanic. A *same-frame* restore inside the multicast hook (snapshot
+`CurrentDamage` at OnLanded suppression time, restore at multicast
+time, all inside one engine tick) does not flicker and is on the
+table as a clean fix if the call ordering supports it.
+
+If walking backwards still leaves no PE-reachable seam between step 5
+and step 6, the only remaining option upstream is the native
+function detour on `UFunction::native_func` for `ApplyFallDamage` or
+`UHealthComponent::ApplyDamage`. Tracked in [`todo.md`](todo.md).
 
 Side benefit: even if we cannot fully suppress fall damage without
 detour, we can now *detect* fall damage uniquely -- the only

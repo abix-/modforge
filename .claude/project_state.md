@@ -41,19 +41,35 @@ component via ProcessEvent dispatched cleanly and ran
 `OnRep_CustomSettings` -- still no effect on fall damage. So the entire
 field-write surface is dead.
 
-Damage trace caught the actual fire: fall damage arrives via
-`UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
-with `Damage=83.63, flags=0, type_flags=0`. `ApplyDamageFromInfo` did
-not appear in the trace -- the engine bypasses ProcessEvent on the
-native fall path entirely. Multicast fires post-damage so suppressing
-it does nothing; heal-back is rejected because of HP flicker.
+Damage trace findings:
+- Fall damage fires `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
+  with `LastDamageInfo` entirely empty (DamageType=null, instigator=null,
+  source=null, hit=(0,0,0), flags=0). Native code writes `CurrentDamage`
+  directly, bypassing the standard `FDamageInfo` pipeline.
+- Plant collision fires the same multicast but with
+  `LastDamageInfo.DamageType = BP_EnvironmentalDamage_C`, `src_type=2`.
+  That is the discriminator and gives us a clean filter for
+  Collision / Impact Damage Resistance as a separate skill.
+- `before/after CurrentDamage` snapshot around `original.call` produced
+  no delta line on a controlled fall (delta == 0). Damage is committed
+  upstream of the multicast. Multicast UFunction flags include `Const`,
+  confirming it cannot apply damage. Multicast is purely a notification.
 
-Next move: native function detour on the `UFunction::native_func`
-pointer for `ASurvivalCharacter::ApplyFallDamage` (and/or
-`UHealthComponent::ApplyDamage`). That intercepts the engine's direct
-C++ call, which is the only seam upstream of `CurrentDamage` write.
-Steps + offsets in `docs/todo.md`. Collision / impact damage still
-open.
+Next pass: walk the fall backwards. Broaden the `fall_hook` PE hook on
+`BP_SurvivalPlayerCharacter_*` to log every PE event on the BP class
+during one fall. Goal is to identify any PE-reachable surface between
+`OnLanded` (we suppress) and the multicast (already hooked) -- e.g.
+`MulticastFallEffects`, BP-bound damaged delegate handler,
+`NotifyOnLandAnimBegin`. If anything fires in that window we may be
+able to do a same-frame restore of `CurrentDamage` (no flicker -- UI
+does not render between synchronous native calls in one tick).
+Same-frame heal-back is back on the table; only deferred / next-frame
+heal-back is rejected. If the window has no PE-reachable surface, the
+fallback is the native function detour on
+`ASurvivalCharacter::ApplyFallDamage` or `UHealthComponent::ApplyDamage`.
+
+Collision / impact damage is now its own skill scoped behind the
+`BP_EnvironmentalDamage_C` filter on `LastDamageInfo.DamageType`.
 
 ## Layout
 

@@ -147,14 +147,33 @@ Net: fall damage IS uniquely identifiable on the multicast even though
 parm flags are zero -- it is the only damage event hitting the player
 where `LastDamageInfo.DamageType == null`.
 
-The kill_hook now also snapshots `CurrentDamage` before and after
+The kill_hook also snapshots `CurrentDamage` before and after
 `original.call` and logs the delta when nonzero. One controlled fall
-will tell us whether the multicast handler itself writes `CurrentDamage`
-(skip `original.call` -> clean suppression, five-line fix) or whether
-the write happened upstream (forces native detour or heal-back).
-Decision: heal-back is rejected outright (HP flicker UX). Native detour
-on `UFunction::native_func` for `ApplyFallDamage` or `ApplyDamage`
-remains the fallback if the delta is zero.
+emitted *no* delta line, meaning `(after - before).abs() <= 0.001`.
+Damage is committed upstream of the multicast. That is also confirmed
+by the function's UFunction flags
+(`Net|Reliable|Native|Event|NetMulticast|Public|Const`) -- `Const`
+forbids state changes on the call. Skipping `original.call` would only
+suppress cosmetic effects, not damage.
+
+Path forward: walk the fall backwards from the multicast. The known
+sequence inside one tick is `ProcessLanded` (native) -> `OnLanded` BP
+event (PE, we suppress) -> `ApplyFallDamage` (native, no PE) ->
+`HealthComponent::ApplyDamage` writes `CurrentDamage` (native, no PE)
+-> `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` (PE, we
+hook). Untested PE surfaces in that window: `MulticastFallEffects`,
+the BP-bound damaged delegate, `NotifyOnLandAnimBegin`. Broadening
+`fall_hook` to log all PE events on the player BP class will reveal
+what fires when, in what order, relative to the damage write. That
+either gives us a same-frame intercept point (no flicker since UI
+does not render between synchronous native calls in one tick), or
+proves we need a native function detour.
+
+Heal-back updated: rejected only as a *next-frame* / async pattern.
+A *same-frame* restore inside the multicast hook does not flicker,
+since the engine has not rendered the lowered HP between the
+`CurrentDamage` write and the multicast handler. Same-frame is back
+on the table.
 
 ### Movement skill fix verified
 
