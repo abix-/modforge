@@ -217,15 +217,32 @@ ReflectDamage(37)=0.000/add     MaxHealth(5)=30.000/add
 baseline is `1.0` for `mul` stats and `0.0` for `add` stats. Per-stat
 write formulas are in `docs/damage.md` "Stat semantics table".
 
-Next: implement the apply step via one of the four paths in
-`damage.md` ("Implementation paths"). Path 1 (mutate existing
-data-table row) is the cheapest if we can find rows with the right
-`Type` for each skill we want to migrate. Path 3 (inject new row)
-is the safest. Building either requires:
-- A way to enumerate `UDataTable` rows for `FStatusEffectData` at
-  runtime so we can find or add rows.
-- The data-table-row layout offsets (`Type` at +0x30, `Value` at
-  +0x34, etc., already documented in `damage.md`).
+**Vanilla data table identified.** Probe of the player's
+StatusEffects array shows every status effect in the game flows
+through `/Game/Blueprints/Attacks/Table_StatusEffects.Table_StatusEffects`.
+~10 active rows visible on a mid-game player (PlayerUpgradeHealth1,
+WeaponClub, MaxHealthSmall, etc., per `damage.md` "Vanilla data
+table identified").
+
+**Concrete next step: implement the apply step.** Plan in
+`damage.md` "Implementation plan":
+
+1. Resolve `Table_StatusEffects` (follow any existing row handle
+   on the player; no GObjects scan needed).
+2. Enumerate rows via `UDataTableFunctionLibrary::GetDataTableRowNames`
+   + `GetDataTableRowFromName`, find or pick a row per skill's
+   target stat.
+3. Mutate the row's `Value` to skill-scaled value, build a row
+   handle, call `CreateAndAddEffect` on the player's
+   `UStatusEffectComponent` via `process_event`.
+4. On level change, rewrite Value. On slot deactivate, RemoveEffect.
+
+Migrate one skill first as a proof of concept --
+`fall_resistance` is the lowest-risk because we already have the
+velocity-stomp as a fallback if anything misbehaves. If the
+status-effect contribution drives `FallDamage` from `1.0` toward
+`0.0` and we observe reduced damage in the multicast trace, the
+pattern is proven and the rest of the catalog follows.
 
 ## RPG: tuning
 

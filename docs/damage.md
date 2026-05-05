@@ -597,22 +597,102 @@ the engine multiplies *together* with vanilla 1.0:
 
 Smooth sqrt-curve scaling drops out for free.
 
-### Implementation choice (informed by the probe)
+### Vanilla data table identified
 
-The probe confirms the system is real and the migration is
-worth doing. The four implementation paths (above) still apply,
-ranked by effort:
+Probe of the player's live `StatusEffectComponent.StatusEffects`
+array reveals **all status effects in the game flow through one
+data table**:
 
-1. Mutate an existing data-table row's `Value` field, then
-   `CreateAndAddEffect(rowHandle)`.
-2. Find a benign / unused row to repurpose.
-3. Inject a new row into the `UDataTable`.
-4. `UStatusEffect` subclass with overridden getters.
+```
+DataTable: /Game/Blueprints/Attacks/Table_StatusEffects.Table_StatusEffects
+```
 
-Once `GetStatusEffectValueType(FallDamage)` is known, paths 1-3
-become a single concrete plan: pick a row template, write the
-right `Value` for our skill curve, AddEffect on the live
-component.
+Sample active rows on a mid-game player (every entry references
+the table above):
+
+| Row name | What it does |
+| -------- | ------------ |
+| `PlayerUpgradeHealth1` | additive HP from a Player Upgrade |
+| `WeaponClub` | equipped club bonus |
+| `RogueFinisherCriticals` | perk (stacks; appears multiple times) |
+| `AntRedStaminaAttack` | gear / perk |
+| `FighterFinisherStun` | perk |
+| `MaxHealthSmall` | gear-driven +30 HP |
+| `PerkSpearTier1` | perk |
+| `PerkSpearThrowAttackUpTier1` | perk |
+
+Naming convention is `<Source><Effect><Tier>`. The table holds
+hundreds of rows -- one per status effect template the game
+ships.
+
+Practical consequence: the canonical injection point is to
+write a row in `Table_StatusEffects` (or mutate an unused one)
+and reference it from a row handle, then call
+`CreateAndAddEffect(handle)` on the player's component.
+
+### Implementation plan
+
+1. **Resolve `Table_StatusEffects` UDataTable** at apply time. Two
+   ways: GObjects scan by name, or follow any existing
+   `UStatusEffect.StatusEffectRowHandle` on the player (the
+   `DataTable*` field of the handle is the table). Latter is
+   cheaper if any vanilla effects are active.
+
+2. **Locate or inject a row whose `Type` matches our skill's
+   target stat.** Call `UDataTableFunctionLibrary::GetDataTableRowNames`
+   to enumerate, then `GetDataTableRowFromName(Table, name, &out)`
+   for each name to copy the `FStatusEffectData` bytes into our
+   buffer; check the `Type` field at struct offset +0x30. Cache the
+   first match per stat.
+
+   - If a row with the right `Type` exists: write our skill-scaled
+     value to its `Value` field at struct offset +0x34, then use
+     its row handle.
+   - If no row exists for the stat we want (e.g. we cannot find a
+     `FallDamage` template): inject a new row by walking the
+     `UDataTable.RowMap` TMap and adding an entry, or pick a
+     low-impact existing row and overwrite its Type+Value. Path
+     decision per stat after we see the row catalog.
+
+3. **Build the row handle** as
+   `FDataTableRowHandle { DataTable* = ourTable, FName = ourRowName }`
+   (16 bytes). Note `UStatusEffect` stores the
+   `_NetCrc32` variant which is 0x28 bytes -- the first 16 are the
+   same handle, the trailing 0x18 is replication metadata that the
+   engine populates after AddEffect.
+
+4. **Call `CreateAndAddEffect(handle)`** on the player's live
+   `UStatusEffectComponent` via `process_event`. Engine
+   instantiates a `UStatusEffect`, points it at the row, replicates
+   it. Native `GetValueForStat` queries pick it up.
+
+5. **On level change** (skill spend or save activation): re-look-up
+   our row, write a new scaled `Value`, re-AddEffect or rely on
+   reactivation.
+
+6. **On slot deactivate** (player exits save): RemoveEffect via
+   `UStatusEffectComponent::RemoveEffect(effect, true)`.
+
+### Why mutating a shared row is acceptable here
+
+If we use an existing row and mutate `Value`, vanilla code
+referencing the same row also sees our value -- which would be
+a bug in most contexts. But in our case the vanilla rows are
+templates that the game instantiates new effects from at gear
+equip / perk unlock time. Mutating the template after vanilla
+has already created its instances does not affect those
+instances (each instance carries the row handle but reads the
+row's current state on every `GetValueForStat` query, so
+mutation propagates to every instance).
+
+Cleanest implementation is therefore:
+
+- **Pick a unique-to-us row** (either inject a new entry into the
+  RowMap, or repurpose an existing row that no vanilla path
+  references at this moment, e.g. one tied to a gear tier the
+  player is not wearing).
+
+The earlier four-path list collapses to one concrete plan above.
 
 ### Why this beats the current implementations
 

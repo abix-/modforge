@@ -63,11 +63,16 @@ in-game:
   for 30% lifesteal).
 
 Per-skill write formulas in `docs/damage.md` "Stat semantics
-table". Next step is the apply-step implementation via one of
-four paths in `docs/damage.md` ("Implementation paths"). Path 1
-(mutate existing row) is cheapest; path 3 (inject new row) is
-safest. `UStatusEffect` is row-driven; value lives in the
-data-table row, not the instance.
+table". Vanilla data table identified: every status effect in the
+game flows through `/Game/Blueprints/Attacks/Table_StatusEffects`.
+Concrete plan in `docs/damage.md` "Implementation plan": resolve
+the table (follow any existing row handle), enumerate rows via
+`UDataTableFunctionLibrary::GetDataTableRowNames` /
+`GetDataTableRowFromName`, mutate or inject one row per skill,
+AddEffect via process_event. `UStatusEffect` is row-driven; value
+lives in the data-table row, not the instance. Migrate
+`fall_resistance` first (lowest-risk; velocity-stomp is the
+fallback if anything misbehaves), then expand.
 
 Full Grounded 2 damage internals -- fall path, environmental path,
 HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill

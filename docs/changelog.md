@@ -26,6 +26,29 @@ Armor's `BaseDamageReduction` write, just on a different gate.
 The gate is **binary** (level 1 = full immunity, identical to
 level 100). Status-effect-backed migration tracked below.
 
+### Vanilla status-effect data table identified
+
+`fall_hook.rs` extended with a probe that walks the player's
+`UStatusEffectComponent.StatusEffects` array and logs each effect's
+row handle. Result: every active status effect in the game flows
+through one data table:
+
+```
+DataTable: /Game/Blueprints/Attacks/Table_StatusEffects.Table_StatusEffects
+```
+
+Sample active rows (mid-game player): `PlayerUpgradeHealth1`,
+`WeaponClub`, `RogueFinisherCriticals`, `AntRedStaminaAttack`,
+`FighterFinisherStun`, `MaxHealthSmall`, `PerkSpearTier1`,
+`PerkSpearThrowAttackUpTier1`. Naming convention is
+`<Source><Effect><Tier>`. Detail in `docs/damage.md` "Vanilla data
+table identified".
+
+This finalizes the migration plan: resolve the table (follow any
+existing row handle), enumerate rows, mutate or inject one per
+skill, AddEffect via `process_event`. Implementation step is
+concrete now.
+
 ### Status Effect combine semantics decoded
 
 Extended the sfx-probe to also call
