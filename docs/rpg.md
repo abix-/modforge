@@ -232,16 +232,25 @@ order, every approach tried that did not work, and the velocity-stomp
 fix -- lives in [`damage.md`](damage.md). Read that doc before adding
 any skill that touches damage.
 
-Skill-side wiring for Fall Damage Resistance:
+Skill-side wiring for Fall Damage Resistance and Impact Damage
+Resistance:
 
-- `SkillEffect::Runtime` shape (no CDO writes from `apply.rs`).
+- Both are `SkillEffect::Runtime` (no CDO writes from `apply.rs`).
 - `fall_hook.rs` installs PE hooks on concrete
-  `BP_SurvivalPlayerCharacter_*` classes. On player `OnLanded`, scales
-  `CharMovementComponent.Velocity.Z` by `(1 - reduction)` where
-  `reduction = sqrt(level / 100)`, then forwards to the original BP
-  event. Native `ApplyFallDamage()` runs immediately after and reads
-  the mutated velocity, producing scaled (or zero) damage.
-- Validated in-game: -3431 cm/s landing at level 100 -> zero damage.
+  `BP_SurvivalPlayerCharacter_*` classes. On player `OnLanded` or
+  `MulticastFallEffects`, scales `CharMovementComponent.Velocity.Z`
+  by `(1 - reduction)` before forwarding to the original BP event.
+  Native damage code reads the mutated velocity, producing scaled
+  (or zero) damage.
+- `OnLanded` is gated on Fall Damage Resistance only (fires on
+  actual landings).
+- `MulticastFallEffects` is gated on `max(fall_resistance,
+  impact_resistance)` and fires for fall landings AND on-foot
+  impacts (rocks, hazards). One seam covers fall + collision damage
+  paths.
+- Validated in-game: -3431 cm/s landing at level 100 -> zero fall
+  damage. Rock-collision and hazard-zone validation pending the
+  current build's in-game test.
 
 ## ImGui tab
 

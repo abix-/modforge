@@ -123,32 +123,25 @@ damage mitigation. Plant / terrain collision uses
 on the existing multicast hook), distinct from fall damage which has
 its own pipeline -- see `rpg.md` for both internals.
 
-## RPG: Collision / Impact Damage Resistance (next skill)
+## RPG: Impact Damage Resistance (in build, validation pending)
 
-Open. The damage trace established that ramming plants / terrain at
-high move speed is a separate damage path from fall damage:
+`SKILL_IMPACT_RESISTANCE` shipping behind a velocity-stomp on
+`MulticastFallEffects` (the universal pre-damage seam for impact-
+style damage in Grounded 2). Same approach as fall damage but on
+a different PE event so it covers rock collisions, plant collisions,
+hazard zones, and any other on-foot impact in addition to actual
+fall landings.
 
-- Same multicast surface (`MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`)
-- `LastDamageInfo.DamageType = BP_EnvironmentalDamage_C`
-- `LastDamageInfo.src_type = 2`
-- Standard `FDamageInfo` pipeline -- unlike fall damage, all fields
-  are populated.
+See [`docs/damage.md`](damage.md) for the full pipeline reference,
+trace evidence, and the three damage paths (fall / environmental /
+hazard) that share the `MulticastFallEffects` seam.
 
-Implementation: in the existing multicast hook in `kill_hook.rs`,
-read `LastDamageInfo.DamageType` (offset +0x40 inside FDamageInfo at
-HealthComponent +0x3B0). When the DamageType class name contains
-`EnvironmentalDamage` and the recipient is the player, scale the
-`Damage` parm by `(1 - reduction)` before forwarding -- but the
-multicast is `Const` and post-damage, so this requires the same
-upstream-intercept pattern as fall damage.
-
-Likely path: this damage *does* go through `ApplyDamageFromInfo`
-(unlike fall damage which bypasses it). Confirm by checking if
-`ApplyDamageFromInfo` PE hook fires on a controlled plant collision.
-If yes, we have a clean upstream surface that fall damage did not
-have. Otherwise, fall back to the same velocity-stomp pattern (zero
-horizontal velocity on collision detection? -- different from fall
-since horizontal velocity drives the impact).
+In-game validation pending: confirm rock-collision damage drops to
+zero at level 100, and confirm hazard-zone damage (the Lab
+`BP_Hazard_PetRestriction_Labs_C` barrier) is also mitigated. If
+hazard damage isn't velocity-driven, fallbacks documented in
+`damage.md`: `UHealthComponent::ImmunityFlags` (+0x00F8) bitmask
+gating, then a PolyHook native detour as the last resort.
 
 ## RPG: tuning
 

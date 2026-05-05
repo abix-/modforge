@@ -243,98 +243,112 @@ mitigation.
 `SKILL_IMPACT_RESISTANCE = "impact_resistance"`, `Runtime` effect,
 `max_bonus = 1.0` (full immunity at level 100, sqrt curve below).
 
-**Diagnostic phase (currently in build).** When the user puts at
-least one point into `impact_resistance`, `fall_hook.rs` switches on
-a walk-backwards PE trace on the player BP class. Each event logs
-`CurrentDamage` (+0x32C on the player's HealthComponent at +0x1340)
-before and after `original.call`. The trace stays silent for normal
-users (no skill points = no logging).
+Implemented as a velocity-stomp on `MulticastFallEffects`, which
+fires *before* the native `CurrentDamage` write for all
+impact-style damage paths -- both fall landings and on-foot
+collisions / hazard hits.
 
-#### Observed trace (hazard zone hit, fatal)
+#### Observed traces (rock collision and hazard)
 
-Running into a `BP_Hazard_PetRestriction_Labs_C` zone:
+Running into a rock at high speed produces *two* consecutive damage
+events:
 
 ```
-ReceiveTick                     CD=85.02
-MulticastFallEffects            CD=85.02
-ReceiveAnyDamage                CD=85.02
-                                  <-- native CurrentDamage write here
-BndEvt__..._OnHealthStateChangedDelegate  CD=110.00
-OnHealthStateChanged            CD=110.00
-BndEvt__..._DeathDelegate       CD=110.00
-ReceiveUnpossessed              CD=100.00 (post-respawn clamp)
-ReceiveControllerChanged        CD=100.00
-BndEvt__..._DamagedDelegate     CD=100.00
-multicast (kill_hook)           damage=165.18, flags=0x2 (kill)
-                                LastDamageInfo: DamageType=SurvivalDamageType,
-                                                src_type=2,
-                                                source=BP_Hazard_PetRestriction_Labs_C
+# Event 1
+MulticastFallEffects           CD=14.59
+ReceiveAnyDamage               CD=14.59
+                                 <-- native write
+OnHitReact                     CD=48.58
+BndEvt__..._DamagedDelegate    CD=48.58
+multicast: damage=33.99 DamageType=<null> src_type=0          (fall path!)
+
+# Event 2 (same second, same impact)
+MulticastFallEffects           CD=48.58
+ReceiveAnyDamage               CD=48.58
+                                 <-- native write
+OnHitReact                     CD=82.56
+BndEvt__..._DamagedDelegate    CD=82.56
+multicast: damage=33.99 DamageType=BP_EnvironmentalDamage_C   (env path)
 ```
 
-Same shape as fall damage. The damage write happens in the gap
-between `ReceiveAnyDamage POST` and `OnHealthStateChangedDelegate
-PRE`. No PE-reachable surface lives in that gap, so the native
-write is upstream of every PE entry the engine fires on the player
-BP class.
+Two findings:
 
-`MulticastFallEffects` firing here despite no actual fall is also
-informative: that multicast is keyed on impact-velocity events
-generally, not just landing after airtime. Confirms it is
-cosmetic-only.
+1. **Rock impact triggers BOTH the fall-damage path AND the
+   environmental path** for a single physical event. Each delivers
+   the same damage value computed from impact velocity. Net damage
+   is roughly double what a fall of equivalent velocity would
+   inflict.
+2. **`OnLanded` does NOT fire on rock impact.** The fall-damage path
+   activates without a Landed event because there was no airtime to
+   land from. So our existing `OnLanded` velocity-stomp covered
+   actual falls but missed rock collisions entirely.
 
-The reported `damage=165.18` does not match the on-disk delta
-(`110 - 85 = 25`) because Grounded 2 clamps `CurrentDamage` to
-`MaxHealth + overkill` at the death threshold; the multicast carries
-the unclamped pre-clamp value.
+`MulticastFallEffects` fires before the native damage write in *all*
+observed cases:
 
-#### Why velocity-stomp does NOT carry over from fall
+| Trigger | OnLanded? | MulticastFallEffects? | Damage paths fired |
+| ------- | --------- | --------------------- | ------------------ |
+| Falling onto ground | yes | yes | DamageType=null only |
+| Running into a rock | no | yes | DamageType=null AND DamageType=BP_EnvironmentalDamage_C |
+| Standing in a hazard zone (`BP_Hazard_PetRestriction_Labs_C`) | no | yes | DamageType=SurvivalDamageType, src=Hazard |
 
-Fall damage works because native `ApplyFallDamage()` reads
-`CharMovementComponent.Velocity.Z` *live* at invocation time and
-the fall path runs synchronously after `OnLanded` fires. We mutate
-`Velocity.Z` during `OnLanded` and the native formula reads our
-mutation.
+So `MulticastFallEffects` is the universal pre-damage seam for
+impact-style damage. Velocity-stomping there covers all three
+paths.
 
-Hazard / impact damage uses the standard `AActor::TakeDamage` ->
-`UHealthComponent::ApplyDamageFromInfo` flow. By the time
-`ReceiveAnyDamage` (a notification) fires, the damage value is
-already a computed `float` baked into a native frame local. There
-is no live field for us to mutate that affects the damage value.
+The reported multicast `damage` value can exceed the on-disk
+`CurrentDamage` delta because Grounded 2 clamps `CurrentDamage` to
+`MaxHealth + overkill` at death; the multicast carries the
+unclamped pre-clamp value.
 
-#### Open intercept candidates (untested)
+#### Implementation
 
-Listed in order of expected effort. Each requires its own diagnostic
-pass.
+`fall_hook.rs` hooks `BP_SurvivalPlayerCharacter_*` and stomps
+`Velocity.Z` on two PE events:
 
-1. **Mutate the `Damage` parm of `ReceiveAnyDamage`**. The parms
-   struct slot is writable from our PE hook even though the parm is
-   marked `ConstParm`. If Grounded 2's BP graph for the player
-   actually applies damage in BP code via `ReceiveAnyDamage`, the
-   modified parm would land. (We have weak evidence against this --
-   our trace shows `CurrentDamage` does not change during
-   `original.call(ReceiveAnyDamage)`.)
-2. **Write `UHealthComponent::ImmunityFlags`** (uint32, +0x00F8,
-   `Edit, Net`). Bitmask of damage types the actor is immune to.
-   If the native pre-damage gate consults this, set it briefly during
-   the `ReceiveAnyDamage` PE hook to mask out
-   `ESurvivalDamageTypeFlags` bits matching the incoming damage.
-   Restore after. Need to identify which bits map to environmental
-   / hazard / collision damage in the enum.
-3. **Write `UHealthComponent::BaseDamageReduction` to 1.0** during
-   `ReceiveAnyDamage`. Armor skill already touches this field
-   (writes 0.5 at level 100). Setting to 1.0 *might* zero damage in
-   the native multiplier path -- but only if `BaseDamageReduction`
-   is consulted for hazard damage and only if it is consulted *after*
-   `ReceiveAnyDamage` returns. Untested. Risk: stacks badly with
-   Armor skill.
-4. **Native function detour** against
-   `UHealthComponent::ApplyDamage` via PolyHook_2_0 (last resort,
-   see "If the velocity-stomp regresses" above). Definitively
-   suppresses damage but is the heaviest implementation.
+| PE event | Skill that scales it | When it fires |
+| -------- | -------------------- | -------------- |
+| `OnLanded` | `fall_resistance` | Actual fall landings only |
+| `MulticastFallEffects` | `max(fall_resistance, impact_resistance)` | Fall landings AND on-foot impacts |
 
-The current build has only the diagnostic trace. The next change
-will try option (1) and observe whether `CurrentDamage` is gated by
-the parm we modify.
+The `max` on `MulticastFallEffects` means either skill (or both)
+scales impact-velocity damage; skills do not double-stack across
+the two events. Idempotent: stomping zero velocity by any factor
+is still zero.
+
+Field offsets are the same as the fall fix (see "The fix" above):
+`CharMovementComponent` ptr at +0x1380 on `ASurvivalCharacter`,
+`Velocity` (FVector) at +0xD8 on the CMC, `Velocity.Z` at +0xE8
+absolute.
+
+Hazard-zone damage (e.g. running into the Lab's
+`BP_Hazard_PetRestriction_Labs_C` barrier) goes through the same
+`MulticastFallEffects` -> `ReceiveAnyDamage` -> [native write]
+sequence and is therefore mitigated by the same stomp -- assuming
+the native hazard formula reads live velocity. Validation in-game
+pending.
+
+#### Diagnostic trace (gated)
+
+When `impact_resistance` level > 0, `fall_hook.rs` also logs every
+fall/land/damage/hit/health/`ReceiveAny`/`ReceiveActor` PE event
+(excluding `Tick`) on the player BP class with `CurrentDamage`
+snapshots before and after `original.call`. The event whose POST
+reading is higher than the pre reading is the PE-reachable seam
+during which native code wrote `CurrentDamage`. This trace is what
+identified `MulticastFallEffects` as the universal pre-damage
+intercept point and stays silent for users who have not put a point
+into the skill.
+
+#### Fallback if `MulticastFallEffects` velocity-stomp does not fully cover hazards
+
+Hazard zones may compute damage from a hazard-side parameter
+instead of player velocity. If that's the case, `ImmunityFlags`
+(uint32 at +0x00F8 on `UHealthComponent`, `Edit, Net`) is the next
+candidate -- temporarily mask the relevant
+`ESurvivalDamageTypeFlags` bits during `ReceiveAnyDamage`, restore
+after. Last resort is a native function detour against
+`UHealthComponent::ApplyDamage` via PolyHook_2_0.
 
 ## Kill detection (already implemented)
 

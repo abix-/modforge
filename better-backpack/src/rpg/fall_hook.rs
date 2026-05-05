@@ -102,11 +102,13 @@ fn on_player_fall_event(
         && is_collision_relevant(&fn_name);
     let cd_before = if impact_diag {
         let cd = read_player_current_damage(this);
+        let vz = read_player_velocity_z(this);
         bbp_log!(
-            "rpg/impact-trace: bp-class fn={} on {} CurrentDamage={:.2}",
+            "rpg/impact-trace: bp-class fn={} on {} CurrentDamage={:.2} Velocity.Z={:.2}",
             fn_name,
             this.name(),
-            cd
+            cd,
+            vz
         );
         Some(cd)
     } else {
@@ -124,6 +126,24 @@ fn on_player_fall_event(
                 after,
                 after - before
             );
+        }
+    }
+}
+
+fn read_player_velocity_z(player: &UObject) -> f64 {
+    const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
+    const CMC_VELOCITY_Z: usize = 0x00E8;
+    unsafe {
+        let cmc: *mut UObject = player
+            .field_ptr(ASC_CHAR_MOVEMENT_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        if let Some(cmc) = cmc.as_ref() {
+            cmc.field_ptr(CMC_VELOCITY_Z)
+                .cast::<f64>()
+                .read_unaligned()
+        } else {
+            f64::NAN
         }
     }
 }
