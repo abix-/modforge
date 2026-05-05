@@ -7,6 +7,7 @@
 
 use std::ffi::c_void;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use crate::sdk::{
     self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime,
@@ -40,7 +41,30 @@ struct Entry {
 unsafe impl Send for Entry {}
 unsafe impl Sync for Entry {}
 
+// REGISTRY is the canonical mutable list, held under a mutex but only ever
+// touched by install/drop (cold paths). The trampoline reads SNAPSHOT
+// instead -- a leaked, frozen `&'static [&'static Entry]` rebuilt after
+// every install/drop. Atomic-load on the hot path, no mutex.
 static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
+static SNAPSHOT: AtomicPtr<&'static [&'static Entry]> =
+    AtomicPtr::new(std::ptr::null_mut());
+
+fn publish_snapshot(reg: &[&'static Entry]) {
+    let leaked: &'static [&'static Entry] = Box::leak(reg.to_vec().into_boxed_slice());
+    let boxed_ref: &'static &'static [&'static Entry] = Box::leak(Box::new(leaked));
+    SNAPSHOT.store(
+        boxed_ref as *const _ as *mut &'static [&'static Entry],
+        Ordering::Release,
+    );
+}
+
+fn current_snapshot() -> &'static [&'static Entry] {
+    let p = SNAPSHOT.load(Ordering::Acquire);
+    if p.is_null() {
+        return &[];
+    }
+    unsafe { *p }
+}
 
 pub struct ProcessEventHook {
     entry: &'static Entry,
@@ -84,13 +108,18 @@ impl ProcessEventHook {
             handler: Box::new(handler),
         }));
 
-        REGISTRY.lock().unwrap().push(entry);
+        {
+            let mut reg = REGISTRY.lock().unwrap();
+            reg.push(entry);
+            publish_snapshot(&reg);
+        }
 
         let prev = unsafe { vtable::write_slot(slot, trampoline as *mut c_void) };
         if prev.is_none() {
             // back out: remove from registry, leak entry (rare path)
             let mut reg = REGISTRY.lock().unwrap();
             reg.retain(|e| !std::ptr::eq(*e, entry));
+            publish_snapshot(&reg);
             return Err("VirtualProtect failed");
         }
 
@@ -109,6 +138,7 @@ impl Drop for ProcessEventHook {
         }
         let mut reg = REGISTRY.lock().unwrap();
         reg.retain(|e| !std::ptr::eq(*e, self.entry));
+        publish_snapshot(&reg);
     }
 }
 
@@ -125,12 +155,10 @@ unsafe extern "system" fn trampoline(
             .read_unaligned()
     };
 
-    let entry = {
-        let reg = REGISTRY.lock().unwrap();
-        reg.iter()
-            .find(|e| e.vtable == live_vtable)
-            .copied()
-    };
+    let entry = current_snapshot()
+        .iter()
+        .find(|e| e.vtable == live_vtable)
+        .copied();
 
     let Some(entry) = entry else {
         // Shouldn't happen -- a hooked vtable always has an entry. Fall

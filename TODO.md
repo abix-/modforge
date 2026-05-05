@@ -1,20 +1,8 @@
 # TODO
 
-Current state: Rust port of the mod is feature-complete for the planned
-work. All five originally-listed features done. Remaining items are
-optional polish.
-
-What's left:
-
-## 1. Mutex -> atomic in the ProcessEvent hot path (polish)
-
-The two `Mutex` locks in `hook::ProcessEventHook::trampoline` and
-`inv_hook::on_event` are uncontended (game thread only) but cost ~20-40 ns
-per dispatch. Replace `REGISTRY: Mutex<Vec<&'static Entry>>` with an
-immutable `&'static [&'static Entry]` written once at the first install,
-and `in_synthetic_refresh: Mutex<bool>` with `AtomicBool` (or
-`thread_local!` since dispatch is single-threaded in practice). Saves a
-few ns per inventory event. Strictly tidy-up; not user-visible.
+Current state: Rust port of the mod is feature-complete. All planned
+work done. Nothing actionable left -- only future feature ideas if any
+come up.
 
 ## Out of scope (kept for context)
 
@@ -52,3 +40,6 @@ few ns per inventory event. Strictly tidy-up; not user-visible.
   development still gets the live window; `cargo build --release
   --no-default-features` produces a console-free shipping build.
 - `BUILDING.md` + `PERFORMANCE.md` at repo root.
+- ProcessEvent hot path is mutex-free: REGISTRY snapshot is published as
+  a leaked `&'static [&'static Entry]` via `AtomicPtr`, trampoline does
+  one atomic load + slice scan. `in_synthetic_refresh` is `AtomicBool`.

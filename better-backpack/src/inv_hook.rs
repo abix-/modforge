@@ -12,6 +12,7 @@
 #![allow(dead_code)]
 
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::bbp_log;
@@ -68,7 +69,7 @@ struct State {
     kismet: KismetInputFns,
     slot_count: i32,
     viewport_starts: Mutex<Vec<(usize, i32)>>, // (widget_ptr_as_usize, start_index)
-    in_synthetic_refresh: Mutex<bool>,
+    in_synthetic_refresh: AtomicBool,
 }
 
 unsafe impl Send for State {}
@@ -117,7 +118,7 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
         kismet,
         slot_count,
         viewport_starts: Mutex::new(Vec::new()),
-        in_synthetic_refresh: Mutex::new(false),
+        in_synthetic_refresh: AtomicBool::new(false),
     });
 
     bbp_log!("inv hook: installing on WBP_InventoryInterface_C");
@@ -142,7 +143,7 @@ fn on_event(this: &UObject, function: &UFunction, parms: *mut c_void, original: 
         return;
     };
 
-    if *state.in_synthetic_refresh.lock().unwrap() {
+    if state.in_synthetic_refresh.load(Ordering::Acquire) {
         unsafe { original.call(this, function, parms) };
         return;
     }
@@ -244,9 +245,9 @@ fn rebind(state: &State, widget: &UObject, new_start: i32, reason: &str) -> Resu
     let clamped = clamp_start_with(new_start, state.slot_count);
     let old_start = get_viewport_start(state, widget);
 
-    *state.in_synthetic_refresh.lock().unwrap() = true;
+    state.in_synthetic_refresh.store(true, Ordering::Release);
     let result = rebind_visible_slots(state, widget, item_grid, clamped);
-    *state.in_synthetic_refresh.lock().unwrap() = false;
+    state.in_synthetic_refresh.store(false, Ordering::Release);
     result?;
 
     set_viewport_start(state, widget, clamped);
