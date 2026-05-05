@@ -178,6 +178,10 @@ fn is_player_character(obj: &UObject) -> bool {
 }
 
 fn is_collision_relevant(fn_name: &str) -> bool {
+    // Tick fires every frame; exclude even though Receive matches.
+    if fn_name.contains("Tick") {
+        return false;
+    }
     fn_name.contains("Damage")
         || fn_name.contains("Damaged")
         || fn_name.contains("Hit")
@@ -185,7 +189,8 @@ fn is_collision_relevant(fn_name: &str) -> bool {
         || fn_name.contains("Fall")
         || fn_name.contains("Impact")
         || fn_name.contains("Health")
-        || fn_name.contains("Receive")
+        || fn_name.contains("ReceiveAny")
+        || fn_name.contains("ReceiveActor")
 }
 
 fn current_impact_resistance_level() -> u32 {
