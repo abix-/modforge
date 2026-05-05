@@ -199,6 +199,39 @@ slots during init -> jumped past our vtable -> crash.
 - TODO.md item 2 (project rename) and items 3-7 (new feature
   multipliers).
 
+## RPG pivot (2026-05-05)
+
+Direction shift: turning the mod into a Factorio-RPG-style
+level-up mod. Kills -> XP -> levels -> perks that drive the
+existing CDO patches. Research questions R1-R5 answered against
+the SDK at `C:\tools\work\sdk\` -- see TODO.md section 0.
+
+### Spike A status
+
+Attempt 1: hooked `Maine.HealthComponent.Kill` via existing
+per-vtable ProcessEventHook. Build/deploy clean, hook installs,
+but DOES NOT fire on enemy deaths.
+
+Root cause:
+- `Kill` is `Final|Native`. Engine calls the C++ method directly,
+  bypassing ProcessEvent.
+- Real death signal is `OnDeath` multicast broadcast, whose BP
+  bindings are `BndEvt__<EnemyClass>_..._DeathDelegate__*`
+  functions on each ENEMY's vtable, not HealthComponent's.
+- Per-vtable hook can't catch this (one vtable per enemy
+  species).
+
+Attempt 2 plan: global ProcessEvent hook. Use UE4SS's existing
+`RegisterProcessEvent[Pre|Post]Callback` (declared in
+`RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp`). C++ shim registers
+the callback and forwards to a Rust extern. Filter by function
+name containing "Death" or "DeathDelegate". `this` is the dying
+enemy; parms[0] is `FDamageInfo` -- killer extraction unchanged
+from R1.
+
+Diagnostic log left in `rpg/kill_hook.rs` -- remove once attempt
+2 lands.
+
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
   treating `image_base + g_objects` as a pointer-to-pointer and

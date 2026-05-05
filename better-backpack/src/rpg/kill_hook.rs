@@ -75,6 +75,20 @@ fn on_event(this: &UObject, function: &UFunction, parms: *mut c_void, original: 
     let fn_id = function as *const UFunction as usize;
     let is_kill = fn_id == state.kill_func;
 
+    // DIAGNOSTIC: log every PE call we see on HealthComponent. The Kill
+    // UFunction turned out to be Final|Native -- the engine calls the C++
+    // method directly and bypasses ProcessEvent. We need to find a
+    // function that's actually PE-dispatched on death (likely
+    // OnRep_HealthState, or none -- in which case we'll need a global PE
+    // hook). Keep it on while we're investigating; remove once we know
+    // the right signal.
+    let func_name = function.as_object().name();
+    let actor_name = this
+        .outer()
+        .map(|o| o.name())
+        .unwrap_or_else(|| "<no-outer>".to_string());
+    bbp_log!("rpg/kill diag: PE on HealthComponent: fn={} owner={}", func_name, actor_name);
+
     // Always call original first. Kill itself triggers the death-effects
     // path inside the engine; we want to read state after it commits.
     unsafe { original.call(this, function, parms) };

@@ -243,11 +243,67 @@ R1-R5 answered (see above). Each spike below is a concrete
 implementation against known field offsets and UFunction names,
 not exploratory.
 
-- [ ] Spike A: kill detection. Hook `Maine.HealthComponent.Kill`
-  via existing ProcessEvent infra. Log `(this->GetOwner()->Class
-  name, this+0x3B0->InstigatorController)` for every fire. Confirm
-  in-game: kill an aphid, see the line; player death does NOT
-  fire a kill credit. **One evening.**
+- [x] Spike A attempt 1 (2026-05-05): hooked
+  `Maine.HealthComponent.Kill` via existing per-vtable
+  ProcessEvent infra. **Did not fire on enemy deaths.**
+  Diagnostic log of every PE call seen on HealthComponent during
+  a Weevil kill showed only: `OnStatusEffectChanged`,
+  `MulticastHandleEffectsWithDamageFlags`, `OnCombatChanged`. No
+  Kill, no OnDeath, no death-shaped event.
+
+  Two reasons:
+
+  1. `UHealthComponent::Kill` is `Final|Native`. The engine calls
+     the C++ method directly. The SDK wrapper at
+     `Maine_functions.cpp:138415` *does* go through ProcessEvent
+     (it's how user code invokes Kill from BP/Lua), but the
+     engine's internal damage path bypasses that wrapper.
+
+  2. The `OnDeath` multicast delegate (`Maine_classes.hpp:42224`)
+     IS broadcast on death, but its bindings are BP functions
+     named `BndEvt__<EnemyClass>_HealthComponent_..._DeathDelegate__DelegateSignature`
+     -- one per enemy class. Those PE-dispatch on the **enemy's**
+     vtable (`ABP_Aphid_C`, `ABP_Weevil_C`, etc.), NOT on
+     HealthComponent's vtable. Our per-vtable hook on
+     HealthComponent can't see them.
+
+  Per-vtable hooking is fundamentally wrong for this signal:
+  every enemy subclass has its own vtable, so we'd need a hook
+  per species (~50+ subclasses).
+
+- [ ] Spike A attempt 2: **global ProcessEvent hook**. Detour the
+  engine's ProcessEvent function pointer once at startup. In the
+  trampoline, filter by function name pattern `*DeathDelegate*`
+  (or just `Contains("Death")` initially, narrow later). The
+  `this` is the dying enemy actor; parms[0] is `FDamageInfo`. We
+  already have the FDamageInfo offset table from R1, so reading
+  the killer is unchanged.
+
+  Implementation options:
+
+  - (a) Add detour primitives to `hook/` (write a JMP at the PE
+    function address, capture overwritten bytes, build a
+    trampoline). ~150 lines of careful asm-aware code; we'd own
+    it.
+  - (b) Piggyback on UE4SS. UE4SS already installs a global PE
+    hook internally and exposes callbacks. Reference:
+    `RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp` --
+    `RegisterProcessEvent[Pre|Post]Callback`. The C++ shim can
+    register a callback that forwards into our Rust extern. We
+    avoid owning the detour, at the cost of pulling in UE4SS
+    headers (or hand-declaring the API surface in our shim).
+
+  (b) is the right choice -- we're already a UE4SS C++ mod, so
+  taking a hard dependency on UE4SS internals doesn't add
+  fragility we don't already have. The shim grows by ~20 lines
+  to register and forward; Rust side is unchanged structurally.
+
+- (Note for later) `MulticastHandleEffectsWithDamageFlags` carries
+  a `DamageFlags: int32` parm (`Maine_parameters.hpp:46227`). If
+  one bit indicates "killing blow", we could detect death from
+  HealthComponent PE traffic. Search for `EDamageFlag` /
+  `DamageFlags` enum to confirm. Lower priority than the global
+  hook since the global hook gives us cleaner data either way.
 - [ ] Spike B: persistence. Find `USaveLoadManager` in GObjects,
   read `SaveInProgressSaveGameHeaderData->PlaythroughGuid`,
   write/read a JSON file at `<DLL_dir>/saves/<guid>.json`. Handle
