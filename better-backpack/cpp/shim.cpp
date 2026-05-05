@@ -41,6 +41,11 @@
 #include <string>
 #include <vector>
 
+// Vendored ImGui (better-backpack/cpp/imgui/) at the same v1.92.1 UE4SS
+// uses. Included before the UE4SS forward decls because some of those
+// reference ImGuiContext / ImGuiMemAllocFunc.
+#include "imgui.h"
+
 #define RC_UE4SS_API __declspec(dllimport)
 
 namespace RC {
@@ -118,6 +123,15 @@ class CppUserModBase {
     // Not dllimport: UE4SS.lib doesn't export this symbol (newer addition,
     // possibly only inlined in the public header). Use our local inline body.
     virtual auto on_cpp_mods_loaded() -> void {}
+
+  protected:
+    // Adds an ImGui tab to UE4SS's debug overlay, owned by this mod.
+    // Tab is auto-cleaned up on mod destruct. Symbol mangling depends
+    // on access specifier so this MUST stay protected to match the
+    // real UE4SS header (CppUserModBase.hpp:212).
+    using RenderFunctionType = void (*)(CppUserModBase*);
+    RC_UE4SS_API auto register_tab(StringViewType tab_name,
+                                    RenderFunctionType render) -> void;
 };
 
 } // namespace RC
@@ -185,6 +199,132 @@ static void ensure_module_handle() {
 extern "C" void better_backpack_start();
 extern "C" void better_backpack_stop();
 
+// FFI surface from rpg/ffi.rs. C-friendly accessors for the ImGui tab.
+extern "C" int      bbp_rpg_has_active_slot();
+extern "C" uint32_t bbp_rpg_get_level();
+extern "C" uint64_t bbp_rpg_get_xp();
+extern "C" uint64_t bbp_rpg_get_xp_for_current_level();
+extern "C" uint64_t bbp_rpg_get_xp_for_next_level();
+extern "C" uint32_t bbp_rpg_get_skill_points();
+extern "C" uint32_t bbp_rpg_get_skill_count();
+extern "C" int      bbp_rpg_get_skill(uint32_t index,
+                                       char*    id_buf,
+                                       size_t   id_buf_len,
+                                       char*    name_buf,
+                                       size_t   name_buf_len,
+                                       uint32_t* out_rank,
+                                       uint32_t* out_max);
+extern "C" int      bbp_rpg_spend(const char* skill_id);
+
+// ---------------------------------------------------------------------
+// UE4SS ImGui glue.
+//
+// UE4SS exposes its current ImGui context + allocator through two
+// static methods on UE4SSProgram. They're declared inline in the
+// header but exported via RC_UE4SS_API (dllimport here resolves to
+// UE4SS.lib). When called from our TU the linker routes to UE4SS.dll's
+// copy, which queries UE4SS's own ImGui state and returns it. We then
+// point our locally-linked ImGui at that context, and drawing into it
+// from our render lambda lands in UE4SS's ImGui draw list as expected.
+//
+// We skip the spinwait piece of the official UE4SS_ENABLE_IMGUI macro:
+// our render lambda is called by UE4SS from its render thread when our
+// tab is being drawn, so a context is guaranteed to exist.
+// ---------------------------------------------------------------------
+
+namespace RC {
+class UE4SSProgram {
+  public:
+    RC_UE4SS_API static auto get_current_imgui_context() -> ImGuiContext*;
+    RC_UE4SS_API static auto get_current_imgui_allocator_functions(
+        ImGuiMemAllocFunc* alloc_func,
+        ImGuiMemFreeFunc*  free_func,
+        void**             user_data) -> void;
+};
+} // namespace RC
+
+static void rpg_enable_imgui() {
+    ImGui::SetCurrentContext(RC::UE4SSProgram::get_current_imgui_context());
+    ImGuiMemAllocFunc alloc_func{};
+    ImGuiMemFreeFunc  free_func{};
+    void* user_data{};
+    RC::UE4SSProgram::get_current_imgui_allocator_functions(
+        &alloc_func, &free_func, &user_data);
+    ImGui::SetAllocatorFunctions(alloc_func, free_func, user_data);
+}
+
+// ---------------------------------------------------------------------
+// RPG render lambda. Called by UE4SS each frame the RPG tab is open.
+// Reads PlayerState through the FFI surface, renders rows of skills
+// with a +1 button each, and a header showing level / XP progress.
+// ---------------------------------------------------------------------
+
+static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
+    rpg_enable_imgui();
+
+    if (!bbp_rpg_has_active_slot()) {
+        ImGui::TextUnformatted("No save loaded.");
+        ImGui::TextDisabled("Pick a save from the main menu to begin.");
+        return;
+    }
+
+    uint32_t level         = bbp_rpg_get_level();
+    uint64_t xp            = bbp_rpg_get_xp();
+    uint64_t xp_cur_level  = bbp_rpg_get_xp_for_current_level();
+    uint64_t xp_next_level = bbp_rpg_get_xp_for_next_level();
+    uint32_t skill_points  = bbp_rpg_get_skill_points();
+
+    ImGui::Text("Level %u", static_cast<unsigned>(level));
+    if (xp_next_level > xp_cur_level) {
+        uint64_t span      = xp_next_level - xp_cur_level;
+        uint64_t into_band = (xp >= xp_cur_level) ? (xp - xp_cur_level) : 0;
+        float progress     = (span > 0)
+                             ? static_cast<float>(into_band) / static_cast<float>(span)
+                             : 1.0f;
+        char overlay[64];
+        snprintf(overlay, sizeof(overlay),
+                 "%llu / %llu XP",
+                 static_cast<unsigned long long>(xp),
+                 static_cast<unsigned long long>(xp_next_level));
+        ImGui::ProgressBar(progress, ImVec2(-1.0f, 0.0f), overlay);
+    } else {
+        ImGui::Text("Max level (%llu XP)",
+                    static_cast<unsigned long long>(xp));
+    }
+
+    ImGui::Text("Unspent skill points: %u",
+                static_cast<unsigned>(skill_points));
+    ImGui::Separator();
+
+    uint32_t count = bbp_rpg_get_skill_count();
+    for (uint32_t i = 0; i < count; ++i) {
+        char     id[32];
+        char     name[64];
+        uint32_t rank = 0;
+        uint32_t max  = 0;
+        if (!bbp_rpg_get_skill(i, id, sizeof(id),
+                                  name, sizeof(name),
+                                  &rank, &max)) {
+            continue;
+        }
+
+        ImGui::PushID(static_cast<int>(i));
+        ImGui::Text("%-20s rank %u / %u",
+                    name,
+                    static_cast<unsigned>(rank),
+                    static_cast<unsigned>(max));
+        ImGui::SameLine();
+
+        bool can_spend = (skill_points > 0) && (rank < max);
+        ImGui::BeginDisabled(!can_spend);
+        if (ImGui::Button("+1")) {
+            bbp_rpg_spend(id);
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+}
+
 class BetterBackpackMod : public RC::CppUserModBase {
   public:
     BetterBackpackMod() {
@@ -192,6 +332,11 @@ class BetterBackpackMod : public RC::CppUserModBase {
         ModVersion = STR("0.1.0");
         ModDescription = STR("Bigger backpack + survival rate tweaks");
         ModAuthors = STR("abix");
+
+        // Register the RPG ImGui tab. Lambda runs on UE4SS's render
+        // thread when the tab is open. Auto-cleaned up when this mod
+        // is destructed.
+        register_tab(STR("RPG"), &rpg_render_tab);
     }
 
     auto on_unreal_init() -> void override {

@@ -14,6 +14,7 @@
 // change.
 
 pub mod apply;
+pub mod ffi;
 pub mod kill_hook;
 pub mod save_slot;
 pub mod skills;

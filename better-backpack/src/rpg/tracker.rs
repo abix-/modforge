@@ -74,6 +74,57 @@ pub fn current_slot() -> Option<String> {
     lock().as_ref().map(|t| t.slot.clone())
 }
 
+/// Run a read-only closure against the active PlayerState. Returns
+/// None if no slot is active. Cheap, no clone of the state.
+pub fn with_state<R>(f: impl FnOnce(&PlayerState) -> R) -> Option<R> {
+    let g = lock();
+    g.as_ref().map(|t| f(&t.state))
+}
+
+/// Spend one skill point on `skill`. Returns true if applied, false if
+/// preconditions fail (no slot, no points, rank already at max).
+pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
+    let mut g = lock();
+    let Some(tracker) = g.as_mut() else {
+        bbp_log!("rpg/state: spend({}) ignored, no slot active", skill.id);
+        return false;
+    };
+    if tracker.state.skill_points == 0 {
+        bbp_log!("rpg/state: spend({}) ignored, no skill points", skill.id);
+        return false;
+    }
+    let cur_rank = tracker
+        .state
+        .skill_ranks
+        .get(skill.id)
+        .copied()
+        .unwrap_or(0);
+    if cur_rank >= skill.max_rank {
+        bbp_log!(
+            "rpg/state: spend({}) ignored, already at max rank {}",
+            skill.id,
+            skill.max_rank
+        );
+        return false;
+    }
+    tracker.state.skill_points -= 1;
+    let new_rank = cur_rank + 1;
+    tracker
+        .state
+        .skill_ranks
+        .insert(skill.id.to_string(), new_rank);
+    crate::rpg::apply::apply(&tracker.state, &tracker.settings);
+    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    bbp_log!(
+        "rpg/state: spent point on {}: rank {} -> {} ({} points left)",
+        skill.id,
+        cur_rank,
+        new_rank,
+        tracker.state.skill_points
+    );
+    true
+}
+
 /// Called from the kill hook on every confirmed creature kill.
 pub fn record_kill(creature_class_name: &str, source: KillSource) {
     let mut g = lock();

@@ -131,6 +131,98 @@ sliders.
 
 ### Vision
 
+**Classless, free-form skill spec.** Inspired by the War3CS / War3FT
+mods for Counter-Strike (https://war3cs2.wiki.gg/) plus Factorio's
+RPG System. CS Warcraft mods bind skills to "races" / classes, but
+the user explicitly wants the opposite: NO classes. The catalog is
+a flat menu, the player spends points on whatever combination
+matches the build they want. Tank build is "max armor + max health
++ max regen". Glass cannon is "max attack damage + max crit + max
+move speed". Survivalist is "max backpack + min hunger/thirst +
+max gather". Player decides.
+
+This means the skill catalog needs to be much wider than the
+backpack/hunger/thirst starter set. Below is the planned catalog,
+organized by domain. All passive effects (no active abilities for
+v1, since combat in Grounded 2 is already mechanical and we don't
+want input-bound clutter). Each skill is one CDO field write or
+one ProcessEvent hook around a damage / move calculation.
+
+#### Survival skills
+- **Backpack** (DONE): +5 slots / rank, max 12.
+- **Hunger Resistance** (DONE): -7.5% drain / rank, max 10.
+- **Thirst Resistance** (DONE): -7.5% drain / rank, max 10.
+- **Gear Hardiness**: gear takes less durability damage per use.
+- **Max Health**: +N% HP per rank. Field on `UHealthComponent`
+  (`MaxHealth` at 0x0328, `Maine_classes.hpp:42263`).
+- **Health Regen**: out-of-combat HP per second.
+- **Stamina Pool**: +N stamina per rank. Field on
+  `UStaminaComponent` (offset 0x1358 on ASurvivalCharacter).
+- **Stamina Regen**: per-second stamina recovery rate.
+
+#### Combat skills (player-side)
+- **Attack Damage**: +N% melee + ranged damage dealt.
+- **Critical Chance**: % chance to deal a crit.
+- **Critical Damage**: bonus damage on crits.
+- **Evasion / Dodge**: % chance to ignore incoming hits.
+  (War3CS convention: roll on each hit.)
+- **Damage Reduction / Armor**: -N% damage taken.
+- **Lifesteal on Hit**: % of damage dealt returned as HP. Hook
+  the damage application path; see how `MulticastHandleEffectsWithDamageFlags`
+  exposes Damage and DamageFlags (`Maine_parameters.hpp:46232`).
+  When the *player* deals damage, add `damage * pct` to player HP.
+- **Thorns**: % of damage taken reflected back to attacker.
+  (War3CS Spiked Carapace shape.)
+
+#### Movement skills
+- **Sprint Speed**: +N% sprint speed. Field on
+  `UMaineCharMovementComponent` (offset 0x1380 on
+  ASurvivalCharacter), look for MaxWalkSpeed / SprintSpeed
+  override during Dumper-7 dive.
+- **Walk Speed**: +N% walk speed.
+- **Jump Height**: +N% JumpZVelocity (or reduce gravity for the
+  player only, War3CS Levitation shape).
+- **Glide Speed**: +N% glider speed. Already noted in TODO #6
+  (MaxFlySpeed surface).
+- **Swim Speed**: +N% swim speed.
+- **Climb Speed**: +N% rope/wall climb speed.
+
+#### Utility skills (deferred, lower priority)
+- **Gather Yield**: +N% items per harvest node.
+- **Crafting Discount**: -N% recipe material cost.
+- **Repair Discount**: -N% repair cost.
+- **Hauling Capacity**: +N stack size on hauled items
+  (per `UHaulingComponent` at 0x1440 on ASurvivalCharacter).
+
+#### Catalog sizing
+- ~25 skills total when fully populated. Comparable to War3FT
+  (which has ~17 skills across 8 races; we collapse all into one
+  flat menu).
+- Each skill has 5-12 ranks depending on per-rank potency.
+  Smaller ranks (e.g. crit chance +2%/rank, max 10) for skills
+  with snowball potential; larger ranks (e.g. backpack +5/rank,
+  max 12) for utility surfaces with hard ceilings.
+- Total points to fully max everything = sum of all max_ranks.
+  Should be intentionally larger than max possible level so the
+  player can never get everything; choices matter.
+  Example: ~25 skills * average max_rank 8 = 200 points to max
+  all. Level cap 50 with 1 point per level = 50 points. Player
+  caps out at 25% of the catalog. That ratio is the design knob.
+
+#### Implementation order
+- The 3 existing skills (backpack/hunger/thirst) are landed.
+- Next batch: combat skills (attack_damage, lifesteal, evasion,
+  crit_chance, crit_damage, armor) since combat is the primary
+  XP source and the loop is "kill -> level -> get better at
+  killing".
+- Then movement (sprint, jump, glide).
+- Then survival add-ons (max_health, regen, stamina).
+- Utility last.
+
+Each new skill is roughly: (a) catalog entry in `rpg/skills.rs`,
+(b) apply branch in `rpg/apply.rs`, (c) field offset researched
+in the SDK, (d) optional damage-path hook for combat skills.
+
 - Player kills enemies -> XP awarded based on enemy type / difficulty.
 - XP threshold per level (curve TBD: linear, polynomial, etc.).
 - On level-up, player gets N skill points.
