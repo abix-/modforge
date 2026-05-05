@@ -171,36 +171,58 @@ fall-damage code does not consult any BP-exposed field we can find, and
 `ApplyFallDamage` UFunction never fires via ProcessEvent during a
 natural fall (engine calls the native function pointer directly).
 
-Current attempt (in build, **awaiting in-game validation**): mirror the
-in-game difficulty UI's runtime fall-damage change. The UI changes the
-multiplier live without a restart, so the underlying code path must
-flush whatever cache the native fall code reads. The SDK exposes that
-path directly as a `Final, Native, BlueprintCallable` UFunction:
-`USurvivalModeManagerComponent::UpdateCustomSettings(FCustomGameModeSettings)`.
+Status (validated in-game):
 
-`apply.rs::invoke_update_custom_settings_for_fall_damage`:
+- Every BP-exposed fall-damage field write lands but does nothing:
+  per-character (`bTakeFallDamage`, `FallDamageRatio`,
+  `MinimumFallDamageVelocity`), per-game-mode UObject
+  (`FallDamageMultiplier` at +0x8C), replicated struct
+  (`FCustomGameModeSettings.FallDamageMultiplier` at +0x1C inside
+  `USurvivalModeManagerComponent::CustomSettings` +0x114).
+- Calling the official setter `UpdateCustomSettings` UFunction via
+  ProcessEvent (mimicking the in-game difficulty UI) also lands, runs
+  `OnRep_CustomSettings`, and still does nothing.
+- BP `OnLanded` ProcessEvent suppression on concrete
+  `BP_SurvivalPlayerCharacter_*` works but is post-damage cosmetic.
 
-1. Walks live `USurvivalModeManagerComponent` instances.
-2. Snapshots the live `FCustomGameModeSettings` struct at +0x114
-   (32 bytes) so all other fields are preserved.
-3. Mutates only `FallDamageMultiplier` at +0x1C inside the struct.
-4. Resolves the `UpdateCustomSettings` UFunction via
-   `UClass::get_function`.
-5. Calls it via `UObject::process_event` on the live component,
-   passing the modified parm struct.
+Damage trace on the player's HealthComponent shows the actual delivery
+fires through `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
+with `Damage=83.63, flags=0, type_flags=0`. `ApplyDamageFromInfo` does
+not appear in the trace -- the engine bypasses ProcessEvent on the
+native fall path on its way to writing `CurrentDamage` (+0x32C).
 
-The native handler runs the engine's setter logic and triggers
-`OnRep_CustomSettings`, which is the cache-invalidation step raw
-memory writes skipped. That is why every previous in-place write
-failed: the runtime was reading a cached copy, not the struct field.
+Heal-back from the multicast hook is rejected (UX: HP flickers).
 
-Fallback if `UpdateCustomSettings` does not propagate: hook
-`UHealthComponent::ApplyDamageFromInfo` (Final, Native,
-BlueprintCallable). If a ProcessEvent hook on this fires when the
-player takes fall damage, zero the `Damage` out parameter at level 100
-and skip the original. Parm layout: `Damage : float` at +0x00,
-`DamageEvent : FDamageEvent` at +0x08, `DamageInfo : FDamageInfo` at
-+0x18.
+**Next: native function detour.** Replace the `native_func` slot on
+the `UFunction` for `ASurvivalCharacter::ApplyFallDamage` (and/or
+`UHealthComponent::ApplyDamage`) so the engine's direct C++ call lands
+in our trampoline. Required because the engine bypasses ProcessEvent
+for these functions, and they are the only seam that runs before
+damage is applied to `CurrentDamage`.
+
+Steps:
+
+1. Find the `UFunction` for `ASurvivalCharacter::ApplyFallDamage` via
+   `UClass::get_function` on the `SurvivalCharacter` class.
+2. Read the current `native_func` pointer from the UFunction at the
+   appropriate offset (UE5 puts this near the end of UFunction;
+   verify with the SDK's `UFunction` size and a one-shot dump).
+3. Allocate an executable trampoline via `VirtualAlloc` with
+   `PAGE_EXECUTE_READWRITE`. Trampoline calls our Rust function, then
+   either returns immediately (full immunity at level 100) or jumps to
+   the original native fn (graceful degradation).
+4. `VirtualProtect` the UFunction to writable, swap in the trampoline
+   pointer, restore protection.
+5. On Drop / unload, restore the original pointer.
+
+Lower-priority adjacent surfaces still on the radar if the native
+detour proves intractable:
+
+- `ASurvivalCharacter::MulticastFallEffects(...)`
+- `BP_SurvivalPlayerCharacter_*::BndEvt__HealthComponent...DamagedDelegate...`
+- `BP_SurvivalPlayerCharacter_*::NotifyOnLandAnimBegin`
+- `AnimNotifyState_OverrideTakeFallDamage` /
+  `AnimNotifyState_ReduceFallDamage`
 
 Lower-priority seams kept on the radar:
 

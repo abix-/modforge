@@ -35,19 +35,25 @@ damage.** Native fall code does not read any BP-exposed field we have
 located. `ApplyFallDamage` UFunction also never fires via ProcessEvent
 during a natural fall (engine calls the native fn pointer directly).
 
-Two open angles:
-1. Hook `UHealthComponent::ApplyDamageFromInfo` (Final, Native,
-   BlueprintCallable) and zero the Damage out parameter for the player
-   when fall_resistance is active. Parm layout:
-   `Damage : float` at +0x00, `DamageEvent` at +0x08,
-   `DamageInfo : FDamageInfo` at +0x18.
-2. Reverse-engineer the in-game difficulty change path
-   (`USurvivalModeManagerComponent::UpdateCustomSettings` /
-   `UpdateDifficulty`, `ASurvivalGameInstance::SetCustomGameSettings`)
-   to identify which fields the runtime UI flips when difficulty is
-   adjusted. That is, by definition, the right surface to mimic since
-   it does change fall damage live. Collision / impact damage is still
-   open.
+Calling `UpdateCustomSettings` UFunction (the in-game difficulty UI's
+own setter, `Final, Native, BlueprintCallable`) on the live mode-manager
+component via ProcessEvent dispatched cleanly and ran
+`OnRep_CustomSettings` -- still no effect on fall damage. So the entire
+field-write surface is dead.
+
+Damage trace caught the actual fire: fall damage arrives via
+`UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
+with `Damage=83.63, flags=0, type_flags=0`. `ApplyDamageFromInfo` did
+not appear in the trace -- the engine bypasses ProcessEvent on the
+native fall path entirely. Multicast fires post-damage so suppressing
+it does nothing; heal-back is rejected because of HP flicker.
+
+Next move: native function detour on the `UFunction::native_func`
+pointer for `ASurvivalCharacter::ApplyFallDamage` (and/or
+`UHealthComponent::ApplyDamage`). That intercepts the engine's direct
+C++ call, which is the only seam upstream of `CurrentDamage` write.
+Steps + offsets in `docs/todo.md`. Collision / impact damage still
+open.
 
 ## Layout
 

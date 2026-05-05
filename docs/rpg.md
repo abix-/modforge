@@ -287,43 +287,55 @@ also never fires via ProcessEvent during a natural fall (engine native
 code calls the C++ function pointer directly, bypassing our dispatch
 hook).
 
-Key insight: the in-game difficulty UI changes fall damage scaling
-LIVE -- without restart. Whatever code path that UI uses is, by
-definition, the right surface to mimic. The SDK exposes that surface
-directly:
+Tested both `UpdateCustomSettings` UFunction invocation (mimicking the
+in-game difficulty UI) and the parallel raw memory writes. The call
+dispatches cleanly (`UpdateCustomSettings invoked on 3 component(s)`)
+and `OnRep_CustomSettings` runs as a side effect. **Player still takes
+fall damage at level 100.**
 
-- `USurvivalModeManagerComponent::UpdateCustomSettings(FCustomGameModeSettings)`
-  -- `Final, Native, Public, BlueprintCallable`
-- `USurvivalModeManagerComponent::OnRep_CustomSettings()`
-  -- `Final, Native, Protected` (the cache-invalidation side effect)
-- `USurvivalGameInstance::SetCustomGameSettings(FCustomGameModeSettings)`
-  -- the game-instance-level entry point
+That ruled out the entire field-write surface. A live ProcessEvent
+trace on the player's `HealthComponent` then identified the actual
+damage call:
 
-Critical difference from the raw memory write at +0x130: a memory write
-sets the byte but does not run any native side effects. The UFunction
-runs the engine's own setter logic, which on the server triggers
-`OnRep_CustomSettings` and any cached value the runtime fall-damage
-code is actually reading. That cache is presumably what was
-sticky on every prior write attempt.
+```
+rpg/dmg-trace: player hit fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation
+               damage=83.63 flags=0x00000000 type_flags=0x00000000
+```
 
-Implementation in `apply.rs` (`invoke_update_custom_settings_for_fall_damage`):
+So the fall damage is delivered through
+`UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
+with both `DamageFlags` and `DamageTypeFlags` zero (no DamageType
+classification at all). `ApplyDamageFromInfo` does **not** appear in
+the trace, confirming the engine's native fall path bypasses
+ProcessEvent entirely on its way to applying damage.
 
-1. Walk live `USurvivalModeManagerComponent` instances.
-2. Snapshot the live `FCustomGameModeSettings` struct at +0x114 (32
-   bytes) to preserve every other field.
-3. Mutate `FallDamageMultiplier` at struct offset +0x1C to
-   `vanilla * (1 - reduction)`.
-4. Resolve `UpdateCustomSettings` UFunction via
-   `UClass::get_function`.
-5. Call it via `UObject::process_event` on the live component, with
-   the modified 32-byte parm struct.
+Order on the wire (one fall): `OnLanded` BP event (we suppress) ->
+damage applied to `CurrentDamage` by native code -> the AtOwnerLocation
+multicast fires for cosmetic effects. The multicast is post-damage, so
+suppressing it does not undo the hit.
 
-Awaiting in-game validation. If `UpdateCustomSettings` does not fire
-via ProcessEvent, the parallel attack surface is
-`UHealthComponent::ApplyDamageFromInfo` (Final, Native,
-BlueprintCallable) -- a hook that zeros the `Damage` out parameter for
-fall events. Parm layout: `Damage : float` at +0x00, `DamageEvent` at
-+0x08, `DamageInfo : FDamageInfo` at +0x18.
+Heal-back from inside the multicast hook is the obvious move (decrement
+`HealthComponent.CurrentDamage` at +0x32C by the `Damage` parm), but
+we are not pursuing it -- the player would visibly flicker
+between "took 83 damage" and "back to full" on every fall, which is
+worse UX than just taking the damage.
+
+Remaining attack surface: detour the native function pointer in the
+`UFunction` for `ApplyFallDamage` (or for `HealthComponent::ApplyDamage`).
+That replaces `UFunction::native_func` in place so the engine's
+direct C++ dispatch lands in our trampoline instead of the original.
+This is materially more involved than the existing ProcessEvent vtable
+hook -- needs `VirtualProtect` rights, executable memory for the
+trampoline, and a return-to-original path -- but it is the only seam
+that runs *before* damage is applied to `CurrentDamage`. Tracked in
+[`todo.md`](todo.md).
+
+Adjacent SDK surfaces still on the radar but lower priority:
+
+- `ASurvivalCharacter::MulticastFallEffects(EPhysicalSurface, float VelocityZ)`
+- `AnimNotifyState_OverrideTakeFallDamage` /
+  `AnimNotifyState_ReduceFallDamage`
+- the player BP damaged delegate bound from `HealthComponent`
 
 Adjacent fall-specific SDK surfaces still on the radar if neither path
 is the seam:
