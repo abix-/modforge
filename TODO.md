@@ -130,9 +130,18 @@ not the user-facing knob.
    note in CHANGELOG, recommend they add the keys back if they
    want the prior baseline.
 
-**User picked #1 first (2026-05-05).** Highest-leverage change,
-without it level-ups are meaningless. ImGui tab and settings
-reconcile follow.
+**Status (2026-05-05): all three items DONE.** Skill catalog +
+apply step + ImGui tab all confirmed working in-game (see
+sections below). Loop is end-to-end: kills give XP, levels
+grant skill points, points buy skill ranks, ranks change
+gameplay, state persists across launches.
+
+**Next focus: catalog expansion, combat skills batch.** Per
+the war3cs-inspired vision in section "Vision" below. First
+batch: attack damage, armor (pure CDO writes), then lifesteal
++ evasion + crit (damage-path hook around the existing
+HealthComponent ProcessEvent trampoline). 5-6 skills, half a
+day of work.
 
 
 
