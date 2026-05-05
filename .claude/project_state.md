@@ -243,6 +243,34 @@ The earlier winhttp.dll proxy work will be archived to
 `archive/winhttp-proxy/` once the UE4SS path lands, kept as a
 fallback if UE4SS turns out unstable for Grounded 2.
 
+## Status-effect data-table probe (2026-05-05, latest)
+
+Shipped commits b3577bc, ee03b98, 2f2de5d, 98e92ef, 97833be:
+
+- `rpg/sfx-list` probe walks the player's StatusEffects TArray on
+  OnLanded (gated on `impact_resistance > 0`), reads each
+  FDataTableRowHandle (DataTable* +0x00, RowName FName +0x08), and
+  resolves the data-table name.
+- Reads FStatusEffectData row bytes via a linear TMap walk over
+  UDataTable.RowMap (sets-of-pairs layout). Logs Type at struct
+  offset +0x30 and Value at +0x34 as
+  `rpg/sfx-list:   [N] row=NAME Type=N Value=F.FFF table=...`.
+- Confirmed every status effect flows through
+  `/Game/Blueprints/Attacks/Table_StatusEffects` -- single table,
+  ready for migration.
+
+Awaiting in-game confirmation: user must close Grounded 2 (DLL is
+locked), redeploy, restart with impact_resistance >= 1, take a
+fall, and report the new probe lines. Two confirmations expected:
+TMap walk works, and Type/Value offsets (+0x30/+0x34) match SDK.
+
+Next (commit 2, ~80 lines if probe confirms): mutate a row's Value
+field and AddEffect via process_event to validate the write path.
+Then migrate `fall_resistance` first as the lowest-risk skill.
+
+Docs updated: `docs/damage.md` (stat semantics + implementation
+plan), plain-language explainer commit 98e92ef.
+
 ## Where we left off (2026-05-05, late-night)
 
 **State (RESOLVED, working in-game 2026-05-05):**

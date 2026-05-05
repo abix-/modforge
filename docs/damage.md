@@ -732,6 +732,38 @@ and reference it from a row handle, then call
      low-impact existing row and overwrite its Type+Value. Path
      decision per stat after we see the row catalog.
 
+**In-game probe results (2026-05-05).** First sfx-list run with the
+linear `RowMap` walk over an active player's StatusEffects array:
+
+- `Type` at struct offset +0x30 and `Value` at +0x34 are confirmed
+  correct. `PlayerUpgradeHealth1` resolved to `Type=5 Value=20.0`
+  (Type 5 = MaxHealth in `EStatusEffectType`); `MaxHealthSmall`
+  resolved to `Type=5 Value=10.0`. Numbers match the visible
+  vanilla effects.
+- The `Table_StatusEffects` data table identification is correct;
+  every active effect on the player traces back to it.
+- The linear walk only finds ~4 of 13 active rows. The other 9
+  (e.g. `RogueFinisherCriticals`, `AntRedStaminaAttack`,
+  `FighterFinisherStun`, `PerkSpearTier1`,
+  `PerkSpearThrowAttackUpTier1`, `MealTier1Regen`,
+  `MealTier1WeakPointDamage`) consistently miss. The engine
+  resolved them (their `UStatusEffect` instances are live), so the
+  rows exist in the map -- our walk's stride or layout assumption
+  is wrong.
+- Root cause hypothesis: `TMap<K,V>` is backed by
+  `TSet<TPair<K,V>>` whose element type is
+  `TSetElement<TPair<K,V>>` -- pair plus `HashNextId : int32` plus
+  `HashIndex : int32`, stored inside a `TSparseArray` with a
+  free-list bitset. Walking with stride = `sizeof(K) + sizeof(V)`
+  drifts past valid entries; walking without consulting the
+  allocation bitarray also reads free slots (mostly zeros, harmless
+  but wasteful). Need to honor the real TSetElement stride and the
+  TSparseArray allocation flags.
+- Fix path: prefer `UDataTableFunctionLibrary::GetDataTableRowNames`
+  + `GetDataTableRowFromName` (engine-provided lookup, no manual
+  TMap walk required) for read; only walk the map directly when we
+  need to inject a new row.
+
 3. **Build the row handle** as
    `FDataTableRowHandle { DataTable* = ourTable, FName = ourRowName }`
    (16 bytes). Note `UStatusEffect` stores the
