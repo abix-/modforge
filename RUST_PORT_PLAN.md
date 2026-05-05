@@ -308,34 +308,37 @@ guide and reference, not a library.
 
 Numbered so we can check them off.
 
-1. Rename current `better-backpack/` -> `better-backpack-cpp/` and
-   `inject.c` -> `inject-c/inject.c`. Keep building.
-2. Add workspace `Cargo.toml`, `rust-toolchain.toml`, `.cargo/config.toml`.
-3. Create `injector/` bin crate. Port `inject.c` to Rust. Confirm it can
-   inject the existing C++ DLL successfully -- this validates the injector
-   independent of the mod port.
-4. Create `better-backpack/` cdylib skeleton with `sdk/` module: `UObject`,
-   `UClass`, `UFunction`, `FString`, `TArray`, `GObjects`,
-   `find_class_fast`. Compile, run layout tests against known offsets.
-5. Add `hook/` module: vtable patcher + `ProcessEventHook` RAII wrapper.
-   Add `log` module + `define_dllmain!` macro.
-6. Wire up the patch loop only (no inventory hook yet). Inject via the new
-   Rust injector and confirm: backpack grows to 100, log file written,
-   behavior matches the C++ baseline minus scrolling.
-7. Port the inventory-interface hook + viewport rebind. Cache `UFunction*`
-   instead of name compares. Default trace flags off. Confirm scrolling
-   parity in-game.
-8. Port the BPF / grid / menu trace surfaces only as `cfg!(debug_assertions)`
-   helpers. Ship build doesn't compile them in.
-9. Side-by-side test: run C++ DLL one session, Rust DLL the next. Check
-   identical patch behavior, identical scroll behavior, lower CPU on a
-   sampled frame profile.
-10. Move `better-backpack-cpp/` and `inject-c/` to `archive/` once parity
-    is confirmed for two play sessions.
-11. Write `BUILDING.md` for the Rust path. Retire the C++ build docs.
+- [x] **1.** Rename current `better-backpack/` -> `better-backpack-cpp/`.
+  (`inject.c` lives inside that tree, so one rename covered both.)
+- [x] **2.** Add workspace `Cargo.toml`, `rust-toolchain.toml`,
+  `.cargo/config.toml` (the last overrides a global `target-dir` that was
+  redirecting our build into `C:\code\endless\rust\target`).
+- [x] **3.** Create `injector/` bin crate. Port `inject.c` to Rust. Build
+  green, RAII handle/alloc guards, same exit codes / messaging.
+- [x] **4.** Create `better-backpack/` cdylib skeleton with `sdk/` module:
+  `UObject`, `UClass`, `UFunction`, `FName` (with `AppendString` resolver),
+  `FString`, `TArray`, `GObjectsView`, `Runtime`, `find_class_fast`. Layout
+  tests pass; `cargo clippy --all-targets -- -D warnings` clean. The lib is
+  `cdylib + rlib` so the integration tests can link it.
+- [ ] **5.** Add `hook/` module: vtable patcher + `ProcessEventHook` RAII
+  wrapper. Add `log` module + `define_dllmain!` macro.
+- [ ] **6.** Wire up the patch loop only (no inventory hook yet). Inject
+  via the new Rust injector and confirm: backpack grows to 100, log file
+  written, behavior matches the C++ baseline minus scrolling.
+- [ ] **7.** Port the inventory-interface hook + viewport rebind. Cache
+  `UFunction*` instead of name compares. Default trace flags off. Confirm
+  scrolling parity in-game.
+- [ ] **8.** Port the BPF / grid / menu trace surfaces only as
+  `cfg!(debug_assertions)` helpers. Ship build doesn't compile them in.
+- [ ] **9.** Side-by-side test: run C++ DLL one session, Rust DLL the next.
+  Check identical patch behavior, identical scroll behavior, lower CPU on a
+  sampled frame profile.
+- [ ] **10.** Move `better-backpack-cpp/` to `archive/` once parity is
+  confirmed for two play sessions.
+- [ ] **11.** Write `BUILDING.md` for the Rust path. Retire the C++ build
+  docs.
 
-Each step lands as its own commit. Don't merge the workspace until step 5
-runs end-to-end.
+Each step lands as its own commit.
 
 ## What stays C++ (for now)
 

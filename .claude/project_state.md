@@ -1,101 +1,73 @@
 # grounded2mods - project state
 
 ## Current focus
-Reverse-engineering and modding Grounded 2 (UE 5.4, build 0.4.0.2). The
-"Better Backpack" mod (40 -> 60 main inventory slots) is the lead worked
-example. The pak prototype was retired; the mod ships as an injected DLL.
+Porting the Better Backpack mod from C++ to a single Rust workspace
+(cdylib + injector). C++ tree preserved at `better-backpack-cpp/` until the
+Rust port reaches behavior parity. Plan in `RUST_PORT_PLAN.md`.
 
-## Layout (post 2026-05-04 doc reorganization)
+## Layout
 
 ```
 grounded2mods/
-  README.md                 Repo landing page + nav.
-  better-backpack/          The mod and all its docs.
-    README.md               Landing page + nav for the mod.
-    INSTALL.md              End-user install/use guide.
-    TROUBLESHOOTING.md      Failure modes and fixes.
-    BUILDING.md             Build, configuration, internals, porting.
-    REQUIREMENTS.md         Design spec, research, verification plan.
-    SHIPPING-BUILD-NOTES.md UE5 shipping logging/console quirks.
-    inspection-guide.md     Generic UE5 modding methodology + worked
-                            examples + SDK research. Moved from repo
-                            root because the worked examples + SDK
-                            research are inseparable from the mod design.
-    dllmain.cpp             DLL: console + log + scan + patch + rescan.
-    basic_impl.cpp          Slim Dumper-7 Basic.cpp (avoids Engine_*).
-    inject.c                Standalone external injector.
-    build.bat               MSVC build (DLL + injector).
-  scripts/                  Python utilities for cooked-asset inspection.
+  Cargo.toml                Workspace: better-backpack + injector
+  rust-toolchain.toml       Stable, x86_64-pc-windows-msvc
+  .cargo/config.toml        Target triple, target-dir override
+  better-backpack/          cdylib + rlib (the mod itself)
+    src/
+      lib.rs                DllMain + worker entry
+      sdk/                  Hand-written UE SDK shim
+        offsets.rs          Steam/Xbox offset tables + field offsets
+        fname.rs            FName + AppendString resolver
+        fstring.rs          FString = TArray<u16>
+        tarray.rs           TArray<T>
+        uobject.rs          UObject/UClass/UFunction/GObjectsView/Runtime/find_class_fast
+    tests/layout.rs         Static layout asserts
+  injector/                 bin: standalone DLL injector (Rust port of inject.c)
+  better-backpack-cpp/      OLD C++ tree, kept until Rust port hits parity
+  RUST_PORT_PLAN.md         Migration plan (11 steps)
+  better-backpack-cpp/PERFORMANCE_AUDIT.md   What we found in the C++ hot path
 ```
 
-## Doc split rationale (2026-05-04)
-The mod's documentation was a single 185-line README.md mixing user guide,
-dev guide, troubleshooting, and design notes. Split for navigability:
-- README.md became a thin landing page (3 KB) with a "where to start" table.
-- User flows (install, troubleshoot) are in their own docs.
-- Dev concerns (build, internals, porting) are in BUILDING.md.
-- Design + research stayed in REQUIREMENTS.md (TOC added).
-- Logging/console UE5 shipping quirks pulled out of inspection-guide.md
-  into SHIPPING-BUILD-NOTES.md so it's referenceable from the mod's docs
-  without sending the reader through 1400 lines of methodology.
-- inspection-guide.md moved into better-backpack/ since the worked
-  examples and SDK research drove the mod's design.
+## Mod target (carried over from C++ port)
+- Player main backpack capacity = `Maine.UInventoryComponent +0x01E0`
+  (`int32 DefaultMaxSize`). Vanilla 40; target 100.
+- Mount/saddlebag (vanilla 30) is left untouched.
+- Viewport stays 4x10 in the live UI; we rebind 40 visible slots against
+  shifting `ItemStartIndex` to scroll. The earlier 6-row growth path is
+  retired.
 
-## Key technical facts (verified)
-- Player main backpack capacity: `Maine.UInventoryComponent +0x01E0`
-  (`int32 DefaultMaxSize`). Confirmed `Maine_classes.hpp:29557`.
-- Vanilla values: main = 40, mount = 30. Mod target = 60.
-- Widget side: `UI_Container_BackpackSide_C.MaxRows` (4 vanilla, target 6).
-  Patched reflectively via FProperty walk so it survives field reorderings
-  across game updates.
-- UE5 Shipping strips console + file logging. Grounded 2 never writes
-  `Augusta.log`. Verification of any mod requires runtime injection. See
-  better-backpack/SHIPPING-BUILD-NOTES.md.
-- Grounded 2 has no listed anti-cheat as of 0.4.0.2.
-- Game executables: Steam = `Grounded2-WinGRTS-Shipping.exe`, Xbox Game
-  Pass = `Grounded2-WinGDK-Shipping.exe`.
+## Key facts
+- Game exes: Steam = `Grounded2-WinGRTS-Shipping.exe`, Xbox = `Grounded2-WinGDK-Shipping.exe`.
+- Steam offsets (image-relative): GObjects=0x09F67028, AppendString=0x01252060, ProcessEventIdx=0x4C.
+- Xbox offsets: GObjects=0x09F36F28, AppendString=0x01250F80, ProcessEventIdx=0x4C.
+- UObject layout: vtable@0x00, flags@0x08, index@0x0C, class@0x10, name@0x18, outer@0x20, size=0x28.
+- UClass: ClassDefaultObject@0x110. UFunction: FunctionFlags@0xB0.
+- Build target dir overridden locally (~/.cargo/config.toml redirects to endless).
 
-## Why DLL, not pak, not UE4SS
-- Pak: cannot be verified in shipping (no Augusta.log, no console).
-- UE4SS: would work, adds an external runtime dependency and a folder
-  layout that complicates packaging. Heavier than needed for a single
-  mod with no Lua story.
-- Manual remote-thread injector (chosen): pattern lifted from
-  x0reaxeax/Grounded2Minimal (MIT). Single user step: run inject.exe.
-  Game has no anti-cheat so this is safe today.
+## Migration progress (RUST_PORT_PLAN.md)
+- [x] 1. Rename C++ tree -> better-backpack-cpp.
+- [x] 2. Workspace: Cargo.toml + rust-toolchain.toml + .cargo/config.toml.
+- [x] 3. Injector crate (Rust port of inject.c). Builds.
+- [x] 4. SDK module skeleton (UObject, UClass, UFunction, FName, FString,
+     TArray, GObjectsView, Runtime, find_class_fast). Layout tests pass.
+- [ ] 5. Hook module (vtable patcher + RAII ProcessEventHook), log sink,
+     define_dllmain! macro, patch loop wired in.
+- [ ] 6. Inventory-interface hook + viewport rebind.
+- [ ] 7. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
+- [ ] 8. Side-by-side parity test C++ vs Rust DLL.
+- [ ] 9. Archive better-backpack-cpp/.
+- [ ] 10. Rust BUILDING.md.
 
-## Last session
-1. Reviewed the original `dllmain.cpp` against SDK headers. Confirmed
-   offset 0x01E0 correct.
-2. Researched canonical UE5 mod injection paths via WebSearch + GitHub.
-3. Repo was reorganized (by parallel session) to consolidate everything
-   into `better-backpack/`. Pak prototype retired. `inject.c` and
-   `basic_impl.cpp` added. Build is now ~30s.
-4. Wrote user guide (INSTALL.md), troubleshooting guide
-   (TROUBLESHOOTING.md), build/internals doc (BUILDING.md). Added TOC
-   to REQUIREMENTS.md.
-5. Moved inspection-guide.md from root into better-backpack/.
-6. Extracted UE5 shipping logging/console section from inspection-guide.md
-   into SHIPPING-BUILD-NOTES.md and replaced with a one-paragraph stub
-   plus a back-reference.
-7. Rewrote both READMEs as thin landing pages with TOCs / nav tables.
-
-## Current state
-- DLL + injector source complete.
-- Docs split into focused files with TOCs.
-- `dist/` empty -- needs `build.bat` run to produce binaries.
-- No verified end-to-end run captured yet.
-
-## Next steps
-- Run `build.bat`, inject into a live game session, verify the 60-slot
-  inventory and 6-row widget. Capture log output.
-- Optional: settings.json reader so kSlotCount is runtime-configurable.
-- Optional: offset sanity check before writing.
+## Build commands
+- `cargo build --release` builds both crates.
+- `cargo test --release` runs layout tests.
+- `cargo clippy --release --all-targets -- -D warnings` lint gate (clean today).
+- Outputs: `target/x86_64-pc-windows-msvc/release/{better_backpack.dll, inject.exe}`.
 
 ## Open questions
-- Hard upper bound on `kSlotCount` (does the engine clamp very large
-  values?). 60 is the only verified target.
-- Multiplayer: server-authoritative cap may clamp client-side. Out of
-  scope for v1.
-- Re-injection during a single session is undefined. Documented as
-  "don't do that" rather than supported.
+- Step 6 needs validation that calling `original` ProcessEvent from a Rust
+  hook closure preserves UE's thiscall expectations on this platform.
+- DllMain TLS hazard: keep DllMain to `CreateThread` only; all std work in
+  the worker.
+- Panic-in-hook: every hook closure wraps body in `catch_unwind`, falls
+  through to original on panic.
