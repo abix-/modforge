@@ -58,7 +58,11 @@ grounded2mods/
      SDK runtime init -> wait for GObjects -> patch every player-owned
      UInventoryComponent.DefaultMaxSize to 100 -> rescan every 10s.
      **Code complete; in-game parity verification pending.**
-- [ ] 7. Inventory-interface hook + viewport rebind.
+- [x] 7. Inventory-interface hook + viewport rebind. inv_hook.rs +
+     parms.rs. Cached UFunction* identity dispatch (no name compares).
+     Trace gated by cfg!(debug_assertions). Single hook surface
+     (WBP_InventoryInterface_C). Code complete; scrolling parity in-game
+     pending.
 - [ ] 8. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
 - [ ] 9. Side-by-side parity test C++ vs Rust DLL.
 - [ ] 10. Archive better-backpack-cpp/.

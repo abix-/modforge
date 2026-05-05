@@ -330,9 +330,14 @@ Numbered so we can check them off.
   detect (Steam/Xbox by exe name) -> SDK runtime init -> wait for
   GObjects -> initial DefaultMaxSize patch -> 10s rescan loop. **Code
   side complete; in-game parity verification still pending.**
-- [ ] **7.** Port the inventory-interface hook + viewport rebind. Cache
-  `UFunction*` instead of name compares. Default trace flags off. Confirm
-  scrolling parity in-game.
+- [x] **7.** Port the inventory-interface hook + viewport rebind in
+  `inv_hook.rs` + `parms.rs`. Single hook surface
+  (`WBP_InventoryInterface_C`). All function dispatch goes through cached
+  `&UFunction` pointer identity, not name compares. Trace logs gated by
+  `cfg!(debug_assertions)` -- silent in release. The worker installs the
+  hook after the initial patch and retries every rescan tick if the
+  inventory class isn't loaded yet. **Code complete; in-game scrolling
+  parity verification still pending.**
 - [ ] **8.** Port the BPF / grid / menu trace surfaces only as
   `cfg!(debug_assertions)` helpers. Ship build doesn't compile them in.
 - [ ] **9.** Side-by-side test: run C++ DLL one session, Rust DLL the next.

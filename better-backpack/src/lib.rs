@@ -12,7 +12,9 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod hook;
+pub mod inv_hook;
 pub mod log;
+pub mod parms;
 pub mod patch;
 pub mod sdk;
 
@@ -119,6 +121,17 @@ unsafe fn worker() {
         initial.skipped_non_player
     );
 
+    let mut inv_hook = match inv_hook::install() {
+        Ok(h) => {
+            bbp_log!("inv hook: installed on {}", h.class_name());
+            Some(h)
+        }
+        Err(e) => {
+            bbp_log!("inv hook: install pending ({}), will retry", e);
+            None
+        }
+    };
+
     bbp_log!("entering rescan loop (interval = {:?})", RESCAN_INTERVAL);
     loop {
         thread::sleep(RESCAN_INTERVAL);
@@ -128,6 +141,15 @@ unsafe fn worker() {
                 "rescan: patched={} (re-applied after revert)",
                 again.patched
             );
+        }
+        if inv_hook.is_none() {
+            inv_hook = match inv_hook::install() {
+                Ok(h) => {
+                    bbp_log!("inv hook: installed on {}", h.class_name());
+                    Some(h)
+                }
+                Err(_) => None,
+            };
         }
     }
 }
