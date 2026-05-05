@@ -1,20 +1,23 @@
-// Skill catalog and per-level math.
+// Skill catalog: the single source of truth for every skill in the
+// game. Adding a new skill is one row in `CATALOG`, no other code
+// changes required (apply.rs and format_effect dispatch generically
+// on `SkillEffect`).
 //
 // Vocabulary (consistent throughout the codebase):
 //   - "skill"        the upgrade slot itself (e.g. Backpack, Lifesteal)
 //   - "skill point"  a currency the player earns by leveling
 //   - "skill level"  how many points have been spent on a given skill
 //
-// Each skill scales 0..=100 levels. Final bonus at level 100 is the
-// per-skill "max_bonus" constant. Levels in between scale via
-// `level_progress(level) = sqrt(level / 100)` so:
-//   level 1   -> 10% of max
-//   level 10  -> 32% of max
-//   level 25  -> 50% of max
-//   level 50  -> 71% of max
-//   level 100 -> 100% of max
-// Sqrt feels generous early (every level is felt) and naturally
-// flattens at the end (you can sink 99 -> 100 but the gain is small).
+// Every skill scales 0..=100 levels with diminishing returns:
+// `level_progress(level) = sqrt(level / 100)`. Level 1 = ~10% of max,
+// level 25 = 50%, level 50 = ~71%, level 100 = 100%. Sqrt feels
+// generous early and flattens at the end so 99 -> 100 is small.
+
+// ---------------------------------------------------------------------
+// Skill IDs (stable strings used as keys in PlayerState.skill_levels
+// and in the FFI surface). Adding a new skill: define an id, append a
+// row in CATALOG.
+// ---------------------------------------------------------------------
 
 pub const SKILL_BACKPACK: &str = "backpack";
 pub const SKILL_HUNGER: &str = "hunger";
@@ -26,146 +29,318 @@ pub const SKILL_JUMP_HEIGHT: &str = "jump_height";
 pub const SKILL_GLIDE_SPEED: &str = "glide_speed";
 pub const SKILL_LIFESTEAL: &str = "lifesteal";
 
-/// Universal cap. Every skill scales 0..=100 with diminishing returns.
+/// Universal cap. Every skill scales 0..=100.
 pub const SKILL_MAX_LEVEL: u32 = 100;
 
-// Per-skill "final" bonuses at level 100. Tunable.
-const BACKPACK_MAX_BONUS_SLOTS: i32 = 60; // 40 vanilla -> 100 at level 100
-const HUNGER_MAX_REDUCTION: f32 = 0.75;   // 1.0x -> 0.25x drain
-const THIRST_MAX_REDUCTION: f32 = 0.75;
-const ATTACK_DAMAGE_MAX_BONUS: f32 = 0.50; // 1.0x -> 1.5x
-const ARMOR_MAX_REDUCTION: f32 = 0.50;     // 0% -> 50% damage taken cut
-const MOVE_SPEED_MAX_BONUS: f32 = 0.50;    // 1.0x -> 1.5x
-const JUMP_HEIGHT_MAX_BONUS: f32 = 0.80;   // 1.0x -> 1.8x
-const GLIDE_SPEED_MAX_BONUS: f32 = 0.50;   // 1.0x -> 1.5x
-const LIFESTEAL_MAX_FRACTION: f32 = 0.30;  // 0% -> 30% of damage healed back
+// ---------------------------------------------------------------------
+// SkillEffect: how the skill applies AND how it formats. apply.rs and
+// format_effect both dispatch on this enum, so adding a new shape of
+// skill is local to one file.
+// ---------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy)]
+pub enum SurvivalField {
+    Hunger,
+    Thirst,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SkillEffect {
+    /// Bonus slots added to `settings.inventory.slot_count`.
+    /// `max_bonus_slots` is the integer added at level 100.
+    /// Applied via `patch::run` over all InventoryComponents.
+    BackpackSlots { max_bonus_slots: i32 },
+
+    /// Survival drain rate. Final value =
+    /// `vanilla * settings.survival.<x>_multiplier * (1 - max_reduction * progress)`.
+    /// `field_offset` is the offset of `AdjustmentPerSecond` inside
+    /// SurvivalComponent (hunger or thirst).
+    SurvivalDrain {
+        field_offset: usize,
+        max_reduction: f32,
+        which: SurvivalField,
+    },
+
+    /// Direct float write on `ASurvivalCharacter` player CDO.
+    /// Final value = `base + max_bonus * progress`.
+    PlayerCharFloat {
+        offset: usize,
+        base: f32,
+        max_bonus: f32,
+        /// "+50% damage" / "-50% damage taken" / "+30% lifesteal" etc.
+        format: PercentFormat,
+    },
+
+    /// Direct float write on the player's `UHealthComponent` (followed
+    /// from the player CDO via the HealthComponent ptr at +0x1340).
+    /// Final value = `base + max_bonus * progress`.
+    PlayerHealthCompFloat {
+        offset: usize,
+        base: f32,
+        max_bonus: f32,
+        format: PercentFormat,
+    },
+
+    /// Multiply captured vanilla baselines on the player's
+    /// `UMaineCharMovementComponent` (followed from the player CDO at
+    /// +0x1380). All `offsets` get scaled by the same multiplier
+    /// `1 + max_bonus * progress` against the captured vanilla value
+    /// at that offset. Use one entry per movement axis (walk vs jump
+    /// vs fly are separate skills).
+    PlayerMovementMult {
+        offsets: &'static [usize],
+        max_bonus: f32,
+        /// Word inserted in the formatted "+50% <word>" line.
+        format_word: &'static str,
+    },
+
+    /// Pure runtime effect. The kill_hook (or any other live
+    /// trampoline) reads the current level on every tick and acts on
+    /// it, no CDO write.
+    Runtime {
+        max_bonus: f32,
+        format: PercentFormat,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PercentFormat {
+    /// "+25% damage (1.25x)" (multiplier-style buff)
+    PlusPercentMult { word: &'static str },
+    /// "-25% damage taken" (reduction-style buff)
+    MinusPercent { word: &'static str },
+    /// "+30% lifesteal" (raw fraction)
+    PlusPercent { word: &'static str },
+    /// "-25% drain (0.75x)" (multiplicative drain reduction)
+    DrainReduction,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Skill {
     pub id: &'static str,
     pub display_name: &'static str,
     pub max_level: u32,
+    pub effect: SkillEffect,
 }
 
+// ---------------------------------------------------------------------
+// Field offsets used by the catalog. Centralized here so the catalog
+// rows stay readable.
+//
+// Source: C:\tools\work\sdk\SDK\ (Dumper-7 SDK), citations follow each
+// constant.
+// ---------------------------------------------------------------------
+
+// SurvivalComponent.HungerSettings.AdjustmentPerSecond at +0x140.
+pub const SURVIVAL_HUNGER_OFFSET: usize = 0x0140;
+// SurvivalComponent.ThirstSettings.AdjustmentPerSecond at +0x188.
+pub const SURVIVAL_THIRST_OFFSET: usize = 0x0188;
+
+// ASurvivalCharacter.CustomDamageMultiplier (Maine_classes.hpp:5771).
+pub const ASC_CUSTOM_DAMAGE_MULTIPLIER: usize = 0x12B8;
+
+// UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
+pub const HC_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
+
+// UCharacterMovementComponent.JumpZVelocity (Engine_classes.hpp:31485).
+pub const CMC_JUMP_Z_VELOCITY: usize = 0x01B8;
+// UCharacterMovementComponent.MaxWalkSpeed (Engine_classes.hpp:31500).
+pub const CMC_MAX_WALK_SPEED: usize = 0x0288;
+// UCharacterMovementComponent.MaxSwimSpeed (Engine_classes.hpp:31502).
+pub const CMC_MAX_SWIM_SPEED: usize = 0x0290;
+// UCharacterMovementComponent.MaxFlySpeed (Engine_classes.hpp:31503).
+pub const CMC_MAX_FLY_SPEED: usize = 0x0294;
+// UMaineCharMovementComponent.MaxSprintSpeed (Maine_classes.hpp:33015).
+pub const CMC_MAX_SPRINT_SPEED: usize = 0x10EC;
+
+// Movement axis groupings (multiple offsets that should scale together).
+const MOVE_SPEED_OFFSETS: &[usize] =
+    &[CMC_MAX_WALK_SPEED, CMC_MAX_SPRINT_SPEED, CMC_MAX_SWIM_SPEED];
+const JUMP_HEIGHT_OFFSETS: &[usize] = &[CMC_JUMP_Z_VELOCITY];
+const GLIDE_SPEED_OFFSETS: &[usize] = &[CMC_MAX_FLY_SPEED];
+
+// ---------------------------------------------------------------------
+// CATALOG: the source of truth.
+// ---------------------------------------------------------------------
+
 pub const CATALOG: &[Skill] = &[
-    Skill { id: SKILL_BACKPACK, display_name: "Backpack", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_HUNGER, display_name: "Hunger Resistance", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_THIRST, display_name: "Thirst Resistance", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_ATTACK_DAMAGE, display_name: "Attack Damage", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_ARMOR, display_name: "Armor", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_MOVE_SPEED, display_name: "Move Speed", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_JUMP_HEIGHT, display_name: "Jump Height", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_GLIDE_SPEED, display_name: "Glide Speed", max_level: SKILL_MAX_LEVEL },
-    Skill { id: SKILL_LIFESTEAL, display_name: "Lifesteal", max_level: SKILL_MAX_LEVEL },
+    Skill {
+        id: SKILL_BACKPACK,
+        display_name: "Backpack",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::BackpackSlots { max_bonus_slots: 60 },
+    },
+    Skill {
+        id: SKILL_HUNGER,
+        display_name: "Hunger Resistance",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::SurvivalDrain {
+            field_offset: SURVIVAL_HUNGER_OFFSET,
+            max_reduction: 0.75,
+            which: SurvivalField::Hunger,
+        },
+    },
+    Skill {
+        id: SKILL_THIRST,
+        display_name: "Thirst Resistance",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::SurvivalDrain {
+            field_offset: SURVIVAL_THIRST_OFFSET,
+            max_reduction: 0.75,
+            which: SurvivalField::Thirst,
+        },
+    },
+    Skill {
+        id: SKILL_ATTACK_DAMAGE,
+        display_name: "Attack Damage",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerCharFloat {
+            offset: ASC_CUSTOM_DAMAGE_MULTIPLIER,
+            base: 1.0,
+            max_bonus: 0.50,
+            format: PercentFormat::PlusPercentMult { word: "damage" },
+        },
+    },
+    Skill {
+        id: SKILL_ARMOR,
+        display_name: "Armor",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerHealthCompFloat {
+            offset: HC_BASE_DAMAGE_REDUCTION,
+            base: 0.0,
+            max_bonus: 0.50,
+            format: PercentFormat::MinusPercent { word: "damage taken" },
+        },
+    },
+    Skill {
+        id: SKILL_MOVE_SPEED,
+        display_name: "Move Speed",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerMovementMult {
+            offsets: MOVE_SPEED_OFFSETS,
+            max_bonus: 0.50,
+            format_word: "move",
+        },
+    },
+    Skill {
+        id: SKILL_JUMP_HEIGHT,
+        display_name: "Jump Height",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerMovementMult {
+            offsets: JUMP_HEIGHT_OFFSETS,
+            max_bonus: 0.80,
+            format_word: "jump",
+        },
+    },
+    Skill {
+        id: SKILL_GLIDE_SPEED,
+        display_name: "Glide Speed",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerMovementMult {
+            offsets: GLIDE_SPEED_OFFSETS,
+            max_bonus: 0.50,
+            format_word: "glide",
+        },
+    },
+    Skill {
+        id: SKILL_LIFESTEAL,
+        display_name: "Lifesteal",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::Runtime {
+            max_bonus: 0.30,
+            format: PercentFormat::PlusPercent { word: "lifesteal" },
+        },
+    },
 ];
 
 pub fn lookup(id: &str) -> Option<&'static Skill> {
     CATALOG.iter().find(|s| s.id == id)
 }
 
-/// Diminishing-returns progress at `level`. Range [0.0, 1.0].
-/// Square-root curve so each early level matters and late levels
-/// flatten gracefully.
+// ---------------------------------------------------------------------
+// Per-level math.
+// ---------------------------------------------------------------------
+
+/// Diminishing-returns progress at `level`. Range [0.0, 1.0]. Square
+/// root so each early level matters and late levels flatten gracefully.
 pub fn level_progress(level: u32) -> f32 {
     let l = level.min(SKILL_MAX_LEVEL) as f32;
     (l / SKILL_MAX_LEVEL as f32).sqrt()
 }
 
-/// Slot-count bonus added on top of the settings base.
-pub fn backpack_bonus(level: u32) -> i32 {
-    (BACKPACK_MAX_BONUS_SLOTS as f32 * level_progress(level)).round() as i32
+/// Generic "skill bonus" for any effect that maxes at `max_bonus` at
+/// level 100. Used by apply.rs and the formatter.
+pub fn skill_bonus(max_bonus: f32, level: u32) -> f32 {
+    max_bonus * level_progress(level)
 }
 
-/// Hunger drain multiplier: 1.0 at level 0, 0.25 at level 100.
-pub fn hunger_multiplier(level: u32) -> f32 {
-    (1.0 - HUNGER_MAX_REDUCTION * level_progress(level)).max(0.0)
+/// Backpack-specific bonus rounded to int. (Convenience for callers
+/// who don't want to redo the float math.)
+pub fn backpack_bonus_at(level: u32, max_bonus_slots: i32) -> i32 {
+    (max_bonus_slots as f32 * level_progress(level)).round() as i32
 }
 
-/// Thirst drain multiplier.
-pub fn thirst_multiplier(level: u32) -> f32 {
-    (1.0 - THIRST_MAX_REDUCTION * level_progress(level)).max(0.0)
+/// Lifesteal (or any other Runtime effect) fraction.
+pub fn runtime_fraction(level: u32, max_bonus: f32) -> f32 {
+    skill_bonus(max_bonus, level)
 }
 
-/// Player damage multiplier from the Attack Damage skill.
-pub fn attack_damage_multiplier(level: u32) -> f32 {
-    1.0 + ATTACK_DAMAGE_MAX_BONUS * level_progress(level)
-}
+// ---------------------------------------------------------------------
+// Format effect text for the ImGui tab. One match arm per
+// PercentFormat variant; the catalog row determines which arm runs.
+// ---------------------------------------------------------------------
 
-/// Damage reduction fraction from the Armor skill.
-pub fn armor_reduction(level: u32) -> f32 {
-    (ARMOR_MAX_REDUCTION * level_progress(level)).clamp(0.0, 1.0)
-}
-
-/// Movement speed multiplier (applied to MaxWalkSpeed and
-/// MaxSprintSpeed and MaxSwimSpeed).
-pub fn move_speed_multiplier(level: u32) -> f32 {
-    1.0 + MOVE_SPEED_MAX_BONUS * level_progress(level)
-}
-
-/// Jump-Z velocity multiplier.
-pub fn jump_height_multiplier(level: u32) -> f32 {
-    1.0 + JUMP_HEIGHT_MAX_BONUS * level_progress(level)
-}
-
-/// Glide speed (MaxFlySpeed) multiplier.
-pub fn glide_speed_multiplier(level: u32) -> f32 {
-    1.0 + GLIDE_SPEED_MAX_BONUS * level_progress(level)
-}
-
-/// Fraction of damage dealt that heals the player back.
-pub fn lifesteal_fraction(level: u32) -> f32 {
-    LIFESTEAL_MAX_FRACTION * level_progress(level)
-}
-
-/// Human-readable effect description for `id` at `level`. The string
-/// is what the ImGui tab displays so the player knows what the skill
-/// does. Format: short, fits on one line next to "level N / MAX".
 pub fn format_effect(id: &str, level: u32) -> String {
-    match id {
-        SKILL_BACKPACK => {
-            let bonus = backpack_bonus(level);
+    let Some(skill) = lookup(id) else { return String::new() };
+    match &skill.effect {
+        SkillEffect::BackpackSlots { max_bonus_slots } => {
+            let bonus = backpack_bonus_at(level, *max_bonus_slots);
             format!("+{bonus} slots")
         }
-        SKILL_HUNGER => {
-            let mult = hunger_multiplier(level);
+        SkillEffect::SurvivalDrain { max_reduction, .. } => {
+            let mult = (1.0 - skill_bonus(*max_reduction, level)).max(0.0);
             let pct = ((1.0 - mult) * 100.0).round() as i32;
             format!("-{pct}% drain ({:.2}x)", mult)
         }
-        SKILL_THIRST => {
-            let mult = thirst_multiplier(level);
-            let pct = ((1.0 - mult) * 100.0).round() as i32;
+        SkillEffect::PlayerCharFloat { base, max_bonus, format, .. }
+        | SkillEffect::PlayerHealthCompFloat { base, max_bonus, format, .. } => {
+            format_pct(*base, *max_bonus, level, format)
+        }
+        SkillEffect::PlayerMovementMult {
+            max_bonus,
+            format_word,
+            ..
+        } => {
+            let mult = 1.0 + skill_bonus(*max_bonus, level);
+            let pct = ((mult - 1.0) * 100.0).round() as i32;
+            format!("+{pct}% {format_word} ({:.2}x)", mult)
+        }
+        SkillEffect::Runtime { max_bonus, format } => {
+            format_pct(0.0, *max_bonus, level, format)
+        }
+    }
+}
+
+fn format_pct(base: f32, max_bonus: f32, level: u32, fmt: &PercentFormat) -> String {
+    let bonus = skill_bonus(max_bonus, level);
+    let value = base + bonus;
+    match fmt {
+        PercentFormat::PlusPercentMult { word } => {
+            let pct = (bonus * 100.0).round() as i32;
+            format!("+{pct}% {word} ({:.2}x)", value)
+        }
+        PercentFormat::MinusPercent { word } => {
+            let pct = (bonus * 100.0).round() as i32;
+            format!("-{pct}% {word}")
+        }
+        PercentFormat::PlusPercent { word } => {
+            let pct = (bonus * 100.0).round() as i32;
+            format!("+{pct}% {word}")
+        }
+        PercentFormat::DrainReduction => {
+            let mult = (1.0 - bonus).max(0.0);
+            let pct = (bonus * 100.0).round() as i32;
             format!("-{pct}% drain ({:.2}x)", mult)
         }
-        SKILL_ATTACK_DAMAGE => {
-            let mult = attack_damage_multiplier(level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% damage ({:.2}x)", mult)
-        }
-        SKILL_ARMOR => {
-            let red = armor_reduction(level);
-            let pct = (red * 100.0).round() as i32;
-            format!("-{pct}% damage taken")
-        }
-        SKILL_MOVE_SPEED => {
-            let mult = move_speed_multiplier(level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% move ({:.2}x)", mult)
-        }
-        SKILL_JUMP_HEIGHT => {
-            let mult = jump_height_multiplier(level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% jump ({:.2}x)", mult)
-        }
-        SKILL_GLIDE_SPEED => {
-            let mult = glide_speed_multiplier(level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% glide ({:.2}x)", mult)
-        }
-        SKILL_LIFESTEAL => {
-            let frac = lifesteal_fraction(level);
-            let pct = (frac * 100.0).round() as i32;
-            format!("+{pct}% lifesteal")
-        }
-        _ => String::new(),
     }
 }

@@ -178,6 +178,22 @@ helper for a given skill. `tracker::spend_skill_point` now
 calls `apply_one` so a single +1 click writes only the changed
 field and produces one log line, not five.
 
+**Skill registry DRY refactor (2026-05-05):** `skills.rs` is
+now the single source of truth. Each skill is one row in
+`CATALOG` carrying:
+  - id, display_name, max_level
+  - SkillEffect enum: BackpackSlots / SurvivalDrain /
+    PlayerCharFloat / PlayerHealthCompFloat /
+    PlayerMovementMult / Runtime
+  - PercentFormat for runtime-formatted effect text
+
+apply.rs is one function `apply_skill` that pattern-matches
+on the effect. format_effect dispatches on the same data.
+Adding a new skill of an existing shape (e.g. another
+PlayerCharFloat) is one new CATALOG row, no other code
+changes. Adding a new SHAPE adds one match arm in apply.rs +
+format_effect. ~9 skills today, ready to grow to 25+.
+
 
 
 This is now the project. Items 3-7 below (gear durability, enemy
