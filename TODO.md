@@ -159,7 +159,42 @@ Open questions:
   so, our static multiplier interacts non-linearly. May need to
   document or tune.
 
-## 5. Flying / gliding speed
+## 5. Enemy damage multiplier
+
+User-facing: scale how much damage enemies deal to the player.
+Default 1.0 = vanilla; 0.5 = enemies hit half as hard (forgiving);
+2.0 = enemies hit twice as hard (challenge run). Settings.json key:
+
+```json
+{
+  "combat": {
+    "enemy_damage_multiplier": 1.0
+  }
+}
+```
+
+Implementation outline:
+
+- Find the damage source. Likely candidates:
+  - A per-enemy `BaseDamage` or `AttackDamage` float on attack
+    components (one per attack type).
+  - A per-attack-spec field on attack data tables.
+  - A global damage multiplier in a survival config.
+- The most surgical approach is a *per-enemy* attack-component CDO
+  patch -- walk enemies, find their attack-component CDO, multiply
+  the damage field. Keeps player attacks untouched.
+- Add to `combat.rs` (same module as enemy health from item #4 -- they
+  scan the same CDO tree).
+
+Open questions:
+- Some attacks compute damage via the gameplay-ability system rather
+  than a static field. Those may need a different approach (e.g.
+  hooking the damage application function via ProcessEvent).
+- Attribute-vs-flat: most UE games store base damage as a float and
+  apply multipliers from buffs / level. Patching base only is the
+  cleanest -- multipliers stay vanilla.
+
+## 6. Flying / gliding speed
 
 User-facing: scale how fast the player moves while gliding (the
 dandelion / leaf glider mechanic in Grounded 2). Default 1.0 = vanilla;
@@ -191,7 +226,7 @@ If the field is the same one Caites uses (sprint / walk / swim live
 on the same component), tackle this together with the other movement
 multipliers from #6 below to avoid scanning the same CDOs twice.
 
-## 6. (later) Port more Player Tweaks features
+## 7. (later) Port more Player Tweaks features
 
 See `FEATURES.md` for the comparison table and the prioritized list.
 Quick wins identified: stamina regen, sprint/walk/swim speed, hauling
