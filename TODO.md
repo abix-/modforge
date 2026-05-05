@@ -5,37 +5,57 @@ side. Open work is **distribution**: switching from "drop a winhttp.dll
 proxy in the game folder" to "ship as a UE4SS C++ mod, but keep the
 mod source 100% Rust." Plan in [UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md).
 
-## 1. Repackage as a UE4SS CPPMod (Rust-only)
+## 1. Repackage as a UE4SS CPPMod
 
-Why: see UE4SS_PORT_PLAN.md (steelman in 11 points). Short version:
-UE4SS is the convention for UE5 game mods, distribution / Vortex is
-already solved on that path, and we get to delete our winhttp proxy
-forwarders + setup.ps1 + winhttp_orig.dll dance.
+Why: see `UE4SS_PORT_PLAN.md` (steelman in 11 points). Short
+version: UE4SS is the convention for UE5 game mods, distribution
+via Vortex is already solved on that path (UE4SS for Grounded 2 is
+Vortex mod #52), and we delete our winhttp proxy forwarders +
+setup.ps1 + winhttp_orig.dll dance.
 
-Hard constraint: stay all-Rust. No C++ shim, no Lua port. UE4SS loads
-our Rust cdylib via the legacy free-function CPPMod ABI; if that
-doesn't work in the current UE4SS, we synthesize a vtable in Rust
-to satisfy the modern `CppUserModBase` ABI without adding C++.
+Source language stays Rust. UE4SS's CPPMod ABI is C++ inheritance,
+so we add a ~30-line C++ shim that derives from
+`RC::CppUserModBase` and forwards lifecycle calls to two
+`extern "C"` Rust functions. Mod logic stays Rust.
 
-Sequence (full detail in UE4SS_PORT_PLAN.md):
+Earlier drafts of this plan claimed there was a "legacy free-function
+CPPMod ABI" we could use to stay 100% Rust. There isn't. The
+inheritance ABI is the only path. The 30 lines of C++ are loader
+handshake -- they don't compete with the 1500+ lines of Rust mod
+logic for any meaningful property.
 
-1. Smoke-test: minimal "hello" Rust cdylib loaded by UE4SS for
-   Grounded 2. Gates the whole plan.
-2. Confirm legacy ABI works. If not, build a Rust-only vtable shim.
-3. Add `start_mod`/`uninstall_mod` exports. Worker moves out of
-   DllMain into start_mod.
-4. Drop winhttp proxy plumbing (def file, build.rs cc dep,
-   forwarders).
-5. Rewrite deploy.ps1 for UE4SS Mods folder layout
-   (`BetterBackpack/dlls/main.dll`).
-6. Doc updates.
-7. In-game smoke test of the full mod under UE4SS.
-8. Archive winhttp proxy material into `archive/winhttp-proxy/` --
-   keep it as a working fallback if UE4SS ever turns out unstable.
+Sequence (full detail in `UE4SS_PORT_PLAN.md`):
 
-The current winhttp.dll proxy work (steps 1-3 of the previous TODO,
-already shipped) is **not wasted**: it's the tested fallback. We
-archive it, we don't delete it.
+- [x] Step 1: Clone RE-UE4SS to `C:\code\RE-UE4SS` for headers.
+  (Submodule attempt blocked by upstream's broken UEPseudo
+  reference.)
+- [ ] Step 2: Generate `UE4SS.lib` import library from the user's
+  installed `UE4SS.dll` via `dumpbin /exports` -> `.def` ->
+  `lib /def:`. Verified the DLL exports the symbols we need
+  (`??0CppUserModBase@RC@@QEAA@XZ`, virtual destructor, all base
+  virtuals).
+- [ ] Step 3: Add the C++ shim source. Extend `build.rs` to compile
+  it via `cc::Build` against the headers in `C:\code\RE-UE4SS` and
+  link against `UE4SS.lib`. Drop the winhttp forwarder generation.
+- [ ] Step 4: Rename cdylib output from `winhttp` to `main`. Add
+  two `#[no_mangle] extern "C"` Rust entry points
+  (`better_backpack_start`, `better_backpack_stop`). Move worker
+  startup out of `DllMain` into `better_backpack_start`. Drop
+  `wait_for_gobjects` -- UE4SS calls our `on_unreal_init` after
+  the engine has finished initializing.
+- [ ] Step 5: Rewrite `deploy.ps1` for the UE4SS mod folder layout.
+  Default mode produces a zip mirroring
+  `Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/`.
+- [ ] Step 6: Update `BUILDING.md`, `README.md`, `FEATURES.md`,
+  `PERFORMANCE.md` to reflect the UE4SS load model.
+- [ ] Step 7: In-game smoke test under UE4SS.
+- [ ] Step 8: Archive the winhttp proxy material to
+  `archive/winhttp-proxy/`. Keep it as a tested fallback in case
+  UE4SS turns out unstable for Grounded 2.
+
+The current winhttp.dll proxy work (already shipped, commits
+514e2b1..bfb3447) is **not wasted**: it's the tested fallback.
+Archive, not delete.
 
 ## 2. (later) Port more Player Tweaks features
 

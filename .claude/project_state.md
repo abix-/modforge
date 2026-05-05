@@ -111,15 +111,61 @@ grounded2mods/
   via AllocConsole. Build with `--no-default-features` for a
   console-free shipping DLL. File log unaffected.
 
-## Distribution plan (2026-05-05)
-Pivot from "DLL + inject.exe" to a self-loading DLL proxy named
-`winhttp.dll` so the mod ships through Vortex like UE4SS/ReShade/ENB.
-Rationale: Vortex doesn't fit the inject.exe model; pak distribution
-inherits the conflict/breakage problems we observed on Player Tweaks
-(Nexus #13). winhttp.dll picked because it's loaded early by UE5
-shipping binaries and has near-zero conflict risk vs other UE-game
-mods. Plan in TODO.md #1. Mod runtime logic untouched; only the
-packaging changes.
+## Distribution plan (current, 2026-05-05)
+
+Pivoted twice today. End state: ship as a **UE4SS C++ mod (CPPMod)**
+with the source kept in Rust and a tiny C++ shim for UE4SS's
+inheritance ABI. Plan + steelman in `UE4SS_PORT_PLAN.md`.
+
+Why UE4SS over the winhttp.dll proxy approach we built earlier:
+
+- UE4SS is the convention for UE5 game mods (UE4SS for Grounded 2 is
+  Vortex mod #52, actively maintained). Riding on UE4SS gets us
+  Vortex distribution out of the box, central SDK maintenance, and
+  network effects with other modders.
+- The winhttp proxy works (commits 514e2b1..bfb3447) but Vortex
+  doesn't natively model "drop my custom proxy DLL into the game's
+  Binaries dir" without a per-game extension.
+- Pak distribution inherits the conflict/breakage problems we
+  observed on Player Tweaks (Nexus #13).
+
+Approach:
+
+- Rust cdylib exports `better_backpack_start` / `better_backpack_stop`
+  as `extern "C"`.
+- ~30-line C++ shim derives from `RC::CppUserModBase`, forwards
+  `on_unreal_init` and the destructor to the Rust extern functions,
+  exports `start_mod` / `uninstall_mod`. Compiled via `cc::Build` and
+  linked into the same cdylib.
+- Headers consumed from `C:\code\RE-UE4SS` (cloned out-of-band; we
+  don't vendor as a submodule because UE4SS's own `.gitmodules`
+  references a 404'd repo).
+- `UE4SS.lib` import library generated from the user's installed
+  `UE4SS.dll` (located via Vortex at
+  `<vortex>\grounded2\mods\UE4SS_Grounded2-...\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`)
+  using `dumpbin /exports` -> `.def` -> `lib /def:`. Verified the
+  DLL exports the symbols we need: `??0CppUserModBase@RC@@QEAA@XZ`
+  (constructor), `??1CppUserModBase@RC@@UEAA@XZ` (virtual
+  destructor), and every base virtual we'd override or inherit.
+
+Distribution layout:
+
+- Game's UE4SS path is `<game>\Augusta\Binaries\WinGRTS\ue4ss\` --
+  note `WinGRTS` (Steam platform identifier in the exe name), not
+  `Win64`. Earlier docs had `Win64`; corrected.
+- C++ mods go in `ue4ss\Mods\<ModName>\dlls\main.dll`.
+- Mod registration is via `ue4ss\Mods\mods.txt` (`ModName : 1` per
+  line). Vortex's UE4SS extension merges entries on deploy.
+- Our Vortex zip layout:
+  ```
+  Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
+    dlls/main.dll
+    settings.json
+  ```
+
+The earlier winhttp.dll proxy work will be archived to
+`archive/winhttp-proxy/` once the UE4SS path lands, kept as a
+fallback if UE4SS turns out unstable for Grounded 2.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was

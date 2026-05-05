@@ -102,15 +102,29 @@ Full instructions in [BUILDING.md](BUILDING.md).
 ## Distribution path (planned)
 
 End users won't run inject.exe. The plan (see
-[TODO.md](TODO.md) #1) is to repackage the DLL as a Windows
-**DLL proxy** named `winhttp.dll` -- dropped into the game's
-`Augusta\Binaries\Win64\` folder, Windows auto-loads it at game start
-(same-directory takes precedence over System32), our `DllMain`
-worker thread runs immediately, and we forward all real `winhttp`
-exports to the system copy so game network calls keep working. This
-is the same shape UE4SS, ReShade, and ENB use. Vortex installs it as
-a regular file drop. See [FEATURES.md](FEATURES.md) for the full
-comparison of UE mod formats and why proxy beats pak for our case.
+[UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md) and
+[TODO.md](TODO.md) #1) is to ship as a **UE4SS C++ mod (CPPMod)**
+keeping the source in Rust. UE4SS for Grounded 2 is already a
+mature Vortex mod (Nexus #52); riding on it gets us Vortex
+distribution out of the box, central engine-offset maintenance, and
+the network effect of being inside the standard UE5 mod ecosystem.
+
+Layout:
+
+```
+Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
+  dlls/main.dll          (Rust cdylib + tiny C++ shim derived from
+                          RC::CppUserModBase, forwards UE4SS
+                          lifecycle calls to extern "C" Rust)
+  settings.json          (user-editable config)
+```
+
+We previously built a `winhttp.dll` proxy (commits 514e2b1..bfb3447)
+that works correctly without UE4SS. It will be archived to
+`archive/winhttp-proxy/` once the UE4SS path lands, kept as a
+fallback if UE4SS ever turns out unstable for Grounded 2. See
+[FEATURES.md](FEATURES.md) for the comparison of UE mod formats
+and why DLL beats pak for our case.
 
 ## Game build referenced
 
