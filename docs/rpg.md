@@ -383,12 +383,29 @@ is committed natively in the gap between `ReceiveAnyDamage POST` and
 `OnHitReact pre`. No PE-reachable surface lives in that gap, so no
 ProcessEvent hook can intercept the write before it lands.
 
-The remaining attack surface is the native function detour: replace
-the `UFunction::native_func` slot for
-`ASurvivalCharacter::ApplyFallDamage` or
-`UHealthComponent::ApplyDamage` so the engine's direct C++ dispatch
-lands in our trampoline. That intercepts upstream of the
-`CurrentDamage` write.
+**UE4SS already ships the native function detour as
+`UFunction::RegisterPreHook`** (C++) and `RegisterHook` (Lua). For
+native UFunctions (`/Script/...` path) the registered callback runs
+*before* the native function executes -- which is exactly the
+upstream-of-`CurrentDamage` intercept we need. UE4SS uses
+PolyHook_2_0 internally to swap the native function pointer, so we
+do not have to write our own trampoline.
+
+Plan:
+
+1. Quick Lua probe first to confirm the hook actually fires in
+   Grounded 2 (there is a [known UE4SS bug](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+   where `RegisterHook` silently no-ops on UFunctions that are both
+   `Final` and `BlueprintCallable` -- which matches `ApplyFallDamage`
+   exactly. Reported against Grounded 1 / UE 4.27, marked `wontfix`,
+   not yet retested in Grounded 2 / UE5).
+2. If the Lua hook fires: wire `UFunction::RegisterPreHook` from our
+   C++ shim. Skip damage when `fall_resistance` skill is at level
+   100, or scale damage by `(1 - reduction)` for partial levels.
+3. If the Lua hook is silent: the Final+BlueprintCallable bug also
+   applies in Grounded 2; fall back to invoking PolyHook_2_0
+   directly (already a UE4SS dependency) to swap
+   `UFunction::native_func` ourselves.
 
 Steps documented in [`todo.md`](todo.md). The earlier
 broadened PE trace on the player BP class will be reverted now that

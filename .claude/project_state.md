@@ -61,10 +61,26 @@ snapshotted around each `original.call`. The damage write happens
 natively between `ReceiveAnyDamage POST` and `OnHitReact pre`, with
 no PE-reachable surface in that gap.
 
-The only remaining path is a native function detour on
-`UFunction::native_func` for `ASurvivalCharacter::ApplyFallDamage` or
-`UHealthComponent::ApplyDamage`. Implementation steps in
-`docs/todo.md`.
+The intercept upstream of the write is a native function detour, and
+UE4SS already ships it as `UFunction::RegisterPreHook` (C++) /
+`RegisterHook` (Lua) using PolyHook_2_0 internally. For native
+UFunctions with a `/Script/...` path the callback runs *before* the
+native function -- which is exactly the upstream-of-`CurrentDamage`
+intercept we need. RTFM pivot: do not roll our own trampoline.
+
+Plan:
+1. Drop a 5-line Lua probe mod that hooks
+   `/Script/Maine.SurvivalCharacter:ApplyFallDamage` and logs when
+   fired. Take one fall.
+2. If logs fire -> wire `UFunction::RegisterPreHook` in the C++ shim
+   (matches what `LuaMod.cpp` does for native script hooks). At level
+   100 skip the original; at lower levels scale velocity / damage.
+3. If logs are silent -> known
+   [UE4SS bug #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+   on Final+BlueprintCallable UFunctions also applies in Grounded 2;
+   fall back to PolyHook_2_0 directly (already a UE4SS dep).
+
+Steps in `docs/todo.md`.
 
 Collision / impact damage is now its own skill scoped behind the
 `BP_EnvironmentalDamage_C` filter on `LastDamageInfo.DamageType`.

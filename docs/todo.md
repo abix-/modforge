@@ -232,23 +232,30 @@ Result: the damage write happens natively in the gap between
 `ReceiveAnyDamage POST` and `OnHitReact pre`. No PE-reachable surface
 exists in that gap.
 
-**Native detour is the path forward.** Replace the
-`UFunction::native_func` slot for `ASurvivalCharacter::ApplyFallDamage`
-or `UHealthComponent::ApplyDamage` so the engine's direct C++ dispatch
-lands in our trampoline. Steps:
+**Native detour is the path forward.** UE4SS already ships this as
+`UFunction::RegisterPreHook` -- callback fires *before* the native
+function runs for any UFunction with a `/Script/...` path. PolyHook_2_0
+under the hood, no trampoline of our own.
 
-1. Find the UFunction (`UClass::get_function`) on the relevant class.
-2. Locate `native_func` field offset in the UFunction layout (UE5
-   typically stores it after `Script` array; verify by dumping a
-   known-native UFunction's pointer at ranges around +0xB0..+0xE0
-   and matching against `image_base + symbol`).
-3. Allocate executable trampoline via
-   `VirtualAlloc(PAGE_EXECUTE_READWRITE)`. Prologue saves volatile
-   registers + RCX/RDX/R8/R9 (Windows x64 calling convention),
-   tail-calls the original or returns immediately at level 100.
-4. `VirtualProtect` the UFunction memory writable, swap
-   `native_func` to trampoline, restore protection.
-5. On Drop / unload, restore the original pointer.
+Plan:
+
+1. Drop a 5-line Lua probe mod next to ours that hooks
+   `/Script/Maine.SurvivalCharacter:ApplyFallDamage` and logs when
+   the callback fires. Take one fall.
+2. If logs appear -> the canonical path works; wire
+   `UFunction::RegisterPreHook(callback, data)` in the C++ shim
+   (`cpp/shim.cpp`) so the Rust side can no-op or scale fall damage
+   based on the live skill level. Hook signature mirrors what
+   `LuaMod.cpp` does for native script hooks.
+3. If logs are silent -> we hit
+   [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+   (RegisterHook silently no-ops on `Final + BlueprintCallable`
+   UFunctions; reported against Grounded 1, not retested in Grounded
+   2). Fall back to calling PolyHook_2_0 directly -- it is already a
+   UE4SS dep so we have headers + lib.
+
+Either path skips the homebrew trampoline / VirtualAlloc work the
+old plan called for.
 
 Separate skill: **Collision / Impact Damage Resistance** is a real
 distinct mitigation now that we have evidence plant collision is its

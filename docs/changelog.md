@@ -176,11 +176,22 @@ Damage is committed natively in the gap between `ReceiveAnyDamage POST`
 and `OnHitReact pre`. No PE-reachable surface lives in that gap, so no
 ProcessEvent hook can intercept the write before it lands.
 
-The only remaining attack surface is a native function detour on
-`UFunction::native_func` for `ASurvivalCharacter::ApplyFallDamage` or
-`UHealthComponent::ApplyDamage`. That intercepts the engine's direct
-C++ dispatch upstream of the `CurrentDamage` write. Implementation
-plan in [`todo.md`](todo.md).
+The intercept that runs upstream of the `CurrentDamage` write is a
+native function detour. RTFM pivot: UE4SS already ships this as
+`UFunction::RegisterPreHook` (C++) / `RegisterHook` (Lua) using
+PolyHook_2_0 internally. For native UFunctions (`/Script/...` path)
+the registered callback runs *before* the native function. That is
+the exact intercept point we need and it is already debugged code
+upstream.
+
+Caveat: [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+reports that `RegisterHook` silently no-ops on UFunctions that are
+both `Final` and `BlueprintCallable` -- which `ApplyFallDamage`
+matches exactly. Reported against Grounded 1 / UE 4.27, marked
+`wontfix`, not yet retested in Grounded 2 / UE5. Plan is to drop a
+5-line Lua probe first to confirm the hook fires; if it does, wire
+`RegisterPreHook` in the C++ shim. If it does not, fall back to
+invoking PolyHook_2_0 directly (already a UE4SS dep).
 
 ### Movement skill fix verified
 
