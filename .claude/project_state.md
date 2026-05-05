@@ -50,13 +50,19 @@ grounded2mods/
 - [x] 3. Injector crate (Rust port of inject.c). Builds.
 - [x] 4. SDK module skeleton (UObject, UClass, UFunction, FName, FString,
      TArray, GObjectsView, Runtime, find_class_fast). Layout tests pass.
-- [ ] 5. Hook module (vtable patcher + RAII ProcessEventHook), log sink,
-     define_dllmain! macro, patch loop wired in.
-- [ ] 6. Inventory-interface hook + viewport rebind.
-- [ ] 7. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
-- [ ] 8. Side-by-side parity test C++ vs Rust DLL.
-- [ ] 9. Archive better-backpack-cpp/.
-- [ ] 10. Rust BUILDING.md.
+- [x] 5. Hook module: vtable.rs (VirtualProtect-guarded slot rewrite) +
+     process_event.rs (RAII ProcessEventHook with registry-based dispatch
+     and catch_unwind around the closure). Log module (file-only at
+     %TEMP%\BetterBackpack.log).
+- [x] 6. Patch loop wired in. Worker: log init -> platform detect ->
+     SDK runtime init -> wait for GObjects -> patch every player-owned
+     UInventoryComponent.DefaultMaxSize to 100 -> rescan every 10s.
+     **Code complete; in-game parity verification pending.**
+- [ ] 7. Inventory-interface hook + viewport rebind.
+- [ ] 8. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
+- [ ] 9. Side-by-side parity test C++ vs Rust DLL.
+- [ ] 10. Archive better-backpack-cpp/.
+- [ ] 11. Rust BUILDING.md.
 
 ## Build commands
 - `cargo build --release` builds both crates.

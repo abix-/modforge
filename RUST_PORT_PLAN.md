@@ -320,11 +320,16 @@ Numbered so we can check them off.
   `FString`, `TArray`, `GObjectsView`, `Runtime`, `find_class_fast`. Layout
   tests pass; `cargo clippy --all-targets -- -D warnings` clean. The lib is
   `cdylib + rlib` so the integration tests can link it.
-- [ ] **5.** Add `hook/` module: vtable patcher + `ProcessEventHook` RAII
-  wrapper. Add `log` module + `define_dllmain!` macro.
-- [ ] **6.** Wire up the patch loop only (no inventory hook yet). Inject
-  via the new Rust injector and confirm: backpack grows to 100, log file
-  written, behavior matches the C++ baseline minus scrolling.
+- [x] **5.** Add `hook/` module: vtable patcher + `ProcessEventHook` RAII
+  wrapper (registry-based dispatch by live vtable, `catch_unwind` around
+  the user closure so a panic falls through to the engine's original
+  ProcessEvent). Add `log` module (file-only at `%TEMP%\BetterBackpack.log`
+  for now -- console output deferred). The `define_dllmain!` macro was
+  inlined into `lib.rs` since there's only one DllMain to write.
+- [x] **6.** Wire up the patch loop. Worker does log init -> platform
+  detect (Steam/Xbox by exe name) -> SDK runtime init -> wait for
+  GObjects -> initial DefaultMaxSize patch -> 10s rescan loop. **Code
+  side complete; in-game parity verification still pending.**
 - [ ] **7.** Port the inventory-interface hook + viewport rebind. Cache
   `UFunction*` instead of name compares. Default trace flags off. Confirm
   scrolling parity in-game.
