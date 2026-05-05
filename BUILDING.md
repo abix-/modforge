@@ -54,7 +54,8 @@ What you should see:
 
 - A new console window titled "Better Backpack" pops up in the game
   process. It tails the live mod log.
-- `%TEMP%\BetterBackpack.log` mirrors that output.
+- `<DLL_dir>\better_backpack.log` mirrors that output (file lives next
+  to the DLL, not in `%TEMP%`).
 - `inject.log` next to `inject.exe` captures the injector's own steps.
   inject.exe runs and exits without pausing -- read `inject.log` if you
   need to see what happened.
@@ -100,11 +101,36 @@ Useful when iterating on the DLL without rebuilding the injector.
 
 ## Configuration
 
-Compile-time constants live in `better-backpack/src/`:
+Runtime config lives in `<DLL_dir>\settings.json`. Defaults are baked
+in, so the file is optional. Schema:
 
-- `patch.rs` -- `SLOT_COUNT = 100` (target capacity), `VANILLA_MAIN = 40`,
-  `VANILLA_MOUNT = 30` (skip).
+```json
+{
+  "inventory": {
+    "slot_count": 100
+  },
+  "survival": {
+    "thirst_multiplier": 0.5,
+    "hunger_multiplier": 0.5
+  }
+}
+```
+
+- `slot_count` -- target main-backpack capacity. Mount/saddlebag
+  (vanilla 30) is always preserved.
+- `thirst_multiplier`, `hunger_multiplier` -- scale the per-second
+  drain rate. `1.0` = vanilla, `0.5` = half rate, `0.0` = no drain.
+
+Copy `better-backpack/settings.example.json` to your install dir as
+`settings.json` to get started.
+
+Compile-time constants:
+
+- `patch.rs` -- `DEFAULT_SLOT_COUNT = 100` (fallback if settings load
+  fails), `VANILLA_MAIN = 40`, `VANILLA_MOUNT = 30` (skip).
 - `inv_hook.rs` -- viewport size (4 rows x 10 cols), scroll step (one row).
+- `survival.rs` -- offsets for `USurvivalComponent` hunger/thirst
+  fields.
 
 Trace logging in `inv_hook.rs` is gated by `cfg!(debug_assertions)`. To
 enable it, build without `--release`:

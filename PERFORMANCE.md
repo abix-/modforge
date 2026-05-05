@@ -86,7 +86,24 @@ worst-case scroll cost is **~5-10 ms/sec of CPU**, on the game thread,
 during active scrolling only. Well under one frame at 60 fps; below
 sample resolution at 144 fps.
 
-### 4. Rescan loop -- removed
+### 4. Survival CDO patch (hunger + thirst)
+
+`survival.rs::run`. One-shot at startup, same shape as the inventory
+patch. Walks GObjects looking for SurvivalComponent-derived CDOs and
+multiplies two `f32` fields per CDO by the user-configured multipliers.
+
+Per scan:
+- iterate every entry in GObjects (~125k)
+- per entry: `IsA(SurvivalComponent)` -- pointer-compare chain walk,
+  typically 2-4 hops
+- for the few matching CDOs: read + multiply + write each of two `f32`
+  fields, then verify
+
+Estimated wall cost: comparable to the inventory patch -- 1-3 ms once
+at startup. Runs only if at least one multiplier is `!= 1.0` (skipped
+entirely otherwise).
+
+### 5. Rescan loop -- removed
 
 Earlier revisions of this doc described a 10 s rescan loop. **It's
 gone.** The CDO patch is sticky for the lifetime of the DLL: UE doesn't

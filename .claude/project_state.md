@@ -85,12 +85,16 @@ grounded2mods/
   (matches cdylib output name). Pass an explicit path to override.
 
 ## Logs
-- Injector: `<inject.exe dir>/inject.log` -- truncated each run, captures
-  every line it prints to console. Useful when the console window closes
-  too fast to read.
-- Mod: `%TEMP%\BetterBackpack.log` -- truncated each DLL load, captures the
-  worker thread's log lines. First-line tell for the Rust build is
+- Injector: `<inject.exe dir>/inject.log` -- truncated each run.
+- Mod: `<DLL_dir>/better_backpack.log` -- truncated each DLL load.
+  First-line tell for the Rust build is
   `=== Better Backpack DLL (rust) ===`.
+
+## Settings
+- `<DLL_dir>/settings.json` (optional). Schema in
+  `better-backpack/settings.example.json`. Drives slot_count and
+  thirst/hunger multipliers. Defaults baked in for missing/malformed
+  file.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was

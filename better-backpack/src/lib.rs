@@ -23,10 +23,13 @@ pub mod log;
 pub mod parms;
 pub mod patch;
 pub mod sdk;
+pub mod settings;
+pub mod survival;
 
 use std::ffi::{OsString, c_void};
 use std::os::windows::ffi::OsStringExt;
 use std::ptr;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -47,11 +50,16 @@ const HOOK_RETRY_BASE_DELAY_MS: u64 = 500;
 const HOOK_RETRY_MAX_DELAY_MS: u64 = 5_000;
 const HOOK_RETRY_TIMEOUT_SEC: u64 = 600; // 10 min hard cap before giving up
 
+/// Captured in DllMain so other modules (e.g. log, settings) can resolve
+/// our own DLL's directory via GetModuleFileNameW.
+pub static DLL_HMODULE: AtomicUsize = AtomicUsize::new(0);
+
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub extern "system" fn DllMain(_hmod: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
+pub extern "system" fn DllMain(hmod: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
     match reason {
         DLL_PROCESS_ATTACH => unsafe {
+            DLL_HMODULE.store(hmod as usize, Ordering::Release);
             let h = CreateThread(
                 ptr::null(),
                 0,
@@ -80,7 +88,8 @@ unsafe extern "system" fn worker_entry(_lpv: *mut c_void) -> u32 {
 unsafe fn worker() {
     log::init();
     bbp_log!("=== Better Backpack DLL (rust) ===");
-    bbp_log!("target slot_count = {}", patch::SLOT_COUNT);
+    let settings = settings::load();
+    settings.log_summary();
     bbp_log!(
         "vanilla main = {}, vanilla mount = {} (left untouched)",
         patch::VANILLA_MAIN,
@@ -121,7 +130,7 @@ unsafe fn worker() {
         return;
     }
 
-    let initial = patch::run();
+    let initial = patch::run(settings.inventory.slot_count);
     bbp_log!(
         "initial patch round: scanned={}, patched={}, skipped_non_player={}",
         initial.scanned,
@@ -129,12 +138,22 @@ unsafe fn worker() {
         initial.skipped_non_player
     );
 
+    let surv = survival::run(
+        settings.survival.thirst_multiplier,
+        settings.survival.hunger_multiplier,
+    );
+    bbp_log!(
+        "survival patch: scanned_classes={}, patched={}",
+        surv.scanned_classes,
+        surv.patched
+    );
+
     // Install the inventory-interface hook with exponential backoff. The
     // class isn't loaded into GObjects until the inventory UI opens for
     // the first time. We retry until install succeeds or we hit the
     // timeout. After install, this thread exits and the mod's runtime
     // overhead drops to zero.
-    match install_inv_hook_with_backoff() {
+    match install_inv_hook_with_backoff(settings.inventory.slot_count) {
         Some(h) => {
             bbp_log!("inv hook: installed on {}", h.class_name());
             // Leak the hook so it lives for the lifetime of the process.
@@ -152,13 +171,13 @@ unsafe fn worker() {
     bbp_log!("init complete; worker thread exiting");
 }
 
-fn install_inv_hook_with_backoff() -> Option<hook::ProcessEventHook> {
+fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHook> {
     let mut delay_ms = HOOK_RETRY_BASE_DELAY_MS;
     let deadline = std::time::Instant::now()
         + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
     let mut last_err: Option<&str> = None;
     loop {
-        match inv_hook::install() {
+        match inv_hook::install(slot_count) {
             Ok(h) => return Some(h),
             Err(e) => {
                 if last_err != Some(e) {

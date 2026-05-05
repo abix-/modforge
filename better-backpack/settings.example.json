@@ -1,0 +1,9 @@
+{
+  "inventory": {
+    "slot_count": 100
+  },
+  "survival": {
+    "thirst_multiplier": 0.5,
+    "hunger_multiplier": 0.5
+  }
+}

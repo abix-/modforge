@@ -6,7 +6,10 @@
 use crate::bbp_log;
 use crate::sdk::{self, GObjectsView, UClass};
 
-pub const SLOT_COUNT: i32 = 100;
+/// Default and viewport-related constants left as `pub` so other modules
+/// (notably `inv_hook`) can use them. The actual target slot count is
+/// settings-driven; this constant is the fallback only.
+pub const DEFAULT_SLOT_COUNT: i32 = 100;
 pub const VANILLA_MAIN: i32 = 40;
 pub const VANILLA_MOUNT: i32 = 30;
 pub const DEFAULT_MAX_SIZE_OFFSET: usize = 0x01E0;
@@ -17,7 +20,7 @@ pub struct PatchStats {
     pub skipped_non_player: usize,
 }
 
-pub fn run() -> PatchStats {
+pub fn run(slot_count: i32) -> PatchStats {
     let mut stats = PatchStats {
         scanned: 0,
         patched: 0,
@@ -47,7 +50,7 @@ pub fn run() -> PatchStats {
         let current = unsafe {
             (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned()
         };
-        if current == VANILLA_MOUNT || current >= SLOT_COUNT {
+        if current == VANILLA_MOUNT || current >= slot_count {
             continue;
         }
 
@@ -61,7 +64,7 @@ pub fn run() -> PatchStats {
         }
 
         unsafe {
-            (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *mut i32).write_unaligned(SLOT_COUNT);
+            (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *mut i32).write_unaligned(slot_count);
         }
         let verify = unsafe {
             (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned()
@@ -70,7 +73,7 @@ pub fn run() -> PatchStats {
             "PATCH {}: {} -> {} (verify={})",
             full,
             current,
-            SLOT_COUNT,
+            slot_count,
             verify
         );
         stats.patched += 1;

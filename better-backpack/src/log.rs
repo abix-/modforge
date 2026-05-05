@@ -3,18 +3,23 @@
 // the same. Console output is the primary live-debug surface; the file is
 // the durable record.
 
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::Write;
+use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::ptr;
+use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::Storage::FileSystem::GetTempPathA;
+use windows_sys::Win32::Foundation::{HANDLE, HMODULE};
 use windows_sys::Win32::System::Console::{
     AllocConsole, GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleTitleW, WriteConsoleA,
 };
+use windows_sys::Win32::System::LibraryLoader::GetModuleFileNameW;
+
+use crate::DLL_HMODULE;
 
 struct Sink {
     file: Mutex<Option<File>>,
@@ -46,15 +51,27 @@ pub fn init() {
 }
 
 fn log_path() -> PathBuf {
-    let mut buf = vec![0u8; 1024];
-    let n = unsafe { GetTempPathA(buf.len() as u32, buf.as_mut_ptr()) };
-    let dir = if n > 0 && (n as usize) < buf.len() {
-        let s = String::from_utf8_lossy(&buf[..n as usize]).to_string();
-        PathBuf::from(s)
-    } else {
-        PathBuf::from(".\\")
-    };
-    dir.join("BetterBackpack.log")
+    dll_dir()
+        .unwrap_or_else(|| PathBuf::from(".\\"))
+        .join("better_backpack.log")
+}
+
+/// Directory containing our own DLL. Resolved via GetModuleFileNameW
+/// against the HMODULE captured in DllMain.
+pub fn dll_dir() -> Option<PathBuf> {
+    let hmod = DLL_HMODULE.load(Ordering::Acquire) as HMODULE;
+    if hmod.is_null() {
+        return None;
+    }
+    let mut buf = [0u16; 1024];
+    let n = unsafe { GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32) };
+    if n == 0 || (n as usize) >= buf.len() {
+        return None;
+    }
+    let path = OsString::from_wide(&buf[..n as usize]);
+    let mut p = PathBuf::from(path);
+    p.pop(); // strip filename, keep directory
+    Some(p)
 }
 
 pub fn log(args: std::fmt::Arguments<'_>) {
