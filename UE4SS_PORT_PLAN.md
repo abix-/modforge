@@ -187,12 +187,46 @@ Build shape:
   `better_backpack_start` / `better_backpack_stop`.
 - **C++ shim file** compiled via the `cc` build dep we already use,
   linked into the same DLL as the Rust code.
-- **UE4SS headers** vendored as a git submodule (UE4SS-RE/RE-UE4SS,
-  pinned to a known release). The shim `#include`s
-  `<UE4SS/Mod/CppUserModBase.hpp>`. We don't link anything from
-  UE4SS -- the shim only references the class via its vtable, which
-  UE4SS provides at load time when our DLL gets loaded inside its
-  process.
+- **UE4SS headers** consumed from a separate clone at
+  `C:\code\RE-UE4SS` (set up out-of-band by the developer). The
+  build documents the expected path and the commit pin. Reason we
+  don't vendor as a git submodule: UE4SS itself transitively
+  references `Re-UE4SS/UEPseudo.git` which is currently a 404, so
+  recursive submodule init breaks. We only need UE4SS's headers, not
+  its build, so a flat clone is sufficient.
+
+### Why we don't link against UE4SS.dll
+
+Naive shim would `#include <Mod/CppUserModBase.hpp>` and inherit. The
+header marks the constructor and destructor `RC_UE4SS_API`, which
+expands to `__declspec(dllimport)` in consumer builds. Linking
+requires UE4SS's import library, which would mean building UE4SS,
+which is currently blocked by the UEPseudo submodule rot.
+
+Workaround: in our shim's translation unit, define `RC_UE4SS_API` as
+empty *before* including UE4SS's headers. The constructor and
+destructor are then declared as plain functions. We provide our own
+empty-body definitions in the same translation unit:
+
+```cpp
+namespace RC {
+    CppUserModBase::CppUserModBase() = default;
+    CppUserModBase::~CppUserModBase() = default;
+}
+```
+
+The compiler emits the base class's vtable in our object (since the
+destructor is virtual and now-defined-here), with our `=default`
+destructor in the appropriate slot. Field layouts match UE4SS's
+because we used UE4SS's actual headers. The class behaves
+identically to a "real" UE4SS-linked subclass at the ABI level UE4SS
+cares about: vtable virtual dispatch + direct field access on
+`ModName`/`ModVersion`/etc.
+
+Constraint: this works as long as we compile with the same MSVC
+toolchain + same CRT linkage as UE4SS itself ships. Modders are
+expected to build mods in Release mode against UE4SS Release, which
+is also our default. Document this assumption in the build doc.
 
 Why not the other options:
 
