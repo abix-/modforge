@@ -226,30 +226,29 @@ The fall sequence inside one engine tick:
 7. `BndEvt__HealthComponent_..._DamagedDelegate` on the BP class --
    untested
 
-Broaden the existing `fall_hook.rs` ProcessEvent hook on
-`BP_SurvivalPlayerCharacter_*` to log every PE call hitting that
-class during a fall, then take one fall and read the trace. Goal:
-identify any PE-reachable event between step 2 (`OnLanded`) and step 5
-(the multicast we already see). If something in that window fires on
-the BP class's vtable, we may be able to restore `CurrentDamage`
-synchronously *inside the same frame*, which does not flicker --
-the UI does not render between native calls in one tick.
+Walk-backwards trace done (broadened PE hook on
+`BP_SurvivalPlayerCharacter_*` logged every fall/land/damage event).
+Result: the damage write happens natively in the gap between
+`ReceiveAnyDamage POST` and `OnHitReact pre`. No PE-reachable surface
+exists in that gap.
 
-**Same-frame heal-back** (now back on the table): not the deferred /
-next-frame heal-back that does flicker. If steps 4 and 5 both run
-inside one ProcessEvent dispatch chain on the same thread, snapshotting
-`CurrentDamage` at OnLanded suppression and restoring it at the
-multicast (or at any later in-tick PE event) all happen before the
-engine renders the next frame. UI cannot draw the lowered HP value
-between two synchronous native calls. Worth a five-line test.
-
-**Native detour fallback** (only if same-frame heal-back also flickers
-or the call chain is split across ticks): replace the
+**Native detour is the path forward.** Replace the
 `UFunction::native_func` slot for `ASurvivalCharacter::ApplyFallDamage`
 or `UHealthComponent::ApplyDamage` so the engine's direct C++ dispatch
-lands in our trampoline. Materially more code: executable trampoline
-via `VirtualAlloc(PAGE_EXECUTE_READWRITE)`, register-preserving
-prologue/epilogue, return-to-original path. Kept as last resort.
+lands in our trampoline. Steps:
+
+1. Find the UFunction (`UClass::get_function`) on the relevant class.
+2. Locate `native_func` field offset in the UFunction layout (UE5
+   typically stores it after `Script` array; verify by dumping a
+   known-native UFunction's pointer at ranges around +0xB0..+0xE0
+   and matching against `image_base + symbol`).
+3. Allocate executable trampoline via
+   `VirtualAlloc(PAGE_EXECUTE_READWRITE)`. Prologue saves volatile
+   registers + RCX/RDX/R8/R9 (Windows x64 calling convention),
+   tail-calls the original or returns immediately at level 100.
+4. `VirtualProtect` the UFunction memory writable, swap
+   `native_func` to trampoline, restore protection.
+5. On Drop / unload, restore the original pointer.
 
 Separate skill: **Collision / Impact Damage Resistance** is a real
 distinct mitigation now that we have evidence plant collision is its

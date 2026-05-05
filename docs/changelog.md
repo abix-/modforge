@@ -156,24 +156,31 @@ by the function's UFunction flags
 forbids state changes on the call. Skipping `original.call` would only
 suppress cosmetic effects, not damage.
 
-Path forward: walk the fall backwards from the multicast. The known
-sequence inside one tick is `ProcessLanded` (native) -> `OnLanded` BP
-event (PE, we suppress) -> `ApplyFallDamage` (native, no PE) ->
-`HealthComponent::ApplyDamage` writes `CurrentDamage` (native, no PE)
--> `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` (PE, we
-hook). Untested PE surfaces in that window: `MulticastFallEffects`,
-the BP-bound damaged delegate, `NotifyOnLandAnimBegin`. Broadening
-`fall_hook` to log all PE events on the player BP class will reveal
-what fires when, in what order, relative to the damage write. That
-either gives us a same-frame intercept point (no flicker since UI
-does not render between synchronous native calls in one tick), or
-proves we need a native function detour.
+Walk-backwards trace done. Broadened the PE hook on
+`BP_SurvivalPlayerCharacter_*` to log every fall/land/damage event
+with `CurrentDamage` snapshotted before and after each
+`original.call`. One controlled fall produced this sequence:
 
-Heal-back updated: rejected only as a *next-frame* / async pattern.
-A *same-frame* restore inside the multicast hook does not flicker,
-since the engine has not rendered the lowered HP between the
-`CurrentDamage` write and the multicast handler. Same-frame is back
-on the table.
+```
+OnLanded                      CD=14.59 (suppressed)
+MulticastFallEffects          14.59 / 14.59
+ReceiveAnyDamage              14.59 / 14.59
+                              <-- native CurrentDamage write happens here
+OnHitReact                    98.61 / 98.61
+BndEvt__..._DamagedDelegate   98.61 / 98.61
+multicast (kill_hook)         damage=84.03
+ReceiveHit                    98.61 / 98.61
+```
+
+Damage is committed natively in the gap between `ReceiveAnyDamage POST`
+and `OnHitReact pre`. No PE-reachable surface lives in that gap, so no
+ProcessEvent hook can intercept the write before it lands.
+
+The only remaining attack surface is a native function detour on
+`UFunction::native_func` for `ASurvivalCharacter::ApplyFallDamage` or
+`UHealthComponent::ApplyDamage`. That intercepts the engine's direct
+C++ dispatch upstream of the `CurrentDamage` write. Implementation
+plan in [`todo.md`](todo.md).
 
 ### Movement skill fix verified
 

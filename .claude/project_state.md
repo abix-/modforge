@@ -55,18 +55,16 @@ Damage trace findings:
   upstream of the multicast. Multicast UFunction flags include `Const`,
   confirming it cannot apply damage. Multicast is purely a notification.
 
-Next pass: walk the fall backwards. Broaden the `fall_hook` PE hook on
-`BP_SurvivalPlayerCharacter_*` to log every PE event on the BP class
-during one fall. Goal is to identify any PE-reachable surface between
-`OnLanded` (we suppress) and the multicast (already hooked) -- e.g.
-`MulticastFallEffects`, BP-bound damaged delegate handler,
-`NotifyOnLandAnimBegin`. If anything fires in that window we may be
-able to do a same-frame restore of `CurrentDamage` (no flicker -- UI
-does not render between synchronous native calls in one tick).
-Same-frame heal-back is back on the table; only deferred / next-frame
-heal-back is rejected. If the window has no PE-reachable surface, the
-fallback is the native function detour on
-`ASurvivalCharacter::ApplyFallDamage` or `UHealthComponent::ApplyDamage`.
+Walk-backwards trace done. Broadened the PE hook on the player BP
+class to log every fall/land/damage event with `CurrentDamage`
+snapshotted around each `original.call`. The damage write happens
+natively between `ReceiveAnyDamage POST` and `OnHitReact pre`, with
+no PE-reachable surface in that gap.
+
+The only remaining path is a native function detour on
+`UFunction::native_func` for `ASurvivalCharacter::ApplyFallDamage` or
+`UHealthComponent::ApplyDamage`. Implementation steps in
+`docs/todo.md`.
 
 Collision / impact damage is now its own skill scoped behind the
 `BP_EnvironmentalDamage_C` filter on `LastDamageInfo.DamageType`.
