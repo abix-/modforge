@@ -105,77 +105,149 @@ short of it:
   that's not a frame-time concern.
 - Steam/Xbox platform detection logic.
 
-## What's the rewrite cost?
+## How UE4SS actually loads CPPMods
 
-**Hard requirement: stay 100% Rust.** No C++ shim, no Lua port. UE4SS
-loads our cdylib, we bridge whatever ABI it expects from Rust.
+There is **only one supported ABI**: a C++ class derived from
+`RC::CppUserModBase`, with two `extern "C"` exports that allocate and
+free instances. There is no free-function shortcut path; an earlier
+draft of this doc claimed one existed and was wrong.
 
-Three Rust-only paths in priority order:
+The contract:
 
-1. **(preferred) Legacy free-function ABI.** Export `start_mod()` and
-   `uninstall_mod()` as plain `extern "C"` symbols from the cdylib.
-   No inheritance, no vtables. If current UE4SS still supports this
-   path -- and it should, since changing it would break every existing
-   CPPMod -- this is ~half-day of work. Implementation: 20 lines in
-   `lib.rs`, drop the winhttp proxy plumbing, done.
-2. **(fallback) Hand-rolled vtable in Rust to satisfy the modern
-   `CppUserModBase` ABI.** UE4SS's modern API expects a C++ object
-   pointer whose vtable matches `CppUserModBase`. We can construct
-   one in Rust:
-   ```rust
-   #[repr(C)]
-   struct CppUserModBaseVTable {
-       destructor:        unsafe extern "C" fn(*mut Mod),
-       on_dll_load:       unsafe extern "C" fn(*mut Mod, *const u16),
-       on_program_start:  unsafe extern "C" fn(*mut Mod),
-       on_unreal_init:    unsafe extern "C" fn(*mut Mod),
-       /* ... one fn ptr per virtual UE4SS expects ... */
-   }
-   #[repr(C)]
-   struct Mod { vtable: &'static CppUserModBaseVTable, /* fields */ }
-   ```
-   Each entry is a Rust `extern "C"` function. UE4SS calls via the
-   vtable; we receive the `this` pointer and dispatch normally. Fragile
-   if UE4SS adds new virtuals between releases (the slot count
-   changes), but doable. ~1-2 days plus a vtable layout audit per
-   UE4SS release.
-3. **(last resort) `cxx` or `bindgen` against the UE4SS C++ headers.**
-   Most idiomatic but adds a real build-time dep on the UE4SS source
-   tree. Generates Rust bindings for `CppUserModBase` and friends so
-   Rust can implement the trait via `cxx`'s shim machinery. ~3 days
-   plus header maintenance. Avoid unless (1) and (2) both fail.
+```cpp
+extern "C" __declspec(dllexport) RC::CppUserModBase* start_mod();
+extern "C" __declspec(dllexport) void uninstall_mod(RC::CppUserModBase* mod);
+```
 
-Recommendation: ship (1). If UE4SS rejects it at runtime, fall to
-(2) and document the vtable layout in source comments so future
-maintainers can audit it against UE4SS releases.
+`start_mod()` returns a pointer to a heap-allocated subclass instance.
+UE4SS holds that pointer for the mod's lifetime and calls into its
+vtable for lifecycle events. `uninstall_mod()` is invoked at unload
+and is expected to call `delete mod` (which fires the virtual
+destructor).
+
+The vtable shape (in declaration order in
+`UE4SS/include/Mod/CppUserModBase.hpp`):
+
+1. virtual destructor
+2. `on_update()`
+3. `on_unreal_init()` -- earliest point safe for UE reflection
+4. `on_ui_init()`
+5. `on_program_start()`
+6-9. four deprecated `on_lua_*` overloads
+10. `on_dll_load(StringViewType)`
+11. `render_tab()`
+12-15. four current `on_lua_*` overloads
+16. `on_cpp_mods_loaded()`
+
+Plus member fields: a `std::vector<std::shared_ptr<GUI::GUITab>>` and
+five `StringType` (MSVC `std::wstring`) fields for ModName, ModVersion,
+ModDescription, ModAuthors, ModIntendedSDKVersion.
+
+## How we bridge that to Rust
+
+**Decision: tiny C++ shim, mod logic stays in Rust.**
+
+The shim's entire job is to be the `CppUserModBase` subclass UE4SS
+needs and forward lifecycle calls into the Rust cdylib via two
+`extern "C"` symbols:
+
+```cpp
+// shim.cpp
+#include <UE4SS/Mod/CppUserModBase.hpp>
+
+extern "C" void better_backpack_start();   // implemented in Rust
+extern "C" void better_backpack_stop();    // implemented in Rust
+
+class BetterBackpackMod : public RC::CppUserModBase {
+public:
+    BetterBackpackMod() {
+        ModName = STR("BetterBackpack");
+        ModVersion = STR("0.1.0");
+        ModDescription = STR("Bigger backpack + survival rate tweaks");
+        ModAuthors = STR("abix");
+    }
+    void on_unreal_init() override { better_backpack_start(); }
+    ~BetterBackpackMod() override { better_backpack_stop(); }
+};
+
+extern "C" __declspec(dllexport)
+RC::CppUserModBase* start_mod() { return new BetterBackpackMod(); }
+
+extern "C" __declspec(dllexport)
+void uninstall_mod(RC::CppUserModBase* mod) { delete mod; }
+```
+
+That's the entire C++ surface. ~30 lines, no logic in it -- it's
+loader handshake only. Every byte of mod behavior (CDO patches,
+hooks, scroll viewport, settings, log) stays Rust.
+
+Build shape:
+
+- **Rust cdylib** (existing crate, renamed) exports
+  `better_backpack_start` / `better_backpack_stop`.
+- **C++ shim file** compiled via the `cc` build dep we already use,
+  linked into the same DLL as the Rust code.
+- **UE4SS headers** vendored as a git submodule (UE4SS-RE/RE-UE4SS,
+  pinned to a known release). The shim `#include`s
+  `<UE4SS/Mod/CppUserModBase.hpp>`. We don't link anything from
+  UE4SS -- the shim only references the class via its vtable, which
+  UE4SS provides at load time when our DLL gets loaded inside its
+  process.
+
+Why not the other options:
+
+- **Hand-rolled vtable in Rust.** Mirroring MSVC's vtable layout +
+  `std::vector` + `std::shared_ptr` + `std::wstring` byte-for-byte
+  is small to write but enormous to maintain. UE4SS adds a new
+  `on_xxx_init` virtual in the next release and our slot 4 silently
+  becomes slot 5. We crash on innocent UE4SS updates.
+- **`cxx` / `bindgen` bindings.** Same UE4SS-headers dependency as
+  the shim, more build complexity, no real gain.
+
+The 30 lines of C++ don't compete with the 1500 lines of Rust for any
+property worth defending. They're plumbing.
+
+## Cost
+
+Option 1 (the chosen path):
+- Vendor UE4SS as a git submodule, pin the release.
+- Add the shim `.cpp` file, ~30 lines.
+- Extend `build.rs` to compile the shim alongside the existing
+  forwarder generation (delete the forwarder generation as part of
+  this work).
+- Add two `#[no_mangle] extern "C"` symbols to `lib.rs` that drive
+  the worker.
+- ~1 day total.
 
 ## Migration sequence
 
 Numbered for tracking. Each step is its own commit.
 
-- [ ] **1.** Verify UE4SS for Grounded 2 actually loads CPPMods today.
-  Smoke-test with a minimal Rust cdylib that exports `start_mod` and
-  writes a single line to a log file. Drop in
-  `<game>\Augusta\Binaries\Win64\Mods\HelloRust\dlls\main.dll`,
-  launch, confirm the line appears. This is the gate; if it fails
-  the whole plan is moot and we keep winhttp.
-- [ ] **2.** Confirm whether the legacy free-function ABI works in
-  the current UE4SS for this game. If yes -> path (1) above. If no,
-  build a Rust-only vtable shim to satisfy the modern ABI -> path
-  (2).
-- [ ] **3.** Add `start_mod`/`uninstall_mod` exports to
-  `better-backpack/src/lib.rs`. Move worker startup out of DllMain
-  into start_mod. Drop the `wait_for_gobjects` retry loop -- UE4SS
-  calls start_mod after engine init, so GObjects is already
-  populated.
-- [ ] **4.** Rename cdylib output `winhttp` -> `main`. Drop
-  `winhttp.def`, the cc build dep, and the forwarder C file
-  generation in `build.rs`. Drop the C build-dep entirely so the
-  mod stays pure Rust + linker.
+- [ ] **1.** Vendor UE4SS as a git submodule under
+  `vendor/RE-UE4SS`. Pin to a known release (latest stable at port
+  time). The shim only needs the headers under `UE4SS/include/`;
+  we're not building UE4SS itself.
+- [ ] **2.** Smoke-test that UE4SS for Grounded 2 actually loads
+  CPPMods today. Build a minimal "hello" mod (the C++ shim from this
+  doc + a Rust function that writes one line to a log file), drop it
+  into `<game>\Augusta\Binaries\Win64\Mods\HelloRust\dlls\main.dll`
+  (plus an empty `enabled.txt`), launch, confirm the line appears.
+  This is the gate; if UE4SS for Grounded 2 is broken today, fall
+  back to the winhttp proxy plan.
+- [ ] **3.** Add the C++ shim source to `better-backpack/src/`.
+  Extend `build.rs` to compile it via `cc::Build` against the
+  vendored UE4SS headers and link the resulting `.obj` into the
+  cdylib. Delete the winhttp forwarder generation from `build.rs`.
+- [ ] **4.** Rename cdylib output `winhttp` -> `main`. Delete
+  `winhttp.def`. Add two `#[no_mangle] extern "C"` Rust functions
+  (`better_backpack_start`, `better_backpack_stop`) that the C++
+  shim calls. Move worker startup out of `DllMain` into
+  `better_backpack_start`. Drop the `wait_for_gobjects` retry loop
+  -- UE4SS calls `on_unreal_init` after engine init, so GObjects is
+  already populated.
 - [ ] **5.** Rewrite `deploy.ps1` to package the UE4SS mod folder
-  layout. Default mode: zip with `BetterBackpack/dlls/main.dll`,
-  `BetterBackpack/enabled.txt`, `BetterBackpack/settings.json` at
-  the root.
+  layout. Default mode: zip whose root is `BetterBackpack/`
+  containing `dlls/main.dll`, `enabled.txt`, `settings.json`.
 - [ ] **6.** Update `BUILDING.md`, `README.md`, `FEATURES.md`,
   `PERFORMANCE.md` to reflect the UE4SS load model. The capability
   comparison table stays accurate -- only the distribution shape
@@ -193,13 +265,11 @@ Numbered for tracking. Each step is its own commit.
 1. **UE4SS for Grounded 2 may not be stable.** If it crashes, we
    silently lose users. Step 1 of the migration is the gate; if it
    fails, we don't proceed.
-2. **The CPPMod ABI may have changed since the docs we read.** The
-   legacy free-function ABI may be deprecated, and the modern
-   `CppUserModBase` inheritance may require synthesizing a vtable in
-   Rust (path 2). Fragility: if UE4SS adds new virtual methods, our
-   hand-rolled vtable's slot count goes out of sync and we miscall.
-   Mitigation: pin the UE4SS version in our docs, audit the vtable
-   on every UE4SS release, document the layout in source comments.
+2. **UE4SS releases drift the `CppUserModBase` shape.** New virtual
+   methods or new member fields in a UE4SS update mean the shim has
+   to be rebuilt against the new headers. Mitigation: vendor UE4SS
+   as a submodule pinned to a specific release, document the pinned
+   version, and bump deliberately.
 3. **Game patches still break us.** UE4SS itself dumps the SDK and
    exposes reflection helpers, but our specific offsets
    (`InventoryComponent + 0x01E0`, `SurvivalComponent + 0x0140`,
