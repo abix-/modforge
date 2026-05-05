@@ -202,23 +202,30 @@ value -- value is determined by the row. Implementation paths
 4. **Manual `UStatusEffect` subclass with overridden getters**.
    Heaviest; UE class manipulation at runtime.
 
-**Validation done (probe shipped + observed in-game).** The probe
-returned non-default values for vanilla-equipped skills, confirming
-the system is live and continuously consulted by the engine:
+**Validation done.** Probe ran in-game, returning both runtime
+values and combine semantics (`/add` or `/mul`) per stat:
 
 ```
-FallDamage(14)=1.000     AttackDamage(23)=1.210
-DamageReduction(29)=1.000 CriticalHitChance(31)=0.060
-LifeSteal(38)=0.000      MaxHealth(5)=30.000
+FallDamage(14)=1.000/mul        DamageReduction(29)=1.000/mul
+DamageReductionMultiplier(30)=0.000/add
+AttackDamage(23)=1.210/mul      LifeSteal(38)=0.000/add
+CriticalHitChance(31)=0.060/add CriticalDamage(62)=0.000/add
+ReflectDamage(37)=0.000/add     MaxHealth(5)=30.000/add
 ```
 
-The semantics differ per stat (multiplier / additive / probability),
-which is queryable via `USurvivalGameplayStatics::GetStatusEffectValueType(StatType)`.
-Next step before writing the apply step: probe the value-type for
-each stat we plan to use, so we know whether to add, multiply, or
-replace the contribution.
+`EStatusEffectValueType` is `{None=0, Add=1, Multiply=2}`. Vanilla
+baseline is `1.0` for `mul` stats and `0.0` for `add` stats. Per-stat
+write formulas are in `docs/damage.md` "Stat semantics table".
 
-Then pick implementation path (1 or 3 from `damage.md`), build it.
+Next: implement the apply step via one of the four paths in
+`damage.md` ("Implementation paths"). Path 1 (mutate existing
+data-table row) is the cheapest if we can find rows with the right
+`Type` for each skill we want to migrate. Path 3 (inject new row)
+is the safest. Building either requires:
+- A way to enumerate `UDataTable` rows for `FStatusEffectData` at
+  runtime so we can find or add rows.
+- The data-table-row layout offsets (`Type` at +0x30, `Value` at
+  +0x34, etc., already documented in `damage.md`).
 
 ## RPG: tuning
 

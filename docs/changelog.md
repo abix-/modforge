@@ -26,6 +26,25 @@ Armor's `BaseDamageReduction` write, just on a different gate.
 The gate is **binary** (level 1 = full immunity, identical to
 level 100). Status-effect-backed migration tracked below.
 
+### Status Effect combine semantics decoded
+
+Extended the sfx-probe to also call
+`UUserInterfaceStatics::GetStatusEffectValueType(StatType)` for each
+probed stat. `EStatusEffectValueType` enum is two-state plus None:
+`Add=1`, `Multiply=2`. Per-stat semantics observed in-game:
+
+- `FallDamage`, `DamageReduction`, `AttackDamage` -> `mul` (vanilla
+  baseline 1.0; effects multiply).
+- `LifeSteal`, `CriticalHitChance`, `CriticalDamage`, `ReflectDamage`,
+  `MaxHealth`, `DamageReductionMultiplier` -> `add` (vanilla baseline
+  0.0; effects sum).
+
+Per-skill write formulas now fully determined; full table in
+`damage.md` "Stat semantics table". This finishes the validation
+phase of the A1 migration; next is picking an implementation path
+(mutate existing row vs inject new row) and building the apply
+step.
+
 ### Status Effect system validated (probe shipped, in-game readout)
 
 `fall_hook.rs` now ships a probe (gated on `impact_resistance > 0`)

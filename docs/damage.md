@@ -524,61 +524,78 @@ extends `FTableRowBase`):
 
 `fall_hook.rs` ships a probe (gated on `impact_resistance > 0`)
 that calls `UStatusEffectComponent::GetValueForStat(StatType,
-false)` for a handful of damage-relevant stat types on the
-player's component and logs the result. Observed in vanilla on a
-mid-game player with equipped gear:
+false)` and `UUserInterfaceStatics::GetStatusEffectValueType(StatType)`
+for a handful of damage-relevant stat types on the player's
+component, logging both the runtime value and the combine
+semantic. Observed on a mid-game player with equipped gear:
 
 ```
 rpg/sfx-probe:
-  FallDamage(14)=1.000               <- vanilla baseline multiplier
-  DamageReduction(29)=1.000          <- contributed by equipped gear
-  DamageReductionMultiplier(30)=0.000
-  AttackDamage(23)=1.210             <- equipped gear gives +21% damage
-  LifeSteal(38)=0.000
-  CriticalHitChance(31)=0.060        <- equipped gear gives 6% crit
-  CriticalDamage(62)=0.000
-  ReflectDamage(37)=0.000
-  MaxHealth(5)=30.000                <- equipped gear gives +30 HP
+  FallDamage(14)=1.000/mul              <- vanilla multiplier
+  DamageReduction(29)=1.000/mul         <- vanilla multiplier
+  DamageReductionMultiplier(30)=0.000/add
+  AttackDamage(23)=1.210/mul            <- gear gives +21% damage
+  LifeSteal(38)=0.000/add
+  CriticalHitChance(31)=0.060/add       <- gear gives 6% crit
+  CriticalDamage(62)=0.000/add
+  ReflectDamage(37)=0.000/add
+  MaxHealth(5)=30.000/add               <- gear gives +30 HP
 ```
 
-Three things this proves:
+The `EStatusEffectValueType` enum is two-state plus `None`:
 
-1. `GetValueForStat` is queryable and **already returns non-default
-   values from vanilla items / perks**. The status-effect system
-   is live and continuously read.
-2. Vanilla skills the player already has (gear-driven `+%` damage,
-   `+30` max health, `6%` crit) are implemented through this same
-   system. Our skills should be too.
-3. The semantics differ per stat type: `AttackDamage = 1.210`
-   reads as a multiplier above `1.0`; `MaxHealth = 30.0` reads as
-   an additive bonus; `CriticalHitChance = 0.060` reads as a raw
-   probability fraction. So **the combine semantic is per-stat**,
-   queryable via the static helper:
+```cpp
+enum class EStatusEffectValueType : uint8 {
+    None     = 0,
+    Add      = 1,
+    Multiply = 2,
+};
+```
 
-   ```cpp
-   static EStatusEffectValueType USurvivalGameplayStatics::GetStatusEffectValueType(
-       const UObject* WorldContextObject,
-       EStatusEffectType StatusEffectType);
-   ```
+So per stat, the engine either sums all active effects' values or
+multiplies them. Vanilla baseline differs by combine type: `mul`
+stats start at `1.0` (so no effect = no change), `add` stats start
+at `0.0` (so no effect = no contribution).
 
-   Returns an `EStatusEffectValueType` that tells you whether the
-   stat sums / multiplies / maxes / mins across active effects.
-   Probe this once per stat type at apply time so we know whether
-   to write the value as `1.0 - reduction` (multiplier) or
-   `-reduction` (additive subtraction) etc.
+### Stat semantics table (what each skill writes)
 
-### What "FallDamage = 1.0" means for our migration
+For every skill in our catalog, the contribution we add is fully
+determined by `(stat_type, combine_semantic, max_bonus, current
+level progress)`:
 
-`FallDamage` returns `1.000` on a player with no extra perks --
-this is the unmodified multiplier the native fall code reads and
-multiplies into the computed damage. To suppress fall damage we
-need an effect that drives this value down (toward `0.0`). At
-level 100 of `fall_resistance`, the contribution should bring the
-total to `0.0`. At lower levels, partial reduction.
+| Skill | Stat type | Combine | Vanilla | Our contribution per skill level |
+| ----- | --------- | ------- | ------- | -------------------------------- |
+| `fall_resistance` | `FallDamage` (14) | mul | 1.0 | `1 - reduction` (level 100 = 0.0; multiplied total = 0.0 = no fall damage) |
+| `impact_resistance` | `FallDamage` (14) or `DamageReduction` (29) | mul | 1.0 | `1 - reduction` (same shape) |
+| `armor` | `DamageReduction` (29) | mul | 1.0 | `1 - reduction` |
+| `attack_damage` | `AttackDamage` (23) | mul | 1.0 baseline (gear stacks) | `1 + bonus` (level 100 with `max_bonus=3` -> `4.0`) |
+| `lifesteal` | `LifeSteal` (38) | add | 0.0 | `bonus * progress` (level 100 with `max_bonus=0.9` -> `0.9`) |
+| `critical_chance` | `CriticalHitChance` (31) | add | 0.0 | raw probability fraction |
+| `critical_damage` | `CriticalDamage` (62) | add | 0.0 | bonus fraction |
+| `thorns` | `ReflectDamage` (37) | add | 0.0 | reflect fraction |
+| `max_health` | `MaxHealth` (5) | add | 0.0 baseline (gear stacks) | flat HP bonus |
+| `hunger_resistance` | `HungerRate` (17) | add or mul (probe) | TBD | scales drain |
+| `thirst_resistance` | `ThirstRate` (18) | add or mul (probe) | TBD | scales drain |
+| `move_speed` | `MoveSpeed` (1) | add or mul (probe) | TBD | -- migration of CMC writes |
 
-Whether to *replace* the value or *add* a contribution depends
-on the combine semantic from `GetStatusEffectValueType` -- next
-step before implementing the migration.
+The "probe" rows have not yet been observed in-game; need to
+extend the sfx-probe to those stat types before migration to
+confirm semantics.
+
+### What "FallDamage = 1.0/mul" means for our migration
+
+The vanilla baseline for `FallDamage` is `1.0` and the combine
+semantic is `mul`. Native fall code reads the stat and multiplies
+into the computed damage. Our skill contributes a value that
+the engine multiplies *together* with vanilla 1.0:
+
+- Level 100 (`reduction = 1.0`) -> contribute `0.0` -> total =
+  `1.0 * 0.0 = 0.0` -> fall damage * 0 = no damage.
+- Level 50 (`reduction ~0.71`) -> contribute `0.29` -> total =
+  `1.0 * 0.29 = 0.29` -> ~29% damage taken.
+- Level 0 -> no effect added -> total = `1.0` -> full damage.
+
+Smooth sqrt-curve scaling drops out for free.
 
 ### Implementation choice (informed by the probe)
 

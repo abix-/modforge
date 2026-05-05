@@ -49,11 +49,25 @@ the system is live: vanilla equipped gear already populates
 `FallDamage=1.000`, `DamageReduction=1.000` -- all from existing
 items/perks reading through the same surface our skills will use.
 
-Stat semantics differ per type (multiplier / additive / probability)
-queryable via `USurvivalGameplayStatics::GetStatusEffectValueType`.
-Next step: probe the combine semantic per stat, then implement the
-apply step via one of four paths in `docs/damage.md`. `UStatusEffect`
-is row-driven; value lives in the data-table row, not the instance.
+Stat semantics differ per type, queryable via
+`UUserInterfaceStatics::GetStatusEffectValueType` (returns
+`EStatusEffectValueType` = `{None=0, Add=1, Multiply=2}`). Probed
+in-game:
+
+- `mul` stats: `FallDamage`, `DamageReduction`, `AttackDamage`.
+  Vanilla baseline 1.0. Contribution = `(1 - reduction)` for
+  reduction skills, `(1 + bonus)` for buff skills.
+- `add` stats: `LifeSteal`, `CriticalHitChance`, `CriticalDamage`,
+  `ReflectDamage`, `MaxHealth`, `DamageReductionMultiplier`.
+  Vanilla baseline 0.0. Contribution = scaled bonus (e.g. 0.30
+  for 30% lifesteal).
+
+Per-skill write formulas in `docs/damage.md` "Stat semantics
+table". Next step is the apply-step implementation via one of
+four paths in `docs/damage.md` ("Implementation paths"). Path 1
+(mutate existing row) is cheapest; path 3 (inject new row) is
+safest. `UStatusEffect` is row-driven; value lives in the
+data-table row, not the instance.
 
 Full Grounded 2 damage internals -- fall path, environmental path,
 HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill
