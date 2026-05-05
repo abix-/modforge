@@ -86,6 +86,7 @@ fn on_player_fall_event(
         // migration.
         if current_impact_resistance_level() > 0 {
             probe_status_effect_values(this);
+            probe_player_status_effects(this);
         }
     }
 
@@ -194,6 +195,83 @@ fn current_fall_resistance_reduction() -> f32 {
 
 fn is_player_character(obj: &UObject) -> bool {
     obj.full_name().contains("BP_SurvivalPlayerCharacter")
+}
+
+/// Walk the player's `UStatusEffectComponent.StatusEffects` array
+/// and log each active effect's row handle (DataTable name + row
+/// name). Tells us which data tables and row names the engine uses
+/// for vanilla effects so we can pick or clone rows when migrating
+/// our skills to the status-effect system.
+fn probe_player_status_effects(player: &UObject) {
+    const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
+    const SEC_STATUS_EFFECTS_TARRAY: usize = 0x01C8;
+    const STATUS_EFFECT_ROW_HANDLE: usize = 0x0058;
+    // FDataTableRowHandle layout: UDataTable* (8) + FName (8) = 16 bytes.
+    // The _NetCrc32 variant adds extras after; we only need the first 16.
+
+    let sec = unsafe {
+        let p: *mut UObject = player
+            .field_ptr(ASC_STATUS_EFFECT_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        match p.as_ref() {
+            Some(c) => c,
+            None => return,
+        }
+    };
+
+    // TArray layout: { T* data; int32 num; int32 max; }
+    let (data_ptr, num) = unsafe {
+        let base = sec.field_ptr(SEC_STATUS_EFFECTS_TARRAY);
+        let data = (base as *const *const *mut UObject).read_unaligned();
+        let num = (base.add(8) as *const i32).read_unaligned();
+        (data, num.max(0) as usize)
+    };
+
+    if data_ptr.is_null() || num == 0 {
+        bbp_log!("rpg/sfx-list: player has 0 active status effects");
+        return;
+    }
+    bbp_log!("rpg/sfx-list: player has {} active status effects", num);
+
+    for i in 0..num.min(20) {
+        let effect = unsafe {
+            let p = data_ptr.add(i).read_unaligned();
+            match p.as_ref() {
+                Some(e) => e,
+                None => continue,
+            }
+        };
+        let table_ptr = unsafe {
+            effect
+                .field_ptr(STATUS_EFFECT_ROW_HANDLE)
+                .cast::<*mut UObject>()
+                .read_unaligned()
+        };
+        let row_name = unsafe {
+            let fname_ptr = effect.field_ptr(STATUS_EFFECT_ROW_HANDLE + 8);
+            // FName is 8 bytes; reuse the existing UObject name resolver
+            // by casting the field through a thin shim. Easiest: read the
+            // FName as 8 bytes and let the resolver do its work.
+            let raw: u64 = (fname_ptr as *const u64).read_unaligned();
+            crate::sdk::runtime()
+                .name_resolver
+                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw))
+        };
+        let table_name = unsafe {
+            table_ptr
+                .as_ref()
+                .map(|t| t.full_name())
+                .unwrap_or_else(|| "<null-table>".to_string())
+        };
+        bbp_log!(
+            "rpg/sfx-list:   [{}] effect={} row={} table={}",
+            i,
+            effect.full_name(),
+            row_name,
+            table_name
+        );
+    }
 }
 
 /// Probe `UStatusEffectComponent::GetValueForStat(StatType, false)`
