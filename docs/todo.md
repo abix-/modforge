@@ -185,38 +185,53 @@ Status (validated in-game):
 - BP `OnLanded` ProcessEvent suppression on concrete
   `BP_SurvivalPlayerCharacter_*` works but is post-damage cosmetic.
 
-Damage trace on the player's HealthComponent shows the actual delivery
-fires through `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
-with `Damage=83.63, flags=0, type_flags=0`. `ApplyDamageFromInfo` does
-not appear in the trace -- the engine bypasses ProcessEvent on the
-native fall path on its way to writing `CurrentDamage` (+0x32C).
+Damage trace on the player's HealthComponent identified two distinct
+damage paths:
 
-Heal-back from the multicast hook is rejected (UX: HP flickers).
+- **Fall damage**: fires
+  `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` with
+  `LastDamageInfo` *entirely empty* -- DamageType=null, instigator=null,
+  source=null, hit=(0,0,0), all flags zero. Native code writes directly
+  to `CurrentDamage` (+0x32C) without going through the standard
+  `FDamageInfo` / `ApplyDamageFromInfo` pipeline at all.
+- **Plant / environmental collision damage** (e.g. running into a plant
+  at +300% move speed): same multicast function, but
+  `LastDamageInfo.DamageType = BP_EnvironmentalDamage_C`,
+  `src_type = 2`. Different code path, separate mitigation strategy.
 
-**Next: native function detour.** Replace the `native_func` slot on
-the `UFunction` for `ASurvivalCharacter::ApplyFallDamage` (and/or
-`UHealthComponent::ApplyDamage`) so the engine's direct C++ call lands
-in our trampoline. Required because the engine bypasses ProcessEvent
-for these functions, and they are the only seam that runs before
-damage is applied to `CurrentDamage`.
+So fall damage is uniquely identifiable by `DamageType==null` on the
+multicast, even though the parm flag fields are zero.
 
-Steps:
+**Current diagnostic in the build**: the multicast hook now snapshots
+`CurrentDamage` before and after `original.call` and logs the delta
+when nonzero. One controlled fall tells us which side of the multicast
+the damage is written on:
 
-1. Find the `UFunction` for `ASurvivalCharacter::ApplyFallDamage` via
-   `UClass::get_function` on the `SurvivalCharacter` class.
-2. Read the current `native_func` pointer from the UFunction at the
-   appropriate offset (UE5 puts this near the end of UFunction;
-   verify with the SDK's `UFunction` size and a one-shot dump).
-3. Allocate an executable trampoline via `VirtualAlloc` with
-   `PAGE_EXECUTE_READWRITE`. Trampoline calls our Rust function, then
-   either returns immediately (full immunity at level 100) or jumps to
-   the original native fn (graceful degradation).
-4. `VirtualProtect` the UFunction to writable, swap in the trampoline
-   pointer, restore protection.
-5. On Drop / unload, restore the original pointer.
+- `delta > 0` -> the multicast handler IS the damage-application path.
+  Skip `original.call` for fall damage at level 100 and damage is
+  suppressed cleanly with no HP flicker. Five-line implementation.
+- `delta == 0` -> native code already wrote `CurrentDamage` upstream
+  before the multicast fired. Forced into either heal-back (rejected
+  for HP flicker) or a native function detour.
 
-Lower-priority adjacent surfaces still on the radar if the native
-detour proves intractable:
+**Native detour fallback** (only if the delta is zero): replace the
+`UFunction::native_func` slot for `ASurvivalCharacter::ApplyFallDamage`
+or `UHealthComponent::ApplyDamage` so the engine's direct C++ dispatch
+lands in our trampoline. Materially more code (executable trampoline
+via `VirtualAlloc(PAGE_EXECUTE_READWRITE)`, register-preserving
+prologue/epilogue, return-to-original path), kept on the table only
+because it is the one option upstream of the `CurrentDamage` write.
+
+Heal-back is the third fallback and rejected unless we run out of
+options -- HP flicker is worse UX than just taking damage.
+
+Separate skill: **Collision / Impact Damage Resistance** is a real
+distinct mitigation now that we have evidence plant collision is its
+own path through `BP_EnvironmentalDamage_C`. Filter the existing
+multicast hook on `LastDamageInfo.DamageType` for that subclass.
+
+Lower-priority adjacent surfaces still on the radar if everything
+above stalls:
 
 - `ASurvivalCharacter::MulticastFallEffects(...)`
 - `BP_SurvivalPlayerCharacter_*::BndEvt__HealthComponent...DamagedDelegate...`

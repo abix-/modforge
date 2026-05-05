@@ -112,41 +112,49 @@ Pivot: stop guessing where the runtime reads from, and instrument the
 damage path directly. Extended the existing
 `HealthComponent::MulticastHandleEffectsWithDamageFlags` hook with a
 trace that logs every PE event arriving on the player's
-HealthComponent, plus the parm layouts of the `AtOwnerLocation`
-variants and `ApplyDamageFromInfo`. One controlled fall produced:
+HealthComponent. Then extended again to dump the full `FDamageInfo`
+struct from `HealthComponent.LastDamageInfo` (+0x3B0) on every
+player damage event -- DamageType class, instigator, source, hit
+location, source-type enum, damage flags.
+
+Two controlled events nailed the diagnosis:
 
 ```
-rpg/dmg-trace: player hit fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation
-               damage=83.63 flags=0x00000000 type_flags=0x00000000
+# fall damage
+fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation damage=92.51 flags=0x0 type_flags=0x0
+LastDamageInfo: DamageType=<null> src_type=0 flags=0x0 hit=(0,0,0)
+instigator=<none> source=<none> attack=<none>
+
+# plant collision
+fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation damage=134.88 flags=0x2 type_flags=0x0
+LastDamageInfo: DamageType=BP_EnvironmentalDamage_C src_type=2 flags=0x0
 ```
 
-So fall damage is delivered through the `AtOwnerLocation` variant
-(parm layout: `Damage` at +0x00, `DamageFlags` at +0x04,
-`DamageTypeFlags` at +0x08, `PlayEffectType` at +0x0C). Both flag
-fields are zero -- no DamageType classification, so we cannot filter
-fall damage by flags alone. `ApplyDamageFromInfo` did not appear in
-the trace at all, confirming the native fall path bypasses ProcessEvent
-on its way to applying damage to `CurrentDamage`.
+Two findings nailed the failure:
 
-Event order on one fall:
-1. `OnLanded` BP event fires on the live player pawn (we suppress).
-2. Native `ApplyFallDamage` runs (no PE entry).
-3. Damage is written to `HealthComponent.CurrentDamage` (+0x32C).
-4. `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation` fires
-   post-damage for cosmetic effects (this is what the trace catches).
+1. **Fall damage bypasses the entire `FDamageInfo` pipeline.** Every
+   slot in `LastDamageInfo` is empty for fall damage. The engine writes
+   straight to `CurrentDamage` without going through
+   `ApplyDamageFromInfo`. That is why every UFunction we tried to hook
+   never fired and every field we wrote was ignored -- there is no
+   normal damage record being constructed at all.
+2. **Plant / environmental damage is a different path entirely**
+   (`DamageType = BP_EnvironmentalDamage_C`, `src_type = 2`), so
+   Collision / Impact Damage Resistance becomes its own skill targeting
+   that subclass.
 
-Heal-back from the multicast hook (zero `CurrentDamage` after damage
-applies) is the obvious code change but rejected as UX: the player
-would visibly flicker each fall. Decision: don't pursue heal-back.
+Net: fall damage IS uniquely identifiable on the multicast even though
+parm flags are zero -- it is the only damage event hitting the player
+where `LastDamageInfo.DamageType == null`.
 
-Remaining seam is to detour the native function pointer (the
-`UFunction::native_func` slot) for `ASurvivalCharacter::ApplyFallDamage`
-or `UHealthComponent::ApplyDamage`. That intercepts the engine's direct
-C++ dispatch, which is the only point that runs *before* damage is
-applied to `CurrentDamage`. Materially more involved than the current
-ProcessEvent vtable hook (needs executable trampoline + return-to-
-original path), but it is the one option that suppresses fall damage
-at the source without HP flicker.
+The kill_hook now also snapshots `CurrentDamage` before and after
+`original.call` and logs the delta when nonzero. One controlled fall
+will tell us whether the multicast handler itself writes `CurrentDamage`
+(skip `original.call` -> clean suppression, five-line fix) or whether
+the write happened upstream (forces native detour or heal-back).
+Decision: heal-back is rejected outright (HP flicker UX). Native detour
+on `UFunction::native_func` for `ApplyFallDamage` or `ApplyDamage`
+remains the fallback if the delta is zero.
 
 ### Movement skill fix verified
 

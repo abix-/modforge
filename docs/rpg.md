@@ -222,6 +222,29 @@ Move Speed / Jump Height / Glide Speed can take effect without a
 reload. Combat-side live-instance writes are still a TODO (see
 [`todo.md`](todo.md)).
 
+### Two distinct self-damage paths
+
+The damage trace established that high-mobility builds in Grounded 2
+get killed by two different things, through two different code paths.
+Both fire `UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
+on the player's HealthComponent, but `LastDamageInfo` (+0x3B0) is the
+discriminator:
+
+| Failure mode    | DamageType class            | src_type | Notes |
+| --------------- | --------------------------- | -------- | ----- |
+| Fall damage     | `<null>`                    | 0        | Whole `FDamageInfo` is empty. Engine writes `CurrentDamage` directly without populating the damage record. |
+| Plant / terrain collision | `BP_EnvironmentalDamage_C`  | 2        | Standard `FDamageInfo` pipeline. Triggered by ramming foliage / world geometry at high speed. |
+
+Treat them as separate skills with separate mitigation strategies:
+
+- **Fall Damage Resistance** has to deal with the bypass-the-pipeline
+  case (see below).
+- **Collision / Impact Damage Resistance** is the cleaner of the two
+  -- filter the existing multicast hook on
+  `LastDamageInfo.DamageType == BP_EnvironmentalDamage_C` and zero or
+  reduce damage at level 100. That makes high-speed ground travel
+  survivable. Tracked in [`todo.md`](todo.md).
+
 ### Fall damage path
 
 SDK review shows fall damage is not a generic "guess the damage type"
@@ -289,48 +312,61 @@ hook).
 
 Tested both `UpdateCustomSettings` UFunction invocation (mimicking the
 in-game difficulty UI) and the parallel raw memory writes. The call
-dispatches cleanly (`UpdateCustomSettings invoked on 3 component(s)`)
-and `OnRep_CustomSettings` runs as a side effect. **Player still takes
-fall damage at level 100.**
+dispatches cleanly and `OnRep_CustomSettings` runs as a side effect.
+Player still takes fall damage at level 100. That ruled out the entire
+field-write surface.
 
-That ruled out the entire field-write surface. A live ProcessEvent
-trace on the player's `HealthComponent` then identified the actual
-damage call:
+A live ProcessEvent trace on the player's `HealthComponent` then
+captured fall damage and a separate plant-collision death:
 
 ```
-rpg/dmg-trace: player hit fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation
-               damage=83.63 flags=0x00000000 type_flags=0x00000000
+# fall damage
+fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation damage=92.51 flags=0x0 type_flags=0x0
+LastDamageInfo: DamageType=<null> src_type=0 flags=0x0 hit=(0,0,0)
+instigator=<none> source=<none> attack=<none>
+
+# plant collision (killing blow)
+fn=MulticastHandleEffectsWithDamageFlagsAtOwnerLocation damage=134.88 flags=0x2 type_flags=0x0
+LastDamageInfo: DamageType=BP_EnvironmentalDamage_C src_type=2 flags=0x0 hit=(0,0,0)
 ```
 
-So the fall damage is delivered through
-`UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
-with both `DamageFlags` and `DamageTypeFlags` zero (no DamageType
-classification at all). `ApplyDamageFromInfo` does **not** appear in
-the trace, confirming the engine's native fall path bypasses
-ProcessEvent entirely on its way to applying damage.
+Two big findings:
 
-Order on the wire (one fall): `OnLanded` BP event (we suppress) ->
-damage applied to `CurrentDamage` by native code -> the AtOwnerLocation
-multicast fires for cosmetic effects. The multicast is post-damage, so
-suppressing it does not undo the hit.
+1. **Fall damage bypasses the entire `FDamageInfo` pipeline.**
+   `LastDamageInfo` (+0x3B0 on HealthComponent) is *empty* for fall
+   damage -- DamageType, instigator, source, hit location, flags all
+   zero. The engine writes straight to `CurrentDamage` without
+   populating `LastDamageInfo`. So fall damage is not just bypassing
+   ProcessEvent on the call site; it is bypassing the whole
+   `ApplyDamageFromInfo` plumbing.
+2. **Plant / environmental damage *does* go through the normal pipeline**
+   with `DamageType=BP_EnvironmentalDamage_C`, `src_type=2`. Different
+   path, different mitigation strategy entirely from fall damage. That
+   becomes its own skill (Collision / Impact Damage Resistance).
 
-Heal-back from inside the multicast hook is the obvious move (decrement
-`HealthComponent.CurrentDamage` at +0x32C by the `Damage` parm), but
-we are not pursuing it -- the player would visibly flicker
-between "took 83 damage" and "back to full" on every fall, which is
-worse UX than just taking the damage.
+The multicast we hook still fires for fall damage as a cosmetic
+notification with the right `Damage` value (92.51), but ordering is the
+open question: does the multicast hook run *before* the
+`CurrentDamage` write (server-applies damage as part of the multicast
+dispatch), or *after* (write happened upstream and multicast is purely
+notification)? The kill_hook now snapshots `CurrentDamage` before and
+after `original.call` and logs the delta only when nonzero, so one
+controlled fall settles the question:
 
-Remaining attack surface: detour the native function pointer in the
-`UFunction` for `ApplyFallDamage` (or for `HealthComponent::ApplyDamage`).
-That replaces `UFunction::native_func` in place so the engine's
-direct C++ dispatch lands in our trampoline instead of the original.
-This is materially more involved than the existing ProcessEvent vtable
-hook -- needs `VirtualProtect` rights, executable memory for the
-trampoline, and a return-to-original path -- but it is the only seam
-that runs *before* damage is applied to `CurrentDamage`. Tracked in
-[`todo.md`](todo.md).
+- delta > 0 -> the multicast call IS the application path; skip
+  `original.call` for player fall damage at level 100 and damage is
+  suppressed cleanly (no flicker)
+- delta == 0 -> damage applied upstream; we are forced into either
+  heal-back (rejected, HP flicker) or a native function detour on
+  whatever upstream native function writes `CurrentDamage`
 
-Adjacent SDK surfaces still on the radar but lower priority:
+Side benefit: even if we cannot fully suppress fall damage without
+detour, we can now *detect* fall damage uniquely -- the only
+`DamageType=<null>` damage event hitting the player. That makes
+heal-back a viable fallback if the ordering forces it.
+
+Adjacent SDK surfaces lower priority now that the trace is
+load-bearing:
 
 - `ASurvivalCharacter::MulticastFallEffects(EPhysicalSurface, float VelocityZ)`
 - `AnimNotifyState_OverrideTakeFallDamage` /

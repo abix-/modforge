@@ -32,6 +32,7 @@ use crate::hook::{OriginalProcessEvent, ProcessEventHook};
 use crate::sdk::{GObjectsView, UClass, UFunction, UObject, find_class_fast, runtime};
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
+const HEALTH_COMPONENT_CURRENT_DAMAGE: usize = 0x032C;
 const FDAMAGE_INFO_INSTIGATOR_CONTROLLER: usize = 0x0020;
 const MULTICAST_HANDLE_EFFECTS_PARMS_DAMAGE_FLAGS: usize = 0x001C;
 
@@ -170,7 +171,42 @@ fn on_event(
         false
     };
 
+    // Snapshot CurrentDamage (+0x32C) on the player's HealthComponent
+    // around the original PE call. If after - before > 0, the multicast
+    // handler IS the damage-application path -- skipping original.call
+    // would suppress fall damage cleanly. If delta == 0, damage was
+    // already applied upstream and the multicast is just notification.
+    let is_player = this
+        .outer()
+        .map(|o| o.full_name().contains("BP_SurvivalPlayerCharacter"))
+        .unwrap_or(false);
+    let before_dmg = if is_player {
+        Some(unsafe {
+            this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
+                .cast::<f32>()
+                .read_unaligned()
+        })
+    } else {
+        None
+    };
+
     unsafe { original.call(this, function, parms) };
+
+    if let Some(before) = before_dmg {
+        let after: f32 = unsafe {
+            this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
+                .cast::<f32>()
+                .read_unaligned()
+        };
+        if (after - before).abs() > 0.001 {
+            bbp_log!(
+                "rpg/dmg-trace:   CurrentDamage before={:.2} after={:.2} delta={:.2}",
+                before,
+                after,
+                after - before
+            );
+        }
+    }
 
     if !killing_blow {
         return;
