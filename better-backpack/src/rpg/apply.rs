@@ -35,6 +35,13 @@ use crate::sdk::{self, GObjectsView, UObject};
 use crate::settings::Settings;
 use crate::survival;
 
+// ASurvivalCharacter.CustomDamageMultiplier (Maine_classes.hpp:5771).
+const SURVIVAL_CHARACTER_CUSTOM_DAMAGE_MULTIPLIER: usize = 0x12B8;
+// ASurvivalCharacter.HealthComponent ptr (Maine_classes.hpp:5782).
+const SURVIVAL_CHARACTER_HEALTH_COMPONENT: usize = 0x1340;
+// UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
+const HEALTH_COMPONENT_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
+
 static VANILLA_HUNGER: OnceLock<f32> = OnceLock::new();
 static VANILLA_THIRST: OnceLock<f32> = OnceLock::new();
 
@@ -115,6 +122,52 @@ pub fn apply(state: &PlayerState, settings: &Settings) {
         );
     }
 
+    let attack_rank = state
+        .skill_ranks
+        .get(skills::SKILL_ATTACK_DAMAGE)
+        .copied()
+        .unwrap_or(0);
+    if attack_rank > 0 {
+        let mult = skills::attack_damage_multiplier(attack_rank);
+        let count = apply_to_player_character_cdos(|player_cdo| {
+            write_f32(
+                player_cdo,
+                SURVIVAL_CHARACTER_CUSTOM_DAMAGE_MULTIPLIER,
+                mult,
+            );
+        });
+        bbp_log!(
+            "rpg/apply: attack_damage rank={} mult={:.3} written to {} player CDO(s)",
+            attack_rank,
+            mult,
+            count
+        );
+    }
+
+    let armor_rank = state.skill_ranks.get(skills::SKILL_ARMOR).copied().unwrap_or(0);
+    if armor_rank > 0 {
+        let reduction = skills::armor_reduction(armor_rank);
+        let count = apply_to_player_character_cdos(|player_cdo| {
+            let hc_ptr: *mut UObject = unsafe {
+                player_cdo
+                    .field_ptr(SURVIVAL_CHARACTER_HEALTH_COMPONENT)
+                    .cast::<*mut UObject>()
+                    .read_unaligned()
+            };
+            if hc_ptr.is_null() {
+                return;
+            }
+            let hc = unsafe { &*hc_ptr };
+            write_f32(hc, HEALTH_COMPONENT_BASE_DAMAGE_REDUCTION, reduction);
+        });
+        bbp_log!(
+            "rpg/apply: armor rank={} reduction={:.3} written to {} player HealthComponent CDO(s)",
+            armor_rank,
+            reduction,
+            count
+        );
+    }
+
     if hunger_rank > 0 || thirst_rank > 0 {
         if let Some(target_hunger) = compute_survival_target(
             VANILLA_HUNGER.get().copied(),
@@ -174,4 +227,37 @@ fn read_f32(obj: &UObject, offset: usize) -> f32 {
 
 fn write_f32(obj: &UObject, offset: usize, value: f32) {
     unsafe { (obj.field_ptr(offset) as *mut f32).write_unaligned(value) }
+}
+
+/// Walk all SurvivalCharacter CDOs whose full name marks them as the
+/// player class (`BP_SurvivalPlayerCharacter` substring), call `f` on
+/// each. Returns the number of CDOs visited. Used by combat skills
+/// that target player-only fields on ASurvivalCharacter.
+fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(survival_class) = sdk::find_class_fast("SurvivalCharacter") else {
+        return 0;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return 0;
+    }
+    let mut count = 0usize;
+    for obj in view.iter() {
+        if !obj.is_a(survival_class) {
+            continue;
+        }
+        if !obj.is_default_object() {
+            continue;
+        }
+        let full = obj.full_name();
+        if !full.contains("BP_SurvivalPlayerCharacter") {
+            continue;
+        }
+        f(obj);
+        count += 1;
+    }
+    count
 }

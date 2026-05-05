@@ -125,6 +125,25 @@ pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
     true
 }
 
+/// Debug: grant `count` skill points and save. Used by the debug
+/// button in the ImGui tab so we don't have to grind XP to test
+/// combat skills. No-op if no slot is active.
+pub fn debug_grant_skill_points(count: u32) -> bool {
+    let mut g = lock();
+    let Some(tracker) = g.as_mut() else {
+        bbp_log!("rpg/state: debug_grant({}) ignored, no slot active", count);
+        return false;
+    };
+    tracker.state.skill_points = tracker.state.skill_points.saturating_add(count);
+    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    bbp_log!(
+        "rpg/state: DEBUG granted +{} skill points (total {})",
+        count,
+        tracker.state.skill_points
+    );
+    true
+}
+
 /// Called from the kill hook on every confirmed creature kill.
 pub fn record_kill(creature_class_name: &str, source: KillSource) {
     let mut g = lock();

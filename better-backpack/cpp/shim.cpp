@@ -215,6 +215,11 @@ extern "C" int      bbp_rpg_get_skill(uint32_t index,
                                        uint32_t* out_rank,
                                        uint32_t* out_max);
 extern "C" int      bbp_rpg_spend(const char* skill_id);
+extern "C" int      bbp_rpg_debug_grant_skill_points(uint32_t count);
+extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
+                                                  uint32_t    rank,
+                                                  char*       out_buf,
+                                                  size_t      out_buf_len);
 
 // ---------------------------------------------------------------------
 // UE4SS ImGui glue.
@@ -309,19 +314,58 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
         }
 
         ImGui::PushID(static_cast<int>(i));
-        ImGui::Text("%-20s rank %u / %u",
-                    name,
-                    static_cast<unsigned>(rank),
-                    static_cast<unsigned>(max));
+
+        // Current effect (always shown).
+        char cur_effect[96];
+        cur_effect[0] = 0;
+        bbp_rpg_format_skill_effect(id, rank, cur_effect, sizeof(cur_effect));
+
+        // Preview of NEXT rank, only when we can actually spend.
+        bool can_spend = (skill_points > 0) && (rank < max);
+        char next_effect[96];
+        next_effect[0] = 0;
+        if (rank < max) {
+            bbp_rpg_format_skill_effect(id, rank + 1, next_effect, sizeof(next_effect));
+        }
+
+        if (rank == 0) {
+            ImGui::Text("%-20s rank 0 / %u  (next: %s)",
+                        name,
+                        static_cast<unsigned>(max),
+                        next_effect);
+        } else if (rank >= max) {
+            ImGui::Text("%-20s rank %u / %u  MAX  %s",
+                        name,
+                        static_cast<unsigned>(rank),
+                        static_cast<unsigned>(max),
+                        cur_effect);
+        } else {
+            ImGui::Text("%-20s rank %u / %u  %s  (next: %s)",
+                        name,
+                        static_cast<unsigned>(rank),
+                        static_cast<unsigned>(max),
+                        cur_effect,
+                        next_effect);
+        }
         ImGui::SameLine();
 
-        bool can_spend = (skill_points > 0) && (rank < max);
         ImGui::BeginDisabled(!can_spend);
         if (ImGui::Button("+1")) {
             bbp_rpg_spend(id);
         }
         ImGui::EndDisabled();
         ImGui::PopID();
+    }
+
+    // ---- Debug controls (testing-only) -----------------------------
+    ImGui::Separator();
+    ImGui::TextDisabled("Debug (testing only)");
+    if (ImGui::Button("+5 skill points")) {
+        bbp_rpg_debug_grant_skill_points(5);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("+50 skill points")) {
+        bbp_rpg_debug_grant_skill_points(50);
     }
 }
 

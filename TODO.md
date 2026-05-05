@@ -143,6 +143,32 @@ batch: attack damage, armor (pure CDO writes), then lifesteal
 HealthComponent ProcessEvent trampoline). 5-6 skills, half a
 day of work.
 
+**Status (2026-05-05, mid-session):**
+- Attack Damage (max +50%) and Armor (max -50% damage taken)
+  added to the catalog. CDO writes via
+  `apply_to_player_character_cdos` helper, walks
+  ASurvivalCharacter CDOs filtered by
+  `BP_SurvivalPlayerCharacter` substring. Effect lands on
+  newly-spawned player instances (next save reload); live
+  re-apply for the active session is a follow-up.
+- ImGui tab now shows current effect + next-rank preview per
+  skill. Format: "rank N / MAX  +25 slots  (next: +30 slots)".
+  Helper `skills::format_effect(id, rank)` exposed via FFI
+  `bbp_rpg_format_skill_effect`.
+- Debug skill-point grant button in tab footer (+5 / +50) so
+  combat skills can be tested without grinding XP. Always
+  visible for now; can move behind a settings flag if we ship
+  a version where this matters.
+
+**Remaining in this batch:** lifesteal, evasion, crit chance,
+crit damage. All require a damage-path hook (read damage from
+parms, mutate behavior). Plan: extend the existing
+HealthComponent ProcessEvent trampoline to also act on the
+PRE-call when the function is `MulticastHandleEffectsWithDamageFlags`,
+read the dying actor + damage amount + flags, and apply
+lifesteal (heal player by % damage dealt) / evasion (zero out
+incoming damage with % roll) / crit (multiply damage on roll).
+
 
 
 This is now the project. Items 3-7 below (gear durability, enemy

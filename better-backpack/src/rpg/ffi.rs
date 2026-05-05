@@ -142,6 +142,43 @@ pub unsafe extern "C" fn bbp_rpg_spend(skill_id: *const c_char) -> i32 {
     })
 }
 
+/// Debug: grant `count` extra skill points immediately. Used by the
+/// debug button in the ImGui tab so combat skills can be tested
+/// without grinding XP. Returns 1 on success, 0 if no slot active.
+#[unsafe(no_mangle)]
+pub extern "C" fn bbp_rpg_debug_grant_skill_points(count: u32) -> i32 {
+    safe(|| if tracker::debug_grant_skill_points(count) { 1 } else { 0 })
+}
+
+/// Format the skill's effect at `rank` into the caller's buffer.
+/// Returns 1 on success, 0 if skill_id is unknown. Used by the ImGui
+/// tab to show "+25 slots" etc. next to the rank number.
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string. `out_buf`
+/// must have space for `out_buf_len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_format_skill_effect(
+    skill_id: *const c_char,
+    rank: u32,
+    out_buf: *mut c_char,
+    out_buf_len: usize,
+) -> i32 {
+    safe(|| {
+        if skill_id.is_null() {
+            return 0;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 0 };
+        if skills::lookup(id).is_none() {
+            return 0;
+        }
+        let s = skills::format_effect(id, rank);
+        unsafe { write_cstr(out_buf, out_buf_len, &s) };
+        1
+    })
+}
+
 unsafe fn write_cstr(buf: *mut c_char, buf_len: usize, src: &str) {
     if buf.is_null() || buf_len == 0 {
         return;
