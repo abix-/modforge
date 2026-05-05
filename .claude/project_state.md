@@ -64,10 +64,15 @@ grounded2mods/
      **Hook installs in-game** -- log shows
      `inv hook: installed on WBP_InventoryInterface_C` once inventory UI
      loads.
-- [ ] 8. BPF/grid/menu trace surfaces gated under cfg!(debug_assertions).
+- [x] 8. Trace surfaces in inv_hook.rs are already gated under
+     cfg!(debug_assertions). Broader BPF/grid/menu trace coverage from
+     the C++ build was intentionally not ported -- it was the dominant
+     hot-path cost per the audit, and the cached UFunction* identity
+     dispatch makes it unnecessary in normal operation.
 - [ ] 9. Side-by-side parity test C++ vs Rust DLL.
 - [ ] 10. Archive better-backpack-cpp/.
-- [ ] 11. Rust BUILDING.md.
+- [x] 11. Rust BUILDING.md at repo root. Prerequisites, build, run,
+     quality gates, configuration knobs, retargeting via offsets.rs.
 
 ## Build commands
 - `cargo build --release` builds both crates.
@@ -106,8 +111,6 @@ grounded2mods/
   skip) and per-run inject.log.
 
 ## Known minor issues
-- Patch.rs logs "skipped N non-player components" on every rescan tick,
-  even when nothing changed. Cleanup pending.
 - The CDO patch only reaches inventory instances constructed AFTER the
   DLL loads. If the player's inventory was constructed before injection,
   a save reload may be required to see 100 slots in-game.

@@ -76,12 +76,6 @@ pub fn run() -> PatchStats {
         stats.patched += 1;
     }
 
-    if stats.skipped_non_player > 0 {
-        bbp_log!(
-            "skipped {} non-player components with DefaultMaxSize=40",
-            stats.skipped_non_player
-        );
-    }
     stats
 }
 

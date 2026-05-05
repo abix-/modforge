@@ -341,15 +341,21 @@ Numbered so we can check them off.
   log shows `inv hook: installed on WBP_InventoryInterface_C` once the
   inventory UI loads. (Required two bug fixes during testing -- see "Bugs
   found and fixed" below.)
-- [ ] **8.** Port the BPF / grid / menu trace surfaces only as
-  `cfg!(debug_assertions)` helpers. Ship build doesn't compile them in.
+- [x] **8.** Trace surfaces gated under `cfg!(debug_assertions)`. The
+  inventory-interface trace lines in `inv_hook.rs` are already debug-only
+  -- release builds compile them out. The C++ tree's broader BPF / grid /
+  menu trace coverage is intentionally **not** ported; the audit found it
+  was the dominant source of hot-path overhead and the targeted hook +
+  cached `UFunction*` dispatch makes it unnecessary. We can revisit if a
+  specific debug session needs it.
 - [ ] **9.** Side-by-side test: run C++ DLL one session, Rust DLL the next.
   Check identical patch behavior, identical scroll behavior, lower CPU on a
   sampled frame profile.
 - [ ] **10.** Move `better-backpack-cpp/` to `archive/` once parity is
   confirmed for two play sessions.
-- [ ] **11.** Write `BUILDING.md` for the Rust path. Retire the C++ build
-  docs.
+- [x] **11.** `BUILDING.md` written at the repo root. Covers
+  prerequisites, build, run, quality gates, configuration knobs, and how
+  to retarget for a future game patch via `sdk/offsets.rs`.
 
 Each step lands as its own commit.
 
