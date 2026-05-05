@@ -1,55 +1,41 @@
 # TODO
 
 Current state: Rust port of the mod is feature-complete on the runtime
-side. Open work below is **distribution**, not features: switching from
-"DLL + separate inject.exe" to a self-loading DLL proxy so the mod ships
-through Vortex like every other actively-maintained UE-game DLL mod.
+side. Open work is **distribution**: switching from "drop a winhttp.dll
+proxy in the game folder" to "ship as a UE4SS C++ mod, but keep the
+mod source 100% Rust." Plan in [UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md).
 
-## 1. Repackage as a DLL proxy (winhttp.dll)
+## 1. Repackage as a UE4SS CPPMod (Rust-only)
 
-Why: our current shape doesn't fit Vortex. Users expect "install mod ->
-launch game -> mod is active." Today we require a manual `inject.exe`
-run every session. Pak-based mods solve that but inherit the
-conflict/breakage hell visible in the Nexus comments on Player Tweaks.
-DLL proxy is the standard third path: Windows auto-loads the DLL
-because it shares a filename with a system DLL the game already
-imports, and we forward the real exports to the system copy. UE4SS,
-ReShade, ENB all do this.
+Why: see UE4SS_PORT_PLAN.md (steelman in 11 points). Short version:
+UE4SS is the convention for UE5 game mods, distribution / Vortex is
+already solved on that path, and we get to delete our winhttp proxy
+forwarders + setup.ps1 + winhttp_orig.dll dance.
 
-Plan:
+Hard constraint: stay all-Rust. No C++ shim, no Lua port. UE4SS loads
+our Rust cdylib via the legacy free-function CPPMod ABI; if that
+doesn't work in the current UE4SS, we synthesize a vtable in Rust
+to satisfy the modern `CppUserModBase` ABI without adding C++.
 
-1. **Pick proxy target.** `winhttp.dll`. Low conflict risk vs other UE
-   mods (ReShade owns dxgi.dll, UE4SS owns dwmapi.dll). Small export
-   surface (~20 functions). Loaded early in process startup so our
-   DllMain runs before the inventory UI ever spawns.
-2. **Rename cdylib output.** Change `[lib] name` so cargo emits
-   `winhttp.dll`.
-3. **Generate forwarder exports.** `dumpbin /exports
-   C:\Windows\System32\winhttp.dll` -> hand-edit a `winhttp.def` file
-   that re-exports every name to the system copy via
-   `EXPORTS  Foo = C:\Windows\System32\winhttp.Foo`. Commit the def
-   file; Cargo invokes the linker with it.
-4. **Verify game still talks to real winhttp.** Launch with our proxy
-   in place, confirm the game's network/telemetry calls (if any) still
-   work. If we drop a forwarder, those calls fail silently.
-5. **Drop injector from user-facing distribution.** `inject.exe` stays
-   in the repo as a dev-time iteration tool, not shipped.
-6. **Write Vortex manifest** (`info.json` etc) so the user can
-   one-click install via Vortex and the file lands in
-   `Grounded2\Augusta\Binaries\Win64\winhttp.dll`.
-7. **Ship a Nexus release** with: the proxy DLL, `settings.json`
-   (defaults), README, and the Vortex installer metadata.
+Sequence (full detail in UE4SS_PORT_PLAN.md):
 
-Risks / things to verify:
-- Anti-cheat. Grounded 2 has none today. If that changes, proxy DLLs
-  may trip detection; revisit then.
-- DllMain TLS hazard. Already handled: our DllMain just spawns a
-  thread, all std work happens in the worker.
-- Forwarder correctness. A missing export means a missing function for
-  the game -> potential crash. The `dumpbin` -> `.def` pipeline is
-  well-trodden; we just need to keep it complete.
+1. Smoke-test: minimal "hello" Rust cdylib loaded by UE4SS for
+   Grounded 2. Gates the whole plan.
+2. Confirm legacy ABI works. If not, build a Rust-only vtable shim.
+3. Add `start_mod`/`uninstall_mod` exports. Worker moves out of
+   DllMain into start_mod.
+4. Drop winhttp proxy plumbing (def file, build.rs cc dep,
+   forwarders).
+5. Rewrite deploy.ps1 for UE4SS Mods folder layout
+   (`BetterBackpack/dlls/main.dll`).
+6. Doc updates.
+7. In-game smoke test of the full mod under UE4SS.
+8. Archive winhttp proxy material into `archive/winhttp-proxy/` --
+   keep it as a working fallback if UE4SS ever turns out unstable.
 
-Effort: ~half a day. Mod logic is untouched.
+The current winhttp.dll proxy work (steps 1-3 of the previous TODO,
+already shipped) is **not wasted**: it's the tested fallback. We
+archive it, we don't delete it.
 
 ## 2. (later) Port more Player Tweaks features
 
