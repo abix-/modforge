@@ -78,10 +78,15 @@ grounded2mods/
 - `cargo build --release` builds both crates.
 - `cargo test --release` runs layout tests.
 - `cargo clippy --release --all-targets -- -D warnings` lint gate (clean today).
-- Outputs: `target/x86_64-pc-windows-msvc/release/{better_backpack.dll, inject.exe}`.
+- Outputs: `target/x86_64-pc-windows-msvc/release/{winhttp.dll, inject.exe}`.
+  The mod cdylib is named `winhttp.dll` so it doubles as a Windows DLL
+  proxy at install time (drop into game's Binaries\Win64; Windows
+  preferentially loads our copy via DLL search order; the 70 forwarder
+  exports defined in `better-backpack/winhttp.def` redirect WinHTTP
+  calls to `winhttp_orig.dll`, which is a copy of the system winhttp).
 - The DLL is locked while the game holds it -- rebuild requires the game to
   be closed (or use a different output dir).
-- inject.exe with no args looks for `better_backpack.dll` next to itself
+- inject.exe with no args looks for `winhttp.dll` next to itself
   (matches cdylib output name). Pass an explicit path to override.
 
 ## Logs

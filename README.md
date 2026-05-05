@@ -88,7 +88,7 @@ grounded2mods/
 ## How to use it today (developer flow)
 
 1. `cargo build --release` from the repo root. Outputs:
-   - `target/x86_64-pc-windows-msvc/release/better_backpack.dll`
+   - `target/x86_64-pc-windows-msvc/release/winhttp.dll`
    - `target/x86_64-pc-windows-msvc/release/inject.exe`
 2. Launch Grounded 2 and load a save.
 3. Run `inject.exe` from the same dir. With no Grounded process

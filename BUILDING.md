@@ -31,14 +31,61 @@ cargo build --release
 
 Outputs:
 
-- `target/x86_64-pc-windows-msvc/release/better_backpack.dll`
+- `target/x86_64-pc-windows-msvc/release/winhttp.dll`
 - `target/x86_64-pc-windows-msvc/release/inject.exe`
 
 The build target dir is locked to `target/` via `.cargo/config.toml`. If
 you have a global `~/.cargo/config.toml` redirecting builds elsewhere, the
 project-level config wins.
 
-## Run
+## Package for Vortex / Nexus distribution
+
+```
+.\scripts\deploy.ps1
+```
+
+Default mode. Builds the release cdylib and writes
+`dist\better-backpack-v<version>.zip` ready to upload to Nexus or
+import into Vortex. The zip contains:
+
+- `winhttp.dll` -- the mod proxy
+- `settings.json` -- default config users can edit
+- `setup.ps1` -- one-shot post-install script that copies
+  `C:\Windows\System32\winhttp.dll` to the install folder as
+  `winhttp_orig.dll`. This step is required because Vortex never
+  touches system files; we ship the script so the user (or a Vortex
+  install hook) can run it after deployment.
+- `README.txt` -- end-user install + uninstall instructions.
+
+`dist/` is gitignored.
+
+## Direct local install (skip Vortex / Nexus)
+
+```
+.\scripts\deploy.ps1 -Install
+```
+
+Builds, locates the game's `Augusta\Binaries\Win64` (auto-detects from
+the Steam library; pass `-GamePath` to override), copies our
+`winhttp.dll` there, copies `C:\Windows\System32\winhttp.dll` alongside
+as `winhttp_orig.dll`, and seeds a default `settings.json` if one
+isn't already there. Launch the game normally.
+
+Uninstall:
+
+```
+.\scripts\deploy.ps1 -Uninstall
+```
+
+Removes our `winhttp.dll`. Leaves `winhttp_orig.dll`, `settings.json`,
+and `better_backpack.log` in place. Add `-PurgeOrig` to also remove
+`winhttp_orig.dll`.
+
+## Run via inject.exe (developer / iteration flow)
+
+The injector path is the fastest dev loop -- you don't need to close
+the game and redeploy to swap in a new build. It's also what runs if
+you want to test without committing to a winhttp.dll proxy install.
 
 Close any prior copy of the DLL first -- once mapped into the game
 process, Windows holds the file lock until the process exits.
@@ -49,7 +96,7 @@ process, Windows holds the file lock until the process exits.
 2. Load a save and let the world finish loading.
 3. From `target/x86_64-pc-windows-msvc/release/`, run `inject.exe`.
    With no arguments it:
-   - Picks `better_backpack.dll` next to itself as the DLL to inject.
+   - Picks `winhttp.dll` next to itself as the DLL to inject.
    - If Grounded is already running, injects into that process.
    - Otherwise launches Grounded via Steam
      (`steam://rungameid/<steam_app_id>`), polls until the process
@@ -102,7 +149,7 @@ All three must pass cleanly.
 ## Override the DLL path
 
 ```
-inject.exe path\to\custom\better_backpack.dll
+inject.exe path\to\custom\winhttp.dll
 ```
 
 Useful when iterating on the DLL without rebuilding the injector.
