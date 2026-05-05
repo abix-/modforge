@@ -1,9 +1,13 @@
 # Features
 
-This doc tracks what Better Backpack actually does today and how its
-feature set compares to other Grounded 2 player-tweak mods (the closest
-prior art being **Player Tweaks** by Caites on Nexus, the de-facto
-"all-in-one" mod for the game).
+> **Authoritative on:** what Better Backpack actually does today,
+> from a player perspective, and how it compares to other Grounded 2
+> player-tweak mods. Implementation details live in
+> [`rpg.md`](rpg.md) (RPG system) and the architecture sections of
+> [`rust-port.md`](rust-port.md) / [`ue4ss-port.md`](ue4ss-port.md).
+
+The closest prior art is **Player Tweaks** by Caites on Nexus, the
+de-facto "all-in-one" mod for the game.
 
 ## What this mod does today
 

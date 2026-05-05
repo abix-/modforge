@@ -15,13 +15,19 @@ through Vortex / Nexus.
 
 ## Quick links
 
+Each doc is the authority on one subject; the header on each
+file states what.
+
 | If you want | Read |
 | --- | --- |
-| Build, install, and run as a developer | [BUILDING.md](BUILDING.md) |
-| The list of features and how they compare to other Grounded 2 mods | [FEATURES.md](FEATURES.md) |
-| What this costs to run (CPU, threads, frame impact) | [PERFORMANCE.md](PERFORMANCE.md) |
-| Open work and the distribution plan | [TODO.md](TODO.md) |
-| The C++-to-Rust port history and the bugs we hit | [RUST_PORT_PLAN.md](RUST_PORT_PLAN.md) |
+| Build, install, and run as a developer | [docs/building.md](docs/building.md) |
+| The list of features and how they compare to other Grounded 2 mods | [docs/features.md](docs/features.md) |
+| What this costs to run (CPU, threads, frame impact) | [docs/performance.md](docs/performance.md) |
+| The RPG / level-up system (skills, XP, persistence, UI) | [docs/rpg.md](docs/rpg.md) |
+| What's next | [TODO.md](TODO.md) |
+| What's already done (chronological) | [docs/changelog.md](docs/changelog.md) |
+| The C++-to-Rust port history | [docs/rust-port.md](docs/rust-port.md) |
+| The pivot to a UE4SS C++ mod shape | [docs/ue4ss-port.md](docs/ue4ss-port.md) |
 | The original C++ implementation (kept for reference) | [better-backpack-cpp/](better-backpack-cpp/) |
 
 ## Repo layout
@@ -57,16 +63,18 @@ grounded2mods/
 
   scripts/                 Python utilities for cooked-asset inspection.
 
-  BUILDING.md              Build / run / configure.
-  FEATURES.md              What the mod does + comparison table of UE
-                           mod formats and feature parity vs Player
-                           Tweaks (Caites).
-  PERFORMANCE.md           Per-call costs, hot paths, what was
-                           deliberately not ported from the C++ tree.
-  RUST_PORT_PLAN.md        The 11-step migration plan and the bugs
-                           found during testing.
-  TODO.md                  Open work (distribution + future feature
-                           ports).
+  docs/                    Subject-authority docs. Each file's
+                           header states what it owns.
+    building.md            Build / run / configure.
+    features.md            Player-facing feature list + comparison
+                           vs Player Tweaks (Caites).
+    performance.md         Per-call costs, hot paths.
+    rpg.md                 RPG / level-up system (skills, XP,
+                           kill detection, persistence, UI).
+    rust-port.md           C++ -> Rust port history.
+    ue4ss-port.md          Pivot to UE4SS C++ mod shape.
+    changelog.md           Chronological history of what's done.
+  TODO.md                  What's next (only).
 ```
 
 ## TL;DR
@@ -97,13 +105,13 @@ grounded2mods/
 4. A "Better Backpack" console window pops up showing live mod log.
    `<DLL_dir>/better_backpack.log` mirrors it.
 
-Full instructions in [BUILDING.md](BUILDING.md).
+Full instructions in [docs/building.md](docs/building.md).
 
 ## Distribution path (planned)
 
 End users won't run inject.exe. The plan (see
-[UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md) and
-[TODO.md](TODO.md) #1) is to ship as a **UE4SS C++ mod (CPPMod)**
+[docs/ue4ss-port.md](docs/ue4ss-port.md) and the Distribution
+section in [TODO.md](TODO.md)) is to ship as a **UE4SS C++ mod (CPPMod)**
 keeping the source in Rust. UE4SS for Grounded 2 is already a
 mature Vortex mod (Nexus #52); riding on it gets us Vortex
 distribution out of the box, central engine-offset maintenance, and
@@ -123,7 +131,7 @@ We previously built a `winhttp.dll` proxy (commits 514e2b1..bfb3447)
 that works correctly without UE4SS. It will be archived to
 `archive/winhttp-proxy/` once the UE4SS path lands, kept as a
 fallback if UE4SS ever turns out unstable for Grounded 2. See
-[FEATURES.md](FEATURES.md) for the comparison of UE mod formats
+[docs/features.md](docs/features.md) for the comparison of UE mod formats
 and why DLL beats pak for our case.
 
 ## Game build referenced
@@ -153,7 +161,7 @@ freshly dumped SDK. Mod logic stays the same.
   cooked asset inspection.
 - **Caites** for [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
   on Nexus, whose feature list is the reference point in
-  [FEATURES.md](FEATURES.md).
+  [docs/features.md](docs/features.md).
 - The author of [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37),
   whose mod's breakage motivated the rewrite this repo represents.
 - The author of [RPG System](https://mods.factorio.com/mod/RPGsystem)

@@ -1,8 +1,14 @@
-# Plan: ship as a UE4SS C++ mod (CPPMod), keep code in Rust
+# UE4SS port plan
 
-This doc replaces TODO #1 (winhttp.dll proxy + custom Vortex packaging).
-Keeping the proxy plan as a fallback in case UE4SS turns out to be
-unstable for Grounded 2 in practice.
+> **Authoritative on:** the pivot to UE4SS C++ mod (CPPMod) shape.
+> Why we ride on UE4SS, the C++ shim design, the
+> CppUserModBase mirror, the build setup. The pivot is complete;
+> this is kept as design history.
+
+Replaced the original winhttp.dll proxy + custom Vortex packaging
+approach. The proxy is preserved at
+[`../better-backpack-cpp/`](../better-backpack-cpp/) as a tested
+fallback if UE4SS ever turns out unstable for Grounded 2.
 
 ## Why
 
@@ -26,7 +32,7 @@ short of it:
 - **The Vortex problem we just hit isn't a Vortex bug.** It's the
   cost of being unconventional. UE4SS is the convention.
 - **Lua is good enough for our perf profile.** Per
-  `PERFORMANCE.md`, this mod is invisible to a frame profile. We
+  `performance.md`, this mod is invisible to a frame profile. We
   optimized to atomic-load on the inventory hot path. Lua handles
   that with margin to spare.
 - **CDO patches are *better* in Lua because the user can read them.**
@@ -126,7 +132,7 @@ installs the README instructs the user to append
 
 - Mod feature set, settings.json schema, defaults, log file location
   (`<DLL_dir>\better_backpack.log`).
-- Performance characteristics. `PERFORMANCE.md` numbers don't move
+- Performance characteristics. `performance.md` numbers don't move
   meaningfully, we're still doing one CDO patch + one ProcessEvent
   hook. UE4SS adds maybe ~10us of additional latency at start (it
   calls `start_mod` slightly later than DllMain would have run), but
@@ -291,7 +297,7 @@ Numbered for tracking. Each step is its own commit.
   `Re-UE4SS/UEPseudo.git`). We don't need UE4SS's nested submodules
  , only the headers under `UE4SS/include/` and the live
   `UE4SS.dll` for the import library. Document the expected path in
-  BUILDING.md and skip vendoring.
+  building.md and skip vendoring.
 - [x] **2.** Generated `UE4SS.lib` from the live UE4SS.dll at
   `<vortex>\grounded2\mods\UE4SS_Grounded2-52-1-0-2-1771968923\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`
   via `dumpbin /exports` -> `.def` -> `lib /def:`. 3756 mangled
@@ -331,8 +337,8 @@ Numbered for tracking. Each step is its own commit.
     isn't already there.
   - `-Uninstall`: removes the BetterBackpack folder and strips its
     line from `mods.txt`.
-- [ ] **6.** Update `BUILDING.md`, `README.md`, `FEATURES.md`,
-  `PERFORMANCE.md` to reflect the UE4SS load model. The capability
+- [ ] **6.** Update `building.md`, `README.md`, `features.md`,
+  `performance.md` to reflect the UE4SS load model. The capability
   comparison table stays accurate, only the distribution shape
   changed.
 - [/] **7.** In-game smoke test under UE4SS. **Partially done.**
@@ -367,7 +373,7 @@ Numbered for tracking. Each step is its own commit.
     5. As a last resort, include UE4SS's real headers (resolve the
        imgui dep by stubbing or vendoring).
 - [ ] **8.** Archive the winhttp proxy material (winhttp.def,
-  forwarder build.rs, winhttp section of FEATURES.md) into a
+  forwarder build.rs, winhttp section of features.md) into a
   `archive/winhttp-proxy/` directory in case we ever want it back as
   a UE4SS-less fallback. Don't delete, it's correct, working code.
 
@@ -410,7 +416,7 @@ total; abridged:
    discoverable.
 5. **The Vortex problem we hit isn't a Vortex bug.** It's the cost
    of being unconventional. UE4SS is the convention.
-6. **Lua is fine for our perf profile.** Per `PERFORMANCE.md` we're
+6. **Lua is fine for our perf profile.** Per `performance.md` we're
    well below frame-time visibility. Lua handles CDO patches and a
    dozen ProcessEvent hooks per frame trivially.
 7. **CDO patches are better in Lua because users can audit them.**

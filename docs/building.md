@@ -1,5 +1,9 @@
 # Building Better Backpack
 
+> **Authoritative on:** how to build, install, and run the mod
+> as a developer. Prerequisites, cargo commands, deploy script
+> usage, configuration knobs.
+
 A Cargo workspace with two crates:
 
 - **better-backpack**, the mod itself. Rust cdylib (`main.dll`) +

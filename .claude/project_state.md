@@ -1,9 +1,12 @@
 # grounded2mods - project state
 
 ## Current focus
-Porting the Better Backpack mod from C++ to a single Rust workspace
-(cdylib + injector). C++ tree preserved at `better-backpack-cpp/` until the
-Rust port reaches behavior parity. Plan in `RUST_PORT_PLAN.md`.
+RPG / level-up mod for Grounded 2. Loaded by UE4SS as a CPPMod
+(C++ shim + Rust cdylib). Skill catalog is the single source of
+truth; apply step writes skill values to game CDOs.
+
+For docs see `docs/` (each file is authority on one subject).
+Open work in `TODO.md`. History in `docs/changelog.md`.
 
 ## Layout
 

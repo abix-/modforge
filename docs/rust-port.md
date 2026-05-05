@@ -1,8 +1,16 @@
 # Rust port plan: grounded2mods
 
-We're porting the native DLL mod toolchain from C++ to Rust ahead of building
-out a multi-mod monorepo. This doc captures the target architecture, the
-scope of the first port (Better Backpack), and the migration sequence.
+> **Authoritative on:** the C++-to-Rust port history. Why we
+> ported, the target architecture, the migration sequence, and
+> the bugs we hit during testing. The port is complete; this is
+> kept as design history. The original C++ tree is preserved at
+> [`../better-backpack-cpp/`](../better-backpack-cpp/) for
+> reference.
+
+We ported the native DLL mod toolchain from C++ to Rust ahead of
+building out a multi-mod monorepo. This doc captures the target
+architecture, the scope of the first port (Better Backpack), and
+the migration sequence.
 
 This doc is the spec. The C++ tree under `better-backpack/` stays put as the
 reference implementation until the Rust version reaches behavior parity.
@@ -353,7 +361,7 @@ Numbered so we can check them off.
   sampled frame profile.
 - [ ] **10.** Move `better-backpack-cpp/` to `archive/` once parity is
   confirmed for two play sessions.
-- [x] **11.** `BUILDING.md` written at the repo root. Covers
+- [x] **11.** `building.md` written at the repo root. Covers
   prerequisites, build, run, quality gates, configuration knobs, and how
   to retarget for a future game patch via `sdk/offsets.rs`.
 
