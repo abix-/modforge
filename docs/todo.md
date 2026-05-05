@@ -181,10 +181,11 @@ Open until we play more.
   `groundlevel`, `instar`, `huntmaster`. Touches: Cargo.toml
   package name, workspace dir, settings file path, BetterBackpackMod
   C++ class name, log header, README, Vortex zip name.
-- [ ] **Archive winhttp proxy.** Move `better-backpack-cpp/` and
-  the original winhttp.dll proxy material to `archive/` once
-  the UE4SS path has been live for a while. Keep as a tested
-  fallback if UE4SS ever turns out unstable.
+- [x] **Archive winhttp proxy.** `better-backpack-cpp/` moved to
+  `archive/winhttp-proxy/`. Unique Grounded 2 internals were
+  ported into the authoritative subject docs first
+  (`docs/inventory.md`, `docs/grounded-engine.md`). Kept as a
+  reference / fallback if UE4SS ever turns out unstable.
 
 ## Future infra
 

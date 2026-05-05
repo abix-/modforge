@@ -249,8 +249,8 @@ warning.
 
 ## C++ tree
 
-The original C++ implementation lives at `better-backpack-cpp/` and is
+The original C++ implementation lives at `archive/winhttp-proxy/` and is
 preserved as a reference until full Rust parity is signed off. Its build
-instructions live in `better-backpack-cpp/BUILDING.md`. Do not mix the
+instructions live in `archive/winhttp-proxy/BUILDING.md`. Do not mix the
 two outputs in the same session, their DLLs share the same default
 filename if you put them next to each other.

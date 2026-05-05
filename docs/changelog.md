@@ -204,5 +204,5 @@ UE4SS C++ mod (CPPMod) shape is documented in
 [`ue4ss-port.md`](ue4ss-port.md).
 
 The original C++ implementation is preserved at
-[`../better-backpack-cpp/`](../better-backpack-cpp/) for
+[`../archive/winhttp-proxy/`](../archive/winhttp-proxy/) for
 reference.

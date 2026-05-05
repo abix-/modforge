@@ -43,9 +43,9 @@ grounded2mods/
         uobject.rs          UObject/UClass/UFunction/GObjectsView/Runtime/find_class_fast
     tests/layout.rs         Static layout asserts
   injector/                 bin: standalone DLL injector (Rust port of inject.c)
-  better-backpack-cpp/      OLD C++ tree, kept until Rust port hits parity
+  archive/winhttp-proxy/    Old C++ winhttp.dll proxy implementation. Unique Grounded 2 internals already ported to docs/inventory.md and docs/grounded-engine.md. Reference only.
   RUST_PORT_PLAN.md         Migration plan (11 steps)
-  better-backpack-cpp/PERFORMANCE_AUDIT.md   What we found in the C++ hot path
+  archive/winhttp-proxy/PERFORMANCE_AUDIT.md   What we found in the C++ hot path
 ```
 
 ## Mod target (carried over from C++ port)
@@ -65,7 +65,7 @@ grounded2mods/
 - Build target dir overridden locally (~/.cargo/config.toml redirects to endless).
 
 ## Migration progress (RUST_PORT_PLAN.md)
-- [x] 1. Rename C++ tree -> better-backpack-cpp.
+- [x] 1. Rename C++ tree -> archive/winhttp-proxy.
 - [x] 2. Workspace: Cargo.toml + rust-toolchain.toml + .cargo/config.toml.
 - [x] 3. Injector crate (Rust port of inject.c). Builds.
 - [x] 4. SDK module skeleton (UObject, UClass, UFunction, FName, FString,
@@ -90,7 +90,7 @@ grounded2mods/
      hot-path cost per the audit, and the cached UFunction* identity
      dispatch makes it unnecessary in normal operation.
 - [ ] 9. Side-by-side parity test C++ vs Rust DLL.
-- [ ] 10. Archive better-backpack-cpp/.
+- [ ] 10. Archive archive/winhttp-proxy/.
 - [x] 11. Rust BUILDING.md at repo root. Prerequisites, build, run,
      quality gates, configuration knobs, retargeting via offsets.rs.
 

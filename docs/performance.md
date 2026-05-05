@@ -4,7 +4,7 @@
 > hot paths, allocation analysis, what was deliberately not ported
 > from the C++ tree.
 
-Companion to `better-backpack-cpp/PERFORMANCE_AUDIT.md`, which catalogued
+Companion to `archive/winhttp-proxy/PERFORMANCE_AUDIT.md`, which catalogued
 the issues we set out to fix when porting from C++. This doc states what
 the Rust port actually costs to run, where the cost lives, and what could
 still be tightened.

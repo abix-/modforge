@@ -4,7 +4,7 @@
 > ported, the target architecture, the migration sequence, and
 > the bugs we hit during testing. The port is complete; this is
 > kept as design history. The original C++ tree is preserved at
-> [`../better-backpack-cpp/`](../better-backpack-cpp/) for
+> [`../archive/winhttp-proxy/`](../archive/winhttp-proxy/) for
 > reference.
 
 We ported the native DLL mod toolchain from C++ to Rust ahead of
@@ -80,7 +80,7 @@ grounded2mods/
       main.rs               # arg parsing, find/launch process, inject DLL
       inject.rs             # CreateRemoteThread + LoadLibraryW dance
 
-  better-backpack-cpp/      # OLD C++ tree, renamed, kept until parity
+  archive/winhttp-proxy/      # OLD C++ tree, renamed, kept until parity
     (existing files moved here)
 
   inject-c/                 # OLD inject.c, kept until Rust injector parity
@@ -316,7 +316,7 @@ guide and reference, not a library.
 
 Numbered so we can check them off.
 
-- [x] **1.** Rename current `better-backpack/` -> `better-backpack-cpp/`.
+- [x] **1.** Rename current `better-backpack/` -> `archive/winhttp-proxy/`.
   (`inject.c` lives inside that tree, so one rename covered both.)
 - [x] **2.** Add workspace `Cargo.toml`, `rust-toolchain.toml`,
   `.cargo/config.toml` (the last overrides a global `target-dir` that was
@@ -359,7 +359,7 @@ Numbered so we can check them off.
 - [ ] **9.** Side-by-side test: run C++ DLL one session, Rust DLL the next.
   Check identical patch behavior, identical scroll behavior, lower CPU on a
   sampled frame profile.
-- [ ] **10.** Move `better-backpack-cpp/` to `archive/` once parity is
+- [ ] **10.** Move `archive/winhttp-proxy/` to `archive/` once parity is
   confirmed for two play sessions.
 - [x] **11.** `building.md` written at the repo root. Covers
   prerequisites, build, run, quality gates, configuration knobs, and how

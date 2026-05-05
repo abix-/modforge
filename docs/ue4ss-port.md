@@ -7,7 +7,7 @@
 
 Replaced the original winhttp.dll proxy + custom Vortex packaging
 approach. The proxy is preserved at
-[`../better-backpack-cpp/`](../better-backpack-cpp/) as a tested
+[`../archive/winhttp-proxy/`](../archive/winhttp-proxy/) as a tested
 fallback if UE4SS ever turns out unstable for Grounded 2.
 
 ## Why
