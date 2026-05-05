@@ -49,6 +49,32 @@ second is the one that ends up on Nexus / Vortex:
    network calls. This is how UE4SS, ReShade, ENB all distribute.
    Vortex installs it as a regular file drop.
 
+## UE mod format comparison
+
+Six common shapes for an Unreal Engine mod. Real-world prevalence runs
+roughly: pak > DLL proxy (incl. UE4SS) > Lua-on-UE4SS > injected DLL >
+loose files > official plugin. Pak is by far the most common because
+it's what the engine natively supports without any modding framework.
+For games where pak conflicts hurt (most of them), DLL proxy is the
+next most common.
+
+| Format | How it loads | What it can do | Conflicts | Survives game patches | Live config | Vortex-friendly | Anti-cheat risk | Examples |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **`.pak` / `.utoc` / `.ucas` override** | Game's pak loader at startup. Drop in `Paks/~mods/`. Native UE feature. | Replace cooked assets: data tables, Blueprint defaults, meshes, textures, sounds, levels. Cannot run native code. | High. Two paks touching the same asset = last-loaded wins, the other silently does nothing. | Fragile. Any patch that rebuilds the asset breaks the override. | None. Numbers are baked at cook time. To change a value you swap the `.pak`. | Excellent (native install pattern). | Low. Pak loading is a vanilla engine feature. | Most Nexus mods. Player Tweaks (Caites). |
+| **DLL proxy** (winhttp.dll, dxgi.dll, dwmapi.dll, etc.) | Windows DLL search order auto-loads our DLL when the game imports the system DLL of that name. Our DLL forwards real exports to System32. | Anything native code can do: read/write engine memory, hook ProcessEvent, install detours. Full programmatic control over runtime state. | Two proxies of the same name fight. Pick a less-common target (e.g. winhttp instead of dxgi) to avoid clashes with ReShade/UE4SS. | Strong. Patches survive game updates as long as offsets don't shift; if they do, update one constants file. | Yes (read JSON / TOML at load time). | Excellent (single file drop). | Medium. Detection-grade anti-cheats often flag DLL-in-game-folder patterns. Grounded 2 has none today. | UE4SS, ReShade, ENB, **target shape for Better Backpack**. |
+| **UE4SS Lua mod** | UE4SS itself is a DLL proxy. Once it's installed, Lua mods drop into `Mods/` and UE4SS loads them per its own loader. | Whatever the UE4SS Lua API exposes -- BP function calls, Blueprint reflection, hot-reload. Less power than a native DLL but a lot more than a pak. | Per-mod conflict scope is tighter than paks (Lua mods rarely fight unless they touch the same Blueprint), but you depend on UE4SS being installed. | Medium. UE4SS itself needs updates per game patch; Lua mods riding on it benefit from that. | Yes (Lua code reads files / hot-reloads). | Excellent if UE4SS is installed; user has to install UE4SS first. | Same as DLL proxy (UE4SS *is* one). | Many UE4 / UE5 modding scenes. Common for Hogwarts Legacy, Lies of P, Lords of the Fallen, etc. |
+| **UE4SS C++ DLL mod** ("CPPMods") | Same as Lua mods but compiled C++ plugged into UE4SS. | Native code + UE4SS reflection helpers + Blueprint introspection. Best of both worlds for a single mod. | Same as Lua mods: scoped to the mod's actual reach. | Medium. Tied to UE4SS's lifecycle. | Possible (read config in C++). | Good with UE4SS installed. | Same as DLL proxy. | Most large UE4SS-based total-conversion projects. |
+| **Injected DLL via separate exe** (current Better Backpack dev shape) | User runs an injector that calls `LoadLibrary` in the game process. | Same as DLL proxy. | None at the load layer (only one mod runs at a time per session unless the user injects multiple). | Strong (same offsets-only dependency as DLL proxy). | Yes. | Bad. Vortex doesn't model "run an exe before launching the game." | Higher. Tools that look like trainers / cheat injectors trip detection. | Cheat trainers, Cheat Engine tables converted to DLLs, Better Backpack today. |
+| **Loose files / asset replacement** | Game's loose-file fallback (only if the engine was cooked with `bUseIoStore = false` or with loose-asset support). Drop `.uasset` next to the cooked asset path. | Replace individual cooked assets without packaging a pak. | High when multiple loose files target the same path. | Fragile (same as pak). | None. | Possible but unusual. | Low. | Older UE4 games that didn't ship with iostore. Rarely viable on modern UE5 shipping builds (Grounded 2 included). |
+| **Official plugin / mod kit** | Game ships with editor + sanctioned mod path; user cooks their own paks via the dev's tooling. | Whatever the dev exposes. Can be deep (custom code + assets) or shallow (asset overrides only). | Dev-defined; often well-managed. | Best of any option -- the dev maintains compatibility. | Dev-defined. | Excellent if the dev built a manager. | Lowest. Sanctioned. | ARK, Conan Exiles, Satisfactory's mod kit. **Grounded 2 has no official mod kit.** |
+
+Reading the table for our case: pak is out (conflict / breakage), DLL
+proxy is the right answer (UE4SS / ReShade pattern, fits Vortex,
+survives patches, runtime-configurable). UE4SS is also a viable
+secondary path if we ever want a Lua-friendly extension surface for
+others to build on top of, but that's a bigger commitment than
+maintaining a single DLL.
+
 ## Comparison vs Player Tweaks (Caites, Nexus #13)
 
 | Feature | Player Tweaks | Better Backpack | Notes |
