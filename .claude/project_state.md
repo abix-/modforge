@@ -267,13 +267,26 @@ buggy_kill_xp_multiplier setting (default 1.0) scales Buggy
 kills.
 
 Open items for the loop:
-- Apply step: when activate_slot loads a state with non-zero
-  skill ranks, walk the player CDO + live pawn instances and
-  set fields per skill math. Currently a stub.
-- Perk catalog itself: which skills exist, max ranks, what
-  stat each one drives. Backpack/hunger/thirst/glide are
-  obvious starters.
-- ImGui tab via `register_tab` in the C++ shim. Pending.
+- Apply step: BUILT 2026-05-05 in `rpg/apply.rs`. Captures
+  vanilla survival rates at init; at activate_slot, writes
+  skill-layered values (settings_base + skill_bonus, or
+  vanilla * settings_mult * skill_mult) to CDOs.
+- Skill catalog: BUILT 2026-05-05 in `rpg/skills.rs`. Three
+  skills (backpack, hunger, thirst). Per-rank math:
+  backpack +5/rank max 12, hunger/thirst -7.5%/rank max 10.
+- ImGui tab via `register_tab` in the C++ shim. NEXT.
+  Decided on option (a) `register_tab` + ImGui after
+  researching alternatives (UMG widget via `_P.pak`, BPModLoader
+  + cross-process events). It's the documented CPPMod surface
+  and used by every shipped UE4SS C++ mod example. See TODO
+  section 0 step 2 for full rationale and the C-ABI surface
+  plan.
+
+Settings as base, skills layered on top: settings.json defaults
+flipped to vanilla (slot_count=40, hunger/thirst_mult=1.0).
+User can override defaults if they want a starter buff. Skill
+ranks then layer on top: backpack target = settings.slot_count
++ 5*rank; survival target = vanilla * settings_mult * skill_mult.
 
 ### Spike A: DONE (2026-05-05)
 

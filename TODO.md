@@ -38,12 +38,54 @@ not the user-facing knob.
    spec into a skill, stat actually changes. Without it, XP just
    sits there.
 
-2. **ImGui tab.** Add `register_tab(STR("RPG"), ...)` in the C++
-   shim, lambda reads Rust state and shows level / XP / skills
-   with `+1` buttons. ~50 lines of C++ plus a narrow C-ABI surface
-   in Rust (5 to 6 functions: `get_level`, `get_xp`,
-   `get_skill_rank(id)`, `spend_point(id)`, etc.). Gives the
-   player a way to interact instead of editing JSON.
+2. **ImGui tab via `register_tab` (DECIDED 2026-05-05).**
+
+   Researched three options:
+   - (a) `register_tab` + ImGui: adds a tab to UE4SS's debug
+     overlay. Player presses UE4SS console hotkey (default
+     Insert) to summon. Documented path
+     (`docs.ue4ss.com/guides/creating-gui-tabs-with-c++-mod.html`),
+     used by every shipped CppMod example (EventViewerMod,
+     KismetDebuggerMod). ~50 lines.
+   - (b) UMG widget via CreateWidget + AddToViewport: needs us
+     to also ship a `_P.pak` providing the widget asset, then
+     instantiate it from C++ through UE reflection. Polished
+     (game fonts, theme) but ~10x the scaffolding.
+   - (c) Pure BP mod via BPModLoader + cross-process events:
+     most polished and decoupled. Heaviest path; UE-side
+     scripting plus inter-mod event plumbing.
+
+   Going with (a). Reasons:
+   - It's the documented CPPMod surface; `register_tab` is on
+     `CppUserModBase` because it's the intended player-mod-
+     author API.
+   - Our shim already has the vtable slot for it.
+   - EventViewerMod's example is 30 lines.
+   - UE4SS-ecosystem players already know the Insert hotkey.
+   - If polish matters later, (c) layers on top of the same
+     Rust state; not thrown-away work.
+
+   Known limitation: ImGui tabs only render when the UE4SS
+   console is open. No always-visible HUD bar (e.g. XP progress
+   in the corner during gameplay). If that becomes a
+   requirement, scope (c).
+
+   Implementation plan:
+   - C++ shim: call `register_tab(STR("RPG"), [](mod){ ... })`
+     in BetterBackpackMod's ctor.
+   - Lambda calls `UE4SS_ENABLE_IMGUI()` then ImGui calls. It
+     reads from a narrow C-ABI surface in Rust (~5-6
+     `extern "C"` getters/setters: `bbp_rpg_get_level`,
+     `bbp_rpg_get_xp`, `bbp_rpg_get_skill_rank(id)`,
+     `bbp_rpg_get_skill_points`, `bbp_rpg_spend(id)`,
+     `bbp_rpg_get_active_slot(out_buf, len)`).
+   - `bbp_rpg_spend(id)`: validates skill_points > 0, looks up
+     skill in catalog, increments `state.skill_ranks[id]`,
+     decrements `state.skill_points`, calls
+     `apply::apply(&state, &settings)`, calls `state::save`.
+   - C++ side iterates `CATALOG` via getters; renders rows of
+     `<Skill name>: rank N/MAX  [+]`. `+` button is greyed
+     when `skill_points == 0` or `rank == max`.
 
 3. **Reconcile with existing settings (DECIDED 2026-05-05).**
    settings.json defines the BASE values for each stat. Defaults
