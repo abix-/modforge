@@ -156,13 +156,29 @@ live player instance (so the current run sees it instantly). The
 CDO patch is what we already do; add a parallel instance-walk
 called from level-up.
 
-**R5. UI -- ANSWERED.**
+**R5. UI -- ANSWERED. We piggyback on UE4SS's existing debug GUI;
+we do NOT build a new window.**
 
-UE4SS's `register_tab(name, lambda)` is a protected method on
-`CppUserModBase` (declared at
-`RE-UE4SS/UE4SS/include/Mod/CppUserModBase.hpp:212`). Reference
-implementation:
-`RE-UE4SS/CppMods/EventViewerMod/src/EventViewer.cpp:22`. Pattern:
+UE4SS already ships an ImGui-based debug overlay with built-in
+tabs for Console, LiveView, Dumpers, LuaDebugger, Profilers,
+SearcherWidget, UFunctionCallerWidget, BPMods (see
+`RE-UE4SS/UE4SS/include/GUI/`). Toggle hotkey defaults to the
+UE4SS console key (`Insert` per UE4SS-settings.ini).
+
+`register_tab(name, lambda)` adds OUR tab as a peer to those
+built-in tabs in the same overlay window. Same window, same
+toggle, same ImGui context. From the user's perspective they
+press one key and see "Console / LiveView / Dumpers / ... / RPG"
+across the top -- our tab is just one of them.
+
+We can NOT extend UE4SS's built-in tabs (their rendering lives
+inside UE4SS.dll and isn't exposed). What we have is: register a
+new tab next to them. That's the right shape -- the RPG tab is
+a distinct view (level / XP / perk grid), not something that
+fits under "Live View" or "Dumpers".
+
+Reference implementation:
+`RE-UE4SS/CppMods/EventViewerMod/src/EventViewer.cpp:22`:
 ```cpp
 register_tab(STR("RPG"), [](CppUserModBase* mod) {
     UE4SS_ENABLE_IMGUI();
@@ -172,17 +188,14 @@ register_tab(STR("RPG"), [](CppUserModBase* mod) {
 });
 ```
 
-Tab is called on UE4SS's debug overlay (default toggle is the
-UE4SS console hotkey, `Insert` by default per
-UE4SS-settings.ini).
-
 Plan: keep ImGui rendering in C++ shim. Expose Rust state via
 narrow C-ABI getters/setters
 (`get_player_state(out_buf, len)`, `spend_perk(perk_id)`, etc.)
 so the lambda doesn't need to know Rust types. Avoids dragging
 imgui through cxx-style FFI.
 
-In-world UMG overlay: deferred. Out of scope for v1.
+In-world UMG overlay (a HUD widget visible without summoning the
+UE4SS overlay): deferred. Out of scope for v1.
 
 **R6. XP curve + perk economy (design, no code answer needed).**
 

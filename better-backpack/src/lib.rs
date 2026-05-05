@@ -29,6 +29,7 @@ pub mod inv_hook;
 pub mod log;
 pub mod parms;
 pub mod patch;
+pub mod rpg;
 pub mod sdk;
 pub mod settings;
 pub mod survival;
@@ -176,6 +177,19 @@ unsafe fn worker() {
                 "inv hook: gave up after {}s; scrolling will not work this session",
                 HOOK_RETRY_TIMEOUT_SEC
             );
+        }
+    }
+
+    // RPG spike A: kill detection. Hook HealthComponent and log every
+    // creature death with the killer. HealthComponent is a native class
+    // loaded with the engine, so install should succeed on first try.
+    match rpg::kill_hook::install() {
+        Ok(h) => {
+            bbp_log!("rpg/kill: installed on {}", h.class_name());
+            std::mem::forget(h);
+        }
+        Err(e) => {
+            bbp_log!("rpg/kill: install failed ({}); spike A inactive", e);
         }
     }
 
