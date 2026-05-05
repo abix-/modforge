@@ -25,6 +25,11 @@ fn main() {
         .std("c++20")
         .file(&shim)
         .flag_if_supported("/EHsc")
+        // Match UE4SS release CRT (/MD = multi-threaded DLL CRT).
+        // Without this we risk std::wstring/vector/shared_ptr layout
+        // mismatch vs UE4SS's parent ctor, which would scramble the
+        // BetterBackpackMod fields and crash later.
+        .static_crt(false)
         .compile_intermediates();
     for obj in &objs {
         println!("cargo:rustc-cdylib-link-arg={}", obj.display());

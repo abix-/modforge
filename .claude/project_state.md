@@ -169,59 +169,35 @@ fallback if UE4SS turns out unstable for Grounded 2.
 
 ## Where we left off (2026-05-05, late-night)
 
-**State:**
-- `main.dll` builds clean (244 KB), exports `start_mod` /
-  `uninstall_mod` / `DllMain` / `better_backpack_start` /
-  `better_backpack_stop`.
+**State (RESOLVED, working in-game 2026-05-05):**
+- `main.dll` builds clean, exports `start_mod` / `uninstall_mod` /
+  `DllMain` / `better_backpack_start` / `better_backpack_stop`.
 - `deploy.ps1 -Install` works against the user's
   `C:\Games\Steam\steamapps\common\Grounded2\` install.
-- Vortex zip layout is correct (Augusta/Binaries/WinGRTS/...).
-- UE4SS v3.0.1 Beta loads our mod successfully:
-  `UE4SS.log` line 9: `Starting C++ mod 'BetterBackpack'`.
+- UE4SS v3.0.1 Beta loads our mod, `on_unreal_init` fires, Rust
+  side takes over. cpp_shim.log shows full lifecycle.
 
-**Current bug: game crashes when our mod is loaded.**
-Without our mod (`deploy.ps1 -Uninstall`) the game launches fine.
-With our mod the game crashes during early init -- likely after
-`start_mod` returns the `BetterBackpackMod*` pointer.
+**Crash root cause:** vtable mismatch in `cpp/shim.cpp`'s
+`RC::CppUserModBase` mirror. Data layout was fine (both shim and
+UE4SS report sizeof=192). The vtable was missing six methods vs
+`RE-UE4SS/UE4SS/include/Mod/CppUserModBase.hpp`: `on_ui_init`
+(slot 4), four newer `on_lua_start`/`on_lua_stop` overloads taking
+`Lua*` instead of `vector<Lua*>&` (slots 12-15), and
+`on_cpp_mods_loaded` (slot 16). UE4SS dispatched through the later
+slots during init -> jumped past our vtable -> crash.
 
-**Most likely cause:** layout mismatch between our hand-rolled
-`RC::CppUserModBase` mirror in `cpp/shim.cpp` and UE4SS's actual
-class layout. We forward-declared `GUI::GUITab` and `LuaMadeSimple::Lua`
-to avoid pulling in imgui transitively, but those forward decls
-don't help if our virtuals or fields are at wrong offsets vs what
-UE4SS expects.
+**Fix:**
+- Added all six missing virtuals in exact declaration order from
+  the upstream header.
+- Changed `on_dll_load` parameter from `std::wstring_view` to
+  `StringViewType` to match the header verbatim.
+- `on_cpp_mods_loaded` is NOT marked `RC_UE4SS_API` (dllimport):
+  UE4SS.lib doesn't export this symbol. Using local inline body.
 
-The `RC::CppUserModBase::CppUserModBase()` constructor is imported
-from UE4SS.lib (verified via `dumpbin /exports`), so when `new
-BetterBackpackMod()` runs the parent constructor, UE4SS's code
-writes through the parent layout. If our derived class adds
-mismatched padding or our base mirror has wrong-sized fields, the
-parent ctor scribbles past where it should.
-
-**Next-session debug plan:**
-1. Add a Win32 OutputDebugStringW or a file write at the very top
-   of `start_mod()` before the `new` -- confirms we even enter our
-   exported function.
-2. Wrap `new BetterBackpackMod()` in try/catch -- if the ctor
-   throws, log it.
-3. Compare our `RC::CppUserModBase` mirror in `cpp/shim.cpp`
-   field-by-field against the real header at
-   `C:\code\RE-UE4SS\UE4SS\include\Mod\CppUserModBase.hpp`. Specific
-   suspects:
-   - The 14 virtuals need to be in declaration order to match the
-     vtable. Our mirror has 12; we may be missing two (the `Lua*`
-     pointer overloads of on_lua_start/on_lua_stop, OR
-     `on_cpp_mods_loaded`).
-   - Member field order: vector<shared_ptr<GUITab>> first
-     (protected), then 5x StringType (public). Verify ours matches.
-4. Worst case: switch to including UE4SS's real headers and resolve
-   the imgui dep (download imgui to a local dir or stub it).
-
-**Sanity check before debugging the layout:**
-- Verify our cdylib was compiled with `/MD` (multi-threaded DLL CRT)
-  matching UE4SS's release build settings. The `cc::Build` defaults
-  in `build.rs` may be using `/MT`, which would produce CRT
-  mismatches.
+**Next:**
+- TODO.md item 1 step 8 (archive winhttp proxy material).
+- TODO.md item 2 (project rename) and items 3-7 (new feature
+  multipliers).
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
