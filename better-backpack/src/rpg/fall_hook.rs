@@ -197,11 +197,68 @@ fn is_player_character(obj: &UObject) -> bool {
     obj.full_name().contains("BP_SurvivalPlayerCharacter")
 }
 
+/// Look up a row in a `UDataTable` by FName, returning the row's
+/// bytes pointer if found.
+///
+/// `UDataTable.RowMap` is a `TMap<FName, uint8*>` at +0x30. UE5's
+/// TMap is a sparse-array-of-pairs plus a hash. We walk the
+/// underlying `TArray<TPair<FName, uint8*>>` linearly and compare
+/// keys -- this skips the hash lookup but is robust against
+/// minor TMap layout drift across game patches.
+///
+/// Element layout per TSparseArray slot is the union of
+/// (TPair<FName, uint8*>) and (i32 prev, i32 next) free-list links,
+/// 16 bytes total. Allocated vs free-list status is tracked in
+/// `AllocationFlags`. We skip the allocation-flag check and just
+/// match the FName -- free-list slots have one of the i32 link
+/// fields where the FName index would be, which gives garbage
+/// FName values that almost certainly do not match a real row
+/// name. (If a hot patch of UE breaks this, we add the bit-array
+/// walk.)
+fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
+    const ROW_MAP_OFFSET: usize = 0x0030;
+    const ELEMENT_SIZE: usize = 16; // TPair<FName,uint8*>: 8+8
+    unsafe {
+        let row_map = table.field_ptr(ROW_MAP_OFFSET);
+        // Pairs.Data is a TArray<ElementType> at +0 of the TMap.
+        let data_ptr = (row_map as *const *const u8).read_unaligned();
+        let data_num = (row_map.add(8) as *const i32).read_unaligned();
+        if data_ptr.is_null() || data_num <= 0 {
+            return None;
+        }
+        let count = data_num as usize;
+        for i in 0..count.min(8192) {
+            let element = data_ptr.add(i * ELEMENT_SIZE);
+            let key: u64 = (element as *const u64).read_unaligned();
+            if key == row_name {
+                let value: *const u8 = (element.add(8) as *const *const u8).read_unaligned();
+                if !value.is_null() {
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+}
+
+/// Read `FStatusEffectData.Type` (u8 at +0x30) and `Value`
+/// (f32 at +0x34) from the row bytes.
+fn read_status_effect_row(row: *const u8) -> (u8, f32) {
+    const TYPE_OFFSET: usize = 0x30;
+    const VALUE_OFFSET: usize = 0x34;
+    unsafe {
+        let stat_type = (row.add(TYPE_OFFSET) as *const u8).read_unaligned();
+        let value = (row.add(VALUE_OFFSET) as *const f32).read_unaligned();
+        (stat_type, value)
+    }
+}
+
 /// Walk the player's `UStatusEffectComponent.StatusEffects` array
 /// and log each active effect's row handle (DataTable name + row
-/// name). Tells us which data tables and row names the engine uses
-/// for vanilla effects so we can pick or clone rows when migrating
-/// our skills to the status-effect system.
+/// name) plus the row's `Type` + `Value` columns. Tells us which
+/// data tables and row names the engine uses for vanilla effects
+/// AND what their actual stat contributions look like, so we can
+/// pick a row template when migrating our skills.
 fn probe_player_status_effects(player: &UObject) {
     const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
     const SEC_STATUS_EFFECTS_TARRAY: usize = 0x01C8;
@@ -248,15 +305,14 @@ fn probe_player_status_effects(player: &UObject) {
                 .cast::<*mut UObject>()
                 .read_unaligned()
         };
-        let row_name = unsafe {
+        let raw_fname: u64 = unsafe {
             let fname_ptr = effect.field_ptr(STATUS_EFFECT_ROW_HANDLE + 8);
-            // FName is 8 bytes; reuse the existing UObject name resolver
-            // by casting the field through a thin shim. Easiest: read the
-            // FName as 8 bytes and let the resolver do its work.
-            let raw: u64 = (fname_ptr as *const u64).read_unaligned();
+            (fname_ptr as *const u64).read_unaligned()
+        };
+        let row_name = unsafe {
             crate::sdk::runtime()
                 .name_resolver
-                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw))
+                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw_fname))
         };
         let table_name = unsafe {
             table_ptr
@@ -264,11 +320,24 @@ fn probe_player_status_effects(player: &UObject) {
                 .map(|t| t.full_name())
                 .unwrap_or_else(|| "<null-table>".to_string())
         };
+
+        // Look up the row bytes in the data table and read Type + Value
+        // columns from FStatusEffectData (Type @ +0x30, Value @ +0x34).
+        let row_meta = unsafe {
+            table_ptr.as_ref().and_then(|t| {
+                lookup_data_table_row(t, raw_fname).map(|row| read_status_effect_row(row))
+            })
+        };
+        let row_meta_str = match row_meta {
+            Some((ty, val)) => format!(" Type={} Value={:.3}", ty, val),
+            None => " <row-not-found>".to_string(),
+        };
+
         bbp_log!(
-            "rpg/sfx-list:   [{}] effect={} row={} table={}",
+            "rpg/sfx-list:   [{}] row={}{} table={}",
             i,
-            effect.full_name(),
             row_name,
+            row_meta_str,
             table_name
         );
     }
