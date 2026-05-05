@@ -8,88 +8,22 @@ truth; apply step writes skill values to game CDOs.
 For docs see `docs/` (each file is authority on one subject).
 Open work in `docs/todo.md`. History in `docs/changelog.md`.
 
-Immediate gameplay pressure after movement tuning: add mitigation for
-the new self-damage failure modes. High-speed builds can currently die
-to fall damage and to collision / impact damage when slamming into
-plants or terrain. SDK review showed fall damage should be handled on
-`ASurvivalCharacter` fall fields (`bTakeFallDamage`,
-`MinimumFallDamageVelocity`, `FallDamageRatio`) rather than through the
-generic health damage hook. Current field-based patch of
-`FallDamageRatio`, `bTakeFallDamage`, and
-`MinimumFallDamageVelocity` is confirmed to apply, but it still does
-not fully suppress fall damage. A direct `ApplyFallDamage()` / base
-`Character.OnLanded` hook attempt installed but never fired. Current
-best explanation is that `ProcessEventHook` matches exact live vtables,
-while the player pawn is a concrete `BP_SurvivalPlayerCharacter_*`
-subclass. The concrete-BP hook pass works: logs show `OnLanded`
-suppression on the live player pawn. But the player still takes fall
-damage, so `OnLanded` is not the damaging seam.
+Fall Damage Resistance landed at level 100 via velocity-stomp in
+`fall_hook.rs`'s `OnLanded` PE hook. Scales
+`CharMovementComponent.Velocity.Z` by `(1 - reduction)`; native
+`ApplyFallDamage()` reads the mutated value live and computes
+proportional damage. Validated in-game.
 
-Validated in-game: at level 100 every fall-damage field surface we
-patch reports a successful write (3 player CDOs + 1 live pawn for the
-per-character fields, 8 `USurvivalGameModeSettings` CDOs for the
-per-game-mode multiplier, 3 `USurvivalModeManagerComponent` instances
-for the replicated `FCustomGameModeSettings` struct at +0x130). BP
-`OnLanded` is suppressed on each landing. **Player still takes fall
-damage.** Native fall code does not read any BP-exposed field we have
-located. `ApplyFallDamage` UFunction also never fires via ProcessEvent
-during a natural fall (engine calls the native fn pointer directly).
+Plant / terrain collision is a *separate* damage path (DamageType =
+`BP_EnvironmentalDamage_C`, `src_type = 2`, full `FDamageInfo`
+populated) -- becomes its own Collision / Impact Damage Resistance
+skill. Tracked in `docs/todo.md`.
 
-Calling `UpdateCustomSettings` UFunction (the in-game difficulty UI's
-own setter, `Final, Native, BlueprintCallable`) on the live mode-manager
-component via ProcessEvent dispatched cleanly and ran
-`OnRep_CustomSettings` -- still no effect on fall damage. So the entire
-field-write surface is dead.
-
-Damage trace findings:
-- Fall damage fires `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
-  with `LastDamageInfo` entirely empty (DamageType=null, instigator=null,
-  source=null, hit=(0,0,0), flags=0). Native code writes `CurrentDamage`
-  directly, bypassing the standard `FDamageInfo` pipeline.
-- Plant collision fires the same multicast but with
-  `LastDamageInfo.DamageType = BP_EnvironmentalDamage_C`, `src_type=2`.
-  That is the discriminator and gives us a clean filter for
-  Collision / Impact Damage Resistance as a separate skill.
-- `before/after CurrentDamage` snapshot around `original.call` produced
-  no delta line on a controlled fall (delta == 0). Damage is committed
-  upstream of the multicast. Multicast UFunction flags include `Const`,
-  confirming it cannot apply damage. Multicast is purely a notification.
-
-Walk-backwards trace done. Broadened the PE hook on the player BP
-class to log every fall/land/damage event with `CurrentDamage`
-snapshotted around each `original.call`. The damage write happens
-natively between `ReceiveAnyDamage POST` and `OnHitReact pre`, with
-no PE-reachable surface in that gap.
-
-RTFM pivot: UE4SS ships the canonical native UFunction detour as
-`UFunction::RegisterPreHook`. Dropped a Lua probe
-(`Mods/FallDamageProbe/Scripts/main.lua`) that hooks
-`/Script/Maine.SurvivalCharacter:ApplyFallDamage` and
-`/Script/Maine.HealthComponent:ApplyDamage`. UE4SS reported both
-registrations succeeded but the PRE/POST callbacks **did not fire**
-during a confirmed fall.
-
-Confirmation that [UE4SS bug #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-applies to Grounded 2 / UE5: `Final + BlueprintCallable` UFunctions
-silently no-op under `RegisterPreHook`. Reason: the engine bypasses
-the UFunction entirely and calls the C++ method directly, so the
-`native_func` swap that `RegisterPreHook` performs is on the wrong
-path.
-
-Pivot:
-1. Try cheap velocity-stomp first: in the existing fall_hook
-   `OnLanded` PE suppression, zero
-   `CharMovementComponent.Velocity.Z`. If the native fall formula
-   reads live velocity, damage collapses to 0. ~5 lines.
-2. If that fails, PolyHook_2_0 against the C++ method address.
-   Decode the `call rel32` in the UFunction's `native_func` thunk
-   to recover the C++ method address. PolyHook is already a UE4SS
-   third-party dep.
-
-Steps in `docs/todo.md`.
-
-Collision / impact damage is now its own skill scoped behind the
-`BP_EnvironmentalDamage_C` filter on `LastDamageInfo.DamageType`.
+Full Grounded 2 damage internals -- fall path, environmental path,
+HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill
+detection, what we tried that did not work, the velocity-stomp fix,
+UE4SS hooking caveats including issue #626 -- live in
+`docs/damage.md` (authoritative subject doc).
 
 ## Layout
 
