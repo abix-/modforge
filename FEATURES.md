@@ -75,6 +75,53 @@ secondary path if we ever want a Lua-friendly extension surface for
 others to build on top of, but that's a bigger commitment than
 maintaining a single DLL.
 
+## Capability comparison: pak vs DLL
+
+The previous table compares *distribution shapes*. This one compares
+what each shape can actually do at runtime. Pak overrides cooked
+assets at load time. DLL runs native code in the game process.
+
+| Capability | Pak override | DLL (proxy or injected) | Notes |
+| --- | --- | --- | --- |
+| Change a numeric field on a CDO (int / float) | ✅ | ✅ | Trivially both. Player Tweaks does this via pak; we do this via DLL. |
+| Replace a texture, mesh, sound | ✅ | technically yes but awful | Pak's home turf. DLL would have to intercept the asset loader. |
+| Add a new item, recipe, or data table row | ✅ | ✅ via reflection | Pak edits the cooked data table. DLL appends rows at runtime. Pak is more natural here. |
+| Modify Blueprint *logic* (not just defaults) | ✅ but fragile | ✅ via ProcessEvent hook | Pak rewrites the Blueprint bytecode -- breaks on most game patches and high conflict surface. DLL hooks the function call instead. Cleaner for stable behavior. |
+| Hook a Blueprint or native function at runtime | ❌ | ✅ | Pak has no execution surface. This is the hard line: any "intercept what the game does" feature needs a DLL. |
+| React to events (OnMouseWheel, OnInventoryChanged, save load) | ❌ unless via BP rewrite | ✅ | Pak can only react via Blueprint logic edits, which inherits the fragility above. DLL hooks the event source directly. |
+| Read live game state (current player health, current inventory contents) | ❌ | ✅ | Pak only changes initial / template values. Reading the live world requires running code. |
+| Call a Blueprint or native UE function on demand | ❌ | ✅ via ProcessEvent + reflected UFunction lookup | DLL only. |
+| Add new UI elements at runtime | limited | ✅ | Pak can replace a UMG widget asset, but inserting a new widget that wasn't in the cooked tree is much harder. DLL can construct widgets in code. |
+| Read a config file the user can edit without rebuilding | ❌ | ✅ | Paks bake everything at cook time. To "change a number" with a pak you swap the file. DLL can read JSON / TOML at load. This is the runtime-config gap. |
+| Run logic that depends on the current game world / level | ❌ | ✅ | Pak's data is fixed at load. DLL runs every frame if it wants to. |
+| Multiple users can install the mod without conflicting with other mods touching the same Blueprint / data table | ❌ | usually ✅ | Pak: two paks editing the same asset, last one loaded wins; the other is silently ignored. DLL: each mod hooks its own functions; conflicts only when two mods hook the *same* slot, which is rare. |
+| Survive a game patch that rebuilds the underlying asset | ❌ | usually ✅ | Pak overrides break whenever the cooked asset they target changes. DLL only breaks when the engine offset shifts -- much rarer, much smaller fix. |
+
+### What this means for our specific feature set
+
+| Our feature | Could pak do it? | Notes |
+| --- | --- | --- |
+| Backpack `DefaultMaxSize 40 -> 100` | **Yes.** | Simple CDO int override. Player Tweaks ships a 60-slot variant doing exactly this. |
+| Hunger / thirst `AdjustmentPerSecond` multiplier | **Yes.** | Simple CDO float override. Trivial pak content. |
+| Mount / saddlebag preserved at 30 | **Yes.** | Same shape. |
+| Mouse-wheel viewport rebind across the bigger inventory | **No.** | Requires intercepting `OnMouseWheel` on the live `WBP_InventoryInterface_C` instance and synchronously calling `BPF_InventoryFunctions_C::GetItemInItemListSlot` + `InitializeItemSlot` on each visible slot. Pak has no execution surface to do this. The closest pak approach would be to rewrite the WBP's Blueprint logic to add scroll handling -- doable in theory but extremely fragile (Blueprint bytecode shifts on game patches, and the conflict surface with any other mod touching that widget is total). |
+| Settings JSON read at DLL load | **No.** | Paks bake all values at cook time. To support "edit settings.json, restart game, see new values" with a pak we'd ship multiple presets, which is exactly what Caites does. |
+| Live `Better Backpack` console window | **No.** | Pak has no way to allocate a Win32 console. |
+| Mod-conflict cleanliness (other inventory mods can coexist) | **No.** | Two paks both touching `BP_SurvivalPlayerCharacter` or its inventory components fight at the asset-replacement level. |
+
+### Honest summary
+
+Of our six features, **two could be done as a pak** (the CDO numeric
+patches), but **four cannot**: scroll viewport rebind, runtime-editable
+settings, the dev console, and clean coexistence with other mods. The
+scroll feature is the hard "no" -- it's the reason the C++ author
+originally went DLL-first.
+
+So a pak version of this mod is feasible only as a stripped-down
+"capacity + survival rates" preset with no scroll, no JSON config, and
+the same conflict footprint that has Player Tweaks users complaining
+about storage crashes today. We don't want to ship that.
+
 ## Comparison vs Player Tweaks (Caites, Nexus #13)
 
 | Feature | Player Tweaks | Better Backpack | Notes |
