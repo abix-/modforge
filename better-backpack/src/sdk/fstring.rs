@@ -43,8 +43,7 @@ impl FString {
         }
         let len = self.num as usize;
         // Strip trailing NUL if present.
-        let slice_len = if len > 0
-            && unsafe { slice::from_raw_parts(self.data, len) }[len - 1] == 0
+        let slice_len = if len > 0 && unsafe { slice::from_raw_parts(self.data, len) }[len - 1] == 0
         {
             len - 1
         } else {

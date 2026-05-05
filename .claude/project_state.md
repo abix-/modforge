@@ -8,6 +8,35 @@ truth; apply step writes skill values to game CDOs.
 For docs see `docs/` (each file is authority on one subject).
 Open work in `docs/todo.md`. History in `docs/changelog.md`.
 
+Immediate gameplay pressure after movement tuning: add mitigation for
+the new self-damage failure modes. High-speed builds can currently die
+to fall damage and to collision / impact damage when slamming into
+plants or terrain. SDK review showed fall damage should be handled on
+`ASurvivalCharacter` fall fields (`bTakeFallDamage`,
+`MinimumFallDamageVelocity`, `FallDamageRatio`) rather than through the
+generic health damage hook. Current field-based patch of
+`FallDamageRatio`, `bTakeFallDamage`, and
+`MinimumFallDamageVelocity` is confirmed to apply, but it still does
+not fully suppress fall damage. A direct `ApplyFallDamage()` / base
+`Character.OnLanded` hook attempt installed but never fired. Current
+best explanation is that `ProcessEventHook` matches exact live vtables,
+while the player pawn is a concrete `BP_SurvivalPlayerCharacter_*`
+subclass. The concrete-BP hook pass works: logs show `OnLanded`
+suppression on the live player pawn. But the player still takes fall
+damage, so `OnLanded` is not the damaging seam.
+
+Latest add (in current build, **not yet validated in-game**): write
+`USurvivalGameModeSettings::FallDamageMultiplier` (+0x008C) to scale the
+global per-game-mode fall damage scalar by `(1 - reduction)`. Native
+fall damage is gated by both the per-character ratio AND this
+multiplier, which explains why the per-character field writes alone
+were ineffective. Next test pass should fall once with fall_resistance
+at level 100 and confirm zero damage. If still ineffective, fall back
+to writing `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C
+inside `USurvivalModeManagerComponent::CustomSettings` (+0x114) on the
+live mode-manager component -- that struct is the replicated runtime
+copy. Collision / impact damage is still open.
+
 ## Layout
 
 ```
@@ -341,6 +370,23 @@ Log shows `initial patch round: scanned=2, patched=0` and
 backpack/hunger/thirst patches may be running before GObjects is
 fully populated, or there's been an SDK shape change. Not
 related to RPG track. Investigate when convenient.
+
+### Movement skill fix verified
+
+Manual test confirmed Move Speed now works in-game.
+
+Fix was two parts:
+
+- Retarget movement writes to include Grounded-specific fields on
+  `UMaineCharMovementComponent`, including
+  `CustomGroundSpeedMultiplier` (+0x1198),
+  `CustomFlySpeedMultiplier` (+0x119C),
+  `CustomSwimSpeedMultiplier` (+0x11A0), and
+  `MaxSwimSprintSpeed` (+0x1164).
+- Mirror movement writes onto live player pawns, not just player CDOs.
+
+This closes the earlier suspicion that generic UE movement caps alone
+were insufficient for Grounded 2 locomotion.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was

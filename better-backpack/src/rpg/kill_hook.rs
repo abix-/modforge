@@ -33,7 +33,6 @@ use crate::sdk::{GObjectsView, UClass, UFunction, UObject, find_class_fast, runt
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
 const FDAMAGE_INFO_INSTIGATOR_CONTROLLER: usize = 0x0020;
-
 const MULTICAST_HANDLE_EFFECTS_PARMS_DAMAGE_FLAGS: usize = 0x001C;
 
 const DAMAGE_INFO_FLAG_KILLING_BLOW: i32 = 2;
@@ -61,8 +60,8 @@ unsafe impl Sync for State {}
 static STATE: OnceLock<State> = OnceLock::new();
 
 pub fn install() -> Result<ProcessEventHook, &'static str> {
-    let health_class = find_class_fast("HealthComponent")
-        .ok_or("HealthComponent class not loaded yet")?;
+    let health_class =
+        find_class_fast("HealthComponent").ok_or("HealthComponent class not loaded yet")?;
     let multicast_fn = health_class
         .get_function("HealthComponent", "MulticastHandleEffectsWithDamageFlags")
         .ok_or("HealthComponent.MulticastHandleEffectsWithDamageFlags not found")?;
@@ -70,8 +69,8 @@ pub fn install() -> Result<ProcessEventHook, &'static str> {
     // ASurvivalCreature filter excludes player deaths AND buildings/props
     // (BP_BaseStructureBuilding, BP_PhysicsHarvestNode also fire this
     // function with IsKillingBlow on destruction).
-    let creature_class = find_class_fast("SurvivalCreature")
-        .ok_or("SurvivalCreature class not loaded yet")?;
+    let creature_class =
+        find_class_fast("SurvivalCreature").ok_or("SurvivalCreature class not loaded yet")?;
 
     let _ = STATE.set(State {
         multicast_handle_effects_with_damage_flags: multicast_fn as *const UFunction as usize,
@@ -248,7 +247,10 @@ fn describe_instigator(instigator: Option<&UObject>) -> String {
     let Some(ctrl) = instigator else {
         return "<unresolved>".to_string();
     };
-    let class_name = ctrl.class().map(|c| c.as_object().name()).unwrap_or_default();
+    let class_name = ctrl
+        .class()
+        .map(|c| c.as_object().name())
+        .unwrap_or_default();
     format!("{} ({})", ctrl.name(), class_name)
 }
 
@@ -264,8 +266,6 @@ fn resolve_instigator(health_component: &UObject) -> Option<&'static UObject> {
     }
     let rt = runtime();
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    // Caller treats result as 'static: GObjects entries live for the
-    // process lifetime even if a slot is later reused (we don't free).
     view.get(weak_ptr.object_index)
         .map(|o| unsafe { &*(o as *const UObject) })
 }

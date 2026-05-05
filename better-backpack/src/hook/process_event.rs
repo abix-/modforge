@@ -9,9 +9,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::sdk::{
-    self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime,
-};
+use crate::sdk::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime};
 
 use super::vtable;
 
@@ -46,8 +44,7 @@ unsafe impl Sync for Entry {}
 // instead -- a leaked, frozen `&'static [&'static Entry]` rebuilt after
 // every install/drop. Atomic-load on the hot path, no mutex.
 static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
-static SNAPSHOT: AtomicPtr<&'static [&'static Entry]> =
-    AtomicPtr::new(std::ptr::null_mut());
+static SNAPSHOT: AtomicPtr<&'static [&'static Entry]> = AtomicPtr::new(std::ptr::null_mut());
 
 fn publish_snapshot(reg: &[&'static Entry]) {
     let leaked: &'static [&'static Entry] = Box::leak(reg.to_vec().into_boxed_slice());

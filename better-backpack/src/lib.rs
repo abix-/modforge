@@ -197,6 +197,18 @@ unsafe fn worker() {
         }
     }
 
+    match rpg::fall_hook::install() {
+        Ok(hooks) => {
+            for h in hooks {
+                bbp_log!("rpg/fall: installed on {}", h.class_name());
+                std::mem::forget(h);
+            }
+        }
+        Err(e) => {
+            bbp_log!("rpg/fall: concrete player fall hook install failed ({})", e);
+        }
+    }
+
     // RPG spike B + eager load: poll for AInGameGameState on a separate
     // thread so PlayerState is bound to the active save the moment the
     // player enters the world. Future skill-driven CDO patches will run
@@ -208,8 +220,7 @@ unsafe fn worker() {
 
 fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHook> {
     let mut delay_ms = HOOK_RETRY_BASE_DELAY_MS;
-    let deadline = std::time::Instant::now()
-        + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
+    let deadline = std::time::Instant::now() + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
     let mut last_err: Option<&str> = None;
     loop {
         match inv_hook::install(slot_count) {

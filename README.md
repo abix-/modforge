@@ -12,10 +12,12 @@ Current state as of 2026-05-05:
   `++Augusta+release-0.4.0.2-CL-2673661`.
 - The RPG loop is live: XP, levels, skill points, persistence, Buggy
   kill attribution, and the UE4SS ImGui RPG tab.
-- The backpack skill, hunger/thirst resistance, and several combat /
-  movement skills are implemented.
-- Open work is testing, live-instance writes for some skills, catalog
-  expansion, and packaging cleanup. See [docs/todo.md](docs/todo.md).
+- The backpack skill, hunger/thirst resistance, fall damage
+  resistance, and several combat / movement skills are implemented.
+- Open work is testing, live-instance writes for some combat skills,
+  impact damage mitigation for high-speed builds, catalog expansion,
+  and packaging cleanup. See
+  [docs/todo.md](docs/todo.md).
 
 This repo no longer targets a standalone end-user injector flow as the
 primary path. The shipping shape is a **UE4SS C++ mod (CPPMod)** with a
@@ -29,7 +31,8 @@ tiny C++ shim and the mod logic in Rust.
 - Grants skill points on level-up.
 - Persists RPG state per playthrough GUID under
   `Mods/BetterBackpack/dlls/saves/<guid>.json`.
-- Applies skill values to game CDOs on save activation.
+- Applies skill values to game CDOs on save activation, with movement
+  skill writes also mirrored to live player pawns.
 - Exposes an `RPG` tab in the UE4SS overlay with `+1` / `+10` spend
   buttons.
 
@@ -111,9 +114,9 @@ grounded2mods/
 
 ## Notes
 
-- Some skill effects are still CDO-only. Spending a point may require a
-  reload to affect the current live pawn until live-instance writes are
-  implemented.
+- Some combat-side skill effects are still CDO-only. Movement skills now
+  also patch live player pawns, but other live-instance writes are still
+  in progress.
 - Lifesteal is in the catalog but its live damage hook work is still
   pending.
 - When the game updates and offsets shift, refresh

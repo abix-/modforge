@@ -19,8 +19,8 @@ use crate::bbp_log;
 use crate::hook::{OriginalProcessEvent, ProcessEventHook};
 use crate::parms::{
     F_POINTER_EVENT_SIZE, GetChildAtParms, GetInventoryItemsParms, GetItemInItemListSlotParms,
-    InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView,
-    PointerEventGetWheelDeltaParms, SelectedIndexParms, SetSelectedInventorySlotParms,
+    InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
+    SelectedIndexParms, SetSelectedInventorySlotParms,
 };
 use crate::sdk::{self, UClass, UFunction, UObject, find_class_fast};
 
@@ -81,22 +81,55 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
     let inv_iface_class = find_class_fast("WBP_InventoryInterface_C")
         .ok_or("WBP_InventoryInterface_C not loaded yet")?;
     let panel_widget = find_class_fast("PanelWidget").ok_or("PanelWidget not loaded")?;
-    let bpf_class = find_class_fast("BPF_InventoryFunctions_C")
-        .ok_or("BPF_InventoryFunctions_C not loaded")?;
-    let kismet_class = find_class_fast("KismetInputLibrary").ok_or("KismetInputLibrary not loaded")?;
+    let bpf_class =
+        find_class_fast("BPF_InventoryFunctions_C").ok_or("BPF_InventoryFunctions_C not loaded")?;
+    let kismet_class =
+        find_class_fast("KismetInputLibrary").ok_or("KismetInputLibrary not loaded")?;
 
     let inv_fns = InvIfaceFns {
-        populate_item_grid: lookup(inv_iface_class, "WBP_InventoryInterface_C", "PopulateItemGrid")?,
+        populate_item_grid: lookup(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "PopulateItemGrid",
+        )?,
         construct: lookup(inv_iface_class, "WBP_InventoryInterface_C", "Construct")?,
         on_mouse_wheel: lookup(inv_iface_class, "WBP_InventoryInterface_C", "OnMouseWheel")?,
-        on_inventory_changed: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "OnInventoryChanged"),
-        on_inventory_count_changed: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "OnInventoryCountChanged"),
+        on_inventory_changed: lookup_optional(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "OnInventoryChanged",
+        ),
+        on_inventory_count_changed: lookup_optional(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "OnInventoryCountChanged",
+        ),
         refresh_ui: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "RefreshUI"),
-        refresh_menu_page: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "RefreshMenuPage"),
-        get_inventory_items: lookup(inv_iface_class, "WBP_InventoryInterface_C", "GetInventoryItems")?,
-        get_selected_inventory_slot_index: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "GetSelectedInventorySlotIndex"),
-        set_selected_inventory_slot: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "SetSelectedInventorySlot"),
-        initialize_item_slot: lookup(inv_iface_class, "WBP_InventoryInterface_C", "InitializeItemSlot")?,
+        refresh_menu_page: lookup_optional(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "RefreshMenuPage",
+        ),
+        get_inventory_items: lookup(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "GetInventoryItems",
+        )?,
+        get_selected_inventory_slot_index: lookup_optional(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "GetSelectedInventorySlotIndex",
+        ),
+        set_selected_inventory_slot: lookup_optional(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "SetSelectedInventorySlot",
+        ),
+        initialize_item_slot: lookup(
+            inv_iface_class,
+            "WBP_InventoryInterface_C",
+            "InitializeItemSlot",
+        )?,
     };
     let panel = PanelFns {
         get_children_count: lookup(panel_widget, "PanelWidget", "GetChildrenCount")?,
@@ -104,11 +137,21 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
     };
     let bpf = BpfFns {
         cdo: bpf_class.class_default_object().ok_or("BPF CDO missing")? as *const UObject,
-        get_item_in_item_list_slot: lookup(bpf_class, "BPF_InventoryFunctions_C", "GetItemInItemListSlot")?,
+        get_item_in_item_list_slot: lookup(
+            bpf_class,
+            "BPF_InventoryFunctions_C",
+            "GetItemInItemListSlot",
+        )?,
     };
     let kismet = KismetInputFns {
-        cdo: kismet_class.class_default_object().ok_or("KismetInputLibrary CDO missing")? as *const UObject,
-        pointer_event_get_wheel_delta: lookup(kismet_class, "KismetInputLibrary", "PointerEvent_GetWheelDelta")?,
+        cdo: kismet_class
+            .class_default_object()
+            .ok_or("KismetInputLibrary CDO missing")? as *const UObject,
+        pointer_event_get_wheel_delta: lookup(
+            kismet_class,
+            "KismetInputLibrary",
+            "PointerEvent_GetWheelDelta",
+        )?,
     };
 
     let _ = STATE.set(State {
@@ -144,7 +187,12 @@ fn lookup_optional(cls: &UClass, owner: &str, name: &str) -> usize {
         .unwrap_or(0)
 }
 
-fn on_event(this: &UObject, function: &UFunction, parms: *mut c_void, original: OriginalProcessEvent) {
+fn on_event(
+    this: &UObject,
+    function: &UFunction,
+    parms: *mut c_void,
+    original: OriginalProcessEvent,
+) {
     let Some(state) = STATE.get() else {
         unsafe { original.call(this, function, parms) };
         return;
@@ -165,13 +213,16 @@ fn on_event(this: &UObject, function: &UFunction, parms: *mut c_void, original: 
 
     if fn_id == state.inv_iface.on_mouse_wheel {
         handle_mouse_wheel(state, this, parms);
-    } else if matches_any(fn_id, &[
-        state.inv_iface.on_inventory_changed,
-        state.inv_iface.on_inventory_count_changed,
-        state.inv_iface.refresh_ui,
-        state.inv_iface.refresh_menu_page,
-        state.inv_iface.populate_item_grid,
-    ]) && get_viewport_start(state, this) != 0
+    } else if matches_any(
+        fn_id,
+        &[
+            state.inv_iface.on_inventory_changed,
+            state.inv_iface.on_inventory_count_changed,
+            state.inv_iface.refresh_ui,
+            state.inv_iface.refresh_menu_page,
+            state.inv_iface.populate_item_grid,
+        ],
+    ) && get_viewport_start(state, this) != 0
     {
         let cur = get_viewport_start(state, this);
         let _ = rebind(state, this, cur, "post-refresh");
@@ -209,9 +260,7 @@ fn pointer_wheel_delta(state: &State, event: &[u8; F_POINTER_EVENT_SIZE]) -> Opt
     if state.kismet.cdo.is_null() || state.kismet.pointer_event_get_wheel_delta == 0 {
         return None;
     }
-    let func = unsafe {
-        &*(state.kismet.pointer_event_get_wheel_delta as *const UFunction)
-    };
+    let func = unsafe { &*(state.kismet.pointer_event_get_wheel_delta as *const UFunction) };
     let saved_flags = func.function_flags();
     func.set_function_flags(saved_flags | sdk::offsets::FUNC_NATIVE);
     let mut parms = PointerEventGetWheelDeltaParms {
@@ -226,7 +275,12 @@ fn pointer_wheel_delta(state: &State, event: &[u8; F_POINTER_EVENT_SIZE]) -> Opt
     Some(parms.return_value)
 }
 
-fn rebind(state: &State, widget: &UObject, new_start: i32, reason: &str) -> Result<(), &'static str> {
+fn rebind(
+    state: &State,
+    widget: &UObject,
+    new_start: i32,
+    reason: &str,
+) -> Result<(), &'static str> {
     let item_grid_ptr = unsafe {
         widget
             .field_ptr(INV_IFACE_ITEM_GRID_OFFSET)

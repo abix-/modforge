@@ -27,6 +27,7 @@ pub const SKILL_ARMOR: &str = "armor";
 pub const SKILL_MOVE_SPEED: &str = "move_speed";
 pub const SKILL_JUMP_HEIGHT: &str = "jump_height";
 pub const SKILL_GLIDE_SPEED: &str = "glide_speed";
+pub const SKILL_FALL_RESISTANCE: &str = "fall_resistance";
 pub const SKILL_LIFESTEAL: &str = "lifesteal";
 
 /// Universal cap. Every skill scales 0..=100.
@@ -94,6 +95,16 @@ pub enum SkillEffect {
         format_word: &'static str,
     },
 
+    /// Scale the player's fall-damage ratio against the captured
+    /// vanilla baseline on `ASurvivalCharacter`.
+    PlayerFallDamageReduction {
+        ratio_offset: usize,
+        take_fall_damage_offset: usize,
+        min_velocity_offset: usize,
+        max_reduction: f32,
+        format: PercentFormat,
+    },
+
     /// Pure runtime effect. The kill_hook (or any other live
     /// trampoline) reads the current level on every tick and acts on
     /// it, no CDO write.
@@ -138,6 +149,19 @@ pub const SURVIVAL_THIRST_OFFSET: usize = 0x0188;
 
 // ASurvivalCharacter.CustomDamageMultiplier (Maine_classes.hpp:5771).
 pub const ASC_CUSTOM_DAMAGE_MULTIPLIER: usize = 0x12B8;
+// ASurvivalCharacter.bTakeFallDamage (Maine_classes.hpp:5846).
+pub const ASC_TAKE_FALL_DAMAGE: usize = 0x1571;
+// ASurvivalCharacter.MinimumFallDamageVelocity (Maine_classes.hpp:5848).
+pub const ASC_MINIMUM_FALL_DAMAGE_VELOCITY: usize = 0x1574;
+// ASurvivalCharacter.FallDamageRatio (Maine_classes.hpp:5850).
+pub const ASC_FALL_DAMAGE_RATIO: usize = 0x157C;
+
+// USurvivalGameModeSettings.FallDamageMultiplier (Maine_classes.hpp:36808).
+// Global per-game-mode scalar applied to fall damage on top of the
+// per-character ratio. Native fall damage path multiplies this in, so
+// writing the per-character fields alone is not enough; this one has to
+// be patched too.
+pub const GMS_FALL_DAMAGE_MULTIPLIER: usize = 0x008C;
 
 // UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
 pub const HC_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
@@ -152,12 +176,26 @@ pub const CMC_MAX_SWIM_SPEED: usize = 0x0290;
 pub const CMC_MAX_FLY_SPEED: usize = 0x0294;
 // UMaineCharMovementComponent.MaxSprintSpeed (Maine_classes.hpp:33015).
 pub const CMC_MAX_SPRINT_SPEED: usize = 0x10EC;
+// UMaineCharMovementComponent.MaxSwimSprintSpeed (Maine_classes.hpp:33038).
+pub const CMC_MAX_SWIM_SPRINT_SPEED: usize = 0x1164;
+// UMaineCharMovementComponent.CustomGroundSpeedMultiplier (Maine_classes.hpp:33050).
+pub const CMC_CUSTOM_GROUND_SPEED_MULTIPLIER: usize = 0x1198;
+// UMaineCharMovementComponent.CustomFlySpeedMultiplier (Maine_classes.hpp:33051).
+pub const CMC_CUSTOM_FLY_SPEED_MULTIPLIER: usize = 0x119C;
+// UMaineCharMovementComponent.CustomSwimSpeedMultiplier (Maine_classes.hpp:33052).
+pub const CMC_CUSTOM_SWIM_SPEED_MULTIPLIER: usize = 0x11A0;
 
 // Movement axis groupings (multiple offsets that should scale together).
-const MOVE_SPEED_OFFSETS: &[usize] =
-    &[CMC_MAX_WALK_SPEED, CMC_MAX_SPRINT_SPEED, CMC_MAX_SWIM_SPEED];
+const MOVE_SPEED_OFFSETS: &[usize] = &[
+    CMC_MAX_WALK_SPEED,
+    CMC_MAX_SPRINT_SPEED,
+    CMC_MAX_SWIM_SPEED,
+    CMC_MAX_SWIM_SPRINT_SPEED,
+    CMC_CUSTOM_GROUND_SPEED_MULTIPLIER,
+    CMC_CUSTOM_SWIM_SPEED_MULTIPLIER,
+];
 const JUMP_HEIGHT_OFFSETS: &[usize] = &[CMC_JUMP_Z_VELOCITY];
-const GLIDE_SPEED_OFFSETS: &[usize] = &[CMC_MAX_FLY_SPEED];
+const GLIDE_SPEED_OFFSETS: &[usize] = &[CMC_MAX_FLY_SPEED, CMC_CUSTOM_FLY_SPEED_MULTIPLIER];
 
 // ---------------------------------------------------------------------
 // CATALOG: the source of truth.
@@ -168,7 +206,9 @@ pub const CATALOG: &[Skill] = &[
         id: SKILL_BACKPACK,
         display_name: "Backpack",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::BackpackSlots { max_bonus_slots: 60 },
+        effect: SkillEffect::BackpackSlots {
+            max_bonus_slots: 460,
+        },
     },
     Skill {
         id: SKILL_HUNGER,
@@ -197,7 +237,7 @@ pub const CATALOG: &[Skill] = &[
         effect: SkillEffect::PlayerCharFloat {
             offset: ASC_CUSTOM_DAMAGE_MULTIPLIER,
             base: 1.0,
-            max_bonus: 0.50,
+            max_bonus: 3.00,
             format: PercentFormat::PlusPercentMult { word: "damage" },
         },
     },
@@ -209,7 +249,9 @@ pub const CATALOG: &[Skill] = &[
             offset: HC_BASE_DAMAGE_REDUCTION,
             base: 0.0,
             max_bonus: 0.50,
-            format: PercentFormat::MinusPercent { word: "damage taken" },
+            format: PercentFormat::MinusPercent {
+                word: "damage taken",
+            },
         },
     },
     Skill {
@@ -218,7 +260,7 @@ pub const CATALOG: &[Skill] = &[
         max_level: SKILL_MAX_LEVEL,
         effect: SkillEffect::PlayerMovementMult {
             offsets: MOVE_SPEED_OFFSETS,
-            max_bonus: 0.50,
+            max_bonus: 3.00,
             format_word: "move",
         },
     },
@@ -228,7 +270,7 @@ pub const CATALOG: &[Skill] = &[
         max_level: SKILL_MAX_LEVEL,
         effect: SkillEffect::PlayerMovementMult {
             offsets: JUMP_HEIGHT_OFFSETS,
-            max_bonus: 0.80,
+            max_bonus: 3.00,
             format_word: "jump",
         },
     },
@@ -238,8 +280,22 @@ pub const CATALOG: &[Skill] = &[
         max_level: SKILL_MAX_LEVEL,
         effect: SkillEffect::PlayerMovementMult {
             offsets: GLIDE_SPEED_OFFSETS,
-            max_bonus: 0.50,
+            max_bonus: 3.00,
             format_word: "glide",
+        },
+    },
+    Skill {
+        id: SKILL_FALL_RESISTANCE,
+        display_name: "Fall Damage Resistance",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerFallDamageReduction {
+            ratio_offset: ASC_FALL_DAMAGE_RATIO,
+            take_fall_damage_offset: ASC_TAKE_FALL_DAMAGE,
+            min_velocity_offset: ASC_MINIMUM_FALL_DAMAGE_VELOCITY,
+            max_reduction: 1.00,
+            format: PercentFormat::MinusPercent {
+                word: "fall damage",
+            },
         },
     },
     Skill {
@@ -247,7 +303,7 @@ pub const CATALOG: &[Skill] = &[
         display_name: "Lifesteal",
         max_level: SKILL_MAX_LEVEL,
         effect: SkillEffect::Runtime {
-            max_bonus: 0.30,
+            max_bonus: 0.90,
             format: PercentFormat::PlusPercent { word: "lifesteal" },
         },
     },
@@ -291,7 +347,9 @@ pub fn runtime_fraction(level: u32, max_bonus: f32) -> f32 {
 // ---------------------------------------------------------------------
 
 pub fn format_effect(id: &str, level: u32) -> String {
-    let Some(skill) = lookup(id) else { return String::new() };
+    let Some(skill) = lookup(id) else {
+        return String::new();
+    };
     match &skill.effect {
         SkillEffect::BackpackSlots { max_bonus_slots } => {
             let bonus = backpack_bonus_at(level, *max_bonus_slots);
@@ -302,10 +360,23 @@ pub fn format_effect(id: &str, level: u32) -> String {
             let pct = ((1.0 - mult) * 100.0).round() as i32;
             format!("-{pct}% drain ({:.2}x)", mult)
         }
-        SkillEffect::PlayerCharFloat { base, max_bonus, format, .. }
-        | SkillEffect::PlayerHealthCompFloat { base, max_bonus, format, .. } => {
-            format_pct(*base, *max_bonus, level, format)
+        SkillEffect::PlayerCharFloat {
+            base,
+            max_bonus,
+            format,
+            ..
         }
+        | SkillEffect::PlayerHealthCompFloat {
+            base,
+            max_bonus,
+            format,
+            ..
+        } => format_pct(*base, *max_bonus, level, format),
+        SkillEffect::PlayerFallDamageReduction {
+            max_reduction,
+            format,
+            ..
+        } => format_pct(0.0, *max_reduction, level, format),
         SkillEffect::PlayerMovementMult {
             max_bonus,
             format_word,
@@ -315,9 +386,7 @@ pub fn format_effect(id: &str, level: u32) -> String {
             let pct = ((mult - 1.0) * 100.0).round() as i32;
             format!("+{pct}% {format_word} ({:.2}x)", mult)
         }
-        SkillEffect::Runtime { max_bonus, format } => {
-            format_pct(0.0, *max_bonus, level, format)
-        }
+        SkillEffect::Runtime { max_bonus, format } => format_pct(0.0, *max_bonus, level, format),
     }
 }
 

@@ -20,8 +20,8 @@
 //      preserved. `apply_one()` does the same for a single skill on
 //      spend.
 //
-// Live pawn instance walk is a follow-up; CDO patches propagate to
-// new spawns at construction.
+// Movement now also mirrors writes onto live player pawns because CDO
+// updates alone were not enough to produce an obvious gameplay effect.
 
 use std::sync::OnceLock;
 
@@ -41,6 +41,9 @@ const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
 
 static VANILLA_HUNGER: OnceLock<f32> = OnceLock::new();
 static VANILLA_THIRST: OnceLock<f32> = OnceLock::new();
+static VANILLA_FALL_DAMAGE_RATIO: OnceLock<f32> = OnceLock::new();
+static VANILLA_MIN_FALL_DAMAGE_VELOCITY: OnceLock<f32> = OnceLock::new();
+static VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
 
 // Per-offset vanilla baselines for movement, captured lazily on first
 // apply for that offset. Stored in a small fixed-size table because
@@ -64,7 +67,9 @@ impl VanillaTable {
         if !value.is_finite() || value == 0.0 {
             return;
         }
-        let Ok(mut g) = self.entries.lock() else { return };
+        let Ok(mut g) = self.entries.lock() else {
+            return;
+        };
         if !g.iter().any(|(k, _)| *k == offset) {
             g.push((offset, value));
         }
@@ -78,7 +83,9 @@ pub fn capture_vanilla() {
         return;
     }
     let Some(rt) = sdk::try_runtime() else { return };
-    let Some(survival_class) = sdk::find_class_fast("SurvivalComponent") else { return };
+    let Some(survival_class) = sdk::find_class_fast("SurvivalComponent") else {
+        return;
+    };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return;
@@ -122,11 +129,7 @@ pub fn apply_one(state: &PlayerState, settings: &Settings, skill_id: &str) {
 }
 
 fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
-    let level = state
-        .skill_levels
-        .get(skill.id)
-        .copied()
-        .unwrap_or(0);
+    let level = state.skill_levels.get(skill.id).copied().unwrap_or(0);
     if level == 0 {
         return;
     }
@@ -213,14 +216,11 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             );
         }
         SkillEffect::PlayerMovementMult {
-            offsets,
-            max_bonus,
-            ..
+            offsets, max_bonus, ..
         } => {
             let mult = 1.0 + skills::skill_bonus(*max_bonus, level);
-            let count = apply_to_player_character_cdos(|player_cdo| {
-                let Some(mc) = read_component_ptr(player_cdo, ASC_CHAR_MOVEMENT_COMPONENT)
-                else {
+            let cdo_count = apply_to_player_character_cdos(|player_cdo| {
+                let Some(mc) = read_component_ptr(player_cdo, ASC_CHAR_MOVEMENT_COMPONENT) else {
                     return;
                 };
                 for &off in *offsets {
@@ -232,12 +232,84 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     }
                 }
             });
+            let live_count = apply_to_live_player_characters(|player| {
+                let Some(mc) = read_component_ptr(player, ASC_CHAR_MOVEMENT_COMPONENT) else {
+                    return;
+                };
+                for &off in *offsets {
+                    if let Some(v) = MOVEMENT_VANILLA.get(off) {
+                        write_f32(mc, off, v * mult);
+                    }
+                }
+            });
             bbp_log!(
-                "rpg/apply: {} level={} mult={:.3} written to {} player CDO(s)",
+                "rpg/apply: {} level={} mult={:.3} written to {} player CDO(s), {} live pawn(s)",
                 skill.id,
                 level,
                 mult,
-                count
+                cdo_count,
+                live_count
+            );
+        }
+        SkillEffect::PlayerFallDamageReduction {
+            ratio_offset,
+            take_fall_damage_offset,
+            min_velocity_offset,
+            max_reduction,
+            ..
+        } => {
+            let reduction = skills::skill_bonus(*max_reduction, level).min(1.0);
+            let cdo_count = apply_to_player_character_cdos(|player_cdo| {
+                let cur = read_f32(player_cdo, *ratio_offset);
+                if cur.is_finite() && cur > 0.0 {
+                    let _ = VANILLA_FALL_DAMAGE_RATIO.set(cur);
+                }
+                let cur_min_velocity = read_f32(player_cdo, *min_velocity_offset);
+                if cur_min_velocity.is_finite() && cur_min_velocity > 0.0 {
+                    let _ = VANILLA_MIN_FALL_DAMAGE_VELOCITY.set(cur_min_velocity);
+                }
+                if let Some(v) = VANILLA_FALL_DAMAGE_RATIO.get().copied() {
+                    write_f32(player_cdo, *ratio_offset, v * (1.0 - reduction));
+                }
+                if let Some(v) = VANILLA_MIN_FALL_DAMAGE_VELOCITY.get().copied() {
+                    // As resistance rises, require substantially higher landing
+                    // velocity before fall damage can trigger at all.
+                    let boosted = v * (1.0 + reduction * 99.0);
+                    write_f32(player_cdo, *min_velocity_offset, boosted);
+                }
+                write_bool(player_cdo, *take_fall_damage_offset, reduction < 0.999);
+            });
+            let live_count = apply_to_live_player_characters(|player| {
+                if let Some(v) = VANILLA_FALL_DAMAGE_RATIO.get().copied() {
+                    write_f32(player, *ratio_offset, v * (1.0 - reduction));
+                }
+                if let Some(v) = VANILLA_MIN_FALL_DAMAGE_VELOCITY.get().copied() {
+                    let boosted = v * (1.0 + reduction * 99.0);
+                    write_f32(player, *min_velocity_offset, boosted);
+                }
+                write_bool(player, *take_fall_damage_offset, reduction < 0.999);
+            });
+            let gms_count = apply_to_survival_game_mode_settings(|settings| {
+                let cur = read_f32(settings, skills::GMS_FALL_DAMAGE_MULTIPLIER);
+                if cur.is_finite() && cur > 0.0 {
+                    let _ = VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER.set(cur);
+                }
+                if let Some(v) = VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER.get().copied() {
+                    write_f32(
+                        settings,
+                        skills::GMS_FALL_DAMAGE_MULTIPLIER,
+                        v * (1.0 - reduction),
+                    );
+                }
+            });
+            bbp_log!(
+                "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s)",
+                skill.id,
+                level,
+                reduction,
+                cdo_count,
+                live_count,
+                gms_count
             );
         }
         SkillEffect::Runtime { .. } => {
@@ -264,6 +336,10 @@ fn write_f32(obj: &UObject, offset: usize, value: f32) {
     unsafe { (obj.field_ptr(offset) as *mut f32).write_unaligned(value) }
 }
 
+fn write_bool(obj: &UObject, offset: usize, value: bool) {
+    unsafe { (obj.field_ptr(offset) as *mut u8).write(if value { 1 } else { 0 }) }
+}
+
 fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UObject> {
     unsafe {
         let p: *mut UObject = parent
@@ -278,8 +354,22 @@ fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UObject> {
 /// player class (`BP_SurvivalPlayerCharacter` substring), call `f` on
 /// each. Returns the number of CDOs visited.
 fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = sdk::try_runtime() else { return 0 };
-    let Some(survival_class) = sdk::find_class_fast("SurvivalCharacter") else { return 0 };
+    apply_to_player_characters(true, &mut f)
+}
+
+/// Walk all live player SurvivalCharacter instances (non-CDOs) whose
+/// full name marks them as the player class, call `f` on each.
+fn apply_to_live_player_characters(mut f: impl FnMut(&UObject)) -> usize {
+    apply_to_player_characters(false, &mut f)
+}
+
+fn apply_to_player_characters(is_cdo: bool, f: &mut impl FnMut(&UObject)) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(survival_class) = sdk::find_class_fast("SurvivalCharacter") else {
+        return 0;
+    };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return 0;
@@ -289,7 +379,7 @@ fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
         if !obj.is_a(survival_class) {
             continue;
         }
-        if !obj.is_default_object() {
+        if obj.is_default_object() != is_cdo {
             continue;
         }
         if !obj.full_name().contains("BP_SurvivalPlayerCharacter") {
@@ -304,8 +394,12 @@ fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
 /// Walk every SurvivalComponent CDO and write `value` at `offset`.
 /// Used by SurvivalDrain skills.
 fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
-    let Some(rt) = sdk::try_runtime() else { return 0 };
-    let Some(class) = sdk::find_class_fast("SurvivalComponent") else { return 0 };
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(class) = sdk::find_class_fast("SurvivalComponent") else {
+        return 0;
+    };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return 0;
@@ -316,6 +410,29 @@ fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
             continue;
         }
         write_f32(obj, offset, value);
+        count += 1;
+    }
+    count
+}
+
+fn apply_to_survival_game_mode_settings(mut f: impl FnMut(&UObject)) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(class) = sdk::find_class_fast("SurvivalGameModeSettings") else {
+        return 0;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return 0;
+    }
+
+    let mut count = 0;
+    for obj in view.iter() {
+        if !obj.is_a(class) {
+            continue;
+        }
+        f(obj);
         count += 1;
     }
     count

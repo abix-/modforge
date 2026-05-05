@@ -23,7 +23,13 @@ fn safe<F: FnOnce() -> R + std::panic::UnwindSafe, R: Default>(f: F) -> R {
 /// 1 if a save slot is currently active, 0 otherwise.
 #[unsafe(no_mangle)]
 pub extern "C" fn bbp_rpg_has_active_slot() -> i32 {
-    safe(|| if tracker::current_slot().is_some() { 1 } else { 0 })
+    safe(|| {
+        if tracker::current_slot().is_some() {
+            1
+        } else {
+            0
+        }
+    })
 }
 
 /// Returns current level, 0 if no slot active.
@@ -105,10 +111,9 @@ pub unsafe extern "C" fn bbp_rpg_get_skill(
                 out_max.write_unaligned(skill.max_level);
             }
             if !out_level.is_null() {
-                let level = tracker::with_state(|s| {
-                    s.skill_levels.get(skill.id).copied().unwrap_or(0)
-                })
-                .unwrap_or(0);
+                let level =
+                    tracker::with_state(|s| s.skill_levels.get(skill.id).copied().unwrap_or(0))
+                        .unwrap_or(0);
                 out_level.write_unaligned(level);
             }
         }
@@ -138,7 +143,11 @@ pub unsafe extern "C" fn bbp_rpg_spend(skill_id: *const c_char) -> i32 {
         let Some(skill) = skills::lookup(id) else {
             return 0;
         };
-        if tracker::spend_skill_point(skill) { 1 } else { 0 }
+        if tracker::spend_skill_point(skill) {
+            1
+        } else {
+            0
+        }
     })
 }
 
@@ -168,7 +177,13 @@ pub unsafe extern "C" fn bbp_rpg_spend_many(skill_id: *const c_char, count: u32)
 /// without grinding XP. Returns 1 on success, 0 if no slot active.
 #[unsafe(no_mangle)]
 pub extern "C" fn bbp_rpg_debug_grant_skill_points(count: u32) -> i32 {
-    safe(|| if tracker::debug_grant_skill_points(count) { 1 } else { 0 })
+    safe(|| {
+        if tracker::debug_grant_skill_points(count) {
+            1
+        } else {
+            0
+        }
+    })
 }
 
 /// Format the skill's effect at `level` into the caller's buffer.

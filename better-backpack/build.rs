@@ -56,9 +56,6 @@ fn main() {
 
     // Add the directory containing UE4SS.lib to the linker's search
     // path, then link against it.
-    println!(
-        "cargo:rustc-link-search=native={}",
-        ue4ss_lib_dir.display()
-    );
+    println!("cargo:rustc-link-search=native={}", ue4ss_lib_dir.display());
     println!("cargo:rustc-link-lib=UE4SS");
 }

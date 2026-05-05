@@ -14,9 +14,9 @@ use std::sync::atomic::Ordering;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
-use windows_sys::Win32::Foundation::HMODULE;
 #[cfg(feature = "console")]
 use windows_sys::Win32::Foundation::HANDLE;
+use windows_sys::Win32::Foundation::HMODULE;
 #[cfg(feature = "console")]
 use windows_sys::Win32::System::Console::{
     AllocConsole, GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleTitleW, WriteConsoleA,

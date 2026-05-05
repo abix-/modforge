@@ -62,7 +62,10 @@ pub fn load_one(slot: &str) -> PlayerState {
             }
         },
         Err(_) => {
-            bbp_log!("rpg/state: no prior save for slot={}; starting fresh", short(slot));
+            bbp_log!(
+                "rpg/state: no prior save for slot={}; starting fresh",
+                short(slot)
+            );
             PlayerState::default()
         }
     }

@@ -9,6 +9,86 @@ Newest first.
 
 ## 2026-05-05 (single big day)
 
+### Fall Damage Resistance
+
+First attempt used a runtime `HealthComponent.ApplyDamageFromInfo`
+hook, but log tracing showed fall damage never passed through that
+ProcessEvent surface in practice.
+
+SDK review gave the better answer: `ASurvivalCharacter` owns fall damage
+directly via:
+
+- `bTakeFallDamage` (+0x1571)
+- `MinimumFallDamageVelocity` (+0x1574)
+- `FallDamageRatio` (+0x157C)
+- native `ApplyFallDamage()`
+
+So the correct implementation path is to patch fall-related fields on
+player CDOs and live pawns instead of guessing through generic health
+damage hooks. Collision / impact damage from high-speed movement is
+still tracked separately.
+
+Latest result: the field-based path is definitely executing.
+`fall_resistance` now patches `FallDamageRatio`,
+`bTakeFallDamage`, and `MinimumFallDamageVelocity` on player CDOs and
+the live pawn, and logs confirm those writes land. But the player can
+still take fall damage, so the field-only approach is not sufficient.
+
+The next plan is more specific now: hook the concrete
+`BP_SurvivalPlayerCharacter_*` classes directly. The prior
+`ApplyFallDamage()` / base `Character.OnLanded` hook attempt installed,
+but never fired. The current `ProcessEventHook` implementation matches
+exact live vtables, and the live player pawn is a concrete BP subclass,
+so base-class hooks are likely missing the real object.
+
+SDK context also shows `MulticastFallEffects` plus fall-specific anim
+notify states (`OverrideTakeFallDamage`, `ReduceFallDamage`), which is
+strong evidence the landing pipeline does more than read a single field.
+
+Latest concrete-hook result:
+- Hooking the concrete player BP class worked.
+- Logs show `OnLanded` suppression on the live
+  `BP_SurvivalPlayerCharacter_Female02_C` pawn.
+- The player still took fall damage anyway.
+
+So `OnLanded` is confirmed to be insufficient as the mitigation point.
+The next likely seams are `MulticastFallEffects`, the player BP damaged
+delegate, or another earlier native/BP fall step.
+
+SDK review then surfaced a separate fall-damage scalar:
+`USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C. Native
+fall damage is gated by both the per-character `FallDamageRatio` AND
+this per-game-mode multiplier. Per-character fields alone are not
+sufficient because the game-mode scalar still applies on top.
+
+The mod now walks every `USurvivalGameModeSettings` instance during the
+`fall_resistance` apply step and writes `vanilla * (1 - reduction)` into
+`FallDamageMultiplier`, alongside the existing per-character writes and
+the concrete-BP `OnLanded` / `ApplyFallDamage` suppression hook. This is
+sitting in the build as the next thing to validate in-game; not yet
+tested.
+
+If the multiplier write also fails to suppress damage, the next seam is
+the embedded `FCustomGameModeSettings` struct held at
+`USurvivalModeManagerComponent::CustomSettings` (+0x114), with
+`FallDamageMultiplier` at +0x1C inside the struct. That is the
+replicated runtime copy the game actually reads each fall.
+
+### Movement skill fix verified
+
+Move Speed was initially wired only through generic UE movement caps and
+player CDO writes, which was not enough for Grounded 2. The fix now
+also patches Grounded-specific `UMaineCharMovementComponent` fields:
+
+- `CustomGroundSpeedMultiplier` (+0x1198)
+- `CustomFlySpeedMultiplier` (+0x119C)
+- `CustomSwimSpeedMultiplier` (+0x11A0)
+- `MaxSwimSprintSpeed` (+0x1164)
+
+Movement writes are also mirrored onto live player pawns, not just
+CDOs, so the effect can be validated immediately in-session. User
+retest confirmed the run-speed skill now works.
+
 ### Skill registry refactor
 
 `skills.rs` is now the single source of truth. Each skill is one
@@ -27,12 +107,12 @@ with a `sqrt(level/100)` diminishing-returns curve.
 
 ### Combat + movement skills
 
-- Attack Damage (max +50%): `ASurvivalCharacter.CustomDamageMultiplier` at +0x12B8.
+- Attack Damage (max +300%): `ASurvivalCharacter.CustomDamageMultiplier` at +0x12B8.
 - Armor (max -50% damage taken): `UHealthComponent.BaseDamageReduction` at +0xEC, via the player CDO's HealthComponent pointer.
-- Move Speed (max +50% walk + sprint + swim): `MaxWalkSpeed` (+0x288), `MaxSprintSpeed` (+0x10EC), `MaxSwimSpeed` (+0x290).
-- Jump Height (max +80%): `JumpZVelocity` at +0x1B8.
-- Glide Speed (max +50%): `MaxFlySpeed` at +0x294.
-- Lifesteal (max +30% of damage dealt): catalog entry only;
+- Move Speed (max +300% walk + sprint + swim): `MaxWalkSpeed` (+0x288), `MaxSprintSpeed` (+0x10EC), `MaxSwimSpeed` (+0x290), `MaxSwimSprintSpeed` (+0x1164), `CustomGroundSpeedMultiplier` (+0x1198), `CustomSwimSpeedMultiplier` (+0x11A0).
+- Jump Height (max +300%): `JumpZVelocity` at +0x1B8.
+- Glide Speed (max +300%): `MaxFlySpeed` (+0x294) plus `CustomFlySpeedMultiplier` (+0x119C).
+- Lifesteal (max +90% of damage dealt): catalog entry only;
   runtime kill_hook integration was queued and pivoted to the
   registry refactor.
 

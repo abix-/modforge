@@ -48,7 +48,11 @@ pub fn activate_slot(slot: String, settings: Settings) {
         state.xp,
         state.skill_points,
         state.kill_count,
-        if state.last_killed.is_empty() { "<none>" } else { state.last_killed.as_str() }
+        if state.last_killed.is_empty() {
+            "<none>"
+        } else {
+            state.last_killed.as_str()
+        }
     );
 
     apply::apply(&state, &settings);

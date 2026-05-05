@@ -66,19 +66,20 @@ Adding a new skill of an existing shape is one row. Adding a new
 shape adds one variant to `SkillEffect` and one match arm in
 `apply_skill` and `format_effect`.
 
-### Current catalog (9 skills)
+### Current catalog (10 skills)
 
 | Skill            | Domain     | Final value at level 100         |
 | ---------------- | ---------- | -------------------------------- |
-| Backpack         | survival   | +60 slots (40 vanilla -> 100)    |
+| Backpack         | survival   | +460 slots (40 vanilla -> 500)   |
 | Hunger Resistance| survival   | -75% drain (1.0x -> 0.25x)       |
 | Thirst Resistance| survival   | -75% drain                       |
-| Attack Damage    | combat     | +50% damage (1.0x -> 1.5x)       |
+| Attack Damage    | combat     | +300% damage (1.0x -> 4.0x)      |
 | Armor            | combat     | -50% damage taken                |
-| Move Speed       | movement   | +50% walk + sprint + swim        |
-| Jump Height      | movement   | +80% jump-Z velocity             |
-| Glide Speed      | movement   | +50% MaxFlySpeed                 |
-| Lifesteal        | combat     | +30% of damage dealt healed back |
+| Move Speed       | movement   | +300% walk + sprint + swim       |
+| Jump Height      | movement   | +300% jump-Z velocity            |
+| Glide Speed      | movement   | +300% MaxFlySpeed                |
+| Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
+| Lifesteal        | combat     | +90% of damage dealt healed back |
 
 ### Per-level scaling
 
@@ -108,7 +109,7 @@ catalog entry plus (when needed) a new SkillEffect variant.
 - Combat: Critical Chance, Critical Damage, Evasion / Dodge,
   Thorns.
 - Movement: Walk Speed (separate from Move Speed if we want),
-  Climb Speed.
+  Climb Speed, Collision / Impact Damage Resistance.
 - Utility: Gather Yield, Crafting Discount, Repair Discount,
   Hauling Capacity.
 
@@ -212,13 +213,84 @@ in `rpg/apply.rs`. Two public entry points:
 | `SurvivalDrain`            | Walk SurvivalComponent CDO, write `vanilla * settings_mult * (1 - skill_red * progress)`. |
 | `PlayerCharFloat`          | Walk player ASurvivalCharacter CDOs, write `base + max_bonus * progress` at offset. |
 | `PlayerHealthCompFloat`    | Same but follow the HealthComponent ptr at +0x1340 first. |
-| `PlayerMovementMult`       | Same but follow CharMovementComponent at +0x1380, scale captured-vanilla baselines at multiple offsets. |
-| `Runtime`                  | No-op. Live trampolines (kill_hook) read the level on every tick. |
+| `PlayerMovementMult`       | Follow CharMovementComponent at +0x1380, scale captured-vanilla baselines at multiple offsets, including Grounded-specific custom movement multipliers, and mirror the same writes onto live player pawns. |
+| `Runtime`                  | No CDO write. Live trampolines read the level on each event, e.g. Lifesteal from damage hooks. |
 
-CDO writes propagate to newly-spawned instances. Effect on the
-*current* player session for combat / movement skills requires a
-save reload; live-instance writes are a TODO (see
+CDO writes propagate to newly-spawned instances. Movement skills
+also mirror the same writes onto the *current* player pawn, so
+Move Speed / Jump Height / Glide Speed can take effect without a
+reload. Combat-side live-instance writes are still a TODO (see
 [`todo.md`](todo.md)).
+
+### Fall damage path
+
+SDK review shows fall damage is not a generic "guess the damage type"
+problem. `ASurvivalCharacter` has an explicit fall pipeline:
+
+- `bTakeFallDamage` at `+0x1571`
+- `MinimumFallDamageVelocity` at `+0x1574`
+- `FallDamageRatio` at `+0x157C`
+- native `ApplyFallDamage()`
+
+Those fields live directly on `ASurvivalCharacter`, and the player BP
+also exposes `OnLanded`. That makes Fall Damage Resistance a better fit
+for direct player-character field writes than for a generic
+`HealthComponent.ApplyDamageFromInfo` runtime hook.
+
+Current state:
+- the mod patches `FallDamageRatio`, `bTakeFallDamage`, and
+  `MinimumFallDamageVelocity` on player CDOs and the live pawn
+- logs confirm the write is happening
+- the player can still take fall damage in practice
+
+So the field-only approach is not sufficient. The first direct-hook
+plan is now to hook the concrete player BP classes rather than the base
+classes, because the current `ProcessEventHook` matches exact live
+vtables and the in-game pawn is a concrete
+`BP_SurvivalPlayerCharacter_*` subclass. That makes these the next
+targets:
+
+- `BP_SurvivalPlayerCharacter_C::OnLanded(const FHitResult&)`
+- `BP_SurvivalPlayerCharacter_Female02_C::OnLanded(const FHitResult&)`
+- other concrete player BP variants seen at runtime if needed
+
+That direct concrete-BP hook pass did work: logs now show
+`OnLanded` being suppressed on the live player pawn. But the player can
+still take fall damage, which means `OnLanded` is not the damaging seam
+or is too late in the sequence to stop the damage.
+
+So the next investigation target is no longer "hook the right player
+class" but "hook the right fall step." The most likely nearby surfaces
+now are:
+
+- `ASurvivalCharacter::MulticastFallEffects(...)`
+- the player BP damaged delegate bound from `HealthComponent`
+- other player BP fall-adjacent events such as `NotifyOnLandAnimBegin`
+
+SDK review then surfaced a separate scalar that is almost certainly the
+real seam: `USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C.
+This is a per-game-mode global multiplier on fall damage that the native
+path multiplies in on top of the per-character ratio. Without writing
+this, the per-character fields can be set to 0 and the game will still
+apply damage scaled by the game-mode multiplier.
+
+The mod now also walks every `USurvivalGameModeSettings` instance and
+writes `vanilla * (1 - reduction)` into `FallDamageMultiplier`. This is
+in code but **not yet validated in-game**; the next step is a controlled
+fall to confirm the multiplier write reaches the active game mode and
+fall damage drops to zero at level 100. If it does not, the next likely
+seam is the `FCustomGameModeSettings::FallDamageMultiplier` struct field
+(+0x1C) embedded inside `USurvivalModeManagerComponent::CustomSettings`
+at +0x114 on the live mode-manager component, since that struct is the
+replicated value the runtime reads on each fall.
+
+Adjacent fall-specific SDK surfaces (kept on the radar if the multiplier
+write does not fully suppress damage):
+
+- `ASurvivalCharacter::MulticastFallEffects(EPhysicalSurface, float VelocityZ)`
+- `AnimNotifyState_OverrideTakeFallDamage`
+- `AnimNotifyState_ReduceFallDamage`
+- the player BP damaged delegate bound from `HealthComponent`
 
 ## ImGui tab
 
@@ -265,9 +337,11 @@ on top of the user's base.
 
 Open work tracked in [`todo.md`](todo.md). Highlights:
 
-- Live-instance writes for combat / movement skills (currently
-  CDO-only, requires save reload to take effect on the active
-  session).
+- Live-instance writes for remaining combat-side skills.
+- Collision / Impact Damage Resistance so high-mobility builds stop
+  dying when slamming into terrain and plants.
+- Health Regen as the next survivability skill after the movement
+  safety pass.
 - pkg(0) instigator bug fix.
 - Catalog expansion (Crit, Evasion, Max Health, Stamina, Gear
   Hardiness, etc.).

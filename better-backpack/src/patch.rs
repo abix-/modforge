@@ -47,9 +47,8 @@ pub fn run(slot_count: i32) -> PatchStats {
         }
         stats.scanned += 1;
 
-        let current = unsafe {
-            (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned()
-        };
+        let current =
+            unsafe { (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned() };
         if current == VANILLA_MOUNT || current >= slot_count {
             continue;
         }
@@ -66,9 +65,8 @@ pub fn run(slot_count: i32) -> PatchStats {
         unsafe {
             (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *mut i32).write_unaligned(slot_count);
         }
-        let verify = unsafe {
-            (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned()
-        };
+        let verify =
+            unsafe { (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned() };
         bbp_log!(
             "PATCH {}: {} -> {} (verify={})",
             full,

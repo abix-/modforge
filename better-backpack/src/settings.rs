@@ -110,10 +110,7 @@ pub fn load() -> Settings {
             }
         },
         Err(_) => {
-            bbp_log!(
-                "settings: {} not found, using defaults",
-                path.display()
-            );
+            bbp_log!("settings: {} not found, using defaults", path.display());
             Settings::default()
         }
     }

@@ -119,11 +119,8 @@ impl UObject {
     }
 }
 
-pub type ProcessEventFn = unsafe extern "system" fn(
-    this: *const UObject,
-    function: *const UFunction,
-    parms: *mut c_void,
-);
+pub type ProcessEventFn =
+    unsafe extern "system" fn(this: *const UObject, function: *const UFunction, parms: *mut c_void);
 
 #[repr(transparent)]
 pub struct UClass {
