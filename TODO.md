@@ -243,22 +243,21 @@ R1-R5 answered (see above). Each spike below is a concrete
 implementation against known field offsets and UFunction names,
 not exploratory.
 
-- [ ] **Kill attribution: tame pet / mount support.** First Spike B
-  in-game test surfaced: when the player's tame Buggy mount
-  killed a Larva, we credited the kill via the Buggy's
-  AIController (`AIC_AntSoldier_Augusta_Buggy_C`). That IS the
-  player's kill -- the Buggy is their mount -- but Spike A's
-  current filter is "any creature death where the InstigatorController
-  is non-null" with no ownership check.
+- [ ] **Kill attribution: Buggy support.** (In Grounded 2, the
+  player's tame mounts are called Buggies.) First Spike B
+  in-game test surfaced: when the player's Buggy killed a
+  Larva, we credited the kill via the Buggy's AIController
+  (`AIC_AntSoldier_Augusta_Buggy_C`). That IS the player's kill
+  but Spike A's current filter is "any creature death where the
+  InstigatorController is non-null" with no ownership check.
 
   Real XP rules need three buckets, not two:
   - **Direct player kill** (InstigatorController is local
     PlayerController): full XP.
-  - **Player's pet/mount kill** (InstigatorController is an AIC
-    whose owning Pawn is a tame creature owned by the player):
-    configurable fraction, default 1.0 (100%) per user request.
-    Knob lives in `settings.json` under
-    `rpg.pet_kill_xp_multiplier`.
+  - **Buggy kill** (InstigatorController is an AIC whose
+    possessed Pawn is the player's Buggy): configurable
+    fraction, default 1.0 (100%) per user request. Knob lives
+    in `settings.json` under `rpg.buggy_kill_xp_multiplier`.
   - **Enemy-vs-enemy** (some other AIC, no player relationship):
     no XP. Don't even count toward kill_count.
 
@@ -270,8 +269,8 @@ not exploratory.
     (5808) / `UPetMasterComponent` (5809).
   - Cross-reference owner against the local
     `BP_SurvivalPlayerCharacter_C`'s `PetMasterComponent` to
-    confirm the pet belongs to *us*, not another player's pet
-    in co-op.
+    confirm the Buggy belongs to *us*, not another player's
+    Buggy in co-op.
 
   Out of scope for Spike B. Pick up before the XP loop lands.
 

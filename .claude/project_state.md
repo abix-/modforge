@@ -226,14 +226,15 @@ Files:
 In-game test confirmed: kill -> "no prior save for slot=06d9929b"
 -> "saved kill #1" -> file written. Reload test pending.
 
-### Tame pet / mount kill attribution (open)
+### Buggy kill attribution (open)
 
-In-game test also surfaced: when the player's Buggy mount
-killed a Larva, we credited the kill via the Buggy's
-AIController. Player intent is that Buggy kills count (default
-full XP) but we currently can't distinguish:
+In Grounded 2, the player's tame mounts are called Buggies.
+In-game test surfaced: when the player's Buggy killed a Larva,
+we credited the kill via the Buggy's AIController. Player
+intent: Buggy kills count (default full XP), but we currently
+can't distinguish:
 - Direct player kill (PlayerController instigator).
-- Player's pet/mount kill (AIC for an owned tame creature).
+- Buggy kill (AIC for the player's owned Buggy).
 - Enemy-vs-enemy (some other AIC, no XP).
 
 Detection path (TODO before XP loop): from
