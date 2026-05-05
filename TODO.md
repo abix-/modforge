@@ -348,6 +348,37 @@ not exploratory.
   SDK already on disk. If the flag exists, we're unblocked in 10
   minutes and can move to Spike B+C immediately. If it doesn't,
   we move to Option B with a confirmed reason -- not guessing.
+- [ ] **Future infra: global ProcessEvent hook (Option B,
+  retained).** Spike A unblocked us via Option A, but Option B
+  is still the right long-term investment. Reasons:
+
+  - **Future signals.** Every other PE-only event we'll want
+    later (player level-up confirm, item crafted, recipe
+    learned, dialog start/end, save fired, world stream-in)
+    needs the same pattern: catch a UFunction call across many
+    classes. Per-vtable hooking forces us to enumerate every
+    subclass. Global hook + name filter is the canonical UE
+    instrumentation pattern.
+  - **Lower friction for future work.** When we want a new
+    signal, it's `if function.name() == "FooEvent" { ... }`,
+    not "find the right class to hook and pray its vtable
+    catches all instances."
+  - **Already a UE4SS dep.** We're a CPPMod. Pulling in
+    `RC::Unreal::Hook::RegisterProcessEvent[Pre|Post]Callback`
+    (`RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp`) doesn't add a
+    new dependency surface.
+
+  Plan: ~20-line addition to the C++ shim that registers a Pre
+  callback and forwards `(this, function, parms)` into a Rust
+  extern. Rust side: a tiny dispatch registry (HashMap<UFunction*,
+  Box<dyn Fn>>). Replace `kill_hook.rs`'s per-vtable
+  ProcessEventHook with a registry entry. Existing `inv_hook.rs`
+  can stay on per-vtable -- it's class-specific by design (only
+  `WBP_InventoryInterface_C` matters).
+
+  Not blocking anything right now; pick up after Spike B + C
+  land and we have multiple PE-only signals to multiplex.
+
 - [ ] Spike B: persistence. Find `USaveLoadManager` in GObjects,
   read `SaveInProgressSaveGameHeaderData->PlaythroughGuid`,
   write/read a JSON file at `<DLL_dir>/saves/<guid>.json`. Handle
