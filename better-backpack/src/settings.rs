@@ -26,9 +26,9 @@ pub struct InventorySettings {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct SurvivalSettings {
-    #[serde(default = "default_one")]
+    #[serde(default = "default_survival_multiplier")]
     pub thirst_multiplier: f32,
-    #[serde(default = "default_one")]
+    #[serde(default = "default_survival_multiplier")]
     pub hunger_multiplier: f32,
 }
 
@@ -36,8 +36,8 @@ fn default_slot_count() -> i32 {
     100
 }
 
-fn default_one() -> f32 {
-    1.0
+fn default_survival_multiplier() -> f32 {
+    0.5
 }
 
 impl Default for InventorySettings {
@@ -51,8 +51,8 @@ impl Default for InventorySettings {
 impl Default for SurvivalSettings {
     fn default() -> Self {
         Self {
-            thirst_multiplier: default_one(),
-            hunger_multiplier: default_one(),
+            thirst_multiplier: default_survival_multiplier(),
+            hunger_multiplier: default_survival_multiplier(),
         }
     }
 }
