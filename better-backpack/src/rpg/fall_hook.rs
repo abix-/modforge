@@ -12,7 +12,6 @@ const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
 ];
 
 const FN_ON_LANDED: &str = "OnLanded";
-const FN_MULTICAST_FALL_EFFECTS: &str = "MulticastFallEffects";
 
 pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
     let mut hooks = Vec::new();
@@ -52,40 +51,30 @@ fn on_player_fall_event(
     let fn_name = function.as_object().name();
     let is_player = is_player_character(this);
 
-    // Velocity-stomp: when OnLanded or MulticastFallEffects fires on
-    // the player, scale `CharMovementComponent.Velocity.Z` by
-    // `(1 - reduction)` BEFORE forwarding the original event. The
-    // native fall / impact damage formula reads live velocity at
-    // invocation time, so a stomp here scales (or zeros) the damage.
+    // Velocity-stomp: works for fall landings (OnLanded fires before
+    // native ApplyFallDamage reads live Velocity.Z). Does NOT work
+    // for collisions (engine zeroes V.Z during collision response
+    // before any PE event fires), so we only stomp on OnLanded now.
     //
-    // - `OnLanded` fires only for actual character landings after
-    //   airtime. Gated on fall_resistance.
-    // - `MulticastFallEffects` fires for fall landings AND for
-    //   non-airborne impacts (running into rocks, hazards, etc.).
-    //   Gated on the max of fall_resistance and impact_resistance --
-    //   either skill scales the impact through this seam.
-    //
-    // Neither hook suppresses the BP event; we forward to original
-    // so animations and sounds still run.
-    if is_player {
-        let reduction = match fn_name.as_str() {
-            FN_ON_LANDED => current_fall_resistance_reduction(),
-            FN_MULTICAST_FALL_EFFECTS => current_fall_resistance_reduction()
-                .max(current_impact_resistance_reduction()),
-            _ => 0.0,
-        };
+    // OnLanded does not suppress; we forward to original so
+    // animations and sounds still run.
+    if is_player && fn_name == FN_ON_LANDED {
+        let reduction = current_fall_resistance_reduction();
         if reduction > 0.0 {
             let scale = (1.0 - reduction).max(0.0) as f64;
             let stomped = stomp_player_velocity_z(this, scale);
-            bbp_log!(
-                "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {} / fn={})",
-                stomped.before,
-                stomped.after,
-                this.name(),
-                reduction,
-                hook_class_name,
-                fn_name
-            );
+            // Skip the log when V.Z was already zero -- the engine has
+            // already absorbed the velocity and our stomp is a no-op.
+            if stomped.before.abs() > 0.001 {
+                bbp_log!(
+                    "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {})",
+                    stomped.before,
+                    stomped.after,
+                    this.name(),
+                    reduction,
+                    hook_class_name
+                );
+            }
         }
     }
 
@@ -97,20 +86,16 @@ fn on_player_fall_event(
     // before and after `original.call`. The PE event whose POST reading
     // is higher than its pre reading is the event during which native
     // code wrote `CurrentDamage` -- our intercept seam.
+    // Damage-change trace: log only events during which CurrentDamage
+    // actually changed. Keeps the log readable when ReceiveHit fires
+    // dozens of times per collision but only one or two events
+    // actually apply damage. Gated on impact_resistance level > 0 so
+    // it stays silent for normal users.
     let impact_diag = is_player
         && current_impact_resistance_level() > 0
         && is_collision_relevant(&fn_name);
     let cd_before = if impact_diag {
-        let cd = read_player_current_damage(this);
-        let vz = read_player_velocity_z(this);
-        bbp_log!(
-            "rpg/impact-trace: bp-class fn={} on {} CurrentDamage={:.2} Velocity.Z={:.2}",
-            fn_name,
-            this.name(),
-            cd,
-            vz
-        );
-        Some(cd)
+        Some(read_player_current_damage(this))
     } else {
         None
     };
@@ -120,11 +105,14 @@ fn on_player_fall_event(
     if let Some(before) = cd_before {
         let after = read_player_current_damage(this);
         if (after - before).abs() > 0.001 {
+            let vz = read_player_velocity_z(this);
             bbp_log!(
-                "rpg/impact-trace: bp-class fn={} POST CurrentDamage={:.2} (delta={:.2})",
+                "rpg/impact-trace: damage applied during fn={} CurrentDamage {:.2} -> {:.2} (delta={:.2}) Velocity.Z={:.2}",
                 fn_name,
+                before,
                 after,
-                after - before
+                after - before,
+                vz
             );
         }
     }
@@ -224,13 +212,6 @@ fn current_impact_resistance_level() -> u32 {
     .unwrap_or(0)
 }
 
-fn current_impact_resistance_reduction() -> f32 {
-    let level = current_impact_resistance_level();
-    if level == 0 {
-        return 0.0;
-    }
-    skills::skill_bonus(1.0, level).min(1.0)
-}
 
 /// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The
 /// player BP instance has its HealthComponent ptr at +0x1340 inside

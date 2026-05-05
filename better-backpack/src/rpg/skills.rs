@@ -83,6 +83,17 @@ pub enum SkillEffect {
         format: PercentFormat,
     },
 
+    /// Bitmask write on the player's `UHealthComponent` -- when level
+    /// > 0, set the named uint32 field to `mask`. Used by Impact Damage
+    /// Resistance to set `RequiredDamageTypeFlags` so damage with no
+    /// flag bits (fall, environmental) fails the native gate while
+    /// creature attacks (which carry non-zero type flags) pass through.
+    PlayerHealthCompU32Mask {
+        offset: usize,
+        mask: u32,
+        format: PercentFormat,
+    },
+
     /// Multiply captured vanilla baselines on the player's
     /// `UMaineCharMovementComponent` (followed from the player CDO at
     /// +0x1380). All `offsets` get scaled by the same multiplier
@@ -180,6 +191,13 @@ pub const SMMC_CUSTOM_FALL_DAMAGE_MULTIPLIER: usize =
 // `UpdateCustomSettings` UFunction.
 pub const FCG_FALL_DAMAGE_MULTIPLIER_OFFSET: usize = 0x001C;
 pub const FCG_STRUCT_SIZE: usize = 0x0020;
+
+// UHealthComponent.RequiredDamageTypeFlags (Maine_classes.hpp:42197).
+// Bitmask of damage-type flags incoming damage MUST have to pass the
+// native gate. Setting to 0xFFFFFFFF rejects damage with `type_flags=0`
+// (the fall and environmental paths in Grounded 2). Creature damage
+// carries non-zero type flags so it still passes.
+pub const HC_REQUIRED_DAMAGE_TYPE_FLAGS: usize = 0x00FC;
 
 // UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
 pub const HC_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
@@ -320,10 +338,11 @@ pub const CATALOG: &[Skill] = &[
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::Runtime {
-            max_bonus: 1.00,
+        effect: SkillEffect::PlayerHealthCompU32Mask {
+            offset: HC_REQUIRED_DAMAGE_TYPE_FLAGS,
+            mask: 0xFFFFFFFF,
             format: PercentFormat::MinusPercent {
-                word: "impact damage",
+                word: "impact / fall damage",
             },
         },
     },
@@ -406,6 +425,13 @@ pub fn format_effect(id: &str, level: u32) -> String {
             format,
             ..
         } => format_pct(0.0, *max_reduction, level, format),
+        SkillEffect::PlayerHealthCompU32Mask { format, .. } => {
+            // Boolean-style: active when the player has at least one
+            // skill point, full strength applied unconditionally (the
+            // gate is binary, not scaled).
+            let bonus = if level > 0 { 1.0 } else { 0.0 };
+            format_pct(0.0, bonus, level, format)
+        }
         SkillEffect::PlayerMovementMult {
             max_bonus,
             format_word,

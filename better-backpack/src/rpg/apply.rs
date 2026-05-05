@@ -217,6 +217,29 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                 count
             );
         }
+        SkillEffect::PlayerHealthCompU32Mask { offset, mask, .. } => {
+            // Binary gate: any level > 0 sets the mask. Walk player CDOs
+            // and live pawns -- the mask stays set for the life of the
+            // session, like Armor's BaseDamageReduction.
+            let cdo_count = apply_to_player_character_cdos(|player_cdo| {
+                if let Some(hc) = read_component_ptr(player_cdo, ASC_HEALTH_COMPONENT) {
+                    write_u32(hc, *offset, *mask);
+                }
+            });
+            let live_count = apply_to_live_player_characters(|player| {
+                if let Some(hc) = read_component_ptr(player, ASC_HEALTH_COMPONENT) {
+                    write_u32(hc, *offset, *mask);
+                }
+            });
+            bbp_log!(
+                "rpg/apply: {} level={} mask=0x{:08x} written to {} player HC CDO(s), {} live player HC(s)",
+                skill.id,
+                level,
+                mask,
+                cdo_count,
+                live_count
+            );
+        }
         SkillEffect::PlayerMovementMult {
             offsets, max_bonus, ..
         } => {
@@ -352,6 +375,10 @@ fn read_f32(obj: &UObject, offset: usize) -> f32 {
 
 fn write_f32(obj: &UObject, offset: usize, value: f32) {
     unsafe { (obj.field_ptr(offset) as *mut f32).write_unaligned(value) }
+}
+
+fn write_u32(obj: &UObject, offset: usize, value: u32) {
+    unsafe { (obj.field_ptr(offset) as *mut u32).write_unaligned(value) }
 }
 
 fn write_bool(obj: &UObject, offset: usize, value: bool) {
