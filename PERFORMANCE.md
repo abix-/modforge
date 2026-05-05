@@ -9,9 +9,9 @@ still be tightened.
 
 In a normal play session this mod is invisible to a frame profile. The
 ProcessEvent hook fires only on the open inventory widget (not the whole
-UMG tree), the rescan loop runs on a worker thread once every ten
-seconds, and release builds compile out all trace logging. Per-frame
-overhead while doing nothing is **zero** (the worker thread is asleep);
+UMG tree), the worker thread **terminates** once init completes (no
+recurring rescan), and release builds compile out all trace logging.
+Per-frame overhead at idle is **zero** (no thread, no work);
 per-frame overhead with the inventory open is **sub-microsecond**;
 worst-case overhead during active mouse-wheel scrolling is
 **single-digit ms/sec** of CPU.
@@ -86,23 +86,17 @@ worst-case scroll cost is **~5-10 ms/sec of CPU**, on the game thread,
 during active scrolling only. Well under one frame at 60 fps; below
 sample resolution at 144 fps.
 
-### 4. Rescan loop
+### 4. Rescan loop -- removed
 
-`patch.rs::run`, called every 10 s from the worker thread (not the game
-thread).
+Earlier revisions of this doc described a 10 s rescan loop. **It's
+gone.** The CDO patch is sticky for the lifetime of the DLL: UE doesn't
+re-load CDOs from disk during a session, and every new
+`UInventoryComponent` (including the one constructed when the player
+loads a save) inherits its field defaults from the patched CDO. So a
+single patch at startup is sufficient. The worker thread now terminates
+after the inventory hook installs.
 
-Per scan:
-
-- iterate every entry in `GObjects` (~125,000 in a loaded session)
-- per entry: `IsA(InventoryComponent)` -- a `super_class` chain walk,
-  typically 2-5 hops; pointer-compare per hop, no allocations
-- for the ~20-50 matches: read `DefaultMaxSize` at `+0x01E0`, decide
-  whether to patch
-- for the ~1 player-owned match: write `100` and verify
-
-Estimated wall cost: **1-3 ms per scan**, off the render path. A
-rescan takes ~3 ms once every 10,000 ms. Background work, not frame
-work.
+Net steady-state cost after init: zero threads running, zero CPU.
 
 ### 5. Logging
 
@@ -169,11 +163,13 @@ Strictly optional. None of these are visible in a profile today.
    so shipping users don't get a second window in their game. The file
    log at `%TEMP%\BetterBackpack.log` is the durable record; the live
    console is a developer convenience. UX fix more than perf.
-4. **Lower the rescan cadence.** 10 s is inherited from the C++ build.
-   If the player main backpack DefaultMaxSize is never observed to
-   revert in practice, we could drop the rescan loop entirely after the
-   first successful patch. The current cost is 3 ms / 10 s = 0.03% of
-   one CPU core, so this is purely a tidy-up.
+4. **Add `FUObjectArray::AddUObjectCreateListener` integration** if a
+   real CDO-revert scenario is ever observed in a play session. Today
+   we patch once and exit; if a Blueprint hot-reload or replication
+   path ever wipes the CDO, we'd silently miss it. The fix is the
+   canonical UE4SS pattern -- register a listener, filter by class
+   pointer, defer a re-patch one tick. ~100 lines of work; not
+   warranted unless the failure is observed.
 
 ## Methodology
 

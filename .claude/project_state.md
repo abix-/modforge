@@ -115,6 +115,16 @@ grounded2mods/
   DLL loads. If the player's inventory was constructed before injection,
   a save reload may be required to see 100 slots in-game.
 
+## Worker thread lifecycle (revised 2026-05-04)
+- Worker patches the CDO once, then installs the inv hook with backoff
+  retry, then **exits**. No 10-second rescan loop. CDO patches are
+  sticky for the lifetime of the DLL; UE does not re-load CDOs during a
+  session. Save loads spawn fresh inventory instances that inherit from
+  the patched CDO automatically.
+- If a real CDO-revert scenario is ever observed, switch to
+  `FUObjectArray::AddUObjectCreateListener` (canonical UE4SS pattern,
+  ~100 lines) instead of bringing back the polling loop.
+
 ## Open questions
 - Step 6 needs validation that calling `original` ProcessEvent from a Rust
   hook closure preserves UE's thiscall expectations on this platform.

@@ -4,10 +4,16 @@
 //   1. DllMain spawns the worker thread and returns.
 //   2. Worker initializes log, detects platform, init's the SDK runtime.
 //   3. Waits for GObjects to populate.
-//   4. Patches every player-owned UInventoryComponent's DefaultMaxSize.
-//   5. Loops, rescanning every 10s and re-patching reverts.
+//   4. Patches the player UInventoryComponent CDO's DefaultMaxSize once.
+//      Future instance constructions (including those triggered by save
+//      loads) inherit from the patched CDO automatically -- no rescan
+//      loop needed. UE doesn't re-load CDOs from disk during a session,
+//      so the patch is sticky for the lifetime of the DLL.
+//   5. Lazily installs the WBP_InventoryInterface_C ProcessEvent hook
+//      with backoff retry until the inventory UI loads. Once installed,
+//      the worker exits.
 //
-// Inventory-interface ProcessEvent hook + viewport rebind land in step 6+.
+// Net runtime cost after init: zero. Worker thread terminates.
 
 #![allow(clippy::missing_safety_doc)]
 
@@ -37,7 +43,9 @@ const TRUE: BOOL = 1;
 
 const INIT_RETRY_DELAY: Duration = Duration::from_millis(500);
 const INIT_MAX_RETRIES: u32 = 60;
-const RESCAN_INTERVAL: Duration = Duration::from_secs(10);
+const HOOK_RETRY_BASE_DELAY_MS: u64 = 500;
+const HOOK_RETRY_MAX_DELAY_MS: u64 = 5_000;
+const HOOK_RETRY_TIMEOUT_SEC: u64 = 600; // 10 min hard cap before giving up
 
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -121,36 +129,49 @@ unsafe fn worker() {
         initial.skipped_non_player
     );
 
-    let mut inv_hook = match inv_hook::install() {
-        Ok(h) => {
+    // Install the inventory-interface hook with exponential backoff. The
+    // class isn't loaded into GObjects until the inventory UI opens for
+    // the first time. We retry until install succeeds or we hit the
+    // timeout. After install, this thread exits and the mod's runtime
+    // overhead drops to zero.
+    match install_inv_hook_with_backoff() {
+        Some(h) => {
             bbp_log!("inv hook: installed on {}", h.class_name());
-            Some(h)
+            // Leak the hook so it lives for the lifetime of the process.
+            // Drop-on-thread-exit would unhook the trampoline immediately.
+            std::mem::forget(h);
         }
-        Err(e) => {
-            bbp_log!("inv hook: install pending ({}), will retry", e);
-            None
-        }
-    };
-
-    bbp_log!("entering rescan loop (interval = {:?})", RESCAN_INTERVAL);
-    loop {
-        thread::sleep(RESCAN_INTERVAL);
-        let again = patch::run();
-        if again.patched > 0 {
+        None => {
             bbp_log!(
-                "rescan: patched={} (re-applied after revert)",
-                again.patched
+                "inv hook: gave up after {}s; scrolling will not work this session",
+                HOOK_RETRY_TIMEOUT_SEC
             );
         }
-        if inv_hook.is_none() {
-            inv_hook = match inv_hook::install() {
-                Ok(h) => {
-                    bbp_log!("inv hook: installed on {}", h.class_name());
-                    Some(h)
+    }
+
+    bbp_log!("init complete; worker thread exiting");
+}
+
+fn install_inv_hook_with_backoff() -> Option<hook::ProcessEventHook> {
+    let mut delay_ms = HOOK_RETRY_BASE_DELAY_MS;
+    let deadline = std::time::Instant::now()
+        + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
+    let mut last_err: Option<&str> = None;
+    loop {
+        match inv_hook::install() {
+            Ok(h) => return Some(h),
+            Err(e) => {
+                if last_err != Some(e) {
+                    bbp_log!("inv hook: pending ({}), will retry", e);
+                    last_err = Some(e);
                 }
-                Err(_) => None,
-            };
+            }
         }
+        if std::time::Instant::now() >= deadline {
+            return None;
+        }
+        thread::sleep(Duration::from_millis(delay_ms));
+        delay_ms = (delay_ms * 2).min(HOOK_RETRY_MAX_DELAY_MS);
     }
 }
 
