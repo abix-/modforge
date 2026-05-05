@@ -346,6 +346,7 @@ See [`rpg.md`](rpg.md) for the XP layer that consumes this signal.
 | Offset  | Type             | Field                                                 |
 | ------- | ---------------- | ----------------------------------------------------- |
 | +0x1340 | UHealthComponent* | `HealthComponent`                                     |
+| +0x1378 | UStatusEffectComponent* | `StatusEffectComponent` (the canonical extension surface for damage modifiers; see below) |
 | +0x1380 | UCharacterMovementComponent* | `CharMovementComponent`                  |
 | +0x12B8 | float            | `CustomDamageMultiplier` (Attack Damage skill writes) |
 | +0x1571 | bool             | `bTakeFallDamage` (UNUSED by native fall code)        |
@@ -355,6 +356,158 @@ See [`rpg.md`](rpg.md) for the XP layer that consumes this signal.
 The "UNUSED" entries are SDK-exposed but not consulted by Grounded
 2's native fall-damage code. Documented here so we do not retry
 patching them.
+
+## Status Effect system (the canonical extension surface)
+
+Grounded 2 ships a full status-effect system as
+`UStatusEffectComponent` on `ASurvivalCharacter` at +0x1378
+(`Maine_classes.hpp:35888`). This is the *intended* extension point
+for any per-stat / per-damage-type modifier the game can natively
+support. Skills that should ultimately be backed by status effects:
+fall damage, impact damage, lifesteal, crit chance, crit damage,
+thorns, attack damage, stun resist -- nearly every entry in our
+catalog has a matching `EStatusEffectType` enum value.
+
+### Why this is the right surface
+
+Our current implementations write scalar fields directly on
+`UHealthComponent` (Armor's `BaseDamageReduction`, Impact
+Resistance's `RequiredDamageTypeFlags`) or pre-stomp velocity on
+`UCharacterMovementComponent` (Fall Resistance). These work but
+they are binary or coarse, and they do not scale per-skill-level
+along the `sqrt(level/100)` curve the rest of the catalog uses.
+The status effect system is *built* for proportional, type-aware,
+stackable scaling -- the engine reads it on every damage event.
+
+### The component
+
+`UStatusEffectComponent` (extends `UActorComponent`,
+`Maine_classes.hpp:35888`):
+
+| Field | Offset | Notes |
+| ----- | ------ | ----- |
+| `DefaultStatusEffects` | +0x0108 | `TArray<FDataTableRowHandle>` -- effects added at component init |
+| `MountedDefaultStatusEffects` | +0x0118 | Effects added while riding a Buggy mount |
+| `UnmountedDefaultStatusEffects` | +0x0128 | Effects added when not mounted |
+| `StatusEffects` | +0x01C8 | `TArray<UStatusEffect*>` -- the live, replicated list (Net, RepNotify) |
+| `HealthComponent` | +0x0248 | back-pointer to the actor's HC |
+
+Public surface (UFunctions, callable via ProcessEvent):
+
+```cpp
+void AddEffect(UStatusEffect* StatusEffect);
+UStatusEffect* CreateAndAddEffect(const FDataTableRowHandle& StatusEffectRowHandle);
+void RemoveEffect(UStatusEffect* StatusEffect, bool bBroadcastChangedEvent);
+bool CanAddEffect(const FDataTableRowHandle& StatusEffectRowHandle) const;
+
+// the getters native damage code queries:
+float GetValueForStat(EStatusEffectType StatType, bool bTemporaryEffectsOnly) const;
+float GetValueForStatForApplicationTags(EStatusEffectType StatType, AActor* TargetToCheck) const;
+float GetValueForStatForDamageTypeFlags(EStatusEffectType StatType, int32 Flags) const;
+bool HasStatusEffectOfType(EStatusEffectType StatType) const;
+int32 GetNumStatusEffectOfType(EStatusEffectType StatType) const;
+
+// useful event taps:
+TMulticastInlineDelegate<void(AActor* Owner, UStatusEffect* StatusEffect)> OnStatusEffectAdded;
+TMulticastInlineDelegate<void(AActor* Owner, UStatusEffect* StatusEffect)> OnStatusEffectRemoved;
+```
+
+`GetValueForStatForDamageTypeFlags(StatType, Flags)` is the
+"proportional, type-filtered" getter. Native damage code passes the
+incoming damage's type flag bitmask (the same `DamageTypeFlags` we
+read off the multicast parm) and gets back the summed modifier
+across all matching status effects on the actor.
+
+### `EStatusEffectType` enum (relevant subset)
+
+`Maine_structs.hpp:136`, 90+ entries. Values that map directly to
+skill ideas in our catalog:
+
+| Stat | Value | Use |
+| ---- | ----- | --- |
+| `MoveSpeed` | 1 | (we currently write CMC fields directly; could replace) |
+| `MaxHealth` | 5 | future Max Health skill |
+| `MaxStun` | 7 | future stun-resist skill |
+| `StunImmunity` | 8 | "" |
+| `MaxHauling` | 13 | future hauling skill |
+| `FallDamage` | **14** | Fall Damage Resistance |
+| `WaterBreathing` | 15 | future skill |
+| `HungerRate` | 17 | (we currently write SurvivalComponent directly) |
+| `ThirstRate` | 18 | "" |
+| `StaminaRegenRate` | 19 | future stamina skill |
+| `AttackDamage` | 23 | (we currently write `CustomDamageMultiplier`) |
+| `DamageReduction` | 29 | Armor (currently writes `BaseDamageReduction`) |
+| `DamageReductionMultiplier` | **30** | proportional generic reduction |
+| `CriticalHitChance` | 31 | future crit skill |
+| `ApplyAttackEffect` | 33 | future on-hit skill |
+| `ReflectDamage` | 37 | future thorns skill |
+| `LifeSteal` | **38** | Lifesteal (currently a `Runtime` no-op) |
+| `Sizzle` | 48 | sizzle (heat) resist |
+| `CriticalDamage` | 62 | future crit-damage skill |
+| `Luck` | 65 | future luck skill |
+| `Chill` | 76 | chill (cold) resist |
+
+The named values used by skills documented elsewhere in this file
+are bolded. This is by far the cleanest mapping between our skill
+catalog and the engine's native modifier surface.
+
+### Implementation paths (cheapest to most work)
+
+1. **`CreateAndAddEffect(FDataTableRowHandle)`**. UFunction we can
+   call via ProcessEvent on the live `StatusEffectComponent`.
+   Requires a data-table row handle that already encodes the stat
+   type + value. If Grounded 2 ships rows for the modifiers we want
+   (search the cooked content for status effect data tables), this
+   is the lowest-effort path. Value is fixed per-row, so for
+   skill-level scaling we either need multiple rows (one per
+   level) or to mutate the resulting `UStatusEffect`'s value field
+   after creation.
+2. **Manual `UStatusEffect` instantiation**. Instantiate via
+   `NewObject<UClass>` analog (typically reachable through a
+   UFunction or a found-class CDO + clone), populate stat type +
+   value fields, call `AddEffect(UStatusEffect*)`. Full control over
+   the value, scaled by our skill curve. More implementation work
+   (need to know `UStatusEffect` field layout).
+3. **Mutate existing default status effects**. The component init
+   loads `DefaultStatusEffects` rows into the `StatusEffects` array.
+   On apply, walk the array, find an entry whose `StatType` matches
+   our skill, mutate its value field. Lowest-risk if a default
+   already exists for the stat we want.
+
+### Why this beats the current implementations
+
+- **Sqrt-curve scaling.** Status effect values are floats. Set
+  `value = max_bonus * sqrt(level/100)` and the engine handles the
+  rest.
+- **Type filtering for free.** `GetValueForStatForDamageTypeFlags`
+  natively skips non-matching damage. We do not have to write a
+  separate gate (which is what `RequiredDamageTypeFlags = 0xFFFFFFFF`
+  is doing today as a binary stand-in).
+- **Stacks with vanilla mods, items, perks.** Other status-effect
+  sources in the game add or remove entries on the same component.
+  Our skill becomes one of many sources rather than a one-off
+  field write that other systems do not see.
+- **Save / load semantics handled by the engine.** Status effects
+  are replicated and serialized through the existing UE pipeline.
+
+### Migration plan (tracked in todo.md)
+
+Current direct-field-write implementations are interim. The
+migration:
+
+1. Locate `UStatusEffect` field layout (StatType offset, Value
+   offset, optional duration / source / tags).
+2. Add `SkillEffect::PlayerStatusEffect { stat_type, max_value,
+   format }` variant in `skills.rs`.
+3. `apply.rs` walks live player `StatusEffectComponent`, finds or
+   creates a `UStatusEffect` for the given stat type, sets its
+   value to `max_value * sqrt(level/100)`.
+4. Migrate skills one at a time: Fall, Impact, Lifesteal first
+   (they are the ones we know native code consults). Then Armor,
+   Attack Damage, etc. once parity is verified.
+5. Remove `RequiredDamageTypeFlags` / direct-field hacks from
+   `apply.rs` and the velocity-stomp from `fall_hook.rs` after
+   each skill is migrated and validated.
 
 ## UE4SS hooking caveats observed in Grounded 2
 

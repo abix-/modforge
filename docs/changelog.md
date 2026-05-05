@@ -9,7 +9,7 @@ Newest first.
 
 ## 2026-05-05 (single big day)
 
-### Impact Damage Resistance
+### Impact Damage Resistance (binary)
 
 Landed via `apply.rs` writing
 `UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF` (+0x00FC,
@@ -22,6 +22,28 @@ carry non-zero flags and pass through. Validated in-game: rock
 collision multicasts report `damage=0.00`, impact-trace POST line
 silent (no `CurrentDamage` change). Same field-write pattern as
 Armor's `BaseDamageReduction` write, just on a different gate.
+
+The gate is **binary** (level 1 = full immunity, identical to
+level 100). Status-effect-backed migration tracked below.
+
+### Status Effect system identified (canonical extension surface)
+
+SDK review of `UStatusEffectComponent` on `ASurvivalCharacter` at
++0x1378: this is the proper Grounded 2 surface for proportional,
+per-stat / per-damage-type modifiers. Native damage code calls
+`GetValueForStatForDamageTypeFlags(StatType, Flags)` on every
+damage event and uses the float result as a multiplier.
+`EStatusEffectType` enum has matching values for nearly every
+skill we plan: `FallDamage=14`, `DamageReductionMultiplier=30`,
+`LifeSteal=38`, `ReflectDamage=37`, `AttackDamage=23`,
+`CriticalHitChance=31`, `CriticalDamage=62`, `MaxHealth=5`, etc.
+
+Current implementations (Armor's `BaseDamageReduction`, Impact's
+`RequiredDamageTypeFlags`, Fall's velocity-stomp, Lifesteal's
+`Runtime` no-op) are interim. Migration to status-effect-backed
+skills gives sqrt-curve scaling, native type filtering, and
+stacking with vanilla items / perks. Plan in [`todo.md`](todo.md);
+full pipeline reference in [`damage.md`](damage.md).
 
 ### Fall Damage Resistance
 

@@ -123,7 +123,7 @@ damage mitigation. Plant / terrain collision uses
 on the existing multicast hook), distinct from fall damage which has
 its own pipeline -- see `rpg.md` for both internals.
 
-## RPG: Impact Damage Resistance (DONE)
+## RPG: Impact Damage Resistance (DONE, but binary)
 
 `SKILL_IMPACT_RESISTANCE` landed via a write to
 `UHealthComponent.RequiredDamageTypeFlags` (+0x00FC, uint32) =
@@ -131,13 +131,62 @@ its own pipeline -- see `rpg.md` for both internals.
 gate consults the field, sees incoming `type_flags = 0` for fall /
 environmental / hazard damage, no bit matches, damage rejected
 before `CurrentDamage` is written. Validated in-game: rock
-collision multicasts report `damage=0.00` and the impact-trace
-POST line stays silent (no `CurrentDamage` change).
+collision multicasts report `damage=0.00`.
 
-See [`docs/damage.md`](damage.md) for the full pipeline reference,
-the three damage paths (fall / environmental / hazard), and the
-walk-backwards trace that pinned the gate as the only remaining
-PE-reachable intercept.
+**Caveat: the gate is binary.** Any level > 0 = full immunity,
+level 0 = full damage. Does not scale on the `sqrt(level/100)`
+curve the rest of the catalog uses. Migration to the proper
+mechanism (status effects) tracked below.
+
+## RPG: Status-effect-backed skill rewrite (open, the real fix)
+
+The canonical Grounded 2 surface for proportional, type-filtered,
+stackable damage modifiers is `UStatusEffectComponent` on
+`ASurvivalCharacter` at +0x1378. Native damage code calls
+`GetValueForStatForDamageTypeFlags(StatType, Flags)` on every
+damage event and uses the returned float as a multiplier. Every
+skill in our catalog has a matching `EStatusEffectType` enum
+value. See [`docs/damage.md`](damage.md) "Status Effect system"
+for the full reference.
+
+Migration plan:
+
+1. **Locate `UStatusEffect` field layout** -- need offsets for the
+   stat type field (`EStatusEffectType`) and the value float. Walk
+   any default status effect on a live actor at runtime to derive.
+2. **Add `SkillEffect::PlayerStatusEffect { stat_type, max_value,
+   format }`** variant in `skills.rs`.
+3. **`apply.rs` walks the live player `StatusEffectComponent`**,
+   finds or creates a `UStatusEffect` for the given stat type, sets
+   its value to `max_value * sqrt(level / 100)`.
+4. **Migrate skills one at a time:**
+   - `fall_resistance` -> `EStatusEffectType::FallDamage` (= 14)
+   - `impact_resistance` -> `EStatusEffectType::DamageReductionMultiplier`
+     (= 30) filtered by `type_flags = 0` (or use the same FallDamage
+     entry if it covers all impact paths)
+   - `lifesteal` -> `EStatusEffectType::LifeSteal` (= 38), removing
+     the `Runtime` no-op
+   - `armor` -> `EStatusEffectType::DamageReduction` (= 29) or
+     `DamageReductionMultiplier` (= 30), removing the
+     `BaseDamageReduction` write
+   - `attack_damage` -> `EStatusEffectType::AttackDamage` (= 23),
+     removing the `CustomDamageMultiplier` write
+   - Future: crit (`CriticalHitChance` = 31, `CriticalDamage` =
+     62), thorns (`ReflectDamage` = 37), max health
+     (`MaxHealth` = 5), stun resist, etc.
+5. **Remove the interim hacks** once each skill is migrated:
+   `RequiredDamageTypeFlags` write from `apply.rs`, velocity-stomp
+   from `fall_hook.rs`, the `Runtime` no-op for Lifesteal.
+
+Three implementation paths for adding a `UStatusEffect`, ranked by
+effort (details in `docs/damage.md`):
+
+1. `UStatusEffectComponent::CreateAndAddEffect(FDataTableRowHandle)`
+   -- low-effort if the game ships rows for the modifiers we want.
+2. Manual `NewObject<UStatusEffect>` analog -- full control over
+   the value, more code.
+3. Mutate existing default status effects on the component --
+   lowest-risk if defaults already exist for the stat we want.
 
 ## RPG: tuning
 

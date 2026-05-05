@@ -32,6 +32,17 @@ environmental, hazard zones); creature attacks carry non-zero
 flags and pass through. Validated in-game: rock collision
 multicasts report `damage=0.00`.
 
+Caveat: Impact gate is **binary** (level 1 = full immunity, same
+as level 100). The proper mechanism is the engine's status effect
+system: `UStatusEffectComponent` at +0x1378 on the player exposes
+`GetValueForStatForDamageTypeFlags(StatType, Flags)` which native
+damage code consults on every event. `EStatusEffectType` enum has
+matching values for nearly every skill we plan to add (FallDamage,
+DamageReductionMultiplier, LifeSteal, ReflectDamage, AttackDamage,
+CriticalHitChance, CriticalDamage, MaxHealth, ...). Migration plan
+to status-effect-backed skills tracked in `docs/todo.md`; full
+reference in `docs/damage.md` "Status Effect system" section.
+
 Full Grounded 2 damage internals -- fall path, environmental path,
 HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill
 detection, what we tried that did not work, the velocity-stomp fix,

@@ -251,6 +251,15 @@ mechanisms because the underlying damage paths differ -- see
   (fall, environmental, hazard zones). Creature attacks pass
   through normally. Validated: rock collision multicasts report
   `damage=0.00` and the player takes no `CurrentDamage` change.
+  **Caveat: this gate is binary.** Level 1 = full immunity, same
+  as level 100. The proper sqrt-curve scaling requires migrating
+  to the engine's status-effect system; tracked in
+  [`todo.md`](todo.md). The status-effect surface
+  (`UStatusEffectComponent` at +0x1378 on the player) is
+  documented in [`damage.md`](damage.md) as the canonical
+  long-term backing for nearly every skill in the catalog (Fall,
+  Impact, Lifesteal, Crit, Thorns, Max Health, Armor, Attack
+  Damage all map to existing `EStatusEffectType` enum values).
 
 ## ImGui tab
 
