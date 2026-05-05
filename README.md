@@ -1,131 +1,133 @@
-# grounded2mods
+# RPG System
 
-Grounded 2 UE4SS CPPMod written mostly in Rust. Current focus is a
-Factorio-style RPG / level-up system: kills grant XP, XP grants levels
-and skill points, and skill levels patch player stats in-game.
+A Factorio-style RPG / level-up mod for **Grounded 2**, loaded by
+UE4SS as a CPPMod (Rust + a tiny C++ shim).
+
+Kill creatures -> earn XP -> level up -> spend skill points -> level
+up your player. The catalog is classless and flat: build a tank,
+glass cannon, hauler, or speed demon by spending points wherever you
+want.
+
+## Inspiration
+
+Two of my favorite games already have RPG mods I love. This is
+those, ported into Grounded 2:
+
+- [**RPG System**](https://mods.factorio.com/mod/RPGsystem) for
+  Factorio.
+- [**RimWorld RPG Mod**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858)
+  (a.k.a. Combat Skills RPG) for RimWorld.
+
+Same loop in both: kills become XP, XP becomes levels, levels
+become a stronger character. Vocabulary (XP, level, skill, skill
+point) is borrowed verbatim from RPG System for Factorio.
+
+The other heavy reference is the Counter-Strike line of
+[War3CS / War3FT](https://war3cs2.wiki.gg/) Warcraft mods, where
+players spend a flat skill catalog to specialize.
+
+## Skill catalog
+
+Currently 11 skills, target ~25. Each skill caps at level 100 with a
+`sqrt(level / 100)` diminishing-returns curve. See
+[`docs/rpg.md`](docs/rpg.md) for the full catalog with per-skill
+math.
+
+| Skill | Domain | Final value at level 100 |
+| ----- | ------ | ----------------------- |
+| Backpack | survival | +460 slots (40 vanilla -> 500) |
+| Hunger Resistance | survival | -75% drain |
+| Thirst Resistance | survival | -75% drain |
+| Attack Damage | combat | +300% damage |
+| Armor | combat | -50% damage taken |
+| Move Speed | movement | +300% walk + sprint + swim |
+| Jump Height | movement | +300% jump-Z velocity |
+| Glide Speed | movement | +300% MaxFlySpeed |
+| Fall Damage Resistance | survival | full immunity |
+| Impact Damage Resistance | survival | (collision damage; in development) |
+| Lifesteal | combat | +90% of damage dealt healed back |
+
+Skills are spent through an "RPG" tab in the UE4SS ImGui debug
+overlay (default `Insert` key in-game).
 
 ## Status
 
-Current state as of 2026-05-05:
+As of 2026-05-05, against Grounded 2 Steam
+`++Augusta+release-0.4.0.2-CL-2673661`:
 
-- UE4SS load path is working in-game on Grounded 2 Steam
-  `++Augusta+release-0.4.0.2-CL-2673661`.
-- The RPG loop is live: XP, levels, skill points, persistence, Buggy
-  kill attribution, and the UE4SS ImGui RPG tab.
-- The backpack skill, hunger/thirst resistance, fall damage
-  resistance, and several combat / movement skills are implemented.
-- Open work is testing, live-instance writes for some combat skills,
-  impact damage mitigation for high-speed builds, catalog expansion,
-  and packaging cleanup. See
-  [docs/todo.md](docs/todo.md).
+- UE4SS CPPMod load path working.
+- Full RPG loop live: XP, levels, skill points, persistence keyed
+  to playthrough GUID, Buggy kill attribution, ImGui `RPG` tab.
+- Fall Damage Resistance landed via velocity-stomp on `OnLanded`
+  (see [`docs/damage.md`](docs/damage.md) for the deep dive on
+  Grounded 2's damage internals).
+- Impact Damage Resistance in development -- diagnostic trace
+  active behind the skill, real fix pending the next in-game test.
+- Open work: live-instance writes for remaining combat skills,
+  catalog expansion, packaging cleanup. See
+  [`docs/todo.md`](docs/todo.md).
 
-This repo no longer targets a standalone end-user injector flow as the
-primary path. The shipping shape is a **UE4SS C++ mod (CPPMod)** with a
-tiny C++ shim and the mod logic in Rust.
+## Install
 
-## What It Does
+The shipping shape is a UE4SS C++ mod. Drop the DLL into UE4SS's
+`Mods/` directory; UE4SS handles loading.
 
-- Tracks creature kills and awards XP.
-- Levels the player with a cumulative `100 * N^1.8` XP curve, capped at
-  level 50.
-- Grants skill points on level-up.
-- Persists RPG state per playthrough GUID under
-  `Mods/BetterBackpack/dlls/saves/<guid>.json`.
-- Applies skill values to game CDOs on save activation, with movement
-  skill writes also mirrored to live player pawns.
-- Exposes an `RPG` tab in the UE4SS overlay with `+1` / `+10` spend
-  buttons.
-
-Current skill catalog is documented in [docs/rpg.md](docs/rpg.md).
-
-## Install Layout
-
-UE4SS expects the mod DLL here:
-
-```text
-Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
-  dlls/main.dll
-  dlls/settings.json
-  dlls/better_backpack.log
-  dlls/cpp_shim.log
-  dlls/saves/
-```
-
-`dlls/` is required by UE4SS for CPPMods. `main.dll` must stay there.
-Runtime companion files are kept next to it.
-
-## Developer Flow
-
-Build:
+For development:
 
 ```powershell
 cargo build --release
-```
-
-Direct local install into the detected Steam copy:
-
-```powershell
 .\scripts\deploy.ps1 -Install
 ```
 
-That installs `main.dll`, seeds `dlls/settings.json` if missing, and
-ensures `BetterBackpack : 1` is present in `mods.txt`.
+This builds `main.dll`, copies it into the detected Steam install,
+seeds `settings.json`, and ensures the mod is registered in
+`mods.txt`.
 
-Full build / install details live in [docs/building.md](docs/building.md).
+Full build details: [`docs/building.md`](docs/building.md).
 
 ## Config
 
-Runtime config lives at:
+Runtime config in `<install-dir>/dlls/settings.json`. Defaults are
+vanilla-base; skills layer on top.
 
-```text
-Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/dlls/settings.json
+```json
+{
+  "inventory":  { "slot_count": 40 },
+  "survival":   { "hunger_multiplier": 1.0, "thirst_multiplier": 1.0 },
+  "rpg":        { "buggy_kill_xp_multiplier": 1.0 }
+}
 ```
 
-Defaults are vanilla-base:
-
-- `inventory.slot_count = 40`
-- `survival.hunger_multiplier = 1.0`
-- `survival.thirst_multiplier = 1.0`
-- `rpg.buggy_kill_xp_multiplier = 1.0`
-
-Skills layer on top of those base values. Schema example:
-[better-backpack/settings.example.json](better-backpack/settings.example.json).
+Skill levels then add (backpack) or further multiply (survival
+drains) on top of the user's base.
 
 ## Docs
 
-- [docs/building.md](docs/building.md): build, install, package
-- [docs/rpg.md](docs/rpg.md): RPG system, skills, XP, persistence, UI
-- [docs/ue4ss-port.md](docs/ue4ss-port.md): UE4SS CPPMod shape and port history
-- [docs/changelog.md](docs/changelog.md): completed work
-- [docs/todo.md](docs/todo.md): open work only
-- [.claude/project_state.md](.claude/project_state.md): current handoff / session state
+| Doc | What lives there |
+| --- | ---------------- |
+| [`docs/rpg.md`](docs/rpg.md) | RPG / skill subsystem: catalog, math, ImGui tab, persistence, code map |
+| [`docs/damage.md`](docs/damage.md) | Grounded 2 damage internals: fall path, environmental path, multicast surfaces, kill detection |
+| [`docs/inventory.md`](docs/inventory.md) | Backpack and inventory grid mechanics |
+| [`docs/grounded-engine.md`](docs/grounded-engine.md) | Grounded 2 / UE5 platform: pak format, exe names, GObjects offsets, shipping caveats |
+| [`docs/building.md`](docs/building.md) | Build, install, deploy |
+| [`docs/features.md`](docs/features.md) | User-facing feature list and comparison to Player Tweaks |
+| [`docs/changelog.md`](docs/changelog.md) | Done milestones |
+| [`docs/todo.md`](docs/todo.md) | Open work |
+| [`docs/ue4ss-port.md`](docs/ue4ss-port.md), [`docs/rust-port.md`](docs/rust-port.md) | Loader / port history |
 
-## Repo Layout
+## Internal naming note
 
-```text
-grounded2mods/
-  better-backpack/        Main mod crate (Rust + C++ shim + vendored imgui)
-  injector/               Old dev-time injector crate, kept for iteration history
-  docs/                   Subject-authority docs
-  scripts/deploy.ps1      Build/package/install helper for UE4SS layout
-  better-backpack-cpp/    Original C++ implementation kept for reference
-  docs/todo.md            Canonical open-work list
-```
-
-## Notes
-
-- Some combat-side skill effects are still CDO-only. Movement skills now
-  also patch live player pawns, but other live-instance writes are still
-  in progress.
-- Lifesteal is in the catalog but its live damage hook work is still
-  pending.
-- When the game updates and offsets shift, refresh
-  [better-backpack/src/sdk/offsets.rs](better-backpack/src/sdk/offsets.rs).
+The on-disk artifact names still refer to the project's earlier
+identity (`BetterBackpack` mod folder, `better-backpack/` Rust
+crate, `better_backpack.log`). The user-facing brand and display
+name is "RPG System"; an internal rename pass is tracked in
+[`docs/todo.md`](docs/todo.md). It does not affect functionality,
+only the on-disk file names.
 
 ## Credits
 
 - **UE4SS-RE** for [RE-UE4SS](https://github.com/UE4SS-RE/RE-UE4SS),
-  the CPPMod host we now target for loading, UI integration, and
+  the CPPMod host we target for loading, UI integration, and
   standard Grounded 2 mod distribution.
 - **x0reaxeax** for [Grounded2Minimal](https://github.com/x0reaxeax/Grounded2Minimal)
   (DLL-injection pattern) and [G2Dumper](https://github.com/x0reaxeax/G2Dumper).
@@ -140,14 +142,21 @@ grounded2mods/
   cooked asset inspection.
 - **Caites** for [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
   on Nexus, whose feature list is the reference point in
-  [docs/features.md](docs/features.md).
+  [`docs/features.md`](docs/features.md).
 - The author of [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37),
-  whose mod's breakage motivated the rewrite this repo represents.
-- The author of [RPG System](https://mods.factorio.com/mod/RPGsystem)
-  for Factorio, the headline RPG-style level-up mod that inspired
-  the direction this project is now taking. Our XP / level / skill /
-  skill-point vocabulary is borrowed directly from theirs (and the
-  broader Diablo-like RPG mod tradition on the Factorio mod portal).
+  whose mod's breakage in the current shipping build motivated the
+  data-side + visible-side patching pattern documented in
+  [`docs/inventory.md`](docs/inventory.md).
+- The author of [**RPG System**](https://mods.factorio.com/mod/RPGsystem)
+  for Factorio -- the headline RPG-style level-up mod whose name and
+  vocabulary this mod borrows verbatim. The XP / level / skill /
+  skill-point loop is theirs.
+- The author of [**RimWorld RPG Mod / Combat Skills RPG**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858)
+  for RimWorld -- the second of the two existing RPG-mod
+  inspirations.
+- The authors of the [War3CS / War3FT](https://war3cs2.wiki.gg/)
+  Counter-Strike Warcraft mod line, whose flat-skill-catalog pattern
+  shapes the catalog layout.
 - [Grounded 2](https://grounded2.obsidian.net/) by Obsidian
   Entertainment. We modify only what the official game ships under
   fair-use modding norms; no game assets are redistributed.

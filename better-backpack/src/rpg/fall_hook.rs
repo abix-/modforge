@@ -12,6 +12,7 @@ const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
 ];
 
 const FN_ON_LANDED: &str = "OnLanded";
+const FN_MULTICAST_FALL_EFFECTS: &str = "MulticastFallEffects";
 
 pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
     let mut hooks = Vec::new();
@@ -51,29 +52,39 @@ fn on_player_fall_event(
     let fn_name = function.as_object().name();
     let is_player = is_player_character(this);
 
-    // Velocity-stomp: when OnLanded fires on the player and
-    // fall_resistance is active, scale `CharMovementComponent.Velocity.Z`
-    // by `(1 - reduction)` BEFORE forwarding to the original BP event.
-    // The native ASurvivalCharacter::ApplyFallDamage runs immediately
-    // after Super::Landed returns (which is what fires OnLanded), so if
-    // the native fall formula reads live velocity at invocation time,
-    // damage is scaled or zeroed accordingly. At level 100 (reduction
-    // = 1.0) Velocity.Z becomes 0 and fall damage should be zero.
+    // Velocity-stomp: when OnLanded or MulticastFallEffects fires on
+    // the player, scale `CharMovementComponent.Velocity.Z` by
+    // `(1 - reduction)` BEFORE forwarding the original event. The
+    // native fall / impact damage formula reads live velocity at
+    // invocation time, so a stomp here scales (or zeros) the damage.
     //
-    // OnLanded suppression is REMOVED. We forward to the original BP
-    // event so other landing logic (animations, sounds) still runs.
-    if fn_name == FN_ON_LANDED && is_player {
-        let reduction = current_fall_resistance_reduction();
+    // - `OnLanded` fires only for actual character landings after
+    //   airtime. Gated on fall_resistance.
+    // - `MulticastFallEffects` fires for fall landings AND for
+    //   non-airborne impacts (running into rocks, hazards, etc.).
+    //   Gated on the max of fall_resistance and impact_resistance --
+    //   either skill scales the impact through this seam.
+    //
+    // Neither hook suppresses the BP event; we forward to original
+    // so animations and sounds still run.
+    if is_player {
+        let reduction = match fn_name.as_str() {
+            FN_ON_LANDED => current_fall_resistance_reduction(),
+            FN_MULTICAST_FALL_EFFECTS => current_fall_resistance_reduction()
+                .max(current_impact_resistance_reduction()),
+            _ => 0.0,
+        };
         if reduction > 0.0 {
             let scale = (1.0 - reduction).max(0.0) as f64;
             let stomped = stomp_player_velocity_z(this, scale);
             bbp_log!(
-                "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {})",
+                "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {} / fn={})",
                 stomped.before,
                 stomped.after,
                 this.name(),
                 reduction,
-                hook_class_name
+                hook_class_name,
+                fn_name
             );
         }
     }
@@ -186,6 +197,14 @@ fn current_impact_resistance_level() -> u32 {
             .unwrap_or(0)
     })
     .unwrap_or(0)
+}
+
+fn current_impact_resistance_reduction() -> f32 {
+    let level = current_impact_resistance_level();
+    if level == 0 {
+        return 0.0;
+    }
+    skills::skill_bonus(1.0, level).min(1.0)
 }
 
 /// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The

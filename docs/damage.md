@@ -11,15 +11,16 @@
 > the build / loader story see [`ue4ss-port.md`](ue4ss-port.md) and
 > [`building.md`](building.md).
 
-## Two distinct self-damage paths
+## Three distinct self-damage paths
 
-High-mobility players in Grounded 2 die to two different things, and
-the damage paths are *not* the same code path:
+High-mobility players in Grounded 2 die to three different things,
+and they are *not* the same code path:
 
-| Failure mode    | DamageType class            | src_type | Pipeline |
-| --------------- | --------------------------- | -------- | -------- |
-| Fall damage     | `<null>`                    | 0        | Native, bypasses `FDamageInfo`. Engine writes `CurrentDamage` directly. |
-| Plant / terrain collision | `BP_EnvironmentalDamage_C` | 2 | Standard `FDamageInfo` pipeline through `ApplyDamageFromInfo`. Triggered by ramming foliage / world geometry at high speed. |
+| Failure mode    | DamageType class            | src_type | DamageSource example | Pipeline |
+| --------------- | --------------------------- | -------- | -------------------- | -------- |
+| Fall damage     | `<null>`                    | 0        | none populated        | Native, bypasses `FDamageInfo`. Engine writes `CurrentDamage` directly. |
+| Plant / terrain collision | `BP_EnvironmentalDamage_C` | 2 | (foliage / world geo) | Standard `FDamageInfo` pipeline through `ApplyDamageFromInfo`. Triggered by ramming foliage at high speed. |
+| Hazard zones | `SurvivalDamageType` (base class) | 2 | `BP_Hazard_*_C` (e.g. `BP_Hazard_PetRestriction_Labs_C`) | Standard `FDamageInfo` pipeline. Triggered by entering / standing in a damage volume (Lab restriction barriers, sizzle/chill zones, etc.). |
 
 Both ultimately surface a
 `UHealthComponent::MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
@@ -244,36 +245,96 @@ mitigation.
 
 **Diagnostic phase (currently in build).** When the user puts at
 least one point into `impact_resistance`, `fall_hook.rs` switches on
-a walk-backwards PE trace on the player BP class, filtered to events
-whose name contains `Damage / Damaged / Hit / Land / Fall / Impact /
-Health / Receive`. Each event logs `CurrentDamage` (+0x32C on the
-player's HealthComponent at +0x1340) before and after `original.call`.
-The event whose `POST` reading is higher than its pre reading is the
-PE-reachable seam that runs *during* the native damage write -- our
-intercept point.
+a walk-backwards PE trace on the player BP class. Each event logs
+`CurrentDamage` (+0x32C on the player's HealthComponent at +0x1340)
+before and after `original.call`. The trace stays silent for normal
+users (no skill points = no logging).
 
-This is the same playbook that solved fall damage. The trace stays
-silent for normal users (no skill points = no logging).
+#### Observed trace (hazard zone hit, fatal)
 
-Collision is expected to differ from fall in one important way: it
-goes through the standard `ApplyDamageFromInfo` plumbing
-(`LastDamageInfo` is fully populated, see trace evidence above).
-That makes the BP-bound `BndEvt__HealthComponent_..._DamagedDelegate`
-on `BP_SurvivalPlayerCharacter_*` the most likely upstream PE
-surface -- we observed it firing post-damage on fall, but on
-collision it might be reachable pre-damage. The trace settles it.
+Running into a `BP_Hazard_PetRestriction_Labs_C` zone:
 
-**Once the seam is identified**, the implementation pattern matches
-fall damage: mutate state in-place during the PE hook so the native
-damage formula sees scaled / zeroed input. Likely candidates: zero
-horizontal velocity, zero `Damage` parm if the seam is a UFunction
-with a writable parm, or write to an as-yet-unidentified
-collision-impact field on `UCharacterMovementComponent`.
+```
+ReceiveTick                     CD=85.02
+MulticastFallEffects            CD=85.02
+ReceiveAnyDamage                CD=85.02
+                                  <-- native CurrentDamage write here
+BndEvt__..._OnHealthStateChangedDelegate  CD=110.00
+OnHealthStateChanged            CD=110.00
+BndEvt__..._DeathDelegate       CD=110.00
+ReceiveUnpossessed              CD=100.00 (post-respawn clamp)
+ReceiveControllerChanged        CD=100.00
+BndEvt__..._DamagedDelegate     CD=100.00
+multicast (kill_hook)           damage=165.18, flags=0x2 (kill)
+                                LastDamageInfo: DamageType=SurvivalDamageType,
+                                                src_type=2,
+                                                source=BP_Hazard_PetRestriction_Labs_C
+```
 
-If no PE-reachable surface fires *during* the write (i.e. delta is
-zero across every traced event), the fallback is a native function
-detour against `UHealthComponent::ApplyDamage` via PolyHook_2_0 (see
-"If the velocity-stomp regresses" above).
+Same shape as fall damage. The damage write happens in the gap
+between `ReceiveAnyDamage POST` and `OnHealthStateChangedDelegate
+PRE`. No PE-reachable surface lives in that gap, so the native
+write is upstream of every PE entry the engine fires on the player
+BP class.
+
+`MulticastFallEffects` firing here despite no actual fall is also
+informative: that multicast is keyed on impact-velocity events
+generally, not just landing after airtime. Confirms it is
+cosmetic-only.
+
+The reported `damage=165.18` does not match the on-disk delta
+(`110 - 85 = 25`) because Grounded 2 clamps `CurrentDamage` to
+`MaxHealth + overkill` at the death threshold; the multicast carries
+the unclamped pre-clamp value.
+
+#### Why velocity-stomp does NOT carry over from fall
+
+Fall damage works because native `ApplyFallDamage()` reads
+`CharMovementComponent.Velocity.Z` *live* at invocation time and
+the fall path runs synchronously after `OnLanded` fires. We mutate
+`Velocity.Z` during `OnLanded` and the native formula reads our
+mutation.
+
+Hazard / impact damage uses the standard `AActor::TakeDamage` ->
+`UHealthComponent::ApplyDamageFromInfo` flow. By the time
+`ReceiveAnyDamage` (a notification) fires, the damage value is
+already a computed `float` baked into a native frame local. There
+is no live field for us to mutate that affects the damage value.
+
+#### Open intercept candidates (untested)
+
+Listed in order of expected effort. Each requires its own diagnostic
+pass.
+
+1. **Mutate the `Damage` parm of `ReceiveAnyDamage`**. The parms
+   struct slot is writable from our PE hook even though the parm is
+   marked `ConstParm`. If Grounded 2's BP graph for the player
+   actually applies damage in BP code via `ReceiveAnyDamage`, the
+   modified parm would land. (We have weak evidence against this --
+   our trace shows `CurrentDamage` does not change during
+   `original.call(ReceiveAnyDamage)`.)
+2. **Write `UHealthComponent::ImmunityFlags`** (uint32, +0x00F8,
+   `Edit, Net`). Bitmask of damage types the actor is immune to.
+   If the native pre-damage gate consults this, set it briefly during
+   the `ReceiveAnyDamage` PE hook to mask out
+   `ESurvivalDamageTypeFlags` bits matching the incoming damage.
+   Restore after. Need to identify which bits map to environmental
+   / hazard / collision damage in the enum.
+3. **Write `UHealthComponent::BaseDamageReduction` to 1.0** during
+   `ReceiveAnyDamage`. Armor skill already touches this field
+   (writes 0.5 at level 100). Setting to 1.0 *might* zero damage in
+   the native multiplier path -- but only if `BaseDamageReduction`
+   is consulted for hazard damage and only if it is consulted *after*
+   `ReceiveAnyDamage` returns. Untested. Risk: stacks badly with
+   Armor skill.
+4. **Native function detour** against
+   `UHealthComponent::ApplyDamage` via PolyHook_2_0 (last resort,
+   see "If the velocity-stomp regresses" above). Definitively
+   suppresses damage but is the heaviest implementation.
+
+The current build has only the diagnostic trace. The next change
+will try option (1) and observe whether `CurrentDamage` is gated by
+the parm we modify.
 
 ## Kill detection (already implemented)
 
