@@ -244,22 +244,36 @@ activation transition: when activate_slot fires with a freshly
 loaded PlayerState, walk the player CDO + live pawn instances
 and apply current perk multipliers. Stubbed until perks exist.
 
-### Buggy kill attribution (open)
+### Buggy kill attribution + XP layer: DONE (2026-05-05)
 
-In Grounded 2, the player's tame mounts are called Buggies.
-In-game test surfaced: when the player's Buggy killed a Larva,
-we credited the kill via the Buggy's AIController. Player
-intent: Buggy kills count (default full XP), but we currently
-can't distinguish:
-- Direct player kill (PlayerController instigator).
-- Buggy kill (AIC for the player's owned Buggy).
-- Enemy-vs-enemy (some other AIC, no XP).
+`kill_hook.rs::classify` returns three buckets via class-name
+inspection (no UFunction calls; pure pointer-walks):
+- Player: instigator class chain contains "PlayerController".
+- Buggy: instigator (or its possessed Pawn at +0x308) class
+  chain contains "Buggy".
+- Other: enemy-vs-enemy AIC; logged + dropped.
 
-Detection path (TODO before XP loop): from
-InstigatorController, walk to possessed Pawn; check
-`UTameableComponent` / `UPetMasterComponent` ownership against
-the local player's `PetMasterComponent`. SDK refs:
-`Maine_classes.hpp:5808-5809`, `:6313` (IsTame).
+Confirmed in-game: PLAYER on Grub kills,
+BUGGY on Spiderling killed by `AIC_AntSoldier_Augusta_Buggy_C`,
+no false positives. Multiplayer ownership question (other
+players' Buggies) deferred -- single-player works correctly.
+
+XP layer landed alongside: `rpg/xp.rs` (100 * N^1.8 cumulative
+curve, cap 50, ~20-species placeholder table). PlayerState
+schema bumped to (xp, level, perk_points, perk_ranks)
+backwards-compatibly via `#[serde(default)]`. tracker awards
+XP on kill, recomputes level, grants perk points on level-up.
+buggy_kill_xp_multiplier setting (default 1.0) scales Buggy
+kills.
+
+Open items for the loop:
+- Apply step: when activate_slot loads a state with non-zero
+  perk ranks, walk the player CDO + live pawn instances and
+  set fields per perk math. Currently a stub.
+- Perk catalog itself: which perks exist, max ranks, what
+  stat each one drives. Backpack/hunger/thirst/glide are
+  obvious starters.
+- ImGui tab via `register_tab` in the C++ shim. Pending.
 
 ### Spike A: DONE (2026-05-05)
 

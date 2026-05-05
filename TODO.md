@@ -269,7 +269,11 @@ not exploratory.
   apply step using the freshly loaded PlayerState's perk
   ranks. Stub for now since perks don't exist yet.
 
-- [x] **Kill attribution + XP math layer (in-flight 2026-05-05).**
+- [x] **Kill attribution + XP math layer DONE (2026-05-05).**
+  Attribution confirmed in-game: PLAYER bucket fired correctly
+  on Grub kills via `BP_SurvivalPlayerController_Augusta_C`,
+  BUGGY bucket fired correctly on Spiderling kill via
+  `AIC_AntSoldier_Augusta_Buggy_C`. No false positives observed.
   Three buckets implemented in `kill_hook.rs::classify`:
   - Player: instigator class chain contains "PlayerController".
   - Buggy: instigator (or its possessed Pawn at +0x308) class
