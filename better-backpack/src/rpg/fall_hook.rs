@@ -257,6 +257,20 @@ fn probe_status_effect_values(player: &UObject) {
         return_value: f32,
     }
 
+    // Static helper UFunction that returns the combine semantic for a
+    // given EStatusEffectType: 0=None, 1=Add, 2=Multiply.
+    let value_type_func = find_class_fast("UserInterfaceStatics")
+        .and_then(|c| c.get_function("UserInterfaceStatics", "GetStatusEffectValueType"));
+    let value_type_cdo = find_class_fast("UserInterfaceStatics").and_then(|c| c.class_default_object());
+
+    #[repr(C)]
+    struct GetValueTypeParms {
+        world_context: *const UObject,
+        status_effect_type: u8,
+        return_value: u8,
+        _pad: [u8; 6],
+    }
+
     let mut summary = String::from("rpg/sfx-probe:");
     for (name, stat) in PROBES {
         let mut parms = GetValueForStatParms {
@@ -268,9 +282,38 @@ fn probe_status_effect_values(player: &UObject) {
         unsafe {
             sec.process_event(func, &mut parms as *mut _ as *mut c_void);
         }
-        summary.push_str(&format!(" {}({})={:.3}", name, stat, parms.return_value));
+        let value_type_str = if let (Some(vt_func), Some(vt_cdo)) = (value_type_func, value_type_cdo) {
+            let mut vparms = GetValueTypeParms {
+                world_context: player as *const UObject,
+                status_effect_type: *stat,
+                return_value: 0,
+                _pad: [0; 6],
+            };
+            unsafe {
+                vt_cdo.process_event(vt_func, &mut vparms as *mut _ as *mut c_void);
+            }
+            match vparms.return_value {
+                0 => "none",
+                1 => "add",
+                2 => "mul",
+                n => return_str_for_unknown(n),
+            }
+        } else {
+            "?"
+        };
+        summary.push_str(&format!(
+            " {}({})={:.3}/{}",
+            name, stat, parms.return_value, value_type_str
+        ));
     }
     bbp_log!("{}", summary);
+}
+
+fn return_str_for_unknown(n: u8) -> &'static str {
+    match n {
+        3 => "max3",
+        _ => "??",
+    }
 }
 
 fn is_collision_relevant(fn_name: &str) -> bool {
