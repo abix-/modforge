@@ -520,22 +520,82 @@ extends `FTableRowBase`):
    our subclass return our values. Heaviest path; UE class
    manipulation at runtime is nontrivial.
 
-### The native query path (what we are actually trying to influence)
+### The native query path (validated in-game)
 
-Any of the above only matters if `GetValueForStat*` on the
-component is what native damage code consults at apply time. The
-component implementation almost certainly walks `StatusEffects`
-(+0x1C8), pulls each effect's row, sums values where `Type` and
-filter tags match the query, returns the total.
+`fall_hook.rs` ships a probe (gated on `impact_resistance > 0`)
+that calls `UStatusEffectComponent::GetValueForStat(StatType,
+false)` for a handful of damage-relevant stat types on the
+player's component and logs the result. Observed in vanilla on a
+mid-game player with equipped gear:
 
-Validation step before committing to a path: at runtime, log
-`GetValueForStat(EStatusEffectType::FallDamage, false)` on the
-player's component before and after vanilla landing damage events.
-If the value affects the damage we observe, the system is wired
-the way we expect and any of the four paths above will work. If
-the value is constant zero and damage applies regardless, the
-native fall path bypasses the status-effect system and we are
-back to direct field writes.
+```
+rpg/sfx-probe:
+  FallDamage(14)=1.000               <- vanilla baseline multiplier
+  DamageReduction(29)=1.000          <- contributed by equipped gear
+  DamageReductionMultiplier(30)=0.000
+  AttackDamage(23)=1.210             <- equipped gear gives +21% damage
+  LifeSteal(38)=0.000
+  CriticalHitChance(31)=0.060        <- equipped gear gives 6% crit
+  CriticalDamage(62)=0.000
+  ReflectDamage(37)=0.000
+  MaxHealth(5)=30.000                <- equipped gear gives +30 HP
+```
+
+Three things this proves:
+
+1. `GetValueForStat` is queryable and **already returns non-default
+   values from vanilla items / perks**. The status-effect system
+   is live and continuously read.
+2. Vanilla skills the player already has (gear-driven `+%` damage,
+   `+30` max health, `6%` crit) are implemented through this same
+   system. Our skills should be too.
+3. The semantics differ per stat type: `AttackDamage = 1.210`
+   reads as a multiplier above `1.0`; `MaxHealth = 30.0` reads as
+   an additive bonus; `CriticalHitChance = 0.060` reads as a raw
+   probability fraction. So **the combine semantic is per-stat**,
+   queryable via the static helper:
+
+   ```cpp
+   static EStatusEffectValueType USurvivalGameplayStatics::GetStatusEffectValueType(
+       const UObject* WorldContextObject,
+       EStatusEffectType StatusEffectType);
+   ```
+
+   Returns an `EStatusEffectValueType` that tells you whether the
+   stat sums / multiplies / maxes / mins across active effects.
+   Probe this once per stat type at apply time so we know whether
+   to write the value as `1.0 - reduction` (multiplier) or
+   `-reduction` (additive subtraction) etc.
+
+### What "FallDamage = 1.0" means for our migration
+
+`FallDamage` returns `1.000` on a player with no extra perks --
+this is the unmodified multiplier the native fall code reads and
+multiplies into the computed damage. To suppress fall damage we
+need an effect that drives this value down (toward `0.0`). At
+level 100 of `fall_resistance`, the contribution should bring the
+total to `0.0`. At lower levels, partial reduction.
+
+Whether to *replace* the value or *add* a contribution depends
+on the combine semantic from `GetStatusEffectValueType` -- next
+step before implementing the migration.
+
+### Implementation choice (informed by the probe)
+
+The probe confirms the system is real and the migration is
+worth doing. The four implementation paths (above) still apply,
+ranked by effort:
+
+1. Mutate an existing data-table row's `Value` field, then
+   `CreateAndAddEffect(rowHandle)`.
+2. Find a benign / unused row to repurpose.
+3. Inject a new row into the `UDataTable`.
+4. `UStatusEffect` subclass with overridden getters.
+
+Once `GetStatusEffectValueType(FallDamage)` is known, paths 1-3
+become a single concrete plan: pick a row template, write the
+right `Value` for our skill curve, AddEffect on the live
+component.
 
 ### Why this beats the current implementations
 

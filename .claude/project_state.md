@@ -39,9 +39,21 @@ system: `UStatusEffectComponent` at +0x1378 on the player exposes
 damage code consults on every event. `EStatusEffectType` enum has
 matching values for nearly every skill we plan to add (FallDamage,
 DamageReductionMultiplier, LifeSteal, ReflectDamage, AttackDamage,
-CriticalHitChance, CriticalDamage, MaxHealth, ...). Migration plan
-to status-effect-backed skills tracked in `docs/todo.md`; full
-reference in `docs/damage.md` "Status Effect system" section.
+CriticalHitChance, CriticalDamage, MaxHealth, ...).
+
+**Active work (A1)**: probe shipped (gated on `impact_resistance >
+0`) that calls `GetValueForStat` on the player's component during
+OnLanded and logs the readout. First in-game observation confirmed
+the system is live: vanilla equipped gear already populates
+`AttackDamage=1.210`, `CriticalHitChance=0.060`, `MaxHealth=30.0`,
+`FallDamage=1.000`, `DamageReduction=1.000` -- all from existing
+items/perks reading through the same surface our skills will use.
+
+Stat semantics differ per type (multiplier / additive / probability)
+queryable via `USurvivalGameplayStatics::GetStatusEffectValueType`.
+Next step: probe the combine semantic per stat, then implement the
+apply step via one of four paths in `docs/damage.md`. `UStatusEffect`
+is row-driven; value lives in the data-table row, not the instance.
 
 Full Grounded 2 damage internals -- fall path, environmental path,
 HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill

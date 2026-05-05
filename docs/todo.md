@@ -202,15 +202,23 @@ value -- value is determined by the row. Implementation paths
 4. **Manual `UStatusEffect` subclass with overridden getters**.
    Heaviest; UE class manipulation at runtime.
 
-**Required validation step before committing**: at runtime, log
-`UStatusEffectComponent::GetValueForStat(FallDamage, false)` on
-the player before and after a vanilla fall, with our binary
-RequiredDamageTypeFlags hack disabled. Confirms the native fall
-damage path actually consults the status-effect system. If it does
-not (constant zero / no effect), abandon the migration for fall
-damage and keep the velocity-stomp; only Lifesteal and the
-combat-damage skills (which DO go through `ApplyDamageFromInfo`)
-benefit from the migration.
+**Validation done (probe shipped + observed in-game).** The probe
+returned non-default values for vanilla-equipped skills, confirming
+the system is live and continuously consulted by the engine:
+
+```
+FallDamage(14)=1.000     AttackDamage(23)=1.210
+DamageReduction(29)=1.000 CriticalHitChance(31)=0.060
+LifeSteal(38)=0.000      MaxHealth(5)=30.000
+```
+
+The semantics differ per stat (multiplier / additive / probability),
+which is queryable via `USurvivalGameplayStatics::GetStatusEffectValueType(StatType)`.
+Next step before writing the apply step: probe the value-type for
+each stat we plan to use, so we know whether to add, multiply, or
+replace the contribution.
+
+Then pick implementation path (1 or 3 from `damage.md`), build it.
 
 ## RPG: tuning
 

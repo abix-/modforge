@@ -26,6 +26,29 @@ Armor's `BaseDamageReduction` write, just on a different gate.
 The gate is **binary** (level 1 = full immunity, identical to
 level 100). Status-effect-backed migration tracked below.
 
+### Status Effect system validated (probe shipped, in-game readout)
+
+`fall_hook.rs` now ships a probe (gated on `impact_resistance > 0`)
+that calls `UStatusEffectComponent::GetValueForStat(StatType,
+false)` on the player's component for damage-relevant stat types.
+First in-game readout on a mid-game player:
+
+```
+FallDamage(14)=1.000  DamageReduction(29)=1.000  AttackDamage(23)=1.210
+CriticalHitChance(31)=0.060  MaxHealth(5)=30.000  LifeSteal(38)=0.000
+```
+
+Confirmed:
+1. The status-effect system is live and queryable.
+2. Vanilla equipped gear / perks already populate it (the `+21%`
+   attack and `+30` max health values come from existing items).
+3. Stat semantics differ (multiplier vs additive vs probability),
+   queryable via `USurvivalGameplayStatics::GetStatusEffectValueType`.
+
+This validates the migration target. Next step is to probe the
+combine semantic per stat, then implement the apply step using
+one of the four implementation paths in `damage.md`.
+
 ### Status Effect system identified (canonical extension surface)
 
 SDK review of `UStatusEffectComponent` on `ASurvivalCharacter` at
