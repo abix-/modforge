@@ -106,40 +106,52 @@ fn on_event(
         && owner.full_name().contains("BP_SurvivalPlayerCharacter")
     {
         let fn_name = function.as_object().name();
-        match fn_name.as_str() {
-            "MulticastHandleEffectsWithDamageFlags" => {
-                let damage = unsafe { (parms as *const u8).add(0x18).cast::<f32>().read_unaligned() };
-                let dflags = unsafe { (parms as *const u8).add(0x1C).cast::<i32>().read_unaligned() };
-                let dtflags = unsafe { (parms as *const u8).add(0x20).cast::<u32>().read_unaligned() };
-                bbp_log!(
-                    "rpg/dmg-trace: player hit fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
-                    fn_name,
-                    damage,
-                    dflags,
-                    dtflags
-                );
-            }
-            "MulticastHandleEffectsWithDamageFlagsAtOwnerLocation"
-            | "MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation" => {
-                let damage = unsafe { (parms as *const u8).add(0x00).cast::<f32>().read_unaligned() };
-                let dflags = unsafe { (parms as *const u8).add(0x04).cast::<i32>().read_unaligned() };
-                let dtflags = unsafe { (parms as *const u8).add(0x08).cast::<u32>().read_unaligned() };
-                bbp_log!(
-                    "rpg/dmg-trace: player hit fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
-                    fn_name,
-                    damage,
-                    dflags,
-                    dtflags
-                );
-            }
-            "ApplyDamageFromInfo" => {
-                let damage = unsafe { (parms as *const u8).add(0x00).cast::<f32>().read_unaligned() };
-                bbp_log!("rpg/dmg-trace: player hit fn={} damage={:.2}", fn_name, damage);
-            }
-            "ApplyHit" | "ApplyDamage" => {
-                bbp_log!("rpg/dmg-trace: player hit fn={}", fn_name);
-            }
-            _ => {}
+        let is_damage_fn = matches!(
+            fn_name.as_str(),
+            "MulticastHandleEffectsWithDamageFlags"
+                | "MulticastHandleEffectsWithDamageFlagsAtOwnerLocation"
+                | "MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation"
+                | "ApplyDamageFromInfo"
+                | "ApplyHit"
+                | "ApplyDamage"
+        );
+        if is_damage_fn {
+            let (damage, dflags, dtflags) = match fn_name.as_str() {
+                "MulticastHandleEffectsWithDamageFlags" => unsafe {
+                    (
+                        (parms as *const u8).add(0x18).cast::<f32>().read_unaligned(),
+                        (parms as *const u8).add(0x1C).cast::<i32>().read_unaligned(),
+                        (parms as *const u8).add(0x20).cast::<u32>().read_unaligned(),
+                    )
+                },
+                "MulticastHandleEffectsWithDamageFlagsAtOwnerLocation"
+                | "MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation" => unsafe {
+                    (
+                        (parms as *const u8).add(0x00).cast::<f32>().read_unaligned(),
+                        (parms as *const u8).add(0x04).cast::<i32>().read_unaligned(),
+                        (parms as *const u8).add(0x08).cast::<u32>().read_unaligned(),
+                    )
+                },
+                "ApplyDamageFromInfo" => unsafe {
+                    (
+                        (parms as *const u8).add(0x00).cast::<f32>().read_unaligned(),
+                        0i32,
+                        0u32,
+                    )
+                },
+                _ => (0.0f32, 0i32, 0u32),
+            };
+            bbp_log!(
+                "rpg/dmg-trace: fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
+                fn_name,
+                damage,
+                dflags,
+                dtflags
+            );
+            // LastDamageInfo at +0x3B0 on UHealthComponent. It is populated
+            // for the damage event currently being multicast, so reading
+            // here gives us the full FDamageInfo for whatever just hit.
+            log_last_damage_info(this);
         }
     }
 
@@ -297,6 +309,115 @@ fn describe_instigator(instigator: Option<&UObject>) -> String {
         .map(|c| c.as_object().name())
         .unwrap_or_default();
     format!("{} ({})", ctrl.name(), class_name)
+}
+
+/// Dump the FDamageInfo (0xE8 bytes at HealthComponent +0x3B0) that
+/// the engine populates for the damage event currently being processed.
+/// This is what tells us *what kind* of damage hit -- DamageType class,
+/// instigator/source actor classes, hit location, source-type enum,
+/// damage-flags. Specifically lets us identify fall damage by its
+/// DamageType class even when the multicast parm flags are all zero.
+fn log_last_damage_info(health_component: &UObject) {
+    // Field offsets inside FDamageInfo (Maine_structs.hpp:4810).
+    const HIT_LOCATION: usize = 0x008; // FVector (3 doubles, 0x18 bytes)
+    const INSTIGATOR_CONTROLLER: usize = 0x020; // TWeakObjectPtr<AController>
+    const DAMAGE_SOURCE: usize = 0x028; // TWeakObjectPtr<UObject>
+    const DAMAGE_TYPE_CLASS: usize = 0x040; // TSubclassOf<UDamageType> -- raw UClass*
+    const ORIGIN_ATTACK: usize = 0x04C; // TWeakObjectPtr<UAttack>
+    const DAMAGE_SOURCE_TYPE: usize = 0x06A; // u8 enum
+    const DAMAGE_FLAGS: usize = 0x070; // i32
+
+    let base = HEALTH_COMPONENT_LAST_DAMAGE_INFO;
+    let damage_type_class: *mut UClass = unsafe {
+        health_component
+            .field_ptr(base + DAMAGE_TYPE_CLASS)
+            .cast::<*mut UClass>()
+            .read_unaligned()
+    };
+    let damage_type_name = unsafe {
+        damage_type_class
+            .as_ref()
+            .map(|c| c.as_object().name())
+            .unwrap_or_else(|| "<null>".to_string())
+    };
+
+    let instigator = resolve_weak_obj(health_component, base + INSTIGATOR_CONTROLLER);
+    let source = resolve_weak_obj(health_component, base + DAMAGE_SOURCE);
+    let attack = resolve_weak_obj(health_component, base + ORIGIN_ATTACK);
+
+    let hit_x = unsafe {
+        health_component
+            .field_ptr(base + HIT_LOCATION)
+            .cast::<f64>()
+            .read_unaligned()
+    };
+    let hit_y = unsafe {
+        health_component
+            .field_ptr(base + HIT_LOCATION + 8)
+            .cast::<f64>()
+            .read_unaligned()
+    };
+    let hit_z = unsafe {
+        health_component
+            .field_ptr(base + HIT_LOCATION + 16)
+            .cast::<f64>()
+            .read_unaligned()
+    };
+
+    let source_type: u8 = unsafe {
+        health_component
+            .field_ptr(base + DAMAGE_SOURCE_TYPE)
+            .cast::<u8>()
+            .read_unaligned()
+    };
+    let dflags: i32 = unsafe {
+        health_component
+            .field_ptr(base + DAMAGE_FLAGS)
+            .cast::<i32>()
+            .read_unaligned()
+    };
+
+    bbp_log!(
+        "rpg/dmg-trace:   LastDamageInfo: DamageType={} src_type={} flags=0x{:08x} hit=({:.0},{:.0},{:.0})",
+        damage_type_name,
+        source_type,
+        dflags,
+        hit_x,
+        hit_y,
+        hit_z
+    );
+    bbp_log!(
+        "rpg/dmg-trace:   instigator={} source={} attack={}",
+        describe_obj(instigator),
+        describe_obj(source),
+        describe_obj(attack)
+    );
+}
+
+fn describe_obj(obj: Option<&UObject>) -> String {
+    match obj {
+        None => "<none>".to_string(),
+        Some(o) => {
+            let cls = o.class().map(|c| c.as_object().name()).unwrap_or_default();
+            format!("{}({})", o.name(), cls)
+        }
+    }
+}
+
+fn resolve_weak_obj(parent: &UObject, offset: usize) -> Option<&'static UObject> {
+    let weak: FWeakObjectPtr = unsafe {
+        parent
+            .field_ptr(offset)
+            .cast::<FWeakObjectPtr>()
+            .read_unaligned()
+    };
+    if weak.object_index <= 0 {
+        return None;
+    }
+    let rt = runtime();
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    view.get(weak.object_index)
+        .map(|o| unsafe { &*(o as *const UObject) })
 }
 
 fn resolve_instigator(health_component: &UObject) -> Option<&'static UObject> {
