@@ -243,6 +243,36 @@ R1-R5 answered (see above). Each spike below is a concrete
 implementation against known field offsets and UFunction names,
 not exploratory.
 
+- [ ] **Eager state load on world entry (NOT lazy).** Spike B
+  currently loads PlayerState lazily on first kill (`tracker.rs`
+  -> `record_kill`). That was a spike shortcut. The real loop
+  needs state in memory the moment the player is in-world,
+  because level / perk ranks drive backpack capacity, hunger
+  rate, gear durability, etc. -- which take effect from spawn,
+  not from "after first kill."
+
+  Fix: poll for `AInGameGameState` (via `save_slot::current_slot_key`)
+  on a short interval after worker init. As soon as it returns
+  Some, load PlayerState, then apply perks-derived multipliers
+  to:
+    1. The player CDO (so newly-spawned instances inherit) --
+       already covered by `patch.rs` / `survival.rs` infra,
+       just needs to be parameterized by current perk ranks.
+    2. The live player Pawn instances if any are already spawned
+       at load time (R4 path:
+       `World->GameState->PlayerArray[i]->PawnPrivate->...`).
+
+  Also: re-load on world swap. If the player exits to main menu
+  and loads a different save, the GUID changes; we need to
+  flush the old PlayerState (already saved on each kill) and
+  load the new one. Cheapest detection: poll guid; if it
+  changes, re-load.
+
+  Order-wise: this is the natural follow-up to Spike B and
+  comes before the XP/perk loop. Without it, a real player
+  loading their save would start the session at "vanilla
+  capacity" until their first kill, which is wrong.
+
 - [ ] **Kill attribution: Buggy support.** (In Grounded 2, the
   player's tame mounts are called Buggies.) First Spike B
   in-game test surfaced: when the player's Buggy killed a

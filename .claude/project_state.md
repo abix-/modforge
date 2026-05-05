@@ -226,6 +226,17 @@ Files:
 In-game test confirmed: kill -> "no prior save for slot=06d9929b"
 -> "saved kill #1" -> file written. Reload test pending.
 
+### Eager state load on world entry (open)
+
+Spike B uses lazy load on first kill. That's wrong for the real
+loop -- level/perks drive stats from spawn, not from "after
+first kill." Need a short polling loop post-worker-init that
+watches `save_slot::current_slot_key()`; when it transitions
+None -> Some, load PlayerState and apply current perk-driven
+multipliers to player CDO + any live player pawn instances.
+Also re-load on guid change (player swapped saves via main
+menu). Comes before the XP/perk loop.
+
 ### Buggy kill attribution (open)
 
 In Grounded 2, the player's tame mounts are called Buggies.
