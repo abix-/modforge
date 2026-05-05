@@ -69,19 +69,47 @@ short of it:
 
 ## What changes (packaging side)
 
-- **Zip layout** changes from a flat drop to UE4SS's standard mod
-  folder shape:
-  ```
-  BetterBackpack/
-    enabled.txt          (empty file, UE4SS uses its presence as the
-                          enable flag)
-    dlls/
-      main.dll
-    settings.json
-  ```
-  The zip's root is `BetterBackpack/` so when extracted into the
-  game's `<game>\Augusta\Binaries\Win64\Mods\` folder, everything
-  ends up in the right place.
+UE4SS for Grounded 2 lives at:
+
+```
+<game>\Augusta\Binaries\WinGRTS\
+  dwmapi.dll                  (UE4SS proxy itself)
+  ue4ss\
+    UE4SS.dll
+    UE4SS-settings.ini
+    Mods\
+      mods.txt                (registration list)
+      BPModLoaderMod\         (existing builtin mods)
+      ConsoleEnablerMod\
+      ...
+```
+
+Note the path is `WinGRTS` (the Steam platform identifier, matching
+`Grounded2-WinGRTS-Shipping.exe`), not `Win64`. Earlier drafts of
+this doc had `Win64`; corrected.
+
+Mod registration is via `mods.txt` (one line per mod, `ModName : 1`
+to enable). UE4SS does not use per-mod `enabled.txt` files.
+
+Our zip needs the path mirror so Vortex deploys correctly:
+
+```
+zip-root/
+  Augusta/
+    Binaries/
+      WinGRTS/
+        ue4ss/
+          Mods/
+            BetterBackpack/
+              dlls/
+                main.dll
+              settings.json
+```
+
+`mods.txt` registration is handled by Vortex's UE4SS extension on
+deploy (it merges entries from each installed mod). For manual
+installs the README instructs the user to append
+`BetterBackpack : 1` to `mods.txt`.
 - **No setup.ps1.** No System32 winhttp copy. The user has already
   installed UE4SS once; that's the prerequisite.
 - **deploy.ps1 modes:**
@@ -195,38 +223,38 @@ Build shape:
   recursive submodule init breaks. We only need UE4SS's headers, not
   its build, so a flat clone is sufficient.
 
-### Why we don't link against UE4SS.dll
+### Linking against UE4SS.dll
 
-Naive shim would `#include <Mod/CppUserModBase.hpp>` and inherit. The
-header marks the constructor and destructor `RC_UE4SS_API`, which
-expands to `__declspec(dllimport)` in consumer builds. Linking
-requires UE4SS's import library, which would mean building UE4SS,
-which is currently blocked by the UEPseudo submodule rot.
+UE4SS.dll itself is shipped to end users with **all** `CppUserModBase`
+symbols exported (verified via `dumpbin /exports` against
+`<vortex_install>\ue4ss\UE4SS.dll`):
 
-Workaround: in our shim's translation unit, define `RC_UE4SS_API` as
-empty *before* including UE4SS's headers. The constructor and
-destructor are then declared as plain functions. We provide our own
-empty-body definitions in the same translation unit:
+- `??0CppUserModBase@RC@@QEAA@XZ` -- constructor
+- `??1CppUserModBase@RC@@UEAA@XZ` -- virtual destructor
+- `?on_update@CppUserModBase@RC@@UEAAXXZ` -- and similar for every
+  base virtual
 
-```cpp
-namespace RC {
-    CppUserModBase::CppUserModBase() = default;
-    CppUserModBase::~CppUserModBase() = default;
-}
+So we don't need to build UE4SS at all. We generate an import library
+from the live `UE4SS.dll`:
+
+```
+dumpbin /exports UE4SS.dll > exports.txt   # extract names
+lib /def:UE4SS.def /out:UE4SS.lib /machine:x64
 ```
 
-The compiler emits the base class's vtable in our object (since the
-destructor is virtual and now-defined-here), with our `=default`
-destructor in the appropriate slot. Field layouts match UE4SS's
-because we used UE4SS's actual headers. The class behaves
-identically to a "real" UE4SS-linked subclass at the ABI level UE4SS
-cares about: vtable virtual dispatch + direct field access on
-`ModName`/`ModVersion`/etc.
+The `.def` is auto-generated from the `dumpbin` output. We commit
+both `UE4SS.def` and `UE4SS.lib` to the repo (the lib is small;
+mostly a name table). Build script regenerates them when the user
+points at a fresh UE4SS.dll.
 
-Constraint: this works as long as we compile with the same MSVC
-toolchain + same CRT linkage as UE4SS itself ships. Modders are
-expected to build mods in Release mode against UE4SS Release, which
-is also our default. Document this assumption in the build doc.
+Our shim then `#include <Mod/CppUserModBase.hpp>` normally and
+inherits. No `RC_UE4SS_API` games. No layout-stub workaround. The
+linker resolves the imports at our DLL build time; Windows resolves
+them against the running UE4SS.dll at game load time.
+
+The earlier "define RC_UE4SS_API to empty + provide stubs" plan is
+abandoned -- it would have worked but it's strictly worse than
+linking against the real DLL.
 
 Why not the other options:
 
@@ -257,17 +285,19 @@ Option 1 (the chosen path):
 
 Numbered for tracking. Each step is its own commit.
 
-- [ ] **1.** Vendor UE4SS as a git submodule under
-  `vendor/RE-UE4SS`. Pin to a known release (latest stable at port
-  time). The shim only needs the headers under `UE4SS/include/`;
-  we're not building UE4SS itself.
-- [ ] **2.** Smoke-test that UE4SS for Grounded 2 actually loads
-  CPPMods today. Build a minimal "hello" mod (the C++ shim from this
-  doc + a Rust function that writes one line to a log file), drop it
-  into `<game>\Augusta\Binaries\Win64\Mods\HelloRust\dlls\main.dll`
-  (plus an empty `enabled.txt`), launch, confirm the line appears.
-  This is the gate; if UE4SS for Grounded 2 is broken today, fall
-  back to the winhttp proxy plan.
+- [x] **1.** Cloned `https://github.com/UE4SS-RE/RE-UE4SS.git` to
+  `C:\code\RE-UE4SS` for the headers (out-of-band; submodule attempt
+  failed because UE4SS's own `.gitmodules` references a 404'd
+  `Re-UE4SS/UEPseudo.git`). We don't need UE4SS's nested submodules
+  -- only the headers under `UE4SS/include/` and the live
+  `UE4SS.dll` for the import library. Document the expected path in
+  BUILDING.md and skip vendoring.
+- [ ] **2.** Generate `UE4SS.lib` import library from the live
+  `UE4SS.dll` shipped with the user's UE4SS install
+  (`<vortex>\grounded2\mods\UE4SS_Grounded2-...\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`).
+  `dumpbin /exports` -> filter out the path/`= forwarder` clutter
+  to get a clean name list -> `lib /def:UE4SS.def /out:UE4SS.lib`.
+  Commit both files to `better-backpack/ue4ss/`.
 - [ ] **3.** Add the C++ shim source to `better-backpack/src/`.
   Extend `build.rs` to compile it via `cc::Build` against the
   vendored UE4SS headers and link the resulting `.obj` into the
