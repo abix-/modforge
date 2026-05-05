@@ -75,6 +75,7 @@ Note: keep JSON consistent with the DLL's `settings.json` (no TOML).
 - `inject.exe` writes its own log, exits without pausing.
 - `settings.json` next to the DLL controls slot count + thirst/hunger
   multipliers. `better-backpack/settings.example.json` is the schema.
+  Defaults: slot_count=100, thirst/hunger multipliers=0.5.
 - Hunger and thirst rate patch via `survival.rs` -- patches every
   SurvivalComponent CDO's `HungerSettings.AdjustmentPerSecond` and
   `ThirstSettings.AdjustmentPerSecond` floats by the configured

@@ -121,8 +121,14 @@ in, so the file is optional. Schema:
 - `thirst_multiplier`, `hunger_multiplier` -- scale the per-second
   drain rate. `1.0` = vanilla, `0.5` = half rate, `0.0` = no drain.
 
+Defaults (used when `settings.json` is missing or a key is absent):
+
+- `slot_count = 100`
+- `thirst_multiplier = 0.5`
+- `hunger_multiplier = 0.5`
+
 Copy `better-backpack/settings.example.json` to your install dir as
-`settings.json` to get started.
+`settings.json` if you want to override these.
 
 Compile-time constants:
 

@@ -101,7 +101,8 @@ Per scan:
 
 Estimated wall cost: comparable to the inventory patch -- 1-3 ms once
 at startup. Runs only if at least one multiplier is `!= 1.0` (skipped
-entirely otherwise).
+entirely otherwise). Default multipliers ship at `0.5`, so the patch
+runs by default.
 
 ### 5. Rescan loop -- removed
 

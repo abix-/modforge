@@ -93,8 +93,9 @@ grounded2mods/
 ## Settings
 - `<DLL_dir>/settings.json` (optional). Schema in
   `better-backpack/settings.example.json`. Drives slot_count and
-  thirst/hunger multipliers. Defaults baked in for missing/malformed
-  file.
+  thirst/hunger multipliers. Defaults baked in: slot_count=100,
+  thirst_multiplier=0.5, hunger_multiplier=0.5. So out of the box
+  (no settings file): 100-slot backpack + half-rate hunger and thirst.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
