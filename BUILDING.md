@@ -56,8 +56,8 @@ What you should see:
   process. It tails the live mod log.
 - `%TEMP%\BetterBackpack.log` mirrors that output.
 - `inject.log` next to `inject.exe` captures the injector's own steps.
-- The injector pauses on "Press Enter to close..." so you can read it.
-  Pass `--no-pause` to skip the pause for scripted runs.
+  inject.exe runs and exits without pausing -- read `inject.log` if you
+  need to see what happened.
 
 Expected first-run log markers:
 
@@ -97,17 +97,6 @@ inject.exe path\to\custom\better_backpack.dll
 ```
 
 Useful when iterating on the DLL without rebuilding the injector.
-
-## Run from cmd / PowerShell
-
-If you want the injector's console output without the pause, run it from
-an already-open `cmd` or PowerShell window. The console persists
-naturally because it isn't owned by `inject.exe`:
-
-```
-cd C:\code\grounded2mods\target\x86_64-pc-windows-msvc\release
-.\inject.exe --no-pause
-```
 
 ## Configuration
 

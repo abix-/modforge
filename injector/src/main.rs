@@ -84,8 +84,7 @@ fn log_line(prefix: &str, msg: &str) {
 fn main() -> ExitCode {
     init_log();
     log_line("", &format!("inject.exe starting (log: {})", log_path().display()));
-    let no_pause = env::args().any(|a| a == "--no-pause");
-    let code = match run() {
+    match run() {
         Ok(()) => {
             log_line("", "exit: success");
             ExitCode::SUCCESS
@@ -95,19 +94,7 @@ fn main() -> ExitCode {
             log_line("", "exit: failure");
             ExitCode::from(1)
         }
-    };
-    if !no_pause {
-        pause_before_exit();
     }
-    code
-}
-
-fn pause_before_exit() {
-    use std::io::{Read, stdin};
-    println!();
-    println!("Press Enter to close...");
-    let mut byte = [0u8; 1];
-    let _ = stdin().read(&mut byte);
 }
 
 fn run() -> Result<()> {
@@ -122,7 +109,7 @@ fn run() -> Result<()> {
 }
 
 fn resolve_dll_path() -> Result<PathBuf> {
-    let arg = env::args().skip(1).find(|a| !a.starts_with("--"));
+    let arg = env::args().nth(1);
     let candidate: PathBuf = match arg {
         Some(arg) => PathBuf::from(arg),
         None => {
