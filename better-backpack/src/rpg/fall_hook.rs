@@ -51,6 +51,22 @@ fn on_player_fall_event(
     original: OriginalProcessEvent,
 ) {
     let fn_name = function.as_object().name();
+
+    // Walk-backwards trace: log every fall- / land- / damage-adjacent PE
+    // event firing on the player BP class so we can identify any seam
+    // between OnLanded (we suppress) and the post-damage multicast (we
+    // hook in kill_hook). Filter by name substring to avoid logging
+    // every Tick.
+    if is_player_character(this) && is_fall_relevant(&fn_name) {
+        let cd = read_player_current_damage(this);
+        bbp_log!(
+            "rpg/fall-trace: bp-class fn={} on {} CurrentDamage={:.2}",
+            fn_name,
+            this.name(),
+            cd
+        );
+    }
+
     let suppress = is_fall_immunity_active()
         && is_player_character(this)
         && (fn_name == FN_APPLY_FALL_DAMAGE || fn_name == FN_ON_LANDED);
@@ -66,6 +82,47 @@ fn on_player_fall_event(
     }
 
     unsafe { original.call(this, function, parms) };
+
+    // Post-call snapshot too -- helps localize which PE event the
+    // CurrentDamage write happens on (or before).
+    if is_player_character(this) && is_fall_relevant(&fn_name) {
+        let cd = read_player_current_damage(this);
+        bbp_log!(
+            "rpg/fall-trace: bp-class fn={} POST CurrentDamage={:.2}",
+            fn_name,
+            cd
+        );
+    }
+}
+
+fn is_fall_relevant(fn_name: &str) -> bool {
+    fn_name.contains("Fall")
+        || fn_name.contains("Land")
+        || fn_name.contains("Damage")
+        || fn_name.contains("Damaged")
+        || fn_name.contains("Hit")
+        || fn_name.contains("Health")
+}
+
+/// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The
+/// player BP class instance has its HealthComponent ptr at +0x1340
+/// inside ASurvivalCharacter.
+fn read_player_current_damage(player: &UObject) -> f32 {
+    const ASC_HEALTH_COMPONENT: usize = 0x1340;
+    const HC_CURRENT_DAMAGE: usize = 0x032C;
+    unsafe {
+        let hc: *mut UObject = player
+            .field_ptr(ASC_HEALTH_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        if let Some(hc) = hc.as_ref() {
+            hc.field_ptr(HC_CURRENT_DAMAGE)
+                .cast::<f32>()
+                .read_unaligned()
+        } else {
+            f32::NAN
+        }
+    }
 }
 
 fn is_player_character(obj: &UObject) -> bool {
