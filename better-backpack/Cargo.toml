@@ -8,7 +8,7 @@ publish.workspace = true
 
 [lib]
 name = "better_backpack"
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 anyhow = { workspace = true }
