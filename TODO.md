@@ -5,6 +5,27 @@ side. Open work is **distribution**: switching from "drop a winhttp.dll
 proxy in the game folder" to "ship as a UE4SS C++ mod, but keep the
 mod source 100% Rust." Plan in [UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md).
 
+## 0. URGENT: fix UE4SS load crash
+
+**Current bug.** `main.dll` builds, deploys, and UE4SS loads it
+(log: `Starting C++ mod 'BetterBackpack'`), but the game crashes
+shortly after. Game launches fine without the mod.
+
+Suspect: our hand-rolled `RC::CppUserModBase` mirror in
+`cpp/shim.cpp` doesn't match UE4SS's actual class layout. UE4SS's
+imported constructor writes through the parent layout when we
+`new BetterBackpackMod()`, scribbling adjacent memory if our
+mirror is wrong.
+
+Debug plan in `UE4SS_PORT_PLAN.md` step 7. Top suspects:
+
+1. Virtual count -- we have 12; real header has 14.
+2. CRT config -- `cc::Build` may use `/MT`, UE4SS likely uses `/MD`.
+3. Field order / STL type sizes in the mirror.
+
+**Fix this before any other UE4SS work.** Without it the mod
+literally doesn't run.
+
 ## 1. Repackage as a UE4SS CPPMod
 
 Why: see `UE4SS_PORT_PLAN.md` (steelman in 11 points). Short

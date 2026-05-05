@@ -335,11 +335,37 @@ Numbered for tracking. Each step is its own commit.
   `PERFORMANCE.md` to reflect the UE4SS load model. The capability
   comparison table stays accurate -- only the distribution shape
   changed.
-- [ ] **7.** In-game smoke test of the full mod under UE4SS: install
-  via the deploy script (or via Vortex if the zip auto-installs),
-  launch the game, confirm `<game>\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.log`
-  shows our mod started, our `better_backpack.log` landed, and the
-  patches applied.
+- [/] **7.** In-game smoke test under UE4SS. **Partially done.**
+  - UE4SS DOES recognize our mod -- `UE4SS.log` shows
+    `Starting C++ mod 'BetterBackpack'` cleanly.
+  - But the game **crashes** during early init when our mod is
+    loaded. With `deploy.ps1 -Uninstall`, the game launches fine,
+    so the crash is in our mod, not UE4SS or Grounded.
+  - **Suspected cause:** layout mismatch between our hand-rolled
+    `RC::CppUserModBase` mirror in `cpp/shim.cpp` and UE4SS's
+    actual class layout. We mirror the vtable + member fields, but
+    UE4SS's `CppUserModBase::CppUserModBase()` (imported from
+    UE4SS.lib) writes through the parent layout when we
+    `new BetterBackpackMod()`. If our mirror has wrong virtual
+    count, wrong field order, or wrong-sized STL types, the parent
+    ctor corrupts adjacent memory.
+  - **Open suspects** (debug next session):
+    - Our mirror declares 12 virtuals; the real header has 14
+      (we're probably missing two of the `Lua*` pointer overloads
+      and/or `on_cpp_mods_loaded`).
+    - Field order / sizes in our mirror.
+    - C++ runtime config -- `cc::Build` may default to `/MT`
+      while UE4SS ships built against `/MD`. CRT mismatch could
+      explain heap corruption when the parent ctor's `std::wstring`
+      members are constructed.
+  - **Debug plan:**
+    1. Write to a debug log at the very top of `start_mod()` before
+       the `new` to confirm we reach the export.
+    2. Wrap `new BetterBackpackMod()` in try/catch.
+    3. Audit the mirror against the real header byte-for-byte.
+    4. Force `/MD` in `cc::Build` if not already.
+    5. As a last resort, include UE4SS's real headers (resolve the
+       imgui dep by stubbing or vendoring).
 - [ ] **8.** Archive the winhttp proxy material (winhttp.def,
   forwarder build.rs, winhttp section of FEATURES.md) into a
   `archive/winhttp-proxy/` directory in case we ever want it back as

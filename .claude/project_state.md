@@ -167,6 +167,62 @@ The earlier winhttp.dll proxy work will be archived to
 `archive/winhttp-proxy/` once the UE4SS path lands, kept as a
 fallback if UE4SS turns out unstable for Grounded 2.
 
+## Where we left off (2026-05-05, late-night)
+
+**State:**
+- `main.dll` builds clean (244 KB), exports `start_mod` /
+  `uninstall_mod` / `DllMain` / `better_backpack_start` /
+  `better_backpack_stop`.
+- `deploy.ps1 -Install` works against the user's
+  `C:\Games\Steam\steamapps\common\Grounded2\` install.
+- Vortex zip layout is correct (Augusta/Binaries/WinGRTS/...).
+- UE4SS v3.0.1 Beta loads our mod successfully:
+  `UE4SS.log` line 9: `Starting C++ mod 'BetterBackpack'`.
+
+**Current bug: game crashes when our mod is loaded.**
+Without our mod (`deploy.ps1 -Uninstall`) the game launches fine.
+With our mod the game crashes during early init -- likely after
+`start_mod` returns the `BetterBackpackMod*` pointer.
+
+**Most likely cause:** layout mismatch between our hand-rolled
+`RC::CppUserModBase` mirror in `cpp/shim.cpp` and UE4SS's actual
+class layout. We forward-declared `GUI::GUITab` and `LuaMadeSimple::Lua`
+to avoid pulling in imgui transitively, but those forward decls
+don't help if our virtuals or fields are at wrong offsets vs what
+UE4SS expects.
+
+The `RC::CppUserModBase::CppUserModBase()` constructor is imported
+from UE4SS.lib (verified via `dumpbin /exports`), so when `new
+BetterBackpackMod()` runs the parent constructor, UE4SS's code
+writes through the parent layout. If our derived class adds
+mismatched padding or our base mirror has wrong-sized fields, the
+parent ctor scribbles past where it should.
+
+**Next-session debug plan:**
+1. Add a Win32 OutputDebugStringW or a file write at the very top
+   of `start_mod()` before the `new` -- confirms we even enter our
+   exported function.
+2. Wrap `new BetterBackpackMod()` in try/catch -- if the ctor
+   throws, log it.
+3. Compare our `RC::CppUserModBase` mirror in `cpp/shim.cpp`
+   field-by-field against the real header at
+   `C:\code\RE-UE4SS\UE4SS\include\Mod\CppUserModBase.hpp`. Specific
+   suspects:
+   - The 14 virtuals need to be in declaration order to match the
+     vtable. Our mirror has 12; we may be missing two (the `Lua*`
+     pointer overloads of on_lua_start/on_lua_stop, OR
+     `on_cpp_mods_loaded`).
+   - Member field order: vector<shared_ptr<GUITab>> first
+     (protected), then 5x StringType (public). Verify ours matches.
+4. Worst case: switch to including UE4SS's real headers and resolve
+   the imgui dep (download imgui to a local dir or stub it).
+
+**Sanity check before debugging the layout:**
+- Verify our cdylib was compiled with `/MD` (multi-threaded DLL CRT)
+  matching UE4SS's release build settings. The `cc::Build` defaults
+  in `build.rs` may be using `/MT`, which would produce CRT
+  mismatches.
+
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
   treating `image_base + g_objects` as a pointer-to-pointer and
