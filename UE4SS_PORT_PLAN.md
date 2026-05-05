@@ -292,35 +292,56 @@ Numbered for tracking. Each step is its own commit.
   -- only the headers under `UE4SS/include/` and the live
   `UE4SS.dll` for the import library. Document the expected path in
   BUILDING.md and skip vendoring.
-- [ ] **2.** Generate `UE4SS.lib` import library from the live
-  `UE4SS.dll` shipped with the user's UE4SS install
-  (`<vortex>\grounded2\mods\UE4SS_Grounded2-...\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`).
-  `dumpbin /exports` -> filter out the path/`= forwarder` clutter
-  to get a clean name list -> `lib /def:UE4SS.def /out:UE4SS.lib`.
-  Commit both files to `better-backpack/ue4ss/`.
-- [ ] **3.** Add the C++ shim source to `better-backpack/src/`.
-  Extend `build.rs` to compile it via `cc::Build` against the
-  vendored UE4SS headers and link the resulting `.obj` into the
-  cdylib. Delete the winhttp forwarder generation from `build.rs`.
-- [ ] **4.** Rename cdylib output `winhttp` -> `main`. Delete
-  `winhttp.def`. Add two `#[no_mangle] extern "C"` Rust functions
-  (`better_backpack_start`, `better_backpack_stop`) that the C++
-  shim calls. Move worker startup out of `DllMain` into
-  `better_backpack_start`. Drop the `wait_for_gobjects` retry loop
-  -- UE4SS calls `on_unreal_init` after engine init, so GObjects is
-  already populated.
-- [ ] **5.** Rewrite `deploy.ps1` to package the UE4SS mod folder
-  layout. Default mode: zip whose root is `BetterBackpack/`
-  containing `dlls/main.dll`, `enabled.txt`, `settings.json`.
+- [x] **2.** Generated `UE4SS.lib` from the live UE4SS.dll at
+  `<vortex>\grounded2\mods\UE4SS_Grounded2-52-1-0-2-1771968923\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`
+  via `dumpbin /exports` -> `.def` -> `lib /def:`. 3756 mangled
+  symbols total, 1.9 MB lib. Committed both `UE4SS.def` and
+  `UE4SS.lib` to `better-backpack/ue4ss/`.
+- [x] **3.** Added `cpp/shim.cpp` (~110 lines including comments,
+  ~30 lines of actual code). Forward-declares `GUI::GUITab` and
+  `LuaMadeSimple::Lua` so the shim doesn't pull in imgui or the full
+  UE4SS header tree. Mirrors `RC::CppUserModBase` layout exactly,
+  marks the constructor + virtual destructor + 12 inline base
+  virtuals with `__declspec(dllimport)` so they resolve from
+  UE4SS.lib. Subclasses as `BetterBackpackMod`, overrides
+  `on_unreal_init` to call into Rust, exports `start_mod` and
+  `uninstall_mod`. `build.rs` compiles the shim via `cc::Build` and
+  links against UE4SS.lib.
+- [x] **4.** Renamed cdylib `winhttp` -> `main` (so the artifact is
+  `main.dll`, the path UE4SS expects under
+  `Mods/<ModName>/dlls/main.dll`). Replaced the winhttp forwarder
+  generation in `build.rs`. Added `extern "C" fn
+  better_backpack_start()` / `better_backpack_stop()` to `lib.rs`.
+  `DllMain` shrunk to just capture HMODULE. Worker spawned from
+  `better_backpack_start` instead of DllMain. `wait_for_gobjects`
+  retry loop deleted -- UE4SS calls `on_unreal_init` only after
+  the engine has finished initializing.
+  **Verified `main.dll` (244 KB) builds clean, exports `DllMain`,
+  `better_backpack_start`, `better_backpack_stop`, `start_mod`,
+  `uninstall_mod` (per `dumpbin /exports`).**
+- [x] **5.** Rewrote `deploy.ps1` for the UE4SS mod folder layout.
+  Three modes:
+  - Default `-Package`: produces a Vortex-installable zip at
+    `dist\better-backpack-v<version>.zip` with the contents at
+    `Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/{dlls/main.dll,
+    settings.json, README.txt}`. Generated zip is 132 KB.
+  - `-Install`: auto-detects the local Steam install, verifies UE4SS
+    is present, copies `main.dll` and `settings.json` into the live
+    Mods folder, appends `BetterBackpack : 1` to `mods.txt` if it
+    isn't already there.
+  - `-Uninstall`: removes the BetterBackpack folder and strips its
+    line from `mods.txt`.
 - [ ] **6.** Update `BUILDING.md`, `README.md`, `FEATURES.md`,
   `PERFORMANCE.md` to reflect the UE4SS load model. The capability
   comparison table stays accurate -- only the distribution shape
   changed.
-- [ ] **7.** In-game smoke test of the full mod under UE4SS: drop
-  the new mod folder into `<game>\Augusta\Binaries\Win64\Mods\`,
-  launch, confirm log shows the mod started and the patches landed.
-- [ ] **8.** Archive the winhttp proxy material (Cargo.toml lib name,
-  build.rs, winhttp.def, the proxy section of FEATURES.md) into a
+- [ ] **7.** In-game smoke test of the full mod under UE4SS: install
+  via the deploy script (or via Vortex if the zip auto-installs),
+  launch the game, confirm `<game>\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.log`
+  shows our mod started, our `better_backpack.log` landed, and the
+  patches applied.
+- [ ] **8.** Archive the winhttp proxy material (winhttp.def,
+  forwarder build.rs, winhttp section of FEATURES.md) into a
   `archive/winhttp-proxy/` directory in case we ever want it back as
   a UE4SS-less fallback. Don't delete -- it's correct, working code.
 

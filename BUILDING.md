@@ -1,10 +1,12 @@
-# Building Better Backpack (Rust)
+# Building Better Backpack
 
-The mod is a Cargo workspace with two crates:
+A Cargo workspace with two crates:
 
-- **better-backpack** -- the cdylib injected into the game process.
-- **injector** -- the standalone exe that finds the running game and pokes
-  `LoadLibraryA` to map the DLL.
+- **better-backpack** -- the mod itself. Rust cdylib (`main.dll`) +
+  a tiny C++ shim (`cpp/shim.cpp`) that satisfies UE4SS's
+  `RC::CppUserModBase` ABI and forwards lifecycle calls to Rust.
+- **injector** -- standalone exe that injects the DLL into a running
+  game. Dev-time only; not part of the user distribution.
 
 Single `cargo build` produces both artifacts.
 
@@ -14,16 +16,24 @@ Single `cargo build` produces both artifacts.
 - Rust toolchain. The repo pins `stable` via `rust-toolchain.toml` and
   installs the `x86_64-pc-windows-msvc` target automatically. Install
   `rustup` from <https://rustup.rs> if you don't have it.
-- Visual Studio Build Tools 2019+ with the C++ workload (provides MSVC
-  linker). Required by the MSVC target triple.
-
-You do **not** need to install Dumper-7 or any C++ SDK headers. The Rust
-crate carries a hand-written shim for the small subset of UE types we
-touch (`better-backpack/src/sdk/`).
+- Visual Studio Build Tools 2022+ with the C++ workload. Required for
+  the MSVC linker and for compiling the C++ shim against UE4SS's
+  ABI.
+- A clone of UE4SS at `C:\code\RE-UE4SS` (only the headers are used;
+  no UE4SS build needed):
+  ```
+  git clone https://github.com/UE4SS-RE/RE-UE4SS.git C:\code\RE-UE4SS
+  ```
+  Don't try `git submodule update --init --recursive` -- UE4SS's own
+  `.gitmodules` references a 404'd `Re-UE4SS/UEPseudo.git` repo.
+  We only need the headers under `UE4SS/include/` and the user's
+  installed UE4SS.dll for the import library, not a UE4SS build.
+- The user's installed UE4SS for Grounded 2. The repo ships a
+  pre-generated `better-backpack/ue4ss/UE4SS.lib` (1.9 MB,
+  regenerable from any installed UE4SS.dll via the steps in the
+  port plan).
 
 ## Build
-
-From the repo root:
 
 ```
 cargo build --release
@@ -31,12 +41,13 @@ cargo build --release
 
 Outputs:
 
-- `target/x86_64-pc-windows-msvc/release/winhttp.dll`
-- `target/x86_64-pc-windows-msvc/release/inject.exe`
+- `target/x86_64-pc-windows-msvc/release/main.dll` -- the mod, named
+  `main.dll` because UE4SS expects CPPMods at
+  `Mods/<ModName>/dlls/main.dll`.
+- `target/x86_64-pc-windows-msvc/release/inject.exe` -- dev-time
+  injector.
 
-The build target dir is locked to `target/` via `.cargo/config.toml`. If
-you have a global `~/.cargo/config.toml` redirecting builds elsewhere, the
-project-level config wins.
+The build target dir is locked to `target/` via `.cargo/config.toml`.
 
 ## Package for Vortex / Nexus distribution
 
@@ -46,16 +57,19 @@ project-level config wins.
 
 Default mode. Builds the release cdylib and writes
 `dist\better-backpack-v<version>.zip` ready to upload to Nexus or
-import into Vortex. The zip contains:
+import into Vortex. The zip mirrors the UE4SS deployment path so it
+extracts directly into the game install:
 
-- `winhttp.dll` -- the mod proxy
-- `settings.json` -- default config users can edit
-- `setup.ps1` -- one-shot post-install script that copies
-  `C:\Windows\System32\winhttp.dll` to the install folder as
-  `winhttp_orig.dll`. This step is required because Vortex never
-  touches system files; we ship the script so the user (or a Vortex
-  install hook) can run it after deployment.
-- `README.txt` -- end-user install + uninstall instructions.
+```
+Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
+  dlls/main.dll
+  settings.json
+  README.txt
+```
+
+`README.txt` inside the archive walks the user through Vortex /
+manual install, the UE4SS prerequisite, and the `mods.txt`
+registration step.
 
 `dist/` is gitignored.
 
@@ -65,11 +79,15 @@ import into Vortex. The zip contains:
 .\scripts\deploy.ps1 -Install
 ```
 
-Builds, locates the game's `Augusta\Binaries\Win64` (auto-detects from
-the Steam library; pass `-GamePath` to override), copies our
-`winhttp.dll` there, copies `C:\Windows\System32\winhttp.dll` alongside
-as `winhttp_orig.dll`, and seeds a default `settings.json` if one
-isn't already there. Launch the game normally.
+Builds, auto-detects the local Grounded 2 install (Steam library
+registry), verifies UE4SS is installed at
+`<game>\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`, copies `main.dll`
+and `settings.json` into
+`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\`, and
+appends `BetterBackpack : 1` to `mods.txt` if it isn't there.
+Existing user-edited `settings.json` is preserved.
+
+Override the auto-detect with `-GamePath <path-to-game-root>`.
 
 Uninstall:
 
@@ -77,9 +95,8 @@ Uninstall:
 .\scripts\deploy.ps1 -Uninstall
 ```
 
-Removes our `winhttp.dll`. Leaves `winhttp_orig.dll`, `settings.json`,
-and `better_backpack.log` in place. Add `-PurgeOrig` to also remove
-`winhttp_orig.dll`.
+Deletes the `BetterBackpack` mod folder and strips its line from
+`mods.txt`.
 
 ## Run via inject.exe (developer / iteration flow)
 
