@@ -32,11 +32,38 @@ was the de-facto requirement.
 
 This mod patches both sides at runtime from a single DLL.
 
+## Player has three inventory components
+
+`ASurvivalCharacter` (the C++ parent of every concrete
+`BP_SurvivalPlayerCharacter_*`) owns three inventory components as
+instanced sub-objects. Two are `UInventoryComponent` (and therefore
+have `DefaultMaxSize`); the third is a different class.
+
+| Offset on `ASurvivalCharacter` | Pointer field | Class | Vanilla `DefaultMaxSize` |
+| ------------------------------ | ------------- | ----- | ----------------------- |
+| `+0x13B8` | `InventoryComponent` | `UInventoryComponent` | 40 (the player's main backpack, the one this mod grows) |
+| `+0x13C0` | `MountInventoryComponent` | `UInventoryComponent` | 30 (mount / Buggy saddlebag, untouched by this mod) |
+| `+0x13C8` | `ProximityInventoryComponent` | `UProximityInventoryComponent` (different class, no `DefaultMaxSize`) | n/a |
+
+`UProximityInventoryComponent` is a different class without a max size
+property, so only two of the three components participate in capacity
+patching. AIO Player Tweaks v13.1.6 patches the saddlebag (40 -> 48)
+but leaves the main backpack at 40 -- the "60 slots" version is a
+separate optional download from that mod's Nexus page. Better Backpack
+patches the main only.
+
 ## Data side: `UInventoryComponent.DefaultMaxSize`
 
 | Field | Offset | Source |
 | ----- | ------ | ------ |
 | `UInventoryComponent.DefaultMaxSize` (int32) | `+0x01E0` | `Maine_classes.hpp:29557` |
+
+UPROPERTY flags: `Edit, BlueprintVisible, BlueprintReadOnly,
+IsPlainOldData, NativeAccessSpecifierProtected`. Editable in the
+Blueprint editor (so it CAN be overridden via CDO patching), readable
+from BP at runtime, but the runtime cannot mutate it directly. Only
+CDO defaults change it -- which is why pak-based and DLL-based mods
+both reach this property by patching CDOs, never by calling a setter.
 
 Vanilla value depends on the owning actor. Patch policy is to leave
 non-player containers alone.
@@ -69,7 +96,7 @@ widgets are not equally relevant in shipping:
 
 | Widget | Status in current shipping (`++Augusta+release-0.4.0.2-CL-2673661`) |
 | ------ | ------------------------------------------------------------------ |
-| `UWBP_InventoryInterface_C` | **The actual renderer**. Owns the live grid. Has its own `UGridPanel ItemGrid` field (`WBP_InventoryInterface_classes.hpp:50`) and a BP-callable `PopulateItemGrid(RowMax, ColumnMax)` method (`WBP_InventoryInterface_classes.hpp:205`). |
+| `UWBP_InventoryInterface_C` | **The actual renderer**. Owns the live grid. Has its own `UGridPanel* ItemGrid` field at `+0x0430` (`WBP_InventoryInterface_classes.hpp:50`) and a BP-callable `PopulateItemGrid(RowMax, ColumnMax)` method (`WBP_InventoryInterface_classes.hpp:205`). |
 | `UUI_InventoryGrid_C` | Exists in `GObjects`, has `MaxRows` (+0x0388) and `MaxColumns` (+0x0390), but **the player inventory does not route through it**. CDO patch is belt-and-braces in case a future build reintroduces it. |
 | `UI_Container_BackpackSide` | **Not in `GObjects`** in current shipping (loaded or not). Old Bigger Backpack pak mod patched its `MaxRows`. That is why the pak mod has zero visible effect today. |
 
@@ -154,6 +181,25 @@ Common failure modes:
 - No `PATCH` lines: no `UInventoryComponent` had `DefaultMaxSize == 40`
   at scan time. Inject inside an active save (not at the main menu)
   so `BP_SurvivalPlayerCharacter*` CDOs are loaded.
+
+## Why no cheat-tag unlock works
+
+The shipping cheat manager (`USurvivalCheatManager`) exposes three
+unlock entry points:
+
+| Function | What it tunes |
+| -------- | ------------- |
+| `UnlockBuggyUpgrade(FName)` | Mount-only. Args: `BuggyHealing`, `BuggyHealthPoolOnRevive`, `BuggyInventorySize`, `BuggyMaxHealth`, `BuggyMaxStamina`. |
+| `UnlockItemStackUpgrade(FGameplayTag)` | Per-item-category stack bumps. Tags: `StackSize.Ammo`, `StackSize.Food`, `StackSize.Resource`. |
+| `UnlockPlayerUpgrade(FName)` | Player-side. Rows in `Table_PlayerUpgrades.uasset`: `Health`, `Healing`, `Mutations`, `Stamina`, `Rates`. |
+
+There is **no player-backpack row** in `Table_PlayerUpgrades` and no
+`BuggyInventorySize` analogue for the main backpack. The cheat-command
+channel that AIO Player Tweaks rides on cannot grow the player
+backpack -- the only mechanism is direct CDO patching of
+`InventoryComponent.DefaultMaxSize`. This is why every working backpack
+mod (us, the "60 slots" Player Tweaks variant) is a CDO override, not
+a console-command sequence.
 
 ## Why we re-call `PopulateItemGrid` (not just patch a field)
 

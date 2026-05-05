@@ -206,6 +206,143 @@ to take effect immediately must also walk live instances and patch
 them in place. Movement skills, fall-damage skill, and inventory
 slot count all do this -- see the per-skill arms in `apply.rs`.
 
+## Cooked PropertyTag layout (legacy serialization gotcha)
+
+UE's canonical `FPropertyTag` field order is `Name, Type, Size,
+ArrayIndex, ...`. The COOKED legacy serialisation produced by
+`retoc to-legacy` from a Zen container actually emits **`ArrayIndex`
+before `Size`**: 4-byte ArrayIndex first, then 4-byte Size. Otherwise
+the property-tag header is canonical:
+
+```
+offset 0   FName Key   (4 bytes nameIndex + 4 bytes nameNumber = 8 bytes)
+offset 8   FName Type  (8 bytes)
+offset 16  int32 ArrayIndex
+offset 20  int32 Size       (= 4 for an IntProperty)
+offset 24  uint8 HasPropertyGuid
+[offset 25 if HasPropertyGuid is 0, else +16 for FGuid]
+           int32 Value      (the actual value)
+```
+
+This caught us once: confusing `ArrayIndex` and `Size` reported
+`size=0, arr_idx=4` when the real layout is `ArrayIndex=0, Size=4`.
+After the swap, value extraction at `offset +25` (the byte after the
+`HasGuid` flag) gave the correct int32. Relevant for any mod tooling
+that reads `.uexp` bytes directly (e.g. our `read_property.py` Python
+scratch script during the original SDK research).
+
+## Community ecosystem and tooling references
+
+No official Obsidian / Grounded 2 modding SDK exists. The community
+covers the gap.
+
+### Authoritative Grounded 2 mod pages
+
+- [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
+  -- the primary "AIO + capacity" mod family. Optional Files contain
+  the 60-slot data-side bump.
+- [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37)
+  -- UI-side widget mod. Pairs with Player Tweaks. **Broken in
+  current shipping** because the host widget it patches
+  (`UI_Container_BackpackSide.MaxRows`) is no longer in `GObjects`;
+  see [`inventory.md`](inventory.md) for the full root-cause.
+- [Better Storages](https://www.nexusmods.com/grounded2/mods/25)
+  -- world chest / storage capacity. Different system from the
+  player backpack.
+- [MoreInventory_Buggy](https://www.nexusmods.com/grounded2/mods/102)
+  -- mount saddlebag size. Different system.
+- [Bigger Stacks](https://www.nexusmods.com/grounded2/mods/8)
+  -- per-item stack size up to x999.
+- [Grounded 2 Command List](https://www.nexusmods.com/grounded2/mods/19)
+  -- console command reference.
+- [Cheat Manager and Console Unlocker](https://www.nexusmods.com/grounded2/mods/70)
+  -- runtime console / cheat manager unlock for shipping.
+- [`x0reaxeax/Grounded2Minimal`](https://github.com/x0reaxeax/Grounded2Minimal)
+  -- DLL-based debug / cheat tool. Source available; useful as
+  reference for SDK class names, struct layouts, and offsets. Our
+  injector follows their pattern.
+
+### General UE5 modding tools
+
+| Tool | Purpose | Source |
+| ---- | ------- | ------ |
+| **retoc** (CLI) | Probe + unpack `.utoc/.ucas`, Zen->Legacy | github.com/trumank/retoc |
+| **FModel** (GUI) | Browse paks, export properties to JSON | github.com/4sval/FModel |
+| **UAssetGUI** | Byte-level uasset inspection | github.com/atenfyr/UAssetGUI |
+| **WinMerge** | Folder/file diff for the JSON outputs | winmerge.org |
+| **Dumper-7** | Generates the C++ SDK by attaching to a running UE process | github.com/Encryqed/Dumper-7 |
+| **UnrealReZen** | Alternative Zen packer (if `retoc to-zen` fails) | github.com/rm-NoobInCoding/UnrealReZen |
+| **Universal UE5 Unlocker (UUU)** | Re-enables console at runtime in shipping | (third-party DLL) |
+
+`retoc` subcommands actually used:
+
+| Subcommand | Purpose |
+| ---------- | ------- |
+| `info <utoc>` | Container metadata (chunks, packages, version) |
+| `list <utoc>` | Chunk IDs (raw, not directory paths) |
+| `to-legacy` | Convert Zen-format IoStore to legacy `.uasset` pak |
+| `unpack` | Extract chunks to files |
+
+`to-legacy` is the most useful: it produces a legacy `.pak` with
+readable `.uasset/.uexp` files that downstream tools (UAssetGUI,
+FModel, kismet-analyzer) all understand directly.
+
+### `retoc to-zen --version` gotcha
+
+When *building* a pak mod for Grounded 2 from a patched legacy pak,
+the `--version` flag passed to `retoc to-zen` is empirically named,
+not literal:
+
+| `--version` argument | TOC produced | Matches vanilla? |
+| -------------------- | ------------ | ---------------- |
+| `UE5_4` | `OnDemandMetaData` / `NoExportInfo` (older) | NO |
+| `UE5_6` | `ReplaceIoChunkHashWithIoHash` / `SoftPackageReferencesOffset` | YES |
+
+Pass `--version UE5_6` even though Grounded 2 is built on UE 5.4.
+The right value is the one that makes `retoc info` produce the same
+TOC and container-header versions as the vanilla pak. Treat retoc's
+version names as opaque labels.
+
+`repak` is the companion tool used to (re-)pack legacy `.uasset`
+files into a legacy `.pak` before the `retoc to-zen` step. Together
+the round-trip is:
+
+```
+zen .utoc/.ucas
+  -> retoc to-legacy -> .pak (legacy)
+  -> patch bytes in .uexp
+  -> repak pack -> .pak (legacy, repacked)
+  -> retoc to-zen --version UE5_6 -> .pak/.ucas/.utoc (zen)
+  -> drop into Augusta/Content/Paks/
+```
+
+### General UE5 modding guides
+
+- [Buckminster's UE Modding dev-guide](https://buckminsterfullerene02.github.io/dev-guide/)
+  -- comprehensive intro including pak handling, patching, IoStore
+  packing.
+- [Unofficial Modding Guide](https://unofficial-modding-guide.com/posts/uassetmodding/)
+  -- UAssetGUI walkthrough, applies to any UE 5.x cooked-asset target.
+- [UE Modding Tools databank](https://github.com/Buckminsterfullerene02/UE-Modding-Tools)
+  -- comprehensive list of reverse-engineering and modding tools
+  spanning multiple UE games.
+- [Dmgvol/UE_Modding](https://github.com/Dmgvol/UE_Modding)
+  -- UE4/5 modding guides repo, includes IoStore packing instructions.
+- [mod.io UGC Best Practices](https://docs.mod.io/unreal/ugc-best-practices)
+  -- Epic's ecosystem partner; useful for understanding what
+  cooked-asset patching is officially expected to look like.
+
+### What is NOT available
+
+- No official Obsidian modding SDK or API documentation.
+- No `.usmap` mappings file shipped with the game; must be generated
+  via Dumper-7 or sourced from the modding community.
+- No public C++ headers or Unreal Engine project file from Obsidian
+  for Grounded 2.
+- Grounded Wiki does not cover player backpack mechanics in
+  modder-relevant detail; player-side numbers are scattered across
+  forum threads and mod descriptions.
+
 ## Mod inspection methodology (reference)
 
 For diffing or root-causing third-party Grounded 2 mods at the asset
