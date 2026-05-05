@@ -13,7 +13,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::bbp_log;
 use crate::log;
-use crate::rpg::save_slot;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlayerState {
@@ -26,22 +25,13 @@ pub struct PlayerState {
     pub last_killed: String,
 }
 
-/// Loads PlayerState from disk if a save slot is active, otherwise
-/// returns default. Logs the outcome.
-pub fn load_for_current_slot() -> Option<(String, PlayerState)> {
-    let slot = save_slot::current_slot_key()?;
-    let path = state_path(&slot);
-    let state = match fs::read_to_string(&path) {
+/// Reads PlayerState for `slot` from disk. Returns default if the file
+/// is missing or unparseable. Logs the outcome.
+pub fn load_one(slot: &str) -> PlayerState {
+    let path = state_path(slot);
+    match fs::read_to_string(&path) {
         Ok(text) => match serde_json::from_str::<PlayerState>(&text) {
-            Ok(s) => {
-                bbp_log!(
-                    "rpg/state: loaded slot={} kills={} last={}",
-                    short(&slot),
-                    s.kill_count,
-                    if s.last_killed.is_empty() { "<none>" } else { &s.last_killed }
-                );
-                s
-            }
+            Ok(s) => s,
             Err(e) => {
                 bbp_log!(
                     "rpg/state: parse failed for {} ({}); starting fresh",
@@ -52,11 +42,10 @@ pub fn load_for_current_slot() -> Option<(String, PlayerState)> {
             }
         },
         Err(_) => {
-            bbp_log!("rpg/state: no prior save for slot={}; starting fresh", short(&slot));
+            bbp_log!("rpg/state: no prior save for slot={}; starting fresh", short(slot));
             PlayerState::default()
         }
-    };
-    Some((slot, state))
+    }
 }
 
 pub fn save(slot: &str, state: &PlayerState) {

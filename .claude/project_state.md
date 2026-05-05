@@ -226,16 +226,23 @@ Files:
 In-game test confirmed: kill -> "no prior save for slot=06d9929b"
 -> "saved kill #1" -> file written. Reload test pending.
 
-### Eager state load on world entry (open)
+### Eager state load on world entry: DONE (2026-05-05)
 
-Spike B uses lazy load on first kill. That's wrong for the real
-loop -- level/perks drive stats from spawn, not from "after
-first kill." Need a short polling loop post-worker-init that
-watches `save_slot::current_slot_key()`; when it transitions
-None -> Some, load PlayerState and apply current perk-driven
-multipliers to player CDO + any live player pawn instances.
-Also re-load on guid change (player swapped saves via main
-menu). Comes before the XP/perk loop.
+`rpg/world_loader.rs` spawns a 1Hz poller from worker init
+that watches `save_slot::current_slot_key` and calls
+`tracker::activate_slot` / `deactivate_slot` on transitions.
+Handles save-swap (Some(a) -> Some(b)) too.
+
+Tracker refactored: kill recording no longer lazy-resolves the
+slot. If no slot is bound it logs+drops; in practice the
+loader activates within 1s of world entry, well before the
+player enters combat. State.rs collapsed to a simple
+load_one(slot) -- loader owns slot resolution.
+
+Future perk-driven CDO/instance reapply will plug into the
+activation transition: when activate_slot fires with a freshly
+loaded PlayerState, walk the player CDO + live pawn instances
+and apply current perk multipliers. Stubbed until perks exist.
 
 ### Buggy kill attribution (open)
 

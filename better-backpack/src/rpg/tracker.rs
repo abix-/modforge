@@ -1,13 +1,11 @@
-// Spike B: live PlayerState held in-process. The kill hook calls
-// `record_kill` on every confirmed kill; we lazy-resolve the save slot
-// (since the save isn't loaded at worker startup -- it's loaded when
-// the player picks a slot from the main menu) and flush to disk after
-// every change.
+// In-memory PlayerState plus the slot it's bound to. Drives reads /
+// writes for the RPG loop:
+//   - `world_loader` calls `activate_slot` when a save becomes active.
+//   - `kill_hook` calls `record_kill` on every confirmed creature kill.
 //
-// Lazy slot resolution: at first record_kill, query
-// `save_slot::current_slot_key()`. If None, log the kill but skip
-// persistence -- we'll re-attempt on the next kill. Once a slot is
-// found, we cache the `(slot, state)` pair.
+// Eager activation is required because (future) level/perk ranks affect
+// player stats from spawn, not from the first kill. We can't wait until
+// the kill hook fires to load.
 
 use std::sync::Mutex;
 
@@ -15,58 +13,65 @@ use crate::bbp_log;
 use crate::rpg::state::{self, PlayerState};
 
 struct Tracker {
-    slot: Option<String>,
+    slot: String,
     state: PlayerState,
 }
 
 static TRACKER: Mutex<Option<Tracker>> = Mutex::new(None);
 
+/// Bind the tracker to `slot` and load any prior state from disk.
+/// Replaces any prior binding (caller is responsible for flushing the
+/// outgoing slot first if needed).
+pub fn activate_slot(slot: String) {
+    let state = state::load_one(&slot);
+    bbp_log!(
+        "rpg/state: activated slot={} kills={} last={}",
+        short(&slot),
+        state.kill_count,
+        if state.last_killed.is_empty() { "<none>" } else { state.last_killed.as_str() }
+    );
+    *lock() = Some(Tracker { slot, state });
+}
+
+/// Drop the active slot (e.g. player exited to main menu). Persisted
+/// state is already on disk via `record_kill`'s flush, so no extra save
+/// is needed here.
+pub fn deactivate_slot() {
+    let mut g = lock();
+    if let Some(t) = g.take() {
+        bbp_log!("rpg/state: deactivated slot={}", short(&t.slot));
+    }
+}
+
+/// Returns the slot key currently bound, if any.
+pub fn current_slot() -> Option<String> {
+    lock().as_ref().map(|t| t.slot.clone())
+}
+
 /// Called from the kill hook on every confirmed creature kill.
 pub fn record_kill(creature_class_name: &str) {
-    let mut guard = match TRACKER.lock() {
-        Ok(g) => g,
-        Err(_) => return, // poisoned -- never happens, just bail
-    };
-
-    if guard.is_none() {
-        // First kill: try to resolve slot + load prior state.
-        let (slot, state) = match state::load_for_current_slot() {
-            Some(pair) => (Some(pair.0), pair.1),
-            None => (None, PlayerState::default()),
-        };
-        *guard = Some(Tracker { slot, state });
-    }
-    let tracker = guard.as_mut().unwrap();
-
-    // If we never found a slot, retry resolution on each kill -- the
-    // player may have transitioned from main menu to in-world between
-    // kills.
-    if tracker.slot.is_none()
-        && let Some((slot, state)) = state::load_for_current_slot()
-    {
-        tracker.slot = Some(slot);
-        tracker.state = state;
-    }
-
-    tracker.state.kill_count += 1;
-    tracker.state.last_killed = creature_class_name.to_string();
-
-    let total = tracker.state.kill_count;
-    if let Some(slot) = tracker.slot.as_deref() {
-        state::save(slot, &tracker.state);
+    let mut g = lock();
+    let Some(tracker) = g.as_mut() else {
         bbp_log!(
-            "rpg/state: saved kill #{} ({}) to slot={}",
-            total,
-            creature_class_name,
-            short(slot)
-        );
-    } else {
-        bbp_log!(
-            "rpg/state: kill #{} ({}) -- no save slot active, persistence deferred",
-            total,
+            "rpg/state: kill ({}) before slot active; dropping",
             creature_class_name
         );
-    }
+        return;
+    };
+    tracker.state.kill_count += 1;
+    tracker.state.last_killed = creature_class_name.to_string();
+    let total = tracker.state.kill_count;
+    state::save(&tracker.slot, &tracker.state);
+    bbp_log!(
+        "rpg/state: saved kill #{} ({}) to slot={}",
+        total,
+        creature_class_name,
+        short(&tracker.slot)
+    );
+}
+
+fn lock() -> std::sync::MutexGuard<'static, Option<Tracker>> {
+    TRACKER.lock().expect("rpg tracker mutex poisoned")
 }
 
 fn short(slot: &str) -> &str {

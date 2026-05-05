@@ -243,35 +243,31 @@ R1-R5 answered (see above). Each spike below is a concrete
 implementation against known field offsets and UFunction names,
 not exploratory.
 
-- [ ] **Eager state load on world entry (NOT lazy).** Spike B
-  currently loads PlayerState lazily on first kill (`tracker.rs`
-  -> `record_kill`). That was a spike shortcut. The real loop
-  needs state in memory the moment the player is in-world,
-  because level / perk ranks drive backpack capacity, hunger
-  rate, gear durability, etc. -- which take effect from spawn,
-  not from "after first kill."
+- [x] **Eager state load on world entry DONE (2026-05-05).**
+  New `rpg/world_loader.rs` spawns a 1Hz poller from worker
+  init that watches `save_slot::current_slot_key()` and drives
+  three transitions on the tracker:
+    - `None -> Some(s)`: `tracker::activate_slot(s)` (loads
+      PlayerState from disk).
+    - `Some(a) -> Some(b)` where a != b (player swapped saves
+      via main menu): deactivate then activate the new slot.
+    - `Some(s) -> None`: deactivate (state already on disk via
+      per-kill flush).
 
-  Fix: poll for `AInGameGameState` (via `save_slot::current_slot_key`)
-  on a short interval after worker init. As soon as it returns
-  Some, load PlayerState, then apply perks-derived multipliers
-  to:
-    1. The player CDO (so newly-spawned instances inherit) --
-       already covered by `patch.rs` / `survival.rs` infra,
-       just needs to be parameterized by current perk ranks.
-    2. The live player Pawn instances if any are already spawned
-       at load time (R4 path:
-       `World->GameState->PlayerArray[i]->PawnPrivate->...`).
+  `tracker.rs` was refactored: kill recording no longer
+  lazy-resolves the slot; if no slot is bound it logs and
+  drops (shouldn't happen in practice since the loader
+  activates within 1s of world entry, before the player can
+  enter combat).
 
-  Also: re-load on world swap. If the player exits to main menu
-  and loads a different save, the GUID changes; we need to
-  flush the old PlayerState (already saved on each kill) and
-  load the new one. Cheapest detection: poll guid; if it
-  changes, re-load.
+  `state.rs::load_for_current_slot` collapsed to
+  `state::load_one(slot)` -- the loader now owns slot
+  resolution; state.rs is just file I/O.
 
-  Order-wise: this is the natural follow-up to Spike B and
-  comes before the XP/perk loop. Without it, a real player
-  loading their save would start the session at "vanilla
-  capacity" until their first kill, which is wrong.
+  Future perk-driven CDO/instance reapply hooks into the same
+  activation transition: when activate_slot fires, run the
+  apply step using the freshly loaded PlayerState's perk
+  ranks. Stub for now since perks don't exist yet.
 
 - [ ] **Kill attribution: Buggy support.** (In Grounded 2, the
   player's tame mounts are called Buggies.) First Spike B
