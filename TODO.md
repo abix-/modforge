@@ -1,9 +1,205 @@
 # TODO
 
-Current state: Rust port of the mod is feature-complete on the runtime
-side. Open work is **distribution**: switching from "drop a winhttp.dll
-proxy in the game folder" to "ship as a UE4SS C++ mod, but keep the
-mod source 100% Rust." Plan in [UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md).
+Current state: UE4SS C++ mod loads cleanly in-game (2026-05-05).
+Backpack + hunger/thirst patches working. Distribution path
+through UE4SS / Vortex is settled.
+
+**New direction (2026-05-05): turn this into an RPG / level-up
+mod.** Inspired by Factorio's RPG-style level-up mods. Grounded 2
+has no native leveling system, so we add one: kill enemies -> earn
+XP -> level up -> spend points on upgrades that surface as our
+existing CDO patches (backpack capacity, hunger/thirst rate, glide
+speed, gear durability, etc.). The current "everything is a slider
+in settings.json" model becomes the *output* of the level system,
+not the user-facing knob.
+
+## 0. RPG / level-up system (NEW HEADLINE FEATURE)
+
+This is now the project. Items 3-7 below (gear durability, enemy
+health/damage, glide speed, Player Tweaks ports) become *upgradeable
+stat surfaces* that level perks drive, instead of independent
+sliders.
+
+### Vision
+
+- Player kills enemies -> XP awarded based on enemy type / difficulty.
+- XP threshold per level (curve TBD: linear, polynomial, etc.).
+- On level-up, player gets N perk points.
+- Spend perk points on upgrades. Each upgrade = a function of level
+  applied to one of our existing CDO-patch surfaces:
+  - Backpack capacity (40 base, +5 per rank, max rank 12 -> 100).
+  - Hunger drain rate (1.0 base, -5%/rank, max rank 10 -> 0.5x).
+  - Thirst drain rate (same shape).
+  - Glide speed (1.0 base, +5%/rank).
+  - Gear durability loss (1.0 base, -5%/rank).
+  - Damage dealt by player (later -- needs more research).
+  - Damage taken from enemies (later).
+  - Stamina regen / sprint speed / swim speed (later, from Player
+    Tweaks port queue).
+- Persist XP / level / perk allocation per save slot.
+- Show level / XP / next-perk in a UE4SS imgui tab (start). Later:
+  in-world UMG overlay.
+
+### Research questions (BLOCKING -- must answer before coding)
+
+These are unknowns. Each one has to be answered in-game with
+Dumper-7 + UE4SS Live View + ProcessEvent traces before we write
+RPG code. None are speculative; they're concrete things to look up.
+
+**R1. Kill detection.**
+  - Which UFunction fires on enemy death? Candidates from typical
+    UE5 survival games:
+    - `OnDeath` / `OnDied` event on a `UHealthComponent`.
+    - `Die` / `HandleDeath` method on the enemy character class.
+    - A damage-dispatch function on `BP_SurvivalNonPlayerCharacter`
+      (or whatever Grounded 2's enemy base is named -- need to
+      confirm via SDK dump).
+  - Does the death event carry a "killer" reference? If yes, we
+    filter to player-killed events directly. If no, we have to
+    correlate with the last damage instigator (more fragile).
+  - In multiplayer: does the host get every kill event, or only
+    its own? Document the limitation.
+  - Method: install a ProcessEvent trace gated to UFunction names
+    matching `*Death*|*Died*|*Kill*` on `BP_SurvivalNonPlayer*`,
+    play 5 minutes of combat, grep the log.
+
+**R2. Enemy class hierarchy.**
+  - What's the enemy base class actually named in Grounded 2?
+    (`BP_SurvivalNonPlayerCharacter_C`? `BP_Bug_Base_C`? etc.)
+  - Is there one base or several disjoint trees (creatures vs
+    BURG.L bots vs bosses)?
+  - Do enemies carry a "tier" or "difficulty" property we can use
+    for XP weighting, or do we hardcode a table per-class?
+  - Method: dump-7, search for "NonPlayerCharacter", walk
+    super_class chain.
+
+**R3. XP / level persistence.**
+  - The game has multiple save slots. We need a stable per-slot
+    key. Options:
+    - Save file name (read from game's `USaveGame` system if
+      reachable -- need to find the function/object that exposes
+      current slot name).
+    - World seed / PlayerState GUID -- if exposed, more reliable
+      across renames.
+    - Single global file (simpler, breaks for users with multiple
+      characters; ship this first, upgrade later).
+  - Where to store: `<DLL_dir>/saves/<slot>.json` is fine; the mod
+    folder is writeable.
+  - Method: dump-7, search for "SaveGame", "SlotName", "PlayerState".
+
+**R4. Stat re-application.**
+  - Current CDO patches happen once at mod load. With levels,
+    every level-up changes the multiplier. We need to either:
+    - (a) Re-walk the CDO tree on every level-up and re-patch
+      (cheap; a few ms once per level-up).
+    - (b) Patch only the live player's components (not the CDO);
+      requires finding the local `PlayerController` /
+      `PlayerCharacter`, walking its instance components.
+    - (a) is simpler and matches our existing infra. Newly-spawned
+      instances inherit the latest CDO. Already-spawned enemies
+      keep stale values, but for *player* stats this is fine
+      because the player character is the one we're tweaking and
+      it reads CDO at component construction.
+  - Open question: does the player's max-backpack-size get cached
+    at character spawn, or read live from the inventory component?
+    If cached, we may need an instance patch on level-up.
+  - Method: experimentally, set capacity at runtime on a live
+    component and check whether the inventory UI updates without
+    a save reload.
+
+**R5. UI surface.**
+  - UE4SS supports imgui tabs via `register_tab` on the C++ mod
+    base. We already have the vtable slot wired. Confirm the
+    rendering path works in our shim (does the C++ shim need to
+    actually call `register_tab` from Rust? what's the UE4SS
+    convention?).
+  - Imgui is the cheap MVP: shows level, XP/next-level bar, list
+    of perks with clickable +1 buttons.
+  - In-world UMG (a custom widget rendered alongside the survival
+    HUD) is a separate, much harder project. Defer.
+  - Open question: can imgui receive input while game has focus,
+    or do we need a hotkey to summon it? UE4SS's default behavior
+    is to bind `~` (or similar) to toggle the UE4SS console, which
+    also surfaces tabs.
+
+**R6. XP curve + perk economy design.**
+  - Not a code question -- a game-design question. But we need an
+    answer before plumbing values:
+    - Max level: 50? 100?
+    - XP curve: linear / quadratic / exponential?
+    - Perk points per level: 1? Or 1 every N levels?
+    - Per-perk cap: every perk maxes at rank 10? Different caps
+      per perk?
+    - Respec: free, paid (with what?), or none?
+  - Reasonable starting numbers (placeholder until tuned):
+    - Levels 1-50, quadratic XP curve (level N requires
+      `100 * N^1.8` total XP).
+    - 1 perk point per level.
+    - Each perk maxes at rank 10.
+    - Respec: free for now (settings flag).
+
+### Architecture sketch (post-research)
+
+Modules (Rust side, all in `better-backpack/src/`):
+```
+rpg/
+  mod.rs            entry: glue init, level-up event loop
+  xp.rs             XP awarding, level threshold table, on_kill
+  perks.rs          perk catalog, rank -> stat-multiplier function
+  state.rs          struct PlayerState { level, xp, perk_ranks }
+                    serde, load/save to <DLL_dir>/saves/<slot>.json
+  ui.rs             UE4SS imgui tab wiring (level/XP/perks)
+  events.rs         hooks: enemy-death ProcessEvent hook,
+                    player-load detection
+```
+
+Existing modules (`survival.rs`, `inv_hook.rs`, the future
+`combat.rs`, `gear.rs`, `movement.rs`) become **stat surfaces**
+driven by `perks.rs::current_multipliers(state)`.
+
+Lifecycle:
+1. `on_unreal_init`: load PlayerState from disk (key = save slot).
+   Apply current multipliers to all CDOs.
+2. Install ProcessEvent hook on enemy-death UFunction.
+3. On kill: award XP to PlayerState, check threshold, on level-up
+   bump perk-points.
+4. On perk allocation (UI click): update PlayerState, recompute
+   multipliers, re-apply CDO patches, save to disk.
+5. On exit / save event: flush PlayerState to disk.
+
+### Build sequence (DO NOT START BEFORE R1-R5 ANSWERED)
+
+- [ ] Spike A: kill detection. Hook the suspected death function,
+  log every fire with the killer reference, play in-game, confirm
+  the "player killed enemy X" signal is reliable. **One evening.**
+- [ ] Spike B: persistence. Find the current save slot name from
+  the game. If too hard, fall back to single global file with a
+  TODO. **One evening.**
+- [ ] Spike C: live stat re-apply. Confirm we can change backpack
+  capacity at runtime without a save reload. **One evening.**
+- [ ] Once A+B+C are green: write `state.rs`, `xp.rs`, `perks.rs`
+  with the placeholder curve from R6. Wire up.
+- [ ] UE4SS imgui tab. Read the UE4SS samples in
+  `C:\code\RE-UE4SS\` for the canonical pattern.
+- [ ] Tune XP curve and perk economy through actual play.
+- [ ] Polish: respec, settings.json overrides for the curve,
+  per-enemy XP table.
+
+### What we keep from the old direction
+
+The "stat surfaces" sections below (#3-7) are still the right
+implementations -- we just don't ship them as user-facing sliders.
+They become the math behind perks. Sequence:
+- Get gear durability (#3) and enemy health (#4) found in the SDK
+  during R2 anyway, since those CDOs live on the same enemy tree.
+- Glide speed (#6) is a pure player-stat, bundled with backpack
+  capacity for the player-side perks.
+
+The settings.json schema flips inside out: instead of
+`{ "thirst_multiplier": 0.5 }`, we have
+`{ "rpg": { "starting_level": 1, "xp_curve": "quadratic" } }`,
+and per-perk live values are in `<save-slot>.json`, not user
+settings.
 
 ## 1. Repackage as a UE4SS CPPMod
 
@@ -61,19 +257,23 @@ Archive, not delete.
 
 ## 2. Rename the project
 
-`better-backpack` no longer describes what we're building. The mod is
-turning into a sandbox-tweaks toolkit -- backpack capacity is one of
-many JSON-configurable knobs, alongside hunger/thirst rates,
-upcoming gear durability, and the queue of Player-Tweaks-style
-features below. Pick a name that reflects "everything is a slider".
+`better-backpack` no longer describes what we're building. The new
+direction is an RPG / level-up mod (see #0). Pick a name that
+reflects "kill stuff -> level up -> perks".
 
 Candidates to consider (final pick TBD):
-- `g2-sandbox` -- implies the configurable, save-the-game-yourself feel.
-- `g2-tweaks` -- accurate, generic.
-- `grounded2-tweaks` -- explicit about the game.
-- `bigger-better` / `bigger-better-grounded` -- callback to the
-  original Bigger Backpack lineage.
-- `groundwork` -- pun on Grounded.
+- `grounded-rpg` -- explicit about the game and the mechanic.
+- `g2-rpg` -- short.
+- `groundlevel` -- pun: ground level + leveling up.
+- `bug-hunter` / `huntmaster` -- emphasizes combat/kills.
+- `instar` -- the bug term for a developmental stage between molts;
+  thematic with Grounded's "you-are-tiny" framing and matches the
+  level-up loop. Niche but fitting.
+- `groundwork` -- pun on Grounded, generic enough to cover future
+  scope creep.
+
+Old "everything is a slider" candidates archived for context:
+~~g2-sandbox, g2-tweaks, grounded2-tweaks, bigger-better~~.
 
 When the rename happens, update:
 - Repo name (rename on GitHub, update remote in local clones).
