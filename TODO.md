@@ -7,24 +7,83 @@ mod source 100% Rust." Plan in [UE4SS_PORT_PLAN.md](UE4SS_PORT_PLAN.md).
 
 ## 0. URGENT: fix UE4SS load crash
 
-**Current bug.** `main.dll` builds, deploys, and UE4SS loads it
-(log: `Starting C++ mod 'BetterBackpack'`), but the game crashes
-shortly after. Game launches fine without the mod.
+**Current bug.** `main.dll` builds, deploys, UE4SS loads it
+(`UE4SS.log` line 9: `Starting C++ mod 'BetterBackpack'`), then
+the game crashes during early init. Without our mod
+(`deploy.ps1 -Uninstall`) the game launches fine. The crash is in
+our mod, not UE4SS or Grounded.
 
 Suspect: our hand-rolled `RC::CppUserModBase` mirror in
-`cpp/shim.cpp` doesn't match UE4SS's actual class layout. UE4SS's
-imported constructor writes through the parent layout when we
-`new BetterBackpackMod()`, scribbling adjacent memory if our
-mirror is wrong.
+`cpp/shim.cpp` doesn't match UE4SS's actual class layout.
+`RC::CppUserModBase::CppUserModBase()` is imported from UE4SS.lib
+(verified via `dumpbin`). When we `new BetterBackpackMod()` runs
+`new`, the parent constructor inside UE4SS.dll writes through what
+it thinks is the parent layout. If our mirror has the wrong virtual
+count, wrong field order, or wrong-sized STL types, UE4SS's ctor
+scribbles past where it should and we crash later when something
+touches that memory.
 
-Debug plan in `UE4SS_PORT_PLAN.md` step 7. Top suspects:
+### Top suspects, in order of likelihood
 
-1. Virtual count -- we have 12; real header has 14.
-2. CRT config -- `cc::Build` may use `/MT`, UE4SS likely uses `/MD`.
-3. Field order / STL type sizes in the mirror.
+1. **Virtual count mismatch.** Our mirror declares 12 virtuals
+   (`on_update`, `on_unreal_init`, `on_program_start`, four
+   `on_lua_*` overloads, `on_dll_load`, `render_tab` -- plus the
+   destructor). The real header at
+   `C:\code\RE-UE4SS\UE4SS\include\Mod\CppUserModBase.hpp` has 14
+   virtuals. We're missing at least:
+   - `on_ui_init()`
+   - `on_cpp_mods_loaded()`
+   - possibly the `Lua*` (pointer, single) overloads of
+     `on_lua_start` / `on_lua_stop`.
+   Wrong virtual count means our derived class's vtable doesn't
+   line up with UE4SS's expectations: a virtual call UE4SS makes at
+   slot N hits the wrong function in our class. Re-read the source
+   header verbatim and reproduce all 14 virtuals in declaration
+   order.
+
+2. **CRT config mismatch.** `cc::Build` defaults to dynamic CRT on
+   MSVC release builds (`/MD`), but verify. UE4SS itself was built
+   with the same MSVC release CRT. Mismatched CRT = mismatched
+   `std::wstring`, `std::vector`, `std::shared_ptr` layouts =
+   immediate corruption when UE4SS's ctor initializes our parent
+   members. Add an explicit `.flag("/MD")` or
+   `.static_crt(false)` to the `cc::Build` invocation in
+   `build.rs` to force.
+
+3. **Field order or STL type size drift.** Even with matching CRTs,
+   if our mirror has the fields in the wrong order or uses
+   different types (e.g., `std::wstring` vs UE4SS's `StringType`
+   when `FORCE_U16` is set in their build), UE4SS writes wrong
+   addresses. Verify our protected `vector<shared_ptr<GUITab>>`
+   comes BEFORE the public `StringType` fields, in the same order
+   as the real header.
+
+### Debug sequence
+
+1. **Confirm we reach `start_mod()`.** Add an `OutputDebugStringW`
+   at the very top of the exported function (before the `new`).
+   Run with DebugView (sysinternals) attached and confirm the
+   string fires. If it doesn't, the export isn't getting called and
+   the problem is earlier (mod folder layout, mods.txt, DLL load).
+2. **Wrap `new BetterBackpackMod()` in try/catch.** If the parent
+   ctor throws (e.g., bad alloc when corrupted), we'll log it
+   instead of crashing silently.
+3. **Audit the mirror byte-for-byte** against the real header. Diff
+   the virtual list, member fields, and field order.
+4. **Force CRT linkage.** Add `.flag("/MD")` to the `cc::Build`
+   call in `build.rs`. Verify the resulting object linked
+   `MSVCRT.lib` not `LIBCMT.lib` via `dumpbin /imports`.
+5. **`sizeof(CppUserModBase)` cross-check.** Have the shim's
+   `start_mod()` print `sizeof(RC::CppUserModBase)` to a log file
+   on first call. Compare against a known-good value computed from
+   UE4SS's header.
+6. **Last resort: include UE4SS's real headers.** Resolve the
+   imgui transitive include by either downloading imgui to a known
+   path (UE4SS pulls `deps/third` which we don't have) or stubbing
+   the imgui types we don't use.
 
 **Fix this before any other UE4SS work.** Without it the mod
-literally doesn't run.
+literally doesn't run -- everything else in this TODO is blocked.
 
 ## 1. Repackage as a UE4SS CPPMod
 
