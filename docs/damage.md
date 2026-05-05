@@ -149,7 +149,7 @@ construct an `FDamageInfo` for fall damage -- it just writes
 | -------- | ------ |
 | Patch `bTakeFallDamage` (+0x1571), `MinimumFallDamageVelocity` (+0x1574), `FallDamageRatio` (+0x157C) on `ASurvivalCharacter` CDO and live pawn | Writes land per logs, native code does not read these fields. |
 | Patch `USurvivalGameModeSettings::FallDamageMultiplier` (+0x008C) on every CDO instance (8 settings classes for various difficulty modes) | Writes land. No effect. |
-| Patch the replicated `FCustomGameModeSettings::FallDamageMultiplier` at +0x130 on every live `USurvivalModeManagerComponent` | Writes land. No effect. |
+| Patch the replicated `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C inside `USurvivalModeManagerComponent::CustomSettings` (CustomSettings is at +0x114 on the component, so absolute +0x130) | Writes land. No effect. |
 | Call `USurvivalModeManagerComponent::UpdateCustomSettings` UFunction via ProcessEvent (mimics the in-game difficulty UI; runs `OnRep_CustomSettings` server-side) | Dispatch reported by UE4SS, no effect on damage. |
 | ProcessEvent hook on `OnLanded` and skip `original.call` | OnLanded is BP-cosmetic. Engine does not gate damage on BP event return. |
 | ProcessEvent hook on `ApplyFallDamage` UFunction directly | Hook never fires -- engine bypasses ProcessEvent for `Final+Native+BlueprintCallable` when called from native code. |

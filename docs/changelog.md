@@ -9,33 +9,11 @@ Newest first.
 
 ## 2026-05-05 (single big day)
 
-### Fall Damage Resistance (solved)
+### Fall Damage Resistance
 
-Working at level 100 via velocity-stomp in `OnLanded` PE hook.
-`fall_hook.rs` scales `CharMovementComponent.Velocity.Z` by
-`(1 - reduction)` before forwarding to the original BP event. The
-native `ASurvivalCharacter::ApplyFallDamage()` reads the mutated value
-live and computes zero damage. Validated in-game: -3431 cm/s landing
-at level 100 produced no damage.
-
-Authoritative reference for the internals -- including the full
-PE-reachable / not-PE-reachable event order, every approach tried
-(per-character field writes, per-game-mode multiplier, replicated
-struct, calling `UpdateCustomSettings` to mimic the in-game
-difficulty UI, UE4SS Lua `RegisterHook` against the
-`/Script/...:ApplyFallDamage` UFunction), and why each failed
-(engine bypasses the UFunction entirely on direct C++ dispatch from
-`Super::Landed`'s native frame; UE4SS [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-is the upstream summary) -- lives in [`rpg.md`](rpg.md).
-
-Side discovery: plant / terrain collision damage is a *separate*
-damage path through the same `MulticastHandleEffectsWithDamageFlagsAtOwnerLocation`
-multicast surface, but with `LastDamageInfo.DamageType =
-BP_EnvironmentalDamage_C` and `src_type = 2`. Fall damage in contrast
-shows `DamageType = <null>` and an entirely empty `FDamageInfo` --
-the native fall path bypasses the `ApplyDamageFromInfo` plumbing
-altogether. Collision damage becomes its own skill (Impact Damage
-Resistance) tracked in [`todo.md`](todo.md).
+Landed via velocity-stomp in `fall_hook.rs`'s `OnLanded` PE hook on
+the player BP class. See [`damage.md`](damage.md) for the full
+pipeline reference.
 
 ### Movement skill fix verified
 

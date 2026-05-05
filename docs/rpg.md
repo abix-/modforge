@@ -226,9 +226,10 @@ reload. Combat-side live-instance writes are still a TODO (see
 
 Grounded 2 has two distinct self-damage paths. Fall Damage Resistance
 mitigates the first; Collision / Impact Damage Resistance (planned)
-mitigates the second. Both routes, the offsets, the FDamageInfo
-discriminator, what we tried that did not work, and the velocity-stomp
-fix all live in [`damage.md`](damage.md). Read that doc before adding
+mitigates the second. The full pipeline reference -- HealthComponent
+layout, FDamageInfo discriminator, multicast surfaces, native call
+order, every approach tried that did not work, and the velocity-stomp
+fix -- lives in [`damage.md`](damage.md). Read that doc before adding
 any skill that touches damage.
 
 Skill-side wiring for Fall Damage Resistance:
