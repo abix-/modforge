@@ -206,6 +206,42 @@ level-up mod. Kills -> XP -> levels -> perks that drive the
 existing CDO patches. Research questions R1-R5 answered against
 the SDK at `C:\tools\work\sdk\` -- see TODO.md section 0.
 
+### Spike B: persistence working (2026-05-05)
+
+PlaythroughGuid resolves at runtime. First attempt used
+`USaveLoadManager.SaveInProgressSaveGameHeaderData` (+0x90) but
+that's null except during an active save operation. Switched to
+`AInGameGameState.PlaythroughGuid` at +0x32C
+(`Maine_classes.hpp:28544`) -- populated for the duration of
+the active session, exactly what we need.
+
+Files:
+- `rpg/save_slot.rs`: walks GObjects for an InGameGameState
+  instance (skip CDO), reads PlaythroughGuid as 32-char hex.
+- `rpg/state.rs`: PlayerState (kill_count, last_killed) with
+  serde JSON load/save under `<DLL_dir>/saves/<guid>.json`.
+- `rpg/tracker.rs`: in-process state with lazy slot resolution
+  (since the save isn't loaded at worker startup).
+
+In-game test confirmed: kill -> "no prior save for slot=06d9929b"
+-> "saved kill #1" -> file written. Reload test pending.
+
+### Tame pet / mount kill attribution (open)
+
+In-game test also surfaced: when the player's Buggy mount
+killed a Larva, we credited the kill via the Buggy's
+AIController. Player intent is that Buggy kills count (default
+full XP) but we currently can't distinguish:
+- Direct player kill (PlayerController instigator).
+- Player's pet/mount kill (AIC for an owned tame creature).
+- Enemy-vs-enemy (some other AIC, no XP).
+
+Detection path (TODO before XP loop): from
+InstigatorController, walk to possessed Pawn; check
+`UTameableComponent` / `UPetMasterComponent` ownership against
+the local player's `PetMasterComponent`. SDK refs:
+`Maine_classes.hpp:5808-5809`, `:6313` (IsTame).
+
 ### Spike A: DONE (2026-05-05)
 
 Attempt 1 (Kill UFunction) failed because `Kill` is

@@ -1,16 +1,19 @@
 // RPG / level-up subsystem.
 //
-// Spike A: kill detection. Hooks Maine.HealthComponent's ProcessEvent slot
-// and logs every Kill call with the dying actor's class and the killer's
-// controller (resolved from FDamageInfo.InstigatorController). Used to
-// prove out the data we need before plumbing XP / levels / perks.
+// Spike A (DONE): kill detection. `kill_hook.rs` hooks HealthComponent's
+// ProcessEvent slot, matches MulticastHandleEffectsWithDamageFlags, masks
+// the DamageFlags parm with EDamageInfoFlags::KillingBlow, filters to
+// ASurvivalCreature subclasses. On kill we have (dying actor, killer
+// controller) reliably.
 //
-// Field offsets all from C:\tools\work\sdk\SDK:
-//   UHealthComponent.LastDamageInfo:     0x03B0  (Maine_classes.hpp:42287)
-//   FDamageInfo.InstigatorController:    0x0020  (Maine_structs.hpp:4815)
-//   FDamageInfo.Target:                  0x0030
-//
-// HealthComponent is `final`, so its vtable is unique -- one hook covers
-// every instance in the world.
+// Spike B (in progress): persistence. `save_slot.rs` reads the active
+// playthrough's stable GUID from USaveLoadManager. `state.rs` defines
+// the persisted shape and load/save against
+// <DLL_dir>/saves/<guid>.json. `tracker.rs` is the live in-memory
+// PlayerState that the kill hook bumps; flushes to disk after each
+// change.
 
 pub mod kill_hook;
+pub mod save_slot;
+pub mod state;
+pub mod tracker;

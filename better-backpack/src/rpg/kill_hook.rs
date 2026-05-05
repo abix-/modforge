@@ -141,12 +141,16 @@ fn on_event(
     }
 
     let killer = read_instigator(this).unwrap_or_else(|| "<unresolved>".to_string());
+    let class_name = actor_class.as_object().name();
     bbp_log!(
         "rpg/kill: {} ({}) killed by {}",
         dying_actor.name(),
-        actor_class.as_object().name(),
+        class_name,
         killer
     );
+
+    // Spike B: bump kill counter and persist.
+    crate::rpg::tracker::record_kill(&class_name);
 }
 
 fn read_instigator(health_component: &UObject) -> Option<String> {
