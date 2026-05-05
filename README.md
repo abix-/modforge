@@ -15,7 +15,7 @@ Current state as of 2026-05-05:
 - The backpack skill, hunger/thirst resistance, and several combat /
   movement skills are implemented.
 - Open work is testing, live-instance writes for some skills, catalog
-  expansion, and packaging cleanup. See [TODO.md](TODO.md).
+  expansion, and packaging cleanup. See [docs/todo.md](docs/todo.md).
 
 This repo no longer targets a standalone end-user injector flow as the
 primary path. The shipping shape is a **UE4SS C++ mod (CPPMod)** with a
@@ -94,7 +94,7 @@ Skills layer on top of those base values. Schema example:
 - [docs/rpg.md](docs/rpg.md): RPG system, skills, XP, persistence, UI
 - [docs/ue4ss-port.md](docs/ue4ss-port.md): UE4SS CPPMod shape and port history
 - [docs/changelog.md](docs/changelog.md): completed work
-- [TODO.md](TODO.md): open work only
+- [docs/todo.md](docs/todo.md): open work only
 - [.claude/project_state.md](.claude/project_state.md): current handoff / session state
 
 ## Repo Layout
@@ -106,7 +106,8 @@ grounded2mods/
   docs/                   Subject-authority docs
   scripts/deploy.ps1      Build/package/install helper for UE4SS layout
   better-backpack-cpp/    Original C++ implementation kept for reference
-  TODO.md                 Open work
+  TODO.md                 Canonical open-work list
+  docs/todo.md            Docs entry point for open work
 ```
 
 ## Notes
