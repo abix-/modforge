@@ -76,6 +76,17 @@ fn on_player_fall_event(
                 );
             }
         }
+
+        // Status-effect probe: when impact_resistance > 0, log the
+        // current GetValueForStat() return for a handful of
+        // damage-relevant EStatusEffectType values on the player's
+        // StatusEffectComponent. Validates whether the native fall
+        // damage path consults the status-effect system at all
+        // before we commit engineering effort to a status-effect
+        // migration.
+        if current_impact_resistance_level() > 0 {
+            probe_status_effect_values(this);
+        }
     }
 
     // Walk-backwards trace for plant / terrain collision damage.
@@ -183,6 +194,83 @@ fn current_fall_resistance_reduction() -> f32 {
 
 fn is_player_character(obj: &UObject) -> bool {
     obj.full_name().contains("BP_SurvivalPlayerCharacter")
+}
+
+/// Probe `UStatusEffectComponent::GetValueForStat(StatType, false)`
+/// for a handful of damage-relevant `EStatusEffectType` values on
+/// the player's component. Logs the return value so we can see what
+/// vanilla effects already populate these stats.
+///
+/// Used to validate whether the native fall / damage paths consult
+/// the status-effect system before we commit to a migration.
+fn probe_status_effect_values(player: &UObject) {
+    use std::ffi::c_void;
+    const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
+
+    // ESurvivalEffectType values from Maine_structs.hpp:136 that are
+    // relevant to skills in our catalog.
+    const PROBES: &[(&str, u8)] = &[
+        ("FallDamage", 14),
+        ("DamageReduction", 29),
+        ("DamageReductionMultiplier", 30),
+        ("AttackDamage", 23),
+        ("LifeSteal", 38),
+        ("CriticalHitChance", 31),
+        ("CriticalDamage", 62),
+        ("ReflectDamage", 37),
+        ("MaxHealth", 5),
+    ];
+
+    let sec = unsafe {
+        let p: *mut UObject = player
+            .field_ptr(ASC_STATUS_EFFECT_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        match p.as_ref() {
+            Some(c) => c,
+            None => {
+                bbp_log!("rpg/sfx-probe: StatusEffectComponent ptr is null on {}", player.name());
+                return;
+            }
+        }
+    };
+
+    let class = match sec.class() {
+        Some(c) => c,
+        None => return,
+    };
+    let func = match class.get_function("StatusEffectComponent", "GetValueForStat") {
+        Some(f) => f,
+        None => {
+            bbp_log!("rpg/sfx-probe: GetValueForStat UFunction not found on StatusEffectComponent");
+            return;
+        }
+    };
+
+    // Parm layout: StatType (u8) at +0, bTemporaryEffectsOnly (bool) at
+    // +1, padding, ReturnValue (f32) at +4. Total 8 bytes.
+    #[repr(C)]
+    struct GetValueForStatParms {
+        stat_type: u8,
+        temporary_only: bool,
+        _pad: [u8; 2],
+        return_value: f32,
+    }
+
+    let mut summary = String::from("rpg/sfx-probe:");
+    for (name, stat) in PROBES {
+        let mut parms = GetValueForStatParms {
+            stat_type: *stat,
+            temporary_only: false,
+            _pad: [0; 2],
+            return_value: 0.0,
+        };
+        unsafe {
+            sec.process_event(func, &mut parms as *mut _ as *mut c_void);
+        }
+        summary.push_str(&format!(" {}({})={:.3}", name, stat, parms.return_value));
+    }
+    bbp_log!("{}", summary);
 }
 
 fn is_collision_relevant(fn_name: &str) -> bool {
