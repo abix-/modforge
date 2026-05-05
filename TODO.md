@@ -14,33 +14,42 @@ Replace the compile-time constants with a settings file the user can edit
 without rebuilding. Keep defaults baked in so the mod still works with no
 file present.
 
-Format: TOML next to the DLL (`better_backpack.toml`) -- TOML is
-human-editable, native to the Rust ecosystem, and avoids JSON's
-no-comments problem.
+Format: **JSON** next to the DLL (`better_backpack/settings.json`).
 
 Shape:
 
-```toml
-[inventory]
-slot_count = 100         # vanilla 40, mount 30 always preserved
-
-[survival]
-thirst_multiplier = 0.5  # 1.0 = vanilla, 0.5 = half rate, 0.0 = paused
-hunger_multiplier = 0.5
+```json
+{
+  "inventory": {
+    "slot_count": 100
+  },
+  "survival": {
+    "thirst_multiplier": 0.5,
+    "hunger_multiplier": 0.5
+  }
+}
 ```
+
+Notes:
+
+- Mount/saddlebag (vanilla 30) is always preserved regardless of
+  `slot_count`.
+- Multipliers: `1.0` = vanilla, `0.5` = half rate, `0.0` = paused.
+- JSON has no comments; we'll document the schema in `README.md` so users
+  know what's editable.
 
 Wire-up:
 
-- New `settings.rs` module with `Settings` struct, `Settings::load()` that
-  reads the TOML file from `<DLL_dir>/better_backpack.toml`, falls back to
-  defaults on missing/malformed file.
+- New `settings.rs` module with a `Settings` struct + nested
+  `Inventory` / `Survival` sections.
+- `Settings::load()` reads `<DLL_dir>/settings.json`, returns defaults on
+  missing or malformed file (with a log line so the user can tell).
+- Add `serde = { version = "1", features = ["derive"] }` and
+  `serde_json = "1"` to better-backpack's deps.
 - Read once at worker init; pass into `patch::run` and the new
   `survival::run`.
 - Log the resolved settings on startup so the live console shows what's
   active.
-- Add `toml = "0.9"` (or current latest) to the better-backpack
-  dependencies. No serde_derive needed -- a flat struct with
-  `toml::from_str` is fine.
 
 ## 2. Thirst + hunger rate patch
 
@@ -104,7 +113,37 @@ Proposed flow:
 - Add `--no-launch` to disable the launch step (keep current behavior).
 - Existing positional DLL path arg still works.
 
-## 4. Polish (lower priority)
+## 4. Log to the binary's own directory
+
+Currently:
+
+- `inject.exe` writes `inject.log` next to itself. Already correct.
+- `better_backpack.dll` writes `%TEMP%\BetterBackpack.log`. **Move this**
+  to `<DLL_dir>\better_backpack.log`.
+
+Net effect: both binaries log to wherever they live. User running them
+from `target\x86_64-pc-windows-msvc\release\` sees:
+
+```
+target/x86_64-pc-windows-msvc/release/
+  better_backpack.dll
+  better_backpack.log     <- NEW location
+  inject.exe
+  inject.log              <- already here
+  settings.json           <- when feature 1 lands
+```
+
+Wire-up:
+
+- In `log::init`, replace the `GetTempPathA` lookup with
+  `GetModuleFileNameW(<our HMODULE>, ...)` -> strip filename -> append
+  `better_backpack.log`. Need to capture the DLL's HMODULE in `DllMain`
+  before spawning the worker so we can pass it through.
+- Update `BUILDING.md` (and the future README) to point at the new path.
+- Settings file (feature 1) lives in the same directory by the same
+  rule: next to the DLL.
+
+## 5. Polish (lower priority)
 
 - Gate `AllocConsole` behind a Cargo feature (`console`, default off for
   shipping). The file log is the durable record; the console window is
