@@ -269,7 +269,32 @@ not exploratory.
   apply step using the freshly loaded PlayerState's perk
   ranks. Stub for now since perks don't exist yet.
 
-- [ ] **Kill attribution: Buggy support.** (In Grounded 2, the
+- [x] **Kill attribution + XP math layer (in-flight 2026-05-05).**
+  Three buckets implemented in `kill_hook.rs::classify`:
+  - Player: instigator class chain contains "PlayerController".
+  - Buggy: instigator (or its possessed Pawn at +0x308) class
+    chain contains "Buggy".
+  - Other: enemy AIC; logged as skipped, no kill_count bump.
+
+  `rpg/xp.rs` introduced: `100 * N^1.8` cumulative XP curve,
+  level cap 50, per-creature XP table (~20 species,
+  placeholders -- aphid 5, weevil 15, spider 75, boss 750).
+
+  PlayerState bumped: `xp`, `level`, `perk_points`,
+  `perk_ranks: BTreeMap<String, u32>`. Old fields
+  (`kill_count`, `last_killed`) retained as diagnostics. All
+  new fields use `#[serde(default)]` so existing save files
+  load fine.
+
+  `tracker::record_kill` takes `KillSource`, applies
+  `rpg.buggy_kill_xp_multiplier` (settings, default 1.0) to
+  Buggy-source kills, awards XP, recomputes level, grants perk
+  points on level-up.
+
+  In-game test pending. Open question: are AICs that hostile
+  bugs use to attack each other classified correctly? Initial
+  filter is heuristic (class-name "Buggy"); may need tuning if
+  vanilla AIC class names overlap. (In Grounded 2, the
   player's tame mounts are called Buggies.) First Spike B
   in-game test surfaced: when the player's Buggy killed a
   Larva, we credited the kill via the Buggy's AIController

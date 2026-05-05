@@ -16,6 +16,8 @@ pub struct Settings {
     pub inventory: InventorySettings,
     #[serde(default)]
     pub survival: SurvivalSettings,
+    #[serde(default)]
+    pub rpg: RpgSettings,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -32,12 +34,26 @@ pub struct SurvivalSettings {
     pub hunger_multiplier: f32,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct RpgSettings {
+    /// Fraction of base XP awarded when the player's Buggy mount makes
+    /// the killing blow. 1.0 = full XP (default per user spec). Set to
+    /// 0.5 if you want Buggy kills to count for half, or 0.0 to ignore
+    /// them entirely.
+    #[serde(default = "default_buggy_kill_xp_multiplier")]
+    pub buggy_kill_xp_multiplier: f32,
+}
+
 fn default_slot_count() -> i32 {
     100
 }
 
 fn default_survival_multiplier() -> f32 {
     0.5
+}
+
+fn default_buggy_kill_xp_multiplier() -> f32 {
+    1.0
 }
 
 impl Default for InventorySettings {
@@ -53,6 +69,14 @@ impl Default for SurvivalSettings {
         Self {
             thirst_multiplier: default_survival_multiplier(),
             hunger_multiplier: default_survival_multiplier(),
+        }
+    }
+}
+
+impl Default for RpgSettings {
+    fn default() -> Self {
+        Self {
+            buggy_kill_xp_multiplier: default_buggy_kill_xp_multiplier(),
         }
     }
 }
@@ -96,10 +120,11 @@ fn settings_path() -> Option<PathBuf> {
 impl Settings {
     pub fn log_summary(&self) {
         bbp_log!(
-            "settings: slot_count={}, thirst_mult={:.3}, hunger_mult={:.3}",
+            "settings: slot_count={}, thirst_mult={:.3}, hunger_mult={:.3}, buggy_xp_mult={:.3}",
             self.inventory.slot_count,
             self.survival.thirst_multiplier,
-            self.survival.hunger_multiplier
+            self.survival.hunger_multiplier,
+            self.rpg.buggy_kill_xp_multiplier
         );
     }
 }

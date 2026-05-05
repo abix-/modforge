@@ -38,6 +38,10 @@ const MULTICAST_HANDLE_EFFECTS_PARMS_DAMAGE_FLAGS: usize = 0x001C;
 
 const DAMAGE_INFO_FLAG_KILLING_BLOW: i32 = 2;
 
+// AController.Pawn (Engine_classes.hpp:30510). Standard UE5 layout,
+// stable across builds.
+const A_CONTROLLER_PAWN: usize = 0x0308;
+
 // FWeakObjectPtr layout: { i32 ObjectIndex; i32 ObjectSerialNumber; }.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -140,20 +144,115 @@ fn on_event(
         return;
     }
 
-    let killer = read_instigator(this).unwrap_or_else(|| "<unresolved>".to_string());
     let class_name = actor_class.as_object().name();
-    bbp_log!(
-        "rpg/kill: {} ({}) killed by {}",
-        dying_actor.name(),
-        class_name,
-        killer
-    );
+    let instigator = resolve_instigator(this);
+    let kind = classify(instigator);
+    let killer_label = describe_instigator(instigator);
 
-    // Spike B: bump kill counter and persist.
-    crate::rpg::tracker::record_kill(&class_name);
+    use crate::rpg::tracker::{KillSource, record_kill};
+    match kind {
+        KillerKind::Player => {
+            bbp_log!(
+                "rpg/kill: PLAYER {} ({}) killed by {}",
+                dying_actor.name(),
+                class_name,
+                killer_label
+            );
+            record_kill(&class_name, KillSource::Player);
+        }
+        KillerKind::Buggy => {
+            bbp_log!(
+                "rpg/kill: BUGGY {} ({}) killed by {}",
+                dying_actor.name(),
+                class_name,
+                killer_label
+            );
+            record_kill(&class_name, KillSource::Buggy);
+        }
+        KillerKind::Other => {
+            bbp_log!(
+                "rpg/kill: skip {} ({}) -- killer was {}",
+                dying_actor.name(),
+                class_name,
+                killer_label
+            );
+        }
+    }
 }
 
-fn read_instigator(health_component: &UObject) -> Option<String> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KillerKind {
+    Player,
+    Buggy,
+    Other,
+}
+
+fn classify(instigator: Option<&UObject>) -> KillerKind {
+    let Some(controller) = instigator else {
+        return KillerKind::Other;
+    };
+
+    // 1. Direct player kill: controller's class chain contains
+    //    "PlayerController". Covers BP_SurvivalPlayerController_C and
+    //    its variants (Augusta etc.).
+    if class_chain_contains(controller, "PlayerController") {
+        return KillerKind::Player;
+    }
+
+    // 2. Buggy kill: AIC's class chain contains "Buggy", or the
+    //    possessed pawn's class does. Buggies in Grounded 2 are tame
+    //    creatures used as the player's mount; their AICs are named
+    //    `AIC_<Species>_..._Buggy_C` and the pawns' BP classes contain
+    //    "Buggy" too.
+    if class_chain_contains(controller, "Buggy") {
+        return KillerKind::Buggy;
+    }
+    if let Some(pawn) = controller_pawn(controller)
+        && class_chain_contains(pawn, "Buggy")
+    {
+        return KillerKind::Buggy;
+    }
+
+    // 3. Anything else: enemy-vs-enemy or some non-credit path.
+    KillerKind::Other
+}
+
+fn controller_pawn(controller: &UObject) -> Option<&UObject> {
+    unsafe {
+        let p: *mut UObject = controller
+            .field_ptr(A_CONTROLLER_PAWN)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        p.as_ref()
+    }
+}
+
+fn class_chain_contains(obj: &UObject, needle: &str) -> bool {
+    let Some(cls) = obj.class() else { return false };
+    let mut cur: Option<&UClass> = Some(cls);
+    let mut depth = 0;
+    while let Some(c) = cur {
+        if depth > 32 {
+            return false;
+        }
+        if c.as_object().name().contains(needle) {
+            return true;
+        }
+        cur = c.super_class();
+        depth += 1;
+    }
+    false
+}
+
+fn describe_instigator(instigator: Option<&UObject>) -> String {
+    let Some(ctrl) = instigator else {
+        return "<unresolved>".to_string();
+    };
+    let class_name = ctrl.class().map(|c| c.as_object().name()).unwrap_or_default();
+    format!("{} ({})", ctrl.name(), class_name)
+}
+
+fn resolve_instigator(health_component: &UObject) -> Option<&'static UObject> {
     let weak_ptr: FWeakObjectPtr = unsafe {
         health_component
             .field_ptr(HEALTH_COMPONENT_LAST_DAMAGE_INFO + FDAMAGE_INFO_INSTIGATOR_CONTROLLER)
@@ -165,7 +264,8 @@ fn read_instigator(health_component: &UObject) -> Option<String> {
     }
     let rt = runtime();
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    let obj = view.get(weak_ptr.object_index)?;
-    let class_name = obj.class().map(|c| c.as_object().name()).unwrap_or_default();
-    Some(format!("{} ({})", obj.name(), class_name))
+    // Caller treats result as 'static: GObjects entries live for the
+    // process lifetime even if a slot is later reused (we don't free).
+    view.get(weak_ptr.object_index)
+        .map(|o| unsafe { &*(o as *const UObject) })
 }

@@ -197,7 +197,7 @@ unsafe fn worker() {
     // thread so PlayerState is bound to the active save the moment the
     // player enters the world. Future perk-driven CDO patches will run
     // on the same activation transition.
-    rpg::world_loader::spawn();
+    rpg::world_loader::spawn(settings.rpg.clone());
 
     bbp_log!("init complete; worker thread exiting");
 }

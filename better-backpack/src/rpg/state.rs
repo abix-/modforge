@@ -16,11 +16,27 @@ use crate::log;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlayerState {
-    /// How many enemies the player has killed. Spike B placeholder; once
-    /// XP arrives this becomes (xp, level, perk_ranks, ...).
+    /// Cumulative XP earned. Levels are derived from this via the
+    /// curve in `rpg::xp`.
+    #[serde(default)]
+    pub xp: u64,
+    /// Highest level granted so far. Stored separately from `xp` so a
+    /// curve change doesn't retroactively de-level the player.
+    #[serde(default)]
+    pub level: u32,
+    /// Unspent perk points.
+    #[serde(default)]
+    pub perk_points: u32,
+    /// Map of perk_id -> rank. Open-shape so we can add perks without
+    /// breaking existing save files.
+    #[serde(default)]
+    pub perk_ranks: std::collections::BTreeMap<String, u32>,
+
+    /// Total kills (any source: player + Buggy). Diagnostic only.
+    #[serde(default)]
     pub kill_count: u64,
-    /// Last creature class killed -- so a reload can prove persistence
-    /// without grepping for an exact count.
+    /// Last creature class killed -- diagnostic, lets a reload show
+    /// persistence without grepping for an exact count.
     #[serde(default)]
     pub last_killed: String,
 }

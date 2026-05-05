@@ -1,41 +1,62 @@
 // In-memory PlayerState plus the slot it's bound to. Drives reads /
 // writes for the RPG loop:
 //   - `world_loader` calls `activate_slot` when a save becomes active.
-//   - `kill_hook` calls `record_kill` on every confirmed creature kill.
+//   - `kill_hook` calls `record_kill` on every confirmed creature kill,
+//     specifying the kill source (player vs Buggy) so we can apply the
+//     right XP multiplier.
 //
 // Eager activation is required because (future) level/perk ranks affect
-// player stats from spawn, not from the first kill. We can't wait until
-// the kill hook fires to load.
+// player stats from spawn, not from the first kill.
 
 use std::sync::Mutex;
 
 use crate::bbp_log;
 use crate::rpg::state::{self, PlayerState};
+use crate::rpg::xp;
+use crate::settings::RpgSettings;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KillSource {
+    Player,
+    Buggy,
+}
 
 struct Tracker {
     slot: String,
     state: PlayerState,
+    rpg_settings: RpgSettings,
 }
 
 static TRACKER: Mutex<Option<Tracker>> = Mutex::new(None);
 
 /// Bind the tracker to `slot` and load any prior state from disk.
-/// Replaces any prior binding (caller is responsible for flushing the
-/// outgoing slot first if needed).
-pub fn activate_slot(slot: String) {
-    let state = state::load_one(&slot);
+/// Replaces any prior binding.
+pub fn activate_slot(slot: String, rpg_settings: RpgSettings) {
+    let mut state = state::load_one(&slot);
+    // If the loaded state has xp but no level (first run after schema
+    // bump, or hand-edited file), recompute level from xp.
+    let derived_level = xp::level_for_xp(state.xp);
+    if state.level < derived_level {
+        state.level = derived_level;
+    }
     bbp_log!(
-        "rpg/state: activated slot={} kills={} last={}",
+        "rpg/state: activated slot={} level={} xp={} perk_points={} kills={} last={}",
         short(&slot),
+        state.level,
+        state.xp,
+        state.perk_points,
         state.kill_count,
         if state.last_killed.is_empty() { "<none>" } else { state.last_killed.as_str() }
     );
-    *lock() = Some(Tracker { slot, state });
+    *lock() = Some(Tracker {
+        slot,
+        state,
+        rpg_settings,
+    });
 }
 
-/// Drop the active slot (e.g. player exited to main menu). Persisted
-/// state is already on disk via `record_kill`'s flush, so no extra save
-/// is needed here.
+/// Drop the active slot. Persisted state is already on disk via
+/// `record_kill`'s flush, so no extra save here.
 pub fn deactivate_slot() {
     let mut g = lock();
     if let Some(t) = g.take() {
@@ -49,7 +70,7 @@ pub fn current_slot() -> Option<String> {
 }
 
 /// Called from the kill hook on every confirmed creature kill.
-pub fn record_kill(creature_class_name: &str) {
+pub fn record_kill(creature_class_name: &str, source: KillSource) {
     let mut g = lock();
     let Some(tracker) = g.as_mut() else {
         bbp_log!(
@@ -58,15 +79,45 @@ pub fn record_kill(creature_class_name: &str) {
         );
         return;
     };
+
+    let base_xp = xp::xp_for_creature(creature_class_name);
+    let scaled = match source {
+        KillSource::Player => base_xp,
+        KillSource::Buggy => {
+            let mult = tracker.rpg_settings.buggy_kill_xp_multiplier.max(0.0);
+            (base_xp as f32 * mult).round() as u32
+        }
+    };
+
     tracker.state.kill_count += 1;
     tracker.state.last_killed = creature_class_name.to_string();
-    let total = tracker.state.kill_count;
+    tracker.state.xp = tracker.state.xp.saturating_add(scaled as u64);
+
+    let new_level = xp::level_for_xp(tracker.state.xp);
+    let levelled = new_level > tracker.state.level;
+    if levelled {
+        let gained = new_level - tracker.state.level;
+        tracker.state.level = new_level;
+        tracker.state.perk_points = tracker.state.perk_points.saturating_add(gained);
+        bbp_log!(
+            "rpg/level: LEVEL UP! {} -> {} (+{} perk points; total {})",
+            new_level - gained,
+            new_level,
+            gained,
+            tracker.state.perk_points
+        );
+    }
+
     state::save(&tracker.slot, &tracker.state);
+
     bbp_log!(
-        "rpg/state: saved kill #{} ({}) to slot={}",
-        total,
+        "rpg/state: kill #{} ({}) source={:?} +{} XP (total {}, level {})",
+        tracker.state.kill_count,
         creature_class_name,
-        short(&tracker.slot)
+        source,
+        scaled,
+        tracker.state.xp,
+        tracker.state.level
     );
 }
 

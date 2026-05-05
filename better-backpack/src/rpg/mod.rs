@@ -18,3 +18,4 @@ pub mod save_slot;
 pub mod state;
 pub mod tracker;
 pub mod world_loader;
+pub mod xp;

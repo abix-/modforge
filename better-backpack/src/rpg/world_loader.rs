@@ -9,8 +9,8 @@
 //
 // This module spawns a low-frequency poller that watches
 // save_slot::current_slot_key() and drives tracker transitions:
-//   None    -> Some(s):   tracker::activate_slot(s)
-//   Some(a) -> Some(b):   tracker::deactivate_slot(); activate_slot(b)
+//   None    -> Some(s):   tracker::activate_slot(s, settings)
+//   Some(a) -> Some(b):   tracker::deactivate_slot(); activate_slot(b, settings)
 //   Some(s) -> None:      tracker::deactivate_slot()
 //
 // Polling at 1Hz: imperceptible cost, fast enough that the player
@@ -18,6 +18,7 @@
 
 use std::ffi::c_void;
 use std::ptr;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use windows_sys::Win32::Foundation::CloseHandle;
@@ -25,10 +26,14 @@ use windows_sys::Win32::System::Threading::CreateThread;
 
 use crate::bbp_log;
 use crate::rpg::{save_slot, tracker};
+use crate::settings::RpgSettings;
 
 const POLL_INTERVAL_MS: u64 = 1_000;
 
-pub fn spawn() {
+static SETTINGS: OnceLock<RpgSettings> = OnceLock::new();
+
+pub fn spawn(settings: RpgSettings) {
+    let _ = SETTINGS.set(settings);
     unsafe {
         let h = CreateThread(
             ptr::null(),
@@ -56,11 +61,11 @@ fn run() {
         let cur = save_slot::current_slot_key();
         match (last.as_deref(), cur.as_deref()) {
             (None, Some(s)) => {
-                tracker::activate_slot(s.to_string());
+                tracker::activate_slot(s.to_string(), settings_clone());
             }
             (Some(a), Some(b)) if a != b => {
                 tracker::deactivate_slot();
-                tracker::activate_slot(b.to_string());
+                tracker::activate_slot(b.to_string(), settings_clone());
             }
             (Some(_), None) => {
                 tracker::deactivate_slot();
@@ -70,4 +75,8 @@ fn run() {
         last = cur;
         std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
+}
+
+fn settings_clone() -> RpgSettings {
+    SETTINGS.get().cloned().unwrap_or_default()
 }
