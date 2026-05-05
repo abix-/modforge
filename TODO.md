@@ -271,39 +271,65 @@ not exploratory.
   every enemy subclass has its own vtable, so we'd need a hook
   per species (~50+ subclasses).
 
-- [ ] Spike A attempt 2: **global ProcessEvent hook**. Detour the
-  engine's ProcessEvent function pointer once at startup. In the
-  trampoline, filter by function name pattern `*DeathDelegate*`
-  (or just `Contains("Death")` initially, narrow later). The
-  `this` is the dying enemy actor; parms[0] is `FDamageInfo`. We
-  already have the FDamageInfo offset table from R1, so reading
-  the killer is unchanged.
+- [ ] Spike A attempt 2: pick one of three options below. Order
+  by leverage, top to bottom.
 
-  Implementation options:
+  ### Option A: read DamageFlags from existing hook (recommended)
 
-  - (a) Add detour primitives to `hook/` (write a JMP at the PE
-    function address, capture overwritten bytes, build a
-    trampoline). ~150 lines of careful asm-aware code; we'd own
-    it.
-  - (b) Piggyback on UE4SS. UE4SS already installs a global PE
-    hook internally and exposes callbacks. Reference:
-    `RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp` --
-    `RegisterProcessEvent[Pre|Post]Callback`. The C++ shim can
-    register a callback that forwards into our Rust extern. We
-    avoid owning the detour, at the cost of pulling in UE4SS
-    headers (or hand-declaring the API surface in our shim).
+  `MulticastHandleEffectsWithDamageFlags` already fires through
+  our existing per-vtable HealthComponent hook on every damage
+  hit (confirmed in 2026-05-05 log). It carries a `DamageFlags:
+  int32` parm (`Maine_parameters.hpp:46227`). UE survival games
+  typically expose a `EDamageFlag::KillingBlow` bit set when the
+  hit is lethal.
 
-  (b) is the right choice -- we're already a UE4SS C++ mod, so
-  taking a hard dependency on UE4SS internals doesn't add
-  fragility we don't already have. The shim grows by ~20 lines
-  to register and forward; Rust side is unchanged structurally.
+  **5-minute test**: grep `C:\tools\work\sdk\SDK\` for
+  `EDamageFlag` / `DamageFlags` constants. If a "killing blow"
+  bit exists, the spike is done with zero architectural change.
+  Read parms[2] from the existing hook, mask the bit, log only
+  on death.
 
-- (Note for later) `MulticastHandleEffectsWithDamageFlags` carries
-  a `DamageFlags: int32` parm (`Maine_parameters.hpp:46227`). If
-  one bit indicates "killing blow", we could detect death from
-  HealthComponent PE traffic. Search for `EDamageFlag` /
-  `DamageFlags` enum to confirm. Lower priority than the global
-  hook since the global hook gives us cleaner data either way.
+  Cost if it works: ~10 lines. Cost if it doesn't: 5 min.
+  Decision criterion: any flag enum that names something like
+  Killing/Lethal/Death/Fatal qualifies; missing -> fall through
+  to Option B.
+
+  ### Option B: global ProcessEvent hook
+
+  Right architecture long-term. Detour the engine's PE function
+  pointer once at startup, filter in the trampoline by function
+  name pattern (`*Death*`, `*DeathDelegate*`).
+
+  Two implementation sub-options:
+
+  - (a) Roll our own detour. ~150 lines of asm-aware code in
+    `hook/`. Full ownership.
+  - (b) Piggyback on UE4SS's existing global PE hook via
+    `RegisterProcessEvent[Pre|Post]Callback` in
+    `RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp`. C++ shim
+    registers a callback that calls into a Rust extern. ~20
+    lines of shim, no new Rust hook plumbing. Hard dependency
+    on UE4SS internals -- fine because we're already a UE4SS
+    C++ mod.
+
+  Pick (b). Right answer for any future PE-only signal we want
+  (player level-up, item crafted, dialog finished, etc.) so it's
+  an investment we'd make anyway.
+
+  ### Option C: defer kill detection, advance Spike B or C
+
+  Build persistence (Spike B) or live stat re-apply (Spike C)
+  first; stub the XP source with a debug imgui button "Give 100
+  XP". Lower leverage: we'd be building plumbing without an
+  end-to-end testable loop. Also weaker information about what
+  state we need to persist (per-kill timestamps for streaks?
+  per-species kill counts?). Skip unless A and B both blow up.
+
+  ### Why A first
+
+  SDK already on disk. If the flag exists, we're unblocked in 10
+  minutes and can move to Spike B+C immediately. If it doesn't,
+  we move to Option B with a confirmed reason -- not guessing.
 - [ ] Spike B: persistence. Find `USaveLoadManager` in GObjects,
   read `SaveInProgressSaveGameHeaderData->PlaythroughGuid`,
   write/read a JSON file at `<DLL_dir>/saves/<guid>.json`. Handle
