@@ -127,7 +127,7 @@ installs the README instructs the user to append
 - Mod feature set, settings.json schema, defaults, log file location
   (`<DLL_dir>\better_backpack.log`).
 - Performance characteristics. `PERFORMANCE.md` numbers don't move
-  meaningfully -- we're still doing one CDO patch + one ProcessEvent
+  meaningfully, we're still doing one CDO patch + one ProcessEvent
   hook. UE4SS adds maybe ~10us of additional latency at start (it
   calls `start_mod` slightly later than DllMain would have run), but
   that's not a frame-time concern.
@@ -158,7 +158,7 @@ The vtable shape (in declaration order in
 
 1. virtual destructor
 2. `on_update()`
-3. `on_unreal_init()` -- earliest point safe for UE reflection
+3. `on_unreal_init()`, earliest point safe for UE reflection
 4. `on_ui_init()`
 5. `on_program_start()`
 6-9. four deprecated `on_lua_*` overloads
@@ -205,7 +205,7 @@ extern "C" __declspec(dllexport)
 void uninstall_mod(RC::CppUserModBase* mod) { delete mod; }
 ```
 
-That's the entire C++ surface. ~30 lines, no logic in it -- it's
+That's the entire C++ surface. ~30 lines, no logic in it, it's
 loader handshake only. Every byte of mod behavior (CDO patches,
 hooks, scroll viewport, settings, log) stays Rust.
 
@@ -229,9 +229,9 @@ UE4SS.dll itself is shipped to end users with **all** `CppUserModBase`
 symbols exported (verified via `dumpbin /exports` against
 `<vortex_install>\ue4ss\UE4SS.dll`):
 
-- `??0CppUserModBase@RC@@QEAA@XZ` -- constructor
-- `??1CppUserModBase@RC@@UEAA@XZ` -- virtual destructor
-- `?on_update@CppUserModBase@RC@@UEAAXXZ` -- and similar for every
+- `??0CppUserModBase@RC@@QEAA@XZ`, constructor
+- `??1CppUserModBase@RC@@UEAA@XZ`, virtual destructor
+- `?on_update@CppUserModBase@RC@@UEAAXXZ`, and similar for every
   base virtual
 
 So we don't need to build UE4SS at all. We generate an import library
@@ -253,7 +253,7 @@ linker resolves the imports at our DLL build time; Windows resolves
 them against the running UE4SS.dll at game load time.
 
 The earlier "define RC_UE4SS_API to empty + provide stubs" plan is
-abandoned -- it would have worked but it's strictly worse than
+abandoned, it would have worked but it's strictly worse than
 linking against the real DLL.
 
 Why not the other options:
@@ -289,7 +289,7 @@ Numbered for tracking. Each step is its own commit.
   `C:\code\RE-UE4SS` for the headers (out-of-band; submodule attempt
   failed because UE4SS's own `.gitmodules` references a 404'd
   `Re-UE4SS/UEPseudo.git`). We don't need UE4SS's nested submodules
-  -- only the headers under `UE4SS/include/` and the live
+ , only the headers under `UE4SS/include/` and the live
   `UE4SS.dll` for the import library. Document the expected path in
   BUILDING.md and skip vendoring.
 - [x] **2.** Generated `UE4SS.lib` from the live UE4SS.dll at
@@ -314,7 +314,7 @@ Numbered for tracking. Each step is its own commit.
   better_backpack_start()` / `better_backpack_stop()` to `lib.rs`.
   `DllMain` shrunk to just capture HMODULE. Worker spawned from
   `better_backpack_start` instead of DllMain. `wait_for_gobjects`
-  retry loop deleted -- UE4SS calls `on_unreal_init` only after
+  retry loop deleted, UE4SS calls `on_unreal_init` only after
   the engine has finished initializing.
   **Verified `main.dll` (244 KB) builds clean, exports `DllMain`,
   `better_backpack_start`, `better_backpack_stop`, `start_mod`,
@@ -333,10 +333,10 @@ Numbered for tracking. Each step is its own commit.
     line from `mods.txt`.
 - [ ] **6.** Update `BUILDING.md`, `README.md`, `FEATURES.md`,
   `PERFORMANCE.md` to reflect the UE4SS load model. The capability
-  comparison table stays accurate -- only the distribution shape
+  comparison table stays accurate, only the distribution shape
   changed.
 - [/] **7.** In-game smoke test under UE4SS. **Partially done.**
-  - UE4SS DOES recognize our mod -- `UE4SS.log` shows
+  - UE4SS DOES recognize our mod, `UE4SS.log` shows
     `Starting C++ mod 'BetterBackpack'` cleanly.
   - But the game **crashes** during early init when our mod is
     loaded. With `deploy.ps1 -Uninstall`, the game launches fine,
@@ -354,7 +354,7 @@ Numbered for tracking. Each step is its own commit.
       (we're probably missing two of the `Lua*` pointer overloads
       and/or `on_cpp_mods_loaded`).
     - Field order / sizes in our mirror.
-    - C++ runtime config -- `cc::Build` may default to `/MT`
+    - C++ runtime config, `cc::Build` may default to `/MT`
       while UE4SS ships built against `/MD`. CRT mismatch could
       explain heap corruption when the parent ctor's `std::wstring`
       members are constructed.
@@ -369,7 +369,7 @@ Numbered for tracking. Each step is its own commit.
 - [ ] **8.** Archive the winhttp proxy material (winhttp.def,
   forwarder build.rs, winhttp section of FEATURES.md) into a
   `archive/winhttp-proxy/` directory in case we ever want it back as
-  a UE4SS-less fallback. Don't delete -- it's correct, working code.
+  a UE4SS-less fallback. Don't delete, it's correct, working code.
 
 ## Risks / what could go wrong
 

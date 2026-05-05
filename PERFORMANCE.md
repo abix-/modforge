@@ -33,7 +33,7 @@ present in `GObjects` while the inventory UI is open.
 Per-call cost:
 
 - one vtable read off `this` (8 bytes)
-- `REGISTRY.lock()` -- `Mutex` lock, uncontended (game thread only)
+- `REGISTRY.lock()`, `Mutex` lock, uncontended (game thread only)
 - linear scan over registry (currently 1 entry)
 - pointer copy of the `Entry`, drop the lock
 - `catch_unwind` around the user closure
@@ -59,7 +59,7 @@ Per-call cost:
   similar handler
 
 The function-identity dispatch replaces what the C++ build did with
-runtime `fn_name == "..."` string compares -- one of the audit's named
+runtime `fn_name == "..."` string compares, one of the audit's named
 issues.
 
 ### 3. Rebind (active scroll)
@@ -94,17 +94,17 @@ multiplies two `f32` fields per CDO by the user-configured multipliers.
 
 Per scan:
 - iterate every entry in GObjects (~125k)
-- per entry: `IsA(SurvivalComponent)` -- pointer-compare chain walk,
+- per entry: `IsA(SurvivalComponent)`, pointer-compare chain walk,
   typically 2-4 hops
 - for the few matching CDOs: read + multiply + write each of two `f32`
   fields, then verify
 
-Estimated wall cost: comparable to the inventory patch -- 1-3 ms once
+Estimated wall cost: comparable to the inventory patch, 1-3 ms once
 at startup. Runs only if at least one multiplier is `!= 1.0` (skipped
 entirely otherwise). Default multipliers ship at `0.5`, so the patch
 runs by default.
 
-### 5. Rescan loop -- removed
+### 5. Rescan loop, removed
 
 Earlier revisions of this doc described a 10 s rescan loop. **It's
 gone.** The CDO patch is sticky for the lifetime of the DLL: UE doesn't
@@ -122,7 +122,7 @@ Compile-time gating:
 
 - Trace lines in `inv_hook.rs` are wrapped in
   `if cfg!(debug_assertions)`. Release builds drop them at compile
-  time -- no string formatting, no I/O.
+  time, no string formatting, no I/O.
 - The startup banner (image base, GObjects count, initial patch) and
   the rescan-found-something path are unconditional but fire **once at
   startup** and **only when something changes** respectively.
@@ -148,12 +148,12 @@ than ported with fixes:
   load-bearing for the mod's actual behavior. Net effect: the Rust port
   intercepts roughly **0.1%** of the ProcessEvent dispatches the C++
   build did.
-- `InspectLiveInventoryUiState` -- the C++ tree walked all of `GObjects`
+- `InspectLiveInventoryUiState`, the C++ tree walked all of `GObjects`
   twice per rescan tick to log live widget / window-stack state. We
   dropped it. If we ever need it back, gate it behind
   `cfg!(debug_assertions)` and run it at most once per session.
 - The `g_inventoryViewportStart` `unordered_map<const UObject*, int>`
-  in C++ was an unbounded leak -- it grew for every widget the player
+  in C++ was an unbounded leak, it grew for every widget the player
   ever opened. Rust uses a `Vec<(usize, i32)>` keyed by widget pointer
   and never prunes it either, but the leak is the same shape and the
   growth rate is bounded by how many distinct widget instances the
@@ -184,7 +184,7 @@ Strictly optional. None of these are visible in a profile today.
    real CDO-revert scenario is ever observed in a play session. Today
    we patch once and exit; if a Blueprint hot-reload or replication
    path ever wipes the CDO, we'd silently miss it. The fix is the
-   canonical UE4SS pattern -- register a listener, filter by class
+   canonical UE4SS pattern, register a listener, filter by class
    pointer, defer a re-patch one tick. ~100 lines of work; not
    warranted unless the failure is observed.
 

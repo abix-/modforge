@@ -61,12 +61,12 @@ grounded2mods/
 - [x] 7. Inventory-interface hook + viewport rebind. inv_hook.rs +
      parms.rs. Cached UFunction* identity dispatch (no name compares).
      Trace gated by cfg!(debug_assertions). Single hook surface.
-     **Hook installs in-game** -- log shows
+     **Hook installs in-game**, log shows
      `inv hook: installed on WBP_InventoryInterface_C` once inventory UI
      loads.
 - [x] 8. Trace surfaces in inv_hook.rs are already gated under
      cfg!(debug_assertions). Broader BPF/grid/menu trace coverage from
-     the C++ build was intentionally not ported -- it was the dominant
+     the C++ build was intentionally not ported, it was the dominant
      hot-path cost per the audit, and the cached UFunction* identity
      dispatch makes it unnecessary in normal operation.
 - [ ] 9. Side-by-side parity test C++ vs Rust DLL.
@@ -77,21 +77,21 @@ grounded2mods/
 ## Build commands
 - `cargo build --release` builds both crates.
 - `cargo test --release` runs layout tests.
-- `cargo clippy --release --all-targets -- -D warnings` lint gate (clean today).
+- `cargo clippy --release --all-targets, -D warnings` lint gate (clean today).
 - Outputs: `target/x86_64-pc-windows-msvc/release/{winhttp.dll, inject.exe}`.
   The mod cdylib is named `winhttp.dll` so it doubles as a Windows DLL
   proxy at install time (drop into game's Binaries\Win64; Windows
   preferentially loads our copy via DLL search order; the 70 forwarder
   exports defined in `better-backpack/winhttp.def` redirect WinHTTP
   calls to `winhttp_orig.dll`, which is a copy of the system winhttp).
-- The DLL is locked while the game holds it -- rebuild requires the game to
+- The DLL is locked while the game holds it, rebuild requires the game to
   be closed (or use a different output dir).
 - inject.exe with no args looks for `winhttp.dll` next to itself
   (matches cdylib output name). Pass an explicit path to override.
 
 ## Logs
-- Injector: `<inject.exe dir>/inject.log` -- truncated each run.
-- Mod: `<DLL_dir>/better_backpack.log` -- truncated each DLL load.
+- Injector: `<inject.exe dir>/inject.log`, truncated each run.
+- Mod: `<DLL_dir>/better_backpack.log`, truncated each DLL load.
   First-line tell for the Rust build is
   `=== Better Backpack DLL (rust) ===`.
 
@@ -204,7 +204,7 @@ slots during init -> jumped past our vtable -> crash.
 Direction shift: turning the mod into a Factorio-RPG-style
 level-up mod. Kills -> XP -> levels -> skills that drive the
 existing CDO patches. Research questions R1-R5 answered against
-the SDK at `C:\tools\work\sdk\` -- see TODO.md section 0.
+the SDK at `C:\tools\work\sdk\`, see TODO.md section 0.
 
 ### Spike B: persistence working (2026-05-05)
 
@@ -212,7 +212,7 @@ PlaythroughGuid resolves at runtime. First attempt used
 `USaveLoadManager.SaveInProgressSaveGameHeaderData` (+0x90) but
 that's null except during an active save operation. Switched to
 `AInGameGameState.PlaythroughGuid` at +0x32C
-(`Maine_classes.hpp:28544`) -- populated for the duration of
+(`Maine_classes.hpp:28544`), populated for the duration of
 the active session, exactly what we need.
 
 Files:
@@ -237,7 +237,7 @@ Tracker refactored: kill recording no longer lazy-resolves the
 slot. If no slot is bound it logs+drops; in practice the
 loader activates within 1s of world entry, well before the
 player enters combat. State.rs collapsed to a simple
-load_one(slot) -- loader owns slot resolution.
+load_one(slot), loader owns slot resolution.
 
 Future skill-driven CDO/instance reapply will plug into the
 activation transition: when activate_slot fires with a freshly
@@ -256,7 +256,7 @@ inspection (no UFunction calls; pure pointer-walks):
 Confirmed in-game: PLAYER on Grub kills,
 BUGGY on Spiderling killed by `AIC_AntSoldier_Augusta_Buggy_C`,
 no false positives. Multiplayer ownership question (other
-players' Buggies) deferred -- single-player works correctly.
+players' Buggies) deferred, single-player works correctly.
 
 XP layer landed alongside: `rpg/xp.rs` (100 * N^1.8 cumulative
 curve, cap 50, ~20-species placeholder table). PlayerState
@@ -301,7 +301,7 @@ buildings/props which also fire this function on destruction.
 ### Side issue noticed
 
 Log shows `initial patch round: scanned=2, patched=0` and
-`survival patch: scanned_classes=0, patched=0` -- the existing
+`survival patch: scanned_classes=0, patched=0`, the existing
 backpack/hunger/thirst patches may be running before GObjects is
 fully populated, or there's been an SDK shape change. Not
 related to RPG track. Investigate when convenient.

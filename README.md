@@ -152,12 +152,12 @@ freshly dumped SDK. Mod logic stays the same.
 - **4sval** for [FModel](https://github.com/4sval/FModel), used for
   cooked asset inspection.
 - **Caites** for [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
-  on Nexus -- whose feature list is the reference point in
+  on Nexus, whose feature list is the reference point in
   [FEATURES.md](FEATURES.md).
 - The author of [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37),
   whose mod's breakage motivated the rewrite this repo represents.
 - The author of [RPG System](https://mods.factorio.com/mod/RPGsystem)
-  for Factorio -- the headline RPG-style level-up mod that inspired
+  for Factorio, the headline RPG-style level-up mod that inspired
   the direction this project is now taking. Our XP / level / skill /
   skill-point vocabulary is borrowed directly from theirs (and the
   broader Diablo-like RPG mod tradition on the Factorio mod portal).

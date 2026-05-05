@@ -2,10 +2,10 @@
 
 A Cargo workspace with two crates:
 
-- **better-backpack** -- the mod itself. Rust cdylib (`main.dll`) +
+- **better-backpack**, the mod itself. Rust cdylib (`main.dll`) +
   a tiny C++ shim (`cpp/shim.cpp`) that satisfies UE4SS's
   `RC::CppUserModBase` ABI and forwards lifecycle calls to Rust.
-- **injector** -- standalone exe that injects the DLL into a running
+- **injector**, standalone exe that injects the DLL into a running
   game. Dev-time only; not part of the user distribution.
 
 Single `cargo build` produces both artifacts.
@@ -24,7 +24,7 @@ Single `cargo build` produces both artifacts.
   ```
   git clone https://github.com/UE4SS-RE/RE-UE4SS.git C:\code\RE-UE4SS
   ```
-  Don't try `git submodule update --init --recursive` -- UE4SS's own
+  Don't try `git submodule update --init --recursive`, UE4SS's own
   `.gitmodules` references a 404'd `Re-UE4SS/UEPseudo.git` repo.
   We only need the headers under `UE4SS/include/` and the user's
   installed UE4SS.dll for the import library, not a UE4SS build.
@@ -41,10 +41,10 @@ cargo build --release
 
 Outputs:
 
-- `target/x86_64-pc-windows-msvc/release/main.dll` -- the mod, named
+- `target/x86_64-pc-windows-msvc/release/main.dll`, the mod, named
   `main.dll` because UE4SS expects CPPMods at
   `Mods/<ModName>/dlls/main.dll`.
-- `target/x86_64-pc-windows-msvc/release/inject.exe` -- dev-time
+- `target/x86_64-pc-windows-msvc/release/inject.exe`, dev-time
   injector.
 
 The build target dir is locked to `target/` via `.cargo/config.toml`.
@@ -100,11 +100,11 @@ Deletes the `BetterBackpack` mod folder and strips its line from
 
 ## Run via inject.exe (developer / iteration flow)
 
-The injector path is the fastest dev loop -- you don't need to close
+The injector path is the fastest dev loop, you don't need to close
 the game and redeploy to swap in a new build. It's also what runs if
 you want to test without committing to a winhttp.dll proxy install.
 
-Close any prior copy of the DLL first -- once mapped into the game
+Close any prior copy of the DLL first, once mapped into the game
 process, Windows holds the file lock until the process exits.
 
 1. Launch Grounded 2. Steam build is `Grounded2-WinGRTS-Shipping.exe`;
@@ -129,7 +129,7 @@ What you should see:
 - `<DLL_dir>\better_backpack.log` mirrors that output (file lives next
   to the DLL, not in `%TEMP%`).
 - `inject.log` next to `inject.exe` captures the injector's own steps.
-  inject.exe runs and exits without pausing -- read `inject.log` if you
+  inject.exe runs and exits without pausing, read `inject.log` if you
   need to see what happened.
 
 Expected first-run log markers:
@@ -157,7 +157,7 @@ The same gates the maintainers run before pushing:
 
 ```
 cargo build --release
-cargo clippy --release --all-targets -- -D warnings
+cargo clippy --release --all-targets, -D warnings
 cargo test --release
 ```
 
@@ -188,9 +188,9 @@ in, so the file is optional. Schema:
 }
 ```
 
-- `slot_count` -- target main-backpack capacity. Mount/saddlebag
+- `slot_count`, target main-backpack capacity. Mount/saddlebag
   (vanilla 30) is always preserved.
-- `thirst_multiplier`, `hunger_multiplier` -- scale the per-second
+- `thirst_multiplier`, `hunger_multiplier`, scale the per-second
   drain rate. `1.0` = vanilla, `0.5` = half rate, `0.0` = no drain.
 
 Defaults (used when `settings.json` is missing or a key is absent):
@@ -204,15 +204,15 @@ Copy `better-backpack/settings.example.json` to your install dir as
 
 Compile-time constants:
 
-- `patch.rs` -- `DEFAULT_SLOT_COUNT = 100` (fallback if settings load
+- `patch.rs`, `DEFAULT_SLOT_COUNT = 100` (fallback if settings load
   fails), `VANILLA_MAIN = 40`, `VANILLA_MOUNT = 30` (skip).
-- `inv_hook.rs` -- viewport size (4 rows x 10 cols), scroll step (one row).
-- `survival.rs` -- offsets for `USurvivalComponent` hunger/thirst
+- `inv_hook.rs`, viewport size (4 rows x 10 cols), scroll step (one row).
+- `survival.rs`, offsets for `USurvivalComponent` hunger/thirst
   fields.
 
 ## Cargo features
 
-- `console` (default on) -- the DLL spawns a "Better Backpack" console
+- `console` (default on), the DLL spawns a "Better Backpack" console
   window via `AllocConsole` for live log output. Useful for development.
   Build a console-free shipping DLL with:
   ```
@@ -232,7 +232,7 @@ diagnostics in the live console.
 
 ## Targeting a different game build
 
-Engine offsets live in `better-backpack/src/sdk/offsets.rs` -- two named
+Engine offsets live in `better-backpack/src/sdk/offsets.rs`, two named
 constant blocks (`STEAM` and `XBOX`). They were captured from a Dumper-7
 run against build 0.4.0.2. If a future game patch shifts offsets, dump
 the new SDK and edit those blocks.
@@ -246,5 +246,5 @@ warning.
 The original C++ implementation lives at `better-backpack-cpp/` and is
 preserved as a reference until full Rust parity is signed off. Its build
 instructions live in `better-backpack-cpp/BUILDING.md`. Do not mix the
-two outputs in the same session -- their DLLs share the same default
+two outputs in the same session, their DLLs share the same default
 filename if you put them next to each other.

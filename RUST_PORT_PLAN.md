@@ -12,7 +12,7 @@ reference implementation until the Rust version reaches behavior parity.
 - **Two Rust crates in a workspace.** One `cdylib` for the mod itself
   (SDK shim + hooks + mod logic, all in modules), and one `bin` crate for
   the injector. Two crates, not three or five. The mod crate stays
-  module-internal -- we are not building a framework; we are building one
+  module-internal, we are not building a framework; we are building one
   mod plus the loader that injects it.
 - Zero `unsafe` in mod-level modules. All pointer math sits behind safe
   wrappers in an internal `sdk` module.
@@ -84,7 +84,7 @@ Workspace `Cargo.toml` enables `[profile.release] lto = "fat"`,
 path inlines aggressively.
 
 Module visibility (within `better-backpack`): `sdk` and `hook` modules are
-`pub(crate)` -- exposed to the rest of the crate, not to external consumers
+`pub(crate)`, exposed to the rest of the crate, not to external consumers
 (there are none).
 
 The `injector` crate does **not** depend on `better-backpack`. They share
@@ -146,7 +146,7 @@ pub trait Parms { /* marker, requires #[repr(C)] */ }
 ```
 
 The `unsafe` bubbles up only on `process_event`, `read_field`, and
-`write_field` -- the operations whose correctness depends on the caller
+`write_field`, the operations whose correctness depends on the caller
 knowing the offset and parms layout match the running game binary.
 Everything else (FindClassFast, IsA, GetFullName) is safe.
 
@@ -192,13 +192,13 @@ Implementation:
 - Optional `--launch` flag to start the game exe ourselves.
 - Exit non-zero on any failure with a clear error message.
 
-Self-contained -- no shared deps with `better-backpack`. Builds to
+Self-contained, no shared deps with `better-backpack`. Builds to
 `target/release/inject.exe`.
 
 ### `lib.rs` (top level of better-backpack)
 
 DllMain (via `define_dllmain!` macro inside the crate), worker thread entry,
-top-level wiring of patch + hook. Should be small -- target <150 lines.
+top-level wiring of patch + hook. Should be small, target <150 lines.
 
 ```rust
 define_dllmain!(worker);
@@ -220,7 +220,7 @@ fn worker() -> Result<()> {
 
 `on_inv_iface_event` does the cached-`UFunction*` pointer compare instead of
 the C++ `fnName == "..."` string chain. Trace logging is gated behind a
-`cfg!(debug_assertions)` or an env var read once at startup -- never
+`cfg!(debug_assertions)` or an env var read once at startup, never
 unconditional.
 
 ## Compile-time layout validation
@@ -298,7 +298,7 @@ already solves a lot of the surrounding problems we'd otherwise re-derive:
 When in doubt about layout, dependency choice, or build scripts, **check
 endless first** and copy its conventions. Same dotfiles, same lint config,
 same `cargo fmt` / `clippy` settings. Where endless is wrong or outdated
-*for our needs*, deviate -- but document why in this file or in code
+*for our needs*, deviate, but document why in this file or in code
 comments.
 
 We are **not** depending on endless as a crate. It's a cross-repo style
@@ -318,13 +318,13 @@ Numbered so we can check them off.
 - [x] **4.** Create `better-backpack/` cdylib skeleton with `sdk/` module:
   `UObject`, `UClass`, `UFunction`, `FName` (with `AppendString` resolver),
   `FString`, `TArray`, `GObjectsView`, `Runtime`, `find_class_fast`. Layout
-  tests pass; `cargo clippy --all-targets -- -D warnings` clean. The lib is
+  tests pass; `cargo clippy --all-targets, -D warnings` clean. The lib is
   `cdylib + rlib` so the integration tests can link it.
 - [x] **5.** Add `hook/` module: vtable patcher + `ProcessEventHook` RAII
   wrapper (registry-based dispatch by live vtable, `catch_unwind` around
   the user closure so a panic falls through to the engine's original
   ProcessEvent). Add `log` module (file-only at `%TEMP%\BetterBackpack.log`
-  for now -- console output deferred). The `define_dllmain!` macro was
+  for now, console output deferred). The `define_dllmain!` macro was
   inlined into `lib.rs` since there's only one DllMain to write.
 - [x] **6.** Wire up the patch loop. Worker does log init -> platform
   detect (Steam/Xbox by exe name) -> SDK runtime init -> wait for
@@ -337,13 +337,13 @@ Numbered so we can check them off.
   `inv_hook.rs` + `parms.rs`. Single hook surface
   (`WBP_InventoryInterface_C`). All function dispatch goes through cached
   `&UFunction` pointer identity, not name compares. Trace logs gated by
-  `cfg!(debug_assertions)` -- silent in release. **Hook installs in-game**:
+  `cfg!(debug_assertions)`, silent in release. **Hook installs in-game**:
   log shows `inv hook: installed on WBP_InventoryInterface_C` once the
-  inventory UI loads. (Required two bug fixes during testing -- see "Bugs
+  inventory UI loads. (Required two bug fixes during testing, see "Bugs
   found and fixed" below.)
 - [x] **8.** Trace surfaces gated under `cfg!(debug_assertions)`. The
   inventory-interface trace lines in `inv_hook.rs` are already debug-only
-  -- release builds compile them out. The C++ tree's broader BPF / grid /
+ , release builds compile them out. The C++ tree's broader BPF / grid /
   menu trace coverage is intentionally **not** ported; the audit found it
   was the dominant source of hot-path overhead and the targeted hook +
   cached `UFunction*` dispatch makes it unnecessary. We can revisit if a
@@ -423,5 +423,5 @@ Plan confidence: 8/10. The crate split, build target, and migration
 sequence are concrete and standard. The two unknowns are (a) how cleanly
 `UClass::get_function` translates without pulling in more SDK surface than
 expected, and (b) whether `process_event` from Rust correctly matches UE's
-C++ thiscall layout on the hook-original callback path -- I've done it
+C++ thiscall layout on the hook-original callback path, I've done it
 before but want to validate at step 4 before committing to the design.

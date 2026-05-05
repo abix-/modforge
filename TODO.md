@@ -15,6 +15,37 @@ not the user-facing knob.
 
 ## 0. RPG / level-up system (NEW HEADLINE FEATURE)
 
+### Next three items to close the RPG loop (2026-05-05)
+
+1. **Skill catalog + apply step (do together).** Define 4-5 skills
+   (backpack capacity, hunger, thirst, glide, gear durability),
+   each with id / max_rank / per-rank-value. When state activates
+   or skill ranks change, walk player CDO + live pawn instance and
+   write the field per current ranks. Closes the gameplay loop:
+   spec into a skill, stat actually changes. Without it, XP just
+   sits there.
+
+2. **ImGui tab.** Add `register_tab(STR("RPG"), ...)` in the C++
+   shim, lambda reads Rust state and shows level / XP / skills
+   with `+1` buttons. ~50 lines of C++ plus a narrow C-ABI surface
+   in Rust (5 to 6 functions: `get_level`, `get_xp`,
+   `get_skill_rank(id)`, `spend_point(id)`, etc.). Gives the
+   player a way to interact instead of editing JSON.
+
+3. **Reconcile with existing settings.** `inventory.slot_count=100`
+   and `survival.thirst/hunger_multiplier=0.5` are static today;
+   with skills driving the same fields they conflict. Choices:
+   (a) drop the static knobs and let skills fully own those
+   stats; (b) treat the static value as the cap skills scale up
+   to. (a) is cleaner and matches the RPG pivot's intent. Worth a
+   brief discussion before picking.
+
+**User picked #1 first (2026-05-05).** Highest-leverage change,
+without it level-ups are meaningless. ImGui tab and settings
+reconcile follow.
+
+
+
 This is now the project. Items 3-7 below (gear durability, enemy
 health/damage, glide speed, Player Tweaks ports) become *upgradeable
 stat surfaces* that level skills drive, instead of independent
@@ -32,7 +63,7 @@ sliders.
   - Thirst drain rate (same shape).
   - Glide speed (1.0 base, +5%/rank).
   - Gear durability loss (1.0 base, -5%/rank).
-  - Damage dealt by player (later -- needs more research).
+  - Damage dealt by player (later, needs more research).
   - Damage taken from enemies (later).
   - Stamina regen / sprint speed / swim speed (later, from Player
     Tweaks port queue).
@@ -45,7 +76,7 @@ sliders.
 All six unknowns answered against the Dumper-7 SDK. File:line
 citations are into `C:\tools\work\sdk\SDK\` unless noted.
 
-**R1. Kill detection -- ANSWERED.**
+**R1. Kill detection, ANSWERED.**
 
 Hook UFunction `Maine.HealthComponent.Kill` via ProcessEvent. It's
 declared at `Maine_classes.hpp:42304` (`void Kill(bool bAllowHandleKnockOut)`)
@@ -61,33 +92,33 @@ When fired:
   (`Maine_structs.hpp:4815`, `TWeakObjectPtr<AController>`) tells
   us who fired the killing blow. Filter to local PlayerController.
 - Bonus: `FDamageInfo.Tier` at `0x5C`, `FDamageInfo.OriginAttack`
-  at `0x4C` -- usable for XP weighting.
+  at `0x4C`, usable for XP weighting.
 
 OnDeath delegate (`Maine_classes.hpp:42224`,
 `TMulticastInlineDelegate<void(const FDamageInfo&)>`) is
-`BlueprintAssignable | BlueprintAuthorityOnly` -- fires on the
+`BlueprintAssignable | BlueprintAuthorityOnly`, fires on the
 server only. Multiplayer: only the host gets kill events.
 Acceptable; document and move on.
 
 `UHealthComponent::ServerKill` (`Maine_functions.cpp:138724`) is
 the multiplayer-replicated entry point. Hooking `Kill` covers
-both single-player and host. Don't double-count -- pick one.
+both single-player and host. Don't double-count, pick one.
 
-**R2. Enemy class hierarchy -- ANSWERED.**
+**R2. Enemy class hierarchy, ANSWERED.**
 
 Inheritance from `Maine_classes.hpp`:
 - `ACharacter -> ASurvivalCharacter` (line 5713) -> `ASurvivalCreature`
   (line 6276) -> `ABP_SurvivalCreature_Base_C` and per-species
   blueprints (`ABP_Aphid_C`, `ABP_Spider_Tarantula_Boss_C`, etc).
 - Players use the same `ASurvivalCharacter` base, but go through
-  `ABP_SurvivalPlayerCharacter_C` -- NOT a subclass of
+  `ABP_SurvivalPlayerCharacter_C`, NOT a subclass of
   `ASurvivalCreature`.
 
 Filter: in the Kill hook, walk the dying actor's class chain. If
 it's an `ASurvivalCreature` (or subclass) AND not the player's
 character class, award XP. If it's a player, ignore (player
 death). Buildings, props, etc. won't fire `HealthComponent.Kill`
-the same way -- they have separate damage paths through
+the same way, they have separate damage paths through
 `ABuilding::GetHealthComponent` (`Maine_functions.cpp:5884`); we
 only want creatures so this filter is correct.
 
@@ -96,15 +127,15 @@ XP weighting: read the dying creature's class name (FName via
 Fallback: use `FDamageInfo.Tier` or the creature's MaxHealth as a
 proxy.
 
-**R3. Persistence -- ANSWERED.**
+**R3. Persistence, ANSWERED.**
 
 Use `USaveLoadManager.SaveInProgressSaveGameHeaderData` (offset
 0x90, `Maine_classes.hpp:1786`). It points to a
 `USaveGameHeaderData` (line 42944) with these stable fields:
-- `PlaythroughGuid` at `0x48` (`FGuid`, 16 bytes) -- STABLE across
+- `PlaythroughGuid` at `0x48` (`FGuid`, 16 bytes), STABLE across
   renames. Use as our filename key.
-- `PlaythroughName` at `0xA8` (FString) -- display only.
-- `SaveFolderName` at `0x198` (FString) -- the folder Obsidian
+- `PlaythroughName` at `0xA8` (FString), display only.
+- `SaveFolderName` at `0x198` (FString), the folder Obsidian
   uses; we don't need it.
 
 Find the singleton via GObjects scan: walk for any UObject whose
@@ -119,7 +150,7 @@ saves), defer load until it's populated. Hook
 `USaveLoadManager.OnSaveBegin` (line 1787) and on load via the
 existing `on_unreal_init` retry loop.
 
-**R4. Live stat re-application -- ANSWERED.**
+**R4. Live stat re-application, ANSWERED.**
 
 `UInventoryComponent.DefaultMaxSize` at offset `0x1E0`
 (`Maine_classes.hpp:29557`) is a regular field on every instance,
@@ -156,7 +187,7 @@ live player instance (so the current run sees it instantly). The
 CDO patch is what we already do; add a parallel instance-walk
 called from level-up.
 
-**R5. UI -- ANSWERED. We piggyback on UE4SS's existing debug GUI;
+**R5. UI, ANSWERED. We piggyback on UE4SS's existing debug GUI;
 we do NOT build a new window.**
 
 UE4SS already ships an ImGui-based debug overlay with built-in
@@ -169,11 +200,11 @@ UE4SS console key (`Insert` per UE4SS-settings.ini).
 built-in tabs in the same overlay window. Same window, same
 toggle, same ImGui context. From the user's perspective they
 press one key and see "Console / LiveView / Dumpers / ... / RPG"
-across the top -- our tab is just one of them.
+across the top, our tab is just one of them.
 
 We can NOT extend UE4SS's built-in tabs (their rendering lives
 inside UE4SS.dll and isn't exposed). What we have is: register a
-new tab next to them. That's the right shape -- the RPG tab is
+new tab next to them. That's the right shape, the RPG tab is
 a distinct view (level / XP / skill grid), not something that
 fits under "Live View" or "Dumpers".
 
@@ -261,7 +292,7 @@ not exploratory.
   enter combat).
 
   `state.rs::load_for_current_slot` collapsed to
-  `state::load_one(slot)` -- the loader now owns slot
+  `state::load_one(slot)`, the loader now owns slot
   resolution; state.rs is just file I/O.
 
   Future skill-driven CDO/instance reapply hooks into the same
@@ -282,7 +313,7 @@ not exploratory.
 
   `rpg/xp.rs` introduced: `100 * N^1.8` cumulative XP curve,
   level cap 50, per-creature XP table (~20 species,
-  placeholders -- aphid 5, weevil 15, spider 75, boss 750).
+  placeholders, aphid 5, weevil 15, spider 75, boss 750).
 
   PlayerState bumped: `xp`, `level`, `skill_points`,
   `skill_ranks: BTreeMap<String, u32>`. Old fields
@@ -318,7 +349,7 @@ not exploratory.
 
   Detection sketch (research needed in the SDK before coding):
   - From InstigatorController, walk to its possessed Pawn.
-  - Check the Pawn for "is tame" -- likely
+  - Check the Pawn for "is tame", likely
     `ASurvivalCreature.bInfused` (line 5856) is the wrong flag,
     look at `IsTame()` (line 6313) and `UTameableComponent`
     (5808) / `UPetMasterComponent` (5809).
@@ -366,7 +397,7 @@ not exploratory.
   2. The `OnDeath` multicast delegate (`Maine_classes.hpp:42224`)
      IS broadcast on death, but its bindings are BP functions
      named `BndEvt__<EnemyClass>_HealthComponent_..._DeathDelegate__DelegateSignature`
-     -- one per enemy class. Those PE-dispatch on the **enemy's**
+    , one per enemy class. Those PE-dispatch on the **enemy's**
      vtable (`ABP_Aphid_C`, `ABP_Weevil_C`, etc.), NOT on
      HealthComponent's vtable. Our per-vtable hook on
      HealthComponent can't see them.
@@ -413,7 +444,7 @@ not exploratory.
     `RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp`. C++ shim
     registers a callback that calls into a Rust extern. ~20
     lines of shim, no new Rust hook plumbing. Hard dependency
-    on UE4SS internals -- fine because we're already a UE4SS
+    on UE4SS internals, fine because we're already a UE4SS
     C++ mod.
 
   Pick (b). Right answer for any future PE-only signal we want
@@ -433,7 +464,7 @@ not exploratory.
 
   SDK already on disk. If the flag exists, we're unblocked in 10
   minutes and can move to Spike B+C immediately. If it doesn't,
-  we move to Option B with a confirmed reason -- not guessing.
+  we move to Option B with a confirmed reason, not guessing.
 - [ ] **Future infra: global ProcessEvent hook (Option B,
   retained).** Spike A unblocked us via Option A, but Option B
   is still the right long-term investment. Reasons:
@@ -459,7 +490,7 @@ not exploratory.
   extern. Rust side: a tiny dispatch registry (HashMap<UFunction*,
   Box<dyn Fn>>). Replace `kill_hook.rs`'s per-vtable
   ProcessEventHook with a registry entry. Existing `inv_hook.rs`
-  can stay on per-vtable -- it's class-specific by design (only
+  can stay on per-vtable, it's class-specific by design (only
   `WBP_InventoryInterface_C` matters).
 
   Not blocking anything right now; pick up after Spike B + C
@@ -488,7 +519,7 @@ not exploratory.
 ### What we keep from the old direction
 
 The "stat surfaces" sections below (#3-7) are still the right
-implementations -- we just don't ship them as user-facing sliders.
+implementations, we just don't ship them as user-facing sliders.
 They become the math behind skills. Sequence:
 - Get gear durability (#3) and enemy health (#4) found in the SDK
   during R2 anyway, since those CDOs live on the same enemy tree.
@@ -517,7 +548,7 @@ so we add a ~30-line C++ shim that derives from
 Earlier drafts of this plan claimed there was a "legacy free-function
 CPPMod ABI" we could use to stay 100% Rust. There isn't. The
 inheritance ABI is the only path. The 30 lines of C++ are loader
-handshake -- they don't compete with the 1500+ lines of Rust mod
+handshake, they don't compete with the 1500+ lines of Rust mod
 logic for any meaningful property.
 
 Sequence (full detail in `UE4SS_PORT_PLAN.md`):
@@ -537,7 +568,7 @@ Sequence (full detail in `UE4SS_PORT_PLAN.md`):
   two `#[no_mangle] extern "C"` Rust entry points
   (`better_backpack_start`, `better_backpack_stop`). Move worker
   startup out of `DllMain` into `better_backpack_start`. Drop
-  `wait_for_gobjects` -- UE4SS calls our `on_unreal_init` after
+  `wait_for_gobjects`, UE4SS calls our `on_unreal_init` after
   the engine has finished initializing.
 - [ ] Step 5: Rewrite `deploy.ps1` for the UE4SS mod folder layout.
   Default mode produces a zip mirroring
@@ -562,14 +593,14 @@ direction is an RPG / level-up mod (see #0). Pick a name that
 reflects "kill stuff -> level up -> skills".
 
 Candidates to consider (final pick TBD):
-- `grounded-rpg` -- explicit about the game and the mechanic.
-- `g2-rpg` -- short.
-- `groundlevel` -- pun: ground level + leveling up.
-- `bug-hunter` / `huntmaster` -- emphasizes combat/kills.
-- `instar` -- the bug term for a developmental stage between molts;
+- `grounded-rpg`, explicit about the game and the mechanic.
+- `g2-rpg`, short.
+- `groundlevel`, pun: ground level + leveling up.
+- `bug-hunter` / `huntmaster`, emphasizes combat/kills.
+- `instar`, the bug term for a developmental stage between molts;
   thematic with Grounded's "you-are-tiny" framing and matches the
   level-up loop. Niche but fitting.
-- `groundwork` -- pun on Grounded, generic enough to cover future
+- `groundwork`, pun on Grounded, generic enough to cover future
   scope creep.
 
 Old "everything is a slider" candidates archived for context:
@@ -683,9 +714,9 @@ Implementation outline:
   - A per-attack-spec field on attack data tables.
   - A global damage multiplier in a survival config.
 - The most surgical approach is a *per-enemy* attack-component CDO
-  patch -- walk enemies, find their attack-component CDO, multiply
+  patch, walk enemies, find their attack-component CDO, multiply
   the damage field. Keeps player attacks untouched.
-- Add to `combat.rs` (same module as enemy health from item #4 -- they
+- Add to `combat.rs` (same module as enemy health from item #4, they
   scan the same CDO tree).
 
 Open questions:
@@ -694,7 +725,7 @@ Open questions:
   hooking the damage application function via ProcessEvent).
 - Attribute-vs-flat: most UE games store base damage as a float and
   apply multipliers from buffs / level. Patching base only is the
-  cleanest -- multipliers stay vanilla.
+  cleanest, multipliers stay vanilla.
 
 ## 6. Flying / gliding speed
 
@@ -733,7 +764,7 @@ multipliers from #6 below to avoid scanning the same CDOs twice.
 See `FEATURES.md` for the comparison table and the prioritized list.
 Quick wins identified: stamina regen, sprint/walk/swim speed, hauling
 stack size, death delay. Each is the same shape as the existing
-hunger/thirst patch -- find the offset in the SDK, add a section to
+hunger/thirst patch, find the offset in the SDK, add a section to
 `settings.json`, write a 50-line module. Order them by user demand.
 
 ## Out of scope (kept for context)
@@ -746,7 +777,7 @@ hunger/thirst patch -- find the offset in the SDK, add a section to
 ## Done
 
 - UE4SS C++ mod load works (2026-05-05). Crash on load was a vtable
-  mismatch in `cpp/shim.cpp`'s `RC::CppUserModBase` mirror -- six
+  mismatch in `cpp/shim.cpp`'s `RC::CppUserModBase` mirror, six
   virtuals missing vs upstream header (`on_ui_init`, four `Lua*`
   overloads of `on_lua_start`/`on_lua_stop`, `on_cpp_mods_loaded`).
   UE4SS dispatched past our vtable into garbage. Fixed by mirroring
@@ -759,7 +790,7 @@ hunger/thirst patch -- find the offset in the SDK, add a section to
 - `WBP_InventoryInterface_C` ProcessEvent hook + viewport rebind.
 - Mouse-wheel scrolling preserves absolute slot positions (empty slots
   stay empty, no upward compaction).
-- Worker thread terminates after init -- no recurring overhead.
+- Worker thread terminates after init, no recurring overhead.
 - `inject.exe` writes its own log, exits without pausing.
 - `inject.exe` auto-launches the game via Steam (or fallback exe) when
   it's not already running, then polls until the process appears, then
@@ -769,7 +800,7 @@ hunger/thirst patch -- find the offset in the SDK, add a section to
 - `settings.json` next to the DLL controls slot count + thirst/hunger
   multipliers. `better-backpack/settings.example.json` is the schema.
   Defaults: slot_count=100, thirst/hunger multipliers=0.5.
-- Hunger and thirst rate patch via `survival.rs` -- patches every
+- Hunger and thirst rate patch via `survival.rs`, patches every
   SurvivalComponent CDO's `HungerSettings.AdjustmentPerSecond` and
   `ThirstSettings.AdjustmentPerSecond` floats by the configured
   multipliers.
