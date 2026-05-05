@@ -99,16 +99,17 @@ The data-side patch uses a hard-coded property offset and is fragile to game upd
 Compile-time constants at the top of `dllmain.cpp`:
 
 ```cpp
-constexpr int32_t kSlotCount         = 60;     // target main-backpack DefaultMaxSize
+constexpr int32_t kSlotCount         = 100;    // target main-backpack DefaultMaxSize
 constexpr int32_t kVanillaMain       = 40;     // value the DLL looks for; only patches matches
 constexpr int32_t kVanillaMount      = 30;     // documented; never touched (we skip non-40 values)
-constexpr int32_t kVanillaMaxColumns = 10;     // UI_InventoryGrid.MaxColumns
-constexpr int32_t kTargetMaxRows     = 6;      // = ceil(kSlotCount / kVanillaMaxColumns)
+constexpr int32_t kViewportRows      = 4;      // visible inventory rows
+constexpr int32_t kViewportColumns   = 10;     // visible inventory columns
+constexpr int32_t kViewportPageSize  = 40;     // visible slot count
+constexpr int32_t kScrollStepSlots   = 10;     // one wheel notch = one row
 
 constexpr uint32_t kDefaultMaxSizeOffset = 0x01E0; // UInventoryComponent::DefaultMaxSize
-constexpr uint32_t kGridMaxRowsOffset    = 0x0388; // UI_InventoryGrid_C::MaxRows
-constexpr uint32_t kGridMaxSlotsOffset   = 0x038C; // UI_InventoryGrid_C::MaxSlots
-constexpr uint32_t kGridMaxColumnsOffset = 0x0390; // UI_InventoryGrid_C::MaxColumns
+constexpr uint32_t kInvIfaceItemGridOffset = 0x0430; // WBP_InventoryInterface_C::ItemGrid
+constexpr uint32_t kWidgetManagerWindowStackOffset = 0x0050; // UWidgetManager::WindowStack
 
 constexpr auto kRescanInterval = std::chrono::seconds(10);
 constexpr auto kInitRetryDelay = std::chrono::milliseconds(500);

@@ -64,17 +64,9 @@ The DLL got mapped but `DllMain` returned FALSE. Most common causes:
 
 Open `%TEMP%\BetterBackpack.log` and match against these symptoms:
 
-### No `PATCH ... : 40 -> 60` lines at all
+### No `PATCH ... : ... -> 100` lines at all
 
 The player pawn wasn't spawned at scan time. Open the inventory in-game once, wait 10 seconds, check the log again. The rescan loop will have caught the spawned components.
-
-### `widget: UI_InventoryGrid_C not loaded yet`
-
-The grid widget class isn't in `GObjects` yet. Open the inventory once in-game. That forces the widget class to load, and the next 10 s rescan tick will patch it.
-
-### `initial widget patch round: 0 UI_InventoryGrid_C objects bumped`
-
-Either the grid class wasn't loaded (open the inventory; see above), or the offset `0x0388` no longer points at `MaxRows` because the game updated. Re-run Dumper-7 and update `kGridMaxRowsOffset` in `dllmain.cpp`. See [BUILDING.md](BUILDING.md#after-a-game-update).
 
 ### `DefaultMaxSize=40 still on the CDO after the patch round`
 
@@ -86,6 +78,21 @@ Either:
 ### Patches applied but UI still 40 (rare)
 
 Could be a server-authoritative clamp in multiplayer. Check whether you're playing on a dedicated server; if so, the host's cap wins regardless of what your client patches. If you're the host, the host's cap is yours.
+
+### I only see 60 total slots after switching to the 100-slot build
+
+Most likely causes:
+
+- You are running a stale DLL that still targets 60.
+- You previously used a 60-slot build and the running binary did not include the newer "raise anything below target" logic.
+
+Healthy logs for the 100-slot build should show lines like:
+
+- `target slot_count = 100`
+- `PATCH ... : 40 -> 100 (verify=100)`
+- or `PATCH ... : 60 -> 100 (verify=100)`
+
+If the log still only shows `40 -> 60`, rebuild and make sure the game is fully closed before replacing `dist\BetterBackpack.dll`.
 
 ## Patches applied but I can't pick up past 40
 
@@ -107,7 +114,7 @@ What each line tells you, in the order it appears in a healthy run:
 | Line | What it means |
 |---|---|
 | `=== Better Backpack DLL ===` | Worker thread started, log file open. |
-| `target slot_count = 60` | Compile-time constant. Mismatch with what you expected? You're running a stale DLL. |
+| `target slot_count = 100` | Compile-time constant. Mismatch with what you expected? You're running a stale DLL. |
 | `vanilla main = 40, vanilla mount = 30 (left untouched)` | Confirms the value-based filter. The DLL only patches components reading exactly 40. |
 | `game exe base = 0x...` | Where the game module is loaded in memory. Different per-launch (ASLR). |
 | `GObjects populated after N retries (M ms)` | UE's global object array has data. Latch onto this; it's the prerequisite for everything else. |
@@ -118,11 +125,12 @@ What each line tells you, in the order it appears in a healthy run:
 | `found N UInventoryComponent objects` | Total count for this scan. Includes CDOs and live instances. |
 | `[CDO ] DefaultMaxSize=40 ...` | A class default. Patching this affects future spawns. |
 | `[inst] DefaultMaxSize=40 ...` | A live instance. Patching this affects the running game right now. |
-| `PATCH ... : 40 -> 60 (verify=60)` | Wrote 60, read back 60. The data-side patch took. |
-| `widget PATCH UI_InventoryGrid_C.MaxRows: 3 -> 6 (verify=6)` | One grid CDO/instance patched. The DLL bumps every UI_InventoryGrid_C object whose MaxRows isn't already 6. |
-| `initial widget patch round: N UI_InventoryGrid_C objects bumped to MaxRows=6` | First-pass count. N=0 means the grid class wasn't loaded yet (open the inventory and wait for the rescan). |
+| `PATCH ... : 40 -> 100 (verify=100)` | Wrote 100, read back 100. The data-side patch took from vanilla. |
+| `PATCH ... : 60 -> 100 (verify=100)` | Raised an already-expanded player inventory to the new target. |
+| `scroll refresh ... start=10 -> 20` | The live 4x10 viewport re-bound to a later slice of the inventory. |
 | `entering rescan loop (interval = 10 s)` | Worker enters its periodic re-check. |
-| `RESET DETECTED ... : 40 -> 60 (re-patched)` | A component reverted to vanilla 40 (replication, hot reload), re-patched. |
+| `RESET DETECTED ... : 40 -> 100 (re-patched)` | A player inventory reverted below target and was raised back to 100. |
+| `RESET DETECTED ... : 60 -> 100 (re-patched)` | A previously expanded player inventory slipped below target and was raised back to 100. |
 | `rescan: N components (was M), K re-patched` | Periodic rescan summary. |
 
 ## Still stuck

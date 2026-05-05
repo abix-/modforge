@@ -1,6 +1,6 @@
 # Better Backpack
 
-A standalone Grounded 2 mod that increases the player's main backpack from 40 to 60 slots. Implemented as an injected DLL (replaces an earlier pak prototype). Configurable slot count via a compile-time constant. No dependencies on other mods.
+A standalone Grounded 2 mod that increases the player's main backpack from 40 to 100 slots. Implemented as an injected DLL (replaces an earlier pak prototype). The visible inventory stays at a vanilla-sized 4x10 viewport and scrolls across the larger backing inventory with the mouse wheel. Configurable slot count via a compile-time constant. No dependencies on other mods.
 
 ## Where to start
 
@@ -27,7 +27,7 @@ build.bat
 dist\inject.exe
 ```
 
-A new console window titled "Better Backpack" appears, the inventory grid grows to 6 rows of 10, and a log opens at `%TEMP%\BetterBackpack.log`. The DLL is unloaded automatically when the game exits.
+A new console window titled "Better Backpack" appears, the player inventory expands to 100 backing slots, and a log opens at `%TEMP%\BetterBackpack.log`. The visible inventory remains a 4x10 viewport and scrolls with the mouse wheel. The DLL is unloaded automatically when the game exits.
 
 Full step-by-step is in [INSTALL.md](INSTALL.md).
 
@@ -37,12 +37,14 @@ Full step-by-step is in [INSTALL.md](INSTALL.md).
 
 ## What it patches
 
-Two patch sites:
+Current runtime behavior:
 
-- `UInventoryComponent.DefaultMaxSize` (offset `0x01E0`): every component reading vanilla 40 gets bumped to 60. The mount saddlebag at vanilla 30 is left alone.
-- `UUI_InventoryGrid_C.MaxRows` (offset `0x0388`, CDO only): defensive write only. The player inventory in this build does not use this widget class; we patch its CDO in case a future build reintroduces it.
+- `UInventoryComponent.DefaultMaxSize` (offset `0x01E0`): every player main-backpack component reading vanilla 40 gets bumped to 100. The mount saddlebag at vanilla 30 is left alone.
+- `WBP_InventoryInterface_C` is the live player inventory widget.
+- The rendered `ItemGrid` is a fixed pool of 40 visible `UI_ItemSlot_C` children.
+- Mouse wheel input on the live inventory widget rebinds that 4x10 viewport through `BPF_InventoryFunctions_C::RefreshInventoryGrid(..., ItemStartIndex)`.
 
-We tried calling `UWBP_InventoryInterface_C::PopulateItemGrid(6, 10)` via ProcessEvent to force the visible grid to rebuild. It worked visually (6 rows rendered) but crashed the game with a `MaterialRenderProxy.cpp:520` fatal: `Cannot queue the Expression Cache for Material MID_M_UI_FreshFill_<id> when it is about to be deleted`. UMG functions are game-thread only; calling them from our worker thread races the engine's material lifecycle. We removed the call. The data-side `DefaultMaxSize` patch alone gives the player 60 inventory slots; whether all 60 render in the existing UI depends on whether the game's own refresh path runs after we patch.
+Earlier 6-row expansion attempts were intentionally retired. The current design does not try to make the inventory widget taller. Instead it keeps the vanilla-height 4x10 view and pages the existing 40 visible slot widgets across the larger backing inventory on the game thread.
 
 Internals, configuration constants, and how to fix the data-side offset after a game update are in [BUILDING.md](BUILDING.md).
 

@@ -1,6 +1,6 @@
 # Better Backpack: install and use
 
-End-user guide. If you only want to play with a 60-slot backpack, this is the only doc you need to read.
+End-user guide. If you only want to play with a 100-slot backpack and a scrollable 4x10 inventory viewport, this is the only doc you need to read.
 
 ## Contents
 
@@ -25,7 +25,7 @@ build.bat
 dist\inject.exe
 ```
 
-A new console window titled "Better Backpack" appears, the inventory grid grows to 6 rows of 10, and a log opens at `%TEMP%\BetterBackpack.log`. The DLL is unloaded automatically when the game exits.
+A new console window titled "Better Backpack" appears, the player inventory expands to 100 backing slots, and a log opens at `%TEMP%\BetterBackpack.log`. The visible inventory stays at 4 rows by 10 columns and scrolls with the mouse wheel. The DLL is unloaded automatically when the game exits.
 
 If `build.bat` fails or you don't have Visual Studio installed, see [BUILDING.md](BUILDING.md) for prerequisites.
 
@@ -71,9 +71,9 @@ Nothing is written to the game's install directory. Nothing is written to the ga
        Look for the new console window or %TEMP%\BetterBackpack.log
    ```
 
-5. **Verify in-game**: open inventory. You should see 6 rows of 10 slots; all 60 are clickable.
+5. **Verify in-game**: open inventory. You should see the normal 4 rows of 10 visible slots. Use the mouse wheel to scroll through the larger backpack.
 
-If anything looks off, jump to [TROUBLESHOOTING.md](TROUBLESHOOTING.md). The console window and log file together tell you exactly which of the patch sites (`UInventoryComponent` CDO, live `[inst]` instances, widget `MaxRows`) hit or missed.
+If anything looks off, jump to [TROUBLESHOOTING.md](TROUBLESHOOTING.md). The console window and log file together tell you exactly which player inventory components were raised to the current target and whether the scroll viewport is responding.
 
 ## Verifying it worked
 
@@ -83,7 +83,7 @@ Look for these lines on the first scan:
 
 ```
 [hh:mm:ss.fff] === Better Backpack DLL ===
-[hh:mm:ss.fff] target slot_count = 60
+[hh:mm:ss.fff] target slot_count = 100
 [hh:mm:ss.fff] vanilla main = 40, vanilla mount = 30 (left untouched)
 [hh:mm:ss.fff] game exe base    = 0x...
 [hh:mm:ss.fff] GObjects populated after N retries (M ms)
@@ -95,15 +95,15 @@ Look for these lines on the first scan:
 [hh:mm:ss.fff]   [CDO ] DefaultMaxSize=40    obj=0x...  Default__BP_SurvivalPlayerCharacter_C ...
 [hh:mm:ss.fff]   [CDO ] DefaultMaxSize=30    obj=0x...  ... mount ...
 [hh:mm:ss.fff]   [inst] DefaultMaxSize=40    obj=0x...  ... live player main inventory ...
-[hh:mm:ss.fff] PATCH ... : 40 -> 60 (verify=60)
-[hh:mm:ss.fff] widget PATCH UI_InventoryGrid_C.MaxRows: 3 -> 6 (verify=6)
-[hh:mm:ss.fff] initial widget patch round: N UI_InventoryGrid_C objects bumped to MaxRows=6
+[hh:mm:ss.fff] PATCH ... : 40 -> 100 (verify=100)
+[hh:mm:ss.fff] widget TRACE ... OnMouseWheel
+[hh:mm:ss.fff] scroll refresh ... start=10 -> 20
 [hh:mm:ss.fff] entering rescan loop (interval = 10 s)
 ```
 
-In-game: open inventory, count rows. Six rows of ten slots each = success.
+In-game: open inventory, confirm the visible grid is still 4x10, then use the mouse wheel to page through the extra slots.
 
-If the log shows PATCH lines but the in-game UI is still 4 rows of 10, see TROUBLESHOOTING.md > "DLL is injected but inventory still shows 40 slots".
+If the log shows PATCH lines but the mouse wheel does not page the inventory, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
 ## Uninstall
 
@@ -111,18 +111,18 @@ Don't run `inject.exe`. The DLL only modifies the running process's memory; noth
 
 If you want to be extra clean: delete `dist\BetterBackpack.dll` so nothing can map it. The injector will fail on the missing-DLL check.
 
-Important: items placed in slots 41-60 become orphaned if the DLL isn't injected on the next session. Empty extra slots before deciding "I'm done with this mod."
+Important: items placed in slots beyond vanilla 40 may become inaccessible if the DLL is not injected on the next session. Safest assumption: saves that use the expanded backpack should continue to be played with the mod enabled.
 
 ## Compatibility with other mods
 
 - **AIO Player Tweaks (or any Player Tweaks variant): no conflict.** The pak version of Better Backpack would shadow the AIO BP override entirely. The DLL is different: it patches a single int32 in the live CDO/instance, leaving everything else AIO did to the BP intact. Run both, AIO's cheats still work.
-- **Bigger Backpack Nexus widget mod: redundant and ineffective.** That mod patches `UI_Container_BackpackSide.MaxRows`, which is the host widget. In the current Grounded 2 build that class doesn't appear in `GObjects` at all, so the patch is a no-op. Better Backpack patches the inner `UI_InventoryGrid_C.MaxRows` directly, which is the widget that actually drives row count.
+- **Older 60-slot test builds:** if you previously used a 60-slot build, the current mod now upgrades those player inventories to 100 as well. If the log still shows only `40 -> 60` behavior, you are running a stale DLL.
 - **Cheat Manager and Console Unlocker / Grounded2Minimal: compatible.** Different DLLs, different hooks, no overlap. They unlock the dev console; we patch inventory caps.
 - **Multiplayer:** server-authoritative inventory caps may clamp client-side capacity in sessions where the host doesn't have the mod. Out of scope for v1.
 
 ## Caveats
 
-- **Hard caps unknown.** The game may silently clamp very large `kSlotCount` values. Empirically test before committing to a large number; 60 is verified working in the design path.
+- **Hard caps unknown.** The game may silently clamp very large `kSlotCount` values. Empirically test before committing to larger numbers; 100 is the current target.
 - **Re-injection during one session is undefined.** The DLL holds an open log file handle and a worker thread; mapping it twice is not supported. If you injected and want to re-do it, restart the game.
 - **Game updates may break the data-side patch.** If Obsidian reorders fields on `UInventoryComponent`, the hard-coded `0x01E0` offset writes to the wrong field. The widget patch is reflective and survives reorderings. To repair the data side after a game update, see [BUILDING.md](BUILDING.md) > "After a game update".
 - **Anti-cheat:** Grounded 2 has none listed. If that ever changes, this DLL would trip it.

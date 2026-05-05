@@ -24,7 +24,7 @@ What is already known:
 
 Recommended v1 behavior:
 
-- Keep total capacity at 60.
+- Keep total capacity at 100.
 - Keep the visible viewport at vanilla height:
   - `kViewportRows = 4`
   - `kViewportColumns = 10`
@@ -68,12 +68,50 @@ Open questions for later implementation:
 
 Acceptance criteria when implemented:
 
-- Inventory still has 60 total usable slots.
+- Inventory still has 100 total usable slots.
 - Visible inventory remains 4 rows x 10 columns.
 - Mouse wheel scrolls through the hidden slots in 10-slot increments.
-- Slots 41-60 are reachable, clickable, draggable, and persist as before.
+- Slots 41-100 are reachable, clickable, draggable, and persist as before.
 - Inventory refreshes caused by item movement or count changes do not reset the viewport to page 0.
 - No duplicate slot widgets, no repeated grid growth, and no obvious flicker while scrolling.
+
+Current viability assessment:
+
+- The scroll plan remains viable.
+- The scroll plan is now experimentally proven.
+- Reason:
+  - data-side capacity patch to 100 is already working
+  - `WBP_InventoryInterface_C` is confirmed as the player inventory widget
+  - the widget directly owns `ItemGrid`
+  - `BPF_InventoryFunctions_C::RefreshInventoryGrid(...)` and `PopulateInventoryGrid(...)` both take `ItemStartIndex`
+  - live inspection proves the rendered grid is a fixed pool of `40` `UI_ItemSlot_C` children
+  - `OnMouseWheel` is now confirmed to fire on the live `WBP_InventoryInterface_C`
+  - forced-step proof mode now successfully calls `GetInventoryItems()`, `RefreshInventoryGrid(...)`, and `SetSelectedInventorySlot(...)`
+  - runtime log now proves viewport state advances, e.g. `mouse-wheel start=10 -> 20`
+- Interpretation:
+  - the game already has the core paging/virtualized-grid primitive needed for scrolling
+  - the current inventory UI appears to be fixed-pool/rebind based rather than dynamically growing to more visible slots
+  - scrolling does not require solving visible 6-row expansion first
+  - scrolling only requires one safe game-thread redraw path for rebinding the normal 4x10 viewport at a different `ItemStartIndex`
+- Current blocker for implementation:
+  - the actual safe native redraw path is still unidentified
+  - reflected widget hooks, reflected inventory Blueprint helpers, and reflected `GridPanel` child ops have all failed to expose the live redraw path
+- Strategic conclusion:
+  - forcing a visible 6-row layout is looking fragile because the live `ItemGrid` is currently built as a `40`-child slot pool
+  - the scroll plan is the correct end state
+  - rebinding the existing 40 visible slots is confirmed to work
+  - the remaining work is slot-semantics correctness, not feasibility
+
+Hard requirement:
+
+- Scrolling must preserve absolute slot positions exactly.
+- Scrolling is per row (`+/-10` slots), not per page.
+- If an item lives in absolute backpack slot `N`, then whenever the viewport includes slot `N`, that item must appear in the relative position derived from `N - itemStartIndex`:
+  - row = `(N - itemStartIndex) / 10`
+  - col = `(N - itemStartIndex) % 10`
+- Empty slots must remain visibly empty.
+- No item may visually compact upward, slide into the first visible slot, or otherwise change relative position merely because the viewport moved.
+- Any implementation that scrolls by rows but compacts items through empty slots is not acceptable.
 
 ### Current blocker: safe visible-side refresh / 6-row display
 
@@ -82,7 +120,7 @@ This is the immediate prerequisite work before the scroll viewport plan can be f
 What has been verified:
 
 - Data-side patch works reliably:
-  - log shows player `InventoryComponent` instances patched `40 -> 60`
+  - log shows player `InventoryComponent` instances patched to target, e.g. `40 -> 100`
   - extra capacity exists in memory
 - SDK-backed widget facts:
   - `WBP_InventoryInterface_C` is the player inventory widget and inherits from native `UInventoryWidget`
@@ -92,14 +130,35 @@ What has been verified:
   - `BPF_InventoryFunctions_C::RefreshInventoryGrid(...)` and `PopulateInventoryGrid(...)` explicitly take `ItemStartIndex`, `RowMax`, `ColumnMax`, and `GridPanel`
   - `UObject::ProcessEvent` is dispatched through the universal SDK vtable slot `Offsets::ProcessEventIdx`
 - Current runtime log from a real test now shows:
+  - `WBP_InGameMenu_Augusta_C ... ActivateInGameMenuScreenOfTag`
   - the broadened native widget hook now reaches live instances
   - `widget TRACE WBP_InventoryInterface_C ... Construct`
+  - `widget TRACE WBP_InventoryInterface_C ... OnMouseWheel`
   - `initial patch round: 3 / 45 components patched`
   - `widget PATCH UI_InventoryGrid_C ... MaxRows: 3 -> 6 (CDO only)`
   - `initial widget patch round: 1 UUI_InventoryGrid_C objects bumped to MaxRows=6`
   - after opening/using inventory, still no `widget HOOK ... PopulateItemGrid(...)->(6, 10)` line
   - after opening/using inventory, no reflected `Populate*` / `Refresh*` / `OnInventoryChanged` path was seen on the live widget; only `Construct`
-- Result: capacity patch succeeds, and the broadened native `ProcessEvent` hook does reach live `WBP_InventoryInterface_C` instances. However, the visible inventory redraw path still does not appear as a reflected Blueprint call with the expected method names. Current best conclusion: the real grid rebuild path is native or otherwise bypasses the reflected `ProcessEvent` methods we were targeting.
+  - after widening traces to SDK-backed native-adjacent candidates, still no:
+    - `inventory BPF TRACE ... RefreshInventoryGrid`
+    - `inventory BPF TRACE ... PopulateInventoryGrid`
+    - `inventory GRID TRACE ... AddChildToGrid`
+    - `inventory GRID TRACE ... ClearChildren`
+  - direct live-state inspection now shows:
+    - `WBP_InventoryInterface_C` is the live rendered inventory page inside the in-game menu
+    - its `ItemGrid` exists and contains exactly `40` child widgets
+    - those children are concrete `UI_ItemSlot_C` instances
+    - runtime code repeatedly queries `ItemGrid.GetChildrenCount()` and `ItemGrid.GetChildAt(...)`
+  - forced-step scroll proof now shows:
+    - `GetInventoryItems ok, count=39`
+    - `calling RefreshInventoryGrid rows=4 cols=10 start=20`
+    - `RefreshInventoryGrid returned`
+    - `SetSelectedInventorySlot(0) ok`
+    - `scroll refresh ... mouse-wheel start=10 -> 20`
+- Result: capacity patch succeeds, the broadened native `ProcessEvent` hook reaches live `WBP_InventoryInterface_C` instances, `OnMouseWheel` is confirmed on the live widget, and the viewport rebind path is now proven end-to-end. The live inventory UI operates on a fixed pool of 40 visible slot widgets, and `RefreshInventoryGrid(..., ItemStartIndex)` can successfully page that viewport across the 100-slot backing inventory.
+  - The 100-slot build is now active and the extra slots are visible/reachable.
+  - However, the current scroll behavior does not match expected backpack slot semantics: items can appear to move upward in the visible grid as the viewport changes.
+- Updated conclusion: the current implementation is mechanically scrolling, but the helper in use is not preserving exact absolute slot positions the way the final UX should.
 
 What has already failed:
 
@@ -118,26 +177,65 @@ What has already failed:
   - Runtime evidence now says live `WBP_InventoryInterface_C` instances do trace through this surface.
   - But the only observed reflected method during inventory open is `Construct`.
   - New conclusion: the inventory redraw/repopulation path is probably native-direct or otherwise not exposed as the reflected `Populate*` / `Refresh*` methods we expected.
+- Broadened traces on likely SDK-backed rebuild helpers:
+  - `BPF_InventoryFunctions_C::{RefreshInventoryGrid, PopulateInventoryGrid, PlaceSlotInGrid, CreateItemSlotForItem}`
+  - `UGridPanel::AddChildToGrid`
+  - `UPanelWidget::{ClearChildren, GetChildrenCount, GetChildAt}`
+  - Runtime evidence still showed none of these while opening inventory.
+  - New conclusion: slot population is likely happening through deeper native inventory/window code, not through reflected Blueprint helper calls or reflected `GridPanel` child ops.
+- Direct live-state inspection of the rendered inventory:
+  - `WBP_InventoryInterface_C.ItemGrid` has exactly `40` children at runtime
+  - those children are `UI_ItemSlot_C` widgets
+  - the menu system activates the inventory page through `WBP_InGameMenu_Augusta_C::ActivateInGameMenuScreenOfTag`
+  - runtime code queries `GetChildrenCount` / `GetChildAt` on that existing grid
+  - New conclusion: the live inventory UI is operating on a fixed pool of visible slot widgets, which makes viewport rebinding/paging a stronger path than trying to make the page grow taller.
+- First scroll-implementation pass:
+  - `OnMouseWheel` trace now proves wheel input reaches the live inventory widget.
+- First forced-step scroll proof pass:
+  - `OnMouseWheel` trace proves wheel input reaches the live inventory widget.
+  - The refresh chain now succeeds end-to-end in proof mode.
+  - New conclusion: the scroll architecture is correct and working. The remaining implementation task is proper wheel-direction decoding and cleanup of the temporary proof-mode behavior.
+- Current semantic issue after the 100-slot build:
+  - The rebuilt DLL is active and the larger slot count is present.
+  - But scrolling via `RefreshInventoryGrid(..., ItemStartIndex)` is not preserving the expected "absolute slot stays in its absolute position, including empties" behavior.
+  - Visible symptom: items from later rows can appear in the first visible slot when paging.
+  - New conclusion: `RefreshInventoryGrid(...)` is good enough to prove viewport rebinding works, but it is probably the wrong final helper for backpack-slot semantics.
+- Additional clarification from live testing:
+  - The expected behavior is stricter than generic paging.
+  - Scrolling is per row, but visible placement must still come from absolute slot index math, not item compaction.
+  - This is a hard UX requirement, not a nice-to-have.
 
 Immediate next debugging steps:
 
 1. Keep the broadened widget-chain `ProcessEvent` hook as the verified live-instance observation surface.
 2. Stop assuming the redraw path must be a reflected Blueprint method on `WBP_InventoryInterface_C`.
-3. Review SDK-native candidates that can rebuild the visible grid without a Blueprint `ProcessEvent` call:
-   - `BPF_InventoryFunctions_C::RefreshInventoryGrid(...)`
-   - `BPF_InventoryFunctions_C::PopulateInventoryGrid(...)`
-   - `UGridPanel` child-management/update path
-   - any native inventory/widget helpers adjacent to `UInventoryWidget` / `UWidgetManager` / `WBP_InventoryInterface_C`
-4. Identify where the live widget gets its slot children populated after `Construct`, and hook or patch that native path instead of waiting for a reflected `Populate*` call.
-5. Once the real redraw path is found, retarget the 6-row rewrite there.
-6. After the visible 6-row path is understood, use the already-confirmed `ItemStartIndex` helpers for the later scrollable 4x10 viewport implementation.
+3. Review SDK-native candidates adjacent to the now-eliminated reflected paths:
+   - `UInventoryWidget`
+   - `UWidgetManager`
+   - inventory-open / window-stack code around the in-game menu
+   - native item-slot setup helpers adjacent to `WBP_InventoryInterface_C`
+4. Keep viewport rebinding for the existing 40-slot grid as the implementation path; do not return to 6-row visible expansion work.
+5. Replace the current item-list-centric rebind helper with a slot-position-aware rebind path.
+6. For each visible index `i`, bind the widget against absolute slot `itemStartIndex + i`.
+7. Preserve empty slots as empty instead of allowing items to compact upward visually.
+8. Reuse the existing 40 `UI_ItemSlot_C` children, but drive them from explicit absolute-slot mapping rather than relying on `RefreshInventoryGrid(...)` as the final renderer.
+9. Treat "item stays in the correct row/column derived from its absolute slot for the current viewport" as the acceptance gate for the scroll feature.
+10. After slot semantics are correct, verify user-facing behavior:
+   - wheel up vs wheel down
+   - close/reopen resets to page 0
+   - items keep expected absolute slot positions while scrolled
+   - drag/drop and click behavior on slots 41-100
+   - boundary behavior at first and last page
 
 Acceptance criteria for this blocker:
 
 - Log shows the hook installation succeeded.
 - Opening the inventory produces filtered trace lines from live `WBP_InventoryInterface_C` instances through the broadened native widget hook.
-- The real player-inventory redraw path is identified, even if it is native and not a reflected Blueprint method.
-- The inventory visibly shows 6 rows without calling UMG rebuilds from the worker thread.
+- The real player-inventory rebind/redraw path for the existing 40 visible slot widgets is identified, even if it is deeper native inventory/window code and not a reflected Blueprint or `GridPanel` method.
+- Mouse wheel input is confirmed to reach the live inventory widget.
+- The mod can drive a rebinding-based viewport update through `RefreshInventoryGrid(..., ItemStartIndex)` without calling unsafe UMG rebuilds from the worker thread.
+- The final implementation preserves absolute slot semantics: empty slots remain empty, and items do not visually compact upward when paging.
+- The final implementation preserves exact slot-derived row/column placement for every absolute backpack slot while scrolling by rows.
 - No `MaterialRenderProxy` / UMG lifecycle crash during inventory open, close, or item movement.
 
 ## Player thirst and hunger rate tweaks
