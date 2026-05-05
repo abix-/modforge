@@ -153,21 +153,45 @@ Logs show:
 But the player still took fall damage. So `OnLanded` is not enough to
 prevent the damage and is likely not the real damaging seam.
 
-Current build adds a `USurvivalGameModeSettings::FallDamageMultiplier`
-(+0x008C) write to the apply step, which zeroes the global per-game-mode
-fall damage scalar at level 100. Native fall damage is gated by both the
-per-character ratio AND this multiplier, which explains why the
-per-character writes alone failed. **Not yet validated in-game** -- this
-is the next test pass.
+Current build patches every fall-damage field surface known from the
+SDK at level 100:
 
-If the game-mode multiplier write also fails to suppress damage, fall
-back to writing the replicated `FCustomGameModeSettings` struct held at
-`USurvivalModeManagerComponent::CustomSettings` (+0x114), with
-`FallDamageMultiplier` at +0x1C inside the struct. That struct is the
-replicated runtime copy the game actually reads each fall.
+- per-character `FallDamageRatio = 0`, `bTakeFallDamage = false`,
+  `MinimumFallDamageVelocity *= 100` (player CDOs + live pawn)
+- `USurvivalGameModeSettings::FallDamageMultiplier` (+0x008C) zeroed
+  on every CDO of the class
+- `FCustomGameModeSettings::FallDamageMultiplier` (+0x1C) zeroed inside
+  the replicated `USurvivalModeManagerComponent::CustomSettings`
+  (+0x114 on the component, abs +0x130)
+- BP `OnLanded` suppressed on concrete `BP_SurvivalPlayerCharacter_*`
 
-Lower-priority seams kept on the radar if the multiplier write does not
-fully suppress damage:
+Latest test result: every write lands per logs, `OnLanded` is suppressed
+each fall, **player still takes fall damage**. So the native
+fall-damage code does not consult any BP-exposed field we can find, and
+`ApplyFallDamage` UFunction never fires via ProcessEvent during a
+natural fall (engine calls the native function pointer directly).
+
+Two open angles for the next attack:
+
+1. **Hook `UHealthComponent::ApplyDamageFromInfo`** (Final, Native,
+   BlueprintCallable). If this fires via ProcessEvent on fall damage,
+   we can zero the `Damage` out parameter at level 100 and skip the
+   original. Parm layout: `Damage : float` at +0x00,
+   `DamageEvent : FDamageEvent` at +0x08, `DamageInfo : FDamageInfo`
+   at +0x18. Easy to wire up since we already hook this component for
+   `MulticastHandleEffectsWithDamageFlags`.
+2. **Mirror what the difficulty / custom-settings UI does at runtime**.
+   The game offers an in-game "change difficulty" path that does
+   change fall damage scaling live. Whatever
+   `USurvivalModeManagerComponent::UpdateCustomSettings(...)` /
+   `UpdateDifficulty(...)` /
+   `ASurvivalGameInstance::SetCustomGameSettings(...)` do internally,
+   that is by definition the right code path to flip the value the
+   native fall code reads. Reverse-engineer the SDK functions to
+   identify which fields they touch, then mimic those writes from the
+   apply step.
+
+Lower-priority seams kept on the radar:
 
 - `ASurvivalCharacter::MulticastFallEffects(...)`
 - `BP_SurvivalPlayerCharacter_*::BndEvt__HealthComponent...DamagedDelegate...`

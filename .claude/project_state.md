@@ -25,17 +25,29 @@ subclass. The concrete-BP hook pass works: logs show `OnLanded`
 suppression on the live player pawn. But the player still takes fall
 damage, so `OnLanded` is not the damaging seam.
 
-Latest add (in current build, **not yet validated in-game**): write
-`USurvivalGameModeSettings::FallDamageMultiplier` (+0x008C) to scale the
-global per-game-mode fall damage scalar by `(1 - reduction)`. Native
-fall damage is gated by both the per-character ratio AND this
-multiplier, which explains why the per-character field writes alone
-were ineffective. Next test pass should fall once with fall_resistance
-at level 100 and confirm zero damage. If still ineffective, fall back
-to writing `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C
-inside `USurvivalModeManagerComponent::CustomSettings` (+0x114) on the
-live mode-manager component -- that struct is the replicated runtime
-copy. Collision / impact damage is still open.
+Validated in-game: at level 100 every fall-damage field surface we
+patch reports a successful write (3 player CDOs + 1 live pawn for the
+per-character fields, 8 `USurvivalGameModeSettings` CDOs for the
+per-game-mode multiplier, 3 `USurvivalModeManagerComponent` instances
+for the replicated `FCustomGameModeSettings` struct at +0x130). BP
+`OnLanded` is suppressed on each landing. **Player still takes fall
+damage.** Native fall code does not read any BP-exposed field we have
+located. `ApplyFallDamage` UFunction also never fires via ProcessEvent
+during a natural fall (engine calls the native fn pointer directly).
+
+Two open angles:
+1. Hook `UHealthComponent::ApplyDamageFromInfo` (Final, Native,
+   BlueprintCallable) and zero the Damage out parameter for the player
+   when fall_resistance is active. Parm layout:
+   `Damage : float` at +0x00, `DamageEvent` at +0x08,
+   `DamageInfo : FDamageInfo` at +0x18.
+2. Reverse-engineer the in-game difficulty change path
+   (`USurvivalModeManagerComponent::UpdateCustomSettings` /
+   `UpdateDifficulty`, `ASurvivalGameInstance::SetCustomGameSettings`)
+   to identify which fields the runtime UI flips when difficulty is
+   adjusted. That is, by definition, the right surface to mimic since
+   it does change fall damage live. Collision / impact damage is still
+   open.
 
 ## Layout
 

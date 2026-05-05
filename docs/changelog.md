@@ -55,24 +55,53 @@ So `OnLanded` is confirmed to be insufficient as the mitigation point.
 The next likely seams are `MulticastFallEffects`, the player BP damaged
 delegate, or another earlier native/BP fall step.
 
-SDK review then surfaced a separate fall-damage scalar:
-`USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C. Native
-fall damage is gated by both the per-character `FallDamageRatio` AND
-this per-game-mode multiplier. Per-character fields alone are not
-sufficient because the game-mode scalar still applies on top.
+SDK review surfaced a separate per-game-mode scalar
+`USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C, plus a
+replicated copy `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C
+inside `USurvivalModeManagerComponent::CustomSettings` (+0x114 on the
+component, absolute +0x130). Both were added to the apply step so
+fall_resistance now writes:
 
-The mod now walks every `USurvivalGameModeSettings` instance during the
-`fall_resistance` apply step and writes `vanilla * (1 - reduction)` into
-`FallDamageMultiplier`, alongside the existing per-character writes and
-the concrete-BP `OnLanded` / `ApplyFallDamage` suppression hook. This is
-sitting in the build as the next thing to validate in-game; not yet
-tested.
+- per-character: `FallDamageRatio = 0`, `bTakeFallDamage = false`,
+  `MinimumFallDamageVelocity = 100x` -- on player CDOs and the live pawn
+- per-game-mode CDO: `FallDamageMultiplier *= (1 - reduction)` on every
+  `USurvivalGameModeSettings` instance
+- replicated runtime struct: `FallDamageMultiplier *= (1 - reduction)`
+  on every live `USurvivalModeManagerComponent`
+- BP-side suppression: ProcessEvent suppression of
+  `OnLanded` / `ApplyFallDamage` on concrete
+  `BP_SurvivalPlayerCharacter_C` and known subclasses
 
-If the multiplier write also fails to suppress damage, the next seam is
-the embedded `FCustomGameModeSettings` struct held at
-`USurvivalModeManagerComponent::CustomSettings` (+0x114), with
-`FallDamageMultiplier` at +0x1C inside the struct. That is the
-replicated runtime copy the game actually reads each fall.
+In-game test at level 100 confirmed all writes land:
+
+```
+fall_resistance level=100 reduction=1.000 written to 3 player CDO(s),
+  1 live pawn(s), 8 game-mode setting(s), 3 mode-manager component(s)
+```
+
+`OnLanded suppressed on BP_SurvivalPlayerCharacter_Female02_C_2147481334`
+also fires after each landing. **Player still takes fall damage.** So:
+
+- `OnLanded` is purely cosmetic / post-damage. Suppressing it does not
+  prevent damage.
+- `ApplyFallDamage` UFunction never fires via ProcessEvent during a
+  natural fall. The engine calls the native function pointer directly,
+  bypassing the dispatch table our hook intercepts.
+- The native fall-damage code is not reading any of the per-character
+  or per-game-mode fields we patched. Even with `bTakeFallDamage =
+  false` and `FallDamageRatio = 0`, damage still applies.
+
+Conclusion: Grounded 2's fall damage path is implemented in native code
+that does not read the public BP-exposed fields. The next attack surface
+is the actual damage entry on the health component:
+`UHealthComponent::ApplyDamageFromInfo` (Final, Native,
+BlueprintCallable). Parm layout is known
+(`Damage : float` at +0x00, `DamageEvent` at +0x08, `DamageInfo` at
++0x18). If a ProcessEvent hook on HealthComponent's
+`ApplyDamageFromInfo` fires when the player takes fall damage, we can
+zero the `Damage` out parameter at level 100 and skip the original
+call. If it doesn't fire, we are out of ProcessEvent options and the
+remaining path is to detour the native function directly.
 
 ### Movement skill fix verified
 

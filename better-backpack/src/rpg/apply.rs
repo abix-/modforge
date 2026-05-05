@@ -23,6 +23,7 @@
 // Movement now also mirrors writes onto live player pawns because CDO
 // updates alone were not enough to produce an obvious gameplay effect.
 
+use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use crate::bbp_log;
@@ -44,6 +45,7 @@ static VANILLA_THIRST: OnceLock<f32> = OnceLock::new();
 static VANILLA_FALL_DAMAGE_RATIO: OnceLock<f32> = OnceLock::new();
 static VANILLA_MIN_FALL_DAMAGE_VELOCITY: OnceLock<f32> = OnceLock::new();
 static VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
+static VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
 
 // Per-offset vanilla baselines for movement, captured lazily on first
 // apply for that offset. Stored in a small fixed-size table because
@@ -302,14 +304,30 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     );
                 }
             });
+            let smmc_count = apply_to_survival_mode_manager_components(|component| {
+                let cur = read_f32(component, skills::SMMC_CUSTOM_FALL_DAMAGE_MULTIPLIER);
+                if cur.is_finite() && cur > 0.0 {
+                    let _ = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.set(cur);
+                }
+                if let Some(v) = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.get().copied() {
+                    write_f32(
+                        component,
+                        skills::SMMC_CUSTOM_FALL_DAMAGE_MULTIPLIER,
+                        v * (1.0 - reduction),
+                    );
+                }
+            });
+            let update_count = invoke_update_custom_settings_for_fall_damage(reduction);
             bbp_log!(
-                "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s)",
+                "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s), {} mode-manager component(s); UpdateCustomSettings invoked on {} component(s)",
                 skill.id,
                 level,
                 reduction,
                 cdo_count,
                 live_count,
-                gms_count
+                gms_count,
+                smmc_count,
+                update_count
             );
         }
         SkillEffect::Runtime { .. } => {
@@ -410,6 +428,109 @@ fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
             continue;
         }
         write_f32(obj, offset, value);
+        count += 1;
+    }
+    count
+}
+
+/// Mirror what the in-game difficulty UI does at runtime: read the live
+/// `FCustomGameModeSettings` struct off `USurvivalModeManagerComponent`,
+/// mutate `FallDamageMultiplier`, and call back into the native
+/// `UpdateCustomSettings(FCustomGameModeSettings)` UFunction via
+/// ProcessEvent. That triggers the engine's own write + OnRep + cache
+/// invalidation path, which our raw memory write to +0x130 does not.
+///
+/// Returns the number of components on which the call was invoked.
+fn invoke_update_custom_settings_for_fall_damage(reduction: f32) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(class) = sdk::find_class_fast("SurvivalModeManagerComponent") else {
+        return 0;
+    };
+    let Some(update_fn) = class.get_function("SurvivalModeManagerComponent", "UpdateCustomSettings")
+    else {
+        bbp_log!(
+            "rpg/apply: UpdateCustomSettings UFunction not found on SurvivalModeManagerComponent"
+        );
+        return 0;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return 0;
+    }
+
+    let mut count = 0usize;
+    for obj in view.iter() {
+        if !obj.is_a(class) {
+            continue;
+        }
+        if obj.is_default_object() {
+            continue;
+        }
+
+        // Snapshot the live FCustomGameModeSettings struct so the call
+        // preserves every field except FallDamageMultiplier.
+        let mut parms = [0u8; skills::FCG_STRUCT_SIZE];
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                obj.field_ptr(skills::SMMC_CUSTOM_SETTINGS_OFFSET) as *const u8,
+                parms.as_mut_ptr(),
+                skills::FCG_STRUCT_SIZE,
+            );
+        }
+
+        // Capture vanilla on first sight.
+        let cur = unsafe {
+            (parms
+                .as_ptr()
+                .add(skills::FCG_FALL_DAMAGE_MULTIPLIER_OFFSET) as *const f32)
+                .read_unaligned()
+        };
+        if cur.is_finite() && cur > 0.0 {
+            let _ = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.set(cur);
+        }
+
+        if let Some(v) = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.get().copied() {
+            let target = v * (1.0 - reduction);
+            unsafe {
+                (parms
+                    .as_mut_ptr()
+                    .add(skills::FCG_FALL_DAMAGE_MULTIPLIER_OFFSET)
+                    as *mut f32)
+                    .write_unaligned(target);
+            }
+        }
+
+        unsafe {
+            obj.process_event(update_fn, parms.as_mut_ptr() as *mut c_void);
+        }
+        count += 1;
+    }
+    count
+}
+
+fn apply_to_survival_mode_manager_components(mut f: impl FnMut(&UObject)) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(class) = sdk::find_class_fast("SurvivalModeManagerComponent") else {
+        return 0;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return 0;
+    }
+
+    let mut count = 0;
+    for obj in view.iter() {
+        if !obj.is_a(class) {
+            continue;
+        }
+        if obj.is_default_object() {
+            continue;
+        }
+        f(obj);
         count += 1;
     }
     count

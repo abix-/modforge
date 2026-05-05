@@ -267,25 +267,44 @@ now are:
 - the player BP damaged delegate bound from `HealthComponent`
 - other player BP fall-adjacent events such as `NotifyOnLandAnimBegin`
 
-SDK review then surfaced a separate scalar that is almost certainly the
-real seam: `USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C.
-This is a per-game-mode global multiplier on fall damage that the native
-path multiplies in on top of the per-character ratio. Without writing
-this, the per-character fields can be set to 0 and the game will still
-apply damage scaled by the game-mode multiplier.
+SDK review surfaced two more candidate seams and both were patched:
 
-The mod now also walks every `USurvivalGameModeSettings` instance and
-writes `vanilla * (1 - reduction)` into `FallDamageMultiplier`. This is
-in code but **not yet validated in-game**; the next step is a controlled
-fall to confirm the multiplier write reaches the active game mode and
-fall damage drops to zero at level 100. If it does not, the next likely
-seam is the `FCustomGameModeSettings::FallDamageMultiplier` struct field
-(+0x1C) embedded inside `USurvivalModeManagerComponent::CustomSettings`
-at +0x114 on the live mode-manager component, since that struct is the
-replicated value the runtime reads on each fall.
+- `USurvivalGameModeSettings::FallDamageMultiplier` at +0x008C (CDO-side
+  per-game-mode scalar)
+- `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C inside
+  `USurvivalModeManagerComponent::CustomSettings` (+0x114 on the live
+  component, absolute +0x130) -- the replicated runtime copy
 
-Adjacent fall-specific SDK surfaces (kept on the radar if the multiplier
-write does not fully suppress damage):
+In-game test at level 100 with all four field surfaces zeroed
+(per-character ratio + take-flag + min-velocity boost, GMS multiplier,
+SMMC replicated struct) plus BP `OnLanded` suppression: **fall damage
+still applies**. Logs confirm every write landed and `OnLanded` was
+suppressed on the live pawn.
+
+Conclusion: Grounded 2's native fall-damage code does not read any of
+the public BP-exposed fall-damage fields. `ApplyFallDamage` UFunction
+also never fires via ProcessEvent during a natural fall (engine native
+code calls the C++ function pointer directly, bypassing our dispatch
+hook).
+
+Next step: hook `UHealthComponent::ApplyDamageFromInfo` (Final, Native,
+BlueprintCallable) and zero the `Damage` out parameter when the
+recipient is the player and fall_resistance is active. Parm layout from
+the SDK:
+
+| Offset | Field        | Type        | Notes                          |
+| ------ | ------------ | ----------- | ------------------------------ |
+| 0x00   | Damage       | float       | Parm + OutParm (we zero this)  |
+| 0x08   | DamageEvent  | FDamageEvent | ConstParm + Parm + Ref         |
+| 0x18   | DamageInfo   | FDamageInfo | Parm + OutParm                 |
+
+If ApplyDamageFromInfo also fires only via direct native dispatch (i.e.
+the hook never fires), the remaining option is detouring the native
+function pointer in the UFunction's native_func slot, which is more
+involved than the current ProcessEvent vtable hook.
+
+Adjacent fall-specific SDK surfaces still on the radar if neither path
+is the seam:
 
 - `ASurvivalCharacter::MulticastFallEffects(EPhysicalSurface, float VelocityZ)`
 - `AnimNotifyState_OverrideTakeFallDamage`

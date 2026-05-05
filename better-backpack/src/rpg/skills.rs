@@ -158,10 +158,27 @@ pub const ASC_FALL_DAMAGE_RATIO: usize = 0x157C;
 
 // USurvivalGameModeSettings.FallDamageMultiplier (Maine_classes.hpp:36808).
 // Global per-game-mode scalar applied to fall damage on top of the
-// per-character ratio. Native fall damage path multiplies this in, so
-// writing the per-character fields alone is not enough; this one has to
-// be patched too.
+// per-character ratio. CDO-side value -- the runtime reads from the
+// replicated copy on the mode-manager component below, so this write
+// alone is not sufficient.
 pub const GMS_FALL_DAMAGE_MULTIPLIER: usize = 0x008C;
+
+// USurvivalModeManagerComponent.CustomSettings (Maine_classes.hpp:37142):
+// embedded `FCustomGameModeSettings` struct at +0x114. The
+// FallDamageMultiplier field lives at +0x1C inside the struct, so the
+// absolute offset on the component is +0x130. This is the replicated
+// runtime copy of the game-mode multiplier; native fall damage reads
+// from here each fall.
+pub const SMMC_CUSTOM_SETTINGS_OFFSET: usize = 0x0114;
+pub const SMMC_CUSTOM_FALL_DAMAGE_MULTIPLIER: usize =
+    SMMC_CUSTOM_SETTINGS_OFFSET + FCG_FALL_DAMAGE_MULTIPLIER_OFFSET;
+
+// FCustomGameModeSettings struct layout (Maine_structs.hpp:6959, 0x20 bytes).
+// Only the fields we touch are listed; the rest is preserved by reading the
+// live struct, mutating in place, and writing back via the BP-callable
+// `UpdateCustomSettings` UFunction.
+pub const FCG_FALL_DAMAGE_MULTIPLIER_OFFSET: usize = 0x001C;
+pub const FCG_STRUCT_SIZE: usize = 0x0020;
 
 // UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
 pub const HC_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
