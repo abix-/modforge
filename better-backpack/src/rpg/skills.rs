@@ -28,6 +28,7 @@ pub const SKILL_MOVE_SPEED: &str = "move_speed";
 pub const SKILL_JUMP_HEIGHT: &str = "jump_height";
 pub const SKILL_GLIDE_SPEED: &str = "glide_speed";
 pub const SKILL_FALL_RESISTANCE: &str = "fall_resistance";
+pub const SKILL_IMPACT_RESISTANCE: &str = "impact_resistance";
 pub const SKILL_LIFESTEAL: &str = "lifesteal";
 
 /// Universal cap. Every skill scales 0..=100.
@@ -312,6 +313,17 @@ pub const CATALOG: &[Skill] = &[
             max_reduction: 1.00,
             format: PercentFormat::MinusPercent {
                 word: "fall damage",
+            },
+        },
+    },
+    Skill {
+        id: SKILL_IMPACT_RESISTANCE,
+        display_name: "Impact Damage Resistance",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::Runtime {
+            max_bonus: 1.00,
+            format: PercentFormat::MinusPercent {
+                word: "impact damage",
             },
         },
     },

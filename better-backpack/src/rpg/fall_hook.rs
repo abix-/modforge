@@ -49,6 +49,7 @@ fn on_player_fall_event(
     original: OriginalProcessEvent,
 ) {
     let fn_name = function.as_object().name();
+    let is_player = is_player_character(this);
 
     // Velocity-stomp: when OnLanded fires on the player and
     // fall_resistance is active, scale `CharMovementComponent.Velocity.Z`
@@ -61,7 +62,7 @@ fn on_player_fall_event(
     //
     // OnLanded suppression is REMOVED. We forward to the original BP
     // event so other landing logic (animations, sounds) still runs.
-    if fn_name == FN_ON_LANDED && is_player_character(this) {
+    if fn_name == FN_ON_LANDED && is_player {
         let reduction = current_fall_resistance_reduction();
         if reduction > 0.0 {
             let scale = (1.0 - reduction).max(0.0) as f64;
@@ -77,7 +78,43 @@ fn on_player_fall_event(
         }
     }
 
+    // Walk-backwards trace for plant / terrain collision damage.
+    // GATED on impact_resistance level > 0 so it stays silent for
+    // normal users and kicks in only when the player has put a point
+    // into the diagnostic skill. Logs every fall/land/damage/hit PE
+    // event hitting the player BP class, with `CurrentDamage` snapshot
+    // before and after `original.call`. The PE event whose POST reading
+    // is higher than its pre reading is the event during which native
+    // code wrote `CurrentDamage` -- our intercept seam.
+    let impact_diag = is_player
+        && current_impact_resistance_level() > 0
+        && is_collision_relevant(&fn_name);
+    let cd_before = if impact_diag {
+        let cd = read_player_current_damage(this);
+        bbp_log!(
+            "rpg/impact-trace: bp-class fn={} on {} CurrentDamage={:.2}",
+            fn_name,
+            this.name(),
+            cd
+        );
+        Some(cd)
+    } else {
+        None
+    };
+
     unsafe { original.call(this, function, parms) };
+
+    if let Some(before) = cd_before {
+        let after = read_player_current_damage(this);
+        if (after - before).abs() > 0.001 {
+            bbp_log!(
+                "rpg/impact-trace: bp-class fn={} POST CurrentDamage={:.2} (delta={:.2})",
+                fn_name,
+                after,
+                after - before
+            );
+        }
+    }
 }
 
 struct VelocityStomp {
@@ -127,4 +164,47 @@ fn current_fall_resistance_reduction() -> f32 {
 
 fn is_player_character(obj: &UObject) -> bool {
     obj.full_name().contains("BP_SurvivalPlayerCharacter")
+}
+
+fn is_collision_relevant(fn_name: &str) -> bool {
+    fn_name.contains("Damage")
+        || fn_name.contains("Damaged")
+        || fn_name.contains("Hit")
+        || fn_name.contains("Land")
+        || fn_name.contains("Fall")
+        || fn_name.contains("Impact")
+        || fn_name.contains("Health")
+        || fn_name.contains("Receive")
+}
+
+fn current_impact_resistance_level() -> u32 {
+    tracker::with_state(|state| {
+        state
+            .skill_levels
+            .get(skills::SKILL_IMPACT_RESISTANCE)
+            .copied()
+            .unwrap_or(0)
+    })
+    .unwrap_or(0)
+}
+
+/// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The
+/// player BP instance has its HealthComponent ptr at +0x1340 inside
+/// `ASurvivalCharacter`.
+fn read_player_current_damage(player: &UObject) -> f32 {
+    const ASC_HEALTH_COMPONENT: usize = 0x1340;
+    const HC_CURRENT_DAMAGE: usize = 0x032C;
+    unsafe {
+        let hc: *mut UObject = player
+            .field_ptr(ASC_HEALTH_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        if let Some(hc) = hc.as_ref() {
+            hc.field_ptr(HC_CURRENT_DAMAGE)
+                .cast::<f32>()
+                .read_unaligned()
+        } else {
+            f32::NAN
+        }
+    }
 }

@@ -237,23 +237,43 @@ Unlike fall damage, this path *does* go through the standard
 is involved upstream. That is a much friendlier surface for
 mitigation.
 
-### Mitigation strategy (planned, not implemented)
+### Mitigation: Impact Damage Resistance skill
 
-A separate skill (Collision / Impact Damage Resistance) tracked in
-[`todo.md`](todo.md). The likely intercept points are:
+`SKILL_IMPACT_RESISTANCE = "impact_resistance"`, `Runtime` effect,
+`max_bonus = 1.0` (full immunity at level 100, sqrt curve below).
 
-1. Hook `UHealthComponent::ApplyDamageFromInfo` via UE4SS's
-   `RegisterPreHook` and zero the `Damage` out-param when
-   `LastDamageInfo.DamageType` is a subclass of
-   `BP_EnvironmentalDamage_C`. UFunction is `Final+Native+BlueprintCallable`
-   so this may also hit issue #626 -- needs a probe to confirm.
-2. If issue #626 also blocks `ApplyDamageFromInfo`: filter on the
-   existing multicast hook by reading `LastDamageInfo.DamageType`,
-   though that runs post-damage so suppression would require the
-   same upstream-only-detour approach as fall damage.
-3. Upstream physics-side: `Velocity` clamping during
-   `MovementAudio` / `OnLanded` analogues for collision events
-   (untraced).
+**Diagnostic phase (currently in build).** When the user puts at
+least one point into `impact_resistance`, `fall_hook.rs` switches on
+a walk-backwards PE trace on the player BP class, filtered to events
+whose name contains `Damage / Damaged / Hit / Land / Fall / Impact /
+Health / Receive`. Each event logs `CurrentDamage` (+0x32C on the
+player's HealthComponent at +0x1340) before and after `original.call`.
+The event whose `POST` reading is higher than its pre reading is the
+PE-reachable seam that runs *during* the native damage write -- our
+intercept point.
+
+This is the same playbook that solved fall damage. The trace stays
+silent for normal users (no skill points = no logging).
+
+Collision is expected to differ from fall in one important way: it
+goes through the standard `ApplyDamageFromInfo` plumbing
+(`LastDamageInfo` is fully populated, see trace evidence above).
+That makes the BP-bound `BndEvt__HealthComponent_..._DamagedDelegate`
+on `BP_SurvivalPlayerCharacter_*` the most likely upstream PE
+surface -- we observed it firing post-damage on fall, but on
+collision it might be reachable pre-damage. The trace settles it.
+
+**Once the seam is identified**, the implementation pattern matches
+fall damage: mutate state in-place during the PE hook so the native
+damage formula sees scaled / zeroed input. Likely candidates: zero
+horizontal velocity, zero `Damage` parm if the seam is a UFunction
+with a writable parm, or write to an as-yet-unidentified
+collision-impact field on `UCharacterMovementComponent`.
+
+If no PE-reachable surface fires *during* the write (i.e. delta is
+zero across every traced event), the fallback is a native function
+detour against `UHealthComponent::ApplyDamage` via PolyHook_2_0 (see
+"If the velocity-stomp regresses" above).
 
 ## Kill detection (already implemented)
 
