@@ -1,18 +1,28 @@
-// File-only logger. Drops to %TEMP%\BetterBackpack.log. The C++ baseline
-// also wired up a console via AllocConsole, but the file is the durable
-// channel; we'll add console output back if we miss it.
+// Logger: spawns a console window via AllocConsole and writes every line
+// to both the console and %TEMP%\BetterBackpack.log. The C++ baseline did
+// the same. Console output is the primary live-debug surface; the file is
+// the durable record.
 
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
+use std::ptr;
 use std::sync::{Mutex, OnceLock};
 use std::time::SystemTime;
 
+use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Storage::FileSystem::GetTempPathA;
+use windows_sys::Win32::System::Console::{
+    AllocConsole, GetStdHandle, STD_OUTPUT_HANDLE, SetConsoleTitleW, WriteConsoleA,
+};
 
 struct Sink {
     file: Mutex<Option<File>>,
+    console: HANDLE,
 }
+
+unsafe impl Send for Sink {}
+unsafe impl Sync for Sink {}
 
 static SINK: OnceLock<Sink> = OnceLock::new();
 
@@ -20,10 +30,17 @@ pub fn init() {
     if SINK.get().is_some() {
         return;
     }
+    let console = unsafe {
+        AllocConsole();
+        let title: Vec<u16> = "Better Backpack\0".encode_utf16().collect();
+        SetConsoleTitleW(title.as_ptr());
+        GetStdHandle(STD_OUTPUT_HANDLE)
+    };
     let path = log_path();
     let file = File::create(&path).ok();
     let _ = SINK.set(Sink {
         file: Mutex::new(file),
+        console,
     });
     log(format_args!("log file: {}", path.display()));
 }
@@ -43,6 +60,18 @@ fn log_path() -> PathBuf {
 pub fn log(args: std::fmt::Arguments<'_>) {
     let Some(sink) = SINK.get() else { return };
     let line = format_line(args);
+    if !sink.console.is_null() {
+        let mut written: u32 = 0;
+        unsafe {
+            WriteConsoleA(
+                sink.console,
+                line.as_ptr().cast(),
+                line.len() as u32,
+                &mut written,
+                ptr::null(),
+            );
+        }
+    }
     if let Ok(mut guard) = sink.file.lock()
         && let Some(f) = guard.as_mut()
     {

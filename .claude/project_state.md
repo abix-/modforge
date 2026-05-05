@@ -73,6 +73,27 @@ grounded2mods/
 - `cargo test --release` runs layout tests.
 - `cargo clippy --release --all-targets -- -D warnings` lint gate (clean today).
 - Outputs: `target/x86_64-pc-windows-msvc/release/{better_backpack.dll, inject.exe}`.
+- The DLL is locked while the game holds it -- rebuild requires the game to
+  be closed (or use a different output dir).
+- inject.exe with no args looks for `better_backpack.dll` next to itself
+  (matches cdylib output name). Pass an explicit path to override.
+
+## Logs
+- Injector: `<inject.exe dir>/inject.log` -- truncated each run, captures
+  every line it prints to console. Useful when the console window closes
+  too fast to read.
+- Mod: `%TEMP%\BetterBackpack.log` -- truncated each DLL load, captures the
+  worker thread's log lines. First-line tell for the Rust build is
+  `=== Better Backpack DLL (rust) ===`.
+
+## Bugs found and fixed during testing
+- **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
+  treating `image_base + g_objects` as a pointer-to-pointer and
+  dereferencing once. The address IS the TUObjectArray struct directly --
+  matching the C++ wrapper's `reinterpret_cast<TUObjectArray*>(addr)` in
+  `operator->`. Symptom: log halted after platform detection because num()
+  was reading bytes inside FUObjectItem[0] instead of the array header.
+  Fix in better-backpack/src/sdk/uobject.rs.
 
 ## Open questions
 - Step 6 needs validation that calling `original` ProcessEvent from a Rust

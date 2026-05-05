@@ -8,9 +8,12 @@
 
 use std::env;
 use std::ffi::CString;
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::ptr;
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result, anyhow, bail};
 use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ACCESS_DENIED, GetLastError, HANDLE};
@@ -35,29 +38,91 @@ const TARGET_PROCESSES: &[&str] = &[
 
 const WAIT_LOAD_LIBRARY_MS: u32 = 5_000;
 
+static LOG_FILE: OnceLock<Mutex<std::fs::File>> = OnceLock::new();
+
+fn log_path() -> PathBuf {
+    if let Ok(mut p) = env::current_exe() {
+        p.pop();
+        p.push("inject.log");
+        return p;
+    }
+    PathBuf::from("inject.log")
+}
+
+fn init_log() {
+    if LOG_FILE.get().is_some() {
+        return;
+    }
+    if let Ok(f) = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(log_path())
+    {
+        let _ = LOG_FILE.set(Mutex::new(f));
+    }
+}
+
+fn log_line(prefix: &str, msg: &str) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() % 86_400)
+        .unwrap_or(0);
+    let h = now / 3600;
+    let m = (now / 60) % 60;
+    let s = now % 60;
+    let stamped = format!("[{h:02}:{m:02}:{s:02}] {prefix}{msg}");
+    println!("{stamped}");
+    if let Some(file) = LOG_FILE.get()
+        && let Ok(mut f) = file.lock()
+    {
+        let _ = writeln!(f, "{stamped}");
+        let _ = f.flush();
+    }
+}
+
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::SUCCESS,
+    init_log();
+    log_line("", &format!("inject.exe starting (log: {})", log_path().display()));
+    let no_pause = env::args().any(|a| a == "--no-pause");
+    let code = match run() {
+        Ok(()) => {
+            log_line("", "exit: success");
+            ExitCode::SUCCESS
+        }
         Err(err) => {
-            eprintln!("[-] {err:#}");
+            log_line("[-] ", &format!("{err:#}"));
+            log_line("", "exit: failure");
             ExitCode::from(1)
         }
+    };
+    if !no_pause {
+        pause_before_exit();
     }
+    code
+}
+
+fn pause_before_exit() {
+    use std::io::{Read, stdin};
+    println!();
+    println!("Press Enter to close...");
+    let mut byte = [0u8; 1];
+    let _ = stdin().read(&mut byte);
 }
 
 fn run() -> Result<()> {
     let dll_path = resolve_dll_path()?;
-    println!("[+] DLL: {}", dll_path.display());
+    log_line("[+] ", &format!("DLL: {}", dll_path.display()));
 
     let (pid, matched) = find_target_pid()
         .context("Grounded 2 not running. Launch the game and load a save first.")?;
-    println!("[+] target: {matched} (PID {pid})");
+    log_line("[+] ", &format!("target: {matched} (PID {pid})"));
 
     inject(pid, &dll_path)
 }
 
 fn resolve_dll_path() -> Result<PathBuf> {
-    let arg = env::args().nth(1);
+    let arg = env::args().skip(1).find(|a| !a.starts_with("--"));
     let candidate: PathBuf = match arg {
         Some(arg) => PathBuf::from(arg),
         None => {
@@ -208,10 +273,13 @@ fn inject(pid: u32, dll_path: &Path) -> Result<()> {
         }
         let _thread_guard = HandleGuard(h_thread);
 
-        println!("[+] LoadLibraryA fired in target process; waiting...");
+        log_line("[+] ", "LoadLibraryA fired in target process; waiting...");
         let wait = WaitForSingleObject(h_thread, WAIT_LOAD_LIBRARY_MS);
         if wait == windows_sys::Win32::Foundation::WAIT_TIMEOUT {
-            eprintln!("[!] remote thread did not finish within {WAIT_LOAD_LIBRARY_MS} ms");
+            log_line(
+                "[!] ",
+                &format!("remote thread did not finish within {WAIT_LOAD_LIBRARY_MS} ms"),
+            );
         }
 
         let mut thread_exit: u32 = 0;
@@ -226,8 +294,11 @@ fn inject(pid: u32, dll_path: &Path) -> Result<()> {
             );
         }
 
-        println!("[+] DLL mapped at HMODULE 0x{thread_exit:x} in target process.");
-        println!("    Look for the new console window or %TEMP%\\BetterBackpack.log");
+        log_line(
+            "[+] ",
+            &format!("DLL mapped at HMODULE 0x{thread_exit:x} in target process."),
+        );
+        log_line("", "look for %TEMP%\\BetterBackpack.log for DLL output");
     }
     Ok(())
 }

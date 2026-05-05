@@ -235,12 +235,12 @@ pub struct GObjectsView {
 
 impl GObjectsView {
     pub unsafe fn from_image(image_base: usize, offsets: &PlatformOffsets) -> Self {
-        // The wrapper struct holds an address; SDK lazily fills it from
-        // image_base + offset. We mimic that: dereference the wrapper's
-        // GObjectsAddress field. The wrapper layout is just `void*
-        // GObjectsAddress;`.
-        let wrapper_addr = (image_base + offsets.g_objects) as *const *const u8;
-        let array = unsafe { *wrapper_addr };
+        // image_base + offsets.g_objects IS the address of the TUObjectArray
+        // struct in game memory (first field is `Objects`, then MaxElements,
+        // NumElements). Don't dereference -- treat it as the struct pointer
+        // directly. This matches `reinterpret_cast<TUObjectArray*>(addr)`
+        // in the C++ wrapper's operator->.
+        let array = (image_base + offsets.g_objects) as *const u8;
         Self { array }
     }
 
@@ -324,22 +324,40 @@ pub unsafe fn init_runtime(
     runtime()
 }
 
-/// Walks GObjects looking for a UClass with the given short name.
+/// Walks GObjects looking for a UClass with the given short name. The
+/// meta-class filter accepts native `Class` *and* its subclasses
+/// (BlueprintGeneratedClass, WidgetBlueprintGeneratedClass, etc.) so
+/// Blueprint-generated classes are returned too.
 pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
     let rt = try_runtime()?;
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return None;
     }
-    // Cache the UClass meta-class once, for type filtering. UClass's own
-    // class is itself a UClass whose name is "Class".
     for obj in view.iter() {
-        if let Some(cls) = obj.class()
-            && cls.as_object().name() == "Class"
-            && obj.name() == name
-        {
-            return unsafe { Some(&*(obj as *const UObject as *const UClass)) };
+        if obj.name() != name {
+            continue;
         }
+        if !is_uclass_meta(obj.class()) {
+            continue;
+        }
+        return unsafe { Some(&*(obj as *const UObject as *const UClass)) };
     }
     None
+}
+
+fn is_uclass_meta(meta: Option<&UClass>) -> bool {
+    let mut cur = meta;
+    let mut depth = 0;
+    while let Some(c) = cur {
+        if depth > 16 {
+            return false;
+        }
+        if c.as_object().name() == "Class" {
+            return true;
+        }
+        cur = c.super_class();
+        depth += 1;
+    }
+    false
 }
