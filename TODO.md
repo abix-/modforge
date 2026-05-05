@@ -482,11 +482,55 @@ not exploratory.
   apply step using the freshly loaded PlayerState's skill
   ranks. Stub for now since skills don't exist yet.
 
+- [ ] **Player kills sometimes attribute to /Script/CoreUObject
+  (FWeakObjectPtr index=0 case).** Confirmed in-game 2026-05-05:
+  user killed a Gnat (`BP_Gnat_C`), the multicast fired with
+  KillingBlow set, but `LastDamageInfo.InstigatorController`
+  resolved to `/Script/CoreUObject (Package)`. That's what
+  `GObjects.get(0)` returns: object index 0 is always the
+  Package, not a controller. Index 0 means "weak pointer never
+  set" / "default-constructed FWeakObjectPtr."
+
+  Initial reading was "environmental death", which was wrong.
+  The player clearly killed the gnat. Either:
+  - Some weapons / attack types don't populate
+    `InstigatorController` on the HealthComponent's
+    `LastDamageInfo` field. Maybe ranged attacks vs melee, or
+    bomb/AoE damage, or some BP attack helper writes elsewhere.
+  - The TWeakObjectPtr layout we assume (i32 ObjectIndex, i32
+    ObjectSerialNumber, total 8 bytes at +0x20) may be off for
+    some build configs.
+  - The multicast fires before the field is populated for that
+    code path; we'd need a snapshot from upstream
+    (e.g. parms of `ApplyDamage` / `ApplyDamageFromInfo`).
+
+  Investigation steps:
+  1. Sample more kills with different weapons / attack types.
+     Record which ones produce `InstigatorController = pkg(0)`
+     vs which produce a real controller.
+  2. If a pattern emerges (e.g. ranged or AoE only),
+     hook `Maine.HealthComponent.ApplyDamageFromInfo`
+     (`Maine_functions.cpp:138302`) to read the FDamageInfo
+     parm at function entry and cache the instigator per
+     HealthComponent. By the time the
+     MulticastHandleEffectsWithDamageFlags fires with
+     KillingBlow we'd have a reliable killer.
+  3. Failing that, fall back heuristically: if instigator is
+     pkg(0) and the dying actor is within attack range of the
+     local player and the player swung a weapon recently, credit
+     the player. Less precise but won't drop kills.
+
+  Mid-priority. Until this lands the user will lose XP for some
+  legitimate kills (today's gnat example). Blocks "feels good
+  to play."
+
 - [x] **Kill attribution + XP math layer DONE (2026-05-05).**
   Attribution confirmed in-game: PLAYER bucket fired correctly
   on Grub kills via `BP_SurvivalPlayerController_Augusta_C`,
   BUGGY bucket fired correctly on Spiderling kill via
-  `AIC_AntSoldier_Augusta_Buggy_C`. No false positives observed.
+  `AIC_AntSoldier_Augusta_Buggy_C`. (Edge case found 2026-05-05:
+  some real player kills attribute to pkg(0) instead of the
+  PlayerController; see open item above.)
   Three buckets implemented in `kill_hook.rs::classify`:
   - Player: instigator class chain contains "PlayerController".
   - Buggy: instigator (or its possessed Pawn at +0x308) class
