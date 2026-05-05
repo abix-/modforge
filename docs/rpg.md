@@ -232,25 +232,25 @@ order, every approach tried that did not work, and the velocity-stomp
 fix -- lives in [`damage.md`](damage.md). Read that doc before adding
 any skill that touches damage.
 
-Skill-side wiring for Fall Damage Resistance and Impact Damage
-Resistance:
+Skill-side wiring for the two damage-mitigation skills (different
+mechanisms because the underlying damage paths differ -- see
+[`damage.md`](damage.md)):
 
-- Both are `SkillEffect::Runtime` (no CDO writes from `apply.rs`).
-- `fall_hook.rs` installs PE hooks on concrete
-  `BP_SurvivalPlayerCharacter_*` classes. On player `OnLanded` or
-  `MulticastFallEffects`, scales `CharMovementComponent.Velocity.Z`
-  by `(1 - reduction)` before forwarding to the original BP event.
-  Native damage code reads the mutated velocity, producing scaled
-  (or zero) damage.
-- `OnLanded` is gated on Fall Damage Resistance only (fires on
-  actual landings).
-- `MulticastFallEffects` is gated on `max(fall_resistance,
-  impact_resistance)` and fires for fall landings AND on-foot
-  impacts (rocks, hazards). One seam covers fall + collision damage
-  paths.
-- Validated in-game: -3431 cm/s landing at level 100 -> zero fall
-  damage. Rock-collision and hazard-zone validation pending the
-  current build's in-game test.
+- **Fall Damage Resistance** uses
+  `SkillEffect::PlayerFallDamageReduction` plus a PE hook in
+  `fall_hook.rs`. On player `OnLanded`, scales
+  `CharMovementComponent.Velocity.Z` by `(1 - reduction)` before
+  forwarding to the original BP event. Native `ApplyFallDamage`
+  reads the mutated velocity live and produces scaled / zero damage.
+  Validated: -3431 cm/s landing at level 100 -> zero damage.
+- **Impact Damage Resistance** uses
+  `SkillEffect::PlayerHealthCompU32Mask` and writes
+  `UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF`
+  (+0x00FC) on player CDOs + live pawn at any level > 0. The
+  native ApplyDamage gate rejects damage with `type_flags = 0`
+  (fall, environmental, hazard zones). Creature attacks pass
+  through normally. Validated: rock collision multicasts report
+  `damage=0.00` and the player takes no `CurrentDamage` change.
 
 ## ImGui tab
 

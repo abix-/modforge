@@ -44,7 +44,7 @@ math.
 | Jump Height | movement | +300% jump-Z velocity |
 | Glide Speed | movement | +300% MaxFlySpeed |
 | Fall Damage Resistance | survival | full immunity |
-| Impact Damage Resistance | survival | (collision damage; in development) |
+| Impact Damage Resistance | survival | full immunity to rock / hazard / environmental damage |
 | Lifesteal | combat | +90% of damage dealt healed back |
 
 Skills are spent through an "RPG" tab in the UE4SS ImGui debug
@@ -58,11 +58,13 @@ As of 2026-05-05, against Grounded 2 Steam
 - UE4SS CPPMod load path working.
 - Full RPG loop live: XP, levels, skill points, persistence keyed
   to playthrough GUID, Buggy kill attribution, ImGui `RPG` tab.
-- Fall Damage Resistance landed via velocity-stomp on `OnLanded`
-  (see [`docs/damage.md`](docs/damage.md) for the deep dive on
-  Grounded 2's damage internals).
-- Impact Damage Resistance in development -- diagnostic trace
-  active behind the skill, real fix pending the next in-game test.
+- Fall Damage Resistance landed via velocity-stomp on `OnLanded`.
+- Impact Damage Resistance landed via
+  `UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF` -- the
+  native ApplyDamage gate rejects damage with `type_flags = 0`
+  (fall, environmental, hazard zones) while creature attacks pass
+  through normally. See [`docs/damage.md`](docs/damage.md) for the
+  deep dive on the three Grounded 2 damage paths.
 - Open work: live-instance writes for remaining combat skills,
   catalog expansion, packaging cleanup. See
   [`docs/todo.md`](docs/todo.md).

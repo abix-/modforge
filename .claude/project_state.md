@@ -19,16 +19,18 @@ gated behind cargo features, skill levels, or
 `cfg!(debug_assertions)` so the user gets exactly one log file
 and one place to read what is happening.
 
-Fall Damage Resistance landed at level 100 via velocity-stomp in
-`fall_hook.rs`'s `OnLanded` PE hook. Scales
-`CharMovementComponent.Velocity.Z` by `(1 - reduction)`; native
-`ApplyFallDamage()` reads the mutated value live and computes
-proportional damage. Validated in-game.
+Fall Damage Resistance: velocity-stomp on `OnLanded` PE hook
+(`fall_hook.rs`). Scales `CharMovementComponent.Velocity.Z` by
+`(1 - reduction)`; native `ApplyFallDamage()` reads live. Validated.
 
-Plant / terrain collision is a *separate* damage path (DamageType =
-`BP_EnvironmentalDamage_C`, `src_type = 2`, full `FDamageInfo`
-populated) -- becomes its own Collision / Impact Damage Resistance
-skill. Tracked in `docs/todo.md`.
+Impact Damage Resistance: write
+`UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF` (+0x00FC)
+on player CDOs + live pawn at any level > 0 (`apply.rs` via the
+new `SkillEffect::PlayerHealthCompU32Mask` variant). Native
+ApplyDamage gate rejects damage with `type_flags = 0` (fall,
+environmental, hazard zones); creature attacks carry non-zero
+flags and pass through. Validated in-game: rock collision
+multicasts report `damage=0.00`.
 
 Full Grounded 2 damage internals -- fall path, environmental path,
 HealthComponent layout, FDamageInfo offsets, multicast surfaces, kill

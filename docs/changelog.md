@@ -9,6 +9,20 @@ Newest first.
 
 ## 2026-05-05 (single big day)
 
+### Impact Damage Resistance
+
+Landed via `apply.rs` writing
+`UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF` (+0x00FC,
+uint32) on player CDOs and the live pawn at any
+`impact_resistance` level > 0. Native ApplyDamage gate consults
+the field; incoming damage with `type_flags = 0` (fall,
+environmental, hazard zones) fails the bitwise check and is
+rejected before `CurrentDamage` is written. Creature attacks
+carry non-zero flags and pass through. Validated in-game: rock
+collision multicasts report `damage=0.00`, impact-trace POST line
+silent (no `CurrentDamage` change). Same field-write pattern as
+Armor's `BaseDamageReduction` write, just on a different gate.
+
 ### Fall Damage Resistance
 
 Landed via velocity-stomp in `fall_hook.rs`'s `OnLanded` PE hook on

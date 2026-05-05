@@ -123,25 +123,21 @@ damage mitigation. Plant / terrain collision uses
 on the existing multicast hook), distinct from fall damage which has
 its own pipeline -- see `rpg.md` for both internals.
 
-## RPG: Impact Damage Resistance (in build, validation pending)
+## RPG: Impact Damage Resistance (DONE)
 
-`SKILL_IMPACT_RESISTANCE` shipping behind a velocity-stomp on
-`MulticastFallEffects` (the universal pre-damage seam for impact-
-style damage in Grounded 2). Same approach as fall damage but on
-a different PE event so it covers rock collisions, plant collisions,
-hazard zones, and any other on-foot impact in addition to actual
-fall landings.
+`SKILL_IMPACT_RESISTANCE` landed via a write to
+`UHealthComponent.RequiredDamageTypeFlags` (+0x00FC, uint32) =
+`0xFFFFFFFF` on player CDOs and the live pawn. Native ApplyDamage
+gate consults the field, sees incoming `type_flags = 0` for fall /
+environmental / hazard damage, no bit matches, damage rejected
+before `CurrentDamage` is written. Validated in-game: rock
+collision multicasts report `damage=0.00` and the impact-trace
+POST line stays silent (no `CurrentDamage` change).
 
 See [`docs/damage.md`](damage.md) for the full pipeline reference,
-trace evidence, and the three damage paths (fall / environmental /
-hazard) that share the `MulticastFallEffects` seam.
-
-In-game validation pending: confirm rock-collision damage drops to
-zero at level 100, and confirm hazard-zone damage (the Lab
-`BP_Hazard_PetRestriction_Labs_C` barrier) is also mitigated. If
-hazard damage isn't velocity-driven, fallbacks documented in
-`damage.md`: `UHealthComponent::ImmunityFlags` (+0x00F8) bitmask
-gating, then a PolyHook native detour as the last resort.
+the three damage paths (fall / environmental / hazard), and the
+walk-backwards trace that pinned the gate as the only remaining
+PE-reachable intercept.
 
 ## RPG: tuning
 

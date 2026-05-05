@@ -240,13 +240,22 @@ mitigation.
 
 ### Mitigation: Impact Damage Resistance skill
 
-`SKILL_IMPACT_RESISTANCE = "impact_resistance"`, `Runtime` effect,
-`max_bonus = 1.0` (full immunity at level 100, sqrt curve below).
+`SKILL_IMPACT_RESISTANCE = "impact_resistance"`. Implemented as a
+write to `UHealthComponent.RequiredDamageTypeFlags` (+0x00FC,
+uint32). At any level > 0 the apply step writes `0xFFFFFFFF` to the
+field on every player CDO and on the live player pawn. The native
+ApplyDamage gate consults this field as `if ((incoming.type_flags
+& Required) == 0) reject`, and fall / environmental damage in
+Grounded 2 carries `type_flags = 0`, so no bit matches and the
+damage is rejected before `CurrentDamage` is written.
 
-Implemented as a velocity-stomp on `MulticastFallEffects`, which
-fires *before* the native `CurrentDamage` write for all
-impact-style damage paths -- both fall landings and on-foot
-collisions / hazard hits.
+Validated in-game: rock collision and environmental damage both
+report `damage=0.00` in the multicast trace; impact-trace POST line
+(which fires only on actual `CurrentDamage` change) stays silent.
+
+Creature attacks carry non-zero `type_flags` (`ESurvivalDamageTypeFlags`
+bits encode physical / chill / sizzle / etc.) and pass the gate
+normally, so the player still takes hostile damage as expected.
 
 #### Observed traces (rock collision and hazard)
 
@@ -283,72 +292,36 @@ Two findings:
    land from. So our existing `OnLanded` velocity-stomp covered
    actual falls but missed rock collisions entirely.
 
-`MulticastFallEffects` fires before the native damage write in *all*
-observed cases:
-
-| Trigger | OnLanded? | MulticastFallEffects? | Damage paths fired |
-| ------- | --------- | --------------------- | ------------------ |
-| Falling onto ground | yes | yes | DamageType=null only |
-| Running into a rock | no | yes | DamageType=null AND DamageType=BP_EnvironmentalDamage_C |
-| Standing in a hazard zone (`BP_Hazard_PetRestriction_Labs_C`) | no | yes | DamageType=SurvivalDamageType, src=Hazard |
-
-So `MulticastFallEffects` is the universal pre-damage seam for
-impact-style damage. Velocity-stomping there covers all three
-paths.
-
-The reported multicast `damage` value can exceed the on-disk
-`CurrentDamage` delta because Grounded 2 clamps `CurrentDamage` to
-`MaxHealth + overkill` at death; the multicast carries the
-unclamped pre-clamp value.
-
-#### Implementation
-
-`fall_hook.rs` hooks `BP_SurvivalPlayerCharacter_*` and stomps
-`Velocity.Z` on two PE events:
-
-| PE event | Skill that scales it | When it fires |
-| -------- | -------------------- | -------------- |
-| `OnLanded` | `fall_resistance` | Actual fall landings only |
-| `MulticastFallEffects` | `max(fall_resistance, impact_resistance)` | Fall landings AND on-foot impacts |
-
-The `max` on `MulticastFallEffects` means either skill (or both)
-scales impact-velocity damage; skills do not double-stack across
-the two events. Idempotent: stomping zero velocity by any factor
-is still zero.
-
-Field offsets are the same as the fall fix (see "The fix" above):
-`CharMovementComponent` ptr at +0x1380 on `ASurvivalCharacter`,
-`Velocity` (FVector) at +0xD8 on the CMC, `Velocity.Z` at +0xE8
-absolute.
-
-Hazard-zone damage (e.g. running into the Lab's
-`BP_Hazard_PetRestriction_Labs_C` barrier) goes through the same
-`MulticastFallEffects` -> `ReceiveAnyDamage` -> [native write]
-sequence and is therefore mitigated by the same stomp -- assuming
-the native hazard formula reads live velocity. Validation in-game
-pending.
+Why velocity-stomp does NOT carry over from fall: by the time any
+PE event fires on a rock / hazard collision, the engine has already
+zeroed `CharMovementComponent.Velocity.Z` as part of native
+collision response. Confirmed by tracing V.Z at every PE event --
+it reads 0.0 throughout. There is no PE-reachable surface with
+live velocity for impact damage. The fix has to attack the damage
+itself, not the input it was computed from.
 
 #### Diagnostic trace (gated)
 
-When `impact_resistance` level > 0, `fall_hook.rs` also logs every
-fall/land/damage/hit/health/`ReceiveAny`/`ReceiveActor` PE event
-(excluding `Tick`) on the player BP class with `CurrentDamage`
-snapshots before and after `original.call`. The event whose POST
-reading is higher than the pre reading is the PE-reachable seam
-during which native code wrote `CurrentDamage`. This trace is what
-identified `MulticastFallEffects` as the universal pre-damage
-intercept point and stays silent for users who have not put a point
-into the skill.
+When `impact_resistance` level > 0, `fall_hook.rs` logs every
+event during which `CurrentDamage` actually changed -- the POST
+line fires only when delta > 0.001 to keep the log readable when
+`ReceiveHit` etc. fire dozens of times per collision. This trace
+is what identified the native-side gating field as the only
+remaining intercept and stays silent for users who have not put a
+point into the skill.
 
-#### Fallback if `MulticastFallEffects` velocity-stomp does not fully cover hazards
+#### Fallback if `RequiredDamageTypeFlags` regresses
 
-Hazard zones may compute damage from a hazard-side parameter
-instead of player velocity. If that's the case, `ImmunityFlags`
-(uint32 at +0x00F8 on `UHealthComponent`, `Edit, Net`) is the next
-candidate -- temporarily mask the relevant
-`ESurvivalDamageTypeFlags` bits during `ReceiveAnyDamage`, restore
-after. Last resort is a native function detour against
-`UHealthComponent::ApplyDamage` via PolyHook_2_0.
+If a future game patch changes the native ApplyDamage gate to
+ignore `RequiredDamageTypeFlags`, fall back to one of:
+
+1. `ImmunityFlags` (uint32 at +0x00F8 on `UHealthComponent`,
+   `Edit, Net`). Different gate, same idea -- if the runtime check
+   is `(incoming & Immunity) != 0 -> reject`, set Immunity to a
+   value that catches `type_flags = 0` damage.
+2. Native function detour against `UHealthComponent::ApplyDamage`
+   via PolyHook_2_0 (last resort, see "If the velocity-stomp
+   regresses" above for the technique).
 
 ## Kill detection (already implemented)
 
