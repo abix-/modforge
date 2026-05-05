@@ -61,24 +61,30 @@ snapshotted around each `original.call`. The damage write happens
 natively between `ReceiveAnyDamage POST` and `OnHitReact pre`, with
 no PE-reachable surface in that gap.
 
-The intercept upstream of the write is a native function detour, and
-UE4SS already ships it as `UFunction::RegisterPreHook` (C++) /
-`RegisterHook` (Lua) using PolyHook_2_0 internally. For native
-UFunctions with a `/Script/...` path the callback runs *before* the
-native function -- which is exactly the upstream-of-`CurrentDamage`
-intercept we need. RTFM pivot: do not roll our own trampoline.
+RTFM pivot: UE4SS ships the canonical native UFunction detour as
+`UFunction::RegisterPreHook`. Dropped a Lua probe
+(`Mods/FallDamageProbe/Scripts/main.lua`) that hooks
+`/Script/Maine.SurvivalCharacter:ApplyFallDamage` and
+`/Script/Maine.HealthComponent:ApplyDamage`. UE4SS reported both
+registrations succeeded but the PRE/POST callbacks **did not fire**
+during a confirmed fall.
 
-Plan:
-1. Drop a 5-line Lua probe mod that hooks
-   `/Script/Maine.SurvivalCharacter:ApplyFallDamage` and logs when
-   fired. Take one fall.
-2. If logs fire -> wire `UFunction::RegisterPreHook` in the C++ shim
-   (matches what `LuaMod.cpp` does for native script hooks). At level
-   100 skip the original; at lower levels scale velocity / damage.
-3. If logs are silent -> known
-   [UE4SS bug #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-   on Final+BlueprintCallable UFunctions also applies in Grounded 2;
-   fall back to PolyHook_2_0 directly (already a UE4SS dep).
+Confirmation that [UE4SS bug #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+applies to Grounded 2 / UE5: `Final + BlueprintCallable` UFunctions
+silently no-op under `RegisterPreHook`. Reason: the engine bypasses
+the UFunction entirely and calls the C++ method directly, so the
+`native_func` swap that `RegisterPreHook` performs is on the wrong
+path.
+
+Pivot:
+1. Try cheap velocity-stomp first: in the existing fall_hook
+   `OnLanded` PE suppression, zero
+   `CharMovementComponent.Velocity.Z`. If the native fall formula
+   reads live velocity, damage collapses to 0. ~5 lines.
+2. If that fails, PolyHook_2_0 against the C++ method address.
+   Decode the `call rel32` in the UFunction's `native_func` thunk
+   to recover the C++ method address. PolyHook is already a UE4SS
+   third-party dep.
 
 Steps in `docs/todo.md`.
 

@@ -383,33 +383,62 @@ is committed natively in the gap between `ReceiveAnyDamage POST` and
 `OnHitReact pre`. No PE-reachable surface lives in that gap, so no
 ProcessEvent hook can intercept the write before it lands.
 
-**UE4SS already ships the native function detour as
-`UFunction::RegisterPreHook`** (C++) and `RegisterHook` (Lua). For
-native UFunctions (`/Script/...` path) the registered callback runs
-*before* the native function executes -- which is exactly the
-upstream-of-`CurrentDamage` intercept we need. UE4SS uses
-PolyHook_2_0 internally to swap the native function pointer, so we
-do not have to write our own trampoline.
+UE4SS ships the canonical native UFunction detour as
+`UFunction::RegisterPreHook` (C++) and `RegisterHook` (Lua). For
+`/Script/...` paths the callback fires *before* the native function
+runs. UE4SS uses PolyHook_2_0 internally to swap
+`UFunction::native_func`.
 
-Plan:
+We dropped a 5-line Lua probe (`Mods/FallDamageProbe`) to confirm
+the hook fires on Grounded 2. UE4SS reported successful registration:
 
-1. Quick Lua probe first to confirm the hook actually fires in
-   Grounded 2 (there is a [known UE4SS bug](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-   where `RegisterHook` silently no-ops on UFunctions that are both
-   `Final` and `BlueprintCallable` -- which matches `ApplyFallDamage`
-   exactly. Reported against Grounded 1 / UE 4.27, marked `wontfix`,
-   not yet retested in Grounded 2 / UE5).
-2. If the Lua hook fires: wire `UFunction::RegisterPreHook` from our
-   C++ shim. Skip damage when `fall_resistance` skill is at level
-   100, or scale damage by `(1 - reduction)` for partial levels.
-3. If the Lua hook is silent: the Final+BlueprintCallable bug also
-   applies in Grounded 2; fall back to invoking PolyHook_2_0
-   directly (already a UE4SS dependency) to swap
-   `UFunction::native_func` ourselves.
+```
+[RegisterHook] Registered native hook (1, 2) for Function /Script/Maine.SurvivalCharacter:ApplyFallDamage
+[RegisterHook] Registered native hook (3, 4) for Function /Script/Maine.HealthComponent:ApplyDamage
+```
 
-Steps documented in [`todo.md`](todo.md). The earlier
-broadened PE trace on the player BP class will be reverted now that
-it has done its diagnostic job.
+**But the PRE/POST callbacks never fired during a confirmed fall**
+(BetterBackpack log shows full fall-trace sequence + multicast
+damage=36.83 in the same second; UE4SS log has zero
+`[FallDamageProbe]` callback lines).
+
+This is [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+(`Final + BlueprintCallable` UFunctions silently no-op under
+RegisterHook, originally reported against Grounded 1 UE 4.27, marked
+`wontfix`) -- and it applies to Grounded 2 / UE5 too.
+
+Root cause: `RegisterPreHook` only swaps the UFunction's `native_func`
+slot, which is the thunk that BP / ProcessEvent calls dispatch into.
+For `Final + Native + BlueprintCallable` UFunctions the engine's own
+native code calls the C++ implementation directly
+(`pPlayer->ApplyFallDamage()`), with no UFunction lookup, so the
+swapped slot is never consulted.
+
+To intercept the engine's direct C++ call we need to detour the
+actual C++ method at its memory address, not the UFunction thunk.
+Three live options:
+
+1. **PolyHook_2_0 against the C++ method address.** Locate the C++
+   method via the UFunction's `native_func` thunk (decode the first
+   `call` instruction inside the thunk to recover the actual C++
+   method address), then PolyHook that. PolyHook is already a UE4SS
+   third-party dep.
+2. **Pattern-signature scan for the method.** Use UE4SS's
+   `SinglePassSigScanner` (also a dep) to find a unique byte
+   signature for the C++ method. More fragile across game updates
+   but does not depend on the thunk layout.
+3. **Velocity stomp upstream.** In `OnLanded` (PE-reachable, we
+   already suppress), zero `CharacterMovementComponent.Velocity.Z`.
+   If the native fall-damage formula reads from the live velocity
+   field at the time `ApplyFallDamage()` runs, the computed damage
+   would collapse to 0. Cheapest experiment by far -- one field
+   write in the existing fall_hook -- worth trying before the
+   PolyHook engineering. Risk: the engine may have already captured
+   the impact velocity into a local before `OnLanded` fires.
+
+Steps for all three are in [`todo.md`](todo.md). Walk-backwards trace
+on the player BP class can be reverted once the velocity-stomp test
+is done.
 
 Known events during one fall, in actual call order, with whether each
 is reachable via ProcessEvent:

@@ -232,30 +232,41 @@ Result: the damage write happens natively in the gap between
 `ReceiveAnyDamage POST` and `OnHitReact pre`. No PE-reachable surface
 exists in that gap.
 
-**Native detour is the path forward.** UE4SS already ships this as
-`UFunction::RegisterPreHook` -- callback fires *before* the native
-function runs for any UFunction with a `/Script/...` path. PolyHook_2_0
-under the hood, no trampoline of our own.
+**Lua probe result: bug #626 confirmed in Grounded 2.** UE4SS's
+`RegisterPreHook` registered cleanly on
+`/Script/Maine.SurvivalCharacter:ApplyFallDamage` and
+`/Script/Maine.HealthComponent:ApplyDamage` (both Final + Native +
+BlueprintCallable), but neither PRE/POST callback fired during a
+confirmed fall. The engine bypasses the UFunction entirely and calls
+the C++ method directly, so the `native_func` swap that
+`RegisterPreHook` performs sits on the wrong path.
 
-Plan:
+Three options ranked by cost:
 
-1. Drop a 5-line Lua probe mod next to ours that hooks
-   `/Script/Maine.SurvivalCharacter:ApplyFallDamage` and logs when
-   the callback fires. Take one fall.
-2. If logs appear -> the canonical path works; wire
-   `UFunction::RegisterPreHook(callback, data)` in the C++ shim
-   (`cpp/shim.cpp`) so the Rust side can no-op or scale fall damage
-   based on the live skill level. Hook signature mirrors what
-   `LuaMod.cpp` does for native script hooks.
-3. If logs are silent -> we hit
-   [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-   (RegisterHook silently no-ops on `Final + BlueprintCallable`
-   UFunctions; reported against Grounded 1, not retested in Grounded
-   2). Fall back to calling PolyHook_2_0 directly -- it is already a
-   UE4SS dep so we have headers + lib.
+1. **Velocity-stomp in `OnLanded` (cheapest, try first).** In the
+   existing PE hook on `BP_SurvivalPlayerCharacter_*`'s `OnLanded`,
+   write `0` to `CharacterMovementComponent.Velocity.Z` before
+   forwarding (or instead of suppressing). If the native fall-damage
+   formula reads live velocity at the time `ApplyFallDamage()` runs,
+   damage collapses to 0. ~5 lines. Risk: engine may capture impact
+   velocity into a local before `OnLanded` fires.
 
-Either path skips the homebrew trampoline / VirtualAlloc work the
-old plan called for.
+2. **PolyHook_2_0 against the C++ method address.** Decode the
+   `call` opcode inside the UFunction's `native_func` thunk to
+   recover the C++ method's absolute address, then PolyHook that
+   address. PolyHook is already a UE4SS third-party dep so headers
+   + lib are available; no trampoline of our own. ~50-100 lines of
+   C++/Rust + a thunk disassembler for ONE `call rel32` instruction.
+
+3. **Pattern-signature scan.** Use UE4SS's `SinglePassSigScanner`
+   (also a dep) to find the C++ method by a byte signature. More
+   fragile across game patches but does not depend on the thunk
+   layout. Worth keeping as a fallback if option 2's thunk decode
+   does not produce a stable address.
+
+Diagnostic cleanup once one of the above lands: revert the broadened
+PE trace on `BP_SurvivalPlayerCharacter_*` and remove the
+`FallDamageProbe` Lua mod.
 
 Separate skill: **Collision / Impact Damage Resistance** is a real
 distinct mitigation now that we have evidence plant collision is its

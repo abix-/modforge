@@ -176,22 +176,41 @@ Damage is committed natively in the gap between `ReceiveAnyDamage POST`
 and `OnHitReact pre`. No PE-reachable surface lives in that gap, so no
 ProcessEvent hook can intercept the write before it lands.
 
-The intercept that runs upstream of the `CurrentDamage` write is a
-native function detour. RTFM pivot: UE4SS already ships this as
-`UFunction::RegisterPreHook` (C++) / `RegisterHook` (Lua) using
-PolyHook_2_0 internally. For native UFunctions (`/Script/...` path)
-the registered callback runs *before* the native function. That is
-the exact intercept point we need and it is already debugged code
-upstream.
+RTFM pivot: UE4SS ships the canonical native UFunction detour as
+`UFunction::RegisterPreHook` (C++) / `RegisterHook` (Lua), backed by
+PolyHook_2_0. For `/Script/...` paths the callback fires before the
+native function runs.
 
-Caveat: [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-reports that `RegisterHook` silently no-ops on UFunctions that are
-both `Final` and `BlueprintCallable` -- which `ApplyFallDamage`
-matches exactly. Reported against Grounded 1 / UE 4.27, marked
-`wontfix`, not yet retested in Grounded 2 / UE5. Plan is to drop a
-5-line Lua probe first to confirm the hook fires; if it does, wire
-`RegisterPreHook` in the C++ shim. If it does not, fall back to
-invoking PolyHook_2_0 directly (already a UE4SS dep).
+Dropped a 5-line Lua probe mod (`Mods/FallDamageProbe`) hooking
+`/Script/Maine.SurvivalCharacter:ApplyFallDamage` and
+`/Script/Maine.HealthComponent:ApplyDamage`. UE4SS reported both
+hooks installed cleanly:
+
+```
+[RegisterHook] Registered native hook (1, 2) for ApplyFallDamage
+[RegisterHook] Registered native hook (3, 4) for ApplyDamage
+```
+
+But neither callback fired during a confirmed fall (BetterBackpack
+log shows full fall-trace + multicast `damage=36.83`; UE4SS log has
+zero `[FallDamageProbe]` callback lines). [Issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
+applies to Grounded 2 / UE5: `Final + BlueprintCallable` UFunctions
+silently no-op under `RegisterPreHook`. Reason: `RegisterPreHook`
+swaps the UFunction's `native_func` slot, which is the thunk used by
+BP/ProcessEvent; engine native code calls the C++ implementation
+directly without going through the UFunction at all, so the swap
+sits on the wrong path.
+
+Pivot to:
+
+1. **Velocity-stomp in `OnLanded` first** (cheapest experiment): zero
+   `CharMovementComponent.Velocity.Z` during the existing `OnLanded`
+   PE suppression, on the chance the native fall-damage formula
+   reads live velocity at `ApplyFallDamage()` invocation time.
+2. If that fails, **PolyHook_2_0 against the C++ method address**:
+   decode the `call rel32` in the UFunction's `native_func` thunk to
+   recover the actual C++ method address, then PolyHook that
+   directly. PolyHook is already a UE4SS dep.
 
 ### Movement skill fix verified
 

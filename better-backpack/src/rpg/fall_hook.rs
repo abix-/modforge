@@ -11,7 +11,6 @@ const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
     "BP_SurvivalPlayerCharacter_Gellarde_C",
 ];
 
-const FN_APPLY_FALL_DAMAGE: &str = "ApplyFallDamage";
 const FN_ON_LANDED: &str = "OnLanded";
 
 pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
@@ -23,9 +22,8 @@ pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
             continue;
         }
         bbp_log!(
-            "rpg/fall: hooking concrete player class {} for {} / {}",
+            "rpg/fall: hooking concrete player class {} for {} velocity-stomp",
             class_name,
-            FN_APPLY_FALL_DAMAGE,
             FN_ON_LANDED
         );
         let class_name_owned = class_name.to_string();
@@ -52,84 +50,67 @@ fn on_player_fall_event(
 ) {
     let fn_name = function.as_object().name();
 
-    // Walk-backwards trace: log every fall- / land- / damage-adjacent PE
-    // event firing on the player BP class so we can identify any seam
-    // between OnLanded (we suppress) and the post-damage multicast (we
-    // hook in kill_hook). Filter by name substring to avoid logging
-    // every Tick.
-    if is_player_character(this) && is_fall_relevant(&fn_name) {
-        let cd = read_player_current_damage(this);
-        bbp_log!(
-            "rpg/fall-trace: bp-class fn={} on {} CurrentDamage={:.2}",
-            fn_name,
-            this.name(),
-            cd
-        );
-    }
-
-    let suppress = is_fall_immunity_active()
-        && is_player_character(this)
-        && (fn_name == FN_APPLY_FALL_DAMAGE || fn_name == FN_ON_LANDED);
-
-    if suppress {
-        bbp_log!(
-            "rpg/fall: suppressed {} on {} via {}",
-            fn_name,
-            this.name(),
-            hook_class_name
-        );
-        return;
+    // Velocity-stomp: when OnLanded fires on the player and
+    // fall_resistance is active, scale `CharMovementComponent.Velocity.Z`
+    // by `(1 - reduction)` BEFORE forwarding to the original BP event.
+    // The native ASurvivalCharacter::ApplyFallDamage runs immediately
+    // after Super::Landed returns (which is what fires OnLanded), so if
+    // the native fall formula reads live velocity at invocation time,
+    // damage is scaled or zeroed accordingly. At level 100 (reduction
+    // = 1.0) Velocity.Z becomes 0 and fall damage should be zero.
+    //
+    // OnLanded suppression is REMOVED. We forward to the original BP
+    // event so other landing logic (animations, sounds) still runs.
+    if fn_name == FN_ON_LANDED && is_player_character(this) {
+        let reduction = current_fall_resistance_reduction();
+        if reduction > 0.0 {
+            let scale = (1.0 - reduction).max(0.0) as f64;
+            let stomped = stomp_player_velocity_z(this, scale);
+            bbp_log!(
+                "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {})",
+                stomped.before,
+                stomped.after,
+                this.name(),
+                reduction,
+                hook_class_name
+            );
+        }
     }
 
     unsafe { original.call(this, function, parms) };
-
-    // Post-call snapshot too -- helps localize which PE event the
-    // CurrentDamage write happens on (or before).
-    if is_player_character(this) && is_fall_relevant(&fn_name) {
-        let cd = read_player_current_damage(this);
-        bbp_log!(
-            "rpg/fall-trace: bp-class fn={} POST CurrentDamage={:.2}",
-            fn_name,
-            cd
-        );
-    }
 }
 
-fn is_fall_relevant(fn_name: &str) -> bool {
-    fn_name.contains("Fall")
-        || fn_name.contains("Land")
-        || fn_name.contains("Damage")
-        || fn_name.contains("Damaged")
-        || fn_name.contains("Hit")
-        || fn_name.contains("Health")
+struct VelocityStomp {
+    before: f64,
+    after: f64,
 }
 
-/// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The
-/// player BP class instance has its HealthComponent ptr at +0x1340
-/// inside ASurvivalCharacter.
-fn read_player_current_damage(player: &UObject) -> f32 {
-    const ASC_HEALTH_COMPONENT: usize = 0x1340;
-    const HC_CURRENT_DAMAGE: usize = 0x032C;
+fn stomp_player_velocity_z(player: &UObject, scale: f64) -> VelocityStomp {
+    // ASurvivalCharacter.CharMovementComponent ptr at +0x1380.
+    // UMovementComponent.Velocity (FVector, doubles) at +0xD8.
+    // FVector.Z at +0x10 inside FVector -> absolute +0xE8 on CMC.
+    const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
+    const CMC_VELOCITY_Z: usize = 0x00E8;
     unsafe {
-        let hc: *mut UObject = player
-            .field_ptr(ASC_HEALTH_COMPONENT)
+        let cmc: *mut UObject = player
+            .field_ptr(ASC_CHAR_MOVEMENT_COMPONENT)
             .cast::<*mut UObject>()
             .read_unaligned();
-        if let Some(hc) = hc.as_ref() {
-            hc.field_ptr(HC_CURRENT_DAMAGE)
-                .cast::<f32>()
-                .read_unaligned()
-        } else {
-            f32::NAN
-        }
+        let Some(cmc) = cmc.as_ref() else {
+            return VelocityStomp {
+                before: 0.0,
+                after: 0.0,
+            };
+        };
+        let z_ptr = cmc.field_ptr(CMC_VELOCITY_Z) as *mut f64;
+        let before = z_ptr.read_unaligned();
+        let after = before * scale;
+        z_ptr.write_unaligned(after);
+        VelocityStomp { before, after }
     }
 }
 
-fn is_player_character(obj: &UObject) -> bool {
-    obj.full_name().contains("BP_SurvivalPlayerCharacter")
-}
-
-fn is_fall_immunity_active() -> bool {
+fn current_fall_resistance_reduction() -> f32 {
     tracker::with_state(|state| {
         let level = state
             .skill_levels
@@ -137,9 +118,13 @@ fn is_fall_immunity_active() -> bool {
             .copied()
             .unwrap_or(0);
         if level == 0 {
-            return false;
+            return 0.0;
         }
-        skills::skill_bonus(1.0, level) >= 0.999
+        skills::skill_bonus(1.0, level).min(1.0)
     })
-    .unwrap_or(false)
+    .unwrap_or(0.0)
+}
+
+fn is_player_character(obj: &UObject) -> bool {
+    obj.full_name().contains("BP_SurvivalPlayerCharacter")
 }
