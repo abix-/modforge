@@ -243,6 +243,24 @@ R1-R5 answered (see above). Each spike below is a concrete
 implementation against known field offsets and UFunction names,
 not exploratory.
 
+- [x] **Spike A DONE (2026-05-05).** Option A worked first try.
+  Hook on HealthComponent matches
+  `MulticastHandleEffectsWithDamageFlags`, reads `DamageFlags`
+  parm at offset 0x1C, masks with `EDamageInfoFlags::KillingBlow
+  = 2`. On kill: filters to `ASurvivalCreature` subclasses,
+  reads `LastDamageInfo.InstigatorController` (FWeakObjectPtr)
+  and resolves via GObjects. In-game test: killed a Grub,
+  produced one clean line:
+
+  ```
+  rpg/kill: BP_Grub_C_2147385918 (BP_Grub_C) killed by
+  BP_SurvivalPlayerController_Augusta_C_2147481445
+  (BP_SurvivalPlayerController_Augusta_C)
+  ```
+
+  Dying actor + class + killer + killer-class. That's the full
+  XP source signal. ~80 lines in `better-backpack/src/rpg/kill_hook.rs`.
+
 - [x] Spike A attempt 1 (2026-05-05): hooked
   `Maine.HealthComponent.Kill` via existing per-vtable
   ProcessEvent infra. **Did not fire on enemy deaths.**

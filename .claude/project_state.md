@@ -206,31 +206,36 @@ level-up mod. Kills -> XP -> levels -> perks that drive the
 existing CDO patches. Research questions R1-R5 answered against
 the SDK at `C:\tools\work\sdk\` -- see TODO.md section 0.
 
-### Spike A status
+### Spike A: DONE (2026-05-05)
 
-Attempt 1: hooked `Maine.HealthComponent.Kill` via existing
-per-vtable ProcessEventHook. Build/deploy clean, hook installs,
-but DOES NOT fire on enemy deaths.
+Attempt 1 (Kill UFunction) failed because `Kill` is
+`Final|Native` and the engine bypasses ProcessEvent on the
+internal damage path.
 
-Root cause:
-- `Kill` is `Final|Native`. Engine calls the C++ method directly,
-  bypassing ProcessEvent.
-- Real death signal is `OnDeath` multicast broadcast, whose BP
-  bindings are `BndEvt__<EnemyClass>_..._DeathDelegate__*`
-  functions on each ENEMY's vtable, not HealthComponent's.
-- Per-vtable hook can't catch this (one vtable per enemy
-  species).
+Attempt 2 used Option A from the options doc (NOT the global
+PE hook). Key insight: SDK has
+`enum class EDamageInfoFlags { KillingBlow = 2, ... }` at
+`Maine_structs.hpp:1769`. The
+`MulticastHandleEffectsWithDamageFlags` UFunction on
+HealthComponent fires via PE on every damage hit and carries
+the DamageFlags parm. Mask with KillingBlow bit -> we know if
+this hit was lethal.
 
-Attempt 2 plan: global ProcessEvent hook. Use UE4SS's existing
-`RegisterProcessEvent[Pre|Post]Callback` (declared in
-`RE-UE4SS/UE4SS/include/Unreal/Hooks.hpp`). C++ shim registers
-the callback and forwards to a Rust extern. Filter by function
-name containing "Death" or "DeathDelegate". `this` is the dying
-enemy; parms[0] is `FDamageInfo` -- killer extraction unchanged
-from R1.
+In-game confirmed: kill a creature -> one log line with dying
+actor + class + killer controller + killer class. No global PE
+hook needed; per-vtable hook on HealthComponent is sufficient.
 
-Diagnostic log left in `rpg/kill_hook.rs` -- remove once attempt
-2 lands.
+Implementation: `better-backpack/src/rpg/kill_hook.rs`. ~80
+lines. Filters to `ASurvivalCreature` subclasses to exclude
+buildings/props which also fire this function on destruction.
+
+### Side issue noticed
+
+Log shows `initial patch round: scanned=2, patched=0` and
+`survival patch: scanned_classes=0, patched=0` -- the existing
+backpack/hunger/thirst patches may be running before GObjects is
+fully populated, or there's been an SDK shape change. Not
+related to RPG track. Investigate when convenient.
 
 ## Bugs found and fixed during testing
 - **GObjects extra indirection** (2026-05-04): GObjectsView::from_image was
