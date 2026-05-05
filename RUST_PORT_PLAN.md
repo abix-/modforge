@@ -9,21 +9,24 @@ reference implementation until the Rust version reaches behavior parity.
 
 ## Goals
 
-- One Cargo workspace at the repo root that builds every mod DLL.
-- A reusable SDK shim crate so every future mod imports `UObject`, `UFunction`,
-  `ProcessEvent` hooking, etc. without re-deriving them.
-- Zero `unsafe` in mod-level code. All pointer math sits behind safe wrappers
-  in the SDK crate.
+- **Two Rust crates in a workspace.** One `cdylib` for the mod itself
+  (SDK shim + hooks + mod logic, all in modules), and one `bin` crate for
+  the injector. Two crates, not three or five. The mod crate stays
+  module-internal -- we are not building a framework; we are building one
+  mod plus the loader that injects it.
+- Zero `unsafe` in mod-level modules. All pointer math sits behind safe
+  wrappers in an internal `sdk` module.
 - Compile-time validation of parms struct layouts (`#[repr(C)]` + offset
   asserts) so a mismatched UFunction parameter layout is a build error, not a
   runtime crash.
 - Cargo-native tooling: `cargo fmt`, `cargo clippy`, `cargo test`,
   `cargo doc`. No cmake, no MSBuild.
 
+If we ever build a second mod that wants to share this code, *then* we
+extract a crate. Until then, modules.
+
 ## Non-goals
 
-- Replacing the existing C++ injector (`inject.c`). The injector is a tiny
-  separate concern and stays in C for now -- it's standalone and works.
 - Rewriting Dumper-7. We keep using the C++ headers it generates as a
   *reference* for offsets and struct layouts; we just don't compile against
   them.
@@ -36,51 +39,60 @@ reference implementation until the Rust version reaches behavior parity.
 
 ```
 grounded2mods/
-  Cargo.toml                # [workspace] members = ["sdk", "hook-core", "better-backpack"]
-  rust-toolchain.toml       # pin stable + msvc target
+  Cargo.toml                # [workspace] members = ["better-backpack", "injector"]
+  rust-toolchain.toml       # stable + msvc target
+  .cargo/config.toml        # target triple, linker flags
 
-  sdk/                      # crate: grounded2-sdk
-    Cargo.toml
+  better-backpack/          # cdylib: the mod itself
+    Cargo.toml              # crate-type = ["cdylib"]
     src/
-      lib.rs
-      uobject.rs            # UObject, UClass, UFunction wrappers
-      fstring.rs            # FString <-> String
-      tarray.rs             # TArray<T> read-only view
-      gobjects.rs           # GObjects walker, IsA, FindClassFast
-      process_event.rs      # ProcessEvent invoke + parms struct trait
-      offsets.rs            # SDK-version-coupled offset constants
+      lib.rs                # DllMain + worker entry, top-level wiring
+      sdk/
+        mod.rs
+        uobject.rs          # UObject, UClass, UFunction wrappers
+        fstring.rs          # FString <-> String
+        tarray.rs           # TArray<T> read-only view
+        gobjects.rs         # GObjects walker, IsA, FindClassFast
+        process_event.rs    # ProcessEvent invoke + Parms trait
+        offsets.rs          # SDK-version-coupled offset constants
+      hook/
+        mod.rs
+        vtable.rs           # vtable slot patcher (VirtualProtect dance)
+        process_event.rs    # RAII ProcessEventHook
+      log.rs                # console + file logger, batched flush
+      patch.rs              # backpack DefaultMaxSize patcher
+      inv_hook.rs           # WBP_InventoryInterface_C hook + viewport rebind
+      parms.rs              # #[repr(C)] parms structs with layout asserts
     tests/
       layout.rs             # static_assertions for offsets/sizes
 
-  hook-core/                # crate: grounded2-hook-core
-    Cargo.toml
+  injector/                 # bin: standalone DLL injector
+    Cargo.toml              # [[bin]] name = "inject"
     src/
-      lib.rs
-      vtable.rs             # vtable slot patcher (VirtualProtect dance)
-      process_event_hook.rs # RAII ProcessEventHook<T>
-      log.rs                # console + file logger, ring-buffered
-      dll_main.rs           # macro: define_dllmain!(worker_fn)
-
-  better-backpack/          # crate: better-backpack (cdylib)
-    Cargo.toml              # crate-type = ["cdylib"]
-    src/
-      lib.rs                # DllMain + worker entry
-      patch.rs              # backpack DefaultMaxSize patcher
-      hook.rs               # WBP_InventoryInterface_C hook + viewport rebind
-      parms.rs              # #[repr(C)] parms structs with layout asserts
+      main.rs               # arg parsing, find/launch process, inject DLL
+      inject.rs             # CreateRemoteThread + LoadLibraryW dance
 
   better-backpack-cpp/      # OLD C++ tree, renamed, kept until parity
     (existing files moved here)
 
-  inject/                   # existing inject.c, untouched
+  inject-c/                 # OLD inject.c, kept until Rust injector parity
+    (existing inject.c moved here)
 ```
 
-Workspace `Cargo.toml` enables `[profile.release] lto = "fat"`, `codegen-units = 1`,
-`panic = "abort"` so the cdylib is small and the hot path inlines aggressively.
+Workspace `Cargo.toml` enables `[profile.release] lto = "fat"`,
+`codegen-units = 1`, `panic = "abort"` so the cdylib is small and the hot
+path inlines aggressively.
 
-## Crate boundaries
+Module visibility (within `better-backpack`): `sdk` and `hook` modules are
+`pub(crate)` -- exposed to the rest of the crate, not to external consumers
+(there are none).
 
-### `grounded2-sdk`
+The `injector` crate does **not** depend on `better-backpack`. They share
+nothing. The injector takes a path-to-DLL on the CLI and injects it.
+
+## Module boundaries
+
+### `sdk` module
 
 Mirrors the subset of Dumper-7 we actually use. Hand-written, not generated.
 
@@ -142,33 +154,51 @@ Everything else (FindClassFast, IsA, GetFullName) is safe.
 When the game patches and offsets shift, this is the file we update. CI
 should ideally diff it against a freshly dumped Dumper-7 header.
 
-### `grounded2-hook-core`
+### `hook` module
 
 ```rust
-pub struct ProcessEventHook { ... }
+pub(crate) struct ProcessEventHook { ... }
 impl ProcessEventHook {
     pub fn install<F>(class_name: &str, handler: F) -> Result<Self>
     where F: Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent) + Send + Sync + 'static;
 }
 impl Drop for ProcessEventHook { fn drop(&mut self) { /* restore vtable slot */ } }
-
-pub struct LogSink { ... }   // console + file, batched flush from worker
-pub fn init_log(path: &Path) -> Result<&'static LogSink>;
-
-#[macro_export]
-macro_rules! define_dllmain {
-    ($worker:path) => { /* DllMain + CreateThread boilerplate */ };
-}
 ```
 
-The hook handler is a `Fn` so each mod registers its own logic without us
-hand-writing `HookedInventoryInterfaceProcessEvent`. Calling the original is
-done via the `OriginalProcessEvent` arg, which is safe to call.
+The hook handler is a `Fn` so the inv-hook module registers its logic
+without us hand-writing one giant function. Calling the original is done via
+the `OriginalProcessEvent` arg.
 
-### `better-backpack`
+### `log` module
 
-The actual cdylib. Pure mod logic on top of the two crates above. Should be
-small -- target <300 lines.
+Console + file sink, batched flush from worker. No `fflush` per line.
+
+### `injector` crate (separate)
+
+Standalone Rust binary that replaces `inject.c`. CLI:
+
+```
+inject.exe --process Maine-Win64-Shipping.exe --dll path/to/better_backpack.dll
+```
+
+Implementation:
+
+- `windows-sys` for `OpenProcess`, `VirtualAllocEx`, `WriteProcessMemory`,
+  `CreateRemoteThread`, `GetProcAddress("LoadLibraryW")`.
+- Wide-string the DLL path, write it into the target, kick off
+  `LoadLibraryW` on a remote thread, wait for thread exit, free the remote
+  buffer.
+- Optional `--wait` flag to poll for the process if not yet launched.
+- Optional `--launch` flag to start the game exe ourselves.
+- Exit non-zero on any failure with a clear error message.
+
+Self-contained -- no shared deps with `better-backpack`. Builds to
+`target/release/inject.exe`.
+
+### `lib.rs` (top level of better-backpack)
+
+DllMain (via `define_dllmain!` macro inside the crate), worker thread entry,
+top-level wiring of patch + hook. Should be small -- target <150 lines.
 
 ```rust
 define_dllmain!(worker);
@@ -222,11 +252,13 @@ patch becomes a compile error, not a stack smash.
 
 ## Build and inject story
 
-1. `cargo build --release --target x86_64-pc-windows-msvc -p better-backpack`
-   produces `target/x86_64-pc-windows-msvc/release/better_backpack.dll`.
-2. The existing `inject.c` injector points at that path. No changes to the
-   injector.
-3. `cargo xtask package` (later) zips the DLL + injector + README into
+1. `cargo build --release --target x86_64-pc-windows-msvc` from the
+   workspace root builds both crates: `better_backpack.dll` (cdylib) and
+   `inject.exe` (binary). Outputs land in
+   `target/x86_64-pc-windows-msvc/release/`.
+2. `inject.exe --process Maine-Win64-Shipping.exe --dll
+   .\better_backpack.dll` injects the DLL.
+3. `cargo xtask package` (later) zips both artifacts + README into
    `dist/better-backpack-X.Y.Z.zip` for users.
 
 ## Toolchain
@@ -276,34 +308,37 @@ guide and reference, not a library.
 
 Numbered so we can check them off.
 
-1. Rename current `better-backpack/` -> `better-backpack-cpp/`. Keep building.
-2. Add workspace `Cargo.toml` + `rust-toolchain.toml`.
-3. Create `sdk/` skeleton: `UObject`, `UClass`, `UFunction`, `FString`,
-   `TArray`, `GObjects`, `find_class_fast`. Port enough to compile and pass
-   layout tests against a known offset.
-4. Create `hook-core/`: vtable patcher + `ProcessEventHook` RAII wrapper +
-   `define_dllmain!` macro + log sink.
-5. Create `better-backpack/` cdylib with just the patch loop (no hook yet).
-   Inject and confirm: backpack grows to 100, log file written, behavior
-   matches the C++ baseline minus scrolling.
-6. Port the inventory-interface hook + viewport rebind. Cache `UFunction*`
+1. Rename current `better-backpack/` -> `better-backpack-cpp/` and
+   `inject.c` -> `inject-c/inject.c`. Keep building.
+2. Add workspace `Cargo.toml`, `rust-toolchain.toml`, `.cargo/config.toml`.
+3. Create `injector/` bin crate. Port `inject.c` to Rust. Confirm it can
+   inject the existing C++ DLL successfully -- this validates the injector
+   independent of the mod port.
+4. Create `better-backpack/` cdylib skeleton with `sdk/` module: `UObject`,
+   `UClass`, `UFunction`, `FString`, `TArray`, `GObjects`,
+   `find_class_fast`. Compile, run layout tests against known offsets.
+5. Add `hook/` module: vtable patcher + `ProcessEventHook` RAII wrapper.
+   Add `log` module + `define_dllmain!` macro.
+6. Wire up the patch loop only (no inventory hook yet). Inject via the new
+   Rust injector and confirm: backpack grows to 100, log file written,
+   behavior matches the C++ baseline minus scrolling.
+7. Port the inventory-interface hook + viewport rebind. Cache `UFunction*`
    instead of name compares. Default trace flags off. Confirm scrolling
    parity in-game.
-7. Port the BPF / grid / menu trace surfaces only as `cfg!(debug_assertions)`
+8. Port the BPF / grid / menu trace surfaces only as `cfg!(debug_assertions)`
    helpers. Ship build doesn't compile them in.
-8. Side-by-side test: run C++ DLL one session, Rust DLL the next. Check
+9. Side-by-side test: run C++ DLL one session, Rust DLL the next. Check
    identical patch behavior, identical scroll behavior, lower CPU on a
    sampled frame profile.
-9. Move `better-backpack-cpp/` to `archive/` once parity is confirmed for two
-   play sessions.
-10. Write `BUILDING.md` for the Rust path. Retire the C++ build docs.
+10. Move `better-backpack-cpp/` and `inject-c/` to `archive/` once parity
+    is confirmed for two play sessions.
+11. Write `BUILDING.md` for the Rust path. Retire the C++ build docs.
 
 Each step lands as its own commit. Don't merge the workspace until step 5
 runs end-to-end.
 
 ## What stays C++ (for now)
 
-- `inject.c` (separate process, doesn't benefit from rewrite).
 - The Dumper-7 generated SDK headers we keep as offset reference material.
   Live in `reference/SDK/` or similar; never compiled.
 
