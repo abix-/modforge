@@ -451,28 +451,91 @@ The named values used by skills documented elsewhere in this file
 are bolded. This is by far the cleanest mapping between our skill
 catalog and the engine's native modifier surface.
 
+### `UStatusEffect` is row-driven (important)
+
+`UStatusEffect` (`Maine_classes.hpp:35829`) extends `UObject`,
+0x110-byte instance. Visible fields:
+
+| Field | Offset | Notes |
+| ----- | ------ | ----- |
+| `StatusEffectRowHandle` | +0x58 | `FDataTableRowHandle_NetCrc32` -- the data table row this effect was instantiated from. Replicated. |
+| `TimeElapsed` | +0x88 | float, replicated |
+| `bEnabled` | +0x90 | bool |
+| `ResetTime` | +0x94 | int32, replicated |
+| `OriginObject` | +0xD8 | UObject* |
+| `OriginID` | +0xE8 | FGuid, replicated |
+| `OriginType` | +0xF8 | EStatusEffectOriginType enum |
+
+Critically, `UStatusEffect` does **not** store the stat type or
+value as direct instance fields. The getters
+`GetStatusEffectType()`, `GetDuration()`, etc. read from the data
+table row referenced by `StatusEffectRowHandle`. So:
+
+- Two `UStatusEffect` instances with the same row handle have the
+  same value forever.
+- We cannot just allocate a `UStatusEffect`, set "value = X", and
+  AddEffect. The row handle is the source of truth.
+
+The row struct is `FStatusEffectData` (`Maine_structs.hpp:11045`,
+extends `FTableRowBase`):
+
+| Field | Offset | Notes |
+| ----- | ------ | ----- |
+| `Type` | +0x30 | `EStatusEffectType` (uint8) |
+| `Value` | +0x34 | float -- the stat amount |
+| `DurationType` | +0x38 | enum |
+| `Duration` | +0x3C | float seconds |
+| `Interval` | +0x40 | float seconds |
+| `MaxStackCount` | +0x44 | int32 |
+| `DamageTypeFlags` | +0x48 | uint32 -- bitmask filter |
+| `DamageType` | +0x50 | TSubclassOf<USurvivalDamageType> |
+| `ApplicationTags` | +0x58 | FGameplayTagContainer (0x20 bytes) |
+| `EffectTags` | +0x78 | FGameplayTagContainer |
+| `ApplyType` | +0x160 | enum |
+| `ClearFlags` | +0x164 | uint32 |
+
 ### Implementation paths (cheapest to most work)
 
-1. **`CreateAndAddEffect(FDataTableRowHandle)`**. UFunction we can
-   call via ProcessEvent on the live `StatusEffectComponent`.
-   Requires a data-table row handle that already encodes the stat
-   type + value. If Grounded 2 ships rows for the modifiers we want
-   (search the cooked content for status effect data tables), this
-   is the lowest-effort path. Value is fixed per-row, so for
-   skill-level scaling we either need multiple rows (one per
-   level) or to mutate the resulting `UStatusEffect`'s value field
-   after creation.
-2. **Manual `UStatusEffect` instantiation**. Instantiate via
-   `NewObject<UClass>` analog (typically reachable through a
-   UFunction or a found-class CDO + clone), populate stat type +
-   value fields, call `AddEffect(UStatusEffect*)`. Full control over
-   the value, scaled by our skill curve. More implementation work
-   (need to know `UStatusEffect` field layout).
-3. **Mutate existing default status effects**. The component init
-   loads `DefaultStatusEffects` rows into the `StatusEffects` array.
-   On apply, walk the array, find an entry whose `StatType` matches
-   our skill, mutate its value field. Lowest-risk if a default
-   already exists for the stat we want.
+1. **Mutate an existing data-table row at runtime**. Find a row in
+   one of the game's status-effect data tables whose `Type` matches
+   what we want (e.g. `FallDamage = 14`), write our skill-scaled
+   `Value` to its +0x34 float, then
+   `CreateAndAddEffect(thatRowHandle)` on the live component.
+   Cheapest. Risk: the row is shared across the game; mutating it
+   affects any other systems using the same row.
+2. **Find a benign / unused row to repurpose**. Same as (1) but
+   pick a row no other system reads from -- e.g. an unused
+   `EStatusEffectType::Generic = 0` row, or one whose
+   `ApplicationTags` we can flip so vanilla code skips it. Lower
+   risk than (1) if such a row exists.
+3. **Inject our own row into the data table**. The data table is a
+   `UDataTable` UObject; rows live in a `TMap<FName, uint8*>`
+   internal field. Append a new entry at runtime keyed by a
+   mod-specific name, populate with our `FStatusEffectData` bytes,
+   then reference it. Most invasive, also most stable -- no
+   collision with vanilla rows.
+4. **Manual `UStatusEffect` subclass with overridden getters**.
+   Create a subclass UClass at runtime that overrides
+   `GetStatusEffectType()` / `GetValueForStat()`. Engine then sees
+   our subclass return our values. Heaviest path; UE class
+   manipulation at runtime is nontrivial.
+
+### The native query path (what we are actually trying to influence)
+
+Any of the above only matters if `GetValueForStat*` on the
+component is what native damage code consults at apply time. The
+component implementation almost certainly walks `StatusEffects`
+(+0x1C8), pulls each effect's row, sums values where `Type` and
+filter tags match the query, returns the total.
+
+Validation step before committing to a path: at runtime, log
+`GetValueForStat(EStatusEffectType::FallDamage, false)` on the
+player's component before and after vanilla landing damage events.
+If the value affects the damage we observe, the system is wired
+the way we expect and any of the four paths above will work. If
+the value is constant zero and damage applies regardless, the
+native fall path bypasses the status-effect system and we are
+back to direct field writes.
 
 ### Why this beats the current implementations
 

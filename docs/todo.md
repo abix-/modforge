@@ -138,7 +138,13 @@ level 0 = full damage. Does not scale on the `sqrt(level/100)`
 curve the rest of the catalog uses. Migration to the proper
 mechanism (status effects) tracked below.
 
-## RPG: Status-effect-backed skill rewrite (open, the real fix)
+## RPG: Status-effect-backed skill rewrite (IN PROGRESS -- A1)
+
+**Active work.** Migrating Impact Damage Resistance and Lifesteal
+to the canonical status-effect surface first; the rest of the
+catalog migrates after that pattern lands and is validated.
+
+
 
 The canonical Grounded 2 surface for proportional, type-filtered,
 stackable damage modifiers is `UStatusEffectComponent` on
@@ -178,15 +184,33 @@ Migration plan:
    `RequiredDamageTypeFlags` write from `apply.rs`, velocity-stomp
    from `fall_hook.rs`, the `Runtime` no-op for Lifesteal.
 
-Three implementation paths for adding a `UStatusEffect`, ranked by
-effort (details in `docs/damage.md`):
+### Status-effect implementation choice (next decision point)
 
-1. `UStatusEffectComponent::CreateAndAddEffect(FDataTableRowHandle)`
-   -- low-effort if the game ships rows for the modifiers we want.
-2. Manual `NewObject<UStatusEffect>` analog -- full control over
-   the value, more code.
-3. Mutate existing default status effects on the component --
-   lowest-risk if defaults already exist for the stat we want.
+`UStatusEffect` is row-driven: it holds a `FDataTableRowHandle` at
++0x58 and reads `Type` / `Value` / etc. from the row each time the
+component is queried. We cannot just allocate one and set its
+value -- value is determined by the row. Implementation paths
+(detail in `docs/damage.md` "UStatusEffect is row-driven"):
+
+1. **Mutate an existing data-table row's `Value` field at runtime,
+   then `CreateAndAddEffect(rowHandle)`**. Cheapest. Risk: row is
+   shared, vanilla mods/items using the same row are affected.
+2. **Find a benign / unused row to repurpose**. Same as (1) with
+   smaller blast radius if such a row exists in the data tables.
+3. **Inject a brand-new row into the `UDataTable`'s row map**.
+   Most invasive, also most stable -- no collision with vanilla.
+4. **Manual `UStatusEffect` subclass with overridden getters**.
+   Heaviest; UE class manipulation at runtime.
+
+**Required validation step before committing**: at runtime, log
+`UStatusEffectComponent::GetValueForStat(FallDamage, false)` on
+the player before and after a vanilla fall, with our binary
+RequiredDamageTypeFlags hack disabled. Confirms the native fall
+damage path actually consults the status-effect system. If it does
+not (constant zero / no effect), abandon the migration for fall
+damage and keep the velocity-stomp; only Lifesteal and the
+combat-damage skills (which DO go through `ApplyDamageFromInfo`)
+benefit from the migration.
 
 ## RPG: tuning
 
