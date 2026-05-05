@@ -112,10 +112,18 @@ function Find-GroundedRoot {
     $vdfText = Get-Content $vdf -Raw
     $libraries = [regex]::Matches($vdfText, '"path"\s*"([^"]+)"') |
         ForEach-Object { $_.Groups[1].Value -replace '\\\\', '\' }
+    # Steam uses different install folder names across versions
+    # ("Grounded 2", "Grounded2", possibly localized variants).
+    # Look at every directory in each library and pick the one that
+    # has the expected Augusta/Binaries/WinGRTS subtree.
     foreach ($lib in $libraries) {
-        $candidate = Join-Path $lib 'steamapps\common\Grounded 2'
-        if (Test-Path (Join-Path $candidate 'Augusta\Binaries\WinGRTS')) {
-            return $candidate
+        $common = Join-Path $lib 'steamapps\common'
+        if (-not (Test-Path $common)) { continue }
+        foreach ($dir in (Get-ChildItem $common -Directory -ErrorAction SilentlyContinue)) {
+            if ($dir.Name -notmatch 'Grounded') { continue }
+            if (Test-Path (Join-Path $dir.FullName 'Augusta\Binaries\WinGRTS')) {
+                return $dir.FullName
+            }
         }
     }
     throw "Grounded 2 install not found in any Steam library. Pass -GamePath explicitly."
