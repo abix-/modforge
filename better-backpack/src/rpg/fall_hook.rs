@@ -200,27 +200,24 @@ fn is_player_character(obj: &UObject) -> bool {
 /// Look up a row in a `UDataTable` by FName, returning the row's
 /// bytes pointer if found.
 ///
-/// `UDataTable.RowMap` is a `TMap<FName, uint8*>` at +0x30. UE5's
-/// TMap is a sparse-array-of-pairs plus a hash. We walk the
-/// underlying `TArray<TPair<FName, uint8*>>` linearly and compare
-/// keys -- this skips the hash lookup but is robust against
-/// minor TMap layout drift across game patches.
+/// `UDataTable.RowMap` is `TMap<FName, uint8*>` at +0x30. UE's TMap
+/// is `TSet<TPair<FName, uint8*>>` whose element type is
+/// `TSetElement<TPair> { pair: 16, HashNextId: i32, HashIndex: i32 }`
+/// = 24 bytes. The set's storage is a `TSparseArray` whose slots
+/// are a union of (TSetElement) and (i32 PrevFreeIndex, i32
+/// NextFreeIndex), sized to the larger = 24 bytes. So stride is
+/// 24, not 16.
 ///
-/// Element layout per TSparseArray slot is the union of
-/// (TPair<FName, uint8*>) and (i32 prev, i32 next) free-list links,
-/// 16 bytes total. Allocated vs free-list status is tracked in
-/// `AllocationFlags`. We skip the allocation-flag check and just
-/// match the FName -- free-list slots have one of the i32 link
-/// fields where the FName index would be, which gives garbage
-/// FName values that almost certainly do not match a real row
-/// name. (If a hot patch of UE breaks this, we add the bit-array
-/// walk.)
+/// We walk all slots linearly and key-match. Free slots hold two
+/// i32 free-list links in the first 8 bytes, which is extremely
+/// unlikely to collide with a real FName u64. If we ever observe
+/// a false hit, add the `AllocationFlags` TBitArray check at
+/// +16 of the TMap.
 fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
     const ROW_MAP_OFFSET: usize = 0x0030;
-    const ELEMENT_SIZE: usize = 16; // TPair<FName,uint8*>: 8+8
+    const ELEMENT_SIZE: usize = 24; // TSparseArray<TSetElement<TPair<FName,uint8*>>> slot
     unsafe {
         let row_map = table.field_ptr(ROW_MAP_OFFSET);
-        // Pairs.Data is a TArray<ElementType> at +0 of the TMap.
         let data_ptr = (row_map as *const *const u8).read_unaligned();
         let data_num = (row_map.add(8) as *const i32).read_unaligned();
         if data_ptr.is_null() || data_num <= 0 {

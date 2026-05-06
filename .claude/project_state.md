@@ -245,31 +245,66 @@ fallback if UE4SS turns out unstable for Grounded 2.
 
 ## Status-effect data-table probe (2026-05-05, latest)
 
-Shipped commits b3577bc, ee03b98, 2f2de5d, 98e92ef, 97833be:
+### What we proved this session
 
-- `rpg/sfx-list` probe walks the player's StatusEffects TArray on
-  OnLanded (gated on `impact_resistance > 0`), reads each
-  FDataTableRowHandle (DataTable* +0x00, RowName FName +0x08), and
-  resolves the data-table name.
-- Reads FStatusEffectData row bytes via a linear TMap walk over
-  UDataTable.RowMap (sets-of-pairs layout). Logs Type at struct
-  offset +0x30 and Value at +0x34 as
-  `rpg/sfx-list:   [N] row=NAME Type=N Value=F.FFF table=...`.
-- Confirmed every status effect flows through
-  `/Game/Blueprints/Attacks/Table_StatusEffects` -- single table,
-  ready for migration.
+Shipped commits b3577bc, ee03b98, 2f2de5d, 98e92ef, 97833be,
+725107f, 574a080, plus an unpushed Step 1 stride fix (24 not 16).
 
-Awaiting in-game confirmation: user must close Grounded 2 (DLL is
-locked), redeploy, restart with impact_resistance >= 1, take a
-fall, and report the new probe lines. Two confirmations expected:
-TMap walk works, and Type/Value offsets (+0x30/+0x34) match SDK.
+- **`Table_StatusEffects` is the single source.** Every active
+  effect on the live player traces back to
+  `/Game/Blueprints/Attacks/Table_StatusEffects`.
+- **`FStatusEffectData` Type at +0x30 and Value at +0x34 are
+  correct.** In-game numbers match: `PlayerUpgradeHealth1`
+  resolves to `Type=5 Value=20.0` (Type 5 = MaxHealth);
+  `MaxHealthSmall` resolves to `Type=5 Value=10.0`. Sum = the
+  `MaxHealth(5)=30.0` figure the existing `sfx-probe` already
+  reports.
+- **`FDataTableRowHandle` layout is `DataTable* (8) + FName (8)`**
+  at +0x58 of `UStatusEffect`. Confirmed by reading the row name
+  off live effects.
+- **The linear TMap walk at stride 16 finds 4 of 13 rows.** Root
+  cause identified: UE's `TMap<K,V>` is `TSet<TPair<K,V>>` whose
+  element type is `TSetElement { pair: 16, HashNextId: i32,
+  HashIndex: i32 }` = 24 bytes, stored in a `TSparseArray` whose
+  slot is a union of (TSetElement) and (i32 PrevFreeIndex, i32
+  NextFreeIndex) sized to the larger = 24 bytes.
 
-Next (commit 2, ~80 lines if probe confirms): mutate a row's Value
-field and AddEffect via process_event to validate the write path.
-Then migrate `fall_resistance` first as the lowest-risk skill.
+### Where we stopped
 
-Docs updated: `docs/damage.md` (stat semantics + implementation
-plan), plain-language explainer commit 98e92ef.
+Step 1 of the spike plan (in `docs/damage.md` "Concrete spike
+plan") landed in `fall_hook.rs::lookup_data_table_row`: stride
+bumped from 16 to 24. **Built clean, not yet deployed** -- the
+game was holding the DLL when we tried to copy. Pending: user
+quits Grounded 2, runs
+`pwsh -NoProfile -File scripts/deploy.ps1 -Install -SkipBuild`,
+restarts with `impact_resistance >= 1`, takes a fall.
+
+Expectation on next deploy: `rpg/sfx-list` shows Type=N Value=F.FFF
+for ALL 13 rows, zero `<row-not-found>`. If a free-list slot ever
+collides with a real FName u64 (extremely unlikely), we add the
+`AllocationFlags` TBitArray check at `RowMap+16`.
+
+### Next steps (from `docs/damage.md` "Concrete spike plan")
+
+1. (DONE in code, awaiting in-game witness) Stride fix.
+2. Mutate one row's `Value`. Test target: write 100.0 to
+   `MaxHealthSmall` at +0x34. Linear walk now returns the live
+   `uint8*` into the engine's RowMap, not a copy.
+3. Resolve `UStatusEffectComponent::CreateAndAddEffect` UFunction,
+   build a `FDataTableRowHandle` for `MaxHealthSmall`, call via
+   `process_event` on the player's component (+0x1378 on the
+   player).
+4. Witness via existing `probe_status_effect_values`:
+   `MaxHealth(5)=30.0` should jump to `MaxHealth(5)=120.0` after
+   a fall.
+5. Generalize: add `SkillEffect::PlayerStatusEffect` variant in
+   `skills.rs`, migrate `fall_resistance` first (lowest risk;
+   velocity-stomp is the fallback), then `impact_resistance`
+   (replaces the binary `RequiredDamageTypeFlags = 0xFFFFFFFF`
+   hack with a real curve), then `lifesteal`, then the rest.
+
+Docs updated this session: `docs/damage.md` (probe results +
+five-step concrete spike plan, commits 725107f and 574a080).
 
 ## Where we left off (2026-05-05, late-night)
 
