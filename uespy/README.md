@@ -1,124 +1,113 @@
 # uespy
 
-Embedded HTTP control plane for Unreal Engine Rust mods. Provides
-the platform every UE-mod project needs: a tiny opinionated server,
-the engine bindings to introspect / mutate / invoke from the
-outside, and the test client to drive it all.
+**uespy is the base layer for every UE4SS Rust mod in this
+workspace.** Every piece of plumbing a UE4SS mod needs — the C++
+shim, the imgui bridge, the UObject SDK, hook framework, debug
+endpoint, test client, build glue, logger, all of it — lives here
+once. Game crates supply only what's actually game-specific:
+platform offsets, snapshot shape, op handlers, drain wiring, the
+content of their UI tabs.
 
-Companion crates in this workspace:
+The rule, codified:
 
-- **uespy** (this crate) — runtime: server, queue, primitives,
-  selectors, hex, ring, counters, log, hook framework, UE SDK,
-  Win32 process probes, TMap / DataTable mechanics.
-- **uespy-client** — blocking test client: `Api<S>`, `OpResponse<S>`,
+> Always change uespy first. If a need is game-specific, prove it
+> first; otherwise it belongs in uespy. Game-specific code goes on
+> top of uespy, not in parallel to it.
+
+## Companion crates
+
+- **uespy** (this crate, runtime) — server, queue, primitives,
+  selectors, hex, ring, counters, log, hook framework, UE SDK
+  + introspection, Win32 process probes, TMap / DataTable
+  mechanics, `ui::*` ImGui bindings, `mod_main::ModInfo` +
+  `ue4ss_mod!` macro.
+- **uespy-client** (test) — blocking `Api<S>`, `OpResponse<S>`,
   hex / parm round-trip, perf-log writer.
-- **uespy-build** — build-time helper: `CppShim::new()...compile()`
-  for compiling the UE4SS C++ shim into your cdylib.
+- **uespy-build** (build) — `CppShim::new()...compile()`. Compiles
+  the shipped `uespy_shim.cpp` + `uespy_ui.cpp` into the cdylib
+  by default; bundles ImGui v1.92.1 vendor and UE4SS.lib so games
+  carry no copies.
 
-## Why the design looks the way it does
+## What lives in uespy (do not reinvent)
 
-See `~/.claude/skills/runtime-control-http/SKILL.md` for the
-full pattern. In short: a single `POST /<endpoint>` endpoint with a
-command-shaped envelope, five generic primitives (`snapshot`,
-`read_bytes`, `write_bytes`, `call`, `walk_class`), and a selector
-grammar (`addr:0x...`, `first_class:Foo`, `singleton:Bar`). Tests
-drive every research question and every feature through that
-surface. New experiments are test-file changes, not mod changes —
-which compresses the iteration loop from minutes to sub-second.
+| Concern | Where |
+|---|---|
+| HTTP control plane | `server::spawn`, `Config` |
+| Op envelope | `OpResponse<S>`, `parse_request` |
+| 5 generic primitives | `ops::{snapshot, read_bytes, write_bytes, walk_class, exec_call}` |
+| Selector grammar | `selector::resolve_generic` (`addr:0x...`, `class:`, `first_class:`, `singleton:`) |
+| Game-thread queue | `Queue` (re-entrance guard, lock-free fast path, drain stats) |
+| PE / vtable hooking | `hook::vtable::write_slot`, `hook::ProcessEventHook` |
+| UE SDK | `ue::{UObject, UClass, UFunction, FName, FString, TArray, GObjectsView, find_class_fast, init_runtime}` |
+| TMap / DataTable | `ue::tmap`, `ue::datatable` |
+| UE introspection | `ue::probe::{gobjects_population, class_outer_samples}` |
+| Platform detection | `ue::platform::{host_image_base, host_exe_name, detect}` |
+| Counters / timing | `counters::{bump, observe_peak, time_scope, TimeScope}`, `counter!`, `peak!` macros |
+| Bounded ring buffer | `ring::Ring<T>` |
+| File + console logger | `log::{init, log, set_dll_module, dll_dir}` |
+| Win32 process probes | `winproc::{process_threads_json, process_cpu_json, process_regions_json, sample_thread_modules_json, process_memory_json}` |
+| ImGui bindings | `ui::{text, button, checkbox, slider_f32, slider_i32, progress_bar, separator, ...}` |
+| Mod entry point + tabs | `mod_main::{ModInfo, Tab}`, `ue4ss_mod!` macro |
+| C++ shim mirror | `uespy/cpp/uespy_cppusermodbase.hpp` |
+| ImGui context bridge | `uespy/cpp/uespy_imgui_bridge.hpp` |
+| Generic factory + DllMain | `uespy/cpp/uespy_shim.cpp` (compiled into every mod by default) |
+| ImGui C++ bridge | `uespy/cpp/uespy_ui.cpp` |
+| ImGui vendor | `uespy/cpp/imgui/` (v1.92.1, matches UE4SS) |
+| UE4SS import lib | `uespy/ue4ss/UE4SS.lib` |
 
-## Quickstart for a new UE4SS Rust mod
+## What's left for game crates to write
 
-### 1. Workspace layout
+| Concern | Game owns |
+|---|---|
+| `PlatformOffsets` per build | yes — different per UE version, sometimes per platform of the same game |
+| `Snapshot` struct + `build_snapshot` | yes — game-specific state shape |
+| Op handler dispatcher (`handle()`) | yes — match arm per op |
+| Game-specific selectors (`live_player`, `current_save`) | yes — wrap `selector::resolve_generic` |
+| Drain-site PE trampoline | yes — pick a hot UFunction per game |
+| Tab render bodies | yes — `fn render_tab() { uespy::ui::text(...); }` |
+| `ModInfo` + `ue4ss_mod!` invocation | yes — one static + one macro call |
+
+That's it. Every other UE / UE4SS / ImGui / Win32 / test mechanic
+comes from uespy.
+
+## Quickstart for a new mod
+
+### Workspace layout
 
 ```
-your-game-mods/
+your-mods/
   Cargo.toml         # workspace
-  uespy/             # this crate (path-dep until published)
-    cpp/imgui/       # vendored v1.92.1 — shared by every mod
-    ue4ss/UE4SS.lib  # shared import lib
+  uespy/             # this crate
+    cpp/imgui/       # vendored, shared
+    ue4ss/UE4SS.lib  # shared
   uespy-client/
   uespy-build/
   your-mod/
     Cargo.toml
-    build.rs         # ~5 LoC, see below
-    cpp/shim.cpp     # ~30 LoC, see below
-    src/lib.rs
-    src/debug.rs
-    tests/common/mod.rs
-    tests/<scenario>.rs
+    build.rs         # 5 LoC
+    src/lib.rs       # ModInfo + ue4ss_mod!
+    src/debug.rs     # Snapshot + handle()
+    tests/
 ```
 
-The `imgui` vendor and `UE4SS.lib` live in uespy and are picked up
-automatically by `uespy-build` — your mod doesn't carry copies.
+No `cpp/` directory in `your-mod/` unless you have custom C++.
+No `ue4ss/UE4SS.lib`. No imgui copy. No DllMain. No factory exports.
 
-### 2. Cargo.toml
-
-```toml
-[package]
-name = "your-mod"
-crate-type = ["cdylib", "rlib"]
-
-[dependencies]
-uespy = { path = "../uespy" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-[build-dependencies]
-uespy-build = { path = "../uespy-build" }
-
-[dev-dependencies]
-uespy-client = { path = "../uespy-client" }
-```
-
-### 3. build.rs
+### `your-mod/build.rs`
 
 ```rust
 fn main() {
-    uespy_build::CppShim::new()
-        .source("cpp/shim.cpp")
-        .compile();
+    uespy_build::CppShim::new().compile();
 }
 ```
 
-`uespy-build` defaults `imgui_dir` to uespy's vendored copy and
-`ue4ss_lib_dir` to uespy's bundled `UE4SS.lib`. Override only if
-you need a different ImGui version or a per-game UE4SS lib. Add
-`.skip_imgui()` for shim-only builds without a debug tab.
+That's the whole file.
 
-### 4. cpp/shim.cpp
-
-```cpp
-#include <Windows.h>
-#include "imgui.h"                          // if using ImGui
-#include "uespy_cppusermodbase.hpp"
-#include "uespy_imgui_bridge.hpp"           // if using ImGui
-
-extern "C" void your_mod_start();
-extern "C" void your_mod_stop();
-
-class YourMod : public RC::CppUserModBase {
-  public:
-    YourMod() : CppUserModBase() {
-        ModName    = STR("YourMod");
-        ModVersion = STR("0.1.0");
-    }
-    ~YourMod() override { your_mod_stop(); }
-
-    auto on_unreal_init() -> void override { your_mod_start(); }
-};
-
-#define YOUR_MOD_API extern "C" __declspec(dllexport)
-YOUR_MOD_API auto start_mod() -> RC::CppUserModBase* { return new YourMod(); }
-YOUR_MOD_API auto uninstall_mod(RC::CppUserModBase* mod) -> void { delete mod; }
-```
-
-### 5. src/lib.rs
+### `your-mod/src/lib.rs`
 
 ```rust
-use windows_sys::Win32::Foundation::{BOOL, HMODULE};
-use uespy::ue::{platform, PlatformOffsets};
+use uespy::ue::PlatformOffsets;
 
-// Game-specific offsets — fill in via UE4SS CXXHeaderDumper.
 const STEAM: PlatformOffsets = PlatformOffsets {
     g_objects: 0x0, append_string: 0x0, g_names: 0x0,
     g_world: 0x0, process_event: 0x0, process_event_idx: 0x4C,
@@ -128,163 +117,96 @@ const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
     ("YourGame-Win64-Shipping.exe", &STEAM),
 ];
 
-#[unsafe(no_mangle)]
-pub extern "system" fn DllMain(hmod: HMODULE, reason: u32, _r: *mut ()) -> BOOL {
-    if reason == 1 /* DLL_PROCESS_ATTACH */ {
-        uespy::log::set_dll_module(hmod);
-    }
-    1
-}
+static MOD_INFO: uespy::ModInfo = uespy::ModInfo {
+    name: "YourMod",
+    version: "0.1.0",
+    log_file: "your_mod.log",
+    console_title: "YourMod",
+    console: cfg!(feature = "console"),
+    on_unreal_init: on_unreal_init,
+    on_shutdown: on_shutdown,
+    tabs: &[
+        uespy::Tab { name: "Tweaks", render: render_tweaks_tab },
+    ],
+};
 
-#[unsafe(no_mangle)]
-pub extern "C" fn your_mod_start() {
-    uespy::log::init(uespy::log::Config {
-        file_name: "your_mod.log",
-        console_title: "YourMod",
-        console: cfg!(feature = "console"),
-    });
-    let image_base = platform::host_image_base();
-    let offsets = platform::detect(PLATFORMS).unwrap_or(&STEAM);
+uespy::ue4ss_mod!(MOD_INFO);
+
+fn on_unreal_init() {
+    let image_base = uespy::ue::platform::host_image_base();
+    let offsets = uespy::ue::platform::detect(PLATFORMS).unwrap_or(&STEAM);
     let _rt = unsafe { uespy::ue::init_runtime(image_base, offsets) };
-
-    // Spawn worker thread that:
-    // - patches whatever you patch
-    // - installs PE hooks via uespy::hook::ProcessEventHook
-    // - starts the debug server if settings.debug.http_port is set
+    // ... start worker thread, install hooks, spawn debug server
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn your_mod_stop() {
+fn on_shutdown() {
     uespy::log::log(format_args!("stopping"));
 }
-```
 
-### 6. src/debug.rs
-
-```rust
-use serde::Serialize;
-use serde_json::Value as Json;
-use uespy::envelope::{OpResponse, parse_request};
-
-#[derive(Serialize)]
-pub struct Snapshot {
-    // Fields tests assert against. Start empty; grow as needed.
-}
-
-static PE_QUEUE: uespy::Queue = uespy::Queue::new();
-
-pub fn spawn(port: u16) {
-    uespy::spawn(
-        uespy::Config { port, endpoint: "/debug", thread_name: "your-mod-debug" },
-        |body| serde_json::to_vec(&handle(body)).unwrap_or_default(),
-        |msg| uespy::log::log(format_args!("{msg}")),
-    );
-}
-
-fn handle(body: &str) -> OpResponse<Snapshot> {
-    let (op, args) = match parse_request(body) {
-        Ok(v) => v,
-        Err(e) => return OpResponse::err("<parse-error>", e, build_snapshot()),
-    };
-    match op.as_str() {
-        "snapshot"    => OpResponse::ok(&op, Json::Null, build_snapshot()),
-        "read_bytes"  => OpResponse::from_result(&op, uespy::ops::read_bytes(&args, resolve), build_snapshot()),
-        "write_bytes" => OpResponse::from_result(&op, uespy::ops::write_bytes(&args, resolve), build_snapshot()),
-        "walk_class"  => OpResponse::from_result(&op, uespy::ops::walk_class(&args), build_snapshot()),
-        // "call" is enqueued onto PE_QUEUE — see better-backpack/src/debug.rs
-        other => OpResponse::err(other, format!("unknown op '{other}'"), build_snapshot()),
+fn render_tweaks_tab() {
+    uespy::ui::text("Tweaks");
+    uespy::ui::separator();
+    if uespy::ui::button("Reload patches") {
+        // ...
     }
 }
-
-fn build_snapshot() -> Snapshot { Snapshot { /* ... */ } }
-
-fn resolve(s: &str) -> Result<&'static uespy::ue::UObject, String> {
-    if let Some(r) = uespy::selector::resolve_generic(s) { return r; }
-    Err(format!("unknown selector '{s}'"))
-}
-
-/// Drain on game thread. Wire from a hot PE trampoline you install
-/// in src/lib.rs.
-pub fn drain_pending() { PE_QUEUE.drain(); }
 ```
 
-### 7. tests/common/mod.rs
+That's the full mod skeleton. ~50 LoC.
 
-```rust
-use serde::Deserialize;
+### `your-mod/src/debug.rs`
 
-#[derive(Debug, Deserialize)]
-pub struct Snapshot { /* mirror src/debug.rs::Snapshot */ }
-
-pub type Api = uespy_client::Api<Snapshot>;
-
-pub fn api() -> Option<Api> {
-    uespy_client::Api::try_connect("YOUR_MOD_DEBUG_PORT", "/debug")
-}
-```
-
-### 8. tests/smoke.rs
-
-```rust
-mod common;
-
-#[test]
-fn snapshot_round_trips() {
-    let Some(api) = common::api() else {
-        eprintln!("YOUR_MOD_DEBUG_PORT unset — skipping");
-        return;
-    };
-    let _snap = api.snapshot();
-}
-```
-
-## Op set, in 30 seconds
-
-```
-POST /<endpoint>
-{
-  "op":   "<name>",
-  "args": { ... }
-}
-
-response:
-{
-  "ok":     bool,
-  "op":     "<echoed>",
-  "error":  null | string,
-  "result": <op-specific JSON>,
-  "state":  <Snapshot> // full snapshot, every reply
-}
-```
-
-Built-in ops (call from tests via `uespy_client::Api::op` or
-the convenience wrappers):
-
-- `snapshot` — returns just the snapshot
-- `read_bytes  { instance_selector, offset, length }`
-- `write_bytes { instance_selector, offset, bytes_hex }`
-- `walk_class  { class, max?, include_cdo? }` → `{ instances: [...] }`
-- `call        { class, function, instance_selector, parms_hex }` →
-  `{ parms_hex_after }` (engine-mutated OUT params returned as hex)
-
-Selectors: `addr:0x<hex>`, `first_class:<Name>`, `class:<Name>`,
-`singleton:<Name>` (resolves the class CDO). Game crates can add
-shorthands in their `resolve` fn.
+See `outworld-station/research.md` and the existing
+`better-backpack/src/debug.rs` for the snapshot + dispatcher
+pattern.
 
 ## TDD pattern
 
 Every feature, every bug, every research question:
 
-1. Decide the user-observable expectation, concretely.
-2. Make sure the snapshot exposes the observable.
-3. Write the failing test in `tests/<scenario>.rs`.
+1. Concrete user-observable expectation.
+2. Snapshot field for the observable.
+3. Failing test in `tests/<scenario>.rs` against
+   `uespy_client::Api<Snapshot>`.
 4. Use the endpoint to research (`api.snapshot()`,
-   `api.op("read_bytes", ...)`) — peek at live state.
-5. Implement the op or fix.
-6. Test goes green. Land it.
+   `api.op("read_bytes", ...)`).
+5. Implement op or fix.
+6. Test goes green. Land the test, the op, and any snapshot field
+   in one commit.
 
 The skill at `~/.claude/skills/runtime-control-http/SKILL.md`
-spells this out further. The headline: **research is code, not curl.**
+spells out the full loop. Headline: **research is code, not curl.**
 Every experiment lives as a `tests/explore_*.rs` file using the
-same `Api<S>` your assertions use, so observations promote directly
-to regressions.
+same `Api<S>` your assertions use, so observations promote
+directly to regressions.
+
+## Op set + selectors
+
+Built-in ops (call from tests via `Api::op` or wrappers):
+
+- `snapshot` — returns just the snapshot
+- `read_bytes  { instance_selector, offset, length }`
+- `write_bytes { instance_selector, offset, bytes_hex }`
+- `walk_class  { class, max?, include_cdo? }` → `{ instances }`
+- `call        { class, function, instance_selector, parms_hex }`
+  → `{ parms_hex_after }` (engine-mutated OUT params)
+
+Selectors:
+
+- `addr:0x<hex>` — raw object pointer
+- `first_class:<Name>` / `class:<Name>` — first non-CDO instance
+- `singleton:<Name>` — class default object (CDO)
+- game-specific shorthand the game adds in its `resolve` fn
+  (`live_player`, `current_save`, ...)
+
+## Adding to uespy
+
+Some piece of plumbing every mod needs that's not here yet?
+**Add it to uespy first.** Open the relevant module
+(`ui` for ImGui calls, `ue` for engine helpers, `ops` for new
+generic primitives, etc.), add the surface, validate by either
+better-backpack or the next mod referencing it. Then build the
+game-specific code on top.
+
+If you find yourself copy-pasting between two game crates —
+that copied code belongs in uespy.

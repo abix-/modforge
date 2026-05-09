@@ -147,6 +147,73 @@ Every research / TDD capability the runtime-control-http skill
 describes — including the engine-version-stable TMap mechanics
 needed for any DataTable mod — lives once in uespy or uespy-client.
 
+## Project rule: uespy is the base for ALL UE4SS Rust mods
+
+Every UE4SS Rust mod in this workspace builds on top of uespy.
+That's not aspirational; it's the codified rule. Game crates
+contain ONLY game-specific code:
+
+- PlatformOffsets per UE build / platform
+- Snapshot struct + build_snapshot
+- Op handler match arms (with handlers calling uespy primitives)
+- Game-specific selectors wrapping selector::resolve_generic
+- Drain-site PE trampoline (game picks the hot UFunction)
+- Tab render bodies using uespy::ui::*
+- One `ModInfo` static + one `uespy::ue4ss_mod!` invocation
+
+Everything else — server, envelope, queue, hook framework, UObject
+SDK, UE introspection, TMap/DataTable mechanics, platform
+detection, counters, ring buffer, file+console logger, Win32 probes,
+test client, perf-log writer, ImGui bridge, generic shim, factory
+exports, DllMain, ImGui vendor, UE4SS.lib, build glue — comes from
+uespy / uespy-client / uespy-build.
+
+Operating principle when extending:
+- If something might apply to other UE games -> uespy.
+- Only reach into a game crate after proving it's truly
+  game-specific.
+- If you find yourself copy-pasting between game crates, the
+  copied code belongs in uespy.
+
+Slice 15 (2026-05-09 late):
+- imgui v1.92.1 vendor moved to uespy/cpp/imgui/ (one shared copy)
+- UE4SS.lib + .def moved to uespy/ue4ss/ (one shared import lib)
+- uespy_build defaults to those paths; games carry neither
+- Generic platform detection -> uespy::ue::platform
+  (host_image_base, host_exe_name, detect)
+- better-backpack/build.rs: 17 -> 5 LoC
+- New mods now have NO cpp/imgui or ue4ss/ directories of their own
+
+Slice 16 (2026-05-09 late):
+- ImGui bindings -> uespy::ui (text, button, checkbox, slider_f32,
+  slider_i32, progress_bar, separator, indent, same_line, group,
+  tree_node, begin_disabled / end_disabled, RAII guards Disabled
+  and Group)
+- C++ bridge -> uespy/cpp/uespy_ui.cpp (extern "C" wrappers around
+  ImGui calls; UTF-8 byte ranges round-trip Rust &str without
+  null-term management)
+- Generic shim -> uespy/cpp/uespy_shim.cpp. Implements
+  CppUserModBase subclass, factory exports (start_mod /
+  uninstall_mod), DllMain, tab registration via per-tab
+  trampolines (up to 16 tabs).
+- Mod entry point -> uespy::ModInfo + uespy::Tab + ue4ss_mod!
+  macro. Game declares one static + one macro invocation; macro
+  emits every extern "C" hook the shim calls.
+- uespy_build compiles uespy_shim.cpp + uespy_ui.cpp by default.
+  skip_default_shim() opt-out for legacy mods that ship their own
+  factory (better-backpack until its UI migration lands).
+- ImGui context bridge moved into uespy_ui.cpp so opting out of
+  the default shim doesn't break uespy::ui linkage.
+
+A new mod's project tree is now: Cargo.toml, build.rs (5 LoC),
+src/lib.rs (~50 LoC of ModInfo + on_init/shutdown + tab renders),
+src/debug.rs, tests/. No cpp/, no DllMain, no factory exports,
+no imgui or UE4SS.lib in the mod tree.
+
+Pending follow-up: migrate better-backpack to use ue4ss_mod! +
+uespy::ui (drops cpp/shim.cpp entirely; validates the framework
+end-to-end on a real mod with multi-tab UI).
+
 Migration is complete. OWS mod's debug.rs only needs:
 1. A `Snapshot` struct + build_snapshot
 2. A drain-site PE trampoline calling PE_QUEUE.drain()

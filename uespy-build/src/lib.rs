@@ -36,6 +36,12 @@ use std::path::{Path, PathBuf};
 const UESPY_CPPUSERMODBASE_HPP: &str = include_str!("../../uespy/cpp/uespy_cppusermodbase.hpp");
 const UESPY_IMGUI_BRIDGE_HPP: &str = include_str!("../../uespy/cpp/uespy_imgui_bridge.hpp");
 
+/// Embedded copies of uespy's shipped `.cpp` files. Game build
+/// scripts compile these alongside the imgui vendor — that's how
+/// uespy's UI bridge + generic shim land in every mod's cdylib.
+const UESPY_SHIM_CPP: &str = include_str!("../../uespy/cpp/uespy_shim.cpp");
+const UESPY_UI_CPP: &str = include_str!("../../uespy/cpp/uespy_ui.cpp");
+
 /// Path to uespy's bundled C++ assets (imgui vendor + UE4SS.lib),
 /// resolved at uespy-build's compile time. Game build.rs scripts
 /// don't need to know this path; uespy_build defaults to it when
@@ -63,6 +69,7 @@ pub struct CppShim {
     imgui_dir: Option<PathBuf>,
     ue4ss_lib_dir: Option<PathBuf>,
     skip_imgui: bool,
+    skip_default_shim: bool,
     extra_includes: Vec<PathBuf>,
     extra_sources: Vec<PathBuf>,
 }
@@ -72,10 +79,24 @@ impl CppShim {
         Self::default()
     }
 
-    /// Path to the game's `shim.cpp` (typically `cpp/shim.cpp` under
-    /// the manifest dir). Required.
+    /// Path to a game-specific `shim.cpp`. Optional — by default
+    /// `uespy-build` compiles the shipped generic shim in
+    /// `uespy/cpp/uespy_shim.cpp`, which forwards lifecycle +
+    /// tab rendering to extern "C" Rust hooks emitted by
+    /// [`uespy::ue4ss_mod`]. Set this only if your mod needs
+    /// custom C++ alongside (or instead of) the shipped shim;
+    /// chain `.skip_default_shim()` to fully replace.
     pub fn source<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.source = Some(path.into());
+        self
+    }
+
+    /// Don't compile the shipped `uespy_shim.cpp`. Use only when
+    /// your `source` provides its own `start_mod` /
+    /// `uninstall_mod` / `DllMain` — otherwise the linker will
+    /// complain about duplicate symbols.
+    pub fn skip_default_shim(mut self) -> Self {
+        self.skip_default_shim = true;
         self
     }
 
@@ -143,11 +164,34 @@ impl CppShim {
             UESPY_IMGUI_BRIDGE_HPP,
         );
 
-        let source = self
-            .source
-            .map(|p| absolutize(&manifest_dir, p))
-            .expect("uespy-build: CppShim::source(...) is required");
-        println!("cargo:rerun-if-changed={}", source.display());
+        let mut sources_to_compile: Vec<PathBuf> = Vec::new();
+
+        // The UI bridge is always compiled — `uespy::ui` declares
+        // these extern "C" symbols and any mod might use them, even
+        // those that ship their own shim.
+        let ui_dst = uespy_cpp.join("uespy_ui.cpp");
+        write_if_changed(&ui_dst, UESPY_UI_CPP);
+        sources_to_compile.push(ui_dst);
+
+        if !self.skip_default_shim {
+            let shim_dst = uespy_cpp.join("uespy_shim.cpp");
+            write_if_changed(&shim_dst, UESPY_SHIM_CPP);
+            sources_to_compile.push(shim_dst);
+        }
+
+        if let Some(p) = self.source {
+            let abs = absolutize(&manifest_dir, p);
+            println!("cargo:rerun-if-changed={}", abs.display());
+            sources_to_compile.push(abs);
+        }
+
+        if sources_to_compile.is_empty() {
+            panic!(
+                "uespy-build: nothing to compile. Either keep the \
+                 default shim (don't call skip_default_shim) or \
+                 provide a custom source(...)"
+            );
+        }
 
         let imgui_dir = if self.skip_imgui {
             None
@@ -178,13 +222,15 @@ impl CppShim {
             .cpp(true)
             .std("c++20")
             .include(&uespy_cpp)
-            .file(&source)
             .flag_if_supported("/EHsc")
             // UE4SS ships built against the multi-threaded DLL CRT.
             // Mismatched CRT = std::vector / std::wstring layout
             // mismatch across the boundary = crash.
             .static_crt(false)
             .warnings(false);
+        for src in &sources_to_compile {
+            build.file(src);
+        }
 
         if let Some(d) = &imgui_dir {
             build

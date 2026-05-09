@@ -19,13 +19,17 @@ pub mod envelope;
 pub mod hex;
 pub mod hook;
 pub mod log;
+pub mod mod_main;
 pub mod ops;
 pub mod pe_queue;
 pub mod ring;
 pub mod selector;
 pub mod server;
 pub mod ue;
+pub mod ui;
 pub mod winproc;
+
+pub use mod_main::{ModInfo, Tab};
 
 pub use envelope::{OpResponse, parse_request};
 pub use pe_queue::{DrainStats, Queue};
