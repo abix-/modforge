@@ -15,7 +15,11 @@
 #include <string>
 
 #include "imgui.h"
-#include "uespy_imgui_bridge.hpp"
+// Intentionally NOT including uespy_imgui_bridge.hpp here.
+// The UE4SS context bridge (`uespy_ui_enable_imgui`) lives in
+// uespy_shim.cpp instead so this file has no UE4SS.lib dep.
+// That keeps test binaries and build-script binaries linkable
+// without pulling UE4SS.dll into their import tables.
 
 // ImGui labels are null-terminated; for short Rust &str inputs we
 // stack-copy + nul-terminate. For text-only paths (TextUnformatted)
@@ -141,21 +145,8 @@ void uespy_ui_tree_pop() { ImGui::TreePop(); }
 void uespy_ui_begin_group() { ImGui::BeginGroup(); }
 void uespy_ui_end_group()   { ImGui::EndGroup(); }
 
-// ---- bridge to UE4SS's ImGui context ----
-//
-// Called once per tab-render callback to point our locally-linked
-// ImGui at UE4SS's context + matching allocator. Lives here (not
-// in uespy_shim.cpp) so mods that opt out of the default shim
-// still get the bridge from uespy::ui.
-
-void uespy_ui_enable_imgui() {
-    ImGui::SetCurrentContext(RC::UE4SSProgram::get_current_imgui_context());
-    ImGuiMemAllocFunc alloc_func{};
-    ImGuiMemFreeFunc  free_func{};
-    void* user_data{};
-    RC::UE4SSProgram::get_current_imgui_allocator_functions(
-        &alloc_func, &free_func, &user_data);
-    ImGui::SetAllocatorFunctions(alloc_func, free_func, user_data);
-}
+// uespy_ui_enable_imgui lives in uespy_shim.cpp; mods that want
+// it call uespy::build::CppShim's compile() (which compiles
+// uespy_shim.cpp and links UE4SS.lib for the cdylib).
 
 } // extern "C"

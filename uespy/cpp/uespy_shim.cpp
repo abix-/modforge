@@ -32,6 +32,24 @@
 #include "uespy_cppusermodbase.hpp"
 #include "uespy_imgui_bridge.hpp"
 
+// ---- ImGui context bridge ----
+//
+// Called once per tab-render callback to point our locally-linked
+// ImGui at UE4SS's context + matching allocator. Lives in this
+// file (not uespy_ui.cpp) so the UE4SS.lib dependency is opt-in:
+// only mods that compile uespy_shim.cpp (via uespy::build::CppShim)
+// pull in UE4SS.dll. Test and build-script binaries skip both.
+
+extern "C" void uespy_ui_enable_imgui() {
+    ImGui::SetCurrentContext(RC::UE4SSProgram::get_current_imgui_context());
+    ImGuiMemAllocFunc alloc_func{};
+    ImGuiMemFreeFunc  free_func{};
+    void* user_data{};
+    RC::UE4SSProgram::get_current_imgui_allocator_functions(
+        &alloc_func, &free_func, &user_data);
+    ImGui::SetAllocatorFunctions(alloc_func, free_func, user_data);
+}
+
 // ---- extern "C" Rust hooks ----
 
 extern "C" {
@@ -46,9 +64,6 @@ extern "C" {
     void                uespy_mod_shutdown();
     void                uespy_mod_render_tab(std::uint32_t idx);
 }
-
-// `uespy_ui_enable_imgui` lives in uespy_ui.cpp so mods that opt
-// out of this default shim still get the bridge.
 
 // ---- string helpers ----
 

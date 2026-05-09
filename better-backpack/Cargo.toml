@@ -7,19 +7,10 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# Output is `main.dll`, dropped at
-# <game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\BetterBackpack\dlls\main.dll.
-# UE4SS loads CPPMods from that path. The cdylib carries our Rust mod
-# logic plus a tiny C++ shim (cpp/shim.cpp) that satisfies UE4SS's
-# RC::CppUserModBase ABI and forwards lifecycle calls to extern "C"
-# Rust entry points.
 name = "main"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# Spawn a "Better Backpack" console window inside the game process for
-# live log output. Off by default for shipping; the file log at
-# <DLL_dir>/better_backpack.log is the durable record.
 console = []
 default = ["console"]
 
@@ -29,7 +20,7 @@ widestring = { workspace = true }
 memoffset = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uespy = { path = "../uespy" }                                            # default features = ["runtime"]
+uespy = { path = "../uespy" }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -47,11 +38,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [build-dependencies]
-uespy = { path = "../uespy", default-features = false, features = ["build"] }
+uespy = { path = "../uespy" }
 
 [dev-dependencies]
-# Integration tests hit the mod's debug HTTP endpoint via the
-# `uespy::client::Api` wrapper (gated behind the `client` feature
-# so it's only pulled into test builds). Tests must run with
-# --test-threads=1 because they share game state.
-uespy = { path = "../uespy", features = ["client"] }
+uespy = { path = "../uespy" }

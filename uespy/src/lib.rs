@@ -1,85 +1,40 @@
 //! uespy: base layer for every UE4SS Rust mod in this workspace.
 //!
-//! Three feature flags map to the three contexts a game crate
-//! imports uespy from:
+//! One crate, no feature flags. uespy's own `build.rs` compiles
+//! the always-safe C++ (imgui vendor + `uespy_ui.cpp`) into a
+//! static lib that cargo links into every consumer of the crate
+//! — cdylib, test binaries, the game's build-script binary alike.
 //!
-//! - `runtime` (default) — runtime modules linked into the mod's
-//!   cdylib: HTTP server, op envelope, queue, hook framework, UE
-//!   SDK, UI bindings, mod entry-point macro, Win32 process probes,
-//!   logger, etc.
-//! - `client` — test-side wrapper. `[dev-dependencies]` activates
-//!   `uespy::client::Api<S>`.
-//! - `build` — `[build-dependencies]` activates
-//!   `uespy::build::CppShim` for compiling the C++ shim into the
-//!   cdylib.
-//!
-//! A game's `Cargo.toml`:
-//!
-//! ```toml
-//! [dependencies]
-//! uespy = { path = "../uespy" }
-//!
-//! [build-dependencies]
-//! uespy = { path = "../uespy", default-features = false, features = ["build"] }
-//!
-//! [dev-dependencies]
-//! uespy = { path = "../uespy", features = ["client"] }
-//! ```
+//! Mods that want the shipped UE4SS factory (`start_mod` /
+//! `uninstall_mod` / `DllMain` + the `UespyMod` CppUserModBase
+//! subclass) call [`build::CppShim::new`]`.compile()` from their
+//! own `build.rs`. Mods with their own shim (better-backpack
+//! today) chain `.skip_default_shim()`.
 //!
 //! Operating principle: always change uespy first. Game-specific
 //! code goes on top; if it might apply to other UE games, it
-//! belongs in uespy.
+//! belongs here.
 
-// Always-on: type-only modules used by both server and client.
 pub mod args;
+pub mod build;
+pub mod client;
+pub mod counters;
 pub mod envelope;
 pub mod hex;
-pub mod parms;
-
-// Runtime (cdylib).
-#[cfg(feature = "runtime")]
-pub mod counters;
-#[cfg(feature = "runtime")]
 pub mod hook;
-#[cfg(feature = "runtime")]
 pub mod log;
-#[cfg(feature = "runtime")]
 pub mod mod_main;
-#[cfg(feature = "runtime")]
 pub mod ops;
-#[cfg(feature = "runtime")]
+pub mod parms;
 pub mod pe_queue;
-#[cfg(feature = "runtime")]
 pub mod ring;
-#[cfg(feature = "runtime")]
 pub mod selector;
-#[cfg(feature = "runtime")]
 pub mod server;
-#[cfg(feature = "runtime")]
 pub mod ue;
-#[cfg(feature = "runtime")]
 pub mod ui;
-#[cfg(feature = "runtime")]
 pub mod winproc;
 
-#[cfg(feature = "runtime")]
-pub use mod_main::{ModInfo, Tab};
-
-// Convenience re-exports kept at the crate root for backward
-// compatibility with mods written before the feature split.
-#[cfg(feature = "runtime")]
 pub use envelope::{OpResponse, parse_request};
-#[cfg(feature = "runtime")]
+pub use mod_main::{ModInfo, Tab};
 pub use pe_queue::{DrainStats, Queue};
-#[cfg(feature = "runtime")]
 pub use server::{Config, spawn};
-
-// Test client.
-#[cfg(feature = "client")]
-pub mod client;
-
-// Build helper. The module is named `build` but lives at
-// uespy/src/build.rs — only compiled when the `build` feature is
-// active (i.e. uespy is pulled via [build-dependencies]).
-#[cfg(feature = "build")]
-pub mod build;

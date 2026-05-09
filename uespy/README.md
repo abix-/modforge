@@ -14,21 +14,26 @@ The rule, codified:
 > first; otherwise it belongs in uespy. Game-specific code goes on
 > top of uespy, not in parallel to it.
 
-## Three feature flags, one crate
+## One crate. No features.
 
-uespy is a single crate with three feature flags that map to the
-three contexts a game crate imports it from:
+`uespy = { path = "../uespy" }` in every dep table:
 
-| Feature | Context | What it pulls in |
-|---|---|---|
-| `runtime` (default) | `[dependencies]` (cdylib) | server, queue, primitives, selectors, hex, ring, counters, log, hook framework, UE SDK + introspection, Win32 probes, TMap / DataTable mechanics, `ui::*` ImGui bindings, `ModInfo` + `ue4ss_mod!` macro |
-| `client` | `[dev-dependencies]` (tests) | `uespy::client::Api<S>`, `uespy::client::perf::PerfLog` |
-| `build` | `[build-dependencies]` (build.rs) | `uespy::build::CppShim::new()...compile()`, bundled ImGui v1.92.1 vendor, bundled `UE4SS.lib` |
+```toml
+[dependencies]      uespy = { path = "../uespy" }
+[build-dependencies] uespy = { path = "../uespy" }
+[dev-dependencies]   uespy = { path = "../uespy" }
+```
 
-Cargo's three dep tables exist for a reason — runtime, test, and
-build contexts have different dependency surfaces. The feature
-flags align with that without forcing the user to think about
-three different crates.
+Same line three times. uespy's own `build.rs` compiles the
+always-safe C++ (imgui v1.92.1 + `uespy_ui.cpp`) into a static
+lib that cargo links into every consumer — cdylib, test binary,
+and build-script binary alike. The UE4SS-touching pieces
+(`uespy_shim.cpp` + UE4SS.lib link) are opt-in via
+`uespy::build::CppShim::new().compile()` in the game's `build.rs`,
+and emitted per-cdylib so test and build-script binaries don't
+need UE4SS.dll on PATH.
+
+Standard *-sys crate pattern. Nothing special, nothing clever.
 
 ## What lives in uespy (do not reinvent)
 

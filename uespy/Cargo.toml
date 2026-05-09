@@ -7,40 +7,25 @@ license.workspace = true
 publish.workspace = true
 
 # Base layer for every UE4SS Rust mod in this workspace.
-#
-# Three feature flags map to the three contexts a game crate
-# imports uespy from:
-#   default = ["runtime"]   -> [dependencies]      (cdylib code)
-#   "client"                -> [dev-dependencies]  (test client)
-#   "build"                 -> [build-dependencies] (build.rs helper)
-#
-# A game's Cargo.toml:
-#   [dependencies]      uespy = { path = "../uespy" }
-#   [build-dependencies] uespy = { path = "../uespy", default-features = false, features = ["build"] }
-#   [dev-dependencies]   uespy = { path = "../uespy", features = ["client"] }
+# One crate, no feature flags. uespy's own build.rs compiles the
+# bundled C++ (imgui + uespy_ui + uespy_shim) into a static lib
+# that cargo links into every consumer (cdylib, test binary, the
+# game's build script binary). Same dep entry, three contexts.
 
 [lib]
 crate-type = ["rlib"]
 
-[features]
-default = ["runtime"]
-runtime = [
-    "dep:tiny_http",
-    "dep:windows-sys",
-    "dep:widestring",
-    "dep:memoffset",
-    "dep:anyhow",
-]
-client = ["dep:ureq"]
-build = ["dep:cc"]
-
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-# runtime
-tiny_http = { workspace = true, optional = true }
-windows-sys = { workspace = true, optional = true, features = [
+tiny_http = { workspace = true }
+ureq = { workspace = true }
+# `cc` is also a regular dep so `uespy::build::CppShim` (called
+# from a downstream mod's build.rs) can drive cc::Build directly.
+# cc is mostly compile-time logic; the cdylib's release linker
+# strips its runtime functions as dead code.
+cc = { workspace = true }
+windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
@@ -50,12 +35,9 @@ windows-sys = { workspace = true, optional = true, features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
-widestring = { workspace = true, optional = true }
-memoffset = { workspace = true, optional = true }
-anyhow = { workspace = true, optional = true }
+widestring = { workspace = true }
+memoffset = { workspace = true }
+anyhow = { workspace = true }
 
-# client
-ureq = { workspace = true, optional = true }
-
-# build
-cc = { workspace = true, optional = true }
+[build-dependencies]
+cc = { workspace = true }
