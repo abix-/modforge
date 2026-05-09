@@ -139,23 +139,21 @@ macro_rules! ue4ss_mod {
         #[unsafe(no_mangle)]
         pub extern "C" fn uespy_mod_render_tab(idx: u32) {
             // Bridge our locally-linked imgui at UE4SS's context.
-            $crate::mod_main::enable_imgui();
+            // The extern call is declared at the macro use site
+            // (the game crate's cdylib) so uespy.rlib itself never
+            // references uespy_ui_enable_imgui — letting build
+            // scripts and test binaries that depend on uespy
+            // link cleanly without uespy_shim.cpp's UE4SS deps.
+            unsafe extern "C" {
+                fn uespy_ui_enable_imgui();
+            }
+            unsafe { uespy_ui_enable_imgui() };
             let i = idx as usize;
             if let Some(t) = $mod_info.tabs.get(i) {
                 (t.render)();
             }
         }
     };
-}
-
-/// Forward to the C++ side `uespy_ui_enable_imgui` (defined in
-/// `uespy_shim.cpp`). Called once per tab render.
-#[doc(hidden)]
-pub fn enable_imgui() {
-    unsafe extern "C" {
-        fn uespy_ui_enable_imgui();
-    }
-    unsafe { uespy_ui_enable_imgui() }
 }
 
 /// Helper used by the macro to convert `&'static str` to
