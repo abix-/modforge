@@ -30,20 +30,77 @@ draw distance, restart periodically, file with Obsidian).
 
 Full writeup in `docs/ongoing.md` section 15.
 
+## Run 2 finding: paging detected (2026-05-09 night, second run)
+
+User changed display settings, said "feels EVEN WORSE." Re-ran
+perf test. CPU actually went DOWN (process wall 620% -> 534%,
+all worker/D3D threads lower) but `page_fault_count` showed
+**38,477 faults/sec** (delta 1.17M in 30s). Working set was
+**9.26 GB -> 9.70 GB** absolute. Diagnosis: display change
+increased memory consumption (likely texture pool / view
+distance / streaming pool), pushed working set past physical
+RAM, OS now paging from disk = the felt "worse." CPU
+reduction is irrelevant when every frame can stall on a disk
+read.
+
+GObjects growth slowed (+2228 -> +1035 per 30s) but the same
+classes dominate (Package, SoundNodeWavePlayer, SoundWave).
+The leak is the same; it just bleeds slower under the new
+settings while the absolute pressure is higher.
+
+Counter-experiment to suggest to user: lower texture quality /
+texture streaming pool / view distance, re-run perf test, look
+for page_fault rate to drop. CPU may rise slightly.
+
+Full data in `docs/ongoing.md` section 15 ("Second perf run
+after display-settings change").
+
 ## Open work next session
 
+The streaming leak source needs to be narrowed from "Package +
+SoundNodeWavePlayer + SoundWave" (a class) to a specific
+package / asset path / referencing component. Plan in
+`docs/ongoing.md` section 15 "Plan for better instrumentation"
+in priority order:
+
+1. `game_package_breakdown_json(top_n)` -- group every UObject
+   by its Outer-chain UPackage; identify which packages host
+   the leaking objects.
+2. `game_class_outer_samples_json(class_name, k)` -- sample
+   K instances of a class, walk Outer chain, return paths.
+   Specifically apply to SoundWave / SoundNodeWavePlayer
+   to see if they live under one asset directory or are
+   spread across many.
+3. `game_loaded_levels_json` -- enumerate ULevelStreaming /
+   ULevel instances, confirm or refute "World Partition not
+   unloading."
+4. GC observation counters -- hook
+   FCoreUObjectDelegates::GetPostGarbageCollect or sample
+   GObjects total every frame to detect GC. Without this we
+   cannot tell if GC runs and reclaims nothing vs GC never
+   runs.
+5. `tests/explore_perf_timeseries.rs` -- 1-second-cadence
+   snapshots over 60s. Distinguishes steady drip from bursty
+   load events.
+6. Audio-component probe: walk live UAudioComponents, list
+   owner + sound-asset path. Tells us if components are
+   leaking or sounds are pinning.
+7. Per-thread stack sampling on Foreground Worker handles
+   (we have HANDLEs from `process_threads_json` already).
+   Hardest; do last, only if 1-6 leave the suspect list
+   wide.
+
+Other still-open items from before:
+
 - Land OnLanded UFunction warmup at install time so
-  `fall_hook_fnname_allocs` (~1100/sec) drops to 0. Cache
-  populates only when player lands during the test window;
-  resolving by name at install time fixes that.
-- Investigate exposing a "force-unload streamed cells" command
-  through the debug endpoint as a hack mitigation for the
-  player.
-- Look for an existing Obsidian / community bug report on
-  audio/streaming leak; file one if not.
-- Try in-game settings combinations (audio channels, draw
-  distance, streaming distance, world partition cell loading
-  distance) to see if any meaningfully slow the leak.
+  `fall_hook_fnname_allocs` initializes without needing the
+  player to actually land during the test. (Trivial.
+  Resolve UFunction by name at install time, populate the
+  AtomicUsize directly.)
+- Investigate "force-unload streamed cells" debug op as a
+  hack mitigation.
+- Search for / file an Obsidian bug report on the
+  audio/streaming leak.
 
 ## Performance pass + research-to-tests migration (2026-05-09 evening)
 

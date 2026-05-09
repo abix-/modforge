@@ -843,6 +843,182 @@ Diagnostic surfaces in the mod side, by file:
   itself; T0 / sleep 30s / T1 / pretty-print deltas sorted
   descending.
 
+### Second perf run after display-settings change (2026-05-09 night, run 2)
+
+User changed display settings and reported the game "feels EVEN
+WORSE." Re-ran the perf test. **CPU went DOWN, but page-fault
+rate exploded -- the system is now thrashing on swap.**
+
+Side-by-side vs the first run:
+
+```
+                          run 1 (pre-display-change)   run 2 (post-display-change)
+working_set delta         +447 MB / 30s                 +424 MB / 30s
+private_usage delta       +452 MB / 30s                 +458 MB / 30s
+working_set absolute      not captured                  9.26 GB -> 9.70 GB
+GObjects delta            +2228 / 30s                   +1035 / 30s   (LOWER)
+process CPU total wall    ~620%                         534%          (LOWER)
+GameThread wall           51%                           50%
+Foreground Worker #0/#1   ~58% / 58%                    45% / 50%     (LOWER)
+D3D Background 0-3        ~47% each                     ~38% each     (LOWER)
+Background Worker 0-4     ~33% each                     ~27% each     (LOWER)
+page_fault_count rate     NOT CAPTURED                  38,477/sec    (NEW: thrashing)
+our mod % of process      0.30%                         0.31%
+```
+
+Key new datapoint: **page_fault_count delta = 1,165,324 in 30s
+(~38k/sec)**. That is the OS resolving page faults by reading
+from disk because the working set has crossed the physical-RAM
+threshold. Every page fault is a potential frame stall. This
+is what the user feels as "even worse" -- it is not that CPU
+went up, it is that the game started paging.
+
+GObjects top growers in run 2 (same pattern as run 1, just
+slower):
+
+```
+Package                  +121     22968 total
+SoundNodeWavePlayer      +94       5280
+SoundWave                +70       4462
+StaticMeshComponent      +32      12952
+SceneComponent           +32       5647
+ProxyAttractionComponent +13       6858
+AttractionLODComponent   +11       6978
+ProxyLootComponent       +11       5633
+ProxyHealthComponent     +11       5613
+ProxyTeamComponent       +11       5557
+ObsidianIDComponent       +9       6896
+LootLODComponent          +9       5744
+HealthLODComponent        +9       5725
+TeamLODComponent          +9       5669
+AttractionComponent       +8       2774
+SCS_Node                  +7       3068
+Texture2D                 +4       6866
+BodySetup                 +4       4736
+Function                  +2      30107
+ProxyCustomPropertyComponent +2    3699
+```
+
+`fall_hook_fnname_allocs = 0` confirms the cached-OnLanded fix
+held in run 2. `fall_hook_fires = 33548 (1107.7/sec)` -- the
+trampoline runs at the same rate but allocates nothing.
+`http_handle` shows up at 0.93% wall because we are polling
+the snapshot endpoint heavily during the test; that is the
+test, not steady-state.
+
+Diagnosis: the display change reduced rendering workload
+(lower CPU on D3D background + workers) but increased something
+memory-heavy (texture pool, view distance, foliage density,
+streaming pool, ...). Working set grew faster relative to
+physical RAM, OS started paging, frame-time spikes when reads
+miss the cache.
+
+Counter-experiment to confirm: lower whatever is the heaviest
+RAM consumer (texture quality / texture streaming pool / view
+distance), re-run perf test, look for `page_fault_count` delta
+to drop to single-digit thousands or lower.
+
+### What the current instrumentation does NOT tell us
+
+We can see that Package + SoundNodeWavePlayer + SoundWave grow
+fastest, but we cannot answer:
+
+1. **Which packages?** "Package +121" is a class count. We do
+   not know if it is one streaming cell loading 121 packages
+   or 121 different cells loading one each, or what content
+   is in them.
+2. **Which sounds?** SoundWave +70 -- which 70 sounds? Is it
+   the same handful churning, or 70 distinct unique assets
+   accumulating?
+3. **What is referencing them?** UObjects in UE5 are kept
+   alive by reference. If SoundWave count grows monotonically,
+   something is holding refs and never releasing. We do not
+   know what.
+4. **Are streaming cells unloading?** If World Partition is
+   loading cells but not unloading them, the loaded-level
+   list grows. We are not enumerating it.
+5. **Is GC running?** UE5 has a garbage collector. If GC is
+   triggering but nothing is reclaimable (because of held
+   refs), the leak persists despite GC. If GC is not
+   triggering at all, the leak is just unbounded growth.
+   We have no GC visibility.
+6. **Is the leak steady, bursty, or event-correlated?** A
+   single 30s window cannot distinguish "steady drip from a
+   tick handler" from "burst on cell load that does not
+   release." Need time-series sampling.
+7. **What are the Foreground Workers actually doing?** They
+   burn 50%+ wall but we do not know which UE task they are
+   running. UE5 TaskGraph workers run whatever is queued.
+   Without callstack sampling we are guessing.
+
+### Plan for better instrumentation (do next session)
+
+Goal: be able to point at a specific subsystem (audio? world
+partition? specific package? a hook in the game's code) as
+the leak source, with evidence.
+
+Concrete additions to the debug endpoint, in priority order:
+
+1. **Per-package object count** -- new probe
+   `game_package_breakdown_json(top_n)`. For each UObject,
+   walk its Outer chain to the first UPackage; group by
+   package name. Returns the top N packages by hosted-object
+   count. Tells us whether the +121 packages-per-30s are
+   distinct or reloads of the same cell, and which cells are
+   the heaviest.
+
+2. **Outer-chain sample for fastest-growing class** -- new
+   probe `game_class_outer_samples_json(class_name, k)`.
+   Pick K random or first-K instances of a given class
+   (e.g. SoundWave), walk Outer chain for each, return the
+   chain as strings. Tells us "these SoundWaves all live
+   under /Game/Audio/Ambient/ForestNight/..." or similar,
+   pointing at the asset path responsible.
+
+3. **Loaded-levels enumeration** -- new probe
+   `game_loaded_levels_json`. Walk GObjects for
+   `ULevelStreaming` or `ULevel` instances, report
+   PackageName, PersistentLevel, IsLoaded flags. Confirms
+   or refutes "World Partition is not unloading cells."
+
+4. **GC observation** -- new counters in `counters.rs`,
+   incremented by hooking UE's GC entry points.
+   `uobject_gc_passes`, `uobject_gc_freed_count`,
+   `uobject_gc_duration_ns`. UE exposes
+   `FCoreUObjectDelegates::GetPostGarbageCollect()` /
+   `GetPreGarbageCollect()` we may be able to hook, or
+   we sample GObjects count every N frames and compute
+   "did total go DOWN this tick" as a cheap proxy. Tells
+   us whether GC is alive and how much it reclaims.
+
+5. **Time-series sampler test** -- new test
+   `tests/explore_perf_timeseries.rs`. Snapshots once per
+   second for 60s. Plots GObjects total + working_set +
+   page_faults over time. Distinguishes steady drip vs
+   bursty event vs ramp.
+
+6. **Focus on the audio path specifically** -- the
+   strongest signal is SoundWave + SoundNodeWavePlayer
+   growth. UE5 has `FAudioDevice` / `UAudioComponent` /
+   `USoundCue`. A probe that walks active
+   UAudioComponents and reports their owners + the sound
+   asset they reference would identify whether components
+   themselves are leaking or whether sounds are pinning
+   despite components being released.
+
+7. **Hot-thread stack sampling** -- harder. SetThreadContext
+   + StackWalk64 against the Foreground Worker thread
+   handles (we already have HANDLEs from
+   `process_threads_json`) at 100Hz for a few seconds gives
+   a flame-graph-ish view of which game functions those
+   threads spend time in. This is the fanciest item; do
+   only after 1-6 narrow the suspect list.
+
+What we are NOT going to do: speculation, mod-side
+mitigations, or guessing without data. The goal of the
+next session is to extend instrumentation, run the new
+probes, and let the data point at one subsystem.
+
 ## 16. How to verify root cause
 
 Disable the debug HTTP surface first: `settings.json` ->
