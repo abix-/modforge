@@ -218,14 +218,16 @@ pub fn process_threads_json() -> serde_json::Value {
 }
 
 /// Walk GObjects once and return a population summary:
-///   - total entries (slots)
-///   - valid (non-null) UObject count
+///   - total entries / valid UObjects
 ///   - top N classes by instance count
+///   - top N root-packages by hosted-object count (tells us
+///     WHICH content path holds the leaking objects, not just
+///     what class they are)
+///   - loaded levels (Level / LevelStreaming) with name +
+///     outer chain
 ///
-/// Cost: O(N) over GObjects (~50k entries on a typical UE5
-/// game). Allocates here -- only on snapshot calls, NOT a hot
-/// path. The perf test diffs this between T0 and T1; the
-/// fastest-growing class is the leak source.
+/// Cost: O(N) over GObjects + O(D) outer-chain walk per obj
+/// (D ~= 3-5). One pass; no extra walks.
 pub fn game_population_json(top_n: usize) -> serde_json::Value {
     use std::collections::HashMap;
     let Some(rt) = crate::sdk::try_runtime() else {
@@ -241,32 +243,150 @@ pub fn game_population_json(top_n: usize) -> serde_json::Value {
     let mut total = 0usize;
     let mut valid = 0usize;
     let mut by_class: HashMap<String, usize> = HashMap::new();
+    let mut by_package: HashMap<String, usize> = HashMap::new();
+    let mut levels: Vec<serde_json::Value> = Vec::new();
 
     for obj in view.iter() {
         total += 1;
-        // The iterator itself filters nulls in some implementations;
-        // we still count what came back as "valid".
         valid += 1;
-        if let Some(class) = obj.class() {
-            // class.name() allocates per call. Acceptable here --
-            // snapshot is on-demand, not per-frame.
-            let name = class.as_object().name();
-            *by_class.entry(name).or_insert(0) += 1;
+        let class_name = if let Some(class) = obj.class() {
+            class.as_object().name()
+        } else {
+            String::from("<no-class>")
+        };
+        *by_class.entry(class_name.clone()).or_insert(0) += 1;
+
+        // Walk Outer chain to the root. The topmost Outer is
+        // typically a UPackage whose name is the asset path
+        // (e.g. "/Game/Maps/AugustaWP"). Group objects by that
+        // root.
+        let mut root: Option<String> = None;
+        let mut cur = obj.outer();
+        let mut depth = 0;
+        while let Some(o) = cur {
+            if depth > 16 {
+                break;
+            }
+            let next = o.outer();
+            if next.is_none() {
+                root = Some(o.name());
+                break;
+            }
+            cur = next;
+            depth += 1;
+        }
+        let root_name = root.unwrap_or_else(|| String::from("<no-package>"));
+        *by_package.entry(root_name.clone()).or_insert(0) += 1;
+
+        // Capture loaded levels and streaming markers. Cap at
+        // 200 so a pathological case can't blow the response.
+        if (class_name == "Level"
+            || class_name == "LevelStreaming"
+            || class_name == "LevelStreamingDynamic"
+            || class_name == "LevelStreamingAlwaysLoaded"
+            || class_name == "WorldPartitionRuntimeLevelStreamingCell"
+            || class_name == "WorldPartitionRuntimeSpatialHashCell"
+            || class_name.starts_with("LevelStreaming")
+            || class_name.starts_with("WorldPartitionRuntime"))
+            && levels.len() < 200
+        {
+            levels.push(serde_json::json!({
+                "class": class_name,
+                "name": obj.name(),
+                "package": root_name,
+            }));
         }
     }
 
-    let mut sorted: Vec<(String, usize)> = by_class.into_iter().collect();
-    sorted.sort_by(|a, b| b.1.cmp(&a.1));
-    let top: Vec<serde_json::Value> = sorted
+    let mut classes_sorted: Vec<(String, usize)> = by_class.into_iter().collect();
+    classes_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    let top_classes: Vec<serde_json::Value> = classes_sorted
         .into_iter()
         .take(top_n)
         .map(|(name, count)| serde_json::json!({"class": name, "count": count}))
         .collect();
 
+    let mut packages_sorted: Vec<(String, usize)> = by_package.into_iter().collect();
+    packages_sorted.sort_by(|a, b| b.1.cmp(&a.1));
+    let top_packages: Vec<serde_json::Value> = packages_sorted
+        .into_iter()
+        .take(top_n)
+        .map(|(name, count)| serde_json::json!({"package": name, "hosted_count": count}))
+        .collect();
+
     serde_json::json!({
         "gobjects_total": total,
         "gobjects_valid": valid,
-        "top_classes": top,
+        "top_classes": top_classes,
+        "top_packages": top_packages,
+        "loaded_levels": levels,
+    })
+}
+
+/// For up to `k` instances of the named class, walk the Outer
+/// chain and return the chain as a "root.outer.outer.name"
+/// string. Used to find WHICH SoundWave / WHICH Package is
+/// growing -- "SoundWave +144" is a class delta; this turns
+/// it into specific asset paths.
+///
+/// `class_name` matches the short class name (e.g. "SoundWave").
+/// Cost: O(N) over GObjects worst case until we find K matches.
+pub fn game_class_outer_samples_json(class_name: &str, k: usize) -> serde_json::Value {
+    let Some(rt) = crate::sdk::try_runtime() else {
+        return serde_json::json!({"error": "sdk runtime unavailable"});
+    };
+    let view = unsafe {
+        crate::sdk::GObjectsView::from_image(rt.image_base, rt.platform_offsets)
+    };
+    if !view.is_valid() {
+        return serde_json::json!({"error": "gobjects view invalid"});
+    }
+
+    let mut samples: Vec<serde_json::Value> = Vec::new();
+    let mut scanned = 0usize;
+    let mut matched = 0usize;
+    for obj in view.iter() {
+        scanned += 1;
+        let cls = match obj.class() {
+            Some(c) => c.as_object().name(),
+            None => continue,
+        };
+        if cls != class_name {
+            continue;
+        }
+        matched += 1;
+        if samples.len() >= k {
+            // Keep counting matches even after we have enough
+            // samples -- the count is data too.
+            continue;
+        }
+        // Build "Root.Outer.Outer.Self" path. Cap depth.
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(obj.name());
+        let mut cur = obj.outer();
+        let mut depth = 0;
+        while let Some(o) = cur {
+            if depth > 16 {
+                break;
+            }
+            parts.push(o.name());
+            cur = o.outer();
+            depth += 1;
+        }
+        parts.reverse();
+        samples.push(serde_json::json!({
+            "full_path": parts.join("."),
+            "name": obj.name(),
+            "depth": depth + 1,
+        }));
+    }
+
+    serde_json::json!({
+        "class": class_name,
+        "scanned_objects": scanned,
+        "matched_count": matched,
+        "samples_returned": samples.len(),
+        "samples": samples,
     })
 }
 

@@ -49,6 +49,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "read_bytes",
     "write_bytes",
     "walk_class",
+    "class_outer_samples",
 ];
 
 // PE-thread queue. The HTTP handler enqueues a command + a reply
@@ -301,6 +302,7 @@ fn handle(body: &str) -> OpResponse {
         "read_bytes" => to_response(&op, op_read_bytes(&args)),
         "write_bytes" => to_response(&op, op_write_bytes(&args)),
         "walk_class" => to_response(&op, op_walk_class(&args)),
+        "class_outer_samples" => to_response(&op, op_class_outer_samples(&args)),
         "" => error_response(
             "<missing>",
             format!("missing 'op' field; supported ops: {SUPPORTED_OPS:?}"),
@@ -644,6 +646,12 @@ fn op_walk_class(args: &Json) -> Result<Json, String> {
         "returned": hits.len(),
         "instances": hits,
     }))
+}
+
+fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
+    let class_name = arg_str(args, "class")?;
+    let k = arg_u64(args, "k", Some(20))? as usize;
+    Ok(crate::counters::game_class_outer_samples_json(class_name, k))
 }
 
 fn op_set_skill_points(args: &Json) -> Result<Json, String> {

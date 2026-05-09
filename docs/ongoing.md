@@ -951,6 +951,92 @@ fastest, but we cannot answer:
    running. UE5 TaskGraph workers run whatever is queued.
    Without callstack sampling we are guessing.
 
+### Phase-1 instrumentation LANDED (2026-05-09 night, post-run-2)
+
+Built and deployed in this session. The `game_population` field
+in every snapshot now answers two questions per walk instead of
+one (one walk over GObjects, ~50k entries, runs at snapshot
+time only):
+
+- `top_packages` -- groups every UObject by the root of its
+  Outer chain (typically a UPackage). Directly answers "which
+  content path hosts the leaking objects." Same shape as
+  `top_classes` (`{package, hosted_count}`).
+- `loaded_levels` -- inline list of every Level /
+  LevelStreaming / WorldPartitionRuntime* instance found in
+  the walk, capped at 200 entries with `{class, name, package}`.
+  Confirms or refutes "World Partition is not unloading cells."
+
+New on-demand op (not in snapshot, called by tests):
+
+- `class_outer_samples(class, k)` -- walks GObjects, finds
+  every instance of `class` (short class name), returns up to
+  K samples with their full `Root.Outer.Outer.name` Outer
+  chain. Turns "+144 SoundWave per 30s" into specific asset
+  paths, so we can see whether they are 144 unique sounds or
+  the same handful churning, and which directories they
+  belong to.
+
+Two tests drive the new instrumentation:
+
+- `tests/explore_leak_source.rs` -- 30s window. T0 / sleep /
+  T1. Reports top-20 class deltas, top-20 package deltas,
+  loaded levels at T1, and outer-chain samples for the top-5
+  fastest-growing classes plus an always-list of SoundWave /
+  SoundNodeWavePlayer / Package.
+- `tests/explore_perf_timeseries.rs` -- 60 samples at 1 Hz.
+  Per-second deltas of working_set, page_fault_count, and
+  GObjects total. Distinguishes steady drip from bursty load
+  events (a single 30s window cannot).
+
+Run pattern, after the game is up with the new build:
+
+```
+set BBP_DEBUG_PORT=17171
+cargo test --release -p better-backpack \
+  --test explore_leak_source -- --nocapture
+cargo test --release -p better-backpack \
+  --test explore_perf_timeseries -- --nocapture
+```
+
+What this should produce on first run:
+
+- `top_packages` likely shows `/Game/Maps/AugustaWP` or
+  similar dominating, plus per-asset packages for the leaking
+  audio. If a single package is responsible for hundreds of
+  objects, that is the cell that is not unloading.
+- `loaded_levels` gives the count of streamed cells. If the
+  count grows monotonically across runs without dropping
+  during play, World Partition is the leak.
+- `class_outer_samples class=SoundWave k=8` returns 8 paths
+  like `/Game/Audio/Foo/Bar/SomeSound.SomeSound`. If they are
+  all under one directory (e.g. ambient music), we have an
+  audio-cache leak rooted there.
+- `explore_perf_timeseries` reveals leak shape: linear ramp
+  vs step-on-event vs noise. Pages-faulting in bursts when
+  the player crosses cell boundaries would be a smoking gun
+  for streaming.
+
+### Phase-2 plan (still to do)
+
+Lower-priority items from the original plan, ordered by
+expected payoff:
+
+1. **GC observation counters** -- hook
+   `FCoreUObjectDelegates::GetPostGarbageCollect` /
+   `GetPreGarbageCollect` if findable in the SDK, or sample
+   GObjects total each tick and detect "did total go DOWN
+   this tick" as a cheap GC proxy. Tells us whether GC runs
+   and reclaims nothing vs GC never runs at all.
+2. **Audio-component probe** -- walk live UAudioComponents,
+   list owner + sound-asset path. Distinguishes "components
+   leak" from "sounds pin despite components being released."
+3. **Per-thread stack sampling** -- SetThreadContext +
+   StackWalk64 against the Foreground Worker handles we
+   already have from `process_threads_json`. Highest fidelity,
+   highest cost; do only after Phase-1 narrows the suspect
+   list.
+
 ### Plan for better instrumentation (do next session)
 
 Goal: be able to point at a specific subsystem (audio? world
