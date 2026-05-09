@@ -478,6 +478,34 @@ pub fn process_regions_json() -> serde_json::Value {
     let mut region_count: u64 = 0;
     let mut committed_count: u64 = 0;
 
+    // Histogram of committed-region sizes (private only --
+    // the leak we are chasing). Buckets cover the UE binned
+    // allocator page sizes plus the larger D3D resource heaps.
+    let mut hist_priv_4k: u64 = 0;
+    let mut hist_priv_64k: u64 = 0;
+    let mut hist_priv_128k: u64 = 0;
+    let mut hist_priv_256k: u64 = 0;
+    let mut hist_priv_1m: u64 = 0;
+    let mut hist_priv_4m: u64 = 0;
+    let mut hist_priv_16m: u64 = 0;
+    let mut hist_priv_64m_plus: u64 = 0;
+    let mut hist_priv_4k_bytes: u64 = 0;
+    let mut hist_priv_64k_bytes: u64 = 0;
+    let mut hist_priv_128k_bytes: u64 = 0;
+    let mut hist_priv_256k_bytes: u64 = 0;
+    let mut hist_priv_1m_bytes: u64 = 0;
+    let mut hist_priv_4m_bytes: u64 = 0;
+    let mut hist_priv_16m_bytes: u64 = 0;
+    let mut hist_priv_64m_plus_bytes: u64 = 0;
+
+    // Track unique AllocationBases for committed-private regions.
+    // Each unique AllocationBase = one VirtualAlloc'd zone.
+    // A growing count = the game is calling VirtualAlloc more.
+    // A stable count with growing committed bytes = the game is
+    // committing pages within already-reserved zones.
+    let mut alloc_bases_private: std::collections::HashSet<usize> =
+        std::collections::HashSet::new();
+
     // Track top-N largest committed regions for the report.
     // Region key collapses adjacent same-type/same-protection
     // pages. We don't merge here -- VirtualQuery already returns
@@ -505,6 +533,11 @@ pub fn process_regions_json() -> serde_json::Value {
         let prot = info.Protect;
         let mtype = info.Type;
 
+        // Track unique AllocationBases for commits (counts
+        // distinct VirtualAlloc'd zones).
+        // Track region size histogram (small heap pages vs
+        // big resource heaps).
+
         if state == MEM_FREE {
             total_free += size;
         } else if state == MEM_RESERVE {
@@ -519,6 +552,32 @@ pub fn process_regions_json() -> serde_json::Value {
                 by_type_mapped += size;
             } else if mtype == MEM_PRIVATE {
                 by_type_private += size;
+                alloc_bases_private.insert(info.AllocationBase as usize);
+                if size < 64 * 1024 {
+                    hist_priv_4k += 1;
+                    hist_priv_4k_bytes += size;
+                } else if size < 128 * 1024 {
+                    hist_priv_64k += 1;
+                    hist_priv_64k_bytes += size;
+                } else if size < 256 * 1024 {
+                    hist_priv_128k += 1;
+                    hist_priv_128k_bytes += size;
+                } else if size < 1024 * 1024 {
+                    hist_priv_256k += 1;
+                    hist_priv_256k_bytes += size;
+                } else if size < 4 * 1024 * 1024 {
+                    hist_priv_1m += 1;
+                    hist_priv_1m_bytes += size;
+                } else if size < 16 * 1024 * 1024 {
+                    hist_priv_4m += 1;
+                    hist_priv_4m_bytes += size;
+                } else if size < 64 * 1024 * 1024 {
+                    hist_priv_16m += 1;
+                    hist_priv_16m_bytes += size;
+                } else {
+                    hist_priv_64m_plus += 1;
+                    hist_priv_64m_plus_bytes += size;
+                }
             }
 
             // Strip out the modifier flags (PAGE_GUARD,
@@ -623,6 +682,25 @@ pub fn process_regions_json() -> serde_json::Value {
         "by_prot_r_bytes":         by_prot_r,
         "by_prot_other_bytes":     by_prot_other,
         "top_committed_regions":   top,
+        "private_alloc_bases":     alloc_bases_private.len() as u64,
+        "private_hist": {
+            "lt_64k_count":   hist_priv_4k,
+            "lt_64k_bytes":   hist_priv_4k_bytes,
+            "lt_128k_count":  hist_priv_64k,
+            "lt_128k_bytes":  hist_priv_64k_bytes,
+            "lt_256k_count":  hist_priv_128k,
+            "lt_256k_bytes":  hist_priv_128k_bytes,
+            "lt_1m_count":    hist_priv_256k,
+            "lt_1m_bytes":    hist_priv_256k_bytes,
+            "lt_4m_count":    hist_priv_1m,
+            "lt_4m_bytes":    hist_priv_1m_bytes,
+            "lt_16m_count":   hist_priv_4m,
+            "lt_16m_bytes":   hist_priv_4m_bytes,
+            "lt_64m_count":   hist_priv_16m,
+            "lt_64m_bytes":   hist_priv_16m_bytes,
+            "ge_64m_count":   hist_priv_64m_plus,
+            "ge_64m_bytes":   hist_priv_64m_plus_bytes,
+        },
     })
 }
 

@@ -242,6 +242,66 @@ fn investigate_leak_source() {
     )
     .unwrap();
 
+    writeln!(
+        out,
+        "\n=== Private-region histogram delta ===  (where the {:.0} MB went)",
+        mb_i(u64_field(&t1.process_regions, "by_type_private_bytes") as i64
+            - u64_field(&t0.process_regions, "by_type_private_bytes") as i64)
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "{:>14} {:>10} {:>10} {:>+10} {:>14} {:>14} {:>+14}",
+        "size bucket", "T0 count", "T1 count", "d count", "T0 MB", "T1 MB", "d MB"
+    )
+    .unwrap();
+    writeln!(out, "{}", "-".repeat(90)).unwrap();
+    let buckets = [
+        ("< 64 KB", "lt_64k_count", "lt_64k_bytes"),
+        ("< 128 KB", "lt_128k_count", "lt_128k_bytes"),
+        ("< 256 KB", "lt_256k_count", "lt_256k_bytes"),
+        ("< 1 MB", "lt_1m_count", "lt_1m_bytes"),
+        ("< 4 MB", "lt_4m_count", "lt_4m_bytes"),
+        ("< 16 MB", "lt_16m_count", "lt_16m_bytes"),
+        ("< 64 MB", "lt_64m_count", "lt_64m_bytes"),
+        (">= 64 MB", "ge_64m_count", "ge_64m_bytes"),
+    ];
+    let h0 = t0.process_regions.get("private_hist").cloned().unwrap_or_default();
+    let h1 = t1.process_regions.get("private_hist").cloned().unwrap_or_default();
+    for (label, count_key, bytes_key) in buckets {
+        let c0 = u64_field(&h0, count_key);
+        let c1 = u64_field(&h1, count_key);
+        let b0 = u64_field(&h0, bytes_key);
+        let b1 = u64_field(&h1, bytes_key);
+        writeln!(
+            out,
+            "{:>14} {:>10} {:>10} {:>+10} {:>14.1} {:>14.1} {:>+14.1}",
+            label,
+            c0,
+            c1,
+            c1 as i64 - c0 as i64,
+            mb(b0),
+            mb(b1),
+            mb_i(b1 as i64 - b0 as i64)
+        )
+        .unwrap();
+    }
+    let bases0 = u64_field(&t0.process_regions, "private_alloc_bases");
+    let bases1 = u64_field(&t1.process_regions, "private_alloc_bases");
+    writeln!(
+        out,
+        "\n  unique private VirtualAlloc bases: {} -> {} (delta {:+})",
+        bases0,
+        bases1,
+        bases1 as i64 - bases0 as i64
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  (stable bases + growing committed = pages added inside existing zones; \n   growing bases = new VirtualAlloc calls; tells us heap-growth vs new-allocator-zone)"
+    )
+    .unwrap();
+
     writeln!(out, "\n=== Top 20 largest committed regions at T1 ===").unwrap();
     if let Some(arr) = t1
         .process_regions
