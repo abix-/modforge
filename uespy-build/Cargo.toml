@@ -1,0 +1,26 @@
+[package]
+name = "uespy-build"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Build-time helper for UE4SS Rust mods.
+#
+# Used as a `[build-dependencies]` entry by game crates. Provides a
+# `CppShim` builder that compiles the game's `cpp/shim.cpp` together
+# with vendored ImGui sources, links UE4SS.lib, and embeds the shared
+# uespy C++ headers (CppUserModBase mirror + UE4SSProgram bridge)
+# without the game having to manage relative paths.
+#
+# The shared headers are baked into this crate at compile time via
+# `include_str!` and dropped into the game's OUT_DIR so the helper
+# works whether uespy is a workspace path-dep or pulled from a future
+# registry release.
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+cc = { workspace = true }

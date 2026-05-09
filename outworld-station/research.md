@@ -156,7 +156,7 @@ state shape + handlers.
 | File + console DLL logger (AllocConsole / GetModuleFileNameW) | done | `uespy::log`                            |
 | PE / vtable hook framework (`vtable::write_slot`, RAII `ProcessEventHook`, lock-free registry) | done | `uespy::hook` |
 | UE4SS C++ shim layout-critical mirror (`CppUserModBase`, `UE4SSProgram` imgui bridge) | done | `uespy/cpp/uespy_cppusermodbase.hpp`, `uespy_imgui_bridge.hpp` |
-| `build.rs` glue                                  | partial | game's build.rs adds `uespy/cpp/` to its include path; full uespy-build crate deferred until second mod exists |
+| `build.rs` glue (`CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...).compile()`) | done | `uespy-build` (rlib build-dep). Embeds shared headers via `include_str!`, drops them into `OUT_DIR/uespy_cpp/` at build time. Game's build.rs ~10 LoC. |
 | Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `uespy_client::perf` |
 | Settings JSON loader pattern                      | n/a    | game-specific shape — uespy intentionally doesn't enforce |
 | Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |

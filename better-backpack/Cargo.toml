@@ -47,7 +47,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [build-dependencies]
-cc = "1"
+uespy-build = { path = "../uespy-build" }
 
 [dev-dependencies]
 # Integration tests hit the mod's debug HTTP endpoint via the

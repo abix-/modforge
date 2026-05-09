@@ -114,14 +114,18 @@ Slices 9-11 landed (2026-05-09 late):
   better-backpack's open_perf_log is a 6-line wrapper passing
   env!("CARGO_MANIFEST_DIR") so the writer walks up to the
   game's repo root.
+- Slice 12: uespy-build crate (build-dep helper). Provides
+  `CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...)
+  .compile()`. Embeds the shared uespy C++ headers via
+  include_str! and drops them into OUT_DIR/uespy_cpp so the
+  shim can `#include "uespy_cppusermodbase.hpp"` regardless of
+  uespy's location (workspace path-dep or future registry pull).
+  Game's build.rs is now ~10 LoC (was ~60). Validated end-to-end:
+  better-backpack now builds via uespy-build.
 
 Out of scope:
 - Settings JSON loader (game-specific shape; uespy doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
-- Full uespy-build crate / build helpers (deferred until a second
-  UE4SS Rust mod exists to validate the API shape; for now games
-  reference uespy/cpp/ via relative path in their own build.rs,
-  which works in workspace setups).
 
 Migration is now 1000% complete vs the parity table. Every
 research / TDD capability the runtime-control-http skill describes

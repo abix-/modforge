@@ -31,11 +31,11 @@ name = "better-backpack"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "cc",
  "memoffset",
  "serde",
  "serde_json",
  "uespy",
+ "uespy-build",
  "uespy-client",
  "widestring",
  "windows-sys",
@@ -390,6 +390,13 @@ dependencies = [
  "tiny_http",
  "widestring",
  "windows-sys",
+]
+
+[[package]]
+name = "uespy-build"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
