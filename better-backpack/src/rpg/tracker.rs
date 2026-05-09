@@ -142,6 +142,68 @@ pub fn spend_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 
     spend
 }
 
+/// Refund one skill point from `skill`. Returns true if applied,
+/// false if no slot or skill is already at 0.
+pub fn refund_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
+    refund_skill_points(skill, 1) > 0
+}
+
+/// Refund up to `count` skill points from `skill`. Returns the
+/// number of points actually refunded (capped by current level).
+pub fn refund_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 {
+    let mut g = lock();
+    let Some(tracker) = g.as_mut() else {
+        bbp_log!("rpg/state: refund({}) ignored, no slot active", skill.id);
+        return 0;
+    };
+    if count == 0 {
+        return 0;
+    }
+    let cur_level = tracker
+        .state
+        .skill_levels
+        .get(skill.id)
+        .copied()
+        .unwrap_or(0);
+    if cur_level == 0 {
+        bbp_log!("rpg/state: refund({}) ignored, already at 0", skill.id);
+        return 0;
+    }
+    let refund = count.min(cur_level);
+    let new_level = cur_level - refund;
+    if new_level == 0 {
+        tracker.state.skill_levels.remove(skill.id);
+    } else {
+        tracker
+            .state
+            .skill_levels
+            .insert(skill.id.to_string(), new_level);
+    }
+    tracker.state.skill_points = tracker.state.skill_points.saturating_add(refund);
+    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
+    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    bbp_log!(
+        "rpg/state: refunded {} point(s) from {}: level {} -> {} ({} points available)",
+        refund,
+        skill.id,
+        cur_level,
+        new_level,
+        tracker.state.skill_points
+    );
+    refund
+}
+
+/// Re-apply one skill against the current state. Used by the
+/// enable/disable toggle so flipping the flag takes effect right
+/// away without requiring a save reload.
+pub fn reapply_one(skill_id: &str) {
+    let g = lock();
+    let Some(tracker) = g.as_ref() else {
+        return;
+    };
+    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill_id);
+}
+
 /// Debug: grant `count` skill points and save. Used by the debug
 /// button in the ImGui tab so we don't have to grind XP to test
 /// combat skills. No-op if no slot is active.

@@ -306,6 +306,40 @@ collides with a real FName u64 (extremely unlikely), we add the
 Docs updated this session: `docs/damage.md` (probe results +
 five-step concrete spike plan, commits 725107f and 574a080).
 
+## Skill point refund (2026-05-08)
+
+Added the ability to remove skill points from a skill via the ImGui
+tab. Buttons `-1` and `-10` sit next to the existing `+1` / `+10`,
+disabled when the skill is at level 0.
+
+- `rpg/tracker.rs`: `refund_skill_point` / `refund_skill_points`.
+  Decrements `skill_levels` (removes the map entry at 0), credits
+  points back, calls `apply::apply_one`, saves.
+- `rpg/ffi.rs`: `bbp_rpg_refund` and `bbp_rpg_refund_many` mirror
+  the spend FFI surface.
+- `cpp/shim.cpp`: `-1` / `-10` buttons after the existing spend
+  buttons, gated `level > 0`.
+
+Release build clean. Pre-existing clippy issues (apply.rs:385,
+fall_hook.rs:247/325, skills.rs:88-90) are unrelated to refund and
+were not touched.
+
+**Caveat (open)**: `apply::apply_skill` early-returns when
+`level == 0`. Refunding back to 0 leaves the engine value stale
+until next world load (where `activate_slot` does a full apply).
+Refunds to level >= 1 take effect immediately because per-skill
+formulas naturally recompute. Fixing this is scoped-out for now
+because `PlayerHealthCompU32Mask` (impact-resistance) has no
+vanilla-mask capture path, so removing the early-return would
+require an extra capture step.
+
+Next steps:
+- Decide whether to fix the refund-to-0 live-reset (would need a
+  `VANILLA_HC_REQUIRED_DAMAGE_TYPE_FLAGS` capture, and audit each
+  effect variant for "what does level=0 mean for the writer").
+- Resume `docs/damage.md` "Concrete spike plan" Step 1 in-game
+  witness once the user is back at the workstation.
+
 ## Where we left off (2026-05-05, late-night)
 
 **State (RESOLVED, working in-game 2026-05-05):**

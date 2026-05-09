@@ -31,14 +31,20 @@ Registry refactor done; adding a skill is now ~5 lines.
   player-as-instigator events (not just KillingBlow), heal the
   player's live HealthComponent (write `CurrentDamage` at +0x32C,
   clamped at 0).
-- [ ] **Max Health.** `PlayerHealthCompFloat`,
-  `MaxHealth` at +0x328. Probably want additive, not
-  multiplicative, so player can stack +HP rather than scaling a
-  base.
-- [ ] **Health Regen.** Field offset still TBD; UE4SS Live View
-  will surface it in seconds. `PlayerHealthCompFloat` shape.
-  This is now an explicit survivability skill we want in the near
-  term, alongside fall / impact mitigation for high-mobility builds.
+- [x] **Max Health.** Landed via new
+  `SkillEffect::PlayerHealthCompAdditive` (offset +0x328). Captures
+  vanilla once, writes `vanilla + max_bonus * progress` on CDOs +
+  live pawn so the player stacks +HP additively. +200 HP at level
+  100. Untested in-game.
+- [x] **Health Regen.** Landed via new `SkillEffect::GlobalDataMult`
+  pointed at `UGlobalCombatData` (offsets 0x010C tick percentage,
+  0x0110 tick rate). Tick % scales with the bonus, tick rate scales
+  inversely (more frequent ticks). Combat-regen delay left untouched.
+  Untested in-game.
+- [ ] **Leap Distance (DONE, untested).** Landed in the catalog via
+  `PlayerMovementMult` over `AirControl` / `AirControlBoostMultiplier`
+  / `AirControlBoostVelocityThreshold`. +500% at level 100.
+  Untested in-game.
 - [ ] **Stamina Pool + Stamina Regen.** `UStaminaComponent` on
   ASurvivalCharacter at +0x1358; offsets need a Dumper-7 dive.
 - [ ] **Gear Hardiness.** Find the durability-loss-per-use field;
@@ -55,7 +61,7 @@ Registry refactor done; adding a skill is now ~5 lines.
   a specific classification path so normal enemy hits are not
   affected.
 
-Catalog target: ~25 skills. Today: 9. War3FT had ~17, we collapse
+Catalog target: ~25 skills. Today: 13. War3FT had ~17, we collapse
 to a flat menu so 25 is comfortable.
 
 ## RPG: live-instance writes

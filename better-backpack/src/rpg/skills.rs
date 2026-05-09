@@ -30,6 +30,9 @@ pub const SKILL_GLIDE_SPEED: &str = "glide_speed";
 pub const SKILL_FALL_RESISTANCE: &str = "fall_resistance";
 pub const SKILL_IMPACT_RESISTANCE: &str = "impact_resistance";
 pub const SKILL_LIFESTEAL: &str = "lifesteal";
+pub const SKILL_MAX_HEALTH: &str = "max_health";
+pub const SKILL_LEAP_DISTANCE: &str = "leap_distance";
+pub const SKILL_HEALTH_REGEN: &str = "health_regen";
 
 /// Universal cap. Every skill scales 0..=100.
 pub const SKILL_MAX_LEVEL: u32 = 100;
@@ -83,6 +86,17 @@ pub enum SkillEffect {
         format: PercentFormat,
     },
 
+    /// Additive write on the player's `UHealthComponent`. Captures
+    /// vanilla on first sight, then writes `vanilla + max_bonus *
+    /// progress`. Used for Max Health: the player keeps stacking
+    /// HP rather than scaling a baseline value (so gear / status
+    /// effects that also touch the field are preserved).
+    PlayerHealthCompAdditive {
+        offset: usize,
+        max_bonus: f32,
+        format_word: &'static str,
+    },
+
     /// Bitmask write on the player's `UHealthComponent` -- when level
     /// > 0, set the named uint32 field to `mask`. Used by Impact Damage
     /// Resistance to set `RequiredDamageTypeFlags` so damage with no
@@ -115,6 +129,21 @@ pub enum SkillEffect {
         min_velocity_offset: usize,
         max_reduction: f32,
         format: PercentFormat,
+    },
+
+    /// Per-offset multiplier write on every instance of a named
+    /// class. Vanilla captured on first sight per (class, offset)
+    /// pair. Each entry is `(offset, exponent)`: written value is
+    /// `vanilla * (1 + max_bonus * progress) ^ exponent`. Use
+    /// exponent = +1.0 for "boost" fields (more is better) and
+    /// exponent = -1.0 for "shrink" fields (lower is better, e.g.
+    /// regen tick rate). Used for global-data assets that drive a
+    /// gameplay system from one shared singleton-style object.
+    GlobalDataMult {
+        class_name: &'static str,
+        offsets: &'static [(usize, f32)],
+        max_bonus: f32,
+        format_word: &'static str,
     },
 
     /// Pure runtime effect. The kill_hook (or any other live
@@ -202,8 +231,35 @@ pub const HC_REQUIRED_DAMAGE_TYPE_FLAGS: usize = 0x00FC;
 // UHealthComponent.BaseDamageReduction (Maine_classes.hpp:42193).
 pub const HC_BASE_DAMAGE_REDUCTION: usize = 0x00EC;
 
+// UGlobalCombatData (Maine_classes.hpp:23883). Singleton-style data
+// asset that holds the player's out-of-combat health regen settings.
+// Tweaking these fields makes regen kick in sooner, more often, or
+// for more health per tick.
+pub const GCD_COMBAT_REGEN_DELAY: usize = 0x0108;
+pub const GCD_COMBAT_REGEN_TICK_PERCENTAGE: usize = 0x010C;
+pub const GCD_COMBAT_REGEN_TICK_RATE: usize = 0x0110;
+
+// UHealthComponent.MaxHealth (docs/damage.md "HealthComponent layout").
+// Vanilla baseline captured on first apply; we add raw HP on top.
+pub const HC_MAX_HEALTH: usize = 0x0328;
+
 // UCharacterMovementComponent.JumpZVelocity (Engine_classes.hpp:31485).
 pub const CMC_JUMP_Z_VELOCITY: usize = 0x01B8;
+// UCharacterMovementComponent.AirControl (Engine_classes.hpp:31514).
+// Fraction 0..1 of input authority while airborne. Vanilla typically
+// ~0.35 -- low value keeps the player from steering wildly mid-air,
+// also caps how much horizontal velocity you can build during a fall.
+pub const CMC_AIR_CONTROL: usize = 0x02C0;
+// UCharacterMovementComponent.AirControlBoostMultiplier (Engine_classes.hpp:31515).
+// Multiplier applied to AirControl when the player's lateral velocity
+// is below `AirControlBoostVelocityThreshold`. Letting this scale up
+// is what gives a real "leap" feel: you keep accelerating in your
+// movement direction through the arc.
+pub const CMC_AIR_CONTROL_BOOST_MULT: usize = 0x02C4;
+// UCharacterMovementComponent.AirControlBoostVelocityThreshold (Engine_classes.hpp:31516).
+// Speed below which the boost multiplier above kicks in. Pushing this
+// up means the boost stays active even when already moving fast.
+pub const CMC_AIR_CONTROL_BOOST_THRESHOLD: usize = 0x02C8;
 // UCharacterMovementComponent.MaxWalkSpeed (Engine_classes.hpp:31500).
 pub const CMC_MAX_WALK_SPEED: usize = 0x0288;
 // UCharacterMovementComponent.MaxSwimSpeed (Engine_classes.hpp:31502).
@@ -232,6 +288,19 @@ const MOVE_SPEED_OFFSETS: &[usize] = &[
 ];
 const JUMP_HEIGHT_OFFSETS: &[usize] = &[CMC_JUMP_Z_VELOCITY];
 const GLIDE_SPEED_OFFSETS: &[usize] = &[CMC_MAX_FLY_SPEED, CMC_CUSTOM_FLY_SPEED_MULTIPLIER];
+// Health regen scaling: tick percentage scales with the bonus
+// (more healing per tick) while tick rate scales inversely (more
+// frequent ticks). Delay is left untouched to preserve the
+// "post-combat" feel.
+const HEALTH_REGEN_OFFSETS: &[(usize, f32)] = &[
+    (GCD_COMBAT_REGEN_TICK_PERCENTAGE, 1.0),
+    (GCD_COMBAT_REGEN_TICK_RATE, -1.0),
+];
+const LEAP_DISTANCE_OFFSETS: &[usize] = &[
+    CMC_AIR_CONTROL,
+    CMC_AIR_CONTROL_BOOST_MULT,
+    CMC_AIR_CONTROL_BOOST_THRESHOLD,
+];
 
 // ---------------------------------------------------------------------
 // CATALOG: the source of truth.
@@ -311,6 +380,16 @@ pub const CATALOG: &[Skill] = &[
         },
     },
     Skill {
+        id: SKILL_LEAP_DISTANCE,
+        display_name: "Leap Distance",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerMovementMult {
+            offsets: LEAP_DISTANCE_OFFSETS,
+            max_bonus: 5.00,
+            format_word: "leap",
+        },
+    },
+    Skill {
         id: SKILL_GLIDE_SPEED,
         display_name: "Glide Speed",
         max_level: SKILL_MAX_LEVEL,
@@ -344,6 +423,27 @@ pub const CATALOG: &[Skill] = &[
             format: PercentFormat::MinusPercent {
                 word: "impact / fall damage",
             },
+        },
+    },
+    Skill {
+        id: SKILL_MAX_HEALTH,
+        display_name: "Max Health",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::PlayerHealthCompAdditive {
+            offset: HC_MAX_HEALTH,
+            max_bonus: 200.0,
+            format_word: "max HP",
+        },
+    },
+    Skill {
+        id: SKILL_HEALTH_REGEN,
+        display_name: "Health Regen",
+        max_level: SKILL_MAX_LEVEL,
+        effect: SkillEffect::GlobalDataMult {
+            class_name: "GlobalCombatData",
+            offsets: HEALTH_REGEN_OFFSETS,
+            max_bonus: 5.00,
+            format_word: "regen",
         },
     },
     Skill {
@@ -442,6 +542,23 @@ pub fn format_effect(id: &str, level: u32) -> String {
             format!("+{pct}% {format_word} ({:.2}x)", mult)
         }
         SkillEffect::Runtime { max_bonus, format } => format_pct(0.0, *max_bonus, level, format),
+        SkillEffect::GlobalDataMult {
+            max_bonus,
+            format_word,
+            ..
+        } => {
+            let mult = 1.0 + skill_bonus(*max_bonus, level);
+            let pct = ((mult - 1.0) * 100.0).round() as i32;
+            format!("+{pct}% {format_word} ({:.2}x)", mult)
+        }
+        SkillEffect::PlayerHealthCompAdditive {
+            max_bonus,
+            format_word,
+            ..
+        } => {
+            let bonus = skill_bonus(*max_bonus, level).round() as i32;
+            format!("+{bonus} {format_word}")
+        }
     }
 }
 

@@ -7,6 +7,48 @@
 
 Newest first.
 
+## 2026-05-08
+
+### Catalog +3 skills (untested in-game)
+
+Three new skills shipped, all using two new `SkillEffect` shapes.
+Pending in-game witness.
+
+- **Max Health** -- `PlayerHealthCompAdditive` (new variant). Captures
+  the vanilla baseline at `UHealthComponent.MaxHealth` (+0x328) on
+  first apply, then writes `vanilla + max_bonus * progress` on
+  player CDOs and the live pawn. Additive so HP stacks rather than
+  scaling, +200 HP at level 100.
+- **Health Regen** -- `GlobalDataMult` (new variant). Walks every
+  `UGlobalCombatData` instance and writes per-offset multipliers:
+  CombatRegenTickPercentage (0x010C, exponent +1.0) scales up,
+  CombatRegenTickRate (0x0110, exponent -1.0) scales down (more
+  frequent ticks). Combat-regen delay (0x0108) intentionally
+  untouched to preserve the post-combat feel. +500% / 6x at level
+  100.
+- **Leap Distance** -- existing `PlayerMovementMult` over three
+  CharMovementComponent fields: AirControl (0x02C0),
+  AirControlBoostMultiplier (0x02C4), AirControlBoostVelocityThreshold
+  (0x02C8). Lets the player keep accelerating in their input
+  direction through the arc -- a real "leap" feel rather than a
+  taller jump. +500% at level 100.
+
+### ImGui tab: refund + per-skill toggle
+
+- `-1` / `-10` refund buttons next to the `+1` / `+10` spend
+  buttons. Decrement the level, credit the points back, run the
+  apply step, save. Disabled at level 0. Caveat: refund-to-0 on
+  `PlayerHealthCompU32Mask` (Impact Damage Resistance) needs a
+  reload to take effect because the apply step early-returns at
+  level 0 and there is no vanilla mask captured.
+- `on` checkbox per row. Disabling treats the skill as level 0
+  without refunding the points -- drops a buff (e.g. Leap Distance)
+  on demand without losing progress. Process-global, not persisted
+  (cheap to reapply on launch). Toggling fires `apply_one`.
+
+New FFI: `bbp_rpg_refund`, `bbp_rpg_refund_many`,
+`bbp_rpg_is_skill_enabled`, `bbp_rpg_set_skill_enabled`.
+
 ## 2026-05-05 (single big day)
 
 ### Impact Damage Resistance (binary)

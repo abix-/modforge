@@ -216,6 +216,10 @@ extern "C" int      bbp_rpg_get_skill(uint32_t index,
                                        uint32_t* out_max);
 extern "C" int      bbp_rpg_spend(const char* skill_id);
 extern "C" uint32_t bbp_rpg_spend_many(const char* skill_id, uint32_t count);
+extern "C" int      bbp_rpg_refund(const char* skill_id);
+extern "C" uint32_t bbp_rpg_refund_many(const char* skill_id, uint32_t count);
+extern "C" int      bbp_rpg_is_skill_enabled(const char* skill_id);
+extern "C" int      bbp_rpg_set_skill_enabled(const char* skill_id, int enabled);
 extern "C" int      bbp_rpg_debug_grant_skill_points(uint32_t count);
 extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
                                                   uint32_t    level,
@@ -338,6 +342,27 @@ static void rpg_render_tab(RC::CppUserModBase* /* mod */) {
             bbp_rpg_spend_many(id, 10);
         }
         ImGui::EndDisabled();
+        ImGui::SameLine();
+
+        bool can_refund = (level > 0);
+        ImGui::BeginDisabled(!can_refund);
+        if (ImGui::Button("-1")) {
+            bbp_rpg_refund(id);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("-10")) {
+            bbp_rpg_refund_many(id, 10);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+
+        // Per-skill enable toggle. Disabling treats the skill as
+        // level 0 (vanilla values) without refunding the points,
+        // so the player can drop a buff (e.g. superjump) on demand.
+        bool enabled = (bbp_rpg_is_skill_enabled(id) != 0);
+        if (ImGui::Checkbox("on", &enabled)) {
+            bbp_rpg_set_skill_enabled(id, enabled ? 1 : 0);
+        }
         ImGui::SameLine();
 
         if (level == 0) {

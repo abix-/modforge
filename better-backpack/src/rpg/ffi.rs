@@ -11,6 +11,7 @@
 use std::ffi::{CStr, c_char};
 use std::sync::Mutex;
 
+use crate::rpg::apply;
 use crate::rpg::skills::{self, Skill};
 use crate::rpg::state::PlayerState;
 use crate::rpg::tracker;
@@ -169,6 +170,96 @@ pub unsafe extern "C" fn bbp_rpg_spend_many(skill_id: *const c_char, count: u32)
             return 0;
         };
         tracker::spend_skill_points(skill, count)
+    })
+}
+
+/// Refund one skill point from the skill identified by the
+/// NUL-terminated `skill_id` C-string. Returns 1 on success, 0 if
+/// the refund was invalid (no slot, unknown skill, or already at 0).
+///
+/// On success: decrements the level, increments skill_points, runs
+/// the apply step so the new value takes effect immediately, and
+/// saves to disk.
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_refund(skill_id: *const c_char) -> i32 {
+    safe(|| {
+        if skill_id.is_null() {
+            return 0;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 0 };
+        let Some(skill) = skills::lookup(id) else {
+            return 0;
+        };
+        if tracker::refund_skill_point(skill) {
+            1
+        } else {
+            0
+        }
+    })
+}
+
+/// Refund up to `count` skill points from the skill identified by
+/// the NUL-terminated `skill_id` C-string. Returns the number of
+/// points actually refunded.
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_refund_many(skill_id: *const c_char, count: u32) -> u32 {
+    safe(|| {
+        if skill_id.is_null() || count == 0 {
+            return 0;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 0 };
+        let Some(skill) = skills::lookup(id) else {
+            return 0;
+        };
+        tracker::refund_skill_points(skill, count)
+    })
+}
+
+/// Returns 1 if the skill is currently enabled, 0 if disabled.
+/// Disabled skills behave as if at level 0 (vanilla values).
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_is_skill_enabled(skill_id: *const c_char) -> i32 {
+    safe(|| {
+        if skill_id.is_null() {
+            return 1;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 1 };
+        if apply::is_skill_enabled(id) { 1 } else { 0 }
+    })
+}
+
+/// Toggle a skill's enabled flag. `enabled` non-zero = on.
+/// Re-applies the skill so the change takes effect immediately.
+/// Returns the new state (1 enabled, 0 disabled).
+///
+/// # Safety
+/// `skill_id` must be a valid NUL-terminated UTF-8 C string.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn bbp_rpg_set_skill_enabled(skill_id: *const c_char, enabled: i32) -> i32 {
+    safe(|| {
+        if skill_id.is_null() {
+            return 1;
+        }
+        let cstr = unsafe { CStr::from_ptr(skill_id) };
+        let Ok(id) = cstr.to_str() else { return 1 };
+        let Some(skill) = skills::lookup(id) else {
+            return 1;
+        };
+        let new_state = apply::set_skill_enabled(skill.id, enabled != 0);
+        tracker::reapply_one(skill.id);
+        if new_state { 1 } else { 0 }
     })
 }
 

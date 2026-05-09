@@ -66,7 +66,7 @@ Adding a new skill of an existing shape is one row. Adding a new
 shape adds one variant to `SkillEffect` and one match arm in
 `apply_skill` and `format_effect`.
 
-### Current catalog (10 skills)
+### Current catalog (13 skills)
 
 | Skill            | Domain     | Final value at level 100         |
 | ---------------- | ---------- | -------------------------------- |
@@ -77,8 +77,12 @@ shape adds one variant to `SkillEffect` and one match arm in
 | Armor            | combat     | -50% damage taken                |
 | Move Speed       | movement   | +300% walk + sprint + swim       |
 | Jump Height      | movement   | +300% jump-Z velocity            |
+| Leap Distance    | movement   | +500% AirControl + boost mult + boost threshold |
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
+| Impact Damage Resistance | survival | binary -- any level >0 = full immunity to fall/environmental damage (status-effect migration tracked in [`todo.md`](todo.md)) |
+| Max Health       | survival   | +200 HP (additive on top of vanilla MaxHealth) |
+| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) |
 | Lifesteal        | combat     | +90% of damage dealt healed back |
 
 ### Per-level scaling
@@ -104,12 +108,11 @@ in-game value at any given level.
 Domains we expect to populate as time permits. Each row is a
 catalog entry plus (when needed) a new SkillEffect variant.
 
-- Survival: Gear Hardiness, Max Health, Health Regen, Stamina
-  Pool, Stamina Regen.
+- Survival: Gear Hardiness, Stamina Pool, Stamina Regen.
 - Combat: Critical Chance, Critical Damage, Evasion / Dodge,
   Thorns.
 - Movement: Walk Speed (separate from Move Speed if we want),
-  Climb Speed, Collision / Impact Damage Resistance.
+  Climb Speed.
 - Utility: Gather Yield, Crafting Discount, Repair Discount,
   Hauling Capacity.
 
@@ -214,6 +217,9 @@ in `rpg/apply.rs`. Two public entry points:
 | `PlayerCharFloat`          | Walk player ASurvivalCharacter CDOs, write `base + max_bonus * progress` at offset. |
 | `PlayerHealthCompFloat`    | Same but follow the HealthComponent ptr at +0x1340 first. |
 | `PlayerMovementMult`       | Follow CharMovementComponent at +0x1380, scale captured-vanilla baselines at multiple offsets, including Grounded-specific custom movement multipliers, and mirror the same writes onto live player pawns. |
+| `PlayerHealthCompAdditive` | Capture the vanilla baseline at the offset on the HealthComponent (e.g. MaxHealth +0x328), then write `vanilla + max_bonus * progress` on player CDOs and the live pawn. Used by Max Health so HP stacks rather than scaling. |
+| `PlayerHealthCompU32Mask`  | Binary uint32 mask write on the HealthComponent. Any level > 0 sets the field; level 0 leaves it. Used by Impact Damage Resistance (`RequiredDamageTypeFlags = 0xFFFFFFFF`). |
+| `GlobalDataMult`           | Walk every instance of a named class (e.g. `UGlobalCombatData`), capture vanilla per (class, offset), write `vanilla * (1 + max_bonus * progress) ^ exponent` per offset. Exponent +1.0 = boost field, -1.0 = shrink field (e.g. tick rate). Used by Health Regen. |
 | `Runtime`                  | No CDO write. Live trampolines read the level on each event, e.g. Lifesteal from damage hooks. |
 
 CDO writes propagate to newly-spawned instances. Movement skills
@@ -296,10 +302,28 @@ mechanisms because the underlying damage paths differ -- see
 UE4SS exposes an ImGui debug overlay; we register an "RPG" tab via
 `CppUserModBase::register_tab`. The tab shows level, XP progress
 bar, unspent skill points, and a row per skill with left-anchored
-`+1` / `+10` buttons and effect text ("level 5 / 100  +30 slots
- (next: +33 slots)").
+`+1` / `+10` / `-1` / `-10` buttons, an `on` checkbox, and effect
+text ("level 5 / 100  +30 slots  (next: +33 slots)").
 Always-visible HUD overlay (e.g. XP bar in the corner during
 gameplay) would need a custom UMG/HUD path; deferred.
+
+`-1` / `-10` refund spent points: the level decrements, the
+points are credited back to the unspent pool, the apply step runs
+again, and the new state is saved. The buttons disable at level 0.
+
+**Caveat**: refunding back to level 0 on `PlayerHealthCompU32Mask`
+(Impact Damage Resistance) leaves the engine value stale until the
+next world load -- the apply step early-returns at level 0 and
+there is no captured vanilla mask to restore. Refunds to level >= 1
+take effect immediately. All other skill shapes recompute cleanly
+at level 0 because their formulas naturally produce the vanilla
+value.
+
+The `on` checkbox toggles a per-skill enable flag (process-global,
+not persisted). Disabling treats the skill as level 0 (vanilla
+values) without refunding the spent points -- handy for dropping a
+buff like Leap Distance on demand without losing progress. Toggling
+fires the apply step so the change is immediate.
 
 The tab also has a debug footer with `+5 skill points` and
 `+50 skill points` buttons so combat / movement skills can be

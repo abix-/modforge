@@ -43,6 +43,37 @@ const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
 static VANILLA_HUNGER: OnceLock<f32> = OnceLock::new();
 static VANILLA_THIRST: OnceLock<f32> = OnceLock::new();
 static VANILLA_FALL_DAMAGE_RATIO: OnceLock<f32> = OnceLock::new();
+static VANILLA_MAX_HEALTH: OnceLock<f32> = OnceLock::new();
+
+// Process-global per-skill enable flags. Default ON. Toggling fires
+// `apply_one` so the change is immediate. Not persisted across
+// launches: cheap to reapply, and avoids a save-schema bump for a
+// runtime convenience.
+static DISABLED_SKILLS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
+pub fn is_skill_enabled(skill_id: &str) -> bool {
+    let Ok(g) = DISABLED_SKILLS.lock() else {
+        return true;
+    };
+    !g.iter().any(|s| *s == skill_id)
+}
+
+/// Set the enabled flag for `skill_id`. Returns the new state.
+pub fn set_skill_enabled(skill_id: &'static str, enabled: bool) -> bool {
+    if let Ok(mut g) = DISABLED_SKILLS.lock() {
+        let pos = g.iter().position(|s| *s == skill_id);
+        match (enabled, pos) {
+            (true, Some(i)) => {
+                g.swap_remove(i);
+            }
+            (false, None) => {
+                g.push(skill_id);
+            }
+            _ => {}
+        }
+    }
+    enabled
+}
 static VANILLA_MIN_FALL_DAMAGE_VELOCITY: OnceLock<f32> = OnceLock::new();
 static VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
 static VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
@@ -54,6 +85,9 @@ struct VanillaTable {
     entries: std::sync::Mutex<Vec<(usize, f32)>>,
 }
 static MOVEMENT_VANILLA: VanillaTable = VanillaTable {
+    entries: std::sync::Mutex::new(Vec::new()),
+};
+static GLOBAL_DATA_VANILLA: VanillaTable = VanillaTable {
     entries: std::sync::Mutex::new(Vec::new()),
 };
 
@@ -217,6 +251,69 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                 count
             );
         }
+        SkillEffect::GlobalDataMult {
+            class_name,
+            offsets,
+            max_bonus,
+            ..
+        } => {
+            let enabled = is_skill_enabled(skill.id);
+            let mult = if enabled {
+                1.0 + skills::skill_bonus(*max_bonus, level)
+            } else {
+                1.0
+            };
+            let count = apply_to_class(class_name, |obj| {
+                for &(off, exp) in *offsets {
+                    let cur = read_f32(obj, off);
+                    GLOBAL_DATA_VANILLA.set_if_unset(off, cur);
+                    if let Some(v) = GLOBAL_DATA_VANILLA.get(off) {
+                        let scaled = v * mult.powf(exp);
+                        write_f32(obj, off, scaled);
+                    }
+                }
+            });
+            bbp_log!(
+                "rpg/apply: {} level={} mult={:.3} written to {} {} instance(s)",
+                skill.id,
+                level,
+                mult,
+                count,
+                class_name
+            );
+        }
+        SkillEffect::PlayerHealthCompAdditive {
+            offset, max_bonus, ..
+        } => {
+            let bonus = skills::skill_bonus(*max_bonus, level);
+            let cdo_count = apply_to_player_character_cdos(|player_cdo| {
+                if let Some(hc) = read_component_ptr(player_cdo, ASC_HEALTH_COMPONENT) {
+                    let cur = read_f32(hc, *offset);
+                    if cur.is_finite() && cur > 0.0 {
+                        let _ = VANILLA_MAX_HEALTH.set(cur);
+                    }
+                    if let Some(v) = VANILLA_MAX_HEALTH.get().copied() {
+                        write_f32(hc, *offset, v + bonus);
+                    }
+                }
+            });
+            let live_count = apply_to_live_player_characters(|player| {
+                if let Some(hc) = read_component_ptr(player, ASC_HEALTH_COMPONENT) {
+                    if let Some(v) = VANILLA_MAX_HEALTH.get().copied() {
+                        write_f32(hc, *offset, v + bonus);
+                    }
+                }
+            });
+            bbp_log!(
+                "rpg/apply: {} level={} bonus=+{:.1} HP (vanilla={:?}) written to {} CDO(s), {} live pawn(s)",
+                skill.id,
+                level,
+                bonus,
+                VANILLA_MAX_HEALTH.get().copied(),
+                cdo_count,
+                live_count
+            );
+        }
         SkillEffect::PlayerHealthCompU32Mask { offset, mask, .. } => {
             // Binary gate: any level > 0 sets the mask. Walk player CDOs
             // and live pawns -- the mask stays set for the life of the
@@ -243,7 +340,15 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
         SkillEffect::PlayerMovementMult {
             offsets, max_bonus, ..
         } => {
-            let mult = 1.0 + skills::skill_bonus(*max_bonus, level);
+            // Per-skill runtime toggle: treat as level 0 (vanilla
+            // values) when disabled. Lets the player drop their
+            // superjump on demand without losing the spent points.
+            let enabled = is_skill_enabled(skill.id);
+            let mult = if enabled {
+                1.0 + skills::skill_bonus(*max_bonus, level)
+            } else {
+                1.0
+            };
             let cdo_count = apply_to_player_character_cdos(|player_cdo| {
                 let Some(mc) = read_component_ptr(player_cdo, ASC_CHAR_MOVEMENT_COMPONENT) else {
                     return;
@@ -555,6 +660,28 @@ fn apply_to_survival_mode_manager_components(mut f: impl FnMut(&UObject)) -> usi
             continue;
         }
         if obj.is_default_object() {
+            continue;
+        }
+        f(obj);
+        count += 1;
+    }
+    count
+}
+
+fn apply_to_class(class_name: &str, mut f: impl FnMut(&UObject)) -> usize {
+    let Some(rt) = sdk::try_runtime() else {
+        return 0;
+    };
+    let Some(class) = sdk::find_class_fast(class_name) else {
+        return 0;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return 0;
+    }
+    let mut count = 0;
+    for obj in view.iter() {
+        if !obj.is_a(class) {
             continue;
         }
         f(obj);
