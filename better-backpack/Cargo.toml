@@ -29,7 +29,7 @@ widestring = { workspace = true }
 memoffset = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uespy = { path = "../uespy" }
+uespy = { path = "../uespy" }                                            # default features = ["runtime"]
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -47,10 +47,11 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [build-dependencies]
-uespy-build = { path = "../uespy-build" }
+uespy = { path = "../uespy", default-features = false, features = ["build"] }
 
 [dev-dependencies]
 # Integration tests hit the mod's debug HTTP endpoint via the
-# shared `uespy-client` wrapper. Tests must run with --test-threads=1
-# because they share game state.
-uespy-client = { path = "../uespy-client" }
+# `uespy::client::Api` wrapper (gated behind the `client` feature
+# so it's only pulled into test builds). Tests must run with
+# --test-threads=1 because they share game state.
+uespy = { path = "../uespy", features = ["client"] }

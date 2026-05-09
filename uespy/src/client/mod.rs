@@ -1,19 +1,17 @@
-//! uespy-client: shared blocking test client for `uespy`-embedded mods.
+//! Blocking test client for `uespy`-embedded mods.
 //!
-//! Mirrors the wire envelope (`OpResponse<S>`) and provides a tiny
-//! `Api<S>` wrapper over `ureq`. Game-specific test crates supply
-//! their own `Snapshot` type and parameterize over it:
+//! Activated by the `client` feature (set in your `[dev-dependencies]`
+//! line: `uespy = { path = "...", features = ["client"] }`).
 //!
-//! ```ignore
-//! use uespy_client::Api;
-//! type GameApi = Api<MySnapshot>;
-//! ```
+//! `Api<S>` mirrors the server's `OpResponse<S>` envelope from
+//! [`crate::envelope`] and provides a `ureq`-backed POST loop for
+//! tests to drive ops, snapshot state, and call UFunctions.
 //!
 //! Run pattern (after launching the game with the mod's debug
 //! endpoint enabled):
 //!
 //! ```text
-//! set BBP_DEBUG_PORT=17171
+//! set MY_MOD_DEBUG_PORT=17171
 //! cargo test --test foo -- --test-threads=1 --nocapture
 //! ```
 //!
@@ -23,30 +21,13 @@
 use std::marker::PhantomData;
 use std::time::Duration;
 
-use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-pub mod hex;
-pub mod parms;
+use crate::envelope::OpResponse;
+use crate::hex;
+
 pub mod perf;
-
-pub use serde_json;
-
-/// Wire shape mirroring `uespy::OpResponse<S>` on the server side.
-#[derive(Debug, Deserialize)]
-pub struct OpResponse<S> {
-    pub ok: bool,
-    pub op: String,
-    pub error: Option<String>,
-    #[serde(default = "default_value")]
-    pub result: Value,
-    pub state: S,
-}
-
-fn default_value() -> Value {
-    Value::Null
-}
 
 /// Default request timeout. A test driving a slow PE-drain op
 /// (e.g. one that waits for a frame to fire before the queue
@@ -77,8 +58,7 @@ impl<S: DeserializeOwned> Api<S> {
         }
     }
 
-    /// Override the per-request timeout. Returns a fresh `Api` so
-    /// it composes with `try_connect` / `at` / `require`.
+    /// Override the per-request timeout.
     pub fn with_timeout(self, timeout: Duration) -> Self {
         let agent = ureq::AgentBuilder::new().timeout(timeout).build();
         Self {
@@ -103,8 +83,7 @@ impl<S: DeserializeOwned> Api<S> {
     }
 
     /// Like `try_connect` but panics with a clear message when the
-    /// env var is missing. Use when the test absolutely requires
-    /// the endpoint and you want a loud failure on misconfig.
+    /// env var is missing.
     pub fn require(env_var: &str, endpoint: impl Into<String>) -> Self {
         let endpoint = endpoint.into();
         Self::try_connect(env_var, endpoint.clone()).unwrap_or_else(|| {
@@ -126,21 +105,19 @@ impl<S: DeserializeOwned> Api<S> {
             .agent
             .post(&url)
             .send_json(body)
-            .unwrap_or_else(|e| panic!("uespy-client POST {url} failed: {e}"));
+            .unwrap_or_else(|e| panic!("uespy::client POST {url} failed: {e}"));
         res.into_json::<OpResponse<S>>()
-            .expect("uespy-client: response was not valid JSON")
+            .expect("uespy::client: response was not valid JSON")
     }
 
     /// Run an op, assert `ok=true`, return the post-op state.
-    /// Use when the op is expected to succeed and the test only
-    /// cares about the resulting state.
     pub fn op_ok(&self, op: &str, args: Value) -> S {
         let r = self.op(op, args);
         assert!(r.ok, "op {op} failed: {:?}", r.error);
         r.state
     }
 
-    /// `op("snapshot", null)` shortcut. Returns just the state.
+    /// `op("snapshot", null)` shortcut.
     pub fn snapshot(&self) -> S {
         self.op("snapshot", Value::Null).state
     }

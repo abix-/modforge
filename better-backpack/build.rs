@@ -3,11 +3,11 @@
 // skip the default shim so we don't double-export start_mod /
 // uninstall_mod / DllMain.
 //
-// New mods should drop both lines and let uespy-build's defaults
-// drive everything.
+// New mods drop both lines and let the helper's defaults drive
+// everything.
 
 fn main() {
-    uespy_build::CppShim::new()
+    uespy::build::CppShim::new()
         .source("cpp/shim.cpp")
         .skip_default_shim()
         .compile();

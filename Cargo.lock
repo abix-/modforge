@@ -35,8 +35,6 @@ dependencies = [
  "serde",
  "serde_json",
  "uespy",
- "uespy-build",
- "uespy-client",
  "widestring",
  "windows-sys",
 ]
@@ -384,28 +382,14 @@ name = "uespy"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cc",
  "memoffset",
  "serde",
  "serde_json",
  "tiny_http",
+ "ureq",
  "widestring",
  "windows-sys",
-]
-
-[[package]]
-name = "uespy-build"
-version = "0.1.0"
-dependencies = [
- "cc",
-]
-
-[[package]]
-name = "uespy-client"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "ureq",
 ]
 
 [[package]]

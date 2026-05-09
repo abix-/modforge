@@ -6,30 +6,56 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Embedded HTTP control plane for Unreal Engine game mods.
-# Generic primitives (snapshot, read_bytes, write_bytes, call,
-# walk_class) over a single POST /<endpoint>. Game crates supply a
-# Host impl with a custom snapshot type and selector resolver.
+# Base layer for every UE4SS Rust mod in this workspace.
 #
-# See ~/.claude/skills/runtime-control-http/SKILL.md for the design.
+# Three feature flags map to the three contexts a game crate
+# imports uespy from:
+#   default = ["runtime"]   -> [dependencies]      (cdylib code)
+#   "client"                -> [dev-dependencies]  (test client)
+#   "build"                 -> [build-dependencies] (build.rs helper)
+#
+# A game's Cargo.toml:
+#   [dependencies]      uespy = { path = "../uespy" }
+#   [build-dependencies] uespy = { path = "../uespy", default-features = false, features = ["build"] }
+#   [dev-dependencies]   uespy = { path = "../uespy", features = ["client"] }
 
 [lib]
 crate-type = ["rlib"]
 
+[features]
+default = ["runtime"]
+runtime = [
+    "dep:tiny_http",
+    "dep:windows-sys",
+    "dep:widestring",
+    "dep:memoffset",
+    "dep:anyhow",
+]
+client = ["dep:ureq"]
+build = ["dep:cc"]
+
 [dependencies]
-anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tiny_http = { workspace = true }
-widestring = { workspace = true }
-memoffset = { workspace = true }
-windows-sys = { workspace = true, features = [
+
+# runtime
+tiny_http = { workspace = true, optional = true }
+windows-sys = { workspace = true, optional = true, features = [
     "Win32_Foundation",
-    "Win32_System_Diagnostics_Debug",
     "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
 ] }
+widestring = { workspace = true, optional = true }
+memoffset = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+
+# client
+ureq = { workspace = true, optional = true }
+
+# build
+cc = { workspace = true, optional = true }

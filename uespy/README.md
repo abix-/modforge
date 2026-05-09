@@ -14,19 +14,21 @@ The rule, codified:
 > first; otherwise it belongs in uespy. Game-specific code goes on
 > top of uespy, not in parallel to it.
 
-## Companion crates
+## Three feature flags, one crate
 
-- **uespy** (this crate, runtime) — server, queue, primitives,
-  selectors, hex, ring, counters, log, hook framework, UE SDK
-  + introspection, Win32 process probes, TMap / DataTable
-  mechanics, `ui::*` ImGui bindings, `mod_main::ModInfo` +
-  `ue4ss_mod!` macro.
-- **uespy-client** (test) — blocking `Api<S>`, `OpResponse<S>`,
-  hex / parm round-trip, perf-log writer.
-- **uespy-build** (build) — `CppShim::new()...compile()`. Compiles
-  the shipped `uespy_shim.cpp` + `uespy_ui.cpp` into the cdylib
-  by default; bundles ImGui v1.92.1 vendor and UE4SS.lib so games
-  carry no copies.
+uespy is a single crate with three feature flags that map to the
+three contexts a game crate imports it from:
+
+| Feature | Context | What it pulls in |
+|---|---|---|
+| `runtime` (default) | `[dependencies]` (cdylib) | server, queue, primitives, selectors, hex, ring, counters, log, hook framework, UE SDK + introspection, Win32 probes, TMap / DataTable mechanics, `ui::*` ImGui bindings, `ModInfo` + `ue4ss_mod!` macro |
+| `client` | `[dev-dependencies]` (tests) | `uespy::client::Api<S>`, `uespy::client::perf::PerfLog` |
+| `build` | `[build-dependencies]` (build.rs) | `uespy::build::CppShim::new()...compile()`, bundled ImGui v1.92.1 vendor, bundled `UE4SS.lib` |
+
+Cargo's three dep tables exist for a reason — runtime, test, and
+build contexts have different dependency surfaces. The feature
+flags align with that without forcing the user to think about
+three different crates.
 
 ## What lives in uespy (do not reinvent)
 
@@ -77,17 +79,28 @@ comes from uespy.
 ```
 your-mods/
   Cargo.toml         # workspace
-  uespy/             # this crate
-    cpp/imgui/       # vendored, shared
-    ue4ss/UE4SS.lib  # shared
-  uespy-client/
-  uespy-build/
+  uespy/             # the only base crate
+    cpp/imgui/       # vendored ImGui, shared by every mod
+    ue4ss/UE4SS.lib  # shared import lib
   your-mod/
     Cargo.toml
-    build.rs         # 5 LoC
+    build.rs         # 1 LoC
     src/lib.rs       # ModInfo + ue4ss_mod!
     src/debug.rs     # Snapshot + handle()
     tests/
+```
+
+### `your-mod/Cargo.toml`
+
+```toml
+[dependencies]
+uespy = { path = "../uespy" }                                            # runtime
+
+[build-dependencies]
+uespy = { path = "../uespy", default-features = false, features = ["build"] }
+
+[dev-dependencies]
+uespy = { path = "../uespy", features = ["client"] }
 ```
 
 No `cpp/` directory in `your-mod/` unless you have custom C++.
@@ -97,7 +110,7 @@ No `ue4ss/UE4SS.lib`. No imgui copy. No DllMain. No factory exports.
 
 ```rust
 fn main() {
-    uespy_build::CppShim::new().compile();
+    uespy::build::CppShim::new().compile();
 }
 ```
 

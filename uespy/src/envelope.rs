@@ -11,19 +11,24 @@
 //! supplies its own snapshot type. The envelope stays uniform; the
 //! payload is whatever that game wants to expose.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
-#[derive(Serialize)]
-pub struct OpResponse<S: Serialize> {
+#[derive(Serialize, Deserialize)]
+pub struct OpResponse<S> {
     pub ok: bool,
     pub op: String,
     pub error: Option<String>,
+    #[serde(default = "default_result")]
     pub result: Json,
     pub state: S,
 }
 
-impl<S: Serialize> OpResponse<S> {
+fn default_result() -> Json {
+    Json::Null
+}
+
+impl<S> OpResponse<S> {
     pub fn ok(op: &str, result: Json, state: S) -> Self {
         Self {
             ok: true,

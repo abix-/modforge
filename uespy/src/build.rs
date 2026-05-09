@@ -1,65 +1,55 @@
 //! Build-time helper for UE4SS Rust mods.
 //!
-//! Use as a `[build-dependencies]` entry. Game's `build.rs`:
+//! Activated by the `build` feature (set in your
+//! `[build-dependencies]` line:
+//! `uespy = { path = "...", default-features = false, features = ["build"] }`).
+//!
+//! Game's `build.rs`:
 //!
 //! ```ignore
 //! fn main() {
-//!     uespy_build::CppShim::new()
-//!         .source("cpp/shim.cpp")
-//!         .imgui_dir("cpp/imgui")
-//!         .ue4ss_lib_dir("ue4ss")
-//!         .compile();
+//!     uespy::build::CppShim::new().compile();
 //! }
 //! ```
 //!
 //! What `compile()` does:
 //! 1. Drops the shared uespy C++ headers
 //!    (`uespy_cppusermodbase.hpp`, `uespy_imgui_bridge.hpp`) into
-//!    the game's `OUT_DIR` so the shim can `#include` them as if
-//!    they live next to its own sources.
-//! 2. Runs `cc::Build` with the flags UE4SS requires (C++20,
+//!    the game's `OUT_DIR/uespy_cpp/` so any custom shim can
+//!    `#include` them as if they live next to its own sources.
+//! 2. Writes uespy's own `.cpp` sources (the generic
+//!    `uespy_shim.cpp` and the ImGui bridge `uespy_ui.cpp`) into
+//!    the same OUT_DIR slot.
+//! 3. Runs `cc::Build` with the flags UE4SS requires (C++20,
 //!    `/EHsc`, dynamic CRT to match UE4SS's release build).
-//! 3. Compiles the game's `shim.cpp` plus the four ImGui sources
-//!    (when `imgui_dir` is set).
-//! 4. Links the resulting `.obj`s as cdylib link args so UE4SS's
+//! 4. Compiles the shipped sources plus uespy's bundled ImGui
+//!    vendor (v1.92.1) and any game-specific `source(...)`.
+//! 5. Links the resulting `.obj`s as cdylib link args so UE4SS's
 //!    `start_mod` / `uninstall_mod` exports are present
 //!    unconditionally.
-//! 5. Adds `<ue4ss_lib_dir>` to the linker search path and links
-//!    `UE4SS` (when `ue4ss_lib_dir` is set).
-//!
-//! Headers are embedded at this crate's compile time via
-//! `include_str!` so the helper works whether uespy is consumed via
-//! workspace path-dep or a future registry release.
+//! 6. Adds the bundled `UE4SS.lib` directory to the linker search
+//!    path and links `UE4SS`.
 
 use std::path::{Path, PathBuf};
 
-const UESPY_CPPUSERMODBASE_HPP: &str = include_str!("../../uespy/cpp/uespy_cppusermodbase.hpp");
-const UESPY_IMGUI_BRIDGE_HPP: &str = include_str!("../../uespy/cpp/uespy_imgui_bridge.hpp");
-
-/// Embedded copies of uespy's shipped `.cpp` files. Game build
-/// scripts compile these alongside the imgui vendor — that's how
-/// uespy's UI bridge + generic shim land in every mod's cdylib.
-const UESPY_SHIM_CPP: &str = include_str!("../../uespy/cpp/uespy_shim.cpp");
-const UESPY_UI_CPP: &str = include_str!("../../uespy/cpp/uespy_ui.cpp");
+const UESPY_CPPUSERMODBASE_HPP: &str = include_str!("../cpp/uespy_cppusermodbase.hpp");
+const UESPY_IMGUI_BRIDGE_HPP: &str = include_str!("../cpp/uespy_imgui_bridge.hpp");
+const UESPY_SHIM_CPP: &str = include_str!("../cpp/uespy_shim.cpp");
+const UESPY_UI_CPP: &str = include_str!("../cpp/uespy_ui.cpp");
 
 /// Path to uespy's bundled C++ assets (imgui vendor + UE4SS.lib),
-/// resolved at uespy-build's compile time. Game build.rs scripts
-/// don't need to know this path; uespy_build defaults to it when
-/// `imgui_dir` / `ue4ss_lib_dir` aren't supplied.
-fn uespy_root() -> std::path::PathBuf {
-    // CARGO_MANIFEST_DIR at uespy-build's compile time = the
-    // uespy-build/ directory. ../uespy/ is the sibling crate.
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("uespy-build manifest has a parent")
-        .join("uespy")
+/// resolved at uespy's compile time. Game build.rs scripts don't
+/// need to know this path; defaults to it when `imgui_dir` /
+/// `ue4ss_lib_dir` aren't supplied.
+fn uespy_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
-fn default_imgui_dir() -> std::path::PathBuf {
+fn default_imgui_dir() -> PathBuf {
     uespy_root().join("cpp").join("imgui")
 }
 
-fn default_ue4ss_lib_dir() -> std::path::PathBuf {
+fn default_ue4ss_lib_dir() -> PathBuf {
     uespy_root().join("ue4ss")
 }
 
@@ -80,12 +70,12 @@ impl CppShim {
     }
 
     /// Path to a game-specific `shim.cpp`. Optional — by default
-    /// `uespy-build` compiles the shipped generic shim in
-    /// `uespy/cpp/uespy_shim.cpp`, which forwards lifecycle +
-    /// tab rendering to extern "C" Rust hooks emitted by
-    /// [`uespy::ue4ss_mod`]. Set this only if your mod needs
-    /// custom C++ alongside (or instead of) the shipped shim;
-    /// chain `.skip_default_shim()` to fully replace.
+    /// `compile()` builds the shipped generic shim
+    /// (`uespy_shim.cpp`), which forwards lifecycle + tab rendering
+    /// to extern "C" Rust hooks emitted by [`crate::ue4ss_mod`].
+    /// Set this only if your mod needs custom C++ alongside (or
+    /// instead of) the shipped shim; chain `.skip_default_shim()`
+    /// to fully replace.
     pub fn source<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.source = Some(path.into());
         self
@@ -100,48 +90,38 @@ impl CppShim {
         self
     }
 
-    /// Override the default ImGui sources directory. By default
-    /// uespy-build uses the imgui vendor bundled in
-    /// `uespy/cpp/imgui/` (v1.92.1 to match UE4SS). Override only
-    /// if you need a different ImGui version.
+    /// Override the default ImGui sources directory. Defaults to
+    /// uespy's bundled v1.92.1 vendor.
     pub fn imgui_dir<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.imgui_dir = Some(path.into());
         self
     }
 
-    /// Skip ImGui vendoring entirely. Use for shim-only builds
-    /// that don't render any UE4SS debug tab.
+    /// Skip ImGui vendoring entirely.
     pub fn skip_imgui(mut self) -> Self {
         self.skip_imgui = true;
         self
     }
 
-    /// Override the default `UE4SS.lib` directory. By default
-    /// uespy-build links against the import lib bundled in
-    /// `uespy/ue4ss/UE4SS.lib`. Override if you maintain a
-    /// per-game UE4SS.lib (rare — UE4SS API is stable across
-    /// games of the same UE4SS version family).
+    /// Override the default `UE4SS.lib` directory. Defaults to
+    /// uespy's bundled import lib.
     pub fn ue4ss_lib_dir<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.ue4ss_lib_dir = Some(path.into());
         self
     }
 
-    /// Add a directory to the C++ include path. Useful for
-    /// game-specific helper headers.
+    /// Add a directory to the C++ include path.
     pub fn extra_include<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.extra_includes.push(path.into());
         self
     }
 
-    /// Add an extra C++ source file to compile and link alongside
-    /// `shim.cpp`. Useful when game splits its shim into multiple TUs.
+    /// Add an extra C++ source file alongside `shim.cpp`.
     pub fn extra_source<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.extra_sources.push(path.into());
         self
     }
 
-    /// Run the build. Panics with a clear message if required
-    /// inputs are missing or `cc` fails.
     pub fn compile(self) {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
             .expect("CARGO_MANIFEST_DIR not set (run from a build script)");
@@ -149,12 +129,9 @@ impl CppShim {
         let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR not set");
         let out_dir = PathBuf::from(out_dir);
 
-        // Drop shared uespy headers into OUT_DIR/uespy_cpp/ so the
-        // game's shim can `#include "uespy_cppusermodbase.hpp"`
-        // without managing a relative path to uespy/cpp/.
         let uespy_cpp = out_dir.join("uespy_cpp");
         std::fs::create_dir_all(&uespy_cpp)
-            .unwrap_or_else(|e| panic!("uespy-build: create {:?}: {e}", uespy_cpp));
+            .unwrap_or_else(|e| panic!("uespy::build: create {:?}: {e}", uespy_cpp));
         write_if_changed(
             &uespy_cpp.join("uespy_cppusermodbase.hpp"),
             UESPY_CPPUSERMODBASE_HPP,
@@ -167,8 +144,7 @@ impl CppShim {
         let mut sources_to_compile: Vec<PathBuf> = Vec::new();
 
         // The UI bridge is always compiled — `uespy::ui` declares
-        // these extern "C" symbols and any mod might use them, even
-        // those that ship their own shim.
+        // these extern "C" symbols and any mod might use them.
         let ui_dst = uespy_cpp.join("uespy_ui.cpp");
         write_if_changed(&ui_dst, UESPY_UI_CPP);
         sources_to_compile.push(ui_dst);
@@ -187,7 +163,7 @@ impl CppShim {
 
         if sources_to_compile.is_empty() {
             panic!(
-                "uespy-build: nothing to compile. Either keep the \
+                "uespy::build: nothing to compile. Either keep the \
                  default shim (don't call skip_default_shim) or \
                  provide a custom source(...)"
             );
@@ -223,9 +199,6 @@ impl CppShim {
             .std("c++20")
             .include(&uespy_cpp)
             .flag_if_supported("/EHsc")
-            // UE4SS ships built against the multi-threaded DLL CRT.
-            // Mismatched CRT = std::vector / std::wstring layout
-            // mismatch across the boundary = crash.
             .static_crt(false)
             .warnings(false);
         for src in &sources_to_compile {
@@ -250,10 +223,6 @@ impl CppShim {
             build.file(abs);
         }
 
-        // compile_intermediates returns the .obj files directly so
-        // we can pass them as `rustc-cdylib-link-arg` to ensure
-        // C++ exports (start_mod / uninstall_mod) land in the
-        // final cdylib unconditionally.
         let objs = build.compile_intermediates();
         for obj in &objs {
             println!("cargo:rustc-cdylib-link-arg={}", obj.display());
@@ -274,12 +243,10 @@ fn absolutize(manifest_dir: &Path, p: PathBuf) -> PathBuf {
     }
 }
 
-/// Write `contents` to `path`, but only if the existing file is
-/// missing or different. Avoids stamping mtime on every build.
 fn write_if_changed(path: &Path, contents: &str) {
     let existing = std::fs::read_to_string(path).ok();
     if existing.as_deref() != Some(contents) {
         std::fs::write(path, contents)
-            .unwrap_or_else(|e| panic!("uespy-build: write {:?}: {e}", path));
+            .unwrap_or_else(|e| panic!("uespy::build: write {:?}: {e}", path));
     }
 }
