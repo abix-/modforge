@@ -1435,6 +1435,69 @@ hooking the allocator:
    standard but requires the FMalloc vtable address +
    per-call alloc-size accounting. Last resort.
 
+### Phase-1.7 LANDED: per-thread RIP-by-module sampler
+
+Built and deployed in this session.
+
+New probe `sample_thread_modules_json(duration_ms, interval_ms)`:
+
+- Snapshots loaded module map once via `EnumProcessModulesEx` +
+  `GetModuleInformation` + `GetModuleFileNameExW`.
+- For (duration_ms / interval_ms) iterations, walks all
+  threads via Toolhelp32. For each thread (excluding the
+  sampler):
+  1. `OpenThread(SUSPEND_RESUME | GET_CONTEXT | QUERY_LIMITED_INFORMATION)`.
+  2. `SuspendThread`.
+  3. `GetThreadContext` with `CONTEXT_CONTROL` (0x100001).
+  4. `ResumeThread` immediately.
+  5. Look up `RIP` against the module map.
+  6. If RIP is in a system DLL (ntdll/kernelbase/win32u/etc),
+     walk up to 64 stack qwords from RSP via
+     `ReadProcessMemory(self)`, looking for the first qword
+     that is a code address in a non-system module. **That's
+     the user-code caller** -- the WHO that asked the
+     allocator/syscall to run.
+- Returns per-thread histograms + grand-total module
+  histogram.
+
+New op: `sample_thread_modules`. Args:
+- `duration_ms` (default 30000)
+- `interval_ms` (default 100, = 10 Hz sampling)
+
+New test: `tests/explore_thread_attribution.rs`. Runs the
+op for 30s, prints grand-total table + per-thread breakdowns
+to a `perf-runs/thread_attribution-<ts>.txt` log.
+
+This answers the "WHO is burning CPU" and "WHO called the
+allocator" question one frame deep. Both attributions come
+from the same probe in the same run.
+
+### What this does and does not do
+
+**Does**: per-thread, statistical attribution of "what
+module is each thread running in." When the thread is
+inside ntdll/kernelbase (allocator, sync primitives), the
+one-level stack walk reveals the immediate user-code
+caller's module. So "Foreground Worker spending 30% in
+ntdll because it's allocating" gets attributed to whichever
+module called VirtualAlloc / RtlAllocateHeap.
+
+**Does not**: name the function within the caller's
+module. We see "60% of samples in `Grounded2-WinGRTS-Shipping.exe`"
+but not "60% of samples in `UStreamingManager::UpdateStreaming`."
+That requires `StackWalk64` + DbgHelp + PDBs (which we don't
+have for the game). Workaround: take the addresses we see
+in samples and disassemble around them in a debugger / IDA
+to identify the function. For high-volume callers this is
+trivial; for mixed call sites it's harder.
+
+**Does not**: catch every allocation. We sample at 10 Hz
+across ~50 threads = 500 samples/sec. An allocation that
+returns in microseconds is rarely caught mid-call.
+Statistically the dominant allocators surface; rare ones
+are missed. To catch every allocation we'd need to hook
+`NtAllocateVirtualMemory` directly.
+
 ### Phase-2 plan (still to do)
 
 Lower-priority items from the original plan, ordered by

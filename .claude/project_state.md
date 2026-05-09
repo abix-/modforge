@@ -30,6 +30,55 @@ draw distance, restart periodically, file with Obsidian).
 
 Full writeup in `docs/ongoing.md` section 15.
 
+## LEAK NARROWED to private RW + thread-attribution probe landed (2026-05-09 night, runs 5-7)
+
+Two-phase escalation past the initial UObject diagnosis.
+
+### Phase 1.5: VirtualQuery probe (run 5+6)
+
+`process_regions_json` walks the entire user address space,
+buckets committed bytes by `(image|mapped|private)` x
+`(rwx|rx|rw|r)`, plus a private-region size histogram and
+an AllocationBase count.
+
+Result: **+581 MB / 30s growth is 100% in private RW
+memory.** Image bytes flat, mapped flat (4 GB NVIDIA shader
+cache stable), rx/r flat. Native-heap or D3D-VirtualAlloc'd
+buffers, NOT UObject memory, NOT mapped asset packs.
+
+`+6,717 new committed regions / 30s` (224/sec, avg 84 KB)
+matches UE FMallocBinned2 page sizes.
+
+Total committed: 16 GB. Total reserved: 58 GB (UE pre-
+reserves a giant address slab). Top regions show big static
+blocks (4 GB NVIDIA cache, 256/128/64 MB private blocks at
+fixed addresses) that don't move -- the leak is in many
+new small regions, invisible at top-N.
+
+A second 30s leak_source run between deploys showed
++2,534 MB private and +34,067 committed regions cumulative
+(extrapolating ~16 MB/sec sustained idle drip).
+
+### Phase 1.7: per-thread RIP-by-module sampler (built)
+
+`sample_thread_modules_json(duration_ms, interval_ms)`:
+SuspendThread + GetThreadContext + module-lookup + 1-level
+stack walk via ReadProcessMemory when RIP is in a system
+DLL. Returns per-thread histograms of "which module is each
+thread spending its time in" and "WHO called the allocator
+when the thread was inside ntdll."
+
+Op: `sample_thread_modules`. Test:
+`tests/explore_thread_attribution.rs`.
+
+### Output files now persist
+
+`tests/common/mod.rs::open_perf_log(test_name)` returns a
+tee writer that mirrors stdout to
+`perf-runs/<test_name>-<unix_ts>.txt`. `perf-runs/` is
+gitignored. Committed evidence is the summary in
+`docs/ongoing.md`; raw run logs stay local.
+
 ## LEAK IDENTIFIED (2026-05-09 night, runs 3+4)
 
 Built and deployed Phase-1 instrumentation: per-package bucketing,
