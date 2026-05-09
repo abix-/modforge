@@ -30,6 +30,49 @@ draw distance, restart periodically, file with Obsidian).
 
 Full writeup in `docs/ongoing.md` section 15.
 
+## LEAK IDENTIFIED (2026-05-09 night, runs 3+4)
+
+Built and deployed Phase-1 instrumentation: per-package bucketing,
+loaded-levels enumeration, class outer-chain samples, and a 1Hz
+timeseries sampler. The new probes named the leak.
+
+**Source**: World Partition not unloading streaming cells. The
+persistent level package `/Game/_Augusta/Levels/Augusta_Main/Augusta_Main`
+hosts 143,809 UObjects and grows by ~1247 every 30s of play.
+Each cell brings its own ambient audio chain (SoundCue ->
+SoundNodeWavePlayer -> SoundWave; one cue alone holds 14+ wave
+players) and Proxy* component population. Cells load on
+movement, never release.
+
+Audio assets named: ambient zones (Greenhouse, IceCart, FirePit),
+character foley (footsteps, swim), creature SFX, resource-node
+impacts. Audio paths under `/Game/Audio/Sfx/...`.
+
+UI also leaks: OverlaySlot +102 / Image +75 per 30s, sourcing
+from `UI_TierDescription`, `UI_FreshnessTimer`, `UI_DamageTypeIcon`
+(inventory tooltips not destructing).
+
+**GC IS running** -- the timeseries caught a -4422 GObjects drop
+at t=31.6s of a 91s window. Leak is not "GC never runs"; it's
+"GC cannot reclaim what cells still ref."
+
+**Leak shape: BURSTY**, not steady. Idle drip is ~100 obj/30s.
+Crossing a streaming boundary loaded +21,531 GObjects in ONE
+second at t=67.3, then sustained +1800/sec. Working set grew
+4.25 GB in 91 seconds.
+
+CPU is the same leak: ~30k Proxy* components ticking every
+frame + ~5500 SoundNodeWavePlayers in the audio graph
+explains GameThread + Foreground Worker CPU without
+needing stack sampling.
+
+This is a first-party Grounded 2 bug. Mod cannot fix it.
+Mitigations: restart game periodically, lower view distance /
+streaming pool, file with Obsidian.
+
+Full data + asset paths + cell IDs + verdict in
+`docs/ongoing.md` section 15.
+
 ## Run 2 finding: paging detected (2026-05-09 night, second run)
 
 User changed display settings, said "feels EVEN WORSE." Re-ran

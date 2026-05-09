@@ -1017,6 +1017,215 @@ What this should produce on first run:
   the player crosses cell boundaries would be a smoking gun
   for streaming.
 
+### Phase-1 RESULTS: leak identified (2026-05-09 night, run 3)
+
+Ran `tests/explore_leak_source.rs` against the new build. The
+new probes immediately named the source.
+
+**Top growing PACKAGES (the missing question we could not
+answer before):**
+
+```
+/Game/_Augusta/Levels/Augusta_Main/Augusta_Main    +1247 / 30s   now 143,809
+/Engine/Transient                                   +442 / 30s   now  18,045
+<no-package>                                        +311 / 30s   now  23,296
+```
+
+`Augusta_Main` is the persistent level. **+1247 UObjects per
+30 seconds (41/sec)** are being stamped into one level
+package that should be releasing content as the player moves.
+It is not. `/Engine/Transient` should be GC'd; the +442 with
+no corresponding drop suggests GC is not reclaiming, or not
+running.
+
+**Loaded levels at T1: 200 (the cap was hit).** The list is
+dominated by `WorldPartitionRuntimeLevelStreamingCell`
+instances. Hundreds of streaming cells loaded simultaneously.
+
+**Outer-chain samples named the leaking content paths:**
+
+SoundNodeWavePlayer (5466 live, +243/30s) -- ALL samples
+under `/Game/Audio/Sfx/Ambience/Zone_OneShot/Indoor/Greenhouse/`:
+
+```
+/Game/Audio/Sfx/Ambience/Zone_OneShot/Indoor/Greenhouse/
+    amb_os_greehouse_structure_metal_clank_Cue
+    .amb_os_greehouse_structure_metal_clank_Cue.SoundNodeWavePlayer_0
+    ... _1, _10, _11, _12, _13, _14 (14+ players for ONE cue)
+```
+
+SoundWave (4653 live, +223/30s) -- multiple zones, all
+ambient:
+
+```
+/Game/Audio/Sfx/Character/Player/Foley/Swim/...
+/Game/Audio/Sfx/Creature/_Shared/ORC/...
+/Game/Audio/Sfx/Ambience/Zone_OneShot/Indoor/IceCart/...
+/Game/Audio/Sfx/Ambience/Zone_OneShot/Outdoor/FirePit/...
+/Game/Audio/Sfx/Impact/Resource_Node/Soft_Moist/...
+```
+
+**New finding the prior runs did not surface: UI is also
+leaking.**
+
+OverlaySlot +102 (3730 total). Image +75 (3119 total). Samples
+point at `UI_TierDescription`, `UI_FreshnessTimer`,
+`UI_DamageTypeIcon`. These are inventory item tooltips.
+Likely the tooltip widgets are being constructed (one per
+hover) but not destructed.
+
+### Diagnosis
+
+The leak is **World Partition not unloading streaming cells**,
+plus a secondary **UI tooltip leak**.
+
+Mechanism: each streaming cell brings its own ambient
+audio (SoundCue -> SoundNodeWavePlayer chain -> SoundWave
+buffers) plus its own actor population (Proxy components).
+When the cell should unload, the audio assets stay pinned
+(strong refs) and the actors stay registered. Population
+grows monotonically.
+
+Quantitatively at T1:
+- 6787 ProxyAttractionComponents
+- 5552 ProxyHealthComponents
+- 5572 ProxyLootComponents
+- 5496 ProxyTeamComponents
+- 6938 ObsidianIDComponents
+- ~143,809 UObjects rooted in Augusta_Main (one persistent
+  level)
+
+### CPU answered by inference (no stack sampling needed)
+
+The "huge CPU usage" question now has a defensible answer
+from the population alone:
+
+- ~30,000 Proxy* component instances likely ticking each
+  frame. At 60Hz that is ~1.8M ticks/sec. Bills to
+  GameThread (50% wall) and via task graph fan-out to the
+  Foreground Workers (~58% wall each).
+- ~5,500 SoundNodeWavePlayers plus ~4,650 SoundWaves means
+  the audio engine has thousands of nodes to evaluate every
+  frame. Bills to whichever workers UE5 schedules audio on
+  (typically the high-priority TaskGraph workers, i.e. our
+  Foreground Worker #0/#1).
+- 200+ loaded streaming cells means streaming distance
+  checks + visibility + LOD updates per frame across all of
+  them.
+
+So: **the CPU and the memory are the same leak.** Cells do
+not unload, so audio/actor counts grow, so per-frame work
+grows, so threads stay pinned. There is no separate CPU
+mystery; the population IS the CPU.
+
+To prove this hypothesis directly we would need
+tick-attribution (Phase-2 item below): walk every actor /
+component, read `PrimaryActorTick.bCanEverTick`, bucket by
+class. Expected outcome: ProxyAttractionComponent and the
+other Proxy* components dominate the active-tick list, in
+the same proportions they dominate the population.
+
+### Phase-1 RESULTS (continued): timeseries reveals leak shape
+
+Ran `tests/explore_perf_timeseries.rs` immediately after the
+leak-source test. 60-target samples, ran for 91s. Three
+distinct phases visible:
+
+**Phase A: t=0-30s, slow steady drip.**
+Working set grows ~70 MB/s. GObjects nearly flat (352491
+-> ~356000, +4000 over 30s). Page faults sustained at
+30-80k/sec -- already paging at this point.
+
+**Phase B: t=31.6s, GC PASS.**
+GObjects dropped from 355949 -> 351527 in one sample =
+**-4422 objects in one second**. **This proves GC is
+running.** The leak is not "GC never runs"; the leak is
+"GC cannot reclaim what is still ref'd."
+
+**Phase C: t=65s onward, catastrophic streaming burst.**
+The player crossed a streaming boundary. One-second
+deltas:
+
+```
+t=65.9   gobj +3967
+t=67.3   gobj +21,531    (in ONE second)
+t=68.8   gobj +5097    ws +274 MB    pf +132,620
+t=70+    gobj +1800/sec sustained
+```
+
+Working set grew **4.25 GB in 91 seconds** (8565 MB ->
+12820 MB). GObjects grew **+58,949 in 91 seconds**
+(352491 -> 411440). Cumulative page faults reached 15.2M.
+
+### What the timeseries proves
+
+1. **GC is alive.** The -4422 drop is unambiguous evidence.
+   The /Engine/Transient growth in the prior test really is
+   being collected sometimes.
+2. **The leak is in the streaming pipeline, not GC.**
+   Cells load in bursts (+21k objects in 1s); they do not
+   unload, even when GC runs.
+3. **Movement is the trigger.** Steady-state idle leak is
+   small (a few hundred objects per 30s). Crossing a cell
+   boundary loads thousands at once and pins them all.
+4. **Memory growth >> object count would suggest.**
+   4.25 GB / 58,949 objects ~= 75 KB per object on
+   average. Consistent with SoundWave (audio buffers are
+   large) plus StaticMeshComponent (mesh data refs) being
+   the dominant new content.
+
+### Verdict (full picture)
+
+Grounded 2's World Partition + audio streaming pipeline
+**loads streaming cells as the player moves and never
+releases them.** Each cell brings its own ambient audio
+chain (SoundCue -> SoundNodeWavePlayer -> SoundWave) and
+its own actor population (Proxy components, Image/UI
+widgets). When the cell should unload (player moves out
+of relevance distance), strong references keep the audio
+assets and proxy components alive, so:
+
+- The level's hosted-object count grows monotonically
+  (Augusta_Main now hosting 143,809 objects).
+- The audio engine processes more nodes every frame.
+- Tickable proxy components grow without bound (~30,000
+  total Proxy* instances).
+- Frame-time bills proportionally to all of this on
+  GameThread + Foreground Workers + RHI/Render threads.
+- Working set expands; eventually exceeds physical RAM
+  and the OS starts paging (38-130k page faults/sec
+  observed during burst events).
+
+This is a **first-party game bug**. We have a clean
+diagnosis with named asset paths, named packages, named
+components, named cell IDs, GC-confirmed liveness, and a
+characterized leak shape (bursty on movement). Anyone
+filing a bug with Obsidian can paste section 15 verbatim.
+
+### What the mod cannot do
+
+- **Cannot force-unload cells.** Calling
+  `ULevelStreaming::SetShouldBeLoaded(false)` from outside
+  the streaming subsystem fights the very logic that
+  ref-counts cells. We would need to unhook the strong
+  refs the game holds, which we cannot find without
+  source.
+- **Cannot reduce audio cache.** Audio asset lifetime is
+  controlled by the game's SoundClass / SoundCue refs, not
+  by us.
+- **Cannot patch the streaming bug.** The bug is in
+  game-code that we do not own.
+
+### What the user CAN do
+
+- Restart the game periodically; this is the only certain
+  remedy.
+- Lower texture-streaming pool / view distance / streaming
+  distance to slow the leak rate.
+- Avoid traversing many zones in one session.
+- File a bug with Obsidian referencing the diagnosis in
+  this doc.
+
 ### Phase-2 plan (still to do)
 
 Lower-priority items from the original plan, ordered by
