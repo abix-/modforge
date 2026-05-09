@@ -859,6 +859,12 @@ pub struct Snapshot {
     /// instance count. Diff over a window finds the leak source
     /// when an object class is growing unboundedly.
     pub game_population: Json,
+    /// Process address-space breakdown via VirtualQuery. Diff
+    /// over a window narrows non-UObject memory leaks to a
+    /// specific category (image / mapped / private) and
+    /// protection class. Top committed regions list sorts by
+    /// size and includes mapped file names when applicable.
+    pub process_regions: Json,
 }
 
 #[derive(Serialize)]
@@ -1098,6 +1104,7 @@ fn build_snapshot() -> Snapshot {
         process_cpu: crate::counters::process_cpu_json(),
         process_threads: crate::counters::process_threads_json(),
         game_population: crate::counters::game_population_json(40),
+        process_regions: crate::counters::process_regions_json(),
     }
 }
 

@@ -1226,6 +1226,95 @@ filing a bug with Obsidian can paste section 15 verbatim.
 - File a bug with Obsidian referencing the diagnosis in
   this doc.
 
+### Run 5 finding: the leak is OUTSIDE the UObject system (2026-05-09 night)
+
+User reported memory climbed 6 GB -> 15 GB during a play
+session. Re-ran `tests/explore_leak_source.rs` after the
+report. The result inverts what we thought we knew:
+
+```
+=== Process delta over 30s ===
+  working_set:  +436.7 MB    (7487.0 -> 7923.7 MB)
+  page_faults:  +766,668     (~25,500/sec)
+  gobjects:     -645         (350941 -> 350296)
+```
+
+**GObjects went DOWN** (GC reclaimed 645 objects) while
+**working set went UP** by 437 MB in the same window. Class
+deltas were all near zero. **The leak is in memory the UObject
+system does not track.**
+
+7923 MB working set / 350,296 GObjects = 22 KB per UObject
+average -- far above UObject header size. Most of the working
+set is in buffers UObjects only point to.
+
+### What is outside UObjects but consumes RAM
+
+In UE5:
+
+- D3D11/12 textures (RHI resources, not UObjects).
+- Audio sample data (FByteBulkData / decompressed buffers).
+- Mesh vertex/index buffers (RHI resources).
+- Render-thread scene proxies (allocated separate from
+  UObjects).
+- Texture streaming pool (caches mip chains).
+- Audio decompression buffers (XMA/Vorbis decoded streams).
+- Native engine heap: FString / TArray storage, hash tables,
+  FName pool growth, FArchive buffers, etc.
+
+Any one of these is plausible for "+14.5 MB/sec while
+stationary." Without a region-level memory probe we cannot
+narrow it.
+
+### Implication for prior conclusions
+
+The earlier diagnosis (World Partition not unloading cells)
+remains valid for the **bursty** memory growth on movement
+(+21,531 GObjects in 1s during zone transition). That part is
+real and is in UObjects.
+
+But the **steady-state idle drip** (435 MB / 30s with GObjects
+flat) is something different: a non-UObject leak that keeps
+running even when the streaming pipeline is quiescent.
+
+There are now **two distinct leaks**:
+
+1. **Movement-triggered streaming-cell leak** (UObject).
+   Diagnosed above. World Partition not unloading.
+2. **Idle non-UObject memory drip** (?). Unknown source.
+   Uses RAM but not GObjects. **This is the bigger problem
+   for total session RAM.**
+
+### Phase-1.5 plan: VirtualQuery + GPU memory
+
+To narrow the non-UObject leak, the next probe is a memory-
+region snapshot via `VirtualQuery` over the entire user
+address space. This enumerates every committed region with
+its size, state, protection, and (if mapped) image/file.
+Diffing T0/T1 region sizes points at WHICH region grew.
+
+Concrete next probe:
+
+`process_regions_json` -- walks the process address space
+via `VirtualQueryEx`, returns:
+
+- Total committed bytes by protection (RWX, RX, RW, R only).
+- Top N committed regions by size with their base address
+  and module-mapping if applicable.
+- Region count.
+- Free vs reserved vs committed totals.
+
+A second 30s leak-source run reading this field would tell
+us "the leak is in 4 GB of RW-private regions not backed by
+any module" (= heap) vs "the leak is in mapped pages" (=
+file/asset buffers) vs "the leak is in image regions" (=
+loaded code, very unlikely).
+
+Plus a GPU-memory probe:
+`process_gpu_memory_json` via `IDXGIAdapter::QueryVideoMemoryInfo`
+to answer "is RAM growing because VRAM is full and textures
+are spilling to system memory."
+
 ### Phase-2 plan (still to do)
 
 Lower-priority items from the original plan, ordered by

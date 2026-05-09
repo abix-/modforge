@@ -19,6 +19,8 @@
 
 mod common;
 
+use common::open_perf_log;
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 const WINDOW_SECS: u64 = 30;
@@ -30,18 +32,20 @@ fn u64_field(map: &serde_json::Map<String, serde_json::Value>, k: &str) -> u64 {
 #[test]
 fn measure_counter_deltas() {
     let api = common::Api::require();
+    let mut out = open_perf_log("perf_counters");
+    let out = &mut out;
 
-    eprintln!("\n=== Snapshot T0 ===");
+    writeln!(out, "\n=== Snapshot T0 ===").unwrap();
     let t0 = Instant::now();
     let s0 = api.snapshot();
     let counters0 = s0.counters.as_object().expect("counters not an object").clone();
     let mem0 = s0.process_memory.as_object().cloned().unwrap_or_default();
     let cpu0 = s0.process_cpu.as_object().cloned().unwrap_or_default();
 
-    eprintln!("Sleeping {WINDOW_SECS}s while you play in-game...");
+    writeln!(out, "Sleeping {WINDOW_SECS}s while you play in-game...").unwrap();
     std::thread::sleep(Duration::from_secs(WINDOW_SECS));
 
-    eprintln!("\n=== Snapshot T1 ===");
+    writeln!(out, "\n=== Snapshot T1 ===").unwrap();
     let elapsed = t0.elapsed().as_secs_f64();
     let s1 = api.snapshot();
     let counters1 = s1.counters.as_object().expect("counters not an object").clone();
@@ -62,11 +66,11 @@ fn measure_counter_deltas() {
         .collect();
     rate_rows.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
 
-    eprintln!("\n=== Event rate counters over {:.1}s ===", elapsed);
-    eprintln!("{:<40} {:>12} {:>12}", "counter", "delta", "per second");
-    eprintln!("{}", "-".repeat(70));
+    writeln!(out, "\n=== Event rate counters over {:.1}s ===", elapsed).unwrap();
+    writeln!(out, "{:<40} {:>12} {:>12}", "counter", "delta", "per second").unwrap();
+    writeln!(out, "{}", "-".repeat(70)).unwrap();
     for (k, delta, per_sec) in &rate_rows {
-        eprintln!("{:<40} {:>12} {:>12.1}", k, delta, per_sec);
+        writeln!(out, "{:<40} {:>12} {:>12.1}", k, delta, per_sec).unwrap();
     }
 
     // ---------------- CPU time counters (per hot path) ----------------
@@ -83,23 +87,23 @@ fn measure_counter_deltas() {
         .collect();
     time_rows.sort_by(|a, b| b.1.cmp(&a.1));
 
-    eprintln!("\n=== CPU time spent in OUR mod over {:.1}s ===", elapsed);
-    eprintln!(
+    writeln!(out, "\n=== CPU time spent in OUR mod over {:.1}s ===", elapsed).unwrap();
+    writeln!(out, 
         "{:<40} {:>14} {:>10}",
         "hot path", "ns total", "% wall"
-    );
-    eprintln!("{}", "-".repeat(70));
+    ).unwrap();
+    writeln!(out, "{}", "-".repeat(70)).unwrap();
     let mut our_total_ns: u64 = 0;
     for (k, ns, pct) in &time_rows {
-        eprintln!("{:<40} {:>14} {:>9.3}%", k, ns, pct);
+        writeln!(out, "{:<40} {:>14} {:>9.3}%", k, ns, pct).unwrap();
         our_total_ns = our_total_ns.saturating_add(*ns);
     }
-    eprintln!(
+    writeln!(out, 
         "{:<40} {:>14} {:>9.3}%",
         "  (sum)",
         our_total_ns,
         (our_total_ns as f64) / (elapsed * 1_000_000_000.0) * 100.0
-    );
+    ).unwrap();
 
     // ---------------- Process CPU + ratio ----------------
     let proc_cpu_total_0 = u64_field(&cpu0, "process_cpu_total_ns");
@@ -110,33 +114,33 @@ fn measure_counter_deltas() {
     let proc_cpu_kernel_delta = u64_field(&cpu1, "process_cpu_kernel_ns")
         .saturating_sub(u64_field(&cpu0, "process_cpu_kernel_ns"));
 
-    eprintln!("\n=== Process CPU over {:.1}s ===", elapsed);
-    eprintln!(
+    writeln!(out, "\n=== Process CPU over {:.1}s ===", elapsed).unwrap();
+    writeln!(out, 
         "  process_cpu_user_ns:    {} ns ({:.3}% of wall)",
         proc_cpu_user_delta,
         (proc_cpu_user_delta as f64) / (elapsed * 1_000_000_000.0) * 100.0
-    );
-    eprintln!(
+    ).unwrap();
+    writeln!(out, 
         "  process_cpu_kernel_ns:  {} ns ({:.3}% of wall)",
         proc_cpu_kernel_delta,
         (proc_cpu_kernel_delta as f64) / (elapsed * 1_000_000_000.0) * 100.0
-    );
-    eprintln!(
+    ).unwrap();
+    writeln!(out, 
         "  process_cpu_total_ns:   {} ns ({:.3}% of wall)",
         proc_cpu_delta,
         (proc_cpu_delta as f64) / (elapsed * 1_000_000_000.0) * 100.0
-    );
-    eprintln!(
+    ).unwrap();
+    writeln!(out, 
         "  our hot-path total:     {} ns ({:.3}% of wall)",
         our_total_ns,
         (our_total_ns as f64) / (elapsed * 1_000_000_000.0) * 100.0
-    );
+    ).unwrap();
     if proc_cpu_delta > 0 {
         let our_share = (our_total_ns as f64) / (proc_cpu_delta as f64) * 100.0;
-        eprintln!(
+        writeln!(out, 
             "  OUR FRACTION OF PROCESS CPU: {:.3}%",
             our_share
-        );
+        ).unwrap();
     }
 
     // ---------------- Process memory delta ----------------
@@ -147,28 +151,28 @@ fn measure_counter_deltas() {
     let pf_0 = u64_field(&mem0, "page_fault_count");
     let pf_1 = u64_field(&mem1, "page_fault_count");
 
-    eprintln!("\n=== Process memory delta over {:.1}s ===", elapsed);
-    eprintln!(
+    writeln!(out, "\n=== Process memory delta over {:.1}s ===", elapsed).unwrap();
+    writeln!(out, 
         "  working_set_size:   {:>13} -> {:>13}  delta {:+} ({:+.2} MB)",
         ws_0,
         ws_1,
         (ws_1 as i128) - (ws_0 as i128),
         ((ws_1 as i128) - (ws_0 as i128)) as f64 / (1024.0 * 1024.0)
-    );
-    eprintln!(
+    ).unwrap();
+    writeln!(out, 
         "  private_usage:      {:>13} -> {:>13}  delta {:+} ({:+.2} MB)",
         pu_0,
         pu_1,
         (pu_1 as i128) - (pu_0 as i128),
         ((pu_1 as i128) - (pu_0 as i128)) as f64 / (1024.0 * 1024.0)
-    );
-    eprintln!(
+    ).unwrap();
+    writeln!(out, 
         "  page_fault_count:   {:>13} -> {:>13}  delta {:+} ({:+.1}/sec)",
         pf_0,
         pf_1,
         (pf_1 as i128) - (pf_0 as i128),
         ((pf_1 as i128) - (pf_0 as i128)) as f64 / elapsed
-    );
+    ).unwrap();
 
     // ---------------- Per-thread CPU breakdown ----------------
     let threads0 = s0.process_threads.get("threads").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -195,12 +199,12 @@ fn measure_counter_deltas() {
         }
     }
     deltas.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("\n=== Top threads by CPU time delta ===");
-    eprintln!("{:<48} {:>14} {:>9}", "thread", "ns", "% wall");
-    eprintln!("{}", "-".repeat(74));
+    writeln!(out, "\n=== Top threads by CPU time delta ===").unwrap();
+    writeln!(out, "{:<48} {:>14} {:>9}", "thread", "ns", "% wall").unwrap();
+    writeln!(out, "{}", "-".repeat(74)).unwrap();
     for (name, ns) in deltas.iter().take(15) {
         let pct = (*ns as f64) / (elapsed * 1_000_000_000.0) * 100.0;
-        eprintln!("{:<48} {:>14} {:>8.2}%", name, ns, pct);
+        writeln!(out, "{:<48} {:>14} {:>8.2}%", name, ns, pct).unwrap();
     }
 
     // ---------------- Game object population delta ----------------
@@ -208,13 +212,13 @@ fn measure_counter_deltas() {
     let pop1 = s1.game_population.clone();
     let total0 = pop0.get("gobjects_total").and_then(|v| v.as_u64()).unwrap_or(0);
     let total1 = pop1.get("gobjects_total").and_then(|v| v.as_u64()).unwrap_or(0);
-    eprintln!("\n=== UE5 GObjects population ===");
-    eprintln!(
+    writeln!(out, "\n=== UE5 GObjects population ===").unwrap();
+    writeln!(out, 
         "  total: {} -> {}  delta {:+}",
         total0,
         total1,
         (total1 as i64) - (total0 as i64)
-    );
+    ).unwrap();
 
     let classes0 = pop0.get("top_classes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     let classes1 = pop1.get("top_classes").and_then(|v| v.as_array()).cloned().unwrap_or_default();
@@ -236,19 +240,19 @@ fn measure_counter_deltas() {
         class_deltas.push((name, delta, count1));
     }
     class_deltas.sort_by(|a, b| b.1.cmp(&a.1));
-    eprintln!("\n=== Top growing UE classes (count delta over window) ===");
-    eprintln!("{:<48} {:>10} {:>10}", "class", "delta", "now");
-    eprintln!("{}", "-".repeat(70));
+    writeln!(out, "\n=== Top growing UE classes (count delta over window) ===").unwrap();
+    writeln!(out, "{:<48} {:>10} {:>10}", "class", "delta", "now").unwrap();
+    writeln!(out, "{}", "-".repeat(70)).unwrap();
     for (name, delta, now) in class_deltas.iter().take(20) {
-        eprintln!("{:<48} {:>+10} {:>10}", name, delta, now);
+        writeln!(out, "{:<48} {:>+10} {:>10}", name, delta, now).unwrap();
     }
 
-    eprintln!("\n=== Top 5 by event rate ===");
+    writeln!(out, "\n=== Top 5 by event rate ===").unwrap();
     for (k, _delta, per_sec) in rate_rows.iter().take(5) {
-        eprintln!("  {:<40} {:.1}/sec", k, per_sec);
+        writeln!(out, "  {:<40} {:.1}/sec", k, per_sec).unwrap();
     }
-    eprintln!("\n=== Top 3 by hot-path CPU time ===");
+    writeln!(out, "\n=== Top 3 by hot-path CPU time ===").unwrap();
     for (k, ns, pct) in time_rows.iter().take(3) {
-        eprintln!("  {:<40} {} ns ({:.3}% wall)", k, ns, pct);
+        writeln!(out, "  {:<40} {} ns ({:.3}% wall)", k, ns, pct).unwrap();
     }
 }

@@ -17,6 +17,75 @@
 
 use serde::Deserialize;
 use serde_json::{Value, json};
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Tee writer: writes to both stdout and a timestamped log file
+/// at `<repo>/perf-runs/<test_name>-<unix_ts>.txt`. The directory
+/// is `.gitignore`d -- output is local evidence, not committed.
+/// `docs/ongoing.md` carries the committed summary.
+///
+/// Use in a perf test:
+///
+///     let mut out = common::open_perf_log("leak_source");
+///     writeln!(out, "...").unwrap();
+pub struct PerfLog {
+    path: PathBuf,
+    file: std::fs::File,
+}
+
+impl PerfLog {
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl std::io::Write for PerfLog {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stdout().write_all(buf);
+        self.file.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        let _ = std::io::stdout().flush();
+        self.file.flush()
+    }
+}
+
+/// Find the repo root by walking up from CARGO_MANIFEST_DIR until
+/// we find a `.git` directory.
+fn repo_root() -> PathBuf {
+    let start = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let mut cur = start.clone();
+    for _ in 0..8 {
+        if cur.join(".git").exists() {
+            return cur;
+        }
+        if !cur.pop() {
+            break;
+        }
+    }
+    start
+}
+
+/// Open a fresh perf-run log. The file path is printed up front
+/// so the run is self-locating.
+pub fn open_perf_log(test_name: &str) -> PerfLog {
+    let dir = repo_root().join("perf-runs");
+    let _ = std::fs::create_dir_all(&dir);
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = dir.join(format!("{test_name}-{ts}.txt"));
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&path)
+        .unwrap_or_else(|e| panic!("failed to open perf log {path:?}: {e}"));
+    println!("=== writing perf log to: {} ===", path.display());
+    PerfLog { path, file }
+}
 
 const DEFAULT_PORT: u16 = 17171;
 
@@ -279,6 +348,8 @@ pub struct Snapshot {
     pub process_threads: Value,
     #[serde(default)]
     pub game_population: Value,
+    #[serde(default)]
+    pub process_regions: Value,
 }
 
 #[derive(Debug, Deserialize, Clone)]

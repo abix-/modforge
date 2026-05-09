@@ -5,17 +5,18 @@
 // total. Distinguishes "steady drip" from "bursty load event"
 // from "ramp" -- a single T0/T1 window can't.
 //
+// Output is teed to stdout AND `perf-runs/timeseries-<ts>.txt`
+// (gitignored).
+//
 // Run pattern:
 //
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --release --test explore_perf_timeseries -- --nocapture
-//
-// Output is one row per sample with deltas relative to the
-// previous sample (first row is baseline = 0 deltas).
 
 mod common;
 
-use common::Api;
+use common::{Api, open_perf_log};
+use std::io::Write;
 use std::time::{Duration, Instant};
 
 const SAMPLE_COUNT: usize = 60;
@@ -28,16 +29,21 @@ fn u64_field(v: &serde_json::Value, k: &str) -> u64 {
 #[test]
 fn timeseries_60_seconds() {
     let api = Api::require();
+    let mut out = open_perf_log("timeseries");
 
-    println!(
+    writeln!(
+        out,
         "\n=== Time-series perf sampler ({}s, 1Hz) ===",
         SAMPLE_COUNT
-    );
-    println!(
+    )
+    .unwrap();
+    writeln!(
+        out,
         "{:>4}  {:>10}  {:>14}  {:>12}  {:>11}  {:>11}",
         "t", "ws_delta", "ws_total_mb", "pf_delta", "gobj_delta", "gobj_total"
-    );
-    println!("{}", "-".repeat(72));
+    )
+    .unwrap();
+    writeln!(out, "{}", "-".repeat(72)).unwrap();
 
     let start = Instant::now();
     let mut prev_ws: u64 = 0;
@@ -60,7 +66,8 @@ fn timeseries_60_seconds() {
             gobj as i64 - prev_gobj as i64
         };
 
-        println!(
+        writeln!(
+            out,
             "{:>4.1}  {:>+10}  {:>14.1}  {:>+12}  {:>+11}  {:>11}",
             t,
             ws_delta,
@@ -68,7 +75,8 @@ fn timeseries_60_seconds() {
             pf_delta,
             gobj_delta,
             gobj
-        );
+        )
+        .unwrap();
 
         prev_ws = ws;
         prev_pf = pf;
@@ -86,8 +94,13 @@ fn timeseries_60_seconds() {
     let final_pf = u64_field(&final_snap.process_memory, "page_fault_count");
     let final_gobj = u64_field(&final_snap.game_population, "gobjects_total");
 
-    println!("\n=== Summary over {:.1}s ===", elapsed);
-    println!("  working_set:   {:.1} MB final", final_ws as f64 / (1024.0 * 1024.0));
-    println!("  page_faults:   {} cumulative", final_pf);
-    println!("  GObjects:      {} final", final_gobj);
+    writeln!(out, "\n=== Summary over {:.1}s ===", elapsed).unwrap();
+    writeln!(
+        out,
+        "  working_set:   {:.1} MB final",
+        final_ws as f64 / (1024.0 * 1024.0)
+    )
+    .unwrap();
+    writeln!(out, "  page_faults:   {} cumulative", final_pf).unwrap();
+    writeln!(out, "  GObjects:      {} final", final_gobj).unwrap();
 }

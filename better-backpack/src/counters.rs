@@ -427,6 +427,205 @@ pub fn process_cpu_json() -> serde_json::Value {
     })
 }
 
+/// Walk the entire user-mode address space via VirtualQueryEx,
+/// grouping committed regions by (state, protection, type).
+/// Diffing two snapshots reveals which memory category grew.
+///
+/// Categories:
+///   - Image: pages mapped from a loaded module (.exe/.dll). Code
+///     and read-only data. Growth here means more DLLs loaded.
+///   - Mapped: pages backed by a file or pagefile (e.g. memory-
+///     mapped asset packs, shared sections). Growth = file/asset
+///     buffers.
+///   - Private: anonymous pages (heap, stacks, DXGI/RHI resources
+///     that allocate via VirtualAlloc). Growth = native heap or
+///     resource allocations.
+///
+/// Protection buckets we expose:
+///   - rwx: read+write+execute (JIT'd code regions, shaders, etc.)
+///   - rx:  read+execute (code)
+///   - rw:  read+write (data, heap)
+///   - r:   read only (constants, mapped read-only sections)
+///   - other: anything else (no-access guards, etc.)
+///
+/// Plus top N largest individual committed regions, with module
+/// name where applicable. The fastest-growing region in a diff
+/// is the leak.
+///
+/// Cost: O(N) over committed regions (~thousands). Allocates;
+/// snapshot-only path, not hot path.
+pub fn process_regions_json() -> serde_json::Value {
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEM_FREE, MEM_IMAGE, MEM_MAPPED, MEM_PRIVATE, MEM_RESERVE,
+        MEMORY_BASIC_INFORMATION, PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE,
+        PAGE_EXECUTE_WRITECOPY, PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, PAGE_WRITECOPY,
+        VirtualQuery,
+    };
+    use windows_sys::Win32::System::ProcessStatus::GetMappedFileNameW;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let mut total_committed: u64 = 0;
+    let mut total_reserved: u64 = 0;
+    let mut total_free: u64 = 0;
+    let mut by_type_image: u64 = 0;
+    let mut by_type_mapped: u64 = 0;
+    let mut by_type_private: u64 = 0;
+    let mut by_prot_rwx: u64 = 0;
+    let mut by_prot_rx: u64 = 0;
+    let mut by_prot_rw: u64 = 0;
+    let mut by_prot_r: u64 = 0;
+    let mut by_prot_other: u64 = 0;
+    let mut region_count: u64 = 0;
+    let mut committed_count: u64 = 0;
+
+    // Track top-N largest committed regions for the report.
+    // Region key collapses adjacent same-type/same-protection
+    // pages. We don't merge here -- VirtualQuery already returns
+    // "regions" of contiguous identical pages.
+    let mut top_regions: Vec<(u64, u64, u32, u32, String)> = Vec::new(); // (size, base, type, prot, mapped_name)
+
+    let mut addr: usize = 0;
+    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+    let info_size = std::mem::size_of::<MEMORY_BASIC_INFORMATION>();
+
+    // VirtualQuery on our own process -- pass null as the process
+    // handle equivalent uses VirtualQuery (not Ex). VirtualQuery
+    // takes (lpAddress, lpBuffer, dwLength) and returns bytes
+    // written.
+    loop {
+        let written = unsafe {
+            VirtualQuery(addr as *const _, &mut info, info_size)
+        };
+        if written == 0 {
+            break;
+        }
+        region_count += 1;
+        let size = info.RegionSize as u64;
+        let state = info.State;
+        let prot = info.Protect;
+        let mtype = info.Type;
+
+        if state == MEM_FREE {
+            total_free += size;
+        } else if state == MEM_RESERVE {
+            total_reserved += size;
+        } else if state == MEM_COMMIT {
+            total_committed += size;
+            committed_count += 1;
+
+            if mtype == MEM_IMAGE {
+                by_type_image += size;
+            } else if mtype == MEM_MAPPED {
+                by_type_mapped += size;
+            } else if mtype == MEM_PRIVATE {
+                by_type_private += size;
+            }
+
+            // Strip out the modifier flags (PAGE_GUARD,
+            // PAGE_NOCACHE, PAGE_WRITECOMBINE) by masking to the
+            // low 8 bits of the access protection.
+            let base_prot = prot & 0xFF;
+            if base_prot == PAGE_EXECUTE_READWRITE
+                || base_prot == PAGE_EXECUTE_WRITECOPY
+            {
+                by_prot_rwx += size;
+            } else if base_prot == PAGE_EXECUTE
+                || base_prot == PAGE_EXECUTE_READ
+            {
+                by_prot_rx += size;
+            } else if base_prot == PAGE_READWRITE
+                || base_prot == PAGE_WRITECOPY
+            {
+                by_prot_rw += size;
+            } else if base_prot == PAGE_READONLY {
+                by_prot_r += size;
+            } else if base_prot == PAGE_NOACCESS {
+                by_prot_other += size;
+            } else {
+                by_prot_other += size;
+            }
+
+            // Capture top regions. For mapped/image, look up
+            // the file name so we know what is loaded.
+            if size >= 1024 * 1024 {
+                let name = if mtype == MEM_IMAGE || mtype == MEM_MAPPED {
+                    let mut buf = [0u16; 260];
+                    let len = unsafe {
+                        GetMappedFileNameW(
+                            GetCurrentProcess(),
+                            info.BaseAddress,
+                            buf.as_mut_ptr(),
+                            buf.len() as u32,
+                        )
+                    };
+                    if len > 0 {
+                        String::from_utf16_lossy(&buf[..len as usize])
+                    } else {
+                        String::new()
+                    }
+                } else {
+                    String::new()
+                };
+                top_regions.push((
+                    size,
+                    info.BaseAddress as u64,
+                    mtype,
+                    prot,
+                    name,
+                ));
+            }
+        }
+
+        // Advance past this region. VirtualQuery returns
+        // contiguous regions; just add RegionSize to the base.
+        let next = info.BaseAddress as usize + info.RegionSize;
+        if next <= addr {
+            // Wrap-around guard.
+            break;
+        }
+        addr = next;
+    }
+
+    top_regions.sort_by(|a, b| b.0.cmp(&a.0));
+    let top: Vec<serde_json::Value> = top_regions
+        .into_iter()
+        .take(40)
+        .map(|(size, base, t, prot, name)| {
+            let type_str = match t {
+                MEM_IMAGE => "image",
+                MEM_MAPPED => "mapped",
+                MEM_PRIVATE => "private",
+                _ => "other",
+            };
+            serde_json::json!({
+                "size_bytes": size,
+                "size_mb": size as f64 / (1024.0 * 1024.0),
+                "base": format!("0x{base:X}"),
+                "type": type_str,
+                "protect": format!("0x{prot:X}"),
+                "mapped_name": name,
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "region_count":            region_count,
+        "committed_region_count":  committed_count,
+        "total_committed_bytes":   total_committed,
+        "total_reserved_bytes":    total_reserved,
+        "total_free_bytes":        total_free,
+        "by_type_image_bytes":     by_type_image,
+        "by_type_mapped_bytes":    by_type_mapped,
+        "by_type_private_bytes":   by_type_private,
+        "by_prot_rwx_bytes":       by_prot_rwx,
+        "by_prot_rx_bytes":        by_prot_rx,
+        "by_prot_rw_bytes":        by_prot_rw,
+        "by_prot_r_bytes":         by_prot_r,
+        "by_prot_other_bytes":     by_prot_other,
+        "top_committed_regions":   top,
+    })
+}
+
 /// Process memory readings (Windows). Captured in the snapshot
 /// so the perf test can compute deltas and detect leaks beyond
 /// what our hot-path counters measure.
