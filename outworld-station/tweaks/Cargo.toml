@@ -1,0 +1,37 @@
+[package]
+name = "tweaks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Outworld Station multi-mod. First feature: item stack adjustments
+# (the "Better Item Stacks" pattern, but as a runtime mod via uespy
+# instead of a static _P pak). Future features layer on the same
+# scaffold: hunger / thirst / inventory / movement tweaks, all
+# driven through DataTable mutations and CDO writes.
+
+[lib]
+# Output is `main.dll`, dropped at
+# OutworldStation\Binaries\Win64\ue4ss\Mods\Tweaks\dlls\main.dll.
+name = "main"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# Spawn a console window inside the game process for live log
+# output. Off by default for shipping; the file log at
+# <DLL_dir>/tweaks.log is the durable record.
+console = []
+default = ["console"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+uespy = { path = "../../uespy" }
+
+[build-dependencies]
+uespy = { path = "../../uespy" }
+
+[dev-dependencies]
+uespy = { path = "../../uespy" }

@@ -378,6 +378,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "tweaks"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "uespy",
+]
+
+[[package]]
 name = "uespy"
 version = "0.1.0"
 dependencies = [

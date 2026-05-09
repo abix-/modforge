@@ -22,10 +22,12 @@
 // game's lib.rs.
 
 #include <Windows.h>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "imgui.h"

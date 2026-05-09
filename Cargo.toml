@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["better-backpack", "injector", "uespy"]
+members = ["better-backpack", "injector", "outworld-station/tweaks", "uespy"]
 
 [workspace.package]
 version = "0.1.0"
