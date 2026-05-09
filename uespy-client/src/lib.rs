@@ -48,27 +48,50 @@ fn default_value() -> Value {
     Value::Null
 }
 
-const DEFAULT_TIMEOUT_SECS: u64 = 5;
+/// Default request timeout. A test driving a slow PE-drain op
+/// (e.g. one that waits for a frame to fire before the queue
+/// drains) can exceed 5s; override per-Api with `with_timeout`.
+pub const DEFAULT_TIMEOUT_SECS: u64 = 5;
 
 pub struct Api<S> {
     port: u16,
     endpoint: String,
     agent: ureq::Agent,
+    timeout: Duration,
     _phantom: PhantomData<S>,
 }
 
 impl<S: DeserializeOwned> Api<S> {
-    /// Connect at an explicit port.
+    /// Connect at an explicit port. Default timeout
+    /// `DEFAULT_TIMEOUT_SECS` — chain `.with_timeout(...)` to
+    /// override.
     pub fn at(port: u16, endpoint: impl Into<String>) -> Self {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
-            .build();
+        let timeout = Duration::from_secs(DEFAULT_TIMEOUT_SECS);
+        let agent = ureq::AgentBuilder::new().timeout(timeout).build();
         Self {
             port,
             endpoint: endpoint.into(),
             agent,
+            timeout,
             _phantom: PhantomData,
         }
+    }
+
+    /// Override the per-request timeout. Returns a fresh `Api` so
+    /// it composes with `try_connect` / `at` / `require`.
+    pub fn with_timeout(self, timeout: Duration) -> Self {
+        let agent = ureq::AgentBuilder::new().timeout(timeout).build();
+        Self {
+            port: self.port,
+            endpoint: self.endpoint,
+            agent,
+            timeout,
+            _phantom: PhantomData,
+        }
+    }
+
+    pub fn timeout(&self) -> Duration {
+        self.timeout
     }
 
     /// Connect using a port from the named environment variable.

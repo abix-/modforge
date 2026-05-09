@@ -60,3 +60,45 @@ pub fn time_scope(counter: &AtomicU64) -> TimeScope<'_> {
         start: Instant::now(),
     }
 }
+
+/// Declare one or more `pub static AtomicU64` counter statics, each
+/// initialized to zero.
+///
+/// ```ignore
+/// uespy::counter!(KILL_HOOK_FIRES);
+/// uespy::counter!(KILL_HOOK_PLAYER_FIRES);
+/// uespy::counter!(TIME_NS_DRAIN_PENDING);
+///
+/// fn on_event() {
+///     uespy::counters::bump(&KILL_HOOK_FIRES);
+/// }
+/// ```
+///
+/// The macro is intentionally minimal — counters are write-mostly,
+/// the `AtomicU64` type is the contract, and the snapshot
+/// aggregator (which reads them) is game-specific anyway.
+#[macro_export]
+macro_rules! counter {
+    ($name:ident) => {
+        pub static $name: ::std::sync::atomic::AtomicU64 =
+            ::std::sync::atomic::AtomicU64::new(0);
+    };
+    ($name:ident, $($rest:ident),+ $(,)?) => {
+        $crate::counter!($name);
+        $crate::counter!($($rest),+);
+    };
+}
+
+/// Same as [`counter!`] for `AtomicUsize` peak high-water-mark
+/// counters consumed by [`observe_peak`].
+#[macro_export]
+macro_rules! peak {
+    ($name:ident) => {
+        pub static $name: ::std::sync::atomic::AtomicUsize =
+            ::std::sync::atomic::AtomicUsize::new(0);
+    };
+    ($name:ident, $($rest:ident),+ $(,)?) => {
+        $crate::peak!($name);
+        $crate::peak!($($rest),+);
+    };
+}

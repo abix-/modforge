@@ -6,6 +6,8 @@
 //! |-------------------|--------------------------------------------|
 //! | `addr:0x...`      | raw object address (returned by `walk_class`) |
 //! | `first_class:Foo` | first non-CDO instance of class `Foo`      |
+//! | `class:Foo`       | alias for `first_class:Foo`                |
+//! | `singleton:Foo`   | class default object (CDO) of class `Foo`  |
 //!
 //! Game-specific shorthand (`live_player`, `current_save`, ...)
 //! lives in the embedding crate. The pattern is: try `resolve_generic`
@@ -23,7 +25,25 @@ pub fn resolve_generic(s: &str) -> Option<Result<&'static UObject, String>> {
     if let Some(name) = s.strip_prefix("first_class:") {
         return Some(resolve_first_class(name));
     }
+    if let Some(name) = s.strip_prefix("class:") {
+        return Some(resolve_first_class(name));
+    }
+    if let Some(name) = s.strip_prefix("singleton:") {
+        return Some(resolve_singleton(name));
+    }
     None
+}
+
+fn resolve_singleton(class_name: &str) -> Result<&'static UObject, String> {
+    let class = ue::find_class_fast(class_name)
+        .ok_or_else(|| format!("class '{class_name}' not found"))?;
+    let cdo = class
+        .class_default_object()
+        .ok_or_else(|| format!("class '{class_name}' has no CDO"))?;
+    // SAFETY: see resolve_first_class — same lifetime-extension contract.
+    let extended: &'static UObject =
+        unsafe { std::mem::transmute::<&UObject, &'static UObject>(cdo) };
+    Ok(extended)
 }
 
 fn resolve_addr(orig: &str, hex: &str) -> Result<&'static UObject, String> {
