@@ -9,7 +9,7 @@ use std::ffi::c_void;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::sdk::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime};
+use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime};
 
 use super::vtable;
 
@@ -77,7 +77,7 @@ impl ProcessEventHook {
 
         let vtable: *mut *mut c_void = unsafe {
             (cdo as *const UObject as *const u8)
-                .add(sdk::offsets::uobject::VTABLE)
+                .add(ue::offsets::uobject::VTABLE)
                 .cast::<*mut *mut c_void>()
                 .read_unaligned()
         };
@@ -147,7 +147,7 @@ unsafe extern "system" fn trampoline(
     // Look up the entry whose vtable matches the incoming object's vtable.
     let live_vtable: *mut *mut c_void = unsafe {
         (this as *const u8)
-            .add(sdk::offsets::uobject::VTABLE)
+            .add(ue::offsets::uobject::VTABLE)
             .cast::<*mut *mut c_void>()
             .read_unaligned()
     };

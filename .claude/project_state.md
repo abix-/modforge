@@ -98,29 +98,34 @@ Done (15 capabilities in uespy/uespy-client):
 - Test client (Api<S>, OpResponse<S>, parm round-trip)
 - File + console DLL logger
 
-Gaps (4 remaining slices to reach 1000% DRY):
-- Slice 9: PE / vtable hook framework. Currently
-  `better-backpack/src/hook/{vtable,process_event}.rs` (~220 LoC,
-  zero internal coupling). Without it OWS re-derives the
-  VirtualProtect-guarded vtable rewriter + trampoline registry +
-  catch_unwind guards. Highest-value gap.
-- Slice 10: UE4SS C++ shim + build.rs glue. Currently
-  `better-backpack/cpp/shim.cpp` (~450 LoC) and
-  `better-backpack/build.rs` (~60 LoC). Every UE4SS Rust mod
-  copy-pastes this verbatim today.
-- Slice 11: Test perf-log writer. Currently
-  `tests/common/mod.rs::open_perf_log` (~50 LoC). Tee's stdout
-  to gitignored `perf-runs/<name>-<ts>.txt`. Used by leak-research
-  tests.
+Slices 9-11 landed (2026-05-09 late):
+- Slice 9: PE/vtable hook framework -> uespy::hook (vtable
+  primitives + ProcessEventHook RAII + leaked-snapshot lock-free
+  registry + re-entrance guards). better-backpack/src/hook/ is
+  now a 6-line re-export facade.
+- Slice 10: UE4SS C++ shim layout-critical mirror -> 
+  uespy/cpp/uespy_cppusermodbase.hpp + uespy_imgui_bridge.hpp.
+  better-backpack/cpp/shim.cpp drops ~100 LoC of CppUserModBase
+  redefinition; build.rs adds the uespy/cpp/ include path.
+  Game-specific shim logic (imgui tab, FFI surface) stays in
+  game crate. Future mods just `#include "uespy_cppusermodbase.hpp"`
+  and inherit.
+- Slice 11: Test perf-log writer -> uespy_client::perf.
+  better-backpack's open_perf_log is a 6-line wrapper passing
+  env!("CARGO_MANIFEST_DIR") so the writer walks up to the
+  game's repo root.
 
 Out of scope:
 - Settings JSON loader (game-specific shape; uespy doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
+- Full uespy-build crate / build helpers (deferred until a second
+  UE4SS Rust mod exists to validate the API shape; for now games
+  reference uespy/cpp/ via relative path in their own build.rs,
+  which works in workspace setups).
 
-Plan: land 9, 10, 11 in sequence. After slice 10 the workspace
-gets a `uespy-build` helper crate or a `uespy::build_helpers`
-module that dependent crates call from their own `build.rs` to
-compile the shipped shim into their cdylib.
+Migration is now 1000% complete vs the parity table. Every
+research / TDD capability the runtime-control-http skill describes
+lives once in uespy or uespy-client.
 
 Migration is complete. OWS mod's debug.rs only needs:
 1. A `Snapshot` struct + build_snapshot

@@ -17,6 +17,7 @@ pub mod args;
 pub mod counters;
 pub mod envelope;
 pub mod hex;
+pub mod hook;
 pub mod log;
 pub mod ops;
 pub mod pe_queue;

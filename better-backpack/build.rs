@@ -19,6 +19,9 @@ fn main() {
     let shim = cpp_dir.join("shim.cpp");
     let imgui_dir = cpp_dir.join("imgui");
     let ue4ss_lib_dir = Path::new(&manifest_dir).join("ue4ss");
+    // Shared UE4SS C++ headers live under uespy/cpp/ so every Rust
+    // UE4SS mod links the same vetted CppUserModBase mirror.
+    let uespy_cpp_dir = Path::new(&manifest_dir).join("..").join("uespy").join("cpp");
 
     println!("cargo:rerun-if-changed={}", shim.display());
     println!("cargo:rerun-if-changed={}", imgui_dir.display());
@@ -35,6 +38,7 @@ fn main() {
         .cpp(true)
         .std("c++20")
         .include(&imgui_dir)
+        .include(&uespy_cpp_dir)
         .file(&shim)
         .file(imgui_dir.join("imgui.cpp"))
         .file(imgui_dir.join("imgui_draw.cpp"))

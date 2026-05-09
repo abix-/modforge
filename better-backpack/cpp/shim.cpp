@@ -42,99 +42,13 @@
 #include <vector>
 
 // Vendored ImGui (better-backpack/cpp/imgui/) at the same v1.92.1 UE4SS
-// uses. Included before the UE4SS forward decls because some of those
-// reference ImGuiContext / ImGuiMemAllocFunc.
+// uses. Must come before uespy_imgui_bridge.hpp.
 #include "imgui.h"
 
-#define RC_UE4SS_API __declspec(dllimport)
-
-namespace RC {
-
-namespace GUI { class GUITab; }
-namespace LuaMadeSimple { class Lua; }
-
-using CharType = wchar_t;
-using StringType = std::basic_string<CharType>;
-using StringViewType = std::basic_string_view<CharType>;
-#define STR(s) L##s
-
-class CppUserModBase {
-  protected:
-    std::vector<std::shared_ptr<GUI::GUITab>> GUITabs{};
-
-  public:
-    StringType ModName{};
-    StringType ModVersion{};
-    StringType ModDescription{};
-    StringType ModAuthors{};
-    StringType ModIntendedSDKVersion{};
-
-  public:
-    RC_UE4SS_API CppUserModBase();
-    RC_UE4SS_API virtual ~CppUserModBase();
-
-  public:
-    // ORDER MATTERS. Must match RE-UE4SS/UE4SS/include/Mod/CppUserModBase.hpp
-    // exactly, including all deprecated overloads and the trailing post-1.0
-    // additions, otherwise UE4SS will dispatch to the wrong slot or jump
-    // past the vtable.
-    RC_UE4SS_API virtual auto on_update() -> void {}
-    RC_UE4SS_API virtual auto on_unreal_init() -> void {}
-    RC_UE4SS_API virtual auto on_ui_init() -> void {}
-    RC_UE4SS_API virtual auto on_program_start() -> void {}
-    RC_UE4SS_API virtual auto on_lua_start(StringViewType,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            std::vector<LuaMadeSimple::Lua*>&) -> void {}
-    RC_UE4SS_API virtual auto on_lua_start(LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            std::vector<LuaMadeSimple::Lua*>&) -> void {}
-    RC_UE4SS_API virtual auto on_lua_stop(StringViewType,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           std::vector<LuaMadeSimple::Lua*>&) -> void {}
-    RC_UE4SS_API virtual auto on_lua_stop(LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           std::vector<LuaMadeSimple::Lua*>&) -> void {}
-    RC_UE4SS_API virtual auto on_dll_load(StringViewType dll_name) -> void {}
-    RC_UE4SS_API virtual auto render_tab() -> void {}
-    RC_UE4SS_API virtual auto on_lua_start(StringViewType,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua*) -> void {}
-    RC_UE4SS_API virtual auto on_lua_start(LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua&,
-                                            LuaMadeSimple::Lua*) -> void {}
-    RC_UE4SS_API virtual auto on_lua_stop(StringViewType,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua*) -> void {}
-    RC_UE4SS_API virtual auto on_lua_stop(LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua&,
-                                           LuaMadeSimple::Lua*) -> void {}
-    // Not dllimport: UE4SS.lib doesn't export this symbol (newer addition,
-    // possibly only inlined in the public header). Use our local inline body.
-    virtual auto on_cpp_mods_loaded() -> void {}
-
-  protected:
-    // Adds an ImGui tab to UE4SS's debug overlay, owned by this mod.
-    // Tab is auto-cleaned up on mod destruct. Symbol mangling depends
-    // on access specifier so this MUST stay protected to match the
-    // real UE4SS header (CppUserModBase.hpp:212).
-    using RenderFunctionType = void (*)(CppUserModBase*);
-    RC_UE4SS_API auto register_tab(StringViewType tab_name,
-                                    RenderFunctionType render) -> void;
-};
-
-} // namespace RC
+// Layout-critical UE4SS CppUserModBase mirror. Sourced from uespy so
+// every UE4SS Rust mod links the same vetted vtable layout.
+#include "uespy_cppusermodbase.hpp"
+#include "uespy_imgui_bridge.hpp"
 
 // ---------------------------------------------------------------------
 // Debug logging. Writes to <module-dir>/cpp_shim.log so we can see what
@@ -242,16 +156,7 @@ extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
 // tab is being drawn, so a context is guaranteed to exist.
 // ---------------------------------------------------------------------
 
-namespace RC {
-class UE4SSProgram {
-  public:
-    RC_UE4SS_API static auto get_current_imgui_context() -> ImGuiContext*;
-    RC_UE4SS_API static auto get_current_imgui_allocator_functions(
-        ImGuiMemAllocFunc* alloc_func,
-        ImGuiMemFreeFunc*  free_func,
-        void**             user_data) -> void;
-};
-} // namespace RC
+// RC::UE4SSProgram is forward-declared in uespy_imgui_bridge.hpp.
 
 static void rpg_enable_imgui() {
     ImGui::SetCurrentContext(RC::UE4SSProgram::get_current_imgui_context());

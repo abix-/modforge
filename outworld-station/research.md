@@ -154,10 +154,10 @@ state shape + handlers.
 | Win32 process probes (threads, CPU, regions, memory, thread sampler) | done | `uespy::winproc`                |
 | Test client (`Api<S>`, `try_connect`, `op`, `op_ok`, `snapshot`, `call_ufunction`) | done | `uespy_client::Api`     |
 | File + console DLL logger (AllocConsole / GetModuleFileNameW) | done | `uespy::log`                            |
-| PE / vtable hook framework (rewrite slots, install trampolines) | **gap** | better-backpack `src/hook/` (~220 LoC; zero coupling — slice 9) |
-| UE4SS C++ shim (`CppUserModBase` ABI mirror)     | **gap** | better-backpack `cpp/shim.cpp` (~450 LoC; slice 10)        |
-| `build.rs` glue to compile the C++ shim into a cdylib | **gap** | better-backpack `build.rs` (~60 LoC; slice 10)         |
-| Test perf-log writer (`open_perf_log` tee stdout + `perf-runs/<name>-<ts>.txt`) | **gap** | better-backpack `tests/common/mod.rs` (~50 LoC; slice 11) |
+| PE / vtable hook framework (`vtable::write_slot`, RAII `ProcessEventHook`, lock-free registry) | done | `uespy::hook` |
+| UE4SS C++ shim layout-critical mirror (`CppUserModBase`, `UE4SSProgram` imgui bridge) | done | `uespy/cpp/uespy_cppusermodbase.hpp`, `uespy_imgui_bridge.hpp` |
+| `build.rs` glue                                  | partial | game's build.rs adds `uespy/cpp/` to its include path; full uespy-build crate deferred until second mod exists |
+| Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `uespy_client::perf` |
 | Settings JSON loader pattern                      | n/a    | game-specific shape — uespy intentionally doesn't enforce |
 | Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |
 

@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 
 pub mod hex;
 pub mod parms;
+pub mod perf;
 
 pub use serde_json;
 

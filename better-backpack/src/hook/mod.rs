@@ -1,8 +1,7 @@
-// VTable patching primitives + RAII ProcessEvent hook.
+// Re-export of uespy's hook framework under the historic `hook` name.
+// Implementation lives in `uespy::hook`. This shim keeps existing
+// `crate::hook::*` call sites working without churn.
 
-#![allow(dead_code)]
-
-pub mod process_event;
-pub mod vtable;
-
-pub use process_event::{OriginalProcessEvent, ProcessEventHook};
+pub use uespy::hook::process_event;
+pub use uespy::hook::vtable;
+pub use uespy::hook::{OriginalProcessEvent, ProcessEventHook};
