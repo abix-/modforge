@@ -257,6 +257,275 @@ Creature attacks carry non-zero `type_flags` (`ESurvivalDamageTypeFlags`
 bits encode physical / chill / sizzle / etc.) and pass the gate
 normally, so the player still takes hostile damage as expected.
 
+#### Research finding: `AddHealth` bypasses the mask (2026-05-09)
+
+Drove via `tests/explore_apply_damage_gate.rs` against the live
+debug endpoint. With `impact_resistance` at level 100 and the
+mask set to `0xFFFFFFFF` on the player HC, calling
+`UHealthComponent::AddHealth(20.0, nullptr)` via process_event:
+
+```
+current_damage_before: 37.62
+current_damage_after:  17.62
+delta: 20.0
+```
+
+**The canonical heal entry point is not gated by
+`RequiredDamageTypeFlags`.** This rules out the simplest
+hypothesis (bandages → AddHealth → mask blocks them) -- if
+bandages used AddHealth, they would not be blocked, but they ARE
+blocked in-game.
+
+Conclusion: bandages take a different path. Hypotheses:
+
+1. **Status-effect-driven**: bandage adds a row from
+   `Table_StatusEffects` whose tick eventually calls
+   `ApplyDamageFromInfo` with negative damage and `type_flags=0`
+   -- hits the same mask gate that rejects fall / environmental
+   damage.
+2. **Direct ApplyDamageFromInfo**: bandage code calls
+   `ApplyDamageFromInfo` directly with negative damage.
+3. **Separate Heal UFunction**: a heal-specific function that
+   internally consults the same mask field for some reason.
+
+Next experiment: while the player uses a bandage, watch the
+snapshot's `status_effects` list for an entry that wasn't there
+before (the bandage row on the data table). If one appears, we
+have hypothesis 1 confirmed and can read the row's `Type` /
+`Value` to identify what stat it modifies.
+
+#### Result: hypothesis 1 (status-effect tick) is RULED OUT (2026-05-09)
+
+User used a bandage in-game with `impact_resistance` at level 100
+(mask `0xFFFFFFFF` active). Snapshot before vs after:
+
+- **HP unchanged**: CurrentDamage = 134.0 before AND after. The
+  bandage did NOT heal, confirming the user-visible bug.
+- **`status_effects` count UNCHANGED**: 16 baseline rows -> 15
+  after (the only delta is `PetRestriction` dropping off,
+  unrelated). No bandage-flavored row was added at any point we
+  observed.
+- **`damage_ring` EMPTY**: zero `Multicast*` /
+  `ApplyDamage*` events fired on the player's HealthComponent
+  during the bandage attempt.
+
+This rules out hypothesis 1 (bandage adds a heal-tick status
+effect that calls ApplyDamageFromInfo) and hypothesis 2 (bandage
+calls ApplyDamageFromInfo directly with negative damage). Both
+would have shown up in `damage_ring` because kill_hook's
+ProcessEvent trampoline catches every PE call on the player's
+UHealthComponent vtable -- and we saw none.
+
+Remaining hypotheses:
+
+3. **Bandage routes through `UHealthComponent::AddHealth`
+   directly**, and the heal is suppressed somewhere downstream.
+   The kill_hook ring's current filter does NOT capture
+   `AddHealth` calls (only damage-shaped functions); next iter
+   widen the filter and try again. If bandage IS calling
+   AddHealth, we'll see it in the ring AND the (independently
+   tested) AddHealth path bypasses the mask -- meaning the
+   block is somewhere ELSE that intercepts AddHealth's effect.
+4. **Bandage consume itself is suppressed.** The use animation
+   may play but the actual consume / call to AddHealth never
+   fires, suppressed by something tied to `impact_resistance`
+   or its side effects (e.g. the mask write triggers a state
+   on the consume side). Disconfirmed easily: did the bandage
+   item count decrement on use? If yes, suppression is
+   downstream of consume; if no, it's at the consume gate.
+5. **Heal applies then is instantly reverted.** AddHealth
+   succeeds, CurrentDamage drops, then a tick later something
+   restores it. Would show as a brief CurrentDamage dip the
+   user notices but our snapshot misses (we capture state, not
+   transitions). Add a `current_damage_history` ring populated
+   on every kill_hook fire to observe this.
+
+Action: extend `kill_hook`'s filter to also capture `AddHealth`,
+`ServerAddHealth`, `ApplyHit`, `OnRest`. Re-run the bandage
+experiment. Either we see AddHealth fire (rules in hypothesis 3
+or 5) or we don't (hypothesis 4: consume is suppressed -- check
+inventory count delta).
+
+#### User clarification: bandages are heal-over-time (HoT)
+
+**Bandages don't heal instantly -- they tick over several
+seconds.** This changes the experiment shape. The post-bandage
+snapshot we took caught state AFTER the HoT was supposed to run,
+but BEFORE the HoT had necessarily completed. Possibilities now:
+
+- The HoT status effect was ADDED briefly (during the heal
+  window) then REMOVED, and our single post-snapshot missed it.
+- The HoT status effect was added and is still active right now,
+  but its row name doesn't match what we expected. Re-check the
+  diff carefully.
+- The HoT was BLOCKED entirely -- our impact_resistance mask
+  (0xFFFFFFFF) somehow prevents the AddEffect call, so the
+  effect never gets added to the StatusEffects array.
+
+The user's instinct: "we're blocking the heal over time
+somehow." Most plausible mechanism: when AddEffect is called for
+the bandage row, the engine consults something that the mask
+write touches -- maybe `RequiredDamageTypeFlags` is read by
+StatusEffectComponent on every effect-add for "is this player
+damageable", and the all-bits-set value rejects the heal-tagged
+effect.
+
+Refined experiment plan:
+
+1. Snapshot baseline (mask on).
+2. User uses bandage.
+3. Snapshot within ~500ms (catch HoT mid-tick).
+4. Snapshot again at ~3s (during HoT).
+5. Snapshot at ~10s (post-HoT).
+
+If a new row appears in any of (3)/(4) but not the baseline, we
+have the HoT effect captured. Read its Type and Value to learn
+the mechanism.
+
+If NO new row appears in any of those windows, the AddEffect
+call itself is being suppressed -- and the suppression is
+specifically tied to the mask being set (toggle off and repeat
+to confirm).
+
+#### Result: side-by-side on/off comparison (2026-05-09)
+
+User toggled impact_resistance OFF and used a bandage. Healed
+visibly: CurrentDamage 134.0 -> 76.5 (~57.5 HP restored over the
+HoT duration). Critical: **the snapshot looked identical to the
+mask-on bandage attempt in every respect EXCEPT HP**:
+
+|                          | mask ON (broken)        | mask OFF (working)      |
+| ------------------------ | ----------------------- | ----------------------- |
+| `required_damage_flags`  | 0xFFFFFFFF              | 0x00000000              |
+| `current_damage`         | 134.0 -> 134.0          | 134.0 -> 76.5           |
+| status_effects rows      | 15 (no new entry)       | 15 (no new entry)       |
+| status_effects names     | identical               | identical               |
+| damage_ring events       | 0                       | 0                       |
+
+**Bandages do not add a row to the StatusEffects array AND do
+not fire any UFunction kill_hook intercepts.** Yet the heal
+works. The path is:
+
+1. Not the StatusEffectComponent.StatusEffects array (no row
+   diff).
+2. Not any UHealthComponent UFunction we filter
+   (Multicast/ApplyDamage*/ApplyHit/ApplyDamage).
+3. Either on a different class's ProcessEvent vtable, or a
+   native C++ call that bypasses ProcessEvent entirely (similar
+   to how native ApplyFallDamage bypassed our kill_hook on the
+   fall-damage investigation).
+
+Refined hypothesis: bandages call `UHealthComponent::AddHealth`
+or `ServerAddHealth` directly. We proved (via simulate_add_health)
+that AddHealth bypasses the mask. So the question becomes: is
+the bandage call site even reaching AddHealth when the mask is
+on, or is something earlier in the chain rejecting it?
+
+Action: extend kill_hook ring filter to capture EVERY UFunction
+call on the player's HealthComponent vtable, not just
+damage-shaped ones. Re-run the on-vs-off bandage experiment.
+
+If `AddHealth` shows up in the ring with mask OFF but NOT with
+mask ON, the bandage->AddHealth chain is being blocked
+upstream by the mask. We then trace upstream.
+
+If `AddHealth` shows up in BOTH (with mask off AND on), but HP
+changes only with mask off, something downstream of AddHealth
+is reverting the heal -- the simplest culprit being a tick that
+re-applies CurrentDamage or fights the heal.
+
+If `AddHealth` does NOT show up at all in either run, the heal
+goes through a different class entirely. Hook UInventoryComponent
+or UConsumableComponent ProcessEvent slots and re-test.
+
+#### Result: AddHealth via the generic `call` primitive (2026-05-09)
+
+Test: `tests/explore_bandage_path.rs::addhealth_with_mask_on_vs_off`.
+Drove `UHealthComponent::AddHealth(20.0, nullptr)` through the
+generic `call` op (no mod-side rebuild needed -- the test wrote
+the parm struct itself).
+
+**With mask OFF**: `CurrentDamage` 32.79 -> 12.79 (delta = 20).
+Heal worked. `damage_ring` captured one entry:
+
+```
+fn=AddHealth damage=0 flags=0x00000000 type_flags=0x00000000
+```
+
+This is the first direct evidence that AddHealth, when invoked
+explicitly, **does fire through ProcessEvent on the player's
+HealthComponent vtable**. Our wider kill_hook capture sees it.
+That means: if bandages WERE calling AddHealth, we would see it
+in the ring during a real bandage use. We did not. So bandages
+do NOT call AddHealth (at least not on the player's local
+HealthComponent vtable; ServerAddHealth on a remote replication
+path remains a possibility).
+
+**With mask ON**: AddHealth call timed out at the HTTP layer
+without completing. Game itself remained responsive after.
+Diagnosis: NOT a crash. The PE-queue drain in `kill_hook`'s
+trampoline only fires when the engine calls a UFunction on a
+player's `UHealthComponent` vtable -- and with the mask
+rejecting all `type_flags=0` events, the multicast traffic that
+normally drives the trampoline drops to ~zero. The queued
+AddHealth op sits unread until ureq's 5s timeout. Workaround
+during research: drive activity in-game (move, take a hit) to
+fire multicasts that drain the queue. Proper fix:
+high-frequency drain site (UE4SS's
+`RegisterProcessEventPreCallback`, or a `Tick` UFunction hook).
+Tracked in `docs/todo.md` "Endpoint parity gap".
+
+#### Updated hypothesis tree
+
+| Path | Status |
+| --- | --- |
+| Bandages add a status-effect row that ticks ApplyDamageFromInfo | RULED OUT (no row appeared, ring empty) |
+| Bandages call ApplyDamageFromInfo directly with negative damage | RULED OUT (would show in ring; ring empty) |
+| Bandages call `UHealthComponent::AddHealth` on the player's local vtable | RULED OUT (would show in ring during real bandage; nothing observed) |
+| Bandages call `UHealthComponent::ServerAddHealth` (remote replicated path) | OPEN -- ServerAddHealth doesn't go through the local vtable; need to install a separate hook to see it |
+| Bandages route through a UFunction on a different class entirely (UConsumableComponent, UItem subclass, etc.) | OPEN -- broaden the trampoline to a non-HealthComponent class to see |
+| Bandages use a native C++ call that bypasses ProcessEvent entirely (like the native fall-damage path we found earlier) | OPEN -- if so, `damage_ring` will never see anything; need a native detour |
+
+Next step: extend the trampoline (or install a new one) on a
+class likely to mediate consumable use -- `UConsumableComponent`
+or the player's BP class. Re-run the bandage observation test.
+
+Caveat: `simulate_apply_damage` (calling `ApplyDamageFromInfo`
+via process_event) **crashes the game** when invoked from inside
+the `kill_hook` PE trampoline. The drain site is itself inside a
+ProcessEvent call; re-entering with another ProcessEvent on a
+function that triggers replication appears to deadlock or AV.
+Tracked in `todo.md` "Endpoint parity gap".
+
+#### Critical regression: bandages / healing items blocked (2026-05-09)
+
+**Confirmed in-game**: with `impact_resistance` enabled at any
+level, **bandages do not heal**. Disabling impact_resistance (with
+the skill toggle) lets bandages work; re-enabling it blocks them
+again. Repro is binary -- enabling only impact_resistance in an
+otherwise-clean catalog reproduces the block. Other skills do not
+contribute.
+
+Mechanism: bandages and other healing items route through the
+same `ApplyDamage` entry as damage, but with negative `Damage` and
+`type_flags = 0`. The mask gate `(incoming.type_flags & Required)
+== 0 -> reject` rejects the heal event before it can decrement
+`CurrentDamage`.
+
+This makes the current implementation of `impact_resistance` a
+**hard regression on a core gameplay item**. The skill is unusable
+as currently shipped without crippling healing. The path forward is
+the status-effect migration tracked in [`todo.md`](todo.md):
+move `impact_resistance` to `EStatusEffectType::DamageReductionMultiplier`
+(or `FallDamage`), filtered by damage type so healing events are
+not affected. Until that lands, players must keep the skill toggled
+off (or refunded) when they want to heal.
+
+The toggle now properly clears the mask -- the apply step writes
+either `mask` (when level>0 AND enabled) or the captured vanilla
+value (when level==0 OR disabled). See
+[`changelog.md`](changelog.md) 2026-05-09 entry.
+
 #### Observed traces (rock collision and hazard)
 
 Running into a rock at high speed produces *two* consecutive damage

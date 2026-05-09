@@ -175,6 +175,15 @@ pub fn update_slot_count(slot_count: i32) {
     }
 }
 
+/// Currently-applied slot count (after backpack apply). 0 if the
+/// hook hasn't installed yet. Used by the debug snapshot.
+pub fn current_slot_count() -> i32 {
+    STATE
+        .get()
+        .map(|s| s.slot_count.load(Ordering::Acquire))
+        .unwrap_or(0)
+}
+
 fn lookup(cls: &UClass, owner: &str, name: &str) -> Result<usize, &'static str> {
     cls.get_function(owner, name)
         .map(|f| f as *const UFunction as usize)

@@ -91,6 +91,13 @@ fn on_event(
     parms: *mut c_void,
     original: OriginalProcessEvent,
 ) {
+    // Drain the debug PE queue here. The re-entrance guard
+    // inside `drain_pending` prevents recursive draining when a
+    // queued op itself triggers PE fan-out (e.g. AddHealth ->
+    // OnRep_CurrentDamage -> kill_hook fires again). The inner
+    // call sees DRAINING=true and returns immediately.
+    crate::debug::drain_pending();
+
     let Some(state) = STATE.get() else {
         unsafe { original.call(this, function, parms) };
         return;
@@ -99,9 +106,13 @@ fn on_event(
     let fn_id = function as *const UFunction as usize;
     let is_target = fn_id == state.multicast_handle_effects_with_damage_flags;
 
-    // Diagnostic: log every PE event arriving on a player's HealthComponent
-    // so we can identify which function/flags carry fall damage. Before
-    // forwarding so we observe the call as it arrives.
+    // Diagnostic: capture every PE event arriving on a player's
+    // HealthComponent. The narrow filter below picks out
+    // damage-shaped functions whose parm layout we know for the
+    // log line; everything ELSE still pushes a record-only entry
+    // into the debug damage_ring with damage=0 so research can
+    // see what fires (e.g. AddHealth, ServerAddHealth, OnRest,
+    // and any heal path bandages might use).
     if !parms.is_null()
         && let Some(owner) = this.outer()
         && owner.full_name().contains("BP_SurvivalPlayerCharacter")
@@ -116,6 +127,28 @@ fn on_event(
                 | "ApplyHit"
                 | "ApplyDamage"
         );
+        if !is_damage_fn {
+            // Quiet capture so the ring shows everything (heal
+            // candidates included) without spamming the log.
+            let cd_now = unsafe {
+                this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
+                    .cast::<f32>()
+                    .read_unaligned()
+            };
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            crate::debug::record_damage_event(crate::debug::DamageEvent {
+                at_secs: now_secs,
+                function: fn_name.clone(),
+                damage: 0.0,
+                damage_flags: 0,
+                type_flags: 0,
+                current_damage_before: Some(cd_now),
+                current_damage_after: None,
+            });
+        }
         if is_damage_fn {
             let (damage, dflags, dtflags) = match fn_name.as_str() {
                 "MulticastHandleEffectsWithDamageFlags" => unsafe {
@@ -149,6 +182,27 @@ fn on_event(
                 dflags,
                 dtflags
             );
+            // Capture into the debug damage-ring so the snapshot
+            // endpoint can show it. Read-only -- no process_event
+            // re-entry from this site.
+            let cd_now = unsafe {
+                this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
+                    .cast::<f32>()
+                    .read_unaligned()
+            };
+            let now_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            crate::debug::record_damage_event(crate::debug::DamageEvent {
+                at_secs: now_secs,
+                function: fn_name.clone(),
+                damage,
+                damage_flags: dflags,
+                type_flags: dtflags,
+                current_damage_before: Some(cd_now),
+                current_damage_after: None,
+            });
             // LastDamageInfo at +0x3B0 on UHealthComponent. It is populated
             // for the damage event currently being multicast, so reading
             // here gives us the full FDamageInfo for whatever just hit.

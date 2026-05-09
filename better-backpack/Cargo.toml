@@ -29,6 +29,7 @@ widestring = { workspace = true }
 memoffset = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tiny_http = "0.12"
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -43,3 +44,9 @@ windows-sys = { workspace = true, features = [
 
 [build-dependencies]
 cc = "1"
+
+[dev-dependencies]
+# Integration tests in tests/integration/ hit the mod's debug HTTP
+# endpoint. Blocking client; tests must run with --test-threads=1
+# because they share game state.
+ureq = { version = "2", default-features = false, features = ["json"] }

@@ -23,7 +23,6 @@
 // Movement now also mirrors writes onto live player pawns because CDO
 // updates alone were not enough to produce an obvious gameplay effect.
 
-use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use crate::bbp_log;
@@ -36,20 +35,76 @@ use crate::settings::Settings;
 use crate::survival;
 
 // ASurvivalCharacter.HealthComponent ptr (Maine_classes.hpp:5782).
-const ASC_HEALTH_COMPONENT: usize = 0x1340;
+pub(crate) const ASC_HEALTH_COMPONENT: usize = 0x1340;
 // ASurvivalCharacter.CharMovementComponent ptr (Maine_classes.hpp:5790).
-const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
+pub(crate) const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
 
 static VANILLA_HUNGER: OnceLock<f32> = OnceLock::new();
 static VANILLA_THIRST: OnceLock<f32> = OnceLock::new();
 static VANILLA_FALL_DAMAGE_RATIO: OnceLock<f32> = OnceLock::new();
 static VANILLA_MAX_HEALTH: OnceLock<f32> = OnceLock::new();
 
+pub(crate) fn vanilla_hunger() -> Option<f32> {
+    VANILLA_HUNGER.get().copied()
+}
+pub(crate) fn vanilla_thirst() -> Option<f32> {
+    VANILLA_THIRST.get().copied()
+}
+pub(crate) fn vanilla_fall_damage_ratio() -> Option<f32> {
+    VANILLA_FALL_DAMAGE_RATIO.get().copied()
+}
+pub(crate) fn vanilla_max_health() -> Option<f32> {
+    VANILLA_MAX_HEALTH.get().copied()
+}
+
+/// Snapshot every captured `(offset, value)` pair we have for the
+/// HC u32 mask family. Used by the debug snapshot endpoint.
+pub(crate) fn vanilla_hc_masks_snapshot() -> Vec<(usize, u32)> {
+    VANILLA_HC_U32_MASK
+        .lock()
+        .ok()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+
+/// All currently-disabled skill ids. The toggle UI state.
+pub(crate) fn disabled_skills_snapshot() -> Vec<&'static str> {
+    DISABLED_SKILLS
+        .lock()
+        .ok()
+        .map(|g| g.clone())
+        .unwrap_or_default()
+}
+// Per-(offset) vanilla `UHealthComponent` u32 mask values, captured
+// the first time we see a non-default value. Used by
+// PlayerHealthCompU32Mask to restore the original mask when the
+// skill is at level 0 or disabled (otherwise the mask we wrote
+// would stay set, blocking everything that comes through
+// ApplyDamage with type_flags=0 -- including healing items like
+// bandages, which use negative damage).
+static VANILLA_HC_U32_MASK: std::sync::Mutex<Vec<(usize, u32)>> = std::sync::Mutex::new(Vec::new());
+
+fn capture_vanilla_hc_mask(offset: usize, value: u32) {
+    if let Ok(mut g) = VANILLA_HC_U32_MASK.lock()
+        && !g.iter().any(|(o, _)| *o == offset)
+    {
+        g.push((offset, value));
+    }
+}
+
+pub(crate) fn vanilla_hc_mask(offset: usize) -> Option<u32> {
+    VANILLA_HC_U32_MASK
+        .lock()
+        .ok()
+        .and_then(|g| g.iter().find(|(o, _)| *o == offset).map(|(_, v)| *v))
+}
+
 // Process-global per-skill enable flags. Default ON. Toggling fires
 // `apply_one` so the change is immediate. Not persisted across
 // launches: cheap to reapply, and avoids a save-schema bump for a
 // runtime convenience.
 static DISABLED_SKILLS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+
 
 pub fn is_skill_enabled(skill_id: &str) -> bool {
     let Ok(g) = DISABLED_SKILLS.lock() else {
@@ -166,7 +221,12 @@ pub fn apply_one(state: &PlayerState, settings: &Settings, skill_id: &str) {
 
 fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
     let level = state.skill_levels.get(skill.id).copied().unwrap_or(0);
-    if level == 0 {
+    // Most variants short-circuit at level 0 (no work to do, vanilla
+    // values are already in place). PlayerHealthCompU32Mask is the
+    // exception: once the mask has been written we MUST be able to
+    // restore the captured vanilla on disable/level-0, otherwise the
+    // mask stays set and blocks bandages / healing.
+    if level == 0 && !matches!(skill.effect, SkillEffect::PlayerHealthCompU32Mask { .. }) {
         return;
     }
     match &skill.effect {
@@ -315,24 +375,46 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             );
         }
         SkillEffect::PlayerHealthCompU32Mask { offset, mask, .. } => {
-            // Binary gate: any level > 0 sets the mask. Walk player CDOs
-            // and live pawns -- the mask stays set for the life of the
-            // session, like Armor's BaseDamageReduction.
+            // Binary gate. When the skill is active (level>0 AND
+            // enabled), write `mask` to the HC u32 field on every
+            // player CDO and the live pawn. When the skill is off
+            // (level==0 OR disabled), restore the captured vanilla
+            // value. This is the path that blocks bandages /
+            // healing for impact_resistance: the engine routes
+            // negative-damage healing through the same ApplyDamage
+            // gate that consults RequiredDamageTypeFlags, so leaving
+            // the mask = 0xFFFFFFFF rejects healing too.
+            let active = level > 0 && is_skill_enabled(skill.id);
+            let target_mask = if active {
+                *mask
+            } else {
+                vanilla_hc_mask(*offset).unwrap_or(0)
+            };
             let cdo_count = apply_to_player_character_cdos(|player_cdo| {
                 if let Some(hc) = read_component_ptr(player_cdo, ASC_HEALTH_COMPONENT) {
-                    write_u32(hc, *offset, *mask);
+                    let cur = read_u32(hc, *offset);
+                    if cur != *mask {
+                        capture_vanilla_hc_mask(*offset, cur);
+                    }
+                    write_u32(hc, *offset, target_mask);
                 }
             });
             let live_count = apply_to_live_player_characters(|player| {
                 if let Some(hc) = read_component_ptr(player, ASC_HEALTH_COMPONENT) {
-                    write_u32(hc, *offset, *mask);
+                    let cur = read_u32(hc, *offset);
+                    if cur != *mask {
+                        capture_vanilla_hc_mask(*offset, cur);
+                    }
+                    write_u32(hc, *offset, target_mask);
                 }
             });
             bbp_log!(
-                "rpg/apply: {} level={} mask=0x{:08x} written to {} player HC CDO(s), {} live player HC(s)",
+                "rpg/apply: {} level={} active={} mask=0x{:08x} (vanilla=0x{:08x}) written to {} player HC CDO(s), {} live player HC(s)",
                 skill.id,
                 level,
-                mask,
+                active,
+                target_mask,
+                vanilla_hc_mask(*offset).unwrap_or(0),
                 cdo_count,
                 live_count
             );
@@ -445,17 +527,28 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     );
                 }
             });
-            let update_count = invoke_update_custom_settings_for_fall_damage(reduction);
+            // Fall mitigation that actually works lives elsewhere:
+            // the velocity-stomp on `Velocity.Z` in `fall_hook.rs`
+            // (validated, drops fall damage to zero at level 100) and
+            // `RequiredDamageTypeFlags = 0xFFFFFFFF` from
+            // impact_resistance for environmental damage. The
+            // FallDamageRatio / GMS / SMMC multiplier writes above
+            // are belt-and-suspenders -- the native ApplyFallDamage
+            // path doesn't actually consult them. We do NOT call
+            // `UpdateCustomSettings` because that UFunction triggers
+            // the replication path on a Net-flagged field, which
+            // hangs the game when invoked mid-session from any
+            // non-game thread (toggle / spend / refund / poller
+            // tick). See changelog 2026-05-09 for the deadlock log.
             bbp_log!(
-                "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s), {} mode-manager component(s); UpdateCustomSettings invoked on {} component(s)",
+                "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s), {} mode-manager component(s)",
                 skill.id,
                 level,
                 reduction,
                 cdo_count,
                 live_count,
                 gms_count,
-                smmc_count,
-                update_count
+                smmc_count
             );
         }
         SkillEffect::Runtime { .. } => {
@@ -474,12 +567,16 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
 // Low-level helpers shared by the SkillEffect arms.
 // ---------------------------------------------------------------------
 
-fn read_f32(obj: &UObject, offset: usize) -> f32 {
+pub(crate) fn read_f32(obj: &UObject, offset: usize) -> f32 {
     unsafe { (obj.field_ptr(offset) as *const f32).read_unaligned() }
 }
 
 fn write_f32(obj: &UObject, offset: usize, value: f32) {
     unsafe { (obj.field_ptr(offset) as *mut f32).write_unaligned(value) }
+}
+
+pub(crate) fn read_u32(obj: &UObject, offset: usize) -> u32 {
+    unsafe { (obj.field_ptr(offset) as *const u32).read_unaligned() }
 }
 
 fn write_u32(obj: &UObject, offset: usize, value: u32) {
@@ -490,7 +587,7 @@ fn write_bool(obj: &UObject, offset: usize, value: bool) {
     unsafe { (obj.field_ptr(offset) as *mut u8).write(if value { 1 } else { 0 }) }
 }
 
-fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UObject> {
+pub(crate) fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UObject> {
     unsafe {
         let p: *mut UObject = parent
             .field_ptr(offset)
@@ -509,7 +606,57 @@ fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
 
 /// Walk all live player SurvivalCharacter instances (non-CDOs) whose
 /// full name marks them as the player class, call `f` on each.
-fn apply_to_live_player_characters(mut f: impl FnMut(&UObject)) -> usize {
+/// Read each instance of `class_name` and pass the first one
+/// found to `f`. Returns true if any was found. Used by the debug
+/// snapshot to read singleton-style or per-game-mode objects
+/// (UGlobalCombatData, USurvivalGameModeSettings, etc.).
+pub(crate) fn first_instance_of(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
+    let Some(rt) = sdk::try_runtime() else {
+        return false;
+    };
+    let Some(class) = sdk::find_class_fast(class_name) else {
+        return false;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return false;
+    }
+    for obj in view.iter() {
+        if !obj.is_a(class) || obj.is_default_object() {
+            continue;
+        }
+        f(obj);
+        return true;
+    }
+    false
+}
+
+/// Read the class default object of `class_name` and pass to `f`.
+/// Returns true if found. Used to inspect SurvivalComponent CDO
+/// (hunger/thirst drain rates), ASurvivalCharacter CDO (combat
+/// multipliers), etc.
+pub(crate) fn class_default_object(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
+    let Some(rt) = sdk::try_runtime() else {
+        return false;
+    };
+    let Some(class) = sdk::find_class_fast(class_name) else {
+        return false;
+    };
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return false;
+    }
+    for obj in view.iter() {
+        if !obj.is_a(class) || !obj.is_default_object() {
+            continue;
+        }
+        f(obj);
+        return true;
+    }
+    false
+}
+
+pub(crate) fn apply_to_live_player_characters(mut f: impl FnMut(&UObject)) -> usize {
     apply_to_player_characters(false, &mut f)
 }
 
@@ -560,83 +707,6 @@ fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
             continue;
         }
         write_f32(obj, offset, value);
-        count += 1;
-    }
-    count
-}
-
-/// Mirror what the in-game difficulty UI does at runtime: read the live
-/// `FCustomGameModeSettings` struct off `USurvivalModeManagerComponent`,
-/// mutate `FallDamageMultiplier`, and call back into the native
-/// `UpdateCustomSettings(FCustomGameModeSettings)` UFunction via
-/// ProcessEvent. That triggers the engine's own write + OnRep + cache
-/// invalidation path, which our raw memory write to +0x130 does not.
-///
-/// Returns the number of components on which the call was invoked.
-fn invoke_update_custom_settings_for_fall_damage(reduction: f32) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
-        return 0;
-    };
-    let Some(class) = sdk::find_class_fast("SurvivalModeManagerComponent") else {
-        return 0;
-    };
-    let Some(update_fn) = class.get_function("SurvivalModeManagerComponent", "UpdateCustomSettings")
-    else {
-        bbp_log!(
-            "rpg/apply: UpdateCustomSettings UFunction not found on SurvivalModeManagerComponent"
-        );
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-
-    let mut count = 0usize;
-    for obj in view.iter() {
-        if !obj.is_a(class) {
-            continue;
-        }
-        if obj.is_default_object() {
-            continue;
-        }
-
-        // Snapshot the live FCustomGameModeSettings struct so the call
-        // preserves every field except FallDamageMultiplier.
-        let mut parms = [0u8; skills::FCG_STRUCT_SIZE];
-        unsafe {
-            std::ptr::copy_nonoverlapping(
-                obj.field_ptr(skills::SMMC_CUSTOM_SETTINGS_OFFSET) as *const u8,
-                parms.as_mut_ptr(),
-                skills::FCG_STRUCT_SIZE,
-            );
-        }
-
-        // Capture vanilla on first sight.
-        let cur = unsafe {
-            (parms
-                .as_ptr()
-                .add(skills::FCG_FALL_DAMAGE_MULTIPLIER_OFFSET) as *const f32)
-                .read_unaligned()
-        };
-        if cur.is_finite() && cur > 0.0 {
-            let _ = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.set(cur);
-        }
-
-        if let Some(v) = VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER.get().copied() {
-            let target = v * (1.0 - reduction);
-            unsafe {
-                (parms
-                    .as_mut_ptr()
-                    .add(skills::FCG_FALL_DAMAGE_MULTIPLIER_OFFSET)
-                    as *mut f32)
-                    .write_unaligned(target);
-            }
-        }
-
-        unsafe {
-            obj.process_event(update_fn, parms.as_mut_ptr() as *mut c_void);
-        }
         count += 1;
     }
     count

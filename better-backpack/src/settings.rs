@@ -18,6 +18,18 @@ pub struct Settings {
     pub survival: SurvivalSettings,
     #[serde(default)]
     pub rpg: RpgSettings,
+    #[serde(default)]
+    pub debug: DebugSettings,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DebugSettings {
+    /// If set, the mod binds an HTTP debug endpoint at
+    /// `127.0.0.1:<port>` for integration tests and live state
+    /// introspection. Off (None) by default; opt in via
+    /// `"debug": { "http_port": 17171 }` in settings.json.
+    #[serde(default)]
+    pub http_port: Option<u16>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -140,11 +152,12 @@ fn settings_path() -> Option<PathBuf> {
 impl Settings {
     pub fn log_summary(&self) {
         bbp_log!(
-            "settings: slot_count={}, thirst_mult={:.3}, hunger_mult={:.3}, buggy_xp_mult={:.3}",
+            "settings: slot_count={}, thirst_mult={:.3}, hunger_mult={:.3}, buggy_xp_mult={:.3}, debug_http_port={:?}",
             self.inventory.slot_count,
             self.survival.thirst_multiplier,
             self.survival.hunger_multiplier,
-            self.rpg.buggy_kill_xp_multiplier
+            self.rpg.buggy_kill_xp_multiplier,
+            self.debug.http_port
         );
     }
 }

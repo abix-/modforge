@@ -34,6 +34,18 @@ static SETTINGS: OnceLock<Settings> = OnceLock::new();
 
 pub fn spawn(settings: Settings) {
     let _ = SETTINGS.set(settings);
+    return spawn_thread();
+}
+
+/// Read-only access to the settings loaded at init. Returns a
+/// clone so callers (e.g. the debug snapshot endpoint) don't
+/// hold the OnceLock open. None when world_loader hasn't
+/// initialized yet.
+pub fn loaded_settings() -> Option<Settings> {
+    SETTINGS.get().cloned()
+}
+
+fn spawn_thread() {
     unsafe {
         let h = CreateThread(
             ptr::null(),
@@ -48,6 +60,7 @@ pub fn spawn(settings: Settings) {
         }
     }
 }
+
 
 unsafe extern "system" fn thread_entry(_lpv: *mut c_void) -> u32 {
     let _ = std::panic::catch_unwind(run);

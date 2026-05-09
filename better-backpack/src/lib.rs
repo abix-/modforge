@@ -24,6 +24,7 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+pub mod debug;
 pub mod hook;
 pub mod inv_hook;
 pub mod log;
@@ -214,6 +215,10 @@ unsafe fn worker() {
     // player enters the world. Future skill-driven CDO patches will run
     // on the same activation transition.
     rpg::world_loader::spawn(settings.clone());
+
+    if let Some(port) = settings.debug.http_port {
+        debug::spawn(port);
+    }
 
     bbp_log!("init complete; worker thread exiting");
 }

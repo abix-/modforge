@@ -250,6 +250,107 @@ fn read_status_effect_row(row: *const u8) -> (u8, f32) {
     }
 }
 
+/// One entry in the player's StatusEffects array, formatted for
+/// the debug snapshot. Mirrors the data the `sfx-list` log line
+/// already emits.
+#[derive(Debug, Clone)]
+pub struct StatusEffectEntry {
+    pub row: String,
+    pub table: String,
+    pub stat_type: Option<u8>,
+    pub value: Option<f32>,
+}
+
+/// Snapshot variant of `probe_player_status_effects`. Walks the
+/// first live player and returns the StatusEffects array as a
+/// Vec. None when no live player is available. Used by the debug
+/// HTTP endpoint to expose status effects without requiring a log
+/// scrape.
+pub fn snapshot_player_status_effects() -> Option<Vec<StatusEffectEntry>> {
+    use crate::rpg::apply;
+
+    let mut out: Option<Vec<StatusEffectEntry>> = None;
+    apply::apply_to_live_player_characters(|player| {
+        if out.is_none() {
+            out = Some(collect_status_effects(player));
+        }
+    });
+    out
+}
+
+fn collect_status_effects(player: &UObject) -> Vec<StatusEffectEntry> {
+    const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
+    const SEC_STATUS_EFFECTS_TARRAY: usize = 0x01C8;
+    const STATUS_EFFECT_ROW_HANDLE: usize = 0x0058;
+
+    let mut entries = Vec::new();
+    let sec = unsafe {
+        let p: *mut UObject = player
+            .field_ptr(ASC_STATUS_EFFECT_COMPONENT)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        match p.as_ref() {
+            Some(c) => c,
+            None => return entries,
+        }
+    };
+    let (data_ptr, num) = unsafe {
+        let base = sec.field_ptr(SEC_STATUS_EFFECTS_TARRAY);
+        let data = (base as *const *const *mut UObject).read_unaligned();
+        let num = (base.add(8) as *const i32).read_unaligned();
+        (data, num.max(0) as usize)
+    };
+    if data_ptr.is_null() || num == 0 {
+        return entries;
+    }
+    for i in 0..num.min(64) {
+        let effect = unsafe {
+            let p = data_ptr.add(i).read_unaligned();
+            match p.as_ref() {
+                Some(e) => e,
+                None => continue,
+            }
+        };
+        let table_ptr = unsafe {
+            effect
+                .field_ptr(STATUS_EFFECT_ROW_HANDLE)
+                .cast::<*mut UObject>()
+                .read_unaligned()
+        };
+        let raw_fname: u64 = unsafe {
+            let fname_ptr = effect.field_ptr(STATUS_EFFECT_ROW_HANDLE + 8);
+            (fname_ptr as *const u64).read_unaligned()
+        };
+        let row_name = unsafe {
+            crate::sdk::runtime()
+                .name_resolver
+                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw_fname))
+        };
+        let table_name = unsafe {
+            table_ptr
+                .as_ref()
+                .map(|t| t.full_name())
+                .unwrap_or_else(|| "<null-table>".to_string())
+        };
+        let row_meta = unsafe {
+            table_ptr
+                .as_ref()
+                .and_then(|t| lookup_data_table_row(t, raw_fname).map(read_status_effect_row))
+        };
+        let (stat_type, value) = match row_meta {
+            Some((ty, val)) => (Some(ty), Some(val)),
+            None => (None, None),
+        };
+        entries.push(StatusEffectEntry {
+            row: row_name,
+            table: table_name,
+            stat_type,
+            value,
+        });
+    }
+    entries
+}
+
 /// Walk the player's `UStatusEffectComponent.StatusEffects` array
 /// and log each active effect's row handle (DataTable name + row
 /// name) plus the row's `Type` + `Value` columns. Tells us which

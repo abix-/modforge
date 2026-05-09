@@ -204,6 +204,21 @@ pub fn reapply_one(skill_id: &str) {
     crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill_id);
 }
 
+/// Re-apply every CATALOG skill against the current state.
+/// Mirrors what `activate_slot` does at slot load. Returns true
+/// if a slot was active. Used by the debug `reload_slot` op so
+/// tests can return the live game to a known baseline without
+/// requiring a save-key change.
+pub fn reapply_all() -> bool {
+    let g = lock();
+    let Some(tracker) = g.as_ref() else {
+        return false;
+    };
+    crate::rpg::apply::apply(&tracker.state, &tracker.settings);
+    true
+}
+
+
 /// Debug: grant `count` skill points and save. Used by the debug
 /// button in the ImGui tab so we don't have to grind XP to test
 /// combat skills. No-op if no slot is active.

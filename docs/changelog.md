@@ -7,6 +7,53 @@
 
 Newest first.
 
+## 2026-05-09
+
+### Discovered: impact_resistance blocks bandages
+
+Enabling `impact_resistance` at any level prevents bandages and
+other healing items from working. Confirmed in-game by binary
+isolation (only impact_resistance enabled -> repro; toggled off ->
+heals fine). Mechanism: bandages route healing through
+`ApplyDamage` with negative damage and `type_flags = 0`. The
+`RequiredDamageTypeFlags = 0xFFFFFFFF` mask we set rejects any
+event with type_flags=0, so heal events fail the gate before the
+HP decrement. Detail in [`damage.md`](damage.md) "Critical
+regression: bandages / healing items blocked".
+
+Workaround until the canonical fix lands: keep impact_resistance
+toggled off when healing is needed. The status-effect migration
+in [`todo.md`](todo.md) replaces the binary mask with a
+type-filtered DamageReductionMultiplier that won't touch healing.
+
+### `PlayerHealthCompU32Mask` learned to disable cleanly
+
+Previously the variant only wrote the mask at level > 0 and never
+restored vanilla, so refunding the skill or toggling it off left
+the mask set (mid-session and beyond). Apply step now captures the
+vanilla mask on first sight, runs at level 0 / disabled too, and
+writes the captured vanilla back when the skill is inactive. This
+is what makes the toggle actually unblock bandages.
+
+### Avoided ProcessEvent deadlock by deleting dead UFunction call
+
+Toggling fall_resistance off used to freeze the game. Root cause:
+`apply_skill` for fall_resistance was invoking
+`USurvivalModeManagerComponent::UpdateCustomSettings` via
+ProcessEvent. That UFunction triggers replication on the Net-flagged
+`CustomSettings` field; calling it mid-session from any non-game
+thread (ImGui callback, world_loader poller) hangs on the
+replication marker.
+
+Reading the SDK + the original commit (`6ad1df2`), the call was
+dead code -- the changelog explicitly notes "Player still takes
+fall damage" even with the UFunction firing, and the actual
+mitigation that works is the velocity-stomp on `Velocity.Z` in
+`fall_hook.rs` plus the `RequiredDamageTypeFlags` mask. Native
+fall-damage code never reads the FallDamageMultiplier fields the
+UFunction was meant to invalidate. Deleted the call and its helper
+entirely; the GMS / SMMC field writes remain (harmless).
+
 ## 2026-05-08
 
 ### Catalog +3 skills (untested in-game)

@@ -5,5 +5,8 @@
   "survival": {
     "thirst_multiplier": 0.5,
     "hunger_multiplier": 0.5
+  },
+  "debug": {
+    "http_port": 17171
   }
 }

@@ -1,5 +1,87 @@
 # grounded2mods - project state
 
+## AddHealth result (2026-05-09)
+
+`tests/explore_bandage_path.rs::addhealth_with_mask_on_vs_off`
+ran via the new generic `call` primitive (no mod rebuild).
+Findings:
+
+- **mask OFF**: AddHealth(20) heals cleanly. `damage_ring`
+  captures one entry `fn=AddHealth` -- proving our wider PE
+  capture sees AddHealth when it's actually called via PE.
+- **mask ON**: call times out at 5s. Game itself NOT crashed.
+  Cause: with the mask rejecting type_flags=0 events, the
+  multicast traffic that normally fires kill_hook's trampoline
+  drops near zero, starving the PE queue drain. Workaround
+  during research: drive activity in-world. Proper fix:
+  high-frequency drain site (UE4SS RegisterProcessEventPreCallback
+  or a Tick hook).
+
+Combined with prior bandage observation:
+- bandages don't add a status-effect row (observed)
+- bandages don't fire any UFunction on the player's HC (observed)
+- AddHealth WOULD show in the ring if bandages called it (proved
+  via direct test invocation)
+
+So bandages DON'T call AddHealth on the player's local HC
+vtable. They go through something else: ServerAddHealth on
+the replicated path, a different component (UConsumableComponent,
+UItem subclass), or a native C++ call that bypasses
+ProcessEvent. Hypothesis tree refreshed in docs/damage.md.
+
+## Architectural shift: generic `call` primitive (2026-05-09)
+
+The endpoint had been growing a `simulate_<event>` op per
+research scenario (simulate_add_health, simulate_apply_damage,
+simulate_set_current_health, ...). Every new test idea required
+a mod-side rebuild + redeploy + game relaunch. Wrong.
+
+Replaced by a single generic primitive: `call`. Args are
+`{class, function, instance_selector, parms_hex}`; tests build
+parm structs in Rust matching the SDK's `UFunction` parm
+layouts, hex-encode, send. The mod calls `process_event`,
+returns the post-call buffer. Tests decode and assert.
+
+Re-entrance guard added to `drain_pending` so calls that
+trigger ProcessEvent fan-out (replication, multicast) don't
+recurse into the trampoline and hang the game (the original
+crash from this session).
+
+Test-side helpers in `tests/common/mod.rs`:
+`Api::call_ufunction`, `parms_as_bytes`, `bytes_as_parms`,
+`hex_encode`, `hex_decode`. All experiments now live as
+`tests/<scenario>.rs` files; the mod stops growing.
+
+This is now codified in
+`~/.claude/skills/runtime-control-http/SKILL.md` "Op set:
+GENERIC PRIMITIVES, NOT TEST OPS" so future projects don't
+make the same mistake.
+
+## Endpoint research findings (2026-05-09)
+
+Built debug HTTP endpoint per the new
+`runtime-control-http` skill. First experiment driven as a Rust
+test (`tests/explore_apply_damage_gate.rs`) gave two findings:
+
+1. **`AddHealth` bypasses the impact_resistance mask.** Heal of
+   +20 applied cleanly with the mask at `0xFFFFFFFF`. Confirms
+   that the canonical heal entry point is not gated by
+   `RequiredDamageTypeFlags`. Bandages must therefore take a
+   DIFFERENT path -- the mask-blocking-bandages bug is real but
+   the mechanism is not "bandages call AddHealth and the mask
+   blocks them". Hypotheses live in `docs/damage.md` "Research
+   finding".
+
+2. **simulate_apply_damage crashes the game.** Calling
+   `ApplyDamageFromInfo` via `process_event` from inside the
+   `kill_hook` trampoline re-enters ProcessEvent on a
+   replication-triggering function and hangs. Tracked in
+   `docs/todo.md` "Endpoint parity gap" with remediation options.
+
+Next experiment: watch the snapshot's `status_effects` array
+during a real bandage use. If a new row appears mid-bandage we
+have direct evidence for hypothesis 1 (status-effect tick path).
+
 ## Current focus
 RPG / level-up mod for Grounded 2. Loaded by UE4SS as a CPPMod
 (C++ shim + Rust cdylib). Skill catalog is the single source of
@@ -324,21 +406,53 @@ Release build clean. Pre-existing clippy issues (apply.rs:385,
 fall_hook.rs:247/325, skills.rs:88-90) are unrelated to refund and
 were not touched.
 
-**Caveat (open)**: `apply::apply_skill` early-returns when
-`level == 0`. Refunding back to 0 leaves the engine value stale
-until next world load (where `activate_slot` does a full apply).
-Refunds to level >= 1 take effect immediately because per-skill
-formulas naturally recompute. Fixing this is scoped-out for now
-because `PlayerHealthCompU32Mask` (impact-resistance) has no
-vanilla-mask capture path, so removing the early-return would
-require an extra capture step.
+**Caveat (RESOLVED 2026-05-09)**: previously `apply::apply_skill`
+early-returned at level 0, so refunding to 0 left `RequiredDamageTypeFlags`
+stale until next world load. Now the mask variant captures vanilla
+on first sight and writes either `mask` (active) or vanilla
+(disabled / level 0). Toggle off correctly clears the mask.
+
+## Bandage / healing regression from impact_resistance (2026-05-09)
+
+**Confirmed in-game**: enabling `impact_resistance` blocks bandages
+and other healing items. Disabling restores healing. The mask gate
+`(incoming.type_flags & Required) == 0 -> reject` rejects bandage
+heals because the engine routes them through ApplyDamage with
+negative damage and `type_flags = 0`, same as fall / environmental
+damage. This makes the skill effectively unusable in its current
+form -- the player has to keep it toggled off to heal.
+
+The proper fix is the long-tracked status-effect migration: replace
+the binary RequiredDamageTypeFlags mask with a type-filtered
+`EStatusEffectType::DamageReductionMultiplier` that the engine
+consults only on damage events (not heals). See
+`docs/damage.md` "Implementation plan" and
+`docs/todo.md` "RPG: Status-effect-backed skill rewrite".
+
+Workaround in place: toggle works correctly, mask is restored to
+captured vanilla when off. Players retain access to bandages by
+disabling impact_resistance temporarily.
+
+## ProcessEvent deadlock removed (2026-05-09)
+
+Toggling fall_resistance off used to freeze the game. The
+`USurvivalModeManagerComponent::UpdateCustomSettings` UFunction
+call was triggering replication on a Net-flagged field; calling
+ProcessEvent on it from any non-game thread (ImGui callback,
+world_loader poller) hung on the replication marker.
+
+Reading the SDK + the commit that added it (`6ad1df2`), the call
+was dead code -- the original commit's own changelog notes that
+fall damage still landed even with the UFunction firing, and the
+actual mitigation is the velocity-stomp in `fall_hook.rs` plus the
+RequiredDamageTypeFlags mask. Native fall-damage code never reads
+FallDamageMultiplier. Deleted the call entirely; field writes
+remain harmless.
 
 Next steps:
-- Decide whether to fix the refund-to-0 live-reset (would need a
-  `VANILLA_HC_REQUIRED_DAMAGE_TYPE_FLAGS` capture, and audit each
-  effect variant for "what does level=0 mean for the writer").
+- Status-effect migration (impact_resistance, lifesteal, fall_resistance).
 - Resume `docs/damage.md` "Concrete spike plan" Step 1 in-game
-  witness once the user is back at the workstation.
+  witness.
 
 ## Where we left off (2026-05-05, late-night)
 

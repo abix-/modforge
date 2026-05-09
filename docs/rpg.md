@@ -80,7 +80,7 @@ shape adds one variant to `SkillEffect` and one match arm in
 | Leap Distance    | movement   | +500% AirControl + boost mult + boost threshold |
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
-| Impact Damage Resistance | survival | binary -- any level >0 = full immunity to fall/environmental damage (status-effect migration tracked in [`todo.md`](todo.md)) |
+| Impact Damage Resistance | survival | binary -- any level >0 = full immunity to fall/environmental damage **but BLOCKS bandages/healing**; status-effect migration is the fix, tracked in [`todo.md`](todo.md) |
 | Max Health       | survival   | +200 HP (additive on top of vanilla MaxHealth) |
 | Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) |
 | Lifesteal        | combat     | +90% of damage dealt healed back |
