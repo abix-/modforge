@@ -36,19 +36,17 @@ pub mod sdk;
 pub mod settings;
 pub mod survival;
 
-use std::ffi::{OsString, c_void};
-use std::os::windows::ffi::OsStringExt;
+use std::ffi::c_void;
 use std::ptr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
 use windows_sys::Win32::Foundation::{CloseHandle, HMODULE};
-use windows_sys::Win32::System::LibraryLoader::{GetModuleFileNameW, GetModuleHandleW};
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
 
-use crate::sdk::offsets::{Platform, STEAM, XBOX};
+use crate::sdk::offsets::{STEAM, XBOX};
 
 #[allow(clippy::upper_case_acronyms)]
 type BOOL = i32;
@@ -114,26 +112,21 @@ unsafe fn worker() {
         patch::VANILLA_MOUNT
     );
 
-    let image_base = unsafe { sdk_image_base() };
-    let exe_name = host_exe_name().unwrap_or_default();
-    let platform = match exe_name.as_str() {
-        "Grounded2-WinGRTS-Shipping.exe" => Platform::Steam,
-        "Grounded2-WinGDK-Shipping.exe" => Platform::Xbox,
-        other => {
-            bbp_log!(
-                "WARN: unknown host exe '{}'; defaulting to Steam offsets",
-                other
-            );
-            Platform::Steam
-        }
-    };
-    let offsets = match platform {
-        Platform::Steam => &STEAM,
-        Platform::Xbox => &XBOX,
-    };
+    let image_base = uespy::ue::platform::host_image_base();
+    const PLATFORMS: &[(&str, &uespy::ue::PlatformOffsets)] = &[
+        ("Grounded2-WinGRTS-Shipping.exe", &STEAM),
+        ("Grounded2-WinGDK-Shipping.exe", &XBOX),
+    ];
+    let offsets = uespy::ue::platform::detect(PLATFORMS).unwrap_or_else(|| {
+        let exe = uespy::ue::platform::host_exe_name().unwrap_or_default();
+        bbp_log!(
+            "WARN: unknown host exe '{}'; defaulting to Steam offsets",
+            exe
+        );
+        &STEAM
+    });
     bbp_log!(
-        "platform = {:?}, image_base = 0x{:x}, GObjects = 0x{:x}",
-        platform,
+        "image_base = 0x{:x}, GObjects = 0x{:x}",
         image_base,
         image_base + offsets.g_objects
     );
@@ -246,20 +239,4 @@ fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHo
     }
 }
 
-unsafe fn sdk_image_base() -> usize {
-    let h = unsafe { GetModuleHandleW(ptr::null()) };
-    h as usize
-}
-
-fn host_exe_name() -> Option<String> {
-    let mut buf = [0u16; 1024];
-    let n = unsafe { GetModuleFileNameW(ptr::null_mut(), buf.as_mut_ptr(), buf.len() as u32) };
-    if n == 0 {
-        return None;
-    }
-    let path = OsString::from_wide(&buf[..n as usize])
-        .to_string_lossy()
-        .into_owned();
-    let last = path.rsplit(['/', '\\']).next()?.to_string();
-    Some(last)
-}
+// host_image_base / host_exe_name moved to uespy::ue::platform.

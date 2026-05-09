@@ -36,11 +36,33 @@ use std::path::{Path, PathBuf};
 const UESPY_CPPUSERMODBASE_HPP: &str = include_str!("../../uespy/cpp/uespy_cppusermodbase.hpp");
 const UESPY_IMGUI_BRIDGE_HPP: &str = include_str!("../../uespy/cpp/uespy_imgui_bridge.hpp");
 
+/// Path to uespy's bundled C++ assets (imgui vendor + UE4SS.lib),
+/// resolved at uespy-build's compile time. Game build.rs scripts
+/// don't need to know this path; uespy_build defaults to it when
+/// `imgui_dir` / `ue4ss_lib_dir` aren't supplied.
+fn uespy_root() -> std::path::PathBuf {
+    // CARGO_MANIFEST_DIR at uespy-build's compile time = the
+    // uespy-build/ directory. ../uespy/ is the sibling crate.
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("uespy-build manifest has a parent")
+        .join("uespy")
+}
+
+fn default_imgui_dir() -> std::path::PathBuf {
+    uespy_root().join("cpp").join("imgui")
+}
+
+fn default_ue4ss_lib_dir() -> std::path::PathBuf {
+    uespy_root().join("ue4ss")
+}
+
 #[derive(Default)]
 pub struct CppShim {
     source: Option<PathBuf>,
     imgui_dir: Option<PathBuf>,
     ue4ss_lib_dir: Option<PathBuf>,
+    skip_imgui: bool,
     extra_includes: Vec<PathBuf>,
     extra_sources: Vec<PathBuf>,
 }
@@ -57,19 +79,27 @@ impl CppShim {
         self
     }
 
-    /// Path to a directory containing vendored ImGui sources
-    /// (`imgui.cpp`, `imgui_draw.cpp`, `imgui_tables.cpp`,
-    /// `imgui_widgets.cpp`). Optional — omit for shim-only builds
-    /// without an ImGui tab.
+    /// Override the default ImGui sources directory. By default
+    /// uespy-build uses the imgui vendor bundled in
+    /// `uespy/cpp/imgui/` (v1.92.1 to match UE4SS). Override only
+    /// if you need a different ImGui version.
     pub fn imgui_dir<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.imgui_dir = Some(path.into());
         self
     }
 
-    /// Path to a directory containing `UE4SS.lib` (the import
-    /// library generated from the user's installed `UE4SS.dll`).
-    /// Optional — omit if the shim doesn't call any
-    /// `RC_UE4SS_API` symbols (rare).
+    /// Skip ImGui vendoring entirely. Use for shim-only builds
+    /// that don't render any UE4SS debug tab.
+    pub fn skip_imgui(mut self) -> Self {
+        self.skip_imgui = true;
+        self
+    }
+
+    /// Override the default `UE4SS.lib` directory. By default
+    /// uespy-build links against the import lib bundled in
+    /// `uespy/ue4ss/UE4SS.lib`. Override if you maintain a
+    /// per-game UE4SS.lib (rare — UE4SS API is stable across
+    /// games of the same UE4SS version family).
     pub fn ue4ss_lib_dir<P: Into<PathBuf>>(mut self, path: P) -> Self {
         self.ue4ss_lib_dir = Some(path.into());
         self
@@ -119,12 +149,26 @@ impl CppShim {
             .expect("uespy-build: CppShim::source(...) is required");
         println!("cargo:rerun-if-changed={}", source.display());
 
-        let imgui_dir = self.imgui_dir.map(|p| absolutize(&manifest_dir, p));
+        let imgui_dir = if self.skip_imgui {
+            None
+        } else {
+            Some(
+                self.imgui_dir
+                    .map(|p| absolutize(&manifest_dir, p))
+                    .unwrap_or_else(default_imgui_dir),
+            )
+        };
         if let Some(d) = &imgui_dir {
             println!("cargo:rerun-if-changed={}", d.display());
         }
 
-        let ue4ss_lib_dir = self.ue4ss_lib_dir.map(|p| absolutize(&manifest_dir, p));
+        let ue4ss_lib_dir = self
+            .ue4ss_lib_dir
+            .map(|p| absolutize(&manifest_dir, p))
+            .or_else(|| {
+                let d = default_ue4ss_lib_dir();
+                d.join("UE4SS.lib").is_file().then_some(d)
+            });
         if let Some(d) = &ue4ss_lib_dir {
             println!("cargo:rerun-if-changed={}", d.join("UE4SS.lib").display());
         }

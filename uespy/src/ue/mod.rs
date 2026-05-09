@@ -11,6 +11,7 @@ pub mod datatable;
 pub mod fname;
 pub mod fstring;
 pub mod offsets;
+pub mod platform;
 pub mod probe;
 pub mod tarray;
 pub mod tmap;

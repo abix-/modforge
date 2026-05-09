@@ -34,19 +34,22 @@ which compresses the iteration loop from minutes to sub-second.
 your-game-mods/
   Cargo.toml         # workspace
   uespy/             # this crate (path-dep until published)
+    cpp/imgui/       # vendored v1.92.1 — shared by every mod
+    ue4ss/UE4SS.lib  # shared import lib
   uespy-client/
   uespy-build/
   your-mod/
     Cargo.toml
-    build.rs
-    cpp/shim.cpp
-    cpp/imgui/       # if you want an ImGui tab (optional)
-    ue4ss/UE4SS.lib  # generated from your installed UE4SS.dll
+    build.rs         # ~5 LoC, see below
+    cpp/shim.cpp     # ~30 LoC, see below
     src/lib.rs
     src/debug.rs
     tests/common/mod.rs
     tests/<scenario>.rs
 ```
+
+The `imgui` vendor and `UE4SS.lib` live in uespy and are picked up
+automatically by `uespy-build` — your mod doesn't carry copies.
 
 ### 2. Cargo.toml
 
@@ -73,11 +76,14 @@ uespy-client = { path = "../uespy-client" }
 fn main() {
     uespy_build::CppShim::new()
         .source("cpp/shim.cpp")
-        .imgui_dir("cpp/imgui")        // omit if no UI
-        .ue4ss_lib_dir("ue4ss")
         .compile();
 }
 ```
+
+`uespy-build` defaults `imgui_dir` to uespy's vendored copy and
+`ue4ss_lib_dir` to uespy's bundled `UE4SS.lib`. Override only if
+you need a different ImGui version or a per-game UE4SS lib. Add
+`.skip_imgui()` for shim-only builds without a debug tab.
 
 ### 4. cpp/shim.cpp
 
@@ -110,6 +116,17 @@ YOUR_MOD_API auto uninstall_mod(RC::CppUserModBase* mod) -> void { delete mod; }
 
 ```rust
 use windows_sys::Win32::Foundation::{BOOL, HMODULE};
+use uespy::ue::{platform, PlatformOffsets};
+
+// Game-specific offsets — fill in via UE4SS CXXHeaderDumper.
+const STEAM: PlatformOffsets = PlatformOffsets {
+    g_objects: 0x0, append_string: 0x0, g_names: 0x0,
+    g_world: 0x0, process_event: 0x0, process_event_idx: 0x4C,
+};
+
+const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
+    ("YourGame-Win64-Shipping.exe", &STEAM),
+];
 
 #[unsafe(no_mangle)]
 pub extern "system" fn DllMain(hmod: HMODULE, reason: u32, _r: *mut ()) -> BOOL {
@@ -126,10 +143,11 @@ pub extern "C" fn your_mod_start() {
         console_title: "YourMod",
         console: cfg!(feature = "console"),
     });
-    uespy::log::log(format_args!("starting"));
+    let image_base = platform::host_image_base();
+    let offsets = platform::detect(PLATFORMS).unwrap_or(&STEAM);
+    let _rt = unsafe { uespy::ue::init_runtime(image_base, offsets) };
 
-    // Detect platform, init UE runtime, etc.
-    // Then spawn worker thread that:
+    // Spawn worker thread that:
     // - patches whatever you patch
     // - installs PE hooks via uespy::hook::ProcessEventHook
     // - starts the debug server if settings.debug.http_port is set
