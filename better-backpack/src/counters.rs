@@ -704,6 +704,341 @@ pub fn process_regions_json() -> serde_json::Value {
     })
 }
 
+/// Sample every thread's instruction pointer N times over a
+/// window. For each sample, look up which loaded module the
+/// RIP belongs to. Per-thread histogram of "which module is
+/// each thread spending time in" -- statistical caller
+/// attribution without needing DbgHelp / StackWalk64.
+///
+/// This answers the "WHO is burning CPU / who is allocating"
+/// question one frame deep. If a thread is mostly in
+/// `Grounded2-WinGRTS-Shipping.exe`, that thread is running
+/// game code. Mostly in `ntdll.dll`/`kernelbase.dll` =
+/// allocator/syscall heavy. Mostly in `nvrtum64.dll` = NVIDIA
+/// shader compiler / driver work. Etc.
+///
+/// Caveat: only the topmost frame (the actual RIP). A thread
+/// inside the allocator shows ntdll. To know who CALLED the
+/// allocator we'd need StackWalk64. This is good enough as a
+/// first cut.
+///
+/// Cost: SuspendThread + GetThreadContext + ResumeThread per
+/// thread per sample. ~100us per sample. With 50 threads and
+/// 10 Hz sampling: 50 ms / sec = 5% overhead while sampling.
+/// Acceptable for an on-demand probe.
+///
+/// args: duration_ms, interval_ms.
+pub fn sample_thread_modules_json(duration_ms: u32, interval_ms: u32) -> serde_json::Value {
+    use std::collections::HashMap;
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::Debug::CONTEXT;
+    unsafe extern "system" {
+        // GetThreadContext lives in kernel32 / kernelbase but
+        // windows-sys exposes it under Win32::System::Threading
+        // for x86_64. Re-declare locally to avoid the feature
+        // flag dance.
+        fn GetThreadContext(hThread: *mut std::ffi::c_void, lpContext: *mut CONTEXT) -> i32;
+    }
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, TH32CS_SNAPTHREAD, THREADENTRY32, Thread32First, Thread32Next,
+    };
+    use windows_sys::Win32::System::ProcessStatus::{
+        EnumProcessModulesEx, GetModuleFileNameExW, GetModuleInformation, LIST_MODULES_ALL,
+        MODULEINFO,
+    };
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, GetCurrentProcessId, GetCurrentThreadId, GetThreadDescription,
+        OpenThread, ResumeThread, SuspendThread, THREAD_GET_CONTEXT,
+        THREAD_QUERY_LIMITED_INFORMATION, THREAD_SUSPEND_RESUME,
+    };
+
+    // Snapshot the loaded module map once: list of (base, size, short_name).
+    // Looking up RIP -> module is a linear scan; with ~100 modules that's
+    // fine for 10 Hz sampling.
+    let modules: Vec<(u64, u64, String)> = unsafe {
+        let proc = GetCurrentProcess();
+        let mut h_modules: Vec<*mut std::ffi::c_void> = vec![std::ptr::null_mut(); 1024];
+        let cb_needed = (h_modules.len() * std::mem::size_of::<*mut std::ffi::c_void>()) as u32;
+        let mut written: u32 = 0;
+        let ok = EnumProcessModulesEx(
+            proc,
+            h_modules.as_mut_ptr(),
+            cb_needed,
+            &mut written,
+            LIST_MODULES_ALL,
+        );
+        if ok == 0 {
+            Vec::new()
+        } else {
+            let n = (written as usize) / std::mem::size_of::<*mut std::ffi::c_void>();
+            h_modules.truncate(n);
+            let mut out = Vec::with_capacity(n);
+            for &h in &h_modules {
+                let mut info = std::mem::MaybeUninit::<MODULEINFO>::zeroed();
+                let info_ok = GetModuleInformation(
+                    proc,
+                    h,
+                    info.as_mut_ptr(),
+                    std::mem::size_of::<MODULEINFO>() as u32,
+                );
+                if info_ok == 0 {
+                    continue;
+                }
+                let info = info.assume_init();
+                let mut name_buf = [0u16; 260];
+                let nlen = GetModuleFileNameExW(
+                    proc,
+                    h,
+                    name_buf.as_mut_ptr(),
+                    name_buf.len() as u32,
+                );
+                let name = if nlen > 0 {
+                    let s = String::from_utf16_lossy(&name_buf[..nlen as usize]);
+                    s.rsplit(['\\', '/']).next().unwrap_or(&s).to_string()
+                } else {
+                    format!("module_{:p}", h)
+                };
+                out.push((
+                    info.lpBaseOfDll as u64,
+                    info.SizeOfImage as u64,
+                    name,
+                ));
+            }
+            out
+        }
+    };
+
+    let module_for = |rip: u64| -> String {
+        for (base, size, name) in &modules {
+            if rip >= *base && rip < *base + *size {
+                return name.clone();
+            }
+        }
+        String::new() // empty = unmapped (likely stack data, not code)
+    };
+
+    // System-DLL filter. When RIP is in one of these, the thread
+    // is inside the OS / allocator / driver. Walking up the stack
+    // finds the user-code caller -- which is the actual "WHO."
+    let is_system = |m: &str| -> bool {
+        let lower = m.to_ascii_lowercase();
+        matches!(
+            lower.as_str(),
+            "ntdll.dll"
+                | "kernelbase.dll"
+                | "kernel32.dll"
+                | "win32u.dll"
+                | "user32.dll"
+                | "gdi32.dll"
+                | "gdi32full.dll"
+                | "msvcp140.dll"
+                | "msvcrt.dll"
+                | "vcruntime140.dll"
+                | "vcruntime140_1.dll"
+                | "ucrtbase.dll"
+                | "rpcrt4.dll"
+                | "advapi32.dll"
+                | "sechost.dll"
+        )
+    };
+
+    // Read 8 bytes at addr from our process, safely. Returns
+    // None if the address is unreadable. Used to walk stacks.
+    let read_qword = |addr: u64| -> Option<u64> {
+        use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+        let proc = unsafe {
+            windows_sys::Win32::System::Threading::GetCurrentProcess()
+        };
+        let mut buf: u64 = 0;
+        let mut read: usize = 0;
+        let ok = unsafe {
+            ReadProcessMemory(
+                proc,
+                addr as *const _,
+                &mut buf as *mut _ as *mut _,
+                8,
+                &mut read,
+            )
+        };
+        if ok != 0 && read == 8 {
+            Some(buf)
+        } else {
+            None
+        }
+    };
+
+    // Walk stack starting at RSP looking for the first non-system,
+    // non-empty (= mapped) module's code address. Cap at STACK_PROBE
+    // qwords to keep sampling cheap. Returns (module_name, depth)
+    // where depth is the qword index that hit (0 = top).
+    const STACK_PROBE: u64 = 64;
+    let resolve_caller = |rip: u64, rsp: u64| -> (String, u32) {
+        let m = module_for(rip);
+        if !m.is_empty() && !is_system(&m) {
+            return (m, 0);
+        }
+        for i in 1..STACK_PROBE {
+            let addr = rsp.saturating_add(i.saturating_mul(8));
+            if let Some(v) = read_qword(addr) {
+                let mm = module_for(v);
+                if !mm.is_empty() && !is_system(&mm) {
+                    return (mm, i as u32);
+                }
+            }
+        }
+        // All system modules deep. Report where the topmost
+        // non-empty module sits.
+        if !m.is_empty() {
+            return (m, 0);
+        }
+        ("<unmapped>".to_string(), 0)
+    };
+
+    // Per-thread state: tid -> (name, total_samples, by_module)
+    let mut per_thread: HashMap<u32, (String, u64, HashMap<String, u64>)> = HashMap::new();
+    let mut grand_by_module: HashMap<String, u64> = HashMap::new();
+    let mut total_samples: u64 = 0;
+
+    let start = std::time::Instant::now();
+    let our_tid = unsafe { GetCurrentThreadId() };
+    let our_pid = unsafe { GetCurrentProcessId() };
+
+    while start.elapsed().as_millis() < duration_ms as u128 {
+        let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0) };
+        if snap == INVALID_HANDLE_VALUE || snap.is_null() {
+            break;
+        }
+        let mut te: THREADENTRY32 = unsafe { std::mem::zeroed() };
+        te.dwSize = std::mem::size_of::<THREADENTRY32>() as u32;
+        if unsafe { Thread32First(snap, &mut te) } != 0 {
+            loop {
+                if te.th32OwnerProcessID == our_pid && te.th32ThreadID != our_tid {
+                    let h = unsafe {
+                        OpenThread(
+                            THREAD_SUSPEND_RESUME
+                                | THREAD_GET_CONTEXT
+                                | THREAD_QUERY_LIMITED_INFORMATION,
+                            0,
+                            te.th32ThreadID,
+                        )
+                    };
+                    if !h.is_null() {
+                        let prev = unsafe { SuspendThread(h) };
+                        if prev != u32::MAX {
+                            let mut ctx = std::mem::MaybeUninit::<CONTEXT>::zeroed();
+                            unsafe {
+                                // CONTEXT_CONTROL on x64 is 0x100001.
+                                // We only need RIP so this is enough.
+                                (*ctx.as_mut_ptr()).ContextFlags = 0x00100001;
+                            }
+                            let ok = unsafe { GetThreadContext(h, ctx.as_mut_ptr()) };
+                            if ok != 0 {
+                                let ctx = unsafe { ctx.assume_init() };
+                                let (m, _depth) = resolve_caller(ctx.Rip, ctx.Rsp);
+                                let entry = per_thread
+                                    .entry(te.th32ThreadID)
+                                    .or_insert_with(|| {
+                                        // Resolve thread name once.
+                                        let mut nptr: *mut u16 = std::ptr::null_mut();
+                                        unsafe extern "system" {
+                                            fn LocalFree(
+                                                hMem: *mut std::ffi::c_void,
+                                            ) -> *mut std::ffi::c_void;
+                                        }
+                                        let nm = unsafe {
+                                            let _ = GetThreadDescription(h, &mut nptr);
+                                            if !nptr.is_null() {
+                                                let mut len = 0usize;
+                                                while *nptr.add(len) != 0 {
+                                                    len += 1;
+                                                }
+                                                let s = String::from_utf16_lossy(
+                                                    std::slice::from_raw_parts(nptr, len),
+                                                );
+                                                LocalFree(nptr as *mut _);
+                                                s
+                                            } else {
+                                                format!("tid_{}", te.th32ThreadID)
+                                            }
+                                        };
+                                        (nm, 0, HashMap::new())
+                                    });
+                                entry.1 += 1;
+                                *entry.2.entry(m.clone()).or_insert(0) += 1;
+                                *grand_by_module.entry(m).or_insert(0) += 1;
+                                total_samples += 1;
+                            }
+                            unsafe { ResumeThread(h) };
+                        }
+                        unsafe { CloseHandle(h) };
+                    }
+                }
+                if unsafe { Thread32Next(snap, &mut te) } == 0 {
+                    break;
+                }
+            }
+        }
+        unsafe { CloseHandle(snap) };
+        std::thread::sleep(std::time::Duration::from_millis(interval_ms as u64));
+    }
+
+    // Format per-thread output. Sort threads by total samples desc.
+    let mut threads_out: Vec<(u32, String, u64, Vec<(String, u64)>)> = per_thread
+        .into_iter()
+        .map(|(tid, (name, count, by_mod))| {
+            let mut by: Vec<(String, u64)> = by_mod.into_iter().collect();
+            by.sort_by(|a, b| b.1.cmp(&a.1));
+            (tid, name, count, by)
+        })
+        .collect();
+    threads_out.sort_by(|a, b| b.2.cmp(&a.2));
+
+    let threads_json: Vec<serde_json::Value> = threads_out
+        .into_iter()
+        .map(|(tid, name, count, by_mod)| {
+            let by: Vec<serde_json::Value> = by_mod
+                .into_iter()
+                .take(10)
+                .map(|(m, c)| {
+                    serde_json::json!({
+                        "module": m,
+                        "samples": c,
+                        "pct": if count > 0 { (c as f64 * 100.0) / count as f64 } else { 0.0 },
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "tid": tid,
+                "name": name,
+                "samples": count,
+                "by_module": by,
+            })
+        })
+        .collect();
+
+    let mut grand: Vec<(String, u64)> = grand_by_module.into_iter().collect();
+    grand.sort_by(|a, b| b.1.cmp(&a.1));
+    let grand_json: Vec<serde_json::Value> = grand
+        .into_iter()
+        .take(20)
+        .map(|(m, c)| {
+            serde_json::json!({
+                "module": m,
+                "samples": c,
+                "pct": if total_samples > 0 { (c as f64 * 100.0) / total_samples as f64 } else { 0.0 },
+            })
+        })
+        .collect();
+
+    serde_json::json!({
+        "duration_ms": duration_ms,
+        "interval_ms": interval_ms,
+        "total_samples": total_samples,
+        "by_module_grand_total": grand_json,
+        "by_thread": threads_json,
+    })
+}
+
 /// Process memory readings (Windows). Captured in the snapshot
 /// so the perf test can compute deltas and detect leaks beyond
 /// what our hot-path counters measure.

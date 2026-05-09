@@ -50,6 +50,7 @@ const SUPPORTED_OPS: &[&str] = &[
     "write_bytes",
     "walk_class",
     "class_outer_samples",
+    "sample_thread_modules",
 ];
 
 // PE-thread queue. The HTTP handler enqueues a command + a reply
@@ -303,6 +304,7 @@ fn handle(body: &str) -> OpResponse {
         "write_bytes" => to_response(&op, op_write_bytes(&args)),
         "walk_class" => to_response(&op, op_walk_class(&args)),
         "class_outer_samples" => to_response(&op, op_class_outer_samples(&args)),
+        "sample_thread_modules" => to_response(&op, op_sample_thread_modules(&args)),
         "" => error_response(
             "<missing>",
             format!("missing 'op' field; supported ops: {SUPPORTED_OPS:?}"),
@@ -652,6 +654,12 @@ fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
     let class_name = arg_str(args, "class")?;
     let k = arg_u64(args, "k", Some(20))? as usize;
     Ok(crate::counters::game_class_outer_samples_json(class_name, k))
+}
+
+fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
+    let duration_ms = arg_u64(args, "duration_ms", Some(30_000))? as u32;
+    let interval_ms = arg_u64(args, "interval_ms", Some(100))? as u32;
+    Ok(crate::counters::sample_thread_modules_json(duration_ms, interval_ms))
 }
 
 fn op_set_skill_points(args: &Json) -> Result<Json, String> {
