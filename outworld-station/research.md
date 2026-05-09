@@ -98,8 +98,62 @@ BetterStack_P/
 
 ## Folder convention for this repo
 - Following the `better-backpack/` pattern from Grounded 2 work
-- Once we pick a first mod target, create `outworld-station/<mod-name>/` as the Rust crate
+- First mod crate: `outworld-station/tweaks/` — a multi-mod bundle
+  (stack-size adjustments first, more tweaks layered on the same
+  scaffold over time)
 - Shared shim/injector code from `injector/` and `archive/winhttp-proxy/` may be reusable
+
+## First mod target: stack tweaks (multi-mod foundation)
+
+The first feature in `outworld-station/tweaks/` is item-stack
+adjustments — reproduce/extend the existing community "Better Item
+Stacks" approach, but as a runtime mod via uespy instead of a
+static `_P` pak. Why: a runtime mod gives us live introspection
++ test-driven development for every subsequent tweak we add.
+
+### Full TDD loop, validated against current uespy
+
+1. **Find the DataTable** — `uespy::ue::datatable::find_by_short_name("DT_Materials")`
+   or test-side via `walk_class("DataTable") + filter by name`. ✅
+2. **Iterate rows** — `uespy::ue::datatable::iter_rows(table)` yields
+   `(FName-u64, row_ptr)`. Test resolves FName u64 -> string via
+   `uespy::ue::FName::to_string`. ✅
+3. **Identify stack offset** — parameter sweep via `read_bytes`
+   on a known row pointer at small offsets (4, 8, 12, ...). The
+   one whose value matches the in-game stack max (50, 100, etc.)
+   is the offset. Test code; no uespy gap. ✅
+4. **Mutate** — `write_bytes(addr_of_row, stack_offset, u32_bytes)`. ✅
+5. **Verify** — `read_bytes` round-trip + in-game pickup test by
+   reading inventory state via `walk_class` / `read_bytes` on the
+   player's `UInventoryComponent`. ✅
+6. **Persist across world loads** — install a `ProcessEventHook`
+   on a hot UFunction (e.g. movement multicast); inside the
+   trampoline, drain `PE_QUEUE` and re-apply patches if the
+   "applied for this slot" flag is unset. ✅
+7. **Test infrastructure** — `uespy_client::Api<TweaksSnapshot>` for
+   the integration tests; `uespy_client::perf::PerfLog` for any
+   timing / leak research. ✅
+
+Every step above maps to a `uespy::*` or `uespy_client::*` API
+that exists today. The only mod-side code is:
+- `Snapshot` struct with the fields tests assert against
+- `op_*` handlers for game-specific actions (e.g. `apply_stacks`)
+- The drain-site PE trampoline
+- Game-specific selector resolvers (`live_player` etc.)
+- The `cpp/shim.cpp` (~30 LoC inheriting `RC::CppUserModBase`)
+- The `build.rs` (~10 LoC calling `uespy_build::CppShim`)
+
+### Subsequent tweaks layer on the same scaffold
+
+Once `tweaks` has a working `/debug` endpoint + drain trampoline:
+- Hunger / thirst rate tweaks: same pattern, different DataTable / CDO field
+- Inventory slot count: write to `UInventoryComponent.DefaultMaxSize`
+- Movement / fall-damage tweaks: `write_bytes` to character CDOs
+- Anything driven by a UE DataTable is a row-write away
+- Anything driven by a UFunction is a `call` op away
+
+No new infrastructure per tweak — they're all test-file changes
+plus a snapshot field per observable.
 
 ## Shared `uespy` crate (extracted 2026-05-09, fully populated)
 
@@ -158,6 +212,8 @@ state shape + handlers.
 | UE4SS C++ shim layout-critical mirror (`CppUserModBase`, `UE4SSProgram` imgui bridge) | done | `uespy/cpp/uespy_cppusermodbase.hpp`, `uespy_imgui_bridge.hpp` |
 | `build.rs` glue (`CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...).compile()`) | done | `uespy-build` (rlib build-dep). Embeds shared headers via `include_str!`, drops them into `OUT_DIR/uespy_cpp/` at build time. Game's build.rs ~10 LoC. |
 | Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `uespy_client::perf` |
+| `TMap<K,V>` walker (`tmap::slots`, `find_value_by_fname_key`) | done | `uespy::ue::tmap` |
+| `UDataTable` helpers (`find_by_short_name`, `row_value_by_fname`, `iter_rows`) | done | `uespy::ue::datatable` |
 | Settings JSON loader pattern                      | n/a    | game-specific shape — uespy intentionally doesn't enforce |
 | Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |
 

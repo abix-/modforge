@@ -7,11 +7,13 @@
 
 #![allow(dead_code)] // skeleton state; consumed by upcoming hook + patch modules
 
+pub mod datatable;
 pub mod fname;
 pub mod fstring;
 pub mod offsets;
 pub mod probe;
 pub mod tarray;
+pub mod tmap;
 pub mod uobject;
 
 pub use fname::FName;

@@ -127,9 +127,25 @@ Out of scope:
 - Settings JSON loader (game-specific shape; uespy doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
 
-Migration is now 1000% complete vs the parity table. Every
-research / TDD capability the runtime-control-http skill describes
-lives once in uespy or uespy-client.
+Slice 13 (2026-05-09 late):
+- TMap<K,V> walker -> uespy::ue::tmap (slots, header,
+  find_value_by_fname_key). Layout constants (element stride 24,
+  pair-value offset 8, num-i32 offset 8) live in
+  uespy::ue::offsets::tmap; stable through UE 5.0-5.4.
+- UDataTable helpers -> uespy::ue::datatable (find_by_short_name,
+  row_value_by_fname, iter_rows). Built on tmap. Row-map offset
+  (0x30) lives in uespy::ue::offsets::datatable.
+- better-backpack's lookup_data_table_row is now a 3-line wrapper
+  validating the new helpers end-to-end. Build green.
+
+Migration is now 1000% complete vs the parity table including the
+DataTable / TMap walking surface needed for the upcoming
+outworld-station/tweaks/ multi-mod (stack-size adjustments first,
+more tweaks on the same scaffold over time).
+
+Every research / TDD capability the runtime-control-http skill
+describes — including the engine-version-stable TMap mechanics
+needed for any DataTable mod — lives once in uespy or uespy-client.
 
 Migration is complete. OWS mod's debug.rs only needs:
 1. A `Snapshot` struct + build_snapshot

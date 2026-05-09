@@ -180,45 +180,14 @@ fn is_player_character(obj: &UObject) -> bool {
     obj.full_name().contains("BP_SurvivalPlayerCharacter")
 }
 
-/// Look up a row in a `UDataTable` by FName, returning the row's
-/// bytes pointer if found.
-///
-/// `UDataTable.RowMap` is `TMap<FName, uint8*>` at +0x30. UE's TMap
-/// is `TSet<TPair<FName, uint8*>>` whose element type is
-/// `TSetElement<TPair> { pair: 16, HashNextId: i32, HashIndex: i32 }`
-/// = 24 bytes. The set's storage is a `TSparseArray` whose slots
-/// are a union of (TSetElement) and (i32 PrevFreeIndex, i32
-/// NextFreeIndex), sized to the larger = 24 bytes. So stride is
-/// 24, not 16.
-///
-/// We walk all slots linearly and key-match. Free slots hold two
-/// i32 free-list links in the first 8 bytes, which is extremely
-/// unlikely to collide with a real FName u64. If we ever observe
-/// a false hit, add the `AllocationFlags` TBitArray check at
-/// +16 of the TMap.
+/// Look up a row in a `UDataTable` by FName-as-u64. Thin wrapper
+/// over `uespy::ue::tmap::find_value_by_fname_key` at the
+/// `UDataTable.RowMap` offset. The TMap walking mechanics +
+/// stride / pair-value layout constants live in uespy so every
+/// UE-mod project shares the same vetted code.
 pub(crate) fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
-    const ROW_MAP_OFFSET: usize = 0x0030;
-    const ELEMENT_SIZE: usize = 24; // TSparseArray<TSetElement<TPair<FName,uint8*>>> slot
-    unsafe {
-        let row_map = table.field_ptr(ROW_MAP_OFFSET);
-        let data_ptr = (row_map as *const *const u8).read_unaligned();
-        let data_num = (row_map.add(8) as *const i32).read_unaligned();
-        if data_ptr.is_null() || data_num <= 0 {
-            return None;
-        }
-        let count = data_num as usize;
-        for i in 0..count.min(8192) {
-            let element = data_ptr.add(i * ELEMENT_SIZE);
-            let key: u64 = (element as *const u64).read_unaligned();
-            if key == row_name {
-                let value: *const u8 = (element.add(8) as *const *const u8).read_unaligned();
-                if !value.is_null() {
-                    return Some(value);
-                }
-            }
-        }
-        None
-    }
+    use uespy::ue::offsets::datatable;
+    unsafe { uespy::ue::tmap::find_value_by_fname_key(table, datatable::ROW_MAP, row_name) }
 }
 
 /// Read `FStatusEffectData.Type` (u8 at +0x30) and `Value`

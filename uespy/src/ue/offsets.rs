@@ -97,3 +97,31 @@ pub mod fuobject_item {
 // FUNC_Native flag, set when calling FString-returning BlueprintPure
 // statics so the engine doesn't try to allocate result params.
 pub const FUNC_NATIVE: u32 = 0x400;
+
+// TMap layout. Stable through UE 5.0-5.4. Verified empirically
+// (the stride was 16 in older UE; UE5 bumped it to 24). Override
+// these per-game if a future engine bump shifts them — callers
+// pass the offsets explicitly to `tmap::slots(obj, offset)` so
+// only the per-element / per-pair shape is constants here.
+pub mod tmap {
+    /// Stride of one slot in the underlying `TSparseArray<
+    /// TSetElement<TPair<K, V>>>`. The slot is a union of the
+    /// element (16-byte pair + i32 HashNextId + i32 HashIndex)
+    /// and a 2-i32 free-list link, sized to the larger.
+    pub const ELEMENT_SIZE: usize = 24;
+    /// Offset of `TPair::Value` within an element (after the
+    /// 8-byte key).
+    pub const PAIR_VALUE: usize = 8;
+    /// Offset of `Num` (i32) inside the TMap header.
+    pub const DATA_NUM: usize = 8;
+    /// Cap on linear scan length to bound runaway when a TMap
+    /// header is corrupted or being mutated mid-walk.
+    pub const MAX_LINEAR_SCAN: usize = 8192;
+}
+
+// UDataTable layout. RowMap (TMap<FName, uint8*>) sits at +0x30
+// on UE 5.x. Verified against Dumper-7 output for Grounded 2
+// (UE5-Augusta).
+pub mod datatable {
+    pub const ROW_MAP: usize = 0x0030;
+}
