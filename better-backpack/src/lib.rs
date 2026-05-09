@@ -24,6 +24,7 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+pub mod counters;
 pub mod debug;
 pub mod hook;
 pub mod inv_hook;

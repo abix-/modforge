@@ -153,6 +153,35 @@ pub enum SkillEffect {
         max_bonus: f32,
         format: PercentFormat,
     },
+
+    /// Apply a row from `Table_StatusEffects` to the player's
+    /// `UStatusEffectComponent`. **The canonical pattern Grounded 2
+    /// itself uses** for gear/perk/HoT effects (proved by the
+    /// bandage research: bandages are a `Type=Health` row applied
+    /// this way). Migrating skills to this surface integrates with
+    /// vanilla heal/damage multipliers, replicates correctly, and
+    /// avoids the `RequiredDamageTypeFlags` mask bug that blocked
+    /// bandages.
+    ///
+    /// `row_fname` is the FName u64 of the chosen row in
+    /// `Table_StatusEffects` (capture via the discovery test
+    /// `tests/explore_status_effect_rows.rs`). `value_at_max` is
+    /// the row's `Value` we'll write at level 100; vanilla
+    /// (level 0) restores whatever was captured.
+    PlayerStatusEffect {
+        row_fname: u64,
+        /// Value the row's `Value` field is set to at level 100.
+        /// At level 0, the captured vanilla is restored.
+        /// Examples:
+        ///   - FallDamage type (mul, vanilla 1.0): set to 0.0 for
+        ///     full immunity at L100.
+        ///   - DamageReductionMultiplier (add, vanilla 0.0): set
+        ///     to 1.0 for full reduction at L100.
+        ///   - MaxHealth (add, vanilla 0.0): set to e.g. 200.0 for
+        ///     +200 HP at L100.
+        value_at_max: f32,
+        format_word: &'static str,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -417,11 +446,28 @@ pub const CATALOG: &[Skill] = &[
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerHealthCompU32Mask {
-            offset: HC_REQUIRED_DAMAGE_TYPE_FLAGS,
-            mask: 0xFFFFFFFF,
+        // MIGRATED 2026-05-09 to a Runtime effect: no CDO write,
+        // no mask. kill_hook's trampoline intercepts
+        // ApplyDamageFromInfo on the player HC, reads
+        // FDamageInfo.DamageType, and if the DamageType class
+        // matches BP_EnvironmentalDamage_C scales the Damage
+        // parm by (1 - reduction * progress(level)) before
+        // forwarding. Same shape as fall_resistance's
+        // velocity-stomp on OnLanded -- just a different surface
+        // (ApplyDamageFromInfo) and a different discriminator
+        // (DamageType class instead of "the only fall path").
+        //
+        // Why this and not the binary mask: the mask
+        // (RequiredDamageTypeFlags = 0xFFFFFFFF) blocked all
+        // type_flags=0 events, including bandage heal-ticks --
+        // hard regression on the user. The intercept-and-scale
+        // approach only touches damage events whose DamageType
+        // is environmental; heals and combat damage pass through
+        // untouched. See docs/damage.md "REVISED fix path".
+        effect: SkillEffect::Runtime {
+            max_bonus: 1.0,
             format: PercentFormat::MinusPercent {
-                word: "impact / fall damage",
+                word: "environmental damage",
             },
         },
     },
@@ -559,6 +605,19 @@ pub fn format_effect(id: &str, level: u32) -> String {
         } => {
             let bonus = skill_bonus(*max_bonus, level).round() as i32;
             format!("+{bonus} {format_word}")
+        }
+        SkillEffect::PlayerStatusEffect {
+            value_at_max,
+            format_word,
+            ..
+        } => {
+            // Pure presence indicator -- the engine computes the
+            // effective stat after combining with vanilla rows of
+            // the same Type, so a precise per-skill value isn't
+            // available here without knowing the row's Type.
+            let progress = level_progress(level);
+            let pct = (progress * 100.0).round() as i32;
+            format!("{pct}% {format_word} (to value={:.2})", value_at_max * progress)
         }
     }
 }

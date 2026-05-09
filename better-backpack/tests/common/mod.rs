@@ -269,6 +269,16 @@ pub struct Snapshot {
     pub settings: SettingsView,
     #[serde(default)]
     pub damage_ring: Vec<DamageEvent>,
+    #[serde(default)]
+    pub counters: Value,
+    #[serde(default)]
+    pub process_memory: Value,
+    #[serde(default)]
+    pub process_cpu: Value,
+    #[serde(default)]
+    pub process_threads: Value,
+    #[serde(default)]
+    pub game_population: Value,
 }
 
 #[derive(Debug, Deserialize, Clone)]

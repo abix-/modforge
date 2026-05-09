@@ -1,5 +1,119 @@
 # grounded2mods - project state
 
+## Game-side leak diagnosed, NOT MITIGATED (2026-05-09 night)
+
+User reports the game is unplayable: 80% sustained CPU, RAM
+growing into the tens of GB over a session. Confirmed earlier
+this is not us (mod = 0.30% of process CPU; symptom persists
+with all UE4SS mods disabled).
+
+Extended the in-process mod's debug endpoint with
+`process_threads_json`, `game_population_json`,
+`process_memory_json`. Ran the 30-second perf test:
+
+- Working set +447 MB / 30s, private usage +452 MB / 30s
+- GObjects +2228 / 30s. Top growers: Package +198,
+  SoundNodeWavePlayer +190, SoundWave +144, then
+  SceneComponent / StaticMeshComponent / Proxy* components
+- CPU = ~6 full cores' worth. Hot threads: Foreground Worker
+  #0/#1 (~58% wall each, UE5 TaskGraph high-priority workers),
+  GameThread (51%), four D3D Background Threads (~47% each)
+
+Verdict: **streaming pipeline (World Partition + audio cache)
+loads cells, packages, and sounds without releasing them.**
+This is a Grounded 2 / UE5 bug. Reproducible with no mods. We
+have diagnosed it; we cannot fix it from the mod side.
+
+CASE NOT CLOSED: game is still unplayable for the user.
+Mitigations that exist are all upstream (lower audio, lower
+draw distance, restart periodically, file with Obsidian).
+
+Full writeup in `docs/ongoing.md` section 15.
+
+## Open work next session
+
+- Land OnLanded UFunction warmup at install time so
+  `fall_hook_fnname_allocs` (~1100/sec) drops to 0. Cache
+  populates only when player lands during the test window;
+  resolving by name at install time fixes that.
+- Investigate exposing a "force-unload streamed cells" command
+  through the debug endpoint as a hack mitigation for the
+  player.
+- Look for an existing Obsidian / community bug report on
+  audio/streaming leak; file one if not.
+- Try in-game settings combinations (audio channels, draw
+  distance, streaming distance, world partition cell loading
+  distance) to see if any meaningfully slow the leak.
+
+## Performance pass + research-to-tests migration (2026-05-09 evening)
+
+Discovered + fixed a 1090-allocations-per-second runaway in
+`fall_hook`'s trampoline. Per-fire cost was: drain_pending
+mutex acquire + `function.as_object().name()` String allocation
+on every player BP UFunction call (~18 per frame × 60Hz).
+50% CPU and growing process commit.
+
+Two mitigations + one architectural cleanup:
+
+1. **drain_pending empty-queue bypass**: shadow `AtomicUsize`
+   `PE_QUEUE_SIZE` mirrors queue length. Hot path is one
+   relaxed atomic load + branch when empty -- no mutex.
+2. **Cached OnLanded UFunction pointer**: lazy-resolved on
+   first sight, stored in `AtomicUsize`. Per-fire pointer
+   compare instead of String alloc. Zero allocations on the
+   common path.
+3. **All research scaffolding moved out of the mod**: the
+   `probe_status_effect_values`, `probe_player_status_effects`,
+   `is_collision_relevant`, `read_player_velocity_z`,
+   `read_player_current_damage`, and the impact-trace
+   before/after-CurrentDamage block were research-only code
+   that fired on every player BP UFunction. All purged from
+   `fall_hook.rs` (613 -> 347 lines). Reimplemented test-side
+   in `tests/research_probes.rs` using the generic endpoint
+   primitives (snapshot, call, read_bytes, walk_class).
+
+Architectural rule codified across skills + ongoing.md:
+
+- The mod is the mod; tests are the tests; research lives in
+  tests.
+- The debug endpoint stays generic (snapshot + call +
+  read_bytes + write_bytes + walk_class). No domain ops.
+- Hot-path code in the mod follows zero-allocations-unless-
+  needed: cache identifiers as pointers, atomic-load + branch
+  per fire, allocate / lock only on the slow path.
+
+Counters added (`src/counters.rs`) so future runaways are
+diagnosable in 30 seconds:
+`tests/explore_perf_counters.rs` snapshots all hot-path
+counters at T0, sleeps 30s during gameplay, snapshots at T1,
+prints per-second deltas sorted descending.
+
+Pending verification in-game: the new build with mitigations
+should drop `fall_hook_fnname_allocs` from 1090/sec to ~0/sec
+(only fires on actual player landings).
+
+## Bandage research complete (2026-05-09)
+
+End-to-end via the runtime control plane and research-as-code:
+
+1. AddHealth bypasses the impact_resistance mask (proved via
+   generic `call` primitive: heal works regardless of mask state).
+2. Bandages are NOT AddHealth: they're a status effect
+   `BandageHoTTier1` with `Type=Health (24)`, `Value=1.25` per
+   tick, modulated by `HealingReceived (57) = 1.15` for ~1.44
+   HP per ~250ms tick over ~3.5 seconds.
+3. The mask blocks bandages because the heal-tick goes through
+   the same native `ApplyDamage` path that consults
+   `RequiredDamageTypeFlags`. With the mask = 0xFFFFFFFF and
+   the heal carrying `type_flags=0`, the gate rejects the tick.
+4. Discovery test confirmed every stat type we need for the
+   migration exists in `Table_StatusEffects`:
+   - FallDamage(14): 7 rows
+   - DamageReductionMultiplier(30): 4 rows
+   - MaxHealth(5): 18 rows
+   - Health(24): 116 rows
+   - and so on for AttackDamage, DamageReduction, LifeSteal.
+
 ## AddHealth result (2026-05-09)
 
 `tests/explore_bandage_path.rs::addhealth_with_mask_on_vs_off`

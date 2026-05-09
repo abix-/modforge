@@ -490,6 +490,370 @@ Next step: extend the trampoline (or install a new one) on a
 class likely to mediate consumable use -- `UConsumableComponent`
 or the player's BP class. Re-run the bandage observation test.
 
+#### DEFINITIVE: AddHealth is NOT the bandage path (2026-05-09)
+
+Test `tests/explore_bandage_path.rs::addhealth_with_mask_on_vs_off`,
+re-run after the fall_hook drain-site fix:
+
+```
+mask OFF: AddHealth(20) -> delta = 20  (CurrentDamage 117.61 -> 97.61)
+mask ON : AddHealth(20) -> delta = 20  (CurrentDamage  97.61 -> 77.61)
+```
+
+Heal is **identical** with mask on vs off. AddHealth is
+unaffected by `RequiredDamageTypeFlags`. If bandages used
+AddHealth, they would heal regardless of mask state. But
+bandages observably DO NOT heal when the mask is on. Therefore
+**bandages do not call AddHealth**.
+
+#### Updated rule-out matrix
+
+| Path | Status |
+| ---- | ------ |
+| Status-effect tick (heal-over-time row added to player) | RULED OUT (no new row in `status_effects` during real bandage use) |
+| `ApplyDamageFromInfo` with negative damage | RULED OUT (would show in `damage_ring`; ring empty during real bandage) |
+| `UHealthComponent::AddHealth` | RULED OUT (mask on/off identical heal -- mask wouldn't matter even if it were the path) |
+| `UHealthComponent::ServerAddHealth` (replicated) | RULED OUT (would fire through HC vtable; ring empty) |
+| ANY UFunction on `UHealthComponent` | RULED OUT (kill_hook covers the entire HC vtable; nothing fires during real bandage) |
+| UFunction on a different class (UConsumableComponent, UStatusEffectComponent, UInventoryComponent, BP_Bandage_C, ...) | OPEN |
+| Native C++ call that bypasses ProcessEvent entirely | OPEN |
+
+#### Where bandages MUST be going
+
+Two remaining hypotheses:
+
+1. **A different class's UFunction.** The bandage flow likely
+   touches `UStatusEffectComponent` (to add a HoT effect) or
+   `UConsumableComponent` (to consume the item) before the heal
+   actually applies. The HoT mechanism then writes
+   `CurrentDamage` directly without going through any UFunction
+   we've hooked. Test plan: `walk_class("StatusEffectComponent")`
+   then `read_bytes` the `StatusEffects` TArray repeatedly during
+   a real bandage to catch the row appearing mid-HoT (our
+   single-snapshot might have missed the window).
+2. **Native C++ direct write.** UE's `UHealthComponent` has a
+   native fast-path that mutates `CurrentDamage` without
+   ProcessEvent involvement. The fall-damage investigation
+   earlier showed the same shape -- native code wrote
+   `CurrentDamage` and no PE call ever fired. If bandage HoT
+   uses the same kind of path, the only way to observe it is to
+   poll `CurrentDamage` rapidly during a bandage and infer the
+   call rate. Or: install a write-watch on the field via x86
+   debug registers (much heavier; out of scope today).
+
+The mask-blocks-bandages mechanism, then, must be:
+- Either the mask write triggers a side-effect on the
+  StatusEffectComponent that prevents the HoT-row addition.
+- Or the native C++ heal path consults `RequiredDamageTypeFlags`
+  even though it doesn't go through the gated ApplyDamage code.
+
+Next test: rapid-poll `status_effects` during a bandage to catch
+the HoT row mid-tick.
+
+#### IDENTIFIED: bandage mechanism is `BandageHoTTier1` (2026-05-09)
+
+`tests/explore_bandage_status_effects.rs` polled `status_effects`
+at 200ms intervals for 12 seconds with impact_resistance OFF and
+the player using a bandage. Result:
+
+```
+baseline (right after bandage use, before HoT completes):
+  21 rows including "BandageHoTTier1"
+ticks 1-14 (3.5 seconds):
+  CurrentDamage dropping ~1.44 every 250ms
+  total delta: -23 HP healed
+tick 14:
+  BandageHoTTier1 row REMOVED, healing complete
+```
+
+So bandages **DO** use the status-effect system. The HoT row is
+`BandageHoTTier1` (in `/Game/Blueprints/Attacks/Table_StatusEffects.Table_StatusEffects`,
+needs verification on table; previous polls showed both
+`Table_StatusEffects` and `DT_StatusEffects` as observed tables).
+It ticks ~1.44 HP every ~250ms for ~3.5 seconds.
+
+Why the earlier mask-off snapshot missed it: the bandage's HoT
+duration (~3.5s) is brief; if the snapshot is taken after the HoT
+completes, the row is already gone. We were measuring after the
+window.
+
+**Compared to mask-on run** (same test, mask = 0xFFFFFFFF):
+`BandageHoTTier1` never appeared in the polled window AND
+CurrentDamage didn't change. The mask suppresses the HoT
+addition entirely.
+
+#### Suppression mechanism (still open)
+
+Three places suppression could happen:
+
+1. **Bandage's BP code** reads `RequiredDamageTypeFlags` before
+   calling `CreateAndAddEffect` and skips the call if the mask
+   is non-zero. Test: hook `UStatusEffectComponent` and observe
+   whether `CreateAndAddEffect` fires during a mask-on bandage.
+   If NO call fires, suppression is upstream of the effect
+   system.
+2. **`UStatusEffectComponent::CreateAndAddEffect`** internally
+   reads `RequiredDamageTypeFlags` and rejects the add call.
+   Test: hook the component and observe whether the call
+   ENTERS but the row never appears.
+3. **The HoT row's stat type** maps to something the mask
+   gate consults. If `BandageHoTTier1`'s Type column is a
+   "damage-class" stat, native code applying the heal might
+   route through the same gate that rejects type_flags=0.
+
+To distinguish, we need visibility on `UStatusEffectComponent`.
+That requires a one-time hook in the mod (per the skill: hooks
+live in the mod, exposed via a named ring; tests poll the ring).
+This is the next mod change.
+
+Other research possibilities that don't require a new hook:
+- `walk_class("StatusEffect")` to find UStatusEffect instances
+  during a bandage. Read their data-table row handle to see
+  what they correspond to. Catches the row even if it's not in
+  the player's TArray (e.g. owned by the bandage item).
+- Read `BandageHoTTier1`'s row metadata via `read_bytes` on the
+  resolved data-table row pointer. Tells us its Type/Value
+  shape; we can then trace what stat it modulates.
+
+#### ROOT CAUSE: bandage HoT is `Type=Health` and the mask blocks the tick (2026-05-09)
+
+Caught `BandageHoTTier1`'s row metadata via the polling test
+(rapid snapshot caught the row's full Type and Value while it
+was active in the player's StatusEffects array):
+
+```
+row=BandageHoTTier1   type=24   value=1.25   table=Table_StatusEffects
+```
+
+Looking up `EStatusEffectType` value 24 in
+`Maine_structs.hpp:162`:
+
+```cpp
+enum class EStatusEffectType : uint8 {
+    ...
+    AttackDamage   = 23,
+    Health         = 24,    // <-- bandage HoT type
+    HealthPercentage = 25,
+    ...
+}
+```
+
+So bandage HoT is `Type=Health` (raw HP modifier),
+`Value=1.25` per tick. Combined with `PlayerUpgradeHealing1`
+(`Type=HealingReceived=57`, `Value=1.15`), the observed per-tick
+heal of ~1.44 = 1.25 * 1.15 matches.
+
+**Why the mask blocks bandages**: a `Health`-typed effect's
+tick applies HP changes through the same native code path that
+processes damage events. Per the earlier finding, native
+`ApplyDamage` consults `RequiredDamageTypeFlags`; if the
+incoming heal-tick carries `type_flags=0` (no damage-class
+bits set, because heals aren't damage-typed), the gate rejects
+the tick the same way it rejects fall/environmental damage. The
+mask `0xFFFFFFFF` requires at least one bit to overlap; zero
+overlaps with everything fail.
+
+So the suppression isn't "AddEffect is blocked". It's "the
+per-tick heal application is blocked by the same gate that
+rejects fall damage". The row may briefly exist (our 200ms
+polling resolution can miss a single-tick lifetime), but
+without working ticks it produces no observable HP change.
+
+#### REVISED fix path for `impact_resistance` (2026-05-09 evening)
+
+Earlier sections proposed status-effect migration. That's
+correct for skills like max_health / attack_damage / lifesteal,
+but **not for impact_resistance**, because the status-effect
+filter shapes don't cleanly distinguish environmental damage
+from fall damage (both carry `type_flags = 0`) without
+reading the row's `DamageTypeFlags` or `DamageType` filter
+fields, and we don't yet have programmatic write access to
+those filter fields.
+
+The cleaner shape mirrors **fall_resistance**'s velocity-stomp
+pattern:
+
+| Skill | Surface | Discriminator | Action |
+| ----- | ------- | ------------- | ------ |
+| fall_resistance | `OnLanded` PE hook | (only path) | scale CMC.Velocity.Z by `(1 - reduction)` before native ApplyFallDamage runs |
+| impact_resistance | `ApplyDamageFromInfo` PE hook | `FDamageInfo.DamageType == BP_EnvironmentalDamage_C` | scale `Damage` out-param by `(1 - reduction)` before forwarding |
+
+We already have a PE hook on `UHealthComponent` (kill_hook).
+That trampoline already fires for `ApplyDamageFromInfo` calls
+on the player HC. To finish impact_resistance:
+
+1. Inside the trampoline's `ApplyDamageFromInfo` branch, read
+   `FDamageInfo.DamageType` (a `TSubclassOf<USurvivalDamageType>`
+   at +0x40 inside FDamageInfo, which is the 3rd parm at
+   +0x18 of the parm struct, so absolute parm offset
+   +0x18+0x40 = +0x58).
+2. Resolve the class's name. If it contains "Environmental"
+   (or matches `BP_EnvironmentalDamage_C` exactly), this is
+   the impact path.
+3. If the player has `impact_resistance > 0`, compute
+   `reduction = 1.0 * progress(level)` and scale the `Damage`
+   parm at offset 0x00 by `(1 - reduction)` BEFORE forwarding
+   to the original.
+4. Forward as normal.
+
+This:
+- Reduces only environmental damage (not bandages, not creature
+  combat, not fall)
+- Scales per-skill-level
+- Removes the binary-mask hack entirely
+- Removes the bandage regression as a side-effect (the mask is
+  the bug; not setting it = no bug)
+
+#### LANDED 2026-05-09: impact_resistance is now Runtime + ApplyDamageFromInfo intercept
+
+Implementation:
+
+- `skills.rs` catalog row: `Runtime { max_bonus: 1.0, format:
+  MinusPercent { word: "environmental damage" } }`. No CDO
+  writes, no mask, no status-effect addition.
+- `kill_hook::on_event`: when `fn_name == "ApplyDamageFromInfo"`
+  on a player's `UHealthComponent`, reads the DamageType class
+  from `FDamageInfo+0x40` (parm offset `0x18+0x40 = 0x58`).
+  If the class name contains "Environmental", scales:
+  - `Damage` parm at parm+0x00 (the OUT param the engine reads
+    as input AND writes the applied amount to)
+  - `OriginDamageData.Damage` at parm+0x18+0x78 = parm+0x90
+  Both by `(1 - reduction * progress)` where
+  `progress = sqrt(level / 100)` and `reduction = 1.0` at L100.
+- Forwards to original.
+
+Result:
+- environmental damage is scaled before native code processes it
+- bandages don't go through ApplyDamageFromInfo (we proved this:
+  when bandages tick, kill_hook ring captures nothing) -> never
+  affected
+- creature combat damage has DamageType = something like
+  `BP_<creature>_attack_C`, not Environmental -> never affected
+- fall damage is the native-direct path that bypasses
+  ProcessEvent -> handled separately by fall_resistance
+- the `RequiredDamageTypeFlags = 0xFFFFFFFF` mask is GONE; the
+  bandage regression is fixed by removal of the bug, not by
+  reaching for a workaround.
+
+Validation: tests/skill_impact_resistance.rs and
+tests/bandage_regression.rs.
+
+**Fix path: status-effect migration of `impact_resistance`** (DEPRECATED; see above).
+Move from the binary `RequiredDamageTypeFlags = 0xFFFFFFFF`
+write to applying a status effect of
+`EStatusEffectType::DamageReductionMultiplier` (=30) or
+`FallDamage` (=14) with the right `Value`. Those types
+modulate damage *via the status-effect system*, which natively
+filters by stat type and does not intercept heals.
+
+After migration, `impact_resistance` will:
+- Reduce environmental / fall damage like today
+- NOT touch healing (different stat)
+- Scale per-skill-level instead of being binary
+
+This is the long-tracked migration in `docs/todo.md` "RPG:
+Status-effect-backed skill rewrite". The bandage bug is the
+forcing function: the binary mask is unfixable; the migration
+is mandatory for the skill to ship usable.
+
+#### Reuse the same pattern for our `health_regen` skill
+
+Bandages reveal the **canonical Grounded 2 healing pattern**:
+
+> Apply a `UStatusEffect` whose `FStatusEffectData` row has
+> `Type = EStatusEffectType::Health (24)` and `Value = HP per tick`.
+> The engine's status-effect tick pipeline applies the HP gain
+> through the standard pipeline; gear / perk multipliers
+> (`HealingReceived = 57`) compound automatically.
+
+Our current `health_regen` skill takes a different approach: it
+mutates `UGlobalCombatData.CombatRegenTickPercentage` /
+`CombatRegenTickRate` directly. That works but it has problems:
+
+- It scales the **out-of-combat** regen system globally, which
+  affects every actor that uses it (players, tamed creatures).
+  Possible cross-contamination.
+- It modifies a singleton-style asset, so multiplayer guests
+  may not see the change.
+- It bypasses the canonical pattern bandages use, so it doesn't
+  benefit from `HealingReceived` multipliers, gear bonuses, etc.
+
+**Migrate `health_regen` to the same status-effect pattern**.
+Apply a long-duration (or refreshed-on-tick) `UStatusEffect`
+with `Type=Health` and `Value` scaled by skill level, attached
+to the player's `UStatusEffectComponent`. The engine then
+ticks it the same way it ticks `BandageHoTTier1`, with all the
+existing gear/perk modulation. No GlobalCombatData mutation
+needed, no asset-level cross-contamination, fully integrated
+with vanilla.
+
+Implementation sketch:
+1. On apply, find or create a row in `Table_StatusEffects` for
+   our regen (e.g. `RpgHealthRegenTier1`) with `Type=24`,
+   `Value=skill_level_scaled`. Either mutate an existing
+   reusable row or add a new one (see "UStatusEffect is
+   row-driven" earlier).
+2. Call `UStatusEffectComponent::CreateAndAddEffect` with that
+   row handle, on the player's component.
+3. Refresh on slot reload / level-up so duration doesn't
+   expire mid-session.
+4. Remove the GlobalCombatData mutation entirely.
+
+This same pattern will be used by:
+- `impact_resistance` -> `DamageReductionMultiplier` / `FallDamage`
+- `lifesteal` -> `LifeSteal` (= 38)
+- `attack_damage` -> `AttackDamage` (= 23)
+- `armor` -> `DamageReduction` (= 29)
+- `max_health` -> `MaxHealth` (= 5)
+- `health_regen` -> `Health` per tick (= 24)
+- crit, thorns, etc. -> matching enum values
+
+This is the right long-term shape for the entire catalog.
+
+#### Discovery: every required row type exists in `Table_StatusEffects` (2026-05-09)
+
+Test `tests/explore_status_effect_rows.rs` walked
+`Table_StatusEffects` row map and grouped rows by
+`FStatusEffectData.Type`. Output (filtered to migration targets):
+
+```
+Type   5 (MaxHealth)                 : 18 rows  first @ 0x25e07bda6c0
+Type  14 (FallDamage)                :  7 rows  first @ 0x25e24abe680
+Type  23 (AttackDamage)              : 168 rows
+Type  24 (Health)                    : 116 rows
+Type  29 (DamageReduction)           : 157 rows
+Type  30 (DamageReductionMultiplier) :  4 rows  first @ 0x25e271d5d70
+Type  38 (LifeSteal)                 : 11 rows
+```
+
+**Every stat type our migration plan needs exists in the data
+table** with multiple candidate rows. We can either reuse an
+existing row (mutate its `Value` to our level-scaled value, then
+`CreateAndAddEffect` with that row handle) or pick the lowest-
+risk row per stat (one with a name like `RpgX` reserved for our
+mod, when we eventually inject one).
+
+Caveats:
+
+- The discovery test was slow (~3.7 min) because it made one
+  HTTP `read_bytes` call per row. Optimization: read large
+  chunks of element memory in one call, parse client-side. Drop
+  runtime to seconds.
+- We captured row addresses but not the `FName` keys. The
+  `FName` is at element[0..8] of each TMap slot; we already
+  read it but didn't surface it. `CreateAndAddEffect` takes a
+  `FDataTableRowHandle = { UDataTable*, FName }`, so we need
+  the FName to build the handle. One-line fix on the next test
+  iteration.
+
+Next step: re-run discovery with the FName captured, pick a
+target row per stat type (probably the simplest / smallest-
+value one to avoid stomping a vanilla effect tier), then
+implement the generic `SkillEffect::PlayerStatusEffect` apply
+path that calls `CreateAndAddEffect`. The first migration
+(`impact_resistance`) is the proof of concept; once it works,
+the other six skills are one-line catalog row changes.
+
 Caveat: `simulate_apply_damage` (calling `ApplyDamageFromInfo`
 via process_event) **crashes the game** when invoked from inside
 the `kill_hook` PE trampoline. The drain site is itself inside a

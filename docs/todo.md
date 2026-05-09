@@ -154,19 +154,16 @@ damage mitigation. Plant / terrain collision uses
 on the existing multicast hook), distinct from fall damage which has
 its own pipeline -- see `rpg.md` for both internals.
 
-## RPG: Impact Damage Resistance (DONE, but BLOCKS BANDAGES)
+## RPG: Impact Damage Resistance (FIXED 2026-05-09 evening)
 
-**Critical regression confirmed 2026-05-09**: enabling
-`impact_resistance` at any level prevents bandages and other
-healing items from working. Disabling the skill restores healing.
-This is because bandages route through `ApplyDamage` with negative
-damage and `type_flags = 0`, hitting the same mask gate the skill
-sets. See [`docs/damage.md`](damage.md) "Critical regression".
-
-The toggle now correctly captures and restores the vanilla mask so
-players can switch the skill off when they need to heal, but the
-skill is unusable in its current form. Status-effect migration
-(below) is the canonical fix.
+Bug: with the previous binary mask, bandages were blocked. Now
+fixed: impact_resistance is a `Runtime` effect that intercepts
+`ApplyDamageFromInfo` on the player HC and scales damage by
+`(1 - reduction * progress)` only when `FDamageInfo.DamageType`
+is environmental. Bandages, creature combat, and fall damage are
+all untouched. Per-level scaling. See `docs/damage.md` "LANDED
+2026-05-09: impact_resistance is now Runtime + ApplyDamageFromInfo
+intercept".
 
 
 
@@ -182,6 +179,103 @@ collision multicasts report `damage=0.00`.
 level 0 = full damage. Does not scale on the `sqrt(level/100)`
 curve the rest of the catalog uses. Migration to the proper
 mechanism (status effects) tracked below.
+
+## Status-effect migration: row inventory verified (2026-05-09)
+
+Discovery test (`tests/explore_status_effect_rows.rs`) confirmed
+every `EStatusEffectType` we need exists in `Table_StatusEffects`
+with multiple candidate rows. Counts:
+
+| Type | Name | Rows | Skill that wants it |
+| ---- | ---- | ---- | ------------------- |
+| 5    | MaxHealth | 18 | max_health |
+| 14   | FallDamage | 7  | impact_resistance, fall_resistance |
+| 23   | AttackDamage | 168 | attack_damage |
+| 24   | Health | 116 | health_regen, AddHealth-equivalents |
+| 29   | DamageReduction | 157 | armor |
+| 30   | DamageReductionMultiplier | 4 | impact_resistance alt |
+| 38   | LifeSteal | 11 | lifesteal |
+
+We don't need to inject new rows; we'll reuse an existing one
+per stat (mutating its `Value` at apply time before calling
+`CreateAndAddEffect`).
+
+Concrete next steps to land the fix:
+
+- [ ] Optimize the discovery test: batch read_bytes (one big
+  chunk) so it runs in seconds not minutes; capture FName for
+  each row.
+- [ ] Pick target row per stat type (lowest-impact / most-clearly-
+  reservable name for our mod).
+- [ ] Implement `SkillEffect::PlayerStatusEffect { row_name,
+  base_value, max_value, ... }` variant in `skills.rs`.
+- [ ] One generic apply arm in `apply.rs` that:
+   1. Resolves Table_StatusEffects.
+   2. Looks up the row by FName.
+   3. Mutates the row's Value field to (max_value * progress).
+   4. Calls `UStatusEffectComponent::CreateAndAddEffect` on the
+      player's component with the row handle.
+   5. On disable / level=0: removes the effect (or sets
+      Value=0 then re-adds).
+- [ ] Migrate `impact_resistance` first as proof of concept.
+- [ ] Validate via the regression test: bandages must heal even
+  with impact_resistance enabled. That's the bug fix.
+- [ ] Migrate the rest of the catalog row-by-row.
+
+## RPG: bandage HoT teaches us the canonical heal pattern (2026-05-09)
+
+Research traced bandages to a status effect `BandageHoTTier1`:
+`Type = EStatusEffectType::Health (24)`, `Value = 1.25` per tick,
+modulated by `HealingReceived = 57` (1.15) for ~1.44 HP per
+~250ms tick over ~3.5 seconds. Native code applies the HP gain
+via the same pipeline that consults `RequiredDamageTypeFlags` --
+which is why our binary mask blocks bandages.
+
+This is the canonical Grounded 2 heal mechanism. Every skill we
+add that grants HP should ride the same surface (apply a
+`UStatusEffect` with `Type=Health` for HoT, `Type=MaxHealth=5`
+for raw cap bumps, etc.) instead of poking native fields
+directly. Beneficial side-effects: HealingReceived multipliers
+auto-apply, gear/perk synergy works, multiplayer replication is
+correct, no singleton-asset mutation.
+
+**Concrete refactors** (each becomes a one-skill migration once
+the status-effect apply path lands):
+
+- [ ] `health_regen`: stop mutating `UGlobalCombatData`; apply a
+  `UStatusEffect{Type=Health, Value=scaled_per_tick}` per slot
+  activation, refreshed periodically. Detail in
+  `docs/damage.md` "Reuse the same pattern for our health_regen
+  skill".
+- [ ] `max_health`: stop direct-writing `HC.MaxHealth`; apply
+  `Type=MaxHealth (5)` status effect.
+- [ ] `impact_resistance`: stop the binary
+  `RequiredDamageTypeFlags = 0xFFFFFFFF`; apply
+  `Type=DamageReductionMultiplier (30)` or `FallDamage (14)`.
+  This is the bug-fix migration -- bandages stop being blocked
+  the moment this lands.
+- [ ] `lifesteal`: kill the runtime no-op; apply
+  `Type=LifeSteal (38)`.
+- [ ] `attack_damage`: stop direct-writing
+  `ASC.CustomDamageMultiplier`; apply `Type=AttackDamage (23)`.
+- [ ] `armor`: stop direct-writing `HC.BaseDamageReduction`;
+  apply `Type=DamageReduction (29)` or
+  `DamageReductionMultiplier (30)`.
+- [ ] `fall_resistance`: keep the velocity-stomp (it's the
+  validated mechanism); ALSO apply `Type=FallDamage (14)` for
+  consistency and so the value is visible to anything that
+  introspects player stats.
+
+Movement skills (`move_speed`, `jump_height`, `glide_speed`,
+`leap_distance`) stay on direct CMC field writes -- the
+status-effect surface doesn't expose movement-component
+parameters with the granularity we use.
+
+Survival drains (`hunger`, `thirst`) similarly stay on the
+SurvivalComponent CDO writes -- the status effect types
+`HungerRate (17)` and `ThirstRate (18)` exist and could be used,
+but the CDO write is simpler and battle-tested. Optional later
+parity if convenient.
 
 ## RPG: Status-effect-backed skill rewrite (IN PROGRESS -- A1)
 
@@ -658,6 +752,33 @@ the first time impact_resistance went out as a binary mask.
     verify storage has +M of the right item. All driven via the
     debug endpoint (need ops: `simulate_advance_time`,
     `place_building`, `read_storage_contents`).
+
+## Hot-reload the DLL while the game is running
+
+Editing the mod and seeing the change requires close-game ->
+deploy DLL -> launch-game right now. Slow. UE4SS supports
+hot-reloading CPPMods in some configurations; need to research
+whether our shim shape is compatible:
+
+- Check UE4SS's "reload mods" hotkey / chat command for cpp
+  mods specifically (it's well-supported for Lua mods; cpp
+  support is partial).
+- Our mod installs vtable patches via `ProcessEventHook` and
+  forgets the handles for life-of-process. Hot-reload would
+  need to re-install those on load AND properly unhook the
+  old DLL's vtable patches before the new DLL installs its
+  own. Otherwise we corrupt the vtable.
+- If UE4SS doesn't reload cpp mods cleanly, alternatives:
+  build a tiny "loader" mod that mmaps our actual mod DLL on
+  demand and provides install / uninstall hooks; or use
+  Windows-side detour-redirect tricks.
+- Investigate whether the inv_hook / kill_hook / fall_hook
+  install paths are idempotent (i.e. handle "already
+  installed" by no-op, so a reload that re-runs init doesn't
+  double-hook).
+
+This would dramatically speed up the iteration loop. Worth a
+spike.
 
 ## Future infra
 

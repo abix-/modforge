@@ -55,6 +55,7 @@ pub fn current_slot_key() -> Option<String> {
 }
 
 fn find_in_game_game_state() -> Option<&'static UObject> {
+    crate::counters::bump(&crate::counters::WORLD_LOADER_GOBJECTS_WALKS);
     let target = find_class_fast("InGameGameState")?;
     let rt = runtime();
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };

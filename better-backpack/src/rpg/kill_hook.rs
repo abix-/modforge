@@ -91,6 +91,9 @@ fn on_event(
     parms: *mut c_void,
     original: OriginalProcessEvent,
 ) {
+    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_KILL_HOOK);
+    crate::counters::bump(&crate::counters::KILL_HOOK_FIRES);
+
     // Drain the debug PE queue here. The re-entrance guard
     // inside `drain_pending` prevents recursive draining when a
     // queued op itself triggers PE fan-out (e.g. AddHealth ->
@@ -115,8 +118,12 @@ fn on_event(
     // and any heal path bandages might use).
     if !parms.is_null()
         && let Some(owner) = this.outer()
-        && owner.full_name().contains("BP_SurvivalPlayerCharacter")
+        && {
+            crate::counters::bump(&crate::counters::KILL_HOOK_OWNER_FULLNAME_ALLOCS);
+            owner.full_name().contains("BP_SurvivalPlayerCharacter")
+        }
     {
+        crate::counters::bump(&crate::counters::KILL_HOOK_PLAYER_FIRES);
         let fn_name = function.as_object().name();
         let is_damage_fn = matches!(
             fn_name.as_str(),
@@ -175,6 +182,7 @@ fn on_event(
                 },
                 _ => (0.0f32, 0i32, 0u32),
             };
+            crate::counters::bump(&crate::counters::KILL_HOOK_LOG_LINES);
             bbp_log!(
                 "rpg/dmg-trace: fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
                 fn_name,
@@ -207,6 +215,82 @@ fn on_event(
             // for the damage event currently being multicast, so reading
             // here gives us the full FDamageInfo for whatever just hit.
             log_last_damage_info(this);
+        }
+
+        // Impact Damage Resistance intercept (2026-05-09 v2).
+        //
+        // Empirical research showed environmental damage is applied
+        // by native C++ direct write to CurrentDamage BEFORE any PE
+        // event fires. Same shape as fall damage. There's no
+        // upstream PE seam. The multicast event we see is
+        // post-application notification (the trace shows zero
+        // CurrentDamage delta during the multicast's original.call).
+        //
+        // Strategy: post-application REVERSAL. Detect environmental
+        // multicasts via LastDamageInfo.DamageType (at HC+0x3B0+0x40),
+        // read the damage value from the parm, and SUBTRACT
+        // `damage * reduction` from CurrentDamage to undo the
+        // reduction we want.
+        //
+        // The visible damage flash / multicast still fires (so
+        // there's some feedback), but in-game HP only loses
+        // `damage * (1 - reduction)`.
+        let multicast_dmg_offset = match fn_name.as_str() {
+            "MulticastHandleEffectsWithDamageFlags" => Some(0x18),
+            "MulticastHandleEffectsWithDamageFlagsAtOwnerLocation"
+            | "MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation" => Some(0x00),
+            _ => None,
+        };
+        if let Some(dmg_off) = multicast_dmg_offset {
+            let level = crate::rpg::fall_hook::current_impact_resistance_level();
+            if level > 0 && !parms.is_null() {
+                // Read DamageType from LastDamageInfo on the HC.
+                // FDamageInfo.DamageType is at +0x40.
+                const HC_LAST_DAMAGE_INFO: usize = 0x03B0;
+                const FDAMAGEINFO_DAMAGETYPE_REL: usize = 0x40;
+                let damage_type_class: *const UObject = unsafe {
+                    this.field_ptr(HC_LAST_DAMAGE_INFO + FDAMAGEINFO_DAMAGETYPE_REL)
+                        .cast::<*const UObject>()
+                        .read_unaligned()
+                };
+                let class_name = unsafe {
+                    crate::counters::bump(&crate::counters::KILL_HOOK_DAMAGETYPE_NAME_ALLOCS);
+                    damage_type_class
+                        .as_ref()
+                        .map(|c| c.name())
+                        .unwrap_or_default()
+                };
+                if class_name.contains("Environmental") {
+                    let damage = unsafe {
+                        (parms as *const u8)
+                            .add(dmg_off)
+                            .cast::<f32>()
+                            .read_unaligned()
+                    };
+                    if damage > 0.0 {
+                        let progress = (level as f32 / 100.0).sqrt().min(1.0);
+                        let reduction = 1.0 * progress; // max_bonus = 1.0 in catalog
+                        let to_reverse = damage * reduction;
+                        unsafe {
+                            let cd_ptr = this
+                                .field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
+                                as *mut f32;
+                            let cd_now = cd_ptr.read_unaligned();
+                            let new_cd = (cd_now - to_reverse).max(0.0);
+                            cd_ptr.write_unaligned(new_cd);
+                            bbp_log!(
+                                "rpg/impact: reversed environmental damage by {:.2} (raw={:.2}, reduction={:.3}, level={}); CurrentDamage {:.2} -> {:.2}",
+                                to_reverse,
+                                damage,
+                                reduction,
+                                level,
+                                cd_now,
+                                new_cd
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 

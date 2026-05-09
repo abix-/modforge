@@ -560,7 +560,177 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                 level
             );
         }
+        SkillEffect::PlayerStatusEffect {
+            row_fname,
+            value_at_max,
+            format_word,
+        } => {
+            apply_player_status_effect(skill.id, level, *row_fname, *value_at_max, format_word);
+        }
     }
+}
+
+// Cached pointer to Table_StatusEffects. The table is loaded once
+// at world init and lives forever; caching avoids a GObjects walk
+// per apply.
+static TABLE_STATUS_EFFECTS: OnceLock<usize> = OnceLock::new();
+
+// Captured vanilla `Value` per row FName. The first time we touch
+// a row we record its untouched value here so disable / level-0
+// can restore it.
+static VANILLA_STATUS_EFFECT_VALUES: std::sync::Mutex<Vec<(u64, f32)>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn capture_vanilla_se_value(fname: u64, value: f32) {
+    if let Ok(mut g) = VANILLA_STATUS_EFFECT_VALUES.lock()
+        && !g.iter().any(|(k, _)| *k == fname)
+    {
+        g.push((fname, value));
+    }
+}
+
+fn vanilla_se_value(fname: u64) -> Option<f32> {
+    VANILLA_STATUS_EFFECT_VALUES
+        .lock()
+        .ok()
+        .and_then(|g| g.iter().find(|(k, _)| *k == fname).map(|(_, v)| *v))
+}
+
+/// Look up Table_StatusEffects in GObjects (once) and return its
+/// address as &UObject. Cached.
+fn table_status_effects() -> Option<&'static UObject> {
+    if let Some(p) = TABLE_STATUS_EFFECTS.get() {
+        let r: &'static UObject = unsafe { &*(*p as *const UObject) };
+        return Some(r);
+    }
+    let rt = sdk::try_runtime()?;
+    let class = sdk::find_class_fast("DataTable")?;
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return None;
+    }
+    for obj in view.iter() {
+        if !obj.is_a(class) {
+            continue;
+        }
+        let fname = obj.full_name();
+        if fname.contains("Table_StatusEffects.Table_StatusEffects") {
+            let addr = obj as *const UObject as usize;
+            let _ = TABLE_STATUS_EFFECTS.set(addr);
+            let r: &'static UObject = unsafe { &*(addr as *const UObject) };
+            return Some(r);
+        }
+    }
+    None
+}
+
+/// FStatusEffectData layout (verified empirically; see fall_hook
+/// `read_status_effect_row`): Type @ +0x30 (u8), Value @ +0x34 (f32).
+#[allow(dead_code)]
+const SE_ROW_TYPE_OFFSET: usize = 0x30;
+const SE_ROW_VALUE_OFFSET: usize = 0x34;
+
+/// Apply path for `SkillEffect::PlayerStatusEffect`. The canonical
+/// Grounded 2 status-effect surface (the same one bandages,
+/// gear, and perks use). DRY: this single function powers every
+/// skill migrated to the status-effect system.
+fn apply_player_status_effect(
+    skill_id: &str,
+    level: u32,
+    row_fname: u64,
+    value_at_max: f32,
+    format_word: &str,
+) {
+    let progress = skills::level_progress(level);
+    let active = level > 0;
+
+    let Some(table) = table_status_effects() else {
+        bbp_log!(
+            "rpg/apply: {} status-effect: Table_StatusEffects not found yet",
+            skill_id
+        );
+        return;
+    };
+    let Some(row_ptr) = crate::rpg::fall_hook::lookup_data_table_row(table, row_fname) else {
+        bbp_log!(
+            "rpg/apply: {} status-effect: row 0x{:016x} not found in table",
+            skill_id,
+            row_fname
+        );
+        return;
+    };
+
+    // Capture vanilla value once.
+    let cur_val = unsafe {
+        (row_ptr.add(SE_ROW_VALUE_OFFSET) as *const f32).read_unaligned()
+    };
+    capture_vanilla_se_value(row_fname, cur_val);
+    let vanilla = vanilla_se_value(row_fname).unwrap_or(cur_val);
+
+    // Compute target value. At L100 progress=1.0 -> value_at_max.
+    // At L0 -> vanilla. Linear interpolation.
+    let target = if active {
+        vanilla + (value_at_max - vanilla) * progress
+    } else {
+        vanilla
+    };
+
+    // Mutate row.Value before triggering the engine to read it.
+    unsafe {
+        (row_ptr.add(SE_ROW_VALUE_OFFSET) as *mut f32).write_unaligned(target);
+    }
+
+    // Find the player's UStatusEffectComponent and call
+    // CreateAndAddEffect with the row handle.
+    let mut count = 0usize;
+    let live_count = apply_to_live_player_characters(|player| {
+        const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
+        let Some(sec) = read_component_ptr(player, ASC_STATUS_EFFECT_COMPONENT) else {
+            return;
+        };
+        let Some(class) = sdk::find_class_fast("StatusEffectComponent") else {
+            return;
+        };
+        let Some(func) = class.get_function("StatusEffectComponent", "CreateAndAddEffect") else {
+            return;
+        };
+
+        // Parm layout for CreateAndAddEffect (Maine_parameters.hpp):
+        //   FDataTableRowHandle StatusEffectRowHandle  // 16 bytes
+        //     - UDataTable*  DataTable                  // 8 bytes
+        //     - FName        RowName                    // 8 bytes
+        //   class UStatusEffect* ReturnValue            // 8 bytes
+        // Total: 24 bytes.
+        #[repr(C)]
+        struct CreateAndAddEffectParms {
+            data_table: *const UObject,
+            row_fname: u64,
+            return_value: *mut UObject,
+        }
+        let mut parms = CreateAndAddEffectParms {
+            data_table: table as *const UObject,
+            row_fname,
+            return_value: std::ptr::null_mut(),
+        };
+        unsafe {
+            sec.process_event(func, &mut parms as *mut _ as *mut std::ffi::c_void);
+        }
+        count += 1;
+    });
+
+    bbp_log!(
+        "rpg/apply: {} level={} progress={:.3} active={} row_fname=0x{:016x} vanilla={:.3} target={:.3} added to {}/{} live components ({})",
+        skill_id,
+        level,
+        progress,
+        active,
+        row_fname,
+        vanilla,
+        target,
+        count,
+        live_count,
+        format_word
+    );
 }
 
 // ---------------------------------------------------------------------

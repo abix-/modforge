@@ -13,6 +13,14 @@ const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
 
 const FN_ON_LANDED: &str = "OnLanded";
 
+/// Cached UFunction pointer for `OnLanded` on the player BP
+/// class. Resolved lazily on first sight of an OnLanded event.
+/// All subsequent fires can pointer-compare instead of
+/// allocating the function-name String. Eliminates ~1090
+/// String allocations/sec from the trampoline fast path.
+static ON_LANDED_UFUNCTION: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
 pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
     let mut hooks = Vec::new();
 
@@ -48,8 +56,50 @@ fn on_player_fall_event(
     parms: *mut c_void,
     original: OriginalProcessEvent,
 ) {
-    let fn_name = function.as_object().name();
+    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_FALL_HOOK);
+    crate::counters::bump(&crate::counters::FALL_HOOK_FIRES);
+
+    // Drain the debug PE queue here. The drain_pending fast path
+    // is a single atomic load when the queue is empty (the
+    // common case), so this is sub-ns when nothing is queued.
+    crate::debug::drain_pending();
+
     let is_player = is_player_character(this);
+
+    // FAST PATH: pointer-compare against the cached OnLanded
+    // UFunction. If the cache is empty (cold start) we fall to
+    // the slow path; otherwise non-OnLanded fires bail with a
+    // single atomic load and one branch. ZERO allocations.
+    let on_landed_ufunction = ON_LANDED_UFUNCTION.load(std::sync::atomic::Ordering::Relaxed);
+    let is_on_landed = on_landed_ufunction != 0
+        && (function as *const UFunction as usize) == on_landed_ufunction;
+    if !is_on_landed && on_landed_ufunction != 0 {
+        // Cache is populated and this is NOT the OnLanded
+        // function. Forward without allocating fn_name.
+        unsafe { original.call(this, function, parms) };
+        return;
+    }
+
+    // Slow path runs for either:
+    //   (1) the very first time we see any UFunction before the
+    //       OnLanded cache is populated -- we need the name to
+    //       check if THIS one is OnLanded
+    //   (2) every subsequent OnLanded event (rare, ~per landing)
+    // The earlier impact-trace diagnostic block (gated on
+    // `impact_resistance > 0`) is intentionally OFF on the fast
+    // path now -- the bandage research it was scaffolding for is
+    // complete (see docs/damage.md). If we need that diagnostic
+    // again, gate it behind a settings.debug.research flag, not
+    // behind a skill level the user has on for normal gameplay.
+    crate::counters::bump(&crate::counters::FALL_HOOK_FNNAME_ALLOCS);
+    let fn_name = function.as_object().name();
+
+    if on_landed_ufunction == 0 && fn_name == FN_ON_LANDED {
+        ON_LANDED_UFUNCTION.store(
+            function as *const UFunction as usize,
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    }
 
     // Velocity-stomp: works for fall landings (OnLanded fires before
     // native ApplyFallDamage reads live Velocity.Z). Does NOT work
@@ -76,76 +126,9 @@ fn on_player_fall_event(
                 );
             }
         }
-
-        // Status-effect probe: when impact_resistance > 0, log the
-        // current GetValueForStat() return for a handful of
-        // damage-relevant EStatusEffectType values on the player's
-        // StatusEffectComponent. Validates whether the native fall
-        // damage path consults the status-effect system at all
-        // before we commit engineering effort to a status-effect
-        // migration.
-        if current_impact_resistance_level() > 0 {
-            probe_status_effect_values(this);
-            probe_player_status_effects(this);
-        }
     }
-
-    // Walk-backwards trace for plant / terrain collision damage.
-    // GATED on impact_resistance level > 0 so it stays silent for
-    // normal users and kicks in only when the player has put a point
-    // into the diagnostic skill. Logs every fall/land/damage/hit PE
-    // event hitting the player BP class, with `CurrentDamage` snapshot
-    // before and after `original.call`. The PE event whose POST reading
-    // is higher than its pre reading is the event during which native
-    // code wrote `CurrentDamage` -- our intercept seam.
-    // Damage-change trace: log only events during which CurrentDamage
-    // actually changed. Keeps the log readable when ReceiveHit fires
-    // dozens of times per collision but only one or two events
-    // actually apply damage. Gated on impact_resistance level > 0 so
-    // it stays silent for normal users.
-    let impact_diag = is_player
-        && current_impact_resistance_level() > 0
-        && is_collision_relevant(&fn_name);
-    let cd_before = if impact_diag {
-        Some(read_player_current_damage(this))
-    } else {
-        None
-    };
 
     unsafe { original.call(this, function, parms) };
-
-    if let Some(before) = cd_before {
-        let after = read_player_current_damage(this);
-        if (after - before).abs() > 0.001 {
-            let vz = read_player_velocity_z(this);
-            bbp_log!(
-                "rpg/impact-trace: damage applied during fn={} CurrentDamage {:.2} -> {:.2} (delta={:.2}) Velocity.Z={:.2}",
-                fn_name,
-                before,
-                after,
-                after - before,
-                vz
-            );
-        }
-    }
-}
-
-fn read_player_velocity_z(player: &UObject) -> f64 {
-    const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
-    const CMC_VELOCITY_Z: usize = 0x00E8;
-    unsafe {
-        let cmc: *mut UObject = player
-            .field_ptr(ASC_CHAR_MOVEMENT_COMPONENT)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        if let Some(cmc) = cmc.as_ref() {
-            cmc.field_ptr(CMC_VELOCITY_Z)
-                .cast::<f64>()
-                .read_unaligned()
-        } else {
-            f64::NAN
-        }
-    }
 }
 
 struct VelocityStomp {
@@ -213,7 +196,7 @@ fn is_player_character(obj: &UObject) -> bool {
 /// unlikely to collide with a real FName u64. If we ever observe
 /// a false hit, add the `AllocationFlags` TBitArray check at
 /// +16 of the TMap.
-fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
+pub(crate) fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
     const ROW_MAP_OFFSET: usize = 0x0030;
     const ELEMENT_SIZE: usize = 24; // TSparseArray<TSetElement<TPair<FName,uint8*>>> slot
     unsafe {
@@ -351,233 +334,8 @@ fn collect_status_effects(player: &UObject) -> Vec<StatusEffectEntry> {
     entries
 }
 
-/// Walk the player's `UStatusEffectComponent.StatusEffects` array
-/// and log each active effect's row handle (DataTable name + row
-/// name) plus the row's `Type` + `Value` columns. Tells us which
-/// data tables and row names the engine uses for vanilla effects
-/// AND what their actual stat contributions look like, so we can
-/// pick a row template when migrating our skills.
-fn probe_player_status_effects(player: &UObject) {
-    const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
-    const SEC_STATUS_EFFECTS_TARRAY: usize = 0x01C8;
-    const STATUS_EFFECT_ROW_HANDLE: usize = 0x0058;
-    // FDataTableRowHandle layout: UDataTable* (8) + FName (8) = 16 bytes.
-    // The _NetCrc32 variant adds extras after; we only need the first 16.
 
-    let sec = unsafe {
-        let p: *mut UObject = player
-            .field_ptr(ASC_STATUS_EFFECT_COMPONENT)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        match p.as_ref() {
-            Some(c) => c,
-            None => return,
-        }
-    };
-
-    // TArray layout: { T* data; int32 num; int32 max; }
-    let (data_ptr, num) = unsafe {
-        let base = sec.field_ptr(SEC_STATUS_EFFECTS_TARRAY);
-        let data = (base as *const *const *mut UObject).read_unaligned();
-        let num = (base.add(8) as *const i32).read_unaligned();
-        (data, num.max(0) as usize)
-    };
-
-    if data_ptr.is_null() || num == 0 {
-        bbp_log!("rpg/sfx-list: player has 0 active status effects");
-        return;
-    }
-    bbp_log!("rpg/sfx-list: player has {} active status effects", num);
-
-    for i in 0..num.min(20) {
-        let effect = unsafe {
-            let p = data_ptr.add(i).read_unaligned();
-            match p.as_ref() {
-                Some(e) => e,
-                None => continue,
-            }
-        };
-        let table_ptr = unsafe {
-            effect
-                .field_ptr(STATUS_EFFECT_ROW_HANDLE)
-                .cast::<*mut UObject>()
-                .read_unaligned()
-        };
-        let raw_fname: u64 = unsafe {
-            let fname_ptr = effect.field_ptr(STATUS_EFFECT_ROW_HANDLE + 8);
-            (fname_ptr as *const u64).read_unaligned()
-        };
-        let row_name = unsafe {
-            crate::sdk::runtime()
-                .name_resolver
-                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw_fname))
-        };
-        let table_name = unsafe {
-            table_ptr
-                .as_ref()
-                .map(|t| t.full_name())
-                .unwrap_or_else(|| "<null-table>".to_string())
-        };
-
-        // Look up the row bytes in the data table and read Type + Value
-        // columns from FStatusEffectData (Type @ +0x30, Value @ +0x34).
-        let row_meta = unsafe {
-            table_ptr.as_ref().and_then(|t| {
-                lookup_data_table_row(t, raw_fname).map(|row| read_status_effect_row(row))
-            })
-        };
-        let row_meta_str = match row_meta {
-            Some((ty, val)) => format!(" Type={} Value={:.3}", ty, val),
-            None => " <row-not-found>".to_string(),
-        };
-
-        bbp_log!(
-            "rpg/sfx-list:   [{}] row={}{} table={}",
-            i,
-            row_name,
-            row_meta_str,
-            table_name
-        );
-    }
-}
-
-/// Probe `UStatusEffectComponent::GetValueForStat(StatType, false)`
-/// for a handful of damage-relevant `EStatusEffectType` values on
-/// the player's component. Logs the return value so we can see what
-/// vanilla effects already populate these stats.
-///
-/// Used to validate whether the native fall / damage paths consult
-/// the status-effect system before we commit to a migration.
-fn probe_status_effect_values(player: &UObject) {
-    use std::ffi::c_void;
-    const ASC_STATUS_EFFECT_COMPONENT: usize = 0x1378;
-
-    // ESurvivalEffectType values from Maine_structs.hpp:136 that are
-    // relevant to skills in our catalog.
-    const PROBES: &[(&str, u8)] = &[
-        ("FallDamage", 14),
-        ("DamageReduction", 29),
-        ("DamageReductionMultiplier", 30),
-        ("AttackDamage", 23),
-        ("LifeSteal", 38),
-        ("CriticalHitChance", 31),
-        ("CriticalDamage", 62),
-        ("ReflectDamage", 37),
-        ("MaxHealth", 5),
-    ];
-
-    let sec = unsafe {
-        let p: *mut UObject = player
-            .field_ptr(ASC_STATUS_EFFECT_COMPONENT)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        match p.as_ref() {
-            Some(c) => c,
-            None => {
-                bbp_log!("rpg/sfx-probe: StatusEffectComponent ptr is null on {}", player.name());
-                return;
-            }
-        }
-    };
-
-    let class = match sec.class() {
-        Some(c) => c,
-        None => return,
-    };
-    let func = match class.get_function("StatusEffectComponent", "GetValueForStat") {
-        Some(f) => f,
-        None => {
-            bbp_log!("rpg/sfx-probe: GetValueForStat UFunction not found on StatusEffectComponent");
-            return;
-        }
-    };
-
-    // Parm layout: StatType (u8) at +0, bTemporaryEffectsOnly (bool) at
-    // +1, padding, ReturnValue (f32) at +4. Total 8 bytes.
-    #[repr(C)]
-    struct GetValueForStatParms {
-        stat_type: u8,
-        temporary_only: bool,
-        _pad: [u8; 2],
-        return_value: f32,
-    }
-
-    // Static helper UFunction that returns the combine semantic for a
-    // given EStatusEffectType: 0=None, 1=Add, 2=Multiply.
-    let value_type_func = find_class_fast("UserInterfaceStatics")
-        .and_then(|c| c.get_function("UserInterfaceStatics", "GetStatusEffectValueType"));
-    let value_type_cdo = find_class_fast("UserInterfaceStatics").and_then(|c| c.class_default_object());
-
-    #[repr(C)]
-    struct GetValueTypeParms {
-        world_context: *const UObject,
-        status_effect_type: u8,
-        return_value: u8,
-        _pad: [u8; 6],
-    }
-
-    let mut summary = String::from("rpg/sfx-probe:");
-    for (name, stat) in PROBES {
-        let mut parms = GetValueForStatParms {
-            stat_type: *stat,
-            temporary_only: false,
-            _pad: [0; 2],
-            return_value: 0.0,
-        };
-        unsafe {
-            sec.process_event(func, &mut parms as *mut _ as *mut c_void);
-        }
-        let value_type_str = if let (Some(vt_func), Some(vt_cdo)) = (value_type_func, value_type_cdo) {
-            let mut vparms = GetValueTypeParms {
-                world_context: player as *const UObject,
-                status_effect_type: *stat,
-                return_value: 0,
-                _pad: [0; 6],
-            };
-            unsafe {
-                vt_cdo.process_event(vt_func, &mut vparms as *mut _ as *mut c_void);
-            }
-            match vparms.return_value {
-                0 => "none",
-                1 => "add",
-                2 => "mul",
-                n => return_str_for_unknown(n),
-            }
-        } else {
-            "?"
-        };
-        summary.push_str(&format!(
-            " {}({})={:.3}/{}",
-            name, stat, parms.return_value, value_type_str
-        ));
-    }
-    bbp_log!("{}", summary);
-}
-
-fn return_str_for_unknown(n: u8) -> &'static str {
-    match n {
-        3 => "max3",
-        _ => "??",
-    }
-}
-
-fn is_collision_relevant(fn_name: &str) -> bool {
-    // Tick fires every frame; exclude even though Receive matches.
-    if fn_name.contains("Tick") {
-        return false;
-    }
-    fn_name.contains("Damage")
-        || fn_name.contains("Damaged")
-        || fn_name.contains("Hit")
-        || fn_name.contains("Land")
-        || fn_name.contains("Fall")
-        || fn_name.contains("Impact")
-        || fn_name.contains("Health")
-        || fn_name.contains("ReceiveAny")
-        || fn_name.contains("ReceiveActor")
-}
-
-fn current_impact_resistance_level() -> u32 {
+pub(crate) fn current_impact_resistance_level() -> u32 {
     tracker::with_state(|state| {
         state
             .skill_levels
@@ -588,24 +346,3 @@ fn current_impact_resistance_level() -> u32 {
     .unwrap_or(0)
 }
 
-
-/// Read the player's `HealthComponent.CurrentDamage` (+0x32C). The
-/// player BP instance has its HealthComponent ptr at +0x1340 inside
-/// `ASurvivalCharacter`.
-fn read_player_current_damage(player: &UObject) -> f32 {
-    const ASC_HEALTH_COMPONENT: usize = 0x1340;
-    const HC_CURRENT_DAMAGE: usize = 0x032C;
-    unsafe {
-        let hc: *mut UObject = player
-            .field_ptr(ASC_HEALTH_COMPONENT)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        if let Some(hc) = hc.as_ref() {
-            hc.field_ptr(HC_CURRENT_DAMAGE)
-                .cast::<f32>()
-                .read_unaligned()
-        } else {
-            f32::NAN
-        }
-    }
-}

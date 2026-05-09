@@ -7,6 +7,38 @@
 
 Newest first.
 
+## 2026-05-09 (evening)
+
+### impact_resistance bug fix landed: ApplyDamageFromInfo intercept
+
+Replaced the binary `RequiredDamageTypeFlags = 0xFFFFFFFF` mask
+write with a Runtime effect that intercepts
+`UHealthComponent::ApplyDamageFromInfo` on the player HC,
+identifies environmental damage by
+`FDamageInfo.DamageType` class name containing "Environmental",
+and scales the `Damage` parm by `(1 - reduction * progress)`
+before forwarding.
+
+Why the change: the binary mask blocked bandages (and all
+healing) by gating `type_flags=0` events at the native
+ApplyDamage level. Bandage HoT applies a `Type=Health (24)`
+status effect whose tick goes through that gate and was being
+rejected. Research-as-code (`tests/explore_bandage_path.rs`,
+`tests/explore_bandage_status_effects.rs`) characterized the
+mechanism end-to-end before the fix landed.
+
+The new mechanism uses the same shape as fall_resistance's
+velocity-stomp on OnLanded: intercept-and-scale at the PE
+surface, gated by a discriminator (DamageType class for
+impact_resistance, "is fall" for fall_resistance).
+
+Side-effects:
+- Bandages now heal regardless of impact_resistance level
+- Creature combat damage is untouched (different DamageType)
+- Fall damage is untouched (different surface, handled by
+  fall_resistance)
+- Per-level sqrt scaling instead of binary all-or-nothing
+
 ## 2026-05-09
 
 ### Discovered: impact_resistance blocks bandages

@@ -40,9 +40,17 @@ pub extern "C" fn bbp_rpg_get_level() -> u32 {
 }
 
 /// Cumulative XP earned, 0 if no slot active.
+///
+/// Bumps `IMGUI_TAB_RENDERS` because this is the first FFI the
+/// C++ shim's `rpg_render_tab` calls each frame -- gives us a
+/// per-frame counter without adding a dedicated FFI export.
 #[unsafe(no_mangle)]
 pub extern "C" fn bbp_rpg_get_xp() -> u64 {
-    safe(|| tracker::with_state(|s| s.xp).unwrap_or(0))
+    safe(|| {
+        let _t = crate::counters::time_scope(&crate::counters::TIME_NS_IMGUI_GET_XP);
+        crate::counters::bump(&crate::counters::IMGUI_TAB_RENDERS);
+        tracker::with_state(|s| s.xp).unwrap_or(0)
+    })
 }
 
 /// XP required to reach the player's current level.
@@ -292,6 +300,8 @@ pub unsafe extern "C" fn bbp_rpg_format_skill_effect(
     out_buf_len: usize,
 ) -> i32 {
     safe(|| {
+        let _t = crate::counters::time_scope(&crate::counters::TIME_NS_FORMAT_SKILL_EFFECT);
+        crate::counters::bump(&crate::counters::IMGUI_FORMAT_CALLS);
         if skill_id.is_null() {
             return 0;
         }

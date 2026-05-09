@@ -97,10 +97,13 @@ pub fn log(args: std::fmt::Arguments<'_>) {
             );
         }
     }
+    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_BBP_LOG);
+    crate::counters::bump(&crate::counters::BBP_LOG_LINES);
     if let Ok(mut guard) = sink.file.lock()
         && let Some(f) = guard.as_mut()
     {
         let _ = f.write_all(&line);
+        crate::counters::bump(&crate::counters::BBP_LOG_FSYNCS);
         let _ = f.flush();
     }
 }

@@ -46,6 +46,9 @@ const SUPPORTED_OPS: &[&str] = &[
     "simulate_set_current_health",
     "set_skill_points",
     "call",
+    "read_bytes",
+    "write_bytes",
+    "walk_class",
 ];
 
 // PE-thread queue. The HTTP handler enqueues a command + a reply
@@ -84,6 +87,13 @@ struct Pending {
 
 static PE_QUEUE: Mutex<Vec<Pending>> = Mutex::new(Vec::new());
 
+/// Lock-free shadow of `PE_QUEUE.len()`. Updated alongside the
+/// queue lock. Lets `drain_pending` bail with a single relaxed
+/// atomic load when nothing is queued -- avoiding the mutex
+/// acquire that fires 1000+ times/sec from the fall_hook
+/// trampoline.
+static PE_QUEUE_SIZE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Ring buffer of recent damage / multicast events captured by
 /// the `kill_hook` trampoline. Populated by
 /// `record_damage_event()` from the trampoline; drained by the
@@ -108,9 +118,11 @@ pub struct DamageEvent {
 }
 
 pub fn record_damage_event(ev: DamageEvent) {
+    crate::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
     if let Ok(mut ring) = DAMAGE_RING.lock() {
         ring.push(ev);
         let n = ring.len();
+        crate::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
         if n > DAMAGE_RING_CAPACITY {
             // Drop oldest.
             ring.drain(0..n - DAMAGE_RING_CAPACITY);
@@ -131,6 +143,7 @@ fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
     {
         let mut q = PE_QUEUE.lock().map_err(|_| "queue poisoned")?;
         q.push(Pending { cmd, reply: tx });
+        PE_QUEUE_SIZE.store(q.len(), Ordering::Release);
     }
     rx.recv_timeout(Duration::from_secs(5))
         .map_err(|_| {
@@ -154,6 +167,16 @@ static DRAINING: AtomicBool = AtomicBool::new(false);
 /// pending command, runs it, sends the result back. Errors are
 /// captured per-command so a bad one doesn't poison the rest.
 pub fn drain_pending() {
+    crate::counters::bump(&crate::counters::DRAIN_PENDING_CALLS);
+    // Fast path: lock-free check for empty queue. Eliminates the
+    // mutex acquire on the 1000+/sec hot path from fall_hook.
+    if PE_QUEUE_SIZE.load(Ordering::Acquire) == 0 {
+        return;
+    }
+    // Slow path is timed; we don't time the empty case because
+    // the time_scope itself costs ~30 ns on Windows and would
+    // dominate the measurement at 1000+/sec.
+    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_DRAIN_PENDING);
     if DRAINING.swap(true, Ordering::AcqRel) {
         // Re-entered while a previous drain is still running. The
         // outer drain owns the queue; skip silently.
@@ -167,9 +190,13 @@ pub fn drain_pending() {
                 return;
             }
         };
-        std::mem::take(&mut *q)
+        crate::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, q.len());
+        let taken = std::mem::take(&mut *q);
+        PE_QUEUE_SIZE.store(0, Ordering::Release);
+        taken
     };
     for p in drained {
+        crate::counters::bump(&crate::counters::DRAIN_PENDING_DRAINED_CMDS);
         let r = execute_on_game_thread(&p.cmd);
         let _ = p.reply.send(r);
     }
@@ -208,6 +235,8 @@ pub fn spawn(port: u16) {
 
 fn run(server: Arc<Server>) {
     for mut req in server.incoming_requests() {
+        let _t = crate::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);
+        crate::counters::bump(&crate::counters::HTTP_REQUESTS);
         let url = req.url().to_string();
         let method = req.method().clone();
 
@@ -269,6 +298,9 @@ fn handle(body: &str) -> OpResponse {
         }
         "set_skill_points" => to_response(&op, op_set_skill_points(&args)),
         "call" => to_response(&op, op_call(&args)),
+        "read_bytes" => to_response(&op, op_read_bytes(&args)),
+        "write_bytes" => to_response(&op, op_write_bytes(&args)),
+        "walk_class" => to_response(&op, op_walk_class(&args)),
         "" => error_response(
             "<missing>",
             format!("missing 'op' field; supported ops: {SUPPORTED_OPS:?}"),
@@ -500,10 +532,118 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
             });
             out.ok_or_else(|| format!("no instance of '{class_name}'"))
         }
+        s if s.starts_with("addr:0x") || s.starts_with("addr:0X") => {
+            let hex = &s[("addr:0x".len())..];
+            let addr = u64::from_str_radix(hex, 16)
+                .map_err(|e| format!("bad address '{s}': {e}"))?;
+            if addr == 0 {
+                return Err("addr is null".to_string());
+            }
+            let p = addr as *const UObject;
+            let r: &'static UObject = unsafe { &*p };
+            Ok(r)
+        }
         _ => Err(format!(
-            "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>"
+            "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>, addr:0x<hex>"
         )),
     }
+}
+
+// ---- read_bytes / write_bytes / walk_class primitives ----
+//
+// With these + `call`, the test side can do literally anything on
+// the host: read any field, write any field, find any instance,
+// invoke any UFunction. The endpoint stops growing.
+
+fn op_read_bytes(args: &Json) -> Result<Json, String> {
+    let selector = arg_str(args, "instance_selector")?.to_string();
+    let offset = arg_u64(args, "offset", Some(0))? as usize;
+    let length = arg_u64(args, "length", None)? as usize;
+    if length > 0x10_0000 {
+        return Err(format!("length {length} > 1MB cap"));
+    }
+    let obj = resolve_instance(&selector)?;
+    let mut out = vec![0u8; length];
+    unsafe {
+        let base = obj.field_ptr(offset);
+        std::ptr::copy_nonoverlapping(base, out.as_mut_ptr(), length);
+    }
+    Ok(serde_json::json!({
+        "selector": selector,
+        "offset": format!("0x{offset:X}"),
+        "length": length,
+        "bytes_hex": hex_encode(&out),
+    }))
+}
+
+fn op_write_bytes(args: &Json) -> Result<Json, String> {
+    let selector = arg_str(args, "instance_selector")?.to_string();
+    let offset = arg_u64(args, "offset", Some(0))? as usize;
+    let bytes = hex_decode(arg_str(args, "bytes_hex")?)?;
+    if bytes.len() > 0x10_0000 {
+        return Err(format!("bytes len {} > 1MB cap", bytes.len()));
+    }
+    let obj = resolve_instance(&selector)?;
+    unsafe {
+        let dst = obj.field_ptr(offset) as *mut u8;
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+    }
+    Ok(serde_json::json!({
+        "selector": selector,
+        "offset": format!("0x{offset:X}"),
+        "wrote_bytes": bytes.len(),
+    }))
+}
+
+fn op_walk_class(args: &Json) -> Result<Json, String> {
+    let class_name = arg_str(args, "class")?.to_string();
+    let max = arg_u64(args, "max", Some(256))? as usize;
+    let include_cdo = args
+        .get("include_cdo")
+        .and_then(Json::as_bool)
+        .unwrap_or(false);
+
+    let Some(rt) = sdk::try_runtime() else {
+        return Err("sdk runtime unavailable".to_string());
+    };
+    let Some(class) = sdk::find_class_fast(&class_name) else {
+        return Err(format!("class '{class_name}' not found"));
+    };
+    let view = unsafe {
+        crate::sdk::GObjectsView::from_image(rt.image_base, rt.platform_offsets)
+    };
+    if !view.is_valid() {
+        return Err("gobjects view invalid".to_string());
+    }
+
+    let mut hits = Vec::with_capacity(max);
+    let mut total = 0usize;
+    for obj in view.iter() {
+        if !obj.is_a(class) {
+            continue;
+        }
+        if !include_cdo && obj.is_default_object() {
+            continue;
+        }
+        total += 1;
+        if hits.len() >= max {
+            continue;
+        }
+        let addr = obj as *const UObject as usize;
+        hits.push(serde_json::json!({
+            "addr": format!("0x{addr:X}"),
+            "addr_selector": format!("addr:0x{addr:X}"),
+            "name": obj.name(),
+            "full_name": obj.full_name(),
+            "is_cdo": obj.is_default_object(),
+        }));
+    }
+    Ok(serde_json::json!({
+        "class": class_name,
+        "total": total,
+        "returned": hits.len(),
+        "instances": hits,
+    }))
 }
 
 fn op_set_skill_points(args: &Json) -> Result<Json, String> {
@@ -692,6 +832,25 @@ pub struct Snapshot {
     /// observe what bandages / consumables / fall events look
     /// like as they happen.
     pub damage_ring: Vec<DamageEvent>,
+    /// Hot-path counters. Snapshot at T0, play, snapshot at T1,
+    /// diff to find runaway. See `src/counters.rs`.
+    pub counters: Json,
+    /// Process memory readings via GetProcessMemoryInfo. Used by
+    /// the perf test to detect actual RAM growth (working set,
+    /// commit/private bytes, page faults) over a window.
+    pub process_memory: Json,
+    /// Process CPU times (user + kernel ns) via GetProcessTimes.
+    /// Diff over a window vs our `TIME_NS_*` counters tells us
+    /// what fraction of total process CPU is in our code.
+    pub process_cpu: Json,
+    /// Per-thread CPU times via Toolhelp + GetThreadTimes.
+    /// Diff over a window shows which named thread (GameThread,
+    /// RenderThread, etc.) is the cycle thief.
+    pub process_threads: Json,
+    /// UE5 GObjects population: total count + top classes by
+    /// instance count. Diff over a window finds the leak source
+    /// when an object class is growing unboundedly.
+    pub game_population: Json,
 }
 
 #[derive(Serialize)]
@@ -926,6 +1085,11 @@ fn build_snapshot() -> Snapshot {
         catalog,
         settings,
         damage_ring: snapshot_damage_ring(),
+        counters: crate::counters::snapshot_json(),
+        process_memory: crate::counters::process_memory_json(),
+        process_cpu: crate::counters::process_cpu_json(),
+        process_threads: crate::counters::process_threads_json(),
+        game_population: crate::counters::game_population_json(40),
     }
 }
 
@@ -942,6 +1106,7 @@ fn skill_effect_kind(e: &skills::SkillEffect) -> &'static str {
         PlayerFallDamageReduction { .. } => "PlayerFallDamageReduction",
         GlobalDataMult { .. } => "GlobalDataMult",
         Runtime { .. } => "Runtime",
+        PlayerStatusEffect { .. } => "PlayerStatusEffect",
     }
 }
 
