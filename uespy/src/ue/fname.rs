@@ -2,8 +2,8 @@
 // a string we call the game's AppendString export at module_base +
 // offsets.append_string. Matches Basic.hpp:341.
 
-use crate::sdk::fstring::FString;
-use crate::sdk::offsets::PlatformOffsets;
+use crate::ue::fstring::FString;
+use crate::ue::offsets::PlatformOffsets;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]

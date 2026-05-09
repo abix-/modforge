@@ -1,17 +1,8 @@
-// Minimal Unreal Engine SDK shim. Mirrors enough of the Dumper-7 surface
-// for our hooks and patches: UObject + UClass + UFunction + FName + FString
-// + TArray + GObjects walker + find_class_fast.
-//
-// All `unsafe` lives in this module. Higher-level code (patch.rs, inv_hook,
-// etc.) uses the safe wrappers.
+// Re-export of uespy's UE bindings under the historic `sdk` name.
+// All implementation lives in `uespy::ue`. This shim keeps existing
+// `crate::sdk::Foo` call sites working without churn.
 
-#![allow(dead_code)] // skeleton state; consumed by upcoming hook + patch modules
-
-pub mod fname;
-pub mod fstring;
-pub mod offsets;
-pub mod tarray;
-pub mod uobject;
+pub use uespy::ue::{fname, fstring, offsets, tarray, uobject};
 
 pub use fname::FName;
 pub use fstring::FString;

@@ -35,8 +35,8 @@ dependencies = [
  "memoffset",
  "serde",
  "serde_json",
- "tiny_http",
- "ureq",
+ "uespy",
+ "uespy-client",
  "widestring",
  "windows-sys",
 ]
@@ -377,6 +377,28 @@ checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
 dependencies = [
  "displaydoc",
  "zerovec",
+]
+
+[[package]]
+name = "uespy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "memoffset",
+ "serde",
+ "serde_json",
+ "tiny_http",
+ "widestring",
+ "windows-sys",
+]
+
+[[package]]
+name = "uespy-client"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

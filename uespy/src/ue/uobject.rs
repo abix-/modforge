@@ -8,8 +8,8 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use crate::sdk::fname::{FName, NameResolver};
-use crate::sdk::offsets::{self, PlatformOffsets, fuobject_item, tuobject_array, uclass};
+use crate::ue::fname::{FName, NameResolver};
+use crate::ue::offsets::{self, PlatformOffsets, fuobject_item, tuobject_array, uclass};
 
 #[repr(transparent)]
 pub struct UObject {

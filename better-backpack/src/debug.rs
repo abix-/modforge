@@ -13,17 +13,13 @@
 // See `docs/todo.md` "Integration testing" for the full design and
 // the bandage-regression test that gates the next milestone.
 
-use std::io::Cursor;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Sender, channel};
-use std::thread;
 use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use tiny_http::{Header, Method, Response, Server};
+use uespy::args::{arg_bool, arg_f64, arg_str, arg_u64};
+use uespy::envelope::{OpResponse as UespyResponse, parse_request};
+use uespy::pe_queue::Queue as PeQueue;
 
 use crate::bbp_log;
 use crate::inv_hook;
@@ -71,38 +67,19 @@ const SUPPORTED_OPS: &[&str] = &[
 enum DebugCmd {
     AddHealth(f32),
     SetCurrentHealth(f32),
-    /// Generic primitive: call any UFunction on any object,
-    /// passing arbitrary parm bytes. Used by tests so new
-    /// research scenarios don't require a mod-side rebuild.
-    Call {
-        class: String,
-        function: String,
-        selector: String,
-        parms: Vec<u8>,
-    },
 }
 
-struct Pending {
-    cmd: DebugCmd,
-    reply: Sender<Result<Json, String>>,
-}
-
-static PE_QUEUE: Mutex<Vec<Pending>> = Mutex::new(Vec::new());
-
-/// Lock-free shadow of `PE_QUEUE.len()`. Updated alongside the
-/// queue lock. Lets `drain_pending` bail with a single relaxed
-/// atomic load when nothing is queued -- avoiding the mutex
-/// acquire that fires 1000+ times/sec from the fall_hook
-/// trampoline.
-static PE_QUEUE_SIZE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Game-thread job queue. The HTTP handler enqueues a closure that
+/// captures a `DebugCmd`; the closure runs from `drain_pending` on
+/// the game thread. See `uespy::pe_queue` for mechanics.
+static PE_QUEUE: PeQueue = PeQueue::new();
 
 /// Ring buffer of recent damage / multicast events captured by
 /// the `kill_hook` trampoline. Populated by
 /// `record_damage_event()` from the trampoline; drained by the
-/// snapshot endpoint. Bounded so a long session can't exhaust
-/// memory.
-const DAMAGE_RING_CAPACITY: usize = 64;
-static DAMAGE_RING: Mutex<Vec<DamageEvent>> = Mutex::new(Vec::new());
+/// snapshot endpoint. Bounded (64) so a long session can't
+/// exhaust memory; mechanics in `uespy::ring::Ring`.
+static DAMAGE_RING: uespy::ring::Ring<DamageEvent> = uespy::ring::Ring::new(64);
 
 #[derive(Clone, Serialize)]
 pub struct DamageEvent {
@@ -121,171 +98,87 @@ pub struct DamageEvent {
 
 pub fn record_damage_event(ev: DamageEvent) {
     crate::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
-    if let Ok(mut ring) = DAMAGE_RING.lock() {
-        ring.push(ev);
-        let n = ring.len();
+    if let Some(n) = DAMAGE_RING.push(ev) {
         crate::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
-        if n > DAMAGE_RING_CAPACITY {
-            // Drop oldest.
-            ring.drain(0..n - DAMAGE_RING_CAPACITY);
-        }
     }
 }
 
 fn snapshot_damage_ring() -> Vec<DamageEvent> {
-    DAMAGE_RING
-        .lock()
-        .ok()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+    DAMAGE_RING.snapshot()
 }
 
 fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
-    let (tx, rx) = channel();
-    {
-        let mut q = PE_QUEUE.lock().map_err(|_| "queue poisoned")?;
-        q.push(Pending { cmd, reply: tx });
-        PE_QUEUE_SIZE.store(q.len(), Ordering::Release);
-    }
-    rx.recv_timeout(Duration::from_secs(5))
-        .map_err(|_| {
-            "timed out waiting for game-thread drain. Is kill_hook firing? \
-             (Move around / take damage to drive multicast events.)"
-                .into()
+    PE_QUEUE
+        .enqueue(
+            move || execute_on_game_thread(cmd),
+            Duration::from_secs(5),
+        )
+        .map_err(|e| {
+            // Wrap the generic timeout/poison message with the
+            // game-specific hint so callers know which trampoline
+            // is supposed to be draining.
+            if e.contains("timed out") {
+                format!(
+                    "{e}. Is kill_hook firing? \
+                     (Move around / take damage to drive multicast events.)"
+                )
+            } else {
+                e
+            }
         })
-        .and_then(|r| r)
 }
 
-/// Re-entrance guard. UFunctions we call from the drain (e.g.
-/// AddHealth, ApplyDamage) can themselves trigger ProcessEvent
-/// fan-out that calls our trampoline again. Without the guard,
-/// the inner trampoline drains again -> infinite recursion / hang.
-/// With the guard, the inner trampoline sees DRAINING=true and
-/// skips. Outer call completes, guard clears, next event drains
-/// normally.
-static DRAINING: AtomicBool = AtomicBool::new(false);
-
-/// Called from `kill_hook`'s trampoline (game thread). Drains every
-/// pending command, runs it, sends the result back. Errors are
-/// captured per-command so a bad one doesn't poison the rest.
+/// Called from `kill_hook`'s trampoline (game thread). Wraps
+/// `uespy::Queue::drain` with our perf counters. The queue itself
+/// owns the re-entrance guard, the lock-free empty-check, and the
+/// reply-channel plumbing.
 pub fn drain_pending() {
     crate::counters::bump(&crate::counters::DRAIN_PENDING_CALLS);
-    // Fast path: lock-free check for empty queue. Eliminates the
-    // mutex acquire on the 1000+/sec hot path from fall_hook.
-    if PE_QUEUE_SIZE.load(Ordering::Acquire) == 0 {
+    if PE_QUEUE.is_empty() {
         return;
     }
-    // Slow path is timed; we don't time the empty case because
-    // the time_scope itself costs ~30 ns on Windows and would
-    // dominate the measurement at 1000+/sec.
     let _t = crate::counters::time_scope(&crate::counters::TIME_NS_DRAIN_PENDING);
-    if DRAINING.swap(true, Ordering::AcqRel) {
-        // Re-entered while a previous drain is still running. The
-        // outer drain owns the queue; skip silently.
+    let stats = PE_QUEUE.drain();
+    if stats.reentered {
         return;
     }
-    let drained = {
-        let mut q = match PE_QUEUE.lock() {
-            Ok(g) => g,
-            Err(_) => {
-                DRAINING.store(false, Ordering::Release);
-                return;
-            }
-        };
-        crate::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, q.len());
-        let taken = std::mem::take(&mut *q);
-        PE_QUEUE_SIZE.store(0, Ordering::Release);
-        taken
-    };
-    for p in drained {
+    crate::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, stats.peak);
+    for _ in 0..stats.drained {
         crate::counters::bump(&crate::counters::DRAIN_PENDING_DRAINED_CMDS);
-        let r = execute_on_game_thread(&p.cmd);
-        let _ = p.reply.send(r);
     }
-    DRAINING.store(false, Ordering::Release);
 }
 
-fn execute_on_game_thread(cmd: &DebugCmd) -> Result<Json, String> {
+fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
     match cmd {
-        DebugCmd::AddHealth(amount) => exec_add_health(*amount),
-        DebugCmd::SetCurrentHealth(value) => exec_set_current_health(*value),
-        DebugCmd::Call {
-            class,
-            function,
-            selector,
-            parms,
-        } => exec_call(class, function, selector, parms.clone()),
+        DebugCmd::AddHealth(amount) => exec_add_health(amount),
+        DebugCmd::SetCurrentHealth(value) => exec_set_current_health(value),
     }
 }
 
 pub fn spawn(port: u16) {
-    let addr = format!("127.0.0.1:{port}");
-    let server = match Server::http(&addr) {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            bbp_log!("debug-http: bind {} failed: {}", addr, e);
-            return;
-        }
-    };
-    bbp_log!("debug-http: listening on {}", addr);
-
-    thread::Builder::new()
-        .name("bbp-debug-http".into())
-        .spawn(move || run(server))
-            .ok();
+    uespy::spawn(
+        uespy::Config {
+            port,
+            endpoint: "/debug",
+            thread_name: "bbp-debug-http",
+        },
+        |body| {
+            let _t = crate::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);
+            crate::counters::bump(&crate::counters::HTTP_REQUESTS);
+            let resp = handle(body);
+            serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec())
+        },
+        |msg| bbp_log!("{}", msg),
+    );
 }
 
-fn run(server: Arc<Server>) {
-    for mut req in server.incoming_requests() {
-        let _t = crate::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);
-        crate::counters::bump(&crate::counters::HTTP_REQUESTS);
-        let url = req.url().to_string();
-        let method = req.method().clone();
-
-        if method != Method::Post || url != "/debug" {
-            let _ = req.respond(Response::from_string("not found").with_status_code(404));
-            continue;
-        }
-
-        let mut body = String::new();
-        if std::io::Read::read_to_string(req.as_reader(), &mut body).is_err() {
-            let _ = req.respond(Response::from_string("bad body").with_status_code(400));
-            continue;
-        }
-
-        let result = handle(&body);
-        let payload = serde_json::to_vec(&result).unwrap_or_else(|_| b"{}".to_vec());
-        let len = payload.len();
-        let resp = Response::new(
-            200.into(),
-            vec![Header::from_bytes(&b"content-type"[..], &b"application/json"[..]).unwrap()],
-            Cursor::new(payload),
-            Some(len),
-            None,
-        );
-        let _ = req.respond(resp);
-    }
-}
-
-#[derive(Serialize)]
-struct OpResponse {
-    ok: bool,
-    op: String,
-    error: Option<String>,
-    result: Json,
-    state: Snapshot,
-}
+type OpResponse = UespyResponse<Snapshot>;
 
 fn handle(body: &str) -> OpResponse {
-    let parsed: Result<Json, _> = serde_json::from_str(body);
-    let req = match parsed {
+    let (op, args) = match parse_request(body) {
         Ok(v) => v,
-        Err(e) => {
-            return error_response("<parse-error>", format!("body json: {e}"));
-        }
+        Err(e) => return error_response("<parse-error>", e),
     };
-    let op = req.get("op").and_then(Json::as_str).unwrap_or("").to_string();
-    let args = req.get("args").cloned().unwrap_or(Json::Null);
 
     match op.as_str() {
         "snapshot" => ok_response(&op, Json::Null),
@@ -317,42 +210,11 @@ fn handle(body: &str) -> OpResponse {
 }
 
 fn ok_response(op: &str, result: Json) -> OpResponse {
-    OpResponse {
-        ok: true,
-        op: op.to_string(),
-        error: None,
-        result,
-        state: build_snapshot(),
-    }
+    OpResponse::ok(op, result, build_snapshot())
 }
 
 fn to_response(op: &str, r: Result<Json, String>) -> OpResponse {
-    match r {
-        Ok(v) => ok_response(op, v),
-        Err(e) => error_response(op, e),
-    }
-}
-
-fn arg_str<'a>(args: &'a Json, name: &str) -> Result<&'a str, String> {
-    args.get(name)
-        .and_then(Json::as_str)
-        .ok_or_else(|| format!("missing arg '{name}' (string)"))
-}
-
-fn arg_u64(args: &Json, name: &str, default: Option<u64>) -> Result<u64, String> {
-    match args.get(name).and_then(Json::as_u64) {
-        Some(v) => Ok(v),
-        None => match default {
-            Some(d) => Ok(d),
-            None => Err(format!("missing arg '{name}' (u64)")),
-        },
-    }
-}
-
-fn arg_bool(args: &Json, name: &str) -> Result<bool, String> {
-    args.get(name)
-        .and_then(Json::as_bool)
-        .ok_or_else(|| format!("missing arg '{name}' (bool)"))
+    OpResponse::from_result(op, r, build_snapshot())
 }
 
 fn lookup_skill(id: &str) -> Result<&'static skills::Skill, String> {
@@ -394,12 +256,6 @@ fn op_reload_slot() -> Result<Json, String> {
     }
 }
 
-fn arg_f64(args: &Json, name: &str) -> Result<f64, String> {
-    args.get(name)
-        .and_then(Json::as_f64)
-        .ok_or_else(|| format!("missing arg '{name}' (number)"))
-}
-
 fn op_simulate_add_health(args: &Json) -> Result<Json, String> {
     let amount = arg_f64(args, "amount")? as f32;
     enqueue_pe(DebugCmd::AddHealth(amount))
@@ -429,41 +285,6 @@ fn op_simulate_set_current_health(args: &Json) -> Result<Json, String> {
     enqueue_pe(DebugCmd::SetCurrentHealth(value))
 }
 
-// ---- hex helpers ----
-
-fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
-    if s.len() % 2 != 0 {
-        return Err(format!("hex string has odd length: {}", s.len()));
-    }
-    let mut out = Vec::with_capacity(s.len() / 2);
-    let bytes = s.as_bytes();
-    for i in (0..bytes.len()).step_by(2) {
-        let hi = hex_nibble(bytes[i])?;
-        let lo = hex_nibble(bytes[i + 1])?;
-        out.push((hi << 4) | lo);
-    }
-    Ok(out)
-}
-
-fn hex_nibble(b: u8) -> Result<u8, String> {
-    match b {
-        b'0'..=b'9' => Ok(b - b'0'),
-        b'a'..=b'f' => Ok(b - b'a' + 10),
-        b'A'..=b'F' => Ok(b - b'A' + 10),
-        _ => Err(format!("bad hex char: 0x{b:02x}")),
-    }
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        s.push(HEX[(b >> 4) as usize] as char);
-        s.push(HEX[(b & 0xF) as usize] as char);
-    }
-    s
-}
-
 // ---- generic call primitive ----
 //
 // op: "call"
@@ -480,39 +301,36 @@ fn op_call(args: &Json) -> Result<Json, String> {
     let class = arg_str(args, "class")?.to_string();
     let function = arg_str(args, "function")?.to_string();
     let selector = arg_str(args, "instance_selector")?.to_string();
-    let parms_hex = arg_str(args, "parms_hex")?;
-    let parms = hex_decode(parms_hex)?;
-    enqueue_pe(DebugCmd::Call {
-        class,
-        function,
-        selector,
-        parms,
-    })
-}
-
-fn exec_call(
-    class_name: &str,
-    function_name: &str,
-    selector: &str,
-    mut parms: Vec<u8>,
-) -> Result<Json, String> {
-    use std::ffi::c_void;
-    let instance = resolve_instance(selector)?;
-    let class = sdk::find_class_fast(class_name)
-        .ok_or_else(|| format!("class '{class_name}' not found"))?;
-    let func = class
-        .get_function(class_name, function_name)
-        .ok_or_else(|| format!("function '{function_name}' not found on '{class_name}'"))?;
-    unsafe {
-        instance.process_event(func, parms.as_mut_ptr() as *mut c_void);
-    }
-    Ok(serde_json::json!({
-        "parms_hex_after": hex_encode(&parms),
-        "selector": selector,
-    }))
+    let parms = uespy::hex::decode(arg_str(args, "parms_hex")?)?;
+    PE_QUEUE
+        .enqueue(
+            move || {
+                let instance = resolve_instance(&selector)?;
+                let mut out = uespy::ops::exec_call(instance, &class, &function, parms)?;
+                // Preserve historical "selector" echo in the result.
+                if let Some(obj) = out.as_object_mut() {
+                    obj.insert("selector".into(), Json::String(selector.clone()));
+                }
+                Ok(out)
+            },
+            Duration::from_secs(5),
+        )
+        .map_err(|e| {
+            if e.contains("timed out") {
+                format!(
+                    "{e}. Is kill_hook firing? \
+                     (Move around / take damage to drive multicast events.)"
+                )
+            } else {
+                e
+            }
+        })
 }
 
 fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
+    if let Some(r) = uespy::selector::resolve_generic(selector) {
+        return r;
+    }
     match selector {
         "live_player_hc" => live_player_hc(),
         "live_player" => {
@@ -525,27 +343,6 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
                 }
             });
             found.ok_or_else(|| "no live player".to_string())
-        }
-        s if s.starts_with("first_class:") => {
-            let class_name = &s["first_class:".len()..];
-            let mut out: Option<&'static UObject> = None;
-            apply::first_instance_of(class_name, |o| {
-                let extended: &'static UObject =
-                    unsafe { std::mem::transmute::<&UObject, &'static UObject>(o) };
-                out = Some(extended);
-            });
-            out.ok_or_else(|| format!("no instance of '{class_name}'"))
-        }
-        s if s.starts_with("addr:0x") || s.starts_with("addr:0X") => {
-            let hex = &s[("addr:0x".len())..];
-            let addr = u64::from_str_radix(hex, 16)
-                .map_err(|e| format!("bad address '{s}': {e}"))?;
-            if addr == 0 {
-                return Err("addr is null".to_string());
-            }
-            let p = addr as *const UObject;
-            let r: &'static UObject = unsafe { &*p };
-            Ok(r)
         }
         _ => Err(format!(
             "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>, addr:0x<hex>"
@@ -560,100 +357,21 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
 // invoke any UFunction. The endpoint stops growing.
 
 fn op_read_bytes(args: &Json) -> Result<Json, String> {
-    let selector = arg_str(args, "instance_selector")?.to_string();
-    let offset = arg_u64(args, "offset", Some(0))? as usize;
-    let length = arg_u64(args, "length", None)? as usize;
-    if length > 0x10_0000 {
-        return Err(format!("length {length} > 1MB cap"));
-    }
-    let obj = resolve_instance(&selector)?;
-    let mut out = vec![0u8; length];
-    unsafe {
-        let base = obj.field_ptr(offset);
-        std::ptr::copy_nonoverlapping(base, out.as_mut_ptr(), length);
-    }
-    Ok(serde_json::json!({
-        "selector": selector,
-        "offset": format!("0x{offset:X}"),
-        "length": length,
-        "bytes_hex": hex_encode(&out),
-    }))
+    uespy::ops::read_bytes(args, resolve_instance)
 }
 
 fn op_write_bytes(args: &Json) -> Result<Json, String> {
-    let selector = arg_str(args, "instance_selector")?.to_string();
-    let offset = arg_u64(args, "offset", Some(0))? as usize;
-    let bytes = hex_decode(arg_str(args, "bytes_hex")?)?;
-    if bytes.len() > 0x10_0000 {
-        return Err(format!("bytes len {} > 1MB cap", bytes.len()));
-    }
-    let obj = resolve_instance(&selector)?;
-    unsafe {
-        let dst = obj.field_ptr(offset) as *mut u8;
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
-    }
-    Ok(serde_json::json!({
-        "selector": selector,
-        "offset": format!("0x{offset:X}"),
-        "wrote_bytes": bytes.len(),
-    }))
+    uespy::ops::write_bytes(args, resolve_instance)
 }
 
 fn op_walk_class(args: &Json) -> Result<Json, String> {
-    let class_name = arg_str(args, "class")?.to_string();
-    let max = arg_u64(args, "max", Some(256))? as usize;
-    let include_cdo = args
-        .get("include_cdo")
-        .and_then(Json::as_bool)
-        .unwrap_or(false);
-
-    let Some(rt) = sdk::try_runtime() else {
-        return Err("sdk runtime unavailable".to_string());
-    };
-    let Some(class) = sdk::find_class_fast(&class_name) else {
-        return Err(format!("class '{class_name}' not found"));
-    };
-    let view = unsafe {
-        crate::sdk::GObjectsView::from_image(rt.image_base, rt.platform_offsets)
-    };
-    if !view.is_valid() {
-        return Err("gobjects view invalid".to_string());
-    }
-
-    let mut hits = Vec::with_capacity(max);
-    let mut total = 0usize;
-    for obj in view.iter() {
-        if !obj.is_a(class) {
-            continue;
-        }
-        if !include_cdo && obj.is_default_object() {
-            continue;
-        }
-        total += 1;
-        if hits.len() >= max {
-            continue;
-        }
-        let addr = obj as *const UObject as usize;
-        hits.push(serde_json::json!({
-            "addr": format!("0x{addr:X}"),
-            "addr_selector": format!("addr:0x{addr:X}"),
-            "name": obj.name(),
-            "full_name": obj.full_name(),
-            "is_cdo": obj.is_default_object(),
-        }));
-    }
-    Ok(serde_json::json!({
-        "class": class_name,
-        "total": total,
-        "returned": hits.len(),
-        "instances": hits,
-    }))
+    uespy::ops::walk_class(args)
 }
 
 fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
     let class_name = arg_str(args, "class")?;
     let k = arg_u64(args, "k", Some(20))? as usize;
-    Ok(crate::counters::game_class_outer_samples_json(class_name, k))
+    Ok(uespy::ue::probe::class_outer_samples(class_name, k))
 }
 
 fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
@@ -812,13 +530,7 @@ fn exec_set_current_health(value: f32) -> Result<Json, String> {
 }
 
 fn error_response(op: &str, err: impl Into<String>) -> OpResponse {
-    OpResponse {
-        ok: false,
-        op: op.to_string(),
-        error: Some(err.into()),
-        result: Json::Null,
-        state: build_snapshot(),
-    }
+    OpResponse::err(op, err, build_snapshot())
 }
 
 #[derive(Serialize)]
@@ -1111,7 +823,7 @@ fn build_snapshot() -> Snapshot {
         process_memory: crate::counters::process_memory_json(),
         process_cpu: crate::counters::process_cpu_json(),
         process_threads: crate::counters::process_threads_json(),
-        game_population: crate::counters::game_population_json(40),
+        game_population: uespy::ue::probe::gobjects_population(40),
         process_regions: crate::counters::process_regions_json(),
     }
 }

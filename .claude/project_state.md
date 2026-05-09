@@ -1,5 +1,141 @@
 # grounded2mods - project state
 
+## uespy crate extracted; OWS scaffolding queued (2026-05-09 late)
+
+Generic UE-mod control plane factored out of `better-backpack` into
+two new workspace crates so the upcoming Outworld Station mod (and
+future UE-game mods) reuse the same plumbing. All slices green; 30+
+better-backpack tests still compile.
+
+Layout:
+
+```
+grounded2mods/
+  uespy/             rlib. UE-mod control plane.
+    src/server.rs        tiny_http listener + dispatch
+    src/envelope.rs      OpResponse<S>, parse_request
+    src/args.rs          arg_str/u64/bool/f64
+    src/pe_queue.rs      Queue (Mutex+atomic+re-entrance guard) + DrainStats
+    src/ue/              UObject SDK shim (was better-backpack/src/sdk/)
+  uespy-client/      rlib. Shared test client (skeleton only so far).
+  outworld-station/  Research folder for the OWS mod (research.md).
+```
+
+What moved:
+- HTTP server + envelope + arg helpers (~170 LoC) -> uespy
+- PE-thread queue (~150 LoC) -> uespy::pe_queue (closures, not a fixed cmd enum)
+- Entire UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects, ~600 LoC) -> uespy::ue
+
+What stayed in better-backpack:
+- DebugCmd enum (now just AddHealth + SetCurrentHealth — the
+  Call variant moved to a closure that calls uespy::ops::exec_call)
+  + execute_on_game_thread (game's command vocabulary)
+- Snapshot type + build_snapshot (game-specific state shape)
+- Game-specific op handlers: op_skill_*, op_simulate_*,
+  op_class_outer_samples, op_sample_thread_modules
+- Game-specific selector resolvers (live_player, live_player_hc)
+  in resolve_instance, which now calls
+  `uespy::selector::resolve_generic` first
+- counters, perf timing, damage ring, fall_hook integration
+- `crate::sdk` is now a re-export facade over `uespy::ue` so existing
+  call sites don't churn
+
+Generic primitives also moved (slice 3b, 2026-05-09 late):
+- Selector grammar (`addr:0x...`, `first_class:Foo`) -> uespy::selector
+- read_bytes / write_bytes / walk_class -> uespy::ops (passed
+  game's resolve_instance as a closure for read/write)
+- exec_call (find UFunction + process_event) -> uespy::ops::exec_call;
+  game's op_call enqueues a closure that calls it on the game thread
+- hex_encode/decode -> uespy::hex
+
+Current crate sizes:
+- better-backpack/src/debug.rs: 1286 -> 998 LoC (-288)
+- better-backpack/src/counters.rs: 1109 -> 115 LoC (-994)
+- better-backpack/src/sdk/: 6 files -> 1 facade (~12 LoC)
+- uespy: ~2033 LoC across 18 files
+  (server, envelope, args, pe_queue, selector, hex, ops,
+   counters, ring, winproc, ue/{fname, fstring, offsets,
+   tarray, uobject, probe, mod})
+
+Slices 4-7 (2026-05-09 late, after slices 1-3):
+- Slice 4: counter primitives (bump/observe_peak/time_scope/TimeScope)
+  -> uespy::counters; bounded ring buffer pattern -> uespy::ring
+  (replaces hand-rolled DAMAGE_RING)
+- Slice 5: UE introspection (gobjects_population,
+  class_outer_samples) -> uespy::ue::probe
+- Slice 6: Win32 process introspection (process_threads_json,
+  process_cpu_json, process_regions_json,
+  sample_thread_modules_json, process_memory_json, ~770 LoC)
+  -> uespy::winproc. Generic for any Windows process, not just UE.
+- Slice 7: test client (Api wrapper, OpResponse<S>, hex codec,
+  parm helpers) -> uespy-client. better-backpack's tests/common
+  shrunk from 493 -> 367 LoC; the bbp `Api` is now a newtype over
+  `uespy_client::Api<Snapshot>` with bbp-specific convenience
+  methods (`skill_spend`, `simulate_heal`, ...).
+- Total moved out of better-backpack: ~2000 LoC.
+- uespy + uespy-client total: ~2270 LoC of reusable infrastructure.
+
+Slice 8 (2026-05-09 late):
+- File + console DLL logger -> uespy::log. AllocConsole +
+  GetModuleFileNameW + timestamped writer. Game's log.rs becomes
+  a thin wrapper that calls uespy::log::set_dll_module from
+  DllMain and uespy::log::init from the worker. ~140 LoC.
+
+## Parity vs research+TDD vision
+
+Vision (per `~/.claude/skills/runtime-control-http/SKILL.md`):
+ALL investigative + test infrastructure DRY in uespy/uespy-client.
+New UE-game mods bring only game-specific Snapshot + handlers.
+
+Done (15 capabilities in uespy/uespy-client):
+- HTTP server, envelope, arg helpers
+- Game-thread queue with re-entrance guard
+- 5 generic primitives + selector grammar + hex codec
+- Counter primitives + bounded ring buffer
+- Full UE SDK + UE introspection (gobjects_population,
+  class_outer_samples)
+- Win32 process probes (threads, CPU, regions, memory, sampler)
+- Test client (Api<S>, OpResponse<S>, parm round-trip)
+- File + console DLL logger
+
+Gaps (4 remaining slices to reach 1000% DRY):
+- Slice 9: PE / vtable hook framework. Currently
+  `better-backpack/src/hook/{vtable,process_event}.rs` (~220 LoC,
+  zero internal coupling). Without it OWS re-derives the
+  VirtualProtect-guarded vtable rewriter + trampoline registry +
+  catch_unwind guards. Highest-value gap.
+- Slice 10: UE4SS C++ shim + build.rs glue. Currently
+  `better-backpack/cpp/shim.cpp` (~450 LoC) and
+  `better-backpack/build.rs` (~60 LoC). Every UE4SS Rust mod
+  copy-pastes this verbatim today.
+- Slice 11: Test perf-log writer. Currently
+  `tests/common/mod.rs::open_perf_log` (~50 LoC). Tee's stdout
+  to gitignored `perf-runs/<name>-<ts>.txt`. Used by leak-research
+  tests.
+
+Out of scope:
+- Settings JSON loader (game-specific shape; uespy doesn't enforce).
+- Bench harness (not in skill; add when first bench exists).
+
+Plan: land 9, 10, 11 in sequence. After slice 10 the workspace
+gets a `uespy-build` helper crate or a `uespy::build_helpers`
+module that dependent crates call from their own `build.rs` to
+compile the shipped shim into their cdylib.
+
+Migration is complete. OWS mod's debug.rs only needs:
+1. A `Snapshot` struct + build_snapshot
+2. A drain-site PE trampoline calling PE_QUEUE.drain()
+3. A resolve_instance fn (uespy::selector::resolve_generic + any
+   game-specific selectors)
+4. A handle() match arm dispatcher mapping op strings to either
+   uespy::ops::* or game-specific closures
+
+Everything else is `use uespy::*`.
+
+Next session for OWS: scaffold `outworld-station/<mod-crate>/`
+against uespy + uespy-client, supply Snapshot + drain wiring,
+get the empty `POST /debug` endpoint up.
+
 ## Game-side leak diagnosed, NOT MITIGATED (2026-05-09 night)
 
 User reports the game is unplayable: 80% sustained CPU, RAM

@@ -1,0 +1,19 @@
+[package]
+name = "uespy-client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Shared test client for crates that embed `uespy`.
+# Wraps `ureq` with the OpRequest / OpResponse envelope and a generic
+# Snapshot deserializer. Game-specific test helpers wrap this.
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+ureq = { workspace = true }

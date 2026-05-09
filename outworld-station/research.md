@@ -100,3 +100,139 @@ BetterStack_P/
 - Following the `better-backpack/` pattern from Grounded 2 work
 - Once we pick a first mod target, create `outworld-station/<mod-name>/` as the Rust crate
 - Shared shim/injector code from `injector/` and `archive/winhttp-proxy/` may be reusable
+
+## Shared `uespy` crate (extracted 2026-05-09, fully populated)
+
+Generic UE-mod control plane factored out into the workspace
+so the OWS mod scaffold gets it for free:
+
+- `uespy` (rlib, ~2030 LoC across 18 files):
+  - `server` — tiny_http listener + dispatch
+  - `envelope` — `OpResponse<S>` + `parse_request`
+  - `args` — JSON arg helpers
+  - `pe_queue::Queue` — game-thread job queue with re-entrance guard
+  - `selector` — generic `addr:0x...` / `first_class:Foo`
+  - `hex` — encode/decode
+  - `ops` — `read_bytes`, `write_bytes`, `walk_class`, `exec_call`
+  - `counters` — `bump` / `observe_peak` / `time_scope` / `TimeScope`
+  - `ring` — bounded drop-oldest ring buffer for hook events
+  - `winproc` — Windows process introspection (threads, CPU, regions,
+    memory, thread-module sampler)
+  - `ue` — UObject/UClass/UFunction/FName/FString/TArray/GObjects/
+    Platform offsets, plus `ue::probe` (gobjects_population,
+    class_outer_samples)
+- `uespy-client` (rlib, ~240 LoC):
+  - `Api<S>` — generic blocking HTTP test client
+  - `OpResponse<S>` — wire deserializer
+  - `hex` + `parms` — codec + `#[repr(C)]` parm round-trip
+
+OWS mod will only own: a `Snapshot` type, the drain-site PE trampoline
+(once we know which UFunction is hot enough to drain on UE 5.4.4 OWS),
+and game-specific selector resolvers (`live_player` etc.). Everything
+else is `use uespy::*`.
+
+## Parity audit: research + TDD infrastructure DRY in uespy
+
+Vision: every research and test capability the
+`runtime-control-http` skill describes lives once in
+`uespy` / `uespy-client`. New UE-game mods bring only game-specific
+state shape + handlers.
+
+| Capability                                        | Status | Where                                           |
+|---------------------------------------------------|--------|-------------------------------------------------|
+| `POST /<endpoint>` command-shaped HTTP            | done   | `uespy::server`                                 |
+| `OpResponse<S>` envelope (full snapshot every reply) | done | `uespy::envelope`                               |
+| Game-thread queue + re-entrance guard + lock-free fast path | done | `uespy::pe_queue::Queue`                  |
+| 5 generic primitives (`snapshot`, `read_bytes`, `write_bytes`, `call`, `walk_class`) | done | `uespy::ops` |
+| Selector grammar (`addr:0x...`, `first_class:...`) | done   | `uespy::selector`                               |
+| Hex codec (mod + test sides)                      | done   | `uespy::hex`, `uespy_client::hex`               |
+| `#[repr(C)]` parm round-trip helpers              | done   | `uespy_client::parms`                           |
+| Hot-path counters (`bump`, `observe_peak`, `time_scope`, `TimeScope`) | done | `uespy::counters`           |
+| Bounded ring buffer for hook events               | done   | `uespy::ring`                                   |
+| UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects/offsets) | done | `uespy::ue`                  |
+| UE introspection (`gobjects_population`, `class_outer_samples`) | done | `uespy::ue::probe`                  |
+| Win32 process probes (threads, CPU, regions, memory, thread sampler) | done | `uespy::winproc`                |
+| Test client (`Api<S>`, `try_connect`, `op`, `op_ok`, `snapshot`, `call_ufunction`) | done | `uespy_client::Api`     |
+| File + console DLL logger (AllocConsole / GetModuleFileNameW) | done | `uespy::log`                            |
+| PE / vtable hook framework (rewrite slots, install trampolines) | **gap** | better-backpack `src/hook/` (~220 LoC; zero coupling — slice 9) |
+| UE4SS C++ shim (`CppUserModBase` ABI mirror)     | **gap** | better-backpack `cpp/shim.cpp` (~450 LoC; slice 10)        |
+| `build.rs` glue to compile the C++ shim into a cdylib | **gap** | better-backpack `build.rs` (~60 LoC; slice 10)         |
+| Test perf-log writer (`open_perf_log` tee stdout + `perf-runs/<name>-<ts>.txt`) | **gap** | better-backpack `tests/common/mod.rs` (~50 LoC; slice 11) |
+| Settings JSON loader pattern                      | n/a    | game-specific shape — uespy intentionally doesn't enforce |
+| Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |
+
+### What the four gaps would unblock for OWS
+
+- **Slice 9 (PE / vtable hook):** any "intercept UFunction X to capture
+  events" research test. Without this OWS would re-derive the
+  vtable rewriter under VirtualProtect, the trampoline registry, and
+  the `catch_unwind` panic guards from scratch.
+- **Slice 10 (UE4SS shim + build glue):** any UE4SS Rust mod has to
+  ship `main.dll` exporting `start_mod` / `uninstall_mod` etc. via a
+  CppUserModBase mirror. Without slice 10 every mod copy-pastes ~450
+  LoC of C++.
+- **Slice 11 (perf-log writer):** the leak-research / perf-test
+  pattern (`tests/explore_*.rs` tees observations to a gitignored
+  per-run file). Without it OWS leak-hunting tests re-derive the
+  tee + filename + timestamp mechanics.
+
+### Slices already complete (1-8)
+
+| #  | What                                                            | LoC into uespy |
+|----|-----------------------------------------------------------------|----------------|
+| 1  | HTTP server + envelope + arg helpers                           | 174            |
+| 2  | PE-thread queue (closures, re-entrance guard, lock-free)       | 150            |
+| 3a | Full UE SDK shim                                                | 617            |
+| 3b | Selector grammar + 4 generic primitives + hex codec             | 254            |
+| 4  | Counter primitives + bounded ring buffer                        | 126            |
+| 5  | UE introspection (`gobjects_population`, `class_outer_samples`) | 175            |
+| 6  | Win32 process introspection                                     | 812            |
+| 7  | Shared test client (`uespy-client`)                             | 238            |
+| 8  | File + console DLL logger                                       | ~140           |
+
+Total reusable infrastructure now: ~2,690 LoC across `uespy`
+(~2,170 LoC, 19 files) and `uespy-client` (~240 LoC, 3 files).
+better-backpack has shed ~2,000 LoC of generic mod plumbing.
+
+### The OWS scaffold once slices 9-11 land
+
+```rust
+// outworld-station/<mod>/src/lib.rs
+#[unsafe(no_mangle)]
+pub extern "C" fn ows_start() {
+    uespy::log::set_dll_module(/* HMODULE captured in DllMain */);
+    uespy::log::init(uespy::log::Config {
+        file_name: "ows.log",
+        console_title: "OWS Mod",
+        console: cfg!(feature = "console"),
+    });
+    let settings = load_settings();  // ~10 LoC
+    if let Some(port) = settings.debug.http_port {
+        uespy::spawn(
+            uespy::Config { port, endpoint: "/debug", thread_name: "ows-debug" },
+            handle_request,
+            |msg| uespy::log::log(format_args!("{msg}")),
+        );
+    }
+    uespy::hook::install_pe_hook(/* class, function, callback */);  // slice 9
+    // ... worker thread spawns ...
+}
+
+fn handle_request(body: &str) -> Vec<u8> {
+    /* ~30 LoC dispatcher matching ops to uespy::ops::* + game-specific */
+}
+```
+
+Plus the C++ shim auto-compiled by uespy's `build_helpers` (slice 10).
+Total mod-side LoC for a working `/debug` endpoint with the full
+research surface: ~150-200, not 2,500.
+
+Phase-1 scaffolding plan (when ready):
+1. Create `outworld-station/<crate>/` with Cargo manifest + cdylib
+   (`name = "main"` for UE4SS Mods/<Name>/dlls/main.dll)
+2. Copy/adapt `cpp/shim.cpp` + `build.rs` from better-backpack
+3. `src/lib.rs` worker entry; `src/debug.rs` calls `uespy::spawn(...)`
+   with a `Snapshot { /* empty */ }` and `handle()` matching only
+   "snapshot" initially
+4. `tests/debug_snapshot.rs` smoke test against `OWS_DEBUG_PORT` env var
+5. Pick a drain site once UFunctions are dumped via UE4SS
