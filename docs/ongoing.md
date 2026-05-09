@@ -1315,6 +1315,126 @@ Plus a GPU-memory probe:
 to answer "is RAM growing because VRAM is full and textures
 are spilling to system memory."
 
+### Run 6 finding: leak is in PRIVATE RW memory (2026-05-09 night)
+
+VirtualQuery probe deployed and run. Result is unambiguous.
+
+```
+=== Address-space breakdown delta over 30s ===
+                      category        T0 (MB)        T1 (MB)     delta (MB)
+         total_committed_bytes        15512.3        16093.3         +581.0
+           by_type_image_bytes          758.2          758.2           +0.0
+          by_type_mapped_bytes         4167.8         4167.8           +0.0
+         by_type_private_bytes        10586.2        11167.2         +581.0
+             by_prot_rwx_bytes            0.2            0.2           +0.0
+              by_prot_rx_bytes          374.5          374.5           +0.0
+              by_prot_rw_bytes        14789.4        15370.4         +581.0
+               by_prot_r_bytes          336.2          336.2           +0.0
+  committed regions: 67840 -> 74557   (delta +6717)
+```
+
+**100% of the +581 MB / 30s growth is in private read-write
+pages.** Specifically:
+
+- `image` (loaded modules) flat: 0 growth.
+- `mapped` (file-backed pages, including the 4 GB NVIDIA
+  shader cache) flat: 0 growth.
+- `private` (anonymous pages, pagefile-backed) +581 MB: this
+  is everything not backed by a file. Native heap and
+  VirtualAlloc'd resource buffers live here.
+- `rw` protection +581 MB matches: read-write data, not code,
+  not read-only.
+
+**6,717 new committed memory regions in 30 seconds = 224
+new commits per second.** Average region size 84 KB.
+Consistent with UE's `FMallocBinned2` page sizes (64 / 128 /
+256 KB).
+
+### Total session memory at T1
+
+`total_committed_bytes = 16,093 MB`. The user said the
+session reached 15 GB used; that lines up with 16 GB
+committed.
+
+`total_reserved_bytes = 59,307 MB` (~58 GB). UE5 reserves a
+large slab of address space up front and commits pages on
+demand from it. That's the difference between the 15 GB the
+user sees in Task Manager (committed/working set) and the
+58 GB reserved.
+
+### Top committed regions named
+
+```
+size MB  type     mapped
+ 4096.0  mapped   NVIDIA DXCache (.nvph)         stable
+  256.0  private  (UE allocator block)
+  128.0  private  (multiple 128 MB blocks)       UE pools / D3D heaps
+  119.9  image    Grounded2-WinGRTS-Shipping.exe stable
+  ...    private  many 64 MB blocks              consecutive addresses
+   82.9  image    nvrtum64.dll (NVIDIA)          stable
+```
+
+The 64-128 MB private blocks at consecutive addresses are
+characteristic of D3D11/12 resource heap pools or the UE
+binned allocator's bin pages. Either way: the bulk is in
+UE's heap.
+
+### What this rules out
+
+- Texture pool growth (would show as mapped, not private)
+- Asset cache growth from .pak files (mapped)
+- Module loading (image)
+- DLL injection from another process (image)
+- VRAM pressure spilling to system memory (would typically
+  show as mapped via DXGI shared-memory regions)
+
+### What this points at
+
+Native heap / RHI resource heap growth at +19 MB/sec idle.
+Possible causes, in priority order:
+
+1. **A subsystem leaking buffers per frame.** 19 MB/sec at
+   60 fps = ~330 KB allocated and held per frame.
+   Candidates: audio decompression scratch, render-thread
+   command buffer churn, FString interning, async asset
+   streaming buffers.
+2. **Heap fragmentation.** Many small allocations spread
+   across pages so none free fully. Pages stay committed.
+   Diagnostic: regions count growing at 224/sec is a strong
+   signal here.
+3. **A specific RHI resource pool growing.** Descriptor
+   heaps, upload heaps, transient allocator pools. D3D12
+   apps in particular tend to grow these.
+
+### Phase-1.6 plan: name the heap
+
+VirtualQuery told us WHERE (private RW). Next step: WHO
+within UE is responsible. Two probes possible without
+hooking the allocator:
+
+1. **HeapWalk via toolhelp32**:
+   `CreateToolhelp32Snapshot(TH32CS_SNAPHEAPLIST)` +
+   `Heap32ListFirst/Next` + `Heap32First/Next`. Enumerates
+   Win32 heaps. UE generally uses its own allocator
+   (`FMallocBinned2`), not the Win32 heap, so this catches
+   only a fraction. Try it; if it shows a small subset the
+   answer is "UE allocator bypasses Win32 heap" and we move
+   on to (2).
+
+2. **Find UE5 stat globals via signature scan.** UE tracks
+   memory by category: `STAT_AudioMemory`,
+   `STAT_TextureMemory`, `STAT_RenderTargetMemory`,
+   `STAT_RHIMemory`, `STAT_GPUResources`, etc. These are
+   global counters updated as allocations happen. If we can
+   locate them in the loaded image (constants near
+   `GAudioDevice` / `GRHI` / similar globals), we can read
+   them directly each snapshot. No hooking. Highest value
+   for least effort.
+
+3. **Hook `FMalloc::Malloc/Free` virtual calls.** Gold
+   standard but requires the FMalloc vtable address +
+   per-call alloc-size accounting. Last resort.
+
 ### Phase-2 plan (still to do)
 
 Lower-priority items from the original plan, ordered by
