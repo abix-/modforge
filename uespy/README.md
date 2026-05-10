@@ -406,6 +406,65 @@ matches the existing community "Better Item Stacks" pak mod's
 effect — but via runtime DLL, so other features in the same mod
 can layer on top dynamically.
 
+## Audit: what's in uespy vs in game crates
+
+Comprehensive inventory of every feature/pattern across the
+running mods (`better-backpack`, `outworld-station/tweaks`)
+and uespy itself. Updated on each major slice. Use this when
+deciding where new code belongs.
+
+Legend: ✅ in uespy / 📦 stays game-side (correct split) / 🟡 candidate to extract / 🔵 future work (not built yet)
+
+| # | Feature / pattern | Where it lives | Cross-game? | Verdict |
+|---|---|---|---|---|
+| 1 | `ModInfo` + `ue4ss_mod!` macro lifecycle | uespy ✅ | yes | done |
+| 2 | `PlatformOffsets` + `platform::detect` | uespy ✅ | yes | done |
+| 3 | `uespy::ue::init_runtime` | uespy ✅ | yes | done |
+| 4 | HTTP control plane (`server::spawn`, `OpResponse`) | uespy ✅ | yes | done |
+| 5 | 5 generic primitives (`snapshot`, `read_bytes`, `write_bytes`, `walk_class`, `call`) | uespy ✅ | yes | done |
+| 6 | Selector grammar (`addr:0x...`, `class:`, `first_class:`, `singleton:`) | uespy ✅ | yes | done |
+| 7 | `fname_to_string` op | uespy ✅ | yes | done |
+| 8 | UObject SDK (UClass/UFunction/FName/FString/TArray + chunked GObjects) | uespy ✅ | yes | done |
+| 9 | TMap walker + DataTable iter / find_by_short_name | uespy ✅ | yes | done |
+| 10 | UE4SS C++ shim (CppUserModBase mirror, factory, DllMain) | uespy ✅ | yes | done |
+| 11 | ImGui Rust bindings (`ui::*`) | uespy ✅ | yes | done |
+| 12 | Build helper (`CppShim::compile`) | uespy ✅ | yes | done |
+| 13 | Test client `Api<S>` + perf-log writer | uespy ✅ | yes | done |
+| 14 | Counter primitives + bounded ring buffer | uespy ✅ | yes | done |
+| 15 | Win32 process probes (threads / cpu / regions / sampler) | uespy ✅ | yes | done |
+| 16 | File + console DLL logger | uespy ✅ | yes | done |
+| 17 | PE / vtable hook framework | uespy ✅ | yes | done |
+| 18 | Game-thread queue + re-entrance guard | uespy ✅ | yes | done |
+| 19 | UE introspection (`gobjects_population`, `class_outer_samples`) | uespy ✅ | yes | done |
+| 20 | DT polling worker (`on_first_sight`) | uespy ✅ | yes | done |
+| 21 | "Mutate-before-cache" pattern docs | uespy README ✅ | yes | done |
+| 22 | Bootstrap-new-game checklist | uespy README ✅ | yes | done |
+| 23 | `Snapshot` struct shape | game crate 📦 | per game | correct |
+| 24 | `handle()` op dispatcher (match arms) | game crate 📦 | per game | correct |
+| 25 | Game-specific selectors (e.g. `live_player`) | game crate 📦 | per game | correct |
+| 26 | Per-feature offsets / table names / skip rules | game crate 📦 | per feature | correct |
+| 27 | Per-feature ImGui tab content (slider values, labels, status text) | game crate 📦 | per UX | correct |
+| 28 | **Vanilla baseline `HashMap<fname, T>` + idempotent re-apply** | game crate (`tweaks/stacks.rs`) | **applies to any DT-field tweak** | 🟡 candidate (`uespy::ue::datatable::FieldTweak<T>`) |
+| 29 | **Settings.json load + save** (e.g. multiplier persists across launches) | not built | yes | 🔵 future, belongs in uespy |
+| 30 | **Game-deploy PowerShell pattern** (Steam library detect + mods.txt + DLL copy) | per-mod ~350 LoC scripts | yes (per-mod path differs) | 🟡 candidate (shared `deploy-lib.ps1` / module) |
+| 31 | **UE4SS-style RegisterPostHook** (override UFunction return value) | not built | yes | 🔵 backlog (worth it for caches that beat on-init mutation) |
+| 32 | **Memory scanner** (Cheat-Engine-style scan + rescan + freeze) | not built | yes | 🔵 backlog |
+| 33 | **Hot-reload via stub-loader pattern** | not built | yes | 🔵 backlog |
+| 34 | **`Tweak` trait + registry** (declarative field-at-offset / vanilla / mult / apply / settings-bound) | not built | yes | 🟡 maybe — wait for a 3rd feature to validate the shape |
+
+### Where to focus when promoting
+
+🟡 candidates worth a slice each, in priority order:
+- **#29 settings.json loader** — every future feature wants persistence, should land before the 2nd tweak feature ships.
+- **#28 `FieldTweak<T>`** — collapses any "snapshot vanilla, multiply / delta, apply" feature to ~10 LoC of game-side code.
+- **#30 deploy PowerShell module** — one-time clean-up, every per-game deploy script shrinks ~80%.
+
+🔵 backlog items get built when concretely needed:
+- **#31** when an on-init DT mutation doesn't propagate (cache-after-init).
+- **#32** when SDK dump misses something (bitfields, non-UObject memory).
+- **#33** when iteration speed becomes the bottleneck.
+- **#34** when a 3rd value-tweak feature exercises the same shape.
+
 ## Backlog (research questions tracked across games)
 
 - **Cheat-Engine-style memory scanner** (deferred until
