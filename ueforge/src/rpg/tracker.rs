@@ -141,7 +141,10 @@ impl Tracker {
     }
 
     /// Apply one skill against a borrowed state, honoring the
-    /// disabled toggle (treats disabled as level 0).
+    /// disabled toggle (treats disabled as level 0). Fires the
+    /// effect with `TriggerCtx::SlotChange` -- the trigger kind
+    /// that CDO-write effects expect on slot activate / spend /
+    /// refund / toggle.
     fn apply_one_unlocked(&self, skill: &SkillDef, state: &SkillsState) {
         let raw_level = state.level_of(skill.id);
         let effective_level = if self.disabled.is_disabled(skill.id) {
@@ -149,7 +152,11 @@ impl Tracker {
         } else {
             raw_level
         };
-        skill.effect.apply(effective_level, skill.max_level);
+        skill.effect.apply(
+            effective_level,
+            skill.max_level,
+            &crate::rpg::TriggerCtx::SlotChange,
+        );
     }
 
     /// Spend up to `count` points on `skill_id`. Returns the

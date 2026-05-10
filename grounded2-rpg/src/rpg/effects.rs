@@ -47,7 +47,7 @@ pub struct BackpackSlotsEffect {
 }
 
 impl Effect for BackpackSlotsEffect {
-    fn apply(&self, level: u32, _max_level: u32) {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
         let Some(settings) = world_loader::loaded_settings() else {
             return;
         };
@@ -94,7 +94,7 @@ pub struct SurvivalDrainEffect {
 }
 
 impl Effect for SurvivalDrainEffect {
-    fn apply(&self, level: u32, _max_level: u32) {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
         let Some(settings) = world_loader::loaded_settings() else {
             return;
         };
@@ -155,7 +155,7 @@ pub struct PlayerFallDamageReductionEffect {
 }
 
 impl Effect for PlayerFallDamageReductionEffect {
-    fn apply(&self, level: u32, _max_level: u32) {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
         let reduction = skill_bonus(self.max_reduction, level).min(1.0);
         let cdo_count = apply_to_player_character_cdos(|player_cdo| {
             let cur = read_f32(player_cdo, self.ratio_offset);

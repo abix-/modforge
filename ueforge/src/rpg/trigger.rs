@@ -56,11 +56,50 @@
 //! See [architecture.md](../../docs/architecture.md) "Composition
 //! model" for the full rationale.
 
+/// Typed event context passed to `Effect::apply`. Each variant
+/// carries the data the effect needs to do its work for that
+/// trigger kind. Adding a new trigger type adds a new variant
+/// here + a new struct implementing [`Trigger`] + the framework
+/// dispatcher that fires the variant when the event happens.
+///
+/// Phase 2a (current): only `SlotChange` is fired. Phase 2b
+/// lifts kill_hook / fall_hook into framework triggers that fire
+/// `Kill(&'a KillEvent)` / `Fall(&'a FallEvent)` etc.
+pub enum TriggerCtx<'a> {
+    /// Fired by `Tracker` on slot activate / spend / refund /
+    /// toggle. CDO-write effects use this.
+    SlotChange,
+    /// Fired by the future `OnDamageDealtTrigger` per
+    /// player-instigator damage hit.
+    DamageDealt(&'a DamageEventStub),
+    /// Fired by the future `OnDamageTakenTrigger` per
+    /// player-target damage hit.
+    DamageTaken(&'a DamageEventStub),
+    /// Fired by the future `KillTrigger` per confirmed kill.
+    Kill(&'a KillEventStub),
+    /// Fired by the future `FallTrigger` per fall event.
+    Fall(&'a FallEventStub),
+    /// Fired by the future `PeriodicTrigger` per tick.
+    Tick { dt: std::time::Duration },
+}
+
+// Stub event types -- placeholder shapes until Phase 2b lifts
+// the real event decoders (currently in g2rpg's kill_hook /
+// fall_hook). The stubs keep the variants typed and the doc
+// surface honest; framework dispatchers don't fire these yet.
+
+#[doc(hidden)]
+pub struct DamageEventStub;
+#[doc(hidden)]
+pub struct KillEventStub;
+#[doc(hidden)]
+pub struct FallEventStub;
+
 /// Trigger trait. Currently a marker with a `kind` tag for
 /// discoverability. Per-trigger wiring (install / subscribe /
 /// dispatch) lives in dedicated methods on the concrete trigger
-/// struct, because each trigger fires a different event type
-/// (typed via a per-trigger Binder trait when it lands).
+/// struct, because each trigger has its own event type variant
+/// in [`TriggerCtx`].
 pub trait Trigger: Send + Sync + 'static {
     /// Stable name for client discovery (e.g. `"OnSlotChange"`,
     /// `"OnDamageDealt"`).

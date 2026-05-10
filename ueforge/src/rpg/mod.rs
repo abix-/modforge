@@ -55,6 +55,9 @@ pub use slot_key::SlotKeyResolver;
 pub use state::SkillsState;
 pub use store::SlotStore;
 pub use tracker::{Tracker, XpResult};
-pub use trigger::{OnSlotChangeTrigger, Trigger, TriggerDef};
+pub use trigger::{
+    DamageEventStub, FallEventStub, KillEventStub, OnSlotChangeTrigger, Trigger,
+    TriggerCtx, TriggerDef,
+};
 pub use vanilla::VanillaCache;
 pub use xp::{CreatureDef, CreatureRegistry, Curve};

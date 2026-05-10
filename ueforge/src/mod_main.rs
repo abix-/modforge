@@ -137,8 +137,8 @@ macro_rules! ue4ss_mod {
             // first line.
             if !$mod_info.log_file.is_empty() {
                 $crate::log::init($crate::log::Config {
-                    file_name: $crate::mod_main::leak_cstr($mod_info.log_file),
-                    console_title: $crate::mod_main::leak_cstr($mod_info.console_title),
+                    file_name: $mod_info.log_file,
+                    console_title: $mod_info.console_title,
                     console: $mod_info.console,
                 });
             }
@@ -189,16 +189,6 @@ macro_rules! ue4ss_mod {
             }
         }
     };
-}
-
-/// Helper used by the macro to convert `&'static str` to
-/// `&'static str` with a guaranteed nul terminator for APIs that
-/// require it. Today `ueforge::log::Config` takes `&'static str`,
-/// not nul-terminated; this is a no-op kept for forward-compat
-/// with future C-string fields.
-#[doc(hidden)]
-pub const fn leak_cstr(s: &'static str) -> &'static str {
-    s
 }
 
 /// Hot-reload swap. Called by the macro's `ueforge_mod_shutdown`

@@ -70,7 +70,24 @@ slot change like before. The TriggerDef machinery establishes
 the symmetry with EffectDef and gives future event-driven
 triggers a place to land.
 
-### Phase 5b: typed event dispatch (deferred)
+### Phase 5b: typed event ctx (DONE 2026-05-10)
+
+- [x] **`TriggerCtx` enum** with variants `SlotChange`,
+  `DamageDealt(&DamageEventStub)`, `DamageTaken(&DamageEventStub)`,
+  `Kill(&KillEventStub)`, `Fall(&FallEventStub)`, `Tick { dt }`.
+- [x] **`Effect::apply`** signature now takes `&TriggerCtx`.
+- [x] **`Tracker`** fires `TriggerCtx::SlotChange` on activate /
+  spend / refund / toggle.
+- [x] All 8 framework Effect impls + 3 g2rpg game-specific
+  Effect impls updated to ignore `_ctx` (they only handle
+  SlotChange today).
+
+The event payload structs (`DamageEventStub`, etc.) are
+placeholder shapes -- Phase 5c lifts the real decoders from
+g2rpg's kill_hook / fall_hook into framework triggers that fire
+the typed variants.
+
+### Phase 5c: lift kill/fall hooks into framework triggers (deferred)
 
 The composition model includes Triggers (event-driven Effects
 fire from Hooks; CDO Effects fire on slot-change). Today the
