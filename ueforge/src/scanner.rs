@@ -221,17 +221,66 @@ fn sessions() -> &'static Mutex<HashMap<u64, Session>> {
 
 // ---- Freezes --------------------------------------------------------------
 
+/// Where a freeze's target address came from. Selector-backed
+/// freezes can re-resolve when the cached address goes stale (UE
+/// recycles allocations, the source object moves, etc.). Raw-addr
+/// freezes have no recovery path -- once the page is gone, the
+/// freeze just stops.
+#[derive(Clone)]
+enum FreezeSource {
+    /// `addr:0x...` / `class:Foo` / `singleton:Bar` + byte offset.
+    /// Re-resolved on validation miss.
+    Selector { selector: String, offset: usize },
+    /// User passed a raw `addr:0x...` directly. Stops on staleness.
+    RawAddr,
+}
+
 struct FreezeJob {
     stop: Arc<AtomicBool>,
     ty: Ty,
     bytes: Vec<u8>,
     hz: u32,
+    source: FreezeSource,
 }
 
 static FREEZES: OnceLock<Mutex<HashMap<usize, FreezeJob>>> = OnceLock::new();
 
 fn freezes() -> &'static Mutex<HashMap<usize, FreezeJob>> {
     FREEZES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// True if the address range [addr, addr+len) lies entirely within
+/// a single committed, writable, private region. Cheap (one
+/// `VirtualQuery`); call before every freeze write to avoid
+/// faulting on a guard page when the source allocation is freed.
+fn is_writable(addr: usize, len: usize) -> bool {
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_READWRITE, PAGE_WRITECOPY, VirtualQuery,
+    };
+    if addr == 0 {
+        return false;
+    }
+    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+    let n = unsafe {
+        VirtualQuery(
+            addr as *const _,
+            &mut info,
+            std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+        )
+    };
+    if n == 0 {
+        return false;
+    }
+    if info.State != MEM_COMMIT {
+        return false;
+    }
+    let p = info.Protect & 0xFF;
+    if p != PAGE_READWRITE && p != PAGE_WRITECOPY {
+        return false;
+    }
+    // Reject writes that span the end of the queried region.
+    let region_end = info.BaseAddress as usize + info.RegionSize;
+    addr.saturating_add(len) <= region_end
 }
 
 // ---- Ops ------------------------------------------------------------------
@@ -397,13 +446,42 @@ pub fn scan_close(args: &Json) -> Result<Json, String> {
 // ---- Freeze ---------------------------------------------------------------
 
 pub fn freeze(args: &Json) -> Result<Json, String> {
-    let addr_str = arg_str(args, "addr")?;
-    let addr = parse_addr(addr_str)?;
     let ty = Ty::from_str(arg_str(args, "type")?)?;
     let v = args.get("value").ok_or("missing arg 'value'")?;
     let bytes = Val::from_json(v, ty)?.bytes();
     let hz = arg_u64(args, "hz", Some(30))? as u32;
     let hz = hz.clamp(1, 1000);
+
+    // Two arg shapes:
+    //   { selector, offset?, type, value }  -- preferred. The
+    //     writer re-resolves on staleness (address-recycling safe).
+    //   { addr, type, value }               -- legacy. Address is
+    //     opaque; the writer stops when the page is unmapped or
+    //     loses RW protection.
+    let (addr, source) = match args.get("selector").and_then(Json::as_str) {
+        Some(sel) => {
+            let offset = arg_u64(args, "offset", Some(0))? as usize;
+            let addr = resolve_selector_addr(sel, offset)?;
+            (
+                addr,
+                FreezeSource::Selector {
+                    selector: sel.to_string(),
+                    offset,
+                },
+            )
+        }
+        None => {
+            let addr_str = arg_str(args, "addr")?;
+            (parse_addr(addr_str)?, FreezeSource::RawAddr)
+        }
+    };
+
+    if !is_writable(addr, bytes.len()) {
+        return Err(format!(
+            "freeze: address 0x{addr:X} is not committed RW for {} bytes",
+            bytes.len()
+        ));
+    }
 
     // Replace existing freeze on this addr if any.
     if let Some(old) = freezes().lock().remove(&addr) {
@@ -411,21 +489,8 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
     }
 
     let stop = Arc::new(AtomicBool::new(false));
-    let stop_t = stop.clone();
-    let bytes_t = bytes.clone();
-    let interval = Duration::from_millis((1000 / hz) as u64);
-    thread::Builder::new()
-        .name(format!("ueforge-freeze-{addr:X}"))
-        .spawn(move || {
-            while !stop_t.load(Ordering::Acquire) {
-                unsafe {
-                    let dst = addr as *mut u8;
-                    std::ptr::copy_nonoverlapping(bytes_t.as_ptr(), dst, bytes_t.len());
-                }
-                thread::sleep(interval);
-            }
-        })
-        .map_err(|e| format!("spawn failed: {e}"))?;
+    let source_t = source.clone();
+    spawn_freeze_writer(addr, bytes.clone(), hz, stop.clone(), source_t)?;
 
     freezes().lock().insert(
         addr,
@@ -434,9 +499,83 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
             ty,
             bytes,
             hz,
+            source,
         },
     );
     Ok(json!({"addr": format!("0x{addr:X}"), "hz": hz, "frozen": true}))
+}
+
+fn resolve_selector_addr(selector: &str, offset: usize) -> Result<usize, String> {
+    use crate::ue::UObject;
+    let resolved = crate::selector::resolve_generic(selector)
+        .ok_or_else(|| format!("freeze: selector '{selector}' not recognized"))?;
+    let obj = resolved.map_err(|e| format!("freeze: resolve '{selector}': {e}"))?;
+    Ok((obj as *const UObject as usize).wrapping_add(offset))
+}
+
+/// Spawn the writer thread. Validates page protection on each
+/// tick; on miss, attempts to re-resolve the selector (if any) to
+/// recover from UE recycling the underlying allocation. Bails out
+/// after `MAX_CONSECUTIVE_FAILURES` failed validations so a
+/// permanently-stale freeze can't busy-loop forever.
+fn spawn_freeze_writer(
+    initial_addr: usize,
+    bytes: Vec<u8>,
+    hz: u32,
+    stop: Arc<AtomicBool>,
+    source: FreezeSource,
+) -> Result<(), String> {
+    const MAX_CONSECUTIVE_FAILURES: u32 = 30;
+    let interval = Duration::from_millis((1000 / hz.max(1)) as u64);
+    thread::Builder::new()
+        .name(format!("ueforge-freeze-{initial_addr:X}"))
+        .spawn(move || {
+            let mut addr = initial_addr;
+            let mut failures: u32 = 0;
+            while !stop.load(Ordering::Acquire) {
+                if !is_writable(addr, bytes.len()) {
+                    // Try to re-resolve from a selector. Raw-addr
+                    // freezes have no recovery path.
+                    let recovered = match &source {
+                        FreezeSource::Selector { selector, offset } => {
+                            resolve_selector_addr(selector, *offset)
+                                .ok()
+                                .filter(|a| is_writable(*a, bytes.len()))
+                        }
+                        FreezeSource::RawAddr => None,
+                    };
+                    match recovered {
+                        Some(new_addr) => {
+                            crate::log::log(format_args!(
+                                "ueforge freeze: re-resolved 0x{addr:X} -> 0x{new_addr:X}"
+                            ));
+                            addr = new_addr;
+                            failures = 0;
+                        }
+                        None => {
+                            failures = failures.saturating_add(1);
+                            if failures >= MAX_CONSECUTIVE_FAILURES {
+                                crate::log::log(format_args!(
+                                    "ueforge freeze: 0x{initial_addr:X} stale for \
+                                     {failures} ticks; stopping"
+                                ));
+                                return;
+                            }
+                            thread::sleep(interval);
+                            continue;
+                        }
+                    }
+                }
+                unsafe {
+                    let dst = addr as *mut u8;
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
+                }
+                failures = 0;
+                thread::sleep(interval);
+            }
+        })
+        .map_err(|e| format!("spawn failed: {e}"))?;
+    Ok(())
 }
 
 pub fn unfreeze(args: &Json) -> Result<Json, String> {
@@ -457,12 +596,22 @@ pub fn freeze_list(_args: &Json) -> Result<Json, String> {
     let entries: Vec<Json> = f
         .iter()
         .map(|(addr, job)| {
-            json!({
+            let mut row = json!({
                 "addr": format!("0x{addr:X}"),
                 "type": format!("{:?}", job.ty).to_lowercase(),
                 "bytes_hex": crate::hex::encode(&job.bytes),
                 "hz": job.hz,
-            })
+            });
+            match &job.source {
+                FreezeSource::Selector { selector, offset } => {
+                    row["selector"] = json!(selector);
+                    row["offset"] = json!(format!("0x{offset:X}"));
+                }
+                FreezeSource::RawAddr => {
+                    row["selector"] = json!(null);
+                }
+            }
+            row
         })
         .collect();
     Ok(json!({"count": entries.len(), "freezes": entries}))
