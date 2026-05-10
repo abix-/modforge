@@ -137,11 +137,20 @@ macro_rules! ue4ss_mod {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn ueforge_mod_shutdown() {
+            // 1. Game's on_shutdown -- game-specific cleanup
+            //    (poller stop, custom drain, etc).
             ($mod_info.on_shutdown)();
-            // After the game's on_shutdown returns (hooks
-            // uninstalled, threads joined), do the side-file swap
-            // so UE4SS's next LoadLibraryExW picks up the new image
-            // written by `cargo deploy install` to main-new.dll.
+            // 2. Uninstall every PE hook registered via
+            //    `hook::register` / `install_immediate_or_log`.
+            //    Restores vtable slots + drains in-flight
+            //    trampolines (bounded 500ms each) before unload.
+            $crate::hook::shutdown_all();
+            // 3. Stop every HTTP listener registered via
+            //    `server::spawn`. Unblocks tiny_http's accept
+            //    loop + joins the thread.
+            $crate::server::shutdown_all();
+            // 4. Side-file swap so UE4SS's next LoadLibraryExW
+            //    picks up the new image written to main-new.dll.
             $crate::mod_main::finalize_hot_reload_swap();
         }
 

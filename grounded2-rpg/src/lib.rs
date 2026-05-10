@@ -100,7 +100,7 @@ unsafe fn worker() {
         || inv_hook::install(settings.inventory.slot_count),
     ) {
         ueforge::log!("inv hook: installed on {}", h.class_name());
-        std::mem::forget(h);
+        ueforge::hook::register(h);
     }
 
     ueforge::hook::install_immediate_or_log(
@@ -111,10 +111,10 @@ unsafe fn worker() {
 
     match rpg::fall_hook::install() {
         Ok(hooks) => {
-            for h in hooks {
+            for h in &hooks {
                 ueforge::log!("rpg/fall: installed on {}", h.class_name());
-                std::mem::forget(h);
             }
+            ueforge::hook::register_many(hooks);
         }
         Err(e) => {
             ueforge::log!("rpg/fall: concrete player fall hook install failed ({})", e);

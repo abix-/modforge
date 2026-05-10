@@ -11,6 +11,7 @@ use std::io::Cursor;
 use std::sync::Arc;
 use std::thread;
 
+use parking_lot::Mutex;
 use tiny_http::{Header, Method, Response, Server};
 
 /// Configuration for the embedded server.
@@ -23,8 +24,55 @@ pub struct Config {
     pub thread_name: &'static str,
 }
 
+/// Handle to a spawned listener. Drop or call [`stop`](Self::stop)
+/// to break the listener's `incoming_requests` loop and join the
+/// thread. Required for hot-reload-safe shutdown -- the DLL can't
+/// unload while the listener thread holds code on its stack.
+pub struct SpawnHandle {
+    server: Arc<Server>,
+    join: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+impl SpawnHandle {
+    /// Unblock the listener loop and join the thread. Idempotent.
+    pub fn stop(&self) {
+        // unblock() makes server.incoming_requests() return None
+        // on its next iteration, breaking the for-loop in run().
+        self.server.unblock();
+        if let Some(j) = self.join.lock().take() {
+            let _ = j.join();
+        }
+    }
+}
+
+impl Drop for SpawnHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Global registry of `SpawnHandle`s so `shutdown_all` can stop
+/// listeners owned by call sites that don't hang on to the handle
+/// (typical for `debug::spawn` callers that fire-and-forget).
+static SERVER_REGISTRY: Mutex<Vec<SpawnHandle>> = Mutex::new(Vec::new());
+
+/// Stop every server registered via [`spawn`]. Called from the
+/// framework's hot-reload shutdown path.
+pub fn shutdown_all() {
+    let mut g = SERVER_REGISTRY.lock();
+    let n = g.len();
+    g.clear();
+    drop(g);
+    if n > 0 {
+        crate::log!("server: shutdown_all stopped {n} listener(s)");
+    }
+}
+
 /// Spawn the listener thread. Returns immediately. If bind fails the
 /// error is reported via `on_log` and the thread is not started.
+/// On success the handle is registered into the framework's
+/// shutdown registry; pass `register: false` to opt out (e.g. tests
+/// that own the handle directly).
 pub fn spawn<H, L>(cfg: Config, handler: H, on_log: L)
 where
     H: Fn(&str) -> Vec<u8> + Send + Sync + 'static,
@@ -41,9 +89,16 @@ where
     on_log(&format!("ueforge: listening on {addr}{}", cfg.endpoint));
 
     let handler = Arc::new(handler);
-    let _ = thread::Builder::new()
+    let server_for_thread = server.clone();
+    let join = thread::Builder::new()
         .name(cfg.thread_name.into())
-        .spawn(move || run(server, cfg.endpoint, handler));
+        .spawn(move || run(server_for_thread, cfg.endpoint, handler))
+        .expect("spawn listener thread");
+
+    SERVER_REGISTRY.lock().push(SpawnHandle {
+        server,
+        join: Mutex::new(Some(join)),
+    });
 }
 
 fn run<H>(server: Arc<Server>, endpoint: &'static str, handler: Arc<H>)

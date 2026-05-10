@@ -8,6 +8,8 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
 use parking_lot::Mutex;
@@ -37,6 +39,11 @@ struct Entry {
     vtable: *mut *mut c_void,
     original: ProcessEventFn,
     handler: Handler,
+    /// Number of trampolines currently inside this entry's
+    /// handler (incremented at trampoline entry, decremented at
+    /// exit). Drop spins on this until it hits 0 (with a
+    /// timeout) so we don't unload code that's mid-execution.
+    active_calls: AtomicUsize,
 }
 
 unsafe impl Send for Entry {}
@@ -50,6 +57,12 @@ unsafe impl Sync for Entry {}
 static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
 static SNAPSHOT: LazyLock<ArcSwap<Vec<&'static Entry>>> =
     LazyLock::new(|| ArcSwap::from_pointee(Vec::new()));
+
+/// Set during shutdown to short-circuit handler dispatch. New
+/// trampoline fires call original directly without touching our
+/// handler closure (which may be on the verge of being dropped).
+/// Already-in-flight handlers continue normally.
+pub(super) static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 fn publish_snapshot(reg: &[&'static Entry]) {
     SNAPSHOT.store(Arc::new(reg.to_vec()));
@@ -98,6 +111,7 @@ impl ProcessEventHook {
             vtable,
             original,
             handler: Box::new(handler),
+            active_calls: AtomicUsize::new(0),
         }));
 
         {
@@ -155,12 +169,37 @@ impl ProcessEventHook {
 
 impl Drop for ProcessEventHook {
     fn drop(&mut self) {
+        // 1. Restore the engine's original ProcessEvent slot.
+        //    New PE calls go straight to the engine; our trampoline
+        //    is no longer reached.
         unsafe {
             vtable::write_slot(self.entry.slot, self.entry.original as *mut c_void);
         }
-        let mut reg = REGISTRY.lock();
-        reg.retain(|e| !std::ptr::eq(*e, self.entry));
-        publish_snapshot(&reg);
+        // 2. Remove from registry / snapshot so any straggler
+        //    trampoline fires that already loaded SNAPSHOT but
+        //    haven't found their entry will fall through.
+        {
+            let mut reg = REGISTRY.lock();
+            reg.retain(|e| !std::ptr::eq(*e, self.entry));
+            publish_snapshot(&reg);
+        }
+        // 3. Wait for in-flight trampolines that already entered
+        //    the handler to drain. Bounded; if a trampoline is
+        //    blocked on something, we'd rather leak the entry
+        //    than deadlock the unloader.
+        let deadline = Instant::now() + Duration::from_millis(500);
+        while self.entry.active_calls.load(Ordering::Acquire) > 0
+            && Instant::now() < deadline
+        {
+            std::thread::yield_now();
+        }
+        if self.entry.active_calls.load(Ordering::Acquire) > 0 {
+            crate::log!(
+                "hook: drop on {} timed out with {} active call(s); proceeding anyway",
+                self.entry.class_name,
+                self.entry.active_calls.load(Ordering::Relaxed)
+            );
+        }
     }
 }
 
@@ -187,9 +226,23 @@ unsafe extern "system" fn trampoline(
     };
 
     let original = OriginalProcessEvent { f: entry.original };
+
+    // Hot-reload guard: during shutdown, our handler closure may be
+    // about to be dropped (the box backs onto the leaked Entry, but
+    // the closure may capture state in `static`s about to disappear).
+    // Skip the handler and forward to the engine to avoid touching
+    // a dying state.
+    if SHUTTING_DOWN.load(Ordering::Acquire) {
+        unsafe { original.call(&*this, &*function, parms) };
+        return;
+    }
+
+    entry.active_calls.fetch_add(1, Ordering::AcqRel);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         (entry.handler)(&*this, &*function, parms, original)
     }));
+    entry.active_calls.fetch_sub(1, Ordering::AcqRel);
+
     if result.is_err() {
         // Closure panicked; fall through to original to keep the game alive.
         unsafe { original.call(&*this, &*function, parms) };

@@ -596,23 +596,35 @@ Per-system requirements:
     the game to deploy), but you still need to close + reopen
     the game between iterations to actually pick up the new
     DLL safely.
-- [ ] B1: Add `ueforge::hook::HookRegistry` + `shutdown_all()`.
-  Track `ProcessEventHook` handles registered via
-  `install_immediate_or_log` (and a new `register_for_shutdown`
-  for hooks installed with backoff).
-- [ ] B2: Add a `SHUTTING_DOWN: AtomicBool` flag + an
-  `active_calls: AtomicUsize` per `ProcessEventHook`. Trampoline
-  wrapper increments/decrements. Drop waits for drain (max 500ms)
-  before returning.
-- [ ] B3: Add `server::SpawnHandle` with `stop()`; route the
-  HTTP listener through it. Adopt in g2rpg's `debug::spawn`.
-- [ ] B4: Wire ueforge's `on_shutdown` macro path (the existing
-  `ueforge_mod_shutdown` C entry) to call:
-  `hook::HookRegistry::shutdown_all()` + game's
-  `MOD_INFO.on_shutdown` callback. Game callback already exists
-  and runs custom cleanup (g2rpg stops `world_loader`).
-- [ ] B5: g2rpg-side: stop using `mem::forget` on hook handles;
-  use the registry instead.
+- [x] **B1: `ueforge::hook::registry`** -- `register(hook)` /
+  `register_many(hooks)` / `shutdown_all()`. Hook handles live
+  in a `static Mutex<Vec<ProcessEventHook>>` instead of being
+  `mem::forget`-ed. `shutdown_all` drops every handle (Drop
+  restores the vtable slot + drains in-flight trampolines).
+  Closed 2026-05-10.
+- [x] **B2: `SHUTTING_DOWN` flag + `active_calls` counter** --
+  `process_event::SHUTTING_DOWN: AtomicBool` short-circuits new
+  trampoline fires to engine's original ProcessEvent. Each
+  `Entry` carries `active_calls: AtomicUsize` incremented at
+  trampoline entry / decremented at exit. Drop spins up to
+  500ms for drain. Closed 2026-05-10.
+- [x] **B3: `server::SpawnHandle` + `shutdown_all`** --
+  `spawn` registers a handle (Server Arc + JoinHandle); handle's
+  `stop()` calls `Server::unblock` then joins the listener.
+  `shutdown_all()` clears the registry, dropping every handle.
+  Closed 2026-05-10.
+- [x] **B4: Wire `ueforge_mod_shutdown`** -- macro path in
+  `mod_main.rs` now runs:
+  1. game's `on_shutdown` (game-specific cleanup)
+  2. `hook::shutdown_all()` (uninstall + drain)
+  3. `server::shutdown_all()` (stop listeners + join)
+  4. `mod_main::finalize_hot_reload_swap` (side-file rename).
+  Closed 2026-05-10.
+- [x] **B5: g2rpg-side adoption** -- `mem::forget` calls in
+  g2rpg's `lib.rs::worker` replaced with
+  `ueforge::hook::register` / `register_many`. Existing
+  `install_immediate_or_log` already routes through the
+  registry. Closed 2026-05-10.
 
 ### Phase C: design -- LOCKED IN
 

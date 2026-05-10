@@ -136,25 +136,34 @@ step 3 (Ctrl+R) unloads the old image and loads the new. State
 on disk (`saves/<guid>.json`, `settings.json`) survives; the new
 DLL's init reads them.
 
-**Phase B0 shipped 2026-05-10**. `cargo deploy install` writes
-to `main-new.dll` when `main.dll` already exists, and the
-framework's shim swaps `main.dll` <-> `main-new.dll` on
-`on_shutdown`. So step 2 (`cargo deploy install` while the game
-is running) just works.
+**Phase B complete 2026-05-10**. The full hot-update dev loop
+works: deploy while the game is running, alt-tab, Ctrl+R, new
+code is live in ~1-2s with state preserved.
 
-**Phase B1-B5 still pending** for safe Ctrl+R. PE hook handles
-(kill / fall / inv) are still `mem::forget`-ed; on Ctrl+R the
-OLD DLL's vtable patches still point into the soon-to-be-freed
-image. Next call into a patched slot after FreeLibrary -> crash.
-Fix: `HookRegistry::shutdown_all` swaps the slots back + drains
-in-flight trampolines before our DLL unloads. Tracked in
-`docs/todo.md`.
+`ueforge_mod_shutdown` runs in this order (on every Ctrl+R or
+process exit):
 
-**Until B1-B5 ship**: deploy in step 2 succeeds, but step 3
-(Ctrl+R) is unsafe -- close + reopen the game instead. The
-shutdown swap still runs on close, so the new image is in place
-for the next launch. Net win vs the pre-B0 state: you don't have
-to close the game to deploy, only to apply.
+1. `MOD_INFO.on_shutdown` -- the game's callback (g2rpg stops
+   the world_loader poller here).
+2. `ueforge::hook::shutdown_all` -- sets `SHUTTING_DOWN = true`,
+   then drops every registered `ProcessEventHook`. Each Drop
+   restores the vtable slot + waits up to 500ms for in-flight
+   trampolines on that hook to drain (per-Entry `active_calls`
+   counter).
+3. `ueforge::server::shutdown_all` -- unblocks + joins every
+   registered HTTP listener (debug endpoint).
+4. `mod_main::finalize_hot_reload_swap` -- renames `main.dll`
+   <-> `main-new.dll` so UE4SS picks up the new image on the
+   next `LoadLibraryExW`.
+
+After this returns, no code in our DLL is on a thread's stack
+or a vtable slot; UE4SS's `FreeLibrary` is safe. The new image's
+first `on_unreal_init` cleans up the leftover `main-old.dll`.
+
+If the trampoline drain hits the 500ms timeout (a hook handler
+that blocked indefinitely), the framework logs a warning and
+proceeds anyway -- a leak is preferable to deadlocking the
+unloader thread.
 
 UE4SS hot-reload is gated by `UE4SS-settings.ini`,
 `[General]` section: `EnableHotReloadSystem = 1`,

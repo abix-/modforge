@@ -68,6 +68,51 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Hot-update Phase B complete (B1-B5: safe Ctrl+R with hooks)
+
+Five lifts that close the loop on hot-update -- Ctrl+R is now
+safe even with PE hooks installed:
+
+- **B1: `ueforge::hook::registry`** -- `register(hook)` /
+  `register_many(hooks)` / `shutdown_all()`. Hook handles live
+  in a `static Mutex<Vec<ProcessEventHook>>` instead of being
+  `mem::forget`-ed. `shutdown_all` drops every handle in
+  registration order.
+- **B2: `SHUTTING_DOWN` + `active_calls` drain.**
+  `process_event::SHUTTING_DOWN: AtomicBool` short-circuits new
+  trampoline fires straight to engine's original ProcessEvent.
+  Each `Entry` carries `active_calls: AtomicUsize` incremented
+  at trampoline entry, decremented at exit. `Drop` restores the
+  vtable slot, then spins (with `thread::yield_now`) up to
+  500ms for the counter to hit zero. Logs a warning on timeout.
+- **B3: `server::SpawnHandle` + `server::shutdown_all`.**
+  `spawn` registers (Server Arc + JoinHandle); `SpawnHandle::stop`
+  calls `tiny_http::Server::unblock` then joins. `shutdown_all`
+  clears the registry, dropping every handle.
+- **B4: `ueforge_mod_shutdown` orchestration.** The macro path
+  now runs:
+  1. game's `MOD_INFO.on_shutdown`
+  2. `hook::shutdown_all` (uninstall + drain)
+  3. `server::shutdown_all` (stop listeners + join)
+  4. `mod_main::finalize_hot_reload_swap` (side-file rename)
+- **B5: g2rpg-side adoption.** `mem::forget` calls in
+  `lib.rs::worker` replaced with `ueforge::hook::register` /
+  `register_many`. `install_immediate_or_log` (already routes
+  through registry) keeps its existing call sites.
+
+Dev loop now end-to-end:
+
+```
+1. edit Rust
+2. cargo deploy install -p grounded2-rpg     # writes main-new.dll
+3. alt-tab to game, Ctrl+R                   # ~1-2s reload
+4. test
+```
+
+State on disk (save slots, settings, catalog) survives; the new
+image reads it on slot activation. From close-to-test cycle of
+60-180s down to ~5s.
+
 ### Hot-update Phase B0 shipped (side-file deploy)
 
 Implemented the side-file pattern (user's design) for hot-deploy

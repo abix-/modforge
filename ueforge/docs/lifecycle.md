@@ -362,40 +362,55 @@ Why this is clean:
   survives -- they live in the dlls dir alongside main.dll,
   not inside it; new image reads them on activation.
 
-### Status (2026-05-10)
+### Status (2026-05-10) -- Phase B complete
 
-**Side-file pattern shipped (Phase B0 complete).** Both pieces
-in place:
+All five phases (B0-B5) shipped 2026-05-10. The `ueforge_mod_shutdown`
+path now does:
 
-- `cargo deploy install` writes to `main-new.dll` when
-  `main.dll` already exists; first deploy writes `main.dll`
-  directly. (`ueforge/src/bin/ueforge_deploy.rs`)
-- `ueforge_mod_shutdown` runs the game's `on_shutdown`, then
-  the framework's `finalize_hot_reload_swap` does the
-  rename / rename / rollback-on-failure dance.
-  (`ueforge/src/mod_main.rs`)
-- New image's first `on_unreal_init` calls
-  `cleanup_old_dll` -- best-effort delete of `main-old.dll`.
+1. Game's `on_shutdown` callback (game-specific cleanup -- e.g.
+   stop pollers).
+2. `hook::shutdown_all()`:
+   - Sets `process_event::SHUTTING_DOWN = true` so new
+     trampoline fires forward to the engine's original
+     ProcessEvent without entering our handler.
+   - Drops every `ProcessEventHook` registered via
+     `hook::register` / `register_many` /
+     `install_immediate_or_log`. Each Drop restores the
+     vtable slot + spins up to 500ms for in-flight
+     trampolines (tracked via per-Entry `active_calls`
+     counter) to drain.
+3. `server::shutdown_all()`: calls `Server::unblock` + joins
+   each registered HTTP listener thread.
+4. `mod_main::finalize_hot_reload_swap`: renames `main.dll`
+   -> `main-old.dll`, `main-new.dll` -> `main.dll`. Rolls
+   back step 1 if step 2 fails.
 
-**But Ctrl+R is still not safe with PE hooks installed**
-(Phase B1-B5 still pending). The old DLL's `ProcessEventHook`
-patches still point into freed memory after FreeLibrary; the
-next call into a hooked vtable slot crashes the game.
+After this returns, no code in our DLL is on a thread's stack
+or a vtable slot; UE4SS can `FreeLibrary` safely. New image's
+first `on_unreal_init` calls `cleanup_old_dll` to remove the
+leftover `main-old.dll`.
 
-So the current workflow:
+### Dev loop (Phase B complete)
 
 ```
 1. edit Rust
 2. cargo deploy install -p grounded2-rpg
-   -> writes main-new.dll (no need to close the game)
-3. close + reopen the game
-   -> UE4SS loads -> on_shutdown swap is moot here, but
-      cleanup_old_dll runs at next init either way
-4. test
+   -> writes main-new.dll (UE4SS still has main.dll mapped)
+3. alt-tab to game, press Ctrl+R
+   -> UE4SS calls our ueforge_mod_shutdown
+      -> game on_shutdown
+      -> hook::shutdown_all (vtable restores + trampoline drain)
+      -> server::shutdown_all
+      -> finalize_hot_reload_swap (main-new.dll -> main.dll)
+   -> UE4SS FreeLibrary's old image
+   -> UE4SS LoadLibraryExW's main.dll (new image)
+   -> our new init runs
+4. test the change
 ```
 
-When Phase B1-B5 lands, step 3 becomes "alt-tab + Ctrl+R"
-instead.
+End-to-end: ~1-2s per iteration. State on disk (save slots,
+settings, catalog progress) survives. Hot-update is the dev
+loop.
 
 ### Configuration
 

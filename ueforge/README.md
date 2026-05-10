@@ -666,8 +666,12 @@ else?". Update on every major slice.
 | 107 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done |
 | 108 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done |
 | 109 | Worker thread spawn with panic-catch | ✅ (`worker::spawn`) | · | · | done |
-| 110 | Hot-update via UE4SS Ctrl+R (`uninstall_mod` + `~UespyMod` + `ueforge_mod_shutdown` -> our `on_shutdown` callback) | ✅ (shim wired) | · (worker shutdown only; PE hooks still leaked -- Phase B) | · (no PE hooks; safe today) | research done; Phase B (`HookRegistry::shutdown_all` + `active_calls` drain + HTTP `SpawnHandle::stop`) pending |
+| 110 | Hot-update via UE4SS Ctrl+R | ✅ (shim wired; full pipeline below) | · | · | done -- Phases A + B (2026-05-10) |
 | 111 | Side-file deploy + on_shutdown swap (`cargo deploy install` writes `main-new.dll`; shim renames `main.dll` <-> `main-new.dll` on Ctrl+R/exit) | ✅ (`ueforge_deploy` + `mod_main::finalize_hot_reload_swap` + `cleanup_old_dll`) | · | · | done -- Phase B0 |
+| 112 | `hook::registry` (register / register_many / shutdown_all) -- `ProcessEventHook` handles teardown on hot-reload instead of `mem::forget`-leaking | ✅ (`hook::registry`) | · (lib.rs uses `register` / `register_many`) | · (no hooks) | done -- Phase B1 |
+| 113 | `process_event::SHUTTING_DOWN` flag + per-Entry `active_calls` drain in Drop (waits up to 500ms for in-flight trampolines to exit before unload) | ✅ (`hook::process_event`) | · | · | done -- Phase B2 |
+| 114 | `server::SpawnHandle::stop()` + `server::shutdown_all()` -- HTTP listeners unblocked + joined on hot-reload | ✅ (`server`) | · | · | done -- Phase B3 |
+| 115 | `ueforge_mod_shutdown` orchestrates: game on_shutdown -> hook::shutdown_all -> server::shutdown_all -> finalize_hot_reload_swap | ✅ (`mod_main`) | · | · | done -- Phase B4 |
 
 ### Game-specific (correctly stays in the game crate)
 
