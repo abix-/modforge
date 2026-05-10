@@ -535,93 +535,175 @@ else?". Update on every major slice.
 | 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · (manifest entry) | · | done |
 | 40 | Steam-library auto-detect | ✅ | · | · | done |
 
-### **RPG framework** (currently g2rpg-only — biggest open promotion)
+### **Pillar 1: RPG framework** (Phase 3 complete)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 41 | **`SkillEffect` enum + `CATALOG` row pattern** (one row per skill) | 🔵 | 📦 | — | **promote (Phase 3 cont.):** generic `Catalog<E>` / `Skill<E>` parameterized on the game's effect enum |
-| 42 | **Sqrt level curve** (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · | — | done -- Phase 3 |
-| 43 | **XP curve + cumulative-XP table** (`base * N^exponent`, level cap) | ✅ (`rpg::xp::Curve`) | · (per-creature table stays game-side) | — | done -- Phase 3 |
-| 44 | **State schema** (`xp / level / skill_points / skill_levels: BTreeMap<id, u32>`) | ✅ (`rpg::SkillsState` + `spend()` / `refund()` / `level_of()` methods) | · | — | done -- Phase 3 |
-| 45 | **Per-slot JSON persistence** (`<DLL_dir>/<subdir>/<slot>.json`, atomic write) | ✅ (`rpg::SlotStore<S>` generic over persisted struct) | · | — | done -- Phase 3 |
-| 46 | **Slot-tracker poller** (transitions `None→Some / a→b / Some→None`) | ✅ (`rpg::SlotPoller::spawn(interval, resolve, activate, deactivate)`) | · | — | done -- Phase 3 |
-| 47 | **Disabled-skills set + per-skill toggle** | ✅ (`rpg::DisabledSkills`) | · | — | done -- Phase 3 |
-| 48 | **`apply_skill` dispatcher** (match-on-`SkillEffect`, vanilla snapshot, live-pawn mirror) | 🔵 | 📦 | — | **promote (Phase 3 cont.):** the dispatcher shape + vanilla `OnceLock` pattern; per-effect arms stay game-specific |
-| 49 | **RPG ImGui tab template** (level / XP bar / catalog rows / +1/+10 / -1/-10 / on-toggle) | 🔵 | 📦 (`rpg/tab.rs`) | — | **promote (Phase 3 cont.):** `rpg::tab::render(catalog, format_effect_fn)` widget so game crates supply only the format closure |
-| 50 | **Per-skill format strings + next-level preview** | 🔵 | 📦 | — | tied to row 41's catalog shape |
-| 51 | **`set_skill_points` debug op** | 🔵 | 📦 | — | trivial wrapper, lands with row 41 |
+| 41 | `Skill<E>` row + `find_skill` lookup (generic over the game's effect enum) | ✅ (`rpg::Skill<E>`, `rpg::find_skill`) | · (`pub type Skill = ueforge::rpg::Skill<SkillEffect>;`) | — | done |
+| 42 | Sqrt level curve (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · | — | done |
+| 43 | XP curve + cumulative-XP table | ✅ (`rpg::xp::Curve`) | · (`xp::CURVE = Curve::new(100.0, 1.8, 50)`) | — | done |
+| 44 | Per-creature XP bestiary (BP-class-name -> XP table) | ✅ (`rpg::Bestiary`) | · (`xp.rs` is just the table data) | — | done |
+| 45 | State schema (xp / level / skill_points / skill_levels) | ✅ (`rpg::SkillsState` + `spend` / `refund` / `level_of`) | · | — | done |
+| 46 | Per-slot JSON persistence (atomic temp+rename+fsync) | ✅ (`rpg::SlotStore<S>`) | · | — | done |
+| 47 | Slot-tracker poller (transitions) | ✅ (`rpg::SlotPoller::spawn`) | · | — | done |
+| 48 | Disabled-skills set + per-skill toggle | ✅ (`rpg::DisabledSkills`) | · | — | done |
+| 49 | `RpgApplier` trait (game's apply seam) | ✅ (`rpg::RpgApplier`) | · (`GameApplier` impls it) | — | done |
+| 50 | `Tracker<A>` (state + store + applier orchestration) | ✅ (`rpg::Tracker<A>` + `XpResult`) | · | — | done |
+| 51 | Skill-effect dispatcher + vanilla capture (CDO + live-pawn walks per variant) | ✅ (`rpg::std_effect::StandardEffect::apply` + `VanillaCache<K, V>`) | · (Standard arm via `e.apply`; 3 G2-only composite arms stay) | — | done |
+| 52 | `StandardEffect` 8-variant menu (PlayerFloat / PlayerSubcomponentFloat / Additive / U32Mask / Multiply / ClassFieldsMultiply / Runtime / StatusEffect) | ✅ (`rpg::std_effect`) | · (9 of 13 g2rpg catalog skills route through it) | — | done |
+| 53 | RPG ImGui tab template (level / XP bar / catalog rows / +1/+10 / -1/-10 / toggle) | ✅ (`rpg::tab::render(tracker, toggle)`) | · (`rpg/tab.rs` is 23 lines) | — | done |
+| 54 | Per-skill format strings + diminishing-returns previews | ✅ (`rpg::format::PercentFormat` + `StandardEffect::format`) | · (Standard arm delegates) | — | done |
+| 55 | Standard ops catalog (skill_toggle / spend / refund / reload_slot / set_skill_points) | ✅ (`rpg::ops::*` + `debug::dispatch_standard_op`) | · | — | done |
+
+### Pillar 2: Stacks (inventory stack-size tweaks)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 56 | `FieldTweak<T>` (data-table row tweak with vanilla cache) | ✅ (`ue::datatable::FieldTweak<T>`) | · (used by `patch.rs`) | · | done |
+| 57 | `StackTweak` opinionated stacks wrapper (multiplier atomic + apply-now / counters) | ✅ (`stacks::StackTweak`) | — | · (`stacks.rs` is 64 lines) | done |
+| 58 | DataTable polling worker (`apply_when_ready` on first sight) | ✅ (`ue::datatable::on_first_sight`) | — | · | done |
+
+### Pillar 3: Difficulty (per-class CDO field tweaks)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 59 | `ClassFieldTweak<T>` (live-UObject vanilla cache) | ✅ (`ue::class_tweak::ClassFieldTweak<T>`) | · | · | done |
+| 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) | — | done |
+
+### UE SDK helpers (used by all three pillars)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 61 | UObject byte-level helpers (`read_f32` / `write_f32` / `read_u32` / `write_u32` / `read_i32` / `write_i32` / `read_bool` / `write_bool` / `read_component_ptr`) | ✅ (`ue::field`) | · (re-exported as `apply::read_*`) | · | done |
+| 62 | `TypedField<T>` (typed offset wrapper) | ✅ (`ue::typed_field`) | · | · | done |
+| 63 | Actor / controller helpers (`class_chain_contains` / `controller_pawn` / `describe` / `is_outer_named` / `outer_class_name` / `A_CONTROLLER_PAWN_OFFSET`) | ✅ (`ue::actor`) | · (kill_hook killer classification) | — | done |
+| 64 | `FDamageInfo` reader (`DamageInfoLayout` -> instigator / damage_source / damage_type_class / damage_flags) | ✅ (`ue::damage_info`) | · (g2rpg's Maine layout in `kill_hook`) | — | done |
+| 65 | `FWeakObjectPtr::read` + `resolve` (one-shot index + GObjectsView walk) | ✅ (`ue::core_types::FWeakObjectPtr`) | · | — | done |
+| 66 | `process_event` UFunction caller (`call_ufunction(target, &class, fn_name, &mut parms)`) | ✅ (`ue::pe_call`) | · (health ops) | — | done |
+| 67 | String-keyed CDO / instance lookup (`with_first_instance_of` / `with_first_cdo_of`) | ✅ (`ue::with_first_*_of`) | · (debug snapshot collectors) | — | done |
+| 68 | `PlayerRef::first_live_static` (game-thread-only `&'static UObject` of first live pawn) | ✅ (`ue::player::PlayerRef`) | · (debug `live_player_hc` resolver) | — | done |
+| 69 | Platform detect + runtime init in one call | ✅ (`ue::platform::detect_and_init`) | · | · | done |
+| 70 | `ClassRef::with_first_cdo` (symmetric to `with_first_instance`) | ✅ (`ue::class_ref::ClassRef`) | · | · | done |
+| 71 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ (`ue::probe`) | · (debug snapshot) | — | done |
+
+### Hooks + game-thread queue
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 72 | PE / vtable hook framework | ✅ (`hook::ProcessEventHook`) | · | — | done |
+| 73 | Cached `&UFunction` identity dispatch | ✅ (`hook::function_ptr` / `function_table!`) | · (kill_hook + inv_hook) | — | done |
+| 74 | `install_with_backoff` (exponential retry until class loads) | ✅ (`hook::install_with_backoff` + `RetryPolicy`) | · (inv_hook) | — | done |
+| 75 | `install_immediate_or_log` (install / log / leak triplet) | ✅ (`hook::install_immediate_or_log`) | · (kill_hook in lib.rs) | — | done |
+| 76 | Game-thread `Queue` + re-entrance guard + canonical drain-site | ✅ (`pe_queue::Queue` + `DrainSite`) | · (drained from kill_hook) | — | done |
+
+### Debug HTTP endpoint
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 77 | HTTP listener (`server::spawn`) | ✅ | · | · | done |
+| 78 | `OpResponse<S>` envelope + `parse_request` | ✅ (`envelope`) | · | · | done |
+| 79 | Generic primitives (`read_bytes` / `write_bytes` / `walk_class` / `fname_to_string` / `call` / `inspect_address`) | ✅ (`ops`) | · | · | done |
+| 80 | Selector grammar (`addr:` / `class:` / `first_class:` / `singleton:`) | ✅ (`selector::resolve_generic`) | · (+ `live_player`, `live_player_hc`) 📦 | · | done; game-specific selectors stay |
+| 81 | Standard-op dispatcher (skill_* / reload_slot / set_skill_points / walk_class / class_outer_samples / sample_thread_modules) | ✅ (`debug::dispatch_standard_op`) | · | — | done |
+| 82 | PE-ops dispatcher (call / read_bytes / write_bytes with game resolver) | ✅ (`debug::dispatch_pe_ops`) | · | — | done |
+| 83 | PE-queue enqueue helper (timeout + custom hint) | ✅ (`debug::enqueue_pe`) | · | — | done |
+| 84 | `PlayerStateView::from_state` (serde view of SkillsState) | ✅ (`debug::PlayerStateView`) | · | — | done |
+| 85 | `CatalogEntry` + `catalog_view(&[Skill<E>], kind_fn)` | ✅ (`debug::catalog_view`) | · | — | done |
+| 86 | `STANDARD_OPS` op-list metadata | ✅ (`debug::STANDARD_OPS`) | · | — | done |
+| 87 | `DamageEvent` + `DamageRing` (bounded ring of PE damage events) | ✅ (`debug::DamageEvent` / `DamageRing`) | · | — | done |
+| 88 | `ProcessSnapshot` (counters + memory + cpu + threads + gobjects population + regions) | ✅ (`debug::ProcessSnapshot::collect`) | · | — | done |
+| 89 | Win32 process probes (threads / cpu / regions / module sampler) | ✅ (`winproc`) | · | — | done |
+| 90 | Test client `Api<S>` (+ `try_op`) | ✅ (`client`) | · | — | done |
+| 91 | `perf::PerfLog` writer | ✅ (`client`) | · | — | done |
+
+### Settings + logging + counters
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 92 | `Settings<T>` JSON load + atomic save | ✅ (`settings::Settings`) | · | · | done |
+| 93 | `Settings::reload` + `watch(interval, on_reload)` (mtime-poller hot-reload) | ✅ (`settings::WatchHandle`) | — (not yet adopted) | — (not yet adopted) | done |
+| 94 | File + console logger (`set_dll_module` HMODULE capture) | ✅ (`log`) | · | · | done |
+| 95 | Counter primitives + `time_scope` | ✅ (`counters`) | · | · | done |
+| 96 | Bounded `EventRing<T>` | ✅ (`ring::EventRing`) | · (DamageRing wraps it) | — | done |
+
+### Memory tools (built for ows-tweaks research, used by both)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 97 | Cheat-Engine-style scanner (scan / rescan / paginate / freeze) | ✅ (`scanner`) | — | · | done |
+| 98 | Built-in Scanner ImGui tab | ✅ (`ui_scanner::render`) | — | · | done |
+| 99 | `inspect_address` + property name walker | ✅ (`ops::inspect_address`) | — | · | done |
+
+### ImGui
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 100 | Vendored ImGui v1.92.1 (git submodule) + bridge | ✅ | · | · | done |
+| 101 | Rust ImGui wrappers (`ui::text` / `button` / `slider_*` / `Disabled` / etc.) | ✅ (`ui`) | · | · | done |
+| 102 | Tab registration (`Tab { name, render }`) | ✅ (`mod_main`) | · | · | done |
+
+### Build & deploy
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 103 | `CppShim::new().compile()` builder | ✅ (`build`) | · (1-line `build.rs`) | · | done |
+| 104 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · | · | done |
+| 105 | Steam-library auto-detect | ✅ | · | · | done |
+
+### Lifecycle / loader plumbing
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 106 | `ModInfo` + `ue4ss_mod!` macro | ✅ (`mod_main`) | · | · | done |
+| 107 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done |
+| 108 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done |
+| 109 | Worker thread spawn with panic-catch | ✅ (`worker::spawn`) | · | · | done |
 
 ### Game-specific (correctly stays in the game crate)
 
 | # | Feature | grounded2-rpg | ows-tweaks | Notes |
 |---|---|---|---|---|
-| 52 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
-| 53 | Game-specific selectors (`live_player`, `live_player_hc`, `live_player_cmc`) | 📦 | — | wraps `selector::resolve_generic` |
-| 54 | `inv_hook` viewport rebind (4×10 pages, mouse-wheel scroll) | 📦 | — | extremely G2-specific |
-| 55 | `kill_hook` (G2 `MulticastHandleEffectsWithDamageFlags` match + `KillingBlow` mask) | 📦 | — | per UFunction signature |
-| 56 | `fall_hook` (`OnLanded` velocity-stomp on `BP_SurvivalPlayerCharacter`) | 📦 | — | per game |
-| 57 | `survival.rs` (G2 hunger/thirst CDO writes) | 📦 | — | per game |
-| 58 | `patch::run` (UInventoryComponent `DefaultMaxSize` at +0x1E0, player-only filter) | 📦 | — | per game; rewrite atop `FieldTweak` (#14) |
-| 59 | `stacks.rs` (FieldTweak<i32> on DT_Materials.MaxCanStack at +0x48) | — | 📦 | per game |
-| 60 | RPG catalog content (Backpack +460 slots, Attack Damage +300%, etc.) | 📦 | — | per gameplay design |
-| 61 | XP-per-creature lookup table | 📦 | — | per game's bestiary |
-| 62 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
+| 200 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
+| 201 | Game-specific selectors (`live_player`, `live_player_hc`) | 📦 | — | wraps `selector::resolve_generic` |
+| 202 | `inv_hook` viewport rebind (4×10 pages, mouse-wheel scroll) | 📦 | — | extremely G2-specific |
+| 203 | `kill_hook` Maine UFunction match + KillerKind classifier (Player / Buggy / Other) | 📦 | — | per UFunction signature; structural shape uses `ue::actor` + `ue::damage_info` from the framework |
+| 204 | `fall_hook` (`OnLanded` velocity-stomp on `BP_SurvivalPlayerCharacter`) | 📦 | — | per game |
+| 205 | `survival.rs` (G2 hunger/thirst Maine offsets via `DifficultyKnob`) | 📦 | — | offsets stay; framework owns the apply loop |
+| 206 | `patch.rs` (UInventoryComponent `DefaultMaxSize` at +0x1E0, player-only filter) | 📦 | — | per game; uses `ClassFieldTweak<i32>` |
+| 207 | `stacks.rs` (DT_Materials.MaxCanStack offsets via `StackTweak`) | — | 📦 | offsets stay; framework owns the apply loop |
+| 208 | RPG catalog content (Backpack +460 slots, Attack Damage +300%, etc.) | 📦 | — | per gameplay design |
+| 209 | XP-per-creature bestiary entries | 📦 | — | per game's bestiary; framework owns `Bestiary` shape |
+| 210 | `damage_trace.rs` + `impact_resistance.rs` (Maine multicast parm shapes) | 📦 | — | per UFunction; structural shape generic |
+| 211 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
+| 212 | `KillerKind` classifier (Player / Buggy / Other) + buggy XP multiplier | 📦 | — | per game policy |
 
 ### Migration status
 
-**Phase 1 — infra dedup (DONE 2026-05-10):** rows 1-13, 15-19, 22-40
-all in. grounded2-rpg lost ~930 lines: `cpp/shim.cpp` (357),
-`src/rpg/ffi.rs` (340), `src/log.rs`, `src/sdk/`, `src/hook/`,
-`winhttp.def`, custom `DllMain` + `grounded2_rpg_start/stop`
-exports, the `DLL_HMODULE` static. Replaced with one
-`ueforge::ue4ss_mod!(MOD_INFO)` macro call, a Rust ImGui render
-in `src/rpg/tab.rs` (no FFI hop, no buffer-passing — calls
-`tracker` / `skills` / `xp` directly), and a 1-line `build.rs`.
-Build-clean validated; in-game smoke test pending.
+**All four phases complete (2026-05-10):**
 
-**Phase 2 — small promotions (DONE 2026-05-10):**
+- **Phase 1** -- infra dedup. g2rpg lost ~930 lines of duplicated
+  loader / SDK / hook / log / FFI plumbing.
+- **Phase 2** -- small promotions. `ClassFieldTweak<T>`,
+  `function_ptr` / `function_ptr_required`, canonical
+  `Queue::drain` doc.
+- **Phase 3** -- RPG framework. The 15 rows under "Pillar 1" all
+  shipped: `Skill<E>`, `Tracker<A>`, `RpgApplier`, `SlotStore<S>`,
+  `SlotPoller`, `DisabledSkills`, `Bestiary`, `StandardEffect`
+  8-variant menu + apply + format dispatch, `tab::render`,
+  `ops::*`. g2rpg's `apply_skill` collapsed from 11 arms to 4
+  (1 framework Standard arm + 3 game-specific composites).
+- **Phase 4** -- the rest. `ueforge::stacks` + `ueforge::difficulty`
+  (pillars 2 + 3), `ue::field` / `ue::actor` / `ue::damage_info` /
+  `ue::pe_call`, `Settings::watch`, `debug::dispatch_*` /
+  `DamageRing` / `ProcessSnapshot` / `PlayerStateView`,
+  `platform::detect_and_init`, `hook::install_immediate_or_log`,
+  kill_hook split into 3 modules.
 
-- ✅ `ClassFieldTweak<T>` (row 14) -- live-UObject sibling of
-  `FieldTweak<T>`. Walks GObjects, snapshots vanilla per
-  instance, writes via `transform(vanilla) -> Option<T>`.
-  g2rpg's `patch::run` and `survival::run` migrated.
-- ✅ `hook::function_ptr` / `function_ptr_required` (row 20) --
-  cached UFunction-pointer-identity dispatch. New mods reach for
-  this directly; g2rpg's older `inv_hook::lookup` helpers stay
-  (functionally equivalent, migration would be pure churn).
-- ✅ Canonical-site doc on `Queue::drain` (row 21) -- the next
-  PE-trampoline-drain mod gets the empty-check / re-entrance /
-  counter pattern right on first try.
-
-**Phase 3 -- RPG framework promotion (IN PROGRESS):**
-
-First wave landed 2026-05-10: `ueforge::rpg::{xp, progress, state,
-store, disabled, poller}` (rows 42-47). Module is fully usable for
-any RPG mod that's willing to write its own catalog dispatcher and
-ImGui tab body. g2rpg migrated its state / store / poller / disabled
-/ progress to consume it; `g2rpg/src/rpg/state.rs` is gone, the rest
-shrunk.
-
-Second wave (next session, multi-session):
-
-- **Catalog<E> + Skill<E>** (row 41) -- generic catalog row with a
-  user-provided effect enum. Game crates drop the boilerplate
-  around iterating skills, looking up by id, formatting the level
-  + max + bonus.
-- **`apply_skill` dispatcher shape** (row 48) -- the
-  per-effect-variant `OnceLock<vanilla>` pattern is generic; the
-  match arms are game-specific. Probably ships as
-  `rpg::vanilla::Cache<K, V>` + a doc on the canonical apply
-  shape.
-- **`rpg::tab::render`** (row 49) -- ImGui template: header
-  (level + XP bar + skill points), catalog rows
-  (+1/+10/-1/-10/on-toggle/format-effect-text), debug footer
-  (+5 / +50 skill points). Game crates supply a `format_effect`
-  closure for the per-skill effect text.
-
-Once the second wave lands, g2rpg's `rpg/` becomes: catalog content
-(`SkillEffect` variants + CATALOG entries) + game-specific apply
-match arms + the kill / fall hooks. The rest is ueforge.
+The rule going forward: a UE5 mod implementing RPG / stacks /
+difficulty writes only game-specific knobs (table names, field
+offsets, multiplier UI, settings persistence). No
+re-implementation of the apply loop, the vanilla cache, the
+counter atomics, or the snapshot scaffolding.
 
 ## Backlog (research questions tracked across games)
 
