@@ -319,3 +319,5 @@ issues. Ship one ueforge that works for everyone.
 - [http.md](http.md) -- starting the debug HTTP server
 - [worker.md](worker.md) -- thread spawn details
 - [settings.md](settings.md) -- the settings JSON pattern
+- [native.md](native.md) -- what the C++ shim is doing under the
+  hood and why it has to exist
