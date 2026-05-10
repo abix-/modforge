@@ -27,31 +27,31 @@ part).
 
 ### Phase 1a: schema discovery + DataTableDef
 
-- [ ] **`DataTableDef`** -- the workspace-standard `<Subject>Def`
-  for "a UE5 UDataTable + its row struct schema":
-  ```rust
-  pub struct DataTableDef {
-      pub id: &'static str,           // stable id
-      pub table_name: &'static str,   // UE name (find via GObjects)
-      pub row_struct: RowSchema,      // field name -> offset -> type
-  }
-  pub struct RowSchema {
-      pub name: &'static str,         // UScriptStruct name
-      pub fields: &'static [RowField],
-  }
-  pub struct RowField {
-      pub name: &'static str,
-      pub offset: usize,
-      pub kind: FieldKind,            // I32 | U32 | F32 | FName | FString | ...
-  }
-  ```
-- [ ] **`DataTableRegistry`** -- `&[&'static DataTableDef]`,
-  same shape as the other Drop-having Def registries.
-- [ ] **Dynamic discovery** -- `ueforge::ue::probe::
-  discover_data_tables() -> Vec<DataTableDef>`. Walks GObjects,
-  finds every `UDataTable` instance, reads its `RowStruct`'s
-  `FProperty` chain into a `RowSchema`. Skips engine-internal
-  tables; filters to game-scope (configurable).
+The DISCOVERY path is the leverage point: a new game's bootstrap
+is "launch + curl `discover_data_tables` + pick fields". Land
+discovery before snapshot / browser / static catalog rows.
+
+- [x] **`DataTableDef`** -- workspace-standard
+  `<Subject>Def`. Shipped `ueforge/src/data_table.rs` with `id`,
+  `table_name`, `row_struct: RowSchema { name, fields: &[RowField
+  { name, offset, element_size }] }`. Mirrors `NativeProperty`
+  for the field shape (no FieldKind enum for v1 -- element_size
+  is the discriminator, same as NativeProperty).
+- [x] **`DataTableRegistry`** -- slice-of-refs registry mirroring
+  `StackRegistry` / `StatusRegistry` (`def` / `entries` / `iter`
+  / `len` / `is_empty` / `IntoIterator`).
+- [x] **Dynamic discovery + cache** -- `ueforge::discovery`
+  module: one GObjects pass populates a process-global
+  `Arc<DiscoverySnapshot>` covering every live `UDataTable`,
+  `UClass`, and `UScriptStruct`. `run_at_load()` runs from each
+  mod's `on_unreal_init` worker (wired into g2rpg + ows-tweaks)
+  and logs a one-line summary. Debug ops `discover_data_tables`
+  / `discover_classes` / `discover_structs` read from the cache;
+  pass `{refresh: true}` to re-walk after content streams in.
+  Low-level walkers (`probe::describe_data_table`,
+  `probe::walk_struct_fields`) stay pub for custom dump shapes.
+  No JSON-on-disk; redirect curl if you want a file. Engine
+  filter still open (deferred until noise is a real problem).
 
 ### Phase 1b: live snapshots
 

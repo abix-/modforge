@@ -190,4 +190,9 @@ pub mod tmap {
 // (UE5-Augusta).
 pub mod datatable {
     pub const ROW_MAP: usize = 0x0030;
+    /// `UScriptStruct* RowStruct` -- describes the row schema
+    /// (FProperty chain at `+CHILD_PROPERTIES` on the UScriptStruct,
+    /// same as any UStruct). Verified against Dumper-7 output for
+    /// Grounded 2 (UE5-Augusta).
+    pub const ROW_STRUCT: usize = 0x0028;
 }

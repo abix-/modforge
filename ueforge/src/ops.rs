@@ -260,6 +260,33 @@ pub fn register_builtins() {
             |args| crate::scanner::freeze_list(args),
         ),
         OpDef::new(
+            "discover_data_tables",
+            "Every live UDataTable's row schema (cached; pass refresh=true to re-walk)",
+            "{refresh?: bool}",
+            |args| {
+                let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
+                Ok(crate::discovery::data_tables_json(refresh))
+            },
+        ),
+        OpDef::new(
+            "discover_classes",
+            "Every UClass + native property list (cached; pass refresh=true to re-walk)",
+            "{refresh?: bool}",
+            |args| {
+                let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
+                Ok(crate::discovery::classes_json(refresh))
+            },
+        ),
+        OpDef::new(
+            "discover_structs",
+            "Every UScriptStruct + field list (cached; pass refresh=true to re-walk)",
+            "{refresh?: bool}",
+            |args| {
+                let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
+                Ok(crate::discovery::structs_json(refresh))
+            },
+        ),
+        OpDef::new(
             "list_ops",
             "Auto-generated catalog of every registered debug op",
             "{}",

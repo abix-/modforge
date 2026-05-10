@@ -95,6 +95,11 @@ fn on_unreal_init() {
             image_base + off.g_objects
         ));
 
+        // Walk GObjects once and cache every UDataTable / UClass /
+        // UScriptStruct for the discover_* ops + future TweakDef
+        // offset resolution.
+        let _ = ueforge::discovery::run_at_load();
+
         // Spawn the stack-bump worker. Polls for DT_Materials,
         // mutates MaxCanStack 4x on first sight, exits. Running
         // this BEFORE any save loads is what makes the mutation

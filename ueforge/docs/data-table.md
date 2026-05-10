@@ -1,9 +1,140 @@
 # Data tables
 
-> **Authoritative on:** ueforge's UE5 `UDataTable` mutation
-> surface -- `FieldTweak<T>`, `ClassFieldTweak<T>`,
-> `find_by_short_name`, `iter_rows`, plus the timing rules that
-> make data-table mutations actually propagate in-game.
+> **Authoritative on:** ueforge's UE5 `UDataTable` surface --
+> `DataTableDef` + `DataTableRegistry` catalog, the
+> `probe::discover_data_tables` bootstrap, `FieldTweak<T>`,
+> `ClassFieldTweak<T>`, `find_by_short_name`, `iter_rows`, plus the
+> timing rules that make data-table mutations actually propagate
+> in-game.
+
+## DataTableDef + DataTableRegistry (Phase 1)
+
+```text
+K8s slot: Def=DataTableDef, Registry=DataTableRegistry,
+          Instance=live UDataTable + its RowMap rows,
+          Controller=DataTableSnapshot::capture +
+                     probe::discover_data_tables
+```
+
+A `UDataTable` + its row schema is its own first-class subject in
+the workspace. Stacks, difficulty, and status effects are all
+special cases of "typed-field operations on iterated objects";
+`DataTableDef` captures the table itself so a new game's mod can
+declare every interesting catalog once and reach EVERY field with
+no further plumbing.
+
+```rust
+use ueforge::data_table::{DataTableDef, DataTableRegistry, RowField, RowSchema};
+
+static DT_MATERIALS: DataTableDef = DataTableDef {
+    id: "materials",
+    table_name: "DT_Materials",
+    row_struct: RowSchema {
+        name: "FMaterialRow",
+        fields: &[
+            RowField { name: "MaxCanStack", offset: 0x48, element_size: 4 },
+        ],
+    },
+};
+
+pub static DATA_TABLES: DataTableRegistry =
+    DataTableRegistry::new(&[&DT_MATERIALS]);
+```
+
+The Def is pure data; mirrors `StatusDef` / `StackDef`. The
+registry is the slice-of-refs shape used by every Drop-having +
+schema-style registry in the workspace (Status, Stack, Difficulty).
+
+### The bootstrap loop
+
+Discovery is the leverage point. For a brand-new UE5 game:
+
+1. Launch the game with ueforge loaded. Call `discover_data_tables`
+   (debug op). Get back JSON for every live `UDataTable` -- id,
+   short name, row-struct name, every field's name + offset +
+   element size.
+2. Pick the table + field you want to tweak.
+3. Declare one static `FieldTweak<T>` (or a `DataTableDef` catalog
+   row when you want it browseable) and a slider.
+4. Ship.
+
+No SDK header dive per field. A game patch that shifts offsets is
+caught at install time by the same discovery walk, because the
+walk reads the live `FProperty` chain rather than baked offsets.
+
+## discovery::run_at_load (the bootstrap)
+
+Discovery lives in [`ueforge::discovery`](../src/discovery.rs):
+ONE GObjects pass produces a cached snapshot of every live
+`UDataTable`, `UClass`, and `UScriptStruct`. Mods call
+`run_at_load()` from their `on_unreal_init` worker; the cache
+backs every `discover_*` op and the future ImGui browser tab.
+
+```rust
+// In the game crate's on_unreal_init worker, after
+// ue::platform::detect_and_init:
+let _ = ueforge::discovery::run_at_load();
+// logs e.g. "discovery: 412 data_tables, 28341 classes, 1893 structs"
+```
+
+No JSON files are written. The cache stays in-process; redirect a
+curl if you want a file:
+
+```sh
+curl -s -X POST 127.0.0.1:17171/debug \
+    -d '{"op":"discover_data_tables"}' > data_tables.json
+```
+
+Re-walk after content streams in:
+
+```sh
+curl -s -X POST 127.0.0.1:17171/debug \
+    -d '{"op":"discover_data_tables","args":{"refresh":true}}'
+```
+
+`discover_classes` and `discover_structs` accept the same
+`refresh` flag. Each returns the same JSON shape:
+
+```json
+{
+  "data_tables": [
+    {
+      "id": "<short name lowercased>",
+      "table_name": "DT_Materials",
+      "full_path": "DataTable /Game/Items/DT_Materials.DT_Materials",
+      "row_struct": {
+        "name": "FMaterialRow",
+        "path": "ScriptStruct /Game/.../MaterialRow.MaterialRow",
+        "fields": [
+          { "name": "MaxCanStack", "offset": 72, "element_size": 4 },
+          ...
+        ]
+      }
+    },
+    ...
+  ],
+  "scanned_objects": 152341,
+  "tables_found": 412
+}
+```
+
+The walk reads the live `FProperty` chain (NOT baked SDK offsets),
+so a game patch that shifts a field is caught here before any
+tweak runs.
+
+## Low-level walkers
+
+`ueforge::ue::probe::describe_data_table(obj)` and
+`walk_struct_fields(obj)` are the per-object descriptors the
+discovery pass uses. They're pub so one-off scripts can build
+custom dump shapes (filter by package, etc.) without re-walking
+GObjects.
+
+Cost of a full discovery pass: one GObjects iteration + a
+`cached_native_properties` lookup per class / struct (cached
+after first read) + a one-time FField walk per row struct. Run
+from a worker thread; cold path. Subsequent `refresh` calls reuse
+the property cache.
 
 UE5 games use `UDataTable` for almost every catalog: items,
 recipes, status effects, materials, weapons, perks, etc. Mods

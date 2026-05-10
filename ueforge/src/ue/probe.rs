@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use serde_json::{Value as Json, json};
 
+use crate::ue::offsets;
 use crate::ue::{self, UObject};
 
 /// Walk GObjects once and return a population summary:
@@ -118,6 +119,83 @@ pub fn class_outer_samples(class_name: &str, k: usize) -> Json {
         "samples_returned": samples.len(),
         "samples": samples,
     })
+}
+
+pub fn describe_data_table(obj: &UObject) -> Json {
+    let table_name = obj.name();
+    let row_struct_ptr: *const UObject = unsafe {
+        (obj.as_ptr().add(offsets::datatable::ROW_STRUCT) as *const *const UObject)
+            .read_unaligned()
+    };
+    let row_struct = unsafe { row_struct_ptr.as_ref() };
+    match row_struct {
+        Some(rs) => {
+            let fields = walk_struct_fields(rs);
+            let row_path = rs.full_name();
+            json!({
+                "id": table_name.to_lowercase(),
+                "table_name": table_name,
+                "full_path": obj.full_name(),
+                "row_struct": {
+                    "name": rs.name(),
+                    "path": row_path,
+                    "fields": fields,
+                },
+            })
+        }
+        None => json!({
+            "id": table_name.to_lowercase(),
+            "table_name": table_name,
+            "full_path": obj.full_name(),
+            "row_struct": null,
+        }),
+    }
+}
+
+/// Walk `ChildProperties` on any UStruct-derived UObject
+/// (UScriptStruct / UClass / UFunction) and emit one JSON entry
+/// per FProperty. Mirrors `UClass::iter_native_properties` but
+/// takes a bare UObject so it works on `UScriptStruct` (the row
+/// struct of a UDataTable) without a transmute at the call site.
+pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
+    let Some(rt) = ue::try_runtime() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    let mut cur: *const u8 = unsafe {
+        struct_obj
+            .as_ptr()
+            .add(offsets::ustruct::CHILD_PROPERTIES)
+            .cast::<*const u8>()
+            .read_unaligned()
+    };
+    let mut depth = 0;
+    while !cur.is_null() && depth < 4096 {
+        unsafe {
+            let name_ptr = cur.add(offsets::ffield::NAME_PRIVATE);
+            let name_fname: crate::ue::fname::FName =
+                (name_ptr as *const crate::ue::fname::FName).read_unaligned();
+            let name = if name_fname.is_none() {
+                String::from("<none>")
+            } else {
+                rt.name_resolver.to_string(name_fname)
+            };
+            let offset = (cur.add(offsets::fproperty::OFFSET_INTERNAL) as *const i32)
+                .read_unaligned();
+            let element_size =
+                (cur.add(offsets::fproperty::ELEMENT_SIZE) as *const i32).read_unaligned();
+            let next: *const u8 =
+                (cur.add(offsets::ffield::NEXT) as *const *const u8).read_unaligned();
+            out.push(json!({
+                "name": name,
+                "offset": offset,
+                "element_size": element_size,
+            }));
+            cur = next;
+        }
+        depth += 1;
+    }
+    out
 }
 
 fn root_package_name(obj: &UObject) -> String {

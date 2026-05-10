@@ -68,6 +68,12 @@ unsafe fn worker() {
     ];
     let _rt = ueforge::ue::platform::detect_and_init(PLATFORMS);
 
+    // Walk GObjects once and cache every UDataTable / UClass /
+    // UScriptStruct so the ImGui browser tab + HTTP discover_*
+    // ops + future TweakDef offset resolution all read from one
+    // source. Logs a one-line summary; the JSON stays in memory.
+    let _ = ueforge::discovery::run_at_load();
+
     // Capture vanilla survival rates before any patching so the RPG
     // apply step can multiply them later without compounding.
     rpg::apply::capture_vanilla();
