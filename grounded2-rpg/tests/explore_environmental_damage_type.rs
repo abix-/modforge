@@ -20,37 +20,17 @@
 
 mod common;
 
-use serde_json::json;
+use ueforge::client::research;
 
 #[test]
 fn read_environmental_damage_cdo() {
     let api = common::Api::require();
 
-    // Walk the BP_EnvironmentalDamage_C class with CDOs included.
-    // A class typically has exactly one default object.
-    let r = api.op(
-        "walk_class",
-        json!({
-            "class": "BP_EnvironmentalDamage_C",
-            "max": 16,
-            "include_cdo": true,
-        }),
-    );
-    let instances = r.result.get("instances").and_then(|v| v.as_array()).unwrap();
-    eprintln!("walk_class returned {} instance(s)", instances.len());
-    for inst in instances {
-        eprintln!("  {}", inst);
-    }
-
-    // The CDO's `is_cdo` field is true; pick that one.
-    let cdo = instances
-        .iter()
-        .find(|i| i.get("is_cdo").and_then(|v| v.as_bool()).unwrap_or(false))
+    let cdo = research::find_class_cdo(api.inner(), "BP_EnvironmentalDamage_C")
         .expect("no CDO found for BP_EnvironmentalDamage_C");
-    let cdo_addr = cdo.get("addr_selector").and_then(|v| v.as_str()).unwrap();
-    eprintln!("\nCDO selector: {cdo_addr}");
+    eprintln!("CDO @ {} ({})", cdo.addr_selector, cdo.full_name);
 
-    // Read the relevant fields. USurvivalDamageType layout:
+    // USurvivalDamageType layout:
     //   +0x60 uint32 DamageTypeFlags
     //   +0x64 bool   bCanBlock
     //   +0x65 bool   bCanBlockWithWeapon
@@ -62,19 +42,8 @@ fn read_environmental_damage_cdo() {
     //   +0x6B bool   bCanRepair
     //   +0x6C bool   bAppliesEffectsOnDamageOverTime
     //   +0x6D bool   bCanIncapacitate
-    let r = api.op(
-        "read_bytes",
-        json!({
-            "instance_selector": cdo_addr,
-            "offset": 0x60,
-            "length": 0x10,
-        }),
-    );
-    assert!(r.ok, "read_bytes failed: {:?}", r.error);
-    let bytes = common::hex_decode(
-        r.result.get("bytes_hex").and_then(|v| v.as_str()).unwrap(),
-    )
-    .unwrap();
+    let bytes = research::read_bytes(api.inner(), cdo.addr, 0x60, 0x10);
+    assert!(bytes.len() >= 0x10, "short read: {} bytes", bytes.len());
 
     let damage_type_flags = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
     let b_can_block = bytes[4];

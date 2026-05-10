@@ -191,16 +191,37 @@ Save-data durability + shutdown safety. All four P0s shipped:
   140 -> 47 lines; g2rpg `explore_status_effect_rows.rs` 218
   -> 105 lines. Closed 2026-05-10.
 
-- [ ] **`ueforge::client::diff`** -- parse the snapshot's
-  `counters` / `process_memory` / `process_cpu` /
-  `process_threads` / `game_population` JSON blobs into typed
-  diff structures: `CounterDiff` (top movers), `MemoryDiff`
-  (working-set / committed delta), `GObjectsPopulationDiff`
-  (top growers). Collapses g2rpg `explore_perf_counters.rs`
-  (258 lines), `explore_perf_timeseries.rs` (106),
-  `explore_leak_source.rs` (350), `explore_thread_attribution.rs`
-  (82) -- ~800 lines of test boilerplate that reduces to
-  thin wrappers around typed framework helpers.
+- [x] **`ueforge::client::diff`** -- snapshot delta analysis.
+  `MetricsSnapshot::from_api` + `diff_all` / `diff_counters` /
+  `diff_memory` / `diff_cpu` / `diff_threads` /
+  `diff_population` returning typed structs with `Display`
+  impls that produce the same table format the existing tests
+  print. `MetricsSnapshot::sample_series` for the time-series
+  pattern. `Api::snapshot_value` (no Serialize bound on per-mod
+  Snapshot type). Migrations:
+  `explore_perf_counters` 258 -> 53, `explore_perf_timeseries`
+  106 -> 31, `explore_thread_attribution` 82 -> 30. Closed
+  2026-05-10.
+
+- [x] **`ueforge::client::research::find_class_cdo`** + typed
+  reads. `walk_class_instances_with_cdo` /
+  `find_class_cdo(api, "BP_X")` collapse the
+  walk-then-find-CDO pattern. Migration:
+  `explore_environmental_damage_type` 138 -> 107. Closed
+  2026-05-10.
+
+- [x] **`ueforge::client::research::sample_thread_modules`** +
+  `ThreadModulesReport` Display. The `sample_thread_modules` op
+  response gets parsed into typed module / thread rows with a
+  Display impl that produces the test's table. Closed
+  2026-05-10.
+
+- [ ] **Leak-source helpers** -- `explore_leak_source.rs` (350
+  lines) uses g2-extension `top_packages` / `loaded_levels` /
+  `process_regions` fields not in the framework's
+  `gobjects_population` helper today. Lift those as separate
+  `ueforge::ue::probe::*` extensions when a second consumer
+  needs them.
 
 - [x] **Settings hot-reload** -- `Settings::watch(interval, on_reload)`
   spawns an mtime-poller thread that re-reads + dispatches a

@@ -233,9 +233,52 @@ pub fn walk_class_instances<S: DeserializeOwned>(
     class: &str,
     max: usize,
 ) -> Vec<ClassInstance> {
+    walk_class_inner(api, class, max, false)
+}
+
+/// Like [`walk_class_instances`] but includes CDOs (objects
+/// where `is_cdo == true`). Use [`find_class_cdo`] if you only
+/// want the CDO.
+pub fn walk_class_instances_with_cdo<S: DeserializeOwned>(
+    api: &Api<S>,
+    class: &str,
+    max: usize,
+) -> Vec<ClassInstance> {
+    walk_class_inner(api, class, max, true)
+}
+
+/// Find the CDO (class default object) for `class`. Most classes
+/// have exactly one CDO. Returns `None` if the class isn't loaded
+/// or somehow has no CDO.
+pub fn find_class_cdo<S: DeserializeOwned>(
+    api: &Api<S>,
+    class: &str,
+) -> Option<ClassInstance> {
     let r = api.op(
         "walk_class",
-        json!({"class": class, "max": max, "include_cdo": false}),
+        json!({"class": class, "max": 32, "include_cdo": true}),
+    );
+    if !r.ok {
+        return None;
+    }
+    let arr = r.result.get("instances")?.as_array()?;
+    let cdo = arr.iter().find(|i| {
+        i.get("is_cdo")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    })?;
+    parse_class_instance(cdo)
+}
+
+fn walk_class_inner<S: DeserializeOwned>(
+    api: &Api<S>,
+    class: &str,
+    max: usize,
+    include_cdo: bool,
+) -> Vec<ClassInstance> {
+    let r = api.op(
+        "walk_class",
+        json!({"class": class, "max": max, "include_cdo": include_cdo}),
     );
     if !r.ok {
         return Vec::new();
@@ -243,25 +286,25 @@ pub fn walk_class_instances<S: DeserializeOwned>(
     let Some(arr) = r.result.get("instances").and_then(|v| v.as_array()) else {
         return Vec::new();
     };
-    arr.iter()
-        .filter_map(|inst| {
-            let sel = inst.get("addr_selector")?.as_str()?.to_string();
-            let addr_str = inst.get("addr")?.as_str()?;
-            let addr = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16).ok()?;
-            let name = inst.get("name")?.as_str()?.to_string();
-            let full_name = inst
-                .get("full_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(&name)
-                .to_string();
-            Some(ClassInstance {
-                addr_selector: sel,
-                addr,
-                name,
-                full_name,
-            })
-        })
-        .collect()
+    arr.iter().filter_map(parse_class_instance).collect()
+}
+
+fn parse_class_instance(inst: &serde_json::Value) -> Option<ClassInstance> {
+    let sel = inst.get("addr_selector")?.as_str()?.to_string();
+    let addr_str = inst.get("addr")?.as_str()?;
+    let addr = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16).ok()?;
+    let name = inst.get("name")?.as_str()?.to_string();
+    let full_name = inst
+        .get("full_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&name)
+        .to_string();
+    Some(ClassInstance {
+        addr_selector: sel,
+        addr,
+        name,
+        full_name,
+    })
 }
 
 // ---- Field-byte read helpers (typed) -----------------------------
@@ -332,4 +375,114 @@ pub fn read_u64<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u6
         return 0;
     }
     u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+}
+
+// ----------------------------------------------------------------
+// `sample_thread_modules` op response -- typed view + Display.
+// ----------------------------------------------------------------
+
+/// One module row in the per-process sample.
+#[derive(Debug, Clone)]
+pub struct ModuleSamples {
+    pub module: String,
+    pub samples: u64,
+    pub pct: f64,
+}
+
+/// Per-thread breakdown.
+#[derive(Debug, Clone)]
+pub struct ThreadSampleRow {
+    pub name: String,
+    pub tid: u64,
+    pub samples: u64,
+    pub by_module: Vec<ModuleSamples>,
+}
+
+/// Decoded `sample_thread_modules` op response.
+pub struct ThreadModulesReport {
+    pub total_samples: u64,
+    pub by_module_grand_total: Vec<ModuleSamples>,
+    pub by_thread: Vec<ThreadSampleRow>,
+}
+
+impl ThreadModulesReport {
+    /// Decode from an op response value (the `result` field).
+    pub fn from_value(v: &serde_json::Value) -> Self {
+        let total_samples = v.get("total_samples").and_then(|x| x.as_u64()).unwrap_or(0);
+        let by_module_grand_total = v
+            .get("by_module_grand_total")
+            .and_then(|x| x.as_array())
+            .map(|arr| arr.iter().filter_map(parse_module).collect())
+            .unwrap_or_default();
+        let by_thread = v
+            .get("by_thread")
+            .and_then(|x| x.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|t| {
+                        Some(ThreadSampleRow {
+                            name: t.get("name").and_then(|v| v.as_str())?.to_string(),
+                            tid: t.get("tid").and_then(|v| v.as_u64()).unwrap_or(0),
+                            samples: t.get("samples").and_then(|v| v.as_u64()).unwrap_or(0),
+                            by_module: t
+                                .get("by_module")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter().filter_map(parse_module).collect())
+                                .unwrap_or_default(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Self {
+            total_samples,
+            by_module_grand_total,
+            by_thread,
+        }
+    }
+}
+
+fn parse_module(v: &serde_json::Value) -> Option<ModuleSamples> {
+    Some(ModuleSamples {
+        module: v.get("module").and_then(|x| x.as_str())?.to_string(),
+        samples: v.get("samples").and_then(|x| x.as_u64()).unwrap_or(0),
+        pct: v.get("pct").and_then(|x| x.as_f64()).unwrap_or(0.0),
+    })
+}
+
+impl std::fmt::Display for ThreadModulesReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "\ntotal samples: {}", self.total_samples)?;
+        writeln!(f, "\n=== Grand total: which module is the process IN ===")?;
+        writeln!(f, "{:>40} {:>10} {:>8}", "module", "samples", "%")?;
+        writeln!(f, "{}", "-".repeat(62))?;
+        for m in &self.by_module_grand_total {
+            writeln!(f, "{:>40} {:>10} {:>7.2}%", m.module, m.samples, m.pct)?;
+        }
+        writeln!(f, "\n=== Per-thread breakdown ===")?;
+        for t in self.by_thread.iter().take(20) {
+            writeln!(f, "\n[{}] tid={} samples={}", t.name, t.tid, t.samples)?;
+            for m in &t.by_module {
+                writeln!(f, "  {:>40} {:>8} {:>6.2}%", m.module, m.samples, m.pct)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Run the `sample_thread_modules` op + decode the response in
+/// one call. Pretty-print via `{}` Display.
+pub fn sample_thread_modules<S: DeserializeOwned>(
+    api: &Api<S>,
+    duration_ms: u64,
+    interval_ms: u64,
+) -> ThreadModulesReport {
+    let r = api.op(
+        "sample_thread_modules",
+        json!({"duration_ms": duration_ms, "interval_ms": interval_ms}),
+    );
+    if !r.ok {
+        panic!("sample_thread_modules failed: {:?}", r.error);
+    }
+    ThreadModulesReport::from_value(&r.result)
 }

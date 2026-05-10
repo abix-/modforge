@@ -27,6 +27,7 @@ use serde_json::{Value, json};
 use crate::envelope::OpResponse;
 use crate::hex;
 
+pub mod diff;
 pub mod perf;
 pub mod research;
 
@@ -143,6 +144,28 @@ impl<S: DeserializeOwned> Api<S> {
     /// `op("snapshot", null)` shortcut.
     pub fn snapshot(&self) -> S {
         self.op("snapshot", Value::Null).state
+    }
+
+    /// Snapshot without typed deserialization -- returns the raw
+    /// `state` `Value`. Use when generic helpers
+    /// ([`crate::client::diff`]) want to read fields by JSON
+    /// path without the per-mod `Snapshot` shape getting in the
+    /// way. Cheaper than `snapshot` + `serde_json::to_value`
+    /// round-trip.
+    pub fn snapshot_value(&self) -> Value {
+        let body = json!({ "op": "snapshot", "args": Value::Null });
+        let url = format!("http://127.0.0.1:{}{}", self.port, self.endpoint);
+        let mut req = self.agent.post(&url);
+        if let Some(token) = &self.auth_token {
+            req = req.set("X-Ueforge-Auth", token);
+        }
+        let res = req
+            .send_json(body)
+            .unwrap_or_else(|e| panic!("snapshot_value POST {url} failed: {e}"));
+        let envelope: Value = res
+            .into_json()
+            .unwrap_or_else(|e| panic!("snapshot_value: response not JSON: {e}"));
+        envelope.get("state").cloned().unwrap_or(Value::Null)
     }
 
     /// Generic UFunction call. The endpoint exposes one `call` op;

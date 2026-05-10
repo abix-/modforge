@@ -68,6 +68,52 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Research-test helpers wave 2 (`client::diff` + class-CDO + thread report)
+
+Continued the research-helpers extraction. Three more ueforge
+surfaces + four test migrations:
+
+- **`ueforge::client::diff`** (608 lines, new module) --
+  `MetricsSnapshot::from_api` captures the standard snapshot
+  block (counters / process_memory / process_cpu /
+  process_threads / game_population). `diff_all` / `diff_counters`
+  / `diff_memory` / `diff_cpu` / `diff_threads` /
+  `diff_population` produce typed diff structs with `Display`
+  impls that emit the same table format every test was
+  hand-rolling. `MetricsSnapshot::sample_series(api, count,
+  interval) -> SampleSeries` for time-series patterns.
+- **`Api::snapshot_value`** -- bypasses typed deserialization so
+  `client::diff` works with any per-mod `Snapshot` type that's
+  `DeserializeOwned` (no `Serialize` bound needed).
+- **`research::find_class_cdo`** /
+  `research::walk_class_instances_with_cdo` -- find a class's
+  default object in one call.
+- **`research::sample_thread_modules`** +
+  `ThreadModulesReport` -- typed view of the
+  `sample_thread_modules` op response with Display impl.
+
+Test migrations:
+
+| Test | Before | After | Saved |
+|---|---|---|---|
+| `explore_perf_counters` | 258 | 53 | 205 |
+| `explore_perf_timeseries` | 106 | 31 | 75 |
+| `explore_thread_attribution` | 82 | 30 | 52 |
+| `explore_environmental_damage_type` | 138 | 107 | 31 |
+
+Plus the prior wave: `explore_dt_rows` 140->47, `explore_status_effect_rows`
+218->105.
+
+**Net across both research-helpers waves: ~570 lines of test
+boilerplate deleted; ~1100 lines of reusable framework added.**
+Every future UE-game investigation gets the same savings.
+
+`explore_leak_source.rs` (350 lines) was the next candidate but
+uses g2-specific `top_packages` / `loaded_levels` /
+`process_regions` extensions to `gobjects_population` not in
+the framework today. Deferred until a second consumer wants
+those probe extensions.
+
 ### Research-test helpers (`ueforge::client::research`)
 
 Every `explore_*` test in g2rpg + ows-tweaks reimplemented the
