@@ -105,6 +105,31 @@ impl Queue {
     /// Drain and execute every pending job. Call from the game
     /// thread (typically inside a PE trampoline). Cheap when empty
     /// thanks to the lock-free `size` shadow.
+    ///
+    /// **Canonical drain site.** Pick a UFunction the engine fires
+    /// many times per second on the game thread (a damage multicast,
+    /// a tick, an input handler) and install a `ProcessEventHook` on
+    /// its owning class. From the trampoline body:
+    ///
+    /// ```ignore
+    /// // 1. Cheap empty-check via the lock-free size shadow.
+    /// if my_pe_queue.is_empty() {
+    ///     // ... real hook work ...
+    ///     return original.call(this, function, parms);
+    /// }
+    /// // 2. Drain. Re-entrance guard inside drain() handles the
+    ///    case where a job triggers PE fan-out that re-enters this
+    ///    same trampoline.
+    /// let stats = my_pe_queue.drain();
+    /// // 3. (Optional) feed counters from `stats.peak` /
+    ///    `stats.drained` for diagnostic snapshots.
+    /// ```
+    ///
+    /// Picking the drain site matters for cadence: a damage
+    /// multicast fires only when the player takes / deals damage,
+    /// so off-combat ops can stall for seconds. A character tick
+    /// hook fires every frame regardless and is the safer default
+    /// for general-purpose drains.
     pub fn drain(&self) -> DrainStats {
         if self.size.load(Ordering::Acquire) == 0 {
             return DrainStats::default();
