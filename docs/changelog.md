@@ -7,6 +7,107 @@
 
 Newest first.
 
+## 2026-05-10
+
+### bbp consumes ueforge for ALL infra (Phase 1 dedup)
+
+better-backpack lost ~930 lines of duplicated framework. Every piece
+of generic UE4SS / SDK / hook / log / settings / counter / ImGui /
+build plumbing now lives in ueforge and is consumed (not mirrored)
+by the mod.
+
+Deleted from bbp:
+- `cpp/shim.cpp` (357 LoC) -- CppUserModBase mirror + ImGui render lambda
+- `src/rpg/ffi.rs` (340 LoC) -- C-ABI bridges that the shim called
+- `src/log.rs` -- duplicate of ueforge::log
+- `src/sdk/` -- thin re-export shim of ueforge::ue
+- `src/hook/` -- thin re-export shim of ueforge::hook
+- `winhttp.def` -- legacy
+- Custom `DllMain` + `better_backpack_start` / `better_backpack_stop` exports
+- `DLL_HMODULE` static
+
+Replaced with:
+- `ueforge::ue4ss_mod!(MOD_INFO)` -- one macro emits every extern "C"
+  hook the shim invokes (factory, DllMain forwarding, tab dispatch)
+- `src/rpg/tab.rs` -- Rust ImGui render. Calls `tracker` / `skills`
+  / `xp` directly; uses ImGui `##id` label suffix instead of
+  PushID/PopID for unique button instances per skill row
+- 1-line `build.rs`: `ueforge::build::CppShim::new().compile()`
+
+Settings struct shape unchanged on disk (back-compat preserved); IO
+routes through `ueforge::settings::Settings<T>`. The legacy parent-dir
+fallback for `settings.json` was dropped per "free to redesign"
+scope; if anyone has a pre-Rust install pattern, move the file next
+to main.dll.
+
+Cumulative shape after Phase 1: bbp consumes ueforge for SDK, hook
+framework, log, settings IO, ImGui bindings, counter primitives,
+ring buffer, HTTP server, op envelope, generic ops, tab
+registration, DllMain, factory exports, C++ shim. Zero duplication.
+
+What stays in bbp (correct game-side): `inv_hook`, `kill_hook`,
+`fall_hook`, `survival`, `patch`, `parms`, `debug`, the `counters`
+domain statics, and the entire `rpg/` subsystem (catalog content,
+apply dispatcher, persistence layer). `rpg/` is the Phase 2 promotion
+candidate -- shape is generic for any UE game with the right
+`slot_key()` resolver, so it lands in `ueforge::rpg` next.
+
+### ueforge hardening (kovarex review landed)
+
+Three P0 + six P1 items shipped. Crash vectors closed, FString /
+GObjects walks bounded, dev profile unwinds.
+
+**P0:**
+- `parking_lot::Mutex` everywhere -- no more poison-then-abort hard
+  crashes. `[profile.dev] panic = "unwind"` so research crashes
+  leave a backtrace; release stays on abort for size + perf.
+- Hot paths use `try_runtime` + soft fallback (empty name, dropped
+  PE call + log) instead of `expect()` aborting if a hook fires
+  before init_runtime sets the OnceLock.
+- Address-validated freezes. `freeze { selector, offset }` resolves
+  through `selector::resolve_generic` and re-resolves on staleness;
+  `VirtualQuery` validates page protection on every write; 30
+  consecutive failed validations stop the writer. Legacy
+  `freeze { addr }` still works but has no recovery path.
+
+**P1:**
+- `NameResolver` caches FName u64 -> String. Caps the FString leak
+  at one buffer per unique FName (was: per call). Bounded by the
+  game's name pool (~50K) instead of unbounded.
+- `find_class_fast` caches by name. Selector resolution drops from
+  O(GObjects walk) -- ~150K objects on OWS -- to O(1) on the warm
+  path.
+- `UClass::cached_native_properties` returns `Arc<[NativeProperty]>`;
+  `inspect_address` allocates zero per click after the first lookup.
+- `ops::{read_bytes,write_bytes}` clamp `offset+length` to
+  `class.properties_size()` when the class is known. Selectors that
+  point at a UObject can no longer read/write past the instance.
+- `arc_swap::ArcSwap` replaces hand-rolled `AtomicPtr<&'static [...]>`
+  + `Box::leak` snapshot in PE hooks. No leak per install/drop.
+- `tmap::MAX_LINEAR_SCAN` 8192 -> 65536 with one-line truncation log.
+- `Api::try_op` + `perf::try_open` Result-returning variants
+  alongside the panicking convenience wrappers.
+- `scan_memory` builds JSON sample before taking sessions lock so
+  multi-second scans don't block other ops.
+
+### Three-way feature audit added
+
+`ueforge/README.md` ships a 62-row matrix mapping every feature
+across ueforge, better-backpack, and ows-tweaks. Each cell is
+`live here / consumes ueforge / duplicates (delete) / should be
+promoted / N/A`. Verdict column names the migration item.
+Phase 1 status now marks 30+ rows done.
+
+### Property walker on inspect_address
+
+`ueforge::inspect_address` now resolves field names via the
+UClass `ChildProperties` chain. Click an address in the Scanner
+tab -> "DataTable::RowMap on DT_Materials" instead of
+"DT_Materials @ +0x30 (size 0x60)". Walks the super-class chain.
+Adds `ffield`, `fproperty`, and `ustruct::CHILD_PROPERTIES`
+constants to `ue::offsets` (UE 5.4 verified; 5.5/5.6 may shift
+`OFFSET_INTERNAL` -- track via the offsets-versioning P2 item).
+
 ## 2026-05-09 (evening)
 
 ### impact_resistance bug fix landed: ApplyDamageFromInfo intercept

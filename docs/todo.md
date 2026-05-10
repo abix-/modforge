@@ -10,6 +10,35 @@ new session.
 
 ---
 
+## bbp dedup -- Phase 1 DONE (2026-05-10)
+
+`better-backpack` consumes ueforge for every piece of generic
+infrastructure. Net -930 LoC: deleted `cpp/shim.cpp`,
+`src/rpg/ffi.rs`, `src/log.rs`, `src/sdk/`, `src/hook/`,
+`winhttp.def`, custom DllMain + `better_backpack_start/stop`
+exports, `DLL_HMODULE` static. Replaced with
+`ueforge::ue4ss_mod!(MOD_INFO)`, a Rust ImGui render in
+`src/rpg/tab.rs`, and a 1-line `build.rs`. Build-clean
+validated; in-game smoke test pending.
+
+**Phase 2 -- remaining promotions (next sessions):**
+
+- [ ] **Promote the RPG framework to `ueforge::rpg`.**
+  Generic `SkillEffect`, `Skills<T>`, sqrt curve, per-slot JSON
+  persistence with a `slot_key()` closure, world_loader, disabled-
+  skill set, `RpgTab` widget. After this lands, bbp's `rpg/`
+  shrinks to catalog content + game-specific hook arms. Multi-
+  session lift; unlocks RPG mods on any UE game.
+- [ ] **Cached `&UFunction` identity dispatch helper.** Thin layer
+  over `ProcessEventHook` so games stop reading function names on
+  the hot path. Pattern lives in bbp `inv_hook` today.
+- [ ] **Trampoline-as-drain-site helper.** `Queue::drain_in_trampoline`
+  + doc the canonical drain-site choice. Pattern lives in bbp
+  `kill_hook` today.
+- [ ] **`patch::run` -> `ClassFieldTweak<T>`.** Live-UObject sibling
+  of `FieldTweak<T>` -- one primitive replaces every "walk every X,
+  mutate field at offset, filter by Y" pattern in any UE game.
+
 ## ueforge hardening (kovarex review, 2026-05-09)
 
 End-to-end review of the framework against the 10-year / 100-user

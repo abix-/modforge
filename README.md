@@ -76,14 +76,15 @@ The shipping shape is a UE4SS C++ mod. Drop the DLL into UE4SS's
 
 For development:
 
-```powershell
-cargo build --release
-.\scripts\deploy.ps1 -Install
+```sh
+cargo deploy install -p better-backpack
 ```
 
 This builds `main.dll`, copies it into the detected Steam install,
 seeds `settings.json`, and ensures the mod is registered in
-`mods.txt`.
+`mods.txt`. Pure Rust -- no PowerShell. The `cargo deploy` alias
+points at the `ueforge-deploy` binary; mod-side install metadata
+lives under `[package.metadata.ueforge]` in each mod's `Cargo.toml`.
 
 Full build details: [`docs/building.md`](docs/building.md).
 

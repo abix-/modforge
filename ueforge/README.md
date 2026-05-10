@@ -435,25 +435,25 @@ else?". Update on every major slice.
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | 🟡 (own `lib.rs` shim + DllMain) | · | **bbp:** migrate to `ue4ss_mod!`, delete custom shim |
-| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | 🟡 (`better-backpack-cpp`-style shim) | · | **bbp:** drop custom shim, use `CppShim::compile()` |
-| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | 🟡 (own `DLL_HMODULE`) | · | **bbp:** delete, route through ueforge |
-| 4 | File + console logger | ✅ (`ueforge::log`) | 🟡 (own `log.rs` + `bbp_log!` macro) | · | **bbp:** keep `bbp_log!` as a thin wrapper, delete the sink |
-| 5 | Settings JSON load / atomic save | ✅ (`Settings<T>`) | 🟡 (own `settings.rs`) | · | **bbp:** migrate to `Settings<RpgSettings>` |
-| 6 | Counter primitives + macros | ✅ (`counter!`, `peak!`, `time_scope`) | 🟡 (own `counters.rs` mirroring this) | · | **bbp:** delete, re-export from ueforge |
+| 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | · | · | done (bbp migrated 2026-05-10) |
+| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done — bbp's `cpp/shim.cpp` deleted |
+| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done — bbp's `DLL_HMODULE` deleted |
+| 4 | File + console logger | ✅ (`ueforge::log`) | · (`ueforge::log!` macro) | · | done — bbp's `log.rs` deleted |
+| 5 | Settings JSON load / atomic save | ✅ (`Settings<T>`) | · (data struct only, IO via ueforge) | · | done |
+| 6 | Counter primitives + macros | ✅ (`counter!`, `peak!`, `time_scope`) | · (uses ueforge primitives + own domain statics) | — | done |
 | 7 | Bounded ring buffer | ✅ (`Ring<T>`) | · (uses for `DAMAGE_RING`) | — | done |
 
 ### UObject SDK
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | 🟡 (own `sdk/` module) | · | **bbp:** delete `sdk/`, use `ueforge::ue` |
-| 9 | `FName` / `FString` | ✅ (with FName→string cache) | 🟡 (own duplicates) | · | **bbp:** delete |
-| 10 | `TArray` / `TMap` walkers | ✅ | 🟡 | · | **bbp:** delete |
-| 11 | `GObjectsView` (flat + chunked) | ✅ | 🟡 (flat-only, pre-cleanup) | · | **bbp:** delete |
-| 12 | `find_class_fast` (now name-cached) | ✅ | 🟡 | · | **bbp:** delete |
+| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done — bbp's `sdk/` deleted |
+| 9 | `FName` / `FString` | ✅ (with FName→string cache) | · | · | done |
+| 10 | `TArray` / `TMap` walkers | ✅ | · | · | done |
+| 11 | `GObjectsView` (flat + chunked) | ✅ | · | · | done |
+| 12 | `find_class_fast` (now name-cached) | ✅ | · | · | done |
 | 13 | `find_by_short_name` (DataTable) | ✅ | — | · | done |
-| 14 | `FieldTweak<T>` (vanilla snapshot + idempotent re-apply) | ✅ | 🔵 fits `BackpackSlots` apply | · (`stacks.rs`) | **bbp:** rewrite `patch::run` on top |
+| 14 | `FieldTweak<T>` (vanilla snapshot + idempotent re-apply) | ✅ | 🔵 fits `BackpackSlots` apply | · (`stacks.rs`) | **bbp:** rewrite `patch::run` on top (Phase 2) |
 | 15 | DataTable polling worker (`on_first_sight`) | ✅ | — | · | done |
 | 16 | Native-property walker (`UClass::cached_native_properties`) | ✅ | — | · (via `inspect_address`) | done |
 | 17 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ | · | — | done |
@@ -462,10 +462,10 @@ else?". Update on every major slice.
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | 🟡 (own `hook/` mirror) | — | **bbp:** delete `hook/`, use ueforge |
+| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · | — | done — bbp's `hook/` deleted |
 | 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) | — | done |
-| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | 🔵 | 📦 (used in `inv_hook`) | — | **promote to ueforge:** thin layer on top of `ProcessEventHook` |
-| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | 🔵 (docs only) | 📦 (kill_hook acts as drain) | — | **promote to ueforge:** ship a `Queue::drain_in_trampoline` helper + doc the canonical drain-site selection |
+| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | 🔵 | 📦 (used in `inv_hook`) | — | **promote to ueforge:** thin layer on top of `ProcessEventHook` (Phase 2) |
+| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | 🔵 (docs only) | 📦 (kill_hook acts as drain) | — | **promote to ueforge:** ship a `Queue::drain_in_trampoline` helper + doc the canonical drain-site selection (Phase 2) |
 
 ### Control plane (HTTP / TDD)
 
@@ -494,15 +494,15 @@ else?". Update on every major slice.
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | 🟡 (own `cpp/imgui`) | · | **bbp:** drop, use ueforge's |
-| 36 | Rust ImGui wrappers (`ui::text`, `button`, `slider_*`, etc.) | ✅ | 🟡 (own subset) | · | **bbp:** delete on shim migration |
-| 37 | Tab registration (`Tab { name, render }`) | ✅ | 🟡 (own `register_tab` FFI) | · | **bbp:** delete on shim migration |
+| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done — bbp's `cpp/imgui` deleted |
+| 36 | Rust ImGui wrappers (`ui::text`, `button`, `slider_*`, etc.) | ✅ | · (RPG tab is now Rust, see `rpg/tab.rs`) | · | done |
+| 37 | Tab registration (`Tab { name, render }`) | ✅ | · | · | done — bbp's FFI bridge deleted |
 
 ### Build & deploy
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 38 | `CppShim::new().compile()` builder | ✅ | 🟡 (own `cc::Build` script) | · | **bbp:** drop, one-line `build.rs` |
+| 38 | `CppShim::new().compile()` builder | ✅ | · (1-line `build.rs`) | · | done |
 | 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge-deploy`) | · (manifest entry) | · | done |
 | 40 | Steam-library auto-detect | ✅ | · | · | done |
 
@@ -538,14 +538,35 @@ else?". Update on every major slice.
 | 61 | XP-per-creature lookup table | 📦 | — | per game's bestiary |
 | 62 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
 
-### Migration order (where to spend the next sessions)
+### Migration status
 
-1. **`bbp` → `ue4ss_mod!` shim migration** (rows 1-7, 35-38). One mechanical pass — delete the duplicated infrastructure. ~3h, blocks every other bbp simplification.
-2. **Promote the RPG framework** (rows 41-51). Build `ueforge::rpg` containing `SkillEffect`, `Skills<T>`, sqrt curve, JSON persistence with a `slot_key()` closure, the disabled-skill set, the tab template. Then bbp drops half its files. Big lift (~1-2 days) but unlocks RPG mods on any UE game.
-3. **Promote cached-UFunction-identity dispatch** (row 20) and **trampoline-as-drain-site helper** (row 21). Small (~2h).
-4. **`patch::run` → `ClassFieldTweak<T>`** (the live-UObject sibling of `FieldTweak<T>`). Single primitive replaces every "walk every X, mutate field at offset, filter by X" pattern. ~1h.
+**Phase 1 — infra dedup (DONE 2026-05-10):** rows 1-13, 15-19, 22-40
+all in. better-backpack lost ~930 lines: `cpp/shim.cpp` (357),
+`src/rpg/ffi.rs` (340), `src/log.rs`, `src/sdk/`, `src/hook/`,
+`winhttp.def`, custom `DllMain` + `better_backpack_start/stop`
+exports, the `DLL_HMODULE` static. Replaced with one
+`ueforge::ue4ss_mod!(MOD_INFO)` macro call, a Rust ImGui render
+in `src/rpg/tab.rs` (no FFI hop, no buffer-passing — calls
+`tracker` / `skills` / `xp` directly), and a 1-line `build.rs`.
+Build-clean validated; in-game smoke test pending.
 
-After (1)-(2), better-backpack shrinks by roughly 60% — the duplicated SDK/log/settings/hook/imgui surface vanishes, and the RPG-specific code becomes catalog rows + a few hooks. That's the long-term shape.
+**Phase 2 — remaining promotions (next sessions):**
+
+1. **Promote the RPG framework** (rows 41-51). Build `ueforge::rpg`
+   containing `SkillEffect`, `Skills<T>`, sqrt curve, JSON
+   persistence with a `slot_key()` closure, the disabled-skill
+   set, the tab template. After this, bbp's `rpg/` shrinks to
+   the catalog content + game-specific hooks. Multi-session;
+   unlocks RPG mods on any UE game.
+2. **Cached-UFunction-identity dispatch** (row 20) — thin layer
+   on top of `ProcessEventHook` so games stop reading function
+   names on the hot path. ~2h.
+3. **Trampoline-as-drain-site helper** (row 21) — ship a
+   `Queue::drain_in_trampoline` helper + doc the canonical
+   drain-site choice. ~1h.
+4. **`patch::run` → `ClassFieldTweak<T>`** (row 14, the live-UObject
+   sibling of `FieldTweak<T>`). Single primitive replaces every
+   "walk every X, mutate field at offset, filter by X" pattern. ~1h.
 
 ## Backlog (research questions tracked across games)
 
