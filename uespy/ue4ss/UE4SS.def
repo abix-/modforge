@@ -20,6 +20,10 @@ EXPORTS
     ??$LogBogusChars@_WD@FGenericPlatformString@Unreal@RC@@CAXPEBDH@Z
     ??$LogBogusChars@_WG@FGenericPlatformString@Unreal@RC@@CAXPEBG@Z
     ??$LogBogusChars@_WG@FGenericPlatformString@Unreal@RC@@CAXPEBGH@Z
+    ??$find_mod_by_name@VCppMod@RC@@@UE4SSProgram@RC@@SAPEAVCppMod@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@W4IsInstalled@01@W4IsStarted@01@@Z
+    ??$find_mod_by_name@VCppMod@RC@@@UE4SSProgram@RC@@SAPEAVCppMod@1@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@W4IsInstalled@01@W4IsStarted@01@@Z
+    ??$find_mod_by_name@VLuaMod@RC@@@UE4SSProgram@RC@@SAPEAVLuaMod@1@V?$basic_string_view@DU?$char_traits@D@std@@@std@@W4IsInstalled@01@W4IsStarted@01@@Z
+    ??$find_mod_by_name@VLuaMod@RC@@@UE4SSProgram@RC@@SAPEAVLuaMod@1@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@W4IsInstalled@01@W4IsStarted@01@@Z
     ??0?$FileInterface@VWinFile@File@RC@@@File@RC@@QEAA@AEBV012@@Z
     ??0?$FileInterface@VWinFile@File@RC@@@File@RC@@QEAA@XZ
     ??0?$LuaTableData@$0?0@LuaMadeSimple@RC@@QEAA@XZ
@@ -39,14 +43,12 @@ EXPORTS
     ??0?$TStringBase@_W@Unreal@RC@@QEAA@PEA_W@Z
     ??0?$TStringBase@_W@Unreal@RC@@QEAA@PEB_W@Z
     ??0?$TStringBase@_W@Unreal@RC@@QEAA@XZ
-    ??0Array@JSON@RC@@QEAA@XZ
     ??0BaseObject@Type@LuaMadeSimple@RC@@IEAA@PEBD@Z
-    ??0Bool@JSON@RC@@QEAA@AEBV012@@Z
-    ??0Bool@JSON@RC@@QEAA@_N@Z
     ??0CppUserModBase@RC@@QEAA@XZ
     ??0DebugConsoleDevice@Output@RC@@QEAA@AEBV012@@Z
     ??0DebugConsoleDevice@Output@RC@@QEAA@XZ
     ??0FAnsiString@Unreal@RC@@QEAA@AEBV012@@Z
+    ??0FAnsiString@Unreal@RC@@QEAA@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ??0FAnsiString@Unreal@RC@@QEAA@AEBVFString@12@@Z
     ??0FAnsiString@Unreal@RC@@QEAA@PEAD@Z
     ??0FAnsiString@Unreal@RC@@QEAA@PEBD@Z
@@ -62,12 +64,18 @@ EXPORTS
     ??0FAssetDataPre427@Unreal@RC@@QEAA@$$QEAU012@@Z
     ??0FAssetDataPre427@Unreal@RC@@QEAA@AEBU012@@Z
     ??0FAssetDataPre427@Unreal@RC@@QEAA@XZ
+    ??0FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
+    ??0FCallbackMetadata@Internal@Hook@Unreal@RC@@QEAA@_KV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@1@Z
+    ??0FCallbackOptions@Hook@Unreal@RC@@QEAA@$$QEAU0123@@Z
+    ??0FCallbackOptions@Hook@Unreal@RC@@QEAA@AEBU0123@@Z
+    ??0FCallbackOptions@Hook@Unreal@RC@@QEAA@XZ
     ??0FClassCreateListener@Unreal@RC@@QEAA@$$QEAU012@@Z
     ??0FClassCreateListener@Unreal@RC@@QEAA@AEBU012@@Z
     ??0FClassCreateListener@Unreal@RC@@QEAA@XZ
     ??0FClassDeleteListener@Unreal@RC@@QEAA@$$QEAU012@@Z
     ??0FClassDeleteListener@Unreal@RC@@QEAA@AEBU012@@Z
     ??0FClassDeleteListener@Unreal@RC@@QEAA@XZ
+    ??0FCustomPropertyListNode@Unreal@RC@@QEAA@PEAVFProperty@12@H@Z
     ??0FFieldClass@Unreal@RC@@QEAA@XZ
     ??0FFieldClassRegistrar@Internal@Unreal@RC@@IEAA@PEAVFFieldClassVariant@23@PEB_W@Z
     ??0FFieldClassVariant@Unreal@RC@@QEAA@PEAVFFieldClass@12@@Z
@@ -88,12 +96,14 @@ EXPORTS
     ??0FFrame_51_AndAbove@Unreal@RC@@QEAA@XZ
     ??0FGuid@Unreal@RC@@QEAA@IIII@Z
     ??0FGuid@Unreal@RC@@QEAA@XZ
+    ??0FMemoryImageAllocatorBase@Unreal@RC@@QEAA@XZ
     ??0FName@Unreal@RC@@QEAA@II@Z
     ??0FName@Unreal@RC@@QEAA@PEB_WW4EFindName@12@PEAX@Z
     ??0FName@Unreal@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@IW4EFindName@12@PEAX@Z
     ??0FName@Unreal@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@W4EFindName@12@PEAX@Z
     ??0FName@Unreal@RC@@QEAA@XZ
     ??0FName@Unreal@RC@@QEAA@_J@Z
+    ??0FNativeFunctionLookup@Unreal@RC@@QEAA@VFName@12@P6AXPEAVUObject@12@AEAUFFrame@12@PEAX@Z@Z
     ??0FOutParmRec@Unreal@RC@@QEAA@XZ
     ??0FOutputDevice@Unreal@RC@@QEAA@AEBV012@@Z
     ??0FOutputDevice@Unreal@RC@@QEAA@XZ
@@ -105,6 +115,7 @@ EXPORTS
     ??0FSparseDelegate@Unreal@RC@@QEAA@XZ
     ??0FStaticConstructObjectParameters@Unreal@RC@@QEAA@PEBVUClass@12@PEAVUObject@12@@Z
     ??0FString@Unreal@RC@@QEAA@AEBV012@@Z
+    ??0FString@Unreal@RC@@QEAA@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ??0FString@Unreal@RC@@QEAA@PEA_W@Z
     ??0FString@Unreal@RC@@QEAA@PEB_W@Z
     ??0FString@Unreal@RC@@QEAA@XZ
@@ -113,9 +124,10 @@ EXPORTS
     ??0FStringOut@Unreal@RC@@QEAA@XZ
     ??0FTableRowBase@Unreal@RC@@QEAA@AEBU012@@Z
     ??0FTableRowBase@Unreal@RC@@QEAA@XZ
-    ??0FText@Unreal@RC@@QEAA@$$QEBVFString@12@PEAX@Z
-    ??0FText@Unreal@RC@@QEAA@PEB_WPEAX@Z
-    ??0FText@Unreal@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@PEAX@Z
+    ??0FText@Unreal@RC@@QEAA@$$QEBVFString@12@@Z
+    ??0FText@Unreal@RC@@QEAA@AEBV012@@Z
+    ??0FText@Unreal@RC@@QEAA@PEB_W@Z
+    ??0FText@Unreal@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
     ??0FText@Unreal@RC@@QEAA@XZ
     ??0FTransform@Unreal@RC@@QEAA@UFQuat@12@UFVector@12@1@Z
     ??0FTransform@Unreal@RC@@QEAA@XZ
@@ -127,6 +139,7 @@ EXPORTS
     ??0FURL@Unreal@RC@@QEAA@AEBU012@@Z
     ??0FURL@Unreal@RC@@QEAA@XZ
     ??0FUtf8String@Unreal@RC@@QEAA@AEBV012@@Z
+    ??0FUtf8String@Unreal@RC@@QEAA@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ??0FUtf8String@Unreal@RC@@QEAA@AEBVFString@12@@Z
     ??0FUtf8String@Unreal@RC@@QEAA@PEA_Q@Z
     ??0FUtf8String@Unreal@RC@@QEAA@PEB_Q@Z
@@ -140,17 +153,6 @@ EXPORTS
     ??0MetaMethodContainer@Type@LuaMadeSimple@RC@@QEAA@XZ
     ??0Mod@RC@@QEAA@AEAVUE4SSProgram@1@$$QEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@$$QEAVpath@filesystem@4@@Z
     ??0Mod@RC@@QEAA@AEBV01@@Z
-    ??0Null@JSON@RC@@QEAA@AEBV012@@Z
-    ??0Null@JSON@RC@@QEAA@XZ
-    ??0Number@JSON@RC@@QEAA@AEBV012@@Z
-    ??0Number@JSON@RC@@QEAA@H@Z
-    ??0Number@JSON@RC@@QEAA@I@Z
-    ??0Number@JSON@RC@@QEAA@M@Z
-    ??0Number@JSON@RC@@QEAA@N@Z
-    ??0Number@JSON@RC@@QEAA@_J@Z
-    ??0Number@JSON@RC@@QEAA@_K@Z
-    ??0Object@JSON@RC@@QEAA@W4IsGlobalObject@012@@Z
-    ??0Object@JSON@RC@@QEAA@XZ
     ??0OutputDevice@Output@RC@@QEAA@AEBV012@@Z
     ??0OutputDevice@Output@RC@@QEAA@XZ
     ??0ReflectedFunctionBase@Unreal@RC@@QEAA@PEB_W@Z
@@ -169,16 +171,12 @@ EXPORTS
     ??0SignatureData@RC@@QEAA@$$QEAU01@@Z
     ??0SignatureData@RC@@QEAA@AEBU01@@Z
     ??0SignatureData@RC@@QEAA@XZ
-    ??0String@JSON@RC@@QEAA@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
-    ??0String@JSON@RC@@QEAA@XZ
     ??0Table@Lua@LuaMadeSimple@RC@@QEAA@AEBV123@@Z
     ??0Token@ParserBase@RC@@QEAA@HV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@0W4HasData@012@@Z
     ??0TokenParser@ParserBase@RC@@QEAA@AEBVTokenizer@12@AEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ??0UClassRegistrar@Internal@Unreal@RC@@IEAA@PEAPEAVUClass@23@PEB_W1@Z
     ??0UnrealScriptFunctionCallableContext@Unreal@RC@@QEAA@PEAVUObject@12@AEAUFFrame@12@PEAX@Z
     ??0UnrealScriptFunctionData@Unreal@RC@@QEAA@P6AXPEAVUObject@12@AEAUFFrame@12@PEAX@Z@Z
-    ??0Value@JSON@RC@@QEAA@AEBV012@@Z
-    ??0Value@JSON@RC@@QEAA@XZ
     ??0VersionStatus@Unreal@RC@@QEAA@$$QEAU012@@Z
     ??0VersionStatus@Unreal@RC@@QEAA@AEBU012@@Z
     ??0VersionStatus@Unreal@RC@@QEAA@W4StatusCode@012@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
@@ -187,14 +185,14 @@ EXPORTS
     ??1?$TStringBase@D@Unreal@RC@@QEAA@XZ
     ??1?$TStringBase@_Q@Unreal@RC@@QEAA@XZ
     ??1?$TStringBase@_W@Unreal@RC@@QEAA@XZ
-    ??1Array@JSON@RC@@UEAA@XZ
-    ??1Bool@JSON@RC@@UEAA@XZ
     ??1CppUserModBase@RC@@UEAA@XZ
     ??1DebugConsoleDevice@Output@RC@@UEAA@XZ
     ??1FAnsiString@Unreal@RC@@QEAA@XZ
     ??1FAssetData427Plus@Unreal@RC@@QEAA@XZ
     ??1FAssetData51Plus@Unreal@RC@@QEAA@XZ
     ??1FAssetDataPre427@Unreal@RC@@QEAA@XZ
+    ??1FCallbackMetadata@Internal@Hook@Unreal@RC@@UEAA@XZ
+    ??1FCallbackOptions@Hook@Unreal@RC@@QEAA@XZ
     ??1FClassCreateListener@Unreal@RC@@UEAA@XZ
     ??1FClassDeleteListener@Unreal@RC@@UEAA@XZ
     ??1FFieldPath@Unreal@RC@@QEAA@XZ
@@ -211,18 +209,13 @@ EXPORTS
     ??1Handler@Input@RC@@QEAA@XZ
     ??1Lua@LuaMadeSimple@RC@@QEAA@XZ
     ??1Mod@RC@@UEAA@XZ
-    ??1Null@JSON@RC@@UEAA@XZ
-    ??1Number@JSON@RC@@UEAA@XZ
-    ??1Object@JSON@RC@@UEAA@XZ
     ??1OutputDevice@Output@RC@@UEAA@XZ
     ??1ScanError@Signatures@Unreal@RC@@QEAA@XZ
     ??1ScanResult@Signatures@Unreal@RC@@QEAA@XZ
     ??1SettingsManager@RC@@QEAA@XZ
     ??1SignatureData@RC@@QEAA@XZ
-    ??1String@JSON@RC@@UEAA@XZ
     ??1TokenParser@ParserBase@RC@@UEAA@XZ
     ??1UnrealScriptFunctionData@Unreal@RC@@QEAA@XZ
-    ??1Value@JSON@RC@@UEAA@XZ
     ??1VersionStatus@Unreal@RC@@QEAA@XZ
     ??2FUseSystemMallocForNew@Unreal@RC@@SAPEAX_K@Z
     ??3FUseSystemMallocForNew@Unreal@RC@@SAXPEAX@Z
@@ -237,6 +230,8 @@ EXPORTS
     ??4?$StaticReflectedFunctionBase@VUAssetRegistryHelpers@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4?$StaticReflectedFunctionBase@VUGameplayStatics@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4?$StaticReflectedFunctionBase@VUGameplayStatics@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4?$StaticReflectedFunctionBase@VUKismetSystemLibrary@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
+    ??4?$StaticReflectedFunctionBase@VUKismetSystemLibrary@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4?$TFObjectPropertyBase@PEAVUObject@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4?$TFObjectPropertyBase@PEAVUObject@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4?$TFObjectPropertyBase@UFLazyObjectPtr@Unreal@RC@@@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -411,7 +406,6 @@ EXPORTS
     ??4AGameModeBase@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4BaseObject@Type@LuaMadeSimple@RC@@QEAAAEAV0123@$$QEAV0123@@Z
     ??4BaseObject@Type@LuaMadeSimple@RC@@QEAAAEAV0123@AEBV0123@@Z
-    ??4Bool@JSON@RC@@QEAAAEAV012@AEBV012@@Z
     ??4DebugConsoleDevice@Output@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FAnsiStrProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FAnsiStrProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
@@ -433,6 +427,10 @@ EXPORTS
     ??4FBoolProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FByteProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FByteProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAAAEAV01234@$$QEAV01234@@Z
+    ??4FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAAAEAV01234@AEBV01234@@Z
+    ??4FCallbackOptions@Hook@Unreal@RC@@QEAAAEAU0123@$$QEAU0123@@Z
+    ??4FCallbackOptions@Hook@Unreal@RC@@QEAAAEAU0123@AEBU0123@@Z
     ??4FClassCreateListener@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
     ??4FClassCreateListener@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
     ??4FClassDeleteListener@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
@@ -441,6 +439,8 @@ EXPORTS
     ??4FClassProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FClassPtrProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FClassPtrProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4FCustomPropertyListNode@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
+    ??4FCustomPropertyListNode@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
     ??4FDelegateProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FDelegateProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FDoubleProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -469,6 +469,7 @@ EXPORTS
     ??4FFrame_50_AndBelow@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
     ??4FFrame_51_AndAbove@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
     ??4FFrame_51_AndAbove@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
+    ??4FGlobalCallbackIdDecoder@Hook@Unreal@RC@@QEAAAEAV0123@AEBV0123@@Z
     ??4FGuid@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
     ??4FGuid@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
     ??4FImplementedInterface@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
@@ -497,8 +498,12 @@ EXPORTS
     ??4FMulticastSparseDelegateProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FName@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FName@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4FNameData@UEnum@Unreal@RC@@QEAAAEAU0123@$$QEAU0123@@Z
+    ??4FNameData@UEnum@Unreal@RC@@QEAAAEAU0123@AEBU0123@@Z
     ??4FNameProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FNameProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4FNativeFunctionLookup@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
+    ??4FNativeFunctionLookup@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
     ??4FNumericProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FNumericProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FObjectProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -536,7 +541,6 @@ EXPORTS
     ??4FStructProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FStructProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FTableRowBase@Unreal@RC@@QEAAAEAU012@AEBU012@@Z
-    ??4FText@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FText@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FTextProperty@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FTextProperty@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
@@ -548,6 +552,8 @@ EXPORTS
     ??4FUInt32Property@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FUInt64Property@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4FUInt64Property@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4FUObjectArray@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
+    ??4FUObjectArray@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FUObjectCreateListener@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FUObjectDeleteListener@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4FUObjectItem@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
@@ -576,8 +582,6 @@ EXPORTS
     ??4LuaTableReference@LuaMadeSimple@RC@@QEAAAEAU012@AEBU012@@Z
     ??4MetaMethodContainer@Type@LuaMadeSimple@RC@@QEAAAEAU0123@$$QEAU0123@@Z
     ??4MetaMethodContainer@Type@LuaMadeSimple@RC@@QEAAAEAU0123@AEBU0123@@Z
-    ??4Null@JSON@RC@@QEAAAEAV012@AEBV012@@Z
-    ??4Number@JSON@RC@@QEAAAEAV012@AEBV012@@Z
     ??4OpenProperties@File@RC@@QEAAAEAU012@$$QEAU012@@Z
     ??4OpenProperties@File@RC@@QEAAAEAU012@AEBU012@@Z
     ??4OutputDevice@Output@RC@@QEAAAEAV012@AEBV012@@Z
@@ -599,6 +603,8 @@ EXPORTS
     ??4SignatureData@RC@@QEAAAEAU01@AEBU01@@Z
     ??4StaticStorage@Hook@Unreal@RC@@QEAAAEAU0123@$$QEAU0123@@Z
     ??4StaticStorage@Hook@Unreal@RC@@QEAAAEAU0123@AEBU0123@@Z
+    ??4TUObjectArray@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
+    ??4TUObjectArray@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4TypeChecker@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4TypeChecker@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UActorComponent@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -623,6 +629,8 @@ EXPORTS
     ??4UDelegateFunction@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UE4SSBaseObjectName@LuaType@RC@@QEAAAEAU012@$$QEAU012@@Z
     ??4UE4SSBaseObjectName@LuaType@RC@@QEAAAEAU012@AEBU012@@Z
+    ??4UE4SSRuntime@RC@@QEAAAEAU01@$$QEAU01@@Z
+    ??4UE4SSRuntime@RC@@QEAAAEAU01@AEBU01@@Z
     ??4UEngine@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4UEngine@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UEnum@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -639,12 +647,14 @@ EXPORTS
     ??4UInterface@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UKismetNodeHelperLibrary@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4UKismetNodeHelperLibrary@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4UKismetSystemLibrary@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
+    ??4UKismetSystemLibrary@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
+    ??4UKismetTextLibrary@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
+    ??4UKismetTextLibrary@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4ULocalPlayer@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4ULocalPlayer@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UObject@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4UObject@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
-    ??4UObjectArray@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
-    ??4UObjectArray@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UObjectBase@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4UObjectBase@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UObjectBaseUtility@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
@@ -669,7 +679,6 @@ EXPORTS
     ??4UWidgetBlueprintGeneratedClass@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4UWorld@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4UWorld@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
-    ??4Value@JSON@RC@@QEAAAEAV012@AEBV012@@Z
     ??4Version@Unreal@RC@@QEAAAEAV012@$$QEAV012@@Z
     ??4Version@Unreal@RC@@QEAAAEAV012@AEBV012@@Z
     ??4VersionStatus@Unreal@RC@@QEAAAEAU012@$$QEAU012@@Z
@@ -696,7 +705,10 @@ EXPORTS
     ??A?$TStringBase@_W@Unreal@RC@@QEBAAEB_WH@Z
     ??AFGuid@Unreal@RC@@QEAAAEAIH@Z
     ??AFGuid@Unreal@RC@@QEBAAEBIH@Z
+    ??AFNameData@UEnum@Unreal@RC@@QEBA?AU?$TTuple@VFName@Unreal@RC@@_J@23@H@Z
     ??AScanTargetArray@RC@@QEAAAEAU_MODULEINFO@@W4ScanTarget@1@@Z
+    ??ATUObjectArray@Unreal@RC@@QEAAAEAUFUObjectItem@12@H@Z
+    ??ATUObjectArray@Unreal@RC@@QEBAAEBUFUObjectItem@12@H@Z
     ??D?$TStringBase@D@Unreal@RC@@QEBAPEBDXZ
     ??D?$TStringBase@_Q@Unreal@RC@@QEBAPEB_QXZ
     ??D?$TStringBase@_W@Unreal@RC@@QEBAPEB_WXZ
@@ -710,9 +722,8 @@ EXPORTS
     ??Y?$TStringBase@_W@Unreal@RC@@QEAAAEAV012@PEB_W@Z
     ??Y?$TStringBase@_W@Unreal@RC@@QEAAAEAV012@_W@Z
     ??_7?$FileInterface@VWinFile@File@RC@@@File@RC@@6B@
-    ??_7Array@JSON@RC@@6B@
-    ??_7Bool@JSON@RC@@6B@
     ??_7DebugConsoleDevice@Output@RC@@6B@
+    ??_7FCallbackMetadata@Internal@Hook@Unreal@RC@@6B@
     ??_7FClassCreateListener@Unreal@RC@@6B@
     ??_7FClassDeleteListener@Unreal@RC@@6B@
     ??_7FFrame_50_AndBelow@Unreal@RC@@6B@
@@ -722,27 +733,23 @@ EXPORTS
     ??_7FUObjectCreateListener@Unreal@RC@@6B@
     ??_7FUObjectDeleteListener@Unreal@RC@@6B@
     ??_7Mod@RC@@6B@
-    ??_7Null@JSON@RC@@6B@
-    ??_7Number@JSON@RC@@6B@
-    ??_7Object@JSON@RC@@6B@
     ??_7OutputDevice@Output@RC@@6B@
-    ??_7Value@JSON@RC@@6B@
-    ?AActorTickDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?AActorTickPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@@2@@std@@A
-    ?AActorTickPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@@2@@std@@A
+    ??_FFCustomPropertyListNode@Unreal@RC@@QEAAXXZ
     ?AddCppProperty@FField@Unreal@RC@@QEAAXPEAVFProperty@23@@Z
     ?AddCppProperty@UField@Unreal@RC@@QEAAXPEAVFProperty@23@@Z
     ?AddDelegate@FMulticastDelegateProperty@Unreal@RC@@QEBAXV?$TScriptDelegate@UFWeakObjectPtr@Unreal@RC@@@23@PEAVUObject@23@PEAX@Z
     ?AddPostCallback@UnrealScriptFunctionData@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAXPEAVUObject@23@@Z
     ?AddPreCallback@UnrealScriptFunctionData@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAXPEAVUObject@23@@Z
     ?AddReferencedObjects@FField@Unreal@RC@@QEAAXAEAPEAX@Z
-    ?AddRequiredObject@Hook@Unreal@RC@@YAXAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
+    ?AddRequiredObject@Hook@Unreal@RC@@YAXAEBV?$vector@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@V?$allocator@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@2@@std@@@Z
     ?AddRow@UDataTable@Unreal@RC@@QEAAXVFName@23@AEBUFTableRowBase@23@@Z
     ?AddRow@UDataTable@Unreal@RC@@QEAAXVFName@23@PEBEPEBVUScriptStruct@23@@Z
     ?AddRowInternal@UDataTable@Unreal@RC@@IEAAXVFName@23@PEAE@Z
-    ?AddUObjectCreateListener@UObjectArray@Unreal@RC@@SAXPEAVFUObjectCreateListener@23@@Z
-    ?AddUObjectDeleteListener@UObjectArray@Unreal@RC@@SAXPEAVFUObjectDeleteListener@23@@Z
+    ?AddUObjectCreateListener@FUObjectArray@Unreal@RC@@SAXPEAVFUObjectCreateListener@23@@Z
+    ?AddUObjectDeleteListener@FUObjectArray@Unreal@RC@@SAXPEAVFUObjectDeleteListener@23@@Z
     ?AllRequiredObjectsConstructed@Hook@Unreal@RC@@YA_NXZ
+    ?AllocateAndInitializeValue@FProperty@Unreal@RC@@QEBAPEAXXZ
+    ?AllocateUObject@UObjectBase@Unreal@RC@@SAPEAV123@HH_N@Z
     ?AllowCrossLevel@FObjectPropertyBase@Unreal@RC@@QEBA_NXZ
     ?Append@?$TStringBase@D@Unreal@RC@@QEAAAEAV123@AEBV123@@Z
     ?Append@?$TStringBase@D@Unreal@RC@@QEAAAEAV123@PEBD@Z
@@ -800,21 +807,51 @@ EXPORTS
     ?BeginDeferredActorSpawnFromClass@UGameplayStatics@Unreal@RC@@SAPEAVAActor@23@PEBVUObject@23@PEAVUClass@23@AEBUFTransform@23@W4ESpawnActorCollisionHandlingMethod@23@PEAV423@@Z
     ?BeginDestroy@FField@Unreal@RC@@QEAAXXZ
     ?BeginDestroy@UObject@Unreal@RC@@QEAAXXZ
-    ?BeginPlayDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?BeginPlayInternal@AActor@Unreal@RC@@2V?$Function@$$A6AXPEAVAActor@Unreal@RC@@@Z@3@A
-    ?BeginPlayPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@@2@@std@@A
-    ?BeginPlayPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@@2@@std@@A
     ?Bind@FField@Unreal@RC@@QEAAXXZ
     ?Bind@UField@Unreal@RC@@QEAAXXZ
+    ?BitfieldInfos@AGameMode@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@AGameModeBase@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FArrayProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FBoolProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FByteProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FClassProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FDelegateProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FEnumProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FField@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FFieldClass@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FFieldPathProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FInterfaceProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FMapProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FMulticastDelegateProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FObjectPropertyBase@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FOutputDevice@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FSetProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FSoftClassProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FStructProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FUObjectArray@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FUObjectItem@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@FWorldContext@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@ICppStructOps@UScriptStruct@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@TUObjectArray@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UClass@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UDataTable@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UEnum@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UField@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UFunction@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@ULocalPlayer@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UObjectBase@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UPlayer@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UScriptStruct@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UStruct@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
+    ?BitfieldInfos@UWorld@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@UBitfieldInfo@Unreal@RC@@@std@@@2@@std@@A
     ?BuildSubobjectMapping@UObject@Unreal@RC@@QEBAXPEAV123@AEAV?$TMap@PEAVUObject@Unreal@RC@@PEAV123@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@PEAVUObject@Unreal@RC@@PEAV123@$0A@@23@@23@@Z
     ?CalcIsSetOffset@FOptionalProperty@Unreal@RC@@IEBAHXZ
     ?CalcIsSetOffset@FOptionalPropertyLayout@Unreal@RC@@IEBAHXZ
     ?CalcSize@FOptionalProperty@Unreal@RC@@QEBAHXZ
     ?CalcSize@FOptionalPropertyLayout@Unreal@RC@@QEBAHXZ
-    ?CallFunctionByNameWithArgumentsDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?CallFunctionByNameWithArgumentsInternal@UObject@Unreal@RC@@2V?$Function@$$A6A_NPEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@23@0_N@Z@3@A
-    ?CallFunctionByNameWithArgumentsPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@@2@@std@@A
-    ?CallFunctionByNameWithArgumentsPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@@2@@std@@A
     ?CallRemoteFunction@UObject@Unreal@RC@@QEAA_NPEAVUFunction@23@PEAXPEAUFOutParmRec@23@PEAUFFrame@23@@Z
     ?CanBeClusterRoot@UObjectBaseUtility@Unreal@RC@@QEBA_NXZ
     ?CanBeInCluster@UObjectBaseUtility@Unreal@RC@@QEBA_NXZ
@@ -840,6 +877,7 @@ EXPORTS
     ?ClearIntrusiveOptionalValue@FProperty@Unreal@RC@@QEBAXPEAX@Z
     ?ClearRootSet@UObject@Unreal@RC@@QEAAXXZ
     ?ClearValue@FProperty@Unreal@RC@@QEAAXPEAX@Z
+    ?ClearValue@FProperty@Unreal@RC@@QEBAXPEAX@Z
     ?ClearValueImpl@?$TProperty@CVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?ClearValueImpl@?$TProperty@EVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?ClearValueImpl@?$TProperty@FVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
@@ -872,9 +910,12 @@ EXPORTS
     ?Compare@?$TStringBase@D@Unreal@RC@@QEBAHAEBV123@W4Type@ESearchCase@23@@Z
     ?Compare@?$TStringBase@_Q@Unreal@RC@@QEBAHAEBV123@W4Type@ESearchCase@23@@Z
     ?Compare@?$TStringBase@_W@Unreal@RC@@QEBAHAEBV123@W4Type@ESearchCase@23@@Z
+    ?CompareIndexes@FName@Unreal@RC@@QEBAHAEBV123@@Z
+    ?Construct@FField@Unreal@RC@@SAPEAV123@AEBVFFieldVariant@23@AEBVFName@23@W4EObjectFlags@23@@Z
+    ?Construct@FField@Unreal@RC@@SAPEAV123@AEBVFName@23@AEBVFFieldVariant@23@0W4EObjectFlags@23@@Z
+    ?Construct@FFieldClass@Unreal@RC@@QEBAPEAVFField@23@AEBVFFieldVariant@23@AEBVFName@23@W4EObjectFlags@23@@Z
     ?Construct@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAXPEAX@Z
     ?ConstructorInternal@FName@Unreal@RC@@2V?$Function@$$A6A?AVFName@Unreal@RC@@PEB_WW4EFindName@23@@Z@3@A
-    ?ConstructorInternal@FText@Unreal@RC@@2V?$Function@$$A6A?AVFText@Unreal@RC@@$$QEBVFString@23@@Z@3@A
     ?ContainerUObjectPtrToValuePtrInternal@FProperty@Unreal@RC@@AEBAPEAXPEAVUObject@23@H@Z
     ?ContainerVoidPtrToValuePtrInternal@FProperty@Unreal@RC@@AEBAPEAXPEAXH@Z
     ?Contains@?$TStringBase@D@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@W44ESearchDir@23@@Z
@@ -883,8 +924,13 @@ EXPORTS
     ?Contains@?$TStringBase@_Q@Unreal@RC@@QEBA_NPEB_QW4Type@ESearchCase@23@W44ESearchDir@23@@Z
     ?Contains@?$TStringBase@_W@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@W44ESearchDir@23@@Z
     ?Contains@?$TStringBase@_W@Unreal@RC@@QEBA_NPEB_WW4Type@ESearchCase@23@W44ESearchDir@23@@Z
+    ?ContainsInstancedObjectProperty@FProperty@Unreal@RC@@QEBA_NXZ
     ?ContainsObjectReference@FProperty@Unreal@RC@@QEBA_NAEAV?$TArray@PEBVFStructProperty@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
     ?ContainsObjectReference@FProperty@Unreal@RC@@QEBA_NAEAV?$TArray@PEBVFStructProperty@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@W4EPropertyObjectReferenceType@23@@Z
+    ?ContainsWeakObjectReference@FProperty@Unreal@RC@@QEBA_NXZ
+    ?Conv_NameToStringInternal@FName@Unreal@RC@@2PEAVUFunction@23@EA
+    ?Conv_StringToText@UKismetTextLibrary@Unreal@RC@@SA?AVFText@23@AEBVFString@23@@Z
+    ?Conv_TextToString@UKismetTextLibrary@Unreal@RC@@SA?AVFString@23@AEBVFText@23@@Z
     ?Convert@Private@Core@UE@Unreal@RC@@YAPEADPEADHPEB_Q@Z
     ?Convert@Private@Core@UE@Unreal@RC@@YAPEADPEADHPEB_QH@Z
     ?Convert@Private@Core@UE@Unreal@RC@@YAPEAGPEAGHPEB_Q@Z
@@ -940,10 +986,12 @@ EXPORTS
     ?CopyValuesToScriptVMInternal@FProperty@Unreal@RC@@QEAAXPEAXPEBXH@Z
     ?CopyValuesToScriptVMInternal_Impl@FProperty@Unreal@RC@@IEAAXPEAXPEBXH@Z
     ?CreateCluster@UObjectBaseUtility@Unreal@RC@@QEAAXXZ
+    ?CreateDefaultObject@UClass@Unreal@RC@@QEAAPEAVUObject@23@XZ
     ?CurrentNativeFunction@FFrame@Unreal@RC@@QEAAAEAPEAVUFunction@23@XZ
     ?CustomFindProperty@UStruct@Unreal@RC@@QEBAPEAVFProperty@23@VFName@23@@Z
     ?DebugBuild@Version@Unreal@RC@@2_NA
     ?DeferredRegister@UObjectBase@Unreal@RC@@QEAAXPEAVUClass@23@PEB_W1@Z
+    ?DestroyAndFreeValue@FProperty@Unreal@RC@@QEAAXPEAX@Z
     ?DestroyPropertyValue@?$TPropertyTypeFundamentals@C@Unreal@RC@@SAXPEAX@Z
     ?DestroyPropertyValue@?$TPropertyTypeFundamentals@E@Unreal@RC@@SAXPEAX@Z
     ?DestroyPropertyValue@?$TPropertyTypeFundamentals@F@Unreal@RC@@SAXPEAX@Z
@@ -972,6 +1020,7 @@ EXPORTS
     ?DestroyPropertyValue@?$TPropertyTypeFundamentals@_K@Unreal@RC@@SAXPEAX@Z
     ?DestroyStruct@UStruct@Unreal@RC@@QEBAXPEAXH@Z
     ?DestroyValue@FProperty@Unreal@RC@@QEAAXPEAX@Z
+    ?DestroyValue@FProperty@Unreal@RC@@QEBAXPEAX@Z
     ?DestroyValueImpl@?$TProperty@CVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?DestroyValueImpl@?$TProperty@EVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?DestroyValueImpl@?$TProperty@FVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
@@ -1003,9 +1052,11 @@ EXPORTS
     ?Destruct@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAXPEAX@Z
     ?Dump@FOutputDevice@Unreal@RC@@QEAAXAEAVFArchive@23@@Z
     ?DumpAllocatorStats@FMalloc@Unreal@RC@@QEAAXAEAVFOutputDevice@23@@Z
+    ?EXECUTOR_MASK@FCallbackMetadata@Internal@Hook@Unreal@RC@@2_KB
     ?EditNameAt@UEnum@Unreal@RC@@QEAAXHVFName@23@@Z
     ?EditValueAt@UEnum@Unreal@RC@@QEAAXH_J@Z
     ?EmitIntrusiveOptionalReferenceInfo@FProperty@Unreal@RC@@QEAAXAEAVFSchemaBuilder@GC@UE@23@HAEAV?$TArray@PEBVFStructProperty@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@AEAVFPropertyStack@5623@@Z
+    ?EmitReferenceInfo@FProperty@Unreal@RC@@QEAAXAEAVFSchemaBuilder@GC@UE@23@HAEAVFPropertyStack@5623@@Z
     ?EmitReferenceInfo@FProperty@Unreal@RC@@QEAAXAEAVUClass@23@HAEAV?$TArray@PEBVFStructProperty@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
     ?Empty@?$TStringBase@D@Unreal@RC@@QEAAXH@Z
     ?Empty@?$TStringBase@D@Unreal@RC@@QEAAXXZ
@@ -1014,19 +1065,14 @@ EXPORTS
     ?Empty@?$TStringBase@_W@Unreal@RC@@QEAAXH@Z
     ?Empty@?$TStringBase@_W@Unreal@RC@@QEAAXXZ
     ?EmptyTable@UDataTable@Unreal@RC@@QEAAXXZ
-    ?EndPlayDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
+    ?EndExecution@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEAAXXZ
     ?EndPlayInternal@AActor@Unreal@RC@@2V?$Function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@3@A
-    ?EndPlayPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@@2@@std@@A
-    ?EndPlayPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@@2@@std@@A
     ?EndsWith@?$TStringBase@D@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?EndsWith@?$TStringBase@D@Unreal@RC@@QEBA_NPEBDW4Type@ESearchCase@23@@Z
     ?EndsWith@?$TStringBase@_Q@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?EndsWith@?$TStringBase@_Q@Unreal@RC@@QEBA_NPEB_QW4Type@ESearchCase@23@@Z
     ?EndsWith@?$TStringBase@_W@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?EndsWith@?$TStringBase@_W@Unreal@RC@@QEBA_NPEB_WW4Type@ESearchCase@23@@Z
-    ?EngineTickDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?EngineTickPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@@2@@std@@A
-    ?EngineTickPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@@2@@std@@A
     ?Equals@?$TStringBase@D@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?Equals@?$TStringBase@_Q@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?Equals@?$TStringBase@_W@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
@@ -1076,6 +1122,7 @@ EXPORTS
     ?FindObjects@UObjectGlobals@Unreal@RC@@YAXVFName@23@0AEAV?$vector@PEAVUObject@Unreal@RC@@V?$allocator@PEAVUObject@Unreal@RC@@@std@@@std@@HH_N@Z
     ?FindObjects@UObjectGlobals@Unreal@RC@@YAX_KPEB_W1AEAV?$vector@PEAVUObject@Unreal@RC@@V?$allocator@PEAVUObject@Unreal@RC@@@std@@@std@@HH_N@Z
     ?FindObjects@UObjectGlobals@Unreal@RC@@YAX_KVFName@23@1AEAV?$vector@PEAVUObject@Unreal@RC@@V?$allocator@PEAVUObject@Unreal@RC@@@std@@@std@@HH_N@Z
+    ?FindOutParamValueAddress@Unreal@RC@@YAPEAXAEAUFFrame@12@PEAVFProperty@12@@Z
     ?FindProperty@UStruct@Unreal@RC@@QEAAPEAVFProperty@23@VFName@23@@Z
     ?FindPropertyGuidFromName@UStruct@Unreal@RC@@QEBA?AUFGuid@23@VFName@23@@Z
     ?FindPropertyNameFromGuid@UStruct@Unreal@RC@@QEBA?AVFName@23@AEBUFGuid@23@@Z
@@ -1102,14 +1149,12 @@ EXPORTS
     ?FromInt@FString@Unreal@RC@@SA?AV123@H@Z
     ?GFunctionName@Unreal@RC@@3VFName@12@A
     ?GLevelName@Unreal@RC@@3VFName@12@A
-    ?GMalloc@Unreal@RC@@3PEAVFMalloc@12@EA
+    ?GMalloc@Unreal@RC@@3PEAPEAVFMalloc@12@EA
     ?GNatives_Internal@Unreal@RC@@3PEAP6AXPEAVUObject@12@AEAUFFrame@12@PEAX@ZEA
     ?GPackageName@Unreal@RC@@3VFName@12@A
     ?GPropertyName@Unreal@RC@@3VFName@12@A
+    ?GUObjectArray@Unreal@RC@@3PEAVFUObjectArray@12@EA
     ?GWorldName@Unreal@RC@@3VFName@12@A
-    ?GameViewportClientTickDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?GameViewportClientTickPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@@2@@std@@A
-    ?GameViewportClientTickPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@@2@@std@@A
     ?GenerateEnumPrefix@UEnum@Unreal@RC@@QEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?Get@FWeakObjectPtr@Unreal@RC@@QEBAPEAVUObject@23@XZ
     ?Get@FWeakObjectPtr@Unreal@RC@@QEBAPEAVUObject@23@_N@Z
@@ -1121,15 +1166,20 @@ EXPORTS
     ?GetActorScale3D@AActor@Unreal@RC@@QEAA?AUFVector@23@XZ
     ?GetActorTickInterval@AActor@Unreal@RC@@QEAAMXZ
     ?GetActorTimeDilation@AActor@Unreal@RC@@QEAAMXZ
-    ?GetAlignment@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAAEAHXZ
+    ?GetAlignment@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAAEBHXZ
     ?GetAlignment@ICppStructOps@UScriptStruct@Unreal@RC@@QEBAAEBHXZ
     ?GetAllActorsOfClass@UGameplayStatics@Unreal@RC@@SAXPEBVUObject@23@PEAVUClass@23@AEAV?$TArray@PEAVAActor@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
     ?GetAllActorsOfClass@UGameplayStatics@Unreal@RC@@SAXPEBVUObject@23@PEAVUClass@23@AEAV?$vector@PEAVAActor@Unreal@RC@@V?$allocator@PEAVAActor@Unreal@RC@@@std@@@std@@@Z
     ?GetAllAssets@UAssetRegistry@Unreal@RC@@QEAA_NAEAV?$TArray@UFAssetData@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@_N@Z
+    ?GetAllFieldClasses@FFieldClass@Unreal@RC@@SAAEAV?$TArray@PEAVFFieldClass@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetAllFunctionsCache@UClass@Unreal@RC@@QEAAAEAV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
     ?GetAllFunctionsCache@UClass@Unreal@RC@@QEBAAEBV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
+    ?GetAllFunctionsCacheLock@UClass@Unreal@RC@@QEAAAEAVFPlatformRWLock@UE@23@XZ
+    ?GetAllFunctionsCacheLock@UClass@Unreal@RC@@QEBAAEBVFPlatformRWLock@UE@23@XZ
     ?GetAllocSize@FMemory@Unreal@RC@@SA_KPEAX@Z
     ?GetAllocSizeExternal@FMemory@Unreal@RC@@CA_KPEAX@Z
+    ?GetAllocatedSize@FMemoryImageAllocatorBase@Unreal@RC@@QEBA_KH_K@Z
+    ?GetAllocation@FMemoryImageAllocatorBase@Unreal@RC@@QEBAPEAUFScriptContainerElement@23@XZ
     ?GetAllocationSize@FMalloc@Unreal@RC@@QEAA_NPEAXAEA_K@Z
     ?GetAllocatorStats@FMalloc@Unreal@RC@@QEAAXAEAUFGenericMemoryStats@23@@Z
     ?GetArrayDim@FProperty@Unreal@RC@@QEAAAEAHXZ
@@ -1143,20 +1193,25 @@ EXPORTS
     ?GetAssetRegistry@UAssetRegistryHelpers@Unreal@RC@@SA?AVFScriptInterface@23@XZ
     ?GetAssetRegistryTags@UObject@Unreal@RC@@QEBAXAEAV?$TArray@PEAXV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@@Z
     ?GetAssetsByClass@UAssetRegistry@Unreal@RC@@QEAA_NVFName@23@AEAV?$TArray@UFAssetData@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@_N@Z
+    ?GetAsyncPreRegisterLevelStreamingTasks@UWorld@Unreal@RC@@QEAAAEAVFThreadSafeCounter@23@XZ
+    ?GetAsyncPreRegisterLevelStreamingTasks@UWorld@Unreal@RC@@QEBAAEBVFThreadSafeCounter@23@XZ
     ?GetAudioDeviceHandle@FWorldContext@Unreal@RC@@QEAAAEAIXZ
     ?GetAudioDeviceHandle@FWorldContext@Unreal@RC@@QEBAAEBIXZ
     ?GetAudioDeviceHandle@UWorld@Unreal@RC@@QEAAAEAIXZ
     ?GetAudioDeviceHandle@UWorld@Unreal@RC@@QEBAAEBIXZ
     ?GetAudioDeviceID@FWorldContext@Unreal@RC@@QEAAAEAIXZ
     ?GetAudioDeviceID@FWorldContext@Unreal@RC@@QEBAAEBIXZ
-    ?GetAudioTimeSeconds@UWorld@Unreal@RC@@QEAAAEANXZ
-    ?GetAudioTimeSeconds@UWorld@Unreal@RC@@QEBAAEBNXZ
+    ?GetAudioTimeSeconds501@UWorld@Unreal@RC@@AEAAAEANXZ
+    ?GetAudioTimeSeconds501@UWorld@Unreal@RC@@AEBAAEBNXZ
+    ?GetAudioTimeSecondsBase@UWorld@Unreal@RC@@AEAAAEAMXZ
+    ?GetAudioTimeSecondsBase@UWorld@Unreal@RC@@AEBAAEBMXZ
     ?GetAuthoredNameForField@UStruct@Unreal@RC@@QEBA?AVFString@23@PEBVUField@23@@Z
     ?GetAuthorityGameMode@UWorld@Unreal@RC@@QEAAAEAV?$TObjectPtr@VAGameModeBase@Unreal@RC@@@23@XZ
     ?GetAuthorityGameMode@UWorld@Unreal@RC@@QEBAAEBV?$TObjectPtr@VAGameModeBase@Unreal@RC@@@23@XZ
     ?GetB@FGuid@Unreal@RC@@QEAAIXZ
     ?GetBlockTillLevelStreamingCompletedEpoch@UWorld@Unreal@RC@@QEAAAEAHXZ
     ?GetBlockTillLevelStreamingCompletedEpoch@UWorld@Unreal@RC@@QEBAAEBHXZ
+    ?GetBuildConfiguration@UKismetSystemLibrary@Unreal@RC@@SA?AVFString@23@XZ
     ?GetBuildStreamingDataTimer@UWorld@Unreal@RC@@QEAAAEANXZ
     ?GetBuildStreamingDataTimer@UWorld@Unreal@RC@@QEBAAEBNXZ
     ?GetByteMask@FBoolProperty@Unreal@RC@@QEAAAEAEXZ
@@ -1169,6 +1224,13 @@ EXPORTS
     ?GetCPPTypeCustom@FObjectPropertyBase@Unreal@RC@@QEBA?AVFString@23@PEAV423@IAEBV423@@Z
     ?GetCPPTypeForwardDeclaration@FProperty@Unreal@RC@@QEBA?AVFString@23@XZ
     ?GetCallbackData@UnrealScriptFunctionData@Unreal@RC@@QEAAPEAUUnrealScriptCallbackData@23@H@Z
+    ?GetCallbackId@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA_KXZ
+    ?GetCallbackName@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA?AV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@XZ
+    ?GetCastFlags507@FFieldClass@Unreal@RC@@AEAAAEAW4EClassCastFlags@23@XZ
+    ?GetCastFlags507@FFieldClass@Unreal@RC@@AEBAAEBW4EClassCastFlags@23@XZ
+    ?GetCastFlags@FFieldClass@Unreal@RC@@QEBA_KXZ
+    ?GetCastFlagsBase@FFieldClass@Unreal@RC@@AEAAAEA_KXZ
+    ?GetCastFlagsBase@FFieldClass@Unreal@RC@@AEBAAEB_KXZ
     ?GetCharArray@?$TStringBase@D@Unreal@RC@@QEAAAEAV?$TArray@DV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
     ?GetCharArray@?$TStringBase@D@Unreal@RC@@QEBAAEBV?$TArray@DV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
     ?GetCharArray@?$TStringBase@_Q@Unreal@RC@@QEAAAEAV?$TArray@_QV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
@@ -1179,46 +1241,67 @@ EXPORTS
     ?GetCharTArray@FString@Unreal@RC@@QEBAAEBV?$TArray@_WV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
     ?GetChildProperties@UStruct@Unreal@RC@@QEAAAEAPEAVFField@23@XZ
     ?GetChildProperties@UStruct@Unreal@RC@@QEBAAEAPEBVFField@23@XZ
-    ?GetChildren@UStruct@Unreal@RC@@QEAAAEAPEAVUField@23@XZ
-    ?GetChildren@UStruct@Unreal@RC@@QEBAAEAPEBVUField@23@XZ
+    ?GetChildren@UStruct@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUField@Unreal@RC@@@23@XZ
+    ?GetChildren@UStruct@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUField@Unreal@RC@@@23@XZ
     ?GetClass@FField@Unreal@RC@@QEAA?AVFFieldClassVariant@23@XZ
     ?GetClassAddReferencedObjects@UClass@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAX@Z@std@@XZ
     ?GetClassAddReferencedObjects@UClass@Unreal@RC@@QEBAAEAPEBV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAX@Z@std@@XZ
+    ?GetClassCastFlags420@UClass@Unreal@RC@@AEAAAEAW4EClassCastFlags@23@XZ
+    ?GetClassCastFlags420@UClass@Unreal@RC@@AEBAAEBW4EClassCastFlags@23@XZ
     ?GetClassCastFlags@FFieldClassVariant@Unreal@RC@@QEBA?AW4EClassCastFlags@23@XZ
     ?GetClassCastFlags@UClass@Unreal@RC@@QEAAAEA_KXZ
     ?GetClassCastFlags@UClass@Unreal@RC@@QEBAAEB_KXZ
+    ?GetClassCastFlagsBase@UClass@Unreal@RC@@AEAAAEA_KXZ
+    ?GetClassCastFlagsBase@UClass@Unreal@RC@@AEBAAEB_KXZ
     ?GetClassConfigName@UClass@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetClassConfigName@UClass@Unreal@RC@@QEBAAEBVFName@23@XZ
-    ?GetClassConstructor@UClass@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXPEAX@Z@std@@XZ
-    ?GetClassConstructor@UClass@Unreal@RC@@QEBAAEAPEBV?$function@$$A6AXPEAX@Z@std@@XZ
-    ?GetClassDefaultObject@UClass@Unreal@RC@@QEAAAEAPEAVUObject@23@XZ
-    ?GetClassDefaultObject@UClass@Unreal@RC@@QEBAAEAPEBVUObject@23@XZ
-    ?GetClassFlags@UClass@Unreal@RC@@QEAAAEAW4EClassFlags@23@XZ
-    ?GetClassFlags@UClass@Unreal@RC@@QEBAAEBW4EClassFlags@23@XZ
+    ?GetClassConstructor@UClass@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXPEBX@Z@std@@XZ
+    ?GetClassConstructor@UClass@Unreal@RC@@QEBAAEAPEBV?$function@$$A6AXPEBX@Z@std@@XZ
+    ?GetClassDefaultObject@UClass@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUObject@Unreal@RC@@@23@XZ
+    ?GetClassDefaultObject@UClass@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUObject@Unreal@RC@@@23@XZ
+    ?GetClassFlags417@UClass@Unreal@RC@@AEAAAEAW4EClassFlags@23@XZ
+    ?GetClassFlags417@UClass@Unreal@RC@@AEBAAEBW4EClassFlags@23@XZ
+    ?GetClassFlags@FFieldClass@Unreal@RC@@QEAAAEAW4EClassFlags@23@XZ
+    ?GetClassFlags@FFieldClass@Unreal@RC@@QEBAAEBW4EClassFlags@23@XZ
+    ?GetClassFlags@UClass@Unreal@RC@@QEAAAEAIXZ
+    ?GetClassFlagsBase@UClass@Unreal@RC@@AEAAAEAIXZ
+    ?GetClassFlagsBase@UClass@Unreal@RC@@AEBAAEBIXZ
     ?GetClassGeneratedBy@UClass@Unreal@RC@@QEAAAEAPEAVUObject@23@XZ
     ?GetClassGeneratedBy@UClass@Unreal@RC@@QEBAAEAPEBVUObject@23@XZ
     ?GetClassPrivate@FField@Unreal@RC@@AEAAAEAPEAVFFieldClass@23@XZ
     ?GetClassPrivate@FField@Unreal@RC@@AEBAAEAPEBVFFieldClass@23@XZ
     ?GetClassPrivate@UObjectBase@Unreal@RC@@QEAAAEAPEAVUClass@23@XZ
     ?GetClassPrivate@UObjectBase@Unreal@RC@@QEBAAEAPEBVUClass@23@XZ
-    ?GetClassUnique@UClass@Unreal@RC@@QEAAAEAHXZ
-    ?GetClassUnique@UClass@Unreal@RC@@QEBAAEBHXZ
+    ?GetClassUnique418@UClass@Unreal@RC@@AEAAAEAIXZ
+    ?GetClassUnique418@UClass@Unreal@RC@@AEBAAEBIXZ
+    ?GetClassUniqueBase@UClass@Unreal@RC@@AEAAAEAHXZ
+    ?GetClassUniqueBase@UClass@Unreal@RC@@AEBAAEBHXZ
     ?GetClassVTableHelperCtorCaller@UClass@Unreal@RC@@QEAAAEAPEAV?$function@$$A6APEAVUObject@Unreal@RC@@PEAX@Z@std@@XZ
     ?GetClassVTableHelperCtorCaller@UClass@Unreal@RC@@QEBAAEAPEBV?$function@$$A6APEAVUObject@Unreal@RC@@PEAX@Z@std@@XZ
-    ?GetClassWithin@UClass@Unreal@RC@@QEAAAEAPEAV123@XZ
-    ?GetClassWithin@UClass@Unreal@RC@@QEBAAEAPEBV123@XZ
+    ?GetClassWithin@UClass@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
+    ?GetClassWithin@UClass@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
     ?GetCleanupWorldTag@UWorld@Unreal@RC@@QEAAAEAIXZ
     ?GetCleanupWorldTag@UWorld@Unreal@RC@@QEBAAEBIXZ
+    ?GetClusterAndFlags@FUObjectItem@Unreal@RC@@QEAAAEAHXZ
+    ?GetClusterAndFlags@FUObjectItem@Unreal@RC@@QEBAAEBHXZ
+    ?GetClusterIndex@FUObjectItem@Unreal@RC@@QEAAAEAHXZ
+    ?GetClusterIndex@FUObjectItem@Unreal@RC@@QEBAAEBHXZ
+    ?GetClusterRootIndex@FUObjectItem@Unreal@RC@@QEAAAEAHXZ
+    ?GetClusterRootIndex@FUObjectItem@Unreal@RC@@QEBAAEBHXZ
     ?GetCommittedPersistentLevelName@UWorld@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetCommittedPersistentLevelName@UWorld@Unreal@RC@@QEBAAEBVFName@23@XZ
-    ?GetComparisonIndex@FName@Unreal@RC@@QEBAIXZ
-    ?GetComparisonIndexInternal@FName@Unreal@RC@@QEBAIXZ
+    ?GetComparisonIndex@FName@Unreal@RC@@QEBA?AUFNameEntryId@23@XZ
+    ?GetComparisonIndexInternal@FName@Unreal@RC@@QEBA?AUFNameEntryId@23@XZ
     ?GetComponentsByClass@AActor@Unreal@RC@@QEAA?AV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@PEAVUClass@23@@Z
     ?GetConfigOverridePlatform@UObject@Unreal@RC@@QEBAPEB_WXZ
     ?GetConfiguredInternetSpeed@UPlayer@Unreal@RC@@QEAAAEAHXZ
     ?GetConfiguredInternetSpeed@UPlayer@Unreal@RC@@QEBAAEBHXZ
     ?GetConfiguredLanSpeed@UPlayer@Unreal@RC@@QEAAAEAHXZ
     ?GetConfiguredLanSpeed@UPlayer@Unreal@RC@@QEBAAEBHXZ
+    ?GetConnectionIdentifier@ULocalPlayer@Unreal@RC@@QEAAAEAHXZ
+    ?GetConnectionIdentifier@ULocalPlayer@Unreal@RC@@QEBAAEBHXZ
+    ?GetConstructFn@FFieldClass@Unreal@RC@@QEAAAEAPEAV?$function@$$A6APEAVFField@Unreal@RC@@PEBX0W4EObjectFlags@23@@Z@std@@XZ
+    ?GetConstructFn@FFieldClass@Unreal@RC@@QEBAAEAPEBV?$function@$$A6APEAVFField@Unreal@RC@@PEBX0W4EObjectFlags@23@@Z@std@@XZ
     ?GetContextHandle@FWorldContext@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetContextHandle@FWorldContext@Unreal@RC@@QEBAAEBVFName@23@XZ
     ?GetControllerId@ULocalPlayer@Unreal@RC@@QEAAAEAHXZ
@@ -1241,6 +1324,7 @@ EXPORTS
     ?GetCppStructOps@UScriptStruct@Unreal@RC@@QEBAAEAPEBUICppStructOps@123@XZ
     ?GetCppType@UEnum@Unreal@RC@@QEAAAEAVFString@23@XZ
     ?GetCppType@UEnum@Unreal@RC@@QEBAAEBVFString@23@XZ
+    ?GetCurrentCallbackInfo@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBAPEAUFCallbackMetadata@2345@XZ
     ?GetCurrentID@AGameMode@Unreal@RC@@QEAAAEAHXZ
     ?GetCurrentID@AGameMode@Unreal@RC@@QEBAAEBHXZ
     ?GetCurrentNetSpeed@UPlayer@Unreal@RC@@QEAAAEAHXZ
@@ -1250,6 +1334,8 @@ EXPORTS
     ?GetD@FGuid@Unreal@RC@@QEAAIXZ
     ?GetDebugDrawTraceTag@UWorld@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetDebugDrawTraceTag@UWorld@Unreal@RC@@QEBAAEBVFName@23@XZ
+    ?GetDefaultObject@FFieldClass@Unreal@RC@@QEAAAEAPEAVFField@23@XZ
+    ?GetDefaultObject@FFieldClass@Unreal@RC@@QEBAAEAPEBVFField@23@XZ
     ?GetDefaultPlayerName@AGameMode@Unreal@RC@@QEAAAEAVFText@23@XZ
     ?GetDefaultPlayerName@AGameMode@Unreal@RC@@QEBAAEBVFText@23@XZ
     ?GetDefaultPlayerName@AGameModeBase@Unreal@RC@@QEAAAEAVFText@23@XZ
@@ -1294,8 +1380,9 @@ EXPORTS
     ?GetDestructorLinkNext@FProperty@Unreal@RC@@QEAAAEAPEAV123@XZ
     ?GetDestructorLinkNext@FProperty@Unreal@RC@@QEBAAEAPEBV123@XZ
     ?GetDetailedInfoInternal@UObject@Unreal@RC@@QEBA?AVFString@23@XZ
-    ?GetDisplayIndex@FName@Unreal@RC@@QEBAIXZ
-    ?GetDisplayIndexFast@FName@Unreal@RC@@QEBAIXZ
+    ?GetDetourName@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA?AV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@XZ
+    ?GetDisplayIndex@FName@Unreal@RC@@QEBA?AUFNameEntryId@23@XZ
+    ?GetDisplayIndexFast@FName@Unreal@RC@@QEBA?AUFNameEntryId@23@XZ
     ?GetDisplayString@ITextData@Unreal@RC@@QEBAAEBVFString@23@XZ
     ?GetElementProp@FSetProperty@Unreal@RC@@QEAAAEAPEAVFProperty@23@XZ
     ?GetElementProp@FSetProperty@Unreal@RC@@QEBAAEAPEBVFProperty@23@XZ
@@ -1307,6 +1394,7 @@ EXPORTS
     ?GetEmptyUsingStruct@UDataTable@Unreal@RC@@IEBAAEAVUScriptStruct@23@XZ
     ?GetEngineMessageClass@AGameMode@Unreal@RC@@QEAAAEAV?$TSubclassOf@VULocalMessage@Unreal@RC@@@23@XZ
     ?GetEngineMessageClass@AGameMode@Unreal@RC@@QEBAAEBV?$TSubclassOf@VULocalMessage@Unreal@RC@@@23@XZ
+    ?GetEngineVersion@UKismetSystemLibrary@Unreal@RC@@SA?AVFString@23@XZ
     ?GetEnum@FByteProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUEnum@Unreal@RC@@@23@XZ
     ?GetEnum@FByteProperty@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUEnum@Unreal@RC@@@23@XZ
     ?GetEnum@FEnumProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUEnum@Unreal@RC@@@23@XZ
@@ -1314,9 +1402,10 @@ EXPORTS
     ?GetEnumDisplayNameFn@UEnum@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXH@Z@std@@XZ
     ?GetEnumDisplayNameFn@UEnum@Unreal@RC@@QEBAAEAPEBV?$function@$$A6AXH@Z@std@@XZ
     ?GetEnumFlags@UEnum@Unreal@RC@@QEAA?AW4EEnumFlags@23@XZ
-    ?GetEnumFlags_Internal@UEnum@Unreal@RC@@AEAAAEAW4EEnumFlags@23@XZ
-    ?GetEnumFlags_Internal@UEnum@Unreal@RC@@AEBAAEBW4EEnumFlags@23@XZ
+    ?GetEnumFlags_Internal@UEnum@Unreal@RC@@QEAAAEAW4EEnumFlags@23@XZ
+    ?GetEnumFlags_Internal@UEnum@Unreal@RC@@QEBAAEBW4EEnumFlags@23@XZ
     ?GetEnumNameByIndex@UEnum@Unreal@RC@@QEAA?AU?$TTuple@VFName@Unreal@RC@@_J@23@H@Z
+    ?GetEnumNameDataUnsafe@UEnum@Unreal@RC@@AEAAAEAUFNameData@123@XZ
     ?GetEnumNames@UEnum@Unreal@RC@@QEAA?AV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetEnumNamesAsVector@UEnum@Unreal@RC@@QEAAXAEAV?$vector@U?$pair@VFName@Unreal@RC@@_J@std@@V?$allocator@U?$pair@VFName@Unreal@RC@@_J@std@@@2@@std@@@Z
     ?GetEnumNamesNewUnsafe@UEnum@Unreal@RC@@AEAAAEAV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
@@ -1329,6 +1418,7 @@ EXPORTS
     ?GetEventGraphCallOffset@UFunction@Unreal@RC@@QEBAAEBHXZ
     ?GetEventGraphFunction@UFunction@Unreal@RC@@QEAAAEAPEAV123@XZ
     ?GetEventGraphFunction@UFunction@Unreal@RC@@QEBAAEAPEBV123@XZ
+    ?GetExecutorCount@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEBA_KW4memory_order@std@@@Z
     ?GetExporterName@UObject@Unreal@RC@@QEAA?AVFName@23@XZ
     ?GetExternalReferences@FWorldContext@Unreal@RC@@QEAAAEAV?$TArray@PEAV?$TObjectPtr@VUWorld@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetExternalReferences@FWorldContext@Unreal@RC@@QEBAAEBV?$TArray@PEAV?$TObjectPtr@VUWorld@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
@@ -1338,8 +1428,13 @@ EXPORTS
     ?GetFFieldFNameUnsafe@FField@Unreal@RC@@AEAA?AVFName@23@XZ
     ?GetFFieldOwnerUnsafe@FField@Unreal@RC@@AEAA?AVFFieldVariant@23@XZ
     ?GetFName@FField@Unreal@RC@@QEAA?AVFName@23@XZ
-    ?GetFName@FFieldClass@Unreal@RC@@QEBA?AVFName@23@XZ
+    ?GetFName@FField@Unreal@RC@@QEBA?AVFName@23@XZ
+    ?GetFName@FFieldClass@Unreal@RC@@QEAAAEAVFName@23@XZ
+    ?GetFName@FFieldClass@Unreal@RC@@QEBAAEBVFName@23@XZ
     ?GetFName@FFieldClassVariant@Unreal@RC@@QEBA?AVFName@23@XZ
+    ?GetFName@UObject@Unreal@RC@@QEBA?AVFName@23@XZ
+    ?GetFakeVPtr@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAAEAPEBUFStructOpsFakeVTable@Private@CoreUObject@UE@34@XZ
+    ?GetFakeVPtr@ICppStructOps@UScriptStruct@Unreal@RC@@QEBAAEAPEBUFStructOpsFakeVTable@Private@CoreUObject@UE@34@XZ
     ?GetFieldMask@FBoolProperty@Unreal@RC@@QEAAAEAEXZ
     ?GetFieldMask@FBoolProperty@Unreal@RC@@QEBAAEBEXZ
     ?GetFieldSize@FBoolProperty@Unreal@RC@@QEAAAEAEXZ
@@ -1349,6 +1444,12 @@ EXPORTS
     ?GetFirstProperty@UStruct@Unreal@RC@@QEAAPEAVFProperty@23@XZ
     ?GetFirstPropertyToInit@UFunction@Unreal@RC@@QEAAAEAPEAVFProperty@23@XZ
     ?GetFirstPropertyToInit@UFunction@Unreal@RC@@QEBAAEAPEBVFProperty@23@XZ
+    ?GetFlags@FUObjectItem@Unreal@RC@@AEAAAEAHXZ
+    ?GetFlags@FUObjectItem@Unreal@RC@@AEBAAEBHXZ
+    ?GetFlagsAndRefCount@FUObjectItem@Unreal@RC@@QEAAAEA_JXZ
+    ?GetFlagsAndRefCount@FUObjectItem@Unreal@RC@@QEBAAEB_JXZ
+    ?GetFlagsInternal@FUObjectItem@Unreal@RC@@AEAAHXZ
+    ?GetFlagsInternal@FUObjectItem@Unreal@RC@@AEBAHXZ
     ?GetFlagsPrivate@FField@Unreal@RC@@QEAAAEAW4EObjectFlags@23@XZ
     ?GetFlagsPrivate@FField@Unreal@RC@@QEBAAEBW4EObjectFlags@23@XZ
     ?GetFloatingPointPropertyValue@FNumericProperty@Unreal@RC@@QEAANPEBX@Z
@@ -1357,23 +1458,33 @@ EXPORTS
     ?GetFullName@UObject@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAV123@@Z
     ?GetFullPurgeTriggered@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetFullPurgeTriggered@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetFunc@UFunction@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAUFFrame@23@PEAX@Z@std@@XZ
-    ?GetFunc@UFunction@Unreal@RC@@QEBAAEAPEBV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAUFFrame@23@PEAX@Z@std@@XZ
-    ?GetFuncMap@UClass@Unreal@RC@@QEAAAEAV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
-    ?GetFuncMap@UClass@Unreal@RC@@QEBAAEBV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
+    ?GetFunc419@UFunction@Unreal@RC@@AEAAAEAPEAV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@XZ
+    ?GetFunc419@UFunction@Unreal@RC@@AEBAAEAPEBV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@XZ
+    ?GetFunc@UFunction@Unreal@RC@@QEAAAEAPEAV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@XZ
+    ?GetFuncBase@UFunction@Unreal@RC@@AEAAAEAP8UObject@23@EAAXAEAUFFrame@23@QEAX@ZXZ
+    ?GetFuncBase@UFunction@Unreal@RC@@AEBAAEBQ8UObject@23@EAAXAEAUFFrame@23@QEAX@ZXZ
+    ?GetFuncMap@UClass@Unreal@RC@@QEAAAEAV?$TMap@VFName@Unreal@RC@@V?$TObjectPtr@VUFunction@Unreal@RC@@@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@V?$TObjectPtr@VUFunction@Unreal@RC@@@23@$0A@@23@@23@XZ
+    ?GetFuncMap@UClass@Unreal@RC@@QEBAAEBV?$TMap@VFName@Unreal@RC@@V?$TObjectPtr@VUFunction@Unreal@RC@@@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@V?$TObjectPtr@VUFunction@Unreal@RC@@@23@$0A@@23@@23@XZ
+    ?GetFuncMapLock@UClass@Unreal@RC@@QEAAAEAVFPlatformRWLock@UE@23@XZ
+    ?GetFuncMapLock@UClass@Unreal@RC@@QEBAAEBVFPlatformRWLock@UE@23@XZ
     ?GetFuncPtr@UFunction@Unreal@RC@@QEAAP6AXPEAVUObject@23@AEAUFFrame@23@PEAX@ZXZ
     ?GetFunctionByName@UObject@Unreal@RC@@QEAAPEAVUFunction@23@PEB_W@Z
     ?GetFunctionByName@UObject@Unreal@RC@@QEAAPEAVUFunction@23@VFName@23@@Z
     ?GetFunctionByNameInChain@UObject@Unreal@RC@@QEAAPEAVUFunction@23@PEB_W@Z
     ?GetFunctionByNameInChain@UObject@Unreal@RC@@QEAAPEAVUFunction@23@VFName@23@@Z
     ?GetFunctionCallspace@UObject@Unreal@RC@@QEAAHPEAVUFunction@23@PEAUFFrame@23@@Z
-    ?GetFunctionFlags@UFunction@Unreal@RC@@QEAAAEAW4EFunctionFlags@23@XZ
-    ?GetFunctionFlags@UFunction@Unreal@RC@@QEBAAEBW4EFunctionFlags@23@XZ
+    ?GetFunctionFlags417@UFunction@Unreal@RC@@AEAAAEAW4EFunctionFlags@23@XZ
+    ?GetFunctionFlags417@UFunction@Unreal@RC@@AEBAAEBW4EFunctionFlags@23@XZ
+    ?GetFunctionFlags@UFunction@Unreal@RC@@QEAAAEAIXZ
+    ?GetFunctionFlags@UFunction@Unreal@RC@@QEBAAEBIXZ
+    ?GetFunctionFlagsBase@UFunction@Unreal@RC@@AEAAAEAIXZ
+    ?GetFunctionFlagsBase@UFunction@Unreal@RC@@AEBAAEBIXZ
     ?GetFunctionHookCallbackData@UFunction@Unreal@RC@@QEAAPEAUUnrealScriptCallbackData@23@H@Z
     ?GetFunctionHookData@UFunction@Unreal@RC@@IEAAAEAVUnrealScriptFunctionData@23@XZ
-    ?GetGUObjectArrayAddress@UObjectArray@Unreal@RC@@SAPEAXXZ
+    ?GetGUObjectArrayAddress@FUObjectArray@Unreal@RC@@SAPEAXXZ
     ?GetGameModeClassAliases@AGameMode@Unreal@RC@@QEAAAEAV?$TArray@UFGameClassShortName@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetGameModeClassAliases@AGameMode@Unreal@RC@@QEBAAEBV?$TArray@UFGameClassShortName@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetGameName@UKismetSystemLibrary@Unreal@RC@@SA?AVFString@23@XZ
     ?GetGameNetDriverReplicationSystem@AGameModeBase@Unreal@RC@@QEAAAEAW4EReplicationSystem@23@XZ
     ?GetGameNetDriverReplicationSystem@AGameModeBase@Unreal@RC@@QEBAAEBW4EReplicationSystem@23@XZ
     ?GetGameSession@AGameMode@Unreal@RC@@QEAAAEAPEAVAGameSession@23@XZ
@@ -1382,6 +1493,8 @@ EXPORTS
     ?GetGameSession@AGameModeBase@Unreal@RC@@QEBAAEBV?$TObjectPtr@VAGameSession@Unreal@RC@@@23@XZ
     ?GetGameSessionClass@AGameModeBase@Unreal@RC@@QEAAAEAV?$TSubclassOf@VAGameSession@Unreal@RC@@@23@XZ
     ?GetGameSessionClass@AGameModeBase@Unreal@RC@@QEBAAEBV?$TSubclassOf@VAGameSession@Unreal@RC@@@23@XZ
+    ?GetGameThreadId@Unreal@RC@@YA?AVid@thread@std@@XZ
+    ?GetGameThreadIdRaw@Unreal@RC@@YA?AVid@thread@std@@XZ
     ?GetGameViewport@FWorldContext@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUGameViewportClient@Unreal@RC@@@23@XZ
     ?GetGameViewport@FWorldContext@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUGameViewportClient@Unreal@RC@@@23@XZ
     ?GetGarbageObjectsToVerify@FWorldContext@Unreal@RC@@QEAAAEAV?$TSet@UFObjectKey@Unreal@RC@@U?$DefaultKeyFuncs@UFObjectKey@Unreal@RC@@$0A@@23@VFDefaultSetAllocator@23@@23@XZ
@@ -1390,8 +1503,11 @@ EXPORTS
     ?GetHUDClass@AGameMode@Unreal@RC@@QEBAAEBV?$TSubclassOf@VAHUD@Unreal@RC@@@23@XZ
     ?GetHUDClass@AGameModeBase@Unreal@RC@@QEAAAEAV?$TSubclassOf@VAHUD@Unreal@RC@@@23@XZ
     ?GetHUDClass@AGameModeBase@Unreal@RC@@QEBAAEBV?$TSubclassOf@VAHUD@Unreal@RC@@@23@XZ
+    ?GetHookNameFromMetadata@Hook@Unreal@RC@@YA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAUFCallbackMetadata@Internal@123@@Z
     ?GetHookedFunctionsMap@Internal@Unreal@RC@@YAAEAV?$unordered_map@PEBVUFunction@Unreal@RC@@VUnrealScriptFunctionData@23@U?$hash@PEBVUFunction@Unreal@RC@@@std@@U?$equal_to@PEBVUFunction@Unreal@RC@@@6@V?$allocator@U?$pair@QEBVUFunction@Unreal@RC@@VUnrealScriptFunctionData@23@@std@@@6@@std@@XZ
     ?GetID@FProperty@Unreal@RC@@QEBA?AVFName@23@XZ
+    ?GetId@FFieldClass@Unreal@RC@@QEAAAEA_KXZ
+    ?GetId@FFieldClass@Unreal@RC@@QEBAAEB_KXZ
     ?GetImportKeyField@UDataTable@Unreal@RC@@QEAAAEAVFString@23@XZ
     ?GetImportKeyField@UDataTable@Unreal@RC@@QEBAAEBVFString@23@XZ
     ?GetInactivePlayerArray@AGameMode@Unreal@RC@@QEAAAEAV?$TArray@V?$TObjectPtr@VAPlayerState@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
@@ -1412,6 +1528,8 @@ EXPORTS
     ?GetInterfaces@UClass@Unreal@RC@@QEBAAEBV?$TArray@UFImplementedInterface@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetInternalIndex@UObjectBase@Unreal@RC@@QEAAHXZ
     ?GetInternalIndex@UObjectBase@Unreal@RC@@QEBA?BHXZ
+    ?GetInternalIndex_Private@UObjectBase@Unreal@RC@@QEAAAEAHXZ
+    ?GetInternalIndex_Private@UObjectBase@Unreal@RC@@QEBAAEBHXZ
     ?GetIsInBlockTillLevelStreamingCompleted@UWorld@Unreal@RC@@QEAAAEAIXZ
     ?GetIsInBlockTillLevelStreamingCompleted@UWorld@Unreal@RC@@QEBAAEBIXZ
     ?GetIsSetPointer@FOptionalProperty@Unreal@RC@@IEBAPEA_NPEAX@Z
@@ -1442,44 +1560,71 @@ EXPORTS
     ?GetMapFlags@FMapProperty@Unreal@RC@@QEBAAEBW4EMapPropertyFlags@23@XZ
     ?GetMapLayout@FMapProperty@Unreal@RC@@QEAAAEAUFScriptMapLayout@23@XZ
     ?GetMapLayout@FMapProperty@Unreal@RC@@QEBAAEBUFScriptMapLayout@23@XZ
+    ?GetMasterSerialNumber@FUObjectArray@Unreal@RC@@QEAAAEAVFThreadSafeCounter@23@XZ
+    ?GetMasterSerialNumber@FUObjectArray@Unreal@RC@@QEBAAEBVFThreadSafeCounter@23@XZ
     ?GetMatchState@AGameMode@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetMatchState@AGameMode@Unreal@RC@@QEBAAEBVFName@23@XZ
+    ?GetMaxChunks@TUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetMaxChunks@TUObjectArray@Unreal@RC@@QEBAAEBHXZ
+    ?GetMaxElements@TUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetMaxElements@TUObjectArray@Unreal@RC@@QEBAAEBHXZ
     ?GetMaxInactivePlayers@AGameMode@Unreal@RC@@QEAAAEAHXZ
     ?GetMaxInactivePlayers@AGameMode@Unreal@RC@@QEBAAEBHXZ
+    ?GetMaxObjectsNotConsideredByGC@FUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetMaxObjectsNotConsideredByGC@FUObjectArray@Unreal@RC@@QEBAAEBHXZ
     ?GetMetaClass@FClassProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
     ?GetMetaClass@FClassProperty@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
     ?GetMetaClass@FSoftClassProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
     ?GetMetaClass@FSoftClassProperty@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
+    ?GetMinAlignment506@UStruct@Unreal@RC@@AEAAAEAFXZ
+    ?GetMinAlignment506@UStruct@Unreal@RC@@AEBAAEBFXZ
     ?GetMinAlignment@FProperty@Unreal@RC@@QEBAHXZ
-    ?GetMinAlignment@UStruct@Unreal@RC@@QEAAAEAHXZ
-    ?GetMinAlignment@UStruct@Unreal@RC@@QEBAAEBHXZ
+    ?GetMinAlignment@UStruct@Unreal@RC@@QEAAAEAFXZ
+    ?GetMinAlignment@UStruct@Unreal@RC@@QEBAAEBFXZ
+    ?GetMinAlignmentBase@UStruct@Unreal@RC@@AEAAAEAHXZ
+    ?GetMinAlignmentBase@UStruct@Unreal@RC@@AEBAAEBHXZ
     ?GetMinRespawnDelay@AGameMode@Unreal@RC@@QEAAAEAMXZ
     ?GetMinRespawnDelay@AGameMode@Unreal@RC@@QEBAAEBMXZ
     ?GetMulticastDelegate@FMulticastDelegateProperty@Unreal@RC@@QEBAPEBV?$TMulticastScriptDelegate@UFWeakObjectPtr@Unreal@RC@@@23@PEBX@Z
+    ?GetMutableNames@FNameData@UEnum@Unreal@RC@@QEAAPEAVFName@34@XZ
+    ?GetMutableValues@FNameData@UEnum@Unreal@RC@@QEAAPEA_JXZ
     ?GetName@FField@Unreal@RC@@QEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
+    ?GetName@FField@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?GetName@FFieldClass@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?GetName@FFieldClassVariant@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?GetName@UObject@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
+    ?GetNameAt@FNameData@UEnum@Unreal@RC@@QEBA?AVFName@34@H@Z
     ?GetNameByValue@UEnum@Unreal@RC@@QEAA?AVFName@23@_J@Z
     ?GetNamePrivate@FField@Unreal@RC@@AEAAAEAVFName@23@XZ
     ?GetNamePrivate@FField@Unreal@RC@@AEBAAEBVFName@23@XZ
     ?GetNamePrivate@UObjectBase@Unreal@RC@@QEAAAEAVFName@23@XZ
     ?GetNamePrivate@UObjectBase@Unreal@RC@@QEBAAEBVFName@23@XZ
-    ?GetNames@UEnum@Unreal@RC@@QEAAAEAV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
-    ?GetNames@UEnum@Unreal@RC@@QEBAAEBV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNameToFieldClassMap@FFieldClass@Unreal@RC@@SAAEAV?$TMap@VFName@Unreal@RC@@PEAVFFieldClass@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVFFieldClass@23@$0A@@23@@23@XZ
+    ?GetNames415@UEnum@Unreal@RC@@AEAAAEAV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNames415@UEnum@Unreal@RC@@AEBAAEBV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNames416@UEnum@Unreal@RC@@AEAAAEAV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNames416@UEnum@Unreal@RC@@AEBAAEBV?$TArray@U?$TTuple@VFName@Unreal@RC@@_J@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNames507@UEnum@Unreal@RC@@AEAAAEAUFNameData@123@XZ
+    ?GetNames507@UEnum@Unreal@RC@@AEBAAEBUFNameData@123@XZ
+    ?GetNames@FNameData@UEnum@Unreal@RC@@QEBAPEBVFName@34@XZ
+    ?GetNamesBase@UEnum@Unreal@RC@@AEAAAEAV?$TArray@U?$TTuple@VFName@Unreal@RC@@E@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNamesBase@UEnum@Unreal@RC@@AEBAAEBV?$TArray@U?$TTuple@VFName@Unreal@RC@@E@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNativeFunctionLookupTable@UClass@Unreal@RC@@QEAAAEAV?$TArray@UFNativeFunctionLookup@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNativeFunctionLookupTable@UClass@Unreal@RC@@QEBAAEBV?$TArray@UFNativeFunctionLookup@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetNativePropertyValues@UObject@Unreal@RC@@QEBA_NAEAV?$TMap@VFString@Unreal@RC@@V123@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFString@Unreal@RC@@V123@$0A@@23@@23@I@Z
-    ?GetNetFields@UClass@Unreal@RC@@QEAAAEAV?$TArray@PEAVUField@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
-    ?GetNetFields@UClass@Unreal@RC@@QEBAAEBV?$TArray@PEAVUField@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNetFields@UClass@Unreal@RC@@QEAAAEAV?$TArray@V?$TObjectPtr@VUField@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetNetFields@UClass@Unreal@RC@@QEBAAEBV?$TArray@V?$TObjectPtr@VUField@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetNetPushIdDynamic@UObject@Unreal@RC@@QEBAHXZ
     ?GetNetworkActors@UWorld@Unreal@RC@@QEAAAEAV?$TSet@PEAVAActor@Unreal@RC@@U?$DefaultKeyFuncs@PEAVAActor@Unreal@RC@@$0A@@23@VFDefaultSetAllocator@23@@23@XZ
     ?GetNetworkActors@UWorld@Unreal@RC@@QEBAAEBV?$TSet@PEAVAActor@Unreal@RC@@U?$DefaultKeyFuncs@PEAVAActor@Unreal@RC@@$0A@@23@VFDefaultSetAllocator@23@@23@XZ
     ?GetNext@FField@Unreal@RC@@AEAAAEAPEAV123@XZ
     ?GetNext@FField@Unreal@RC@@AEBAAEAPEBV123@XZ
-    ?GetNext@UField@Unreal@RC@@QEAAAEAPEAV123@XZ
-    ?GetNext@UField@Unreal@RC@@QEBAAEAPEBV123@XZ
+    ?GetNext@UField@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUField@Unreal@RC@@@23@XZ
+    ?GetNext@UField@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUField@Unreal@RC@@@23@XZ
     ?GetNextFFieldUnsafe@FField@Unreal@RC@@AEAAPEAV123@XZ
     ?GetNextField@UField@Unreal@RC@@IEAAPEAV123@XZ
     ?GetNextFieldAsProperty@FField@Unreal@RC@@QEAAPEAVFProperty@23@XZ
+    ?GetNextPropertyAndAdvance@FCustomPropertyListNode@Unreal@RC@@SAPEAVFProperty@23@AEAPEBU123@@Z
     ?GetNextRef@FProperty@Unreal@RC@@QEAAAEAPEAV123@XZ
     ?GetNextRef@FProperty@Unreal@RC@@QEBAAEAPEBV123@XZ
     ?GetNextSwitchCountdown@UWorld@Unreal@RC@@QEAAAEAMXZ
@@ -1488,8 +1633,12 @@ EXPORTS
     ?GetNextURL@UWorld@Unreal@RC@@QEBAAEBVFString@23@XZ
     ?GetNumBots@AGameMode@Unreal@RC@@QEAAAEAHXZ
     ?GetNumBots@AGameMode@Unreal@RC@@QEBAAEBHXZ
-    ?GetNumChunks@UObjectArray@Unreal@RC@@SAHXZ
-    ?GetNumElements@UObjectArray@Unreal@RC@@SAHXZ
+    ?GetNumChunks@FUObjectArray@Unreal@RC@@SAHXZ
+    ?GetNumChunks@TUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetNumChunks@TUObjectArray@Unreal@RC@@QEBAAEBHXZ
+    ?GetNumElements@FUObjectArray@Unreal@RC@@SAHXZ
+    ?GetNumElements@TUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetNumElements@TUObjectArray@Unreal@RC@@QEBAAEBHXZ
     ?GetNumInvalidReflectionCaptureComponents@UWorld@Unreal@RC@@QEAAAEAIXZ
     ?GetNumInvalidReflectionCaptureComponents@UWorld@Unreal@RC@@QEBAAEBIXZ
     ?GetNumLightingUnbuiltObjects@UWorld@Unreal@RC@@QEAAAEAIXZ
@@ -1510,19 +1659,43 @@ EXPORTS
     ?GetNumTravellingPlayers@AGameMode@Unreal@RC@@QEBAAEBHXZ
     ?GetNumUnbuiltReflectionCaptures@UWorld@Unreal@RC@@QEAAAEAIXZ
     ?GetNumUnbuiltReflectionCaptures@UWorld@Unreal@RC@@QEBAAEBIXZ
-    ?GetNumber@FName@Unreal@RC@@QEBAIXZ
+    ?GetNumber@FName@Unreal@RC@@QEBAHXZ
     ?GetNumericPropertyValueToString@FNumericProperty@Unreal@RC@@QEAA?AVFString@23@PEBX@Z
-    ?GetObjectArraySize@UObjectArray@Unreal@RC@@SAHXZ
+    ?GetObjAvailableList427@FUObjectArray@Unreal@RC@@AEAAAEAV?$TArray@HV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
+    ?GetObjAvailableList427@FUObjectArray@Unreal@RC@@AEBAAEBV?$TArray@HV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
+    ?GetObjAvailableListBase@FUObjectArray@Unreal@RC@@AEAAAEAV?$TLockFreePointerListLIFO@H@23@XZ
+    ?GetObjAvailableListBase@FUObjectArray@Unreal@RC@@AEBAAEBV?$TLockFreePointerListLIFO@H@23@XZ
+    ?GetObjAvailableListEstimateCount@FUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetObjAvailableListEstimateCount@FUObjectArray@Unreal@RC@@QEBAAEBHXZ
+    ?GetObjFirstGCIndex@FUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetObjFirstGCIndex@FUObjectArray@Unreal@RC@@QEBAAEBHXZ
+    ?GetObjLastNonGCIndex@FUObjectArray@Unreal@RC@@QEAAAEAHXZ
+    ?GetObjLastNonGCIndex@FUObjectArray@Unreal@RC@@QEBAAEBHXZ
+    ?GetObjObjects@FUObjectArray@Unreal@RC@@QEAAAEAVTUObjectArray@23@XZ
+    ?GetObjObjects@FUObjectArray@Unreal@RC@@QEBAAEBVTUObjectArray@23@XZ
+    ?GetObject@FUObjectItem@Unreal@RC@@AEAAAEAPEAVUObjectBase@23@XZ
+    ?GetObject@FUObjectItem@Unreal@RC@@AEBAAEAPEBVUObjectBase@23@XZ
+    ?GetObjectArraySize@FUObjectArray@Unreal@RC@@SAHXZ
     ?GetObjectFlags@UObjectBase@Unreal@RC@@QEAAAEAW4EObjectFlags@23@XZ
     ?GetObjectFlags@UObjectBase@Unreal@RC@@QEBAAEBW4EObjectFlags@23@XZ
     ?GetObjectIndex_Private@FWeakObjectPtr@Unreal@RC@@AEBAHXZ
     ?GetObjectItem@UObjectBase@Unreal@RC@@QEAAPEAUFUObjectItem@23@XZ
     ?GetObjectItem@UObjectBase@Unreal@RC@@QEBAPEBUFUObjectItem@23@XZ
-    ?GetObjectItemSize@UObjectArray@Unreal@RC@@SAHXZ
+    ?GetObjectItemSize@FUObjectArray@Unreal@RC@@SAHXZ
     ?GetObjectPropertyValue@FObjectPropertyBase@Unreal@RC@@QEBAPEAVUObject@23@PEBX@Z
-    ?GetOffset_ForInternal@FProperty@Unreal@RC@@QEAAHXZ
+    ?GetObjectPtr@TUObjectArray@Unreal@RC@@QEAAPEAUFUObjectItem@23@H@Z
+    ?GetObjectPtr@TUObjectArray@Unreal@RC@@QEBAPEAUFUObjectItem@23@H@Z
+    ?GetObjectPtrLow@FUObjectItem@Unreal@RC@@QEAAAEAIXZ
+    ?GetObjectPtrLow@FUObjectItem@Unreal@RC@@QEBAAEBIXZ
+    ?GetObjects@TUObjectArray@Unreal@RC@@QEAAAEAPEAPEAUFUObjectItem@23@XZ
+    ?GetObjects@TUObjectArray@Unreal@RC@@QEBAAEAPEAPEBUFUObjectItem@23@XZ
+    ?GetOffset_ForInternal@FProperty@Unreal@RC@@QEBAHXZ
     ?GetOffset_Internal@FProperty@Unreal@RC@@QEAAAEAHXZ
     ?GetOffset_Internal@FProperty@Unreal@RC@@QEBAAEBHXZ
+    ?GetOpenForDisregardForGC411@FUObjectArray@Unreal@RC@@AEAAAEA_NXZ
+    ?GetOpenForDisregardForGC411@FUObjectArray@Unreal@RC@@AEBAAEB_NXZ
+    ?GetOpenForDisregardForGCBase@FUObjectArray@Unreal@RC@@AEAAAEAHXZ
+    ?GetOpenForDisregardForGCBase@FUObjectArray@Unreal@RC@@AEBAAEBHXZ
     ?GetOptionalPropertyValue@?$TPropertyTypeFundamentals@C@Unreal@RC@@SACPEBX@Z
     ?GetOptionalPropertyValue@?$TPropertyTypeFundamentals@E@Unreal@RC@@SAEPEBX@Z
     ?GetOptionalPropertyValue@?$TPropertyTypeFundamentals@F@Unreal@RC@@SAFPEBX@Z
@@ -1590,6 +1763,8 @@ EXPORTS
     ?GetOutermostOwner@FField@Unreal@RC@@QEAAPEAVUObject@23@XZ
     ?GetOwner@FField@Unreal@RC@@AEAAAEAVFFieldVariant@23@XZ
     ?GetOwner@FField@Unreal@RC@@AEBAAEBVFFieldVariant@23@XZ
+    ?GetOwnerModName@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA?AV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@XZ
+    ?GetOwnerModNameFromMetadata@Hook@Unreal@RC@@YA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAUFCallbackMetadata@Internal@123@@Z
     ?GetOwnerVariant@FField@Unreal@RC@@QEAA?AVFFieldVariant@23@XZ
     ?GetOwnerVariant@FFieldVariant@Unreal@RC@@QEAA?AV123@XZ
     ?GetOwningClassName@USparseDelegateFunction@Unreal@RC@@QEAAAEAVFName@23@XZ
@@ -1611,10 +1786,14 @@ EXPORTS
     ?GetPathName@FField@Unreal@RC@@QEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAVUObject@23@@Z
     ?GetPathName@UObject@Unreal@RC@@QEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAV123@@Z
     ?GetPathName@UObject@Unreal@RC@@QEBAXPEAV123@AEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
-    ?GetPauseDelay@UWorld@Unreal@RC@@QEAAAEANXZ
-    ?GetPauseDelay@UWorld@Unreal@RC@@QEBAAEBNXZ
+    ?GetPauseDelay501@UWorld@Unreal@RC@@AEAAAEANXZ
+    ?GetPauseDelay501@UWorld@Unreal@RC@@AEBAAEBNXZ
+    ?GetPauseDelayBase@UWorld@Unreal@RC@@AEAAAEAMXZ
+    ?GetPauseDelayBase@UWorld@Unreal@RC@@AEBAAEBMXZ
     ?GetPendingMapChangeFailureDescription@FWorldContext@Unreal@RC@@QEAAAEAVFString@23@XZ
     ?GetPendingMapChangeFailureDescription@FWorldContext@Unreal@RC@@QEBAAEBVFString@23@XZ
+    ?GetPendingVisibilityLock@UWorld@Unreal@RC@@QEAAAEAVFPlatformRWLock@UE@23@XZ
+    ?GetPendingVisibilityLock@UWorld@Unreal@RC@@QEBAAEBVFPlatformRWLock@UE@23@XZ
     ?GetPerModuleDataObjects@UWorld@Unreal@RC@@QEAAAEAV?$TArray@V?$TObjectPtr@VUObject@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetPerModuleDataObjects@UWorld@Unreal@RC@@QEBAAEBV?$TArray@V?$TObjectPtr@VUObject@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetPitch@FRotator@Unreal@RC@@QEAANXZ
@@ -1631,6 +1810,10 @@ EXPORTS
     ?GetPostConstructLink@UStruct@Unreal@RC@@QEBAAEAPEBVFProperty@23@XZ
     ?GetPostConstructLinkNext@FProperty@Unreal@RC@@QEAAAEAPEAV123@XZ
     ?GetPostConstructLinkNext@FProperty@Unreal@RC@@QEBAAEAPEBV123@XZ
+    ?GetPostProcessVolumeCachedSizes@UWorld@Unreal@RC@@QEAAAEAV?$TArray@NV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
+    ?GetPostProcessVolumeCachedSizes@UWorld@Unreal@RC@@QEBAAEBV?$TArray@NV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
+    ?GetPreAllocatedObjects@TUObjectArray@Unreal@RC@@QEAAAEAPEAUFUObjectItem@23@XZ
+    ?GetPreAllocatedObjects@TUObjectArray@Unreal@RC@@QEBAAEAPEBUFUObjectItem@23@XZ
     ?GetPrefixCPP@UStruct@Unreal@RC@@QEBAPEB_WXZ
     ?GetPreloadDependencies@FField@Unreal@RC@@QEAAXAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
     ?GetPreloadDependencies@UObject@Unreal@RC@@QEAAXAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
@@ -1638,6 +1821,8 @@ EXPORTS
     ?GetPreparingLevelNames@UWorld@Unreal@RC@@QEBAAEBV?$TArray@VFName@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetPrestreamPackages@UObject@Unreal@RC@@QEAAXAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
     ?GetPrimaryAssetId@UObject@Unreal@RC@@QEBA?AUFPrimaryAssetId@23@XZ
+    ?GetPrimarySerialNumber@FUObjectArray@Unreal@RC@@QEAAAEAVFThreadSafeCounter@23@XZ
+    ?GetPrimarySerialNumber@FUObjectArray@Unreal@RC@@QEBAAEBVFThreadSafeCounter@23@XZ
     ?GetPropertiesSize@UStruct@Unreal@RC@@QEAAAEAHXZ
     ?GetPropertiesSize@UStruct@Unreal@RC@@QEBAAEBHXZ
     ?GetPropertyByName@UObject@Unreal@RC@@QEAAPEAVFProperty@23@PEB_W@Z
@@ -1648,8 +1833,12 @@ EXPORTS
     ?GetPropertyClass@FFieldPathProperty@Unreal@RC@@QEBAAEAPEBVFFieldClass@23@XZ
     ?GetPropertyClass@FObjectPropertyBase@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
     ?GetPropertyClass@FObjectPropertyBase@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUClass@Unreal@RC@@@23@XZ
+    ?GetPropertyFlags420@FProperty@Unreal@RC@@AEAAAEAW4EPropertyFlags@23@XZ
+    ?GetPropertyFlags420@FProperty@Unreal@RC@@AEBAAEBW4EPropertyFlags@23@XZ
     ?GetPropertyFlags@FProperty@Unreal@RC@@QEAAAEAW4EPropertyFlags@23@XZ
     ?GetPropertyFlags@FProperty@Unreal@RC@@QEBAAEBW4EPropertyFlags@23@XZ
+    ?GetPropertyFlagsBase@FProperty@Unreal@RC@@AEAAAEA_KXZ
+    ?GetPropertyFlagsBase@FProperty@Unreal@RC@@AEBAAEB_KXZ
     ?GetPropertyLink@UStruct@Unreal@RC@@QEAAAEAPEAVFProperty@23@XZ
     ?GetPropertyLink@UStruct@Unreal@RC@@QEBAAEAPEBVFProperty@23@XZ
     ?GetPropertyLinkNext@FProperty@Unreal@RC@@QEAAAEAPEAV123@XZ
@@ -1816,10 +2005,23 @@ EXPORTS
     ?GetRPCId@UFunction@Unreal@RC@@QEBAAEBGXZ
     ?GetRPCResponseId@UFunction@Unreal@RC@@QEAAAEAGXZ
     ?GetRPCResponseId@UFunction@Unreal@RC@@QEBAAEBGXZ
-    ?GetRealTimeSeconds@UWorld@Unreal@RC@@QEAAAEANXZ
-    ?GetRealTimeSeconds@UWorld@Unreal@RC@@QEBAAEBNXZ
+    ?GetRawPointer@FFieldVariant@Unreal@RC@@QEBAPEAXXZ
+    ?GetRealTimeSeconds501@UWorld@Unreal@RC@@AEAAAEANXZ
+    ?GetRealTimeSeconds501@UWorld@Unreal@RC@@AEBAAEBNXZ
+    ?GetRealTimeSecondsBase@UWorld@Unreal@RC@@AEAAAEAMXZ
+    ?GetRealTimeSecondsBase@UWorld@Unreal@RC@@AEBAAEBMXZ
+    ?GetRefCount@FUObjectItem@Unreal@RC@@QEAAAEAHXZ
+    ?GetRefCount@FUObjectItem@Unreal@RC@@QEBAAEBHXZ
+    ?GetRefCountInternal@FUObjectItem@Unreal@RC@@AEAAHXZ
+    ?GetRefCountInternal@FUObjectItem@Unreal@RC@@AEBAHXZ
     ?GetRefLink@UStruct@Unreal@RC@@QEAAAEAPEAVFProperty@23@XZ
     ?GetRefLink@UStruct@Unreal@RC@@QEBAAEAPEBVFProperty@23@XZ
+    ?GetReferenceSchema@UClass@Unreal@RC@@QEAAAEAVFSchemaOwner@GC@UE@23@XZ
+    ?GetReferenceSchema@UClass@Unreal@RC@@QEBAAEBVFSchemaOwner@GC@UE@23@XZ
+    ?GetReferenceTokenStream@UClass@Unreal@RC@@QEAAAEAUFGCReferenceTokenStream@23@XZ
+    ?GetReferenceTokenStream@UClass@Unreal@RC@@QEBAAEBUFGCReferenceTokenStream@23@XZ
+    ?GetRemoteId@FUObjectItem@Unreal@RC@@QEAAAEAEXZ
+    ?GetRemoteId@FUObjectItem@Unreal@RC@@QEBAAEBEXZ
     ?GetRepIndex@FProperty@Unreal@RC@@QEAAAEAGXZ
     ?GetRepIndex@FProperty@Unreal@RC@@QEBAAEBGXZ
     ?GetRepNotifyFunc@FProperty@Unreal@RC@@QEAAAEAVFName@23@XZ
@@ -1846,16 +2048,22 @@ EXPORTS
     ?GetScale3D@FTransform@Unreal@RC@@QEAAAEAUFVector@23@XZ
     ?GetScript@UStruct@Unreal@RC@@QEAAAEAV?$TArray@EV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
     ?GetScript@UStruct@Unreal@RC@@QEBAAEBV?$TArray@EV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@XZ
-    ?GetScriptAndPropertyObjectReferences@UStruct@Unreal@RC@@QEAAAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
-    ?GetScriptAndPropertyObjectReferences@UStruct@Unreal@RC@@QEBAAEBV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetScriptAndPropertyObjectReferences@UStruct@Unreal@RC@@QEAAAEAV?$TArray@V?$TObjectPtr@VUObject@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetScriptAndPropertyObjectReferences@UStruct@Unreal@RC@@QEBAAEBV?$TArray@V?$TObjectPtr@VUObject@Unreal@RC@@@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetScriptObjectReferences@UStruct@Unreal@RC@@QEAAAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetScriptObjectReferences@UStruct@Unreal@RC@@QEBAAEBV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetSerialNumber@FUObjectItem@Unreal@RC@@QEAAAEAHXZ
+    ?GetSerialNumber@FUObjectItem@Unreal@RC@@QEBAAEBHXZ
     ?GetServerStatReplicator@AGameModeBase@Unreal@RC@@QEAAAEAV?$TObjectPtr@VAServerStatReplicator@Unreal@RC@@@23@XZ
     ?GetServerStatReplicator@AGameModeBase@Unreal@RC@@QEBAAEBV?$TObjectPtr@VAServerStatReplicator@Unreal@RC@@@23@XZ
     ?GetServerStatReplicatorClass@AGameModeBase@Unreal@RC@@QEAAAEAV?$TSubclassOf@VAServerStatReplicator@Unreal@RC@@@23@XZ
     ?GetServerStatReplicatorClass@AGameModeBase@Unreal@RC@@QEBAAEBV?$TSubclassOf@VAServerStatReplicator@Unreal@RC@@@23@XZ
+    ?GetSetLayout507@FSetProperty@Unreal@RC@@AEAAAEAUFScriptSetLayout@23@XZ
+    ?GetSetLayout507@FSetProperty@Unreal@RC@@AEBAAEBUFScriptSetLayout@23@XZ
     ?GetSetLayout@FSetProperty@Unreal@RC@@QEAAAEAUFScriptSetLayout@23@XZ
     ?GetSetLayout@FSetProperty@Unreal@RC@@QEBAAEBUFScriptSetLayout@23@XZ
+    ?GetSetLayoutBase@FSetProperty@Unreal@RC@@AEAAAEAUFScriptSetLayout@23@XZ
+    ?GetSetLayoutBase@FSetProperty@Unreal@RC@@AEBAAEBUFScriptSetLayout@23@XZ
     ?GetSignatureFunction@FDelegateProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUFunction@Unreal@RC@@@23@XZ
     ?GetSignatureFunction@FDelegateProperty@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUFunction@Unreal@RC@@@23@XZ
     ?GetSignatureFunction@FMulticastDelegateProperty@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUFunction@Unreal@RC@@@23@XZ
@@ -1863,13 +2071,13 @@ EXPORTS
     ?GetSignedIntPropertyValue@FNumericProperty@Unreal@RC@@QEAA_JPEAX@Z
     ?GetSize@FProperty@Unreal@RC@@QEAAHXZ
     ?GetSize@FProperty@Unreal@RC@@QEBAHXZ
-    ?GetSize@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAAEAHXZ
+    ?GetSize@ICppStructOps@UScriptStruct@Unreal@RC@@QEAAAEBHXZ
     ?GetSize@ICppStructOps@UScriptStruct@Unreal@RC@@QEBAAEBHXZ
     ?GetSize@UScriptStruct@Unreal@RC@@QEAAHXZ
     ?GetSparseClassData@UClass@Unreal@RC@@QEAAAEAPEAXXZ
     ?GetSparseClassData@UClass@Unreal@RC@@QEBAAEAPEBXXZ
-    ?GetSparseClassDataStruct@UClass@Unreal@RC@@QEAAAEAPEAVUScriptStruct@23@XZ
-    ?GetSparseClassDataStruct@UClass@Unreal@RC@@QEBAAEAPEBVUScriptStruct@23@XZ
+    ?GetSparseClassDataStruct@UClass@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUScriptStruct@Unreal@RC@@@23@XZ
+    ?GetSparseClassDataStruct@UClass@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUScriptStruct@Unreal@RC@@@23@XZ
     ?GetSparseClassDataStruct@UObject@Unreal@RC@@QEBAPEAVUScriptStruct@23@XZ
     ?GetSpectatorClass@AGameMode@Unreal@RC@@QEAAAEAV?$TSubclassOf@VASpectatorPawn@Unreal@RC@@@23@XZ
     ?GetSpectatorClass@AGameMode@Unreal@RC@@QEBAAEBV?$TSubclassOf@VASpectatorPawn@Unreal@RC@@@23@XZ
@@ -1883,21 +2091,30 @@ EXPORTS
     ?GetStruct@FStructProperty@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUScriptStruct@Unreal@RC@@@23@XZ
     ?GetStructFlags@UScriptStruct@Unreal@RC@@QEAAAEAW4EStructFlags@23@XZ
     ?GetStructFlags@UScriptStruct@Unreal@RC@@QEBAAEBW4EStructFlags@23@XZ
+    ?GetStructStateFlags@UStruct@Unreal@RC@@QEAAAEAU?$atomic@G@std@@XZ
+    ?GetStructStateFlags@UStruct@Unreal@RC@@QEBAAEBU?$atomic@G@std@@XZ
     ?GetStructureSize@UStruct@Unreal@RC@@QEBAHXZ
     ?GetSubobjectsWithStableNamesForNetworking@UObject@Unreal@RC@@QEAAXAEAV?$TArray@PEAVUObject@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@@Z
-    ?GetSuperClass@FFieldClass@Unreal@RC@@QEBAPEAV123@XZ
+    ?GetSuperClass@FFieldClass@Unreal@RC@@QEAAAEAPEAV123@XZ
+    ?GetSuperClass@FFieldClass@Unreal@RC@@QEBAAEAPEBV123@XZ
     ?GetSuperClass@FFieldClassVariant@Unreal@RC@@QEBA?AV123@XZ
     ?GetSuperClass@UClass@Unreal@RC@@QEAAPEAV123@XZ
     ?GetSuperClass@UClass@Unreal@RC@@QEBAPEBV123@XZ
     ?GetSuperFuncMap@UClass@Unreal@RC@@QEAAAEAV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
     ?GetSuperFuncMap@UClass@Unreal@RC@@QEBAAEBV?$TMap@VFName@Unreal@RC@@PEAVUFunction@23@VFDefaultSetAllocator@23@U?$TDefaultMapHashableKeyFuncs@VFName@Unreal@RC@@PEAVUFunction@23@$0A@@23@@23@XZ
     ?GetSuperScriptStruct@UScriptStruct@Unreal@RC@@QEAAPEAV123@XZ
+    ?GetSuperStruct507@UStruct@Unreal@RC@@AEAAAEAV?$TObjectPtr@VUStruct@Unreal@RC@@@23@XZ
+    ?GetSuperStruct507@UStruct@Unreal@RC@@AEBAAEBV?$TObjectPtr@VUStruct@Unreal@RC@@@23@XZ
     ?GetSuperStruct@UStruct@Unreal@RC@@QEAAAEAPEAV123@XZ
     ?GetSuperStruct@UStruct@Unreal@RC@@QEBAAEAPEBV123@XZ
+    ?GetSuperStructBase@UStruct@Unreal@RC@@AEAAAEAU?$TNonAccessTrackedObjectPtr@VUStruct@Unreal@RC@@@ObjectPtr_Private@23@XZ
+    ?GetSuperStructBase@UStruct@Unreal@RC@@AEBAAEBU?$TNonAccessTrackedObjectPtr@VUStruct@Unreal@RC@@@ObjectPtr_Private@23@XZ
     ?GetThisCurrentWorld@FWorldContext@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUWorld@Unreal@RC@@@23@XZ
     ?GetThisCurrentWorld@FWorldContext@Unreal@RC@@QEBAAEBV?$TObjectPtr@VUWorld@Unreal@RC@@@23@XZ
-    ?GetTimeSeconds@UWorld@Unreal@RC@@QEAAAEANXZ
-    ?GetTimeSeconds@UWorld@Unreal@RC@@QEBAAEBNXZ
+    ?GetTimeSeconds501@UWorld@Unreal@RC@@AEAAAEANXZ
+    ?GetTimeSeconds501@UWorld@Unreal@RC@@AEBAAEBNXZ
+    ?GetTimeSecondsBase@UWorld@Unreal@RC@@AEAAAEAMXZ
+    ?GetTimeSecondsBase@UWorld@Unreal@RC@@AEBAAEBMXZ
     ?GetTimeSinceLastPendingKillPurge@UWorld@Unreal@RC@@QEAAAEAMXZ
     ?GetTimeSinceLastPendingKillPurge@UWorld@Unreal@RC@@QEBAAEBMXZ
     ?GetTransform@AActor@Unreal@RC@@QEAA?AUFTransform@23@XZ
@@ -1906,10 +2123,15 @@ EXPORTS
     ?GetTravelType@FWorldContext@Unreal@RC@@QEBAAEBEXZ
     ?GetTravelURL@FWorldContext@Unreal@RC@@QEAAAEAVFString@23@XZ
     ?GetTravelURL@FWorldContext@Unreal@RC@@QEBAAEBVFString@23@XZ
+    ?GetTypeHash@Unreal@RC@@YAIUFNameEntryId@12@@Z
     ?GetTypeHash@Unreal@RC@@YAIVFName@12@@Z
     ?GetTypedOuter@UObject@Unreal@RC@@QEAAPEAV123@PEAVUClass@23@@Z
     ?GetTypedOwner@FField@Unreal@RC@@QEAAPEAVUObject@23@PEAVUClass@23@@Z
     ?GetUObject@FUObjectItem@Unreal@RC@@QEBAPEAVUObject@23@XZ
+    ?GetUObjectCreateListeners@FUObjectArray@Unreal@RC@@QEAAAEAV?$TArray@PEAVFUObjectCreateListener@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetUObjectCreateListeners@FUObjectArray@Unreal@RC@@QEBAAEBV?$TArray@PEAVFUObjectCreateListener@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetUObjectDeleteListeners@FUObjectArray@Unreal@RC@@QEAAAEAV?$TArray@PEAVFUObjectDeleteListener@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
+    ?GetUObjectDeleteListeners@FUObjectArray@Unreal@RC@@QEBAAEBV?$TArray@PEAVFUObjectDeleteListener@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetURL@UWorld@Unreal@RC@@QEAAAEAUFURL@23@XZ
     ?GetURL@UWorld@Unreal@RC@@QEBAAEBUFURL@23@XZ
     ?GetUberGraphFramePointerProperty@UClass@Unreal@RC@@QEAAAEAPEAVFStructProperty@23@XZ
@@ -1917,11 +2139,18 @@ EXPORTS
     ?GetUnderlyingProp@FEnumProperty@Unreal@RC@@QEAAAEAPEAVFNumericProperty@23@XZ
     ?GetUnderlyingProp@FEnumProperty@Unreal@RC@@QEBAAEAPEBVFNumericProperty@23@XZ
     ?GetUnderlyingProperty@FEnumProperty@Unreal@RC@@QEAAPEAVFNumericProperty@23@XZ
-    ?GetUnpausedTimeSeconds@UWorld@Unreal@RC@@QEAAAEANXZ
-    ?GetUnpausedTimeSeconds@UWorld@Unreal@RC@@QEBAAEBNXZ
+    ?GetUniqueNameIndexCounter@FFieldClass@Unreal@RC@@QEAAAEAU?$atomic@H@std@@XZ
+    ?GetUniqueNameIndexCounter@FFieldClass@Unreal@RC@@QEBAAEBU?$atomic@H@std@@XZ
+    ?GetUnpausedTimeSeconds501@UWorld@Unreal@RC@@AEAAAEANXZ
+    ?GetUnpausedTimeSeconds501@UWorld@Unreal@RC@@AEBAAEBNXZ
+    ?GetUnpausedTimeSecondsBase@UWorld@Unreal@RC@@AEAAAEAMXZ
+    ?GetUnpausedTimeSecondsBase@UWorld@Unreal@RC@@AEBAAEBMXZ
+    ?GetUnqiueNameIndexCounter@FFieldClass@Unreal@RC@@QEAAAEAVFThreadSafeCounter@23@XZ
+    ?GetUnqiueNameIndexCounter@FFieldClass@Unreal@RC@@QEBAAEBVFThreadSafeCounter@23@XZ
     ?GetUnresolvedScriptProperties@UStruct@Unreal@RC@@QEAAAEAPEAV?$TArray@U?$TTuple@U?$TFieldPath@VFField@Unreal@RC@@@Unreal@RC@@H@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetUnresolvedScriptProperties@UStruct@Unreal@RC@@QEBAAEAPEBV?$TArray@U?$TTuple@U?$TFieldPath@VFField@Unreal@RC@@@Unreal@RC@@H@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetUnsignedIntPropertyValue@FNumericProperty@Unreal@RC@@QEAA_KPEBX@Z
+    ?GetValueAt@FNameData@UEnum@Unreal@RC@@QEBA_JH@Z
     ?GetValuePointerForRead@FOptionalProperty@Unreal@RC@@QEBAPEBXPEBX@Z
     ?GetValuePointerForRead@FOptionalPropertyLayout@Unreal@RC@@QEBAPEBXPEBX@Z
     ?GetValuePointerForReadIfSet@FOptionalProperty@Unreal@RC@@QEBAPEBXPEBX@Z
@@ -1948,6 +2177,7 @@ EXPORTS
     ?GetValuePtrByPropertyNameInChain@UObject@Unreal@RC@@QEAAPEAXVFName@23@@Z
     ?GetValueTypeHash@FProperty@Unreal@RC@@QEBAIPEBX@Z
     ?GetValueTypeHashInternal@FProperty@Unreal@RC@@QEBAIPEBX@Z
+    ?GetValues@FNameData@UEnum@Unreal@RC@@QEBAPEB_JXZ
     ?GetViewLocationsRenderedLastFrame@UWorld@Unreal@RC@@QEAAAEAV?$TArray@UFVector@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetViewLocationsRenderedLastFrame@UWorld@Unreal@RC@@QEBAAEBV?$TArray@UFVector@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@XZ
     ?GetViewportClient@ULocalPlayer@Unreal@RC@@QEAAAEAV?$TObjectPtr@VUGameViewportClient@Unreal@RC@@@23@XZ
@@ -1965,144 +2195,152 @@ EXPORTS
     ?GetYaw_Internal@FRotator@Unreal@RC@@CANAEBU123@@Z
     ?GetZ@FQuat@Unreal@RC@@QEAANXZ
     ?GetZ@FQuat@Unreal@RC@@QEBANXZ
-    ?GetbActorsInitialized@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbActorsInitialized@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbAggressiveLOD@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbAggressiveLOD@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbAllowAudioPlayback@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbAllowAudioPlayback@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbActorsInitialized@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbActorsInitialized@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbAggressiveLOD@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbAggressiveLOD@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbAllowAudioPlayback@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbAllowAudioPlayback@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbAllowDeferredPhysicsStateCreation@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbAllowDeferredPhysicsStateCreation@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbAreConstraintsDirty@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbAreConstraintsDirty@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbAreConstraintsDirty@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbAreConstraintsDirty@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbAutoEmitLineTerminator@FOutputDevice@Unreal@RC@@QEAAAEA_NXZ
     ?GetbAutoEmitLineTerminator@FOutputDevice@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbBegunPlay@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbBegunPlay@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbCleanedUpWorld@UWorld@Unreal@RC@@QEAAAEAIXZ
-    ?GetbCleanedUpWorld@UWorld@Unreal@RC@@QEBAAEBIXZ
-    ?GetbCooked@UClass@Unreal@RC@@QEAAAEA_NXZ
-    ?GetbCooked@UClass@Unreal@RC@@QEBAAEB_NXZ
+    ?GetbBegunPlay@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbBegunPlay@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbCleanedUpWorld@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbCleanedUpWorld@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbCooked418@UClass@Unreal@RC@@AEAAAEAIXZ
+    ?GetbCooked418@UClass@Unreal@RC@@AEBAAEBIXZ
+    ?GetbCookedBase@UClass@Unreal@RC@@AEAAAEA_NXZ
+    ?GetbCookedBase@UClass@Unreal@RC@@AEBAAEB_NXZ
     ?GetbCppStructOpsFromBaseClass@UScriptStruct@Unreal@RC@@QEAAAEA_NXZ
     ?GetbCppStructOpsFromBaseClass@UScriptStruct@Unreal@RC@@QEBAAEB_NXZ
     ?GetbCreateRenderStateForHiddenComponents@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbCreateRenderStateForHiddenComponents@UWorld@Unreal@RC@@QEBAAEB_NXZ
     ?GetbDebugDrawAllTraceTags@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbDebugDrawAllTraceTags@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbDebugFrameStepExecution@UWorld@Unreal@RC@@QEAAAEAIXZ
-    ?GetbDebugFrameStepExecution@UWorld@Unreal@RC@@QEBAAEBIXZ
-    ?GetbDebugPauseExecution@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbDebugPauseExecution@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbDelayedStart@AGameMode@Unreal@RC@@QEAAAEAIXZ
-    ?GetbDelayedStart@AGameMode@Unreal@RC@@QEBAAEBIXZ
-    ?GetbDoDelayedUpdateCullDistanceVolumes@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbDoDelayedUpdateCullDistanceVolumes@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbDropDetail@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbDropDetail@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbDebugFrameStepExecution@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbDebugFrameStepExecution@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbDebugPauseExecution@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbDebugPauseExecution@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbDelayedStart@AGameMode@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbDelayedStart@AGameMode@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbDoDelayedUpdateCullDistanceVolumes@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbDoDelayedUpdateCullDistanceVolumes@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbDropDetail@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbDropDetail@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbEmulateSplitscreen@ULocalPlayer@Unreal@RC@@QEAAAEA_NXZ
+    ?GetbEmulateSplitscreen@ULocalPlayer@Unreal@RC@@QEBAAEB_NXZ
     ?GetbHack_Force_UsesGameHiddenFlags_True@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbHack_Force_UsesGameHiddenFlags_True@UWorld@Unreal@RC@@QEBAAEB_NXZ
     ?GetbHandleDedicatedServerReplays@AGameMode@Unreal@RC@@QEAAAEA_NXZ
     ?GetbHandleDedicatedServerReplays@AGameMode@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbHasEverBeenInitialized@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbHasEverBeenInitialized@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIgnoreExtraFields@UDataTable@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIgnoreExtraFields@UDataTable@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIgnoreMissingFields@UDataTable@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIgnoreMissingFields@UDataTable@Unreal@RC@@QEBAAEBEXZ
-    ?GetbInTick@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbInTick@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbInitializedAndNeedsCleanup@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbInitializedAndNeedsCleanup@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbHasEverBeenInitialized@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbHasEverBeenInitialized@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIgnoreExtraFields@UDataTable@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIgnoreExtraFields@UDataTable@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIgnoreMissingFields@UDataTable@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIgnoreMissingFields@UDataTable@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbInTick@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbInTick@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbInitializedAndNeedsCleanup@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbInitializedAndNeedsCleanup@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbIsBeingCleanedUp@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbIsBeingCleanedUp@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbIsBuilt@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsBuilt@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIsCameraMoveableWhenPaused@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsCameraMoveableWhenPaused@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIsDefaultLevel@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsDefaultLevel@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIsLevelStreamingFrozen@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsLevelStreamingFrozen@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbIsBuilt@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsBuilt@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIsCameraMoveableWhenPaused@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsCameraMoveableWhenPaused@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIsDefaultLevel@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsDefaultLevel@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIsLevelStreamingFrozen@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsLevelStreamingFrozen@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbIsPrimaryPIEInstance@FWorldContext@Unreal@RC@@QEAAAEA_NXZ
     ?GetbIsPrimaryPIEInstance@FWorldContext@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbIsRunningConstructionScript@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsRunningConstructionScript@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIsTearingDown@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsTearingDown@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbIsWorldInitialized@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbIsWorldInitialized@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbKismetScriptError@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbKismetScriptError@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbIsRunningConstructionScript@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsRunningConstructionScript@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIsTearingDown@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsTearingDown@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbIsWorldInitialized@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbIsWorldInitialized@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbKismetScriptError@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbKismetScriptError@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbLayoutChanging@UClass@Unreal@RC@@QEAAAEA_NXZ
     ?GetbLayoutChanging@UClass@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbMarkedObjectsPendingKill@UWorld@Unreal@RC@@QEAAAEAIXZ
-    ?GetbMarkedObjectsPendingKill@UWorld@Unreal@RC@@QEBAAEBIXZ
-    ?GetbMatchStarted@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbMatchStarted@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbMaterialParameterCollectionInstanceNeedsDeferredUpdate@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbMaterialParameterCollectionInstanceNeedsDeferredUpdate@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbMarkedObjectsPendingKill@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbMarkedObjectsPendingKill@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbMatchStarted@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbMatchStarted@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbMaterialParameterCollectionInstanceNeedsDeferredUpdate@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbMaterialParameterCollectionInstanceNeedsDeferredUpdate@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbNeedsDynamicSubobjectInstancing@UClass@Unreal@RC@@QEAAAEA_NXZ
+    ?GetbNeedsDynamicSubobjectInstancing@UClass@Unreal@RC@@QEBAAEB_NXZ
     ?GetbOriginOffsetThisFrame@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbOriginOffsetThisFrame@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbPauseable@AGameMode@Unreal@RC@@QEAAAEAIXZ
-    ?GetbPauseable@AGameMode@Unreal@RC@@QEBAAEBIXZ
-    ?GetbPauseable@AGameModeBase@Unreal@RC@@QEAAAEAIXZ
-    ?GetbPauseable@AGameModeBase@Unreal@RC@@QEBAAEBIXZ
-    ?GetbPlayersOnly@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbPlayersOnly@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbPlayersOnlyPending@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbPlayersOnlyPending@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbPostTickComponentUpdate@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbPostTickComponentUpdate@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbPauseable@AGameMode@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPauseable@AGameMode@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbPauseable@AGameModeBase@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPauseable@AGameModeBase@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbPlayersOnly@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPlayersOnly@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbPlayersOnlyPending@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPlayersOnlyPending@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbPostTickComponentUpdate@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPostTickComponentUpdate@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbPrepareCppStructOpsCompleted@UScriptStruct@Unreal@RC@@QEAAAEA_NXZ
     ?GetbPrepareCppStructOpsCompleted@UScriptStruct@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbPreserveExistingValues@UDataTable@Unreal@RC@@QEAAAEAEXZ
-    ?GetbPreserveExistingValues@UDataTable@Unreal@RC@@QEBAAEBEXZ
-    ?GetbRequestedBlockOnAsyncLoading@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbRequestedBlockOnAsyncLoading@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbRequiresHitProxies@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbRequiresHitProxies@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbSentSplitJoin@ULocalPlayer@Unreal@RC@@QEAAAEAIXZ
-    ?GetbSentSplitJoin@ULocalPlayer@Unreal@RC@@QEBAAEBIXZ
-    ?GetbShouldCommitPendingMapChange@FWorldContext@Unreal@RC@@QEAAAEAIXZ
-    ?GetbShouldCommitPendingMapChange@FWorldContext@Unreal@RC@@QEBAAEBIXZ
+    ?GetbPreserveExistingValues@UDataTable@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbPreserveExistingValues@UDataTable@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbRequestedBlockOnAsyncLoading@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbRequestedBlockOnAsyncLoading@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbRequiresHitProxies@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbRequiresHitProxies@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbSentSplitJoin@ULocalPlayer@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbSentSplitJoin@ULocalPlayer@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbShouldCommitPendingMapChange@FWorldContext@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbShouldCommitPendingMapChange@FWorldContext@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbShouldDelayGarbageCollect@UWorld@Unreal@RC@@QEAAAEA_NXZ
     ?GetbShouldDelayGarbageCollect@UWorld@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbShouldForceUnloadStreamingLevels@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbShouldForceUnloadStreamingLevels@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbShouldForceVisibleStreamingLevels@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbShouldForceVisibleStreamingLevels@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbShouldSimulatePhysics@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbShouldSimulatePhysics@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbShouldTick@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbShouldTick@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbStartPlayersAsSpectators@AGameMode@Unreal@RC@@QEAAAEAIXZ
-    ?GetbStartPlayersAsSpectators@AGameMode@Unreal@RC@@QEBAAEBIXZ
-    ?GetbStartPlayersAsSpectators@AGameModeBase@Unreal@RC@@QEAAAEAIXZ
-    ?GetbStartPlayersAsSpectators@AGameModeBase@Unreal@RC@@QEBAAEBIXZ
-    ?GetbStartup@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbStartup@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbStreamingDataDirty@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbStreamingDataDirty@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbStripFromClientBuilds@UDataTable@Unreal@RC@@QEAAAEAEXZ
-    ?GetbStripFromClientBuilds@UDataTable@Unreal@RC@@QEBAAEBEXZ
+    ?GetbShouldForceUnloadStreamingLevels@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbShouldForceUnloadStreamingLevels@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbShouldForceVisibleStreamingLevels@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbShouldForceVisibleStreamingLevels@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbShouldRecycleObjectIndices@FUObjectArray@Unreal@RC@@QEAAAEA_NXZ
+    ?GetbShouldRecycleObjectIndices@FUObjectArray@Unreal@RC@@QEBAAEB_NXZ
+    ?GetbShouldSimulatePhysics@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbShouldSimulatePhysics@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbShouldTick@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbShouldTick@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbStartPlayersAsSpectators@AGameMode@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbStartPlayersAsSpectators@AGameMode@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbStartPlayersAsSpectators@AGameModeBase@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbStartPlayersAsSpectators@AGameModeBase@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbStartup@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbStartup@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbStreamingDataDirty@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbStreamingDataDirty@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbStripFromClientBuilds@UDataTable@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbStripFromClientBuilds@UDataTable@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbSupportsMakingInvisibleTransactionRequests@UWorld@Unreal@RC@@QEAAAEAU?$TOptional@_N@23@XZ
     ?GetbSupportsMakingInvisibleTransactionRequests@UWorld@Unreal@RC@@QEBAAEBU?$TOptional@_N@23@XZ
     ?GetbSupportsMakingVisibleTransactionRequests@UWorld@Unreal@RC@@QEAAAEAU?$TOptional@_N@23@XZ
     ?GetbSupportsMakingVisibleTransactionRequests@UWorld@Unreal@RC@@QEBAAEBU?$TOptional@_N@23@XZ
     ?GetbSuppressEventTag@FOutputDevice@Unreal@RC@@QEAAAEA_NXZ
     ?GetbSuppressEventTag@FOutputDevice@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbTickNewlySpawned@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbTickNewlySpawned@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbTriggerPostLoadMap@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbTriggerPostLoadMap@UWorld@Unreal@RC@@QEBAAEBEXZ
-    ?GetbUseSeamlessTravel@AGameMode@Unreal@RC@@QEAAAEAIXZ
-    ?GetbUseSeamlessTravel@AGameMode@Unreal@RC@@QEBAAEBIXZ
-    ?GetbUseSeamlessTravel@AGameModeBase@Unreal@RC@@QEAAAEAIXZ
-    ?GetbUseSeamlessTravel@AGameModeBase@Unreal@RC@@QEBAAEBIXZ
+    ?GetbTickNewlySpawned@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbTickNewlySpawned@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbTriggerPostLoadMap@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbTriggerPostLoadMap@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbUseSeamlessTravel@AGameMode@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbUseSeamlessTravel@AGameMode@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
+    ?GetbUseSeamlessTravel@AGameModeBase@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbUseSeamlessTravel@AGameModeBase@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GetbWaitingOnOnlineSubsystem@FWorldContext@Unreal@RC@@QEAAAEA_NXZ
     ?GetbWaitingOnOnlineSubsystem@FWorldContext@Unreal@RC@@QEBAAEB_NXZ
-    ?GetbWorldWasLoadedThisTick@UWorld@Unreal@RC@@QEAAAEAEXZ
-    ?GetbWorldWasLoadedThisTick@UWorld@Unreal@RC@@QEBAAEBEXZ
+    ?GetbWorldWasLoadedThisTick@UWorld@Unreal@RC@@QEAA?AUBitfieldProxy@23@XZ
+    ?GetbWorldWasLoadedThisTick@UWorld@Unreal@RC@@QEBA?AUConstBitfieldProxy@23@XZ
     ?GlobalConfig@StaticStorage@UnrealInitializer@Unreal@RC@@2UConfig@234@A
     ?GlobalObjectCache@FClassCreateListener@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAVUObject@Unreal@RC@@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@PEAVUObject@Unreal@RC@@@std@@@2@@std@@A
     ?GlobalObjectValueCache@FClassCreateListener@Unreal@RC@@2V?$unordered_map@PEAVUObject@Unreal@RC@@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@U?$hash@PEAVUObject@Unreal@RC@@@5@U?$equal_to@PEAVUObject@Unreal@RC@@@5@V?$allocator@U?$pair@QEAVUObject@Unreal@RC@@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@std@@@5@@std@@A
@@ -2112,14 +2350,17 @@ EXPORTS
     ?HasAllFlags@UObject@Unreal@RC@@QEAA_NW4EObjectFlags@23@@Z
     ?HasAllFunctionFlags@UFunction@Unreal@RC@@QEAA_NW4EFunctionFlags@23@@Z
     ?HasAllPropertyFlags@FProperty@Unreal@RC@@QEAA_NW4EPropertyFlags@23@@Z
+    ?HasAllPropertyFlags@FProperty@Unreal@RC@@QEBA_NW4EPropertyFlags@23@@Z
     ?HasAllStructFlags@UScriptStruct@Unreal@RC@@QEBA@W4EStructFlags@23@@Z
+    ?HasAllocation@FMemoryImageAllocatorBase@Unreal@RC@@QEBA_NXZ
     ?HasAnyCastFlag@UClass@Unreal@RC@@QEBA_NW4EClassCastFlags@23@@Z
     ?HasAnyCastFlags@FFieldClassVariant@Unreal@RC@@QEBA_N_K@Z
     ?HasAnyClassFlags@UClass@Unreal@RC@@QEAA_NW4EClassFlags@23@@Z
+    ?HasAnyFlags@FUObjectItem@Unreal@RC@@QEBA_NW4EInternalObjectFlags@23@@Z
     ?HasAnyFlags@UObject@Unreal@RC@@QEAA_NW4EObjectFlags@23@@Z
     ?HasAnyFunctionFlags@UFunction@Unreal@RC@@QEAA_NW4EFunctionFlags@23@@Z
     ?HasAnyInternalFlags@UObject@Unreal@RC@@QEAA_NW4EInternalObjectFlags@23@@Z
-    ?HasAnyPropertyFlags@FProperty@Unreal@RC@@QEAA_NW4EPropertyFlags@23@@Z
+    ?HasAnyPropertyFlags@FProperty@Unreal@RC@@QEBA_N_K@Z
     ?HasAnyStructFlags@UScriptStruct@Unreal@RC@@QEBA@W4EStructFlags@23@@Z
     ?HasChildren@UStruct@Unreal@RC@@QEAA_NXZ
     ?HasIntrusiveUnsetOptionalState@FProperty@Unreal@RC@@QEAA_NXZ
@@ -2134,6 +2375,7 @@ EXPORTS
     ?HookEndPlay@Unreal@RC@@YAXXZ
     ?HookEngineTick@Unreal@RC@@YAXXZ
     ?HookGameViewportClientTick@Unreal@RC@@YAXXZ
+    ?HookIndexCounter@UnrealScriptFunctionData@Unreal@RC@@0U?$atomic@H@std@@A
     ?HookInitGameState@Unreal@RC@@YAXXZ
     ?HookLoadMap@Unreal@RC@@YAXXZ
     ?HookProcessConsoleExec@Unreal@RC@@YAXXZ
@@ -2143,6 +2385,7 @@ EXPORTS
     ?HookStaticConstructObject@Unreal@RC@@YAXXZ
     ?HookULocalPlayerExec@Unreal@RC@@YAXXZ
     ?HookUStructLink@Unreal@RC@@YAXXZ
+    ?INVALID_BIT@FCallbackMetadata@Internal@Hook@Unreal@RC@@2_KB
     ?Identical@FProperty@Unreal@RC@@QEAA_NPEBX0I@Z
     ?IdenticalImpl@?$TProperty_WithEqualityAndSerializer@CVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAA_NPEBX0I@Z
     ?IdenticalImpl@?$TProperty_WithEqualityAndSerializer@EVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAA_NPEBX0I@Z
@@ -2165,10 +2408,8 @@ EXPORTS
     ?ImportText_InContainer@FProperty@Unreal@RC@@QEBAPEB_WPEB_WPEAXPEAVUObject@23@HPEAVFOutputDevice@23@@Z
     ?ImportText_Internal@FProperty@Unreal@RC@@QEBAPEB_WPEB_WPEAXHPEAVUObject@23@PEAVFOutputDevice@23@@Z
     ?ImportText_Internal@FProperty@Unreal@RC@@QEBAPEB_WPEB_WPEAXW4EPropertyPointerType@23@PEAVUObject@23@HPEAVFOutputDevice@23@@Z
-    ?InitGameStateDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
+    ?IndexToObject@FUObjectArray@Unreal@RC@@SAPEAUFUObjectItem@23@H@Z
     ?InitGameStateInternal@AGameModeBase@Unreal@RC@@2V?$Function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@3@A
-    ?InitGameStatePostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@@2@@std@@A
-    ?InitGameStatePreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@V?$allocator@V?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@@2@@std@@A
     ?Initialize@UnrealInitializer@Unreal@RC@@YAXAEBUConfig@123@@Z
     ?Initialize@Version@Unreal@RC@@SA?AUVersionStatus@23@PEAX@Z
     ?InitializeIntrusiveUnsetOptionalValue@FProperty@Unreal@RC@@QEBAXPEAX@Z
@@ -2200,7 +2441,7 @@ EXPORTS
     ?InitializePropertyValue@?$TPropertyTypeFundamentals@_K@Unreal@RC@@SAPEA_KPEAX@Z
     ?InitializeStatsMetadata@FMalloc@Unreal@RC@@QEAAXXZ
     ?InitializeStruct@UStruct@Unreal@RC@@QEBAXPEAXH@Z
-    ?InitializeValue@FProperty@Unreal@RC@@QEAAXPEAX@Z
+    ?InitializeValue@FProperty@Unreal@RC@@QEBAXPEAX@Z
     ?InitializeValueImpl@?$TProperty@CVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?InitializeValueImpl@?$TProperty@EVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?InitializeValueImpl@?$TProperty@FVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
@@ -2227,8 +2468,8 @@ EXPORTS
     ?InitializeValueImpl@?$TProperty@VFUtf8String@Unreal@RC@@VFProperty@23@@Unreal@RC@@IEAAXPEAX@Z
     ?InitializeValueImpl@?$TProperty@_JVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
     ?InitializeValueImpl@?$TProperty@_KVFNumericProperty@Unreal@RC@@@Unreal@RC@@IEAAXPEAX@Z
-    ?InitializeValueInternal@FProperty@Unreal@RC@@QEBAXPEAX@Z
-    ?InitializeValue_InContainer@FProperty@Unreal@RC@@QEAAXPEAX@Z
+    ?InitializeValueInternal@FProperty@Unreal@RC@@IEBAXPEAX@Z
+    ?InitializeValue_InContainer@FProperty@Unreal@RC@@QEBAXPEAX@Z
     ?InitializeVersionedContainer@UnrealInitializer@Unreal@RC@@YAXXZ
     ?InsertAt@?$TStringBase@D@Unreal@RC@@QEAAXHD@Z
     ?InsertAt@?$TStringBase@_Q@Unreal@RC@@QEAAXH_Q@Z
@@ -2239,8 +2480,12 @@ EXPORTS
     ?InternalGetObjectItem@FWeakObjectPtr@Unreal@RC@@AEBAPEAUFUObjectItem@23@XZ
     ?Internal_GetObjectItem@FWeakObjectPtr@Unreal@RC@@AEBAPEAUFUObjectItem@23@XZ
     ?Internal_IsValid@FWeakObjectPtr@Unreal@RC@@AEBA_N_N0@Z
+    ?Invalidate@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEAA_NXZ
     ?IsA@FField@Unreal@RC@@QEAA_NAEBVFFieldClassVariant@23@@Z
+    ?IsA@FFieldVariant@Unreal@RC@@QEBA_NPEBVFFieldClass@23@@Z
+    ?IsA@FFieldVariant@Unreal@RC@@QEBA_NPEBVUClass@23@@Z
     ?IsA@UObjectBase@Unreal@RC@@QEBA_NPEAVUClass@23@@Z
+    ?IsA@UObjectBase@Unreal@RC@@QEBA_NPEBVUClass@23@@Z
     ?IsAbove@Version@Unreal@RC@@SA_NHH@Z
     ?IsActorTickEnabled@AActor@Unreal@RC@@QEAA_NXZ
     ?IsAsset@UObject@Unreal@RC@@QEBA_NXZ
@@ -2255,21 +2500,28 @@ EXPORTS
     ?IsChildOfInternal@UStruct@Unreal@RC@@CA_NPEBV123@0@Z
     ?IsDebug@Version@Unreal@RC@@SA_NXZ
     ?IsDestructionThreadSafe@UObject@Unreal@RC@@QEBA_NXZ
+    ?IsDynamic@FNameData@UEnum@Unreal@RC@@QEBA_NXZ
     ?IsEditorOnly@UObject@Unreal@RC@@QEBA_NXZ
     ?IsEmpty@?$TStringBase@D@Unreal@RC@@QEBA_NXZ
     ?IsEmpty@?$TStringBase@_Q@Unreal@RC@@QEBA_NXZ
     ?IsEmpty@?$TStringBase@_W@Unreal@RC@@QEBA_NXZ
+    ?IsEngineTickAvailable@UE4SSRuntime@RC@@SA_NXZ
     ?IsEnum@FNumericProperty@Unreal@RC@@QEAA_NXZ
     ?IsEqual@FName@Unreal@RC@@QEBA_NAEBV123@W4ENameCase@23@_N@Z
     ?IsEqual@Version@Unreal@RC@@SA_NHH@Z
     ?IsFieldClass@FFieldClassVariant@Unreal@RC@@AEBA_NXZ
     ?IsFloatingPoint@FNumericProperty@Unreal@RC@@QEBA_NXZ
     ?IsFullNameStableForNetworking@UObject@Unreal@RC@@QEBA_NXZ
+    ?IsGCKeepSet@FUObjectItem@Unreal@RC@@QEAA_NXZ
+    ?IsGameThreadInitialized@Unreal@RC@@YA_NXZ
     ?IsInContainer@FProperty@Unreal@RC@@QEBA_NH@Z
     ?IsInContainer@FProperty@Unreal@RC@@QEBA_NPEBVUStruct@23@@Z
+    ?IsInGameThread@Unreal@RC@@YA_NXZ
+    ?IsInGameThreadRaw@Unreal@RC@@YA_NXZ
     ?IsInteger@FNumericProperty@Unreal@RC@@QEBA_NXZ
     ?IsInternallyThreadSafe@FMalloc@Unreal@RC@@QEBA_NXZ
     ?IsIntrusiveOptionalValueSet@FProperty@Unreal@RC@@QEBA_NPEBX@Z
+    ?IsInvalid@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEBA_NW4memory_order@std@@@Z
     ?IsLocalizedResource@UObject@Unreal@RC@@QEBA_NXZ
     ?IsMemoryOnly@FOutputDevice@Unreal@RC@@QEBA_NXZ
     ?IsNameStableForNetworking@UObject@Unreal@RC@@QEBA_NXZ
@@ -2278,10 +2530,14 @@ EXPORTS
     ?IsNumeric@?$TStringBase@D@Unreal@RC@@QEBA_NXZ
     ?IsNumeric@?$TStringBase@_Q@Unreal@RC@@QEBA_NXZ
     ?IsNumeric@?$TStringBase@_W@Unreal@RC@@QEBA_NXZ
+    ?IsPendingKill@FUObjectItem@Unreal@RC@@QEBA_NXZ
     ?IsPostLoadThreadSafe@UObject@Unreal@RC@@QEBA_NXZ
+    ?IsProcessEventAvailable@UE4SSRuntime@RC@@SA_NXZ
+    ?IsReadOnly@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA_NXZ
     ?IsReadyForAsyncPostLoad@UObject@Unreal@RC@@QEBA_NXZ
     ?IsReadyForFinishDestroy@UObject@Unreal@RC@@QEAA_NXZ
     ?IsReal@UObject@Unreal@RC@@SA_NPEBX@Z
+    ?IsRootSet@FUObjectItem@Unreal@RC@@QEAA_NXZ
     ?IsRootSet@UObject@Unreal@RC@@QEAA_NXZ
     ?IsSafeForRootSet@UObject@Unreal@RC@@QEBA_NXZ
     ?IsSet@FOptionalProperty@Unreal@RC@@QEBA_NPEBX@Z
@@ -2289,7 +2545,7 @@ EXPORTS
     ?IsStructTrashed@UStruct@Unreal@RC@@QEBA_NXZ
     ?IsSupportedForNetworking@UObject@Unreal@RC@@QEBA_NXZ
     ?IsUClass@FFieldClassVariant@Unreal@RC@@AEBA_NXZ
-    ?IsUObject@FFieldVariant@Unreal@RC@@QEAA_NXZ
+    ?IsUObject@FFieldVariant@Unreal@RC@@QEBA_NXZ
     ?IsUnreachable@FUObjectItem@Unreal@RC@@QEBA_NXZ
     ?IsUnreachable@UObject@Unreal@RC@@QEAA_NXZ
     ?IsUnsignedInteger@?$TProperty_Numeric@C@Unreal@RC@@QEAA_NXZ
@@ -2304,11 +2560,13 @@ EXPORTS
     ?IsUnsignedInteger@?$TProperty_Numeric@_K@Unreal@RC@@QEAA_NXZ
     ?IsValid@FFieldClassVariant@Unreal@RC@@QEBA_NXZ
     ?IsValid@FFieldVariant@Unreal@RC@@QEAA_NXZ
+    ?IsValid@FUObjectArray@Unreal@RC@@SA_NPEAUFUObjectItem@23@_N@Z
+    ?IsValid@FUObjectItem@Unreal@RC@@QEBA_N_N@Z
     ?IsValid@ReflectedFunctionBase@Unreal@RC@@QEAA_NXZ
-    ?IsValid@UObjectArray@Unreal@RC@@SA_NPEAUFUObjectItem@23@_N@Z
     ?IsValidIndex@?$TStringBase@D@Unreal@RC@@QEBA_NH@Z
     ?IsValidIndex@?$TStringBase@_Q@Unreal@RC@@QEBA_NH@Z
     ?IsValidIndex@?$TStringBase@_W@Unreal@RC@@QEBA_NH@Z
+    ?IsValidIndex@FNameData@UEnum@Unreal@RC@@QEBA_NH@Z
     ?K2_DestroyActor@AActor@Unreal@RC@@QEAAXXZ
     ?K2_GetActorLocation@AActor@Unreal@RC@@QEAA?AUFVector@23@XZ
     ?K2_GetActorRotation@AActor@Unreal@RC@@QEAA?AUFRotator@23@XZ
@@ -2317,31 +2575,34 @@ EXPORTS
     ?K2_SetActorLocationAndRotation@AActor@Unreal@RC@@QEAA_NUFVector@23@UFRotator@23@_NAEAUFHitResult@23@2@Z
     ?K2_SetActorRotation@AActor@Unreal@RC@@QEAA_NUFRotator@23@_N@Z
     ?K2_TeleportTo@AActor@Unreal@RC@@QEAA_NUFVector@23@UFRotator@23@@Z
+    ?KismetStringLibraryCDO@FName@Unreal@RC@@2PEAVUObject@23@EA
     ?Left@FAnsiString@Unreal@RC@@QEBA?AV123@H@Z
     ?Left@FString@Unreal@RC@@QEBA?AV123@H@Z
     ?Left@FUtf8String@Unreal@RC@@QEBA?AV123@H@Z
     ?Len@?$TStringBase@D@Unreal@RC@@QEBAHXZ
     ?Len@?$TStringBase@_Q@Unreal@RC@@QEBAHXZ
     ?Len@?$TStringBase@_W@Unreal@RC@@QEBAHXZ
+    ?Link@FProperty@Unreal@RC@@QEAAHAEAVFArchive@23@@Z
     ?Link@UStruct@Unreal@RC@@QEAAXAEAVFArchive@23@_N@Z
-    ?LinkInternal@FProperty@Unreal@RC@@QEAAXAEAVFArchive@23@@Z
+    ?LinkInternal@FProperty@Unreal@RC@@IEAAXAEAVFArchive@23@@Z
     ?LinkInternal@UStruct@Unreal@RC@@2V?$Function@$$A6AXPEAVUStruct@Unreal@RC@@AEAVFArchive@23@_N@Z@3@A
+    ?LinkWithoutChangingOffset@FProperty@Unreal@RC@@QEAAXAEAVFArchive@23@@Z
     ?LoadAllAssets@UAssetRegistry@Unreal@RC@@SAXXZ
     ?LoadAllAssetsThread@UAssetRegistry@Unreal@RC@@CAXXZ
     ?LoadExport@UnrealInitializer@Unreal@RC@@YAPEAXV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?LoadExport@UnrealInitializer@Unreal@RC@@YAPEAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
-    ?LoadMapDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?LoadMapInternal@UEngine@Unreal@RC@@2V?$Function@$$A6A_NPEAVUEngine@Unreal@RC@@AEAUFWorldContext@23@UFURL@23@PEAVUPendingNetGame@23@AEAVFString@23@@Z@3@A
-    ?LoadMapPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@@2@@std@@A
-    ?LoadMapPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@@2@@std@@A
     ?LoadObjectPropertyValue@FObjectPropertyBase@Unreal@RC@@QEBAPEAVUObject@23@PEBX@Z
     ?Locals@FFrame@Unreal@RC@@QEAAAEAPEAEXZ
-    ?LockGUObjectArray@UObjectArray@Unreal@RC@@QEAAXXZ
+    ?LockGUObjectArray@FUObjectArray@Unreal@RC@@QEAAXXZ
+    ?Log@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
     ?Log@FOutputDevice@Unreal@RC@@QEAAXPEB_W@Z
     ?Log@FOutputDevice@Unreal@RC@@QEBAXPEB_W@Z
     ?LogfImpl@FOutputDevice@Unreal@RC@@AEAAXPEB_WZZ
     ?LogfImpl@FOutputDevice@Unreal@RC@@AEAAXW4Type@ELogVerbosity@23@PEB_WZZ
     ?Major@Version@Unreal@RC@@2HA
+    ?MakeDynamic@FNameData@UEnum@Unreal@RC@@QEAAXXZ
+    ?MakeNewId@UnrealScriptFunctionData@Unreal@RC@@SAHXZ
     ?Malloc@FMalloc@Unreal@RC@@QEAAPEAX_KI@Z
     ?Malloc@FMemory@Unreal@RC@@SAPEAX_KI@Z
     ?MallocAndMemsetNewFrame@FFrame@Unreal@RC@@SAPEAU123@XZ
@@ -2351,6 +2612,7 @@ EXPORTS
     ?MarkSetAndGetInitializedValuePointerToReplace@FOptionalPropertyLayout@Unreal@RC@@QEBAPEAXPEAX@Z
     ?MarkUnset@FOptionalProperty@Unreal@RC@@QEBAXPEAX@Z
     ?MarkUnset@FOptionalPropertyLayout@Unreal@RC@@QEBAXPEAX@Z
+    ?MaskPointer@FNameData@UEnum@Unreal@RC@@2_KB
     ?MemberOffsets@AGameMode@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@AGameModeBase@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FArrayProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
@@ -2360,6 +2622,7 @@ EXPORTS
     ?MemberOffsets@FDelegateProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FEnumProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FField@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
+    ?MemberOffsets@FFieldClass@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FFieldPathProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FInterfaceProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FMapProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
@@ -2370,8 +2633,11 @@ EXPORTS
     ?MemberOffsets@FSetProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FSoftClassProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FStructProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
+    ?MemberOffsets@FUObjectArray@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
+    ?MemberOffsets@FUObjectItem@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@FWorldContext@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@ICppStructOps@UScriptStruct@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
+    ?MemberOffsets@TUObjectArray@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@UClass@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@UDataTable@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
     ?MemberOffsets@UEnum@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@HU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@std@@@2@@std@@A
@@ -2403,6 +2669,8 @@ EXPORTS
     ?Node@FFrame@Unreal@RC@@QEAAAEAPEAVUFunction@23@XZ
     ?NotifyUObjectCreated@FClassCreateListener@Unreal@RC@@UEAAXPEBVUObjectBase@23@H@Z
     ?NotifyUObjectDeleted@FClassDeleteListener@Unreal@RC@@UEAAXPEBVUObjectBase@23@H@Z
+    ?Num@FNameData@UEnum@Unreal@RC@@QEBAHXZ
+    ?NumElementsPerChunk@TUObjectArray@Unreal@RC@@2HB
     ?NumEnums@UEnum@Unreal@RC@@QEAAHXZ
     ?NumRequiredObjectsConstructed@StaticStorage@Hook@Unreal@RC@@2HA
     ?Object@FFrame@Unreal@RC@@QEAAAEAPEAVUObject@23@XZ
@@ -2416,6 +2684,7 @@ EXPORTS
     ?OnUObjectArrayShutdown@FClassCreateListener@Unreal@RC@@UEAAXXZ
     ?OnUObjectArrayShutdown@FClassDeleteListener@Unreal@RC@@UEAAXXZ
     ?OrderedForEachPropertyInChain@UStruct@Unreal@RC@@QEAA?AU?$TReverseFieldRange@VFProperty@Unreal@RC@@@23@XZ
+    ?OriginalFunctionCallPrevented@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEBA_NXZ
     ?OutParms@FFrame@Unreal@RC@@QEAAAEAPEAUFOutParmRec@23@XZ
     ?OverridePerObjectConfigSection@UObject@Unreal@RC@@QEAAXAEAVFString@23@@Z
     ?PackageFlags@FAssetData@Unreal@RC@@QEAAIXZ
@@ -2443,28 +2712,16 @@ EXPORTS
     ?PreNetReceive@UObject@Unreal@RC@@QEAAXXZ
     ?PreSave@UObject@Unreal@RC@@QEAAXPEBVITargetPlatform@23@@Z
     ?PreSaveRoot@UObject@Unreal@RC@@QEAA_NPEB_W@Z
+    ?PreventOriginalFunctionCall@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAAXXZ
     ?PreviousFrame@FFrame@Unreal@RC@@QEAAAEAPEAU123@XZ
     ?PreviousTrackingFrame@FFrame@Unreal@RC@@QEAAAEAPEAU123@XZ
     ?Printf@FString@Unreal@RC@@SA?AV123@PEB_WZZ
     ?ProcessConsoleExec@UObject@Unreal@RC@@QEAA_NPEB_WAEAVFOutputDevice@23@PEAV123@@Z
-    ?ProcessConsoleExecCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A_NPEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@23@0@Z@std@@V?$allocator@V?$function@$$A6A_NPEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@23@0@Z@std@@@2@@std@@A
-    ?ProcessConsoleExecDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?ProcessConsoleExecGlobalPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@@2@@std@@A
-    ?ProcessConsoleExecGlobalPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@V?$allocator@V?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@@2@@std@@A
     ?ProcessConsoleExecInternal@UObject@Unreal@RC@@2V?$Function@$$A6A_NPEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@23@0@Z@3@A
     ?ProcessEvent@UObject@Unreal@RC@@QEAAXPEAVUFunction@23@PEAX@Z
-    ?ProcessEventDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?ProcessEventInternal@UObject@Unreal@RC@@2V?$Function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@3@A
-    ?ProcessEventPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@@2@@std@@A
-    ?ProcessEventPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@@2@@std@@A
-    ?ProcessInternalDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?ProcessInternalInternal@UObject@Unreal@RC@@2V?$Function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@3@A
-    ?ProcessInternalPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@2@@std@@A
-    ?ProcessInternalPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@2@@std@@A
-    ?ProcessLocalScriptFunctionDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?ProcessLocalScriptFunctionInternal@UObject@Unreal@RC@@2V?$Function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@3@A
-    ?ProcessLocalScriptFunctionPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@2@@std@@A
-    ?ProcessLocalScriptFunctionPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@V?$allocator@V?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@2@@std@@A
     ?PropertyChainForCompiledIn@FFrame@Unreal@RC@@QEAAAEAPEAVFField@23@XZ
     ?PropertyNameToDisplayName@UStruct@Unreal@RC@@QEBA?AVFString@23@VFName@23@@Z
     ?QuantizeSize@FMalloc@Unreal@RC@@QEAA_K_KI@Z
@@ -2474,43 +2731,73 @@ EXPORTS
     ?Realloc@FMalloc@Unreal@RC@@QEAAPEAXPEAX_KI@Z
     ?Realloc@FMemory@Unreal@RC@@SAPEAXPEAX_KI@Z
     ?ReallocExternal@FMemory@Unreal@RC@@CAPEAXPEAX_KI@Z
+    ?Reallocate@FNameData@UEnum@Unreal@RC@@QEAAXH@Z
     ?RegenerateClass@UObject@Unreal@RC@@QEAAPEAVUClass@23@PEAV423@PEAV123@@Z
     ?RegisterAActorTickPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterAActorTickPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@M@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterAActorTickPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterAActorTickPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@M@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterBeginPlayPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@@Z
+    ?RegisterBeginPlayPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterBeginPlayPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@@Z@std@@@Z
+    ?RegisterBeginPlayPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterCallFunctionByNameWithArgumentsPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@@Z
+    ?RegisterCallFunctionByNameWithArgumentsPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUObject@34@PEB_WAEAVFOutputDevice@34@1_N@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterCallFunctionByNameWithArgumentsPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0_N@Z@std@@@Z
+    ?RegisterCallFunctionByNameWithArgumentsPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUObject@34@PEB_WAEAVFOutputDevice@34@1_N@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterDependencies@UObjectBase@Unreal@RC@@QEAAXXZ
     ?RegisterEndPlayPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@@Z
+    ?RegisterEndPlayPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@W4EEndPlayReason@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterEndPlayPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAActor@Unreal@RC@@W4EEndPlayReason@23@@Z@std@@@Z
+    ?RegisterEndPlayPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAActor@34@W4EEndPlayReason@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterEngineTickPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterEngineTickPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUEngine@34@M_N@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterEngineTickPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUEngine@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterEngineTickPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUEngine@34@M_N@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterGameViewportClientTickPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterGameViewportClientTickPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUGameViewportClient@34@M@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterGameViewportClientTickPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@std@@@Z
+    ?RegisterGameViewportClientTickPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUGameViewportClient@34@M@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterHook@UObjectGlobals@Unreal@RC@@YA?AU?$pair@HH@std@@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@V?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@5@1PEAX@Z
     ?RegisterHook@UObjectGlobals@Unreal@RC@@YA?AU?$pair@HH@std@@PEAVUFunction@23@V?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@5@1PEAX@Z
     ?RegisterInitGameStatePostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@@Z
+    ?RegisterInitGameStatePostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAGameModeBase@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterInitGameStatePreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVAGameModeBase@Unreal@RC@@@Z@std@@@Z
+    ?RegisterInitGameStatePreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVAGameModeBase@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterLoadMapPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@@Z
+    ?RegisterLoadMapPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUEngine@34@AEAUFWorldContext@34@UFURL@34@PEAVUPendingNetGame@34@AEAVFString@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterLoadMapPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUEngine@Unreal@RC@@AEAUFWorldContext@45@UFURL@45@PEAVUPendingNetGame@45@AEAVFString@45@@Z@std@@@Z
+    ?RegisterLoadMapPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUEngine@34@AEAUFWorldContext@34@UFURL@34@PEAVUPendingNetGame@34@AEAVFString@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterPostHook@UFunction@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAX@Z
     ?RegisterPostHookForInstance@UFunction@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAXPEAVUObject@23@@Z
     ?RegisterPreHook@UFunction@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAX@Z
     ?RegisterPreHookForInstance@UFunction@Unreal@RC@@QEAAHAEBV?$function@$$A6AXAEAVUnrealScriptFunctionCallableContext@Unreal@RC@@PEAX@Z@std@@PEAXPEAVUObject@23@@Z
     ?RegisterProcessConsoleExecCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A_NPEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@23@0@Z@std@@@Z
+    ?RegisterProcessConsoleExecCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUObject@34@PEB_WAEAVFOutputDevice@34@1@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessConsoleExecGlobalPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@@Z
+    ?RegisterProcessConsoleExecGlobalPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUObject@34@PEB_WAEAVFOutputDevice@34@1@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessConsoleExecGlobalPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AU?$pair@_N_N@std@@PEAVUObject@Unreal@RC@@PEB_WAEAVFOutputDevice@45@0@Z@std@@@Z
+    ?RegisterProcessConsoleExecGlobalPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVUObject@34@PEB_WAEAVFOutputDevice@34@1@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessEventPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@@Z
+    ?RegisterProcessEventPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@PEAVUFunction@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessEventPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@PEAVUFunction@23@PEAX@Z@std@@@Z
+    ?RegisterProcessEventPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@PEAVUFunction@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessInternalPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@Z
+    ?RegisterProcessInternalPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@AEAUFFrame@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessInternalPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@Z
+    ?RegisterProcessInternalPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@AEAUFFrame@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessLocalScriptFunctionPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@Z
+    ?RegisterProcessLocalScriptFunctionPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@AEAUFFrame@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterProcessLocalScriptFunctionPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6AXPEAVUObject@Unreal@RC@@AEAUFFrame@23@PEAX@Z@std@@@Z
+    ?RegisterProcessLocalScriptFunctionPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@X@Hook@Unreal@RC@@PEAVUObject@34@AEAUFFrame@34@PEAX@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterStaticConstructObjectPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@PEAV123@@Z@std@@@Z
+    ?RegisterStaticConstructObjectPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@PEAVUObject@Unreal@RC@@@Hook@Unreal@RC@@AEBUFStaticConstructObjectParameters@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterStaticConstructObjectPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@@Z@std@@@Z
+    ?RegisterStaticConstructObjectPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@PEAVUObject@Unreal@RC@@@Hook@Unreal@RC@@AEBUFStaticConstructObjectParameters@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterULocalPlayerExecPostCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@@Z
+    ?RegisterULocalPlayerExecPostCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RegisterULocalPlayerExecPreCallback@Hook@Unreal@RC@@YAXV?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@@Z
+    ?RegisterULocalPlayerExecPreCallback@Hook@Unreal@RC@@YA_KV?$function@$$A6AXAEAV?$TCallbackIterationData@_N@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@UFCallbackOptions@123@@Z
     ?RemoveAllCallbacks@UnrealScriptFunctionData@Unreal@RC@@QEAAXXZ
     ?RemoveAt@?$TStringBase@D@Unreal@RC@@QEAAXHHW4EAllowShrinking@23@@Z
     ?RemoveAt@?$TStringBase@_Q@Unreal@RC@@QEAAXHHW4EAllowShrinking@23@@Z
@@ -2521,8 +2808,9 @@ EXPORTS
     ?RemoveFromNamesAt@UEnum@Unreal@RC@@QEAAXHH_N@Z
     ?RemoveRow@UDataTable@Unreal@RC@@QEAAXVFName@23@@Z
     ?RemoveRowInternal@UDataTable@Unreal@RC@@IEAAXVFName@23@@Z
-    ?RemoveUObjectCreateListener@UObjectArray@Unreal@RC@@SAXPEAVFUObjectCreateListener@23@@Z
-    ?RemoveUObjectDeleteListener@UObjectArray@Unreal@RC@@SAXPEAVFUObjectDeleteListener@23@@Z
+    ?RemoveSelf@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAAXXZ
+    ?RemoveUObjectCreateListener@FUObjectArray@Unreal@RC@@SAXPEAVFUObjectCreateListener@23@@Z
+    ?RemoveUObjectDeleteListener@FUObjectArray@Unreal@RC@@SAXPEAVFUObjectDeleteListener@23@@Z
     ?Rename@UObject@Unreal@RC@@QEAA_NPEB_WPEAV123@I@Z
     ?Replace@FAnsiString@Unreal@RC@@QEBA?AV123@PEBD0W4Type@ESearchCase@23@@Z
     ?Replace@FString@Unreal@RC@@QEBA?AV123@PEB_W0W4Type@ESearchCase@23@@Z
@@ -2563,6 +2851,7 @@ EXPORTS
     ?ScanTargetToString@RC@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@_K@Z
     ?Self@UAssetRegistryHelpers@Unreal@RC@@2PEAV123@EA
     ?Self@UGameplayStatics@Unreal@RC@@2PEAV123@EA
+    ?Self@UKismetSystemLibrary@Unreal@RC@@2PEAV123@EA
     ?SerialNumbersMatch@FWeakObjectPtr@Unreal@RC@@QEBA_NPEAUFUObjectItem@23@@Z
     ?Serialize@FField@Unreal@RC@@QEAAXAEAVFArchive@23@@Z
     ?Serialize@FOutputDevice@Unreal@RC@@QEAAXPEB_WW4Type@ELogVerbosity@23@AEBVFName@23@N@Z
@@ -2591,7 +2880,9 @@ EXPORTS
     ?SetChunkIDs@FAssetData@Unreal@RC@@QEAAXXZ
     ?SetClass@FField@Unreal@RC@@QEAAXPEAV123@@Z
     ?SetClass@FField@Unreal@RC@@QEAAXPEAVUClass@23@@Z
+    ?SetCurrentCallbackInfo@FCallbackIterationDataCommonImpl@Internal@Hook@Unreal@RC@@QEAAXPEAUFCallbackMetadata@2345@@Z
     ?SetFlags@UObject@Unreal@RC@@QEAAXW4EObjectFlags@23@@Z
+    ?SetFlagsInternal@FUObjectItem@Unreal@RC@@AEAAXW4EInternalObjectFlags@23@@Z
     ?SetFlagsTo@UObject@Unreal@RC@@QEAAXW4EObjectFlags@23@@Z
     ?SetFloatingPointPropertyValue@FNumericProperty@Unreal@RC@@QEAAXPEAXN@Z
     ?SetFuncPtr@UFunction@Unreal@RC@@QEAAXP6AXPEAVUObject@23@AEAUFFrame@23@PEAX@Z@Z
@@ -2605,9 +2896,12 @@ EXPORTS
     ?SetMulticastDelegate@FMulticastDelegateProperty@Unreal@RC@@QEBAXPEAXV?$TMulticastScriptDelegate@UFWeakObjectPtr@Unreal@RC@@@23@@Z
     ?SetNetPushIdDynamic@UObject@Unreal@RC@@QEAAXH@Z
     ?SetNewChunkIDsUnsafe@FAssetData@Unreal@RC@@QEAAXAEAV?$TArray@HV?$TSizedInlineAllocator@$01$0CA@V?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@Unreal@RC@@@23@@Z
+    ?SetNext@FField@Unreal@RC@@QEAAXPEAV123@@Z
+    ?SetNext@FField@Unreal@RC@@QEAAXPEAVUField@23@@Z
     ?SetNumericPropertyValueFromString@FNumericProperty@Unreal@RC@@QEAAXPEAXPEB_W@Z
     ?SetObjectPath@FAssetData@Unreal@RC@@QEAAXVFName@23@@Z
     ?SetObjectPropertyValue@FObjectPropertyBase@Unreal@RC@@QEBAXPEAXPEAVUObject@23@@Z
+    ?SetOffset_Internal@FProperty@Unreal@RC@@IEAAXH@Z
     ?SetOldChunkIDsUnsafe@FAssetData@Unreal@RC@@QEAAXAEAV?$TArray@HV?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@23@@Z
     ?SetOwnerVariant@FField@Unreal@RC@@QEAAXPEAV123@@Z
     ?SetOwnerVariant@FField@Unreal@RC@@QEAAXPEAVUObject@23@@Z
@@ -2707,7 +3001,8 @@ EXPORTS
     ?SetYaw@FRotator@Unreal@RC@@QEAAXN@Z
     ?SetYaw_Internal@FRotator@Unreal@RC@@CAXAEAU123@N@Z
     ?SetZ@FQuat@Unreal@RC@@QEAAXN@Z
-    ?SetupGUObjectArrayAddress@UObjectArray@Unreal@RC@@SAXPEAX@Z
+    ?SetupGUObjectArrayAddress@FUObjectArray@Unreal@RC@@SAXPEAX@Z
+    ?SetupOffset@FProperty@Unreal@RC@@AEAAHXZ
     ?SetupStaticConstructObjectInternalAddress@UObjectGlobals@Unreal@RC@@YAXPEAX@Z
     ?SetupTLSCachesOnCurrentThread@FMalloc@Unreal@RC@@QEAAXXZ
     ?SetupTLSCachesOnCurrentThread@FMemory@Unreal@RC@@SAXXZ
@@ -2722,6 +3017,7 @@ EXPORTS
     ?Split@FAnsiString@Unreal@RC@@QEBAHPEBDAEAV?$TArray@VFAnsiString@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@_N@Z
     ?Split@FString@Unreal@RC@@QEBAHPEB_WAEAV?$TArray@VFString@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@_N@Z
     ?Split@FUtf8String@Unreal@RC@@QEBAHPEB_QAEAV?$TArray@VFUtf8String@Unreal@RC@@V?$TSizedDefaultAllocator@$0CA@@23@@23@_N@Z
+    ?StartCallbackGarbageCollector@Hook@Unreal@RC@@YA_NXZ
     ?StartsWith@?$TStringBase@D@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
     ?StartsWith@?$TStringBase@D@Unreal@RC@@QEBA_NPEBDW4Type@ESearchCase@23@@Z
     ?StartsWith@?$TStringBase@_Q@Unreal@RC@@QEBA_NAEBV123@W4Type@ESearchCase@23@@Z
@@ -3101,11 +3397,10 @@ EXPORTS
     ?StaticClassStorage@UWidgetBlueprintGeneratedClass@Unreal@RC@@0PEAVUClass@23@EA
     ?StaticClassStorage@UWorld@Unreal@RC@@0PEAVUClass@23@EA
     ?StaticConstructObject@UObjectGlobals@Unreal@RC@@YAPEAVUObject@23@AEBUFStaticConstructObjectParameters@23@@Z
-    ?StaticConstructObjectDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
     ?StaticConstructObjectInternal@GlobalState@UObjectGlobals@Unreal@RC@@2V?$Function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@@Z@4@A
     ?StaticConstructObjectInternalDeprecated@GlobalState@UObjectGlobals@Unreal@RC@@2V?$Function@$$A6APEAVUObject@Unreal@RC@@PEBVUClass@23@PEAV123@VFName@23@W4EObjectFlags@23@W4EInternalObjectFlags@23@1_NPEAUFObjectInstancingGraph@23@5PEAX@Z@4@A
-    ?StaticConstructObjectPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@PEAV123@@Z@std@@V?$allocator@V?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@PEAV123@@Z@std@@@2@@std@@A
-    ?StaticConstructObjectPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@@Z@std@@V?$allocator@V?$function@$$A6APEAVUObject@Unreal@RC@@AEBUFStaticConstructObjectParameters@23@@Z@std@@@2@@std@@A
+    ?StaticFindObject_InternalNoToStringFromNames@UObjectGlobals@Unreal@RC@@YAPEAVUObject@23@AEBV?$vector@VFName@Unreal@RC@@V?$allocator@VFName@Unreal@RC@@@std@@@std@@@Z
+    ?StaticFindObject_InternalNoToStringFromStrings@UObjectGlobals@Unreal@RC@@YAPEAVUObject@23@AEBV?$vector@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@V?$allocator@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@2@@std@@@Z
     ?StaticFindObject_InternalSlow@UObjectGlobals@Unreal@RC@@YAPEAVUObject@23@PEAVUClass@23@PEAV423@PEB_W_N@Z
     ?StaticPackage@AActor@Unreal@RC@@CAPEB_WXZ
     ?StaticPackage@AGameMode@Unreal@RC@@CAPEB_WXZ
@@ -3139,11 +3434,14 @@ EXPORTS
     ?StaticSize@FAssetData@Unreal@RC@@SAHXZ
     ?StaticSize@FFieldVariant@Unreal@RC@@SAHXZ
     ?StaticSize@FQuat@Unreal@RC@@SAHXZ
+    ?StaticSize@FText@Unreal@RC@@SAHXZ
     ?StaticSize_Private@FAssetData@Unreal@RC@@0HA
+    ?StaticSize_Private@FText@Unreal@RC@@0HA
     ?Step@FFrame@Unreal@RC@@QEAAXPEAVUObject@23@PEAX@Z
     ?StepCompiledIn@FFrame@Unreal@RC@@QEAAXPEAXPEAVFProperty@23@@Z
     ?StepCompiledIn@FFrame@Unreal@RC@@QEAAXPEAXVFFieldClassVariant@23@@Z
     ?StepExplicitProperty@FFrame@Unreal@RC@@QEAAXQEAXPEAVFProperty@23@@Z
+    ?StopCallbackGarbageCollector@Hook@Unreal@RC@@YA_NXZ
     ?Stricmp@FGenericPlatformStricmp@Unreal@RC@@SAHPEBD0@Z
     ?Stricmp@FGenericPlatformStricmp@Unreal@RC@@SAHPEBDPEBG@Z
     ?Stricmp@FGenericPlatformStricmp@Unreal@RC@@SAHPEBDPEB_Q@Z
@@ -3180,6 +3478,7 @@ EXPORTS
     ?Strnicmp@FGenericPlatformStricmp@Unreal@RC@@SAHPEB_W0_K@Z
     ?Strnicmp@FGenericPlatformStricmp@Unreal@RC@@SAHPEB_WPEBD_K@Z
     ?SupportsNetSharedSerialization@FProperty@Unreal@RC@@QEBA_NXZ
+    ?TagDynamic@FNameData@UEnum@Unreal@RC@@2_KB
     ?TagSubobjects@UObject@Unreal@RC@@QEAAXW4EObjectFlags@23@@Z
     ?TaggedAssetBundles@FAssetData@Unreal@RC@@QEAAPEAUFAssetBundleData@23@XZ
     ?TagsAndValues@FAssetData@Unreal@RC@@QEAAPEAXXZ
@@ -3187,9 +3486,13 @@ EXPORTS
     ?TickInternal@AActor@Unreal@RC@@2V?$Function@$$A6AXPEAVAActor@Unreal@RC@@M@Z@3@A
     ?TickInternal@UEngine@Unreal@RC@@2V?$Function@$$A6AXPEAVUEngine@Unreal@RC@@M_N@Z@3@A
     ?TickInternal@UGameViewportClient@Unreal@RC@@2V?$Function@$$A6AXPEAVUGameViewportClient@Unreal@RC@@M@Z@3@A
-    ?ToFString@FText@Unreal@RC@@QEBAAEBVFString@23@XZ
+    ?ToFAnsiString@FName@Unreal@RC@@QEBA?AVFAnsiString@23@XZ
+    ?ToFString@FName@Unreal@RC@@QEBA?AVFString@23@XZ
+    ?ToFString@FText@Unreal@RC@@QEBA?AVFString@23@XZ
+    ?ToFUtf8String@FName@Unreal@RC@@QEBA?AVFUtf8String@23@XZ
     ?ToField@FFieldVariant@Unreal@RC@@QEAAPEAVFField@23@XZ
     ?ToFieldClass@FFieldClassVariant@Unreal@RC@@AEBAPEBVFFieldClass@23@XZ
+    ?ToFieldUnsafe@FFieldVariant@Unreal@RC@@QEBAPEAVFField@23@XZ
     ?ToLower@FAnsiString@Unreal@RC@@QEBA?AV123@XZ
     ?ToLower@FString@Unreal@RC@@QEBA?AV123@XZ
     ?ToLower@FUtf8String@Unreal@RC@@QEBA?AV123@XZ
@@ -3204,6 +3507,7 @@ EXPORTS
     ?ToStringInternal@FName@Unreal@RC@@2V?$Function@$$A6AXPEBVFName@Unreal@RC@@AEAVFStringOut@23@@Z@3@A
     ?ToUClass@FFieldClassVariant@Unreal@RC@@AEBAPEBVUClass@23@XZ
     ?ToUObject@FFieldVariant@Unreal@RC@@QEAAPEAVUObject@23@XZ
+    ?ToUObjectUnsafe@FFieldVariant@Unreal@RC@@QEBAPEAVUObject@23@XZ
     ?ToUnstableInt@FName@Unreal@RC@@QEBA_KXZ
     ?ToUpper@FAnsiString@Unreal@RC@@QEBA?AV123@XZ
     ?ToUpper@FString@Unreal@RC@@QEBA?AV123@XZ
@@ -3226,19 +3530,54 @@ EXPORTS
     ?TrimStartAndEnd@FAnsiString@Unreal@RC@@QEBA?AV123@XZ
     ?TrimStartAndEnd@FString@Unreal@RC@@QEBA?AV123@XZ
     ?TrimStartAndEnd@FUtf8String@Unreal@RC@@QEBA?AV123@XZ
+    ?TryBeginExecution@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEAA_N_NAEA_N@Z
+    ?TryConstruct@FField@Unreal@RC@@SAPEAV123@AEBVFName@23@AEBVFFieldVariant@23@0W4EObjectFlags@23@@Z
     ?TryMalloc@FMalloc@Unreal@RC@@QEAAPEAX_KI@Z
     ?TryRealloc@FMalloc@Unreal@RC@@QEAAPEAXPEAX_KI@Z
-    ?ULocalPlayerExecDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?ULocalPlayerExecPostCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@V?$allocator@V?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@@2@@std@@A
-    ?ULocalPlayerExecPreCallbacks@StaticStorage@Hook@Unreal@RC@@2V?$vector@V?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@V?$allocator@V?$function@$$A6A?AUULocalPlayerExecCallbackReturnValue@Hook@Unreal@RC@@PEAVULocalPlayer@34@PEAVUWorld@34@PEB_WAEAVFOutputDevice@34@@Z@std@@@2@@std@@A
+    ?UEP_TotalSize@AGameMode@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@AGameModeBase@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FArrayProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FBoolProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FByteProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FClassProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FDelegateProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FEnumProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FField@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FFieldClass@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FFieldPathProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FInterfaceProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FMapProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FMulticastDelegateProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FObjectPropertyBase@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FOutputDevice@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FSetProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FSoftClassProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FStructProperty@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FUObjectArray@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FUObjectItem@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@FWorldContext@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@ICppStructOps@UScriptStruct@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@TUObjectArray@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UClass@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UDataTable@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UEnum@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UField@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UFunction@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@ULocalPlayer@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UObjectBase@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UPlayer@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UScriptStruct@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UStruct@Unreal@RC@@SAAEAHXZ
+    ?UEP_TotalSize@UWorld@Unreal@RC@@SAAEAHXZ
     ?UObjectMask@FFieldVariant@Unreal@RC@@0_KB
-    ?UStructLinkDetour@StaticStorage@Hook@Unreal@RC@@2V?$unique_ptr@Vx64Detour@PLH@@U?$default_delete@Vx64Detour@PLH@@@std@@@std@@A
-    ?UnlockGUObjectArray@UObjectArray@Unreal@RC@@QEAAXXZ
-    ?UnrealStaticGMalloc@FMalloc@Unreal@RC@@2PEAPEAV123@EA
+    ?UnlockGUObjectArray@FUObjectArray@Unreal@RC@@QEAAXXZ
     ?UnregisterAllHooks@UFunction@Unreal@RC@@QEAAXXZ
+    ?UnregisterCallback@Hook@Unreal@RC@@YA_N_K@Z
     ?UnregisterHook@UFunction@Unreal@RC@@QEAA_NH@Z
     ?UnregisterHook@UObjectGlobals@Unreal@RC@@YAXAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@U?$pair@HH@5@@Z
     ?UnregisterHook@UObjectGlobals@Unreal@RC@@YAXPEAVUFunction@23@U?$pair@HH@std@@@Z
+    ?UnsetFlagsInternal@FUObjectItem@Unreal@RC@@AEAAXW4EInternalObjectFlags@23@@Z
     ?UnsetGCKeep@FUObjectItem@Unreal@RC@@QEAAXXZ
     ?UnsetRootSet@FUObjectItem@Unreal@RC@@QEAAXXZ
     ?UpdateStats@FMalloc@Unreal@RC@@QEAAXXZ
@@ -3254,6 +3593,7 @@ EXPORTS
     ?VTableLayoutMap@FProperty@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
     ?VTableLayoutMap@ICppStructOps@UScriptStruct@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
     ?VTableLayoutMap@ITextData@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
+    ?VTableLayoutMap@UClass@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
     ?VTableLayoutMap@UDataTable@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
     ?VTableLayoutMap@UEngine@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
     ?VTableLayoutMap@UField@Unreal@RC@@2V?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@IU?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@I@std@@@2@@std@@A
@@ -3269,6 +3609,7 @@ EXPORTS
     ?ValuePropertyOffset@?1??GetValueProperty@FOptionalPropertyLayout@Unreal@RC@@QEBAAEAPEAVFProperty@34@XZ@4HA
     ?VerifySelf@UAssetRegistryHelpers@Unreal@RC@@CA_NXZ
     ?VerifySelf@UGameplayStatics@Unreal@RC@@CA_NXZ
+    ?VerifySelf@UKismetSystemLibrary@Unreal@RC@@CA_NXZ
     ?Virtual_10@FOutputDevice@Unreal@RC@@UEAAXXZ
     ?Virtual_11@FOutputDevice@Unreal@RC@@UEAAXXZ
     ?Virtual_12@FOutputDevice@Unreal@RC@@UEAAXXZ
@@ -3300,6 +3641,7 @@ EXPORTS
     ?Virtual_Serialize@FOutputDevice@Unreal@RC@@UEAAXPEB_WW4Type@ELogVerbosity@23@AEBVFName@23@N@Z
     ?W@FQuat@Unreal@RC@@QEAANXZ
     ?W@FQuat@Unreal@RC@@QEBANXZ
+    ?WaitForExecutorsToFinish@FCallbackMetadata@Internal@Hook@Unreal@RC@@QEAAXXZ
     ?X@FQuat@Unreal@RC@@QEAANXZ
     ?X@FQuat@Unreal@RC@@QEBANXZ
     ?Y@FQuat@Unreal@RC@@QEAANXZ
@@ -3316,8 +3658,6 @@ EXPORTS
     ?add_int64_value@Value@Ini@RC@@QEAAXAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@H@Z
     ?add_metamethods@Lua@LuaMadeSimple@RC@@AEBA_NAEBUMetaMethods@123@AEBVTable@123@@Z
     ?add_mods_directory@UE4SSProgram@RC@@QEAAXAEBVpath@filesystem@std@@@Z
-    ?add_object@Array@JSON@RC@@QEAAXV?$unique_ptr@VObject@JSON@RC@@U?$default_delete@VObject@JSON@RC@@@std@@@std@@@Z
-    ?add_object@Object@JSON@RC@@QEAAXV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$unique_ptr@VObject@JSON@RC@@U?$default_delete@VObject@JSON@RC@@@std@@@5@@Z
     ?add_string_value@Value@Ini@RC@@QEAAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
     ?async_lua@LuaMod@RC@@QEBAPEBVLua@LuaMadeSimple@2@XZ
     ?auto_construct_object@LuaType@RC@@YAXAEBVLua@LuaMadeSimple@2@PEAVUObject@Unreal@2@@Z
@@ -3343,7 +3683,7 @@ EXPORTS
     ?construct_uclass@LuaType@RC@@YAXAEBVLua@LuaMadeSimple@2@@Z
     ?construct_with_string@FName@Unreal@RC@@AEAAXPEB_WIW4EFindName@23@PEAX@Z
     ?construct_with_string@FName@Unreal@RC@@AEAAXPEB_WW4EFindName@23@PEAX@Z
-    ?construct_with_string@FText@Unreal@RC@@AEAAX$$QEBVFString@23@PEAX@Z
+    ?construct_with_string@FText@Unreal@RC@@AEAAX$$QEBVFString@23@@Z
     ?construct_xproperty@LuaType@RC@@YAXAEBVLua@LuaMadeSimple@2@PEAVFProperty@Unreal@2@@Z
     ?consume@TokenParser@ParserBase@RC@@IEBAAEBVToken@23@HW4PeekDirection@123@@Z
     ?consume@TokenParser@ParserBase@RC@@IEBAAEBVToken@23@W4PeekDirection@123@@Z
@@ -3376,8 +3716,6 @@ EXPORTS
     ?find_lua_mod_by_name@UE4SSProgram@RC@@SAPEAVLuaMod@2@V?$basic_string_view@DU?$char_traits@D@std@@@std@@W4IsInstalled@12@W4IsStarted@12@@Z
     ?find_lua_mod_by_name@UE4SSProgram@RC@@SAPEAVLuaMod@2@V?$basic_string_view@_WU?$char_traits@_W@std@@@std@@W4IsInstalled@12@W4IsStarted@12@@Z
     ?find_value@Table@Lua@LuaMadeSimple@RC@@QEAAXXZ
-    ?find_value_by_key@Object@JSON@RC@@AEAAPEAVValue@23@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
-    ?find_value_by_key@Object@JSON@RC@@AEBAPEAVValue@23@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ?find_variable_by_name@TokenParser@Ini@RC@@AEAA?AV?$optional@V?$reference_wrapper@VValue@Ini@RC@@@std@@@std@@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@@Z
     ?find_variable_by_name@TokenParser@Ini@RC@@SA?AV?$optional@V?$reference_wrapper@VValue@Ini@RC@@@std@@@std@@PEAUSection@23@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@@Z
     ?fire_program_start@Mod@RC@@UEAAXXZ
@@ -3390,15 +3728,10 @@ EXPORTS
     ?generate_cxx_headers@UE4SSProgram@RC@@QEAAXAEBVpath@filesystem@std@@@Z
     ?generate_lua_types@UE4SSProgram@RC@@QEAAXAEBVpath@filesystem@std@@@Z
     ?generate_uht_compatible_headers@UE4SSProgram@RC@@QEAAXXZ
-    ?get@Array@JSON@RC@@QEAAAEAV?$vector@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@std@@V?$allocator@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@std@@@2@@std@@XZ
-    ?get@Array@JSON@RC@@QEBAAEBV?$vector@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@std@@V?$allocator@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@std@@@2@@std@@XZ
-    ?get@Bool@JSON@RC@@QEAA_NXZ
-    ?get@Object@JSON@RC@@QEAAAEAV?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@2@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@2@@std@@@2@@std@@XZ
-    ?get@Object@JSON@RC@@QEBAAEBV?$unordered_map@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@2@U?$hash@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@U?$equal_to@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@V?$allocator@U?$pair@$$CBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$unique_ptr@VValue@JSON@RC@@U?$default_delete@VValue@JSON@RC@@@std@@@2@@std@@@2@@std@@XZ
-    ?get@String@JSON@RC@@QEAAAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?get_all@TokenContainer@ParserBase@RC@@QEAAAEBV?$vector@VToken@ParserBase@RC@@V?$allocator@VToken@ParserBase@RC@@@std@@@std@@XZ
     ?get_all_input_events@UE4SSProgram@RC@@QEAAXV?$function@$$A6AXAEAUKeySet@Input@RC@@@Z@std@@@Z
     ?get_allow_input@Handler@Input@RC@@QEAA_NXZ
+    ?get_async_thread_id@LuaMod@RC@@QEBA?AVid@thread@std@@XZ
     ?get_bool@?$LuaTableData@$0?0@LuaMadeSimple@RC@@QEBA_NXZ
     ?get_bool@?$LuaTableData@$0?1@LuaMadeSimple@RC@@QEBA_NXZ
     ?get_bool@Lua@LuaMadeSimple@RC@@QEBA_NH@Z
@@ -3415,6 +3748,7 @@ EXPORTS
     ?get_default_devices_ref@DefaultTargets@Output@RC@@SAAEAV?$vector@V?$unique_ptr@VOutputDevice@Output@RC@@U?$default_delete@VOutputDevice@Output@RC@@@std@@@std@@V?$allocator@V?$unique_ptr@VOutputDevice@Output@RC@@U?$default_delete@VOutputDevice@Output@RC@@@std@@@std@@@2@@std@@XZ
     ?get_default_log_level@DefaultTargets@Output@RC@@SAHXZ
     ?get_end@Token@ParserBase@RC@@QEBA_KXZ
+    ?get_event_loop_thread_id@UE4SSProgram@RC@@QEBA?AVid@thread@std@@XZ
     ?get_events_safe@Handler@Input@RC@@QEAAXV?$function@$$A6AXAEAUKeySet@Input@RC@@@Z@std@@@Z
     ?get_file@WinFile@File@RC@@QEAAPEAXXZ
     ?get_file_path@WinFile@File@RC@@UEBAAEBVpath@filesystem@std@@XZ
@@ -3427,6 +3761,7 @@ EXPORTS
     ?get_float_value@Value@Ini@RC@@QEBAMXZ
     ?get_function_ref@Registry@Lua@LuaMadeSimple@RC@@QEBAXH@Z
     ?get_game_executable_directory@UE4SSProgram@RC@@QEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
+    ?get_id@Mod@RC@@QEBA_KXZ
     ?get_identifier@Token@ParserBase@RC@@QEBA?AV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@XZ
     ?get_input_source@Handler@Input@RC@@SA?AV?$shared_ptr@VPlatformInputSource@Input@RC@@@std@@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@5@@Z
     ?get_int64@Parser@Ini@RC@@QEBA_JAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@0@Z
@@ -3446,6 +3781,7 @@ EXPORTS
     ?get_lua_instance@Table@Lua@LuaMadeSimple@RC@@QEBAAEBV234@XZ
     ?get_lua_state@Lua@LuaMadeSimple@RC@@QEBAPEAUlua_State@@XZ
     ?get_lua_state@LuaMod@RC@@QEBAPEAUlua_State@@XZ
+    ?get_main_thread_id@LuaMod@RC@@QEBA?AVid@thread@std@@XZ
     ?get_metamethods@BaseObject@Type@LuaMadeSimple@RC@@QEAAAEAUMetaMethods@Lua@34@XZ
     ?get_metamethods@BaseObject@Type@LuaMadeSimple@RC@@QEBAAEBUMetaMethods@Lua@34@XZ
     ?get_metamethods@Table@Lua@LuaMadeSimple@RC@@QEAAAEAUMetaMethods@234@XZ
@@ -3472,6 +3808,8 @@ EXPORTS
     ?get_rules@Token@ParserBase@RC@@QEBAAEBV?$vector@V?$shared_ptr@VTokenRule@ParserBase@RC@@@std@@V?$allocator@V?$shared_ptr@VTokenRule@ParserBase@RC@@@std@@@2@@std@@XZ
     ?get_scripts_path@LuaMod@RC@@QEBAAEBVpath@filesystem@std@@XZ
     ?get_serialized_item@WinFile@File@RC@@UEAAPEAX_K_N@Z
+    ?get_stack_dump@Lua@LuaMadeSimple@RC@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBD@Z
+    ?get_stack_dump@LuaMadeSimple@RC@@YA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEAUlua_State@@PEBD@Z
     ?get_stack_dump@PusherParams@LuaType@RC@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@PEBD@Z
     ?get_stack_size@Lua@LuaMadeSimple@RC@@QEBAHXZ
     ?get_start@Token@ParserBase@RC@@QEBA_KXZ
@@ -3490,16 +3828,9 @@ EXPORTS
     ?get_table_ref@Registry@Lua@LuaMadeSimple@RC@@QEBAXH@Z
     ?get_token@TokenParser@ParserBase@RC@@IEBAAEBVToken@23@_K@Z
     ?get_tokens@Tokenizer@ParserBase@RC@@QEBAAEBV?$vector@VToken@ParserBase@RC@@V?$allocator@VToken@ParserBase@RC@@@std@@@std@@XZ
-    ?get_type@Array@JSON@RC@@UEBA?AW4Type@23@XZ
-    ?get_type@Bool@JSON@RC@@UEBA?AW4Type@23@XZ
-    ?get_type@Null@JSON@RC@@UEBA?AW4Type@23@XZ
-    ?get_type@Number@JSON@RC@@UEBA?AW4Type@23@XZ
-    ?get_type@Object@JSON@RC@@UEBA?AW4Type@23@XZ
-    ?get_type@String@JSON@RC@@UEBA?AW4Type@23@XZ
     ?get_type@Token@ParserBase@RC@@QEBAHXZ
     ?get_type_string@Lua@LuaMadeSimple@RC@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@XZ
     ?get_value@Parser@Ini@RC@@AEBA?AV?$optional@V?$reference_wrapper@$$CBVValue@Ini@RC@@@std@@@std@@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@0W4CanThrow@123@@Z
-    ?get_view@String@JSON@RC@@QEBA?AV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@XZ
     ?get_working_directory@UE4SSProgram@RC@@QEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?get_world_name@TypeChecker@Unreal@RC@@SA?AVFName@23@XZ
     ?handle_characters_token@TokenParser@Ini@RC@@AEAAXAEBVToken@ParserBase@3@@Z
@@ -3527,6 +3858,7 @@ EXPORTS
     ?is_bool@?$LuaTableData@$0?1@LuaMadeSimple@RC@@QEBA_NXZ
     ?is_bool@Lua@LuaMadeSimple@RC@@QEBA_NH@Z
     ?is_deserialized_and_live_equal@WinFile@File@RC@@UEAA_NXZ
+    ?is_event_loop_thread@UE4SSProgram@RC@@QEAA_NXZ
     ?is_function@Lua@LuaMadeSimple@RC@@QEBA_NXZ
     ?is_global_function@Lua@LuaMadeSimple@RC@@QEBA_NV?$basic_string_view@DU?$char_traits@D@std@@@std@@@Z
     ?is_installable@Mod@RC@@QEBA_NXZ
@@ -3576,18 +3908,9 @@ EXPORTS
     ?make_local@Table@Lua@LuaMadeSimple@RC@@QEAAXXZ
     ?make_ref@Registry@Lua@LuaMadeSimple@RC@@QEBAHXZ
     ?memory_map@WinFile@File@RC@@UEAA?AV?$span@E$0?0@std@@XZ
-    ?new_array@Array@JSON@RC@@QEAAAEAV123@XZ
-    ?new_array@Object@JSON@RC@@QEAAAEAVArray@23@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
-    ?new_bool@Array@JSON@RC@@QEAAX_N@Z
-    ?new_bool@Object@JSON@RC@@QEAAXV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@_N@Z
-    ?new_null@Array@JSON@RC@@QEAAXXZ
-    ?new_null@Object@JSON@RC@@QEAAXV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
-    ?new_object@Array@JSON@RC@@QEAAAEAVObject@23@XZ
-    ?new_object@Object@JSON@RC@@QEAAAEAV123@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ?new_state@LuaMadeSimple@RC@@YAAEAVLua@12@XZ
-    ?new_string@Array@JSON@RC@@QEAAXAEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
-    ?new_string@Object@JSON@RC@@QEAAXV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@AEBV45@@Z
     ?new_thread@Lua@LuaMadeSimple@RC@@QEBAAEAV123@XZ
+    ?on_cpp_mods_loaded@CppUserModBase@RC@@UEAAXXZ
     ?on_dll_load@CppUserModBase@RC@@UEAAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
     ?on_lua_start@CppUserModBase@RC@@UEAAXAEAVLua@LuaMadeSimple@2@00AEAV?$vector@PEAVLua@LuaMadeSimple@RC@@V?$allocator@PEAVLua@LuaMadeSimple@RC@@@std@@@std@@@Z
     ?on_lua_start@CppUserModBase@RC@@UEAAXAEAVLua@LuaMadeSimple@2@00PEAV342@@Z
@@ -3606,8 +3929,6 @@ EXPORTS
     ?open_file@WinFile@File@RC@@SA?AV123@AEBVpath@filesystem@std@@AEBUOpenProperties@23@@Z
     ?parse@Parser@Ini@RC@@QEAAXAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ?parse@Parser@Ini@RC@@QEAAXAEBV?$HandleTemplate@VWinFile@File@RC@@@File@3@@Z
-    ?parse@Parser@JSON@RC@@YA?AV?$unique_ptr@VObject@JSON@RC@@U?$default_delete@VObject@JSON@RC@@@std@@@std@@AEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@5@@Z
-    ?parse@Parser@JSON@RC@@YA?AV?$unique_ptr@VObject@JSON@RC@@U?$default_delete@VObject@JSON@RC@@@std@@@std@@AEBV?$HandleTemplate@VWinFile@File@RC@@@File@3@@Z
     ?parse@TokenParser@ParserBase@RC@@QEAAXXZ
     ?parse_internal@Parser@Ini@RC@@AEAAXAEAV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@Z
     ?parse_semicolon_separated_string@UE4SSProgram@RC@@SA?AV?$vector@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@V?$allocator@V?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@@2@@std@@AEBV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@4@@Z
@@ -3661,6 +3982,7 @@ EXPORTS
     ?push_utf8strproperty@LuaType@RC@@YAXAEBUPusherParams@12@@Z
     ?push_weakobjectproperty@LuaType@RC@@YAXAEBUPusherParams@12@@Z
     ?queue_event@UE4SSProgram@RC@@QEAAXP6AXPEAX@Z0@Z
+    ?queue_event@UE4SSProgram@RC@@QEAAXV?$function@$$A6AXXZ@std@@@Z
     ?rawgeti@Lua@LuaMadeSimple@RC@@QEBAHH_J@Z
     ?read_all@WinFile@File@RC@@UEBA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@XZ
     ?receive@DebugConsoleDevice@Output@RC@@UEBAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
@@ -3685,17 +4007,12 @@ EXPORTS
     ?resolve_function_address_from_potential_jmp@ASM@RC@@YAPEAXPEAX@Z
     ?resolve_jmp@ASM@RC@@YAPEAXPEAX@Z
     ?resolve_status_message@Lua@LuaMadeSimple@RC@@QEBA?AV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@H_N@Z
+    ?s_next_mod_id@Mod@RC@@0U?$atomic@_K@std@@A
     ?scanner_work_thread@SinglePassScanner@RC@@SAXPEAE0AEAU_SYSTEM_INFO@@AEAV?$vector@VSignatureContainer@RC@@V?$allocator@VSignatureContainer@RC@@@std@@@std@@@Z
     ?scanner_work_thread_scalar@SinglePassScanner@RC@@SAXPEAE0AEAU_SYSTEM_INFO@@AEAV?$vector@VSignatureContainer@RC@@V?$allocator@VSignatureContainer@RC@@@std@@@std@@@Z
     ?scanner_work_thread_stdfind@SinglePassScanner@RC@@SAXPEAE0AEAU_SYSTEM_INFO@@AEAV?$vector@VSignatureContainer@RC@@V?$allocator@VSignatureContainer@RC@@@std@@@std@@@Z
     ?send@Output@RC@@YAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
     ?serialization_file_exists@WinFile@File@RC@@QEAA_NXZ
-    ?serialize@Array@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
-    ?serialize@Bool@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
-    ?serialize@Null@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
-    ?serialize@Number@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
-    ?serialize@Object@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
-    ?serialize@String@JSON@RC@@UEAA?AV?$basic_string@_WU?$char_traits@_W@std@@V?$allocator@_W@2@@std@@W4ShouldFormat@23@PEAH@Z
     ?serialize_identifying_properties@WinFile@File@RC@@UEAAXXZ
     ?serialize_item@WinFile@File@RC@@UEAAXAEBUGenericItemData@23@_N@Z
     ?set_allow_input@Handler@Input@RC@@QEAAX_N@Z
@@ -3726,12 +4043,6 @@ EXPORTS
     ?set_windows_console_out_mode_if_needed@DebugConsoleDevice@Output@RC@@AEBAXXZ
     ?settings_manager@UE4SSProgram@RC@@2VSettingsManager@2@A
     ?start_scan@SinglePassScanner@RC@@SAXAEAV?$unordered_map@W4ScanTarget@RC@@V?$vector@VSignatureContainer@RC@@V?$allocator@VSignatureContainer@RC@@@std@@@std@@U?$hash@W4ScanTarget@RC@@@4@U?$equal_to@W4ScanTarget@RC@@@4@V?$allocator@U?$pair@$$CBW4ScanTarget@RC@@V?$vector@VSignatureContainer@RC@@V?$allocator@VSignatureContainer@RC@@@std@@@std@@@std@@@4@@std@@@Z
-    ?static_type@Array@JSON@RC@@2W4Type@23@B
-    ?static_type@Bool@JSON@RC@@2W4Type@23@B
-    ?static_type@Null@JSON@RC@@2W4Type@23@B
-    ?static_type@Number@JSON@RC@@2W4Type@23@B
-    ?static_type@Object@JSON@RC@@2W4Type@23@B
-    ?static_type@String@JSON@RC@@2W4Type@23@B
     ?status_to_string@Lua@LuaMadeSimple@RC@@QEBA?AV?$basic_string_view@DU?$char_traits@D@std@@@std@@H@Z
     ?store_all_object_names@TypeChecker@Unreal@RC@@SAXXZ
     ?store_all_object_types@TypeChecker@Unreal@RC@@SA_NXZ
@@ -3750,10 +4061,3 @@ EXPORTS
     ?update_async@Mod@RC@@UEAAXXZ
     ?value@?$IsTInlineAllocatorHelper@V?$TSizedDefaultAllocator@$0CA@@Unreal@RC@@@Unreal@RC@@2_NB
     ?write_string_to_file@WinFile@File@RC@@UEAAXV?$basic_string_view@_WU?$char_traits@_W@std@@@std@@@Z
-    call_script_function
-    execute_lua_in_mod
-    get_lua_state_by_mod_name
-    is_ue4ss_initialized
-    set_script_variable_default_data
-    set_script_variable_int32
-
