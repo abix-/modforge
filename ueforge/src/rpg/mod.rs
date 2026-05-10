@@ -31,9 +31,11 @@ pub mod state;
 pub mod store;
 pub mod disabled;
 pub mod poller;
+pub mod vanilla;
 
 pub use disabled::DisabledSkills;
 pub use poller::SlotPoller;
 pub use state::SkillsState;
 pub use store::SlotStore;
+pub use vanilla::VanillaCache;
 pub use xp::Curve;

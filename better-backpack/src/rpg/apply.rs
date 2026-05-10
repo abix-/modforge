@@ -59,11 +59,7 @@ pub(crate) fn vanilla_max_health() -> Option<f32> {
 /// Snapshot every captured `(offset, value)` pair we have for the
 /// HC u32 mask family. Used by the debug snapshot endpoint.
 pub(crate) fn vanilla_hc_masks_snapshot() -> Vec<(usize, u32)> {
-    VANILLA_HC_U32_MASK
-        .lock()
-        .ok()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+    VANILLA_HC_U32_MASK.snapshot()
 }
 
 /// All currently-disabled skill ids. The toggle UI state.
@@ -77,21 +73,15 @@ pub(crate) fn disabled_skills_snapshot() -> Vec<&'static str> {
 // would stay set, blocking everything that comes through
 // ApplyDamage with type_flags=0 -- including healing items like
 // bandages, which use negative damage).
-static VANILLA_HC_U32_MASK: std::sync::Mutex<Vec<(usize, u32)>> = std::sync::Mutex::new(Vec::new());
+static VANILLA_HC_U32_MASK: ueforge::rpg::VanillaCache<usize, u32> =
+    ueforge::rpg::VanillaCache::new();
 
 fn capture_vanilla_hc_mask(offset: usize, value: u32) {
-    if let Ok(mut g) = VANILLA_HC_U32_MASK.lock()
-        && !g.iter().any(|(o, _)| *o == offset)
-    {
-        g.push((offset, value));
-    }
+    let _ = VANILLA_HC_U32_MASK.set_if_unset(offset, value);
 }
 
 pub(crate) fn vanilla_hc_mask(offset: usize) -> Option<u32> {
-    VANILLA_HC_U32_MASK
-        .lock()
-        .ok()
-        .and_then(|g| g.iter().find(|(o, _)| *o == offset).map(|(_, v)| *v))
+    VANILLA_HC_U32_MASK.get(offset)
 }
 
 // Process-global per-skill enable flags. Default ON. Toggling fires
@@ -114,38 +104,25 @@ static VANILLA_MIN_FALL_DAMAGE_VELOCITY: OnceLock<f32> = OnceLock::new();
 static VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
 static VANILLA_SMMC_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();
 
-// Per-offset vanilla baselines for movement, captured lazily on first
-// apply for that offset. Stored in a small fixed-size table because
-// we know the set of offsets we ever touch is small (<10).
-struct VanillaTable {
-    entries: std::sync::Mutex<Vec<(usize, f32)>>,
-}
-static MOVEMENT_VANILLA: VanillaTable = VanillaTable {
-    entries: std::sync::Mutex::new(Vec::new()),
-};
-static GLOBAL_DATA_VANILLA: VanillaTable = VanillaTable {
-    entries: std::sync::Mutex::new(Vec::new()),
-};
+// Per-offset vanilla baselines for movement, captured lazily on
+// first apply for that offset. Stored in a small fixed-size table
+// because we know the set of offsets we ever touch is small (<10).
+// Filters non-finite / zero values at the call site since
+// VanillaCache trusts whatever we hand it.
+static MOVEMENT_VANILLA: ueforge::rpg::VanillaCache<usize, f32> =
+    ueforge::rpg::VanillaCache::new();
+static GLOBAL_DATA_VANILLA: ueforge::rpg::VanillaCache<usize, f32> =
+    ueforge::rpg::VanillaCache::new();
 
-impl VanillaTable {
-    fn get(&self, offset: usize) -> Option<f32> {
-        self.entries
-            .lock()
-            .ok()
-            .and_then(|g| g.iter().find(|(k, _)| *k == offset).map(|(_, v)| *v))
+fn capture_vanilla_if_finite(
+    cache: &ueforge::rpg::VanillaCache<usize, f32>,
+    offset: usize,
+    value: f32,
+) {
+    if !value.is_finite() || value == 0.0 {
+        return;
     }
-
-    fn set_if_unset(&self, offset: usize, value: f32) {
-        if !value.is_finite() || value == 0.0 {
-            return;
-        }
-        let Ok(mut g) = self.entries.lock() else {
-            return;
-        };
-        if !g.iter().any(|(k, _)| *k == offset) {
-            g.push((offset, value));
-        }
-    }
+    let _ = cache.set_if_unset(offset, value);
 }
 
 /// Read and store the untouched hunger/thirst drain rates. Run at
@@ -307,7 +284,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             let count = apply_to_class(class_name, |obj| {
                 for &(off, exp) in *offsets {
                     let cur = read_f32(obj, off);
-                    GLOBAL_DATA_VANILLA.set_if_unset(off, cur);
+                    capture_vanilla_if_finite(&GLOBAL_DATA_VANILLA, off, cur);
                     if let Some(v) = GLOBAL_DATA_VANILLA.get(off) {
                         let scaled = v * mult.powf(exp);
                         write_f32(obj, off, scaled);
@@ -419,7 +396,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                 for &off in *offsets {
                     // Capture vanilla on first sight, then write.
                     let cur = read_f32(mc, off);
-                    MOVEMENT_VANILLA.set_if_unset(off, cur);
+                    capture_vanilla_if_finite(&MOVEMENT_VANILLA, off, cur);
                     if let Some(v) = MOVEMENT_VANILLA.get(off) {
                         write_f32(mc, off, v * mult);
                     }

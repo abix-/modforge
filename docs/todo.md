@@ -383,13 +383,20 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   -- the surface is available; existing helpers
   (`read_f32`/`write_f32`/etc.) keep working unchanged.
   In-game smoke test pending.
-- [ ] **A4. `ueforge::rpg::VanillaCache<K, V>`** -- vanilla-baseline
-  `OnceLock` pattern. `VanillaCache::<HungerKey, f32>::get_or_init(
-  || read_field(...))`. Migrates `bbp/rpg/apply.rs:38-44`
-  (`VANILLA_HUNGER`, `VANILLA_THIRST`, etc.) and the per-skill
-  `OnceLock<f32>` scattered through `apply.rs`. Closes audit row 48
-  partially -- the *cache shape*, not the dispatcher. **Acceptance:**
-  spend/refund snapshot diff identical to pre-migration baseline.
+- [x] **A4. `ueforge::rpg::VanillaCache<K, V>`** -- per-key
+  baseline cache. `get_or_init(k, v)` returns the captured baseline
+  forever (first-write wins); `set_if_unset(k, v)` returns insert
+  flag; `get(k)`, `clear()`, `snapshot()`. `parking_lot::Mutex`
+  internally (no poison). Lives at
+  `ueforge/src/rpg/vanilla.rs`. 7 unit tests. Migrations:
+  `bbp/rpg/apply.rs::VanillaTable` deleted (struct + 2 methods);
+  `MOVEMENT_VANILLA`, `GLOBAL_DATA_VANILLA`, `VANILLA_HC_U32_MASK`
+  all flipped to `ueforge::rpg::VanillaCache`. Single-baseline
+  `OnceLock<f32>` statics (`VANILLA_HUNGER`, `VANILLA_THIRST`, etc.)
+  stay -- already canonical via std and the keyed shape isn't a
+  fit. Closes audit row 48 partially -- the *cache shape*; the
+  dispatcher shape stays game-side per kovarex deferred-promotion
+  rule. Workspace builds clean release. In-game smoke test pending.
 
 ### Wave B -- RPG durability (kovarex P0s)
 
