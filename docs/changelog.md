@@ -12,6 +12,96 @@
 
 Newest first.
 
+## 2026-05-10 (post-framework cleanup)
+
+### Repo hygiene + tail-end framework lifts
+
+Final 2026-05-10 cleanups after the major dedup wave. Mostly
+file-tree shape + the last few extractions. Each commit is
+small but worth a chronological line.
+
+#### Dedup waves not previously listed
+
+Three more waves landed on 2026-05-10 after the "ueforge as full
+UE-mod framework" entry below was written:
+
+- **`ueforge::pe_queue::DrainSite`** -- `Queue` paired with the
+  standard performance-counter quad (drain calls, drained cmds,
+  peak depth, time_ns spent). One static replaces the bbp
+  pattern of a static `Queue` + four hand-declared `counter!`
+  statics + a 20-LoC `drain_pending` wrapper. Surfaced via
+  `drain_calls()` / `drained_cmds()` / `peak()` / `time_ns()`.
+  Reference: [`../ueforge/docs/pe-queue.md`](../ueforge/docs/pe-queue.md).
+  Commit `0a4aa32`.
+- **`ueforge::ue::core_types`** -- POD `#[repr(C)]` mirrors of
+  stable UE5 layouts: `FGuid` (16 bytes), `FWeakObjectPtr` (8
+  bytes), `FDataTableRowHandle` (UDataTable* + FName u64),
+  `EStatusEffectValueType` enum (None/Add/Multiply). Six unit
+  tests including size invariants. bbp's local duplicates of
+  `FGuid` (in save_slot.rs) and `FWeakObjectPtr` (in
+  kill_hook.rs) deleted; both consume `ueforge::ue::*`.
+  `FDataTableRowHandle` + `EStatusEffectValueType` ready for the
+  pending status-effect migration. Commit `c2b6776`.
+- **`ueforge::rpg::SlotKeyResolver`** -- generic save-slot key
+  extractor. Configure once with `(class_name, guid_offset)`;
+  static `resolve()` walks GObjects for first instance of the
+  class, reads `FGuid` at offset, formats as filename. Plug
+  into `SlotPoller::spawn` directly. bbp's `save_slot.rs`
+  shrunk to a 5-line wrapper. 2 unit tests. Commit `0997f25`.
+
+#### Repo hygiene
+
+- **Per-crate docs/ folders.** Bbp-specific deep dives moved to
+  `grounded2-rpg/docs/` (damage, inventory, rpg, performance,
+  features, engine, testing, ongoing, port history). ueforge
+  doctrine + 12 subsystem reference docs land in
+  `ueforge/docs/`. Workspace `docs/` retains only cross-cutting
+  files (`README.md`, `todo.md`, `changelog.md`). Skill at
+  `~/.claude/skills/grounded2-rpg/SKILL.md` updated to match.
+  Commits `b1dc6a7`, `e041e52`.
+- **`better-backpack` -> `grounded2-rpg`** rename. Crate name,
+  workspace dir, `MOD_INFO.name` (`Grounded2RPG`), log file
+  (`grounded2_rpg.log`), mod folder, deploy zip prefix all
+  changed. ~93 files touched. Commit `e041e52`.
+- **`outworld-station/tweaks/` -> `outworld-station-tweaks/`**
+  flattened to match `grounded2-rpg`. Crate renamed; mod
+  folder is now `OutworldStationTweaks`; log
+  `outworld_station_tweaks.log`. Commit `b0cedb6`.
+- **`archive/` deleted.** ~3300 lines of dead C++ winhttp
+  proxy code + the standalone DLL injector (~700 LoC, dead
+  since UE4SS handles loading). `inspection-guide.md` rescued
+  to `grounded2-rpg/docs/inspection.md` -- still useful as
+  generic UE5 mod-inspection methodology + worked examples.
+  Commits `a1e0be6`, `f222941`.
+- **`scripts/*.py` deleted.** Two Python uasset inspection
+  tools (`dump_strings.py`, `read_property.py`) ported to
+  Rust as `ueforge::uasset` lib + `dump-strings` /
+  `read-property` `[[bin]]` targets. Repo is now Rust-only
+  except for the irreducible UE4SS / ImGui C++ shim. Commit
+  `4866a40`.
+- **ImGui as git submodule.** `ueforge/cpp/imgui/` (~55K LoC
+  of vendored Dear ImGui v1.92.1) replaced with a git
+  submodule pinned to upstream `ocornut/imgui` tag `v1.92.1`.
+  First-party C++ in the repo drops to 502 LoC (the shim).
+  `build.rs` panics with a clear fix message if the submodule
+  isn't initialized. Commit `d7c91b0`.
+- **`ueforge-deploy` merged into `ueforge`** as a `[[bin]]`
+  target alongside `dump-strings` / `read-property`. Workspace
+  member count: 5 -> 4. `cargo deploy` alias updated to
+  `run -p ueforge --bin ueforge-deploy --release --quiet --`.
+  Commit `a79da15`.
+
+#### Native (C++) surface accounting
+
+Post-cleanup totals:
+- First-party C++ in the repo: **502 lines** (the shim:
+  `ueforge_shim.cpp`, `ueforge_ui.cpp`, `ueforge_cppusermodbase.hpp`,
+  `ueforge_imgui_bridge.hpp`).
+- Vendored ImGui: not in repo (submodule).
+- Doctrine: [`../ueforge/docs/native.md`](../ueforge/docs/native.md)
+  -- "what C++ is in this repo, why each piece is irreducible,
+  and what stays in Rust."
+
 ## 2026-05-10 (final)
 
 ### ueforge as full UE-mod framework

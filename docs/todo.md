@@ -17,62 +17,6 @@
 
 ## Open: priority 0
 
-### Backfill changelog gaps (audit 2026-05-10)
-
-Comparison-table audit of the pre-rewrite todo.md (commit
-`f945b24^`) against current authoritative docs surfaced ~95%
-preservation, with these specific gaps. Not feature work; doc
-maintenance.
-
-- [ ] **Three dedup waves missing from `docs/changelog.md`.**
-  All shipped on 2026-05-10 but landed AFTER the "ueforge as
-  full UE-mod framework" changelog entry was written, so they
-  never got chronological summary lines:
-  - `ueforge::pe_queue::DrainSite` -- `Queue` + perf-counter
-    quad in one static. Documented in
-    [`../ueforge/docs/pe-queue.md`](../ueforge/docs/pe-queue.md).
-    Commit `0a4aa32`.
-  - `ueforge::ue::core_types` -- `FGuid`, `FWeakObjectPtr`,
-    `FDataTableRowHandle`, `EStatusEffectValueType`. POD UE5
-    layouts every mod redefines locally. Documented in
-    [`../ueforge/docs/ue-sdk.md`](../ueforge/docs/ue-sdk.md)
-    "core_types" section. Commit `c2b6776`.
-  - `ueforge::rpg::SlotKeyResolver` -- generic save-slot key
-    extractor. Documented in
-    [`../ueforge/docs/rpg.md`](../ueforge/docs/rpg.md)
-    SlotKeyResolver section. Commit `0997f25`.
-
-  API knowledge IS preserved in per-subsystem docs; only the
-  chronological summary is missing. Add a single dated entry
-  covering all three.
-
-- [ ] **Post-dedup cleanup events also missing from changelog.**
-  Each was a meaningful repo-shape change worth a one-line
-  history entry:
-  - `archive/` deleted (winhttp-proxy + injector). `inspection-guide.md`
-    rescued to `grounded2-rpg/docs/inspection.md`.
-    Commit `a1e0be6` / `f222941`.
-  - `scripts/` deleted; both Python tools ported to
-    `ueforge::uasset` lib + `dump-strings` / `read-property`
-    bins. Commit `4866a40`.
-  - ImGui v1.92.1 moved from vendored to git submodule.
-    ~55K LoC of third-party code removed from the repo.
-    Commit `d7c91b0`.
-  - `outworld-station/tweaks/` -> `outworld-station-tweaks/`.
-    Flattened to match `grounded2-rpg/`. Crate renamed; mod
-    folder is now `OutworldStationTweaks`. Commit `b0cedb6`.
-  - `ueforge-deploy` crate merged into `ueforge` as a
-    `[[bin]]` target. Workspace went from 5 crates to 4.
-    Commit `a79da15`.
-
-- [ ] **Auto-farming feature idea -- minor detail loss.**
-  The current todo entry condensed to one paragraph; the old
-  todo had a specific reference to checking `UProductionBuilding`
-  / `BP_Building*` for an existing skeleton, plus a test plan
-  naming the ops needed (`simulate_advance_time`,
-  `place_building`, `read_storage_contents`). Restore those if
-  we ever scope the feature.
-
 ### Smoke-test the dedup wave in-game
 
 The ~13-commit dedup session of 2026-05-10 (see
@@ -392,8 +336,29 @@ Error paths:
 - [ ] **Auto-farming buildings.** Player places a custom
   building that periodically yields a configured material into
   connected storage. Removes the farming grind for late-game.
-  Open questions: surface (built-in vs external), item source,
-  throttle, power/cost, multiplayer authority.
+  Open design questions:
+  - **Surface**: a new buildable that registers as a normal
+    building (so it integrates with build mode + saves), or an
+    external overlay that ticks and posts items into a target
+    chest. Built-in is more invasive but feels native.
+  - **Item source**: which materials qualify? Plant fibers /
+    resin always; rarer mats (boss drops, ant parts) gated by
+    tier or by a player-set policy.
+  - **Throttle**: yield/min as a function of building tier so
+    upgrades have a place. Avoid trivializing the chase.
+  - **Power / cost**: needs an input (water, electricity, food
+    for a captured creature?) so it isn't a free ratchet.
+  - **Multiplayer**: single-host vs replicated. Yield needs to
+    be authority-side or it's a dupe.
+  - **Reference**: vanilla Grounded 2 may already have a
+    "production" building class -- check `UProductionBuilding`
+    / `BP_Building*` subclasses for an existing skeleton to
+    extend rather than building one from scratch.
+  - **Test plan**: place building -> tick for N seconds ->
+    verify storage has +M of the right item. Drive via the
+    debug `/call` op + new test-side helpers
+    (`simulate_advance_time`, `place_building`,
+    `read_storage_contents`).
 
 ## Open: hot-reload the DLL while game is running
 
