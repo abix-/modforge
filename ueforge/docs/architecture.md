@@ -101,7 +101,7 @@ Instance + Controller, and whether adding a new variant is a
 | **Tabs** | `Tab { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [Tab]` (bare slice -- documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Tiny but the pattern is exact. |
 | **Buildings** (planned, not built) | `Building<S, C>` design in [todo.md](../../docs/todo.md) | `BuildingsCatalog` | `Instance<S>` per placed | `BuildingsTracker::tick` + `BuildingSpawner` trait | **designed-100%** | Lock the naming to the contract above before implementation. |
 | **Status effects** (in-flight) | per-row in game-side `UDataTable` | game-side data table (read live, not a Rust const) | `UStatusEffectComponent` instances on UE actors | `StandardEffect::StatusEffect` apply path | **partial** | Def + Registry live in the GAME's data tables, not in our Rust code. The Rust side is a thin wrapper; the registry is the game's. Acceptable -- the alternative is duplicating the table -- but document the boundary explicitly. |
-| **Debug ops** | nothing (op handlers are bare `fn`s) | hardcoded match arms in `ops::handle_builtin`, `debug::dispatch_standard_op`, `debug::dispatch_pe_ops` (3 places) | per-call args + return JSON | the dispatch fn | **30%** | Three match statements covering overlapping op-name spaces. `STANDARD_OPS: &[&str]` is a NAME list with no schema, no docs, no args description. New op = edit at least 2 files. **Highest-leverage refactor target.** |
+| **Debug ops** | `OpDef { name, summary, args, handler }` (`ueforge/src/ops.rs`) | `OpRegistry` static singleton (`OP_REGISTRY`); populated at worker init via `register_builtins()` + `register_with_resolver(...)` + `rpg::ops::register(...)` + `debug::register_pe_call(...)` + per-game closures | per-call args + return JSON | `OpRegistry::dispatch(name, args)` -- one call replaces three match statements | **100%** | Auto-generated `list_ops` op for client discovery. New op = one `OP_REGISTRY.register(OpDef::new(...))` line; no dispatch edits. Same closure-populated-at-runtime pattern as hooks. |
 | **Selectors** | nothing | hardcoded match in `selector::resolve_generic` (`addr:`, `class:`, `first_class:`, `singleton:`); per-game extensions are separate match in each game crate | resolved `&'static UObject` | the resolver fn | **30%** | New selector kind = edit `resolve_generic`. Cross-game extensions duplicate the dispatch shape. |
 | **Shutdown handlers** | nothing | hardcoded sequence in the `ueforge_mod_shutdown` macro: `on_shutdown` -> `hook::shutdown_all` -> `server::shutdown_all` -> `settings::shutdown_all` -> `scanner::shutdown_sweeper_if_running` -> `finalize_hot_reload_swap` | per-call drop | the macro itself | **0%** | New module that spawns threads must edit the macro to register its cleanup. Easy to forget; the cost shows up as a hot-reload thread leak. |
 | **Modules** (rpg / stacks / difficulty / inventory / damage / planned buildings) | nothing | implicit; each module has its own catalog + tracker + ops + tab without a shared shape | -- | -- | **n/a** | Possible meta-pattern: a `ModuleDef` that names which subsystems each module participates in. Defer until we feel the pain. |
@@ -114,13 +114,12 @@ Instance + Controller, and whether adding a new variant is a
 In rough priority order. Each one collapses 2-3 hardcoded
 match statements into a single registry append.
 
-1. **Debug ops registry.** Lift `STANDARD_OPS` into
-   `OpDef { kind, handler, args_doc, summary }` +
-   `OP_REGISTRY: &'static [OpDef]`. Replace the three dispatch
-   match statements with a single `dispatch(op_name, args)`
-   that looks up the registry. Auto-generate a `list_ops`
-   handler that returns the registry as JSON for client
-   discovery. New op = 1 registry entry, no dispatch edits.
+1. ~~**Debug ops registry.**~~ -- DONE 2026-05-10. `OpDef` +
+   `OpRegistry` shipped; `OP_REGISTRY` singleton; auto-generated
+   `list_ops` handler. The three old dispatchers
+   (`handle_builtin`, `dispatch_standard_op`, `dispatch_pe_ops`)
+   are gone. Game crates collapse to one
+   `OP_REGISTRY.dispatch(op, args)` call.
 2. **Selectors registry.**
    `SelectorDef { prefix: &'static str, resolver: fn(&str, usize) -> Result<usize, String> }`
    + `SELECTOR_REGISTRY`. `resolve_generic` becomes a registry

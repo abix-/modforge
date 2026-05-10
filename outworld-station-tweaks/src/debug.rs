@@ -6,7 +6,15 @@ use serde_json::Value as Json;
 
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 
+/// Register every ows-tweaks op into the workspace `OP_REGISTRY`.
+/// Called once before the HTTP listener starts.
+fn register_ops() {
+    ueforge::ops::register_builtins();
+    ueforge::ops::register_with_resolver(resolve_instance);
+}
+
 pub fn spawn(port: u16) {
+    register_ops();
     ueforge::spawn(
         ueforge::Config {
             port,
@@ -43,24 +51,22 @@ fn handle(body: &str) -> OpResponse {
         Err(e) => return error_response("<parse-error>", e),
     };
 
-    // Game-specific ops first (snapshot is the only one tweaks
-    // owns today). Then ueforge's built-in op set covers
-    // read/write_bytes, walk_class, fname_to_string, scan_*,
-    // freeze*. Add tweaks-specific ops as new match arms.
-    match op.as_str() {
-        "snapshot" => return ok_response(&op, Json::Null),
-        "" => {
-            return error_response(
-                "<missing>",
-                "missing 'op' field; supported: snapshot + every ueforge built-in",
-            );
-        }
-        _ => {}
+    if op == "snapshot" {
+        return ok_response(&op, Json::Null);
     }
-    if let Some(r) = ueforge::ops::handle_builtin(&op, &args, resolve_instance) {
-        return to_response(&op, r);
+    if op.is_empty() {
+        return error_response(
+            "<missing>",
+            "missing 'op' field; try op:'list_ops' for the catalog",
+        );
     }
-    error_response(&op, format!("unknown op '{}'", op))
+    match ueforge::ops::OP_REGISTRY.dispatch(&op, &args) {
+        Some(r) => to_response(&op, r),
+        None => error_response(
+            &op,
+            format!("unknown op '{op}'; try op:'list_ops' for the catalog"),
+        ),
+    }
 }
 
 fn ok_response(op: &str, result: Json) -> OpResponse {

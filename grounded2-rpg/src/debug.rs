@@ -18,11 +18,10 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value as Json;
 use ueforge::args::arg_f64;
-use ueforge::debug::{
-    self, CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot, STANDARD_OPS,
-};
+use ueforge::debug::{self, CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot};
 pub use ueforge::debug::DamageEvent;
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
+use ueforge::ops::{OP_REGISTRY, OpDef};
 use ueforge::pe_queue::DrainSite;
 
 use crate::inv_hook;
@@ -30,22 +29,6 @@ use crate::rpg::{apply, fall_hook, skills, tracker, world_loader};
 use ueforge::ue::{ClassRef, UObject};
 
 static HEALTH_CLASS: ClassRef = ClassRef::new("HealthComponent");
-
-// Ops are added one at a time, each driven by a failing test in
-// `grounded2-rpg/tests/`. Discipline: write the red test FIRST,
-// then add the match arm + handler. See
-// `~/.claude/skills/runtime-control-http/SKILL.md` for the
-// cross-project pattern.
-/// Game-specific ops that supplement `ueforge::debug::STANDARD_OPS`.
-const GAME_OPS: &[&str] = &[
-    "simulate_add_health",
-    "simulate_apply_damage",
-    "simulate_set_current_health",
-];
-
-fn supported_ops() -> Vec<&'static str> {
-    STANDARD_OPS.iter().chain(GAME_OPS.iter()).copied().collect()
-}
 
 // PE-thread queue. The HTTP handler enqueues a command + a reply
 // channel; `drain_pending()` is called from `kill_hook`'s
@@ -113,7 +96,39 @@ fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
     }
 }
 
+/// Register every g2rpg op into the workspace [`OP_REGISTRY`].
+/// Called once from `worker()` at init, BEFORE the HTTP listener
+/// starts. After this returns, `OP_REGISTRY.dispatch(op, args)`
+/// covers ueforge built-ins + RPG ops + g2rpg sim ops.
+fn register_ops() {
+    ueforge::ops::register_builtins();
+    ueforge::ops::register_with_resolver(resolve_instance);
+    ueforge::debug::register_pe_call(&PE_QUEUE, PE_TIMEOUT_HINT, resolve_instance);
+    ueforge::rpg::ops::register(&tracker::TRACKER, &apply::DISABLED_SKILLS);
+    OP_REGISTRY.register_many([
+        OpDef::new(
+            "simulate_add_health",
+            "Heal the player by `amount` HP via the PE queue",
+            "{amount: f32}",
+            |args| op_simulate_add_health(args),
+        ),
+        OpDef::new(
+            "simulate_apply_damage",
+            "Disabled -- ApplyDamageFromInfo from a PE trampoline crashes the game",
+            "{}",
+            |args| op_simulate_apply_damage(args),
+        ),
+        OpDef::new(
+            "simulate_set_current_health",
+            "Force the player's CurrentHealth to `value`",
+            "{value: f32}",
+            |args| op_simulate_set_current_health(args),
+        ),
+    ]);
+}
+
 pub fn spawn(port: u16) {
+    register_ops();
     ueforge::spawn(
         ueforge::Config {
             port,
@@ -142,36 +157,17 @@ fn handle(body: &str) -> OpResponse {
     if op == "snapshot" {
         return ok_response(&op, Json::Null);
     }
-    if let Some(r) = debug::dispatch_standard_op(
-        &op,
-        &args,
-        &tracker::TRACKER,
-        &apply::DISABLED_SKILLS,
-    ) {
-        return to_response(&op, r);
-    }
-    if let Some(r) = debug::dispatch_pe_ops(
-        &op,
-        &args,
-        &PE_QUEUE,
-        PE_TIMEOUT_HINT,
-        resolve_instance,
-    ) {
-        return to_response(&op, r);
-    }
-    match op.as_str() {
-        "simulate_add_health" => to_response(&op, op_simulate_add_health(&args)),
-        "simulate_apply_damage" => to_response(&op, op_simulate_apply_damage(&args)),
-        "simulate_set_current_health" => {
-            to_response(&op, op_simulate_set_current_health(&args))
-        }
-        "" => error_response(
+    if op.is_empty() {
+        return error_response(
             "<missing>",
-            format!("missing 'op' field; supported ops: {:?}", supported_ops()),
-        ),
-        other => error_response(
-            other,
-            format!("unknown op '{other}'; supported ops: {:?}", supported_ops()),
+            "missing 'op' field; try op:'list_ops' for the catalog",
+        );
+    }
+    match OP_REGISTRY.dispatch(&op, &args) {
+        Some(r) => to_response(&op, r),
+        None => error_response(
+            &op,
+            format!("unknown op '{op}'; try op:'list_ops' for the catalog"),
         ),
     }
 }

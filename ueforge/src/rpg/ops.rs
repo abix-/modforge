@@ -5,27 +5,71 @@
 //! `reload_slot`, `set_skill_points`. The arm bodies are pure
 //! glue between [`crate::args`], the consumer's
 //! `Tracker<A>` + `DisabledSkills`, and a JSON result envelope
-//! -- nothing game-specific. Ship them once.
+//! -- nothing game-specific.
+//!
+//! Game crates register all five into the workspace
+//! [`ueforge::ops::OP_REGISTRY`] in one call:
 //!
 //! ```ignore
-//! match op.as_str() {
-//!     "skill_toggle"     => to_response(&op, ueforge::rpg::ops::skill_toggle(&TRACKER, &DISABLED, &args)),
-//!     "skill_spend"      => to_response(&op, ueforge::rpg::ops::skill_spend(&TRACKER, &args)),
-//!     "skill_refund"     => to_response(&op, ueforge::rpg::ops::skill_refund(&TRACKER, &args)),
-//!     "reload_slot"      => to_response(&op, ueforge::rpg::ops::reload_slot(&TRACKER)),
-//!     "set_skill_points" => to_response(&op, ueforge::rpg::ops::set_skill_points(&TRACKER, &args)),
-//!     // ...
-//! }
+//! ueforge::rpg::ops::register(&TRACKER, &DISABLED_SKILLS);
 //! ```
 //!
+//! After that, `OP_REGISTRY.dispatch(op, args)` covers them
+//! alongside every other registered op.
+//!
 //! Game-specific ops (kill simulation, status-effect application,
-//! whatever) stay in the game crate; these are the universal
-//! ones.
+//! whatever) stay in the game crate; the game registers those
+//! into `OP_REGISTRY` directly.
 
 use serde_json::Value as Json;
 
 use crate::args::{arg_bool, arg_str, arg_u64};
+use crate::ops::{OP_REGISTRY, OpDef};
 use super::{DisabledSkills, RpgApplier, Tracker};
+
+/// Register the standard RPG op set against the workspace
+/// [`OP_REGISTRY`] with the game's static `Tracker` + `DisabledSkills`
+/// captured. Call once at worker init.
+///
+/// Registers: `skill_toggle`, `skill_spend`, `skill_refund`,
+/// `reload_slot`, `set_skill_points`.
+pub fn register<A: RpgApplier>(
+    tracker: &'static Tracker<A>,
+    disabled: &'static DisabledSkills,
+) {
+    OP_REGISTRY.register_many([
+        OpDef::new(
+            "skill_toggle",
+            "Enable / disable a skill without changing its level",
+            "{id: str, enabled: bool}",
+            move |args| skill_toggle(tracker, disabled, args),
+        ),
+        OpDef::new(
+            "skill_spend",
+            "Spend N skill points on a skill",
+            "{id: str, count?: u32}",
+            move |args| skill_spend(tracker, args),
+        ),
+        OpDef::new(
+            "skill_refund",
+            "Refund N points from a skill",
+            "{id: str, count?: u32}",
+            move |args| skill_refund(tracker, args),
+        ),
+        OpDef::new(
+            "reload_slot",
+            "Re-apply every catalog skill against current state",
+            "{}",
+            move |_args| reload_slot(tracker),
+        ),
+        OpDef::new(
+            "set_skill_points",
+            "Grant N unspent skill points (debug)",
+            "{count: u64}",
+            move |args| set_skill_points(tracker, args),
+        ),
+    ]);
+}
 
 /// `op: "skill_toggle"`, `args: { id, enabled }`. Flips the
 /// disabled-skills set and re-applies the skill so the change

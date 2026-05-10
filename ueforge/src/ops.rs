@@ -25,61 +25,276 @@
 
 use std::ffi::c_void;
 
+use parking_lot::Mutex;
 use serde_json::Value as Json;
 
 use crate::args::{arg_str, arg_u64};
 use crate::hex;
 use crate::ue::{self, UObject, fname::FName};
 
-/// Dispatch an op name + args to ueforge's built-in handlers.
-/// Returns `Some(result)` if the op is one ueforge owns, or
-/// `None` if the embedding crate should handle it.
+// =====================================================================
+// Op registry -- the workspace-standard <Subject>Def + <Subject>Registry
+// shape for debug ops. Per architecture.md, every dispatch lookup goes
+// through ONE registry instead of three hardcoded match statements.
+//
+// K8s slot: Def=OpDef, Registry=OpRegistry (OP_REGISTRY singleton),
+//           Instance=per-call (args, result), Controller=OpRegistry::dispatch
+//
+// Like hooks, OpDefs are populated imperatively at init time (each
+// handler is a closure capturing the per-game tracker / pe_queue /
+// selector resolver). The registry surface is the same as every
+// other subject; the contents are produced at runtime.
+// =====================================================================
+
+pub type OpHandler = Box<dyn Fn(&Json) -> Result<Json, String> + Send + Sync>;
+
+/// One debug-op declaration. The handler is a closure (boxed to
+/// erase per-game capture types -- tracker references, selector
+/// resolvers, PE queue handles).
+pub struct OpDef {
+    pub name: &'static str,
+    pub summary: &'static str,
+    /// Human-readable args spec for the auto-generated `list_ops`
+    /// response. Free-form: `"{slot: str, count?: u32}"`. Empty
+    /// string for ops with no args.
+    pub args: &'static str,
+    pub handler: OpHandler,
+}
+
+impl OpDef {
+    /// Convenience constructor.
+    pub fn new<F>(
+        name: &'static str,
+        summary: &'static str,
+        args: &'static str,
+        handler: F,
+    ) -> Self
+    where
+        F: Fn(&Json) -> Result<Json, String> + Send + Sync + 'static,
+    {
+        Self {
+            name,
+            summary,
+            args,
+            handler: Box::new(handler),
+        }
+    }
+}
+
+/// The workspace-standard `<Subject>Registry` for debug ops.
+/// Populated at init time via [`Self::register`]; dispatch is one
+/// linear scan (registries hold ~20 ops, lookups are once per
+/// HTTP request, so the scan cost is invisible).
+pub struct OpRegistry {
+    entries: Mutex<Vec<OpDef>>,
+}
+
+impl OpRegistry {
+    pub const fn new() -> Self {
+        Self {
+            entries: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Register one op. Callers (the framework's `register_builtins`
+    /// + each game crate's worker init) push their declarations
+    /// once at startup.
+    pub fn register(&self, def: OpDef) {
+        self.entries.lock().push(def);
+    }
+
+    /// Register a batch of ops in one shot.
+    pub fn register_many<I: IntoIterator<Item = OpDef>>(&self, defs: I) {
+        let mut g = self.entries.lock();
+        for d in defs {
+            g.push(d);
+        }
+    }
+
+    /// Look up + invoke. Returns `None` if the op isn't registered
+    /// (caller fall through to "unknown op" error).
+    pub fn dispatch(&self, name: &str, args: &Json) -> Option<Result<Json, String>> {
+        let g = self.entries.lock();
+        let def = g.iter().find(|o| o.name == name)?;
+        Some((def.handler)(args))
+    }
+
+    /// Names of every registered op. For "supported ops: [...]"
+    /// error messages.
+    pub fn names(&self) -> Vec<&'static str> {
+        self.entries.lock().iter().map(|o| o.name).collect()
+    }
+
+    /// Count of registered ops.
+    pub fn len(&self) -> usize {
+        self.entries.lock().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.lock().is_empty()
+    }
+
+    /// Auto-generated `list_ops` payload: `{ ops: [{ name, summary,
+    /// args }, ...] }`. The framework registers a `list_ops` op
+    /// that returns this; clients use it for discovery.
+    pub fn list_json(&self) -> Json {
+        let g = self.entries.lock();
+        serde_json::json!({
+            "ops": g.iter().map(|o| serde_json::json!({
+                "name": o.name,
+                "summary": o.summary,
+                "args": o.args,
+            })).collect::<Vec<_>>()
+        })
+    }
+}
+
+impl Default for OpRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Process-wide debug-op registry singleton. Game crates push
+/// their ops here at worker init; the HTTP `handle()` calls
+/// `OP_REGISTRY.dispatch(op, args)` for every request.
+pub static OP_REGISTRY: OpRegistry = OpRegistry::new();
+
+/// Register every framework-shipped op that does NOT need
+/// per-game context (no tracker, no selector resolver, no PE
+/// queue). Game crates call this once at worker init -- typically
+/// before their own per-game `OP_REGISTRY.register(...)` calls.
 ///
-/// Use as the first match arm in your debug dispatcher:
+/// Registered: `walk_class`, `fname_to_string`, `inspect_address`,
+/// `class_outer_samples`, `sample_thread_modules`, scanner ops
+/// (`scan_memory` / `scan_rescan` / `scan_session` / `scan_close`,
+/// `freeze` / `unfreeze` / `freeze_list`), and `list_ops` itself.
 ///
-/// ```ignore
-/// fn handle(body: &str) -> OpResponse<Snapshot> {
-///     let (op, args) = parse_request(body)?;
-///     if let Some(r) = ueforge::ops::handle_builtin(&op, &args, resolve_instance) {
-///         return OpResponse::from_result(&op, r, build_snapshot());
-///     }
-///     // Game-specific ops below...
-/// }
-/// ```
+/// Per-game ops with captured context (rpg `skill_*`, `call`,
+/// `read_bytes`, `write_bytes`, sim ops) are registered by the
+/// game crate, not here.
+pub fn register_builtins() {
+    OP_REGISTRY.register_many([
+        OpDef::new(
+            "walk_class",
+            "Walk a UClass property chain and return the named fields",
+            "{class: str}",
+            |args| walk_class(args),
+        ),
+        OpDef::new(
+            "fname_to_string",
+            "Resolve an FName u64 to its string form",
+            "{fname: u64}",
+            |args| fname_to_string(args),
+        ),
+        OpDef::new(
+            "inspect_address",
+            "Describe the UObject at an address (class + properties + values)",
+            "{addr: hex}",
+            |args| inspect_address(args),
+        ),
+        OpDef::new(
+            "class_outer_samples",
+            "Sample up to k UObjects under class and return their outers",
+            "{class: str, k?: u64}",
+            |args| {
+                let class_name = arg_str(args, "class")?;
+                let k = arg_u64(args, "k", Some(20))? as usize;
+                Ok(crate::ue::probe::class_outer_samples(class_name, k))
+            },
+        ),
+        OpDef::new(
+            "sample_thread_modules",
+            "Sample which DLL each thread is executing in over a duration",
+            "{duration_ms?: u64, interval_ms?: u64}",
+            |args| {
+                let duration_ms = arg_u64(args, "duration_ms", Some(30_000))? as u32;
+                let interval_ms = arg_u64(args, "interval_ms", Some(100))? as u32;
+                Ok(crate::winproc::sample_thread_modules_json(
+                    duration_ms,
+                    interval_ms,
+                ))
+            },
+        ),
+        // Scanner -- Cheat-Engine-style memory search + freezes.
+        OpDef::new(
+            "scan_memory",
+            "First-scan: find all addresses holding `value` of `type`",
+            "{type: str, value: any}",
+            |args| crate::scanner::scan_memory(args),
+        ),
+        OpDef::new(
+            "scan_rescan",
+            "Narrow a session by re-reading current values",
+            "{session_id: u64, mode: str, value?: any, delta?: any}",
+            |args| crate::scanner::scan_rescan(args),
+        ),
+        OpDef::new(
+            "scan_session",
+            "Paginate over a scan session's surviving addresses",
+            "{session_id: u64, max?: u64, offset?: u64}",
+            |args| crate::scanner::scan_session(args),
+        ),
+        OpDef::new(
+            "scan_close",
+            "Drop a scan session's state",
+            "{session_id: u64}",
+            |args| crate::scanner::scan_close(args),
+        ),
+        OpDef::new(
+            "freeze",
+            "Hold a value at addr/selector at hz Hz (re-resolves on staleness)",
+            "{selector?: str, addr?: hex, offset?: u64, type: str, value: any, hz?: u32}",
+            |args| crate::scanner::freeze(args),
+        ),
+        OpDef::new(
+            "unfreeze",
+            "Stop a freeze",
+            "{addr: hex}",
+            |args| crate::scanner::unfreeze(args),
+        ),
+        OpDef::new(
+            "freeze_list",
+            "Show every active freeze",
+            "{}",
+            |args| crate::scanner::freeze_list(args),
+        ),
+        OpDef::new(
+            "list_ops",
+            "Auto-generated catalog of every registered debug op",
+            "{}",
+            |_args| Ok(OP_REGISTRY.list_json()),
+        ),
+    ]);
+}
+
+/// Register the resolver-needing ueforge ops. Each game crate
+/// supplies its own selector resolver (typically wraps
+/// [`crate::selector::resolve_generic`] with extra game names like
+/// `live_player:`); the closure captures it.
 ///
-/// Built-in ops dispatched here:
-/// - `read_bytes`, `write_bytes`, `walk_class`, `fname_to_string`
-///   (the generic primitives)
-/// - `scan_memory`, `scan_rescan`, `scan_session`, `scan_close`
-///   (Cheat-Engine-style scanner)
-/// - `freeze`, `unfreeze`, `freeze_list`
-///
-/// Note `snapshot` and `call` are NOT in this set — `snapshot`'s
-/// state shape is per-game, and `call` needs the game's PE
-/// queue + selector resolver. Game crates wire those manually.
-pub fn handle_builtin<F>(
-    op: &str,
-    args: &Json,
-    resolve: F,
-) -> Option<Result<Json, String>>
+/// Registers: `read_bytes`, `write_bytes`. (Selector-form `freeze`
+/// already accepts a resolver internally via the selector module's
+/// `resolve_generic` + game's chained dispatch, so it goes through
+/// `register_builtins`.)
+pub fn register_with_resolver<R>(resolver: R)
 where
-    F: Fn(&str) -> Result<&'static UObject, String>,
+    R: Fn(&str) -> Result<&'static UObject, String> + Copy + Send + Sync + 'static,
 {
-    Some(match op {
-        "read_bytes" => read_bytes(args, &resolve),
-        "write_bytes" => write_bytes(args, &resolve),
-        "walk_class" => walk_class(args),
-        "fname_to_string" => fname_to_string(args),
-        "inspect_address" => inspect_address(args),
-        "scan_memory" => crate::scanner::scan_memory(args),
-        "scan_rescan" => crate::scanner::scan_rescan(args),
-        "scan_session" => crate::scanner::scan_session(args),
-        "scan_close" => crate::scanner::scan_close(args),
-        "freeze" => crate::scanner::freeze(args),
-        "unfreeze" => crate::scanner::unfreeze(args),
-        "freeze_list" => crate::scanner::freeze_list(args),
-        _ => return None,
-    })
+    OP_REGISTRY.register_many([
+        OpDef::new(
+            "read_bytes",
+            "Read N bytes from a selector + offset",
+            "{selector: str, offset?: u64, length: u64}",
+            move |args| read_bytes(args, resolver),
+        ),
+        OpDef::new(
+            "write_bytes",
+            "Write hex bytes to a selector + offset",
+            "{selector: str, offset?: u64, hex: str}",
+            move |args| write_bytes(args, resolver),
+        ),
+    ]);
 }
 
 /// Cap on `read_bytes` length / `write_bytes` payload (1 MiB).

@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 use crate::args;
 use crate::pe_queue::DrainSite;
 use crate::ring::EventRing;
-use crate::rpg::{DisabledSkills, RpgApplier, SkillDef, SkillsState, Tracker};
+use crate::rpg::{SkillDef, SkillsState};
 
 /// Universal player-state view for the debug snapshot. Serde-
 /// friendly mapping of `SkillsState` fields. `skill_levels` is a
@@ -104,23 +104,6 @@ pub fn catalog_view<E>(
         .collect()
 }
 
-/// The list of op names this framework's standard dispatcher
-/// handles. Game crates extend with their own simulate_* ops and
-/// concatenate the lists for the "supported ops" error message.
-pub const STANDARD_OPS: &[&str] = &[
-    "snapshot",
-    "skill_toggle",
-    "skill_spend",
-    "skill_refund",
-    "reload_slot",
-    "set_skill_points",
-    "call",
-    "read_bytes",
-    "write_bytes",
-    "walk_class",
-    "class_outer_samples",
-    "sample_thread_modules",
-];
 
 /// Recent damage / multicast PE event captured by a damage hook.
 /// Universal shape: every UE5 RPG mod that observes damage wants
@@ -231,85 +214,32 @@ where
         })
 }
 
-/// Try to handle one of the [`STANDARD_OPS`] generically. Returns
-/// `None` if the op isn't standard (caller dispatches their
-/// game-specific op). Returns `Some(Ok(json))` / `Some(Err(msg))`
-/// for handled ops.
+/// Register the `call` op with the workspace [`crate::ops::OP_REGISTRY`].
+/// `call` enqueues a UFunction invocation onto the game-thread
+/// `pe_queue` and blocks the HTTP listener thread until the
+/// drain returns. `hint` is appended to timeout errors so users
+/// know which game's drain is starved.
 ///
-/// Ops that need a per-game instance resolver (`call`, `read_bytes`,
-/// `write_bytes`) are NOT included here -- they take a closure the
-/// game must supply. Use [`dispatch_pe_ops`] for those.
-pub fn dispatch_standard_op<A: RpgApplier>(
-    op: &str,
-    args_json: &Json,
-    tracker: &Tracker<A>,
-    disabled: &DisabledSkills,
-) -> Option<Result<Json, String>> {
-    Some(match op {
-        "skill_toggle" => crate::rpg::ops::skill_toggle(tracker, disabled, args_json),
-        "skill_spend" => crate::rpg::ops::skill_spend(tracker, args_json),
-        "skill_refund" => crate::rpg::ops::skill_refund(tracker, args_json),
-        "reload_slot" => crate::rpg::ops::reload_slot(tracker),
-        "set_skill_points" => crate::rpg::ops::set_skill_points(tracker, args_json),
-        "walk_class" => crate::ops::walk_class(args_json),
-        "class_outer_samples" => {
-            let class_name = match args::arg_str(args_json, "class") {
-                Ok(s) => s,
-                Err(e) => return Some(Err(e)),
-            };
-            let k = match args::arg_u64(args_json, "k", Some(20)) {
-                Ok(v) => v as usize,
-                Err(e) => return Some(Err(e)),
-            };
-            Ok(crate::ue::probe::class_outer_samples(class_name, k))
-        }
-        "sample_thread_modules" => {
-            let duration_ms = match args::arg_u64(args_json, "duration_ms", Some(30_000)) {
-                Ok(v) => v as u32,
-                Err(e) => return Some(Err(e)),
-            };
-            let interval_ms = match args::arg_u64(args_json, "interval_ms", Some(100)) {
-                Ok(v) => v as u32,
-                Err(e) => return Some(Err(e)),
-            };
-            Ok(crate::winproc::sample_thread_modules_json(duration_ms, interval_ms))
-        }
-        _ => return None,
-    })
-}
-
-/// Handle the three standard ops that need a game-specific
-/// instance resolver (`call`, `read_bytes`, `write_bytes`).
-/// Returns `None` for non-matching ops.
-///
-/// `pe_queue` is the game-thread DrainSite the `call` op enqueues
-/// onto; `hint` is appended to timeout errors. `resolver` is the
-/// game's selector dispatcher (typically wraps
-/// [`crate::selector::resolve_generic`] with extra game-specific
-/// names like `"live_player"`).
-///
-/// `read_bytes` and `write_bytes` are off-thread-safe (they only
-/// read / write memory, no PE), so they don't go through the
-/// queue.
-pub fn dispatch_pe_ops<R>(
-    op: &str,
-    args_json: &Json,
+/// Game crates call this once at worker init alongside
+/// [`crate::ops::register_builtins`] and
+/// [`crate::ops::register_with_resolver`].
+pub fn register_pe_call<R>(
     pe_queue: &'static DrainSite,
     hint: &'static str,
     resolver: R,
-) -> Option<Result<Json, String>>
-where
+) where
     R: Fn(&str) -> Result<&'static crate::ue::UObject, String>
         + Copy
         + Send
+        + Sync
         + 'static,
 {
-    match op {
-        "call" => Some(dispatch_call(args_json, pe_queue, hint, resolver)),
-        "read_bytes" => Some(crate::ops::read_bytes(args_json, resolver)),
-        "write_bytes" => Some(crate::ops::write_bytes(args_json, resolver)),
-        _ => None,
-    }
+    crate::ops::OP_REGISTRY.register(crate::ops::OpDef::new(
+        "call",
+        "Call a UFunction on a resolved instance via the PE queue",
+        "{class: str, function: str, instance_selector: str, parms_hex: str}",
+        move |args_json| dispatch_call(args_json, pe_queue, hint, resolver),
+    ));
 }
 
 fn dispatch_call<R>(

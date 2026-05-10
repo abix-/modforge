@@ -32,7 +32,10 @@ use super::{SkillDef, SkillsState};
 
 pub trait RpgApplier: Send + Sync + 'static {
     /// The game's effect enum. Owned by the game crate.
-    type Effect: Copy + 'static;
+    /// `Send + Sync` is required so the framework can box closures
+    /// that hold `&'static SkillRegistry<Self::Effect>` into the
+    /// shared `OP_REGISTRY`.
+    type Effect: Copy + Send + Sync + 'static;
 
     /// Apply ONE skill against `state`. Called whenever the level
     /// of that skill changes (spend / refund / toggle / slot
