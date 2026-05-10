@@ -420,19 +420,31 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
-### Wave C -- Hook ergonomics
+### Wave C -- Hook ergonomics + worker plumbing (DONE 2026-05-10)
 
-- [ ] **C1. `ueforge::counters::hook_counters!` decl-macro.**
-  `hook_counters!(KILL_HOOK { fires, player_fires, time_ns, allocs
-  })` expands to static block + Recorder accessor (`record_fire()`,
-  `record_player_fire()`, `time_scope()`). Migrates `bbp/counters.rs`
-  per-hook repetition. ~50 LoC. **Acceptance:** snapshot counter
-  map identical key-set; render unchanged.
-- [ ] **C2. `ueforge::ue::wait_for_class(name, RetryPolicy)`** +
-  canonical `RetryPolicy { base, max, timeout }`. Migrates
-  `bbp/lib.rs:28-30` (`HOOK_RETRY_*` consts) + worker-thread retry
-  loop. **Acceptance:** mod still installs hooks when target
-  classes load late.
+- [x] **C1. `ueforge::counter_json!` decl-macro.** Pairs of
+  `(static_ident => "json_key")` collapsed into a
+  `serde_json::Value::Object` with `load(Relaxed)` per counter.
+  Centralizes the `load` + `Ordering` discipline. Lives next to
+  the existing `counter!` / `peak!` macros in `ueforge/src/
+  counters.rs`. Migrates `bbp/counters.rs::snapshot_json` -- 22
+  hand-written `.load(Ordering::Relaxed)` lines now ride the macro.
+  Generic, reusable by any mod's snapshot endpoint.
+- [x] **C2. `ueforge::hook::install_with_backoff` + `RetryPolicy`.**
+  Generic exponential-backoff retry loop around any
+  `FnMut() -> Result<H, &'static str>`. `RetryPolicy::new(base,
+  max, timeout)` + `default_install()` (500ms / 5s / 10min, bbp's
+  battle-tested tuning). 4 unit tests. Migrates `bbp/lib.rs::
+  install_inv_hook_with_backoff` + the three `HOOK_RETRY_*` consts
+  -- ~25 LoC + 3 consts dropped from bbp.
+- [x] **C3. `ueforge::worker::spawn(name, FnOnce)`.** Named worker
+  thread (Win32 `SetThreadDescription` via
+  `thread::Builder::name`) with `catch_unwind` + logged panic
+  payload. Replaces bbp's hand-rolled `CreateThread` /
+  `worker_entry` / `unsafe extern "system"` plumbing. 2 unit tests.
+  Closes the kovarex P1 "unnamed worker thread" + "silent panic
+  swallow" findings for any future `ueforge::worker` consumer
+  (poller still TODO, see Wave B2).
 
 ### Wave D -- Doctrine docs
 

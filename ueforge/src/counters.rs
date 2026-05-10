@@ -102,3 +102,33 @@ macro_rules! peak {
         $crate::peak!($($rest),+);
     };
 }
+
+/// Build a `serde_json::Value::Object` from a list of
+/// `(static_ident => "json_key")` pairs by `load(Relaxed)`-ing each
+/// counter (or peak) static. Centralizes the load + ordering
+/// discipline so the snapshot endpoint is one short list per mod.
+///
+/// Accepts any static whose type implements `Load`-shape semantics
+/// via `.load(Ordering::Relaxed)` returning a JSON-friendly integer
+/// (`AtomicU64`, `AtomicUsize`, `AtomicI64`).
+///
+/// ```ignore
+/// pub fn snapshot_json() -> serde_json::Value {
+///     ueforge::counter_json! {
+///         KILL_HOOK_FIRES        => "kill_hook_fires",
+///         KILL_HOOK_PLAYER_FIRES => "kill_hook_player_fires",
+///         DAMAGE_RING_PEAK       => "damage_ring_peak",  // AtomicUsize
+///         TIME_NS_DRAIN_PENDING  => "time_ns_drain_pending",
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! counter_json {
+    ( $( $name:path => $key:literal ),* $(,)? ) => {
+        ::serde_json::json!({
+            $(
+                $key: $name.load(::core::sync::atomic::Ordering::Relaxed),
+            )*
+        })
+    };
+}

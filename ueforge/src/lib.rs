@@ -37,6 +37,7 @@ pub mod ue;
 pub mod ui;
 pub mod ui_scanner;
 pub mod winproc;
+pub mod worker;
 
 pub use envelope::{OpResponse, parse_request};
 pub use mod_main::{ModInfo, Tab};

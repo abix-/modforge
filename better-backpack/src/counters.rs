@@ -5,9 +5,9 @@
 // Snapshot endpoint diffs these statics across two `snapshot` calls
 // to find cycle thieves.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
-use ueforge::counter;
+use ueforge::{counter, counter_json};
 
 // kill_hook (UHealthComponent vtable)
 counter!(
@@ -52,27 +52,27 @@ counter!(
 
 /// Snapshot all counters as a JSON object. Called by debug::snapshot.
 pub fn snapshot_json() -> serde_json::Value {
-    serde_json::json!({
-        "kill_hook_fires":                  KILL_HOOK_FIRES.load(Ordering::Relaxed),
-        "kill_hook_player_fires":           KILL_HOOK_PLAYER_FIRES.load(Ordering::Relaxed),
-        "kill_hook_owner_fullname_allocs":  KILL_HOOK_OWNER_FULLNAME_ALLOCS.load(Ordering::Relaxed),
-        "kill_hook_log_lines":              KILL_HOOK_LOG_LINES.load(Ordering::Relaxed),
-        "kill_hook_damagetype_name_allocs": KILL_HOOK_DAMAGETYPE_NAME_ALLOCS.load(Ordering::Relaxed),
-        "fall_hook_fires":                  FALL_HOOK_FIRES.load(Ordering::Relaxed),
-        "fall_hook_fnname_allocs":          FALL_HOOK_FNNAME_ALLOCS.load(Ordering::Relaxed),
-        "drain_pending_calls":              DRAIN_PENDING_CALLS.load(Ordering::Relaxed),
-        "drain_pending_drained_cmds":       DRAIN_PENDING_DRAINED_CMDS.load(Ordering::Relaxed),
-        "damage_ring_pushes":               DAMAGE_RING_PUSHES.load(Ordering::Relaxed),
-        "world_loader_polls":               WORLD_LOADER_POLLS.load(Ordering::Relaxed),
-        "world_loader_gobjects_walks":      WORLD_LOADER_GOBJECTS_WALKS.load(Ordering::Relaxed),
-        "imgui_tab_renders":                IMGUI_TAB_RENDERS.load(Ordering::Relaxed),
-        "http_requests":                    HTTP_REQUESTS.load(Ordering::Relaxed),
-        "damage_ring_peak":                 DAMAGE_RING_PEAK.load(Ordering::Relaxed),
-        "pe_queue_peak":                    PE_QUEUE_PEAK.load(Ordering::Relaxed),
-        "time_ns_kill_hook":                TIME_NS_KILL_HOOK.load(Ordering::Relaxed),
-        "time_ns_fall_hook":                TIME_NS_FALL_HOOK.load(Ordering::Relaxed),
-        "time_ns_drain_pending":            TIME_NS_DRAIN_PENDING.load(Ordering::Relaxed),
-        "time_ns_imgui_get_xp":             TIME_NS_IMGUI_GET_XP.load(Ordering::Relaxed),
-        "time_ns_http_handle":              TIME_NS_HTTP_HANDLE.load(Ordering::Relaxed),
-    })
+    counter_json! {
+        KILL_HOOK_FIRES                  => "kill_hook_fires",
+        KILL_HOOK_PLAYER_FIRES           => "kill_hook_player_fires",
+        KILL_HOOK_OWNER_FULLNAME_ALLOCS  => "kill_hook_owner_fullname_allocs",
+        KILL_HOOK_LOG_LINES              => "kill_hook_log_lines",
+        KILL_HOOK_DAMAGETYPE_NAME_ALLOCS => "kill_hook_damagetype_name_allocs",
+        FALL_HOOK_FIRES                  => "fall_hook_fires",
+        FALL_HOOK_FNNAME_ALLOCS          => "fall_hook_fnname_allocs",
+        DRAIN_PENDING_CALLS              => "drain_pending_calls",
+        DRAIN_PENDING_DRAINED_CMDS       => "drain_pending_drained_cmds",
+        DAMAGE_RING_PUSHES               => "damage_ring_pushes",
+        WORLD_LOADER_POLLS               => "world_loader_polls",
+        WORLD_LOADER_GOBJECTS_WALKS      => "world_loader_gobjects_walks",
+        IMGUI_TAB_RENDERS                => "imgui_tab_renders",
+        HTTP_REQUESTS                    => "http_requests",
+        DAMAGE_RING_PEAK                 => "damage_ring_peak",
+        PE_QUEUE_PEAK                    => "pe_queue_peak",
+        TIME_NS_KILL_HOOK                => "time_ns_kill_hook",
+        TIME_NS_FALL_HOOK                => "time_ns_fall_hook",
+        TIME_NS_DRAIN_PENDING            => "time_ns_drain_pending",
+        TIME_NS_IMGUI_GET_XP             => "time_ns_imgui_get_xp",
+        TIME_NS_HTTP_HANDLE              => "time_ns_http_handle",
+    }
 }

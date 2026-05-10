@@ -15,19 +15,7 @@ pub mod rpg;
 pub mod settings;
 pub mod survival;
 
-use std::ffi::c_void;
-use std::ptr;
-use std::thread;
-use std::time::Duration;
-
-use windows_sys::Win32::Foundation::CloseHandle;
-use windows_sys::Win32::System::Threading::CreateThread;
-
 use ueforge::ue::offsets::{STEAM, XBOX};
-
-const HOOK_RETRY_BASE_DELAY_MS: u64 = 500;
-const HOOK_RETRY_MAX_DELAY_MS: u64 = 5_000;
-const HOOK_RETRY_TIMEOUT_SEC: u64 = 600; // 10 min hard cap before giving up
 
 static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     name: "BetterBackpack",
@@ -46,31 +34,15 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
 ueforge::ue4ss_mod!(MOD_INFO);
 
 fn bbp_on_unreal_init() {
-    // Spawn the worker thread off the engine init thread so any panic
-    // we hit doesn't propagate up into UE4SS.
-    unsafe {
-        let h = CreateThread(
-            ptr::null(),
-            0,
-            Some(worker_entry),
-            ptr::null(),
-            0,
-            ptr::null_mut(),
-        );
-        if !h.is_null() {
-            CloseHandle(h);
-        }
-    }
+    // Run heavy init off the engine init thread so any panic doesn't
+    // propagate up into UE4SS. ueforge::worker::spawn names the
+    // thread + catches panics with a logged message.
+    ueforge::worker::spawn("better_backpack/init", || unsafe { worker() });
 }
 
 fn bbp_on_shutdown() {
     // Hooks are leaked intentionally so they survive worker thread exit
     // (and process teardown). Nothing to clean up here today.
-}
-
-unsafe extern "system" fn worker_entry(_lpv: *mut c_void) -> u32 {
-    let _ = std::panic::catch_unwind(|| unsafe { worker() });
-    0
 }
 
 unsafe fn worker() {
@@ -129,20 +101,17 @@ unsafe fn worker() {
         surv.patched
     );
 
-    // Install the inventory-interface hook with exponential backoff. The
-    // class isn't loaded into GObjects until the inventory UI opens for
-    // the first time.
-    match install_inv_hook_with_backoff(settings.inventory.slot_count) {
-        Some(h) => {
-            ueforge::log!("inv hook: installed on {}", h.class_name());
-            std::mem::forget(h);
-        }
-        None => {
-            ueforge::log!(
-                "inv hook: gave up after {}s; scrolling will not work this session",
-                HOOK_RETRY_TIMEOUT_SEC
-            );
-        }
+    // Install the inventory-interface hook with exponential backoff.
+    // The class isn't loaded into GObjects until the inventory UI
+    // opens for the first time. ueforge::hook::install_with_backoff
+    // owns the retry loop + log lines + timeout.
+    if let Some(h) = ueforge::hook::install_with_backoff(
+        "inv hook",
+        ueforge::hook::RetryPolicy::default_install(),
+        || inv_hook::install(settings.inventory.slot_count),
+    ) {
+        ueforge::log!("inv hook: installed on {}", h.class_name());
+        std::mem::forget(h);
     }
 
     match rpg::kill_hook::install() {
@@ -176,24 +145,3 @@ unsafe fn worker() {
     ueforge::log!("init complete; worker thread exiting");
 }
 
-fn install_inv_hook_with_backoff(slot_count: i32) -> Option<ueforge::hook::ProcessEventHook> {
-    let mut delay_ms = HOOK_RETRY_BASE_DELAY_MS;
-    let deadline = std::time::Instant::now() + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
-    let mut last_err: Option<&str> = None;
-    loop {
-        match inv_hook::install(slot_count) {
-            Ok(h) => return Some(h),
-            Err(e) => {
-                if last_err != Some(e) {
-                    ueforge::log!("inv hook: pending ({}), will retry", e);
-                    last_err = Some(e);
-                }
-            }
-        }
-        if std::time::Instant::now() >= deadline {
-            return None;
-        }
-        thread::sleep(Duration::from_millis(delay_ms));
-        delay_ms = (delay_ms * 2).min(HOOK_RETRY_MAX_DELAY_MS);
-    }
-}
