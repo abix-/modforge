@@ -12,8 +12,19 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+/// Current `SkillsState` JSON schema version. Bump whenever the
+/// on-disk shape changes in a non-additive way; downstream
+/// migrations branch on this.
+pub const SCHEMA_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillsState {
+    /// Schema version. Defaults to `SCHEMA_VERSION` for fresh
+    /// states; missing in older save files (treated as 1 via
+    /// `default_schema_version`). Future migrations branch on
+    /// this.
+    #[serde(default = "default_schema_version")]
+    pub schema_version: u32,
     /// Cumulative XP earned. Levels are derived via [`super::Curve`].
     #[serde(default)]
     pub xp: u64,
@@ -28,6 +39,22 @@ pub struct SkillsState {
     /// constants you use for catalog rows + ImGui labels).
     #[serde(default)]
     pub skill_levels: BTreeMap<String, u32>,
+}
+
+fn default_schema_version() -> u32 {
+    1
+}
+
+impl Default for SkillsState {
+    fn default() -> Self {
+        Self {
+            schema_version: SCHEMA_VERSION,
+            xp: 0,
+            level: 0,
+            skill_points: 0,
+            skill_levels: BTreeMap::new(),
+        }
+    }
 }
 
 impl SkillsState {

@@ -12,8 +12,24 @@ pub struct Curve {
     pub max_level: u32,
 }
 
+/// Hard upper bound on `Curve::max_level`. `level_for_xp` is a
+/// linear scan; downstream consumers tempted to pick an unbounded
+/// max (e.g. "any UE game; pick 10_000") would walk that many
+/// iterations on every snapshot. 1024 is plenty for any realistic
+/// RPG curve and keeps the scan deterministic.
+pub const MAX_LEVEL_LIMIT: u32 = 1024;
+
 impl Curve {
+    /// `base = 100`, `exponent = 1.8`, `max_level = 50` is the bbp
+    /// default. `max_level` MUST be `<= MAX_LEVEL_LIMIT` (1024); the
+    /// `assert!` here makes a 10K-level mistake a build-time failure
+    /// when the const is in a `static`, or a panic at runtime
+    /// otherwise.
     pub const fn new(base: f64, exponent: f64, max_level: u32) -> Self {
+        assert!(
+            max_level <= MAX_LEVEL_LIMIT,
+            "Curve::new: max_level exceeds MAX_LEVEL_LIMIT"
+        );
         Self {
             base,
             exponent,

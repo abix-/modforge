@@ -77,20 +77,27 @@ Save-data durability + shutdown safety. All four P0s shipped:
 
 ## Open: ueforge hardening (kovarex P1)
 
-- [ ] **`DisabledSkills` reads -> `ArcSwap`.** Read-mostly set;
-  one mutex lock per skill row per ImGui frame is wasted. Use
-  `ArcSwap<Arc<HashSet<&'static str>>>` like the PE hook
-  registry does.
-- [ ] **`Curve::level_for_xp` upper guard.** O(max_level) per
-  call. Assert `max_level <= 1024` in `Curve::new`, or binary-
-  search.
+- [x] **`DisabledSkills` reads -> `ArcSwap`.** Reads now lock-
+  free: `ArcSwap<HashSet<&'static str>>` snapshot + Arc clone
+  per call. Writers clone-modify-publish through the writer
+  mutex. ImGui per-row + apply per-CDO calls stay on the fast
+  path even with frequent toggles. 4 unit tests.
+- [x] **`Curve::level_for_xp` upper guard.** Added
+  `MAX_LEVEL_LIMIT = 1024` const + `assert!` in `Curve::new`.
+  10K-level mistakes become const-eval failures (in `static`
+  context) or runtime panics (in dynamic context); legitimate
+  RPG curves up to 1024 levels still pass.
 - [x] **`SlotStore` slot-path validation.** DONE alongside
   P0; see kovarex P0 entries above.
+- [x] **`schema_version: u32` on `SkillsState`.** Added
+  `SCHEMA_VERSION` const + `schema_version` field on
+  `SkillsState` with `#[serde(default = "default_schema_version")]`
+  so older save files (which lack the field) load as v1.
+  Hand-rolled `Default` impl emits the current version on
+  fresh state.
 - [ ] **IO failure-injection tests for `SlotStore`.** Fill-disk,
-  permission-denied, partial-write. Zero failure-injection tests
-  on the durability layer today.
-- [ ] **`schema_version: u32` on `SkillsState`.** One-line free
-  insurance for future migrations.
+  permission-denied, partial-write. The 4 unit tests cover
+  happy-path + slot validation; failure-injection still pending.
 - [ ] **HTTP per-launch auth token.** Generate at server spawn,
   require in request header. ~20 LoC. Stops cross-process
   localhost actors from hitting `write_bytes` / `call`.
