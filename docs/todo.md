@@ -207,6 +207,360 @@ maintainability / future-proofing.
   urgent, but pin a quarter to do it before the upstream drops
   security fixes for v2.
 
+## ueforge hardening (kovarex review, 2026-05-10)
+
+Second pass focused on `ueforge::rpg` and the framework-as-save-game
+lens. The 2026-05-09 list closed nearly every P0/P1; these are the
+items that pass missed because they treat ueforge as a mod, not as
+a durable library.
+
+### P0 -- durability / crash
+
+- [ ] **`SlotStore::save` swallows IO errors.**
+  `ueforge/src/rpg/store.rs:65-70`. Logs and returns `()`; caller
+  thinks the save succeeded. Player closes the game, points vanish.
+  Return `io::Result<()>`, propagate to the caller, surface the
+  most-recent save error in the snapshot so tests assert on it.
+- [ ] **`save_atomic` skips fsync.** `ueforge/src/rpg/store.rs:73-83`.
+  `temp + rename` without `File::sync_all()` on the temp before
+  rename leaves a torn / zero-byte file on power loss. The whole
+  point of atomic rename is durability; we ship half of it. ~3 LoC.
+- [ ] **`SlotPoller` thread leaks for life of process; no shutdown.**
+  `ueforge/src/rpg/poller.rs:32-65`. `on_shutdown` exists in
+  `ModInfo`; nothing tells the poller. Hot-reload (roadmap "Hot-reload
+  the DLL") will detach the thread and orphan a closure pointing into
+  the unloaded DLL -- crash, not leak. Wire an `Arc<AtomicBool>` stop
+  flag and join on shutdown.
+- [ ] **`SkillsState::spend` / `refund` is not transactional with
+  persistence.** `ueforge/src/rpg/state.rs:41-63`. Mutates in memory;
+  caller must remember to call `SlotStore::save`. One missed call
+  site = a player loses points on crash. Either bind them
+  (`SkillsTracker<S>` owns both, `spend()` saves), or rename to
+  `spend_uncommitted` so the API screams.
+
+### P1 -- silent rot / observability
+
+- [ ] **`SlotPoller` swallows worker-thread panics silently.**
+  `ueforge/src/rpg/poller.rs:74-78`. `catch_unwind` discards the
+  payload; thread exits; slot tracking dies for the rest of the
+  session with no signal. Log the panic message + bump a counter +
+  surface in snapshot.
+- [ ] **`SlotPoller` worker thread has no name.**
+  `ueforge/src/rpg/poller.rs:48-55`. `CreateThread` raw, no
+  `SetThreadDescription`. Crash dumps in a 10-year deployment will
+  show `Thread 7: ?? @ 0x...`. Name every thread spawned in
+  ueforge -- poller, server, scanner, datatable worker.
+- [ ] **`DisabledSkills` takes a mutex on every read.**
+  `ueforge/src/rpg/disabled.rs:25-31`. ImGui tab calls `is_disabled`
+  per skill row per frame; apply walks call it per CDO. Read-mostly
+  set; switch to `ArcSwap<Arc<HashSet<&'static str>>>` so reads are
+  lock-free (same trick the PE hook snapshot already uses).
+- [ ] **`Curve::level_for_xp` is O(max_level) per call, no upper
+  guard.** `ueforge/src/rpg/xp.rs:35-42`. Fine for 50; if a
+  downstream sets `max_level = 10_000` (we advertise "any UE game"),
+  every snapshot walks 10k levels. Either binary-search or assert
+  `max_level <= 1024` in `Curve::new`.
+- [ ] **`SlotStore` slot path is unvalidated.**
+  `ueforge/src/rpg/store.rs:32-37`. Slot is a user-controlled string
+  passed to `PathBuf::push`. `..\..\..\windows\system32\foo.json`
+  gets opened. Reject path separators / leading dots in `path()`.
+- [ ] **No coverage on `SlotStore` IO failure paths.** Disk full,
+  permission denied, rename across volumes, partial write -- the
+  thing whose entire job is durability has zero failure-injection
+  tests. Use `tempfile` + permission flips + read-only-FS injection.
+
+### P2 -- future-proofing
+
+- [ ] **No `schema_version` field on `SkillsState` JSON.**
+  `ueforge/src/rpg/state.rs:15-31`. `#[serde(default)]` everywhere,
+  no version sentinel. In three years when `xp` becomes `u128` or
+  `skill_levels` becomes a struct, no migration hook. Add
+  `schema_version: u32` now (default `1`).
+- [ ] **`SkillsState::skill_levels` allocates on every spend.**
+  `ueforge/src/rpg/state.rs:49`. `skill_id.to_string()` per spend.
+  Catalog uses `&'static str` IDs everywhere else; the persisted
+  layer is the one place we pay heap on the hot path. Either
+  `BTreeMap<Cow<'static, str>, u32>` or document why the JSON
+  boundary forces it.
+- [ ] **HTTP server has no auth.** `ueforge::server::spawn` binds
+  127.0.0.1; that's enough on a single-user box, but the framework
+  markets itself as a research surface -- raw `write_bytes` /
+  `read_bytes` to arbitrary memory. Anything else listening on
+  localhost (browser ext, misconfigured proxy) can corrupt game
+  memory. Generate a per-launch token, require it in a request
+  header. ~20 LoC.
+- [ ] **`PlatformOffsets` has no UE-version sentinel.** Already in
+  the 2026-05-09 list under offsets-by-version, but raise the
+  priority -- next UE bump silently corrupts property walks.
+- [ ] **No `static_assert` on `mem::size_of::<FName>() == 8`.**
+  `transmute_copy::<_, u64>` is a runtime-silent corruption when UE
+  changes layout. One line of `const _: () = assert!(...)`.
+- [ ] **`process_event_idx: 0x4C` is hardcoded.** Engine-stable in
+  UE 5.x. Was different in 4.x. Will be different in 6.x. Make it
+  required, not assumed -- remove the default.
+- [ ] **No fuzz / property tests on the load-bearing walkers.**
+  `TArray` / `TMap` / `FieldTweak` / `inspect_address` /
+  `Val::from_json`. These read raw memory under user-configurable
+  offsets. A dumb fuzzer with arbitrary `&[u8]` + bad offsets would
+  have caught two of last week's open P1s. Lift the bytes-as-input
+  shape into `cargo-fuzz` or `proptest`.
+- [ ] **`UE4SS.lib` symbol-presence check.** Bootstrap doc covers
+  manual regen (`ueforge/README.md:168-191`). Nothing automates a
+  build-time check that the symbols we link still exist in the
+  installed UE4SS.dll. Will fail-load three years from now and
+  nobody on the team will remember why. Add a `build.rs` step that
+  parses `dumpbin /exports` and asserts on the ~10 symbols we use.
+- [ ] **DEFER Phase 3 wave 2 promotions until a second consumer
+  needs them.** `Catalog<E>`, `apply_skill` dispatcher, `rpg::tab::
+  render` (todo.md:58-69) are designed off ONE consumer (bbp).
+  Generic abstractions designed off one consumer fit one consumer.
+  Lock the shape too early and we ship a generic that nobody else
+  uses. Wait until ows-tweaks or a third game asks before designing
+  the API.
+
+## ueforge: bbp dedup plan (sequenced, 2026-05-10)
+
+Phase 1 smoke-tested in-game and passed. Next round of dedup is
+ordered into five waves; each step lands an `ueforge::` symbol +
+unit tests, migrates one bbp consumer, deletes the bbp duplicate,
+verifies build-clean. ~6-8 sessions total.
+
+**Order recap (start at A1):**
+
+1. **A1** `ueforge::ue::ClassRef`
+2. **A2** `ueforge::hook::function_table!` decl-macro
+3. **A3** `ueforge::ue::TypedField<T>`
+4. **A4** `ueforge::rpg::VanillaCache<K, V>`
+5. **B1** `SlotStore::save -> io::Result<()>` + `fsync`
+6. **B2** `SlotPoller::Handle` + shutdown-on-`on_shutdown`
+7. **B3** `ueforge::rpg::SkillsTracker<S>`
+8. **C1** `ueforge::counters::hook_counters!` decl-macro
+9. **C2** `ueforge::ue::wait_for_class(name, RetryPolicy)`
+10. **D1** `ueforge/PERFORMANCE.md` doctrine lift
+11. **D2** `ueforge/RESEARCH.md` methodology lift
+
+Waves E1/E2 (global ProcessEvent pre-callback,
+`AddUObjectCreateListener`) land on demand. Phase 3 wave 2 RPG
+promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
+`rpg::tab::render`) stay deferred until a second consumer exists
+(kovarex rule: don't lock abstractions off one consumer).
+
+### Wave A -- Pure helpers, no UE4SS shim work
+
+- [x] **A1. `ueforge::ue::ClassRef`** -- typed cached class handle.
+  `ClassRef::new("WBP_Foo")` -> lazy `&'static UClass`, exposes
+  `cdo()`, `find_function("Bar")`, `with_cdo`, `with_first_instance`,
+  `for_each_instance`, `find_instance`. Lives at
+  `ueforge/src/ue/class_ref.rs`. 3 unit tests cover
+  unresolved/name-round-trip/const-constructible. Migrations:
+  `bbp/rpg/save_slot.rs::find_in_game_game_state`,
+  `bbp/rpg/kill_hook.rs::install` (HEALTH + SURVIVAL_CREATURE),
+  `bbp/inv_hook.rs::install` (INV_IFACE + PANEL_WIDGET + BPF_INV +
+  KISMET), `bbp/debug.rs` (HEALTH_CLASS used by exec_add_health /
+  exec_apply_damage / exec_set_current_health). Workspace builds
+  clean release; ueforge tests green (8 passing). In-game smoke
+  test pending.
+- [ ] **A2. `ueforge::hook::function_table!` decl-macro** -- table of
+  UFunction-pointer-identity slots. `function_table!(InvIfaceFns {
+  construct, on_mouse_wheel, ... })` expands to a struct with
+  `usize` slots + `install(&UClass) -> Self` + `match_fn(usize) ->
+  Option<&'static str>` for trampolines. Migrates `bbp/inv_hook.rs:
+  38-79` (`InvIfaceFns` / `PanelFns`). ~80 LoC dropped. Depends on
+  A1. **Acceptance:** macro expands; identity dispatch works;
+  `kill_hook` and `inv_hook` keep firing.
+- [ ] **A3. `ueforge::ue::TypedField<T>`** -- typed offset wrapper.
+  `const HEALTH: TypedField<*mut UObject> = TypedField::at(0x1340)`,
+  `HEALTH.read(obj)` / `HEALTH.write(obj, v)`. Centralizes
+  `read_unaligned` discipline; one place to add bounds validation.
+  Migrates dozens of unsafe field-pointer reads in `bbp/rpg/apply.rs`,
+  `kill_hook.rs`, `fall_hook.rs`, `save_slot.rs`. ~200+ LoC of
+  `unsafe` shrinks. **Acceptance:** snapshot reads identical;
+  no behaviour change.
+- [ ] **A4. `ueforge::rpg::VanillaCache<K, V>`** -- vanilla-baseline
+  `OnceLock` pattern. `VanillaCache::<HungerKey, f32>::get_or_init(
+  || read_field(...))`. Migrates `bbp/rpg/apply.rs:38-44`
+  (`VANILLA_HUNGER`, `VANILLA_THIRST`, etc.) and the per-skill
+  `OnceLock<f32>` scattered through `apply.rs`. Closes audit row 48
+  partially -- the *cache shape*, not the dispatcher. **Acceptance:**
+  spend/refund snapshot diff identical to pre-migration baseline.
+
+### Wave B -- RPG durability (kovarex P0s)
+
+- [ ] **B1. `SlotStore::save -> io::Result<()>` + `fsync` on temp
+  before rename.** `ueforge/src/rpg/store.rs:65-83`. Surface
+  most-recent error in snapshot via counter or
+  `RwLock<Option<String>>`. **Acceptance:** integration test that
+  fills a temp dir, attempts save, asserts error surfaces; happy
+  path unchanged.
+- [ ] **B2. `SlotPoller::Handle` + shutdown-on-`on_shutdown`.**
+  `ueforge/src/rpg/poller.rs:32-65`. Replace `CreateThread` + leaked
+  `Cfg` with thread that owns `Arc<AtomicBool>` stop flag + join
+  handle. Name the thread (`SetThreadDescription`). Wire
+  `bbp::on_shutdown` to call stop. Catch panics with logged message
+  + counter bump. **Acceptance:** mod unloads cleanly; no orphan
+  thread; panic in resolver logs instead of silently dying.
+- [ ] **B3. `ueforge::rpg::SkillsTracker<S>`** that owns
+  `SkillsState` + `SlotStore<S>`. `spend/refund/record_xp` methods
+  mutate state AND call `store.save()` transactionally; return
+  `Result`. bbp's `tracker.rs` shrinks to a thin wrapper.
+  **Acceptance:** every spend persists; crash mid-session no longer
+  loses the latest point.
+
+### Wave C -- Hook ergonomics
+
+- [ ] **C1. `ueforge::counters::hook_counters!` decl-macro.**
+  `hook_counters!(KILL_HOOK { fires, player_fires, time_ns, allocs
+  })` expands to static block + Recorder accessor (`record_fire()`,
+  `record_player_fire()`, `time_scope()`). Migrates `bbp/counters.rs`
+  per-hook repetition. ~50 LoC. **Acceptance:** snapshot counter
+  map identical key-set; render unchanged.
+- [ ] **C2. `ueforge::ue::wait_for_class(name, RetryPolicy)`** +
+  canonical `RetryPolicy { base, max, timeout }`. Migrates
+  `bbp/lib.rs:28-30` (`HOOK_RETRY_*` consts) + worker-thread retry
+  loop. **Acceptance:** mod still installs hooks when target
+  classes load late.
+
+### Wave D -- Doctrine docs
+
+- [ ] **D1. `ueforge/PERFORMANCE.md`** -- lift generic content from
+  `docs/performance.md`: zero-alloc trampolines, single-hook-surface,
+  identity-not-name dispatch, debug-only trace gating, "what was
+  deliberately not ported." `docs/performance.md` shrinks to
+  bbp-specific numbers.
+- [ ] **D2. `ueforge/RESEARCH.md`** -- UE-mod-specific research
+  methodology: snapshot baseline -> `tests/explore_*.rs` hypothesis ->
+  `walk_class` / `inspect_address` / `read_bytes` probes -> validate
+  -> regression test. Concrete examples from `docs/damage.md`
+  (bandage trace, pkg(0) instigator, rock-collision research). Lifts
+  the cross-project `runtime-control-http` skill into UE-mod-specific
+  walks.
+
+### Wave E -- Shim work (defer until pulled in)
+
+- [ ] **E1. Global ProcessEvent pre-callback.**
+  `RegisterProcessEventPreCallback` wrapper + `Queue::install_drain`
+  helper. **Don't land speculatively** -- mask is gone, drain isn't
+  starving today. Land when status-effect migration needs the
+  guaranteed drain site.
+- [ ] **E2. `AddUObjectCreateListener` integration.** **Don't land
+  speculatively** -- land when ows-tweaks or bbp's CDO-revert-replay
+  scenario asks. ~100 LoC of UE4SS shim glue.
+
+### Original extraction-candidate notes (kept for reference)
+
+The Phase 1/2/3-wave-1 promotions covered the obvious primitives.
+Reviewing `better-backpack/` source against ueforge's surface
+surfaces another tier of generic content -- patterns we worked out
+under bbp's hood that every UE4SS Rust mod will rediscover unless
+they live in ueforge. Ordered by leverage.
+
+### Doctrine / docs
+
+- [ ] **Hot-path discipline doctrine -> `ueforge/PERFORMANCE.md`.**
+  `docs/performance.md` is bbp-titled but most of it is generic:
+  zero-alloc trampolines, single-hook-surface principle, debug-only
+  trace gating, identity-not-name dispatch, "what was deliberately
+  not ported" pattern. Lift to a ueforge-side doc; `bbp/docs/
+  performance.md` becomes the bbp-specific addendum (numbers, the
+  ~123 PE/rebind figure, the SurvivalComponent CDO walk timings).
+- [ ] **Root-cause-investigation playbook -> `ueforge/RESEARCH.md`.**
+  `docs/damage.md` and the bandage / pkg(0) / rock-collision
+  research notes encode a methodology that's framework-shaped, not
+  game-shaped: snapshot baseline -> minimal repro through endpoint
+  -> hypothesis as a `tests/explore_*.rs` -> probe with `walk_class`
+  / `inspect_address` / `read_bytes` -> validate -> regression test.
+  The skill `runtime-control-http` has the cross-project version;
+  ueforge needs the UE-mod-specific concrete walk.
+- [ ] **Hook-install retry/backoff doctrine.**
+  `better-backpack/src/lib.rs:28-30` ships
+  `HOOK_RETRY_BASE_DELAY_MS = 500`,
+  `HOOK_RETRY_MAX_DELAY_MS = 5_000`, `HOOK_RETRY_TIMEOUT_SEC = 600`
+  with a worker that retries `find_class_fast` until the class
+  loads. Every UE4SS mod hits this -- target classes load AFTER
+  `on_unreal_init`. Generic helper:
+  `ueforge::ue::wait_for_class("WBP_Foo", retry_policy)
+  -> Option<&UClass>`.
+
+### Generic helpers
+
+- [ ] **`HookIdentity` / `FunctionTable<N>`.**
+  `bbp/src/inv_hook.rs::InvIfaceFns` and `PanelFns` are the same
+  shape: a struct of `usize` UFunction-pointer slots, populated once
+  at hook install via `find_class_fast` + `find_function`, dispatched
+  by pointer identity in the trampoline. Today's
+  `hook::function_ptr` returns one at a time; we want the
+  table-shaped helper plus a ergonomic identity-match macro.
+- [ ] **`VanillaCache<K, V>`.** Audit row 48 (todo.md:60). Every
+  skill that captures a vanilla baseline does the same dance:
+  `static VANILLA_X: OnceLock<f32>`, `get_or_init(|| read_field(...))`,
+  later `apply(vanilla + bonus)`. `bbp/src/rpg/apply.rs:38-44`. Lift
+  to `ueforge::rpg::VanillaCache<K, V>` so games stop hand-rolling
+  per-field statics. Same shape as `cached_native_properties`.
+- [ ] **`ClassCache<F>` -> `ClassRef`.** Generalize the cached
+  `find_class_fast` pattern as a typed handle: `ClassRef::new("Name")`
+  resolves once, hands back `&'static UClass` from then on, exposes
+  `instances()` / `cdo()` / `find_function(...)` methods. bbp has
+  this hand-rolled in 5+ places.
+- [ ] **`TypedField<T>` offset wrapper.** Dozens of offset consts
+  scattered across bbp (`ASC_HEALTH_COMPONENT = 0x1340`,
+  `HEALTH_COMPONENT_LAST_DAMAGE_INFO = 0x03B0`, etc.).
+  `TypedField::<*mut HealthComponent>::at(0x1340)` + `.read(obj)` /
+  `.write(obj, v)` collapses the boilerplate, centralizes
+  `read_unaligned` discipline, and gives one place to add bounds
+  validation (P1 row "read_bytes / write_bytes have no bounds vs the
+  resolved object").
+- [ ] **`DamageRing` / structured event ring + snapshot surface.**
+  `bbp/src/counters.rs::DAMAGE_RING_*` plus the not-yet-built
+  `dmg-trace` ring (todo.md:769). The shape is generic: bounded ring
+  of timestamped structured events, snapshot through the HTTP
+  endpoint, peak-watermark counter, debug-only push. Already have
+  `Ring<T>`; missing is the canonical "structured event ring you
+  introspect via /debug" pattern.
+- [ ] **`HookCounters` derive / decl-macro.**
+  `bbp/src/counters.rs` uses `counter!(KILL_HOOK_FIRES, ...)` with
+  hand-coded matching `TIME_NS_KILL_HOOK` / peak statics per hook.
+  Every hook needs the same triple (fires / time-ns / alloc-count).
+  Decl-macro: `hook_counters!(KILL_HOOK { fires, time_ns, allocs,
+  player_fires });` expands to the static block + a typed accessor
+  the trampoline uses.
+- [ ] **`AddUObjectCreateListener` integration.**
+  `docs/performance.md:186-193` flagged this as future work for the
+  CDO-revert-replay scenario. Generic enough to live in ueforge as
+  `ueforge::ue::on_class_instantiated(class, |obj| ...)`. Not yet
+  needed in bbp; ows-tweaks may want it for live DataTable mutation
+  protection. Land when the second use case appears.
+
+### Ship-side
+
+- [ ] **PE-thread queue drain helper that picks ITS OWN drain
+  site.** Today bbp draws on `kill_hook` for drain (todo.md:790-809).
+  Brittle when the `RequiredDamageTypeFlags` mask zeroes traffic.
+  ueforge could ship `Queue::install_high_frequency_drain()` that
+  hooks a guaranteed-active UFunction (`ASurvivalCharacter::
+  ReceiveTick` analogue per game, fallback to UE4SS's
+  `RegisterProcessEventPreCallback`). Pairs with the "Global
+  ProcessEvent hook" Future infra item (todo.md:980-989).
+- [ ] **Slot-key-resolver convenience for UE5.** bbp's
+  `save_slot::current_slot_key` is generic-shaped: walk
+  `find_class_fast(GameStateClass)`, read FGuid at offset, format.
+  Most UE5 games have *something* like this; the offset varies. A
+  ueforge helper that takes `(class_name, offset, field_kind)` and
+  returns a closure suitable for `SlotPoller` reduces every consumer
+  to a one-liner.
+
+### What stays in the game crate
+
+(For the audit table -- reasoning visible in case the line moves):
+
+- Per-game offset constants (`ASC_HEALTH_COMPONENT = 0x1340`)
+  remain game-side; the wrappers above just remove their
+  boilerplate, not their ownership.
+- `kill_hook` / `fall_hook` / `inv_hook` per-event business logic
+  stays in bbp. The COUNTERS, drain pattern, identity dispatch, and
+  retry doctrine come from ueforge.
+- `parms.rs` `#[repr(C)]` UFunction parm layouts stay game-side.
+  Per UE class, per build.
+
 ## RPG: catalog expansion
 
 The next batch of skills to add. Each entry is one

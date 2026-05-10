@@ -1,5 +1,53 @@
 # grounded2mods - project state
 
+## Kovarex review of ueforge TODO (2026-05-10)
+
+Second-pass review of `ueforge::rpg` and the framework-as-library
+lens. The 2026-05-09 P0/P1 list is mostly closed; this pass found
+the items that the previous review missed because it treated
+ueforge as a mod, not as a save-game library that has to survive
+ten years of daily use.
+
+New findings landed in `docs/todo.md` "ueforge hardening (kovarex
+review, 2026-05-10)". Headlines:
+
+- **P0**: `SlotStore::save` swallows IO errors; `save_atomic`
+  skips fsync; `SlotPoller` thread leaks with no shutdown signal
+  (hot-reload-unsafe); `SkillsState::spend/refund` not
+  transactional with persistence.
+- **P1**: silent worker-thread panic swallow in `SlotPoller`,
+  unnamed thread, mutex on every `DisabledSkills` read,
+  `Curve::level_for_xp` unbounded linear scan, unvalidated slot
+  paths, no IO failure-injection tests.
+- **P2**: no `schema_version` on persisted JSON, heap allocation
+  per spend, no HTTP auth token, no UE-version sentinel, no
+  `static_assert` on `FName` size, no fuzz tests on walkers, no
+  build-time UE4SS symbol-presence check, defer Phase 3 wave 2
+  promotions until a second consumer needs them.
+
+Plus a new `ueforge: more to extract from better-backpack`
+section listing doctrine + helpers that bbp prototyped but every
+UE4SS-Rust mod will rediscover unless they live in ueforge:
+
+- Doctrine: hot-path discipline -> `ueforge/PERFORMANCE.md`,
+  root-cause-investigation playbook -> `ueforge/RESEARCH.md`,
+  hook-install retry/backoff doctrine.
+- Helpers: `HookIdentity` / `FunctionTable<N>`, `VanillaCache<K,V>`
+  (audit row 48), `ClassRef`, `TypedField<T>` offset wrapper,
+  `DamageRing` structured event ring, `HookCounters` decl-macro,
+  `AddUObjectCreateListener` integration.
+- Ship-side: PE-thread queue self-installing high-frequency drain
+  site, slot-key-resolver convenience for UE5.
+
+Also annotated `docs/performance.md` with a doctrine-extraction
+header pointing at the todo.md entries.
+
+No code changes this session -- review and TODO updates only.
+
+Next: **don't** chase Phase 3 wave 2; do P0 durability fixes on
+`SlotStore` and `SlotPoller` first (load-bearing for every RPG
+consumer), then doctrine extraction (`PERFORMANCE.md` lift).
+
 ## Renamed framework: uespy -> ueforge (2026-05-09 night)
 
 Outgrew the "spy" framing once the project became a full

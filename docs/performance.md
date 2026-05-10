@@ -3,6 +3,17 @@
 > **Authoritative on:** what the mod costs to run. Per-call costs,
 > hot paths, allocation analysis, what was deliberately not ported
 > from the C++ tree.
+>
+> **Doctrine-extraction note (2026-05-10):** most of this file is
+> generic UE4SS-Rust-mod hot-path discipline, not bbp-specific. The
+> generic content -- zero-alloc trampolines, single-hook-surface
+> principle, identity-not-name dispatch, debug-only trace gating,
+> "what was deliberately not ported" -- is queued to lift into
+> `ueforge/PERFORMANCE.md` (see `docs/todo.md` "ueforge: more to
+> extract from better-backpack"). Once that lands, this file
+> shrinks to: bbp-specific numbers (the ~123 PE/rebind figure, the
+> SurvivalComponent CDO walk timings) + bbp-specific deliberate
+> non-ports.
 
 Companion to `archive/winhttp-proxy/PERFORMANCE_AUDIT.md`, which catalogued
 the issues we set out to fix when porting from C++. This doc states what

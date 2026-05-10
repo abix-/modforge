@@ -23,7 +23,9 @@ use ueforge::pe_queue::Queue as PeQueue;
 
 use crate::inv_hook;
 use crate::rpg::{apply, fall_hook, skills, tracker, world_loader};
-use ueforge::ue::{self, UObject};
+use ueforge::ue::{ClassRef, UObject};
+
+static HEALTH_CLASS: ClassRef = ClassRef::new("HealthComponent");
 
 // Ops are added one at a time, each driven by a failing test in
 // `better-backpack/tests/`. Discipline: write the red test FIRST,
@@ -410,10 +412,8 @@ fn live_player_hc() -> Result<&'static UObject, String> {
 fn exec_add_health(amount: f32) -> Result<Json, String> {
     use std::ffi::c_void;
     let hc = live_player_hc()?;
-    let class = ue::find_class_fast("HealthComponent")
-        .ok_or_else(|| "HealthComponent class not found".to_string())?;
-    let func = class
-        .get_function("HealthComponent", "AddHealth")
+    let func = HEALTH_CLASS
+        .find_function("AddHealth")
         .ok_or_else(|| "AddHealth UFunction not found".to_string())?;
     let before = apply::read_f32(hc, 0x032C); // CurrentDamage
     #[repr(C)]
@@ -441,10 +441,8 @@ fn exec_add_health(amount: f32) -> Result<Json, String> {
 fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
     use std::ffi::c_void;
     let hc = live_player_hc()?;
-    let class = ue::find_class_fast("HealthComponent")
-        .ok_or_else(|| "HealthComponent class not found".to_string())?;
-    let func = class
-        .get_function("HealthComponent", "ApplyDamageFromInfo")
+    let func = HEALTH_CLASS
+        .find_function("ApplyDamageFromInfo")
         .ok_or_else(|| "ApplyDamageFromInfo UFunction not found".to_string())?;
 
     // Parm struct layout (Maine_parameters.hpp HealthComponent_ApplyDamageFromInfo):
@@ -504,10 +502,8 @@ fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
 
 fn exec_set_current_health(value: f32) -> Result<Json, String> {
     let hc = live_player_hc()?;
-    let class = ue::find_class_fast("HealthComponent")
-        .ok_or_else(|| "HealthComponent class not found".to_string())?;
-    let func = class
-        .get_function("HealthComponent", "SetCurrentHealth")
+    let func = HEALTH_CLASS
+        .find_function("SetCurrentHealth")
         .ok_or_else(|| "SetCurrentHealth UFunction not found".to_string())?;
     #[repr(C)]
     struct SetHealthParms {

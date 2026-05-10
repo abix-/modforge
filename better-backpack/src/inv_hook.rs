@@ -21,7 +21,7 @@ use crate::parms::{
     InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
     SelectedIndexParms, SetSelectedInventorySlotParms,
 };
-use ueforge::ue::{self, UClass, UFunction, UObject, find_class_fast};
+use ueforge::ue::{self, ClassRef, UClass, UFunction, UObject};
 
 const VIEWPORT_ROWS: i32 = 4;
 const VIEWPORT_COLUMNS: i32 = 10;
@@ -76,14 +76,18 @@ unsafe impl Sync for State {}
 
 static STATE: OnceLock<State> = OnceLock::new();
 
+static INV_IFACE: ClassRef = ClassRef::new("WBP_InventoryInterface_C");
+static PANEL_WIDGET: ClassRef = ClassRef::new("PanelWidget");
+static BPF_INV: ClassRef = ClassRef::new("BPF_InventoryFunctions_C");
+static KISMET: ClassRef = ClassRef::new("KismetInputLibrary");
+
 pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
-    let inv_iface_class = find_class_fast("WBP_InventoryInterface_C")
+    let inv_iface_class = INV_IFACE
+        .get()
         .ok_or("WBP_InventoryInterface_C not loaded yet")?;
-    let panel_widget = find_class_fast("PanelWidget").ok_or("PanelWidget not loaded")?;
-    let bpf_class =
-        find_class_fast("BPF_InventoryFunctions_C").ok_or("BPF_InventoryFunctions_C not loaded")?;
-    let kismet_class =
-        find_class_fast("KismetInputLibrary").ok_or("KismetInputLibrary not loaded")?;
+    let panel_widget = PANEL_WIDGET.get().ok_or("PanelWidget not loaded")?;
+    let bpf_class = BPF_INV.get().ok_or("BPF_InventoryFunctions_C not loaded")?;
+    let kismet_class = KISMET.get().ok_or("KismetInputLibrary not loaded")?;
 
     let inv_fns = InvIfaceFns {
         populate_item_grid: lookup(

@@ -15,7 +15,7 @@
 // Returns None when not in-world (main menu, between saves). Caller
 // should re-check on demand.
 
-use ueforge::ue::{GObjectsView, UObject, find_class_fast, runtime};
+use ueforge::ue::{ClassRef, UObject};
 
 const IN_GAME_GAME_STATE_PLAYTHROUGH_GUID: usize = 0x032C;
 
@@ -54,19 +54,9 @@ pub fn current_slot_key() -> Option<String> {
     Some(guid.to_filename())
 }
 
+static IN_GAME_GAME_STATE: ClassRef = ClassRef::new("InGameGameState");
+
 fn find_in_game_game_state() -> Option<&'static UObject> {
     ueforge::counters::bump(&crate::counters::WORLD_LOADER_GOBJECTS_WALKS);
-    let target = find_class_fast("InGameGameState")?;
-    let rt = runtime();
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    for obj in view.iter() {
-        // Skip the CDO itself; we want the live singleton instance.
-        if obj.is_default_object() {
-            continue;
-        }
-        if obj.is_a(target) {
-            return Some(unsafe { &*(obj as *const UObject) });
-        }
-    }
-    None
+    IN_GAME_GAME_STATE.with_first_instance(|o| unsafe { &*(o as *const UObject) })
 }

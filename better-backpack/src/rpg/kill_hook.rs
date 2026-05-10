@@ -28,7 +28,7 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
-use ueforge::ue::{GObjectsView, UClass, UFunction, UObject, find_class_fast, runtime};
+use ueforge::ue::{ClassRef, GObjectsView, UClass, UFunction, UObject, runtime};
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
 const HEALTH_COMPONENT_CURRENT_DAMAGE: usize = 0x032C;
@@ -59,18 +59,21 @@ unsafe impl Sync for State {}
 
 static STATE: OnceLock<State> = OnceLock::new();
 
+static HEALTH: ClassRef = ClassRef::new("HealthComponent");
+static SURVIVAL_CREATURE: ClassRef = ClassRef::new("SurvivalCreature");
+
 pub fn install() -> Result<ProcessEventHook, &'static str> {
-    let health_class =
-        find_class_fast("HealthComponent").ok_or("HealthComponent class not loaded yet")?;
-    let multicast_fn = health_class
-        .get_function("HealthComponent", "MulticastHandleEffectsWithDamageFlags")
+    let _health_class = HEALTH.get().ok_or("HealthComponent class not loaded yet")?;
+    let multicast_fn = HEALTH
+        .find_function("MulticastHandleEffectsWithDamageFlags")
         .ok_or("HealthComponent.MulticastHandleEffectsWithDamageFlags not found")?;
 
     // ASurvivalCreature filter excludes player deaths AND buildings/props
     // (BP_BaseStructureBuilding, BP_PhysicsHarvestNode also fire this
     // function with IsKillingBlow on destruction).
-    let creature_class =
-        find_class_fast("SurvivalCreature").ok_or("SurvivalCreature class not loaded yet")?;
+    let creature_class = SURVIVAL_CREATURE
+        .get()
+        .ok_or("SurvivalCreature class not loaded yet")?;
 
     let _ = STATE.set(State {
         multicast_handle_effects_with_damage_flags: multicast_fn as *const UFunction as usize,

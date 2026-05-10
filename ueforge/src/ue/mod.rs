@@ -7,6 +7,7 @@
 
 #![allow(dead_code)] // skeleton state; consumed by upcoming hook + patch modules
 
+pub mod class_ref;
 pub mod class_tweak;
 pub mod datatable;
 pub mod fname;
@@ -18,6 +19,7 @@ pub mod tarray;
 pub mod tmap;
 pub mod uobject;
 
+pub use class_ref::ClassRef;
 pub use fname::FName;
 pub use fstring::FString;
 pub use offsets::{GObjectsLayout, Platform, PlatformOffsets};
