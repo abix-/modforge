@@ -68,6 +68,34 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Settings hot-reload + PE-call + OpRouter PE-ops half
+
+Three more lifts that close out most of the "Open: more ueforge
+extraction candidates" list:
+
+- **`Settings::watch(interval, on_reload)`** -- spawns an
+  mtime-poller thread that reloads `<DLL_dir>/<file>.json` when
+  it changes on disk and fires a game-supplied `on_reload(&T)`
+  callback. Drop the returned `WatchHandle` to stop. `reload()`
+  available standalone for tab-driven manual reloads / debug
+  ops. Tests pass; build clean.
+- **`ueforge::ue::pe_call::call_ufunction`** -- folds "find
+  UFunction or error -> process_event with parm pointer" into
+  one safe-typed call. g2rpg's `exec_add_health` /
+  `exec_set_current_health` collapsed to use it; covers every
+  future health / inventory / status-effect op shape with one
+  primitive instead of a per-fn boilerplate copy.
+- **`ueforge::debug::dispatch_pe_ops`** -- the second half of
+  the OpRouter lift. Handles `call` / `read_bytes` /
+  `write_bytes` (the three standard ops that need a per-game
+  instance resolver). Combined with the already-shipped
+  `dispatch_standard_op`, every standard op now routes through
+  one of two ueforge dispatchers with one line per group.
+
+g2rpg's `debug.rs`: 770 -> 737 lines. The handler is now three
+guard arms (snapshot / dispatch_standard_op / dispatch_pe_ops)
++ four game-specific simulate_* arms + the unknown-op error.
+
 ### Three pillars: rpg / stacks / difficulty
 
 ueforge now ships opinionated framework modules for the three

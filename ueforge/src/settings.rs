@@ -33,10 +33,32 @@
 //! 1809).
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+/// Handle returned by [`Settings::watch`]. Holding it keeps the
+/// hot-reload poller running; dropping it asks the poller to stop
+/// at its next tick.
+pub struct WatchHandle {
+    stop: Arc<AtomicBool>,
+}
+
+impl WatchHandle {
+    pub fn stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+impl Drop for WatchHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
 
 pub struct Settings<T> {
     inner: Mutex<T>,
@@ -129,6 +151,92 @@ where
     /// Path of the backing file. Useful for diagnostic logging.
     pub fn path(&self) -> &std::path::Path {
         &self.path
+    }
+
+    /// Re-read the backing file from disk and replace the in-memory
+    /// state with whatever it deserializes to. Returns the new
+    /// value on success, or an error string + leaves the in-memory
+    /// state untouched on parse / IO failure.
+    ///
+    /// Used by [`watch`](Self::watch) when an mtime change is
+    /// detected; also callable directly from a debug-endpoint op
+    /// or a tab button.
+    pub fn reload(&self) -> Result<T, String> {
+        let text = std::fs::read_to_string(&self.path)
+            .map_err(|e| format!("read {}: {e}", self.path.display()))?;
+        let parsed: T = serde_json::from_str(&text)
+            .map_err(|e| format!("parse {}: {e}", self.path.display()))?;
+        let snap = parsed.clone();
+        *self.inner.lock() = parsed;
+        Ok(snap)
+    }
+}
+
+impl<T> Settings<T>
+where
+    T: Serialize + DeserializeOwned + Default + Clone + Send + 'static,
+{
+    /// Spawn a background thread that polls the backing file's
+    /// mtime every `interval` and reloads when it changes.
+    /// `on_reload` fires after each successful reload with the
+    /// new value (the game crate uses this to push the new
+    /// settings into per-feature atomics / re-apply CDO writes).
+    ///
+    /// Drop the returned [`WatchHandle`] to stop the poller.
+    /// The handle's `stop()` is checked once per tick, so the
+    /// thread exits within `interval` of the drop.
+    ///
+    /// Parse errors are logged and skipped -- the live in-memory
+    /// state is untouched. Subsequent successful reloads recover.
+    pub fn watch<F>(self: &Arc<Self>, interval: Duration, on_reload: F) -> WatchHandle
+    where
+        F: Fn(&T) + Send + 'static,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let this = self.clone();
+        let path = self.path.clone();
+
+        std::thread::Builder::new()
+            .name("ueforge-settings-watch".into())
+            .spawn(move || {
+                let mut last_mtime: Option<SystemTime> = std::fs::metadata(&path)
+                    .and_then(|m| m.modified())
+                    .ok();
+                loop {
+                    if stop_clone.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    std::thread::sleep(interval);
+                    if stop_clone.load(Ordering::Relaxed) {
+                        return;
+                    }
+                    let cur_mtime = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok();
+                    if cur_mtime == last_mtime {
+                        continue;
+                    }
+                    last_mtime = cur_mtime;
+                    match this.reload() {
+                        Ok(snap) => {
+                            crate::log::log(format_args!(
+                                "settings: hot-reloaded {}",
+                                path.display()
+                            ));
+                            on_reload(&snap);
+                        }
+                        Err(e) => {
+                            crate::log::log(format_args!(
+                                "settings: hot-reload skipped: {e}"
+                            ));
+                        }
+                    }
+                }
+            })
+            .expect("spawn settings watcher");
+
+        WatchHandle { stop }
     }
 }
 

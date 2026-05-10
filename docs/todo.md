@@ -161,26 +161,33 @@ Save-data durability + shutdown safety. All four P0s shipped:
 
 ## Open: more ueforge extraction candidates
 
-Still live in g2rpg; extract on demand:
+- [x] **Settings hot-reload** -- `Settings::watch(interval, on_reload)`
+  spawns an mtime-poller thread that re-reads + dispatches a
+  callback on file change. `reload()` available standalone.
+  Closed 2026-05-10.
+- [x] **PE-call helper** -- `ueforge::ue::pe_call::call_ufunction`
+  wraps "find UFunction or error -> process_event with parm
+  pointer" in one safe-typed call. Health and inventory
+  executors use it; future ops in any UE5 mod do too.
+  Closed 2026-05-10.
+- [x] **OpRouter (PE-ops half)** -- `ueforge::debug::dispatch_pe_ops`
+  handles `call`/`read_bytes`/`write_bytes` (the three standard
+  ops that need a per-game instance resolver). Combined with
+  `dispatch_standard_op` already present, every standard op now
+  routes through ueforge with one line per group.
+  Closed 2026-05-10.
 
-- Damage-hook framework (kill_hook structural shape -- the
-  Maine-class-specific dispatch / KillerKind / FDamageInfo
-  parsing stays game-side, but the install + per-fn parm-shape
-  decoding scaffold could promote when a second UE5 game
-  needs it). ~30% remaining; rest is genuinely game-specific.
-- Snapshot framework macro / `OpRouter` -- the standard ops
-  handler, PE-queue enqueue helper, and damage-ring scaffold
-  are 3 of the bigger items left in g2rpg's `debug.rs`.
-- Status-effect application helper (apply_via_pe with
-  FDataTableRowHandle building). Mostly covered by
-  `StandardEffect::StatusEffect` already; the remaining bits
-  are the discovery-side enumerators in `fall_hook`.
-- Player inventory operations (find inventory, add/remove
-  items, count). G2 has the only consumer today.
-- Health operations (read/write HP, heal, damage via PE).
-  G2 only.
-- HUD overlay drawing (DX11 hook for in-world rendering).
-- Settings hot-reload (watch settings.json, reload on change).
+Still open / deferred:
+
+- Damage-hook framework (kill_hook install + per-fn parm-shape
+  decoder scaffold). The Maine-specific KillerKind / FDamageInfo
+  parsing stays game-side; defer the scaffold lift until a
+  second UE5 game wants damage hooks.
+- Status-effect discovery enumerators (`fall_hook` row-walking).
+  `StandardEffect::StatusEffect` covers the apply path; the
+  enumerators are research scaffolding and likely game-specific.
+- HUD overlay drawing (DX11 hook for in-world rendering). Big
+  lift, no second consumer today, defer.
 
 ---
 

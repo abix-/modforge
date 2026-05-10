@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use ueforge::args::{arg_f64, arg_str};
+use ueforge::args::arg_f64;
 use ueforge::debug::{
     self, CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot, STANDARD_OPS,
 };
@@ -149,15 +149,21 @@ fn handle(body: &str) -> OpResponse {
     ) {
         return to_response(&op, r);
     }
+    if let Some(r) = debug::dispatch_pe_ops(
+        &op,
+        &args,
+        &PE_QUEUE,
+        PE_TIMEOUT_HINT,
+        resolve_instance,
+    ) {
+        return to_response(&op, r);
+    }
     match op.as_str() {
         "simulate_add_health" => to_response(&op, op_simulate_add_health(&args)),
         "simulate_apply_damage" => to_response(&op, op_simulate_apply_damage(&args)),
         "simulate_set_current_health" => {
             to_response(&op, op_simulate_set_current_health(&args))
         }
-        "call" => to_response(&op, op_call(&args)),
-        "read_bytes" => to_response(&op, op_read_bytes(&args)),
-        "write_bytes" => to_response(&op, op_write_bytes(&args)),
         "" => error_response(
             "<missing>",
             format!("missing 'op' field; supported ops: {:?}", supported_ops()),
@@ -218,20 +224,6 @@ fn op_simulate_set_current_health(args: &Json) -> Result<Json, String> {
 // engine-mutated) buffer back as hex. This is the test-side
 // "do anything" surface.
 
-fn op_call(args: &Json) -> Result<Json, String> {
-    let class = arg_str(args, "class")?.to_string();
-    let function = arg_str(args, "function")?.to_string();
-    let selector = arg_str(args, "instance_selector")?.to_string();
-    let parms = ueforge::hex::decode(arg_str(args, "parms_hex")?)?;
-    debug::enqueue_pe(&PE_QUEUE, Duration::from_secs(5), PE_TIMEOUT_HINT, move || {
-        let instance = resolve_instance(&selector)?;
-        let mut out = ueforge::ops::exec_call(instance, &class, &function, parms)?;
-        if let Some(obj) = out.as_object_mut() {
-            obj.insert("selector".into(), Json::String(selector.clone()));
-        }
-        Ok(out)
-    })
-}
 
 fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
     if let Some(r) = ueforge::selector::resolve_generic(selector) {
@@ -245,20 +237,6 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
             "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>, addr:0x<hex>"
         )),
     }
-}
-
-// ---- read_bytes / write_bytes / walk_class primitives ----
-//
-// With these + `call`, the test side can do literally anything on
-// the host: read any field, write any field, find any instance,
-// invoke any UFunction. The endpoint stops growing.
-
-fn op_read_bytes(args: &Json) -> Result<Json, String> {
-    ueforge::ops::read_bytes(args, resolve_instance)
-}
-
-fn op_write_bytes(args: &Json) -> Result<Json, String> {
-    ueforge::ops::write_bytes(args, resolve_instance)
 }
 
 // ---- Game-thread executors. Called from kill_hook trampoline. ----
@@ -277,9 +255,6 @@ fn live_player_hc() -> Result<&'static UObject, String> {
 fn exec_add_health(amount: f32) -> Result<Json, String> {
     use std::ffi::c_void;
     let hc = live_player_hc()?;
-    let func = HEALTH_CLASS
-        .find_function("AddHealth")
-        .ok_or_else(|| "AddHealth UFunction not found".to_string())?;
     let before = apply::read_f32(hc, 0x032C); // CurrentDamage
     #[repr(C)]
     struct AddHealthParms {
@@ -290,9 +265,7 @@ fn exec_add_health(amount: f32) -> Result<Json, String> {
         amount,
         causer: std::ptr::null_mut(),
     };
-    unsafe {
-        hc.process_event(func, &mut parms as *mut _ as *mut c_void);
-    }
+    unsafe { ueforge::ue::pe_call::call_ufunction(hc, &HEALTH_CLASS, "AddHealth", &mut parms)? };
     let after = apply::read_f32(hc, 0x032C);
     Ok(serde_json::json!({
         "amount_requested": amount,
@@ -367,20 +340,14 @@ fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
 
 fn exec_set_current_health(value: f32) -> Result<Json, String> {
     let hc = live_player_hc()?;
-    let func = HEALTH_CLASS
-        .find_function("SetCurrentHealth")
-        .ok_or_else(|| "SetCurrentHealth UFunction not found".to_string())?;
     #[repr(C)]
     struct SetHealthParms {
         desired_health: f32,
     }
-    let mut parms = SetHealthParms {
-        desired_health: value,
-    };
+    let mut parms = SetHealthParms { desired_health: value };
     unsafe {
-        use std::ffi::c_void;
-        hc.process_event(func, &mut parms as *mut _ as *mut c_void);
-    }
+        ueforge::ue::pe_call::call_ufunction(hc, &HEALTH_CLASS, "SetCurrentHealth", &mut parms)?
+    };
     let after = apply::read_f32(hc, 0x032C);
     Ok(serde_json::json!({
         "value_requested": value,

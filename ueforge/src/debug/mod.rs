@@ -238,8 +238,7 @@ where
 ///
 /// Ops that need a per-game instance resolver (`call`, `read_bytes`,
 /// `write_bytes`) are NOT included here -- they take a closure the
-/// game must supply. Use [`dispatch_call_op`] /
-/// [`dispatch_read_bytes_op`] / [`dispatch_write_bytes_op`].
+/// game must supply. Use [`dispatch_pe_ops`] for those.
 pub fn dispatch_standard_op<A: RpgApplier>(
     op: &str,
     args_json: &Json,
@@ -276,5 +275,65 @@ pub fn dispatch_standard_op<A: RpgApplier>(
             Ok(crate::winproc::sample_thread_modules_json(duration_ms, interval_ms))
         }
         _ => return None,
+    })
+}
+
+/// Handle the three standard ops that need a game-specific
+/// instance resolver (`call`, `read_bytes`, `write_bytes`).
+/// Returns `None` for non-matching ops.
+///
+/// `pe_queue` is the game-thread DrainSite the `call` op enqueues
+/// onto; `hint` is appended to timeout errors. `resolver` is the
+/// game's selector dispatcher (typically wraps
+/// [`crate::selector::resolve_generic`] with extra game-specific
+/// names like `"live_player"`).
+///
+/// `read_bytes` and `write_bytes` are off-thread-safe (they only
+/// read / write memory, no PE), so they don't go through the
+/// queue.
+pub fn dispatch_pe_ops<R>(
+    op: &str,
+    args_json: &Json,
+    pe_queue: &'static DrainSite,
+    hint: &'static str,
+    resolver: R,
+) -> Option<Result<Json, String>>
+where
+    R: Fn(&str) -> Result<&'static crate::ue::UObject, String>
+        + Copy
+        + Send
+        + 'static,
+{
+    match op {
+        "call" => Some(dispatch_call(args_json, pe_queue, hint, resolver)),
+        "read_bytes" => Some(crate::ops::read_bytes(args_json, resolver)),
+        "write_bytes" => Some(crate::ops::write_bytes(args_json, resolver)),
+        _ => None,
+    }
+}
+
+fn dispatch_call<R>(
+    args_json: &Json,
+    pe_queue: &'static DrainSite,
+    hint: &'static str,
+    resolver: R,
+) -> Result<Json, String>
+where
+    R: Fn(&str) -> Result<&'static crate::ue::UObject, String>
+        + Copy
+        + Send
+        + 'static,
+{
+    let class = args::arg_str(args_json, "class")?.to_string();
+    let function = args::arg_str(args_json, "function")?.to_string();
+    let selector = args::arg_str(args_json, "instance_selector")?.to_string();
+    let parms = crate::hex::decode(args::arg_str(args_json, "parms_hex")?)?;
+    enqueue_pe(pe_queue, Duration::from_secs(5), hint, move || {
+        let instance = resolver(&selector)?;
+        let mut out = crate::ops::exec_call(instance, &class, &function, parms)?;
+        if let Some(obj) = out.as_object_mut() {
+            obj.insert("selector".into(), Json::String(selector.clone()));
+        }
+        Ok(out)
     })
 }

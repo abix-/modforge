@@ -17,6 +17,7 @@ pub mod field;
 pub mod fname;
 pub mod fstring;
 pub mod offsets;
+pub mod pe_call;
 pub mod platform;
 pub mod player;
 pub mod probe;
