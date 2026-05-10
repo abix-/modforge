@@ -158,7 +158,11 @@ macro_rules! ue4ss_mod {
             //    watcher thread is on a stack in our DLL when
             //    UE4SS calls FreeLibrary.
             $crate::settings::shutdown_all();
-            // 5. Side-file swap so UE4SS's next LoadLibraryExW
+            // 5. Stop the freeze sweeper (no-op if no freeze ever
+            //    ran). Same reason as watchers -- the sweeper
+            //    thread holds code on its stack inside our DLL.
+            $crate::scanner::shutdown_sweeper_if_running();
+            // 6. Side-file swap so UE4SS's next LoadLibraryExW
             //    picks up the new image written to main-new.dll.
             $crate::mod_main::finalize_hot_reload_swap();
         }

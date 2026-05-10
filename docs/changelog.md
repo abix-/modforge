@@ -12,6 +12,51 @@
 
 Newest first.
 
+## 2026-05-10 (kovarex review wave 2 P1 -- continued)
+
+Four more P1 items landed in a follow-up session. Workspace check
++ 68 ueforge lib tests green.
+
+- **SlotStore failure-injection tests.** 6 new tests cover save
+  failures (parent-as-file, target-as-nonempty-dir), `last_error`
+  cache populates + clears across recovery, corrupt JSON loads
+  as default, missing file loads as default, and an existing
+  good file is untouched when an unrelated save fails.
+  `save_to_path` / `load_from_path` test seams added on
+  `SlotStore` (pub(crate)) so failure injection doesn't depend
+  on the process-global `dll_dir()`. See
+  [ueforge/src/rpg/store.rs](../ueforge/src/rpg/store.rs).
+
+- **Freeze sweeper + cap.** Replaced per-freeze writer threads
+  with a single `ueforge-freeze-sweeper` thread that iterates
+  the freeze map at the soonest-due tick (clamped 1-10ms).
+  `MAX_FREEZES = 64` cap; `freeze` past the cap returns an
+  error. Sweeper is lazy-spawned on first freeze and stopped via
+  `scanner::shutdown_sweeper_if_running` from the framework's
+  `ueforge_mod_shutdown` (between settings shutdown and
+  side-file rename). Re-resolve / failure-counting / drop-on-
+  permanent-staleness logic moved into the sweeper's per-job
+  loop with the same `MAX_CONSECUTIVE_FAILURES = 30` semantics.
+
+- **Hot-reload entry-leak audit.** `Entry` `Box::leak` per
+  install is **intentional and bounded** -- reusing entries
+  across DLL unloads is unsafe (the `handler: Box<dyn Fn>`
+  carries a vtable into the unloading DLL's code). Per-cycle
+  cost: ~250 bytes/hook + closure capture; 1000 reloads x 5
+  hooks = ~1 MB. Added `LEAKED_ENTRY_COUNT` instrumentation
+  + `hook::leaked_entry_count()` accessor for snapshot
+  surfaces so dev sessions can monitor accumulation. Audit
+  conclusion documented in
+  [ueforge/docs/hooks.md](../ueforge/docs/hooks.md)
+  "Entries are leaked, not freed".
+
+- **`clippy::undocumented_unsafe_blocks` enabled workspace-wide
+  at `warn`** via `[workspace.lints.clippy]` + per-crate
+  `[lints] workspace = true`. 271 existing undocumented unsafe
+  blocks surface as warnings; new unsafe must carry
+  `// SAFETY:` to merge clean. Flip to `deny` when the count
+  reaches zero.
+
 ## 2026-05-10 (kovarex review wave 2 -- durability + safety)
 
 Brutal-honesty review against the 10/10 bar (10 years daily-driver,

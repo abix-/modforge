@@ -44,3 +44,6 @@ ueforge = { path = "../ueforge" }
 
 [dev-dependencies]
 ueforge = { path = "../ueforge" }
+
+[lints]
+workspace = true

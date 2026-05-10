@@ -71,8 +71,12 @@ where
     /// succeeds (silent fall-through to default is the right
     /// behavior for missing-or-corrupt save data).
     pub fn load(&self, slot: &str) -> S {
-        let path = self.path(slot);
-        match fs::read_to_string(&path) {
+        self.load_from_path(&self.path(slot))
+    }
+
+    /// Path-explicit form of [`Self::load`]. Test seam.
+    pub(crate) fn load_from_path(&self, path: &Path) -> S {
+        match fs::read_to_string(path) {
             Ok(text) => match serde_json::from_str::<S>(&text) {
                 Ok(s) => s,
                 Err(e) => {
@@ -103,8 +107,14 @@ where
     /// can leave a torn / zero-byte file -- the very failure
     /// mode atomic-rename was supposed to prevent.
     pub fn save(&self, slot: &str, state: &S) -> io::Result<()> {
-        let path = self.path(slot);
-        match save_atomic(&path, state) {
+        self.save_to_path(&self.path(slot), state)
+    }
+
+    /// Path-explicit form of [`Self::save`]. Test seam: failure-
+    /// injection tests can target a path the test prepared
+    /// without relying on the process-global `dll_dir()`.
+    pub(crate) fn save_to_path(&self, path: &Path, state: &S) -> io::Result<()> {
+        match save_atomic(path, state) {
             Ok(()) => {
                 self.last_error.lock().take();
                 Ok(())
@@ -232,5 +242,143 @@ mod tests {
         // verify the slot validator alone.
         assert_eq!(is_valid_slot("../escape"), false);
         assert_eq!(is_valid_slot("normal_save"), true);
+    }
+
+    /// Per-test scratch directory under the OS temp dir. Cleaned
+    /// up on Drop so failures don't pollute /tmp.
+    struct Scratch {
+        path: std::path::PathBuf,
+    }
+    impl Scratch {
+        fn new(tag: &str) -> Self {
+            let path = std::env::temp_dir().join(format!(
+                "ueforge_slotstore_{tag}_{}_{:p}",
+                std::process::id(),
+                &tag as *const _,
+            ));
+            let _ = fs::remove_dir_all(&path);
+            fs::create_dir_all(&path).expect("scratch dir");
+            Self { path }
+        }
+    }
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[test]
+    fn save_atomic_fails_when_parent_is_a_file() {
+        // create_dir_all on a path whose ancestor is a regular
+        // file returns NotADirectory. The save MUST surface this
+        // as Err -- silently writing somewhere unexpected would
+        // be the bug.
+        let s = Scratch::new("fail_parent");
+        let blocker = s.path.join("blocker");
+        fs::write(&blocker, "i am a file").expect("blocker");
+        let path = blocker.join("save.json"); // parent is a file
+        let result = save_atomic(&path, &State::default());
+        assert!(
+            result.is_err(),
+            "expected error when parent is a file, got Ok"
+        );
+    }
+
+    #[test]
+    fn save_atomic_fails_when_target_is_nonempty_dir() {
+        // rename(file, dir-with-contents) fails on every
+        // platform we care about. Verify the temp doesn't bleed
+        // into the wrong place when this happens.
+        let s = Scratch::new("fail_dir");
+        let path = s.path.join("save.json");
+        fs::create_dir(&path).expect("blocker dir");
+        fs::write(path.join("inner"), "x").expect("inner file");
+        let result = save_atomic(&path, &State::default());
+        assert!(
+            result.is_err(),
+            "expected error when target is a non-empty dir"
+        );
+    }
+
+    #[test]
+    fn save_caches_last_error_then_clears_on_recovery() {
+        // Exercises the full SlotStore::save path through the
+        // save_to_path test seam. First save fails, last_error
+        // is populated. Second save (after removing the blocker)
+        // succeeds; last_error clears.
+        let s = Scratch::new("lasterror");
+        let path = s.path.join("save.json");
+        // Inject failure: directory at the rename target.
+        fs::create_dir(&path).expect("dir at target");
+        fs::write(path.join("inner"), "x").expect("inner");
+
+        let store: SlotStore<State> = SlotStore::new("__test__");
+        let state = State { a: 7, b: "hi".into() };
+        let r = store.save_to_path(&path, &state);
+        assert!(r.is_err());
+        let msg = store.last_error().expect("last_error populated");
+        assert!(msg.contains("failed"), "msg={msg}");
+
+        // Recover: clear the blocker.
+        fs::remove_dir_all(&path).expect("clear blocker");
+        let r = store.save_to_path(&path, &state);
+        assert!(r.is_ok(), "post-recovery save: {:?}", r);
+        assert!(
+            store.last_error().is_none(),
+            "last_error should clear on success"
+        );
+
+        // Round-trip: file actually contains the state.
+        let loaded = store.load_from_path(&path);
+        assert_eq!(loaded, state);
+    }
+
+    #[test]
+    fn load_returns_default_on_corrupt_file() {
+        // Bad JSON + present file -> default + log line, not
+        // panic. Save data we can't parse must not crash the
+        // mod or take the player's session down.
+        let s = Scratch::new("corrupt");
+        let path = s.path.join("save.json");
+        fs::write(&path, "{ this is { not json").expect("write corrupt");
+        let store: SlotStore<State> = SlotStore::new("__test__");
+        let loaded = store.load_from_path(&path);
+        assert_eq!(loaded, State::default());
+    }
+
+    #[test]
+    fn load_returns_default_on_missing_file() {
+        let s = Scratch::new("missing");
+        let path = s.path.join("nope.json");
+        let store: SlotStore<State> = SlotStore::new("__test__");
+        let loaded = store.load_from_path(&path);
+        assert_eq!(loaded, State::default());
+    }
+
+    #[test]
+    fn save_does_not_corrupt_existing_file_on_failure() {
+        // Existing good file. New save targets a path whose
+        // parent is a file (forces save_atomic to fail at
+        // create_dir_all). The existing file at a separate path
+        // must remain intact -- atomic rename's whole purpose.
+        let s = Scratch::new("preserve");
+        let good_path = s.path.join("good.json");
+        let store: SlotStore<State> = SlotStore::new("__test__");
+        let original = State { a: 1, b: "original".into() };
+        store
+            .save_to_path(&good_path, &original)
+            .expect("initial save");
+
+        // Try a save that fails (parent is a file).
+        let blocker = s.path.join("blocker");
+        fs::write(&blocker, "x").expect("blocker");
+        let bad_target = blocker.join("save.json");
+        let updated = State { a: 2, b: "updated".into() };
+        let r = store.save_to_path(&bad_target, &updated);
+        assert!(r.is_err());
+
+        // Original file untouched.
+        let reloaded = store.load_from_path(&good_path);
+        assert_eq!(reloaded, original);
     }
 }

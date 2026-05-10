@@ -71,5 +71,8 @@ regex = { workspace = true }
 winreg = { workspace = true }
 zip = { workspace = true }
 
+[lints]
+workspace = true
+
 [build-dependencies]
 cc = { workspace = true }

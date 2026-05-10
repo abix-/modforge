@@ -39,30 +39,20 @@ If any of that fails, triage from the log lines.
   these and ships a code update from us. UE4SS upstream has
   working signatures to copy. Highest-leverage 10-year-bar item
   in the framework.
-- [ ] **`SlotStore` failure-injection tests.** Fill-disk /
-  EACCES / partial-write coverage. Today's 4 unit tests cover
-  happy-path + slot validation; failure paths are claim-only.
 - [ ] **Generic schema versioning baked into `SlotStore`**, not
   per-consumer. `SkillsState` carries `schema_version` today;
   the planned `BuildingsTracker` would re-invent it. Envelope:
   `{schema_version, payload}` with a `Migrate` trait the
   consumer implements.
-- [ ] **Bound + thread-pool the freeze workers.**
-  `ueforge/src/scanner.rs` -- one writer thread per freeze, no
-  cap. Cap freezes (e.g. 64), reuse one writer thread that
-  sweeps the active map every `1/min(hz)`.
-- [ ] **Hot-reload entry leak audit.**
-  `ueforge/src/hook/process_event.rs` `Box::leak`-s an `Entry`
-  per install. ~200 bytes x ~5 hooks x 1000 reloads = ~1 MB per
-  dev session. Either reuse entries by class_name (re-arm an
-  existing leaked Entry on re-install) or document the bound.
 - [ ] **Hot-reload torture test.** 1000x Ctrl+R loop with hooks
   installed; assert no thread leak, hook leak, slot regression.
-  Path is "tested once" today.
-- [ ] **`clippy::undocumented_unsafe_blocks` in CI.** ~350 unsafe
-  blocks vs ~10 SAFETY comments. Turn on the lint, accept the
-  noise, fix incrementally; never merge new unsafe without a
-  justification.
+  Path is "tested once" today. Requires running game; gated on
+  in-game test harness.
+- [ ] **Annotate the 271 existing unsafe blocks** with `// SAFETY:`
+  comments. Lint is `warn` workspace-wide (`Cargo.toml`
+  `[workspace.lints.clippy]`); flip to `deny` when the count
+  reaches zero. Track via
+  `cargo clippy --workspace 2>&1 | rg -c "unsafe block missing a safety comment"`.
 
 ## P2 -- ueforge grooming
 

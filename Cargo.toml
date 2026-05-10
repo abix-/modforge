@@ -26,6 +26,18 @@ zip = "5"
 parking_lot = "0.12"
 arc-swap = "1"
 
+# Workspace-wide lints. Crates opt in with `[lints] workspace = true`.
+#
+# `undocumented_unsafe_blocks` is the load-bearing one: every
+# `unsafe { ... }` should carry a `// SAFETY: <invariant justification>`
+# comment so reviewers can audit the invariants. Set to `warn` (not
+# `deny`) while we work through the existing ~340 unsafe blocks
+# that pre-date the lint; new unsafe should not merge without a
+# SAFETY comment. Bump to `deny` once the existing blocks are
+# annotated.
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1

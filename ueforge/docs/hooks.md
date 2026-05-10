@@ -402,11 +402,36 @@ deadlock the whole hot-reload cycle.
 ### Entries are leaked, not freed
 
 `Entry` is `Box::leak`-ed at install time (`'static`). Drop
-restores the vtable but does NOT free the entry, because a
-straggler trampoline that already loaded the snapshot may still
-hold a reference. Memory cost is bounded -- a handful of hooks
-per mod -- but accumulates across hot-reload cycles. See
-todo.md for the entry-reuse audit item.
+restores the vtable but does NOT free the entry, for two
+reasons:
+
+1. **Straggler trampolines.** A trampoline that already loaded
+   the SNAPSHOT may still hold a `&'static Entry` reference at
+   the moment Drop runs. Freeing the entry would dangle that
+   reference. The `active_calls` 500ms drain handles MOST cases,
+   but the trampoline's `snap.iter().find(...)` window is even
+   smaller and not directly counted. RCU-style retirement would
+   close it; the bookkeeping isn't worth the complexity for a
+   ~250-byte struct.
+
+2. **Cross-DLL closure invalidation.** The leaked entry's
+   `handler: Box<dyn Fn>` carries a vtable pointer into the
+   loading DLL's code section. After UE4SS `FreeLibrary`s the
+   DLL, that code is gone. Re-using the leaked Entry on the
+   next image's first install would re-arm a hook whose handler
+   vtable points into freed memory. Each new image must build
+   fresh entries.
+
+The audit conclusion: the leak is intentional and bounded.
+Per-cycle cost is one entry per hook install (~250 bytes
+struct + ~tens of bytes captured closure state). 1000 hot-
+reload cycles at 5 hooks each is ~5000 leaked entries, ~1 MB
+total -- tolerable for the lifetime of a process.
+
+`hook::leaked_entry_count() -> u64` is exposed for snapshot
+surfaces so a dev session that hot-reloads aggressively can
+watch the counter for runaway growth (a sign that something
+other than the expected install path is allocating entries).
 
 ## Panic safety
 

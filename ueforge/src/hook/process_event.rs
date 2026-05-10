@@ -78,6 +78,23 @@ static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
 static SNAPSHOT: LazyLock<ArcSwap<Vec<&'static Entry>>> =
     LazyLock::new(|| ArcSwap::from_pointee(Vec::new()));
 
+/// Cumulative count of `Entry` allocations made by any hook install
+/// in this process. Each install `Box::leak`s one entry that is
+/// never freed (see "Hot-reload teardown" in hooks.md for why
+/// reuse-across-DLL-unloads is unsafe). The counter lets dev
+/// sessions detect runaway accumulation: a single hot-reload cycle
+/// adds ~N entries (one per hook your mod installs), so 1000
+/// reloads with 5 hooks per cycle is ~5000 leaked entries.
+static LEAKED_ENTRY_COUNT: AtomicU64 = AtomicU64::new(0);
+
+/// Cumulative count of leaked `Entry` allocations. See
+/// [`LEAKED_ENTRY_COUNT`] for the why. Snapshot endpoints surface
+/// this so dev sessions can watch for runaway growth across
+/// hot-reload iterations.
+pub fn leaked_entry_count() -> u64 {
+    LEAKED_ENTRY_COUNT.load(Ordering::Relaxed)
+}
+
 /// Set during shutdown to short-circuit handler dispatch. New
 /// trampoline fires call original directly without touching our
 /// handler closure (which may be on the verge of being dropped).
@@ -124,7 +141,10 @@ impl ProcessEventHook {
         // Leak the entry: lifetimes must outlive every dispatch, even if the
         // user drops the ProcessEventHook handle. Drop reverts the slot but
         // does not free the Entry, since racing dispatches may still hold a
-        // reference. Memory cost is bounded (we hook a handful of classes).
+        // reference, AND the heap-allocated handler closure is unsafe to free
+        // across a DLL unload (its vtable points into freed module code).
+        // Memory cost is bounded by the number of hook installs over the
+        // process lifetime, instrumented via `LEAKED_ENTRY_COUNT`.
         let entry: &'static Entry = Box::leak(Box::new(Entry {
             class_name,
             slot,
@@ -134,6 +154,7 @@ impl ProcessEventHook {
             active_calls: AtomicUsize::new(0),
             panic_count: AtomicU64::new(0),
         }));
+        LEAKED_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
         {
             let mut reg = REGISTRY.lock();

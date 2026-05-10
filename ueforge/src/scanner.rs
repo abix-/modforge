@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
@@ -299,17 +299,166 @@ enum FreezeSource {
 }
 
 struct FreezeJob {
-    stop: Arc<AtomicBool>,
+    /// Most recent resolved address for the write. Re-resolved
+    /// from `source` when validation misses.
+    addr: usize,
+    /// Original address at registration time. Used in log lines
+    /// + as the stable map key.
+    initial_addr: usize,
     ty: Ty,
     bytes: Vec<u8>,
     hz: u32,
+    interval: Duration,
+    /// Earliest moment the sweeper should write this job again.
+    next_due: Instant,
     source: FreezeSource,
+    /// Consecutive failed validations. The sweeper drops the job
+    /// after `MAX_CONSECUTIVE_FAILURES` so a permanently-stale
+    /// freeze can't keep re-resolving forever.
+    failures: u32,
 }
 
 static FREEZES: OnceLock<Mutex<HashMap<usize, FreezeJob>>> = OnceLock::new();
 
 fn freezes() -> &'static Mutex<HashMap<usize, FreezeJob>> {
     FREEZES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Cap on simultaneous freezes. Each freeze burns ~24 bytes of
+/// state; the cap bounds the sweeper's per-tick walk and stops
+/// a misbehaving test client from stuffing the map. 64 is ~10x
+/// the largest realistic concurrent set we've ever used.
+pub const MAX_FREEZES: usize = 64;
+
+const MAX_CONSECUTIVE_FAILURES: u32 = 30;
+const SWEEPER_DEFAULT_TICK: Duration = Duration::from_millis(10);
+const SWEEPER_MIN_TICK: Duration = Duration::from_millis(1);
+
+/// Single sweeper thread that services every active freeze.
+/// Replaces the per-freeze thread (which leaked one OS thread per
+/// freeze and had no global stop knob). Lazy-spawned on the first
+/// `freeze()` call; runs until `shutdown_sweeper_if_running` flips
+/// its stop flag (called from `ueforge_mod_shutdown`).
+struct Sweeper {
+    stop: Arc<AtomicBool>,
+    join: Mutex<Option<thread::JoinHandle<()>>>,
+}
+
+static SWEEPER: OnceLock<Sweeper> = OnceLock::new();
+
+fn ensure_sweeper() {
+    SWEEPER.get_or_init(|| {
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let join = thread::Builder::new()
+            .name("ueforge-freeze-sweeper".into())
+            .spawn(move || sweeper_loop(stop_clone))
+            .expect("spawn freeze sweeper");
+        Sweeper {
+            stop,
+            join: Mutex::new(Some(join)),
+        }
+    });
+}
+
+/// Stop the freeze sweeper if it's running, and clear the
+/// freeze map. Idempotent + safe to call when no freeze ever
+/// ran. Wired into `ueforge_mod_shutdown`.
+pub fn shutdown_sweeper_if_running() {
+    if let Some(s) = SWEEPER.get() {
+        s.stop.store(true, Ordering::Release);
+        if let Some(j) = s.join.lock().take() {
+            let _ = j.join();
+        }
+    }
+    if let Some(map) = FREEZES.get() {
+        map.lock().clear();
+    }
+}
+
+fn sweeper_loop(stop: Arc<AtomicBool>) {
+    while !stop.load(Ordering::Acquire) {
+        let now = Instant::now();
+        let mut next_wake: Option<Instant> = None;
+        let mut to_drop: Vec<usize> = Vec::new();
+        {
+            let mut map = freezes().lock();
+            for (key, job) in map.iter_mut() {
+                if job.next_due <= now {
+                    if !is_writable(job.addr, job.bytes.len()) {
+                        // Try to re-resolve from a selector.
+                        // Raw-addr freezes have no recovery path.
+                        let recovered = match &job.source {
+                            FreezeSource::Selector { selector, offset } => {
+                                resolve_selector_addr(selector, *offset)
+                                    .ok()
+                                    .filter(|a| is_writable(*a, job.bytes.len()))
+                            }
+                            FreezeSource::RawAddr => None,
+                        };
+                        match recovered {
+                            Some(new_addr) => {
+                                crate::log::log(format_args!(
+                                    "ueforge freeze: re-resolved 0x{:X} -> 0x{:X}",
+                                    job.addr, new_addr
+                                ));
+                                job.addr = new_addr;
+                                job.failures = 0;
+                            }
+                            None => {
+                                job.failures = job.failures.saturating_add(1);
+                                if job.failures >= MAX_CONSECUTIVE_FAILURES {
+                                    crate::log::log(format_args!(
+                                        "ueforge freeze: 0x{:X} stale for {} ticks; dropping",
+                                        job.initial_addr, job.failures
+                                    ));
+                                    to_drop.push(*key);
+                                    continue;
+                                }
+                                job.next_due = now + job.interval;
+                                next_wake = Some(match next_wake {
+                                    Some(t) => t.min(job.next_due),
+                                    None => job.next_due,
+                                });
+                                continue;
+                            }
+                        }
+                    }
+                    // SAFETY: is_writable confirmed the destination
+                    // range is committed RW within the queried region.
+                    // Bytes are owned and outlive the copy.
+                    unsafe {
+                        let dst = job.addr as *mut u8;
+                        std::ptr::copy_nonoverlapping(
+                            job.bytes.as_ptr(),
+                            dst,
+                            job.bytes.len(),
+                        );
+                    }
+                    job.failures = 0;
+                    job.next_due = now + job.interval;
+                }
+                next_wake = Some(match next_wake {
+                    Some(t) => t.min(job.next_due),
+                    None => job.next_due,
+                });
+            }
+            for k in to_drop {
+                map.remove(&k);
+            }
+        }
+        // Sleep until the soonest next_due, clamped to a minimum
+        // of 1 ms (so a hz=1000 freeze still gets serviced) and a
+        // maximum of 10 ms (so a registry change is picked up
+        // promptly when the map was empty).
+        let sleep = match next_wake {
+            Some(t) => t
+                .saturating_duration_since(Instant::now())
+                .max(SWEEPER_MIN_TICK),
+            None => SWEEPER_DEFAULT_TICK,
+        };
+        thread::sleep(sleep);
+    }
 }
 
 /// True if the address range [addr, addr+len) lies entirely within
@@ -541,10 +690,10 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
 
     // Two arg shapes:
     //   { selector, offset?, type, value }  -- preferred. The
-    //     writer re-resolves on staleness (address-recycling safe).
+    //     sweeper re-resolves on staleness (address-recycling safe).
     //   { addr, type, value }               -- legacy. Address is
-    //     opaque; the writer stops when the page is unmapped or
-    //     loses RW protection.
+    //     opaque; the sweeper drops the freeze when the page is
+    //     unmapped or loses RW protection.
     let (addr, source) = match args.get("selector").and_then(Json::as_str) {
         Some(sel) => {
             let offset = arg_u64(args, "offset", Some(0))? as usize;
@@ -570,25 +719,35 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
         ));
     }
 
-    // Replace existing freeze on this addr if any.
-    if let Some(old) = freezes().lock().remove(&addr) {
-        old.stop.store(true, Ordering::Release);
+    // Cap concurrent freezes (replacing an existing freeze on the
+    // same addr is fine and doesn't count toward the cap).
+    {
+        let map = freezes().lock();
+        if !map.contains_key(&addr) && map.len() >= MAX_FREEZES {
+            return Err(format!(
+                "freeze: cap reached ({MAX_FREEZES}); unfreeze something first"
+            ));
+        }
     }
 
-    let stop = Arc::new(AtomicBool::new(false));
-    let source_t = source.clone();
-    spawn_freeze_writer(addr, bytes.clone(), hz, stop.clone(), source_t)?;
-
-    freezes().lock().insert(
+    let interval = Duration::from_millis((1000 / hz.max(1)) as u64);
+    let job = FreezeJob {
         addr,
-        FreezeJob {
-            stop,
-            ty,
-            bytes,
-            hz,
-            source,
-        },
-    );
+        initial_addr: addr,
+        ty,
+        bytes,
+        hz,
+        interval,
+        // Service immediately on the next sweeper tick.
+        next_due: Instant::now(),
+        source,
+        failures: 0,
+    };
+    freezes().lock().insert(addr, job);
+
+    // Spawn the sweeper on first use. Subsequent freezes share it.
+    ensure_sweeper();
+
     Ok(json!({"addr": format!("0x{addr:X}"), "hz": hz, "frozen": true}))
 }
 
@@ -600,81 +759,10 @@ fn resolve_selector_addr(selector: &str, offset: usize) -> Result<usize, String>
     Ok((obj as *const UObject as usize).wrapping_add(offset))
 }
 
-/// Spawn the writer thread. Validates page protection on each
-/// tick; on miss, attempts to re-resolve the selector (if any) to
-/// recover from UE recycling the underlying allocation. Bails out
-/// after `MAX_CONSECUTIVE_FAILURES` failed validations so a
-/// permanently-stale freeze can't busy-loop forever.
-fn spawn_freeze_writer(
-    initial_addr: usize,
-    bytes: Vec<u8>,
-    hz: u32,
-    stop: Arc<AtomicBool>,
-    source: FreezeSource,
-) -> Result<(), String> {
-    const MAX_CONSECUTIVE_FAILURES: u32 = 30;
-    let interval = Duration::from_millis((1000 / hz.max(1)) as u64);
-    thread::Builder::new()
-        .name(format!("ueforge-freeze-{initial_addr:X}"))
-        .spawn(move || {
-            let mut addr = initial_addr;
-            let mut failures: u32 = 0;
-            while !stop.load(Ordering::Acquire) {
-                if !is_writable(addr, bytes.len()) {
-                    // Try to re-resolve from a selector. Raw-addr
-                    // freezes have no recovery path.
-                    let recovered = match &source {
-                        FreezeSource::Selector { selector, offset } => {
-                            resolve_selector_addr(selector, *offset)
-                                .ok()
-                                .filter(|a| is_writable(*a, bytes.len()))
-                        }
-                        FreezeSource::RawAddr => None,
-                    };
-                    match recovered {
-                        Some(new_addr) => {
-                            crate::log::log(format_args!(
-                                "ueforge freeze: re-resolved 0x{addr:X} -> 0x{new_addr:X}"
-                            ));
-                            addr = new_addr;
-                            // failures is reset by the successful write below.
-                        }
-                        None => {
-                            failures = failures.saturating_add(1);
-                            if failures >= MAX_CONSECUTIVE_FAILURES {
-                                crate::log::log(format_args!(
-                                    "ueforge freeze: 0x{initial_addr:X} stale for \
-                                     {failures} ticks; stopping"
-                                ));
-                                return;
-                            }
-                            thread::sleep(interval);
-                            continue;
-                        }
-                    }
-                }
-                unsafe {
-                    let dst = addr as *mut u8;
-                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
-                }
-                failures = 0;
-                thread::sleep(interval);
-            }
-        })
-        .map_err(|e| format!("spawn failed: {e}"))?;
-    Ok(())
-}
-
 pub fn unfreeze(args: &Json) -> Result<Json, String> {
     let addr_str = arg_str(args, "addr")?;
     let addr = parse_addr(addr_str)?;
-    let removed = match freezes().lock().remove(&addr) {
-        Some(j) => {
-            j.stop.store(true, Ordering::Release);
-            true
-        }
-        None => false,
-    };
+    let removed = freezes().lock().remove(&addr).is_some();
     Ok(json!({"addr": format!("0x{addr:X}"), "removed": removed}))
 }
 
