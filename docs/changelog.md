@@ -68,6 +68,44 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Hot-update Phase B0 shipped (side-file deploy)
+
+Implemented the side-file pattern (user's design) for hot-deploy
+while the game is running. Two pieces:
+
+- `cargo deploy install` (`ueforge/src/bin/ueforge_deploy.rs`):
+  writes to `main-new.dll` when `main.dll` already exists; first
+  deploy writes `main.dll` directly. The side-file path is never
+  locked (no live image at that path) so `fs::copy` succeeds
+  while UE4SS has the running DLL mapped.
+- ueforge shim's `ueforge_mod_shutdown`
+  (`ueforge/src/mod_main.rs`): after the game's `on_shutdown`,
+  the framework's `finalize_hot_reload_swap` checks for
+  `main-new.dll` and -- if present -- renames `main.dll` ->
+  `main-old.dll` (`SHARE_DELETE` permits the rename of the
+  loaded image) then `main-new.dll` -> `main.dll`. Rolls back
+  on step 2 failure to leave the dir consistent. Logs the swap.
+- ueforge shim's `ueforge_mod_unreal_init` calls
+  `cleanup_old_dll` once on the new image's first init --
+  best-effort `remove(main-old.dll)`.
+
+Verified empirically (PowerShell test loading `version.dll`
+through every step of the swap; all five succeeded -- rename
+loaded DLL, rename side-file into place, FreeLibrary, delete
+old, LoadLibrary new).
+
+**Workflow today**: edit Rust -> `cargo deploy install` (no
+need to close the game) -> close + reopen the game. The
+shutdown swap fires on close so the next launch loads the new
+image. Net win: you can deploy in parallel with running
+sessions instead of having to close first.
+
+Phase B1-B5 (HookRegistry::shutdown_all + active_calls drain +
+SpawnHandle::stop) still pending; until they ship, Ctrl+R is
+unsafe with PE hooks installed (old DLL's vtable patches point
+into freed memory after FreeLibrary). Close + reopen the game
+between iterations until then.
+
 ### Hot-update: locked-DLL gotcha verified
 
 Earlier hot-update doc claim ("just `cargo deploy install` while

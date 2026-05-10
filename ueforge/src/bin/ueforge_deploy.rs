@@ -368,13 +368,27 @@ fn run_install(args: CommonArgs) -> Result<()> {
     fs::create_dir_all(&dlls_dir)?;
 
     println!("==> deploying to {}", mod_dir.display());
-    let dst = dlls_dir.join("main.dll");
+    // Side-file deploy: if main.dll already exists, write to
+    // main-new.dll (never locked, even if the game is running and
+    // UE4SS has main.dll mapped). The mod's on_shutdown does the
+    // swap on the next Ctrl+R. First-ever deploy: write main.dll
+    // directly. See ueforge/docs/lifecycle.md "side-file pattern".
+    let main_dst = dlls_dir.join("main.dll");
+    let dst = if main_dst.is_file() {
+        let new_dst = dlls_dir.join("main-new.dll");
+        println!("    main.dll exists; writing main-new.dll (Ctrl+R in-game to swap)");
+        new_dst
+    } else {
+        println!("    first deploy; writing main.dll directly");
+        main_dst
+    };
     fs::copy(&cfg.built_dll, &dst).map_err(|e| {
         anyhow!(
-            "failed to copy main.dll: {e}.\nThe game may be running and holding the DLL — quit it, then re-run."
+            "failed to copy {}: {e}.\nIf the game is running, ensure UE4SS is loaded with this mod (so main.dll exists already and we'd write the side-file path).",
+            dst.display()
         )
     })?;
-    println!("    copied main.dll");
+    println!("    wrote {}", dst.file_name().unwrap().to_string_lossy());
 
     if let Some(example) = &cfg.example_settings
         && example.is_file()

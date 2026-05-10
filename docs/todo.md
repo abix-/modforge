@@ -574,25 +574,28 @@ Per-system requirements:
 
 ### Phase B implementation tasks (in order)
 
-- [ ] **B0: Deploy rename-and-replace fallback.** `cargo deploy
-  install` uses `fs::copy` today, which fails with sharing
-  violation when UE4SS has `main.dll` loaded (verified
-  empirically 2026-05-10: `LoadLibraryExW` opens with
-  `FILE_SHARE_READ | FILE_SHARE_DELETE`, no SHARE_WRITE, so
-  direct overwrite fails but Windows DOES allow rename / delete
-  on the loaded file). Fix:
-  ```
-  fs::copy(src, dst).or_else(|e| if is_sharing_violation(&e) {
-      let old = dst.with_extension("dll.old");
-      let _ = fs::remove_file(&old);  // any leftover from prior
-      fs::rename(&dst, &old)?;
-      fs::copy(src, dst)
-  } else { Err(e) })?
-  ```
-  Optional polish: `MoveFileEx(.old, NULL, MOVEFILE_DELAY_UNTIL_REBOOT)`
-  to schedule cleanup of the `.old` file. Without it the `.old`
-  file becomes deletable as soon as UE4SS calls `FreeLibrary`
-  on Ctrl+R; deleting it on next deploy is fine.
+- [x] **B0: Side-file deploy + on_shutdown swap** -- DONE
+  2026-05-10. Verified empirically (PowerShell rename + reload
+  test). Two pieces shipped:
+  - `cargo deploy install` writes to `main-new.dll` if
+    `main.dll` already exists; first deploy writes `main.dll`
+    directly. (`ueforge/src/bin/ueforge_deploy.rs`)
+  - `ueforge_mod_shutdown` runs the game's `on_shutdown` then
+    calls `mod_main::finalize_hot_reload_swap`: renames
+    `main.dll` -> `main-old.dll` (`SHARE_DELETE` permits) +
+    `main-new.dll` -> `main.dll` (vacant target). Rolls back
+    step 1 if step 2 fails. Logs the swap.
+    (`ueforge/src/mod_main.rs`)
+  - `ueforge_mod_unreal_init` calls
+    `mod_main::cleanup_old_dll` once on the new image's first
+    init -- best-effort `remove(main-old.dll)`.
+  - Caveat: this is necessary but **not sufficient** for safe
+    Ctrl+R while PE hooks are installed. B1-B5 below still
+    needed before Ctrl+R is safe with kill / fall / inv hooks
+    live. Until then: side-file deploy works (no need to close
+    the game to deploy), but you still need to close + reopen
+    the game between iterations to actually pick up the new
+    DLL safely.
 - [ ] B1: Add `ueforge::hook::HookRegistry` + `shutdown_all()`.
   Track `ProcessEventHook` handles registered via
   `install_immediate_or_log` (and a new `register_for_shutdown`

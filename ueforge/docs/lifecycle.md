@@ -310,35 +310,92 @@ UE4SS supports cpp-mod hot-**update** natively. UE4SS does a full
 While UE4SS has `main.dll` loaded, you **cannot** open it for
 write directly -- `LoadLibraryExW` opens with
 `FILE_SHARE_READ | FILE_SHARE_DELETE` (no `FILE_SHARE_WRITE`),
-so a naive `fs::copy` over the file fails with
-"sharing violation". The current `cargo deploy install` uses
-`fs::copy` and assumes the game is closed; it won't work for
-in-game hot-update without a fix.
+so a naive `fs::copy` over the file fails with sharing
+violation. But Windows DOES allow renaming or deleting a
+loaded DLL (because `SHARE_DELETE` is granted). That's the
+opening for the side-file pattern below.
 
-**The rename-and-replace pattern**: Windows DOES allow renaming
-or deleting a loaded DLL (because of `FILE_SHARE_DELETE`). So
-the working hot-update deploy sequence is:
+### The side-file pattern (`main-new.dll`)
+
+Verified empirically 2026-05-10 -- every step succeeds:
 
 ```
-1. rename main.dll      -> main.dll.old   (allowed: SHARE_DELETE)
-2. write new bytes      -> main.dll       (target now doesn't exist)
-3. (optional) delete    -> main.dll.old   (will fail until FreeLibrary;
-                                            schedule via
-                                            MoveFileEx(REPLACE+DELAY)
-                                            or clean up on next install)
+deploy time (game running, main.dll loaded):
+  cargo deploy install
+    -> writes main-new.dll  (NEVER locked: no live image at that path)
+    -> first deploy ever:    writes main.dll directly (path doesn't exist)
+
+Ctrl+R time (mod's on_shutdown runs first, OUR DLL still loaded):
+  ueforge_mod_shutdown
+    -> teardown hooks, join threads, drain trampolines
+    -> if main-new.dll exists:
+         rename main.dll     -> main-old.dll   (SHARE_DELETE allows)
+         rename main-new.dll -> main.dll       (vacant target, plain rename)
+    -> return
+
+UE4SS continues:
+  ~CppMod()
+    -> FreeLibrary(old image)            (main-old.dll now deletable)
+  setup_mods()
+    -> LoadLibraryExW(main.dll)          (loads the new image)
+  start_cpp_mods()
+    -> start_mod() -> on_unreal_init     (new code runs)
+
+new DLL's init:
+  try_remove(main-old.dll)               (best-effort cleanup)
 ```
 
-After this, alt-tab to the game and press `Ctrl+R`. UE4SS will
-`FreeLibrary` the old image (releasing the `.old` for cleanup),
-then `LoadLibraryExW` reads the new `main.dll` from disk.
-State on disk (save slots, settings) survives; the new DLL's
-init reads them.
+Why this is clean:
+- Deploy never has to handle sharing violations: `main-new.dll`
+  is always unlocked. Multiple deploys before a Ctrl+R just
+  keep overwriting it.
+- The mod owns the swap timing: it runs as the last step of
+  `on_shutdown`, after Phase B teardown has uninstalled hooks
+  + joined threads. If anything in shutdown fails, we can
+  log + skip the swap; UE4SS reloads the same image; user
+  sees an error and can retry.
+- No `MoveFileEx(MOVEFILE_DELAY_UNTIL_REBOOT)` games. The
+  `.old` file becomes deletable as soon as UE4SS calls
+  `FreeLibrary` (next line of UE4SS code after our return).
+  The new init cleans it up.
+- State on disk (save slots, settings, catalog progress)
+  survives -- they live in the dlls dir alongside main.dll,
+  not inside it; new image reads them on activation.
 
-**Status (2026-05-10):** `cargo deploy install` does **not** yet
-implement rename-and-replace -- it uses `fs::copy` and reports
-"file in use" if the game is running. Tracked in `docs/todo.md`
-hot-reload Phase B0 ("deploy: rename-and-replace fallback when
-direct copy hits sharing violation").
+### Status (2026-05-10)
+
+**Side-file pattern shipped (Phase B0 complete).** Both pieces
+in place:
+
+- `cargo deploy install` writes to `main-new.dll` when
+  `main.dll` already exists; first deploy writes `main.dll`
+  directly. (`ueforge/src/bin/ueforge_deploy.rs`)
+- `ueforge_mod_shutdown` runs the game's `on_shutdown`, then
+  the framework's `finalize_hot_reload_swap` does the
+  rename / rename / rollback-on-failure dance.
+  (`ueforge/src/mod_main.rs`)
+- New image's first `on_unreal_init` calls
+  `cleanup_old_dll` -- best-effort delete of `main-old.dll`.
+
+**But Ctrl+R is still not safe with PE hooks installed**
+(Phase B1-B5 still pending). The old DLL's `ProcessEventHook`
+patches still point into freed memory after FreeLibrary; the
+next call into a hooked vtable slot crashes the game.
+
+So the current workflow:
+
+```
+1. edit Rust
+2. cargo deploy install -p grounded2-rpg
+   -> writes main-new.dll (no need to close the game)
+3. close + reopen the game
+   -> UE4SS loads -> on_shutdown swap is moot here, but
+      cleanup_old_dll runs at next init either way
+4. test
+```
+
+When Phase B1-B5 lands, step 3 becomes "alt-tab + Ctrl+R"
+instead.
 
 ### Configuration
 

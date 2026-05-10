@@ -128,12 +128,21 @@ macro_rules! ue4ss_mod {
                     console: $mod_info.console,
                 });
             }
+            // Clean up the old image's file from the previous
+            // hot-reload generation, if any. Best-effort; failure
+            // is logged + ignored.
+            $crate::mod_main::cleanup_old_dll();
             ($mod_info.on_unreal_init)();
         }
 
         #[unsafe(no_mangle)]
         pub extern "C" fn ueforge_mod_shutdown() {
             ($mod_info.on_shutdown)();
+            // After the game's on_shutdown returns (hooks
+            // uninstalled, threads joined), do the side-file swap
+            // so UE4SS's next LoadLibraryExW picks up the new image
+            // written by `cargo deploy install` to main-new.dll.
+            $crate::mod_main::finalize_hot_reload_swap();
         }
 
         #[unsafe(no_mangle)]
@@ -164,4 +173,82 @@ macro_rules! ue4ss_mod {
 #[doc(hidden)]
 pub const fn leak_cstr(s: &'static str) -> &'static str {
     s
+}
+
+/// Hot-reload swap. Called by the macro's `ueforge_mod_shutdown`
+/// after the game's on_shutdown returns. If `cargo deploy install`
+/// wrote a `main-new.dll` next to the running `main.dll`, swap
+/// them so UE4SS's next `LoadLibraryExW` picks up the new image.
+///
+/// Filesystem ops:
+/// 1. Rename `main.dll` -> `main-old.dll` (allowed because
+///    `LoadLibraryExW` opens with `FILE_SHARE_DELETE`).
+/// 2. Rename `main-new.dll` -> `main.dll` (vacant target).
+///
+/// Failures are logged + ignored -- the worst case is UE4SS
+/// reloads the same image, the user notices "no new code" and
+/// retries deploy. Better than killing the game.
+///
+/// See `ueforge/docs/lifecycle.md` "side-file pattern" for the
+/// full sequence + the empirical verification.
+#[doc(hidden)]
+pub fn finalize_hot_reload_swap() {
+    let Some(dir) = crate::log::dll_dir() else {
+        crate::log!(
+            "ueforge: hot-reload swap skipped (dll_dir unresolved)"
+        );
+        return;
+    };
+    let new_dll = dir.join("main-new.dll");
+    if !new_dll.is_file() {
+        // No pending update -- normal Ctrl+R or process exit.
+        return;
+    }
+    let main_dll = dir.join("main.dll");
+    let old_dll = dir.join("main-old.dll");
+
+    // Best-effort cleanup of any prior generation's leftover.
+    let _ = std::fs::remove_file(&old_dll);
+
+    if let Err(e) = std::fs::rename(&main_dll, &old_dll) {
+        crate::log!(
+            "ueforge: hot-reload swap step 1 failed (rename main.dll -> main-old.dll): {e}"
+        );
+        return;
+    }
+    if let Err(e) = std::fs::rename(&new_dll, &main_dll) {
+        crate::log!(
+            "ueforge: hot-reload swap step 2 failed (rename main-new.dll -> main.dll): {e}; rolling back"
+        );
+        // Roll back step 1 so we leave the dir consistent.
+        let _ = std::fs::rename(&old_dll, &main_dll);
+        return;
+    }
+    crate::log!(
+        "ueforge: hot-reload swap complete (main-new.dll -> main.dll); UE4SS will load the new image"
+    );
+}
+
+/// Best-effort cleanup of a stale `main-old.dll` left over from a
+/// previous hot-reload generation. Called once during
+/// `ueforge_mod_unreal_init` so the new image (which IS the
+/// freshly-renamed main.dll) clears the leftover sibling. The
+/// previous image's `FreeLibrary` already happened by the time
+/// our init runs, so the file is deletable.
+#[doc(hidden)]
+pub fn cleanup_old_dll() {
+    let Some(dir) = crate::log::dll_dir() else {
+        return;
+    };
+    let old_dll = dir.join("main-old.dll");
+    if old_dll.is_file() {
+        match std::fs::remove_file(&old_dll) {
+            Ok(()) => crate::log!(
+                "ueforge: cleaned up main-old.dll from previous hot-reload"
+            ),
+            Err(e) => crate::log!(
+                "ueforge: could not remove main-old.dll: {e} (will retry next init)"
+            ),
+        }
+    }
 }

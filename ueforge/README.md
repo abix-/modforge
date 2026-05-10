@@ -667,6 +667,7 @@ else?". Update on every major slice.
 | 108 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done |
 | 109 | Worker thread spawn with panic-catch | ✅ (`worker::spawn`) | · | · | done |
 | 110 | Hot-update via UE4SS Ctrl+R (`uninstall_mod` + `~UespyMod` + `ueforge_mod_shutdown` -> our `on_shutdown` callback) | ✅ (shim wired) | · (worker shutdown only; PE hooks still leaked -- Phase B) | · (no PE hooks; safe today) | research done; Phase B (`HookRegistry::shutdown_all` + `active_calls` drain + HTTP `SpawnHandle::stop`) pending |
+| 111 | Side-file deploy + on_shutdown swap (`cargo deploy install` writes `main-new.dll`; shim renames `main.dll` <-> `main-new.dll` on Ctrl+R/exit) | ✅ (`ueforge_deploy` + `mod_main::finalize_hot_reload_swap` + `cleanup_old_dll`) | · | · | done -- Phase B0 |
 
 ### Game-specific (correctly stays in the game crate)
 

@@ -136,30 +136,25 @@ step 3 (Ctrl+R) unloads the old image and loads the new. State
 on disk (`saves/<guid>.json`, `settings.json`) survives; the new
 DLL's init reads them.
 
-**Two blockers prevent in-game hot-update today** (both tracked
-in `docs/todo.md` under "hot-reload"):
+**Phase B0 shipped 2026-05-10**. `cargo deploy install` writes
+to `main-new.dll` when `main.dll` already exists, and the
+framework's shim swaps `main.dll` <-> `main-new.dll` on
+`on_shutdown`. So step 2 (`cargo deploy install` while the game
+is running) just works.
 
-1. **Deploy locked-DLL fallback (Phase B0).** `cargo deploy
-   install` uses `fs::copy`, which fails with sharing violation
-   when UE4SS holds the DLL. Verified empirically 2026-05-10:
-   `LoadLibraryExW` opens with
-   `FILE_SHARE_READ | FILE_SHARE_DELETE`, so direct write
-   fails but rename-and-replace works. Fix: deploy needs to
-   detect the sharing violation and fall back to rename old ->
-   `main.dll.old` + write new at the same path.
+**Phase B1-B5 still pending** for safe Ctrl+R. PE hook handles
+(kill / fall / inv) are still `mem::forget`-ed; on Ctrl+R the
+OLD DLL's vtable patches still point into the soon-to-be-freed
+image. Next call into a patched slot after FreeLibrary -> crash.
+Fix: `HookRegistry::shutdown_all` swaps the slots back + drains
+in-flight trampolines before our DLL unloads. Tracked in
+`docs/todo.md`.
 
-2. **PE hook teardown (Phase B).** Hook handles are
-   `mem::forget`-ed today, so on `Ctrl+R` the OLD DLL's vtable
-   patches still point into the soon-to-be-freed image. Next
-   call into a patched slot after FreeLibrary -> crash. Fix:
-   `HookRegistry::shutdown_all` swaps the slots back + drains
-   in-flight trampolines before our DLL unloads.
-
-**Until both ship**: restart the game between iterations.
-Phase B0 unblocks the deploy-while-running step; Phase B
-unblocks Ctrl+R-while-hooks-installed (for non-hook changes
-Ctrl+R is technically safe today, but you can't deploy the
-new bytes anyway, so it's moot until B0).
+**Until B1-B5 ship**: deploy in step 2 succeeds, but step 3
+(Ctrl+R) is unsafe -- close + reopen the game instead. The
+shutdown swap still runs on close, so the new image is in place
+for the next launch. Net win vs the pre-B0 state: you don't have
+to close the game to deploy, only to apply.
 
 UE4SS hot-reload is gated by `UE4SS-settings.ini`,
 `[General]` section: `EnableHotReloadSystem = 1`,
