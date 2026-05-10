@@ -1,5 +1,11 @@
 # ueforge
 
+> *Forge UE mods in Rust.* (Renamed from `uespy` once the
+> framework outgrew the "spy" framing — it's not a control plane
+> anymore, it's the lifecycle owner. `forge` keeps the
+> modder-vernacular feel; `ue` prefix because the framework is
+> UE-specific.)
+
 **ueforge is the framework every UE4SS Rust mod in this workspace
 builds on.** Game crates declare a `ModInfo` and implement
 callbacks; ueforge owns the lifecycle (`on_unreal_init`,
