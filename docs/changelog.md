@@ -12,6 +12,78 @@
 
 Newest first.
 
+## 2026-05-10 (composition model -- Effects + Triggers + Skills)
+
+The architectural shift articulated in
+[`../ueforge/docs/architecture.md`](../ueforge/docs/architecture.md)
+"Composition model: Effects + Triggers + Skills". TL;DR: each
+thing we research and figure out how to do in the game is an
+Effect (one type, parameterised per use). A Skill is one Effect
+applied with parameters. Hooks (low-level vtable patches) and
+Triggers (semantic event sources) are two distinct Defs at
+different layers; skills compose at the Trigger layer.
+
+### Effects refactor (collapsed StandardEffect + per-game SkillEffect)
+
+- New `ueforge::rpg::effect` module with `Effect` trait + 8
+  standard struct types: `PlayerFloatEffect`,
+  `SubcomponentFloatEffect`, `SubcomponentAdditiveEffect`,
+  `SubcomponentU32MaskEffect`, `SubcomponentMultiplyEffect`,
+  `ClassFieldsMultiplyEffect`, `RuntimeEffect`,
+  `StatusEffectApply`.
+- Old `StandardEffect` enum + `RpgApplier` trait DELETED.
+- `SkillDef<E>` / `SkillRegistry<E>` / `Tracker<A: RpgApplier>`
+  lose their type parameters; `DisabledSkills` moves into
+  `Tracker` as the canonical store.
+- g2rpg's `SkillEffect` enum + `GameApplier` DELETED. Three
+  game-specific Effect impls live in `crate::rpg::effects`
+  (`BackpackSlotsEffect`, `SurvivalDrainEffect`,
+  `PlayerFallDamageReductionEffect`). The giant `apply_skill`
+  match in `apply.rs` is GONE.
+
+### Triggers (Phase 1 + 2a)
+
+- New `ueforge::rpg::trigger` module: `Trigger` trait,
+  `TriggerDef { kind, imp: &'static dyn Trigger }`, `TriggerCtx`
+  enum carrying typed event payloads, `OnSlotChangeTrigger` +
+  static `ON_SLOT_CHANGE` reference.
+- `Effect::apply` signature now takes `&TriggerCtx`.
+- `SkillDef.trigger: &'static TriggerDef` field; every g2rpg
+  catalog row declares `trigger: &ON_SLOT_CHANGE`.
+- `Tracker` fires `TriggerCtx::SlotChange` on activate / spend /
+  refund / toggle. Other variants (Kill, Fall, DamageDealt,
+  DamageTaken, Tick) are placeholder stubs; Phase 5c lifts
+  kill_hook / fall_hook into framework triggers that fire them.
+
+### Health ops lift
+
+- New `ueforge::rpg::health` module: `HealthBinding { hc_class,
+  hc_selector, current_damage_offset, max_health_offset,
+  add_health_function, set_current_health_function }` +
+  `register(binding, pe_queue, hint)`.
+- g2rpg's `simulate_add_health` + `simulate_set_current_health`
+  ops + their PE-queue plumbing (`DebugCmd` enum,
+  `enqueue_pe(DebugCmd)`, `execute_on_game_thread`,
+  `exec_add_health`, `exec_set_current_health`,
+  `op_simulate_add_health`, `op_simulate_set_current_health`)
+  DELETED. ~70 LoC drop from g2rpg.
+
+### Wave B: cosmetic alignment sweeps
+
+- `StackTweak` -> `StackDef` + `StackRegistry`. ows-tweaks's
+  `STACKS = StackRegistry::new(&STACK_DEFS)`.
+- `DifficultyKnob` -> `DifficultyDef` + `DifficultyRegistry`.
+  g2rpg's `SURVIVAL = DifficultyRegistry` holding hunger +
+  thirst Defs.
+- `ModInfo` -> `ModDef` + `Tab` -> `TabDef`. Def-suffix mandate
+  uniform workspace-wide. Tab is the documented bare-slice
+  exception.
+
+### Misc cleanup
+
+- `leak_cstr` (const no-op pretending to do C-string work)
+  DELETED from `mod_main.rs`.
+
 ## 2026-05-10 (registry alignment wave A: ops + selectors + shutdown)
 
 Per the new

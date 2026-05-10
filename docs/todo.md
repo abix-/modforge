@@ -31,128 +31,40 @@ If any of that fails, triage from the log lines.
 
 ---
 
-## Closed: Effects refactor (composition model) -- 2026-05-10
+## P0 -- Triggers Phase 5c: lift kill/fall into framework triggers
 
-Phases 1-3 shipped in one commit. Workspace check + 66 ueforge
-lib tests green.
+Phases 5a + 5b shipped 2026-05-10 (TriggerDef + TriggerCtx +
+Effect::apply(ctx) + Tracker fires SlotChange). The remaining
+piece formalises event-driven dispatch:
 
-- [x] **Phase 1: framework surface.** `ueforge::rpg::effect` module
-  with `trait Effect`, `EffectDef`, and 8 standard struct impls
-  (PlayerFloatEffect, SubcomponentFloatEffect,
-  SubcomponentAdditiveEffect, SubcomponentU32MaskEffect,
-  SubcomponentMultiplyEffect, ClassFieldsMultiplyEffect,
-  RuntimeEffect, StatusEffectApply). Old `StandardEffect` enum
-  deleted.
-- [x] **Phase 2: drop type parameters.** `SkillDef<E>` ->
-  `SkillDef`. `SkillRegistry<E>` -> `SkillRegistry`.
-  `Tracker<A: RpgApplier>` -> `Tracker`. `DisabledSkills` moved
-  into Tracker (single canonical store). `RpgApplier` trait
-  deleted.
-- [x] **Phase 3: g2rpg migration.** `SkillEffect` enum deleted.
-  Three game-specific Effects (`BackpackSlotsEffect`,
-  `SurvivalDrainEffect`, `PlayerFallDamageReductionEffect`) live
-  in `crate::rpg::effects`. The giant `apply_skill` match in
-  `apply.rs` is GONE. `applier.rs` (`GameApplier`) deleted.
-- [x] **Phase 4: documentation.** architecture.md scorecard
-  updated; Effects refactor section flipped from "planned" to
-  "DONE".
+- [ ] **`KillTrigger`** -- lift g2rpg's kill_hook into a
+  framework module matching `damage::DamageHook`'s shape.
+  Decodes MulticastHandleEffectsWithDamageFlags + KillingBlow
+  filter. Fires `TriggerCtx::Kill(&KillEvent)` to subscribed
+  effects. Game declares a `KillBinder` if it needs custom
+  filter logic; otherwise framework default applies.
+- [ ] **`FallTrigger`** -- same lift for fall_hook. Fires
+  `TriggerCtx::Fall(&FallEvent)`.
+- [ ] **`OnDamageDealtTrigger` / `OnDamageTakenTrigger`** --
+  wrap `damage::DamageHook` so skills declare the trigger
+  inline rather than implementing `DamageBinder` directly.
+- [ ] **Replace stub event types** (`DamageEventStub`,
+  `KillEventStub`, `FallEventStub`) with real shapes when the
+  decoders move to the framework.
+- [ ] **g2rpg lifesteal** migrates from bespoke kill_hook
+  trampoline to `trigger: &ON_DAMAGE_DEALT`.
 
-### Phase 5a: TriggerDef (DONE 2026-05-10)
+Eliminates ~300 LoC of bespoke g2rpg hook code; future
+event-driven skills (crit, evasion, thorns) become catalog rows
+instead of new trampoline modules.
 
-- [x] **`ueforge::rpg::trigger`** module shipped: `Trigger`
-  trait + `TriggerDef { kind, imp: &'static dyn Trigger }` +
-  `OnSlotChangeTrigger` + static `ON_SLOT_CHANGE` def.
-- [x] **`SkillDef.trigger: &'static TriggerDef`** field added.
-- [x] **g2rpg catalog** every row declares `trigger: &ON_SLOT_CHANGE`.
+## P1 -- registry alignment (remaining)
 
-Today's Trigger is metadata only -- `Tracker` fires effects on
-slot change like before. The TriggerDef machinery establishes
-the symmetry with EffectDef and gives future event-driven
-triggers a place to land.
-
-### Phase 5b: typed event ctx (DONE 2026-05-10)
-
-- [x] **`TriggerCtx` enum** with variants `SlotChange`,
-  `DamageDealt(&DamageEventStub)`, `DamageTaken(&DamageEventStub)`,
-  `Kill(&KillEventStub)`, `Fall(&FallEventStub)`, `Tick { dt }`.
-- [x] **`Effect::apply`** signature now takes `&TriggerCtx`.
-- [x] **`Tracker`** fires `TriggerCtx::SlotChange` on activate /
-  spend / refund / toggle.
-- [x] All 8 framework Effect impls + 3 g2rpg game-specific
-  Effect impls updated to ignore `_ctx` (they only handle
-  SlotChange today).
-
-The event payload structs (`DamageEventStub`, etc.) are
-placeholder shapes -- Phase 5c lifts the real decoders from
-g2rpg's kill_hook / fall_hook into framework triggers that fire
-the typed variants.
-
-### Phase 5c: lift kill/fall hooks into framework triggers (deferred)
-
-The composition model includes Triggers (event-driven Effects
-fire from Hooks; CDO Effects fire on slot-change). Today the
-trigger is implicit -- CDO writes happen in `apply()`, runtime
-effects are fired by ad-hoc hook trampolines. Formalising:
-
-- [ ] **`Trigger` enum** on `SkillDef`: `OnSlotChange`,
-  `OnDamageDealt`, `OnDamageTaken`, `OnKill`, `OnFall`,
-  `Periodic(Duration)`. Framework wires the right hook based on
-  the trigger.
-- [ ] Lift the existing kill_hook / fall_hook / damage hook
-  bindings so a skill that wants `OnDamageDealt` doesn't need
-  bespoke trampoline code in the game crate.
-
-Defer until Phase 1-4 land and we have a second consumer needing
-event-driven skills.
-
-## P1 -- registry alignment (Wave B + lift candidates)
-
-Wave A landed 2026-05-10 (debug ops, selectors, shutdown
-handlers; see [changelog.md](changelog.md)). Remaining
-alignment work, ranked by leverage:
-
-### Lift game-specific ops to ueforge
-
-g2rpg's debug.rs used to register three health ops whose **shape**
-is universal (every UE5 RPG/survival game has a HealthComponent
-with a current-damage field and an AddHealth-style UFunction)
-but whose **constants** are Maine-specific.
-
-- [x] **Lift health ops to `ueforge::rpg::health`.** DONE
-  2026-05-10. `HealthBinding { hc_class, hc_selector,
-  current_damage_offset, max_health_offset, add_health_function,
-  set_current_health_function }` + `register(binding, pe_queue,
-  hint)`. Lifted `simulate_add_health` +
-  `simulate_set_current_health`. g2rpg's `debug.rs` shrank by
-  ~70 lines (~430 -> ~360).
-- [ ] **`simulate_apply_damage`** stays game-side as a stub for
-  now. Lift gated on Wave E1 (global ProcessEvent pre-callback)
-  -- `ApplyDamageFromInfo` from inside any current PE trampoline
+- [ ] **`simulate_apply_damage` lift** (gated on Wave E1) --
+  `ApplyDamageFromInfo` from inside any current PE trampoline
   re-enters ProcessEvent through the engine's damage-replication
-  path and crashes the host.
-
-### Wave B: cosmetic alignment sweeps
-
-Cheap consistency wins; each one promotes a subject from
-"already-working but uses bare slice / domain noun" to
-canonical `<Subject>Def + <Subject>Registry` shape.
-
-- [ ] **`ueforge::stacks::StackTweak` -> `StackTweakDef +
-  StackTweakRegistry`.** Today's pattern is per-mod
-  `static MY_TWEAK: StackTweak = StackTweak::new(...)` with each
-  mod listing its tweaks inline. Promote to
-  `static STACKS: StackTweakRegistry`. Then `stacks_list` debug
-  op auto-generates; CDO-revert-replay walks the registry
-  uniformly.
-- [ ] **`ueforge::difficulty::DifficultyKnob` -> `DifficultyKnobDef
-  + DifficultyKnobRegistry`.** Identical shape to stack tweaks
-  (typed Def with class/offset/default + apply-to-CDOs
-  controller). Same registry treatment. Doing 1+2 together is
-  one pattern applied twice.
-- [x] **`ueforge::Tab` -> `TabDef`** -- DONE 2026-05-10. Bare-slice
-  carve-out preserved (`MOD_INFO.tabs: &[TabDef]`).
-- [x] **`ueforge::ModInfo` -> `ModDef`** -- DONE 2026-05-10. Root
-  Def for the entire mod. All consumers migrated; macro updated.
+  path and crashes the host. Lift to `ueforge::rpg::health` once
+  the safe drain site lands.
 
 ### Deferred (large lifts)
 
@@ -205,9 +117,6 @@ canonical `<Subject>Def + <Subject>Registry` shape.
 - [ ] **Reentrance proof test.** `pe_queue::Queue::drain` claims
   re-entrance is handled; add a test that fires a job which
   enqueues another job inside the same drain.
-- [ ] **`leak_cstr` is dead code.** `ueforge/src/mod_main.rs`
-  -- a const no-op pretending to do C-string work. Delete or
-  implement.
 - [ ] **Vendor SDK header.** `ueforge/src/ue/offsets.rs:2`
   references `C:\Tools\work\sdk\SDK\Basic.hpp` -- a path on the
   author's machine. Vendor under `ueforge/sdk/` or document the
