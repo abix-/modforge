@@ -77,7 +77,8 @@ unsafe fn worker() {
     // Logger is already initialized by ue4ss_mod!'s on_unreal_init hook
     // (it runs ueforge::log::init before calling MOD_INFO.on_unreal_init).
     ueforge::log!("=== Better Backpack DLL (rust) ===");
-    let settings = settings::load();
+    let settings =
+        ueforge::settings::Settings::<settings::Settings>::load("settings.json").get();
     settings.log_summary();
     ueforge::log!(
         "vanilla main = {}, vanilla mount = {} (left untouched)",

@@ -70,7 +70,7 @@ fn run() {
     ueforge::log!("rpg/world_loader: poller started");
     let mut last: Option<String> = None;
     loop {
-        crate::counters::bump(&crate::counters::WORLD_LOADER_POLLS);
+        ueforge::counters::bump(&crate::counters::WORLD_LOADER_POLLS);
         let cur = save_slot::current_slot_key();
         match (last.as_deref(), cur.as_deref()) {
             (None, Some(s)) => {

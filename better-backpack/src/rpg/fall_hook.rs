@@ -55,8 +55,8 @@ fn on_player_fall_event(
     parms: *mut c_void,
     original: OriginalProcessEvent,
 ) {
-    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_FALL_HOOK);
-    crate::counters::bump(&crate::counters::FALL_HOOK_FIRES);
+    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_FALL_HOOK);
+    ueforge::counters::bump(&crate::counters::FALL_HOOK_FIRES);
 
     // Drain the debug PE queue here. The drain_pending fast path
     // is a single atomic load when the queue is empty (the
@@ -90,7 +90,7 @@ fn on_player_fall_event(
     // complete (see docs/damage.md). If we need that diagnostic
     // again, gate it behind a settings.debug.research flag, not
     // behind a skill level the user has on for normal gameplay.
-    crate::counters::bump(&crate::counters::FALL_HOOK_FNNAME_ALLOCS);
+    ueforge::counters::bump(&crate::counters::FALL_HOOK_FNNAME_ALLOCS);
     let fn_name = function.as_object().name();
 
     if on_landed_ufunction == 0 && fn_name == FN_ON_LANDED {

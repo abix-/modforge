@@ -1,9 +1,7 @@
-// User-editable settings. Storage + atomic save lives in
-// `ueforge::settings::Settings<T>`; this file just defines the shape.
-//
-// The load helper returns an owned snapshot. Today nothing mutates
-// settings at runtime; if we add a "save" path later, callers should
-// hold the ueforge `Settings<T>` store directly.
+// User-editable settings -- bbp-specific shape. Storage + atomic save
+// lives in `ueforge::settings::Settings<T>`; consumers call
+// `ueforge::settings::Settings::<Settings>::load("settings.json").get()`
+// to read the file once at init.
 
 use serde::{Deserialize, Serialize};
 
@@ -82,12 +80,6 @@ impl Default for RpgSettings {
             buggy_kill_xp_multiplier: default_buggy_kill_xp_multiplier(),
         }
     }
-}
-
-/// Read `<DLL_dir>/settings.json`. Returns defaults on missing /
-/// malformed file (with a log line from ueforge::settings).
-pub fn load() -> Settings {
-    ueforge::settings::Settings::<Settings>::load("settings.json").get()
 }
 
 impl Settings {

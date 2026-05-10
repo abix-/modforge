@@ -96,9 +96,9 @@ pub struct DamageEvent {
 }
 
 pub fn record_damage_event(ev: DamageEvent) {
-    crate::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
+    ueforge::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
     let n = DAMAGE_RING.push(ev);
-    crate::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
+    ueforge::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
 }
 
 fn snapshot_damage_ring() -> Vec<DamageEvent> {
@@ -131,18 +131,18 @@ fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
 /// owns the re-entrance guard, the lock-free empty-check, and the
 /// reply-channel plumbing.
 pub fn drain_pending() {
-    crate::counters::bump(&crate::counters::DRAIN_PENDING_CALLS);
+    ueforge::counters::bump(&crate::counters::DRAIN_PENDING_CALLS);
     if PE_QUEUE.is_empty() {
         return;
     }
-    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_DRAIN_PENDING);
+    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_DRAIN_PENDING);
     let stats = PE_QUEUE.drain();
     if stats.reentered {
         return;
     }
-    crate::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, stats.peak);
+    ueforge::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, stats.peak);
     for _ in 0..stats.drained {
-        crate::counters::bump(&crate::counters::DRAIN_PENDING_DRAINED_CMDS);
+        ueforge::counters::bump(&crate::counters::DRAIN_PENDING_DRAINED_CMDS);
     }
 }
 
@@ -161,8 +161,8 @@ pub fn spawn(port: u16) {
             thread_name: "bbp-debug-http",
         },
         |body| {
-            let _t = crate::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);
-            crate::counters::bump(&crate::counters::HTTP_REQUESTS);
+            let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);
+            ueforge::counters::bump(&crate::counters::HTTP_REQUESTS);
             let resp = handle(body);
             serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec())
         },
@@ -375,7 +375,7 @@ fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
 fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
     let duration_ms = arg_u64(args, "duration_ms", Some(30_000))? as u32;
     let interval_ms = arg_u64(args, "interval_ms", Some(100))? as u32;
-    Ok(crate::counters::sample_thread_modules_json(duration_ms, interval_ms))
+    Ok(ueforge::winproc::sample_thread_modules_json(duration_ms, interval_ms))
 }
 
 fn op_set_skill_points(args: &Json) -> Result<Json, String> {
@@ -818,11 +818,11 @@ fn build_snapshot() -> Snapshot {
         settings,
         damage_ring: snapshot_damage_ring(),
         counters: crate::counters::snapshot_json(),
-        process_memory: crate::counters::process_memory_json(),
-        process_cpu: crate::counters::process_cpu_json(),
-        process_threads: crate::counters::process_threads_json(),
+        process_memory: ueforge::winproc::process_memory_json(),
+        process_cpu: ueforge::winproc::process_cpu_json(),
+        process_threads: ueforge::winproc::process_threads_json(),
         game_population: ueforge::ue::probe::gobjects_population(40),
-        process_regions: crate::counters::process_regions_json(),
+        process_regions: ueforge::winproc::process_regions_json(),
     }
 }
 

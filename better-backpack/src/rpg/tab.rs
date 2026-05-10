@@ -6,8 +6,8 @@ use ueforge::ui;
 use crate::rpg::{apply, skills, tracker, xp};
 
 pub fn render() {
-    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_IMGUI_GET_XP);
-    crate::counters::bump(&crate::counters::IMGUI_TAB_RENDERS);
+    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_IMGUI_GET_XP);
+    ueforge::counters::bump(&crate::counters::IMGUI_TAB_RENDERS);
 
     if tracker::current_slot().is_none() {
         ui::text("No save loaded.");

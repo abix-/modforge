@@ -90,8 +90,8 @@ fn on_event(
     parms: *mut c_void,
     original: OriginalProcessEvent,
 ) {
-    let _t = crate::counters::time_scope(&crate::counters::TIME_NS_KILL_HOOK);
-    crate::counters::bump(&crate::counters::KILL_HOOK_FIRES);
+    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_KILL_HOOK);
+    ueforge::counters::bump(&crate::counters::KILL_HOOK_FIRES);
 
     // Drain the debug PE queue here. The re-entrance guard
     // inside `drain_pending` prevents recursive draining when a
@@ -118,11 +118,11 @@ fn on_event(
     if !parms.is_null()
         && let Some(owner) = this.outer()
         && {
-            crate::counters::bump(&crate::counters::KILL_HOOK_OWNER_FULLNAME_ALLOCS);
+            ueforge::counters::bump(&crate::counters::KILL_HOOK_OWNER_FULLNAME_ALLOCS);
             owner.full_name().contains("BP_SurvivalPlayerCharacter")
         }
     {
-        crate::counters::bump(&crate::counters::KILL_HOOK_PLAYER_FIRES);
+        ueforge::counters::bump(&crate::counters::KILL_HOOK_PLAYER_FIRES);
         let fn_name = function.as_object().name();
         let is_damage_fn = matches!(
             fn_name.as_str(),
@@ -181,7 +181,7 @@ fn on_event(
                 },
                 _ => (0.0f32, 0i32, 0u32),
             };
-            crate::counters::bump(&crate::counters::KILL_HOOK_LOG_LINES);
+            ueforge::counters::bump(&crate::counters::KILL_HOOK_LOG_LINES);
             ueforge::log!(
                 "rpg/dmg-trace: fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
                 fn_name,
@@ -253,7 +253,7 @@ fn on_event(
                         .read_unaligned()
                 };
                 let class_name = unsafe {
-                    crate::counters::bump(&crate::counters::KILL_HOOK_DAMAGETYPE_NAME_ALLOCS);
+                    ueforge::counters::bump(&crate::counters::KILL_HOOK_DAMAGETYPE_NAME_ALLOCS);
                     damage_type_class
                         .as_ref()
                         .map(|c| c.name())
