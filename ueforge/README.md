@@ -510,17 +510,17 @@ else?". Update on every major slice.
 
 | # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 41 | **`SkillEffect` enum + `CATALOG` row pattern** (one row per skill) | 🔵 | 📦 | — | **promote:** ship a generic `SkillEffect<F>` shape; game crates supply the field-write closures |
-| 42 | **Sqrt level curve** (`progress = sqrt(level/max)`) | 🔵 | 📦 (`xp.rs`) | — | **promote:** trivial helper |
-| 43 | **XP curve + cumulative-XP table** (`100 * N^1.8`, level cap) | 🔵 | 📦 | — | **promote:** generic; xp-per-creature table stays game-specific |
-| 44 | **`PlayerState` schema** (`xp / level / skill_points / skill_levels: BTreeMap<id, u32>`) | 🔵 | 📦 | — | **promote:** open-shape `Skills<T>` carrying user `T` for game-specific extras |
-| 45 | **Per-slot JSON persistence** (`<DLL_dir>/saves/<slot_key>.json`, atomic write per change) | 🔵 | 📦 (`save_slot` + `state.rs`) | — | **promote:** generic with a `slot_key()` closure plugged in by the game (FGuid resolver in bbp) |
-| 46 | **`world_loader` slot-tracker poller** (transitions `None→Some / a→b / Some→None` to drive activate/deactivate) | 🔵 | 📦 | — | **promote:** generic; slot-key resolver is the only game-specific piece |
-| 47 | **Disabled-skills set + per-skill toggle** (cheap on-off without refunding) | 🔵 | 📦 | — | **promote:** rides on the `Skills<T>` schema |
-| 48 | **`apply_skill` dispatcher** (match-on-`SkillEffect`, vanilla snapshot, live-pawn mirror) | 🔵 | 📦 | — | **promote partially:** the dispatcher shape + vanilla `OnceLock` pattern; per-effect arms stay game-specific |
-| 49 | **RPG ImGui tab template** (level / XP bar / catalog rows / +1/+10 / -1/-10 / on-toggle) | 🔵 | 📦 (own `ffi.rs` + tab) | — | **promote:** `RpgTab<S>` widget in `ueforge::ui`; per-skill labels still come from CATALOG |
-| 50 | **Per-skill format strings + next-level preview** | 🔵 | 📦 | — | **promote:** part of #41's row shape (`PercentFormat`, `format_word`) |
-| 51 | **`set_skill_points` debug op** (mirror of `tracker::debug_grant_skill_points`) | 🔵 | 📦 | — | **promote:** part of the `Skills<T>` schema's debug surface |
+| 41 | **`SkillEffect` enum + `CATALOG` row pattern** (one row per skill) | 🔵 | 📦 | — | **promote (Phase 3 cont.):** generic `Catalog<E>` / `Skill<E>` parameterized on the game's effect enum |
+| 42 | **Sqrt level curve** (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · | — | done -- Phase 3 |
+| 43 | **XP curve + cumulative-XP table** (`base * N^exponent`, level cap) | ✅ (`rpg::xp::Curve`) | · (per-creature table stays game-side) | — | done -- Phase 3 |
+| 44 | **State schema** (`xp / level / skill_points / skill_levels: BTreeMap<id, u32>`) | ✅ (`rpg::SkillsState` + `spend()` / `refund()` / `level_of()` methods) | · | — | done -- Phase 3 |
+| 45 | **Per-slot JSON persistence** (`<DLL_dir>/<subdir>/<slot>.json`, atomic write) | ✅ (`rpg::SlotStore<S>` generic over persisted struct) | · | — | done -- Phase 3 |
+| 46 | **Slot-tracker poller** (transitions `None→Some / a→b / Some→None`) | ✅ (`rpg::SlotPoller::spawn(interval, resolve, activate, deactivate)`) | · | — | done -- Phase 3 |
+| 47 | **Disabled-skills set + per-skill toggle** | ✅ (`rpg::DisabledSkills`) | · | — | done -- Phase 3 |
+| 48 | **`apply_skill` dispatcher** (match-on-`SkillEffect`, vanilla snapshot, live-pawn mirror) | 🔵 | 📦 | — | **promote (Phase 3 cont.):** the dispatcher shape + vanilla `OnceLock` pattern; per-effect arms stay game-specific |
+| 49 | **RPG ImGui tab template** (level / XP bar / catalog rows / +1/+10 / -1/-10 / on-toggle) | 🔵 | 📦 (`rpg/tab.rs`) | — | **promote (Phase 3 cont.):** `rpg::tab::render(catalog, format_effect_fn)` widget so game crates supply only the format closure |
+| 50 | **Per-skill format strings + next-level preview** | 🔵 | 📦 | — | tied to row 41's catalog shape |
+| 51 | **`set_skill_points` debug op** | 🔵 | 📦 | — | trivial wrapper, lands with row 41 |
 
 ### Game-specific (correctly stays in the game crate)
 
@@ -564,14 +564,35 @@ Build-clean validated; in-game smoke test pending.
   PE-trampoline-drain mod gets the empty-check / re-entrance /
   counter pattern right on first try.
 
-**Phase 3 -- RPG framework promotion (not started, multi-session):**
+**Phase 3 -- RPG framework promotion (IN PROGRESS):**
 
-Build `ueforge::rpg` containing `SkillEffect`, `Skills<T>`,
-sqrt-curve helper, XP curve helpers, per-slot JSON persistence
-with a `slot_key()` closure, world_loader poller with a slot-key
-resolver closure, disabled-skill set, RpgTab widget. After this
-lands, bbp's `rpg/` shrinks to catalog content + game-specific
-hook arms. Multi-session lift; unlocks RPG mods on any UE game.
+First wave landed 2026-05-10: `ueforge::rpg::{xp, progress, state,
+store, disabled, poller}` (rows 42-47). Module is fully usable for
+any RPG mod that's willing to write its own catalog dispatcher and
+ImGui tab body. bbp migrated its state / store / poller / disabled
+/ progress to consume it; `bbp/src/rpg/state.rs` is gone, the rest
+shrunk.
+
+Second wave (next session, multi-session):
+
+- **Catalog<E> + Skill<E>** (row 41) -- generic catalog row with a
+  user-provided effect enum. Game crates drop the boilerplate
+  around iterating skills, looking up by id, formatting the level
+  + max + bonus.
+- **`apply_skill` dispatcher shape** (row 48) -- the
+  per-effect-variant `OnceLock<vanilla>` pattern is generic; the
+  match arms are game-specific. Probably ships as
+  `rpg::vanilla::Cache<K, V>` + a doc on the canonical apply
+  shape.
+- **`rpg::tab::render`** (row 49) -- ImGui template: header
+  (level + XP bar + skill points), catalog rows
+  (+1/+10/-1/-10/on-toggle/format-effect-text), debug footer
+  (+5 / +50 skill points). Game crates supply a `format_effect`
+  closure for the per-skill effect text.
+
+Once the second wave lands, bbp's `rpg/` becomes: catalog content
+(`SkillEffect` variants + CATALOG entries) + game-specific apply
+match arms + the kill / fall hooks. The rest is ueforge.
 
 ## Backlog (research questions tracked across games)
 

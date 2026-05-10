@@ -36,27 +36,40 @@ validated; in-game smoke test pending.
   / re-entrance / counter pattern is now in the rustdoc so the
   next mod gets it right on first try.
 
-**Phase 3 -- RPG framework promotion (NOT started, multi-session):**
+**Phase 3 first wave DONE (2026-05-10):**
 
-- [ ] **Promote the RPG framework to `ueforge::rpg`.** Build
-  `ueforge::rpg` containing:
-  - generic `SkillEffect` enum shape (game crates parameterize
-    on their own effect variant set)
-  - `SkillsState<E>` schema (`xp / level / skill_points /
-    skill_levels: BTreeMap<String, u32>`)
-  - sqrt-curve helper + XP-curve helpers (`100 * N^1.8` cumulative,
-    inverse `level_for_xp`)
-  - per-slot JSON persistence with a `slot_key()` resolver
-    closure (FGuid resolver in bbp; arbitrary in other games)
-  - world_loader poller (1Hz with `None -> Some / a -> b /
-    Some -> None` transitions)
-  - disabled-skill set + per-skill toggle
-  - `RpgTab` widget template (level / XP bar / catalog rows /
-    +1/+10/-1/-10/on-toggle)
-  After this lands, bbp's `rpg/` shrinks to catalog content +
-  game-specific hook arms. Estimated 1-2 sessions of API design
-  + 1 session of bbp migration. Defer until the user explicitly
-  schedules it.
+- [x] **`ueforge::rpg::xp::Curve`** -- cumulative XP / level_for_xp
+  math, parameterized on `(base, exponent, max_level)`.
+- [x] **`ueforge::rpg::progress::sqrt_progress(level, max)`**.
+- [x] **`ueforge::rpg::SkillsState`** -- the universal on-disk
+  schema. `spend() / refund() / level_of()` methods.
+- [x] **`ueforge::rpg::SlotStore<S>`** -- per-slot JSON persistence
+  with atomic temp+rename. Generic over persisted struct.
+- [x] **`ueforge::rpg::DisabledSkills`** -- toggle set for
+  "disable a skill without refunding its points".
+- [x] **`ueforge::rpg::SlotPoller::spawn`** -- 1Hz worker driving
+  activate/deactivate transitions on a consumer-supplied resolver.
+- [x] **5 unit tests** on curve + progress math -- kovarex P2
+  "no unit tests on framework primitives" closed.
+- [x] **bbp migrations** -- `state.rs` deleted; `tracker / world_loader
+  / xp / apply / skills / debug` all consume ueforge directly.
+
+**Phase 3 second wave (NOT started, multi-session):**
+
+- [ ] **`Catalog<E>` + `Skill<E>`** (audit row 41) -- generic
+  catalog row with a user-provided effect enum.
+- [ ] **`apply_skill` dispatcher shape** (audit row 48) --
+  per-effect-variant `OnceLock<vanilla>` pattern in
+  `rpg::vanilla::Cache<K, V>` + canonical-apply doc.
+- [ ] **`rpg::tab::render(catalog, format_effect_fn)`**
+  (audit row 49) -- ImGui template: header (level + XP bar +
+  skill points), catalog rows (+1/+10/-1/-10/on-toggle), debug
+  footer. Game crates supply a `format_effect` closure for the
+  per-skill text.
+
+Once the second wave lands, bbp's `rpg/` becomes: catalog content
+(`SkillEffect` variants + CATALOG entries) + game-specific apply
+match arms + kill / fall hooks. Everything else is ueforge.
 
 ## ueforge hardening (kovarex review, 2026-05-09)
 

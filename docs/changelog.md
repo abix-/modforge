@@ -9,6 +9,46 @@ Newest first.
 
 ## 2026-05-10
 
+### Phase 3 (first wave) -- ueforge::rpg generic framework
+
+The RPG-mod-shaped pieces every UE game needs land in ueforge:
+
+- `ueforge::rpg::xp::Curve { base, exponent, max_level }` -- the
+  classic `cumulative_xp_for_level` / `level_for_xp` math
+  parameterized so any RPG mod plugs its own numbers.
+- `ueforge::rpg::progress::sqrt_progress(level, max)` -- generous-
+  early diminishing-returns curve.
+- `ueforge::rpg::SkillsState` -- on-disk schema (xp / level /
+  skill_points / `skill_levels: BTreeMap<String, u32>`) with
+  `spend()` / `refund()` / `level_of()` methods.
+- `ueforge::rpg::SlotStore<S>` -- per-slot JSON persistence under
+  `<DLL_dir>/<subdir>/<slot>.json`. Generic over persisted struct.
+  Atomic temp+rename save.
+- `ueforge::rpg::DisabledSkills` -- thread-safe toggle set for
+  "disable a skill without refunding its points".
+- `ueforge::rpg::SlotPoller::spawn(interval, resolve, on_activate,
+  on_deactivate)` -- 1Hz worker that drives activate / deactivate
+  transitions on a consumer-supplied resolver closure.
+
+5 unit tests on the curve + progress math (xp round-trip, max-level
+cap, sqrt endpoints, quarter-is-half) -- the framework's first unit
+tests, closes the kovarex P2 "no unit tests on framework
+primitives" item.
+
+bbp migrations: `src/rpg/state.rs` deleted entirely; `tracker.rs`
+keeps a `static STORE: SlotStore<SkillsState>` and routes load /
+save / spend / refund through ueforge; `world_loader.rs` shrinks
+from 95 LoC of CreateThread plumbing to 30 LoC routed through
+`SlotPoller::spawn`; `xp.rs` shrinks to a 3-line curve constant +
+the per-creature XP table (game-specific bestiary); `apply.rs`
+DISABLED_SKILLS swap; `skills::level_progress` becomes a 1-liner
+forwarder. bbp's `PlayerState` is gone -- `kill_count` and
+`last_killed` (diagnostic-only) dropped per "free to redesign"
+scope.
+
+Phase 3 second wave (catalog generic, apply dispatcher, RpgTab
+widget) is next session.
+
 ### Phase 2 small promotions
 
 Three Phase 2 items land before the big RPG promotion:
