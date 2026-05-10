@@ -12,6 +12,74 @@
 
 Newest first.
 
+## 2026-05-10 (hardening + ops extraction)
+
+### Kovarex P0 + P1 hardening shipped
+
+All five P0s + four of six P1s closed:
+
+- **`SlotStore::save -> io::Result<()>` + fsync.** Save returns
+  `Result`; tracker logs + caches via `last_error()` accessor for
+  snapshot surfaces. Atomic save now opens the temp explicitly,
+  writes, calls `sync_all()` (durability across power loss),
+  then renames. 4 unit tests on save/load/round-trip + parent
+  creation.
+- **`SlotStore` slot-path validation.** Reject empty / leading
+  dot / path separators (`/`, `\`, `:`, `\0`) in slot keys;
+  invalid keys route to a sentinel `__invalid__.json` so
+  malformed input is visible. Closes the kovarex P1 path-
+  injection vector alongside the P0 fixes.
+- **`SlotPoller::Handle` + shutdown.** `SlotPoller::spawn`
+  returns `PollerHandle` with `stop()` flipping an
+  `Arc<AtomicBool>`. Worker is named `ueforge/rpg/slot-poller`
+  via `thread::Builder::name` (visible to debuggers).
+  `bbp_on_shutdown` now calls `world_loader::shutdown()` so
+  the worker doesn't outlive an unloaded DLL on hot-reload.
+- **`SlotPoller` panic visibility.** Each tick wraps
+  resolve / activate / deactivate in `catch_unwind`. Panics
+  are counted (`PollerHandle::panic_count`), the most recent
+  payload exposed via `last_panic()`, the worker keeps running.
+  bbp surfaces both via `world_loader::panic_count()` /
+  `last_panic()`.
+- **Spend/refund transactional with persistence.** Removed
+  `pub fn spend` / `pub fn refund` from `SkillsState`. The
+  only path now is `Tracker<A>::{spend,refund}_skill_points`,
+  which mutates state and calls `store.save()` under the
+  same lock.
+- **`DisabledSkills` -> `ArcSwap`.** Reads are lock-free now;
+  writers clone-modify-publish through a writer mutex. ImGui
+  per-row + apply per-CDO calls stay on the fast path even
+  with frequent toggles. 4 unit tests.
+- **`Curve::level_for_xp` upper guard.** Added
+  `MAX_LEVEL_LIMIT = 1024` const + `assert!` in `Curve::new`.
+  10K-level mistakes become const-eval failures (in `static`
+  context) or runtime panics (in dynamic).
+- **`schema_version: u32` on `SkillsState`.** Free insurance
+  for future migrations. Older save files (which lack the
+  field) load as v1 via `#[serde(default)]`.
+
+### `ueforge::rpg::ops` extraction
+
+Five generic op handlers lifted out of bbp's
+`grounded2-rpg/src/debug.rs` into the framework:
+
+- `skill_toggle(tracker, disabled, args)` -- flips disabled
+  flag + reapplies.
+- `skill_spend(tracker, args)` -- spend N points; returns
+  `{ id, requested, spent }`.
+- `skill_refund(tracker, args)` -- refund N points; returns
+  `{ id, requested, refunded }`.
+- `reload_slot(tracker)` -- reapply every catalog skill.
+- `set_skill_points(tracker, args)` -- debug-grant N points.
+
+Plus `OP_NAMES: &[&str]` for dispatchers that want to
+advertise the full op list. bbp's debug.rs lost ~80 LoC of
+op boilerplate; any future RPG mod gets the five canonical
+ops verbatim for free.
+
+Test count: 56 ueforge unit tests passing (was 45 at the
+start of this hardening session).
+
 ## 2026-05-10 (post-framework cleanup)
 
 ### Repo hygiene + tail-end framework lifts
