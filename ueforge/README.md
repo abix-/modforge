@@ -455,7 +455,7 @@ Legend: ✅ in ueforge / 📦 stays game-side (correct split) / 🟡 candidate t
 | 29 | Settings.json load + save (atomic) | ueforge ✅ (`ueforge::settings::Settings<T>`) | yes | done |
 | 30 | Cross-game deploy CLI (Steam library detect + UE4SS check + DLL copy + mods.txt + zip) | ueforge ✅ (`ueforge-deploy` binary, `cargo deploy` alias) | yes | done — pure Rust, no PowerShell |
 | 31 | **UE4SS-style RegisterPostHook** (override UFunction return value) | not built | yes | 🔵 backlog (worth it for caches that beat on-init mutation) |
-| 32 | **Memory scanner** (Cheat-Engine-style scan + rescan + freeze) | not built | yes | 🔵 backlog |
+| 32 | Cheat-Engine-style memory scanner (scan / rescan / freeze) + built-in Scanner ImGui tab | ueforge ✅ (`ueforge::scanner`, `ueforge::ui_scanner::render`) | yes | done — every game gets the Scanner tab for free by adding it to `tabs: &[...]` |
 | 33 | **Hot-reload via stub-loader pattern** | not built | yes | 🔵 backlog |
 | 34 | **`Tweak` trait + registry** (declarative field-at-offset / vanilla / mult / apply / settings-bound) | not built | yes | 🟡 maybe — wait for a 3rd feature to validate the shape |
 
@@ -467,7 +467,6 @@ mod feature shows shared shape.
 
 🔵 backlog items get built when concretely needed:
 - **#31** when an on-init DT mutation doesn't propagate (cache-after-init).
-- **#32** when SDK dump misses something (bitfields, non-UObject memory).
 - **#33** when iteration speed becomes the bottleneck.
 - **#34** when a 3rd value-tweak feature exercises the same shape.
 
