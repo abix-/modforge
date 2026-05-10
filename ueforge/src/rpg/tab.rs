@@ -68,7 +68,7 @@ pub fn render<A: RpgApplier>(tracker: &'static Tracker<A>, toggle: Option<&Toggl
     ui::text(&format!("Unspent skill points: {skill_points}"));
     ui::separator();
 
-    for skill in tracker.catalog() {
+    for skill in tracker.catalog().iter() {
         render_row(tracker, toggle, skill, skill_points);
     }
 
@@ -87,7 +87,7 @@ pub fn render<A: RpgApplier>(tracker: &'static Tracker<A>, toggle: Option<&Toggl
 fn render_row<A: RpgApplier>(
     tracker: &'static Tracker<A>,
     toggle: Option<&ToggleFns>,
-    skill: &super::Skill<A::Effect>,
+    skill: &super::SkillDef<A::Effect>,
     skill_points: u32,
 ) {
     let id = skill.id;
@@ -164,7 +164,7 @@ fn render_row<A: RpgApplier>(
 /// inner `Mutex`.
 fn format_effect<A: RpgApplier>(
     tracker: &Tracker<A>,
-    skill: &super::Skill<A::Effect>,
+    skill: &super::SkillDef<A::Effect>,
     level: u32,
 ) -> String {
     tracker

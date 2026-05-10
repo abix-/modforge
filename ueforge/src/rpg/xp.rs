@@ -58,49 +58,67 @@ impl Curve {
     }
 }
 
-/// Per-creature XP lookup. UE5 RPG mods typically award XP based on
-/// what the player killed: a bestiary table keyed by BP class short
-/// name (`"BP_Aphid_C"`) mapping to base XP.
+/// Per-creature Def -- the workspace-standard `<Subject>Def` for
+/// the creature subject. Keyed by BP class short name
+/// (`"BP_Aphid_C"`); carries the base XP awarded for killing that
+/// creature.
 ///
-/// The table is `&'static [(&'static str, u32)]`, so the catalog
-/// lives in `static`s and resolves with no allocation. Linear scan:
-/// realistic bestiaries are <100 rows, called once per kill -- the
-/// scan cost is invisible.
+/// Future fields (zone scaling, level cap, drop table, AI tags)
+/// extend the row without reshaping every consumer.
+#[derive(Debug, Clone, Copy)]
+pub struct CreatureDef {
+    pub class_name: &'static str,
+    pub base_xp: u32,
+}
+
+/// Per-creature registry. UE5 RPG mods award XP based on what
+/// the player killed: a registry keyed by BP class short name
+/// mapping to base XP. Wraps a `'static` slice of
+/// [`CreatureDef`] rows plus a default-XP fallback for classes
+/// not in the table.
 ///
 /// ```ignore
-/// pub static BESTIARY: Bestiary = Bestiary::new(
+/// pub static CREATURES: CreatureRegistry = CreatureRegistry::new(
 ///     &[
-///         ("BP_Aphid_C", 5),
-///         ("BP_Roly_Poly_C", 25),
-///         ("BP_Spider_C", 75),
+///         CreatureDef { class_name: "BP_Aphid_C",     base_xp: 5 },
+///         CreatureDef { class_name: "BP_Roly_Poly_C", base_xp: 25 },
+///         CreatureDef { class_name: "BP_Spider_C",    base_xp: 75 },
 ///     ],
 ///     5, // default for unknown classes
 /// );
-/// // Per-kill:
-/// let xp = BESTIARY.lookup("BP_Aphid_C"); // 5
+/// // Per-kill convenience:
+/// let xp = CREATURES.lookup("BP_Aphid_C"); // 5
+/// // Canonical Def lookup:
+/// let entry = CREATURES.def("BP_Spider_C"); // Some(&CreatureDef { ... })
 /// ```
+///
+/// Linear scan; realistic registries are <100 rows and lookups
+/// are once per kill, so the scan cost is invisible.
 #[derive(Debug, Clone, Copy)]
-pub struct Bestiary {
-    pub table: &'static [(&'static str, u32)],
+pub struct CreatureRegistry {
+    pub entries: &'static [CreatureDef],
     pub default_xp: u32,
 }
 
-impl Bestiary {
-    pub const fn new(table: &'static [(&'static str, u32)], default_xp: u32) -> Self {
-        Self { table, default_xp }
+impl CreatureRegistry {
+    pub const fn new(entries: &'static [CreatureDef], default_xp: u32) -> Self {
+        Self { entries, default_xp }
+    }
+
+    /// Canonical `<subject>_def` lookup. Returns the full row
+    /// or `None` for unknown classes -- callers that just want
+    /// the XP value should use [`Self::lookup`].
+    pub fn def(&self, class_name: &str) -> Option<&'static CreatureDef> {
+        self.entries.iter().find(|e| e.class_name == class_name)
     }
 
     /// XP for `class_name`. Case-sensitive exact match; falls back
     /// to `default_xp` for unknown classes.
     pub fn lookup(&self, class_name: &str) -> u32 {
-        for (key, value) in self.table {
-            if class_name == *key {
-                return *value;
-            }
-        }
-        self.default_xp
+        self.def(class_name).map(|e| e.base_xp).unwrap_or(self.default_xp)
     }
 }
+
 
 #[cfg(test)]
 mod tests {

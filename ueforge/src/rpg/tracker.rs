@@ -21,12 +21,12 @@
 
 use parking_lot::Mutex;
 
-use super::{Curve, RpgApplier, Skill, SkillsState, SlotStore};
+use super::{Curve, RpgApplier, SkillDef, SkillRegistry, SkillsState, SlotStore};
 
 pub struct Tracker<A: RpgApplier> {
     inner: Mutex<Option<TrackerInner<A>>>,
     store: SlotStore<SkillsState>,
-    catalog: &'static [Skill<A::Effect>],
+    catalog: SkillRegistry<A::Effect>,
     curve: Curve,
 }
 
@@ -55,7 +55,7 @@ impl XpResult {
 
 impl<A: RpgApplier> Tracker<A> {
     pub const fn new(
-        catalog: &'static [Skill<A::Effect>],
+        catalog: SkillRegistry<A::Effect>,
         curve: Curve,
         store_subdir: &'static str,
     ) -> Self {
@@ -67,8 +67,10 @@ impl<A: RpgApplier> Tracker<A> {
         }
     }
 
-    pub fn catalog(&self) -> &'static [Skill<A::Effect>] {
-        self.catalog
+    /// Borrow the skill registry. Use `.def(id)` for canonical
+    /// lookup; `.entries()` for iteration.
+    pub fn catalog(&self) -> &SkillRegistry<A::Effect> {
+        &self.catalog
     }
 
     pub fn curve(&self) -> Curve {
@@ -91,7 +93,7 @@ impl<A: RpgApplier> Tracker<A> {
             state.xp,
             state.skill_points,
         );
-        applier.apply_all(&state, self.catalog);
+        applier.apply_all(&state, self.catalog.entries());
         *self.inner.lock() = Some(TrackerInner {
             slot,
             state,
@@ -126,7 +128,7 @@ impl<A: RpgApplier> Tracker<A> {
     /// Applier. None if no slot is active.
     pub fn format_effect(
         &self,
-        skill: &Skill<A::Effect>,
+        skill: &SkillDef<A::Effect>,
         level: u32,
     ) -> Option<String> {
         self.inner
@@ -150,7 +152,7 @@ impl<A: RpgApplier> Tracker<A> {
             crate::log!("rpg/tracker: spend({}) ignored, no slot active", skill_id);
             return 0;
         };
-        let Some(skill) = super::find_skill(self.catalog, skill_id) else {
+        let Some(skill) = self.catalog.def(skill_id) else {
             crate::log!("rpg/tracker: unknown skill id '{}'", skill_id);
             return 0;
         };
@@ -212,7 +214,7 @@ impl<A: RpgApplier> Tracker<A> {
         let Some(t) = g.as_mut() else {
             return 0;
         };
-        let Some(skill) = super::find_skill(self.catalog, skill_id) else {
+        let Some(skill) = self.catalog.def(skill_id) else {
             return 0;
         };
         if count == 0 {
@@ -270,7 +272,7 @@ impl<A: RpgApplier> Tracker<A> {
     pub fn reapply_one(&self, skill_id: &str) {
         let g = self.inner.lock();
         let Some(t) = g.as_ref() else { return };
-        let Some(skill) = super::find_skill(self.catalog, skill_id) else {
+        let Some(skill) = self.catalog.def(skill_id) else {
             return;
         };
         t.applier.apply_skill(&t.state, skill);
@@ -281,7 +283,7 @@ impl<A: RpgApplier> Tracker<A> {
     pub fn reapply_all(&self) -> bool {
         let g = self.inner.lock();
         let Some(t) = g.as_ref() else { return false };
-        t.applier.apply_all(&t.state, self.catalog);
+        t.applier.apply_all(&t.state, self.catalog.entries());
         true
     }
 

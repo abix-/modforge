@@ -13,9 +13,10 @@ pub mod vtable;
 pub use install::{RetryPolicy, install_immediate_or_log, install_with_backoff};
 pub use lazy_function::LazyFunctionPtr;
 pub use process_event::{
-    OriginalProcessEvent, ProcessEventHook, leaked_entry_count, panic_count_total,
+    HookDef, OriginalProcessEvent, ProcessEventHook, installed_defs, leaked_entry_count,
+    panic_count_total,
 };
-pub use registry::{register, register_many, shutdown_all};
+pub use registry::{HOOK_REGISTRY, HookRegistry, register, register_many, shutdown_all};
 
 use crate::ue::{UFunction, find_class_fast};
 

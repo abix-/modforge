@@ -6,7 +6,7 @@
 // Owned by the static `Tracker<GameApplier>`; constructed at slot
 // activation with the freshly loaded settings.
 
-use ueforge::rpg::{RpgApplier, Skill, SkillsState};
+use ueforge::rpg::{RpgApplier, SkillDef, SkillsState};
 
 use crate::rpg::skills::{self, SkillEffect};
 use crate::settings::Settings;
@@ -18,11 +18,11 @@ pub struct GameApplier {
 impl RpgApplier for GameApplier {
     type Effect = SkillEffect;
 
-    fn apply_skill(&self, state: &SkillsState, skill: &Skill<SkillEffect>) {
+    fn apply_skill(&self, state: &SkillsState, skill: &SkillDef<SkillEffect>) {
         crate::rpg::apply::apply_one(state, &self.settings, skill.id);
     }
 
-    fn format_effect(&self, skill: &Skill<SkillEffect>, level: u32) -> String {
+    fn format_effect(&self, skill: &SkillDef<SkillEffect>, level: u32) -> String {
         skills::format_effect(skill.id, level)
     }
 }

@@ -5,6 +5,20 @@
 > `LazyFunctionPtr`, `install_with_backoff`, `install_many`) that
 > keep hot paths zero-alloc and install paths bulletproof.
 
+```text
+K8s slot: Def=HookDef (per-install runtime record),
+          Registry=HookRegistry (HOOK_REGISTRY singleton),
+          Instance=ProcessEventHook RAII guard,
+          Controller=trampoline + Drop + HookRegistry::shutdown_all
+```
+
+Hooks fit the workspace's
+[Def/Registry/Instance/Controller pattern](architecture.md) with
+one documented exception: handlers are user closures, so
+`HookDef`s are populated imperatively at install time rather
+than declared as a compile-time `const`. The naming + surface
+shape match every other subsystem.
+
 ueforge's hook surface is exclusively ProcessEvent vtable
 patching. We do not patch native functions (no detours, no
 trampolines into game code). The reason: ProcessEvent is the
@@ -399,9 +413,10 @@ deadlocked or did very-long work), the unload proceeds anyway
 with a log line -- better to risk one straggler crash than
 deadlock the whole hot-reload cycle.
 
-### Entries are leaked, not freed
+### HookDefs are leaked, not freed
 
-`Entry` is `Box::leak`-ed at install time (`'static`). Drop
+`HookDef` (the per-install runtime record) is `Box::leak`-ed at
+install time (`'static`). Drop
 restores the vtable but does NOT free the entry, for two
 reasons:
 

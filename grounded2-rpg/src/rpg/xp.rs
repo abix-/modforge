@@ -1,7 +1,7 @@
 // Per-creature XP awards (game-specific bestiary). The cumulative
 // curve and per-class lookup live in ueforge::rpg::xp.
 
-use ueforge::rpg::{Bestiary, Curve};
+use ueforge::rpg::{CreatureDef, CreatureRegistry, Curve};
 
 /// g2rpg's tuning constants. Adjust here, the curve flows everywhere.
 pub const CURVE: Curve = Curve::new(100.0, 1.8, 50);
@@ -17,35 +17,35 @@ pub fn level_for_xp(xp: u64) -> u32 {
 /// Base XP awarded for killing a creature of `class_name`. Lookup is
 /// case-sensitive on the BP class short name (e.g. "BP_Aphid_C").
 pub fn xp_for_creature(class_name: &str) -> u32 {
-    BESTIARY.lookup(class_name)
+    CREATURES.lookup(class_name)
 }
 
-pub static BESTIARY: Bestiary = Bestiary::new(
+pub static CREATURES: CreatureRegistry = CreatureRegistry::new(
     &[
         // Tier 1 -- common starter bugs
-        ("BP_Aphid_C", 5),
-        ("BP_Larva_C", 5),
-        ("BP_Larva_Burrow_C", 5),
-        ("BP_Grub_C", 5),
-        ("BP_Mite_C", 3),
-        ("BP_Gnat_C", 3),
+        CreatureDef { class_name: "BP_Aphid_C",       base_xp: 5 },
+        CreatureDef { class_name: "BP_Larva_C",       base_xp: 5 },
+        CreatureDef { class_name: "BP_Larva_Burrow_C", base_xp: 5 },
+        CreatureDef { class_name: "BP_Grub_C",        base_xp: 5 },
+        CreatureDef { class_name: "BP_Mite_C",        base_xp: 3 },
+        CreatureDef { class_name: "BP_Gnat_C",        base_xp: 3 },
         // Tier 2 -- combatants
-        ("BP_Weevil_C", 15),
-        ("BP_Roly_Poly_C", 25),
-        ("BP_Ladybug_Augusta_C", 30),
-        ("BP_Ant_C", 20),
-        ("BP_Bee_C", 35),
+        CreatureDef { class_name: "BP_Weevil_C",          base_xp: 15 },
+        CreatureDef { class_name: "BP_Roly_Poly_C",       base_xp: 25 },
+        CreatureDef { class_name: "BP_Ladybug_Augusta_C", base_xp: 30 },
+        CreatureDef { class_name: "BP_Ant_C",             base_xp: 20 },
+        CreatureDef { class_name: "BP_Bee_C",             base_xp: 35 },
         // Tier 3 -- mid-game
-        ("BP_Spider_C", 75),
-        ("BP_Wolf_Spider_C", 100),
-        ("BP_Stinkbug_C", 60),
-        ("BP_Mosquito_C", 50),
+        CreatureDef { class_name: "BP_Spider_C",      base_xp: 75 },
+        CreatureDef { class_name: "BP_Wolf_Spider_C", base_xp: 100 },
+        CreatureDef { class_name: "BP_Stinkbug_C",    base_xp: 60 },
+        CreatureDef { class_name: "BP_Mosquito_C",    base_xp: 50 },
         // Tier 4 -- elites
-        ("BP_Black_Widow_C", 250),
-        ("BP_Mantis_C", 300),
-        ("BP_Wasp_Queen_C", 400),
+        CreatureDef { class_name: "BP_Black_Widow_C", base_xp: 250 },
+        CreatureDef { class_name: "BP_Mantis_C",      base_xp: 300 },
+        CreatureDef { class_name: "BP_Wasp_Queen_C",  base_xp: 400 },
         // Bosses
-        ("BP_Spider_Tarantula_Boss_C", 750),
+        CreatureDef { class_name: "BP_Spider_Tarantula_Boss_C", base_xp: 750 },
     ],
     5,
 );

@@ -27,7 +27,7 @@ use std::sync::OnceLock;
 
 use crate::inv_hook;
 use crate::patch;
-use crate::rpg::skills::{self, Skill, SkillEffect, SurvivalField};
+use crate::rpg::skills::{self, SkillDef, SkillEffect, SurvivalField};
 use ueforge::rpg::SkillsState as PlayerState;
 use ueforge::ue::{self, GObjectsView, UObject};
 pub(crate) use ueforge::ue::field::{
@@ -162,7 +162,7 @@ pub fn apply_one(state: &PlayerState, settings: &Settings, skill_id: &str) {
     apply_skill(state, settings, skill);
 }
 
-fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
+fn apply_skill(state: &PlayerState, settings: &Settings, skill: &SkillDef) {
     let level = state.skill_levels.get(skill.id).copied().unwrap_or(0);
     // All remaining variants short-circuit at level 0 (no work to do,
     // vanilla values are already in place). The Standard arm honors

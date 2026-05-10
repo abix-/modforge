@@ -93,11 +93,10 @@ pub enum SkillEffect {
     },
 }
 
-/// One row in the catalog. Aliases `ueforge::rpg::Skill<SkillEffect>`
-/// so the generic framework owns the row shape; g2rpg owns the
-/// `SkillEffect` enum that names every kind of write the game
-/// supports.
-pub type Skill = ueforge::rpg::Skill<SkillEffect>;
+/// One row in the catalog. Local alias of the framework-owned
+/// `SkillDef<SkillEffect>` -- saves typing the parameter on every
+/// row of the static catalog.
+pub type SkillDef = ueforge::rpg::SkillDef<SkillEffect>;
 
 // ---------------------------------------------------------------------
 // Field offsets used by the catalog. Centralized here so the catalog
@@ -230,10 +229,15 @@ const LEAP_DISTANCE_OFFSETS: &[usize] = &[
 // CATALOG: the source of truth.
 // ---------------------------------------------------------------------
 
+use ueforge::rpg::SkillRegistry;
 use ueforge::ue::TypedField;
 
-pub const CATALOG: &[Skill] = &[
-    Skill {
+/// All catalog rows -- the bare slice. Wrapped in [`CATALOG`] for
+/// the canonical `<Subject>Registry` shape used everywhere else
+/// in the workspace; this slice is kept named so existing callers
+/// can still iterate the rows directly.
+pub const CATALOG_ENTRIES: &[SkillDef] = &[
+    SkillDef {
         id: SKILL_BACKPACK,
         display_name: "Backpack",
         max_level: SKILL_MAX_LEVEL,
@@ -241,7 +245,7 @@ pub const CATALOG: &[Skill] = &[
             max_bonus_slots: 460,
         },
     },
-    Skill {
+    SkillDef {
         id: SKILL_HUNGER,
         display_name: "Hunger Resistance",
         max_level: SKILL_MAX_LEVEL,
@@ -251,7 +255,7 @@ pub const CATALOG: &[Skill] = &[
             which: SurvivalField::Hunger,
         },
     },
-    Skill {
+    SkillDef {
         id: SKILL_THIRST,
         display_name: "Thirst Resistance",
         max_level: SKILL_MAX_LEVEL,
@@ -261,7 +265,7 @@ pub const CATALOG: &[Skill] = &[
             which: SurvivalField::Thirst,
         },
     },
-    Skill {
+    SkillDef {
         id: SKILL_ATTACK_DAMAGE,
         display_name: "Attack Damage",
         max_level: SKILL_MAX_LEVEL,
@@ -272,7 +276,7 @@ pub const CATALOG: &[Skill] = &[
             format: PercentFormat::PlusPercentMult { word: "damage" },
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_ARMOR,
         display_name: "Armor",
         max_level: SKILL_MAX_LEVEL,
@@ -284,7 +288,7 @@ pub const CATALOG: &[Skill] = &[
             format: PercentFormat::MinusPercent { word: "damage taken" },
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_MOVE_SPEED,
         display_name: "Move Speed",
         max_level: SKILL_MAX_LEVEL,
@@ -296,7 +300,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_JUMP_HEIGHT,
         display_name: "Jump Height",
         max_level: SKILL_MAX_LEVEL,
@@ -308,7 +312,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_LEAP_DISTANCE,
         display_name: "Leap Distance",
         max_level: SKILL_MAX_LEVEL,
@@ -320,7 +324,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_GLIDE_SPEED,
         display_name: "Glide Speed",
         max_level: SKILL_MAX_LEVEL,
@@ -332,7 +336,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_FALL_RESISTANCE,
         display_name: "Fall Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
@@ -344,7 +348,7 @@ pub const CATALOG: &[Skill] = &[
             format: PercentFormat::MinusPercent { word: "fall damage" },
         },
     },
-    Skill {
+    SkillDef {
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
@@ -358,7 +362,7 @@ pub const CATALOG: &[Skill] = &[
             format: PercentFormat::MinusPercent { word: "environmental damage" },
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_MAX_HEALTH,
         display_name: "Max Health",
         max_level: SKILL_MAX_LEVEL,
@@ -370,7 +374,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::MAX_HEALTH_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_HEALTH_REGEN,
         display_name: "Health Regen",
         max_level: SKILL_MAX_LEVEL,
@@ -382,7 +386,7 @@ pub const CATALOG: &[Skill] = &[
             vanilla: &crate::rpg::apply::GLOBAL_DATA_VANILLA,
         }),
     },
-    Skill {
+    SkillDef {
         id: SKILL_LIFESTEAL,
         display_name: "Lifesteal",
         max_level: SKILL_MAX_LEVEL,
@@ -393,8 +397,13 @@ pub const CATALOG: &[Skill] = &[
     },
 ];
 
-pub fn lookup(id: &str) -> Option<&'static Skill> {
-    ueforge::rpg::find_skill(CATALOG, id)
+/// Canonical catalog handle -- the `<Subject>Registry` wrapper
+/// matching the workspace contract. Pass this to `Tracker::new`
+/// and use `.def(id)` for lookups.
+pub const CATALOG: SkillRegistry<SkillEffect> = SkillRegistry::new(CATALOG_ENTRIES);
+
+pub fn lookup(id: &str) -> Option<&'static SkillDef> {
+    CATALOG.def(id)
 }
 
 

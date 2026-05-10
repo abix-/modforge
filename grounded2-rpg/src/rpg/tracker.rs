@@ -36,19 +36,19 @@ pub fn with_state<R>(f: impl FnOnce(&SkillsState) -> R) -> Option<R> {
     TRACKER.with_state(f)
 }
 
-pub fn spend_skill_point(skill: &skills::Skill) -> bool {
+pub fn spend_skill_point(skill: &skills::SkillDef) -> bool {
     TRACKER.spend_skill_points(skill.id, 1) > 0
 }
 
-pub fn spend_skill_points(skill: &skills::Skill, count: u32) -> u32 {
+pub fn spend_skill_points(skill: &skills::SkillDef, count: u32) -> u32 {
     TRACKER.spend_skill_points(skill.id, count)
 }
 
-pub fn refund_skill_point(skill: &skills::Skill) -> bool {
+pub fn refund_skill_point(skill: &skills::SkillDef) -> bool {
     TRACKER.refund_skill_points(skill.id, 1) > 0
 }
 
-pub fn refund_skill_points(skill: &skills::Skill, count: u32) -> u32 {
+pub fn refund_skill_points(skill: &skills::SkillDef, count: u32) -> u32 {
     TRACKER.refund_skill_points(skill.id, count)
 }
 

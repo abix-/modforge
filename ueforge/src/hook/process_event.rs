@@ -47,7 +47,19 @@ thread_local! {
 
 type Handler = Box<dyn Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent) + Send + Sync>;
 
-struct Entry {
+/// Per-install hook record. The CRD-equivalent for the hook
+/// subsystem -- declares which class is hooked, the original
+/// vtable slot, the user handler, and the per-hook telemetry
+/// (active calls, panic count). One `HookDef` is created per
+/// `ProcessEventHook::install` call and lives for the rest of
+/// the process (`Box::leak`-ed; see "Hot-reload teardown" in
+/// hooks.md for why reuse across DLL unloads is unsafe).
+///
+/// Fields are private; accessor methods provide the read-only
+/// view the snapshot endpoints need. Construction is internal --
+/// the only path to a `HookDef` is through
+/// [`ProcessEventHook::install`] / [`install_many`].
+pub struct HookDef {
     class_name: &'static str,
     slot: *mut *mut c_void,
     vtable: *mut *mut c_void,
@@ -66,16 +78,41 @@ struct Entry {
     panic_count: AtomicU64,
 }
 
-unsafe impl Send for Entry {}
-unsafe impl Sync for Entry {}
+// SAFETY: HookDef carries raw pointers (slot, vtable) into UE
+// engine memory; those pointers are only dereferenced from the
+// trampoline / shutdown path under invariants documented in
+// hooks.md. The handler closure is Send + Sync by trait bound.
+unsafe impl Send for HookDef {}
+unsafe impl Sync for HookDef {}
+
+impl HookDef {
+    /// UE class whose vtable slot this hook patched. Stable for
+    /// the lifetime of the hook.
+    pub fn class_name(&self) -> &'static str {
+        self.class_name
+    }
+
+    /// Trampolines currently inside this hook's handler closure.
+    /// Drop spins on this until it reaches 0 (with a 500ms cap)
+    /// before allowing the DLL to unload.
+    pub fn active_calls(&self) -> usize {
+        self.active_calls.load(Ordering::Relaxed)
+    }
+
+    /// Cumulative count of handler panics caught by this hook's
+    /// trampoline. Nonzero = a handler is silently failing.
+    pub fn panic_count(&self) -> u64 {
+        self.panic_count.load(Ordering::Relaxed)
+    }
+}
 
 // REGISTRY is the canonical mutable list, touched only by install/drop
 // (cold paths). The trampoline reads SNAPSHOT -- an ArcSwap of the
 // current entry list. Read is one atomic load + Arc clone, no mutex.
 // Replaces the old hand-rolled AtomicPtr<&'static [...]> that leaked
 // every install/drop.
-static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
-static SNAPSHOT: LazyLock<ArcSwap<Vec<&'static Entry>>> =
+static REGISTRY: Mutex<Vec<&'static HookDef>> = Mutex::new(Vec::new());
+static SNAPSHOT: LazyLock<ArcSwap<Vec<&'static HookDef>>> =
     LazyLock::new(|| ArcSwap::from_pointee(Vec::new()));
 
 /// Cumulative count of `Entry` allocations made by any hook install
@@ -101,12 +138,12 @@ pub fn leaked_entry_count() -> u64 {
 /// Already-in-flight handlers continue normally.
 pub(super) static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
-fn publish_snapshot(reg: &[&'static Entry]) {
+fn publish_snapshot(reg: &[&'static HookDef]) {
     SNAPSHOT.store(Arc::new(reg.to_vec()));
 }
 
 pub struct ProcessEventHook {
-    entry: &'static Entry,
+    entry: &'static HookDef,
 }
 
 impl ProcessEventHook {
@@ -145,7 +182,7 @@ impl ProcessEventHook {
         // across a DLL unload (its vtable points into freed module code).
         // Memory cost is bounded by the number of hook installs over the
         // process lifetime, instrumented via `LEAKED_ENTRY_COUNT`.
-        let entry: &'static Entry = Box::leak(Box::new(Entry {
+        let entry: &'static HookDef = Box::leak(Box::new(HookDef {
             class_name,
             slot,
             vtable,
@@ -223,6 +260,13 @@ pub fn panic_count_total() -> u64 {
     snap.iter()
         .map(|e| e.panic_count.load(Ordering::Relaxed))
         .sum()
+}
+
+/// Snapshot every currently-installed [`HookDef`]. Read-only;
+/// returns owned `Vec<&'static HookDef>` so the caller can iterate
+/// without holding the snapshot Arc. For debug surfaces.
+pub fn installed_defs() -> Vec<&'static HookDef> {
+    SNAPSHOT.load().iter().copied().collect()
 }
 
 impl Drop for ProcessEventHook {

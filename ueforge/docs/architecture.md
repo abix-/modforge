@@ -44,12 +44,21 @@ subject. Endless's `k8s.md` flags drift between `job` /
 
 | Role | Naming |
 |---|---|
-| Schema struct | `<Subject>Def` (`SkillDef`, `OpDef`, `BuildingDef`, `SelectorDef`, `ShutdownHandlerDef`, `TabDef`). Exception kept for back-compat: `Skill<E>` is the existing name; treat it as the SkillDef. |
-| Discriminator | `<Subject>Kind` enum where the set is closed; `&'static str` id where it's open-ended. The field that holds it is always called `kind` (NOT `name`, `job`, `activity`). |
-| Registry const | `<SUBJECT>_REGISTRY: &'static [<Subject>Def]`. Module-private if scoped to one module; `pub` at the framework level if external mods register into it. |
-| Lookup fn | `<subject>_def(kind: <Subject>Kind) -> &'static <Subject>Def` for closed sets. `<subject>_def_by_id(id: &str) -> Option<&'static <Subject>Def>` for open sets. |
+| Schema struct | `<Subject>Def` (`SkillDef`, `CreatureDef`, `HookDef`, `OpDef`, `BuildingDef`, `SelectorDef`, `ShutdownHandlerDef`, `TabDef`). Always Def-suffixed -- no exceptions. |
+| Discriminator | `<Subject>Kind` enum where the set is closed; `&'static str` id where it's open-ended. The field that holds it is always called `kind` / `id` (NOT `name`, `job`, `activity`). |
+| Registry wrapper struct | `<Subject>Registry` holding `entries: &'static [<Subject>Def]` plus any extra registry-level config (e.g. `BestiaryRegistry` carries `default_xp: u32` alongside its entries). The wrapper exists so future fields don't reshape every consumer; bare slices are reserved for the carve-out exceptions below. |
+| Registry instance | `<SUBJECT>_REGISTRY: <Subject>Registry` (static const) for closed-set framework-owned registries, or per-mod `static CATALOG: <Subject>Registry<E>` when the registry is parameterized over a consumer-defined effect enum. |
+| Lookup method | `<Subject>Registry::def(&self, key) -> Option<&'static <Subject>Def>` is the canonical lookup. Free `<subject>_def(...)` functions are kept as thin wrappers for back-compat where prior call sites used them. |
 | Tracker (stateful subjects) | `<Subject>Tracker` -- holds the inner state, persists, reconciles. |
 | Module-level controller (stateless subjects) | bare functions: `apply_skill`, `place_building`, `dispatch_op`. |
+
+**Bare-slice exception.** Subjects with no extra registry-level
+config AND no foreseeable use for one MAY skip the
+`<Subject>Registry` wrapper and use a bare
+`&'static [<Subject>Def]` directly. Tabs (`MOD_INFO.tabs`) is
+the canonical example -- the only registry-level fact is
+"these are the tabs", a wrapper would be ceremony tax. Mark
+the carve-out explicitly in the module's K8s slot header.
 
 Header line on every subject's module doc: a single line
 declaring its slot --
@@ -68,7 +77,7 @@ pattern where it doesn't fit adds ceremony with no payoff.
 
 | Subject | Why it doesn't fit |
 |---|---|
-| **Hooks** (`ProcessEventHook`) | The "kind" would be the class name + handler closure, but every install is unique by definition. There's no shared schema across installs that a Def could capture -- handlers are user-supplied closures with no declarable shape. The existing `HookRegistry` is an *instance* registry, not a kind registry. |
+| **Hooks** (`ProcessEventHook`) | Partial fit. `HookDef` exists as the per-install runtime record (class_name, slot, vtable, handler, active_calls, panic_count) and `HookRegistry` wraps the global handle list with the same `register` / `shutdown_all` / `defs` / `panic_count_total` surface as other registries. The carve-out is only that handlers are closures populated imperatively -- there's no compile-time `static HOOK_REGISTRY: HookRegistry = ...` const declaration the way `SkillRegistry` works. The shape is consistent; the mechanic is different. |
 | **Counters** (`counter!` macro) | One static `AtomicU64` per call site. The "schema" is just `AtomicU64`; the variation is the call site itself. A registry would be a copy of the source. |
 | **PE queue jobs** | Anonymous `Box<dyn FnOnce>`. Every job is unique; no shared schema. The Queue itself is the shared piece, and it already has a Def shape (the `Queue` struct + bounded depth + cancel flag). |
 | **`Settings<T>`** | Generic over the consumer's struct; the consumer's struct IS the Def. `Settings` is a controller / persistence wrapper. Already correctly placed. |
@@ -86,17 +95,17 @@ Instance + Controller, and whether adding a new variant is a
 
 | Subject | Def | Registry | Instance | Controller | Score | Gap |
 |---|---|---|---|---|---|---|
-| **Skills** | `Skill<E>` (`ueforge/src/rpg/skill.rs`) | per-mod `CATALOG: &[Skill<E>]` (`grounded2-rpg::CATALOG`, `outworld::CATALOG`) | `SkillsState.skill_levels[id]` | `Tracker<A>::apply_skill` via `RpgApplier` | **95%** | Naming: `CATALOG` should be `SKILL_REGISTRY`; add `skill_def(id)` lookup at the framework level; rename `Skill` -> `SkillDef` (or alias) |
-| **StandardEffect variants** | `StandardEffect` enum (`ueforge/src/rpg/std_effect.rs`) | Variants ARE the registry (closed enum) | Inlined in each `Skill { effect: StandardEffect::... }` | `StandardEffect::apply` / `format` | **80%** | Registry is implicit (enum variants act as keys); each variant carries its parameters inline. Works, but no separate Def-to-instance split. Acceptable since variants are parameterized by `'static` data only. |
-| **Bestiary** | `(&'static str, u32)` tuple (`ueforge/src/rpg/xp.rs`) | `Bestiary.table` field | per-kill XP value | `Bestiary::lookup` | **80%** | Tuple should be a named `BestiaryRow { class_name, base_xp }` struct so future fields (xp scaling per zone, cap level, ...) don't break the shape. |
-| **Tabs** | `Tab { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [Tab]` | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation. Tiny but the pattern is exact. |
+| **Skills** | `SkillDef<E>` (`ueforge/src/rpg/skill.rs`) | `SkillRegistry<E>` wrapper (`SkillRegistry::new(&[SkillDef { ... }])`); per-mod `static CATALOG: SkillRegistry<MyEffect>` | `SkillsState.skill_levels[id]` | `Tracker<A>::apply_skill` via `RpgApplier` | **100%** | Reference implementation for parameterized registries. Lookup via `CATALOG.def(id)`; iteration via `CATALOG.iter()` or `for s in CATALOG`. |
+| **StandardEffect variants** | `StandardEffect` enum (`ueforge/src/rpg/std_effect.rs`) | Variants ARE the registry (closed enum) | Inlined in each `SkillDef { effect: StandardEffect::... }` | `StandardEffect::apply` / `format` | **80%** | Registry is implicit (enum variants act as keys); each variant carries its parameters inline. Works, but no separate Def-to-instance split. Acceptable since variants are parameterized by `'static` data only. |
+| **Creatures** | `CreatureDef { class_name, base_xp }` (`ueforge/src/rpg/xp.rs`) | `CreatureRegistry { entries: &[CreatureDef], default_xp: u32 }`; per-mod `static CREATURES: CreatureRegistry` | per-kill XP value | `CreatureRegistry::lookup` | **100%** | Lookup via `CREATURES.def(class_name)` (full row) or `CREATURES.lookup(class_name)` (XP value with default fallback). Future fields (drop tables, level, faction) extend the row. |
+| **Tabs** | `Tab { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [Tab]` (bare slice -- documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Tiny but the pattern is exact. |
 | **Buildings** (planned, not built) | `Building<S, C>` design in [todo.md](../../docs/todo.md) | `BuildingsCatalog` | `Instance<S>` per placed | `BuildingsTracker::tick` + `BuildingSpawner` trait | **designed-100%** | Lock the naming to the contract above before implementation. |
 | **Status effects** (in-flight) | per-row in game-side `UDataTable` | game-side data table (read live, not a Rust const) | `UStatusEffectComponent` instances on UE actors | `StandardEffect::StatusEffect` apply path | **partial** | Def + Registry live in the GAME's data tables, not in our Rust code. The Rust side is a thin wrapper; the registry is the game's. Acceptable -- the alternative is duplicating the table -- but document the boundary explicitly. |
 | **Debug ops** | nothing (op handlers are bare `fn`s) | hardcoded match arms in `ops::handle_builtin`, `debug::dispatch_standard_op`, `debug::dispatch_pe_ops` (3 places) | per-call args + return JSON | the dispatch fn | **30%** | Three match statements covering overlapping op-name spaces. `STANDARD_OPS: &[&str]` is a NAME list with no schema, no docs, no args description. New op = edit at least 2 files. **Highest-leverage refactor target.** |
 | **Selectors** | nothing | hardcoded match in `selector::resolve_generic` (`addr:`, `class:`, `first_class:`, `singleton:`); per-game extensions are separate match in each game crate | resolved `&'static UObject` | the resolver fn | **30%** | New selector kind = edit `resolve_generic`. Cross-game extensions duplicate the dispatch shape. |
 | **Shutdown handlers** | nothing | hardcoded sequence in the `ueforge_mod_shutdown` macro: `on_shutdown` -> `hook::shutdown_all` -> `server::shutdown_all` -> `settings::shutdown_all` -> `scanner::shutdown_sweeper_if_running` -> `finalize_hot_reload_swap` | per-call drop | the macro itself | **0%** | New module that spawns threads must edit the macro to register its cleanup. Easy to forget; the cost shows up as a hot-reload thread leak. |
 | **Modules** (rpg / stacks / difficulty / inventory / damage / planned buildings) | nothing | implicit; each module has its own catalog + tracker + ops + tab without a shared shape | -- | -- | **n/a** | Possible meta-pattern: a `ModuleDef` that names which subsystems each module participates in. Defer until we feel the pain. |
-| **Hooks** | n/a (carve-out) | `HookRegistry` (instance registry) | per-install `ProcessEventHook` | the trampoline | -- | Doesn't fit the pattern; see "What does NOT fit" above. |
+| **Hooks** | `HookDef` (per-install runtime record; `class_name`, `slot`, `vtable`, `handler`, `active_calls`, `panic_count`) | `HookRegistry` static singleton (`HOOK_REGISTRY`) holding the owned `ProcessEventHook` handles + snapshot accessors | `ProcessEventHook` RAII guard | trampoline (per-fire) + Drop (uninstall + drain) + `HookRegistry::shutdown_all` (hot-reload teardown) | **90%** | Defs are populated imperatively (closures, no compile-time const) -- documented exception. Naming + surface matches the other registries. |
 | **Counters** | n/a (carve-out) | per-call-site statics | `AtomicU64` value | `bump` / `time_scope` | -- | Doesn't fit. |
 | **PE queue jobs** | n/a (carve-out) | per-call closures | `Pending` | `Queue::drain` | -- | The Queue itself fits; jobs don't. |
 

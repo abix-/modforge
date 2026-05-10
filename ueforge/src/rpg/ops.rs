@@ -25,7 +25,7 @@
 use serde_json::Value as Json;
 
 use crate::args::{arg_bool, arg_str, arg_u64};
-use super::{DisabledSkills, RpgApplier, Tracker, find_skill};
+use super::{DisabledSkills, RpgApplier, Tracker};
 
 /// `op: "skill_toggle"`, `args: { id, enabled }`. Flips the
 /// disabled-skills set and re-applies the skill so the change
@@ -38,7 +38,7 @@ pub fn skill_toggle<A: RpgApplier>(
 ) -> Result<Json, String> {
     let id = arg_str(args, "id")?;
     let enabled = arg_bool(args, "enabled")?;
-    let skill = find_skill(tracker.catalog(), id)
+    let skill = tracker.catalog().def(id)
         .ok_or_else(|| format!("unknown skill '{id}'"))?;
     let now_disabled = disabled.set(skill.id, !enabled);
     tracker.reapply_one(skill.id);
@@ -55,7 +55,7 @@ pub fn skill_spend<A: RpgApplier>(
     let count = arg_u64(args, "count", Some(1))?;
     let count = u32::try_from(count)
         .map_err(|_| format!("count {count} > u32::MAX"))?;
-    if find_skill(tracker.catalog(), id).is_none() {
+    if tracker.catalog().def(id).is_none() {
         return Err(format!("unknown skill '{id}'"));
     }
     let spent = tracker.spend_skill_points(id, count);
@@ -72,7 +72,7 @@ pub fn skill_refund<A: RpgApplier>(
     let count = arg_u64(args, "count", Some(1))?;
     let count = u32::try_from(count)
         .map_err(|_| format!("count {count} > u32::MAX"))?;
-    if find_skill(tracker.catalog(), id).is_none() {
+    if tracker.catalog().def(id).is_none() {
         return Err(format!("unknown skill '{id}'"));
     }
     let refunded = tracker.refund_skill_points(id, count);

@@ -35,7 +35,7 @@ use serde_json::Value as Json;
 use crate::args;
 use crate::pe_queue::DrainSite;
 use crate::ring::EventRing;
-use crate::rpg::{DisabledSkills, RpgApplier, Skill, SkillsState, Tracker};
+use crate::rpg::{DisabledSkills, RpgApplier, SkillDef, SkillsState, Tracker};
 
 /// Universal player-state view for the debug snapshot. Serde-
 /// friendly mapping of `SkillsState` fields. `skill_levels` is a
@@ -78,19 +78,19 @@ pub struct CatalogEntry {
     pub effect_kind: &'static str,
 }
 
-/// Map a game's `[Skill<E>]` slice into a serializable
+/// Map a game's `[SkillDef<E>]` slice into a serializable
 /// `Vec<CatalogEntry>`. The `kind_fn` callback produces the
 /// effect-kind string per row (game-specific match on the enum).
 ///
 /// ```ignore
-/// let view = ueforge::debug::catalog_view(skills::CATALOG, |e| match e {
+/// let view = ueforge::debug::catalog_view(skills::CATALOG.entries(), |e| match e {
 ///     SkillEffect::Standard(_) => "Standard",
 ///     SkillEffect::BackpackSlots { .. } => "BackpackSlots",
 ///     // ...
 /// });
 /// ```
 pub fn catalog_view<E>(
-    catalog: &'static [Skill<E>],
+    catalog: &'static [SkillDef<E>],
     kind_fn: impl Fn(&E) -> &'static str,
 ) -> Vec<CatalogEntry> {
     catalog

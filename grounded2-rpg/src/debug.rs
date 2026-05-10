@@ -553,7 +553,7 @@ fn build_snapshot() -> Snapshot {
             .collect()
     });
 
-    let catalog = ueforge::debug::catalog_view(skills::CATALOG, skill_effect_kind);
+    let catalog = ueforge::debug::catalog_view(skills::CATALOG.entries(), skill_effect_kind);
 
     let settings = world_loader::loaded_settings()
         .map(|s| SettingsView {
