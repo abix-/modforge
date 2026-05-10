@@ -1,17 +1,18 @@
 // DefaultMaxSize patcher for the player's main backpack
-// (UInventoryComponent at offset 0x01E0). Same logic as the C++ baseline:
-// only player-owned components, never the mount/saddlebag (vanilla 30),
-// never already-patched ones.
+// (UInventoryComponent at +0x01E0). Built on
+// `ueforge::ue::class_tweak::ClassFieldTweak<i32>` so the vanilla
+// snapshot + idempotent re-apply logic is shared with every other
+// per-instance field-write in the workspace.
 
-use ueforge::ue::{self, GObjectsView, UClass};
+use ueforge::ue::class_tweak::ClassFieldTweak;
 
-/// Default and viewport-related constants left as `pub` so other modules
-/// (notably `inv_hook`) can use them. The actual target slot count is
-/// settings-driven; this constant is the fallback only.
 pub const DEFAULT_SLOT_COUNT: i32 = 100;
 pub const VANILLA_MAIN: i32 = 40;
 pub const VANILLA_MOUNT: i32 = 30;
 pub const DEFAULT_MAX_SIZE_OFFSET: usize = 0x01E0;
+
+static SLOTS: ClassFieldTweak<i32> =
+    ClassFieldTweak::new("InventoryComponent", DEFAULT_MAX_SIZE_OFFSET);
 
 pub struct PatchStats {
     pub scanned: usize,
@@ -20,64 +21,35 @@ pub struct PatchStats {
 }
 
 pub fn run(slot_count: i32) -> PatchStats {
-    let mut stats = PatchStats {
-        scanned: 0,
-        patched: 0,
-        skipped_non_player: 0,
-    };
-
-    let Some(rt) = ue::try_runtime() else {
-        return stats;
-    };
-    let Some(inv_class) = ue::find_class_fast("InventoryComponent") else {
-        ueforge::log!("ERROR: InventoryComponent class not found");
-        return stats;
-    };
-
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        ueforge::log!("ERROR: GObjects unavailable");
-        return stats;
-    }
-
-    for obj in view.iter() {
-        if !obj.is_a(inv_class) {
-            continue;
-        }
-        stats.scanned += 1;
-
-        let current =
-            unsafe { (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned() };
-        if current == VANILLA_MOUNT || current >= slot_count {
-            continue;
-        }
-
-        let full = obj.full_name();
-        let is_player = full.contains("BP_SurvivalPlayerCharacter");
-        if !is_player {
-            if current == VANILLA_MAIN {
-                stats.skipped_non_player += 1;
+    let stats = match SLOTS.apply(
+        // Player-owned only. Mount/saddlebag (vanilla 30) and non-
+        // player containers (storage chests, station inputs) get
+        // filtered out here.
+        |obj| obj.full_name().contains("BP_SurvivalPlayerCharacter"),
+        // Vanilla mount stays at 30; lift everyone else to slot_count
+        // unless already there.
+        |vanilla| {
+            if vanilla == VANILLA_MOUNT || vanilla >= slot_count {
+                None
+            } else {
+                Some(slot_count)
             }
-            continue;
+        },
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            ueforge::log!("patch: {e}");
+            return PatchStats {
+                scanned: 0,
+                patched: 0,
+                skipped_non_player: 0,
+            };
         }
+    };
 
-        unsafe {
-            (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *mut i32).write_unaligned(slot_count);
-        }
-        let verify =
-            unsafe { (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned() };
-        ueforge::log!(
-            "PATCH {}: {} -> {} (verify={})",
-            full,
-            current,
-            slot_count,
-            verify
-        );
-        stats.patched += 1;
+    PatchStats {
+        scanned: stats.scanned,
+        patched: stats.patched,
+        skipped_non_player: stats.scanned.saturating_sub(stats.considered),
     }
-
-    stats
 }
-
-#[allow(dead_code)]
-fn _force_class_use(_c: &UClass) {}
