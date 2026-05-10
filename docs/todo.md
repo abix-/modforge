@@ -429,21 +429,139 @@ Error paths:
     (`simulate_advance_time`, `place_building`,
     `read_storage_contents`).
 
-## Open: hot-reload the DLL while game is running
+## Open: hot-reload the mod DLL while the game is running
 
-Editing the mod and seeing the change requires
-close-game -> deploy -> launch. UE4SS supports hot-reload in
-some configurations; needs research:
+### Why
 
-- UE4SS's "reload mods" support for cpp mods (well-supported
-  for Lua; cpp partial).
-- Vtable patches via `ProcessEventHook` need to re-install on
-  load AND properly unhook the old DLL's vtable patches before
-  the new DLL installs its own.
-- Idempotent install paths -- handle "already installed" by
-  no-op so a reload that re-runs init doesn't double-hook.
+Editing a mod and seeing the change requires close-game -> cargo
+build -> cargo deploy install -> launch -> walk to the test scenario.
+That's 60-180s per iteration. Hot-reload would cut it to ~5-15s
+(rebuild + signal). For active framework + skill-tuning work,
+this saves **hours per day**.
 
-Worth a spike. Dramatically speeds up iteration.
+Even partial hot-reload (e.g. tab-render-only, or "rebuild +
+unload + load fresh state") is a big win.
+
+### Phase A: UE4SS-side research (must complete before designing)
+
+Read UE4SS source (have it locally). Answer:
+
+- **Does UE4SS expose a "reload C++ mod" API today?** Lua mods
+  have a `ReloadMods` console command; the C++ path is unclear.
+  Find: `CppUserModBase::on_unreal_init`, the mod-manager class
+  that loads dlls (`ModManager`?), `FreeLibrary` /
+  `LoadLibraryW` call sites for cpp mods.
+- **What's the lifecycle?** Is there an explicit
+  `on_program_end` / `on_unreal_shutdown` UE4SS calls before
+  unloading? If so we can drive cleanup through it.
+- **How is the cpp mod handle stored?** If UE4SS holds the
+  HMODULE in a list keyed by mod name, we can ask it to unload
+  by name. If it's owned by something else (e.g. dlopen-style),
+  we need a different angle.
+- **What invariants does UE4SS impose on cpp mod load order?**
+  If our hooks depend on UE4SS's own ImGui context / GObjects
+  resolution, the new DLL after reload needs that context to
+  still be live.
+- **Console-command surface**: is there a way to bind a key /
+  type a command into UE4SS's debug console that triggers
+  a single-mod reload without restarting the game?
+- **What does "reload" mean in UE4SS?** Re-run install
+  callbacks only? Or full FreeLibrary + LoadLibraryW round-trip?
+  These have very different requirements.
+
+### Phase B: ueforge-side requirements (drive from research)
+
+Once we know UE4SS's reload story, audit what state ueforge +
+the consuming mod hold that must survive (or be cleanly torn
+down) across a reload:
+
+- **ProcessEvent vtable patches.** Every `ProcessEventHook`
+  patches a class's vtable at install. On reload we MUST
+  uninstall (restore the original ProcessEvent slot) BEFORE the
+  DLL is unloaded, otherwise the next call into the patched slot
+  jumps into freed memory and crashes the game.
+  - Today: `ProcessEventHook` returns a handle; we `mem::forget`
+    it. That's wrong for hot-reload -- we'd need to keep the
+    handles in a `static` registry and uninstall them in
+    `on_shutdown`.
+  - All install sites today: kill_hook, fall_hook, inv_hook
+    (via the new `ueforge::inventory::viewport::ViewportHook`).
+- **Worker threads.** `world_loader::SlotPoller` already has a
+  shutdown flag. Need to verify every thread we spawn
+  (`server::spawn`, `worker::spawn`, `Settings::watch`)
+  responds to a stop signal within a bounded time. The DLL
+  cannot be unloaded while any of its code is on a thread's
+  stack.
+- **Static state.** OnceLocks / Mutexes / atomics get cleared
+  when the DLL unloads, but only if no thread is mid-call into
+  the DLL. We must guarantee quiescence before unload.
+- **HTTP server.** `tiny_http` listener thread holds the port.
+  Must `.unblock` + join (or set a stop flag) before unload.
+- **DllMain DLL_PROCESS_DETACH.** The shim's DllMain runs on
+  the unloader thread under loader lock. We can't do
+  game-thread work there; cleanup must be driven by an
+  earlier `on_shutdown` callback.
+- **Idempotent install.** After reload, init runs again. Hooks
+  must either (a) fully uninstall before unload so re-install
+  is fresh, or (b) detect "already patched by a previous
+  generation" and replace cleanly.
+
+### Phase C: design options
+
+Drive from B once A resolves. Sketch:
+
+1. **UE4SS-native reload (best case)** -- if UE4SS exposes a
+   "reload cpp mod by name" API/command, we wire `on_shutdown`
+   to drain everything cleanly + rely on UE4SS's
+   FreeLibrary/Load round-trip. Smallest change.
+2. **ueforge-driven reload via console command** -- ueforge
+   ships a hot-reload op on the existing debug HTTP endpoint;
+   it triggers UE4SS's reload path (or a custom one) for the
+   mod. Adds a build-watch / file-watch helper that triggers
+   the op when the DLL on disk is replaced.
+3. **Out-of-process injector reload** -- separate injector
+   process that asks the mod to quiesce, FreeLibrary's it,
+   waits, LoadLibraryW's the new DLL. Complex, but works
+   without UE4SS support.
+
+### Phase D: acceptance criteria
+
+For the first usable slice:
+
+- `cargo deploy install` while the game is running replaces
+  `main.dll` and re-applies the mod within ~5s.
+- No game crash, no GPU hang, no leaked threads.
+- All hooks re-installed cleanly (kill / fall / inv).
+- Skill state preserved (read from disk on slot activate, like
+  today).
+- ImGui tab still renders.
+- HTTP debug endpoint reachable on the same port.
+
+### Open questions (track during research)
+
+- Are static-lifetime references in our code (`PlayerRef`,
+  `ClassRef`, `&'static UFunction` caches) still valid after
+  the GObjects view changes? They cache addresses INTO the
+  game process, not into our DLL, so they should survive --
+  but verify.
+- Does Rust's panic infrastructure tolerate FreeLibrary while
+  a panic is unwinding on another thread? Almost certainly
+  no; we need a "panicking flag" check before initiating
+  reload.
+- Does our `function_table!` macro state survive across
+  reload? It's a `static` per call site, so it gets re-init
+  on the new DLL load. Old DLL's table goes away with the
+  old `.data` segment.
+
+### Sequence
+
+1. Phase A research (read UE4SS source) -- next session.
+2. Update this todo with concrete answers.
+3. Phase B audit + concrete cleanup tasks.
+4. Phase C: pick an approach.
+5. Phase D: implement, run the test scenario, ship.
+
+This is worth a serious chunk of time. ROI is huge.
 
 ---
 
