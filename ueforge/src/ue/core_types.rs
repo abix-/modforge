@@ -61,6 +61,32 @@ impl FWeakObjectPtr {
     pub const fn is_null(&self) -> bool {
         self.object_index == 0 && self.object_serial_number == 0
     }
+
+    /// Read an `FWeakObjectPtr` from `parent` at byte `offset`.
+    pub fn read(parent: &super::UObject, offset: usize) -> Self {
+        unsafe {
+            parent
+                .field_ptr(offset)
+                .cast::<FWeakObjectPtr>()
+                .read_unaligned()
+        }
+    }
+
+    /// Resolve this weak pointer to a live `&'static UObject` via
+    /// the live `Runtime` GObjects view. Returns `None` if the
+    /// index is invalid or the runtime hasn't been initialized
+    /// yet.
+    pub fn resolve(&self) -> Option<&'static super::UObject> {
+        if self.object_index <= 0 {
+            return None;
+        }
+        let rt = super::try_runtime()?;
+        let view = unsafe {
+            super::GObjectsView::from_image(rt.image_base, rt.platform_offsets)
+        };
+        view.get(self.object_index)
+            .map(|o| unsafe { &*(o as *const super::UObject) })
+    }
 }
 
 /// `FDataTableRowHandle` -- pointer to a UDataTable + FName key

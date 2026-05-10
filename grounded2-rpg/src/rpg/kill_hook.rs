@@ -28,8 +28,9 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::ue::actor::{class_chain_contains, controller_pawn, describe};
 use ueforge::ue::{
-    ClassRef, FWeakObjectPtr, GObjectsView, TypedField, UClass, UFunction, UObject, runtime,
+    ClassRef, FWeakObjectPtr, TypedField, UClass, UFunction, UObject,
 };
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
@@ -42,10 +43,6 @@ const MULTICAST_HANDLE_EFFECTS_PARMS_DAMAGE_FLAGS: usize = 0x001C;
 const HC_CURRENT_DAMAGE: TypedField<f32> = TypedField::at(HEALTH_COMPONENT_CURRENT_DAMAGE);
 
 const DAMAGE_INFO_FLAG_KILLING_BLOW: i32 = 2;
-
-// AController.Pawn (Engine_classes.hpp:30510). Standard UE5 layout,
-// stable across builds.
-const A_CONTROLLER_PAWN: usize = 0x0308;
 
 struct State {
     multicast_handle_effects_with_damage_flags: usize, // UFunction*
@@ -440,33 +437,6 @@ fn classify(instigator: Option<&UObject>) -> KillerKind {
     KillerKind::Other
 }
 
-fn controller_pawn(controller: &UObject) -> Option<&UObject> {
-    unsafe {
-        let p: *mut UObject = controller
-            .field_ptr(A_CONTROLLER_PAWN)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        p.as_ref()
-    }
-}
-
-fn class_chain_contains(obj: &UObject, needle: &str) -> bool {
-    let Some(cls) = obj.class() else { return false };
-    let mut cur: Option<&UClass> = Some(cls);
-    let mut depth = 0;
-    while let Some(c) = cur {
-        if depth > 32 {
-            return false;
-        }
-        if c.as_object().name().contains(needle) {
-            return true;
-        }
-        cur = c.super_class();
-        depth += 1;
-    }
-    false
-}
-
 fn describe_instigator(instigator: Option<&UObject>) -> String {
     let Some(ctrl) = instigator else {
         return "<unresolved>".to_string();
@@ -555,50 +525,19 @@ fn log_last_damage_info(health_component: &UObject) {
     );
     ueforge::log!(
         "rpg/dmg-trace:   instigator={} source={} attack={}",
-        describe_obj(instigator),
-        describe_obj(source),
-        describe_obj(attack)
+        describe(instigator),
+        describe(source),
+        describe(attack)
     );
 }
 
-fn describe_obj(obj: Option<&UObject>) -> String {
-    match obj {
-        None => "<none>".to_string(),
-        Some(o) => {
-            let cls = o.class().map(|c| c.as_object().name()).unwrap_or_default();
-            format!("{}({})", o.name(), cls)
-        }
-    }
-}
-
 fn resolve_weak_obj(parent: &UObject, offset: usize) -> Option<&'static UObject> {
-    let weak: FWeakObjectPtr = unsafe {
-        parent
-            .field_ptr(offset)
-            .cast::<FWeakObjectPtr>()
-            .read_unaligned()
-    };
-    if weak.object_index <= 0 {
-        return None;
-    }
-    let rt = runtime();
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    view.get(weak.object_index)
-        .map(|o| unsafe { &*(o as *const UObject) })
+    FWeakObjectPtr::read(parent, offset).resolve()
 }
 
 fn resolve_instigator(health_component: &UObject) -> Option<&'static UObject> {
-    let weak_ptr: FWeakObjectPtr = unsafe {
-        health_component
-            .field_ptr(HEALTH_COMPONENT_LAST_DAMAGE_INFO + FDAMAGE_INFO_INSTIGATOR_CONTROLLER)
-            .cast::<FWeakObjectPtr>()
-            .read_unaligned()
-    };
-    if weak_ptr.object_index < 0 {
-        return None;
-    }
-    let rt = runtime();
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    view.get(weak_ptr.object_index)
-        .map(|o| unsafe { &*(o as *const UObject) })
+    resolve_weak_obj(
+        health_component,
+        HEALTH_COMPONENT_LAST_DAMAGE_INFO + FDAMAGE_INFO_INSTIGATOR_CONTROLLER,
+    )
 }

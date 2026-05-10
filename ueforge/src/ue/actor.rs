@@ -1,0 +1,62 @@
+//! Actor / controller helpers shared across UE5 mods.
+//!
+//! These wrap UE5's universal class-chain layout and the
+//! `AController.Pawn` slot at a stable offset that doesn't move
+//! between Engine versions.
+
+use crate::ue::{UClass, UObject};
+
+/// `AController.Pawn` byte offset (Engine_classes.hpp:30510).
+/// Stable UE5 layout, valid for any game built on Engine 5.x.
+pub const A_CONTROLLER_PAWN_OFFSET: usize = 0x0308;
+
+/// Walk `obj`'s class chain (its UClass + all ancestors via
+/// `super_class()`) and return `true` if any class name contains
+/// `needle`. Bounded depth (32) so a corrupted super-chain can't
+/// loop forever.
+///
+/// ```ignore
+/// if class_chain_contains(controller, "PlayerController") {
+///     // ...
+/// }
+/// ```
+pub fn class_chain_contains(obj: &UObject, needle: &str) -> bool {
+    let Some(cls) = obj.class() else { return false };
+    let mut cur: Option<&UClass> = Some(cls);
+    let mut depth = 0;
+    while let Some(c) = cur {
+        if depth > 32 {
+            return false;
+        }
+        if c.as_object().name().contains(needle) {
+            return true;
+        }
+        cur = c.super_class();
+        depth += 1;
+    }
+    false
+}
+
+/// Read the `AController.Pawn` slot from a controller. Returns
+/// `None` if the controller has no possessed pawn.
+pub fn controller_pawn(controller: &UObject) -> Option<&UObject> {
+    unsafe {
+        let p: *mut UObject = controller
+            .field_ptr(A_CONTROLLER_PAWN_OFFSET)
+            .cast::<*mut UObject>()
+            .read_unaligned();
+        p.as_ref()
+    }
+}
+
+/// `"<name>(<class-name>)"` describing an object for log lines.
+/// `None` becomes `"<none>"`.
+pub fn describe(obj: Option<&UObject>) -> String {
+    match obj {
+        None => "<none>".to_string(),
+        Some(o) => {
+            let cls = o.class().map(|c| c.as_object().name()).unwrap_or_default();
+            format!("{}({})", o.name(), cls)
+        }
+    }
+}

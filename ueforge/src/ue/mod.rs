@@ -7,6 +7,7 @@
 
 #![allow(dead_code)] // skeleton state; consumed by upcoming hook + patch modules
 
+pub mod actor;
 pub mod class_ref;
 pub mod class_tweak;
 pub mod core_types;
