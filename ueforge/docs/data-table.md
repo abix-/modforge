@@ -141,6 +141,32 @@ recipes, status effects, materials, weapons, perks, etc. Mods
 that want to retune any of these mutate the data table at
 runtime. ueforge ships the primitives + the timing doctrine.
 
+## NamedFieldTweak<T> -- name-based writes (no offsets in code)
+
+The `FieldTweak<T>` primitive below bakes the offset at declaration
+time. For new-game bootstrap that's noise: you don't want every mod
+to dump SDK headers and hand-type offsets. `NamedFieldTweak<T>` is
+the same primitive, except the offset is resolved from the
+in-memory discovery cache on first apply.
+
+```rust
+use ueforge::data_table::NamedFieldTweak;
+
+static MAX_STACK: NamedFieldTweak<i32> =
+    NamedFieldTweak::new("DT_Materials", "MaxCanStack");
+
+// From on_unreal_init (after discovery::run_at_load):
+MAX_STACK.apply(|v| v.saturating_mul(4), |v| v <= 1).ok();
+```
+
+If the table or field isn't in the cache yet (content streamed in
+late), call `ueforge::discovery::refresh()` and try again. After
+a game patch shifts an offset, the new offset is picked up on the
+next discovery refresh -- no code change.
+
+Vanilla-snapshot + idempotent re-apply semantics are inherited
+verbatim from `FieldTweak<T>`.
+
 ## DataTable reads return copies
 
 The single most important fact:

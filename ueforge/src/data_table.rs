@@ -127,9 +127,128 @@ impl<'a> IntoIterator for &'a DataTableRegistry {
 
 // ---- Snapshot (Phase 1b) -------------------------------------------------
 
+use std::sync::OnceLock;
+
 use serde_json::{Value as Json, json};
 
 use crate::ue::{self, UObject};
+
+// ---- Name-based tweaks ---------------------------------------------------
+
+/// Look up `field_name` on the row struct of `table_name` in the
+/// in-memory discovery cache. Returns `(offset, element_size, FProperty class)`.
+///
+/// Cheap (HashMap-like linear scan over the cached table list).
+/// `None` if the table isn't in the cache or the field isn't on
+/// its row struct -- callers should re-call after
+/// `discovery::refresh()` if content streamed in late.
+pub fn resolve_field(table_name: &str, field_name: &str) -> Option<(usize, u32, String)> {
+    let snap = crate::discovery::cached()?;
+    let tables = snap.data_tables.get("data_tables")?.as_array()?;
+    for t in tables {
+        if t.get("table_name").and_then(|v| v.as_str()) != Some(table_name) {
+            continue;
+        }
+        let fields = t
+            .get("row_struct")
+            .and_then(|v| v.get("fields"))
+            .and_then(|v| v.as_array())?;
+        for f in fields {
+            if f.get("name").and_then(|v| v.as_str()) != Some(field_name) {
+                continue;
+            }
+            let offset = f.get("offset").and_then(|v| v.as_i64())? as usize;
+            let size = f.get("element_size").and_then(|v| v.as_i64())? as u32;
+            let class = f
+                .get("class")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            return Some((offset, size, class));
+        }
+    }
+    None
+}
+
+/// Name-based wrapper over `FieldTweak<T>` -- the offset is
+/// resolved from the discovery cache on first apply rather than
+/// baked at declaration. This is the canonical write entry for
+/// new-game bootstrap: a mod declares one static per knob, no
+/// SDK header dive, no hand-typed offsets, and a game patch that
+/// shifts the offset is picked up by the next discovery refresh.
+///
+/// ```ignore
+/// use ueforge::data_table::NamedFieldTweak;
+///
+/// static MAX_STACK: NamedFieldTweak<i32> =
+///     NamedFieldTweak::new("DT_Materials", "MaxCanStack");
+///
+/// // From `on_unreal_init` (after discovery::run_at_load):
+/// MAX_STACK.apply(|v| v.saturating_mul(4), |v| v <= 1).ok();
+/// ```
+///
+/// `T` semantics match `FieldTweak<T>`: vanilla snapshot captured
+/// per row on first read; subsequent applies re-base on the captured
+/// baseline, never compounding. Reverting via [`revert`](Self::revert)
+/// writes vanilla back to every captured row.
+pub struct NamedFieldTweak<T: Copy + PartialEq + Send + 'static> {
+    table_name: &'static str,
+    field_name: &'static str,
+    inner: OnceLock<ue::datatable::FieldTweak<T>>,
+}
+
+impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
+    pub const fn new(table_name: &'static str, field_name: &'static str) -> Self {
+        Self {
+            table_name,
+            field_name,
+            inner: OnceLock::new(),
+        }
+    }
+
+    pub fn table_name(&self) -> &'static str {
+        self.table_name
+    }
+
+    pub fn field_name(&self) -> &'static str {
+        self.field_name
+    }
+
+    /// Resolve the offset (lazily, once) and apply. Errors if the
+    /// field isn't in the discovery cache -- caller can
+    /// `discovery::refresh()` and try again.
+    pub fn apply<F, S>(&self, transform: F, skip_if: S) -> Result<usize, String>
+    where
+        F: Fn(T) -> T,
+        S: Fn(T) -> bool,
+    {
+        let tweak = self.resolve_or_init()?;
+        tweak.apply(transform, skip_if)
+    }
+
+    /// Revert every captured row to its vanilla value.
+    pub fn revert(&self) -> Result<usize, String> {
+        let tweak = self.resolve_or_init()?;
+        tweak.revert()
+    }
+
+    fn resolve_or_init(&self) -> Result<&ue::datatable::FieldTweak<T>, String> {
+        if let Some(t) = self.inner.get() {
+            return Ok(t);
+        }
+        let (offset, _size, _class) = resolve_field(self.table_name, self.field_name)
+            .ok_or_else(|| {
+                format!(
+                    "NamedFieldTweak: field '{}.{}' not in discovery cache",
+                    self.table_name, self.field_name
+                )
+            })?;
+        let tweak = ue::datatable::FieldTweak::new(self.table_name, offset);
+        // First setter wins; second loses (we still got our copy back).
+        let _ = self.inner.set(tweak);
+        Ok(self.inner.get().expect("just initialized"))
+    }
+}
 
 /// Capture every row of `table_name`, decoding fields per the live
 /// `FProperty` chain on the table's `RowStruct`. Up to `max_rows`

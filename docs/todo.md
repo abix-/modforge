@@ -104,6 +104,19 @@ discovery before snapshot / browser / static catalog rows.
   no-op case (empty registry) costs one HashMap allocation.
   Catches UE-version mismatches before any tweak runs.
 
+### Phase 1f (bonus): name-based writes (shipped)
+
+- [x] **`data_table::NamedFieldTweak<T>`** -- a wrapper over
+  `FieldTweak<T>` whose offset is resolved from the discovery
+  cache on first apply. New-game bootstrap is now:
+  declare `static FOO: NamedFieldTweak<i32> = NamedFieldTweak::new("DT_X", "Field")`
+  + call `FOO.apply(...)`. No SDK header dive, no hand-typed
+  offsets, no recompile after a UE patch that shifts the offset.
+- [x] **`data_table::resolve_field(table, field)`** -- low-level
+  lookup against the discovery cache. Returns
+  `(offset, element_size, FProperty class)`. Useful for ad-hoc
+  scripts + future generic tweak builders.
+
 ### Deferred to Phase 2 (write surface)
 
 The pain begins:
