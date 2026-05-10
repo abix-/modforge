@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use ueforge::args::{arg_bool, arg_f64, arg_str, arg_u64};
+use ueforge::args::{arg_f64, arg_str, arg_u64};
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 use ueforge::pe_queue::DrainSite;
 
@@ -179,16 +179,37 @@ fn handle(body: &str) -> OpResponse {
 
     match op.as_str() {
         "snapshot" => ok_response(&op, Json::Null),
-        "skill_toggle" => to_response(&op, op_skill_toggle(&args)),
-        "skill_spend" => to_response(&op, op_skill_spend(&args)),
-        "skill_refund" => to_response(&op, op_skill_refund(&args)),
-        "reload_slot" => to_response(&op, op_reload_slot()),
+        // Generic RPG ops live in ueforge::rpg::ops; bbp just passes
+        // its static Tracker + DisabledSkills.
+        "skill_toggle" => to_response(
+            &op,
+            ueforge::rpg::ops::skill_toggle(
+                &tracker::TRACKER,
+                &apply::DISABLED_SKILLS,
+                &args,
+            ),
+        ),
+        "skill_spend" => to_response(
+            &op,
+            ueforge::rpg::ops::skill_spend(&tracker::TRACKER, &args),
+        ),
+        "skill_refund" => to_response(
+            &op,
+            ueforge::rpg::ops::skill_refund(&tracker::TRACKER, &args),
+        ),
+        "reload_slot" => to_response(
+            &op,
+            ueforge::rpg::ops::reload_slot(&tracker::TRACKER),
+        ),
+        "set_skill_points" => to_response(
+            &op,
+            ueforge::rpg::ops::set_skill_points(&tracker::TRACKER, &args),
+        ),
         "simulate_add_health" => to_response(&op, op_simulate_add_health(&args)),
         "simulate_apply_damage" => to_response(&op, op_simulate_apply_damage(&args)),
         "simulate_set_current_health" => {
             to_response(&op, op_simulate_set_current_health(&args))
         }
-        "set_skill_points" => to_response(&op, op_set_skill_points(&args)),
         "call" => to_response(&op, op_call(&args)),
         "read_bytes" => to_response(&op, op_read_bytes(&args)),
         "write_bytes" => to_response(&op, op_write_bytes(&args)),
@@ -212,45 +233,6 @@ fn ok_response(op: &str, result: Json) -> OpResponse {
 
 fn to_response(op: &str, r: Result<Json, String>) -> OpResponse {
     OpResponse::from_result(op, r, build_snapshot())
-}
-
-fn lookup_skill(id: &str) -> Result<&'static skills::Skill, String> {
-    skills::lookup(id).ok_or_else(|| format!("unknown skill '{id}'"))
-}
-
-fn op_skill_toggle(args: &Json) -> Result<Json, String> {
-    let id = arg_str(args, "id")?;
-    let enabled = arg_bool(args, "enabled")?;
-    let skill = lookup_skill(id)?;
-    let new_state = apply::set_skill_enabled(skill.id, enabled);
-    tracker::reapply_one(skill.id);
-    Ok(serde_json::json!({"id": id, "enabled": new_state}))
-}
-
-fn op_skill_spend(args: &Json) -> Result<Json, String> {
-    let id = arg_str(args, "id")?;
-    let count = arg_u64(args, "count", Some(1))?;
-    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
-    let skill = lookup_skill(id)?;
-    let spent = tracker::spend_skill_points(skill, count);
-    Ok(serde_json::json!({"id": id, "requested": count, "spent": spent}))
-}
-
-fn op_skill_refund(args: &Json) -> Result<Json, String> {
-    let id = arg_str(args, "id")?;
-    let count = arg_u64(args, "count", Some(1))?;
-    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
-    let skill = lookup_skill(id)?;
-    let refunded = tracker::refund_skill_points(skill, count);
-    Ok(serde_json::json!({"id": id, "requested": count, "refunded": refunded}))
-}
-
-fn op_reload_slot() -> Result<Json, String> {
-    if tracker::reapply_all() {
-        Ok(serde_json::json!({"reapplied": true}))
-    } else {
-        Err("no slot active; cannot reload".into())
-    }
 }
 
 fn op_simulate_add_health(args: &Json) -> Result<Json, String> {
@@ -376,15 +358,6 @@ fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
     let duration_ms = arg_u64(args, "duration_ms", Some(30_000))? as u32;
     let interval_ms = arg_u64(args, "interval_ms", Some(100))? as u32;
     Ok(ueforge::winproc::sample_thread_modules_json(duration_ms, interval_ms))
-}
-
-fn op_set_skill_points(args: &Json) -> Result<Json, String> {
-    let count = arg_u64(args, "count", None)?;
-    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
-    if !tracker::debug_grant_skill_points(count) {
-        return Err("no slot active".into());
-    }
-    Ok(serde_json::json!({"granted": count}))
 }
 
 // ---- Game-thread executors. Called from kill_hook trampoline. ----

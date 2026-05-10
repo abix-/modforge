@@ -27,6 +27,7 @@
 
 pub mod applier;
 pub mod disabled;
+pub mod ops;
 pub mod poller;
 pub mod progress;
 pub mod skill;

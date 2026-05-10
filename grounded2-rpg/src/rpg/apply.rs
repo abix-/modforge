@@ -88,7 +88,8 @@ pub(crate) fn vanilla_hc_mask(offset: usize) -> Option<u32> {
 // `apply_one` so the change is immediate. Not persisted across
 // launches: cheap to reapply, and avoids a save-schema bump for a
 // runtime convenience.
-static DISABLED_SKILLS: ueforge::rpg::DisabledSkills = ueforge::rpg::DisabledSkills::new();
+pub(crate) static DISABLED_SKILLS: ueforge::rpg::DisabledSkills =
+    ueforge::rpg::DisabledSkills::new();
 
 pub fn is_skill_enabled(skill_id: &str) -> bool {
     !DISABLED_SKILLS.is_disabled(skill_id)
