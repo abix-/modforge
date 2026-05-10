@@ -2,6 +2,6 @@
 target = "x86_64-pc-windows-msvc"
 target-dir = "target"
 
-# `cargo deploy install -p tweaks` etc.
+# `cargo deploy install -p grounded2-rpg` etc.
 [alias]
-deploy = "run -p ueforge-deploy --release --quiet --"
+deploy = "run -p ueforge --bin ueforge-deploy --release --quiet --"

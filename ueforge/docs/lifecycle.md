@@ -221,7 +221,7 @@ are required when more than one mod ships from one workspace.
 
 ## Deploy
 
-The `ueforge-deploy` binary crate exposes `cargo deploy ...` via
+The `ueforge-deploy` binary (a `[[bin]]` target inside `ueforge` itself) exposes `cargo deploy ...` via
 the workspace `.cargo/config.toml` alias.
 
 Three modes:

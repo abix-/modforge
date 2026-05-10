@@ -246,7 +246,7 @@ your-mods/
   ueforge/             # the framework crate
     cpp/imgui/       # vendored ImGui, shared by every mod
     ue4ss/UE4SS.lib  # shared import lib
-  ueforge-deploy/      # `cargo deploy ...` CLI (binary crate)
+  # `cargo deploy ...` CLI is a [[bin]] target inside ueforge itself
   your-mod/
     Cargo.toml       # see [package.metadata.ueforge] block below
     build.rs         # 1 LoC
@@ -532,7 +532,7 @@ else?". Update on every major slice.
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 38 | `CppShim::new().compile()` builder | ✅ | · (1-line `build.rs`) | · | done |
-| 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge-deploy`) | · (manifest entry) | · | done |
+| 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · (manifest entry) | · | done |
 | 40 | Steam-library auto-detect | ✅ | · | · | done |
 
 ### **RPG framework** (currently g2rpg-only — biggest open promotion)
