@@ -174,6 +174,31 @@ the canonical example -- the only registry-level fact is
 "these are the tabs", a wrapper would be ceremony tax. Mark
 the carve-out explicitly in the module's K8s slot header.
 
+**Two-static pattern for Drop-having Defs.** When `<Subject>Def`
+carries non-Copy state with a non-trivial `Drop` impl (mutexes,
+atomics-in-caches, owned heap data), Rust's const-eval rejects
+a temporary array literal in the registry construction:
+
+```rust
+// E0493: destructor of [StackDef; N] cannot be evaluated at compile-time
+pub static STACKS: StackRegistry =
+    StackRegistry::new(&[StackDef::new(...)]);
+```
+
+Hoist the array onto its own `static` to satisfy the compiler:
+
+```rust
+static STACK_DEFS: [StackDef; 1] = [ StackDef::new(...) ];
+pub static STACKS: StackRegistry = StackRegistry::new(&STACK_DEFS);
+```
+
+This is a Rust language workaround, **not** a separate
+architectural layer. The visible API is still
+`STACKS: StackRegistry`. Drop-free Defs (Skills, Creatures,
+Tabs) skip the second static and inline the array into the
+registry constructor. Today's two-static users:
+`StackRegistry`, `DifficultyRegistry`.
+
 Header line on every subject's module doc: a single line
 declaring its slot --
 
