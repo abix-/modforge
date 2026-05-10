@@ -177,6 +177,14 @@ Save-data durability + shutdown safety. All four P0s shipped:
   routes through ueforge with one line per group.
   Closed 2026-05-10.
 
+- [x] **Pillar 4: Inventory viewport-paging framework** --
+  `ueforge::inventory::viewport::ViewportHook<B>` +
+  `ViewportConfig` + `ViewportBinder` trait. Algorithm + state
+  + hook trampoline + mouse-wheel handling + synthetic-refresh
+  guard + post-refresh rebind all framework-side; game crate
+  writes a thin binder + UFunction wiring. g2rpg's `inv_hook`
+  shrank 396 -> 220 lines. Closed 2026-05-10.
+
 Still open / deferred:
 
 - Damage-hook framework (kill_hook install + per-fn parm-shape
@@ -188,6 +196,10 @@ Still open / deferred:
   enumerators are research scaffolding and likely game-specific.
 - HUD overlay drawing (DX11 hook for in-world rendering). Big
   lift, no second consumer today, defer.
+- Inventory CRUD ops (add / remove / count / list). Pillar 4
+  shape exists; CRUD lands when a second consumer materializes
+  (g2rpg uses BPF helpers; another game's UFunction names will
+  drive the trait surface).
 
 ---
 

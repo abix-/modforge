@@ -570,6 +570,14 @@ else?". Update on every major slice.
 | 59 | `ClassFieldTweak<T>` (live-UObject vanilla cache) | ✅ (`ue::class_tweak::ClassFieldTweak<T>`) | · | · | done |
 | 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) | — | done |
 
+### Pillar 4: Inventory (viewport paging + future CRUD ops)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 60a | `inventory::viewport` -- fixed-size visible grid over a larger underlying inventory: mouse-wheel scroll, per-widget viewport-start state, synthetic-refresh re-entrance guard, post-refresh rebind, construct reset | ✅ (`inventory::viewport::ViewportHook` + `ViewportConfig` + `ViewportBinder` trait) | · (`inv_hook.rs` is 220 lines: a `ViewportBinder` impl + UFunction wiring; was 396) | — | done |
+| 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · | — | done |
+| 60c | Future: inventory CRUD ops (add / remove / count / list) | (deferred until a second consumer materializes) | — | — | open |
+
 ### UE SDK helpers (used by all three pillars)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
@@ -665,7 +673,7 @@ else?". Update on every major slice.
 |---|---|---|---|---|
 | 200 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
 | 201 | Game-specific selectors (`live_player`, `live_player_hc`) | 📦 | — | wraps `selector::resolve_generic` |
-| 202 | `inv_hook` viewport rebind (4×10 pages, mouse-wheel scroll) | 📦 | — | extremely G2-specific |
+| 202 | `inv_hook` Maine UFunction wiring (WBP_InventoryInterface_C class name + grid offset + GetInventoryItems / InitializeItemSlot / GetItemInItemListSlot parm shapes) | 📦 | — | per game; viewport algorithm + state + scroll all framework-side via `inventory::viewport` |
 | 203 | `kill_hook` Maine UFunction match + KillerKind classifier (Player / Buggy / Other) | 📦 | — | per UFunction signature; structural shape uses `ue::actor` + `ue::damage_info` from the framework |
 | 204 | `fall_hook` (`OnLanded` velocity-stomp on `BP_SurvivalPlayerCharacter`) | 📦 | — | per game |
 | 205 | `survival.rs` (G2 hunger/thirst Maine offsets via `DifficultyKnob`) | 📦 | — | offsets stay; framework owns the apply loop |
@@ -677,7 +685,25 @@ else?". Update on every major slice.
 | 211 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
 | 212 | `KillerKind` classifier (Player / Buggy / Other) + buggy XP multiplier | 📦 | — | per game policy |
 
-### Migration status
+## Heterogeneous-pillar adoption
+
+Not every UE5 mod uses every pillar, and not every pillar applies
+cleanly to every UE5 game. ueforge supports this: pillars are
+independent modules, opt-in via use sites. A pure stack-size
+tweak only consumes `stacks`. An RPG-only mod only consumes
+`rpg`. A mod that uses all four picks one knob from each menu
+and ignores the rest. Game crates carry only game-specific
+knowledge (UE class names, field offsets, UFunction parm shapes);
+the per-game extension surface is `&'static` config + an opt-in
+trait impl.
+
+**The framework's design rule: each universal pattern is defined
+ONCE in ueforge.** If you find yourself writing the same
+scaffolding in two game crates, that's a missing pillar lift --
+file an entry under "Open: more ueforge extraction candidates"
+in `docs/todo.md`.
+
+## Migration status
 
 **All four phases complete (2026-05-10):**
 

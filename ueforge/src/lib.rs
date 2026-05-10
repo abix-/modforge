@@ -15,11 +15,11 @@
 //! code goes on top; if it might apply to other UE games, it
 //! belongs here.
 //!
-//! ## The three pillars
+//! ## The four pillars
 //!
-//! ueforge ships opinionated framework modules for the three most
-//! common UE5 mod patterns. A new game's mod picks from these
-//! menus and writes only game-specific knobs:
+//! ueforge ships opinionated framework modules for the most common
+//! UE5 mod patterns. A new game's mod picks from these menus and
+//! writes only game-specific knobs:
 //!
 //! - **[`rpg`]** -- skill catalog + XP curve + bestiary +
 //!   per-slot persistence + ImGui tab + the `StandardEffect`
@@ -30,11 +30,36 @@
 //! - **[`difficulty`]** -- game-difficulty CDO field tweak (drain
 //!   rates, damage multipliers, regen rates, etc) with the same
 //!   capture / multiplier / re-apply pattern.
+//! - **[`inventory`]** -- viewport-paging hook framework
+//!   ([`inventory::viewport`]) for inventory widgets that bump
+//!   capacity beyond the visible grid: mouse-wheel scroll +
+//!   per-widget viewport-start state + synthetic-refresh
+//!   re-entrance guard + post-refresh rebind. Game crate
+//!   implements a thin [`inventory::viewport::ViewportBinder`]
+//!   trait with the parm shapes + bind logic.
 //!
-//! Each pillar wraps a low-level primitive
-//! (`StandardEffect` / `FieldTweak<T>` / `ClassFieldTweak<T>`)
+//! Each pillar wraps a low-level primitive (`StandardEffect` /
+//! `FieldTweak<T>` / `ClassFieldTweak<T>` / `ProcessEventHook`)
 //! with the universal apply-loop + atomic-knob + status-counter
 //! pattern, so the game crate doesn't re-implement any of it.
+//!
+//! ## Heterogeneous-pillar adoption
+//!
+//! Not every UE5 mod uses every pillar, and not every pillar
+//! applies cleanly to every UE5 game. ueforge supports this:
+//! pillars are independent modules, opt-in via use sites. A pure
+//! stack-size tweak only consumes [`stacks`]. An RPG-only mod
+//! only consumes [`rpg`]. A mod that uses all four picks a knob
+//! from each menu and ignores the rest. Game crates carry only
+//! game-specific knowledge (UE class names, field offsets,
+//! UFunction parm shapes); the per-game extension surface is
+//! `&'static` config + an opt-in trait impl.
+//!
+//! The framework's design rule: each universal pattern is
+//! defined ONCE in ueforge. If you find yourself writing the
+//! same scaffolding in two game crates, that's a missing
+//! pillar lift -- file an entry under "Open: more ueforge
+//! extraction candidates" in `docs/todo.md`.
 
 pub mod args;
 pub mod build;
@@ -45,6 +70,7 @@ pub mod difficulty;
 pub mod envelope;
 pub mod hex;
 pub mod hook;
+pub mod inventory;
 pub mod log;
 pub mod mod_main;
 pub mod ops;

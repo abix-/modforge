@@ -68,6 +68,54 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Pillar 4: Inventory viewport-paging framework
+
+`ueforge::inventory::viewport` -- the universal "fixed-size
+visible grid over a larger underlying inventory" pattern,
+extracted from g2rpg's `inv_hook.rs`. Owns the algorithm + state
++ ProcessEvent hook trampoline + mouse-wheel scroll handling +
+per-widget viewport-start map + synthetic-refresh re-entrance
+guard + post-refresh rebind + construct-reset.
+
+Game crate writes a [`ViewportConfig`] (class name + UFunction
+names + grid offset + page size + scroll step) and a
+[`ViewportBinder`] trait impl with two methods (`mouse_wheel_delta`
+extraction from the game's `OnMouseWheel` parm bytes, `bind_slot`
+calling the game's "initialize visible slot" UFunction) + a
+`begin_rebind` associated context for caching per-cycle state
+(typically the `GetInventoryItems` TArray result so we don't
+re-call it 40x per scroll).
+
+g2rpg's `inv_hook.rs` shrank 396 -> 220 lines (-176). The remaining
+220 lines are: Maine-specific class names + UFunction parm `#[repr(C)]`
+mirrors + the binder impl that wires the Maine UFunction handles
+together. The viewport-start state, mouse-wheel delta dispatch,
+re-entrance guard, post-refresh rebind, and the install / log /
+class-name lookup machinery are all framework-side.
+
+`grounded2-rpg/src/parms.rs` also shrank: `IntReturnParms`,
+`GetChildAtParms`, `SelectedIndexParms`,
+`SetSelectedInventorySlotParms` deleted (the framework's
+`PanelWidget` helper owns the UMG-side parms; the
+selected-slot parms were always unused).
+
+### Heterogeneous-pillar principle (formalized)
+
+ueforge's `lib.rs` doc-header + `README.md` now formalize the
+design rule: **each universal pattern is defined ONCE in
+ueforge.** Pillars (rpg / stacks / difficulty / inventory) are
+independent modules, opt-in via use sites. A pure stack-size mod
+only consumes `stacks`. An RPG-only mod only consumes `rpg`. A
+mod that uses all four pillars picks one knob from each menu and
+ignores the rest. Game crates carry only game-specific knowledge
+(UE class names, field offsets, UFunction parm shapes); the
+per-game extension surface is `&'static` config + an opt-in
+trait impl.
+
+If you find the same scaffolding in two game crates, that's a
+missing pillar lift -- file under "Open: more ueforge extraction
+candidates" in `docs/todo.md`.
+
 ### Settings hot-reload + PE-call + OpRouter PE-ops half
 
 Three more lifts that close out most of the "Open: more ueforge

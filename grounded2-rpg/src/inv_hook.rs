@@ -1,27 +1,28 @@
-// WBP_InventoryInterface_C ProcessEvent hook + viewport rebind.
+// G2's WBP_InventoryInterface_C viewport binder. The universal
+// scroll/page/rebind algorithm + the ProcessEvent hook trampoline
+// + per-widget viewport-start state all live in
+// `ueforge::inventory::viewport`. This file owns only the
+// Maine-specific knowledge:
 //
-// Keeps the visible 4x10 grid; scrolls by rebinding visible slots against a
-// shifting `ItemStartIndex`. Applies the audit fixes:
-//   - Function dispatch by cached `&UFunction` pointer identity, not by
-//     name string compare.
-//   - Trace logging gated under `cfg!(debug_assertions)` -- no chatter in
-//     release builds.
-//   - Single hook surface (WBP_InventoryInterface_C). No more hooking
-//     generic Widget/UserWidget/PanelWidget for trace coverage.
-
-#![allow(dead_code)]
+// - The widget class name + grid offset + page geometry
+// - The UFunction parm shapes (`#[repr(C)]` mirrors of the SDK)
+// - The "get item at absolute index" path: GetInventoryItems +
+//   BPF_InventoryFunctions_C.GetItemInItemListSlot
+// - The "initialize visible slot" path: InitializeItemSlot
+// - The mouse-wheel-delta extraction:
+//   KismetInputLibrary.PointerEvent_GetWheelDelta
 
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicI32, Ordering};
 
-use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
-use crate::parms::{
-    F_POINTER_EVENT_SIZE, GetChildAtParms, GetInventoryItemsParms, GetItemInItemListSlotParms,
-    InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
-    SelectedIndexParms, SetSelectedInventorySlotParms,
-};
+use ueforge::hook::ProcessEventHook;
+use ueforge::inventory::viewport::{ViewportBinder, ViewportConfig, ViewportHook};
 use ueforge::ue::{self, ClassRef, UFunction, UObject};
+
+use crate::parms::{
+    F_POINTER_EVENT_SIZE, GetInventoryItemsParms, GetItemInItemListSlotParms,
+    InitializeItemSlotParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
+};
 
 const VIEWPORT_ROWS: i32 = 4;
 const VIEWPORT_COLUMNS: i32 = 10;
@@ -29,368 +30,191 @@ const VIEWPORT_PAGE_SIZE: i32 = VIEWPORT_ROWS * VIEWPORT_COLUMNS;
 const SCROLL_STEP_SLOTS: i32 = VIEWPORT_COLUMNS;
 const INV_IFACE_ITEM_GRID_OFFSET: usize = 0x0430;
 
-// Cached UFunction pointers for identity dispatch. Resolved once at
-// hook install via `ueforge::function_table!`; matched by pointer
-// identity in the trampoline.
-ueforge::function_table! {
-    struct InvIfaceFns for "WBP_InventoryInterface_C" {
-        required populate_item_grid: "PopulateItemGrid",
-        required construct: "Construct",
-        required on_mouse_wheel: "OnMouseWheel",
-        optional on_inventory_changed: "OnInventoryChanged",
-        optional on_inventory_count_changed: "OnInventoryCountChanged",
-        optional refresh_ui: "RefreshUI",
-        optional refresh_menu_page: "RefreshMenuPage",
-        required get_inventory_items: "GetInventoryItems",
-        optional get_selected_inventory_slot_index: "GetSelectedInventorySlotIndex",
-        optional set_selected_inventory_slot: "SetSelectedInventorySlot",
-        required initialize_item_slot: "InitializeItemSlot",
+const CONFIG: ViewportConfig = ViewportConfig {
+    widget_class: "WBP_InventoryInterface_C",
+    item_grid_offset: INV_IFACE_ITEM_GRID_OFFSET,
+    page_size: VIEWPORT_PAGE_SIZE,
+    scroll_step: SCROLL_STEP_SLOTS,
+    construct_fn: "Construct",
+    on_mouse_wheel_fn: "OnMouseWheel",
+    refresh_fns: &[
+        "PopulateItemGrid",
+        "OnInventoryChanged",
+        "OnInventoryCountChanged",
+        "RefreshUI",
+        "RefreshMenuPage",
+    ],
+};
+
+static HOOK: ViewportHook<G2Binder> = ViewportHook::new(CONFIG);
+static CAPACITY: AtomicI32 = AtomicI32::new(0);
+
+/// One-time-resolved UFunction handles for the binder. Resolved at
+/// install time, never moved -- pointer-stable per game session.
+struct G2Binder {
+    inv_get_inventory_items: usize,
+    inv_initialize_item_slot: usize,
+    bpf_cdo: usize,
+    bpf_get_item_in_item_list_slot: usize,
+    kismet_cdo: usize,
+    kismet_pointer_event_get_wheel_delta: usize,
+}
+
+unsafe impl Send for G2Binder {}
+unsafe impl Sync for G2Binder {}
+
+impl ViewportBinder for G2Binder {
+    /// Cache the items list once per scroll cycle so we don't
+    /// re-call `GetInventoryItems` 40 times per rebind.
+    type RebindContext = GetInventoryItemsParms;
+
+    unsafe fn begin_rebind(&self, widget: &UObject) -> GetInventoryItemsParms {
+        let mut items = GetInventoryItemsParms {
+            items: ue::TArray::default(),
+        };
+        let func = unsafe { &*(self.inv_get_inventory_items as *const UFunction) };
+        unsafe {
+            widget.process_event(func, &mut items as *mut _ as *mut c_void);
+        }
+        items
+    }
+
+    unsafe fn mouse_wheel_delta(&self, parms: *const c_void) -> Option<f32> {
+        if parms.is_null() {
+            return None;
+        }
+        let view = unsafe { &*(parms as *const OnMouseWheelInputView) };
+        if self.kismet_cdo == 0 || self.kismet_pointer_event_get_wheel_delta == 0 {
+            return None;
+        }
+        let func = unsafe {
+            &*(self.kismet_pointer_event_get_wheel_delta as *const UFunction)
+        };
+        // PointerEvent_GetWheelDelta is a Final|Native BlueprintCallable
+        // helper. Setting FUNC_NATIVE is the path the engine takes
+        // when invoking it from BP, and matches what worked pre-extraction.
+        let saved_flags = func.function_flags();
+        func.set_function_flags(saved_flags | ue::offsets::FUNC_NATIVE);
+        let mut p = PointerEventGetWheelDeltaParms {
+            input: view.mouse_event,
+            return_value: 0.0,
+            _pad: 0,
+        };
+        unsafe {
+            (&*(self.kismet_cdo as *const UObject))
+                .process_event(func, &mut p as *mut _ as *mut c_void);
+        }
+        func.set_function_flags(saved_flags);
+        Some(p.return_value)
+    }
+
+    unsafe fn bind_slot(
+        &self,
+        widget: &UObject,
+        ctx: &GetInventoryItemsParms,
+        slot: &UObject,
+        absolute_index: i32,
+    ) {
+        // Resolve the item at the absolute index from the cached
+        // items list using the BPF helper (it knows how to handle
+        // out-of-bounds gracefully -- returns null Item).
+        let bpf_func = unsafe {
+            &*(self.bpf_get_item_in_item_list_slot as *const UFunction)
+        };
+        let mut bpf_parms = GetItemInItemListSlotParms {
+            item_list: ue::TArray {
+                data: ctx.items.data,
+                num: ctx.items.num,
+                max: ctx.items.max,
+            },
+            index: absolute_index,
+            _pad: 0,
+            world_context: widget as *const UObject as *mut UObject,
+            item: std::ptr::null_mut(),
+        };
+        unsafe {
+            (&*(self.bpf_cdo as *const UObject))
+                .process_event(bpf_func, &mut bpf_parms as *mut _ as *mut c_void);
+        }
+
+        // Bind the visible slot to the resolved item.
+        let init_func = unsafe {
+            &*(self.inv_initialize_item_slot as *const UFunction)
+        };
+        let mut init_parms = InitializeItemSlotParms {
+            item_slot: slot as *const UObject as *mut UObject,
+            item: bpf_parms.item,
+        };
+        unsafe {
+            widget.process_event(
+                init_func,
+                &mut init_parms as *mut _ as *mut c_void,
+            );
+        }
+    }
+
+    fn capacity(&self) -> i32 {
+        CAPACITY.load(Ordering::Acquire)
     }
 }
-
-ueforge::function_table! {
-    struct PanelFns for "PanelWidget" {
-        required get_children_count: "GetChildrenCount",
-        required get_child_at: "GetChildAt",
-    }
-}
-
-struct BpfFns {
-    cdo: *const UObject,
-    get_item_in_item_list_slot: usize,
-}
-
-struct KismetInputFns {
-    cdo: *const UObject,
-    pointer_event_get_wheel_delta: usize,
-}
-
-struct State {
-    inv_iface: InvIfaceFns,
-    panel: PanelFns,
-    bpf: BpfFns,
-    kismet: KismetInputFns,
-    slot_count: AtomicI32,
-    viewport_starts: Mutex<Vec<(usize, i32)>>, // (widget_ptr_as_usize, start_index)
-    in_synthetic_refresh: AtomicBool,
-}
-
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
-static STATE: OnceLock<State> = OnceLock::new();
-
-static INV_IFACE: ClassRef = ClassRef::new("WBP_InventoryInterface_C");
-static PANEL_WIDGET: ClassRef = ClassRef::new("PanelWidget");
-static BPF_INV: ClassRef = ClassRef::new("BPF_InventoryFunctions_C");
-static KISMET: ClassRef = ClassRef::new("KismetInputLibrary");
 
 pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
-    let inv_iface_class = INV_IFACE
+    let inv_class = ClassRef::new("WBP_InventoryInterface_C")
         .get()
-        .ok_or("WBP_InventoryInterface_C not loaded yet")?;
-    let panel_widget = PANEL_WIDGET.get().ok_or("PanelWidget not loaded")?;
-    let bpf_class = BPF_INV.get().ok_or("BPF_InventoryFunctions_C not loaded")?;
-    let kismet_class = KISMET.get().ok_or("KismetInputLibrary not loaded")?;
+        .ok_or("WBP_InventoryInterface_C not loaded")?;
+    let bpf_class = ClassRef::new("BPF_InventoryFunctions_C")
+        .get()
+        .ok_or("BPF_InventoryFunctions_C not loaded")?;
+    let kismet_class = ClassRef::new("KismetInputLibrary")
+        .get()
+        .ok_or("KismetInputLibrary not loaded")?;
 
-    let inv_fns = InvIfaceFns::install(inv_iface_class)?;
-    let panel = PanelFns::install(panel_widget)?;
-    let bpf = BpfFns {
-        cdo: bpf_class.class_default_object().ok_or("BPF CDO missing")? as *const UObject,
-        get_item_in_item_list_slot: bpf_class
-            .get_function("BPF_InventoryFunctions_C", "GetItemInItemListSlot")
-            .map(|f| f as *const UFunction as usize)
-            .ok_or("BPF_InventoryFunctions_C.GetItemInItemListSlot not found")?,
-    };
-    let kismet = KismetInputFns {
-        cdo: kismet_class
-            .class_default_object()
-            .ok_or("KismetInputLibrary CDO missing")? as *const UObject,
-        pointer_event_get_wheel_delta: kismet_class
-            .get_function("KismetInputLibrary", "PointerEvent_GetWheelDelta")
-            .map(|f| f as *const UFunction as usize)
-            .ok_or("KismetInputLibrary.PointerEvent_GetWheelDelta not found")?,
-    };
+    let inv_get_inventory_items = inv_class
+        .get_function("WBP_InventoryInterface_C", "GetInventoryItems")
+        .ok_or("GetInventoryItems not found")? as *const UFunction
+        as usize;
+    let inv_initialize_item_slot = inv_class
+        .get_function("WBP_InventoryInterface_C", "InitializeItemSlot")
+        .ok_or("InitializeItemSlot not found")? as *const UFunction
+        as usize;
+    let bpf_cdo = bpf_class
+        .class_default_object()
+        .ok_or("BPF_InventoryFunctions_C CDO missing")?
+        as *const UObject as usize;
+    let bpf_get_item_in_item_list_slot = bpf_class
+        .get_function("BPF_InventoryFunctions_C", "GetItemInItemListSlot")
+        .ok_or("GetItemInItemListSlot not found")?
+        as *const UFunction as usize;
+    let kismet_cdo = kismet_class
+        .class_default_object()
+        .ok_or("KismetInputLibrary CDO missing")?
+        as *const UObject as usize;
+    let kismet_pointer_event_get_wheel_delta = kismet_class
+        .get_function("KismetInputLibrary", "PointerEvent_GetWheelDelta")
+        .ok_or("PointerEvent_GetWheelDelta not found")?
+        as *const UFunction as usize;
 
-    let _ = STATE.set(State {
-        inv_iface: inv_fns,
-        panel,
-        bpf,
-        kismet,
-        slot_count: AtomicI32::new(slot_count),
-        viewport_starts: Mutex::new(Vec::new()),
-        in_synthetic_refresh: AtomicBool::new(false),
-    });
+    CAPACITY.store(slot_count, Ordering::Release);
 
-    ueforge::log!("inv hook: installing on WBP_InventoryInterface_C");
-    ProcessEventHook::install("WBP_InventoryInterface_C", on_event)
+    HOOK.install(G2Binder {
+        inv_get_inventory_items,
+        inv_initialize_item_slot,
+        bpf_cdo,
+        bpf_get_item_in_item_list_slot,
+        kismet_cdo,
+        kismet_pointer_event_get_wheel_delta,
+    })
 }
 
 pub fn update_slot_count(slot_count: i32) {
-    if let Some(state) = STATE.get() {
-        state.slot_count.store(slot_count, Ordering::Release);
-        ueforge::log!("inv hook: slot_count updated to {}", slot_count);
-    }
+    CAPACITY.store(slot_count, Ordering::Release);
+    ueforge::log!("inv hook: slot_count updated to {}", slot_count);
 }
 
-/// Currently-applied slot count (after backpack apply). 0 if the
-/// hook hasn't installed yet. Used by the debug snapshot.
 pub fn current_slot_count() -> i32 {
-    STATE
-        .get()
-        .map(|s| s.slot_count.load(Ordering::Acquire))
-        .unwrap_or(0)
+    CAPACITY.load(Ordering::Acquire)
 }
 
-fn on_event(
-    this: &UObject,
-    function: &UFunction,
-    parms: *mut c_void,
-    original: OriginalProcessEvent,
-) {
-    let Some(state) = STATE.get() else {
-        unsafe { original.call(this, function, parms) };
-        return;
-    };
-
-    if state.in_synthetic_refresh.load(Ordering::Acquire) {
-        unsafe { original.call(this, function, parms) };
-        return;
-    }
-
-    let fn_id = function as *const UFunction as usize;
-
-    if fn_id == state.inv_iface.construct {
-        set_viewport_start(state, this, 0);
-    }
-
-    unsafe { original.call(this, function, parms) };
-
-    if fn_id == state.inv_iface.on_mouse_wheel {
-        handle_mouse_wheel(state, this, parms);
-    } else if matches_any(
-        fn_id,
-        &[
-            state.inv_iface.on_inventory_changed,
-            state.inv_iface.on_inventory_count_changed,
-            state.inv_iface.refresh_ui,
-            state.inv_iface.refresh_menu_page,
-            state.inv_iface.populate_item_grid,
-        ],
-    ) && get_viewport_start(state, this) != 0
-    {
-        let cur = get_viewport_start(state, this);
-        let _ = rebind(state, this, cur, "post-refresh");
-    }
-}
-
-fn matches_any(fn_id: usize, set: &[usize]) -> bool {
-    fn_id != 0 && set.iter().any(|&s| s != 0 && s == fn_id)
-}
-
-fn handle_mouse_wheel(state: &State, widget: &UObject, parms: *mut c_void) {
-    let slot_count = state.slot_count.load(Ordering::Acquire);
-    if slot_count <= VIEWPORT_PAGE_SIZE || parms.is_null() {
-        return;
-    }
-    let view = unsafe { &*(parms as *const OnMouseWheelInputView) };
-    let Some(delta) = pointer_wheel_delta(state, &view.mouse_event) else {
-        return;
-    };
-
-    let cur = get_viewport_start(state, widget);
-    let next = if delta > 0.001 {
-        clamp_start_with(cur - SCROLL_STEP_SLOTS, slot_count)
-    } else if delta < -0.001 {
-        clamp_start_with(cur + SCROLL_STEP_SLOTS, slot_count)
-    } else {
-        cur
-    };
-    if next != cur {
-        let _ = rebind(state, widget, next, "mouse-wheel");
-    }
-}
-
-fn pointer_wheel_delta(state: &State, event: &[u8; F_POINTER_EVENT_SIZE]) -> Option<f32> {
-    if state.kismet.cdo.is_null() || state.kismet.pointer_event_get_wheel_delta == 0 {
-        return None;
-    }
-    let func = unsafe { &*(state.kismet.pointer_event_get_wheel_delta as *const UFunction) };
-    let saved_flags = func.function_flags();
-    func.set_function_flags(saved_flags | ue::offsets::FUNC_NATIVE);
-    let mut parms = PointerEventGetWheelDeltaParms {
-        input: *event,
-        return_value: 0.0,
-        _pad: 0,
-    };
-    unsafe {
-        (&*state.kismet.cdo).process_event(func, &mut parms as *mut _ as *mut c_void);
-    }
-    func.set_function_flags(saved_flags);
-    Some(parms.return_value)
-}
-
-fn rebind(
-    state: &State,
-    widget: &UObject,
-    new_start: i32,
-    reason: &str,
-) -> Result<(), &'static str> {
-    let item_grid_ptr = unsafe {
-        widget
-            .field_ptr(INV_IFACE_ITEM_GRID_OFFSET)
-            .cast::<*mut UObject>()
-            .read_unaligned()
-    };
-    if item_grid_ptr.is_null() {
-        return Err("ItemGrid is null");
-    }
-    let item_grid = unsafe { &*item_grid_ptr };
-
-    let child_count = panel_children_count(state, item_grid);
-    if child_count != VIEWPORT_PAGE_SIZE {
-        if cfg!(debug_assertions) {
-            ueforge::log!(
-                "scroll skipped: expected {} visible children, found {}",
-                VIEWPORT_PAGE_SIZE,
-                child_count
-            );
-        }
-        return Err("unexpected child count");
-    }
-
-    let slot_count = state.slot_count.load(Ordering::Acquire);
-    let clamped = clamp_start_with(new_start, slot_count);
-    let old_start = get_viewport_start(state, widget);
-
-    state.in_synthetic_refresh.store(true, Ordering::Release);
-    let result = rebind_visible_slots(state, widget, item_grid, clamped);
-    state.in_synthetic_refresh.store(false, Ordering::Release);
-    result?;
-
-    set_viewport_start(state, widget, clamped);
-
-    if cfg!(debug_assertions) {
-        ueforge::log!("scroll {}: start={} -> {}", reason, old_start, clamped);
-    }
-    Ok(())
-}
-
-fn rebind_visible_slots(
-    state: &State,
-    widget: &UObject,
-    item_grid: &UObject,
-    item_start_index: i32,
-) -> Result<(), &'static str> {
-    let mut items_parms = GetInventoryItemsParms {
-        items: ue::TArray::default(),
-    };
-    let func = unsafe { &*(state.inv_iface.get_inventory_items as *const UFunction) };
-    unsafe {
-        widget.process_event(func, &mut items_parms as *mut _ as *mut c_void);
-    }
-
-    for visible in 0..VIEWPORT_PAGE_SIZE {
-        let child = panel_child_at(state, item_grid, visible);
-        let Some(child) = child else { continue };
-        let absolute = item_start_index + visible;
-        let item = bpf_get_item(state, widget, &items_parms.items, absolute);
-        let _ = init_item_slot(state, widget, child, item);
-    }
-    Ok(())
-}
-
-fn panel_children_count(state: &State, panel: &UObject) -> i32 {
-    let func = unsafe { &*(state.panel.get_children_count as *const UFunction) };
-    let mut parms = IntReturnParms { return_value: -1 };
-    unsafe { panel.process_event(func, &mut parms as *mut _ as *mut c_void) };
-    parms.return_value
-}
-
-fn panel_child_at(state: &State, panel: &UObject, index: i32) -> Option<&'static UObject> {
-    let func = unsafe { &*(state.panel.get_child_at as *const UFunction) };
-    let mut parms = GetChildAtParms {
-        index,
-        _pad: 0,
-        return_value: std::ptr::null_mut(),
-    };
-    unsafe { panel.process_event(func, &mut parms as *mut _ as *mut c_void) };
-    if parms.return_value.is_null() {
-        None
-    } else {
-        Some(unsafe { &*parms.return_value })
-    }
-}
-
-fn bpf_get_item(
-    state: &State,
-    widget: &UObject,
-    item_list: &ue::TArray<*mut UObject>,
-    absolute_slot: i32,
-) -> *mut UObject {
-    let func = unsafe { &*(state.bpf.get_item_in_item_list_slot as *const UFunction) };
-    let mut parms = GetItemInItemListSlotParms {
-        item_list: ue::TArray {
-            data: item_list.data,
-            num: item_list.num,
-            max: item_list.max,
-        },
-        index: absolute_slot,
-        _pad: 0,
-        world_context: widget as *const UObject as *mut UObject,
-        item: std::ptr::null_mut(),
-    };
-    unsafe {
-        (&*state.bpf.cdo).process_event(func, &mut parms as *mut _ as *mut c_void);
-    }
-    parms.item
-}
-
-fn init_item_slot(
-    state: &State,
-    widget: &UObject,
-    slot: &UObject,
-    item: *mut UObject,
-) -> Result<(), &'static str> {
-    if state.inv_iface.initialize_item_slot == 0 {
-        return Err("InitializeItemSlot missing");
-    }
-    let func = unsafe { &*(state.inv_iface.initialize_item_slot as *const UFunction) };
-    let mut parms = InitializeItemSlotParms {
-        item_slot: slot as *const UObject as *mut UObject,
-        item,
-    };
-    unsafe { widget.process_event(func, &mut parms as *mut _ as *mut c_void) };
-    Ok(())
-}
-
-fn clamp_start_with(value: i32, slot_count: i32) -> i32 {
-    let max_start = (slot_count - VIEWPORT_PAGE_SIZE).max(0);
-    value.clamp(0, max_start)
-}
-
-fn get_viewport_start(state: &State, widget: &UObject) -> i32 {
-    let key = widget as *const UObject as usize;
-    state
-        .viewport_starts
-        .lock()
-        .unwrap()
-        .iter()
-        .find_map(|(k, v)| if *k == key { Some(*v) } else { None })
-        .unwrap_or(0)
-}
-
-fn set_viewport_start(state: &State, widget: &UObject, value: i32) {
-    let key = widget as *const UObject as usize;
-    let mut guard = state.viewport_starts.lock().unwrap();
-    for entry in guard.iter_mut() {
-        if entry.0 == key {
-            entry.1 = value;
-            return;
-        }
-    }
-    guard.push((key, value));
-}
-
-#[allow(dead_code)]
-fn _silence(_: SelectedIndexParms, _: SetSelectedInventorySlotParms) {}
+const _: () = {
+    let _ = F_POINTER_EVENT_SIZE;
+};

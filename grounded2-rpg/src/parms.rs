@@ -13,28 +13,6 @@ pub struct GetInventoryItemsParms {
 }
 
 #[repr(C)]
-pub struct IntReturnParms {
-    pub return_value: i32,
-}
-
-#[repr(C)]
-pub struct GetChildAtParms {
-    pub index: i32,
-    pub _pad: i32,
-    pub return_value: *mut UObject,
-}
-
-#[repr(C)]
-pub struct SelectedIndexParms {
-    pub index: i32,
-}
-
-#[repr(C)]
-pub struct SetSelectedInventorySlotParms {
-    pub slot: i32,
-}
-
-#[repr(C)]
 pub struct GetItemInItemListSlotParms {
     pub item_list: TArray<*mut UObject>,
     pub index: i32,
@@ -64,7 +42,6 @@ pub struct OnMouseWheelInputView {
 
 const _: () = {
     use std::mem::size_of;
-    assert!(size_of::<GetChildAtParms>() == 0x10);
     assert!(size_of::<InitializeItemSlotParms>() == 0x10);
 };
 
