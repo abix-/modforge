@@ -5,10 +5,12 @@
 
 pub mod function_table;
 pub mod install;
+pub mod lazy_function;
 pub mod process_event;
 pub mod vtable;
 
 pub use install::{RetryPolicy, install_with_backoff};
+pub use lazy_function::LazyFunctionPtr;
 pub use process_event::{OriginalProcessEvent, ProcessEventHook};
 
 use crate::ue::{UFunction, find_class_fast};

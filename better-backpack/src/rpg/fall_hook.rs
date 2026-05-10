@@ -1,8 +1,8 @@
 use std::ffi::c_void;
 
-use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::hook::{LazyFunctionPtr, OriginalProcessEvent, ProcessEventHook};
 use crate::rpg::{skills, tracker};
-use ueforge::ue::{UFunction, UObject, find_class_fast};
+use ueforge::ue::{UFunction, UObject};
 
 const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
     "BP_SurvivalPlayerCharacter_C",
@@ -12,44 +12,19 @@ const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
 
 const FN_ON_LANDED: &str = "OnLanded";
 
-/// Cached UFunction pointer for `OnLanded` on the player BP
-/// class. Resolved lazily on first sight of an OnLanded event.
-/// All subsequent fires can pointer-compare instead of
-/// allocating the function-name String. Eliminates ~1090
-/// String allocations/sec from the trampoline fast path.
-static ON_LANDED_UFUNCTION: std::sync::atomic::AtomicUsize =
-    std::sync::atomic::AtomicUsize::new(0);
+/// Lazily-cached UFunction pointer for `OnLanded`. The trampoline
+/// pointer-compares against this via `LazyFunctionPtr::matches` so
+/// non-OnLanded fires bail with a single atomic load + branch -- no
+/// FName resolve, no heap alloc.
+static ON_LANDED: LazyFunctionPtr = LazyFunctionPtr::new();
 
 pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
-    let mut hooks = Vec::new();
-
-    for &class_name in PLAYER_FALL_HOOK_CLASSES {
-        if find_class_fast(class_name).is_none() {
-            ueforge::log!("rpg/fall: class {} not loaded yet, skipping", class_name);
-            continue;
-        }
-        ueforge::log!(
-            "rpg/fall: hooking concrete player class {} for {} velocity-stomp",
-            class_name,
-            FN_ON_LANDED
-        );
-        let class_name_owned = class_name.to_string();
-        let hook =
-            ProcessEventHook::install(class_name, move |this, function, parms, original| {
-                on_player_fall_event(&class_name_owned, this, function, parms, original)
-            })?;
-        hooks.push(hook);
-    }
-
-    if hooks.is_empty() {
-        return Err("no concrete player classes were loaded for fall hook");
-    }
-
-    Ok(hooks)
+    ProcessEventHook::install_many(PLAYER_FALL_HOOK_CLASSES, |this, function, parms, original| {
+        on_player_fall_event(this, function, parms, original)
+    })
 }
 
 fn on_player_fall_event(
-    hook_class_name: &str,
     this: &UObject,
     function: &UFunction,
     parms: *mut c_void,
@@ -63,65 +38,37 @@ fn on_player_fall_event(
     // common case), so this is sub-ns when nothing is queued.
     crate::debug::drain_pending();
 
-    let is_player = is_player_character(this);
-
-    // FAST PATH: pointer-compare against the cached OnLanded
-    // UFunction. If the cache is empty (cold start) we fall to
-    // the slow path; otherwise non-OnLanded fires bail with a
-    // single atomic load and one branch. ZERO allocations.
-    let on_landed_ufunction = ON_LANDED_UFUNCTION.load(std::sync::atomic::Ordering::Relaxed);
-    let is_on_landed = on_landed_ufunction != 0
-        && (function as *const UFunction as usize) == on_landed_ufunction;
-    if !is_on_landed && on_landed_ufunction != 0 {
-        // Cache is populated and this is NOT the OnLanded
-        // function. Forward without allocating fn_name.
+    // FAST PATH: identity-cached OnLanded check. Warm path is one
+    // atomic load + one branch; cold path resolves the FName once
+    // and caches.
+    let is_on_landed = ON_LANDED.matches(function, FN_ON_LANDED);
+    if !is_on_landed {
         unsafe { original.call(this, function, parms) };
         return;
-    }
-
-    // Slow path runs for either:
-    //   (1) the very first time we see any UFunction before the
-    //       OnLanded cache is populated -- we need the name to
-    //       check if THIS one is OnLanded
-    //   (2) every subsequent OnLanded event (rare, ~per landing)
-    // The earlier impact-trace diagnostic block (gated on
-    // `impact_resistance > 0`) is intentionally OFF on the fast
-    // path now -- the bandage research it was scaffolding for is
-    // complete (see docs/damage.md). If we need that diagnostic
-    // again, gate it behind a settings.debug.research flag, not
-    // behind a skill level the user has on for normal gameplay.
-    ueforge::counters::bump(&crate::counters::FALL_HOOK_FNNAME_ALLOCS);
-    let fn_name = function.as_object().name();
-
-    if on_landed_ufunction == 0 && fn_name == FN_ON_LANDED {
-        ON_LANDED_UFUNCTION.store(
-            function as *const UFunction as usize,
-            std::sync::atomic::Ordering::Relaxed,
-        );
     }
 
     // Velocity-stomp: works for fall landings (OnLanded fires before
     // native ApplyFallDamage reads live Velocity.Z). Does NOT work
     // for collisions (engine zeroes V.Z during collision response
-    // before any PE event fires), so we only stomp on OnLanded now.
-    //
+    // before any PE event fires), so we only stomp on OnLanded.
     // OnLanded does not suppress; we forward to original so
     // animations and sounds still run.
-    if is_player && fn_name == FN_ON_LANDED {
+    let is_player = is_player_character(this);
+    if is_player {
         let reduction = current_fall_resistance_reduction();
         if reduction > 0.0 {
             let scale = (1.0 - reduction).max(0.0) as f64;
             let stomped = stomp_player_velocity_z(this, scale);
-            // Skip the log when V.Z was already zero -- the engine has
-            // already absorbed the velocity and our stomp is a no-op.
+            // Skip the log when V.Z was already zero -- the engine
+            // has already absorbed the velocity and our stomp is a
+            // no-op.
             if stomped.before.abs() > 0.001 {
                 ueforge::log!(
-                    "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {})",
+                    "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3})",
                     stomped.before,
                     stomped.after,
                     this.name(),
                     reduction,
-                    hook_class_name
                 );
             }
         }

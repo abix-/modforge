@@ -121,6 +121,36 @@ impl ProcessEventHook {
     pub fn class_name(&self) -> &'static str {
         self.entry.class_name
     }
+
+    /// Install the same handler against multiple class names (e.g.
+    /// the three concrete player BP classes). Classes that fail to
+    /// resolve are skipped with a log line; classes that fail at
+    /// install (e.g. null vtable) propagate as an error.
+    ///
+    /// Returns `Ok(vec)` containing one hook per class that
+    /// successfully installed; returns `Err("no classes installed")`
+    /// if zero classes resolved.
+    pub fn install_many<F>(
+        class_names: &[&'static str],
+        handler: F,
+    ) -> Result<Vec<Self>, &'static str>
+    where
+        F: Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent) + Send + Sync + Clone + 'static,
+    {
+        let mut hooks = Vec::with_capacity(class_names.len());
+        for &class_name in class_names {
+            if find_class_fast(class_name).is_none() {
+                crate::log!("hook: class {} not loaded yet, skipping", class_name);
+                continue;
+            }
+            let h = Self::install(class_name, handler.clone())?;
+            hooks.push(h);
+        }
+        if hooks.is_empty() {
+            return Err("no classes installed");
+        }
+        Ok(hooks)
+    }
 }
 
 impl Drop for ProcessEventHook {
