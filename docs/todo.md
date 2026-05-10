@@ -437,6 +437,16 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C++ -- EventRing<T> with built-in counters (DONE 2026-05-10)
+
+- [x] **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with
+  built-in push counter (`AtomicU64`) and peak high-watermark
+  (`AtomicUsize`). `record(item)` bumps both atomics, then pushes.
+  Replaces the bbp boilerplate of pairing every Ring with two
+  separate `counter!`-declared statics + a custom `record_*`
+  wrapper. Migrated `bbp::debug::DAMAGE_RING` to `EventRing`;
+  `record_damage_event` is now a one-liner.
+
 ### Wave C+ -- ClassRef walker family expansion (DONE 2026-05-10)
 
 - [x] **`ClassRef::for_each_matching(pred, f)`** -- non-CDO walk
@@ -488,20 +498,26 @@ boilerplate to ~30 LoC of one-liner ClassRef calls.
   swallow" findings for any future `ueforge::worker` consumer
   (poller still TODO, see Wave B2).
 
-### Wave D -- Doctrine docs
+### Wave D -- Doctrine docs (DONE 2026-05-10)
 
-- [ ] **D1. `ueforge/PERFORMANCE.md`** -- lift generic content from
-  `docs/performance.md`: zero-alloc trampolines, single-hook-surface,
-  identity-not-name dispatch, debug-only trace gating, "what was
-  deliberately not ported." `docs/performance.md` shrinks to
-  bbp-specific numbers.
-- [ ] **D2. `ueforge/RESEARCH.md`** -- UE-mod-specific research
-  methodology: snapshot baseline -> `tests/explore_*.rs` hypothesis ->
-  `walk_class` / `inspect_address` / `read_bytes` probes -> validate
-  -> regression test. Concrete examples from `docs/damage.md`
-  (bandage trace, pkg(0) instigator, rock-collision research). Lifts
-  the cross-project `runtime-control-http` skill into UE-mod-specific
-  walks.
+- [x] **D1. `ueforge/PERFORMANCE.md`** -- canonical hot-path
+  discipline doctrine: 10/10 bar, hot-path identification, six
+  rules (zero allocs, bail early, no mutexes on empty path,
+  bounded everything, install-time heavy lifting, counter every
+  hot path), memory-leak vectors with named ueforge fixes,
+  consume-don't-reinvent table, consumer responsibilities,
+  doctrine summary. ~250 lines. Lifts everything generic from
+  bbp's `docs/performance.md`; bbp's file shrinks to G2 numbers.
+- [x] **D2. `ueforge/RESEARCH.md`** -- TDD investigation
+  methodology for UE5 games. Headlines: research-is-code rule,
+  the seven-step TDD loop, standard probes (`walk_class`,
+  `read_bytes`, `inspect_address`, `call`, scanner, freeze),
+  five probe types in leverage order, doctrines on status
+  effects + data tables + damage paths + instigator resolution
+  + install-vs-hook, snapshot-not-log validation rule,
+  failure-injection-test rule, research notebook shape. ~200
+  lines. Cross-references `runtime-control-http` skill +
+  `PERFORMANCE.md`.
 
 ### Wave E -- Shim work (defer until pulled in)
 

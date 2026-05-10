@@ -79,8 +79,10 @@ static PE_QUEUE: PeQueue = PeQueue::new();
 /// the `kill_hook` trampoline. Populated by
 /// `record_damage_event()` from the trampoline; drained by the
 /// snapshot endpoint. Bounded (64) so a long session can't
-/// exhaust memory; mechanics in `ueforge::ring::Ring`.
-static DAMAGE_RING: ueforge::ring::Ring<DamageEvent> = ueforge::ring::Ring::new(64);
+/// exhaust memory. `EventRing` auto-tracks push count + peak
+/// depth; the snapshot exposes them in the counters block.
+static DAMAGE_RING: ueforge::ring::EventRing<DamageEvent> =
+    ueforge::ring::EventRing::new(64);
 
 #[derive(Clone, Serialize)]
 pub struct DamageEvent {
@@ -98,9 +100,7 @@ pub struct DamageEvent {
 }
 
 pub fn record_damage_event(ev: DamageEvent) {
-    ueforge::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
-    let n = DAMAGE_RING.push(ev);
-    ueforge::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
+    DAMAGE_RING.record(ev);
 }
 
 fn snapshot_damage_ring() -> Vec<DamageEvent> {

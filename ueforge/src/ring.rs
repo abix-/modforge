@@ -11,6 +11,8 @@
 //! (low rate). If contention ever shows up, swap to a lock-free
 //! SPSC and a per-frame drain.
 
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+
 use parking_lot::Mutex;
 
 pub struct Ring<T> {
@@ -56,5 +58,81 @@ impl<T> Ring<T> {
 
     pub fn capacity(&self) -> usize {
         self.capacity
+    }
+}
+
+/// `Ring<T>` + automatic push-counter + peak high-watermark tracking.
+///
+/// Replaces the boilerplate of pairing a [`Ring`] with two
+/// statics (`PUSHES`, `PEAK`) and remembering to bump them in the
+/// `record_event` wrapper. Use one `EventRing` per structured-event
+/// surface (damage trace, kill log, etc.) and the snapshot endpoint
+/// gets the events; the perf-counter snapshot gets the push count
+/// + peak depth automatically.
+///
+/// ```ignore
+/// static DAMAGE: ueforge::ring::EventRing<DamageEvent> =
+///     ueforge::ring::EventRing::new(64);
+///
+/// // From the trampoline:
+/// DAMAGE.record(DamageEvent { ... });
+///
+/// // From the snapshot endpoint:
+/// let events = DAMAGE.snapshot();
+/// let pushes = DAMAGE.pushes();
+/// let peak = DAMAGE.peak();
+/// ```
+pub struct EventRing<T> {
+    ring: Ring<T>,
+    pushes: AtomicU64,
+    peak: AtomicUsize,
+}
+
+impl<T> EventRing<T> {
+    pub const fn new(capacity: usize) -> Self {
+        Self {
+            ring: Ring::new(capacity),
+            pushes: AtomicU64::new(0),
+            peak: AtomicUsize::new(0),
+        }
+    }
+
+    /// Push an event, bumping the push counter and updating the
+    /// peak high-watermark. Equivalent to bbp's old
+    /// `record_damage_event` wrapper minus the per-mod statics.
+    pub fn record(&self, item: T) {
+        self.pushes.fetch_add(1, Ordering::Relaxed);
+        let n = self.ring.push(item);
+        crate::counters::observe_peak(&self.peak, n);
+    }
+
+    pub fn snapshot(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        self.ring.snapshot()
+    }
+
+    pub fn len(&self) -> usize {
+        self.ring.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.ring.is_empty()
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.ring.capacity()
+    }
+
+    /// Total `record` calls since process start. For the snapshot
+    /// `counters` block.
+    pub fn pushes(&self) -> u64 {
+        self.pushes.load(Ordering::Relaxed)
+    }
+
+    /// Peak ring length observed. For the snapshot `counters` block.
+    pub fn peak(&self) -> usize {
+        self.peak.load(Ordering::Relaxed)
     }
 }
