@@ -338,6 +338,19 @@ Selectors:
 - game-specific shorthand the game adds in its `resolve` fn
   (`live_player`, `current_save`, ...)
 
+## Backlog (research questions tracked across games)
+
+- **Cheat-Engine-style memory scanner.** `scan_memory { type,
+  value }` + `scan_rescan { session_id, mode }` + `freeze
+  { addr, value, hz }`. Walks committed regions
+  (`uespy::winproc` already has the iterator), narrows over
+  rescans, complements `walk_class` for cases where SDK
+  knowledge is incomplete or the field isn't on a UObject at
+  all (raw allocator buffers, UI caches, etc.). Estimated
+  ~200 LoC. See `outworld-station/research.md` for the
+  motivating use case (stack-mod field discovery without an
+  SDK dump).
+
 ## Adding to uespy
 
 Some piece of plumbing every mod needs that's not here yet?

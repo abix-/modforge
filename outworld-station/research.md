@@ -22,6 +22,56 @@ Until the SDK dump runs, `walk_class` / `read_bytes` /
 initialized"`. The control plane works; it just can't see
 into UE memory yet.
 
+## TODO / research questions
+
+### Cheat-Engine-style memory scanner (uespy::ops::scan + freeze)
+
+Want: from a test, "find every memory address holding value X
+(u32 / f32 / utf16 string / etc.), narrow over rescans as the
+value changes, then write / freeze any of the survivors."
+
+This is what Cheat Engine does in a separate process via
+ReadProcessMemory; we'd do it in-process which is faster (no
+RPM round-trip) and we can correlate hits with UObjects via
+`walk_class` afterwards.
+
+Why it's useful for the stack mod:
+- Pick up Pebbles in-game until inventory shows max = 50
+- Test scans memory for `u32 == 50`, gets thousands of addrs
+- Drop one Pebble (max becomes 49 in the slot, or stays 50
+  in the row, or some don't change at all)
+- Test rescans for `u32 == 50` (or `decreased_by_1`), narrows
+  the survivor list to a few dozen
+- Repeat 1-2 more times → handful of addrs left
+- For each addr: `read_bytes` 256 bytes either side, eyeball
+  the surrounding fields to identify "this is the
+  FMaterialItemData row" vs "this is a UI cache" vs "this is
+  the live UInventorySlot"
+- Confirm by writing 200 to candidates, see which one actually
+  changes the in-game stack ceiling
+
+This is the "no SDK dump? still useful" path — Cheat-Engine-style
+scanning works without knowing the class layout. Once we DO have
+the dump, the scanner becomes a complement (find the field
+faster than grepping headers) rather than a substitute.
+
+Implementation sketch, ~200 LoC in uespy:
+- `uespy::ops::scan_memory { value_type: "u32"|"f32"|"i32"|...,
+   value: <num>, bounds?: { min, max }, regions?: ["private"|"image"|...] }`
+   → returns up to N matched addresses + a session_id
+- `uespy::ops::scan_rescan { session_id, mode: "exact"|"changed"
+   |"decreased"|"increased", new_value? }` → narrows the
+   survivor list
+- `uespy::ops::freeze { addr, value_type, value, hz }` →
+  spawns a thread that rewrites the addr every 1/hz seconds
+- `uespy::ops::unfreeze { addr }` and `freeze_list` for state
+
+Build on `uespy::winproc::process_regions_json`'s region walker.
+read_bytes / write_bytes already cover per-addr ops.
+
+Status: tracked. Not blocking the SDK dump path; complementary
+to it.
+
 ### SDK dump procedure (next concrete step)
 
 1. Edit `OutworldStation\Binaries\Win64\ue4ss\UE4SS-settings.ini`:
