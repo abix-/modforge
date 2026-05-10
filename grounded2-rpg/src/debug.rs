@@ -791,18 +791,19 @@ fn build_snapshot() -> Snapshot {
 
 fn skill_effect_kind(e: &skills::SkillEffect) -> &'static str {
     use skills::SkillEffect::*;
+    use ueforge::rpg::std_effect::StandardEffect as S;
     match e {
+        Standard(S::PlayerFloat { .. }) => "Standard::PlayerFloat",
+        Standard(S::PlayerSubcomponentFloat { .. }) => "Standard::PlayerSubcomponentFloat",
+        Standard(S::PlayerSubcomponentAdditive { .. }) => "Standard::PlayerSubcomponentAdditive",
+        Standard(S::PlayerSubcomponentU32Mask { .. }) => "Standard::PlayerSubcomponentU32Mask",
+        Standard(S::PlayerSubcomponentMultiply { .. }) => "Standard::PlayerSubcomponentMultiply",
+        Standard(S::ClassFieldsMultiply { .. }) => "Standard::ClassFieldsMultiply",
+        Standard(S::Runtime { .. }) => "Standard::Runtime",
+        Standard(S::StatusEffect { .. }) => "Standard::StatusEffect",
         BackpackSlots { .. } => "BackpackSlots",
         SurvivalDrain { .. } => "SurvivalDrain",
-        PlayerCharFloat { .. } => "PlayerCharFloat",
-        PlayerHealthCompFloat { .. } => "PlayerHealthCompFloat",
-        PlayerHealthCompAdditive { .. } => "PlayerHealthCompAdditive",
-        PlayerHealthCompU32Mask { .. } => "PlayerHealthCompU32Mask",
-        PlayerMovementMult { .. } => "PlayerMovementMult",
         PlayerFallDamageReduction { .. } => "PlayerFallDamageReduction",
-        GlobalDataMult { .. } => "GlobalDataMult",
-        Runtime { .. } => "Runtime",
-        PlayerStatusEffect { .. } => "PlayerStatusEffect",
     }
 }
 

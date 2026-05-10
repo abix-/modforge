@@ -49,80 +49,41 @@ pub enum SurvivalField {
     Thirst,
 }
 
-#[derive(Debug, Clone, Copy)]
+// PercentFormat now lives in `ueforge::rpg::format`. Re-exported
+// here for catalog rows that haven't migrated to StandardEffect
+// yet (BackpackSlots / SurvivalDrain / PlayerFallDamageReduction).
+pub use ueforge::rpg::format::PercentFormat;
+pub use ueforge::rpg::std_effect::StandardEffect;
+
+#[derive(Clone, Copy)]
 pub enum SkillEffect {
+    /// 9 of the 13 catalog skills route through ueforge's canonical
+    /// variant menu. The Standard arm in `apply::apply_skill`
+    /// forwards to `e.apply(level, max, &PLAYER)` with no game-
+    /// specific dispatch logic.
+    Standard(StandardEffect),
+
     /// Bonus slots added to `settings.inventory.slot_count`.
     /// `max_bonus_slots` is the integer added at level 100.
-    /// Applied via `patch::run` over all InventoryComponents.
+    /// Applied via `patch::run` over all InventoryComponents with
+    /// the player-only filter -- StandardEffect doesn't have a
+    /// "filtered CDO write of an int field on a non-player class"
+    /// shape, so this stays game-side.
     BackpackSlots { max_bonus_slots: i32 },
 
     /// Survival drain rate. Final value =
     /// `vanilla * settings.survival.<x>_multiplier * (1 - max_reduction * progress)`.
-    /// `field_offset` is the offset of `AdjustmentPerSecond` inside
-    /// SurvivalComponent (hunger or thirst).
+    /// Pulls a multiplier from settings (per-mod config) so
+    /// StandardEffect can't express it cleanly -- stays game-side.
     SurvivalDrain {
         field_offset: usize,
         max_reduction: f32,
         which: SurvivalField,
     },
 
-    /// Direct float write on `ASurvivalCharacter` player CDO.
-    /// Final value = `base + max_bonus * progress`.
-    PlayerCharFloat {
-        offset: usize,
-        base: f32,
-        max_bonus: f32,
-        /// "+50% damage" / "-50% damage taken" / "+30% lifesteal" etc.
-        format: PercentFormat,
-    },
-
-    /// Direct float write on the player's `UHealthComponent` (followed
-    /// from the player CDO via the HealthComponent ptr at +0x1340).
-    /// Final value = `base + max_bonus * progress`.
-    PlayerHealthCompFloat {
-        offset: usize,
-        base: f32,
-        max_bonus: f32,
-        format: PercentFormat,
-    },
-
-    /// Additive write on the player's `UHealthComponent`. Captures
-    /// vanilla on first sight, then writes `vanilla + max_bonus *
-    /// progress`. Used for Max Health: the player keeps stacking
-    /// HP rather than scaling a baseline value (so gear / status
-    /// effects that also touch the field are preserved).
-    PlayerHealthCompAdditive {
-        offset: usize,
-        max_bonus: f32,
-        format_word: &'static str,
-    },
-
-    /// Bitmask write on the player's `UHealthComponent` -- when level
-    /// > 0, set the named uint32 field to `mask`. Used by Impact Damage
-    /// Resistance to set `RequiredDamageTypeFlags` so damage with no
-    /// flag bits (fall, environmental) fails the native gate while
-    /// creature attacks (which carry non-zero type flags) pass through.
-    PlayerHealthCompU32Mask {
-        offset: usize,
-        mask: u32,
-        format: PercentFormat,
-    },
-
-    /// Multiply captured vanilla baselines on the player's
-    /// `UMaineCharMovementComponent` (followed from the player CDO at
-    /// +0x1380). All `offsets` get scaled by the same multiplier
-    /// `1 + max_bonus * progress` against the captured vanilla value
-    /// at that offset. Use one entry per movement axis (walk vs jump
-    /// vs fly are separate skills).
-    PlayerMovementMult {
-        offsets: &'static [usize],
-        max_bonus: f32,
-        /// Word inserted in the formatted "+50% <word>" line.
-        format_word: &'static str,
-    },
-
-    /// Scale the player's fall-damage ratio against the captured
-    /// vanilla baseline on `ASurvivalCharacter`.
+    /// Composite multi-component fall-damage write (HC ratio + GMS
+    /// CDO + SMMC live + UpdateCustomSettings UFunction call). No
+    /// generic shape captures this; stays game-side.
     PlayerFallDamageReduction {
         ratio_offset: usize,
         take_fall_damage_offset: usize,
@@ -130,70 +91,6 @@ pub enum SkillEffect {
         max_reduction: f32,
         format: PercentFormat,
     },
-
-    /// Per-offset multiplier write on every instance of a named
-    /// class. Vanilla captured on first sight per (class, offset)
-    /// pair. Each entry is `(offset, exponent)`: written value is
-    /// `vanilla * (1 + max_bonus * progress) ^ exponent`. Use
-    /// exponent = +1.0 for "boost" fields (more is better) and
-    /// exponent = -1.0 for "shrink" fields (lower is better, e.g.
-    /// regen tick rate). Used for global-data assets that drive a
-    /// gameplay system from one shared singleton-style object.
-    GlobalDataMult {
-        class_name: &'static str,
-        offsets: &'static [(usize, f32)],
-        max_bonus: f32,
-        format_word: &'static str,
-    },
-
-    /// Pure runtime effect. The kill_hook (or any other live
-    /// trampoline) reads the current level on every tick and acts on
-    /// it, no CDO write.
-    Runtime {
-        max_bonus: f32,
-        format: PercentFormat,
-    },
-
-    /// Apply a row from `Table_StatusEffects` to the player's
-    /// `UStatusEffectComponent`. **The canonical pattern Grounded 2
-    /// itself uses** for gear/perk/HoT effects (proved by the
-    /// bandage research: bandages are a `Type=Health` row applied
-    /// this way). Migrating skills to this surface integrates with
-    /// vanilla heal/damage multipliers, replicates correctly, and
-    /// avoids the `RequiredDamageTypeFlags` mask bug that blocked
-    /// bandages.
-    ///
-    /// `row_fname` is the FName u64 of the chosen row in
-    /// `Table_StatusEffects` (capture via the discovery test
-    /// `tests/explore_status_effect_rows.rs`). `value_at_max` is
-    /// the row's `Value` we'll write at level 100; vanilla
-    /// (level 0) restores whatever was captured.
-    PlayerStatusEffect {
-        row_fname: u64,
-        /// Value the row's `Value` field is set to at level 100.
-        /// At level 0, the captured vanilla is restored.
-        /// Examples:
-        ///   - FallDamage type (mul, vanilla 1.0): set to 0.0 for
-        ///     full immunity at L100.
-        ///   - DamageReductionMultiplier (add, vanilla 0.0): set
-        ///     to 1.0 for full reduction at L100.
-        ///   - MaxHealth (add, vanilla 0.0): set to e.g. 200.0 for
-        ///     +200 HP at L100.
-        value_at_max: f32,
-        format_word: &'static str,
-    },
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum PercentFormat {
-    /// "+25% damage (1.25x)" (multiplier-style buff)
-    PlusPercentMult { word: &'static str },
-    /// "-25% damage taken" (reduction-style buff)
-    MinusPercent { word: &'static str },
-    /// "+30% lifesteal" (raw fraction)
-    PlusPercent { word: &'static str },
-    /// "-25% drain (0.75x)" (multiplicative drain reduction)
-    DrainReduction,
 }
 
 /// One row in the catalog. Aliases `ueforge::rpg::Skill<SkillEffect>`
@@ -333,6 +230,8 @@ const LEAP_DISTANCE_OFFSETS: &[usize] = &[
 // CATALOG: the source of truth.
 // ---------------------------------------------------------------------
 
+use ueforge::ue::TypedField;
+
 pub const CATALOG: &[Skill] = &[
     Skill {
         id: SKILL_BACKPACK,
@@ -366,65 +265,72 @@ pub const CATALOG: &[Skill] = &[
         id: SKILL_ATTACK_DAMAGE,
         display_name: "Attack Damage",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerCharFloat {
-            offset: ASC_CUSTOM_DAMAGE_MULTIPLIER,
+        effect: SkillEffect::Standard(StandardEffect::PlayerFloat {
+            offset: TypedField::at(ASC_CUSTOM_DAMAGE_MULTIPLIER),
             base: 1.0,
             max_bonus: 3.00,
             format: PercentFormat::PlusPercentMult { word: "damage" },
-        },
+        }),
     },
     Skill {
         id: SKILL_ARMOR,
         display_name: "Armor",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerHealthCompFloat {
-            offset: HC_BASE_DAMAGE_REDUCTION,
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentFloat {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_HEALTH_COMPONENT),
+            field_offset: TypedField::at(HC_BASE_DAMAGE_REDUCTION),
             base: 0.0,
             max_bonus: 0.50,
-            format: PercentFormat::MinusPercent {
-                word: "damage taken",
-            },
-        },
+            format: PercentFormat::MinusPercent { word: "damage taken" },
+        }),
     },
     Skill {
         id: SKILL_MOVE_SPEED,
         display_name: "Move Speed",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerMovementMult {
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentMultiply {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_CHAR_MOVEMENT_COMPONENT),
             offsets: MOVE_SPEED_OFFSETS,
             max_bonus: 3.00,
             format_word: "move",
-        },
+            vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_JUMP_HEIGHT,
         display_name: "Jump Height",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerMovementMult {
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentMultiply {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_CHAR_MOVEMENT_COMPONENT),
             offsets: JUMP_HEIGHT_OFFSETS,
             max_bonus: 3.00,
             format_word: "jump",
-        },
+            vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_LEAP_DISTANCE,
         display_name: "Leap Distance",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerMovementMult {
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentMultiply {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_CHAR_MOVEMENT_COMPONENT),
             offsets: LEAP_DISTANCE_OFFSETS,
             max_bonus: 5.00,
             format_word: "leap",
-        },
+            vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_GLIDE_SPEED,
         display_name: "Glide Speed",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerMovementMult {
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentMultiply {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_CHAR_MOVEMENT_COMPONENT),
             offsets: GLIDE_SPEED_OFFSETS,
             max_bonus: 3.00,
             format_word: "glide",
-        },
+            vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_FALL_RESISTANCE,
@@ -435,69 +341,55 @@ pub const CATALOG: &[Skill] = &[
             take_fall_damage_offset: ASC_TAKE_FALL_DAMAGE,
             min_velocity_offset: ASC_MINIMUM_FALL_DAMAGE_VELOCITY,
             max_reduction: 1.00,
-            format: PercentFormat::MinusPercent {
-                word: "fall damage",
-            },
+            format: PercentFormat::MinusPercent { word: "fall damage" },
         },
     },
     Skill {
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
-        // MIGRATED 2026-05-09 to a Runtime effect: no CDO write,
-        // no mask. kill_hook's trampoline intercepts
-        // ApplyDamageFromInfo on the player HC, reads
-        // FDamageInfo.DamageType, and if the DamageType class
-        // matches BP_EnvironmentalDamage_C scales the Damage
-        // parm by (1 - reduction * progress(level)) before
-        // forwarding. Same shape as fall_resistance's
-        // velocity-stomp on OnLanded -- just a different surface
-        // (ApplyDamageFromInfo) and a different discriminator
-        // (DamageType class instead of "the only fall path").
-        //
-        // Why this and not the binary mask: the mask
-        // (RequiredDamageTypeFlags = 0xFFFFFFFF) blocked all
-        // type_flags=0 events, including bandage heal-ticks --
-        // hard regression on the user. The intercept-and-scale
-        // approach only touches damage events whose DamageType
-        // is environmental; heals and combat damage pass through
-        // untouched. See ../docs/damage.md "REVISED fix path".
-        effect: SkillEffect::Runtime {
+        // Pure runtime: kill_hook's trampoline intercepts
+        // ApplyDamageFromInfo, reads FDamageInfo.DamageType, and
+        // if the DamageType class matches BP_EnvironmentalDamage_C
+        // scales Damage by (1 - reduction * progress(level)).
+        // See ../docs/damage.md "REVISED fix path".
+        effect: SkillEffect::Standard(StandardEffect::Runtime {
             max_bonus: 1.0,
-            format: PercentFormat::MinusPercent {
-                word: "environmental damage",
-            },
-        },
+            format: PercentFormat::MinusPercent { word: "environmental damage" },
+        }),
     },
     Skill {
         id: SKILL_MAX_HEALTH,
         display_name: "Max Health",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::PlayerHealthCompAdditive {
-            offset: HC_MAX_HEALTH,
+        effect: SkillEffect::Standard(StandardEffect::PlayerSubcomponentAdditive {
+            component_offset: TypedField::at(crate::rpg::apply::ASC_HEALTH_COMPONENT),
+            field_offset: TypedField::at(HC_MAX_HEALTH),
             max_bonus: 200.0,
             format_word: "max HP",
-        },
+            vanilla: &crate::rpg::apply::MAX_HEALTH_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_HEALTH_REGEN,
         display_name: "Health Regen",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::GlobalDataMult {
-            class_name: "GlobalCombatData",
+        effect: SkillEffect::Standard(StandardEffect::ClassFieldsMultiply {
+            class: &crate::rpg::apply::CLASS_GLOBAL_COMBAT_DATA,
             offsets: HEALTH_REGEN_OFFSETS,
             max_bonus: 5.00,
             format_word: "regen",
-        },
+            vanilla: &crate::rpg::apply::GLOBAL_DATA_VANILLA,
+        }),
     },
     Skill {
         id: SKILL_LIFESTEAL,
         display_name: "Lifesteal",
         max_level: SKILL_MAX_LEVEL,
-        effect: SkillEffect::Runtime {
+        effect: SkillEffect::Standard(StandardEffect::Runtime {
             max_bonus: 0.90,
             format: PercentFormat::PlusPercent { word: "lifesteal" },
-        },
+        }),
     },
 ];
 
@@ -545,6 +437,7 @@ pub fn format_effect(id: &str, level: u32) -> String {
         return String::new();
     };
     match &skill.effect {
+        SkillEffect::Standard(e) => e.format(level, skill.max_level),
         SkillEffect::BackpackSlots { max_bonus_slots } => {
             let bonus = backpack_bonus_at(level, *max_bonus_slots);
             format!("+{bonus} slots")
@@ -552,95 +445,10 @@ pub fn format_effect(id: &str, level: u32) -> String {
         SkillEffect::SurvivalDrain { max_reduction, .. } => {
             let mult = (1.0 - skill_bonus(*max_reduction, level)).max(0.0);
             let pct = ((1.0 - mult) * 100.0).round() as i32;
-            format!("-{pct}% drain ({:.2}x)", mult)
+            format!("-{pct}% drain ({mult:.2}x)")
         }
-        SkillEffect::PlayerCharFloat {
-            base,
-            max_bonus,
-            format,
-            ..
-        }
-        | SkillEffect::PlayerHealthCompFloat {
-            base,
-            max_bonus,
-            format,
-            ..
-        } => format_pct(*base, *max_bonus, level, format),
-        SkillEffect::PlayerFallDamageReduction {
-            max_reduction,
-            format,
-            ..
-        } => format_pct(0.0, *max_reduction, level, format),
-        SkillEffect::PlayerHealthCompU32Mask { format, .. } => {
-            // Boolean-style: active when the player has at least one
-            // skill point, full strength applied unconditionally (the
-            // gate is binary, not scaled).
-            let bonus = if level > 0 { 1.0 } else { 0.0 };
-            format_pct(0.0, bonus, level, format)
-        }
-        SkillEffect::PlayerMovementMult {
-            max_bonus,
-            format_word,
-            ..
-        } => {
-            let mult = 1.0 + skill_bonus(*max_bonus, level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% {format_word} ({:.2}x)", mult)
-        }
-        SkillEffect::Runtime { max_bonus, format } => format_pct(0.0, *max_bonus, level, format),
-        SkillEffect::GlobalDataMult {
-            max_bonus,
-            format_word,
-            ..
-        } => {
-            let mult = 1.0 + skill_bonus(*max_bonus, level);
-            let pct = ((mult - 1.0) * 100.0).round() as i32;
-            format!("+{pct}% {format_word} ({:.2}x)", mult)
-        }
-        SkillEffect::PlayerHealthCompAdditive {
-            max_bonus,
-            format_word,
-            ..
-        } => {
-            let bonus = skill_bonus(*max_bonus, level).round() as i32;
-            format!("+{bonus} {format_word}")
-        }
-        SkillEffect::PlayerStatusEffect {
-            value_at_max,
-            format_word,
-            ..
-        } => {
-            // Pure presence indicator -- the engine computes the
-            // effective stat after combining with vanilla rows of
-            // the same Type, so a precise per-skill value isn't
-            // available here without knowing the row's Type.
-            let progress = level_progress(level);
-            let pct = (progress * 100.0).round() as i32;
-            format!("{pct}% {format_word} (to value={:.2})", value_at_max * progress)
-        }
-    }
-}
-
-fn format_pct(base: f32, max_bonus: f32, level: u32, fmt: &PercentFormat) -> String {
-    let bonus = skill_bonus(max_bonus, level);
-    let value = base + bonus;
-    match fmt {
-        PercentFormat::PlusPercentMult { word } => {
-            let pct = (bonus * 100.0).round() as i32;
-            format!("+{pct}% {word} ({:.2}x)", value)
-        }
-        PercentFormat::MinusPercent { word } => {
-            let pct = (bonus * 100.0).round() as i32;
-            format!("-{pct}% {word}")
-        }
-        PercentFormat::PlusPercent { word } => {
-            let pct = (bonus * 100.0).round() as i32;
-            format!("+{pct}% {word}")
-        }
-        PercentFormat::DrainReduction => {
-            let mult = (1.0 - bonus).max(0.0);
-            let pct = (bonus * 100.0).round() as i32;
-            format!("-{pct}% drain ({:.2}x)", mult)
+        SkillEffect::PlayerFallDamageReduction { max_reduction, format, .. } => {
+            ueforge::rpg::format::format_pct(0.0, *max_reduction, level, SKILL_MAX_LEVEL, format)
         }
     }
 }
