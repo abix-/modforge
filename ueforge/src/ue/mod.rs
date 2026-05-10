@@ -9,6 +9,7 @@
 
 pub mod class_ref;
 pub mod class_tweak;
+pub mod core_types;
 pub mod datatable;
 pub mod fname;
 pub mod fstring;
@@ -22,6 +23,7 @@ pub mod typed_field;
 pub mod uobject;
 
 pub use class_ref::ClassRef;
+pub use core_types::{EStatusEffectValueType, FDataTableRowHandle, FGuid, FWeakObjectPtr};
 pub use player::PlayerRef;
 pub use typed_field::TypedField;
 pub use fname::FName;

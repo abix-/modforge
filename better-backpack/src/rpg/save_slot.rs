@@ -15,28 +15,9 @@
 // Returns None when not in-world (main menu, between saves). Caller
 // should re-check on demand.
 
-use ueforge::ue::{ClassRef, UObject};
+use ueforge::ue::{ClassRef, FGuid, UObject};
 
 const IN_GAME_GAME_STATE_PLAYTHROUGH_GUID: usize = 0x032C;
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-struct FGuid {
-    a: u32,
-    b: u32,
-    c: u32,
-    d: u32,
-}
-
-impl FGuid {
-    fn is_zero(&self) -> bool {
-        self.a == 0 && self.b == 0 && self.c == 0 && self.d == 0
-    }
-
-    fn to_filename(self) -> String {
-        format!("{:08x}{:08x}{:08x}{:08x}", self.a, self.b, self.c, self.d)
-    }
-}
 
 /// Returns the current playthrough's stable identifier as a 32-char hex
 /// string suitable as a filename. None when not in-world.

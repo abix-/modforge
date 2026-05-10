@@ -28,7 +28,9 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
-use ueforge::ue::{ClassRef, GObjectsView, TypedField, UClass, UFunction, UObject, runtime};
+use ueforge::ue::{
+    ClassRef, FWeakObjectPtr, GObjectsView, TypedField, UClass, UFunction, UObject, runtime,
+};
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
 const HEALTH_COMPONENT_CURRENT_DAMAGE: usize = 0x032C;
@@ -44,14 +46,6 @@ const DAMAGE_INFO_FLAG_KILLING_BLOW: i32 = 2;
 // AController.Pawn (Engine_classes.hpp:30510). Standard UE5 layout,
 // stable across builds.
 const A_CONTROLLER_PAWN: usize = 0x0308;
-
-// FWeakObjectPtr layout: { i32 ObjectIndex; i32 ObjectSerialNumber; }.
-#[repr(C)]
-#[derive(Clone, Copy)]
-struct FWeakObjectPtr {
-    object_index: i32,
-    object_serial_number: i32,
-}
 
 struct State {
     multicast_handle_effects_with_damage_flags: usize, // UFunction*

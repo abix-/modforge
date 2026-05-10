@@ -437,6 +437,17 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C+++++ -- ueforge::ue::core_types (DONE 2026-05-10)
+
+- [x] **`ueforge::ue::core_types`** module with `FGuid`,
+  `FWeakObjectPtr`, `FDataTableRowHandle`, `EStatusEffectValueType`.
+  UE-stable POD layouts every UE5 mod redefines locally; ship
+  them once. 6 unit tests including size invariants. Migrations:
+  bbp's `save_slot::FGuid` and `kill_hook::FWeakObjectPtr` local
+  duplicates deleted -- now both consume `ueforge::ue::*`.
+  `FDataTableRowHandle` and `EStatusEffectValueType` ready for
+  the bbp status-effect migration.
+
 ### Wave C++++ -- DrainSite (DONE 2026-05-10)
 
 - [x] **`ueforge::pe_queue::DrainSite`** -- `Queue` paired with
