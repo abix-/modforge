@@ -14,12 +14,13 @@ use ueforge::difficulty::{DifficultyDef, DifficultyRegistry};
 pub const HUNGER_ADJUSTMENT_OFFSET: usize = 0x0138 + 0x08; // 0x0140
 pub const THIRST_ADJUSTMENT_OFFSET: usize = 0x0180 + 0x08; // 0x0188
 
-static SURVIVAL_DEFS: [DifficultyDef; 2] = [
-    DifficultyDef::new("hunger", "SurvivalComponent", HUNGER_ADJUSTMENT_OFFSET),
-    DifficultyDef::new("thirst", "SurvivalComponent", THIRST_ADJUSTMENT_OFFSET),
-];
+static HUNGER_DEF: DifficultyDef =
+    DifficultyDef::new("hunger", "SurvivalComponent", HUNGER_ADJUSTMENT_OFFSET);
+static THIRST_DEF: DifficultyDef =
+    DifficultyDef::new("thirst", "SurvivalComponent", THIRST_ADJUSTMENT_OFFSET);
 
-pub static SURVIVAL: DifficultyRegistry = DifficultyRegistry::new(&SURVIVAL_DEFS);
+pub static SURVIVAL: DifficultyRegistry =
+    DifficultyRegistry::new(&[&HUNGER_DEF, &THIRST_DEF]);
 
 pub struct SurvivalStats {
     pub scanned_classes: usize,

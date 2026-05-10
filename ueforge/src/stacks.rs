@@ -141,26 +141,35 @@ impl StackDef {
     }
 }
 
-/// Workspace-standard `<Subject>Registry` for stacks.
+/// Workspace-standard `<Subject>Registry` for stacks. Stores
+/// `&[&'static StackDef]` (slice of refs) so consumers can
+/// declare each Def as its own named static + inline the
+/// registry literal without hitting Rust's const-eval Drop
+/// restriction. See architecture.md "Naming contract".
 pub struct StackRegistry {
-    entries: &'static [StackDef],
+    entries: &'static [&'static StackDef],
 }
 
 impl StackRegistry {
-    pub const fn new(entries: &'static [StackDef]) -> Self {
+    pub const fn new(entries: &'static [&'static StackDef]) -> Self {
         Self { entries }
     }
 
     /// Look up by `id`. Linear scan; registries are tiny.
     pub fn def(&self, id: &str) -> Option<&'static StackDef> {
-        self.entries.iter().find(|d| d.id == id)
+        for d in self.entries {
+            if d.id == id {
+                return Some(*d);
+            }
+        }
+        None
     }
 
-    pub fn entries(&self) -> &'static [StackDef] {
+    pub fn entries(&self) -> &'static [&'static StackDef] {
         self.entries
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, StackDef> {
+    pub fn iter(&self) -> std::slice::Iter<'_, &'static StackDef> {
         self.entries.iter()
     }
 
@@ -196,9 +205,9 @@ impl StackRegistry {
 }
 
 impl<'a> IntoIterator for &'a StackRegistry {
-    type Item = &'a StackDef;
-    type IntoIter = std::slice::Iter<'a, StackDef>;
+    type Item = &'static StackDef;
+    type IntoIter = std::iter::Copied<std::slice::Iter<'a, &'static StackDef>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.entries.iter()
+        self.entries.iter().copied()
     }
 }

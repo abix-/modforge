@@ -174,10 +174,10 @@ the canonical example -- the only registry-level fact is
 "these are the tabs", a wrapper would be ceremony tax. Mark
 the carve-out explicitly in the module's K8s slot header.
 
-**Two-static pattern for Drop-having Defs.** When `<Subject>Def`
-carries non-Copy state with a non-trivial `Drop` impl (mutexes,
+**Slice-of-refs registries.** When `<Subject>Def` carries
+non-Copy state with a non-trivial `Drop` impl (mutexes,
 atomics-in-caches, owned heap data), Rust's const-eval rejects
-a temporary array literal in the registry construction:
+a temporary array of values in the registry literal:
 
 ```rust
 // E0493: destructor of [StackDef; N] cannot be evaluated at compile-time
@@ -185,19 +185,29 @@ pub static STACKS: StackRegistry =
     StackRegistry::new(&[StackDef::new(...)]);
 ```
 
-Hoist the array onto its own `static` to satisfy the compiler:
+The clean pattern -- not a workaround -- is to declare each Def
+as its own named `static` and store `&[&'static <Subject>Def]`
+in the registry. References are `Copy` + `Drop`-free, so the
+slice literal is const-evaluable:
 
 ```rust
-static STACK_DEFS: [StackDef; 1] = [ StackDef::new(...) ];
-pub static STACKS: StackRegistry = StackRegistry::new(&STACK_DEFS);
+static MATERIALS_DEF: StackDef = StackDef::new("materials", ...);
+
+pub static STACKS: StackRegistry =
+    StackRegistry::new(&[&MATERIALS_DEF]);
 ```
 
-This is a Rust language workaround, **not** a separate
-architectural layer. The visible API is still
-`STACKS: StackRegistry`. Drop-free Defs (Skills, Creatures,
-Tabs) skip the second static and inline the array into the
-registry constructor. Today's two-static users:
-`StackRegistry`, `DifficultyRegistry`.
+This is the canonical pattern for **all** Drop-having registries
+in the workspace: `StackRegistry`, `DifficultyRegistry`,
+`StatusRegistry`, `HookRegistry` (runtime-populated variant).
+Each Def is a named static (better debug + introspection +
+direct ref access from other modules) and the registry literal
+stays inline.
+
+Drop-free Defs (Skills, Creatures, Tabs) MAY use the simpler
+`&[<Subject>Def]` (slice of values) shape -- the array literal
+const-evaluates fine. Either pattern is architecturally
+correct; pick based on whether the Def has Drop-having state.
 
 Header line on every subject's module doc: a single line
 declaring its slot --

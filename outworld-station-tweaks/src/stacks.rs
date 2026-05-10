@@ -23,22 +23,22 @@ pub const MAX_MULTIPLIER: i32 = 64;
 const STACK_OFFSET: usize = 0x48; // FSMaterialData::MaxCanStack
 const POLL_TIMEOUT: Duration = Duration::from_secs(30);
 
-// `StackDef` carries non-Copy atomics, so the slice has to live in
-// its own `static` (Rust can't drop a temporary `[StackDef; N]`
-// at the end of a const expression).
-static STACK_DEFS: [StackDef; 1] = [StackDef::new(
+/// Per-table StackDef instance. Add a new `static FOO_DEF: StackDef`
+/// + a `&FOO_DEF` entry in `STACKS` below to register a new table.
+/// The `vanilla <= 1` skip preserves equipment / non-stackable rows.
+static MATERIALS_DEF: StackDef = StackDef::new(
     "materials",
     "DT_Materials",
     STACK_OFFSET,
     DEFAULT_MULTIPLIER,
     |v| v <= 1,
-)];
+);
 
-/// Workspace-standard stack registry for ows-tweaks. One Def
-/// today (`materials`); add new tables as new entries to
-/// `STACK_DEFS`. The `vanilla <= 1` skip preserves equipment /
-/// non-stackable rows.
-pub static STACKS: StackRegistry = StackRegistry::new(&STACK_DEFS);
+/// Workspace-standard stack registry for ows-tweaks. Slice of
+/// `&'static StackDef` refs -- each Def above is its own named
+/// static, so the registry literal stays inline without needing
+/// to hoist a temporary array.
+pub static STACKS: StackRegistry = StackRegistry::new(&[&MATERIALS_DEF]);
 
 fn materials() -> &'static StackDef {
     STACKS.def("materials").expect("materials Def registered above")

@@ -130,25 +130,34 @@ impl DifficultyDef {
 }
 
 /// Workspace-standard `<Subject>Registry` for difficulty knobs.
+/// Stores `&[&'static DifficultyDef]` (slice of refs) so consumers
+/// can declare each Def as its own named static + inline the
+/// registry literal without hitting Rust's const-eval Drop
+/// restriction. See architecture.md "Naming contract".
 pub struct DifficultyRegistry {
-    entries: &'static [DifficultyDef],
+    entries: &'static [&'static DifficultyDef],
 }
 
 impl DifficultyRegistry {
-    pub const fn new(entries: &'static [DifficultyDef]) -> Self {
+    pub const fn new(entries: &'static [&'static DifficultyDef]) -> Self {
         Self { entries }
     }
 
     /// Look up by `id`. Linear scan; registries are tiny.
     pub fn def(&self, id: &str) -> Option<&'static DifficultyDef> {
-        self.entries.iter().find(|d| d.id == id)
+        for d in self.entries {
+            if d.id == id {
+                return Some(*d);
+            }
+        }
+        None
     }
 
-    pub fn entries(&self) -> &'static [DifficultyDef] {
+    pub fn entries(&self) -> &'static [&'static DifficultyDef] {
         self.entries
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, DifficultyDef> {
+    pub fn iter(&self) -> std::slice::Iter<'_, &'static DifficultyDef> {
         self.entries.iter()
     }
 
@@ -187,9 +196,9 @@ impl DifficultyRegistry {
 }
 
 impl<'a> IntoIterator for &'a DifficultyRegistry {
-    type Item = &'a DifficultyDef;
-    type IntoIter = std::slice::Iter<'a, DifficultyDef>;
+    type Item = &'static DifficultyDef;
+    type IntoIter = std::iter::Copied<std::slice::Iter<'a, &'static DifficultyDef>>;
     fn into_iter(self) -> Self::IntoIter {
-        self.entries.iter()
+        self.entries.iter().copied()
     }
 }
