@@ -138,6 +138,7 @@ use ueforge::rpg::{
     SkillRegistry, SubcomponentAdditiveEffect, SubcomponentFloatEffect,
     SubcomponentMultiplyEffect,
 };
+use ueforge::rpg::trigger::ON_SLOT_CHANGE;
 use ueforge::ue::TypedField;
 
 static EFFECT_ATTACK_DAMAGE: PlayerFloatEffect = PlayerFloatEffect {
@@ -232,54 +233,63 @@ pub const CATALOG_ENTRIES: &[SkillDef] = &[
         display_name: "Backpack",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("BackpackSlots", &crate::rpg::effects::BACKPACK),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_HUNGER,
         display_name: "Hunger Resistance",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SurvivalDrain", &crate::rpg::effects::HUNGER_DRAIN),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_THIRST,
         display_name: "Thirst Resistance",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SurvivalDrain", &crate::rpg::effects::THIRST_DRAIN),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_ATTACK_DAMAGE,
         display_name: "Attack Damage",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("PlayerFloat", &EFFECT_ATTACK_DAMAGE),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_ARMOR,
         display_name: "Armor",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentFloat", &EFFECT_ARMOR),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_MOVE_SPEED,
         display_name: "Move Speed",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentMultiply", &EFFECT_MOVE_SPEED),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_JUMP_HEIGHT,
         display_name: "Jump Height",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentMultiply", &EFFECT_JUMP_HEIGHT),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_LEAP_DISTANCE,
         display_name: "Leap Distance",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentMultiply", &EFFECT_LEAP_DISTANCE),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_GLIDE_SPEED,
         display_name: "Glide Speed",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentMultiply", &EFFECT_GLIDE_SPEED),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_FALL_RESISTANCE,
@@ -289,30 +299,35 @@ pub const CATALOG_ENTRIES: &[SkillDef] = &[
             "PlayerFallDamageReduction",
             &crate::rpg::effects::FALL_DAMAGE,
         ),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("Runtime", &EFFECT_IMPACT_RESISTANCE),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_MAX_HEALTH,
         display_name: "Max Health",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("SubcomponentAdditive", &EFFECT_MAX_HEALTH),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_HEALTH_REGEN,
         display_name: "Health Regen",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("ClassFieldsMultiply", &EFFECT_HEALTH_REGEN),
+        trigger: &ON_SLOT_CHANGE,
     },
     SkillDef {
         id: SKILL_LIFESTEAL,
         display_name: "Lifesteal",
         max_level: SKILL_MAX_LEVEL,
         effect: EffectDef::new("Runtime", &EFFECT_LIFESTEAL),
+        trigger: &ON_SLOT_CHANGE,
     },
 ];
 

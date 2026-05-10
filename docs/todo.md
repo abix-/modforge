@@ -57,7 +57,20 @@ lib tests green.
   updated; Effects refactor section flipped from "planned" to
   "DONE".
 
-### Phase 5: triggers (deferred)
+### Phase 5a: TriggerDef (DONE 2026-05-10)
+
+- [x] **`ueforge::rpg::trigger`** module shipped: `Trigger`
+  trait + `TriggerDef { kind, imp: &'static dyn Trigger }` +
+  `OnSlotChangeTrigger` + static `ON_SLOT_CHANGE` def.
+- [x] **`SkillDef.trigger: &'static TriggerDef`** field added.
+- [x] **g2rpg catalog** every row declares `trigger: &ON_SLOT_CHANGE`.
+
+Today's Trigger is metadata only -- `Tracker` fires effects on
+slot change like before. The TriggerDef machinery establishes
+the symmetry with EffectDef and gives future event-driven
+triggers a place to land.
+
+### Phase 5b: typed event dispatch (deferred)
 
 The composition model includes Triggers (event-driven Effects
 fire from Hooks; CDO Effects fire on slot-change). Today the

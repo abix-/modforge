@@ -38,6 +38,7 @@ pub mod state;
 pub mod store;
 pub mod tab;
 pub mod tracker;
+pub mod trigger;
 pub mod vanilla;
 pub mod xp;
 
@@ -54,5 +55,6 @@ pub use slot_key::SlotKeyResolver;
 pub use state::SkillsState;
 pub use store::SlotStore;
 pub use tracker::{Tracker, XpResult};
+pub use trigger::{OnSlotChangeTrigger, Trigger, TriggerDef};
 pub use vanilla::VanillaCache;
 pub use xp::{CreatureDef, CreatureRegistry, Curve};

@@ -26,17 +26,24 @@
 //! let s = CATALOG.def("attack_damage");
 //! ```
 
-use super::EffectDef;
+use super::{EffectDef, TriggerDef};
 
 /// Skill catalog row -- the Def in the workspace's
-/// Def/Registry/Instance/Controller pattern. Carries the
-/// player-facing identity (id / display_name / max_level) plus
-/// the [`EffectDef`] that does the work.
+/// Def/Registry/Instance/Controller pattern. A skill is a
+/// composition: an [`EffectDef`] (WHAT to do) + a [`TriggerDef`]
+/// (WHEN to do it). Plus the player-facing identity (id /
+/// display_name / max_level).
 pub struct SkillDef {
     pub id: &'static str,
     pub display_name: &'static str,
     pub max_level: u32,
     pub effect: EffectDef,
+    /// When the effect fires. Most CDO-write skills use
+    /// `&ueforge::rpg::trigger::ON_SLOT_CHANGE` -- the effect
+    /// fires on slot activate / spend / refund. Event-driven
+    /// skills (lifesteal, crit, thorns, evasion) declare a
+    /// damage-event trigger so the framework wires the dispatch.
+    pub trigger: &'static TriggerDef,
 }
 
 /// Skill registry -- the workspace-standard `<Subject>Registry`

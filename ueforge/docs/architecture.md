@@ -53,22 +53,42 @@ SkillDef {
 Effect type is shared with every other PlayerFloat skill (Armor,
 etc.); only the parameters differ.
 
-### Hooks -- the triggers
+### Triggers -- the WHEN
 
-Some Effects are **always-on**: write the CDO, the engine reads
-it forever. These fire on slot-activate / spend / refund / toggle.
+A skill needs to know WHEN to fire its Effect. That's the
+Trigger. Some triggers are **passive** (`OnSlotChange` -- the
+effect fires when the player levels up / spends / refunds /
+toggles); others are **event-driven** (`OnDamageDealt` fires per
+player-dealt hit, `OnKill` per kill, `OnFall` per fall, `Periodic`
+per tick).
 
-Other Effects are **event-driven**: lifesteal heals on every
-player-dealt non-player hit; thorns reflects on every player-
-taken hit; crit rolls per swing. These need a **Hook** to detect
-WHEN the event happens. The Hook calls the Effect with per-hit
-context.
+`TriggerDef { kind, imp: &'static dyn Trigger }` is the Def --
+symmetric with `EffectDef`. Each trigger TYPE is a struct that
+owns its own wiring: filter, decode, subscriber list. CDO-write
+skills use `&ueforge::rpg::trigger::ON_SLOT_CHANGE`; event-driven
+skills use the corresponding event trigger.
 
-Hooks are the WHEN; Effects are the WHAT. A skill that needs an
-event trigger declares which hook drives it; the framework wires
-the call site. ueforge's `damage::DamageBinder` is today's
-manifestation of this pattern: one hook surface, many Effects
-plug in.
+### Hooks vs Triggers -- two layers
+
+`HookDef` and `TriggerDef` are NOT the same:
+
+- **`HookDef`** = the *mechanism*. A vtable patch on a UE5
+  class. Low-level. Plumbing. `ProcessEventHook::install(...)`
+  produces one. Each `HookDef` is one patched class.
+- **`TriggerDef`** = the *semantic event source*. Built ON TOP
+  of zero or more `HookDef`s plus filter + decode + typed event
+  dispatch. One trigger may install hooks on multiple classes
+  (a damage trigger needs HC + concrete BP subclasses). One
+  hook may serve multiple triggers (`OnDamageDealt` and
+  `OnDamageTaken` share the damage hook). Some triggers
+  (`Periodic`, `OnSlotChange`) install no hooks at all.
+
+Skill authors compose at the **Trigger** layer. `HookDef` is
+visible only to framework-level wiring code (the trigger types'
+`install` methods). The N:M relationship between hooks and
+triggers is exactly why both deserve their own Defs -- folding
+trigger logic into HookDef would force duplicated filter/decode
+across the N hooks one trigger wraps.
 
 ### The "do it once" rule
 
@@ -189,7 +209,8 @@ Instance + Controller, and whether adding a new variant is a
 
 | Subject | Def | Registry | Instance | Controller | Score | Gap |
 |---|---|---|---|---|---|---|
-| **Skills** | `SkillDef { id, display_name, max_level, effect: EffectDef }` (`ueforge/src/rpg/skill.rs`) | `SkillRegistry` wrapper (`SkillRegistry::new(&[SkillDef { ... }])`); per-mod `static CATALOG: SkillRegistry` | `SkillsState.skill_levels[id]` | `Tracker::apply_one_unlocked` -> `effect.apply(level, max)` | **100%** | No type parameters. Lookup via `CATALOG.def(id)`; iteration via `CATALOG.iter()` or `for s in &CATALOG`. Each row's `EffectDef` does the work; no game-side dispatch match. |
+| **Skills** | `SkillDef { id, display_name, max_level, effect: EffectDef, trigger: &'static TriggerDef }` (`ueforge/src/rpg/skill.rs`) | `SkillRegistry` wrapper; per-mod `static CATALOG: SkillRegistry` | `SkillsState.skill_levels[id]` | `Tracker::apply_one_unlocked` (for OnSlotChange) + future per-trigger dispatchers | **100%** | A skill composes WHAT (`EffectDef`) and WHEN (`TriggerDef`). Today every g2rpg row uses `&ON_SLOT_CHANGE`; future event-driven skills declare their event trigger. |
+| **Triggers** | `TriggerDef { kind, imp: &'static dyn Trigger }` (`ueforge/src/rpg/trigger.rs`) | per-trigger static instances declared by the framework (and games for custom triggers); each trigger TYPE is its own struct + impl | one `&'static dyn Trigger` per registered trigger source | per-trigger-type `install` + dispatch logic (today: just `OnSlotChange`; future: `OnDamageDealt` etc.) | **shipped (Phase 1)** | Symmetric with EffectDef. Phase 1 ships the Trigger trait + `OnSlotChangeTrigger` + skill-level `trigger:` field. Phase 2 adds typed event dispatch + lifts kill/fall hooks into framework triggers. |
 | **Effects** | `EffectDef { kind, imp: &'static dyn Effect }` (`ueforge/src/rpg/effect.rs`) | Per-mod static Effect instances; framework ships standard Effect types (PlayerFloatEffect, SubcomponentMultiplyEffect, SubcomponentAdditiveEffect, ClassFieldsMultiplyEffect, RuntimeEffect, StatusEffectApply, etc.); game-specific Effects implement `Effect` trait | one `&'static dyn Effect` per registered operation | `Effect::apply(level, max_level)` + `Effect::format(level, max_level)` | **100%** | StandardEffect enum + per-game SkillEffect enum collapsed into one Def shape. New game-specific operation = one type + one impl + one static + one catalog row. g2rpg's `apply_skill` match arm is gone; tracker iterates the catalog and calls `effect.apply(...)` directly. |
 | **Creatures** | `CreatureDef { class_name, base_xp }` (`ueforge/src/rpg/xp.rs`) | `CreatureRegistry { entries: &[CreatureDef], default_xp: u32 }`; per-mod `static CREATURES: CreatureRegistry` | per-kill XP value | `CreatureRegistry::lookup` | **100%** | Lookup via `CREATURES.def(class_name)` (full row) or `CREATURES.lookup(class_name)` (XP value with default fallback). Future fields (drop tables, level, faction) extend the row. |
 | **Tabs** | `Tab { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [Tab]` (bare slice -- documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Tiny but the pattern is exact. |
