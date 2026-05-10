@@ -24,55 +24,24 @@ into UE memory yet.
 
 ## TODO / research questions
 
-### Cheat-Engine-style memory scanner (uespy::ops::scan + freeze)
+Priority order is **SDK dump first, scanner deferred until we
+hit a real wall.** Reasoning logged in chat 2026-05-09: the
+dump answers "what's the shape of UE state" with one game
+launch + grep; the scanner answers "where is THIS value RIGHT
+NOW" but requires repetitive in-game manipulation per field.
+Per-field cost: ~30 seconds with the dump vs 20-30 minutes with
+the scanner. SDK dump wins on info density by a wide margin for
+~95% of UE mod work. Scanner becomes the right tool only for
+non-UObject memory (allocator buffers, save blobs, CVars,
+bitfields the dumper flattens) — and we don't yet know which of
+those OWS will need until we try. So:
 
-Want: from a test, "find every memory address holding value X
-(u32 / f32 / utf16 string / etc.), narrow over rescans as the
-value changes, then write / freeze any of the survivors."
+1. Active task: SDK dump (procedure below).
+2. Deferred until we hit a wall: Cheat-Engine-style scanner
+   (sketch below — build it the first time the dump leaves us
+   stuck, not before).
 
-This is what Cheat Engine does in a separate process via
-ReadProcessMemory; we'd do it in-process which is faster (no
-RPM round-trip) and we can correlate hits with UObjects via
-`walk_class` afterwards.
-
-Why it's useful for the stack mod:
-- Pick up Pebbles in-game until inventory shows max = 50
-- Test scans memory for `u32 == 50`, gets thousands of addrs
-- Drop one Pebble (max becomes 49 in the slot, or stays 50
-  in the row, or some don't change at all)
-- Test rescans for `u32 == 50` (or `decreased_by_1`), narrows
-  the survivor list to a few dozen
-- Repeat 1-2 more times → handful of addrs left
-- For each addr: `read_bytes` 256 bytes either side, eyeball
-  the surrounding fields to identify "this is the
-  FMaterialItemData row" vs "this is a UI cache" vs "this is
-  the live UInventorySlot"
-- Confirm by writing 200 to candidates, see which one actually
-  changes the in-game stack ceiling
-
-This is the "no SDK dump? still useful" path — Cheat-Engine-style
-scanning works without knowing the class layout. Once we DO have
-the dump, the scanner becomes a complement (find the field
-faster than grepping headers) rather than a substitute.
-
-Implementation sketch, ~200 LoC in uespy:
-- `uespy::ops::scan_memory { value_type: "u32"|"f32"|"i32"|...,
-   value: <num>, bounds?: { min, max }, regions?: ["private"|"image"|...] }`
-   → returns up to N matched addresses + a session_id
-- `uespy::ops::scan_rescan { session_id, mode: "exact"|"changed"
-   |"decreased"|"increased", new_value? }` → narrows the
-   survivor list
-- `uespy::ops::freeze { addr, value_type, value, hz }` →
-  spawns a thread that rewrites the addr every 1/hz seconds
-- `uespy::ops::unfreeze { addr }` and `freeze_list` for state
-
-Build on `uespy::winproc::process_regions_json`'s region walker.
-read_bytes / write_bytes already cover per-addr ops.
-
-Status: tracked. Not blocking the SDK dump path; complementary
-to it.
-
-### SDK dump procedure (next concrete step)
+### SDK dump procedure (active — do this next)
 
 1. Edit `OutworldStation\Binaries\Win64\ue4ss\UE4SS-settings.ini`:
    in `[CXXHeaderGenerator]` set
@@ -87,6 +56,40 @@ to it.
 5. Rebuild + redeploy with `outworld-station/tweaks/scripts/deploy.ps1 -Install`.
 6. Re-run smoke + run `explore_datatables` — `walk_class`
    should now flip to `ok=true` and print the DataTable list.
+
+### Cheat-Engine-style memory scanner (DEFERRED)
+
+Build only after the SDK dump is done AND we've hit a concrete
+case the dump can't answer. Sketch kept here so the work is
+ready to start when justified, not now.
+
+Pattern for the stack-mod case (illustrative; we'll do it via
+the dump instead):
+- Pick up items in-game until inventory shows max = 50
+- Test scans memory for `u32 == 50`, gets thousands of addrs
+- Drop one item (max becomes 49 in the slot, or stays 50 in
+  the row, or some don't change at all)
+- Rescan for `u32 == 50` or `decreased_by_1`, narrows the
+  survivor list
+- Repeat 1-2 more times → handful of addrs left
+- For each addr: `read_bytes` 256 bytes either side, eyeball
+  the surrounding fields to identify the class membership
+- Confirm by writing 200, see which addr changes the in-game
+  stack ceiling
+
+Implementation sketch, ~200 LoC in uespy:
+- `uespy::ops::scan_memory { value_type: "u32"|"f32"|...,
+   value, bounds?, regions?: ["private"|"image"|...] }`
+   → up to N matched addresses + session_id
+- `uespy::ops::scan_rescan { session_id, mode: "exact"|"changed"
+   |"decreased"|"increased", new_value? }`
+- `uespy::ops::freeze { addr, value_type, value, hz }` /
+  `unfreeze` / `freeze_list`
+
+Builds on `uespy::winproc::process_regions_json`'s region
+walker. `read_bytes` / `write_bytes` already cover per-addr ops.
+
+Status: backlog. Not blocking; build when actually needed.
 
 
 

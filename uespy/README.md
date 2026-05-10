@@ -340,16 +340,17 @@ Selectors:
 
 ## Backlog (research questions tracked across games)
 
-- **Cheat-Engine-style memory scanner.** `scan_memory { type,
-  value }` + `scan_rescan { session_id, mode }` + `freeze
-  { addr, value, hz }`. Walks committed regions
-  (`uespy::winproc` already has the iterator), narrows over
-  rescans, complements `walk_class` for cases where SDK
-  knowledge is incomplete or the field isn't on a UObject at
-  all (raw allocator buffers, UI caches, etc.). Estimated
-  ~200 LoC. See `outworld-station/research.md` for the
-  motivating use case (stack-mod field discovery without an
-  SDK dump).
+- **Cheat-Engine-style memory scanner** (deferred until
+  needed). `scan_memory { type, value }` + `scan_rescan
+  { session_id, mode }` + `freeze { addr, value, hz }`.
+  Walks committed regions (`uespy::winproc` already has the
+  iterator). Build the first time an SDK dump leaves us
+  stuck — generally that means non-UObject memory (allocator
+  buffers, save blobs, CVars, bitfields the dumper flattens).
+  For the ~95% case, dump-driven research is dramatically
+  faster (30 sec / field vs 20-30 min / field). Estimated
+  ~200 LoC when we get to it. Motivating use case in
+  `outworld-station/research.md`.
 
 ## Adding to uespy
 
