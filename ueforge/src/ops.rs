@@ -197,6 +197,37 @@ pub fn fname_to_string(args: &Json) -> Result<Json, String> {
     Ok(serde_json::json!({ "string": s }))
 }
 
+/// Walk a class's property chain — including the super-class
+/// chain — looking for the field that contains
+/// `offset_within_instance`. Returns the field's name + the
+/// offset-within-the-field (so callers can render
+/// `MaxCanStack +0` for an exact hit, or `Colour +0xC` if the
+/// target is mid-struct).
+fn locate_property(
+    class: &UObject,
+    offset_in_instance: u32,
+) -> Option<(String, u32, u32)> {
+    let mut cur: Option<&ue::UClass> = Some(unsafe {
+        &*(class as *const UObject as *const ue::UClass)
+    });
+    let mut chain_depth = 0;
+    while let Some(c) = cur {
+        if chain_depth > 16 {
+            break;
+        }
+        for p in c.iter_native_properties() {
+            if offset_in_instance >= p.offset
+                && offset_in_instance < p.offset + p.element_size.max(1)
+            {
+                return Some((p.name, p.offset, p.element_size));
+            }
+        }
+        cur = c.super_class();
+        chain_depth += 1;
+    }
+    None
+}
+
 /// Given a raw memory address, find the UObject (if any) that
 /// contains it. Walks GObjects, computes each object's
 /// `[base, base + class.properties_size)` range, returns the
@@ -239,7 +270,8 @@ pub fn inspect_address(args: &Json) -> Result<Json, String> {
             continue; // sanity: skip absurd sizes
         }
         if target >= base && target < base + size {
-            return Ok(serde_json::json!({
+            let off = (target - base) as u32;
+            let mut result = serde_json::json!({
                 "found": true,
                 "addr": format!("0x{target:X}"),
                 "instance_addr": format!("0x{base:X}"),
@@ -247,9 +279,23 @@ pub fn inspect_address(args: &Json) -> Result<Json, String> {
                 "class": class.as_object().name(),
                 "instance_name": obj.name(),
                 "instance_full_name": obj.full_name(),
-                "offset_in_instance": format!("0x{:X}", target - base),
+                "offset_in_instance": format!("0x{off:X}"),
                 "instance_size": size,
-            }));
+            });
+            // Try to name the field via property walk.
+            if let Some((name, field_off, field_size)) =
+                locate_property(class.as_object(), off)
+            {
+                let into_field = off - field_off;
+                result["field"] = serde_json::json!(name);
+                result["field_offset"] = serde_json::json!(format!("0x{field_off:X}"));
+                result["field_size"] = serde_json::json!(field_size);
+                if into_field > 0 {
+                    result["field_inner_offset"] =
+                        serde_json::json!(format!("+0x{into_field:X}"));
+                }
+            }
+            return Ok(result);
         }
     }
     Ok(serde_json::json!({

@@ -363,6 +363,17 @@ fn format_inspect(j: &serde_json::Value) -> String {
     let class = j.get("class").and_then(|v| v.as_str()).unwrap_or("?");
     let inst = j.get("instance_name").and_then(|v| v.as_str()).unwrap_or("?");
     let off = j.get("offset_in_instance").and_then(|v| v.as_str()).unwrap_or("?");
+
+    // Field-name annotation if the property walker found one.
+    if let Some(field) = j.get("field").and_then(|v| v.as_str()) {
+        let inner = j
+            .get("field_inner_offset")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        return format!("{class}::{field}{inner} on {inst}");
+    }
+
     let size = j.get("instance_size").and_then(|v| v.as_u64()).unwrap_or(0);
     format!("{class}.{inst} @ {off} (instance size 0x{size:X})")
 }

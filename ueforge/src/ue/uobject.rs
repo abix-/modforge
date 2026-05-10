@@ -14,6 +14,17 @@ use crate::ue::offsets::{
     uclass,
 };
 
+/// One field on a UE class: the property's name, its byte
+/// offset within an instance, and the size of one element. For
+/// arrays / TArrays the element size is the per-element size,
+/// not the total field size.
+#[derive(Debug, Clone)]
+pub struct NativeProperty {
+    pub name: String,
+    pub offset: u32,
+    pub element_size: u32,
+}
+
 #[repr(transparent)]
 pub struct UObject {
     _opaque: [u8; 0],
@@ -156,6 +167,52 @@ impl UClass {
                 .cast::<u32>()
                 .read_unaligned()
         }
+    }
+
+    /// Walk this class's ChildProperties chain (FField* threaded
+    /// by Next), yielding `(name, offset_within_instance, element_size)`
+    /// for every native property. Does NOT recurse into the
+    /// super-class — caller walks the super chain via
+    /// [`Self::super_class`] if needed.
+    ///
+    /// Returns owned strings so the iterator can outlive a borrow
+    /// on the class. Cheap enough for interactive lookups
+    /// (each class has tens of properties typically).
+    pub fn iter_native_properties(&self) -> Vec<NativeProperty> {
+        let mut out = Vec::new();
+        let mut cur: *const u8 = unsafe {
+            (self as *const UClass as *const u8)
+                .add(offsets::ustruct::CHILD_PROPERTIES)
+                .cast::<*const u8>()
+                .read_unaligned()
+        };
+        let mut depth = 0;
+        while !cur.is_null() && depth < 4096 {
+            unsafe {
+                let name_ptr = cur.add(offsets::ffield::NAME_PRIVATE);
+                let name_fname: crate::ue::fname::FName =
+                    (name_ptr as *const crate::ue::fname::FName).read_unaligned();
+                let name = if name_fname.is_none() {
+                    String::from("<none>")
+                } else {
+                    runtime().name_resolver.to_string(name_fname)
+                };
+                let offset = (cur.add(offsets::fproperty::OFFSET_INTERNAL) as *const i32)
+                    .read_unaligned() as u32;
+                let elem_size = (cur.add(offsets::fproperty::ELEMENT_SIZE) as *const i32)
+                    .read_unaligned() as u32;
+                let next: *const u8 = (cur.add(offsets::ffield::NEXT) as *const *const u8)
+                    .read_unaligned();
+                out.push(NativeProperty {
+                    name,
+                    offset,
+                    element_size: elem_size,
+                });
+                cur = next;
+            }
+            depth += 1;
+        }
+        out
     }
 
     pub fn super_class(&self) -> Option<&UClass> {

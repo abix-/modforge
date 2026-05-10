@@ -91,8 +91,32 @@ pub mod ufield {
 
 pub mod ustruct {
     pub const SUPER_STRUCT: usize = 0x40;
-    pub const CHILDREN: usize = 0x48;
-    pub const SIZE: usize = 0xB0;
+    pub const CHILDREN: usize = 0x48;            // UField* (functions)
+    pub const CHILD_PROPERTIES: usize = 0x50;    // FField* (native props)
+    pub const SIZE: usize = 0xB0;                // PropertiesSize i32
+}
+
+/// FField — UE 5.x lightweight property header. Lives off
+/// `UStruct::ChildProperties` chain, threaded by `Next`.
+/// Verified against UE 5.4 stock; sizes/offsets are stable
+/// through UE 5.x.
+pub mod ffield {
+    pub const CLASS_PRIVATE: usize = 0x08;
+    pub const OWNER: usize = 0x10;          // FFieldVariant (2 ptrs = 0x10)
+    pub const NEXT: usize = 0x20;
+    pub const NAME_PRIVATE: usize = 0x28;   // FName (8 bytes)
+    pub const SIZE: usize = 0x30;
+}
+
+/// FProperty extends FField. `OFFSET_INTERNAL` is the byte
+/// offset of this field within an instance — what
+/// inspect_address uses to map an address back to a field name.
+pub mod fproperty {
+    pub const ARRAY_DIM: usize = 0x30;
+    pub const ELEMENT_SIZE: usize = 0x34;
+    pub const PROPERTY_FLAGS: usize = 0x38;
+    pub const REP_INDEX: usize = 0x40;
+    pub const OFFSET_INTERNAL: usize = 0x4C; // verified live on OWS UE 5.4
 }
 
 pub mod uclass {
