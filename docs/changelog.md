@@ -9,6 +9,29 @@ Newest first.
 
 ## 2026-05-10
 
+### Phase 2 small promotions
+
+Three Phase 2 items land before the big RPG promotion:
+
+- **`ueforge::ue::class_tweak::ClassFieldTweak<T>`** -- live-UObject
+  sibling of `FieldTweak<T>` (which is DataTable-row scoped). Two
+  closure shape: `filter(&UObject) -> bool` (cheap, runs before
+  the vanilla read) and `transform(T) -> Option<T>` (`None` =
+  skip writing this instance). Captures vanilla keyed per-instance
+  so re-applies don't compound.
+- **bbp `patch.rs` + `survival.rs` migrated to `ClassFieldTweak<T>`.**
+  Hand-rolled GObjects walks deleted; both files are now driven
+  by `static SLOTS / HUNGER / THIRST: ClassFieldTweak<...> = ...;`
+  and a single `.apply()` call. Net -150 LoC from bbp.
+- **`ueforge::hook::function_ptr` / `function_ptr_required`** --
+  small helper that returns `*const UFunction as usize`. Pattern
+  is: stash in an `AtomicUsize` at hook install, dispatch by
+  pointer identity in the trampoline.
+- **`Queue::drain` canonical-site doc.** The `bbp::kill_hook` PE
+  trampoline drain pattern (empty-check, re-entrance guard, peak
+  counter, time scope) is now in the rustdoc so the next mod
+  doesn't have to reverse-engineer it.
+
 ### bbp consumes ueforge for ALL infra (Phase 1 dedup)
 
 better-backpack lost ~930 lines of duplicated framework. Every piece

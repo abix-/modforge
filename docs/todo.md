@@ -21,23 +21,42 @@ exports, `DLL_HMODULE` static. Replaced with
 `src/rpg/tab.rs`, and a 1-line `build.rs`. Build-clean
 validated; in-game smoke test pending.
 
-**Phase 2 -- remaining promotions (next sessions):**
+**Phase 2 small promotions DONE (2026-05-10):**
 
-- [ ] **Promote the RPG framework to `ueforge::rpg`.**
-  Generic `SkillEffect`, `Skills<T>`, sqrt curve, per-slot JSON
-  persistence with a `slot_key()` closure, world_loader, disabled-
-  skill set, `RpgTab` widget. After this lands, bbp's `rpg/`
-  shrinks to catalog content + game-specific hook arms. Multi-
-  session lift; unlocks RPG mods on any UE game.
-- [ ] **Cached `&UFunction` identity dispatch helper.** Thin layer
-  over `ProcessEventHook` so games stop reading function names on
-  the hot path. Pattern lives in bbp `inv_hook` today.
-- [ ] **Trampoline-as-drain-site helper.** `Queue::drain_in_trampoline`
-  + doc the canonical drain-site choice. Pattern lives in bbp
-  `kill_hook` today.
-- [ ] **`patch::run` -> `ClassFieldTweak<T>`.** Live-UObject sibling
-  of `FieldTweak<T>` -- one primitive replaces every "walk every X,
-  mutate field at offset, filter by Y" pattern in any UE game.
+- [x] **`ClassFieldTweak<T>`** -- live-UObject sibling of
+  `FieldTweak<T>` (which is DataTable-row scoped). Walks
+  GObjects, snapshots vanilla per instance, writes via
+  `transform(vanilla) -> Option<T>`. bbp's `patch::run` and
+  `survival::run` migrated -- ~150 LoC dropped from bbp.
+- [x] **`hook::function_ptr` / `function_ptr_required`** -- one-line
+  resolver for `*const UFunction as usize`. New mods cache the
+  result in an `AtomicUsize` and dispatch by pointer identity in
+  the trampoline.
+- [x] **Canonical-site doc on `Queue::drain`** -- the empty-check
+  / re-entrance / counter pattern is now in the rustdoc so the
+  next mod gets it right on first try.
+
+**Phase 3 -- RPG framework promotion (NOT started, multi-session):**
+
+- [ ] **Promote the RPG framework to `ueforge::rpg`.** Build
+  `ueforge::rpg` containing:
+  - generic `SkillEffect` enum shape (game crates parameterize
+    on their own effect variant set)
+  - `SkillsState<E>` schema (`xp / level / skill_points /
+    skill_levels: BTreeMap<String, u32>`)
+  - sqrt-curve helper + XP-curve helpers (`100 * N^1.8` cumulative,
+    inverse `level_for_xp`)
+  - per-slot JSON persistence with a `slot_key()` resolver
+    closure (FGuid resolver in bbp; arbitrary in other games)
+  - world_loader poller (1Hz with `None -> Some / a -> b /
+    Some -> None` transitions)
+  - disabled-skill set + per-skill toggle
+  - `RpgTab` widget template (level / XP bar / catalog rows /
+    +1/+10/-1/-10/on-toggle)
+  After this lands, bbp's `rpg/` shrinks to catalog content +
+  game-specific hook arms. Estimated 1-2 sessions of API design
+  + 1 session of bbp migration. Defer until the user explicitly
+  schedules it.
 
 ## ueforge hardening (kovarex review, 2026-05-09)
 

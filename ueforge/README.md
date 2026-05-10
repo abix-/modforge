@@ -453,7 +453,7 @@ else?". Update on every major slice.
 | 11 | `GObjectsView` (flat + chunked) | ✅ | · | · | done |
 | 12 | `find_class_fast` (now name-cached) | ✅ | · | · | done |
 | 13 | `find_by_short_name` (DataTable) | ✅ | — | · | done |
-| 14 | `FieldTweak<T>` (vanilla snapshot + idempotent re-apply) | ✅ | 🔵 fits `BackpackSlots` apply | · (`stacks.rs`) | **bbp:** rewrite `patch::run` on top (Phase 2) |
+| 14 | `FieldTweak<T>` (DataTable rows) + `ClassFieldTweak<T>` (live UObjects) | ✅ | · (`patch.rs` + `survival.rs` migrated) | · (`stacks.rs`) | done -- Phase 2 |
 | 15 | DataTable polling worker (`on_first_sight`) | ✅ | — | · | done |
 | 16 | Native-property walker (`UClass::cached_native_properties`) | ✅ | — | · (via `inspect_address`) | done |
 | 17 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ | · | — | done |
@@ -464,8 +464,8 @@ else?". Update on every major slice.
 |---|---|---|---|---|---|
 | 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · | — | done — bbp's `hook/` deleted |
 | 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) | — | done |
-| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | 🔵 | 📦 (used in `inv_hook`) | — | **promote to ueforge:** thin layer on top of `ProcessEventHook` (Phase 2) |
-| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | 🔵 (docs only) | 📦 (kill_hook acts as drain) | — | **promote to ueforge:** ship a `Queue::drain_in_trampoline` helper + doc the canonical drain-site selection (Phase 2) |
+| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | ✅ (`hook::function_ptr` / `function_ptr_required`) | · (own `lookup` helpers; functionally equivalent) | — | done -- Phase 2 |
+| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | ✅ (canonical-site doc on `Queue::drain`) | · (drained from `kill_hook`) | — | done -- Phase 2 |
 
 ### Control plane (HTTP / TDD)
 
@@ -550,23 +550,28 @@ in `src/rpg/tab.rs` (no FFI hop, no buffer-passing — calls
 `tracker` / `skills` / `xp` directly), and a 1-line `build.rs`.
 Build-clean validated; in-game smoke test pending.
 
-**Phase 2 — remaining promotions (next sessions):**
+**Phase 2 — small promotions (DONE 2026-05-10):**
 
-1. **Promote the RPG framework** (rows 41-51). Build `ueforge::rpg`
-   containing `SkillEffect`, `Skills<T>`, sqrt curve, JSON
-   persistence with a `slot_key()` closure, the disabled-skill
-   set, the tab template. After this, bbp's `rpg/` shrinks to
-   the catalog content + game-specific hooks. Multi-session;
-   unlocks RPG mods on any UE game.
-2. **Cached-UFunction-identity dispatch** (row 20) — thin layer
-   on top of `ProcessEventHook` so games stop reading function
-   names on the hot path. ~2h.
-3. **Trampoline-as-drain-site helper** (row 21) — ship a
-   `Queue::drain_in_trampoline` helper + doc the canonical
-   drain-site choice. ~1h.
-4. **`patch::run` → `ClassFieldTweak<T>`** (row 14, the live-UObject
-   sibling of `FieldTweak<T>`). Single primitive replaces every
-   "walk every X, mutate field at offset, filter by X" pattern. ~1h.
+- ✅ `ClassFieldTweak<T>` (row 14) -- live-UObject sibling of
+  `FieldTweak<T>`. Walks GObjects, snapshots vanilla per
+  instance, writes via `transform(vanilla) -> Option<T>`.
+  bbp's `patch::run` and `survival::run` migrated.
+- ✅ `hook::function_ptr` / `function_ptr_required` (row 20) --
+  cached UFunction-pointer-identity dispatch. New mods reach for
+  this directly; bbp's older `inv_hook::lookup` helpers stay
+  (functionally equivalent, migration would be pure churn).
+- ✅ Canonical-site doc on `Queue::drain` (row 21) -- the next
+  PE-trampoline-drain mod gets the empty-check / re-entrance /
+  counter pattern right on first try.
+
+**Phase 3 -- RPG framework promotion (not started, multi-session):**
+
+Build `ueforge::rpg` containing `SkillEffect`, `Skills<T>`,
+sqrt-curve helper, XP curve helpers, per-slot JSON persistence
+with a `slot_key()` closure, world_loader poller with a slot-key
+resolver closure, disabled-skill set, RpgTab widget. After this
+lands, bbp's `rpg/` shrinks to catalog content + game-specific
+hook arms. Multi-session lift; unlocks RPG mods on any UE game.
 
 ## Backlog (research questions tracked across games)
 
