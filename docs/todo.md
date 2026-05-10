@@ -437,6 +437,15 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C++++++ -- ueforge::rpg::SlotKeyResolver (DONE 2026-05-10)
+
+- [x] **`ueforge::rpg::SlotKeyResolver`** -- generic save-slot
+  key extractor. `(class_name, guid_offset)` config; static
+  `resolve()` walks GObjects for first instance of class, reads
+  FGuid at offset, formats as filename. Plug into
+  `SlotPoller::spawn` directly. Migrated bbp's `save_slot::find_in_game_game_state`
+  + `current_slot_key` to a 5-line wrapper. 2 unit tests.
+
 ### Wave C+++++ -- ueforge::ue::core_types (DONE 2026-05-10)
 
 - [x] **`ueforge::ue::core_types`** module with `FGuid`,

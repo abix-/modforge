@@ -1,43 +1,27 @@
-// Spike B: locate the active save slot via AInGameGameState.
+// G2 save-slot key resolver. The actual walk lives in
+// `ueforge::rpg::SlotKeyResolver`; this module wires the G2-specific
+// class name + offset.
 //
-// AInGameGameState is the in-game UWorld's GameState. It's populated for
-// the duration of the active session and carries `PlaythroughGuid`
-// (FGuid, 16 bytes) at offset 0x032C
+// AInGameGameState is the in-game UWorld's GameState. It carries
+// `PlaythroughGuid` (FGuid, 16 bytes) at offset 0x032C
 // (`Maine_classes.hpp:28544`). This is the same stable GUID used to
-// disambiguate saves on disk -- exactly what we need as a persistence
-// filename key.
+// disambiguate saves on disk -- exactly what we need as a
+// persistence filename key.
 //
 // Earlier attempt used `USaveLoadManager.SaveInProgressSaveGameHeaderData`
 // at +0x90, but that field is null except during an active save
 // operation. AInGameGameState is the right surface for "we're in a
 // world, give me the playthrough id."
-//
-// Returns None when not in-world (main menu, between saves). Caller
-// should re-check on demand.
 
-use ueforge::ue::{ClassRef, FGuid, UObject};
+use ueforge::rpg::SlotKeyResolver;
 
-const IN_GAME_GAME_STATE_PLAYTHROUGH_GUID: usize = 0x032C;
+const PLAYTHROUGH_GUID_OFFSET: usize = 0x032C;
 
-/// Returns the current playthrough's stable identifier as a 32-char hex
-/// string suitable as a filename. None when not in-world.
+static RESOLVER: SlotKeyResolver = SlotKeyResolver::new("InGameGameState", PLAYTHROUGH_GUID_OFFSET);
+
+/// Returns the current playthrough's stable identifier as a 32-char
+/// hex string suitable as a filename. None when not in-world.
 pub fn current_slot_key() -> Option<String> {
-    let game_state = find_in_game_game_state()?;
-    let guid: FGuid = unsafe {
-        game_state
-            .field_ptr(IN_GAME_GAME_STATE_PLAYTHROUGH_GUID)
-            .cast::<FGuid>()
-            .read_unaligned()
-    };
-    if guid.is_zero() {
-        return None;
-    }
-    Some(guid.to_filename())
-}
-
-static IN_GAME_GAME_STATE: ClassRef = ClassRef::new("InGameGameState");
-
-fn find_in_game_game_state() -> Option<&'static UObject> {
     ueforge::counters::bump(&crate::counters::WORLD_LOADER_GOBJECTS_WALKS);
-    IN_GAME_GAME_STATE.with_first_instance(|o| unsafe { &*(o as *const UObject) })
+    RESOLVER.resolve()
 }
