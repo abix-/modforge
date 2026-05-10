@@ -110,9 +110,64 @@ fn on_shutdown() {
 fn render_tweaks_tab() {
     uespy::ui::text("Outworld Station Tweaks");
     uespy::ui::separator();
-    uespy::ui::text_disabled("(scaffold; offsets pending)");
     uespy::ui::spacing();
-    if uespy::ui::button("Reload patches") {
-        uespy::log::log(format_args!("Reload patches clicked (no-op)"));
+    render_stacks_section();
+}
+
+fn render_stacks_section() {
+    uespy::ui::text("Item stack multiplier");
+    uespy::ui::text_disabled(
+        "Multiplies every DT_Materials.MaxCanStack by this factor. \
+         Applied once at game start; tweak + click Apply to re-run \
+         live. Equipment items (vanilla cap 1) stay non-stackable.",
+    );
+    uespy::ui::spacing();
+
+    // Slider state lives in stacks::MULTIPLIER. Read, present, write.
+    let mut m = stacks::current_multiplier();
+    uespy::ui::set_next_item_width(220.0);
+    if uespy::ui::slider_i32(
+        "Multiplier (x vanilla)",
+        &mut m,
+        stacks::MIN_MULTIPLIER,
+        stacks::MAX_MULTIPLIER,
+    ) {
+        stacks::set_multiplier(m);
+    }
+
+    uespy::ui::spacing();
+    if uespy::ui::button("Apply") {
+        match stacks::apply_now() {
+            Ok(n) => uespy::log::log(format_args!(
+                "stacks: tab applied {}x to {n} rows",
+                stacks::current_multiplier()
+            )),
+            Err(e) => uespy::log::log(format_args!("stacks: tab apply failed: {e}")),
+        }
+    }
+    uespy::ui::same_line();
+    if uespy::ui::button("Reset to 1x") {
+        stacks::set_multiplier(1);
+        match stacks::apply_now() {
+            Ok(n) => uespy::log::log(format_args!("stacks: tab reset to vanilla on {n} rows")),
+            Err(e) => uespy::log::log(format_args!("stacks: tab reset failed: {e}")),
+        }
+    }
+
+    uespy::ui::spacing();
+    uespy::ui::separator();
+    uespy::ui::text_disabled("Status");
+    if stacks::ever_applied() {
+        uespy::ui::text(&format!(
+            "Current: {}x   Last apply: {} rows",
+            stacks::current_multiplier(),
+            stacks::last_applied_rows(),
+        ));
+        uespy::ui::text(&format!(
+            "Vanilla baseline captured: {} rows",
+            stacks::vanilla_count(),
+        ));
+    } else {
+        uespy::ui::text_disabled("Not applied yet — DT_Materials still loading?");
     }
 }

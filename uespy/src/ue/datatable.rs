@@ -21,6 +21,9 @@
 //! let v: u32 = unsafe { (row.add(STACK_OFFSET) as *const u32).read_unaligned() };
 //! ```
 
+use std::thread;
+use std::time::{Duration, Instant};
+
 use crate::ue::offsets::datatable as off;
 use crate::ue::{self, UObject, fname::FName, tmap};
 
@@ -56,6 +59,47 @@ pub unsafe fn iter_rows(table: &UObject) -> impl Iterator<Item = (u64, *const u8
             Some((key, value))
         }
     })
+}
+
+/// Spawn a worker that polls for a `UDataTable` by short name
+/// and runs `on_ready` once on the first sighting. Mod feature
+/// code typically calls this from `ModInfo::on_unreal_init` so
+/// DT mutations land BEFORE any UI widget / actor caches a row
+/// copy. See uespy/README.md "Pattern: DataTable mutation
+/// timing" for why timing matters.
+///
+/// `on_ready` runs on the worker thread (not the game thread).
+/// Reading + writing field bytes via raw pointer arithmetic is
+/// safe enough for one-shot DT mutations during init — UE isn't
+/// iterating those rows yet. For anything more invasive, queue
+/// to a game-thread drain via `uespy::Queue`.
+///
+/// The worker exits after one successful run, or after
+/// `timeout` elapses without finding the DT.
+pub fn on_first_sight<F>(name: &'static str, timeout: Duration, on_ready: F)
+where
+    F: FnOnce(&'static UObject) + Send + 'static,
+{
+    let interval = Duration::from_millis(250);
+    let thread_name = format!("uespy-dt-{name}");
+    let _ = thread::Builder::new().name(thread_name).spawn(move || {
+        let started = Instant::now();
+        loop {
+            if let Some(dt) = find_by_short_name(name) {
+                on_ready(dt);
+                return;
+            }
+            if started.elapsed() > timeout {
+                crate::log::log(format_args!(
+                    "uespy::datatable::on_first_sight: timed out waiting \
+                     for '{name}' after {:?}",
+                    timeout
+                ));
+                return;
+            }
+            thread::sleep(interval);
+        }
+    });
 }
 
 /// Find the first non-CDO `UDataTable` instance whose short name

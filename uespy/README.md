@@ -1,12 +1,15 @@
 # uespy
 
-**uespy is the base layer for every UE4SS Rust mod in this
-workspace.** Every piece of plumbing a UE4SS mod needs — the C++
-shim, the imgui bridge, the UObject SDK, hook framework, debug
-endpoint, test client, build glue, logger, all of it — lives here
-once. Game crates supply only what's actually game-specific:
-platform offsets, snapshot shape, op handlers, drain wiring, the
-content of their UI tabs.
+**uespy is the framework every UE4SS Rust mod in this workspace
+builds on.** Game crates declare a `ModInfo` and implement
+callbacks; uespy owns the lifecycle (`on_unreal_init`,
+`on_shutdown`, per-tab `render`), generates the `extern "C"`
+entry points the bundled C++ shim invokes, and ships every piece
+of plumbing a UE4SS mod needs — the C++ shim, imgui bridge,
+UObject SDK, hook surface, debug endpoint, test client, build
+glue, logger, all of it. Game crates supply only what's actually
+game-specific: platform offsets, snapshot shape, op handlers,
+drain wiring, the content of their UI tabs.
 
 The rule, codified:
 
