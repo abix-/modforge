@@ -25,17 +25,24 @@
 //! may attach completely different fields. ueforge owns the bones,
 //! not the meat.
 
-pub mod xp;
-pub mod progress;
-pub mod state;
-pub mod store;
+pub mod applier;
 pub mod disabled;
 pub mod poller;
+pub mod progress;
+pub mod skill;
+pub mod state;
+pub mod store;
+pub mod tab;
+pub mod tracker;
 pub mod vanilla;
+pub mod xp;
 
+pub use applier::RpgApplier;
 pub use disabled::DisabledSkills;
 pub use poller::SlotPoller;
+pub use skill::{Skill, find_skill};
 pub use state::SkillsState;
 pub use store::SlotStore;
+pub use tracker::{Tracker, XpResult};
 pub use vanilla::VanillaCache;
 pub use xp::Curve;

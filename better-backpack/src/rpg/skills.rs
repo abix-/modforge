@@ -196,13 +196,11 @@ pub enum PercentFormat {
     DrainReduction,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct Skill {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub max_level: u32,
-    pub effect: SkillEffect,
-}
+/// One row in the catalog. Aliases `ueforge::rpg::Skill<SkillEffect>`
+/// so the generic framework owns the row shape; bbp owns the
+/// `SkillEffect` enum that names every kind of write the game
+/// supports.
+pub type Skill = ueforge::rpg::Skill<SkillEffect>;
 
 // ---------------------------------------------------------------------
 // Field offsets used by the catalog. Centralized here so the catalog
@@ -504,7 +502,7 @@ pub const CATALOG: &[Skill] = &[
 ];
 
 pub fn lookup(id: &str) -> Option<&'static Skill> {
-    CATALOG.iter().find(|s| s.id == id)
+    ueforge::rpg::find_skill(CATALOG, id)
 }
 
 

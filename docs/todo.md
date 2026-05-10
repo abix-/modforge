@@ -54,18 +54,35 @@ validated; in-game smoke test pending.
 - [x] **bbp migrations** -- `state.rs` deleted; `tracker / world_loader
   / xp / apply / skills / debug` all consume ueforge directly.
 
-**Phase 3 second wave (NOT started, multi-session):**
+**Phase 3 second wave (DONE 2026-05-10):**
 
-- [ ] **`Catalog<E>` + `Skill<E>`** (audit row 41) -- generic
-  catalog row with a user-provided effect enum.
-- [ ] **`apply_skill` dispatcher shape** (audit row 48) --
-  per-effect-variant `OnceLock<vanilla>` pattern in
-  `rpg::vanilla::Cache<K, V>` + canonical-apply doc.
-- [ ] **`rpg::tab::render(catalog, format_effect_fn)`**
-  (audit row 49) -- ImGui template: header (level + XP bar +
-  skill points), catalog rows (+1/+10/-1/-10/on-toggle), debug
-  footer. Game crates supply a `format_effect` closure for the
-  per-skill text.
+- [x] **`ueforge::rpg::Skill<E>` + `find_skill`** (audit row 41)
+  -- generic catalog row parameterized on the game's effect
+  enum. `bbp::Skill = ueforge::rpg::Skill<SkillEffect>` type
+  alias; bbp's CATALOG is now `&'static [Skill<SkillEffect>]`.
+  Lives at `ueforge/src/rpg/skill.rs` with 2 unit tests.
+- [x] **`ueforge::rpg::RpgApplier` trait + `Tracker<A>`** (audit
+  row 48) -- the seam where ueforge's state/persistence layer
+  meets the game's apply dispatch. Trait method signatures:
+  `apply_skill(&self, state, skill)`, `apply_all`,
+  `format_effect`. `Tracker<A>` owns slot binding, in-memory
+  state, Applier instance, persistence, spend/refund/record_xp/
+  reapply transactionally with disk save. bbp's `tracker.rs`
+  shrunk to a thin shim over `static TRACKER: Tracker<GameApplier>`.
+  Lives at `ueforge/src/rpg/applier.rs` and
+  `ueforge/src/rpg/tracker.rs`.
+- [x] **`ueforge::rpg::tab::render`** (audit row 49) -- ImGui
+  template: header (level + XP bar + skill points), catalog
+  rows (+1/+10/-1/-10/optional on-toggle), debug footer. Takes
+  `&'static Tracker<A>` + optional `&ToggleFns` for the
+  on/off column. bbp's `tab.rs` shrunk to a counter-bumping
+  wrapper around `ueforge::rpg::tab::render`. Lives at
+  `ueforge/src/rpg/tab.rs`.
+
+After this wave, bbp's `rpg/` is purely game-specific content:
+`SkillEffect` variants, CATALOG entries, `GameApplier` dispatch
+arms, `format_effect` text, `xp::xp_for_creature` bestiary,
+kill_hook / fall_hook trampolines. Everything else is ueforge.
 
 Once the second wave lands, bbp's `rpg/` becomes: catalog content
 (`SkillEffect` variants + CATALOG entries) + game-specific apply
