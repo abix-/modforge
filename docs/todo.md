@@ -14,6 +14,120 @@
 
 ---
 
+## P0 -- DataTableDef + ImGui browser (read-only)
+
+The architectural insight: stacks + difficulty + status effects
+are all special cases of "typed-field operations on iterated
+objects." The TABLES themselves (UDataTable + row schema) are
+their own first-class concept that nothing has captured yet.
+
+Step 1 (this todo entry): READ-only browser. Scan, schema-dump,
+display in ImGui. Writes are a separate later step (the painful
+part).
+
+### Phase 1a: schema discovery + DataTableDef
+
+- [ ] **`DataTableDef`** -- the workspace-standard `<Subject>Def`
+  for "a UE5 UDataTable + its row struct schema":
+  ```rust
+  pub struct DataTableDef {
+      pub id: &'static str,           // stable id
+      pub table_name: &'static str,   // UE name (find via GObjects)
+      pub row_struct: RowSchema,      // field name -> offset -> type
+  }
+  pub struct RowSchema {
+      pub name: &'static str,         // UScriptStruct name
+      pub fields: &'static [RowField],
+  }
+  pub struct RowField {
+      pub name: &'static str,
+      pub offset: usize,
+      pub kind: FieldKind,            // I32 | U32 | F32 | FName | FString | ...
+  }
+  ```
+- [ ] **`DataTableRegistry`** -- `&[&'static DataTableDef]`,
+  same shape as the other Drop-having Def registries.
+- [ ] **Dynamic discovery** -- `ueforge::ue::probe::
+  discover_data_tables() -> Vec<DataTableDef>`. Walks GObjects,
+  finds every `UDataTable` instance, reads its `RowStruct`'s
+  `FProperty` chain into a `RowSchema`. Skips engine-internal
+  tables; filters to game-scope (configurable).
+
+### Phase 1b: live snapshots
+
+- [ ] **`DataTableSnapshot`** -- runtime read of all rows for a
+  given DataTableDef. Walks the table's `RowMap`, copies each
+  row's fields into typed values:
+  ```rust
+  pub struct DataTableSnapshot {
+      pub rows: Vec<RowSnapshot>,
+  }
+  pub struct RowSnapshot {
+      pub name_fname: u64,
+      pub fields: HashMap<&'static str, FieldValue>,
+  }
+  pub enum FieldValue { I32(i32), U32(u32), F32(f32), FName(u64), Str(String), Bytes(Vec<u8>), ... }
+  ```
+- [ ] **`DataTableDef::snapshot(&self) -> Option<DataTableSnapshot>`**
+  -- captures all rows on demand. Cold path; allocates freely.
+
+### Phase 1c: debug ops
+
+- [ ] **`list_data_tables`** -- returns every registered
+  DataTableDef + its row schema. Auto-derived from the registry.
+  Lets test clients discover what's available without code
+  changes.
+- [ ] **`dump_data_table { id }`** -- returns the live snapshot
+  (rows + values) as JSON.
+- [ ] **`discover_data_tables`** -- runtime walks GObjects, returns
+  every UDataTable found in the game (id + table_name +
+  row_struct schema), regardless of whether it's been registered
+  in DataTableRegistry. Pure research surface.
+
+### Phase 1d: ImGui browser tab
+
+- [ ] **`ueforge::ui::data_table_browser`** -- new ImGui tab
+  template:
+  - Left pane: list of registered + discovered tables.
+  - Right pane: when a table is selected, show its schema
+    (field name | type | offset) + a paginated table of rows
+    (FName + every field's current value).
+  - Refresh button to re-snapshot live values.
+  - Filter / search box on row FName for big tables.
+- [ ] **g2rpg + ows-tweaks integration** -- add a "Tables" tab
+  to each mod's MOD_INFO that calls
+  `ueforge::ui::data_table_browser::render(&DT_REGISTRY)`.
+  Both mods get the browser for free.
+
+### Phase 1e: validation
+
+- [ ] **Compare static-declared vs discovered** -- when both
+  sources are present (e.g. ows-tweaks declares
+  `DT_MATERIALS: DataTableDef = ...` AND discovery finds the
+  table), the framework cross-checks offsets / field types and
+  logs drift. Catches UE-version mismatches before they corrupt
+  game state.
+
+### Deferred to Phase 2 (write surface)
+
+The pain begins:
+
+- TweakDef unification (stack + difficulty + future field tweaks
+  collapse into one Def that targets a (DataTableDef, field) or
+  (Class, field) pair).
+- `tweak_register` runtime op for declare-and-apply without code
+  changes.
+- Mutation safety: row writes need vanilla capture per row,
+  rollback on save fail (echoing the spend/refund stage-save-
+  commit pattern), respect for replicated fields, and a sane
+  serialize/deserialize so mod-applied tweaks survive Ctrl+R
+  hot-reload.
+- Field types beyond primitives: writing FString / TArray rows
+  needs the engine's FMemory allocator (ABI work).
+
+Don't start any of Phase 2 until 1a-e land + we've used the
+browser enough to know what shape the write surface should take.
+
 ## P0 -- in-game smoke test
 
 The full 2026-05-10 wave is build-clean and unit-tested but not
