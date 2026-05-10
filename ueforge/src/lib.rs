@@ -19,6 +19,7 @@ pub mod args;
 pub mod build;
 pub mod client;
 pub mod counters;
+pub mod debug;
 pub mod envelope;
 pub mod hex;
 pub mod hook;

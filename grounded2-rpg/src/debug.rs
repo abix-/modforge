@@ -18,6 +18,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value as Json;
 use ueforge::args::{arg_f64, arg_str, arg_u64};
+use ueforge::debug::{CatalogEntry, PlayerStateView, STANDARD_OPS};
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 use ueforge::pe_queue::DrainSite;
 
@@ -32,23 +33,16 @@ static HEALTH_CLASS: ClassRef = ClassRef::new("HealthComponent");
 // then add the match arm + handler. See
 // `~/.claude/skills/runtime-control-http/SKILL.md` for the
 // cross-project pattern.
-const SUPPORTED_OPS: &[&str] = &[
-    "snapshot",
-    "skill_toggle",
-    "skill_spend",
-    "skill_refund",
-    "reload_slot",
+/// Game-specific ops that supplement `ueforge::debug::STANDARD_OPS`.
+const GAME_OPS: &[&str] = &[
     "simulate_add_health",
     "simulate_apply_damage",
     "simulate_set_current_health",
-    "set_skill_points",
-    "call",
-    "read_bytes",
-    "write_bytes",
-    "walk_class",
-    "class_outer_samples",
-    "sample_thread_modules",
 ];
+
+fn supported_ops() -> Vec<&'static str> {
+    STANDARD_OPS.iter().chain(GAME_OPS.iter()).copied().collect()
+}
 
 // PE-thread queue. The HTTP handler enqueues a command + a reply
 // channel; `drain_pending()` is called from `kill_hook`'s
@@ -218,11 +212,11 @@ fn handle(body: &str) -> OpResponse {
         "sample_thread_modules" => to_response(&op, op_sample_thread_modules(&args)),
         "" => error_response(
             "<missing>",
-            format!("missing 'op' field; supported ops: {SUPPORTED_OPS:?}"),
+            format!("missing 'op' field; supported ops: {:?}", supported_ops()),
         ),
         other => error_response(
             other,
-            format!("unknown op '{other}'; supported ops: {SUPPORTED_OPS:?}"),
+            format!("unknown op '{other}'; supported ops: {:?}", supported_ops()),
         ),
     }
 }
@@ -562,14 +556,6 @@ pub struct SettingsView {
 }
 
 #[derive(Serialize)]
-pub struct CatalogEntry {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub max_level: u32,
-    pub effect_kind: &'static str,
-}
-
-#[derive(Serialize)]
 pub struct StatusEffectView {
     pub row: String,
     pub table: String,
@@ -583,14 +569,6 @@ pub struct InventoryView {
     /// inv_hook also stores this as the in-memory authoritative
     /// view that the inventory UI reads.
     pub current_slot_count: i32,
-}
-
-#[derive(Serialize)]
-pub struct PlayerStateView {
-    pub xp: u64,
-    pub level: u32,
-    pub skill_points: u32,
-    pub skill_levels: serde_json::Map<String, Json>,
 }
 
 #[derive(Serialize)]
@@ -694,21 +672,7 @@ pub struct SmmcFields {
 
 fn build_snapshot() -> Snapshot {
     let slot = tracker::current_slot();
-    let player_state = tracker::with_state(player_state_view);
-
-    let mut skill_levels_map = serde_json::Map::new();
-    if let Some(ref ps) = player_state {
-        for (id, lv) in &ps.skill_levels {
-            skill_levels_map.insert(id.clone(), Json::Number((*lv).into()));
-        }
-    }
-
-    let player_state_view = player_state.map(|ps| PlayerStateView {
-        xp: ps.xp,
-        level: ps.level,
-        skill_points: ps.skill_points,
-        skill_levels: skill_levels_map,
-    });
+    let player_state_view = tracker::with_state(PlayerStateView::from_state);
 
     let vanilla_masks = apply::vanilla_hc_masks_snapshot()
         .into_iter()
@@ -742,15 +706,7 @@ fn build_snapshot() -> Snapshot {
             .collect()
     });
 
-    let catalog = skills::CATALOG
-        .iter()
-        .map(|s| CatalogEntry {
-            id: s.id,
-            display_name: s.display_name,
-            max_level: s.max_level,
-            effect_kind: skill_effect_kind(&s.effect),
-        })
-        .collect();
+    let catalog = ueforge::debug::catalog_view(skills::CATALOG, skill_effect_kind);
 
     let settings = world_loader::loaded_settings()
         .map(|s| SettingsView {
@@ -805,22 +761,6 @@ fn skill_effect_kind(e: &skills::SkillEffect) -> &'static str {
         SurvivalDrain { .. } => "SurvivalDrain",
         PlayerFallDamageReduction { .. } => "PlayerFallDamageReduction",
     }
-}
-
-fn player_state_view(ps: &ueforge::rpg::SkillsState) -> PlayerStateSnap {
-    PlayerStateSnap {
-        xp: ps.xp,
-        level: ps.level,
-        skill_points: ps.skill_points,
-        skill_levels: ps.skill_levels.clone(),
-    }
-}
-
-struct PlayerStateSnap {
-    xp: u64,
-    level: u32,
-    skill_points: u32,
-    skill_levels: std::collections::BTreeMap<String, u32>,
 }
 
 fn collect_live_player() -> Option<LivePlayerView> {
