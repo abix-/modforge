@@ -103,15 +103,11 @@ unsafe fn worker() {
         std::mem::forget(h);
     }
 
-    match rpg::kill_hook::install() {
-        Ok(h) => {
-            ueforge::log!("rpg/kill: installed on {}", h.class_name());
-            std::mem::forget(h);
-        }
-        Err(e) => {
-            ueforge::log!("rpg/kill: install failed ({}); spike A inactive", e);
-        }
-    }
+    ueforge::hook::install_immediate_or_log(
+        "rpg/kill",
+        rpg::kill_hook::install,
+        |h| h.class_name(),
+    );
 
     match rpg::fall_hook::install() {
         Ok(hooks) => {

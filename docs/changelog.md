@@ -89,6 +89,11 @@ boilerplate shrinks:
   lifetime trick in one place with a clear safety contract.
 - **`ClassRef::with_first_cdo`** -- symmetric counterpart to
   the existing `with_first_instance`.
+- **`ueforge::hook::install_immediate_or_log`** -- the universal
+  "install once, log success or failure, leak handle" pattern
+  every mod's worker runs per hook. Replaces the hand-rolled
+  `match try_install() { Ok(h) => log + forget; Err(e) => log }`
+  triplet at every call site.
 
 g2rpg's `lib.rs` shrank 151 -> 136 lines (-15); `debug.rs`
 shrank 786 -> 770 (-16); `apply.rs` shrank 398 -> 371 (-27 by

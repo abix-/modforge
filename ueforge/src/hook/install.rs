@@ -81,6 +81,40 @@ where
     }
 }
 
+/// Install a hook **once** (no retry), log the outcome, and leak
+/// the handle on success so it survives the worker thread's exit.
+///
+/// The universal "install, log, forget" pattern every mod's
+/// `worker()` runs once per hook. Replaces the hand-rolled
+/// `match try_install() { Ok(h) => { log!; forget(h); } Err(e)
+/// => log!; }` triplet at every call site.
+///
+/// `label` is used for log lines (e.g. `"rpg/kill"`). The handle
+/// is leaked via `mem::forget`, so the hook stays installed until
+/// process teardown -- matches the typical PE-trampoline mod
+/// lifecycle. `class_name_fn` extracts the hook target's class
+/// for the success log line.
+pub fn install_immediate_or_log<H, F>(
+    label: &str,
+    try_install: F,
+    class_name_fn: impl FnOnce(&H) -> &str,
+) -> bool
+where
+    F: FnOnce() -> Result<H, &'static str>,
+{
+    match try_install() {
+        Ok(h) => {
+            crate::log!("{label}: installed on {}", class_name_fn(&h));
+            std::mem::forget(h);
+            true
+        }
+        Err(e) => {
+            crate::log!("{label}: install failed ({e})");
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
