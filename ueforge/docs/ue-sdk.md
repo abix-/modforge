@@ -403,21 +403,49 @@ impl FName {
 }
 ```
 
-To resolve an FName to a `String`:
+A compile-time guard (`const _: () = assert!(size_of::<FName>() == 8)`)
+fails the build if UE ever changes the layout. Every
+`transmute_copy::<u64, FName>` site in ueforge depends on the
+8-byte invariant.
+
+### NameResolver
+
+```rust
+pub struct NameResolver { /* ... */ }
+
+impl NameResolver {
+    pub unsafe fn to_arc(&self, name: FName) -> Arc<str>;
+    pub unsafe fn to_string(&self, name: FName) -> String;
+}
+```
+
+The resolver caches `FName u64 -> Arc<str>`. First resolve
+runs the engine's `AppendString` export (one FString buffer
+leaked per unique FName -- documented in [PERFORMANCE.md];
+bounded by the game's name pool, ~50K). Subsequent resolves
+return an `Arc<str>` ref-bump -- no `String::clone`, no heap
+allocation.
+
+Pick the API that fits the call site:
+
+- **`to_arc(name)`** when you only need to compare, substring,
+  or pass `&str` (e.g. `name.starts_with("Default__")`,
+  `name.contains("BP_")`). Zero alloc on cache hit. Preferred.
+- **`to_string(name)`** when you need an owned `String` you'll
+  mutate or move into a struct. One alloc at the boundary --
+  same cost as the previous API.
 
 ```rust
 let rt = ueforge::ue::runtime();
-let s: String = rt.name_resolver.to_string(my_fname);
+let name: Arc<str> = unsafe { rt.name_resolver.to_arc(my_fname) };
+if name.starts_with("Default__") { /* ... */ }
+
+let owned: String = unsafe { rt.name_resolver.to_string(my_fname) };
 ```
 
-The resolver caches FName u64 -> String. First resolve allocates
-one String and one FString buffer (the FString leak is
-documented in [PERFORMANCE.md](PERFORMANCE.md); the cap is one
-buffer per unique FName, not per call). Subsequent resolves
-return the cached `String` without allocation.
-
-`UObject::name`/`full_name` go through the resolver
-automatically.
+`UObject::name` / `full_name` go through the resolver
+automatically (they return `String`); `is_default_object` uses
+`to_arc` since it only needs the borrow.
 
 ## TArray<T> and TMap
 

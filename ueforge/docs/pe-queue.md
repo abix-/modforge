@@ -211,6 +211,46 @@ Per-job cost is whatever your job closure does + one channel
 send. Channel send for a `Result<Json, String>` is one heap
 write + one wakeup; ~100ns budget.
 
+## Bounded depth + cancellation
+
+`Queue` is bounded. The default cap is `DEFAULT_MAX_DEPTH = 1024`;
+override via `Queue::with_capacity(n)`. `enqueue` past the cap
+returns `Err("ueforge: PE queue full ({len} >= cap {cap})")`
+without enqueuing. Without the cap a misbehaving HTTP client
+(or a stuck drain site) could pile entries until the host
+process runs out of memory.
+
+1024 is ~100x the largest realistic burst from our test client
+today. Tune down for memory-tight builds; tune up only if a
+legitimate workflow brushes the ceiling.
+
+### Cancellation on caller timeout
+
+`enqueue(job, timeout)` blocks the caller on a one-shot reply
+channel. If `recv_timeout` fires, the caller used to return
+"timed out" while the job stayed queued. The drain ran it
+later, the result was dropped (the receiver was gone), and the
+client's natural retry **double-executed** non-idempotent ops
+like `spend_points`, `write_bytes`, `call`.
+
+Each `Pending` now carries an `Arc<AtomicBool> cancelled`. On
+`recv_timeout` the enqueue side flips the flag; on the next
+drain, `Queue::drain` skips any pending whose flag is set
+**before** invoking the closure. The semantics:
+
+- Caller times out -> job marked cancelled -> never runs.
+- Caller times out AFTER the drain already started the closure
+  -> closure runs to completion (we don't yank a job
+  mid-execution); reply send fails silently because the
+  receiver is gone.
+- Drain completes within the timeout -> reply delivered, normal
+  path.
+
+Cancellation is best-effort. It plugs the common race (client
+retried after timeout, original job still queued) but doesn't
+make non-idempotent ops magically safe; design for idempotency
+where you can.
+
 ## Cross-references
 
 - [hooks.md](hooks.md) -- where you install the trampoline that

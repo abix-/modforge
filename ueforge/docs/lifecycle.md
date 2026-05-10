@@ -381,7 +381,12 @@ path now does:
      counter) to drain.
 3. `server::shutdown_all()`: calls `Server::unblock` + joins
    each registered HTTP listener thread.
-4. `mod_main::finalize_hot_reload_swap`: renames `main.dll`
+4. `settings::shutdown_all()`: stops + joins every
+   `Settings::watch` mtime poller registered at watch-spawn
+   time. Necessary because UE4SS calls `FreeLibrary` after we
+   return; a watcher thread still on a stack inside our DLL
+   would crash on its next iteration.
+5. `mod_main::finalize_hot_reload_swap`: renames `main.dll`
    -> `main-old.dll`, `main-new.dll` -> `main.dll`. Rolls
    back step 1 if step 2 fails.
 
@@ -401,6 +406,7 @@ leftover `main-old.dll`.
       -> game on_shutdown
       -> hook::shutdown_all (vtable restores + trampoline drain)
       -> server::shutdown_all
+      -> settings::shutdown_all (watcher threads stop + join)
       -> finalize_hot_reload_swap (main-new.dll -> main.dll)
    -> UE4SS FreeLibrary's old image
    -> UE4SS LoadLibraryExW's main.dll (new image)

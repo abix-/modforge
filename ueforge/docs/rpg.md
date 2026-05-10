@@ -183,6 +183,7 @@ ImGui label). No hashmap.
 
 ```rust
 pub struct SkillsState {
+    pub schema_version: u32,
     pub xp: u64,
     pub level: u32,
     pub skill_points: u32,
@@ -191,9 +192,9 @@ pub struct SkillsState {
 
 impl SkillsState {
     pub fn level_of(&self, skill_id: &str) -> u32;
-    pub fn spend(&mut self, skill_id: &str, max_level: u32) -> bool;
-    pub fn refund(&mut self, skill_id: &str) -> bool;
 }
+
+pub const SCHEMA_VERSION: u32 = 1;
 ```
 
 Open shape (`#[serde(default)]` on every field) so adding new
@@ -201,14 +202,18 @@ skills doesn't break existing save files. `skill_levels` is a
 `BTreeMap<String, u32>` -- string keys are the catalog `id`s,
 stable forever.
 
-`spend()` returns `true` on success (had a point + below max).
-`refund()` returns `true` on success (had a point spent).
-Caller is responsible for persisting via `Tracker::spend` --
-direct `SkillsState::spend` mutates only the in-memory copy.
+`schema_version: u32` is bumped whenever the on-disk shape
+changes in a non-additive way. Older save files lacking the
+field deserialize as `1` via `default_schema_version`. Future
+migrations branch on this value at load.
 
-**Don't drive `SkillsState` directly from production code.** Use
-`Tracker<A>` -- it owns the (state, applier, store) triple and
-makes spend/refund transactional with disk save.
+**There is no public `spend` / `refund` on `SkillsState`.** They
+were removed deliberately: an in-memory mutator without a save
+hook is a trapdoor -- a sloppy caller mutates the copy and a
+crash before the next persist loses the change. The only
+mutation path is `Tracker<A>::spend_skill_points` /
+`refund_skill_points`, which mutate state and persist under the
+same lock with explicit rollback.
 
 ## SlotStore<S> -- per-slot JSON persistence
 
@@ -219,29 +224,47 @@ impl<S: Serialize + DeserializeOwned + Default> SlotStore<S> {
     pub const fn new(subdir: &'static str) -> Self;
     pub fn path(&self, slot: &str) -> PathBuf;
     pub fn load(&self, slot: &str) -> S;
-    pub fn save(&self, slot: &str, state: &S);
+    pub fn save(&self, slot: &str, state: &S) -> io::Result<()>;
+    pub fn last_error(&self) -> Option<String>;
 }
 ```
 
-Atomic save: writes `<DLL_dir>/<subdir>/<slot>.json.tmp`, then
-`fs::rename` to `<slot>.json`. Loads return `S::default()` on
-missing / unparseable file (logged).
+### Durable atomic save
 
-Generic over `S` so games can persist extended state alongside
-the framework `SkillsState` (achievements, kill counters, run
+`save()` writes `<DLL_dir>/<subdir>/<slot>.json.tmp`, calls
+`sync_all()` on the temp file, then `fs::rename` to
+`<slot>.json`. The fsync before the rename is what turns
+"rename is atomic" into "rename is also durable across power
+loss" -- without it a crash between the rename and the kernel's
+own flush leaves a torn or zero-byte file. The very failure
+mode atomic-rename was supposed to prevent.
+
+`save()` returns `io::Result<()>`. The store also caches the
+last failed save's message in `last_error()` so debug snapshots
+can surface it without threading the Result through callers
+that don't know what to do with it. The cache clears on the
+next successful save.
+
+Loads return `S::default()` on missing / unparseable file
+(logged) -- soft fall-through is the right behavior for save
+data we couldn't read.
+
+### Slot path validation
+
+Slot keys are validated to reject empty strings, leading dots,
+and path separators (`/ \ : \0`). Invalid keys route to a
+sentinel filename `__invalid__.json` so malformed input is
+visible to the next reader instead of silently writing somewhere
+unexpected. This closes the trapdoor where a user-controlled
+string could escape the configured subdir.
+
+### Generic over S
+
+`SlotStore<S>` lets games persist extended state alongside the
+framework `SkillsState` (achievements, kill counters, run
 meta). g2rpg uses `SlotStore<SkillsState>` directly; an extended
 mod could use `SlotStore<MyExtendedState>` where
 `MyExtendedState` includes a `pub skills: SkillsState` field.
-
-Caveats (kovarex P0s, pending fix):
-
-- `save()` swallows IO errors today. A full disk loses the
-  player's points silently. Should return `io::Result`. See
-  [PERFORMANCE.md](PERFORMANCE.md) "Memory leak vectors".
-- No `fsync` before rename. Power-loss between rename and
-  flush leaves a torn file.
-
-Both fixes are queued.
 
 ## Curve -- XP math
 
@@ -354,16 +377,30 @@ let n = TRACKER.spend_skill_points("attack_damage", 1);     // returns spent cou
 let n = TRACKER.refund_skill_points("attack_damage", 10);   // returns refunded count
 ```
 
-Both:
-- Lock the inner state.
-- Validate (skill exists, points available, max-level cap).
-- Mutate `SkillsState`.
-- Call `applier.apply_skill(state, skill)`.
-- Persist via `store.save(slot, state)`.
-- Return the actual count (capped by available points / cap).
+Both follow the **stage-save-commit** pattern under the inner
+lock:
 
-Atomic: a crash between mutation and save would lose the
-point. (kovarex P0 fix in flight.)
+1. Validate (skill exists, points available, max-level cap).
+2. Snapshot rollback values (the previous `skill_points` + the
+   previous `skill_levels` entry for this id, including the
+   "absent" case).
+3. Mutate `SkillsState` in-memory.
+4. Persist via `store.save(slot, state)`.
+5. **On save success:** call `applier.apply_skill(state, skill)`
+   to push the change into the live world.
+6. **On save failure:** restore the snapshotted values, log the
+   error, return `0`. The world is NOT touched -- the session
+   reflects what's actually on disk.
+
+This is the durability story. A full disk, EACCES, antivirus
+quarantine -- any `io::Error` from the atomic save -- rolls
+back instead of letting the in-memory state and the disk drift.
+Callers can read `Tracker::last_save_error()` for the cause.
+
+The save runs BEFORE the world apply on purpose: applying first
+and then failing the save would leave the buff active for the
+session but ungrabable on next restart. Save first, apply only
+on success.
 
 ### Recording XP
 
@@ -372,7 +409,11 @@ let result: Option<XpResult> = TRACKER.record_xp(awarded);
 ```
 
 Awards `awarded` XP, recomputes level via the curve, increments
-`skill_points` on level-up, persists. Returns `XpResult`:
+`skill_points` on level-up, persists. Returns `Option<XpResult>`
+-- `None` if no slot is active OR if the disk save failed (in
+which case the in-memory `xp` / `level` / `skill_points` are
+rolled back to their pre-call values so the session matches
+disk). Otherwise:
 
 ```rust
 pub struct XpResult {
@@ -413,6 +454,9 @@ TRACKER.debug_grant_skill_points(50);
 ```
 
 Adds points without earning them. Logs the grant. For dev only.
+Returns `false` (and rolls back the in-memory `skill_points`)
+if the disk save fails -- same stage-save-commit contract as
+spend/refund.
 
 ## SlotKeyResolver -- save-slot detection
 

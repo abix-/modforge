@@ -22,6 +22,7 @@
 //! the queue is empty. `drain()` returns `DrainStats` so the game
 //! can feed its own metrics.
 
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
@@ -32,9 +33,22 @@ use serde_json::Value as Json;
 
 pub type Job = Box<dyn FnOnce() -> Result<Json, String> + Send>;
 
+/// Default cap on `Queue::inner.len()`. Above this, `enqueue`
+/// rejects with a "queue full" error rather than letting an
+/// HTTP-side burst pile entries until OOM. Tunable via
+/// `Queue::with_capacity`. 1024 is ~100x the largest realistic
+/// burst from the test client today.
+pub const DEFAULT_MAX_DEPTH: usize = 1024;
+
 struct Pending {
     job: Job,
     reply: Sender<Result<Json, String>>,
+    /// Set to true if the enqueue caller already gave up
+    /// (`recv_timeout` fired). The drain checks this BEFORE running
+    /// the job and skips it -- so a non-idempotent op like
+    /// `spend_points` can't run after the client thinks it timed
+    /// out and retried.
+    cancelled: Arc<AtomicBool>,
 }
 
 pub struct Queue {
@@ -46,6 +60,10 @@ pub struct Queue {
     size: AtomicUsize,
     /// Re-entrance guard. See module doc.
     draining: AtomicBool,
+    /// Max enqueued jobs. New `enqueue` calls beyond this fail
+    /// fast with a "queue full" error so we don't run the host
+    /// process out of memory under load.
+    max_depth: usize,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
@@ -65,6 +83,16 @@ impl Queue {
             inner: Mutex::new(Vec::new()),
             size: AtomicUsize::new(0),
             draining: AtomicBool::new(false),
+            max_depth: DEFAULT_MAX_DEPTH,
+        }
+    }
+
+    pub const fn with_capacity(max_depth: usize) -> Self {
+        Self {
+            inner: Mutex::new(Vec::new()),
+            size: AtomicUsize::new(0),
+            draining: AtomicBool::new(false),
+            max_depth,
         }
     }
 
@@ -79,26 +107,46 @@ impl Queue {
 
     /// Enqueue a job and block the caller on the reply channel up
     /// to `timeout`. Returns the job's result on success, or an
-    /// error string on poisoning, timeout, or job failure.
+    /// error string on queue-full, timeout, or job failure.
+    ///
+    /// If `recv_timeout` fires, the job is **cancelled**: the
+    /// drain side checks the cancel flag before invoking the
+    /// closure and skips it. This prevents non-idempotent ops
+    /// (`spend_points`, `write_bytes`, `call`) from running AFTER
+    /// the HTTP client gave up and the user retried -- which used
+    /// to silently double-execute.
     pub fn enqueue<F>(&self, job: F, timeout: Duration) -> Result<Json, String>
     where
         F: FnOnce() -> Result<Json, String> + Send + 'static,
     {
+        let cancelled = Arc::new(AtomicBool::new(false));
         let (tx, rx) = channel();
         {
             let mut q = self.inner.lock();
+            if q.len() >= self.max_depth {
+                return Err(format!(
+                    "ueforge: PE queue full ({} >= cap {})",
+                    q.len(),
+                    self.max_depth
+                ));
+            }
             q.push(Pending {
                 job: Box::new(job),
                 reply: tx,
+                cancelled: cancelled.clone(),
             });
             self.size.store(q.len(), Ordering::Release);
         }
         match rx.recv_timeout(timeout) {
             Ok(r) => r,
-            Err(_) => Err(format!(
-                "ueforge: timed out after {:?} waiting for game-thread drain",
-                timeout
-            )),
+            Err(_) => {
+                // Mark the job cancelled so a later drain skips it.
+                cancelled.store(true, Ordering::Release);
+                Err(format!(
+                    "ueforge: timed out after {:?} waiting for game-thread drain",
+                    timeout
+                ))
+            }
         }
     }
 
@@ -150,6 +198,12 @@ impl Queue {
         let (peak, jobs) = drained;
         let mut count = 0usize;
         for p in jobs {
+            // Skip cancelled jobs (caller's enqueue timed out and
+            // gave up). Running them anyway would double-execute
+            // non-idempotent ops on the next retry.
+            if p.cancelled.load(Ordering::Acquire) {
+                continue;
+            }
             let r = (p.job)();
             let _ = p.reply.send(r);
             count += 1;

@@ -53,6 +53,40 @@ PAGE_READWRITE` only -- code regions and reserved pages are
 skipped. UE5 game heap on Grounded 2 is ~4-8 GB; full scan
 takes a few seconds.
 
+### Fault-safe page reads
+
+`VirtualQuery` returns regions but does NOT guarantee the
+pages stay committed for the duration of the scan. UE
+allocators free pages all the time -- a torn page read with
+`read_unaligned` raises an access violation that crashes the
+host process. "Works in dev, crashes during level transitions"
+was the failure mode.
+
+The fix: the scanner reads through `ReadProcessMemory` against
+the current process. The kernel performs the access check and
+returns a short read (or `0`) instead of faulting in our
+trampoline. Two helpers:
+
+- `safe_read_chunk(addr, &mut [u8]) -> usize` -- bulk read into
+  scratch; returns bytes actually copied. The match loop runs
+  against process-owned scratch so a freed source page can no
+  longer fault our reader.
+- `safe_read_bits(addr, ty) -> Option<u64>` -- single typed
+  read; `None` if the source range is unreadable.
+
+`scan_memory` walks each region in 64 KiB chunks via
+`safe_read_chunk`. A torn / freed chunk produces a short read
+and is skipped; pages beyond may still be valid and continue
+the scan. 64 KiB amortizes the syscall cost (one per chunk,
+not one per value) while keeping the failure domain of a freed
+page bounded.
+
+`scan_rescan` reads each survivor address through
+`safe_read_bits`; addresses that no longer read are dropped
+from the session. The session shrinks naturally as UE recycles
+the underlying allocations, instead of crashing on the next
+rescan.
+
 ### Sessions
 
 Each `scan_memory` returns a `session_id`. Subsequent

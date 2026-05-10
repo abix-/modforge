@@ -7,8 +7,16 @@
 // buffer (we don't bind UE's FMemory::Free); the cache caps the leak at
 // one buffer per unique FName -- bounded by the game's name pool size
 // (~50K) instead of unbounded per call. See `fstring.rs`.
+//
+// The cache stores `Arc<str>` so cache hits return one ref-bump
+// instead of a heap-allocating `String::clone`. Callers that need
+// an owned `String` call `.to_string()` once at the boundary --
+// same cost as before; callers that just compare or substring
+// (e.g. `name.starts_with("Default__")`) save the allocation
+// entirely.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 
@@ -56,7 +64,7 @@ type AppendStringFn = unsafe extern "system" fn(*const FName, *mut FString);
 
 pub struct NameResolver {
     append_string: AppendStringFn,
-    cache: RwLock<HashMap<u64, String>>,
+    cache: RwLock<HashMap<u64, Arc<str>>>,
 }
 
 impl NameResolver {
@@ -71,15 +79,25 @@ impl NameResolver {
         }
     }
 
-    pub unsafe fn to_string(&self, name: FName) -> String {
+    /// Cached resolve. Cache hit returns an `Arc<str>` ref-bump;
+    /// miss runs AppendString once (leaks one FString buffer per
+    /// unique FName) and stores the result.
+    pub unsafe fn to_arc(&self, name: FName) -> Arc<str> {
         let key = name.as_u64();
         if let Some(s) = self.cache.read().get(&key) {
             return s.clone();
         }
         let mut out = FString::default();
         unsafe { (self.append_string)(&name as *const FName, &mut out as *mut FString) };
-        let s = out.as_string();
-        self.cache.write().insert(key, s.clone());
-        s
+        let arc: Arc<str> = Arc::from(out.as_string().into_boxed_str());
+        self.cache.write().insert(key, arc.clone());
+        arc
+    }
+
+    /// Owned `String` form. One alloc at the boundary; identical
+    /// cost to the old API. Prefer [`Self::to_arc`] when the caller
+    /// only needs a borrowed `&str`.
+    pub unsafe fn to_string(&self, name: FName) -> String {
+        unsafe { self.to_arc(name) }.to_string()
     }
 }

@@ -20,26 +20,36 @@ The core type. Patches a class's vtable slot at
 handler.
 
 ```rust
-use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::hook::{install_immediate_or_log, OriginalProcessEvent, ProcessEventHook};
 use ueforge::ue::{UFunction, UObject};
 use std::ffi::c_void;
 
-let hook = ProcessEventHook::install("HealthComponent",
-    |this: &UObject, function: &UFunction, parms: *mut c_void,
-     original: OriginalProcessEvent| {
-        // ... your handler ...
-        unsafe { original.call(this, function, parms) };
-    })?;
-
-std::mem::forget(hook);  // leak so the hook survives worker exit
+install_immediate_or_log(
+    "rpg/kill",
+    || ProcessEventHook::install("HealthComponent",
+        |this: &UObject, function: &UFunction, parms: *mut c_void,
+         original: OriginalProcessEvent| {
+            // ... your handler ...
+            unsafe { original.call(this, function, parms) };
+        }),
+    |h| h.class_name(),
+);
 ```
 
 ### Lifetime
 
 `ProcessEventHook` is RAII. Its `Drop` impl restores the
-original vtable slot. In practice you `std::mem::forget` it so
-the hook lives for the process lifetime -- worker threads exit,
-the hook keeps firing.
+original vtable slot AND waits up to 500ms for in-flight
+trampolines to drain. In practice you don't drop it directly --
+[`hook::register`] / [`install_immediate_or_log`] move the
+handle into a `static` registry, where it lives for the process
+lifetime OR until [`hook::shutdown_all`] tears it down on
+hot-reload.
+
+`mem::forget` was the old pattern. It's wrong: forgetting the
+handle means Drop never runs, the vtable slot stays patched
+across DLL unloads, and the next `LoadLibraryExW` lands on a
+ghost trampoline pointing into freed code. Use the registry.
 
 ### Trampoline path
 
@@ -344,6 +354,104 @@ Order in `worker()`:
 
 1. `ueforge::ue::init_runtime(image_base, offsets)`
 2. ... hook installs ...
+
+## Hot-reload teardown
+
+UE4SS's Ctrl+R reload destroys every cpp mod, calls our shim's
+`uninstall_mod`, then `FreeLibrary`s the DLL. If a PE trampoline
+is still on a thread's stack when FreeLibrary lands, the thread
+returns into freed code and the game crashes. The teardown path
+exists to make that impossible.
+
+Order of operations in `ueforge_mod_shutdown` (the C-ABI entry
+the shim calls):
+
+1. The game's `on_shutdown` (game-specific cleanup).
+2. `hook::shutdown_all()`:
+   - Sets a global `SHUTTING_DOWN: AtomicBool = true`. New
+     trampoline fires read this flag immediately after
+     dispatch lookup; if set, they forward to the engine's
+     original ProcessEvent without invoking the user
+     handler. This prevents handlers from being entered after
+     shutdown began.
+   - Drains the registry, dropping every `ProcessEventHook`.
+     Each Drop:
+     1. Atomically swaps the vtable slot back to the engine's
+        original (via `vtable::write_slot`).
+     2. Removes the entry from the snapshot.
+     3. Spins up to 500ms on the per-Entry `active_calls`
+        counter so trampolines that already entered the handler
+        finish before unload.
+3. `server::shutdown_all()` -- HTTP listeners.
+4. `settings::shutdown_all()` -- mtime watcher threads.
+5. `mod_main::finalize_hot_reload_swap()` -- side-file rename.
+
+After step 2 returns, no code in our DLL is on a thread's stack
+via a PE trampoline. UE4SS can FreeLibrary safely.
+
+### Active-calls counter
+
+Per-`Entry` `active_calls: AtomicUsize`, incremented at
+trampoline entry (after the SHUTTING_DOWN check) and
+decremented at exit. Drop spins on it with a 500ms ceiling. If
+the deadline elapses with calls still in flight (a handler
+deadlocked or did very-long work), the unload proceeds anyway
+with a log line -- better to risk one straggler crash than
+deadlock the whole hot-reload cycle.
+
+### Entries are leaked, not freed
+
+`Entry` is `Box::leak`-ed at install time (`'static`). Drop
+restores the vtable but does NOT free the entry, because a
+straggler trampoline that already loaded the snapshot may still
+hold a reference. Memory cost is bounded -- a handful of hooks
+per mod -- but accumulates across hot-reload cycles. See
+todo.md for the entry-reuse audit item.
+
+## Panic safety
+
+The trampoline wraps every handler invocation in
+`std::panic::catch_unwind`. Three concerns:
+
+### Game stays alive on panic
+
+A panic in user-supplied closure code unwinds to the trampoline
+boundary. We catch it, log, and -- if the handler had not
+already invoked the engine -- fall through to
+`OriginalProcessEvent::call` so the engine still processes the
+PE event. Without this, a typo in handler code crashes the
+game.
+
+### No double-call
+
+If the handler called `original.call(...)` and then panicked
+afterwards, falling through naively would call the engine
+TWICE. For non-idempotent multicasts (a kill event) that means
+double XP credit, double damage, double effect application.
+
+The trampoline tracks "did the handler already call original?"
+through a thread-local `CALLED_ORIGINAL: Cell<bool>` set by
+`OriginalProcessEvent::call`. The trampoline saves the previous
+value before invoking the handler and restores it after, so
+reentrant fires (handler calls a UFunction whose multicast
+re-enters the same trampoline) preserve the outer frame's flag
+correctly.
+
+The fall-through arm runs ONLY when the handler panicked AND
+had not yet called the engine.
+
+### Panic counter telemetry
+
+Each `Entry` carries a `panic_count: AtomicU64` bumped on every
+caught panic. Surfaces:
+
+- `ProcessEventHook::panic_count() -> u64` per-hook accessor.
+- `hook::panic_count_total() -> u64` registry-wide sum.
+
+A nonzero total in a debug snapshot is the signal that some
+handler is silently failing. Without this counter the failure
+mode is "game runs, mod does nothing, no log noise" -- the
+worst kind of bug to track down.
 
 ## Cross-references
 

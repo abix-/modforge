@@ -12,6 +12,80 @@
 
 Newest first.
 
+## 2026-05-10 (kovarex review wave 2 -- durability + safety)
+
+Brutal-honesty review against the 10/10 bar (10 years daily-driver,
+no patches). Five P0 correctness/crash bugs and three P1 grooming
+items shipped. All design knowledge captured in the per-subject
+docs cited below; this entry is a pointer index.
+
+### P0 -- correctness / crash vectors (all shipped)
+
+- **Spend / refund / record_xp / debug_grant transactional with
+  disk save.** Stage-save-commit pattern: snapshot rollback values,
+  mutate in-memory, save to disk first, apply to live world only
+  on save success; restore the snapshot on failure. Disk full or
+  EACCES no longer leaves the session and the save file in
+  disagreement. See [ueforge/docs/rpg.md](../ueforge/docs/rpg.md)
+  "Spending / refunding".
+
+- **PE queue bounded + cancellation on caller timeout.** `Queue`
+  carries `max_depth` (default 1024) and per-job
+  `Arc<AtomicBool> cancelled`. `enqueue` past the cap returns 503;
+  `recv_timeout` flips the cancel flag so the next drain skips the
+  job. Closes the double-execute bug where a client retry would
+  re-run the original (still-queued) op. See
+  [ueforge/docs/pe-queue.md](../ueforge/docs/pe-queue.md)
+  "Bounded depth + cancellation".
+
+- **HTTP body cap + constant-time auth.** 1 MiB body cap (413 over),
+  byte-by-byte auth header compare with no early exit. See
+  [ueforge/docs/http.md](../ueforge/docs/http.md) "Safety / production".
+
+- **Scanner fault-safe page reads.** `scan_memory` reads each
+  region in 64 KiB chunks via `ReadProcessMemory`-backed
+  `safe_read_chunk`; `scan_rescan` uses `safe_read_bits` per
+  survivor. UE allocator freeing a page mid-scan no longer
+  crashes the host. See
+  [ueforge/docs/memory-tools.md](../ueforge/docs/memory-tools.md)
+  "Fault-safe page reads".
+
+- **Trampoline panic must not double-call original.**
+  Thread-local `CALLED_ORIGINAL` flag set by
+  `OriginalProcessEvent::call`. The trampoline saves/restores
+  around the handler invocation (reentrance-safe). On panic, falls
+  through to original ONLY when the handler had not already
+  called it. See [ueforge/docs/hooks.md](../ueforge/docs/hooks.md)
+  "Panic safety".
+
+### P1 -- grooming (three of ten shipped)
+
+- **`Arc<str>` FName cache.** `NameResolver` caches `Arc<str>`;
+  cache-hit returns a ref-bump, no `String::clone`. `to_arc`
+  added for callers that only need `&str`; `to_string` retained
+  as a thin wrapper. `is_default_object` migrated. See
+  [ueforge/docs/ue-sdk.md](../ueforge/docs/ue-sdk.md) "FName".
+
+- **Trampoline panic counter.** Per-`Entry` `AtomicU64` bumped in
+  the catch_unwind err arm; `ProcessEventHook::panic_count` and
+  `hook::panic_count_total` for snapshot surfaces. Without this,
+  silent handler failures were invisible. See
+  [ueforge/docs/hooks.md](../ueforge/docs/hooks.md) "Panic safety".
+
+- **`Settings::watch` teardown via registry.** Auto-registered at
+  spawn; `settings::shutdown_all()` stops + joins all watchers,
+  wired into `ueforge_mod_shutdown` between server shutdown and
+  side-file rename. Closes the watcher-thread leak across
+  hot-reload cycles. See
+  [ueforge/docs/settings.md](../ueforge/docs/settings.md)
+  "Hot-reload (`Settings::watch`)" and
+  [ueforge/docs/lifecycle.md](../ueforge/docs/lifecycle.md).
+
+Remaining P1s (sig-scan offsets, SlotStore failure-injection,
+generic schema versioning, freeze thread pool, hot-reload entry
+leak audit + torture test, `clippy::undocumented_unsafe_blocks`)
+and the entire P2 grooming list live in [`todo.md`](todo.md).
+
 ## 2026-05-10 (Phase 3 wave 2: g2rpg catalog + framework lifts)
 
 ### bbp catalog migrated to `Standard(StandardEffect)`

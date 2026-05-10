@@ -138,6 +138,12 @@ impl<A: RpgApplier> Tracker<A> {
     /// Spend up to `count` points on `skill_id`. Returns the
     /// number actually spent (capped by `state.skill_points` and
     /// `skill.max_level`). Persists on success.
+    ///
+    /// Save-first, apply-second. If the disk save fails (full disk,
+    /// EACCES, etc.) the in-memory mutation is rolled back and
+    /// `apply_skill` is NOT called -- so the session reflects what
+    /// is actually on disk. Returns 0 on save failure; the caller
+    /// can read [`Self::last_save_error`] for the cause.
     pub fn spend_skill_points(&self, skill_id: &str, count: u32) -> u32 {
         let mut g = self.inner.lock();
         let Some(t) = g.as_mut() else {
@@ -160,11 +166,33 @@ impl<A: RpgApplier> Tracker<A> {
         if spend == 0 {
             return 0;
         }
+        // Stage: snapshot rollback values, apply mutation in-memory.
+        let prev_skill_points = t.state.skill_points;
+        let prev_level_entry = t.state.skill_levels.get(skill_id).copied();
         t.state.skill_points -= spend;
         let new_level = cur + spend;
         t.state.skill_levels.insert(skill_id.to_string(), new_level);
+        // Save first; on failure, roll back state so next session
+        // and this session agree.
+        if let Err(e) = self.store.save(&t.slot, &t.state) {
+            t.state.skill_points = prev_skill_points;
+            match prev_level_entry {
+                Some(v) => {
+                    t.state.skill_levels.insert(skill_id.to_string(), v);
+                }
+                None => {
+                    t.state.skill_levels.remove(skill_id);
+                }
+            }
+            crate::log!(
+                "rpg/tracker: spend({}) save failed ({}); rolled back",
+                skill_id,
+                e
+            );
+            return 0;
+        }
+        // Save committed; safe to apply to the live world.
         t.applier.apply_skill(&t.state, skill);
-        let _ = self.store.save(&t.slot, &t.state);
         crate::log!(
             "rpg/tracker: spent {} on {}: level {} -> {} ({} points left)",
             spend,
@@ -177,7 +205,8 @@ impl<A: RpgApplier> Tracker<A> {
     }
 
     /// Refund up to `count` points from `skill_id`. Returns the
-    /// number actually refunded.
+    /// number actually refunded. Save-first; on save failure, rolls
+    /// back the in-memory mutation and returns 0.
     pub fn refund_skill_points(&self, skill_id: &str, count: u32) -> u32 {
         let mut g = self.inner.lock();
         let Some(t) = g.as_mut() else {
@@ -195,6 +224,9 @@ impl<A: RpgApplier> Tracker<A> {
         }
         let refund = count.min(cur);
         let new_level = cur - refund;
+        // Stage rollback values.
+        let prev_skill_points = t.state.skill_points;
+        let prev_level_entry = t.state.skill_levels.get(skill_id).copied();
         if new_level == 0 {
             t.state.skill_levels.remove(skill_id);
         } else {
@@ -203,8 +235,24 @@ impl<A: RpgApplier> Tracker<A> {
                 .insert(skill_id.to_string(), new_level);
         }
         t.state.skill_points = t.state.skill_points.saturating_add(refund);
+        if let Err(e) = self.store.save(&t.slot, &t.state) {
+            t.state.skill_points = prev_skill_points;
+            match prev_level_entry {
+                Some(v) => {
+                    t.state.skill_levels.insert(skill_id.to_string(), v);
+                }
+                None => {
+                    t.state.skill_levels.remove(skill_id);
+                }
+            }
+            crate::log!(
+                "rpg/tracker: refund({}) save failed ({}); rolled back",
+                skill_id,
+                e
+            );
+            return 0;
+        }
         t.applier.apply_skill(&t.state, skill);
-        let _ = self.store.save(&t.slot, &t.state);
         crate::log!(
             "rpg/tracker: refunded {} from {}: level {} -> {} ({} points)",
             refund,
@@ -238,11 +286,16 @@ impl<A: RpgApplier> Tracker<A> {
     }
 
     /// Award `awarded` XP and recompute level. Returns the
-    /// XpResult so callers can log "LEVEL UP!" feedback.
+    /// XpResult so callers can log "LEVEL UP!" feedback. Returns
+    /// `None` if no slot is active OR if the disk save failed (in
+    /// which case the in-memory state is rolled back so the
+    /// session matches what is actually persisted).
     pub fn record_xp(&self, awarded: u64) -> Option<XpResult> {
         let mut g = self.inner.lock();
         let t = g.as_mut()?;
         let old_level = t.state.level;
+        let prev_xp = t.state.xp;
+        let prev_skill_points = t.state.skill_points;
         t.state.xp = t.state.xp.saturating_add(awarded);
         let new_level = self.curve.level_for_xp(t.state.xp);
         let levelled = new_level > old_level;
@@ -250,12 +303,21 @@ impl<A: RpgApplier> Tracker<A> {
         if levelled {
             t.state.level = new_level;
             t.state.skill_points = t.state.skill_points.saturating_add(points_gained);
+        }
+        if let Err(e) = self.store.save(&t.slot, &t.state) {
+            // Roll back so XP doesn't drift away from disk.
+            t.state.xp = prev_xp;
+            t.state.level = old_level;
+            t.state.skill_points = prev_skill_points;
+            crate::log!("rpg/tracker: record_xp save failed ({e}); rolled back");
+            return None;
+        }
+        if levelled {
             crate::log!(
                 "rpg/tracker: LEVEL UP! {old_level} -> {new_level} (+{points_gained} skill points; total {})",
                 t.state.skill_points
             );
         }
-        let _ = self.store.save(&t.slot, &t.state);
         Some(XpResult {
             awarded,
             total_xp: t.state.xp,
@@ -266,12 +328,19 @@ impl<A: RpgApplier> Tracker<A> {
     }
 
     /// Grant `n` skill points without earning them. For dev /
-    /// debug ops only.
+    /// debug ops only. Save-first; rolls back on save fail.
     pub fn debug_grant_skill_points(&self, n: u32) -> bool {
         let mut g = self.inner.lock();
         let Some(t) = g.as_mut() else { return false };
+        let prev_skill_points = t.state.skill_points;
         t.state.skill_points = t.state.skill_points.saturating_add(n);
-        let _ = self.store.save(&t.slot, &t.state);
+        if let Err(e) = self.store.save(&t.slot, &t.state) {
+            t.state.skill_points = prev_skill_points;
+            crate::log!(
+                "rpg/tracker: debug_grant_skill_points save failed ({e}); rolled back"
+            );
+            return false;
+        }
         crate::log!(
             "rpg/tracker: DEBUG granted +{n} skill points (total {})",
             t.state.skill_points

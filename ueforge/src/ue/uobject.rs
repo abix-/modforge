@@ -85,7 +85,7 @@ impl UObject {
     /// game over a recoverable race.
     pub fn is_default_object(&self) -> bool {
         let Some(rt) = try_runtime() else { return false };
-        let name = unsafe { rt.name_resolver.to_string(self.fname()) };
+        let name = unsafe { rt.name_resolver.to_arc(self.fname()) };
         name.starts_with("Default__")
     }
 

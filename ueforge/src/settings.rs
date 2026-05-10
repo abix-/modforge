@@ -33,13 +33,46 @@
 //! 1809).
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::{Duration, SystemTime};
 
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+/// Global registry of spawned `Settings::watch` worker threads.
+/// `Settings::watch` registers each spawn so [`shutdown_all`] can
+/// stop and join them on hot-reload teardown -- the previous
+/// design relied on the caller holding the `WatchHandle` and
+/// dropping it before unload, which silently leaked the thread
+/// across DLL unloads when the caller forgot.
+struct WatchEntry {
+    stop: Arc<AtomicBool>,
+    join: Option<thread::JoinHandle<()>>,
+}
+
+static WATCH_REGISTRY: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
+
+/// Stop and join every registered settings watcher. Called by the
+/// framework's hot-reload teardown path
+/// ([`crate::mod_main::ueforge_mod_shutdown`]) so no watcher
+/// thread is on a stack inside our DLL when UE4SS calls
+/// `FreeLibrary`.
+pub fn shutdown_all() {
+    let entries: Vec<WatchEntry> = std::mem::take(&mut *WATCH_REGISTRY.lock());
+    let n = entries.len();
+    for mut e in entries {
+        e.stop.store(true, Ordering::Release);
+        if let Some(j) = e.join.take() {
+            let _ = j.join();
+        }
+    }
+    if n > 0 {
+        crate::log!("settings: shutdown_all stopped {n} watcher(s)");
+    }
+}
 
 /// Handle returned by [`Settings::watch`]. Holding it keeps the
 /// hot-reload poller running; dropping it asks the poller to stop
@@ -197,7 +230,7 @@ where
         let this = self.clone();
         let path = self.path.clone();
 
-        std::thread::Builder::new()
+        let join = std::thread::Builder::new()
             .name("ueforge-settings-watch".into())
             .spawn(move || {
                 let mut last_mtime: Option<SystemTime> = std::fs::metadata(&path)
@@ -235,6 +268,13 @@ where
                 }
             })
             .expect("spawn settings watcher");
+
+        // Register so hot-reload teardown can join the thread even
+        // if the caller forgot to keep the WatchHandle around.
+        WATCH_REGISTRY.lock().push(WatchEntry {
+            stop: stop.clone(),
+            join: Some(join),
+        });
 
         WatchHandle { stop }
     }

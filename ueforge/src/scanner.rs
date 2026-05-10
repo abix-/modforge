@@ -111,7 +111,12 @@ impl Val {
 }
 
 /// Read a `Ty`-sized value at `ptr` as a u64 of bits.
-unsafe fn read_bits(ptr: *const u8, ty: Ty) -> u64 {
+///
+/// SAFETY: The caller must guarantee `[ptr, ptr + ty.size())` is
+/// readable. Used on a buffer freshly populated by
+/// [`safe_read_chunk`] (which validates the source range), so the
+/// read is always against process-owned heap.
+unsafe fn read_bits_buf(ptr: *const u8, ty: Ty) -> u64 {
     unsafe {
         match ty {
             Ty::U8 | Ty::I8 => (ptr.read_unaligned()) as u64,
@@ -120,6 +125,64 @@ unsafe fn read_bits(ptr: *const u8, ty: Ty) -> u64 {
             Ty::U64 | Ty::I64 | Ty::F64 => (ptr as *const u64).read_unaligned(),
         }
     }
+}
+
+/// Fault-safe read of a `Ty`-sized value from an address that may
+/// have been freed by the host process. Uses `ReadProcessMemory`
+/// against the current process so the kernel performs the access
+/// check without raising an SEH exception in our trampoline.
+/// Returns `None` if the source range is no longer readable.
+fn safe_read_bits(addr: usize, ty: Ty) -> Option<u64> {
+    use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    let size = ty.size();
+    let mut buf = [0u8; 8];
+    let mut read: usize = 0;
+    let ok = unsafe {
+        ReadProcessMemory(
+            GetCurrentProcess(),
+            addr as *const _,
+            buf.as_mut_ptr() as *mut _,
+            size,
+            &mut read,
+        )
+    };
+    if ok == 0 || read != size {
+        return None;
+    }
+    Some(match ty {
+        Ty::U8 | Ty::I8 => buf[0] as u64,
+        Ty::U16 | Ty::I16 => u16::from_le_bytes([buf[0], buf[1]]) as u64,
+        Ty::U32 | Ty::I32 | Ty::F32 => {
+            u32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]) as u64
+        }
+        Ty::U64 | Ty::I64 | Ty::F64 => u64::from_le_bytes([
+            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+        ]),
+    })
+}
+
+/// Fault-safe bulk read of `[addr, addr+len)` into `dst`. Returns
+/// the number of bytes the kernel actually copied (may be less
+/// than `len` if a page in the range was freed mid-call). The
+/// scanner walks regions in chunks via this helper so a torn page
+/// only invalidates that chunk -- the rest of the region is still
+/// scanned. Without this, `read_unaligned` over a freed page raises
+/// an access violation that crashes the host process.
+fn safe_read_chunk(addr: usize, dst: &mut [u8]) -> usize {
+    use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+    let mut read: usize = 0;
+    let ok = unsafe {
+        ReadProcessMemory(
+            GetCurrentProcess(),
+            addr as *const _,
+            dst.as_mut_ptr() as *mut _,
+            dst.len(),
+            &mut read,
+        )
+    };
+    if ok == 0 { 0 } else { read }
 }
 
 /// Sign-extending or float-aware comparator helpers used by the
@@ -294,23 +357,34 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
     let regions = iter_private_rw_regions();
     let step = ty.size();
     let mut survivors = Vec::new();
+    // 64 KiB scratch -- amortizes the ReadProcessMemory syscall
+    // (one per chunk, not one per value) while keeping the failure
+    // domain of a freed page to that chunk only.
+    const CHUNK: usize = 64 * 1024;
+    let mut scratch = vec![0u8; CHUNK];
     for r in &regions {
         if r.size < step {
             continue;
         }
-        unsafe {
-            let base = r.base as *const u8;
-            // Step at type alignment to bound work; misaligned
-            // values are rare for game state. Add a "step": 1
-            // arg later if needed.
+        let mut chunk_off = 0usize;
+        while chunk_off < r.size {
+            let want = (r.size - chunk_off).min(CHUNK);
+            let got = safe_read_chunk(r.base + chunk_off, &mut scratch[..want]);
+            if got < step {
+                // Page freed or otherwise unreadable. Skip the
+                // chunk; pages beyond may still be valid.
+                chunk_off += want;
+                continue;
+            }
             let mut off = 0usize;
-            while off + step <= r.size {
-                let bits = read_bits(base.add(off), ty);
+            while off + step <= got {
+                let bits = unsafe { read_bits_buf(scratch.as_ptr().add(off), ty) };
                 if bits == target_bits {
-                    survivors.push(r.base + off);
+                    survivors.push(r.base + chunk_off + off);
                 }
                 off += step;
             }
+            chunk_off += got;
         }
     }
 
@@ -348,12 +422,12 @@ pub fn scan_rescan(args: &Json) -> Result<Json, String> {
     let sess = s.get_mut(&id).ok_or_else(|| format!("session {id} not found"))?;
     let ty = sess.ty;
 
-    // Read current value at every survivor.
-    let cur: Vec<u64> = sess
-        .addresses
-        .iter()
-        .map(|&a| unsafe { read_bits(a as *const u8, ty) })
-        .collect();
+    // Read current value at every survivor. `safe_read_bits` uses
+    // ReadProcessMemory so a freed page returns None instead of
+    // crashing the process; survivors that no longer read are
+    // dropped from the session.
+    let cur: Vec<Option<u64>> =
+        sess.addresses.iter().map(|&a| safe_read_bits(a, ty)).collect();
 
     let new: Vec<usize> = match mode {
         "exact" => {
@@ -362,8 +436,10 @@ pub fn scan_rescan(args: &Json) -> Result<Json, String> {
             sess.addresses
                 .iter()
                 .zip(&cur)
-                .filter(|&(_, c)| *c == want)
-                .map(|(a, _)| *a)
+                .filter_map(|(a, c)| match c {
+                    Some(b) if *b == want => Some(*a),
+                    _ => None,
+                })
                 .collect()
         }
         "unchanged" | "changed" | "decreased" | "increased" => {
@@ -381,14 +457,17 @@ pub fn scan_rescan(args: &Json) -> Result<Json, String> {
             sess.addresses
                 .iter()
                 .zip(&cur)
-                .filter(|&(_, c)| match mode {
-                    "unchanged" => *c == prev,
-                    "changed" => *c != prev,
-                    "decreased" => cmp(ty, *c, prev) == O::Less,
-                    "increased" => cmp(ty, *c, prev) == O::Greater,
-                    _ => unreachable!(),
+                .filter_map(|(a, c)| {
+                    let b = (*c)?;
+                    let keep = match mode {
+                        "unchanged" => b == prev,
+                        "changed" => b != prev,
+                        "decreased" => cmp(ty, b, prev) == O::Less,
+                        "increased" => cmp(ty, b, prev) == O::Greater,
+                        _ => unreachable!(),
+                    };
+                    keep.then_some(*a)
                 })
-                .map(|(a, _)| *a)
                 .collect()
         }
         "decreased_by" | "increased_by" => {
@@ -406,8 +485,10 @@ pub fn scan_rescan(args: &Json) -> Result<Json, String> {
             sess.addresses
                 .iter()
                 .zip(&cur)
-                .filter(|&(_, c)| signed_diff(ty, *c, prev) == want_diff)
-                .map(|(a, _)| *a)
+                .filter_map(|(a, c)| {
+                    let b = (*c)?;
+                    (signed_diff(ty, b, prev) == want_diff).then_some(*a)
+                })
                 .collect()
         }
         other => return Err(format!("unknown rescan mode '{other}'")),

@@ -7,12 +7,31 @@
 //! about snapshot type, op set, and error shape — all of which live
 //! in the embedding crate.
 
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 use std::sync::Arc;
 use std::thread;
 
 use parking_lot::Mutex;
 use tiny_http::{Header, Method, Response, Server};
+
+/// Cap on POST body size. Localhost-only API, but a misbehaving
+/// client (or a stuck file upload) would otherwise read until OOM.
+/// 1 MiB is ~1000x the largest legitimate op payload we ship.
+const MAX_BODY_BYTES: u64 = 1 << 20;
+
+/// Constant-time byte-string compare. Avoids the early-exit timing
+/// signal in `==` for auth-token equality. Localhost weakens the
+/// attacker model but the fix is ~5 LoC -- no excuse to skip it.
+fn ct_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for i in 0..a.len() {
+        diff |= a[i] ^ b[i];
+    }
+    diff == 0
+}
 
 /// Configuration for the embedded server.
 pub struct Config {
@@ -139,7 +158,11 @@ where
                 .iter()
                 .find(|h| h.field.equiv("X-Ueforge-Auth"))
                 .map(|h| h.value.as_str());
-            if provided != Some(expected) {
+            let ok = match provided {
+                Some(p) => ct_eq(p.as_bytes(), expected.as_bytes()),
+                None => false,
+            };
+            if !ok {
                 let _ = req.respond(
                     Response::from_string("unauthorized").with_status_code(401),
                 );
@@ -147,11 +170,31 @@ where
             }
         }
 
-        let mut body = String::new();
-        if std::io::Read::read_to_string(req.as_reader(), &mut body).is_err() {
+        // Cap the body read at MAX_BODY_BYTES + 1: if the reader
+        // produces more than the cap, we reject as 413.
+        let mut buf = Vec::new();
+        let read_result = req
+            .as_reader()
+            .take(MAX_BODY_BYTES + 1)
+            .read_to_end(&mut buf);
+        if read_result.is_err() {
             let _ = req.respond(Response::from_string("bad body").with_status_code(400));
             continue;
         }
+        if buf.len() as u64 > MAX_BODY_BYTES {
+            let _ = req.respond(
+                Response::from_string("payload too large").with_status_code(413),
+            );
+            continue;
+        }
+        let body = match String::from_utf8(buf) {
+            Ok(s) => s,
+            Err(_) => {
+                let _ = req
+                    .respond(Response::from_string("bad body").with_status_code(400));
+                continue;
+            }
+        };
 
         let payload = handler(&body);
         let len = payload.len();

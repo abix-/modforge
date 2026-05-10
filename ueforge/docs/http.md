@@ -267,14 +267,44 @@ Every bug is a missing test. The test goes in BEFORE the fix.
 
 ## Safety / production
 
-The HTTP server has no auth (kovarex P2). It binds 127.0.0.1
-only, but anything else on localhost can hit it -- and ops like
-`write_bytes` can corrupt arbitrary game memory. Don't ship the
-debug port enabled in a release build.
+The HTTP server binds 127.0.0.1 only, so it's not reachable from
+the network. But anything else on the same host can hit it --
+and ops like `write_bytes` can corrupt arbitrary game memory.
+Don't ship the debug port enabled in a release build.
 
 Bbp gates the port behind `settings.debug.http_port: Option<u16>`
 (default `None`). Production users get the port off; dev /
 research builds turn it on locally.
+
+### Per-launch auth token
+
+`server::Config::auth_token: Option<&'static str>`. When `Some(t)`,
+every request must carry `X-Ueforge-Auth: <t>` or the listener
+returns 401. When `None`, no auth (the historical default; safe
+for closed-loop dev where tests are the only client).
+
+Token generation is a consumer concern: typically
+`format!("{:032x}", rand::random::<u128>())` at startup,
+`Box::leak`-ed to satisfy `&'static str`, written to a file the
+test client reads. The convenience builder is `Api::with_auth(t)`.
+
+The header check uses a constant-time byte compare (`ct_eq`) so
+there's no early-exit timing signal that would let a co-resident
+process narrow the token byte-by-byte. Localhost weakens the
+attacker model, but the fix is ~5 LoC -- no excuse to skip.
+
+### Body size cap
+
+`MAX_BODY_BYTES = 1 MiB`. Reads use
+`req.as_reader().take(cap + 1).read_to_end(&mut buf)`; if `buf`
+exceeds the cap, the listener returns 413 (Payload Too Large).
+Without the cap a misbehaving client could send 4 GB into
+`read_to_string` and OOM the host process.
+
+The cap is ~1000x the largest legitimate op payload we ship --
+generous enough that no real op ever brushes it. Bump only if a
+legitimate snapshot grows past 1 MiB; large dumps belong on a
+separate streaming endpoint, not in a JSON body.
 
 ## Cross-references
 

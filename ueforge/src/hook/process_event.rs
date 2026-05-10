@@ -5,10 +5,11 @@
 // Multiple hooks can be installed against different classes -- the
 // trampoline matches on the live vtable pointer of the incoming `this`.
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use arc_swap::ArcSwap;
@@ -27,8 +28,21 @@ pub struct OriginalProcessEvent {
 
 impl OriginalProcessEvent {
     pub unsafe fn call(&self, this: &UObject, function: &UFunction, parms: *mut c_void) {
+        // Mark "handler already called engine" so the trampoline's
+        // panic-recovery arm does NOT call the engine a second time
+        // if the handler panics AFTER this returns. Double-call on
+        // a kill multicast would double-credit XP.
+        CALLED_ORIGINAL.with(|c| c.set(true));
         unsafe { (self.f)(this as *const UObject, function as *const UFunction, parms) };
     }
+}
+
+// Per-thread guard set by OriginalProcessEvent::call. The
+// trampoline saves/restores around handler invocation so reentrant
+// hook fires (handler calls a UFunction whose multicast re-enters
+// the same trampoline) preserve the outer frame's flag correctly.
+thread_local! {
+    static CALLED_ORIGINAL: Cell<bool> = const { Cell::new(false) };
 }
 
 type Handler = Box<dyn Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent) + Send + Sync>;
@@ -44,6 +58,12 @@ struct Entry {
     /// exit). Drop spins on this until it hits 0 (with a
     /// timeout) so we don't unload code that's mid-execution.
     active_calls: AtomicUsize,
+    /// Cumulative count of handler panics caught by the
+    /// trampoline's `catch_unwind`. Without this, panics in
+    /// trampolines are invisible to the snapshot endpoint --
+    /// the game keeps running but the mod silently swallows
+    /// errors. Surfaced via [`panic_count`] / [`panic_count_total`].
+    panic_count: AtomicU64,
 }
 
 unsafe impl Send for Entry {}
@@ -112,6 +132,7 @@ impl ProcessEventHook {
             original,
             handler: Box::new(handler),
             active_calls: AtomicUsize::new(0),
+            panic_count: AtomicU64::new(0),
         }));
 
         {
@@ -134,6 +155,12 @@ impl ProcessEventHook {
 
     pub fn class_name(&self) -> &'static str {
         self.entry.class_name
+    }
+
+    /// Cumulative count of handler panics caught by this hook's
+    /// trampoline. For snapshot surfaces.
+    pub fn panic_count(&self) -> u64 {
+        self.entry.panic_count.load(Ordering::Relaxed)
     }
 
     /// Install the same handler against multiple class names (e.g.
@@ -165,6 +192,16 @@ impl ProcessEventHook {
         }
         Ok(hooks)
     }
+}
+
+/// Sum of trampoline-caught handler panics across every currently
+/// installed hook. Snapshot endpoints surface this as a single
+/// number; if it's nonzero, a hook is silently failing.
+pub fn panic_count_total() -> u64 {
+    let snap = SNAPSHOT.load();
+    snap.iter()
+        .map(|e| e.panic_count.load(Ordering::Relaxed))
+        .sum()
 }
 
 impl Drop for ProcessEventHook {
@@ -238,13 +275,28 @@ unsafe extern "system" fn trampoline(
     }
 
     entry.active_calls.fetch_add(1, Ordering::AcqRel);
+    // Save/restore the flag around the handler so reentrant fires
+    // (handler -> UFunction -> our hook again) don't corrupt the
+    // outer frame's "called original" state.
+    let prev_called = CALLED_ORIGINAL.with(|c| c.replace(false));
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         (entry.handler)(&*this, &*function, parms, original)
     }));
+    let called_during = CALLED_ORIGINAL.with(|c| c.replace(prev_called));
     entry.active_calls.fetch_sub(1, Ordering::AcqRel);
 
     if result.is_err() {
-        // Closure panicked; fall through to original to keep the game alive.
-        unsafe { original.call(&*this, &*function, parms) };
+        // Bump the per-entry panic counter so the snapshot
+        // endpoint can surface "your handler is panicking N
+        // times" instead of silently swallowing.
+        entry.panic_count.fetch_add(1, Ordering::Relaxed);
+        if !called_during {
+            // Closure panicked BEFORE calling the engine; fall
+            // through so the game keeps progressing. If the
+            // handler had already called original, do NOT call it
+            // again -- that would double-fire the multicast (e.g.
+            // double-credit XP on a kill).
+            unsafe { original.call(&*this, &*function, parms) };
+        }
     }
 }

@@ -154,7 +154,11 @@ macro_rules! ue4ss_mod {
             //    `server::spawn`. Unblocks tiny_http's accept
             //    loop + joins the thread.
             $crate::server::shutdown_all();
-            // 4. Side-file swap so UE4SS's next LoadLibraryExW
+            // 4. Stop + join every `Settings::watch` poller so no
+            //    watcher thread is on a stack in our DLL when
+            //    UE4SS calls FreeLibrary.
+            $crate::settings::shutdown_all();
+            // 5. Side-file swap so UE4SS's next LoadLibraryExW
             //    picks up the new image written to main-new.dll.
             $crate::mod_main::finalize_hot_reload_swap();
         }

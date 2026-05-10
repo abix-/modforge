@@ -60,9 +60,10 @@ settings.update(|s| {
 // inner Mutex flipped + atomic temp+rename to disk
 ```
 
-Writes go through temp + rename. Caveat: no fsync before
-rename today (kovarex P0 in flight); a power-cut between rename
-and disk-flush leaves a torn file.
+Writes go through temp + rename inside the inner mutex, so
+concurrent updates serialize cleanly. POSIX rename semantics
+guarantee atomicity; on Windows `std::fs::rename` over an
+existing file has been atomic since 1809.
 
 ### Defaults via serde
 
@@ -118,11 +119,56 @@ unsafe fn worker() {
     cur.log_summary();   // log what we loaded -- helps in support tickets
 
     // ... use cur for the rest of init ...
-
-    // If you want hot-reload later, you'd watch the file and call
-    // settings.replace(new_value) to swap in. Not implemented today.
 }
 ```
+
+## Hot-reload (`Settings::watch`)
+
+```rust
+let settings = Arc::new(Settings::<MySettings>::load("settings.json"));
+let _handle = settings.watch(
+    Duration::from_secs(2),
+    |new: &MySettings| {
+        // Push the new snapshot into per-feature atomics, re-apply
+        // CDO writes, etc. Runs on the watcher thread.
+    },
+);
+```
+
+`watch` spawns a worker thread that polls the file's mtime
+every `interval` and calls `Self::reload()` whenever it
+changes. On parse / IO error the in-memory state is left
+untouched and a log line is emitted; subsequent successful
+reloads recover. Returns a `WatchHandle`; dropping it asks the
+poller to stop at its next tick.
+
+### Teardown registry
+
+Every `watch` spawn auto-registers a `(stop_flag, JoinHandle)`
+into a static `WATCH_REGISTRY`. The framework's
+`ueforge_mod_shutdown` macro path calls
+`settings::shutdown_all()` after the HTTP listeners stop and
+before the side-file rename:
+
+```
+on_shutdown
+  -> hook::shutdown_all
+  -> server::shutdown_all
+  -> settings::shutdown_all   <-- stops + joins every watcher
+  -> finalize_hot_reload_swap
+```
+
+This matters because UE4SS's Ctrl+R hot-reload calls
+`FreeLibrary` after `ueforge_mod_shutdown` returns. A watcher
+thread still on a stack inside our DLL when FreeLibrary lands
+crashes the game on its next iteration. Auto-registration plugs
+the leak that existed when consumers forgot to keep the
+`WatchHandle` alive past the spawn.
+
+The handle is still returned for callers that want early stop
+(e.g. an op that disables hot-reload at runtime). Drop and
+shutdown_all are independent stop knobs operating on the same
+flag; the join happens at most once.
 
 ## Anti-patterns
 
