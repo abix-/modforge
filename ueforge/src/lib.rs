@@ -98,8 +98,10 @@ pub mod stacks;
 pub mod uasset;
 pub mod ue;
 pub mod ui;
+pub mod ui_class_browser;
 pub mod ui_data_table_browser;
 pub mod ui_scanner;
+pub mod ui_struct_browser;
 pub mod winproc;
 pub mod worker;
 

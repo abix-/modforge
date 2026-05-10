@@ -34,6 +34,14 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
             name: "Tables",
             render: ueforge::ui_data_table_browser::render,
         },
+        ueforge::TabDef {
+            name: "Classes",
+            render: ueforge::ui_class_browser::render,
+        },
+        ueforge::TabDef {
+            name: "Structs",
+            render: ueforge::ui_struct_browser::render,
+        },
     ],
 };
 
