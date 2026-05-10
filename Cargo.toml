@@ -24,6 +24,7 @@ regex = "1"
 winreg = "0.55"
 zip = "5"
 parking_lot = "0.12"
+arc-swap = "1"
 
 [profile.release]
 lto = "fat"

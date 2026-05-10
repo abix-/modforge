@@ -241,11 +241,14 @@ fn locate_property(
         if chain_depth > 16 {
             break;
         }
-        for p in c.iter_native_properties() {
+        // Use the cached property list -- subsequent calls on the
+        // same class share an Arc instead of re-walking + re-resolving
+        // FName for every property.
+        for p in c.cached_native_properties().iter() {
             if offset_in_instance >= p.offset
                 && offset_in_instance < p.offset + p.element_size.max(1)
             {
-                return Some((p.name, p.offset, p.element_size));
+                return Some((p.name.clone(), p.offset, p.element_size));
             }
         }
         cur = c.super_class();

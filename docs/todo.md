@@ -45,7 +45,11 @@ maintainability / future-proofing.
 
 ### P1 -- silent rot / resource bleed
 
-- [ ] **`FString` buffer leak on every FName -> String.**
+- [x] **`FString` buffer leak on every FName -> String.**
+  Capped via FName-keyed string cache in `NameResolver`. Each unique
+  FName leaks one buffer, bounded by the game's name pool. Full
+  `FMemory::Free` binding still available as future work.
+- [~] **OLD bullet text below kept for traceability:**
   `ueforge/src/ue/fstring.rs:1-10` documents the leak. Every
   `find_class_fast`, `find_by_short_name`, `UObject::name`,
   `full_name`, `is_default_object` leaks ~`2 * len` bytes per call.
@@ -53,7 +57,13 @@ maintainability / future-proofing.
   in `UE4SS.lib`) or call `delete[]` from a tiny helper compiled into
   `ueforge_ui.cpp`, and free the buffer in `FString`'s drop / after
   `as_string()`.
-- [ ] **`find_class_fast` / `find_by_short_name` are O(N) GObjects walks.**
+- [x] **`find_class_fast` cache.** Hits cached on first resolve; misses
+  re-walk so a later call after the class loads still finds it.
+  (`find_by_short_name` is a separate concern -- DataTable lookups by
+  short name still walk; that's lower-impact since DTs resolve once at
+  init in the on_first_sight pattern. Track separately if it shows up.)
+- [ ] **`find_by_short_name` (DataTable) cache.** Same shape as the
+  class cache; do when actually a hot path.
   `ueforge/src/ue/uobject.rs:424-440`,
   `ueforge/src/ue/datatable.rs:263-285`,
   `ueforge/src/selector.rs:59-81`. ~150K objects on OWS; every selector
@@ -61,8 +71,9 @@ maintainability / future-proofing.
   FString -- see above). Add a lazy FName-keyed
   `OnceLock<HashMap<u64, &'static UClass>>` cache; UClasses are stable
   forever once seen.
-- [ ] **`inspect_address` allocates a `Vec<NativeProperty>` per
-  super-class per call.** `ueforge/src/ue/uobject.rs:181-216` +
+- [x] **`inspect_address` allocates a `Vec<NativeProperty>` per
+  super-class per call.** UClass now exposes `cached_native_properties`
+  returning `Arc<[NativeProperty]>`; `locate_property` uses it. `ueforge/src/ue/uobject.rs:181-216` +
   `ueforge/src/ops.rs:206-229`. Click 20 rows in the Scanner UI =
   100-300 heap allocs and FName resolves on the render thread.
   Cache the property list per UClass in
@@ -77,7 +88,7 @@ maintainability / future-proofing.
   ProcessEvent thousands of times per second; the `.find()` over
   `SNAPSHOT` is fine for 2-3 hooks, measurable at 6+. Index by
   vtable pointer.
-- [ ] **Replace hand-rolled `SNAPSHOT` + `Box::leak` with
+- [x] **Replace hand-rolled `SNAPSHOT` + `Box::leak` with
   `arc_swap::ArcSwap`.** `ueforge/src/hook/process_event.rs:46-64`.
   Each install/drop leaks a previous snapshot; standard answer is
   one well-tested crate. ~5 lines vs ~30, no leak.

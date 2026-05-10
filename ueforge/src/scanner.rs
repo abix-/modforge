@@ -556,7 +556,7 @@ fn spawn_freeze_writer(
                                 "ueforge freeze: re-resolved 0x{addr:X} -> 0x{new_addr:X}"
                             ));
                             addr = new_addr;
-                            failures = 0;
+                            // failures is reset by the successful write below.
                         }
                         None => {
                             failures = failures.saturating_add(1);

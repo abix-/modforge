@@ -5,8 +5,11 @@
 // helpers that read at known offsets. No Rust-level inheritance -- callers
 // pass `&UObject` everywhere and downcast via `is_a()`.
 
+use std::collections::HashMap;
 use std::ffi::c_void;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
+
+use parking_lot::RwLock;
 
 use crate::ue::fname::{FName, NameResolver};
 use crate::ue::offsets::{
@@ -199,6 +202,23 @@ impl UClass {
     /// Returns owned strings so the iterator can outlive a borrow
     /// on the class. Cheap enough for interactive lookups
     /// (each class has tens of properties typically).
+    /// Cached variant of [`Self::iter_native_properties`]. UClasses
+    /// live forever in GObjects, so the property list never changes
+    /// after first read; caching keys on the UClass pointer.
+    /// Subsequent calls share an `Arc<[NativeProperty]>` and avoid
+    /// re-walking the FField chain + re-resolving every property
+    /// FName.
+    pub fn cached_native_properties(&self) -> Arc<[NativeProperty]> {
+        let key = self as *const UClass as usize;
+        let cache = property_cache();
+        if let Some(p) = cache.read().get(&key) {
+            return p.clone();
+        }
+        let fresh: Arc<[NativeProperty]> = self.iter_native_properties().into();
+        cache.write().insert(key, fresh.clone());
+        fresh
+    }
+
     pub fn iter_native_properties(&self) -> Vec<NativeProperty> {
         let Some(rt) = try_runtime() else { return Vec::new() };
         let mut out = Vec::new();
@@ -443,8 +463,17 @@ pub unsafe fn init_runtime(
 /// meta-class filter accepts native `Class` *and* its subclasses
 /// (BlueprintGeneratedClass, WidgetBlueprintGeneratedClass, etc.) so
 /// Blueprint-generated classes are returned too.
+///
+/// Result is cached by name. UClasses are stable in GObjects for the
+/// process lifetime, so a hit is permanent. Misses (class not yet
+/// loaded by the engine) are NOT cached -- a later call after the
+/// class loads will walk again and find it.
 pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
     let rt = try_runtime()?;
+    let cache = class_cache();
+    if let Some(c) = cache.read().get(name) {
+        return Some(*c);
+    }
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return None;
@@ -456,9 +485,25 @@ pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
         if !is_uclass_meta(obj.class()) {
             continue;
         }
-        return unsafe { Some(&*(obj as *const UObject as *const UClass)) };
+        let class: &'static UClass = unsafe { &*(obj as *const UObject as *const UClass) };
+        cache.write().insert(name.to_string(), class);
+        return Some(class);
     }
     None
+}
+
+// ---- Caches --------------------------------------------------------------
+
+static CLASS_CACHE: OnceLock<RwLock<HashMap<String, &'static UClass>>> = OnceLock::new();
+fn class_cache() -> &'static RwLock<HashMap<String, &'static UClass>> {
+    CLASS_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(256)))
+}
+
+/// Per-UClass property list cache. Key is the UClass pointer cast
+/// to usize -- UClasses are stable in GObjects, so this is safe.
+static PROPERTY_CACHE: OnceLock<RwLock<HashMap<usize, Arc<[NativeProperty]>>>> = OnceLock::new();
+fn property_cache() -> &'static RwLock<HashMap<usize, Arc<[NativeProperty]>>> {
+    PROPERTY_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(256)))
 }
 
 fn is_uclass_meta(meta: Option<&UClass>) -> bool {

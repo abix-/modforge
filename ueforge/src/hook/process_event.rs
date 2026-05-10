@@ -6,8 +6,10 @@
 // trampoline matches on the live vtable pointer of the incoming `this`.
 
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::Arc;
+use std::sync::LazyLock;
 
+use arc_swap::ArcSwap;
 use parking_lot::Mutex;
 
 use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, try_runtime};
@@ -40,28 +42,17 @@ struct Entry {
 unsafe impl Send for Entry {}
 unsafe impl Sync for Entry {}
 
-// REGISTRY is the canonical mutable list, held under a mutex but only ever
-// touched by install/drop (cold paths). The trampoline reads SNAPSHOT
-// instead -- a leaked, frozen `&'static [&'static Entry]` rebuilt after
-// every install/drop. Atomic-load on the hot path, no mutex.
+// REGISTRY is the canonical mutable list, touched only by install/drop
+// (cold paths). The trampoline reads SNAPSHOT -- an ArcSwap of the
+// current entry list. Read is one atomic load + Arc clone, no mutex.
+// Replaces the old hand-rolled AtomicPtr<&'static [...]> that leaked
+// every install/drop.
 static REGISTRY: Mutex<Vec<&'static Entry>> = Mutex::new(Vec::new());
-static SNAPSHOT: AtomicPtr<&'static [&'static Entry]> = AtomicPtr::new(std::ptr::null_mut());
+static SNAPSHOT: LazyLock<ArcSwap<Vec<&'static Entry>>> =
+    LazyLock::new(|| ArcSwap::from_pointee(Vec::new()));
 
 fn publish_snapshot(reg: &[&'static Entry]) {
-    let leaked: &'static [&'static Entry] = Box::leak(reg.to_vec().into_boxed_slice());
-    let boxed_ref: &'static &'static [&'static Entry] = Box::leak(Box::new(leaked));
-    SNAPSHOT.store(
-        boxed_ref as *const _ as *mut &'static [&'static Entry],
-        Ordering::Release,
-    );
-}
-
-fn current_snapshot() -> &'static [&'static Entry] {
-    let p = SNAPSHOT.load(Ordering::Acquire);
-    if p.is_null() {
-        return &[];
-    }
-    unsafe { *p }
+    SNAPSHOT.store(Arc::new(reg.to_vec()));
 }
 
 pub struct ProcessEventHook {
@@ -156,10 +147,8 @@ unsafe extern "system" fn trampoline(
             .read_unaligned()
     };
 
-    let entry = current_snapshot()
-        .iter()
-        .find(|e| e.vtable == live_vtable)
-        .copied();
+    let snap = SNAPSHOT.load();
+    let entry = snap.iter().find(|e| e.vtable == live_vtable).copied();
 
     let Some(entry) = entry else {
         // Shouldn't happen -- a hooked vtable always has an entry. Fall
