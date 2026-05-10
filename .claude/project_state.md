@@ -1,5 +1,36 @@
 # grounded2mods - project state
 
+## Renamed framework: uespy -> ueforge (2026-05-09 night)
+
+Outgrew the "spy" framing once the project became a full
+framework with lifecycle / shim / UI / DataTable / settings /
+deploy. `forge` is modder-vernacular (MC Forge) and reads
+clean in paths: `ueforge::ue::datatable::FieldTweak`. Kept the
+`ue` prefix because the framework is UE-specific.
+
+Mechanical changes:
+- workspace dirs: uespy/ -> ueforge/, uespy-deploy/ -> ueforge-deploy/
+- 1300+ `uespy` -> `ueforge` source-text replacements
+- C++ filenames: uespy_*.cpp/.hpp -> ueforge_*.cpp/.hpp
+- C extern fn names (uespy_mod_*, uespy_ui_*) -> ueforge_*
+- thread names + log strings ("uespy: ..." -> "ueforge: ...")
+- per-mod metadata key: [package.metadata.uespy] -> [package.metadata.ueforge]
+- ueforge-deploy reads the renamed key
+
+Unchanged:
+- `cargo deploy install -p tweaks` alias (works the same)
+- public API surface of every module
+- in-game behavior
+
+Verified: ueforge / ueforge-deploy / tweaks / better-backpack
+all build clean in release. tests compile clean. deploy CLI
+reaches the copy step.
+
+Skill v1.5 (~/.claude/skills/runtime-control-http/SKILL.md)
+gets the rename too.
+
+Commit: 37a5dee. 1098 files changed.
+
 ## ueforge crate extracted; OWS scaffolding queued (2026-05-09 late)
 
 Generic UE-mod control plane factored out of `better-backpack` into
