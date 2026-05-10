@@ -22,6 +22,18 @@ fn main() {
     let imgui = cpp.join("imgui");
     let ue4ss = manifest.join("ue4ss");
 
+    // The imgui directory is a git submodule pinned to v1.92.1
+    // (matches UE4SS's bundled version). If it's empty, the user
+    // cloned without `--recurse-submodules`. Fail loudly with a fix.
+    if !imgui.join("imgui.cpp").exists() {
+        panic!(
+            "ueforge: cpp/imgui submodule is not initialized.\n\
+             Run from the repo root:\n\
+                 git submodule update --init --recursive\n\
+             (or re-clone with `git clone --recurse-submodules <url>`)."
+        );
+    }
+
     println!("cargo:rerun-if-changed={}", cpp.display());
     println!("cargo:rerun-if-changed={}", ue4ss.join("UE4SS.lib").display());
 

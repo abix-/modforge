@@ -96,7 +96,16 @@ Tested against Grounded 2 Steam build
 The shipping shape is a UE4SS C++ mod. Drop the DLL into
 UE4SS's `Mods/` directory; UE4SS handles loading.
 
-For development:
+For development, clone with submodules (Dear ImGui v1.92.1 lives
+in a submodule):
+
+```sh
+git clone --recurse-submodules <repo>
+# or, if you already cloned:
+git submodule update --init --recursive
+```
+
+Then:
 
 ```sh
 cargo deploy install -p grounded2-rpg

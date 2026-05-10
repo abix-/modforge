@@ -48,15 +48,30 @@ Standard *-sys crate pattern. Nothing special, nothing clever.
 
 The repo is Rust. The only C++ lives at the UE4SS / ImGui boundary:
 
-| | Files | Lines |
-|---|---|---|
-| Vendored ImGui (third-party, pinned to UE4SS's bundled v1.92.1) | 10 | 54,645 |
-| ueforge shim (CppUserModBase subclass + ImGui extern "C" wrappers) | 4 | 502 |
+| | Files | Lines | Where |
+|---|---|---|---|
+| Dear ImGui v1.92.1 (third-party, pinned to UE4SS's version) | 10 | 54,645 | git submodule -- not in this repo |
+| ueforge shim (CppUserModBase subclass + ImGui extern "C" wrappers) | 4 | 502 | `cpp/` (ours) |
 
-That's it. Every mod, every framework subsystem, every test, every
-tool is Rust. The 502-line shim is a fixed cost shared by every Rust
-mod in the workspace -- it does not grow as we add features. Full
+Every mod, every framework subsystem, every test, every tool is
+Rust. The 502-line shim is a fixed cost shared by every Rust mod
+in the workspace -- it does not grow as we add features. Full
 breakdown + doctrine in [`docs/native.md`](docs/native.md).
+
+### Cloning
+
+ImGui v1.92.1 is a git submodule under `cpp/imgui/`, pinned to
+[`ocornut/imgui` tag v1.92.1](https://github.com/ocornut/imgui/releases/tag/v1.92.1).
+Use one of:
+
+```sh
+git clone --recurse-submodules <repo>
+# or, if you already cloned:
+git submodule update --init --recursive
+```
+
+`build.rs` panics with a clear message if the submodule isn't
+initialized.
 
 ## What lives in ueforge (do not reinvent)
 

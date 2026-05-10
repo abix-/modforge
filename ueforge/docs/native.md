@@ -10,29 +10,47 @@ expose as C++ APIs, where there is no Rust escape hatch.
 
 ## TL;DR
 
-| | Files | Lines |
-|---|---|---|
-| Vendored ImGui (third-party, upstream) | 10 | 54,645 |
-| ueforge shim (ours) | 4 | 502 |
-| **Total C++** | **14** | **55,147** |
-| **Total first-party C++** | **4** | **502** |
+| | Where | Files | Lines |
+|---|---|---|---|
+| Dear ImGui v1.92.1 (third-party) | git submodule -- NOT in this repo | 10 | 54,645 |
+| ueforge shim (ours) | `ueforge/cpp/` | 4 | 502 |
+| **First-party C++ in this repo** | | **4** | **502** |
 
-If you remove the vendored ImGui (which is upstream third-party
-code, not authored by us), our hand-written C++ is **502 lines**.
-That's the minimum bridge between UE4SS's C++ plugin API and a
-Rust cdylib. It doesn't grow as we add features -- every new mod
-and every new framework subsystem stays Rust-only on top of the
-same fixed shim.
+The repo itself contains **502 lines of C++** -- the irreducible
+shim. ImGui's 54,645 lines live as a git submodule pointing at
+[`ocornut/imgui` tag v1.92.1](https://github.com/ocornut/imgui/releases/tag/v1.92.1);
+they're checked out into `ueforge/cpp/imgui/` after
+`git submodule update --init` but never tracked in this repo.
+
+Every mod, every framework subsystem, every test, every tool is
+Rust. The 502-line shim is a fixed cost shared by every Rust mod
+in the workspace -- it does not grow as we add features.
 
 Everywhere else in the workspace is 100% Rust. There is no game-
 specific C++ in any mod crate. There is no RPG-system C++. There
-is no inventory C++. The fixed-cost C++ lives once in
-`ueforge/cpp/` and serves every Rust mod in the workspace.
+is no inventory C++.
 
-## Vendored ImGui (54,645 lines, third-party)
+## Dear ImGui via submodule (54,645 lines, third-party, NOT in this repo)
 
-`ueforge/cpp/imgui/`. Upstream Dear ImGui v1.92.1, byte-identical
-to UE4SS's bundled version.
+`ueforge/cpp/imgui/` is a **git submodule** pointing at
+[`ocornut/imgui`](https://github.com/ocornut/imgui) pinned to
+tag `v1.92.1` -- byte-identical to UE4SS's bundled version. The
+ImGui sources live in `ocornut/imgui` upstream; our repo carries
+only a `.gitmodules` entry + a single commit hash reference. After
+`git submodule update --init`, the sources are checked out into
+`cpp/imgui/` and `build.rs` compiles them like any other source
+file.
+
+Updating to a new ImGui version (e.g. when UE4SS bumps):
+
+```sh
+cd ueforge/cpp/imgui
+git checkout v1.93.0
+cd ../../..
+git commit -am "bump imgui to v1.93.0"
+```
+
+Forking is one line: change the URL in `.gitmodules` to a fork.
 
 ### Why vendor ImGui at all
 
