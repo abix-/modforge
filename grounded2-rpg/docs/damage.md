@@ -992,7 +992,18 @@ patching them.
 
 ## Status Effect system (the canonical extension surface)
 
-### Plain-language overview (read this first)
+> **Generic reference**: the universal UE5 status-effect design
+> pattern (component holds a list, effects are row-driven from
+> a UDataTable, native code queries summed stats) lives in
+> [`../../ueforge/docs/status-effects.md`](../../ueforge/docs/status-effects.md).
+> Read that first if you're new to the pattern; the framework's
+> `StandardEffect::StatusEffect` variant binds to it directly.
+> This section captures the **Grounded 2 / Maine specifics**:
+> exact class-layout offsets, the live `Table_StatusEffects`
+> data table, validated `EStatusEffectType` enum values, and
+> the probe output from a real player session.
+
+### Plain-language overview (Grounded 2 example)
 
 In Grounded 2, **every gameplay modifier you've ever seen is a
 "status effect"** under the hood. You don't think of them that way

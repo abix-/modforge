@@ -51,6 +51,8 @@ defined ONCE in ueforge.**
 | Subsystem | File | Headline |
 |---|---|---|
 | Lifecycle | [lifecycle.md](lifecycle.md) | `ue4ss_mod!`, `ModInfo`, C++ shim, on_unreal_init, on_shutdown, hot-reload (Ctrl+R, full Phase A+B), build/deploy |
+| UE5 engine reference | [ue-engine.md](ue-engine.md) | Generic UE5 platform: pak / IoStore container, UObject layout, shipping-build constraints, UE4SS hooking caveats, cooked PropertyTag layout, general-purpose modding tools |
+| UE5 status-effect system | [status-effects.md](status-effects.md) | The universal "data-table-row + component + native query" pattern every UE5 RPG game uses; binding via `StandardEffect::StatusEffect` |
 | UE SDK | [ue-sdk.md](ue-sdk.md) | UObject family + `ClassRef` + `TypedField<T>` + GObjects + `PlayerRef` + `ue::field` byte ops + `ue::actor` (class-chain / controller helpers) + `ue::damage_info` (`DamageInfoLayout`) + `ue::pe_call::call_ufunction` |
 | Hooks | [hooks.md](hooks.md) | `ProcessEventHook` + `HookRegistry::shutdown_all` (hot-reload safety) + `function_table!` + `install_with_backoff` + `install_immediate_or_log` + per-Entry `active_calls` drain |
 | Game-thread queue | [pe-queue.md](pe-queue.md) | `Queue`, `DrainSite`, drain-site selection rules |
