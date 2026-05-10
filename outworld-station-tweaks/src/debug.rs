@@ -12,6 +12,7 @@ pub fn spawn(port: u16) {
             port,
             endpoint: "/debug",
             thread_name: "ows-tweaks-debug",
+            auth_token: None,
         },
         |body| {
             let resp = handle(body);

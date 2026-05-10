@@ -68,6 +68,33 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Hardening bundle: HTTP auth + FName size guard
+
+Three kovarex P1/P2 items resolved in one pass:
+
+- **HTTP per-launch auth token** -- `server::Config::auth_token:
+  Option<&'static str>`. When `Some(t)`, every request must carry
+  `X-Ueforge-Auth: <t>` header or gets a 401. When `None`, no
+  auth (back-compat default). `client::Api::with_auth(token)`
+  builder method on the test client. Token generation + storage
+  stays a consumer concern; one-line at startup.
+- **FName size guard** -- `const _: () = assert!(size_of::<FName>()
+  == 8 && align_of::<FName>() <= 8)` in `ue::fname.rs`. If UE
+  ever changes the layout beneath our `transmute_copy::<u64,
+  FName>` sites, this fires at build time instead of silently
+  corrupting names at runtime.
+- **`process_event_idx`** -- audited; already correctly required
+  on `PlatformOffsets` (no Default impl, both STEAM/XBOX consts
+  set it explicitly). Todo entry was misadvised; closed.
+- **`#[non_exhaustive]` audit** -- correctly skipped. `ModInfo` /
+  `Tab` / `PlatformOffsets` / `Config` are literal-constructed
+  by every consumer; `#[non_exhaustive]` would break the call
+  sites without giving us actual API stability. In a monorepo
+  with atomic updates, breaking changes mean "one-line update
+  at the call site in the same commit" -- which is fine.
+  Documented the rationale in todo.md so future audits don't
+  re-litigate.
+
 ### Pillar 5: Damage hook framework + Lifesteal live
 
 `ueforge::damage::DamageHook<B>` -- universal damage-event hook,

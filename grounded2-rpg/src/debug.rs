@@ -119,6 +119,7 @@ pub fn spawn(port: u16) {
             port,
             endpoint: "/debug",
             thread_name: "g2rpg-debug-http",
+            auth_token: None,
         },
         |body| {
             let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);

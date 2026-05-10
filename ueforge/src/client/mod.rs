@@ -39,6 +39,7 @@ pub struct Api<S> {
     endpoint: String,
     agent: ureq::Agent,
     timeout: Duration,
+    auth_token: Option<String>,
     _phantom: PhantomData<S>,
 }
 
@@ -54,6 +55,7 @@ impl<S: DeserializeOwned> Api<S> {
             endpoint: endpoint.into(),
             agent,
             timeout,
+            auth_token: None,
             _phantom: PhantomData,
         }
     }
@@ -66,8 +68,17 @@ impl<S: DeserializeOwned> Api<S> {
             endpoint: self.endpoint,
             agent,
             timeout,
+            auth_token: self.auth_token,
             _phantom: PhantomData,
         }
+    }
+
+    /// Attach a per-launch auth token. Sent as
+    /// `X-Ueforge-Auth: <token>` on every request. Pair with
+    /// `server::Config::auth_token` to gate the endpoint.
+    pub fn with_auth(mut self, token: impl Into<String>) -> Self {
+        self.auth_token = Some(token.into());
+        self
     }
 
     pub fn timeout(&self) -> Duration {
@@ -110,9 +121,11 @@ impl<S: DeserializeOwned> Api<S> {
     pub fn try_op(&self, op: &str, args: Value) -> Result<OpResponse<S>, String> {
         let body = json!({ "op": op, "args": args });
         let url = format!("http://127.0.0.1:{}{}", self.port, self.endpoint);
-        let res = self
-            .agent
-            .post(&url)
+        let mut req = self.agent.post(&url);
+        if let Some(token) = &self.auth_token {
+            req = req.set("X-Ueforge-Auth", token);
+        }
+        let res = req
             .send_json(body)
             .map_err(|e| format!("ueforge::client POST {url} failed: {e}"))?;
         res.into_json::<OpResponse<S>>()

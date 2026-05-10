@@ -22,6 +22,18 @@ pub struct Config {
     pub endpoint: &'static str,
     /// Name applied to the listener thread (visible in tools / logs).
     pub thread_name: &'static str,
+    /// Optional per-launch auth token. When `Some(t)`, every
+    /// request must carry `X-Ueforge-Auth: <t>` or it gets a
+    /// 401. Stops cross-process localhost actors from hitting
+    /// `write_bytes` / `call`. When `None`, no auth is enforced
+    /// (the historical default; safe for closed-loop dev where
+    /// tests are the only client).
+    ///
+    /// Callers typically generate via `format!("{:032x}",
+    /// rand::random::<u128>())` at startup, write to a file
+    /// the test client reads, and `Box::leak` to get
+    /// `&'static str`.
+    pub auth_token: Option<&'static str>,
 }
 
 /// Handle to a spawned listener. Drop or call [`stop`](Self::stop)
@@ -90,9 +102,11 @@ where
 
     let handler = Arc::new(handler);
     let server_for_thread = server.clone();
+    let endpoint = cfg.endpoint;
+    let auth_token = cfg.auth_token;
     let join = thread::Builder::new()
         .name(cfg.thread_name.into())
-        .spawn(move || run(server_for_thread, cfg.endpoint, handler))
+        .spawn(move || run(server_for_thread, endpoint, handler, auth_token))
         .expect("spawn listener thread");
 
     SERVER_REGISTRY.lock().push(SpawnHandle {
@@ -101,7 +115,12 @@ where
     });
 }
 
-fn run<H>(server: Arc<Server>, endpoint: &'static str, handler: Arc<H>)
+fn run<H>(
+    server: Arc<Server>,
+    endpoint: &'static str,
+    handler: Arc<H>,
+    auth_token: Option<&'static str>,
+)
 where
     H: Fn(&str) -> Vec<u8> + Send + Sync + 'static,
 {
@@ -112,6 +131,20 @@ where
         if method != Method::Post || url != endpoint {
             let _ = req.respond(Response::from_string("not found").with_status_code(404));
             continue;
+        }
+
+        if let Some(expected) = auth_token {
+            let provided = req
+                .headers()
+                .iter()
+                .find(|h| h.field.equiv("X-Ueforge-Auth"))
+                .map(|h| h.value.as_str());
+            if provided != Some(expected) {
+                let _ = req.respond(
+                    Response::from_string("unauthorized").with_status_code(401),
+                );
+                continue;
+            }
         }
 
         let mut body = String::new();

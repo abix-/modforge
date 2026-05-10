@@ -34,6 +34,11 @@
 
 /// Top-level mod metadata. The shipped C++ shim reads this through
 /// the macro-emitted `extern "C"` hooks.
+///
+/// **NOT `#[non_exhaustive]`**: every consumer constructs `ModInfo`
+/// as a struct literal in their `lib.rs`. Adding a field IS a
+/// breaking change for all consumers, but in this monorepo we
+/// update them atomically. Document new fields in `changelog.md`.
 pub struct ModInfo {
     /// Display name (UTF-8). Becomes UE4SS `ModName`.
     pub name: &'static str,

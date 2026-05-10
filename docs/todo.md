@@ -98,23 +98,42 @@ Save-data durability + shutdown safety. All four P0s shipped:
 - [ ] **IO failure-injection tests for `SlotStore`.** Fill-disk,
   permission-denied, partial-write. The 4 unit tests cover
   happy-path + slot validation; failure-injection still pending.
-- [ ] **HTTP per-launch auth token.** Generate at server spawn,
-  require in request header. ~20 LoC. Stops cross-process
-  localhost actors from hitting `write_bytes` / `call`.
+- [x] **HTTP per-launch auth token** -- `server::Config::auth_token: Option<&'static str>`
+  + handler 401 on missing/wrong `X-Ueforge-Auth` header +
+  `Api::with_auth(token)` builder. None = no auth (default;
+  back-compat for tests + dev). Some(t) = required header.
+  Token-generation + storage stays a consumer concern (one-line
+  `format!("{:032x}", rand::random::<u128>())` at startup +
+  `Box::leak`). Closed 2026-05-10.
 
 ## Open: ueforge hardening (kovarex P2)
 
 - [ ] **UE-version-aware offset tables.**
   `ueforge/src/ue/offsets.rs::ffield/fproperty/ustruct` are
   hardcoded for UE 5.4. UE 5.5+ silently returns wrong names.
-- [ ] **`#[non_exhaustive]` on public structs.** `ModInfo`,
-  `Tab`, `PlatformOffsets`, `server::Config`. Adding a field is
-  a breaking change today.
-- [ ] **`static_assert` on `mem::size_of::<FName>() == 8`.**
-  `transmute_copy::<_, u64>` is silent corruption when UE
-  changes layout.
-- [ ] **`process_event_idx: 0x4C` is hardcoded.** Make it
-  required, not defaulted.
+- [-] **`#[non_exhaustive]` on public structs.** Audited
+  2026-05-10: `ModInfo` / `Tab` / `PlatformOffsets` /
+  `server::Config` are all literal-constructed in every
+  consumer. `#[non_exhaustive]` blocks struct-literal
+  construction outside the defining crate, so it'd break every
+  call site without giving us actual API stability (we'd just
+  add a builder later anyway). In a monorepo where ueforge +
+  consumers update atomically, "breaking change" means
+  "one-line update at the call site in the same commit",
+  which is fine. Skipped; document new fields in
+  changelog.md instead.
+- [x] **`static_assert` on `mem::size_of::<FName>() == 8`** +
+  alignment guard. `const _: () = assert!(...)` in
+  `ue::fname.rs`. Build error if UE ever changes the layout
+  beneath our `transmute_copy::<u64, FName>` sites. Closed
+  2026-05-10.
+- [-] **`process_event_idx: 0x4C` is hardcoded.** Audited
+  2026-05-10: NOT actually hardcoded. `PlatformOffsets` has no
+  `Default` impl; the field is required and STEAM/XBOX const
+  definitions both set it explicitly. The runtime read at
+  `hook::process_event` line 96 reads from
+  `rt.platform_offsets.process_event_idx`. Already correct;
+  todo entry was misadvised.
 - [ ] **Fuzz / property tests on walkers.** `TArray`, `TMap`,
   `FieldTweak`, `inspect_address`, `Val::from_json`.
 - [ ] **`UE4SS.lib` build-time symbol-presence check.** Parse

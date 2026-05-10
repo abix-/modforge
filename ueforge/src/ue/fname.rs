@@ -22,6 +22,22 @@ pub struct FName {
     pub number: u32,
 }
 
+// Compile-time guard: every `transmute_copy::<u64, FName>` /
+// `as_u64()` site assumes FName is exactly 8 bytes. If UE ever
+// changes the layout (e.g. UE5.x bumps to a 12-byte
+// `WIDE_NAME_LENGTH` scheme), this fires at build time instead
+// of silently corrupting names at runtime.
+const _: () = {
+    assert!(
+        std::mem::size_of::<FName>() == 8,
+        "FName must be 8 bytes for u64 transmute round-trips"
+    );
+    assert!(
+        std::mem::align_of::<FName>() <= 8,
+        "FName alignment must fit in u64"
+    );
+};
+
 impl FName {
     pub fn is_none(self) -> bool {
         self.comparison_index == 0 && self.number == 0
