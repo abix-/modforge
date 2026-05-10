@@ -13,12 +13,9 @@
 // See `../../docs/todo.md` "Integration testing" for the full design and
 // the bandage-regression test that gates the next milestone.
 
-use std::time::Duration;
-
 use serde::Serialize;
 use serde_json::Value as Json;
-use ueforge::args::arg_f64;
-use ueforge::debug::{self, CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot};
+use ueforge::debug::{CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot};
 pub use ueforge::debug::DamageEvent;
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 use ueforge::ops::{OP_REGISTRY, OpDef};
@@ -43,16 +40,12 @@ static HEALTH_CLASS: ClassRef = ClassRef::new("HealthComponent");
 // UFunctions like `AddHealth` and `ApplyDamageFromInfo` are only
 // safe to call via process_event on the game thread.
 
-#[derive(Debug)]
-#[allow(dead_code)]
-enum DebugCmd {
-    AddHealth(f32),
-    SetCurrentHealth(f32),
-}
-
-/// Game-thread job queue. The HTTP handler enqueues a closure that
-/// captures a `DebugCmd`; the closure runs from `drain_pending` on
-/// the game thread. See `ueforge::pe_queue` for mechanics.
+/// Game-thread job queue. The HTTP handler enqueues a closure
+/// that runs from `drain_pending` on the game thread. See
+/// `ueforge::pe_queue` for mechanics. ueforge's
+/// `rpg::health::register` + `debug::register_pe_call` enqueue
+/// onto this site; consumers can also enqueue their own jobs via
+/// `ueforge::debug::enqueue_pe(&PE_QUEUE, ...)`.
 pub(crate) static PE_QUEUE: DrainSite = DrainSite::new();
 
 /// Ring buffer of recent damage / multicast events captured by
@@ -75,25 +68,12 @@ pub(crate) fn damage_ring_peak() -> usize {
 const PE_TIMEOUT_HINT: &str =
     "Is kill_hook firing? (Move around / take damage to drive multicast events.)";
 
-fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
-    debug::enqueue_pe(&PE_QUEUE, Duration::from_secs(5), PE_TIMEOUT_HINT, move || {
-        execute_on_game_thread(cmd)
-    })
-}
-
 /// Called from `kill_hook`'s trampoline (game thread). Drain
 /// counters (calls / drained / peak / time_ns) are owned by
 /// `DrainSite` itself; they appear in the snapshot via
 /// `PE_QUEUE.drain_calls()` etc.
 pub fn drain_pending() {
     PE_QUEUE.drain();
-}
-
-fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
-    match cmd {
-        DebugCmd::AddHealth(amount) => exec_add_health(amount),
-        DebugCmd::SetCurrentHealth(value) => exec_set_current_health(value),
-    }
 }
 
 /// Register every g2rpg op + selector into the workspace
@@ -125,27 +105,37 @@ fn register_ops() {
         ueforge::selector::resolve,
     );
     ueforge::rpg::ops::register(&tracker::TRACKER, &apply::DISABLED_SKILLS);
-    OP_REGISTRY.register_many([
-        OpDef::new(
-            "simulate_add_health",
-            "Heal the player by `amount` HP via the PE queue",
-            "{amount: f32}",
-            |args| op_simulate_add_health(args),
-        ),
-        OpDef::new(
-            "simulate_apply_damage",
-            "Disabled -- ApplyDamageFromInfo from a PE trampoline crashes the game",
-            "{}",
-            |args| op_simulate_apply_damage(args),
-        ),
-        OpDef::new(
-            "simulate_set_current_health",
-            "Force the player's CurrentHealth to `value`",
-            "{value: f32}",
-            |args| op_simulate_set_current_health(args),
-        ),
-    ]);
+    // Lift: simulate_add_health + simulate_set_current_health
+    // are framework-shipped. g2rpg only declares the binding;
+    // ueforge::rpg::health::register pushes both ops with the
+    // Maine constants captured.
+    ueforge::rpg::health::register(&HEALTH_BINDING, &PE_QUEUE, PE_TIMEOUT_HINT);
+
+    // simulate_apply_damage stays game-side as a stub: the parm
+    // shape is FDamageInfo (0x100 bytes) and the call re-enters
+    // ProcessEvent through the engine's damage-replication path,
+    // which crashes the host. Keeps the op in `list_ops` so tests
+    // detect-and-skip cleanly. Lift when Wave E1 lands.
+    OP_REGISTRY.register(OpDef::new(
+        "simulate_apply_damage",
+        "Disabled -- ApplyDamageFromInfo from a PE trampoline crashes the game",
+        "{}",
+        |args| op_simulate_apply_damage(args),
+    ));
 }
+
+/// HC binding consumed by `ueforge::rpg::health::register`.
+/// Offsets verified against Maine SDK
+/// (`SDK/HealthComponent_classes.hpp`).
+static HEALTH_BINDING: ueforge::rpg::health::HealthBinding =
+    ueforge::rpg::health::HealthBinding {
+        hc_class: &HEALTH_CLASS,
+        hc_selector: "live_player_hc",
+        current_damage_offset: 0x032C,
+        max_health_offset: 0x0328,
+        add_health_function: Some("AddHealth"),
+        set_current_health_function: Some("SetCurrentHealth"),
+    };
 
 pub fn spawn(port: u16) {
     register_ops();
@@ -200,11 +190,6 @@ fn to_response(op: &str, r: Result<Json, String>) -> OpResponse {
     OpResponse::from_result(op, r, build_snapshot())
 }
 
-fn op_simulate_add_health(args: &Json) -> Result<Json, String> {
-    let amount = arg_f64(args, "amount")? as f32;
-    enqueue_pe(DebugCmd::AddHealth(amount))
-}
-
 fn op_simulate_apply_damage(_args: &Json) -> Result<Json, String> {
     // Disabled: calling ApplyDamageFromInfo via process_event from
     // any of our current PE trampolines (kill_hook, fall_hook,
@@ -222,11 +207,6 @@ fn op_simulate_apply_damage(_args: &Json) -> Result<Json, String> {
          bandage is used in-game."
             .to_string(),
     )
-}
-
-fn op_simulate_set_current_health(args: &Json) -> Result<Json, String> {
-    let value = arg_f64(args, "value")? as f32;
-    enqueue_pe(DebugCmd::SetCurrentHealth(value))
 }
 
 // ---- generic call primitive ----
@@ -270,29 +250,6 @@ fn live_player_hc() -> Result<&'static UObject, String> {
     let hc = apply::read_component_ptr(pawn, apply::ASC_HEALTH_COMPONENT)
         .ok_or_else(|| "no live player HealthComponent".to_string())?;
     Ok(unsafe { std::mem::transmute::<&UObject, &'static UObject>(hc) })
-}
-
-fn exec_add_health(amount: f32) -> Result<Json, String> {
-    use std::ffi::c_void;
-    let hc = live_player_hc()?;
-    let before = apply::read_f32(hc, 0x032C); // CurrentDamage
-    #[repr(C)]
-    struct AddHealthParms {
-        amount: f32,
-        causer: *mut c_void,
-    }
-    let mut parms = AddHealthParms {
-        amount,
-        causer: std::ptr::null_mut(),
-    };
-    unsafe { ueforge::ue::pe_call::call_ufunction(hc, &HEALTH_CLASS, "AddHealth", &mut parms)? };
-    let after = apply::read_f32(hc, 0x032C);
-    Ok(serde_json::json!({
-        "amount_requested": amount,
-        "current_damage_before": before,
-        "current_damage_after": after,
-        "delta": before - after,
-    }))
 }
 
 #[allow(dead_code)] // kept as reference; tests should use `call` instead
@@ -355,23 +312,6 @@ fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
         "current_damage_after": cd_after,
         "current_damage_delta": cd_after - cd_before,
         "max_health": max_before,
-    }))
-}
-
-fn exec_set_current_health(value: f32) -> Result<Json, String> {
-    let hc = live_player_hc()?;
-    #[repr(C)]
-    struct SetHealthParms {
-        desired_health: f32,
-    }
-    let mut parms = SetHealthParms { desired_health: value };
-    unsafe {
-        ueforge::ue::pe_call::call_ufunction(hc, &HEALTH_CLASS, "SetCurrentHealth", &mut parms)?
-    };
-    let after = apply::read_f32(hc, 0x032C);
-    Ok(serde_json::json!({
-        "value_requested": value,
-        "current_damage_after": after,
     }))
 }
 

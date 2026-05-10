@@ -39,27 +39,23 @@ alignment work, ranked by leverage:
 
 ### Lift game-specific ops to ueforge
 
-g2rpg's debug.rs registers three ops whose **shape** is universal
-(every UE5 RPG/survival game has a HealthComponent with a
-current-damage field and an AddHealth-style UFunction) but whose
-**constants** are Maine-specific. Same pattern as `damage::DamageBinder`
-and `inventory::ViewportBinder` — ueforge ships the ops, the
-game declares the binding.
+g2rpg's debug.rs used to register three health ops whose **shape**
+is universal (every UE5 RPG/survival game has a HealthComponent
+with a current-damage field and an AddHealth-style UFunction)
+but whose **constants** are Maine-specific.
 
-- [ ] **Lift health ops to `ueforge::rpg::health`** (or
-  `ueforge::health`). Surface:
-  ```rust
-  pub struct HealthBinding {
-      pub hc_class: ClassRef,                   // "HealthComponent"
-      pub hc_selector: &'static str,            // "live_player_hc"
-      pub current_damage_offset: usize,         // 0x32C on Maine
-      pub add_health_function: Option<&'static str>, // "AddHealth"
-  }
-  pub fn register(binding: &'static HealthBinding, pe_queue: &'static DrainSite);
-  ```
-  Registers `simulate_add_health`, `simulate_set_current_health`,
-  `simulate_apply_damage` (when the safe drain site lands) into
-  `OP_REGISTRY`. g2rpg's `debug.rs` shrinks by ~80 lines.
+- [x] **Lift health ops to `ueforge::rpg::health`.** DONE
+  2026-05-10. `HealthBinding { hc_class, hc_selector,
+  current_damage_offset, max_health_offset, add_health_function,
+  set_current_health_function }` + `register(binding, pe_queue,
+  hint)`. Lifted `simulate_add_health` +
+  `simulate_set_current_health`. g2rpg's `debug.rs` shrank by
+  ~70 lines (~430 -> ~360).
+- [ ] **`simulate_apply_damage`** stays game-side as a stub for
+  now. Lift gated on Wave E1 (global ProcessEvent pre-callback)
+  -- `ApplyDamageFromInfo` from inside any current PE trampoline
+  re-enters ProcessEvent through the engine's damage-replication
+  path and crashes the host.
 
 ### Wave B: cosmetic alignment sweeps
 

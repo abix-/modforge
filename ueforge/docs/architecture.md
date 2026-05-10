@@ -158,9 +158,10 @@ captured-game-state, look at the **shape**:
 Today's known lift candidates (see [todo.md](../../docs/todo.md)
 "Lift game-specific ops to ueforge"):
 
-| Op family | Game-side | Universal shape |
-|---|---|---|
-| `simulate_add_health` / `simulate_set_current_health` / `simulate_apply_damage` | g2rpg `op_simulate_*` (HC selector + 0x32C offset + AddHealth UFunction name) | `ueforge::rpg::health::HealthBinding { hc_class, hc_selector, current_damage_offset, add_health_function }` -> registers all three ops |
+| Op family | Game-side | Universal shape | Status |
+|---|---|---|---|
+| `simulate_add_health` / `simulate_set_current_health` | (was g2rpg) | `ueforge::rpg::health::HealthBinding { hc_class, hc_selector, current_damage_offset, max_health_offset, add_health_function, set_current_health_function }` -> `register(binding, pe_queue, hint)` | **DONE 2026-05-10** |
+| `simulate_apply_damage` | g2rpg stub returns "disabled" | (gated on Wave E1 safe drain site -- ApplyDamageFromInfo from a PE trampoline re-enters ProcessEvent and crashes) | open |
 
 When the second consumer asks for the same shape, lift before
 duplicating.

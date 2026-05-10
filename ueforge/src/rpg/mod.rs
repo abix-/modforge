@@ -28,6 +28,7 @@
 pub mod applier;
 pub mod disabled;
 pub mod format;
+pub mod health;
 pub mod ops;
 pub mod poller;
 pub mod progress;
