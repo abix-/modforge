@@ -120,8 +120,8 @@ Deletes the `Grounded2RPG` mod folder and strips its line from
 
 ## Hot-update while the game is running
 
-UE4SS supports cpp-mod hot-update natively. After your first
-deploy, you can iterate without closing the game:
+UE4SS supports cpp-mod hot-update natively. The eventual dev
+loop will be:
 
 ```
 1. edit Rust
@@ -131,25 +131,37 @@ deploy, you can iterate without closing the game:
 ```
 
 UE4SS does a full `FreeLibrary` + fresh `LoadLibraryExW` from
-disk on Ctrl+R, so step 2 (overwriting `main.dll` while the game
-is running) drops the new image into place; step 3 (Ctrl+R)
-unloads the old one and loads the new. State on disk
-(`saves/<guid>.json`, `settings.json`) survives; the new DLL's
-init reads them.
+disk on Ctrl+R, so step 2 needs to land the new bytes on disk;
+step 3 (Ctrl+R) unloads the old image and loads the new. State
+on disk (`saves/<guid>.json`, `settings.json`) survives; the new
+DLL's init reads them.
 
-**Caveat (current state)**: hot-update is safe for any code path
-that doesn't install `ProcessEventHook`s. The kill / fall / inv
-hooks today leak their handles via `mem::forget`, so the old
-DLL's vtable patches still point into freed memory after
-FreeLibrary -- the next call into a patched slot crashes the
-game. The framework's Phase B work (see `docs/todo.md`) wires
-`HookRegistry::shutdown_all` to swap the slots back + drain
-in-flight trampolines before our DLL unloads. Until that lands,
-restart the game when you change hook-touching code; for
-non-hook changes (skill catalog, apply formulas, settings logic,
-debug snapshot fields) Ctrl+R is safe today.
+**Two blockers prevent in-game hot-update today** (both tracked
+in `docs/todo.md` under "hot-reload"):
 
-UE4SS hot-reload toggles live in `UE4SS-settings.ini`,
+1. **Deploy locked-DLL fallback (Phase B0).** `cargo deploy
+   install` uses `fs::copy`, which fails with sharing violation
+   when UE4SS holds the DLL. Verified empirically 2026-05-10:
+   `LoadLibraryExW` opens with
+   `FILE_SHARE_READ | FILE_SHARE_DELETE`, so direct write
+   fails but rename-and-replace works. Fix: deploy needs to
+   detect the sharing violation and fall back to rename old ->
+   `main.dll.old` + write new at the same path.
+
+2. **PE hook teardown (Phase B).** Hook handles are
+   `mem::forget`-ed today, so on `Ctrl+R` the OLD DLL's vtable
+   patches still point into the soon-to-be-freed image. Next
+   call into a patched slot after FreeLibrary -> crash. Fix:
+   `HookRegistry::shutdown_all` swaps the slots back + drains
+   in-flight trampolines before our DLL unloads.
+
+**Until both ship**: restart the game between iterations.
+Phase B0 unblocks the deploy-while-running step; Phase B
+unblocks Ctrl+R-while-hooks-installed (for non-hook changes
+Ctrl+R is technically safe today, but you can't deploy the
+new bytes anyway, so it's moot until B0).
+
+UE4SS hot-reload is gated by `UE4SS-settings.ini`,
 `[General]` section: `EnableHotReloadSystem = 1`,
 `HotReloadKey = R` (default).
 

@@ -302,14 +302,43 @@ What `on_shutdown` should NOT do:
 
 ## Hot-reload (Ctrl+R)
 
-UE4SS supports cpp-mod hot-**update** natively. This is not just
-"re-run init on the same DLL" -- UE4SS does a full
+UE4SS supports cpp-mod hot-**update** natively. UE4SS does a full
 `FreeLibrary` + fresh `LoadLibraryExW` from disk, so whatever
 `main.dll` is on disk at reload time becomes the live image.
-Build the new version, deploy it over the running install,
-alt-tab to the game, press `Ctrl+R`. The new code is active in
-~1-2 seconds with state preserved on disk (save slots, settings,
-catalog progress) and re-applied by the new DLL's init.
+
+**The locked-DLL gotcha (verified empirically 2026-05-10).**
+While UE4SS has `main.dll` loaded, you **cannot** open it for
+write directly -- `LoadLibraryExW` opens with
+`FILE_SHARE_READ | FILE_SHARE_DELETE` (no `FILE_SHARE_WRITE`),
+so a naive `fs::copy` over the file fails with
+"sharing violation". The current `cargo deploy install` uses
+`fs::copy` and assumes the game is closed; it won't work for
+in-game hot-update without a fix.
+
+**The rename-and-replace pattern**: Windows DOES allow renaming
+or deleting a loaded DLL (because of `FILE_SHARE_DELETE`). So
+the working hot-update deploy sequence is:
+
+```
+1. rename main.dll      -> main.dll.old   (allowed: SHARE_DELETE)
+2. write new bytes      -> main.dll       (target now doesn't exist)
+3. (optional) delete    -> main.dll.old   (will fail until FreeLibrary;
+                                            schedule via
+                                            MoveFileEx(REPLACE+DELAY)
+                                            or clean up on next install)
+```
+
+After this, alt-tab to the game and press `Ctrl+R`. UE4SS will
+`FreeLibrary` the old image (releasing the `.old` for cleanup),
+then `LoadLibraryExW` reads the new `main.dll` from disk.
+State on disk (save slots, settings) survives; the new DLL's
+init reads them.
+
+**Status (2026-05-10):** `cargo deploy install` does **not** yet
+implement rename-and-replace -- it uses `fs::copy` and reports
+"file in use" if the game is running. Tracked in `docs/todo.md`
+hot-reload Phase B0 ("deploy: rename-and-replace fallback when
+direct copy hits sharing violation").
 
 ### Configuration
 

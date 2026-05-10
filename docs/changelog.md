@@ -68,6 +68,25 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Hot-update: locked-DLL gotcha verified
+
+Earlier hot-update doc claim ("just `cargo deploy install` while
+the game runs") was wrong. Verified empirically (PowerShell test
+loading `version.dll` then attempting overwrite + rename):
+
+- **Direct overwrite of a loaded DLL: fails** with sharing
+  violation. `LoadLibraryExW` opens the file with
+  `FILE_SHARE_READ | FILE_SHARE_DELETE` (no SHARE_WRITE), so
+  `fs::copy` over a live DLL gets `os error 32`.
+- **Rename old -> `.old`, then write new: works.** `SHARE_DELETE`
+  permits the rename; the new file lives at the canonical path
+  for next `LoadLibraryExW`.
+
+`cargo deploy install` today uses `fs::copy` and reports "file in
+use". The fix (Phase B0 in `docs/todo.md`) is rename-and-replace
+on sharing-violation. Lifecycle + building docs updated to
+reflect reality + flag this as an open blocker.
+
 ### Hot-update research (Phase A complete)
 
 Confirmed that UE4SS supports full hot-**update** of cpp mods
