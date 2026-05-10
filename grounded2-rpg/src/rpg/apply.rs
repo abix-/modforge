@@ -30,6 +30,9 @@ use crate::patch;
 use crate::rpg::skills::{self, Skill, SkillEffect, SurvivalField};
 use ueforge::rpg::SkillsState as PlayerState;
 use ueforge::ue::{self, GObjectsView, UObject};
+pub(crate) use ueforge::ue::field::{
+    read_component_ptr, read_f32, read_u32, write_bool, write_f32,
+};
 use crate::settings::Settings;
 use crate::survival;
 
@@ -312,37 +315,6 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
     }
 }
 
-
-// ---------------------------------------------------------------------
-// Low-level helpers shared by the SkillEffect arms.
-// ---------------------------------------------------------------------
-
-pub(crate) fn read_f32(obj: &UObject, offset: usize) -> f32 {
-    unsafe { (obj.field_ptr(offset) as *const f32).read_unaligned() }
-}
-
-fn write_f32(obj: &UObject, offset: usize, value: f32) {
-    unsafe { (obj.field_ptr(offset) as *mut f32).write_unaligned(value) }
-}
-
-pub(crate) fn read_u32(obj: &UObject, offset: usize) -> u32 {
-    unsafe { (obj.field_ptr(offset) as *const u32).read_unaligned() }
-}
-
-
-fn write_bool(obj: &UObject, offset: usize, value: bool) {
-    unsafe { (obj.field_ptr(offset) as *mut u8).write(if value { 1 } else { 0 }) }
-}
-
-pub(crate) fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UObject> {
-    unsafe {
-        let p: *mut UObject = parent
-            .field_ptr(offset)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        p.as_ref()
-    }
-}
 
 /// Walk all SurvivalCharacter CDOs whose full name marks them as the
 /// player class (`BP_SurvivalPlayerCharacter` substring), call `f` on

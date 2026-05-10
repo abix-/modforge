@@ -52,4 +52,4 @@ pub use std_effect::StandardEffect;
 pub use store::SlotStore;
 pub use tracker::{Tracker, XpResult};
 pub use vanilla::VanillaCache;
-pub use xp::Curve;
+pub use xp::{Bestiary, Curve};

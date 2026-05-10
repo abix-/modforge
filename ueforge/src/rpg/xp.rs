@@ -58,6 +58,50 @@ impl Curve {
     }
 }
 
+/// Per-creature XP lookup. UE5 RPG mods typically award XP based on
+/// what the player killed: a bestiary table keyed by BP class short
+/// name (`"BP_Aphid_C"`) mapping to base XP.
+///
+/// The table is `&'static [(&'static str, u32)]`, so the catalog
+/// lives in `static`s and resolves with no allocation. Linear scan:
+/// realistic bestiaries are <100 rows, called once per kill -- the
+/// scan cost is invisible.
+///
+/// ```ignore
+/// pub static BESTIARY: Bestiary = Bestiary::new(
+///     &[
+///         ("BP_Aphid_C", 5),
+///         ("BP_Roly_Poly_C", 25),
+///         ("BP_Spider_C", 75),
+///     ],
+///     5, // default for unknown classes
+/// );
+/// // Per-kill:
+/// let xp = BESTIARY.lookup("BP_Aphid_C"); // 5
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct Bestiary {
+    pub table: &'static [(&'static str, u32)],
+    pub default_xp: u32,
+}
+
+impl Bestiary {
+    pub const fn new(table: &'static [(&'static str, u32)], default_xp: u32) -> Self {
+        Self { table, default_xp }
+    }
+
+    /// XP for `class_name`. Case-sensitive exact match; falls back
+    /// to `default_xp` for unknown classes.
+    pub fn lookup(&self, class_name: &str) -> u32 {
+        for (key, value) in self.table {
+            if class_name == *key {
+                return *value;
+            }
+        }
+        self.default_xp
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -11,6 +11,7 @@ pub mod class_ref;
 pub mod class_tweak;
 pub mod core_types;
 pub mod datatable;
+pub mod field;
 pub mod fname;
 pub mod fstring;
 pub mod offsets;

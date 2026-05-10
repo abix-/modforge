@@ -1,9 +1,7 @@
 // Per-creature XP awards (game-specific bestiary). The cumulative
-// curve and level math live in ueforge::rpg::xp::Curve.
+// curve and per-class lookup live in ueforge::rpg::xp.
 
-use std::sync::OnceLock;
-
-use ueforge::rpg::Curve;
+use ueforge::rpg::{Bestiary, Curve};
 
 /// g2rpg's tuning constants. Adjust here, the curve flows everywhere.
 pub const CURVE: Curve = Curve::new(100.0, 1.8, 50);
@@ -16,23 +14,14 @@ pub fn level_for_xp(xp: u64) -> u32 {
     CURVE.level_for_xp(xp)
 }
 
-const DEFAULT_CREATURE_XP: u32 = 5;
-
 /// Base XP awarded for killing a creature of `class_name`. Lookup is
 /// case-sensitive on the BP class short name (e.g. "BP_Aphid_C").
 pub fn xp_for_creature(class_name: &str) -> u32 {
-    let table = TABLE.get_or_init(default_table);
-    for (key, value) in table {
-        if class_name == *key {
-            return *value;
-        }
-    }
-    DEFAULT_CREATURE_XP
+    BESTIARY.lookup(class_name)
 }
 
-/// (BP class name, base XP).
-fn default_table() -> Vec<(&'static str, u32)> {
-    vec![
+pub static BESTIARY: Bestiary = Bestiary::new(
+    &[
         // Tier 1 -- common starter bugs
         ("BP_Aphid_C", 5),
         ("BP_Larva_C", 5),
@@ -57,7 +46,6 @@ fn default_table() -> Vec<(&'static str, u32)> {
         ("BP_Wasp_Queen_C", 400),
         // Bosses
         ("BP_Spider_Tarantula_Boss_C", 750),
-    ]
-}
-
-static TABLE: OnceLock<Vec<(&'static str, u32)>> = OnceLock::new();
+    ],
+    5,
+);
