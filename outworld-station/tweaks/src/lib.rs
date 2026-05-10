@@ -11,24 +11,33 @@
 
 pub mod debug;
 
-use uespy::ue::PlatformOffsets;
+use uespy::ue::{GObjectsLayout, PlatformOffsets};
 
 // ---- Platform detection ----
 //
-// Outworld Station is UE 5.4.4. Offsets below are placeholders;
-// fill in once UE4SS's CXXHeaderDumper has run against the live
-// game and we can read GObjects / AppendString / GNames /
-// GWorld / ProcessEvent addresses from the dump.
+// OutworldStation-Win64-Shipping.exe (Steam, UE 5.4.4).
+// Image base + addresses captured by UE4SS's pattern scanner on
+// 2026-05-09 (`UE4SS.log` has the absolute addresses; image
+// base 0x7ff6da6f0000 from our own log). Image-relative offsets
+// computed by subtracting the base.
 //
-// process_event_idx (0x4C on UE 5.x) is the vtable slot for
-// UObject::ProcessEvent and is stable across UE 5.x builds.
+// g_names / g_world: UE4SS didn't log explicit addresses for
+// these on this exe. Neither is required by the ops we're using
+// today (walk_class, read_bytes, write_bytes, call). Fill in
+// later if a feature needs them.
+//
+// process_event_idx 0x4C: vtable slot for UObject::ProcessEvent,
+// stable across UE 5.x.
 const STEAM: PlatformOffsets = PlatformOffsets {
-    g_objects: 0x0,
-    append_string: 0x0,
-    g_names: 0x0,
-    g_world: 0x0,
-    process_event: 0x0,
+    g_objects: 0x07A9_38D0,    // GUObjectArray
+    append_string: 0x010D_F9D0, // FName::ToString
+    g_names: 0x0,               // not logged by UE4SS scanner; fill in if needed
+    g_world: 0x0,               // not logged by UE4SS scanner; fill in if needed
+    process_event: 0x012A_F540, // UObject::ProcessEvent
     process_event_idx: 0x4C,
+    // UE 5.4 stock — FUObjectArray wraps FChunkedFixedUObjectArray
+    // at +0x10. Verified live: NumElements=142650, NumChunks=3.
+    g_objects_layout: GObjectsLayout::WrappedChunked,
 };
 
 const PLATFORMS: &[(&str, &PlatformOffsets)] = &[

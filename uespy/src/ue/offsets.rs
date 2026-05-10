@@ -18,6 +18,27 @@ pub struct PlatformOffsets {
     pub g_world: usize,
     pub process_event: usize,
     pub process_event_idx: usize,
+    /// Layout of the GObjects array.
+    pub g_objects_layout: GObjectsLayout,
+}
+
+/// UE has used several `UObjectArray` layouts over the years.
+/// The two we care about:
+///
+/// - `FlatFixed`: `g_objects` points directly at an
+///   `FFixedUObjectArray { FUObjectItem* Objects; int32 MaxElements;
+///   int32 NumElements; }`. Used by Grounded 2's UE5-Augusta build.
+/// - `WrappedChunked`: `g_objects` points at an `FUObjectArray`
+///   whose `ObjObjects` member at +0x10 is an
+///   `FChunkedFixedUObjectArray { FUObjectItem** Objects; void*
+///   PreAllocatedObjects; int32 MaxElements; int32 NumElements;
+///   int32 MaxChunks; int32 NumChunks; }`. Used by stock UE 5.x
+///   (including Outworld Station). Each chunk holds 64K
+///   `FUObjectItem`s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GObjectsLayout {
+    FlatFixed,
+    WrappedChunked,
 }
 
 pub const STEAM: PlatformOffsets = PlatformOffsets {
@@ -27,6 +48,7 @@ pub const STEAM: PlatformOffsets = PlatformOffsets {
     g_world: 0x09C7_A2E0,
     process_event: 0x0146_E7B0,
     process_event_idx: 0x4C,
+    g_objects_layout: GObjectsLayout::FlatFixed,
 };
 
 pub const XBOX: PlatformOffsets = PlatformOffsets {
@@ -36,6 +58,7 @@ pub const XBOX: PlatformOffsets = PlatformOffsets {
     g_world: 0x09C4_A2C0,
     process_event: 0x0146_D530,
     process_event_idx: 0x4C,
+    g_objects_layout: GObjectsLayout::FlatFixed,
 };
 
 impl Platform {
@@ -83,10 +106,25 @@ pub mod ufunction {
     pub const SIZE: usize = 0xE0;
 }
 
+/// `FFixedUObjectArray` — used by `GObjectsLayout::FlatFixed`.
 pub mod tuobject_array {
     pub const OBJECTS: usize = 0x00;
     pub const MAX_ELEMENTS: usize = 0x08;
     pub const NUM_ELEMENTS: usize = 0x0C;
+}
+
+/// `FUObjectArray` wraps a `FChunkedFixedUObjectArray ObjObjects`
+/// at offset 0x10. Field offsets are within the inner struct.
+/// Used by `GObjectsLayout::WrappedChunked`.
+pub mod chunked_uobject_array {
+    pub const OBJ_OBJECTS: usize = 0x10;          // FUObjectArray::ObjObjects
+    pub const OBJECTS: usize = 0x00;              // FUObjectItem** chunk-ptrs
+    pub const PRE_ALLOCATED_OBJECTS: usize = 0x08;
+    pub const MAX_ELEMENTS: usize = 0x10;
+    pub const NUM_ELEMENTS: usize = 0x14;
+    pub const MAX_CHUNKS: usize = 0x18;
+    pub const NUM_CHUNKS: usize = 0x1C;
+    pub const NUM_ELEMENTS_PER_CHUNK: usize = 64 * 1024;
 }
 
 pub mod fuobject_item {

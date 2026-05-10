@@ -9,7 +9,10 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use crate::ue::fname::{FName, NameResolver};
-use crate::ue::offsets::{self, PlatformOffsets, fuobject_item, tuobject_array, uclass};
+use crate::ue::offsets::{
+    self, GObjectsLayout, PlatformOffsets, chunked_uobject_array, fuobject_item, tuobject_array,
+    uclass,
+};
 
 #[repr(transparent)]
 pub struct UObject {
@@ -227,51 +230,74 @@ impl UFunction {
 // FUObjectItem { Object*, pad }.
 
 pub struct GObjectsView {
-    array: *const u8,
+    /// Address of the start of the inner array struct
+    /// (FFixedUObjectArray for FlatFixed, FChunkedFixedUObjectArray
+    /// for WrappedChunked).
+    inner: *const u8,
+    layout: GObjectsLayout,
 }
 
 impl GObjectsView {
     pub unsafe fn from_image(image_base: usize, offsets: &PlatformOffsets) -> Self {
-        // image_base + offsets.g_objects IS the address of the TUObjectArray
-        // struct in game memory (first field is `Objects`, then MaxElements,
-        // NumElements). Don't dereference -- treat it as the struct pointer
-        // directly. This matches `reinterpret_cast<TUObjectArray*>(addr)`
-        // in the C++ wrapper's operator->.
-        let array = (image_base + offsets.g_objects) as *const u8;
-        Self { array }
+        let g_objects = (image_base + offsets.g_objects) as *const u8;
+        let inner = match offsets.g_objects_layout {
+            GObjectsLayout::FlatFixed => g_objects,
+            GObjectsLayout::WrappedChunked => unsafe {
+                g_objects.add(chunked_uobject_array::OBJ_OBJECTS)
+            },
+        };
+        Self {
+            inner,
+            layout: offsets.g_objects_layout,
+        }
     }
 
     pub fn is_valid(&self) -> bool {
-        !self.array.is_null()
+        !self.inner.is_null()
     }
 
     pub fn num(&self) -> i32 {
-        if self.array.is_null() {
+        if self.inner.is_null() {
             return 0;
         }
-        unsafe {
-            self.array
-                .add(tuobject_array::NUM_ELEMENTS)
-                .cast::<i32>()
-                .read_unaligned()
-        }
-    }
-
-    fn objects_ptr(&self) -> *const u8 {
-        unsafe {
-            self.array
-                .add(tuobject_array::OBJECTS)
-                .cast::<*const u8>()
-                .read_unaligned()
-        }
+        let off = match self.layout {
+            GObjectsLayout::FlatFixed => tuobject_array::NUM_ELEMENTS,
+            GObjectsLayout::WrappedChunked => chunked_uobject_array::NUM_ELEMENTS,
+        };
+        unsafe { self.inner.add(off).cast::<i32>().read_unaligned() }
     }
 
     pub fn get(&self, index: i32) -> Option<&UObject> {
         if index < 0 || index >= self.num() {
             return None;
         }
+        let item = match self.layout {
+            GObjectsLayout::FlatFixed => unsafe {
+                let objects: *const u8 = self
+                    .inner
+                    .add(tuobject_array::OBJECTS)
+                    .cast::<*const u8>()
+                    .read_unaligned();
+                objects.add(index as usize * fuobject_item::SIZE)
+            },
+            GObjectsLayout::WrappedChunked => unsafe {
+                // Objects[chunk_idx] is a pointer to a chunk, each
+                // chunk is NUM_ELEMENTS_PER_CHUNK FUObjectItems.
+                let chunks: *const *const u8 = self
+                    .inner
+                    .add(chunked_uobject_array::OBJECTS)
+                    .cast::<*const *const u8>()
+                    .read_unaligned();
+                let chunk_idx = index as usize / chunked_uobject_array::NUM_ELEMENTS_PER_CHUNK;
+                let in_chunk = index as usize % chunked_uobject_array::NUM_ELEMENTS_PER_CHUNK;
+                let chunk: *const u8 = chunks.add(chunk_idx).read_unaligned();
+                if chunk.is_null() {
+                    return None;
+                }
+                chunk.add(in_chunk * fuobject_item::SIZE)
+            },
+        };
         unsafe {
-            let item = self.objects_ptr().add(index as usize * fuobject_item::SIZE);
             let obj: *const UObject = item
                 .add(fuobject_item::OBJECT)
                 .cast::<*const UObject>()
