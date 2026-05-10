@@ -38,6 +38,7 @@ windows-sys = { workspace = true, features = [
 widestring = { workspace = true }
 memoffset = { workspace = true }
 anyhow = { workspace = true }
+parking_lot = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

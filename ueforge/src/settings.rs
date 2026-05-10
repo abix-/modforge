@@ -33,8 +33,8 @@
 //! 1809).
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 
+use parking_lot::Mutex;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -91,21 +91,21 @@ where
     /// Snapshot the current settings. Cheap clone; safe to call
     /// from any thread.
     pub fn get(&self) -> T {
-        self.inner.lock().map(|g| g.clone()).unwrap_or_default()
+        self.inner.lock().clone()
     }
 
     /// Mutate settings and save the new state to disk. The
     /// closure runs under the lock; keep it short. Returns the
-    /// mutated value (or `None` if the lock was poisoned).
+    /// mutated value.
     ///
     /// Save errors are logged but not surfaced — settings
     /// persistence is best-effort and shouldn't break gameplay
     /// callsites.
-    pub fn update<F>(&self, f: F) -> Option<T>
+    pub fn update<F>(&self, f: F) -> T
     where
         F: FnOnce(&mut T),
     {
-        let mut g = self.inner.lock().ok()?;
+        let mut g = self.inner.lock();
         f(&mut *g);
         let snap = g.clone();
         if let Err(e) = save_atomic(&self.path, &*g) {
@@ -115,17 +115,14 @@ where
                 e
             ));
         }
-        Some(snap)
+        snap
     }
 
     /// Force a save without mutating. Useful when settings were
     /// updated via raw `set` / direct field access from a
     /// trusted callsite.
     pub fn save(&self) -> std::io::Result<()> {
-        let g = self
-            .inner
-            .lock()
-            .map_err(|_| std::io::Error::other("settings: mutex poisoned"))?;
+        let g = self.inner.lock();
         save_atomic(&self.path, &*g)
     }
 

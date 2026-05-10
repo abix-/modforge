@@ -24,8 +24,7 @@
 //!
 //! State persists across renders in `static SCANNER_UI`.
 
-use std::sync::Mutex;
-
+use parking_lot::Mutex;
 use serde_json::json;
 
 use crate::scanner;
@@ -107,10 +106,7 @@ fn ui_state() -> &'static Mutex<ScannerUi> {
 }
 
 pub fn render() {
-    let mut s = match ui_state().lock() {
-        Ok(g) => g,
-        Err(p) => p.into_inner(),
-    };
+    let mut s = ui_state().lock();
 
     ui::text("Memory scanner");
     ui::text_disabled(

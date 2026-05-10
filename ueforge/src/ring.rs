@@ -6,11 +6,12 @@
 //! overflow so a long session can't exhaust memory. The
 //! `/debug snapshot` op clones the contents into the response.
 //!
-//! Mutex-protected. Push is rare relative to gameplay; clone is
-//! once per snapshot request (low rate). If contention ever shows
-//! up, swap to a lock-free SPSC and a per-frame drain.
+//! Mutex-protected (`parking_lot::Mutex`, no poisoning). Push is
+//! rare relative to gameplay; clone is once per snapshot request
+//! (low rate). If contention ever shows up, swap to a lock-free
+//! SPSC and a per-frame drain.
 
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 pub struct Ring<T> {
     inner: Mutex<Vec<T>>,
@@ -26,16 +27,15 @@ impl<T> Ring<T> {
     }
 
     /// Append an item. If the ring is at capacity, the oldest
-    /// item is dropped first. Returns the new length, or `None`
-    /// if the mutex was poisoned.
-    pub fn push(&self, item: T) -> Option<usize> {
-        let mut g = self.inner.lock().ok()?;
+    /// item is dropped first. Returns the new length.
+    pub fn push(&self, item: T) -> usize {
+        let mut g = self.inner.lock();
         g.push(item);
         let n = g.len();
         if n > self.capacity {
             g.drain(0..n - self.capacity);
         }
-        Some(g.len())
+        g.len()
     }
 
     /// Snapshot a copy of the ring contents.
@@ -43,15 +43,11 @@ impl<T> Ring<T> {
     where
         T: Clone,
     {
-        self.inner
-            .lock()
-            .ok()
-            .map(|g| g.clone())
-            .unwrap_or_default()
+        self.inner.lock().clone()
     }
 
     pub fn len(&self) -> usize {
-        self.inner.lock().map(|g| g.len()).unwrap_or(0)
+        self.inner.lock().len()
     }
 
     pub fn is_empty(&self) -> bool {

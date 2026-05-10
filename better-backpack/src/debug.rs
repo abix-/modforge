@@ -98,9 +98,8 @@ pub struct DamageEvent {
 
 pub fn record_damage_event(ev: DamageEvent) {
     crate::counters::bump(&crate::counters::DAMAGE_RING_PUSHES);
-    if let Some(n) = DAMAGE_RING.push(ev) {
-        crate::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
-    }
+    let n = DAMAGE_RING.push(ev);
+    crate::counters::observe_peak(&crate::counters::DAMAGE_RING_PEAK, n);
 }
 
 fn snapshot_damage_ring() -> Vec<DamageEvent> {

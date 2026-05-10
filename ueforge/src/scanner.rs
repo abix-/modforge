@@ -24,9 +24,11 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use serde_json::{Value as Json, json};
 
@@ -264,7 +266,7 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
     }
 
     let id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
-    sessions().lock().unwrap().insert(
+    sessions().lock().insert(
         id,
         Session {
             ty,
@@ -287,7 +289,7 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
 pub fn scan_rescan(args: &Json) -> Result<Json, String> {
     let id = arg_u64(args, "session_id", None)?;
     let mode = arg_str(args, "mode")?;
-    let mut s = sessions().lock().unwrap();
+    let mut s = sessions().lock();
     let sess = s.get_mut(&id).ok_or_else(|| format!("session {id} not found"))?;
     let ty = sess.ty;
 
@@ -368,7 +370,7 @@ pub fn scan_session(args: &Json) -> Result<Json, String> {
     let id = arg_u64(args, "session_id", None)?;
     let max = arg_u64(args, "max", Some(200))? as usize;
     let offset = arg_u64(args, "offset", Some(0))? as usize;
-    let s = sessions().lock().unwrap();
+    let s = sessions().lock();
     let sess = s.get(&id).ok_or_else(|| format!("session {id} not found"))?;
     let total = sess.addresses.len();
     let end = (offset + max).min(total);
@@ -388,7 +390,7 @@ pub fn scan_session(args: &Json) -> Result<Json, String> {
 
 pub fn scan_close(args: &Json) -> Result<Json, String> {
     let id = arg_u64(args, "session_id", None)?;
-    let removed = sessions().lock().unwrap().remove(&id).is_some();
+    let removed = sessions().lock().remove(&id).is_some();
     Ok(json!({"session_id": id, "removed": removed}))
 }
 
@@ -404,7 +406,7 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
     let hz = hz.clamp(1, 1000);
 
     // Replace existing freeze on this addr if any.
-    if let Some(old) = freezes().lock().unwrap().remove(&addr) {
+    if let Some(old) = freezes().lock().remove(&addr) {
         old.stop.store(true, Ordering::Release);
     }
 
@@ -425,7 +427,7 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
         })
         .map_err(|e| format!("spawn failed: {e}"))?;
 
-    freezes().lock().unwrap().insert(
+    freezes().lock().insert(
         addr,
         FreezeJob {
             stop,
@@ -440,7 +442,7 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
 pub fn unfreeze(args: &Json) -> Result<Json, String> {
     let addr_str = arg_str(args, "addr")?;
     let addr = parse_addr(addr_str)?;
-    let removed = match freezes().lock().unwrap().remove(&addr) {
+    let removed = match freezes().lock().remove(&addr) {
         Some(j) => {
             j.stop.store(true, Ordering::Release);
             true
@@ -451,7 +453,7 @@ pub fn unfreeze(args: &Json) -> Result<Json, String> {
 }
 
 pub fn freeze_list(_args: &Json) -> Result<Json, String> {
-    let f = freezes().lock().unwrap();
+    let f = freezes().lock();
     let entries: Vec<Json> = f
         .iter()
         .map(|(addr, job)| {

@@ -16,8 +16,10 @@ use std::io::Write;
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::time::SystemTime;
+
+use parking_lot::Mutex;
 
 use windows_sys::Win32::Foundation::{HANDLE, HMODULE};
 use windows_sys::Win32::System::Console::{
@@ -135,9 +137,8 @@ pub fn log(args: std::fmt::Arguments<'_>) {
             );
         }
     }
-    if let Ok(mut guard) = sink.file.lock()
-        && let Some(f) = guard.as_mut()
-    {
+    let mut guard = sink.file.lock();
+    if let Some(f) = guard.as_mut() {
         let _ = f.write_all(&line);
         let _ = f.flush();
     }

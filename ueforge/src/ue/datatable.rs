@@ -22,9 +22,11 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
+
+use parking_lot::Mutex;
 
 use crate::ue::offsets::datatable as off;
 use crate::ue::{self, UObject, fname::FName, tmap};
@@ -184,7 +186,7 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
         S: Fn(T) -> bool,
     {
         let vanilla = self.vanilla.get_or_init(|| Mutex::new(HashMap::new()));
-        let mut van = vanilla.lock().map_err(|_| "vanilla map poisoned")?;
+        let mut van = vanilla.lock();
         let mut touched = 0usize;
         unsafe {
             for (fname, row_ptr) in iter_rows(table) {
@@ -235,10 +237,7 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
     /// How many vanilla baselines have been snapshotted so far.
     /// Useful for status displays in mod UIs.
     pub fn vanilla_count(&self) -> usize {
-        self.vanilla
-            .get()
-            .map(|m| m.lock().map(|g| g.len()).unwrap_or(0))
-            .unwrap_or(0)
+        self.vanilla.get().map(|m| m.lock().len()).unwrap_or(0)
     }
 
     /// Reset every captured row back to its vanilla value.

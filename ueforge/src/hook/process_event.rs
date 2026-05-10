@@ -6,8 +6,9 @@
 // trampoline matches on the live vtable pointer of the incoming `this`.
 
 use std::ffi::c_void;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, Ordering};
+
+use parking_lot::Mutex;
 
 use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime};
 
@@ -106,7 +107,7 @@ impl ProcessEventHook {
         }));
 
         {
-            let mut reg = REGISTRY.lock().unwrap();
+            let mut reg = REGISTRY.lock();
             reg.push(entry);
             publish_snapshot(&reg);
         }
@@ -114,7 +115,7 @@ impl ProcessEventHook {
         let prev = unsafe { vtable::write_slot(slot, trampoline as *mut c_void) };
         if prev.is_none() {
             // back out: remove from registry, leak entry (rare path)
-            let mut reg = REGISTRY.lock().unwrap();
+            let mut reg = REGISTRY.lock();
             reg.retain(|e| !std::ptr::eq(*e, entry));
             publish_snapshot(&reg);
             return Err("VirtualProtect failed");
@@ -133,7 +134,7 @@ impl Drop for ProcessEventHook {
         unsafe {
             vtable::write_slot(self.entry.slot, self.entry.original as *mut c_void);
         }
-        let mut reg = REGISTRY.lock().unwrap();
+        let mut reg = REGISTRY.lock();
         reg.retain(|e| !std::ptr::eq(*e, self.entry));
         publish_snapshot(&reg);
     }

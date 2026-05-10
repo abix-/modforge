@@ -22,10 +22,11 @@
 //! the queue is empty. `drain()` returns `DrainStats` so the game
 //! can feed its own metrics.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{Sender, channel};
 use std::time::Duration;
+
+use parking_lot::Mutex;
 
 use serde_json::Value as Json;
 
@@ -85,7 +86,7 @@ impl Queue {
     {
         let (tx, rx) = channel();
         {
-            let mut q = self.inner.lock().map_err(|_| "ueforge queue poisoned")?;
+            let mut q = self.inner.lock();
             q.push(Pending {
                 job: Box::new(job),
                 reply: tx,
@@ -115,13 +116,7 @@ impl Queue {
             };
         }
         let drained = {
-            let mut q = match self.inner.lock() {
-                Ok(g) => g,
-                Err(_) => {
-                    self.draining.store(false, Ordering::Release);
-                    return DrainStats::default();
-                }
-            };
+            let mut q = self.inner.lock();
             let peak = q.len();
             let taken = std::mem::take(&mut *q);
             self.size.store(0, Ordering::Release);
