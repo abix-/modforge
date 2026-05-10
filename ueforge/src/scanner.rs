@@ -753,9 +753,8 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
 
 fn resolve_selector_addr(selector: &str, offset: usize) -> Result<usize, String> {
     use crate::ue::UObject;
-    let resolved = crate::selector::resolve_generic(selector)
-        .ok_or_else(|| format!("freeze: selector '{selector}' not recognized"))?;
-    let obj = resolved.map_err(|e| format!("freeze: resolve '{selector}': {e}"))?;
+    let obj = crate::selector::resolve(selector)
+        .map_err(|e| format!("freeze: {e}"))?;
     Ok((obj as *const UObject as usize).wrapping_add(offset))
 }
 

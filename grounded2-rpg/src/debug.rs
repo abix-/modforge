@@ -96,14 +96,34 @@ fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
     }
 }
 
-/// Register every g2rpg op into the workspace [`OP_REGISTRY`].
-/// Called once from `worker()` at init, BEFORE the HTTP listener
-/// starts. After this returns, `OP_REGISTRY.dispatch(op, args)`
-/// covers ueforge built-ins + RPG ops + g2rpg sim ops.
+/// Register every g2rpg op + selector into the workspace
+/// registries. Called once from `worker()` at init, BEFORE the
+/// HTTP listener starts.
 fn register_ops() {
+    // Selectors first so the resolver this game passes to the op
+    // registrars walks a registry that already contains both
+    // framework + game-specific entries.
+    ueforge::selector::register_builtins();
+    ueforge::selector::SELECTOR_REGISTRY.register_many([
+        ueforge::selector::SelectorDef {
+            prefix: "live_player",
+            summary: "First live ASurvivalCharacter (BP_SurvivalPlayerCharacter)",
+            resolver: try_live_player,
+        },
+        ueforge::selector::SelectorDef {
+            prefix: "live_player_hc",
+            summary: "Live player's HealthComponent",
+            resolver: try_live_player_hc,
+        },
+    ]);
+
     ueforge::ops::register_builtins();
-    ueforge::ops::register_with_resolver(resolve_instance);
-    ueforge::debug::register_pe_call(&PE_QUEUE, PE_TIMEOUT_HINT, resolve_instance);
+    ueforge::ops::register_with_resolver(ueforge::selector::resolve);
+    ueforge::debug::register_pe_call(
+        &PE_QUEUE,
+        PE_TIMEOUT_HINT,
+        ueforge::selector::resolve,
+    );
     ueforge::rpg::ops::register(&tracker::TRACKER, &apply::DISABLED_SKILLS);
     OP_REGISTRY.register_many([
         OpDef::new(
@@ -222,18 +242,21 @@ fn op_simulate_set_current_health(args: &Json) -> Result<Json, String> {
 // "do anything" surface.
 
 
-fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
-    if let Some(r) = ueforge::selector::resolve_generic(selector) {
-        return r;
+fn try_live_player(s: &str) -> Option<Result<&'static UObject, String>> {
+    if s != "live_player" {
+        return None;
     }
-    match selector {
-        "live_player_hc" => live_player_hc(),
-        "live_player" => unsafe { apply::PLAYER.first_live_static() }
+    Some(
+        unsafe { apply::PLAYER.first_live_static() }
             .ok_or_else(|| "no live player".to_string()),
-        _ => Err(format!(
-            "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>, addr:0x<hex>"
-        )),
+    )
+}
+
+fn try_live_player_hc(s: &str) -> Option<Result<&'static UObject, String>> {
+    if s != "live_player_hc" {
+        return None;
     }
+    Some(live_player_hc())
 }
 
 // ---- Game-thread executors. Called from kill_hook trampoline. ----

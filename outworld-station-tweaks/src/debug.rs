@@ -6,11 +6,13 @@ use serde_json::Value as Json;
 
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 
-/// Register every ows-tweaks op into the workspace `OP_REGISTRY`.
-/// Called once before the HTTP listener starts.
+/// Register every ows-tweaks op + selector into the workspace
+/// registries. Called once before the HTTP listener starts.
 fn register_ops() {
+    ueforge::selector::register_builtins();
+    // No game-specific selectors yet for ows-tweaks.
     ueforge::ops::register_builtins();
-    ueforge::ops::register_with_resolver(resolve_instance);
+    ueforge::ops::register_with_resolver(ueforge::selector::resolve);
 }
 
 pub fn spawn(port: u16) {
@@ -81,12 +83,3 @@ fn error_response(op: &str, err: impl Into<String>) -> OpResponse {
     OpResponse::err(op, err, build_snapshot())
 }
 
-fn resolve_instance(s: &str) -> Result<&'static ueforge::ue::UObject, String> {
-    if let Some(r) = ueforge::selector::resolve_generic(s) {
-        return r;
-    }
-    Err(format!(
-        "unknown selector '{s}'. supported: addr:0x<hex>, first_class:<Name>, \
-         class:<Name>, singleton:<Name>"
-    ))
-}

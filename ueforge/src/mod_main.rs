@@ -142,27 +142,22 @@ macro_rules! ue4ss_mod {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn ueforge_mod_shutdown() {
-            // 1. Game's on_shutdown -- game-specific cleanup
-            //    (poller stop, custom drain, etc).
+            // 1. Game's on_shutdown -- still kept as a special
+            //    pre-registry hook so the game can do mod-
+            //    specific teardown that's awkward to express as
+            //    a `fn()` (closures over module statics, etc.).
+            //    Game crates that fit the registry pattern can
+            //    leave on_shutdown empty and register their
+            //    handlers via `ueforge::shutdown::SHUTDOWN_REGISTRY`.
             ($mod_info.on_shutdown)();
-            // 2. Uninstall every PE hook registered via
-            //    `hook::register` / `install_immediate_or_log`.
-            //    Restores vtable slots + drains in-flight
-            //    trampolines (bounded 500ms each) before unload.
-            $crate::hook::shutdown_all();
-            // 3. Stop every HTTP listener registered via
-            //    `server::spawn`. Unblocks tiny_http's accept
-            //    loop + joins the thread.
-            $crate::server::shutdown_all();
-            // 4. Stop + join every `Settings::watch` poller so no
-            //    watcher thread is on a stack in our DLL when
-            //    UE4SS calls FreeLibrary.
-            $crate::settings::shutdown_all();
-            // 5. Stop the freeze sweeper (no-op if no freeze ever
-            //    ran). Same reason as watchers -- the sweeper
-            //    thread holds code on its stack inside our DLL.
-            $crate::scanner::shutdown_sweeper_if_running();
-            // 6. Side-file swap so UE4SS's next LoadLibraryExW
+            // 2. Framework + game shutdown handlers, in order.
+            //    Built-ins (hooks=100, http=200, settings=300,
+            //    freeze sweeper=400) are registered immediately
+            //    below; game crates can interleave their own at
+            //    any order via `SHUTDOWN_REGISTRY.register`.
+            $crate::shutdown::register_builtins();
+            $crate::shutdown::SHUTDOWN_REGISTRY.run_all();
+            // 3. Side-file swap so UE4SS's next LoadLibraryExW
             //    picks up the new image written to main-new.dll.
             $crate::mod_main::finalize_hot_reload_swap();
         }

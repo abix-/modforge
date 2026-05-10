@@ -1,4 +1,11 @@
-//! Selector grammar.
+//! Selector grammar -- the workspace-standard `<Subject>Def` +
+//! `<Subject>Registry` for resolving short strings to UObjects.
+//!
+//! ```text
+//! K8s slot: Def=SelectorDef, Registry=SelectorRegistry
+//!           (SELECTOR_REGISTRY singleton),
+//!           Instance=&'static UObject, Controller=resolve()
+//! ```
 //!
 //! Tests address objects in the running game by short strings:
 //!
@@ -10,28 +17,157 @@
 //! | `singleton:Foo`   | class default object (CDO) of class `Foo`  |
 //!
 //! Game-specific shorthand (`live_player`, `current_save`, ...)
-//! lives in the embedding crate. The pattern is: try `resolve_generic`
-//! first, fall through to the game's resolver on `None`.
+//! lives in the embedding crate, registered into the same
+//! [`SELECTOR_REGISTRY`] at worker init. After that,
+//! [`resolve`] is the one entry point every op + scanner site
+//! goes through.
+//!
+//! Adding a selector = one
+//! `SELECTOR_REGISTRY.register(SelectorDef { ... })` line, no
+//! match-statement edits.
+
+use parking_lot::Mutex;
 
 use crate::ue::{self, UObject};
 
-/// Try to resolve a selector that's part of the generic vocabulary.
-/// Returns `None` if the selector isn't one of the generic forms;
-/// callers then dispatch to game-specific selectors.
-pub fn resolve_generic(s: &str) -> Option<Result<&'static UObject, String>> {
-    if let Some(rest) = s.strip_prefix("addr:0x").or_else(|| s.strip_prefix("addr:0X")) {
-        return Some(resolve_addr(s, rest));
+/// One selector kind. The `resolver` returns:
+/// - `None` if the input string isn't this selector's shape (the
+///   registry walks to the next entry).
+/// - `Some(Ok(obj))` on successful resolution.
+/// - `Some(Err(msg))` if the shape matched but resolution failed
+///   (e.g. `class:Foo` recognised but the class isn't loaded).
+pub struct SelectorDef {
+    /// Prefix or exact-match string for display / `list_selectors`.
+    /// Free-form; the resolver decides what counts as a match.
+    pub prefix: &'static str,
+    pub summary: &'static str,
+    pub resolver: fn(&str) -> Option<Result<&'static UObject, String>>,
+}
+
+/// The workspace-standard registry for selectors.
+pub struct SelectorRegistry {
+    entries: Mutex<Vec<SelectorDef>>,
+}
+
+impl SelectorRegistry {
+    pub const fn new() -> Self {
+        Self {
+            entries: Mutex::new(Vec::new()),
+        }
     }
-    if let Some(name) = s.strip_prefix("first_class:") {
-        return Some(resolve_first_class(name));
+
+    /// Register one selector kind. Order matters only when two
+    /// kinds could match the same input (rare; resolvers are
+    /// usually disjoint).
+    pub fn register(&self, def: SelectorDef) {
+        self.entries.lock().push(def);
     }
-    if let Some(name) = s.strip_prefix("class:") {
-        return Some(resolve_first_class(name));
+
+    pub fn register_many<I: IntoIterator<Item = SelectorDef>>(&self, defs: I) {
+        let mut g = self.entries.lock();
+        for d in defs {
+            g.push(d);
+        }
     }
-    if let Some(name) = s.strip_prefix("singleton:") {
-        return Some(resolve_singleton(name));
+
+    /// Walk every registered selector and return the first match.
+    /// Returns `Err("unknown selector ...")` if no resolver claims
+    /// the input.
+    pub fn resolve(&self, selector: &str) -> Result<&'static UObject, String> {
+        let g = self.entries.lock();
+        for def in g.iter() {
+            if let Some(r) = (def.resolver)(selector) {
+                return r;
+            }
+        }
+        Err(format!(
+            "unknown selector '{selector}'; try op:'list_selectors'"
+        ))
     }
-    None
+
+    pub fn names(&self) -> Vec<&'static str> {
+        self.entries.lock().iter().map(|d| d.prefix).collect()
+    }
+
+    pub fn list_json(&self) -> serde_json::Value {
+        let g = self.entries.lock();
+        serde_json::json!({
+            "selectors": g.iter().map(|d| serde_json::json!({
+                "prefix": d.prefix,
+                "summary": d.summary,
+            })).collect::<Vec<_>>()
+        })
+    }
+}
+
+impl Default for SelectorRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Process-wide selector registry singleton.
+pub static SELECTOR_REGISTRY: SelectorRegistry = SelectorRegistry::new();
+
+/// Resolve any selector against the global registry. Use this as
+/// the canonical entry point for every op + scanner call site.
+/// `fn` (not generic / closure) so it can be passed directly to
+/// `ueforge::ops::register_with_resolver`.
+pub fn resolve(selector: &str) -> Result<&'static UObject, String> {
+    SELECTOR_REGISTRY.resolve(selector)
+}
+
+/// Register the framework's built-in selectors:
+/// `addr:0x...`, `class:Foo`, `first_class:Foo`, `singleton:Foo`.
+/// Call once at worker init, BEFORE any game-specific
+/// `SELECTOR_REGISTRY.register(...)` calls (order doesn't affect
+/// correctness for disjoint shapes; this just keeps the
+/// `list_selectors` order intuitive).
+pub fn register_builtins() {
+    SELECTOR_REGISTRY.register_many([
+        SelectorDef {
+            prefix: "addr:0x...",
+            summary: "Raw object address (hex)",
+            resolver: try_addr,
+        },
+        SelectorDef {
+            prefix: "first_class:<Name>",
+            summary: "First non-CDO instance of <Name>",
+            resolver: try_first_class,
+        },
+        SelectorDef {
+            prefix: "class:<Name>",
+            summary: "Alias for first_class:<Name>",
+            resolver: try_class_alias,
+        },
+        SelectorDef {
+            prefix: "singleton:<Name>",
+            summary: "Class default object (CDO) of <Name>",
+            resolver: try_singleton,
+        },
+    ]);
+}
+
+fn try_addr(s: &str) -> Option<Result<&'static UObject, String>> {
+    let rest = s
+        .strip_prefix("addr:0x")
+        .or_else(|| s.strip_prefix("addr:0X"))?;
+    Some(resolve_addr(s, rest))
+}
+
+fn try_first_class(s: &str) -> Option<Result<&'static UObject, String>> {
+    let name = s.strip_prefix("first_class:")?;
+    Some(resolve_first_class(name))
+}
+
+fn try_class_alias(s: &str) -> Option<Result<&'static UObject, String>> {
+    let name = s.strip_prefix("class:")?;
+    Some(resolve_first_class(name))
+}
+
+fn try_singleton(s: &str) -> Option<Result<&'static UObject, String>> {
+    let name = s.strip_prefix("singleton:")?;
+    Some(resolve_singleton(name))
 }
 
 fn resolve_singleton(class_name: &str) -> Result<&'static UObject, String> {
@@ -40,7 +176,7 @@ fn resolve_singleton(class_name: &str) -> Result<&'static UObject, String> {
     let cdo = class
         .class_default_object()
         .ok_or_else(|| format!("class '{class_name}' has no CDO"))?;
-    // SAFETY: see resolve_first_class — same lifetime-extension contract.
+    // SAFETY: see resolve_first_class -- same lifetime-extension contract.
     let extended: &'static UObject =
         unsafe { std::mem::transmute::<&UObject, &'static UObject>(cdo) };
     Ok(extended)

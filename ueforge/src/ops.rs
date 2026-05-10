@@ -265,6 +265,12 @@ pub fn register_builtins() {
             "{}",
             |_args| Ok(OP_REGISTRY.list_json()),
         ),
+        OpDef::new(
+            "list_selectors",
+            "Auto-generated catalog of every registered selector kind",
+            "{}",
+            |_args| Ok(crate::selector::SELECTOR_REGISTRY.list_json()),
+        ),
     ]);
 }
 

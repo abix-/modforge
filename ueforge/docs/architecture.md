@@ -102,8 +102,8 @@ Instance + Controller, and whether adding a new variant is a
 | **Buildings** (planned, not built) | `Building<S, C>` design in [todo.md](../../docs/todo.md) | `BuildingsCatalog` | `Instance<S>` per placed | `BuildingsTracker::tick` + `BuildingSpawner` trait | **designed-100%** | Lock the naming to the contract above before implementation. |
 | **Status effects** (in-flight) | per-row in game-side `UDataTable` | game-side data table (read live, not a Rust const) | `UStatusEffectComponent` instances on UE actors | `StandardEffect::StatusEffect` apply path | **partial** | Def + Registry live in the GAME's data tables, not in our Rust code. The Rust side is a thin wrapper; the registry is the game's. Acceptable -- the alternative is duplicating the table -- but document the boundary explicitly. |
 | **Debug ops** | `OpDef { name, summary, args, handler }` (`ueforge/src/ops.rs`) | `OpRegistry` static singleton (`OP_REGISTRY`); populated at worker init via `register_builtins()` + `register_with_resolver(...)` + `rpg::ops::register(...)` + `debug::register_pe_call(...)` + per-game closures | per-call args + return JSON | `OpRegistry::dispatch(name, args)` -- one call replaces three match statements | **100%** | Auto-generated `list_ops` op for client discovery. New op = one `OP_REGISTRY.register(OpDef::new(...))` line; no dispatch edits. Same closure-populated-at-runtime pattern as hooks. |
-| **Selectors** | nothing | hardcoded match in `selector::resolve_generic` (`addr:`, `class:`, `first_class:`, `singleton:`); per-game extensions are separate match in each game crate | resolved `&'static UObject` | the resolver fn | **30%** | New selector kind = edit `resolve_generic`. Cross-game extensions duplicate the dispatch shape. |
-| **Shutdown handlers** | nothing | hardcoded sequence in the `ueforge_mod_shutdown` macro: `on_shutdown` -> `hook::shutdown_all` -> `server::shutdown_all` -> `settings::shutdown_all` -> `scanner::shutdown_sweeper_if_running` -> `finalize_hot_reload_swap` | per-call drop | the macro itself | **0%** | New module that spawns threads must edit the macro to register its cleanup. Easy to forget; the cost shows up as a hot-reload thread leak. |
+| **Selectors** | `SelectorDef { prefix, summary, resolver: fn }` (`ueforge/src/selector.rs`) | `SelectorRegistry` static singleton (`SELECTOR_REGISTRY`); populated via `selector::register_builtins()` (framework's `addr:` / `class:` / `first_class:` / `singleton:`) + per-game `register(SelectorDef { ... })` | resolved `&'static UObject` | `selector::resolve(s)` walks the registry | **100%** | Auto-generated `list_selectors` op for client discovery. New selector kind = one `SELECTOR_REGISTRY.register(...)` line; game crates extend without touching framework code. |
+| **Shutdown handlers** | `ShutdownHandlerDef { name, order, run: fn() }` (`ueforge/src/shutdown.rs`) | `ShutdownRegistry` static singleton (`SHUTDOWN_REGISTRY`); framework `register_builtins()` registers hooks=100 / http=200 / settings=300 / scanner=400; game crates interleave at `50` (pre-framework) or `500+` (post-framework) | per-call invocation | `SHUTDOWN_REGISTRY::run_all` (sorts by order, runs each, logs) | **100%** | The `ueforge_mod_shutdown` macro is now: `on_shutdown` -> `register_builtins()` -> `run_all()` -> `finalize_hot_reload_swap`. New ueforge subsystem that spawns threads adds its `register_builtins()` line; game-specific cleanup goes via `SHUTDOWN_REGISTRY.register(...)` from `worker()`. |
 | **Modules** (rpg / stacks / difficulty / inventory / damage / planned buildings) | nothing | implicit; each module has its own catalog + tracker + ops + tab without a shared shape | -- | -- | **n/a** | Possible meta-pattern: a `ModuleDef` that names which subsystems each module participates in. Defer until we feel the pain. |
 | **Hooks** | `HookDef` (per-install runtime record; `class_name`, `slot`, `vtable`, `handler`, `active_calls`, `panic_count`) | `HookRegistry` static singleton (`HOOK_REGISTRY`) holding the owned `ProcessEventHook` handles + snapshot accessors | `ProcessEventHook` RAII guard | trampoline (per-fire) + Drop (uninstall + drain) + `HookRegistry::shutdown_all` (hot-reload teardown) | **90%** | Defs are populated imperatively (closures, no compile-time const) -- documented exception. Naming + surface matches the other registries. |
 | **Counters** | n/a (carve-out) | per-call-site statics | `AtomicU64` value | `bump` / `time_scope` | -- | Doesn't fit. |
@@ -120,16 +120,16 @@ match statements into a single registry append.
    (`handle_builtin`, `dispatch_standard_op`, `dispatch_pe_ops`)
    are gone. Game crates collapse to one
    `OP_REGISTRY.dispatch(op, args)` call.
-2. **Selectors registry.**
-   `SelectorDef { prefix: &'static str, resolver: fn(&str, usize) -> Result<usize, String> }`
-   + `SELECTOR_REGISTRY`. `resolve_generic` becomes a registry
-   walk. Game crates can extend by registering their own
-   prefixes (e.g. `live_player:`).
-3. **Shutdown handlers registry.**
-   `ShutdownHandlerDef { name, order: u32, run: fn() }` +
-   `SHUTDOWN_REGISTRY`. The macro becomes "iterate registry
-   sorted by `order`". Each module's first init call registers
-   its cleanup; new modules can't forget the wiring.
+2. ~~**Selectors registry.**~~ -- DONE 2026-05-10. `SelectorDef`
+   + `SelectorRegistry` shipped; `SELECTOR_REGISTRY` singleton;
+   `selector::resolve(s)` is the one entry point. Auto-generated
+   `list_selectors` op. `resolve_generic` is gone.
+3. ~~**Shutdown handlers registry.**~~ -- DONE 2026-05-10.
+   `ShutdownHandlerDef` + `ShutdownRegistry` shipped;
+   `SHUTDOWN_REGISTRY` singleton; the macro now runs
+   `register_builtins()` then `run_all()`. New ueforge
+   subsystem registers itself in `register_builtins`; game
+   crates interleave via `SHUTDOWN_REGISTRY.register(...)`.
 4. **Buildings + status effects.** Both still in design /
    in-flight. Land them compliant from day one (no rework
    later).
