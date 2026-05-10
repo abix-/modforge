@@ -261,29 +261,32 @@ pub fn register_builtins() {
         ),
         OpDef::new(
             "discover_data_tables",
-            "Every live UDataTable's row schema (cached; pass refresh=true to re-walk)",
-            "{refresh?: bool}",
+            "Every live UDataTable's row schema (cached; pass refresh=true; name= filters to one)",
+            "{refresh?: bool, name?: str}",
             |args| {
                 let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
-                Ok(crate::discovery::data_tables_json(refresh))
+                let name = args.get("name").and_then(|v| v.as_str());
+                Ok(crate::discovery::data_tables_json(refresh, name))
             },
         ),
         OpDef::new(
             "discover_classes",
-            "Every UClass + native property list (cached; pass refresh=true to re-walk)",
-            "{refresh?: bool}",
+            "Every UClass + native properties + functions (cached; pass refresh=true; name= filters to one)",
+            "{refresh?: bool, name?: str}",
             |args| {
                 let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
-                Ok(crate::discovery::classes_json(refresh))
+                let name = args.get("name").and_then(|v| v.as_str());
+                Ok(crate::discovery::classes_json(refresh, name))
             },
         ),
         OpDef::new(
             "discover_structs",
-            "Every UScriptStruct + field list (cached; pass refresh=true to re-walk)",
-            "{refresh?: bool}",
+            "Every UScriptStruct + field list (cached; pass refresh=true; name= filters to one)",
+            "{refresh?: bool, name?: str}",
             |args| {
                 let refresh = args.get("refresh").and_then(|v| v.as_bool()).unwrap_or(false);
-                Ok(crate::discovery::structs_json(refresh))
+                let name = args.get("name").and_then(|v| v.as_str());
+                Ok(crate::discovery::structs_json(refresh, name))
             },
         ),
         OpDef::new(

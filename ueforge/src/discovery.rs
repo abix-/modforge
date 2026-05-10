@@ -89,19 +89,58 @@ pub fn refresh() -> Arc<DiscoverySnapshot> {
 }
 
 /// JSON view: every live `UDataTable` + row schema. Refresh-on-demand
-/// for op handlers. If the cache is cold, walks now.
-pub fn data_tables_json(refresh_first: bool) -> Json {
-    snapshot(refresh_first).data_tables.clone()
+/// for op handlers. If the cache is cold, walks now. `name_filter`
+/// restricts the result to a single entry by exact short name (the
+/// table's UE short name); pass `None` for the full dump.
+pub fn data_tables_json(refresh_first: bool, name_filter: Option<&str>) -> Json {
+    let snap = snapshot(refresh_first);
+    match name_filter {
+        None => snap.data_tables.clone(),
+        Some(name) => filter_named(&snap.data_tables, "data_tables", "table_name", name),
+    }
 }
 
-/// JSON view: every `UClass` + native property list.
-pub fn classes_json(refresh_first: bool) -> Json {
-    snapshot(refresh_first).classes.clone()
+/// JSON view: every `UClass` + native property list + function list.
+pub fn classes_json(refresh_first: bool, name_filter: Option<&str>) -> Json {
+    let snap = snapshot(refresh_first);
+    match name_filter {
+        None => snap.classes.clone(),
+        Some(name) => filter_named(&snap.classes, "classes", "name", name),
+    }
 }
 
 /// JSON view: every `UScriptStruct` + field list.
-pub fn structs_json(refresh_first: bool) -> Json {
-    snapshot(refresh_first).structs.clone()
+pub fn structs_json(refresh_first: bool, name_filter: Option<&str>) -> Json {
+    let snap = snapshot(refresh_first);
+    match name_filter {
+        None => snap.structs.clone(),
+        Some(name) => filter_named(&snap.structs, "structs", "name", name),
+    }
+}
+
+/// Wrap one entry from a discovery section back in the section's
+/// envelope (same shape minus the count fields, plus a `match`
+/// pointer to the located entry).
+fn filter_named(section: &Json, array_key: &str, name_key: &str, target: &str) -> Json {
+    let empty = Vec::new();
+    let arr = section
+        .get(array_key)
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    let found = arr
+        .iter()
+        .find(|e| e.get(name_key).and_then(|v| v.as_str()) == Some(target));
+    match found {
+        Some(e) => json!({
+            "match": e.clone(),
+            "filter": target,
+        }),
+        None => json!({
+            "match": null,
+            "filter": target,
+            "error": format!("{} '{}' not in discovery cache", name_key, target),
+        }),
+    }
 }
 
 fn snapshot(refresh_first: bool) -> Arc<DiscoverySnapshot> {
