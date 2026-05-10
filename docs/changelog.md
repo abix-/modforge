@@ -68,6 +68,45 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Three pillars: rpg / stacks / difficulty
+
+ueforge now ships opinionated framework modules for the three
+most common UE5 mod patterns, each wrapping a low-level primitive
+with the universal apply-loop + atomic-knob + status-counter
+shape:
+
+- **`ueforge::rpg`** (existing) -- skill catalog, XP curve,
+  bestiary, per-slot persistence, ImGui tab, the
+  `StandardEffect` 8-variant menu.
+- **`ueforge::stacks`** (new) -- inventory stack-size data-table
+  tweak. Wraps `FieldTweak<i32>` with multiplier atomic, last-
+  applied / ever-applied counters, on-first-sight worker, and
+  apply-now / revert helpers. Game crate writes one
+  `StackTweak::new(table, offset, default_mult, skip_predicate)`
+  static.
+- **`ueforge::difficulty`** (new) -- CDO field tweak for
+  difficulty knobs (drain rates, damage multipliers, regen,
+  etc). Wraps `ClassFieldTweak<f32>` with f32 multiplier atomic
+  + apply_to_cdos / apply_to_all / apply_with_filter / revert.
+  Game crate writes one `DifficultyKnob::new(class, offset)`
+  static per knob and calls `set_multiplier` + `apply_to_cdos`.
+
+Migrations:
+
+- `outworld-station-tweaks/src/stacks.rs`: 86 -> 64 lines (-22).
+  The vanilla snapshot, multiplier atomic, status counters, and
+  apply worker all moved to `StackTweak`.
+- `grounded2-rpg/src/survival.rs`: 85 -> 41 lines (-44). The
+  hand-rolled "skip if multiplier == 1.0", `ClassFieldTweak`
+  invocations, and stat aggregation all collapsed into
+  `DifficultyKnob::apply_to_cdos`.
+
+The framework's design rule going forward: a UE5 game implementing
+RPG + stacks + difficulty writes ONLY game-specific knobs (table
+names, field offsets, multiplier UI, settings persistence). No
+re-implementation of the apply loop, the vanilla cache, or the
+counter atomics.
+
 ### Bootstrap + class-name lookup helpers
 
 Three more universals lifted to ueforge so each new mod's

@@ -14,12 +14,34 @@
 //! Operating principle: always change ueforge first. Game-specific
 //! code goes on top; if it might apply to other UE games, it
 //! belongs here.
+//!
+//! ## The three pillars
+//!
+//! ueforge ships opinionated framework modules for the three most
+//! common UE5 mod patterns. A new game's mod picks from these
+//! menus and writes only game-specific knobs:
+//!
+//! - **[`rpg`]** -- skill catalog + XP curve + bestiary +
+//!   per-slot persistence + ImGui tab + the `StandardEffect`
+//!   variant menu covering 9 of the 10 most common skill shapes.
+//! - **[`stacks`]** -- inventory stack-size data-table tweak with
+//!   captured-vanilla baseline, idempotent re-apply, multiplier
+//!   atomic, and on-first-sight worker.
+//! - **[`difficulty`]** -- game-difficulty CDO field tweak (drain
+//!   rates, damage multipliers, regen rates, etc) with the same
+//!   capture / multiplier / re-apply pattern.
+//!
+//! Each pillar wraps a low-level primitive
+//! (`StandardEffect` / `FieldTweak<T>` / `ClassFieldTweak<T>`)
+//! with the universal apply-loop + atomic-knob + status-counter
+//! pattern, so the game crate doesn't re-implement any of it.
 
 pub mod args;
 pub mod build;
 pub mod client;
 pub mod counters;
 pub mod debug;
+pub mod difficulty;
 pub mod envelope;
 pub mod hex;
 pub mod hook;
@@ -34,6 +56,7 @@ pub mod scanner;
 pub mod selector;
 pub mod server;
 pub mod settings;
+pub mod stacks;
 pub mod uasset;
 pub mod ue;
 pub mod ui;
