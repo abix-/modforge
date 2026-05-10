@@ -31,6 +31,75 @@ If any of that fails, triage from the log lines.
 
 ---
 
+## P1 -- registry alignment (Wave B + lift candidates)
+
+Wave A landed 2026-05-10 (debug ops, selectors, shutdown
+handlers; see [changelog.md](changelog.md)). Remaining
+alignment work, ranked by leverage:
+
+### Lift game-specific ops to ueforge
+
+g2rpg's debug.rs registers three ops whose **shape** is universal
+(every UE5 RPG/survival game has a HealthComponent with a
+current-damage field and an AddHealth-style UFunction) but whose
+**constants** are Maine-specific. Same pattern as `damage::DamageBinder`
+and `inventory::ViewportBinder` — ueforge ships the ops, the
+game declares the binding.
+
+- [ ] **Lift health ops to `ueforge::rpg::health`** (or
+  `ueforge::health`). Surface:
+  ```rust
+  pub struct HealthBinding {
+      pub hc_class: ClassRef,                   // "HealthComponent"
+      pub hc_selector: &'static str,            // "live_player_hc"
+      pub current_damage_offset: usize,         // 0x32C on Maine
+      pub add_health_function: Option<&'static str>, // "AddHealth"
+  }
+  pub fn register(binding: &'static HealthBinding, pe_queue: &'static DrainSite);
+  ```
+  Registers `simulate_add_health`, `simulate_set_current_health`,
+  `simulate_apply_damage` (when the safe drain site lands) into
+  `OP_REGISTRY`. g2rpg's `debug.rs` shrinks by ~80 lines.
+
+### Wave B: cosmetic alignment sweeps
+
+Cheap consistency wins; each one promotes a subject from
+"already-working but uses bare slice / domain noun" to
+canonical `<Subject>Def + <Subject>Registry` shape.
+
+- [ ] **`ueforge::stacks::StackTweak` -> `StackTweakDef +
+  StackTweakRegistry`.** Today's pattern is per-mod
+  `static MY_TWEAK: StackTweak = StackTweak::new(...)` with each
+  mod listing its tweaks inline. Promote to
+  `static STACKS: StackTweakRegistry`. Then `stacks_list` debug
+  op auto-generates; CDO-revert-replay walks the registry
+  uniformly.
+- [ ] **`ueforge::difficulty::DifficultyKnob` -> `DifficultyKnobDef
+  + DifficultyKnobRegistry`.** Identical shape to stack tweaks
+  (typed Def with class/offset/default + apply-to-CDOs
+  controller). Same registry treatment. Doing 1+2 together is
+  one pattern applied twice.
+- [ ] **`ueforge::Tab` -> `TabDef`** with `MOD_INFO.tabs` staying a
+  bare slice (per the documented "bare-slice exception" carve-
+  out). Cosmetic two-line rename; lights up full Def-suffix
+  symmetry.
+- [ ] **`ueforge::ModInfo` -> `ModDef`.** The top-level mod
+  identity. Singleton, but it IS the root Def. Rename + every
+  consumer's `MOD_INFO` declaration.
+
+### Deferred (large lifts)
+
+- [ ] **Parm decoders** -- every PE-hooking module knows
+  "for UFunction X, the parm block has shape Y". Currently
+  scattered across kill_hook / inv_hook / fall_hook as bespoke
+  code. Could lift to `ParmDecoderDef { function_name, decode_fn
+  }` + a per-class registry. Biggest payoff: a generic
+  `walk_parms` debug op. Defer until a second consumer needs
+  it.
+- [ ] **`ClassRef` registry** -- every declared `static FOO:
+  ClassRef = ClassRef::new("Foo")` could feed a workspace-wide
+  `class_refs_list` op. Marginal; defer.
+
 ## P1 -- ueforge durability (kovarex review wave 2, remaining)
 
 - [ ] **Sig-scan the four base offsets** instead of hardcoding.

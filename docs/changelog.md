@@ -12,6 +12,73 @@
 
 Newest first.
 
+## 2026-05-10 (registry alignment wave A: ops + selectors + shutdown)
+
+Per the new
+[architecture.md](../ueforge/docs/architecture.md) Def +
+Registry contract, every cross-cutting subject in ueforge now
+exposes the same `<Subject>Def` + `<Subject>Registry` surface.
+Three high-leverage refactors landed:
+
+### Debug ops (was 30%, now 100%)
+
+`ueforge::ops::OpDef` + `OpRegistry` + `OP_REGISTRY` singleton
+collapse three hardcoded dispatchers (`handle_builtin`,
+`dispatch_standard_op`, `dispatch_pe_ops`) into a single
+`OP_REGISTRY.dispatch(op, args)` call. Game crates `register()`
+their ops at worker init via captured-state closures
+(tracker, pe_queue, selector resolver). Auto-generated
+`list_ops` op for client discovery. Per-mod handle() shrank
+from ~40 lines of match arms to ~10. See
+[architecture.md](../ueforge/docs/architecture.md) "Debug
+ops" row.
+
+### Selectors (was 30%, now 100%)
+
+`ueforge::selector::SelectorDef` + `SelectorRegistry` +
+`SELECTOR_REGISTRY` singleton. `selector::resolve(s)` is the
+one entry point for every op + scanner site; walks the
+registry. Framework ships `addr:` / `class:` / `first_class:`
+/ `singleton:` via `register_builtins()`; game crates extend
+with their own (`live_player`, `live_player_hc` in g2rpg)
+without touching framework code. Auto-generated
+`list_selectors` op.
+
+### Shutdown handlers (was 0%, now 100%)
+
+`ueforge::shutdown::ShutdownHandlerDef` + `ShutdownRegistry`
++ `SHUTDOWN_REGISTRY` singleton with `run_all()` sorting by
+`order: u32`. The `ueforge_mod_shutdown` macro collapses to:
+`game.on_shutdown()` -> `register_builtins()` -> `run_all()` ->
+`finalize_hot_reload_swap()`. Built-ins use orders
+hooks=100 / http=200 / settings=300 / scanner=400; game
+crates interleave at `50` (pre-framework) or `500+` (post).
+New ueforge subsystem can't forget the wiring: it adds a
+line to `register_builtins`. See
+[architecture.md](../ueforge/docs/architecture.md) "Shutdown
+handlers" row.
+
+## 2026-05-10 (registry alignment wave 0: skills + creatures + hooks)
+
+Hard rename to the `<Subject>Def + <Subject>Registry` contract
+(no aliases, hard migration):
+
+- **Skills**: `Skill<E>` -> `SkillDef<E>` + new
+  `SkillRegistry<E>` wrapper. Lookup via `CATALOG.def(id)`;
+  iteration via `CATALOG.iter()` or `for s in CATALOG`.
+  `find_skill` / `skill_def` free fns removed.
+- **Creatures** (was Bestiary): tuple `(&str, u32)` -> named
+  `CreatureDef { class_name, base_xp }` + `CreatureRegistry`.
+  Per-mod `static CREATURES: CreatureRegistry`.
+- **Hooks**: private `Entry` -> public `HookDef` with accessors;
+  new `HookRegistry` struct + `HOOK_REGISTRY` singleton; existing
+  `register` / `register_many` / `shutdown_all` free fns become
+  thin wrappers around the registry methods. `installed_defs()`
+  snapshot accessor for debug surfaces.
+
+See [architecture.md](../ueforge/docs/architecture.md) for the
+full naming contract + per-subject scorecard.
+
 ## 2026-05-10 (kovarex review wave 2 P1 -- continued)
 
 Four more P1 items landed in a follow-up session. Workspace check

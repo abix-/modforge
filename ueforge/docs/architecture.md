@@ -140,6 +140,31 @@ match statements into a single registry append.
    with a named struct so future fields don't reshape every
    consumer.
 
+## Lift candidates: game-specific ops with universal shape
+
+When a game crate registers a debug op into `OP_REGISTRY` with
+captured-game-state, look at the **shape**:
+
+- If the op's algorithm is **universal** to UE5 RPG / survival
+  games but the **constants** (class names, field offsets,
+  UFunction names) are game-specific, it belongs in the
+  framework as a binding-driven module.
+- Pattern: ueforge ships the op handlers; game declares a
+  `<Module>Binding` struct of constants; game's `worker()` calls
+  `<module>::register(&BINDING, &PE_QUEUE)`.
+- Examples already in this shape: `damage::DamageBinder`,
+  `inventory::ViewportBinder`.
+
+Today's known lift candidates (see [todo.md](../../docs/todo.md)
+"Lift game-specific ops to ueforge"):
+
+| Op family | Game-side | Universal shape |
+|---|---|---|
+| `simulate_add_health` / `simulate_set_current_health` / `simulate_apply_damage` | g2rpg `op_simulate_*` (HC selector + 0x32C offset + AddHealth UFunction name) | `ueforge::rpg::health::HealthBinding { hc_class, hc_selector, current_damage_offset, add_health_function }` -> registers all three ops |
+
+When the second consumer asks for the same shape, lift before
+duplicating.
+
 ## How to add a new compliant subject
 
 Checklist for the next module:
