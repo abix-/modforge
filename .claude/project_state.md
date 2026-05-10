@@ -127,6 +127,48 @@ Out of scope:
 - Settings JSON loader (game-specific shape; uespy doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
 
+## Audit candidates landed: settings + FieldTweak + cargo deploy (2026-05-09 night, post-stack-mod)
+
+After the stack mod shipped, ran an audit (uespy/README.md
+"Audit: what's in uespy vs in game crates") that surfaced
+three 🟡 promotion candidates. All landed.
+
+#29 uespy::settings::Settings<T>:
+- Generic settings-as-Rust-struct, JSON-backed at
+  <DLL_dir>/settings.json. load-on-construct,
+  atomic-save-on-update via temp+rename.
+- tweaks::settings defines TweaksSettings { stacks: { multiplier } }.
+  Slider position now persists across launches.
+
+#28 uespy::ue::datatable::FieldTweak<T>:
+- Snapshot-vanilla + idempotent re-apply primitive. Generic
+  over T: Copy + PartialEq + Send + 'static.
+- apply(transform, skip_if): one-shot DT mutation.
+- apply_when_ready(timeout, transform, skip_if): bundles
+  on_first_sight + apply_to.
+- tweaks::stacks::STACK_TWEAK = FieldTweak::new("DT_Materials", 0x48).
+  spawn_apply_worker is 3 lines, apply_now is 8.
+
+#30 uespy-deploy (Rust binary, replaces all per-mod
+PowerShell):
+- New workspace member uespy-deploy/ (clap CLI).
+- Reads each mod's [package.metadata.uespy] via `cargo
+  metadata --no-deps --format-version 1` + serde_json.
+- Steam library walk via winreg + libraryfolders.vdf regex.
+- UE4SS-presence check, mods.txt mgmt, locked-DLL friendly
+  error, zip packaging via the `zip` crate.
+- .cargo/config.toml [alias] gives `cargo deploy install -p
+  <mod>` ergonomics.
+- All previous PS scripts removed (per-mod and any
+  unified-PS-attempt). Single Rust binary owns deploy.
+- better-backpack and outworld-station/tweaks both use it via:
+    cargo deploy install -p tweaks
+    cargo deploy install -p better-backpack
+
+Audit table (uespy/README.md) updated: rows 28/29/30 marked
+done. Backlog (rows 31-34) untouched -- conditional on real
+need.
+
 ## OWS stack mod live via DLL (2026-05-09 night)
 
 End-to-end victory: outworld-station/tweaks/ ships a 4x

@@ -208,11 +208,12 @@ mod, or do we have prerequisites missing?"
 ```
 your-mods/
   Cargo.toml         # workspace
-  uespy/             # the only base crate
+  uespy/             # the framework crate
     cpp/imgui/       # vendored ImGui, shared by every mod
     ue4ss/UE4SS.lib  # shared import lib
+  uespy-deploy/      # `cargo deploy ...` CLI (binary crate)
   your-mod/
-    Cargo.toml
+    Cargo.toml       # see [package.metadata.uespy] block below
     build.rs         # 1 LoC
     src/lib.rs       # ModInfo + ue4ss_mod!
     src/debug.rs     # Snapshot + handle()
@@ -444,9 +445,9 @@ Legend: ✅ in uespy / 📦 stays game-side (correct split) / 🟡 candidate to 
 | 25 | Game-specific selectors (e.g. `live_player`) | game crate 📦 | per game | correct |
 | 26 | Per-feature offsets / table names / skip rules | game crate 📦 | per feature | correct |
 | 27 | Per-feature ImGui tab content (slider values, labels, status text) | game crate 📦 | per UX | correct |
-| 28 | **Vanilla baseline `HashMap<fname, T>` + idempotent re-apply** | game crate (`tweaks/stacks.rs`) | **applies to any DT-field tweak** | 🟡 candidate (`uespy::ue::datatable::FieldTweak<T>`) |
-| 29 | **Settings.json load + save** (e.g. multiplier persists across launches) | not built | yes | 🔵 future, belongs in uespy |
-| 30 | **Game-deploy PowerShell pattern** (Steam library detect + mods.txt + DLL copy) | per-mod ~350 LoC scripts | yes (per-mod path differs) | 🟡 candidate (shared `deploy-lib.ps1` / module) |
+| 28 | Vanilla baseline + idempotent re-apply (`FieldTweak<T>`) | uespy ✅ (`uespy::ue::datatable::FieldTweak`) | yes | done |
+| 29 | Settings.json load + save (atomic) | uespy ✅ (`uespy::settings::Settings<T>`) | yes | done |
+| 30 | Cross-game deploy CLI (Steam library detect + UE4SS check + DLL copy + mods.txt + zip) | uespy ✅ (`uespy-deploy` binary, `cargo deploy` alias) | yes | done — pure Rust, no PowerShell |
 | 31 | **UE4SS-style RegisterPostHook** (override UFunction return value) | not built | yes | 🔵 backlog (worth it for caches that beat on-init mutation) |
 | 32 | **Memory scanner** (Cheat-Engine-style scan + rescan + freeze) | not built | yes | 🔵 backlog |
 | 33 | **Hot-reload via stub-loader pattern** | not built | yes | 🔵 backlog |
@@ -454,10 +455,9 @@ Legend: ✅ in uespy / 📦 stays game-side (correct split) / 🟡 candidate to 
 
 ### Where to focus when promoting
 
-🟡 candidates worth a slice each, in priority order:
-- **#29 settings.json loader** — every future feature wants persistence, should land before the 2nd tweak feature ships.
-- **#28 `FieldTweak<T>`** — collapses any "snapshot vanilla, multiply / delta, apply" feature to ~10 LoC of game-side code.
-- **#30 deploy PowerShell module** — one-time clean-up, every per-game deploy script shrinks ~80%.
+All previously 🟡 candidates have landed (#28 / #29 / #30).
+Next round of audits will surface the next set when a 2nd or 3rd
+mod feature shows shared shape.
 
 🔵 backlog items get built when concretely needed:
 - **#31** when an on-init DT mutation doesn't propagate (cache-after-init).
