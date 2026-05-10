@@ -168,3 +168,95 @@ impl Default for Queue {
         Self::new()
     }
 }
+
+/// `Queue` paired with the standard performance-counter trio
+/// (drain calls, drained commands, peak depth, time spent
+/// draining). Wraps `Queue::drain` so trampoline drain sites are
+/// one line + automatic perf instrumentation -- no more pairing a
+/// static Queue with four hand-declared `counter!` statics + a
+/// 20-line `drain_pending` wrapper.
+///
+/// ```ignore
+/// static SITE: ueforge::pe_queue::DrainSite = ueforge::pe_queue::DrainSite::new();
+///
+/// // From a trampoline (game thread):
+/// SITE.drain();
+///
+/// // From an HTTP op (worker thread):
+/// SITE.queue().enqueue(|| { /* mutate game state */ }, Duration::from_secs(5))?;
+/// ```
+pub struct DrainSite {
+    queue: Queue,
+    drain_calls: std::sync::atomic::AtomicU64,
+    drained_cmds: std::sync::atomic::AtomicU64,
+    peak: std::sync::atomic::AtomicUsize,
+    time_ns: std::sync::atomic::AtomicU64,
+}
+
+impl DrainSite {
+    pub const fn new() -> Self {
+        Self {
+            queue: Queue::new(),
+            drain_calls: std::sync::atomic::AtomicU64::new(0),
+            drained_cmds: std::sync::atomic::AtomicU64::new(0),
+            peak: std::sync::atomic::AtomicUsize::new(0),
+            time_ns: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Borrow the inner Queue for `enqueue` calls from the HTTP
+    /// listener side.
+    pub fn queue(&self) -> &Queue {
+        &self.queue
+    }
+
+    /// Drain the queue. Hot-path-safe (one atomic load + branch
+    /// when empty). Bumps the drain-calls counter on every
+    /// invocation; bumps drained-cmds + observes peak only when
+    /// work was actually done. Skips the time-scope on the empty
+    /// path so the steady-state cost is just one load.
+    pub fn drain(&self) -> DrainStats {
+        self.drain_calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if self.queue.is_empty() {
+            return DrainStats::default();
+        }
+        let _t = crate::counters::time_scope(&self.time_ns);
+        let stats = self.queue.drain();
+        if !stats.reentered {
+            crate::counters::observe_peak(&self.peak, stats.peak);
+            self.drained_cmds
+                .fetch_add(stats.drained as u64, std::sync::atomic::Ordering::Relaxed);
+        }
+        stats
+    }
+
+    pub fn drain_calls(&self) -> u64 {
+        self.drain_calls
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn drained_cmds(&self) -> u64 {
+        self.drained_cmds
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn peak(&self) -> usize {
+        self.peak.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    pub fn time_ns(&self) -> u64 {
+        self.time_ns.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    pub fn len(&self) -> usize {
+        self.queue.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.queue.is_empty()
+    }
+}
+
+impl Default for DrainSite {
+    fn default() -> Self {
+        Self::new()
+    }
+}

@@ -437,6 +437,16 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C++++ -- DrainSite (DONE 2026-05-10)
+
+- [x] **`ueforge::pe_queue::DrainSite`** -- `Queue` paired with
+  the standard performance-counter quad (drain calls, drained
+  cmds, peak depth, time_ns spent draining). One static replaces
+  bbp's static `Queue` + 4 hand-declared `counter!` statics +
+  the 20-LoC `drain_pending` wrapper. Counters surfaced via
+  `drain_calls()` / `drained_cmds()` / `peak()` / `time_ns()`
+  accessors. bbp's `drain_pending` is now a one-liner.
+
 ### Wave C+++ -- ueforge::ue::PlayerRef (DONE 2026-05-10)
 
 - [x] **`ueforge::ue::PlayerRef`** -- canonical "find the player"

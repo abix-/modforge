@@ -19,7 +19,7 @@ use serde::Serialize;
 use serde_json::Value as Json;
 use ueforge::args::{arg_bool, arg_f64, arg_str, arg_u64};
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
-use ueforge::pe_queue::Queue as PeQueue;
+use ueforge::pe_queue::DrainSite;
 
 use crate::inv_hook;
 use crate::rpg::{apply, fall_hook, skills, tracker, world_loader};
@@ -73,7 +73,7 @@ enum DebugCmd {
 /// Game-thread job queue. The HTTP handler enqueues a closure that
 /// captures a `DebugCmd`; the closure runs from `drain_pending` on
 /// the game thread. See `ueforge::pe_queue` for mechanics.
-static PE_QUEUE: PeQueue = PeQueue::new();
+pub(crate) static PE_QUEUE: DrainSite = DrainSite::new();
 
 /// Ring buffer of recent damage / multicast events captured by
 /// the `kill_hook` trampoline. Populated by
@@ -107,8 +107,17 @@ fn snapshot_damage_ring() -> Vec<DamageEvent> {
     DAMAGE_RING.snapshot()
 }
 
+pub(crate) fn damage_ring_pushes() -> u64 {
+    DAMAGE_RING.pushes()
+}
+
+pub(crate) fn damage_ring_peak() -> usize {
+    DAMAGE_RING.peak()
+}
+
 fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
     PE_QUEUE
+        .queue()
         .enqueue(
             move || execute_on_game_thread(cmd),
             Duration::from_secs(5),
@@ -128,24 +137,12 @@ fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
         })
 }
 
-/// Called from `kill_hook`'s trampoline (game thread). Wraps
-/// `ueforge::Queue::drain` with our perf counters. The queue itself
-/// owns the re-entrance guard, the lock-free empty-check, and the
-/// reply-channel plumbing.
+/// Called from `kill_hook`'s trampoline (game thread). Drain
+/// counters (calls / drained / peak / time_ns) are owned by
+/// `DrainSite` itself; they appear in the snapshot via
+/// `PE_QUEUE.drain_calls()` etc.
 pub fn drain_pending() {
-    ueforge::counters::bump(&crate::counters::DRAIN_PENDING_CALLS);
-    if PE_QUEUE.is_empty() {
-        return;
-    }
-    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_DRAIN_PENDING);
-    let stats = PE_QUEUE.drain();
-    if stats.reentered {
-        return;
-    }
-    ueforge::counters::observe_peak(&crate::counters::PE_QUEUE_PEAK, stats.peak);
-    for _ in 0..stats.drained {
-        ueforge::counters::bump(&crate::counters::DRAIN_PENDING_DRAINED_CMDS);
-    }
+    PE_QUEUE.drain();
 }
 
 fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
@@ -303,6 +300,7 @@ fn op_call(args: &Json) -> Result<Json, String> {
     let selector = arg_str(args, "instance_selector")?.to_string();
     let parms = ueforge::hex::decode(arg_str(args, "parms_hex")?)?;
     PE_QUEUE
+        .queue()
         .enqueue(
             move || {
                 let instance = resolve_instance(&selector)?;
