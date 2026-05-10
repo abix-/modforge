@@ -130,14 +130,36 @@ fn render_field_list(c: &serde_json::Value) {
     ui::indent();
     let empty = Vec::new();
     let fields = c.get("fields").and_then(|v| v.as_array()).unwrap_or(&empty);
-    for f in fields {
-        let n = f.get("name").and_then(|v| v.as_str()).unwrap_or("?");
-        let off = f.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
-        let sz = f.get("element_size").and_then(|v| v.as_i64()).unwrap_or(0);
-        ui::text(&format!("  {n}  @+0x{off:x}  size={sz}"));
+    if ui::tree_node("fields") {
+        for f in fields {
+            let n = f.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            let off = f.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
+            let sz = f.get("element_size").and_then(|v| v.as_i64()).unwrap_or(0);
+            ui::text(&format!("  {n}  @+0x{off:x}  size={sz}"));
+        }
+        if fields.is_empty() {
+            ui::text_disabled("  (no native properties)");
+        }
+        ui::tree_pop();
     }
-    if fields.is_empty() {
-        ui::text_disabled("  (no native properties)");
+
+    let functions = c
+        .get("functions")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    if ui::tree_node("functions") {
+        for f in functions {
+            let n = f.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            let flags = f
+                .get("function_flags")
+                .and_then(|v| v.as_str())
+                .unwrap_or("0x");
+            ui::text(&format!("  {n}  flags={flags}"));
+        }
+        if functions.is_empty() {
+            ui::text_disabled("  (no functions)");
+        }
+        ui::tree_pop();
     }
     ui::unindent();
 }

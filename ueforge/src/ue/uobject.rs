@@ -267,6 +267,41 @@ impl UClass {
         }
     }
 
+    /// Walk the Children chain (UField list at `+0x48`) and emit
+    /// every member's `(name, function_flags)`. UFunctions live
+    /// in this chain alongside other UField-derived members; we
+    /// emit them all and let callers filter by flags. Cost is
+    /// bounded (chains in stock UE5 cap around ~100 entries per
+    /// class); cold path / called at discovery-init time.
+    pub fn iter_functions(&self) -> Vec<(String, u32)> {
+        let mut out = Vec::new();
+        let mut cur: Option<&UObject> = unsafe {
+            let p: *mut UObject = (self as *const UClass as *const u8)
+                .add(offsets::ustruct::CHILDREN)
+                .cast::<*mut UObject>()
+                .read_unaligned();
+            p.as_ref()
+        };
+        let mut depth = 0;
+        while let Some(field) = cur {
+            if depth > 4096 {
+                break;
+            }
+            let func = unsafe { &*(field as *const UObject as *const UFunction) };
+            out.push((field.name(), func.function_flags()));
+            cur = unsafe {
+                let p: *mut UObject = field
+                    .as_ptr()
+                    .add(offsets::ufield::NEXT)
+                    .cast::<*mut UObject>()
+                    .read_unaligned();
+                p.as_ref()
+            };
+            depth += 1;
+        }
+        out
+    }
+
     /// Walk Children list looking for a UFunction whose name == `func_name`
     /// and whose outer chain contains an entry matching `class_name`.
     pub fn get_function(&self, class_name: &str, func_name: &str) -> Option<&UFunction> {

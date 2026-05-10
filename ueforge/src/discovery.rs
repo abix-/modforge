@@ -184,6 +184,16 @@ fn describe_class(cls: &UClass) -> Json {
             })
         })
         .collect();
+    let functions: Vec<Json> = cls
+        .iter_functions()
+        .into_iter()
+        .map(|(name, flags)| {
+            json!({
+                "name": name,
+                "function_flags": format!("0x{:08x}", flags),
+            })
+        })
+        .collect();
     let super_name = cls.super_class().map(|s| s.as_object().name());
     json!({
         "name": obj.name(),
@@ -191,6 +201,7 @@ fn describe_class(cls: &UClass) -> Json {
         "super": super_name,
         "properties_size": cls.properties_size(),
         "fields": fields,
+        "functions": functions,
     })
 }
 
