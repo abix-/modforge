@@ -1,5 +1,53 @@
 # grounded2mods - project state
 
+## More framework lifts: DrainSite + core_types + SlotKeyResolver (2026-05-10, latest)
+
+Pushed further on extraction. Session running total: 15 commits.
+
+12. **`ueforge::pe_queue::DrainSite`** -- `Queue` paired with the
+    standard performance-counter quad (drain calls, drained cmds,
+    peak depth, time_ns spent draining). bbp's `drain_pending` is
+    now a one-liner; the four bbp `counter!` statics + the
+    `PE_QUEUE_PEAK` peak are gone, surfaced through the
+    `DrainSite`'s built-in accessors instead.
+13. **`ueforge::ue::core_types`** -- POD `#[repr(C)]` mirrors of
+    stable UE5 engine types: `FGuid`, `FWeakObjectPtr`,
+    `FDataTableRowHandle`, plus the `EStatusEffectValueType`
+    enum. Six unit tests including size-invariant assertions
+    (FGuid == 16, FWeakObjectPtr == 8). Migrations: bbp's local
+    duplicates of FGuid (in save_slot.rs) and FWeakObjectPtr (in
+    kill_hook.rs) deleted.
+14. **`ueforge::rpg::SlotKeyResolver`** -- generic save-slot key
+    extractor. `(class_name, guid_offset)` config; `resolve()`
+    walks GObjects for first instance, reads FGuid at offset,
+    formats as filename. bbp's `save_slot.rs` shrunk to a 5-line
+    wrapper.
+
+### Session totals (final)
+
+- **15 commits**, all build-clean release.
+- **39 ueforge unit tests** passing.
+- ueforge now ships **the complete UE-mod framework surface**:
+  ClassRef + walkers, function_table!, TypedField (+deref),
+  VanillaCache, counter_json!, install_with_backoff, worker::spawn,
+  LazyFunctionPtr, ProcessEventHook::install_many, RpgApplier +
+  Tracker<A> + tab::render (RPG system), EventRing<T>, PlayerRef,
+  DrainSite, core_types (FGuid/FWeakObjectPtr/FDataTableRowHandle/
+  EStatusEffectValueType), SlotKeyResolver, PERFORMANCE.md,
+  RESEARCH.md.
+- ueforge/PERFORMANCE.md (250 lines) and ueforge/RESEARCH.md
+  (200 lines) codify the doctrine that bbp's perf + bandage
+  research figured out the hard way.
+
+bbp now contains only the irreducibly G2-specific content:
+offsets, SkillEffect variants, CATALOG content, GameApplier
+dispatch arms, format_effect text, kill_hook / fall_hook /
+inv_hook trampolines (G2 PE handling), parm structs, snapshot/op
+dispatcher.
+
+In-game smoke test still pending for the dedup wave. All commits
+build-clean release; behavior is intended unchanged.
+
 ## ueforge as full UE-mod framework + doctrine docs (2026-05-10, late)
 
 Session continued. After Phase 3 wave 2 (RPG framework), pushed
