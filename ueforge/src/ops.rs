@@ -31,6 +31,56 @@ use crate::args::{arg_str, arg_u64};
 use crate::hex;
 use crate::ue::{self, UObject, fname::FName};
 
+/// Dispatch an op name + args to ueforge's built-in handlers.
+/// Returns `Some(result)` if the op is one ueforge owns, or
+/// `None` if the embedding crate should handle it.
+///
+/// Use as the first match arm in your debug dispatcher:
+///
+/// ```ignore
+/// fn handle(body: &str) -> OpResponse<Snapshot> {
+///     let (op, args) = parse_request(body)?;
+///     if let Some(r) = ueforge::ops::handle_builtin(&op, &args, resolve_instance) {
+///         return OpResponse::from_result(&op, r, build_snapshot());
+///     }
+///     // Game-specific ops below...
+/// }
+/// ```
+///
+/// Built-in ops dispatched here:
+/// - `read_bytes`, `write_bytes`, `walk_class`, `fname_to_string`
+///   (the generic primitives)
+/// - `scan_memory`, `scan_rescan`, `scan_session`, `scan_close`
+///   (Cheat-Engine-style scanner)
+/// - `freeze`, `unfreeze`, `freeze_list`
+///
+/// Note `snapshot` and `call` are NOT in this set — `snapshot`'s
+/// state shape is per-game, and `call` needs the game's PE
+/// queue + selector resolver. Game crates wire those manually.
+pub fn handle_builtin<F>(
+    op: &str,
+    args: &Json,
+    resolve: F,
+) -> Option<Result<Json, String>>
+where
+    F: Fn(&str) -> Result<&'static UObject, String>,
+{
+    Some(match op {
+        "read_bytes" => read_bytes(args, &resolve),
+        "write_bytes" => write_bytes(args, &resolve),
+        "walk_class" => walk_class(args),
+        "fname_to_string" => fname_to_string(args),
+        "scan_memory" => crate::scanner::scan_memory(args),
+        "scan_rescan" => crate::scanner::scan_rescan(args),
+        "scan_session" => crate::scanner::scan_session(args),
+        "scan_close" => crate::scanner::scan_close(args),
+        "freeze" => crate::scanner::freeze(args),
+        "unfreeze" => crate::scanner::unfreeze(args),
+        "freeze_list" => crate::scanner::freeze_list(args),
+        _ => return None,
+    })
+}
+
 /// Cap on `read_bytes` length / `write_bytes` payload (1 MiB).
 /// Sized to comfortably cover any UE struct walk while preventing
 /// pathological reads from hanging the listener.

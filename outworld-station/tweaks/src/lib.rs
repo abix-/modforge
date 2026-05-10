@@ -56,10 +56,16 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     console: cfg!(feature = "console"),
     on_unreal_init,
     on_shutdown,
-    tabs: &[ueforge::Tab {
-        name: "Tweaks",
-        render: render_tweaks_tab,
-    }],
+    tabs: &[
+        ueforge::Tab {
+            name: "Tweaks",
+            render: render_tweaks_tab,
+        },
+        ueforge::Tab {
+            name: "Scanner",
+            render: ueforge::ui_scanner::render,
+        },
+    ],
 };
 
 ueforge::ue4ss_mod!(MOD_INFO);

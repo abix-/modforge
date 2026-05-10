@@ -28,11 +28,13 @@ pub mod ops;
 pub mod parms;
 pub mod pe_queue;
 pub mod ring;
+pub mod scanner;
 pub mod selector;
 pub mod server;
 pub mod settings;
 pub mod ue;
 pub mod ui;
+pub mod ui_scanner;
 pub mod winproc;
 
 pub use envelope::{OpResponse, parse_request};

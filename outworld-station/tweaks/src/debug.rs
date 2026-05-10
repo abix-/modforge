@@ -42,18 +42,24 @@ fn handle(body: &str) -> OpResponse {
         Err(e) => return error_response("<parse-error>", e),
     };
 
+    // Game-specific ops first (snapshot is the only one tweaks
+    // owns today). Then ueforge's built-in op set covers
+    // read/write_bytes, walk_class, fname_to_string, scan_*,
+    // freeze*. Add tweaks-specific ops as new match arms.
     match op.as_str() {
-        "snapshot" => ok_response(&op, Json::Null),
-        "read_bytes" => to_response(&op, ueforge::ops::read_bytes(&args, resolve_instance)),
-        "write_bytes" => to_response(&op, ueforge::ops::write_bytes(&args, resolve_instance)),
-        "walk_class" => to_response(&op, ueforge::ops::walk_class(&args)),
-        "fname_to_string" => to_response(&op, ueforge::ops::fname_to_string(&args)),
-        "" => error_response(
-            "<missing>",
-            "missing 'op' field; supported: snapshot, read_bytes, write_bytes, walk_class, fname_to_string",
-        ),
-        other => error_response(other, format!("unknown op '{other}'")),
+        "snapshot" => return ok_response(&op, Json::Null),
+        "" => {
+            return error_response(
+                "<missing>",
+                "missing 'op' field; supported: snapshot + every ueforge built-in",
+            );
+        }
+        _ => {}
     }
+    if let Some(r) = ueforge::ops::handle_builtin(&op, &args, resolve_instance) {
+        return to_response(&op, r);
+    }
+    error_response(&op, format!("unknown op '{}'", op))
 }
 
 fn ok_response(op: &str, result: Json) -> OpResponse {
