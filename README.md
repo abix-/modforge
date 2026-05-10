@@ -59,7 +59,6 @@ This is a Cargo workspace with multiple crates:
 | [`grounded2-rpg/`](grounded2-rpg/) | Grounded 2 mod -- this repo's headline product. Built on ueforge. |
 | [`outworld-station/tweaks/`](outworld-station/tweaks/) | A second UE5 mod (Outworld Station). Validates ueforge against another UE5 game. |
 | [`ueforge-deploy/`](ueforge-deploy/) | The `cargo deploy` CLI binary. |
-| [`injector/`](injector/) | Standalone DLL injector exe (dev-time only). |
 
 `ueforge` is reusable for any UE4SS Rust mod. The G2-specific
 content (offsets, skill effect variants, catalog rows, hooks,

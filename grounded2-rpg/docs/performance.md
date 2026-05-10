@@ -15,10 +15,10 @@
 > SurvivalComponent CDO walk timings) + g2rpg-specific deliberate
 > non-ports.
 
-Companion to `archive/winhttp-proxy/PERFORMANCE_AUDIT.md`, which catalogued
-the issues we set out to fix when porting from C++. This doc states what
-the Rust port actually costs to run, where the cost lives, and what could
-still be tightened.
+The hot-path-discipline doctrine that informs this file lives in
+[`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md).
+The framework owns the rules; this file states the g2rpg-specific
+costs.
 
 ## TL;DR
 

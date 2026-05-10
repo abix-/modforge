@@ -1,8 +1,0 @@
-{
-  "launch": {
-    "steam_app_id": 3104110,
-    "fallback_exe": "",
-    "poll_interval_ms": 500,
-    "poll_timeout_sec": 120
-  }
-}

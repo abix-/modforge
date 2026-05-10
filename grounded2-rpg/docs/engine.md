@@ -142,8 +142,8 @@ reference:
 - **[Cheat Manager and Console Unlocker](https://www.nexusmods.com/grounded2/mods/70)**
   on Nexus -- Grounded 2-specific
 - **[`x0reaxeax/Grounded2Minimal`](https://github.com/x0reaxeax/Grounded2Minimal)**
-  -- debug DLL with its own embedded console; we modeled our injector
-  after this pattern
+  -- debug DLL with its own embedded console; reference SDK / class /
+  offset layouts (we now load via UE4SS instead of injecting)
 
 ## Vortex deployment gotcha
 
@@ -259,8 +259,7 @@ covers the gap.
   -- runtime console / cheat manager unlock for shipping.
 - [`x0reaxeax/Grounded2Minimal`](https://github.com/x0reaxeax/Grounded2Minimal)
   -- DLL-based debug / cheat tool. Source available; useful as
-  reference for SDK class names, struct layouts, and offsets. Our
-  injector follows their pattern.
+  reference for SDK class names, struct layouts, and offsets.
 
 ### General UE5 modding tools
 

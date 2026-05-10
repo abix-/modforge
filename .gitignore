@@ -4,7 +4,7 @@
 **/.cargo-build.lock
 Cargo.lock.bak
 
-.claude/settings.local.json
+.claude/
 
 # Perf-test output. Each run of explore_leak_source / explore_perf_*
 # writes a timestamped log to perf-runs/. Useful locally; the

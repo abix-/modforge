@@ -17,6 +17,7 @@
 | [performance.md](performance.md) | What this mod costs to run. Per-call costs, hot paths, allocation analysis. |
 | [ongoing.md](ongoing.md) | Every piece of code that runs continuously. CPU / RAM / I/O triage reference. |
 | [testing.md](testing.md) | Debug HTTP endpoint + integration test harness. |
+| [inspection.md](inspection.md) | Worked examples for inspecting OTHER UE5 mods (pak / asset diffing). Generic UE5 modding methodology. |
 | [rust-port.md](rust-port.md) | Historical: port from C++ winhttp proxy to Rust cdylib. |
 | [ue4ss-port.md](ue4ss-port.md) | Historical: port from custom DLL injection to UE4SS CPPMod. |
 

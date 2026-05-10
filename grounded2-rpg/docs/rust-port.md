@@ -1,11 +1,15 @@
 # Rust port plan: grounded2mods
 
 > **Authoritative on:** the C++-to-Rust port history. Why we
-> ported, the target architecture, the migration sequence, and
-> the bugs we hit during testing. The port is complete; this is
-> kept as design history. The original C++ tree is preserved at
-> [`../archive/winhttp-proxy/`](../archive/winhttp-proxy/) for
-> reference.
+> ported, the target architecture as of the port, the migration
+> sequence, and the bugs we hit during testing.
+>
+> **This is a frozen historical document.** The architecture has
+> evolved further since the port: UE4SS replaced the standalone
+> injector, the framework was lifted into a separate `ueforge/`
+> crate, the original C++ tree was deleted from `archive/`. For
+> the current architecture see the workspace `README.md` and the
+> per-crate `docs/`.
 
 We ported the native DLL mod toolchain from C++ to Rust ahead of
 building out a multi-mod monorepo. This doc captures the target

@@ -2,13 +2,14 @@
 
 > **Authoritative on:** the pivot to UE4SS C++ mod (CPPMod) shape.
 > Why we ride on UE4SS, the C++ shim design, the
-> CppUserModBase mirror, the build setup. The pivot is complete;
-> this is kept as design history.
-
-Replaced the original winhttp.dll proxy + custom Vortex packaging
-approach. The proxy is preserved at
-[`../archive/winhttp-proxy/`](../archive/winhttp-proxy/) as a tested
-fallback if UE4SS ever turns out unstable for Grounded 2.
+> CppUserModBase mirror, the build setup.
+>
+> **This is a frozen historical document.** The pivot is complete
+> and the original C++ winhttp.dll proxy tree was deleted in the
+> 2026-05-10 cleanup. The shim has since been lifted out of this
+> crate into `ueforge/cpp/`; see
+> [`../../ueforge/docs/lifecycle.md`](../../ueforge/docs/lifecycle.md)
+> for the current architecture.
 
 ## Why
 

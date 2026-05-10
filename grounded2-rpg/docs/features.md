@@ -39,19 +39,18 @@ All numeric settings are runtime-configurable via
 
 ## Distribution
 
-Two shipping shapes have existed for this mod during development; the
-second is the one that ends up on Nexus / Vortex:
+Shipping shape: **UE4SS CPPMod**. The cdylib lands at
+`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\Grounded2RPG\dlls\main.dll`
+and UE4SS handles loading via its standard CPPMod entry point. UE4SS
+itself ships as a DLL proxy that the user installs first; we ride
+on top.
 
-1. **DLL + injector exe** (current dev shape). User runs `inject.exe`
-   to load the DLL into a running game. Good for development
-   iteration, bad for end users (manual step every session).
-2. **DLL proxy named `winhttp.dll`** (target shape, see TODO #1). Drops
-   into `Grounded2\Augusta\Binaries\Win64\`. Windows auto-loads it
-   when the game starts because the filename matches a system DLL the
-   game already imports; our DLL forwards the real `winhttp` exports
-   to `C:\Windows\System32\winhttp.dll` so the game still has working
-   network calls. This is how UE4SS, ReShade, ENB all distribute.
-   Vortex installs it as a regular file drop.
+Earlier shipping shapes that have been retired:
+
+- DLL + injector exe (pre-UE4SS dev iteration shape, removed
+  2026-05-10 with the rest of the C++/winhttp tree).
+- DLL proxy named `winhttp.dll` (the originally-targeted shape; UE4SS
+  fills this slot now, so we don't need our own).
 
 ## UE mod format comparison
 
@@ -68,7 +67,7 @@ next most common.
 | **DLL proxy** (winhttp.dll, dxgi.dll, dwmapi.dll, etc.) | Windows DLL search order auto-loads our DLL when the game imports the system DLL of that name. Our DLL forwards real exports to System32. | Anything native code can do: read/write engine memory, hook ProcessEvent, install detours. Full programmatic control over runtime state. | Two proxies of the same name fight. Pick a less-common target (e.g. winhttp instead of dxgi) to avoid clashes with ReShade/UE4SS. | Strong. Patches survive game updates as long as offsets don't shift; if they do, update one constants file. | Yes (read JSON / TOML at load time). | Excellent (single file drop). | Medium. Detection-grade anti-cheats often flag DLL-in-game-folder patterns. Grounded 2 has none today. | UE4SS, ReShade, ENB, **target shape for Grounded 2 - RPG System**. |
 | **UE4SS Lua mod** | UE4SS itself is a DLL proxy. Once it's installed, Lua mods drop into `Mods/` and UE4SS loads them per its own loader. | Whatever the UE4SS Lua API exposes, BP function calls, Blueprint reflection, hot-reload. Less power than a native DLL but a lot more than a pak. | Per-mod conflict scope is tighter than paks (Lua mods rarely fight unless they touch the same Blueprint), but you depend on UE4SS being installed. | Medium. UE4SS itself needs updates per game patch; Lua mods riding on it benefit from that. | Yes (Lua code reads files / hot-reloads). | Excellent if UE4SS is installed; user has to install UE4SS first. | Same as DLL proxy (UE4SS *is* one). | Many UE4 / UE5 modding scenes. Common for Hogwarts Legacy, Lies of P, Lords of the Fallen, etc. |
 | **UE4SS C++ DLL mod** ("CPPMods") | Same as Lua mods but compiled C++ plugged into UE4SS. | Native code + UE4SS reflection helpers + Blueprint introspection. Best of both worlds for a single mod. | Same as Lua mods: scoped to the mod's actual reach. | Medium. Tied to UE4SS's lifecycle. | Possible (read config in C++). | Good with UE4SS installed. | Same as DLL proxy. | Most large UE4SS-based total-conversion projects. |
-| **Injected DLL via separate exe** (current Grounded 2 - RPG System dev shape) | User runs an injector that calls `LoadLibrary` in the game process. | Same as DLL proxy. | None at the load layer (only one mod runs at a time per session unless the user injects multiple). | Strong (same offsets-only dependency as DLL proxy). | Yes. | Bad. Vortex doesn't model "run an exe before launching the game." | Higher. Tools that look like trainers / cheat injectors trip detection. | Cheat trainers, Cheat Engine tables converted to DLLs, Grounded 2 - RPG System today. |
+| **Injected DLL via separate exe** | User runs an injector that calls `LoadLibrary` in the game process. | Same as DLL proxy. | None at the load layer (only one mod runs at a time per session unless the user injects multiple). | Strong (same offsets-only dependency as DLL proxy). | Yes. | Bad. Vortex doesn't model "run an exe before launching the game." | Higher. Tools that look like trainers / cheat injectors trip detection. | Cheat trainers, Cheat Engine tables converted to DLLs. |
 | **Loose files / asset replacement** | Game's loose-file fallback (only if the engine was cooked with `bUseIoStore = false` or with loose-asset support). Drop `.uasset` next to the cooked asset path. | Replace individual cooked assets without packaging a pak. | High when multiple loose files target the same path. | Fragile (same as pak). | None. | Possible but unusual. | Low. | Older UE4 games that didn't ship with iostore. Rarely viable on modern UE5 shipping builds (Grounded 2 included). |
 | **Official plugin / mod kit** | Game ships with editor + sanctioned mod path; user cooks their own paks via the dev's tooling. | Whatever the dev exposes. Can be deep (custom code + assets) or shallow (asset overrides only). | Dev-defined; often well-managed. | Best of any option, the dev maintains compatibility. | Dev-defined. | Excellent if the dev built a manager. | Lowest. Sanctioned. | ARK, Conan Exiles, Satisfactory's mod kit. **Grounded 2 has no official mod kit.** |
 
