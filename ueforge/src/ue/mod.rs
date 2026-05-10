@@ -14,6 +14,7 @@ pub mod fname;
 pub mod fstring;
 pub mod offsets;
 pub mod platform;
+pub mod player;
 pub mod probe;
 pub mod tarray;
 pub mod tmap;
@@ -21,6 +22,7 @@ pub mod typed_field;
 pub mod uobject;
 
 pub use class_ref::ClassRef;
+pub use player::PlayerRef;
 pub use typed_field::TypedField;
 pub use fname::FName;
 pub use fstring::FString;

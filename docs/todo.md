@@ -437,6 +437,17 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C+++ -- ueforge::ue::PlayerRef (DONE 2026-05-10)
+
+- [x] **`ueforge::ue::PlayerRef`** -- canonical "find the player"
+  surface for any UE5 mod. Configured once at module init with
+  `(base_class_name, Option<bp_name_filter>)`; static methods
+  `for_each_cdo` / `for_each_live` / `with_first_live` /
+  `with_first_cdo` do the GObjects walk + filter. Replaces bbp's
+  `CLASS_SURVIVAL_CHARACTER` + `PLAYER_BP_NAME` const pair with
+  one cohesive abstraction. Lives at
+  `ueforge/src/ue/player.rs`. 3 unit tests.
+
 ### Wave C++ -- EventRing<T> with built-in counters (DONE 2026-05-10)
 
 - [x] **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with

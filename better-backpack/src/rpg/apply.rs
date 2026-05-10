@@ -729,26 +729,25 @@ pub(crate) fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UOb
 /// player class (`BP_SurvivalPlayerCharacter` substring), call `f` on
 /// each. Returns the number of CDOs visited.
 fn apply_to_player_character_cdos(f: impl FnMut(&UObject)) -> usize {
-    CLASS_SURVIVAL_CHARACTER.for_each_cdo_matching(
-        |obj| obj.full_name().contains(PLAYER_BP_NAME),
-        f,
-    )
+    PLAYER.for_each_cdo(f)
 }
 
 /// Walk all live player SurvivalCharacter instances (non-CDOs) whose
 /// full name marks them as the player class, call `f` on each.
 // ---------------------------------------------------------------
 // Class refs used by the apply path. Each ClassRef caches the
-// `&'static UClass` after first resolve.
+// `&'static UClass` after first resolve. The PlayerRef wrapper
+// owns the (base_class, BP_filter) pair canonically.
 // ---------------------------------------------------------------
-static CLASS_SURVIVAL_CHARACTER: ue::ClassRef = ue::ClassRef::new("SurvivalCharacter");
+static PLAYER: ue::PlayerRef = ue::PlayerRef::new(
+    "SurvivalCharacter",
+    Some("BP_SurvivalPlayerCharacter"),
+);
 static CLASS_SURVIVAL_COMPONENT: ue::ClassRef = ue::ClassRef::new("SurvivalComponent");
 static CLASS_SURVIVAL_MODE_MANAGER_COMPONENT: ue::ClassRef =
     ue::ClassRef::new("SurvivalModeManagerComponent");
 static CLASS_SURVIVAL_GAME_MODE_SETTINGS: ue::ClassRef =
     ue::ClassRef::new("SurvivalGameModeSettings");
-
-const PLAYER_BP_NAME: &str = "BP_SurvivalPlayerCharacter";
 
 /// Read the first non-CDO instance of `class_name` and pass it to
 /// `f`. Returns true if any was found. Used by the debug snapshot
@@ -778,10 +777,7 @@ pub(crate) fn class_default_object(class_name: &str, f: impl FnOnce(&UObject)) -
 }
 
 pub(crate) fn apply_to_live_player_characters(f: impl FnMut(&UObject)) -> usize {
-    CLASS_SURVIVAL_CHARACTER.for_each_matching(
-        |obj| obj.full_name().contains(PLAYER_BP_NAME),
-        f,
-    )
+    PLAYER.for_each_live(f)
 }
 
 /// Walk every SurvivalComponent CDO and write `value` at `offset`.
