@@ -19,7 +19,7 @@ maintainability / future-proofing.
 
 ### P0 -- will crash users
 
-- [ ] **Address-relative freezes (kill raw-address freeze).**
+- [x] **Address-relative freezes (kill raw-address freeze).**
   `ueforge/src/scanner.rs:415-426` writes blindly to `addr as *mut u8`
   every `1/hz` seconds with no check that the page is still mapped or
   still owned by the source object. UE recycles allocations; a
@@ -28,7 +28,7 @@ maintainability / future-proofing.
   value }`, resolve the selector each tick, log-and-skip on resolve
   failure. Also cache + recheck `VirtualQuery` page protection before
   every write.
-- [ ] **Mutex `unwrap()` density + `panic = "abort"` = hard crash on any
+- [x] **Mutex `unwrap()` density + `panic = "abort"` = hard crash on any
   poison.** `ueforge/src/scanner.rs:267,290,371,391,407,428,443,454`
   and `ueforge/src/hook/process_event.rs:109,117,136`. With
   `Cargo.toml:30 panic = "abort"`, one poisoned mutex on a worker
@@ -36,7 +36,7 @@ maintainability / future-proofing.
   `parking_lot::Mutex` (no poison concept) across the framework. Also
   set `[profile.dev] panic = "unwind"` so research crashes leave a
   backtrace.
-- [ ] **`runtime().expect("sdk runtime not initialized")` on hot paths.**
+- [x] **`runtime().expect("sdk runtime not initialized")` on hot paths.**
   `ueforge/src/ue/uobject.rs:399`. Called from `UObject::name`,
   `process_event`, `iter_native_properties`, name resolution -- any
   of which can fire before `init_runtime` has set the OnceLock if a
@@ -67,7 +67,7 @@ maintainability / future-proofing.
   100-300 heap allocs and FName resolves on the render thread.
   Cache the property list per UClass in
   `OnceLock<HashMap<*const UClass, Arc<[NativeProperty]>>>`.
-- [ ] **`read_bytes` / `write_bytes` have no bounds vs the resolved
+- [x] **`read_bytes` / `write_bytes` have no bounds vs the resolved
   object.** `ueforge/src/ops.rs:90-134`. The 1MiB cap bounds size,
   not location -- a malformed selector + offset reads from any
   address. When the class is known, clamp `offset + length <=
@@ -81,17 +81,17 @@ maintainability / future-proofing.
   `arc_swap::ArcSwap`.** `ueforge/src/hook/process_event.rs:46-64`.
   Each install/drop leaks a previous snapshot; standard answer is
   one well-tested crate. ~5 lines vs ~30, no leak.
-- [ ] **Stop panicking in test client / perf log.**
+- [x] **Stop panicking in test client / perf log.**
   `ueforge/src/client/perf.rs:83`,
   `ueforge/src/client/mod.rs:90,108,110`. A library shouldn't
   `panic!` on POST or file-open failure -- return `Result`. Test
   callers can `.unwrap()` themselves.
-- [ ] **`tmap::slots` / `MAX_LINEAR_SCAN = 8192` magic cap.**
+- [x] **`tmap::slots` / `MAX_LINEAR_SCAN = 8192` magic cap.**
   `ueforge/src/ue/tmap.rs:40-45`,
   `ueforge/src/ue/offsets.rs:157`. Real-game DataTables can exceed
   8192 rows; the iterator silently truncates. Either lift the cap
   and trust the engine header, or surface a "truncated" flag.
-- [ ] **Long scans hold `SESSIONS` mutex across the walk.**
+- [x] **Long scans hold `SESSIONS` mutex across the walk.**
   `ueforge/src/scanner.rs:264-273`. Multi-second scans block every
   other scanner op behind the listener thread. Take the snapshot
   of regions outside the lock; only re-acquire to insert the

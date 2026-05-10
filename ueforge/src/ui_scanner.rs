@@ -79,7 +79,6 @@ struct ScannerUi {
     /// each row can render its own "→ class.field" annotation
     /// after the user clicks Inspect on that row.
     inspect_results: std::collections::HashMap<String, String>,
-    freeze_addr_text: String, // reserved for future input_text-based ad-hoc freezes
 }
 
 impl ScannerUi {
@@ -93,7 +92,6 @@ impl ScannerUi {
             last_sample: Vec::new(),
             last_error: None,
             inspect_results: std::collections::HashMap::new(),
-            freeze_addr_text: String::new(),
         }
     }
 }

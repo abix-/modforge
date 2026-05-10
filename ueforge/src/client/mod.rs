@@ -97,17 +97,26 @@ impl<S: DeserializeOwned> Api<S> {
 
     /// POST a request, parse the response. Panics on transport or
     /// JSON errors — these are infrastructure failures, not test
-    /// failures, and a panic surfaces them clearly.
+    /// failures, and a panic surfaces them clearly. Use
+    /// [`Self::try_op`] to handle them as `Err` instead.
     pub fn op(&self, op: &str, args: Value) -> OpResponse<S> {
+        self.try_op(op, args).unwrap_or_else(|e| panic!("{e}"))
+    }
+
+    /// Result-returning variant of [`Self::op`]. Tests that want
+    /// to assert on transport failures (e.g. "the listener
+    /// disappeared after a `simulate_crash` op") can use this
+    /// instead of letting the helper panic.
+    pub fn try_op(&self, op: &str, args: Value) -> Result<OpResponse<S>, String> {
         let body = json!({ "op": op, "args": args });
         let url = format!("http://127.0.0.1:{}{}", self.port, self.endpoint);
         let res = self
             .agent
             .post(&url)
             .send_json(body)
-            .unwrap_or_else(|e| panic!("ueforge::client POST {url} failed: {e}"));
+            .map_err(|e| format!("ueforge::client POST {url} failed: {e}"))?;
         res.into_json::<OpResponse<S>>()
-            .expect("ueforge::client: response was not valid JSON")
+            .map_err(|e| format!("ueforge::client: response not valid JSON: {e}"))
     }
 
     /// Run an op, assert `ok=true`, return the post-op state.

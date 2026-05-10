@@ -177,8 +177,12 @@ pub mod tmap {
     /// Offset of `Num` (i32) inside the TMap header.
     pub const DATA_NUM: usize = 8;
     /// Cap on linear scan length to bound runaway when a TMap
-    /// header is corrupted or being mutated mid-walk.
-    pub const MAX_LINEAR_SCAN: usize = 8192;
+    /// header is corrupted or being mutated mid-walk. Bumped to
+    /// 64K to cover the largest legitimate DataTables we've seen
+    /// in stock UE5 games (status-effect tables on long-tail
+    /// titles, item tables on RPG-shaped builds). If you hit the
+    /// cap on a real DT, raise this and ship a test.
+    pub const MAX_LINEAR_SCAN: usize = 65_536;
 }
 
 // UDataTable layout. RowMap (TMap<FName, uint8*>) sits at +0x30

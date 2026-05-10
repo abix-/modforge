@@ -39,7 +39,17 @@ use crate::ue::offsets::tmap as off;
 /// the slot pointer across drains.
 pub unsafe fn slots(obj: &UObject, offset: usize) -> impl Iterator<Item = (usize, *const u8)> {
     let (data_ptr, count) = unsafe { header(obj, offset) };
-    (0..count.min(off::MAX_LINEAR_SCAN))
+    let scan = count.min(off::MAX_LINEAR_SCAN);
+    if count > off::MAX_LINEAR_SCAN {
+        // One log line, not per-row, so a truncated big DT doesn't
+        // spam. Bump MAX_LINEAR_SCAN if you see this on a real DT.
+        crate::log::log(format_args!(
+            "ueforge tmap: truncating walk at {} of {} slots (raise MAX_LINEAR_SCAN)",
+            off::MAX_LINEAR_SCAN,
+            count
+        ));
+    }
+    (0..scan)
         .filter(move |_| !data_ptr.is_null())
         .map(move |i| (i, unsafe { data_ptr.add(i * off::ELEMENT_SIZE) }))
 }

@@ -87,6 +87,30 @@ where
 /// pathological reads from hanging the listener.
 pub const BYTE_OP_CAP: usize = 0x10_0000;
 
+/// When the resolved object's class is known, clamp
+/// `offset + length` to `class.properties_size()`. Returns
+/// `Err` if the range falls completely outside the class extent.
+/// Returns `Ok(())` (no clamp) if the class has no usable size --
+/// most likely on raw `addr:0x...` selectors that bypass class
+/// resolution.
+fn check_object_bounds(obj: &UObject, offset: usize, length: usize) -> Result<(), String> {
+    let Some(class) = obj.class() else { return Ok(()) };
+    let size = class.properties_size() as usize;
+    if size == 0 || size > 0x100_0000 {
+        return Ok(());
+    }
+    let end = offset.checked_add(length).ok_or_else(|| {
+        format!("offset 0x{offset:X} + length 0x{length:X} overflows")
+    })?;
+    if end > size {
+        return Err(format!(
+            "offset 0x{offset:X} + length 0x{length:X} = 0x{end:X} \
+             exceeds instance size 0x{size:X}"
+        ));
+    }
+    Ok(())
+}
+
 pub fn read_bytes<F>(args: &Json, resolve: F) -> Result<Json, String>
 where
     F: FnOnce(&str) -> Result<&'static UObject, String>,
@@ -98,6 +122,7 @@ where
         return Err(format!("length {length} > 1MB cap"));
     }
     let obj = resolve(&selector)?;
+    check_object_bounds(obj, offset, length)?;
     let mut out = vec![0u8; length];
     unsafe {
         let base = obj.field_ptr(offset);
@@ -122,6 +147,7 @@ where
         return Err(format!("bytes len {} > 1MB cap", bytes.len()));
     }
     let obj = resolve(&selector)?;
+    check_object_bounds(obj, offset, bytes.len())?;
     unsafe {
         let dst = obj.field_ptr(offset) as *mut u8;
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());

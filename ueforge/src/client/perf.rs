@@ -68,8 +68,16 @@ fn repo_root(start: &Path) -> PathBuf {
 /// self-locating, then returns a `PerfLog` that tees writes to
 /// stdout and the file.
 pub fn open(test_name: &str, start_dir: &Path) -> PerfLog {
+    try_open(test_name, start_dir).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Result-returning variant. Tests that want to skip cleanly on a
+/// read-only filesystem (CI sandbox, etc.) can call this and bail
+/// without panicking.
+pub fn try_open(test_name: &str, start_dir: &Path) -> Result<PerfLog, String> {
     let dir = repo_root(start_dir).join("perf-runs");
-    let _ = std::fs::create_dir_all(&dir);
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("create perf dir {dir:?}: {e}"))?;
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -80,7 +88,7 @@ pub fn open(test_name: &str, start_dir: &Path) -> PerfLog {
         .write(true)
         .truncate(true)
         .open(&path)
-        .unwrap_or_else(|e| panic!("failed to open perf log {path:?}: {e}"));
+        .map_err(|e| format!("open perf log {path:?}: {e}"))?;
     println!("=== writing perf log to: {} ===", path.display());
-    PerfLog { path, file }
+    Ok(PerfLog { path, file })
 }

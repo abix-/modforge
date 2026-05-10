@@ -314,24 +314,30 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
         }
     }
 
+    // Build the JSON sample BEFORE taking the sessions lock so
+    // long scans don't block other ops (freeze_list, scan_close,
+    // or a concurrent rescan on a different session) for the
+    // multi-second duration of the walk above.
+    let sample: Vec<String> = survivors
+        .iter()
+        .take(20)
+        .map(|a| format!("0x{a:X}"))
+        .collect();
     let id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
+    let matches = survivors.len();
     sessions().lock().insert(
         id,
         Session {
             ty,
-            addresses: survivors.clone(),
+            addresses: survivors,
         },
     );
     Ok(json!({
         "session_id": id,
         "type": format!("{ty:?}").to_lowercase(),
-        "matches": survivors.len(),
+        "matches": matches,
         "regions_scanned": regions.len(),
-        "sample": survivors
-            .iter()
-            .take(20)
-            .map(|a| format!("0x{a:X}"))
-            .collect::<Vec<_>>(),
+        "sample": sample,
     }))
 }
 
