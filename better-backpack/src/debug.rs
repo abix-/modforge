@@ -21,10 +21,9 @@ use ueforge::args::{arg_bool, arg_f64, arg_str, arg_u64};
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 use ueforge::pe_queue::Queue as PeQueue;
 
-use crate::bbp_log;
 use crate::inv_hook;
 use crate::rpg::{apply, fall_hook, skills, tracker, world_loader};
-use crate::sdk::{self, UObject};
+use ueforge::ue::{self, UObject};
 
 // Ops are added one at a time, each driven by a failing test in
 // `better-backpack/tests/`. Discipline: write the red test FIRST,
@@ -167,7 +166,7 @@ pub fn spawn(port: u16) {
             let resp = handle(body);
             serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec())
         },
-        |msg| bbp_log!("{}", msg),
+        |msg| ueforge::log!("{}", msg),
     );
 }
 
@@ -411,7 +410,7 @@ fn live_player_hc() -> Result<&'static UObject, String> {
 fn exec_add_health(amount: f32) -> Result<Json, String> {
     use std::ffi::c_void;
     let hc = live_player_hc()?;
-    let class = sdk::find_class_fast("HealthComponent")
+    let class = ue::find_class_fast("HealthComponent")
         .ok_or_else(|| "HealthComponent class not found".to_string())?;
     let func = class
         .get_function("HealthComponent", "AddHealth")
@@ -442,7 +441,7 @@ fn exec_add_health(amount: f32) -> Result<Json, String> {
 fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
     use std::ffi::c_void;
     let hc = live_player_hc()?;
-    let class = sdk::find_class_fast("HealthComponent")
+    let class = ue::find_class_fast("HealthComponent")
         .ok_or_else(|| "HealthComponent class not found".to_string())?;
     let func = class
         .get_function("HealthComponent", "ApplyDamageFromInfo")
@@ -505,7 +504,7 @@ fn exec_apply_damage(amount: f32, type_flags: u32) -> Result<Json, String> {
 
 fn exec_set_current_health(value: f32) -> Result<Json, String> {
     let hc = live_player_hc()?;
-    let class = sdk::find_class_fast("HealthComponent")
+    let class = ue::find_class_fast("HealthComponent")
         .ok_or_else(|| "HealthComponent class not found".to_string())?;
     let func = class
         .get_function("HealthComponent", "SetCurrentHealth")

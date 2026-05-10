@@ -25,12 +25,11 @@
 
 use std::sync::OnceLock;
 
-use crate::bbp_log;
 use crate::inv_hook;
 use crate::patch;
 use crate::rpg::skills::{self, Skill, SkillEffect, SurvivalField};
 use crate::rpg::state::PlayerState;
-use crate::sdk::{self, GObjectsView, UObject};
+use ueforge::ue::{self, GObjectsView, UObject};
 use crate::settings::Settings;
 use crate::survival;
 
@@ -173,8 +172,8 @@ pub fn capture_vanilla() {
     if VANILLA_HUNGER.get().is_some() && VANILLA_THIRST.get().is_some() {
         return;
     }
-    let Some(rt) = sdk::try_runtime() else { return };
-    let Some(survival_class) = sdk::find_class_fast("SurvivalComponent") else {
+    let Some(rt) = ue::try_runtime() else { return };
+    let Some(survival_class) = ue::find_class_fast("SurvivalComponent") else {
         return;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -193,7 +192,7 @@ pub fn capture_vanilla() {
         if t.is_finite() && t != 0.0 {
             let _ = VANILLA_THIRST.set(t);
         }
-        bbp_log!(
+        ueforge::log!(
             "rpg/apply: captured vanilla hunger={:.4}, thirst={:.4}",
             h,
             t
@@ -213,7 +212,7 @@ pub fn apply(state: &PlayerState, settings: &Settings) {
 /// Apply one skill, looked up by id. Called from `spend_skill_point`.
 pub fn apply_one(state: &PlayerState, settings: &Settings, skill_id: &str) {
     let Some(skill) = skills::lookup(skill_id) else {
-        bbp_log!("rpg/apply: apply_one unknown skill '{}'", skill_id);
+        ueforge::log!("rpg/apply: apply_one unknown skill '{}'", skill_id);
         return;
     };
     apply_skill(state, settings, skill);
@@ -235,7 +234,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             let target = settings.inventory.slot_count.saturating_add(bonus);
             let stats = patch::run(target);
             inv_hook::update_slot_count(target);
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} target={} (base={} + bonus={}) patched={}",
                 skill.id,
                 level,
@@ -262,7 +261,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             let skill_mult = (1.0 - skills::skill_bonus(*max_reduction, level)).max(0.0);
             let target = v * settings_mult * skill_mult;
             let count = apply_to_survival_component_cdos(*field_offset, target);
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} target={:.4} (vanilla={:.4} * settings={:.3} * skill={:.3}) written to {} CDO(s)",
                 skill.id,
                 level,
@@ -283,7 +282,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             let count = apply_to_player_character_cdos(|player_cdo| {
                 write_f32(player_cdo, *offset, value);
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} value={:.3} written to {} player CDO(s)",
                 skill.id,
                 level,
@@ -303,7 +302,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     write_f32(hc, *offset, value);
                 }
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} value={:.3} written to {} player HC CDO(s)",
                 skill.id,
                 level,
@@ -333,7 +332,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     }
                 }
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} mult={:.3} written to {} {} instance(s)",
                 skill.id,
                 level,
@@ -364,7 +363,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     }
                 }
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} bonus=+{:.1} HP (vanilla={:?}) written to {} CDO(s), {} live pawn(s)",
                 skill.id,
                 level,
@@ -408,7 +407,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     write_u32(hc, *offset, target_mask);
                 }
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} active={} mask=0x{:08x} (vanilla=0x{:08x}) written to {} player HC CDO(s), {} live player HC(s)",
                 skill.id,
                 level,
@@ -454,7 +453,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
                     }
                 }
             });
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} mult={:.3} written to {} player CDO(s), {} live pawn(s)",
                 skill.id,
                 level,
@@ -540,7 +539,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
             // hangs the game when invoked mid-session from any
             // non-game thread (toggle / spend / refund / poller
             // tick). See changelog 2026-05-09 for the deadlock log.
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} reduction={:.3} written to {} player CDO(s), {} live pawn(s), {} game-mode setting(s), {} mode-manager component(s)",
                 skill.id,
                 level,
@@ -554,7 +553,7 @@ fn apply_skill(state: &PlayerState, settings: &Settings, skill: &Skill) {
         SkillEffect::Runtime { .. } => {
             // Pure runtime effect (kill_hook reads the level on every
             // damage tick). Nothing to write.
-            bbp_log!(
+            ueforge::log!(
                 "rpg/apply: {} level={} (runtime; no cdo write)",
                 skill.id,
                 level
@@ -603,8 +602,8 @@ fn table_status_effects() -> Option<&'static UObject> {
         let r: &'static UObject = unsafe { &*(*p as *const UObject) };
         return Some(r);
     }
-    let rt = sdk::try_runtime()?;
-    let class = sdk::find_class_fast("DataTable")?;
+    let rt = ue::try_runtime()?;
+    let class = ue::find_class_fast("DataTable")?;
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return None;
@@ -645,14 +644,14 @@ fn apply_player_status_effect(
     let active = level > 0;
 
     let Some(table) = table_status_effects() else {
-        bbp_log!(
+        ueforge::log!(
             "rpg/apply: {} status-effect: Table_StatusEffects not found yet",
             skill_id
         );
         return;
     };
     let Some(row_ptr) = crate::rpg::fall_hook::lookup_data_table_row(table, row_fname) else {
-        bbp_log!(
+        ueforge::log!(
             "rpg/apply: {} status-effect: row 0x{:016x} not found in table",
             skill_id,
             row_fname
@@ -688,7 +687,7 @@ fn apply_player_status_effect(
         let Some(sec) = read_component_ptr(player, ASC_STATUS_EFFECT_COMPONENT) else {
             return;
         };
-        let Some(class) = sdk::find_class_fast("StatusEffectComponent") else {
+        let Some(class) = ue::find_class_fast("StatusEffectComponent") else {
             return;
         };
         let Some(func) = class.get_function("StatusEffectComponent", "CreateAndAddEffect") else {
@@ -718,7 +717,7 @@ fn apply_player_status_effect(
         count += 1;
     });
 
-    bbp_log!(
+    ueforge::log!(
         "rpg/apply: {} level={} progress={:.3} active={} row_fname=0x{:016x} vanilla={:.3} target={:.3} added to {}/{} live components ({})",
         skill_id,
         level,
@@ -781,10 +780,10 @@ fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
 /// snapshot to read singleton-style or per-game-mode objects
 /// (UGlobalCombatData, USurvivalGameModeSettings, etc.).
 pub(crate) fn first_instance_of(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return false;
     };
-    let Some(class) = sdk::find_class_fast(class_name) else {
+    let Some(class) = ue::find_class_fast(class_name) else {
         return false;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -806,10 +805,10 @@ pub(crate) fn first_instance_of(class_name: &str, f: impl FnOnce(&UObject)) -> b
 /// (hunger/thirst drain rates), ASurvivalCharacter CDO (combat
 /// multipliers), etc.
 pub(crate) fn class_default_object(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return false;
     };
-    let Some(class) = sdk::find_class_fast(class_name) else {
+    let Some(class) = ue::find_class_fast(class_name) else {
         return false;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -831,10 +830,10 @@ pub(crate) fn apply_to_live_player_characters(mut f: impl FnMut(&UObject)) -> us
 }
 
 fn apply_to_player_characters(is_cdo: bool, f: &mut impl FnMut(&UObject)) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return 0;
     };
-    let Some(survival_class) = sdk::find_class_fast("SurvivalCharacter") else {
+    let Some(survival_class) = ue::find_class_fast("SurvivalCharacter") else {
         return 0;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -861,10 +860,10 @@ fn apply_to_player_characters(is_cdo: bool, f: &mut impl FnMut(&UObject)) -> usi
 /// Walk every SurvivalComponent CDO and write `value` at `offset`.
 /// Used by SurvivalDrain skills.
 fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return 0;
     };
-    let Some(class) = sdk::find_class_fast("SurvivalComponent") else {
+    let Some(class) = ue::find_class_fast("SurvivalComponent") else {
         return 0;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -883,10 +882,10 @@ fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
 }
 
 fn apply_to_survival_mode_manager_components(mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return 0;
     };
-    let Some(class) = sdk::find_class_fast("SurvivalModeManagerComponent") else {
+    let Some(class) = ue::find_class_fast("SurvivalModeManagerComponent") else {
         return 0;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -909,10 +908,10 @@ fn apply_to_survival_mode_manager_components(mut f: impl FnMut(&UObject)) -> usi
 }
 
 fn apply_to_class(class_name: &str, mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return 0;
     };
-    let Some(class) = sdk::find_class_fast(class_name) else {
+    let Some(class) = ue::find_class_fast(class_name) else {
         return 0;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -931,10 +930,10 @@ fn apply_to_class(class_name: &str, mut f: impl FnMut(&UObject)) -> usize {
 }
 
 fn apply_to_survival_game_mode_settings(mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return 0;
     };
-    let Some(class) = sdk::find_class_fast("SurvivalGameModeSettings") else {
+    let Some(class) = ue::find_class_fast("SurvivalGameModeSettings") else {
         return 0;
     };
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };

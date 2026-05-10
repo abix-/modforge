@@ -26,13 +26,10 @@
 
 pub mod counters;
 pub mod debug;
-pub mod hook;
 pub mod inv_hook;
-pub mod log;
 pub mod parms;
 pub mod patch;
 pub mod rpg;
-pub mod sdk;
 pub mod settings;
 pub mod survival;
 
@@ -46,7 +43,7 @@ use windows_sys::Win32::Foundation::{CloseHandle, HMODULE};
 use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows_sys::Win32::System::Threading::CreateThread;
 
-use crate::sdk::offsets::{STEAM, XBOX};
+use ueforge::ue::offsets::{STEAM, XBOX};
 
 #[allow(clippy::upper_case_acronyms)]
 type BOOL = i32;
@@ -65,6 +62,9 @@ pub static DLL_HMODULE: AtomicUsize = AtomicUsize::new(0);
 pub extern "system" fn DllMain(hmod: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
     if reason == DLL_PROCESS_ATTACH {
         DLL_HMODULE.store(hmod as usize, Ordering::Release);
+        // Hand the HMODULE to ueforge's logger so dll_dir() resolves and
+        // the log file lands next to main.dll.
+        ueforge::log::set_dll_module(hmod);
     }
     TRUE
 }
@@ -102,11 +102,15 @@ unsafe extern "system" fn worker_entry(_lpv: *mut c_void) -> u32 {
 }
 
 unsafe fn worker() {
-    log::init();
-    bbp_log!("=== Better Backpack DLL (rust) ===");
+    ueforge::log::init(ueforge::log::Config {
+        file_name: "better_backpack.log",
+        console_title: "Better Backpack",
+        console: cfg!(feature = "console"),
+    });
+    ueforge::log!("=== Better Backpack DLL (rust) ===");
     let settings = settings::load();
     settings.log_summary();
-    bbp_log!(
+    ueforge::log!(
         "vanilla main = {}, vanilla mount = {} (left untouched)",
         patch::VANILLA_MAIN,
         patch::VANILLA_MOUNT
@@ -119,19 +123,19 @@ unsafe fn worker() {
     ];
     let offsets = ueforge::ue::platform::detect(PLATFORMS).unwrap_or_else(|| {
         let exe = ueforge::ue::platform::host_exe_name().unwrap_or_default();
-        bbp_log!(
+        ueforge::log!(
             "WARN: unknown host exe '{}'; defaulting to Steam offsets",
             exe
         );
         &STEAM
     });
-    bbp_log!(
+    ueforge::log!(
         "image_base = 0x{:x}, GObjects = 0x{:x}",
         image_base,
         image_base + offsets.g_objects
     );
 
-    let _rt = unsafe { sdk::init_runtime(image_base, offsets) };
+    let _rt = unsafe { ueforge::ue::init_runtime(image_base, offsets) };
 
     // UE4SS only calls our on_unreal_init after the engine has fully
     // initialized, so GObjects is already populated. No retry loop
@@ -142,7 +146,7 @@ unsafe fn worker() {
     rpg::apply::capture_vanilla();
 
     let initial = patch::run(settings.inventory.slot_count);
-    bbp_log!(
+    ueforge::log!(
         "initial patch round: scanned={}, patched={}, skipped_non_player={}",
         initial.scanned,
         initial.patched,
@@ -153,7 +157,7 @@ unsafe fn worker() {
         settings.survival.thirst_multiplier,
         settings.survival.hunger_multiplier,
     );
-    bbp_log!(
+    ueforge::log!(
         "survival patch: scanned_classes={}, patched={}",
         surv.scanned_classes,
         surv.patched
@@ -166,13 +170,13 @@ unsafe fn worker() {
     // overhead drops to zero.
     match install_inv_hook_with_backoff(settings.inventory.slot_count) {
         Some(h) => {
-            bbp_log!("inv hook: installed on {}", h.class_name());
+            ueforge::log!("inv hook: installed on {}", h.class_name());
             // Leak the hook so it lives for the lifetime of the process.
             // Drop-on-thread-exit would unhook the trampoline immediately.
             std::mem::forget(h);
         }
         None => {
-            bbp_log!(
+            ueforge::log!(
                 "inv hook: gave up after {}s; scrolling will not work this session",
                 HOOK_RETRY_TIMEOUT_SEC
             );
@@ -184,23 +188,23 @@ unsafe fn worker() {
     // loaded with the engine, so install should succeed on first try.
     match rpg::kill_hook::install() {
         Ok(h) => {
-            bbp_log!("rpg/kill: installed on {}", h.class_name());
+            ueforge::log!("rpg/kill: installed on {}", h.class_name());
             std::mem::forget(h);
         }
         Err(e) => {
-            bbp_log!("rpg/kill: install failed ({}); spike A inactive", e);
+            ueforge::log!("rpg/kill: install failed ({}); spike A inactive", e);
         }
     }
 
     match rpg::fall_hook::install() {
         Ok(hooks) => {
             for h in hooks {
-                bbp_log!("rpg/fall: installed on {}", h.class_name());
+                ueforge::log!("rpg/fall: installed on {}", h.class_name());
                 std::mem::forget(h);
             }
         }
         Err(e) => {
-            bbp_log!("rpg/fall: concrete player fall hook install failed ({})", e);
+            ueforge::log!("rpg/fall: concrete player fall hook install failed ({})", e);
         }
     }
 
@@ -214,10 +218,10 @@ unsafe fn worker() {
         debug::spawn(port);
     }
 
-    bbp_log!("init complete; worker thread exiting");
+    ueforge::log!("init complete; worker thread exiting");
 }
 
-fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHook> {
+fn install_inv_hook_with_backoff(slot_count: i32) -> Option<ueforge::hook::ProcessEventHook> {
     let mut delay_ms = HOOK_RETRY_BASE_DELAY_MS;
     let deadline = std::time::Instant::now() + Duration::from_secs(HOOK_RETRY_TIMEOUT_SEC);
     let mut last_err: Option<&str> = None;
@@ -226,7 +230,7 @@ fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHo
             Ok(h) => return Some(h),
             Err(e) => {
                 if last_err != Some(e) {
-                    bbp_log!("inv hook: pending ({}), will retry", e);
+                    ueforge::log!("inv hook: pending ({}), will retry", e);
                     last_err = Some(e);
                 }
             }

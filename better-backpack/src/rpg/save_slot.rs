@@ -15,7 +15,7 @@
 // Returns None when not in-world (main menu, between saves). Caller
 // should re-check on demand.
 
-use crate::sdk::{GObjectsView, UObject, find_class_fast, runtime};
+use ueforge::ue::{GObjectsView, UObject, find_class_fast, runtime};
 
 const IN_GAME_GAME_STATE_PLAYTHROUGH_GUID: usize = 0x032C;
 

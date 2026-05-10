@@ -24,7 +24,6 @@ use std::time::Duration;
 use windows_sys::Win32::Foundation::CloseHandle;
 use windows_sys::Win32::System::Threading::CreateThread;
 
-use crate::bbp_log;
 use crate::rpg::{save_slot, tracker};
 use crate::settings::Settings;
 
@@ -68,7 +67,7 @@ unsafe extern "system" fn thread_entry(_lpv: *mut c_void) -> u32 {
 }
 
 fn run() {
-    bbp_log!("rpg/world_loader: poller started");
+    ueforge::log!("rpg/world_loader: poller started");
     let mut last: Option<String> = None;
     loop {
         crate::counters::bump(&crate::counters::WORLD_LOADER_POLLS);

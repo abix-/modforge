@@ -1,9 +1,8 @@
 use std::ffi::c_void;
 
-use crate::bbp_log;
-use crate::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
 use crate::rpg::{skills, tracker};
-use crate::sdk::{UFunction, UObject, find_class_fast};
+use ueforge::ue::{UFunction, UObject, find_class_fast};
 
 const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
     "BP_SurvivalPlayerCharacter_C",
@@ -26,10 +25,10 @@ pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
 
     for &class_name in PLAYER_FALL_HOOK_CLASSES {
         if find_class_fast(class_name).is_none() {
-            bbp_log!("rpg/fall: class {} not loaded yet, skipping", class_name);
+            ueforge::log!("rpg/fall: class {} not loaded yet, skipping", class_name);
             continue;
         }
-        bbp_log!(
+        ueforge::log!(
             "rpg/fall: hooking concrete player class {} for {} velocity-stomp",
             class_name,
             FN_ON_LANDED
@@ -116,7 +115,7 @@ fn on_player_fall_event(
             // Skip the log when V.Z was already zero -- the engine has
             // already absorbed the velocity and our stomp is a no-op.
             if stomped.before.abs() > 0.001 {
-                bbp_log!(
+                ueforge::log!(
                     "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3} via {})",
                     stomped.before,
                     stomped.after,
@@ -274,9 +273,9 @@ fn collect_status_effects(player: &UObject) -> Vec<StatusEffectEntry> {
             (fname_ptr as *const u64).read_unaligned()
         };
         let row_name = unsafe {
-            crate::sdk::runtime()
+            ueforge::ue::runtime()
                 .name_resolver
-                .to_string(std::mem::transmute::<u64, crate::sdk::FName>(raw_fname))
+                .to_string(std::mem::transmute::<u64, ueforge::ue::FName>(raw_fname))
         };
         let table_name = unsafe {
             table_ptr

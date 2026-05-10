@@ -3,8 +3,7 @@
 // only player-owned components, never the mount/saddlebag (vanilla 30),
 // never already-patched ones.
 
-use crate::bbp_log;
-use crate::sdk::{self, GObjectsView, UClass};
+use ueforge::ue::{self, GObjectsView, UClass};
 
 /// Default and viewport-related constants left as `pub` so other modules
 /// (notably `inv_hook`) can use them. The actual target slot count is
@@ -27,17 +26,17 @@ pub fn run(slot_count: i32) -> PatchStats {
         skipped_non_player: 0,
     };
 
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return stats;
     };
-    let Some(inv_class) = sdk::find_class_fast("InventoryComponent") else {
-        bbp_log!("ERROR: InventoryComponent class not found");
+    let Some(inv_class) = ue::find_class_fast("InventoryComponent") else {
+        ueforge::log!("ERROR: InventoryComponent class not found");
         return stats;
     };
 
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
-        bbp_log!("ERROR: GObjects unavailable");
+        ueforge::log!("ERROR: GObjects unavailable");
         return stats;
     }
 
@@ -67,7 +66,7 @@ pub fn run(slot_count: i32) -> PatchStats {
         }
         let verify =
             unsafe { (obj.field_ptr(DEFAULT_MAX_SIZE_OFFSET) as *const i32).read_unaligned() };
-        bbp_log!(
+        ueforge::log!(
             "PATCH {}: {} -> {} (verify={})",
             full,
             current,

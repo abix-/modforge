@@ -14,8 +14,7 @@
 // constructed SurvivalComponent inherits the slowed drain, no rescan
 // needed.
 
-use crate::bbp_log;
-use crate::sdk::{self, GObjectsView, UObject};
+use ueforge::ue::{self, GObjectsView, UObject};
 
 pub const HUNGER_ADJUSTMENT_OFFSET: usize = 0x0138 + 0x08; // 0x0140
 pub const THIRST_ADJUSTMENT_OFFSET: usize = 0x0180 + 0x08; // 0x0188
@@ -34,21 +33,21 @@ pub fn run(thirst_multiplier: f32, hunger_multiplier: f32) -> SurvivalStats {
     if (thirst_multiplier - 1.0).abs() < f32::EPSILON
         && (hunger_multiplier - 1.0).abs() < f32::EPSILON
     {
-        bbp_log!("survival: both multipliers are 1.0, skipping patch");
+        ueforge::log!("survival: both multipliers are 1.0, skipping patch");
         return stats;
     }
 
-    let Some(rt) = sdk::try_runtime() else {
+    let Some(rt) = ue::try_runtime() else {
         return stats;
     };
-    let Some(survival_class) = sdk::find_class_fast("SurvivalComponent") else {
-        bbp_log!("ERROR: SurvivalComponent class not found");
+    let Some(survival_class) = ue::find_class_fast("SurvivalComponent") else {
+        ueforge::log!("ERROR: SurvivalComponent class not found");
         return stats;
     };
 
     let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
-        bbp_log!("ERROR: GObjects unavailable for survival patch");
+        ueforge::log!("ERROR: GObjects unavailable for survival patch");
         return stats;
     }
 
@@ -80,7 +79,7 @@ fn patch_one(obj: &UObject, thirst_mult: f32, hunger_mult: f32) -> bool {
             let after = before * hunger_mult;
             write_f32(obj, HUNGER_ADJUSTMENT_OFFSET, after);
             let verify = read_f32(obj, HUNGER_ADJUSTMENT_OFFSET);
-            bbp_log!(
+            ueforge::log!(
                 "HUNGER PATCH {}: {:.4} -> {:.4} (verify={:.4})",
                 full,
                 before,
@@ -97,7 +96,7 @@ fn patch_one(obj: &UObject, thirst_mult: f32, hunger_mult: f32) -> bool {
             let after = before * thirst_mult;
             write_f32(obj, THIRST_ADJUSTMENT_OFFSET, after);
             let verify = read_f32(obj, THIRST_ADJUSTMENT_OFFSET);
-            bbp_log!(
+            ueforge::log!(
                 "THIRST PATCH {}: {:.4} -> {:.4} (verify={:.4})",
                 full,
                 before,

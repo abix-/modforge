@@ -27,9 +27,8 @@
 use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use crate::bbp_log;
-use crate::hook::{OriginalProcessEvent, ProcessEventHook};
-use crate::sdk::{GObjectsView, UClass, UFunction, UObject, find_class_fast, runtime};
+use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::ue::{GObjectsView, UClass, UFunction, UObject, find_class_fast, runtime};
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
 const HEALTH_COMPONENT_CURRENT_DAMAGE: usize = 0x032C;
@@ -78,7 +77,7 @@ pub fn install() -> Result<ProcessEventHook, &'static str> {
         survival_creature_class: creature_class as *const UClass as usize,
     });
 
-    bbp_log!(
+    ueforge::log!(
         "rpg/kill: hooking HealthComponent (MulticastHandleEffectsWithDamageFlags at {:p})",
         multicast_fn
     );
@@ -183,7 +182,7 @@ fn on_event(
                 _ => (0.0f32, 0i32, 0u32),
             };
             crate::counters::bump(&crate::counters::KILL_HOOK_LOG_LINES);
-            bbp_log!(
+            ueforge::log!(
                 "rpg/dmg-trace: fn={} damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
                 fn_name,
                 damage,
@@ -278,7 +277,7 @@ fn on_event(
                             let cd_now = cd_ptr.read_unaligned();
                             let new_cd = (cd_now - to_reverse).max(0.0);
                             cd_ptr.write_unaligned(new_cd);
-                            bbp_log!(
+                            ueforge::log!(
                                 "rpg/impact: reversed environmental damage by {:.2} (raw={:.2}, reduction={:.3}, level={}); CurrentDamage {:.2} -> {:.2}",
                                 to_reverse,
                                 damage,
@@ -337,7 +336,7 @@ fn on_event(
                 .read_unaligned()
         };
         if (after - before).abs() > 0.001 {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/dmg-trace:   CurrentDamage before={:.2} after={:.2} delta={:.2}",
                 before,
                 after,
@@ -365,7 +364,7 @@ fn on_event(
     let is_creature = dying_actor.is_a(creature_uclass);
     if !is_creature {
         if cfg!(debug_assertions) {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/kill: ignoring non-creature kill: {} ({})",
                 dying_actor.name(),
                 actor_class.as_object().name()
@@ -382,7 +381,7 @@ fn on_event(
     use crate::rpg::tracker::{KillSource, record_kill};
     match kind {
         KillerKind::Player => {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/kill: PLAYER {} ({}) killed by {}",
                 dying_actor.name(),
                 class_name,
@@ -391,7 +390,7 @@ fn on_event(
             record_kill(&class_name, KillSource::Player);
         }
         KillerKind::Buggy => {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/kill: BUGGY {} ({}) killed by {}",
                 dying_actor.name(),
                 class_name,
@@ -400,7 +399,7 @@ fn on_event(
             record_kill(&class_name, KillSource::Buggy);
         }
         KillerKind::Other => {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/kill: skip {} ({}) -- killer was {}",
                 dying_actor.name(),
                 class_name,
@@ -551,7 +550,7 @@ fn log_last_damage_info(health_component: &UObject) {
             .read_unaligned()
     };
 
-    bbp_log!(
+    ueforge::log!(
         "rpg/dmg-trace:   LastDamageInfo: DamageType={} src_type={} flags=0x{:08x} hit=({:.0},{:.0},{:.0})",
         damage_type_name,
         source_type,
@@ -560,7 +559,7 @@ fn log_last_damage_info(health_component: &UObject) {
         hit_y,
         hit_z
     );
-    bbp_log!(
+    ueforge::log!(
         "rpg/dmg-trace:   instigator={} source={} attack={}",
         describe_obj(instigator),
         describe_obj(source),

@@ -15,14 +15,13 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::bbp_log;
-use crate::hook::{OriginalProcessEvent, ProcessEventHook};
+use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
 use crate::parms::{
     F_POINTER_EVENT_SIZE, GetChildAtParms, GetInventoryItemsParms, GetItemInItemListSlotParms,
     InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
     SelectedIndexParms, SetSelectedInventorySlotParms,
 };
-use crate::sdk::{self, UClass, UFunction, UObject, find_class_fast};
+use ueforge::ue::{self, UClass, UFunction, UObject, find_class_fast};
 
 const VIEWPORT_ROWS: i32 = 4;
 const VIEWPORT_COLUMNS: i32 = 10;
@@ -164,14 +163,14 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
         in_synthetic_refresh: AtomicBool::new(false),
     });
 
-    bbp_log!("inv hook: installing on WBP_InventoryInterface_C");
+    ueforge::log!("inv hook: installing on WBP_InventoryInterface_C");
     ProcessEventHook::install("WBP_InventoryInterface_C", on_event)
 }
 
 pub fn update_slot_count(slot_count: i32) {
     if let Some(state) = STATE.get() {
         state.slot_count.store(slot_count, Ordering::Release);
-        bbp_log!("inv hook: slot_count updated to {}", slot_count);
+        ueforge::log!("inv hook: slot_count updated to {}", slot_count);
     }
 }
 
@@ -271,7 +270,7 @@ fn pointer_wheel_delta(state: &State, event: &[u8; F_POINTER_EVENT_SIZE]) -> Opt
     }
     let func = unsafe { &*(state.kismet.pointer_event_get_wheel_delta as *const UFunction) };
     let saved_flags = func.function_flags();
-    func.set_function_flags(saved_flags | sdk::offsets::FUNC_NATIVE);
+    func.set_function_flags(saved_flags | ue::offsets::FUNC_NATIVE);
     let mut parms = PointerEventGetWheelDeltaParms {
         input: *event,
         return_value: 0.0,
@@ -304,7 +303,7 @@ fn rebind(
     let child_count = panel_children_count(state, item_grid);
     if child_count != VIEWPORT_PAGE_SIZE {
         if cfg!(debug_assertions) {
-            bbp_log!(
+            ueforge::log!(
                 "scroll skipped: expected {} visible children, found {}",
                 VIEWPORT_PAGE_SIZE,
                 child_count
@@ -325,7 +324,7 @@ fn rebind(
     set_viewport_start(state, widget, clamped);
 
     if cfg!(debug_assertions) {
-        bbp_log!("scroll {}: start={} -> {}", reason, old_start, clamped);
+        ueforge::log!("scroll {}: start={} -> {}", reason, old_start, clamped);
     }
     Ok(())
 }
@@ -337,7 +336,7 @@ fn rebind_visible_slots(
     item_start_index: i32,
 ) -> Result<(), &'static str> {
     let mut items_parms = GetInventoryItemsParms {
-        items: sdk::TArray::default(),
+        items: ue::TArray::default(),
     };
     let func = unsafe { &*(state.inv_iface.get_inventory_items as *const UFunction) };
     unsafe {
@@ -379,12 +378,12 @@ fn panel_child_at(state: &State, panel: &UObject, index: i32) -> Option<&'static
 fn bpf_get_item(
     state: &State,
     widget: &UObject,
-    item_list: &sdk::TArray<*mut UObject>,
+    item_list: &ue::TArray<*mut UObject>,
     absolute_slot: i32,
 ) -> *mut UObject {
     let func = unsafe { &*(state.bpf.get_item_in_item_list_slot as *const UFunction) };
     let mut parms = GetItemInItemListSlotParms {
-        item_list: sdk::TArray {
+        item_list: ue::TArray {
             data: item_list.data,
             num: item_list.num,
             max: item_list.max,

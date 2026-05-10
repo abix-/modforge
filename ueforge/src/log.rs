@@ -159,18 +159,11 @@ fn format_line(args: std::fmt::Arguments<'_>) -> Vec<u8> {
     out
 }
 
-/// Convenience macro for embedding crates:
-///
-/// ```ignore
-/// #[macro_export]
-/// macro_rules! my_log {
-///     ($($arg:tt)*) => {
-///         $crate::ueforge::log::log(format_args!($($arg)*))
-///     };
-/// }
-/// ```
-///
-/// (Provided as a doc example, not exported, since macro_export
-/// scoping wants to live in the dependent crate.)
-#[doc(hidden)]
-pub fn _macro_doc_anchor() {}
+/// `ueforge::log!("foo {}", x)` — convenience over
+/// `ueforge::log::log(format_args!(...))`. Mirrors `println!`.
+#[macro_export]
+macro_rules! log {
+    ($($arg:tt)*) => {
+        $crate::log::log(format_args!($($arg)*))
+    };
+}

@@ -3,7 +3,7 @@
 
 use std::ffi::c_void;
 
-use crate::sdk::{TArray, UObject};
+use ueforge::ue::{TArray, UObject};
 
 pub const F_POINTER_EVENT_SIZE: usize = 0x80; // SlateCore_structs.hpp:836
 

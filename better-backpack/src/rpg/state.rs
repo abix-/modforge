@@ -13,8 +13,6 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::bbp_log;
-use crate::log;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PlayerState {
@@ -53,7 +51,7 @@ pub fn load_one(slot: &str) -> PlayerState {
         Ok(text) => match serde_json::from_str::<PlayerState>(&text) {
             Ok(s) => s,
             Err(e) => {
-                bbp_log!(
+                ueforge::log!(
                     "rpg/state: parse failed for {} ({}); starting fresh",
                     path.display(),
                     e
@@ -62,7 +60,7 @@ pub fn load_one(slot: &str) -> PlayerState {
             }
         },
         Err(_) => {
-            bbp_log!(
+            ueforge::log!(
                 "rpg/state: no prior save for slot={}; starting fresh",
                 short(slot)
             );
@@ -76,23 +74,23 @@ pub fn save(slot: &str, state: &PlayerState) {
     if let Some(parent) = path.parent()
         && let Err(e) = fs::create_dir_all(parent)
     {
-        bbp_log!("rpg/state: mkdir {} failed: {}", parent.display(), e);
+        ueforge::log!("rpg/state: mkdir {} failed: {}", parent.display(), e);
         return;
     }
     let json = match serde_json::to_string_pretty(state) {
         Ok(j) => j,
         Err(e) => {
-            bbp_log!("rpg/state: serialize failed: {}", e);
+            ueforge::log!("rpg/state: serialize failed: {}", e);
             return;
         }
     };
     if let Err(e) = fs::write(&path, json) {
-        bbp_log!("rpg/state: write {} failed: {}", path.display(), e);
+        ueforge::log!("rpg/state: write {} failed: {}", path.display(), e);
     }
 }
 
 fn state_path(slot: &str) -> PathBuf {
-    let mut p = log::dll_dir().unwrap_or_else(|| PathBuf::from("."));
+    let mut p = ueforge::log::dll_dir().unwrap_or_else(|| PathBuf::from("."));
     p.push("saves");
     p.push(format!("{slot}.json"));
     p
