@@ -28,28 +28,16 @@ None of those carried over.
 
 ## Hot paths
 
-### 1. ProcessEvent hook trampoline
+The trampoline cost analysis for `ueforge::hook::ProcessEventHook`
+(per-dispatch vtable read + registry snapshot + closure + drain
+trampoline + active-call counter) lives in
+[`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md)
+"Hot paths". Wall cost in release: ~50-100 ns per dispatch.
 
-`grounded2-rpg/src/hook/process_event.rs::trampoline`. Fires whenever
-the engine invokes `ProcessEvent` on an instance whose vtable matches one
-of our installed hooks. Today that means **only**
-`WBP_InventoryInterface_C`. A blueprint-generated widget that's only
-present in `GObjects` while the inventory UI is open.
+The g2rpg hot paths below sit *on top of* that framework cost --
+each is the closure body invoked by the trampoline.
 
-Per-call cost:
-
-- one vtable read off `this` (8 bytes)
-- `REGISTRY.lock()`, `Mutex` lock, uncontended (game thread only)
-- linear scan over registry (currently 1 entry)
-- pointer copy of the `Entry`, drop the lock
-- `catch_unwind` around the user closure
-- the closure itself: see (2) below
-- on closure panic, fallthrough to engine original
-
-Estimated wall cost in release: **~50-100 ns** per dispatch, dominated
-by the mutex lock-unlock cycle (~10-20 ns x2) and the closure work.
-
-### 2. Inventory-interface event handler
+### 1. Inventory-interface event handler
 
 `grounded2-rpg/src/inv_hook.rs::on_event`. The closure invoked by the
 trampoline.
@@ -68,7 +56,7 @@ The function-identity dispatch replaces what the C++ build did with
 runtime `fn_name == "..."` string compares, one of the audit's named
 issues.
 
-### 3. Rebind (active scroll)
+### 2. Rebind (active scroll)
 
 `inv_hook.rs::rebind`. Triggered by mouse-wheel ticks and post-refresh
 events. Walks the visible 40-slot grid and rebinds each slot against an
@@ -92,7 +80,7 @@ worst-case scroll cost is **~5-10 ms/sec of CPU**, on the game thread,
 during active scrolling only. Well under one frame at 60 fps; below
 sample resolution at 144 fps.
 
-### 4. Survival CDO patch (hunger + thirst)
+### 3. Survival CDO patch (hunger + thirst)
 
 `survival.rs::run`. One-shot at startup, same shape as the inventory
 patch. Walks GObjects looking for SurvivalComponent-derived CDOs and
@@ -110,7 +98,7 @@ at startup. Runs only if at least one multiplier is `!= 1.0` (skipped
 entirely otherwise). Default multipliers ship at `0.5`, so the patch
 runs by default.
 
-### 5. Rescan loop, removed
+### 4. Rescan loop, removed
 
 Earlier revisions of this doc described a 10 s rescan loop. **It's
 gone.** The CDO patch is sticky for the lifetime of the DLL: UE doesn't
@@ -122,7 +110,7 @@ after the inventory hook installs.
 
 Net steady-state cost after init: zero threads running, zero CPU.
 
-### 5. Logging
+### 5. Logging (one-shot + on-change)
 
 Compile-time gating:
 
@@ -143,73 +131,54 @@ spawned debug console, one buffered file write to
 
 ## What was *not* done (deliberately)
 
-These were identified in the C++ audit and dropped in the port rather
-than ported with fixes:
+g2rpg-specific deliberate non-ports + dropped instrumentation:
 
 - Hooking `Widget`, `UserWidget`, `GameUserWidget`, `PanelWidget`,
   `GridPanel`, `WidgetManager`, `BPF_InventoryFunctions_C`,
-  `InventoryWidget`, `InGameMenuWidget`. The C++ tree installed
-  ProcessEvent hooks on all of these for trace coverage. Nine of them
-  exist solely as instrumentation; only `WBP_InventoryInterface_C` is
-  load-bearing for the mod's actual behavior. Net effect: the Rust port
-  intercepts roughly **0.1%** of the ProcessEvent dispatches the C++
-  build did.
-- `InspectLiveInventoryUiState`, the C++ tree walked all of `GObjects`
-  twice per rescan tick to log live widget / window-stack state. We
-  dropped it. If we ever need it back, gate it behind
-  `cfg!(debug_assertions)` and run it at most once per session.
-- The `g_inventoryViewportStart` `unordered_map<const UObject*, int>`
-  in C++ was an unbounded leak, it grew for every widget the player
-  ever opened. Rust uses a `Vec<(usize, i32)>` keyed by widget pointer
-  and never prunes it either, but the leak is the same shape and the
-  growth rate is bounded by how many distinct widget instances the
-  player constructs in a session. In practice: a few dozen entries
-  total. **Not** a problem in steady state but a tidy-up target if a
-  session ever held thousands of distinct inventory widget instances.
+  `InventoryWidget`, `InGameMenuWidget` for trace coverage. Only
+  `WBP_InventoryInterface_C` is load-bearing; we intercept ~0.1%
+  of the ProcessEvent dispatches an aggressive trace build would.
+- `InspectLiveInventoryUiState` -- a previous incarnation walked
+  all of `GObjects` twice per rescan tick to log live widget /
+  window-stack state. Dropped. If ever needed back, gate behind
+  `cfg!(debug_assertions)` and run at most once per session.
 
-## What could still be tightened
+For generic "what was deliberately not ported" doctrine
+(zero-alloc trampolines, single-hook-surface principle,
+identity-not-name dispatch) see
+[`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md).
+
+## What could still be tightened (g2rpg-specific)
 
 Strictly optional. None of these are visible in a profile today.
 
-1. **Replace the two `Mutex` locks on the hot path with atomics.**
-   `REGISTRY` could be an immutable `&'static [&'static Entry]` written
-   once at startup; `in_synthetic_refresh` could be an
-   `AtomicBool` (or even thread-local since the hook is single-threaded
-   in practice). Saves ~20-40 ns per dispatch. Worth doing only if a
-   profile ever puts the mutex on the radar.
-2. **Cache `&UClass` for `InventoryComponent` once at startup**, so
-   `patch::run` skips the `find_class_fast` call on every rescan. Today
-   the function caches the result internally via `OnceLock` on the
-   class pointer (`g_invClass` style), but the lookup walks `GObjects`
-   the first time. We do that walk on the first rescan only; subsequent
-   rescans use the cached pointer. Already optimal.
-3. **(done)** AllocConsole is now gated behind the `console` Cargo
-   feature (default on). `cargo build --release --no-default-features`
-   produces a console-free shipping DLL.
-4. **Add `FUObjectArray::AddUObjectCreateListener` integration** if a
-   real CDO-revert scenario is ever observed in a play session. Today
-   we patch once and exit; if a Blueprint hot-reload or replication
-   path ever wipes the CDO, we'd silently miss it. The fix is the
-   canonical UE4SS pattern, register a listener, filter by class
-   pointer, defer a re-patch one tick. ~100 lines of work; not
-   warranted unless the failure is observed.
+1. **Cache the player's HC pointer at slot activation.** Today
+   `kill_hook`'s player filter calls `owner.full_name()` per
+   fire (allocates a String just to substring-match
+   `BP_SurvivalPlayerCharacter`). Caching the live HC pointer
+   eliminates the alloc for non-player events.
+2. **Drop `f.flush()` from every log line** in g2rpg's hot-path
+   call sites; rely on OS buffering or flush every Nth line.
+3. **Make the wider damage_trace observation opt-in** via a
+   settings flag. Researchers turn it on; shipping disables.
 
-## Methodology
+Framework-side optimization opportunities (REGISTRY mutex ->
+atomic, `AddUObjectCreateListener` integration, the
+`in_synthetic_refresh` AtomicBool) live in ueforge's
+[`PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md) "What
+ueforge already does for you" and the open work in the
+workspace [`docs/todo.md`](../../docs/todo.md).
 
-These numbers are reasoned from the code, not measured on a live
-profile. UE's `ProcessEvent` cost (single-digit microseconds in release
-builds with no native function trampoline) is well-documented across UE
-mod literature; the rest is straight pointer arithmetic and mutex
-overhead, both well-known constants. A real Tracy / `tracing` capture
-inside the game would replace the estimates with hard numbers if we
-ever decide it matters.
+## Methodology + confidence
 
-## Confidence
-
-Audit confidence: 8/10. The hot-path analysis follows directly from the
-code; the dispatch volume reasoning follows from how the inventory
-widget is used in-game. The unmeasured pieces are (a) actual
-`ProcessEvent` cost in this specific build of UE 5.4 and (b) how often
-the inventory UI dispatches per frame on a typical machine. Both are
-the same order of magnitude as well-known UE benchmarks, but we have
-not measured them ourselves.
+Numbers above are reasoned from the code, not measured on a
+live profile. UE's `ProcessEvent` cost (single-digit
+microseconds in release builds with no native function
+trampoline) is well-documented across UE mod literature; the
+g2rpg-specific costs (the ~123 PE per inventory rebind, the
+~125k-entry GObjects walks per slot activation, the
+SurvivalComponent CDO scan timings) follow from the call
+shapes documented in [`ongoing.md`](ongoing.md). Audit
+confidence: 8/10. A real Tracy / `tracing` capture inside the
+game would replace estimates with hard numbers if we ever
+decide it matters.

@@ -120,54 +120,33 @@ Deletes the `Grounded2RPG` mod folder and strips its line from
 
 ## Hot-update while the game is running
 
-UE4SS supports cpp-mod hot-update natively. The eventual dev
-loop will be:
-
 ```
 1. edit Rust
 2. cargo deploy install -p grounded2-rpg
 3. alt-tab to the game, press Ctrl+R
-4. new build is live in ~1-2s
+4. new build is live in ~1-2s with state preserved
 ```
 
-UE4SS does a full `FreeLibrary` + fresh `LoadLibraryExW` from
-disk on Ctrl+R, so step 2 needs to land the new bytes on disk;
-step 3 (Ctrl+R) unloads the old image and loads the new. State
-on disk (`saves/<guid>.json`, `settings.json`) survives; the new
-DLL's init reads them.
+The full mechanism (Phase A research + Phase B implementation,
+the FreeLibrary / fresh LoadLibraryExW round-trip, the side-file
+swap during `on_shutdown`, the hook teardown + trampoline drain,
+the HTTP listener join, the UE4SS-settings.ini gating) is
+documented in
+[`../../ueforge/docs/lifecycle.md`](../../ueforge/docs/lifecycle.md)
+"Hot-reload". Read that for the full framework story.
 
-**Phase B complete 2026-05-10**. The full hot-update dev loop
-works: deploy while the game is running, alt-tab, Ctrl+R, new
-code is live in ~1-2s with state preserved.
+g2rpg-specific touchpoints:
 
-`ueforge_mod_shutdown` runs in this order (on every Ctrl+R or
-process exit):
-
-1. `MOD_INFO.on_shutdown` -- the game's callback (g2rpg stops
-   the world_loader poller here).
-2. `ueforge::hook::shutdown_all` -- sets `SHUTTING_DOWN = true`,
-   then drops every registered `ProcessEventHook`. Each Drop
-   restores the vtable slot + waits up to 500ms for in-flight
-   trampolines on that hook to drain (per-Entry `active_calls`
-   counter).
-3. `ueforge::server::shutdown_all` -- unblocks + joins every
-   registered HTTP listener (debug endpoint).
-4. `mod_main::finalize_hot_reload_swap` -- renames `main.dll`
-   <-> `main-new.dll` so UE4SS picks up the new image on the
-   next `LoadLibraryExW`.
-
-After this returns, no code in our DLL is on a thread's stack
-or a vtable slot; UE4SS's `FreeLibrary` is safe. The new image's
-first `on_unreal_init` cleans up the leftover `main-old.dll`.
-
-If the trampoline drain hits the 500ms timeout (a hook handler
-that blocked indefinitely), the framework logs a warning and
-proceeds anyway -- a leak is preferable to deadlocking the
-unloader thread.
-
-UE4SS hot-reload is gated by `UE4SS-settings.ini`,
-`[General]` section: `EnableHotReloadSystem = 1`,
-`HotReloadKey = R` (default).
+- `MOD_INFO.on_shutdown` calls `rpg::world_loader::shutdown()`
+  to stop the slot poller. ueforge's shutdown sequence then
+  takes over (hook teardown -> HTTP listener join -> side-file
+  swap).
+- Save state lives in `<DLL_dir>/saves/<playthrough-guid>.json`
+  -- survives the reload, re-read by the new image on slot
+  activation. See [`rpg.md`](rpg.md) "Persistence".
+- `settings.json` is hot-watched via `Settings::watch` (if
+  enabled) -- changes take effect without Ctrl+R; only code
+  changes need the reload.
 
 ## Quality gates
 

@@ -1536,36 +1536,23 @@ migration:
    `apply.rs` and the velocity-stomp from `fall_hook.rs` after
    each skill is migrated and validated.
 
-## UE4SS hooking caveats observed in Grounded 2
+## UE4SS hooking caveats (Grounded 2 observations)
 
-Concrete failures encountered while building the damage system. All
-relevant when you are tempted to ProcessEvent-hook a damage surface.
+Generic UE4SS hooking caveats (Issue #626 / `Final+Native+BlueprintCallable`
+silent failures, concrete-BP vs base-class hook scope, CDO-patches-
+don't-reach-pre-spawned-instances) are documented in
+[`../../ueforge/docs/ue-engine.md`](../../ueforge/docs/ue-engine.md)
+"UE4SS hooking caveats". The same issues bite any UE5 mod built on
+UE4SS, not just Grounded 2.
 
-### Issue #626 (`Final+BlueprintCallable` UFunctions)
+The Grounded 2-specific instances confirmed broken:
 
-[GitHub issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626)
-applies to Grounded 2 / UE5. UE4SS's `RegisterPreHook` /
-`RegisterPostHook` register cleanly (logs report
-`[RegisterHook] Registered native hook (N, N+1) for ...`) but the
-callbacks silently never fire when the engine calls the C++
-implementation directly from a native frame. The mechanism fix
-(swap `UFunction::native_func`) only intercepts BP / ProcessEvent
-calls, not direct C++ dispatch.
+- `/Script/Maine.SurvivalCharacter:ApplyFallDamage` (Issue #626)
+- `/Script/Maine.HealthComponent:ApplyDamage` (Issue #626)
 
-Confirmed broken on Grounded 2 for:
+Concrete player BP classes that hooks must enumerate (vs the base
+`SurvivalCharacter`):
 
-- `/Script/Maine.SurvivalCharacter:ApplyFallDamage`
-- `/Script/Maine.HealthComponent:ApplyDamage`
-
-Likely also broken for any other `Final+Native+BlueprintCallable`
-UFunction the engine calls from native code. Probe with a Lua
-RegisterHook + log before assuming.
-
-### Concrete-BP class hooks vs base-class hooks
-
-Our `ProcessEventHook` matches exact live vtables. Player pawns are
-concrete `BP_SurvivalPlayerCharacter_*` subclasses (`_Female02_C`,
-`_Gellarde_C`, etc), so a hook installed on the base
-`SurvivalCharacter` or `Character` class never matches a real player
-instance. `fall_hook.rs` enumerates known concrete subclasses by
-name and installs on each.
+- `BP_SurvivalPlayerCharacter_Female02_C`
+- `BP_SurvivalPlayerCharacter_Gellarde_C`
+- (other gender / appearance variants -- see `fall_hook.rs`)
