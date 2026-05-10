@@ -10,3 +10,6 @@ Cargo.lock.bak
 # writes a timestamped log to perf-runs/. Useful locally; the
 # committed evidence is summarized in docs/ongoing.md.
 /perf-runs/
+
+# Stray cargo target that sometimes shows up under ueforge/cpp/.
+ueforge/cpp/target/
