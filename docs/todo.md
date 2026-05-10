@@ -10,6 +10,131 @@ new session.
 
 ---
 
+## ueforge hardening (kovarex review, 2026-05-09)
+
+End-to-end review of the framework against the 10-year / 100-user
+bar. Items are ordered by criticality: P0 will crash users in the
+field, P1 is silent rot or measurable resource bleed, P2 is
+maintainability / future-proofing.
+
+### P0 -- will crash users
+
+- [ ] **Address-relative freezes (kill raw-address freeze).**
+  `ueforge/src/scanner.rs:415-426` writes blindly to `addr as *mut u8`
+  every `1/hz` seconds with no check that the page is still mapped or
+  still owned by the source object. UE recycles allocations; a
+  multi-minute freeze on a stale address will fault the game. Replace
+  the `freeze { addr, ... }` op with `freeze { selector, offset, type,
+  value }`, resolve the selector each tick, log-and-skip on resolve
+  failure. Also cache + recheck `VirtualQuery` page protection before
+  every write.
+- [ ] **Mutex `unwrap()` density + `panic = "abort"` = hard crash on any
+  poison.** `ueforge/src/scanner.rs:267,290,371,391,407,428,443,454`
+  and `ueforge/src/hook/process_event.rs:109,117,136`. With
+  `Cargo.toml:30 panic = "abort"`, one poisoned mutex on a worker
+  thread aborts the game DLL with no log. Migrate to
+  `parking_lot::Mutex` (no poison concept) across the framework. Also
+  set `[profile.dev] panic = "unwind"` so research crashes leave a
+  backtrace.
+- [ ] **`runtime().expect("sdk runtime not initialized")` on hot paths.**
+  `ueforge/src/ue/uobject.rs:399`. Called from `UObject::name`,
+  `process_event`, `iter_native_properties`, name resolution -- any
+  of which can fire before `init_runtime` has set the OnceLock if a
+  hook lands early. Replace consumer call sites with `try_runtime`
+  + log-and-skip. Document the init ordering at the top of `ue/mod.rs`.
+
+### P1 -- silent rot / resource bleed
+
+- [ ] **`FString` buffer leak on every FName -> String.**
+  `ueforge/src/ue/fstring.rs:1-10` documents the leak. Every
+  `find_class_fast`, `find_by_short_name`, `UObject::name`,
+  `full_name`, `is_default_object` leaks ~`2 * len` bytes per call.
+  Long sessions bleed MB. Bind UE4SS-exported `FMemory::Free` (already
+  in `UE4SS.lib`) or call `delete[]` from a tiny helper compiled into
+  `ueforge_ui.cpp`, and free the buffer in `FString`'s drop / after
+  `as_string()`.
+- [ ] **`find_class_fast` / `find_by_short_name` are O(N) GObjects walks.**
+  `ueforge/src/ue/uobject.rs:424-440`,
+  `ueforge/src/ue/datatable.rs:263-285`,
+  `ueforge/src/selector.rs:59-81`. ~150K objects on OWS; every selector
+  resolve walks the full array and calls `name()` (which leaks an
+  FString -- see above). Add a lazy FName-keyed
+  `OnceLock<HashMap<u64, &'static UClass>>` cache; UClasses are stable
+  forever once seen.
+- [ ] **`inspect_address` allocates a `Vec<NativeProperty>` per
+  super-class per call.** `ueforge/src/ue/uobject.rs:181-216` +
+  `ueforge/src/ops.rs:206-229`. Click 20 rows in the Scanner UI =
+  100-300 heap allocs and FName resolves on the render thread.
+  Cache the property list per UClass in
+  `OnceLock<HashMap<*const UClass, Arc<[NativeProperty]>>>`.
+- [ ] **`read_bytes` / `write_bytes` have no bounds vs the resolved
+  object.** `ueforge/src/ops.rs:90-134`. The 1MiB cap bounds size,
+  not location -- a malformed selector + offset reads from any
+  address. When the class is known, clamp `offset + length <=
+  class.properties_size()`.
+- [ ] **PE hook trampoline does linear search per dispatch.**
+  `ueforge/src/hook/process_event.rs:155-158`. Engine fires
+  ProcessEvent thousands of times per second; the `.find()` over
+  `SNAPSHOT` is fine for 2-3 hooks, measurable at 6+. Index by
+  vtable pointer.
+- [ ] **Replace hand-rolled `SNAPSHOT` + `Box::leak` with
+  `arc_swap::ArcSwap`.** `ueforge/src/hook/process_event.rs:46-64`.
+  Each install/drop leaks a previous snapshot; standard answer is
+  one well-tested crate. ~5 lines vs ~30, no leak.
+- [ ] **Stop panicking in test client / perf log.**
+  `ueforge/src/client/perf.rs:83`,
+  `ueforge/src/client/mod.rs:90,108,110`. A library shouldn't
+  `panic!` on POST or file-open failure -- return `Result`. Test
+  callers can `.unwrap()` themselves.
+- [ ] **`tmap::slots` / `MAX_LINEAR_SCAN = 8192` magic cap.**
+  `ueforge/src/ue/tmap.rs:40-45`,
+  `ueforge/src/ue/offsets.rs:157`. Real-game DataTables can exceed
+  8192 rows; the iterator silently truncates. Either lift the cap
+  and trust the engine header, or surface a "truncated" flag.
+- [ ] **Long scans hold `SESSIONS` mutex across the walk.**
+  `ueforge/src/scanner.rs:264-273`. Multi-second scans block every
+  other scanner op behind the listener thread. Take the snapshot
+  of regions outside the lock; only re-acquire to insert the
+  finished session.
+
+### P2 -- future-proofing / maintainability
+
+- [ ] **No unit tests on framework primitives.** Hex codec
+  (`hex.rs`), arg parsers (`args.rs`), `Val::from_json`
+  (`scanner.rs`), `tmap::slots` parsing, `FieldTweak` idempotency,
+  queue drain stats / re-entrance. The TDD doctrine in
+  `ueforge/README.md` is aspirational; the framework itself has zero
+  `#[test]`. Land the obvious round-trip + boundary tests.
+- [ ] **UE-version-aware offset tables.** `ueforge/src/ue/offsets.rs`
+  `ffield`, `fproperty`, `ustruct` constants are hardcoded for UE
+  5.4. UE 5.5/5.6 are shipping; the property walker will return
+  *wrong* names silently on those builds. Add `enum UeVersion` on
+  `PlatformOffsets` and dispatch.
+- [ ] **`#[non_exhaustive]` on public structs.** `ModInfo`, `Tab`,
+  `PlatformOffsets`, `server::Config`. Today, adding a field is a
+  breaking change for every downstream mod.
+- [ ] **`FName` `transmute_copy<u64>` assumes layout forever.**
+  `ueforge/src/ops.rs:194`,
+  `ueforge/src/ue/datatable.rs:39`. UE has changed FName before;
+  document or guard.
+- [ ] **Replace hand-rolled hex codec with the `hex` crate.**
+  `ueforge/src/hex.rs`. ~30 lines saved; one less surface for bugs.
+- [ ] **Op latency + scan duration metrics.** `counters.rs` already
+  ships the primitives; nothing in the framework uses them. Add
+  per-op time + queue depth counters.
+- [ ] **Cancellation token on `scan_memory` / long ops.** No way to
+  cancel a multi-second scan today -- it monopolizes the listener
+  thread.
+- [ ] **`DLL_HMODULE` happens-before `dll_dir()` callers.**
+  `ueforge/src/log.rs:62-63`. Worker threads that start before
+  `set_dll_module` runs in `DllMain` see `dll_dir() = None` and the
+  log file lands in CWD. Document the ordering, or guard with a
+  one-shot wait.
+- [ ] **Plan a `tiny_http` / `ureq 2` migration window.** Both are
+  on a 2-5 year support horizon. `ureq 3` is already a rewrite. Not
+  urgent, but pin a quarter to do it before the upstream drops
+  security fixes for v2.
+
 ## RPG: catalog expansion
 
 The next batch of skills to add. Each entry is one
