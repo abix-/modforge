@@ -7,6 +7,98 @@
 
 Newest first.
 
+## 2026-05-10 (later)
+
+### Major dedup wave: bbp -> ueforge
+
+Six commits in one session promoted the bulk of bbp's
+infrastructure into ueforge. ueforge is now the framework crate
+that gives every UE4SS Rust mod its load-bearing systems; bbp
+owns only the G2-specific content (offsets, skill effect
+variants, catalog rows, hooks, parm structs).
+
+#### New ueforge surface
+
+- **`ueforge::ue::ClassRef`** -- typed cached UClass handle.
+  `const`-constructible static; lazy resolve on first `get()`;
+  `cdo()`, `find_function()`, `with_first_instance()`,
+  `for_each_instance()`, `find_instance()` helpers.
+- **`ueforge::function_table!` decl-macro** -- struct-of-`usize`
+  table of UFunction-pointer-identity slots with `install(&UClass)
+  -> Result<Self, &'static str>` and `required` / `optional`
+  field kinds.
+- **`ueforge::ue::TypedField<T>`** -- `const`-constructible
+  `(offset, T)` pair with `read(obj)`, `write(obj, v)`,
+  `ptr(obj)`. Couples offset and type at declaration so accidental
+  mismatches become `TypedField<f32>` vs `TypedField<u32>` type
+  errors, not runtime corruption.
+- **`ueforge::rpg::VanillaCache<K, V>`** -- per-key vanilla
+  baseline cache. `get_or_init(k, v)` returns the captured
+  baseline forever (first-write wins); `set_if_unset`, `get`,
+  `clear`, `snapshot`. `parking_lot::Mutex` internally.
+- **`ueforge::counter_json!` decl-macro** -- pairs of
+  `(static_ident => "json_key")` collapsed into a
+  `serde_json::Value::Object` with `load(Relaxed)` per counter.
+- **`ueforge::hook::install_with_backoff(name, RetryPolicy, fn)`**
+  -- generic exponential-backoff retry around any
+  `FnMut() -> Result<H, &'static str>`. `RetryPolicy::default_install()`
+  ships with bbp's battle-tested 500ms/5s/10min tuning.
+- **`ueforge::worker::spawn(name, FnOnce)`** -- named worker
+  thread (Win32 `SetThreadDescription` via `Builder::name`) with
+  `catch_unwind` + logged panic payload. Closes the kovarex P1
+  "unnamed worker thread" + "silent panic swallow" findings.
+- **`ueforge::hook::LazyFunctionPtr`** -- lazily-cached
+  `&UFunction` for hot-path identity dispatch. Warm path: 1
+  atomic load + 1 branch. Cold path: 1 FName resolve, cache,
+  never re-taken.
+- **`ueforge::hook::ProcessEventHook::install_many`** --
+  multi-class install with skip-on-not-loaded log lines.
+
+#### RPG framework (Phase 3 wave 2)
+
+The whole RPG / level-up system became framework code:
+
+- **`ueforge::rpg::Skill<E>`** + **`find_skill`** -- generic
+  catalog row parameterized on the game's effect enum.
+- **`ueforge::rpg::RpgApplier`** trait -- the seam where
+  ueforge's state/persistence layer meets the game's apply
+  dispatch. Methods: `apply_skill(state, skill)`, `apply_all`,
+  `format_effect(skill, level)`.
+- **`ueforge::rpg::Tracker<A: RpgApplier>`** -- owns slot
+  binding, in-memory state, Applier instance, persistence.
+  Drives spend/refund/record_xp/reapply transactionally with
+  disk save. Returns `XpResult` from `record_xp` so the caller
+  can log "LEVEL UP!" feedback.
+- **`ueforge::rpg::tab::render(tracker, ToggleFns)`** -- ImGui
+  template: header (level + XP bar + skill points), catalog
+  rows (+1/+10/-1/-10/optional on-toggle), debug footer
+  (+5 / +50 skill points). Game crates supply only the
+  `format_effect` closure (via Applier) and the toggle hooks.
+
+#### bbp shrinkage
+
+- `tracker.rs` reduced to a thin shim: a static
+  `Tracker<GameApplier>` + ~10 wrapper fns that match the
+  legacy API surface for kill_hook / world_loader / debug.rs.
+- `tab.rs` reduced to a counter-bumping wrapper around
+  `ueforge::rpg::tab::render`.
+- `inv_hook.rs` lost ~80 LoC of UFunction-resolve boilerplate
+  (now `function_table!`).
+- `fall_hook.rs` lost ~30 LoC of multi-class install +
+  manual UFunction cache (now `install_many` + `LazyFunctionPtr`).
+- `lib.rs` lost ~50 LoC of `CreateThread` / retry-loop /
+  `HOOK_RETRY_*` consts (now `worker::spawn` +
+  `install_with_backoff`).
+- `counters.rs::snapshot_json` collapsed to a single
+  `counter_json!` invocation.
+- `apply.rs` `VanillaTable` struct deleted (now
+  `ueforge::rpg::VanillaCache`).
+
+Net: ueforge gained ~2000 LoC of framework surface (+30 unit
+tests, all passing); bbp lost ~500+ LoC of duplicated
+infrastructure. Every crate builds clean release. In-game
+smoke test pending.
+
 ## 2026-05-10
 
 ### Phase 3 (first wave) -- ueforge::rpg generic framework

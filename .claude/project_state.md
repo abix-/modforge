@@ -1,5 +1,85 @@
 # grounded2mods - project state
 
+## Major dedup session: bbp -> ueforge (2026-05-10)
+
+Phase 1 smoke-tested in-game and passed. Six waves of extraction
+landed in one session. ueforge is now the framework crate that
+gives every UE4SS Rust mod its load-bearing systems; bbp owns
+only the G2-specific content (offsets, skill effect variants,
+catalog rows, hooks, parm structs).
+
+### Commits (chronological)
+
+1. **`ueforge::ue::ClassRef`** -- typed cached UClass handle.
+   `ClassRef::new("Name")` -> lazy `&'static UClass`, exposes
+   `cdo()`, `find_function()`, `with_cdo`, `with_first_instance`,
+   `for_each_instance`, `find_instance`. Migrations:
+   `bbp/rpg/save_slot.rs::find_in_game_game_state`,
+   `bbp/rpg/kill_hook.rs::install`, `bbp/inv_hook.rs::install`
+   (4 classes), `bbp/debug.rs` HEALTH_CLASS.
+2. **`ueforge::function_table!` decl-macro** -- struct-of-`usize`
+   table with `install(&UClass) -> Result<Self, &'static str>`.
+   Migrations: bbp's `InvIfaceFns` (11 fns) + `PanelFns` (2
+   fns) collapsed from ~80 LoC of field-by-field lookup boilerplate.
+3. **`ueforge::ue::TypedField<T>`** -- `const`-constructible
+   `(offset, T)` pair with `read(obj)` / `write(obj, v)` /
+   `ptr(obj)`. Couples offset and type at declaration.
+   Demonstrated migration in kill_hook.
+4. **`ueforge::rpg::VanillaCache<K, V>`** -- per-key vanilla
+   baseline cache. Migrations: bbp's `MOVEMENT_VANILLA`,
+   `GLOBAL_DATA_VANILLA`, `VANILLA_HC_U32_MASK`. Custom
+   `VanillaTable` struct deleted.
+5. **`ueforge::counter_json!`** + **`hook::install_with_backoff`**
+   + **`worker::spawn`**. Migrations: `bbp/counters.rs::
+   snapshot_json` collapsed to one macro invocation (22 hand-
+   rolled `.load(Ordering::Relaxed)` lines gone); bbp's
+   `install_inv_hook_with_backoff` deleted; bbp's worker
+   thread now uses named-thread `worker::spawn` with logged
+   panic catch.
+6. **`ueforge::hook::LazyFunctionPtr`** + **`ProcessEventHook::
+   install_many`**. Migration: bbp's `fall_hook` `ON_LANDED_
+   UFUNCTION` `AtomicUsize` + manual cache logic + multi-class
+   install loop -> two clean lines.
+7. **RPG framework promotion (Phase 3 wave 2)** -- the big one.
+   `ueforge::rpg::{Skill<E>, find_skill, RpgApplier, Tracker<A>,
+   tab::render, ToggleFns}`. bbp's `tracker.rs` and `tab.rs`
+   reduced to thin shims; bbp now provides only the
+   `SkillEffect` enum, CATALOG content, `GameApplier`
+   dispatcher, `format_effect` text, and per-creature XP
+   bestiary. Everything else is ueforge.
+
+### Net effect
+
+- ueforge gained ~2000 LoC of generic framework surface (with 30
+  unit tests, all passing).
+- bbp lost ~500+ LoC of duplicated infrastructure.
+- Every workspace crate builds clean release. `ueforge::rpg::
+  Tracker` is the canonical RPG system entry point for any UE
+  game now.
+
+### What remains in bbp's rpg/ (game-specific, correctly stays)
+
+- `skills.rs` -- SkillEffect enum + CATALOG content + format_effect
+- `apply.rs` -- per-variant dispatcher (G2 offsets, GObjects walks)
+- `kill_hook.rs` / `fall_hook.rs` -- G2 ProcessEvent trampolines
+- `applier.rs` -- 25-LoC GameApplier impl (the seam to ueforge)
+- `save_slot.rs` -- G2 PlaythroughGuid resolver
+- `world_loader.rs` -- thin wrapper around ueforge::rpg::SlotPoller
+- `xp.rs` -- per-creature XP bestiary
+
+### Next session candidates
+
+- Wave B durability (kovarex P0s on `SlotStore::save` + fsync,
+  `SlotPoller` shutdown, `SkillsTracker` transactional spend --
+  the last is now subsumed by `Tracker<A>`).
+- Wave D doctrine docs (`ueforge/PERFORMANCE.md` and
+  `ueforge/RESEARCH.md` lifts).
+- More opportunistic conversions in bbp/apply.rs to `TypedField`.
+- Phase 3 wave 2 in-game smoke test (the user runs it).
+
+In-game smoke test for the entire dedup is pending. All commits
+are build-clean release; behavior is intended unchanged.
+
 ## Kovarex review of ueforge TODO (2026-05-10)
 
 Second-pass review of `ueforge::rpg` and the framework-as-library
