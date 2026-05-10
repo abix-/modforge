@@ -145,6 +145,19 @@ impl UClass {
         }
     }
 
+    /// Size in bytes of one instance of this class (UE
+    /// `UStruct::PropertiesSize`). The address range
+    /// `[obj_base, obj_base + properties_size)` is the memory
+    /// owned by a UObject of this class.
+    pub fn properties_size(&self) -> u32 {
+        unsafe {
+            (self as *const UClass as *const u8)
+                .add(offsets::ustruct::SIZE)
+                .cast::<u32>()
+                .read_unaligned()
+        }
+    }
+
     pub fn super_class(&self) -> Option<&UClass> {
         unsafe {
             let p: *mut UClass = (self as *const UClass as *const u8)

@@ -76,11 +76,15 @@ struct ScannerUi {
     last_match_count: usize,
     last_sample: Vec<String>,
     last_error: Option<String>,
-    freeze_addr_text: String, // not used yet (input_text not in ui::*); reserved
+    /// Cached inspect-address result. Keyed by addr string so
+    /// each row can render its own "→ class.field" annotation
+    /// after the user clicks Inspect on that row.
+    inspect_results: std::collections::HashMap<String, String>,
+    freeze_addr_text: String, // reserved for future input_text-based ad-hoc freezes
 }
 
 impl ScannerUi {
-    const fn new() -> Self {
+    fn new() -> Self {
         Self {
             ty: TyKind::I32,
             int_value: 0,
@@ -89,15 +93,21 @@ impl ScannerUi {
             last_match_count: 0,
             last_sample: Vec::new(),
             last_error: None,
+            inspect_results: std::collections::HashMap::new(),
             freeze_addr_text: String::new(),
         }
     }
 }
 
-static SCANNER_UI: Mutex<ScannerUi> = Mutex::new(ScannerUi::new());
+use std::sync::OnceLock;
+static SCANNER_UI: OnceLock<Mutex<ScannerUi>> = OnceLock::new();
+
+fn ui_state() -> &'static Mutex<ScannerUi> {
+    SCANNER_UI.get_or_init(|| Mutex::new(ScannerUi::new()))
+}
 
 pub fn render() {
-    let mut s = match SCANNER_UI.lock() {
+    let mut s = match ui_state().lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),
     };
@@ -212,8 +222,24 @@ pub fn render() {
             s.ty.label(),
             s.last_match_count
         ));
-        for addr in s.last_sample.iter().take(20) {
+        // Snapshot the addresses so we don't borrow `s` across
+        // the inspect-button mutation below.
+        let addrs: Vec<String> = s.last_sample.iter().take(20).cloned().collect();
+        for addr in &addrs {
             ui::text(&format!("  {addr}"));
+            ui::same_line();
+            if ui::small_button(&format!("Inspect##{addr}")) {
+                let r = crate::ops::inspect_address(&json!({"addr": addr}));
+                let summary = match r {
+                    Ok(j) => format_inspect(&j),
+                    Err(e) => format!("error: {e}"),
+                };
+                s.inspect_results.insert(addr.clone(), summary);
+            }
+            if let Some(info) = s.inspect_results.get(addr) {
+                ui::same_line();
+                ui::text_disabled(&format!("→ {info}"));
+            }
         }
         if s.last_match_count > 20 {
             ui::text_disabled(&format!(
@@ -321,4 +347,22 @@ fn do_close(s: &mut ScannerUi, sid: u64) {
     s.last_session = None;
     s.last_match_count = 0;
     s.last_sample.clear();
+    s.inspect_results.clear();
+}
+
+/// Compact human summary of an inspect_address result for the
+/// row annotation. e.g. "DataTable.DT_Materials @ +0x48 (size 0x60)".
+fn format_inspect(j: &serde_json::Value) -> String {
+    if j.get("found").and_then(|v| v.as_bool()) != Some(true) {
+        return j
+            .get("note")
+            .and_then(|v| v.as_str())
+            .unwrap_or("not found")
+            .to_string();
+    }
+    let class = j.get("class").and_then(|v| v.as_str()).unwrap_or("?");
+    let inst = j.get("instance_name").and_then(|v| v.as_str()).unwrap_or("?");
+    let off = j.get("offset_in_instance").and_then(|v| v.as_str()).unwrap_or("?");
+    let size = j.get("instance_size").and_then(|v| v.as_u64()).unwrap_or(0);
+    format!("{class}.{inst} @ {off} (instance size 0x{size:X})")
 }

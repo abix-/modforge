@@ -70,6 +70,7 @@ where
         "write_bytes" => write_bytes(args, &resolve),
         "walk_class" => walk_class(args),
         "fname_to_string" => fname_to_string(args),
+        "inspect_address" => inspect_address(args),
         "scan_memory" => crate::scanner::scan_memory(args),
         "scan_rescan" => crate::scanner::scan_rescan(args),
         "scan_session" => crate::scanner::scan_session(args),
@@ -194,6 +195,76 @@ pub fn fname_to_string(args: &Json) -> Result<Json, String> {
     let rt = ue::try_runtime().ok_or("ueforge: ue runtime not initialized")?;
     let s = unsafe { rt.name_resolver.to_string(fname) };
     Ok(serde_json::json!({ "string": s }))
+}
+
+/// Given a raw memory address, find the UObject (if any) that
+/// contains it. Walks GObjects, computes each object's
+/// `[base, base + class.properties_size)` range, returns the
+/// first match.
+///
+/// Args: `{ "addr": "0x<hex>" }`.
+///
+/// Result on hit:
+/// ```json
+/// {
+///   "found": true,
+///   "addr": "0x...",
+///   "instance_addr": "0x...",
+///   "class": "DataTable",
+///   "instance_name": "DT_Materials",
+///   "instance_full_name": "DataTable /Game/Data/DT_Materials...",
+///   "offset_in_instance": "0x48",
+///   "instance_size": 624
+/// }
+/// ```
+///
+/// On miss: `{ "found": false, "addr": "0x..." }`. Misses are
+/// expected for raw allocator buffers, save blobs, and other
+/// non-UObject memory the scanner finds.
+pub fn inspect_address(args: &Json) -> Result<Json, String> {
+    let addr_str = arg_str(args, "addr")?;
+    let target = parse_addr(addr_str)?;
+
+    let rt = ue::try_runtime().ok_or("ueforge: ue runtime not initialized")?;
+    let view = unsafe { ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return Err("gobjects view invalid".into());
+    }
+
+    for obj in view.iter() {
+        let base = obj as *const UObject as usize;
+        let Some(class) = obj.class() else { continue };
+        let size = class.properties_size() as usize;
+        if size == 0 || size > 0x100_0000 {
+            continue; // sanity: skip absurd sizes
+        }
+        if target >= base && target < base + size {
+            return Ok(serde_json::json!({
+                "found": true,
+                "addr": format!("0x{target:X}"),
+                "instance_addr": format!("0x{base:X}"),
+                "instance_addr_selector": format!("addr:0x{base:X}"),
+                "class": class.as_object().name(),
+                "instance_name": obj.name(),
+                "instance_full_name": obj.full_name(),
+                "offset_in_instance": format!("0x{:X}", target - base),
+                "instance_size": size,
+            }));
+        }
+    }
+    Ok(serde_json::json!({
+        "found": false,
+        "addr": format!("0x{target:X}"),
+        "note": "address not within any UObject (raw allocator memory, save blob, or non-UObject struct)",
+    }))
+}
+
+fn parse_addr(s: &str) -> Result<usize, String> {
+    let hex = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
+    usize::from_str_radix(hex, 16).map_err(|e| format!("bad address '{s}': {e}"))
 }
 
 /// Engine portion of the `call` op: resolve the UFunction by
