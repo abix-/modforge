@@ -442,87 +442,177 @@ this saves **hours per day**.
 Even partial hot-reload (e.g. tab-render-only, or "rebuild +
 unload + load fresh state") is a big win.
 
-### Phase A: UE4SS-side research (must complete before designing)
+### Phase A: UE4SS-side research -- COMPLETE 2026-05-10
 
-Read UE4SS source (have it locally). Answer:
+**Verdict: UE4SS hot-reload is fully supported for cpp mods today.
+The mechanism is `Ctrl+R` (default) -> `queue_reinstall_mods()`
+which destroys every CppMod (firing our shim's `uninstall_mod` ->
+`~UespyMod` -> `ueforge_mod_shutdown`), `FreeLibrary`s our DLL,
+re-reads disk, `LoadLibraryExW`s the new DLL, and re-runs the
+full lifecycle. The disk file `main.dll` IS replaced between
+unload and reload, so `cargo deploy install` while the game is
+running just works -- IF our shutdown path properly tears down
+hooks + threads before UE4SS unloads us.**
 
-- **Does UE4SS expose a "reload C++ mod" API today?** Lua mods
-  have a `ReloadMods` console command; the C++ path is unclear.
-  Find: `CppUserModBase::on_unreal_init`, the mod-manager class
-  that loads dlls (`ModManager`?), `FreeLibrary` /
-  `LoadLibraryW` call sites for cpp mods.
-- **What's the lifecycle?** Is there an explicit
-  `on_program_end` / `on_unreal_shutdown` UE4SS calls before
-  unloading? If so we can drive cleanup through it.
-- **How is the cpp mod handle stored?** If UE4SS holds the
-  HMODULE in a list keyed by mod name, we can ask it to unload
-  by name. If it's owned by something else (e.g. dlopen-style),
-  we need a different angle.
-- **What invariants does UE4SS impose on cpp mod load order?**
-  If our hooks depend on UE4SS's own ImGui context / GObjects
-  resolution, the new DLL after reload needs that context to
-  still be live.
-- **Console-command surface**: is there a way to bind a key /
-  type a command into UE4SS's debug console that triggers
-  a single-mod reload without restarting the game?
-- **What does "reload" mean in UE4SS?** Re-run install
-  callbacks only? Or full FreeLibrary + LoadLibraryW round-trip?
-  These have very different requirements.
+Concrete findings (all verified in `c:\code\RE-UE4SS\UE4SS\src`):
 
-### Phase B: ueforge-side requirements (drive from research)
+- **Hot-reload entry point**: `UE4SSProgram::queue_reinstall_mods()`
+  at `src/UE4SSProgram.cpp:1634`.
+  - Triggered by `Ctrl+<HotReloadKey>` (default `R`), gated by
+    `settings_manager.General.EnableHotReloadSystem`
+    (`UE4SS-settings.ini` General section).
+  - Also wired to "Restart All Mods" buttons in the GUI
+    (`GUI.cpp:113`, `LuaDebugger.cpp:3980`).
+  - Per-mod reload exists (`queue_reinstall_mod`) but is typed
+    `LuaMod*` -- cpp mods can only reload as a group.
 
-Once we know UE4SS's reload story, audit what state ueforge +
-the consuming mod hold that must survive (or be cleanly torn
-down) across a reload:
+- **Reload flow** (`UE4SSProgram.cpp:1634-1701`):
+  1. `m_pause_events_processing = true`
+  2. `uninstall_mods()` (`UE4SSProgram.cpp:1556`):
+     - For each cpp mod: `mod->uninstall()` -> calls our shim's
+       exported `uninstall_mod(m_mod)` -> `delete mod` ->
+       `~UespyMod()` -> **calls `ueforge_mod_shutdown()` (our Rust
+       on_shutdown callback runs here)**.
+     - `m_mods.clear()` -> drops `unique_ptr<CppMod>` ->
+       `~CppMod()` (`CppMod.cpp:211`) -> **`FreeLibrary(m_main_dll_module)`**
+       -> our DLL detaches.
+  3. Clears Lua-side keybinds + custom properties.
+  4. `m_pause_events_processing = false`.
+  5. `setup_mods()` -> rescans `mods.txt` + reloads disk (this
+     is where the new `main.dll` gets picked up).
+  6. `start_cpp_mods()` -> calls our shim's `start_mod()` -> new
+     `UespyMod`.
+  7. `fire_unreal_init_for_cpp_mods()` (if engine inited).
+  8. `fire_program_start_for_cpp_mods()` (if program started).
 
-- **ProcessEvent vtable patches.** Every `ProcessEventHook`
-  patches a class's vtable at install. On reload we MUST
-  uninstall (restore the original ProcessEvent slot) BEFORE the
-  DLL is unloaded, otherwise the next call into the patched slot
-  jumps into freed memory and crashes the game.
-  - Today: `ProcessEventHook` returns a handle; we `mem::forget`
-    it. That's wrong for hot-reload -- we'd need to keep the
-    handles in a `static` registry and uninstall them in
-    `on_shutdown`.
-  - All install sites today: kill_hook, fall_hook, inv_hook
-    (via the new `ueforge::inventory::viewport::ViewportHook`).
-- **Worker threads.** `world_loader::SlotPoller` already has a
-  shutdown flag. Need to verify every thread we spawn
-  (`server::spawn`, `worker::spawn`, `Settings::watch`)
-  responds to a stop signal within a bounded time. The DLL
-  cannot be unloaded while any of its code is on a thread's
-  stack.
-- **Static state.** OnceLocks / Mutexes / atomics get cleared
-  when the DLL unloads, but only if no thread is mid-call into
-  the DLL. We must guarantee quiescence before unload.
-- **HTTP server.** `tiny_http` listener thread holds the port.
-  Must `.unblock` + join (or set a stop flag) before unload.
-- **DllMain DLL_PROCESS_DETACH.** The shim's DllMain runs on
-  the unloader thread under loader lock. We can't do
-  game-thread work there; cleanup must be driven by an
-  earlier `on_shutdown` callback.
-- **Idempotent install.** After reload, init runs again. Hooks
-  must either (a) fully uninstall before unload so re-install
-  is fresh, or (b) detect "already patched by a previous
-  generation" and replace cleanly.
+- **Thread context surprise**: `queue_reinstall_mods` runs on
+  the UE4SS event-loop thread (`UE4SS-UpdateThread`), which is
+  **distinct from the game's UE thread**. PE trampolines fire on
+  the game thread. So when our `on_shutdown` runs, the game
+  thread may be mid-trampoline. We can't safely FreeLibrary
+  until in-flight trampolines drain.
 
-### Phase C: design options
+- **Lifecycle hooks the shim already wires**:
+  - `~UespyMod()` -> `ueforge_mod_shutdown()` -- this is our
+    cleanup window. Runs synchronously on UE4SS-UpdateThread
+    BEFORE FreeLibrary.
+  - `start_mod()` -> `new UespyMod()` -> `on_unreal_init` ->
+    `ueforge_mod_unreal_init()`.
 
-Drive from B once A resolves. Sketch:
+- **HMODULE ownership**: each CppMod owns its `m_main_dll_module`
+  via `LoadLibraryExW` with `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+  LOAD_LIBRARY_SEARCH_DEFAULT_DIRS`. `~CppMod()` calls
+  `FreeLibrary` + `RemoveDllDirectory` (cookie tracked).
 
-1. **UE4SS-native reload (best case)** -- if UE4SS exposes a
-   "reload cpp mod by name" API/command, we wire `on_shutdown`
-   to drain everything cleanly + rely on UE4SS's
-   FreeLibrary/Load round-trip. Smallest change.
-2. **ueforge-driven reload via console command** -- ueforge
-   ships a hot-reload op on the existing debug HTTP endpoint;
-   it triggers UE4SS's reload path (or a custom one) for the
-   mod. Adds a build-watch / file-watch helper that triggers
-   the op when the DLL on disk is replaced.
-3. **Out-of-process injector reload** -- separate injector
-   process that asks the mod to quiesce, FreeLibrary's it,
-   waits, LoadLibraryW's the new DLL. Complex, but works
-   without UE4SS support.
+- **Static-lifetime references**: `ClassRef` / `PlayerRef` /
+  cached `&UFunction` pointers all point INTO the game process
+  (UE binary + GObjects), not into our DLL. Reload re-runs init,
+  re-resolves the lookups -- the new DLL's caches start fresh.
+  No carry-over needed.
+
+### Phase B: ueforge-side requirements (concrete from Phase A)
+
+**The cleanup window is `on_shutdown` on the UE4SS-UpdateThread.
+We have ~unbounded time there, but every PE trampoline + every
+spawned thread must be torn down before we return.**
+
+Per-system requirements:
+
+1. **ProcessEvent vtable patches** (BLOCKER -- mishandled = game crash).
+   - All hook handles today are `mem::forget`-ed. Must change.
+   - Install sites: `kill_hook` (1 hook), `fall_hook` (multiple),
+     `inv_hook` via `inventory::viewport::ViewportHook` (1 hook).
+   - On `on_shutdown`:
+     a. Atomically swap each patched vtable slot back to the
+        engine's original (existing `ProcessEventHook::Drop`
+        already does this via `vtable::write_slot` +
+        VirtualProtect).
+     b. After all swaps, **wait for in-flight trampolines to
+        drain**. Use a per-trampoline "active calls"
+        AtomicUsize incremented at trampoline entry, decremented
+        at exit. Spin (with a max timeout, e.g. 500ms) until all
+        return to 0.
+     c. Trampolines should also check a `static SHUTTING_DOWN`
+        AtomicBool and bail to original.call early if set, to
+        speed quiescence.
+   - **New ueforge surface**: a `static HookRegistry` collecting
+     install handles with a `shutdown_all()` method that does
+     swap-back + wait-for-drain. `install_immediate_or_log`
+     should register into it.
+
+2. **Spawned threads** (BLOCKER -- DLL can't unload while any of
+   its code is on a thread's stack).
+   - **`SlotPoller`** already has stop flag, bounded by
+     poll_interval (~1s). g2rpg calls it. ✓
+   - **`server::spawn`** (HTTP listener) -- `tiny_http` Server
+     blocks on `recv`. Need a `WatchHandle`-style
+     `stop()` + a non-blocking listener path or a
+     `Server::unblock`. Currently NO stop signal.
+   - **`worker::spawn`** -- the init worker. Already exits
+     naturally after `init complete; worker thread exiting`.
+     If reload happens during init, we have a small race window;
+     accept the risk for v1 (init is fast).
+   - **`Settings::watch`** -- has `WatchHandle`, drops to stop.
+     Not adopted by g2rpg yet; would be on the cleanup list when
+     adopted.
+   - **PE Queue drain workers** -- the `DrainSite` is drained
+     from PE trampolines, no own thread. After hooks uninstall
+     + drain, no more drains fire. ✓
+
+3. **DllMain DLL_PROCESS_DETACH**: runs on the unloader thread
+   under loader lock. Cannot do game-thread work, cannot block
+   on threads (would deadlock). Cleanup MUST happen in
+   `on_shutdown` (which fires before FreeLibrary).
+
+4. **Static state**: cleared automatically when the DLL unloads.
+   Only matters that no thread is mid-call. The previous two
+   bullets ensure this.
+
+5. **Idempotent install**: not strictly required if (1)+(2)
+   guarantee full cleanup, but defense-in-depth: every `install`
+   path should be a no-op if already installed.
+
+### Phase B implementation tasks (in order)
+
+- [ ] B1: Add `ueforge::hook::HookRegistry` + `shutdown_all()`.
+  Track `ProcessEventHook` handles registered via
+  `install_immediate_or_log` (and a new `register_for_shutdown`
+  for hooks installed with backoff).
+- [ ] B2: Add a `SHUTTING_DOWN: AtomicBool` flag + an
+  `active_calls: AtomicUsize` per `ProcessEventHook`. Trampoline
+  wrapper increments/decrements. Drop waits for drain (max 500ms)
+  before returning.
+- [ ] B3: Add `server::SpawnHandle` with `stop()`; route the
+  HTTP listener through it. Adopt in g2rpg's `debug::spawn`.
+- [ ] B4: Wire ueforge's `on_shutdown` macro path (the existing
+  `ueforge_mod_shutdown` C entry) to call:
+  `hook::HookRegistry::shutdown_all()` + game's
+  `MOD_INFO.on_shutdown` callback. Game callback already exists
+  and runs custom cleanup (g2rpg stops `world_loader`).
+- [ ] B5: g2rpg-side: stop using `mem::forget` on hook handles;
+  use the registry instead.
+
+### Phase C: design -- LOCKED IN
+
+UE4SS-native reload via Ctrl+R is the answer (Phase A confirmed).
+Workflow: edit code -> `cargo deploy install` (file replace
+while game runs) -> alt-tab to game -> Ctrl+R -> new DLL active
+in ~1-2s. The `setup_mods()` step on UE4SS's side reads the new
+`main.dll` from disk, so deploy + Ctrl+R is the complete cycle.
+
+**No new ueforge UI / IPC surface needed for v1.** Phase B
+implementation is the entire scope.
+
+Optional Phase B+: ueforge ships a `cargo deploy install --hot`
+that copies the DLL atomically + writes a sentinel file the mod
+watches; on sentinel change the mod could trigger Ctrl+R
+programmatically (UE4SS's `register_keydown_event` -- but
+synthesizing keydown from a mod is a side trip; defer).
+
+Optional Phase B++: drive Ctrl+R from the existing HTTP debug
+endpoint (a `reload` op that calls
+`UE4SSProgram::queue_reinstall_mods` directly via UE4SS's exposed
+API). Smaller side trip. Defer.
 
 ### Phase D: acceptance criteria
 
@@ -537,31 +627,29 @@ For the first usable slice:
 - ImGui tab still renders.
 - HTTP debug endpoint reachable on the same port.
 
-### Open questions (track during research)
+### Open questions resolved (Phase A)
 
-- Are static-lifetime references in our code (`PlayerRef`,
-  `ClassRef`, `&'static UFunction` caches) still valid after
-  the GObjects view changes? They cache addresses INTO the
-  game process, not into our DLL, so they should survive --
-  but verify.
-- Does Rust's panic infrastructure tolerate FreeLibrary while
-  a panic is unwinding on another thread? Almost certainly
-  no; we need a "panicking flag" check before initiating
-  reload.
-- Does our `function_table!` macro state survive across
-  reload? It's a `static` per call site, so it gets re-init
-  on the new DLL load. Old DLL's table goes away with the
-  old `.data` segment.
+- ~~Static-lifetime references after reload~~: They point INTO
+  the game process (UE binary + GObjects), not the DLL. Survive
+  re-resolves on new DLL's first init. ✓
+- ~~Rust panic + FreeLibrary~~: Phase B addresses via active-call
+  counter. If a trampoline panics, the unwind runs to the
+  trampoline boundary (the ProcessEventHook layer); the
+  decrement-on-exit happens via Drop. We're fine as long as
+  the hook layer's catch_unwind is in place (it is).
+- ~~`function_table!` macro state~~: pure static per call site,
+  re-inits on new DLL load. ✓ (no carry-over needed)
 
 ### Sequence
 
-1. Phase A research (read UE4SS source) -- next session.
-2. Update this todo with concrete answers.
-3. Phase B audit + concrete cleanup tasks.
-4. Phase C: pick an approach.
-5. Phase D: implement, run the test scenario, ship.
+1. ~~Phase A research~~ -- DONE 2026-05-10.
+2. ~~Update todo with concrete answers~~ -- DONE 2026-05-10.
+3. Phase B implementation (B1-B5 above) -- next session.
+4. ~~Phase C: pick an approach~~ -- DONE (UE4SS-native Ctrl+R).
+5. Phase D: implement + smoke-test.
 
-This is worth a serious chunk of time. ROI is huge.
+ROI: 60-180s -> ~5s per iteration. Hours per day on tuning
+work. Very high.
 
 ---
 
