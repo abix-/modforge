@@ -2,47 +2,35 @@
 //!
 //! Every RPG mod's `/debug` dispatcher needs the same five
 //! arms: `skill_toggle`, `skill_spend`, `skill_refund`,
-//! `reload_slot`, `set_skill_points`. The arm bodies are pure
-//! glue between [`crate::args`], the consumer's
-//! `Tracker<A>` + `DisabledSkills`, and a JSON result envelope
-//! -- nothing game-specific.
-//!
-//! Game crates register all five into the workspace
-//! [`ueforge::ops::OP_REGISTRY`] in one call:
+//! `reload_slot`, `set_skill_points`. Game crates register all
+//! five into [`crate::ops::OP_REGISTRY`] in one call:
 //!
 //! ```ignore
-//! ueforge::rpg::ops::register(&TRACKER, &DISABLED_SKILLS);
+//! ueforge::rpg::ops::register(&TRACKER);
 //! ```
 //!
 //! After that, `OP_REGISTRY.dispatch(op, args)` covers them
 //! alongside every other registered op.
-//!
-//! Game-specific ops (kill simulation, status-effect application,
-//! whatever) stay in the game crate; the game registers those
-//! into `OP_REGISTRY` directly.
 
 use serde_json::Value as Json;
 
 use crate::args::{arg_bool, arg_str, arg_u64};
 use crate::ops::{OP_REGISTRY, OpDef};
-use super::{DisabledSkills, RpgApplier, Tracker};
+use super::Tracker;
 
 /// Register the standard RPG op set against the workspace
-/// [`OP_REGISTRY`] with the game's static `Tracker` + `DisabledSkills`
-/// captured. Call once at worker init.
+/// [`OP_REGISTRY`] with the game's static `Tracker` captured.
+/// Call once at worker init.
 ///
 /// Registers: `skill_toggle`, `skill_spend`, `skill_refund`,
 /// `reload_slot`, `set_skill_points`.
-pub fn register<A: RpgApplier>(
-    tracker: &'static Tracker<A>,
-    disabled: &'static DisabledSkills,
-) {
+pub fn register(tracker: &'static Tracker) {
     OP_REGISTRY.register_many([
         OpDef::new(
             "skill_toggle",
             "Enable / disable a skill without changing its level",
             "{id: str, enabled: bool}",
-            move |args| skill_toggle(tracker, disabled, args),
+            move |args| skill_toggle(tracker, args),
         ),
         OpDef::new(
             "skill_spend",
@@ -75,30 +63,24 @@ pub fn register<A: RpgApplier>(
 /// disabled-skills set and re-applies the skill so the change
 /// is immediate. Returns `{ id, enabled }` reflecting the
 /// post-toggle state.
-pub fn skill_toggle<A: RpgApplier>(
-    tracker: &Tracker<A>,
-    disabled: &DisabledSkills,
-    args: &Json,
-) -> Result<Json, String> {
+pub fn skill_toggle(tracker: &Tracker, args: &Json) -> Result<Json, String> {
     let id = arg_str(args, "id")?;
     let enabled = arg_bool(args, "enabled")?;
-    let skill = tracker.catalog().def(id)
+    let skill = tracker
+        .catalog()
+        .def(id)
         .ok_or_else(|| format!("unknown skill '{id}'"))?;
-    let now_disabled = disabled.set(skill.id, !enabled);
+    let now_disabled = tracker.disabled_skills().set(skill.id, !enabled);
     tracker.reapply_one(skill.id);
     Ok(serde_json::json!({"id": id, "enabled": !now_disabled}))
 }
 
 /// `op: "skill_spend"`, `args: { id, count }`. `count`
 /// defaults to 1. Returns `{ id, requested, spent }`.
-pub fn skill_spend<A: RpgApplier>(
-    tracker: &Tracker<A>,
-    args: &Json,
-) -> Result<Json, String> {
+pub fn skill_spend(tracker: &Tracker, args: &Json) -> Result<Json, String> {
     let id = arg_str(args, "id")?;
     let count = arg_u64(args, "count", Some(1))?;
-    let count = u32::try_from(count)
-        .map_err(|_| format!("count {count} > u32::MAX"))?;
+    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
     if tracker.catalog().def(id).is_none() {
         return Err(format!("unknown skill '{id}'"));
     }
@@ -108,14 +90,10 @@ pub fn skill_spend<A: RpgApplier>(
 
 /// `op: "skill_refund"`, `args: { id, count }`. `count`
 /// defaults to 1. Returns `{ id, requested, refunded }`.
-pub fn skill_refund<A: RpgApplier>(
-    tracker: &Tracker<A>,
-    args: &Json,
-) -> Result<Json, String> {
+pub fn skill_refund(tracker: &Tracker, args: &Json) -> Result<Json, String> {
     let id = arg_str(args, "id")?;
     let count = arg_u64(args, "count", Some(1))?;
-    let count = u32::try_from(count)
-        .map_err(|_| format!("count {count} > u32::MAX"))?;
+    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
     if tracker.catalog().def(id).is_none() {
         return Err(format!("unknown skill '{id}'"));
     }
@@ -124,10 +102,8 @@ pub fn skill_refund<A: RpgApplier>(
 }
 
 /// `op: "reload_slot"`. Re-applies every catalog skill against
-/// the current state. Returns `{ reapplied: true }` on success
-/// or `Err("no slot active; cannot reload")` when no slot is
-/// loaded.
-pub fn reload_slot<A: RpgApplier>(tracker: &Tracker<A>) -> Result<Json, String> {
+/// the current state.
+pub fn reload_slot(tracker: &Tracker) -> Result<Json, String> {
     if tracker.reapply_all() {
         Ok(serde_json::json!({"reapplied": true}))
     } else {
@@ -137,14 +113,9 @@ pub fn reload_slot<A: RpgApplier>(tracker: &Tracker<A>) -> Result<Json, String> 
 
 /// `op: "set_skill_points"`, `args: { count }`. Grants `count`
 /// skill points without earning them. For dev / testing.
-/// Returns `{ granted }`.
-pub fn set_skill_points<A: RpgApplier>(
-    tracker: &Tracker<A>,
-    args: &Json,
-) -> Result<Json, String> {
+pub fn set_skill_points(tracker: &Tracker, args: &Json) -> Result<Json, String> {
     let count = arg_u64(args, "count", None)?;
-    let count = u32::try_from(count)
-        .map_err(|_| format!("count {count} > u32::MAX"))?;
+    let count = u32::try_from(count).map_err(|_| format!("count {count} > u32::MAX"))?;
     if !tracker.debug_grant_skill_points(count) {
         return Err("no slot active".into());
     }

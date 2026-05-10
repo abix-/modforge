@@ -20,7 +20,7 @@
 
 use crate::ui;
 
-use super::{RpgApplier, Tracker};
+use super::{SkillDef, Tracker};
 
 /// Callbacks for the per-skill on/off toggle. Pass `None` to omit
 /// the toggle column.
@@ -31,7 +31,7 @@ pub struct ToggleFns {
 
 /// Render the full RPG tab body. Call from a `Tab { render: ... }`
 /// callback.
-pub fn render<A: RpgApplier>(tracker: &'static Tracker<A>, toggle: Option<&ToggleFns>) {
+pub fn render(tracker: &'static Tracker, toggle: Option<&ToggleFns>) {
     if tracker.current_slot().is_none() {
         ui::text("No save loaded.");
         ui::text_disabled("Pick a save from the main menu to begin.");
@@ -84,10 +84,10 @@ pub fn render<A: RpgApplier>(tracker: &'static Tracker<A>, toggle: Option<&Toggl
     }
 }
 
-fn render_row<A: RpgApplier>(
-    tracker: &'static Tracker<A>,
+fn render_row(
+    tracker: &'static Tracker,
     toggle: Option<&ToggleFns>,
-    skill: &super::SkillDef<A::Effect>,
+    skill: &SkillDef,
     skill_points: u32,
 ) {
     let id = skill.id;
@@ -158,16 +158,7 @@ fn render_row<A: RpgApplier>(
     ui::text(&line);
 }
 
-/// Helper that calls the Applier's format_effect under the tracker
-/// lock and returns the string. Threading the applier through
-/// requires a method on Tracker since the Applier lives inside the
-/// inner `Mutex`.
-fn format_effect<A: RpgApplier>(
-    tracker: &Tracker<A>,
-    skill: &super::SkillDef<A::Effect>,
-    level: u32,
-) -> String {
-    tracker
-        .format_effect(skill, level)
-        .unwrap_or_else(String::new)
+/// Helper that delegates to the catalog row's EffectDef format.
+fn format_effect(tracker: &Tracker, skill: &SkillDef, level: u32) -> String {
+    tracker.format_effect(skill, level)
 }

@@ -13,8 +13,8 @@
 // PlayerState that the kill hook bumps; flushes to disk after each
 // change.
 
-pub mod applier;
 pub mod apply;
+pub mod effects;
 pub mod fall_hook;
 pub mod kill_hook;
 pub mod save_slot;

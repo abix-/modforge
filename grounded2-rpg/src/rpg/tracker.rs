@@ -2,12 +2,12 @@
 // exposes the g2rpg-side surface that the rest of the mod calls
 // (kill_hook, world_loader, debug, tab). Every skill-state
 // operation routes through ueforge::rpg::Tracker, which owns
-// state, persistence, and the apply dispatch via GameApplier.
+// state, persistence, and the apply dispatch (via the EffectDef
+// on each catalog row -- no game-side applier needed any more).
 
-use ueforge::rpg::{SkillsState, Tracker};
+use ueforge::rpg::{SkillDef, SkillsState, Tracker};
 
-use crate::rpg::applier::GameApplier;
-use crate::rpg::skills::{self, CATALOG};
+use crate::rpg::skills::CATALOG;
 use crate::rpg::xp::CURVE;
 use crate::settings::Settings;
 
@@ -17,11 +17,11 @@ pub enum KillSource {
     Buggy,
 }
 
-pub static TRACKER: Tracker<GameApplier> = Tracker::new(CATALOG, CURVE, "saves");
+pub static TRACKER: Tracker = Tracker::new(&CATALOG, CURVE, "saves");
 
 pub fn activate_slot(slot: String, settings: Settings) {
     cache_buggy_kill_multiplier(settings.rpg.buggy_kill_xp_multiplier.max(0.0));
-    TRACKER.activate_slot(slot, GameApplier { settings });
+    TRACKER.activate_slot(slot);
 }
 
 pub fn deactivate_slot() {
@@ -36,19 +36,19 @@ pub fn with_state<R>(f: impl FnOnce(&SkillsState) -> R) -> Option<R> {
     TRACKER.with_state(f)
 }
 
-pub fn spend_skill_point(skill: &skills::SkillDef) -> bool {
+pub fn spend_skill_point(skill: &SkillDef) -> bool {
     TRACKER.spend_skill_points(skill.id, 1) > 0
 }
 
-pub fn spend_skill_points(skill: &skills::SkillDef, count: u32) -> u32 {
+pub fn spend_skill_points(skill: &SkillDef, count: u32) -> u32 {
     TRACKER.spend_skill_points(skill.id, count)
 }
 
-pub fn refund_skill_point(skill: &skills::SkillDef) -> bool {
+pub fn refund_skill_point(skill: &SkillDef) -> bool {
     TRACKER.refund_skill_points(skill.id, 1) > 0
 }
 
-pub fn refund_skill_points(skill: &skills::SkillDef, count: u32) -> u32 {
+pub fn refund_skill_points(skill: &SkillDef, count: u32) -> u32 {
     TRACKER.refund_skill_points(skill.id, count)
 }
 

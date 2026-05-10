@@ -1,39 +1,45 @@
 //! Generic RPG tracker. Owns slot binding, in-memory state,
-//! Applier instance, persistence. Drives every state-changing
-//! operation (spend, refund, record_xp, slot activate/deactivate)
-//! transactionally with disk save.
-//!
-//! Game crates instantiate one `static`:
+//! disabled-skills toggle set, persistence. Drives every state-
+//! changing operation (spend, refund, record_xp, slot
+//! activate/deactivate) transactionally with disk save.
 //!
 //! ```ignore
-//! static TRACKER: ueforge::rpg::Tracker<GameApplier> =
-//!     ueforge::rpg::Tracker::new(CATALOG, ueforge::rpg::Curve::new(100.0, 1.8, 50), "saves");
+//! static TRACKER: ueforge::rpg::Tracker = ueforge::rpg::Tracker::new(
+//!     &CATALOG,                                  // &'static SkillRegistry
+//!     ueforge::rpg::Curve::new(100.0, 1.8, 50),
+//!     "saves",
+//! );
 //!
 //! // From the slot poller:
-//! TRACKER.activate_slot(playthrough_guid, GameApplier { settings });
+//! TRACKER.activate_slot(playthrough_guid);
 //!
 //! // From the kill hook:
 //! TRACKER.record_xp(base_xp);
 //!
 //! // From the ImGui tab:
-//! TRACKER.spend_skill_points(skill, 1);
+//! TRACKER.spend_skill_points("attack_damage", 1);
 //! ```
+//!
+//! No `<E>` type parameter, no `RpgApplier` trait. Each catalog
+//! row's `EffectDef` carries a `&'static dyn Effect` that knows
+//! how to apply itself. The tracker just calls
+//! `skill.effect.apply(level, max_level)` on every state change.
 
 use parking_lot::Mutex;
 
-use super::{Curve, RpgApplier, SkillDef, SkillRegistry, SkillsState, SlotStore};
+use super::{Curve, DisabledSkills, SkillDef, SkillRegistry, SkillsState, SlotStore};
 
-pub struct Tracker<A: RpgApplier> {
-    inner: Mutex<Option<TrackerInner<A>>>,
+pub struct Tracker {
+    inner: Mutex<Option<TrackerInner>>,
     store: SlotStore<SkillsState>,
-    catalog: SkillRegistry<A::Effect>,
+    catalog: &'static SkillRegistry,
     curve: Curve,
+    disabled: DisabledSkills,
 }
 
-struct TrackerInner<A: RpgApplier> {
+struct TrackerInner {
     slot: String,
     state: SkillsState,
-    applier: A,
 }
 
 /// What happened to the player's level on a record_xp call. Use by
@@ -53,9 +59,9 @@ impl XpResult {
     }
 }
 
-impl<A: RpgApplier> Tracker<A> {
+impl Tracker {
     pub const fn new(
-        catalog: SkillRegistry<A::Effect>,
+        catalog: &'static SkillRegistry,
         curve: Curve,
         store_subdir: &'static str,
     ) -> Self {
@@ -64,23 +70,29 @@ impl<A: RpgApplier> Tracker<A> {
             store: SlotStore::new(store_subdir),
             catalog,
             curve,
+            disabled: DisabledSkills::new(),
         }
     }
 
     /// Borrow the skill registry. Use `.def(id)` for canonical
     /// lookup; `.entries()` for iteration.
-    pub fn catalog(&self) -> &SkillRegistry<A::Effect> {
-        &self.catalog
+    pub fn catalog(&self) -> &'static SkillRegistry {
+        self.catalog
     }
 
     pub fn curve(&self) -> Curve {
         self.curve
     }
 
-    /// Bind to `slot` and load any prior state. Calls
-    /// `applier.apply_all` on the loaded state so the world
-    /// reflects current skill levels before the player resumes.
-    pub fn activate_slot(&self, slot: String, applier: A) {
+    /// Borrow the disabled-skills toggle set.
+    pub fn disabled_skills(&self) -> &DisabledSkills {
+        &self.disabled
+    }
+
+    /// Bind to `slot` and load any prior state. Re-applies every
+    /// catalog skill so the world reflects current levels before
+    /// the player resumes.
+    pub fn activate_slot(&self, slot: String) {
         let mut state = self.store.load(&slot);
         let derived = self.curve.level_for_xp(state.xp);
         if state.level < derived {
@@ -93,12 +105,10 @@ impl<A: RpgApplier> Tracker<A> {
             state.xp,
             state.skill_points,
         );
-        applier.apply_all(&state, self.catalog.entries());
-        *self.inner.lock() = Some(TrackerInner {
-            slot,
-            state,
-            applier,
-        });
+        for skill in self.catalog.iter() {
+            self.apply_one_unlocked(skill, &state);
+        }
+        *self.inner.lock() = Some(TrackerInner { slot, state });
     }
 
     /// Most recent save error from the underlying [`SlotStore`],
@@ -124,17 +134,22 @@ impl<A: RpgApplier> Tracker<A> {
         self.inner.lock().as_ref().map(|t| f(&t.state))
     }
 
-    /// Format the effect text for a skill at `level` via the
-    /// Applier. None if no slot is active.
-    pub fn format_effect(
-        &self,
-        skill: &SkillDef<A::Effect>,
-        level: u32,
-    ) -> Option<String> {
-        self.inner
-            .lock()
-            .as_ref()
-            .map(|t| t.applier.format_effect(skill, level))
+    /// Format the effect text for a skill at `level`. Doesn't
+    /// require an active slot (catalog row alone is enough).
+    pub fn format_effect(&self, skill: &SkillDef, level: u32) -> String {
+        skill.effect.format(level, skill.max_level)
+    }
+
+    /// Apply one skill against a borrowed state, honoring the
+    /// disabled toggle (treats disabled as level 0).
+    fn apply_one_unlocked(&self, skill: &SkillDef, state: &SkillsState) {
+        let raw_level = state.level_of(skill.id);
+        let effective_level = if self.disabled.is_disabled(skill.id) {
+            0
+        } else {
+            raw_level
+        };
+        skill.effect.apply(effective_level, skill.max_level);
     }
 
     /// Spend up to `count` points on `skill_id`. Returns the
@@ -143,9 +158,9 @@ impl<A: RpgApplier> Tracker<A> {
     ///
     /// Save-first, apply-second. If the disk save fails (full disk,
     /// EACCES, etc.) the in-memory mutation is rolled back and
-    /// `apply_skill` is NOT called -- so the session reflects what
-    /// is actually on disk. Returns 0 on save failure; the caller
-    /// can read [`Self::last_save_error`] for the cause.
+    /// `apply` is NOT called -- so the session reflects what is
+    /// actually on disk. Returns 0 on save failure; the caller can
+    /// read [`Self::last_save_error`] for the cause.
     pub fn spend_skill_points(&self, skill_id: &str, count: u32) -> u32 {
         let mut g = self.inner.lock();
         let Some(t) = g.as_mut() else {
@@ -168,14 +183,11 @@ impl<A: RpgApplier> Tracker<A> {
         if spend == 0 {
             return 0;
         }
-        // Stage: snapshot rollback values, apply mutation in-memory.
         let prev_skill_points = t.state.skill_points;
         let prev_level_entry = t.state.skill_levels.get(skill_id).copied();
         t.state.skill_points -= spend;
         let new_level = cur + spend;
         t.state.skill_levels.insert(skill_id.to_string(), new_level);
-        // Save first; on failure, roll back state so next session
-        // and this session agree.
         if let Err(e) = self.store.save(&t.slot, &t.state) {
             t.state.skill_points = prev_skill_points;
             match prev_level_entry {
@@ -193,8 +205,7 @@ impl<A: RpgApplier> Tracker<A> {
             );
             return 0;
         }
-        // Save committed; safe to apply to the live world.
-        t.applier.apply_skill(&t.state, skill);
+        self.apply_one_unlocked(skill, &t.state);
         crate::log!(
             "rpg/tracker: spent {} on {}: level {} -> {} ({} points left)",
             spend,
@@ -226,7 +237,6 @@ impl<A: RpgApplier> Tracker<A> {
         }
         let refund = count.min(cur);
         let new_level = cur - refund;
-        // Stage rollback values.
         let prev_skill_points = t.state.skill_points;
         let prev_level_entry = t.state.skill_levels.get(skill_id).copied();
         if new_level == 0 {
@@ -254,7 +264,7 @@ impl<A: RpgApplier> Tracker<A> {
             );
             return 0;
         }
-        t.applier.apply_skill(&t.state, skill);
+        self.apply_one_unlocked(skill, &t.state);
         crate::log!(
             "rpg/tracker: refunded {} from {}: level {} -> {} ({} points)",
             refund,
@@ -275,7 +285,7 @@ impl<A: RpgApplier> Tracker<A> {
         let Some(skill) = self.catalog.def(skill_id) else {
             return;
         };
-        t.applier.apply_skill(&t.state, skill);
+        self.apply_one_unlocked(skill, &t.state);
     }
 
     /// Re-apply every skill in the catalog. Used by the debug
@@ -283,7 +293,9 @@ impl<A: RpgApplier> Tracker<A> {
     pub fn reapply_all(&self) -> bool {
         let g = self.inner.lock();
         let Some(t) = g.as_ref() else { return false };
-        t.applier.apply_all(&t.state, self.catalog.entries());
+        for skill in self.catalog.iter() {
+            self.apply_one_unlocked(skill, &t.state);
+        }
         true
     }
 
@@ -307,7 +319,6 @@ impl<A: RpgApplier> Tracker<A> {
             t.state.skill_points = t.state.skill_points.saturating_add(points_gained);
         }
         if let Err(e) = self.store.save(&t.slot, &t.state) {
-            // Roll back so XP doesn't drift away from disk.
             t.state.xp = prev_xp;
             t.state.level = old_level;
             t.state.skill_points = prev_skill_points;

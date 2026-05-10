@@ -78,28 +78,22 @@ pub struct CatalogEntry {
     pub effect_kind: &'static str,
 }
 
-/// Map a game's `[SkillDef<E>]` slice into a serializable
-/// `Vec<CatalogEntry>`. The `kind_fn` callback produces the
-/// effect-kind string per row (game-specific match on the enum).
+/// Map a game's `[SkillDef]` slice into a serializable
+/// `Vec<CatalogEntry>`. The `effect_kind` field is taken from
+/// each row's [`crate::rpg::EffectDef::kind`] tag -- no
+/// game-specific dispatch needed.
 ///
 /// ```ignore
-/// let view = ueforge::debug::catalog_view(skills::CATALOG.entries(), |e| match e {
-///     SkillEffect::Standard(_) => "Standard",
-///     SkillEffect::BackpackSlots { .. } => "BackpackSlots",
-///     // ...
-/// });
+/// let view = ueforge::debug::catalog_view(skills::CATALOG.entries());
 /// ```
-pub fn catalog_view<E>(
-    catalog: &'static [SkillDef<E>],
-    kind_fn: impl Fn(&E) -> &'static str,
-) -> Vec<CatalogEntry> {
+pub fn catalog_view(catalog: &'static [SkillDef]) -> Vec<CatalogEntry> {
     catalog
         .iter()
         .map(|s| CatalogEntry {
             id: s.id,
             display_name: s.display_name,
             max_level: s.max_level,
-            effect_kind: kind_fn(&s.effect),
+            effect_kind: s.effect.kind,
         })
         .collect()
 }

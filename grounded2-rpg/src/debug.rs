@@ -104,7 +104,7 @@ fn register_ops() {
         PE_TIMEOUT_HINT,
         ueforge::selector::resolve,
     );
-    ueforge::rpg::ops::register(&tracker::TRACKER, &apply::DISABLED_SKILLS);
+    ueforge::rpg::ops::register(&tracker::TRACKER);
     // Lift: simulate_add_health + simulate_set_current_health
     // are framework-shipped. g2rpg only declares the binding;
     // ueforge::rpg::health::register pushes both ops with the
@@ -512,7 +512,7 @@ fn build_snapshot() -> Snapshot {
             .collect()
     });
 
-    let catalog = ueforge::debug::catalog_view(skills::CATALOG.entries(), skill_effect_kind);
+    let catalog = ueforge::debug::catalog_view(skills::CATALOG.entries());
 
     let settings = world_loader::loaded_settings()
         .map(|s| SettingsView {
@@ -543,24 +543,6 @@ fn build_snapshot() -> Snapshot {
         settings,
         damage_ring: DAMAGE_RING.snapshot(),
         process: ProcessSnapshot::collect(crate::counters::snapshot_json(), 40),
-    }
-}
-
-fn skill_effect_kind(e: &skills::SkillEffect) -> &'static str {
-    use skills::SkillEffect::*;
-    use ueforge::rpg::std_effect::StandardEffect as S;
-    match e {
-        Standard(S::PlayerFloat { .. }) => "Standard::PlayerFloat",
-        Standard(S::PlayerSubcomponentFloat { .. }) => "Standard::PlayerSubcomponentFloat",
-        Standard(S::PlayerSubcomponentAdditive { .. }) => "Standard::PlayerSubcomponentAdditive",
-        Standard(S::PlayerSubcomponentU32Mask { .. }) => "Standard::PlayerSubcomponentU32Mask",
-        Standard(S::PlayerSubcomponentMultiply { .. }) => "Standard::PlayerSubcomponentMultiply",
-        Standard(S::ClassFieldsMultiply { .. }) => "Standard::ClassFieldsMultiply",
-        Standard(S::Runtime { .. }) => "Standard::Runtime",
-        Standard(S::StatusEffect { .. }) => "Standard::StatusEffect",
-        BackpackSlots { .. } => "BackpackSlots",
-        SurvivalDrain { .. } => "SurvivalDrain",
-        PlayerFallDamageReduction { .. } => "PlayerFallDamageReduction",
     }
 }
 

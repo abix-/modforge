@@ -189,8 +189,8 @@ Instance + Controller, and whether adding a new variant is a
 
 | Subject | Def | Registry | Instance | Controller | Score | Gap |
 |---|---|---|---|---|---|---|
-| **Skills** | `SkillDef<E>` (`ueforge/src/rpg/skill.rs`) | `SkillRegistry<E>` wrapper (`SkillRegistry::new(&[SkillDef { ... }])`); per-mod `static CATALOG: SkillRegistry<MyEffect>` | `SkillsState.skill_levels[id]` | `Tracker<A>::apply_skill` via `RpgApplier` | **100% shape, partial composition** | Lookup via `CATALOG.def(id)`. The `<E>` parameter is going away in the Effects refactor (skills will carry an `EffectDef` directly, no per-game enum). See "Composition model" + "Effects" row. |
-| **Effects** | `EffectDef { kind, imp: &'static dyn Effect }` (`ueforge/src/rpg/effect.rs`, planned) | Per-mod registry of `static` Effect instances declared by the game; framework ships standard Effect types (PlayerFloat, SubcomponentMultiply, ...) | one `&'static dyn Effect` per registered operation | `Effect::apply(progress)` / `Effect::format(progress, max_level)` | **planned** | Replaces today's `StandardEffect` enum + per-game `SkillEffect` enum. One Def shape across framework + game. New game-specific operation = one type + one impl + one static. See "Composition model" above for the philosophy. |
+| **Skills** | `SkillDef { id, display_name, max_level, effect: EffectDef }` (`ueforge/src/rpg/skill.rs`) | `SkillRegistry` wrapper (`SkillRegistry::new(&[SkillDef { ... }])`); per-mod `static CATALOG: SkillRegistry` | `SkillsState.skill_levels[id]` | `Tracker::apply_one_unlocked` -> `effect.apply(level, max)` | **100%** | No type parameters. Lookup via `CATALOG.def(id)`; iteration via `CATALOG.iter()` or `for s in &CATALOG`. Each row's `EffectDef` does the work; no game-side dispatch match. |
+| **Effects** | `EffectDef { kind, imp: &'static dyn Effect }` (`ueforge/src/rpg/effect.rs`) | Per-mod static Effect instances; framework ships standard Effect types (PlayerFloatEffect, SubcomponentMultiplyEffect, SubcomponentAdditiveEffect, ClassFieldsMultiplyEffect, RuntimeEffect, StatusEffectApply, etc.); game-specific Effects implement `Effect` trait | one `&'static dyn Effect` per registered operation | `Effect::apply(level, max_level)` + `Effect::format(level, max_level)` | **100%** | StandardEffect enum + per-game SkillEffect enum collapsed into one Def shape. New game-specific operation = one type + one impl + one static + one catalog row. g2rpg's `apply_skill` match arm is gone; tracker iterates the catalog and calls `effect.apply(...)` directly. |
 | **Creatures** | `CreatureDef { class_name, base_xp }` (`ueforge/src/rpg/xp.rs`) | `CreatureRegistry { entries: &[CreatureDef], default_xp: u32 }`; per-mod `static CREATURES: CreatureRegistry` | per-kill XP value | `CreatureRegistry::lookup` | **100%** | Lookup via `CREATURES.def(class_name)` (full row) or `CREATURES.lookup(class_name)` (XP value with default fallback). Future fields (drop tables, level, faction) extend the row. |
 | **Tabs** | `Tab { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [Tab]` (bare slice -- documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Tiny but the pattern is exact. |
 | **Buildings** (planned, not built) | `Building<S, C>` design in [todo.md](../../docs/todo.md) | `BuildingsCatalog` | `Instance<S>` per placed | `BuildingsTracker::tick` + `BuildingSpawner` trait | **designed-100%** | Lock the naming to the contract above before implementation. |
@@ -262,7 +262,7 @@ Today's known lift candidates (see [todo.md](../../docs/todo.md)
 When the second consumer asks for the same shape, lift before
 duplicating.
 
-## Effects refactor (planned -- collapses StandardEffect + per-game SkillEffect)
+## Effects refactor (DONE 2026-05-10 -- collapsed StandardEffect + per-game SkillEffect)
 
 Today there are two parallel "effect" types:
 
@@ -297,9 +297,34 @@ Benefit: one Def shape across framework + game; adding a new
 operation is one type + one static + one catalog row. Game-side
 match dispatch goes away.
 
-Status: planned, gated on this doc landing first. See
-[`todo.md`](../../docs/todo.md) "Effects refactor" for the
-execution plan.
+Status: **shipped 2026-05-10.** All five phases landed in one
+commit -- trait + per-variant struct impls + dropped `<E>` from
+SkillDef/SkillRegistry/Tracker + deleted RpgApplier + g2rpg
+migrated. Workspace check + 66 tests green.
+
+What changed concretely:
+
+- `ueforge::rpg::effect` -- new module with `Effect` trait,
+  `EffectDef` struct, and 8 standard Effect types
+  (`PlayerFloatEffect`, `SubcomponentFloatEffect`,
+  `SubcomponentAdditiveEffect`, `SubcomponentU32MaskEffect`,
+  `SubcomponentMultiplyEffect`, `ClassFieldsMultiplyEffect`,
+  `RuntimeEffect`, `StatusEffectApply`).
+- `ueforge::rpg::std_effect` (the old enum) -- DELETED.
+- `ueforge::rpg::applier` (the old `RpgApplier` trait) -- DELETED.
+- `SkillDef` / `SkillRegistry` / `Tracker` -- type parameters
+  dropped.
+- `Tracker` now owns `DisabledSkills` internally; toggle ops
+  drive it directly.
+- g2rpg's `SkillEffect` enum -- DELETED. Three game-specific
+  Effects (`BackpackSlotsEffect`, `SurvivalDrainEffect`,
+  `PlayerFallDamageReductionEffect`) live in
+  `grounded2-rpg::rpg::effects`; the catalog rows reference them
+  the same way they reference framework Effects.
+- g2rpg's `applier.rs` (the GameApplier) -- DELETED.
+- g2rpg's `apply.rs` -- the giant `apply_skill` dispatch match
+  is GONE. The file now holds only shared helpers
+  (capture_vanilla, class refs, vanilla caches, CDO walkers).
 
 ## How to add a new compliant subject
 
