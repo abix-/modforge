@@ -32,7 +32,7 @@ against `state` deterministically.
 
 ## Enabling the endpoint
 
-Off by default. Add to `<install>/Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/dlls/settings.json`:
+Off by default. Add to `<install>/Augusta/Binaries/WinGRTS/ue4ss/Mods/Grounded2RPG/dlls/settings.json`:
 
 ```json
 {
@@ -41,7 +41,7 @@ Off by default. Add to `<install>/Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBack
 ```
 
 Restart Grounded 2. Look for the log line `debug-http: listening on
-127.0.0.1:17171` in `better_backpack.log` to confirm.
+127.0.0.1:17171` in `grounded2_rpg.log` to confirm.
 
 ## Op set
 
@@ -154,7 +154,7 @@ Highlights:
 
 ## Running tests
 
-Tests live in `better-backpack/tests/`. Each `.rs` file is one test
+Tests live in `grounded2-rpg/tests/`. Each `.rs` file is one test
 binary. Shared client + types live in `tests/common/mod.rs`.
 
 ```bash

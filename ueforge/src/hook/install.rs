@@ -35,7 +35,7 @@ impl RetryPolicy {
         Self { base, max, timeout }
     }
 
-    /// 500ms base, 5s cap, 10min timeout. Matches bbp's tuning,
+    /// 500ms base, 5s cap, 10min timeout. Matches g2rpg's tuning,
     /// which has held across both inventory and damage hooks.
     pub const fn default_install() -> Self {
         Self::new(

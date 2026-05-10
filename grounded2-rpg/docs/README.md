@@ -1,7 +1,7 @@
-# better-backpack docs
+# grounded2-rpg docs
 
 > **Authoritative on:** the Grounded 2 RPG / level-up mod
-> (BetterBackpack). Per-subject deep dives. Each file states
+> (Grounded2RPG). Per-subject deep dives. Each file states
 > what it owns at the top.
 
 ## Contents
@@ -24,7 +24,7 @@
 
 | Symptom | First file to read |
 |---|---|
-| skill not applying in-game | deployed `better_backpack.log` then [rpg.md](rpg.md) |
+| skill not applying in-game | deployed `grounded2_rpg.log` then [rpg.md](rpg.md) |
 | damage / fall / environmental issue | [damage.md](damage.md) |
 | inventory / scrolling issue | [inventory.md](inventory.md) |
 | save / slot detection | [rpg.md](rpg.md) "Persistence" section |
@@ -35,7 +35,7 @@
 
 ## Framework references
 
-The framework that bbp is built on lives in the `ueforge/` crate.
+The framework that g2rpg is built on lives in the `ueforge/` crate.
 For framework-level questions, see:
 
 - [`../../ueforge/README.md`](../../ueforge/README.md) -- entry point

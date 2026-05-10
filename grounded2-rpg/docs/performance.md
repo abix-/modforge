@@ -1,18 +1,18 @@
-# Better Backpack performance notes (Rust)
+# Grounded 2 - RPG System performance notes (Rust)
 
 > **Authoritative on:** what the mod costs to run. Per-call costs,
 > hot paths, allocation analysis, what was deliberately not ported
 > from the C++ tree.
 >
 > **Doctrine-extraction note (2026-05-10):** most of this file is
-> generic UE4SS-Rust-mod hot-path discipline, not bbp-specific. The
+> generic UE4SS-Rust-mod hot-path discipline, not g2rpg-specific. The
 > generic content -- zero-alloc trampolines, single-hook-surface
 > principle, identity-not-name dispatch, debug-only trace gating,
 > "what was deliberately not ported" -- is queued to lift into
 > `ueforge/PERFORMANCE.md` (see `todo.md` "ueforge: more to
-> extract from better-backpack"). Once that lands, this file
-> shrinks to: bbp-specific numbers (the ~123 PE/rebind figure, the
-> SurvivalComponent CDO walk timings) + bbp-specific deliberate
+> extract from grounded2-rpg"). Once that lands, this file
+> shrinks to: g2rpg-specific numbers (the ~123 PE/rebind figure, the
+> SurvivalComponent CDO walk timings) + g2rpg-specific deliberate
 > non-ports.
 
 Companion to `archive/winhttp-proxy/PERFORMANCE_AUDIT.md`, which catalogued
@@ -39,7 +39,7 @@ None of those carried over.
 
 ### 1. ProcessEvent hook trampoline
 
-`better-backpack/src/hook/process_event.rs::trampoline`. Fires whenever
+`grounded2-rpg/src/hook/process_event.rs::trampoline`. Fires whenever
 the engine invokes `ProcessEvent` on an instance whose vtable matches one
 of our installed hooks. Today that means **only**
 `WBP_InventoryInterface_C`. A blueprint-generated widget that's only
@@ -60,7 +60,7 @@ by the mutex lock-unlock cycle (~10-20 ns x2) and the closure work.
 
 ### 2. Inventory-interface event handler
 
-`better-backpack/src/inv_hook.rs::on_event`. The closure invoked by the
+`grounded2-rpg/src/inv_hook.rs::on_event`. The closure invoked by the
 trampoline.
 
 Per-call cost:
@@ -148,7 +148,7 @@ Steady-state log volume in release: zero per frame, zero per second.
 
 When something is logged: one syscall to `WriteConsoleA` against the
 spawned debug console, one buffered file write to
-`%TEMP%\BetterBackpack.log` followed by a flush. Fine.
+`%TEMP%\Grounded2RPG.log` followed by a flush. Fine.
 
 ## What was *not* done (deliberately)
 

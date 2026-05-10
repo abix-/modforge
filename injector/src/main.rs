@@ -1,4 +1,4 @@
-// Better Backpack DLL injector. Walks the process list, finds Grounded 2
+// Grounded 2 - RPG System DLL injector. Walks the process list, finds Grounded 2
 // (Steam or Xbox build), and pokes LoadLibraryA via CreateRemoteThread to
 // map our DLL.
 //
@@ -299,7 +299,7 @@ fn inject(pid: u32, dll_path: &Path) -> Result<()> {
             "[+] ",
             &format!("DLL mapped at HMODULE 0x{thread_exit:x} in target process."),
         );
-        log_line("", "look for %TEMP%\\BetterBackpack.log for DLL output");
+        log_line("", "look for %TEMP%\\Grounded2RPG.log for DLL output");
     }
     Ok(())
 }

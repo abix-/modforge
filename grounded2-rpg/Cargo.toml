@@ -1,5 +1,5 @@
 [package]
-name = "better-backpack"
+name = "grounded2-rpg"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,12 +12,12 @@ crate-type = ["cdylib", "rlib"]
 
 # Consumed by ueforge/scripts/deploy.ps1.
 [package.metadata.ueforge]
-mod_folder_name  = "BetterBackpack"
+mod_folder_name  = "Grounded2RPG"
 game_name_regex  = "Grounded"
 game_sub_path    = "Augusta/Binaries/WinGRTS"
-zip_prefix       = "better-backpack"
-target_dir       = "target/better-backpack"
-example_settings = "better-backpack/settings.example.json"
+zip_prefix       = "grounded2-rpg"
+target_dir       = "target/grounded2-rpg"
+example_settings = "grounded2-rpg/settings.example.json"
 
 [features]
 console = []

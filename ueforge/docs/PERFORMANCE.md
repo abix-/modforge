@@ -165,7 +165,7 @@ short list per mod. Use it.
 
 ## Memory leak vectors specific to UE4SS Rust mods
 
-Real bugs that bbp's perf work hunted down. Every UE-mod consumer
+Real bugs that g2rpg's perf work hunted down. Every UE-mod consumer
 will hit these unless they reach for ueforge's solutions.
 
 ### FString leak on every FName -> String

@@ -49,7 +49,7 @@ have `DefaultMaxSize`); the third is a different class.
 property, so only two of the three components participate in capacity
 patching. AIO Player Tweaks v13.1.6 patches the saddlebag (40 -> 48)
 but leaves the main backpack at 40 -- the "60 slots" version is a
-separate optional download from that mod's Nexus page. Better Backpack
+separate optional download from that mod's Nexus page. Grounded 2 - RPG System
 patches the main only.
 
 ## Data side: `UInventoryComponent.DefaultMaxSize`
@@ -157,10 +157,10 @@ At level 100 with default settings, target = 100 + 460 = 560.
 
 Three layers, each with a different failure mode:
 
-1. **DLL loaded.** UE4SS log shows `Starting C++ mod 'BetterBackpack'`.
-   Mod log at `<DLL_dir>/better_backpack.log` shows the banner and
+1. **DLL loaded.** UE4SS log shows `Starting C++ mod 'Grounded2RPG'`.
+   Mod log at `<DLL_dir>/grounded2_rpg.log` shows the banner and
    `GObjects` count.
-2. **Data-side patched.** `better_backpack.log` shows
+2. **Data-side patched.** `grounded2_rpg.log` shows
    `PATCH InventoryComponent ...: 40 -> N (verify=N)` lines, at least
    one for each player BP class CDO and at least one for the live
    pawn.

@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use ueforge::rpg::Curve;
 
-/// bbp's tuning constants. Adjust here, the curve flows everywhere.
+/// g2rpg's tuning constants. Adjust here, the curve flows everywhere.
 pub const CURVE: Curve = Curve::new(100.0, 1.8, 50);
 pub const MAX_LEVEL: u32 = CURVE.max_level;
 

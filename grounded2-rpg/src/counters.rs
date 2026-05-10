@@ -29,7 +29,7 @@ counter!(IMGUI_TAB_RENDERS);
 counter!(HTTP_REQUESTS);
 
 // CPU time accumulators (nanoseconds spent inside hot paths). Diff
-// over a window = total wall time bbp stole from the game thread.
+// over a window = total wall time g2rpg stole from the game thread.
 counter!(
     TIME_NS_KILL_HOOK,
     TIME_NS_FALL_HOOK,

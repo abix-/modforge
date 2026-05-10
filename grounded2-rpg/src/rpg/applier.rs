@@ -1,4 +1,4 @@
-// `GameApplier` -- the bbp impl of `ueforge::rpg::RpgApplier`.
+// `GameApplier` -- the g2rpg impl of `ueforge::rpg::RpgApplier`.
 // Wraps the settings the apply path needs and dispatches each
 // SkillEffect variant to the existing `apply::apply_skill` and
 // `skills::format_effect`.

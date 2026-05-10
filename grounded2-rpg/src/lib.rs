@@ -1,4 +1,4 @@
-// Better Backpack -- Grounded 2 mod, loaded by UE4SS as a CPPMod via the
+// Grounded 2 - RPG System -- Grounded 2 mod, loaded by UE4SS as a CPPMod via the
 // stock ueforge shim. ueforge::ue4ss_mod! generates DllMain + every
 // extern "C" hook the shim invokes; we only declare ModInfo + the two
 // callbacks (on_unreal_init / on_shutdown) and the RPG tab render
@@ -18,10 +18,10 @@ pub mod survival;
 use ueforge::ue::offsets::{STEAM, XBOX};
 
 static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
-    name: "BetterBackpack",
+    name: "Grounded2RPG",
     version: "0.1.0",
-    log_file: "better_backpack.log",
-    console_title: "Better Backpack",
+    log_file: "grounded2_rpg.log",
+    console_title: "Grounded 2 - RPG System",
     console: cfg!(feature = "console"),
     on_unreal_init: bbp_on_unreal_init,
     on_shutdown: bbp_on_shutdown,
@@ -37,7 +37,7 @@ fn bbp_on_unreal_init() {
     // Run heavy init off the engine init thread so any panic doesn't
     // propagate up into UE4SS. ueforge::worker::spawn names the
     // thread + catches panics with a logged message.
-    ueforge::worker::spawn("better_backpack/init", || unsafe { worker() });
+    ueforge::worker::spawn("grounded2_rpg/init", || unsafe { worker() });
 }
 
 fn bbp_on_shutdown() {
@@ -48,7 +48,7 @@ fn bbp_on_shutdown() {
 unsafe fn worker() {
     // Logger is already initialized by ue4ss_mod!'s on_unreal_init hook
     // (it runs ueforge::log::init before calling MOD_INFO.on_unreal_init).
-    ueforge::log!("=== Better Backpack DLL (rust) ===");
+    ueforge::log!("=== Grounded 2 - RPG System DLL (rust) ===");
     let settings =
         ueforge::settings::Settings::<settings::Settings>::load("settings.json").get();
     settings.log_summary();

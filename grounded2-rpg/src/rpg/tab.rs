@@ -1,6 +1,6 @@
 // RPG ImGui tab. Body lives in `ueforge::rpg::tab::render`; this
 // crate supplies the static Tracker and the on/off toggle hooks
-// (which route into bbp's `apply` module's process-global
+// (which route into g2rpg's `apply` module's process-global
 // disabled-skills set).
 
 use ueforge::rpg::tab::{render as render_rpg_tab, ToggleFns};

@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 /// Re-export of ueforge-client's perf-log writer. Called with
 /// `env!("CARGO_MANIFEST_DIR")` evaluated in this crate so it
-/// resolves to better-backpack's manifest, not ueforge-client's;
+/// resolves to grounded2-rpg's manifest, not ueforge-client's;
 /// the writer walks up from there to find `.git`.
 pub use ueforge::client::perf::PerfLog;
 

@@ -113,7 +113,7 @@ In your worker thread:
 
 ```rust
 unsafe fn worker() {
-    let settings = ueforge::settings::Settings::<bbp::Settings>::load("settings.json");
+    let settings = ueforge::settings::Settings::<g2rpg::Settings>::load("settings.json");
     let cur = settings.get();
     cur.log_summary();   // log what we loaded -- helps in support tickets
 

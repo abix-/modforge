@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! cargo run -p ueforge-deploy --release -- install -p tweaks
-//! cargo run -p ueforge-deploy --release -- install -p better-backpack
+//! cargo run -p ueforge-deploy --release -- install -p grounded2-rpg
 //! ```
 //!
 //! Or with the `cargo deploy` alias defined in
@@ -15,7 +15,7 @@
 //!
 //! ```text
 //! cargo deploy install -p tweaks
-//! cargo deploy uninstall -p better-backpack
+//! cargo deploy uninstall -p grounded2-rpg
 //! cargo deploy package -p tweaks            # builds dist zip
 //! ```
 

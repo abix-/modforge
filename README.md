@@ -77,7 +77,7 @@ The shipping shape is a UE4SS C++ mod. Drop the DLL into UE4SS's
 For development:
 
 ```sh
-cargo deploy install -p better-backpack
+cargo deploy install -p grounded2-rpg
 ```
 
 This builds `main.dll`, copies it into the detected Steam install,
@@ -121,8 +121,8 @@ drains) on top of the user's base.
 ## Internal naming note
 
 The on-disk artifact names still refer to the project's earlier
-identity (`BetterBackpack` mod folder, `better-backpack/` Rust
-crate, `better_backpack.log`). The user-facing brand and display
+identity (`Grounded2RPG` mod folder, `grounded2-rpg/` Rust
+crate, `grounded2_rpg.log`). The user-facing brand and display
 name is "RPG System"; an internal rename pass is tracked in
 [`docs/todo.md`](docs/todo.md). It does not affect functionality,
 only the on-disk file names.

@@ -17,10 +17,10 @@
 //!   transitions on the consumer's behalf.
 //!
 //! Game crates wire those into their own SkillEffect dispatcher and
-//! ImGui tab. The `better-backpack` crate is the reference consumer.
+//! ImGui tab. The `grounded2-rpg` crate is the reference consumer.
 //!
 //! Persistence shape is intentionally generic over `S: Serialize +
-//! DeserializeOwned + Default`: bbp uses an extended struct with
+//! DeserializeOwned + Default`: g2rpg uses an extended struct with
 //! diagnostic counters (`kill_count`, `last_killed`) but other games
 //! may attach completely different fields. ueforge owns the bones,
 //! not the meat.

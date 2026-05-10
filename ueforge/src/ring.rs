@@ -98,7 +98,7 @@ impl<T> EventRing<T> {
     }
 
     /// Push an event, bumping the push counter and updating the
-    /// peak high-watermark. Equivalent to bbp's old
+    /// peak high-watermark. Equivalent to g2rpg's old
     /// `record_damage_event` wrapper minus the per-mod statics.
     pub fn record(&self, item: T) {
         self.pushes.fetch_add(1, Ordering::Relaxed);

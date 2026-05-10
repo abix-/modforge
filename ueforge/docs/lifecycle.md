@@ -27,10 +27,10 @@ declares your mod to UE4SS:
 
 ```rust
 static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
-    name: "BetterBackpack",                      // shown in UE4SS console
+    name: "Grounded2RPG",                      // shown in UE4SS console
     version: "0.1.0",
-    log_file: "better_backpack.log",             // file in DLL dir
-    console_title: "Better Backpack",            // console window title
+    log_file: "grounded2_rpg.log",             // file in DLL dir
+    console_title: "Grounded 2 - RPG System",            // console window title
     console: cfg!(feature = "console"),          // gate console alloc
     on_unreal_init: bbp_on_unreal_init,          // fn pointer
     on_shutdown: bbp_on_shutdown,                // fn pointer
@@ -157,7 +157,7 @@ consumer cdylib.
 
 If for some reason you need a custom shim (rare), call
 `CppShim::new().skip_default_shim()` in your `build.rs` and
-provide your own. better-backpack used to do this; the dedup
+provide your own. grounded2-rpg used to do this; the dedup
 work removed the custom shim.
 
 ## build.rs
@@ -209,10 +209,10 @@ reads:
 
 ```toml
 [package.metadata.ueforge]
-mod_name        = "BetterBackpack"
+mod_name        = "Grounded2RPG"
 game_name_regex = "^Grounded\\s*2$"
 game_sub_path   = "Augusta\\Binaries\\WinGRTS"
-target_dir      = "target/better-backpack"
+target_dir      = "target/grounded2-rpg"
 ```
 
 `target_dir` keeps two cdylibs in the same workspace from

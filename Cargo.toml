@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["better-backpack", "injector", "outworld-station/tweaks", "ueforge", "ueforge-deploy"]
+members = ["grounded2-rpg", "injector", "outworld-station/tweaks", "ueforge", "ueforge-deploy"]
 
 [workspace.package]
 version = "0.1.0"

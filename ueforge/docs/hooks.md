@@ -115,7 +115,7 @@ match hook {
 }
 ```
 
-`RetryPolicy::default_install()` ships bbp's battle-tested
+`RetryPolicy::default_install()` ships g2rpg's battle-tested
 tuning (500ms base / 5s cap / 10min total timeout). Custom:
 
 ```rust

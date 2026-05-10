@@ -132,7 +132,7 @@ let peak = DAMAGE_RING.peak();
 overflow keeps memory bounded.
 
 Use `EventRing` instead of pairing a raw `Ring<T>` with two
-hand-declared counters. The paired form was the bbp pattern
+hand-declared counters. The paired form was the g2rpg pattern
 before the consolidation; EventRing eliminates the boilerplate.
 
 ### Ring<T> -- raw bounded ring

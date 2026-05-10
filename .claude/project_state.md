@@ -6,21 +6,21 @@ Pushed further on extraction. Session running total: 15 commits.
 
 12. **`ueforge::pe_queue::DrainSite`** -- `Queue` paired with the
     standard performance-counter quad (drain calls, drained cmds,
-    peak depth, time_ns spent draining). bbp's `drain_pending` is
-    now a one-liner; the four bbp `counter!` statics + the
+    peak depth, time_ns spent draining). g2rpg's `drain_pending` is
+    now a one-liner; the four g2rpg `counter!` statics + the
     `PE_QUEUE_PEAK` peak are gone, surfaced through the
     `DrainSite`'s built-in accessors instead.
 13. **`ueforge::ue::core_types`** -- POD `#[repr(C)]` mirrors of
     stable UE5 engine types: `FGuid`, `FWeakObjectPtr`,
     `FDataTableRowHandle`, plus the `EStatusEffectValueType`
     enum. Six unit tests including size-invariant assertions
-    (FGuid == 16, FWeakObjectPtr == 8). Migrations: bbp's local
+    (FGuid == 16, FWeakObjectPtr == 8). Migrations: g2rpg's local
     duplicates of FGuid (in save_slot.rs) and FWeakObjectPtr (in
     kill_hook.rs) deleted.
 14. **`ueforge::rpg::SlotKeyResolver`** -- generic save-slot key
     extractor. `(class_name, guid_offset)` config; `resolve()`
     walks GObjects for first instance, reads FGuid at offset,
-    formats as filename. bbp's `save_slot.rs` shrunk to a 5-line
+    formats as filename. g2rpg's `save_slot.rs` shrunk to a 5-line
     wrapper.
 
 ### Session totals (final)
@@ -36,10 +36,10 @@ Pushed further on extraction. Session running total: 15 commits.
   EStatusEffectValueType), SlotKeyResolver, PERFORMANCE.md,
   RESEARCH.md.
 - ueforge/PERFORMANCE.md (250 lines) and ueforge/RESEARCH.md
-  (200 lines) codify the doctrine that bbp's perf + bandage
+  (200 lines) codify the doctrine that g2rpg's perf + bandage
   research figured out the hard way.
 
-bbp now contains only the irreducibly G2-specific content:
+g2rpg now contains only the irreducibly G2-specific content:
 offsets, SkillEffect variants, CATALOG content, GameApplier
 dispatch arms, format_effect text, kill_hook / fall_hook /
 inv_hook trampolines (G2 PE handling), parm structs, snapshot/op
@@ -60,11 +60,11 @@ canonical surface for everything UE5 mods need.
 8. **ClassRef walker family expansion** -- `for_each_matching`,
    `for_each_cdo_subclass`, `for_each_cdo_matching`, `for_each_any`,
    `new_dynamic`, plus `TypedField::deref` for component-pointer
-   follow. bbp's apply.rs walker block went from ~120 LoC of
+   follow. g2rpg's apply.rs walker block went from ~120 LoC of
    GObjects-walk boilerplate to ~30 LoC of ClassRef one-liners.
 9. **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with
    built-in push counter (`AtomicU64`) and peak high-watermark
-   (`AtomicUsize`). bbp's `record_damage_event` is now a
+   (`AtomicUsize`). g2rpg's `record_damage_event` is now a
    one-liner.
 10. **`ueforge/PERFORMANCE.md`** + **`ueforge/RESEARCH.md`** --
     canonical doctrine docs. PERFORMANCE.md: 10/10 bar, hot-path
@@ -73,18 +73,18 @@ canonical surface for everything UE5 mods need.
     methodology, standard probes, doctrines on status effects /
     data tables / damage paths / instigator resolution. 450+
     lines combined. Future mods don't have to rediscover what
-    bbp's perf + bandage research figured out.
+    g2rpg's perf + bandage research figured out.
 11. **`ueforge::ue::PlayerRef`** -- canonical "find the player"
     surface. `(base_class_name, Option<bp_filter>)` config; auto
     `for_each_cdo` / `for_each_live` / `with_first_*`. Replaces
-    bbp's `CLASS_SURVIVAL_CHARACTER + PLAYER_BP_NAME` pair.
+    g2rpg's `CLASS_SURVIVAL_CHARACTER + PLAYER_BP_NAME` pair.
 
 ### Final session tally
 
 - 11 commits, all build-clean release.
 - ueforge gained ~3000 LoC of framework surface + 33 unit tests
   (all passing) + 450 LoC of doctrine docs.
-- bbp lost ~700+ LoC of duplicated infrastructure.
+- g2rpg lost ~700+ LoC of duplicated infrastructure.
 - Major systems extracted: ClassRef, function_table!, TypedField,
   VanillaCache, counter_json!, install_with_backoff, worker::spawn,
   LazyFunctionPtr, ProcessEventHook::install_many, RpgApplier +
@@ -93,7 +93,7 @@ canonical surface for everything UE5 mods need.
   PERFORMANCE.md, RESEARCH.md.
 
 ueforge is now the framework that gives every UE4SS Rust mod
-its complete set of load-bearing systems. bbp owns only:
+its complete set of load-bearing systems. g2rpg owns only:
 G2 offsets, SkillEffect variants, CATALOG content, GameApplier
 dispatch arms, format_effect text, kill_hook / fall_hook /
 inv_hook trampolines, parm structs, snapshot/op dispatcher.
@@ -101,11 +101,11 @@ inv_hook trampolines, parm structs, snapshot/op dispatcher.
 In-game smoke test pending for the entire dedup. All commits
 build-clean release; behavior is intended unchanged.
 
-## Major dedup session: bbp -> ueforge (2026-05-10)
+## Major dedup session: g2rpg -> ueforge (2026-05-10)
 
 Phase 1 smoke-tested in-game and passed. Six waves of extraction
 landed in one session. ueforge is now the framework crate that
-gives every UE4SS Rust mod its load-bearing systems; bbp owns
+gives every UE4SS Rust mod its load-bearing systems; g2rpg owns
 only the G2-specific content (offsets, skill effect variants,
 catalog rows, hooks, parm structs).
 
@@ -115,36 +115,36 @@ catalog rows, hooks, parm structs).
    `ClassRef::new("Name")` -> lazy `&'static UClass`, exposes
    `cdo()`, `find_function()`, `with_cdo`, `with_first_instance`,
    `for_each_instance`, `find_instance`. Migrations:
-   `bbp/rpg/save_slot.rs::find_in_game_game_state`,
-   `bbp/rpg/kill_hook.rs::install`, `bbp/inv_hook.rs::install`
-   (4 classes), `bbp/debug.rs` HEALTH_CLASS.
+   `g2rpg/rpg/save_slot.rs::find_in_game_game_state`,
+   `g2rpg/rpg/kill_hook.rs::install`, `g2rpg/inv_hook.rs::install`
+   (4 classes), `g2rpg/debug.rs` HEALTH_CLASS.
 2. **`ueforge::function_table!` decl-macro** -- struct-of-`usize`
    table with `install(&UClass) -> Result<Self, &'static str>`.
-   Migrations: bbp's `InvIfaceFns` (11 fns) + `PanelFns` (2
+   Migrations: g2rpg's `InvIfaceFns` (11 fns) + `PanelFns` (2
    fns) collapsed from ~80 LoC of field-by-field lookup boilerplate.
 3. **`ueforge::ue::TypedField<T>`** -- `const`-constructible
    `(offset, T)` pair with `read(obj)` / `write(obj, v)` /
    `ptr(obj)`. Couples offset and type at declaration.
    Demonstrated migration in kill_hook.
 4. **`ueforge::rpg::VanillaCache<K, V>`** -- per-key vanilla
-   baseline cache. Migrations: bbp's `MOVEMENT_VANILLA`,
+   baseline cache. Migrations: g2rpg's `MOVEMENT_VANILLA`,
    `GLOBAL_DATA_VANILLA`, `VANILLA_HC_U32_MASK`. Custom
    `VanillaTable` struct deleted.
 5. **`ueforge::counter_json!`** + **`hook::install_with_backoff`**
-   + **`worker::spawn`**. Migrations: `bbp/counters.rs::
+   + **`worker::spawn`**. Migrations: `g2rpg/counters.rs::
    snapshot_json` collapsed to one macro invocation (22 hand-
-   rolled `.load(Ordering::Relaxed)` lines gone); bbp's
-   `install_inv_hook_with_backoff` deleted; bbp's worker
+   rolled `.load(Ordering::Relaxed)` lines gone); g2rpg's
+   `install_inv_hook_with_backoff` deleted; g2rpg's worker
    thread now uses named-thread `worker::spawn` with logged
    panic catch.
 6. **`ueforge::hook::LazyFunctionPtr`** + **`ProcessEventHook::
-   install_many`**. Migration: bbp's `fall_hook` `ON_LANDED_
+   install_many`**. Migration: g2rpg's `fall_hook` `ON_LANDED_
    UFUNCTION` `AtomicUsize` + manual cache logic + multi-class
    install loop -> two clean lines.
 7. **RPG framework promotion (Phase 3 wave 2)** -- the big one.
    `ueforge::rpg::{Skill<E>, find_skill, RpgApplier, Tracker<A>,
-   tab::render, ToggleFns}`. bbp's `tracker.rs` and `tab.rs`
-   reduced to thin shims; bbp now provides only the
+   tab::render, ToggleFns}`. g2rpg's `tracker.rs` and `tab.rs`
+   reduced to thin shims; g2rpg now provides only the
    `SkillEffect` enum, CATALOG content, `GameApplier`
    dispatcher, `format_effect` text, and per-creature XP
    bestiary. Everything else is ueforge.
@@ -153,12 +153,12 @@ catalog rows, hooks, parm structs).
 
 - ueforge gained ~2000 LoC of generic framework surface (with 30
   unit tests, all passing).
-- bbp lost ~500+ LoC of duplicated infrastructure.
+- g2rpg lost ~500+ LoC of duplicated infrastructure.
 - Every workspace crate builds clean release. `ueforge::rpg::
   Tracker` is the canonical RPG system entry point for any UE
   game now.
 
-### What remains in bbp's rpg/ (game-specific, correctly stays)
+### What remains in g2rpg's rpg/ (game-specific, correctly stays)
 
 - `skills.rs` -- SkillEffect enum + CATALOG content + format_effect
 - `apply.rs` -- per-variant dispatcher (G2 offsets, GObjects walks)
@@ -175,7 +175,7 @@ catalog rows, hooks, parm structs).
   the last is now subsumed by `Tracker<A>`).
 - Wave D doctrine docs (`ueforge/PERFORMANCE.md` and
   `ueforge/RESEARCH.md` lifts).
-- More opportunistic conversions in bbp/apply.rs to `TypedField`.
+- More opportunistic conversions in g2rpg/apply.rs to `TypedField`.
 - Phase 3 wave 2 in-game smoke test (the user runs it).
 
 In-game smoke test for the entire dedup is pending. All commits
@@ -206,8 +206,8 @@ review, 2026-05-10)". Headlines:
   build-time UE4SS symbol-presence check, defer Phase 3 wave 2
   promotions until a second consumer needs them.
 
-Plus a new `ueforge: more to extract from better-backpack`
-section listing doctrine + helpers that bbp prototyped but every
+Plus a new `ueforge: more to extract from grounded2-rpg`
+section listing doctrine + helpers that g2rpg prototyped but every
 UE4SS-Rust mod will rediscover unless they live in ueforge:
 
 - Doctrine: hot-path discipline -> `ueforge/PERFORMANCE.md`,
@@ -251,7 +251,7 @@ Unchanged:
 - public API surface of every module
 - in-game behavior
 
-Verified: ueforge / ueforge-deploy / tweaks / better-backpack
+Verified: ueforge / ueforge-deploy / tweaks / grounded2-rpg
 all build clean in release. tests compile clean. deploy CLI
 reaches the copy step.
 
@@ -262,10 +262,10 @@ Commit: 37a5dee. 1098 files changed.
 
 ## ueforge crate extracted; OWS scaffolding queued (2026-05-09 late)
 
-Generic UE-mod control plane factored out of `better-backpack` into
+Generic UE-mod control plane factored out of `grounded2-rpg` into
 two new workspace crates so the upcoming Outworld Station mod (and
 future UE-game mods) reuse the same plumbing. All slices green; 30+
-better-backpack tests still compile.
+grounded2-rpg tests still compile.
 
 Layout:
 
@@ -276,7 +276,7 @@ grounded2mods/
     src/envelope.rs      OpResponse<S>, parse_request
     src/args.rs          arg_str/u64/bool/f64
     src/pe_queue.rs      Queue (Mutex+atomic+re-entrance guard) + DrainStats
-    src/ue/              UObject SDK shim (was better-backpack/src/sdk/)
+    src/ue/              UObject SDK shim (was grounded2-rpg/src/sdk/)
   ueforge-client/      rlib. Shared test client (skeleton only so far).
   outworld-station/  Research folder for the OWS mod (research.md).
 ```
@@ -286,7 +286,7 @@ What moved:
 - PE-thread queue (~150 LoC) -> ueforge::pe_queue (closures, not a fixed cmd enum)
 - Entire UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects, ~600 LoC) -> ueforge::ue
 
-What stayed in better-backpack:
+What stayed in grounded2-rpg:
 - DebugCmd enum (now just AddHealth + SetCurrentHealth — the
   Call variant moved to a closure that calls ueforge::ops::exec_call)
   + execute_on_game_thread (game's command vocabulary)
@@ -309,9 +309,9 @@ Generic primitives also moved (slice 3b, 2026-05-09 late):
 - hex_encode/decode -> ueforge::hex
 
 Current crate sizes:
-- better-backpack/src/debug.rs: 1286 -> 998 LoC (-288)
-- better-backpack/src/counters.rs: 1109 -> 115 LoC (-994)
-- better-backpack/src/sdk/: 6 files -> 1 facade (~12 LoC)
+- grounded2-rpg/src/debug.rs: 1286 -> 998 LoC (-288)
+- grounded2-rpg/src/counters.rs: 1109 -> 115 LoC (-994)
+- grounded2-rpg/src/sdk/: 6 files -> 1 facade (~12 LoC)
 - ueforge: ~2033 LoC across 18 files
   (server, envelope, args, pe_queue, selector, hex, ops,
    counters, ring, winproc, ue/{fname, fstring, offsets,
@@ -328,11 +328,11 @@ Slices 4-7 (2026-05-09 late, after slices 1-3):
   sample_thread_modules_json, process_memory_json, ~770 LoC)
   -> ueforge::winproc. Generic for any Windows process, not just UE.
 - Slice 7: test client (Api wrapper, OpResponse<S>, hex codec,
-  parm helpers) -> ueforge-client. better-backpack's tests/common
-  shrunk from 493 -> 367 LoC; the bbp `Api` is now a newtype over
-  `ueforge_client::Api<Snapshot>` with bbp-specific convenience
+  parm helpers) -> ueforge-client. grounded2-rpg's tests/common
+  shrunk from 493 -> 367 LoC; the g2rpg `Api` is now a newtype over
+  `ueforge_client::Api<Snapshot>` with g2rpg-specific convenience
   methods (`skill_spend`, `simulate_heal`, ...).
-- Total moved out of better-backpack: ~2000 LoC.
+- Total moved out of grounded2-rpg: ~2000 LoC.
 - ueforge + ueforge-client total: ~2270 LoC of reusable infrastructure.
 
 Slice 8 (2026-05-09 late):
@@ -361,17 +361,17 @@ Done (15 capabilities in ueforge/ueforge-client):
 Slices 9-11 landed (2026-05-09 late):
 - Slice 9: PE/vtable hook framework -> ueforge::hook (vtable
   primitives + ProcessEventHook RAII + leaked-snapshot lock-free
-  registry + re-entrance guards). better-backpack/src/hook/ is
+  registry + re-entrance guards). grounded2-rpg/src/hook/ is
   now a 6-line re-export facade.
 - Slice 10: UE4SS C++ shim layout-critical mirror -> 
   ueforge/cpp/ueforge_cppusermodbase.hpp + ueforge_imgui_bridge.hpp.
-  better-backpack/cpp/shim.cpp drops ~100 LoC of CppUserModBase
+  grounded2-rpg/cpp/shim.cpp drops ~100 LoC of CppUserModBase
   redefinition; build.rs adds the ueforge/cpp/ include path.
   Game-specific shim logic (imgui tab, FFI surface) stays in
   game crate. Future mods just `#include "ueforge_cppusermodbase.hpp"`
   and inherit.
 - Slice 11: Test perf-log writer -> ueforge_client::perf.
-  better-backpack's open_perf_log is a 6-line wrapper passing
+  grounded2-rpg's open_perf_log is a 6-line wrapper passing
   env!("CARGO_MANIFEST_DIR") so the writer walks up to the
   game's repo root.
 - Slice 12: ueforge-build crate (build-dep helper). Provides
@@ -381,7 +381,7 @@ Slices 9-11 landed (2026-05-09 late):
   shim can `#include "ueforge_cppusermodbase.hpp"` regardless of
   ueforge's location (workspace path-dep or future registry pull).
   Game's build.rs is now ~10 LoC (was ~60). Validated end-to-end:
-  better-backpack now builds via ueforge-build.
+  grounded2-rpg now builds via ueforge-build.
 
 Out of scope:
 - Settings JSON loader (game-specific shape; ueforge doesn't enforce).
@@ -421,9 +421,9 @@ PowerShell):
   <mod>` ergonomics.
 - All previous PS scripts removed (per-mod and any
   unified-PS-attempt). Single Rust binary owns deploy.
-- better-backpack and outworld-station/tweaks both use it via:
+- grounded2-rpg and outworld-station/tweaks both use it via:
     cargo deploy install -p tweaks
-    cargo deploy install -p better-backpack
+    cargo deploy install -p grounded2-rpg
 
 Audit table (ueforge/README.md) updated: rows 28/29/30 marked
 done. Backlog (rows 31-34) untouched -- conditional on real
@@ -482,7 +482,7 @@ Slice 13 (2026-05-09 late):
 - UDataTable helpers -> ueforge::ue::datatable (find_by_short_name,
   row_value_by_fname, iter_rows). Built on tmap. Row-map offset
   (0x30) lives in ueforge::ue::offsets::datatable.
-- better-backpack's lookup_data_table_row is now a 3-line wrapper
+- grounded2-rpg's lookup_data_table_row is now a 3-line wrapper
   validating the new helpers end-to-end. Build green.
 
 Migration is now 1000% complete vs the parity table including the
@@ -528,7 +528,7 @@ Slice 15 (2026-05-09 late):
 - ueforge_build defaults to those paths; games carry neither
 - Generic platform detection -> ueforge::ue::platform
   (host_image_base, host_exe_name, detect)
-- better-backpack/build.rs: 17 -> 5 LoC
+- grounded2-rpg/build.rs: 17 -> 5 LoC
 - New mods now have NO cpp/imgui or ue4ss/ directories of their own
 
 Slice 16 (2026-05-09 late):
@@ -548,7 +548,7 @@ Slice 16 (2026-05-09 late):
   emits every extern "C" hook the shim calls.
 - ueforge_build compiles ueforge_shim.cpp + ueforge_ui.cpp by default.
   skip_default_shim() opt-out for legacy mods that ship their own
-  factory (better-backpack until its UI migration lands).
+  factory (grounded2-rpg until its UI migration lands).
 - ImGui context bridge moved into ueforge_ui.cpp so opting out of
   the default shim doesn't break ueforge::ui linkage.
 
@@ -557,7 +557,7 @@ src/lib.rs (~50 LoC of ModInfo + on_init/shutdown + tab renders),
 src/debug.rs, tests/. No cpp/, no DllMain, no factory exports,
 no imgui or UE4SS.lib in the mod tree.
 
-Pending follow-up: migrate better-backpack to use ue4ss_mod! +
+Pending follow-up: migrate grounded2-rpg to use ue4ss_mod! +
 ueforge::ui (drops cpp/shim.cpp entirely; validates the framework
 end-to-end on a real mod with multi-tab UI).
 
@@ -930,7 +930,7 @@ Open work in `docs/todo.md`. History in `docs/changelog.md`.
 
 ## Project rule: ONE mod, all testing inside it
 
-There is exactly one mod -- `BetterBackpack` (the Rust cdylib +
+There is exactly one mod -- `Grounded2RPG` (the Rust cdylib +
 C++ shim, loaded by UE4SS as a CPPMod). Diagnostics, probes,
 traces, and feature work all live inside this single mod. Do
 **not** drop side-channel Lua mods or separate probe DLLs into
@@ -1004,10 +1004,10 @@ UE4SS hooking caveats including issue #626 -- live in
 
 ```
 grounded2mods/
-  Cargo.toml                Workspace: better-backpack + injector
+  Cargo.toml                Workspace: grounded2-rpg + injector
   rust-toolchain.toml       Stable, x86_64-pc-windows-msvc
   .cargo/config.toml        Target triple, target-dir override
-  better-backpack/          cdylib + rlib (the mod itself)
+  grounded2-rpg/          cdylib + rlib (the mod itself)
     src/
       lib.rs                DllMain + worker entry
       sdk/                  Hand-written UE SDK shim
@@ -1048,11 +1048,11 @@ grounded2mods/
 - [x] 5. Hook module: vtable.rs (VirtualProtect-guarded slot rewrite) +
      process_event.rs (RAII ProcessEventHook with registry-based dispatch
      and catch_unwind around the closure). Log module (file-only at
-     %TEMP%\BetterBackpack.log).
+     %TEMP%\Grounded2RPG.log).
 - [x] 6. Patch loop wired in. **Validated in-game**: patch line
      `Default__BP_SurvivalPlayerCharacter_C.InventoryComponent: 40 -> 100,
      verify=100`. AllocConsole brought back so the live mod log surfaces
-     in a "Better Backpack" console window the way the C++ build did.
+     in a "Grounded 2 - RPG System" console window the way the C++ build did.
 - [x] 7. Inventory-interface hook + viewport rebind. inv_hook.rs +
      parms.rs. Cached UFunction* identity dispatch (no name compares).
      Trace gated by cfg!(debug_assertions). Single hook surface.
@@ -1077,7 +1077,7 @@ grounded2mods/
   The mod cdylib is named `winhttp.dll` so it doubles as a Windows DLL
   proxy at install time (drop into game's Binaries\Win64; Windows
   preferentially loads our copy via DLL search order; the 70 forwarder
-  exports defined in `better-backpack/winhttp.def` redirect WinHTTP
+  exports defined in `grounded2-rpg/winhttp.def` redirect WinHTTP
   calls to `winhttp_orig.dll`, which is a copy of the system winhttp).
 - The DLL is locked while the game holds it, rebuild requires the game to
   be closed (or use a different output dir).
@@ -1086,14 +1086,14 @@ grounded2mods/
 
 ## Logs
 - Injector: `<inject.exe dir>/inject.log`, truncated each run.
-- Mod: `<DLL_dir>/better_backpack.log`, truncated each DLL load.
+- Mod: `<DLL_dir>/grounded2_rpg.log`, truncated each DLL load.
   First-line tell for the Rust build is
-  `=== Better Backpack DLL (rust) ===`.
+  `=== Grounded 2 - RPG System DLL (rust) ===`.
 
 ## Settings
 - `<DLL_dir>/settings.json` (optional; for UE4SS installs this is
-  `Mods/BetterBackpack/dlls/settings.json`). Schema in
-  `better-backpack/settings.example.json`. Drives slot_count and
+  `Mods/Grounded2RPG/dlls/settings.json`). Schema in
+  `grounded2-rpg/settings.example.json`. Drives slot_count and
   thirst/hunger multipliers. Defaults baked in: slot_count=100,
   thirst_multiplier=0.5, hunger_multiplier=0.5. So out of the box
   (no settings file): 100-slot backpack + half-rate hunger and thirst.
@@ -1102,8 +1102,8 @@ grounded2mods/
   Steam app id (default 3104110), optional fallback exe path, poll
   interval and timeout for waiting on the game process.
 
-## Cargo features (better-backpack)
-- `console` (default on): spawns the "Better Backpack" console window
+## Cargo features (grounded2-rpg)
+- `console` (default on): spawns the "Grounded 2 - RPG System" console window
   via AllocConsole. Build with `--no-default-features` for a
   console-free shipping DLL. File log unaffected.
 
@@ -1127,7 +1127,7 @@ Why UE4SS over the winhttp.dll proxy approach we built earlier:
 
 Approach:
 
-- Rust cdylib exports `better_backpack_start` / `better_backpack_stop`
+- Rust cdylib exports `grounded2_rpg_start` / `grounded2_rpg_stop`
   as `extern "C"`.
 - ~30-line C++ shim derives from `RC::CppUserModBase`, forwards
   `on_unreal_init` and the destructor to the Rust extern functions,
@@ -1154,7 +1154,7 @@ Distribution layout:
   line). Vortex's UE4SS extension merges entries on deploy.
 - Our Vortex zip layout:
   ```
-  Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/
+  Augusta/Binaries/WinGRTS/ue4ss/Mods/Grounded2RPG/
     dlls/main.dll
     dlls/settings.json
   ```
@@ -1296,7 +1296,7 @@ Next steps:
 
 **State (RESOLVED, working in-game 2026-05-05):**
 - `main.dll` builds clean, exports `start_mod` / `uninstall_mod` /
-  `DllMain` / `better_backpack_start` / `better_backpack_stop`.
+  `DllMain` / `grounded2_rpg_start` / `grounded2_rpg_stop`.
 - `deploy.ps1 -Install` works against the user's
   `C:\Games\Steam\steamapps\common\Grounded2\` install.
 - UE4SS v3.0.1 Beta loads our mod, `on_unreal_init` fires, Rust
@@ -1401,7 +1401,7 @@ Open items for the loop:
   backpack +5/rank max 12, hunger/thirst -7.5%/rank max 10.
 - ImGui tab via `register_tab` in the C++ shim: DONE
   (2026-05-05). Vendored upstream ocornut/imgui v1.92.1 into
-  `better-backpack/cpp/imgui/` (matches UE4SS's version), wired
+  `grounded2-rpg/cpp/imgui/` (matches UE4SS's version), wired
   into build.rs as 4 .cpp sources alongside shim.cpp. Forward-
   declared `RC::UE4SSProgram::get_current_imgui_context` and
   `get_current_imgui_allocator_functions` with `RC_UE4SS_API`
@@ -1410,7 +1410,7 @@ Open items for the loop:
   context, then renders Level / XP bar / skill rows with `+1` /
   `+10` buttons.
 
-  C-ABI surface in `better-backpack/src/rpg/ffi.rs`: 8 functions
+  C-ABI surface in `grounded2-rpg/src/rpg/ffi.rs`: 8 functions
   the lambda calls (has_active_slot, get_level, get_xp,
   get_xp_for_current_level, get_xp_for_next_level,
   get_skill_points, get_skill_count, get_skill, spend).
@@ -1451,7 +1451,7 @@ In-game confirmed: kill a creature -> one log line with dying
 actor + class + killer controller + killer class. No global PE
 hook needed; per-vtable hook on HealthComponent is sufficient.
 
-Implementation: `better-backpack/src/rpg/kill_hook.rs`. ~80
+Implementation: `grounded2-rpg/src/rpg/kill_hook.rs`. ~80
 lines. Filters to `ASurvivalCreature` subclasses to exclude
 buildings/props which also fire this function on destruction.
 
@@ -1491,7 +1491,7 @@ were insufficient for Grounded 2 locomotion.
   Symptom: inventory hook never installed. Fix: walk meta-class
   super_class chain.
 - **Injector default DLL name PascalCase mismatch**: cdylib output is
-  `better_backpack.dll`; injector default was `BetterBackpack.dll`. Fixed
+  `grounded2_rpg.dll`; injector default was `Grounded2RPG.dll`. Fixed
   injector to match cdylib output.
 - **Live console missing**: C++ DLL spawned a console via AllocConsole;
   Rust DLL had to too. Re-added with WriteConsoleA + file mirror.

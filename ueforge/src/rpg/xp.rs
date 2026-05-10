@@ -2,7 +2,7 @@
 //! does this XP unlock". Pure math, no IO, no UE.
 
 /// `cumulative_xp_for_level(level) = round(base * level^exponent)`,
-/// capped at `max_level`. Defaults match the bbp convention:
+/// capped at `max_level`. Defaults match the g2rpg convention:
 /// `base = 100`, `exponent = 1.8`, `max_level = 50` -- generous
 /// early, flat at the end.
 #[derive(Debug, Clone, Copy)]

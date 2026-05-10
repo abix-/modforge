@@ -7,7 +7,7 @@
 > For what's next see [`todo.md`](todo.md). For per-subject
 > deep dives see each crate's `docs/` folder:
 > [`../ueforge/docs/`](../ueforge/docs/) for the framework,
-> [`../better-backpack/docs/`](../better-backpack/docs/) for the
+> [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) for the
 > Grounded 2 mod.
 
 Newest first.
@@ -58,7 +58,7 @@ the complete set of systems every UE4SS Rust mod needs.
   / install-vs-hook, snapshot-not-log validation, failure-
   injection-test rule, research notebook shape.
 
-After this session ueforge is **the** framework crate. bbp
+After this session ueforge is **the** framework crate. g2rpg
 contains only the G2-specific content: offsets, SkillEffect
 variants, CATALOG content, GameApplier dispatch arms,
 format_effect text, kill_hook / fall_hook / inv_hook trampolines,
@@ -66,11 +66,11 @@ parm structs, snapshot/op dispatcher. Everything else is ueforge.
 
 ## 2026-05-10 (later)
 
-### Major dedup wave: bbp -> ueforge
+### Major dedup wave: g2rpg -> ueforge
 
-Six commits in one session promoted the bulk of bbp's
+Six commits in one session promoted the bulk of g2rpg's
 infrastructure into ueforge. ueforge is now the framework crate
-that gives every UE4SS Rust mod its load-bearing systems; bbp
+that gives every UE4SS Rust mod its load-bearing systems; g2rpg
 owns only the G2-specific content (offsets, skill effect
 variants, catalog rows, hooks, parm structs).
 
@@ -99,7 +99,7 @@ variants, catalog rows, hooks, parm structs).
 - **`ueforge::hook::install_with_backoff(name, RetryPolicy, fn)`**
   -- generic exponential-backoff retry around any
   `FnMut() -> Result<H, &'static str>`. `RetryPolicy::default_install()`
-  ships with bbp's battle-tested 500ms/5s/10min tuning.
+  ships with g2rpg's battle-tested 500ms/5s/10min tuning.
 - **`ueforge::worker::spawn(name, FnOnce)`** -- named worker
   thread (Win32 `SetThreadDescription` via `Builder::name`) with
   `catch_unwind` + logged panic payload. Closes the kovarex P1
@@ -132,7 +132,7 @@ The whole RPG / level-up system became framework code:
   (+5 / +50 skill points). Game crates supply only the
   `format_effect` closure (via Applier) and the toggle hooks.
 
-#### bbp shrinkage
+#### g2rpg shrinkage
 
 - `tracker.rs` reduced to a thin shim: a static
   `Tracker<GameApplier>` + ~10 wrapper fns that match the
@@ -152,7 +152,7 @@ The whole RPG / level-up system became framework code:
   `ueforge::rpg::VanillaCache`).
 
 Net: ueforge gained ~2000 LoC of framework surface (+30 unit
-tests, all passing); bbp lost ~500+ LoC of duplicated
+tests, all passing); g2rpg lost ~500+ LoC of duplicated
 infrastructure. Every crate builds clean release. In-game
 smoke test pending.
 
@@ -184,14 +184,14 @@ cap, sqrt endpoints, quarter-is-half) -- the framework's first unit
 tests, closes the kovarex P2 "no unit tests on framework
 primitives" item.
 
-bbp migrations: `src/rpg/state.rs` deleted entirely; `tracker.rs`
+g2rpg migrations: `src/rpg/state.rs` deleted entirely; `tracker.rs`
 keeps a `static STORE: SlotStore<SkillsState>` and routes load /
 save / spend / refund through ueforge; `world_loader.rs` shrinks
 from 95 LoC of CreateThread plumbing to 30 LoC routed through
 `SlotPoller::spawn`; `xp.rs` shrinks to a 3-line curve constant +
 the per-creature XP table (game-specific bestiary); `apply.rs`
 DISABLED_SKILLS swap; `skills::level_progress` becomes a 1-liner
-forwarder. bbp's `PlayerState` is gone -- `kill_count` and
+forwarder. g2rpg's `PlayerState` is gone -- `kill_count` and
 `last_killed` (diagnostic-only) dropped per "free to redesign"
 scope.
 
@@ -208,34 +208,34 @@ Three Phase 2 items land before the big RPG promotion:
   the vanilla read) and `transform(T) -> Option<T>` (`None` =
   skip writing this instance). Captures vanilla keyed per-instance
   so re-applies don't compound.
-- **bbp `patch.rs` + `survival.rs` migrated to `ClassFieldTweak<T>`.**
+- **g2rpg `patch.rs` + `survival.rs` migrated to `ClassFieldTweak<T>`.**
   Hand-rolled GObjects walks deleted; both files are now driven
   by `static SLOTS / HUNGER / THIRST: ClassFieldTweak<...> = ...;`
-  and a single `.apply()` call. Net -150 LoC from bbp.
+  and a single `.apply()` call. Net -150 LoC from g2rpg.
 - **`ueforge::hook::function_ptr` / `function_ptr_required`** --
   small helper that returns `*const UFunction as usize`. Pattern
   is: stash in an `AtomicUsize` at hook install, dispatch by
   pointer identity in the trampoline.
-- **`Queue::drain` canonical-site doc.** The `bbp::kill_hook` PE
+- **`Queue::drain` canonical-site doc.** The `g2rpg::kill_hook` PE
   trampoline drain pattern (empty-check, re-entrance guard, peak
   counter, time scope) is now in the rustdoc so the next mod
   doesn't have to reverse-engineer it.
 
-### bbp consumes ueforge for ALL infra (Phase 1 dedup)
+### g2rpg consumes ueforge for ALL infra (Phase 1 dedup)
 
-better-backpack lost ~930 lines of duplicated framework. Every piece
+grounded2-rpg lost ~930 lines of duplicated framework. Every piece
 of generic UE4SS / SDK / hook / log / settings / counter / ImGui /
 build plumbing now lives in ueforge and is consumed (not mirrored)
 by the mod.
 
-Deleted from bbp:
+Deleted from g2rpg:
 - `cpp/shim.cpp` (357 LoC) -- CppUserModBase mirror + ImGui render lambda
 - `src/rpg/ffi.rs` (340 LoC) -- C-ABI bridges that the shim called
 - `src/log.rs` -- duplicate of ueforge::log
 - `src/sdk/` -- thin re-export shim of ueforge::ue
 - `src/hook/` -- thin re-export shim of ueforge::hook
 - `winhttp.def` -- legacy
-- Custom `DllMain` + `better_backpack_start` / `better_backpack_stop` exports
+- Custom `DllMain` + `grounded2_rpg_start` / `grounded2_rpg_stop` exports
 - `DLL_HMODULE` static
 
 Replaced with:
@@ -252,12 +252,12 @@ fallback for `settings.json` was dropped per "free to redesign"
 scope; if anyone has a pre-Rust install pattern, move the file next
 to main.dll.
 
-Cumulative shape after Phase 1: bbp consumes ueforge for SDK, hook
+Cumulative shape after Phase 1: g2rpg consumes ueforge for SDK, hook
 framework, log, settings IO, ImGui bindings, counter primitives,
 ring buffer, HTTP server, op envelope, generic ops, tab
 registration, DllMain, factory exports, C++ shim. Zero duplication.
 
-What stays in bbp (correct game-side): `inv_hook`, `kill_hook`,
+What stays in g2rpg (correct game-side): `inv_hook`, `kill_hook`,
 `fall_hook`, `survival`, `patch`, `parms`, `debug`, the `counters`
 domain statics, and the entire `rpg/` subsystem (catalog content,
 apply dispatcher, persistence layer). `rpg/` is the Phase 2 promotion
@@ -305,7 +305,7 @@ GObjects walks bounded, dev profile unwinds.
 ### Three-way feature audit added
 
 `../ueforge/README.md` ships a 62-row matrix mapping every feature
-across ueforge, better-backpack, and ows-tweaks. Each cell is
+across ueforge, grounded2-rpg, and ows-tweaks. Each cell is
 `live here / consumes ueforge / duplicates (delete) / should be
 promoted / N/A`. Verdict column names the migration item.
 Phase 1 status now marks 30+ rows done.
@@ -475,7 +475,7 @@ Sample active rows (mid-game player): `PlayerUpgradeHealth1`,
 `WeaponClub`, `RogueFinisherCriticals`, `AntRedStaminaAttack`,
 `FighterFinisherStun`, `MaxHealthSmall`, `PerkSpearTier1`,
 `PerkSpearThrowAttackUpTier1`. Naming convention is
-`<Source><Effect><Tier>`. Detail in `../better-backpack/docs/damage.md` "Vanilla data
+`<Source><Effect><Tier>`. Detail in `../grounded2-rpg/docs/damage.md` "Vanilla data
 table identified".
 
 This finalizes the migration plan: resolve the table (follow any
@@ -606,7 +606,7 @@ line, not five.
 UE4SS `register_tab` for the "RPG" tab. Shows level, XP bar,
 skills with rank/effect/+1 buttons. Vendored upstream
 ocornut/imgui v1.92.1 (matches UE4SS) as
-`better-backpack/cpp/imgui/`. Forward-declared
+`grounded2-rpg/cpp/imgui/`. Forward-declared
 `UE4SSProgram::get_current_imgui_context` and
 `get_current_imgui_allocator_functions` with `RC_UE4SS_API`
 (dllimport via UE4SS.lib). Symbol mangling gotcha: `register_tab`
@@ -733,7 +733,7 @@ UE4SS.lib doesn't export it; using local inline body works.
 
 ## Earlier
 
-The Rust port of the original C++ Better Backpack mod is
+The Rust port of the original C++ Grounded 2 - RPG System mod is
 documented in [`rust-port.md`](rust-port.md). The pivot to a
 UE4SS C++ mod (CPPMod) shape is documented in
 [`ue4ss-port.md`](ue4ss-port.md).

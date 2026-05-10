@@ -6,7 +6,7 @@
 > Completed milestones live in [`changelog.md`](changelog.md).
 > Per-subject deep dives live in each crate's `docs/` folder
 > ([`../ueforge/docs/`](../ueforge/docs/) for the framework,
-> [`../better-backpack/docs/`](../better-backpack/docs/) for the
+> [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) for the
 > Grounded 2 mod). Read those FIRST when investigating a subject.
 >
 > Roughly ordered by leverage. "Mid" priority items below the
@@ -25,7 +25,7 @@ is build-clean release but **not validated in-game yet**.
 
 Acceptance gate (drive from your machine):
 
-- Game launches; `better_backpack.log` shows `ueforge` init lines.
+- Game launches; `grounded2_rpg.log` shows `ueforge` init lines.
 - ImGui tab opens on `Insert`; RPG content renders.
 - Load a save -> slot activate fires; tracker loads
   `<guid>.json`; backpack capacity reflects skill levels.
@@ -112,13 +112,13 @@ load-bearing for any RPG consumer.
   helper. Land when status-effect migration needs the
   guaranteed drain site.
 - [ ] **`AddUObjectCreateListener` integration.** Land when
-  ows-tweaks or bbp's CDO-revert-replay scenario asks. ~100 LoC.
+  ows-tweaks or g2rpg's CDO-revert-replay scenario asks. ~100 LoC.
 - [ ] **DEFER Phase 3 wave 2 promotions** (`Catalog<E>` +
   apply-dispatcher shape) until a second consumer needs them.
 
 ## Open: more ueforge extraction candidates
 
-Still live in bbp; extract on demand:
+Still live in g2rpg; extract on demand:
 
 - Damage-hook framework (kill_hook structural shape, ~70%
   extractable; defer until a second consumer needs damage
@@ -134,9 +134,9 @@ Still live in bbp; extract on demand:
 
 ---
 
-## Open: bbp -- RPG catalog expansion
+## Open: g2rpg -- RPG catalog expansion
 
-Each entry is one [`skills::CATALOG`](../better-backpack/src/rpg/skills.rs)
+Each entry is one [`skills::CATALOG`](../grounded2-rpg/src/rpg/skills.rs)
 row of an existing `SkillEffect` shape unless noted.
 
 - [ ] **Critical Chance + Critical Damage.** `Runtime` effect
@@ -167,7 +167,7 @@ row of an existing `SkillEffect` shape unless noted.
 
 Catalog target: ~25 skills. Today: 13.
 
-## Open: bbp -- RPG live-damage hook
+## Open: g2rpg -- RPG live-damage hook
 
 Required by lifesteal / crit / evasion / thorns. Extend
 `kill_hook`'s existing trampoline to handle non-killing hits:
@@ -184,16 +184,16 @@ ptr at +0x1340, decrement `CurrentDamage` at +0x32C, clamp 0.
 
 This surface is also the likely home for collision / impact
 damage mitigation. See
-[`../better-backpack/docs/damage.md`](../better-backpack/docs/damage.md).
+[`../grounded2-rpg/docs/damage.md`](../grounded2-rpg/docs/damage.md).
 
-## Open: bbp -- RPG live-instance writes
+## Open: g2rpg -- RPG live-instance writes
 
 Some combat-side skills still write only to player CDOs.
 Movement now mirrors onto the live player pawn; remaining
 combat effects need the same. Each `SkillEffect` variant grows
 a "live walk" arm analogous to its CDO walk.
 
-## Open: bbp -- RPG pkg(0) instigator bug
+## Open: g2rpg -- RPG pkg(0) instigator bug
 
 Some legitimate player kills attribute to
 `/Script/CoreUObject (Package)` because
@@ -211,11 +211,11 @@ Investigation:
 3. Failing that, fall back heuristically (player in attack
    range + recently swung).
 
-## Open: bbp -- status-effect migration (in progress)
+## Open: g2rpg -- status-effect migration (in progress)
 
 Migrate Impact Damage Resistance and Lifesteal to the canonical
 status-effect surface first; rest of catalog follows. Detail in
-[`../better-backpack/docs/damage.md`](../better-backpack/docs/damage.md).
+[`../grounded2-rpg/docs/damage.md`](../grounded2-rpg/docs/damage.md).
 
 Concrete next steps:
 
@@ -247,7 +247,7 @@ status-effect surface doesn't expose movement parameters with
 the granularity we use. Survival drains stay on
 SurvivalComponent CDO writes.
 
-## Open: bbp -- RPG tuning
+## Open: g2rpg -- RPG tuning
 
 Open until we play more.
 
@@ -258,12 +258,12 @@ Open until we play more.
 - Level-up frequency vs catalog size: 50 levels = 50 points;
   catalog max-everything = ~225 points (9 skills × 25 avg).
 
-## Open: bbp -- distribution
+## Open: g2rpg -- distribution
 
 - [ ] **Vortex / Nexus packaging.** `cargo deploy package`
   produces the right zip layout. Need a Nexus listing
   (description, screenshots, mod page).
-- [ ] **Project rename.** "better-backpack" no longer fits when
+- [ ] **Project rename.** "grounded2-rpg" no longer fits when
   the mod is an RPG / level-up system. Candidates:
   `grounded-rpg`, `g2-rpg`, `groundlevel`, `instar`,
   `huntmaster`. Touches: Cargo.toml package name, workspace
@@ -271,10 +271,10 @@ Open until we play more.
 
 ---
 
-## Open: bbp -- integration testing
+## Open: g2rpg -- integration testing
 
 Reference design + test coverage principle:
-[`../better-backpack/docs/testing.md`](../better-backpack/docs/testing.md)
+[`../grounded2-rpg/docs/testing.md`](../grounded2-rpg/docs/testing.md)
 + [`../ueforge/docs/RESEARCH.md`](../ueforge/docs/RESEARCH.md)
 "Test coverage principle".
 

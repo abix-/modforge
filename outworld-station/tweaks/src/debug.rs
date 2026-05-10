@@ -1,4 +1,4 @@
-//! HTTP control plane. Mirrors better-backpack's pattern but
+//! HTTP control plane. Mirrors grounded2-rpg's pattern but
 //! starts empty — fields and ops grow as research lands.
 
 use serde::Serialize;

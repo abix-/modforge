@@ -112,6 +112,6 @@ mod tests {
 
     // We can't construct a real UFunction from a unit test (would
     // require a running UE process), so the cache state-machine here
-    // is exercised on bbp's in-game smoke runs. The const + initial
+    // is exercised on g2rpg's in-game smoke runs. The const + initial
     // state checks above are what unit tests can guarantee.
 }

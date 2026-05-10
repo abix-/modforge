@@ -28,7 +28,7 @@ use ueforge::ue::{ClassRef, UObject};
 static HEALTH_CLASS: ClassRef = ClassRef::new("HealthComponent");
 
 // Ops are added one at a time, each driven by a failing test in
-// `better-backpack/tests/`. Discipline: write the red test FIRST,
+// `grounded2-rpg/tests/`. Discipline: write the red test FIRST,
 // then add the match arm + handler. See
 // `~/.claude/skills/runtime-control-http/SKILL.md` for the
 // cross-project pattern.
@@ -157,7 +157,7 @@ pub fn spawn(port: u16) {
         ueforge::Config {
             port,
             endpoint: "/debug",
-            thread_name: "bbp-debug-http",
+            thread_name: "g2rpg-debug-http",
         },
         |body| {
             let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_HTTP_HANDLE);

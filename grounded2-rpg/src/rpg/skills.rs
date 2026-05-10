@@ -197,7 +197,7 @@ pub enum PercentFormat {
 }
 
 /// One row in the catalog. Aliases `ueforge::rpg::Skill<SkillEffect>`
-/// so the generic framework owns the row shape; bbp owns the
+/// so the generic framework owns the row shape; g2rpg owns the
 /// `SkillEffect` enum that names every kind of write the game
 /// supports.
 pub type Skill = ueforge::rpg::Skill<SkillEffect>;

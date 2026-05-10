@@ -179,7 +179,7 @@ Player-dealt damage attributes via
 a remote actor, the weak pointer can be null/zero -- which
 resolves to `/Script/CoreUObject (Package)` (a CDO with index 0).
 So a kill that's clearly from the player can attribute to "the
-package." The bbp pkg(0) bug is exactly this.
+package." The g2rpg pkg(0) bug is exactly this.
 
 Workarounds:
 
@@ -237,7 +237,7 @@ test is the bug the user finds.
 Each mod keeps a per-feature investigation log alongside the
 code. Use it as the cross-link between the SDK headers, the
 hypotheses, the failed approaches, and the eventual fix.
-`docs/damage.md` in better-backpack is the canonical shape:
+`docs/damage.md` in grounded2-rpg is the canonical shape:
 
 - One header per feature / regression.
 - "What we know" -- citations into SDK headers, file:line.

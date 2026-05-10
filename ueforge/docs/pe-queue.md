@@ -162,7 +162,7 @@ The site needs to:
 | Global PE pre-callback (`RegisterProcessEventPreCallback`) | every PE in the process | requires UE4SS shim glue (Wave E1, deferred) |
 
 The global PE pre-callback is the future right answer. Until
-that lands, the damage multicast is bbp's choice; OWS may pick
+that lands, the damage multicast is g2rpg's choice; OWS may pick
 the character tick.
 
 ### What if I have multiple drain sites?

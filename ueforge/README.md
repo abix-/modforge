@@ -306,7 +306,7 @@ That's the full mod skeleton. ~50 LoC.
 ### `your-mod/src/debug.rs`
 
 See `outworld-station/research.md` and the existing
-`better-backpack/src/debug.rs` for the snapshot + dispatcher
+`grounded2-rpg/src/debug.rs` for the snapshot + dispatcher
 pattern.
 
 ## TDD pattern
@@ -413,7 +413,7 @@ matches the existing community "Better Item Stacks" pak mod's
 effect — but via runtime DLL, so other features in the same mod
 can layer on top dynamically.
 
-## Audit: ueforge vs better-backpack vs ows-tweaks
+## Audit: ueforge vs grounded2-rpg vs ows-tweaks
 
 Three-way map of every load-bearing feature across the
 framework and the two consumer mods. Use this when deciding
@@ -433,21 +433,21 @@ else?". Update on every major slice.
 
 ### Lifecycle / loader plumbing
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | · | · | done (bbp migrated 2026-05-10) |
-| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done — bbp's `cpp/shim.cpp` deleted |
-| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done — bbp's `DLL_HMODULE` deleted |
-| 4 | File + console logger | ✅ (`ueforge::log`) | · (`ueforge::log!` macro) | · | done — bbp's `log.rs` deleted |
+| 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | · | · | done (g2rpg migrated 2026-05-10) |
+| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done — g2rpg's `cpp/shim.cpp` deleted |
+| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done — g2rpg's `DLL_HMODULE` deleted |
+| 4 | File + console logger | ✅ (`ueforge::log`) | · (`ueforge::log!` macro) | · | done — g2rpg's `log.rs` deleted |
 | 5 | Settings JSON load / atomic save | ✅ (`Settings<T>`) | · (data struct only, IO via ueforge) | · | done |
 | 6 | Counter primitives + macros | ✅ (`counter!`, `peak!`, `time_scope`) | · (uses ueforge primitives + own domain statics) | — | done |
 | 7 | Bounded ring buffer | ✅ (`Ring<T>`) | · (uses for `DAMAGE_RING`) | — | done |
 
 ### UObject SDK
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done — bbp's `sdk/` deleted |
+| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done — g2rpg's `sdk/` deleted |
 | 9 | `FName` / `FString` | ✅ (with FName→string cache) | · | · | done |
 | 10 | `TArray` / `TMap` walkers | ✅ | · | · | done |
 | 11 | `GObjectsView` (flat + chunked) | ✅ | · | · | done |
@@ -460,16 +460,16 @@ else?". Update on every major slice.
 
 ### Hooking
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · | — | done — bbp's `hook/` deleted |
+| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · | — | done — g2rpg's `hook/` deleted |
 | 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) | — | done |
 | 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | ✅ (`hook::function_ptr` / `function_ptr_required`) | · (own `lookup` helpers; functionally equivalent) | — | done -- Phase 2 |
 | 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | ✅ (canonical-site doc on `Queue::drain`) | · (drained from `kill_hook`) | — | done -- Phase 2 |
 
 ### Control plane (HTTP / TDD)
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 22 | HTTP listener (`server::spawn`) | ✅ | · | · | done |
 | 23 | `OpResponse<S>` envelope + `parse_request` | ✅ | · | · | done |
@@ -482,7 +482,7 @@ else?". Update on every major slice.
 
 ### Memory tools
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 30 | Cheat-Engine-style scanner (scan / rescan / paginate) | ✅ | — | · | done |
 | 31 | Address-validated freezes (selector-relative, `VirtualQuery` per write) | ✅ | — | · | done |
@@ -492,23 +492,23 @@ else?". Update on every major slice.
 
 ### ImGui
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done — bbp's `cpp/imgui` deleted |
+| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done — g2rpg's `cpp/imgui` deleted |
 | 36 | Rust ImGui wrappers (`ui::text`, `button`, `slider_*`, etc.) | ✅ | · (RPG tab is now Rust, see `rpg/tab.rs`) | · | done |
-| 37 | Tab registration (`Tab { name, render }`) | ✅ | · | · | done — bbp's FFI bridge deleted |
+| 37 | Tab registration (`Tab { name, render }`) | ✅ | · | · | done — g2rpg's FFI bridge deleted |
 
 ### Build & deploy
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 38 | `CppShim::new().compile()` builder | ✅ | · (1-line `build.rs`) | · | done |
 | 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge-deploy`) | · (manifest entry) | · | done |
 | 40 | Steam-library auto-detect | ✅ | · | · | done |
 
-### **RPG framework** (currently bbp-only — biggest open promotion)
+### **RPG framework** (currently g2rpg-only — biggest open promotion)
 
-| # | Feature | ueforge | better-backpack | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 41 | **`SkillEffect` enum + `CATALOG` row pattern** (one row per skill) | 🔵 | 📦 | — | **promote (Phase 3 cont.):** generic `Catalog<E>` / `Skill<E>` parameterized on the game's effect enum |
 | 42 | **Sqrt level curve** (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · | — | done -- Phase 3 |
@@ -524,7 +524,7 @@ else?". Update on every major slice.
 
 ### Game-specific (correctly stays in the game crate)
 
-| # | Feature | better-backpack | ows-tweaks | Notes |
+| # | Feature | grounded2-rpg | ows-tweaks | Notes |
 |---|---|---|---|---|
 | 52 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
 | 53 | Game-specific selectors (`live_player`, `live_player_hc`, `live_player_cmc`) | 📦 | — | wraps `selector::resolve_generic` |
@@ -541,9 +541,9 @@ else?". Update on every major slice.
 ### Migration status
 
 **Phase 1 — infra dedup (DONE 2026-05-10):** rows 1-13, 15-19, 22-40
-all in. better-backpack lost ~930 lines: `cpp/shim.cpp` (357),
+all in. grounded2-rpg lost ~930 lines: `cpp/shim.cpp` (357),
 `src/rpg/ffi.rs` (340), `src/log.rs`, `src/sdk/`, `src/hook/`,
-`winhttp.def`, custom `DllMain` + `better_backpack_start/stop`
+`winhttp.def`, custom `DllMain` + `grounded2_rpg_start/stop`
 exports, the `DLL_HMODULE` static. Replaced with one
 `ueforge::ue4ss_mod!(MOD_INFO)` macro call, a Rust ImGui render
 in `src/rpg/tab.rs` (no FFI hop, no buffer-passing — calls
@@ -555,10 +555,10 @@ Build-clean validated; in-game smoke test pending.
 - ✅ `ClassFieldTweak<T>` (row 14) -- live-UObject sibling of
   `FieldTweak<T>`. Walks GObjects, snapshots vanilla per
   instance, writes via `transform(vanilla) -> Option<T>`.
-  bbp's `patch::run` and `survival::run` migrated.
+  g2rpg's `patch::run` and `survival::run` migrated.
 - ✅ `hook::function_ptr` / `function_ptr_required` (row 20) --
   cached UFunction-pointer-identity dispatch. New mods reach for
-  this directly; bbp's older `inv_hook::lookup` helpers stay
+  this directly; g2rpg's older `inv_hook::lookup` helpers stay
   (functionally equivalent, migration would be pure churn).
 - ✅ Canonical-site doc on `Queue::drain` (row 21) -- the next
   PE-trampoline-drain mod gets the empty-check / re-entrance /
@@ -569,8 +569,8 @@ Build-clean validated; in-game smoke test pending.
 First wave landed 2026-05-10: `ueforge::rpg::{xp, progress, state,
 store, disabled, poller}` (rows 42-47). Module is fully usable for
 any RPG mod that's willing to write its own catalog dispatcher and
-ImGui tab body. bbp migrated its state / store / poller / disabled
-/ progress to consume it; `bbp/src/rpg/state.rs` is gone, the rest
+ImGui tab body. g2rpg migrated its state / store / poller / disabled
+/ progress to consume it; `g2rpg/src/rpg/state.rs` is gone, the rest
 shrunk.
 
 Second wave (next session, multi-session):
@@ -590,7 +590,7 @@ Second wave (next session, multi-session):
   (+5 / +50 skill points). Game crates supply a `format_effect`
   closure for the per-skill effect text.
 
-Once the second wave lands, bbp's `rpg/` becomes: catalog content
+Once the second wave lands, g2rpg's `rpg/` becomes: catalog content
 (`SkillEffect` variants + CATALOG entries) + game-specific apply
 match arms + the kill / fall hooks. The rest is ueforge.
 
@@ -614,7 +614,7 @@ Some piece of plumbing every mod needs that's not here yet?
 **Add it to ueforge first.** Open the relevant module
 (`ui` for ImGui calls, `ue` for engine helpers, `ops` for new
 generic primitives, etc.), add the surface, validate by either
-better-backpack or the next mod referencing it. Then build the
+grounded2-rpg or the next mod referencing it. Then build the
 game-specific code on top.
 
 If you find yourself copy-pasting between two game crates —

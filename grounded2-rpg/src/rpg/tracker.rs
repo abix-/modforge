@@ -1,5 +1,5 @@
 // Bbp tracker shim. Owns the static `ueforge::rpg::Tracker` and
-// exposes the bbp-side surface that the rest of the mod calls
+// exposes the g2rpg-side surface that the rest of the mod calls
 // (kill_hook, world_loader, debug, tab). Every skill-state
 // operation routes through ueforge::rpg::Tracker, which owns
 // state, persistence, and the apply dispatch via GameApplier.

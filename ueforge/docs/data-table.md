@@ -36,7 +36,7 @@ Most "tweak-stack-size" / "tweak-drop-rate" mods get away with
 option 1. Status-effect / damage-system mods often need option 3.
 
 See [RESEARCH.md](RESEARCH.md) "Doctrine: status effects and
-data tables" for the full pattern + bbp's bandage research as
+data tables" for the full pattern + g2rpg's bandage research as
 the canonical example.
 
 ## find_by_short_name

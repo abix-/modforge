@@ -51,7 +51,7 @@ Match the Factorio RPG System / Diablo conventions.
 ## Catalog
 
 The catalog lives in
-[`better-backpack/src/rpg/skills.rs`](../better-backpack/src/rpg/skills.rs)
+[`grounded2-rpg/src/rpg/skills.rs`](../grounded2-rpg/src/rpg/skills.rs)
 as the **single source of truth**. Each skill is one row in
 `CATALOG` with:
 
@@ -125,7 +125,7 @@ Cumulative XP required to reach level N is `100 * N^1.8`, capped
 at level 50. Per-creature XP is a small static lookup keyed on the
 dying actor's BP class (Aphid 5, Weevil 15, Spider 75, Boss 750,
 unknown 5). Lookup table in
-[`xp.rs`](../better-backpack/src/rpg/xp.rs).
+[`xp.rs`](../grounded2-rpg/src/rpg/xp.rs).
 
 ## Kill detection
 

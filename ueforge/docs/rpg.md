@@ -161,7 +161,7 @@ missing / unparseable file (logged).
 
 Generic over `S` so games can persist extended state alongside
 the framework `SkillsState` (achievements, kill counters, run
-meta). bbp uses `SlotStore<SkillsState>` directly; an extended
+meta). g2rpg uses `SlotStore<SkillsState>` directly; an extended
 mod could use `SlotStore<MyExtendedState>` where
 `MyExtendedState` includes a `pub skills: SkillsState` field.
 
@@ -197,7 +197,7 @@ pub const CURVE: Curve = Curve::new(100.0, 1.8, 50);
 `level_for_xp(xp)` is linear scan from `max_level` downward (cheap
 for typical caps 50-100; bounded).
 
-Defaults match bbp: 100 / 1.8 / 50. Generous early, flat at the
+Defaults match g2rpg: 100 / 1.8 / 50. Generous early, flat at the
 end. Adjust `(base, exponent, max_level)` to retune.
 
 ## sqrt_progress -- diminishing-returns curve
@@ -449,7 +449,7 @@ read; the inner lock is held briefly.
 
 ## Putting it all together
 
-The full bbp-shaped wiring:
+The full g2rpg-shaped wiring:
 
 ```rust
 // catalog (game-specific):

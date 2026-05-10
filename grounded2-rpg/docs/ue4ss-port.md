@@ -106,7 +106,7 @@ zip-root/
       WinGRTS/
         ue4ss/
           Mods/
-            BetterBackpack/
+            Grounded2RPG/
               dlls/
                 main.dll
               dlls/settings.json
@@ -115,14 +115,14 @@ zip-root/
 `mods.txt` registration is handled by Vortex's UE4SS extension on
 deploy (it merges entries from each installed mod). For manual
 installs the README instructs the user to append
-`BetterBackpack : 1` to `mods.txt`.
+`Grounded2RPG : 1` to `mods.txt`.
 - **No setup.ps1.** No System32 winhttp copy. The user has already
   installed UE4SS once; that's the prerequisite.
 - **deploy.ps1 modes:**
   - Default `-Package`: builds the mod folder, zips it.
   - `-Install`: builds and copies the mod folder into the game's
     UE4SS Mods directory.
-  - `-Uninstall`: deletes the BetterBackpack folder from
+  - `-Uninstall`: deletes the Grounded2RPG folder from
     Mods.
 - **Vortex.** When Grounded 2 gets a Vortex extension that's
   UE4SS-aware (most UE5 games eventually do), our mod auto-installs.
@@ -131,7 +131,7 @@ installs the README instructs the user to append
 ## What stays the same
 
 - Mod feature set, settings.json schema, defaults, log file location
-  (`<DLL_dir>\better_backpack.log`, next to `main.dll`).
+  (`<DLL_dir>\grounded2_rpg.log`, next to `main.dll`).
 - Performance characteristics. `performance.md` numbers don't move
   meaningfully, we're still doing one CDO patch + one ProcessEvent
   hook. UE4SS adds maybe ~10us of additional latency at start (it
@@ -189,23 +189,23 @@ needs and forward lifecycle calls into the Rust cdylib via two
 // shim.cpp
 #include <UE4SS/Mod/CppUserModBase.hpp>
 
-extern "C" void better_backpack_start();   // implemented in Rust
-extern "C" void better_backpack_stop();    // implemented in Rust
+extern "C" void grounded2_rpg_start();   // implemented in Rust
+extern "C" void grounded2_rpg_stop();    // implemented in Rust
 
-class BetterBackpackMod : public RC::CppUserModBase {
+class Grounded2RPGMod : public RC::CppUserModBase {
 public:
-    BetterBackpackMod() {
-        ModName = STR("BetterBackpack");
+    Grounded2RPGMod() {
+        ModName = STR("Grounded2RPG");
         ModVersion = STR("0.1.0");
         ModDescription = STR("Bigger backpack + survival rate tweaks");
         ModAuthors = STR("abix");
     }
-    void on_unreal_init() override { better_backpack_start(); }
-    ~BetterBackpackMod() override { better_backpack_stop(); }
+    void on_unreal_init() override { grounded2_rpg_start(); }
+    ~Grounded2RPGMod() override { grounded2_rpg_stop(); }
 };
 
 extern "C" __declspec(dllexport)
-RC::CppUserModBase* start_mod() { return new BetterBackpackMod(); }
+RC::CppUserModBase* start_mod() { return new Grounded2RPGMod(); }
 
 extern "C" __declspec(dllexport)
 void uninstall_mod(RC::CppUserModBase* mod) { delete mod; }
@@ -218,7 +218,7 @@ hooks, scroll viewport, settings, log) stays Rust.
 Build shape:
 
 - **Rust cdylib** (existing crate, renamed) exports
-  `better_backpack_start` / `better_backpack_stop`.
+  `grounded2_rpg_start` / `grounded2_rpg_stop`.
 - **C++ shim file** compiled via the `cc` build dep we already use,
   linked into the same DLL as the Rust code.
 - **UE4SS headers** consumed from a separate clone at
@@ -302,14 +302,14 @@ Numbered for tracking. Each step is its own commit.
   `<vortex>\grounded2\mods\UE4SS_Grounded2-52-1-0-2-1771968923\Augusta\Binaries\WinGRTS\ue4ss\UE4SS.dll`
   via `dumpbin /exports` -> `.def` -> `lib /def:`. 3756 mangled
   symbols total, 1.9 MB lib. Committed both `UE4SS.def` and
-  `UE4SS.lib` to `better-backpack/ue4ss/`.
+  `UE4SS.lib` to `grounded2-rpg/ue4ss/`.
 - [x] **3.** Added `cpp/shim.cpp` (~110 lines including comments,
   ~30 lines of actual code). Forward-declares `GUI::GUITab` and
   `LuaMadeSimple::Lua` so the shim doesn't pull in imgui or the full
   UE4SS header tree. Mirrors `RC::CppUserModBase` layout exactly,
   marks the constructor + virtual destructor + 12 inline base
   virtuals with `__declspec(dllimport)` so they resolve from
-  UE4SS.lib. Subclasses as `BetterBackpackMod`, overrides
+  UE4SS.lib. Subclasses as `Grounded2RPGMod`, overrides
   `on_unreal_init` to call into Rust, exports `start_mod` and
   `uninstall_mod`. `build.rs` compiles the shim via `cc::Build` and
   links against UE4SS.lib.
@@ -317,25 +317,25 @@ Numbered for tracking. Each step is its own commit.
   `main.dll`, the path UE4SS expects under
   `Mods/<ModName>/dlls/main.dll`). Replaced the winhttp forwarder
   generation in `build.rs`. Added `extern "C" fn
-  better_backpack_start()` / `better_backpack_stop()` to `lib.rs`.
+  grounded2_rpg_start()` / `grounded2_rpg_stop()` to `lib.rs`.
   `DllMain` shrunk to just capture HMODULE. Worker spawned from
-  `better_backpack_start` instead of DllMain. `wait_for_gobjects`
+  `grounded2_rpg_start` instead of DllMain. `wait_for_gobjects`
   retry loop deleted, UE4SS calls `on_unreal_init` only after
   the engine has finished initializing.
   **Verified `main.dll` (244 KB) builds clean, exports `DllMain`,
-  `better_backpack_start`, `better_backpack_stop`, `start_mod`,
+  `grounded2_rpg_start`, `grounded2_rpg_stop`, `start_mod`,
   `uninstall_mod` (per `dumpbin /exports`).**
 - [x] **5.** Rewrote `deploy.ps1` for the UE4SS mod folder layout.
   Three modes:
   - Default `-Package`: produces a Vortex-installable zip at
-    `dist\better-backpack-v<version>.zip` with the contents at
-    `Augusta/Binaries/WinGRTS/ue4ss/Mods/BetterBackpack/{dlls/main.dll,
+    `dist\grounded2-rpg-v<version>.zip` with the contents at
+    `Augusta/Binaries/WinGRTS/ue4ss/Mods/Grounded2RPG/{dlls/main.dll,
     dlls/settings.json, README.txt}`. Generated zip is 132 KB.
   - `-Install`: auto-detects the local Steam install, verifies UE4SS
     is present, copies `main.dll` and `dlls/settings.json` into the live
-    Mods folder, appends `BetterBackpack : 1` to `mods.txt` if it
+    Mods folder, appends `Grounded2RPG : 1` to `mods.txt` if it
     isn't already there.
-  - `-Uninstall`: removes the BetterBackpack folder and strips its
+  - `-Uninstall`: removes the Grounded2RPG folder and strips its
     line from `mods.txt`.
 - [ ] **6.** Update `building.md`, `README.md`, `features.md`,
   `performance.md` to reflect the UE4SS load model. The capability
@@ -343,7 +343,7 @@ Numbered for tracking. Each step is its own commit.
   changed.
 - [/] **7.** In-game smoke test under UE4SS. **Partially done.**
   - UE4SS DOES recognize our mod, `UE4SS.log` shows
-    `Starting C++ mod 'BetterBackpack'` cleanly.
+    `Starting C++ mod 'Grounded2RPG'` cleanly.
   - But the game **crashes** during early init when our mod is
     loaded. With `deploy.ps1 -Uninstall`, the game launches fine,
     so the crash is in our mod, not UE4SS or Grounded.
@@ -352,7 +352,7 @@ Numbered for tracking. Each step is its own commit.
     actual class layout. We mirror the vtable + member fields, but
     UE4SS's `CppUserModBase::CppUserModBase()` (imported from
     UE4SS.lib) writes through the parent layout when we
-    `new BetterBackpackMod()`. If our mirror has wrong virtual
+    `new Grounded2RPGMod()`. If our mirror has wrong virtual
     count, wrong field order, or wrong-sized STL types, the parent
     ctor corrupts adjacent memory.
   - **Open suspects** (debug next session):
@@ -367,7 +367,7 @@ Numbered for tracking. Each step is its own commit.
   - **Debug plan:**
     1. Write to a debug log at the very top of `start_mod()` before
        the `new` to confirm we reach the export.
-    2. Wrap `new BetterBackpackMod()` in try/catch.
+    2. Wrap `new Grounded2RPGMod()` in try/catch.
     3. Audit the mirror against the real header byte-for-byte.
     4. Force `/MD` in `cc::Build` if not already.
     5. As a last resort, include UE4SS's real headers (resolve the

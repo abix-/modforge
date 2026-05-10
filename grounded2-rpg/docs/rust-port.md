@@ -9,10 +9,10 @@
 
 We ported the native DLL mod toolchain from C++ to Rust ahead of
 building out a multi-mod monorepo. This doc captures the target
-architecture, the scope of the first port (Better Backpack), and
+architecture, the scope of the first port (Grounded 2 - RPG System), and
 the migration sequence.
 
-This doc is the spec. The C++ tree under `better-backpack/` stays put as the
+This doc is the spec. The C++ tree under `grounded2-rpg/` stays put as the
 reference implementation until the Rust version reaches behavior parity.
 
 ## Goals
@@ -47,11 +47,11 @@ extract a crate. Until then, modules.
 
 ```
 grounded2mods/
-  Cargo.toml                # [workspace] members = ["better-backpack", "injector"]
+  Cargo.toml                # [workspace] members = ["grounded2-rpg", "injector"]
   rust-toolchain.toml       # stable + msvc target
   .cargo/config.toml        # target triple, linker flags
 
-  better-backpack/          # cdylib: the mod itself
+  grounded2-rpg/          # cdylib: the mod itself
     Cargo.toml              # crate-type = ["cdylib"]
     src/
       lib.rs                # DllMain + worker entry, top-level wiring
@@ -91,11 +91,11 @@ Workspace `Cargo.toml` enables `[profile.release] lto = "fat"`,
 `codegen-units = 1`, `panic = "abort"` so the cdylib is small and the hot
 path inlines aggressively.
 
-Module visibility (within `better-backpack`): `sdk` and `hook` modules are
+Module visibility (within `grounded2-rpg`): `sdk` and `hook` modules are
 `pub(crate)`, exposed to the rest of the crate, not to external consumers
 (there are none).
 
-The `injector` crate does **not** depend on `better-backpack`. They share
+The `injector` crate does **not** depend on `grounded2-rpg`. They share
 nothing. The injector takes a path-to-DLL on the CLI and injects it.
 
 ## Module boundaries
@@ -186,7 +186,7 @@ Console + file sink, batched flush from worker. No `fflush` per line.
 Standalone Rust binary that replaces `inject.c`. CLI:
 
 ```
-inject.exe --process Maine-Win64-Shipping.exe --dll path/to/better_backpack.dll
+inject.exe --process Maine-Win64-Shipping.exe --dll path/to/grounded2_rpg.dll
 ```
 
 Implementation:
@@ -200,10 +200,10 @@ Implementation:
 - Optional `--launch` flag to start the game exe ourselves.
 - Exit non-zero on any failure with a clear error message.
 
-Self-contained, no shared deps with `better-backpack`. Builds to
+Self-contained, no shared deps with `grounded2-rpg`. Builds to
 `target/release/inject.exe`.
 
-### `lib.rs` (top level of better-backpack)
+### `lib.rs` (top level of grounded2-rpg)
 
 DllMain (via `define_dllmain!` macro inside the crate), worker thread entry,
 top-level wiring of patch + hook. Should be small, target <150 lines.
@@ -212,7 +212,7 @@ top-level wiring of patch + hook. Should be small, target <150 lines.
 define_dllmain!(worker);
 
 fn worker() -> Result<()> {
-    let log = init_log(&temp_path("BetterBackpack.log"))?;
+    let log = init_log(&temp_path("Grounded2RPG.log"))?;
     wait_for_gobjects()?;
 
     let _hook = ProcessEventHook::install("WBP_InventoryInterface_C", on_inv_iface_event)?;
@@ -261,13 +261,13 @@ patch becomes a compile error, not a stack smash.
 ## Build and inject story
 
 1. `cargo build --release --target x86_64-pc-windows-msvc` from the
-   workspace root builds both crates: `better_backpack.dll` (cdylib) and
+   workspace root builds both crates: `grounded2_rpg.dll` (cdylib) and
    `inject.exe` (binary). Outputs land in
    `target/x86_64-pc-windows-msvc/release/`.
 2. `inject.exe --process Maine-Win64-Shipping.exe --dll
-   .\better_backpack.dll` injects the DLL.
+   .\grounded2_rpg.dll` injects the DLL.
 3. `cargo xtask package` (later) zips both artifacts + README into
-   `dist/better-backpack-X.Y.Z.zip` for users.
+   `dist/grounded2-rpg-X.Y.Z.zip` for users.
 
 ## Toolchain
 
@@ -316,14 +316,14 @@ guide and reference, not a library.
 
 Numbered so we can check them off.
 
-- [x] **1.** Rename current `better-backpack/` -> `archive/winhttp-proxy/`.
+- [x] **1.** Rename current `grounded2-rpg/` -> `archive/winhttp-proxy/`.
   (`inject.c` lives inside that tree, so one rename covered both.)
 - [x] **2.** Add workspace `Cargo.toml`, `rust-toolchain.toml`,
   `.cargo/config.toml` (the last overrides a global `target-dir` that was
   redirecting our build into `C:\code\endless\rust\target`).
 - [x] **3.** Create `injector/` bin crate. Port `inject.c` to Rust. Build
   green, RAII handle/alloc guards, same exit codes / messaging.
-- [x] **4.** Create `better-backpack/` cdylib skeleton with `sdk/` module:
+- [x] **4.** Create `grounded2-rpg/` cdylib skeleton with `sdk/` module:
   `UObject`, `UClass`, `UFunction`, `FName` (with `AppendString` resolver),
   `FString`, `TArray`, `GObjectsView`, `Runtime`, `find_class_fast`. Layout
   tests pass; `cargo clippy --all-targets, -D warnings` clean. The lib is
@@ -331,7 +331,7 @@ Numbered so we can check them off.
 - [x] **5.** Add `hook/` module: vtable patcher + `ProcessEventHook` RAII
   wrapper (registry-based dispatch by live vtable, `catch_unwind` around
   the user closure so a panic falls through to the engine's original
-  ProcessEvent). Add `log` module (file-only at `%TEMP%\BetterBackpack.log`
+  ProcessEvent). Add `log` module (file-only at `%TEMP%\Grounded2RPG.log`
   for now, console output deferred). The `define_dllmain!` macro was
   inlined into `lib.rs` since there's only one DllMain to write.
 - [x] **6.** Wire up the patch loop. Worker does log init -> platform
@@ -340,7 +340,7 @@ Numbered so we can check them off.
   in-game**: log shows
   `Default__BP_SurvivalPlayerCharacter_C.InventoryComponent: 40 -> 100,
   verify=100`. AllocConsole brought back so the live mod log surfaces in
-  a "Better Backpack" console window the way the C++ build did.
+  a "Grounded 2 - RPG System" console window the way the C++ build did.
 - [x] **7.** Port the inventory-interface hook + viewport rebind in
   `inv_hook.rs` + `parms.rs`. Single hook surface
   (`WBP_InventoryInterface_C`). All function dispatch goes through cached
@@ -374,7 +374,7 @@ Each step lands as its own commit.
 
 ## Bugs found and fixed during testing
 
-1. **GObjects extra indirection** (better-backpack/src/sdk/uobject.rs).
+1. **GObjects extra indirection** (grounded2-rpg/src/sdk/uobject.rs).
    `GObjectsView::from_image` was treating `image_base + g_objects` as a
    pointer-to-pointer and dereferencing once, so `array` was actually
    `Objects[0]` (the first FUObjectItem) and `num()` read random bytes.
@@ -393,17 +393,17 @@ Each step lands as its own commit.
    named `"Class"`.
 
 3. **Injector defaulted to PascalCase DLL name**. Rust cdylib output is
-   `better_backpack.dll` (lib name -> snake_case), but the injector's
-   default lookup was `BetterBackpack.dll`, so a flag-less invocation
+   `grounded2_rpg.dll` (lib name -> snake_case), but the injector's
+   default lookup was `Grounded2RPG.dll`, so a flag-less invocation
    loaded the old C++ DLL or failed silently. Fix: injector default
    lowered to match the cdylib output.
 
 4. **Console window for live output**. The C++ build called
-   `AllocConsole` from the DLL so users got a live "Better Backpack"
+   `AllocConsole` from the DLL so users got a live "Grounded 2 - RPG System"
    console window. The first Rust pass dropped this for build simplicity,
    which broke the user's expected debug surface. Fix: AllocConsole +
    `WriteConsoleA` brought back; logs also go to
-   `%TEMP%\BetterBackpack.log` for durability.
+   `%TEMP%\Grounded2RPG.log` for durability.
 
 5. **Injector closed too fast to read**. Double-clicking inject.exe
    spawned a console that closed when the process exited, making errors

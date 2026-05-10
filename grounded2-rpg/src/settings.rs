@@ -1,4 +1,4 @@
-// User-editable settings -- bbp-specific shape. Storage + atomic save
+// User-editable settings -- g2rpg-specific shape. Storage + atomic save
 // lives in `ueforge::settings::Settings<T>`; consumers call
 // `ueforge::settings::Settings::<Settings>::load("settings.json").get()`
 // to read the file once at init.

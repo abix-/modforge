@@ -170,7 +170,7 @@ It exposes:
 - Active freezes list with "Unfreeze" buttons
 
 Backed by the scanner ops (see [memory-tools.md](memory-tools.md));
-no game-specific configuration. bbp doesn't include it (RPG tab
+no game-specific configuration. g2rpg doesn't include it (RPG tab
 only); ows-tweaks does as a reference.
 
 ## RPG tab (template)
@@ -190,7 +190,7 @@ ueforge::Tab {
 ### Don't allocate per-row
 
 The tab body runs every frame the tab is visible (~144Hz on a
-high-refresh monitor). `format!` per-row allocates. The bbp
+high-refresh monitor). `format!` per-row allocates. The g2rpg
 tab does this today (the old code was straightforward to
 migrate; counters track the cost). For a high-traffic tab,
 cache strings between renders or use static `&str` where

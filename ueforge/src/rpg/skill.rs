@@ -3,7 +3,7 @@
 //! The `Skill<E>` struct is the universal shape: an id (stable
 //! string used as a save-file key), a display name, a max level,
 //! and an effect. The `effect` is parameterized -- each game
-//! supplies its own enum (`bbp::SkillEffect`, `outworld::SkillEffect`)
+//! supplies its own enum (`g2rpg::SkillEffect`, `outworld::SkillEffect`)
 //! that names every kind of skill that game implements. ueforge
 //! ships the catalog scaffolding; each game ships the variants.
 //!

@@ -219,7 +219,7 @@ all of the above behind an interactive UI:
 - Per-hit "Freeze" -> `freeze` op
 - Active freezes list -> `freeze_list` + per-row "Unfreeze"
 
-bbp doesn't include the tab today (RPG tab only); ows-tweaks
+g2rpg doesn't include the tab today (RPG tab only); ows-tweaks
 does as a reference.
 
 ## Cross-references

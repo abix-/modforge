@@ -184,7 +184,7 @@ ueforge resolves these via `selector::resolve_generic`:
 
 Game-specific selectors are the game's escape hatch: the game
 crate provides a `resolve` callback that handles names ueforge
-doesn't know. bbp adds `live_player`, `live_player_hc`,
+doesn't know. g2rpg adds `live_player`, `live_player_hc`,
 `live_player_cmc` for the player pawn / HealthComponent /
 MovementComponent shortcuts.
 
