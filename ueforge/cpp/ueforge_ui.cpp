@@ -103,6 +103,12 @@ bool ueforge_ui_input_int(const char* s, std::size_t n, int* v) {
     return ImGui::InputInt(c.c_str(), v);
 }
 
+bool ueforge_ui_input_text(const char* s, std::size_t n,
+                           char* buf, std::size_t buf_size) {
+    CStr c(s, n);
+    return ImGui::InputText(c.c_str(), buf, buf_size);
+}
+
 bool ueforge_ui_collapsing_header(const char* s, std::size_t n) {
     CStr c(s, n);
     return ImGui::CollapsingHeader(c.c_str());

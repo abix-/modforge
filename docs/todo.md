@@ -88,18 +88,21 @@ discovery before snapshot / browser / static catalog rows.
   GObjects; "max rows" slider controls per-table row count.
   Wired into both g2rpg and ows-tweaks `MOD_INFO.tabs` as
   "Tables".
-- [ ] Filter / search box on table name + row FName.
-  ueforge::ui doesn't expose `input_text` yet; deferred until
-  we hit a table count that makes scroll-to-find painful.
+- [x] Filter box on table name. `ueforge::ui::input_text` +
+  `cstr_view` added; the browser tab now filters the table list
+  by case-insensitive substring. Row-FName filtering on the
+  selected table is open work.
 
 ### Phase 1e: validation
 
-- [ ] **Compare static-declared vs discovered** -- when both
-  sources are present (e.g. ows-tweaks declares
-  `DT_MATERIALS: DataTableDef = ...` AND discovery finds the
-  table), the framework cross-checks offsets / field types and
-  logs drift. Catches UE-version mismatches before they corrupt
-  game state.
+- [x] **Compare static-declared vs discovered** --
+  `data_table::validate_registry(reg)` compares each
+  `DataTableDef`'s field list against the live FProperty chain
+  in the discovery cache and emits a JSON report + logs each
+  drift line via `ueforge::log!`. Mods call it from their
+  `on_unreal_init` worker after `discovery::run_at_load()`; the
+  no-op case (empty registry) costs one HashMap allocation.
+  Catches UE-version mismatches before any tweak runs.
 
 ### Deferred to Phase 2 (write surface)
 

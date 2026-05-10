@@ -22,6 +22,12 @@ unsafe extern "C" {
     fn ueforge_ui_slider_float(s: *const c_char, n: usize, v: *mut f32, lo: f32, hi: f32) -> bool;
     fn ueforge_ui_slider_int(s: *const c_char, n: usize, v: *mut c_int, lo: c_int, hi: c_int) -> bool;
     fn ueforge_ui_input_int(s: *const c_char, n: usize, v: *mut c_int) -> bool;
+    fn ueforge_ui_input_text(
+        s: *const c_char,
+        n: usize,
+        buf: *mut c_char,
+        buf_size: usize,
+    ) -> bool;
     fn ueforge_ui_collapsing_header(s: *const c_char, n: usize) -> bool;
 
     fn ueforge_ui_progress_bar(fraction: f32, overlay: *const c_char, overlay_n: usize);
@@ -99,6 +105,22 @@ pub fn slider_f32(label: &str, v: &mut f32, lo: f32, hi: f32) -> bool {
 pub fn slider_i32(label: &str, v: &mut i32, lo: i32, hi: i32) -> bool {
     let (p, n) = raw(label);
     unsafe { ueforge_ui_slider_int(p, n, v as *mut c_int, lo as c_int, hi as c_int) }
+}
+
+/// Edit a UTF-8 string in `buf`. The buffer must be NUL-padded
+/// (ImGui treats it as a C string). Returns `true` on edit.
+/// Caller owns the buffer; pass a fixed-size `[u8; N]` and treat
+/// the first NUL as the end-of-string.
+pub fn input_text(label: &str, buf: &mut [u8]) -> bool {
+    let (p, n) = raw(label);
+    unsafe { ueforge_ui_input_text(p, n, buf.as_mut_ptr() as *mut c_char, buf.len()) }
+}
+
+/// Read a NUL-terminated UTF-8 slice out of a buffer the user
+/// just edited via [`input_text`].
+pub fn cstr_view(buf: &[u8]) -> &str {
+    let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
+    std::str::from_utf8(&buf[..end]).unwrap_or("")
 }
 
 pub fn input_i32(label: &str, v: &mut i32) -> bool {

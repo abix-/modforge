@@ -196,6 +196,147 @@ pub fn snapshot_table(table_name: &str, max_rows: Option<usize>) -> Option<Json>
     }))
 }
 
+// ---- Drift validation (Phase 1e) -----------------------------------------
+
+/// Cross-check every `DataTableDef` in `reg` against the live
+/// reflection data ueforge::discovery captured. Each declared
+/// field is compared on `(offset, element_size)` against the
+/// FProperty entry of the same name on the table's RowStruct.
+///
+/// Returns a JSON report:
+///
+/// ```text
+/// { "tables": [
+///     { "id": "materials", "status": "ok" },
+///     { "id": "recipes",
+///       "status": "drift",
+///       "issues": [
+///         {"field": "Yield", "kind": "offset",
+///          "declared": 0x10, "live": 0x14}
+///       ]
+///     },
+///     { "id": "obsolete",
+///       "status": "table_missing" }
+///   ],
+///   "ok_count": ...,
+///   "drift_count": ...,
+///   "missing_count": ... }
+/// ```
+///
+/// Cold path; run once at mod init after `discovery::run_at_load`.
+/// Logs every drift line via `ueforge::log!` so missed UE patches
+/// surface in the deployed log even if the JSON is never read.
+pub fn validate_registry(reg: &DataTableRegistry) -> Json {
+    let mut tables_out: Vec<Json> = Vec::new();
+    let mut ok = 0usize;
+    let mut drift = 0usize;
+    let mut missing = 0usize;
+
+    let discovery = crate::discovery::cached();
+    let empty_arr = Vec::new();
+    let live_tables = discovery
+        .as_ref()
+        .and_then(|d| d.data_tables.get("data_tables").and_then(|v| v.as_array()))
+        .unwrap_or(&empty_arr);
+
+    for def in reg.entries() {
+        let live = live_tables.iter().find(|t| {
+            t.get("table_name")
+                .and_then(|v| v.as_str())
+                .is_some_and(|n| n == def.table_name)
+        });
+        let Some(live) = live else {
+            missing += 1;
+            crate::log::log(format_args!(
+                "DataTable drift: '{}' (id={}) not present in discovery cache",
+                def.table_name, def.id
+            ));
+            tables_out.push(json!({
+                "id": def.id,
+                "table_name": def.table_name,
+                "status": "table_missing",
+            }));
+            continue;
+        };
+
+        let live_fields = live
+            .get("row_struct")
+            .and_then(|v| v.get("fields"))
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut issues: Vec<Json> = Vec::new();
+        for declared in def.row_struct.fields {
+            let live_f = live_fields.iter().find(|f| {
+                f.get("name")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|n| n == declared.name)
+            });
+            let Some(lf) = live_f else {
+                issues.push(json!({
+                    "field": declared.name,
+                    "kind": "missing",
+                    "declared_offset": declared.offset,
+                }));
+                continue;
+            };
+            let live_offset = lf.get("offset").and_then(|v| v.as_i64()).unwrap_or(0) as usize;
+            let live_size = lf.get("element_size").and_then(|v| v.as_i64()).unwrap_or(0) as u32;
+            if live_offset != declared.offset {
+                issues.push(json!({
+                    "field": declared.name,
+                    "kind": "offset",
+                    "declared": declared.offset,
+                    "live": live_offset,
+                }));
+            }
+            if live_size != declared.element_size {
+                issues.push(json!({
+                    "field": declared.name,
+                    "kind": "element_size",
+                    "declared": declared.element_size,
+                    "live": live_size,
+                }));
+            }
+        }
+
+        if issues.is_empty() {
+            ok += 1;
+            tables_out.push(json!({
+                "id": def.id,
+                "table_name": def.table_name,
+                "status": "ok",
+            }));
+        } else {
+            drift += 1;
+            for iss in &issues {
+                crate::log::log(format_args!(
+                    "DataTable drift: '{}' field '{}' {}: declared={:?} live={:?}",
+                    def.table_name,
+                    iss.get("field").and_then(|v| v.as_str()).unwrap_or("?"),
+                    iss.get("kind").and_then(|v| v.as_str()).unwrap_or("?"),
+                    iss.get("declared"),
+                    iss.get("live"),
+                ));
+            }
+            tables_out.push(json!({
+                "id": def.id,
+                "table_name": def.table_name,
+                "status": "drift",
+                "issues": issues,
+            }));
+        }
+    }
+
+    json!({
+        "tables": tables_out,
+        "ok_count": ok,
+        "drift_count": drift,
+        "missing_count": missing,
+    })
+}
+
 fn decode_row_fields(row_ptr: *const u8, schema: &[Json]) -> Json {
     let mut map = serde_json::Map::with_capacity(schema.len());
     for f in schema {

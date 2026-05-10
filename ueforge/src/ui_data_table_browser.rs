@@ -31,6 +31,7 @@ struct DtBrowserUi {
     snapshot: Option<Json>,
     snapshot_error: Option<String>,
     max_rows: i32,
+    filter: [u8; 128],
 }
 
 impl DtBrowserUi {
@@ -40,6 +41,7 @@ impl DtBrowserUi {
             snapshot: None,
             snapshot_error: None,
             max_rows: 50,
+            filter: [0u8; 128],
         }
     }
 }
@@ -70,6 +72,9 @@ pub fn render() {
     }
     ui::same_line();
     ui::slider_i32("max rows", &mut s.max_rows, 1, 500);
+    ui::input_text("filter##dt_browser", &mut s.filter);
+    let filter_owned = ui::cstr_view(&s.filter).to_ascii_lowercase();
+    let filter = filter_owned.as_str();
 
     let cache = crate::discovery::cached();
     let Some(snap) = cache else {
@@ -94,11 +99,16 @@ pub fn render() {
         .and_then(|v| v.as_array())
         .unwrap_or(&empty);
 
+    let mut shown_count = 0usize;
     for t in tables {
         let table_name = t
             .get("table_name")
             .and_then(|v| v.as_str())
             .unwrap_or("<no-name>");
+        if !filter.is_empty() && !table_name.to_ascii_lowercase().contains(filter) {
+            continue;
+        }
+        shown_count += 1;
         let row_struct = t
             .get("row_struct")
             .and_then(|v| v.get("name"))
@@ -134,6 +144,11 @@ pub fn render() {
         if selected {
             render_selected(&s);
         }
+    }
+    if !filter.is_empty() {
+        ui::text_disabled(&format!(
+            "filtered: {shown_count} matching '{filter}'"
+        ));
     }
 }
 
