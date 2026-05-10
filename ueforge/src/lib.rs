@@ -101,6 +101,6 @@ pub mod winproc;
 pub mod worker;
 
 pub use envelope::{OpResponse, parse_request};
-pub use mod_main::{ModInfo, Tab};
+pub use mod_main::{ModDef, TabDef};
 pub use pe_queue::{DrainStats, Queue};
 pub use server::{Config, spawn};

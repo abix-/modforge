@@ -17,7 +17,7 @@ pub mod survival;
 
 use ueforge::ue::offsets::{STEAM, XBOX};
 
-static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "Grounded2RPG",
     version: "0.1.0",
     log_file: "grounded2_rpg.log",
@@ -25,7 +25,7 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     console: cfg!(feature = "console"),
     on_unreal_init: bbp_on_unreal_init,
     on_shutdown: bbp_on_shutdown,
-    tabs: &[ueforge::Tab {
+    tabs: &[ueforge::TabDef {
         name: "RPG",
         render: rpg::tab::render,
     }],

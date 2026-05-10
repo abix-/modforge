@@ -132,13 +132,10 @@ canonical `<Subject>Def + <Subject>Registry` shape.
   (typed Def with class/offset/default + apply-to-CDOs
   controller). Same registry treatment. Doing 1+2 together is
   one pattern applied twice.
-- [ ] **`ueforge::Tab` -> `TabDef`** with `MOD_INFO.tabs` staying a
-  bare slice (per the documented "bare-slice exception" carve-
-  out). Cosmetic two-line rename; lights up full Def-suffix
-  symmetry.
-- [ ] **`ueforge::ModInfo` -> `ModDef`.** The top-level mod
-  identity. Singleton, but it IS the root Def. Rename + every
-  consumer's `MOD_INFO` declaration.
+- [x] **`ueforge::Tab` -> `TabDef`** -- DONE 2026-05-10. Bare-slice
+  carve-out preserved (`MOD_INFO.tabs: &[TabDef]`).
+- [x] **`ueforge::ModInfo` -> `ModDef`** -- DONE 2026-05-10. Root
+  Def for the entire mod. All consumers migrated; macro updated.
 
 ### Deferred (large lifts)
 

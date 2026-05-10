@@ -48,7 +48,7 @@ const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
 
 // ---- Mod metadata + entry points ----
 
-static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "OWS Tweaks",
     version: "0.1.0",
     log_file: "outworld_station_tweaks.log",
@@ -57,11 +57,11 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     on_unreal_init,
     on_shutdown,
     tabs: &[
-        ueforge::Tab {
+        ueforge::TabDef {
             name: "Tweaks",
             render: render_tweaks_tab,
         },
-        ueforge::Tab {
+        ueforge::TabDef {
             name: "Scanner",
             render: ueforge::ui_scanner::render,
         },

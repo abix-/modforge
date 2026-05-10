@@ -1,6 +1,6 @@
 //! Mod metadata + entry-point wiring.
 //!
-//! Game crates declare a single `static MOD_INFO: ModInfo = ...`
+//! Game crates declare a single `static MOD_INFO: ModDef = ...`
 //! and call [`ue4ss_mod!`] once at the crate root. The macro emits
 //! every `extern "C"` hook the shipped `ueforge_shim.cpp` calls
 //! (`ueforge_mod_get_name`, `ueforge_mod_get_tab_count`,
@@ -12,7 +12,7 @@
 //! Game side, in full:
 //!
 //! ```ignore
-//! static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+//! static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
 //!     name: "OWS Tweaks",
 //!     version: "0.1.0",
 //!     log_file: "ows_outworld_station_tweaks.log",
@@ -21,8 +21,8 @@
 //!     on_unreal_init: || { ows::start(); },
 //!     on_shutdown: || { ows::stop(); },
 //!     tabs: &[
-//!         ueforge::Tab { name: "Tweaks", render: ows::render_tweaks },
-//!         ueforge::Tab { name: "Debug",  render: ows::render_debug },
+//!         ueforge::TabDef { name: "Tweaks", render: ows::render_tweaks },
+//!         ueforge::TabDef { name: "Debug",  render: ows::render_debug },
 //!     ],
 //! };
 //!
@@ -32,14 +32,15 @@
 //! No `cpp/`, no `build.rs` C++ wiring, no DllMain — ueforge ships
 //! all of it.
 
-/// Top-level mod metadata. The shipped C++ shim reads this through
-/// the macro-emitted `extern "C"` hooks.
+/// Root Def for an entire ueforge-based mod -- the workspace's
+/// canonical `<Subject>Def` for the mod itself. The shipped C++
+/// shim reads this through the macro-emitted `extern "C"` hooks.
 ///
-/// **NOT `#[non_exhaustive]`**: every consumer constructs `ModInfo`
+/// **NOT `#[non_exhaustive]`**: every consumer constructs `ModDef`
 /// as a struct literal in their `lib.rs`. Adding a field IS a
 /// breaking change for all consumers, but in this monorepo we
 /// update them atomically. Document new fields in `changelog.md`.
-pub struct ModInfo {
+pub struct ModDef {
     /// Display name (UTF-8). Becomes UE4SS `ModName`.
     pub name: &'static str,
     pub version: &'static str,
@@ -56,23 +57,31 @@ pub struct ModInfo {
     /// Called once when UE4SS destructs the mod.
     pub on_shutdown: fn(),
     /// Tabs to register in UE4SS's debug overlay. Order is stable
-    /// — the shipped shim trampolines dispatch by index.
-    pub tabs: &'static [Tab],
+    /// -- the shipped shim trampolines dispatch by index. Bare
+    /// slice (documented carve-out from the `<Subject>Registry`
+    /// wrapper rule -- there are no extra registry-level fields
+    /// beyond "these are the tabs", and a wrapper would be pure
+    /// ceremony).
+    pub tabs: &'static [TabDef],
 }
 
-pub struct Tab {
+/// One ImGui tab declaration. Per the workspace Def-suffix
+/// mandate (architecture.md "Naming contract"), the type is
+/// `TabDef`; `MOD_INFO.tabs: &[TabDef]` is the bare-slice
+/// registry carve-out.
+pub struct TabDef {
     pub name: &'static str,
     pub render: fn(),
 }
 
-/// Wire a `static ModInfo` into the shipped C++ shim. Emits the
+/// Wire a `static ModDef` into the shipped C++ shim. Emits the
 /// full set of `extern "C"` hooks plus `DllMain`.
 ///
 /// Call once at the crate root.
 #[macro_export]
 macro_rules! ue4ss_mod {
     ($mod_info:ident) => {
-        const _: &$crate::mod_main::ModInfo = &$mod_info;
+        const _: &$crate::mod_main::ModDef = &$mod_info;
 
         #[unsafe(no_mangle)]
         pub extern "C" fn ueforge_mod_get_name(out_len: *mut usize) -> *const u8 {
