@@ -105,6 +105,69 @@ load-bearing for any RPG consumer.
 - [ ] **`DLL_HMODULE` happens-before `dll_dir()` callers.**
   Worker threads starting before `set_dll_module` see CWD.
 
+## Open: vendor ImGui via git submodule (repo hygiene)
+
+`ueforge/cpp/imgui/` ships ~54,645 lines of third-party Dear ImGui
+v1.92.1 vendored directly. Constraint: must stay pinned to v1.92.1
+because UE4SS bundles that exact version and shares its
+`ImGuiContext*` with us; ABI mismatch corrupts state. /rtfm
+confirms git submodule is the canonical pattern for this exact
+shape (`easy-imgui-rs` does it; UE4SS itself uses submodules).
+
+Steps:
+
+```bash
+# from repo root
+git rm -r ueforge/cpp/imgui
+git submodule add https://github.com/ocornut/imgui ueforge/cpp/imgui
+cd ueforge/cpp/imgui
+git checkout v1.92.1
+cd ../../..
+git add .gitmodules ueforge/cpp/imgui
+git commit -m "vendor imgui via submodule (drops ~55K third-party LoC)"
+```
+
+Doc updates needed:
+
+- [ ] `ueforge/README.md` -- add a one-paragraph clone note
+  ("run `git submodule update --init` after clone, or use
+  `git clone --recurse-submodules`").
+- [ ] `ueforge/docs/native.md` -- update the "Vendored ImGui"
+  section to reflect submodule rather than direct vendoring.
+  Update the LoC table; first-party C++ stays at 502 LoC; the
+  submodule line lists the upstream commit instead of the LoC
+  count.
+- [ ] `ueforge/build.rs` -- optional 5-line check at the top
+  that detects an empty `cpp/imgui/` and panics with a clear
+  fix message:
+  ```rust
+  if !manifest.join("cpp/imgui/imgui.cpp").exists() {
+      panic!("ueforge: cpp/imgui submodule not initialized. \
+              Run `git submodule update --init` from the repo root.");
+  }
+  ```
+- [ ] Verify `cargo clean && cargo build --workspace --release`
+  works end-to-end after the migration.
+
+Update path when UE4SS bumps ImGui: one-liner.
+```bash
+cd ueforge/cpp/imgui && git checkout v1.93.0 && cd ../../.. && git commit
+```
+
+Why not Option B (build.rs downloads the tarball at build time):
+network dependency on every fresh build, breaks locked-network
+CI, has to host or pin to GitHub release tarballs (auto-archive
+checksums change over time), adds an HTTP client + SHA verifier
+to ueforge's build-deps. Submodule is simpler and matches what
+the rest of the Rust ImGui ecosystem does for "I need a
+specific upstream version."
+
+Why not Option C (depend on `imgui-sys` / `dear-imgui-sys`):
+they ride `cimgui` (a C wrapper) to dodge C++ ABI issues -- a
+different ABI than the C++ headers UE4SS exposes. We must call
+C++ ImGui directly on UE4SS's `ImGuiContext*`; cimgui calls
+crash.
+
 ## Open: ueforge framework (Wave E, deferred until needed)
 
 - [ ] **Global ProcessEvent pre-callback.**
