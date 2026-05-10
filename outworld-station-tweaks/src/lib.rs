@@ -51,7 +51,7 @@ const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
 static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     name: "OWS Tweaks",
     version: "0.1.0",
-    log_file: "tweaks.log",
+    log_file: "outworld_station_tweaks.log",
     console_title: "OWS Tweaks",
     console: cfg!(feature = "console"),
     on_unreal_init,

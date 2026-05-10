@@ -161,7 +161,7 @@ small, generic, and shared by every mod in the workspace.
 |---|---|
 | All framework code | `ueforge/src/**` |
 | Grounded 2 mod | `grounded2-rpg/src/**` |
-| Outworld Station mod | `outworld-station/tweaks/src/**` |
+| Outworld Station mod | `outworld-station-tweaks/src/**` |
 | Deploy CLI | `ueforge-deploy/src/**` |
 | Asset inspection tools | `ueforge::uasset` + `dump-strings` / `read-property` bins |
 | All tests | `**/tests/*.rs` and `#[cfg(test)]` modules |

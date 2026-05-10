@@ -20,7 +20,7 @@ folder when working on that crate.
 |---|---|---|
 | ueforge | [`../ueforge/docs/`](../ueforge/docs/) | The UE4SS Rust mod framework -- subsystem reference, performance doctrine, research methodology. |
 | grounded2-rpg | [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) | Grounded 2 RPG / level-up mod -- damage internals, inventory, RPG subsystem, build/deploy, port history. |
-| outworld-station/tweaks | [`../outworld-station/tweaks/`](../outworld-station/tweaks/) | Outworld Station mod -- research notes, per-feature tweaks. |
+| outworld-station-tweaks | [`../outworld-station-tweaks/`](../outworld-station-tweaks/) | Outworld Station mod -- research notes, per-feature tweaks. |
 
 ## Adding a new mod
 

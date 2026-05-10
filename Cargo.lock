@@ -652,6 +652,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
+name = "outworld-station-tweaks"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ueforge",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.12.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -953,15 +962,6 @@ checksum = "c8323304221c2a851516f22236c5722a72eaa19749016521d6dff0824447d96d"
 dependencies = [
  "displaydoc",
  "zerovec",
-]
-
-[[package]]
-name = "tweaks"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "ueforge",
 ]
 
 [[package]]

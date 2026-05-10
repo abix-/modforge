@@ -1,0 +1,46 @@
+[package]
+name = "outworld-station-tweaks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Outworld Station multi-feature mod. First feature: item stack
+# adjustments (the "Better Item Stacks" pattern, but as a runtime
+# mod via ueforge instead of a static _P pak). Future features
+# layer on the same scaffold: hunger / thirst / inventory /
+# movement tweaks, all driven through DataTable mutations and CDO
+# writes.
+
+[lib]
+# Output is `main.dll`, dropped at
+# OutworldStation\Binaries\Win64\ue4ss\Mods\OutworldStationTweaks\dlls\main.dll.
+name = "main"
+crate-type = ["cdylib", "rlib"]
+
+# Consumed by ueforge-deploy.
+[package.metadata.ueforge]
+mod_folder_name = "OutworldStationTweaks"
+game_name_regex = "Outworld"
+game_sub_path   = "OutworldStation/Binaries/Win64"
+zip_prefix      = "outworld-station-tweaks"
+target_dir      = "target/outworld-station-tweaks"
+
+[features]
+# Spawn a console window inside the game process for live log
+# output. Off by default for shipping; the file log at
+# <DLL_dir>/outworld_station_tweaks.log is the durable record.
+console = []
+default = ["console"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+ueforge = { path = "../ueforge" }
+
+[build-dependencies]
+ueforge = { path = "../ueforge" }
+
+[dev-dependencies]
+ueforge = { path = "../ueforge" }

@@ -15,7 +15,7 @@
 //! static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
 //!     name: "OWS Tweaks",
 //!     version: "0.1.0",
-//!     log_file: "ows_tweaks.log",
+//!     log_file: "ows_outworld_station_tweaks.log",
 //!     console_title: "OWS Tweaks",
 //!     console: cfg!(feature = "console"),
 //!     on_unreal_init: || { ows::start(); },
