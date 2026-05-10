@@ -7,6 +7,58 @@
 
 Newest first.
 
+## 2026-05-10 (final)
+
+### ueforge as full UE-mod framework
+
+Continued extraction past the initial dedup wave. ueforge now ships
+the complete set of systems every UE4SS Rust mod needs.
+
+#### New ueforge surface (continued)
+
+- **`ueforge::ue::ClassRef::for_each_matching` /
+  `for_each_cdo_subclass` / `for_each_cdo_matching` /
+  `for_each_any`** -- the full walker family. Predicate-filtered
+  variants for "live pawns whose full_name contains substring";
+  CDO variants for subclass-aware walks; `for_each_any` for
+  singleton-style data assets where the CDO IS the real data.
+- **`ueforge::ue::ClassRef::new_dynamic(name)`** -- runtime
+  constructor for the rare cold-path case where the class name
+  is computed (catalog-row apply, debug-op handler).
+- **`ueforge::ue::TypedField::deref`** specialized for
+  `TypedField<*mut UObject>` -- typed component-pointer follow.
+  Closes the `obj.field_ptr(off).cast::<*mut UObject>().read_unaligned()`
+  pattern.
+- **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with
+  built-in push counter + peak high-watermark. `record(item)`
+  bumps both atomics, then pushes. Eliminates the need to pair
+  every event ring with two separately declared `counter!`
+  statics.
+- **`ueforge::ue::PlayerRef`** -- canonical "find the player"
+  surface for any UE5 mod. `(base_class, Option<bp_filter>)`
+  config; static methods for `for_each_cdo`, `for_each_live`,
+  `with_first_live`, `with_first_cdo`.
+
+#### Doctrine docs
+
+- **`ueforge/PERFORMANCE.md`** -- hot-path discipline (zero
+  allocs, bail early, no mutexes on empty path, bounded
+  everything, install-time heavy lifting, counter every hot
+  path); memory leak vectors with their named ueforge fixes;
+  consume-don't-reinvent table; consumer responsibilities.
+- **`ueforge/RESEARCH.md`** -- TDD investigation methodology
+  for UE5 games: research-is-code rule, the seven-step TDD loop,
+  five probe types in leverage order, doctrines on status
+  effects / data tables / damage paths / instigator resolution
+  / install-vs-hook, snapshot-not-log validation, failure-
+  injection-test rule, research notebook shape.
+
+After this session ueforge is **the** framework crate. bbp
+contains only the G2-specific content: offsets, SkillEffect
+variants, CATALOG content, GameApplier dispatch arms,
+format_effect text, kill_hook / fall_hook / inv_hook trampolines,
+parm structs, snapshot/op dispatcher. Everything else is ueforge.
+
 ## 2026-05-10 (later)
 
 ### Major dedup wave: bbp -> ueforge

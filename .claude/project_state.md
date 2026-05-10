@@ -1,5 +1,58 @@
 # grounded2mods - project state
 
+## ueforge as full UE-mod framework + doctrine docs (2026-05-10, late)
+
+Session continued. After Phase 3 wave 2 (RPG framework), pushed
+further: more walker variants, EventRing<T>, PlayerRef, plus the
+two doctrine docs. ueforge is now the full framework with
+canonical surface for everything UE5 mods need.
+
+### Additional commits
+
+8. **ClassRef walker family expansion** -- `for_each_matching`,
+   `for_each_cdo_subclass`, `for_each_cdo_matching`, `for_each_any`,
+   `new_dynamic`, plus `TypedField::deref` for component-pointer
+   follow. bbp's apply.rs walker block went from ~120 LoC of
+   GObjects-walk boilerplate to ~30 LoC of ClassRef one-liners.
+9. **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with
+   built-in push counter (`AtomicU64`) and peak high-watermark
+   (`AtomicUsize`). bbp's `record_damage_event` is now a
+   one-liner.
+10. **`ueforge/PERFORMANCE.md`** + **`ueforge/RESEARCH.md`** --
+    canonical doctrine docs. PERFORMANCE.md: 10/10 bar, hot-path
+    rules, leak vectors with named ueforge fixes,
+    consume-don't-reinvent table. RESEARCH.md: TDD investigation
+    methodology, standard probes, doctrines on status effects /
+    data tables / damage paths / instigator resolution. 450+
+    lines combined. Future mods don't have to rediscover what
+    bbp's perf + bandage research figured out.
+11. **`ueforge::ue::PlayerRef`** -- canonical "find the player"
+    surface. `(base_class_name, Option<bp_filter>)` config; auto
+    `for_each_cdo` / `for_each_live` / `with_first_*`. Replaces
+    bbp's `CLASS_SURVIVAL_CHARACTER + PLAYER_BP_NAME` pair.
+
+### Final session tally
+
+- 11 commits, all build-clean release.
+- ueforge gained ~3000 LoC of framework surface + 33 unit tests
+  (all passing) + 450 LoC of doctrine docs.
+- bbp lost ~700+ LoC of duplicated infrastructure.
+- Major systems extracted: ClassRef, function_table!, TypedField,
+  VanillaCache, counter_json!, install_with_backoff, worker::spawn,
+  LazyFunctionPtr, ProcessEventHook::install_many, RpgApplier +
+  Tracker<A> + tab::render (entire RPG system),
+  ClassRef walker family, EventRing<T>, PlayerRef,
+  PERFORMANCE.md, RESEARCH.md.
+
+ueforge is now the framework that gives every UE4SS Rust mod
+its complete set of load-bearing systems. bbp owns only:
+G2 offsets, SkillEffect variants, CATALOG content, GameApplier
+dispatch arms, format_effect text, kill_hook / fall_hook /
+inv_hook trampolines, parm structs, snapshot/op dispatcher.
+
+In-game smoke test pending for the entire dedup. All commits
+build-clean release; behavior is intended unchanged.
+
 ## Major dedup session: bbp -> ueforge (2026-05-10)
 
 Phase 1 smoke-tested in-game and passed. Six waves of extraction
