@@ -41,8 +41,12 @@ fn bbp_on_unreal_init() {
 }
 
 fn bbp_on_shutdown() {
-    // Hooks are leaked intentionally so they survive worker thread exit
-    // (and process teardown). Nothing to clean up here today.
+    // Hooks are leaked intentionally so they survive worker thread
+    // exit (and process teardown). The slot poller, however, owns
+    // a worker thread that needs an explicit stop signal so it
+    // doesn't outlive an unloaded DLL during hot-reload.
+    rpg::world_loader::shutdown();
+    ueforge::log!("grounded2-rpg: shutdown");
 }
 
 unsafe fn worker() {

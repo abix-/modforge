@@ -55,13 +55,19 @@ load-bearing for any RPG consumer.
   invalid keys to a sentinel `__invalid__.json` filename so
   malformed input is visible instead of silently writing
   somewhere unexpected. (Was P1; landed alongside the P0 fixes.)
-- [ ] **`SlotPoller::Handle` + shutdown-on-`on_shutdown`.**
-  `ueforge/src/rpg/poller.rs:32-65`. Replace raw `CreateThread`
-  with named `thread::Builder` + `Arc<AtomicBool>` stop flag.
-  Hot-reload (roadmap) needs clean shutdown.
-- [ ] **`SlotPoller` panic visibility.** Catch panic; log
-  payload + bump counter. Today: silent thread death = silent
-  slot tracking death.
+- [x] **`SlotPoller::Handle` + shutdown-on-`on_shutdown`.**
+  `SlotPoller::spawn` now returns `PollerHandle`. Worker is
+  named `ueforge/rpg/slot-poller` (visible to debuggers via
+  `thread::Builder::name`). Worker checks an `Arc<AtomicBool>`
+  stop flag every interval tick; bbp's `on_shutdown` calls
+  `world_loader::shutdown()` to flip it. Hot-reload safe.
+- [x] **`SlotPoller` panic visibility.** Each tick wraps
+  resolve / activate / deactivate in `catch_unwind`. Panics
+  are counted (`PollerHandle::panic_count`), the most recent
+  payload is exposed via `last_panic()`, and the worker keeps
+  running. bbp surfaces both via `world_loader::panic_count()`
+  / `last_panic()` for the snapshot endpoint. Tests cover
+  panic-recovery + clean-handle paths.
 
 ## Open: ueforge hardening (kovarex P1)
 

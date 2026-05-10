@@ -40,7 +40,7 @@ pub mod xp;
 
 pub use applier::RpgApplier;
 pub use disabled::DisabledSkills;
-pub use poller::SlotPoller;
+pub use poller::{PollerHandle, SlotPoller};
 pub use skill::{Skill, find_skill};
 pub use slot_key::SlotKeyResolver;
 pub use state::SkillsState;
