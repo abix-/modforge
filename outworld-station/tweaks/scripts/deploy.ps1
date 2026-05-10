@@ -60,9 +60,15 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-# Repo root is two levels up from outworld-station/tweaks/scripts/.
-$RepoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$BuiltDll = Join-Path $RepoRoot 'target\x86_64-pc-windows-msvc\release\main.dll'
+# Repo root is three levels up from outworld-station/tweaks/scripts/
+# (scripts -> tweaks -> outworld-station -> repo root).
+$RepoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+# Per-crate target dir so tweaks's main.dll never collides with
+# better-backpack's main.dll (both crates produce a lib named
+# "main" so they share the same artifact path under target/release/
+# without --target-dir).
+$TargetDir = Join-Path $RepoRoot 'target\tweaks'
+$BuiltDll = Join-Path $TargetDir 'x86_64-pc-windows-msvc\release\main.dll'
 $DistDir = Join-Path $RepoRoot 'dist'
 
 # Mod folder name + relative path inside the game install. UE4SS
@@ -148,10 +154,10 @@ function Update-ModsTxt {
 
 function Invoke-Build {
     if ($SkipBuild) { return }
-    Write-Host '==> cargo build -p tweaks --release' -ForegroundColor Cyan
+    Write-Host "==> cargo build -p tweaks --release --target-dir $TargetDir" -ForegroundColor Cyan
     Push-Location $RepoRoot
     try {
-        & cargo build -p tweaks --release
+        & cargo build -p tweaks --release --target-dir $TargetDir
         if ($LASTEXITCODE -ne 0) { throw "cargo build failed (exit $LASTEXITCODE)" }
     } finally {
         Pop-Location
