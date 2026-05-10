@@ -1,46 +1,18 @@
-# Ongoing work the mod does
+# g2rpg ongoing work (CPU / RAM / I/O triage reference)
 
-> **Authoritative on:** every piece of code that runs continuously
-> while the game is alive. Used for triaging CPU / RAM / I/O
-> issues. If something is firing at high frequency, it's listed
-> here.
-
-## Performance principle: ZERO ALLOCATIONS UNLESS NEEDED
-
-**The mod's hot-path budget per fire is single-digit nanoseconds
-and zero heap allocations.** This applies to every piece of code
-that runs on the game thread or at frame rate.
-
-Hot-path code MUST:
-
-- Not allocate `String`, `Vec`, `Box`, `HashMap` etc. unless
-  there's a concrete reason this specific call needs to.
-- Not lock mutexes unless work is actually about to happen.
-  Use lock-free shadows (`AtomicUsize`, `AtomicBool`) for
-  empty-check fast paths.
-- Resolve UE objects by name ONCE, then cache the
-  `*const UObject` / `*const UFunction` pointer. Per-fire
-  identification is a pointer compare, not a string compare.
-- Fall back to the slow path (allocate, lock, log) only when
-  the state actually warrants it (level > 0, queue non-empty,
-  diagnostic mode active, etc.).
-
-Cold paths (slot activation, user clicks, snapshot endpoint)
-can allocate freely. Hot paths cannot.
-
-The 1090-allocs-per-second `fall_hook` runaway documented in
-section 13 below was a violation of this principle. The fix
-(cache `OnLanded` UFunction pointer + drain-empty atomic
-shadow) brought per-fire cost from "alloc + mutex" to
-"atomic load + branch."
-
-Whenever you write a new PE hook, a new ImGui callback, or an
-FFI export that runs at frame rate, apply this principle from
-day one. Lazily cache identifiers, compare atomics, branch
-early. The hot path should be all `if let Some(cached) = ...
-{ pointer_cmp() }` and zero allocator traffic.
-
-Last audited: 2026-05-09.
+> **Authoritative on:** every g2rpg-specific piece of code that
+> runs continuously while the game is alive. Hooks, threads,
+> per-frame surfaces, FFI exports, statics. If something is
+> firing at high frequency, it's listed here.
+>
+> The hot-path doctrine that informs every section below (zero
+> allocations on hot paths, cache pointers not names, atomics
+> for fast-path empty checks, what counts as a hot path,
+> framework-side leak vectors) lives in
+> [`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md).
+> Read that first. This file is the g2rpg-specific instance:
+> what fires in *this* mod, at what frequency, with what
+> measured cost.
 
 ## 1. Threads spawned by the mod
 

@@ -38,6 +38,7 @@ defined ONCE in ueforge.**
 | [PERFORMANCE.md](PERFORMANCE.md) | Hot-path discipline. Zero allocs, bail early, no mutexes on empty path, bounded everything. The 10/10 bar. |
 | [RESEARCH.md](RESEARCH.md) | TDD investigation methodology for UE5 games. Standard probes, doctrines on data tables / damage / instigators, snapshot-not-log validation. |
 | [inspection.md](inspection.md) | Worked examples for inspecting UE5 mods at the pak / asset level. Generic UE5 modding methodology -- works against any UE 5.x game. |
+| [mod-formats.md](mod-formats.md) | Six common UE mod shapes (pak / DLL proxy / UE4SS Lua / UE4SS C++ / injected / loose / official); pak-vs-DLL capability matrix; why ueforge targets UE4SS CPPMods. |
 
 ## Historical (frozen)
 

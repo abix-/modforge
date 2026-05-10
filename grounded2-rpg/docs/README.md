@@ -45,5 +45,6 @@ historical port docs) lives in `../../ueforge/docs/`:
 - [`../../ueforge/docs/ue-engine.md`](../../ueforge/docs/ue-engine.md) -- generic UE5 platform: pak / IoStore, UObject layout, shipping-build constraints, UE4SS hooking caveats
 - [`../../ueforge/docs/status-effects.md`](../../ueforge/docs/status-effects.md) -- universal UE5 status-effect-system pattern (what `damage.md`'s long section is the G2 example of)
 - [`../../ueforge/docs/inspection.md`](../../ueforge/docs/inspection.md) -- generic UE5 pak / asset inspection methodology
+- [`../../ueforge/docs/mod-formats.md`](../../ueforge/docs/mod-formats.md) -- UE mod-format comparison (pak / DLL proxy / UE4SS); why g2rpg is a UE4SS CPPMod
 - [`../../ueforge/docs/rust-port.md`](../../ueforge/docs/rust-port.md) -- historical: C++ winhttp proxy -> Rust cdylib
 - [`../../ueforge/docs/ue4ss-port.md`](../../ueforge/docs/ue4ss-port.md) -- historical: custom DLL injection -> UE4SS CPPMod
