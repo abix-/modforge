@@ -15,6 +15,18 @@ publish.workspace = true
 [lib]
 crate-type = ["rlib"]
 
+# Offline UE-asset inspection CLIs. Thin wrappers over
+# `ueforge::uasset`. Used for diffing third-party pak mods,
+# reverse-engineering data tables, sanity-checking that a mod
+# actually touches the field its description claims.
+[[bin]]
+name = "dump-strings"
+path = "src/bin/dump_strings.rs"
+
+[[bin]]
+name = "read-property"
+path = "src/bin/read_property.rs"
+
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }

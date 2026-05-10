@@ -228,8 +228,8 @@ This caught us once: confusing `ArrayIndex` and `Size` reported
 `size=0, arr_idx=4` when the real layout is `ArrayIndex=0, Size=4`.
 After the swap, value extraction at `offset +25` (the byte after the
 `HasGuid` flag) gave the correct int32. Relevant for any mod tooling
-that reads `.uexp` bytes directly (e.g. our `read_property.py` Python
-scratch script during the original SDK research).
+that reads `.uexp` bytes directly (e.g. ueforge's
+`read-property` CLI / `ueforge::uasset::find_int_property` lib).
 
 ## Community ecosystem and tooling references
 

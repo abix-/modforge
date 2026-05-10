@@ -33,6 +33,7 @@ pub mod scanner;
 pub mod selector;
 pub mod server;
 pub mod settings;
+pub mod uasset;
 pub mod ue;
 pub mod ui;
 pub mod ui_scanner;

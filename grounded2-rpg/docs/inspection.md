@@ -573,7 +573,7 @@ MaxRows, MaxColumns, RowCount, ColumnCount, GridSize, SlotCount,
 CellSize, etc.), exactly **one** appears: `MaxRows`.
 
 Reading the modded widget's actual int32 value via
-`scripts/read_property.py`:
+`cargo run -p ueforge --bin read-property`:
 
 ```
 UI_Container_BackpackSide.MaxRows: vanilla = 4, modded = 6
@@ -1165,7 +1165,8 @@ component.
 
 Decoded directly from the cooked `.uexp` by parsing the FName
 table and walking PropertyTag entries (no UAssetGUI / `.usmap`
-needed, just Python -- see `C:\Tools\work\read_property.py`):
+needed -- ueforge ships this as
+`ueforge::uasset::find_int_property` and a `read-property` CLI):
 
 | Hit | uexp offset (FName tag) | uexp offset (int32 value) | Value |
 |-----|-------------------------|---------------------------|-------|
@@ -1344,7 +1345,7 @@ been gathered yet.
   - `0x2B73A` (decimal `178138`) -- main `InventoryComponent` value, currently `40`.
   - `0x2B79E` (decimal `178238`) -- `MountInventoryComponent` value, currently `48`.
 - Patch verified: editing the byte at `178138` from `0x28` to
-  `0x3C` and re-reading via `scripts/read_property.py` reports
+  `0x3C` and re-reading via `cargo run -p ueforge --bin read-property` reports
   the value as `60`.
 - Repack pipeline that produces a container metadata-identical
   to vanilla AIO (`container_id: 1f082a50f287f91c`, TOC version

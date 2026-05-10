@@ -32,6 +32,7 @@ The per-subsystem files explain *what* each subsystem does.
 | Workers | [worker.md](worker.md) | `worker::spawn` named thread + panic catch |
 | Data tables | [data-table.md](data-table.md) | `FieldTweak<T>`, `ClassFieldTweak<T>`, row mutation, timing rules |
 | Memory tools | [memory-tools.md](memory-tools.md) | Cheat-Engine-style scanner, freezes, `inspect_address`, `winproc` |
+| Offline `.uasset` parsing | [uasset.md](uasset.md) | `uasset::extract_printable_strings` / `parse_name_table` / `find_int_property` + `dump-strings` / `read-property` CLIs |
 
 ## Reading order
 
