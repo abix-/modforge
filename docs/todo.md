@@ -437,6 +437,31 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   **Acceptance:** every spend persists; crash mid-session no longer
   loses the latest point.
 
+### Wave C+ -- ClassRef walker family expansion (DONE 2026-05-10)
+
+- [x] **`ClassRef::for_each_matching(pred, f)`** -- non-CDO walk
+  filtered by a `&UObject -> bool` predicate. Replaces bbp's
+  `apply_to_live_player_characters` (10 LoC -> 4 LoC).
+- [x] **`ClassRef::for_each_cdo_subclass(f)`** -- walk every CDO
+  matching `is_a(self)` (CDO of class + CDOs of subclasses).
+  Replaces bbp's `apply_to_survival_component_cdos` walker.
+- [x] **`ClassRef::for_each_cdo_matching(pred, f)`** -- predicate
+  variant for "CDO whose full_name contains substring" patterns.
+  Replaces bbp's `apply_to_player_character_cdos` walker.
+- [x] **`ClassRef::for_each_any(f)`** -- walks both CDOs and
+  non-CDOs matching `is_a(self)`. Used for singleton-style data
+  assets (`UGlobalCombatData`, `USurvivalGameModeSettings`).
+- [x] **`ClassRef::new_dynamic(name)`** -- runtime constructor
+  that takes `&str`, leaks one heap copy. Cold path; for the
+  rare apply call where the class name is computed.
+- [x] **`TypedField::deref()`** specialized for
+  `TypedField<*mut UObject>` -- typed component-pointer follow,
+  closes the `obj.field_ptr(off).cast::<*mut UObject>().read_unaligned()`
+  pattern.
+
+bbp's `apply.rs` walker block went from ~120 LoC of GObjects-walk
+boilerplate to ~30 LoC of one-liner ClassRef calls.
+
 ### Wave C -- Hook ergonomics + worker plumbing (DONE 2026-05-10)
 
 - [x] **C1. `ueforge::counter_json!` decl-macro.** Pairs of

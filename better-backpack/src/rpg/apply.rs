@@ -728,185 +728,78 @@ pub(crate) fn read_component_ptr(parent: &UObject, offset: usize) -> Option<&UOb
 /// Walk all SurvivalCharacter CDOs whose full name marks them as the
 /// player class (`BP_SurvivalPlayerCharacter` substring), call `f` on
 /// each. Returns the number of CDOs visited.
-fn apply_to_player_character_cdos(mut f: impl FnMut(&UObject)) -> usize {
-    apply_to_player_characters(true, &mut f)
+fn apply_to_player_character_cdos(f: impl FnMut(&UObject)) -> usize {
+    CLASS_SURVIVAL_CHARACTER.for_each_cdo_matching(
+        |obj| obj.full_name().contains(PLAYER_BP_NAME),
+        f,
+    )
 }
 
 /// Walk all live player SurvivalCharacter instances (non-CDOs) whose
 /// full name marks them as the player class, call `f` on each.
-/// Read each instance of `class_name` and pass the first one
-/// found to `f`. Returns true if any was found. Used by the debug
-/// snapshot to read singleton-style or per-game-mode objects
-/// (UGlobalCombatData, USurvivalGameModeSettings, etc.).
+// ---------------------------------------------------------------
+// Class refs used by the apply path. Each ClassRef caches the
+// `&'static UClass` after first resolve.
+// ---------------------------------------------------------------
+static CLASS_SURVIVAL_CHARACTER: ue::ClassRef = ue::ClassRef::new("SurvivalCharacter");
+static CLASS_SURVIVAL_COMPONENT: ue::ClassRef = ue::ClassRef::new("SurvivalComponent");
+static CLASS_SURVIVAL_MODE_MANAGER_COMPONENT: ue::ClassRef =
+    ue::ClassRef::new("SurvivalModeManagerComponent");
+static CLASS_SURVIVAL_GAME_MODE_SETTINGS: ue::ClassRef =
+    ue::ClassRef::new("SurvivalGameModeSettings");
+
+const PLAYER_BP_NAME: &str = "BP_SurvivalPlayerCharacter";
+
+/// Read the first non-CDO instance of `class_name` and pass it to
+/// `f`. Returns true if any was found. Used by the debug snapshot
+/// to read singleton-style or per-game-mode objects.
 pub(crate) fn first_instance_of(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let Some(rt) = ue::try_runtime() else {
-        return false;
-    };
-    let Some(class) = ue::find_class_fast(class_name) else {
-        return false;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return false;
-    }
-    for obj in view.iter() {
-        if !obj.is_a(class) || obj.is_default_object() {
-            continue;
-        }
-        f(obj);
-        return true;
-    }
-    false
+    let cls = ue::ClassRef::new_dynamic(class_name);
+    cls.with_first_instance(f).is_some()
 }
 
 /// Read the class default object of `class_name` and pass to `f`.
-/// Returns true if found. Used to inspect SurvivalComponent CDO
-/// (hunger/thirst drain rates), ASurvivalCharacter CDO (combat
-/// multipliers), etc.
+/// Returns true if found. Walks every `is_a(class) && is_default_object`
+/// match -- includes subclass CDOs.
 pub(crate) fn class_default_object(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let Some(rt) = ue::try_runtime() else {
-        return false;
-    };
-    let Some(class) = ue::find_class_fast(class_name) else {
-        return false;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return false;
-    }
-    for obj in view.iter() {
-        if !obj.is_a(class) || !obj.is_default_object() {
-            continue;
+    let cls = ue::ClassRef::new_dynamic(class_name);
+    let mut hit_addr: Option<usize> = None;
+    cls.for_each_cdo_subclass(|obj| {
+        if hit_addr.is_none() {
+            hit_addr = Some(obj as *const UObject as usize);
         }
-        f(obj);
-        return true;
+    });
+    if let Some(addr) = hit_addr {
+        f(unsafe { &*(addr as *const UObject) });
+        true
+    } else {
+        false
     }
-    false
 }
 
-pub(crate) fn apply_to_live_player_characters(mut f: impl FnMut(&UObject)) -> usize {
-    apply_to_player_characters(false, &mut f)
-}
-
-fn apply_to_player_characters(is_cdo: bool, f: &mut impl FnMut(&UObject)) -> usize {
-    let Some(rt) = ue::try_runtime() else {
-        return 0;
-    };
-    let Some(survival_class) = ue::find_class_fast("SurvivalCharacter") else {
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-    let mut count = 0usize;
-    for obj in view.iter() {
-        if !obj.is_a(survival_class) {
-            continue;
-        }
-        if obj.is_default_object() != is_cdo {
-            continue;
-        }
-        if !obj.full_name().contains("BP_SurvivalPlayerCharacter") {
-            continue;
-        }
-        f(obj);
-        count += 1;
-    }
-    count
+pub(crate) fn apply_to_live_player_characters(f: impl FnMut(&UObject)) -> usize {
+    CLASS_SURVIVAL_CHARACTER.for_each_matching(
+        |obj| obj.full_name().contains(PLAYER_BP_NAME),
+        f,
+    )
 }
 
 /// Walk every SurvivalComponent CDO and write `value` at `offset`.
-/// Used by SurvivalDrain skills.
 fn apply_to_survival_component_cdos(offset: usize, value: f32) -> usize {
-    let Some(rt) = ue::try_runtime() else {
-        return 0;
-    };
-    let Some(class) = ue::find_class_fast("SurvivalComponent") else {
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-    let mut count = 0usize;
-    for obj in view.iter() {
-        if !obj.is_a(class) || !obj.is_default_object() {
-            continue;
-        }
+    CLASS_SURVIVAL_COMPONENT.for_each_cdo_subclass(|obj| {
         write_f32(obj, offset, value);
-        count += 1;
-    }
-    count
+    })
 }
 
-fn apply_to_survival_mode_manager_components(mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = ue::try_runtime() else {
-        return 0;
-    };
-    let Some(class) = ue::find_class_fast("SurvivalModeManagerComponent") else {
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-
-    let mut count = 0;
-    for obj in view.iter() {
-        if !obj.is_a(class) {
-            continue;
-        }
-        if obj.is_default_object() {
-            continue;
-        }
-        f(obj);
-        count += 1;
-    }
-    count
+fn apply_to_survival_mode_manager_components(f: impl FnMut(&UObject)) -> usize {
+    CLASS_SURVIVAL_MODE_MANAGER_COMPONENT.for_each_instance(f)
 }
 
-fn apply_to_class(class_name: &str, mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = ue::try_runtime() else {
-        return 0;
-    };
-    let Some(class) = ue::find_class_fast(class_name) else {
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-    let mut count = 0;
-    for obj in view.iter() {
-        if !obj.is_a(class) {
-            continue;
-        }
-        f(obj);
-        count += 1;
-    }
-    count
+fn apply_to_class(class_name: &str, f: impl FnMut(&UObject)) -> usize {
+    let cls = ue::ClassRef::new_dynamic(class_name);
+    cls.for_each_any(f)
 }
 
-fn apply_to_survival_game_mode_settings(mut f: impl FnMut(&UObject)) -> usize {
-    let Some(rt) = ue::try_runtime() else {
-        return 0;
-    };
-    let Some(class) = ue::find_class_fast("SurvivalGameModeSettings") else {
-        return 0;
-    };
-    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
-    if !view.is_valid() {
-        return 0;
-    }
-
-    let mut count = 0;
-    for obj in view.iter() {
-        if !obj.is_a(class) {
-            continue;
-        }
-        f(obj);
-        count += 1;
-    }
-    count
+fn apply_to_survival_game_mode_settings(f: impl FnMut(&UObject)) -> usize {
+    CLASS_SURVIVAL_GAME_MODE_SETTINGS.for_each_any(f)
 }

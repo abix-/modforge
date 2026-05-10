@@ -134,6 +134,135 @@ impl ClassRef {
         None
     }
 
+    /// Call `f` on every non-CDO instance matching `is_a(self)` for
+    /// which `pred` returns true. Returns the count. Use for "live
+    /// instances of class X whose full_name contains substring Y"
+    /// patterns -- the generic shape of every per-player-pawn walk
+    /// in apply code.
+    pub fn for_each_matching(
+        &self,
+        mut pred: impl FnMut(&UObject) -> bool,
+        mut f: impl FnMut(&UObject),
+    ) -> usize {
+        let Some(rt) = try_runtime() else {
+            return 0;
+        };
+        let Some(cls) = self.get() else {
+            return 0;
+        };
+        let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+        if !view.is_valid() {
+            return 0;
+        }
+        let mut count = 0;
+        for obj in view.iter() {
+            if !obj.is_a(cls) || obj.is_default_object() {
+                continue;
+            }
+            if !pred(obj) {
+                continue;
+            }
+            f(obj);
+            count += 1;
+        }
+        count
+    }
+
+    /// Call `f` on EVERY object in GObjects matching `is_a(self)`
+    /// (both CDOs and non-CDOs). Use for singleton-style data
+    /// assets where the CDO IS the real data (e.g.
+    /// `UGlobalCombatData`).
+    pub fn for_each_any(&self, mut f: impl FnMut(&UObject)) -> usize {
+        let Some(rt) = try_runtime() else {
+            return 0;
+        };
+        let Some(cls) = self.get() else {
+            return 0;
+        };
+        let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+        if !view.is_valid() {
+            return 0;
+        }
+        let mut count = 0;
+        for obj in view.iter() {
+            if !obj.is_a(cls) {
+                continue;
+            }
+            f(obj);
+            count += 1;
+        }
+        count
+    }
+
+    /// Call `f` on every CDO matching `is_a(self)` (the class's own
+    /// CDO plus subclass CDOs). Returns the count. Distinct from
+    /// [`Self::cdo`], which returns only the exact class's CDO.
+    pub fn for_each_cdo_subclass(&self, mut f: impl FnMut(&UObject)) -> usize {
+        let Some(rt) = try_runtime() else {
+            return 0;
+        };
+        let Some(cls) = self.get() else {
+            return 0;
+        };
+        let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+        if !view.is_valid() {
+            return 0;
+        }
+        let mut count = 0;
+        for obj in view.iter() {
+            if !obj.is_a(cls) || !obj.is_default_object() {
+                continue;
+            }
+            f(obj);
+            count += 1;
+        }
+        count
+    }
+
+    /// Same as [`Self::for_each_cdo_subclass`] but with a predicate.
+    /// For "every player-class CDO whose full_name marks it as the
+    /// player BP" patterns.
+    pub fn for_each_cdo_matching(
+        &self,
+        mut pred: impl FnMut(&UObject) -> bool,
+        mut f: impl FnMut(&UObject),
+    ) -> usize {
+        let Some(rt) = try_runtime() else {
+            return 0;
+        };
+        let Some(cls) = self.get() else {
+            return 0;
+        };
+        let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+        if !view.is_valid() {
+            return 0;
+        }
+        let mut count = 0;
+        for obj in view.iter() {
+            if !obj.is_a(cls) || !obj.is_default_object() {
+                continue;
+            }
+            if !pred(obj) {
+                continue;
+            }
+            f(obj);
+            count += 1;
+        }
+        count
+    }
+
+    /// Runtime constructor that takes a borrowed `&str`. Leaks one
+    /// heap copy of the name so the resulting ClassRef carries a
+    /// `&'static str`. Cold path; intended for the rare apply call
+    /// where the class name is computed (e.g. catalog row) instead
+    /// of declared as a static constant. The underlying UClass
+    /// lookup still rides `find_class_fast`'s internal cache, so
+    /// the warm path is just as cheap as a static ClassRef.
+    pub fn new_dynamic(name: &str) -> Self {
+        let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
+        Self::new(leaked)
+    }
+
     /// Walk every non-CDO instance and collect those for which
     /// `pred` returns true. Cold path; for one-shot lookups.
     pub fn find_instance(&self, mut pred: impl FnMut(&UObject) -> bool) -> Option<&'static UObject> {

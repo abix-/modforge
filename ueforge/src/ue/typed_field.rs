@@ -96,6 +96,32 @@ impl<T: Copy> TypedField<T> {
     }
 }
 
+/// Read a `*mut UObject` field at this offset and return a `&UObject`
+/// view if non-null. Used for component-pointer fields like
+/// `ASurvivalCharacter.HealthComponent` (UObject* at +0x1340).
+///
+/// Specialized impl for `TypedField<*mut UObject>` so the deref
+/// stays inside the framework -- callers don't redo `field_ptr +
+/// cast + read_unaligned + as_ref` per field.
+impl TypedField<*mut UObject> {
+    /// Follow this component pointer. Returns None if the pointer
+    /// is null.
+    ///
+    /// # Safety
+    ///
+    /// `obj` must be a valid UObject of a class with a `*mut UObject`
+    /// at this offset.
+    pub unsafe fn deref<'a>(&self, obj: &'a UObject) -> Option<&'a UObject> {
+        unsafe {
+            let p: *mut UObject = obj
+                .field_ptr(self.offset)
+                .cast::<*mut UObject>()
+                .read_unaligned();
+            p.as_ref()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
