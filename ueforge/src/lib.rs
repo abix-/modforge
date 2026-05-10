@@ -15,11 +15,11 @@
 //! code goes on top; if it might apply to other UE games, it
 //! belongs here.
 //!
-//! ## The five pillars
+//! ## The five framework modules
 //!
-//! ueforge ships opinionated framework modules for the most common
-//! UE5 mod patterns. A new game's mod picks from these menus and
-//! writes only game-specific knobs:
+//! ueforge ships opinionated modules for the most common UE5 mod
+//! patterns. A new game's mod picks from these menus and writes
+//! only game-specific knobs:
 //!
 //! - **[`rpg`]** -- skill catalog + XP curve + bestiary +
 //!   per-slot persistence + ImGui tab + the `StandardEffect`
@@ -46,18 +46,18 @@
 //!   (pre, mutate damage), Evasion (pre), Lifesteal (post),
 //!   Thorns (post), kill credit (post).
 //!
-//! Each pillar wraps a low-level primitive (`StandardEffect` /
+//! Each module wraps a low-level primitive (`StandardEffect` /
 //! `FieldTweak<T>` / `ClassFieldTweak<T>` / `ProcessEventHook`)
 //! with the universal apply-loop + atomic-knob + status-counter
 //! pattern, so the game crate doesn't re-implement any of it.
 //!
-//! ## Heterogeneous-pillar adoption
+//! ## Heterogeneous adoption
 //!
-//! Not every UE5 mod uses every pillar, and not every pillar
+//! Not every UE5 mod uses every module, and not every module
 //! applies cleanly to every UE5 game. ueforge supports this:
-//! pillars are independent modules, opt-in via use sites. A pure
+//! the modules are independent, opt-in via use sites. A pure
 //! stack-size tweak only consumes [`stacks`]. An RPG-only mod
-//! only consumes [`rpg`]. A mod that uses all four picks a knob
+//! only consumes [`rpg`]. A mod that uses all five picks a knob
 //! from each menu and ignores the rest. Game crates carry only
 //! game-specific knowledge (UE class names, field offsets,
 //! UFunction parm shapes); the per-game extension surface is
@@ -66,7 +66,7 @@
 //! The framework's design rule: each universal pattern is
 //! defined ONCE in ueforge. If you find yourself writing the
 //! same scaffolding in two game crates, that's a missing
-//! pillar lift -- file an entry under "Open: more ueforge
+//! module -- file an entry under "Open: more ueforge
 //! extraction candidates" in `docs/todo.md`.
 
 pub mod args;

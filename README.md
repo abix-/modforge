@@ -9,7 +9,7 @@ UFunction parm shapes, gameplay design).
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                       ueforge                           │
-│  RPG · Stacks · Difficulty · Inventory · Damage         │
+│  modules: rpg · stacks · difficulty · inventory · damage │
 │  + UE SDK shim + Hooks + Debug HTTP + ImGui + Build     │
 │  + Settings + Hot-reload + Test client                  │
 └──────────────────────┬──────────────────────────────────┘
@@ -38,10 +38,10 @@ debug HTTP endpoint with op routing + auth, ImGui bindings,
 build/deploy plumbing, settings with hot-reload, the test
 client.
 
-**The five opinionated pillars** ship the most common UE5 mod
+**The five opinionated modules** ship the most common UE5 mod
 shapes:
 
-| Pillar | Module | What you write per-game |
+| Module | Crate path | What you write per-game |
 |---|---|---|
 | RPG | `ueforge::rpg` | A catalog of `Skill<E>` rows. 9 of the 10 universal skill shapes are covered by the `StandardEffect` variant menu. |
 | Stacks | `ueforge::stacks` | `StackTweak::new(table, offset, default_mult, skip)` static |
@@ -49,7 +49,7 @@ shapes:
 | Inventory | `ueforge::inventory::viewport` | A `ViewportBinder` trait impl (parm shapes + bind_slot logic) |
 | Damage | `ueforge::damage` | A `DamageBinder` trait impl (Critical / Evasion in `before`, Lifesteal / Thorns / kill credit in `after`) |
 
-Pillars are independent; mods opt in to whatever they use. A
+Modules are independent; mods opt in to whatever they use. A
 pure stack-size tweak doesn't pay for an RPG. An RPG-only mod
 doesn't pay for inventory paging.
 
@@ -95,7 +95,7 @@ Build / deploy: [`grounded2-rpg/docs/building.md`](grounded2-rpg/docs/building.m
 
 A second UE5 mod (for **Outworld Station**) that validates
 ueforge against another game. Currently ships the **stacks**
-pillar: `DT_Materials.MaxCanStack` multiplier via
+module: `DT_Materials.MaxCanStack` multiplier via
 `ueforge::stacks::StackTweak`. Future tweaks land here.
 
 Source: [`outworld-station-tweaks/`](outworld-station-tweaks/).
@@ -115,7 +115,7 @@ shapes, gameplay design).
 
 ```
 .
-├── ueforge/                  -- the framework (60+ modules, 5 pillars)
+├── ueforge/                  -- the framework (60+ submodules, 5 opinionated modules)
 ├── grounded2-rpg/            -- Grounded 2 RPG / level-up mod
 ├── outworld-station-tweaks/  -- Outworld Station tweaks (stacks)
 ├── docs/                     -- workspace-level (todo, changelog)
@@ -166,13 +166,14 @@ side (see [`ueforge/docs/lifecycle.md`](ueforge/docs/lifecycle.md)
 
 ## Status (2026-05-10)
 
-- **ueforge**: five pillars shipped, hot-reload (Phase A + B)
+- **ueforge**: five framework modules shipped (rpg / stacks /
+  difficulty / inventory / damage), hot-reload (Phase A + B)
   complete, Pester-style test DSL complete. Build-clean release.
   62 unit tests passing.
 - **grounded2-rpg**: 13 skills live including Lifesteal in the
   damage hook. Tested against Grounded 2 Steam build
   `++Augusta+release-0.4.0.2-CL-2673661`. In-game smoke test
-  of the post-pillar architecture pending.
+  of the post-refactor architecture pending.
 - **outworld-station-tweaks**: stacks tweak shipped, validates
   the framework on a second UE5 game.
 
@@ -207,7 +208,7 @@ Framework docs are in [`ueforge/docs/`](ueforge/docs/):
 - [`ueforge/docs/lifecycle.md`](ueforge/docs/lifecycle.md) -- `ue4ss_mod!`, hot-reload, build/deploy
 - [`ueforge/docs/ue-sdk.md`](ueforge/docs/ue-sdk.md) -- UE SDK shim
 - [`ueforge/docs/hooks.md`](ueforge/docs/hooks.md) -- ProcessEvent + hook teardown
-- [`ueforge/docs/rpg.md`](ueforge/docs/rpg.md) -- RPG pillar
+- [`ueforge/docs/rpg.md`](ueforge/docs/rpg.md) -- RPG module
 - [`ueforge/docs/testing.md`](ueforge/docs/testing.md) -- test client + research/diff/scenario DSL
 - (and the rest -- per-subsystem reference)
 

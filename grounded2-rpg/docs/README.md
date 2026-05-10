@@ -1,8 +1,9 @@
 # grounded2-rpg docs
 
 > **Authoritative on:** the Grounded 2 RPG / level-up mod
-> (Grounded2RPG). Per-subject deep dives. Each file states
-> what it owns at the top.
+> (Grounded2RPG). Per-subject deep dives, all
+> game-specific to Grounded 2. Generic UE5 + framework
+> material lives in `../../ueforge/docs/`.
 
 ## Contents
 
@@ -10,16 +11,13 @@
 |---|---|
 | [building.md](building.md) | Build, install, deploy. Prereqs, cargo commands, deploy script, configuration. |
 | [features.md](features.md) | User-facing feature list. What the mod does in-game. |
-| [rpg.md](rpg.md) | RPG subsystem internals: catalog, sqrt curve, persistence, code map. |
-| [damage.md](damage.md) | Grounded 2 damage internals: combat / fall / environmental, status effect system, instigator resolution. |
-| [inventory.md](inventory.md) | Backpack patch internals + viewport rebind. |
-| [engine.md](engine.md) | Grounded 2 engine specifics: pak, exes, GObjects, shipping caveats. |
-| [performance.md](performance.md) | What this mod costs to run. Per-call costs, hot paths, allocation analysis. |
-| [ongoing.md](ongoing.md) | Every piece of code that runs continuously. CPU / RAM / I/O triage reference. |
-| [testing.md](testing.md) | Debug HTTP endpoint + integration test harness. |
-| [inspection.md](inspection.md) | Worked examples for inspecting OTHER UE5 mods (pak / asset diffing). Generic UE5 modding methodology. |
-| [rust-port.md](rust-port.md) | Historical: port from C++ winhttp proxy to Rust cdylib. |
-| [ue4ss-port.md](ue4ss-port.md) | Historical: port from custom DLL injection to UE4SS CPPMod. |
+| [rpg.md](rpg.md) | RPG subsystem: catalog, sqrt curve, persistence, code map, the `Standard(StandardEffect)` migration. |
+| [damage.md](damage.md) | Grounded 2 damage internals: Maine combat / fall / environmental pipelines, instigator resolution, status-effect data table layout. |
+| [inventory.md](inventory.md) | Backpack patch internals (Maine InventoryComponent CDO) + viewport rebind binder. |
+| [engine.md](engine.md) | Grounded 2 engine specifics: pak, exes, GObjects offsets, shipping caveats. |
+| [performance.md](performance.md) | What this mod costs to run -- G2-specific numbers (per-call costs on Maine classes, allocation analysis of the kill_hook). |
+| [ongoing.md](ongoing.md) | Every piece of code in this mod that runs continuously. Hot-path triage reference for active investigations. |
+| [testing.md](testing.md) | g2rpg-specific test setup -- env var name, the bandage-regression test, per-skill scenario use sites. |
 
 ## Where to look first
 
@@ -30,16 +28,20 @@
 | inventory / scrolling issue | [inventory.md](inventory.md) |
 | save / slot detection | [rpg.md](rpg.md) "Persistence" section |
 | build fails | [building.md](building.md) |
-| performance / allocation regression | [performance.md](performance.md) + ueforge's `docs/PERFORMANCE.md` |
-| writing an integration test | [testing.md](testing.md) |
-| understanding why X exists | [rust-port.md](rust-port.md) / [ue4ss-port.md](ue4ss-port.md) |
+| performance / allocation regression | [performance.md](performance.md) + ueforge's [`PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md) |
+| writing an integration test | [testing.md](testing.md) + ueforge's [`testing.md`](../../ueforge/docs/testing.md) |
 
 ## Framework references
 
-The framework that g2rpg is built on lives in the `ueforge/` crate.
-For framework-level questions, see:
+g2rpg is built on the `ueforge` framework. Anything generic
+(UE5 patterns, framework modules, test client, hot-reload,
+historical port docs) lives in `../../ueforge/docs/`:
 
-- [`../../ueforge/README.md`](../../ueforge/README.md) -- entry point
-- [`../../ueforge/docs/`](../../ueforge/docs/) -- per-subsystem reference
+- [`../../ueforge/README.md`](../../ueforge/README.md) -- entry point + audit table
+- [`../../ueforge/docs/`](../../ueforge/docs/) -- per-module / per-subsystem reference
 - [`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md) -- hot-path doctrine
 - [`../../ueforge/docs/RESEARCH.md`](../../ueforge/docs/RESEARCH.md) -- TDD methodology
+- [`../../ueforge/docs/testing.md`](../../ueforge/docs/testing.md) -- test client + research/diff/scenario DSL
+- [`../../ueforge/docs/inspection.md`](../../ueforge/docs/inspection.md) -- generic UE5 pak / asset inspection methodology
+- [`../../ueforge/docs/rust-port.md`](../../ueforge/docs/rust-port.md) -- historical: C++ winhttp proxy -> Rust cdylib
+- [`../../ueforge/docs/ue4ss-port.md`](../../ueforge/docs/ue4ss-port.md) -- historical: custom DLL injection -> UE4SS CPPMod

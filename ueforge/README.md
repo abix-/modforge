@@ -535,7 +535,7 @@ else?". Update on every major slice.
 | 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · (manifest entry) | · | done |
 | 40 | Steam-library auto-detect | ✅ | · | · | done |
 
-### **Pillar 1: RPG framework** (Phase 3 complete)
+### **RPG module** (Phase 3 complete)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
@@ -555,7 +555,7 @@ else?". Update on every major slice.
 | 54 | Per-skill format strings + diminishing-returns previews | ✅ (`rpg::format::PercentFormat` + `StandardEffect::format`) | · (Standard arm delegates) | — | done |
 | 55 | Standard ops catalog (skill_toggle / spend / refund / reload_slot / set_skill_points) | ✅ (`rpg::ops::*` + `debug::dispatch_standard_op`) | · | — | done |
 
-### Pillar 2: Stacks (inventory stack-size tweaks)
+### Stacks module (inventory stack-size tweaks)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
@@ -563,14 +563,14 @@ else?". Update on every major slice.
 | 57 | `StackTweak` opinionated stacks wrapper (multiplier atomic + apply-now / counters) | ✅ (`stacks::StackTweak`) | — | · (`stacks.rs` is 64 lines) | done |
 | 58 | DataTable polling worker (`apply_when_ready` on first sight) | ✅ (`ue::datatable::on_first_sight`) | — | · | done |
 
-### Pillar 3: Difficulty (per-class CDO field tweaks)
+### Difficulty module (per-class CDO field tweaks)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 59 | `ClassFieldTweak<T>` (live-UObject vanilla cache) | ✅ (`ue::class_tweak::ClassFieldTweak<T>`) | · | · | done |
 | 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) | — | done |
 
-### Pillar 4: Inventory (viewport paging + future CRUD ops)
+### Inventory module (viewport paging + future CRUD ops)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
@@ -578,14 +578,14 @@ else?". Update on every major slice.
 | 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · | — | done |
 | 60c | Future: inventory CRUD ops (add / remove / count / list) | (deferred until a second consumer materializes) | — | — | open |
 
-### Pillar 5: Damage (universal damage-event hook)
+### Damage module (universal damage-event hook)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 60d | `damage::DamageHook<B>` -- multicast damage UFunction trampoline + parm decode + FDamageInfo lookup + Player/Other classification + `before` (mutate damage) / `after` (react) dispatch | ✅ (`damage::DamageHook` + `DamageHookConfig` + `DamageBinder` trait + `DamageEvent`) | · (`kill_hook.rs` is 238 lines: a `DamageBinder` impl with kill credit + damage trace + impact reversal + lifesteal; was 474 across 3 files) | — | done |
 | 60e | Live-damage skill plumbing (Lifesteal heal-on-hit, future: Critical / Evasion / Thorns) | ✅ (binder before/after + DamageEvent surface) | · (Lifesteal landed; reads tracker level + heals via direct HC.CurrentDamage write) | — | Lifesteal done; Crit/Evasion/Thorns pending catalog rows |
 
-### UE SDK helpers (used by all three pillars)
+### UE SDK helpers (used by every module)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
@@ -698,13 +698,13 @@ else?". Update on every major slice.
 | 211 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
 | 212 | `KillerKind` classifier (Player / Buggy / Other) + buggy XP multiplier | 📦 | — | per game policy |
 
-## Heterogeneous-pillar adoption
+## Heterogeneous adoption
 
-Not every UE5 mod uses every pillar, and not every pillar applies
-cleanly to every UE5 game. ueforge supports this: pillars are
-independent modules, opt-in via use sites. A pure stack-size
+Not every UE5 mod uses every module, and not every module
+applies cleanly to every UE5 game. ueforge supports this: the
+modules are independent, opt-in via use sites. A pure stack-size
 tweak only consumes `stacks`. An RPG-only mod only consumes
-`rpg`. A mod that uses all four picks one knob from each menu
+`rpg`. A mod that uses all five picks one knob from each menu
 and ignores the rest. Game crates carry only game-specific
 knowledge (UE class names, field offsets, UFunction parm shapes);
 the per-game extension surface is `&'static` config + an opt-in
@@ -712,7 +712,7 @@ trait impl.
 
 **The framework's design rule: each universal pattern is defined
 ONCE in ueforge.** If you find yourself writing the same
-scaffolding in two game crates, that's a missing pillar lift --
+scaffolding in two game crates, that's a missing module --
 file an entry under "Open: more ueforge extraction candidates"
 in `docs/todo.md`.
 
@@ -725,14 +725,14 @@ in `docs/todo.md`.
 - **Phase 2** -- small promotions. `ClassFieldTweak<T>`,
   `function_ptr` / `function_ptr_required`, canonical
   `Queue::drain` doc.
-- **Phase 3** -- RPG framework. The 15 rows under "Pillar 1" all
+- **Phase 3** -- RPG framework. The 15 rows under "RPG module" all
   shipped: `Skill<E>`, `Tracker<A>`, `RpgApplier`, `SlotStore<S>`,
   `SlotPoller`, `DisabledSkills`, `Bestiary`, `StandardEffect`
   8-variant menu + apply + format dispatch, `tab::render`,
   `ops::*`. g2rpg's `apply_skill` collapsed from 11 arms to 4
   (1 framework Standard arm + 3 game-specific composites).
 - **Phase 4** -- the rest. `ueforge::stacks` + `ueforge::difficulty`
-  (pillars 2 + 3), `ue::field` / `ue::actor` / `ue::damage_info` /
+  (stacks + difficulty modules), `ue::field` / `ue::actor` / `ue::damage_info` /
   `ue::pe_call`, `Settings::watch`, `debug::dispatch_*` /
   `DamageRing` / `ProcessSnapshot` / `PlayerStateView`,
   `platform::detect_and_init`, `hook::install_immediate_or_log`,

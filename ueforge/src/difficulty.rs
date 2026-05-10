@@ -1,6 +1,6 @@
-//! Game difficulty / drain-rate tweak framework. Pillar 3 of
-//! ueforge's three opinionated UE5 mod modules (rpg / stacks /
-//! difficulty).
+//! Game difficulty / drain-rate tweak framework. One of
+//! ueforge's opinionated UE5 mod modules (rpg / stacks /
+//! difficulty / inventory / damage).
 //!
 //! Most UE5 survival games expose difficulty as `f32` knobs on a
 //! settings / component CDO: hunger drain, thirst drain, fall

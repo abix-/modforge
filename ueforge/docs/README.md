@@ -9,23 +9,23 @@
 directory explain *how* to write code on top of ueforge well.
 The per-subsystem files explain *what* each subsystem does.
 
-## The five pillars
+## The five framework modules
 
-ueforge ships opinionated framework modules for the five most
-common UE5 mod patterns. A new game's mod picks from these menus
-and writes only game-specific knobs (UE class names, field
-offsets, UFunction parm shapes); the per-game extension surface
-is `&'static` config + opt-in trait impl.
+ueforge ships opinionated modules for the five most common UE5
+mod patterns. A new game's mod picks from these menus and
+writes only game-specific knobs (UE class names, field offsets,
+UFunction parm shapes); the per-game extension surface is
+`&'static` config + opt-in trait impl.
 
-| Pillar | Module | Lift |
+| Module | Crate path | Lift |
 |---|---|---|
-| 1. RPG | `ueforge::rpg` | Skill catalog + XP curve + `Bestiary` + per-slot persistence + ImGui tab + the 8-variant `StandardEffect` menu (PlayerFloat / Subcomponent variants / ClassFieldsMultiply / Runtime / StatusEffect). |
-| 2. Stacks | `ueforge::stacks` | Inventory stack-size data-table tweak. `StackTweak::new(table, offset, default_mult, skip)` + multiplier atomic + on-first-sight worker. |
-| 3. Difficulty | `ueforge::difficulty` | Per-class CDO field tweak (drain rates / damage multipliers / regen). `DifficultyKnob::new(class, offset)` + `apply_to_cdos`. |
-| 4. Inventory | `ueforge::inventory::viewport` | Viewport-paging hook framework: mouse-wheel scroll + per-widget viewport-start state + synthetic-refresh re-entrance guard + post-refresh rebind. |
-| 5. Damage | `ueforge::damage` | Universal damage-event hook: multicast trampoline + parm decode + FDamageInfo lookup + Player/Other classification + before/after dispatch (Critical / Evasion / Lifesteal / Thorns / kill credit). |
+| RPG | `ueforge::rpg` | Skill catalog + XP curve + `Bestiary` + per-slot persistence + ImGui tab + the 8-variant `StandardEffect` menu (PlayerFloat / Subcomponent variants / ClassFieldsMultiply / Runtime / StatusEffect). |
+| Stacks | `ueforge::stacks` | Inventory stack-size data-table tweak. `StackTweak::new(table, offset, default_mult, skip)` + multiplier atomic + on-first-sight worker. |
+| Difficulty | `ueforge::difficulty` | Per-class CDO field tweak (drain rates / damage multipliers / regen). `DifficultyKnob::new(class, offset)` + `apply_to_cdos`. |
+| Inventory | `ueforge::inventory::viewport` | Viewport-paging hook framework: mouse-wheel scroll + per-widget viewport-start state + synthetic-refresh re-entrance guard + post-refresh rebind. |
+| Damage | `ueforge::damage` | Universal damage-event hook: multicast trampoline + parm decode + FDamageInfo lookup + Player/Other classification + before/after dispatch (Critical / Evasion / Lifesteal / Thorns / kill credit). |
 
-Pillars are independent modules, opt-in via use sites. A pure
+Modules are independent, opt-in via use sites. A pure
 stack-size mod only consumes `stacks`. An RPG-only mod only
 consumes `rpg`. A mod that uses all five picks one knob from
 each menu and ignores the rest. **Each universal pattern is
@@ -37,6 +37,14 @@ defined ONCE in ueforge.**
 |---|---|
 | [PERFORMANCE.md](PERFORMANCE.md) | Hot-path discipline. Zero allocs, bail early, no mutexes on empty path, bounded everything. The 10/10 bar. |
 | [RESEARCH.md](RESEARCH.md) | TDD investigation methodology for UE5 games. Standard probes, doctrines on data tables / damage / instigators, snapshot-not-log validation. |
+| [inspection.md](inspection.md) | Worked examples for inspecting UE5 mods at the pak / asset level. Generic UE5 modding methodology -- works against any UE 5.x game. |
+
+## Historical (frozen)
+
+| File | Authoritative on |
+|---|---|
+| [rust-port.md](rust-port.md) | Frozen: the C++ winhttp-proxy -> Rust cdylib port plan. Captures the architecture and migration sequence; the framework has evolved further since then. |
+| [ue4ss-port.md](ue4ss-port.md) | Frozen: the standalone-injector -> UE4SS CPPMod pivot. Why we ride on UE4SS, the C++ shim design, the CppUserModBase mirror. |
 
 ## Subsystem reference
 
@@ -58,7 +66,7 @@ defined ONCE in ueforge.**
 | Offline `.uasset` parsing | [uasset.md](uasset.md) | `uasset::extract_printable_strings` / `parse_name_table` / `find_int_property` + `dump-strings` / `read-property` CLIs |
 | Native (C++) surface | [native.md](native.md) | Why C++ is in the repo (UE4SS plugin ABI + vendored ImGui), what stays in Rust, the doctrine that keeps it that way |
 
-Pillar-specific docs (`stacks.md`, `difficulty.md`, `inventory.md`,
+Per-module docs (`stacks.md`, `difficulty.md`, `inventory.md`,
 `damage.md`, `debug.md`) pending; the rustdoc on each module's
 `mod.rs` is canonical until they land.
 

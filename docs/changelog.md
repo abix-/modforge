@@ -238,10 +238,10 @@ Three kovarex P1/P2 items resolved in one pass:
   Documented the rationale in todo.md so future audits don't
   re-litigate.
 
-### Pillar 5: Damage hook framework + Lifesteal live
+### Damage module + Lifesteal live
 
 `ueforge::damage::DamageHook<B>` -- universal damage-event hook,
-the fifth pillar. Same shape as the inventory viewport hook:
+the fifth opinionated module. Same shape as the inventory viewport hook:
 config struct + binder trait. Owns the multicast UFunction
 trampoline + parm decode (Damage / DamageFlags / TypeFlags) +
 `FDamageInfo` lookup (instigator resolution via
@@ -431,7 +431,7 @@ freed memory after FreeLibrary. The Phase B plan
 covering mechanism, dev loop, what survives / resets, and the
 Phase B caveat.
 
-### Pillar 4: Inventory viewport-paging framework
+### Inventory module: viewport-paging framework
 
 `ueforge::inventory::viewport` -- the universal "fixed-size
 visible grid over a larger underlying inventory" pattern,
@@ -462,21 +462,21 @@ class-name lookup machinery are all framework-side.
 `PanelWidget` helper owns the UMG-side parms; the
 selected-slot parms were always unused).
 
-### Heterogeneous-pillar principle (formalized)
+### Heterogeneous-module principle (formalized)
 
 ueforge's `lib.rs` doc-header + `README.md` now formalize the
 design rule: **each universal pattern is defined ONCE in
-ueforge.** Pillars (rpg / stacks / difficulty / inventory) are
-independent modules, opt-in via use sites. A pure stack-size mod
-only consumes `stacks`. An RPG-only mod only consumes `rpg`. A
-mod that uses all four pillars picks one knob from each menu and
-ignores the rest. Game crates carry only game-specific knowledge
+ueforge.** Modules (rpg / stacks / difficulty / inventory) are
+independent, opt-in via use sites. A pure stack-size mod only
+consumes `stacks`. An RPG-only mod only consumes `rpg`. A mod
+that uses all four picks one knob from each menu and ignores
+the rest. Game crates carry only game-specific knowledge
 (UE class names, field offsets, UFunction parm shapes); the
 per-game extension surface is `&'static` config + an opt-in
 trait impl.
 
 If you find the same scaffolding in two game crates, that's a
-missing pillar lift -- file under "Open: more ueforge extraction
+missing module -- file under "Open: more ueforge extraction
 candidates" in `docs/todo.md`.
 
 ### Settings hot-reload + PE-call + OpRouter PE-ops half
@@ -507,7 +507,7 @@ g2rpg's `debug.rs`: 770 -> 737 lines. The handler is now three
 guard arms (snapshot / dispatch_standard_op / dispatch_pe_ops)
 + four game-specific simulate_* arms + the unknown-op error.
 
-### Three pillars: rpg / stacks / difficulty
+### Three modules: rpg / stacks / difficulty
 
 ueforge now ships opinionated framework modules for the three
 most common UE5 mod patterns, each wrapping a low-level primitive

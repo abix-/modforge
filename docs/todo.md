@@ -239,7 +239,7 @@ Save-data durability + shutdown safety. All four P0s shipped:
   routes through ueforge with one line per group.
   Closed 2026-05-10.
 
-- [x] **Pillar 4: Inventory viewport-paging framework** --
+- [x] **Inventory module (viewport-paging framework)** --
   `ueforge::inventory::viewport::ViewportHook<B>` +
   `ViewportConfig` + `ViewportBinder` trait. Algorithm + state
   + hook trampoline + mouse-wheel handling + synthetic-refresh
@@ -258,8 +258,8 @@ Still open / deferred:
   enumerators are research scaffolding and likely game-specific.
 - HUD overlay drawing (DX11 hook for in-world rendering). Big
   lift, no second consumer today, defer.
-- Inventory CRUD ops (add / remove / count / list). Pillar 4
-  shape exists; CRUD lands when a second consumer materializes
+- Inventory CRUD ops (add / remove / count / list). The
+  inventory module shape exists; CRUD lands when a second consumer materializes
   (g2rpg uses BPF helpers; another game's UFunction names will
   drive the trait surface).
 
@@ -300,7 +300,7 @@ Catalog target: ~25 skills. Today: 13.
 
 ## Open: g2rpg -- RPG live-damage hook (framework done; catalog rows pending)
 
-**Framework landed 2026-05-10 as Pillar 5: `ueforge::damage::DamageHook`.**
+**Framework landed 2026-05-10 as `ueforge::damage::DamageHook`.**
 g2rpg's `kill_hook.rs` is now a `DamageBinder` impl with
 `before` / `after` callbacks on every multicast damage event.
 

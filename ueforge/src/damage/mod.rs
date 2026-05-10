@@ -1,4 +1,4 @@
-//! Generic damage-event hook framework. Pillar 5 of ueforge's
+//! Generic damage-event hook framework. One of ueforge's
 //! opinionated UE5 mod modules (rpg / stacks / difficulty /
 //! inventory / damage).
 //!

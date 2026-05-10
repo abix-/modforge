@@ -1,5 +1,6 @@
-//! Inventory stack-size tweak framework. Pillar 2 of ueforge's
-//! three opinionated UE5 mod modules (rpg / stacks / difficulty).
+//! Inventory stack-size tweak framework. One of ueforge's
+//! opinionated UE5 mod modules (rpg / stacks / difficulty /
+//! inventory / damage).
 //!
 //! Every UE5 survival / crafting game ships a "max stack size"
 //! integer per item row in a `DT_Materials`-shaped data table.

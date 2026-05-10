@@ -1,4 +1,5 @@
-//! Pillar 4: Inventory framework.
+//! Inventory framework. One of ueforge's opinionated UE5 mod
+//! modules (rpg / stacks / difficulty / inventory / damage).
 //!
 //! Universal patterns for UE5 mods that touch the player's
 //! inventory. Today: [`viewport`] -- the fixed-size-visible-grid
