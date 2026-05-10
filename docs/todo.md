@@ -41,12 +41,20 @@ If any of that fails, triage from the log lines.
 Save-data durability + shutdown safety. Insurance work, but
 load-bearing for any RPG consumer.
 
-- [ ] **`SlotStore::save -> io::Result<()>` + surface error.**
-  `ueforge/src/rpg/store.rs:65-70` swallows IO failures today;
-  on full disk the save vanishes silently. Return `Result`,
-  propagate, expose most-recent error in snapshot.
-- [ ] **`fsync` the temp file before rename.**
-  `ueforge/src/rpg/store.rs:73-83`. ~3 LoC. Real durability.
+- [x] **`SlotStore::save -> io::Result<()>` + surface error.**
+  Returns `Result`; tracker callers `let _ =` and rely on the
+  store's cached `last_error` (exposed via
+  `Tracker::last_save_error`) for snapshot surfaces. 4 unit
+  tests on save/load/round-trip + parent creation.
+- [x] **`fsync` the temp file before rename.** `save_atomic`
+  now opens the temp explicitly, writes, calls `sync_all()`,
+  then renames. Atomic rename is now also durable across
+  power loss.
+- [x] **Slot path validation.** Reject empty / leading dot /
+  path separators (`/`, `\`, `:`, `\0`) in slot keys; route
+  invalid keys to a sentinel `__invalid__.json` filename so
+  malformed input is visible instead of silently writing
+  somewhere unexpected. (Was P1; landed alongside the P0 fixes.)
 - [ ] **`SlotPoller::Handle` + shutdown-on-`on_shutdown`.**
   `ueforge/src/rpg/poller.rs:32-65`. Replace raw `CreateThread`
   with named `thread::Builder` + `Arc<AtomicBool>` stop flag.
@@ -64,8 +72,8 @@ load-bearing for any RPG consumer.
 - [ ] **`Curve::level_for_xp` upper guard.** O(max_level) per
   call. Assert `max_level <= 1024` in `Curve::new`, or binary-
   search.
-- [ ] **`SlotStore` slot-path validation.** Reject path
-  separators / leading dots in `path()`.
+- [x] **`SlotStore` slot-path validation.** DONE alongside
+  P0; see kovarex P0 entries above.
 - [ ] **IO failure-injection tests for `SlotStore`.** Fill-disk,
   permission-denied, partial-write. Zero failure-injection tests
   on the durability layer today.

@@ -99,6 +99,13 @@ impl<A: RpgApplier> Tracker<A> {
         });
     }
 
+    /// Most recent save error from the underlying [`SlotStore`],
+    /// if any. Cleared on the next successful save. Snapshot
+    /// surface for tests and the debug HTTP endpoint.
+    pub fn last_save_error(&self) -> Option<String> {
+        self.store.last_error()
+    }
+
     pub fn deactivate_slot(&self) {
         let mut g = self.inner.lock();
         if let Some(t) = g.take() {
@@ -157,7 +164,7 @@ impl<A: RpgApplier> Tracker<A> {
         let new_level = cur + spend;
         t.state.skill_levels.insert(skill_id.to_string(), new_level);
         t.applier.apply_skill(&t.state, skill);
-        self.store.save(&t.slot, &t.state);
+        let _ = self.store.save(&t.slot, &t.state);
         crate::log!(
             "rpg/tracker: spent {} on {}: level {} -> {} ({} points left)",
             spend,
@@ -197,7 +204,7 @@ impl<A: RpgApplier> Tracker<A> {
         }
         t.state.skill_points = t.state.skill_points.saturating_add(refund);
         t.applier.apply_skill(&t.state, skill);
-        self.store.save(&t.slot, &t.state);
+        let _ = self.store.save(&t.slot, &t.state);
         crate::log!(
             "rpg/tracker: refunded {} from {}: level {} -> {} ({} points)",
             refund,
@@ -248,7 +255,7 @@ impl<A: RpgApplier> Tracker<A> {
                 t.state.skill_points
             );
         }
-        self.store.save(&t.slot, &t.state);
+        let _ = self.store.save(&t.slot, &t.state);
         Some(XpResult {
             awarded,
             total_xp: t.state.xp,
@@ -264,7 +271,7 @@ impl<A: RpgApplier> Tracker<A> {
         let mut g = self.inner.lock();
         let Some(t) = g.as_mut() else { return false };
         t.state.skill_points = t.state.skill_points.saturating_add(n);
-        self.store.save(&t.slot, &t.state);
+        let _ = self.store.save(&t.slot, &t.state);
         crate::log!(
             "rpg/tracker: DEBUG granted +{n} skill points (total {})",
             t.state.skill_points
