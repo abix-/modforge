@@ -75,13 +75,25 @@ impl UObject {
 
     /// "Default__" shows up in the FName for every CDO -- mirrors the C++
     /// IsDefaultObject implementation.
+    ///
+    /// If the runtime hasn't been initialized yet (caller fired before
+    /// `init_runtime`), returns false. We prefer a soft fallback over a
+    /// panic on the hot path -- panic = abort in release would crash the
+    /// game over a recoverable race.
     pub fn is_default_object(&self) -> bool {
-        let name = unsafe { runtime().name_resolver.to_string(self.fname()) };
+        let Some(rt) = try_runtime() else { return false };
+        let name = unsafe { rt.name_resolver.to_string(self.fname()) };
         name.starts_with("Default__")
     }
 
+    /// Resolved short name. Soft-fallback to `"<unresolved>"` if the
+    /// runtime hasn't been initialized -- same rationale as
+    /// [`Self::is_default_object`].
     pub fn name(&self) -> String {
-        unsafe { runtime().name_resolver.to_string(self.fname()) }
+        match try_runtime() {
+            Some(rt) => unsafe { rt.name_resolver.to_string(self.fname()) },
+            None => String::from("<unresolved>"),
+        }
     }
 
     pub fn full_name(&self) -> String {
@@ -122,8 +134,17 @@ impl UObject {
     }
 
     /// Calls vtable[ProcessEventIdx] with (self, function, parms).
+    ///
+    /// Returns silently if the runtime isn't initialized -- we'd rather
+    /// drop the engine call than abort the game on a setup race. The
+    /// caller's parm buffer is left untouched.
     pub unsafe fn process_event(&self, function: &UFunction, parms: *mut c_void) {
-        let rt = runtime();
+        let Some(rt) = try_runtime() else {
+            crate::log::log(format_args!(
+                "ueforge: process_event called before init_runtime; dropping call"
+            ));
+            return;
+        };
         unsafe {
             let vtable: *const *const c_void = self.read_field(offsets::uobject::VTABLE);
             let slot = *vtable.add(rt.platform_offsets.process_event_idx);
@@ -179,6 +200,7 @@ impl UClass {
     /// on the class. Cheap enough for interactive lookups
     /// (each class has tens of properties typically).
     pub fn iter_native_properties(&self) -> Vec<NativeProperty> {
+        let Some(rt) = try_runtime() else { return Vec::new() };
         let mut out = Vec::new();
         let mut cur: *const u8 = unsafe {
             (self as *const UClass as *const u8)
@@ -195,7 +217,7 @@ impl UClass {
                 let name = if name_fname.is_none() {
                     String::from("<none>")
                 } else {
-                    runtime().name_resolver.to_string(name_fname)
+                    rt.name_resolver.to_string(name_fname)
                 };
                 let offset = (cur.add(offsets::fproperty::OFFSET_INTERNAL) as *const i32)
                     .read_unaligned() as u32;

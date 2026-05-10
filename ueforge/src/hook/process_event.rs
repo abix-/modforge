@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 
 use parking_lot::Mutex;
 
-use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, runtime};
+use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fast, try_runtime};
 
 use super::vtable;
 
@@ -86,7 +86,10 @@ impl ProcessEventHook {
             return Err("vtable pointer is null");
         }
 
-        let slot_idx = runtime().platform_offsets.process_event_idx;
+        let slot_idx = try_runtime()
+            .ok_or("ueforge runtime not initialized; install hooks AFTER init_runtime")?
+            .platform_offsets
+            .process_event_idx;
         let slot = unsafe { vtable.add(slot_idx) };
         let original_raw = unsafe { *slot };
         if original_raw.is_null() {
