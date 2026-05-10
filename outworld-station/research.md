@@ -1,5 +1,45 @@
 # Outworld Station - Modding Research
 
+## Bootstrap status (2026-05-09)
+
+Per-game prerequisites (see `uespy/README.md` "Bootstrapping a
+new game" for what each item means):
+
+| Item | Status | Detail |
+|---|---|---|
+| Engine version | known | UE 5.4.4 (from exe FileVersion) |
+| Anti-cheat | none observed | no EAC / BattlEye folders in install |
+| UE4SS installed | yes | `OutworldStation\Binaries\Win64\ue4ss\` — main HEAD commit `06474186`, built 2026-05-08 |
+| `UE4SS.lib` regenerated for this DLL | yes | ~4063 exports; commit `6246b90` |
+| Mod scaffold | yes | `outworld-station/tweaks/` (multi-mod) |
+| `/debug` endpoint live | yes | `127.0.0.1:17172`, smoke test passes 3/3 |
+| **SDK dump** | **NO** | next step — see below |
+| PlatformOffsets filled in | NO | depends on SDK dump |
+| First mod target | identified | item stack tweaks (the "Better Item Stacks" pattern, but as a runtime mod) |
+
+Until the SDK dump runs, `walk_class` / `read_bytes` /
+`write_bytes` / `call` all error with `"uespy: ue runtime not
+initialized"`. The control plane works; it just can't see
+into UE memory yet.
+
+### SDK dump procedure (next concrete step)
+
+1. Edit `OutworldStation\Binaries\Win64\ue4ss\UE4SS-settings.ini`:
+   in `[CXXHeaderGenerator]` set
+   `DumpOffsetsAndSizes = 1`,
+   `KeepMemoryLayout = 1`.
+2. Launch Outworld Station once, wait for the main menu, quit.
+3. UE4SS writes `OutworldStation\Binaries\Win64\ue4ss\UEHeaderDump\`
+   (thousands of `.hpp` files) plus an offsets summary file.
+4. Copy `g_objects`, `append_string`, `g_names`, `g_world`,
+   `process_event` (image-relative addresses) into
+   `outworld-station/tweaks/src/lib.rs::STEAM`.
+5. Rebuild + redeploy with `outworld-station/tweaks/scripts/deploy.ps1 -Install`.
+6. Re-run smoke + run `explore_datatables` — `walk_class`
+   should now flip to `ok=true` and print the DataTable list.
+
+
+
 ## Game basics
 - Install: `C:\Games\Steam\steamapps\common\OutworldStation\`
 - Shipping exe: `OutworldStation\Binaries\Win64\OutworldStation-Win64-Shipping.exe`

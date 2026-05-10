@@ -77,6 +77,127 @@ Standard *-sys crate pattern. Nothing special, nothing clever.
 That's it. Every other UE / UE4SS / ImGui / Win32 / test mechanic
 comes from uespy.
 
+## Bootstrapping a new game
+
+Before any mod for a new UE game can do real work, three external
+artifacts have to exist for that specific game build:
+
+1. **A UE4SS install in the game's `Binaries\Win64\` folder.**
+   UE4SS is the loader; without it our cdylib never gets called.
+   It is game-agnostic — the same UE4SS works on any UE 4.12 - 5.7
+   game — but each game's user has to install it locally.
+2. **A `UE4SS.lib` import library matched to the installed
+   `UE4SS.dll`.** uespy ships one in `uespy/ue4ss/UE4SS.lib`,
+   generated from a known UE4SS build. If the installed UE4SS is
+   from a different build, the mangled C++ symbols may differ
+   and link / load will fail. Verify via `dumpbin /exports` and
+   regenerate the `.lib` if needed (procedure below).
+3. **An SDK dump for the specific game exe.** Until this exists
+   the mod's `/debug` endpoint comes up but `walk_class` /
+   `read_bytes` / `call` all return
+   `"uespy: ue runtime not initialized"` because the engine's
+   global pointers (GObjects, GNames, AppendString, GWorld,
+   ProcessEvent) have unknown addresses.
+
+Without all three, a mod can compile and load — but every
+research op requires step 3 done first.
+
+### What an SDK dump gives us
+
+Two distinct pieces of information land in the dump:
+
+| Output | Used for | Lives in |
+|---|---|---|
+| **Image-base offsets** (5-6 hex numbers) | `g_objects`, `append_string`, `g_names`, `g_world`, `process_event` addresses for THIS exe build. Goes into the game crate's `PlatformOffsets`. | `<game>\Binaries\Win64\ue4ss\UE4SSOutput\Offsets.lua` (or similar; varies by dumper) |
+| **Class headers** (thousands of `.hpp` files) | Every `UClass` / `UStruct` in the running game with field offsets, function signatures, sizes, inheritance. We grep these whenever we need to know "what offset on `UInventoryComponent` is `MaxStackSize`?" | `<game>\Binaries\Win64\ue4ss\UEHeaderDump\` |
+
+The offsets unlock the runtime — once filled into
+`PlatformOffsets`, `walk_class` works and the mod can enumerate
+every UObject. The class headers unlock implementation —
+they're the reference manual for what's inside each UObject.
+
+### Generating the dump
+
+Two dumpers can produce this. Either works:
+
+- **UE4SS's CXXHeaderGenerator** (built into UE4SS). Edit
+  `<game>\Binaries\Win64\ue4ss\UE4SS-settings.ini`, in
+  `[CXXHeaderGenerator]` set
+  `DumpOffsetsAndSizes = 1`,
+  `KeepMemoryLayout = 1`, then launch the game once. Output
+  appears under `<game>\Binaries\Win64\ue4ss\UEHeaderDump\`.
+- **Dumper-7** (standalone). Inject its DLL into the game,
+  produces a parallel set of headers. We used this for
+  Grounded 2 (`C:\Tools\work\sdk\`).
+
+Either way: launch the game, wait for main menu, exit. Files
+appear. Commit the `Offsets.*` summary into the game's research
+notes; the per-class headers are typically too large for git
+and live as a local-only reference path.
+
+### Filling in PlatformOffsets
+
+Once the offset file exists, copy the 5-6 image-base values
+into the game crate's `lib.rs::STEAM` (and `XBOX`, etc., if
+multi-platform):
+
+```rust
+const STEAM: PlatformOffsets = PlatformOffsets {
+    g_objects: 0x09F6_7028,           // <- from dump
+    append_string: 0x0125_2060,       // <- from dump
+    g_names: 0x09E4_A7B8,             // <- from dump
+    g_world: 0x09C7_A2E0,             // <- from dump
+    process_event: 0x0146_E7B0,       // <- from dump
+    process_event_idx: 0x4C,          // engine-stable across UE 5.x
+};
+```
+
+Rebuild + redeploy. `walk_class` flips to working. The TDD
+research loop begins.
+
+### Regenerating UE4SS.lib
+
+If the installed UE4SS is a different build than what
+`uespy/ue4ss/UE4SS.lib` was generated from:
+
+```pwsh
+$DLL = "<game>\Binaries\Win64\ue4ss\UE4SS.dll"
+$DEF = "uespy\ue4ss\UE4SS.def"
+$LIB = "uespy\ue4ss\UE4SS.lib"
+
+# 1. Dump exports
+dumpbin /exports $DLL > exports.txt
+
+# 2. Build .def: "LIBRARY UE4SS\nEXPORTS\n    <symbol>\n..." for
+#    every exported symbol. The current uespy/ue4ss/UE4SS.def is
+#    a working reference shape.
+
+# 3. Generate the import lib
+lib /def:$DEF /machine:x64 /out:$LIB
+```
+
+This was done for Outworld Station (UE4SS main HEAD, ~4063
+exports), see commit `6246b90`. ABI compatibility verified by
+matching mangled names of the symbols we actually use
+(`CppUserModBase` ctor/dtor, all 15 virtuals, `register_tab`,
+`UE4SSProgram::get_current_imgui_*`).
+
+### Per-game tracking convention
+
+Each game keeps its bootstrap status in a research-notes
+markdown under that game's folder. See
+`outworld-station/research.md` for the canonical shape:
+
+- Game / engine version
+- UE4SS build installed (commit / version)
+- UE4SS.lib regenerated for this DLL? (yes/no)
+- SDK dump path + dumper used
+- PlatformOffsets known? (yes/no)
+- First mod target
+
+That doc is what tells the next reader "is this game ready to
+mod, or do we have prerequisites missing?"
+
 ## Quickstart for a new mod
 
 ### Workspace layout
