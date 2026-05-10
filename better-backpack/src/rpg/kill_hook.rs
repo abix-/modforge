@@ -28,12 +28,16 @@ use std::ffi::c_void;
 use std::sync::OnceLock;
 
 use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
-use ueforge::ue::{ClassRef, GObjectsView, UClass, UFunction, UObject, runtime};
+use ueforge::ue::{ClassRef, GObjectsView, TypedField, UClass, UFunction, UObject, runtime};
 
 const HEALTH_COMPONENT_LAST_DAMAGE_INFO: usize = 0x03B0;
 const HEALTH_COMPONENT_CURRENT_DAMAGE: usize = 0x032C;
 const FDAMAGE_INFO_INSTIGATOR_CONTROLLER: usize = 0x0020;
 const MULTICAST_HANDLE_EFFECTS_PARMS_DAMAGE_FLAGS: usize = 0x001C;
+
+// Typed views over the same offsets above for the read/write call
+// sites. The plain consts stay for arithmetic uses (offset + sub-rel).
+const HC_CURRENT_DAMAGE: TypedField<f32> = TypedField::at(HEALTH_COMPONENT_CURRENT_DAMAGE);
 
 const DAMAGE_INFO_FLAG_KILLING_BLOW: i32 = 2;
 
@@ -140,9 +144,7 @@ fn on_event(
             // Quiet capture so the ring shows everything (heal
             // candidates included) without spamming the log.
             let cd_now = unsafe {
-                this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
-                    .cast::<f32>()
-                    .read_unaligned()
+                HC_CURRENT_DAMAGE.read(this)
             };
             let now_secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -196,9 +198,7 @@ fn on_event(
             // endpoint can show it. Read-only -- no process_event
             // re-entry from this site.
             let cd_now = unsafe {
-                this.field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
-                    .cast::<f32>()
-                    .read_unaligned()
+                HC_CURRENT_DAMAGE.read(this)
             };
             let now_secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -274,12 +274,9 @@ fn on_event(
                         let reduction = 1.0 * progress; // max_bonus = 1.0 in catalog
                         let to_reverse = damage * reduction;
                         unsafe {
-                            let cd_ptr = this
-                                .field_ptr(HEALTH_COMPONENT_CURRENT_DAMAGE)
-                                as *mut f32;
-                            let cd_now = cd_ptr.read_unaligned();
+                            let cd_now = HC_CURRENT_DAMAGE.read(this);
                             let new_cd = (cd_now - to_reverse).max(0.0);
-                            cd_ptr.write_unaligned(new_cd);
+                            HC_CURRENT_DAMAGE.write(this, new_cd);
                             ueforge::log!(
                                 "rpg/impact: reversed environmental damage by {:.2} (raw={:.2}, reduction={:.3}, level={}); CurrentDamage {:.2} -> {:.2}",
                                 to_reverse,

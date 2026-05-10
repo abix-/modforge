@@ -370,14 +370,19 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   hand-rolled (1 fn + 1 CDO each, below the macro ROI threshold).
   ~58 LoC dropped from bbp; release workspace builds clean.
   In-game smoke test pending.
-- [ ] **A3. `ueforge::ue::TypedField<T>`** -- typed offset wrapper.
-  `const HEALTH: TypedField<*mut UObject> = TypedField::at(0x1340)`,
-  `HEALTH.read(obj)` / `HEALTH.write(obj, v)`. Centralizes
-  `read_unaligned` discipline; one place to add bounds validation.
-  Migrates dozens of unsafe field-pointer reads in `bbp/rpg/apply.rs`,
-  `kill_hook.rs`, `fall_hook.rs`, `save_slot.rs`. ~200+ LoC of
-  `unsafe` shrinks. **Acceptance:** snapshot reads identical;
-  no behaviour change.
+- [x] **A3. `ueforge::ue::TypedField<T>`** -- `const`-constructible
+  `(offset, T)` pair with `read(obj)` / `write(obj, v)` / `ptr(obj)`.
+  Couples offset and type at declaration so accidental type
+  mismatches between `static` decl and call site become impossible
+  (different `TypedField<T>` types). Lives at
+  `ueforge/src/ue/typed_field.rs`. 3 unit tests. Made
+  `UObject::read_field` public so the wrapper can call it. Demo
+  migration: `kill_hook::HC_CURRENT_DAMAGE` replaces 5 `field_ptr +
+  cast + read_unaligned` sites. Workspace builds clean. Larger
+  conversions in `apply.rs` / `fall_hook.rs` land opportunistically
+  -- the surface is available; existing helpers
+  (`read_f32`/`write_f32`/etc.) keep working unchanged.
+  In-game smoke test pending.
 - [ ] **A4. `ueforge::rpg::VanillaCache<K, V>`** -- vanilla-baseline
   `OnceLock` pattern. `VanillaCache::<HungerKey, f32>::get_or_init(
   || read_field(...))`. Migrates `bbp/rpg/apply.rs:38-44`

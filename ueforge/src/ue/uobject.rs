@@ -42,7 +42,7 @@ impl UObject {
         self as *const UObject as *mut u8
     }
 
-    unsafe fn read_field<T: Copy>(&self, offset: usize) -> T {
+    pub unsafe fn read_field<T: Copy>(&self, offset: usize) -> T {
         unsafe { (self.as_ptr().add(offset) as *const T).read_unaligned() }
     }
 

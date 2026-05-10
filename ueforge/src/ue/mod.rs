@@ -17,9 +17,11 @@ pub mod platform;
 pub mod probe;
 pub mod tarray;
 pub mod tmap;
+pub mod typed_field;
 pub mod uobject;
 
 pub use class_ref::ClassRef;
+pub use typed_field::TypedField;
 pub use fname::FName;
 pub use fstring::FString;
 pub use offsets::{GObjectsLayout, Platform, PlatformOffsets};
