@@ -239,17 +239,8 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
     }
     match selector {
         "live_player_hc" => live_player_hc(),
-        "live_player" => {
-            let mut found: Option<&'static UObject> = None;
-            apply::apply_to_live_player_characters(|p| {
-                if found.is_none() {
-                    let extended: &'static UObject =
-                        unsafe { std::mem::transmute::<&UObject, &'static UObject>(p) };
-                    found = Some(extended);
-                }
-            });
-            found.ok_or_else(|| "no live player".to_string())
-        }
+        "live_player" => unsafe { apply::PLAYER.first_live_static() }
+            .ok_or_else(|| "no live player".to_string()),
         _ => Err(format!(
             "unknown selector '{selector}'. supported: live_player_hc, live_player, first_class:<name>, addr:0x<hex>"
         )),
@@ -273,21 +264,14 @@ fn op_write_bytes(args: &Json) -> Result<Json, String> {
 // ---- Game-thread executors. Called from kill_hook trampoline. ----
 
 fn live_player_hc() -> Result<&'static UObject, String> {
-    let mut hc: Option<&'static UObject> = None;
-    apply::apply_to_live_player_characters(|player| {
-        if hc.is_none()
-            && let Some(found) = apply::read_component_ptr(player, apply::ASC_HEALTH_COMPONENT)
-        {
-            // SAFETY: while we're on the game thread inside the
-            // trampoline, GObjects is stable. The reference's
-            // lifetime is artificially extended; we use it only
-            // within this drain cycle.
-            let extended: &'static UObject =
-                unsafe { std::mem::transmute::<&UObject, &'static UObject>(found) };
-            hc = Some(extended);
-        }
-    });
-    hc.ok_or_else(|| "no live player HealthComponent".into())
+    // SAFETY: we're on the game thread (inside the kill-hook PE
+    // drain). The pawn + its HC live for the duration of the
+    // closure that consumes them.
+    let pawn = unsafe { apply::PLAYER.first_live_static() }
+        .ok_or_else(|| "no live player".to_string())?;
+    let hc = apply::read_component_ptr(pawn, apply::ASC_HEALTH_COMPONENT)
+        .ok_or_else(|| "no live player HealthComponent".to_string())?;
+    Ok(unsafe { std::mem::transmute::<&UObject, &'static UObject>(hc) })
 }
 
 fn exec_add_health(amount: f32) -> Result<Json, String> {
@@ -721,7 +705,7 @@ fn collect_cdo() -> CdoView {
     use crate::rpg::skills::*;
 
     let mut survival = None;
-    apply::class_default_object("SurvivalComponent", |obj| {
+    ueforge::ue::with_first_cdo_of("SurvivalComponent", |obj| {
         survival = Some(SurvivalCdoFields {
             hunger_adjustment_per_second: apply::read_f32(obj, SURVIVAL_HUNGER_OFFSET),
             thirst_adjustment_per_second: apply::read_f32(obj, SURVIVAL_THIRST_OFFSET),
@@ -729,7 +713,7 @@ fn collect_cdo() -> CdoView {
     });
 
     let mut gcd = None;
-    apply::first_instance_of("GlobalCombatData", |obj| {
+    ueforge::ue::with_first_instance_of("GlobalCombatData", |obj| {
         gcd = Some(GlobalCombatDataFields {
             combat_regen_delay: apply::read_f32(obj, GCD_COMBAT_REGEN_DELAY),
             combat_regen_tick_percentage: apply::read_f32(obj, GCD_COMBAT_REGEN_TICK_PERCENTAGE),
@@ -738,14 +722,14 @@ fn collect_cdo() -> CdoView {
     });
 
     let mut gms = None;
-    apply::first_instance_of("SurvivalGameModeSettings", |obj| {
+    ueforge::ue::with_first_instance_of("SurvivalGameModeSettings", |obj| {
         gms = Some(GmsFields {
             fall_damage_multiplier: apply::read_f32(obj, GMS_FALL_DAMAGE_MULTIPLIER),
         });
     });
 
     let mut smmc = None;
-    apply::first_instance_of("SurvivalModeManagerComponent", |obj| {
+    ueforge::ue::with_first_instance_of("SurvivalModeManagerComponent", |obj| {
         smmc = Some(SmmcFields {
             custom_fall_damage_multiplier: apply::read_f32(obj, SMMC_CUSTOM_FALL_DAMAGE_MULTIPLIER),
         });

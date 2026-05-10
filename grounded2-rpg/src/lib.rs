@@ -62,26 +62,11 @@ unsafe fn worker() {
         patch::VANILLA_MOUNT
     );
 
-    let image_base = ueforge::ue::platform::host_image_base();
     const PLATFORMS: &[(&str, &ueforge::ue::PlatformOffsets)] = &[
         ("Grounded2-WinGRTS-Shipping.exe", &STEAM),
         ("Grounded2-WinGDK-Shipping.exe", &XBOX),
     ];
-    let offsets = ueforge::ue::platform::detect(PLATFORMS).unwrap_or_else(|| {
-        let exe = ueforge::ue::platform::host_exe_name().unwrap_or_default();
-        ueforge::log!(
-            "WARN: unknown host exe '{}'; defaulting to Steam offsets",
-            exe
-        );
-        &STEAM
-    });
-    ueforge::log!(
-        "image_base = 0x{:x}, GObjects = 0x{:x}",
-        image_base,
-        image_base + offsets.g_objects
-    );
-
-    let _rt = unsafe { ueforge::ue::init_runtime(image_base, offsets) };
+    let _rt = ueforge::ue::platform::detect_and_init(PLATFORMS);
 
     // Capture vanilla survival rates before any patching so the RPG
     // apply step can multiply them later without compounding.

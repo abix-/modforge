@@ -105,6 +105,28 @@ impl PlayerRef {
         })
     }
 
+    /// Return the first live pawn as `&'static UObject`. None if
+    /// no live pawn was found.
+    ///
+    /// # Safety
+    /// Caller MUST be on the game thread (typically inside a PE
+    /// trampoline / drain-site closure). The returned reference's
+    /// lifetime is artificially extended to `'static`; it's only
+    /// valid until the engine destroys the underlying object,
+    /// which can happen at any GC pass off-thread. Use this when
+    /// you need to pass the pawn through APIs that require
+    /// `'static` (e.g. queued-closure resolvers) and the caller
+    /// guarantees the object lives for the duration of use.
+    pub unsafe fn first_live_static(&self) -> Option<&'static UObject> {
+        let mut hit: Option<usize> = None;
+        self.for_each_live(|obj| {
+            if hit.is_none() {
+                hit = Some(obj as *const UObject as usize);
+            }
+        });
+        hit.map(|addr| unsafe { &*(addr as *const UObject) })
+    }
+
     /// Pass the first CDO to `f` and return the result.
     /// None if no CDO was found.
     pub fn with_first_cdo<R>(&self, f: impl FnOnce(&UObject) -> R) -> Option<R> {

@@ -351,33 +351,6 @@ pub(crate) static CLASS_GLOBAL_COMBAT_DATA: ue::ClassRef =
 pub(crate) static MAX_HEALTH_VANILLA: ueforge::rpg::VanillaCache<usize, f32> =
     ueforge::rpg::VanillaCache::new();
 
-/// Read the first non-CDO instance of `class_name` and pass it to
-/// `f`. Returns true if any was found. Used by the debug snapshot
-/// to read singleton-style or per-game-mode objects.
-pub(crate) fn first_instance_of(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let cls = ue::ClassRef::new_dynamic(class_name);
-    cls.with_first_instance(f).is_some()
-}
-
-/// Read the class default object of `class_name` and pass to `f`.
-/// Returns true if found. Walks every `is_a(class) && is_default_object`
-/// match -- includes subclass CDOs.
-pub(crate) fn class_default_object(class_name: &str, f: impl FnOnce(&UObject)) -> bool {
-    let cls = ue::ClassRef::new_dynamic(class_name);
-    let mut hit_addr: Option<usize> = None;
-    cls.for_each_cdo_subclass(|obj| {
-        if hit_addr.is_none() {
-            hit_addr = Some(obj as *const UObject as usize);
-        }
-    });
-    if let Some(addr) = hit_addr {
-        f(unsafe { &*(addr as *const UObject) });
-        true
-    } else {
-        false
-    }
-}
-
 pub(crate) fn apply_to_live_player_characters(f: impl FnMut(&UObject)) -> usize {
     PLAYER.for_each_live(f)
 }

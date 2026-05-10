@@ -134,6 +134,22 @@ impl ClassRef {
         None
     }
 
+    /// Call `f` on the first CDO (default object) matching
+    /// `is_a(self)`. Returns the closure's result, or `None` if no
+    /// CDO is loaded.
+    ///
+    /// Symmetric to [`with_first_instance`](Self::with_first_instance)
+    /// for CDOs.
+    pub fn with_first_cdo<R>(&self, f: impl FnOnce(&UObject) -> R) -> Option<R> {
+        let mut hit_addr: Option<usize> = None;
+        self.for_each_cdo_subclass(|obj| {
+            if hit_addr.is_none() {
+                hit_addr = Some(obj as *const UObject as usize);
+            }
+        });
+        hit_addr.map(|addr| f(unsafe { &*(addr as *const UObject) }))
+    }
+
     /// Call `f` on every non-CDO instance matching `is_a(self)` for
     /// which `pred` returns true. Returns the count. Use for "live
     /// instances of class X whose full_name contains substring Y"

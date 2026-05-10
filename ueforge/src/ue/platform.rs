@@ -71,3 +71,42 @@ pub fn detect<'a>(
         .find(|(needle, _)| exe.contains(needle))
         .map(|(_, off)| *off)
 }
+
+/// Detect the host exe, choose the right `PlatformOffsets`, init
+/// the runtime, and log a one-line header. Falls back to the
+/// first row in `table` with a WARN if the exe doesn't match.
+///
+/// The single boilerplate every UE4SS Rust mod's worker runs at
+/// startup. Replaces ~15 lines of per-mod setup:
+///
+/// ```ignore
+/// const PLATFORMS: &[(&str, &ueforge::ue::PlatformOffsets)] = &[
+///     ("MyGame-WinShipping.exe", &MY_OFFSETS),
+/// ];
+/// let _rt = ueforge::ue::platform::detect_and_init(PLATFORMS);
+/// ```
+pub fn detect_and_init(
+    table: &[(&str, &'static PlatformOffsets)],
+) -> &'static crate::ue::Runtime {
+    let image_base = host_image_base();
+    let offsets = detect(table).unwrap_or_else(|| {
+        let exe = host_exe_name().unwrap_or_default();
+        crate::log!(
+            "WARN: unknown host exe '{}'; defaulting to first platform row",
+            exe
+        );
+        // Safe: callers always pass a non-empty table; an empty
+        // table here is a programming error, not a runtime
+        // condition. Panic with a clear message instead of UB.
+        table
+            .first()
+            .map(|(_, off)| *off)
+            .expect("detect_and_init: platforms table must be non-empty")
+    });
+    crate::log!(
+        "image_base = 0x{:x}, GObjects = 0x{:x}",
+        image_base,
+        image_base + offsets.g_objects
+    );
+    unsafe { crate::ue::init_runtime(image_base, offsets) }
+}

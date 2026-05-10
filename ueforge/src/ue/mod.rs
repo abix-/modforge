@@ -38,3 +38,27 @@ pub use uobject::{
     GObjectsView, ProcessEventFn, Runtime, UClass, UFunction, UObject, find_class_fast,
     init_runtime, runtime, try_runtime,
 };
+
+/// Look up a class by name and pass its first non-CDO instance to
+/// `f`. Returns `None` if the class isn't loaded or no live
+/// instance exists yet.
+///
+/// Convenience wrapper for ad-hoc snapshot / debug call sites that
+/// don't deserve a `static ClassRef` (typically: read a singleton
+/// data asset's fields once into a serializable view).
+pub fn with_first_instance_of<R>(
+    class_name: &str,
+    f: impl FnOnce(&UObject) -> R,
+) -> Option<R> {
+    ClassRef::new_dynamic(class_name).with_first_instance(f)
+}
+
+/// Look up a class by name and pass its first matching CDO to
+/// `f`. Walks every `is_a(class) && is_default_object`, so
+/// subclass CDOs match the parent name too.
+pub fn with_first_cdo_of<R>(
+    class_name: &str,
+    f: impl FnOnce(&UObject) -> R,
+) -> Option<R> {
+    ClassRef::new_dynamic(class_name).with_first_cdo(f)
+}

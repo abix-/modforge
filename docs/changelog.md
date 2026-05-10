@@ -68,6 +68,33 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Bootstrap + class-name lookup helpers
+
+Three more universals lifted to ueforge so each new mod's
+boilerplate shrinks:
+
+- **`ueforge::ue::platform::detect_and_init`** -- one-call
+  replacement for the 15-line "detect host exe -> pick offsets ->
+  log image_base/GObjects -> init_runtime" boilerplate every
+  mod's worker thread runs at startup. Falls back to the first
+  platform row with a WARN if the host exe doesn't match.
+- **`ueforge::ue::with_first_instance_of(class_name, f)`** /
+  **`with_first_cdo_of`** -- string-keyed convenience wrappers
+  for ad-hoc snapshot / debug call sites. Replaces 4 `apply::*`
+  helpers in g2rpg.
+- **`PlayerRef::first_live_static`** (unsafe) -- the
+  game-thread-only "first live pawn as `&'static UObject`"
+  pattern, used by debug-endpoint resolvers that pass refs
+  through queued-closure boundaries. Wraps the unsafe-extend-
+  lifetime trick in one place with a clear safety contract.
+- **`ClassRef::with_first_cdo`** -- symmetric counterpart to
+  the existing `with_first_instance`.
+
+g2rpg's `lib.rs` shrank 151 -> 136 lines (-15); `debug.rs`
+shrank 786 -> 770 (-16); `apply.rs` shrank 398 -> 371 (-27 by
+deleting `first_instance_of` / `class_default_object`
+wrappers).
+
 ### debug.rs scaffolding lift
 
 Promoted four pieces of g2rpg's debug endpoint to ueforge so the
