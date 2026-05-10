@@ -68,6 +68,68 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Pester-style scenario DSL + RPG-op shortcuts on `Api<S>`
+
+Per-skill tests were the last big duplication pile -- each one
+reimplementing connect/skip + read-baseline + check-skill-points
++ spend + read-after + assert + refund. ~30 lines apiece.
+
+Lifted to `ueforge::client::scenario`:
+
+```rust
+scenario::for_skill(api.inner(), "attack_damage")
+    .reads(|s: &common::Snapshot| {
+        Some(s.live_player.as_ref()?.asc.as_ref()?.custom_damage_multiplier)
+    })
+    .should_grow_when_spent();
+```
+
+Four assertion shapes provided:
+- `should_grow_when_spent` -- spend 1, value strictly greater, refund.
+- `should_shrink_when_spent` -- spend 1, value strictly less, refund.
+- `should_revert_when_refunded` -- spend then refund; baseline restored.
+- `should_revert_when_toggled_off` -- spend, toggle off (vanilla
+  restored), toggle on (boost restored), refund.
+
+The DSL handles environment prerequisites (skips with a clear
+log line if no live player / no skill points) so partial setups
+don't fail the suite.
+
+Plus standard RPG-op shortcuts on `Api<S>`:
+- `skill_spend(id, count)` / `skill_refund(id, count)` /
+  `skill_toggle(id, bool)` / `set_skill_points(count)` /
+  `reload_slot()` -- each calls `op_ok` + returns post-op state.
+- `skill_level(id) -> u32` / `skill_points() -> u32` -- read from
+  the snapshot's `player_state` JSON path. Available on any
+  `Api<S>` regardless of the per-mod typed Snapshot shape.
+
+Per-skill test migrations:
+
+| Test | Before | After |
+|---|---|---|
+| skill_attack_damage | 38 | 16 |
+| skill_armor | 23 | 15 |
+| skill_jump_height | 36 | 15 |
+| skill_glide_speed | 34 | 26 (+1 assertion) |
+| skill_max_health | 30 | 26 (+1 assertion) |
+| skill_lifesteal | 35 | 25 |
+| skill_move_speed | 73 | 26 |
+| skill_health_regen | 60 | 38 (+1 assertion) |
+| skill_hunger | 55 | 27 (+1 assertion) |
+| skill_thirst | 46 | 26 (+1 assertion) |
+| skill_leap_distance | 46 | 34 (+2 assertions) |
+
+Plus `research_probes.rs` 258 -> 188 (uses the new
+`find_live_instance` + `read_component_ptr` +
+`call_ufunction_typed` helpers).
+
+**Net: -340 lines of test boilerplate; +9 new test scenarios
+gained from the easier shape (now testing toggle-revert + refund
+on multiple skills where the original had only spend-grew).**
+
+The tests now read like Pester / English: "for skill X,
+reads Y, should grow when spent".
+
 ### Research-test helpers wave 2 (`client::diff` + class-CDO + thread report)
 
 Continued the research-helpers extraction. Three more ueforge

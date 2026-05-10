@@ -30,6 +30,7 @@ use crate::hex;
 pub mod diff;
 pub mod perf;
 pub mod research;
+pub mod scenario;
 
 /// Default request timeout. A test driving a slow PE-drain op
 /// (e.g. one that waits for a frame to fire before the queue
@@ -199,6 +200,77 @@ impl<S: DeserializeOwned> Api<S> {
             .ok_or_else(|| "no parms_hex_after in result".to_string())?;
         let after = hex::decode(after_hex).map_err(|e| format!("bad hex: {e}"))?;
         Ok((after, r.state))
+    }
+
+    /// Typed `call_ufunction`. Game-side parm struct is a
+    /// `#[repr(C)] T`; this method serializes it via
+    /// `parms::as_bytes`, calls the engine, decodes the
+    /// post-call buffer back into `T`, and returns it (so OUT
+    /// fields the engine wrote are visible).
+    ///
+    /// # Safety
+    /// `T` MUST be a `#[repr(C)]` POD struct matching the
+    /// UFunction's parm layout exactly.
+    pub unsafe fn call_ufunction_typed<T: Copy>(
+        &self,
+        class: &str,
+        function: &str,
+        instance_selector: &str,
+        parms: T,
+    ) -> Result<(T, S), String> {
+        let bytes = unsafe { crate::parms::as_bytes(&parms) };
+        let (after, state) = self.call_ufunction(class, function, instance_selector, bytes)?;
+        let out: T = unsafe { crate::parms::from_bytes(&after)? };
+        Ok((out, state))
+    }
+
+    // ---- Standard RPG-op shortcuts ----------------------------
+    //
+    // Every mod that wires up `ueforge::rpg::ops` gets these for
+    // free. The shortcuts call `op_ok` (panic on failure) and
+    // return the post-op state. Use the raw `op` method if you
+    // need to inspect failures.
+
+    pub fn skill_spend(&self, id: &str, count: u32) -> S {
+        self.op_ok("skill_spend", json!({"id": id, "count": count}))
+    }
+
+    pub fn skill_refund(&self, id: &str, count: u32) -> S {
+        self.op_ok("skill_refund", json!({"id": id, "count": count}))
+    }
+
+    pub fn skill_toggle(&self, id: &str, enabled: bool) -> S {
+        self.op_ok("skill_toggle", json!({"id": id, "enabled": enabled}))
+    }
+
+    pub fn set_skill_points(&self, count: u32) -> S {
+        self.op_ok("set_skill_points", json!({"count": count}))
+    }
+
+    pub fn reload_slot(&self) -> S {
+        self.op_ok("reload_slot", Value::Null)
+    }
+
+    /// Current `skill_levels.<id>` from the snapshot (raw value
+    /// path). 0 if missing.
+    pub fn skill_level(&self, id: &str) -> u32 {
+        self.snapshot_value()
+            .get("player_state")
+            .and_then(|p| p.get("skill_levels"))
+            .and_then(|m| m.get(id))
+            .and_then(|n| n.as_u64())
+            .map(|n| n as u32)
+            .unwrap_or(0)
+    }
+
+    /// Current `skill_points` from the snapshot. 0 if missing.
+    pub fn skill_points(&self) -> u32 {
+        self.snapshot_value()
+            .get("player_state")
+            .and_then(|p| p.get("skill_points"))
+            .and_then(|n| n.as_u64())
+            .map(|n| n as u32)
+            .unwrap_or(0)
     }
 
     pub fn port(&self) -> u16 {

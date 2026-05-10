@@ -270,6 +270,50 @@ pub fn find_class_cdo<S: DeserializeOwned>(
     parse_class_instance(cdo)
 }
 
+/// Find the first live (non-CDO) instance of `class`. Symmetric
+/// to [`find_class_cdo`]. Returns `None` if the class isn't
+/// loaded or has no live instances yet.
+///
+/// Common use: "find the player" / "find the singleton GameMode" /
+/// "find the loaded map" -- pass the BP class name + take the
+/// first non-CDO hit.
+pub fn find_live_instance<S: DeserializeOwned>(
+    api: &Api<S>,
+    class: &str,
+) -> Option<ClassInstance> {
+    let r = api.op(
+        "walk_class",
+        json!({"class": class, "max": 32, "include_cdo": false}),
+    );
+    if !r.ok {
+        return None;
+    }
+    let arr = r.result.get("instances")?.as_array()?;
+    let live = arr.iter().find(|i| {
+        !i.get("is_cdo")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+    })?;
+    parse_class_instance(live)
+}
+
+/// Read a `*UObject` component pointer from `parent_addr` at
+/// `offset` and return the resolved subcomponent address.
+/// Returns `None` if the pointer is null or read fails.
+///
+/// Convenience wrapper for the universal "follow the player ->
+/// HealthComponent" / "actor -> CharMovementComponent" pattern.
+/// Equivalent to `read_u64`, plus null-check + zero-as-None
+/// ergonomics.
+pub fn read_component_ptr<S: DeserializeOwned>(
+    api: &Api<S>,
+    parent_addr: u64,
+    offset: u64,
+) -> Option<u64> {
+    let v = read_u64(api, parent_addr, offset);
+    if v == 0 { None } else { Some(v) }
+}
+
 fn walk_class_inner<S: DeserializeOwned>(
     api: &Api<S>,
     class: &str,

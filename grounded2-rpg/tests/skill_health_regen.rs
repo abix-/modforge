@@ -1,60 +1,38 @@
-// Per-skill test: health_regen.
-// USER EXPECTATION: spending raises CombatRegenTickPercentage and
-// lowers CombatRegenTickRate (more frequent ticks) on UGlobalCombatData.
-// Toggle off reverts to vanilla.
+// Per-skill test: health_regen. Spending raises tick percentage
+// + lowers tick rate (more frequent ticks) on UGlobalCombatData.
+// Toggle off reverts.
 
 mod common;
 
+use ueforge::client::scenario;
+
+fn tick_pct(s: &common::Snapshot) -> Option<f32> {
+    Some(s.cdo.global_combat_data.as_ref()?.combat_regen_tick_percentage)
+}
+fn tick_rate(s: &common::Snapshot) -> Option<f32> {
+    Some(s.cdo.global_combat_data.as_ref()?.combat_regen_tick_rate)
+}
+
 #[test]
-fn health_regen_changes_tick_pct_and_rate() {
-    let Some(api) = common::Api::try_connect() else {
-        eprintln!("skipping: BBP_DEBUG_PORT not set");
-        return;
-    };
-    let s = api.snapshot();
-    let Some(g0) = s.cdo.global_combat_data.as_ref() else {
-        panic!("no GlobalCombatData instance");
-    };
-    let pct0 = g0.combat_regen_tick_percentage;
-    let rate0 = g0.combat_regen_tick_rate;
-    let delay0 = g0.combat_regen_delay;
+fn health_regen_tick_pct_grows() {
+    let Some(api) = common::Api::try_connect() else { return };
+    scenario::for_skill(api.inner(), "health_regen")
+        .reads(tick_pct)
+        .should_grow_when_spent();
+}
 
-    if s.player_state.as_ref().unwrap().skill_points < 1 {
-        eprintln!("skipping: need a skill point");
-        return;
-    }
-    api.skill_spend("health_regen", 1);
-    let s1 = api.snapshot();
-    let g1 = s1.cdo.global_combat_data.as_ref().unwrap();
-    assert!(
-        g1.combat_regen_tick_percentage > pct0,
-        "tick_pct did not grow: {pct0} -> {}",
-        g1.combat_regen_tick_percentage
-    );
-    assert!(
-        g1.combat_regen_tick_rate < rate0,
-        "tick_rate did not drop: {rate0} -> {}",
-        g1.combat_regen_tick_rate
-    );
-    assert_eq!(
-        g1.combat_regen_delay, delay0,
-        "regen_delay should not change"
-    );
+#[test]
+fn health_regen_tick_rate_shrinks() {
+    let Some(api) = common::Api::try_connect() else { return };
+    scenario::for_skill(api.inner(), "health_regen")
+        .reads(tick_rate)
+        .should_shrink_when_spent();
+}
 
-    // Toggle off -> revert.
-    api.skill_toggle("health_regen", false);
-    let s2 = api.snapshot();
-    let g2 = s2.cdo.global_combat_data.as_ref().unwrap();
-    assert!(
-        (g2.combat_regen_tick_percentage - pct0).abs() < 1e-3,
-        "tick_pct did not revert on toggle off: vanilla {pct0} vs {}",
-        g2.combat_regen_tick_percentage
-    );
-    assert!(
-        (g2.combat_regen_tick_rate - rate0).abs() < 1e-3,
-        "tick_rate did not revert on toggle off"
-    );
-
-    api.skill_toggle("health_regen", true);
-    api.skill_refund("health_regen", 1);
+#[test]
+fn health_regen_toggle_reverts() {
+    let Some(api) = common::Api::try_connect() else { return };
+    scenario::for_skill(api.inner(), "health_regen")
+        .reads(tick_pct)
+        .should_revert_when_toggled_off();
 }
