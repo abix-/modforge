@@ -1,9 +1,14 @@
 # Changelog
 
 > **Authoritative on:** chronological history of milestones,
-> investigations, and design pivots. Things that are DONE.
+> investigations, and design pivots across every crate in the
+> workspace. Things that are DONE.
+>
 > For what's next see [`todo.md`](todo.md). For per-subject
-> deep dives see the other files in this directory.
+> deep dives see each crate's `docs/` folder:
+> [`../ueforge/docs/`](../ueforge/docs/) for the framework,
+> [`../better-backpack/docs/`](../better-backpack/docs/) for the
+> Grounded 2 mod.
 
 Newest first.
 
@@ -41,12 +46,12 @@ the complete set of systems every UE4SS Rust mod needs.
 
 #### Doctrine docs
 
-- **`ueforge/PERFORMANCE.md`** -- hot-path discipline (zero
+- **`../ueforge/docs/PERFORMANCE.md`** -- hot-path discipline (zero
   allocs, bail early, no mutexes on empty path, bounded
   everything, install-time heavy lifting, counter every hot
   path); memory leak vectors with their named ueforge fixes;
   consume-don't-reinvent table; consumer responsibilities.
-- **`ueforge/RESEARCH.md`** -- TDD investigation methodology
+- **`../ueforge/docs/RESEARCH.md`** -- TDD investigation methodology
   for UE5 games: research-is-code rule, the seven-step TDD loop,
   five probe types in leverage order, doctrines on status
   effects / data tables / damage paths / instigator resolution
@@ -299,7 +304,7 @@ GObjects walks bounded, dev profile unwinds.
 
 ### Three-way feature audit added
 
-`ueforge/README.md` ships a 62-row matrix mapping every feature
+`../ueforge/README.md` ships a 62-row matrix mapping every feature
 across ueforge, better-backpack, and ows-tweaks. Each cell is
 `live here / consumes ueforge / duplicates (delete) / should be
 promoted / N/A`. Verdict column names the migration item.
@@ -470,7 +475,7 @@ Sample active rows (mid-game player): `PlayerUpgradeHealth1`,
 `WeaponClub`, `RogueFinisherCriticals`, `AntRedStaminaAttack`,
 `FighterFinisherStun`, `MaxHealthSmall`, `PerkSpearTier1`,
 `PerkSpearThrowAttackUpTier1`. Naming convention is
-`<Source><Effect><Tier>`. Detail in `docs/damage.md` "Vanilla data
+`<Source><Effect><Tier>`. Detail in `../better-backpack/docs/damage.md` "Vanilla data
 table identified".
 
 This finalizes the migration plan: resolve the table (follow any

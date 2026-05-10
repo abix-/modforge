@@ -82,7 +82,7 @@ shape adds one variant to `SkillEffect` and one match arm in
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
 | Impact Damage Resistance | survival | -100% environmental damage at L100 (rock collisions, hazards). Per-level sqrt scaling. Implemented as a `Runtime` effect: kill_hook trampoline intercepts `ApplyDamageFromInfo` on the player HC, identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental", scales `Damage` and `OriginDamageData.Damage` by `(1 - reduction)` before forwarding. Does NOT touch fall damage (handled by fall_resistance), creature combat, or heals. Bandages work normally. |
 | Max Health       | survival   | +200 HP (additive on top of vanilla MaxHealth) |
-| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) -- **migration planned**: rewrite as a status effect with `EStatusEffectType::Health` per tick (the same pattern bandages use) so it integrates with vanilla heal multipliers, avoids singleton mutation, and doesn't cross-contaminate other actors. See `docs/damage.md` "Reuse the same pattern for our health_regen skill". |
+| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) -- **migration planned**: rewrite as a status effect with `EStatusEffectType::Health` per tick (the same pattern bandages use) so it integrates with vanilla heal multipliers, avoids singleton mutation, and doesn't cross-contaminate other actors. See `damage.md` "Reuse the same pattern for our health_regen skill". |
 | Lifesteal        | combat     | +90% of damage dealt healed back |
 
 ### Per-level scaling

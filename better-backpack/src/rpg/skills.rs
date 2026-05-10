@@ -266,7 +266,7 @@ pub const GCD_COMBAT_REGEN_DELAY: usize = 0x0108;
 pub const GCD_COMBAT_REGEN_TICK_PERCENTAGE: usize = 0x010C;
 pub const GCD_COMBAT_REGEN_TICK_RATE: usize = 0x0110;
 
-// UHealthComponent.MaxHealth (docs/damage.md "HealthComponent layout").
+// UHealthComponent.MaxHealth (../docs/damage.md "HealthComponent layout").
 // Vanilla baseline captured on first apply; we add raw HP on top.
 pub const HC_MAX_HEALTH: usize = 0x0328;
 
@@ -461,7 +461,7 @@ pub const CATALOG: &[Skill] = &[
         // hard regression on the user. The intercept-and-scale
         // approach only touches damage events whose DamageType
         // is environmental; heals and combat damage pass through
-        // untouched. See docs/damage.md "REVISED fix path".
+        // untouched. See ../docs/damage.md "REVISED fix path".
         effect: SkillEffect::Runtime {
             max_bonus: 1.0,
             format: PercentFormat::MinusPercent {

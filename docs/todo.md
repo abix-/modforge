@@ -192,7 +192,7 @@ maintainability / future-proofing.
   (`hex.rs`), arg parsers (`args.rs`), `Val::from_json`
   (`scanner.rs`), `tmap::slots` parsing, `FieldTweak` idempotency,
   queue drain stats / re-entrance. The TDD doctrine in
-  `ueforge/README.md` is aspirational; the framework itself has zero
+  `../ueforge/README.md` is aspirational; the framework itself has zero
   `#[test]`. Land the obvious round-trip + boundary tests.
 - [ ] **UE-version-aware offset tables.** `ueforge/src/ue/offsets.rs`
   `ffield`, `fproperty`, `ustruct` constants are hardcoded for UE
@@ -353,8 +353,8 @@ verifies build-clean. ~6-8 sessions total.
 7. **B3** `ueforge::rpg::SkillsTracker<S>`
 8. **C1** `ueforge::counters::hook_counters!` decl-macro
 9. **C2** `ueforge::ue::wait_for_class(name, RetryPolicy)`
-10. **D1** `ueforge/PERFORMANCE.md` doctrine lift
-11. **D2** `ueforge/RESEARCH.md` methodology lift
+10. **D1** `../ueforge/docs/PERFORMANCE.md` doctrine lift
+11. **D2** `../ueforge/docs/RESEARCH.md` methodology lift
 
 Waves E1/E2 (global ProcessEvent pre-callback,
 `AddUObjectCreateListener`) land on demand. Phase 3 wave 2 RPG
@@ -541,15 +541,15 @@ boilerplate to ~30 LoC of one-liner ClassRef calls.
 
 ### Wave D -- Doctrine docs (DONE 2026-05-10)
 
-- [x] **D1. `ueforge/PERFORMANCE.md`** -- canonical hot-path
+- [x] **D1. `../ueforge/docs/PERFORMANCE.md`** -- canonical hot-path
   discipline doctrine: 10/10 bar, hot-path identification, six
   rules (zero allocs, bail early, no mutexes on empty path,
   bounded everything, install-time heavy lifting, counter every
   hot path), memory-leak vectors with named ueforge fixes,
   consume-don't-reinvent table, consumer responsibilities,
   doctrine summary. ~250 lines. Lifts everything generic from
-  bbp's `docs/performance.md`; bbp's file shrinks to G2 numbers.
-- [x] **D2. `ueforge/RESEARCH.md`** -- TDD investigation
+  bbp's `../better-backpack/docs/performance.md`; bbp's file shrinks to G2 numbers.
+- [x] **D2. `../ueforge/docs/RESEARCH.md`** -- TDD investigation
   methodology for UE5 games. Headlines: research-is-code rule,
   the seven-step TDD loop, standard probes (`walk_class`,
   `read_bytes`, `inspect_address`, `call`, scanner, freeze),
@@ -581,15 +581,15 @@ they live in ueforge. Ordered by leverage.
 
 ### Doctrine / docs
 
-- [ ] **Hot-path discipline doctrine -> `ueforge/PERFORMANCE.md`.**
-  `docs/performance.md` is bbp-titled but most of it is generic:
+- [ ] **Hot-path discipline doctrine -> `../ueforge/docs/PERFORMANCE.md`.**
+  `../better-backpack/docs/performance.md` is bbp-titled but most of it is generic:
   zero-alloc trampolines, single-hook-surface principle, debug-only
   trace gating, identity-not-name dispatch, "what was deliberately
   not ported" pattern. Lift to a ueforge-side doc; `bbp/docs/
   performance.md` becomes the bbp-specific addendum (numbers, the
   ~123 PE/rebind figure, the SurvivalComponent CDO walk timings).
-- [ ] **Root-cause-investigation playbook -> `ueforge/RESEARCH.md`.**
-  `docs/damage.md` and the bandage / pkg(0) / rock-collision
+- [ ] **Root-cause-investigation playbook -> `../ueforge/docs/RESEARCH.md`.**
+  `../better-backpack/docs/damage.md` and the bandage / pkg(0) / rock-collision
   research notes encode a methodology that's framework-shaped, not
   game-shaped: snapshot baseline -> minimal repro through endpoint
   -> hypothesis as a `tests/explore_*.rs` -> probe with `walk_class`
@@ -837,7 +837,7 @@ fixed: impact_resistance is a `Runtime` effect that intercepts
 `ApplyDamageFromInfo` on the player HC and scales damage by
 `(1 - reduction * progress)` only when `FDamageInfo.DamageType`
 is environmental. Bandages, creature combat, and fall damage are
-all untouched. Per-level scaling. See `docs/damage.md` "LANDED
+all untouched. Per-level scaling. See `../better-backpack/docs/damage.md` "LANDED
 2026-05-09: impact_resistance is now Runtime + ApplyDamageFromInfo
 intercept".
 
@@ -921,7 +921,7 @@ the status-effect apply path lands):
 - [ ] `health_regen`: stop mutating `UGlobalCombatData`; apply a
   `UStatusEffect{Type=Health, Value=scaled_per_tick}` per slot
   activation, refreshed periodically. Detail in
-  `docs/damage.md` "Reuse the same pattern for our health_regen
+  `../better-backpack/docs/damage.md` "Reuse the same pattern for our health_regen
   skill".
 - [ ] `max_health`: stop direct-writing `HC.MaxHealth`; apply
   `Type=MaxHealth (5)` status effect.
@@ -967,7 +967,7 @@ stackable damage modifiers is `UStatusEffectComponent` on
 `GetValueForStatForDamageTypeFlags(StatType, Flags)` on every
 damage event and uses the returned float as a multiplier. Every
 skill in our catalog has a matching `EStatusEffectType` enum
-value. See [`docs/damage.md`](damage.md) "Status Effect system"
+value. See [`../better-backpack/docs/damage.md`](damage.md) "Status Effect system"
 for the full reference.
 
 Migration plan:
@@ -1005,7 +1005,7 @@ Migration plan:
 +0x58 and reads `Type` / `Value` / etc. from the row each time the
 component is queried. We cannot just allocate one and set its
 value -- value is determined by the row. Implementation paths
-(detail in `docs/damage.md` "UStatusEffect is row-driven"):
+(detail in `../better-backpack/docs/damage.md` "UStatusEffect is row-driven"):
 
 1. **Mutate an existing data-table row's `Value` field at runtime,
    then `CreateAndAddEffect(rowHandle)`**. Cheapest. Risk: row is
@@ -1030,7 +1030,7 @@ ReflectDamage(37)=0.000/add     MaxHealth(5)=30.000/add
 
 `EStatusEffectValueType` is `{None=0, Add=1, Multiply=2}`. Vanilla
 baseline is `1.0` for `mul` stats and `0.0` for `add` stats. Per-stat
-write formulas are in `docs/damage.md` "Stat semantics table".
+write formulas are in `../better-backpack/docs/damage.md` "Stat semantics table".
 
 **Vanilla data table identified.** Probe of the player's
 StatusEffects array shows every status effect in the game flows
@@ -1093,7 +1093,7 @@ Open until we play more.
 - [x] **Archive winhttp proxy.** `better-backpack-cpp/` moved to
   `archive/winhttp-proxy/`. Unique Grounded 2 internals were
   ported into the authoritative subject docs first
-  (`docs/inventory.md`, `docs/grounded-engine.md`). Kept as a
+  (`../better-backpack/docs/inventory.md`, `../better-backpack/docs/engine.md`). Kept as a
   reference / fallback if UE4SS ever turns out unstable.
 
 ## Integration testing (debug HTTP endpoint + Rust tests)
@@ -1355,7 +1355,7 @@ Error paths:
 - [x] **Test scaffolding**: `tests/common/mod.rs` (Api wrapper over ureq,
   response types) + `tests/debug_snapshot.rs` (smoke test). Tests skip
   with a clear note when `BBP_DEBUG_PORT` env var is unset.
-- [x] **`docs/testing.md`**: how to enable the port, run tests, read
+- [x] **`../better-backpack/docs/testing.md`**: how to enable the port, run tests, read
   the snapshot.
 - [ ] **PE-thread command queue**: `Mutex<VecDeque<DebugCmd>>` in
   `debug.rs`; drain from `kill_hook` PE trampoline. `simulate_damage`

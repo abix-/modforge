@@ -473,7 +473,7 @@ during research: drive activity in-game (move, take a hit) to
 fire multicasts that drain the queue. Proper fix:
 high-frequency drain site (UE4SS's
 `RegisterProcessEventPreCallback`, or a `Tick` UFunction hook).
-Tracked in `docs/todo.md` "Endpoint parity gap".
+Tracked in `todo.md` "Endpoint parity gap".
 
 #### Updated hypothesis tree
 
@@ -751,7 +751,7 @@ After migration, `impact_resistance` will:
 - NOT touch healing (different stat)
 - Scale per-skill-level instead of being binary
 
-This is the long-tracked migration in `docs/todo.md` "RPG:
+This is the long-tracked migration in `todo.md` "RPG:
 Status-effect-backed skill rewrite". The bandage bug is the
 forcing function: the binary mask is unfixable; the migration
 is mandatory for the skill to ship usable.

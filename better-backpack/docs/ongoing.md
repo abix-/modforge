@@ -534,7 +534,7 @@ The optimization is universal:
 4. Allocate / lock / log only on the slow path.
 
 Outstanding hot paths that should get the same treatment
-(tracked in `docs/todo.md`):
+(tracked in `todo.md`):
 
 - `kill_hook`'s `owner.full_name().contains("BP_SurvivalPlayerCharacter")`
   -> cache the player HC `UObject*` at slot activation, compare
@@ -614,7 +614,7 @@ The architectural rule is now codified across all four places:
   generic; tests own all research logic
 - `~/.claude/skills/grounded2-mods/SKILL.md` -- project rule
 - `~/.claude/skills/rust/SKILL.md` -- zero-allocations-on-hot-paths
-- `docs/ongoing.md` (this file) -- performance principle at top
+- `ongoing.md` (this file) -- performance principle at top
 
 Research moves OUT of the mod; mod stops growing; performance
 problems that come from research scaffolding running 1000+/sec

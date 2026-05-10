@@ -14,7 +14,7 @@
 //
 // All output is teed to stdout AND a timestamped file under
 // `perf-runs/` (gitignored). The committed evidence is the summary
-// in `docs/ongoing.md`; the per-run logs stay local.
+// in `../docs/ongoing.md`; the per-run logs stay local.
 //
 // Run pattern:
 //

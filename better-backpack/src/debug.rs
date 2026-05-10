@@ -10,7 +10,7 @@
 // `kill_hook`'s PE trampoline. Read-only first because reads are safe
 // off-thread and immediately useful for diagnosis.
 //
-// See `docs/todo.md` "Integration testing" for the full design and
+// See `../../docs/todo.md` "Integration testing" for the full design and
 // the bandage-regression test that gates the next milestone.
 
 use std::time::Duration;
@@ -265,7 +265,7 @@ fn op_simulate_apply_damage(_args: &Json) -> Result<Json, String> {
     // replication path re-enters ProcessEvent. The op stays in
     // the API surface (so tests can detect-and-skip cleanly) but
     // refuses with an explanation until the safe drain site
-    // lands. See `docs/todo.md` "Endpoint parity gap".
+    // lands. See `../../docs/todo.md` "Endpoint parity gap".
     Err(
         "simulate_apply_damage temporarily disabled: \
          calling ApplyDamageFromInfo from inside a PE trampoline \
