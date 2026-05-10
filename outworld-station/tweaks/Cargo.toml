@@ -18,6 +18,13 @@ publish.workspace = true
 name = "main"
 crate-type = ["cdylib", "rlib"]
 
+# Consumed by uespy/scripts/deploy.ps1.
+[package.metadata.uespy]
+mod_folder_name = "Tweaks"
+game_name_regex = "Outworld"
+game_sub_path   = "OutworldStation/Binaries/Win64"
+zip_prefix      = "ows-tweaks"
+
 [features]
 # Spawn a console window inside the game process for live log
 # output. Off by default for shipping; the file log at

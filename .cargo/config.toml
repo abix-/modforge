@@ -1,3 +1,7 @@
 [build]
 target = "x86_64-pc-windows-msvc"
 target-dir = "target"
+
+# `cargo deploy install -p tweaks` etc.
+[alias]
+deploy = "run -p uespy-deploy --release --quiet --"

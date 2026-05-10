@@ -1,0 +1,26 @@
+[package]
+name = "uespy-deploy"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Framework-level deploy CLI for any uespy-based UE4SS Rust mod
+# in this workspace. Each mod opts in by adding a
+# [package.metadata.uespy] block to its Cargo.toml; running
+# `cargo deploy install -p <mod>` (alias) builds + drops the
+# cdylib into the local game install.
+
+[[bin]]
+name = "uespy-deploy"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+clap = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+winreg = { workspace = true }
+zip = { workspace = true }

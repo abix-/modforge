@@ -10,6 +10,15 @@ publish.workspace = true
 name = "main"
 crate-type = ["cdylib", "rlib"]
 
+# Consumed by uespy/scripts/deploy.ps1.
+[package.metadata.uespy]
+mod_folder_name  = "BetterBackpack"
+game_name_regex  = "Grounded"
+game_sub_path    = "Augusta/Binaries/WinGRTS"
+zip_prefix       = "better-backpack"
+target_dir       = "target/better-backpack"
+example_settings = "better-backpack/settings.example.json"
+
 [features]
 console = []
 default = ["console"]
