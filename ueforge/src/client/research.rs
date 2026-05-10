@@ -1,0 +1,335 @@
+//! Generic research-test helpers for the debug-endpoint client.
+//!
+//! Every UE5 mod investigation follows the same handful of
+//! patterns: find a DataTable, walk its rows, find class
+//! instances by name, resolve FNames to strings, read field
+//! bytes at known offsets. The `explore_*` tests in g2rpg /
+//! ows-tweaks all reimplemented these from scratch -- ~150-250
+//! lines per test of mostly-boilerplate.
+//!
+//! This module collapses the boilerplate into one-liners. A
+//! per-game research test now looks like:
+//!
+//! ```ignore
+//! use ueforge::client::research;
+//!
+//! let api = common::Api::require();
+//! let (dt_sel, dt_addr) = research::find_data_table_by_name(&api, "DT_Materials")
+//!     .expect("DT_Materials not found");
+//! let rows = research::read_data_table_rows(&api, &dt_sel)?;
+//! for row in rows {
+//!     let name = research::fname_to_string(&api, row.fname).unwrap_or_default();
+//!     let stack = research::read_i32(&api, row.addr, 0x48);
+//!     eprintln!("  {name:<40} MaxCanStack={stack}");
+//! }
+//! ```
+//!
+//! The shared helpers all go through the existing op set
+//! (`walk_class`, `read_bytes`, `fname_to_string`); no new
+//! mod-side surface needed.
+
+use serde::de::DeserializeOwned;
+use serde_json::json;
+
+use super::Api;
+use crate::hex;
+
+// UDataTable.RowMap (TMap<FName, uint8*>) at +0x30 on UE 5.x.
+// Mirror of `ueforge::ue::offsets::datatable::ROW_MAP`.
+const ROW_MAP_OFFSET: u64 = 0x30;
+// TMap layout (UE 5.x): { void* Data; i32 Num; i32 Max }.
+const TMAP_HEADER_BYTES: u64 = 16;
+// TSparseArray<TSetElement<TPair<K, V>>> stride = 24 bytes
+// (8-byte FName key + 8-byte row pointer + i32 HashNextId +
+// i32 HashIndex). Mirror of `ueforge::ue::offsets::tmap::ELEMENT_SIZE`.
+const TMAP_ELEMENT_SIZE: usize = 24;
+
+/// One row in a DataTable's RowMap.
+#[derive(Debug, Clone, Copy)]
+pub struct DtRow {
+    /// Row name (FName u64). Pass to [`fname_to_string`] for the
+    /// human-readable short name. Pass directly to a
+    /// `FDataTableRowHandle`-shaped UFunction parm to invoke
+    /// engine code that operates on this row.
+    pub fname: u64,
+    /// Row body's UObject address. Use `addr:0x{addr:X}` as
+    /// the `instance_selector` for follow-up `read_bytes` /
+    /// `write_bytes` ops.
+    pub addr: u64,
+}
+
+impl DtRow {
+    /// Format `addr` as the `addr:0x...` selector string.
+    pub fn addr_selector(&self) -> String {
+        format!("addr:0x{:X}", self.addr)
+    }
+}
+
+/// One UClass instance returned by [`walk_class_instances`].
+#[derive(Debug, Clone)]
+pub struct ClassInstance {
+    /// `addr:0x...` selector (use directly in op args).
+    pub addr_selector: String,
+    /// Raw address (UObject*).
+    pub addr: u64,
+    /// Short name (UObject::GetName).
+    pub name: String,
+    /// Fully-qualified path name.
+    pub full_name: String,
+}
+
+/// Find a UDataTable whose short name (`UObject::GetName`)
+/// matches exactly. Returns `(addr_selector, raw_addr)` or
+/// `None` if not loaded yet.
+pub fn find_data_table_by_name<S: DeserializeOwned>(
+    api: &Api<S>,
+    short_name: &str,
+) -> Option<(String, u64)> {
+    let r = api.op(
+        "walk_class",
+        json!({"class": "DataTable", "max": 10000, "include_cdo": false}),
+    );
+    if !r.ok {
+        return None;
+    }
+    let inst = r.result.get("instances")?.as_array()?.iter().find(|i| {
+        i.get("name").and_then(|v| v.as_str()) == Some(short_name)
+    })?;
+    let sel = inst.get("addr_selector")?.as_str()?.to_string();
+    let addr = inst
+        .get("addr")
+        .and_then(|v| v.as_str())
+        .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())?;
+    Some((sel, addr))
+}
+
+/// Find a UDataTable whose full path name contains
+/// `path_substring`. Use when the short name is ambiguous
+/// (e.g. multiple tables named `Table_StatusEffects` exist
+/// across asset paths).
+pub fn find_data_table_by_path<S: DeserializeOwned>(
+    api: &Api<S>,
+    path_substring: &str,
+) -> Option<(String, u64)> {
+    let r = api.op(
+        "walk_class",
+        json!({"class": "DataTable", "max": 10000, "include_cdo": false}),
+    );
+    if !r.ok {
+        return None;
+    }
+    let inst = r.result.get("instances")?.as_array()?.iter().find(|i| {
+        i.get("full_name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.contains(path_substring))
+            .unwrap_or(false)
+    })?;
+    let sel = inst.get("addr_selector")?.as_str()?.to_string();
+    let addr = inst
+        .get("addr")
+        .and_then(|v| v.as_str())
+        .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())?;
+    Some((sel, addr))
+}
+
+/// Walk a `UDataTable`'s `RowMap` and return every live row.
+///
+/// Implementation: reads the TMap header at +0x30
+/// `(data_ptr, num, max)`, then batch-reads the entire element
+/// array in one `read_bytes` call (`num * 24` bytes). Skips
+/// slots whose row pointer is null (sparse-array free slots).
+pub fn read_data_table_rows<S: DeserializeOwned>(
+    api: &Api<S>,
+    table_addr_selector: &str,
+) -> Result<Vec<DtRow>, String> {
+    // 1. TMap header.
+    let header_resp = api.op(
+        "read_bytes",
+        json!({
+            "instance_selector": table_addr_selector,
+            "offset": ROW_MAP_OFFSET,
+            "length": TMAP_HEADER_BYTES,
+        }),
+    );
+    if !header_resp.ok {
+        return Err(format!(
+            "read_bytes header on {table_addr_selector} failed: {:?}",
+            header_resp.error
+        ));
+    }
+    let bytes = hex::decode(
+        header_resp
+            .result
+            .get("bytes_hex")
+            .and_then(|v| v.as_str())
+            .ok_or("header response missing bytes_hex")?,
+    )
+    .map_err(|e| format!("hex decode: {e}"))?;
+    if bytes.len() < 16 {
+        return Err(format!("header too short: {} bytes", bytes.len()));
+    }
+    let data_ptr = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
+    let data_num = i32::from_le_bytes(bytes[8..12].try_into().unwrap());
+    if data_num <= 0 || data_ptr == 0 {
+        return Ok(Vec::new());
+    }
+
+    // 2. Element array.
+    let total_bytes = (data_num as u64) * (TMAP_ELEMENT_SIZE as u64);
+    let elem_resp = api.op(
+        "read_bytes",
+        json!({
+            "instance_selector": format!("addr:0x{data_ptr:X}"),
+            "offset": 0,
+            "length": total_bytes,
+        }),
+    );
+    if !elem_resp.ok {
+        return Err(format!(
+            "read_bytes element-array failed: {:?}",
+            elem_resp.error
+        ));
+    }
+    let slot_bytes = hex::decode(
+        elem_resp
+            .result
+            .get("bytes_hex")
+            .and_then(|v| v.as_str())
+            .ok_or("element response missing bytes_hex")?,
+    )
+    .map_err(|e| format!("hex decode: {e}"))?;
+
+    let mut rows = Vec::with_capacity(data_num as usize);
+    for i in 0..(data_num as usize) {
+        let off = i * TMAP_ELEMENT_SIZE;
+        if off + 16 > slot_bytes.len() {
+            break;
+        }
+        let fname = u64::from_le_bytes(slot_bytes[off..off + 8].try_into().unwrap());
+        let addr = u64::from_le_bytes(slot_bytes[off + 8..off + 16].try_into().unwrap());
+        if addr == 0 {
+            continue; // sparse-array free slot
+        }
+        rows.push(DtRow { fname, addr });
+    }
+    Ok(rows)
+}
+
+/// Resolve a packed FName u64 to a human-readable short name via
+/// the `fname_to_string` op. None if the op fails.
+pub fn fname_to_string<S: DeserializeOwned>(api: &Api<S>, fname: u64) -> Option<String> {
+    let r = api.op("fname_to_string", json!({"fname": fname}));
+    if !r.ok {
+        return None;
+    }
+    r.result.get("string").and_then(|v| v.as_str()).map(String::from)
+}
+
+/// Walk every instance of a UClass and return a list with
+/// `addr_selector` + name + full_name. `max` caps the walk; pass
+/// a large value (e.g. 10000) for full enumeration.
+pub fn walk_class_instances<S: DeserializeOwned>(
+    api: &Api<S>,
+    class: &str,
+    max: usize,
+) -> Vec<ClassInstance> {
+    let r = api.op(
+        "walk_class",
+        json!({"class": class, "max": max, "include_cdo": false}),
+    );
+    if !r.ok {
+        return Vec::new();
+    }
+    let Some(arr) = r.result.get("instances").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|inst| {
+            let sel = inst.get("addr_selector")?.as_str()?.to_string();
+            let addr_str = inst.get("addr")?.as_str()?;
+            let addr = u64::from_str_radix(addr_str.trim_start_matches("0x"), 16).ok()?;
+            let name = inst.get("name")?.as_str()?.to_string();
+            let full_name = inst
+                .get("full_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or(&name)
+                .to_string();
+            Some(ClassInstance {
+                addr_selector: sel,
+                addr,
+                name,
+                full_name,
+            })
+        })
+        .collect()
+}
+
+// ---- Field-byte read helpers (typed) -----------------------------
+
+/// Read N bytes from a UObject at `offset` and return them. Empty
+/// `Vec` on error.
+pub fn read_bytes<S: DeserializeOwned>(
+    api: &Api<S>,
+    addr: u64,
+    offset: u64,
+    length: u64,
+) -> Vec<u8> {
+    let r = api.op(
+        "read_bytes",
+        json!({
+            "instance_selector": format!("addr:0x{addr:X}"),
+            "offset": offset,
+            "length": length,
+        }),
+    );
+    if !r.ok {
+        return Vec::new();
+    }
+    r.result
+        .get("bytes_hex")
+        .and_then(|v| v.as_str())
+        .and_then(|s| hex::decode(s).ok())
+        .unwrap_or_default()
+}
+
+/// Read an `i32` at `offset` from `addr`. Returns 0 on failure.
+pub fn read_i32<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> i32 {
+    let b = read_bytes(api, addr, offset, 4);
+    if b.len() < 4 {
+        return 0;
+    }
+    i32::from_le_bytes([b[0], b[1], b[2], b[3]])
+}
+
+/// Read a `u32` at `offset`. Returns 0 on failure.
+pub fn read_u32<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u32 {
+    let b = read_bytes(api, addr, offset, 4);
+    if b.len() < 4 {
+        return 0;
+    }
+    u32::from_le_bytes([b[0], b[1], b[2], b[3]])
+}
+
+/// Read an `f32` at `offset`. Returns 0.0 on failure.
+pub fn read_f32<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> f32 {
+    let b = read_bytes(api, addr, offset, 4);
+    if b.len() < 4 {
+        return 0.0;
+    }
+    f32::from_le_bytes([b[0], b[1], b[2], b[3]])
+}
+
+/// Read a `u8` at `offset`. Returns 0 on failure.
+pub fn read_u8<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u8 {
+    let b = read_bytes(api, addr, offset, 1);
+    b.first().copied().unwrap_or(0)
+}
+
+/// Read a u64 (e.g. a UObject pointer) at `offset`. Returns 0 on failure.
+pub fn read_u64<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u64 {
+    let b = read_bytes(api, addr, offset, 8);
+    if b.len() < 8 {
+        return 0;
+    }
+    u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+}

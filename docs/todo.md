@@ -180,6 +180,28 @@ Save-data durability + shutdown safety. All four P0s shipped:
 
 ## Open: more ueforge extraction candidates
 
+- [x] **Research-test helpers (`ueforge::client::research`)** --
+  `find_data_table_by_name` / `find_data_table_by_path` /
+  `read_data_table_rows` (returns `Vec<DtRow { fname, addr }>`)
+  / `walk_class_instances` / `fname_to_string` / typed
+  `read_i32` / `read_u32` / `read_f32` / `read_u8` / `read_u64`.
+  Replaces the hand-rolled "walk DT, parse TMap header, batch
+  read element array, decode FName + row pointer" boilerplate
+  in every `explore_*` test. ows-tweaks `explore_dt_rows.rs`
+  140 -> 47 lines; g2rpg `explore_status_effect_rows.rs` 218
+  -> 105 lines. Closed 2026-05-10.
+
+- [ ] **`ueforge::client::diff`** -- parse the snapshot's
+  `counters` / `process_memory` / `process_cpu` /
+  `process_threads` / `game_population` JSON blobs into typed
+  diff structures: `CounterDiff` (top movers), `MemoryDiff`
+  (working-set / committed delta), `GObjectsPopulationDiff`
+  (top growers). Collapses g2rpg `explore_perf_counters.rs`
+  (258 lines), `explore_perf_timeseries.rs` (106),
+  `explore_leak_source.rs` (350), `explore_thread_attribution.rs`
+  (82) -- ~800 lines of test boilerplate that reduces to
+  thin wrappers around typed framework helpers.
+
 - [x] **Settings hot-reload** -- `Settings::watch(interval, on_reload)`
   spawns an mtime-poller thread that re-reads + dispatches a
   callback on file change. `reload()` available standalone.

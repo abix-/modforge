@@ -65,6 +65,13 @@ impl Api {
         self.0.op(op, args)
     }
 
+    /// Borrow the underlying `ueforge::client::Api`. Used by
+    /// generic helpers in `ueforge::client::research` that need
+    /// the raw API.
+    pub fn inner(&self) -> &ueforge::client::Api<Snapshot> {
+        &self.0
+    }
+
     pub fn op_ok(&self, op: &str, args: Value) -> Snapshot {
         self.0.op_ok(op, args)
     }

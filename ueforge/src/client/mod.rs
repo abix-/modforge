@@ -28,6 +28,7 @@ use crate::envelope::OpResponse;
 use crate::hex;
 
 pub mod perf;
+pub mod research;
 
 /// Default request timeout. A test driving a slow PE-drain op
 /// (e.g. one that waits for a frame to fire before the queue

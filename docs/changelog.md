@@ -68,6 +68,41 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Research-test helpers (`ueforge::client::research`)
+
+Every `explore_*` test in g2rpg + ows-tweaks reimplemented the
+same handful of patterns from scratch: find a DataTable, walk
+its rows (TMap header + batch element array + FName
+extraction), find class instances, resolve FNames, read row
+fields at offsets. ~150-250 lines of boilerplate per test.
+
+Lifted to `ueforge::client::research`:
+
+- `find_data_table_by_name(api, "DT_X") -> Option<(selector, addr)>`
+- `find_data_table_by_path(api, "...substring...")` -- when
+  multiple tables share a short name (CDO + live).
+- `read_data_table_rows(api, selector) -> Vec<DtRow { fname, addr }>` --
+  reads the TMap header at +0x30 + batch-reads the element
+  array in one `read_bytes` call.
+- `walk_class_instances(api, "ClassName", max) -> Vec<ClassInstance>`.
+- `fname_to_string(api, fname_u64) -> Option<String>`.
+- Typed read helpers: `read_i32` / `read_u32` / `read_f32` /
+  `read_u8` / `read_u64` / `read_bytes` -- "give me the field
+  at this offset on this address".
+
+Migrations:
+
+- `outworld-station-tweaks/tests/explore_dt_rows.rs`: 140 -> 47
+  lines (-93). All TMap header parsing + slot iteration + row
+  field reads collapsed.
+- `grounded2-rpg/tests/explore_status_effect_rows.rs`: 218 -> 105
+  lines (-113). Same.
+
+Future work: `ueforge::client::diff` (counter diff, GObjects
+population diff, perf time series) collapses ~800 more lines of
+g2rpg perf / leak research boilerplate the same way. Tracked
+in `docs/todo.md`.
+
 ### Hardening bundle: HTTP auth + FName size guard
 
 Three kovarex P1/P2 items resolved in one pass:
