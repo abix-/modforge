@@ -36,10 +36,9 @@ If any of that fails, triage from the log lines.
 
 ---
 
-## Open: ueforge hardening (kovarex P0)
+## Closed: ueforge hardening (kovarex P0) -- 2026-05-10
 
-Save-data durability + shutdown safety. Insurance work, but
-load-bearing for any RPG consumer.
+Save-data durability + shutdown safety. All four P0s shipped:
 
 - [x] **`SlotStore::save -> io::Result<()>` + surface error.**
   Returns `Result`; tracker callers `let _ =` and rely on the
@@ -68,6 +67,13 @@ load-bearing for any RPG consumer.
   running. bbp surfaces both via `world_loader::panic_count()`
   / `last_panic()` for the snapshot endpoint. Tests cover
   panic-recovery + clean-handle paths.
+- [x] **Spend/refund transactional with persistence.**
+  Removed `SkillsState::spend` / `refund` from the public
+  API. The only path now is `Tracker<A>::spend_skill_points`
+  / `refund_skill_points`, which mutate state and call
+  `store.save()` under the same lock. Closes the kovarex
+  trapdoor where a sloppy caller could mutate in-memory and
+  forget to persist.
 
 ## Open: ueforge hardening (kovarex P1)
 

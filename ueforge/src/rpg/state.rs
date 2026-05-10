@@ -35,30 +35,16 @@ impl SkillsState {
     pub fn level_of(&self, skill_id: &str) -> u32 {
         self.skill_levels.get(skill_id).copied().unwrap_or(0)
     }
-
-    /// Spend one point on `skill_id` if there's a point available
-    /// and the skill is below `max_level`. Returns true on success.
-    pub fn spend(&mut self, skill_id: &str, max_level: u32) -> bool {
-        if self.skill_points == 0 {
-            return false;
-        }
-        let cur = self.level_of(skill_id);
-        if cur >= max_level {
-            return false;
-        }
-        self.skill_levels.insert(skill_id.to_string(), cur + 1);
-        self.skill_points -= 1;
-        true
-    }
-
-    /// Refund one point from `skill_id`. Returns true on success.
-    pub fn refund(&mut self, skill_id: &str) -> bool {
-        let cur = self.level_of(skill_id);
-        if cur == 0 {
-            return false;
-        }
-        self.skill_levels.insert(skill_id.to_string(), cur - 1);
-        self.skill_points += 1;
-        true
-    }
 }
+
+// Mutation goes through `Tracker<A>` (`spend_skill_points`,
+// `refund_skill_points`, `record_xp`, `debug_grant_skill_points`).
+// Tracker mutates the in-memory state and immediately calls
+// `store.save` under the same lock, so spend/refund are
+// transactional with persistence.
+//
+// We deliberately do NOT expose `pub fn spend` / `pub fn refund`
+// on SkillsState. An in-memory-only mutator is a trapdoor: the
+// caller could forget to persist and a crash mid-session loses
+// the change. If you want to spend/refund, go through the
+// Tracker.
