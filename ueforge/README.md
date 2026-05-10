@@ -666,6 +666,7 @@ else?". Update on every major slice.
 | 107 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done |
 | 108 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done |
 | 109 | Worker thread spawn with panic-catch | ✅ (`worker::spawn`) | · | · | done |
+| 110 | Hot-update via UE4SS Ctrl+R (`uninstall_mod` + `~UespyMod` + `ueforge_mod_shutdown` -> our `on_shutdown` callback) | ✅ (shim wired) | · (worker shutdown only; PE hooks still leaked -- Phase B) | · (no PE hooks; safe today) | research done; Phase B (`HookRegistry::shutdown_all` + `active_calls` drain + HTTP `SpawnHandle::stop`) pending |
 
 ### Game-specific (correctly stays in the game crate)
 

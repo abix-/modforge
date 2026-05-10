@@ -118,6 +118,41 @@ Uninstall:
 Deletes the `Grounded2RPG` mod folder and strips its line from
 `mods.txt`.
 
+## Hot-update while the game is running
+
+UE4SS supports cpp-mod hot-update natively. After your first
+deploy, you can iterate without closing the game:
+
+```
+1. edit Rust
+2. cargo deploy install -p grounded2-rpg
+3. alt-tab to the game, press Ctrl+R
+4. new build is live in ~1-2s
+```
+
+UE4SS does a full `FreeLibrary` + fresh `LoadLibraryExW` from
+disk on Ctrl+R, so step 2 (overwriting `main.dll` while the game
+is running) drops the new image into place; step 3 (Ctrl+R)
+unloads the old one and loads the new. State on disk
+(`saves/<guid>.json`, `settings.json`) survives; the new DLL's
+init reads them.
+
+**Caveat (current state)**: hot-update is safe for any code path
+that doesn't install `ProcessEventHook`s. The kill / fall / inv
+hooks today leak their handles via `mem::forget`, so the old
+DLL's vtable patches still point into freed memory after
+FreeLibrary -- the next call into a patched slot crashes the
+game. The framework's Phase B work (see `docs/todo.md`) wires
+`HookRegistry::shutdown_all` to swap the slots back + drain
+in-flight trampolines before our DLL unloads. Until that lands,
+restart the game when you change hook-touching code; for
+non-hook changes (skill catalog, apply formulas, settings logic,
+debug snapshot fields) Ctrl+R is safe today.
+
+UE4SS hot-reload toggles live in `UE4SS-settings.ini`,
+`[General]` section: `EnableHotReloadSystem = 1`,
+`HotReloadKey = R` (default).
+
 ## Quality gates
 
 The same gates the maintainers run before pushing:

@@ -264,20 +264,134 @@ in your mod (`Settings::load`, `SlotStore::path`) anchors there.
 
 ## Shutdown discipline
 
-What `on_shutdown` should do:
+`on_shutdown` runs in two scenarios:
 
-- Stop any pollers (e.g. `ueforge::rpg::SlotPoller`) -- pending.
-  Until the kovarex P0 lands, pollers leak for life of process.
-- Tell HTTP server to stop accepting new requests.
-- Drain any pending Queue jobs that can be safely discarded.
+1. **Process exit** -- UE shuts down, UE4SS unloads mods. UObjects
+   may already be torn down; minimal cleanup is sufficient since
+   the OS reclaims the address space anyway.
+2. **Hot-reload** (`Ctrl+R` -- see "Hot-reload" below). UE is
+   still running, GObjects is still live, and after our
+   `on_shutdown` returns UE4SS will call `FreeLibrary` on our
+   DLL. This is the strict case.
+
+What `on_shutdown` MUST do (hot-reload-correct):
+
+- **Uninstall every `ProcessEventHook`** before returning. Hooks
+  patch UE class vtables; if the DLL is unloaded with patches
+  still in place, the next call into the patched slot jumps
+  into freed memory and crashes the game.
+- **Stop every spawned thread** (HTTP listener, pollers,
+  workers, settings watchers) and wait for them to exit. The
+  DLL cannot be unloaded while any of its code is on a thread's
+  stack.
+- **Drain in-flight PE trampolines.** The hook layer's
+  `active_calls` counter is checked + spun-on (with a bounded
+  timeout) so trampolines that fired before the swap-back
+  finish before unload.
 
 What `on_shutdown` should NOT do:
 
-- Touch the engine's UObjects. By the time shutdown fires, UE
-  may have torn them down.
-- Write to settings or save files unless they're already in
-  consistent state. Persistence happens transactionally via
+- Touch the engine's UObjects in ways that allocate / hand off
+  ownership; the engine may not survive the operation if it's
+  also tearing down.
+- Write to settings or save files unless already in consistent
+  state. Persistence happens transactionally via
   `Tracker<A>::spend_skill_points` etc.
+- Call `process_event` from off-thread; the same constraints as
+  steady-state apply.
+
+## Hot-reload (Ctrl+R)
+
+UE4SS supports cpp-mod hot-**update** natively. This is not just
+"re-run init on the same DLL" -- UE4SS does a full
+`FreeLibrary` + fresh `LoadLibraryExW` from disk, so whatever
+`main.dll` is on disk at reload time becomes the live image.
+Build the new version, deploy it over the running install,
+alt-tab to the game, press `Ctrl+R`. The new code is active in
+~1-2 seconds with state preserved on disk (save slots, settings,
+catalog progress) and re-applied by the new DLL's init.
+
+### Configuration
+
+`UE4SS-settings.ini`, `[General]` section:
+
+```ini
+EnableHotReloadSystem = 1
+HotReloadKey = R              ; default; binds to Ctrl+<key>
+```
+
+Both default-on in modern UE4SS builds. Verify in your install.
+
+### Mechanism
+
+`Ctrl+R` triggers `UE4SSProgram::queue_reinstall_mods()` on
+UE4SS's event-loop thread. The flow:
+
+1. `uninstall_mods()` -> calls each cpp mod's exported
+   `uninstall_mod(m_mod)` -> `~UespyMod()` -> ueforge's
+   `ueforge_mod_shutdown` extern "C" -> the game crate's
+   `MOD_INFO.on_shutdown` callback. **This is the cleanup
+   window.**
+2. `m_mods.clear()` -> `~CppMod()` -> `FreeLibrary(main.dll)`.
+   Our DLL detaches from the process.
+3. `setup_mods()` rescans `mods.txt` + `LoadLibraryExW`s the
+   on-disk `main.dll` (the new one, if you `cargo deploy
+   install`-ed in step 0).
+4. `start_cpp_mods()` -> `start_mod()` -> fresh `UespyMod` ->
+   `on_unreal_init` -> our worker init runs again.
+
+### Dev loop
+
+```sh
+# 1. Edit Rust code.
+# 2. Build + deploy without closing the game:
+cargo deploy install -p grounded2-rpg
+
+# 3. Alt-tab to game, press Ctrl+R.
+# 4. Tail the log to confirm the new init ran:
+tail -f "<game-install>/.../BetterBackpack/dlls/grounded2_rpg.log"
+```
+
+UE4SS's event loop is distinct from the game's UE thread, but
+the file-replace works because UE4SS holds the DLL handle, not
+the game; deploying overwrites `main.dll` while UE4SS still has
+it mapped, then Ctrl+R triggers the FreeLibrary that releases
+the old image.
+
+### What survives
+
+- **Cached UE references** (`ClassRef`, `&UFunction` pointers,
+  `UClass*` caches): point INTO the game process, not into our
+  DLL. New DLL re-resolves on first use; values match (same
+  GObjects).
+- **Skill state, settings, save files**: live on disk.
+  `Tracker<A>` reloads from `<DLL_dir>/<subdir>/<slot>.json`
+  on the next slot activation.
+
+### What resets
+
+- Every `static` in our DLL (atomics, OnceLocks, Mutexes) goes
+  away with the DLL image. New DLL starts fresh.
+- Worker threads exit during `on_shutdown` and are re-spawned
+  by the new DLL's init.
+- Counter atomics reset to zero. (For perf comparisons across
+  reloads, snapshot before + after.)
+
+### What requires care (Phase B work)
+
+The framework's `on_shutdown` plumbing tracks every installed
+`ProcessEventHook` in a static registry; reload calls
+`HookRegistry::shutdown_all()` before returning to UE4SS. Each
+hook drops -> swaps the vtable slot back atomically -> waits
+for in-flight trampolines to drain (bounded timeout, typically
+500ms). See `ueforge::hook::HookRegistry` (pending) and
+`docs/todo.md` "hot-reload" for the implementation plan.
+
+Until Phase B lands, hot-reload of mods that install PE hooks
+(kill/fall/inv) is **unsafe** -- the old DLL's vtable patches
+remain pointing into freed memory. The reload-as-test cycle
+works fine for code paths that don't involve PE hooks; for
+hook-touching changes, restart the game.
 
 ## Logging
 

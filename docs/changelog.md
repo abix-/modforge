@@ -68,6 +68,56 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Hot-update research (Phase A complete)
+
+Confirmed that UE4SS supports full hot-**update** of cpp mods
+natively, not just hot-reload. The flow:
+
+- `Ctrl+R` (default; `EnableHotReloadSystem` + `HotReloadKey` in
+  UE4SS-settings.ini) calls `UE4SSProgram::queue_reinstall_mods`.
+- `uninstall_mods()` calls each cpp mod's `uninstall_mod` ->
+  `~UespyMod()` -> our `ueforge_mod_shutdown` -> game's
+  `MOD_INFO.on_shutdown` callback.
+- `~CppMod()` calls `FreeLibrary(main.dll)` -- our DLL detaches.
+- `setup_mods()` rescans disk and `LoadLibraryExW`-s a **fresh**
+  `main.dll`. **This is the hot-update step**: whatever DLL is
+  on disk gets loaded, so a `cargo deploy install` between
+  build + Ctrl+R lands the new build.
+- `start_cpp_mods()` -> `start_mod()` -> fresh `UespyMod` ->
+  `on_unreal_init` -> our worker init runs again.
+
+Dev loop becomes:
+```
+1. edit Rust
+2. cargo deploy install -p grounded2-rpg
+3. alt-tab to game, press Ctrl+R
+4. new version is live in ~1-2s
+```
+
+Static state in the DLL resets (intended -- atomics, OnceLocks
+reload from disk via `Tracker<A>::activate_slot`). Cached UE
+references survive (they point INTO the game process, not into
+our DLL); the new image re-resolves on first use.
+
+**Phase B implementation pending.** Until it lands, mods that
+install `ProcessEventHook`s (kill / fall / inv) cannot safely
+hot-reload -- the old DLL's vtable patches still point into
+freed memory after FreeLibrary. The Phase B plan
+(`docs/todo.md`):
+
+- B1: `HookRegistry` + `shutdown_all()` (track + drop hook
+  handles instead of `mem::forget`).
+- B2: `SHUTTING_DOWN` flag + `active_calls` counter per hook;
+  Drop waits for trampoline drain.
+- B3: `server::SpawnHandle::stop()` for HTTP listener.
+- B4: Wire `ueforge_mod_shutdown` to call `shutdown_all`
+  before the game callback.
+- B5: g2rpg: stop using `mem::forget` on hook handles.
+
+`ueforge/docs/lifecycle.md` updated with full hot-reload section
+covering mechanism, dev loop, what survives / resets, and the
+Phase B caveat.
+
 ### Pillar 4: Inventory viewport-paging framework
 
 `ueforge::inventory::viewport` -- the universal "fixed-size
