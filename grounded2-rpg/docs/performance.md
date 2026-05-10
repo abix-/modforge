@@ -1,24 +1,15 @@
-# Grounded 2 - RPG System performance notes (Rust)
+# Grounded 2 - RPG System performance notes
 
-> **Authoritative on:** what the mod costs to run. Per-call costs,
-> hot paths, allocation analysis, what was deliberately not ported
-> from the C++ tree.
+> **Authoritative on:** g2rpg-specific runtime costs. Per-call
+> costs on Maine classes, hot-path numbers for the inv_hook /
+> kill_hook trampolines, allocation analysis of the rebind
+> cycle, deliberate-not-port list for legacy approaches.
 >
-> **Doctrine-extraction note (2026-05-10):** most of this file is
-> generic UE4SS-Rust-mod hot-path discipline, not g2rpg-specific. The
-> generic content -- zero-alloc trampolines, single-hook-surface
-> principle, identity-not-name dispatch, debug-only trace gating,
-> "what was deliberately not ported" -- is queued to lift into
-> `ueforge/PERFORMANCE.md` (see `todo.md` "ueforge: more to
-> extract from grounded2-rpg"). Once that lands, this file
-> shrinks to: g2rpg-specific numbers (the ~123 PE/rebind figure, the
-> SurvivalComponent CDO walk timings) + g2rpg-specific deliberate
-> non-ports.
-
-The hot-path-discipline doctrine that informs this file lives in
-[`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md).
-The framework owns the rules; this file states the g2rpg-specific
-costs.
+> Generic UE4SS-Rust-mod hot-path discipline (zero-alloc
+> trampolines, single-hook-surface principle, identity-not-name
+> dispatch, debug-only trace gating) lives in
+> [`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md).
+> This file states the g2rpg-specific costs only.
 
 ## TL;DR
 
