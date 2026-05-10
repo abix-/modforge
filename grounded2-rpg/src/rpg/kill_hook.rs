@@ -1,37 +1,31 @@
-// Kill detection. Hook the player's HealthComponent ProcessEvent
-// slot, watch for `MulticastHandleEffectsWithDamageFlags` with the
-// `KillingBlow` flag bit set, identify the dying actor + killer, and
-// award XP via `tracker::record_kill`.
+// G2's binder for `ueforge::damage::DamageHook`. The trampoline +
+// parm decoding + classification + before/after dispatch all live
+// framework-side; this file owns:
 //
-// Why MulticastHandleEffectsWithDamageFlags: it's the lethal-hit
-// signal in Maine. `Kill` is `Final|Native` (engine bypasses PE);
-// OnDeath delegate dispatches per-actor vtable, not on
-// HealthComponent's, so we'd need per-vtable hooks. The multicast
-// fires at HC scope every lethal hit.
+// - The Maine-specific `DamageHookConfig` (component class,
+//   damage UFunction, parm offsets, FDamageInfo layout).
+// - The KillerKind classifier (Player / Buggy / Other -- G2 has
+//   tame buggies in addition to direct player kills).
+// - Per-event game-side reactions: kill credit (award XP), debug
+//   PE-queue drain, damage-trace passthrough, impact-resistance
+//   reversal, and (future) live-damage skills (Lifesteal,
+//   Critical, Evasion, Thorns).
 //
-// Universal helpers (class-chain walks, weak-ptr resolve,
-// FDamageInfo reads) live in `ueforge::ue::actor` +
-// `ueforge::ue::damage_info`. Diagnostic damage tracing lives in
-// `damage_trace`. Environmental-damage reversal lives in
-// `impact_resistance`. This module is just the kill-credit core.
+// The whole module is ~150 lines. Compare to ~600 lines in the
+// pre-framework era.
 
-use std::ffi::c_void;
 use std::sync::OnceLock;
 
-use ueforge::hook::{OriginalProcessEvent, ProcessEventHook};
-use ueforge::ue::actor::{class_chain_contains, controller_pawn, is_outer_named};
+use ueforge::damage::{DamageBinder, DamageEvent, DamageHook, DamageHookConfig};
+use ueforge::hook::ProcessEventHook;
+use ueforge::ue::actor::{class_chain_contains, controller_pawn};
 use ueforge::ue::damage_info::DamageInfoLayout;
-use ueforge::ue::{ClassRef, UClass, UFunction, UObject};
-
-use crate::counters;
-use crate::rpg::{damage_trace, impact_resistance};
-
-const PLAYER_OUTER_FILTER: &str = "BP_SurvivalPlayerCharacter";
+use ueforge::ue::UObject;
 
 /// Maine `FDamageInfo` layout. `last_damage_info_offset` is
 /// `UHealthComponent.LastDamageInfo` at `0x03B0`; the four field
-/// offsets are absolute (component-relative, already including the
-/// base).
+/// offsets are absolute (component-relative, already including
+/// the base).
 pub(crate) const DAMAGE_INFO: DamageInfoLayout = DamageInfoLayout {
     last_damage_info_offset: 0x03B0,
     instigator_offset: 0x03B0 + 0x0020,
@@ -40,149 +34,28 @@ pub(crate) const DAMAGE_INFO: DamageInfoLayout = DamageInfoLayout {
     damage_flags_offset: 0x03B0 + 0x0070,
 };
 
-/// Parm offset of `DamageFlags` in
-/// `MulticastHandleEffectsWithDamageFlags(HitLocation, Damage,
-/// DamageFlags, ...)`.
-const MULTICAST_DAMAGE_FLAGS_OFFSET: usize = 0x001C;
-const KILLING_BLOW_BIT: i32 = 2;
+const CONFIG: DamageHookConfig = DamageHookConfig {
+    component_class: "HealthComponent",
+    damage_fn: "MulticastHandleEffectsWithDamageFlags",
+    // Maine multicast layout: HitLocation(0x18) Damage(0x18-23
+    // wait: HitLocation FVector_NetQuantize is 0x18 bytes at
+    // +0x00, then Damage(f32) at +0x18, DamageFlags(i32) at
+    // +0x1C, TypeFlags(u32) at +0x20.
+    damage_parm_offset: 0x18,
+    damage_flags_parm_offset: 0x1C,
+    type_flags_parm_offset: 0x20,
+    killing_blow_mask: 2, // EDamageInfoFlags::KillingBlow
+    damage_info: DAMAGE_INFO,
+    player_outer_filter: "BP_SurvivalPlayerCharacter",
+    player_controller_filter: "PlayerController",
+};
 
-struct State {
-    multicast_fn_id: usize,        // UFunction*
-    survival_creature_class: usize, // UClass*
-}
+static HOOK: DamageHook<G2DamageBinder> = DamageHook::new(CONFIG);
 
-unsafe impl Send for State {}
-unsafe impl Sync for State {}
-
-static STATE: OnceLock<State> = OnceLock::new();
-static HEALTH: ClassRef = ClassRef::new("HealthComponent");
-static SURVIVAL_CREATURE: ClassRef = ClassRef::new("SurvivalCreature");
-
-pub fn install() -> Result<ProcessEventHook, &'static str> {
-    let _hc_class = HEALTH.get().ok_or("HealthComponent class not loaded yet")?;
-    let multicast_fn = HEALTH
-        .find_function("MulticastHandleEffectsWithDamageFlags")
-        .ok_or("HealthComponent.MulticastHandleEffectsWithDamageFlags not found")?;
-    let creature_class = SURVIVAL_CREATURE
-        .get()
-        .ok_or("SurvivalCreature class not loaded yet")?;
-
-    let _ = STATE.set(State {
-        multicast_fn_id: multicast_fn as *const UFunction as usize,
-        survival_creature_class: creature_class as *const UClass as usize,
-    });
-
-    ueforge::log!(
-        "rpg/kill: hooking HealthComponent (MulticastHandleEffectsWithDamageFlags at {:p})",
-        multicast_fn
-    );
-    ProcessEventHook::install("HealthComponent", on_event)
-}
-
-fn on_event(
-    this: &UObject,
-    function: &UFunction,
-    parms: *mut c_void,
-    original: OriginalProcessEvent,
-) {
-    let _t = ueforge::counters::time_scope(&counters::TIME_NS_KILL_HOOK);
-    ueforge::counters::bump(&counters::KILL_HOOK_FIRES);
-
-    // Drain the debug PE queue here -- re-entrance guard inside
-    // `drain_pending` prevents recursive draining when a queued op
-    // itself fans out PE (e.g. AddHealth -> OnRep -> kill_hook).
-    crate::debug::drain_pending();
-
-    let Some(state) = STATE.get() else {
-        unsafe { original.call(this, function, parms) };
-        return;
-    };
-
-    // Player-component fan-out: damage trace + impact-resistance
-    // reversal. Both are no-ops on non-player HC events.
-    let is_player_hc = !parms.is_null() && {
-        ueforge::counters::bump(&counters::KILL_HOOK_OWNER_FULLNAME_ALLOCS);
-        is_outer_named(this, PLAYER_OUTER_FILTER)
-    };
-    if is_player_hc {
-        ueforge::counters::bump(&counters::KILL_HOOK_PLAYER_FIRES);
-        if damage_trace::observe(this, function, parms) {
-            damage_trace::log_last_damage_info(this);
-        }
-        impact_resistance::maybe_reverse(this, &function.as_object().name(), parms);
-    }
-
-    // Killing-blow detection on the multicast target fn.
-    let fn_id = function as *const UFunction as usize;
-    let is_target = fn_id == state.multicast_fn_id;
-    let killing_blow = is_target
-        && !parms.is_null()
-        && unsafe {
-            let flags: i32 = (parms as *const u8)
-                .add(MULTICAST_DAMAGE_FLAGS_OFFSET)
-                .cast::<i32>()
-                .read_unaligned();
-            (flags & KILLING_BLOW_BIT) != 0
-        };
-
-    // Snapshot CurrentDamage around the original call so we can log
-    // whether the multicast IS the damage path or just notification.
-    let before = is_player_hc.then(|| damage_trace::read_current_damage(this));
-    unsafe { original.call(this, function, parms) };
-    if let Some(b) = before {
-        damage_trace::trace_current_damage_delta(this, b);
-    }
-
-    if !killing_blow {
-        return;
-    }
-    award_kill(this, state);
-}
-
-fn award_kill(hc: &UObject, state: &State) {
-    let Some(dying_actor) = hc.outer() else {
-        return;
-    };
-    let Some(actor_class) = dying_actor.class() else {
-        return;
-    };
-
-    // Filter: only creatures (XP source). Players + props/buildings
-    // also fire MulticastHandleEffectsWithDamageFlags on death.
-    let creature_uclass = unsafe { &*(state.survival_creature_class as *const UClass) };
-    if !dying_actor.is_a(creature_uclass) {
-        if cfg!(debug_assertions) {
-            ueforge::log!(
-                "rpg/kill: ignoring non-creature kill: {} ({})",
-                dying_actor.name(),
-                actor_class.as_object().name()
-            );
-        }
-        return;
-    }
-
-    let class_name = actor_class.as_object().name();
-    let instigator = DAMAGE_INFO.instigator(hc);
-    let kind = classify(instigator);
-    let killer_label = describe_instigator(instigator);
-
-    use crate::rpg::tracker::{KillSource, record_kill};
-    let (label, source) = match kind {
-        KillerKind::Player => ("PLAYER", Some(KillSource::Player)),
-        KillerKind::Buggy => ("BUGGY", Some(KillSource::Buggy)),
-        KillerKind::Other => ("skip", None),
-    };
-    ueforge::log!(
-        "rpg/kill: {} {} ({}) killed by {}",
-        label,
-        dying_actor.name(),
-        class_name,
-        killer_label
-    );
-    if let Some(s) = source {
-        record_kill(&class_name, s);
-    }
-}
+// SurvivalCreature filter is needed for kill credit (excludes
+// player deaths and prop / building destruction events that also
+// fire MulticastHandleEffectsWithDamageFlags). Cached at install.
+static CREATURE_CLASS: OnceLock<usize> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum KillerKind {
@@ -195,14 +68,9 @@ fn classify(instigator: Option<&UObject>) -> KillerKind {
     let Some(controller) = instigator else {
         return KillerKind::Other;
     };
-
-    // Direct player kill.
     if class_chain_contains(controller, "PlayerController") {
         return KillerKind::Player;
     }
-
-    // Buggy kill: AIC's class chain or its possessed pawn's class
-    // contains "Buggy".
     if class_chain_contains(controller, "Buggy") {
         return KillerKind::Buggy;
     }
@@ -211,7 +79,6 @@ fn classify(instigator: Option<&UObject>) -> KillerKind {
     {
         return KillerKind::Buggy;
     }
-
     KillerKind::Other
 }
 
@@ -224,4 +91,209 @@ fn describe_instigator(instigator: Option<&UObject>) -> String {
         .map(|c| c.as_object().name())
         .unwrap_or_default();
     format!("{} ({})", ctrl.name(), class_name)
+}
+
+struct G2DamageBinder;
+
+impl DamageBinder for G2DamageBinder {
+    fn before(&self, event: &DamageEvent) -> Option<f32> {
+        ueforge::counters::bump(&crate::counters::KILL_HOOK_FIRES);
+
+        // Drain the debug PE queue. Re-entrance guard inside
+        // `drain_pending` prevents recursive draining if a queued
+        // op fans out PE work.
+        crate::debug::drain_pending();
+
+        // Player-component diagnostic record (damage_ring + log).
+        if event.victim_is_player {
+            ueforge::counters::bump(&crate::counters::KILL_HOOK_PLAYER_FIRES);
+            push_damage_event(event);
+        }
+
+        // Live-damage pre-application: Critical (player-dealt) and
+        // Evasion (player-taken) belong here. Catalog rows pending.
+        None
+    }
+
+    fn after(&self, event: &DamageEvent) {
+        // Impact-resistance reversal: subtract the env-damage
+        // portion from the player HC's CurrentDamage post-apply.
+        if event.victim_is_player {
+            apply_impact_resistance_reversal(event);
+        }
+
+        // Lifesteal: when the player damages a non-player victim,
+        // heal the player by `damage * lifesteal_fraction`. Reads
+        // the player's lifesteal level from the live tracker so
+        // the effect tracks per-spend without re-applying CDOs.
+        if event.attacker_is_player
+            && !event.victim_is_player
+            && event.damage > 0.0
+        {
+            apply_lifesteal(event);
+        }
+
+        // Kill credit on killing-blow events targeting creatures.
+        if !event.is_killing_blow {
+            return;
+        }
+        let Some(creature_addr) = CREATURE_CLASS.get().copied() else {
+            return;
+        };
+        let Some(victim) = event.victim else {
+            return;
+        };
+        let Some(actor_class) = victim.class() else {
+            return;
+        };
+        let creature_uclass = unsafe {
+            &*(creature_addr as *const ueforge::ue::UClass)
+        };
+        if !victim.is_a(creature_uclass) {
+            if cfg!(debug_assertions) {
+                ueforge::log!(
+                    "rpg/kill: ignoring non-creature kill: {} ({})",
+                    victim.name(),
+                    actor_class.as_object().name()
+                );
+            }
+            return;
+        }
+
+        let class_name = actor_class.as_object().name();
+        let kind = classify(event.attacker.map(|a| a as &UObject));
+        let killer_label = describe_instigator(event.attacker.map(|a| a as &UObject));
+
+        use crate::rpg::tracker::{record_kill, KillSource};
+        let (label, source) = match kind {
+            KillerKind::Player => ("PLAYER", Some(KillSource::Player)),
+            KillerKind::Buggy => ("BUGGY", Some(KillSource::Buggy)),
+            KillerKind::Other => ("skip", None),
+        };
+        ueforge::log!(
+            "rpg/kill: {} {} ({}) killed by {}",
+            label,
+            victim.name(),
+            class_name,
+            killer_label
+        );
+        if let Some(s) = source {
+            record_kill(&class_name, s);
+        }
+    }
+}
+
+fn push_damage_event(event: &DamageEvent) {
+    use ueforge::ue::field::read_f32;
+    let cd_now = read_f32(event.victim_component, 0x032C);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    crate::debug::record_damage_event(crate::debug::DamageEvent {
+        at_secs: now_secs,
+        function: "MulticastHandleEffectsWithDamageFlags".to_string(),
+        damage: event.damage,
+        damage_flags: event.damage_flags,
+        type_flags: event.type_flags,
+        current_damage_before: Some(cd_now),
+        current_damage_after: None,
+    });
+    if event.damage > 0.0 {
+        ueforge::counters::bump(&crate::counters::KILL_HOOK_LOG_LINES);
+        ueforge::log!(
+            "rpg/dmg-trace: damage={:.2} flags=0x{:08x} type_flags=0x{:08x}",
+            event.damage,
+            event.damage_flags,
+            event.type_flags
+        );
+    }
+}
+
+fn apply_lifesteal(event: &DamageEvent) {
+    use crate::rpg::skills::SKILL_LIFESTEAL;
+    let level = crate::rpg::tracker::with_state(|s| {
+        s.skill_levels.get(SKILL_LIFESTEAL).copied().unwrap_or(0)
+    })
+    .unwrap_or(0);
+    if level == 0 || !crate::rpg::apply::is_skill_enabled(SKILL_LIFESTEAL) {
+        return;
+    }
+    // max_bonus = 0.90 in catalog; sqrt(level/100) progress.
+    let progress = (level as f32 / 100.0).sqrt().min(1.0);
+    let fraction = 0.90 * progress;
+    let heal = event.damage * fraction;
+    if heal <= 0.0 {
+        return;
+    }
+
+    // Walk to the live player's HC and decrement CurrentDamage.
+    // SAFETY: we're on the game thread inside the PE trampoline.
+    let Some(pawn) = (unsafe { crate::rpg::apply::PLAYER.first_live_static() }) else {
+        return;
+    };
+    let Some(hc) = ueforge::ue::field::read_component_ptr(
+        pawn,
+        crate::rpg::apply::ASC_HEALTH_COMPONENT,
+    ) else {
+        return;
+    };
+    use ueforge::ue::TypedField;
+    const HC_CURRENT_DAMAGE: TypedField<f32> = TypedField::at(0x032C);
+    unsafe {
+        let cd_now = HC_CURRENT_DAMAGE.read(hc);
+        if cd_now <= 0.0 {
+            // Player at full health; nothing to heal.
+            return;
+        }
+        let new_cd = (cd_now - heal).max(0.0);
+        HC_CURRENT_DAMAGE.write(hc, new_cd);
+        ueforge::log!(
+            "rpg/lifesteal: dealt {:.2} -> heal {:.2} (level={}, frac={:.3}); CurrentDamage {:.2} -> {:.2}",
+            event.damage,
+            heal,
+            level,
+            fraction,
+            cd_now,
+            new_cd
+        );
+    }
+}
+
+fn apply_impact_resistance_reversal(event: &DamageEvent) {
+    let level = crate::rpg::fall_hook::current_impact_resistance_level();
+    if level == 0 || event.damage <= 0.0 {
+        return;
+    }
+    let damage_type_name = DAMAGE_INFO.damage_type_name(event.victim_component);
+    if !damage_type_name.contains("Environmental") {
+        return;
+    }
+    let progress = (level as f32 / 100.0).sqrt().min(1.0);
+    let to_reverse = event.damage * progress;
+    use ueforge::ue::TypedField;
+    const HC_CURRENT_DAMAGE: TypedField<f32> = TypedField::at(0x032C);
+    unsafe {
+        let cd_now = HC_CURRENT_DAMAGE.read(event.victim_component);
+        let new_cd = (cd_now - to_reverse).max(0.0);
+        HC_CURRENT_DAMAGE.write(event.victim_component, new_cd);
+        ueforge::log!(
+            "rpg/impact: reversed env damage {:.2} (raw={:.2}, level={}); CurrentDamage {:.2} -> {:.2}",
+            to_reverse,
+            event.damage,
+            level,
+            cd_now,
+            new_cd
+        );
+    }
+}
+
+pub fn install() -> Result<ProcessEventHook, &'static str> {
+    let creature_class = ueforge::ue::ClassRef::new("SurvivalCreature")
+        .get()
+        .ok_or("SurvivalCreature class not loaded")?;
+    let _ = CREATURE_CLASS.set(
+        creature_class as *const ueforge::ue::UClass as usize,
+    );
+    HOOK.install(G2DamageBinder)
 }

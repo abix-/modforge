@@ -236,20 +236,31 @@ row of an existing `SkillEffect` shape unless noted.
 
 Catalog target: ~25 skills. Today: 13.
 
-## Open: g2rpg -- RPG live-damage hook
+## Open: g2rpg -- RPG live-damage hook (framework done; catalog rows pending)
 
-Required by lifesteal / crit / evasion / thorns. Extend
-`kill_hook`'s existing trampoline to handle non-killing hits:
+**Framework landed 2026-05-10 as Pillar 5: `ueforge::damage::DamageHook`.**
+g2rpg's `kill_hook.rs` is now a `DamageBinder` impl with
+`before` / `after` callbacks on every multicast damage event.
 
-- Read `Damage` parm at +0x18.
-- Classify via `LastDamageInfo.InstigatorController`:
-  - Player dealt: trigger Lifesteal (heal player by `damage *
-    fraction`), Critical (multiply outgoing damage on roll).
-  - Player took: trigger Evasion (zero damage on roll), Thorns
-    (deal % back to attacker).
+**Lifesteal landed live**: heal player by `damage * 0.90 *
+sqrt(level/100)` after every player-dealt non-player hit, via
+direct CurrentDamage decrement. Toggle-aware, tracker-driven.
 
-Healing path: walk live player pawn (R4 path), follow HC
-ptr at +0x1340, decrement `CurrentDamage` at +0x32C, clamp 0.
+Pending catalog rows that this surface unlocks:
+
+- [ ] **Critical Chance + Critical Damage.** `before` returns
+  `Some(damage * (1 + crit_damage_fraction))` on roll. RNG
+  needs a per-mod seed; reuse `rand` crate.
+- [ ] **Evasion / Dodge.** `before` returns `Some(0.0)` on roll
+  for player-taken hits.
+- [ ] **Thorns.** `after` resolves the attacker's HC (instigator
+  -> controller -> possessed pawn -> HC at +0x1340) and writes
+  `event.damage * thorns_fraction` to its CurrentDamage.
+
+Healing path proven via Lifesteal: walk
+`PLAYER.first_live_static` -> follow `+0x1340` (HC) -> read
+`CurrentDamage` at `+0x32C` -> clamp + write back. Same
+pattern for Thorns against the attacker.
 
 This surface is also the likely home for collision / impact
 damage mitigation. See

@@ -15,7 +15,7 @@
 //! code goes on top; if it might apply to other UE games, it
 //! belongs here.
 //!
-//! ## The four pillars
+//! ## The five pillars
 //!
 //! ueforge ships opinionated framework modules for the most common
 //! UE5 mod patterns. A new game's mod picks from these menus and
@@ -37,6 +37,14 @@
 //!   re-entrance guard + post-refresh rebind. Game crate
 //!   implements a thin [`inventory::viewport::ViewportBinder`]
 //!   trait with the parm shapes + bind logic.
+//! - **[`damage`]** -- universal damage-event hook framework
+//!   ([`damage::DamageHook`]) for the multicast / RPC every
+//!   UE5 game fires per damage hit. Owns the trampoline +
+//!   parm decode + `FDamageInfo` lookup + Player/Other
+//!   classification + `before` / `after` dispatch. Game crate
+//!   implements [`damage::DamageBinder`] to apply Critical
+//!   (pre, mutate damage), Evasion (pre), Lifesteal (post),
+//!   Thorns (post), kill credit (post).
 //!
 //! Each pillar wraps a low-level primitive (`StandardEffect` /
 //! `FieldTweak<T>` / `ClassFieldTweak<T>` / `ProcessEventHook`)
@@ -65,6 +73,7 @@ pub mod args;
 pub mod build;
 pub mod client;
 pub mod counters;
+pub mod damage;
 pub mod debug;
 pub mod difficulty;
 pub mod envelope;

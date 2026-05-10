@@ -578,6 +578,13 @@ else?". Update on every major slice.
 | 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · | — | done |
 | 60c | Future: inventory CRUD ops (add / remove / count / list) | (deferred until a second consumer materializes) | — | — | open |
 
+### Pillar 5: Damage (universal damage-event hook)
+
+| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+|---|---|---|---|---|---|
+| 60d | `damage::DamageHook<B>` -- multicast damage UFunction trampoline + parm decode + FDamageInfo lookup + Player/Other classification + `before` (mutate damage) / `after` (react) dispatch | ✅ (`damage::DamageHook` + `DamageHookConfig` + `DamageBinder` trait + `DamageEvent`) | · (`kill_hook.rs` is 238 lines: a `DamageBinder` impl with kill credit + damage trace + impact reversal + lifesteal; was 474 across 3 files) | — | done |
+| 60e | Live-damage skill plumbing (Lifesteal heal-on-hit, future: Critical / Evasion / Thorns) | ✅ (binder before/after + DamageEvent surface) | · (Lifesteal landed; reads tracker level + heals via direct HC.CurrentDamage write) | — | Lifesteal done; Crit/Evasion/Thorns pending catalog rows |
+
 ### UE SDK helpers (used by all three pillars)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |

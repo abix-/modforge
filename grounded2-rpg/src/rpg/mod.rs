@@ -15,9 +15,7 @@
 
 pub mod applier;
 pub mod apply;
-pub mod damage_trace;
 pub mod fall_hook;
-pub mod impact_resistance;
 pub mod kill_hook;
 pub mod save_slot;
 pub mod skills;

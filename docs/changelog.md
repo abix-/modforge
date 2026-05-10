@@ -68,6 +68,47 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### Pillar 5: Damage hook framework + Lifesteal live
+
+`ueforge::damage::DamageHook<B>` -- universal damage-event hook,
+the fifth pillar. Same shape as the inventory viewport hook:
+config struct + binder trait. Owns the multicast UFunction
+trampoline + parm decode (Damage / DamageFlags / TypeFlags) +
+`FDamageInfo` lookup (instigator resolution via
+`DamageInfoLayout`) + Player/Other classification (via
+`is_outer_named` + `class_chain_contains`) + `before` /
+`after` dispatch (binder mutates damage pre-application or
+reacts post-application).
+
+g2rpg-side migration:
+
+- `kill_hook.rs` rewritten as a `DamageBinder` impl. Owns the
+  Maine `DamageHookConfig` (component class + UFunction +
+  parm offsets), the `KillerKind` classifier (Player /
+  Buggy / Other -- buggies are tame G2 mounts), and the
+  per-event reactions: damage-trace push, impact-resistance
+  reversal, kill credit, Lifesteal heal.
+- `damage_trace.rs` (168 lines) and `impact_resistance.rs`
+  (79 lines) deleted. Their logic now lives inside the binder
+  using the framework's already-decoded `DamageEvent`.
+- Total g2rpg damage code: 474 lines (3 files) -> 238 lines
+  (1 file).
+
+**Lifesteal landed live**: when an attacker classified as
+the player damages a non-player victim, the binder reads the
+player's lifesteal level from the live tracker, computes
+`heal = damage * 0.90 * sqrt(level/100)`, walks
+`PLAYER.first_live_static` to the live HC at +0x1340, and
+decrements `CurrentDamage` at +0x32C (clamped to 0). Skill
+toggle honored. Catalog row already existed
+(`Standard::Runtime` with `max_bonus = 0.90`); previously a
+no-op since no live-damage hook was wired. Now functional.
+
+Critical / Evasion / Thorns rows pending; the framework
+shape supports them (Critical = `before` returns multiplied
+damage on roll; Evasion = `before` returns 0 on roll;
+Thorns = `after` walks attacker's HC + applies %).
+
 ### Hot-update Phase B complete (B1-B5: safe Ctrl+R with hooks)
 
 Five lifts that close the loop on hot-update -- Ctrl+R is now
