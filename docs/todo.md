@@ -31,6 +31,92 @@ If any of that fails, triage from the log lines.
 
 ---
 
+## P0 -- Effects refactor (the composition model)
+
+The architectural shift articulated in
+[`../ueforge/docs/architecture.md`](../ueforge/docs/architecture.md)
+"Composition model: Effects + Triggers + Skills". TL;DR:
+
+- Each thing we research and figure out how to do in the game is
+  an **Effect** (one type, parameterised per use).
+- A **Skill** is one or more Effects applied with parameters.
+- **Hooks** detect WHEN to fire an Effect.
+- We do each operation ONCE in code; every game's skills compose.
+
+Today's two-enum design (`StandardEffect` + per-game
+`SkillEffect`) collapses into one `EffectDef` + a trait. This
+is the next big move.
+
+### Phase 1: framework surface (no migration yet)
+
+- [ ] **`ueforge::rpg::effect`** -- new module with:
+  - `trait Effect: Send + Sync + 'static { fn apply(&self, level, max_level); fn format(&self, level, max_level) -> String; }`
+  - `struct EffectDef { kind: &'static str, imp: &'static dyn Effect }`
+  - Optional `EffectRegistry` for client discovery (or rely on
+    catalog enumeration).
+- [ ] **Effect implementors** -- one struct + impl per existing
+  StandardEffect variant. Live as types in
+  `ueforge::rpg::effects::{player_float, subcomponent_float,
+  subcomponent_additive, subcomponent_u32_mask, subcomponent_multiply,
+  class_fields_multiply, runtime, status_effect}`. Each carries
+  its own `&'static PlayerRef` / `&'static VanillaCache` /
+  `TypedField` etc. (the params that used to live in the enum
+  variant).
+
+### Phase 2: drop the type parameters
+
+- [ ] **`SkillDef`** loses `<E>`; `effect` field becomes
+  `EffectDef`.
+- [ ] **`SkillRegistry`** loses `<E>`.
+- [ ] **`Tracker`** loses `<A: RpgApplier>`. Bake `DisabledSkills`
+  into Tracker (move from per-game).
+- [ ] **`RpgApplier` trait deleted.** Its only role was providing
+  `type Effect` + dispatching apply -- both native to the trait
+  object now.
+
+### Phase 3: g2rpg migration (full)
+
+- [ ] **Drop `SkillEffect` enum.** Each variant becomes a struct
+  + `impl Effect`.
+  - `BackpackSlots { max_bonus_slots }` -> struct with that field
+    + impl that calls `crate::patch::run` + updates inv_hook.
+  - `SurvivalDrain { field_offset, max_reduction, which }` ->
+    struct + impl that reads vanilla + settings, writes survival
+    component CDOs.
+  - `PlayerFallDamageReduction { ... }` -> struct + impl that
+    walks player CDOs + GMS + SMMC.
+- [ ] **Drop `apply_skill` match in `apply.rs`.** Becomes:
+  `effect.apply(effective_level, skill.max_level)` for each
+  catalog row.
+- [ ] **Drop `format_effect` match in `skills.rs`.** Becomes:
+  `effect.format(level, skill.max_level)`.
+- [ ] **Drop g2rpg's `applier.rs`.** Tracker no longer takes one.
+
+### Phase 4: documentation
+
+- [ ] Update `ueforge/docs/rpg.md` with the Effects section + how
+  to write a custom Effect (game-specific operation).
+- [ ] Update `ueforge/docs/architecture.md` scorecard:
+  StandardEffect row -> Effects row at 100%.
+
+### Phase 5: triggers (deferred)
+
+The composition model includes Triggers (event-driven Effects
+fire from Hooks; CDO Effects fire on slot-change). Today the
+trigger is implicit -- CDO writes happen in `apply()`, runtime
+effects are fired by ad-hoc hook trampolines. Formalising:
+
+- [ ] **`Trigger` enum** on `SkillDef`: `OnSlotChange`,
+  `OnDamageDealt`, `OnDamageTaken`, `OnKill`, `OnFall`,
+  `Periodic(Duration)`. Framework wires the right hook based on
+  the trigger.
+- [ ] Lift the existing kill_hook / fall_hook / damage hook
+  bindings so a skill that wants `OnDamageDealt` doesn't need
+  bespoke trampoline code in the game crate.
+
+Defer until Phase 1-4 land and we have a second consumer needing
+event-driven skills.
+
 ## P1 -- registry alignment (Wave B + lift candidates)
 
 Wave A landed 2026-05-10 (debug ops, selectors, shutdown
