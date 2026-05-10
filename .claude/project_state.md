@@ -127,6 +127,51 @@ Out of scope:
 - Settings JSON loader (game-specific shape; uespy doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
 
+## OWS stack mod live via DLL (2026-05-09 night)
+
+End-to-end victory: outworld-station/tweaks/ ships a 4x
+MaxCanStack bump, validated in-game, pure DLL no pak.
+
+Path (compressed because it was a long session):
+1. uespy bootstrapping: HTTP control plane, generic primitives,
+   chunked-GObjects support added on the fly when stock UE 5.4
+   broke our flat-array assumption (added GObjectsLayout enum)
+2. UE4SS install (main HEAD), UE4SS.lib regenerated for OWS
+3. SDK dump via Ctrl+H -> CXXHeaderDump/ (956 .hpp, 8.4 MB)
+4. Image-base offsets read from UE4SS.log: g_objects 0x07A938D0,
+   append_string 0x010DF9D0, process_event 0x012AF540
+5. /debug endpoint live, walk_class returns 27 DataTables
+6. DT_Materials at 0x29EE796B740, FSMaterialData::MaxCanStack
+   at +0x48 from SDK dump's SpaceSalvageStation.hpp
+7. First mutation attempt FROM A TEST after save load: DT
+   showed 1000 in memory, in-game still showed 250
+8. Cache theory + RTFM: UE4SS docs say DataTable reads return
+   COPIES; UI widgets (UI_Item.MaterialData at +0x3C0) hold
+   the row by value, populated at widget creation. Mutating
+   AFTER widgets cached = stale.
+9. Fix: tweaks::stacks worker spawned from on_unreal_init.
+   Polls for DT_Materials (up to 30s), bumps every row 4x once.
+   Skips cur<=1 (equipment).
+10. Verified in-game: Titanium_Ore caps at 2000 (was 500).
+
+Findings codified:
+- uespy/README.md gets a "Pattern: DataTable mutation timing"
+  section explaining the cache window and the
+  on_unreal_init-poll-mutate recipe.
+- outworld-station/research.md records the bootstrap status
+  table flipping every "NO" to "yes" and the stack mod
+  shipping section.
+
+Open items not blocking:
+- Fname GNames/GWorld offsets still 0 (not needed for current
+  features; uespy ops work without them).
+- UI tooltip rendering with stale FSMaterialData on widgets
+  created after mutation propagates fine; widgets created
+  BEFORE (e.g. test-time mutation post-save) would not, hence
+  the on-init pattern.
+- Memory scanner still backlog (would have found the cache
+  faster but SDK dump path got us there too).
+
 Slice 13 (2026-05-09 late):
 - TMap<K,V> walker -> uespy::ue::tmap (slots, header,
   find_value_by_fname_key). Layout constants (element stride 24,

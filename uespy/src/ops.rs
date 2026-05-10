@@ -29,7 +29,7 @@ use serde_json::Value as Json;
 
 use crate::args::{arg_str, arg_u64};
 use crate::hex;
-use crate::ue::{self, UObject};
+use crate::ue::{self, UObject, fname::FName};
 
 /// Cap on `read_bytes` length / `write_bytes` payload (1 MiB).
 /// Sized to comfortably cover any UE struct walk while preventing
@@ -129,6 +129,21 @@ pub fn walk_class(args: &Json) -> Result<Json, String> {
         "returned": hits.len(),
         "instances": hits,
     }))
+}
+
+/// Resolve an FName (passed as a u64 — the 8 bytes that make up
+/// `{ comparison_index: i32, number: u32 }`) to its display
+/// string. Useful from tests that walk TMap<FName, ...> bytes
+/// and need to show readable keys instead of raw u64s.
+///
+/// Args: `{ "fname": <u64> }` (decimal or 0x-prefixed hex via JSON).
+/// Result: `{ "string": "<name>" }`.
+pub fn fname_to_string(args: &Json) -> Result<Json, String> {
+    let raw = arg_u64(args, "fname", None)?;
+    let fname: FName = unsafe { std::mem::transmute_copy(&raw) };
+    let rt = ue::try_runtime().ok_or("uespy: ue runtime not initialized")?;
+    let s = unsafe { rt.name_resolver.to_string(fname) };
+    Ok(serde_json::json!({ "string": s }))
 }
 
 /// Engine portion of the `call` op: resolve the UFunction by

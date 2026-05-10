@@ -338,6 +338,71 @@ Selectors:
 - game-specific shorthand the game adds in its `resolve` fn
   (`live_player`, `current_save`, ...)
 
+## Pattern: DataTable mutation timing
+
+**DataTable reads return copies, not references.** UE4SS's docs
+state this explicitly. Game code calls `GetDataTableRow` (or a
+game-specific equivalent) and gets back a struct *by value*. Any
+field on that struct is a snapshot.
+
+UI widgets and inventory actors typically cache the entire row
+struct at creation (e.g. UI_Item holds its own `FSMaterialData`
+copy). Once cached, mutating the source DataTable doesn't
+update those copies — they're already disconnected.
+
+**Implication for runtime mod design:** if you want a DataTable
+mutation to propagate everywhere, do it BEFORE any actor /
+widget caches the row. Practical recipe:
+
+```rust
+// In your ue4ss_mod's on_unreal_init:
+fn on_unreal_init() {
+    // ... uespy::ue::init_runtime ...
+
+    std::thread::spawn(|| {
+        // Poll until the DT exists (it loads with the
+        // GameInstance, slightly after on_unreal_init fires).
+        loop {
+            if let Some(dt) =
+                uespy::ue::datatable::find_by_short_name("DT_Foo")
+            {
+                for (_fname, row) in unsafe {
+                    uespy::ue::datatable::iter_rows(dt)
+                } {
+                    // SAFETY: caller owns the cast, knows the row
+                    // struct's layout. Read with read_unaligned.
+                    unsafe {
+                        let field = (row.add(MY_OFFSET)) as *mut i32;
+                        field.write_unaligned(field.read_unaligned() * 4);
+                    }
+                }
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(250));
+        }
+    });
+}
+```
+
+Mutating after a save loads — when slots / UI / actors have
+already copied the row — leaves cached widgets stale. The DT
+itself shows your value, but in-game still shows vanilla. Two
+options when this matters:
+
+1. Mutate from `on_unreal_init` (above). Works for ~95% of
+   value-tweak features.
+2. Hook the `GetData_Foo` UFunction via UE4SS's
+   `UFunction::RegisterPreHook` / `RegisterPostHook` (or our own
+   `uespy::hook::ProcessEventHook` filtered by function name).
+   Bulletproof against any cache because we intercept at
+   call-site. Worth building when (1) doesn't propagate (rare).
+
+Reference implementation: `outworld-station/tweaks/src/stacks.rs`
+ships this pattern for the OWS stack-size mod. 4x bump that
+matches the existing community "Better Item Stacks" pak mod's
+effect — but via runtime DLL, so other features in the same mod
+can layer on top dynamically.
+
 ## Backlog (research questions tracked across games)
 
 - **Cheat-Engine-style memory scanner** (deferred until

@@ -105,6 +105,14 @@ fn list_material_names_and_stacks() {
         let value = u64::from_le_bytes(slot_bytes[off+8..off+16].try_into().unwrap());
         if value == 0 { continue; } // free / unallocated slot
 
+        // Resolve FName -> material name
+        let r_name = api.op("fname_to_string", json!({"fname": key}));
+        let name = if r_name.ok {
+            r_name.result["string"].as_str().unwrap_or("?").to_string()
+        } else {
+            format!("fname=0x{key:016X}")
+        };
+
         // Read the row's MaxCanStack (int32) at +0x48
         let r2 = api.op(
             "read_bytes",
@@ -118,9 +126,7 @@ fn list_material_names_and_stacks() {
         let stack_bytes = hex_decode(r2.result["bytes_hex"].as_str().unwrap());
         let stack = i32::from_le_bytes(stack_bytes[0..4].try_into().unwrap());
 
-        eprintln!(
-            "  slot {i:3}: fname=0x{key:016X}  row=0x{value:016X}  MaxCanStack={stack}"
-        );
+        eprintln!("  {name:<40} MaxCanStack={stack}");
         found += 1;
     }
     eprintln!("=== {found} live rows ===");

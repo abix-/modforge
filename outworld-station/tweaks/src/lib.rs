@@ -10,6 +10,7 @@
 //! is `use uespy::*`.
 
 pub mod debug;
+pub mod stacks;
 
 use uespy::ue::{GObjectsLayout, PlatformOffsets};
 
@@ -86,8 +87,13 @@ fn on_unreal_init() {
             "ue runtime ready, GObjects = 0x{:x}",
             image_base + off.g_objects
         ));
-        // Future: install PE trampoline for drain site, spawn
-        // debug server gated on settings.debug.http_port.
+
+        // Spawn the stack-bump worker. Polls for DT_Materials,
+        // mutates MaxCanStack 4x on first sight, exits. Running
+        // this BEFORE any save loads is what makes the mutation
+        // propagate to all downstream caches (UI widget copies,
+        // inventory slot init, etc.).
+        stacks::spawn_apply_worker();
     }
 
     // Always bring the debug server up (offset-independent). Use

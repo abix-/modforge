@@ -1,5 +1,62 @@
 # Outworld Station - Modding Research
 
+## Stack tweaks shipped (2026-05-09)
+
+First feature live in-game: every `DT_Materials` row's
+`MaxCanStack` is bumped 4x at mod load. Verified end-to-end via
+the live game — Titanium_Ore goes from 500 to 2000, etc. Pure
+runtime DLL injection, no pak.
+
+### How it works
+
+`tweaks/src/stacks.rs` spawns a worker thread from
+`on_unreal_init` that polls for `DT_Materials` (up to 30s).
+Once present, it walks every row via `uespy::ue::datatable::iter_rows`
+and writes `cur * 4` to `row + 0x48` (the `FSMaterialData::MaxCanStack`
+field, layout from the SDK dump's `SpaceSalvageStation.hpp`).
+Equipment items at `cur <= 1` are skipped so non-stackable items
+stay non-stackable.
+
+### Why timing matters (the cache-propagation finding)
+
+Critical lesson from this game: **DataTable mutations only
+propagate cleanly when done before any game code copies from the
+DT.** Per UE4SS docs, DataTable reads return *copies* of the row
+struct. UI widgets like `UI_Item.MaterialData` (offset 0x3C0,
+size 0x170) hold their own copy by value, populated at widget
+creation. Mutating the DT after widgets exist leaves them stale.
+
+Concrete behavior we observed:
+- Run a test that mutates `DT_Materials.MaxCanStack` 4x AFTER
+  loading a save → in-memory DT shows 1000, but in-game
+  inventory tooltips still show 250 (UI widgets cached at slot
+  spawn).
+- Run the same mutation in `on_unreal_init` (before any save
+  loads) → inventory shows 1000 from the start. UI widgets cache
+  the post-mutation value.
+
+This is why the existing community "Better Item Stacks" mod
+chose a `_P` pak: paks override `.uasset` on disk so the
+DataTable loads with modded values and there's no caching window.
+We achieve the same effect via DLL by mutating early enough that
+no widget has copied yet.
+
+### The pattern, reusable
+
+For any DataTable-backed value tweak in any UE game:
+1. Find the DataTable + row-struct field offset (SDK dump grep).
+2. Spawn a worker from `on_unreal_init` that polls for the DT.
+3. On first sight, write all rows.
+4. One pass is enough — DT memory persists for the session,
+   later widget creations cache the mutated values.
+
+Belt-and-suspenders for cases where polling-on-init isn't enough
+(some DTs lazy-load on first use): hook
+`UFunctionWeWantToOverride` via UE4SS-style RegisterPostHook and
+override the return value directly. Bulletproof against any
+caching path. Backlog item — not needed for stacks since on-init
+mutation works for OWS.
+
 ## Bootstrap status (2026-05-09)
 
 Per-game prerequisites (see `uespy/README.md` "Bootstrapping a
@@ -13,9 +70,10 @@ new game" for what each item means):
 | `UE4SS.lib` regenerated for this DLL | yes | ~4063 exports; commit `6246b90` |
 | Mod scaffold | yes | `outworld-station/tweaks/` (multi-mod) |
 | `/debug` endpoint live | yes | `127.0.0.1:17172`, smoke test passes 3/3 |
-| **SDK dump** | **NO** | next step — see below |
-| PlatformOffsets filled in | NO | depends on SDK dump |
-| First mod target | identified | item stack tweaks (the "Better Item Stacks" pattern, but as a runtime mod) |
+| SDK dump | yes | `OutworldStation\Binaries\Win64\ue4ss\CXXHeaderDump\` (956 .hpp files, 8.4 MB) |
+| PlatformOffsets filled in | yes | g_objects=0x07A938D0, append_string=0x010DF9D0, process_event=0x012AF540, layout=WrappedChunked |
+| Stack mod (4x via DLL) | **shipped** | `tweaks/src/stacks.rs`, fires from `on_unreal_init` |
+| First mod target | done | item stack tweaks live |
 
 Until the SDK dump runs, `walk_class` / `read_bytes` /
 `write_bytes` / `call` all error with `"uespy: ue runtime not
