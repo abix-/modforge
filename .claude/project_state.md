@@ -1,6 +1,6 @@
 # grounded2mods - project state
 
-## uespy crate extracted; OWS scaffolding queued (2026-05-09 late)
+## ueforge crate extracted; OWS scaffolding queued (2026-05-09 late)
 
 Generic UE-mod control plane factored out of `better-backpack` into
 two new workspace crates so the upcoming Outworld Station mod (and
@@ -11,83 +11,83 @@ Layout:
 
 ```
 grounded2mods/
-  uespy/             rlib. UE-mod control plane.
+  ueforge/             rlib. UE-mod control plane.
     src/server.rs        tiny_http listener + dispatch
     src/envelope.rs      OpResponse<S>, parse_request
     src/args.rs          arg_str/u64/bool/f64
     src/pe_queue.rs      Queue (Mutex+atomic+re-entrance guard) + DrainStats
     src/ue/              UObject SDK shim (was better-backpack/src/sdk/)
-  uespy-client/      rlib. Shared test client (skeleton only so far).
+  ueforge-client/      rlib. Shared test client (skeleton only so far).
   outworld-station/  Research folder for the OWS mod (research.md).
 ```
 
 What moved:
-- HTTP server + envelope + arg helpers (~170 LoC) -> uespy
-- PE-thread queue (~150 LoC) -> uespy::pe_queue (closures, not a fixed cmd enum)
-- Entire UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects, ~600 LoC) -> uespy::ue
+- HTTP server + envelope + arg helpers (~170 LoC) -> ueforge
+- PE-thread queue (~150 LoC) -> ueforge::pe_queue (closures, not a fixed cmd enum)
+- Entire UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects, ~600 LoC) -> ueforge::ue
 
 What stayed in better-backpack:
 - DebugCmd enum (now just AddHealth + SetCurrentHealth — the
-  Call variant moved to a closure that calls uespy::ops::exec_call)
+  Call variant moved to a closure that calls ueforge::ops::exec_call)
   + execute_on_game_thread (game's command vocabulary)
 - Snapshot type + build_snapshot (game-specific state shape)
 - Game-specific op handlers: op_skill_*, op_simulate_*,
   op_class_outer_samples, op_sample_thread_modules
 - Game-specific selector resolvers (live_player, live_player_hc)
   in resolve_instance, which now calls
-  `uespy::selector::resolve_generic` first
+  `ueforge::selector::resolve_generic` first
 - counters, perf timing, damage ring, fall_hook integration
-- `crate::sdk` is now a re-export facade over `uespy::ue` so existing
+- `crate::sdk` is now a re-export facade over `ueforge::ue` so existing
   call sites don't churn
 
 Generic primitives also moved (slice 3b, 2026-05-09 late):
-- Selector grammar (`addr:0x...`, `first_class:Foo`) -> uespy::selector
-- read_bytes / write_bytes / walk_class -> uespy::ops (passed
+- Selector grammar (`addr:0x...`, `first_class:Foo`) -> ueforge::selector
+- read_bytes / write_bytes / walk_class -> ueforge::ops (passed
   game's resolve_instance as a closure for read/write)
-- exec_call (find UFunction + process_event) -> uespy::ops::exec_call;
+- exec_call (find UFunction + process_event) -> ueforge::ops::exec_call;
   game's op_call enqueues a closure that calls it on the game thread
-- hex_encode/decode -> uespy::hex
+- hex_encode/decode -> ueforge::hex
 
 Current crate sizes:
 - better-backpack/src/debug.rs: 1286 -> 998 LoC (-288)
 - better-backpack/src/counters.rs: 1109 -> 115 LoC (-994)
 - better-backpack/src/sdk/: 6 files -> 1 facade (~12 LoC)
-- uespy: ~2033 LoC across 18 files
+- ueforge: ~2033 LoC across 18 files
   (server, envelope, args, pe_queue, selector, hex, ops,
    counters, ring, winproc, ue/{fname, fstring, offsets,
    tarray, uobject, probe, mod})
 
 Slices 4-7 (2026-05-09 late, after slices 1-3):
 - Slice 4: counter primitives (bump/observe_peak/time_scope/TimeScope)
-  -> uespy::counters; bounded ring buffer pattern -> uespy::ring
+  -> ueforge::counters; bounded ring buffer pattern -> ueforge::ring
   (replaces hand-rolled DAMAGE_RING)
 - Slice 5: UE introspection (gobjects_population,
-  class_outer_samples) -> uespy::ue::probe
+  class_outer_samples) -> ueforge::ue::probe
 - Slice 6: Win32 process introspection (process_threads_json,
   process_cpu_json, process_regions_json,
   sample_thread_modules_json, process_memory_json, ~770 LoC)
-  -> uespy::winproc. Generic for any Windows process, not just UE.
+  -> ueforge::winproc. Generic for any Windows process, not just UE.
 - Slice 7: test client (Api wrapper, OpResponse<S>, hex codec,
-  parm helpers) -> uespy-client. better-backpack's tests/common
+  parm helpers) -> ueforge-client. better-backpack's tests/common
   shrunk from 493 -> 367 LoC; the bbp `Api` is now a newtype over
-  `uespy_client::Api<Snapshot>` with bbp-specific convenience
+  `ueforge_client::Api<Snapshot>` with bbp-specific convenience
   methods (`skill_spend`, `simulate_heal`, ...).
 - Total moved out of better-backpack: ~2000 LoC.
-- uespy + uespy-client total: ~2270 LoC of reusable infrastructure.
+- ueforge + ueforge-client total: ~2270 LoC of reusable infrastructure.
 
 Slice 8 (2026-05-09 late):
-- File + console DLL logger -> uespy::log. AllocConsole +
+- File + console DLL logger -> ueforge::log. AllocConsole +
   GetModuleFileNameW + timestamped writer. Game's log.rs becomes
-  a thin wrapper that calls uespy::log::set_dll_module from
-  DllMain and uespy::log::init from the worker. ~140 LoC.
+  a thin wrapper that calls ueforge::log::set_dll_module from
+  DllMain and ueforge::log::init from the worker. ~140 LoC.
 
 ## Parity vs research+TDD vision
 
 Vision (per `~/.claude/skills/runtime-control-http/SKILL.md`):
-ALL investigative + test infrastructure DRY in uespy/uespy-client.
+ALL investigative + test infrastructure DRY in ueforge/ueforge-client.
 New UE-game mods bring only game-specific Snapshot + handlers.
 
-Done (15 capabilities in uespy/uespy-client):
+Done (15 capabilities in ueforge/ueforge-client):
 - HTTP server, envelope, arg helpers
 - Game-thread queue with re-entrance guard
 - 5 generic primitives + selector grammar + hex codec
@@ -99,48 +99,48 @@ Done (15 capabilities in uespy/uespy-client):
 - File + console DLL logger
 
 Slices 9-11 landed (2026-05-09 late):
-- Slice 9: PE/vtable hook framework -> uespy::hook (vtable
+- Slice 9: PE/vtable hook framework -> ueforge::hook (vtable
   primitives + ProcessEventHook RAII + leaked-snapshot lock-free
   registry + re-entrance guards). better-backpack/src/hook/ is
   now a 6-line re-export facade.
 - Slice 10: UE4SS C++ shim layout-critical mirror -> 
-  uespy/cpp/uespy_cppusermodbase.hpp + uespy_imgui_bridge.hpp.
+  ueforge/cpp/ueforge_cppusermodbase.hpp + ueforge_imgui_bridge.hpp.
   better-backpack/cpp/shim.cpp drops ~100 LoC of CppUserModBase
-  redefinition; build.rs adds the uespy/cpp/ include path.
+  redefinition; build.rs adds the ueforge/cpp/ include path.
   Game-specific shim logic (imgui tab, FFI surface) stays in
-  game crate. Future mods just `#include "uespy_cppusermodbase.hpp"`
+  game crate. Future mods just `#include "ueforge_cppusermodbase.hpp"`
   and inherit.
-- Slice 11: Test perf-log writer -> uespy_client::perf.
+- Slice 11: Test perf-log writer -> ueforge_client::perf.
   better-backpack's open_perf_log is a 6-line wrapper passing
   env!("CARGO_MANIFEST_DIR") so the writer walks up to the
   game's repo root.
-- Slice 12: uespy-build crate (build-dep helper). Provides
+- Slice 12: ueforge-build crate (build-dep helper). Provides
   `CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...)
-  .compile()`. Embeds the shared uespy C++ headers via
-  include_str! and drops them into OUT_DIR/uespy_cpp so the
-  shim can `#include "uespy_cppusermodbase.hpp"` regardless of
-  uespy's location (workspace path-dep or future registry pull).
+  .compile()`. Embeds the shared ueforge C++ headers via
+  include_str! and drops them into OUT_DIR/ueforge_cpp so the
+  shim can `#include "ueforge_cppusermodbase.hpp"` regardless of
+  ueforge's location (workspace path-dep or future registry pull).
   Game's build.rs is now ~10 LoC (was ~60). Validated end-to-end:
-  better-backpack now builds via uespy-build.
+  better-backpack now builds via ueforge-build.
 
 Out of scope:
-- Settings JSON loader (game-specific shape; uespy doesn't enforce).
+- Settings JSON loader (game-specific shape; ueforge doesn't enforce).
 - Bench harness (not in skill; add when first bench exists).
 
 ## Audit candidates landed: settings + FieldTweak + cargo deploy (2026-05-09 night, post-stack-mod)
 
-After the stack mod shipped, ran an audit (uespy/README.md
-"Audit: what's in uespy vs in game crates") that surfaced
+After the stack mod shipped, ran an audit (ueforge/README.md
+"Audit: what's in ueforge vs in game crates") that surfaced
 three 🟡 promotion candidates. All landed.
 
-#29 uespy::settings::Settings<T>:
+#29 ueforge::settings::Settings<T>:
 - Generic settings-as-Rust-struct, JSON-backed at
   <DLL_dir>/settings.json. load-on-construct,
   atomic-save-on-update via temp+rename.
 - tweaks::settings defines TweaksSettings { stacks: { multiplier } }.
   Slider position now persists across launches.
 
-#28 uespy::ue::datatable::FieldTweak<T>:
+#28 ueforge::ue::datatable::FieldTweak<T>:
 - Snapshot-vanilla + idempotent re-apply primitive. Generic
   over T: Copy + PartialEq + Send + 'static.
 - apply(transform, skip_if): one-shot DT mutation.
@@ -149,10 +149,10 @@ three 🟡 promotion candidates. All landed.
 - tweaks::stacks::STACK_TWEAK = FieldTweak::new("DT_Materials", 0x48).
   spawn_apply_worker is 3 lines, apply_now is 8.
 
-#30 uespy-deploy (Rust binary, replaces all per-mod
+#30 ueforge-deploy (Rust binary, replaces all per-mod
 PowerShell):
-- New workspace member uespy-deploy/ (clap CLI).
-- Reads each mod's [package.metadata.uespy] via `cargo
+- New workspace member ueforge-deploy/ (clap CLI).
+- Reads each mod's [package.metadata.ueforge] via `cargo
   metadata --no-deps --format-version 1` + serde_json.
 - Steam library walk via winreg + libraryfolders.vdf regex.
 - UE4SS-presence check, mods.txt mgmt, locked-DLL friendly
@@ -165,7 +165,7 @@ PowerShell):
     cargo deploy install -p tweaks
     cargo deploy install -p better-backpack
 
-Audit table (uespy/README.md) updated: rows 28/29/30 marked
+Audit table (ueforge/README.md) updated: rows 28/29/30 marked
 done. Backlog (rows 31-34) untouched -- conditional on real
 need.
 
@@ -175,7 +175,7 @@ End-to-end victory: outworld-station/tweaks/ ships a 4x
 MaxCanStack bump, validated in-game, pure DLL no pak.
 
 Path (compressed because it was a long session):
-1. uespy bootstrapping: HTTP control plane, generic primitives,
+1. ueforge bootstrapping: HTTP control plane, generic primitives,
    chunked-GObjects support added on the fly when stock UE 5.4
    broke our flat-array assumption (added GObjectsLayout enum)
 2. UE4SS install (main HEAD), UE4SS.lib regenerated for OWS
@@ -197,7 +197,7 @@ Path (compressed because it was a long session):
 10. Verified in-game: Titanium_Ore caps at 2000 (was 500).
 
 Findings codified:
-- uespy/README.md gets a "Pattern: DataTable mutation timing"
+- ueforge/README.md gets a "Pattern: DataTable mutation timing"
   section explaining the cache window and the
   on_unreal_init-poll-mutate recipe.
 - outworld-station/research.md records the bootstrap status
@@ -206,7 +206,7 @@ Findings codified:
 
 Open items not blocking:
 - Fname GNames/GWorld offsets still 0 (not needed for current
-  features; uespy ops work without them).
+  features; ueforge ops work without them).
 - UI tooltip rendering with stale FSMaterialData on widgets
   created after mutation propagates fine; widgets created
   BEFORE (e.g. test-time mutation post-save) would not, hence
@@ -215,13 +215,13 @@ Open items not blocking:
   faster but SDK dump path got us there too).
 
 Slice 13 (2026-05-09 late):
-- TMap<K,V> walker -> uespy::ue::tmap (slots, header,
+- TMap<K,V> walker -> ueforge::ue::tmap (slots, header,
   find_value_by_fname_key). Layout constants (element stride 24,
   pair-value offset 8, num-i32 offset 8) live in
-  uespy::ue::offsets::tmap; stable through UE 5.0-5.4.
-- UDataTable helpers -> uespy::ue::datatable (find_by_short_name,
+  ueforge::ue::offsets::tmap; stable through UE 5.0-5.4.
+- UDataTable helpers -> ueforge::ue::datatable (find_by_short_name,
   row_value_by_fname, iter_rows). Built on tmap. Row-map offset
-  (0x30) lives in uespy::ue::offsets::datatable.
+  (0x30) lives in ueforge::ue::offsets::datatable.
 - better-backpack's lookup_data_table_row is now a 3-line wrapper
   validating the new helpers end-to-end. Build green.
 
@@ -232,65 +232,65 @@ more tweaks on the same scaffold over time).
 
 Every research / TDD capability the runtime-control-http skill
 describes — including the engine-version-stable TMap mechanics
-needed for any DataTable mod — lives once in uespy or uespy-client.
+needed for any DataTable mod — lives once in ueforge or ueforge-client.
 
-## Project rule: uespy is the base for ALL UE4SS Rust mods
+## Project rule: ueforge is the base for ALL UE4SS Rust mods
 
-Every UE4SS Rust mod in this workspace builds on top of uespy.
+Every UE4SS Rust mod in this workspace builds on top of ueforge.
 That's not aspirational; it's the codified rule. Game crates
 contain ONLY game-specific code:
 
 - PlatformOffsets per UE build / platform
 - Snapshot struct + build_snapshot
-- Op handler match arms (with handlers calling uespy primitives)
+- Op handler match arms (with handlers calling ueforge primitives)
 - Game-specific selectors wrapping selector::resolve_generic
 - Drain-site PE trampoline (game picks the hot UFunction)
-- Tab render bodies using uespy::ui::*
-- One `ModInfo` static + one `uespy::ue4ss_mod!` invocation
+- Tab render bodies using ueforge::ui::*
+- One `ModInfo` static + one `ueforge::ue4ss_mod!` invocation
 
 Everything else — server, envelope, queue, hook framework, UObject
 SDK, UE introspection, TMap/DataTable mechanics, platform
 detection, counters, ring buffer, file+console logger, Win32 probes,
 test client, perf-log writer, ImGui bridge, generic shim, factory
 exports, DllMain, ImGui vendor, UE4SS.lib, build glue — comes from
-uespy / uespy-client / uespy-build.
+ueforge / ueforge-client / ueforge-build.
 
 Operating principle when extending:
-- If something might apply to other UE games -> uespy.
+- If something might apply to other UE games -> ueforge.
 - Only reach into a game crate after proving it's truly
   game-specific.
 - If you find yourself copy-pasting between game crates, the
-  copied code belongs in uespy.
+  copied code belongs in ueforge.
 
 Slice 15 (2026-05-09 late):
-- imgui v1.92.1 vendor moved to uespy/cpp/imgui/ (one shared copy)
-- UE4SS.lib + .def moved to uespy/ue4ss/ (one shared import lib)
-- uespy_build defaults to those paths; games carry neither
-- Generic platform detection -> uespy::ue::platform
+- imgui v1.92.1 vendor moved to ueforge/cpp/imgui/ (one shared copy)
+- UE4SS.lib + .def moved to ueforge/ue4ss/ (one shared import lib)
+- ueforge_build defaults to those paths; games carry neither
+- Generic platform detection -> ueforge::ue::platform
   (host_image_base, host_exe_name, detect)
 - better-backpack/build.rs: 17 -> 5 LoC
 - New mods now have NO cpp/imgui or ue4ss/ directories of their own
 
 Slice 16 (2026-05-09 late):
-- ImGui bindings -> uespy::ui (text, button, checkbox, slider_f32,
+- ImGui bindings -> ueforge::ui (text, button, checkbox, slider_f32,
   slider_i32, progress_bar, separator, indent, same_line, group,
   tree_node, begin_disabled / end_disabled, RAII guards Disabled
   and Group)
-- C++ bridge -> uespy/cpp/uespy_ui.cpp (extern "C" wrappers around
+- C++ bridge -> ueforge/cpp/ueforge_ui.cpp (extern "C" wrappers around
   ImGui calls; UTF-8 byte ranges round-trip Rust &str without
   null-term management)
-- Generic shim -> uespy/cpp/uespy_shim.cpp. Implements
+- Generic shim -> ueforge/cpp/ueforge_shim.cpp. Implements
   CppUserModBase subclass, factory exports (start_mod /
   uninstall_mod), DllMain, tab registration via per-tab
   trampolines (up to 16 tabs).
-- Mod entry point -> uespy::ModInfo + uespy::Tab + ue4ss_mod!
+- Mod entry point -> ueforge::ModInfo + ueforge::Tab + ue4ss_mod!
   macro. Game declares one static + one macro invocation; macro
   emits every extern "C" hook the shim calls.
-- uespy_build compiles uespy_shim.cpp + uespy_ui.cpp by default.
+- ueforge_build compiles ueforge_shim.cpp + ueforge_ui.cpp by default.
   skip_default_shim() opt-out for legacy mods that ship their own
   factory (better-backpack until its UI migration lands).
-- ImGui context bridge moved into uespy_ui.cpp so opting out of
-  the default shim doesn't break uespy::ui linkage.
+- ImGui context bridge moved into ueforge_ui.cpp so opting out of
+  the default shim doesn't break ueforge::ui linkage.
 
 A new mod's project tree is now: Cargo.toml, build.rs (5 LoC),
 src/lib.rs (~50 LoC of ModInfo + on_init/shutdown + tab renders),
@@ -298,21 +298,21 @@ src/debug.rs, tests/. No cpp/, no DllMain, no factory exports,
 no imgui or UE4SS.lib in the mod tree.
 
 Pending follow-up: migrate better-backpack to use ue4ss_mod! +
-uespy::ui (drops cpp/shim.cpp entirely; validates the framework
+ueforge::ui (drops cpp/shim.cpp entirely; validates the framework
 end-to-end on a real mod with multi-tab UI).
 
 Migration is complete. OWS mod's debug.rs only needs:
 1. A `Snapshot` struct + build_snapshot
 2. A drain-site PE trampoline calling PE_QUEUE.drain()
-3. A resolve_instance fn (uespy::selector::resolve_generic + any
+3. A resolve_instance fn (ueforge::selector::resolve_generic + any
    game-specific selectors)
 4. A handle() match arm dispatcher mapping op strings to either
-   uespy::ops::* or game-specific closures
+   ueforge::ops::* or game-specific closures
 
-Everything else is `use uespy::*`.
+Everything else is `use ueforge::*`.
 
 Next session for OWS: scaffold `outworld-station/<mod-crate>/`
-against uespy + uespy-client, supply Snapshot + drain wiring,
+against ueforge + ueforge-client, supply Snapshot + drain wiring,
 get the empty `POST /debug` endpoint up.
 
 ## Game-side leak diagnosed, NOT MITIGATED (2026-05-09 night)

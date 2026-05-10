@@ -1,0 +1,14 @@
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\deps\serde-1bb3da3e66a3cd3e.d: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\build\serde-65bfc7dd1a1a8f71\out/private.rs
+
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\deps\libserde-1bb3da3e66a3cd3e.rlib: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\build\serde-65bfc7dd1a1a8f71\out/private.rs
+
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\deps\libserde-1bb3da3e66a3cd3e.rmeta: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\build\serde-65bfc7dd1a1a8f71\out/private.rs
+
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\lib.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\integer128.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\mod.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\de.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\serde-1.0.228\src\private\ser.rs:
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\x86_64-pc-windows-msvc\release\build\serde-65bfc7dd1a1a8f71\out/private.rs:
+
+# env-dep:OUT_DIR=C:\\code\\grounded2mods\\ueforge\\cpp\\target/tweaks\\x86_64-pc-windows-msvc\\release\\build\\serde-65bfc7dd1a1a8f71\\out

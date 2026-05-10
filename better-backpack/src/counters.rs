@@ -11,16 +11,16 @@
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-// Generic primitives now live in `uespy::counters`. Re-exported
+// Generic primitives now live in `ueforge::counters`. Re-exported
 // here so existing call sites (`crate::counters::bump`,
 // `crate::counters::time_scope`, `crate::counters::observe_peak`)
 // keep working without churn.
-pub use uespy::counters::{TimeScope, bump, observe_peak, time_scope};
+pub use ueforge::counters::{TimeScope, bump, observe_peak, time_scope};
 
 // Generic Windows process-introspection helpers (used by debug ops
 // `process_threads_json`, `process_cpu_json`, `process_regions_json`,
 // `sample_thread_modules_json`, `process_memory_json`).
-pub use uespy::winproc::{
+pub use ueforge::winproc::{
     process_cpu_json, process_memory_json, process_regions_json, process_threads_json,
     sample_thread_modules_json,
 };

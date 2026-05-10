@@ -37,7 +37,7 @@ fn unknown_op_errors_cleanly() {
 
 #[test]
 fn walk_class_responds_even_without_offsets() {
-    // walk_class returns Err("uespy: ue runtime not initialized")
+    // walk_class returns Err("ueforge: ue runtime not initialized")
     // when offsets aren't filled in. This test just confirms the
     // dispatcher reaches the op and returns a structured response
     // — useful as the very first signal that the wiring is live.

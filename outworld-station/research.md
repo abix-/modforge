@@ -11,7 +11,7 @@ runtime DLL injection, no pak.
 
 `tweaks/src/stacks.rs` spawns a worker thread from
 `on_unreal_init` that polls for `DT_Materials` (up to 30s).
-Once present, it walks every row via `uespy::ue::datatable::iter_rows`
+Once present, it walks every row via `ueforge::ue::datatable::iter_rows`
 and writes `cur * 4` to `row + 0x48` (the `FSMaterialData::MaxCanStack`
 field, layout from the SDK dump's `SpaceSalvageStation.hpp`).
 Equipment items at `cur <= 1` are skipped so non-stackable items
@@ -59,7 +59,7 @@ mutation works for OWS.
 
 ## Bootstrap status (2026-05-09)
 
-Per-game prerequisites (see `uespy/README.md` "Bootstrapping a
+Per-game prerequisites (see `ueforge/README.md` "Bootstrapping a
 new game" for what each item means):
 
 | Item | Status | Detail |
@@ -76,7 +76,7 @@ new game" for what each item means):
 | First mod target | done | item stack tweaks live |
 
 Until the SDK dump runs, `walk_class` / `read_bytes` /
-`write_bytes` / `call` all error with `"uespy: ue runtime not
+`write_bytes` / `call` all error with `"ueforge: ue runtime not
 initialized"`. The control plane works; it just can't see
 into UE memory yet.
 
@@ -135,16 +135,16 @@ the dump instead):
 - Confirm by writing 200, see which addr changes the in-game
   stack ceiling
 
-Implementation sketch, ~200 LoC in uespy:
-- `uespy::ops::scan_memory { value_type: "u32"|"f32"|...,
+Implementation sketch, ~200 LoC in ueforge:
+- `ueforge::ops::scan_memory { value_type: "u32"|"f32"|...,
    value, bounds?, regions?: ["private"|"image"|...] }`
    → up to N matched addresses + session_id
-- `uespy::ops::scan_rescan { session_id, mode: "exact"|"changed"
+- `ueforge::ops::scan_rescan { session_id, mode: "exact"|"changed"
    |"decreased"|"increased", new_value? }`
-- `uespy::ops::freeze { addr, value_type, value, hz }` /
+- `ueforge::ops::freeze { addr, value_type, value, hz }` /
   `unfreeze` / `freeze_list`
 
-Builds on `uespy::winproc::process_regions_json`'s region
+Builds on `ueforge::winproc::process_regions_json`'s region
 walker. `read_bytes` / `write_bytes` already cover per-addr ops.
 
 Status: backlog. Not blocking; build when actually needed.
@@ -258,21 +258,21 @@ BetterStack_P/
 
 The first feature in `outworld-station/tweaks/` is item-stack
 adjustments — reproduce/extend the existing community "Better Item
-Stacks" approach, but as a runtime mod via uespy instead of a
+Stacks" approach, but as a runtime mod via ueforge instead of a
 static `_P` pak. Why: a runtime mod gives us live introspection
 + test-driven development for every subsequent tweak we add.
 
-### Full TDD loop, validated against current uespy
+### Full TDD loop, validated against current ueforge
 
-1. **Find the DataTable** — `uespy::ue::datatable::find_by_short_name("DT_Materials")`
+1. **Find the DataTable** — `ueforge::ue::datatable::find_by_short_name("DT_Materials")`
    or test-side via `walk_class("DataTable") + filter by name`. ✅
-2. **Iterate rows** — `uespy::ue::datatable::iter_rows(table)` yields
+2. **Iterate rows** — `ueforge::ue::datatable::iter_rows(table)` yields
    `(FName-u64, row_ptr)`. Test resolves FName u64 -> string via
-   `uespy::ue::FName::to_string`. ✅
+   `ueforge::ue::FName::to_string`. ✅
 3. **Identify stack offset** — parameter sweep via `read_bytes`
    on a known row pointer at small offsets (4, 8, 12, ...). The
    one whose value matches the in-game stack max (50, 100, etc.)
-   is the offset. Test code; no uespy gap. ✅
+   is the offset. Test code; no ueforge gap. ✅
 4. **Mutate** — `write_bytes(addr_of_row, stack_offset, u32_bytes)`. ✅
 5. **Verify** — `read_bytes` round-trip + in-game pickup test by
    reading inventory state via `walk_class` / `read_bytes` on the
@@ -281,18 +281,18 @@ static `_P` pak. Why: a runtime mod gives us live introspection
    on a hot UFunction (e.g. movement multicast); inside the
    trampoline, drain `PE_QUEUE` and re-apply patches if the
    "applied for this slot" flag is unset. ✅
-7. **Test infrastructure** — `uespy_client::Api<TweaksSnapshot>` for
-   the integration tests; `uespy_client::perf::PerfLog` for any
+7. **Test infrastructure** — `ueforge_client::Api<TweaksSnapshot>` for
+   the integration tests; `ueforge_client::perf::PerfLog` for any
    timing / leak research. ✅
 
-Every step above maps to a `uespy::*` or `uespy_client::*` API
+Every step above maps to a `ueforge::*` or `ueforge_client::*` API
 that exists today. The only mod-side code is:
 - `Snapshot` struct with the fields tests assert against
 - `op_*` handlers for game-specific actions (e.g. `apply_stacks`)
 - The drain-site PE trampoline
 - Game-specific selector resolvers (`live_player` etc.)
 - The `cpp/shim.cpp` (~30 LoC inheriting `RC::CppUserModBase`)
-- The `build.rs` (~10 LoC calling `uespy_build::CppShim`)
+- The `build.rs` (~10 LoC calling `ueforge_build::CppShim`)
 
 ### Subsequent tweaks layer on the same scaffold
 
@@ -306,12 +306,12 @@ Once `tweaks` has a working `/debug` endpoint + drain trampoline:
 No new infrastructure per tweak — they're all test-file changes
 plus a snapshot field per observable.
 
-## Shared `uespy` crate (extracted 2026-05-09, fully populated)
+## Shared `ueforge` crate (extracted 2026-05-09, fully populated)
 
 Generic UE-mod control plane factored out into the workspace
 so the OWS mod scaffold gets it for free:
 
-- `uespy` (rlib, ~2030 LoC across 18 files):
+- `ueforge` (rlib, ~2030 LoC across 18 files):
   - `server` — tiny_http listener + dispatch
   - `envelope` — `OpResponse<S>` + `parse_request`
   - `args` — JSON arg helpers
@@ -326,7 +326,7 @@ so the OWS mod scaffold gets it for free:
   - `ue` — UObject/UClass/UFunction/FName/FString/TArray/GObjects/
     Platform offsets, plus `ue::probe` (gobjects_population,
     class_outer_samples)
-- `uespy-client` (rlib, ~240 LoC):
+- `ueforge-client` (rlib, ~240 LoC):
   - `Api<S>` — generic blocking HTTP test client
   - `OpResponse<S>` — wire deserializer
   - `hex` + `parms` — codec + `#[repr(C)]` parm round-trip
@@ -334,38 +334,38 @@ so the OWS mod scaffold gets it for free:
 OWS mod will only own: a `Snapshot` type, the drain-site PE trampoline
 (once we know which UFunction is hot enough to drain on UE 5.4.4 OWS),
 and game-specific selector resolvers (`live_player` etc.). Everything
-else is `use uespy::*`.
+else is `use ueforge::*`.
 
-## Parity audit: research + TDD infrastructure DRY in uespy
+## Parity audit: research + TDD infrastructure DRY in ueforge
 
 Vision: every research and test capability the
 `runtime-control-http` skill describes lives once in
-`uespy` / `uespy-client`. New UE-game mods bring only game-specific
+`ueforge` / `ueforge-client`. New UE-game mods bring only game-specific
 state shape + handlers.
 
 | Capability                                        | Status | Where                                           |
 |---------------------------------------------------|--------|-------------------------------------------------|
-| `POST /<endpoint>` command-shaped HTTP            | done   | `uespy::server`                                 |
-| `OpResponse<S>` envelope (full snapshot every reply) | done | `uespy::envelope`                               |
-| Game-thread queue + re-entrance guard + lock-free fast path | done | `uespy::pe_queue::Queue`                  |
-| 5 generic primitives (`snapshot`, `read_bytes`, `write_bytes`, `call`, `walk_class`) | done | `uespy::ops` |
-| Selector grammar (`addr:0x...`, `first_class:...`) | done   | `uespy::selector`                               |
-| Hex codec (mod + test sides)                      | done   | `uespy::hex`, `uespy_client::hex`               |
-| `#[repr(C)]` parm round-trip helpers              | done   | `uespy_client::parms`                           |
-| Hot-path counters (`bump`, `observe_peak`, `time_scope`, `TimeScope`) | done | `uespy::counters`           |
-| Bounded ring buffer for hook events               | done   | `uespy::ring`                                   |
-| UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects/offsets) | done | `uespy::ue`                  |
-| UE introspection (`gobjects_population`, `class_outer_samples`) | done | `uespy::ue::probe`                  |
-| Win32 process probes (threads, CPU, regions, memory, thread sampler) | done | `uespy::winproc`                |
-| Test client (`Api<S>`, `try_connect`, `op`, `op_ok`, `snapshot`, `call_ufunction`) | done | `uespy_client::Api`     |
-| File + console DLL logger (AllocConsole / GetModuleFileNameW) | done | `uespy::log`                            |
-| PE / vtable hook framework (`vtable::write_slot`, RAII `ProcessEventHook`, lock-free registry) | done | `uespy::hook` |
-| UE4SS C++ shim layout-critical mirror (`CppUserModBase`, `UE4SSProgram` imgui bridge) | done | `uespy/cpp/uespy_cppusermodbase.hpp`, `uespy_imgui_bridge.hpp` |
-| `build.rs` glue (`CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...).compile()`) | done | `uespy-build` (rlib build-dep). Embeds shared headers via `include_str!`, drops them into `OUT_DIR/uespy_cpp/` at build time. Game's build.rs ~10 LoC. |
-| Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `uespy_client::perf` |
-| `TMap<K,V>` walker (`tmap::slots`, `find_value_by_fname_key`) | done | `uespy::ue::tmap` |
-| `UDataTable` helpers (`find_by_short_name`, `row_value_by_fname`, `iter_rows`) | done | `uespy::ue::datatable` |
-| Settings JSON loader pattern                      | n/a    | game-specific shape — uespy intentionally doesn't enforce |
+| `POST /<endpoint>` command-shaped HTTP            | done   | `ueforge::server`                                 |
+| `OpResponse<S>` envelope (full snapshot every reply) | done | `ueforge::envelope`                               |
+| Game-thread queue + re-entrance guard + lock-free fast path | done | `ueforge::pe_queue::Queue`                  |
+| 5 generic primitives (`snapshot`, `read_bytes`, `write_bytes`, `call`, `walk_class`) | done | `ueforge::ops` |
+| Selector grammar (`addr:0x...`, `first_class:...`) | done   | `ueforge::selector`                               |
+| Hex codec (mod + test sides)                      | done   | `ueforge::hex`, `ueforge_client::hex`               |
+| `#[repr(C)]` parm round-trip helpers              | done   | `ueforge_client::parms`                           |
+| Hot-path counters (`bump`, `observe_peak`, `time_scope`, `TimeScope`) | done | `ueforge::counters`           |
+| Bounded ring buffer for hook events               | done   | `ueforge::ring`                                   |
+| UE SDK (UObject/UClass/UFunction/FName/FString/TArray/GObjects/offsets) | done | `ueforge::ue`                  |
+| UE introspection (`gobjects_population`, `class_outer_samples`) | done | `ueforge::ue::probe`                  |
+| Win32 process probes (threads, CPU, regions, memory, thread sampler) | done | `ueforge::winproc`                |
+| Test client (`Api<S>`, `try_connect`, `op`, `op_ok`, `snapshot`, `call_ufunction`) | done | `ueforge_client::Api`     |
+| File + console DLL logger (AllocConsole / GetModuleFileNameW) | done | `ueforge::log`                            |
+| PE / vtable hook framework (`vtable::write_slot`, RAII `ProcessEventHook`, lock-free registry) | done | `ueforge::hook` |
+| UE4SS C++ shim layout-critical mirror (`CppUserModBase`, `UE4SSProgram` imgui bridge) | done | `ueforge/cpp/ueforge_cppusermodbase.hpp`, `ueforge_imgui_bridge.hpp` |
+| `build.rs` glue (`CppShim::new().source(...).imgui_dir(...).ue4ss_lib_dir(...).compile()`) | done | `ueforge-build` (rlib build-dep). Embeds shared headers via `include_str!`, drops them into `OUT_DIR/ueforge_cpp/` at build time. Game's build.rs ~10 LoC. |
+| Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `ueforge_client::perf` |
+| `TMap<K,V>` walker (`tmap::slots`, `find_value_by_fname_key`) | done | `ueforge::ue::tmap` |
+| `UDataTable` helpers (`find_by_short_name`, `row_value_by_fname`, `iter_rows`) | done | `ueforge::ue::datatable` |
+| Settings JSON loader pattern                      | n/a    | game-specific shape — ueforge intentionally doesn't enforce |
 | Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |
 
 ### What the four gaps would unblock for OWS
@@ -385,7 +385,7 @@ state shape + handlers.
 
 ### Slices already complete (1-8)
 
-| #  | What                                                            | LoC into uespy |
+| #  | What                                                            | LoC into ueforge |
 |----|-----------------------------------------------------------------|----------------|
 | 1  | HTTP server + envelope + arg helpers                           | 174            |
 | 2  | PE-thread queue (closures, re-entrance guard, lock-free)       | 150            |
@@ -394,11 +394,11 @@ state shape + handlers.
 | 4  | Counter primitives + bounded ring buffer                        | 126            |
 | 5  | UE introspection (`gobjects_population`, `class_outer_samples`) | 175            |
 | 6  | Win32 process introspection                                     | 812            |
-| 7  | Shared test client (`uespy-client`)                             | 238            |
+| 7  | Shared test client (`ueforge-client`)                             | 238            |
 | 8  | File + console DLL logger                                       | ~140           |
 
-Total reusable infrastructure now: ~2,690 LoC across `uespy`
-(~2,170 LoC, 19 files) and `uespy-client` (~240 LoC, 3 files).
+Total reusable infrastructure now: ~2,690 LoC across `ueforge`
+(~2,170 LoC, 19 files) and `ueforge-client` (~240 LoC, 3 files).
 better-backpack has shed ~2,000 LoC of generic mod plumbing.
 
 ### The OWS scaffold once slices 9-11 land
@@ -407,30 +407,30 @@ better-backpack has shed ~2,000 LoC of generic mod plumbing.
 // outworld-station/<mod>/src/lib.rs
 #[unsafe(no_mangle)]
 pub extern "C" fn ows_start() {
-    uespy::log::set_dll_module(/* HMODULE captured in DllMain */);
-    uespy::log::init(uespy::log::Config {
+    ueforge::log::set_dll_module(/* HMODULE captured in DllMain */);
+    ueforge::log::init(ueforge::log::Config {
         file_name: "ows.log",
         console_title: "OWS Mod",
         console: cfg!(feature = "console"),
     });
     let settings = load_settings();  // ~10 LoC
     if let Some(port) = settings.debug.http_port {
-        uespy::spawn(
-            uespy::Config { port, endpoint: "/debug", thread_name: "ows-debug" },
+        ueforge::spawn(
+            ueforge::Config { port, endpoint: "/debug", thread_name: "ows-debug" },
             handle_request,
-            |msg| uespy::log::log(format_args!("{msg}")),
+            |msg| ueforge::log::log(format_args!("{msg}")),
         );
     }
-    uespy::hook::install_pe_hook(/* class, function, callback */);  // slice 9
+    ueforge::hook::install_pe_hook(/* class, function, callback */);  // slice 9
     // ... worker thread spawns ...
 }
 
 fn handle_request(body: &str) -> Vec<u8> {
-    /* ~30 LoC dispatcher matching ops to uespy::ops::* + game-specific */
+    /* ~30 LoC dispatcher matching ops to ueforge::ops::* + game-specific */
 }
 ```
 
-Plus the C++ shim auto-compiled by uespy's `build_helpers` (slice 10).
+Plus the C++ shim auto-compiled by ueforge's `build_helpers` (slice 10).
 Total mod-side LoC for a working `/debug` endpoint with the full
 research surface: ~150-200, not 2,500.
 
@@ -438,7 +438,7 @@ Phase-1 scaffolding plan (when ready):
 1. Create `outworld-station/<crate>/` with Cargo manifest + cdylib
    (`name = "main"` for UE4SS Mods/<Name>/dlls/main.dll)
 2. Copy/adapt `cpp/shim.cpp` + `build.rs` from better-backpack
-3. `src/lib.rs` worker entry; `src/debug.rs` calls `uespy::spawn(...)`
+3. `src/lib.rs` worker entry; `src/debug.rs` calls `ueforge::spawn(...)`
    with a `Snapshot { /* empty */ }` and `handle()` matching only
    "snapshot" initially
 4. `tests/debug_snapshot.rs` smoke test against `OWS_DEBUG_PORT` env var

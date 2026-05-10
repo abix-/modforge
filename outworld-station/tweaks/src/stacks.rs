@@ -4,7 +4,7 @@
 //!
 //! All the heavy lifting — vanilla baseline snapshot, idempotent
 //! re-apply, the on-first-sight polling worker — lives in
-//! `uespy::ue::datatable::FieldTweak<i32>`. This module owns
+//! `ueforge::ue::datatable::FieldTweak<i32>`. This module owns
 //! only the game-specific bits: the table name, the
 //! `MaxCanStack` field offset, the `vanilla <= 1 → skip`
 //! equipment-preserving rule, and the multiplier knob the tab
@@ -13,7 +13,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use uespy::ue::datatable::FieldTweak;
+use ueforge::ue::datatable::FieldTweak;
 
 use crate::settings;
 
@@ -60,7 +60,7 @@ pub fn vanilla_count() -> usize {
 /// Spawn the initial apply worker. Runs once on first sight of
 /// `DT_Materials` (or times out at 30s).
 pub fn spawn_apply_worker() {
-    uespy::log::log(format_args!("stacks: worker armed"));
+    ueforge::log::log(format_args!("stacks: worker armed"));
     STACK_TWEAK.apply_when_ready(
         POLL_TIMEOUT,
         |vanilla| vanilla.saturating_mul(current_multiplier()),

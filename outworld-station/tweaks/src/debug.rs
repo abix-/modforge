@@ -4,11 +4,11 @@
 use serde::Serialize;
 use serde_json::Value as Json;
 
-use uespy::envelope::{OpResponse as UespyResponse, parse_request};
+use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 
 pub fn spawn(port: u16) {
-    uespy::spawn(
-        uespy::Config {
+    ueforge::spawn(
+        ueforge::Config {
             port,
             endpoint: "/debug",
             thread_name: "ows-tweaks-debug",
@@ -17,7 +17,7 @@ pub fn spawn(port: u16) {
             let resp = handle(body);
             serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec())
         },
-        |msg| uespy::log::log(format_args!("{msg}")),
+        |msg| ueforge::log::log(format_args!("{msg}")),
     );
 }
 
@@ -32,7 +32,7 @@ type OpResponse = UespyResponse<Snapshot>;
 
 fn build_snapshot() -> Snapshot {
     Snapshot {
-        offsets_known: uespy::ue::try_runtime().is_some(),
+        offsets_known: ueforge::ue::try_runtime().is_some(),
     }
 }
 
@@ -44,10 +44,10 @@ fn handle(body: &str) -> OpResponse {
 
     match op.as_str() {
         "snapshot" => ok_response(&op, Json::Null),
-        "read_bytes" => to_response(&op, uespy::ops::read_bytes(&args, resolve_instance)),
-        "write_bytes" => to_response(&op, uespy::ops::write_bytes(&args, resolve_instance)),
-        "walk_class" => to_response(&op, uespy::ops::walk_class(&args)),
-        "fname_to_string" => to_response(&op, uespy::ops::fname_to_string(&args)),
+        "read_bytes" => to_response(&op, ueforge::ops::read_bytes(&args, resolve_instance)),
+        "write_bytes" => to_response(&op, ueforge::ops::write_bytes(&args, resolve_instance)),
+        "walk_class" => to_response(&op, ueforge::ops::walk_class(&args)),
+        "fname_to_string" => to_response(&op, ueforge::ops::fname_to_string(&args)),
         "" => error_response(
             "<missing>",
             "missing 'op' field; supported: snapshot, read_bytes, write_bytes, walk_class, fname_to_string",
@@ -68,8 +68,8 @@ fn error_response(op: &str, err: impl Into<String>) -> OpResponse {
     OpResponse::err(op, err, build_snapshot())
 }
 
-fn resolve_instance(s: &str) -> Result<&'static uespy::ue::UObject, String> {
-    if let Some(r) = uespy::selector::resolve_generic(s) {
+fn resolve_instance(s: &str) -> Result<&'static ueforge::ue::UObject, String> {
+    if let Some(r) = ueforge::selector::resolve_generic(s) {
         return r;
     }
     Err(format!(

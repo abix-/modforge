@@ -15,16 +15,16 @@ pub struct Snapshot {
     pub offsets_known: bool,
 }
 
-pub type Api = uespy::client::Api<Snapshot>;
+pub type Api = ueforge::client::Api<Snapshot>;
 
 pub fn try_api() -> Option<Api> {
-    uespy::client::Api::try_connect(ENV_PORT, "/debug")
+    ueforge::client::Api::try_connect(ENV_PORT, "/debug")
 }
 
 pub fn require_api() -> Api {
-    uespy::client::Api::require(ENV_PORT, "/debug")
+    ueforge::client::Api::require(ENV_PORT, "/debug")
 }
 
-pub fn op(api: &Api, op_name: &str, args: Value) -> uespy::OpResponse<Snapshot> {
+pub fn op(api: &Api, op_name: &str, args: Value) -> ueforge::OpResponse<Snapshot> {
     api.op(op_name, args)
 }

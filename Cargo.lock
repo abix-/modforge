@@ -119,7 +119,7 @@ dependencies = [
  "memoffset",
  "serde",
  "serde_json",
- "uespy",
+ "ueforge",
  "widestring",
  "windows-sys 0.61.2",
 ]
@@ -902,7 +902,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
- "uespy",
+ "ueforge",
 ]
 
 [[package]]
@@ -912,7 +912,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
-name = "uespy"
+name = "ueforge"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -927,7 +927,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "uespy-deploy"
+name = "ueforge-deploy"
 version = "0.1.0"
 dependencies = [
  "anyhow",

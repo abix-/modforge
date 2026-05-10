@@ -181,13 +181,13 @@ fn is_player_character(obj: &UObject) -> bool {
 }
 
 /// Look up a row in a `UDataTable` by FName-as-u64. Thin wrapper
-/// over `uespy::ue::tmap::find_value_by_fname_key` at the
+/// over `ueforge::ue::tmap::find_value_by_fname_key` at the
 /// `UDataTable.RowMap` offset. The TMap walking mechanics +
-/// stride / pair-value layout constants live in uespy so every
+/// stride / pair-value layout constants live in ueforge so every
 /// UE-mod project shares the same vetted code.
 pub(crate) fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
-    use uespy::ue::offsets::datatable;
-    unsafe { uespy::ue::tmap::find_value_by_fname_key(table, datatable::ROW_MAP, row_name) }
+    use ueforge::ue::offsets::datatable;
+    unsafe { ueforge::ue::tmap::find_value_by_fname_key(table, datatable::ROW_MAP, row_name) }
 }
 
 /// Read `FStatusEffectData.Type` (u8 at +0x30) and `Value`

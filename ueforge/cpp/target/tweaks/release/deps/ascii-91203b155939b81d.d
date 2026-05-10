@@ -1,0 +1,11 @@
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\release\deps\ascii-91203b155939b81d.d: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_char.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_str.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_string.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\free_functions.rs
+
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\release\deps\libascii-91203b155939b81d.rlib: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_char.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_str.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_string.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\free_functions.rs
+
+C:\code\grounded2mods\ueforge\cpp\target/tweaks\release\deps\libascii-91203b155939b81d.rmeta: C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\lib.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_char.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_str.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_string.rs C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\free_functions.rs
+
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\lib.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_char.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_str.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\ascii_string.rs:
+C:\Users\Abix\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\ascii-1.1.0\src\free_functions.rs:

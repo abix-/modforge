@@ -112,13 +112,13 @@ unsafe fn worker() {
         patch::VANILLA_MOUNT
     );
 
-    let image_base = uespy::ue::platform::host_image_base();
-    const PLATFORMS: &[(&str, &uespy::ue::PlatformOffsets)] = &[
+    let image_base = ueforge::ue::platform::host_image_base();
+    const PLATFORMS: &[(&str, &ueforge::ue::PlatformOffsets)] = &[
         ("Grounded2-WinGRTS-Shipping.exe", &STEAM),
         ("Grounded2-WinGDK-Shipping.exe", &XBOX),
     ];
-    let offsets = uespy::ue::platform::detect(PLATFORMS).unwrap_or_else(|| {
-        let exe = uespy::ue::platform::host_exe_name().unwrap_or_default();
+    let offsets = ueforge::ue::platform::detect(PLATFORMS).unwrap_or_else(|| {
+        let exe = ueforge::ue::platform::host_exe_name().unwrap_or_default();
         bbp_log!(
             "WARN: unknown host exe '{}'; defaulting to Steam offsets",
             exe
@@ -239,4 +239,4 @@ fn install_inv_hook_with_backoff(slot_count: i32) -> Option<hook::ProcessEventHo
     }
 }
 
-// host_image_base / host_exe_name moved to uespy::ue::platform.
+// host_image_base / host_exe_name moved to ueforge::ue::platform.

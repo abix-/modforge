@@ -18,47 +18,47 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// Re-export of uespy-client's perf-log writer. Called with
+/// Re-export of ueforge-client's perf-log writer. Called with
 /// `env!("CARGO_MANIFEST_DIR")` evaluated in this crate so it
-/// resolves to better-backpack's manifest, not uespy-client's;
+/// resolves to better-backpack's manifest, not ueforge-client's;
 /// the writer walks up from there to find `.git`.
-pub use uespy::client::perf::PerfLog;
+pub use ueforge::client::perf::PerfLog;
 
 pub fn open_perf_log(test_name: &str) -> PerfLog {
-    uespy::client::perf::open(
+    ueforge::client::perf::open(
         test_name,
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")),
     )
 }
 
 // HTTP wrapper, hex codec, and parm helpers all live in
-// `uespy` (`client` feature). Re-export so test files keep using
+// `ueforge` (`client` feature). Re-export so test files keep using
 // the same short names without churn.
 #[allow(unused_imports)]
-pub use uespy::hex::{decode as hex_decode, encode as hex_encode};
+pub use ueforge::hex::{decode as hex_decode, encode as hex_encode};
 #[allow(unused_imports)]
-pub use uespy::parms::{as_bytes as parms_as_bytes, from_bytes as bytes_as_parms};
+pub use ueforge::parms::{as_bytes as parms_as_bytes, from_bytes as bytes_as_parms};
 
-pub type OpResponse = uespy::OpResponse<Snapshot>;
+pub type OpResponse = ueforge::OpResponse<Snapshot>;
 
 const ENV_PORT: &str = "BBP_DEBUG_PORT";
 
-/// Test-side API wrapper. Newtype around `uespy::client::Api<Snapshot>`
+/// Test-side API wrapper. Newtype around `ueforge::client::Api<Snapshot>`
 /// so we can hang Grounded2-specific convenience helpers
 /// (`skill_spend`, `skill_toggle`, ...) on it.
-pub struct Api(uespy::client::Api<Snapshot>);
+pub struct Api(ueforge::client::Api<Snapshot>);
 
 impl Api {
     /// Connect to the running mod. If `BBP_DEBUG_PORT` is unset
     /// or unparseable, returns `None` so tests can skip cleanly.
     pub fn try_connect() -> Option<Self> {
-        uespy::client::Api::try_connect(ENV_PORT, "/debug").map(Self)
+        ueforge::client::Api::try_connect(ENV_PORT, "/debug").map(Self)
     }
 
     /// Connect or panic. Use when the test absolutely requires the
     /// endpoint.
     pub fn require() -> Self {
-        Self(uespy::client::Api::require(ENV_PORT, "/debug"))
+        Self(ueforge::client::Api::require(ENV_PORT, "/debug"))
     }
 
     pub fn op(&self, op: &str, args: Value) -> OpResponse {
@@ -135,7 +135,7 @@ impl Snapshot {
     }
 }
 
-// `OpResponse` is `uespy::OpResponse<Snapshot>` (aliased
+// `OpResponse` is `ueforge::OpResponse<Snapshot>` (aliased
 // near the top of this file).
 
 #[derive(Debug, Deserialize)]

@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use uespy::settings::Settings;
+use ueforge::settings::Settings;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TweaksSettings {

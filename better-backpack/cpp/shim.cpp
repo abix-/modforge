@@ -42,13 +42,13 @@
 #include <vector>
 
 // Vendored ImGui (better-backpack/cpp/imgui/) at the same v1.92.1 UE4SS
-// uses. Must come before uespy_imgui_bridge.hpp.
+// uses. Must come before ueforge_imgui_bridge.hpp.
 #include "imgui.h"
 
-// Layout-critical UE4SS CppUserModBase mirror. Sourced from uespy so
+// Layout-critical UE4SS CppUserModBase mirror. Sourced from ueforge so
 // every UE4SS Rust mod links the same vetted vtable layout.
-#include "uespy_cppusermodbase.hpp"
-#include "uespy_imgui_bridge.hpp"
+#include "ueforge_cppusermodbase.hpp"
+#include "ueforge_imgui_bridge.hpp"
 
 // ---------------------------------------------------------------------
 // Debug logging. Writes to <module-dir>/cpp_shim.log so we can see what
@@ -156,7 +156,7 @@ extern "C" int      bbp_rpg_format_skill_effect(const char* skill_id,
 // tab is being drawn, so a context is guaranteed to exist.
 // ---------------------------------------------------------------------
 
-// RC::UE4SSProgram is forward-declared in uespy_imgui_bridge.hpp.
+// RC::UE4SSProgram is forward-declared in ueforge_imgui_bridge.hpp.
 
 static void rpg_enable_imgui() {
     ImGui::SetCurrentContext(RC::UE4SSProgram::get_current_imgui_context());

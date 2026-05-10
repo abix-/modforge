@@ -1,19 +1,19 @@
 //! Outworld Station Tweaks.
 //!
 //! Multi-mod scaffold. First feature: item stack tweaks. Layered
-//! on top of uespy's UE4SS / debug / UI infrastructure.
+//! on top of ueforge's UE4SS / debug / UI infrastructure.
 //!
 //! Game-specific code in this crate is intentionally minimal:
 //! `ModInfo`, the on_unreal_init / on_shutdown hooks, the
 //! game's `PlatformOffsets`, the `Snapshot` type, the op
 //! dispatcher, and the tab render bodies. Everything else
-//! is `use uespy::*`.
+//! is `use ueforge::*`.
 
 pub mod debug;
 pub mod settings;
 pub mod stacks;
 
-use uespy::ue::{GObjectsLayout, PlatformOffsets};
+use ueforge::ue::{GObjectsLayout, PlatformOffsets};
 
 // ---- Platform detection ----
 //
@@ -48,7 +48,7 @@ const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
 
 // ---- Mod metadata + entry points ----
 
-static MOD_INFO: uespy::ModInfo = uespy::ModInfo {
+static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     name: "OWS Tweaks",
     version: "0.1.0",
     log_file: "tweaks.log",
@@ -56,35 +56,35 @@ static MOD_INFO: uespy::ModInfo = uespy::ModInfo {
     console: cfg!(feature = "console"),
     on_unreal_init,
     on_shutdown,
-    tabs: &[uespy::Tab {
+    tabs: &[ueforge::Tab {
         name: "Tweaks",
         render: render_tweaks_tab,
     }],
 };
 
-uespy::ue4ss_mod!(MOD_INFO);
+ueforge::ue4ss_mod!(MOD_INFO);
 
 fn on_unreal_init() {
-    uespy::log::log(format_args!("on_unreal_init"));
+    ueforge::log::log(format_args!("on_unreal_init"));
 
-    let image_base = uespy::ue::platform::host_image_base();
-    let exe = uespy::ue::platform::host_exe_name().unwrap_or_default();
-    uespy::log::log(format_args!(
+    let image_base = ueforge::ue::platform::host_image_base();
+    let exe = ueforge::ue::platform::host_exe_name().unwrap_or_default();
+    ueforge::log::log(format_args!(
         "image_base = 0x{image_base:x}, host = {exe}"
     ));
 
     // Once OWS offsets are dumped: detect platform, init runtime,
     // spawn debug server, install drain trampoline.
-    let offsets = uespy::ue::platform::detect(PLATFORMS);
+    let offsets = ueforge::ue::platform::detect(PLATFORMS);
     if offsets.is_none() || offsets.is_some_and(|o| o.g_objects == 0) {
-        uespy::log::log(format_args!(
+        ueforge::log::log(format_args!(
             "WARN: OWS PlatformOffsets are stub zeros. Dump via \
              UE4SS CXXHeaderDumper, fill in src/lib.rs::STEAM, \
              then rebuild. /debug snapshot still works."
         ));
     } else if let Some(off) = offsets {
-        let _rt = unsafe { uespy::ue::init_runtime(image_base, off) };
-        uespy::log::log(format_args!(
+        let _rt = unsafe { ueforge::ue::init_runtime(image_base, off) };
+        ueforge::log::log(format_args!(
             "ue runtime ready, GObjects = 0x{:x}",
             image_base + off.g_objects
         ));
@@ -103,31 +103,31 @@ fn on_unreal_init() {
 }
 
 fn on_shutdown() {
-    uespy::log::log(format_args!("on_shutdown"));
+    ueforge::log::log(format_args!("on_shutdown"));
 }
 
 // ---- ImGui tab render ----
 
 fn render_tweaks_tab() {
-    uespy::ui::text("Outworld Station Tweaks");
-    uespy::ui::separator();
-    uespy::ui::spacing();
+    ueforge::ui::text("Outworld Station Tweaks");
+    ueforge::ui::separator();
+    ueforge::ui::spacing();
     render_stacks_section();
 }
 
 fn render_stacks_section() {
-    uespy::ui::text("Item stack multiplier");
-    uespy::ui::text_disabled(
+    ueforge::ui::text("Item stack multiplier");
+    ueforge::ui::text_disabled(
         "Multiplies every DT_Materials.MaxCanStack by this factor. \
          Applied once at game start; tweak + click Apply to re-run \
          live. Equipment items (vanilla cap 1) stay non-stackable.",
     );
-    uespy::ui::spacing();
+    ueforge::ui::spacing();
 
     // Slider state lives in stacks::MULTIPLIER. Read, present, write.
     let mut m = stacks::current_multiplier();
-    uespy::ui::set_next_item_width(220.0);
-    if uespy::ui::slider_i32(
+    ueforge::ui::set_next_item_width(220.0);
+    if ueforge::ui::slider_i32(
         "Multiplier (x vanilla)",
         &mut m,
         stacks::MIN_MULTIPLIER,
@@ -136,39 +136,39 @@ fn render_stacks_section() {
         stacks::set_multiplier(m);
     }
 
-    uespy::ui::spacing();
-    if uespy::ui::button("Apply") {
+    ueforge::ui::spacing();
+    if ueforge::ui::button("Apply") {
         match stacks::apply_now() {
-            Ok(n) => uespy::log::log(format_args!(
+            Ok(n) => ueforge::log::log(format_args!(
                 "stacks: tab applied {}x to {n} rows",
                 stacks::current_multiplier()
             )),
-            Err(e) => uespy::log::log(format_args!("stacks: tab apply failed: {e}")),
+            Err(e) => ueforge::log::log(format_args!("stacks: tab apply failed: {e}")),
         }
     }
-    uespy::ui::same_line();
-    if uespy::ui::button("Reset to 1x") {
+    ueforge::ui::same_line();
+    if ueforge::ui::button("Reset to 1x") {
         stacks::set_multiplier(1);
         match stacks::apply_now() {
-            Ok(n) => uespy::log::log(format_args!("stacks: tab reset to vanilla on {n} rows")),
-            Err(e) => uespy::log::log(format_args!("stacks: tab reset failed: {e}")),
+            Ok(n) => ueforge::log::log(format_args!("stacks: tab reset to vanilla on {n} rows")),
+            Err(e) => ueforge::log::log(format_args!("stacks: tab reset failed: {e}")),
         }
     }
 
-    uespy::ui::spacing();
-    uespy::ui::separator();
-    uespy::ui::text_disabled("Status");
+    ueforge::ui::spacing();
+    ueforge::ui::separator();
+    ueforge::ui::text_disabled("Status");
     if stacks::ever_applied() {
-        uespy::ui::text(&format!(
+        ueforge::ui::text(&format!(
             "Current: {}x   Last apply: {} rows",
             stacks::current_multiplier(),
             stacks::last_applied_rows(),
         ));
-        uespy::ui::text(&format!(
+        ueforge::ui::text(&format!(
             "Vanilla baseline captured: {} rows",
             stacks::vanilla_count(),
         ));
     } else {
-        uespy::ui::text_disabled("Not applied yet — DT_Materials still loading?");
+        ueforge::ui::text_disabled("Not applied yet — DT_Materials still loading?");
     }
 }

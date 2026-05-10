@@ -1,5 +1,5 @@
 // better-backpack still ships its own shim.cpp with the RPG tab
-// rendering inline. Until that migrates to uespy::ui + ue4ss_mod!,
+// rendering inline. Until that migrates to ueforge::ui + ue4ss_mod!,
 // skip the default shim so we don't double-export start_mod /
 // uninstall_mod / DllMain.
 //
@@ -7,7 +7,7 @@
 // everything.
 
 fn main() {
-    uespy::build::CppShim::new()
+    ueforge::build::CppShim::new()
         .source("cpp/shim.cpp")
         .skip_default_shim()
         .compile();

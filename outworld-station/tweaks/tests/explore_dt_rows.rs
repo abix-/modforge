@@ -53,7 +53,7 @@ fn dump_row_map_header() {
     };
     eprintln!("DT_Materials at {dt}");
 
-    // Read the TMap header at +0x30. uespy::ue::offsets::tmap
+    // Read the TMap header at +0x30. ueforge::ue::offsets::tmap
     // says ELEMENT_SIZE=24, DATA_NUM=8, but the wire-side has to
     // parse bytes itself.
     let r = api.op(

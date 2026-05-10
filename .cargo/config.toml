@@ -4,4 +4,4 @@ target-dir = "target"
 
 # `cargo deploy install -p tweaks` etc.
 [alias]
-deploy = "run -p uespy-deploy --release --quiet --"
+deploy = "run -p ueforge-deploy --release --quiet --"

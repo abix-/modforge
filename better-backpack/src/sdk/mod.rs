@@ -1,8 +1,8 @@
-// Re-export of uespy's UE bindings under the historic `sdk` name.
-// All implementation lives in `uespy::ue`. This shim keeps existing
+// Re-export of ueforge's UE bindings under the historic `sdk` name.
+// All implementation lives in `ueforge::ue`. This shim keeps existing
 // `crate::sdk::Foo` call sites working without churn.
 
-pub use uespy::ue::{fname, fstring, offsets, tarray, uobject};
+pub use ueforge::ue::{fname, fstring, offsets, tarray, uobject};
 
 pub use fname::FName;
 pub use fstring::FString;

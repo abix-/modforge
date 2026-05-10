@@ -17,9 +17,9 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use uespy::args::{arg_bool, arg_f64, arg_str, arg_u64};
-use uespy::envelope::{OpResponse as UespyResponse, parse_request};
-use uespy::pe_queue::Queue as PeQueue;
+use ueforge::args::{arg_bool, arg_f64, arg_str, arg_u64};
+use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
+use ueforge::pe_queue::Queue as PeQueue;
 
 use crate::bbp_log;
 use crate::inv_hook;
@@ -71,15 +71,15 @@ enum DebugCmd {
 
 /// Game-thread job queue. The HTTP handler enqueues a closure that
 /// captures a `DebugCmd`; the closure runs from `drain_pending` on
-/// the game thread. See `uespy::pe_queue` for mechanics.
+/// the game thread. See `ueforge::pe_queue` for mechanics.
 static PE_QUEUE: PeQueue = PeQueue::new();
 
 /// Ring buffer of recent damage / multicast events captured by
 /// the `kill_hook` trampoline. Populated by
 /// `record_damage_event()` from the trampoline; drained by the
 /// snapshot endpoint. Bounded (64) so a long session can't
-/// exhaust memory; mechanics in `uespy::ring::Ring`.
-static DAMAGE_RING: uespy::ring::Ring<DamageEvent> = uespy::ring::Ring::new(64);
+/// exhaust memory; mechanics in `ueforge::ring::Ring`.
+static DAMAGE_RING: ueforge::ring::Ring<DamageEvent> = ueforge::ring::Ring::new(64);
 
 #[derive(Clone, Serialize)]
 pub struct DamageEvent {
@@ -129,7 +129,7 @@ fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
 }
 
 /// Called from `kill_hook`'s trampoline (game thread). Wraps
-/// `uespy::Queue::drain` with our perf counters. The queue itself
+/// `ueforge::Queue::drain` with our perf counters. The queue itself
 /// owns the re-entrance guard, the lock-free empty-check, and the
 /// reply-channel plumbing.
 pub fn drain_pending() {
@@ -156,8 +156,8 @@ fn execute_on_game_thread(cmd: DebugCmd) -> Result<Json, String> {
 }
 
 pub fn spawn(port: u16) {
-    uespy::spawn(
-        uespy::Config {
+    ueforge::spawn(
+        ueforge::Config {
             port,
             endpoint: "/debug",
             thread_name: "bbp-debug-http",
@@ -301,12 +301,12 @@ fn op_call(args: &Json) -> Result<Json, String> {
     let class = arg_str(args, "class")?.to_string();
     let function = arg_str(args, "function")?.to_string();
     let selector = arg_str(args, "instance_selector")?.to_string();
-    let parms = uespy::hex::decode(arg_str(args, "parms_hex")?)?;
+    let parms = ueforge::hex::decode(arg_str(args, "parms_hex")?)?;
     PE_QUEUE
         .enqueue(
             move || {
                 let instance = resolve_instance(&selector)?;
-                let mut out = uespy::ops::exec_call(instance, &class, &function, parms)?;
+                let mut out = ueforge::ops::exec_call(instance, &class, &function, parms)?;
                 // Preserve historical "selector" echo in the result.
                 if let Some(obj) = out.as_object_mut() {
                     obj.insert("selector".into(), Json::String(selector.clone()));
@@ -328,7 +328,7 @@ fn op_call(args: &Json) -> Result<Json, String> {
 }
 
 fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
-    if let Some(r) = uespy::selector::resolve_generic(selector) {
+    if let Some(r) = ueforge::selector::resolve_generic(selector) {
         return r;
     }
     match selector {
@@ -357,21 +357,21 @@ fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
 // invoke any UFunction. The endpoint stops growing.
 
 fn op_read_bytes(args: &Json) -> Result<Json, String> {
-    uespy::ops::read_bytes(args, resolve_instance)
+    ueforge::ops::read_bytes(args, resolve_instance)
 }
 
 fn op_write_bytes(args: &Json) -> Result<Json, String> {
-    uespy::ops::write_bytes(args, resolve_instance)
+    ueforge::ops::write_bytes(args, resolve_instance)
 }
 
 fn op_walk_class(args: &Json) -> Result<Json, String> {
-    uespy::ops::walk_class(args)
+    ueforge::ops::walk_class(args)
 }
 
 fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
     let class_name = arg_str(args, "class")?;
     let k = arg_u64(args, "k", Some(20))? as usize;
-    Ok(uespy::ue::probe::class_outer_samples(class_name, k))
+    Ok(ueforge::ue::probe::class_outer_samples(class_name, k))
 }
 
 fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
@@ -823,7 +823,7 @@ fn build_snapshot() -> Snapshot {
         process_memory: crate::counters::process_memory_json(),
         process_cpu: crate::counters::process_cpu_json(),
         process_threads: crate::counters::process_threads_json(),
-        game_population: uespy::ue::probe::gobjects_population(40),
+        game_population: ueforge::ue::probe::gobjects_population(40),
         process_regions: crate::counters::process_regions_json(),
     }
 }

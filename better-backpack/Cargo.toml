@@ -10,8 +10,8 @@ publish.workspace = true
 name = "main"
 crate-type = ["cdylib", "rlib"]
 
-# Consumed by uespy/scripts/deploy.ps1.
-[package.metadata.uespy]
+# Consumed by ueforge/scripts/deploy.ps1.
+[package.metadata.ueforge]
 mod_folder_name  = "BetterBackpack"
 game_name_regex  = "Grounded"
 game_sub_path    = "Augusta/Binaries/WinGRTS"
@@ -29,7 +29,7 @@ widestring = { workspace = true }
 memoffset = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-uespy = { path = "../uespy" }
+ueforge = { path = "../ueforge" }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_Security",
@@ -47,7 +47,7 @@ windows-sys = { workspace = true, features = [
 ] }
 
 [build-dependencies]
-uespy = { path = "../uespy" }
+ueforge = { path = "../ueforge" }
 
 [dev-dependencies]
-uespy = { path = "../uespy" }
+ueforge = { path = "../ueforge" }
