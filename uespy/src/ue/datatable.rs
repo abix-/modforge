@@ -21,6 +21,8 @@
 //! let v: u32 = unsafe { (row.add(STACK_OFFSET) as *const u32).read_unaligned() };
 //! ```
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -100,6 +102,157 @@ where
             thread::sleep(interval);
         }
     });
+}
+
+// ---- FieldTweak<T> --------------------------------------------------------
+//
+// Generic primitive for "snapshot vanilla, mutate per row, re-apply on
+// demand without compounding". Used by stack-size mods, recipe yield
+// tweaks, drop-rate adjusters, anything that mutates a single fixed
+// field on every row of a known DataTable.
+
+/// Tweak helper: snapshots vanilla `T` per row on first apply,
+/// then writes `transform(vanilla)` to each row's field at
+/// `offset`. Subsequent applies recompute from the vanilla
+/// snapshot, so changing the transform (e.g. switching a slider
+/// from 4x to 8x) doesn't compound the previous result.
+///
+/// Typical use:
+///
+/// ```ignore
+/// static STACKS: FieldTweak<i32> =
+///     FieldTweak::new("DT_Materials", 0x48);
+///
+/// // From on_unreal_init:
+/// STACKS.apply_when_ready(
+///     Duration::from_secs(30),
+///     || (|v: i32| v.saturating_mul(current_multiplier())),
+///     || (|v: i32| v <= 1),
+/// );
+///
+/// // From a tab button click:
+/// STACKS.apply(
+///     |v| v.saturating_mul(current_multiplier()),
+///     |v| v <= 1,
+/// )?;
+/// ```
+///
+/// `T` must be `Copy + PartialEq` (we read-compare-write each
+/// row) and `Send + 'static` (we share state across threads).
+/// Common Ts: `i32`, `f32`, `u8`. Larger row fields (FName,
+/// FString, FVector) need bespoke logic — this primitive is for
+/// the simple primitive-typed case.
+pub struct FieldTweak<T: Copy + PartialEq + Send + 'static> {
+    table_name: &'static str,
+    offset: usize,
+    vanilla: OnceLock<Mutex<HashMap<u64, T>>>,
+}
+
+impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
+    pub const fn new(table_name: &'static str, offset: usize) -> Self {
+        Self {
+            table_name,
+            offset,
+            vanilla: OnceLock::new(),
+        }
+    }
+
+    /// Find the DT and apply once. `transform` and `skip_if` are
+    /// called with the VANILLA value (snapshotted on first sight
+    /// of each row), not the current mutated value.
+    pub fn apply<F, S>(&self, transform: F, skip_if: S) -> Result<usize, String>
+    where
+        F: Fn(T) -> T,
+        S: Fn(T) -> bool,
+    {
+        let table = find_by_short_name(self.table_name)
+            .ok_or_else(|| format!("DataTable '{}' not found", self.table_name))?;
+        self.apply_to(table, transform, skip_if)
+    }
+
+    /// Apply to a specific DT instance. Used internally by
+    /// `apply` and `apply_when_ready`; exposed for callers that
+    /// already have the table reference.
+    pub fn apply_to<F, S>(
+        &self,
+        table: &UObject,
+        transform: F,
+        skip_if: S,
+    ) -> Result<usize, String>
+    where
+        F: Fn(T) -> T,
+        S: Fn(T) -> bool,
+    {
+        let vanilla = self.vanilla.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut van = vanilla.lock().map_err(|_| "vanilla map poisoned")?;
+        let mut touched = 0usize;
+        unsafe {
+            for (fname, row_ptr) in iter_rows(table) {
+                if row_ptr.is_null() {
+                    continue;
+                }
+                let field_ptr = row_ptr.add(self.offset) as *mut T;
+                let cur = field_ptr.read_unaligned();
+                let vanilla_val = *van.entry(fname).or_insert(cur);
+                if skip_if(vanilla_val) {
+                    continue;
+                }
+                let target = transform(vanilla_val);
+                if cur != target {
+                    field_ptr.write_unaligned(target);
+                }
+                touched += 1;
+            }
+        }
+        Ok(touched)
+    }
+
+    /// Spawn a background worker that polls for the table (via
+    /// [`on_first_sight`]) and applies once on first sighting.
+    /// Mod feature code calls this from `on_unreal_init` so the
+    /// mutation lands BEFORE any UI / actor caches a row copy.
+    pub fn apply_when_ready<F, S>(&'static self, timeout: Duration, transform: F, skip_if: S)
+    where
+        F: Fn(T) -> T + Send + 'static,
+        S: Fn(T) -> bool + Send + 'static,
+    {
+        on_first_sight(self.table_name, timeout, move |table| {
+            match self.apply_to(table, &transform, &skip_if) {
+                Ok(n) => crate::log::log(format_args!(
+                    "FieldTweak<{}> applied to {n} rows of {}",
+                    std::any::type_name::<T>(),
+                    self.table_name
+                )),
+                Err(e) => crate::log::log(format_args!(
+                    "FieldTweak<{}> apply failed on {}: {e}",
+                    std::any::type_name::<T>(),
+                    self.table_name
+                )),
+            }
+        });
+    }
+
+    /// How many vanilla baselines have been snapshotted so far.
+    /// Useful for status displays in mod UIs.
+    pub fn vanilla_count(&self) -> usize {
+        self.vanilla
+            .get()
+            .map(|m| m.lock().map(|g| g.len()).unwrap_or(0))
+            .unwrap_or(0)
+    }
+
+    /// Reset every captured row back to its vanilla value.
+    /// Equivalent to `apply(|v| v, |_| false)`.
+    pub fn revert(&self) -> Result<usize, String> {
+        self.apply(|v| v, |_| false)
+    }
+
+    pub fn table_name(&self) -> &'static str {
+        self.table_name
+    }
+    pub fn offset(&self) -> usize {
+        self.offset
+    }
 }
 
 /// Find the first non-CDO `UDataTable` instance whose short name

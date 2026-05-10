@@ -1,0 +1,145 @@
+//! Persistent mod settings backed by a JSON file under the
+//! mod's DLL directory.
+//!
+//! Generic over the embedding crate's settings struct (must be
+//! `Serialize + Deserialize + Default + Clone`). Load on
+//! construction, atomically save on every mutation. Missing
+//! file -> defaults; parse errors -> defaults + a log line.
+//!
+//! ```ignore
+//! #[derive(Serialize, Deserialize, Default, Clone)]
+//! struct TweaksSettings {
+//!     #[serde(default)]
+//!     stacks: StacksSettings,
+//! }
+//!
+//! static SETTINGS: OnceLock<Settings<TweaksSettings>> = OnceLock::new();
+//! fn settings() -> &'static Settings<TweaksSettings> {
+//!     SETTINGS.get_or_init(|| Settings::load("tweaks.json"))
+//! }
+//!
+//! // Read:
+//! let mult = settings().get().stacks.multiplier;
+//!
+//! // Write (auto-saves to disk):
+//! settings().update(|s| s.stacks.multiplier = 8);
+//! ```
+//!
+//! Threading: mutations and reads are mutex-guarded. The save
+//! step happens inside the mutex, so concurrent updates serialize
+//! cleanly. Every update writes the entire struct via a temp file
+//! + rename for atomicity (POSIX semantics; on Windows
+//! `std::fs::rename` over an existing file is also atomic since
+//! 1809).
+
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+use serde::Serialize;
+use serde::de::DeserializeOwned;
+
+pub struct Settings<T> {
+    inner: Mutex<T>,
+    path: PathBuf,
+}
+
+impl<T> Settings<T>
+where
+    T: Serialize + DeserializeOwned + Default + Clone,
+{
+    /// Load `<DLL_dir>/<file_name>` into memory. Missing or
+    /// unparseable file falls back to `T::default()` with a log
+    /// line. The path is captured for subsequent `update` /
+    /// `save` calls.
+    pub fn load(file_name: &str) -> Self {
+        let path = match crate::log::dll_dir() {
+            Some(d) => d.join(file_name),
+            None => PathBuf::from(file_name),
+        };
+        let initial = match std::fs::read_to_string(&path) {
+            Ok(text) => match serde_json::from_str::<T>(&text) {
+                Ok(v) => {
+                    crate::log::log(format_args!(
+                        "settings: loaded {}",
+                        path.display()
+                    ));
+                    v
+                }
+                Err(e) => {
+                    crate::log::log(format_args!(
+                        "settings: parse error in {}: {} -- using defaults",
+                        path.display(),
+                        e
+                    ));
+                    T::default()
+                }
+            },
+            Err(_) => {
+                crate::log::log(format_args!(
+                    "settings: {} not found, using defaults",
+                    path.display()
+                ));
+                T::default()
+            }
+        };
+        Self {
+            inner: Mutex::new(initial),
+            path,
+        }
+    }
+
+    /// Snapshot the current settings. Cheap clone; safe to call
+    /// from any thread.
+    pub fn get(&self) -> T {
+        self.inner.lock().map(|g| g.clone()).unwrap_or_default()
+    }
+
+    /// Mutate settings and save the new state to disk. The
+    /// closure runs under the lock; keep it short. Returns the
+    /// mutated value (or `None` if the lock was poisoned).
+    ///
+    /// Save errors are logged but not surfaced — settings
+    /// persistence is best-effort and shouldn't break gameplay
+    /// callsites.
+    pub fn update<F>(&self, f: F) -> Option<T>
+    where
+        F: FnOnce(&mut T),
+    {
+        let mut g = self.inner.lock().ok()?;
+        f(&mut *g);
+        let snap = g.clone();
+        if let Err(e) = save_atomic(&self.path, &*g) {
+            crate::log::log(format_args!(
+                "settings: save to {} failed: {}",
+                self.path.display(),
+                e
+            ));
+        }
+        Some(snap)
+    }
+
+    /// Force a save without mutating. Useful when settings were
+    /// updated via raw `set` / direct field access from a
+    /// trusted callsite.
+    pub fn save(&self) -> std::io::Result<()> {
+        let g = self
+            .inner
+            .lock()
+            .map_err(|_| std::io::Error::other("settings: mutex poisoned"))?;
+        save_atomic(&self.path, &*g)
+    }
+
+    /// Path of the backing file. Useful for diagnostic logging.
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+fn save_atomic<T: Serialize>(path: &std::path::Path, value: &T) -> std::io::Result<()> {
+    let json = serde_json::to_string_pretty(value)
+        .map_err(|e| std::io::Error::other(format!("serialize: {e}")))?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}

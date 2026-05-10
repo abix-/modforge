@@ -30,6 +30,7 @@ pub mod pe_queue;
 pub mod ring;
 pub mod selector;
 pub mod server;
+pub mod settings;
 pub mod ue;
 pub mod ui;
 pub mod winproc;

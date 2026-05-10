@@ -10,6 +10,7 @@
 //! is `use uespy::*`.
 
 pub mod debug;
+pub mod settings;
 pub mod stacks;
 
 use uespy::ue::{GObjectsLayout, PlatformOffsets};
