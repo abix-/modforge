@@ -3,6 +3,7 @@
 
 #![allow(dead_code)]
 
+pub mod function_table;
 pub mod process_event;
 pub mod vtable;
 

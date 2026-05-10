@@ -360,14 +360,16 @@ promotions (`Catalog<E>`, `apply_skill` dispatcher shape,
   exec_apply_damage / exec_set_current_health). Workspace builds
   clean release; ueforge tests green (8 passing). In-game smoke
   test pending.
-- [ ] **A2. `ueforge::hook::function_table!` decl-macro** -- table of
-  UFunction-pointer-identity slots. `function_table!(InvIfaceFns {
-  construct, on_mouse_wheel, ... })` expands to a struct with
-  `usize` slots + `install(&UClass) -> Self` + `match_fn(usize) ->
-  Option<&'static str>` for trampolines. Migrates `bbp/inv_hook.rs:
-  38-79` (`InvIfaceFns` / `PanelFns`). ~80 LoC dropped. Depends on
-  A1. **Acceptance:** macro expands; identity dispatch works;
-  `kill_hook` and `inv_hook` keep firing.
+- [x] **A2. `ueforge::function_table!` decl-macro** -- struct-of-`usize`
+  table with `install(&UClass) -> Result<Self, &'static str>`.
+  `required` slots return `Err(<fn-name>)` if missing; `optional`
+  slots land as `0`. Lives at `ueforge/src/hook/function_table.rs`,
+  re-exported at crate root. 2 unit tests exercise expansion +
+  CLASS_NAME const. Migrations: `bbp/inv_hook.rs::InvIfaceFns` (11
+  fns) and `PanelFns` (2 fns). `BpfFns` / `KismetInputFns` kept
+  hand-rolled (1 fn + 1 CDO each, below the macro ROI threshold).
+  ~58 LoC dropped from bbp; release workspace builds clean.
+  In-game smoke test pending.
 - [ ] **A3. `ueforge::ue::TypedField<T>`** -- typed offset wrapper.
   `const HEALTH: TypedField<*mut UObject> = TypedField::at(0x1340)`,
   `HEALTH.read(obj)` / `HEALTH.write(obj, v)`. Centralizes

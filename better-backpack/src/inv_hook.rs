@@ -21,7 +21,7 @@ use crate::parms::{
     InitializeItemSlotParms, IntReturnParms, OnMouseWheelInputView, PointerEventGetWheelDeltaParms,
     SelectedIndexParms, SetSelectedInventorySlotParms,
 };
-use ueforge::ue::{self, ClassRef, UClass, UFunction, UObject};
+use ueforge::ue::{self, ClassRef, UFunction, UObject};
 
 const VIEWPORT_ROWS: i32 = 4;
 const VIEWPORT_COLUMNS: i32 = 10;
@@ -29,26 +29,30 @@ const VIEWPORT_PAGE_SIZE: i32 = VIEWPORT_ROWS * VIEWPORT_COLUMNS;
 const SCROLL_STEP_SLOTS: i32 = VIEWPORT_COLUMNS;
 const INV_IFACE_ITEM_GRID_OFFSET: usize = 0x0430;
 
-// Cached UFunction pointers for identity dispatch. Captured once at hook
-// install. Wrapped in raw `usize` because UFunction references aren't
-// `Send` / `Sync`-clean and we only need pointer identity.
-struct InvIfaceFns {
-    populate_item_grid: usize,
-    construct: usize,
-    on_mouse_wheel: usize,
-    on_inventory_changed: usize,
-    on_inventory_count_changed: usize,
-    refresh_ui: usize,
-    refresh_menu_page: usize,
-    get_inventory_items: usize,
-    get_selected_inventory_slot_index: usize,
-    set_selected_inventory_slot: usize,
-    initialize_item_slot: usize,
+// Cached UFunction pointers for identity dispatch. Resolved once at
+// hook install via `ueforge::function_table!`; matched by pointer
+// identity in the trampoline.
+ueforge::function_table! {
+    struct InvIfaceFns for "WBP_InventoryInterface_C" {
+        required populate_item_grid: "PopulateItemGrid",
+        required construct: "Construct",
+        required on_mouse_wheel: "OnMouseWheel",
+        optional on_inventory_changed: "OnInventoryChanged",
+        optional on_inventory_count_changed: "OnInventoryCountChanged",
+        optional refresh_ui: "RefreshUI",
+        optional refresh_menu_page: "RefreshMenuPage",
+        required get_inventory_items: "GetInventoryItems",
+        optional get_selected_inventory_slot_index: "GetSelectedInventorySlotIndex",
+        optional set_selected_inventory_slot: "SetSelectedInventorySlot",
+        required initialize_item_slot: "InitializeItemSlot",
+    }
 }
 
-struct PanelFns {
-    get_children_count: usize,
-    get_child_at: usize,
+ueforge::function_table! {
+    struct PanelFns for "PanelWidget" {
+        required get_children_count: "GetChildrenCount",
+        required get_child_at: "GetChildAt",
+    }
 }
 
 struct BpfFns {
@@ -89,72 +93,23 @@ pub fn install(slot_count: i32) -> Result<ProcessEventHook, &'static str> {
     let bpf_class = BPF_INV.get().ok_or("BPF_InventoryFunctions_C not loaded")?;
     let kismet_class = KISMET.get().ok_or("KismetInputLibrary not loaded")?;
 
-    let inv_fns = InvIfaceFns {
-        populate_item_grid: lookup(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "PopulateItemGrid",
-        )?,
-        construct: lookup(inv_iface_class, "WBP_InventoryInterface_C", "Construct")?,
-        on_mouse_wheel: lookup(inv_iface_class, "WBP_InventoryInterface_C", "OnMouseWheel")?,
-        on_inventory_changed: lookup_optional(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "OnInventoryChanged",
-        ),
-        on_inventory_count_changed: lookup_optional(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "OnInventoryCountChanged",
-        ),
-        refresh_ui: lookup_optional(inv_iface_class, "WBP_InventoryInterface_C", "RefreshUI"),
-        refresh_menu_page: lookup_optional(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "RefreshMenuPage",
-        ),
-        get_inventory_items: lookup(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "GetInventoryItems",
-        )?,
-        get_selected_inventory_slot_index: lookup_optional(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "GetSelectedInventorySlotIndex",
-        ),
-        set_selected_inventory_slot: lookup_optional(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "SetSelectedInventorySlot",
-        ),
-        initialize_item_slot: lookup(
-            inv_iface_class,
-            "WBP_InventoryInterface_C",
-            "InitializeItemSlot",
-        )?,
-    };
-    let panel = PanelFns {
-        get_children_count: lookup(panel_widget, "PanelWidget", "GetChildrenCount")?,
-        get_child_at: lookup(panel_widget, "PanelWidget", "GetChildAt")?,
-    };
+    let inv_fns = InvIfaceFns::install(inv_iface_class)?;
+    let panel = PanelFns::install(panel_widget)?;
     let bpf = BpfFns {
         cdo: bpf_class.class_default_object().ok_or("BPF CDO missing")? as *const UObject,
-        get_item_in_item_list_slot: lookup(
-            bpf_class,
-            "BPF_InventoryFunctions_C",
-            "GetItemInItemListSlot",
-        )?,
+        get_item_in_item_list_slot: bpf_class
+            .get_function("BPF_InventoryFunctions_C", "GetItemInItemListSlot")
+            .map(|f| f as *const UFunction as usize)
+            .ok_or("BPF_InventoryFunctions_C.GetItemInItemListSlot not found")?,
     };
     let kismet = KismetInputFns {
         cdo: kismet_class
             .class_default_object()
             .ok_or("KismetInputLibrary CDO missing")? as *const UObject,
-        pointer_event_get_wheel_delta: lookup(
-            kismet_class,
-            "KismetInputLibrary",
-            "PointerEvent_GetWheelDelta",
-        )?,
+        pointer_event_get_wheel_delta: kismet_class
+            .get_function("KismetInputLibrary", "PointerEvent_GetWheelDelta")
+            .map(|f| f as *const UFunction as usize)
+            .ok_or("KismetInputLibrary.PointerEvent_GetWheelDelta not found")?,
     };
 
     let _ = STATE.set(State {
@@ -184,18 +139,6 @@ pub fn current_slot_count() -> i32 {
     STATE
         .get()
         .map(|s| s.slot_count.load(Ordering::Acquire))
-        .unwrap_or(0)
-}
-
-fn lookup(cls: &UClass, owner: &str, name: &str) -> Result<usize, &'static str> {
-    cls.get_function(owner, name)
-        .map(|f| f as *const UFunction as usize)
-        .ok_or("function not found on inventory interface")
-}
-
-fn lookup_optional(cls: &UClass, owner: &str, name: &str) -> usize {
-    cls.get_function(owner, name)
-        .map(|f| f as *const UFunction as usize)
         .unwrap_or(0)
 }
 
