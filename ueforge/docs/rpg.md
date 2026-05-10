@@ -7,175 +7,236 @@
 ueforge ships the bones of an RPG mod -- catalog row + lookup,
 state schema, persistence layer, slot detection, level math,
 skill-spend mechanics, ImGui tab template, vanilla baseline
-cache. The game crate supplies only the bones-meat:
+cache, and a library of standard `Effect` types covering ~90% of
+common operations. The game crate supplies only:
 
-- A `SkillEffect` enum naming every kind of skill-write the
-  game implements.
-- The `CATALOG` content (which skills exist with what numbers).
-- An `RpgApplier` impl that dispatches the variants.
-- Per-skill format text.
+- The `CATALOG` content (which skills exist, with what
+  parameters, picking framework `Effect` types where possible).
+- Per-game `Effect` impls for the 10% of operations the
+  framework doesn't already cover.
 - The kill / damage hook that calls `record_xp`.
+- Game-specific selectors (`live_player`, etc.) registered with
+  `ueforge::selector`.
 
 That's the irreducibly game-specific surface. Everything else
 flows from one of the types in this doc.
 
-## The seam: SkillEffect + StandardEffect + RpgApplier
+## The composition model
 
-The game's `SkillEffect` enum wraps `StandardEffect` for the
-9 universal skill shapes the framework already covers, plus
-game-specific composites. This pattern landed Phase 3 wave 2
-(2026-05-10): g2rpg's catalog dropped from 11 SkillEffect
-variants to 4, and 9 of 13 catalog skills route through
-`StandardEffect` with zero per-variant apply code.
+Per [architecture.md](architecture.md), a Skill is one Effect
+applied with parameters at a level, fired by a Trigger:
+
+```text
+SkillDef = id + display_name + max_level + EffectDef + TriggerDef
+EffectDef = kind + &dyn Effect              -- WHAT to do
+TriggerDef = kind + &dyn Trigger            -- WHEN to do it
+```
+
+Effects are types implementing the `Effect` trait. Each
+`<X>Effect` struct captures one game operation we figured out
+how to perform; instances of that struct are individual
+parameterizations (one per skill). New operation = one new type
++ one impl. New skill that uses an existing operation = one new
+catalog row + one new static instance.
+
+## Effect trait
 
 ```rust
-use ueforge::rpg::std_effect::StandardEffect;
+pub trait Effect: Send + Sync + 'static {
+    fn apply(&self, level: u32, max_level: u32, ctx: &TriggerCtx);
+    fn format(&self, level: u32, max_level: u32) -> String;
+}
 
-#[derive(Clone, Copy)]
-pub enum SkillEffect {
-    /// 9 of N catalog skills route through ueforge's
-    /// canonical variant menu. The Standard arm forwards
-    /// `e.apply(level, max_level, &PLAYER)` -- zero
-    /// game-specific dispatch.
-    Standard(StandardEffect),
-
-    /// Game-specific composites that StandardEffect doesn't
-    /// model. Stay game-side.
-    BackpackSlots { max_bonus_slots: i32 },
-    SurvivalDrain { /* settings-multiplier composite */ },
-    PlayerFallDamageReduction { /* HC + GMS + SMMC + UFunction */ },
+pub struct EffectDef {
+    pub kind: &'static str,
+    pub imp: &'static dyn Effect,
 }
 ```
 
-The 8 `StandardEffect` variants:
+`apply` does the work. `format` produces the ImGui-row text.
+The `&TriggerCtx` argument carries typed event data when the
+trigger is event-driven; CDO-write effects receive
+`TriggerCtx::SlotChange` and ignore the payload.
 
-| Variant | Pattern |
+## Standard Effect types (framework-shipped)
+
+Eight types in `ueforge::rpg::effect` cover the common UE5 RPG
+operations. Game catalogs reference them via static instances
++ `EffectDef::new(kind, &INSTANCE)`:
+
+| Type | Pattern |
 |---|---|
-| `PlayerFloat` | Direct f32 write at offset on player CDO + live |
-| `PlayerSubcomponentFloat` | f32 on player subcomponent (HC, CMC, etc) |
-| `PlayerSubcomponentAdditive` | Captured-vanilla + bonus (Max Health pattern) |
-| `PlayerSubcomponentU32Mask` | Binary u32 mask (impact-resistance pattern) |
-| `PlayerSubcomponentMultiply` | Captured-vanilla * (1 + bonus * progress) over offsets |
-| `ClassFieldsMultiply` | Same shape on every instance of a class (regen / global-data) |
-| `Runtime` | No CDO write; hot-path callback owns the effect |
-| `StatusEffect` | UE5 row-driven status effect via UFunction |
+| `PlayerFloatEffect` | Direct f32 write at offset on player CDO + live |
+| `SubcomponentFloatEffect` | f32 on player subcomponent (HC, CMC, etc) |
+| `SubcomponentAdditiveEffect` | Captured-vanilla + bonus (Max Health pattern) |
+| `SubcomponentU32MaskEffect` | Binary u32 mask (impact-resistance pattern) |
+| `SubcomponentMultiplyEffect` | Captured-vanilla * (1 + bonus * progress) over offsets |
+| `ClassFieldsMultiplyEffect` | Same shape on every instance of a class (regen / global-data) |
+| `RuntimeEffect` | No CDO write; hot-path callback owns the effect |
+| `StatusEffectApply` | UE5 row-driven status effect via UFunction |
 
-The game's catalog is mostly `Standard(...)` rows; the rest are
-the irreducibly game-specific composites:
+Adding a skill that uses one of these is two declarations:
 
 ```rust
-pub const CATALOG: &[Skill] = &[
-    Skill {
-        id: "attack_damage",
-        max_level: 100,
-        effect: SkillEffect::Standard(StandardEffect::PlayerFloat {
-            offset: TypedField::at(0x12B8),
-            base: 1.0, max_bonus: 3.0,
-            format: PercentFormat::PlusPercentMult { word: "damage" },
-        }),
-    },
-    Skill {
-        id: "lifesteal",
-        max_level: 100,
-        effect: SkillEffect::Standard(StandardEffect::Runtime {
-            max_bonus: 0.90,
-            format: PercentFormat::PlusPercent { word: "lifesteal" },
-        }),
-    },
-    Skill {
-        id: "backpack",
-        max_level: 100,
-        // Game-specific composite (not in StandardEffect).
-        effect: SkillEffect::BackpackSlots { max_bonus_slots: 460 },
-    },
-    /* ... */
-];
+use ueforge::rpg::{EffectDef, PlayerFloatEffect, SkillDef};
+
+static EFFECT_ATTACK_DAMAGE: PlayerFloatEffect = PlayerFloatEffect {
+    player: &PLAYER,
+    offset: TypedField::at(0x12B8),
+    base: 1.0,
+    max_bonus: 3.00,
+    format: PercentFormat::PlusPercentMult { word: "damage" },
+};
+
+// In CATALOG_ENTRIES:
+SkillDef {
+    id: "attack_damage",
+    display_name: "Attack Damage",
+    max_level: 100,
+    effect: EffectDef::new("PlayerFloat", &EFFECT_ATTACK_DAMAGE),
+    trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
+},
 ```
 
-Apply dispatch shrinks to 4 arms (1 Standard + 3 game composites):
+## Game-specific Effects
+
+When the operation isn't in the framework menu, the game crate
+declares its own type + impl + static instance:
 
 ```rust
-fn apply_skill(state: &SkillsState, skill: &Skill) {
-    let level = state.level_of(skill.id);
-    if level == 0 { return; }
-    match &skill.effect {
-        SkillEffect::Standard(e) => {
-            let effective = if is_skill_enabled(skill.id) { level } else { 0 };
-            e.apply(effective, skill.max_level, &PLAYER);
-        }
-        SkillEffect::BackpackSlots { .. } => { /* G2-specific */ }
-        SkillEffect::SurvivalDrain { .. } => { /* G2-specific */ }
-        SkillEffect::PlayerFallDamageReduction { .. } => { /* G2-specific */ }
-    }
+// grounded2-rpg/src/rpg/effects.rs
+use ueforge::rpg::Effect;
+
+pub struct BackpackSlotsEffect {
+    pub max_bonus_slots: i32,
 }
-```
 
-### Format dispatch
-
-`StandardEffect::format(level, max_level)` produces the per-skill
-ImGui-row text for the 8 variants. Game crates delegate the
-Standard arm; the format match collapses to:
-
-```rust
-pub fn format_effect(skill: &Skill, level: u32) -> String {
-    match &skill.effect {
-        SkillEffect::Standard(e) => e.format(level, skill.max_level),
-        SkillEffect::BackpackSlots { max_bonus_slots } => format!("+{} slots", ...),
-        SkillEffect::SurvivalDrain { .. } => format!("-{}% drain", ...),
-        SkillEffect::PlayerFallDamageReduction { .. } => format!("-{}% fall damage", ...),
+impl Effect for BackpackSlotsEffect {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
+        // ... game-specific logic accessing crate::settings,
+        //     crate::patch::run, crate::inv_hook, etc. ...
     }
+    fn format(&self, level: u32, _max_level: u32) -> String { ... }
 }
+
+pub static BACKPACK: BackpackSlotsEffect = BackpackSlotsEffect {
+    max_bonus_slots: 460,
+};
 ```
-```
 
-The trait has three methods:
-- `apply_skill(state, skill)` -- write the skill's effect at the
-  current level. Called on spend/refund/toggle/slot-activate.
-- `apply_all(state, catalog)` -- defaults to walking catalog
-  and calling `apply_skill` per row. Override if dependency
-  ordering matters.
-- `format_effect(skill, level)` -- pretty text for the ImGui
-  row ("+25% damage", "+460 slots", "-50% drain").
-
-ueforge owns persistence, state, dispatch shape; you own the
-match arms.
-
-## Skill<E> -- catalog row
+Then the catalog row references it:
 
 ```rust
-pub struct Skill<E: 'static> {
+SkillDef {
+    id: "backpack",
+    display_name: "Backpack",
+    max_level: 100,
+    effect: EffectDef::new("BackpackSlots", &crate::rpg::effects::BACKPACK),
+    trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
+},
+```
+
+There's no central `apply_skill` match anymore -- `Tracker`
+iterates the catalog and calls `effect.apply(...)` per row. The
+trait dispatches to the right impl.
+
+## HealthBinding -- universal HC simulation ops
+
+`ueforge::rpg::health::HealthBinding` lets a game declare its
+HealthComponent constants once and get framework-shipped
+`simulate_add_health` + `simulate_set_current_health` ops
+registered into `OP_REGISTRY`:
+
+```rust
+static HEALTH_CLASS: ueforge::ue::ClassRef =
+    ueforge::ue::ClassRef::new("HealthComponent");
+
+static HEALTH_BINDING: ueforge::rpg::health::HealthBinding =
+    ueforge::rpg::health::HealthBinding {
+        hc_class: &HEALTH_CLASS,
+        hc_selector: "live_player_hc",
+        current_damage_offset: 0x032C,
+        max_health_offset: 0x0328,
+        add_health_function: Some("AddHealth"),
+        set_current_health_function: Some("SetCurrentHealth"),
+    };
+
+// From worker():
+ueforge::rpg::health::register(&HEALTH_BINDING, &PE_QUEUE, PE_TIMEOUT_HINT);
+```
+
+Same pattern as `damage::DamageBinder` and
+`inventory::ViewportBinder`: framework ships the op handlers +
+parm shapes (Maine-canonical: `AddHealth(amount, causer)`,
+`SetCurrentHealth(desired_health)`); game declares the binding.
+Each op in the binding is conditional -- `Some(name)` registers
+it; `None` skips. `simulate_apply_damage` is intentionally NOT
+shipped (PE re-entry hazard; gated on Wave E1 safe drain site).
+
+## Triggers
+
+Each catalog row carries `trigger: &'static TriggerDef`. The
+framework ships `ON_SLOT_CHANGE` (the trigger every CDO-write
+skill uses); future event-driven triggers (`OnDamageDealt`,
+`OnKill`, `OnFall`, `Periodic`) will land in the framework so
+event-driven skills declare them inline.
+
+`Tracker` fires `TriggerCtx::SlotChange` on activate / spend /
+refund / toggle. Per-trigger event dispatchers (lifted from
+today's `kill_hook` / `fall_hook` / `damage::DamageHook`) fire
+the typed variants when their underlying event happens.
+
+See [architecture.md](architecture.md) "Composition model" for
+the full Hook vs Trigger layering rationale.
+
+## SkillDef -- catalog row
+
+```rust
+pub struct SkillDef {
     pub id: &'static str,
     pub display_name: &'static str,
     pub max_level: u32,
-    pub effect: E,
+    pub effect: EffectDef,
+    pub trigger: &'static TriggerDef,
 }
 
-pub fn find_skill<'a, E>(catalog: &'a [Skill<E>], id: &str)
-    -> Option<&'a Skill<E>>;
+pub struct SkillRegistry {
+    entries: &'static [SkillDef],
+}
+impl SkillRegistry {
+    pub const fn new(entries: &'static [SkillDef]) -> Self;
+    pub fn def(&self, id: &str) -> Option<&'static SkillDef>;
+    pub fn entries(&self) -> &'static [SkillDef];
+    pub fn iter(&self) -> std::slice::Iter<'_, SkillDef>;
+}
 ```
 
-`E` is parameterized -- the game supplies its own enum. Catalog
-is a `&'static [Skill<E>]`:
+No type parameters -- `SkillDef`/`SkillRegistry`/`Tracker` are
+all concrete types. Catalog declaration:
 
 ```rust
-pub static CATALOG: &[Skill<SkillEffect>] = &[
-    Skill {
+pub const CATALOG_ENTRIES: &[SkillDef] = &[
+    SkillDef {
         id: "backpack",
         display_name: "Backpack",
         max_level: 100,
-        effect: SkillEffect::BackpackSlots { max_bonus: 460 },
+        effect: EffectDef::new("BackpackSlots", &crate::rpg::effects::BACKPACK),
+        trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
     },
-    Skill {
+    SkillDef {
         id: "attack_damage",
         display_name: "Attack Damage",
         max_level: 100,
-        effect: SkillEffect::PlayerCharFloat { /* ... */ },
+        effect: EffectDef::new("PlayerFloat", &EFFECT_ATTACK_DAMAGE),
+        trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
     },
     // ...
 ];
+
+pub static CATALOG: SkillRegistry = SkillRegistry::new(CATALOG_ENTRIES);
 ```
 
-`find_skill(CATALOG, id)` is O(N) linear scan; catalogs are tiny
+`CATALOG.def(id)` is O(N) linear scan; catalogs are tiny
 (~25 rows) and lookups are cold-path (button click, snapshot,
 ImGui label). No hashmap.
 
@@ -211,7 +272,7 @@ migrations branch on this value at load.
 were removed deliberately: an in-memory mutator without a save
 hook is a trapdoor -- a sloppy caller mutates the copy and a
 crash before the next persist loses the change. The only
-mutation path is `Tracker<A>::spend_skill_points` /
+mutation path is `Tracker::spend_skill_points` /
 `refund_skill_points`, which mutate state and persist under the
 same lock with explicit rollback.
 
@@ -335,17 +396,19 @@ level 100 = 100%. The default skill scaling. Game `apply` arms
 multiply `max_bonus * sqrt_progress(level, skill.max_level)` to
 get the at-level bonus.
 
-## Tracker<A: RpgApplier>
+## Tracker
 
 The runtime entry point. Owns slot binding, in-memory state,
-applier instance, persistence. Drives every state change
-transactionally with disk save.
+the canonical `DisabledSkills` toggle set, persistence. Drives
+every state change transactionally with disk save. No type
+parameters -- the catalog is concrete `&'static SkillRegistry`,
+and apply dispatches via `SkillDef.effect.imp` (trait object).
 
 ```rust
 use ueforge::rpg::{Tracker, Curve};
 
-pub static TRACKER: Tracker<GameApplier> = Tracker::new(
-    CATALOG,
+pub static TRACKER: Tracker = Tracker::new(
+    &CATALOG,
     Curve::new(100.0, 1.8, 50),
     "saves",
 );
@@ -354,15 +417,16 @@ pub static TRACKER: Tracker<GameApplier> = Tracker::new(
 ### Slot lifecycle
 
 ```rust
-TRACKER.activate_slot(slot_key, GameApplier { settings });
+TRACKER.activate_slot(slot_key);
 // ... gameplay ...
 TRACKER.deactivate_slot();
 ```
 
 `activate_slot` loads `<DLL_dir>/saves/<slot_key>.json` (or
 default if missing), reconciles `level` from `xp` if needed,
-calls `applier.apply_all(catalog)` so the world reflects
-current skill levels, stores the (slot, state, applier) triple.
+iterates the catalog and calls `effect.apply(level, max,
+TriggerCtx::SlotChange)` per row so the world reflects current
+skill levels.
 
 `deactivate_slot` drops the in-memory state.
 
@@ -386,8 +450,9 @@ lock:
    "absent" case).
 3. Mutate `SkillsState` in-memory.
 4. Persist via `store.save(slot, state)`.
-5. **On save success:** call `applier.apply_skill(state, skill)`
-   to push the change into the live world.
+5. **On save success:** call `skill.effect.apply(level, max,
+   TriggerCtx::SlotChange)` to push the change into the live
+   world.
 6. **On save failure:** restore the snapshotted values, log the
    error, return `0`. The world is NOT touched -- the session
    reflects what's actually on disk.
@@ -482,7 +547,7 @@ Plug into `SlotPoller`:
 SlotPoller::spawn(
     Duration::from_secs(1),
     || RESOLVER.resolve(),
-    |slot| TRACKER.activate_slot(slot, GameApplier { settings }),
+    |slot| TRACKER.activate_slot(slot),
     || TRACKER.deactivate_slot(),
 );
 ```
@@ -510,22 +575,22 @@ silently (kovarex P1 -- need logged payload).
 ## DisabledSkills -- per-skill on/off toggle
 
 ```rust
-pub static DISABLED_SKILLS: ueforge::rpg::DisabledSkills =
-    ueforge::rpg::DisabledSkills::new();
-
-DISABLED_SKILLS.set("attack_damage", true);          // disabled
-DISABLED_SKILLS.is_disabled("attack_damage");        // true
-DISABLED_SKILLS.snapshot();                          // Vec<&'static str>
+let disabled = TRACKER.disabled_skills();
+disabled.set("attack_damage", true);          // disabled
+disabled.is_disabled("attack_damage");        // true
+disabled.snapshot();                          // Vec<&'static str>
 ```
 
-Process-global. Disabling treats a skill as level 0 in the
-apply path without refunding the player's points -- "drop a
-buff on demand" toggles in the ImGui tab. Not persisted.
+Owned by `Tracker` -- one canonical store per RPG mod. Disabling
+treats a skill as level 0 in the apply path without refunding
+the player's points -- "drop a buff on demand" toggles in the
+ImGui tab. Not persisted.
 
-The `RpgApplier::apply_skill` impl decides whether to honor the
-disabled flag (for a `Runtime` effect, "disabled" means the
-trampoline reads level 0; for a CDO write, "disabled" means
-restore vanilla).
+`Tracker::apply_one_unlocked` checks `disabled.is_disabled(id)`
+before calling `effect.apply` and substitutes level=0 when the
+skill is disabled. CDO-write effects naturally restore vanilla
+at level=0; `RuntimeEffect`s no-op so their hot-path callback
+sees the disabled state via the same accessor.
 
 ## VanillaCache<K, V> -- baseline capture
 
@@ -581,7 +646,7 @@ pub fn render() {
    - `+1` / `+10` buttons (gated on points + below max)
    - `-1` / `-10` buttons (gated on level > 0)
    - Optional `on` checkbox (if `ToggleFns` supplied)
-   - Effect text from `applier.format_effect(skill, level)`
+   - Effect text from `skill.effect.format(level, skill.max_level)`
    - Next-level preview when below max
 3. **Debug footer** -- `+5 / +50 skill points` for testing.
 
@@ -597,23 +662,32 @@ read; the inner lock is held briefly.
 The full g2rpg-shaped wiring:
 
 ```rust
+// Game-specific Effect impls (the 10% the framework menu doesn't cover):
+pub struct BackpackSlotsEffect { pub max_bonus_slots: i32 }
+impl Effect for BackpackSlotsEffect { /* ... */ }
+pub static BACKPACK: BackpackSlotsEffect = BackpackSlotsEffect { max_bonus_slots: 460 };
+
+// Framework Effect static instances per skill:
+static EFFECT_ATTACK_DAMAGE: PlayerFloatEffect = PlayerFloatEffect { /* ... */ };
+
 // catalog (game-specific):
-pub static CATALOG: &[Skill<SkillEffect>] = &[
-    Skill { id: "backpack",       max_level: 100, ... },
-    Skill { id: "attack_damage",  max_level: 100, ... },
+pub const CATALOG_ENTRIES: &[SkillDef] = &[
+    SkillDef {
+        id: "backpack", display_name: "Backpack", max_level: 100,
+        effect: EffectDef::new("BackpackSlots", &BACKPACK),
+        trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
+    },
+    SkillDef {
+        id: "attack_damage", display_name: "Attack Damage", max_level: 100,
+        effect: EffectDef::new("PlayerFloat", &EFFECT_ATTACK_DAMAGE),
+        trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE,
+    },
 ];
+pub static CATALOG: SkillRegistry = SkillRegistry::new(CATALOG_ENTRIES);
 
-// applier (game-specific):
-pub struct GameApplier { settings: Settings }
-impl RpgApplier for GameApplier {
-    type Effect = SkillEffect;
-    fn apply_skill(...) { /* match on skill.effect */ }
-    fn format_effect(...) { /* pretty text */ }
-}
-
-// tracker (one static, generic):
-pub static TRACKER: Tracker<GameApplier> = Tracker::new(
-    CATALOG,
+// tracker (one static, no type parameters):
+pub static TRACKER: Tracker = Tracker::new(
+    &CATALOG,
     Curve::new(100.0, 1.8, 50),
     "saves",
 );
@@ -626,7 +700,7 @@ pub static RESOLVER: SlotKeyResolver =
 SlotPoller::spawn(
     Duration::from_secs(1),
     || RESOLVER.resolve(),
-    |slot| TRACKER.activate_slot(slot, GameApplier { settings }),
+    |slot| TRACKER.activate_slot(slot),
     || TRACKER.deactivate_slot(),
 );
 
@@ -637,7 +711,7 @@ fn on_kill(creature_class: &str) {
 }
 
 // ImGui tab:
-ueforge::Tab {
+ueforge::TabDef {
     name: "RPG",
     render: || ueforge::rpg::tab::render(&TRACKER, Some(&TOGGLES)),
 }

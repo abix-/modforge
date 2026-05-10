@@ -5,7 +5,7 @@
 > survival / action game uses some variant of this shape; the
 > class names + enum values + data-table paths differ per game,
 > but the **pattern is the same**. ueforge's
-> `StandardEffect::StatusEffect` variant + `ue::status_effect`
+> `StatusEffectApply` variant + `ue::status_effect`
 > module bind to it.
 >
 > For Grounded 2's specific layout (Maine offsets, enum
@@ -148,7 +148,7 @@ effect at `Type=CriticalHitChance (add)` it should be `> 0.0`.
    path; UE class manipulation at runtime is nontrivial.
 
 For (1) and (2) ueforge ships
-[`StandardEffect::StatusEffect`](../src/rpg/std_effect.rs) --
+[`StatusEffectApply`](../src/rpg/effect.rs) --
 declare a catalog row with the table-finder, component class,
 row FName, value-at-max, and a `VanillaCache<u64, f32>`; the
 framework handles mutate-row + invoke `CreateAndAddEffect`.
@@ -182,7 +182,7 @@ To wire this against a game ueforge hasn't been tested on:
 
 ## See also
 
-- [`rpg.md`](rpg.md) "StandardEffect::StatusEffect" -- the
+- [`rpg.md`](rpg.md) "StatusEffectApply" -- the
   ueforge catalog variant that binds to this pattern.
 - [`testing.md`](testing.md) -- `client::research` helpers
   for probing tables + rows.

@@ -19,7 +19,7 @@ UFunction parm shapes); the per-game extension surface is
 
 | Module | Crate path | Lift |
 |---|---|---|
-| RPG | `ueforge::rpg` | Skill catalog + XP curve + `Bestiary` + per-slot persistence + ImGui tab + the 8-variant `StandardEffect` menu (PlayerFloat / Subcomponent variants / ClassFieldsMultiply / Runtime / StatusEffect). |
+| RPG | `ueforge::rpg` | Skill catalog + XP curve + `CreatureRegistry` + per-slot persistence + ImGui tab + the 8-type Effect library (PlayerFloatEffect / SubcomponentFloat / Additive / U32Mask / Multiply / ClassFieldsMultiply / Runtime / StatusEffectApply) + `TriggerDef` + composition model. |
 | Stacks | `ueforge::stacks` | Inventory stack-size data-table tweak. `StackTweak::new(table, offset, default_mult, skip)` + multiplier atomic + on-first-sight worker. |
 | Difficulty | `ueforge::difficulty` | Per-class CDO field tweak (drain rates / damage multipliers / regen). `DifficultyKnob::new(class, offset)` + `apply_to_cdos`. |
 | Inventory | `ueforge::inventory::viewport` | Viewport-paging hook framework: mouse-wheel scroll + per-widget viewport-start state + synthetic-refresh re-entrance guard + post-refresh rebind. |
@@ -54,12 +54,12 @@ defined ONCE in ueforge.**
 |---|---|---|
 | Lifecycle | [lifecycle.md](lifecycle.md) | `ue4ss_mod!`, `ModInfo`, C++ shim, on_unreal_init, on_shutdown, hot-reload (Ctrl+R, full Phase A+B), build/deploy |
 | UE5 engine reference | [ue-engine.md](ue-engine.md) | Generic UE5 platform: pak / IoStore container, UObject layout, shipping-build constraints, UE4SS hooking caveats, cooked PropertyTag layout, general-purpose modding tools |
-| UE5 status-effect system | [status-effects.md](status-effects.md) | The universal "data-table-row + component + native query" pattern every UE5 RPG game uses; binding via `StandardEffect::StatusEffect` |
+| UE5 status-effect system | [status-effects.md](status-effects.md) | The universal "data-table-row + component + native query" pattern every UE5 RPG game uses; binding via the framework's `StatusEffectApply` Effect type |
 | UE SDK | [ue-sdk.md](ue-sdk.md) | UObject family + `ClassRef` + `TypedField<T>` + GObjects + `PlayerRef` + `ue::field` byte ops + `ue::actor` (class-chain / controller helpers) + `ue::damage_info` (`DamageInfoLayout`) + `ue::pe_call::call_ufunction` |
 | Hooks | [hooks.md](hooks.md) | `ProcessEventHook` + `HookRegistry::shutdown_all` (hot-reload safety) + `function_table!` + `install_with_backoff` + `install_immediate_or_log` + per-Entry `active_calls` drain |
 | Game-thread queue | [pe-queue.md](pe-queue.md) | `Queue`, `DrainSite`, drain-site selection rules |
 | Counters & rings | [counters.md](counters.md) | `counter!`, `peak!`, `time_scope`, `EventRing<T>`, `counter_json!` |
-| RPG framework | [rpg.md](rpg.md) | `Skill<E>`, `Tracker<A>`, `StandardEffect` 8-variant menu, `Bestiary`, `tab::render`, `SlotKeyResolver`, `VanillaCache` |
+| RPG framework | [rpg.md](rpg.md) | `SkillDef`, `Tracker`, `Effect` trait + 8 framework Effect types, `TriggerDef`, `CreatureRegistry`, `tab::render`, `SlotKeyResolver`, `VanillaCache`, `HealthBinding` |
 | HTTP control plane | [http.md](http.md) | `server::spawn` + `SpawnHandle::stop` + `Config::auth_token` + builtin ops + selectors |
 | Test client | [testing.md](testing.md) | `Api<S>` + `client::research` (DT walks / class lookups / typed reads) + `client::diff` (snapshot deltas) + `client::scenario` (Pester-style skill DSL) |
 | ImGui | [imgui.md](imgui.md) | `ui` module, `Tab` registration, scanner tab |

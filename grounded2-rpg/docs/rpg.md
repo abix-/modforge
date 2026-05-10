@@ -60,10 +60,10 @@ as the **single source of truth**. Each skill is one row in
 | id            | Stable string used as the persistence key.                |
 | display_name  | Shown in the ImGui tab.                                   |
 | max_level     | Caps at 100 for every skill.                              |
-| effect        | A `SkillEffect` enum variant that drives apply + format.  |
+| effect        | An `EffectDef` referencing a static Effect impl (framework type or game-specific). Drives apply + format. |
 
 Adding a new skill of an existing shape is one row. Adding a new
-shape adds one variant to `SkillEffect` and one match arm in
+shape adds one Effect impl + static instance and references it from one CATALOG row in
 `apply_skill` and `format_effect`.
 
 ### Current catalog (13 skills)
@@ -80,7 +80,7 @@ shape adds one variant to `SkillEffect` and one match arm in
 | Leap Distance    | movement   | +500% AirControl + boost mult + boost threshold |
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
-| Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Implemented as `Standard(StandardEffect::Runtime)`: the `damage::DamageHook` binder's `after` callback in `kill_hook.rs` identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental" and subtracts `damage * reduction` from the player HC's `CurrentDamage` post-application. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
+| Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Implemented as a `RuntimeEffect` (no CDO write): the `damage::DamageHook` binder's `after` callback in `kill_hook.rs` identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental" and subtracts `damage * reduction` from the player HC's `CurrentDamage` post-application. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
 | Max Health       | survival   | +200 HP via `Standard(PlayerSubcomponentAdditive)` -- captures vanilla MaxHealth on first sight, writes `vanilla + bonus * progress` on player CDOs + live pawn. |
 | Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) via `Standard(ClassFieldsMultiply)` with `(offset, exponent)` pairs -- exponent +1 for tick-pct (grow), -1 for tick-rate (shrink). |
 | Lifesteal        | combat     | +90% of damage dealt healed back. **Live as of 2026-05-10.** Catalog row is `Standard(Runtime)`; the binder's `after` callback in `kill_hook.rs` reads the tracker level on every player-dealt non-player hit, walks the live player HC, and decrements `CurrentDamage` by `damage * 0.90 * sqrt(level/100)`. Honors the skill-disabled toggle. |
@@ -106,7 +106,7 @@ in-game value at any given level.
 ### Future catalog additions
 
 Domains we expect to populate as time permits. Each row is a
-catalog entry plus (when needed) a new SkillEffect variant.
+catalog entry plus (when needed) a new Effect impl in effects.rs.
 
 - Survival: Gear Hardiness, Stamina Pool, Stamina Regen.
 - Combat: Critical Chance, Critical Damage, Evasion / Dodge,
@@ -208,22 +208,22 @@ in `rpg/apply.rs`. Two public entry points:
 | `apply(state, settings)`                  | Walks every skill in the catalog. Called on `activate_slot`. |
 | `apply_one(state, settings, skill_id)`    | Re-applies just one skill. Called from `spend_skill_point`. |
 
-### Catalog migration to `Standard(StandardEffect)`
+### Catalog: Effect trait + per-type structs
 
 After Phase 3 wave 2 (2026-05-10), 9 of 13 catalog skills route
-through `ueforge::rpg::std_effect::StandardEffect` -- ueforge's
+through the Effect library in `ueforge::rpg::effect` -- ueforge's
 canonical 8-variant menu. The framework owns the dispatch + the
 vanilla cache + the CDO + live-pawn walks; g2rpg's `apply_skill`
 shrunk from 11 arms to 4.
 
-`SkillEffect` shape:
+Effect declaration shape:
 
 ```rust
-pub enum SkillEffect {
+// One Effect impl per game-specific operation (effects.rs):
     /// 9 of 13 catalog skills route through ueforge.
-    Standard(StandardEffect),
+    // Framework Effects (PlayerFloat, Subcomponent*, Runtime, ClassFieldsMultiply, StatusEffectApply) used directly via static instances.
 
-    /// Game-specific composites StandardEffect doesn't model.
+    // Game-specific operations live as types implementing Effect:
     BackpackSlots { max_bonus_slots: i32 },
     SurvivalDrain { /* settings-multiplier composite */ },
     PlayerFallDamageReduction { /* HC + GMS + SMMC + UFunction */ },
@@ -241,7 +241,7 @@ The four arms in `apply_skill`:
 
 Live-damage skills (Lifesteal today, Critical / Evasion / Thorns
 to come) ride on the `damage::DamageHook` framework -- they're
-catalog rows of shape `Standard(StandardEffect::Runtime)` and
+catalog rows whose effect references a `RuntimeEffect` static and
 the binder's `before` / `after` callbacks in `kill_hook.rs` do
 the actual heal / mutate / reflect.
 
@@ -297,14 +297,14 @@ mechanisms because the underlying damage paths differ -- see
 [`damage.md`](damage.md)):
 
 - **Fall Damage Resistance** uses
-  `SkillEffect::PlayerFallDamageReduction` plus a PE hook in
+  `PlayerFallDamageReductionEffect` (in effects.rs) plus a PE hook in
   `fall_hook.rs`. On player `OnLanded`, scales
   `CharMovementComponent.Velocity.Z` by `(1 - reduction)` before
   forwarding to the original BP event. Native `ApplyFallDamage`
   reads the mutated velocity live and produces scaled / zero damage.
   Validated: -3431 cm/s landing at level 100 -> zero damage.
 - **Impact Damage Resistance** uses
-  `Standard(StandardEffect::Runtime)` -- no CDO write. The
+  `RuntimeEffect` -- no CDO write. The
   `damage::DamageHook` binder's `after` callback identifies
   environmental events by `FDamageInfo.DamageType` class name
   containing "Environmental" and subtracts
@@ -321,7 +321,7 @@ The `UStatusEffectComponent` at +0x1378 is still the
 **canonical long-term backing** for stat-shaped skills (Fall,
 Impact, Lifesteal, Crit, Thorns, Max Health, Armor, Attack
 Damage all map to existing `EStatusEffectType` enum values).
-The `StandardEffect::StatusEffect` variant in ueforge
+The `StatusEffectApply` Effect type in ueforge
 covers that surface; migration of individual skills from
 CDO-write to status-effect is tracked in
 [`todo.md`](todo.md) and [`damage.md`](damage.md).
@@ -363,7 +363,7 @@ tested without grinding XP.
 | File                                    | Authority                                            |
 | --------------------------------------- | ---------------------------------------------------- |
 | `rpg/skills.rs`                         | Catalog + per-level math + format_effect dispatch.   |
-| `rpg/apply.rs`                          | Apply step: Standard arm forwards to `StandardEffect::apply`; 3 game-specific composites stay here. |
+| `rpg/apply.rs`                          | Apply step: Tracker iterates the catalog and calls `effect.apply` per row; the 3 game-specific Effect impls live in effects.rs. |
 | `rpg/tracker.rs`                        | Thin shim over `ueforge::rpg::Tracker<A>`. |
 | `rpg/world_loader.rs`                   | Thin shim over `ueforge::rpg::SlotPoller`. |
 | `rpg/save_slot.rs`                      | Resolves the playthrough GUID for the active save.   |

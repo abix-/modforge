@@ -13,14 +13,14 @@ visible.
 ## Tab registration
 
 ```rust
-static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     /* ... */
     tabs: &[
-        ueforge::Tab {
+        ueforge::TabDef {
             name: "RPG",
             render: rpg::tab::render,    // fn pointer, no captures
         },
-        ueforge::Tab {
+        ueforge::TabDef {
             name: "Scanner",
             render: ueforge::ui_scanner::render,
         },
@@ -157,8 +157,8 @@ array:
 
 ```rust
 tabs: &[
-    ueforge::Tab { name: "RPG", render: rpg::tab::render },
-    ueforge::Tab { name: "Scanner", render: ueforge::ui_scanner::render },
+    ueforge::TabDef { name: "RPG", render: rpg::tab::render },
+    ueforge::TabDef { name: "Scanner", render: ueforge::ui_scanner::render },
 ],
 ```
 
@@ -179,7 +179,7 @@ only); ows-tweaks does as a reference.
 RPG tab. See [rpg.md](rpg.md) for the full pattern.
 
 ```rust
-ueforge::Tab {
+ueforge::TabDef {
     name: "RPG",
     render: || ueforge::rpg::tab::render(&TRACKER, Some(&TOGGLES)),
 }

@@ -1,7 +1,7 @@
 # Lifecycle
 
 > **Authoritative on:** how a ueforge-based mod loads, what runs
-> in what order, what `ModInfo` controls, what the C++ shim does,
+> in what order, what `ModDef` controls, what the C++ shim does,
 > and how `cargo deploy` ships the result.
 
 A ueforge mod is a Rust cdylib (`main.dll`) that UE4SS loads as a
@@ -13,20 +13,20 @@ the Rust side via the extern "C" entry points the
 
 You declare three things in your crate:
 
-1. A `static MOD_INFO: ueforge::ModInfo` describing your mod.
+1. A `static MOD_INFO: ueforge::ModDef` describing your mod.
 2. A one-line `ueforge::ue4ss_mod!(MOD_INFO);` invocation.
 3. A one-line `build.rs` that calls
    `ueforge::build::CppShim::new().compile()`.
 
 Everything else is bookkeeping ueforge handles for you.
 
-## ModInfo
+## ModDef
 
-`ueforge::mod_main::ModInfo` (re-exported as `ueforge::ModInfo`)
+`ueforge::mod_main::ModDef` (re-exported as `ueforge::ModDef`)
 declares your mod to UE4SS:
 
 ```rust
-static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "Grounded2RPG",                      // shown in UE4SS console
     version: "0.1.0",
     log_file: "grounded2_rpg.log",             // file in DLL dir
@@ -34,7 +34,7 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     console: cfg!(feature = "console"),          // gate console alloc
     on_unreal_init: bbp_on_unreal_init,          // fn pointer
     on_shutdown: bbp_on_shutdown,                // fn pointer
-    tabs: &[ueforge::Tab {
+    tabs: &[ueforge::TabDef {
         name: "RPG",
         render: rpg::tab::render,
     }],
@@ -43,10 +43,10 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
 ueforge::ue4ss_mod!(MOD_INFO);
 ```
 
-The `tabs:` array is a `&'static [Tab]`; the ueforge shim
-iterates it during ImGui setup and calls each `Tab::render` once
-per frame while the tab is visible. See [imgui.md](imgui.md) for
-how rendering works.
+The `tabs:` array is a `&'static [TabDef]`; the ueforge shim
+iterates it during ImGui setup and calls each `TabDef::render`
+once per frame while the tab is visible. See
+[imgui.md](imgui.md) for how rendering works.
 
 ## Lifecycle order
 
@@ -94,7 +94,7 @@ const PLATFORMS: &[(&str, &PlatformOffsets)] = &[
     ("YourGame-Win64-Shipping.exe", &STEAM),
 ];
 
-static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
+static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "YourMod",
     version: "0.1.0",
     log_file: "your_mod.log",
@@ -102,7 +102,7 @@ static MOD_INFO: ueforge::ModInfo = ueforge::ModInfo {
     console: cfg!(feature = "console"),
     on_unreal_init: on_unreal_init,
     on_shutdown: on_shutdown,
-    tabs: &[ueforge::Tab { name: "Tweaks", render: render_tab }],
+    tabs: &[ueforge::TabDef { name: "Tweaks", render: render_tab }],
 };
 
 ueforge::ue4ss_mod!(MOD_INFO);
