@@ -55,49 +55,42 @@ discovery before snapshot / browser / static catalog rows.
 
 ### Phase 1b: live snapshots
 
-- [ ] **`DataTableSnapshot`** -- runtime read of all rows for a
-  given DataTableDef. Walks the table's `RowMap`, copies each
-  row's fields into typed values:
-  ```rust
-  pub struct DataTableSnapshot {
-      pub rows: Vec<RowSnapshot>,
-  }
-  pub struct RowSnapshot {
-      pub name_fname: u64,
-      pub fields: HashMap<&'static str, FieldValue>,
-  }
-  pub enum FieldValue { I32(i32), U32(u32), F32(f32), FName(u64), Str(String), Bytes(Vec<u8>), ... }
-  ```
-- [ ] **`DataTableDef::snapshot(&self) -> Option<DataTableSnapshot>`**
-  -- captures all rows on demand. Cold path; allocates freely.
+- [x] **`data_table::snapshot_table(table_name, max_rows)
+  -> Option<Json>`** -- walks the table's `RowMap`, decodes each
+  row per the live `FProperty` chain (FProperty class drives the
+  decoder: `IntProperty`/`Int32Property`->i32,
+  `FloatProperty`->f32, `BoolProperty`->bool,
+  `NameProperty`->resolved string, `StrProperty`->FString,
+  `ObjectProperty`->`{addr,name}`, unknown->raw_bytes_hex). Cold
+  path. Data-driven (no DataTableDef needed); the static catalog
+  is for browser organization / future TweakDef wiring, not for
+  read access.
 
 ### Phase 1c: debug ops
 
-- [ ] **`list_data_tables`** -- returns every registered
-  DataTableDef + its row schema. Auto-derived from the registry.
-  Lets test clients discover what's available without code
-  changes.
-- [ ] **`dump_data_table { id }`** -- returns the live snapshot
-  (rows + values) as JSON.
-- [ ] **`discover_data_tables`** -- runtime walks GObjects, returns
-  every UDataTable found in the game (id + table_name +
-  row_struct schema), regardless of whether it's been registered
-  in DataTableRegistry. Pure research surface.
+- [x] **`dump_data_table { table_name, max_rows? }`** -- returns
+  the live snapshot (rows + decoded fields) as JSON. Registered
+  in `ueforge::ops::register_builtins`.
+- [x] **`discover_data_tables` / `discover_classes` /
+  `discover_structs`** -- read from the in-memory discovery
+  cache; `{refresh: true}` re-walks GObjects.
+- [ ] **`list_data_tables` (registry-only)** -- enumerate
+  registered `DataTableDef`s rather than every discovered table.
+  Deferred until a per-mod `DataTableRegistry` is actually
+  populated -- today discovery covers the universe.
 
 ### Phase 1d: ImGui browser tab
 
-- [ ] **`ueforge::ui::data_table_browser`** -- new ImGui tab
-  template:
-  - Left pane: list of registered + discovered tables.
-  - Right pane: when a table is selected, show its schema
-    (field name | type | offset) + a paginated table of rows
-    (FName + every field's current value).
-  - Refresh button to re-snapshot live values.
-  - Filter / search box on row FName for big tables.
-- [ ] **g2rpg + ows-tweaks integration** -- add a "Tables" tab
-  to each mod's MOD_INFO that calls
-  `ueforge::ui::data_table_browser::render(&DT_REGISTRY)`.
-  Both mods get the browser for free.
+- [x] **`ueforge::ui_data_table_browser::render`** -- new ImGui
+  tab. Lists every discovered UDataTable from the
+  `ueforge::discovery` cache; click "Open" to load a snapshot
+  (schema + first N rows); "Refresh discovery" re-walks
+  GObjects; "max rows" slider controls per-table row count.
+  Wired into both g2rpg and ows-tweaks `MOD_INFO.tabs` as
+  "Tables".
+- [ ] Filter / search box on table name + row FName.
+  ueforge::ui doesn't expose `input_text` yet; deferred until
+  we hit a table count that makes scroll-to-find painful.
 
 ### Phase 1e: validation
 

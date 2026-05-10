@@ -184,10 +184,12 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
                 .read_unaligned();
             let element_size =
                 (cur.add(offsets::fproperty::ELEMENT_SIZE) as *const i32).read_unaligned();
+            let class = read_ffield_class_name(cur, rt);
             let next: *const u8 =
                 (cur.add(offsets::ffield::NEXT) as *const *const u8).read_unaligned();
             out.push(json!({
                 "name": name,
+                "class": class,
                 "offset": offset,
                 "element_size": element_size,
             }));
@@ -196,6 +198,28 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
         depth += 1;
     }
     out
+}
+
+/// Read the `FFieldClass::Name` for the FField at `field_ptr`.
+/// `FField::ClassPrivate` (+0x08) points at an `FFieldClass` whose
+/// first member is `FName Name` -- the property class identifier
+/// ("IntProperty" / "FloatProperty" / "NameProperty" / etc.).
+unsafe fn read_ffield_class_name(field_ptr: *const u8, rt: &ue::Runtime) -> String {
+    unsafe {
+        let class_ptr: *const u8 = (field_ptr.add(offsets::ffield::CLASS_PRIVATE)
+            as *const *const u8)
+            .read_unaligned();
+        if class_ptr.is_null() {
+            return String::from("<no-class>");
+        }
+        let fname: crate::ue::fname::FName =
+            (class_ptr as *const crate::ue::fname::FName).read_unaligned();
+        if fname.is_none() {
+            String::from("<unnamed>")
+        } else {
+            rt.name_resolver.to_string(fname)
+        }
+    }
 }
 
 fn root_package_name(obj: &UObject) -> String {

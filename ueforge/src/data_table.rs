@@ -124,3 +124,154 @@ impl<'a> IntoIterator for &'a DataTableRegistry {
         self.entries.iter().copied()
     }
 }
+
+// ---- Snapshot (Phase 1b) -------------------------------------------------
+
+use serde_json::{Value as Json, json};
+
+use crate::ue::{self, UObject};
+
+/// Capture every row of `table_name`, decoding fields per the live
+/// `FProperty` chain on the table's `RowStruct`. Up to `max_rows`
+/// entries are returned (`None` = all). Cold path; allocates freely.
+///
+/// Decode coverage (FProperty class -> JSON):
+/// - `IntProperty` (i32), `UInt32Property` (u32), `Int64Property` (i64),
+///   `UInt64Property` (u64), `ByteProperty` (u8 number)
+/// - `FloatProperty` (f32), `DoubleProperty` (f64)
+/// - `BoolProperty` (single-byte interpretation; bitfield bools land
+///   as numeric -- they need their bitmask which isn't in the FField
+///   chain we walk today)
+/// - `NameProperty` (resolved FName -> string)
+/// - `StrProperty` (FString -> string)
+/// - `ObjectProperty` / `SoftObjectProperty` / `ClassProperty` /
+///   `WeakObjectProperty` -- pointer hex
+/// - Everything else -- `{ "raw_bytes_hex": "..." }` of the first
+///   `element_size` bytes so a future decoder can be added without
+///   re-walking.
+///
+/// Returns `None` if the table can't be resolved or has no RowStruct.
+pub fn snapshot_table(table_name: &str, max_rows: Option<usize>) -> Option<Json> {
+    let table = ue::datatable::find_by_short_name(table_name)?;
+    let row_struct_ptr: *const UObject = unsafe {
+        (table.as_ptr().add(crate::ue::offsets::datatable::ROW_STRUCT)
+            as *const *const UObject)
+            .read_unaligned()
+    };
+    let row_struct = unsafe { row_struct_ptr.as_ref()? };
+    let schema = ue::probe::walk_struct_fields(row_struct);
+
+    let rt = ue::try_runtime()?;
+    let mut rows: Vec<Json> = Vec::new();
+    let mut total_rows = 0usize;
+    unsafe {
+        for (fname_key, row_ptr) in ue::datatable::iter_rows(table) {
+            total_rows += 1;
+            if let Some(limit) = max_rows {
+                if rows.len() >= limit {
+                    continue;
+                }
+            }
+            let fname = std::mem::transmute::<u64, crate::ue::fname::FName>(fname_key);
+            let row_name = rt.name_resolver.to_string(fname);
+            let fields_json = decode_row_fields(row_ptr, &schema);
+            rows.push(json!({
+                "row_name": row_name,
+                "row_fname": fname_key,
+                "fields": fields_json,
+            }));
+        }
+    }
+
+    Some(json!({
+        "table_name": table_name,
+        "full_path": table.full_name(),
+        "row_struct": {
+            "name": row_struct.name(),
+            "fields": schema,
+        },
+        "rows_total": total_rows,
+        "rows_returned": rows.len(),
+        "rows": rows,
+    }))
+}
+
+fn decode_row_fields(row_ptr: *const u8, schema: &[Json]) -> Json {
+    let mut map = serde_json::Map::with_capacity(schema.len());
+    for f in schema {
+        let name = f["name"].as_str().unwrap_or("<no-name>").to_string();
+        let class = f["class"].as_str().unwrap_or("");
+        let offset = f["offset"].as_i64().unwrap_or(0) as usize;
+        let element_size = f["element_size"].as_i64().unwrap_or(0) as usize;
+        let value = unsafe { decode_field(row_ptr, offset, element_size, class) };
+        map.insert(name, value);
+    }
+    Json::Object(map)
+}
+
+unsafe fn decode_field(row_ptr: *const u8, offset: usize, element_size: usize, class: &str) -> Json {
+    unsafe {
+        let p = row_ptr.add(offset);
+        match class {
+            "IntProperty" | "Int32Property" => {
+                json!((p as *const i32).read_unaligned())
+            }
+            "UInt32Property" => json!((p as *const u32).read_unaligned()),
+            "Int64Property" => json!((p as *const i64).read_unaligned()),
+            "UInt64Property" => json!((p as *const u64).read_unaligned()),
+            "Int16Property" => json!((p as *const i16).read_unaligned()),
+            "UInt16Property" => json!((p as *const u16).read_unaligned()),
+            "Int8Property" | "SByteProperty" => json!((p as *const i8).read_unaligned()),
+            "ByteProperty" => json!((p as *const u8).read()),
+            "BoolProperty" => json!((p as *const u8).read() != 0),
+            "FloatProperty" => json!((p as *const f32).read_unaligned()),
+            "DoubleProperty" => json!((p as *const f64).read_unaligned()),
+            "NameProperty" => {
+                let fname: crate::ue::fname::FName = (p as *const crate::ue::fname::FName)
+                    .read_unaligned();
+                if fname.is_none() {
+                    return Json::Null;
+                }
+                let rt = match ue::try_runtime() {
+                    Some(r) => r,
+                    None => return Json::Null,
+                };
+                json!(rt.name_resolver.to_string(fname))
+            }
+            "StrProperty" => {
+                // FString = TArray<u16> { Data, Num, Max }
+                let data: *const u16 = (p as *const *const u16).read_unaligned();
+                let num = (p.add(8) as *const i32).read_unaligned();
+                if data.is_null() || num <= 0 {
+                    return json!("");
+                }
+                // Strip trailing NUL if present (FString stores it).
+                let len = if num > 0 { (num - 1) as usize } else { 0 };
+                let slice = std::slice::from_raw_parts(data, len);
+                json!(String::from_utf16_lossy(slice))
+            }
+            "ObjectProperty"
+            | "ClassProperty"
+            | "SoftObjectProperty"
+            | "SoftClassProperty"
+            | "WeakObjectProperty"
+            | "LazyObjectProperty" => {
+                let ptr: *const UObject = (p as *const *const UObject).read_unaligned();
+                if ptr.is_null() {
+                    return Json::Null;
+                }
+                let obj = &*ptr;
+                json!({
+                    "addr": format!("0x{:x}", ptr as usize),
+                    "name": obj.name(),
+                })
+            }
+            _ => {
+                let len = element_size.min(64);
+                let slice = std::slice::from_raw_parts(p, len);
+                let hex: String = slice.iter().map(|b| format!("{:02x}", b)).collect();
+                json!({ "raw_bytes_hex": hex, "element_size": element_size })
+            }
+        }
+    }
+}

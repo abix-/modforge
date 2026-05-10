@@ -65,6 +65,10 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
             name: "Scanner",
             render: ueforge::ui_scanner::render,
         },
+        ueforge::TabDef {
+            name: "Tables",
+            render: ueforge::ui_data_table_browser::render,
+        },
     ],
 };
 

@@ -1,0 +1,242 @@
+//! Built-in ImGui browser tab for every discovered UDataTable.
+//! Every game using ueforge gets this for free -- just include
+//! `ueforge::ui_data_table_browser::render` in your `ModDef::tabs`:
+//!
+//! ```ignore
+//! tabs: &[
+//!     Tab { name: "Tweaks", render: render_tweaks_tab },
+//!     Tab { name: "Tables", render: ueforge::ui_data_table_browser::render },
+//! ],
+//! ```
+//!
+//! UI flow:
+//! 1. List of every cached UDataTable (from `ueforge::discovery`).
+//! 2. Click "Open" on a row -> snapshot loads + the schema +
+//!    first N rows render below.
+//! 3. "Refresh discovery" re-walks GObjects.
+//! 4. "Reload rows" re-snapshots the open table.
+//!
+//! Cache lives in a process-global `Mutex<DtBrowserUi>` mirroring
+//! the scanner tab.
+
+use std::sync::OnceLock;
+
+use parking_lot::Mutex;
+use serde_json::Value as Json;
+
+use crate::ui;
+
+struct DtBrowserUi {
+    selected: Option<String>,
+    snapshot: Option<Json>,
+    snapshot_error: Option<String>,
+    max_rows: i32,
+}
+
+impl DtBrowserUi {
+    fn new() -> Self {
+        Self {
+            selected: None,
+            snapshot: None,
+            snapshot_error: None,
+            max_rows: 50,
+        }
+    }
+}
+
+static BROWSER: OnceLock<Mutex<DtBrowserUi>> = OnceLock::new();
+
+fn state() -> &'static Mutex<DtBrowserUi> {
+    BROWSER.get_or_init(|| Mutex::new(DtBrowserUi::new()))
+}
+
+pub fn render() {
+    let mut s = state().lock();
+
+    ui::text("Data tables (live)");
+    ui::text_disabled(
+        "Every UDataTable ueforge::discovery found at load time. \
+         Click Open to snapshot rows. Refresh re-walks GObjects \
+         (use after content streams in).",
+    );
+    ui::spacing();
+
+    if ui::button("Refresh discovery") {
+        let _ = crate::discovery::refresh();
+        // Re-snapshot the open table so the right pane stays current.
+        if let Some(name) = s.selected.clone() {
+            load_snapshot(&mut s, &name);
+        }
+    }
+    ui::same_line();
+    ui::slider_i32("max rows", &mut s.max_rows, 1, 500);
+
+    let cache = crate::discovery::cached();
+    let Some(snap) = cache else {
+        ui::text_disabled("Discovery has not run yet.");
+        return;
+    };
+
+    let tables_found = snap
+        .data_tables
+        .get("tables_found")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    ui::text(&format!("Discovered: {tables_found} tables"));
+    ui::separator();
+    ui::spacing();
+
+    // Left: list of tables. Right pane (below): selected detail.
+    let empty = Vec::new();
+    let tables = snap
+        .data_tables
+        .get("data_tables")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+
+    for t in tables {
+        let table_name = t
+            .get("table_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("<no-name>");
+        let row_struct = t
+            .get("row_struct")
+            .and_then(|v| v.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("<no-struct>");
+        let field_count = t
+            .get("row_struct")
+            .and_then(|v| v.get("fields"))
+            .and_then(|v| v.as_array())
+            .map(|a| a.len())
+            .unwrap_or(0);
+
+        let selected = s.selected.as_deref() == Some(table_name);
+        let label = if selected {
+            format!("[Close]##{table_name}")
+        } else {
+            format!("Open##{table_name}")
+        };
+        if ui::small_button(&label) {
+            if selected {
+                s.selected = None;
+                s.snapshot = None;
+                s.snapshot_error = None;
+            } else {
+                let owned = table_name.to_string();
+                load_snapshot(&mut s, &owned);
+                s.selected = Some(owned);
+            }
+        }
+        ui::same_line();
+        ui::text(&format!("{table_name}  -- {row_struct}  ({field_count} fields)"));
+
+        if selected {
+            render_selected(&s);
+        }
+    }
+}
+
+fn load_snapshot(s: &mut DtBrowserUi, table_name: &str) {
+    let max = s.max_rows.max(1) as usize;
+    match crate::data_table::snapshot_table(table_name, Some(max)) {
+        Some(j) => {
+            s.snapshot = Some(j);
+            s.snapshot_error = None;
+        }
+        None => {
+            s.snapshot = None;
+            s.snapshot_error = Some(format!(
+                "table '{table_name}' not loaded or has no RowStruct"
+            ));
+        }
+    }
+}
+
+fn render_selected(s: &DtBrowserUi) {
+    ui::indent();
+    if let Some(err) = &s.snapshot_error {
+        ui::text_colored(err, (1.0, 0.4, 0.4, 1.0));
+        ui::unindent();
+        return;
+    }
+    let Some(j) = &s.snapshot else {
+        ui::unindent();
+        return;
+    };
+
+    let total = j.get("rows_total").and_then(|v| v.as_u64()).unwrap_or(0);
+    let shown = j.get("rows_returned").and_then(|v| v.as_u64()).unwrap_or(0);
+    ui::text(&format!("rows: {shown}/{total} shown"));
+
+    if ui::tree_node("schema") {
+        let empty = Vec::new();
+        let fields = j
+            .get("row_struct")
+            .and_then(|v| v.get("fields"))
+            .and_then(|v| v.as_array())
+            .unwrap_or(&empty);
+        for f in fields {
+            let n = f.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            let c = f.get("class").and_then(|v| v.as_str()).unwrap_or("?");
+            let off = f.get("offset").and_then(|v| v.as_i64()).unwrap_or(0);
+            let sz = f.get("element_size").and_then(|v| v.as_i64()).unwrap_or(0);
+            ui::text(&format!("  {n}: {c}  @+0x{off:x}  size={sz}"));
+        }
+        ui::tree_pop();
+    }
+
+    if ui::tree_node("rows") {
+        let empty = Vec::new();
+        let rows = j.get("rows").and_then(|v| v.as_array()).unwrap_or(&empty);
+        for r in rows {
+            let row_name = r
+                .get("row_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?");
+            let fields = r
+                .get("fields")
+                .and_then(|v| v.as_object())
+                .cloned()
+                .unwrap_or_default();
+            let mut line = String::with_capacity(128);
+            line.push_str(row_name);
+            line.push_str(":  ");
+            for (k, v) in fields.iter() {
+                line.push_str(k);
+                line.push('=');
+                line.push_str(&compact_value(v));
+                line.push_str("  ");
+            }
+            ui::text(&line);
+        }
+        ui::tree_pop();
+    }
+    ui::unindent();
+}
+
+fn compact_value(v: &Json) -> String {
+    match v {
+        Json::Null => String::from("null"),
+        Json::Bool(b) => b.to_string(),
+        Json::Number(n) => n.to_string(),
+        Json::String(s) => {
+            if s.len() > 32 {
+                format!("\"{}...\"", &s[..32])
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        Json::Object(map) => {
+            if let Some(name) = map.get("name").and_then(|v| v.as_str()) {
+                format!("<obj:{name}>")
+            } else if let Some(hex) = map.get("raw_bytes_hex").and_then(|v| v.as_str()) {
+                let short = if hex.len() > 16 { &hex[..16] } else { hex };
+                format!("{short}..")
+            } else {
+                String::from("{..}")
+            }
+        }
+        Json::Array(_) => String::from("[..]"),
+    }
+}

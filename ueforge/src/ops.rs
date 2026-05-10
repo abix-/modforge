@@ -287,6 +287,17 @@ pub fn register_builtins() {
             },
         ),
         OpDef::new(
+            "dump_data_table",
+            "Snapshot every row of a UDataTable, decoded per FProperty class",
+            "{table_name: str, max_rows?: u64}",
+            |args| {
+                let table_name = arg_str(args, "table_name")?;
+                let max_rows = args.get("max_rows").and_then(|v| v.as_u64()).map(|n| n as usize);
+                crate::data_table::snapshot_table(table_name, max_rows)
+                    .ok_or_else(|| format!("table '{table_name}' not loaded or has no RowStruct"))
+            },
+        ),
+        OpDef::new(
             "list_ops",
             "Auto-generated catalog of every registered debug op",
             "{}",

@@ -25,10 +25,16 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     console: cfg!(feature = "console"),
     on_unreal_init: bbp_on_unreal_init,
     on_shutdown: bbp_on_shutdown,
-    tabs: &[ueforge::TabDef {
-        name: "RPG",
-        render: rpg::tab::render,
-    }],
+    tabs: &[
+        ueforge::TabDef {
+            name: "RPG",
+            render: rpg::tab::render,
+        },
+        ueforge::TabDef {
+            name: "Tables",
+            render: ueforge::ui_data_table_browser::render,
+        },
+    ],
 };
 
 ueforge::ue4ss_mod!(MOD_INFO);
