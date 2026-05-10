@@ -35,6 +35,7 @@ pub mod progress;
 pub mod skill;
 pub mod slot_key;
 pub mod state;
+pub mod status;
 pub mod store;
 pub mod tab;
 pub mod tracker;
@@ -53,6 +54,7 @@ pub use poller::{PollerHandle, SlotPoller};
 pub use skill::{SkillDef, SkillRegistry};
 pub use slot_key::SlotKeyResolver;
 pub use state::SkillsState;
+pub use status::{StatusDef, StatusRegistry};
 pub use store::SlotStore;
 pub use tracker::{Tracker, XpResult};
 pub use trigger::{

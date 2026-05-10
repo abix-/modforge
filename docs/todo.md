@@ -192,8 +192,8 @@ lines of game-side wiring.
 
 | Surface | Why universal |
 |---|---|
-| `Building<S, C>` catalog row -- id + display_name + description + default per-instance state `S` + game-specific config `C` | Every game's mod-added buildings have the same shape: a typed catalog. Same pattern as `rpg::Skill<E>`. |
-| `BuildingsCatalog: &'static [Building<S, C>]` + lookup-by-id | One source of truth, same as RPG catalog. |
+| `BuildingDef<S, C>` catalog row -- id + display_name + description + default per-instance state `S` + game-specific config `C` | Every game's mod-added buildings have the same shape: a typed catalog. Same pattern as `rpg::Skill<E>`. |
+| `BuildingRegistry: &'static [BuildingDef<S, C>]` + lookup-by-id | One source of truth, same as RPG catalog. |
 | Per-instance state store (`HashMap<Handle, S>`) | Every game tracks "what state is this placed building in" -- stored items, level, last-tick timestamp. Shape `S` is game-supplied. |
 | Per-slot JSON persistence (`<DLL_dir>/buildings/<playthrough-guid>.json`) | Same `SlotStore<S>` pattern from `ueforge::rpg`. Reuse, don't reinvent. |
 | Tick scheduler (closure fires per-instance every `interval`) | Auto-farm, regen, decay -- all "advance state by dt" patterns. Owned by the framework; rides on the existing `SlotPoller` shape. |
@@ -218,7 +218,7 @@ The seam: a `BuildingSpawner` trait similar in shape to
 ```rust
 // ueforge::buildings (planned, not yet implemented)
 
-pub struct Building<S, C> {
+pub struct BuildingDef<S, C> {
     pub id: &'static str,
     pub display_name: &'static str,
     pub description: &'static str,
@@ -240,7 +240,7 @@ pub trait BuildingSpawner: Send + Sync + 'static {
 }
 
 pub struct BuildingsTracker<S, C, Sp: BuildingSpawner> {
-    catalog: &'static [Building<S, C>],
+    catalog: &'static [BuildingDef<S, C>],
     spawner: Sp,
     instances: Mutex<HashMap<Sp::Handle, Instance<S>>>,
     store: SlotStore<PersistedState<S, Sp::Handle>>,
@@ -283,7 +283,7 @@ mod-generated FGuid), storage location, tick model.
 
 **Phase C: framework implementation.**
 
-- [ ] C1: `ueforge::buildings::Building<S, C>` + catalog row.
+- [ ] C1: `ueforge::buildings::BuildingDef<S, C>` + catalog row.
 - [ ] C2: `BuildingsTracker<S, C, Sp>` with `activate_slot` /
   `deactivate_slot` + persistence via `SlotStore`.
 - [ ] C3: `BuildingSpawner` trait + game-impl skeleton.

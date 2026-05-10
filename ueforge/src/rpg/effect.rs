@@ -367,10 +367,14 @@ impl Effect for RuntimeEffect {
 /// `vanilla + (value_at_max - vanilla) * progress`, then invokes
 /// the `function_name` UFunction on the player's component with
 /// a `(table, row_fname)` row-handle parm.
+///
+/// The row identity (table + fname + value-offset + vanilla
+/// cache) lives on the referenced [`StatusDef`](super::StatusDef)
+/// so multiple Effects can target the same status.
 pub struct StatusEffectApply {
     pub player: &'static PlayerRef,
-    /// Resolves the `UDataTable` carrying the row.
-    pub table_finder: fn() -> Option<&'static UObject>,
+    /// Identity of the status-effect row this Effect targets.
+    pub status: &'static crate::rpg::StatusDef,
     /// `&UClass` of the player's status-effect component
     /// (e.g. "StatusEffectComponent" or
     /// "GearStatusEffectComponent" depending on game).
@@ -381,32 +385,23 @@ pub struct StatusEffectApply {
     /// UFunction name on `component_class` to call.
     /// Typically `"CreateAndAddEffect"`.
     pub function_name: &'static str,
-    /// FName of the row to mutate + apply.
-    pub row_fname: u64,
-    /// Row's `Value` field byte offset within the row struct.
-    /// Defaults to the Maine layout
-    /// (`crate::ue::status_effect::DEFAULT_VALUE_OFFSET`,
-    /// `0x34`); override per game.
-    pub value_offset: usize,
     /// Target value at level == max_level. At level == 0 the
     /// captured vanilla is restored.
     pub value_at_max: f32,
     pub format_word: &'static str,
-    /// Per-row vanilla cache keyed by row_fname.
-    pub vanilla: &'static VanillaCache<u64, f32>,
 }
 
 impl Effect for StatusEffectApply {
     fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
         let progress = sqrt_progress(level, max_level);
-        let Some(table) = (self.table_finder)() else {
+        let Some(table) = (self.status.table_finder)() else {
             crate::log!("rpg/effect: status-effect: table not loaded yet");
             return;
         };
         // SAFETY: row_fname is an opaque u64 we pass through to
         // the engine; the FName layout is verified at compile time.
         let row_fname_handle = unsafe {
-            std::mem::transmute_copy::<u64, crate::ue::FName>(&self.row_fname)
+            std::mem::transmute_copy::<u64, crate::ue::FName>(&self.status.row_fname)
         };
         // SAFETY: row_value_by_fname does its own bounds check on
         // the table.
@@ -414,8 +409,9 @@ impl Effect for StatusEffectApply {
             (unsafe { crate::ue::datatable::row_value_by_fname(table, row_fname_handle) })
         else {
             crate::log!(
-                "rpg/effect: status-effect: row 0x{:016x} not found in table",
-                self.row_fname
+                "rpg/effect: status-effect: row 0x{:016x} ({}) not found in table",
+                self.status.row_fname,
+                self.status.id
             );
             return;
         };
@@ -424,9 +420,9 @@ impl Effect for StatusEffectApply {
         // walk; offset is the configured value-offset within the
         // row struct.
         let cur_val = unsafe {
-            crate::ue::status_effect::read_row_value(row_ptr, self.value_offset)
+            crate::ue::status_effect::read_row_value(row_ptr, self.status.value_offset)
         };
-        let baseline = self.vanilla.get_or_init(self.row_fname, cur_val);
+        let baseline = self.status.vanilla.get_or_init(self.status.row_fname, cur_val);
 
         let target = if level > 0 {
             baseline + (self.value_at_max - baseline) * progress
@@ -437,7 +433,7 @@ impl Effect for StatusEffectApply {
         unsafe {
             crate::ue::status_effect::write_row_value(
                 row_ptr,
-                self.value_offset,
+                self.status.value_offset,
                 target,
             );
         }
@@ -454,7 +450,7 @@ impl Effect for StatusEffectApply {
 
         let comp_offset = self.component_offset;
         let table_ref = table;
-        let row_fname = self.row_fname;
+        let row_fname = self.status.row_fname;
         self.player.for_each_live(|pawn| {
             // SAFETY: comp_offset.deref returns None if the
             // pointer field is null; otherwise it's a valid
