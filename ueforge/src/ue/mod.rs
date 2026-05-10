@@ -17,6 +17,7 @@ pub mod offsets;
 pub mod platform;
 pub mod player;
 pub mod probe;
+pub mod status_effect;
 pub mod tarray;
 pub mod tmap;
 pub mod typed_field;
