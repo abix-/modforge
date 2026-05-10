@@ -49,6 +49,22 @@ pub fn controller_pawn(controller: &UObject) -> Option<&UObject> {
     }
 }
 
+/// `true` if `this`'s outer's full name contains `needle`.
+/// Common pattern: filter PE-hook fires by component owner
+/// (`is_outer_named(hc, "BP_SurvivalPlayerCharacter")`).
+pub fn is_outer_named(this: &UObject, needle: &str) -> bool {
+    this.outer()
+        .map(|o| o.full_name().contains(needle))
+        .unwrap_or(false)
+}
+
+/// Class name of `this`'s outer, if any.
+pub fn outer_class_name(this: &UObject) -> Option<String> {
+    this.outer()
+        .and_then(|o| o.class())
+        .map(|c| c.as_object().name())
+}
+
 /// `"<name>(<class-name>)"` describing an object for log lines.
 /// `None` becomes `"<none>"`.
 pub fn describe(obj: Option<&UObject>) -> String {

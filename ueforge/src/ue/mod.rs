@@ -9,6 +9,7 @@
 
 pub mod actor;
 pub mod class_ref;
+pub mod damage_info;
 pub mod class_tweak;
 pub mod core_types;
 pub mod datatable;

@@ -68,6 +68,38 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### kill_hook split + `DamageInfoLayout` lift
+
+Second pass on `kill_hook.rs`. The 604-line file mixed three
+concerns -- kill-credit dispatch, diagnostic damage tracing, and
+impact-resistance reversal of environmental damage. Split into
+three focused modules:
+
+- `rpg/kill_hook.rs` (227 lines) -- kill-credit core only:
+  install + on_event + KillerKind classifier + award_kill.
+- `rpg/damage_trace.rs` (168 lines) -- per-fn parm decoder,
+  damage_ring observer, `LastDamageInfo` log dump.
+- `rpg/impact_resistance.rs` (79 lines) -- environmental-damage
+  detection + post-application reversal.
+
+Universal pieces lifted to ueforge:
+
+- **`ueforge::ue::damage_info::DamageInfoLayout`** -- per-game
+  offset config for the `FDamageInfo` struct (instigator,
+  source, damage-type class, damage flags). Methods fold the
+  weak-ptr resolve + UClass cast into one call. The shape is
+  universal across UE5 RPGs; only the offsets differ.
+- **`ueforge::ue::actor::is_outer_named`** -- player-filter
+  shorthand (`this.outer().full_name().contains(needle)`).
+- **`ueforge::ue::actor::outer_class_name`** -- common log-line
+  builder.
+
+g2rpg's kill_hook can now point at the next UE5 game and the
+authors clone-and-tweak only the killing-blow parm offset
+(`MULTICAST_DAMAGE_FLAGS_OFFSET`), the player-outer string, the
+creature-class string, and the per-game `DamageInfoLayout`. Every
+other line is universal.
+
 ## 2026-05-10 (hardening + ops extraction)
 
 ### Kovarex P0 + P1 hardening shipped

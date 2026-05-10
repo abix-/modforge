@@ -289,6 +289,34 @@ caller's responsibility (same contract as TypedField). Prefer
 TypedField for repeated load-bearing sites; prefer these for
 runtime-decided / one-off reads.
 
+## ue::damage_info -- FDamageInfo reader
+
+Every UE5 game with a damage system fills an `FDamageInfo`-shaped
+struct on its damage component (typically `UHealthComponent`)
+before firing the multicast / apply UFunctions. The fields and
+offsets vary per-game; the **shape** is universal. Configure the
+offsets once and call the read methods from your damage hook:
+
+```rust
+use ueforge::ue::damage_info::DamageInfoLayout;
+
+const G2_DAMAGE_INFO: DamageInfoLayout = DamageInfoLayout {
+    last_damage_info_offset: 0x03B0,  // HC.LastDamageInfo
+    instigator_offset: 0x03B0 + 0x20, // FDamageInfo.InstigatorController
+    damage_source_offset: 0x03B0 + 0x28,
+    damage_type_class_offset: 0x03B0 + 0x40,
+    damage_flags_offset: 0x03B0 + 0x70,
+};
+
+let killer = G2_DAMAGE_INFO.instigator(hc);
+let dt_name = G2_DAMAGE_INFO.damage_type_name(hc);
+let flags = G2_DAMAGE_INFO.damage_flags(hc);
+```
+
+Folds the index validation + GObjectsView walk + UClass cast into
+single method calls. Used by g2rpg's kill-hook to identify
+killers and discriminate environmental damage from creature hits.
+
 ## ue::actor -- controller + class-chain helpers
 
 UE5 universals shared across game crates:
@@ -308,6 +336,12 @@ let pawn: Option<&UObject> = controller_pawn(controller);
 
 let line = format!("{} killed by {}", describe(victim), describe(killer));
 // "<name>(<class-name>)" or "<none>"
+
+// PE-hook player-component filter:
+if is_outer_named(this, "BP_SurvivalPlayerCharacter") {
+    // ...
+}
+let cls = outer_class_name(this);
 ```
 
 Used by g2rpg's kill hook to classify killers (player vs buggy
