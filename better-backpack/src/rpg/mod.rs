@@ -15,11 +15,11 @@
 
 pub mod apply;
 pub mod fall_hook;
-pub mod ffi;
 pub mod kill_hook;
 pub mod save_slot;
 pub mod skills;
 pub mod state;
+pub mod tab;
 pub mod tracker;
 pub mod world_loader;
 pub mod xp;
