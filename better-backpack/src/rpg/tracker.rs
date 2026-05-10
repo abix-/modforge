@@ -1,17 +1,16 @@
-// In-memory PlayerState plus the slot it's bound to. Drives reads /
+// In-memory player state + the slot it's bound to. Drives reads /
 // writes for the RPG loop:
 //   - `world_loader` calls `activate_slot` when a save becomes active.
-//   - `kill_hook` calls `record_kill` on every confirmed creature kill,
-//     specifying the kill source (player vs Buggy) so we can apply the
-//     right XP multiplier.
+//   - `kill_hook` calls `record_kill` on every confirmed creature kill.
 //
-// Eager activation is required because skill levels affect player
-// stats from spawn, not from the first kill.
+// State and persistence ride on `ueforge::rpg::SkillsState` +
+// `SlotStore<SkillsState>`. The slot key is the G2 PlaythroughGuid
+// resolved by `save_slot::current_slot_key`.
 
-use std::sync::Mutex;
+use parking_lot::Mutex;
+use ueforge::rpg::{SkillsState, SlotStore};
 
 use crate::rpg::apply;
-use crate::rpg::state::{self, PlayerState};
 use crate::rpg::xp;
 use crate::settings::Settings;
 
@@ -23,98 +22,71 @@ pub enum KillSource {
 
 struct Tracker {
     slot: String,
-    state: PlayerState,
+    state: SkillsState,
     settings: Settings,
 }
 
 static TRACKER: Mutex<Option<Tracker>> = Mutex::new(None);
+static STORE: SlotStore<SkillsState> = SlotStore::new("saves");
 
 /// Bind the tracker to `slot` and load any prior state from disk.
-/// Replaces any prior binding. Triggers `apply::apply` so skill
-/// levels are reflected in CDOs immediately.
 pub fn activate_slot(slot: String, settings: Settings) {
-    let mut state = state::load_one(&slot);
-    // If the loaded state has xp but no level (first run after schema
-    // bump, or hand-edited file), recompute level from xp.
+    let mut state = STORE.load(&slot);
+    // Catch up `level` from `xp` if a curve change or hand-edit left
+    // them out of sync.
     let derived_level = xp::level_for_xp(state.xp);
     if state.level < derived_level {
         state.level = derived_level;
     }
     ueforge::log!(
-        "rpg/state: activated slot={} level={} xp={} skill_points={} kills={} last={}",
+        "rpg/state: activated slot={} level={} xp={} skill_points={}",
         short(&slot),
         state.level,
         state.xp,
         state.skill_points,
-        state.kill_count,
-        if state.last_killed.is_empty() {
-            "<none>"
-        } else {
-            state.last_killed.as_str()
-        }
     );
 
     apply::apply(&state, &settings);
 
-    *lock() = Some(Tracker {
+    *TRACKER.lock() = Some(Tracker {
         slot,
         state,
         settings,
     });
 }
 
-/// Drop the active slot. Persisted state is already on disk via
-/// `record_kill`'s flush, so no extra save here.
 pub fn deactivate_slot() {
-    let mut g = lock();
+    let mut g = TRACKER.lock();
     if let Some(t) = g.take() {
         ueforge::log!("rpg/state: deactivated slot={}", short(&t.slot));
     }
 }
 
-/// Returns the slot key currently bound, if any.
 pub fn current_slot() -> Option<String> {
-    lock().as_ref().map(|t| t.slot.clone())
+    TRACKER.lock().as_ref().map(|t| t.slot.clone())
 }
 
-/// Run a read-only closure against the active PlayerState. Returns
-/// None if no slot is active. Cheap, no clone of the state.
-pub fn with_state<R>(f: impl FnOnce(&PlayerState) -> R) -> Option<R> {
-    let g = lock();
+/// Read-only access to the active state. None if no slot is active.
+pub fn with_state<R>(f: impl FnOnce(&SkillsState) -> R) -> Option<R> {
+    let g = TRACKER.lock();
     g.as_ref().map(|t| f(&t.state))
 }
 
-/// Spend one skill point on `skill`. Returns true if applied, false if
-/// preconditions fail (no slot, no points, level already at max).
 pub fn spend_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
     spend_skill_points(skill, 1) > 0
 }
 
-/// Spend up to `count` skill points on `skill`. Returns the number of
-/// points actually spent, which may be lower if we run out of points
-/// or hit the max level cap.
 pub fn spend_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 {
-    let mut g = lock();
+    let mut g = TRACKER.lock();
     let Some(tracker) = g.as_mut() else {
         ueforge::log!("rpg/state: spend({}) ignored, no slot active", skill.id);
         return 0;
     };
-    if tracker.state.skill_points == 0 || count == 0 {
-        ueforge::log!("rpg/state: spend({}) ignored, no skill points", skill.id);
+    if count == 0 {
         return 0;
     }
-    let cur_level = tracker
-        .state
-        .skill_levels
-        .get(skill.id)
-        .copied()
-        .unwrap_or(0);
+    let cur_level = tracker.state.level_of(skill.id);
     if cur_level >= skill.max_level {
-        ueforge::log!(
-            "rpg/state: spend({}) ignored, already at max level {}",
-            skill.id,
-            skill.max_level
-        );
         return 0;
     }
     let max_by_level = skill.max_level - cur_level;
@@ -128,10 +100,10 @@ pub fn spend_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 
         .state
         .skill_levels
         .insert(skill.id.to_string(), new_level);
-    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
-    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    apply::apply_one(&tracker.state, &tracker.settings, skill.id);
+    STORE.save(&tracker.slot, &tracker.state);
     ueforge::log!(
-        "rpg/state: spent {} point(s) on {}: level {} -> {} ({} points left)",
+        "rpg/state: spent {} on {}: level {} -> {} ({} points left)",
         spend,
         skill.id,
         cur_level,
@@ -141,31 +113,20 @@ pub fn spend_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 
     spend
 }
 
-/// Refund one skill point from `skill`. Returns true if applied,
-/// false if no slot or skill is already at 0.
 pub fn refund_skill_point(skill: &crate::rpg::skills::Skill) -> bool {
     refund_skill_points(skill, 1) > 0
 }
 
-/// Refund up to `count` skill points from `skill`. Returns the
-/// number of points actually refunded (capped by current level).
 pub fn refund_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32 {
-    let mut g = lock();
+    let mut g = TRACKER.lock();
     let Some(tracker) = g.as_mut() else {
-        ueforge::log!("rpg/state: refund({}) ignored, no slot active", skill.id);
         return 0;
     };
     if count == 0 {
         return 0;
     }
-    let cur_level = tracker
-        .state
-        .skill_levels
-        .get(skill.id)
-        .copied()
-        .unwrap_or(0);
+    let cur_level = tracker.state.level_of(skill.id);
     if cur_level == 0 {
-        ueforge::log!("rpg/state: refund({}) ignored, already at 0", skill.id);
         return 0;
     }
     let refund = count.min(cur_level);
@@ -179,10 +140,10 @@ pub fn refund_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32
             .insert(skill.id.to_string(), new_level);
     }
     tracker.state.skill_points = tracker.state.skill_points.saturating_add(refund);
-    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill.id);
-    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    apply::apply_one(&tracker.state, &tracker.settings, skill.id);
+    STORE.save(&tracker.slot, &tracker.state);
     ueforge::log!(
-        "rpg/state: refunded {} point(s) from {}: level {} -> {} ({} points available)",
+        "rpg/state: refunded {} from {}: level {} -> {} ({} points)",
         refund,
         skill.id,
         cur_level,
@@ -192,46 +153,32 @@ pub fn refund_skill_points(skill: &crate::rpg::skills::Skill, count: u32) -> u32
     refund
 }
 
-/// Re-apply one skill against the current state. Used by the
-/// enable/disable toggle so flipping the flag takes effect right
-/// away without requiring a save reload.
 pub fn reapply_one(skill_id: &str) {
-    let g = lock();
-    let Some(tracker) = g.as_ref() else {
-        return;
-    };
-    crate::rpg::apply::apply_one(&tracker.state, &tracker.settings, skill_id);
+    let g = TRACKER.lock();
+    let Some(tracker) = g.as_ref() else { return };
+    apply::apply_one(&tracker.state, &tracker.settings, skill_id);
 }
 
-/// Re-apply every CATALOG skill against the current state.
-/// Mirrors what `activate_slot` does at slot load. Returns true
-/// if a slot was active. Used by the debug `reload_slot` op so
-/// tests can return the live game to a known baseline without
-/// requiring a save-key change.
+/// Re-apply every CATALOG skill against the current state. Used by
+/// the debug `reload_slot` op.
 pub fn reapply_all() -> bool {
-    let g = lock();
+    let g = TRACKER.lock();
     let Some(tracker) = g.as_ref() else {
         return false;
     };
-    crate::rpg::apply::apply(&tracker.state, &tracker.settings);
+    apply::apply(&tracker.state, &tracker.settings);
     true
 }
 
-
-/// Debug: grant `count` skill points and save. Used by the debug
-/// button in the ImGui tab so we don't have to grind XP to test
-/// combat skills. No-op if no slot is active.
 pub fn debug_grant_skill_points(count: u32) -> bool {
-    let mut g = lock();
+    let mut g = TRACKER.lock();
     let Some(tracker) = g.as_mut() else {
-        ueforge::log!("rpg/state: debug_grant({}) ignored, no slot active", count);
         return false;
     };
     tracker.state.skill_points = tracker.state.skill_points.saturating_add(count);
-    crate::rpg::state::save(&tracker.slot, &tracker.state);
+    STORE.save(&tracker.slot, &tracker.state);
     ueforge::log!(
-        "rpg/state: DEBUG granted +{} skill points (total {})",
-        count,
+        "rpg/state: DEBUG granted +{count} skill points (total {})",
         tracker.state.skill_points
     );
     true
@@ -239,12 +186,8 @@ pub fn debug_grant_skill_points(count: u32) -> bool {
 
 /// Called from the kill hook on every confirmed creature kill.
 pub fn record_kill(creature_class_name: &str, source: KillSource) {
-    let mut g = lock();
+    let mut g = TRACKER.lock();
     let Some(tracker) = g.as_mut() else {
-        ueforge::log!(
-            "rpg/state: kill ({}) before slot active; dropping",
-            creature_class_name
-        );
         return;
     };
 
@@ -257,8 +200,6 @@ pub fn record_kill(creature_class_name: &str, source: KillSource) {
         }
     };
 
-    tracker.state.kill_count += 1;
-    tracker.state.last_killed = creature_class_name.to_string();
     tracker.state.xp = tracker.state.xp.saturating_add(scaled as u64);
 
     let new_level = xp::level_for_xp(tracker.state.xp);
@@ -276,21 +217,13 @@ pub fn record_kill(creature_class_name: &str, source: KillSource) {
         );
     }
 
-    state::save(&tracker.slot, &tracker.state);
+    STORE.save(&tracker.slot, &tracker.state);
 
     ueforge::log!(
-        "rpg/state: kill #{} ({}) source={:?} +{} XP (total {}, level {})",
-        tracker.state.kill_count,
-        creature_class_name,
-        source,
-        scaled,
+        "rpg/state: kill ({creature_class_name}) source={source:?} +{scaled} XP (total {}, level {})",
         tracker.state.xp,
         tracker.state.level
     );
-}
-
-fn lock() -> std::sync::MutexGuard<'static, Option<Tracker>> {
-    TRACKER.lock().expect("rpg tracker mutex poisoned")
 }
 
 fn short(slot: &str) -> &str {

@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 use crate::inv_hook;
 use crate::patch;
 use crate::rpg::skills::{self, Skill, SkillEffect, SurvivalField};
-use crate::rpg::state::PlayerState;
+use ueforge::rpg::SkillsState as PlayerState;
 use ueforge::ue::{self, GObjectsView, UObject};
 use crate::settings::Settings;
 use crate::survival;
@@ -68,11 +68,7 @@ pub(crate) fn vanilla_hc_masks_snapshot() -> Vec<(usize, u32)> {
 
 /// All currently-disabled skill ids. The toggle UI state.
 pub(crate) fn disabled_skills_snapshot() -> Vec<&'static str> {
-    DISABLED_SKILLS
-        .lock()
-        .ok()
-        .map(|g| g.clone())
-        .unwrap_or_default()
+    DISABLED_SKILLS.snapshot()
 }
 // Per-(offset) vanilla `UHealthComponent` u32 mask values, captured
 // the first time we see a non-default value. Used by
@@ -102,31 +98,17 @@ pub(crate) fn vanilla_hc_mask(offset: usize) -> Option<u32> {
 // `apply_one` so the change is immediate. Not persisted across
 // launches: cheap to reapply, and avoids a save-schema bump for a
 // runtime convenience.
-static DISABLED_SKILLS: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
-
+static DISABLED_SKILLS: ueforge::rpg::DisabledSkills = ueforge::rpg::DisabledSkills::new();
 
 pub fn is_skill_enabled(skill_id: &str) -> bool {
-    let Ok(g) = DISABLED_SKILLS.lock() else {
-        return true;
-    };
-    !g.iter().any(|s| *s == skill_id)
+    !DISABLED_SKILLS.is_disabled(skill_id)
 }
 
-/// Set the enabled flag for `skill_id`. Returns the new state.
+/// Set the enabled flag for `skill_id`. Returns the new state (true =
+/// enabled, false = disabled).
 pub fn set_skill_enabled(skill_id: &'static str, enabled: bool) -> bool {
-    if let Ok(mut g) = DISABLED_SKILLS.lock() {
-        let pos = g.iter().position(|s| *s == skill_id);
-        match (enabled, pos) {
-            (true, Some(i)) => {
-                g.swap_remove(i);
-            }
-            (false, None) => {
-                g.push(skill_id);
-            }
-            _ => {}
-        }
-    }
-    enabled
+    let now_disabled = DISABLED_SKILLS.set(skill_id, !enabled);
+    !now_disabled
 }
 static VANILLA_MIN_FALL_DAMAGE_VELOCITY: OnceLock<f32> = OnceLock::new();
 static VANILLA_GAME_MODE_FALL_DAMAGE_MULTIPLIER: OnceLock<f32> = OnceLock::new();

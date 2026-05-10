@@ -27,6 +27,7 @@ pub mod mod_main;
 pub mod ops;
 pub mod parms;
 pub mod pe_queue;
+pub mod rpg;
 pub mod ring;
 pub mod scanner;
 pub mod selector;

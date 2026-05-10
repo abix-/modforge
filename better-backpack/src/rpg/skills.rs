@@ -514,9 +514,10 @@ pub fn lookup(id: &str) -> Option<&'static Skill> {
 
 /// Diminishing-returns progress at `level`. Range [0.0, 1.0]. Square
 /// root so each early level matters and late levels flatten gracefully.
+/// Thin alias over `ueforge::rpg::progress::sqrt_progress` so call
+/// sites stay terse.
 pub fn level_progress(level: u32) -> f32 {
-    let l = level.min(SKILL_MAX_LEVEL) as f32;
-    (l / SKILL_MAX_LEVEL as f32).sqrt()
+    ueforge::rpg::progress::sqrt_progress(level, SKILL_MAX_LEVEL)
 }
 
 /// Generic "skill bonus" for any effect that maxes at `max_bonus` at

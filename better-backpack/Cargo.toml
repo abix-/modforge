@@ -27,6 +27,7 @@ default = ["console"]
 anyhow = { workspace = true }
 widestring = { workspace = true }
 memoffset = { workspace = true }
+parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 ueforge = { path = "../ueforge" }

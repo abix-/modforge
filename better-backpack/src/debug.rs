@@ -624,8 +624,6 @@ pub struct PlayerStateView {
     pub level: u32,
     pub skill_points: u32,
     pub skill_levels: serde_json::Map<String, Json>,
-    pub kill_count: u64,
-    pub last_killed: String,
 }
 
 #[derive(Serialize)]
@@ -743,8 +741,6 @@ fn build_snapshot() -> Snapshot {
         level: ps.level,
         skill_points: ps.skill_points,
         skill_levels: skill_levels_map,
-        kill_count: ps.kill_count,
-        last_killed: ps.last_killed,
     });
 
     let vanilla_masks = apply::vanilla_hc_masks_snapshot()
@@ -843,14 +839,12 @@ fn skill_effect_kind(e: &skills::SkillEffect) -> &'static str {
     }
 }
 
-fn player_state_view(ps: &crate::rpg::state::PlayerState) -> PlayerStateSnap {
+fn player_state_view(ps: &ueforge::rpg::SkillsState) -> PlayerStateSnap {
     PlayerStateSnap {
         xp: ps.xp,
         level: ps.level,
         skill_points: ps.skill_points,
         skill_levels: ps.skill_levels.clone(),
-        kill_count: ps.kill_count,
-        last_killed: ps.last_killed.clone(),
     }
 }
 
@@ -859,8 +853,6 @@ struct PlayerStateSnap {
     level: u32,
     skill_points: u32,
     skill_levels: std::collections::BTreeMap<String, u32>,
-    kill_count: u64,
-    last_killed: String,
 }
 
 fn collect_live_player() -> Option<LivePlayerView> {
