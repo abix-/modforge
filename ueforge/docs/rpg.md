@@ -200,6 +200,39 @@ for typical caps 50-100; bounded).
 Defaults match g2rpg: 100 / 1.8 / 50. Generous early, flat at the
 end. Adjust `(base, exponent, max_level)` to retune.
 
+## Bestiary -- per-creature XP table
+
+```rust
+pub struct Bestiary {
+    pub table: &'static [(&'static str, u32)],
+    pub default_xp: u32,
+}
+
+impl Bestiary {
+    pub const fn new(
+        table: &'static [(&'static str, u32)],
+        default_xp: u32,
+    ) -> Self;
+    pub fn lookup(&self, class_name: &str) -> u32;
+}
+```
+
+UE5 RPG mods award XP based on the dying actor's BP class. Hold
+the `(class_name, base_xp)` pairs in a `static Bestiary`, look up
+once per kill from the kill hook. Linear scan; realistic
+bestiaries are <100 rows so the cost is invisible.
+
+```rust
+pub static BESTIARY: Bestiary = Bestiary::new(
+    &[
+        ("BP_Aphid_C", 5),
+        ("BP_Roly_Poly_C", 25),
+        ("BP_Spider_C", 75),
+    ],
+    5, // default for unknown classes
+);
+```
+
 ## sqrt_progress -- diminishing-returns curve
 
 ```rust

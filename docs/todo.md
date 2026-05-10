@@ -140,22 +140,45 @@ Save-data durability + shutdown safety. All four P0s shipped:
   guaranteed drain site.
 - [ ] **`AddUObjectCreateListener` integration.** Land when
   ows-tweaks or g2rpg's CDO-revert-replay scenario asks. ~100 LoC.
-- [ ] **DEFER Phase 3 wave 2 promotions** (`Catalog<E>` +
-  apply-dispatcher shape) until a second consumer needs them.
+- [x] **Phase 3 wave 2: g2rpg catalog migration** -- 9 of 13
+  catalog skills route through `ueforge::rpg::std_effect::
+  StandardEffect`; `apply_skill` shrunk from 11 arms to 4;
+  ~570 LoC of duplicated apply / format dispatch deleted.
+  Closed 2026-05-10.
+- [x] **`ueforge::rpg::Bestiary`** -- per-creature XP table.
+  Closed 2026-05-10.
+- [x] **`ueforge::ue::field`** -- generic untyped UObject byte
+  ops. Closed 2026-05-10.
+- [x] **`ueforge::ue::actor`** -- `class_chain_contains`,
+  `controller_pawn`, `describe`, `A_CONTROLLER_PAWN_OFFSET`.
+  Closed 2026-05-10.
+- [x] **`FWeakObjectPtr::read` + `resolve`** -- index +
+  GObjectsView walk folded into the existing struct.
+  Closed 2026-05-10.
+- [x] **`ueforge::debug` first wave** -- `PlayerStateView`,
+  `CatalogEntry`, `catalog_view`, `STANDARD_OPS`. Closed
+  2026-05-10.
 
 ## Open: more ueforge extraction candidates
 
 Still live in g2rpg; extract on demand:
 
-- Damage-hook framework (kill_hook structural shape, ~70%
-  extractable; defer until a second consumer needs damage
-  hooks).
-- Snapshot framework macro.
+- Damage-hook framework (kill_hook structural shape -- the
+  Maine-class-specific dispatch / KillerKind / FDamageInfo
+  parsing stays game-side, but the install + per-fn parm-shape
+  decoding scaffold could promote when a second UE5 game
+  needs it). ~30% remaining; rest is genuinely game-specific.
+- Snapshot framework macro / `OpRouter` -- the standard ops
+  handler, PE-queue enqueue helper, and damage-ring scaffold
+  are 3 of the bigger items left in g2rpg's `debug.rs`.
 - Status-effect application helper (apply_via_pe with
-  FDataTableRowHandle building).
+  FDataTableRowHandle building). Mostly covered by
+  `StandardEffect::StatusEffect` already; the remaining bits
+  are the discovery-side enumerators in `fall_hook`.
 - Player inventory operations (find inventory, add/remove
-  items, count).
+  items, count). G2 has the only consumer today.
 - Health operations (read/write HP, heal, damage via PE).
+  G2 only.
 - HUD overlay drawing (DX11 hook for in-world rendering).
 - Settings hot-reload (watch settings.json, reload on change).
 

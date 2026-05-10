@@ -260,6 +260,59 @@ the offset + type pair matches the object's class. TypedField
 makes this assertion easier to spot review-wise (the const
 declaration is the one place to verify).
 
+## ue::field -- untyped byte ops
+
+When the field type or offset is decided at runtime (debug
+endpoints reading many shapes through one path, dumpers, ad-hoc
+read sites that don't deserve a `static TypedField<T>`), reach
+for the safe-typed wrappers in `ueforge::ue::field`:
+
+```rust
+use ueforge::ue::field::{
+    read_f32, write_f32, read_u32, write_u32,
+    read_i32, write_i32, read_bool, write_bool,
+    read_component_ptr,
+};
+
+let hp = read_f32(hc, 0x0328);
+write_f32(hc, 0x0328, hp + 50.0);
+let mask = read_u32(hc, 0x00FC);
+
+// Follow a `*mut UObject` slot at a known offset.
+if let Some(component) = read_component_ptr(player, 0x1340) {
+    // ...
+}
+```
+
+All functions are unaligned-safe. Pointer validity is the
+caller's responsibility (same contract as TypedField). Prefer
+TypedField for repeated load-bearing sites; prefer these for
+runtime-decided / one-off reads.
+
+## ue::actor -- controller + class-chain helpers
+
+UE5 universals shared across game crates:
+
+```rust
+use ueforge::ue::actor::{
+    class_chain_contains, controller_pawn, describe,
+    A_CONTROLLER_PAWN_OFFSET,
+};
+
+if class_chain_contains(controller, "PlayerController") {
+    // walks `obj.class()` + every super_class, depth-bounded
+}
+
+let pawn: Option<&UObject> = controller_pawn(controller);
+// equivalent to: read_component_ptr(controller, A_CONTROLLER_PAWN_OFFSET)
+
+let line = format!("{} killed by {}", describe(victim), describe(killer));
+// "<name>(<class-name>)" or "<none>"
+```
+
+Used by g2rpg's kill hook to classify killers (player vs buggy
+vs other) without duplicating the universal class-chain walk.
+
 ## GObjects
 
 `ueforge::ue::GObjectsView` walks the engine's global UObject

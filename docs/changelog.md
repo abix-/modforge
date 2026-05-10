@@ -12,6 +12,62 @@
 
 Newest first.
 
+## 2026-05-10 (Phase 3 wave 2: g2rpg catalog + framework lifts)
+
+### bbp catalog migrated to `Standard(StandardEffect)`
+
+`grounded2-rpg::SkillEffect` shrunk from 11 variants to 4. Nine
+of 13 catalog skills now route through `ueforge::rpg::std_effect::
+StandardEffect` (Attack Damage, Armor, Move/Jump/Glide/Leap,
+Impact Resistance, Lifesteal, Max Health, Health Regen). The four
+that stay game-specific are genuine composites: Backpack
+(InventoryComponent CDO write), Hunger / Thirst (settings-multiplier
+drain), and Fall Damage (multi-component HC ratio + GMS CDO + SMMC
+live + UFunction call).
+
+`apply::apply_skill` collapsed from 11 arms to 4. The Standard arm
+forwards `e.apply(level, max_level, &PLAYER)` to the framework with
+zero game-specific dispatch. `format_effect` followed: `Standard`
+delegates to `StandardEffect::format`, the other three arms keep
+their tailored format strings. ~570 lines of duplicated apply +
+format dispatch deleted.
+
+### Framework lifts (DRY for the next UE-game RPG)
+
+Five extractions to ueforge so a future ows-rpg ships with only
+game-specific logic:
+
+- **`ueforge::rpg::Bestiary`** — per-creature XP table keyed by BP
+  class short name with a default-fallback. Replaces a per-game
+  `OnceLock<Vec<(&str, u32)>>` + linear-scan helper.
+- **`ueforge::ue::field`** — generic untyped UObject byte ops:
+  `read_f32` / `write_f32` / `read_u32` / `write_u32` / `read_i32` /
+  `write_i32` / `read_bool` / `write_bool` / `read_component_ptr`.
+  The TypedField counterpart still exists for structured sites;
+  these are the escape hatch for runtime-decided offsets.
+- **`ueforge::ue::actor`** — kill-hook universals:
+  `class_chain_contains(obj, needle)` walks the UClass + super
+  chain looking for a class-name substring (depth-bounded);
+  `controller_pawn(controller)` reads the stable `AController.
+  Pawn` slot at `+0x0308`; `describe(obj)` formats `name(class)`
+  for log lines; `A_CONTROLLER_PAWN_OFFSET` constant.
+- **`FWeakObjectPtr::read` + `::resolve`** — fold the index
+  validation + Runtime + GObjectsView walk into one method on the
+  existing struct. Two callers in g2rpg's kill_hook collapsed to
+  single-line uses.
+- **`ueforge::debug`** — first wave of the debug-endpoint scaffold:
+  `PlayerStateView::from_state`, `CatalogEntry`, `catalog_view`,
+  `STANDARD_OPS`. Game-specific snapshot collectors stay in the
+  game crate; the universal view types and op-list metadata are
+  shared.
+
+After these lifts: g2rpg's `apply.rs` is 320 lines (was 814);
+`skills.rs` is 460 lines (was 544); `xp.rs` is 53 lines (was 63
+including bespoke OnceLock); `kill_hook.rs` shed ~50 lines of
+duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
+lines of view-struct boilerplate. All ueforge unit tests
+green (62 pass).
+
 ## 2026-05-10 (hardening + ops extraction)
 
 ### Kovarex P0 + P1 hardening shipped
