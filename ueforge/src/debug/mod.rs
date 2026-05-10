@@ -27,9 +27,15 @@
 //! }
 //! ```
 
-use serde::Serialize;
+use std::time::Duration;
 
-use crate::rpg::{Skill, SkillsState};
+use serde::Serialize;
+use serde_json::Value as Json;
+
+use crate::args;
+use crate::pe_queue::DrainSite;
+use crate::ring::EventRing;
+use crate::rpg::{DisabledSkills, RpgApplier, Skill, SkillsState, Tracker};
 
 /// Universal player-state view for the debug snapshot. Serde-
 /// friendly mapping of `SkillsState` fields. `skill_levels` is a
@@ -115,3 +121,160 @@ pub const STANDARD_OPS: &[&str] = &[
     "class_outer_samples",
     "sample_thread_modules",
 ];
+
+/// Recent damage / multicast PE event captured by a damage hook.
+/// Universal shape: every UE5 RPG mod that observes damage wants
+/// the same fields. Game crates push entries from their kill_hook
+/// trampoline; the snapshot endpoint reads + serializes the ring.
+#[derive(Clone, Serialize)]
+pub struct DamageEvent {
+    /// Wall-clock seconds since UNIX epoch -- sequences events in
+    /// the same clock space as log lines.
+    pub at_secs: u64,
+    pub function: String,
+    pub damage: f32,
+    pub damage_flags: i32,
+    pub type_flags: u32,
+    pub current_damage_before: Option<f32>,
+    pub current_damage_after: Option<f32>,
+}
+
+/// Bounded drop-oldest ring of `DamageEvent`s. Wraps `EventRing`
+/// with the standard observer accessors so game crates declare
+/// `static RING: DamageRing = DamageRing::new(64);` and call
+/// `RING.record(ev)` / `RING.snapshot()` directly.
+pub struct DamageRing {
+    inner: EventRing<DamageEvent>,
+}
+
+impl DamageRing {
+    pub const fn new(capacity: usize) -> Self {
+        Self {
+            inner: EventRing::new(capacity),
+        }
+    }
+    pub fn record(&self, ev: DamageEvent) {
+        self.inner.record(ev);
+    }
+    pub fn snapshot(&self) -> Vec<DamageEvent> {
+        self.inner.snapshot()
+    }
+    pub fn pushes(&self) -> u64 {
+        self.inner.pushes()
+    }
+    pub fn peak(&self) -> usize {
+        self.inner.peak()
+    }
+}
+
+/// System-metric block that every mod's snapshot includes:
+/// counters + per-process memory / CPU / threads + GObjects
+/// population + per-region address-space breakdown.
+///
+/// Build with [`ProcessSnapshot::collect`]; embed in the game's
+/// own snapshot struct via `#[serde(flatten)]` or as a named
+/// field.
+#[derive(Serialize)]
+pub struct ProcessSnapshot {
+    /// Hot-path counters JSON. Game crate supplies via
+    /// `crate::counters::snapshot_json()` (or whatever the mod's
+    /// counters module exposes).
+    pub counters: Json,
+    pub process_memory: Json,
+    pub process_cpu: Json,
+    pub process_threads: Json,
+    pub game_population: Json,
+    pub process_regions: Json,
+}
+
+impl ProcessSnapshot {
+    /// Snapshot every system-metric field. `counters` is supplied
+    /// by the caller (the counters module is owned by the game
+    /// crate so it can name its own atomics). `top_classes` is the
+    /// number of GObjects classes to surface in the population
+    /// block (typical: 40).
+    pub fn collect(counters: Json, top_classes: usize) -> Self {
+        ProcessSnapshot {
+            counters,
+            process_memory: crate::winproc::process_memory_json(),
+            process_cpu: crate::winproc::process_cpu_json(),
+            process_threads: crate::winproc::process_threads_json(),
+            game_population: crate::ue::probe::gobjects_population(top_classes),
+            process_regions: crate::winproc::process_regions_json(),
+        }
+    }
+}
+
+/// Enqueue a closure on a game-thread `DrainSite` with the
+/// universal "trampoline must be firing" timeout-hint behavior.
+/// `hint` is a short message appended to timeout errors so callers
+/// know which trampoline owns the drain (typically the kill-hook
+/// fn name).
+pub fn enqueue_pe<F>(
+    pe_queue: &DrainSite,
+    timeout: Duration,
+    hint: &str,
+    closure: F,
+) -> Result<Json, String>
+where
+    F: FnOnce() -> Result<Json, String> + Send + 'static,
+{
+    pe_queue
+        .queue()
+        .enqueue(closure, timeout)
+        .map_err(|e| {
+            if e.contains("timed out") {
+                format!("{e}. {hint}")
+            } else {
+                e
+            }
+        })
+}
+
+/// Try to handle one of the [`STANDARD_OPS`] generically. Returns
+/// `None` if the op isn't standard (caller dispatches their
+/// game-specific op). Returns `Some(Ok(json))` / `Some(Err(msg))`
+/// for handled ops.
+///
+/// Ops that need a per-game instance resolver (`call`, `read_bytes`,
+/// `write_bytes`) are NOT included here -- they take a closure the
+/// game must supply. Use [`dispatch_call_op`] /
+/// [`dispatch_read_bytes_op`] / [`dispatch_write_bytes_op`].
+pub fn dispatch_standard_op<A: RpgApplier>(
+    op: &str,
+    args_json: &Json,
+    tracker: &Tracker<A>,
+    disabled: &DisabledSkills,
+) -> Option<Result<Json, String>> {
+    Some(match op {
+        "skill_toggle" => crate::rpg::ops::skill_toggle(tracker, disabled, args_json),
+        "skill_spend" => crate::rpg::ops::skill_spend(tracker, args_json),
+        "skill_refund" => crate::rpg::ops::skill_refund(tracker, args_json),
+        "reload_slot" => crate::rpg::ops::reload_slot(tracker),
+        "set_skill_points" => crate::rpg::ops::set_skill_points(tracker, args_json),
+        "walk_class" => crate::ops::walk_class(args_json),
+        "class_outer_samples" => {
+            let class_name = match args::arg_str(args_json, "class") {
+                Ok(s) => s,
+                Err(e) => return Some(Err(e)),
+            };
+            let k = match args::arg_u64(args_json, "k", Some(20)) {
+                Ok(v) => v as usize,
+                Err(e) => return Some(Err(e)),
+            };
+            Ok(crate::ue::probe::class_outer_samples(class_name, k))
+        }
+        "sample_thread_modules" => {
+            let duration_ms = match args::arg_u64(args_json, "duration_ms", Some(30_000)) {
+                Ok(v) => v as u32,
+                Err(e) => return Some(Err(e)),
+            };
+            let interval_ms = match args::arg_u64(args_json, "interval_ms", Some(100)) {
+                Ok(v) => v as u32,
+                Err(e) => return Some(Err(e)),
+            };
+            Ok(crate::winproc::sample_thread_modules_json(duration_ms, interval_ms))
+        }
+        _ => return None,
+    })
+}

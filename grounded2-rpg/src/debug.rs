@@ -17,8 +17,11 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value as Json;
-use ueforge::args::{arg_f64, arg_str, arg_u64};
-use ueforge::debug::{CatalogEntry, PlayerStateView, STANDARD_OPS};
+use ueforge::args::{arg_f64, arg_str};
+use ueforge::debug::{
+    self, CatalogEntry, DamageRing, PlayerStateView, ProcessSnapshot, STANDARD_OPS,
+};
+pub use ueforge::debug::DamageEvent;
 use ueforge::envelope::{OpResponse as UespyResponse, parse_request};
 use ueforge::pe_queue::DrainSite;
 
@@ -70,35 +73,12 @@ enum DebugCmd {
 pub(crate) static PE_QUEUE: DrainSite = DrainSite::new();
 
 /// Ring buffer of recent damage / multicast events captured by
-/// the `kill_hook` trampoline. Populated by
-/// `record_damage_event()` from the trampoline; drained by the
-/// snapshot endpoint. Bounded (64) so a long session can't
-/// exhaust memory. `EventRing` auto-tracks push count + peak
-/// depth; the snapshot exposes them in the counters block.
-static DAMAGE_RING: ueforge::ring::EventRing<DamageEvent> =
-    ueforge::ring::EventRing::new(64);
-
-#[derive(Clone, Serialize)]
-pub struct DamageEvent {
-    /// Wall-clock seconds since logger init's UNIX epoch wrap, to
-    /// sequence events. Matches the same clock as bbp_log lines.
-    pub at_secs: u64,
-    pub function: String,
-    /// Damage value as read from the parm struct (offset depends
-    /// on which UFunction; the trampoline picks the right one).
-    pub damage: f32,
-    pub damage_flags: i32,
-    pub type_flags: u32,
-    pub current_damage_before: Option<f32>,
-    pub current_damage_after: Option<f32>,
-}
+/// the `kill_hook` trampoline. Populated via [`record_damage_event`];
+/// drained by the snapshot endpoint.
+static DAMAGE_RING: DamageRing = DamageRing::new(64);
 
 pub fn record_damage_event(ev: DamageEvent) {
     DAMAGE_RING.record(ev);
-}
-
-fn snapshot_damage_ring() -> Vec<DamageEvent> {
-    DAMAGE_RING.snapshot()
 }
 
 pub(crate) fn damage_ring_pushes() -> u64 {
@@ -109,26 +89,13 @@ pub(crate) fn damage_ring_peak() -> usize {
     DAMAGE_RING.peak()
 }
 
+const PE_TIMEOUT_HINT: &str =
+    "Is kill_hook firing? (Move around / take damage to drive multicast events.)";
+
 fn enqueue_pe(cmd: DebugCmd) -> Result<Json, String> {
-    PE_QUEUE
-        .queue()
-        .enqueue(
-            move || execute_on_game_thread(cmd),
-            Duration::from_secs(5),
-        )
-        .map_err(|e| {
-            // Wrap the generic timeout/poison message with the
-            // game-specific hint so callers know which trampoline
-            // is supposed to be draining.
-            if e.contains("timed out") {
-                format!(
-                    "{e}. Is kill_hook firing? \
-                     (Move around / take damage to drive multicast events.)"
-                )
-            } else {
-                e
-            }
-        })
+    debug::enqueue_pe(&PE_QUEUE, Duration::from_secs(5), PE_TIMEOUT_HINT, move || {
+        execute_on_game_thread(cmd)
+    })
 }
 
 /// Called from `kill_hook`'s trampoline (game thread). Drain
@@ -171,34 +138,18 @@ fn handle(body: &str) -> OpResponse {
         Err(e) => return error_response("<parse-error>", e),
     };
 
+    if op == "snapshot" {
+        return ok_response(&op, Json::Null);
+    }
+    if let Some(r) = debug::dispatch_standard_op(
+        &op,
+        &args,
+        &tracker::TRACKER,
+        &apply::DISABLED_SKILLS,
+    ) {
+        return to_response(&op, r);
+    }
     match op.as_str() {
-        "snapshot" => ok_response(&op, Json::Null),
-        // Generic RPG ops live in ueforge::rpg::ops; bbp just passes
-        // its static Tracker + DisabledSkills.
-        "skill_toggle" => to_response(
-            &op,
-            ueforge::rpg::ops::skill_toggle(
-                &tracker::TRACKER,
-                &apply::DISABLED_SKILLS,
-                &args,
-            ),
-        ),
-        "skill_spend" => to_response(
-            &op,
-            ueforge::rpg::ops::skill_spend(&tracker::TRACKER, &args),
-        ),
-        "skill_refund" => to_response(
-            &op,
-            ueforge::rpg::ops::skill_refund(&tracker::TRACKER, &args),
-        ),
-        "reload_slot" => to_response(
-            &op,
-            ueforge::rpg::ops::reload_slot(&tracker::TRACKER),
-        ),
-        "set_skill_points" => to_response(
-            &op,
-            ueforge::rpg::ops::set_skill_points(&tracker::TRACKER, &args),
-        ),
         "simulate_add_health" => to_response(&op, op_simulate_add_health(&args)),
         "simulate_apply_damage" => to_response(&op, op_simulate_apply_damage(&args)),
         "simulate_set_current_health" => {
@@ -207,9 +158,6 @@ fn handle(body: &str) -> OpResponse {
         "call" => to_response(&op, op_call(&args)),
         "read_bytes" => to_response(&op, op_read_bytes(&args)),
         "write_bytes" => to_response(&op, op_write_bytes(&args)),
-        "walk_class" => to_response(&op, op_walk_class(&args)),
-        "class_outer_samples" => to_response(&op, op_class_outer_samples(&args)),
-        "sample_thread_modules" => to_response(&op, op_sample_thread_modules(&args)),
         "" => error_response(
             "<missing>",
             format!("missing 'op' field; supported ops: {:?}", supported_ops()),
@@ -275,30 +223,14 @@ fn op_call(args: &Json) -> Result<Json, String> {
     let function = arg_str(args, "function")?.to_string();
     let selector = arg_str(args, "instance_selector")?.to_string();
     let parms = ueforge::hex::decode(arg_str(args, "parms_hex")?)?;
-    PE_QUEUE
-        .queue()
-        .enqueue(
-            move || {
-                let instance = resolve_instance(&selector)?;
-                let mut out = ueforge::ops::exec_call(instance, &class, &function, parms)?;
-                // Preserve historical "selector" echo in the result.
-                if let Some(obj) = out.as_object_mut() {
-                    obj.insert("selector".into(), Json::String(selector.clone()));
-                }
-                Ok(out)
-            },
-            Duration::from_secs(5),
-        )
-        .map_err(|e| {
-            if e.contains("timed out") {
-                format!(
-                    "{e}. Is kill_hook firing? \
-                     (Move around / take damage to drive multicast events.)"
-                )
-            } else {
-                e
-            }
-        })
+    debug::enqueue_pe(&PE_QUEUE, Duration::from_secs(5), PE_TIMEOUT_HINT, move || {
+        let instance = resolve_instance(&selector)?;
+        let mut out = ueforge::ops::exec_call(instance, &class, &function, parms)?;
+        if let Some(obj) = out.as_object_mut() {
+            obj.insert("selector".into(), Json::String(selector.clone()));
+        }
+        Ok(out)
+    })
 }
 
 fn resolve_instance(selector: &str) -> Result<&'static UObject, String> {
@@ -336,22 +268,6 @@ fn op_read_bytes(args: &Json) -> Result<Json, String> {
 
 fn op_write_bytes(args: &Json) -> Result<Json, String> {
     ueforge::ops::write_bytes(args, resolve_instance)
-}
-
-fn op_walk_class(args: &Json) -> Result<Json, String> {
-    ueforge::ops::walk_class(args)
-}
-
-fn op_class_outer_samples(args: &Json) -> Result<Json, String> {
-    let class_name = arg_str(args, "class")?;
-    let k = arg_u64(args, "k", Some(20))? as usize;
-    Ok(ueforge::ue::probe::class_outer_samples(class_name, k))
-}
-
-fn op_sample_thread_modules(args: &Json) -> Result<Json, String> {
-    let duration_ms = arg_u64(args, "duration_ms", Some(30_000))? as u32;
-    let interval_ms = arg_u64(args, "interval_ms", Some(100))? as u32;
-    Ok(ueforge::winproc::sample_thread_modules_json(duration_ms, interval_ms))
 }
 
 // ---- Game-thread executors. Called from kill_hook trampoline. ----
@@ -515,35 +431,14 @@ pub struct Snapshot {
     /// the file from the test side.
     pub settings: SettingsView,
     /// Recent damage / multicast events captured by the kill_hook
-    /// trampoline. Read-only (no process_event re-entry). Used to
-    /// observe what bandages / consumables / fall events look
-    /// like as they happen.
+    /// trampoline. Read-only (no process_event re-entry).
     pub damage_ring: Vec<DamageEvent>,
-    /// Hot-path counters. Snapshot at T0, play, snapshot at T1,
-    /// diff to find runaway. See `src/counters.rs`.
-    pub counters: Json,
-    /// Process memory readings via GetProcessMemoryInfo. Used by
-    /// the perf test to detect actual RAM growth (working set,
-    /// commit/private bytes, page faults) over a window.
-    pub process_memory: Json,
-    /// Process CPU times (user + kernel ns) via GetProcessTimes.
-    /// Diff over a window vs our `TIME_NS_*` counters tells us
-    /// what fraction of total process CPU is in our code.
-    pub process_cpu: Json,
-    /// Per-thread CPU times via Toolhelp + GetThreadTimes.
-    /// Diff over a window shows which named thread (GameThread,
-    /// RenderThread, etc.) is the cycle thief.
-    pub process_threads: Json,
-    /// UE5 GObjects population: total count + top classes by
-    /// instance count. Diff over a window finds the leak source
-    /// when an object class is growing unboundedly.
-    pub game_population: Json,
-    /// Process address-space breakdown via VirtualQuery. Diff
-    /// over a window narrows non-UObject memory leaks to a
-    /// specific category (image / mapped / private) and
-    /// protection class. Top committed regions list sorts by
-    /// size and includes mapped file names when applicable.
-    pub process_regions: Json,
+    /// System-metric block: counters + process memory / cpu /
+    /// threads + GObjects population + process regions. Flattened
+    /// so existing test assertions on the top-level field names
+    /// keep working.
+    #[serde(flatten)]
+    pub process: ProcessSnapshot,
 }
 
 #[derive(Serialize)]
@@ -735,13 +630,8 @@ fn build_snapshot() -> Snapshot {
         status_effects,
         catalog,
         settings,
-        damage_ring: snapshot_damage_ring(),
-        counters: crate::counters::snapshot_json(),
-        process_memory: ueforge::winproc::process_memory_json(),
-        process_cpu: ueforge::winproc::process_cpu_json(),
-        process_threads: ueforge::winproc::process_threads_json(),
-        game_population: ueforge::ue::probe::gobjects_population(40),
-        process_regions: ueforge::winproc::process_regions_json(),
+        damage_ring: DAMAGE_RING.snapshot(),
+        process: ProcessSnapshot::collect(crate::counters::snapshot_json(), 40),
     }
 }
 

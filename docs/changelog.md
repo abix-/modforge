@@ -68,6 +68,32 @@ duplicated UE-class-chain + weak-ptr walk; `debug.rs` shed ~30
 lines of view-struct boilerplate. All ueforge unit tests
 green (62 pass).
 
+### debug.rs scaffolding lift
+
+Promoted four pieces of g2rpg's debug endpoint to ueforge so the
+next mod's `debug.rs` doesn't re-implement them:
+
+- **`ueforge::debug::DamageEvent` + `DamageRing`** -- shared event
+  shape + EventRing wrapper with the standard accessors. Game
+  crates declare `static RING: DamageRing = DamageRing::new(64);`
+  and call `record` / `snapshot` / `pushes` / `peak`.
+- **`ueforge::debug::ProcessSnapshot`** -- bundles the five
+  system-metric JSON fields (counters, process memory, CPU,
+  threads, GObjects population, regions) behind a single
+  `collect(counters_json, top_classes)` call.
+- **`ueforge::debug::dispatch_standard_op`** -- single function
+  handling 8 of the 12 standard ops (`skill_*`, `reload_slot`,
+  `set_skill_points`, `walk_class`, `class_outer_samples`,
+  `sample_thread_modules`). Returns `Option<Result<Json,String>>`;
+  game crates fall through to their own ops on `None`.
+- **`ueforge::debug::enqueue_pe`** -- generic "queue a closure on
+  a DrainSite with timeout + custom hint" wrapper.
+
+g2rpg's `debug.rs` shrank 896 -> 786 lines (-110). The remaining
+weight is genuinely game-specific: HcFields/CmcFields/AscFields
+view types + Maine class-name CDO collectors + simulate_*
+executors with their G2-specific UFunction parm structs.
+
 ### kill_hook split + `DamageInfoLayout` lift
 
 Second pass on `kill_hook.rs`. The 604-line file mixed three
