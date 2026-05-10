@@ -248,6 +248,140 @@ impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
         let _ = self.inner.set(tweak);
         Ok(self.inner.get().expect("just initialized"))
     }
+
+    /// Spawn a background worker that waits for the table to
+    /// load (via `ue::datatable::on_first_sight`), refreshes the
+    /// discovery cache so the field is resolvable, then applies
+    /// once. Same shape as `FieldTweak::apply_when_ready` --
+    /// the typical init-time entry point.
+    pub fn apply_when_ready<F, S>(
+        &'static self,
+        timeout: std::time::Duration,
+        transform: F,
+        skip_if: S,
+    ) where
+        F: Fn(T) -> T + Send + 'static,
+        S: Fn(T) -> bool + Send + 'static,
+    {
+        ue::datatable::on_first_sight(self.table_name, timeout, move |_dt| {
+            // Re-walk discovery if our field isn't cached yet --
+            // the table only just appeared.
+            if resolve_field(self.table_name, self.field_name).is_none() {
+                let _ = crate::discovery::refresh();
+            }
+            match self.apply(&transform, &skip_if) {
+                Ok(n) => crate::log::log(format_args!(
+                    "NamedFieldTweak<{}>: applied to {n} rows of {}.{}",
+                    std::any::type_name::<T>(),
+                    self.table_name,
+                    self.field_name
+                )),
+                Err(e) => crate::log::log(format_args!(
+                    "NamedFieldTweak<{}>: apply failed on {}.{}: {e}",
+                    std::any::type_name::<T>(),
+                    self.table_name,
+                    self.field_name
+                )),
+            }
+        });
+    }
+}
+
+// ---- Class field, name-based --------------------------------------------
+
+/// Look up `field_name` on `class_name` in the discovery cache's
+/// classes JSON. Returns `(offset, element_size)`. `None` if the
+/// class isn't in the cache or the field isn't on it.
+pub fn resolve_class_field(class_name: &str, field_name: &str) -> Option<(usize, u32)> {
+    let snap = crate::discovery::cached()?;
+    let classes = snap.classes.get("classes")?.as_array()?;
+    for c in classes {
+        if c.get("name").and_then(|v| v.as_str()) != Some(class_name) {
+            continue;
+        }
+        let fields = c.get("fields")?.as_array()?;
+        for f in fields {
+            if f.get("name").and_then(|v| v.as_str()) != Some(field_name) {
+                continue;
+            }
+            let offset = f.get("offset").and_then(|v| v.as_i64())? as usize;
+            let size = f.get("element_size").and_then(|v| v.as_i64())? as u32;
+            return Some((offset, size));
+        }
+    }
+    None
+}
+
+/// Name-based wrapper over [`ue::class_tweak::ClassFieldTweak<T>`].
+/// Same shape as [`NamedFieldTweak<T>`] but for live UObjects: a
+/// mod declares one static per knob with `(class_name, field_name)`,
+/// the offset is resolved from the discovery cache on first apply,
+/// and the underlying `ClassFieldTweak<T>` provides per-instance
+/// vanilla snapshot + idempotent re-apply.
+///
+/// ```ignore
+/// static SURVIVAL_HUNGER: ClassNamedFieldTweak<f32> =
+///     ClassNamedFieldTweak::new("SurvivalComponent", "HungerDecayRate");
+///
+/// // From the mod's on_unreal_init worker (post discovery):
+/// SURVIVAL_HUNGER.apply(|_obj| true, |v| Some(v * 0.5)).ok();
+/// ```
+pub struct ClassNamedFieldTweak<T: Copy + PartialEq + Send + 'static> {
+    class_name: &'static str,
+    field_name: &'static str,
+    inner: OnceLock<ue::class_tweak::ClassFieldTweak<T>>,
+}
+
+impl<T: Copy + PartialEq + Send + 'static> ClassNamedFieldTweak<T> {
+    pub const fn new(class_name: &'static str, field_name: &'static str) -> Self {
+        Self {
+            class_name,
+            field_name,
+            inner: OnceLock::new(),
+        }
+    }
+
+    pub fn class_name(&self) -> &'static str {
+        self.class_name
+    }
+
+    pub fn field_name(&self) -> &'static str {
+        self.field_name
+    }
+
+    pub fn apply<Filter, Transform>(
+        &self,
+        filter: Filter,
+        transform: Transform,
+    ) -> Result<ue::class_tweak::ClassTweakStats, String>
+    where
+        Filter: Fn(&UObject) -> bool,
+        Transform: Fn(T) -> Option<T>,
+    {
+        let tweak = self.resolve_or_init()?;
+        tweak.apply(filter, transform)
+    }
+
+    pub fn revert(&self) -> Result<usize, String> {
+        let tweak = self.resolve_or_init()?;
+        tweak.revert()
+    }
+
+    fn resolve_or_init(&self) -> Result<&ue::class_tweak::ClassFieldTweak<T>, String> {
+        if let Some(t) = self.inner.get() {
+            return Ok(t);
+        }
+        let (offset, _size) = resolve_class_field(self.class_name, self.field_name)
+            .ok_or_else(|| {
+                format!(
+                    "ClassNamedFieldTweak: field '{}.{}' not in discovery cache",
+                    self.class_name, self.field_name
+                )
+            })?;
+        let tweak = ue::class_tweak::ClassFieldTweak::new(self.class_name, offset);
+        let _ = self.inner.set(tweak);
+        Ok(self.inner.get().expect("just initialized"))
+    }
 }
 
 /// Capture every row of `table_name`, decoding fields per the live

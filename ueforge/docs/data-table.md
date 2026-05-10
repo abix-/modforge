@@ -167,6 +167,32 @@ next discovery refresh -- no code change.
 Vanilla-snapshot + idempotent re-apply semantics are inherited
 verbatim from `FieldTweak<T>`.
 
+### apply_when_ready
+
+`NamedFieldTweak<T>::apply_when_ready(timeout, transform, skip_if)`
+is the spawn-and-wait variant: it polls for the table via
+`on_first_sight`, refreshes discovery if the field isn't resolvable
+yet (the table only just appeared), then applies once. Mirrors
+`FieldTweak::apply_when_ready` for the typical `on_unreal_init`
+entry point.
+
+## ClassNamedFieldTweak<T> -- live UObject sibling
+
+```rust
+use ueforge::data_table::ClassNamedFieldTweak;
+
+static SURVIVAL_HUNGER: ClassNamedFieldTweak<f32> =
+    ClassNamedFieldTweak::new("SurvivalComponent", "HungerDecayRate");
+
+SURVIVAL_HUNGER.apply(|_obj| true, |v| Some(v * 0.5)).ok();
+```
+
+Same name-resolved-from-discovery semantics as `NamedFieldTweak<T>`
+but writes to live UObjects via `ClassFieldTweak<T>`. The offset is
+looked up against the `classes` section of the discovery cache.
+`resolve_class_field(class, field) -> Option<(offset, element_size)>`
+is the underlying lookup.
+
 ## DataTable reads return copies
 
 The single most important fact:
