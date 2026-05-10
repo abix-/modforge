@@ -80,10 +80,10 @@ shape adds one variant to `SkillEffect` and one match arm in
 | Leap Distance    | movement   | +500% AirControl + boost mult + boost threshold |
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
-| Impact Damage Resistance | survival | -100% environmental damage at L100 (rock collisions, hazards). Per-level sqrt scaling. Implemented as a `Runtime` effect: kill_hook trampoline intercepts `ApplyDamageFromInfo` on the player HC, identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental", scales `Damage` and `OriginDamageData.Damage` by `(1 - reduction)` before forwarding. Does NOT touch fall damage (handled by fall_resistance), creature combat, or heals. Bandages work normally. |
-| Max Health       | survival   | +200 HP (additive on top of vanilla MaxHealth) |
-| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) -- **migration planned**: rewrite as a status effect with `EStatusEffectType::Health` per tick (the same pattern bandages use) so it integrates with vanilla heal multipliers, avoids singleton mutation, and doesn't cross-contaminate other actors. See `damage.md` "Reuse the same pattern for our health_regen skill". |
-| Lifesteal        | combat     | +90% of damage dealt healed back |
+| Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Implemented as `Standard(StandardEffect::Runtime)`: the `damage::DamageHook` binder's `after` callback in `kill_hook.rs` identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental" and subtracts `damage * reduction` from the player HC's `CurrentDamage` post-application. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
+| Max Health       | survival   | +200 HP via `Standard(PlayerSubcomponentAdditive)` -- captures vanilla MaxHealth on first sight, writes `vanilla + bonus * progress` on player CDOs + live pawn. |
+| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) via `Standard(ClassFieldsMultiply)` with `(offset, exponent)` pairs -- exponent +1 for tick-pct (grow), -1 for tick-rate (shrink). |
+| Lifesteal        | combat     | +90% of damage dealt healed back. **Live as of 2026-05-10.** Catalog row is `Standard(Runtime)`; the binder's `after` callback in `kill_hook.rs` reads the tracker level on every player-dealt non-player hit, walks the live player HC, and decrements `CurrentDamage` by `damage * 0.90 * sqrt(level/100)`. Honors the skill-disabled toggle. |
 
 ### Per-level scaling
 
@@ -208,25 +208,49 @@ in `rpg/apply.rs`. Two public entry points:
 | `apply(state, settings)`                  | Walks every skill in the catalog. Called on `activate_slot`. |
 | `apply_one(state, settings, skill_id)`    | Re-applies just one skill. Called from `spend_skill_point`. |
 
-`apply_skill` matches on `SkillEffect` and dispatches:
+### Catalog migration to `Standard(StandardEffect)`
 
-| `SkillEffect` variant      | Does                                                      |
-| -------------------------- | --------------------------------------------------------- |
-| `BackpackSlots`            | `patch::run(settings.slot_count + skill_bonus)`.          |
-| `SurvivalDrain`            | Walk SurvivalComponent CDO, write `vanilla * settings_mult * (1 - skill_red * progress)`. |
-| `PlayerCharFloat`          | Walk player ASurvivalCharacter CDOs, write `base + max_bonus * progress` at offset. |
-| `PlayerHealthCompFloat`    | Same but follow the HealthComponent ptr at +0x1340 first. |
-| `PlayerMovementMult`       | Follow CharMovementComponent at +0x1380, scale captured-vanilla baselines at multiple offsets, including Grounded-specific custom movement multipliers, and mirror the same writes onto live player pawns. |
-| `PlayerHealthCompAdditive` | Capture the vanilla baseline at the offset on the HealthComponent (e.g. MaxHealth +0x328), then write `vanilla + max_bonus * progress` on player CDOs and the live pawn. Used by Max Health so HP stacks rather than scaling. |
-| `PlayerHealthCompU32Mask`  | Binary uint32 mask write on the HealthComponent. Any level > 0 sets the field; level 0 leaves it. Used by Impact Damage Resistance (`RequiredDamageTypeFlags = 0xFFFFFFFF`). |
-| `GlobalDataMult`           | Walk every instance of a named class (e.g. `UGlobalCombatData`), capture vanilla per (class, offset), write `vanilla * (1 + max_bonus * progress) ^ exponent` per offset. Exponent +1.0 = boost field, -1.0 = shrink field (e.g. tick rate). Used by Health Regen. |
-| `Runtime`                  | No CDO write. Live trampolines read the level on each event, e.g. Lifesteal from damage hooks. |
+After Phase 3 wave 2 (2026-05-10), 9 of 13 catalog skills route
+through `ueforge::rpg::std_effect::StandardEffect` -- ueforge's
+canonical 8-variant menu. The framework owns the dispatch + the
+vanilla cache + the CDO + live-pawn walks; g2rpg's `apply_skill`
+shrunk from 11 arms to 4.
+
+`SkillEffect` shape:
+
+```rust
+pub enum SkillEffect {
+    /// 9 of 13 catalog skills route through ueforge.
+    Standard(StandardEffect),
+
+    /// Game-specific composites StandardEffect doesn't model.
+    BackpackSlots { max_bonus_slots: i32 },
+    SurvivalDrain { /* settings-multiplier composite */ },
+    PlayerFallDamageReduction { /* HC + GMS + SMMC + UFunction */ },
+}
+```
+
+The four arms in `apply_skill`:
+
+| Arm | Skills | Path |
+|---|---|---|
+| `Standard(e)` | Attack Damage, Armor, Move Speed, Jump Height, Glide Speed, Leap Distance, Health Regen, Max Health, Lifesteal, Impact Damage Resistance | `e.apply(level, max_level, &PLAYER)` -- ueforge owns it. |
+| `BackpackSlots` | Backpack | `patch::run(settings.slot_count + skill_bonus)` (player-only InventoryComponent CDO). |
+| `SurvivalDrain` | Hunger, Thirst | Walk SurvivalComponent CDO, write `vanilla * settings_mult * (1 - skill_red * progress)`. |
+| `PlayerFallDamageReduction` | Fall Damage Resistance | Multi-component composite: HC ratio + GMS CDO + SMMC live + `UpdateCustomSettings` UFunction. |
+
+Live-damage skills (Lifesteal today, Critical / Evasion / Thorns
+to come) ride on the `damage::DamageHook` framework -- they're
+catalog rows of shape `Standard(StandardEffect::Runtime)` and
+the binder's `before` / `after` callbacks in `kill_hook.rs` do
+the actual heal / mutate / reflect.
 
 CDO writes propagate to newly-spawned instances. Movement skills
-also mirror the same writes onto the *current* player pawn, so
-Move Speed / Jump Height / Glide Speed can take effect without a
-reload. Combat-side live-instance writes are still a TODO (see
-[`todo.md`](todo.md)).
+also mirror the same writes onto the *current* player pawn (the
+framework's `PlayerSubcomponentMultiply` variant does this in
+both directions). Lifesteal (post-application heal) lives via
+the damage-hook binder + a direct `CurrentDamage` decrement on
+the live HC.
 
 ### Fall damage and environmental damage
 
@@ -280,22 +304,27 @@ mechanisms because the underlying damage paths differ -- see
   reads the mutated velocity live and produces scaled / zero damage.
   Validated: -3431 cm/s landing at level 100 -> zero damage.
 - **Impact Damage Resistance** uses
-  `SkillEffect::PlayerHealthCompU32Mask` and writes
-  `UHealthComponent.RequiredDamageTypeFlags = 0xFFFFFFFF`
-  (+0x00FC) on player CDOs + live pawn at any level > 0. The
-  native ApplyDamage gate rejects damage with `type_flags = 0`
-  (fall, environmental, hazard zones). Creature attacks pass
-  through normally. Validated: rock collision multicasts report
-  `damage=0.00` and the player takes no `CurrentDamage` change.
-  **Caveat: this gate is binary.** Level 1 = full immunity, same
-  as level 100. The proper sqrt-curve scaling requires migrating
-  to the engine's status-effect system; tracked in
-  [`todo.md`](todo.md). The status-effect surface
-  (`UStatusEffectComponent` at +0x1378 on the player) is
-  documented in [`damage.md`](damage.md) as the canonical
-  long-term backing for nearly every skill in the catalog (Fall,
-  Impact, Lifesteal, Crit, Thorns, Max Health, Armor, Attack
-  Damage all map to existing `EStatusEffectType` enum values).
+  `Standard(StandardEffect::Runtime)` -- no CDO write. The
+  `damage::DamageHook` binder's `after` callback identifies
+  environmental events by `FDamageInfo.DamageType` class name
+  containing "Environmental" and subtracts
+  `damage * sqrt(level/100)` from the player HC's
+  `CurrentDamage` post-application. Bandages work normally
+  because the reversal only fires on environmental damage,
+  not heals or creature combat. This replaced the older
+  binary-mask approach (`RequiredDamageTypeFlags = 0xFFFFFFFF`)
+  which blocked bandage heal-ticks; see changelog 2026-05-09
+  for the migration. Full sqrt-curve scaling now works (level
+  1 ~10%, level 100 = 100%).
+
+The `UStatusEffectComponent` at +0x1378 is still the
+**canonical long-term backing** for stat-shaped skills (Fall,
+Impact, Lifesteal, Crit, Thorns, Max Health, Armor, Attack
+Damage all map to existing `EStatusEffectType` enum values).
+The `StandardEffect::StatusEffect` variant in ueforge
+covers that surface; migration of individual skills from
+CDO-write to status-effect is tracked in
+[`todo.md`](todo.md) and [`damage.md`](damage.md).
 
 ## ImGui tab
 
@@ -333,16 +362,17 @@ tested without grinding XP.
 
 | File                                    | Authority                                            |
 | --------------------------------------- | ---------------------------------------------------- |
-| `rpg/skills.rs`                         | Catalog + per-level math + format_effect.            |
-| `rpg/apply.rs`                          | Apply step (CDO writes per SkillEffect).             |
-| `rpg/state.rs`                          | PlayerState schema + JSON load/save.                 |
+| `rpg/skills.rs`                         | Catalog + per-level math + format_effect dispatch.   |
+| `rpg/apply.rs`                          | Apply step: Standard arm forwards to `StandardEffect::apply`; 3 game-specific composites stay here. |
+| `rpg/tracker.rs`                        | Thin shim over `ueforge::rpg::Tracker<A>`. |
+| `rpg/world_loader.rs`                   | Thin shim over `ueforge::rpg::SlotPoller`. |
 | `rpg/save_slot.rs`                      | Resolves the playthrough GUID for the active save.   |
-| `rpg/tracker.rs`                        | In-memory state + spend_skill_point + record_kill.   |
-| `rpg/world_loader.rs`                   | 1Hz poller for slot transitions.                     |
-| `rpg/kill_hook.rs`                      | HealthComponent ProcessEvent hook for kill detection.|
-| `rpg/xp.rs`                             | XP curve + per-creature XP table.                    |
-| `rpg/ffi.rs`                            | C-ABI surface called by the ImGui lambda.            |
-| `cpp/shim.cpp` (RPG section)            | ImGui render lambda + register_tab.                  |
+| `rpg/kill_hook.rs`                      | `damage::DamageBinder` impl: kill credit + damage trace + impact-resistance reversal + lifesteal post-heal. |
+| `rpg/fall_hook.rs`                      | OnLanded velocity-stomp + status-effect row reads.   |
+| `rpg/xp.rs`                             | `xp::CURVE` + `BESTIARY` (table data only; framework owns the lookup). |
+| `rpg/applier.rs`                        | `impl RpgApplier for GameApplier`. |
+| `rpg/tab.rs`                            | One-line forward to `ueforge::rpg::tab::render`. |
+| `inv_hook.rs`                           | `inventory::viewport::ViewportBinder` impl: Maine UFunction wiring (GetInventoryItems, BPF helpers, InitializeItemSlot, KismetInput wheel delta). Algorithm + state owned by ueforge. |
 
 ## Settings
 

@@ -9,6 +9,28 @@
 directory explain *how* to write code on top of ueforge well.
 The per-subsystem files explain *what* each subsystem does.
 
+## The five pillars
+
+ueforge ships opinionated framework modules for the five most
+common UE5 mod patterns. A new game's mod picks from these menus
+and writes only game-specific knobs (UE class names, field
+offsets, UFunction parm shapes); the per-game extension surface
+is `&'static` config + opt-in trait impl.
+
+| Pillar | Module | Lift |
+|---|---|---|
+| 1. RPG | `ueforge::rpg` | Skill catalog + XP curve + `Bestiary` + per-slot persistence + ImGui tab + the 8-variant `StandardEffect` menu (PlayerFloat / Subcomponent variants / ClassFieldsMultiply / Runtime / StatusEffect). |
+| 2. Stacks | `ueforge::stacks` | Inventory stack-size data-table tweak. `StackTweak::new(table, offset, default_mult, skip)` + multiplier atomic + on-first-sight worker. |
+| 3. Difficulty | `ueforge::difficulty` | Per-class CDO field tweak (drain rates / damage multipliers / regen). `DifficultyKnob::new(class, offset)` + `apply_to_cdos`. |
+| 4. Inventory | `ueforge::inventory::viewport` | Viewport-paging hook framework: mouse-wheel scroll + per-widget viewport-start state + synthetic-refresh re-entrance guard + post-refresh rebind. |
+| 5. Damage | `ueforge::damage` | Universal damage-event hook: multicast trampoline + parm decode + FDamageInfo lookup + Player/Other classification + before/after dispatch (Critical / Evasion / Lifesteal / Thorns / kill credit). |
+
+Pillars are independent modules, opt-in via use sites. A pure
+stack-size mod only consumes `stacks`. An RPG-only mod only
+consumes `rpg`. A mod that uses all five picks one knob from
+each menu and ignores the rest. **Each universal pattern is
+defined ONCE in ueforge.**
+
 ## Doctrine
 
 | File | Authoritative on |
@@ -20,20 +42,25 @@ The per-subsystem files explain *what* each subsystem does.
 
 | Subsystem | File | Headline |
 |---|---|---|
-| Lifecycle | [lifecycle.md](lifecycle.md) | `ue4ss_mod!`, `ModInfo`, C++ shim, on_unreal_init, on_shutdown, build/deploy |
-| UE SDK | [ue-sdk.md](ue-sdk.md) | UObject family + `ClassRef` + `TypedField<T>` + GObjects + `PlayerRef` + core_types |
-| Hooks | [hooks.md](hooks.md) | `ProcessEventHook`, `function_table!`, `LazyFunctionPtr`, `install_with_backoff`, `install_many` |
+| Lifecycle | [lifecycle.md](lifecycle.md) | `ue4ss_mod!`, `ModInfo`, C++ shim, on_unreal_init, on_shutdown, hot-reload (Ctrl+R, full Phase A+B), build/deploy |
+| UE SDK | [ue-sdk.md](ue-sdk.md) | UObject family + `ClassRef` + `TypedField<T>` + GObjects + `PlayerRef` + `ue::field` byte ops + `ue::actor` (class-chain / controller helpers) + `ue::damage_info` (`DamageInfoLayout`) + `ue::pe_call::call_ufunction` |
+| Hooks | [hooks.md](hooks.md) | `ProcessEventHook` + `HookRegistry::shutdown_all` (hot-reload safety) + `function_table!` + `install_with_backoff` + `install_immediate_or_log` + per-Entry `active_calls` drain |
 | Game-thread queue | [pe-queue.md](pe-queue.md) | `Queue`, `DrainSite`, drain-site selection rules |
 | Counters & rings | [counters.md](counters.md) | `counter!`, `peak!`, `time_scope`, `EventRing<T>`, `counter_json!` |
-| RPG framework | [rpg.md](rpg.md) | `Skill<E>`, `RpgApplier`, `Tracker<A>`, `tab::render`, `SlotKeyResolver`, `VanillaCache`, level-up system |
-| HTTP control plane | [http.md](http.md) | `server::spawn`, builtin ops, selectors, `Api<S>` test client, perf log writer |
+| RPG framework | [rpg.md](rpg.md) | `Skill<E>`, `Tracker<A>`, `StandardEffect` 8-variant menu, `Bestiary`, `tab::render`, `SlotKeyResolver`, `VanillaCache` |
+| HTTP control plane | [http.md](http.md) | `server::spawn` + `SpawnHandle::stop` + `Config::auth_token` + builtin ops + selectors |
+| Test client | [testing.md](testing.md) | `Api<S>` + `client::research` (DT walks / class lookups / typed reads) + `client::diff` (snapshot deltas) + `client::scenario` (Pester-style skill DSL) |
 | ImGui | [imgui.md](imgui.md) | `ui` module, `Tab` registration, scanner tab |
-| Settings | [settings.md](settings.md) | `Settings<T>` atomic JSON store |
+| Settings | [settings.md](settings.md) | `Settings<T>` atomic JSON store + `Settings::watch` (mtime hot-reload) + `WatchHandle` |
 | Workers | [worker.md](worker.md) | `worker::spawn` named thread + panic catch |
 | Data tables | [data-table.md](data-table.md) | `FieldTweak<T>`, `ClassFieldTweak<T>`, row mutation, timing rules |
 | Memory tools | [memory-tools.md](memory-tools.md) | Cheat-Engine-style scanner, freezes, `inspect_address`, `winproc` |
 | Offline `.uasset` parsing | [uasset.md](uasset.md) | `uasset::extract_printable_strings` / `parse_name_table` / `find_int_property` + `dump-strings` / `read-property` CLIs |
 | Native (C++) surface | [native.md](native.md) | Why C++ is in the repo (UE4SS plugin ABI + vendored ImGui), what stays in Rust, the doctrine that keeps it that way |
+
+Pillar-specific docs (`stacks.md`, `difficulty.md`, `inventory.md`,
+`damage.md`, `debug.md`) pending; the rustdoc on each module's
+`mod.rs` is canonical until they land.
 
 ## Reading order
 

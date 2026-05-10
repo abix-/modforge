@@ -19,45 +19,113 @@ cache. The game crate supplies only the bones-meat:
 That's the irreducibly game-specific surface. Everything else
 flows from one of the types in this doc.
 
-## The seam: SkillEffect + RpgApplier
+## The seam: SkillEffect + StandardEffect + RpgApplier
 
-The game declares its `SkillEffect` enum:
+The game's `SkillEffect` enum wraps `StandardEffect` for the
+9 universal skill shapes the framework already covers, plus
+game-specific composites. This pattern landed Phase 3 wave 2
+(2026-05-10): g2rpg's catalog dropped from 11 SkillEffect
+variants to 4, and 9 of 13 catalog skills route through
+`StandardEffect` with zero per-variant apply code.
 
 ```rust
-#[derive(Debug, Clone, Copy)]
+use ueforge::rpg::std_effect::StandardEffect;
+
+#[derive(Clone, Copy)]
 pub enum SkillEffect {
-    BackpackSlots { max_bonus: i32 },
-    SurvivalDrain { offset: usize, max_reduction: f32, /* ... */ },
-    PlayerHealthCompFloat { offset: usize, base: f32, max_bonus: f32 },
-    Runtime { max_bonus: f32 },
-    PlayerStatusEffect { row_fname: u64, value_at_max: f32 },
-    /* ... */
+    /// 9 of N catalog skills route through ueforge's
+    /// canonical variant menu. The Standard arm forwards
+    /// `e.apply(level, max_level, &PLAYER)` -- zero
+    /// game-specific dispatch.
+    Standard(StandardEffect),
+
+    /// Game-specific composites that StandardEffect doesn't
+    /// model. Stay game-side.
+    BackpackSlots { max_bonus_slots: i32 },
+    SurvivalDrain { /* settings-multiplier composite */ },
+    PlayerFallDamageReduction { /* HC + GMS + SMMC + UFunction */ },
 }
 ```
 
-And implements `RpgApplier`:
+The 8 `StandardEffect` variants:
+
+| Variant | Pattern |
+|---|---|
+| `PlayerFloat` | Direct f32 write at offset on player CDO + live |
+| `PlayerSubcomponentFloat` | f32 on player subcomponent (HC, CMC, etc) |
+| `PlayerSubcomponentAdditive` | Captured-vanilla + bonus (Max Health pattern) |
+| `PlayerSubcomponentU32Mask` | Binary u32 mask (impact-resistance pattern) |
+| `PlayerSubcomponentMultiply` | Captured-vanilla * (1 + bonus * progress) over offsets |
+| `ClassFieldsMultiply` | Same shape on every instance of a class (regen / global-data) |
+| `Runtime` | No CDO write; hot-path callback owns the effect |
+| `StatusEffect` | UE5 row-driven status effect via UFunction |
+
+The game's catalog is mostly `Standard(...)` rows; the rest are
+the irreducibly game-specific composites:
 
 ```rust
-use ueforge::rpg::{RpgApplier, Skill, SkillsState};
+pub const CATALOG: &[Skill] = &[
+    Skill {
+        id: "attack_damage",
+        max_level: 100,
+        effect: SkillEffect::Standard(StandardEffect::PlayerFloat {
+            offset: TypedField::at(0x12B8),
+            base: 1.0, max_bonus: 3.0,
+            format: PercentFormat::PlusPercentMult { word: "damage" },
+        }),
+    },
+    Skill {
+        id: "lifesteal",
+        max_level: 100,
+        effect: SkillEffect::Standard(StandardEffect::Runtime {
+            max_bonus: 0.90,
+            format: PercentFormat::PlusPercent { word: "lifesteal" },
+        }),
+    },
+    Skill {
+        id: "backpack",
+        max_level: 100,
+        // Game-specific composite (not in StandardEffect).
+        effect: SkillEffect::BackpackSlots { max_bonus_slots: 460 },
+    },
+    /* ... */
+];
+```
 
-pub struct GameApplier { settings: Settings }
+Apply dispatch shrinks to 4 arms (1 Standard + 3 game composites):
 
-impl RpgApplier for GameApplier {
-    type Effect = SkillEffect;
-
-    fn apply_skill(&self, state: &SkillsState, skill: &Skill<SkillEffect>) {
-        let level = state.level_of(skill.id);
-        match skill.effect {
-            SkillEffect::BackpackSlots { max_bonus } => { /* CDO writes */ }
-            SkillEffect::SurvivalDrain { /*...*/ } => { /* ... */ }
-            // ... per-variant arms ...
+```rust
+fn apply_skill(state: &SkillsState, skill: &Skill) {
+    let level = state.level_of(skill.id);
+    if level == 0 { return; }
+    match &skill.effect {
+        SkillEffect::Standard(e) => {
+            let effective = if is_skill_enabled(skill.id) { level } else { 0 };
+            e.apply(effective, skill.max_level, &PLAYER);
         }
-    }
-
-    fn format_effect(&self, skill: &Skill<SkillEffect>, level: u32) -> String {
-        /* per-skill text for ImGui row */
+        SkillEffect::BackpackSlots { .. } => { /* G2-specific */ }
+        SkillEffect::SurvivalDrain { .. } => { /* G2-specific */ }
+        SkillEffect::PlayerFallDamageReduction { .. } => { /* G2-specific */ }
     }
 }
+```
+
+### Format dispatch
+
+`StandardEffect::format(level, max_level)` produces the per-skill
+ImGui-row text for the 8 variants. Game crates delegate the
+Standard arm; the format match collapses to:
+
+```rust
+pub fn format_effect(skill: &Skill, level: u32) -> String {
+    match &skill.effect {
+        SkillEffect::Standard(e) => e.format(level, skill.max_level),
+        SkillEffect::BackpackSlots { max_bonus_slots } => format!("+{} slots", ...),
+        SkillEffect::SurvivalDrain { .. } => format!("-{}% drain", ...),
+        SkillEffect::PlayerFallDamageReduction { .. } => format!("-{}% fall damage", ...),
+    }
+}
+```
 ```
 
 The trait has three methods:
