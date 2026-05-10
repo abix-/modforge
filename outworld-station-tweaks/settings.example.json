@@ -1,0 +1,16 @@
+{
+  "stacks": {
+    "multiplier": 4
+  },
+  "dynamic_tweaks": [
+    {
+      "id": "stacks_via_dynamic",
+      "table": "DT_Materials",
+      "field": "MaxCanStack",
+      "kind": "i32_mul",
+      "value": 4.0,
+      "skip_below": 2.0,
+      "enabled": false
+    }
+  ]
+}

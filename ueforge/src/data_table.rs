@@ -287,6 +287,126 @@ impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
     }
 }
 
+// ---- Dynamic (runtime-named) tweaks --------------------------------------
+//
+// Settings-driven tweaks: at load, a mod reads a list of
+// `(table, field, kind, value)` entries from disk and applies
+// them. The (table, field) names aren't known at compile time,
+// so NamedFieldTweak's `&'static str` requirement doesn't fit.
+//
+// Solution: a small global registry, one per primitive `T`, that
+// leaks (table_name, field) on first sight and stores a
+// `&'static FieldTweak<T>` keyed by `(table, field)`. Subsequent
+// applies of the same tweak hit the same FieldTweak instance so
+// the vanilla cache + idempotent re-apply semantics carry across
+// settings reloads.
+
+use std::collections::HashMap;
+
+use parking_lot::Mutex as PlMutex;
+
+type DynRegistry<T> = PlMutex<HashMap<(String, String), &'static ue::datatable::FieldTweak<T>>>;
+
+static DYN_I32: OnceLock<DynRegistry<i32>> = OnceLock::new();
+static DYN_F32: OnceLock<DynRegistry<f32>> = OnceLock::new();
+static DYN_U32: OnceLock<DynRegistry<u32>> = OnceLock::new();
+
+fn dyn_registry<T: Copy + PartialEq + Send + 'static>(
+    cell: &'static OnceLock<DynRegistry<T>>,
+) -> &'static DynRegistry<T> {
+    cell.get_or_init(|| PlMutex::new(HashMap::new()))
+}
+
+fn dyn_tweak<T: Copy + PartialEq + Send + 'static>(
+    reg: &'static DynRegistry<T>,
+    table: &str,
+    field: &str,
+) -> Result<&'static ue::datatable::FieldTweak<T>, String> {
+    let key = (table.to_string(), field.to_string());
+    if let Some(t) = reg.lock().get(&key) {
+        return Ok(*t);
+    }
+    let (offset, _size, _class) = resolve_field(table, field).ok_or_else(|| {
+        format!("dynamic_apply: field '{table}.{field}' not in discovery cache")
+    })?;
+    // Leak the table name so FieldTweak's &'static str is satisfied
+    // for the process lifetime. One leak per unique table name.
+    let table_static: &'static str = Box::leak(table.to_string().into_boxed_str());
+    let tw: &'static ue::datatable::FieldTweak<T> =
+        Box::leak(Box::new(ue::datatable::FieldTweak::new(table_static, offset)));
+    reg.lock().insert(key, tw);
+    Ok(tw)
+}
+
+/// Apply an i32 transform to `table.field` (names resolved from
+/// the discovery cache). Vanilla per-row is captured on first
+/// apply; subsequent applies re-base on the captured baseline.
+///
+/// `skip_if` runs against the vanilla value -- typical use is
+/// `|v| v <= 1` to leave non-stackable rows alone.
+pub fn dynamic_apply_i32(
+    table: &str,
+    field: &str,
+    transform: impl Fn(i32) -> i32,
+    skip_if: impl Fn(i32) -> bool,
+) -> Result<usize, String> {
+    let reg = dyn_registry::<i32>(&DYN_I32);
+    let tw = dyn_tweak::<i32>(reg, table, field)?;
+    tw.apply(transform, skip_if)
+}
+
+/// Apply an f32 transform to `table.field`.
+pub fn dynamic_apply_f32(
+    table: &str,
+    field: &str,
+    transform: impl Fn(f32) -> f32,
+    skip_if: impl Fn(f32) -> bool,
+) -> Result<usize, String> {
+    let reg = dyn_registry::<f32>(&DYN_F32);
+    let tw = dyn_tweak::<f32>(reg, table, field)?;
+    tw.apply(transform, skip_if)
+}
+
+/// Apply a u32 transform to `table.field`.
+pub fn dynamic_apply_u32(
+    table: &str,
+    field: &str,
+    transform: impl Fn(u32) -> u32,
+    skip_if: impl Fn(u32) -> bool,
+) -> Result<usize, String> {
+    let reg = dyn_registry::<u32>(&DYN_U32);
+    let tw = dyn_tweak::<u32>(reg, table, field)?;
+    tw.apply(transform, skip_if)
+}
+
+/// Revert every dynamic tweak captured so far (all primitive T's).
+/// Returns total touched-row count across the three registries.
+pub fn dynamic_revert_all() -> usize {
+    let mut total = 0usize;
+    if let Some(reg) = DYN_I32.get() {
+        for (_k, tw) in reg.lock().iter() {
+            if let Ok(n) = tw.revert() {
+                total += n;
+            }
+        }
+    }
+    if let Some(reg) = DYN_F32.get() {
+        for (_k, tw) in reg.lock().iter() {
+            if let Ok(n) = tw.revert() {
+                total += n;
+            }
+        }
+    }
+    if let Some(reg) = DYN_U32.get() {
+        for (_k, tw) in reg.lock().iter() {
+            if let Ok(n) = tw.revert() {
+                total += n;
+            }
+        }
+    }
+    total
+}
+
 // ---- Class field, name-based --------------------------------------------
 
 /// Look up `field_name` on `class_name` in the discovery cache's

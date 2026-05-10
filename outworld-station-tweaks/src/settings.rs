@@ -14,6 +14,10 @@ use ueforge::settings::Settings;
 pub struct TweaksSettings {
     #[serde(default)]
     pub stacks: StacksSettings,
+    /// Settings-declared dynamic tweaks; framework-defined shape
+    /// lives in `ueforge::dynamic_tweaks::DynamicTweak`.
+    #[serde(default)]
+    pub dynamic_tweaks: Vec<ueforge::dynamic_tweaks::DynamicTweak>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

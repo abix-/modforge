@@ -118,6 +118,13 @@ fn on_unreal_init() {
         // propagate to all downstream caches (UI widget copies,
         // inventory slot init, etc.).
         stacks::spawn_apply_worker();
+
+        // Apply every settings.json dynamic tweak. Resolves
+        // offsets from the discovery cache, so new entries land
+        // by editing settings + clicking "Re-apply" in the UI --
+        // no code change, no SDK header dive.
+        let s = settings::get().get();
+        let _ = ueforge::dynamic_tweaks::apply_all(&s.dynamic_tweaks);
     }
 
     // Always bring the debug server up (offset-independent). Use
@@ -136,6 +143,17 @@ fn render_tweaks_tab() {
     ueforge::ui::separator();
     ueforge::ui::spacing();
     render_stacks_section();
+    ueforge::ui::spacing();
+    ueforge::ui::separator();
+    ueforge::ui::spacing();
+    render_dynamic_tweaks_section();
+}
+
+fn render_dynamic_tweaks_section() {
+    let s = settings::get().get();
+    ueforge::ui_dynamic_tweaks::render(&s.dynamic_tweaks, || {
+        let _ = settings::get().reload();
+    });
 }
 
 fn render_stacks_section() {
