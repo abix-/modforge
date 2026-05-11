@@ -23,14 +23,14 @@ The typical UE5 game has:
 
 Container metadata to check via `retoc info <utoc>`:
 
-- **`container_flags`** -- presence of `Encrypted` indicates an
+- **`container_flags`**. Presence of `Encrypted` indicates an
   AES key is required; absence (`0x0` / `Indexed` only) means
   every standard UE5 tool reads it directly.
-- **TOC version** -- e.g. `ReplaceIoChunkHashWithIoHash` is the
+- **TOC version**. E.g. `ReplaceIoChunkHashWithIoHash` is the
   latest schema.
-- **Container header version** -- e.g. `SoftPackageReferencesOffset`
+- **Container header version**. E.g. `SoftPackageReferencesOffset`
   is the latest.
-- **Mod mount point** -- typically `../../../` (standard UE
+- **Mod mount point**. Typically `../../../` (standard UE
   relative-from-Paks path; resolves into `/Game/...`).
 
 ### Patch pak naming
@@ -59,7 +59,7 @@ Stable across UE 5.x:
 | class | `0x10` | `UClass*` |
 | name | `0x18` | `FName` (8 bytes) |
 | outer | `0x20` | `UObject*` |
-| total size | `0x28` | -- |
+| total size | `0x28` |. |
 
 `UClass` extends `UObject` and adds:
 
@@ -123,7 +123,7 @@ shipping games respect it. Symptoms when shipped this way:
 
 The `UConsole` class survives in `GObjects` (reflection is
 preserved across shipping config) but the runtime handlers are
-compiled out. Same for `UCheatManager` -- UE only instantiates
+compiled out. Same for `UCheatManager`. UE only instantiates
 it on the player controller in non-shipping builds or with
 `ALLOW_CHEAT_CHEATS_IN_SHIPPING` defined.
 
@@ -138,7 +138,7 @@ Any of these surface a console / cheat manager at runtime in a
 shipping build. They do not ship with our mods; documented
 here as reference:
 
-- **Universal UE5 Unlocker (UUU)** -- generic across UE5 games
+- **Universal UE5 Unlocker (UUU)**. Generic across UE5 games
 - Per-game console-unlocker mods on Nexus (search "console
   unlocker" for the target game)
 
@@ -156,14 +156,14 @@ UE4SS's `RegisterPreHook` / `RegisterPostHook` register cleanly
 for ...`) but the callbacks silently never fire when the
 engine calls the C++ implementation directly from a native
 frame. The hook only swaps `UFunction::native_func`, which is
-consulted by BP / ProcessEvent calls -- not by direct C++
+consulted by BP / ProcessEvent calls. Not by direct C++
 dispatch.
 
 Confirmed broken on `Final + Native + BlueprintCallable`
 UFunctions the engine calls from its own native code. **Probe
 with a Lua RegisterHook + log before assuming the hook is
 wired.** ueforge's `ProcessEventHook` uses vtable patching
-(not UE4SS's hook surface), so it avoids this caveat -- but
+(not UE4SS's hook surface), so it avoids this caveat. But
 hooks installed via UE4SS's API hit it.
 
 ### Concrete-BP class hooks vs base-class hooks
@@ -267,19 +267,19 @@ zen .utoc/.ucas
 ## General UE5 modding guides
 
 - [Buckminster's UE Modding dev-guide](https://buckminsterfullerene02.github.io/dev-guide/)
-  -- comprehensive intro including pak handling, patching,
+ . Comprehensive intro including pak handling, patching,
   IoStore packing.
 - [Unofficial Modding Guide](https://unofficial-modding-guide.com/posts/uassetmodding/)
-  -- UAssetGUI walkthrough, applies to any UE 5.x cooked-asset
+ . UAssetGUI walkthrough, applies to any UE 5.x cooked-asset
   target.
 - [UE Modding Tools databank](https://github.com/Buckminsterfullerene02/UE-Modding-Tools)
-  -- comprehensive list of reverse-engineering and modding
+ . Comprehensive list of reverse-engineering and modding
   tools spanning multiple UE games.
 - [Dmgvol/UE_Modding](https://github.com/Dmgvol/UE_Modding)
-  -- UE4/5 modding guides repo, includes IoStore packing
+ . UE4/5 modding guides repo, includes IoStore packing
   instructions.
 - [mod.io UGC Best Practices](https://docs.mod.io/unreal/ugc-best-practices)
-  -- Epic's ecosystem partner; useful for understanding what
+ . Epic's ecosystem partner; useful for understanding what
   cooked-asset patching is officially expected to look like.
 
 ## What is NOT available (typical for UE5 shipping titles)
@@ -295,7 +295,7 @@ zen .utoc/.ucas
 
 ## See also
 
-- [ue-sdk.md](ue-sdk.md) -- ueforge's UObject wrappers
-- [inspection.md](inspection.md) -- worked examples on third-party UE5 mods
-- [lifecycle.md](lifecycle.md) -- mod load / unload / hot-reload
-- [hooks.md](hooks.md) -- ProcessEvent + vtable patching
+- [ue-sdk.md](ue-sdk.md). Ueforge's UObject wrappers
+- [inspection.md](inspection.md). Worked examples on third-party UE5 mods
+- [lifecycle.md](lifecycle.md). Mod load / unload / hot-reload
+- [hooks.md](hooks.md). ProcessEvent + vtable patching
