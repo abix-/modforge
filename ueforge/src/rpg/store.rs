@@ -3,7 +3,7 @@
 //! Atomic write: serialize -> write `<path>.tmp` -> `fsync` the
 //! temp -> `rename` to `<path>`. The `fsync` step is what turns
 //! "rename is atomic" into "rename is also durable across power
-//! loss" -- without it a crash between the rename and the
+//! loss". Without it a crash between the rename and the
 //! kernel's own flush leaves a torn or zero-byte file.
 //!
 //! Generic over the persisted struct so games can attach
@@ -97,14 +97,14 @@ where
         }
     }
 
-    /// Atomic save -- write to `<path>.tmp`, fsync, rename to
+    /// Atomic save. Write to `<path>.tmp`, fsync, rename to
     /// `<path>`. Returns the underlying `io::Result`. On error,
     /// caches the message in [`Self::last_error`] for snapshot
     /// surfaces and logs it.
     ///
     /// The fsync is what makes the rename durable. Without it,
     /// a crash between rename and the kernel's own write-back
-    /// can leave a torn / zero-byte file -- the very failure
+    /// can leave a torn / zero-byte file. The very failure
     /// mode atomic-rename was supposed to prevent.
     pub fn save(&self, slot: &str, state: &S) -> io::Result<()> {
         self.save_to_path(&self.path(slot), state)
@@ -205,7 +205,7 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&tmp);
         // Force the store to write under our temp dir by setting
-        // the dll_dir override -- but dll_dir is a static; we
+        // the dll_dir override. But dll_dir is a static; we
         // can't override per-test. Instead, exercise save_atomic
         // directly.
         let path = tmp.join("save.json");
@@ -271,7 +271,7 @@ mod tests {
     fn save_atomic_fails_when_parent_is_a_file() {
         // create_dir_all on a path whose ancestor is a regular
         // file returns NotADirectory. The save MUST surface this
-        // as Err -- silently writing somewhere unexpected would
+        // as Err. Silently writing somewhere unexpected would
         // be the bug.
         let s = Scratch::new("fail_parent");
         let blocker = s.path.join("blocker");
@@ -360,7 +360,7 @@ mod tests {
         // Existing good file. New save targets a path whose
         // parent is a file (forces save_atomic to fail at
         // create_dir_all). The existing file at a separate path
-        // must remain intact -- atomic rename's whole purpose.
+        // must remain intact. Atomic rename's whole purpose.
         let s = Scratch::new("preserve");
         let good_path = s.path.join("good.json");
         let store: SlotStore<State> = SlotStore::new("__test__");
