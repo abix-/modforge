@@ -9,7 +9,7 @@
 
 use crate::ue::UObject;
 
-/// `FGuid` -- four u32s. Used everywhere UE5 needs a stable
+/// `FGuid`. Four u32s. Used everywhere UE5 needs a stable
 /// identifier (save GUIDs, asset GUIDs, replication identifiers).
 #[repr(C)]
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -44,7 +44,7 @@ impl FGuid {
     }
 }
 
-/// `FWeakObjectPtr` -- two i32s. Index into the global UObject
+/// `FWeakObjectPtr`. Two i32s. Index into the global UObject
 /// array + serial number. UE invalidates the pointer when the
 /// serial doesn't match the live object at that index; we don't
 /// resolve here (resolution requires `runtime()` and a GObjects
@@ -89,7 +89,7 @@ impl FWeakObjectPtr {
     }
 }
 
-/// `FDataTableRowHandle` -- pointer to a UDataTable + FName key
+/// `FDataTableRowHandle`. Pointer to a UDataTable + FName key
 /// of the row. UFunctions that take a "row handle" parm receive
 /// this struct by value. Many UE5 status-effect / loot / spawner
 /// systems route through this shape.
@@ -124,7 +124,7 @@ impl FDataTableRowHandle {
 unsafe impl Send for FDataTableRowHandle {}
 unsafe impl Sync for FDataTableRowHandle {}
 
-/// `EStatusEffectValueType` -- the canonical UE5 status-effect
+/// `EStatusEffectValueType`. The canonical UE5 status-effect
 /// value combine semantics enum. Stat values combine across
 /// active effects either by summation (`Add`) or by multiplication
 /// (`Multiply`); `None` means the stat is presence-only (the row's
