@@ -4,7 +4,7 @@
 //! patterns: find a DataTable, walk its rows, find class
 //! instances by name, resolve FNames to strings, read field
 //! bytes at known offsets. The `explore_*` tests in g2rpg /
-//! ows-tweaks all reimplemented these from scratch -- ~150-250
+//! ows-tweaks all reimplemented these from scratch. ~150-250
 //! lines per test of mostly-boilerplate.
 //!
 //! This module collapses the boilerplate into one-liners. A
@@ -275,7 +275,7 @@ pub fn find_class_cdo<S: DeserializeOwned>(
 /// loaded or has no live instances yet.
 ///
 /// Common use: "find the player" / "find the singleton GameMode" /
-/// "find the loaded map" -- pass the BP class name + take the
+/// "find the loaded map". Pass the BP class name + take the
 /// first non-CDO hit.
 pub fn find_live_instance<S: DeserializeOwned>(
     api: &Api<S>,
@@ -422,7 +422,7 @@ pub fn read_u64<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u6
 }
 
 // ----------------------------------------------------------------
-// `sample_thread_modules` op response -- typed view + Display.
+// `sample_thread_modules` op response. Typed view + Display.
 // ----------------------------------------------------------------
 
 /// One module row in the per-process sample.
