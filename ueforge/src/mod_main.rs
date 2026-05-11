@@ -146,6 +146,13 @@ macro_rules! ue4ss_mod {
             // hot-reload generation, if any. Best-effort; failure
             // is logged + ignored.
             $crate::mod_main::cleanup_old_dll();
+            // Auto-apply any pending main-new.dll dropped by
+            // `cargo deploy install` while the game was closed.
+            // The CURRENT process keeps running its already-loaded
+            // image; the swap makes the next reload (Ctrl+R or
+            // relaunch) pick up the new code without forcing the
+            // user to manually rename files.
+            $crate::mod_main::apply_pending_swap_at_init();
             ($mod_info.on_unreal_init)();
         }
 
@@ -242,6 +249,51 @@ pub fn finalize_hot_reload_swap() {
     }
     crate::log!(
         "ueforge: hot-reload swap complete (main-new.dll -> main.dll); UE4SS will load the new image"
+    );
+}
+
+/// Init-time auto-swap. If `cargo deploy install` was run while
+/// the game was closed (or while the previous mod generation
+/// didn't get a clean shutdown), `main-new.dll` will be sitting
+/// next to `main.dll`. We can't reload ourselves mid-init -- the
+/// current process keeps using the already-loaded image -- but
+/// we CAN rename the files now so that the next UE4SS reload
+/// (Ctrl+R or next launch) picks up the new code.
+///
+/// The current image continues to run from its (now-renamed)
+/// main-old.dll mapping. Windows' `FILE_SHARE_DELETE` allows
+/// the in-use file to be renamed.
+#[doc(hidden)]
+pub fn apply_pending_swap_at_init() {
+    let Some(dir) = crate::log::dll_dir() else {
+        return;
+    };
+    let new_dll = dir.join("main-new.dll");
+    if !new_dll.is_file() {
+        return;
+    }
+    let main_dll = dir.join("main.dll");
+    let old_dll = dir.join("main-old.dll");
+
+    // Best-effort cleanup of any prior generation's leftover so
+    // step-1's rename target is vacant.
+    let _ = std::fs::remove_file(&old_dll);
+
+    if let Err(e) = std::fs::rename(&main_dll, &old_dll) {
+        crate::log!(
+            "ueforge: init-time swap step 1 failed (rename main.dll -> main-old.dll): {e}"
+        );
+        return;
+    }
+    if let Err(e) = std::fs::rename(&new_dll, &main_dll) {
+        crate::log!(
+            "ueforge: init-time swap step 2 failed (rename main-new.dll -> main.dll): {e}; rolling back"
+        );
+        let _ = std::fs::rename(&old_dll, &main_dll);
+        return;
+    }
+    crate::log!(
+        "ueforge: init-time swap applied (main-new.dll -> main.dll); press Ctrl+R or relaunch to load the new image"
     );
 }
 
