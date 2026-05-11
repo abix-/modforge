@@ -25,12 +25,12 @@ Returns: { "ok": bool, "op": "<name>", "error": "...", "result": ..., "state": <
 Single endpoint. Every operation is identified by `op` name +
 free-form `args` JSON. Every response carries:
 
-- `ok` -- success flag.
-- `op` -- echo of the requested op (or `<missing>` /
+- `ok`. Success flag.
+- `op`. Echo of the requested op (or `<missing>` /
   `<parse-error>`).
-- `error` -- the error message on failure; otherwise empty.
-- `result` -- op-specific payload on success.
-- `state` -- the **full game-state snapshot** the mod chose to
+- `error`. The error message on failure; otherwise empty.
+- `result`. Op-specific payload on success.
+- `state`. The **full game-state snapshot** the mod chose to
   expose, regardless of which op fired. Tests assert against
   the snapshot, not against `result`.
 
@@ -60,7 +60,7 @@ server::spawn(
 `spawn` runs `tiny_http::Server::http` on a named worker thread.
 Every POST to `/debug` calls your `handle` closure with the
 request body; whatever bytes you return become the response
-body. JSON serialization is your call -- typically you build a
+body. JSON serialization is your call. Typically you build a
 `OpResponse<Snapshot>` and `serde_json::to_vec` it.
 
 The listener thread:
@@ -128,7 +128,7 @@ fn handle(body: &str) -> OpResponse<Snapshot> {
 
 | Op | Args | Returns |
 |---|---|---|
-| `snapshot` | -- | `Null` (snapshot is in `state`) |
+| `snapshot` |. | `Null` (snapshot is in `state`) |
 | `read_bytes` | `instance_selector`, `offset`, `length` | `{ bytes_hex, address, len }` |
 | `write_bytes` | `instance_selector`, `offset`, `bytes_hex` | `{ written }` |
 | `walk_class` | `class`, `max?`, `include_cdo?` | `{ instances: [{ address, name, full_name }] }` |
@@ -138,7 +138,7 @@ fn handle(body: &str) -> OpResponse<Snapshot> {
 
 `exec_call` invokes any UFunction on any object with arbitrary
 parm bytes. Replaces the temptation to add per-scenario
-`simulate_*` ops -- tests build their own `#[repr(C)]` parm
+`simulate_*` ops. Tests build their own `#[repr(C)]` parm
 struct, hex-encode it, send. Engine-mutated OUT params come
 back in `parms_hex_after`.
 
@@ -152,7 +152,7 @@ back in `parms_hex_after`.
 | `scan_close` | `session_id` | `{ closed }` |
 | `freeze` | `selector`, `offset`, `type`, `value`, `hz?` | `{ id }` |
 | `unfreeze` | `id` | `{ removed }` |
-| `freeze_list` | -- | `{ freezes: [...] }` |
+| `freeze_list` |. | `{ freezes: [...] }` |
 
 See [memory-tools.md](memory-tools.md) for the full scanner /
 freeze story.
@@ -161,10 +161,10 @@ freeze story.
 
 | Op | Args | Returns |
 |---|---|---|
-| `process_threads` | -- | per-thread CPU + state |
-| `process_cpu` | -- | aggregate CPU metrics |
-| `process_regions` | -- | committed memory regions |
-| `process_memory` | -- | working set + private bytes |
+| `process_threads` |. | per-thread CPU + state |
+| `process_cpu` |. | aggregate CPU metrics |
+| `process_regions` |. | committed memory regions |
+| `process_memory` |. | working set + private bytes |
 | `sample_thread_modules` | `tid?`, `samples?` | per-instruction module hits |
 
 See [memory-tools.md](memory-tools.md).
@@ -245,7 +245,7 @@ fn impact_resistance_does_not_block_bandages() {
 }
 ```
 
-Tests share global game state -- always run with
+Tests share global game state. Always run with
 `--test-threads=1`.
 
 ## Test methodology
@@ -268,7 +268,7 @@ Every bug is a missing test. The test goes in BEFORE the fix.
 ## Safety / production
 
 The HTTP server binds 127.0.0.1 only, so it's not reachable from
-the network. But anything else on the same host can hit it --
+the network. But anything else on the same host can hit it.
 and ops like `write_bytes` can corrupt arbitrary game memory.
 Don't ship the debug port enabled in a release build.
 
@@ -291,7 +291,7 @@ test client reads. The convenience builder is `Api::with_auth(t)`.
 The header check uses a constant-time byte compare (`ct_eq`) so
 there's no early-exit timing signal that would let a co-resident
 process narrow the token byte-by-byte. Localhost weakens the
-attacker model, but the fix is ~5 LoC -- no excuse to skip.
+attacker model, but the fix is ~5 LoC. No excuse to skip.
 
 ### Body size cap
 
@@ -301,16 +301,16 @@ exceeds the cap, the listener returns 413 (Payload Too Large).
 Without the cap a misbehaving client could send 4 GB into
 `read_to_string` and OOM the host process.
 
-The cap is ~1000x the largest legitimate op payload we ship --
+The cap is ~1000x the largest legitimate op payload we ship.
 generous enough that no real op ever brushes it. Bump only if a
 legitimate snapshot grows past 1 MiB; large dumps belong on a
 separate streaming endpoint, not in a JSON body.
 
 ## Cross-references
 
-- [RESEARCH.md](RESEARCH.md) -- TDD methodology
-- [memory-tools.md](memory-tools.md) -- scanner + freeze ops
-- [pe-queue.md](pe-queue.md) -- ops that need game-thread access
+- [RESEARCH.md](RESEARCH.md). TDD methodology
+- [memory-tools.md](memory-tools.md). Scanner + freeze ops
+- [pe-queue.md](pe-queue.md). Ops that need game-thread access
   enqueue jobs here
-- [PERFORMANCE.md](PERFORMANCE.md) -- the listener doesn't
+- [PERFORMANCE.md](PERFORMANCE.md). The listener doesn't
   belong on hot paths
