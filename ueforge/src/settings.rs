@@ -44,7 +44,7 @@ use serde::de::DeserializeOwned;
 
 /// Global registry of spawned `Settings::watch` worker threads.
 /// `Settings::watch` registers each spawn so [`shutdown_all`] can
-/// stop and join them on hot-reload teardown -- the previous
+/// stop and join them on hot-reload teardown. The previous
 /// design relied on the caller holding the `WatchHandle` and
 /// dropping it before unload, which silently leaked the thread
 /// across DLL unloads when the caller forgot.
@@ -153,7 +153,7 @@ where
     /// closure runs under the lock; keep it short. Returns the
     /// mutated value.
     ///
-    /// Save errors are logged but not surfaced — settings
+    /// Save errors are logged but not surfaced. Settings
     /// persistence is best-effort and shouldn't break gameplay
     /// callsites.
     pub fn update<F>(&self, f: F) -> T
@@ -219,7 +219,7 @@ where
     /// The handle's `stop()` is checked once per tick, so the
     /// thread exits within `interval` of the drop.
     ///
-    /// Parse errors are logged and skipped -- the live in-memory
+    /// Parse errors are logged and skipped. The live in-memory
     /// state is untouched. Subsequent successful reloads recover.
     pub fn watch<F>(self: &Arc<Self>, interval: Duration, on_reload: F) -> WatchHandle
     where
