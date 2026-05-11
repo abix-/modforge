@@ -1,6 +1,6 @@
 # Data tables
 
-> **Authoritative on:** ueforge's UE5 `UDataTable` surface --
+> **Authoritative on:** ueforge's UE5 `UDataTable` surface.
 > `DataTableDef` + `DataTableRegistry` catalog, the
 > `probe::discover_data_tables` bootstrap, `FieldTweak<T>`,
 > `ClassFieldTweak<T>`, `find_by_short_name`, `iter_rows`, plus the
@@ -50,7 +50,7 @@ schema-style registry in the workspace (Status, Stack, Difficulty).
 Discovery is the leverage point. For a brand-new UE5 game:
 
 1. Launch the game with ueforge loaded. Call `discover_data_tables`
-   (debug op). Get back JSON for every live `UDataTable` -- id,
+   (debug op). Get back JSON for every live `UDataTable`. Id,
    short name, row-struct name, every field's name + offset +
    element size.
 2. Pick the table + field you want to tweak.
@@ -141,7 +141,7 @@ recipes, status effects, materials, weapons, perks, etc. Mods
 that want to retune any of these mutate the data table at
 runtime. ueforge ships the primitives + the timing doctrine.
 
-## NamedFieldTweak<T> -- name-based writes (no offsets in code)
+## NamedFieldTweak<T>. Name-based writes (no offsets in code)
 
 The `FieldTweak<T>` primitive below bakes the offset at declaration
 time. For new-game bootstrap that's noise: you don't want every mod
@@ -162,7 +162,7 @@ MAX_STACK.apply(|v| v.saturating_mul(4), |v| v <= 1).ok();
 If the table or field isn't in the cache yet (content streamed in
 late), call `ueforge::discovery::refresh()` and try again. After
 a game patch shifts an offset, the new offset is picked up on the
-next discovery refresh -- no code change.
+next discovery refresh. No code change.
 
 Vanilla-snapshot + idempotent re-apply semantics are inherited
 verbatim from `FieldTweak<T>`.
@@ -176,7 +176,7 @@ yet (the table only just appeared), then applies once. Mirrors
 `FieldTweak::apply_when_ready` for the typical `on_unreal_init`
 entry point.
 
-## ClassNamedFieldTweak<T> -- live UObject sibling
+## ClassNamedFieldTweak<T>. Live UObject sibling
 
 ```rust
 use ueforge::data_table::ClassNamedFieldTweak;
@@ -211,7 +211,7 @@ This means:
 - **OR mutate AFTER and re-trigger the consumers.** If a UI
   caches the row, you have to reopen the UI to see the new
   value. Worse, if save data records a per-actor copy of the
-  row, mutating doesn't help -- the saved copy wins.
+  row, mutating doesn't help. The saved copy wins.
 - **OR hook the read** at the `GetDataTableRow` UFunction so
   every read sees your transform. Bulletproof but invasive.
 
@@ -247,7 +247,7 @@ where F: FnOnce(&UObject) + Send + 'static;
 
 Spawns a worker that polls for the table by name and runs
 `on_ready` once. Game DTs typically load with the GameInstance,
-shortly after `on_unreal_init` fires -- so polling for ~30s is
+shortly after `on_unreal_init` fires. So polling for ~30s is
 the safe default.
 
 ```rust
@@ -292,7 +292,7 @@ pub unsafe fn row_value_by_fname(table: &UObject, row_name: FName)
 ```
 
 Direct lookup: given a row's FName, return the row pointer.
-O(1) hashmap lookup via the underlying TMap -- much faster than
+O(1) hashmap lookup via the underlying TMap. Much faster than
 iterating + name-matching.
 
 ```rust
@@ -301,7 +301,7 @@ let row: *const u8 = unsafe {
 };
 ```
 
-## FieldTweak<T> -- per-row field write
+## FieldTweak<T>. Per-row field write
 
 The high-level API for "mutate this one field across every row
 that matches a predicate":
@@ -324,7 +324,7 @@ Idempotent: re-running with the same transform is a no-op
 because vanilla is captured once and the captured value drives
 the writes.
 
-`apply_when_ready` is the spawn-and-wait variant -- the typical
+`apply_when_ready` is the spawn-and-wait variant. The typical
 init-time entry point.
 
 ```rust
@@ -347,10 +347,10 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
 }
 ```
 
-`revert()` writes the captured vanilla back to every row -- for
+`revert()` writes the captured vanilla back to every row. For
 "toggle this skill off" without restarting the game.
 
-## ClassFieldTweak<T> -- live UObject sibling
+## ClassFieldTweak<T>. Live UObject sibling
 
 ```rust
 use ueforge::ue::class_tweak::ClassFieldTweak;
@@ -381,7 +381,7 @@ has overwritten the field with.
 
 This is the same shape as
 [`VanillaCache<K, V>`](rpg.md#vanillacachek-v) used by the RPG
-apply path -- both ride the "first-write-wins" pattern.
+apply path. Both ride the "first-write-wins" pattern.
 
 ## Mutation timing rules
 
@@ -409,13 +409,13 @@ UE5 builds. ueforge's `tmap::slots` knows how to walk it.
 
 Each row is a `#[repr(C)]` struct whose layout is per-DT (the
 DT references a `UScriptStruct` describing the row schema).
-Field offsets are game-specific -- read them from the SDK
+Field offsets are game-specific. Read them from the SDK
 headers.
 
 ## Cross-references
 
-- [ue-sdk.md](ue-sdk.md) -- TMap walker, FName resolver
-- [RESEARCH.md](RESEARCH.md) -- mutation timing doctrine
-- [rpg.md](rpg.md) -- VanillaCache (same first-write pattern)
-- [PERFORMANCE.md](PERFORMANCE.md) -- DT mutation runs at init,
+- [ue-sdk.md](ue-sdk.md). TMap walker, FName resolver
+- [RESEARCH.md](RESEARCH.md). Mutation timing doctrine
+- [rpg.md](rpg.md). VanillaCache (same first-write pattern)
+- [PERFORMANCE.md](PERFORMANCE.md). DT mutation runs at init,
   not on hot paths
