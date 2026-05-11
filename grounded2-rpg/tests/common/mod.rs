@@ -8,10 +8,10 @@
 // Run pattern (from a terminal, after launching Grounded 2 + loading a save):
 //
 //     set BBP_DEBUG_PORT=17171
-//     cargo test --test bandage_regression -- --test-threads=1 --nocapture
+//     cargo test --test bandage_regression. --test-threads=1 --nocapture
 //
 // Tests share a single global game-state, so always pass
-// `--test-threads=1` -- otherwise concurrent ops will race.
+// `--test-threads=1`. Otherwise concurrent ops will race.
 
 #![allow(dead_code)]
 
