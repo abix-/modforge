@@ -1,4 +1,4 @@
-//! Shutdown-handler registry -- the workspace-standard
+//! Shutdown-handler registry. The workspace-standard
 //! `<Subject>Def` + `<Subject>Registry` for the
 //! `ueforge_mod_shutdown` teardown sequence.
 //!
@@ -127,11 +127,11 @@ pub static SHUTDOWN_REGISTRY: ShutdownRegistry = ShutdownRegistry::new();
 /// [`SHUTDOWN_REGISTRY::run_all`].
 ///
 /// Order convention:
-/// - `100` -- hooks (must run before any thread join so trampolines
+/// - `100`. Hooks (must run before any thread join so trampolines
 ///   stop firing first)
-/// - `200` -- HTTP listeners
+/// - `200`. HTTP listeners
 /// - `300` -- `Settings::watch` mtime pollers
-/// - `400` -- scanner freeze sweeper
+/// - `400`. Scanner freeze sweeper
 ///
 /// Game crates that need to interleave (e.g. their own poller
 /// that drains via PE queue, must stop BEFORE hooks tear down)
