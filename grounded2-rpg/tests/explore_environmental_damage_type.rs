@@ -11,12 +11,12 @@
 //     -> whether equipment (armor) reduces environmental damage.
 //        Confirms what the engine's gear pipeline does.
 //
-// Pure test code -- uses walk_class + read_bytes primitives.
+// Pure test code. Uses walk_class + read_bytes primitives.
 //
 // Run:
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --release --target x86_64-pc-windows-msvc \
-//     --test explore_environmental_damage_type -- --nocapture --test-threads=1
+//     --test explore_environmental_damage_type. --nocapture --test-threads=1
 
 mod common;
 
