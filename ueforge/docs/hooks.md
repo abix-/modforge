@@ -54,7 +54,7 @@ install_immediate_or_log(
 
 `ProcessEventHook` is RAII. Its `Drop` impl restores the
 original vtable slot AND waits up to 500ms for in-flight
-trampolines to drain. In practice you don't drop it directly --
+trampolines to drain. In practice you don't drop it directly.
 [`hook::register`] / [`install_immediate_or_log`] move the
 handle into a `static` registry, where it lives for the process
 lifetime OR until [`hook::shutdown_all`] tears it down on
@@ -93,7 +93,7 @@ The hook registry is stored as `Mutex<Vec<&'static Entry>>`
 (write-rare path) plus `ArcSwap<Vec<&'static Entry>>` (read-hot
 path). Trampolines never touch the mutex.
 
-## install_many -- multi-class install
+## install_many. Multi-class install
 
 For BP-generated player classes that come in subclasses
 (`BP_SurvivalPlayerCharacter_C`, `..._Female02_C`,
@@ -118,7 +118,7 @@ Returns `Err("no classes installed")` if zero classes resolved.
 The handler closure must be `Clone` so it can be cloned per
 class.
 
-## install_with_backoff -- retry loop
+## install_with_backoff. Retry loop
 
 UE classes show up in GObjects on the engine's schedule, not
 ours. `on_unreal_init` fires before most BP-generated classes
@@ -154,7 +154,7 @@ The retry logs "pending (<error>), will retry" on each unique
 error string transition (so if your install fn returns
 `"WBP_X not loaded"` ten times, you get one log line, not ten).
 
-## function_table! -- declared identity dispatch
+## function_table!. Declared identity dispatch
 
 For hooks that need to identity-dispatch many UFunctions on a
 single class, the `function_table!` macro generates a struct of
@@ -212,7 +212,7 @@ Use `LazyFunctionPtr` when:
 - You'd rather not enumerate the set of functions at install
   time.
 
-## LazyFunctionPtr -- lazily-cached identity
+## LazyFunctionPtr. Lazily-cached identity
 
 ```rust
 use ueforge::hook::LazyFunctionPtr;
@@ -248,7 +248,7 @@ non-matching ~99% bail with one atomic load + branch.
 ### Why this beats `function.name() == "OnLanded"`
 
 The naive form allocates one `String` + resolves an FName per
-fire. At 2000 fires/sec that's 2000 String allocs/sec --
+fire. At 2000 fires/sec that's 2000 String allocs/sec.
 measurable in a profile and a real allocator-pressure source.
 LazyFunctionPtr makes the identity check zero-alloc on the warm
 path.
@@ -335,19 +335,19 @@ If your handler invokes `process_event` (e.g. via
 that may re-enter your trampoline. The hook framework itself
 handles vtable identity correctly, but if you're draining
 `Queue` jobs that themselves call into PE, the
-`Queue::drain`'s re-entrance guard skips the inner drain --
+`Queue::drain`'s re-entrance guard skips the inner drain.
 preventing recursive recursion. See [pe-queue.md](pe-queue.md).
 
 ### Vtable identity vs subclass dispatch
 
 `ProcessEventHook::install("Foo")` patches the vtable of `Foo`'s
 CDO. Subclasses with their own vtables don't get hooked. If you
-need both `Foo` and `BP_Foo_C`, install on both -- the
+need both `Foo` and `BP_Foo_C`, install on both. The
 `install_many` helper exists for exactly this.
 
 ### Engine-internal calls bypass ProcessEvent
 
-Some UE5 functions are `Final|Native` -- the engine bypasses
+Some UE5 functions are `Final|Native`. The engine bypasses
 ProcessEvent on the internal damage path. `Kill` is the
 classic example. Hooking `Kill` directly won't see player-on-
 creature kills; hooking `MulticastHandleEffectsWithDamageFlags`
@@ -396,9 +396,9 @@ the shim calls):
      3. Spins up to 500ms on the per-Entry `active_calls`
         counter so trampolines that already entered the handler
         finish before unload.
-3. `server::shutdown_all()` -- HTTP listeners.
-4. `settings::shutdown_all()` -- mtime watcher threads.
-5. `mod_main::finalize_hot_reload_swap()` -- side-file rename.
+3. `server::shutdown_all()`. HTTP listeners.
+4. `settings::shutdown_all()`. Mtime watcher threads.
+5. `mod_main::finalize_hot_reload_swap()`. Side-file rename.
 
 After step 2 returns, no code in our DLL is on a thread's stack
 via a PE trampoline. UE4SS can FreeLibrary safely.
@@ -410,7 +410,7 @@ trampoline entry (after the SHUTTING_DOWN check) and
 decremented at exit. Drop spins on it with a 500ms ceiling. If
 the deadline elapses with calls still in flight (a handler
 deadlocked or did very-long work), the unload proceeds anyway
-with a log line -- better to risk one straggler crash than
+with a log line. Better to risk one straggler crash than
 deadlock the whole hot-reload cycle.
 
 ### HookDefs are leaked, not freed
@@ -441,7 +441,7 @@ The audit conclusion: the leak is intentional and bounded.
 Per-cycle cost is one entry per hook install (~250 bytes
 struct + ~tens of bytes captured closure state). 1000 hot-
 reload cycles at 5 hooks each is ~5000 leaked entries, ~1 MB
-total -- tolerable for the lifetime of a process.
+total. Tolerable for the lifetime of a process.
 
 `hook::leaked_entry_count() -> u64` is exposed for snapshot
 surfaces so a dev session that hot-reloads aggressively can
@@ -456,8 +456,8 @@ The trampoline wraps every handler invocation in
 ### Game stays alive on panic
 
 A panic in user-supplied closure code unwinds to the trampoline
-boundary. We catch it, log, and -- if the handler had not
-already invoked the engine -- fall through to
+boundary. We catch it, log, and. If the handler had not
+already invoked the engine. Fall through to
 `OriginalProcessEvent::call` so the engine still processes the
 PE event. Without this, a typo in handler code crashes the
 game.
@@ -490,17 +490,17 @@ caught panic. Surfaces:
 
 A nonzero total in a debug snapshot is the signal that some
 handler is silently failing. Without this counter the failure
-mode is "game runs, mod does nothing, no log noise" -- the
+mode is "game runs, mod does nothing, no log noise". The
 worst kind of bug to track down.
 
 ## Cross-references
 
-- [pe-queue.md](pe-queue.md) -- draining game-thread jobs from
+- [pe-queue.md](pe-queue.md). Draining game-thread jobs from
   the trampoline
-- [counters.md](counters.md) -- the fires / time_ns / allocs
+- [counters.md](counters.md). The fires / time_ns / allocs
   counter triple
-- [PERFORMANCE.md](PERFORMANCE.md) -- hot-path discipline rules
-- [ue-sdk.md](ue-sdk.md) -- the UClass / UFunction types you
+- [PERFORMANCE.md](PERFORMANCE.md). Hot-path discipline rules
+- [ue-sdk.md](ue-sdk.md). The UClass / UFunction types you
   hook against
-- [lifecycle.md](lifecycle.md) -- where in the worker thread
+- [lifecycle.md](lifecycle.md). Where in the worker thread
   hooks install
