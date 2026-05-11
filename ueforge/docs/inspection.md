@@ -1,4 +1,4 @@
-# Grounded 2 -- Mod Inspection (Worked Examples)
+# Grounded 2. Mod Inspection (Worked Examples)
 
 How to fully decompile and understand Grounded 2 (Unreal Engine 5) mods
 so that you can list every change a mod makes, identify the exact assets
@@ -12,15 +12,15 @@ it touches, and diagnose why a previously-working mod is now broken.
 > Crash Team Rumble, etc.). The only game-specific knowledge needed
 > is which asset paths and property names control the behaviour you
 > want to change. Once you have that, the cooking / packing pipeline
-> is the same. So a "Standard UE5 modding guide" applies directly --
+> is the same. So a "Standard UE5 modding guide" applies directly.
 > see [External resources](#external-resources--modding-ecosystem-references)
 > for the canonical ones.
 
 Two worked examples in this document:
 
-1. **All-in-One Player Tweaks v13.1.6** -- a working mod that overrides
+1. **All-in-One Player Tweaks v13.1.6**. A working mod that overrides
    one Blueprint (`BP_SurvivalPlayerCharacter`).
-2. **Bigger Backpack v37.1.2** (`ContainerWidgetTweaks_00054_P`) --
+2. **Bigger Backpack v37.1.2** (`ContainerWidgetTweaks_00054_P`).
    a mod that no longer works in the current Grounded 2 build.
    Used here to show how to root-cause a broken mod.
 
@@ -35,15 +35,15 @@ Two worked examples in this document:
 
 **The seven-plus-one inspection phases**
 
-- [Phase 1 -- Tooling](#phase-1----tooling)
-- [Phase 2 -- Inventory (what files does it touch?)](#phase-2----inventory-what-files-does-it-touch)
-- [Phase 3 -- Bulk extract](#phase-3----bulk-extract)
-- [Phase 4 -- Vanilla baseline](#phase-4----vanilla-baseline)
-- [Phase 5 -- Diff](#phase-5----diff)
-- [Phase 6 -- Interpret each asset type](#phase-6----interpret-each-asset-type)
-- [Phase 7 -- Sanity checks](#phase-7----sanity-checks)
-- [Phase 8 (optional) -- Behavioural verification](#phase-8-optional----behavioural-verification)
-- [Quick reference -- minimum-effort path](#quick-reference----minimum-effort-path)
+- [Phase 1. Tooling](#phase-1----tooling)
+- [Phase 2. Inventory (what files does it touch?)](#phase-2----inventory-what-files-does-it-touch)
+- [Phase 3. Bulk extract](#phase-3----bulk-extract)
+- [Phase 4. Vanilla baseline](#phase-4----vanilla-baseline)
+- [Phase 5. Diff](#phase-5----diff)
+- [Phase 6. Interpret each asset type](#phase-6----interpret-each-asset-type)
+- [Phase 7. Sanity checks](#phase-7----sanity-checks)
+- [Phase 8 (optional). Behavioural verification](#phase-8-optional----behavioural-verification)
+- [Quick reference. Minimum-effort path](#quick-reference----minimum-effort-path)
 - [CLI-driven alternative path (retoc)](#cli-driven-alternative-path-retoc)
 
 **Worked examples**
@@ -57,17 +57,17 @@ Two worked examples in this document:
 
 **Design and SDK research for Better Backpack**
 
-- [Building our own backpack mod -- requirements](#building-our-own-backpack-mod----requirements)
+- [Building our own backpack mod. Requirements](#building-our-own-backpack-mod----requirements)
 - [SDK research findings (definitive technical path)](#sdk-research-findings-definitive-technical-path)
 - [Current state (end of 2026-05-04 session)](#current-state-end-of-2026-05-04-session)
 
 **Other docs**
 
-- [SHIPPING-BUILD-NOTES.md](SHIPPING-BUILD-NOTES.md) -- UE5 shipping strips file logging and the dev console. Implications for verification, pak-only diagnostics, and a Vortex `basePath` gotcha.
-- [REQUIREMENTS.md](REQUIREMENTS.md) -- the Better Backpack design spec.
-- [INSTALL.md](INSTALL.md) -- end-user install/use guide.
-- [BUILDING.md](BUILDING.md) -- build, internals, configuration.
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) -- failure modes.
+- [SHIPPING-BUILD-NOTES.md](SHIPPING-BUILD-NOTES.md). UE5 shipping strips file logging and the dev console. Implications for verification, pak-only diagnostics, and a Vortex `basePath` gotcha.
+- [REQUIREMENTS.md](REQUIREMENTS.md). The Better Backpack design spec.
+- [INSTALL.md](INSTALL.md). End-user install/use guide.
+- [BUILDING.md](BUILDING.md). Build, internals, configuration.
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md). Failure modes.
 
 **Final notes**
 
@@ -97,7 +97,7 @@ understanding is:
 
 Each diff entry = one tweak. Done.
 
-There is no executable code to "decompile" -- the payload is cooked
+There is no executable code to "decompile". The payload is cooked
 UAsset binaries containing data tables, curves, and Blueprint default
 property blocks. Tools surface those as JSON; differences are the mod's
 entire feature set.
@@ -108,14 +108,14 @@ Probed with `retoc info` against the actual files on disk:
 
 - **Game install:** `C:\Games\Steam\steamapps\common\Grounded2\`
 - **Game version string:** `++Augusta+release-0.4.0.2-CL-2673661`
-  (from `Grounded2.exe` ProductVersion -- this is the bootstrap shim;
+  (from `Grounded2.exe` ProductVersion. This is the bootstrap shim;
   UE engine version is inferred from container format flags below).
 - **Base game paks (Augusta\Content\Paks\):** one base pak
   `Augusta-WinGRTS.{pak,ucas,utoc}` plus `global.{ucas,utoc}`. No
   patch paks shipped. Single monolithic loadout. The base pak is
   **32 GB** containing **61,449 packages** / 100,196 chunks.
 - **No AES encryption.** Both the global and mod containers report
-  `container_flags: 0x0` / `Indexed` -- the Encrypted flag is absent.
+  `container_flags: 0x0` / `Indexed`. The Encrypted flag is absent.
   No AES key needed; retoc/FModel can read everything directly.
 - **TOC version:** `ReplaceIoChunkHashWithIoHash` (latest IoStore TOC).
 - **Container header version:** `SoftPackageReferencesOffset` (latest).
@@ -145,11 +145,11 @@ Naming convention `AIOPlayerTweaks_00012_P`:
   Grounded 2. Mods must mirror the project's `Content/Paks/` path or UE
   will not mount them.
 
-A mod pak only contains the assets it overrides -- the entire base game
+A mod pak only contains the assets it overrides. The entire base game
 is not duplicated. So the file tree IS the changelist of WHAT gets
 touched. The diffing phase tells you HOW MUCH each asset changed.
 
-## Phase 1 -- Tooling
+## Phase 1. Tooling
 
 | Tool          | Purpose                                       | Source                                |
 |---------------|-----------------------------------------------|---------------------------------------|
@@ -196,7 +196,7 @@ The `to-legacy` command is the most useful: it produces a legacy
 `.pak` containing readable `.uasset`/`.uexp` files that downstream
 tools (UAssetGUI, FModel, kismet-analyzer) all understand directly.
 
-## Phase 2 -- Inventory (what files does it touch?)
+## Phase 2. Inventory (what files does it touch?)
 
 1. Install FModel.
 2. **Settings -> General -> Output Directory**: pick a working folder,
@@ -224,7 +224,7 @@ Typical paths to expect for a "Player Tweaks" mod:
 /Game/UI/...           (rare)
 ```
 
-## Phase 3 -- Bulk extract
+## Phase 3. Bulk extract
 
 Right-click the mod's archive in FModel -> **Export Folder's Packages
 Data (.json)**. Every `.uasset` in the mod becomes a `.json` file in
@@ -233,7 +233,7 @@ your output directory, mirroring the in-game folder layout.
 Result: `C:\fmodel_out\Augusta\Content\Data\...\DT_PlayerStats.json` and
 so on. This is the entire mod payload in human-readable form.
 
-## Phase 4 -- Vanilla baseline
+## Phase 4. Vanilla baseline
 
 The mod JSON shows final values, not deltas. To diff, you need the same
 paths exported from vanilla.
@@ -251,7 +251,7 @@ right-click the vanilla version of that folder -> Export Folder's
 Packages Data. You will export more than you need, but disk is cheap
 and the diff step ignores files that have no counterpart.
 
-## Phase 5 -- Diff
+## Phase 5. Diff
 
 ```powershell
 # Folder-level summary of which files differ
@@ -267,7 +267,7 @@ Or open WinMerge in folder-compare mode pointed at both directories.
 WinMerge highlights the changed files in red, and double-clicking opens
 a side-by-side view with property-level highlights.
 
-## Phase 6 -- Interpret each asset type
+## Phase 6. Interpret each asset type
 
 | Asset type   | JSON shape                                | What "tweaks" usually mean                  |
 |--------------|-------------------------------------------|---------------------------------------------|
@@ -288,7 +288,7 @@ For each diff entry record:
 Once every changed file is processed, you have a 100% inventory of the
 mod's data-driven changes.
 
-## Phase 7 -- Sanity checks
+## Phase 7. Sanity checks
 
 Things that a naive FModel-only pass can miss:
 
@@ -324,7 +324,7 @@ Things that a naive FModel-only pass can miss:
    Unfamiliar paths in the output may indicate a dependency on game
    content the modder did not ship.
 
-## Phase 8 (optional) -- Behavioural verification
+## Phase 8 (optional). Behavioural verification
 
 Static JSON analysis covers DataTables, CurveTables, and Blueprint
 property defaults. It does NOT cover Blueprint EventGraph logic
@@ -344,7 +344,7 @@ EventGraphs. To verify:
 For a tweaks mod (vs a content/scripted mod), data coverage is
 effectively complete coverage.
 
-## Quick reference -- minimum-effort path
+## Quick reference. Minimum-effort path
 
 Skip all phases except 3 and 5 if you only need a rough sense of
 what the mod does:
@@ -385,7 +385,7 @@ cp "/c/Users/Abix/AppData/Roaming/Vortex/grounded2/mods/All-in-One Player Tweaks
 ```
 
 Then load `mod_legacy.pak` in FModel (or UAssetGUI) for property
-decoding -- legacy `.uasset` files are the well-supported common
+decoding. Legacy `.uasset` files are the well-supported common
 format across all UE inspection tools.
 
 ### Listing a legacy pak
@@ -458,7 +458,7 @@ Vanilla path of the overridden asset (from `retoc list --path`):
 ### What it actually does
 
 A string-dump of the `.uasset`+`.uexp` reveals the mod is **not** a
-stat tweaker -- it is a **cheat / unlock mod** that runs gameplay-tag
+stat tweaker. It is a **cheat / unlock mod** that runs gameplay-tag
 commands at spawn time. The Blueprint contains command literals like:
 
 ```
@@ -486,11 +486,11 @@ UnlockPlayerUpgrade thirst
 
 These look like console-style cheat commands fed through the
 `UseGameplayCheatCommand`-style API. Plus toast strings:
-`"Recipes unlocked."`, `"Tech trees unlocked."` -- the mod surfaces
+`"Recipes unlocked."`, `"Tech trees unlocked."`. The mod surfaces
 on-screen confirmations.
 
 **Important terminology note:** in Grounded 2, **"Buggy" = mountable
-creature** (Ladybug, Orb Weaver, etc. -- the ride-able insects with
+creature** (Ladybug, Orb Weaver, etc.. The ride-able insects with
 their own saddlebag inventories), NOT the player's backpack.
 Confirmed by vanilla asset paths like `CA_MountBuggy`,
 `AS_LadyBug_Buggy_ShootIdle`, `Table_Items_Ammo_LadybugBuggy`,
@@ -514,7 +514,7 @@ the current Grounded 2 build (game version
 ### Recon
 
 The Vortex display name is "Bigger Backpack" but the internal pak is
-`ContainerWidgetTweaks_00054_P` -- a **UI** widget tweak, not an
+`ContainerWidgetTweaks_00054_P`. A **UI** widget tweak, not an
 inventory data-model tweak. That is the first major clue.
 
 ```
@@ -554,7 +554,7 @@ $ retoc list --path Augusta-WinGRTS.utoc | grep -iE 'UI_Container_(BackpackSide|
 
 **Chunk IDs match exactly.** All three widgets still exist at the
 expected vanilla paths with identical chunk IDs. So the override
-**resolves correctly** -- the asset itself is being loaded at runtime.
+**resolves correctly**. The asset itself is being loaded at runtime.
 
 ### Path discrepancy in mod TOC (cosmetic, not the bug)
 
@@ -562,7 +562,7 @@ The mod's TOC shows paths as `../../../UI_Container_BackpackSide.uasset`
 (missing the `Augusta/Content/UI/Container/` directory tree), but
 IoStore lookup is by chunk ID hash, not directory path. The chunk-ID
 hash matches, so the override works. The stripped-down path is
-cosmetic -- likely a side-effect of how the modder packaged the
+cosmetic. Likely a side-effect of how the modder packaged the
 files. Not the cause of the breakage.
 
 ### What it actually changes (UPDATED with verified values)
@@ -615,7 +615,7 @@ So the mod's strategy is:
    number of slots rendered (and that the inventory data side
    allows that many items to be stored).
 
-### Hypothesis -- where the bug actually is
+### Hypothesis. Where the bug actually is
 
 Since the override resolves correctly but the mod has no effect, the
 bug is **inside the widget logic**, not in container plumbing. Most
@@ -625,7 +625,7 @@ likely:
   Grounded 2 build apparently sources the rendered slot count from
   the player's `MountInventoryComponent` / inventory-data side,
   not from the widget's `MaxRows`. The widget property the modder
-  bumped is now cosmetic at best -- when the grid binds, it uses
+  bumped is now cosmetic at best. When the grid binds, it uses
   the data-side value and ignores the layout hint.
 - This fits the symptom "mod loads but does nothing in the
   current build" better than a serialisation failure (which would
@@ -635,7 +635,7 @@ likely:
 
 Decode `UI_Container_BackpackSide.uexp` and read the actual
 `MaxRows` value the mod sets. If it is, e.g., `12` while vanilla
-sets `6`, the mod's intent is confirmed -- and the failure is purely
+sets `6`, the mod's intent is confirmed. And the failure is purely
 on the game's read-path no longer honouring it. Use FModel on
 `bb_legacy.pak` (parser set to UE 5.4) and right-click each widget
 -> Export Properties (.json), then compare against vanilla widget
@@ -653,7 +653,7 @@ against the mod authors' own documentation on Nexus confirms they
 > Files). The Bigger Backpack mod only changes the UI widget for
 > containers to let you seamlessly manage all 60 slots when
 > interacting with containers."
-> -- summary of the Bigger Backpack Nexus comments thread.
+>. Summary of the Bigger Backpack Nexus comments thread.
 
 So the correct division of labour is:
 
@@ -670,7 +670,7 @@ Why the v13.1.6 AIO variant we have on disk does NOT include the
   unlock). It contains no literal `60` or `MaxInventorySize` ASCII
   marker that we could grep for. Numeric property defaults in
   `.uexp` are stored as raw bytes, not strings, so a grep miss is
-  inconclusive -- but combined with the Nexus author's note that
+  inconclusive. But combined with the Nexus author's note that
   the 60-slot version is in **Optional Files** (a separate
   download), the inference is that the standard AIO this user
   downloaded is the cheats-only variant without the slot bump.
@@ -681,7 +681,7 @@ Why Bigger Backpack appears "broken" for this user:
   cheats-only variant) but **not** the 60-slot Player Tweaks
   variant. Therefore the data-side capacity is still vanilla 40,
   and Bigger Backpack's UI expansion has only 40 actual slots to
-  bind to -- the visible result is "no extra slots", which the
+  bind to. The visible result is "no extra slots", which the
   user reports as "doesn't work".
 
 Conflict surface (now relevant): both AIO and the 60-slot Player
@@ -692,11 +692,11 @@ together with Convenience Tweaks, AIO Player Tweaks Plus 60
 slots backpack..." This means **only one Player Tweaks variant
 can be installed at a time**. The user must choose between:
 
-- AIO (current install) -- cheats and unlocks but no slot bump
+- AIO (current install). Cheats and unlocks but no slot bump
 - AIO + 60-slot variant (a combined "Plus 60 slots" optional
-  file from the Player Tweaks page on Nexus) -- both cheats AND
+  file from the Player Tweaks page on Nexus). Both cheats AND
   slot bump
-- 60-slot-only variant -- slot bump only, no cheats
+- 60-slot-only variant. Slot bump only, no cheats
 
 ## Recommended path forward (low effort)
 
@@ -711,7 +711,7 @@ can be installed at a time**. The user must choose between:
 4. Replace the current `AIOPlayerTweaks_00012_P.{pak,ucas,utoc}`
    in Vortex with this variant.
 5. Keep the existing Bigger Backpack install
-   (`ContainerWidgetTweaks_00054_P`) as-is -- it will start
+   (`ContainerWidgetTweaks_00054_P`) as-is. It will start
    functioning the moment the data-side capacity is in place.
 
 This is a **"download the right file"** fix, not a build-our-own-mod
@@ -822,63 +822,63 @@ exists. The community ecosystem covers the gap. As of May 2026:
 
 ### Authoritative mod pages on Nexus
 
-- **Player Tweaks** (`mods/13`) -- the primary "AIO + capacity"
+- **Player Tweaks** (`mods/13`). The primary "AIO + capacity"
   mod family. Optional Files contain the 60-slot data-side bump.
   https://www.nexusmods.com/grounded2/mods/13
-- **Bigger Backpack** (`mods/37`) -- UI-side widget mod. Pairs
+- **Bigger Backpack** (`mods/37`). UI-side widget mod. Pairs
   with Player Tweaks. https://www.nexusmods.com/grounded2/mods/37
-- **Better Storages** (`mods/25`) -- world chest/storage capacity.
+- **Better Storages** (`mods/25`). World chest/storage capacity.
   Different system from player backpack.
   https://www.nexusmods.com/grounded2/mods/25
-- **MoreInventory_Buggy** (`mods/102`) -- mount saddlebag size.
+- **MoreInventory_Buggy** (`mods/102`). Mount saddlebag size.
   Different system from player backpack.
   https://www.nexusmods.com/grounded2/mods/102
-- **Bigger Stacks** (`mods/8`) -- per-item stack size up to x999.
+- **Bigger Stacks** (`mods/8`). Per-item stack size up to x999.
   https://www.nexusmods.com/grounded2/mods/8
-- **Grounded 2 Command List** (`mods/19`) -- comprehensive console
+- **Grounded 2 Command List** (`mods/19`). Comprehensive console
   command reference. Useful for finding gameplay tags.
   https://www.nexusmods.com/grounded2/mods/19
 
 ### General UE5 modding tooling
 
-- **UAssetGUI** (atenfyr/UAssetGUI) -- the canonical cooked-uasset
+- **UAssetGUI** (atenfyr/UAssetGUI). The canonical cooked-uasset
   editor. https://github.com/atenfyr/UAssetGUI
-- **Unofficial Modding Guide** -- UAssetGUI walkthrough, applicable
+- **Unofficial Modding Guide**. UAssetGUI walkthrough, applicable
   to any UE 5.x cooked-asset target.
   https://unofficial-modding-guide.com/posts/uassetmodding/
   Plus an introduction at https://unofficial-modding-guide.com/posts/thebasics/
 - **UE Modding Tools databank** (Buckminsterfullerene02/UE-Modding-Tools)
-  -- comprehensive list of reverse-engineering and modding tools
+ . Comprehensive list of reverse-engineering and modding tools
   spanning multiple UE games.
   https://github.com/Buckminsterfullerene02/UE-Modding-Tools
-- **Buckminster's UE Modding dev-guide** -- a comprehensive
+- **Buckminster's UE Modding dev-guide**. A comprehensive
   introduction including pak handling and patching.
   https://buckminsterfullerene02.github.io/dev-guide/Basis/DealingWithPaks.html
   https://buckminsterfullerene02.github.io/dev-guide/Basis/PakPatching.html
-- **Dmgvol/UE_Modding** -- UE4/5 modding guides repo, includes
+- **Dmgvol/UE_Modding**. UE4/5 modding guides repo, includes
   IoStore packing instructions. Applies to any UE5 game.
   https://github.com/Dmgvol/UE_Modding
   https://github.com/Dmgvol/UE_Modding/blob/main/BasicModding/IoStorePacking.md
-- **Dumper-7** (Encryqed/Dumper-7) -- generates SDK + mappings file
+- **Dumper-7** (Encryqed/Dumper-7). Generates SDK + mappings file
   by attaching to a running UE game. Required for property-name
   resolution on stripped-cooked assets in UE 5.3+.
   https://github.com/Encryqed/Dumper-7
-- **UnrealReZen** (rm-NoobInCoding/UnrealReZen) -- alternative
+- **UnrealReZen** (rm-NoobInCoding/UnrealReZen). Alternative
   Zen packer if `retoc to-zen` does not work for the target game.
   https://github.com/rm-NoobInCoding/UnrealReZen
-- **mod.io UGC Best Practices** (Unreal-specific) -- Epic's
+- **mod.io UGC Best Practices** (Unreal-specific). Epic's
   ecosystem partner; useful for understanding what cooked-asset
   patching is officially expected to look like.
   https://docs.mod.io/unreal/ugc-best-practices
 
 ### Grounded-2-specific reverse engineering
 
-- **Grounded2Minimal** (x0reaxeax/Grounded2Minimal) -- DLL-based
+- **Grounded2Minimal** (x0reaxeax/Grounded2Minimal). DLL-based
   cheat/mod/debug tool. Likely contains class names, struct
   layouts, and offset tables relevant to the inventory component.
   Source available in repo.
   https://github.com/x0reaxeax/Grounded2Minimal
-- **Grounded Wiki** (Storage & Utilities entry) -- canonical for
+- **Grounded Wiki** (Storage & Utilities entry). Canonical for
   in-game crate/chest capacity values, but does NOT cover player
   backpack mechanics in depth.
   https://grounded.wiki.gg/wiki/Storage_%26_Utilities_(Grounded_2)
@@ -894,7 +894,7 @@ exists. The community ecosystem covers the gap. As of May 2026:
   modder-relevant detail; player-side numbers are scattered
   across forum threads and mod descriptions.
 
-## Building our own backpack mod -- requirements
+## Building our own backpack mod. Requirements
 
 Bigger Backpack (the only existing backpack mod for Grounded 2) is
 broken in the current build and uses a strategy (`MaxRows` on a UMG
@@ -908,7 +908,7 @@ using only the structural information we have on disk.
    "Usable" means items can be placed into them, persist across
    save/load, and survive combat/ragdoll/death-respawn.
 2. **Visual rendering matches storage.** If we increase storage to
-   N slots, all N must render in the inventory UI -- no invisible
+   N slots, all N must render in the inventory UI. No invisible
    slots, no truncated rows.
 3. **Stable across game patches** as long as the underlying
    inventory component class signature does not change. (We accept
@@ -918,7 +918,7 @@ using only the structural information we have on disk.
    Our mod must use a different load priority and must not
    override the same asset (`BP_SurvivalPlayerCharacter`).
 5. **Reversible**: uninstalling the mod must not corrupt saves.
-   This is the standard property of UE asset overrides -- but
+   This is the standard property of UE asset overrides. But
    becomes a risk if we increase storage and the player fills the
    extra slots before uninstalling.
 6. **Single-pak deployment**: one `.pak` + `.ucas` + `.utoc` set,
@@ -942,7 +942,7 @@ using only the structural information we have on disk.
   resolves at the file level without further effort.
 - Two relevant property bindings observed in the existing widgets:
   `MountInventoryComponent` (the inventory component class the
-  player widget binds to -- shared between mounts and the player)
+  player widget binds to. Shared between mounts and the player)
   and `MaxRows` (a widget-side hint that the current build appears
   to ignore).
 - The string `MountInventoryComponent` appearing inside the
@@ -1026,7 +1026,7 @@ Q4 (hard caps) is non-static and parked until in-game test.
 
 This section captures findings from analysing the Dumper-7 SDK
 generated against Grounded 2 v0.4.0.2 (matches our installed game
-exactly) -- effectively a complete class-and-property dump of the
+exactly). Effectively a complete class-and-property dump of the
 entire game's UE reflection data, including every Blueprint and
 C++ class signature.
 
@@ -1077,7 +1077,7 @@ public:
 - **Property:** `DefaultMaxSize` at offset `0x01E0`
 - **Type:** `int32`
 - **UPROPERTY flags:** `Edit, BlueprintVisible, BlueprintReadOnly`
-  -- editable in the Blueprint editor (so it CAN be overridden via
+ . Editable in the Blueprint editor (so it CAN be overridden via
   CDO patching), readable from Blueprint at runtime, but the
   runtime cannot change it directly. Only CDO defaults can.
 
@@ -1100,7 +1100,7 @@ override `DefaultMaxSize` on the **main** `InventoryComponent`
 sub-object's CDO defaults inside `BP_SurvivalPlayerCharacter`.
 
 `MountInventoryComponent` is what gets used when the player is
-riding a Buggy mount -- so `UnlockBuggyUpgrade BuggyInventorySize`
+riding a Buggy mount. So `UnlockBuggyUpgrade BuggyInventorySize`
 (which AIO Player Tweaks runs) presumably resizes that one's
 capacity, not the main backpack.
 
@@ -1149,7 +1149,7 @@ inventory/backpack related. So:
 
 - The player **does not** have a native upgrade-driven backpack
   capacity expansion mechanism.
-- `UnlockPlayerUpgrade BackpackSize` would not work -- there is no
+- `UnlockPlayerUpgrade BackpackSize` would not work. There is no
   such row.
 - The cheat-command channel that AIO uses cannot grow the player
   backpack. The only option is direct CDO override on
@@ -1157,7 +1157,7 @@ inventory/backpack related. So:
   sub-object.
 
 This is also why the "60-slot Player Tweaks variant" must be a
-CDO-override mod (not a cheat-command mod) -- it has no choice.
+CDO-override mod (not a cheat-command mod). It has no choice.
 It directly bumps `DefaultMaxSize` on the player's main inventory
 component.
 
@@ -1165,7 +1165,7 @@ component.
 
 Decoded directly from the cooked `.uexp` by parsing the FName
 table and walking PropertyTag entries (no UAssetGUI / `.usmap`
-needed -- ueforge ships this as
+needed. Ueforge ships this as
 `ueforge::uasset::find_int_property` and a `read-property` CLI):
 
 | Hit | uexp offset (FName tag) | uexp offset (int32 value) | Value |
@@ -1196,7 +1196,7 @@ mod themselves.
 UE's canonical FPropertyTag struct order is `Name, Type, Size,
 ArrayIndex, ...`. The COOKED legacy serialisation (as produced
 by retoc to-legacy from a Zen container) actually emits
-**`ArrayIndex` before `Size`** -- 4-byte ArrayIndex first, then
+**`ArrayIndex` before `Size`**. 4-byte ArrayIndex first, then
 4-byte Size. Otherwise the property-tag header is canonical:
 
 ```
@@ -1244,7 +1244,7 @@ After patching:
 # (replacing the existing v13.1.6 files).
 ```
 
-The slot count can be any plausible value -- 60 (canonical),
+The slot count can be any plausible value. 60 (canonical),
 80, 100. The widget side caps visible rendering at 40 unless
 Bigger Backpack (or our own UI mod) is also installed, but
 the data side will accept the higher value (storage works
@@ -1261,7 +1261,7 @@ have always been TWO Player Tweaks variants on Nexus:
 
 The 60-slot variant exists as a separate Optional File
 download because it is a different .uexp byte at a different
-offset -- the modder ships both pre-built so users don't have
+offset. The modder ships both pre-built so users don't have
 to patch. The same `DefaultMaxSize` CDO-override mechanism
 is used in both, just with a different int32 baked into the
 60-slot version.
@@ -1276,7 +1276,7 @@ So the path forward is one of:
    repack with the steps above.
 3. **DIY (clean override mod):** build a mod that does ONLY
    the inventory bump (no cheats). Same property override
-   approach. Avoids overwriting AIO -- but conflicts with
+   approach. Avoids overwriting AIO. But conflicts with
    AIO at the same asset path, so still mutually exclusive.
 
 ### How to author the DIY mod (definitive)
@@ -1322,7 +1322,7 @@ Now that we know the exact property, class, and offset:
 - It uses the **chunk-ID hash** (= hash of package name) for
   override resolution, which is stable across UE 5.x versions.
 - It is **load-priority-independent** of AIO Player Tweaks
-  except that both touch `BP_SurvivalPlayerCharacter` -- so
+  except that both touch `BP_SurvivalPlayerCharacter`. So
   exactly one Player Tweaks variant can be installed at a
   time. That's the same constraint the existing 60-slot Player
   Tweaks variant has.
@@ -1332,7 +1332,7 @@ Now that we know the exact property, class, and offset:
 This section is a literal snapshot of where the investigation
 stopped, so the next session can pick up cold. **No mod has been
 installed.** Build artifacts exist on disk but reflect assumed
-requirements only -- the actual mod spec from the user has not
+requirements only. The actual mod spec from the user has not
 been gathered yet.
 
 ### What is verified and reusable
@@ -1342,7 +1342,7 @@ been gathered yet.
   0.4.0.1 and 0.4.0.2.
 - AIO Player Tweaks v13.1.6 byte offsets (in the post-`to-legacy`
   `.uexp` at `C:\Tools\work\mod_unpacked\BP_SurvivalPlayerCharacter.uexp`):
-  - `0x2B73A` (decimal `178138`) -- main `InventoryComponent` value, currently `40`.
+  - `0x2B73A` (decimal `178138`). Main `InventoryComponent` value, currently `40`.
   - `0x2B79E` (decimal `178238`) -- `MountInventoryComponent` value, currently `48`.
 - Patch verified: editing the byte at `178138` from `0x28` to
   `0x3C` and re-reading via `cargo run -p ueforge --bin read-property` reports
@@ -1366,7 +1366,7 @@ Grounded 2 build (UE 5.4) actually uses. To match vanilla's
 `ReplaceIoChunkHashWithIoHash` + `SoftPackageReferencesOffset`,
 pass `--version UE5_6`. retoc's `--version` flag names are
 approximate; the right value is empirically the one that makes
-`retoc info` match vanilla -- not the literal engine version
+`retoc info` match vanilla. Not the literal engine version
 of the target game.
 
 ### Build artifacts on disk (NOT installed)
@@ -1395,7 +1395,7 @@ explicit go-ahead.
 2. Mount/saddlebag handling: leave at AIO's 48, change, or
    restore to vanilla?
 3. Keep AIO's cheats? If yes, patch the existing AIO file. If
-   no, build a clean override mod -- either choice means only
+   no, build a clean override mod. Either choice means only
    one Player Tweaks variant can be installed at a time
    because both touch `BP_SurvivalPlayerCharacter`.
 4. Pair with Bigger Backpack widget mod? Without it, slots
@@ -1408,7 +1408,7 @@ explicit go-ahead.
 
 - Discard the current build artifacts (or rebuild against new
   numbers) once requirements are confirmed.
-- The repack pipeline is ready to run with new int32 values --
+- The repack pipeline is ready to run with new int32 values.
   patch the `.uexp` byte, re-run repak + retoc with `--version UE5_6`.
 - Vortex install path is
   `C:\Users\Abix\AppData\Roaming\Vortex\grounded2\mods\All-in-One Player Tweaks-13-1-6-1776519922\Augusta\Content\Paks\`
@@ -1420,13 +1420,13 @@ explicit go-ahead.
 
 The UE5 shipping configuration strips the dev console and file logging. The Vortex extension for Grounded 2 has misconfigured `basePath` in past sessions. Both bite mod-verification work directly: pak-only mods have no runtime feedback channel, and Vortex may silently drop your mod into the wrong game's Paks dir.
 
-Both topics, including the SDK evidence and the Epic forum reference, live in [SHIPPING-BUILD-NOTES.md](SHIPPING-BUILD-NOTES.md). Read that before assuming "the mod isn't doing anything" -- the most common cause is a verification gap, not a broken mod.
+Both topics, including the SDK evidence and the Epic forum reference, live in [SHIPPING-BUILD-NOTES.md](SHIPPING-BUILD-NOTES.md). Read that before assuming "the mod isn't doing anything". The most common cause is a verification gap, not a broken mod.
 
 ## Caveats
 
 - Grounded 2 ships UE 5.4+ (TOC version `ReplaceIoChunkHashWithIoHash`,
   container header `SoftPackageReferencesOffset`). Set FModel's parser
-  to UE 5.4 -- using the wrong version yields unreadable property
+  to UE 5.4. Using the wrong version yields unreadable property
   blocks. For `retoc to-zen` use `--version UE5_6` to match this
   format; `--version UE5_4` produces an older TOC the shipping
   game does not use.
