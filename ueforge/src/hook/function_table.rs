@@ -25,7 +25,7 @@
 //!
 //! Required fields error out the install path with a static-string
 //! error naming the missing function. Optional fields land as `0` if
-//! the function isn't present -- callers test with `if slot != 0`.
+//! the function isn't present. Callers test with `if slot != 0`.
 //!
 //! Slots are `usize` rather than `*const UFunction` so the table is
 //! `Send + Sync` without an `unsafe impl`. The pointer is to a
