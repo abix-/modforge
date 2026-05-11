@@ -5,7 +5,7 @@
 //
 // The SDK pattern is to call `delete[]` (C++ operator) on Data when Max>0.
 // Calling `delete[]` from Rust would require linking the game's CRT, which
-// is messy. Instead we leak the buffer -- it's bytes-per-conversion small
+// is messy. Instead we leak the buffer. It's bytes-per-conversion small
 // and game-process scoped. If this becomes a problem we'll add a release
 // pass that calls a game-side free helper.
 
@@ -59,7 +59,7 @@ impl FString {
         let units = unsafe { slice::from_raw_parts(self.data, slice_len) };
         let s = String::from_utf16_lossy(units);
         // Defense in depth: if the (capped) result still contains
-        // interior NULs, the name is corrupt -- truncate at the
+        // interior NULs, the name is corrupt. Truncate at the
         // first NUL. Real FName strings never have interior NULs.
         if let Some(nul) = s.find('\0') {
             s[..nul].to_string()
