@@ -23,7 +23,7 @@
 //!
 //! The DSL handles the prerequisites (live player present,
 //! skill points available) by skipping the test with a clear
-//! message instead of failing -- so partial environments
+//! message instead of failing. So partial environments
 //! (snapshot endpoint up but player not in-world) don't break
 //! the suite.
 //!
