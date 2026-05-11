@@ -14,7 +14,7 @@ makes this whole framework worth its weight:
 
 Three concerns. Three vocabularies.
 
-### Effects -- the verbs
+### Effects. The verbs
 
 An **Effect** is one reusable operation we figured out how to
 perform in the game: write an `f32` at an offset on a class CDO,
@@ -23,20 +23,20 @@ status-effect row + invoke `CreateAndAddEffect`, heal a
 HealthComponent via PE-call, etc. Each Effect is:
 
 - A **type** that implements the `Effect` trait (the operation
-  shape -- "scale these fields by `1 + max_bonus * progress`").
+  shape. "scale these fields by `1 + max_bonus * progress`").
 - **Parameterized** per use (instances carry the offsets, the
   base, the max_bonus, the class refs).
 - **Researched once, used everywhere.** A new game adopts the
   framework's Effect library; it only needs new Effect types
   when the game has a unique operation no other game shares.
 
-### Skills -- the products
+### Skills. The products
 
 A **Skill** is a player-facing upgrade slot: id, display name,
 max level, and an Effect. Same Skill type across every game.
 Adding a Skill is one catalog row that picks an Effect and
 supplies its parameters. The Skill never touches the game world
-directly -- it owns leveling + persistence + UI; it delegates the
+directly. It owns leveling + persistence + UI; it delegates the
 actual writes to its Effect.
 
 ```rust
@@ -53,22 +53,22 @@ SkillDef {
 Effect type is shared with every other PlayerFloat skill (Armor,
 etc.); only the parameters differ.
 
-### Triggers -- the WHEN
+### Triggers. The WHEN
 
 A skill needs to know WHEN to fire its Effect. That's the
-Trigger. Some triggers are **passive** (`OnSlotChange` -- the
+Trigger. Some triggers are **passive** (`OnSlotChange`. The
 effect fires when the player levels up / spends / refunds /
 toggles); others are **event-driven** (`OnDamageDealt` fires per
 player-dealt hit, `OnKill` per kill, `OnFall` per fall, `Periodic`
 per tick).
 
-`TriggerDef { kind, imp: &'static dyn Trigger }` is the Def --
+`TriggerDef { kind, imp: &'static dyn Trigger }` is the Def.
 symmetric with `EffectDef`. Each trigger TYPE is a struct that
 owns its own wiring: filter, decode, subscriber list. CDO-write
 skills use `&ueforge::rpg::trigger::ON_SLOT_CHANGE`; event-driven
 skills use the corresponding event trigger.
 
-### Hooks vs Triggers -- two layers
+### Hooks vs Triggers. Two layers
 
 `HookDef` and `TriggerDef` are NOT the same:
 
@@ -86,7 +86,7 @@ skills use the corresponding event trigger.
 Skill authors compose at the **Trigger** layer. `HookDef` is
 visible only to framework-level wiring code (the trigger types'
 `install` methods). The N:M relationship between hooks and
-triggers is exactly why both deserve their own Defs -- folding
+triggers is exactly why both deserve their own Defs. Folding
 trigger logic into HookDef would force duplicated filter/decode
 across the N hooks one trigger wraps.
 
@@ -108,7 +108,7 @@ into it.
 If you find yourself re-writing the same operation in two
 places, the operation should have been an Effect. If two
 games' skills differ only in parameters, the Effect type
-already covers both -- only the catalog rows change.
+already covers both. Only the catalog rows change.
 
 ---
 
@@ -122,9 +122,9 @@ already covers both -- only the catalog rows change.
 > Read this before adding a new module. New work should land
 > compliant; existing drift is tracked in the compliance table.
 
-The motivating problem: ueforge has many subjects -- skills,
+The motivating problem: ueforge has many subjects. Skills,
 buildings, status effects, debug ops, selectors, shutdown
-handlers, hooks, tabs -- and each one independently invented
+handlers, hooks, tabs. And each one independently invented
 its own "schema + storage + instance + behavior" shape. Some
 landed on a clean Def + Registry pattern (skills, tabs);
 others ended up as hardcoded match arms across multiple files
@@ -146,7 +146,7 @@ gap is the cleanup punch list.
 
 **Key rule:** the Def is the source of truth. Controllers read
 fresh values from the Def at every reconcile. Instances never
-cache Def fields -- if the Def changes (a new module ships
+cache Def fields. If the Def changes (a new module ships
 with a different base value, a hot-reload swaps catalog rows),
 the next reconcile picks it up.
 
@@ -158,19 +158,19 @@ subject. Endless's `k8s.md` flags drift between `job` /
 
 | Role | Naming |
 |---|---|
-| Schema struct | `<Subject>Def` (`SkillDef`, `CreatureDef`, `HookDef`, `OpDef`, `BuildingDef`, `SelectorDef`, `ShutdownHandlerDef`, `TabDef`). Always Def-suffixed -- no exceptions. |
+| Schema struct | `<Subject>Def` (`SkillDef`, `CreatureDef`, `HookDef`, `OpDef`, `BuildingDef`, `SelectorDef`, `ShutdownHandlerDef`, `TabDef`). Always Def-suffixed. No exceptions. |
 | Discriminator | `<Subject>Kind` enum where the set is closed; `&'static str` id where it's open-ended. The field that holds it is always called `kind` / `id` (NOT `name`, `job`, `activity`). |
 | Registry wrapper struct | `<Subject>Registry` holding `entries: &'static [<Subject>Def]` plus any extra registry-level config (e.g. `BestiaryRegistry` carries `default_xp: u32` alongside its entries). The wrapper exists so future fields don't reshape every consumer; bare slices are reserved for the carve-out exceptions below. |
 | Registry instance | `<SUBJECT>_REGISTRY: <Subject>Registry` (static const) for closed-set framework-owned registries, or per-mod `static CATALOG: <Subject>Registry<E>` when the registry is parameterized over a consumer-defined effect enum. |
 | Lookup method | `<Subject>Registry::def(&self, key) -> Option<&'static <Subject>Def>` is the canonical lookup. Free `<subject>_def(...)` functions are kept as thin wrappers for back-compat where prior call sites used them. |
-| Tracker (stateful subjects) | `<Subject>Tracker` -- holds the inner state, persists, reconciles. |
+| Tracker (stateful subjects) | `<Subject>Tracker`. Holds the inner state, persists, reconciles. |
 | Module-level controller (stateless subjects) | bare functions: `apply_skill`, `place_building`, `dispatch_op`. |
 
 **Bare-slice exception.** Subjects with no extra registry-level
 config AND no foreseeable use for one MAY skip the
 `<Subject>Registry` wrapper and use a bare
 `&'static [<Subject>Def]` directly. Tabs (`MOD_INFO.tabs`) is
-the canonical example -- the only registry-level fact is
+the canonical example. The only registry-level fact is
 "these are the tabs", a wrapper would be ceremony tax. Mark
 the carve-out explicitly in the module's K8s slot header.
 
@@ -185,7 +185,7 @@ pub static STACKS: StackRegistry =
     StackRegistry::new(&[StackDef::new(...)]);
 ```
 
-The clean pattern -- not a workaround -- is to declare each Def
+The clean pattern. Not a workaround. Is to declare each Def
 as its own named `static` and store `&[&'static <Subject>Def]`
 in the registry. References are `Copy` + `Drop`-free, so the
 slice literal is const-evaluable:
@@ -205,12 +205,12 @@ direct ref access from other modules) and the registry literal
 stays inline.
 
 Drop-free Defs (Skills, Creatures, Tabs) MAY use the simpler
-`&[<Subject>Def]` (slice of values) shape -- the array literal
+`&[<Subject>Def]` (slice of values) shape. The array literal
 const-evaluates fine. Either pattern is architecturally
 correct; pick based on whether the Def has Drop-having state.
 
 Header line on every subject's module doc: a single line
-declaring its slot --
+declaring its slot.
 
 ```
 // K8s slot: Def=SkillDef, Registry=CATALOG, Instance=SkillsState.skill_levels, Controller=RpgApplier::apply_skill
@@ -226,7 +226,7 @@ pattern where it doesn't fit adds ceremony with no payoff.
 
 | Subject | Why it doesn't fit |
 |---|---|
-| **Hooks** (`ProcessEventHook`) | Partial fit. `HookDef` exists as the per-install runtime record (class_name, slot, vtable, handler, active_calls, panic_count) and `HookRegistry` wraps the global handle list with the same `register` / `shutdown_all` / `defs` / `panic_count_total` surface as other registries. The carve-out is only that handlers are closures populated imperatively -- there's no compile-time `static HOOK_REGISTRY: HookRegistry = ...` const declaration the way `SkillRegistry` works. The shape is consistent; the mechanic is different. |
+| **Hooks** (`ProcessEventHook`) | Partial fit. `HookDef` exists as the per-install runtime record (class_name, slot, vtable, handler, active_calls, panic_count) and `HookRegistry` wraps the global handle list with the same `register` / `shutdown_all` / `defs` / `panic_count_total` surface as other registries. The carve-out is only that handlers are closures populated imperatively. There's no compile-time `static HOOK_REGISTRY: HookRegistry = ...` const declaration the way `SkillRegistry` works. The shape is consistent; the mechanic is different. |
 | **Counters** (`counter!` macro) | One static `AtomicU64` per call site. The "schema" is just `AtomicU64`; the variation is the call site itself. A registry would be a copy of the source. |
 | **PE queue jobs** | Anonymous `Box<dyn FnOnce>`. Every job is unique; no shared schema. The Queue itself is the shared piece, and it already has a Def shape (the `Queue` struct + bounded depth + cancel flag). |
 | **`Settings<T>`** | Generic over the consumer's struct; the consumer's struct IS the Def. `Settings` is a controller / persistence wrapper. Already correctly placed. |
@@ -248,37 +248,37 @@ Instance + Controller, and whether adding a new variant is a
 | **Triggers** | `TriggerDef { kind, imp: &'static dyn Trigger }` (`ueforge/src/rpg/trigger.rs`) + `TriggerCtx` enum carrying typed event payloads | per-trigger static instances declared by the framework (and games for custom triggers); each trigger TYPE is its own struct + impl | one `&'static dyn Trigger` per registered trigger source; `Effect::apply` receives `&TriggerCtx` per fire | per-trigger-type `install` + dispatch logic (today: `Tracker` fires `TriggerCtx::SlotChange`; future variants for damage / kill / fall / periodic events) | **shipped (Phase 2a)** | Symmetric with EffectDef. Phase 2a ships `TriggerCtx` + `Effect::apply(level, max, ctx)` + `Tracker` fires `SlotChange`. Phase 2b will lift kill_hook + fall_hook into framework triggers that fire their typed event variants. |
 | **Effects** | `EffectDef { kind, imp: &'static dyn Effect }` (`ueforge/src/rpg/effect.rs`) | Per-mod static Effect instances; framework ships standard Effect types (PlayerFloatEffect, SubcomponentMultiplyEffect, SubcomponentAdditiveEffect, ClassFieldsMultiplyEffect, RuntimeEffect, StatusEffectApply, etc.); game-specific Effects implement `Effect` trait | one `&'static dyn Effect` per registered operation | `Effect::apply(level, max_level)` + `Effect::format(level, max_level)` | **100%** | StandardEffect enum + per-game SkillEffect enum collapsed into one Def shape. New game-specific operation = one type + one impl + one static + one catalog row. g2rpg's `apply_skill` match arm is gone; tracker iterates the catalog and calls `effect.apply(...)` directly. |
 | **Creatures** | `CreatureDef { class_name, base_xp }` (`ueforge/src/rpg/xp.rs`) | `CreatureRegistry { entries: &[CreatureDef], default_xp: u32 }`; per-mod `static CREATURES: CreatureRegistry` | per-kill XP value | `CreatureRegistry::lookup` | **100%** | Lookup via `CREATURES.def(class_name)` (full row) or `CREATURES.lookup(class_name)` (XP value with default fallback). Future fields (drop tables, level, faction) extend the row. |
-| **Tabs** | `TabDef { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [TabDef]` (bare slice -- documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Renamed to `TabDef` for the workspace Def-suffix mandate. |
-| **Mod (root)** | `ModDef { name, version, log_file, console, on_unreal_init, on_shutdown, tabs }` (`ueforge/src/mod_main.rs`) | per-mod singleton `static MOD_INFO: ModDef = ...` | one ModDef per loaded DLL | `ue4ss_mod!(MOD_INFO)` macro emits the C-ABI hooks UE4SS calls | **100%** | Renamed from `ModInfo` to align with the Def-suffix mandate -- the root Def for the entire mod. |
+| **Tabs** | `TabDef { name, render }` (`ueforge/src/mod_main.rs`) | `MOD_INFO.tabs: &'static [TabDef]` (bare slice. Documented carve-out per the contract) | imgui draw call per render | `ueforge_mod_render_tab` | **100%** | Reference implementation for the bare-slice exception. Renamed to `TabDef` for the workspace Def-suffix mandate. |
+| **Mod (root)** | `ModDef { name, version, log_file, console, on_unreal_init, on_shutdown, tabs }` (`ueforge/src/mod_main.rs`) | per-mod singleton `static MOD_INFO: ModDef = ...` | one ModDef per loaded DLL | `ue4ss_mod!(MOD_INFO)` macro emits the C-ABI hooks UE4SS calls | **100%** | Renamed from `ModInfo` to align with the Def-suffix mandate. The root Def for the entire mod. |
 | **Buildings** (planned, not built) | `BuildingDef<S, C>` design in [todo.md](../../docs/todo.md) | `BuildingRegistry<S, C>` | `Instance<S>` per placed | `BuildingsTracker::tick` + `BuildingSpawner` trait | **designed-100%** | Naming aligned to the Def-suffix mandate. Status-effect-style: each placed instance carries per-instance state `S` while the BuildingDef captures the type-level config `C`. |
-| **Data tables** | `DataTableDef { id, table_name, row_struct: RowSchema }` (`ueforge/src/data_table.rs`) | `DataTableRegistry` wrapping `&'static [&'static DataTableDef]`; per-mod `static DATA_TABLES: DataTableRegistry` | live `UDataTable` + its RowMap rows | `DataTableSnapshot::capture` + `probe::discover_data_tables` (planned) | **100% (Phase 1a)** | Def + Registry shipped. Discovery + snapshot + ImGui browser are Phase 1b-d. The leverage point: discovery walks every live UDataTable's FProperty chain, so a new game's bootstrap is "launch + curl `discover_data_tables` + pick fields" -- no SDK header dive per field. |
+| **Data tables** | `DataTableDef { id, table_name, row_struct: RowSchema }` (`ueforge/src/data_table.rs`) | `DataTableRegistry` wrapping `&'static [&'static DataTableDef]`; per-mod `static DATA_TABLES: DataTableRegistry` | live `UDataTable` + its RowMap rows | `DataTableSnapshot::capture` + `probe::discover_data_tables` (planned) | **100% (Phase 1a)** | Def + Registry shipped. Discovery + snapshot + ImGui browser are Phase 1b-d. The leverage point: discovery walks every live UDataTable's FProperty chain, so a new game's bootstrap is "launch + curl `discover_data_tables` + pick fields". No SDK header dive per field. |
 | **Statuses** | `StatusDef { id, table_finder, row_fname, value_offset, vanilla }` (`ueforge/src/rpg/status.rs`) | `StatusRegistry` wrapping `&'static [&'static StatusDef]`; per-mod `static STATUSES: StatusRegistry` | per-row mutated `Value` field in a `UDataTable`; `UStatusEffectComponent` instance on the player | `StatusEffectApply` Effect (and future `StatusEffectClear`, `StatusEffectMutate`) consuming `&'static StatusDef` | **100%** | Row identity (table + fname + value offset + vanilla cache) decoupled from the Effect operation. Multiple Effects can target the same status. Game-side data table is still the runtime authority for the row's `Type` / cooldown / etc.; StatusDef captures only the bits we mutate from Rust. |
-| **Debug ops** | `OpDef { name, summary, args, handler }` (`ueforge/src/ops.rs`) | `OpRegistry` static singleton (`OP_REGISTRY`); populated at worker init via `register_builtins()` + `register_with_resolver(...)` + `rpg::ops::register(...)` + `debug::register_pe_call(...)` + per-game closures | per-call args + return JSON | `OpRegistry::dispatch(name, args)` -- one call replaces three match statements | **100%** | Auto-generated `list_ops` op for client discovery. New op = one `OP_REGISTRY.register(OpDef::new(...))` line; no dispatch edits. Same closure-populated-at-runtime pattern as hooks. |
+| **Debug ops** | `OpDef { name, summary, args, handler }` (`ueforge/src/ops.rs`) | `OpRegistry` static singleton (`OP_REGISTRY`); populated at worker init via `register_builtins()` + `register_with_resolver(...)` + `rpg::ops::register(...)` + `debug::register_pe_call(...)` + per-game closures | per-call args + return JSON | `OpRegistry::dispatch(name, args)`. One call replaces three match statements | **100%** | Auto-generated `list_ops` op for client discovery. New op = one `OP_REGISTRY.register(OpDef::new(...))` line; no dispatch edits. Same closure-populated-at-runtime pattern as hooks. |
 | **Selectors** | `SelectorDef { prefix, summary, resolver: fn }` (`ueforge/src/selector.rs`) | `SelectorRegistry` static singleton (`SELECTOR_REGISTRY`); populated via `selector::register_builtins()` (framework's `addr:` / `class:` / `first_class:` / `singleton:`) + per-game `register(SelectorDef { ... })` | resolved `&'static UObject` | `selector::resolve(s)` walks the registry | **100%** | Auto-generated `list_selectors` op for client discovery. New selector kind = one `SELECTOR_REGISTRY.register(...)` line; game crates extend without touching framework code. |
 | **Shutdown handlers** | `ShutdownHandlerDef { name, order, run: fn() }` (`ueforge/src/shutdown.rs`) | `ShutdownRegistry` static singleton (`SHUTDOWN_REGISTRY`); framework `register_builtins()` registers hooks=100 / http=200 / settings=300 / scanner=400; game crates interleave at `50` (pre-framework) or `500+` (post-framework) | per-call invocation | `SHUTDOWN_REGISTRY::run_all` (sorts by order, runs each, logs) | **100%** | The `ueforge_mod_shutdown` macro is now: `on_shutdown` -> `register_builtins()` -> `run_all()` -> `finalize_hot_reload_swap`. New ueforge subsystem that spawns threads adds its `register_builtins()` line; game-specific cleanup goes via `SHUTDOWN_REGISTRY.register(...)` from `worker()`. |
-| **Modules** (rpg / stacks / difficulty / inventory / damage / planned buildings) | nothing | implicit; each module has its own catalog + tracker + ops + tab without a shared shape | -- | -- | **n/a** | Possible meta-pattern: a `ModuleDef` that names which subsystems each module participates in. Defer until we feel the pain. |
-| **Hooks** | `HookDef` (per-install runtime record; `class_name`, `slot`, `vtable`, `handler`, `active_calls`, `panic_count`) | `HookRegistry` static singleton (`HOOK_REGISTRY`) holding the owned `ProcessEventHook` handles + snapshot accessors | `ProcessEventHook` RAII guard | trampoline (per-fire) + Drop (uninstall + drain) + `HookRegistry::shutdown_all` (hot-reload teardown) | **90%** | Defs are populated imperatively (closures, no compile-time const) -- documented exception. Naming + surface matches the other registries. |
+| **Modules** (rpg / stacks / difficulty / inventory / damage / planned buildings) | nothing | implicit; each module has its own catalog + tracker + ops + tab without a shared shape |. |. | **n/a** | Possible meta-pattern: a `ModuleDef` that names which subsystems each module participates in. Defer until we feel the pain. |
+| **Hooks** | `HookDef` (per-install runtime record; `class_name`, `slot`, `vtable`, `handler`, `active_calls`, `panic_count`) | `HookRegistry` static singleton (`HOOK_REGISTRY`) holding the owned `ProcessEventHook` handles + snapshot accessors | `ProcessEventHook` RAII guard | trampoline (per-fire) + Drop (uninstall + drain) + `HookRegistry::shutdown_all` (hot-reload teardown) | **90%** | Defs are populated imperatively (closures, no compile-time const). Documented exception. Naming + surface matches the other registries. |
 | **Stacks** | `StackDef { id, table_name, field_offset, default_multiplier, skip_predicate, multiplier atomic, vanilla cache, counters }` (`ueforge/src/stacks.rs`) | `StackRegistry` wrapping `&'static [StackDef]`; per-mod `static STACKS: StackRegistry` | per-row vanilla cache + applied-row counters in the `StackDef` | `StackDef::apply_now` / `StackRegistry::apply_all_now` (returns `Vec<(id, Result)>` for per-table telemetry) | **100%** | Lookup `STACKS.def("materials")`. Iterate via `for d in &STACKS`. ows-tweaks declares one Def today; multi-table mods scale by adding entries. |
 | **Difficulty** | `DifficultyDef { id, class_name, field_offset, multiplier_bits atomic, vanilla cache }` (`ueforge/src/difficulty.rs`) | `DifficultyRegistry` wrapping `&'static [DifficultyDef]`; per-mod `static SURVIVAL: DifficultyRegistry` | per-CDO vanilla cache in the `DifficultyDef` | `DifficultyDef::apply_to_cdos` / `apply_to_all` / `apply_with_filter`; `DifficultyRegistry::apply_all_to_cdos` | **100%** | g2rpg's `SURVIVAL` registry holds two Defs (hunger + thirst). Lookup `SURVIVAL.def("hunger")`. Skip-if-unity short-circuit preserved at the Def level. |
-| **Counters** | n/a (carve-out) | per-call-site statics | `AtomicU64` value | `bump` / `time_scope` | -- | Doesn't fit. |
-| **PE queue jobs** | n/a (carve-out) | per-call closures | `Pending` | `Queue::drain` | -- | The Queue itself fits; jobs don't. |
+| **Counters** | n/a (carve-out) | per-call-site statics | `AtomicU64` value | `bump` / `time_scope` |. | Doesn't fit. |
+| **PE queue jobs** | n/a (carve-out) | per-call closures | `Pending` | `Queue::drain` |. | The Queue itself fits; jobs don't. |
 
 ## Highest-leverage refactor targets
 
 In rough priority order. Each one collapses 2-3 hardcoded
 match statements into a single registry append.
 
-1. ~~**Debug ops registry.**~~ -- DONE 2026-05-10. `OpDef` +
+1. ~~**Debug ops registry.**~~. DONE 2026-05-10. `OpDef` +
    `OpRegistry` shipped; `OP_REGISTRY` singleton; auto-generated
    `list_ops` handler. The three old dispatchers
    (`handle_builtin`, `dispatch_standard_op`, `dispatch_pe_ops`)
    are gone. Game crates collapse to one
    `OP_REGISTRY.dispatch(op, args)` call.
-2. ~~**Selectors registry.**~~ -- DONE 2026-05-10. `SelectorDef`
+2. ~~**Selectors registry.**~~. DONE 2026-05-10. `SelectorDef`
    + `SelectorRegistry` shipped; `SELECTOR_REGISTRY` singleton;
    `selector::resolve(s)` is the one entry point. Auto-generated
    `list_selectors` op. `resolve_generic` is gone.
-3. ~~**Shutdown handlers registry.**~~ -- DONE 2026-05-10.
+3. ~~**Shutdown handlers registry.**~~. DONE 2026-05-10.
    `ShutdownHandlerDef` + `ShutdownRegistry` shipped;
    `SHUTDOWN_REGISTRY` singleton; the macro now runs
    `register_builtins()` then `run_all()`. New ueforge
@@ -289,7 +289,7 @@ match statements into a single registry append.
    later).
 5. **Skills cleanup.** Rename `CATALOG` -> `SKILL_REGISTRY`;
    add framework-level `skill_def(catalog, id)` (already
-   `find_skill` -- alias and update naming). Cosmetic; cheap.
+   `find_skill`. Alias and update naming). Cosmetic; cheap.
 6. **`BestiaryRow` struct.** Replace the `(&str, u32)` tuple
    with a named struct so future fields don't reshape every
    consumer.
@@ -315,16 +315,16 @@ Today's known lift candidates (see [todo.md](../../docs/todo.md)
 | Op family | Game-side | Universal shape | Status |
 |---|---|---|---|
 | `simulate_add_health` / `simulate_set_current_health` | (was g2rpg) | `ueforge::rpg::health::HealthBinding { hc_class, hc_selector, current_damage_offset, max_health_offset, add_health_function, set_current_health_function }` -> `register(binding, pe_queue, hint)` | **DONE 2026-05-10** |
-| `simulate_apply_damage` | g2rpg stub returns "disabled" | (gated on Wave E1 safe drain site -- ApplyDamageFromInfo from a PE trampoline re-enters ProcessEvent and crashes) | open |
+| `simulate_apply_damage` | g2rpg stub returns "disabled" | (gated on Wave E1 safe drain site. ApplyDamageFromInfo from a PE trampoline re-enters ProcessEvent and crashes) | open |
 
 When the second consumer asks for the same shape, lift before
 duplicating.
 
-## Effects refactor (DONE 2026-05-10 -- collapsed StandardEffect + per-game SkillEffect)
+## Effects refactor (DONE 2026-05-10. Collapsed StandardEffect + per-game SkillEffect)
 
 Today there are two parallel "effect" types:
 
-1. `ueforge::rpg::StandardEffect` -- sealed framework enum, ~9
+1. `ueforge::rpg::StandardEffect`. Sealed framework enum, ~9
    variants of common UE5 RPG effect shapes.
 2. Each game's `SkillEffect` enum -- `Standard(StandardEffect)`
    plus game-specific composites (`BackpackSlots`,
@@ -344,43 +344,43 @@ The refactor:
 - `EffectDef { kind: &'static str, imp: &'static dyn Effect }`.
 - `SkillDef` carries `effect: EffectDef` (no `<E>`).
 - `SkillRegistry` and `Tracker` lose their type parameters.
-- `RpgApplier` trait collapses (its only role -- providing
-  `type Effect` + dispatching match arms -- is now native to
+- `RpgApplier` trait collapses (its only role. Providing
+  `type Effect` + dispatching match arms. Is now native to
   the trait-object).
 - Game-specific operations become game-side `impl Effect for ...`
   types. Game's `SkillEffect` enum disappears.
 
-Cost: `dyn` indirect call per apply (cold path -- invisible).
+Cost: `dyn` indirect call per apply (cold path. Invisible).
 Benefit: one Def shape across framework + game; adding a new
 operation is one type + one static + one catalog row. Game-side
 match dispatch goes away.
 
 Status: **shipped 2026-05-10.** All five phases landed in one
-commit -- trait + per-variant struct impls + dropped `<E>` from
+commit. Trait + per-variant struct impls + dropped `<E>` from
 SkillDef/SkillRegistry/Tracker + deleted RpgApplier + g2rpg
 migrated. Workspace check + 66 tests green.
 
 What changed concretely:
 
-- `ueforge::rpg::effect` -- new module with `Effect` trait,
+- `ueforge::rpg::effect`. New module with `Effect` trait,
   `EffectDef` struct, and 8 standard Effect types
   (`PlayerFloatEffect`, `SubcomponentFloatEffect`,
   `SubcomponentAdditiveEffect`, `SubcomponentU32MaskEffect`,
   `SubcomponentMultiplyEffect`, `ClassFieldsMultiplyEffect`,
   `RuntimeEffect`, `StatusEffectApply`).
-- `ueforge::rpg::std_effect` (the old enum) -- DELETED.
-- `ueforge::rpg::applier` (the old `RpgApplier` trait) -- DELETED.
-- `SkillDef` / `SkillRegistry` / `Tracker` -- type parameters
+- `ueforge::rpg::std_effect` (the old enum). DELETED.
+- `ueforge::rpg::applier` (the old `RpgApplier` trait). DELETED.
+- `SkillDef` / `SkillRegistry` / `Tracker`. Type parameters
   dropped.
 - `Tracker` now owns `DisabledSkills` internally; toggle ops
   drive it directly.
-- g2rpg's `SkillEffect` enum -- DELETED. Three game-specific
+- g2rpg's `SkillEffect` enum. DELETED. Three game-specific
   Effects (`BackpackSlotsEffect`, `SurvivalDrainEffect`,
   `PlayerFallDamageReductionEffect`) live in
   `grounded2-rpg::rpg::effects`; the catalog rows reference them
   the same way they reference framework Effects.
-- g2rpg's `applier.rs` (the GameApplier) -- DELETED.
-- g2rpg's `apply.rs` -- the giant `apply_skill` dispatch match
+- g2rpg's `applier.rs` (the GameApplier). DELETED.
+- g2rpg's `apply.rs`. The giant `apply_skill` dispatch match
   is GONE. The file now holds only shared helpers
   (capture_vanilla, class refs, vanilla caches, CDO walkers).
 
@@ -390,7 +390,7 @@ Checklist for the next module:
 
 1. Define `<Subject>Def { ... }` in a single source file. All
    fields `'static`-friendly (`&'static str`, primitives,
-   `fn` pointers -- no `String`, no `Vec`, no closures).
+   `fn` pointers. No `String`, no `Vec`, no closures).
 2. Define `<Subject>Kind` (closed enum) OR document the id
    convention (open `&'static str` or `String`).
 3. Author `<SUBJECT>_REGISTRY: &'static [<Subject>Def]`. One
@@ -407,16 +407,16 @@ Checklist for the next module:
 
 ## Cross-references
 
-- [README.md](README.md) -- module index
-- [hooks.md](hooks.md) -- the hook subsystem (carve-out
+- [README.md](README.md). Module index
+- [hooks.md](hooks.md). The hook subsystem (carve-out
   example)
-- [pe-queue.md](pe-queue.md) -- the PE queue (carve-out
+- [pe-queue.md](pe-queue.md). The PE queue (carve-out
   example for jobs; the Queue itself is shape-compliant)
-- [rpg.md](rpg.md) -- skills (95% compliant; the closest to
+- [rpg.md](rpg.md). Skills (95% compliant; the closest to
   the reference shape)
-- [lifecycle.md](lifecycle.md) -- shutdown sequence (0%
+- [lifecycle.md](lifecycle.md). Shutdown sequence (0%
   compliant today; refactor target)
-- [settings.md](settings.md) -- generic-over-consumer pattern
+- [settings.md](settings.md). Generic-over-consumer pattern
   (shape-compliant via composition)
 - [`endless/docs/k8s.md`](https://github.com/abix-/endless/blob/dev/docs/k8s.md)
-  -- the source pattern
+ . The source pattern
