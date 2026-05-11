@@ -3,13 +3,13 @@
 //! ProcessEvent trampolines fire thousands of times per second. The
 //! handler's job is: "if `function` is `OnLanded`, do work; else
 //! forward to the engine." Calling `function.as_object().name()` to
-//! check costs an FName resolve + heap allocation per fire -- ~1k+
+//! check costs an FName resolve + heap allocation per fire. ~1k+
 //! string allocs/sec for a busy class. The fix is to cache the
 //! `&UFunction` pointer the first time we see the right name and
 //! pointer-compare on every subsequent fire.
 //!
 //! `LazyFunctionPtr` packages this pattern. The trampoline calls
-//! [`LazyFunctionPtr::matches`] -- one atomic load + one branch on
+//! [`LazyFunctionPtr::matches`]. One atomic load + one branch on
 //! the warm path; the cold path resolves the FName once, populates
 //! the cache, and is never taken again for that function.
 //!
