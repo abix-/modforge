@@ -33,7 +33,7 @@ use crate::hex;
 use crate::ue::{self, UObject, fname::FName};
 
 // =====================================================================
-// Op registry -- the workspace-standard <Subject>Def + <Subject>Registry
+// Op registry. The workspace-standard <Subject>Def + <Subject>Registry
 // shape for debug ops. Per architecture.md, every dispatch lookup goes
 // through ONE registry instead of three hardcoded match statements.
 //
@@ -49,7 +49,7 @@ use crate::ue::{self, UObject, fname::FName};
 pub type OpHandler = std::sync::Arc<dyn Fn(&Json) -> Result<Json, String> + Send + Sync>;
 
 /// One debug-op declaration. The handler is a closure (boxed to
-/// erase per-game capture types -- tracker references, selector
+/// erase per-game capture types. Tracker references, selector
 /// resolvers, PE queue handles).
 pub struct OpDef {
     pub name: &'static str,
@@ -114,7 +114,7 @@ impl OpRegistry {
     /// Look up + invoke. Returns `None` if the op isn't registered
     /// (caller fall through to "unknown op" error).
     ///
-    /// The handler runs OUTSIDE the registry mutex -- the lock
+    /// The handler runs OUTSIDE the registry mutex. The lock
     /// only protects the lookup. This matters for two reasons:
     /// (1) slow handlers (discovery refresh, GObjects walks)
     /// don't serialize the entire HTTP surface; (2) a handler
@@ -176,7 +176,7 @@ pub static OP_REGISTRY: OpRegistry = OpRegistry::new();
 
 /// Register every framework-shipped op that does NOT need
 /// per-game context (no tracker, no selector resolver, no PE
-/// queue). Game crates call this once at worker init -- typically
+/// queue). Game crates call this once at worker init. Typically
 /// before their own per-game `OP_REGISTRY.register(...)` calls.
 ///
 /// Registered: `walk_class`, `fname_to_string`, `inspect_address`,
@@ -230,7 +230,7 @@ pub fn register_builtins() {
                 ))
             },
         ),
-        // Scanner -- Cheat-Engine-style memory search + freezes.
+        // Scanner. Cheat-Engine-style memory search + freezes.
         OpDef::new(
             "scan_memory",
             "First-scan: find all addresses holding `value` of `type`",
@@ -384,7 +384,7 @@ pub const BYTE_OP_CAP: usize = 0x10_0000;
 /// When the resolved object's class is known, clamp
 /// `offset + length` to `class.properties_size()`. Returns
 /// `Err` if the range falls completely outside the class extent.
-/// Returns `Ok(())` (no clamp) if the class has no usable size --
+/// Returns `Ok(())` (no clamp) if the class has no usable size.
 /// most likely on raw `addr:0x...` selectors that bypass class
 /// resolution.
 fn check_object_bounds(obj: &UObject, offset: usize, length: usize) -> Result<(), String> {
@@ -455,7 +455,7 @@ where
 
 /// Walk `GObjects`, return up to `max` non-CDO instances of the
 /// named class (CDOs included if `include_cdo: true`). Pure
-/// engine traversal — no host hooks needed.
+/// engine traversal. No host hooks needed.
 pub fn walk_class(args: &Json) -> Result<Json, String> {
     let class_name = arg_str(args, "class")?.to_string();
     let max = arg_u64(args, "max", Some(256))? as usize;
@@ -502,7 +502,7 @@ pub fn walk_class(args: &Json) -> Result<Json, String> {
     }))
 }
 
-/// Resolve an FName (passed as a u64 — the 8 bytes that make up
+/// Resolve an FName (passed as a u64. The 8 bytes that make up
 /// `{ comparison_index: i32, number: u32 }`) to its display
 /// string. Useful from tests that walk TMap<FName, ...> bytes
 /// and need to show readable keys instead of raw u64s.
@@ -517,8 +517,8 @@ pub fn fname_to_string(args: &Json) -> Result<Json, String> {
     Ok(serde_json::json!({ "string": s }))
 }
 
-/// Walk a class's property chain — including the super-class
-/// chain — looking for the field that contains
+/// Walk a class's property chain. Including the super-class
+/// chain. Looking for the field that contains
 /// `offset_within_instance`. Returns the field's name + the
 /// offset-within-the-field (so callers can render
 /// `MaxCanStack +0` for an exact hit, or `Colour +0xC` if the
@@ -535,7 +535,7 @@ fn locate_property(
         if chain_depth > 16 {
             break;
         }
-        // Use the cached property list -- subsequent calls on the
+        // Use the cached property list. Subsequent calls on the
         // same class share an Arc instead of re-walking + re-resolving
         // FName for every property.
         for p in c.cached_native_properties().iter() {
