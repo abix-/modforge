@@ -31,7 +31,7 @@ fn simulate_heal_increments_hp_when_no_block() {
     let max = before.live_hc().max_health;
     if (hp0 - max).abs() < 0.5 {
         // Player is at full HP; can't observe a heal. Skip with a
-        // clear signal -- this isn't a logic failure, just a setup
+        // clear signal. This isn't a logic failure, just a setup
         // gap that needs the user to take some damage first or for
         // simulate_damage to land too.
         eprintln!("skipping: player at full HP, take some damage first");
