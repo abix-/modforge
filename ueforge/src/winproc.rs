@@ -20,6 +20,50 @@
 
 #![allow(clippy::too_many_lines)]
 
+/// Cheap "would dereferencing this address segfault?" check. Uses
+/// `VirtualQuery` to confirm the page is committed and not
+/// PAGE_NOACCESS / PAGE_GUARD. Returns `false` for null + low
+/// addresses without syscalling.
+///
+/// Use this to guard pointer reads on hot UE traversal paths
+/// where a corrupt back-pointer would otherwise crash the game
+/// process. The check is microsecond-scale but not free; only
+/// apply to reads that have actually shown up in crash dumps.
+pub fn is_addr_readable(addr: usize) -> bool {
+    use windows_sys::Win32::System::Memory::{
+        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQuery,
+    };
+    if addr < 0x1_0000 {
+        return false;
+    }
+    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+    let n = unsafe {
+        VirtualQuery(
+            addr as *const _,
+            &mut info,
+            std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+        )
+    };
+    if n == 0 {
+        return false;
+    }
+    if info.State != MEM_COMMIT {
+        return false;
+    }
+    let protect = info.Protect;
+    if protect == 0 {
+        return false;
+    }
+    let base = protect & 0xFF;
+    if base == PAGE_NOACCESS as u32 {
+        return false;
+    }
+    if (protect & PAGE_GUARD) != 0 {
+        return false;
+    }
+    true
+}
+
 pub fn process_threads_json() -> serde_json::Value {
     use windows_sys::Win32::Foundation::{CloseHandle, FILETIME, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{

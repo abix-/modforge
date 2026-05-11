@@ -273,29 +273,51 @@ impl UClass {
     /// emit them all and let callers filter by flags. Cost is
     /// bounded (chains in stock UE5 cap around ~100 entries per
     /// class); cold path / called at discovery-init time.
+    ///
+    /// VirtualQuery-guards each pointer dereference. Some UE5
+    /// builds have UClasses whose Children chain points at
+    /// freed / never-fully-constructed UField stubs -- the eager
+    /// discovery walk hits them all. Bailing on unreadable
+    /// pointers keeps the walk going instead of crashing the host.
     pub fn iter_functions(&self) -> Vec<(String, u32)> {
         let mut out = Vec::new();
+        let head_addr = self as *const UClass as usize + offsets::ustruct::CHILDREN;
+        if !crate::winproc::is_addr_readable(head_addr) {
+            return out;
+        }
         let mut cur: Option<&UObject> = unsafe {
-            let p: *mut UObject = (self as *const UClass as *const u8)
-                .add(offsets::ustruct::CHILDREN)
-                .cast::<*mut UObject>()
-                .read_unaligned();
-            p.as_ref()
+            let p: *mut UObject = (head_addr as *const *mut UObject).read_unaligned();
+            if !p.is_null() && crate::winproc::is_addr_readable(p as usize) {
+                p.as_ref()
+            } else {
+                None
+            }
         };
         let mut depth = 0;
         while let Some(field) = cur {
             if depth > 4096 {
                 break;
             }
+            let field_addr = field as *const UObject as usize;
+            // Need to read FunctionFlags at +0xB0 -- the largest
+            // offset we touch on a putative UFunction. Validate
+            // that page is mapped before any of the field reads.
+            if !crate::winproc::is_addr_readable(field_addr + offsets::ufunction::FUNCTION_FLAGS) {
+                break;
+            }
             let func = unsafe { &*(field as *const UObject as *const UFunction) };
             out.push((field.name(), func.function_flags()));
+            let next_addr = field_addr + offsets::ufield::NEXT;
+            if !crate::winproc::is_addr_readable(next_addr) {
+                break;
+            }
             cur = unsafe {
-                let p: *mut UObject = field
-                    .as_ptr()
-                    .add(offsets::ufield::NEXT)
-                    .cast::<*mut UObject>()
-                    .read_unaligned();
-                p.as_ref()
+                let p: *mut UObject = (next_addr as *const *mut UObject).read_unaligned();
+                if !p.is_null() && crate::winproc::is_addr_readable(p as usize) {
+                    p.as_ref()
+                } else {
+                    None
+                }
             };
             depth += 1;
         }

@@ -167,24 +167,39 @@ fn walk() -> DiscoverySnapshot {
     let mut classes: Vec<Json> = Vec::new();
     let mut structs: Vec<Json> = Vec::new();
     let mut scanned = 0usize;
+    let mut panicked = 0usize;
 
     for obj in view.iter() {
         scanned += 1;
-        let Some(cls) = obj.class() else { continue };
-        let cls_name = cls.as_object().name();
+        // Catch Rust panics emitted during per-object describe
+        // (FName resolution, name walks, etc.). Does NOT catch
+        // SEH access violations -- those are blocked at the
+        // pointer-read site via `winproc::is_addr_readable`.
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let Some(cls) = obj.class() else { return };
+            let cls_name = cls.as_object().name();
 
-        if let Some(dt) = dt_class {
-            if obj.is_a(dt) && !obj.is_default_object() {
-                data_tables.push(crate::ue::probe::describe_data_table(obj));
+            if let Some(dt) = dt_class {
+                if obj.is_a(dt) && !obj.is_default_object() {
+                    data_tables.push(crate::ue::probe::describe_data_table(obj));
+                }
             }
-        }
 
-        if cls_name == "Class" {
-            let uclass: &UClass = unsafe { &*(obj as *const UObject as *const UClass) };
-            classes.push(describe_class(uclass));
-        } else if cls_name == "ScriptStruct" {
-            structs.push(describe_script_struct(obj));
+            if cls_name == "Class" {
+                let uclass: &UClass = unsafe { &*(obj as *const UObject as *const UClass) };
+                classes.push(describe_class(uclass));
+            } else if cls_name == "ScriptStruct" {
+                structs.push(describe_script_struct(obj));
+            }
+        }));
+        if res.is_err() {
+            panicked += 1;
         }
+    }
+    if panicked > 0 {
+        crate::log::log(format_args!(
+            "discovery: {panicked} per-object panics caught (objects skipped)"
+        ));
     }
 
     let data_tables_found = data_tables.len();

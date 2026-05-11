@@ -204,13 +204,25 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
 /// `FField::ClassPrivate` (+0x08) points at an `FFieldClass` whose
 /// first member is `FName Name` -- the property class identifier
 /// ("IntProperty" / "FloatProperty" / "NameProperty" / etc.).
+///
+/// VirtualQuery-guards every dereference: corrupt / unmapped
+/// `ClassPrivate` pointers show up in UE5 builds during the
+/// discovery walk (typically after engine teardown of placeholder
+/// FProperty entries). Bailing to "<unreadable>" keeps the walk
+/// going instead of taking the game with us.
 unsafe fn read_ffield_class_name(field_ptr: *const u8, rt: &ue::Runtime) -> String {
+    if !crate::winproc::is_addr_readable(field_ptr as usize + offsets::ffield::CLASS_PRIVATE) {
+        return String::from("<unreadable>");
+    }
     unsafe {
         let class_ptr: *const u8 = (field_ptr.add(offsets::ffield::CLASS_PRIVATE)
             as *const *const u8)
             .read_unaligned();
         if class_ptr.is_null() {
             return String::from("<no-class>");
+        }
+        if !crate::winproc::is_addr_readable(class_ptr as usize) {
+            return String::from("<unreadable>");
         }
         let fname: crate::ue::fname::FName =
             (class_ptr as *const crate::ue::fname::FName).read_unaligned();
