@@ -2,7 +2,7 @@
 // ProcessEventIdx with a trampoline that dispatches to a user-provided
 // handler closure. Drop restores the original.
 //
-// Multiple hooks can be installed against different classes -- the
+// Multiple hooks can be installed against different classes. The
 // trampoline matches on the live vtable pointer of the incoming `this`.
 
 use std::cell::Cell;
@@ -48,7 +48,7 @@ thread_local! {
 type Handler = Box<dyn Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent) + Send + Sync>;
 
 /// Per-install hook record. The CRD-equivalent for the hook
-/// subsystem -- declares which class is hooked, the original
+/// subsystem. Declares which class is hooked, the original
 /// vtable slot, the user handler, and the per-hook telemetry
 /// (active calls, panic count). One `HookDef` is created per
 /// `ProcessEventHook::install` call and lives for the rest of
@@ -56,7 +56,7 @@ type Handler = Box<dyn Fn(&UObject, &UFunction, *mut c_void, OriginalProcessEven
 /// hooks.md for why reuse across DLL unloads is unsafe).
 ///
 /// Fields are private; accessor methods provide the read-only
-/// view the snapshot endpoints need. Construction is internal --
+/// view the snapshot endpoints need. Construction is internal.
 /// the only path to a `HookDef` is through
 /// [`ProcessEventHook::install`] / [`install_many`].
 pub struct HookDef {
@@ -72,7 +72,7 @@ pub struct HookDef {
     active_calls: AtomicUsize,
     /// Cumulative count of handler panics caught by the
     /// trampoline's `catch_unwind`. Without this, panics in
-    /// trampolines are invisible to the snapshot endpoint --
+    /// trampolines are invisible to the snapshot endpoint.
     /// the game keeps running but the mod silently swallows
     /// errors. Surfaced via [`panic_count`] / [`panic_count_total`].
     panic_count: AtomicU64,
@@ -107,7 +107,7 @@ impl HookDef {
 }
 
 // REGISTRY is the canonical mutable list, touched only by install/drop
-// (cold paths). The trampoline reads SNAPSHOT -- an ArcSwap of the
+// (cold paths). The trampoline reads SNAPSHOT. An ArcSwap of the
 // current entry list. Read is one atomic load + Arc clone, no mutex.
 // Replaces the old hand-rolled AtomicPtr<&'static [...]> that leaked
 // every install/drop.
@@ -322,7 +322,7 @@ unsafe extern "system" fn trampoline(
     let entry = snap.iter().find(|e| e.vtable == live_vtable).copied();
 
     let Some(entry) = entry else {
-        // Shouldn't happen -- a hooked vtable always has an entry. Fall
+        // Shouldn't happen. A hooked vtable always has an entry. Fall
         // through silently to avoid bringing the game down.
         return;
     };
@@ -359,7 +359,7 @@ unsafe extern "system" fn trampoline(
             // Closure panicked BEFORE calling the engine; fall
             // through so the game keeps progressing. If the
             // handler had already called original, do NOT call it
-            // again -- that would double-fire the multicast (e.g.
+            // again. That would double-fire the multicast (e.g.
             // double-credit XP on a kill).
             unsafe { original.call(&*this, &*function, parms) };
         }
