@@ -23,7 +23,7 @@
 //! that every RPG mod ends up writing on top of `apply.rs`.
 //!
 //! For single-baseline cases (one `K` makes no sense), reach for
-//! `std::sync::OnceLock<V>` directly -- already canonical.
+//! `std::sync::OnceLock<V>` directly. Already canonical.
 
 use parking_lot::Mutex;
 
@@ -62,7 +62,7 @@ impl<K, V> VanillaCache<K, V> {
 
 impl<K: Eq + Copy, V: Copy> VanillaCache<K, V> {
     /// Capture `value` for `key` if not already captured. Returns
-    /// the stored baseline -- the previously-captured value if `key`
+    /// the stored baseline. The previously-captured value if `key`
     /// was already seen, else `value`.
     pub fn get_or_init(&self, key: K, value: V) -> V {
         let mut g = self.entries.lock();
@@ -94,7 +94,7 @@ impl<K: Eq + Copy, V: Copy> VanillaCache<K, V> {
             .map(|(_, v)| *v)
     }
 
-    /// Snapshot of the entire cache. Cold-path use only -- clones
+    /// Snapshot of the entire cache. Cold-path use only. Clones
     /// the backing vector under the lock.
     pub fn snapshot(&self) -> Vec<(K, V)> {
         self.entries.lock().clone()
