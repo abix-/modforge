@@ -1,7 +1,7 @@
 # ueforge
 
 > *Forge UE mods in Rust.* (Renamed from `uespy` once the
-> framework outgrew the "spy" framing — it's not a control plane
+> framework outgrew the "spy" framing. It's not a control plane
 > anymore, it's the lifecycle owner. `forge` keeps the
 > modder-vernacular feel; `ue` prefix because the framework is
 > UE-specific.)
@@ -11,7 +11,7 @@ builds on.** Game crates declare a `ModInfo` and implement
 callbacks; ueforge owns the lifecycle (`on_unreal_init`,
 `on_shutdown`, per-tab `render`), generates the `extern "C"`
 entry points the bundled C++ shim invokes, and ships every piece
-of plumbing a UE4SS mod needs — the C++ shim, imgui bridge,
+of plumbing a UE4SS mod needs. The C++ shim, imgui bridge,
 UObject SDK, hook surface, debug endpoint, test client, build
 glue, logger, all of it. Game crates supply only what's actually
 game-specific: platform offsets, snapshot shape, op handlers,
@@ -35,7 +35,7 @@ The rule, codified:
 
 Same line three times. ueforge's own `build.rs` compiles the
 always-safe C++ (imgui v1.92.1 + `ueforge_ui.cpp`) into a static
-lib that cargo links into every consumer — cdylib, test binary,
+lib that cargo links into every consumer. Cdylib, test binary,
 and build-script binary alike. The UE4SS-touching pieces
 (`ueforge_shim.cpp` + UE4SS.lib link) are opt-in via
 `ueforge::build::CppShim::new().compile()` in the game's `build.rs`,
@@ -50,12 +50,12 @@ The repo is Rust. The only C++ lives at the UE4SS / ImGui boundary:
 
 | | Files | Lines | Where |
 |---|---|---|---|
-| Dear ImGui v1.92.1 (third-party, pinned to UE4SS's version) | 10 | 54,645 | git submodule -- not in this repo |
+| Dear ImGui v1.92.1 (third-party, pinned to UE4SS's version) | 10 | 54,645 | git submodule. Not in this repo |
 | ueforge shim (CppUserModBase subclass + ImGui extern "C" wrappers) | 4 | 502 | `cpp/` (ours) |
 
 Every mod, every framework subsystem, every test, every tool is
 Rust. The 502-line shim is a fixed cost shared by every Rust mod
-in the workspace -- it does not grow as we add features. Full
+in the workspace. It does not grow as we add features. Full
 breakdown + doctrine in [`docs/native.md`](docs/native.md).
 
 ### Cloning
@@ -104,13 +104,13 @@ initialized.
 
 | Concern | Game owns |
 |---|---|
-| `PlatformOffsets` per build | yes — different per UE version, sometimes per platform of the same game |
-| `Snapshot` struct + `build_snapshot` | yes — game-specific state shape |
-| Op handler dispatcher (`handle()`) | yes — match arm per op |
-| Game-specific selectors (`live_player`, `current_save`) | yes — wrap `selector::resolve_generic` |
-| Drain-site PE trampoline | yes — pick a hot UFunction per game |
-| Tab render bodies | yes — `fn render_tab() { ueforge::ui::text(...); }` |
-| `ModInfo` + `ue4ss_mod!` invocation | yes — one static + one macro call |
+| `PlatformOffsets` per build | yes. Different per UE version, sometimes per platform of the same game |
+| `Snapshot` struct + `build_snapshot` | yes. Game-specific state shape |
+| Op handler dispatcher (`handle()`) | yes. Match arm per op |
+| Game-specific selectors (`live_player`, `current_save`) | yes. Wrap `selector::resolve_generic` |
+| Drain-site PE trampoline | yes. Pick a hot UFunction per game |
+| Tab render bodies | yes. `fn render_tab() { ueforge::ui::text(...); }` |
+| `ModInfo` + `ue4ss_mod!` invocation | yes. One static + one macro call |
 
 That's it. Every other UE / UE4SS / ImGui / Win32 / test mechanic
 comes from ueforge.
@@ -122,8 +122,8 @@ artifacts have to exist for that specific game build:
 
 1. **A UE4SS install in the game's `Binaries\Win64\` folder.**
    UE4SS is the loader; without it our cdylib never gets called.
-   It is game-agnostic — the same UE4SS works on any UE 4.12 - 5.7
-   game — but each game's user has to install it locally.
+   It is game-agnostic. The same UE4SS works on any UE 4.12 - 5.7
+   game. But each game's user has to install it locally.
 2. **A `UE4SS.lib` import library matched to the installed
    `UE4SS.dll`.** ueforge ships one in `ueforge/ue4ss/UE4SS.lib`,
    generated from a known UE4SS build. If the installed UE4SS is
@@ -137,7 +137,7 @@ artifacts have to exist for that specific game build:
    global pointers (GObjects, GNames, AppendString, GWorld,
    ProcessEvent) have unknown addresses.
 
-Without all three, a mod can compile and load — but every
+Without all three, a mod can compile and load. But every
 research op requires step 3 done first.
 
 ### What an SDK dump gives us
@@ -149,9 +149,9 @@ Two distinct pieces of information land in the dump:
 | **Image-base offsets** (5-6 hex numbers) | `g_objects`, `append_string`, `g_names`, `g_world`, `process_event` addresses for THIS exe build. Goes into the game crate's `PlatformOffsets`. | `<game>\Binaries\Win64\ue4ss\UE4SSOutput\Offsets.lua` (or similar; varies by dumper) |
 | **Class headers** (thousands of `.hpp` files) | Every `UClass` / `UStruct` in the running game with field offsets, function signatures, sizes, inheritance. We grep these whenever we need to know "what offset on `UInventoryComponent` is `MaxStackSize`?" | `<game>\Binaries\Win64\ue4ss\UEHeaderDump\` |
 
-The offsets unlock the runtime — once filled into
+The offsets unlock the runtime. Once filled into
 `PlatformOffsets`, `walk_class` works and the mod can enumerate
-every UObject. The class headers unlock implementation —
+every UObject. The class headers unlock implementation.
 they're the reference manual for what's inside each UObject.
 
 ### Generating the dump
@@ -362,7 +362,7 @@ directly to regressions.
 
 Built-in ops (call from tests via `Api::op` or wrappers):
 
-- `snapshot` — returns just the snapshot
+- `snapshot`. Returns just the snapshot
 - `read_bytes  { instance_selector, offset, length }`
 - `write_bytes { instance_selector, offset, bytes_hex }`
 - `walk_class  { class, max?, include_cdo? }` → `{ instances }`
@@ -371,9 +371,9 @@ Built-in ops (call from tests via `Api::op` or wrappers):
 
 Selectors:
 
-- `addr:0x<hex>` — raw object pointer
-- `first_class:<Name>` / `class:<Name>` — first non-CDO instance
-- `singleton:<Name>` — class default object (CDO)
+- `addr:0x<hex>`. Raw object pointer
+- `first_class:<Name>` / `class:<Name>`. First non-CDO instance
+- `singleton:<Name>`. Class default object (CDO)
 - game-specific shorthand the game adds in its `resolve` fn
   (`live_player`, `current_save`, ...)
 
@@ -387,7 +387,7 @@ field on that struct is a snapshot.
 UI widgets and inventory actors typically cache the entire row
 struct at creation (e.g. UI_Item holds its own `FSMaterialData`
 copy). Once cached, mutating the source DataTable doesn't
-update those copies — they're already disconnected.
+update those copies. They're already disconnected.
 
 **Implication for runtime mod design:** if you want a DataTable
 mutation to propagate everywhere, do it BEFORE any actor /
@@ -423,8 +423,8 @@ fn on_unreal_init() {
 }
 ```
 
-Mutating after a save loads — when slots / UI / actors have
-already copied the row — leaves cached widgets stale. The DT
+Mutating after a save loads. When slots / UI / actors have
+already copied the row. Leaves cached widgets stale. The DT
 itself shows your value, but in-game still shows vanilla. Two
 options when this matters:
 
@@ -439,7 +439,7 @@ options when this matters:
 Reference implementation: `outworld-station-tweaks/src/stacks.rs`
 ships this pattern for the OWS stack-size mod. 4x bump that
 matches the existing community "Better Item Stacks" pak mod's
-effect — but via runtime DLL, so other features in the same mod
+effect. But via runtime DLL, so other features in the same mod
 can layer on top dynamically.
 
 ## Audit: ueforge vs grounded2-rpg vs ows-tweaks
@@ -453,10 +453,10 @@ else?". Update on every major slice.
 
 - ✅ = lives here, this is the canonical home
 - 📦 = lives here and *should* live here (game-specific)
-- 🟡 = duplicates a ueforge facility — **migrate to ueforge** then delete
+- 🟡 = duplicates a ueforge facility. **migrate to ueforge** then delete
 - 🔵 = doesn't exist in ueforge yet but **should be promoted**
 - · = consumes ueforge's version (correct pattern)
-- — = not applicable / N/A
+-. = not applicable / N/A
 
 **Verdict column:** the work item that gets it to a stable home.
 
@@ -465,36 +465,36 @@ else?". Update on every major slice.
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | · | · | done (g2rpg migrated 2026-05-10) |
-| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done — g2rpg's `cpp/shim.cpp` deleted |
-| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done — g2rpg's `DLL_HMODULE` deleted |
-| 4 | File + console logger | ✅ (`ueforge::log`) | · (`ueforge::log!` macro) | · | done — g2rpg's `log.rs` deleted |
+| 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done. G2rpg's `cpp/shim.cpp` deleted |
+| 3 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done. G2rpg's `DLL_HMODULE` deleted |
+| 4 | File + console logger | ✅ (`ueforge::log`) | · (`ueforge::log!` macro) | · | done. G2rpg's `log.rs` deleted |
 | 5 | Settings JSON load / atomic save | ✅ (`Settings<T>`) | · (data struct only, IO via ueforge) | · | done |
-| 6 | Counter primitives + macros | ✅ (`counter!`, `peak!`, `time_scope`) | · (uses ueforge primitives + own domain statics) | — | done |
-| 7 | Bounded ring buffer | ✅ (`Ring<T>`) | · (uses for `DAMAGE_RING`) | — | done |
+| 6 | Counter primitives + macros | ✅ (`counter!`, `peak!`, `time_scope`) | · (uses ueforge primitives + own domain statics) |. | done |
+| 7 | Bounded ring buffer | ✅ (`Ring<T>`) | · (uses for `DAMAGE_RING`) |. | done |
 
 ### UObject SDK
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done — g2rpg's `sdk/` deleted |
+| 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done. G2rpg's `sdk/` deleted |
 | 9 | `FName` / `FString` | ✅ (with FName→string cache) | · | · | done |
 | 10 | `TArray` / `TMap` walkers | ✅ | · | · | done |
 | 11 | `GObjectsView` (flat + chunked) | ✅ | · | · | done |
 | 12 | `find_class_fast` (now name-cached) | ✅ | · | · | done |
-| 13 | `find_by_short_name` (DataTable) | ✅ | — | · | done |
-| 14 | `FieldTweak<T>` (DataTable rows) + `ClassFieldTweak<T>` (live UObjects) | ✅ | · (`patch.rs` + `survival.rs` migrated) | · (`stacks.rs`) | done -- Phase 2 |
-| 15 | DataTable polling worker (`on_first_sight`) | ✅ | — | · | done |
-| 16 | Native-property walker (`UClass::cached_native_properties`) | ✅ | — | · (via `inspect_address`) | done |
-| 17 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ | · | — | done |
+| 13 | `find_by_short_name` (DataTable) | ✅ |. | · | done |
+| 14 | `FieldTweak<T>` (DataTable rows) + `ClassFieldTweak<T>` (live UObjects) | ✅ | · (`patch.rs` + `survival.rs` migrated) | · (`stacks.rs`) | done. Phase 2 |
+| 15 | DataTable polling worker (`on_first_sight`) | ✅ |. | · | done |
+| 16 | Native-property walker (`UClass::cached_native_properties`) | ✅ |. | · (via `inspect_address`) | done |
+| 17 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ | · |. | done |
 
 ### Hooking
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · | — | done — g2rpg's `hook/` deleted |
-| 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) | — | done |
-| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | ✅ (`hook::function_ptr` / `function_ptr_required`) | · (own `lookup` helpers; functionally equivalent) | — | done -- Phase 2 |
-| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | ✅ (canonical-site doc on `Queue::drain`) | · (drained from `kill_hook`) | — | done -- Phase 2 |
+| 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · |. | done. G2rpg's `hook/` deleted |
+| 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) |. | done |
+| 20 | **Cached `&UFunction` identity dispatch** (compare ptrs not names on the hot path) | ✅ (`hook::function_ptr` / `function_ptr_required`) | · (own `lookup` helpers; functionally equivalent) |. | done. Phase 2 |
+| 21 | **Trampoline-as-drain-site** pattern (PE trampoline drains `Queue` on every fire) | ✅ (canonical-site doc on `Queue::drain`) | · (drained from `kill_hook`) |. | done. Phase 2 |
 
 ### Control plane (HTTP / TDD)
 
@@ -504,28 +504,28 @@ else?". Update on every major slice.
 | 23 | `OpResponse<S>` envelope + `parse_request` | ✅ | · | · | done |
 | 24 | Generic primitives (`read_bytes`, `write_bytes`, `walk_class`, `fname_to_string`, `call`, `inspect_address`) | ✅ | · | · | done |
 | 25 | Selector grammar (`addr:`, `class:`, `first_class:`, `singleton:`) | ✅ | · (+ `live_player_hc`, `live_player_cmc`) 📦 | · | done; game-specific selectors stay |
-| 26 | `Snapshot` struct shape | — | 📦 (RPG-specific) | 📦 | correct |
+| 26 | `Snapshot` struct shape |. | 📦 (RPG-specific) | 📦 | correct |
 | 27 | Op dispatcher (`handle_builtin` + game match arms) | ✅ (builtin) | · | · | done |
 | 28 | Test client `Api<S>` (+ `try_op`) | ✅ | · | · | done |
-| 29 | `perf::PerfLog` writer | ✅ | · | — | done |
+| 29 | `perf::PerfLog` writer | ✅ | · |. | done |
 
 ### Memory tools
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 30 | Cheat-Engine-style scanner (scan / rescan / paginate) | ✅ | — | · | done |
-| 31 | Address-validated freezes (selector-relative, `VirtualQuery` per write) | ✅ | — | · | done |
-| 32 | Built-in **Scanner ImGui tab** | ✅ (`ui_scanner::render`) | — | · | done |
-| 33 | `inspect_address` + property name walker | ✅ | — | · | done |
-| 34 | Win32 process probes (threads / cpu / regions / module sampler) | ✅ | · | — | done |
+| 30 | Cheat-Engine-style scanner (scan / rescan / paginate) | ✅ |. | · | done |
+| 31 | Address-validated freezes (selector-relative, `VirtualQuery` per write) | ✅ |. | · | done |
+| 32 | Built-in **Scanner ImGui tab** | ✅ (`ui_scanner::render`) |. | · | done |
+| 33 | `inspect_address` + property name walker | ✅ |. | · | done |
+| 34 | Win32 process probes (threads / cpu / regions / module sampler) | ✅ | · |. | done |
 
 ### ImGui
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done — g2rpg's `cpp/imgui` deleted |
+| 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done. G2rpg's `cpp/imgui` deleted |
 | 36 | Rust ImGui wrappers (`ui::text`, `button`, `slider_*`, etc.) | ✅ | · (RPG tab is now Rust, see `rpg/tab.rs`) | · | done |
-| 37 | Tab registration (`Tab { name, render }`) | ✅ | · | · | done — g2rpg's FFI bridge deleted |
+| 37 | Tab registration (`Tab { name, render }`) | ✅ | · | · | done. G2rpg's FFI bridge deleted |
 
 ### Build & deploy
 
@@ -539,51 +539,51 @@ else?". Update on every major slice.
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 41 | `Skill<E>` row + `find_skill` lookup (generic over the game's effect enum) | ✅ (`rpg::Skill<E>`, `rpg::find_skill`) | · (`pub type Skill = ueforge::rpg::Skill<SkillEffect>;`) | — | done |
-| 42 | Sqrt level curve (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · | — | done |
-| 43 | XP curve + cumulative-XP table | ✅ (`rpg::xp::Curve`) | · (`xp::CURVE = Curve::new(100.0, 1.8, 50)`) | — | done |
-| 44 | Per-creature XP bestiary (BP-class-name -> XP table) | ✅ (`rpg::Bestiary`) | · (`xp.rs` is just the table data) | — | done |
-| 45 | State schema (xp / level / skill_points / skill_levels) | ✅ (`rpg::SkillsState` + `spend` / `refund` / `level_of`) | · | — | done |
-| 46 | Per-slot JSON persistence (atomic temp+rename+fsync) | ✅ (`rpg::SlotStore<S>`) | · | — | done |
-| 47 | Slot-tracker poller (transitions) | ✅ (`rpg::SlotPoller::spawn`) | · | — | done |
-| 48 | Disabled-skills set + per-skill toggle | ✅ (`rpg::DisabledSkills`) | · | — | done |
-| 49 | `RpgApplier` trait (game's apply seam) | ✅ (`rpg::RpgApplier`) | · (`GameApplier` impls it) | — | done |
-| 50 | `Tracker<A>` (state + store + applier orchestration) | ✅ (`rpg::Tracker<A>` + `XpResult`) | · | — | done |
-| 51 | Skill-effect dispatcher + vanilla capture (CDO + live-pawn walks per variant) | ✅ (`rpg::std_effect::StandardEffect::apply` + `VanillaCache<K, V>`) | · (Standard arm via `e.apply`; 3 G2-only composite arms stay) | — | done |
-| 52 | `StandardEffect` 8-variant menu (PlayerFloat / PlayerSubcomponentFloat / Additive / U32Mask / Multiply / ClassFieldsMultiply / Runtime / StatusEffect) | ✅ (`rpg::std_effect`) | · (9 of 13 g2rpg catalog skills route through it) | — | done |
-| 53 | RPG ImGui tab template (level / XP bar / catalog rows / +1/+10 / -1/-10 / toggle) | ✅ (`rpg::tab::render(tracker, toggle)`) | · (`rpg/tab.rs` is 23 lines) | — | done |
-| 54 | Per-skill format strings + diminishing-returns previews | ✅ (`rpg::format::PercentFormat` + `StandardEffect::format`) | · (Standard arm delegates) | — | done |
-| 55 | Standard ops catalog (skill_toggle / spend / refund / reload_slot / set_skill_points) | ✅ (`rpg::ops::*` + `debug::dispatch_standard_op`) | · | — | done |
+| 41 | `Skill<E>` row + `find_skill` lookup (generic over the game's effect enum) | ✅ (`rpg::Skill<E>`, `rpg::find_skill`) | · (`pub type Skill = ueforge::rpg::Skill<SkillEffect>;`) |. | done |
+| 42 | Sqrt level curve (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · |. | done |
+| 43 | XP curve + cumulative-XP table | ✅ (`rpg::xp::Curve`) | · (`xp::CURVE = Curve::new(100.0, 1.8, 50)`) |. | done |
+| 44 | Per-creature XP bestiary (BP-class-name -> XP table) | ✅ (`rpg::Bestiary`) | · (`xp.rs` is just the table data) |. | done |
+| 45 | State schema (xp / level / skill_points / skill_levels) | ✅ (`rpg::SkillsState` + `spend` / `refund` / `level_of`) | · |. | done |
+| 46 | Per-slot JSON persistence (atomic temp+rename+fsync) | ✅ (`rpg::SlotStore<S>`) | · |. | done |
+| 47 | Slot-tracker poller (transitions) | ✅ (`rpg::SlotPoller::spawn`) | · |. | done |
+| 48 | Disabled-skills set + per-skill toggle | ✅ (`rpg::DisabledSkills`) | · |. | done |
+| 49 | `RpgApplier` trait (game's apply seam) | ✅ (`rpg::RpgApplier`) | · (`GameApplier` impls it) |. | done |
+| 50 | `Tracker<A>` (state + store + applier orchestration) | ✅ (`rpg::Tracker<A>` + `XpResult`) | · |. | done |
+| 51 | Skill-effect dispatcher + vanilla capture (CDO + live-pawn walks per variant) | ✅ (`rpg::std_effect::StandardEffect::apply` + `VanillaCache<K, V>`) | · (Standard arm via `e.apply`; 3 G2-only composite arms stay) |. | done |
+| 52 | `StandardEffect` 8-variant menu (PlayerFloat / PlayerSubcomponentFloat / Additive / U32Mask / Multiply / ClassFieldsMultiply / Runtime / StatusEffect) | ✅ (`rpg::std_effect`) | · (9 of 13 g2rpg catalog skills route through it) |. | done |
+| 53 | RPG ImGui tab template (level / XP bar / catalog rows / +1/+10 / -1/-10 / toggle) | ✅ (`rpg::tab::render(tracker, toggle)`) | · (`rpg/tab.rs` is 23 lines) |. | done |
+| 54 | Per-skill format strings + diminishing-returns previews | ✅ (`rpg::format::PercentFormat` + `StandardEffect::format`) | · (Standard arm delegates) |. | done |
+| 55 | Standard ops catalog (skill_toggle / spend / refund / reload_slot / set_skill_points) | ✅ (`rpg::ops::*` + `debug::dispatch_standard_op`) | · |. | done |
 
 ### Stacks module (inventory stack-size tweaks)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 56 | `FieldTweak<T>` (data-table row tweak with vanilla cache) | ✅ (`ue::datatable::FieldTweak<T>`) | · (used by `patch.rs`) | · | done |
-| 57 | `StackTweak` opinionated stacks wrapper (multiplier atomic + apply-now / counters) | ✅ (`stacks::StackTweak`) | — | · (`stacks.rs` is 64 lines) | done |
-| 58 | DataTable polling worker (`apply_when_ready` on first sight) | ✅ (`ue::datatable::on_first_sight`) | — | · | done |
+| 57 | `StackTweak` opinionated stacks wrapper (multiplier atomic + apply-now / counters) | ✅ (`stacks::StackTweak`) |. | · (`stacks.rs` is 64 lines) | done |
+| 58 | DataTable polling worker (`apply_when_ready` on first sight) | ✅ (`ue::datatable::on_first_sight`) |. | · | done |
 
 ### Difficulty module (per-class CDO field tweaks)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 59 | `ClassFieldTweak<T>` (live-UObject vanilla cache) | ✅ (`ue::class_tweak::ClassFieldTweak<T>`) | · | · | done |
-| 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) | — | done |
+| 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) |. | done |
 
 ### Inventory module (viewport paging + future CRUD ops)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 60a | `inventory::viewport` -- fixed-size visible grid over a larger underlying inventory: mouse-wheel scroll, per-widget viewport-start state, synthetic-refresh re-entrance guard, post-refresh rebind, construct reset | ✅ (`inventory::viewport::ViewportHook` + `ViewportConfig` + `ViewportBinder` trait) | · (`inv_hook.rs` is 220 lines: a `ViewportBinder` impl + UFunction wiring; was 396) | — | done |
-| 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · | — | done |
-| 60c | Future: inventory CRUD ops (add / remove / count / list) | (deferred until a second consumer materializes) | — | — | open |
+| 60a | `inventory::viewport`. Fixed-size visible grid over a larger underlying inventory: mouse-wheel scroll, per-widget viewport-start state, synthetic-refresh re-entrance guard, post-refresh rebind, construct reset | ✅ (`inventory::viewport::ViewportHook` + `ViewportConfig` + `ViewportBinder` trait) | · (`inv_hook.rs` is 220 lines: a `ViewportBinder` impl + UFunction wiring; was 396) |. | done |
+| 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · |. | done |
+| 60c | Future: inventory CRUD ops (add / remove / count / list) | (deferred until a second consumer materializes) |. |. | open |
 
 ### Damage module (universal damage-event hook)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 60d | `damage::DamageHook<B>` -- multicast damage UFunction trampoline + parm decode + FDamageInfo lookup + Player/Other classification + `before` (mutate damage) / `after` (react) dispatch | ✅ (`damage::DamageHook` + `DamageHookConfig` + `DamageBinder` trait + `DamageEvent`) | · (`kill_hook.rs` is 238 lines: a `DamageBinder` impl with kill credit + damage trace + impact reversal + lifesteal; was 474 across 3 files) | — | done |
-| 60e | Live-damage skill plumbing (Lifesteal heal-on-hit, future: Critical / Evasion / Thorns) | ✅ (binder before/after + DamageEvent surface) | · (Lifesteal landed; reads tracker level + heals via direct HC.CurrentDamage write) | — | Lifesteal done; Crit/Evasion/Thorns pending catalog rows |
+| 60d | `damage::DamageHook<B>`. Multicast damage UFunction trampoline + parm decode + FDamageInfo lookup + Player/Other classification + `before` (mutate damage) / `after` (react) dispatch | ✅ (`damage::DamageHook` + `DamageHookConfig` + `DamageBinder` trait + `DamageEvent`) | · (`kill_hook.rs` is 238 lines: a `DamageBinder` impl with kill credit + damage trace + impact reversal + lifesteal; was 474 across 3 files) |. | done |
+| 60e | Live-damage skill plumbing (Lifesteal heal-on-hit, future: Critical / Evasion / Thorns) | ✅ (binder before/after + DamageEvent surface) | · (Lifesteal landed; reads tracker level + heals via direct HC.CurrentDamage write) |. | Lifesteal done; Crit/Evasion/Thorns pending catalog rows |
 
 ### UE SDK helpers (used by every module)
 
@@ -591,25 +591,25 @@ else?". Update on every major slice.
 |---|---|---|---|---|---|
 | 61 | UObject byte-level helpers (`read_f32` / `write_f32` / `read_u32` / `write_u32` / `read_i32` / `write_i32` / `read_bool` / `write_bool` / `read_component_ptr`) | ✅ (`ue::field`) | · (re-exported as `apply::read_*`) | · | done |
 | 62 | `TypedField<T>` (typed offset wrapper) | ✅ (`ue::typed_field`) | · | · | done |
-| 63 | Actor / controller helpers (`class_chain_contains` / `controller_pawn` / `describe` / `is_outer_named` / `outer_class_name` / `A_CONTROLLER_PAWN_OFFSET`) | ✅ (`ue::actor`) | · (kill_hook killer classification) | — | done |
-| 64 | `FDamageInfo` reader (`DamageInfoLayout` -> instigator / damage_source / damage_type_class / damage_flags) | ✅ (`ue::damage_info`) | · (g2rpg's Maine layout in `kill_hook`) | — | done |
-| 65 | `FWeakObjectPtr::read` + `resolve` (one-shot index + GObjectsView walk) | ✅ (`ue::core_types::FWeakObjectPtr`) | · | — | done |
-| 66 | `process_event` UFunction caller (`call_ufunction(target, &class, fn_name, &mut parms)`) | ✅ (`ue::pe_call`) | · (health ops) | — | done |
-| 67 | String-keyed CDO / instance lookup (`with_first_instance_of` / `with_first_cdo_of`) | ✅ (`ue::with_first_*_of`) | · (debug snapshot collectors) | — | done |
-| 68 | `PlayerRef::first_live_static` (game-thread-only `&'static UObject` of first live pawn) | ✅ (`ue::player::PlayerRef`) | · (debug `live_player_hc` resolver) | — | done |
+| 63 | Actor / controller helpers (`class_chain_contains` / `controller_pawn` / `describe` / `is_outer_named` / `outer_class_name` / `A_CONTROLLER_PAWN_OFFSET`) | ✅ (`ue::actor`) | · (kill_hook killer classification) |. | done |
+| 64 | `FDamageInfo` reader (`DamageInfoLayout` -> instigator / damage_source / damage_type_class / damage_flags) | ✅ (`ue::damage_info`) | · (g2rpg's Maine layout in `kill_hook`) |. | done |
+| 65 | `FWeakObjectPtr::read` + `resolve` (one-shot index + GObjectsView walk) | ✅ (`ue::core_types::FWeakObjectPtr`) | · |. | done |
+| 66 | `process_event` UFunction caller (`call_ufunction(target, &class, fn_name, &mut parms)`) | ✅ (`ue::pe_call`) | · (health ops) |. | done |
+| 67 | String-keyed CDO / instance lookup (`with_first_instance_of` / `with_first_cdo_of`) | ✅ (`ue::with_first_*_of`) | · (debug snapshot collectors) |. | done |
+| 68 | `PlayerRef::first_live_static` (game-thread-only `&'static UObject` of first live pawn) | ✅ (`ue::player::PlayerRef`) | · (debug `live_player_hc` resolver) |. | done |
 | 69 | Platform detect + runtime init in one call | ✅ (`ue::platform::detect_and_init`) | · | · | done |
 | 70 | `ClassRef::with_first_cdo` (symmetric to `with_first_instance`) | ✅ (`ue::class_ref::ClassRef`) | · | · | done |
-| 71 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ (`ue::probe`) | · (debug snapshot) | — | done |
+| 71 | UE introspection probes (`gobjects_population`, `class_outer_samples`) | ✅ (`ue::probe`) | · (debug snapshot) |. | done |
 
 ### Hooks + game-thread queue
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 72 | PE / vtable hook framework | ✅ (`hook::ProcessEventHook`) | · | — | done |
-| 73 | Cached `&UFunction` identity dispatch | ✅ (`hook::function_ptr` / `function_table!`) | · (kill_hook + inv_hook) | — | done |
-| 74 | `install_with_backoff` (exponential retry until class loads) | ✅ (`hook::install_with_backoff` + `RetryPolicy`) | · (inv_hook) | — | done |
-| 75 | `install_immediate_or_log` (install / log / leak triplet) | ✅ (`hook::install_immediate_or_log`) | · (kill_hook in lib.rs) | — | done |
-| 76 | Game-thread `Queue` + re-entrance guard + canonical drain-site | ✅ (`pe_queue::Queue` + `DrainSite`) | · (drained from kill_hook) | — | done |
+| 72 | PE / vtable hook framework | ✅ (`hook::ProcessEventHook`) | · |. | done |
+| 73 | Cached `&UFunction` identity dispatch | ✅ (`hook::function_ptr` / `function_table!`) | · (kill_hook + inv_hook) |. | done |
+| 74 | `install_with_backoff` (exponential retry until class loads) | ✅ (`hook::install_with_backoff` + `RetryPolicy`) | · (inv_hook) |. | done |
+| 75 | `install_immediate_or_log` (install / log / leak triplet) | ✅ (`hook::install_immediate_or_log`) | · (kill_hook in lib.rs) |. | done |
+| 76 | Game-thread `Queue` + re-entrance guard + canonical drain-site | ✅ (`pe_queue::Queue` + `DrainSite`) | · (drained from kill_hook) |. | done |
 
 ### Debug HTTP endpoint
 
@@ -619,35 +619,35 @@ else?". Update on every major slice.
 | 78 | `OpResponse<S>` envelope + `parse_request` | ✅ (`envelope`) | · | · | done |
 | 79 | Generic primitives (`read_bytes` / `write_bytes` / `walk_class` / `fname_to_string` / `call` / `inspect_address`) | ✅ (`ops`) | · | · | done |
 | 80 | Selector grammar (`addr:` / `class:` / `first_class:` / `singleton:`) | ✅ (`selector::resolve_generic`) | · (+ `live_player`, `live_player_hc`) 📦 | · | done; game-specific selectors stay |
-| 81 | Standard-op dispatcher (skill_* / reload_slot / set_skill_points / walk_class / class_outer_samples / sample_thread_modules) | ✅ (`debug::dispatch_standard_op`) | · | — | done |
-| 82 | PE-ops dispatcher (call / read_bytes / write_bytes with game resolver) | ✅ (`debug::dispatch_pe_ops`) | · | — | done |
-| 83 | PE-queue enqueue helper (timeout + custom hint) | ✅ (`debug::enqueue_pe`) | · | — | done |
-| 84 | `PlayerStateView::from_state` (serde view of SkillsState) | ✅ (`debug::PlayerStateView`) | · | — | done |
-| 85 | `CatalogEntry` + `catalog_view(&[Skill<E>], kind_fn)` | ✅ (`debug::catalog_view`) | · | — | done |
-| 86 | `STANDARD_OPS` op-list metadata | ✅ (`debug::STANDARD_OPS`) | · | — | done |
-| 87 | `DamageEvent` + `DamageRing` (bounded ring of PE damage events) | ✅ (`debug::DamageEvent` / `DamageRing`) | · | — | done |
-| 88 | `ProcessSnapshot` (counters + memory + cpu + threads + gobjects population + regions) | ✅ (`debug::ProcessSnapshot::collect`) | · | — | done |
-| 89 | Win32 process probes (threads / cpu / regions / module sampler) | ✅ (`winproc`) | · | — | done |
-| 90 | Test client `Api<S>` (+ `try_op`) | ✅ (`client`) | · | — | done |
-| 91 | `perf::PerfLog` writer | ✅ (`client`) | · | — | done |
+| 81 | Standard-op dispatcher (skill_* / reload_slot / set_skill_points / walk_class / class_outer_samples / sample_thread_modules) | ✅ (`debug::dispatch_standard_op`) | · |. | done |
+| 82 | PE-ops dispatcher (call / read_bytes / write_bytes with game resolver) | ✅ (`debug::dispatch_pe_ops`) | · |. | done |
+| 83 | PE-queue enqueue helper (timeout + custom hint) | ✅ (`debug::enqueue_pe`) | · |. | done |
+| 84 | `PlayerStateView::from_state` (serde view of SkillsState) | ✅ (`debug::PlayerStateView`) | · |. | done |
+| 85 | `CatalogEntry` + `catalog_view(&[Skill<E>], kind_fn)` | ✅ (`debug::catalog_view`) | · |. | done |
+| 86 | `STANDARD_OPS` op-list metadata | ✅ (`debug::STANDARD_OPS`) | · |. | done |
+| 87 | `DamageEvent` + `DamageRing` (bounded ring of PE damage events) | ✅ (`debug::DamageEvent` / `DamageRing`) | · |. | done |
+| 88 | `ProcessSnapshot` (counters + memory + cpu + threads + gobjects population + regions) | ✅ (`debug::ProcessSnapshot::collect`) | · |. | done |
+| 89 | Win32 process probes (threads / cpu / regions / module sampler) | ✅ (`winproc`) | · |. | done |
+| 90 | Test client `Api<S>` (+ `try_op`) | ✅ (`client`) | · |. | done |
+| 91 | `perf::PerfLog` writer | ✅ (`client`) | · |. | done |
 
 ### Settings + logging + counters
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 92 | `Settings<T>` JSON load + atomic save | ✅ (`settings::Settings`) | · | · | done |
-| 93 | `Settings::reload` + `watch(interval, on_reload)` (mtime-poller hot-reload) | ✅ (`settings::WatchHandle`) | — (not yet adopted) | — (not yet adopted) | done |
+| 93 | `Settings::reload` + `watch(interval, on_reload)` (mtime-poller hot-reload) | ✅ (`settings::WatchHandle`) |. (not yet adopted) |. (not yet adopted) | done |
 | 94 | File + console logger (`set_dll_module` HMODULE capture) | ✅ (`log`) | · | · | done |
 | 95 | Counter primitives + `time_scope` | ✅ (`counters`) | · | · | done |
-| 96 | Bounded `EventRing<T>` | ✅ (`ring::EventRing`) | · (DamageRing wraps it) | — | done |
+| 96 | Bounded `EventRing<T>` | ✅ (`ring::EventRing`) | · (DamageRing wraps it) |. | done |
 
 ### Memory tools (built for ows-tweaks research, used by both)
 
 | # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
-| 97 | Cheat-Engine-style scanner (scan / rescan / paginate / freeze) | ✅ (`scanner`) | — | · | done |
-| 98 | Built-in Scanner ImGui tab | ✅ (`ui_scanner::render`) | — | · | done |
-| 99 | `inspect_address` + property name walker | ✅ (`ops::inspect_address`) | — | · | done |
+| 97 | Cheat-Engine-style scanner (scan / rescan / paginate / freeze) | ✅ (`scanner`) |. | · | done |
+| 98 | Built-in Scanner ImGui tab | ✅ (`ui_scanner::render`) |. | · | done |
+| 99 | `inspect_address` + property name walker | ✅ (`ops::inspect_address`) |. | · | done |
 
 ### ImGui
 
@@ -673,30 +673,30 @@ else?". Update on every major slice.
 | 107 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done |
 | 108 | HMODULE capture + `dll_dir()` | ✅ (`log::set_dll_module`) | · | · | done |
 | 109 | Worker thread spawn with panic-catch | ✅ (`worker::spawn`) | · | · | done |
-| 110 | Hot-update via UE4SS Ctrl+R | ✅ (shim wired; full pipeline below) | · | · | done -- Phases A + B (2026-05-10) |
-| 111 | Side-file deploy + on_shutdown swap (`cargo deploy install` writes `main-new.dll`; shim renames `main.dll` <-> `main-new.dll` on Ctrl+R/exit) | ✅ (`ueforge_deploy` + `mod_main::finalize_hot_reload_swap` + `cleanup_old_dll`) | · | · | done -- Phase B0 |
-| 112 | `hook::registry` (register / register_many / shutdown_all) -- `ProcessEventHook` handles teardown on hot-reload instead of `mem::forget`-leaking | ✅ (`hook::registry`) | · (lib.rs uses `register` / `register_many`) | · (no hooks) | done -- Phase B1 |
-| 113 | `process_event::SHUTTING_DOWN` flag + per-Entry `active_calls` drain in Drop (waits up to 500ms for in-flight trampolines to exit before unload) | ✅ (`hook::process_event`) | · | · | done -- Phase B2 |
-| 114 | `server::SpawnHandle::stop()` + `server::shutdown_all()` -- HTTP listeners unblocked + joined on hot-reload | ✅ (`server`) | · | · | done -- Phase B3 |
-| 115 | `ueforge_mod_shutdown` orchestrates: game on_shutdown -> hook::shutdown_all -> server::shutdown_all -> finalize_hot_reload_swap | ✅ (`mod_main`) | · | · | done -- Phase B4 |
+| 110 | Hot-update via UE4SS Ctrl+R | ✅ (shim wired; full pipeline below) | · | · | done. Phases A + B (2026-05-10) |
+| 111 | Side-file deploy + on_shutdown swap (`cargo deploy install` writes `main-new.dll`; shim renames `main.dll` <-> `main-new.dll` on Ctrl+R/exit) | ✅ (`ueforge_deploy` + `mod_main::finalize_hot_reload_swap` + `cleanup_old_dll`) | · | · | done. Phase B0 |
+| 112 | `hook::registry` (register / register_many / shutdown_all) -- `ProcessEventHook` handles teardown on hot-reload instead of `mem::forget`-leaking | ✅ (`hook::registry`) | · (lib.rs uses `register` / `register_many`) | · (no hooks) | done. Phase B1 |
+| 113 | `process_event::SHUTTING_DOWN` flag + per-Entry `active_calls` drain in Drop (waits up to 500ms for in-flight trampolines to exit before unload) | ✅ (`hook::process_event`) | · | · | done. Phase B2 |
+| 114 | `server::SpawnHandle::stop()` + `server::shutdown_all()`. HTTP listeners unblocked + joined on hot-reload | ✅ (`server`) | · | · | done. Phase B3 |
+| 115 | `ueforge_mod_shutdown` orchestrates: game on_shutdown -> hook::shutdown_all -> server::shutdown_all -> finalize_hot_reload_swap | ✅ (`mod_main`) | · | · | done. Phase B4 |
 
 ### Game-specific (correctly stays in the game crate)
 
 | # | Feature | grounded2-rpg | ows-tweaks | Notes |
 |---|---|---|---|---|
 | 200 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
-| 201 | Game-specific selectors (`live_player`, `live_player_hc`) | 📦 | — | wraps `selector::resolve_generic` |
-| 202 | `inv_hook` Maine UFunction wiring (WBP_InventoryInterface_C class name + grid offset + GetInventoryItems / InitializeItemSlot / GetItemInItemListSlot parm shapes) | 📦 | — | per game; viewport algorithm + state + scroll all framework-side via `inventory::viewport` |
-| 203 | `kill_hook` Maine UFunction match + KillerKind classifier (Player / Buggy / Other) | 📦 | — | per UFunction signature; structural shape uses `ue::actor` + `ue::damage_info` from the framework |
-| 204 | `fall_hook` (`OnLanded` velocity-stomp on `BP_SurvivalPlayerCharacter`) | 📦 | — | per game |
-| 205 | `survival.rs` (G2 hunger/thirst Maine offsets via `DifficultyKnob`) | 📦 | — | offsets stay; framework owns the apply loop |
-| 206 | `patch.rs` (UInventoryComponent `DefaultMaxSize` at +0x1E0, player-only filter) | 📦 | — | per game; uses `ClassFieldTweak<i32>` |
-| 207 | `stacks.rs` (DT_Materials.MaxCanStack offsets via `StackTweak`) | — | 📦 | offsets stay; framework owns the apply loop |
-| 208 | RPG catalog content (Backpack +460 slots, Attack Damage +300%, etc.) | 📦 | — | per gameplay design |
-| 209 | XP-per-creature bestiary entries | 📦 | — | per game's bestiary; framework owns `Bestiary` shape |
-| 210 | `damage_trace.rs` + `impact_resistance.rs` (Maine multicast parm shapes) | 📦 | — | per UFunction; structural shape generic |
+| 201 | Game-specific selectors (`live_player`, `live_player_hc`) | 📦 |. | wraps `selector::resolve_generic` |
+| 202 | `inv_hook` Maine UFunction wiring (WBP_InventoryInterface_C class name + grid offset + GetInventoryItems / InitializeItemSlot / GetItemInItemListSlot parm shapes) | 📦 |. | per game; viewport algorithm + state + scroll all framework-side via `inventory::viewport` |
+| 203 | `kill_hook` Maine UFunction match + KillerKind classifier (Player / Buggy / Other) | 📦 |. | per UFunction signature; structural shape uses `ue::actor` + `ue::damage_info` from the framework |
+| 204 | `fall_hook` (`OnLanded` velocity-stomp on `BP_SurvivalPlayerCharacter`) | 📦 |. | per game |
+| 205 | `survival.rs` (G2 hunger/thirst Maine offsets via `DifficultyKnob`) | 📦 |. | offsets stay; framework owns the apply loop |
+| 206 | `patch.rs` (UInventoryComponent `DefaultMaxSize` at +0x1E0, player-only filter) | 📦 |. | per game; uses `ClassFieldTweak<i32>` |
+| 207 | `stacks.rs` (DT_Materials.MaxCanStack offsets via `StackTweak`) |. | 📦 | offsets stay; framework owns the apply loop |
+| 208 | RPG catalog content (Backpack +460 slots, Attack Damage +300%, etc.) | 📦 |. | per gameplay design |
+| 209 | XP-per-creature bestiary entries | 📦 |. | per game's bestiary; framework owns `Bestiary` shape |
+| 210 | `damage_trace.rs` + `impact_resistance.rs` (Maine multicast parm shapes) | 📦 |. | per UFunction; structural shape generic |
 | 211 | Per-feature ImGui tab content (sliders, labels, status text) | 📦 | 📦 | per UX |
-| 212 | `KillerKind` classifier (Player / Buggy / Other) + buggy XP multiplier | 📦 | — | per game policy |
+| 212 | `KillerKind` classifier (Player / Buggy / Other) + buggy XP multiplier | 📦 |. | per game policy |
 
 ## Heterogeneous adoption
 
@@ -712,7 +712,7 @@ trait impl.
 
 **The framework's design rule: each universal pattern is defined
 ONCE in ueforge.** If you find yourself writing the same
-scaffolding in two game crates, that's a missing module --
+scaffolding in two game crates, that's a missing module.
 file an entry under "Open: more ueforge extraction candidates"
 in `docs/todo.md`.
 
@@ -720,18 +720,18 @@ in `docs/todo.md`.
 
 **All four phases complete (2026-05-10):**
 
-- **Phase 1** -- infra dedup. g2rpg lost ~930 lines of duplicated
+- **Phase 1**. Infra dedup. g2rpg lost ~930 lines of duplicated
   loader / SDK / hook / log / FFI plumbing.
-- **Phase 2** -- small promotions. `ClassFieldTweak<T>`,
+- **Phase 2**. Small promotions. `ClassFieldTweak<T>`,
   `function_ptr` / `function_ptr_required`, canonical
   `Queue::drain` doc.
-- **Phase 3** -- RPG framework. The 15 rows under "RPG module" all
+- **Phase 3**. RPG framework. The 15 rows under "RPG module" all
   shipped: `Skill<E>`, `Tracker<A>`, `RpgApplier`, `SlotStore<S>`,
   `SlotPoller`, `DisabledSkills`, `Bestiary`, `StandardEffect`
   8-variant menu + apply + format dispatch, `tab::render`,
   `ops::*`. g2rpg's `apply_skill` collapsed from 11 arms to 4
   (1 framework Standard arm + 3 game-specific composites).
-- **Phase 4** -- the rest. `ueforge::stacks` + `ueforge::difficulty`
+- **Phase 4**. The rest. `ueforge::stacks` + `ueforge::difficulty`
   (stacks + difficulty modules), `ue::field` / `ue::actor` / `ue::damage_info` /
   `ue::pe_call`, `Settings::watch`, `debug::dispatch_*` /
   `DamageRing` / `ProcessSnapshot` / `PlayerStateView`,
@@ -751,7 +751,7 @@ counter atomics, or the snapshot scaffolding.
   { session_id, mode }` + `freeze { addr, value, hz }`.
   Walks committed regions (`ueforge::winproc` already has the
   iterator). Build the first time an SDK dump leaves us
-  stuck — generally that means non-UObject memory (allocator
+  stuck. Generally that means non-UObject memory (allocator
   buffers, save blobs, CVars, bitfields the dumper flattens).
   For the ~95% case, dump-driven research is dramatically
   faster (30 sec / field vs 20-30 min / field). Estimated
@@ -767,5 +767,5 @@ generic primitives, etc.), add the surface, validate by either
 grounded2-rpg or the next mod referencing it. Then build the
 game-specific code on top.
 
-If you find yourself copy-pasting between two game crates —
+If you find yourself copy-pasting between two game crates.
 that copied code belongs in ueforge.
