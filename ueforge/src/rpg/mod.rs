@@ -2,17 +2,17 @@
 //! `SkillEffect` enum + catalog + apply-dispatcher; ueforge ships
 //! the universally-shaped pieces:
 //!
-//! - [`xp::Curve`] -- cumulative XP and `level_for_xp` math driven by
+//! - [`xp::Curve`]. Cumulative XP and `level_for_xp` math driven by
 //!   `(base, exponent, max_level)`.
-//! - [`progress::sqrt_progress`] -- diminishing-returns helper.
-//! - [`SkillsState`] -- on-disk schema (xp / level / skill_points /
+//! - [`progress::sqrt_progress`]. Diminishing-returns helper.
+//! - [`SkillsState`]. On-disk schema (xp / level / skill_points /
 //!   `skill_levels: BTreeMap<String, u32>`). Open-shape so games can
 //!   add skills without breaking existing save files.
-//! - [`SlotStore`] -- per-slot JSON persistence under
+//! - [`SlotStore`]. Per-slot JSON persistence under
 //!   `<DLL_dir>/<subdir>/<slot>.json`, atomic save (temp + rename).
-//! - [`DisabledSkills`] -- thread-safe "disable a skill without
+//! - [`DisabledSkills`]. Thread-safe "disable a skill without
 //!   refunding its points" toggle set.
-//! - [`SlotPoller`] -- 1Hz worker that watches a game-specific
+//! - [`SlotPoller`]. 1Hz worker that watches a game-specific
 //!   slot-key resolver closure and drives activate / deactivate
 //!   transitions on the consumer's behalf.
 //!
