@@ -4,7 +4,7 @@
 //!
 //! The handler is opaque: it receives the raw request body string and
 //! returns the JSON bytes to ship back. This keeps `ueforge` neutral
-//! about snapshot type, op set, and error shape — all of which live
+//! about snapshot type, op set, and error shape. All of which live
 //! in the embedding crate.
 
 use std::io::{Cursor, Read};
@@ -21,7 +21,7 @@ const MAX_BODY_BYTES: u64 = 1 << 20;
 
 /// Constant-time byte-string compare. Avoids the early-exit timing
 /// signal in `==` for auth-token equality. Localhost weakens the
-/// attacker model but the fix is ~5 LoC -- no excuse to skip it.
+/// attacker model but the fix is ~5 LoC. No excuse to skip it.
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -57,7 +57,7 @@ pub struct Config {
 
 /// Handle to a spawned listener. Drop or call [`stop`](Self::stop)
 /// to break the listener's `incoming_requests` loop and join the
-/// thread. Required for hot-reload-safe shutdown -- the DLL can't
+/// thread. Required for hot-reload-safe shutdown. The DLL can't
 /// unload while the listener thread holds code on its stack.
 pub struct SpawnHandle {
     server: Arc<Server>,
