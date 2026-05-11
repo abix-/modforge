@@ -1,4 +1,4 @@
-//! `FDamageInfo` reader -- the canonical UE5 damage-event payload
+//! `FDamageInfo` reader. The canonical UE5 damage-event payload
 //! that lives at a known offset on most game-side HealthComponents.
 //!
 //! Every game extends UE's damage system with its own
@@ -13,14 +13,14 @@
 //! universal helpers below cover the four fields virtually every
 //! UE5 RPG mod needs:
 //!
-//! - **Instigator controller** (`AController` -- the killer's
+//! - **Instigator controller** (`AController`. The killer's
 //!   controller, used to classify the killer).
-//! - **Damage source** (`UObject` -- the damage-causing object,
+//! - **Damage source** (`UObject`. The damage-causing object,
 //!   often the same as the instigator's pawn).
 //! - **Damage-type class** (`UClass` of the
 //!   `UDamageType` subtype, used to discriminate environmental /
 //!   fall / fire / etc).
-//! - **Damage flags** (`i32` -- bitfield, includes the killing-blow
+//! - **Damage flags** (`i32`. Bitfield, includes the killing-blow
 //!   bit on most games).
 //!
 //! ```ignore
@@ -43,7 +43,7 @@ use crate::ue::{FWeakObjectPtr, UClass, UObject};
 /// Per-game offsets for the `FDamageInfo` struct on a damage
 /// component (typically `UHealthComponent`). All offsets are
 /// **byte offsets within the component**, not relative to the
-/// damage-info struct -- so each is `last_damage_info_offset +
+/// damage-info struct. So each is `last_damage_info_offset +
 /// <field_offset_in_struct>`.
 #[derive(Debug, Clone, Copy)]
 pub struct DamageInfoLayout {
