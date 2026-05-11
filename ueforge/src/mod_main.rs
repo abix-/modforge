@@ -29,10 +29,10 @@
 //! ueforge::ue4ss_mod!(MOD_INFO);
 //! ```
 //!
-//! No `cpp/`, no `build.rs` C++ wiring, no DllMain — ueforge ships
+//! No `cpp/`, no `build.rs` C++ wiring, no DllMain. Ueforge ships
 //! all of it.
 
-/// Root Def for an entire ueforge-based mod -- the workspace's
+/// Root Def for an entire ueforge-based mod. The workspace's
 /// canonical `<Subject>Def` for the mod itself. The shipped C++
 /// shim reads this through the macro-emitted `extern "C"` hooks.
 ///
@@ -57,9 +57,9 @@ pub struct ModDef {
     /// Called once when UE4SS destructs the mod.
     pub on_shutdown: fn(),
     /// Tabs to register in UE4SS's debug overlay. Order is stable
-    /// -- the shipped shim trampolines dispatch by index. Bare
+    ///. The shipped shim trampolines dispatch by index. Bare
     /// slice (documented carve-out from the `<Subject>Registry`
-    /// wrapper rule -- there are no extra registry-level fields
+    /// wrapper rule. There are no extra registry-level fields
     /// beyond "these are the tabs", and a wrapper would be pure
     /// ceremony).
     pub tabs: &'static [TabDef],
@@ -157,7 +157,7 @@ macro_rules! ue4ss_mod {
             // appearing post-launch (deploy while game is open)
             // and synthesizes Ctrl+R to trigger UE4SS's reload
             // path. Zero manual steps from `cargo deploy install`
-            // to new code running -- as long as the game has
+            // to new code running. As long as the game has
             // focus.
             $crate::hot_reload::spawn_watcher();
             ($mod_info.on_unreal_init)();
@@ -165,7 +165,7 @@ macro_rules! ue4ss_mod {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn ueforge_mod_shutdown() {
-            // 1. Game's on_shutdown -- still kept as a special
+            // 1. Game's on_shutdown. Still kept as a special
             //    pre-registry hook so the game can do mod-
             //    specific teardown that's awkward to express as
             //    a `fn()` (closures over module statics, etc.).
@@ -190,7 +190,7 @@ macro_rules! ue4ss_mod {
             // Bridge our locally-linked imgui at UE4SS's context.
             // The extern call is declared at the macro use site
             // (the game crate's cdylib) so ueforge.rlib itself never
-            // references ueforge_ui_enable_imgui — letting build
+            // references ueforge_ui_enable_imgui. Letting build
             // scripts and test binaries that depend on ueforge
             // link cleanly without ueforge_shim.cpp's UE4SS deps.
             unsafe extern "C" {
@@ -215,7 +215,7 @@ macro_rules! ue4ss_mod {
 ///    `LoadLibraryExW` opens with `FILE_SHARE_DELETE`).
 /// 2. Rename `main-new.dll` -> `main.dll` (vacant target).
 ///
-/// Failures are logged + ignored -- the worst case is UE4SS
+/// Failures are logged + ignored. The worst case is UE4SS
 /// reloads the same image, the user notices "no new code" and
 /// retries deploy. Better than killing the game.
 ///
@@ -231,7 +231,7 @@ pub fn finalize_hot_reload_swap() {
     };
     let new_dll = dir.join("main-new.dll");
     if !new_dll.is_file() {
-        // No pending update -- normal Ctrl+R or process exit.
+        // No pending update. Normal Ctrl+R or process exit.
         return;
     }
     let main_dll = dir.join("main.dll");
@@ -262,8 +262,8 @@ pub fn finalize_hot_reload_swap() {
 /// Init-time auto-swap. If `cargo deploy install` was run while
 /// the game was closed (or while the previous mod generation
 /// didn't get a clean shutdown), `main-new.dll` will be sitting
-/// next to `main.dll`. We can't reload ourselves mid-init -- the
-/// current process keeps using the already-loaded image -- but
+/// next to `main.dll`. We can't reload ourselves mid-init. The
+/// current process keeps using the already-loaded image. But
 /// we CAN rename the files now so that the next UE4SS reload
 /// (Ctrl+R or next launch) picks up the new code.
 ///
