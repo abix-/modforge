@@ -14,7 +14,7 @@ const FN_ON_LANDED: &str = "OnLanded";
 
 /// Lazily-cached UFunction pointer for `OnLanded`. The trampoline
 /// pointer-compares against this via `LazyFunctionPtr::matches` so
-/// non-OnLanded fires bail with a single atomic load + branch -- no
+/// non-OnLanded fires bail with a single atomic load + branch. No
 /// FName resolve, no heap alloc.
 static ON_LANDED: LazyFunctionPtr = LazyFunctionPtr::new();
 
@@ -59,7 +59,7 @@ fn on_player_fall_event(
         if reduction > 0.0 {
             let scale = (1.0 - reduction).max(0.0) as f64;
             let stomped = stomp_player_velocity_z(this, scale);
-            // Skip the log when V.Z was already zero -- the engine
+            // Skip the log when V.Z was already zero. The engine
             // has already absorbed the velocity and our stomp is a
             // no-op.
             if stomped.before.abs() > 0.001 {
