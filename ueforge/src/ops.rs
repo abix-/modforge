@@ -46,7 +46,7 @@ use crate::ue::{self, UObject, fname::FName};
 // other subject; the contents are produced at runtime.
 // =====================================================================
 
-pub type OpHandler = Box<dyn Fn(&Json) -> Result<Json, String> + Send + Sync>;
+pub type OpHandler = std::sync::Arc<dyn Fn(&Json) -> Result<Json, String> + Send + Sync>;
 
 /// One debug-op declaration. The handler is a closure (boxed to
 /// erase per-game capture types -- tracker references, selector
@@ -76,7 +76,7 @@ impl OpDef {
             name,
             summary,
             args,
-            handler: Box::new(handler),
+            handler: std::sync::Arc::new(handler),
         }
     }
 }
@@ -113,10 +113,24 @@ impl OpRegistry {
 
     /// Look up + invoke. Returns `None` if the op isn't registered
     /// (caller fall through to "unknown op" error).
+    ///
+    /// The handler runs OUTSIDE the registry mutex -- the lock
+    /// only protects the lookup. This matters for two reasons:
+    /// (1) slow handlers (discovery refresh, GObjects walks)
+    /// don't serialize the entire HTTP surface; (2) a handler
+    /// that crashes the worker via SEH would otherwise poison
+    /// the parking_lot mutex forever, hanging every subsequent
+    /// request.
     pub fn dispatch(&self, name: &str, args: &Json) -> Option<Result<Json, String>> {
-        let g = self.entries.lock();
-        let def = g.iter().find(|o| o.name == name)?;
-        Some((def.handler)(args))
+        let handler = {
+            let g = self.entries.lock();
+            g.iter().find(|o| o.name == name)?.handler.clone()
+        };
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler(args)));
+        Some(match result {
+            Ok(r) => r,
+            Err(_) => Err(format!("handler '{name}' panicked")),
+        })
     }
 
     /// Names of every registered op. For "supported ops: [...]"
