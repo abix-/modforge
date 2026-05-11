@@ -2,7 +2,7 @@
 //!
 //! Tee writes to stdout + a timestamped file at
 //! `<repo>/perf-runs/<test_name>-<unix_ts>.txt`. The `perf-runs/`
-//! directory is conventionally `.gitignore`d — runs are local
+//! directory is conventionally `.gitignore`d. Runs are local
 //! evidence captured during research; the committed summary lives
 //! in your project's docs.
 //!
