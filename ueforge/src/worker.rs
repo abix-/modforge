@@ -13,7 +13,7 @@
 //! });
 //! ```
 //!
-//! Backed by `std::thread::Builder::name(...)` -- which on Windows
+//! Backed by `std::thread::Builder::name(...)`. Which on Windows
 //! sets the thread description visible to debuggers.
 
 /// Spawn a named worker thread. Panics inside `work` are caught and
