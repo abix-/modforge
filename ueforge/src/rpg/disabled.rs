@@ -1,6 +1,6 @@
 //! Process-global "disabled skills" set. Disabling treats a skill
 //! as level 0 in the apply path without refunding the player's
-//! points -- used for "drop a buff on demand" toggles in the ImGui
+//! points. Used for "drop a buff on demand" toggles in the ImGui
 //! tab. Not persisted.
 //!
 //! Stored as `&'static str` IDs to match the way catalogs are
@@ -66,7 +66,7 @@ impl DisabledSkills {
     }
 
     /// Snapshot of every currently-disabled skill ID.
-    /// Cold-path -- clones into a sorted Vec.
+    /// Cold-path. Clones into a sorted Vec.
     pub fn snapshot(&self) -> Vec<&'static str> {
         let s = self.snapshot_cell().load();
         let mut v: Vec<&'static str> = s.iter().copied().collect();
