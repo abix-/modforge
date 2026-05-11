@@ -24,7 +24,7 @@ use crate::ue::{UFunction, find_class_fast};
 /// its address as a `usize`. Stash the result in an `AtomicUsize`
 /// at hook-install time, then match by pointer identity in the
 /// trampoline (`incoming_ptr == cached`) instead of calling
-/// `function.name()` -- which would resolve an FName on every PE
+/// `function.name()`. Which would resolve an FName on every PE
 /// call and dwarf the cost of the actual hook work.
 ///
 /// Returns `None` if the class isn't loaded yet or doesn't expose
