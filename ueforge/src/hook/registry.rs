@@ -1,4 +1,4 @@
-//! `HookRegistry` -- the workspace-standard `<Subject>Registry`
+//! `HookRegistry`. The workspace-standard `<Subject>Registry`
 //! wrapper for installed PE hooks. Per
 //! [architecture.md](../../docs/architecture.md), every subsystem
 //! exposes the same surface shape: a `<Subject>Def` record (here
@@ -68,7 +68,7 @@ impl HookRegistry {
         self.handles.lock().push(hook);
     }
 
-    /// Take ownership of many handles in one shot -- e.g. the
+    /// Take ownership of many handles in one shot. E.g. the
     /// list returned by `ProcessEventHook::install_many` for
     /// multi-class installs (player BP subclasses).
     pub fn register_many<I: IntoIterator<Item = ProcessEventHook>>(&self, hooks: I) {
@@ -140,7 +140,7 @@ impl Default for HookRegistry {
 pub static HOOK_REGISTRY: HookRegistry = HookRegistry::new();
 
 /// Register one hook with the global teardown registry. Thin
-/// wrapper over [`HookRegistry::register`] -- prefer the method
+/// wrapper over [`HookRegistry::register`]. Prefer the method
 /// in new code.
 pub fn register(hook: ProcessEventHook) {
     HOOK_REGISTRY.register(hook);
