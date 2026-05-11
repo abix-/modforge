@@ -121,33 +121,16 @@ pub fn class_outer_samples(class_name: &str, k: usize) -> Json {
     })
 }
 
+/// Minimal eager describe for a UDataTable -- just the short
+/// name. The schema walk (`walk_struct_fields` on the RowStruct)
+/// moves to the on-demand path (`dump_data_table`): we've seen
+/// OWS instances whose RowStruct FField chain has a corrupt
+/// FName that AVs `AppendString` during eager refresh.
 pub fn describe_data_table(obj: &UObject) -> Json {
     let table_name = obj.name();
-    let row_struct_ptr: *const UObject = unsafe {
-        (obj.as_ptr().add(offsets::datatable::ROW_STRUCT) as *const *const UObject)
-            .read_unaligned()
-    };
-    // Skip full_name() (outer-chain walk) in the eager pass --
-    // OWS has UDataTable instances whose outer chain crashes the
-    // walk on 175K-object refreshes. `dump_data_table` /
-    // `discover_data_table_detail` handle the deep paths
-    // on-demand.
-    if row_struct_ptr.is_null() || !crate::winproc::is_addr_readable(row_struct_ptr as usize) {
-        return json!({
-            "id": table_name.to_lowercase(),
-            "table_name": table_name,
-            "row_struct": null,
-        });
-    }
-    let row_struct = unsafe { &*row_struct_ptr };
-    let fields = walk_struct_fields(row_struct);
     json!({
         "id": table_name.to_lowercase(),
         "table_name": table_name,
-        "row_struct": {
-            "name": row_struct.name(),
-            "fields": fields,
-        },
     })
 }
 

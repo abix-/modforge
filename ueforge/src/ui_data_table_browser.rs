@@ -109,17 +109,10 @@ pub fn render() {
             continue;
         }
         shown_count += 1;
-        let row_struct = t
-            .get("row_struct")
-            .and_then(|v| v.get("name"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("<no-struct>");
-        let field_count = t
-            .get("row_struct")
-            .and_then(|v| v.get("fields"))
-            .and_then(|v| v.as_array())
-            .map(|a| a.len())
-            .unwrap_or(0);
+        // Eager cache holds names only now -- schema + row_struct
+        // walk happens on Open click via snapshot_table.
+        let row_struct = "?";
+        let field_count: usize = 0;
 
         let selected = s.selected.as_deref() == Some(table_name);
         let label = if selected {
