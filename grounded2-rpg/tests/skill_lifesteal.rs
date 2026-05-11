@@ -1,5 +1,5 @@
 // Per-skill test: lifesteal. Runtime effect with no CDO field to
-// observe via snapshot -- we just assert the level increments on
+// observe via snapshot. We just assert the level increments on
 // spend (and revert on refund). Deeper observable test pending
 // simulate_damage.
 //
