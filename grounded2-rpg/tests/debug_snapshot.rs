@@ -69,7 +69,7 @@ fn unknown_op_is_an_error_not_a_panic() {
     assert_eq!(resp.op, "totally-bogus-op");
     let err = resp.error.expect("error string");
     assert!(err.contains("unknown op"), "unexpected error: {err}");
-    // State snapshot should still be present even on error -- the
+    // State snapshot should still be present even on error. The
     // contract is "every response includes state".
     let _ = resp.state.live_player;
 }
