@@ -68,7 +68,7 @@ never mounts.
 
 Observed in practice: a `basePath` set to a Grounded **1**
 install meant Vortex deployed there silently while the user
-had Grounded 2 mods deployed -- silently meaning zero of those
+had Grounded 2 mods deployed. Silently meaning zero of those
 mods ever applied. Verifying `basePath` is the correct
 Grounded-2 install dir is a 30-second sanity check that should
 be the first step on any "mod not loading" debug.
@@ -81,27 +81,27 @@ community covers the gap.
 ### Authoritative Grounded 2 mod pages
 
 - [Player Tweaks](https://www.nexusmods.com/grounded2/mods/13)
-  -- the primary "AIO + capacity" mod family. Optional Files
+ . The primary "AIO + capacity" mod family. Optional Files
   contain the 60-slot data-side bump.
 - [Bigger Backpack](https://www.nexusmods.com/grounded2/mods/37)
-  -- UI-side widget mod. Pairs with Player Tweaks. **Broken in
+ . UI-side widget mod. Pairs with Player Tweaks. **Broken in
   current shipping** because the host widget it patches
   (`UI_Container_BackpackSide.MaxRows`) is no longer in
   `GObjects`; see [`inventory.md`](inventory.md) for the full
   root-cause.
 - [Better Storages](https://www.nexusmods.com/grounded2/mods/25)
-  -- world chest / storage capacity. Different system from the
+ . World chest / storage capacity. Different system from the
   player backpack.
 - [MoreInventory_Buggy](https://www.nexusmods.com/grounded2/mods/102)
-  -- mount saddlebag size. Different system.
+ . Mount saddlebag size. Different system.
 - [Bigger Stacks](https://www.nexusmods.com/grounded2/mods/8)
-  -- per-item stack size up to x999.
+ . Per-item stack size up to x999.
 - [Grounded 2 Command List](https://www.nexusmods.com/grounded2/mods/19)
-  -- console command reference.
+ . Console command reference.
 - [Cheat Manager and Console Unlocker](https://www.nexusmods.com/grounded2/mods/70)
-  -- runtime console / cheat manager unlock for shipping.
+ . Runtime console / cheat manager unlock for shipping.
 - [`x0reaxeax/Grounded2Minimal`](https://github.com/x0reaxeax/Grounded2Minimal)
-  -- DLL-based debug / cheat tool. Source available; useful as
+ . DLL-based debug / cheat tool. Source available; useful as
   reference for SDK class names, struct layouts, and offsets.
 
 For the generic UE5 modding ecosystem (retoc, FModel, UAssetGUI,
@@ -111,12 +111,12 @@ Dumper-7, etc.) see
 
 ## See also
 
-- [damage.md](damage.md) -- Grounded 2 damage internals
+- [damage.md](damage.md). Grounded 2 damage internals
   (combat / fall / environmental, status-effect data table)
-- [inventory.md](inventory.md) -- Grounded 2 inventory specifics
+- [inventory.md](inventory.md). Grounded 2 inventory specifics
   (Maine InventoryComponent, WBP_InventoryInterface_C)
-- [rpg.md](rpg.md) -- the RPG mod itself
+- [rpg.md](rpg.md). The RPG mod itself
 - [`../../ueforge/docs/ue-engine.md`](../../ueforge/docs/ue-engine.md)
-  -- generic UE5 platform reference
+ . Generic UE5 platform reference
 - [`../../ueforge/docs/inspection.md`](../../ueforge/docs/inspection.md)
-  -- worked examples on inspecting UE5 mods
+ . Worked examples on inspecting UE5 mods
