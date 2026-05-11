@@ -18,7 +18,7 @@ visible way:
 
 1. **Data side.** `UInventoryComponent.DefaultMaxSize` (int32) caps
    how many items the inventory accepts. If this stays at vanilla
-   40, the player simply cannot pick up anything past slot 40 -- no
+   40, the player simply cannot pick up anything past slot 40. No
    matter how many slots are drawn on screen.
 2. **Visible side.** The widget renders `min(component.DefaultMaxSize,
    MaxRows * MaxColumns)` slots. If the widget's `MaxRows * MaxColumns`
@@ -48,7 +48,7 @@ have `DefaultMaxSize`); the third is a different class.
 `UProximityInventoryComponent` is a different class without a max size
 property, so only two of the three components participate in capacity
 patching. AIO Player Tweaks v13.1.6 patches the saddlebag (40 -> 48)
-but leaves the main backpack at 40 -- the "60 slots" version is a
+but leaves the main backpack at 40. The "60 slots" version is a
 separate optional download from that mod's Nexus page. Grounded 2 - RPG System
 patches the main only.
 
@@ -62,7 +62,7 @@ UPROPERTY flags: `Edit, BlueprintVisible, BlueprintReadOnly,
 IsPlainOldData, NativeAccessSpecifierProtected`. Editable in the
 Blueprint editor (so it CAN be overridden via CDO patching), readable
 from BP at runtime, but the runtime cannot mutate it directly. Only
-CDO defaults change it -- which is why pak-based and DLL-based mods
+CDO defaults change it. Which is why pak-based and DLL-based mods
 both reach this property by patching CDOs, never by calling a setter.
 
 Vanilla value depends on the owning actor. Patch policy is to leave
@@ -84,7 +84,7 @@ even if the outer-chain filter is wrong.
 The patch is applied to:
 
 - Every `Default__BP_SurvivalPlayerCharacter*_C.InventoryComponent`
-  CDO. CDOs are templates -- new instances inherit the patched value.
+  CDO. CDOs are templates. New instances inherit the patched value.
 - Every live instance the worker / inv hook walks. Necessary because
   some instances exist before the mod loads (for the active player
   pawn at session start, in particular).
@@ -108,7 +108,7 @@ dimensions.
 
 ### `PopulateItemGrid` parm layout
 
-UFunction `PopulateItemGrid(int32 RowMax, int32 ColumnMax)` --
+UFunction `PopulateItemGrid(int32 RowMax, int32 ColumnMax)`.
 parameters struct from `WBP_InventoryInterface_parameters.hpp`, total
 0xB0 bytes (most of it post-call padding for the PE signature).
 
@@ -135,7 +135,7 @@ Examples:
 `WBP_InventoryInterface_C`. When any UFunction fires on the widget
 (`Construct`, `OnVisibilityChanged`, etc.), the hook gets a chance to
 re-call `PopulateItemGrid` on the same instance with the desired
-dimensions. The viewport scroll feature also lives here -- it
+dimensions. The viewport scroll feature also lives here. It
 manipulates `ItemStartIndex` so the visible 4x10 viewport scrolls
 through extra slots without needing the grid to be physically that
 tall.
@@ -196,7 +196,7 @@ unlock entry points:
 There is **no player-backpack row** in `Table_PlayerUpgrades` and no
 `BuggyInventorySize` analogue for the main backpack. The cheat-command
 channel that AIO Player Tweaks rides on cannot grow the player
-backpack -- the only mechanism is direct CDO patching of
+backpack. The only mechanism is direct CDO patching of
 `InventoryComponent.DefaultMaxSize`. This is why every working backpack
 mod (us, the "60 slots" Player Tweaks variant) is a CDO override, not
 a console-command sequence.
