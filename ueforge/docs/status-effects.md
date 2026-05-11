@@ -16,23 +16,23 @@
 
 ## The pattern
 
-In most UE5 RPG games every gameplay modifier you see -- gear
+In most UE5 RPG games every gameplay modifier you see. Gear
 bonuses, food buffs, perks, debuffs, status effects, sizzle /
-chill / fire -- is implemented as a **status effect** under
+chill / fire. Is implemented as a **status effect** under
 the hood. The UI calls them different things; the engine
 wires them all through one shared mechanism.
 
 Three pieces:
 
-1. **`U<X>StatusEffectComponent`** -- an actor component
+1. **`U<X>StatusEffectComponent`**. An actor component
    attached to the player / characters. Holds the live list
    (`TArray<UStatusEffect*>`) of every effect currently active
    on this owner.
-2. **`U<X>StatusEffect`** -- one live effect instance. Does
+2. **`U<X>StatusEffect`**. One live effect instance. Does
    NOT store the stat type or value as instance fields;
    instead it holds an `FDataTableRowHandle` pointing at a
    row in a global data table. **Row-driven.**
-3. **A `UDataTable`** holding `F<X>StatusEffectData` rows --
+3. **A `UDataTable`** holding `F<X>StatusEffectData` rows.
    one row per effect template (e.g. "bonemeal helmet +10
    HP", "spicy meal +10% damage", "sizzle 5 damage/sec").
    Columns are typically `Type` (`E<X>StatusEffectType`
@@ -55,7 +55,7 @@ but those writes are coarse and don't compose:
   sources (gear + perk + skill all contribute to the same
   stat).
 - The engine reads the status-effect list on every damage
-  event -- proportional scaling along a `sqrt(level/100)`
+  event. Proportional scaling along a `sqrt(level/100)`
   curve falls out naturally if the mod writes a row value
   proportional to skill level.
 - Vanilla heal multipliers / damage gates / status effects
@@ -131,7 +131,7 @@ effect at `Type=CriticalHitChance (add)` it should be `> 0.0`.
    the row is shared; mutating it affects any other system
    using the same row.
 2. **Pick a benign / unused row.** Same as (1) but pick a
-   row no other system reads -- often a `Type = Generic = 0`
+   row no other system reads. Often a `Type = Generic = 0`
    row or one whose `ApplicationTags` we can flip so vanilla
    code skips it. Lower risk than (1) if such a row exists.
 3. **Inject a new row at runtime.** The data table is a
@@ -139,7 +139,7 @@ effect at `Type=CriticalHitChance (add)` it should be `> 0.0`.
    uint8*>` internal field (typically at `+0x30`). Append a
    new entry at runtime keyed by a mod-specific name,
    populate with our row-struct bytes, then reference it.
-   Most invasive, also most stable -- no collision with
+   Most invasive, also most stable. No collision with
    vanilla rows.
 4. **Manual `UStatusEffect` subclass with overridden
    getters.** Create a subclass UClass at runtime that
@@ -148,7 +148,7 @@ effect at `Type=CriticalHitChance (add)` it should be `> 0.0`.
    path; UE class manipulation at runtime is nontrivial.
 
 For (1) and (2) ueforge ships
-[`StatusEffectApply`](../src/rpg/effect.rs) --
+[`StatusEffectApply`](../src/rpg/effect.rs).
 declare a catalog row with the table-finder, component class,
 row FName, value-at-max, and a `VanillaCache<u64, f32>`; the
 framework handles mutate-row + invoke `CreateAndAddEffect`.
@@ -182,11 +182,11 @@ To wire this against a game ueforge hasn't been tested on:
 
 ## See also
 
-- [`rpg.md`](rpg.md) "StatusEffectApply" -- the
+- [`rpg.md`](rpg.md) "StatusEffectApply". The
   ueforge catalog variant that binds to this pattern.
 - [`testing.md`](testing.md) -- `client::research` helpers
   for probing tables + rows.
 - [`../../grounded2-rpg/docs/damage.md`](../../grounded2-rpg/docs/damage.md)
-  "Status Effect system" -- the Grounded 2 / Maine
+  "Status Effect system". The Grounded 2 / Maine
   implementation: specific offsets, enum values, validated
   probe output, the live `Table_StatusEffects` instance.
