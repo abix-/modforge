@@ -21,7 +21,7 @@
 //!
 //! The handle's `stop()` flips an atomic; the worker exits at the
 //! next interval tick (~1s typical, bounded by `interval`).
-//! Required for hot-reload safety -- without a stop signal the
+//! Required for hot-reload safety. Without a stop signal the
 //! worker thread would outlive an unloaded DLL and segfault on
 //! the next callback into freed memory.
 
@@ -38,7 +38,7 @@ use parking_lot::Mutex;
 /// explicitly from `on_shutdown` to signal the worker.
 pub struct PollerHandle {
     stop: Arc<AtomicBool>,
-    /// Per-spawn diagnostic counter -- incremented every time the
+    /// Per-spawn diagnostic counter. Incremented every time the
     /// worker catches a panic from the resolver or callbacks.
     /// Snapshot surface so silent thread death stops being
     /// silent.
@@ -78,7 +78,7 @@ impl SlotPoller {
     /// Panics in the resolver / callbacks are caught, logged
     /// with the message payload, counted, and the most recent
     /// is exposed via [`PollerHandle::last_panic`]. The worker
-    /// keeps running -- a single bad tick doesn't kill slot
+    /// keeps running. A single bad tick doesn't kill slot
     /// tracking for the rest of the session.
     pub fn spawn<R, A, D>(
         interval: Duration,
