@@ -6,7 +6,7 @@
 
 ueforge ships a minimal Unreal Engine SDK shim sufficient for
 hooks, patches, and UFunction calls. It does NOT generate
-per-class headers from a Dumper-7 / UE4SS dump -- that's the
+per-class headers from a Dumper-7 / UE4SS dump. That's the
 job of the SDK dump itself, which lives next to your game's
 install. We model only the engine-internal layout (UObject /
 UClass / UFunction / FName / FString / TArray / TMap /
@@ -73,7 +73,7 @@ unsafe { obj.read_field::<f32>(0x328) }      // raw read
 unsafe { obj.write_field::<u32>(0xFC, mask) } // raw write
 ```
 
-For declared offsets (best practice -- centralizes the offset +
+For declared offsets (best practice. Centralizes the offset +
 type pair), use [`TypedField<T>`](#typedfield).
 
 ### Performance
@@ -109,7 +109,7 @@ impl UFunction {
 
 `get_function(class_name, fn_name)` walks the class's Children
 chain looking for a UFunction whose name matches and whose outer
-chain contains the named class -- so you only get the function
+chain contains the named class. So you only get the function
 if it's declared on the class you intended (not inherited from a
 parent with the same function name).
 
@@ -118,7 +118,7 @@ keyed on the UClass pointer. First call walks the FField chain;
 subsequent calls share the slice. This is what the Scanner UI
 uses for `inspect_address`.
 
-## ClassRef -- the canonical class handle
+## ClassRef. The canonical class handle
 
 `ueforge::ue::ClassRef` is a `const`-friendly handle that
 resolves a class lazily on first use and pointer-compares
@@ -195,7 +195,7 @@ the warm path is already O(1). The win from ClassRef is:
 
 Use `ClassRef` for static-declared class names. Use
 `find_class_fast` directly when the class name is computed at
-runtime -- or use `ClassRef::new_dynamic` (which leaks one heap
+runtime. Or use `ClassRef::new_dynamic` (which leaks one heap
 copy of the name).
 
 ## TypedField<T>
@@ -255,12 +255,12 @@ as_ref` chain.
 ### Safety
 
 `read` / `write` / `deref` / `ptr` are all `unsafe`. The
-unsafety is the same as raw `field_ptr` -- the caller asserts
+unsafety is the same as raw `field_ptr`. The caller asserts
 the offset + type pair matches the object's class. TypedField
 makes this assertion easier to spot review-wise (the const
 declaration is the one place to verify).
 
-## ue::field -- untyped byte ops
+## ue::field. Untyped byte ops
 
 When the field type or offset is decided at runtime (debug
 endpoints reading many shapes through one path, dumpers, ad-hoc
@@ -289,7 +289,7 @@ caller's responsibility (same contract as TypedField). Prefer
 TypedField for repeated load-bearing sites; prefer these for
 runtime-decided / one-off reads.
 
-## ue::damage_info -- FDamageInfo reader
+## ue::damage_info. FDamageInfo reader
 
 Every UE5 game with a damage system fills an `FDamageInfo`-shaped
 struct on its damage component (typically `UHealthComponent`)
@@ -317,7 +317,7 @@ Folds the index validation + GObjectsView walk + UClass cast into
 single method calls. Used by g2rpg's kill-hook to identify
 killers and discriminate environmental damage from creature hits.
 
-## ue::actor -- controller + class-chain helpers
+## ue::actor. Controller + class-chain helpers
 
 UE5 universals shared across game crates:
 
@@ -370,7 +370,7 @@ either way.
 
 `view.num()` is the live element count; mid-game on Grounded 2
 that's ~150K. A full walk takes ~2-5ms. Don't do this per
-frame. The walkers cache nothing internally -- repeated walks
+frame. The walkers cache nothing internally. Repeated walks
 are repeated work.
 
 ## find_class_fast
@@ -421,9 +421,9 @@ impl NameResolver {
 
 The resolver caches `FName u64 -> Arc<str>`. First resolve
 runs the engine's `AppendString` export (one FString buffer
-leaked per unique FName -- documented in [PERFORMANCE.md];
+leaked per unique FName. Documented in [PERFORMANCE.md];
 bounded by the game's name pool, ~50K). Subsequent resolves
-return an `Arc<str>` ref-bump -- no `String::clone`, no heap
+return an `Arc<str>` ref-bump. No `String::clone`, no heap
 allocation.
 
 Pick the API that fits the call site:
@@ -432,7 +432,7 @@ Pick the API that fits the call site:
   or pass `&str` (e.g. `name.starts_with("Default__")`,
   `name.contains("BP_")`). Zero alloc on cache hit. Preferred.
 - **`to_string(name)`** when you need an owned `String` you'll
-  mutate or move into a struct. One alloc at the boundary --
+  mutate or move into a struct. One alloc at the boundary.
   same cost as the previous API.
 
 ```rust
@@ -477,7 +477,7 @@ specific helpers like `find_value_by_fname_key`. See
 
 ## PlayerRef
 
-`ueforge::ue::PlayerRef` -- canonical "find the player" surface
+`ueforge::ue::PlayerRef`. Canonical "find the player" surface
 for UE5 mods.
 
 ```rust
@@ -569,11 +569,11 @@ get instantiated").
 
 ## Cross-references
 
-- [hooks.md](hooks.md) -- ProcessEvent + identity dispatch on
+- [hooks.md](hooks.md). ProcessEvent + identity dispatch on
   UFunctions you found via this SDK
-- [data-table.md](data-table.md) -- DataTable mutation patterns
-- [memory-tools.md](memory-tools.md) -- scanner / freeze /
+- [data-table.md](data-table.md). DataTable mutation patterns
+- [memory-tools.md](memory-tools.md). Scanner / freeze /
   inspect_address built on the SDK
-- [PERFORMANCE.md](PERFORMANCE.md) -- caching discipline
-- `../README.md` -- bootstrapping a new game (which platform
+- [PERFORMANCE.md](PERFORMANCE.md). Caching discipline
+- `../README.md`. Bootstrapping a new game (which platform
   offsets you need to fill in)
