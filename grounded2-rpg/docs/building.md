@@ -10,7 +10,7 @@ that UE4SS loads as a CPPMod. The C++ shim that satisfies UE4SS's
 helper; see [`../../ueforge/docs/lifecycle.md`](../../ueforge/docs/lifecycle.md).
 
 The framework crate (`ueforge`) lives elsewhere in the workspace
-and supplies every piece of generic infrastructure -- lifecycle,
+and supplies every piece of generic infrastructure. Lifecycle,
 UE SDK, hooks, HTTP control plane, ImGui bindings, RPG framework,
 build/deploy. This crate ships only the Grounded-2-specific
 content (offsets, skill effect variants, catalog rows, hooks,
@@ -18,7 +18,7 @@ parm structs).
 
 ## One mod, all testing inside it
 
-Project rule: there is exactly one mod -- `Grounded2RPG` -- and
+Project rule: there is exactly one mod -- `Grounded2RPG`. And
 every diagnostic, probe, trace, and feature lives inside it. Do not
 drop side-channel Lua probe mods or separate debug DLLs into the
 game install. Everything routes through our Rust code, gated behind
@@ -142,10 +142,10 @@ g2rpg-specific touchpoints:
   takes over (hook teardown -> HTTP listener join -> side-file
   swap).
 - Save state lives in `<DLL_dir>/saves/<playthrough-guid>.json`
-  -- survives the reload, re-read by the new image on slot
+ . Survives the reload, re-read by the new image on slot
   activation. See [`rpg.md`](rpg.md) "Persistence".
 - `settings.json` is hot-watched via `Settings::watch` (if
-  enabled) -- changes take effect without Ctrl+R; only code
+  enabled). Changes take effect without Ctrl+R; only code
   changes need the reload.
 
 ## Quality gates
