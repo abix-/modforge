@@ -14,7 +14,7 @@
 
 ---
 
-## P0 -- DataTableDef + ImGui browser (read-only)
+## P0. DataTableDef + ImGui browser (read-only)
 
 The architectural insight: stacks + difficulty + status effects
 are all special cases of "typed-field operations on iterated
@@ -31,13 +31,13 @@ The DISCOVERY path is the leverage point: a new game's bootstrap
 is "launch + curl `discover_data_tables` + pick fields". Land
 discovery before snapshot / browser / static catalog rows.
 
-- [x] **`DataTableDef`** -- workspace-standard
+- [x] **`DataTableDef`**. Workspace-standard
   `<Subject>Def`. Shipped `ueforge/src/data_table.rs` with `id`,
   `table_name`, `row_struct: RowSchema { name, fields: &[RowField
   { name, offset, element_size }] }`. Mirrors `NativeProperty`
-  for the field shape (no FieldKind enum for v1 -- element_size
+  for the field shape (no FieldKind enum for v1. Element_size
   is the discriminator, same as NativeProperty).
-- [x] **`DataTableRegistry`** -- slice-of-refs registry mirroring
+- [x] **`DataTableRegistry`**. Slice-of-refs registry mirroring
   `StackRegistry` / `StatusRegistry` (`def` / `entries` / `iter`
   / `len` / `is_empty` / `IntoIterator`).
 - [x] **Dynamic discovery + cache** -- `ueforge::discovery`
@@ -68,20 +68,20 @@ discovery before snapshot / browser / static catalog rows.
 
 ### Phase 1c: debug ops
 
-- [x] **`dump_data_table { table_name, max_rows? }`** -- returns
+- [x] **`dump_data_table { table_name, max_rows? }`**. Returns
   the live snapshot (rows + decoded fields) as JSON. Registered
   in `ueforge::ops::register_builtins`.
 - [x] **`discover_data_tables` / `discover_classes` /
-  `discover_structs`** -- read from the in-memory discovery
+  `discover_structs`**. Read from the in-memory discovery
   cache; `{refresh: true}` re-walks GObjects.
-- [ ] **`list_data_tables` (registry-only)** -- enumerate
+- [ ] **`list_data_tables` (registry-only)**. Enumerate
   registered `DataTableDef`s rather than every discovered table.
   Deferred until a per-mod `DataTableRegistry` is actually
-  populated -- today discovery covers the universe.
+  populated. Today discovery covers the universe.
 
 ### Phase 1d: ImGui browser tab
 
-- [x] **`ueforge::ui_data_table_browser::render`** -- new ImGui
+- [x] **`ueforge::ui_data_table_browser::render`**. New ImGui
   tab. Lists every discovered UDataTable from the
   `ueforge::discovery` cache; click "Open" to load a snapshot
   (schema + first N rows); "Refresh discovery" re-walks
@@ -95,7 +95,7 @@ discovery before snapshot / browser / static catalog rows.
 
 ### Phase 1e: validation
 
-- [x] **Compare static-declared vs discovered** --
+- [x] **Compare static-declared vs discovered**.
   `data_table::validate_registry(reg)` compares each
   `DataTableDef`'s field list against the live FProperty chain
   in the discovery cache and emits a JSON report + logs each
@@ -106,13 +106,13 @@ discovery before snapshot / browser / static catalog rows.
 
 ### Phase 1f (bonus): name-based writes (shipped)
 
-- [x] **`data_table::NamedFieldTweak<T>`** -- a wrapper over
+- [x] **`data_table::NamedFieldTweak<T>`**. A wrapper over
   `FieldTweak<T>` whose offset is resolved from the discovery
   cache on first apply. New-game bootstrap is now:
   declare `static FOO: NamedFieldTweak<i32> = NamedFieldTweak::new("DT_X", "Field")`
   + call `FOO.apply(...)`. No SDK header dive, no hand-typed
   offsets, no recompile after a UE patch that shifts the offset.
-- [x] **`data_table::resolve_field(table, field)`** -- low-level
+- [x] **`data_table::resolve_field(table, field)`**. Low-level
   lookup against the discovery cache. Returns
   `(offset, element_size, FProperty class)`. Useful for ad-hoc
   scripts + future generic tweak builders.
@@ -137,7 +137,7 @@ The pain begins:
 Don't start any of Phase 2 until 1a-e land + we've used the
 browser enough to know what shape the write surface should take.
 
-## P0 -- in-game smoke test
+## P0. In-game smoke test
 
 The full 2026-05-10 wave is build-clean and unit-tested but not
 yet validated in-game. Acceptance gate (drive from your machine):
@@ -154,21 +154,21 @@ If any of that fails, triage from the log lines.
 
 ---
 
-## P0 -- Triggers Phase 5c: lift kill/fall into framework triggers
+## P0. Triggers Phase 5c: lift kill/fall into framework triggers
 
 Phases 5a + 5b shipped 2026-05-10 (TriggerDef + TriggerCtx +
 Effect::apply(ctx) + Tracker fires SlotChange). The remaining
 piece formalises event-driven dispatch:
 
-- [ ] **`KillTrigger`** -- lift g2rpg's kill_hook into a
+- [ ] **`KillTrigger`**. Lift g2rpg's kill_hook into a
   framework module matching `damage::DamageHook`'s shape.
   Decodes MulticastHandleEffectsWithDamageFlags + KillingBlow
   filter. Fires `TriggerCtx::Kill(&KillEvent)` to subscribed
   effects. Game declares a `KillBinder` if it needs custom
   filter logic; otherwise framework default applies.
-- [ ] **`FallTrigger`** -- same lift for fall_hook. Fires
+- [ ] **`FallTrigger`**. Same lift for fall_hook. Fires
   `TriggerCtx::Fall(&FallEvent)`.
-- [ ] **`OnDamageDealtTrigger` / `OnDamageTakenTrigger`** --
+- [ ] **`OnDamageDealtTrigger` / `OnDamageTakenTrigger`**.
   wrap `damage::DamageHook` so skills declare the trigger
   inline rather than implementing `DamageBinder` directly.
 - [ ] **Replace stub event types** (`DamageEventStub`,
@@ -181,9 +181,9 @@ Eliminates ~300 LoC of bespoke g2rpg hook code; future
 event-driven skills (crit, evasion, thorns) become catalog rows
 instead of new trampoline modules.
 
-## P1 -- registry alignment (remaining)
+## P1. Registry alignment (remaining)
 
-- [ ] **`simulate_apply_damage` lift** (gated on Wave E1) --
+- [ ] **`simulate_apply_damage` lift** (gated on Wave E1).
   `ApplyDamageFromInfo` from inside any current PE trampoline
   re-enters ProcessEvent through the engine's damage-replication
   path and crashes the host. Lift to `ueforge::rpg::health` once
@@ -191,18 +191,18 @@ instead of new trampoline modules.
 
 ### Deferred (large lifts)
 
-- [ ] **Parm decoders** -- every PE-hooking module knows
+- [ ] **Parm decoders**. Every PE-hooking module knows
   "for UFunction X, the parm block has shape Y". Currently
   scattered across kill_hook / inv_hook / fall_hook as bespoke
   code. Could lift to `ParmDecoderDef { function_name, decode_fn
   }` + a per-class registry. Biggest payoff: a generic
   `walk_parms` debug op. Defer until a second consumer needs
   it.
-- [ ] **`ClassRef` registry** -- every declared `static FOO:
+- [ ] **`ClassRef` registry**. Every declared `static FOO:
   ClassRef = ClassRef::new("Foo")` could feed a workspace-wide
   `class_refs_list` op. Marginal; defer.
 
-## P1 -- ueforge durability (kovarex review wave 2, remaining)
+## P1. Ueforge durability (kovarex review wave 2, remaining)
 
 - [ ] **Sig-scan the four base offsets** instead of hardcoding.
   `ueforge/src/ue/offsets.rs` STEAM/XBOX blocks (`g_objects` /
@@ -225,7 +225,7 @@ instead of new trampoline modules.
   reaches zero. Track via
   `cargo clippy --workspace 2>&1 | rg -c "unsafe block missing a safety comment"`.
 
-## P2 -- ueforge grooming
+## P2. Ueforge grooming
 
 - [ ] **Hex codec -> `hex` crate.** Delete `ueforge/src/hex.rs`
   (~30 LoC saved).
@@ -241,7 +241,7 @@ instead of new trampoline modules.
   re-entrance is handled; add a test that fires a job which
   enqueues another job inside the same drain.
 - [ ] **Vendor SDK header.** `ueforge/src/ue/offsets.rs:2`
-  references `C:\Tools\work\sdk\SDK\Basic.hpp` -- a path on the
+  references `C:\Tools\work\sdk\SDK\Basic.hpp`. A path on the
   author's machine. Vendor under `ueforge/sdk/` or document the
   Dumper-7 invocation.
 - [ ] **UE-version-aware `ffield` / `fproperty` / `ustruct`
@@ -266,7 +266,7 @@ instead of new trampoline modules.
 - [ ] **`DLL_HMODULE` happens-before `dll_dir()` callers.**
   Worker threads starting before `set_dll_module` see CWD.
 
-## ueforge framework -- Wave E (deferred until needed)
+## ueforge framework. Wave E (deferred until needed)
 
 - [ ] **Global ProcessEvent pre-callback.**
   `RegisterProcessEventPreCallback` wrapper +
@@ -275,7 +275,7 @@ instead of new trampoline modules.
 - [ ] **`AddUObjectCreateListener` integration.** Land when
   ows-tweaks or g2rpg's CDO-revert-replay scenario asks. ~100 LoC.
 
-## ueforge framework -- still-open extractions
+## ueforge framework. Still-open extractions
 
 - [ ] **Leak-source helpers** -- `explore_leak_source.rs` (350
   lines) uses g2-extension `top_packages` / `loaded_levels` /
@@ -315,11 +315,11 @@ lines of game-side wiring.
 
 | Surface | Why universal |
 |---|---|
-| `BuildingDef<S, C>` catalog row -- id + display_name + description + default per-instance state `S` + game-specific config `C` | Every game's mod-added buildings have the same shape: a typed catalog. Same pattern as `rpg::Skill<E>`. |
+| `BuildingDef<S, C>` catalog row. Id + display_name + description + default per-instance state `S` + game-specific config `C` | Every game's mod-added buildings have the same shape: a typed catalog. Same pattern as `rpg::Skill<E>`. |
 | `BuildingRegistry: &'static [BuildingDef<S, C>]` + lookup-by-id | One source of truth, same as RPG catalog. |
-| Per-instance state store (`HashMap<Handle, S>`) | Every game tracks "what state is this placed building in" -- stored items, level, last-tick timestamp. Shape `S` is game-supplied. |
+| Per-instance state store (`HashMap<Handle, S>`) | Every game tracks "what state is this placed building in". Stored items, level, last-tick timestamp. Shape `S` is game-supplied. |
 | Per-slot JSON persistence (`<DLL_dir>/buildings/<playthrough-guid>.json`) | Same `SlotStore<S>` pattern from `ueforge::rpg`. Reuse, don't reinvent. |
-| Tick scheduler (closure fires per-instance every `interval`) | Auto-farm, regen, decay -- all "advance state by dt" patterns. Owned by the framework; rides on the existing `SlotPoller` shape. |
+| Tick scheduler (closure fires per-instance every `interval`) | Auto-farm, regen, decay. All "advance state by dt" patterns. Owned by the framework; rides on the existing `SlotPoller` shape. |
 | Standard debug ops (`buildings_list` / `buildings_place` / `buildings_destroy` / `buildings_get` / `buildings_set_state`) | Same shape as `rpg::ops`. Universal testing surface. |
 | ImGui tab template (catalog + placed-instance list + per-instance state viewer) | Same shape as `rpg::tab::render`. |
 
@@ -416,7 +416,7 @@ mod-generated FGuid), storage location, tick model.
 
 **Phase D: g2rpg consumer (proof of concept).**
 
-- [ ] D1: One concrete buildable -- the
+- [ ] D1: One concrete buildable. The
   **auto-fiber-harvester** (yields plant fibers at a configured
   rate, per-instance `{accumulated_units, last_yield}` state,
   transfers to nearest storage on threshold).
@@ -454,7 +454,7 @@ is the leverage point.
 
 ---
 
-## g2rpg -- catalog expansion
+## g2rpg. Catalog expansion
 
 Each entry is one [`skills::CATALOG`](../grounded2-rpg/src/rpg/skills.rs)
 row of an existing `SkillEffect` shape unless noted.
@@ -468,7 +468,7 @@ row of an existing `SkillEffect` shape unless noted.
   -> controller -> possessed pawn -> HC at +0x1340) and writes
   `event.damage * thorns_fraction` to its CurrentDamage. Same
   healing pattern proven via Lifesteal.
-- [ ] **Leap Distance** -- LANDED untested
+- [ ] **Leap Distance**. LANDED untested
   (`PlayerMovementMult` over AirControl trio).
 - [ ] **Auto-pickup (range).** Per-frame proximity scan picks up
   loose items. Open design: mechanism (existing proximity-pickup
@@ -486,14 +486,14 @@ row of an existing `SkillEffect` shape unless noted.
 
 Catalog target: ~25 skills. Today: 13.
 
-## g2rpg -- live-instance writes
+## g2rpg. Live-instance writes
 
 Some combat-side skills still write only to player CDOs.
 Movement now mirrors onto the live player pawn; remaining
 combat effects need the same. Each `SkillEffect` variant grows a
 "live walk" arm analogous to its CDO walk.
 
-## g2rpg -- pkg(0) instigator bug
+## g2rpg. Pkg(0) instigator bug
 
 Some legitimate player kills attribute to
 `/Script/CoreUObject (Package)` because
@@ -511,7 +511,7 @@ Investigation:
 3. Failing that, fall back heuristically (player in attack range
    + recently swung).
 
-## g2rpg -- status-effect migration (in progress)
+## g2rpg. Status-effect migration (in progress)
 
 Migrate Impact Damage Resistance and Lifesteal to the canonical
 status-effect surface first; rest of catalog follows. Detail in
@@ -520,7 +520,7 @@ status-effect surface first; rest of catalog follows. Detail in
 Concrete next steps:
 
 - [ ] **Optimize the discovery test.**
-  `tests/explore_status_effect_rows.rs` -- batch read_bytes (one
+  `tests/explore_status_effect_rows.rs`. Batch read_bytes (one
   big chunk) so it runs in seconds. Capture FName for each row.
 - [ ] **Pick target row per stat type.**
 - [ ] **Implement `SkillEffect::PlayerStatusEffect` variant** in
@@ -542,12 +542,12 @@ Concrete next steps:
   - `fall_resistance` -> ALSO apply `Type=FallDamage (14)` for
     consistency (keep velocity-stomp as the validated mechanism)
 
-Movement skills stay on direct CMC field writes -- the
+Movement skills stay on direct CMC field writes. The
 status-effect surface doesn't expose movement parameters with
 the granularity we use. Survival drains stay on
 SurvivalComponent CDO writes.
 
-## g2rpg -- RPG tuning
+## g2rpg. RPG tuning
 
 Open until we play more.
 
@@ -558,7 +558,7 @@ Open until we play more.
 - Level-up frequency vs catalog size: 50 levels = 50 points;
   catalog max-everything = ~225 points (9 skills x 25 avg).
 
-## g2rpg -- distribution
+## g2rpg. Distribution
 
 - [ ] **Vortex / Nexus packaging.** `cargo deploy package`
   produces the right zip layout. Need a Nexus listing
@@ -569,7 +569,7 @@ Open until we play more.
   `huntmaster`. Touches: Cargo.toml package name, workspace
   dir, settings file path, log header, README, Vortex zip name.
 
-## g2rpg -- feature ideas (not yet scoped)
+## g2rpg. Feature ideas (not yet scoped)
 
 - [ ] **Auto-farming buildings.** First concrete consumer of the
   buildings module above. Plant-fiber / resin auto-harvester as
@@ -577,7 +577,7 @@ Open until we play more.
 
 ---
 
-## g2rpg -- integration testing
+## g2rpg. Integration testing
 
 Reference design + test coverage principle:
 [`../grounded2-rpg/docs/testing.md`](../grounded2-rpg/docs/testing.md)
@@ -586,7 +586,7 @@ Reference design + test coverage principle:
 
 ### Read surface (snapshot fields)
 
-- [ ] **dmg-trace ring buffer in snapshot** -- last N multicast
+- [ ] **dmg-trace ring buffer in snapshot**. Last N multicast
   events. Currently log-only.
 - [ ] **player world location + equipped weapon** (context for
   fall / item-use simulation).
@@ -599,16 +599,16 @@ Reference design + test coverage principle:
   traffic drops near zero, starving the drain. `call` ops time
   out at 5s. Land Wave E1 (global ProcessEvent pre-callback)
   to fix permanently.
-- [~] **simulate_consume_item** -- via `call` once we know
+- [~] **simulate_consume_item**. Via `call` once we know
   TryUseItem signature on the player controller.
-- [~] **simulate_kill / simulate_fall** -- test-side via `call`.
+- [~] **simulate_kill / simulate_fall**. Test-side via `call`.
   Doable today.
-- [~] **simulate_status_effect_add / _remove** -- via `call` on
+- [~] **simulate_status_effect_add / _remove**. Via `call` on
   `UStatusEffectComponent::CreateAndAddEffect` once row handle
   layout is captured in a `#[repr(C)]` struct.
-- [~] **set_xp / set_level** -- via `call` if a setter UFunction
+- [~] **set_xp / set_level**. Via `call` if a setter UFunction
   exists, or via direct field-write.
-- [~] **clear_status_effects** -- via `call` or direct TArray
+- [~] **clear_status_effects**. Via `call` or direct TArray
   write.
 
 ### Test coverage (per-skill principle)
