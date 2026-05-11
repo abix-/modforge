@@ -1,6 +1,6 @@
 # Workers
 
-> **Authoritative on:** `ueforge::worker::spawn` -- the
+> **Authoritative on:** `ueforge::worker::spawn`. The
 > canonical named worker thread with panic catch + logged
 > payload.
 
@@ -28,7 +28,7 @@ where
     F: FnOnce() + Send + 'static;
 ```
 
-`name` is `&'static str` -- typically a string literal. It shows
+`name` is `&'static str`. Typically a string literal. It shows
 up in:
 - The Windows thread description (visible to debuggers / crash
   dumps).
@@ -64,7 +64,7 @@ up in:
 
 What the worker pattern is NOT good for:
 
-- **Polled state machines** -- use `SlotPoller` instead, which
+- **Polled state machines**. Use `SlotPoller` instead, which
   ships with a built-in 1Hz poll loop and transition detection.
 - **Game-thread mutation** -- `worker::spawn` runs off-thread.
   Mutation that needs game-thread access enqueues on `Queue`
@@ -76,7 +76,7 @@ What the worker pattern is NOT good for:
 ## Lifecycle
 
 The thread runs `work()` to completion, then exits. There's no
-shutdown signal -- if your body is `loop { ... sleep ...; }`,
+shutdown signal. If your body is `loop { ... sleep ...; }`,
 the thread runs for life of process. (kovarex P0: the
 `SlotPoller` analogue needs an `Arc<AtomicBool>` stop flag for
 hot-reload safety. The `worker::spawn` API is one-shot so the
@@ -85,7 +85,7 @@ LOOPS inside the worker.)
 
 `std::mem::forget` semantics: the spawned thread joins
 implicitly when the process exits. There's no `JoinHandle`
-returned -- the worker is fire-and-forget by design.
+returned. The worker is fire-and-forget by design.
 
 ## Panic payload semantics
 
@@ -93,13 +93,13 @@ returned -- the worker is fire-and-forget by design.
 `Box<dyn Any + Send>`. ueforge downcasts to `&'static str` and
 `String` (the common cases); anything else logs as
 `"<non-string panic payload>"`. If you panic with a custom type,
-the type is lost in the log -- format the payload as a string
+the type is lost in the log. Format the payload as a string
 before panicking, or use `panic!("custom: {}", value)`.
 
 ## Cross-references
 
-- [lifecycle.md](lifecycle.md) -- how the worker fits into mod
+- [lifecycle.md](lifecycle.md). How the worker fits into mod
   init
 - [rpg.md](rpg.md) -- `SlotPoller` (the recurring-poll variant)
-- [pe-queue.md](pe-queue.md) -- enqueueing work to the game
+- [pe-queue.md](pe-queue.md). Enqueueing work to the game
   thread from a worker
