@@ -1,4 +1,4 @@
-//! `ClassFieldTweak<T>` -- live-UObject sibling of
+//! `ClassFieldTweak<T>`. Live-UObject sibling of
 //! [`crate::ue::datatable::FieldTweak`]. Walks every UObject of a
 //! named class, snapshots a vanilla value per instance the first
 //! time it's seen, and writes a transformed value on every apply.
@@ -29,7 +29,7 @@
 //!
 //! Like [`crate::ue::datatable::FieldTweak`], the vanilla snapshot
 //! is keyed per-instance (by UObject address) so re-applies with a
-//! different transform don't compound on each other -- toggle a
+//! different transform don't compound on each other. Toggle a
 //! 4x multiplier to 8x, the second apply rewrites from vanilla, not
 //! from 4x-of-vanilla.
 //!
