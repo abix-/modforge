@@ -5,7 +5,7 @@
 //! resolution) reads from the cache.
 //!
 //! ```text
-//! K8s slot: Def=DiscoverySnapshot (singleton; no kinds — carve-out
+//! K8s slot: Def=DiscoverySnapshot (singleton; no kinds. Carve-out
 //!                                  like Settings),
 //!           Registry=n/a,
 //!           Instance=cached Arc<DiscoverySnapshot>,
@@ -203,7 +203,7 @@ fn walk() -> DiscoverySnapshot {
 
     for obj in view.iter() {
         scanned += 1;
-        // Coarse progress log every 1000 -- 175 lines max per
+        // Coarse progress log every 1000. 175 lines max per
         // walk. The danger zone in OWS (20K-40K) gets per-object
         // step traces; see `trace_step` calls below.
         if scanned.is_multiple_of(1000) {
@@ -376,7 +376,7 @@ pub fn struct_detail_json(struct_name: &str) -> Json {
         {
             continue;
         }
-        // Wrap the per-object class+name reads in catch_unwind --
+        // Wrap the per-object class+name reads in catch_unwind.
         // FName resolve can panic on corrupt FName indices in
         // late-loaded content, especially when scanning 175K objects.
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
