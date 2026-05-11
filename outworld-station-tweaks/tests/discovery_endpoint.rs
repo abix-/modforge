@@ -88,7 +88,7 @@ fn discover_data_tables_name_filter_isolates_dt_materials() {
     }
     let m = &r.result["match"];
     assert_eq!(m["table_name"].as_str(), Some("DT_Materials"));
-    // Eager describe holds names only -- schema walk moved to
+    // Eager describe holds names only. Schema walk moved to
     // dump_data_table (see `dt_materials_schema_via_dump`).
 }
 
@@ -179,7 +179,7 @@ fn discover_struct_detail_for_vector() {
         .iter()
         .filter_map(|f| f["name"].as_str())
         .collect();
-    // Skip if schema walk on this build produced garbage names --
+    // Skip if schema walk on this build produced garbage names.
     // the framework should still not have crashed.
     let looks_corrupt = names.iter().any(|n| {
         n.contains('\0') || n.starts_with('<') || n.is_empty() || n.len() > 64
@@ -221,7 +221,7 @@ fn dump_data_table_for_dt_materials() {
             .as_object()
             .expect("row.fields should be object");
         // Schema walk on OWS sometimes yields no usable FField
-        // chain for this struct -- fields end up with one
+        // chain for this struct. Fields end up with one
         // sentinel key like "<bogus-fname>". When that happens,
         // log it and skip the per-field assertion. The framework
         // still didn't crash, which is the property we care
