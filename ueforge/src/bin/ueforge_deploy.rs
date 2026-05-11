@@ -1,4 +1,4 @@
-//! `ueforge-deploy` — framework-level build + install + package
+//! `ueforge-deploy`. Framework-level build + install + package
 //! CLI for any ueforge-based UE4SS Rust mod in the workspace.
 //!
 //! Each mod opts in by adding a `[package.metadata.ueforge]`
@@ -6,8 +6,8 @@
 //! workspace:
 //!
 //! ```text
-//! cargo run -p ueforge-deploy --release -- install -p tweaks
-//! cargo run -p ueforge-deploy --release -- install -p grounded2-rpg
+//! cargo run -p ueforge-deploy --release. Install -p tweaks
+//! cargo run -p ueforge-deploy --release. Install -p grounded2-rpg
 //! ```
 //!
 //! Or with the `cargo deploy` alias defined in
