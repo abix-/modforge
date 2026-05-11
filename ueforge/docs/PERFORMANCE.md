@@ -49,7 +49,7 @@ without our control over rate. In a UE4SS Rust mod that's:
    drain the PE queue inherits the queue's processing cost on
    every fire, on top of its own.
 
-Cold paths -- never sweat allocations on these:
+Cold paths. Never sweat allocations on these:
 
 - Slot activate / deactivate (~once per save load, seconds apart).
 - Skill spend / refund / toggle (user click).
@@ -73,7 +73,7 @@ ueforge gives you the tools to avoid this:
   pointer in an `AtomicUsize` or a `OnceLock`, pointer-compare
   per fire. See [`ueforge::hook::function_ptr`] for one-shot,
   [`ueforge::hook::LazyFunctionPtr`] for lazy.
-- Resolve classes via [`ueforge::ue::ClassRef`] -- internally
+- Resolve classes via [`ueforge::ue::ClassRef`]. Internally
   cached.
 - Build [`ueforge::function_table!`] tables at install time so
   trampolines pointer-compare into a struct of `usize` slots
@@ -107,7 +107,7 @@ fires are 1 atomic load + 1 cmp + branch.
 `AtomicBool` / `AtomicUsize` shadow flags for empty-check
 fast paths. Take the mutex only when there's actually work to do.
 
-[`ueforge::Queue::drain`] uses an `AtomicUsize` counter -- empty
+[`ueforge::Queue::drain`] uses an `AtomicUsize` counter. Empty
 queues bail in nanoseconds without touching the mutex. The PE hook
 registry uses [`arc_swap::ArcSwap`] for the same reason: the
 trampoline reads a snapshot via one atomic load + Arc clone.
@@ -115,14 +115,14 @@ Install/drop touches the writer mutex; the trampoline does not.
 
 ### 4. Bounded everything
 
-Rings, queues, caches, ledgers -- everything is bounded for the
+Rings, queues, caches, ledgers. Everything is bounded for the
 life of the process or it leaks.
 
-- [`ueforge::ring::EventRing<T>`] -- bounded drop-oldest with
+- [`ueforge::ring::EventRing<T>`]. Bounded drop-oldest with
   built-in push-counter + peak watermark.
-- [`ueforge::ring::Ring<T>`] -- raw bounded ring.
-- [`ueforge::Queue`] -- bounded with re-entrance guard.
-- [`ueforge::ue::fname::NameResolver`] -- caps the FString leak
+- [`ueforge::ring::Ring<T>`]. Raw bounded ring.
+- [`ueforge::Queue`]. Bounded with re-entrance guard.
+- [`ueforge::ue::fname::NameResolver`]. Caps the FString leak
   by caching FName u64 -> String per unique FName.
 
 If you build a `HashMap<usize, T>` or `Vec<T>` keyed by something
@@ -132,7 +132,7 @@ on a timer or bound the structure.
 ### 5. Cold init path catches bugs that hot path can't afford to
 
 Every property name resolve, every offset validation, every class
-match -- do it ONCE at install. The trampoline trusts the cache.
+match. Do it ONCE at install. The trampoline trusts the cache.
 If the install path detected the wrong class, the trampoline
 won't notice; you'll just dispatch on a stale function pointer.
 Make install bulletproof so the trampoline can be reckless.
@@ -148,13 +148,13 @@ to receive every fire. Log-and-skip on rare anomalies.
 
 Every hook gets a triple of named counters:
 
-- `<HOOK>_FIRES` -- bumped on every entry to the trampoline.
-- `TIME_NS_<HOOK>` -- accumulated wall time spent inside (via
+- `<HOOK>_FIRES`. Bumped on every entry to the trampoline.
+- `TIME_NS_<HOOK>`. Accumulated wall time spent inside (via
   [`ueforge::counters::time_scope`]).
-- `<HOOK>_<KIND>_ALLOCS` -- per heap-alloc site that survives a
+- `<HOOK>_<KIND>_ALLOCS`. Per heap-alloc site that survives a
   release-build cfg-gate. Trip-wire for performance regressions.
 
-Plus relevant subsetting counters (`KILL_HOOK_PLAYER_FIRES` --
+Plus relevant subsetting counters (`KILL_HOOK_PLAYER_FIRES`.
 how many of the fires were the case we actually act on).
 
 Diff the counters between two `/debug snapshot` calls to identify
@@ -177,7 +177,7 @@ call leaks a buffer.
 **Fix:** [`ueforge::ue::fname::NameResolver`] caches the resolved
 String per unique FName u64. Bounded by the engine's FName pool
 (stable size for a given game). Use it through the standard
-SDK helpers (`UObject::name`, `UFunction::function_flags`, etc.) --
+SDK helpers (`UObject::name`, `UFunction::function_flags`, etc.).
 they go through the resolver.
 
 **Don't** call `name()` on the trampoline hot path even with the
@@ -202,7 +202,7 @@ Every property-name introspection used to allocate
 in the Scanner UI = 100-300 heap allocs on the render thread.
 
 **Fix:** [`ueforge::ue::UClass::cached_native_properties`] returns
-`Arc<[NativeProperty]>` -- subsequent calls share the slice.
+`Arc<[NativeProperty]>`. Subsequent calls share the slice.
 
 ### inv_hook viewport map growing per session
 
@@ -228,7 +228,7 @@ Old `Box::leak(Vec<...>)` pattern leaked one snapshot per
 install/drop cycle.
 
 **Fix:** [`ueforge::hook::process_event`] uses
-[`arc_swap::ArcSwap`] -- one well-tested crate, no leak.
+[`arc_swap::ArcSwap`]. One well-tested crate, no leak.
 
 ## What ueforge already does for you (consume, don't reinvent)
 
@@ -251,7 +251,7 @@ install/drop cycle.
 
 If you reached for one of these by hand-rolling it, stop. If you
 need something not on this list, file it and add it to ueforge
-first -- always change ueforge first, every time.
+first. Always change ueforge first, every time.
 
 ## What you (the consumer) still have to do
 
