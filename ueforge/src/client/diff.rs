@@ -30,7 +30,7 @@ use super::Api;
 
 /// A single point-in-time capture of the standard mod snapshot.
 /// Holds the raw JSON so we don't need a typed `Snapshot` shape
-/// here -- every consumer's snapshot embeds `ProcessSnapshot`
+/// here. Every consumer's snapshot embeds `ProcessSnapshot`
 /// (via `#[serde(flatten)]`), so the standard fields are at the
 /// top level of any concrete `S`.
 pub struct MetricsSnapshot {
