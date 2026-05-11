@@ -12,7 +12,7 @@
 //!
 //! ```text
 //! set MY_MOD_DEBUG_PORT=17171
-//! cargo test --test foo -- --test-threads=1 --nocapture
+//! cargo test --test foo. --test-threads=1 --nocapture
 //! ```
 //!
 //! Tests share a single global game state, so always pass
@@ -48,7 +48,7 @@ pub struct Api<S> {
 
 impl<S: DeserializeOwned> Api<S> {
     /// Connect at an explicit port. Default timeout
-    /// `DEFAULT_TIMEOUT_SECS` — chain `.with_timeout(...)` to
+    /// `DEFAULT_TIMEOUT_SECS`. Chain `.with_timeout(...)` to
     /// override.
     pub fn at(port: u16, endpoint: impl Into<String>) -> Self {
         let timeout = Duration::from_secs(DEFAULT_TIMEOUT_SECS);
@@ -110,7 +110,7 @@ impl<S: DeserializeOwned> Api<S> {
     }
 
     /// POST a request, parse the response. Panics on transport or
-    /// JSON errors — these are infrastructure failures, not test
+    /// JSON errors. These are infrastructure failures, not test
     /// failures, and a panic surfaces them clearly. Use
     /// [`Self::try_op`] to handle them as `Err` instead.
     pub fn op(&self, op: &str, args: Value) -> OpResponse<S> {
@@ -147,7 +147,7 @@ impl<S: DeserializeOwned> Api<S> {
         self.op("snapshot", Value::Null).state
     }
 
-    /// Snapshot without typed deserialization -- returns the raw
+    /// Snapshot without typed deserialization. Returns the raw
     /// `state` `Value`. Use when generic helpers
     /// ([`crate::client::diff`]) want to read fields by JSON
     /// path without the per-mod `Snapshot` shape getting in the
