@@ -74,7 +74,7 @@ pub unsafe fn iter_rows(table: &UObject) -> impl Iterator<Item = (u64, *const u8
 ///
 /// `on_ready` runs on the worker thread (not the game thread).
 /// Reading + writing field bytes via raw pointer arithmetic is
-/// safe enough for one-shot DT mutations during init — UE isn't
+/// safe enough for one-shot DT mutations during init. UE isn't
 /// iterating those rows yet. For anything more invasive, queue
 /// to a game-thread drain via `ueforge::Queue`.
 ///
@@ -142,7 +142,7 @@ where
 /// `T` must be `Copy + PartialEq` (we read-compare-write each
 /// row) and `Send + 'static` (we share state across threads).
 /// Common Ts: `i32`, `f32`, `u8`. Larger row fields (FName,
-/// FString, FVector) need bespoke logic — this primitive is for
+/// FString, FVector) need bespoke logic. This primitive is for
 /// the simple primitive-typed case.
 pub struct FieldTweak<T: Copy + PartialEq + Send + 'static> {
     table_name: &'static str,
@@ -258,7 +258,7 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
 /// matches `name`. Walks GObjects; cost is one full pass. Returns
 /// the live UObject reference (lifetime extended to `'static`,
 /// caller is on a game-thread / quiescent-period stability
-/// contract — see `ueforge::selector::resolve_generic`).
+/// contract. See `ueforge::selector::resolve_generic`).
 pub fn find_by_short_name(name: &str) -> Option<&'static UObject> {
     let rt = ue::try_runtime()?;
     let class = ue::find_class_fast("DataTable")?;
@@ -274,7 +274,7 @@ pub fn find_by_short_name(name: &str) -> Option<&'static UObject> {
             continue;
         }
         if obj.name() == name {
-            // SAFETY: lifetime extension — see selector::resolve_generic.
+            // SAFETY: lifetime extension. See selector::resolve_generic.
             let extended: &'static UObject =
                 unsafe { std::mem::transmute::<&UObject, &'static UObject>(obj) };
             return Some(extended);
