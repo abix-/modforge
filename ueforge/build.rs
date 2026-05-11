@@ -53,7 +53,7 @@ fn main() {
         .warnings(false)
         .compile("ueforge_native");
 
-    // No UE4SS.lib link here. ueforge_ui.cpp has no UE4SS deps —
+    // No UE4SS.lib link here. ueforge_ui.cpp has no UE4SS deps.
     // the context bridge lives in ueforge_shim.cpp, which only the
     // game's cdylib link pulls in (via ueforge::build::CppShim).
     let _ = ue4ss; // path silenced; CppShim emits the link.
