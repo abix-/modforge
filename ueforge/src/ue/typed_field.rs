@@ -101,7 +101,7 @@ impl<T: Copy> TypedField<T> {
 /// `ASurvivalCharacter.HealthComponent` (UObject* at +0x1340).
 ///
 /// Specialized impl for `TypedField<*mut UObject>` so the deref
-/// stays inside the framework -- callers don't redo `field_ptr +
+/// stays inside the framework. Callers don't redo `field_ptr +
 /// cast + read_unaligned + as_ref` per field.
 impl TypedField<*mut UObject> {
     /// Follow this component pointer. Returns None if the pointer
@@ -148,6 +148,6 @@ mod tests {
         let f: TypedField<f32> = TypedField::at(0x10);
         let u: TypedField<u32> = TypedField::at(0x10);
         assert_eq!(f.offset(), u.offset());
-        // (No way to assign `f = u` -- that's the protection.)
+        // (No way to assign `f = u`. That's the protection.)
     }
 }
