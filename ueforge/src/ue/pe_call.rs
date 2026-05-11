@@ -20,7 +20,7 @@ use crate::ue::{ClassRef, UObject};
 
 /// Call a UFunction by name on `target`, passing a `#[repr(C)]`
 /// parm struct by mutable reference. The engine may write OUT
-/// fields back into `parms` during the call -- caller reads them
+/// fields back into `parms` during the call. Caller reads them
 /// after this returns.
 ///
 /// Returns an error string if the function isn't found on
