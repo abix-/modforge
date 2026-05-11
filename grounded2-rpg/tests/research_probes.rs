@@ -8,14 +8,14 @@
 //
 // Original mod-side functions removed in 2026-05-09 evening's
 // performance pass (they fired on every UFunction call to the
-// player BP class -- 1090+/sec -- causing 50% CPU and growing
+// player BP class. 1090+/sec. Causing 50% CPU and growing
 // RAM through allocator churn). See `../docs/ongoing.md` section
 // 13 "Measured runaway".
 //
 // Each probe below is `#[ignore]`d by default. Run individually:
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --target x86_64-pc-windows-msvc \
-//     --test research_probes <probe_name> -- --nocapture --ignored
+//     --test research_probes <probe_name>. --nocapture --ignored
 
 #![allow(dead_code)]
 
