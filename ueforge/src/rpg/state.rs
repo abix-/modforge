@@ -1,4 +1,4 @@
-//! `SkillsState` -- the persisted shape every RPG mod needs:
+//! `SkillsState`. The persisted shape every RPG mod needs:
 //! cumulative XP, current level, unspent skill points, and a
 //! `skill_id -> level` map. Open-shape `BTreeMap<String, u32>` so
 //! games can add skills without breaking existing save files.
