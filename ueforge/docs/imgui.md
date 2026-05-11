@@ -28,7 +28,7 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
 };
 ```
 
-`Tab::render` is a `fn()` -- a non-capturing function pointer.
+`Tab::render` is a `fn()`. A non-capturing function pointer.
 You can't close over state at registration; statics + lookup
 inside the render body are the way. Tab order in the array is
 display order in the ImGui window.
@@ -146,7 +146,7 @@ ui::table_columns(3, |row| {
 });
 ```
 
-The table API is intentionally minimal -- complex grids belong
+The table API is intentionally minimal. Complex grids belong
 in a dedicated UI mod or a custom render.
 
 ## Scanner tab (built-in)
@@ -207,7 +207,7 @@ group of widgets that might trigger a callback that re-locks
 
 Every interactive widget needs a stable unique identity for
 ImGui state to track properly. The `##id` suffix is the
-cleanest way -- buttons in a per-row loop look like
+cleanest way. Buttons in a per-row loop look like
 `format!("+1##{}", skill.id)`. Without unique ids, ImGui treats
 every button labeled "+1" as the same widget and click handling
 breaks.
@@ -215,7 +215,7 @@ breaks.
 ### Default summon key
 
 UE4SS controls the ImGui summon key. Default is `Insert`.
-Don't try to override -- UE4SS owns the toggle.
+Don't try to override. UE4SS owns the toggle.
 
 ## C++ bridge details
 
@@ -230,12 +230,12 @@ ueforge's C++ side (in `cpp/ueforge_ui.cpp`) provides
 
 If you need an ImGui call ueforge doesn't expose, add it to
 `ueforge::ui` and the C bridge in the same commit. Don't FFI
-directly from your mod -- the framework owns the bridge.
+directly from your mod. The framework owns the bridge.
 
 ## ImGui version
 
 v1.92.1 vendored at `ueforge/cpp/imgui/`. Matches UE4SS's bundle
-exactly. Don't bump independently -- a version skew between our
+exactly. Don't bump independently. A version skew between our
 bundle and UE4SS's at runtime causes context state corruption.
 The right path is: UE4SS upstream bumps, we sync. Until then,
 don't touch the vendored copy.
@@ -243,8 +243,8 @@ don't touch the vendored copy.
 ## Cross-references
 
 - [lifecycle.md](lifecycle.md) -- `Tab` registration in `ModInfo`
-- [rpg.md](rpg.md) -- the canonical RPG tab template
-- [memory-tools.md](memory-tools.md) -- the Scanner tab's
+- [rpg.md](rpg.md). The canonical RPG tab template
+- [memory-tools.md](memory-tools.md). The Scanner tab's
   underlying ops
-- [pe-queue.md](pe-queue.md) -- queue heavy work to the game
+- [pe-queue.md](pe-queue.md). Queue heavy work to the game
   thread instead of doing it on the render thread
