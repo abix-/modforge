@@ -23,13 +23,13 @@ use super::progress::sqrt_progress;
 /// Tag for the four idiomatic percent-format shapes.
 #[derive(Debug, Clone, Copy)]
 pub enum PercentFormat {
-    /// "+25% damage (1.25x)" -- multiplier-style buff.
+    /// "+25% damage (1.25x)". Multiplier-style buff.
     PlusPercentMult { word: &'static str },
-    /// "-25% damage taken" -- reduction-style buff.
+    /// "-25% damage taken". Reduction-style buff.
     MinusPercent { word: &'static str },
-    /// "+30% lifesteal" -- raw fraction, no multiplier shown.
+    /// "+30% lifesteal". Raw fraction, no multiplier shown.
     PlusPercent { word: &'static str },
-    /// "-25% drain (0.75x)" -- multiplicative-drain reduction.
+    /// "-25% drain (0.75x)". Multiplicative-drain reduction.
     DrainReduction,
 }
 
@@ -47,7 +47,7 @@ pub fn skill_bonus(max_bonus: f32, level: u32, max_level: u32) -> f32 {
 /// "+N% word" / drain text per the chosen shape.
 ///
 /// `base` is the engine's vanilla value (e.g. 1.0 for damage
-/// multiplier) -- the formatter shows `base + bonus` as the
+/// multiplier). The formatter shows `base + bonus` as the
 /// resulting multiplier where applicable.
 pub fn format_pct(
     base: f32,
@@ -79,7 +79,7 @@ pub fn format_pct(
     }
 }
 
-/// "+N% word (Xx)" -- multiplier-style write for skills whose
+/// "+N% word (Xx)". Multiplier-style write for skills whose
 /// effective multiplier is `1 + max_bonus * progress` (the shape
 /// `PlayerMovementMult` and `GlobalDataMult` use).
 pub fn format_multiplier(
@@ -94,7 +94,7 @@ pub fn format_multiplier(
     format!("+{pct}% {word} ({mult:.2}x)")
 }
 
-/// "+N word" -- raw additive count for things like "+460 slots".
+/// "+N word". Raw additive count for things like "+460 slots".
 pub fn format_additive_int(
     max_bonus: i32,
     level: u32,
@@ -105,7 +105,7 @@ pub fn format_additive_int(
     format!("+{bonus} {word}")
 }
 
-/// "+N word" -- additive float rendered as int. Used for things
+/// "+N word". Additive float rendered as int. Used for things
 /// like "+200 max health" where the underlying value is f32 but
 /// the user-visible figure is an integer count.
 pub fn format_additive_f32_as_int(
