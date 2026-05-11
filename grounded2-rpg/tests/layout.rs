@@ -1,7 +1,7 @@
 // Layout assertions cross-checked against Dumper-7 SDK headers
 // (`C:\Tools\work\sdk\SDK\Basic.hpp` and `CoreUObject_classes.hpp`).
 // These run on host, not in-game, so they verify only sizes/offsets of our
-// own #[repr(C)] mirrors -- not the live game layout. The live layout is
+// own #[repr(C)] mirrors. Not the live game layout. The live layout is
 // validated implicitly the first time we read fields successfully.
 
 use main::sdk::{FName, FString, TArray};
