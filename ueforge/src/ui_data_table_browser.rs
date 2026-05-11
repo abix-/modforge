@@ -1,5 +1,5 @@
 //! Built-in ImGui browser tab for every discovered UDataTable.
-//! Every game using ueforge gets this for free -- just include
+//! Every game using ueforge gets this for free. Just include
 //! `ueforge::ui_data_table_browser::render` in your `ModDef::tabs`:
 //!
 //! ```ignore
@@ -109,7 +109,7 @@ pub fn render() {
             continue;
         }
         shown_count += 1;
-        // Eager cache holds names only now -- schema + row_struct
+        // Eager cache holds names only now. Schema + row_struct
         // walk happens on Open click via snapshot_table.
         let row_struct = "?";
         let field_count: usize = 0;
