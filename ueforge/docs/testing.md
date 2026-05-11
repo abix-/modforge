@@ -12,7 +12,7 @@ mod investigation reimplements from scratch:
 | Module | What it does | Replaces |
 |---|---|---|
 | [`research`](#research) | Find DataTables, walk rows, find class instances, typed reads | "walk_class + parse TMap header + batch element-array read + decode FName + read row fields" boilerplate |
-| [`diff`](#diff) | Snapshot delta analysis -- counters / memory / cpu / threads / GObjects population | "u64_field + saturating_sub + sort + writeln! table" boilerplate |
+| [`diff`](#diff) | Snapshot delta analysis. Counters / memory / cpu / threads / GObjects population | "u64_field + saturating_sub + sort + writeln! table" boilerplate |
 | [`scenario`](#scenario) | Pester-style fluent DSL for per-skill behavior tests | "connect/skip + read baseline + check skill points + spend + read after + assert + refund" boilerplate |
 
 ## Setup
@@ -71,7 +71,7 @@ inspect failures.
 
 ## research
 
-`ueforge::client::research` -- find UObjects, walk DataTables,
+`ueforge::client::research`. Find UObjects, walk DataTables,
 read fields by offset.
 
 ```rust
@@ -120,7 +120,7 @@ println!("{report}");
 
 ## diff
 
-`ueforge::client::diff` -- snapshot deltas with `Display` impls
+`ueforge::client::diff`. Snapshot deltas with `Display` impls
 that emit the same table format you'd hand-roll.
 
 ```rust
@@ -161,7 +161,7 @@ assert!(mem.working_set_delta_mb() < 50.0, "leaking > 50 MB / window");
 
 ## scenario
 
-`ueforge::client::scenario` -- Pester-style fluent DSL for
+`ueforge::client::scenario`. Pester-style fluent DSL for
 per-skill behavior tests.
 
 ```rust
@@ -229,9 +229,9 @@ the same savings.**
 
 ## See also
 
-- [http.md](http.md) -- the underlying HTTP listener + op
+- [http.md](http.md). The underlying HTTP listener + op
   catalog the client talks to.
-- [`../README.md`](../README.md) -- audit table; rows under
+- [`../README.md`](../README.md). Audit table; rows under
   "Test client" name every helper in this doc.
-- [RESEARCH.md](RESEARCH.md) -- test-driven investigation
+- [RESEARCH.md](RESEARCH.md). Test-driven investigation
   doctrine. Pair with the helpers here.
