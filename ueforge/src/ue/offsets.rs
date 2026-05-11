@@ -2,7 +2,7 @@
 // `C:\Tools\work\sdk\SDK\Basic.hpp` from Dumper-7.
 //
 // Two builds: Steam and Xbox Game Pass. We pick at runtime by matching the
-// host process exe name -- see `detect_platform`.
+// host process exe name. See `detect_platform`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
@@ -96,7 +96,7 @@ pub mod ustruct {
     pub const SIZE: usize = 0xB0;                // PropertiesSize i32
 }
 
-/// FField — UE 5.x lightweight property header. Lives off
+/// FField. UE 5.x lightweight property header. Lives off
 /// `UStruct::ChildProperties` chain, threaded by `Next`.
 /// Verified against UE 5.4 stock; sizes/offsets are stable
 /// through UE 5.x.
@@ -109,7 +109,7 @@ pub mod ffield {
 }
 
 /// FProperty extends FField. `OFFSET_INTERNAL` is the byte
-/// offset of this field within an instance — what
+/// offset of this field within an instance. What
 /// inspect_address uses to map an address back to a field name.
 pub mod fproperty {
     pub const ARRAY_DIM: usize = 0x30;
@@ -130,7 +130,7 @@ pub mod ufunction {
     pub const SIZE: usize = 0xE0;
 }
 
-/// `FFixedUObjectArray` — used by `GObjectsLayout::FlatFixed`.
+/// `FFixedUObjectArray`. Used by `GObjectsLayout::FlatFixed`.
 pub mod tuobject_array {
     pub const OBJECTS: usize = 0x00;
     pub const MAX_ELEMENTS: usize = 0x08;
@@ -162,7 +162,7 @@ pub const FUNC_NATIVE: u32 = 0x400;
 
 // TMap layout. Stable through UE 5.0-5.4. Verified empirically
 // (the stride was 16 in older UE; UE5 bumped it to 24). Override
-// these per-game if a future engine bump shifts them — callers
+// these per-game if a future engine bump shifts them. Callers
 // pass the offsets explicitly to `tmap::slots(obj, offset)` so
 // only the per-element / per-pair shape is constants here.
 pub mod tmap {
@@ -190,7 +190,7 @@ pub mod tmap {
 // (UE5-Augusta).
 pub mod datatable {
     pub const ROW_MAP: usize = 0x0030;
-    /// `UScriptStruct* RowStruct` -- describes the row schema
+    /// `UScriptStruct* RowStruct`. Describes the row schema
     /// (FProperty chain at `+CHILD_PROPERTIES` on the UScriptStruct,
     /// same as any UStruct). Verified against Dumper-7 output for
     /// Grounded 2 (UE5-Augusta).
