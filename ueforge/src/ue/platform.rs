@@ -1,13 +1,13 @@
 //! Host process detection helpers.
 //!
 //! Two pieces:
-//! - `host_image_base` — `GetModuleHandleW(null)` cast as
+//! - `host_image_base`. `GetModuleHandleW(null)` cast as
 //!   `usize`. The image base of the main exe; offsets in
 //!   [`PlatformOffsets`] are relative to this.
-//! - `host_exe_name` — basename of the running exe, e.g.
+//! - `host_exe_name`. Basename of the running exe, e.g.
 //!   `"Grounded2-WinGRTS-Shipping.exe"` or
 //!   `"OutworldStation-Win64-Shipping.exe"`.
-//! - `detect_platform` — match the exe basename against a
+//! - `detect_platform`. Match the exe basename against a
 //!   game-supplied table of `(exe_substring, PlatformOffsets)`
 //!   pairs. Substring match (not equality) so suffixed exes
 //!   (e.g. `Foo-Win64-Shipping-debug.exe`) still match.
