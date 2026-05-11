@@ -9,7 +9,7 @@
 // Run (with the game in-world):
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --target x86_64-pc-windows-msvc \
-//     --test explore_perf_counters -- --nocapture --test-threads=1
+//     --test explore_perf_counters. --nocapture --test-threads=1
 
 mod common;
 
