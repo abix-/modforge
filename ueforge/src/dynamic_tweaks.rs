@@ -74,6 +74,58 @@ pub struct TweakStatus {
 static LAST_STATUS: Mutex<Vec<TweakStatus>> = Mutex::new(Vec::new());
 static APPLY_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+/// Spawn one worker per unique target table. Each worker waits
+/// for its table to appear (via `ue::datatable::on_first_sight`),
+/// refreshes the discovery cache so the row-struct schema is
+/// reachable, then applies every enabled tweak that targets that
+/// table.
+///
+/// This is the correct entry point for `on_unreal_init`: at
+/// init time, `DT_*` tables usually haven't streamed in yet, so
+/// the synchronous [`apply_all`] would log "not in discovery
+/// cache" errors. With `apply_all_when_ready` each entry lands
+/// the first time its table loads, mirroring the
+/// `FieldTweak::apply_when_ready` pattern.
+pub fn apply_all_when_ready(tweaks: &[DynamicTweak], timeout: std::time::Duration) {
+    use std::collections::HashMap;
+    // Group entries by table name so we only spawn one worker
+    // per table even when multiple tweaks target it.
+    let mut by_table: HashMap<String, Vec<DynamicTweak>> = HashMap::new();
+    for entry in tweaks {
+        if !entry.enabled {
+            continue;
+        }
+        by_table
+            .entry(entry.table.clone())
+            .or_default()
+            .push(entry.clone());
+    }
+    for (table, group) in by_table {
+        // Leak the table-name to satisfy `&'static str`. One leak
+        // per unique table name; bounded by number of declared tables.
+        let table_static: &'static str = Box::leak(table.clone().into_boxed_str());
+        let group_owned = group;
+        crate::ue::datatable::on_first_sight(table_static, timeout, move |_dt| {
+            // Table just appeared -- refresh discovery so row-struct
+            // schema is reachable, then run every grouped entry.
+            let _ = crate::discovery::refresh();
+            let results = apply_all(&group_owned);
+            for st in results {
+                match st.last_result {
+                    Ok(n) => crate::log::log(format_args!(
+                        "dynamic_tweaks(when_ready): '{}' applied to {n} rows ({}.{})",
+                        st.id, st.table, st.field
+                    )),
+                    Err(e) => crate::log::log(format_args!(
+                        "dynamic_tweaks(when_ready): '{}' failed ({}.{}): {e}",
+                        st.id, st.table, st.field
+                    )),
+                }
+            }
+        });
+    }
+}
+
 /// Apply every enabled tweak from `tweaks`. Caller (game crate)
 /// supplies the slice -- typically from its own
 /// `Settings<T>.dynamic_tweaks` field.
@@ -110,8 +162,23 @@ pub fn apply_all(tweaks: &[DynamicTweak]) -> Vec<TweakStatus> {
         });
     }
     APPLY_COUNT.fetch_add(1, Ordering::Relaxed);
-    *LAST_STATUS.lock().expect("LAST_STATUS poisoned") = out.clone();
+    upsert_status(&out);
     out
+}
+
+/// Upsert each status into the global LAST_STATUS by id. Used by
+/// `apply_all` (full reset followed by upsert) and the per-table
+/// workers in `apply_all_when_ready` (incremental upsert as
+/// tables stream in).
+fn upsert_status(batch: &[TweakStatus]) {
+    let mut s = LAST_STATUS.lock().expect("LAST_STATUS poisoned");
+    for new_st in batch {
+        if let Some(existing) = s.iter_mut().find(|st| st.id == new_st.id) {
+            *existing = new_st.clone();
+        } else {
+            s.push(new_st.clone());
+        }
+    }
 }
 
 /// Apply one tweak. Returns the row-count touched on success.

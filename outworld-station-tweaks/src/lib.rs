@@ -119,12 +119,15 @@ fn on_unreal_init() {
         // inventory slot init, etc.).
         stacks::spawn_apply_worker();
 
-        // Apply every settings.json dynamic tweak. Resolves
-        // offsets from the discovery cache, so new entries land
-        // by editing settings + clicking "Re-apply" in the UI --
-        // no code change, no SDK header dive.
+        // Apply every settings.json dynamic tweak when its target
+        // table loads. At init time data tables haven't streamed
+        // in yet, so we mirror the stacks worker pattern: one
+        // on_first_sight worker per unique table.
         let s = settings::get().get();
-        let _ = ueforge::dynamic_tweaks::apply_all(&s.dynamic_tweaks);
+        ueforge::dynamic_tweaks::apply_all_when_ready(
+            &s.dynamic_tweaks,
+            std::time::Duration::from_secs(60),
+        );
     }
 
     // Always bring the debug server up (offset-independent). Use
