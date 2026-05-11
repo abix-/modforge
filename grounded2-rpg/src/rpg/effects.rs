@@ -1,4 +1,4 @@
-// Game-specific Effect implementations -- the operations that
+// Game-specific Effect implementations. The operations that
 // don't fit the framework's standard Effect library.
 //
 // Per the workspace composition model
@@ -6,15 +6,15 @@
 // and figure out how to do in the game is one Effect type. This
 // module owns the three Maine-specific operations:
 //
-//   - BackpackSlotsEffect      -- write inventory slot count to
+//   - BackpackSlotsEffect     . Write inventory slot count to
 //                                 every InventoryComponent CDO
-//   - SurvivalDrainEffect      -- scale hunger/thirst drain on
+//   - SurvivalDrainEffect     . Scale hunger/thirst drain on
 //                                 the SurvivalComponent CDO
-//   - PlayerFallDamageReductionEffect -- composite multi-component
+//   - PlayerFallDamageReductionEffect. Composite multi-component
 //                                 fall-damage write
 //
 // The framework's standard effects (PlayerFloat, SubcomponentMultiply,
-// etc.) are used directly in `skills.rs` static declarations -- no
+// etc.) are used directly in `skills.rs` static declarations. No
 // custom impl needed there.
 
 use std::sync::OnceLock;
@@ -37,7 +37,7 @@ use crate::rpg::world_loader;
 use ueforge::ue::field::{read_f32, write_f32};
 
 // ---------------------------------------------------------------
-// BackpackSlotsEffect -- adds skill-derived bonus slots to the
+// BackpackSlotsEffect. Adds skill-derived bonus slots to the
 // settings-configured base inventory size, then patches every
 // player InventoryComponent CDO + tells inv_hook the new count.
 // ---------------------------------------------------------------
@@ -76,7 +76,7 @@ pub static BACKPACK: BackpackSlotsEffect = BackpackSlotsEffect {
 };
 
 // ---------------------------------------------------------------
-// SurvivalDrainEffect -- scales hunger or thirst drain on every
+// SurvivalDrainEffect. Scales hunger or thirst drain on every
 // SurvivalComponent CDO. Final value =
 //   vanilla * settings_mult * (1 - max_reduction * progress)
 // ---------------------------------------------------------------
@@ -138,7 +138,7 @@ pub static THIRST_DRAIN: SurvivalDrainEffect = SurvivalDrainEffect {
 };
 
 // ---------------------------------------------------------------
-// PlayerFallDamageReductionEffect -- composite multi-component
+// PlayerFallDamageReductionEffect. Composite multi-component
 // fall-damage write (HC ratio + GMS CDO + SMMC live).
 // ---------------------------------------------------------------
 
