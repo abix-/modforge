@@ -1,4 +1,4 @@
-//! Selector grammar -- the workspace-standard `<Subject>Def` +
+//! Selector grammar. The workspace-standard `<Subject>Def` +
 //! `<Subject>Registry` for resolving short strings to UObjects.
 //!
 //! ```text
@@ -176,7 +176,7 @@ fn resolve_singleton(class_name: &str) -> Result<&'static UObject, String> {
     let cdo = class
         .class_default_object()
         .ok_or_else(|| format!("class '{class_name}' has no CDO"))?;
-    // SAFETY: see resolve_first_class -- same lifetime-extension contract.
+    // SAFETY: see resolve_first_class. Same lifetime-extension contract.
     let extended: &'static UObject =
         unsafe { std::mem::transmute::<&UObject, &'static UObject>(cdo) };
     Ok(extended)
