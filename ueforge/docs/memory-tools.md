@@ -1,7 +1,7 @@
 # Memory tools
 
 > **Authoritative on:** ueforge's runtime memory inspection
-> surface -- the Cheat-Engine-style scanner, address freezes,
+> surface. The Cheat-Engine-style scanner, address freezes,
 > `inspect_address` property walker, and Win32 process probes
 > (`winproc`).
 
@@ -10,7 +10,7 @@ Every op is exposed through the HTTP control plane (so the
 test side can drive them) and the Scanner ImGui tab consumes
 the same ops directly.
 
-## Scanner -- value search
+## Scanner. Value search
 
 The use case: a field exists in game memory but the SDK dump
 doesn't tell you where. Scan for the value (e.g. current HP =
@@ -39,11 +39,11 @@ POST /debug { "op": "scan_close",   "args": { "session_id": <id> } }
 
 ### Rescan modes
 
-- `exact` -- match `value` again
-- `changed` -- value differs from previous scan
-- `unchanged` -- value matches previous scan
-- `increased` -- value > previous
-- `decreased` -- value < previous
+- `exact`. Match `value` again
+- `changed`. Value differs from previous scan
+- `unchanged`. Value matches previous scan
+- `increased`. Value > previous
+- `decreased`. Value < previous
 
 ### Region walking
 
@@ -57,7 +57,7 @@ takes a few seconds.
 
 `VirtualQuery` returns regions but does NOT guarantee the
 pages stay committed for the duration of the scan. UE
-allocators free pages all the time -- a torn page read with
+allocators free pages all the time. A torn page read with
 `read_unaligned` raises an access violation that crashes the
 host process. "Works in dev, crashes during level transitions"
 was the failure mode.
@@ -67,11 +67,11 @@ the current process. The kernel performs the access check and
 returns a short read (or `0`) instead of faulting in our
 trampoline. Two helpers:
 
-- `safe_read_chunk(addr, &mut [u8]) -> usize` -- bulk read into
+- `safe_read_chunk(addr, &mut [u8]) -> usize`. Bulk read into
   scratch; returns bytes actually copied. The match loop runs
   against process-owned scratch so a freed source page can no
   longer fault our reader.
-- `safe_read_bits(addr, ty) -> Option<u64>` -- single typed
+- `safe_read_bits(addr, ty) -> Option<u64>`. Single typed
   read; `None` if the source range is unreadable.
 
 `scan_memory` walks each region in 64 KiB chunks via
@@ -187,7 +187,7 @@ The Scanner ImGui tab uses this to label scan hits with their
 property names. Click a hit -> `inspect_address` -> see what
 field that hit corresponds to.
 
-## winproc -- Win32 process probes
+## winproc. Win32 process probes
 
 `ueforge::winproc` exposes:
 
@@ -230,7 +230,7 @@ Sample the instruction pointer of `tid` (or all threads)
 `samples` times, classify each sample by which loaded module
 the IP is in. Output: `{ module_name: hit_count }`.
 
-This is the cheapest profiler -- no PDB symbols, no DBG help,
+This is the cheapest profiler. No PDB symbols, no DBG help,
 just `GetThreadContext` -> map IP to module. For a thread
 burning CPU in our DLL, you'll see `main.dll` dominate. In UE
 code, `Grounded2-WinGRTS-Shipping.exe`. In ucrt /
@@ -258,9 +258,9 @@ does as a reference.
 
 ## Cross-references
 
-- [http.md](http.md) -- the op envelope every probe rides on
-- [ue-sdk.md](ue-sdk.md) -- the UObject / UClass plumbing
+- [http.md](http.md). The op envelope every probe rides on
+- [ue-sdk.md](ue-sdk.md). The UObject / UClass plumbing
   inspect_address consumes
-- [imgui.md](imgui.md) -- the Scanner tab integration
-- [RESEARCH.md](RESEARCH.md) -- when to reach for the scanner
+- [imgui.md](imgui.md). The Scanner tab integration
+- [RESEARCH.md](RESEARCH.md). When to reach for the scanner
   vs other probes
