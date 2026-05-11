@@ -69,7 +69,7 @@
 //! runs, so the engine's own application path picks it up. This is
 //! the right surface for `Critical` (multiply) and `Evasion`
 //! (zero on roll). Post-application mutations (e.g. Lifesteal
-//! decrementing player HP) belong in `after` -- mutate game state
+//! decrementing player HP) belong in `after`. Mutate game state
 //! directly there.
 //!
 //! ### Drain integration
@@ -77,7 +77,7 @@
 //! Many mods drain a game-thread PE queue from a damage trampoline
 //! (the canonical "high-rate game-thread surface"). Either call
 //! `Queue::drain` from `before` (it runs every fire) or wire your
-//! own per-event hook -- the framework doesn't impose either.
+//! own per-event hook. The framework doesn't impose either.
 
 use std::ffi::c_void;
 use std::sync::OnceLock;
