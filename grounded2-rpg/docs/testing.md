@@ -136,6 +136,6 @@ individual skills land alongside.
 ## See also
 
 - [`../../ueforge/docs/testing.md`](../../ueforge/docs/testing.md)
-  -- framework: client, research/diff/scenario helpers, run patterns
-- [`rpg.md`](rpg.md) -- catalog and persistence
-- [`damage.md`](damage.md) -- damage internals (bandage regression context)
+ . Framework: client, research/diff/scenario helpers, run patterns
+- [`rpg.md`](rpg.md). Catalog and persistence
+- [`damage.md`](damage.md). Damage internals (bandage regression context)
