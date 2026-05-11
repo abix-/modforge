@@ -1,6 +1,6 @@
 # Offline .uasset / .uexp parsing
 
-> **Authoritative on:** `ueforge::uasset` -- the offline UE5 cooked
+> **Authoritative on:** `ueforge::uasset`. The offline UE5 cooked
 > asset parser. The counterpart to [`ue-sdk.md`](ue-sdk.md), which
 > models the engine's *runtime* memory layout. Use this module
 > when you have raw `.uasset` / `.uexp` bytes and no engine.
@@ -132,14 +132,14 @@ value)` per hit.
 The Grounded 2 mod's
 [`grounded2-rpg/docs/inspection.md`](../../grounded2-rpg/docs/inspection.md)
 walks two real worked examples (Player Tweaks, Bigger Backpack)
-using these tools end-to-end -- pak unpack, FName table walk,
+using these tools end-to-end. Pak unpack, FName table walk,
 property tag scan, asset diff. Recommended reading for anyone
 about to investigate an unfamiliar UE5 mod.
 
 ## Cross-references
 
-- [ue-sdk.md](ue-sdk.md) -- the runtime counterpart (same
+- [ue-sdk.md](ue-sdk.md). The runtime counterpart (same
   concepts, but for live UObjects in a running game)
-- [RESEARCH.md](RESEARCH.md) -- TDD investigation methodology
-- [data-table.md](data-table.md) -- runtime DataTable mutation
+- [RESEARCH.md](RESEARCH.md). TDD investigation methodology
+- [data-table.md](data-table.md). Runtime DataTable mutation
   (the runtime counterpart to inspecting cooked DataTable rows)
