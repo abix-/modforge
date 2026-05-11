@@ -10,11 +10,11 @@
 //! The "game thread" is whatever thread drains this queue. In a UE
 //! mod that's typically inside a ProcessEvent trampoline that fires
 //! many times per second (a damage multicast, a tick UFunction, an
-//! input handler — pick one that's hot enough).
+//! input handler. Pick one that's hot enough).
 //!
 //! Re-entrance: jobs themselves can trigger ProcessEvent fan-out
 //! that re-enters the trampoline that's draining us. The `DRAINING`
-//! flag is the guard — re-entered drains see the flag and skip,
+//! flag is the guard. Re-entered drains see the flag and skip,
 //! letting the outer drain finish without recursion.
 //!
 //! Counters / timing belong in the game crate. `len()` is a
@@ -45,7 +45,7 @@ struct Pending {
     reply: Sender<Result<Json, String>>,
     /// Set to true if the enqueue caller already gave up
     /// (`recv_timeout` fired). The drain checks this BEFORE running
-    /// the job and skips it -- so a non-idempotent op like
+    /// the job and skips it. So a non-idempotent op like
     /// `spend_points` can't run after the client thinks it timed
     /// out and retried.
     cancelled: Arc<AtomicBool>,
@@ -73,7 +73,7 @@ pub struct DrainStats {
     /// Number of jobs actually executed.
     pub drained: usize,
     /// True if the call early-exited because another drain was in
-    /// progress (re-entrance) — *not* because the queue was empty.
+    /// progress (re-entrance). *not* because the queue was empty.
     pub reentered: bool,
 }
 
@@ -113,7 +113,7 @@ impl Queue {
     /// drain side checks the cancel flag before invoking the
     /// closure and skips it. This prevents non-idempotent ops
     /// (`spend_points`, `write_bytes`, `call`) from running AFTER
-    /// the HTTP client gave up and the user retried -- which used
+    /// the HTTP client gave up and the user retried. Which used
     /// to silently double-execute.
     pub fn enqueue<F>(&self, job: F, timeout: Duration) -> Result<Json, String>
     where
@@ -226,7 +226,7 @@ impl Default for Queue {
 /// `Queue` paired with the standard performance-counter trio
 /// (drain calls, drained commands, peak depth, time spent
 /// draining). Wraps `Queue::drain` so trampoline drain sites are
-/// one line + automatic perf instrumentation -- no more pairing a
+/// one line + automatic perf instrumentation. No more pairing a
 /// static Queue with four hand-declared `counter!` statics + a
 /// 20-line `drain_pending` wrapper.
 ///
