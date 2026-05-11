@@ -14,7 +14,7 @@
 //! ```
 //!
 //! The toggle on/off button is opt-in via the `ToggleFns` callbacks
-//! the consumer passes -- since the "disabled skills" feature is
+//! the consumer passes. Since the "disabled skills" feature is
 //! orthogonal to the catalog/tracker shape and not every game wants
 //! it.
 
@@ -72,7 +72,7 @@ pub fn render(tracker: &'static Tracker, toggle: Option<&ToggleFns>) {
         render_row(tracker, toggle, skill, skill_points);
     }
 
-    // Debug controls -- testing only.
+    // Debug controls. Testing only.
     ui::separator();
     ui::text_disabled("Debug (testing only)");
     if ui::button("+5 skill points") {
