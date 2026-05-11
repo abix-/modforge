@@ -12,7 +12,7 @@
 
 Newest first.
 
-## 2026-05-10 (composition model -- Effects + Triggers + Skills)
+## 2026-05-10 (composition model. Effects + Triggers + Skills)
 
 The architectural shift articulated in
 [`../ueforge/docs/architecture.md`](../ueforge/docs/architecture.md)
@@ -151,7 +151,7 @@ Hard rename to the `<Subject>Def + <Subject>Registry` contract
 See [architecture.md](../ueforge/docs/architecture.md) for the
 full naming contract + per-subject scorecard.
 
-## 2026-05-10 (kovarex review wave 2 P1 -- continued)
+## 2026-05-10 (kovarex review wave 2 P1. Continued)
 
 Four more P1 items landed in a follow-up session. Workspace check
 + 68 ueforge lib tests green.
@@ -178,7 +178,7 @@ Four more P1 items landed in a follow-up session. Workspace check
   loop with the same `MAX_CONSECUTIVE_FAILURES = 30` semantics.
 
 - **Hot-reload entry-leak audit.** `Entry` `Box::leak` per
-  install is **intentional and bounded** -- reusing entries
+  install is **intentional and bounded**. Reusing entries
   across DLL unloads is unsafe (the `handler: Box<dyn Fn>`
   carries a vtable into the unloading DLL's code). Per-cycle
   cost: ~250 bytes/hook + closure capture; 1000 reloads x 5
@@ -196,14 +196,14 @@ Four more P1 items landed in a follow-up session. Workspace check
   `// SAFETY:` to merge clean. Flip to `deny` when the count
   reaches zero.
 
-## 2026-05-10 (kovarex review wave 2 -- durability + safety)
+## 2026-05-10 (kovarex review wave 2. Durability + safety)
 
 Brutal-honesty review against the 10/10 bar (10 years daily-driver,
 no patches). Five P0 correctness/crash bugs and three P1 grooming
 items shipped. All design knowledge captured in the per-subject
 docs cited below; this entry is a pointer index.
 
-### P0 -- correctness / crash vectors (all shipped)
+### P0. Correctness / crash vectors (all shipped)
 
 - **Spend / refund / record_xp / debug_grant transactional with
   disk save.** Stage-save-commit pattern: snapshot rollback values,
@@ -242,7 +242,7 @@ docs cited below; this entry is a pointer index.
   called it. See [ueforge/docs/hooks.md](../ueforge/docs/hooks.md)
   "Panic safety".
 
-### P1 -- grooming (three of ten shipped)
+### P1. Grooming (three of ten shipped)
 
 - **`Arc<str>` FName cache.** `NameResolver` caches `Arc<str>`;
   cache-hit returns a ref-bump, no `String::clone`. `to_arc`
@@ -295,25 +295,25 @@ format dispatch deleted.
 Five extractions to ueforge so a future ows-rpg ships with only
 game-specific logic:
 
-- **`ueforge::rpg::Bestiary`** — per-creature XP table keyed by BP
+- **`ueforge::rpg::Bestiary`**. Per-creature XP table keyed by BP
   class short name with a default-fallback. Replaces a per-game
   `OnceLock<Vec<(&str, u32)>>` + linear-scan helper.
-- **`ueforge::ue::field`** — generic untyped UObject byte ops:
+- **`ueforge::ue::field`**. Generic untyped UObject byte ops:
   `read_f32` / `write_f32` / `read_u32` / `write_u32` / `read_i32` /
   `write_i32` / `read_bool` / `write_bool` / `read_component_ptr`.
   The TypedField counterpart still exists for structured sites;
   these are the escape hatch for runtime-decided offsets.
-- **`ueforge::ue::actor`** — kill-hook universals:
+- **`ueforge::ue::actor`**. Kill-hook universals:
   `class_chain_contains(obj, needle)` walks the UClass + super
   chain looking for a class-name substring (depth-bounded);
   `controller_pawn(controller)` reads the stable `AController.
   Pawn` slot at `+0x0308`; `describe(obj)` formats `name(class)`
   for log lines; `A_CONTROLLER_PAWN_OFFSET` constant.
-- **`FWeakObjectPtr::read` + `::resolve`** — fold the index
+- **`FWeakObjectPtr::read` + `::resolve`**. Fold the index
   validation + Runtime + GObjectsView walk into one method on the
   existing struct. Two callers in g2rpg's kill_hook collapsed to
   single-line uses.
-- **`ueforge::debug`** — first wave of the debug-endpoint scaffold:
+- **`ueforge::debug`**. First wave of the debug-endpoint scaffold:
   `PlayerStateView::from_state`, `CatalogEntry`, `catalog_view`,
   `STANDARD_OPS`. Game-specific snapshot collectors stay in the
   game crate; the universal view types and op-list metadata are
@@ -328,7 +328,7 @@ green (62 pass).
 
 ### Pester-style scenario DSL + RPG-op shortcuts on `Api<S>`
 
-Per-skill tests were the last big duplication pile -- each one
+Per-skill tests were the last big duplication pile. Each one
 reimplementing connect/skip + read-baseline + check-skill-points
 + spend + read-after + assert + refund. ~30 lines apiece.
 
@@ -343,10 +343,10 @@ scenario::for_skill(api.inner(), "attack_damage")
 ```
 
 Four assertion shapes provided:
-- `should_grow_when_spent` -- spend 1, value strictly greater, refund.
-- `should_shrink_when_spent` -- spend 1, value strictly less, refund.
-- `should_revert_when_refunded` -- spend then refund; baseline restored.
-- `should_revert_when_toggled_off` -- spend, toggle off (vanilla
+- `should_grow_when_spent`. Spend 1, value strictly greater, refund.
+- `should_shrink_when_spent`. Spend 1, value strictly less, refund.
+- `should_revert_when_refunded`. Spend then refund; baseline restored.
+- `should_revert_when_toggled_off`. Spend, toggle off (vanilla
   restored), toggle on (boost restored), refund.
 
 The DSL handles environment prerequisites (skips with a clear
@@ -356,8 +356,8 @@ don't fail the suite.
 Plus standard RPG-op shortcuts on `Api<S>`:
 - `skill_spend(id, count)` / `skill_refund(id, count)` /
   `skill_toggle(id, bool)` / `set_skill_points(count)` /
-  `reload_slot()` -- each calls `op_ok` + returns post-op state.
-- `skill_level(id) -> u32` / `skill_points() -> u32` -- read from
+  `reload_slot()`. Each calls `op_ok` + returns post-op state.
+- `skill_level(id) -> u32` / `skill_points() -> u32`. Read from
   the snapshot's `player_state` JSON path. Available on any
   `Api<S>` regardless of the per-mod typed Snapshot shape.
 
@@ -393,7 +393,7 @@ reads Y, should grow when spent".
 Continued the research-helpers extraction. Three more ueforge
 surfaces + four test migrations:
 
-- **`ueforge::client::diff`** (608 lines, new module) --
+- **`ueforge::client::diff`** (608 lines, new module).
   `MetricsSnapshot::from_api` captures the standard snapshot
   block (counters / process_memory / process_cpu /
   process_threads / game_population). `diff_all` / `diff_counters`
@@ -402,14 +402,14 @@ surfaces + four test migrations:
   impls that emit the same table format every test was
   hand-rolling. `MetricsSnapshot::sample_series(api, count,
   interval) -> SampleSeries` for time-series patterns.
-- **`Api::snapshot_value`** -- bypasses typed deserialization so
+- **`Api::snapshot_value`**. Bypasses typed deserialization so
   `client::diff` works with any per-mod `Snapshot` type that's
   `DeserializeOwned` (no `Serialize` bound needed).
 - **`research::find_class_cdo`** /
-  `research::walk_class_instances_with_cdo` -- find a class's
+  `research::walk_class_instances_with_cdo`. Find a class's
   default object in one call.
 - **`research::sample_thread_modules`** +
-  `ThreadModulesReport` -- typed view of the
+  `ThreadModulesReport`. Typed view of the
   `sample_thread_modules` op response with Display impl.
 
 Test migrations:
@@ -445,15 +445,15 @@ fields at offsets. ~150-250 lines of boilerplate per test.
 Lifted to `ueforge::client::research`:
 
 - `find_data_table_by_name(api, "DT_X") -> Option<(selector, addr)>`
-- `find_data_table_by_path(api, "...substring...")` -- when
+- `find_data_table_by_path(api, "...substring...")`. When
   multiple tables share a short name (CDO + live).
-- `read_data_table_rows(api, selector) -> Vec<DtRow { fname, addr }>` --
+- `read_data_table_rows(api, selector) -> Vec<DtRow { fname, addr }>`.
   reads the TMap header at +0x30 + batch-reads the element
   array in one `read_bytes` call.
 - `walk_class_instances(api, "ClassName", max) -> Vec<ClassInstance>`.
 - `fname_to_string(api, fname_u64) -> Option<String>`.
 - Typed read helpers: `read_i32` / `read_u32` / `read_f32` /
-  `read_u8` / `read_u64` / `read_bytes` -- "give me the field
+  `read_u8` / `read_u64` / `read_bytes`. "give me the field
   at this offset on this address".
 
 Migrations:
@@ -484,21 +484,21 @@ Three kovarex P1/P2 items resolved in one pass:
   ever changes the layout beneath our `transmute_copy::<u64,
   FName>` sites, this fires at build time instead of silently
   corrupting names at runtime.
-- **`process_event_idx`** -- audited; already correctly required
+- **`process_event_idx`**. Audited; already correctly required
   on `PlatformOffsets` (no Default impl, both STEAM/XBOX consts
   set it explicitly). Todo entry was misadvised; closed.
-- **`#[non_exhaustive]` audit** -- correctly skipped. `ModInfo` /
+- **`#[non_exhaustive]` audit**. Correctly skipped. `ModInfo` /
   `Tab` / `PlatformOffsets` / `Config` are literal-constructed
   by every consumer; `#[non_exhaustive]` would break the call
   sites without giving us actual API stability. In a monorepo
   with atomic updates, breaking changes mean "one-line update
-  at the call site in the same commit" -- which is fine.
+  at the call site in the same commit". Which is fine.
   Documented the rationale in todo.md so future audits don't
   re-litigate.
 
 ### Damage module + Lifesteal live
 
-`ueforge::damage::DamageHook<B>` -- universal damage-event hook,
+`ueforge::damage::DamageHook<B>`. Universal damage-event hook,
 the fifth opinionated module. Same shape as the inventory viewport hook:
 config struct + binder trait. Owns the multicast UFunction
 trampoline + parm decode (Damage / DamageFlags / TypeFlags) +
@@ -513,7 +513,7 @@ g2rpg-side migration:
 - `kill_hook.rs` rewritten as a `DamageBinder` impl. Owns the
   Maine `DamageHookConfig` (component class + UFunction +
   parm offsets), the `KillerKind` classifier (Player /
-  Buggy / Other -- buggies are tame G2 mounts), and the
+  Buggy / Other. Buggies are tame G2 mounts), and the
   per-event reactions: damage-trace push, impact-resistance
   reversal, kill credit, Lifesteal heal.
 - `damage_trace.rs` (168 lines) and `impact_resistance.rs`
@@ -539,7 +539,7 @@ Thorns = `after` walks attacker's HC + applies %).
 
 ### Hot-update Phase B complete (B1-B5: safe Ctrl+R with hooks)
 
-Five lifts that close the loop on hot-update -- Ctrl+R is now
+Five lifts that close the loop on hot-update. Ctrl+R is now
 safe even with PE hooks installed:
 
 - **B1: `ueforge::hook::registry`** -- `register(hook)` /
@@ -595,16 +595,16 @@ while the game is running. Two pieces:
 - ueforge shim's `ueforge_mod_shutdown`
   (`ueforge/src/mod_main.rs`): after the game's `on_shutdown`,
   the framework's `finalize_hot_reload_swap` checks for
-  `main-new.dll` and -- if present -- renames `main.dll` ->
+  `main-new.dll` and. If present. Renames `main.dll` ->
   `main-old.dll` (`SHARE_DELETE` permits the rename of the
   loaded image) then `main-new.dll` -> `main.dll`. Rolls back
   on step 2 failure to leave the dir consistent. Logs the swap.
 - ueforge shim's `ueforge_mod_unreal_init` calls
-  `cleanup_old_dll` once on the new image's first init --
+  `cleanup_old_dll` once on the new image's first init.
   best-effort `remove(main-old.dll)`.
 
 Verified empirically (PowerShell test loading `version.dll`
-through every step of the swap; all five succeeded -- rename
+through every step of the swap; all five succeeded. Rename
 loaded DLL, rename side-file into place, FreeLibrary, delete
 old, LoadLibrary new).
 
@@ -649,7 +649,7 @@ natively, not just hot-reload. The flow:
 - `uninstall_mods()` calls each cpp mod's `uninstall_mod` ->
   `~UespyMod()` -> our `ueforge_mod_shutdown` -> game's
   `MOD_INFO.on_shutdown` callback.
-- `~CppMod()` calls `FreeLibrary(main.dll)` -- our DLL detaches.
+- `~CppMod()` calls `FreeLibrary(main.dll)`. Our DLL detaches.
 - `setup_mods()` rescans disk and `LoadLibraryExW`-s a **fresh**
   `main.dll`. **This is the hot-update step**: whatever DLL is
   on disk gets loaded, so a `cargo deploy install` between
@@ -665,14 +665,14 @@ Dev loop becomes:
 4. new version is live in ~1-2s
 ```
 
-Static state in the DLL resets (intended -- atomics, OnceLocks
+Static state in the DLL resets (intended. Atomics, OnceLocks
 reload from disk via `Tracker<A>::activate_slot`). Cached UE
 references survive (they point INTO the game process, not into
 our DLL); the new image re-resolves on first use.
 
 **Phase B implementation pending.** Until it lands, mods that
 install `ProcessEventHook`s (kill / fall / inv) cannot safely
-hot-reload -- the old DLL's vtable patches still point into
+hot-reload. The old DLL's vtable patches still point into
 freed memory after FreeLibrary. The Phase B plan
 (`docs/todo.md`):
 
@@ -691,7 +691,7 @@ Phase B caveat.
 
 ### Inventory module: viewport-paging framework
 
-`ueforge::inventory::viewport` -- the universal "fixed-size
+`ueforge::inventory::viewport`. The universal "fixed-size
 visible grid over a larger underlying inventory" pattern,
 extracted from g2rpg's `inv_hook.rs`. Owns the algorithm + state
 + ProcessEvent hook trampoline + mouse-wheel scroll handling +
@@ -734,7 +734,7 @@ per-game extension surface is `&'static` config + an opt-in
 trait impl.
 
 If you find the same scaffolding in two game crates, that's a
-missing module -- file under "Open: more ueforge extraction
+missing module. File under "Open: more ueforge extraction
 candidates" in `docs/todo.md`.
 
 ### Settings hot-reload + PE-call + OpRouter PE-ops half
@@ -742,19 +742,19 @@ candidates" in `docs/todo.md`.
 Three more lifts that close out most of the "Open: more ueforge
 extraction candidates" list:
 
-- **`Settings::watch(interval, on_reload)`** -- spawns an
+- **`Settings::watch(interval, on_reload)`**. Spawns an
   mtime-poller thread that reloads `<DLL_dir>/<file>.json` when
   it changes on disk and fires a game-supplied `on_reload(&T)`
   callback. Drop the returned `WatchHandle` to stop. `reload()`
   available standalone for tab-driven manual reloads / debug
   ops. Tests pass; build clean.
-- **`ueforge::ue::pe_call::call_ufunction`** -- folds "find
+- **`ueforge::ue::pe_call::call_ufunction`**. Folds "find
   UFunction or error -> process_event with parm pointer" into
   one safe-typed call. g2rpg's `exec_add_health` /
   `exec_set_current_health` collapsed to use it; covers every
   future health / inventory / status-effect op shape with one
   primitive instead of a per-fn boilerplate copy.
-- **`ueforge::debug::dispatch_pe_ops`** -- the second half of
+- **`ueforge::debug::dispatch_pe_ops`**. The second half of
   the OpRouter lift. Handles `call` / `read_bytes` /
   `write_bytes` (the three standard ops that need a per-game
   instance resolver). Combined with the already-shipped
@@ -772,16 +772,16 @@ most common UE5 mod patterns, each wrapping a low-level primitive
 with the universal apply-loop + atomic-knob + status-counter
 shape:
 
-- **`ueforge::rpg`** (existing) -- skill catalog, XP curve,
+- **`ueforge::rpg`** (existing). Skill catalog, XP curve,
   bestiary, per-slot persistence, ImGui tab, the
   `StandardEffect` 8-variant menu.
-- **`ueforge::stacks`** (new) -- inventory stack-size data-table
+- **`ueforge::stacks`** (new). Inventory stack-size data-table
   tweak. Wraps `FieldTweak<i32>` with multiplier atomic, last-
   applied / ever-applied counters, on-first-sight worker, and
   apply-now / revert helpers. Game crate writes one
   `StackTweak::new(table, offset, default_mult, skip_predicate)`
   static.
-- **`ueforge::difficulty`** (new) -- CDO field tweak for
+- **`ueforge::difficulty`** (new). CDO field tweak for
   difficulty knobs (drain rates, damage multipliers, regen,
   etc). Wraps `ClassFieldTweak<f32>` with f32 multiplier atomic
   + apply_to_cdos / apply_to_all / apply_with_filter / revert.
@@ -809,23 +809,23 @@ counter atomics.
 Three more universals lifted to ueforge so each new mod's
 boilerplate shrinks:
 
-- **`ueforge::ue::platform::detect_and_init`** -- one-call
+- **`ueforge::ue::platform::detect_and_init`**. One-call
   replacement for the 15-line "detect host exe -> pick offsets ->
   log image_base/GObjects -> init_runtime" boilerplate every
   mod's worker thread runs at startup. Falls back to the first
   platform row with a WARN if the host exe doesn't match.
 - **`ueforge::ue::with_first_instance_of(class_name, f)`** /
-  **`with_first_cdo_of`** -- string-keyed convenience wrappers
+  **`with_first_cdo_of`**. String-keyed convenience wrappers
   for ad-hoc snapshot / debug call sites. Replaces 4 `apply::*`
   helpers in g2rpg.
-- **`PlayerRef::first_live_static`** (unsafe) -- the
+- **`PlayerRef::first_live_static`** (unsafe). The
   game-thread-only "first live pawn as `&'static UObject`"
   pattern, used by debug-endpoint resolvers that pass refs
   through queued-closure boundaries. Wraps the unsafe-extend-
   lifetime trick in one place with a clear safety contract.
-- **`ClassRef::with_first_cdo`** -- symmetric counterpart to
+- **`ClassRef::with_first_cdo`**. Symmetric counterpart to
   the existing `with_first_instance`.
-- **`ueforge::hook::install_immediate_or_log`** -- the universal
+- **`ueforge::hook::install_immediate_or_log`**. The universal
   "install once, log success or failure, leak handle" pattern
   every mod's worker runs per hook. Replaces the hand-rolled
   `match try_install() { Ok(h) => log + forget; Err(e) => log }`
@@ -841,20 +841,20 @@ wrappers).
 Promoted four pieces of g2rpg's debug endpoint to ueforge so the
 next mod's `debug.rs` doesn't re-implement them:
 
-- **`ueforge::debug::DamageEvent` + `DamageRing`** -- shared event
+- **`ueforge::debug::DamageEvent` + `DamageRing`**. Shared event
   shape + EventRing wrapper with the standard accessors. Game
   crates declare `static RING: DamageRing = DamageRing::new(64);`
   and call `record` / `snapshot` / `pushes` / `peak`.
-- **`ueforge::debug::ProcessSnapshot`** -- bundles the five
+- **`ueforge::debug::ProcessSnapshot`**. Bundles the five
   system-metric JSON fields (counters, process memory, CPU,
   threads, GObjects population, regions) behind a single
   `collect(counters_json, top_classes)` call.
-- **`ueforge::debug::dispatch_standard_op`** -- single function
+- **`ueforge::debug::dispatch_standard_op`**. Single function
   handling 8 of the 12 standard ops (`skill_*`, `reload_slot`,
   `set_skill_points`, `walk_class`, `class_outer_samples`,
   `sample_thread_modules`). Returns `Option<Result<Json,String>>`;
   game crates fall through to their own ops on `None`.
-- **`ueforge::debug::enqueue_pe`** -- generic "queue a closure on
+- **`ueforge::debug::enqueue_pe`**. Generic "queue a closure on
   a DrainSite with timeout + custom hint" wrapper.
 
 g2rpg's `debug.rs` shrank 896 -> 786 lines (-110). The remaining
@@ -865,27 +865,27 @@ executors with their G2-specific UFunction parm structs.
 ### kill_hook split + `DamageInfoLayout` lift
 
 Second pass on `kill_hook.rs`. The 604-line file mixed three
-concerns -- kill-credit dispatch, diagnostic damage tracing, and
+concerns. Kill-credit dispatch, diagnostic damage tracing, and
 impact-resistance reversal of environmental damage. Split into
 three focused modules:
 
-- `rpg/kill_hook.rs` (227 lines) -- kill-credit core only:
+- `rpg/kill_hook.rs` (227 lines). Kill-credit core only:
   install + on_event + KillerKind classifier + award_kill.
-- `rpg/damage_trace.rs` (168 lines) -- per-fn parm decoder,
+- `rpg/damage_trace.rs` (168 lines). Per-fn parm decoder,
   damage_ring observer, `LastDamageInfo` log dump.
-- `rpg/impact_resistance.rs` (79 lines) -- environmental-damage
+- `rpg/impact_resistance.rs` (79 lines). Environmental-damage
   detection + post-application reversal.
 
 Universal pieces lifted to ueforge:
 
-- **`ueforge::ue::damage_info::DamageInfoLayout`** -- per-game
+- **`ueforge::ue::damage_info::DamageInfoLayout`**. Per-game
   offset config for the `FDamageInfo` struct (instigator,
   source, damage-type class, damage flags). Methods fold the
   weak-ptr resolve + UClass cast into one call. The shape is
   universal across UE5 RPGs; only the offsets differ.
-- **`ueforge::ue::actor::is_outer_named`** -- player-filter
+- **`ueforge::ue::actor::is_outer_named`**. Player-filter
   shorthand (`this.outer().full_name().contains(needle)`).
-- **`ueforge::ue::actor::outer_class_name`** -- common log-line
+- **`ueforge::ue::actor::outer_class_name`**. Common log-line
   builder.
 
 g2rpg's kill_hook can now point at the next UE5 game and the
@@ -945,14 +945,14 @@ All five P0s + four of six P1s closed:
 Five generic op handlers lifted out of bbp's
 `grounded2-rpg/src/debug.rs` into the framework:
 
-- `skill_toggle(tracker, disabled, args)` -- flips disabled
+- `skill_toggle(tracker, disabled, args)`. Flips disabled
   flag + reapplies.
-- `skill_spend(tracker, args)` -- spend N points; returns
+- `skill_spend(tracker, args)`. Spend N points; returns
   `{ id, requested, spent }`.
-- `skill_refund(tracker, args)` -- refund N points; returns
+- `skill_refund(tracker, args)`. Refund N points; returns
   `{ id, requested, refunded }`.
-- `reload_slot(tracker)` -- reapply every catalog skill.
-- `set_skill_points(tracker, args)` -- debug-grant N points.
+- `reload_slot(tracker)`. Reapply every catalog skill.
+- `set_skill_points(tracker, args)`. Debug-grant N points.
 
 Plus `OP_NAMES: &[&str]` for dispatchers that want to
 advertise the full op list. bbp's debug.rs lost ~80 LoC of
@@ -983,7 +983,7 @@ UE-mod framework" entry below was written:
   `drain_calls()` / `drained_cmds()` / `peak()` / `time_ns()`.
   Reference: [`../ueforge/docs/pe-queue.md`](../ueforge/docs/pe-queue.md).
   Commit `0a4aa32`.
-- **`ueforge::ue::core_types`** -- POD `#[repr(C)]` mirrors of
+- **`ueforge::ue::core_types`**. POD `#[repr(C)]` mirrors of
   stable UE5 layouts: `FGuid` (16 bytes), `FWeakObjectPtr` (8
   bytes), `FDataTableRowHandle` (UDataTable* + FName u64),
   `EStatusEffectValueType` enum (None/Add/Multiply). Six unit
@@ -992,7 +992,7 @@ UE-mod framework" entry below was written:
   kill_hook.rs) deleted; both consume `ueforge::ue::*`.
   `FDataTableRowHandle` + `EStatusEffectValueType` ready for the
   pending status-effect migration. Commit `c2b6776`.
-- **`ueforge::rpg::SlotKeyResolver`** -- generic save-slot key
+- **`ueforge::rpg::SlotKeyResolver`**. Generic save-slot key
   extractor. Configure once with `(class_name, guid_offset)`;
   static `resolve()` walks GObjects for first instance of the
   class, reads `FGuid` at offset, formats as filename. Plug
@@ -1020,7 +1020,7 @@ UE-mod framework" entry below was written:
 - **`archive/` deleted.** ~3300 lines of dead C++ winhttp
   proxy code + the standalone DLL injector (~700 LoC, dead
   since UE4SS handles loading). `inspection-guide.md` rescued
-  to `grounded2-rpg/docs/inspection.md` -- still useful as
+  to `grounded2-rpg/docs/inspection.md`. Still useful as
   generic UE5 mod-inspection methodology + worked examples.
   Commits `a1e0be6`, `f222941`.
 - **`scripts/*.py` deleted.** Two Python uasset inspection
@@ -1049,7 +1049,7 @@ Post-cleanup totals:
   `ueforge_imgui_bridge.hpp`).
 - Vendored ImGui: not in repo (submodule).
 - Doctrine: [`../ueforge/docs/native.md`](../ueforge/docs/native.md)
-  -- "what C++ is in this repo, why each piece is irreducible,
+ . "what C++ is in this repo, why each piece is irreducible,
   and what stays in Rust."
 
 ## 2026-05-10 (final)
@@ -1063,15 +1063,15 @@ the complete set of systems every UE4SS Rust mod needs.
 
 - **`ueforge::ue::ClassRef::for_each_matching` /
   `for_each_cdo_subclass` / `for_each_cdo_matching` /
-  `for_each_any`** -- the full walker family. Predicate-filtered
+  `for_each_any`**. The full walker family. Predicate-filtered
   variants for "live pawns whose full_name contains substring";
   CDO variants for subclass-aware walks; `for_each_any` for
   singleton-style data assets where the CDO IS the real data.
-- **`ueforge::ue::ClassRef::new_dynamic(name)`** -- runtime
+- **`ueforge::ue::ClassRef::new_dynamic(name)`**. Runtime
   constructor for the rare cold-path case where the class name
   is computed (catalog-row apply, debug-op handler).
 - **`ueforge::ue::TypedField::deref`** specialized for
-  `TypedField<*mut UObject>` -- typed component-pointer follow.
+  `TypedField<*mut UObject>`. Typed component-pointer follow.
   Closes the `obj.field_ptr(off).cast::<*mut UObject>().read_unaligned()`
   pattern.
 - **`ueforge::ring::EventRing<T>`** -- `Ring<T>` paired with
@@ -1079,19 +1079,19 @@ the complete set of systems every UE4SS Rust mod needs.
   bumps both atomics, then pushes. Eliminates the need to pair
   every event ring with two separately declared `counter!`
   statics.
-- **`ueforge::ue::PlayerRef`** -- canonical "find the player"
+- **`ueforge::ue::PlayerRef`**. Canonical "find the player"
   surface for any UE5 mod. `(base_class, Option<bp_filter>)`
   config; static methods for `for_each_cdo`, `for_each_live`,
   `with_first_live`, `with_first_cdo`.
 
 #### Doctrine docs
 
-- **`../ueforge/docs/PERFORMANCE.md`** -- hot-path discipline (zero
+- **`../ueforge/docs/PERFORMANCE.md`**. Hot-path discipline (zero
   allocs, bail early, no mutexes on empty path, bounded
   everything, install-time heavy lifting, counter every hot
   path); memory leak vectors with their named ueforge fixes;
   consume-don't-reinvent table; consumer responsibilities.
-- **`../ueforge/docs/RESEARCH.md`** -- TDD investigation methodology
+- **`../ueforge/docs/RESEARCH.md`**. TDD investigation methodology
   for UE5 games: research-is-code rule, the seven-step TDD loop,
   five probe types in leverage order, doctrines on status
   effects / data tables / damage paths / instigator resolution
@@ -1116,11 +1116,11 @@ variants, catalog rows, hooks, parm structs).
 
 #### New ueforge surface
 
-- **`ueforge::ue::ClassRef`** -- typed cached UClass handle.
+- **`ueforge::ue::ClassRef`**. Typed cached UClass handle.
   `const`-constructible static; lazy resolve on first `get()`;
   `cdo()`, `find_function()`, `with_first_instance()`,
   `for_each_instance()`, `find_instance()` helpers.
-- **`ueforge::function_table!` decl-macro** -- struct-of-`usize`
+- **`ueforge::function_table!` decl-macro**. Struct-of-`usize`
   table of UFunction-pointer-identity slots with `install(&UClass)
   -> Result<Self, &'static str>` and `required` / `optional`
   field kinds.
@@ -1129,44 +1129,44 @@ variants, catalog rows, hooks, parm structs).
   `ptr(obj)`. Couples offset and type at declaration so accidental
   mismatches become `TypedField<f32>` vs `TypedField<u32>` type
   errors, not runtime corruption.
-- **`ueforge::rpg::VanillaCache<K, V>`** -- per-key vanilla
+- **`ueforge::rpg::VanillaCache<K, V>`**. Per-key vanilla
   baseline cache. `get_or_init(k, v)` returns the captured
   baseline forever (first-write wins); `set_if_unset`, `get`,
   `clear`, `snapshot`. `parking_lot::Mutex` internally.
-- **`ueforge::counter_json!` decl-macro** -- pairs of
+- **`ueforge::counter_json!` decl-macro**. Pairs of
   `(static_ident => "json_key")` collapsed into a
   `serde_json::Value::Object` with `load(Relaxed)` per counter.
 - **`ueforge::hook::install_with_backoff(name, RetryPolicy, fn)`**
-  -- generic exponential-backoff retry around any
+ . Generic exponential-backoff retry around any
   `FnMut() -> Result<H, &'static str>`. `RetryPolicy::default_install()`
   ships with g2rpg's battle-tested 500ms/5s/10min tuning.
-- **`ueforge::worker::spawn(name, FnOnce)`** -- named worker
+- **`ueforge::worker::spawn(name, FnOnce)`**. Named worker
   thread (Win32 `SetThreadDescription` via `Builder::name`) with
   `catch_unwind` + logged panic payload. Closes the kovarex P1
   "unnamed worker thread" + "silent panic swallow" findings.
-- **`ueforge::hook::LazyFunctionPtr`** -- lazily-cached
+- **`ueforge::hook::LazyFunctionPtr`**. Lazily-cached
   `&UFunction` for hot-path identity dispatch. Warm path: 1
   atomic load + 1 branch. Cold path: 1 FName resolve, cache,
   never re-taken.
-- **`ueforge::hook::ProcessEventHook::install_many`** --
+- **`ueforge::hook::ProcessEventHook::install_many`**.
   multi-class install with skip-on-not-loaded log lines.
 
 #### RPG framework (Phase 3 wave 2)
 
 The whole RPG / level-up system became framework code:
 
-- **`ueforge::rpg::Skill<E>`** + **`find_skill`** -- generic
+- **`ueforge::rpg::Skill<E>`** + **`find_skill`**. Generic
   catalog row parameterized on the game's effect enum.
-- **`ueforge::rpg::RpgApplier`** trait -- the seam where
+- **`ueforge::rpg::RpgApplier`** trait. The seam where
   ueforge's state/persistence layer meets the game's apply
   dispatch. Methods: `apply_skill(state, skill)`, `apply_all`,
   `format_effect(skill, level)`.
-- **`ueforge::rpg::Tracker<A: RpgApplier>`** -- owns slot
+- **`ueforge::rpg::Tracker<A: RpgApplier>`**. Owns slot
   binding, in-memory state, Applier instance, persistence.
   Drives spend/refund/record_xp/reapply transactionally with
   disk save. Returns `XpResult` from `record_xp` so the caller
   can log "LEVEL UP!" feedback.
-- **`ueforge::rpg::tab::render(tracker, ToggleFns)`** -- ImGui
+- **`ueforge::rpg::tab::render(tracker, ToggleFns)`**. ImGui
   template: header (level + XP bar + skill points), catalog
   rows (+1/+10/-1/-10/optional on-toggle), debug footer
   (+5 / +50 skill points). Game crates supply only the
@@ -1198,29 +1198,29 @@ smoke test pending.
 
 ## 2026-05-10
 
-### Phase 3 (first wave) -- ueforge::rpg generic framework
+### Phase 3 (first wave). Ueforge::rpg generic framework
 
 The RPG-mod-shaped pieces every UE game needs land in ueforge:
 
-- `ueforge::rpg::xp::Curve { base, exponent, max_level }` -- the
+- `ueforge::rpg::xp::Curve { base, exponent, max_level }`. The
   classic `cumulative_xp_for_level` / `level_for_xp` math
   parameterized so any RPG mod plugs its own numbers.
-- `ueforge::rpg::progress::sqrt_progress(level, max)` -- generous-
+- `ueforge::rpg::progress::sqrt_progress(level, max)`. Generous-
   early diminishing-returns curve.
-- `ueforge::rpg::SkillsState` -- on-disk schema (xp / level /
+- `ueforge::rpg::SkillsState`. On-disk schema (xp / level /
   skill_points / `skill_levels: BTreeMap<String, u32>`) with
   `spend()` / `refund()` / `level_of()` methods.
-- `ueforge::rpg::SlotStore<S>` -- per-slot JSON persistence under
+- `ueforge::rpg::SlotStore<S>`. Per-slot JSON persistence under
   `<DLL_dir>/<subdir>/<slot>.json`. Generic over persisted struct.
   Atomic temp+rename save.
-- `ueforge::rpg::DisabledSkills` -- thread-safe toggle set for
+- `ueforge::rpg::DisabledSkills`. Thread-safe toggle set for
   "disable a skill without refunding its points".
 - `ueforge::rpg::SlotPoller::spawn(interval, resolve, on_activate,
   on_deactivate)` -- 1Hz worker that drives activate / deactivate
   transitions on a consumer-supplied resolver closure.
 
 5 unit tests on the curve + progress math (xp round-trip, max-level
-cap, sqrt endpoints, quarter-is-half) -- the framework's first unit
+cap, sqrt endpoints, quarter-is-half). The framework's first unit
 tests, closes the kovarex P2 "no unit tests on framework
 primitives" item.
 
@@ -1242,7 +1242,7 @@ widget) is next session.
 
 Three Phase 2 items land before the big RPG promotion:
 
-- **`ueforge::ue::class_tweak::ClassFieldTweak<T>`** -- live-UObject
+- **`ueforge::ue::class_tweak::ClassFieldTweak<T>`**. Live-UObject
   sibling of `FieldTweak<T>` (which is DataTable-row scoped). Two
   closure shape: `filter(&UObject) -> bool` (cheap, runs before
   the vanilla read) and `transform(T) -> Option<T>` (`None` =
@@ -1252,7 +1252,7 @@ Three Phase 2 items land before the big RPG promotion:
   Hand-rolled GObjects walks deleted; both files are now driven
   by `static SLOTS / HUNGER / THIRST: ClassFieldTweak<...> = ...;`
   and a single `.apply()` call. Net -150 LoC from g2rpg.
-- **`ueforge::hook::function_ptr` / `function_ptr_required`** --
+- **`ueforge::hook::function_ptr` / `function_ptr_required`**.
   small helper that returns `*const UFunction as usize`. Pattern
   is: stash in an `AtomicUsize` at hook install, dispatch by
   pointer identity in the trampoline.
@@ -1269,19 +1269,19 @@ build plumbing now lives in ueforge and is consumed (not mirrored)
 by the mod.
 
 Deleted from g2rpg:
-- `cpp/shim.cpp` (357 LoC) -- CppUserModBase mirror + ImGui render lambda
-- `src/rpg/ffi.rs` (340 LoC) -- C-ABI bridges that the shim called
-- `src/log.rs` -- duplicate of ueforge::log
-- `src/sdk/` -- thin re-export shim of ueforge::ue
-- `src/hook/` -- thin re-export shim of ueforge::hook
-- `winhttp.def` -- legacy
+- `cpp/shim.cpp` (357 LoC). CppUserModBase mirror + ImGui render lambda
+- `src/rpg/ffi.rs` (340 LoC). C-ABI bridges that the shim called
+- `src/log.rs`. Duplicate of ueforge::log
+- `src/sdk/`. Thin re-export shim of ueforge::ue
+- `src/hook/`. Thin re-export shim of ueforge::hook
+- `winhttp.def`. Legacy
 - Custom `DllMain` + `grounded2_rpg_start` / `grounded2_rpg_stop` exports
 - `DLL_HMODULE` static
 
 Replaced with:
-- `ueforge::ue4ss_mod!(MOD_INFO)` -- one macro emits every extern "C"
+- `ueforge::ue4ss_mod!(MOD_INFO)`. One macro emits every extern "C"
   hook the shim invokes (factory, DllMain forwarding, tab dispatch)
-- `src/rpg/tab.rs` -- Rust ImGui render. Calls `tracker` / `skills`
+- `src/rpg/tab.rs`. Rust ImGui render. Calls `tracker` / `skills`
   / `xp` directly; uses ImGui `##id` label suffix instead of
   PushID/PopID for unique button instances per skill row
 - 1-line `build.rs`: `ueforge::build::CppShim::new().compile()`
@@ -1301,7 +1301,7 @@ What stays in g2rpg (correct game-side): `inv_hook`, `kill_hook`,
 `fall_hook`, `survival`, `patch`, `parms`, `debug`, the `counters`
 domain statics, and the entire `rpg/` subsystem (catalog content,
 apply dispatcher, persistence layer). `rpg/` is the Phase 2 promotion
-candidate -- shape is generic for any UE game with the right
+candidate. Shape is generic for any UE game with the right
 `slot_key()` resolver, so it lands in `ueforge::rpg` next.
 
 ### ueforge hardening (kovarex review landed)
@@ -1310,7 +1310,7 @@ Three P0 + six P1 items shipped. Crash vectors closed, FString /
 GObjects walks bounded, dev profile unwinds.
 
 **P0:**
-- `parking_lot::Mutex` everywhere -- no more poison-then-abort hard
+- `parking_lot::Mutex` everywhere. No more poison-then-abort hard
   crashes. `[profile.dev] panic = "unwind"` so research crashes
   leave a backtrace; release stays on abort for size + perf.
 - Hot paths use `try_runtime` + soft fallback (empty name, dropped
@@ -1327,7 +1327,7 @@ GObjects walks bounded, dev profile unwinds.
   at one buffer per unique FName (was: per call). Bounded by the
   game's name pool (~50K) instead of unbounded.
 - `find_class_fast` caches by name. Selector resolution drops from
-  O(GObjects walk) -- ~150K objects on OWS -- to O(1) on the warm
+  O(GObjects walk). ~150K objects on OWS. To O(1) on the warm
   path.
 - `UClass::cached_native_properties` returns `Arc<[NativeProperty]>`;
   `inspect_address` allocates zero per click after the first lookup.
@@ -1358,7 +1358,7 @@ tab -> "DataTable::RowMap on DT_Materials" instead of
 "DT_Materials @ +0x30 (size 0x60)". Walks the super-class chain.
 Adds `ffield`, `fproperty`, and `ustruct::CHILD_PROPERTIES`
 constants to `ue::offsets` (UE 5.4 verified; 5.5/5.6 may shift
-`OFFSET_INTERNAL` -- track via the offsets-versioning P2 item).
+`OFFSET_INTERNAL`. Track via the offsets-versioning P2 item).
 
 ## 2026-05-09 (evening)
 
@@ -1431,7 +1431,7 @@ thread (ImGui callback, world_loader poller) hangs on the
 replication marker.
 
 Reading the SDK + the original commit (`6ad1df2`), the call was
-dead code -- the changelog explicitly notes "Player still takes
+dead code. The changelog explicitly notes "Player still takes
 fall damage" even with the UFunction firing, and the actual
 mitigation that works is the velocity-stomp on `Velocity.Z` in
 `fall_hook.rs` plus the `RequiredDamageTypeFlags` mask. Native
@@ -1458,11 +1458,11 @@ Pending in-game witness.
   frequent ticks). Combat-regen delay (0x0108) intentionally
   untouched to preserve the post-combat feel. +500% / 6x at level
   100.
-- **Leap Distance** -- existing `PlayerMovementMult` over three
+- **Leap Distance**. Existing `PlayerMovementMult` over three
   CharMovementComponent fields: AirControl (0x02C0),
   AirControlBoostMultiplier (0x02C4), AirControlBoostVelocityThreshold
   (0x02C8). Lets the player keep accelerating in their input
-  direction through the arc -- a real "leap" feel rather than a
+  direction through the arc. A real "leap" feel rather than a
   taller jump. +500% at level 100.
 
 ### ImGui tab: refund + per-skill toggle
@@ -1474,7 +1474,7 @@ Pending in-game witness.
   reload to take effect because the apply step early-returns at
   level 0 and there is no vanilla mask captured.
 - `on` checkbox per row. Disabling treats the skill as level 0
-  without refunding the points -- drops a buff (e.g. Leap Distance)
+  without refunding the points. Drops a buff (e.g. Leap Distance)
   on demand without losing progress. Process-global, not persisted
   (cheap to reapply on launch). Toggling fires `apply_one`.
 
