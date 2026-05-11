@@ -50,7 +50,7 @@ static HOOK: ViewportHook<G2Binder> = ViewportHook::new(CONFIG);
 static CAPACITY: AtomicI32 = AtomicI32::new(0);
 
 /// One-time-resolved UFunction handles for the binder. Resolved at
-/// install time, never moved -- pointer-stable per game session.
+/// install time, never moved. Pointer-stable per game session.
 struct G2Binder {
     inv_get_inventory_items: usize,
     inv_initialize_item_slot: usize,
@@ -117,7 +117,7 @@ impl ViewportBinder for G2Binder {
     ) {
         // Resolve the item at the absolute index from the cached
         // items list using the BPF helper (it knows how to handle
-        // out-of-bounds gracefully -- returns null Item).
+        // out-of-bounds gracefully. Returns null Item).
         let bpf_func = unsafe {
             &*(self.bpf_get_item_in_item_list_slot as *const UFunction)
         };
