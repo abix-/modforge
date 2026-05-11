@@ -28,7 +28,7 @@
 
 use super::{EffectDef, TriggerDef};
 
-/// Skill catalog row -- the Def in the workspace's
+/// Skill catalog row. The Def in the workspace's
 /// Def/Registry/Instance/Controller pattern. A skill is a
 /// composition: an [`EffectDef`] (WHAT to do) + a [`TriggerDef`]
 /// (WHEN to do it). Plus the player-facing identity (id /
@@ -39,14 +39,14 @@ pub struct SkillDef {
     pub max_level: u32,
     pub effect: EffectDef,
     /// When the effect fires. Most CDO-write skills use
-    /// `&ueforge::rpg::trigger::ON_SLOT_CHANGE` -- the effect
+    /// `&ueforge::rpg::trigger::ON_SLOT_CHANGE`. The effect
     /// fires on slot activate / spend / refund. Event-driven
     /// skills (lifesteal, crit, thorns, evasion) declare a
     /// damage-event trigger so the framework wires the dispatch.
     pub trigger: &'static TriggerDef,
 }
 
-/// Skill registry -- the workspace-standard `<Subject>Registry`
+/// Skill registry. The workspace-standard `<Subject>Registry`
 /// wrapper around a static catalog slice. Game crates declare:
 ///
 /// ```ignore
@@ -75,7 +75,7 @@ impl SkillRegistry {
     }
 
     /// Canonical lookup. O(N) linear scan; catalogs are tiny
-    /// (~25 rows) and lookups are cold-path -- no hash map needed.
+    /// (~25 rows) and lookups are cold-path. No hash map needed.
     pub fn def(&self, id: &str) -> Option<&'static SkillDef> {
         self.entries.iter().find(|s| s.id == id)
     }
@@ -101,7 +101,7 @@ impl SkillRegistry {
 }
 
 // `for x in &CATALOG` works through this impl. `for x in CATALOG`
-// (consuming the registry) doesn't make sense -- the registry IS
+// (consuming the registry) doesn't make sense. The registry IS
 // the catalog handle, not a sequence to consume.
 impl<'a> IntoIterator for &'a SkillRegistry {
     type Item = &'a SkillDef;
