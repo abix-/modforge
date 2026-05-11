@@ -152,11 +152,19 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
         (head_addr as *const *const u8).read_unaligned()
     };
     let mut depth = 0;
+    let mut seen: std::collections::HashSet<usize> =
+        std::collections::HashSet::with_capacity(64);
     while !cur.is_null() && depth < 4096 {
         // Validate that the entire FField head is in mapped memory
         // before any read. The chain walk hits stub / freed nodes
         // in late content-loaded GObjects on some games.
         if !crate::winproc::is_addr_readable(cur as usize + offsets::ffield::SIZE - 1) {
+            break;
+        }
+        // Cycle detection: a corrupt RowStruct on OWS produces a
+        // Next chain that points back into the FFieldClass list /
+        // self-loops. Break the moment we revisit a node.
+        if !seen.insert(cur as usize) {
             break;
         }
         unsafe {

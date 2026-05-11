@@ -41,7 +41,14 @@ impl FString {
         if self.is_empty() {
             return String::new();
         }
-        let len = self.num as usize;
+        // Cap reads at a plausible-name length. Engine-side
+        // `AppendString` on a corrupt FName index has been observed
+        // writing many KB of concatenated FFieldClass names into
+        // the out buffer (UE pool spilling). 4096 wide chars is
+        // comfortably above any real FName + protects against
+        // unbounded reads.
+        const MAX_WIDE: usize = 4096;
+        let len = (self.num as usize).min(MAX_WIDE);
         // Strip trailing NUL if present.
         let slice_len = if len > 0 && unsafe { slice::from_raw_parts(self.data, len) }[len - 1] == 0
         {
@@ -50,6 +57,14 @@ impl FString {
             len
         };
         let units = unsafe { slice::from_raw_parts(self.data, slice_len) };
-        String::from_utf16_lossy(units)
+        let s = String::from_utf16_lossy(units);
+        // Defense in depth: if the (capped) result still contains
+        // interior NULs, the name is corrupt -- truncate at the
+        // first NUL. Real FName strings never have interior NULs.
+        if let Some(nul) = s.find('\0') {
+            s[..nul].to_string()
+        } else {
+            s
+        }
     }
 }
