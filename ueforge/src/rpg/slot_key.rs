@@ -1,7 +1,7 @@
 //! Generic save-slot key resolver.
 //!
 //! Most UE5 RPG / survival games store a stable per-playthrough
-//! identifier on a singleton class -- typically the in-world
+//! identifier on a singleton class. Typically the in-world
 //! GameState carries an `FGuid`. The pattern is:
 //!
 //! 1. Find the first live instance of class `X`.
