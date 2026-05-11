@@ -1,7 +1,7 @@
 //! Thin CLI over `ueforge::uasset::find_int_property`. See module docs.
 //!
 //! ```sh
-//! cargo run -p ueforge --bin read-property -- <uasset> <uexp> [property=DefaultMaxSize]
+//! cargo run -p ueforge --bin read-property. <uasset> <uexp> [property=DefaultMaxSize]
 //! ```
 
 use std::env;
