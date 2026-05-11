@@ -4,7 +4,7 @@
 // formatting lives in `ueforge::client::research`.
 //
 //   set BBP_DEBUG_PORT=17171
-//   cargo test --release --test explore_thread_attribution -- --nocapture
+//   cargo test --release --test explore_thread_attribution. --nocapture
 
 mod common;
 
