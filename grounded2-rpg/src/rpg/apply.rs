@@ -1,14 +1,14 @@
 // Apply step: shared helpers + class refs + vanilla caches that
 // the per-skill Effect impls (in `effects.rs`) consume. The
-// game-side dispatch match this file used to own is GONE -- per
+// game-side dispatch match this file used to own is GONE. Per
 // the workspace composition model
 // (../../../ueforge/docs/architecture.md), each catalog row's
 // EffectDef is its own apply path. Tracker iterates the catalog
 // and calls `effect.apply(level, max)` directly.
 //
 // What's left here:
-//   - PLAYER, CLASS_GLOBAL_COMBAT_DATA -- shared class refs.
-//   - capture_vanilla() -- runs at worker init, snapshots
+//   - PLAYER, CLASS_GLOBAL_COMBAT_DATA. Shared class refs.
+//   - capture_vanilla(). Runs at worker init, snapshots
 //     hunger/thirst drain rates from the SurvivalComponent CDO.
 //   - vanilla_hunger / vanilla_thirst accessors.
 //   - DISABLED_SKILLS toggle set surface (still used by some
@@ -66,7 +66,7 @@ pub(crate) static VANILLA_HC_U32_MASK: ueforge::rpg::VanillaCache<usize, u32> =
     ueforge::rpg::VanillaCache::new();
 
 /// True when the skill should currently apply at its stored level.
-/// Reads through the framework Tracker's internal toggle set --
+/// Reads through the framework Tracker's internal toggle set.
 /// no separate game-side mirror.
 pub fn is_skill_enabled(skill_id: &str) -> bool {
     !crate::rpg::tracker::TRACKER
