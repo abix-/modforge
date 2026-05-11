@@ -142,7 +142,7 @@ impl Tracker {
 
     /// Apply one skill against a borrowed state, honoring the
     /// disabled toggle (treats disabled as level 0). Fires the
-    /// effect with `TriggerCtx::SlotChange` -- the trigger kind
+    /// effect with `TriggerCtx::SlotChange`. The trigger kind
     /// that CDO-write effects expect on slot activate / spend /
     /// refund / toggle.
     fn apply_one_unlocked(&self, skill: &SkillDef, state: &SkillsState) {
@@ -165,7 +165,7 @@ impl Tracker {
     ///
     /// Save-first, apply-second. If the disk save fails (full disk,
     /// EACCES, etc.) the in-memory mutation is rolled back and
-    /// `apply` is NOT called -- so the session reflects what is
+    /// `apply` is NOT called. So the session reflects what is
     /// actually on disk. Returns 0 on save failure; the caller can
     /// read [`Self::last_save_error`] for the cause.
     pub fn spend_skill_points(&self, skill_id: &str, count: u32) -> u32 {
