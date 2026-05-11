@@ -5,7 +5,7 @@
 // AInGameGameState is the in-game UWorld's GameState. It carries
 // `PlaythroughGuid` (FGuid, 16 bytes) at offset 0x032C
 // (`Maine_classes.hpp:28544`). This is the same stable GUID used to
-// disambiguate saves on disk -- exactly what we need as a
+// disambiguate saves on disk. Exactly what we need as a
 // persistence filename key.
 //
 // Earlier attempt used `USaveLoadManager.SaveInProgressSaveGameHeaderData`
