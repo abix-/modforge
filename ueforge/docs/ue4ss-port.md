@@ -47,7 +47,7 @@ short of it:
   rebind, JSON settings, file logging.
 - The Rust SDK shim (`UObject`, `UClass`, `UFunction`, `find_class_fast`,
   `GObjectsView`). Our shim is a working, correct subset of UE5
-  reflection. It's not redundant just because UE4SS *also* has one --
+  reflection. It's not redundant just because UE4SS *also* has one.
   ours runs in our process without a UE4SS dependency for the
   fallback "standalone DLL" build.
 - The injector (`inject.exe`). Stays as a dev-time tool for fast
