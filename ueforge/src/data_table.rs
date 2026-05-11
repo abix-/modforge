@@ -140,7 +140,7 @@ use crate::ue::{self, UObject};
 ///
 /// Cheap (HashMap-like linear scan over the cached table list).
 /// `None` if the table isn't in the cache or the field isn't on
-/// its row struct -- callers should re-call after
+/// its row struct. Callers should re-call after
 /// `discovery::refresh()` if content streamed in late.
 pub fn resolve_field(table_name: &str, field_name: &str) -> Option<(usize, u32, String)> {
     let snap = crate::discovery::cached()?;
@@ -170,7 +170,7 @@ pub fn resolve_field(table_name: &str, field_name: &str) -> Option<(usize, u32, 
     None
 }
 
-/// Name-based wrapper over `FieldTweak<T>` -- the offset is
+/// Name-based wrapper over `FieldTweak<T>`. The offset is
 /// resolved from the discovery cache on first apply rather than
 /// baked at declaration. This is the canonical write entry for
 /// new-game bootstrap: a mod declares one static per knob, no
@@ -215,7 +215,7 @@ impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
     }
 
     /// Resolve the offset (lazily, once) and apply. Errors if the
-    /// field isn't in the discovery cache -- caller can
+    /// field isn't in the discovery cache. Caller can
     /// `discovery::refresh()` and try again.
     pub fn apply<F, S>(&self, transform: F, skip_if: S) -> Result<usize, String>
     where
@@ -252,7 +252,7 @@ impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
     /// Spawn a background worker that waits for the table to
     /// load (via `ue::datatable::on_first_sight`), refreshes the
     /// discovery cache so the field is resolvable, then applies
-    /// once. Same shape as `FieldTweak::apply_when_ready` --
+    /// once. Same shape as `FieldTweak::apply_when_ready`.
     /// the typical init-time entry point.
     pub fn apply_when_ready<F, S>(
         &'static self,
@@ -264,7 +264,7 @@ impl<T: Copy + PartialEq + Send + 'static> NamedFieldTweak<T> {
         S: Fn(T) -> bool + Send + 'static,
     {
         ue::datatable::on_first_sight(self.table_name, timeout, move |_dt| {
-            // Re-walk discovery if our field isn't cached yet --
+            // Re-walk discovery if our field isn't cached yet.
             // the table only just appeared.
             if resolve_field(self.table_name, self.field_name).is_none() {
                 let _ = crate::discovery::refresh();
@@ -342,7 +342,7 @@ fn dyn_tweak<T: Copy + PartialEq + Send + 'static>(
 /// the discovery cache). Vanilla per-row is captured on first
 /// apply; subsequent applies re-base on the captured baseline.
 ///
-/// `skip_if` runs against the vanilla value -- typical use is
+/// `skip_if` runs against the vanilla value. Typical use is
 /// `|v| v <= 1` to leave non-stackable rows alone.
 pub fn dynamic_apply_i32(
     table: &str,
@@ -513,12 +513,12 @@ impl<T: Copy + PartialEq + Send + 'static> ClassNamedFieldTweak<T> {
 ///   `UInt64Property` (u64), `ByteProperty` (u8 number)
 /// - `FloatProperty` (f32), `DoubleProperty` (f64)
 /// - `BoolProperty` (single-byte interpretation; bitfield bools land
-///   as numeric -- they need their bitmask which isn't in the FField
+///   as numeric. They need their bitmask which isn't in the FField
 ///   chain we walk today)
 /// - `NameProperty` (resolved FName -> string)
 /// - `StrProperty` (FString -> string)
 /// - `ObjectProperty` / `SoftObjectProperty` / `ClassProperty` /
-///   `WeakObjectProperty` -- pointer hex
+///   `WeakObjectProperty`. Pointer hex
 /// - Everything else -- `{ "raw_bytes_hex": "..." }` of the first
 ///   `element_size` bytes so a future decoder can be added without
 ///   re-walking.
