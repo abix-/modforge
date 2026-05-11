@@ -23,10 +23,10 @@ use crate::ue::offsets::tmap as off;
 /// Walk every `TPair<K, V>` slot in a `TMap` field stored at
 /// `offset` inside the given object. Yields `(slot_index, slot_ptr)`
 /// pairs. Each `slot_ptr` is the start of the 24-byte
-/// `TSetElement<TPair>` slot — the first 8 bytes are the key
+/// `TSetElement<TPair>` slot. The first 8 bytes are the key
 /// (`K = FName` u64 in DataTable cases), the next 8 are the value.
 ///
-/// Slot bytes for free entries don't satisfy the type invariant —
+/// Slot bytes for free entries don't satisfy the type invariant.
 /// callers must filter by key match or by inspecting the allocation
 /// flags TBitArray at `+0x10` of the TMap (not implemented here;
 /// the linear scan + key match is the expected pattern).
