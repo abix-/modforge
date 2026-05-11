@@ -18,6 +18,7 @@ use crate::ui;
 
 struct ClassBrowserUi {
     selected: Option<String>,
+    detail: Option<serde_json::Value>,
     filter: [u8; 128],
 }
 
@@ -25,6 +26,7 @@ impl ClassBrowserUi {
     fn new() -> Self {
         Self {
             selected: None,
+            detail: None,
             filter: [0u8; 128],
         }
     }
@@ -95,25 +97,22 @@ pub fn render() {
             format!("Open##cls_{name}")
         };
         if ui::small_button(&label) {
-            s.selected = if selected { None } else { Some(name.to_string()) };
+            if selected {
+                s.selected = None;
+                s.detail = None;
+            } else {
+                s.detail = Some(crate::discovery::class_detail_json(name));
+                s.selected = Some(name.to_string());
+            }
         }
         ui::same_line();
         let super_name = c.get("super").and_then(|v| v.as_str()).unwrap_or("<root>");
-        let fields_n = c
-            .get("fields")
-            .and_then(|v| v.as_array())
-            .map(|a| a.len())
-            .unwrap_or(0);
-        let psize = c
-            .get("properties_size")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-        ui::text(&format!(
-            "{name}  :  {super_name}  ({fields_n} fields, +0x{psize:x})"
-        ));
+        ui::text(&format!("{name}  :  {super_name}"));
 
         if selected {
-            render_field_list(c);
+            if let Some(d) = &s.detail {
+                render_detail(d);
+            }
         }
     }
     if shown_count > 500 {
@@ -126,7 +125,7 @@ pub fn render() {
     }
 }
 
-fn render_field_list(c: &serde_json::Value) {
+fn render_detail(c: &serde_json::Value) {
     ui::indent();
     let empty = Vec::new();
     let fields = c.get("fields").and_then(|v| v.as_array()).unwrap_or(&empty);

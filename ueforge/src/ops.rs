@@ -280,6 +280,24 @@ pub fn register_builtins() {
             },
         ),
         OpDef::new(
+            "discover_class_detail",
+            "Walk one UClass's properties + functions on demand (safe from eager-walk crash)",
+            "{name: str}",
+            |args| {
+                let name = arg_str(args, "name")?;
+                Ok(crate::discovery::class_detail_json(name))
+            },
+        ),
+        OpDef::new(
+            "discover_struct_detail",
+            "Walk one UScriptStruct's fields on demand",
+            "{name: str}",
+            |args| {
+                let name = arg_str(args, "name")?;
+                Ok(crate::discovery::struct_detail_json(name))
+            },
+        ),
+        OpDef::new(
             "discover_structs",
             "Every UScriptStruct + field list (cached; pass refresh=true; name= filters to one)",
             "{refresh?: bool, name?: str}",

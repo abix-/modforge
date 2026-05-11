@@ -168,15 +168,41 @@ fn walk() -> DiscoverySnapshot {
     let mut structs: Vec<Json> = Vec::new();
     let mut scanned = 0usize;
     let mut panicked = 0usize;
+    let mut unreadable = 0usize;
+
+    crate::log::log(format_args!(
+        "discovery: starting GObjects walk ({} entries reported)",
+        view.num()
+    ));
 
     for obj in view.iter() {
         scanned += 1;
-        // Catch Rust panics emitted during per-object describe
-        // (FName resolution, name walks, etc.). Does NOT catch
-        // SEH access violations -- those are blocked at the
-        // pointer-read site via `winproc::is_addr_readable`.
+        if scanned.is_multiple_of(20_000) {
+            crate::log::log(format_args!(
+                "discovery: progress {scanned} scanned, {} tables, {} classes, {} structs",
+                data_tables.len(),
+                classes.len(),
+                structs.len(),
+            ));
+        }
+        // Guard against bad UObject pointers in GObjects (freed
+        // entries, never-fully-constructed stubs). We need to be
+        // able to read at least through OUTER (+0x20) for the
+        // class+name+outer chain. Bail before dereferencing if
+        // the page isn't committed.
+        let obj_addr = obj as *const UObject as usize;
+        if !crate::winproc::is_addr_readable(obj_addr)
+            || !crate::winproc::is_addr_readable(obj_addr + crate::ue::offsets::uobject::OUTER)
+        {
+            unreadable += 1;
+            continue;
+        }
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let Some(cls) = obj.class() else { return };
+            let cls_addr = cls as *const UClass as usize;
+            if !crate::winproc::is_addr_readable(cls_addr) {
+                return;
+            }
             let cls_name = cls.as_object().name();
 
             if let Some(dt) = dt_class {
@@ -199,6 +225,11 @@ fn walk() -> DiscoverySnapshot {
     if panicked > 0 {
         crate::log::log(format_args!(
             "discovery: {panicked} per-object panics caught (objects skipped)"
+        ));
+    }
+    if unreadable > 0 {
+        crate::log::log(format_args!(
+            "discovery: {unreadable} unreadable UObject entries skipped"
         ));
     }
 
@@ -225,47 +256,109 @@ fn walk() -> DiscoverySnapshot {
     }
 }
 
+/// Minimal eager describe -- only the always-safe top-level fields
+/// (UObject name + super + full path). Chain walks (properties,
+/// functions) move to `describe_class_detail` so the eager
+/// 28K-class GObjects pass touches only well-trodden reads.
 fn describe_class(cls: &UClass) -> Json {
     let obj = cls.as_object();
-    let props = cls.cached_native_properties();
-    let fields: Vec<Json> = props
-        .iter()
-        .map(|p| {
-            json!({
-                "name": p.name,
-                "offset": p.offset,
-                "element_size": p.element_size,
-            })
-        })
-        .collect();
-    let functions: Vec<Json> = cls
-        .iter_functions()
-        .into_iter()
-        .map(|(name, flags)| {
-            json!({
-                "name": name,
-                "function_flags": format!("0x{:08x}", flags),
-            })
-        })
-        .collect();
     let super_name = cls.super_class().map(|s| s.as_object().name());
     json!({
         "name": obj.name(),
         "full_path": obj.full_name(),
         "super": super_name,
-        "properties_size": cls.properties_size(),
-        "fields": fields,
-        "functions": functions,
     })
 }
 
 fn describe_script_struct(obj: &UObject) -> Json {
-    let fields = crate::ue::probe::walk_struct_fields(obj);
     json!({
         "name": obj.name(),
         "full_path": obj.full_name(),
-        "fields": fields,
     })
+}
+
+/// On-demand: walk one class's native property + function chains.
+/// Used by `discover_class_detail` op + class browser when the
+/// user clicks Open. Guarded reads inside `iter_native_properties` /
+/// `iter_functions` keep a bad chain on one class from taking the
+/// host down.
+pub fn class_detail_json(class_name: &str) -> Json {
+    let Some(cls) = crate::ue::find_class_fast(class_name) else {
+        return json!({"error": format!("class '{class_name}' not loaded")});
+    };
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let props = cls.cached_native_properties();
+        let fields: Vec<Json> = props
+            .iter()
+            .map(|p| {
+                json!({
+                    "name": p.name,
+                    "offset": p.offset,
+                    "element_size": p.element_size,
+                })
+            })
+            .collect();
+        let functions: Vec<Json> = cls
+            .iter_functions()
+            .into_iter()
+            .map(|(name, flags)| {
+                json!({
+                    "name": name,
+                    "function_flags": format!("0x{:08x}", flags),
+                })
+            })
+            .collect();
+        json!({
+            "name": class_name,
+            "properties_size": cls.properties_size(),
+            "fields": fields,
+            "functions": functions,
+        })
+    }));
+    match res {
+        Ok(j) => j,
+        Err(_) => json!({"error": format!("panic while describing '{class_name}'")}),
+    }
+}
+
+/// On-demand: walk one UScriptStruct's field chain. Used by the
+/// struct browser + `discover_struct_detail` op.
+pub fn struct_detail_json(struct_name: &str) -> Json {
+    let Some(rt) = crate::ue::try_runtime() else {
+        return json!({"error": "ueforge: ue runtime not initialized"});
+    };
+    let view = unsafe {
+        crate::ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets)
+    };
+    if !view.is_valid() {
+        return json!({"error": "gobjects view invalid"});
+    }
+    for obj in view.iter() {
+        let obj_addr = obj as *const UObject as usize;
+        if !crate::winproc::is_addr_readable(obj_addr) {
+            continue;
+        }
+        let Some(cls) = obj.class() else { continue };
+        if cls.as_object().name() != "ScriptStruct" {
+            continue;
+        }
+        if obj.name() != struct_name {
+            continue;
+        }
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let fields = crate::ue::probe::walk_struct_fields(obj);
+            json!({
+                "name": struct_name,
+                "full_path": obj.full_name(),
+                "fields": fields,
+            })
+        }));
+        return match res {
+            Ok(j) => j,
+            Err(_) => json!({"error": format!("panic while describing '{struct_name}'")}),
+        };
+    }
+    json!({"error": format!("struct '{struct_name}' not found")})
 }
 
 fn error_snap(msg: &str) -> DiscoverySnapshot {

@@ -19,6 +19,7 @@ use crate::ui;
 
 struct StructBrowserUi {
     selected: Option<String>,
+    detail: Option<serde_json::Value>,
     filter: [u8; 128],
 }
 
@@ -26,6 +27,7 @@ impl StructBrowserUi {
     fn new() -> Self {
         Self {
             selected: None,
+            detail: None,
             filter: [0u8; 128],
         }
     }
@@ -95,18 +97,21 @@ pub fn render() {
             format!("Open##st_{name}")
         };
         if ui::small_button(&label) {
-            s.selected = if selected { None } else { Some(name.to_string()) };
+            if selected {
+                s.selected = None;
+                s.detail = None;
+            } else {
+                s.detail = Some(crate::discovery::struct_detail_json(name));
+                s.selected = Some(name.to_string());
+            }
         }
         ui::same_line();
-        let fields_n = st
-            .get("fields")
-            .and_then(|v| v.as_array())
-            .map(|a| a.len())
-            .unwrap_or(0);
-        ui::text(&format!("{name}  ({fields_n} fields)"));
+        ui::text(name);
 
         if selected {
-            render_field_list(st);
+            if let Some(d) = &s.detail {
+                render_field_list(d);
+            }
         }
     }
     if shown_count > 500 {
