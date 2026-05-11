@@ -2,7 +2,7 @@
 //!
 //! Every mod in this workspace exposes a `POST /debug` HTTP endpoint
 //! routing op-dispatch JSON. The framework supplies all the
-//! universal pieces -- op routing for the standard catalog, snapshot
+//! universal pieces. Op routing for the standard catalog, snapshot
 //! view types, op-list metadata. Game crates supply the game-
 //! specific simulate_* ops + the snapshot data that requires UE
 //! class layout knowledge.
@@ -80,7 +80,7 @@ pub struct CatalogEntry {
 
 /// Map a game's `[SkillDef]` slice into a serializable
 /// `Vec<CatalogEntry>`. The `effect_kind` field is taken from
-/// each row's [`crate::rpg::EffectDef::kind`] tag -- no
+/// each row's [`crate::rpg::EffectDef::kind`] tag. No
 /// game-specific dispatch needed.
 ///
 /// ```ignore
@@ -105,7 +105,7 @@ pub fn catalog_view(catalog: &'static [SkillDef]) -> Vec<CatalogEntry> {
 /// trampoline; the snapshot endpoint reads + serializes the ring.
 #[derive(Clone, Serialize)]
 pub struct DamageEvent {
-    /// Wall-clock seconds since UNIX epoch -- sequences events in
+    /// Wall-clock seconds since UNIX epoch. Sequences events in
     /// the same clock space as log lines.
     pub at_secs: u64,
     pub function: String,
