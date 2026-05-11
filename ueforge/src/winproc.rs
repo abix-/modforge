@@ -1,21 +1,21 @@
 //! Windows process introspection helpers. Pure `windows-sys` calls
-//! against the current process — no UE / game state needed. Useful
+//! against the current process. No UE / game state needed. Useful
 //! in any Windows mod for diagnosing CPU and memory issues:
 //!
-//! - `process_threads_json` — per-thread CPU times (UE5 uses
+//! - `process_threads_json`. Per-thread CPU times (UE5 uses
 //!   `GameThread`, `RenderThread`, `RHIThread`,
 //!   `TaskGraphThreadHP*`); biggest delta = cycle thief.
-//! - `process_cpu_json` — total user/kernel CPU time
+//! - `process_cpu_json`. Total user/kernel CPU time
 //!   (FILETIME -> nanoseconds).
-//! - `process_regions_json` — VirtualQuery walk, bucket committed
+//! - `process_regions_json`. VirtualQuery walk, bucket committed
 //!   bytes by `(image|mapped|private)` x `(rwx|rx|rw|r)`, plus
 //!   private-region size histogram, AllocationBase count, top-N
 //!   regions with mapped file name. Diff two snapshots = where the
 //!   leak is.
-//! - `sample_thread_modules_json` — SuspendThread + GetThreadContext
+//! - `sample_thread_modules_json`. SuspendThread + GetThreadContext
 //!   per-thread RIP-by-module sampler. Statistical "who is burning
 //!   CPU" without DbgHelp.
-//! - `process_memory_json` — PSAPI working set, private usage,
+//! - `process_memory_json`. PSAPI working set, private usage,
 //!   pagefile, page faults.
 
 #![allow(clippy::too_many_lines)]
@@ -258,7 +258,7 @@ pub fn process_regions_json() -> serde_json::Value {
     let mut region_count: u64 = 0;
     let mut committed_count: u64 = 0;
 
-    // Histogram of committed-region sizes (private only --
+    // Histogram of committed-region sizes (private only.
     // the leak we are chasing). Buckets cover the UE binned
     // allocator page sizes plus the larger D3D resource heaps.
     let mut hist_priv_4k: u64 = 0;
@@ -288,7 +288,7 @@ pub fn process_regions_json() -> serde_json::Value {
 
     // Track top-N largest committed regions for the report.
     // Region key collapses adjacent same-type/same-protection
-    // pages. We don't merge here -- VirtualQuery already returns
+    // pages. We don't merge here. VirtualQuery already returns
     // "regions" of contiguous identical pages.
     let mut top_regions: Vec<(u64, u64, u32, u32, String)> = Vec::new(); // (size, base, type, prot, mapped_name)
 
@@ -296,7 +296,7 @@ pub fn process_regions_json() -> serde_json::Value {
     let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
     let info_size = std::mem::size_of::<MEMORY_BASIC_INFORMATION>();
 
-    // VirtualQuery on our own process -- pass null as the process
+    // VirtualQuery on our own process. Pass null as the process
     // handle equivalent uses VirtualQuery (not Ex). VirtualQuery
     // takes (lpAddress, lpBuffer, dwLength) and returns bytes
     // written.
@@ -487,7 +487,7 @@ pub fn process_regions_json() -> serde_json::Value {
 /// Sample every thread's instruction pointer N times over a
 /// window. For each sample, look up which loaded module the
 /// RIP belongs to. Per-thread histogram of "which module is
-/// each thread spending time in" -- statistical caller
+/// each thread spending time in". Statistical caller
 /// attribution without needing DbgHelp / StackWalk64.
 ///
 /// This answers the "WHO is burning CPU / who is allocating"
@@ -599,7 +599,7 @@ pub fn sample_thread_modules_json(duration_ms: u32, interval_ms: u32) -> serde_j
 
     // System-DLL filter. When RIP is in one of these, the thread
     // is inside the OS / allocator / driver. Walking up the stack
-    // finds the user-code caller -- which is the actual "WHO."
+    // finds the user-code caller. Which is the actual "WHO."
     let is_system = |m: &str| -> bool {
         let lower = m.to_ascii_lowercase();
         matches!(
