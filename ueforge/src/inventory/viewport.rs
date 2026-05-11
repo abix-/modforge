@@ -80,7 +80,7 @@ pub struct ViewportConfig {
     /// Slots scrolled per mouse-wheel tick. Typical: one row
     /// (e.g. 10 for a 10-column grid).
     pub scroll_step: i32,
-    /// "Construct" UFunction name -- viewport resets to 0 on
+    /// "Construct" UFunction name. Viewport resets to 0 on
     /// widget construction.
     pub construct_fn: &'static str,
     /// "OnMouseWheel" UFunction name.
@@ -256,7 +256,7 @@ fn lookup_fn(class: &crate::ue::UClass, name: &str) -> Result<usize, &'static st
 
 // ----------------------------------------------------------------
 // Single-static dispatch table. ProcessEventHook callbacks are
-// `fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent)` --
+// `fn(&UObject, &UFunction, *mut c_void, OriginalProcessEvent)`.
 // no user-data slot. We store a *const () pointer to the
 // `ViewportHook<B>` static keyed by class name; the callback
 // looks it up.
