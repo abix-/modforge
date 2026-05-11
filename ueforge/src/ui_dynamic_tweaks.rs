@@ -1,5 +1,5 @@
 //! Shared ImGui widget for the `ueforge::dynamic_tweaks` framework.
-//! Renders an inline section -- intended to be called from a game
+//! Renders an inline section. Intended to be called from a game
 //! crate's existing tab render function, not as a top-level tab.
 //!
 //! ```ignore
@@ -14,7 +14,7 @@
 //! ```
 //!
 //! The closure `reload_settings` lets the widget refresh the
-//! consumer's settings before Re-apply -- the game crate decides
+//! consumer's settings before Re-apply. The game crate decides
 //! where the settings live, so the widget can't reload them
 //! itself. Pass an empty closure if reload-on-button isn't wanted.
 
