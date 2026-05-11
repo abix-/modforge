@@ -27,7 +27,7 @@ The repo's headline product is `ueforge`. Game-side mods are
 consumers that prove the framework's reach and inherit every
 upgrade.
 
-## ueforge -- the framework
+## ueforge. The framework
 
 `ueforge` is a UE4SS Rust mod framework. It owns every pattern
 that every UE5 mod reimplements: lifecycle (`ue4ss_mod!` macro,
@@ -188,29 +188,29 @@ leverage. Chronology of milestones in
 - Visual Studio Build Tools 2022+ with the C++ workload
 - The target game's UE4SS install
 - For framework dev: clone with submodules (`--recurse-submodules`)
-  -- Dear ImGui v1.92.1 lives in a submodule.
+ . Dear ImGui v1.92.1 lives in a submodule.
 
 ## Docs
 
 Workspace-level (this repo's open work + chronology) lives at
 the root:
 
-- [`docs/README.md`](docs/README.md) -- workspace docs index
-- [`docs/todo.md`](docs/todo.md) -- open work across all crates
-- [`docs/changelog.md`](docs/changelog.md) -- milestones, newest first
+- [`docs/README.md`](docs/README.md). Workspace docs index
+- [`docs/todo.md`](docs/todo.md). Open work across all crates
+- [`docs/changelog.md`](docs/changelog.md). Milestones, newest first
 
 Framework docs are in [`ueforge/docs/`](ueforge/docs/):
 
-- [`ueforge/README.md`](ueforge/README.md) -- entry point + audit
+- [`ueforge/README.md`](ueforge/README.md). Entry point + audit
   table mapping every framework surface to game-side consumers
-- [`ueforge/docs/PERFORMANCE.md`](ueforge/docs/PERFORMANCE.md) -- hot-path doctrine
-- [`ueforge/docs/RESEARCH.md`](ueforge/docs/RESEARCH.md) -- TDD investigation methodology
+- [`ueforge/docs/PERFORMANCE.md`](ueforge/docs/PERFORMANCE.md). Hot-path doctrine
+- [`ueforge/docs/RESEARCH.md`](ueforge/docs/RESEARCH.md). TDD investigation methodology
 - [`ueforge/docs/lifecycle.md`](ueforge/docs/lifecycle.md) -- `ue4ss_mod!`, hot-reload, build/deploy
-- [`ueforge/docs/ue-sdk.md`](ueforge/docs/ue-sdk.md) -- UE SDK shim
-- [`ueforge/docs/hooks.md`](ueforge/docs/hooks.md) -- ProcessEvent + hook teardown
-- [`ueforge/docs/rpg.md`](ueforge/docs/rpg.md) -- RPG module
-- [`ueforge/docs/testing.md`](ueforge/docs/testing.md) -- test client + research/diff/scenario DSL
-- (and the rest -- per-subsystem reference)
+- [`ueforge/docs/ue-sdk.md`](ueforge/docs/ue-sdk.md). UE SDK shim
+- [`ueforge/docs/hooks.md`](ueforge/docs/hooks.md). ProcessEvent + hook teardown
+- [`ueforge/docs/rpg.md`](ueforge/docs/rpg.md). RPG module
+- [`ueforge/docs/testing.md`](ueforge/docs/testing.md). Test client + research/diff/scenario DSL
+- (and the rest. Per-subsystem reference)
 
 Per-mod docs live next to the mod's source.
 
@@ -237,7 +237,7 @@ Per-mod docs live next to the mod's source.
   whose mod's breakage motivated the data-side + visible-side
   patching pattern.
 - The author of [**RPG System**](https://mods.factorio.com/mod/RPGsystem)
-  for Factorio -- the headline RPG-style level-up mod whose
+  for Factorio. The headline RPG-style level-up mod whose
   vocabulary `grounded2-rpg` borrows verbatim.
 - The author of [**RimWorld RPG Mod / Combat Skills RPG**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858).
 - The authors of the [War3CS / War3FT](https://war3cs2.wiki.gg/)
