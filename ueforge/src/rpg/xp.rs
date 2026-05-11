@@ -3,7 +3,7 @@
 
 /// `cumulative_xp_for_level(level) = round(base * level^exponent)`,
 /// capped at `max_level`. Defaults match the g2rpg convention:
-/// `base = 100`, `exponent = 1.8`, `max_level = 50` -- generous
+/// `base = 100`, `exponent = 1.8`, `max_level = 50`. Generous
 /// early, flat at the end.
 #[derive(Debug, Clone, Copy)]
 pub struct Curve {
@@ -46,7 +46,7 @@ impl Curve {
         (self.base * n.powf(self.exponent)).round() as u64
     }
 
-    /// What level does `xp` total XP grant? Linear scan -- max_level
+    /// What level does `xp` total XP grant? Linear scan. Max_level
     /// is bounded (typical 50-100) so the cost is trivial.
     pub fn level_for_xp(&self, xp: u64) -> u32 {
         for level in (1..=self.max_level).rev() {
@@ -58,7 +58,7 @@ impl Curve {
     }
 }
 
-/// Per-creature Def -- the workspace-standard `<Subject>Def` for
+/// Per-creature Def. The workspace-standard `<Subject>Def` for
 /// the creature subject. Keyed by BP class short name
 /// (`"BP_Aphid_C"`); carries the base XP awarded for killing that
 /// creature.
@@ -106,7 +106,7 @@ impl CreatureRegistry {
     }
 
     /// Canonical `<subject>_def` lookup. Returns the full row
-    /// or `None` for unknown classes -- callers that just want
+    /// or `None` for unknown classes. Callers that just want
     /// the XP value should use [`Self::lookup`].
     pub fn def(&self, class_name: &str) -> Option<&'static CreatureDef> {
         self.entries.iter().find(|e| e.class_name == class_name)
