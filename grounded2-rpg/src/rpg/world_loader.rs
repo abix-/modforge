@@ -51,7 +51,7 @@ pub fn panic_count() -> u64 {
     POLLER.get().map(|p| p.panic_count()).unwrap_or(0)
 }
 
-/// Snapshot of settings loaded at init -- used by the debug endpoint.
+/// Snapshot of settings loaded at init. Used by the debug endpoint.
 pub fn loaded_settings() -> Option<Settings> {
     SETTINGS.get().cloned()
 }
