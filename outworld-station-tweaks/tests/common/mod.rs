@@ -18,11 +18,16 @@ pub struct Snapshot {
 pub type Api = ueforge::client::Api<Snapshot>;
 
 pub fn try_api() -> Option<Api> {
+    // Bumped from the 5s default: ops that run a fresh GObjects
+    // walk (discover_*` with `refresh=true`, struct_detail) take
+    // multiple seconds on 175K-object games.
     ueforge::client::Api::try_connect(ENV_PORT, "/debug")
+        .map(|a| a.with_timeout(std::time::Duration::from_secs(60)))
 }
 
 pub fn require_api() -> Api {
     ueforge::client::Api::require(ENV_PORT, "/debug")
+        .with_timeout(std::time::Duration::from_secs(60))
 }
 
 pub fn op(api: &Api, op_name: &str, args: Value) -> ueforge::OpResponse<Snapshot> {

@@ -127,11 +127,27 @@ impl UObject {
 
     pub fn is_a(&self, target: &UClass) -> bool {
         let mut cur: Option<&UClass> = self.class();
+        let mut depth = 0;
         while let Some(c) = cur {
+            // Bound the walk: corrupt content occasionally has
+            // super chains that loop on themselves. Real UE5
+            // hierarchies cap at ~10 levels deep, so 64 is
+            // generous + an effective sanity guard.
+            if depth > 64 {
+                return false;
+            }
             if std::ptr::eq(c, target) {
                 return true;
             }
+            // Guard the super-class pointer read: an unmapped
+            // page on the next link would AV the host.
+            let super_addr =
+                c as *const UClass as usize + offsets::ustruct::SUPER_STRUCT;
+            if !crate::winproc::is_addr_readable(super_addr) {
+                return false;
+            }
             cur = c.super_class();
+            depth += 1;
         }
         false
     }
