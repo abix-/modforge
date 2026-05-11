@@ -65,7 +65,7 @@ rebind (no execution surface), runtime-editable JSON settings
 (paks bake at cook time), live debug console (no Win32 allocation),
 and clean coexistence with other inventory mods (pak asset
 replacement is last-loaded-wins). The scroll feature is the hard
-"no" -- it's the reason this mod went DLL-first.
+"no". It's the reason this mod went DLL-first.
 
 A pak version would be a stripped-down "capacity + drain rates"
 preset with the same conflict footprint Player Tweaks users
