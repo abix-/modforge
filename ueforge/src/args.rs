@@ -1,4 +1,4 @@
-//! Tiny `Json` arg helpers used by op handlers. Pure — no I/O, no
+//! Tiny `Json` arg helpers used by op handlers. Pure. No I/O, no
 //! UE deps. Lifted verbatim from `grounded2-rpg/src/debug.rs`.
 
 use serde_json::Value as Json;
