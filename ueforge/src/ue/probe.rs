@@ -127,29 +127,28 @@ pub fn describe_data_table(obj: &UObject) -> Json {
         (obj.as_ptr().add(offsets::datatable::ROW_STRUCT) as *const *const UObject)
             .read_unaligned()
     };
-    let row_struct = unsafe { row_struct_ptr.as_ref() };
-    match row_struct {
-        Some(rs) => {
-            let fields = walk_struct_fields(rs);
-            let row_path = rs.full_name();
-            json!({
-                "id": table_name.to_lowercase(),
-                "table_name": table_name,
-                "full_path": obj.full_name(),
-                "row_struct": {
-                    "name": rs.name(),
-                    "path": row_path,
-                    "fields": fields,
-                },
-            })
-        }
-        None => json!({
+    // Skip full_name() (outer-chain walk) in the eager pass --
+    // OWS has UDataTable instances whose outer chain crashes the
+    // walk on 175K-object refreshes. `dump_data_table` /
+    // `discover_data_table_detail` handle the deep paths
+    // on-demand.
+    if row_struct_ptr.is_null() || !crate::winproc::is_addr_readable(row_struct_ptr as usize) {
+        return json!({
             "id": table_name.to_lowercase(),
             "table_name": table_name,
-            "full_path": obj.full_name(),
             "row_struct": null,
-        }),
+        });
     }
+    let row_struct = unsafe { &*row_struct_ptr };
+    let fields = walk_struct_fields(row_struct);
+    json!({
+        "id": table_name.to_lowercase(),
+        "table_name": table_name,
+        "row_struct": {
+            "name": row_struct.name(),
+            "fields": fields,
+        },
+    })
 }
 
 /// Walk `ChildProperties` on any UStruct-derived UObject
@@ -162,15 +161,21 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
         return Vec::new();
     };
     let mut out = Vec::new();
+    let head_addr = struct_obj.as_ptr() as usize + offsets::ustruct::CHILD_PROPERTIES;
+    if !crate::winproc::is_addr_readable(head_addr) {
+        return out;
+    }
     let mut cur: *const u8 = unsafe {
-        struct_obj
-            .as_ptr()
-            .add(offsets::ustruct::CHILD_PROPERTIES)
-            .cast::<*const u8>()
-            .read_unaligned()
+        (head_addr as *const *const u8).read_unaligned()
     };
     let mut depth = 0;
     while !cur.is_null() && depth < 4096 {
+        // Validate that the entire FField head is in mapped memory
+        // before any read. The chain walk hits stub / freed nodes
+        // in late content-loaded GObjects on some games.
+        if !crate::winproc::is_addr_readable(cur as usize + offsets::ffield::SIZE - 1) {
+            break;
+        }
         unsafe {
             let name_ptr = cur.add(offsets::ffield::NAME_PRIVATE);
             let name_fname: crate::ue::fname::FName =

@@ -256,25 +256,18 @@ fn walk() -> DiscoverySnapshot {
     }
 }
 
-/// Minimal eager describe -- only the always-safe top-level fields
-/// (UObject name + super + full path). Chain walks (properties,
-/// functions) move to `describe_class_detail` so the eager
-/// 28K-class GObjects pass touches only well-trodden reads.
+/// Minimal eager describe. Just the short name; `full_path` /
+/// `super` / property + function chains move to
+/// [`class_detail_json`] on-demand. Eager walks of 175K+ objects
+/// in OWS hit corrupt outer-chain pointers when `obj.full_name()`
+/// walks more than one level deep, so we stay shallow here.
 fn describe_class(cls: &UClass) -> Json {
     let obj = cls.as_object();
-    let super_name = cls.super_class().map(|s| s.as_object().name());
-    json!({
-        "name": obj.name(),
-        "full_path": obj.full_name(),
-        "super": super_name,
-    })
+    json!({ "name": obj.name() })
 }
 
 fn describe_script_struct(obj: &UObject) -> Json {
-    json!({
-        "name": obj.name(),
-        "full_path": obj.full_name(),
-    })
+    json!({ "name": obj.name() })
 }
 
 /// On-demand: walk one class's native property + function chains.
