@@ -1,5 +1,5 @@
 //! Cheat-Engine-style memory scanner. In-process, so no
-//! `ReadProcessMemory` dance — we walk our own committed
+//! `ReadProcessMemory` dance. We walk our own committed
 //! VirtualAlloc regions and match value patterns directly.
 //!
 //! Surface (all exposed as ops on the embedding mod's `/debug`):
@@ -166,7 +166,7 @@ fn safe_read_bits(addr: usize, ty: Ty) -> Option<u64> {
 /// the number of bytes the kernel actually copied (may be less
 /// than `len` if a page in the range was freed mid-call). The
 /// scanner walks regions in chunks via this helper so a torn page
-/// only invalidates that chunk -- the rest of the region is still
+/// only invalidates that chunk. The rest of the region is still
 /// scanned. Without this, `read_unaligned` over a freed page raises
 /// an access violation that crashes the host process.
 fn safe_read_chunk(addr: usize, dst: &mut [u8]) -> usize {
@@ -287,7 +287,7 @@ fn sessions() -> &'static Mutex<HashMap<u64, Session>> {
 /// Where a freeze's target address came from. Selector-backed
 /// freezes can re-resolve when the cached address goes stale (UE
 /// recycles allocations, the source object moves, etc.). Raw-addr
-/// freezes have no recovery path -- once the page is gone, the
+/// freezes have no recovery path. Once the page is gone, the
 /// freeze just stops.
 #[derive(Clone)]
 enum FreezeSource {
@@ -506,7 +506,7 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
     let regions = iter_private_rw_regions();
     let step = ty.size();
     let mut survivors = Vec::new();
-    // 64 KiB scratch -- amortizes the ReadProcessMemory syscall
+    // 64 KiB scratch. Amortizes the ReadProcessMemory syscall
     // (one per chunk, not one per value) while keeping the failure
     // domain of a freed page to that chunk only.
     const CHUNK: usize = 64 * 1024;
@@ -689,9 +689,9 @@ pub fn freeze(args: &Json) -> Result<Json, String> {
     let hz = hz.clamp(1, 1000);
 
     // Two arg shapes:
-    //   { selector, offset?, type, value }  -- preferred. The
+    //   { selector, offset?, type, value } . Preferred. The
     //     sweeper re-resolves on staleness (address-recycling safe).
-    //   { addr, type, value }               -- legacy. Address is
+    //   { addr, type, value }              . Legacy. Address is
     //     opaque; the sweeper drops the freeze when the page is
     //     unmapped or loses RW protection.
     let (addr, source) = match args.get("selector").and_then(Json::as_str) {
