@@ -1,6 +1,6 @@
 # grounded2mods workspace docs
 
-> **Authoritative on:** workspace-level concerns -- cross-cutting
+> **Authoritative on:** workspace-level concerns. Cross-cutting
 > open work, chronology of milestones across all crates. Per-crate
 > docs live next to the code in each crate's `docs/` folder.
 
@@ -18,9 +18,9 @@ folder when working on that crate.
 
 | Crate | Path | Subject |
 |---|---|---|
-| ueforge | [`../ueforge/docs/`](../ueforge/docs/) | The UE4SS Rust mod framework -- subsystem reference, performance doctrine, research methodology. |
-| grounded2-rpg | [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) | Grounded 2 RPG / level-up mod -- damage internals, inventory, RPG subsystem, build/deploy, port history. |
-| outworld-station-tweaks | [`../outworld-station-tweaks/`](../outworld-station-tweaks/) | Outworld Station mod -- research notes, per-feature tweaks. |
+| ueforge | [`../ueforge/docs/`](../ueforge/docs/) | The UE4SS Rust mod framework. Subsystem reference, performance doctrine, research methodology. |
+| grounded2-rpg | [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) | Grounded 2 RPG / level-up mod. Damage internals, inventory, RPG subsystem, build/deploy, port history. |
+| outworld-station-tweaks | [`../outworld-station-tweaks/`](../outworld-station-tweaks/) | Outworld Station mod. Research notes, per-feature tweaks. |
 
 ## Adding a new mod
 
@@ -37,7 +37,7 @@ When you add a new game mod to the workspace:
 ## Doc rules
 
 - **Co-locate.** A doc lives in the same crate as the code it
-  documents. The exception is this directory -- only for
+  documents. The exception is this directory. Only for
   workspace-spanning concerns (todo, changelog).
 - **Authoritative + dated.** Every doc states what it owns at the
   top. Updates note their date.
