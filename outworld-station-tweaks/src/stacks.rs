@@ -2,9 +2,9 @@
 //! row by a configurable multiplier (persisted in
 //! `<DLL_dir>/settings.json` via [`crate::settings`]).
 //!
-//! All the heavy lifting -- vanilla baseline snapshot, idempotent
+//! All the heavy lifting. Vanilla baseline snapshot, idempotent
 //! re-apply, the on-first-sight polling worker, the multiplier
-//! atomic, the apply-now / last-applied / ever-applied counters --
+//! atomic, the apply-now / last-applied / ever-applied counters.
 //! lives in `ueforge::stacks::StackDef` + `StackRegistry`. This
 //! module owns only the game-specific bits (table name, field
 //! offset, skip rule, settings echo).
@@ -15,7 +15,7 @@ use ueforge::stacks::{StackDef, StackRegistry};
 
 use crate::settings;
 
-/// Default multiplier -- matches the "Better Item Stacks" pak mod.
+/// Default multiplier. Matches the "Better Item Stacks" pak mod.
 pub const DEFAULT_MULTIPLIER: i32 = 4;
 pub const MIN_MULTIPLIER: i32 = 1;
 pub const MAX_MULTIPLIER: i32 = 64;
@@ -35,7 +35,7 @@ static MATERIALS_DEF: StackDef = StackDef::new(
 );
 
 /// Workspace-standard stack registry for ows-tweaks. Slice of
-/// `&'static StackDef` refs -- each Def above is its own named
+/// `&'static StackDef` refs. Each Def above is its own named
 /// static, so the registry literal stays inline without needing
 /// to hoist a temporary array.
 pub static STACKS: StackRegistry = StackRegistry::new(&[&MATERIALS_DEF]);
