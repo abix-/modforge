@@ -4,12 +4,12 @@
 // could have missed the row because the snapshot fired after
 // the HoT completed.
 //
-// Pure test code -- uses snapshot only, no mod changes.
+// Pure test code. Uses snapshot only, no mod changes.
 //
 // Manual run (interactive):
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --release --target x86_64-pc-windows-msvc \
-//     --test explore_bandage_status_effects -- --nocapture --test-threads=1 --ignored
+//     --test explore_bandage_status_effects. --nocapture --test-threads=1 --ignored
 //
 // Procedure:
 //   1. Test starts polling at 200ms intervals for 12 seconds (60 ticks).
