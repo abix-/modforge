@@ -14,7 +14,7 @@
 //!
 //! ## Phase 1 (current): metadata only
 //!
-//! The framework ships [`OnSlotChangeTrigger`] -- the trigger every
+//! The framework ships [`OnSlotChangeTrigger`]. The trigger every
 //! CDO-write skill uses. `Tracker` fires effects on slot
 //! activate / spend / refund just like before. The `trigger`
 //! field on `SkillDef` is metadata: it documents intent and
@@ -25,14 +25,14 @@
 //! Each non-trivial trigger gets its own struct + install method
 //! (matching `damage::DamageHook`'s pattern):
 //!
-//! - `OnDamageDealtTrigger` -- wraps damage-multicast hook,
+//! - `OnDamageDealtTrigger`. Wraps damage-multicast hook,
 //!   filters player-instigator hits, fires per-event with a
 //!   `&DamageEvent`.
-//! - `OnKillTrigger` -- wraps the kill multicast filter,
+//! - `OnKillTrigger`. Wraps the kill multicast filter,
 //!   fires with `&KillEvent`.
-//! - `OnFallTrigger` -- wraps fall_hook, fires with
+//! - `OnFallTrigger`. Wraps fall_hook, fires with
 //!   `&FallEvent`.
-//! - `PeriodicTrigger(Duration)` -- poller-driven.
+//! - `PeriodicTrigger(Duration)`. Poller-driven.
 //!
 //! Each trigger TYPE owns its own subscribe + dispatch. Effects
 //! that care about that trigger's events get the typed event
@@ -43,9 +43,9 @@
 //!
 //! Different layers, different responsibilities:
 //!
-//! - `HookDef` -- low-level vtable patch primitive. One per
+//! - `HookDef`. Low-level vtable patch primitive. One per
 //!   patched class. Plumbing.
-//! - `TriggerDef` -- semantic event source. May install N
+//! - `TriggerDef`. Semantic event source. May install N
 //!   underlying HookDefs OR no hooks at all (Periodic is a
 //!   poller). Owns filter + decode + typed event dispatch.
 //!
@@ -83,7 +83,7 @@ pub enum TriggerCtx<'a> {
     Tick { dt: std::time::Duration },
 }
 
-// Stub event types -- placeholder shapes until Phase 2b lifts
+// Stub event types. Placeholder shapes until Phase 2b lifts
 // the real event decoders (currently in g2rpg's kill_hook /
 // fall_hook). The stubs keep the variants typed and the doc
 // surface honest; framework dispatchers don't fire these yet.
@@ -124,7 +124,7 @@ impl TriggerDef {
 // =====================================================================
 
 /// Fires when the player's skill state changes (slot activate,
-/// spend, refund, toggle). Used by every CDO-write skill --
+/// spend, refund, toggle). Used by every CDO-write skill.
 /// effects fire on level change, do their writes, done. No
 /// underlying hook; the Tracker drives dispatch directly.
 pub struct OnSlotChangeTrigger;
@@ -137,7 +137,7 @@ impl Trigger for OnSlotChangeTrigger {
 
 static ON_SLOT_CHANGE_IMP: OnSlotChangeTrigger = OnSlotChangeTrigger;
 
-/// Pre-built TriggerDef pointer -- catalog rows reference this
+/// Pre-built TriggerDef pointer. Catalog rows reference this
 /// directly: `trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE`.
 pub static ON_SLOT_CHANGE: TriggerDef =
     TriggerDef::new("OnSlotChange", &ON_SLOT_CHANGE_IMP);
