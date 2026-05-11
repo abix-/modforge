@@ -20,7 +20,7 @@
 // Run:
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --release --target x86_64-pc-windows-msvc \
-//     --test explore_bandage_path -- --nocapture --test-threads=1
+//     --test explore_bandage_path. --nocapture --test-threads=1
 
 mod common;
 
