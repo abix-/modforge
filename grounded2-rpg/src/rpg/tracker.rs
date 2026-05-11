@@ -3,7 +3,7 @@
 // (kill_hook, world_loader, debug, tab). Every skill-state
 // operation routes through ueforge::rpg::Tracker, which owns
 // state, persistence, and the apply dispatch (via the EffectDef
-// on each catalog row -- no game-side applier needed any more).
+// on each catalog row. No game-side applier needed any more).
 
 use ueforge::rpg::{SkillDef, SkillsState, Tracker};
 
