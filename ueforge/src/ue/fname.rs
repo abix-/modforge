@@ -5,12 +5,12 @@
 // `to_string` caches by FName u64 to avoid re-running AppendString for the
 // same name on every call. Each AppendString invocation leaks its FString
 // buffer (we don't bind UE's FMemory::Free); the cache caps the leak at
-// one buffer per unique FName -- bounded by the game's name pool size
+// one buffer per unique FName. Bounded by the game's name pool size
 // (~50K) instead of unbounded per call. See `fstring.rs`.
 //
 // The cache stores `Arc<str>` so cache hits return one ref-bump
 // instead of a heap-allocating `String::clone`. Callers that need
-// an owned `String` call `.to_string()` once at the boundary --
+// an owned `String` call `.to_string()` once at the boundary.
 // same cost as before; callers that just compare or substring
 // (e.g. `name.starts_with("Default__")`) save the allocation
 // entirely.
@@ -66,7 +66,7 @@ impl FName {
         self.comparison_index >= 0 && self.comparison_index < FNAME_INDEX_SANITY_MAX
     }
 
-    /// Pack the 8-byte FName into a single u64 -- usable as a hash
+    /// Pack the 8-byte FName into a single u64. Usable as a hash
     /// key, useful for transmute round-trips with the engine
     /// (`std::mem::transmute_copy` from a u64 reproduces the same
     /// FName).
