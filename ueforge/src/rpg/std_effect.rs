@@ -1,4 +1,4 @@
-//! `StandardEffect` -- the canonical UE5 RPG skill-effect enum.
+//! `StandardEffect`. The canonical UE5 RPG skill-effect enum.
 //!
 //! The vast majority of UE5 RPG-mod skills fall into one of nine
 //! shapes. ueforge ships them all as variants of a single enum
@@ -89,7 +89,7 @@ pub enum StandardEffect {
     /// (CDO + live pawns). Final value: `base + max_bonus *
     /// progress`.
     ///
-    /// Used for fields directly on the pawn class --
+    /// Used for fields directly on the pawn class.
     /// `ASurvivalCharacter.CustomDamageMultiplier` etc.
     PlayerFloat {
         offset: TypedField<f32>,
@@ -212,7 +212,7 @@ pub enum StandardEffect {
 
 impl StandardEffect {
     /// Apply this skill at `level` against the player. Cold path
-    /// -- called on slot activate / spend / refund / toggle. Each
+    ///. Called on slot activate / spend / refund / toggle. Each
     /// variant walks GObjects + writes targets as appropriate.
     pub fn apply(&self, level: u32, max_level: u32, player: &PlayerRef) {
         let progress = sqrt_progress(level, max_level);
@@ -538,6 +538,6 @@ fn apply_status_effect(
     count
 }
 
-// Re-export for convenience -- consumers usually want both
+// Re-export for convenience. Consumers usually want both
 // PercentFormat and StandardEffect from the same prelude.
 pub use crate::rpg::format::PercentFormat as StdPercentFormat;
