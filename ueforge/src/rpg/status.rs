@@ -14,7 +14,7 @@
 //! we research are Effects (operations on game state). For
 //! status effects, the canonical operation is "mutate the row's
 //! Value field + invoke `CreateAndAddEffect` on the player's
-//! component" -- shipped by [`super::StatusEffectApply`].
+//! component". Shipped by [`super::StatusEffectApply`].
 //!
 //! The status itself (which row, in which table, at which value
 //! offset) is data, not behavior. That data lives here as
