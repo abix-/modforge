@@ -4,7 +4,7 @@
 > persistence framework. The complete RPG system every UE5
 > RPG / survival mod needs.
 
-ueforge ships the bones of an RPG mod -- catalog row + lookup,
+ueforge ships the bones of an RPG mod. Catalog row + lookup,
 state schema, persistence layer, slot detection, level math,
 skill-spend mechanics, ImGui tab template, vanilla baseline
 cache, and a library of standard `Effect` types covering ~90% of
@@ -140,7 +140,7 @@ There's no central `apply_skill` match anymore -- `Tracker`
 iterates the catalog and calls `effect.apply(...)` per row. The
 trait dispatches to the right impl.
 
-## HealthBinding -- universal HC simulation ops
+## HealthBinding. Universal HC simulation ops
 
 `ueforge::rpg::health::HealthBinding` lets a game declare its
 HealthComponent constants once and get framework-shipped
@@ -189,7 +189,7 @@ the typed variants when their underlying event happens.
 See [architecture.md](architecture.md) "Composition model" for
 the full Hook vs Trigger layering rationale.
 
-## SkillDef -- catalog row
+## SkillDef. Catalog row
 
 ```rust
 pub struct SkillDef {
@@ -240,7 +240,7 @@ pub static CATALOG: SkillRegistry = SkillRegistry::new(CATALOG_ENTRIES);
 (~25 rows) and lookups are cold-path (button click, snapshot,
 ImGui label). No hashmap.
 
-## SkillsState -- on-disk schema
+## SkillsState. On-disk schema
 
 ```rust
 pub struct SkillsState {
@@ -260,7 +260,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 
 Open shape (`#[serde(default)]` on every field) so adding new
 skills doesn't break existing save files. `skill_levels` is a
-`BTreeMap<String, u32>` -- string keys are the catalog `id`s,
+`BTreeMap<String, u32>`. String keys are the catalog `id`s,
 stable forever.
 
 `schema_version: u32` is bumped whenever the on-disk shape
@@ -270,13 +270,13 @@ migrations branch on this value at load.
 
 **There is no public `spend` / `refund` on `SkillsState`.** They
 were removed deliberately: an in-memory mutator without a save
-hook is a trapdoor -- a sloppy caller mutates the copy and a
+hook is a trapdoor. A sloppy caller mutates the copy and a
 crash before the next persist loses the change. The only
 mutation path is `Tracker::spend_skill_points` /
 `refund_skill_points`, which mutate state and persist under the
 same lock with explicit rollback.
 
-## SlotStore<S> -- per-slot JSON persistence
+## SlotStore<S>. Per-slot JSON persistence
 
 ```rust
 pub struct SlotStore<S> { /* ... */ }
@@ -296,7 +296,7 @@ impl<S: Serialize + DeserializeOwned + Default> SlotStore<S> {
 `sync_all()` on the temp file, then `fs::rename` to
 `<slot>.json`. The fsync before the rename is what turns
 "rename is atomic" into "rename is also durable across power
-loss" -- without it a crash between the rename and the kernel's
+loss". Without it a crash between the rename and the kernel's
 own flush leaves a torn or zero-byte file. The very failure
 mode atomic-rename was supposed to prevent.
 
@@ -307,7 +307,7 @@ that don't know what to do with it. The cache clears on the
 next successful save.
 
 Loads return `S::default()` on missing / unparseable file
-(logged) -- soft fall-through is the right behavior for save
+(logged). Soft fall-through is the right behavior for save
 data we couldn't read.
 
 ### Slot path validation
@@ -327,7 +327,7 @@ meta). g2rpg uses `SlotStore<SkillsState>` directly; an extended
 mod could use `SlotStore<MyExtendedState>` where
 `MyExtendedState` includes a `pub skills: SkillsState` field.
 
-## Curve -- XP math
+## Curve. XP math
 
 ```rust
 pub struct Curve {
@@ -352,7 +352,7 @@ for typical caps 50-100; bounded).
 Defaults match g2rpg: 100 / 1.8 / 50. Generous early, flat at the
 end. Adjust `(base, exponent, max_level)` to retune.
 
-## Bestiary -- per-creature XP table
+## Bestiary. Per-creature XP table
 
 ```rust
 pub struct Bestiary {
@@ -385,7 +385,7 @@ pub static BESTIARY: Bestiary = Bestiary::new(
 );
 ```
 
-## sqrt_progress -- diminishing-returns curve
+## sqrt_progress. Diminishing-returns curve
 
 ```rust
 pub fn sqrt_progress(level: u32, max: u32) -> f32;
@@ -401,7 +401,7 @@ get the at-level bonus.
 The runtime entry point. Owns slot binding, in-memory state,
 the canonical `DisabledSkills` toggle set, persistence. Drives
 every state change transactionally with disk save. No type
-parameters -- the catalog is concrete `&'static SkillRegistry`,
+parameters. The catalog is concrete `&'static SkillRegistry`,
 and apply dispatches via `SkillDef.effect.imp` (trait object).
 
 ```rust
@@ -454,11 +454,11 @@ lock:
    TriggerCtx::SlotChange)` to push the change into the live
    world.
 6. **On save failure:** restore the snapshotted values, log the
-   error, return `0`. The world is NOT touched -- the session
+   error, return `0`. The world is NOT touched. The session
    reflects what's actually on disk.
 
 This is the durability story. A full disk, EACCES, antivirus
-quarantine -- any `io::Error` from the atomic save -- rolls
+quarantine. Any `io::Error` from the atomic save. Rolls
 back instead of letting the in-memory state and the disk drift.
 Callers can read `Tracker::last_save_error()` for the cause.
 
@@ -520,10 +520,10 @@ TRACKER.debug_grant_skill_points(50);
 
 Adds points without earning them. Logs the grant. For dev only.
 Returns `false` (and rolls back the in-memory `skill_points`)
-if the disk save fails -- same stage-save-commit contract as
+if the disk save fails. Same stage-save-commit contract as
 spend/refund.
 
-## SlotKeyResolver -- save-slot detection
+## SlotKeyResolver. Save-slot detection
 
 ```rust
 use ueforge::rpg::SlotKeyResolver;
@@ -552,7 +552,7 @@ SlotPoller::spawn(
 );
 ```
 
-## SlotPoller -- 1Hz transition watcher
+## SlotPoller. 1Hz transition watcher
 
 ```rust
 SlotPoller::spawn(interval, resolve, on_activate, on_deactivate);
@@ -568,11 +568,11 @@ Spawns a Win32 worker thread that polls `resolve()` every
 | `Some(_)` | `None` | `on_deactivate()` |
 | else | else | nothing |
 
-The worker runs for life of process today (kovarex P0 -- need
+The worker runs for life of process today (kovarex P0. Need
 `shutdown_handle()`). Panics in the resolver are caught
-silently (kovarex P1 -- need logged payload).
+silently (kovarex P1. Need logged payload).
 
-## DisabledSkills -- per-skill on/off toggle
+## DisabledSkills. Per-skill on/off toggle
 
 ```rust
 let disabled = TRACKER.disabled_skills();
@@ -581,9 +581,9 @@ disabled.is_disabled("attack_damage");        // true
 disabled.snapshot();                          // Vec<&'static str>
 ```
 
-Owned by `Tracker` -- one canonical store per RPG mod. Disabling
+Owned by `Tracker`. One canonical store per RPG mod. Disabling
 treats a skill as level 0 in the apply path without refunding
-the player's points -- "drop a buff on demand" toggles in the
+the player's points. "drop a buff on demand" toggles in the
 ImGui tab. Not persisted.
 
 `Tracker::apply_one_unlocked` checks `disabled.is_disabled(id)`
@@ -592,7 +592,7 @@ skill is disabled. CDO-write effects naturally restore vanilla
 at level=0; `RuntimeEffect`s no-op so their hot-path callback
 sees the disabled state via the same accessor.
 
-## VanillaCache<K, V> -- baseline capture
+## VanillaCache<K, V>. Baseline capture
 
 ```rust
 use ueforge::rpg::VanillaCache;
@@ -623,7 +623,7 @@ Use one cache per logical-baseline-set (movement, global combat
 data, HC masks). Single-baseline values (one f32, one offset)
 are simpler with `OnceLock<f32>`.
 
-## tab::render -- ImGui tab template
+## tab::render. ImGui tab template
 
 ```rust
 use ueforge::rpg::tab::{render as render_rpg_tab, ToggleFns};
@@ -640,7 +640,7 @@ pub fn render() {
 
 `render(tracker, toggle)` draws:
 
-1. **Header** -- "Level N", XP progress bar (current / next),
+1. **Header**. "Level N", XP progress bar (current / next),
    "Unspent skill points: K".
 2. **Per-skill row** for every catalog entry:
    - `+1` / `+10` buttons (gated on points + below max)
@@ -723,10 +723,10 @@ of catalog content + applier dispatch arms + format_effect text
 
 ## Cross-references
 
-- [lifecycle.md](lifecycle.md) -- how ModInfo wires the tab in
-- [hooks.md](hooks.md) -- the kill_hook surface that drives
+- [lifecycle.md](lifecycle.md). How ModInfo wires the tab in
+- [hooks.md](hooks.md). The kill_hook surface that drives
   `record_xp`
-- [ue-sdk.md](ue-sdk.md) -- the ClassRef/TypedField/PlayerRef
+- [ue-sdk.md](ue-sdk.md). The ClassRef/TypedField/PlayerRef
   helpers your applier uses for actual writes
-- [PERFORMANCE.md](PERFORMANCE.md) -- VanillaCache rationale,
+- [PERFORMANCE.md](PERFORMANCE.md). VanillaCache rationale,
   hot-path discipline for trampolines
