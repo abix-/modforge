@@ -1,4 +1,4 @@
-// Grounded 2 - RPG System -- Grounded 2 mod, loaded by UE4SS as a CPPMod via the
+// Grounded 2 - RPG System. Grounded 2 mod, loaded by UE4SS as a CPPMod via the
 // stock ueforge shim. ueforge::ue4ss_mod! generates DllMain + every
 // extern "C" hook the shim invokes; we only declare ModInfo + the two
 // callbacks (on_unreal_init / on_shutdown) and the RPG tab render
