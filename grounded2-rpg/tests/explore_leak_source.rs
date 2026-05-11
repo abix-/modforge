@@ -7,7 +7,7 @@
 // 5. Print top packages by hosted-object count (NEW)
 // 6. Print loaded levels (NEW)
 // 7. For top 5 growing classes, dump K outer-chain samples (NEW)
-//    -- this names the actual asset paths that are leaking.
+//   . This names the actual asset paths that are leaking.
 //
 // Output answers: "+144 SoundWave per 30s" -> WHICH 144 sounds,
 // living under WHICH content directories.
@@ -19,7 +19,7 @@
 // Run pattern:
 //
 //   set BBP_DEBUG_PORT=17171
-//   cargo test --release --test explore_leak_source -- --nocapture
+//   cargo test --release --test explore_leak_source. --nocapture
 
 mod common;
 
