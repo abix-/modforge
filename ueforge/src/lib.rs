@@ -82,6 +82,7 @@ pub mod dynamic_tweaks;
 pub mod envelope;
 pub mod hex;
 pub mod hook;
+pub mod hot_reload;
 pub mod inventory;
 pub mod log;
 pub mod mod_main;

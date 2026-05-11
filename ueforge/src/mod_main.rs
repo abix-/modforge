@@ -153,6 +153,13 @@ macro_rules! ue4ss_mod {
             // relaunch) pick up the new code without forcing the
             // user to manually rename files.
             $crate::mod_main::apply_pending_swap_at_init();
+            // Background watcher: polls for `main-new.dll`
+            // appearing post-launch (deploy while game is open)
+            // and synthesizes Ctrl+R to trigger UE4SS's reload
+            // path. Zero manual steps from `cargo deploy install`
+            // to new code running -- as long as the game has
+            // focus.
+            $crate::hot_reload::spawn_watcher();
             ($mod_info.on_unreal_init)();
         }
 
