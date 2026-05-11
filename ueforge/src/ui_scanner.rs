@@ -1,5 +1,5 @@
 //! Built-in Cheat-Engine-style scanner ImGui tab. Every game
-//! using ueforge gets this for free — just include
+//! using ueforge gets this for free. Just include
 //! `ueforge::ui_scanner::tab` in your `ModInfo::tabs` list:
 //!
 //! ```ignore
@@ -10,7 +10,7 @@
 //! ```
 //!
 //! UI flow:
-//! 1. Pick a value type (i32 default — most game state).
+//! 1. Pick a value type (i32 default. Most game state).
 //! 2. Type a value (signed; works for u/i types up to i32 range).
 //! 3. Click Scan → opens a session, shows match count + first
 //!    addresses.
@@ -115,7 +115,7 @@ pub fn render() {
     ui::separator();
     ui::spacing();
 
-    // Type selector — radio-button row.
+    // Type selector. Radio-button row.
     ui::text("Type:");
     let row1 = [TyKind::I32, TyKind::U32, TyKind::F32, TyKind::I64, TyKind::U64];
     let row2 = [TyKind::I16, TyKind::U16, TyKind::I8, TyKind::U8, TyKind::F64];
