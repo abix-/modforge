@@ -73,7 +73,7 @@ pub fn gobjects_population(top_n: usize) -> Json {
 /// For up to `k` instances of the named class, walk the Outer
 /// chain and return the chain as a `"Root.Outer.Outer.Name"`
 /// string. Used to find WHICH SoundWave / WHICH Package is
-/// growing -- "SoundWave +144" is a class delta; this turns it
+/// growing. "SoundWave +144" is a class delta; this turns it
 /// into specific asset paths.
 ///
 /// `class_name` matches the short class name (e.g. `"SoundWave"`).
@@ -121,7 +121,7 @@ pub fn class_outer_samples(class_name: &str, k: usize) -> Json {
     })
 }
 
-/// Minimal eager describe for a UDataTable -- just the short
+/// Minimal eager describe for a UDataTable. Just the short
 /// name. The schema walk (`walk_struct_fields` on the RowStruct)
 /// moves to the on-demand path (`dump_data_table`): we've seen
 /// OWS instances whose RowStruct FField chain has a corrupt
@@ -198,7 +198,7 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
 
 /// Read the `FFieldClass::Name` for the FField at `field_ptr`.
 /// `FField::ClassPrivate` (+0x08) points at an `FFieldClass` whose
-/// first member is `FName Name` -- the property class identifier
+/// first member is `FName Name`. The property class identifier
 /// ("IntProperty" / "FloatProperty" / "NameProperty" / etc.).
 ///
 /// VirtualQuery-guards every dereference: corrupt / unmapped
