@@ -40,7 +40,7 @@ fn walk_class_responds_even_without_offsets() {
     // walk_class returns Err("ueforge: ue runtime not initialized")
     // when offsets aren't filled in. This test just confirms the
     // dispatcher reaches the op and returns a structured response
-    // — useful as the very first signal that the wiring is live.
+    //. Useful as the very first signal that the wiring is live.
     let Some(api) = common::try_api() else { return };
     let r = api.op("walk_class", json!({"class": "Object", "max": 1}));
     eprintln!("walk_class response: ok={}, error={:?}", r.ok, r.error);
