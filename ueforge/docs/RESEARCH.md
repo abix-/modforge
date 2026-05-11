@@ -20,7 +20,7 @@ who breaks the underlying behavior trips the same assertion
 the next time CI runs.
 
 This is the same shape as the `runtime-control-http` skill's
-cross-project rule -- this file is the UE-mod-specific concrete
+cross-project rule. This file is the UE-mod-specific concrete
 walk.
 
 ## The TDD loop
@@ -31,7 +31,7 @@ For every feature, every bug, every research question:
    do X then Y must happen." If you can't phrase it, you don't
    know what you're researching.
 2. **Snapshot field for the observable.** Add a field to the
-   game's `Snapshot` struct that exposes the observable -- a
+   game's `Snapshot` struct that exposes the observable. A
    live HC field, an inventory size, a status-effect list, a
    counter delta. If the snapshot can't show the observable,
    add it before going further.
@@ -48,7 +48,7 @@ For every feature, every bug, every research question:
    verifies.
 6. **Implement the fix.** Once the hypothesis explains the
    behavior, write the fix in the mod. The implementation is
-   usually small -- the research was the work.
+   usually small. The research was the work.
 7. **Test goes green.** Land the test, the snapshot field, the
    op (if any), and the fix in one commit.
 
@@ -80,7 +80,7 @@ see what's in it" without writing parm structs by hand.
 ### `call { class, function, instance_selector, parms_hex }`
 
 Invokes any UFunction on any object with arbitrary parm bytes.
-Replaces every `simulate_*` op a mod might be tempted to ship --
+Replaces every `simulate_*` op a mod might be tempted to ship.
 tests build their own parm struct, hex-encode, send. Engine-mutated
 OUT params come back in the response.
 
@@ -148,7 +148,7 @@ two-day spike:
 - **Most game stats route through one canonical component.**
   Status effects, perk effects, gear bonuses all go through
   `UStatusEffectComponent` (or the game's analogue) at a stable
-  offset on the player. Find that component -- everything else
+  offset on the player. Find that component. Everything else
   flows from it.
 
 ## Doctrine: damage paths
@@ -156,16 +156,16 @@ two-day spike:
 There are typically three damage paths in a UE survival game,
 and they don't all use the same UFunction:
 
-1. **Combat damage** -- creature hits, weapon hits. Routes
+1. **Combat damage**. Creature hits, weapon hits. Routes
    through `ApplyDamage` (or the game's wrapper) with non-zero
    type flags. Hooks here see player kills.
-2. **Fall damage** -- separate native code reading
+2. **Fall damage**. Separate native code reading
    `CharMovementComponent.Velocity.Z` in `OnLanded` or its
    equivalent. Mitigate via velocity-stomp before native code
    reads.
-3. **Environmental / hazard damage** -- often goes through the
+3. **Environmental / hazard damage**. Often goes through the
    same `ApplyDamage` as combat but with `type_flags = 0`.
-   Mitigate by intercepting before the damage gate -- not by
+   Mitigate by intercepting before the damage gate. Not by
    blocking the gate, which also blocks heals.
 
 Read the SDK headers for the damage code in your specific game
@@ -176,7 +176,7 @@ before assuming any one path mitigation covers all three.
 Player-dealt damage attributes via
 `LastDamageInfo.InstigatorController.Pawn`. This is a
 `FWeakObjectPtr`, two i32s. When the game replicates damage from
-a remote actor, the weak pointer can be null/zero -- which
+a remote actor, the weak pointer can be null/zero. Which
 resolves to `/Script/CoreUObject (Package)` (a CDO with index 0).
 So a kill that's clearly from the player can attribute to "the
 package." The g2rpg pkg(0) bug is exactly this.
@@ -214,7 +214,7 @@ gives a queryable, structured view of *current* state.
 For every mutation the mod can perform, the snapshot must
 expose the observable that proves it landed. If you can't see
 the change in the snapshot, you can't write a regression test
-for it -- and the test you can't write is the regression you
+for it. And the test you can't write is the regression you
 will ship.
 
 This is non-negotiable: every read worth introspecting is a
@@ -240,11 +240,11 @@ hypotheses, the failed approaches, and the eventual fix.
 `docs/damage.md` in grounded2-rpg is the canonical shape:
 
 - One header per feature / regression.
-- "What we know" -- citations into SDK headers, file:line.
-- "What didn't work" -- approaches tried + why they failed.
-- "What works" -- the validated mechanism + a snapshot of the
+- "What we know". Citations into SDK headers, file:line.
+- "What didn't work". Approaches tried + why they failed.
+- "What works". The validated mechanism + a snapshot of the
   endpoint output proving it.
-- "Migration / follow-ups" -- where the fix could move next.
+- "Migration / follow-ups". Where the fix could move next.
 
 Documentation that lives next to the code stays correct because
 the next person reading the code reads the doc. Documentation in
@@ -253,11 +253,11 @@ a wiki rots.
 ## Skill cross-references
 
 - [`runtime-control-http`](~/.claude/skills/runtime-control-http/SKILL.md)
-  -- the cross-project pattern for command-shaped endpoints,
+ . The cross-project pattern for command-shaped endpoints,
   TDD-first workflow, and the test coverage principle. Read first
   if you're new to this style.
-- [`ueforge/PERFORMANCE.md`](PERFORMANCE.md) -- hot-path discipline.
-  Companion to this file -- research informs implementation, but
+- [`ueforge/PERFORMANCE.md`](PERFORMANCE.md). Hot-path discipline.
+  Companion to this file. Research informs implementation, but
   implementation has to meet the perf bar before it ships.
 
 ## Closing rule
