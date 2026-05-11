@@ -9,7 +9,7 @@
 // Run:
 //   set BBP_DEBUG_PORT=17171
 //   cargo test --release --target x86_64-pc-windows-msvc \
-//     --test explore_status_effect_rows -- --nocapture --test-threads=1
+//     --test explore_status_effect_rows. --nocapture --test-threads=1
 
 mod common;
 
@@ -44,7 +44,7 @@ struct RowFind {
 fn discover_rows_by_type() {
     let api = common::Api::require();
 
-    // 1. Find Table_StatusEffects (path-disambiguate -- there's
+    // 1. Find Table_StatusEffects (path-disambiguate. There's
     // both a CDO and the live instance).
     let Some((dt_sel, dt_addr)) = research::find_data_table_by_path(
         api.inner(),
