@@ -112,7 +112,7 @@ impl CppShim {
         if sources_to_compile.is_empty() {
             // Nothing to compile means: no factory shim AND no
             // game source. The mod can't load via UE4SS without
-            // factory exports — flag it loudly.
+            // factory exports. Flag it loudly.
             panic!(
                 "ueforge::build: nothing to compile. Either keep the \
                  default shim (don't call skip_default_shim) or \
