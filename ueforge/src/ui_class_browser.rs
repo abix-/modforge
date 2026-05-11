@@ -1,5 +1,5 @@
 //! Built-in ImGui browser tab for every discovered `UClass`.
-//! Same shape as `ui_data_table_browser` -- reads from
+//! Same shape as `ui_data_table_browser`. Reads from
 //! `ueforge::discovery::cached()`, filters by substring,
 //! click-to-expand shows the native property list.
 //!
