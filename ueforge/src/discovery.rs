@@ -61,6 +61,36 @@ fn cell() -> &'static RwLock<Option<Arc<DiscoverySnapshot>>> {
     CACHE.get_or_init(|| RwLock::new(None))
 }
 
+// ---- Walk instrumentation ------------------------------------------------
+//
+// Set this range to enable per-object step logging while we hunt
+// the OWS GObjects-walk crash. Logs every per-step operation
+// (`class()`, `is_a()`, `is_default_object()`, etc.) so the last
+// log line in the file pinpoints the call that AVs.
+//
+// Each line is one `log()` write (flushed). 5K objects * ~8 steps
+// = ~40K lines, a few MB. Reasonable for one diagnostic pass.
+// Narrow the range once we know which 1000 contains the bad
+// object.
+const TRACE_FROM: usize = 19_000;
+const TRACE_TO: usize = 30_000;
+
+fn trace_step(scanned: usize, addr: usize, step: &str) {
+    if scanned >= TRACE_FROM && scanned < TRACE_TO {
+        crate::log::log(format_args!(
+            "dscv[{scanned}] addr=0x{addr:x} step={step}"
+        ));
+    }
+}
+
+fn trace_step_str(scanned: usize, label: &str, step: &str) {
+    if scanned >= TRACE_FROM && scanned < TRACE_TO {
+        crate::log::log(format_args!(
+            "dscv[{scanned}] {step}={label}"
+        ));
+    }
+}
+
 /// Currently cached snapshot, if [`run_at_load`] / [`refresh`] has
 /// run at least once.
 pub fn cached() -> Option<Arc<DiscoverySnapshot>> {
@@ -177,7 +207,10 @@ fn walk() -> DiscoverySnapshot {
 
     for obj in view.iter() {
         scanned += 1;
-        if scanned.is_multiple_of(20_000) {
+        // Coarse progress log every 1000 -- 175 lines max per
+        // walk. The danger zone in OWS (20K-40K) gets per-object
+        // step traces; see `trace_step` calls below.
+        if scanned.is_multiple_of(1000) {
             crate::log::log(format_args!(
                 "discovery: progress {scanned} scanned, {} tables, {} classes, {} structs",
                 data_tables.len(),
@@ -185,6 +218,8 @@ fn walk() -> DiscoverySnapshot {
                 structs.len(),
             ));
         }
+        let obj_raw = obj as *const UObject as usize;
+        trace_step(scanned, obj_raw, "enter");
         // Guard against bad UObject pointers in GObjects (freed
         // entries, never-fully-constructed stubs). We need to be
         // able to read at least through OUTER (+0x20) for the
@@ -198,25 +233,37 @@ fn walk() -> DiscoverySnapshot {
             continue;
         }
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            trace_step(scanned, obj_raw, "class()");
             let Some(cls) = obj.class() else { return };
             let cls_addr = cls as *const UClass as usize;
+            trace_step(scanned, cls_addr, "cls_addr_check");
             if !crate::winproc::is_addr_readable(cls_addr) {
                 return;
             }
+            trace_step(scanned, cls_addr, "cls_name");
             let cls_name = cls.as_object().name();
+            trace_step_str(scanned, &cls_name, "after_cls_name");
 
             if let Some(dt) = dt_class {
-                if obj.is_a(dt) && !obj.is_default_object() {
-                    data_tables.push(crate::ue::probe::describe_data_table(obj));
+                trace_step(scanned, obj_raw, "is_a(DataTable)");
+                if obj.is_a(dt) {
+                    trace_step(scanned, obj_raw, "is_default_object");
+                    if !obj.is_default_object() {
+                        trace_step(scanned, obj_raw, "describe_data_table");
+                        data_tables.push(crate::ue::probe::describe_data_table(obj));
+                    }
                 }
             }
 
             if cls_name == "Class" {
+                trace_step(scanned, obj_raw, "describe_class");
                 let uclass: &UClass = unsafe { &*(obj as *const UObject as *const UClass) };
                 classes.push(describe_class(uclass));
             } else if cls_name == "ScriptStruct" {
+                trace_step(scanned, obj_raw, "describe_script_struct");
                 structs.push(describe_script_struct(obj));
             }
+            trace_step(scanned, obj_raw, "exit_ok");
         }));
         if res.is_err() {
             panicked += 1;
