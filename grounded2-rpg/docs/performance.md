@@ -34,7 +34,7 @@ trampoline + active-call counter) lives in
 [`../../ueforge/docs/PERFORMANCE.md`](../../ueforge/docs/PERFORMANCE.md)
 "Hot paths". Wall cost in release: ~50-100 ns per dispatch.
 
-The g2rpg hot paths below sit *on top of* that framework cost --
+The g2rpg hot paths below sit *on top of* that framework cost.
 each is the closure body invoked by the trampoline.
 
 ### 1. Inventory-interface event handler
@@ -138,7 +138,7 @@ g2rpg-specific deliberate non-ports + dropped instrumentation:
   `InventoryWidget`, `InGameMenuWidget` for trace coverage. Only
   `WBP_InventoryInterface_C` is load-bearing; we intercept ~0.1%
   of the ProcessEvent dispatches an aggressive trace build would.
-- `InspectLiveInventoryUiState` -- a previous incarnation walked
+- `InspectLiveInventoryUiState`. A previous incarnation walked
   all of `GObjects` twice per rescan tick to log live widget /
   window-stack state. Dropped. If ever needed back, gate behind
   `cfg!(debug_assertions)` and run at most once per session.
