@@ -60,7 +60,7 @@ without it.
 | +0x0028 | TWeakObjectPtr<UObject>       | `DamageSource`              |
 | +0x0030 | TWeakObjectPtr<AActor>        | `Target`                    |
 | +0x0038 | EInflictDamageStyle (u8)      | `InflictStyle`              |
-| +0x0040 | TSubclassOf<UDamageType>      | `DamageType` -- the discriminator |
+| +0x0040 | TSubclassOf<UDamageType>      | `DamageType`. The discriminator |
 | +0x004C | TWeakObjectPtr<UAttack>       | `OriginAttack`              |
 | +0x006A | EDamageSourceType (u8)        | `DamageSourceType`          |
 | +0x0070 | int32                         | `DamageFlags`               |
@@ -74,7 +74,7 @@ populated *before* `CurrentDamage` is written. So reading
 
 `UHealthComponent` exposes three multicast variants for damage
 effects, all `Net|NetMulticast|Native|Event|Const`. `Const` means
-they cannot modify state -- they fire *after* the damage write as
+they cannot modify state. They fire *after* the damage write as
 client-side notifications.
 
 | Function | Parm layout |
@@ -84,13 +84,13 @@ client-side notifications.
 | `MulticastHandleEffectsWithDamageFlagsAndInflictStyleAtOwnerLocation` | Same as above plus `InflictStyle` +0x0D (u8) |
 
 Skipping `original.call` on any of these only suppresses cosmetic
-effects, not damage -- the damage is already in `CurrentDamage` by
+effects, not damage. The damage is already in `CurrentDamage` by
 the time these fire. Confirmed by `before/after CurrentDamage`
 snapshot around `original.call`: delta is zero across all three.
 
 `DamageFlags` carries `EDamageInfoFlags::KillingBlow = 2` when the
 hit is lethal; this is the bit `kill_hook` uses for kill detection.
-`DamageTypeFlags` is the `ESurvivalDamageTypeFlags` bitmask --
+`DamageTypeFlags` is the `ESurvivalDamageTypeFlags` bitmask.
 empty for fall damage, application-specific for typed damage.
 
 ## Fall damage path
@@ -141,7 +141,7 @@ instigator=<none> source=<none> attack=<none>
 ```
 
 Every slot of `LastDamageInfo` is empty. The native code does not
-construct an `FDamageInfo` for fall damage -- it just writes
+construct an `FDamageInfo` for fall damage. It just writes
 `CurrentDamage` and fires the cosmetic multicast.
 
 ### Approaches that do not work (and why)
@@ -153,7 +153,7 @@ construct an `FDamageInfo` for fall damage -- it just writes
 | Patch the replicated `FCustomGameModeSettings::FallDamageMultiplier` at +0x1C inside `USurvivalModeManagerComponent::CustomSettings` (CustomSettings is at +0x114 on the component, so absolute +0x130) | Writes land. No effect. |
 | Call `USurvivalModeManagerComponent::UpdateCustomSettings` UFunction via ProcessEvent (mimics the in-game difficulty UI; runs `OnRep_CustomSettings` server-side) | Dispatch reported by UE4SS, no effect on damage. |
 | ProcessEvent hook on `OnLanded` and skip `original.call` | OnLanded is BP-cosmetic. Engine does not gate damage on BP event return. |
-| ProcessEvent hook on `ApplyFallDamage` UFunction directly | Hook never fires -- engine bypasses ProcessEvent for `Final+Native+BlueprintCallable` when called from native code. |
+| ProcessEvent hook on `ApplyFallDamage` UFunction directly | Hook never fires. Engine bypasses ProcessEvent for `Final+Native+BlueprintCallable` when called from native code. |
 | UE4SS Lua `RegisterHook("/Script/Maine.SurvivalCharacter:ApplyFallDamage", ...)` | UE4SS reports `Registered native hook (1, 2)`, callbacks never fire. Hits [issue #626](https://github.com/UE4SS-RE/RE-UE4SS/issues/626). `RegisterPreHook` swaps `UFunction::native_func`, but the engine's direct C++ call from `Super::Landed` bypasses the slot. |
 | Skip `original.call` on the post-damage multicast | Multicast is `Const`, fires *after* the damage write. `before/after CurrentDamage` delta around `original.call` is zero. Skipping breaks cosmetic effects only. |
 
@@ -188,7 +188,7 @@ Field offsets:
 - `UMovementComponent.Velocity` (FVector, doubles): `+0x00D8`
 - `FVector.Z`: `+0x10` inside FVector -> abs `+0x00E8` on the CMC
 
-The hook does *not* suppress `OnLanded` -- it forwards to the
+The hook does *not* suppress `OnLanded`. It forwards to the
 original BP event so animations / sound / other landing logic still
 runs. Validated in-game at level 100: -3431 cm/s landing -> zero
 damage. Log line on each fall:
@@ -209,7 +209,7 @@ Two fallbacks documented but not implemented:
 1. **Detour the C++ method directly** via PolyHook_2_0 (already a
    UE4SS dep). Recover the C++ method address by decoding the first
    `call rel32` instruction inside the UFunction's `native_func`
-   thunk -- UHT generates `execApplyFallDamage(UObject*, FFrame&, RESULT_DECL)`
+   thunk. UHT generates `execApplyFallDamage(UObject*, FFrame&, RESULT_DECL)`
    whose first call is to the actual C++ method.
 2. **Pattern-signature scan** via UE4SS's `SinglePassSigScanner`.
    More fragile across patches but does not depend on thunk layout.
@@ -272,7 +272,7 @@ delta: 20.0
 
 **The canonical heal entry point is not gated by
 `RequiredDamageTypeFlags`.** This rules out the simplest
-hypothesis (bandages → AddHealth → mask blocks them) -- if
+hypothesis (bandages → AddHealth → mask blocks them). If
 bandages used AddHealth, they would not be blocked, but they ARE
 blocked in-game.
 
@@ -281,7 +281,7 @@ Conclusion: bandages take a different path. Hypotheses:
 1. **Status-effect-driven**: bandage adds a row from
    `Table_StatusEffects` whose tick eventually calls
    `ApplyDamageFromInfo` with negative damage and `type_flags=0`
-   -- hits the same mask gate that rejects fall / environmental
+  . Hits the same mask gate that rejects fall / environmental
    damage.
 2. **Direct ApplyDamageFromInfo**: bandage code calls
    `ApplyDamageFromInfo` directly with negative damage.
@@ -314,7 +314,7 @@ effect that calls ApplyDamageFromInfo) and hypothesis 2 (bandage
 calls ApplyDamageFromInfo directly with negative damage). Both
 would have shown up in `damage_ring` because kill_hook's
 ProcessEvent trampoline catches every PE call on the player's
-UHealthComponent vtable -- and we saw none.
+UHealthComponent vtable. And we saw none.
 
 Remaining hypotheses:
 
@@ -324,7 +324,7 @@ Remaining hypotheses:
    `AddHealth` calls (only damage-shaped functions); next iter
    widen the filter and try again. If bandage IS calling
    AddHealth, we'll see it in the ring AND the (independently
-   tested) AddHealth path bypasses the mask -- meaning the
+   tested) AddHealth path bypasses the mask. Meaning the
    block is somewhere ELSE that intercepts AddHealth's effect.
 4. **Bandage consume itself is suppressed.** The use animation
    may play but the actual consume / call to AddHealth never
@@ -343,12 +343,12 @@ Remaining hypotheses:
 Action: extend `kill_hook`'s filter to also capture `AddHealth`,
 `ServerAddHealth`, `ApplyHit`, `OnRest`. Re-run the bandage
 experiment. Either we see AddHealth fire (rules in hypothesis 3
-or 5) or we don't (hypothesis 4: consume is suppressed -- check
+or 5) or we don't (hypothesis 4: consume is suppressed. Check
 inventory count delta).
 
 #### User clarification: bandages are heal-over-time (HoT)
 
-**Bandages don't heal instantly -- they tick over several
+**Bandages don't heal instantly. They tick over several
 seconds.** This changes the experiment shape. The post-bandage
 snapshot we took caught state AFTER the HoT was supposed to run,
 but BEFORE the HoT had necessarily completed. Possibilities now:
@@ -358,14 +358,14 @@ but BEFORE the HoT had necessarily completed. Possibilities now:
 - The HoT status effect was added and is still active right now,
   but its row name doesn't match what we expected. Re-check the
   diff carefully.
-- The HoT was BLOCKED entirely -- our impact_resistance mask
+- The HoT was BLOCKED entirely. Our impact_resistance mask
   (0xFFFFFFFF) somehow prevents the AddEffect call, so the
   effect never gets added to the StatusEffects array.
 
 The user's instinct: "we're blocking the heal over time
 somehow." Most plausible mechanism: when AddEffect is called for
 the bandage row, the engine consults something that the mask
-write touches -- maybe `RequiredDamageTypeFlags` is read by
+write touches. Maybe `RequiredDamageTypeFlags` is read by
 StatusEffectComponent on every effect-add for "is this player
 damageable", and the all-bits-set value rejects the heal-tagged
 effect.
@@ -383,7 +383,7 @@ have the HoT effect captured. Read its Type and Value to learn
 the mechanism.
 
 If NO new row appears in any of those windows, the AddEffect
-call itself is being suppressed -- and the suppression is
+call itself is being suppressed. And the suppression is
 specifically tied to the mask being set (toggle off and repeat
 to confirm).
 
@@ -431,7 +431,7 @@ upstream by the mask. We then trace upstream.
 
 If `AddHealth` shows up in BOTH (with mask off AND on), but HP
 changes only with mask off, something downstream of AddHealth
-is reverting the heal -- the simplest culprit being a tick that
+is reverting the heal. The simplest culprit being a tick that
 re-applies CurrentDamage or fights the heal.
 
 If `AddHealth` does NOT show up at all in either run, the heal
@@ -442,7 +442,7 @@ or UConsumableComponent ProcessEvent slots and re-test.
 
 Test: `tests/explore_bandage_path.rs::addhealth_with_mask_on_vs_off`.
 Drove `UHealthComponent::AddHealth(20.0, nullptr)` through the
-generic `call` op (no mod-side rebuild needed -- the test wrote
+generic `call` op (no mod-side rebuild needed. The test wrote
 the parm struct itself).
 
 **With mask OFF**: `CurrentDamage` 32.79 -> 12.79 (delta = 20).
@@ -465,7 +465,7 @@ path remains a possibility).
 without completing. Game itself remained responsive after.
 Diagnosis: NOT a crash. The PE-queue drain in `kill_hook`'s
 trampoline only fires when the engine calls a UFunction on a
-player's `UHealthComponent` vtable -- and with the mask
+player's `UHealthComponent` vtable. And with the mask
 rejecting all `type_flags=0` events, the multicast traffic that
 normally drives the trampoline drops to ~zero. The queued
 AddHealth op sits unread until ureq's 5s timeout. Workaround
@@ -482,9 +482,9 @@ Tracked in `todo.md` "Endpoint parity gap".
 | Bandages add a status-effect row that ticks ApplyDamageFromInfo | RULED OUT (no row appeared, ring empty) |
 | Bandages call ApplyDamageFromInfo directly with negative damage | RULED OUT (would show in ring; ring empty) |
 | Bandages call `UHealthComponent::AddHealth` on the player's local vtable | RULED OUT (would show in ring during real bandage; nothing observed) |
-| Bandages call `UHealthComponent::ServerAddHealth` (remote replicated path) | OPEN -- ServerAddHealth doesn't go through the local vtable; need to install a separate hook to see it |
-| Bandages route through a UFunction on a different class entirely (UConsumableComponent, UItem subclass, etc.) | OPEN -- broaden the trampoline to a non-HealthComponent class to see |
-| Bandages use a native C++ call that bypasses ProcessEvent entirely (like the native fall-damage path we found earlier) | OPEN -- if so, `damage_ring` will never see anything; need a native detour |
+| Bandages call `UHealthComponent::ServerAddHealth` (remote replicated path) | OPEN. ServerAddHealth doesn't go through the local vtable; need to install a separate hook to see it |
+| Bandages route through a UFunction on a different class entirely (UConsumableComponent, UItem subclass, etc.) | OPEN. Broaden the trampoline to a non-HealthComponent class to see |
+| Bandages use a native C++ call that bypasses ProcessEvent entirely (like the native fall-damage path we found earlier) | OPEN. If so, `damage_ring` will never see anything; need a native detour |
 
 Next step: extend the trampoline (or install a new one) on a
 class likely to mediate consumable use -- `UConsumableComponent`
@@ -512,7 +512,7 @@ bandages observably DO NOT heal when the mask is on. Therefore
 | ---- | ------ |
 | Status-effect tick (heal-over-time row added to player) | RULED OUT (no new row in `status_effects` during real bandage use) |
 | `ApplyDamageFromInfo` with negative damage | RULED OUT (would show in `damage_ring`; ring empty during real bandage) |
-| `UHealthComponent::AddHealth` | RULED OUT (mask on/off identical heal -- mask wouldn't matter even if it were the path) |
+| `UHealthComponent::AddHealth` | RULED OUT (mask on/off identical heal. Mask wouldn't matter even if it were the path) |
 | `UHealthComponent::ServerAddHealth` (replicated) | RULED OUT (would fire through HC vtable; ring empty) |
 | ANY UFunction on `UHealthComponent` | RULED OUT (kill_hook covers the entire HC vtable; nothing fires during real bandage) |
 | UFunction on a different class (UConsumableComponent, UStatusEffectComponent, UInventoryComponent, BP_Bandage_C, ...) | OPEN |
@@ -534,7 +534,7 @@ Two remaining hypotheses:
 2. **Native C++ direct write.** UE's `UHealthComponent` has a
    native fast-path that mutates `CurrentDamage` without
    ProcessEvent involvement. The fall-damage investigation
-   earlier showed the same shape -- native code wrote
+   earlier showed the same shape. Native code wrote
    `CurrentDamage` and no PE call ever fired. If bandage HoT
    uses the same kind of path, the only way to observe it is to
    poll `CurrentDamage` rapidly during a bandage and infer the
@@ -866,7 +866,7 @@ Tracked in `todo.md` "Endpoint parity gap".
 **Confirmed in-game**: with `impact_resistance` enabled at any
 level, **bandages do not heal**. Disabling impact_resistance (with
 the skill toggle) lets bandages work; re-enabling it blocks them
-again. Repro is binary -- enabling only impact_resistance in an
+again. Repro is binary. Enabling only impact_resistance in an
 otherwise-clean catalog reproduces the block. Other skills do not
 contribute.
 
@@ -885,7 +885,7 @@ move `impact_resistance` to `EStatusEffectType::DamageReductionMultiplier`
 not affected. Until that lands, players must keep the skill toggled
 off (or refunded) when they want to heal.
 
-The toggle now properly clears the mask -- the apply step writes
+The toggle now properly clears the mask. The apply step writes
 either `mask` (when level>0 AND enabled) or the captured vanilla
 value (when level==0 OR disabled). See
 [`changelog.md`](changelog.md) 2026-05-09 entry.
@@ -928,7 +928,7 @@ Two findings:
 Why velocity-stomp does NOT carry over from fall: by the time any
 PE event fires on a rock / hazard collision, the engine has already
 zeroed `CharMovementComponent.Velocity.Z` as part of native
-collision response. Confirmed by tracing V.Z at every PE event --
+collision response. Confirmed by tracing V.Z at every PE event.
 it reads 0.0 throughout. There is no PE-reachable surface with
 live velocity for impact damage. The fix has to attack the damage
 itself, not the input it was computed from.
@@ -936,7 +936,7 @@ itself, not the input it was computed from.
 #### Diagnostic trace (gated)
 
 When `impact_resistance` level > 0, `fall_hook.rs` logs every
-event during which `CurrentDamage` actually changed -- the POST
+event during which `CurrentDamage` actually changed. The POST
 line fires only when delta > 0.001 to keep the log readable when
 `ReceiveHit` etc. fire dozens of times per collision. This trace
 is what identified the native-side gating field as the only
@@ -949,7 +949,7 @@ If a future game patch changes the native ApplyDamage gate to
 ignore `RequiredDamageTypeFlags`, fall back to one of:
 
 1. `ImmunityFlags` (uint32 at +0x00F8 on `UHealthComponent`,
-   `Edit, Net`). Different gate, same idea -- if the runtime check
+   `Edit, Net`). Different gate, same idea. If the runtime check
    is `(incoming & Immunity) != 0 -> reject`, set Immunity to a
    value that catches `type_flags = 0` damage.
 2. Native function detour against `UHealthComponent::ApplyDamage`
@@ -967,7 +967,7 @@ the KillingBlow bit. On kill, walks
 `HealthComponent.LastDamageInfo.InstigatorController` (FWeakObjectPtr
 at `+0x3B0 + 0x20`) and classifies into Player / Buggy / Other for
 XP attribution. Filters dying actors to `ASurvivalCreature`
-subclasses only -- buildings and props also fire this event with
+subclasses only. Buildings and props also fire this event with
 KillingBlow on destruction.
 
 See [`rpg.md`](rpg.md) for the XP layer that consumes this signal.
@@ -1008,7 +1008,7 @@ patching them.
 In Grounded 2, **every gameplay modifier you've ever seen is a
 "status effect"** under the hood. You don't think of them that way
 because the UI calls them perks, gear bonuses, food buffs, sizzle,
-chill, etc. -- but the game wires all of those through one shared
+chill, etc.. But the game wires all of those through one shared
 mechanism:
 
 - The **bonemeal helmet's +10 Max HP** -> a status effect with
@@ -1022,7 +1022,7 @@ mechanism:
 
 The icons in the corner of your screen showing buffs / debuffs are
 status effects with `bShowInUI = true`. Most status effects (like
-gear bonuses) don't have a UI icon -- they are invisible passive
+gear bonuses) don't have a UI icon. They are invisible passive
 modifiers stacked silently on the character.
 
 The character object that tracks "what's currently active on this
@@ -1030,8 +1030,8 @@ player" is a `UStatusEffectComponent`. It is just a list of every
 effect currently stuck on you. Equip a helmet -> the helmet adds
 its effect to the list. Take it off -> the effect is removed.
 
-The game's data side -- the **catalog** of every status-effect
-template that exists in the game -- lives in one big spreadsheet
+The game's data side. The **catalog** of every status-effect
+template that exists in the game. Lives in one big spreadsheet
 (a "data table") at
 `/Game/Blueprints/Attacks/Table_StatusEffects`. Each row is one
 effect template, with columns like `Type`, `Value`, `Duration`,
@@ -1047,7 +1047,7 @@ event.
 
 Our skills should plug into the same system. Setting `FallDamage`
 to `0.0` via a status effect is *exactly* the channel the engine
-uses to express "this player ignores fall damage" -- we do not
+uses to express "this player ignores fall damage". We do not
 need to fight the engine, we use its own designer-facing knob.
 
 The rest of this section is the technical detail of how to add a
@@ -1060,7 +1060,7 @@ status effect to the player from our mod.
 point for any per-stat / per-damage-type modifier the game can
 natively support. Skills that should be backed by status effects:
 fall damage, impact damage, lifesteal, crit chance, crit damage,
-thorns, attack damage, stun resist -- nearly every entry in our
+thorns, attack damage, stun resist. Nearly every entry in our
 catalog has a matching `EStatusEffectType` enum value.
 
 ### Why this is the right surface
@@ -1072,7 +1072,7 @@ Resistance's `RequiredDamageTypeFlags`) or pre-stomp velocity on
 they are binary or coarse, and they do not scale per-skill-level
 along the `sqrt(level/100)` curve the rest of the catalog uses.
 The status effect system is *built* for proportional, type-aware,
-stackable scaling -- the engine reads it on every damage event.
+stackable scaling. The engine reads it on every damage event.
 
 ### Data table 101 (skip if you know UE)
 
@@ -1089,7 +1089,7 @@ Examples elsewhere in Grounded 2:
 - **Every status effect has a row in `Table_StatusEffects`**
   (columns: `Type`, `Value`, `Duration`, etc.).
 
-A row is identified by its **row name** (an `FName`) -- the same
+A row is identified by its **row name** (an `FName`). The same
 way a spreadsheet identifies a row by a primary key column.
 "Pointing at a row" is done with an `FDataTableRowHandle =
 { DataTable*, FName }`. That is what `UStatusEffect.StatusEffectRowHandle`
@@ -1108,10 +1108,10 @@ Then we hand the engine a row handle pointing at it and call
 
 | Field | Offset | Notes |
 | ----- | ------ | ----- |
-| `DefaultStatusEffects` | +0x0108 | `TArray<FDataTableRowHandle>` -- effects added at component init |
+| `DefaultStatusEffects` | +0x0108 | `TArray<FDataTableRowHandle>`. Effects added at component init |
 | `MountedDefaultStatusEffects` | +0x0118 | Effects added while riding a Buggy mount |
 | `UnmountedDefaultStatusEffects` | +0x0128 | Effects added when not mounted |
-| `StatusEffects` | +0x01C8 | `TArray<UStatusEffect*>` -- the live, replicated list (Net, RepNotify) |
+| `StatusEffects` | +0x01C8 | `TArray<UStatusEffect*>`. The live, replicated list (Net, RepNotify) |
 | `HealthComponent` | +0x0248 | back-pointer to the actor's HC |
 
 Public surface (UFunctions, callable via ProcessEvent):
@@ -1180,7 +1180,7 @@ catalog and the engine's native modifier surface.
 
 | Field | Offset | Notes |
 | ----- | ------ | ----- |
-| `StatusEffectRowHandle` | +0x58 | `FDataTableRowHandle_NetCrc32` -- the data table row this effect was instantiated from. Replicated. |
+| `StatusEffectRowHandle` | +0x58 | `FDataTableRowHandle_NetCrc32`. The data table row this effect was instantiated from. Replicated. |
 | `TimeElapsed` | +0x88 | float, replicated |
 | `bEnabled` | +0x90 | bool |
 | `ResetTime` | +0x94 | int32, replicated |
@@ -1204,12 +1204,12 @@ extends `FTableRowBase`):
 | Field | Offset | Notes |
 | ----- | ------ | ----- |
 | `Type` | +0x30 | `EStatusEffectType` (uint8) |
-| `Value` | +0x34 | float -- the stat amount |
+| `Value` | +0x34 | float. The stat amount |
 | `DurationType` | +0x38 | enum |
 | `Duration` | +0x3C | float seconds |
 | `Interval` | +0x40 | float seconds |
 | `MaxStackCount` | +0x44 | int32 |
-| `DamageTypeFlags` | +0x48 | uint32 -- bitmask filter |
+| `DamageTypeFlags` | +0x48 | uint32. Bitmask filter |
 | `DamageType` | +0x50 | TSubclassOf<USurvivalDamageType> |
 | `ApplicationTags` | +0x58 | FGameplayTagContainer (0x20 bytes) |
 | `EffectTags` | +0x78 | FGameplayTagContainer |
@@ -1226,7 +1226,7 @@ extends `FTableRowBase`):
    Cheapest. Risk: the row is shared across the game; mutating it
    affects any other systems using the same row.
 2. **Find a benign / unused row to repurpose**. Same as (1) but
-   pick a row no other system reads from -- e.g. an unused
+   pick a row no other system reads from. E.g. an unused
    `EStatusEffectType::Generic = 0` row, or one whose
    `ApplicationTags` we can flip so vanilla code skips it. Lower
    risk than (1) if such a row exists.
@@ -1234,7 +1234,7 @@ extends `FTableRowBase`):
    `UDataTable` UObject; rows live in a `TMap<FName, uint8*>`
    internal field. Append a new entry at runtime keyed by a
    mod-specific name, populate with our `FStatusEffectData` bytes,
-   then reference it. Most invasive, also most stable -- no
+   then reference it. Most invasive, also most stable. No
    collision with vanilla rows.
 4. **Manual `UStatusEffect` subclass with overridden getters**.
    Create a subclass UClass at runtime that overrides
@@ -1298,7 +1298,7 @@ level progress)`:
 | `max_health` | `MaxHealth` (5) | add | 0.0 baseline (gear stacks) | flat HP bonus |
 | `hunger_resistance` | `HungerRate` (17) | add or mul (probe) | TBD | scales drain |
 | `thirst_resistance` | `ThirstRate` (18) | add or mul (probe) | TBD | scales drain |
-| `move_speed` | `MoveSpeed` (1) | add or mul (probe) | TBD | -- migration of CMC writes |
+| `move_speed` | `MoveSpeed` (1) | add or mul (probe) | TBD |. Migration of CMC writes |
 
 The "probe" rows have not yet been observed in-game; need to
 extend the sfx-probe to those stat types before migration to
@@ -1344,7 +1344,7 @@ the table above):
 | `PerkSpearThrowAttackUpTier1` | perk |
 
 Naming convention is `<Source><Effect><Tier>`. The table holds
-hundreds of rows -- one per status effect template the game
+hundreds of rows. One per status effect template the game
 ships.
 
 Practical consequence: the canonical injection point is to
@@ -1392,11 +1392,11 @@ linear `RowMap` walk over an active player's StatusEffects array:
   `PerkSpearThrowAttackUpTier1`, `MealTier1Regen`,
   `MealTier1WeakPointDamage`) consistently miss. The engine
   resolved them (their `UStatusEffect` instances are live), so the
-  rows exist in the map -- our walk's stride or layout assumption
+  rows exist in the map. Our walk's stride or layout assumption
   is wrong.
 - Root cause hypothesis: `TMap<K,V>` is backed by
   `TSet<TPair<K,V>>` whose element type is
-  `TSetElement<TPair<K,V>>` -- pair plus `HashNextId : int32` plus
+  `TSetElement<TPair<K,V>>`. Pair plus `HashNextId : int32` plus
   `HashIndex : int32`, stored inside a `TSparseArray` with a
   free-list bitset. Walking with stride = `sizeof(K) + sizeof(V)`
   drifts past valid entries; walking without consulting the
@@ -1464,7 +1464,7 @@ skill or just hardcoded behind `impact_resistance > 0`).
 3. **Build the row handle** as
    `FDataTableRowHandle { DataTable* = ourTable, FName = ourRowName }`
    (16 bytes). Note `UStatusEffect` stores the
-   `_NetCrc32` variant which is 0x28 bytes -- the first 16 are the
+   `_NetCrc32` variant which is 0x28 bytes. The first 16 are the
    same handle, the trailing 0x18 is replication metadata that the
    engine populates after AddEffect.
 
@@ -1483,7 +1483,7 @@ skill or just hardcoded behind `impact_resistance > 0`).
 ### Why mutating a shared row is acceptable here
 
 If we use an existing row and mutate `Value`, vanilla code
-referencing the same row also sees our value -- which would be
+referencing the same row also sees our value. Which would be
 a bug in most contexts. But in our case the vanilla rows are
 templates that the game instantiates new effects from at gear
 equip / perk unlock time. Mutating the template after vanilla
@@ -1555,4 +1555,4 @@ Concrete player BP classes that hooks must enumerate (vs the base
 
 - `BP_SurvivalPlayerCharacter_Female02_C`
 - `BP_SurvivalPlayerCharacter_Gellarde_C`
-- (other gender / appearance variants -- see `fall_hook.rs`)
+- (other gender / appearance variants. See `fall_hook.rs`)
