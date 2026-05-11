@@ -63,31 +63,27 @@ fn cell() -> &'static RwLock<Option<Arc<DiscoverySnapshot>>> {
 
 // ---- Walk instrumentation ------------------------------------------------
 //
-// Set this range to enable per-object step logging while we hunt
-// the OWS GObjects-walk crash. Logs every per-step operation
-// (`class()`, `is_a()`, `is_default_object()`, etc.) so the last
-// log line in the file pinpoints the call that AVs.
-//
-// Each line is one `log()` write (flushed). 5K objects * ~8 steps
-// = ~40K lines, a few MB. Reasonable for one diagnostic pass.
-// Narrow the range once we know which 1000 contains the bad
-// object.
+// Per-object trace logging is disabled (was used to hunt an OWS
+// GObjects-walk crash; the SEH wrapper in `NameResolver` + the
+// FString cap fixed the root cause). Flip `TRACE_ENABLED` to true
+// + tighten the range here to re-enable for future investigations.
+const TRACE_ENABLED: bool = false;
 const TRACE_FROM: usize = 19_000;
 const TRACE_TO: usize = 30_000;
 
+#[inline]
 fn trace_step(scanned: usize, addr: usize, step: &str) {
-    if scanned >= TRACE_FROM && scanned < TRACE_TO {
+    if TRACE_ENABLED && scanned >= TRACE_FROM && scanned < TRACE_TO {
         crate::log::log(format_args!(
             "dscv[{scanned}] addr=0x{addr:x} step={step}"
         ));
     }
 }
 
+#[inline]
 fn trace_step_str(scanned: usize, label: &str, step: &str) {
-    if scanned >= TRACE_FROM && scanned < TRACE_TO {
-        crate::log::log(format_args!(
-            "dscv[{scanned}] {step}={label}"
-        ));
+    if TRACE_ENABLED && scanned >= TRACE_FROM && scanned < TRACE_TO {
+        crate::log::log(format_args!("dscv[{scanned}] {step}={label}"));
     }
 }
 
