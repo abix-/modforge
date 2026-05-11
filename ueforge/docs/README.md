@@ -38,7 +38,7 @@ defined ONCE in ueforge.**
 | [architecture.md](architecture.md) | Universal Def -> Registry -> Instance -> Controller pattern (k8s-style CRD model) + per-subject compliance scorecard. Read first when adding a new module. |
 | [PERFORMANCE.md](PERFORMANCE.md) | Hot-path discipline. Zero allocs, bail early, no mutexes on empty path, bounded everything. The 10/10 bar. |
 | [RESEARCH.md](RESEARCH.md) | TDD investigation methodology for UE5 games. Standard probes, doctrines on data tables / damage / instigators, snapshot-not-log validation. |
-| [inspection.md](inspection.md) | Worked examples for inspecting UE5 mods at the pak / asset level. Generic UE5 modding methodology -- works against any UE 5.x game. |
+| [inspection.md](inspection.md) | Worked examples for inspecting UE5 mods at the pak / asset level. Generic UE5 modding methodology. Works against any UE 5.x game. |
 | [mod-formats.md](mod-formats.md) | Six common UE mod shapes (pak / DLL proxy / UE4SS Lua / UE4SS C++ / injected / loose / official); pak-vs-DLL capability matrix; why ueforge targets UE4SS CPPMods. |
 
 ## Historical (frozen)
@@ -78,13 +78,13 @@ Per-module docs (`stacks.md`, `difficulty.md`, `inventory.md`,
 
 New to ueforge:
 
-1. `../README.md` -- what + why
-2. [architecture.md](architecture.md) -- the layering pattern every module follows
-3. [lifecycle.md](lifecycle.md) -- minimum viable mod skeleton
-4. [ue-sdk.md](ue-sdk.md) -- type system you'll use everywhere
-5. [hooks.md](hooks.md) -- if you hook anything (you will)
-6. [PERFORMANCE.md](PERFORMANCE.md) -- before writing hot-path code
-7. [RESEARCH.md](RESEARCH.md) -- before debugging anything
+1. `../README.md`. What + why
+2. [architecture.md](architecture.md). The layering pattern every module follows
+3. [lifecycle.md](lifecycle.md). Minimum viable mod skeleton
+4. [ue-sdk.md](ue-sdk.md). Type system you'll use everywhere
+5. [hooks.md](hooks.md). If you hook anything (you will)
+6. [PERFORMANCE.md](PERFORMANCE.md). Before writing hot-path code
+7. [RESEARCH.md](RESEARCH.md). Before debugging anything
 
 Pick the rest as work demands; cross-references are dense.
 
