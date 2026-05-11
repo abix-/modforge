@@ -65,7 +65,7 @@ pub fn set_dll_module(hmod: HMODULE) {
     DLL_HMODULE.store(hmod as usize, Ordering::Release);
 }
 
-/// Initialize the logger. Idempotent — second call is a no-op so
+/// Initialize the logger. Idempotent. Second call is a no-op so
 /// it's safe to wire multiple init paths.
 pub fn init(cfg: Config) {
     if SINK.get().is_some() {
@@ -159,7 +159,7 @@ fn format_line(args: std::fmt::Arguments<'_>) -> Vec<u8> {
     out
 }
 
-/// `ueforge::log!("foo {}", x)` — convenience over
+/// `ueforge::log!("foo {}", x)`. Convenience over
 /// `ueforge::log::log(format_args!(...))`. Mirrors `println!`.
 #[macro_export]
 macro_rules! log {
