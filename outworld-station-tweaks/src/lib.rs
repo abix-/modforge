@@ -37,7 +37,7 @@ const STEAM: PlatformOffsets = PlatformOffsets {
     g_world: 0x0,               // not logged by UE4SS scanner; fill in if needed
     process_event: 0x012A_F540, // UObject::ProcessEvent
     process_event_idx: 0x4C,
-    // UE 5.4 stock — FUObjectArray wraps FChunkedFixedUObjectArray
+    // UE 5.4 stock. FUObjectArray wraps FChunkedFixedUObjectArray
     // at +0x10. Verified live: NumElements=142650, NumChunks=3.
     g_objects_layout: GObjectsLayout::WrappedChunked,
 };
