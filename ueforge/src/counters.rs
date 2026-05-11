@@ -74,7 +74,7 @@ pub fn time_scope(counter: &AtomicU64) -> TimeScope<'_> {
 /// }
 /// ```
 ///
-/// The macro is intentionally minimal — counters are write-mostly,
+/// The macro is intentionally minimal. Counters are write-mostly,
 /// the `AtomicU64` type is the contract, and the snapshot
 /// aggregator (which reads them) is game-specific anyway.
 #[macro_export]
