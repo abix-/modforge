@@ -2,7 +2,7 @@
 //
 // We model these as zero-sized newtypes over raw pointers (well, around the
 // actual UObject memory in the game). Field access goes through `field()`
-// helpers that read at known offsets. No Rust-level inheritance -- callers
+// helpers that read at known offsets. No Rust-level inheritance. Callers
 // pass `&UObject` everywhere and downcast via `is_a()`.
 
 use std::collections::HashMap;
@@ -76,12 +76,12 @@ impl UObject {
         unsafe { self.read_field(offsets::uobject::INDEX) }
     }
 
-    /// "Default__" shows up in the FName for every CDO -- mirrors the C++
+    /// "Default__" shows up in the FName for every CDO. Mirrors the C++
     /// IsDefaultObject implementation.
     ///
     /// If the runtime hasn't been initialized yet (caller fired before
     /// `init_runtime`), returns false. We prefer a soft fallback over a
-    /// panic on the hot path -- panic = abort in release would crash the
+    /// panic on the hot path. Panic = abort in release would crash the
     /// game over a recoverable race.
     pub fn is_default_object(&self) -> bool {
         let Some(rt) = try_runtime() else { return false };
@@ -90,7 +90,7 @@ impl UObject {
     }
 
     /// Resolved short name. Soft-fallback to `"<unresolved>"` if the
-    /// runtime hasn't been initialized -- same rationale as
+    /// runtime hasn't been initialized. Same rationale as
     /// [`Self::is_default_object`].
     pub fn name(&self) -> String {
         match try_runtime() {
@@ -154,7 +154,7 @@ impl UObject {
 
     /// Calls vtable[ProcessEventIdx] with (self, function, parms).
     ///
-    /// Returns silently if the runtime isn't initialized -- we'd rather
+    /// Returns silently if the runtime isn't initialized. We'd rather
     /// drop the engine call than abort the game on a setup race. The
     /// caller's parm buffer is left untouched.
     pub unsafe fn process_event(&self, function: &UFunction, parms: *mut c_void) {
@@ -212,7 +212,7 @@ impl UClass {
     /// Walk this class's ChildProperties chain (FField* threaded
     /// by Next), yielding `(name, offset_within_instance, element_size)`
     /// for every native property. Does NOT recurse into the
-    /// super-class — caller walks the super chain via
+    /// super-class. Caller walks the super chain via
     /// [`Self::super_class`] if needed.
     ///
     /// Returns owned strings so the iterator can outlive a borrow
@@ -292,7 +292,7 @@ impl UClass {
     ///
     /// VirtualQuery-guards each pointer dereference. Some UE5
     /// builds have UClasses whose Children chain points at
-    /// freed / never-fully-constructed UField stubs -- the eager
+    /// freed / never-fully-constructed UField stubs. The eager
     /// discovery walk hits them all. Bailing on unreadable
     /// pointers keeps the walk going instead of crashing the host.
     pub fn iter_functions(&self) -> Vec<(String, u32)> {
@@ -315,7 +315,7 @@ impl UClass {
                 break;
             }
             let field_addr = field as *const UObject as usize;
-            // Need to read FunctionFlags at +0xB0 -- the largest
+            // Need to read FunctionFlags at +0xB0. The largest
             // offset we touch on a putative UFunction. Validate
             // that page is mapped before any of the field reads.
             if !crate::winproc::is_addr_readable(field_addr + offsets::ufunction::FUNCTION_FLAGS) {
@@ -539,7 +539,7 @@ pub unsafe fn init_runtime(
 ///
 /// Result is cached by name. UClasses are stable in GObjects for the
 /// process lifetime, so a hit is permanent. Misses (class not yet
-/// loaded by the engine) are NOT cached -- a later call after the
+/// loaded by the engine) are NOT cached. A later call after the
 /// class loads will walk again and find it.
 pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
     let rt = try_runtime()?;
@@ -573,7 +573,7 @@ fn class_cache() -> &'static RwLock<HashMap<String, &'static UClass>> {
 }
 
 /// Per-UClass property list cache. Key is the UClass pointer cast
-/// to usize -- UClasses are stable in GObjects, so this is safe.
+/// to usize. UClasses are stable in GObjects, so this is safe.
 static PROPERTY_CACHE: OnceLock<RwLock<HashMap<usize, Arc<[NativeProperty]>>>> = OnceLock::new();
 fn property_cache() -> &'static RwLock<HashMap<usize, Arc<[NativeProperty]>>> {
     PROPERTY_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(256)))
