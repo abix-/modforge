@@ -28,7 +28,7 @@ tens of thousands of entries. This is ~10 µs but constant.
 
 ## 2. ProcessEvent hooks (game thread; fire on every UE PE call to the hooked class)
 
-### inv_hook -- on `WBP_InventoryInterface_C`
+### inv_hook. On `WBP_InventoryInterface_C`
 
 Source: `inv_hook.rs::on_event`.
 
@@ -39,24 +39,24 @@ occasional process_event callback.
 
 **Cost**: low. Only on inventory interactions.
 
-### kill_hook -- on `UHealthComponent`
+### kill_hook. On `UHealthComponent`
 
 Source: `rpg/kill_hook.rs::on_event`.
 
 **Fires for EVERY UFunction call on EVERY UHealthComponent in
-the game** -- player, every creature, every NPC, every entity
+the game**. Player, every creature, every NPC, every entity
 that has an HC. With many creatures around, this fans out:
 `creatures × UFunctions/sec/creature`.
 
 Per fire (every HC, including non-player):
-- `crate::debug::drain_pending()` -- atomic check + mutex lock on
+- `crate::debug::drain_pending()`. Atomic check + mutex lock on
   PE_QUEUE + drain (cheap when empty)
 - pointer compare + bool flag
-- **`owner.full_name()` -- String allocation every fire** just
+- **`owner.full_name()`. String allocation every fire** just
   to do the player gate
 
 If owner is the player:
-- `function.as_object().name()` -- String allocation
+- `function.as_object().name()`. String allocation
 - match against damage-fn names
 - if non-damage UFunction: read CurrentDamage + push DamageEvent
   (with `fn_name.clone()`) into bounded `damage_ring`
@@ -64,7 +64,7 @@ If owner is the player:
   push ring entry, **`log_last_damage_info` reads more
   FDamageInfo fields and `bbp_log!`s again** (fsync per line)
 
-After the player gate -- still inside the if-player block --
+After the player gate. Still inside the if-player block.
 the impact-resistance intercept runs on multicast functions:
 `current_impact_resistance_level()` (acquires tracker mutex),
 read DamageType, resolve class name (allocation), if
@@ -82,11 +82,11 @@ CurrentDamage, optionally `bbp_log!`s the delta.
 - Player damage events emit 2-3 log lines per fire, **each line
   fsyncs**.
 
-### fall_hook -- on `BP_SurvivalPlayerCharacter_C` and 2 subclasses
+### fall_hook. On `BP_SurvivalPlayerCharacter_C` and 2 subclasses
 
 Source: `rpg/fall_hook.rs::on_player_fall_event`.
 
-Fires for **every UFunction call on the player's BP class** --
+Fires for **every UFunction call on the player's BP class**.
 includes Tick, ReceiveAnyDamage, OnLanded, every BP UFunction.
 Player ticks at 60 Hz, so this trampoline fires at **60+ Hz
 minimum**.
@@ -94,7 +94,7 @@ minimum**.
 Per fire:
 - `crate::debug::drain_pending()` (atomic + mutex; cheap when
   empty queue)
-- `function.as_object().name()` -- String allocation
+- `function.as_object().name()`. String allocation
 - `is_player_character(this)` check
 - If player AND fn_name == "OnLanded": velocity-stomp; if
   impact_resistance > 0 ALSO calls `probe_status_effect_values`
@@ -108,7 +108,7 @@ Allocates `fn_name` per fire even for cold paths.
 
 ## 3. C++ shim callbacks (UE4SS-driven, game/render thread)
 
-### `rpg_render_tab` -- ImGui tab "RPG"
+### `rpg_render_tab`. ImGui tab "RPG"
 
 Source: `cpp/shim.cpp::rpg_render_tab` (registered via
 `register_tab(STR("RPG"), &rpg_render_tab)`).
@@ -121,12 +121,12 @@ frame rate.
 Per render call (~60 Hz when tab is open):
 - Calls `bbp_rpg_get_xp_summary(...)` once
 - For **every catalog skill** (currently 13):
-  - `bbp_rpg_get_skill(id, &level, &max)` -- FFI crossing
-  - `bbp_rpg_format_skill_effect(id, level, ...)` -- FFI +
+  - `bbp_rpg_get_skill(id, &level, &max)`. FFI crossing
+  - `bbp_rpg_format_skill_effect(id, level, ...)`. FFI +
     String formatting (locks tracker)
-  - `bbp_rpg_format_skill_effect(id, level+1, ...)` -- second
+  - `bbp_rpg_format_skill_effect(id, level+1, ...)`. Second
     format if not at max (locks tracker)
-  - `bbp_rpg_is_skill_enabled(id)` -- FFI + DISABLED_SKILLS
+  - `bbp_rpg_is_skill_enabled(id)`. FFI + DISABLED_SKILLS
     mutex lock
 
 So per frame with the tab open: **~50 FFI crossings, ~13
@@ -137,14 +137,14 @@ crossings/sec, ~780 mutex acquires/sec on each of two locks.
 If the user hides the ImGui overlay (Insert again), the tab
 stops rendering. Cost goes to zero.
 
-### `on_update` -- empty in our shim
+### `on_update`. Empty in our shim
 
 Source: `cpp/shim.cpp::Grounded2RPGMod::on_update`.
 
 UE4SS calls this every frame. Our override is `virtual auto
 on_update() -> void {}` (default empty). **No ongoing cost.**
 
-### `on_unreal_init` -- one-shot
+### `on_unreal_init`. One-shot
 
 Calls `grounded2_rpg_start()` once, then is never called
 again.
@@ -156,9 +156,9 @@ Each FFI call from `cpp/shim.cpp` enters Rust through
 panics but otherwise runs the closure synchronously.
 
 Hot ones (called per ImGui frame, see section 3):
-- `bbp_rpg_get_skill` -- catalog lookup, no allocations
-- `bbp_rpg_format_skill_effect` -- locks tracker, formats String
-- `bbp_rpg_is_skill_enabled` -- locks DISABLED_SKILLS
+- `bbp_rpg_get_skill`. Catalog lookup, no allocations
+- `bbp_rpg_format_skill_effect`. Locks tracker, formats String
+- `bbp_rpg_is_skill_enabled`. Locks DISABLED_SKILLS
 
 Cold ones (only on user click):
 - `bbp_rpg_spend`, `bbp_rpg_spend_many`
@@ -369,19 +369,19 @@ Peaks: damage_ring_peak=29, pe_queue_peak=0
 ```
 
 **The runaway is `fall_hook` firing 1090 times per second.**
-That's ~18× per render frame at 60 Hz -- the player's BP class
+That's ~18× per render frame at 60 Hz. The player's BP class
 runs many UFunctions per frame, not just Tick. Every fire was:
 
-1. `drain_pending()` -- atomic swap + mutex acquire + drain check
+1. `drain_pending()`. Atomic swap + mutex acquire + drain check
    + atomic store
-2. `function.as_object().name()` -- String allocation per fire
+2. `function.as_object().name()`. String allocation per fire
 
 Total: 1090 mutex acquires/sec + 1090 String allocations/sec
 just to check "is this OnLanded? if not, do nothing." That's
 the cycle and allocator churn the user observed.
 
 ImGui RPG tab was CLOSED during this measurement (0 renders
-captured) -- so the tab is **not** the runaway. fall_hook is.
+captured). So the tab is **not** the runaway. fall_hook is.
 
 ### Mitigations landed (2026-05-09 evening)
 
@@ -487,7 +487,7 @@ The slow path runs only when:
   pointer yet. We rely on impact_resistance being on, OR on a
   future OnLanded firing to populate the cache. If this matters,
   add a one-shot warmup that resolves the pointer at install
-  time -- skill_id N/A, just a name lookup. Tracked.)*
+  time. Skill_id N/A, just a name lookup. Tracked.)*
 
 **Frame 2+, subsequent OnLanded events**:
 - Cached pointer matches `function`. Slow path runs: velocity
@@ -538,7 +538,7 @@ new per-second rates.
   in the strict sense. Windows process commit grows; OS doesn't
   return pages until pressure forces it.
 - Each `drain_pending` mutex acquire is a kernel syscall under
-  contention -- with the HTTP server thread occasionally
+  contention. With the HTTP server thread occasionally
   poking the queue, contention cycles add up.
 - Combined: high CPU from constant atomic-RMW and mutex
   acquires, growing RSS from allocator churn.
@@ -549,8 +549,8 @@ RAM growth rate and CPU.
 
 ## 14. Research code moved to tests (2026-05-09 evening)
 
-The mod-side research scaffolding -- functions that existed
-purely to characterize unknowns during investigation -- have
+The mod-side research scaffolding. Functions that existed
+purely to characterize unknowns during investigation. Have
 been removed from `fall_hook.rs` and reimplemented test-side in
 `tests/research_probes.rs` using the generic debug endpoint
 primitives.
@@ -572,7 +572,7 @@ Removed from the mod (purged, not commented out):
 - The impact-trace block in `on_player_fall_event` that
   snapshotted CurrentDamage before/after `original.call` for
   collision-relevant fns. That block was the second half of the
-  hot-path runaway -- it required an allocated `fn_name` to
+  hot-path runaway. It required an allocated `fn_name` to
   filter, so even with the OnLanded pointer cache we couldn't
   bail without computing it.
 
@@ -582,23 +582,23 @@ empty), pointer compare against cached OnLanded, branch out.
 **Zero allocations on the common path.**
 
 The architectural rule is now codified across all four places:
-- `~/.claude/skills/runtime-control-http/SKILL.md` -- mod stays
+- `~/.claude/skills/runtime-control-http/SKILL.md`. Mod stays
   generic; tests own all research logic
-- `~/.claude/skills/grounded2-mods/SKILL.md` -- project rule
-- `~/.claude/skills/rust/SKILL.md` -- zero-allocations-on-hot-paths
-- `ongoing.md` (this file) -- performance principle at top
+- `~/.claude/skills/grounded2-mods/SKILL.md`. Project rule
+- `~/.claude/skills/rust/SKILL.md`. Zero-allocations-on-hot-paths
+- `ongoing.md` (this file). Performance principle at top
 
 Research moves OUT of the mod; mod stops growing; performance
 problems that come from research scaffolding running 1000+/sec
 on the game thread can't recur.
 
-## 15. Game-side leak identified (2026-05-09 night) -- CASE NOT CLOSED
+## 15. Game-side leak identified (2026-05-09 night). CASE NOT CLOSED
 
 User reports the game is unplayable: 80% sustained CPU and RAM
 growing into the tens of GB over a session. Earlier sections
 proved our mod is not the cause (0.18% - 0.30% of process CPU,
 ~1 MB allocator churn per 30s). Disabling all mods entirely
-left the issue intact -- confirmed game-side.
+left the issue intact. Confirmed game-side.
 
 Extended the debug endpoint with three new game-side probes
 (`process_threads_json`, `game_population_json`,
@@ -683,7 +683,7 @@ share is negligible.
   only populates when the player actually lands during the
   test window. Trivial fix: resolve the UFunction by name at
   install time, populate the cache directly. ~1 MB/30s of
-  allocator churn -- nowhere near the game-side issue but
+  allocator churn. Nowhere near the game-side issue but
   worth landing.
 - The user's gameplay experience: still unplayable. We have
   diagnosed but not mitigated. There is no mod-side mitigation
@@ -789,7 +789,7 @@ real second. "Our 0.30%" means our hot-path code consumes
    "Grounded2RPG: HTTP debug listening on" in the mod log to
    confirm).
 3. Get to the desired in-game state (the missing variable from
-   this run -- record where the player is and what they are
+   this run. Record where the player is and what they are
    doing).
 4. Run the perf test from another terminal:
    ```
@@ -803,15 +803,15 @@ real second. "Our 0.30%" means our hot-path code consumes
 
 Diagnostic surfaces in the mod side, by file:
 
-- `grounded2-rpg/src/counters.rs` -- AtomicU64 hot-path counters
+- `grounded2-rpg/src/counters.rs`. AtomicU64 hot-path counters
   + `time_scope` Drop guard + `process_memory_json` +
   `process_cpu_json` + `process_threads_json` + `game_population_json`.
-- `grounded2-rpg/src/debug.rs` -- snapshot endpoint includes all
+- `grounded2-rpg/src/debug.rs`. Snapshot endpoint includes all
   of the above under top-level keys `counters`, `process_memory`,
   `process_cpu`, `process_threads`, `game_population`.
 - `grounded2-rpg/tests/common/mod.rs` -- `Snapshot` struct +
   `snapshot()` API.
-- `grounded2-rpg/tests/explore_perf_counters.rs` -- the test
+- `grounded2-rpg/tests/explore_perf_counters.rs`. The test
   itself; T0 / sleep 30s / T1 / pretty-print deltas sorted
   descending.
 
@@ -819,7 +819,7 @@ Diagnostic surfaces in the mod side, by file:
 
 User changed display settings and reported the game "feels EVEN
 WORSE." Re-ran the perf test. **CPU went DOWN, but page-fault
-rate exploded -- the system is now thrashing on swap.**
+rate exploded. The system is now thrashing on swap.**
 
 Side-by-side vs the first run:
 
@@ -842,7 +842,7 @@ Key new datapoint: **page_fault_count delta = 1,165,324 in 30s
 (~38k/sec)**. That is the OS resolving page faults by reading
 from disk because the working set has crossed the physical-RAM
 threshold. Every page fault is a potential frame stall. This
-is what the user feels as "even worse" -- it is not that CPU
+is what the user feels as "even worse". It is not that CPU
 went up, it is that the game started paging.
 
 GObjects top growers in run 2 (same pattern as run 1, just
@@ -872,7 +872,7 @@ ProxyCustomPropertyComponent +2    3699
 ```
 
 `fall_hook_fnname_allocs = 0` confirms the cached-OnLanded fix
-held in run 2. `fall_hook_fires = 33548 (1107.7/sec)` -- the
+held in run 2. `fall_hook_fires = 33548 (1107.7/sec)`. The
 trampoline runs at the same rate but allocates nothing.
 `http_handle` shows up at 0.93% wall because we are polling
 the snapshot endpoint heavily during the test; that is the
@@ -899,7 +899,7 @@ fastest, but we cannot answer:
    not know if it is one streaming cell loading 121 packages
    or 121 different cells loading one each, or what content
    is in them.
-2. **Which sounds?** SoundWave +70 -- which 70 sounds? Is it
+2. **Which sounds?** SoundWave +70. Which 70 sounds? Is it
    the same handful churning, or 70 distinct unique assets
    accumulating?
 3. **What is referencing them?** UObjects in UE5 are kept
@@ -930,18 +930,18 @@ in every snapshot now answers two questions per walk instead of
 one (one walk over GObjects, ~50k entries, runs at snapshot
 time only):
 
-- `top_packages` -- groups every UObject by the root of its
+- `top_packages`. Groups every UObject by the root of its
   Outer chain (typically a UPackage). Directly answers "which
   content path hosts the leaking objects." Same shape as
   `top_classes` (`{package, hosted_count}`).
-- `loaded_levels` -- inline list of every Level /
+- `loaded_levels`. Inline list of every Level /
   LevelStreaming / WorldPartitionRuntime* instance found in
   the walk, capped at 200 entries with `{class, name, package}`.
   Confirms or refutes "World Partition is not unloading cells."
 
 New on-demand op (not in snapshot, called by tests):
 
-- `class_outer_samples(class, k)` -- walks GObjects, finds
+- `class_outer_samples(class, k)`. Walks GObjects, finds
   every instance of `class` (short class name), returns up to
   K samples with their full `Root.Outer.Outer.name` Outer
   chain. Turns "+144 SoundWave per 30s" into specific asset
@@ -951,12 +951,12 @@ New on-demand op (not in snapshot, called by tests):
 
 Two tests drive the new instrumentation:
 
-- `tests/explore_leak_source.rs` -- 30s window. T0 / sleep /
+- `tests/explore_leak_source.rs`. 30s window. T0 / sleep /
   T1. Reports top-20 class deltas, top-20 package deltas,
   loaded levels at T1, and outer-chain samples for the top-5
   fastest-growing classes plus an always-list of SoundWave /
   SoundNodeWavePlayer / Package.
-- `tests/explore_perf_timeseries.rs` -- 60 samples at 1 Hz.
+- `tests/explore_perf_timeseries.rs`. 60 samples at 1 Hz.
   Per-second deltas of working_set, page_fault_count, and
   GObjects total. Distinguishes steady drip from bursty load
   events (a single 30s window cannot).
@@ -1016,7 +1016,7 @@ instances. Hundreds of streaming cells loaded simultaneously.
 
 **Outer-chain samples named the leaking content paths:**
 
-SoundNodeWavePlayer (5466 live, +243/30s) -- ALL samples
+SoundNodeWavePlayer (5466 live, +243/30s). ALL samples
 under `/Game/Audio/Sfx/Ambience/Zone_OneShot/Indoor/Greenhouse/`:
 
 ```
@@ -1026,7 +1026,7 @@ under `/Game/Audio/Sfx/Ambience/Zone_OneShot/Indoor/Greenhouse/`:
     ... _1, _10, _11, _12, _13, _14 (14+ players for ONE cue)
 ```
 
-SoundWave (4653 live, +223/30s) -- multiple zones, all
+SoundWave (4653 live, +223/30s). Multiple zones, all
 ambient:
 
 ```
@@ -1106,7 +1106,7 @@ distinct phases visible:
 **Phase A: t=0-30s, slow steady drip.**
 Working set grows ~70 MB/s. GObjects nearly flat (352491
 -> ~356000, +4000 over 30s). Page faults sustained at
-30-80k/sec -- already paging at this point.
+30-80k/sec. Already paging at this point.
 
 **Phase B: t=31.6s, GC PASS.**
 GObjects dropped from 355949 -> 351527 in one sample =
@@ -1217,7 +1217,7 @@ deltas were all near zero. **The leak is in memory the UObject
 system does not track.**
 
 7923 MB working set / 350,296 GObjects = 22 KB per UObject
-average -- far above UObject header size. Most of the working
+average. Far above UObject header size. Most of the working
 set is in buffers UObjects only point to.
 
 ### What is outside UObjects but consumes RAM
@@ -1267,7 +1267,7 @@ Diffing T0/T1 region sizes points at WHICH region grew.
 
 Concrete next probe:
 
-`process_regions_json` -- walks the process address space
+`process_regions_json`. Walks the process address space
 via `VirtualQueryEx`, returns:
 
 - Total committed bytes by protection (RWX, RX, RW, R only).
@@ -1427,7 +1427,7 @@ New probe `sample_thread_modules_json(duration_ms, interval_ms)`:
      walk up to 64 stack qwords from RSP via
      `ReadProcessMemory(self)`, looking for the first qword
      that is a code address in a non-system module. **That's
-     the user-code caller** -- the WHO that asked the
+     the user-code caller**. The WHO that asked the
      allocator/syscall to run.
 - Returns per-thread histograms + grand-total module
   histogram.
@@ -1475,16 +1475,16 @@ are missed. To catch every allocation we'd need to hook
 Lower-priority items from the original plan, ordered by
 expected payoff:
 
-1. **GC observation counters** -- hook
+1. **GC observation counters**. Hook
    `FCoreUObjectDelegates::GetPostGarbageCollect` /
    `GetPreGarbageCollect` if findable in the SDK, or sample
    GObjects total each tick and detect "did total go DOWN
    this tick" as a cheap GC proxy. Tells us whether GC runs
    and reclaims nothing vs GC never runs at all.
-2. **Audio-component probe** -- walk live UAudioComponents,
+2. **Audio-component probe**. Walk live UAudioComponents,
    list owner + sound-asset path. Distinguishes "components
    leak" from "sounds pin despite components being released."
-3. **Per-thread stack sampling** -- SetThreadContext +
+3. **Per-thread stack sampling**. SetThreadContext +
    StackWalk64 against the Foreground Worker handles we
    already have from `process_threads_json`. Highest fidelity,
    highest cost; do only after Phase-1 narrows the suspect
@@ -1498,7 +1498,7 @@ the leak source, with evidence.
 
 Concrete additions to the debug endpoint, in priority order:
 
-1. **Per-package object count** -- new probe
+1. **Per-package object count**. New probe
    `game_package_breakdown_json(top_n)`. For each UObject,
    walk its Outer chain to the first UPackage; group by
    package name. Returns the top N packages by hosted-object
@@ -1506,7 +1506,7 @@ Concrete additions to the debug endpoint, in priority order:
    distinct or reloads of the same cell, and which cells are
    the heaviest.
 
-2. **Outer-chain sample for fastest-growing class** -- new
+2. **Outer-chain sample for fastest-growing class**. New
    probe `game_class_outer_samples_json(class_name, k)`.
    Pick K random or first-K instances of a given class
    (e.g. SoundWave), walk Outer chain for each, return the
@@ -1514,13 +1514,13 @@ Concrete additions to the debug endpoint, in priority order:
    under /Game/Audio/Ambient/ForestNight/..." or similar,
    pointing at the asset path responsible.
 
-3. **Loaded-levels enumeration** -- new probe
+3. **Loaded-levels enumeration**. New probe
    `game_loaded_levels_json`. Walk GObjects for
    `ULevelStreaming` or `ULevel` instances, report
    PackageName, PersistentLevel, IsLoaded flags. Confirms
    or refutes "World Partition is not unloading cells."
 
-4. **GC observation** -- new counters in `counters.rs`,
+4. **GC observation**. New counters in `counters.rs`,
    incremented by hooking UE's GC entry points.
    `uobject_gc_passes`, `uobject_gc_freed_count`,
    `uobject_gc_duration_ns`. UE exposes
@@ -1530,13 +1530,13 @@ Concrete additions to the debug endpoint, in priority order:
    "did total go DOWN this tick" as a cheap proxy. Tells
    us whether GC is alive and how much it reclaims.
 
-5. **Time-series sampler test** -- new test
+5. **Time-series sampler test**. New test
    `tests/explore_perf_timeseries.rs`. Snapshots once per
    second for 60s. Plots GObjects total + working_set +
    page_faults over time. Distinguishes steady drip vs
    bursty event vs ramp.
 
-6. **Focus on the audio path specifically** -- the
+6. **Focus on the audio path specifically**. The
    strongest signal is SoundWave + SoundNodeWavePlayer
    growth. UE5 has `FAudioDevice` / `UAudioComponent` /
    `USoundCue`. A probe that walks active
@@ -1545,7 +1545,7 @@ Concrete additions to the debug endpoint, in priority order:
    themselves are leaking or whether sounds are pinning
    despite components being released.
 
-7. **Hot-thread stack sampling** -- harder. SetThreadContext
+7. **Hot-thread stack sampling**. Harder. SetThreadContext
    + StackWalk64 against the Foreground Worker thread
    handles (we already have HANDLEs from
    `process_threads_json`) at 100Hz for a few seconds gives
