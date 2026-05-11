@@ -5,18 +5,18 @@
 
 The repo is a Rust workspace. **All framework code, all mod code,
 all tools, all tests are Rust.** The only C++ is at the UE4SS /
-ImGui boundary -- contracts the engine and its plugin loader
+ImGui boundary. Contracts the engine and its plugin loader
 expose as C++ APIs, where there is no Rust escape hatch.
 
 ## TL;DR
 
 | | Where | Files | Lines |
 |---|---|---|---|
-| Dear ImGui v1.92.1 (third-party) | git submodule -- NOT in this repo | 10 | 54,645 |
+| Dear ImGui v1.92.1 (third-party) | git submodule. NOT in this repo | 10 | 54,645 |
 | ueforge shim (ours) | `ueforge/cpp/` | 4 | 502 |
 | **First-party C++ in this repo** | | **4** | **502** |
 
-The repo itself contains **502 lines of C++** -- the irreducible
+The repo itself contains **502 lines of C++**. The irreducible
 shim. ImGui's 54,645 lines live as a git submodule pointing at
 [`ocornut/imgui` tag v1.92.1](https://github.com/ocornut/imgui/releases/tag/v1.92.1);
 they're checked out into `ueforge/cpp/imgui/` after
@@ -24,7 +24,7 @@ they're checked out into `ueforge/cpp/imgui/` after
 
 Every mod, every framework subsystem, every test, every tool is
 Rust. The 502-line shim is a fixed cost shared by every Rust mod
-in the workspace -- it does not grow as we add features.
+in the workspace. It does not grow as we add features.
 
 Everywhere else in the workspace is 100% Rust. There is no game-
 specific C++ in any mod crate. There is no RPG-system C++. There
@@ -34,7 +34,7 @@ is no inventory C++.
 
 `ueforge/cpp/imgui/` is a **git submodule** pointing at
 [`ocornut/imgui`](https://github.com/ocornut/imgui) pinned to
-tag `v1.92.1` -- byte-identical to UE4SS's bundled version. The
+tag `v1.92.1`. Byte-identical to UE4SS's bundled version. The
 ImGui sources live in `ocornut/imgui` upstream; our repo carries
 only a `.gitmodules` entry + a single commit hash reference. After
 `git submodule update --init`, the sources are checked out into
@@ -57,7 +57,7 @@ Forking is one line: change the URL in `.gitmodules` to a fork.
 UE4SS embeds ImGui v1.92.1. To draw on its window we have to call
 the ImGui C++ API on the context UE4SS hands us. None of the
 existing Rust ImGui crates (`imgui-rs`, `egui`, `dear_imgui`) is
-ABI-compatible with a specific UE4SS build -- they bundle their
+ABI-compatible with a specific UE4SS build. They bundle their
 own ImGui or use a different rendering path entirely. Mixing two
 ImGui contexts in one process corrupts state.
 
@@ -71,7 +71,7 @@ against a different ImGui version, we'd be writing to wrong
 offsets inside the context struct. Result: visual corruption at
 best, crashes at worst. Vendor exactly v1.92.1; nothing else.
 
-When UE4SS upstream bumps ImGui, we sync in lockstep -- not
+When UE4SS upstream bumps ImGui, we sync in lockstep. Not
 independently.
 
 ### What's in there
@@ -118,12 +118,12 @@ the underlying ImGui C++ API. Rust binds these via standard
 Why a hand-written wrapper layer instead of `bindgen`-ing
 ImGui directly: ImGui's C++ API uses `ImVec2`, `ImVec4`,
 overloaded calls, default arguments, and namespace-scoped
-functions -- all of which require a stable C ABI shim to be
+functions. All of which require a stable C ABI shim to be
 callable from Rust. We write that shim once.
 
 ### `ueforge_cppusermodbase.hpp` (141 lines)
 
-Vetted mirror of UE4SS's `RC::CppUserModBase` class layout --
+Vetted mirror of UE4SS's `RC::CppUserModBase` class layout.
 just the virtual table and field offsets we need to subclass
 properly. Why a mirror instead of including UE4SS's headers
 directly: UE4SS's source has its own broken submodule
@@ -148,7 +148,7 @@ on UE4SS's window, not a separate one. Tiny, header-only.
 Rust cdylibs cannot subclass C++ classes directly. There is no
 stable C++-Rust ABI for vtables. UE4SS's plugin API requires you
 to **derive from `RC::CppUserModBase`** and return a pointer to
-that derived object -- the loader calls virtual methods on it.
+that derived object. The loader calls virtual methods on it.
 Any approach that doesn't subclass a real C++ class doesn't work
 at the engine boundary.
 
@@ -196,7 +196,7 @@ The repo rule:
 > If you find yourself adding C++ that isn't (a) one more
 > ImGui wrapper line in `ueforge_ui.cpp`, or (b) a new
 > field/method on the `CppUserModBase` mirror because UE4SS's
-> ABI changed -- stop. Find a way to do it in Rust.
+> ABI changed. Stop. Find a way to do it in Rust.
 
 Every line of game-specific behavior is Rust. Every line of
 RPG / inventory / damage / persistence / HTTP / scanner /
@@ -204,9 +204,9 @@ counters / settings is Rust. The bridge stays the bridge.
 
 ## Cross-references
 
-- [lifecycle.md](lifecycle.md) -- how the shim wires UE4SS's
+- [lifecycle.md](lifecycle.md). How the shim wires UE4SS's
   `CppUserModBase` to Rust callbacks at runtime
-- [imgui.md](imgui.md) -- the Rust `ueforge::ui::*` API the C++
+- [imgui.md](imgui.md). The Rust `ueforge::ui::*` API the C++
   wrappers serve
-- [`../README.md`](../../README.md#ueforge) -- crate-level entry
+- [`../README.md`](../../README.md#ueforge). Crate-level entry
   point + audit table
