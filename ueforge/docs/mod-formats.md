@@ -59,7 +59,7 @@ the game process.
   event hooks, runtime ImGui, settings hot-reload). The
   capability table above is unambiguous on this.
 - **UE4SS specifically** is the right CPPMod host because:
-  - It's already a DLL proxy (winhttp.dll) -- our mod ships
+  - It's already a DLL proxy (winhttp.dll). Our mod ships
     a single `main.dll` and UE4SS handles loader plumbing.
   - It exposes the UE reflection surface (UObject /
     UFunction / GObjects).
@@ -76,9 +76,9 @@ the game process.
 
 ## See also
 
-- [lifecycle.md](lifecycle.md) -- the ueforge mod lifecycle
+- [lifecycle.md](lifecycle.md). The ueforge mod lifecycle
   (UE4SS factory exports, `on_unreal_init`, hot-reload).
-- [ue-engine.md](ue-engine.md) -- UE5 engine reference (pak
+- [ue-engine.md](ue-engine.md). UE5 engine reference (pak
   format, UObject layout, shipping-build constraints).
-- [native.md](native.md) -- why C++ is in the repo at all
+- [native.md](native.md). Why C++ is in the repo at all
   (UE4SS plugin ABI + ImGui).
