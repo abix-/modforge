@@ -46,9 +46,24 @@ const _: () = {
     );
 };
 
+/// Highest plausible FName comparison index. UE games in the
+/// wild peak around ~500K entries; 16M is comfortably above
+/// anything real and catches the "raw memory interpreted as
+/// FName" garbage cases that crash `AppendString`.
+const FNAME_INDEX_SANITY_MAX: i32 = 16 * 1024 * 1024;
+
 impl FName {
     pub fn is_none(self) -> bool {
         self.comparison_index == 0 && self.number == 0
+    }
+
+    /// Cheap plausibility filter applied before calling
+    /// `AppendString`. Rejects negative indices and absurdly large
+    /// ones so the engine isn't asked to dereference past the
+    /// FName pool. This is a leaf-level guard; SEH wrapping in
+    /// `NameResolver::to_arc` is the second line of defense.
+    pub fn is_plausible(self) -> bool {
+        self.comparison_index >= 0 && self.comparison_index < FNAME_INDEX_SANITY_MAX
     }
 
     /// Pack the 8-byte FName into a single u64 -- usable as a hash
@@ -61,6 +76,19 @@ impl FName {
 }
 
 type AppendStringFn = unsafe extern "system" fn(*const FName, *mut FString);
+
+// SEH-protected call to AppendString. Defined in
+// `ueforge/cpp/ueforge_seh.cpp`; wraps `fn(name, out)` in
+// `__try`/`__except`. On AV inside the engine the helper
+// returns 0 and the out FString is left at its default
+// (we leave Rust callers responsible for the default init).
+unsafe extern "C" {
+    fn ueforge_seh_call_append_string(
+        f: AppendStringFn,
+        name: *const FName,
+        out: *mut FString,
+    ) -> i32;
+}
 
 pub struct NameResolver {
     append_string: AppendStringFn,
@@ -82,14 +110,36 @@ impl NameResolver {
     /// Cached resolve. Cache hit returns an `Arc<str>` ref-bump;
     /// miss runs AppendString once (leaks one FString buffer per
     /// unique FName) and stores the result.
+    ///
+    /// Defends against engine-side AVs at two levels:
+    /// - `FName::is_plausible` rejects garbage indices before the
+    ///   engine call (cheap).
+    /// - `ueforge_seh_call_append_string` wraps the engine call in
+    ///   `__try`/`__except`; an AV inside `AppendString` returns
+    ///   a sentinel instead of taking the host.
     pub unsafe fn to_arc(&self, name: FName) -> Arc<str> {
         let key = name.as_u64();
         if let Some(s) = self.cache.read().get(&key) {
             return s.clone();
         }
+        if !name.is_plausible() {
+            let arc: Arc<str> = Arc::from("<bogus-fname>");
+            self.cache.write().insert(key, arc.clone());
+            return arc;
+        }
         let mut out = FString::default();
-        unsafe { (self.append_string)(&name as *const FName, &mut out as *mut FString) };
-        let arc: Arc<str> = Arc::from(out.as_string().into_boxed_str());
+        let ok = unsafe {
+            ueforge_seh_call_append_string(
+                self.append_string,
+                &name as *const FName,
+                &mut out as *mut FString,
+            )
+        };
+        let arc: Arc<str> = if ok != 0 {
+            Arc::from(out.as_string().into_boxed_str())
+        } else {
+            Arc::from("<seh-fail>")
+        };
         self.cache.write().insert(key, arc.clone());
         arc
     }

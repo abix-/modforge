@@ -47,6 +47,7 @@ fn main() {
         .file(imgui.join("imgui_tables.cpp"))
         .file(imgui.join("imgui_widgets.cpp"))
         .file(cpp.join("ueforge_ui.cpp"))
+        .file(cpp.join("ueforge_seh.cpp"))
         .flag_if_supported("/EHsc")
         .static_crt(false)
         .warnings(false)
