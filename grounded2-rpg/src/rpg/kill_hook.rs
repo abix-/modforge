@@ -4,7 +4,7 @@
 //
 // - The Maine-specific `DamageHookConfig` (component class,
 //   damage UFunction, parm offsets, FDamageInfo layout).
-// - The KillerKind classifier (Player / Buggy / Other -- G2 has
+// - The KillerKind classifier (Player / Buggy / Other. G2 has
 //   tame buggies in addition to direct player kills).
 // - Per-event game-side reactions: kill credit (award XP), debug
 //   PE-queue drain, damage-trace passthrough, impact-resistance
