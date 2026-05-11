@@ -16,7 +16,7 @@
 //! - The synthesized Ctrl+R reaches the foreground window. If the
 //!   game has focus (typical while playing), UE4SS sees it and
 //!   reloads. If focus is on a different window (browser, editor),
-//!   that window gets the key instead -- the reload won't happen
+//!   that window gets the key instead. The reload won't happen
 //!   until next deploy or until the game has focus when the next
 //!   poll cycle runs.
 //! - One reload per deploy. After we send Ctrl+R the watcher
