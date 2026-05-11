@@ -77,7 +77,7 @@ impl ClassRef {
     }
 
     /// Find a UFunction whose outer chain contains this class. Uses
-    /// the receiver's class name automatically -- no need to pass it
+    /// the receiver's class name automatically. No need to pass it
     /// twice the way `UClass::get_function` requires.
     pub fn find_function(&self, fn_name: &str) -> Option<&'static UFunction> {
         let cls = self.get()?;
@@ -92,7 +92,7 @@ impl ClassRef {
 
     /// Call `f` on every non-CDO instance of this class (including
     /// subclasses, via `is_a`) in GObjects. Returns the count.
-    /// Cold path -- walks the full GObjects array.
+    /// Cold path. Walks the full GObjects array.
     pub fn for_each_instance(&self, mut f: impl FnMut(&UObject)) -> usize {
         let Some(rt) = try_runtime() else {
             return 0;
@@ -153,7 +153,7 @@ impl ClassRef {
     /// Call `f` on every non-CDO instance matching `is_a(self)` for
     /// which `pred` returns true. Returns the count. Use for "live
     /// instances of class X whose full_name contains substring Y"
-    /// patterns -- the generic shape of every per-player-pawn walk
+    /// patterns. The generic shape of every per-player-pawn walk
     /// in apply code.
     pub fn for_each_matching(
         &self,
