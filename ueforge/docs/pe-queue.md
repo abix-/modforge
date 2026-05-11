@@ -33,11 +33,11 @@ let result = PE_QUEUE.enqueue(
 ```
 
 `enqueue` returns `Result<Json, String>`:
-- `Ok(json)` -- the job ran on the game thread, here's its
+- `Ok(json)`. The job ran on the game thread, here's its
   result.
-- `Err("...timed out...")` -- the drain didn't fire within
+- `Err("...timed out...")`. The drain didn't fire within
   the timeout. The job did NOT run.
-- `Err("queue closed")` -- the reply channel was dropped
+- `Err("queue closed")`. The reply channel was dropped
   (process shutting down).
 
 The caller blocks on the reply. Pick the timeout based on
@@ -56,7 +56,7 @@ let stats = PE_QUEUE.drain();
 1. Atomic empty-check. If empty, returns `DrainStats::default()`
    immediately (one load + branch).
 2. CAS the `DRAINING` flag. If already set (re-entrance), return
-   `DrainStats { reentered: true, .. }` -- the outer drain will
+   `DrainStats { reentered: true, .. }`. The outer drain will
    process this work.
 3. Take the queue contents, run each job, send the result to its
    reply channel, return `DrainStats { peak, drained, reentered:
@@ -93,7 +93,7 @@ fn drain(&self) -> DrainStats {
 mutex on the empty path. This means a trampoline draining a
 queue that's empty 99% of the time pays ~5ns per fire.
 
-## DrainSite -- queue + counters in one static
+## DrainSite. Queue + counters in one static
 
 `ueforge::pe_queue::DrainSite` wraps `Queue` with the standard
 performance-counter quad (drain calls, drained cmds, peak depth,
@@ -134,7 +134,7 @@ In your snapshot endpoint:
 ## Drain-site selection
 
 The "game thread" is whatever thread drains your queue. ueforge
-doesn't pick one for you -- you choose, by deciding which
+doesn't pick one for you. You choose, by deciding which
 ProcessEvent trampoline calls `PE_QUEUE.drain()` at the top.
 
 ### Picking a good drain site
@@ -178,7 +178,7 @@ Re-entrance is real, not theoretical. Examples:
 
 1. **Heal calls into damage trampoline.** A queued `AddHealth`
    call sets `CurrentDamage`, which fires `OnRep_CurrentDamage`,
-   which dispatches via PE -- back into the damage hook that's
+   which dispatches via PE. Back into the damage hook that's
    draining us.
 2. **AddEffect re-enters effect-tick handler.** Adding a status
    effect can fire its initial tick UFunction, which fans out
@@ -193,7 +193,7 @@ batch, the recursion never deepens.
 
 If your handler logic depends on whether you're inside a drain,
 read `Queue::is_draining` (TODO: add this; right now it's
-internal). Usually you don't care -- drain semantics are
+internal). Usually you don't care. Drain semantics are
 self-correcting.
 
 ## Performance notes
@@ -201,7 +201,7 @@ self-correcting.
 `Queue::enqueue` allocates: one `Box<dyn FnOnce>` for the job +
 one `Sender<Result>` channel half. This is fine; enqueue is the
 worker-thread-side cold path. **Don't enqueue from a hot
-trampoline -- you'll allocate per fire.**
+trampoline. You'll allocate per fire.**
 
 `Queue::drain` allocates: one `Vec<Pending>` to take the queue
 contents under the lock and process them outside. The Vec is
@@ -253,10 +253,10 @@ where you can.
 
 ## Cross-references
 
-- [hooks.md](hooks.md) -- where you install the trampoline that
+- [hooks.md](hooks.md). Where you install the trampoline that
   drains
-- [counters.md](counters.md) -- the counter conventions
+- [counters.md](counters.md). The counter conventions
   DrainSite uses
-- [http.md](http.md) -- how the HTTP listener uses
+- [http.md](http.md). How the HTTP listener uses
   `Queue::enqueue` for game-thread ops
-- [PERFORMANCE.md](PERFORMANCE.md) -- empty-path discipline rule
+- [PERFORMANCE.md](PERFORMANCE.md). Empty-path discipline rule
