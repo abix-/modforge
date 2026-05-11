@@ -1,6 +1,6 @@
 # Settings
 
-> **Authoritative on:** `ueforge::settings::Settings<T>` -- the
+> **Authoritative on:** `ueforge::settings::Settings<T>`. The
 > JSON config-file pattern every ueforge mod uses for user-
 > facing configuration.
 
@@ -33,7 +33,7 @@ let settings = ueforge::settings::Settings::<MySettings>::load("settings.json");
 - If file exists + parses, loads it.
 - If file is missing, writes `T::default()` and loads that.
 - If file is malformed, logs the error + falls back to
-  `T::default()` (does NOT overwrite the bad file -- so the
+  `T::default()` (does NOT overwrite the bad file. So the
   user can hand-fix it).
 
 Returns a `Settings<T>` wrapping a `Mutex<T>` + the path. Always
@@ -47,7 +47,7 @@ println!("multiplier = {}", cur.survival.hunger_multiplier);
 ```
 
 `get()` clones the inner T. That keeps the returned value
-independent of subsequent updates -- typical pattern is to read
+independent of subsequent updates. Typical pattern is to read
 once at slot activation and pass the snapshot to the apply
 path.
 
@@ -105,7 +105,7 @@ Files are pretty-printed JSON (indented). User-editable.
 
 Convention: ship a `settings.example.json` next to your `Cargo.toml`.
 The deploy CLI optionally copies it to the game install on first
-deploy. Never overwrite an existing user `settings.json` --
+deploy. Never overwrite an existing user `settings.json`.
 respect their tweaks.
 
 ## Loading sequence
@@ -182,9 +182,9 @@ flag; the join happens at most once.
 
 ## Cross-references
 
-- [lifecycle.md](lifecycle.md) -- where in the worker thread
+- [lifecycle.md](lifecycle.md). Where in the worker thread
   settings load
-- [rpg.md](rpg.md) -- how `GameApplier` stores the settings
+- [rpg.md](rpg.md). How `GameApplier` stores the settings
   snapshot
 - `../README.md` -- `[package.metadata.ueforge]` block + deploy
   flow
