@@ -3,7 +3,7 @@
 //! One crate, no feature flags. ueforge's own `build.rs` compiles
 //! the always-safe C++ (imgui vendor + `ueforge_ui.cpp`) into a
 //! static lib that cargo links into every consumer of the crate
-//! — cdylib, test binaries, the game's build-script binary alike.
+//!. Cdylib, test binaries, the game's build-script binary alike.
 //!
 //! Mods that want the shipped UE4SS factory (`start_mod` /
 //! `uninstall_mod` / `DllMain` + the `UespyMod` CppUserModBase
@@ -21,23 +21,23 @@
 //! patterns. A new game's mod picks from these menus and writes
 //! only game-specific knobs:
 //!
-//! - **[`rpg`]** -- skill catalog + XP curve + bestiary +
+//! - **[`rpg`]**. Skill catalog + XP curve + bestiary +
 //!   per-slot persistence + ImGui tab + the `StandardEffect`
 //!   variant menu covering 9 of the 10 most common skill shapes.
-//! - **[`stacks`]** -- inventory stack-size data-table tweak with
+//! - **[`stacks`]**. Inventory stack-size data-table tweak with
 //!   captured-vanilla baseline, idempotent re-apply, multiplier
 //!   atomic, and on-first-sight worker.
-//! - **[`difficulty`]** -- game-difficulty CDO field tweak (drain
+//! - **[`difficulty`]**. Game-difficulty CDO field tweak (drain
 //!   rates, damage multipliers, regen rates, etc) with the same
 //!   capture / multiplier / re-apply pattern.
-//! - **[`inventory`]** -- viewport-paging hook framework
+//! - **[`inventory`]**. Viewport-paging hook framework
 //!   ([`inventory::viewport`]) for inventory widgets that bump
 //!   capacity beyond the visible grid: mouse-wheel scroll +
 //!   per-widget viewport-start state + synthetic-refresh
 //!   re-entrance guard + post-refresh rebind. Game crate
 //!   implements a thin [`inventory::viewport::ViewportBinder`]
 //!   trait with the parm shapes + bind logic.
-//! - **[`damage`]** -- universal damage-event hook framework
+//! - **[`damage`]**. Universal damage-event hook framework
 //!   ([`damage::DamageHook`]) for the multicast / RPC every
 //!   UE5 game fires per damage hit. Owns the trampoline +
 //!   parm decode + `FDamageInfo` lookup + Player/Other
@@ -66,7 +66,7 @@
 //! The framework's design rule: each universal pattern is
 //! defined ONCE in ueforge. If you find yourself writing the
 //! same scaffolding in two game crates, that's a missing
-//! module -- file an entry under "Open: more ueforge
+//! module. File an entry under "Open: more ueforge
 //! extraction candidates" in `docs/todo.md`.
 
 pub mod args;
