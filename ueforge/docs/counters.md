@@ -98,7 +98,7 @@ returns a JSON-friendly integer (`AtomicU64`, `AtomicUsize`,
 `AtomicI64`). Eliminates the `.load(Ordering::Relaxed)`
 boilerplate per counter.
 
-## EventRing<T> -- bounded ring with built-in counters
+## EventRing<T>. Bounded ring with built-in counters
 
 For structured-event capture (damage trace, kill log, drain log):
 
@@ -125,8 +125,8 @@ let peak = DAMAGE_RING.peak();
 ```
 
 `EventRing` is a `Ring<T>` paired with:
-- A `pushes: AtomicU64` -- total `record()` calls.
-- A `peak: AtomicUsize` -- highest ring length observed.
+- A `pushes: AtomicU64`. Total `record()` calls.
+- A `peak: AtomicUsize`. Highest ring length observed.
 
 `record(item)` bumps both atomics, then pushes. Drop-oldest on
 overflow keeps memory bounded.
@@ -135,7 +135,7 @@ Use `EventRing` instead of pairing a raw `Ring<T>` with two
 hand-declared counters. The paired form was the g2rpg pattern
 before the consolidation; EventRing eliminates the boilerplate.
 
-### Ring<T> -- raw bounded ring
+### Ring<T>. Raw bounded ring
 
 If you don't need automatic counters:
 
@@ -161,16 +161,16 @@ per-frame drain. Hasn't been needed.
 
 By tradition:
 
-- `<HOOK_NAME>_FIRES` -- entry to the trampoline.
-- `<HOOK_NAME>_<KIND>_FIRES` -- subset (e.g. PLAYER_FIRES).
-- `<HOOK_NAME>_<KIND>_ALLOCS` -- per heap-alloc site that
+- `<HOOK_NAME>_FIRES`. Entry to the trampoline.
+- `<HOOK_NAME>_<KIND>_FIRES`. Subset (e.g. PLAYER_FIRES).
+- `<HOOK_NAME>_<KIND>_ALLOCS`. Per heap-alloc site that
   survives a release-build cfg-gate. Trip-wire for performance
   regressions.
-- `TIME_NS_<HOOK_NAME>` -- accumulated ns spent in the body.
-- `<RING_NAME>_PUSHES` -- ring `record()` count (for raw `Ring`,
+- `TIME_NS_<HOOK_NAME>`. Accumulated ns spent in the body.
+- `<RING_NAME>_PUSHES`. Ring `record()` count (for raw `Ring`,
   manual; `EventRing` includes this).
-- `<RING_NAME>_PEAK` -- ring high-watermark (manual / `EventRing`).
-- `DRAIN_<NAME>_CALLS` / `DRAIN_<NAME>_DRAINED_CMDS` -- queue
+- `<RING_NAME>_PEAK`. Ring high-watermark (manual / `EventRing`).
+- `DRAIN_<NAME>_CALLS` / `DRAIN_<NAME>_DRAINED_CMDS`. Queue
   drain stats (`DrainSite` includes these; raw `Queue` users
   declare manually).
 
@@ -196,7 +196,7 @@ diff between two calls.
 
 ## Cross-references
 
-- [hooks.md](hooks.md) -- where the counter triple goes
-- [pe-queue.md](pe-queue.md) -- DrainSite's built-in counters
-- [PERFORMANCE.md](PERFORMANCE.md) -- "Counter every hot path"
+- [hooks.md](hooks.md). Where the counter triple goes
+- [pe-queue.md](pe-queue.md). DrainSite's built-in counters
+- [PERFORMANCE.md](PERFORMANCE.md). "Counter every hot path"
   rule
