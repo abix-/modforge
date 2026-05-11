@@ -74,7 +74,7 @@ impl DifficultyDef {
         f32::from_bits(self.multiplier_bits.load(Ordering::Relaxed))
     }
 
-    /// Set the multiplier. Does NOT auto-apply -- callers
+    /// Set the multiplier. Does NOT auto-apply. Callers
     /// typically follow with [`apply_to_cdos`](Self::apply_to_cdos).
     pub fn set_multiplier(&self, m: f32) {
         self.multiplier_bits.store(m.to_bits(), Ordering::Relaxed);
