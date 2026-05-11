@@ -3,7 +3,7 @@
 // formatting lives in `ueforge::client::diff::SampleSeries`.
 //
 //   set BBP_DEBUG_PORT=17171
-//   cargo test --release --test explore_perf_timeseries -- --nocapture
+//   cargo test --release --test explore_perf_timeseries. --nocapture
 
 mod common;
 
