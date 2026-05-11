@@ -1,5 +1,5 @@
 //! Live mutation of DT_Materials.MaxCanStack via the running
-//! mod's `/debug` endpoint. No code change to the mod required —
+//! mod's `/debug` endpoint. No code change to the mod required.
 //! this drives `read_bytes` + `write_bytes` only.
 //!
 //! Run order:
@@ -108,7 +108,7 @@ fn bump_all_stacks_4x() {
     for (key, row_addr) in &rows {
         let Some(cur) = read_stack(&api, *row_addr) else { continue };
         if cur <= 1 {
-            // Equipment / unique items — skip to avoid scrambling
+            // Equipment / unique items. Skip to avoid scrambling
             // gameplay assumptions.
             continue;
         }
