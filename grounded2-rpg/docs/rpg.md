@@ -81,8 +81,8 @@ shape adds one Effect impl + static instance and references it from one CATALOG 
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
 | Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Implemented as a `RuntimeEffect` (no CDO write): the `damage::DamageHook` binder's `after` callback in `kill_hook.rs` identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental" and subtracts `damage * reduction` from the player HC's `CurrentDamage` post-application. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
-| Max Health       | survival   | +200 HP via `Standard(PlayerSubcomponentAdditive)` -- captures vanilla MaxHealth on first sight, writes `vanilla + bonus * progress` on player CDOs + live pawn. |
-| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) via `Standard(ClassFieldsMultiply)` with `(offset, exponent)` pairs -- exponent +1 for tick-pct (grow), -1 for tick-rate (shrink). |
+| Max Health       | survival   | +200 HP via `Standard(PlayerSubcomponentAdditive)`. Captures vanilla MaxHealth on first sight, writes `vanilla + bonus * progress` on player CDOs + live pawn. |
+| Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) via `Standard(ClassFieldsMultiply)` with `(offset, exponent)` pairs. Exponent +1 for tick-pct (grow), -1 for tick-rate (shrink). |
 | Lifesteal        | combat     | +90% of damage dealt healed back. **Live as of 2026-05-10.** Catalog row is `Standard(Runtime)`; the binder's `after` callback in `kill_hook.rs` reads the tracker level on every player-dealt non-player hit, walks the live player HC, and decrements `CurrentDamage` by `damage * 0.90 * sqrt(level/100)`. Honors the skill-disabled toggle. |
 
 ### Per-level scaling
@@ -211,7 +211,7 @@ in `rpg/apply.rs`. Two public entry points:
 ### Catalog: Effect trait + per-type structs
 
 After Phase 3 wave 2 (2026-05-10), 9 of 13 catalog skills route
-through the Effect library in `ueforge::rpg::effect` -- ueforge's
+through the Effect library in `ueforge::rpg::effect`. Ueforge's
 canonical 8-variant menu. The framework owns the dispatch + the
 vanilla cache + the CDO + live-pawn walks; g2rpg's `apply_skill`
 shrunk from 11 arms to 4.
@@ -234,13 +234,13 @@ The four arms in `apply_skill`:
 
 | Arm | Skills | Path |
 |---|---|---|
-| `Standard(e)` | Attack Damage, Armor, Move Speed, Jump Height, Glide Speed, Leap Distance, Health Regen, Max Health, Lifesteal, Impact Damage Resistance | `e.apply(level, max_level, &PLAYER)` -- ueforge owns it. |
+| `Standard(e)` | Attack Damage, Armor, Move Speed, Jump Height, Glide Speed, Leap Distance, Health Regen, Max Health, Lifesteal, Impact Damage Resistance | `e.apply(level, max_level, &PLAYER)`. Ueforge owns it. |
 | `BackpackSlots` | Backpack | `patch::run(settings.slot_count + skill_bonus)` (player-only InventoryComponent CDO). |
 | `SurvivalDrain` | Hunger, Thirst | Walk SurvivalComponent CDO, write `vanilla * settings_mult * (1 - skill_red * progress)`. |
 | `PlayerFallDamageReduction` | Fall Damage Resistance | Multi-component composite: HC ratio + GMS CDO + SMMC live + `UpdateCustomSettings` UFunction. |
 
 Live-damage skills (Lifesteal today, Critical / Evasion / Thorns
-to come) ride on the `damage::DamageHook` framework -- they're
+to come) ride on the `damage::DamageHook` framework. They're
 catalog rows whose effect references a `RuntimeEffect` static and
 the binder's `before` / `after` callbacks in `kill_hook.rs` do
 the actual heal / mutate / reflect.
@@ -256,27 +256,27 @@ the live HC.
 
 Grounded 2 has two distinct self-damage paths. Fall Damage Resistance
 mitigates the first; Collision / Impact Damage Resistance (planned)
-mitigates the second. The full pipeline reference -- HealthComponent
+mitigates the second. The full pipeline reference. HealthComponent
 layout, FDamageInfo discriminator, multicast surfaces, native call
 order, every approach tried that did not work, and the velocity-stomp
-fix -- lives in [`damage.md`](damage.md). Read that doc before adding
+fix. Lives in [`damage.md`](damage.md). Read that doc before adding
 any skill that touches damage.
 
 ### How damage skills attach to the engine (plain language)
 
-Most of our skills modify some stat on the player -- damage taken,
+Most of our skills modify some stat on the player. Damage taken,
 damage dealt, lifesteal, max HP, etc. Grounded 2 already has a
 built-in mechanism for "this player has +X to stat Y": **status
 effects**. Every gear bonus, perk, food buff, and environmental
 debuff in the game is implemented as one of these. The bonemeal
-helmet's +HP, a perk's +crit chance, a sour candy's lifesteal --
+helmet's +HP, a perk's +crit chance, a sour candy's lifesteal.
 all status effects under the hood.
 
 Each effect is a row in a single big spreadsheet (a "data table")
 the game ships called `Table_StatusEffects`. Rows have columns
 like `Type` (which stat), `Value` (how much), and `Duration`. The
 engine continuously sums up active effects per stat type and
-applies the result to gameplay -- e.g. fall damage is multiplied
+applies the result to gameplay. E.g. fall damage is multiplied
 by the player's current `FallDamage` modifier, which is the sum
 of every active status effect of that type.
 
@@ -293,7 +293,7 @@ That doc is the load-bearing one for any future skill that
 modifies a player stat.
 
 Skill-side wiring for the two damage-mitigation skills (different
-mechanisms because the underlying damage paths differ -- see
+mechanisms because the underlying damage paths differ. See
 [`damage.md`](damage.md)):
 
 - **Fall Damage Resistance** uses
@@ -304,7 +304,7 @@ mechanisms because the underlying damage paths differ -- see
   reads the mutated velocity live and produces scaled / zero damage.
   Validated: -3431 cm/s landing at level 100 -> zero damage.
 - **Impact Damage Resistance** uses
-  `RuntimeEffect` -- no CDO write. The
+  `RuntimeEffect`. No CDO write. The
   `damage::DamageHook` binder's `after` callback identifies
   environmental events by `FDamageInfo.DamageType` class name
   containing "Environmental" and subtracts
@@ -342,7 +342,7 @@ again, and the new state is saved. The buttons disable at level 0.
 
 **Caveat**: refunding back to level 0 on `PlayerHealthCompU32Mask`
 (Impact Damage Resistance) leaves the engine value stale until the
-next world load -- the apply step early-returns at level 0 and
+next world load. The apply step early-returns at level 0 and
 there is no captured vanilla mask to restore. Refunds to level >= 1
 take effect immediately. All other skill shapes recompute cleanly
 at level 0 because their formulas naturally produce the vanilla
@@ -350,7 +350,7 @@ value.
 
 The `on` checkbox toggles a per-skill enable flag (process-global,
 not persisted). Disabling treats the skill as level 0 (vanilla
-values) without refunding the spent points -- handy for dropping a
+values) without refunding the spent points. Handy for dropping a
 buff like Leap Distance on demand without losing progress. Toggling
 fires the apply step so the change is immediate.
 
