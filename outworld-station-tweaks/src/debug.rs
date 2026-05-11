@@ -1,5 +1,5 @@
 //! HTTP control plane. Mirrors grounded2-rpg's pattern but
-//! starts empty — fields and ops grow as research lands.
+//! starts empty. Fields and ops grow as research lands.
 
 use serde::Serialize;
 use serde_json::Value as Json;
