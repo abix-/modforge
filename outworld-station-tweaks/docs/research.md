@@ -4,7 +4,7 @@
 
 First feature live in-game: every `DT_Materials` row's
 `MaxCanStack` is bumped 4x at mod load. Verified end-to-end via
-the live game — Titanium_Ore goes from 500 to 2000, etc. Pure
+the live game. Titanium_Ore goes from 500 to 2000, etc. Pure
 runtime DLL injection, no pak.
 
 ### How it works
@@ -47,14 +47,14 @@ For any DataTable-backed value tweak in any UE game:
 1. Find the DataTable + row-struct field offset (SDK dump grep).
 2. Spawn a worker from `on_unreal_init` that polls for the DT.
 3. On first sight, write all rows.
-4. One pass is enough — DT memory persists for the session,
+4. One pass is enough. DT memory persists for the session,
    later widget creations cache the mutated values.
 
 Belt-and-suspenders for cases where polling-on-init isn't enough
 (some DTs lazy-load on first use): hook
 `UFunctionWeWantToOverride` via UE4SS-style RegisterPostHook and
 override the return value directly. Bulletproof against any
-caching path. Backlog item — not needed for stacks since on-init
+caching path. Backlog item. Not needed for stacks since on-init
 mutation works for OWS.
 
 ## Bootstrap status (2026-05-09)
@@ -66,7 +66,7 @@ new game" for what each item means):
 |---|---|---|
 | Engine version | known | UE 5.4.4 (from exe FileVersion) |
 | Anti-cheat | none observed | no EAC / BattlEye folders in install |
-| UE4SS installed | yes | `OutworldStation\Binaries\Win64\ue4ss\` — main HEAD commit `06474186`, built 2026-05-08 |
+| UE4SS installed | yes | `OutworldStation\Binaries\Win64\ue4ss\`. Main HEAD commit `06474186`, built 2026-05-08 |
 | `UE4SS.lib` regenerated for this DLL | yes | ~4063 exports; commit `6246b90` |
 | Mod scaffold | yes | `outworld-station-tweaks/` (multi-mod) |
 | `/debug` endpoint live | yes | `127.0.0.1:17172`, smoke test passes 3/3 |
@@ -91,15 +91,15 @@ Per-field cost: ~30 seconds with the dump vs 20-30 minutes with
 the scanner. SDK dump wins on info density by a wide margin for
 ~95% of UE mod work. Scanner becomes the right tool only for
 non-UObject memory (allocator buffers, save blobs, CVars,
-bitfields the dumper flattens) — and we don't yet know which of
+bitfields the dumper flattens). And we don't yet know which of
 those OWS will need until we try. So:
 
 1. Active task: SDK dump (procedure below).
 2. Deferred until we hit a wall: Cheat-Engine-style scanner
-   (sketch below — build it the first time the dump leaves us
+   (sketch below. Build it the first time the dump leaves us
    stuck, not before).
 
-### SDK dump procedure (active — do this next)
+### SDK dump procedure (active. Do this next)
 
 1. Edit `OutworldStation\Binaries\Win64\ue4ss\UE4SS-settings.ini`:
    in `[CXXHeaderGenerator]` set
@@ -112,7 +112,7 @@ those OWS will need until we try. So:
    `process_event` (image-relative addresses) into
    `outworld-station-tweaks/src/lib.rs::STEAM`.
 5. Rebuild + redeploy with `outworld-station-tweaks/scripts/deploy.ps1 -Install`.
-6. Re-run smoke + run `explore_datatables` — `walk_class`
+6. Re-run smoke + run `explore_datatables`. `walk_class`
    should now flip to `ok=true` and print the DataTable list.
 
 ### Cheat-Engine-style memory scanner (DEFERRED)
@@ -249,7 +249,7 @@ BetterStack_P/
 
 ## Folder convention for this repo
 - Following the `grounded2-rpg/` pattern from Grounded 2 work
-- First mod crate: `outworld-station-tweaks/` — a multi-mod bundle
+- First mod crate: `outworld-station-tweaks/`. A multi-mod bundle
   (stack-size adjustments first, more tweaks layered on the same
   scaffold over time)
 - Shared shim/injector code from `injector/` and `archive/winhttp-proxy/` may be reusable
@@ -257,31 +257,31 @@ BetterStack_P/
 ## First mod target: stack tweaks (multi-mod foundation)
 
 The first feature in `outworld-station-tweaks/` is item-stack
-adjustments — reproduce/extend the existing community "Better Item
+adjustments. Reproduce/extend the existing community "Better Item
 Stacks" approach, but as a runtime mod via ueforge instead of a
 static `_P` pak. Why: a runtime mod gives us live introspection
 + test-driven development for every subsequent tweak we add.
 
 ### Full TDD loop, validated against current ueforge
 
-1. **Find the DataTable** — `ueforge::ue::datatable::find_by_short_name("DT_Materials")`
+1. **Find the DataTable**. `ueforge::ue::datatable::find_by_short_name("DT_Materials")`
    or test-side via `walk_class("DataTable") + filter by name`. ✅
-2. **Iterate rows** — `ueforge::ue::datatable::iter_rows(table)` yields
+2. **Iterate rows**. `ueforge::ue::datatable::iter_rows(table)` yields
    `(FName-u64, row_ptr)`. Test resolves FName u64 -> string via
    `ueforge::ue::FName::to_string`. ✅
-3. **Identify stack offset** — parameter sweep via `read_bytes`
+3. **Identify stack offset**. Parameter sweep via `read_bytes`
    on a known row pointer at small offsets (4, 8, 12, ...). The
    one whose value matches the in-game stack max (50, 100, etc.)
    is the offset. Test code; no ueforge gap. ✅
-4. **Mutate** — `write_bytes(addr_of_row, stack_offset, u32_bytes)`. ✅
-5. **Verify** — `read_bytes` round-trip + in-game pickup test by
+4. **Mutate**. `write_bytes(addr_of_row, stack_offset, u32_bytes)`. ✅
+5. **Verify**. `read_bytes` round-trip + in-game pickup test by
    reading inventory state via `walk_class` / `read_bytes` on the
    player's `UInventoryComponent`. ✅
-6. **Persist across world loads** — install a `ProcessEventHook`
+6. **Persist across world loads**. Install a `ProcessEventHook`
    on a hot UFunction (e.g. movement multicast); inside the
    trampoline, drain `PE_QUEUE` and re-apply patches if the
    "applied for this slot" flag is unset. ✅
-7. **Test infrastructure** — `ueforge_client::Api<TweaksSnapshot>` for
+7. **Test infrastructure**. `ueforge_client::Api<TweaksSnapshot>` for
    the integration tests; `ueforge_client::perf::PerfLog` for any
    timing / leak research. ✅
 
@@ -303,7 +303,7 @@ Once `outworld-station-tweaks` has a working `/debug` endpoint + drain trampolin
 - Anything driven by a UE DataTable is a row-write away
 - Anything driven by a UFunction is a `call` op away
 
-No new infrastructure per tweak — they're all test-file changes
+No new infrastructure per tweak. They're all test-file changes
 plus a snapshot field per observable.
 
 ## Shared `ueforge` crate (extracted 2026-05-09, fully populated)
@@ -312,24 +312,24 @@ Generic UE-mod control plane factored out into the workspace
 so the OWS mod scaffold gets it for free:
 
 - `ueforge` (rlib, ~2030 LoC across 18 files):
-  - `server` — tiny_http listener + dispatch
-  - `envelope` — `OpResponse<S>` + `parse_request`
-  - `args` — JSON arg helpers
-  - `pe_queue::Queue` — game-thread job queue with re-entrance guard
-  - `selector` — generic `addr:0x...` / `first_class:Foo`
-  - `hex` — encode/decode
-  - `ops` — `read_bytes`, `write_bytes`, `walk_class`, `exec_call`
-  - `counters` — `bump` / `observe_peak` / `time_scope` / `TimeScope`
-  - `ring` — bounded drop-oldest ring buffer for hook events
-  - `winproc` — Windows process introspection (threads, CPU, regions,
+  - `server`. Tiny_http listener + dispatch
+  - `envelope`. `OpResponse<S>` + `parse_request`
+  - `args`. JSON arg helpers
+  - `pe_queue::Queue`. Game-thread job queue with re-entrance guard
+  - `selector`. Generic `addr:0x...` / `first_class:Foo`
+  - `hex`. Encode/decode
+  - `ops`. `read_bytes`, `write_bytes`, `walk_class`, `exec_call`
+  - `counters`. `bump` / `observe_peak` / `time_scope` / `TimeScope`
+  - `ring`. Bounded drop-oldest ring buffer for hook events
+  - `winproc`. Windows process introspection (threads, CPU, regions,
     memory, thread-module sampler)
-  - `ue` — UObject/UClass/UFunction/FName/FString/TArray/GObjects/
+  - `ue`. UObject/UClass/UFunction/FName/FString/TArray/GObjects/
     Platform offsets, plus `ue::probe` (gobjects_population,
     class_outer_samples)
 - `ueforge-client` (rlib, ~240 LoC):
-  - `Api<S>` — generic blocking HTTP test client
-  - `OpResponse<S>` — wire deserializer
-  - `hex` + `parms` — codec + `#[repr(C)]` parm round-trip
+  - `Api<S>`. Generic blocking HTTP test client
+  - `OpResponse<S>`. Wire deserializer
+  - `hex` + `parms`. Codec + `#[repr(C)]` parm round-trip
 
 OWS mod will only own: a `Snapshot` type, the drain-site PE trampoline
 (once we know which UFunction is hot enough to drain on UE 5.4.4 OWS),
@@ -365,7 +365,7 @@ state shape + handlers.
 | Test perf-log writer (`PerfLog` tee + `perf-runs/<name>-<ts>.txt`) | done | `ueforge_client::perf` |
 | `TMap<K,V>` walker (`tmap::slots`, `find_value_by_fname_key`) | done | `ueforge::ue::tmap` |
 | `UDataTable` helpers (`find_by_short_name`, `row_value_by_fname`, `iter_rows`) | done | `ueforge::ue::datatable` |
-| Settings JSON loader pattern                      | n/a    | game-specific shape — ueforge intentionally doesn't enforce |
+| Settings JSON loader pattern                      | n/a    | game-specific shape. Ueforge intentionally doesn't enforce |
 | Bench harness                                     | n/a    | not in skill; add when first benchmark exists   |
 
 ### What the four gaps would unblock for OWS
