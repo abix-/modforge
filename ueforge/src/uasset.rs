@@ -1,6 +1,6 @@
 //! Offline UE5 cooked `.uasset` / `.uexp` parsing.
 //!
-//! Tools for inspecting cooked UE assets WITHOUT a running game --
+//! Tools for inspecting cooked UE assets WITHOUT a running game.
 //! useful for diffing third-party pak mods, reverse-engineering data
 //! tables ahead of writing a runtime patch, or sanity-checking that a
 //! mod actually touches the field its description claims.
@@ -12,14 +12,14 @@
 //!
 //! ## Capabilities
 //!
-//! - [`extract_printable_strings`] -- scan-for-strings dump (`strings`-
+//! - [`extract_printable_strings`]. Scan-for-strings dump (`strings`-
 //!   style). Cheap reconnaissance pass over an unfamiliar asset.
 //! - [`classify_ue_name`] / [`classify_ue_path`] / [`classify_prose`]
-//!   -- string classifiers for filtering strings into useful buckets.
-//! - [`parse_name_table`] -- recover the FName table from a cooked
+//!  . String classifiers for filtering strings into useful buckets.
+//! - [`parse_name_table`]. Recover the FName table from a cooked
 //!   `.uasset` header by scanning for the densest run of valid
 //!   length-prefixed entries.
-//! - [`find_int_property`] -- given a property name, find every
+//! - [`find_int_property`]. Given a property name, find every
 //!   IntProperty tag for that name in the corresponding `.uexp` and
 //!   decode the value.
 //!
@@ -96,7 +96,7 @@ pub fn classify_ue_path(s: &str) -> bool {
     s.starts_with('/') && s[1..].contains('/')
 }
 
-/// True if `s` looks like prose -- has at least one alphabetic
+/// True if `s` looks like prose. Has at least one alphabetic
 /// character AND at least one whitespace or sentence-punctuation
 /// character.
 pub fn classify_prose(s: &str) -> bool {
@@ -161,7 +161,7 @@ pub fn parse_name_table(uasset: &[u8]) -> Vec<String> {
             i += 4 + len + 4; // length + bytes + 4-byte hash word
             continue;
         }
-        // UTF-16 (negative length) -- skip for now.
+        // UTF-16 (negative length). Skip for now.
         i += 1;
     }
 
