@@ -2,7 +2,7 @@
 //! the classifiers. See module docs.
 //!
 //! ```sh
-//! cargo run -p ueforge --bin dump-strings -- <file> [file ...]
+//! cargo run -p ueforge --bin dump-strings. <file> [file ...]
 //! ```
 
 use std::env;
