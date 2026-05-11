@@ -328,14 +328,29 @@ pub fn struct_detail_json(struct_name: &str) -> Json {
     }
     for obj in view.iter() {
         let obj_addr = obj as *const UObject as usize;
-        if !crate::winproc::is_addr_readable(obj_addr) {
+        if !crate::winproc::is_addr_readable(obj_addr)
+            || !crate::winproc::is_addr_readable(obj_addr + crate::ue::offsets::uobject::OUTER)
+        {
             continue;
         }
-        let Some(cls) = obj.class() else { continue };
-        if cls.as_object().name() != "ScriptStruct" {
-            continue;
-        }
-        if obj.name() != struct_name {
+        // Wrap the per-object class+name reads in catch_unwind --
+        // FName resolve can panic on corrupt FName indices in
+        // late-loaded content, especially when scanning 175K objects.
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let cls = obj.class()?;
+            let cls_addr = cls as *const crate::ue::UClass as usize;
+            if !crate::winproc::is_addr_readable(cls_addr) {
+                return None;
+            }
+            if cls.as_object().name() != "ScriptStruct" {
+                return None;
+            }
+            if obj.name() != struct_name {
+                return None;
+            }
+            Some(())
+        }));
+        if !matches!(res, Ok(Some(()))) {
             continue;
         }
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
