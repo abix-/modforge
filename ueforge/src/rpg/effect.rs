@@ -40,7 +40,7 @@ use crate::ue::{ClassRef, PlayerRef, TypedField, UObject};
 /// live as `'static`s; [`EffectDef`] wraps the `&'static dyn`
 /// reference.
 ///
-/// `apply` receives a [`TriggerCtx`] -- the typed event context
+/// `apply` receives a [`TriggerCtx`]. The typed event context
 /// that fired the trigger. CDO-write effects ignore it (only
 /// fire on `TriggerCtx::SlotChange`); event-driven effects
 /// match on the variant they care about.
@@ -80,7 +80,7 @@ impl EffectDef {
 }
 
 // =====================================================================
-// Standard Effect implementations -- the canonical UE5 RPG operation
+// Standard Effect implementations. The canonical UE5 RPG operation
 // library. Each used to be a variant of `StandardEffect`; now each is
 // its own type.
 // =====================================================================
@@ -88,7 +88,7 @@ impl EffectDef {
 /// Direct `f32` write at a fixed offset on the player class
 /// (CDO + live pawns). Final value: `base + max_bonus * progress`.
 ///
-/// Used for fields directly on the pawn class --
+/// Used for fields directly on the pawn class.
 /// `ASurvivalCharacter.CustomDamageMultiplier` etc.
 pub struct PlayerFloatEffect {
     pub player: &'static PlayerRef,
