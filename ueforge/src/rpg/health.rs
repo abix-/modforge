@@ -21,8 +21,8 @@
 //!    UFunction via `pe_call::call_ufunction`,
 //! 5. read the after-value, return JSON with the deltas.
 //!
-//! The **constants** -- HC class name, selector name, field
-//! offsets, UFunction names -- are game-specific. Game crates
+//! The **constants**. HC class name, selector name, field
+//! offsets, UFunction names. Are game-specific. Game crates
 //! declare a [`HealthBinding`] with their values and call
 //! [`register`] once at worker init. ueforge handles the rest.
 //!
@@ -48,9 +48,9 @@
 //! The Maine SDK (Grounded 2) ships these UFunctions with parm
 //! shapes that match every UE5 RPG HC we've inspected:
 //!
-//! - **`AddHealth(amount: f32, causer: *mut UObject)`** -- 16-byte
+//! - **`AddHealth(amount: f32, causer: *mut UObject)`**. 16-byte
 //!   parm. `causer` may be null.
-//! - **`SetCurrentHealth(desired_health: f32)`** -- 4-byte parm.
+//! - **`SetCurrentHealth(desired_health: f32)`**. 4-byte parm.
 //!
 //! If a future game's HC exposes a different signature, generalise
 //! the parm builder via a trait or callback. v1 hardcodes
@@ -58,8 +58,8 @@
 //!
 //! ## What is NOT shipped here
 //!
-//! `simulate_apply_damage` -- the parm shape is `0x100` bytes with
-//! an embedded `FDamageInfo` -- can re-enter `ProcessEvent` from
+//! `simulate_apply_damage`. The parm shape is `0x100` bytes with
+//! an embedded `FDamageInfo`. Can re-enter `ProcessEvent` from
 //! the engine's damage-replication path and crash the host. The
 //! safe-drain-site work (Wave E1: global `ProcessEvent`
 //! pre-callback) gates it. Until then, games that want the op
@@ -193,7 +193,7 @@ fn op_set_current_health(
         let mut parms = SetCurrentHealthParms {
             desired_health: value,
         };
-        // SAFETY: see op_add_health -- same selector + ClassRef invariants.
+        // SAFETY: see op_add_health. Same selector + ClassRef invariants.
         unsafe {
             crate::ue::pe_call::call_ufunction(hc, binding.hc_class, func_name, &mut parms)?;
         }
