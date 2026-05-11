@@ -1,12 +1,12 @@
 //! Settings-driven data-table tweaks. Generic framework consumed
 //! by every game mod via a `Vec<DynamicTweak>` field on its own
-//! settings struct. Resolution is name-based -- the discovery
+//! settings struct. Resolution is name-based. The discovery
 //! cache supplies offsets at apply time, so new entries land with
 //! no recompile + no SDK header dive.
 //!
 //! ```text
 //! K8s slot: Def=DynamicTweak (settings-supplied; no compile-time
-//!                             registry -- carve-out like Settings),
+//!                             registry. Carve-out like Settings),
 //!           Registry=n/a (consumers pass their own slice),
 //!           Instance=per-(table,field) FieldTweak<T> in the
 //!                    ueforge::data_table dynamic registry,
@@ -106,7 +106,7 @@ pub fn apply_all_when_ready(tweaks: &[DynamicTweak], timeout: std::time::Duratio
         let table_static: &'static str = Box::leak(table.clone().into_boxed_str());
         let group_owned = group;
         crate::ue::datatable::on_first_sight(table_static, timeout, move |_dt| {
-            // Table just appeared -- refresh discovery so row-struct
+            // Table just appeared. Refresh discovery so row-struct
             // schema is reachable, then run every grouped entry.
             let _ = crate::discovery::refresh();
             let results = apply_all(&group_owned);
@@ -127,7 +127,7 @@ pub fn apply_all_when_ready(tweaks: &[DynamicTweak], timeout: std::time::Duratio
 }
 
 /// Apply every enabled tweak from `tweaks`. Caller (game crate)
-/// supplies the slice -- typically from its own
+/// supplies the slice. Typically from its own
 /// `Settings<T>.dynamic_tweaks` field.
 ///
 /// Requires `ueforge::discovery::run_at_load()` (or any
