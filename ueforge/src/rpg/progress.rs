@@ -2,7 +2,7 @@
 //! is what every RPG mod we reference uses: level 1 = ~10% of max,
 //! level 25 = 50%, level 100 = 100%. Generous early, flat at the end.
 
-/// `sqrt(level / max)` -- generous early, flat near the cap.
+/// `sqrt(level / max)`. Generous early, flat near the cap.
 /// Returns `0.0` at level 0, `1.0` at `level >= max`.
 pub fn sqrt_progress(level: u32, max: u32) -> f32 {
     if max == 0 || level >= max {
