@@ -89,7 +89,7 @@ impl StackDef {
         self.multiplier.load(Ordering::Relaxed)
     }
 
-    /// Set the multiplier. Does NOT auto-reapply -- callers
+    /// Set the multiplier. Does NOT auto-reapply. Callers
     /// typically push a settings update + then call
     /// [`apply_now`](Self::apply_now) (or wait for the next
     /// `apply_when_ready` worker fire).
