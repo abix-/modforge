@@ -61,7 +61,7 @@ ueforge-based mod installed:
    opening `<DLL_dir>/<log_file>` for write-through, line-flushed
    I/O.
 3. **`MOD_INFO.on_unreal_init` fires** on UE4SS's mod-init
-   thread. This is where you spawn a worker thread (always --
+   thread. This is where you spawn a worker thread (always.
    never block the engine init thread), which then:
    - Loads settings via `ueforge::settings::Settings::<S>::load`.
    - Detects the platform via `ueforge::ue::platform::detect`.
@@ -201,7 +201,7 @@ ueforge = { path = "../ueforge" }
 
 Same path three times. There are no feature flags. All public
 surface is always available (the build script compiles a single
-static lib that lands in every binary that links ueforge --
+static lib that lands in every binary that links ueforge.
 cdylib, test binary, build-script binary alike).
 
 Plus a `[package.metadata.ueforge]` block that the deploy CLI
@@ -238,8 +238,8 @@ cargo deploy uninstall -p your-mod
 ```
 
 Flags:
-- `--game-path '<root>'` -- override autodetect.
-- `--skip-build` -- redeploy an already-built DLL.
+- `--game-path '<root>'`. Override autodetect.
+- `--skip-build`. Redeploy an already-built DLL.
 
 Autodetect walks every Steam library and matches against
 `game_name_regex`. The mod lands in
@@ -266,10 +266,10 @@ in your mod (`Settings::load`, `SlotStore::path`) anchors there.
 
 `on_shutdown` runs in two scenarios:
 
-1. **Process exit** -- UE shuts down, UE4SS unloads mods. UObjects
+1. **Process exit**. UE shuts down, UE4SS unloads mods. UObjects
    may already be torn down; minimal cleanup is sufficient since
    the OS reclaims the address space anyway.
-2. **Hot-reload** (`Ctrl+R` -- see "Hot-reload" below). UE is
+2. **Hot-reload** (`Ctrl+R`. See "Hot-reload" below). UE is
    still running, GObjects is still live, and after our
    `on_shutdown` returns UE4SS will call `FreeLibrary` on our
    DLL. This is the strict case.
@@ -317,7 +317,7 @@ opening for the side-file pattern below.
 
 ### The side-file pattern (`main-new.dll`)
 
-Verified empirically 2026-05-10 -- every step succeeds:
+Verified empirically 2026-05-10. Every step succeeds:
 
 ```
 deploy time (game running, main.dll loaded):
@@ -359,15 +359,15 @@ Why this is clean:
   `FreeLibrary` (next line of UE4SS code after our return).
   The new init cleans it up.
 - State on disk (save slots, settings, catalog progress)
-  survives -- they live in the dlls dir alongside main.dll,
+  survives. They live in the dlls dir alongside main.dll,
   not inside it; new image reads them on activation.
 
-### Status (2026-05-10) -- Phase B complete
+### Status (2026-05-10). Phase B complete
 
 All five phases (B0-B5) shipped 2026-05-10. The `ueforge_mod_shutdown`
 path now does:
 
-1. Game's `on_shutdown` callback (game-specific cleanup -- e.g.
+1. Game's `on_shutdown` callback (game-specific cleanup. E.g.
    stop pollers).
 2. `hook::shutdown_all()`:
    - Sets `process_event::SHUTTING_DOWN = true` so new
@@ -495,7 +495,7 @@ for in-flight trampolines to drain (bounded timeout, typically
 `docs/todo.md` "hot-reload" for the implementation plan.
 
 Until Phase B lands, hot-reload of mods that install PE hooks
-(kill/fall/inv) is **unsafe** -- the old DLL's vtable patches
+(kill/fall/inv) is **unsafe**. The old DLL's vtable patches
 remain pointing into freed memory. The reload-as-test cycle
 works fine for code paths that don't involve PE hooks; for
 hook-touching changes, restart the game.
@@ -513,7 +513,7 @@ Output:
 - The console (if `console: true` in `ModInfo`).
 
 The logger flushes per line; a crash mid-write does not lose the
-preceding lines. Logging is cheap but not free -- gate verbose
+preceding lines. Logging is cheap but not free. Gate verbose
 trace logging behind `cfg!(debug_assertions)` (release builds
 compile out the `format!` entirely).
 
@@ -522,23 +522,23 @@ compile out the `format!` entirely).
 ueforge has none. You may use cargo features in your own crate
 to opt in/out of:
 
-- `console` -- whether the AllocConsole call runs at startup.
+- `console`. Whether the AllocConsole call runs at startup.
   Recommend `default = ["console"]` for dev and a release variant
   that ships without it.
 - Diagnostic surfaces: any `cfg!(debug_assertions)` paths.
 
 Don't use cargo features to gate ueforge functionality. The
-framework is one crate, no features, by design -- features lead
+framework is one crate, no features, by design. Features lead
 to combinatorial test matrices and "doesn't build for me"
 issues. Ship one ueforge that works for everyone.
 
 ## Cross-references
 
-- [ue-sdk.md](ue-sdk.md) -- the types you'll use inside `worker()`
-- [hooks.md](hooks.md) -- how to install hooks from `worker()`
-- [imgui.md](imgui.md) -- writing tab render bodies
-- [http.md](http.md) -- starting the debug HTTP server
-- [worker.md](worker.md) -- thread spawn details
-- [settings.md](settings.md) -- the settings JSON pattern
-- [native.md](native.md) -- what the C++ shim is doing under the
+- [ue-sdk.md](ue-sdk.md). The types you'll use inside `worker()`
+- [hooks.md](hooks.md). How to install hooks from `worker()`
+- [imgui.md](imgui.md). Writing tab render bodies
+- [http.md](http.md). Starting the debug HTTP server
+- [worker.md](worker.md). Thread spawn details
+- [settings.md](settings.md). The settings JSON pattern
+- [native.md](native.md). What the C++ shim is doing under the
   hood and why it has to exist
