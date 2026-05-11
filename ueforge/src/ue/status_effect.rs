@@ -16,8 +16,8 @@
 //!
 //! We can change a stat dynamically by mutating the row's Value
 //! field BEFORE calling `CreateAndAddEffect`. Then every consumer
-//! of that row -- our skill, AND any vanilla actor that uses the
-//! same row -- sees the new value. Pick a benign / unused row
+//! of that row. Our skill, AND any vanilla actor that uses the
+//! same row. Sees the new value. Pick a benign / unused row
 //! per skill to avoid cross-contamination.
 //!
 //! ```ignore
@@ -76,7 +76,7 @@ pub unsafe fn read_row_type(row_ptr: *const u8, offset: usize) -> u8 {
 ///
 /// # Safety
 /// Same as [`read_row_value`]. Mutating a shared row affects
-/// every consumer of that row -- pick a benign / per-skill row
+/// every consumer of that row. Pick a benign / per-skill row
 /// to avoid cross-contamination.
 pub unsafe fn write_row_value(
     row_ptr: *const u8,
@@ -116,7 +116,7 @@ struct CreateAndAddEffectParms {
 /// `UStatusEffect*` the engine wrote to the OUT parm (or null
 /// if the engine refused).
 ///
-/// `function_ptr` is the resolved `&UFunction` -- typically
+/// `function_ptr` is the resolved `&UFunction`. Typically
 /// cached at install via `ClassRef::find_function("CreateAndAddEffect")`.
 ///
 /// MUST be called on the game thread (process_event re-enters
