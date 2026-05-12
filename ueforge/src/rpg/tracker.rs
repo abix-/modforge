@@ -295,6 +295,66 @@ impl Tracker {
         self.apply_one_unlocked(skill, &t.state);
     }
 
+    /// Fire `ctx` to every skill whose trigger kind matches the
+    /// `ctx` variant. The event-driven dispatch surface for
+    /// OnDamageDealt / OnDamageTaken / OnKill / OnFall.
+    ///
+    /// Hot-path safe:
+    ///
+    /// - The catalog is walked under a single `inner.lock()` to
+    ///   snapshot `(skill, level)` pairs for subscribed skills,
+    ///   then the lock is dropped before any [`Effect::apply`] runs.
+    ///   So an effect that re-enters the tracker (e.g. an OnKill
+    ///   effect calling [`Self::record_xp`]) does not deadlock.
+    /// - Snapshots land in a fixed-size stack array, not a `Vec`.
+    ///   `MAX_SUBS = 32` is well above the realistic per-trigger
+    ///   subscriber count (catalogs run ~25 skills total).
+    /// - No-slot / no-subscriber cases bail before touching the
+    ///   `SkillsState`.
+    ///
+    /// Caller wires this from the trampoline that decoded the
+    /// event: `tracker.fire(&TriggerCtx::Kill(&kill_event))`.
+    pub fn fire(&self, ctx: &crate::rpg::TriggerCtx) {
+        let kind = match ctx {
+            crate::rpg::TriggerCtx::SlotChange => "OnSlotChange",
+            crate::rpg::TriggerCtx::DamageDealt(_) => "OnDamageDealt",
+            crate::rpg::TriggerCtx::DamageTaken(_) => "OnDamageTaken",
+            crate::rpg::TriggerCtx::Kill(_) => "OnKill",
+            crate::rpg::TriggerCtx::Fall(_) => "OnFall",
+            crate::rpg::TriggerCtx::Tick { .. } => "Tick",
+        };
+
+        const MAX_SUBS: usize = 32;
+        let mut subs: [(Option<&'static SkillDef>, u32); MAX_SUBS] =
+            [(None, 0); MAX_SUBS];
+        let mut n = 0usize;
+        {
+            let g = self.inner.lock();
+            let Some(t) = g.as_ref() else { return };
+            for skill in self.catalog.iter() {
+                if skill.trigger.kind != kind {
+                    continue;
+                }
+                if self.disabled.is_disabled(skill.id) {
+                    continue;
+                }
+                let level = t.state.level_of(skill.id);
+                if level == 0 {
+                    continue;
+                }
+                if n < MAX_SUBS {
+                    subs[n] = (Some(skill), level);
+                    n += 1;
+                }
+            }
+        }
+        for i in 0..n {
+            if let (Some(skill), level) = subs[i] {
+                skill.effect.apply(level, skill.max_level, ctx);
+            }
+        }
+    }
+
     /// Re-apply every skill in the catalog. Used by the debug
     /// `reload_slot` op.
     pub fn reapply_all(&self) -> bool {
@@ -371,4 +431,160 @@ impl Tracker {
 
 fn short(slot: &str) -> &str {
     if slot.len() >= 8 { &slot[..8] } else { slot }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rpg::{
+        trigger, Effect, EffectDef, FallEvent, KillEvent, SkillDef, SkillRegistry,
+        TriggerCtx,
+    };
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    struct CountingEffect {
+        fires: AtomicU32,
+        last_level: AtomicU32,
+    }
+
+    impl Effect for CountingEffect {
+        fn apply(&self, level: u32, _max_level: u32, _ctx: &TriggerCtx) {
+            self.fires.fetch_add(1, Ordering::Relaxed);
+            self.last_level.store(level, Ordering::Relaxed);
+        }
+        fn format(&self, _l: u32, _m: u32) -> String {
+            String::new()
+        }
+    }
+
+    // Statics for the fake catalog (effects need 'static).
+    static FX_KILL: CountingEffect = CountingEffect {
+        fires: AtomicU32::new(0),
+        last_level: AtomicU32::new(0),
+    };
+    static FX_FALL: CountingEffect = CountingEffect {
+        fires: AtomicU32::new(0),
+        last_level: AtomicU32::new(0),
+    };
+    static FX_SLOT: CountingEffect = CountingEffect {
+        fires: AtomicU32::new(0),
+        last_level: AtomicU32::new(0),
+    };
+
+    static FIRE_CATALOG: SkillRegistry = SkillRegistry::new(&[
+        SkillDef {
+            id: "fire_kill",
+            display_name: "kill",
+            max_level: 10,
+            effect: EffectDef::new("Counting", &FX_KILL),
+            trigger: &trigger::ON_KILL,
+        },
+        SkillDef {
+            id: "fire_fall",
+            display_name: "fall",
+            max_level: 10,
+            effect: EffectDef::new("Counting", &FX_FALL),
+            trigger: &trigger::ON_FALL,
+        },
+        SkillDef {
+            id: "fire_slot",
+            display_name: "slot",
+            max_level: 10,
+            effect: EffectDef::new("Counting", &FX_SLOT),
+            trigger: &trigger::ON_SLOT_CHANGE,
+        },
+    ]);
+
+    // Stable static byte buffer cast to `&UObject`. The fake
+    // effects in this test never deref the reference; they only
+    // increment counters. So the pointer just needs to be
+    // non-null and well-aligned. Aligning to 16 covers UObject's
+    // vtable + pointer fields.
+    #[repr(C, align(16))]
+    struct FakeObj([u8; 256]);
+    static FAKE_OBJ: FakeObj = FakeObj([0; 256]);
+    fn fake_uobject() -> &'static crate::ue::UObject {
+        unsafe { &*(&FAKE_OBJ as *const FakeObj as *const crate::ue::UObject) }
+    }
+
+    fn reset_counters() {
+        FX_KILL.fires.store(0, Ordering::Relaxed);
+        FX_FALL.fires.store(0, Ordering::Relaxed);
+        FX_SLOT.fires.store(0, Ordering::Relaxed);
+        FX_KILL.last_level.store(0, Ordering::Relaxed);
+        FX_FALL.last_level.store(0, Ordering::Relaxed);
+        FX_SLOT.last_level.store(0, Ordering::Relaxed);
+    }
+
+    fn make_tracker() -> Tracker {
+        // SlotStore writes under DLL dir; for these tests we
+        // activate with an in-memory state by going through
+        // activate_slot on a tempdir-backed store. The simpler
+        // route: just call activate_slot then spend to set levels.
+        Tracker::new(&FIRE_CATALOG, Curve::new(100.0, 1.8, 50), "fire_test_slots")
+    }
+
+    // The whole `fire` surface is exercised in one sequential
+    // test. The Effect impls + catalog are `'static` and tests
+    // run in parallel by default, so splitting into multiple
+    // `#[test]` functions would cross-contaminate the shared
+    // counters.
+    #[test]
+    fn fire_dispatches_by_kind_and_respects_state() {
+        reset_counters();
+        let t = make_tracker();
+
+        // Phase 1: fire before slot active -> no fires.
+        let fev = FallEvent {
+            player: fake_uobject(),
+            velocity_z_before: -500.0,
+        };
+        t.fire(&TriggerCtx::Fall(&fev));
+        assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), 0);
+
+        // activate_slot applies every catalog skill once with
+        // TriggerCtx::SlotChange (today's behavior, independent of
+        // each skill's trigger kind). Baseline counters after.
+        t.activate_slot("fire_test_slot".to_string());
+        let kill_baseline = FX_KILL.fires.load(Ordering::Relaxed);
+        let fall_baseline = FX_FALL.fires.load(Ordering::Relaxed);
+        let slot_baseline = FX_SLOT.fires.load(Ordering::Relaxed);
+        assert!(slot_baseline >= 1);
+
+        // Phase 2: fire(Fall) at level 0 -> no additional fires.
+        t.fire(&TriggerCtx::Fall(&fev));
+        assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline);
+
+        // Phase 3: set levels directly + fire OnKill. Only the
+        // OnKill skill fires (the kind filter on fire() works).
+        {
+            let mut g = t.inner.lock();
+            let inner = g.as_mut().expect("activated");
+            inner.state.skill_levels.insert("fire_kill".into(), 3);
+            inner.state.skill_levels.insert("fire_fall".into(), 7);
+            inner.state.skill_levels.insert("fire_slot".into(), 5);
+        }
+        let kev = KillEvent {
+            victim: fake_uobject(),
+            victim_class_name: "TestCreature",
+            attacker: None,
+            attacker_is_player: true,
+            damage: 42.0,
+        };
+        t.fire(&TriggerCtx::Kill(&kev));
+        assert_eq!(FX_KILL.fires.load(Ordering::Relaxed), kill_baseline + 1);
+        assert_eq!(FX_KILL.last_level.load(Ordering::Relaxed), 3);
+        assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline);
+        assert_eq!(FX_SLOT.fires.load(Ordering::Relaxed), slot_baseline);
+
+        // Phase 4: OnFall fires the fall skill at its level.
+        t.fire(&TriggerCtx::Fall(&fev));
+        assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline + 1);
+        assert_eq!(FX_FALL.last_level.load(Ordering::Relaxed), 7);
+
+        // Phase 5: disabled toggle suppresses the kill fire.
+        t.disabled_skills().set("fire_kill", true);
+        t.fire(&TriggerCtx::Kill(&kev));
+        assert_eq!(FX_KILL.fires.load(Ordering::Relaxed), kill_baseline + 1);
+    }
 }
