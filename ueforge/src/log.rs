@@ -48,7 +48,13 @@ struct Sink {
     console: HANDLE,
 }
 
+// SAFETY: Sink holds a Mutex<Option<File>> (Send + Sync) + a
+// raw HANDLE that we never write through outside of synchronized
+// WriteFile calls; the OS handle itself is process-global +
+// thread-safe for write traffic.
 unsafe impl Send for Sink {}
+// SAFETY: see Send impl. The file mutex serializes writes; the
+// console HANDLE is set once at init and read-only thereafter.
 unsafe impl Sync for Sink {}
 
 static SINK: OnceLock<Sink> = OnceLock::new();
@@ -72,6 +78,13 @@ pub fn init(cfg: Config) {
         return;
     }
     let console = if cfg.console {
+        // SAFETY: AllocConsole / SetConsoleTitleW /
+        // GetStdHandle are FFI calls to the current process's
+        // console subsystem. AllocConsole creates the console
+        // if not present; SetConsoleTitleW receives a NUL-
+        // terminated UTF-16 string we built from cfg; GetStdHandle
+        // returns the stdout HANDLE (or INVALID_HANDLE on failure
+        //. Callers tolerate both via is_null check elsewhere).
         unsafe {
             AllocConsole();
             let title: Vec<u16> = cfg
@@ -107,6 +120,9 @@ pub fn dll_dir() -> Option<PathBuf> {
         return None;
     }
     let mut buf = [0u16; 1024];
+    // SAFETY: hmod was captured by set_dll_module at DllMain
+    // (non-null per the check above); buf is a stack-allocated
+    // u16 array we own; len fits in u32.
     let n = unsafe { GetModuleFileNameW(hmod, buf.as_mut_ptr(), buf.len() as u32) };
     if n == 0 || (n as usize) >= buf.len() {
         return None;
@@ -151,6 +167,11 @@ pub fn log(args: std::fmt::Arguments<'_>) {
     let line = format_line(args);
     if !sink.console.is_null() {
         let mut written: u32 = 0;
+        // SAFETY: sink.console was set at init; non-null per the
+        // check above. WriteConsoleA reads `len` bytes from
+        // `line.as_ptr()` (a valid Vec<u8> we own for the
+        // duration of this call) and writes the byte count to
+        // `&mut written`.
         unsafe {
             WriteConsoleA(
                 sink.console,

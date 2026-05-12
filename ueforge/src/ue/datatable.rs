@@ -38,7 +38,13 @@ use crate::ue::{self, UObject, fname::FName, tmap};
 /// `table` must be a live `UDataTable`. The returned pointer is
 /// only valid until GObjects / the table is mutated.
 pub unsafe fn row_value_by_fname(table: &UObject, row_name: FName) -> Option<*const u8> {
+    // SAFETY: FName is an 8-byte struct laid out identically to
+    // u64 (comparison_index: i32 + number: u32); transmute_copy
+    // round-trips the bytes.
     let key: u64 = unsafe { std::mem::transmute_copy(&row_name) };
+    // SAFETY: caller guarantees `table` is a live UDataTable;
+    // off::ROW_MAP is the configured offset of the TMap; the
+    // tmap walker's contract matches.
     unsafe { tmap::find_value_by_fname_key(table, off::ROW_MAP, key) }
 }
 
@@ -51,16 +57,23 @@ pub unsafe fn row_value_by_fname(table: &UObject, row_name: FName) -> Option<*co
 /// # Safety
 /// `table` must be a live `UDataTable`.
 pub unsafe fn iter_rows(table: &UObject) -> impl Iterator<Item = (u64, *const u8)> + '_ {
+    // SAFETY: caller's `unsafe fn` contract; tmap::slots returns
+    // valid 24-byte slot pointers within the TSparseArray.
     let inner = unsafe { tmap::slots(table, off::ROW_MAP) };
-    inner.filter_map(move |(_, element)| unsafe {
-        let key: u64 = (element as *const u64).read_unaligned();
-        let value: *const u8 =
-            (element.add(crate::ue::offsets::tmap::PAIR_VALUE) as *const *const u8)
-                .read_unaligned();
-        if value.is_null() {
-            None
-        } else {
-            Some((key, value))
+    inner.filter_map(move |(_, element)| {
+        // SAFETY: slot pointer is valid for 24 bytes; first 8 are
+        // the FName-as-u64 key, +PAIR_VALUE is the value pointer.
+        // Free slots filtered out via the null-value check.
+        unsafe {
+            let key: u64 = (element as *const u64).read_unaligned();
+            let value: *const u8 =
+                (element.add(crate::ue::offsets::tmap::PAIR_VALUE) as *const *const u8)
+                    .read_unaligned();
+            if value.is_null() {
+                None
+            } else {
+                Some((key, value))
+            }
         }
     })
 }
@@ -188,6 +201,11 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
         let vanilla = self.vanilla.get_or_init(|| Mutex::new(HashMap::new()));
         let mut van = vanilla.lock();
         let mut touched = 0usize;
+        // SAFETY: `table` is the caller's resolved UDataTable
+        // (live UObject); iter_rows yields (fname_u64, row_ptr)
+        // pairs valid for the duration of this walk; field_ptr
+        // math at self.offset stays within the row's allocation
+        // (row layout came from the engine's RowStruct).
         unsafe {
             for (fname, row_ptr) in iter_rows(table) {
                 if row_ptr.is_null() {
@@ -268,6 +286,9 @@ pub fn find_by_short_name(name: &str) -> Option<&'static UObject> {
     }
     let rt = ue::try_runtime()?;
     let class = ue::find_class_fast("DataTable")?;
+    // SAFETY: rt was returned by try_runtime() which is set once
+    // by detect_and_init; its image_base + platform_offsets were
+    // validated at runtime init.
     let view = unsafe { ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return None;

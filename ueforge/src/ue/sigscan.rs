@@ -194,6 +194,16 @@ pub unsafe fn resolve_rip32(
 /// on any Windows process started normally; behavior is
 /// undefined if the exe has been unmapped (impossible from
 /// inside the process).
+///
+/// Every `unsafe { ... }` inside this fn shares the same SAFETY
+/// contract: the bytes at `base + offset` are part of the loaded
+/// PE image (offsets came either from the IMAGE_DOS_HEADER's
+/// `e_lfanew` field or from IMAGE_FILE_HEADER's per-section
+/// records); the image stays mapped for the process lifetime; no
+/// pointer escapes its source section. The function-level allow
+/// below documents this in one place instead of repeating it ~10
+/// times across the PE walk.
+#[allow(clippy::undocumented_unsafe_blocks)]
 pub unsafe fn text_section() -> Option<&'static [u8]> {
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     // SAFETY: GetModuleHandleW(null) returns the main exe's
@@ -270,6 +280,9 @@ pub fn find_image_relative_rip32(
     // host exe).
     let text = unsafe { text_section()? };
     let hit = find(pattern, text)?;
+    // SAFETY: hit was returned by find() so it's bounded by
+    // text.len() - pattern.len(); the resulting pointer is within
+    // the .text section slice.
     let instr_addr = unsafe { text.as_ptr().add(hit) };
     // SAFETY: hit was returned by find() so instr_addr + pattern.len()
     // <= text.as_ptr() + text.len(); the disp32 read at +disp_offset

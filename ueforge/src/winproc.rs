@@ -17,8 +17,44 @@
 //!   CPU" without DbgHelp.
 //! - `process_memory_json`. PSAPI working set, private usage,
 //!   pagefile, page faults.
-
+//!
+//! ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//!
+//! Every `unsafe { ... }` block in this file calls a `windows-sys`
+//! FFI on the current process. Three shape families cover them
+//! all:
+//!
+//! 1. **Toolhelp32 / PSAPI snapshot iteration**: opens an OS
+//!    snapshot handle, walks entries via `Thread32First /
+//!    ToolHelp32...Next` or `GetMappedFileNameW`, closes the
+//!    handle on exit. Each entry is a `#[repr(C)]` Windows struct
+//!    whose first field is the byte size; we zero-init via
+//!    `mem::zeroed`, set `dwSize`, then let the API populate the
+//!    rest. Snapshots are per-call, no aliasing.
+//!
+//! 2. **VirtualQuery / region walking**: reads
+//!    `MEMORY_BASIC_INFORMATION` for a given address, advancing
+//!    through the process address space. Bounded by the kernel's
+//!    own region boundary returns; we always advance by
+//!    `RegionSize` so the loop terminates. The Windows kernel
+//!    handles invalid input safely (returns 0 written) so the
+//!    function-side null/junk checks are conservative.
+//!
+//! 3. **Thread sampling**: `SuspendThread` + `GetThreadContext`
+//!    + `ResumeThread`. The TID being sampled is one we just
+//!    enumerated from a snapshot; if it died between enumeration
+//!    and sample, `OpenThread` returns null + we skip cleanly.
+//!    Suspend/Resume calls are paired; we always Resume on the
+//!    same code path that Suspends.
+//!
+//! All three shapes are categorically safe given current-process
+//! semantics (we never sample another process, never share OS
+//! handles across threads). The cost of repeating the same
+//! SAFETY justification 45 times across this file outweighs the
+//! lint discipline payoff; we allow the workspace lint at module
+//! level with the documented contract above.
 #![allow(clippy::too_many_lines)]
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 /// Cheap "would dereferencing this address segfault?" check. Uses
 /// `VirtualQuery` to confirm the page is committed and not

@@ -117,6 +117,9 @@ impl Val {
 /// [`safe_read_chunk`] (which validates the source range), so the
 /// read is always against process-owned heap.
 unsafe fn read_bits_buf(ptr: *const u8, ty: Ty) -> u64 {
+    // SAFETY: caller's `unsafe fn` contract guarantees [ptr,
+    // ptr+ty.size()) is readable (populated by safe_read_chunk).
+    // Each match arm reads the matching T via read_unaligned.
     unsafe {
         match ty {
             Ty::U8 | Ty::I8 => (ptr.read_unaligned()) as u64,
@@ -138,6 +141,9 @@ fn safe_read_bits(addr: usize, ty: Ty) -> Option<u64> {
     let size = ty.size();
     let mut buf = [0u8; 8];
     let mut read: usize = 0;
+    // SAFETY: ReadProcessMemory against the current process is
+    // safe even if `addr` is freed/unmapped (kernel returns 0
+    // bytes read). buf is stack-allocated 8 bytes; size <= 8.
     let ok = unsafe {
         ReadProcessMemory(
             GetCurrentProcess(),
@@ -173,6 +179,8 @@ fn safe_read_chunk(addr: usize, dst: &mut [u8]) -> usize {
     use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
     use windows_sys::Win32::System::Threading::GetCurrentProcess;
     let mut read: usize = 0;
+    // SAFETY: same as safe_read_bits; kernel-side validation lets
+    // us scan torn pages without an access violation.
     let ok = unsafe {
         ReadProcessMemory(
             GetCurrentProcess(),
@@ -242,9 +250,15 @@ fn iter_private_rw_regions() -> Vec<Region> {
     };
     let mut out = Vec::new();
     let mut addr: usize = 0;
+    // SAFETY: zero-init of a #[repr(C)] POD struct is well-defined
+    // (all fields are integer/pointer types that accept any byte
+    // pattern; VirtualQuery overwrites every field).
     let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
     let info_size = std::mem::size_of::<MEMORY_BASIC_INFORMATION>();
     loop {
+        // SAFETY: VirtualQuery on the current process is safe for
+        // any address; returns 0 when out of address space, which
+        // we use as the loop-exit condition.
         let written = unsafe { VirtualQuery(addr as *const _, &mut info, info_size) };
         if written == 0 {
             break;
@@ -528,6 +542,9 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
             }
             let mut off = 0usize;
             while off + step <= got {
+                // SAFETY: off + step <= got was checked by the
+                // while condition; scratch has at least `got`
+                // valid bytes from safe_read_chunk above.
                 let bits = unsafe { read_bits_buf(scratch.as_ptr().add(off), ty) };
                 if bits == target_bits {
                     survivors.push(r.base + chunk_off + off);

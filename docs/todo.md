@@ -303,23 +303,30 @@ In-game smoke test (P0 below) is the acceptance gate.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
 - [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
-  comments. Down from 271 -> 110 across this session (-161).
+  comments. Down from 271 -> 50 across this session (-221).
   Files fully annotated with per-block SAFETY: `ue/tmap.rs`,
-  `ue/tarray.rs`, `ue/sigscan.rs`, `damage/mod.rs`,
+  `ue/tarray.rs`, `ue/sigscan.rs` (with one fn-level allow on
+  `text_section`'s PE walk), `damage/mod.rs`,
   `inventory/viewport.rs`, `hook/process_event.rs`,
-  `data_table.rs`, `ops.rs` (top-level handlers). Files with
-  documented module-level
+  `data_table.rs`, `ops.rs`, `ue/datatable.rs`, `log.rs`,
+  `scanner.rs` (block-level annotations on the freeze-write
+  + region-walk paths). Files with documented module-level
   `#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
   universal-contract module doc: `ui.rs` (FFI-call uniform
   shape), `ue/field.rs` (untyped read_*/write_* on
   `obj.field_ptr`), `ue/class_ref.rs` (`GObjectsView::from_image`
   + `&'static` lifetime extension), `ue/uobject.rs` (the four
-  primitive shapes: field_ptr math / UClass-UFunction-UObject
-  casts / NameResolver / process_event). The remaining 110 are
-  mostly in `winproc.rs` (45, leak-diagnostic mass-walker with
-  distinct per-block invariants) plus the long-tail
-  single-block files. Chip away file-by-file during normal
-  edits; bump the lint to `deny` when the count reaches zero.
+  primitive shapes), `winproc.rs` (windows-sys FFI uniform
+  shape: Toolhelp32 / VirtualQuery / Thread sampling).
+  The remaining 50 are spread thinly across `ue/probe.rs` (5),
+  `ue/status_effect.rs` (5), `ue/class_tweak.rs` (4),
+  `ue/core_types.rs` (4), `ue/typed_field.rs` (4), `ue/fname.rs`
+  (3), `ue/platform.rs` (3), `ue/player.rs` (3), `discovery.rs`
+  (3), `selector.rs` (2), `damage_info.rs` (2), `pe_call.rs`
+  (2), `parms.rs` (2), `fstring.rs` (2), and single-block files
+  (actor / hot_reload / slot_key / sigscan op + the rpg/mod
+  re-export shim). Chip away during normal edits; bump the lint
+  to `deny` when the count reaches zero.
 
 ## P2. Ueforge grooming
 
