@@ -86,19 +86,9 @@ where
 /// on the same beat and hammer the same load events (e.g. an
 /// engine GC pass right after a level load). Spreading the
 /// retries decorrelates them.
-///
-/// No `rand` crate dependency: the seed is the call-site
-/// `Instant::now()`'s subsec_nanos passed through one xorshift
-/// step. The output quality is not cryptographic; it just needs
-/// to be unsynchronized between concurrent workers, which it is.
 fn jitter(delay: Duration) -> Duration {
-    let nanos = Instant::now().elapsed().subsec_nanos();
-    let mut x = nanos.wrapping_add(0x9E37_79B9);
-    x ^= x.wrapping_shl(13);
-    x ^= x.wrapping_shr(17);
-    x ^= x.wrapping_shl(5);
-    // Map to [-25%, +25%] of delay.
-    let frac = (x % 501) as i64 - 250; // -250..=250
+    // Map fastrand into [-25%, +25%] of delay.
+    let frac = fastrand::i64(-250..=250);
     let base = delay.as_nanos() as i64;
     let bumped = (base + base * frac / 1000).max(0) as u64;
     Duration::from_nanos(bumped)

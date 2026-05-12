@@ -68,6 +68,8 @@ arc-swap = { workspace = true }
 hex = { workspace = true }
 crossbeam-channel = { workspace = true }
 region = { workspace = true }
+smallvec = { workspace = true }
+fastrand = { workspace = true }
 patternsleuth = { workspace = true }
 zerocopy = { workspace = true }
 # Used only by the `ueforge-deploy` bin target. Cargo only

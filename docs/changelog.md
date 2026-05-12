@@ -12,6 +12,27 @@
 
 Newest first.
 
+## 2026-05-12 (fastrand + smallvec quick wins)
+
+Two of the five P1 crate adoptions from
+[`todo.md`](todo.md) "Pending crate adoptions":
+
+- **`fastrand` 2** replaces the hand-rolled xorshift PRNG in
+  `ueforge::hook::install::jitter`. 18 lines down to a one-line
+  `fastrand::i64(-250..=250)` call. Same behavior: PRNG quality
+  is non-cryptographic by design; jitter just needs to be
+  unsynchronized across concurrent install workers.
+- **`smallvec` 1** replaces the `[(Option<&SkillDef>, u32);
+  32]` fixed stack array in `ueforge::rpg::Tracker::fire` with
+  `SmallVec<[(&'static SkillDef, u32); 32]>`. Same zero-alloc
+  happy path. The previous shape silently dropped subscribers
+  past 32; SmallVec spills to heap so a future catalog
+  expansion can't bite us.
+
+Both adoptions ship workspace-wide deps + per-crate wiring. All
+hook + tracker unit tests pass; full workspace `cargo check`
+clean.
+
 ## 2026-05-12 (zerocopy first wave)
 
 Wave one of zerocopy adoption shipped after the crate-shopping

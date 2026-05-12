@@ -108,18 +108,6 @@ confirmed via `gh api` 2026-05-12.
    `assert_eq!(json!(...))` per op. Apache-2.0 (Mitsuhiko), last
    commit 2026-05-02. <https://docs.rs/insta/>
 
-4. **`smallvec`**. LOW gain, ~5 min. Replaces the
-   `[(Option<&SkillDef>, u32); 32]` stack array in
-   `Tracker::fire` with a `SmallVec<[...; 32]>`. Same zero-alloc
-   happy path, safer API, heap-spill insurance if a catalog ever
-   exceeds 32 subscribers per trigger kind. Apache-2.0 (Servo).
-   <https://docs.rs/smallvec/>
-
-5. **`fastrand`**. LOW gain, ~5 min. Deletes 18 lines of
-   hand-rolled xorshift PRNG in `hook/install.rs::jitter`.
-   Two-line swap to `fastrand::u32(..)`. No behavior change.
-   Apache-2.0 (smol-rs). <https://docs.rs/fastrand/>
-
 ### Open durability follow-ups
 
 - [/] **Annotate the existing unsafe blocks**. Down to 50 from

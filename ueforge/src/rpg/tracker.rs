@@ -26,6 +26,7 @@
 //! `skill.effect.apply(level, max_level)` on every state change.
 
 use parking_lot::Mutex;
+use smallvec::SmallVec;
 
 use super::{Curve, DisabledSkills, SkillDef, SkillRegistry, SkillsState, SlotStore};
 
@@ -331,10 +332,11 @@ impl Tracker {
             crate::rpg::TriggerCtx::Tick { .. } => "Tick",
         };
 
-        const MAX_SUBS: usize = 32;
-        let mut subs: [(Option<&'static SkillDef>, u32); MAX_SUBS] =
-            [(None, 0); MAX_SUBS];
-        let mut n = 0usize;
+        // 32-slot inline buffer: every realistic catalog stays
+        // well under, so the happy path allocates nothing. Heap
+        // spill is insurance if a catalog ever exceeds 32
+        // subscribers for one trigger kind.
+        let mut subs: SmallVec<[(&'static SkillDef, u32); 32]> = SmallVec::new();
         {
             let g = self.inner.lock();
             let Some(t) = g.as_ref() else { return };
@@ -349,16 +351,11 @@ impl Tracker {
                 if level == 0 {
                     continue;
                 }
-                if n < MAX_SUBS {
-                    subs[n] = (Some(skill), level);
-                    n += 1;
-                }
+                subs.push((skill, level));
             }
         }
-        for i in 0..n {
-            if let (Some(skill), level) = subs[i] {
-                skill.effect.apply(level, skill.max_level, ctx);
-            }
+        for (skill, level) in subs {
+            skill.effect.apply(level, skill.max_level, ctx);
         }
     }
 
