@@ -50,12 +50,21 @@ impl FString {
         const MAX_WIDE: usize = 4096;
         let len = (self.num as usize).min(MAX_WIDE);
         // Strip trailing NUL if present.
+        // SAFETY: is_empty() above short-circuited on null data
+        // and num <= 0; len is clamped to MAX_WIDE = 4096 and to
+        // `self.num`. The engine's FString invariant is that
+        // `data` points at `num` wchar_t elements (we also cap
+        // beyond that as a corruption defense). slice lifetime
+        // ends at the closing `}`.
         let slice_len = if len > 0 && unsafe { slice::from_raw_parts(self.data, len) }[len - 1] == 0
         {
             len - 1
         } else {
             len
         };
+        // SAFETY: same invariant as the preceding read; `slice_len`
+        // is one of `{ len - 1, len }` so it is also bounded by
+        // MAX_WIDE and by the engine-provided `num`.
         let units = unsafe { slice::from_raw_parts(self.data, slice_len) };
         let s = String::from_utf16_lossy(units);
         // Defense in depth: if the (capped) result still contains
