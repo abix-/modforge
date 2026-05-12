@@ -142,10 +142,17 @@ impl Tracker {
 
     /// Apply one skill against a borrowed state, honoring the
     /// disabled toggle (treats disabled as level 0). Fires the
-    /// effect with `TriggerCtx::SlotChange`. The trigger kind
-    /// that CDO-write effects expect on slot activate / spend /
-    /// refund / toggle.
+    /// effect with `TriggerCtx::SlotChange`.
+    ///
+    /// Only OnSlotChange-kinded skills are applied here. Event-
+    /// driven skills (OnDamageDealt / OnDamageTaken / OnKill /
+    /// OnFall) re-fire on their respective events via
+    /// [`Self::fire`]; firing them with `SlotChange` would be a
+    /// spurious wrong-variant call.
     fn apply_one_unlocked(&self, skill: &SkillDef, state: &SkillsState) {
+        if skill.trigger.kind != "OnSlotChange" {
+            return;
+        }
         let raw_level = state.level_of(skill.id);
         let effective_level = if self.disabled.is_disabled(skill.id) {
             0
@@ -543,13 +550,14 @@ mod tests {
         t.fire(&TriggerCtx::Fall(&fev));
         assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), 0);
 
-        // activate_slot applies every catalog skill once with
-        // TriggerCtx::SlotChange (today's behavior, independent of
-        // each skill's trigger kind). Baseline counters after.
+        // activate_slot applies only OnSlotChange-kinded skills.
+        // Event-driven (FX_KILL / FX_FALL) are untouched.
         t.activate_slot("fire_test_slot".to_string());
         let kill_baseline = FX_KILL.fires.load(Ordering::Relaxed);
         let fall_baseline = FX_FALL.fires.load(Ordering::Relaxed);
         let slot_baseline = FX_SLOT.fires.load(Ordering::Relaxed);
+        assert_eq!(kill_baseline, 0);
+        assert_eq!(fall_baseline, 0);
         assert!(slot_baseline >= 1);
 
         // Phase 2: fire(Fall) at level 0 -> no additional fires.
