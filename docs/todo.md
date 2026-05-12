@@ -275,40 +275,55 @@ In-game smoke test (P0 below) is the acceptance gate.
   pattern library + UE-version-aware ranking). `ProcessEvent`
   vtable index stays hardcoded. It's a vtable slot, not an
   image offset, and patternsleuth doesn't ship a resolver for it.
-- [ ] **Adopt `zerocopy` for parm decoders + `decode_field`
-  matchups.** `google/zerocopy` (or `bytemuck` for simpler POD
-  casts) replaces every `(ptr as *const T).read_unaligned()`
-  site with a derive-based `FromBytes::ref_from_bytes` call.
-  The struct's layout is verified at COMPILE time (size,
-  alignment, padding-with-pointers all rejected) for zero
-  runtime cost. Net effect: ~50 unsafe blocks across
-  `damage/mod.rs`, `data_table.rs::decode_field`, kill_hook /
-  fall_hook / inv_hook parm decoders collapse into typed parm
-  structs. Compile-time layout verification catches the "wrong
-  offset" class of bugs at build time instead of runtime.
-  https://docs.rs/zerocopy/
+### Pending crate adoptions (ordered by gain)
 
-- [ ] **`insta` for op-JSON snapshot tests.** Every debug op
-  returns a JSON envelope; snapshot tests would catch
-  regressions on the response shape across refactors without
-  hand-writing `assert_eq!(json!(...))` per op. Light dep, huge
-  test coverage win. https://docs.rs/insta/
-- [ ] **`fastrand` for the jitter PRNG.** `hook/install.rs::
-  jitter` hand-rolls xorshift over Instant nanos. Two-line
-  swap to `fastrand::u32(..)`; deletes 18 lines of bespoke
-  state-machine. https://docs.rs/fastrand/
-- [ ] **`proptest` for walker fuzz tests.** Extends the
-  boundary tests in `ue/tmap.rs` + `ue/tarray.rs` to
-  random-input fuzzing of TMap headers, TArray descriptors,
-  and `FieldTweak::apply_to` row mutations. The cargo-fuzz
-  alternative needs nightly + a separate fuzz target tree;
-  proptest stays in the regular test harness. https://docs.rs/proptest/
-- [ ] **`smallvec` for `Tracker::fire`'s subscriber buffer.**
-  Currently `[(Option<&SkillDef>, u32); 32]` stack array with a
-  manual count cap. `SmallVec<[(...); 32]>` gives the same
-  zero-alloc happy path with a safer API + heap spillover if
-  the catalog ever exceeds 32 subscribers per trigger kind.
-  https://docs.rs/smallvec/
+After the rtfm pass; sort here is by leverage, not alphabetical.
+Maintenance status confirmed via `gh api` 2026-05-12.
+
+1. **`zerocopy`**. HIGH gain, ~half day.
+   Replaces ~50 `read_unaligned` matchups across `damage/mod.rs`,
+   `data_table.rs::decode_field`, and the kill_hook / fall_hook
+   / inv_hook parm decoders with derive-based
+   `FromBytes::ref_from_bytes`. Layout verified at COMPILE time
+   (size + alignment + padding-with-pointers rejected) for zero
+   runtime cost. Catches the wrong-offset / wrong-type bug class
+   at build time instead of game-crash time. Google-maintained,
+   BSD-3-Clause, last commit 2026-05-12.
+   https://docs.rs/zerocopy/
+
+2. **`proptest`**. MEDIUM-HIGH gain, ~quarter day.
+   Random-input fuzzing on the TArray / TMap / FieldTweak walkers.
+   Extends the boundary tests we landed earlier (12 hand-written
+   garbage-input cases) to property-based shapes. Catches walker
+   bugs the boundary tests miss (the same class that historically
+   crashed the host: FName index OOB, freed-page reads, malformed
+   sparse-array headers). Apache-2.0, last commit 2026-04-30.
+   https://docs.rs/proptest/
+
+3. **`insta`**. MEDIUM gain, ~1 hour to wire.
+   Snapshot testing for op JSON responses. Each `.snap` file is
+   one human review; refactor regressions surface as diffs
+   without hand-writing `assert_eq!(json!(...))` per op. Doesn't
+   catch new production bugs but catches schema-shape regressions
+   across refactors at near-zero authoring cost. Value grows with
+   the op surface. Apache-2.0 (Mitsuhiko), last commit 2026-05-02.
+   https://docs.rs/insta/
+
+4. **`smallvec`**. LOW gain, ~5 min.
+   Replaces the `[(Option<&SkillDef>, u32); 32]` stack array in
+   `Tracker::fire` with a `SmallVec<[...; 32]>`. Same zero-alloc
+   happy path, safer API, heap-spill insurance if a catalog ever
+   exceeds 32 subscribers per trigger kind (won't happen but the
+   silent cap goes away). Apache-2.0 (Servo), mature-stable
+   commit cadence (depended on by rustc / syn / tokio).
+   https://docs.rs/smallvec/
+
+5. **`fastrand`**. LOW gain, ~5 min.
+   Deletes 18 lines of hand-rolled xorshift PRNG in
+   `hook/install.rs::jitter`. Two-line swap to
+   `fastrand::u32(..)`. No behavior change. Apache-2.0 (smol-rs),
+   last commit 2026-05-03.
+   https://docs.rs/fastrand/
 
 ### Crate-shopping verdicts (don't re-investigate)
 

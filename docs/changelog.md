@@ -12,6 +12,79 @@
 
 Newest first.
 
+## 2026-05-12 (patternsleuth integration + workspace LICENSE + crate survey)
+
+### patternsleuth integration
+
+The 10-year-bar lift, finally on the right foundation.
+
+`trumank/patternsleuth` is the Rust sig-scan crate UE4SS itself
+uses to locate engine functions at runtime. Workspace dep pinned
+to master @9573c52, features `process-internal` + `image-pe`.
+
+- New module `ueforge::ue::resolvers`. `UeResolution` is an
+  `impl_try_collector!` struct wrapping three UE resolvers:
+  `GUObjectArray`, `FNamePool`, `FNameToString` (UE's
+  `AppendString`). `resolve_image_offsets()` reads the host
+  image via `patternsleuth::process::internal::read_image()`,
+  calls `exe.resolve(UeResolution::resolver())`, subtracts
+  `host_image_base()` so results are image-relative.
+- New debug op `resolve_offsets`. Returns a side-by-side
+  comparison against the configured hardcoded STEAM/XBOX
+  `PlatformOffsets` so future UE patches are caught from a
+  `curl` rather than a code update.
+- Deleted `ueforge::ue::sigscan` (was 466 LoC). Our hand-rolled
+  `Pattern::parse` + `find` + `resolve_rip32` + `text_section`
+  + the `sig_scan` debug op. patternsleuth ships the equivalent
+  + a UE-specific pattern library + UE-version-aware
+  ranked-candidate multi-pattern support. The 8 sigscan unit
+  tests are gone too (covered by patternsleuth's test suite).
+- `ProcessEvent` vtable index stays hardcoded. It's a vtable
+  slot, not an image offset, and patternsleuth doesn't ship a
+  resolver for it. Every UE 5.x build has
+  `ProcessEventIdx = 0x4C` regardless of UE-version drift.
+
+### Workspace LICENSE
+
+Added `LICENSE` file at the repo root (GPL-3.0-only, matching
+the abix- standard from k3sc + abixio). `Cargo.toml` updated
+from `MIT` (cargo new default) to `GPL-3.0-only`.
+
+### Crate survey (rtfm pass)
+
+After patternsleuth landed, surveyed the codebase for other
+hand-rolled patterns where a maintained crate exists. Proposed
+five P1 adoptions with maintenance status confirmed via gh api:
+
+1. **zerocopy** (Google, 2026-05-12 active). Replace ~50
+   `read_unaligned` matchups with derive-based `FromBytes`.
+   Compile-time layout verification eliminates the wrong-
+   offset / wrong-type bug class at build time. **HIGH gain.**
+2. **proptest** (2026-04-30 active). Random-input fuzzing
+   of the TArray / TMap / FieldTweak walkers. Catches walker
+   bugs that boundary tests miss. **MEDIUM-HIGH gain.**
+3. **insta** (Mitsuhiko, 2026-05-02 active). Snapshot
+   testing for op JSON responses. Schema regressions surface
+   as `.snap` diffs. **MEDIUM gain.**
+4. **smallvec** (Servo, mature-stable). Replaces the fixed
+   32-slot stack array in `Tracker::fire`. Removes silent-
+   overflow risk. **LOW gain.**
+5. **fastrand** (smol-rs, 2026-05-03 active). Replaces our
+   hand-rolled xorshift PRNG in `hook/install.rs::jitter`.
+   18 LoC saved. **LOW gain.**
+
+Plus a documented "crate-shopping verdicts" section in todo.md
+listing tracing / dashmap / bytemuck / once_cell / windows
+crate / cxx / bindgen / object / goblin / tokio / rayon /
+serde_with as evaluated and not worth adopting (with reasons).
+Captures the rtfm analysis so future sessions don't redo this
+survey.
+
+ueforge 102/102 tests pass; all three crates build clean
+release. The patternsleuth integration is unverified in-game
+(needs the curl-and-compare against hardcoded STEAM/XBOX);
+that's the next P0 acceptance.
+
 ## 2026-05-11 (DataTableDef Phase 2 + 1 stragglers)
 
 Five commits across the day land the full Phase 1 finish and
