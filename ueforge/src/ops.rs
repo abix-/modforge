@@ -360,14 +360,26 @@ pub fn register_builtins() {
         OpDef::new(
             "tweak_revert",
             "Revert one specific (table, field) dynamic tweak, OR all \
-             of them when args are empty. Returns total rows reverted.",
+             of them when args are empty. Removes the matching entry \
+             (or all entries) from <DLL_dir>/tweaks.json so the revert \
+             survives Ctrl+R. Returns total rows reverted.",
             "{table?: str, field?: str}",
             |args| {
                 let table = args.get("table").and_then(|v| v.as_str());
                 let field = args.get("field").and_then(|v| v.as_str());
-                let touched = match (table, field) {
-                    (Some(t), Some(f)) => crate::data_table::dynamic_revert_one(t, f),
-                    (None, None) => crate::data_table::dynamic_revert_all(),
+                let (touched, persisted_removed): (usize, usize) = match (table, field) {
+                    (Some(t), Some(f)) => {
+                        let rows = crate::data_table::dynamic_revert_one(t, f);
+                        let removed = crate::data_table::forget_persisted_pub(t, f)
+                            .map_err(|e| format!("tweak_revert: persistence: {e}"))?;
+                        (rows, if removed { 1 } else { 0 })
+                    }
+                    (None, None) => {
+                        let rows = crate::data_table::dynamic_revert_all();
+                        let removed = crate::data_table::forget_persisted_all_pub()
+                            .map_err(|e| format!("tweak_revert: persistence: {e}"))?;
+                        (rows, removed)
+                    }
                     _ => {
                         return Err(
                             "tweak_revert: pass both `table` and `field`, or neither (revert all)"
@@ -375,8 +387,35 @@ pub fn register_builtins() {
                         );
                     }
                 };
-                Ok(serde_json::json!({ "rows_reverted": touched }))
+                Ok(serde_json::json!({
+                    "rows_reverted": touched,
+                    "persisted_removed": persisted_removed,
+                }))
             },
+        ),
+        OpDef::new(
+            "tweak_persisted_list",
+            "Snapshot of <DLL_dir>/tweaks.json (the on-disk record of \
+             every tweak_apply that succeeded). Re-applied at every \
+             mod init.",
+            "{}",
+            |_args| Ok(crate::data_table::persisted_list_json()),
+        ),
+        OpDef::new(
+            "tweak_persisted_load",
+            "Re-read <DLL_dir>/tweaks.json into memory. Use after \
+             hand-editing the file. Does NOT re-apply; call \
+             tweak_persisted_reapply for that.",
+            "{}",
+            |_args| Ok(crate::data_table::load_persisted_from_disk()),
+        ),
+        OpDef::new(
+            "tweak_persisted_reapply",
+            "Re-apply every persisted tweak from the in-memory mirror. \
+             Calls discovery before resolving each field. Returns a \
+             per-entry status report.",
+            "{}",
+            |_args| Ok(crate::data_table::reapply_persisted()),
         ),
         OpDef::new(
             "list_ops",

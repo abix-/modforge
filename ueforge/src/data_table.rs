@@ -557,6 +557,281 @@ pub fn dynamic_list_json() -> Json {
     })
 }
 
+// ---- Persistence (Phase 2) ----------------------------------------------
+//
+// Applied tweaks live in process memory only by default; a Ctrl+R
+// hot-reload or a relaunch wipes them. The persistence layer here
+// writes every successful `tweak_apply` to `<DLL_dir>/tweaks.json`
+// and reloads on init so the in-flight tweaks restore themselves
+// across reloads.
+//
+// File shape (schema_version 1):
+// ```json
+// {
+//   "schema_version": 1,
+//   "tweaks": [
+//     {"table": "DT_Materials", "field": "MaxCanStack",
+//      "kind": "i32", "op": "multiply", "value": 4},
+//     ...
+//   ]
+// }
+// ```
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PersistedTweak {
+    pub table: String,
+    pub field: String,
+    pub kind: String,
+    pub op: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct TweaksFile {
+    #[serde(default = "default_tweaks_schema_version")]
+    schema_version: u32,
+    #[serde(default)]
+    tweaks: Vec<PersistedTweak>,
+}
+
+fn default_tweaks_schema_version() -> u32 {
+    1
+}
+
+impl Default for TweaksFile {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            tweaks: Vec::new(),
+        }
+    }
+}
+
+/// Process-memory mirror of `<DLL_dir>/tweaks.json`. Updated
+/// in-band with every successful `tweak_apply` / `tweak_revert`
+/// so the on-disk file is the source of truth for reload.
+static PERSISTED: OnceLock<PlMutex<Vec<PersistedTweak>>> = OnceLock::new();
+
+fn persisted_mutex() -> &'static PlMutex<Vec<PersistedTweak>> {
+    PERSISTED.get_or_init(|| PlMutex::new(Vec::new()))
+}
+
+fn tweaks_file_path() -> std::path::PathBuf {
+    let mut p = crate::log::dll_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    p.push("tweaks.json");
+    p
+}
+
+/// JSON of the in-memory persisted-tweak list (mirrors the
+/// `<DLL_dir>/tweaks.json` file). Powers `tweak_persisted_list`.
+pub fn persisted_list_json() -> Json {
+    let v = persisted_mutex().lock();
+    let entries: Vec<Json> = v
+        .iter()
+        .map(|t| {
+            json!({
+                "table": t.table,
+                "field": t.field,
+                "kind": t.kind,
+                "op": t.op,
+                "value": t.value,
+            })
+        })
+        .collect();
+    json!({
+        "count": entries.len(),
+        "tweaks": entries,
+        "path": tweaks_file_path().display().to_string(),
+    })
+}
+
+/// Read `<DLL_dir>/tweaks.json` into the in-memory mirror. Missing
+/// or unparseable files clear the mirror and log; not an error.
+/// Idempotent.
+pub fn load_persisted_from_disk() -> Json {
+    use std::fs;
+    let path = tweaks_file_path();
+    let file: TweaksFile = match fs::read_to_string(&path) {
+        Ok(text) => match serde_json::from_str(&text) {
+            Ok(f) => f,
+            Err(e) => {
+                crate::log::log(format_args!(
+                    "tweaks: parse failed for {} ({e}); starting fresh",
+                    path.display()
+                ));
+                TweaksFile::default()
+            }
+        },
+        Err(_) => {
+            crate::log::log(format_args!(
+                "tweaks: no prior file at {}; starting fresh",
+                path.display()
+            ));
+            TweaksFile::default()
+        }
+    };
+
+    let count = file.tweaks.len();
+    *persisted_mutex().lock() = file.tweaks;
+    json!({
+        "path": path.display().to_string(),
+        "loaded": count,
+        "schema_version": file.schema_version,
+    })
+}
+
+/// Atomically write the in-memory mirror to `<DLL_dir>/tweaks.json`.
+/// Errors return a string; callers MUST surface or log.
+fn save_persisted_to_disk() -> Result<(), String> {
+    use std::fs;
+    use std::io::Write;
+    let path = tweaks_file_path();
+    let file = TweaksFile {
+        schema_version: 1,
+        tweaks: persisted_mutex().lock().clone(),
+    };
+    let json = serde_json::to_string_pretty(&file)
+        .map_err(|e| format!("tweaks: serialize failed: {e}"))?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("tweaks: mkdir {} failed: {e}", parent.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut f = fs::File::create(&tmp)
+            .map_err(|e| format!("tweaks: create {} failed: {e}", tmp.display()))?;
+        f.write_all(json.as_bytes())
+            .map_err(|e| format!("tweaks: write {} failed: {e}", tmp.display()))?;
+        f.sync_all()
+            .map_err(|e| format!("tweaks: fsync {} failed: {e}", tmp.display()))?;
+    }
+    fs::rename(&tmp, &path)
+        .map_err(|e| format!("tweaks: rename {} -> {} failed: {e}", tmp.display(), path.display()))?;
+    Ok(())
+}
+
+/// Upsert a persisted-tweak record (replace by (table, field)
+/// key; append if absent), then save to disk. Called from
+/// `tweak_apply_from_args` after a successful in-memory apply.
+fn record_persisted(t: PersistedTweak) -> Result<(), String> {
+    {
+        let mut v = persisted_mutex().lock();
+        if let Some(pos) = v
+            .iter()
+            .position(|p| p.table == t.table && p.field == t.field)
+        {
+            v[pos] = t;
+        } else {
+            v.push(t);
+        }
+    }
+    save_persisted_to_disk()
+}
+
+/// Remove a persisted-tweak record by `(table, field)`. Saves on
+/// success. Returns `true` if an entry was removed.
+fn forget_persisted(table: &str, field: &str) -> Result<bool, String> {
+    let removed = {
+        let mut v = persisted_mutex().lock();
+        if let Some(pos) = v.iter().position(|p| p.table == table && p.field == field) {
+            v.remove(pos);
+            true
+        } else {
+            false
+        }
+    };
+    if removed {
+        save_persisted_to_disk()?;
+    }
+    Ok(removed)
+}
+
+/// Public wrapper around the private `forget_persisted` for the
+/// `tweak_revert` op. Removes one `(table, field)` entry from
+/// `<DLL_dir>/tweaks.json` and the in-memory mirror.
+pub fn forget_persisted_pub(table: &str, field: &str) -> Result<bool, String> {
+    forget_persisted(table, field)
+}
+
+/// Public wrapper around the private `forget_persisted_all` for
+/// the `tweak_revert` op (no-args form). Clears every entry from
+/// `<DLL_dir>/tweaks.json` and the in-memory mirror.
+pub fn forget_persisted_all_pub() -> Result<usize, String> {
+    forget_persisted_all()
+}
+
+fn forget_persisted_all() -> Result<usize, String> {
+    let n = {
+        let mut v = persisted_mutex().lock();
+        let n = v.len();
+        v.clear();
+        n
+    };
+    if n > 0 {
+        save_persisted_to_disk()?;
+    }
+    Ok(n)
+}
+
+/// Boot-time entry: read `<DLL_dir>/tweaks.json` into the
+/// in-memory mirror, then re-apply every entry. Call from the
+/// mod's `on_unreal_init` worker AFTER `discovery::run_at_load`
+/// so field offsets resolve. Returns a JSON `{loaded, applied,
+/// failed}` report; safe to call when the file is missing
+/// (returns `applied: 0`, no error).
+pub fn restore_persisted_at_init() -> Json {
+    let load = load_persisted_from_disk();
+    let apply = reapply_persisted();
+    json!({
+        "loaded": load.get("loaded").cloned().unwrap_or(json!(0)),
+        "applied": apply.get("applied").cloned().unwrap_or(json!(0)),
+        "failed": apply.get("failed").cloned().unwrap_or(json!([])),
+        "path": load.get("path").cloned().unwrap_or(json!("")),
+    })
+}
+
+/// Re-apply every persisted tweak. Call from the mod's
+/// `on_unreal_init` worker AFTER `discovery::run_at_load` so the
+/// field offsets can resolve. Returns a JSON report.
+///
+/// Each entry is applied via `tweak_apply_from_args` BUT without
+/// re-persisting (would no-op since the entry is already in the
+/// list, but skips the IO).
+pub fn reapply_persisted() -> Json {
+    let snapshot: Vec<PersistedTweak> = persisted_mutex().lock().clone();
+    let mut applied = 0usize;
+    let mut failed: Vec<Json> = Vec::new();
+    for t in &snapshot {
+        let args = json!({
+            "table": t.table,
+            "field": t.field,
+            "kind": t.kind,
+            "op": t.op,
+            "value": t.value,
+        });
+        match tweak_apply_inner(&args, /*persist=*/ false) {
+            Ok(_) => applied += 1,
+            Err(e) => failed.push(json!({
+                "table": t.table,
+                "field": t.field,
+                "kind": t.kind,
+                "op": t.op,
+                "value": t.value,
+                "error": e,
+            })),
+        }
+    }
+    crate::log::log(format_args!(
+        "tweaks: reapplied {applied}/{} persisted tweaks; {} failed",
+        snapshot.len(),
+        failed.len()
+    ));
+    json!({
+        "applied": applied,
+        "failed": failed,
+    })
+}
+
 /// Op-dispatch entry. Parses the JSON args of the `tweak_apply`
 /// debug op and routes to the right `dynamic_apply_*` per `kind`.
 ///
@@ -577,6 +852,13 @@ pub fn dynamic_list_json() -> Json {
 /// idempotent: repeated calls with the same op + value land the
 /// same final field value.
 pub fn tweak_apply_from_args(args: &Json) -> Result<Json, String> {
+    tweak_apply_inner(args, /*persist=*/ true)
+}
+
+/// Inner form. `persist=false` skips writing to
+/// `<DLL_dir>/tweaks.json`; used by [`reapply_persisted`] so
+/// reload-time replay doesn't trigger N redundant IO.
+fn tweak_apply_inner(args: &Json, persist: bool) -> Result<Json, String> {
     let table = args
         .get("table")
         .and_then(|v| v.as_str())
@@ -670,6 +952,23 @@ pub fn tweak_apply_from_args(args: &Json) -> Result<Json, String> {
     crate::log::log(format_args!(
         "tweak_apply: {kind} {op} {value} on '{table}.{field}' -> {touched} rows"
     ));
+
+    if persist {
+        let entry = PersistedTweak {
+            table: table.to_string(),
+            field: field.to_string(),
+            kind: kind.to_string(),
+            op: op.to_string(),
+            value: value.clone(),
+        };
+        if let Err(e) = record_persisted(entry) {
+            crate::log::log(format_args!(
+                "tweak_apply: persistence write failed ({e}); in-memory \
+                 apply succeeded but won't survive reload"
+            ));
+        }
+    }
+
     Ok(json!({
         "table": table,
         "field": field,
@@ -677,6 +976,7 @@ pub fn tweak_apply_from_args(args: &Json) -> Result<Json, String> {
         "op": op,
         "value": value,
         "rows_touched": touched,
+        "persisted": persist,
     }))
 }
 

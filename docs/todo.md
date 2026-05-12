@@ -139,11 +139,17 @@ discovery before snapshot / browser / static catalog rows.
   Def shape that targets either `(DataTableDef, field)` or
   `(Class, field)`. The dynamic primitives already cover the
   shape; the static side is the remaining lift.
-- [ ] **Persisted-tweak surface**. Settings-driven applies that
-  survive Ctrl+R hot-reload. Today the dynamic registry is in
-  process memory only; a save-file shape (`{tweaks: [{table,
-  field, kind, op, value}, ...]}`) + reload-at-init would close
-  the loop. Echoes the spend/refund stage-save-commit pattern.
+- [x] **Persisted-tweak surface**. `<DLL_dir>/tweaks.json`
+  written atomically on every successful `tweak_apply`; cleared
+  per-entry by `tweak_revert`. Schema 1 envelope:
+  `{schema_version, tweaks: [{table, field, kind, op, value}]}`.
+  Game crates call `data_table::restore_persisted_at_init()` from
+  their `on_unreal_init` worker after `discovery::run_at_load` to
+  reload + reapply on every boot (and every Ctrl+R). Three new
+  ops: `tweak_persisted_list`, `tweak_persisted_load`,
+  `tweak_persisted_reapply`. No game crate has wired the boot
+  hook yet; revisit when in-game smoke test reaches the tweak
+  surface.
 - [ ] **Replicated-field respect**. Some row fields are
   replicated to clients; writes during a server's authority
   drop get desynced. Defer until we hit a real case.
