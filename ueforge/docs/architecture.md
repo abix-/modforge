@@ -405,6 +405,158 @@ Checklist for the next module:
    register with the appropriate `shutdown_all` registry so
    hot-reload teardown works.
 
+## Wave 2 durability adoptions
+
+The kovarex review's second wave traded hand-rolled primitives
+for vetted crates wherever the migration paid for itself. The
+keepers:
+
+### patternsleuth (offset resolution)
+
+Workspace dep pinned to `trumank/patternsleuth` master @9573c52
+(`MIT OR Apache-2.0`). `ueforge::ue::resolvers` wraps the three
+UE resolvers used: `GUObjectArray`, `FNamePool`, `FNameToString`
+(UE's `AppendString`). `resolve_image_offsets()` reads the host
+image via `patternsleuth::process::internal::read_image()`, calls
+`exe.resolve(UeResolution::resolver())`, returns image-relative
+offsets.
+
+Debug op `resolve_offsets` returns a side-by-side comparison
+against the configured hardcoded STEAM/XBOX offsets so drift on a
+future game patch is visible without rebuilding. The hand-rolled
+`ue::sigscan` was deleted (466 LoC; patternsleuth ships the
+equivalent plus a UE pattern library plus UE-version-aware
+ranking). The `ProcessEvent` vtable index stays hardcoded: it's a
+vtable slot, not an image offset, and patternsleuth doesn't ship a
+resolver for it.
+
+### zerocopy (POD-byte safety)
+
+Workspace dep + derives on the POD types most often read from raw
+bytes (`FGuid`, `FWeakObjectPtr`). `ueforge::parms::as_bytes` /
+`from_bytes` are SAFE fns gated on
+`T: IntoBytes + Immutable` / `T: FromBytes + KnownLayout`;
+`Api::call_ufunction_typed` lost its `unsafe fn` signature.
+Test-side parm structs (`AddHealthParms`, `GetValueForStatParms`)
+carry the four zerocopy derives; the `unsafe { ... }` wrappers at
+call sites are gone. Net: 4 fewer unsafe blocks plus compile-time
+layout verification on `FGuid` / `FWeakObjectPtr` / every test
+parm struct.
+
+Sites still on raw byte reads (dynamic-offset / dynamic-type) are
+candidates for later waves; see todo.md for the open list.
+
+### Generic schema versioning (`Versioned<S>` + `SchemaMigrate`)
+
+`rpg::store::Versioned<S>` is the envelope:
+`{schema_version, payload}`. `SchemaMigrate` trait holds a
+`CURRENT_VERSION` const and a `migrate(from, raw)` fn.
+
+```rust
+pub fn load_versioned_with_migrate<S: SchemaMigrate>(path: &Path)
+    -> S;
+```
+
+Tries the envelope first, falls back to legacy non-enveloped
+state (so existing g2rpg `SkillsState` files still load when the
+type eventually adopts the envelope), then falls back to
+`S::default()` rather than panicking on corrupted data.
+`save_versioned(store, slot, payload)` routes through
+`SlotStore::save`'s atomic-write semantics. Existing `SkillsState`
+is untouched; new consumers adopt the envelope from day one.
+
+Six unit tests cover round-trip / migrate / failed-migrate
+fallback / legacy-non-enveloped / missing-file / save-on-disk
+shape.
+
+### SAFETY-comment grind status
+
+Down from 271 to 50 unsafe-block warnings across the wave-2
+sweep. Files fully annotated with per-block `// SAFETY:` comments:
+`ue/tmap.rs`, `ue/tarray.rs`, `ue/sigscan.rs` (with one fn-level
+allow on `text_section`'s PE walk), `damage/mod.rs`,
+`inventory/viewport.rs`, `hook/process_event.rs`, `data_table.rs`,
+`ops.rs`, `ue/datatable.rs`, `log.rs`, `scanner.rs`.
+
+Files with a module-level
+`#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
+universal-contract module doc: `ui.rs` (FFI uniform shape),
+`ue/field.rs` (untyped `read_*` / `write_*` on `obj.field_ptr`),
+`ue/class_ref.rs` (`GObjectsView::from_image` + `&'static` lifetime
+extension), `ue/uobject.rs` (the four primitive shapes),
+`winproc.rs` (windows-sys FFI uniform shape: Toolhelp32 /
+VirtualQuery / Thread sampling).
+
+The remaining 50 are spread thinly across `ue/probe.rs`,
+`ue/status_effect.rs`, `ue/class_tweak.rs`, `ue/core_types.rs`,
+`ue/typed_field.rs`, `ue/fname.rs`, `ue/platform.rs`,
+`ue/player.rs`, `discovery.rs`, `selector.rs`, `damage_info.rs`,
+`pe_call.rs`, `parms.rs`, `fstring.rs`, and a handful of
+single-block files. Chip away during normal edits; the lint can
+go to `deny` when the count hits zero.
+
+### Smaller grooming wins
+
+These shipped alongside the durability work:
+
+- **`hex` crate**. `ueforge/src/hex.rs` deleted; `hex = "0.4"`
+  added to workspace deps; consumers map the new `FromHexError`
+  to `String` via `.map_err`. ~30 LoC saved.
+- **Boundary tests on walkers**. `tarray.rs` gets 5 unit tests
+  (empty default, negative num, null data, slice round-trip,
+  `repr(C)` layout). `tmap.rs` gets 7 (empty map, single slot,
+  find-by-key hit / miss / null-value, null data ptr, negative
+  num). Engine-supplied garbage states all short-circuit cleanly.
+- **`ue/offsets.rs` regeneration path**. The header now
+  documents how to regenerate offsets (run Dumper-7, read
+  `Basic.hpp` + UE4SS `Signatures.cpp`) rather than referencing
+  an author-machine path. Vendoring the actual `Basic.hpp` is
+  deferred since it's a per-game artifact tied to Grounded 2's
+  specific UE 5.4 build, not a framework asset.
+
+### Crate-shopping verdicts (don't re-investigate)
+
+After patternsleuth + zerocopy + the four ranked-open adoptions
+(see todo.md), the remaining crate options were evaluated and are
+not worth doing:
+
+- **`tracing`**. Huge migration touching every `log!` site for
+  per-call timing + structured fields. Current custom logger is
+  fine.
+- **`dashmap`**. Marginal until profiling shows real contention
+  on the discovery cache or tweak registries (both write-rare).
+- **`bytemuck`**. Covered by `zerocopy`.
+- **`once_cell`**. `std::sync::OnceLock` is stable.
+- **`windows` crate** (vs `windows-sys`). Touches too much for a
+  documentation-style win.
+- **`cxx` / `bindgen`**. Overkill for 4 UE4SS symbols + a handful
+  of `windows-sys` items per file.
+- **`object` / `goblin`**. PE parser. Was useful when we
+  hand-rolled `text_section`; patternsleuth absorbed that.
+- **`tokio` / `rayon`**. No async runtimes or parallelism needed.
+  patternsleuth's internal futures are driven sync.
+- **`serde_with`**. Marginal; op JSON shapes are simple.
+- **`retour-rs` / `detour-rs`**. Inline-detour libraries.
+  ueforge uses vtable patching (`hook::vtable::write_slot`); the
+  detour crates would compete with the existing hook framework
+  rather than complement it.
+- **`iced-x86`**. Auto-compute `disp_offset` / `next_instr_offset`
+  from the matched opcode. Marginal: patternsleuth handles
+  RIP-relative resolution.
+- **Phantom types on `ProcessEventHook<Installed>` /
+  `<Uninstalled>`**. Type-state pattern. Marginal because
+  `OnceLock` + Drop already enforce install-once.
+- **`NonNull<UObject>`**. `&UObject` (non-null by Rust rules)
+  covers 95% of the code; the remaining 5% are tagged with their
+  own null-check path. Cosmetic change.
+- **`pdb` crate**. Only works on debug builds; shipping UE5 games
+  strip symbols.
+- **Continue grinding SAFETY comments to zero**. Documentation
+  discipline, not real safety. The runtime defensive primitives
+  (`is_addr_readable`, `catch_unwind` per trampoline, SEH wraps on
+  `AppendString`, the DRAINING guard, `ReadProcessMemory`
+  fault-safe reads) are what actually prevent crashes.
+
 ## Cross-references
 
 - [README.md](README.md). Module index

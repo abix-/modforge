@@ -1,241 +1,52 @@
 # TODO
 
-> **Authoritative on:** open work across the workspace. What's
-> NEXT, not what's done.
->
-> Completed milestones live in [`changelog.md`](changelog.md).
-> Per-subject deep dives live in each crate's `docs/` folder
-> ([`../ueforge/docs/`](../ueforge/docs/) for the framework,
-> [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/) for the
-> Grounded 2 mod). Read those FIRST when investigating a subject.
->
-> Roughly ordered by leverage. Pick from the top of the list when
-> starting a new session.
+!!! info "Scope"
+    Authoritative on open work across the workspace. What's NEXT,
+    not what's done. Completed milestones live in
+    [`changelog.md`](changelog.md). Per-subject deep dives live in
+    each crate's `docs/` folder ([`../ueforge/docs/`](../ueforge/docs/)
+    for the framework, [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/)
+    for the Grounded 2 mod). Read those FIRST when investigating a
+    subject.
+
+!!! tip "How to use"
+    Roughly ordered by leverage. Pick from the top of the list when
+    starting a new session.
 
 ---
 
-## P0. DataTableDef + ImGui browser (read-only)
+## P0. In-game smoke test
 
-The architectural insight: stacks + difficulty + status effects
-are all special cases of "typed-field operations on iterated
-objects." The TABLES themselves (UDataTable + row schema) are
-their own first-class concept that nothing has captured yet.
+The full 2026-05-10 wave is build-clean and unit-tested but not
+yet validated in-game.
 
-Step 1 (this todo entry): READ-only browser. Scan, schema-dump,
-display in ImGui. Writes are a separate later step (the painful
-part).
+!!! warning "Acceptance gate"
+    Drive from your machine. All checks must pass:
 
-### Phase 1a: schema discovery + DataTableDef
+    - Game launches; `grounded2_rpg.log` shows `ueforge` init lines.
+    - ImGui tab opens on `Insert`; RPG content renders.
+    - Load a save -> slot activate fires; tracker loads
+      `<guid>.json`; backpack capacity reflects skill levels.
+    - Kill a creature -> kill_hook fires; XP increments; save updates.
+    - HTTP `/debug` endpoint responds to `op:snapshot` with non-empty
+      state.
 
-The DISCOVERY path is the leverage point: a new game's bootstrap
-is "launch + curl `discover_data_tables` + pick fields". Land
-discovery before snapshot / browser / static catalog rows.
+    If any of that fails, triage from the log lines.
 
-- [x] **`DataTableDef`**. Workspace-standard
-  `<Subject>Def`. Shipped `ueforge/src/data_table.rs` with `id`,
-  `table_name`, `row_struct: RowSchema { name, fields: &[RowField
-  { name, offset, element_size }] }`. Mirrors `NativeProperty`
-  for the field shape (no FieldKind enum for v1. Element_size
-  is the discriminator, same as NativeProperty).
-- [x] **`DataTableRegistry`**. Slice-of-refs registry mirroring
-  `StackRegistry` / `StatusRegistry` (`def` / `entries` / `iter`
-  / `len` / `is_empty` / `IntoIterator`).
-- [x] **Dynamic discovery + cache** -- `ueforge::discovery`
-  module: one GObjects pass populates a process-global
-  `Arc<DiscoverySnapshot>` covering every live `UDataTable`,
-  `UClass`, and `UScriptStruct`. `run_at_load()` runs from each
-  mod's `on_unreal_init` worker (wired into g2rpg + ows-tweaks)
-  and logs a one-line summary. Debug ops `discover_data_tables`
-  / `discover_classes` / `discover_structs` read from the cache;
-  pass `{refresh: true}` to re-walk after content streams in.
-  Low-level walkers (`probe::describe_data_table`,
-  `probe::walk_struct_fields`) stay pub for custom dump shapes.
-  No JSON-on-disk; redirect curl if you want a file. Engine
-  filter still open (deferred until noise is a real problem).
+---
 
-### Phase 1b: live snapshots
+## P0. DataTable write surface (remaining)
 
-- [x] **`data_table::snapshot_table(table_name, max_rows)
-  -> Option<Json>`** -- walks the table's `RowMap`, decodes each
-  row per the live `FProperty` chain (FProperty class drives the
-  decoder: `IntProperty`/`Int32Property`->i32,
-  `FloatProperty`->f32, `BoolProperty`->bool,
-  `NameProperty`->resolved string, `StrProperty`->FString,
-  `ObjectProperty`->`{addr,name}`, unknown->raw_bytes_hex). Cold
-  path. Data-driven (no DataTableDef needed); the static catalog
-  is for browser organization / future TweakDef wiring, not for
-  read access.
+The Phase 1 / Phase 2 surface shipped (see
+[`../ueforge/docs/data-table.md`](../ueforge/docs/data-table.md)).
+Two open follow-ups gated on real consumers:
 
-### Phase 1c: debug ops
-
-- [x] **`dump_data_table { table_name, max_rows? }`**. Returns
-  the live snapshot (rows + decoded fields) as JSON. Registered
-  in `ueforge::ops::register_builtins`.
-- [x] **`discover_data_tables` / `discover_classes` /
-  `discover_structs`**. Read from the in-memory discovery
-  cache; `{refresh: true}` re-walks GObjects.
-- [x] **`list_data_tables` (registry-only)**. Enumerates the
-  registered `DataTableRegistry` (declared static catalog),
-  separate from the runtime `discover_data_tables` cache. Game
-  crates opt in via `data_table::register(&MY_REGISTRY)` from
-  their worker init; when no registry has been registered the op
-  returns `{registered: false, ...}` so clients can tell. No
-  game has populated this yet; discovery still covers the
-  universe.
-
-### Phase 1d: ImGui browser tab
-
-- [x] **`ueforge::ui_data_table_browser::render`**. New ImGui
-  tab. Lists every discovered UDataTable from the
-  `ueforge::discovery` cache; click "Open" to load a snapshot
-  (schema + first N rows); "Refresh discovery" re-walks
-  GObjects; "max rows" slider controls per-table row count.
-  Wired into both g2rpg and ows-tweaks `MOD_INFO.tabs` as
-  "Tables".
-- [x] Filter box on table name. `ueforge::ui::input_text` +
-  `cstr_view` added; the browser tab now filters the table list
-  by case-insensitive substring.
-- [x] Row-FName filter on the selected table. Inside the
-  rows tree, a `row filter` input box matches row_name
-  case-insensitively + a `filtered: N rows matching '...'`
-  footer.
-
-### Phase 1e: validation
-
-- [x] **Compare static-declared vs discovered**.
-  `data_table::validate_registry(reg)` compares each
-  `DataTableDef`'s field list against the live FProperty chain
-  in the discovery cache and emits a JSON report + logs each
-  drift line via `ueforge::log!`. Mods call it from their
-  `on_unreal_init` worker after `discovery::run_at_load()`; the
-  no-op case (empty registry) costs one HashMap allocation.
-  Catches UE-version mismatches before any tweak runs.
-
-### Phase 1f (bonus): name-based writes (shipped)
-
-- [x] **`data_table::NamedFieldTweak<T>`**. A wrapper over
-  `FieldTweak<T>` whose offset is resolved from the discovery
-  cache on first apply. New-game bootstrap is now:
-  declare `static FOO: NamedFieldTweak<i32> = NamedFieldTweak::new("DT_X", "Field")`
-  + call `FOO.apply(...)`. No SDK header dive, no hand-typed
-  offsets, no recompile after a UE patch that shifts the offset.
-- [x] **`data_table::resolve_field(table, field)`**. Low-level
-  lookup against the discovery cache. Returns
-  `(offset, element_size, FProperty class)`. Useful for ad-hoc
-  scripts + future generic tweak builders.
-
-### Phase 2 (write surface)
-
-- [x] **Runtime declare-and-apply ops**. `tweak_apply`,
-  `tweak_list`, `tweak_revert` shipped 2026-05-11. Take
-  `{table, field, kind, op, value}` JSON; resolve offset from
-  discovery; capture vanilla per row on first apply; rewrite
-  rows via `set` / `multiply` / `add`; idempotent on re-apply
-  (always re-base on captured vanilla). Powers a hot-iteration
-  loop (curl an op, change a field, curl `tweak_revert` to
-  restore) without rebuilding.
-- [x] **TweakDef unification**. `ueforge::tweak::TweakDef` ships
-  with `TweakTarget` (DataTable | Class), `TweakKind` (i32 / f32
-  / u32), `TweakOp` (set / multiply / add), atomic
-  current_value_bits + default_value_bits, six const constructors
-  (`data_table_i32`, `data_table_f32`, `data_table_u32`,
-  `class_i32`, `class_f32`, `class_u32`), load/store helpers
-  per kind, `apply` / `revert` / `reset_to_default` / `resolved`.
-  Plus `TweakRegistry` slice-of-refs wrapper with `apply_all` /
-  `revert_all`. Apply delegates to the existing
-  `data_table::dynamic_apply_*` for DataTable targets and a new
-  symmetric class-tweak dynamic registry (`DYN_CLASS_I32/F32/U32`)
-  for Class targets, so captured vanilla survives across reapplies
-  and shares with the runtime tweak surface.
-- [x] **`stacks` + `difficulty` modules deleted**. Consumer
-  sweep shipped: `outworld-station-tweaks/src/stacks.rs` now
-  declares `static MATERIALS_TWEAK: TweakDef =
-  TweakDef::data_table_i32(..., TweakOp::Multiply, 4)` with
-  local `AtomicUsize` / `AtomicBool` for the status counters;
-  `grounded2-rpg/src/survival.rs` now declares two
-  `TweakDef::class_f32(..., TweakOp::Multiply, 1.0)` statics for
-  hunger + thirst (field NAMES `HungerSettings.AdjustmentPerSecond`
-  + `ThirstSettings.AdjustmentPerSecond` resolved from discovery).
-  `ueforge/src/stacks.rs` + `ueforge/src/difficulty.rs` removed;
-  `pub mod` declarations gone from `lib.rs`. The four deprecation
-  warnings that flagged the consumer sites are now silent because
-  the code paths are gone.
-- [x] **Persisted-tweak surface**. `<DLL_dir>/tweaks.json`
-  written atomically on every successful `tweak_apply`; cleared
-  per-entry by `tweak_revert`. Schema 1 envelope:
-  `{schema_version, tweaks: [{table, field, kind, op, value}]}`.
-  Game crates call `data_table::restore_persisted_at_init()` from
-  their `on_unreal_init` worker after `discovery::run_at_load` to
-  reload + reapply on every boot (and every Ctrl+R). Three new
-  ops: `tweak_persisted_list`, `tweak_persisted_load`,
-  `tweak_persisted_reapply`. No game crate has wired the boot
-  hook yet; revisit when in-game smoke test reaches the tweak
-  surface.
 - [ ] **Replicated-field respect**. Some row fields are
   replicated to clients; writes during a server's authority
   drop get desynced. Defer until we hit a real case.
 - [ ] **Non-primitive field types**. Writing `FString` /
   `TArray` rows needs the engine's `FMemory` allocator (ABI
   work). Defer until a real consumer needs it.
-
-## P0. In-game smoke test
-
-The full 2026-05-10 wave is build-clean and unit-tested but not
-yet validated in-game. Acceptance gate (drive from your machine):
-
-- Game launches; `grounded2_rpg.log` shows `ueforge` init lines.
-- ImGui tab opens on `Insert`; RPG content renders.
-- Load a save -> slot activate fires; tracker loads
-  `<guid>.json`; backpack capacity reflects skill levels.
-- Kill a creature -> kill_hook fires; XP increments; save updates.
-- HTTP `/debug` endpoint responds to `op:snapshot` with non-empty
-  state.
-
-If any of that fails, triage from the log lines.
-
----
-
-## Triggers Phase 5c: event-driven dispatch (SHIPPED 2026-05-11)
-
-Five commits land the lift (3516276..2b2c66d):
-
-- [x] Real `KillEvent` / `FallEvent` types; drop the three
-  `*EventStub` placeholders.
-- [x] Four new framework TriggerDefs: `ON_DAMAGE_DEALT`,
-  `ON_DAMAGE_TAKEN`, `ON_KILL`, `ON_FALL`. `TriggerCtx::
-  DamageDealt / DamageTaken` reuse `damage::DamageEvent`.
-- [x] `Tracker::fire(ctx)` dispatch. Walks catalog under one
-  lock, snapshots `(skill, level)` pairs to a 32-slot stack
-  array, drops the lock, then fires `Effect::apply` outside
-  the lock so re-entry is safe. Zero heap allocs.
-- [x] Framework `ueforge::fall::FallHook<B>` mirroring
-  `damage::DamageHook`. PE-install + OnLanded filter + Velocity.Z
-  snapshot. `FallEvent.cmc` exposed so binders/effects can
-  write Velocity.Z without re-resolving offsets.
-- [x] g2rpg/fall_hook.rs migrated to a thin G2FallBinder.
-- [x] g2rpg/kill_hook.rs `G2DamageBinder` fires
-  `TRACKER.fire(DamageDealt | DamageTaken | Kill)` at the
-  pre/post slots; lost ~70 LoC of inline apply_lifesteal +
-  apply_impact_resistance_reversal.
-- [x] Catalog rows: `SKILL_LIFESTEAL` -> `trigger=ON_DAMAGE_DEALT`
-  with `LifestealEffect`; `SKILL_IMPACT_RESISTANCE` ->
-  `trigger=ON_DAMAGE_TAKEN` with `ImpactReversalEffect`. Drops
-  two `RuntimeEffect` placeholders.
-- [x] `Tracker::apply_one_unlocked` filters to OnSlotChange-
-  kinded skills only. Event-driven Effects no longer get
-  spurious SlotChange fires on activate / spend / refund /
-  toggle.
-
-Deferred from 5c:
-- `TriggerCtx::Tick { dt }` has no firer (Periodic poller not
-  yet built; defer until a periodic skill needs it).
-- ueforge-side generic `FallVelocityStompEffect` for catalog
-  use; G2's stomp lives in the binder because
-  SKILL_FALL_RESISTANCE already uses ON_SLOT_CHANGE for CDO
-  writes. Promoting to a second SkillDef is ugly UX; revisit
-  if a second game wants the stomp.
-
-In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Registry alignment (remaining)
 
@@ -260,41 +71,19 @@ In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Ueforge durability (kovarex review wave 2, remaining)
 
-- [x] **Adopt `patternsleuth`**. Workspace dep pinned to
-  `trumank/patternsleuth` master @9573c52 (workspace package is
-  `MIT OR Apache-2.0`). New module `ueforge::ue::resolvers` wraps
-  the three UE resolvers we use: `GUObjectArray`, `FNamePool`,
-  `FNameToString` (UE's `AppendString`). `resolve_image_offsets()`
-  reads the host image via `patternsleuth::process::internal::
-  read_image()`, calls `exe.resolve(UeResolution::resolver())`,
-  returns image-relative offsets. New debug op `resolve_offsets`
-  returns a side-by-side comparison against the configured
-  hardcoded STEAM/XBOX offsets so drift on a future game patch
-  is visible without rebuilding. Hand-rolled `ue::sigscan` deleted
-  (was 466 LoC; patternsleuth ships the equivalent + a UE
-  pattern library + UE-version-aware ranking). `ProcessEvent`
-  vtable index stays hardcoded. It's a vtable slot, not an
-  image offset, and patternsleuth doesn't ship a resolver for it.
+Wave 2 keepers (patternsleuth, zerocopy first wave, schema
+versioning, SAFETY annotation status, crate-shopping verdicts)
+shipped; see [`../ueforge/docs/architecture.md`](../ueforge/docs/architecture.md)
+"Wave 2 durability adoptions".
+
 ### Pending crate adoptions (ordered by gain)
 
-After the rtfm pass; sort here is by leverage, not alphabetical.
-Maintenance status confirmed via `gh api` 2026-05-12.
+Sorted by leverage, not alphabetical. Maintenance status
+confirmed via `gh api` 2026-05-12.
 
-1. **`zerocopy`**. IN PROGRESS (first wave shipped).
-   Workspace dep + derives on the POD types most often read from
-   raw bytes (`FGuid`, `FWeakObjectPtr`). `ueforge::parms::
-   as_bytes` / `from_bytes` rewritten as SAFE fns gated on
-   `T: IntoBytes + Immutable` / `T: FromBytes + KnownLayout`;
-   `Api::call_ufunction_typed` loses its `unsafe fn` signature.
-   Test-side parm structs (`AddHealthParms`,
-   `GetValueForStatParms`) adopt the four zerocopy derives;
-   their `unsafe { ... }` wrappers at call sites are gone. Net
-   effect: 4 fewer unsafe blocks + compile-time layout
-   verification on FGuid / FWeakObjectPtr / every test parm
-   struct.
-
-   Still open (the dynamic-offset / dynamic-type sites where a
-   single zerocopy struct doesn't fit all callers):
+1. **`zerocopy`** (IN PROGRESS). First wave shipped; still open
+   are the dynamic-offset / dynamic-type sites where one zerocopy
+   struct doesn't fit all callers:
    - `damage/mod.rs::on_event` (offsets configured at runtime
      via `DamageHookConfig`).
    - `data_table.rs::decode_field` (T chosen at runtime by
@@ -309,248 +98,69 @@ Maintenance status confirmed via `gh api` 2026-05-12.
    Random-input fuzzing on the TArray / TMap / FieldTweak walkers.
    Extends the boundary tests we landed earlier (12 hand-written
    garbage-input cases) to property-based shapes. Catches walker
-   bugs the boundary tests miss (the same class that historically
-   crashed the host: FName index OOB, freed-page reads, malformed
-   sparse-array headers). Apache-2.0, last commit 2026-04-30.
-   https://docs.rs/proptest/
+   bugs the boundary tests miss (FName index OOB, freed-page
+   reads, malformed sparse-array headers). Apache-2.0, last
+   commit 2026-04-30. <https://docs.rs/proptest/>
 
-3. **`insta`**. MEDIUM gain, ~1 hour to wire.
-   Snapshot testing for op JSON responses. Each `.snap` file is
-   one human review; refactor regressions surface as diffs
-   without hand-writing `assert_eq!(json!(...))` per op. Doesn't
-   catch new production bugs but catches schema-shape regressions
-   across refactors at near-zero authoring cost. Value grows with
-   the op surface. Apache-2.0 (Mitsuhiko), last commit 2026-05-02.
-   https://docs.rs/insta/
+3. **`insta`**. MEDIUM gain, ~1 hour to wire. Snapshot testing
+   for op JSON responses. Each `.snap` file is one human review;
+   refactor regressions surface as diffs without hand-writing
+   `assert_eq!(json!(...))` per op. Apache-2.0 (Mitsuhiko), last
+   commit 2026-05-02. <https://docs.rs/insta/>
 
-4. **`smallvec`**. LOW gain, ~5 min.
-   Replaces the `[(Option<&SkillDef>, u32); 32]` stack array in
+4. **`smallvec`**. LOW gain, ~5 min. Replaces the
+   `[(Option<&SkillDef>, u32); 32]` stack array in
    `Tracker::fire` with a `SmallVec<[...; 32]>`. Same zero-alloc
    happy path, safer API, heap-spill insurance if a catalog ever
-   exceeds 32 subscribers per trigger kind (won't happen but the
-   silent cap goes away). Apache-2.0 (Servo), mature-stable
-   commit cadence (depended on by rustc / syn / tokio).
-   https://docs.rs/smallvec/
+   exceeds 32 subscribers per trigger kind. Apache-2.0 (Servo).
+   <https://docs.rs/smallvec/>
 
-5. **`fastrand`**. LOW gain, ~5 min.
-   Deletes 18 lines of hand-rolled xorshift PRNG in
-   `hook/install.rs::jitter`. Two-line swap to
-   `fastrand::u32(..)`. No behavior change. Apache-2.0 (smol-rs),
-   last commit 2026-05-03.
-   https://docs.rs/fastrand/
+5. **`fastrand`**. LOW gain, ~5 min. Deletes 18 lines of
+   hand-rolled xorshift PRNG in `hook/install.rs::jitter`.
+   Two-line swap to `fastrand::u32(..)`. No behavior change.
+   Apache-2.0 (smol-rs). <https://docs.rs/fastrand/>
 
-### Crate-shopping verdicts (don't re-investigate)
+### Open durability follow-ups
 
-After patternsleuth + zerocopy + the four above, the remaining
-crate options are evaluated and not worth doing:
-
-- **`tracing`**: huge migration touching every `log!` site for
-  per-call timing + structured fields. Defer; current custom
-  logger is fine.
-- **`dashmap`**: concurrent HashMap. Marginal until profiling
-  shows real contention on the discovery cache or tweak
-  registries (both are write-rare).
-- **`bytemuck`**: covered by zerocopy.
-- **`once_cell`**: `std::sync::OnceLock` is stable in 1.95.
-- **`windows` crate** (vs windows-sys): touches too much for a
-  documentation-style win (see earlier rejected-alternatives).
-- **`cxx` / `bindgen`**: overkill for our 4 UE4SS symbols + a
-  handful of `windows-sys` items per file.
-- **`object` / `goblin`**: PE parser. Was useful when we
-  hand-rolled `text_section`; patternsleuth absorbed that.
-- **`tokio` / `rayon`**: we don't need async runtimes or
-  parallelism. patternsleuth's internal futures are driven
-  sync.
-- **`serde_with`**: hex-byte-arrays-as-strings helpers.
-  Marginal; our op JSON shapes are simple.
-- [x] **Generic schema versioning baked into `SlotStore`**.
-  `rpg::store::Versioned<S>` envelope (`{schema_version,
-  payload}`); `SchemaMigrate` trait with `CURRENT_VERSION` const
-  + `migrate(from, raw)` fn; `load_versioned_with_migrate(path)`
-  loader that tries the envelope first, falls back to legacy
-  non-enveloped state (so existing g2rpg SkillsState files still
-  load when SkillsState eventually adopts the envelope shape),
-  and finally falls back to `S::default()` rather than panicking
-  on corrupted save data. `save_versioned(store, slot, payload)`
-  helper wraps an `S` in the envelope and routes through
-  `SlotStore::save`'s atomic-write semantics. Six unit tests
-  cover round-trip / migrate / failed-migrate fallback /
-  legacy-non-enveloped / missing-file / save-on-disk shape.
-  Existing SkillsState left untouched; new consumers
-  (BuildingsTracker etc.) adopt the envelope from day one.
-- [ ] **Hot-reload torture test.** 1000x Ctrl+R loop with hooks
+- [/] **Annotate the existing unsafe blocks**. Down to 50 from
+  271; the remaining 50 are spread thinly across `ue/probe.rs`,
+  `ue/status_effect.rs`, `ue/class_tweak.rs`, `ue/core_types.rs`,
+  `ue/typed_field.rs`, `ue/fname.rs`, `ue/platform.rs`,
+  `ue/player.rs`, `discovery.rs`, `selector.rs`,
+  `damage_info.rs`, `pe_call.rs`, `parms.rs`, `fstring.rs`, and
+  single-block files. Chip away during normal edits; bump the
+  lint to `deny` when the count reaches zero.
+- [ ] **Hot-reload torture test**. 1000x Ctrl+R loop with hooks
   installed; assert no thread leak, hook leak, slot regression.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
-- [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
-  comments. Down from 271 -> 50 across this session (-221).
-  Files fully annotated with per-block SAFETY: `ue/tmap.rs`,
-  `ue/tarray.rs`, `ue/sigscan.rs` (with one fn-level allow on
-  `text_section`'s PE walk), `damage/mod.rs`,
-  `inventory/viewport.rs`, `hook/process_event.rs`,
-  `data_table.rs`, `ops.rs`, `ue/datatable.rs`, `log.rs`,
-  `scanner.rs` (block-level annotations on the freeze-write
-  + region-walk paths). Files with documented module-level
-  `#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
-  universal-contract module doc: `ui.rs` (FFI-call uniform
-  shape), `ue/field.rs` (untyped read_*/write_* on
-  `obj.field_ptr`), `ue/class_ref.rs` (`GObjectsView::from_image`
-  + `&'static` lifetime extension), `ue/uobject.rs` (the four
-  primitive shapes), `winproc.rs` (windows-sys FFI uniform
-  shape: Toolhelp32 / VirtualQuery / Thread sampling).
-  The remaining 50 are spread thinly across `ue/probe.rs` (5),
-  `ue/status_effect.rs` (5), `ue/class_tweak.rs` (4),
-  `ue/core_types.rs` (4), `ue/typed_field.rs` (4), `ue/fname.rs`
-  (3), `ue/platform.rs` (3), `ue/player.rs` (3), `discovery.rs`
-  (3), `selector.rs` (2), `damage_info.rs` (2), `pe_call.rs`
-  (2), `parms.rs` (2), `fstring.rs` (2), and single-block files
-  (actor / hot_reload / slot_key / sigscan op + the rpg/mod
-  re-export shim). Chip away during normal edits; bump the lint
-  to `deny` when the count reaches zero.
 
-## Evaluated + actively rejected (don't re-investigate)
+## P2. Ueforge grooming (remaining)
 
-Items I considered for "make the code safer" and decided against
-after looking at the prior art:
-
-- **`windows` crate migration (`windows-sys` -> `windows`)**.
-  Would give Result-typed APIs instead of the `if n == 0 {
-  return None }` dance scattered through `winproc.rs` + `log.rs`
-  + `scanner.rs`. Touches a lot of FFI for a documentation-style
-  win; not worth the breakage risk against the current `windows-
-  sys` baseline. Revisit only if a consumer-facing safety bug
-  traces back to a missed return-code check.
-- **`retour-rs` / `detour-rs`**. Inline-detour libraries. We
-  use vtable patching (`hook::vtable::write_slot`) which is a
-  different mechanism. The detour crates would compete with our
-  existing hook framework rather than complement it.
-- **`iced-x86` instruction decoder for sig-scan**. Would
-  auto-compute `disp_offset` / `next_instr_offset` from the
-  matched opcode. Marginal: patternsleuth (P1 above) already
-  handles RIP-relative resolution. Skip unless we keep our own
-  sig-scan.
-- **`cxx` crate for the C++ shim FFI**. Generates type-safe C++
-  bindings. Overkill for the four UE4SS symbols `ueforge_shim.
-  cpp` calls; the existing extern "C" wrapper is fine. cxx
-  shines when you have hundreds of C++ types crossing the FFI.
-- **Phantom types on `ProcessEventHook<Installed>` /
-  `<Uninstalled>`**. Type-state pattern. Marginal because
-  `OnceLock` + Drop already enforce install-once semantics.
-  Adds API friction with no real safety win.
-- **`NonNull<UObject>` instead of `*mut UObject`**. We use
-  `&UObject` (which is non-null by Rust rules) in 95% of the
-  code; the remaining 5% (raw pointer fields read from engine
-  memory) are tagged with their own null-check path. Cosmetic
-  change.
-- **`pdb` crate for symbol resolution at runtime**. Only works
-  on debug builds of the game. Shipping UE5 games strip
-  symbols. Skip.
-- **Continue grinding SAFETY comments to zero**. Documentation
-  discipline, not real safety. The runtime defensive primitives
-  (`is_addr_readable`, `catch_unwind` per trampoline, SEH wraps
-  on `AppendString`, the DRAINING guard, `ReadProcessMemory`
-  fault-safe reads) are what actually prevent crashes. The 50
-  remaining warnings are low-leverage; bump the lint to `allow`
-  or live with the noise.
-
-## P2. Ueforge grooming
-
-- [x] **Hex codec -> `hex` crate.** `ueforge/src/hex.rs` deleted;
-  `hex = "0.4"` added to workspace deps; consumers map the new
-  `FromHexError` to String via `.map_err`. ~30 LoC saved.
-- [x] **Jittered backoff in `hook/install.rs`.** Inline +/-25%
-  jitter on every retry sleep. Seed is `Instant::now().elapsed()
-  .subsec_nanos()` passed through one xorshift; no rand-crate
-  dep. Unit test asserts every sample over 500 trials stays in
-  range.
-- [x] **PE queue oneshot via `crossbeam_channel::bounded(1)`**.
-  Swapped from `std::sync::mpsc::channel`. Bounded(1) is the
-  canonical oneshot shape: drain side sends once, enqueue side
-  recv's once, single-slot allocation.
-- [x] **`region` crate** (partial). Three of the six VirtualQuery
-  / VirtualProtect call sites migrated to the `region` crate:
-  `hook/vtable.rs::write_slot` (`protect_with_handle` RAII guard
-  replacing the two-step VirtualProtect dance),
-  `winproc.rs::is_addr_readable` (cheap committed + not-guarded
-  + not-NOACCESS check used on hot UE traversal paths), and
-  `scanner.rs::is_writable` (range fits within committed
-  writable region). The remaining three sites
-  (`scanner.rs::iter_private_rw_regions` +
-  `winproc.rs::process_regions_json` + the
-  `hook/process_event.rs:208` log string) stay on raw
-  VirtualQuery: they need MEM_PRIVATE vs MEM_IMAGE vs MEM_MAPPED
-  distinctions which the `region` crate's public API does not
-  surface in v3.
-- [x] **Reentrance proof test.** `pe_queue` now ships four tests:
-  drain_empty_is_noop, enqueue_then_drain_returns_result,
-  reentrant_drain_is_skipped (the documented contract proof), and
-  cancelled_jobs_are_skipped.
-- [x] **Vendor SDK header / document Dumper-7 invocation.** The
-  ue/offsets.rs header now documents how to regenerate offsets
-  (run Dumper-7, read Basic.hpp + UE4SS Signatures.cpp) rather
-  than referencing an author-machine path. Vendoring the actual
-  Basic.hpp is deferred since it's a per-game artifact tied to
-  Grounded 2's specific UE 5.4 build, not a framework asset.
 - [ ] **UE-version-aware `ffield` / `fproperty` / `ustruct`
-  offsets.** Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
+  offsets**. Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
   silently returns wrong names. Pair with the sig-scan work.
-- [/] **Boundary / property tests on walkers.** `tarray.rs`
-  gets 5 unit tests (empty default, negative num, null data,
-  slice round-trip, repr(C) layout). `tmap.rs` gets 7 (empty
-  map, single slot, find-by-key hit / miss / null-value, null
-  data ptr, negative num). Both walkers now have boundary-input
-  defenses verified at unit-test time; the engine-supplied
-  garbage states (negative num, null data, key-matched-but-
-  value-null free slot) all short-circuit cleanly. The
-  cargo-fuzz / proptest fuzzing layer is still open if we want
-  to throw random byte slabs at FieldTweak / inspect_address /
-  Val::from_json; the boundary coverage above catches the cases
-  we've actually seen crash the host historically.
-- [x] **`UE4SS.lib` build-time symbol-presence check.** Naive
-  byte-scan of `ueforge/ue4ss/UE4SS.lib` for the two MSVC-mangled
-  symbols `ueforge_shim.cpp` imports (`?get_current_imgui_
-  context@UE4SSProgram@RC@@` + `?get_current_imgui_allocator_
-  functions@UE4SSProgram@RC@@`). If missing the framework build
-  panics with a clear message pointing at the regen path instead
-  of failing at the consumer cdylib's link step. No dumpbin
-  dependency; .libs are ar archives where mangled names appear
-  as literal substrings.
-- [ ] **`tiny_http` / `ureq 2` migration window.** Both on a 2-5
+- [/] **Property tests on walkers**. Boundary tests shipped (5
+  on `tarray`, 7 on `tmap`). The cargo-fuzz / proptest layer is
+  still open if we want random byte slabs at FieldTweak /
+  `inspect_address` / `Val::from_json`.
+- [ ] **`tiny_http` / `ureq 2` migration window**. Both on a 2-5
   year support horizon.
-- [ ] **PE hook trampoline linear search.** Index by vtable
+- [ ] **PE hook trampoline linear search**. Index by vtable
   pointer when 6+ hooks are installed.
-- [x] **`find_by_short_name` cache.** RwLock<HashMap> mirrors
-  `find_class_fast`'s shape; UDataTable instances are stable in
-  GObjects for the process lifetime so a hit is permanent. Misses
-  are NOT cached.
-- [x] **Op latency + scan duration metrics.** `OpRegistry::
-  dispatch` now records `(calls, errors, total_ns, max_ns)` per
-  op name; new `op_metrics` debug op returns the snapshot sorted
-  by total_ns descending. Scan duration is implicitly covered
-  (scan_memory routes through dispatch).
-- [x] **Cancellation token on `scan_memory` / long ops.**
-  `scanner::SCAN_CANCEL: AtomicBool` checked at every 64 KiB
-  chunk boundary; new `scan_cancel` op flips it. Worst-case
-  latency between op call and abort is one ReadProcessMemory
-  call (typically sub-ms). scan returns `cancelled: bool` in
-  its response.
-- [x] **`DLL_HMODULE` happens-before `dll_dir()` callers.** New
-  `log::dll_dir_wait(timeout)` polls the atomic every 1ms up to
-  the configured timeout. Workers that may race DllMain call
-  this instead of the non-blocking `dll_dir()`.
 
 ## ueforge framework. Wave E (deferred until needed)
 
-- [ ] **Global ProcessEvent pre-callback.**
+- [ ] **Global ProcessEvent pre-callback**.
   `RegisterProcessEventPreCallback` wrapper +
   `Queue::install_drain` helper. Land when status-effect
   migration needs a guaranteed drain site.
-- [ ] **`AddUObjectCreateListener` integration.** Land when
+- [ ] **`AddUObjectCreateListener` integration**. Land when
   ows-tweaks or g2rpg's CDO-revert-replay scenario asks. ~100 LoC.
 
 ## ueforge framework. Still-open extractions
 
-- [ ] **Leak-source helpers** -- `explore_leak_source.rs` (350
+- [ ] **Leak-source helpers**. `explore_leak_source.rs` (350
   lines) uses g2-extension `top_packages` / `loaded_levels` /
   `process_regions` fields not in the framework's
   `gobjects_population` helper today. Lift those as separate
@@ -573,7 +183,7 @@ Deferred extractions (no second consumer yet):
 
 ## ueforge buildings module (planned, not started)
 
-The next opinionated module. Lets a mod add **custom content**
+The next opinionated module. Lets a mod add custom content
 (buildings, structures, placeables) to a UE5 game via UE4SS,
 not via paks. Player-placeable buildings that yield resources,
 tick logic, persist across saves, integrate with the host
@@ -611,44 +221,46 @@ The seam: a `BuildingSpawner` trait similar in shape to
 
 ### Module surface (proposed)
 
-```rust
-// ueforge::buildings (planned, not yet implemented)
+??? example "Proposed Rust module surface"
 
-pub struct BuildingDef<S, C> {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub description: &'static str,
-    pub default_state: S,
-    pub config: C,
-}
+    ```rust
+    // ueforge::buildings (planned, not yet implemented)
 
-pub trait BuildingSpawner: Send + Sync + 'static {
-    type Config: Copy + 'static;
-    type Handle: Eq + std::hash::Hash + Clone + Send + 'static;
+    pub struct BuildingDef<S, C> {
+        pub id: &'static str,
+        pub display_name: &'static str,
+        pub description: &'static str,
+        pub default_state: S,
+        pub config: C,
+    }
 
-    fn spawn(&self, cfg: &Self::Config, loc: WorldLocation)
-        -> Result<Self::Handle, String>;
+    pub trait BuildingSpawner: Send + Sync + 'static {
+        type Config: Copy + 'static;
+        type Handle: Eq + std::hash::Hash + Clone + Send + 'static;
 
-    fn destroy(&self, handle: &Self::Handle) -> Result<(), String>;
+        fn spawn(&self, cfg: &Self::Config, loc: WorldLocation)
+            -> Result<Self::Handle, String>;
 
-    fn register_in_build_menu(&self, buildings: &[(&'static str, &'static str)])
-        -> Result<(), String> { Ok(()) }
-}
+        fn destroy(&self, handle: &Self::Handle) -> Result<(), String>;
 
-pub struct BuildingsTracker<S, C, Sp: BuildingSpawner> {
-    catalog: &'static [BuildingDef<S, C>],
-    spawner: Sp,
-    instances: Mutex<HashMap<Sp::Handle, Instance<S>>>,
-    store: SlotStore<PersistedState<S, Sp::Handle>>,
-}
+        fn register_in_build_menu(&self, buildings: &[(&'static str, &'static str)])
+            -> Result<(), String> { Ok(()) }
+    }
 
-pub struct Instance<S> {
-    pub building_id: &'static str,
-    pub state: S,
-    pub spawned_at: SystemTime,
-    pub last_tick: Option<SystemTime>,
-}
-```
+    pub struct BuildingsTracker<S, C, Sp: BuildingSpawner> {
+        catalog: &'static [BuildingDef<S, C>],
+        spawner: Sp,
+        instances: Mutex<HashMap<Sp::Handle, Instance<S>>>,
+        store: SlotStore<PersistedState<S, Sp::Handle>>,
+    }
+
+    pub struct Instance<S> {
+        pub building_id: &'static str,
+        pub state: S,
+        pub spawned_at: SystemTime,
+        pub last_tick: Option<SystemTime>,
+    }
+    ```
 
 Plus `ueforge::buildings::ops` (standard debug-op set),
 `ueforge::buildings::tab::render` (ImGui template), and
@@ -657,9 +269,9 @@ SlotPoller shape).
 
 ### Phased plan
 
-**Phase A: research (no code).**
+#### Phase A: research (no code)
 
-- [ ] **A1: Grounded 2.** Find the build system entry points
+- [ ] **A1: Grounded 2**. Find the build system entry points
   via the SDK. Likely candidates: `UProductionBuilding`,
   `BP_Building*`, `UBuildingPlacementComponent`,
   `UCraftingComponent`. Identify which UClass defines a
@@ -667,17 +279,19 @@ SlotPoller shape).
   cost is charged, whether there's a build-menu data table to
   extend, how instance state replicates / persists, and the
   save shape.
-- [ ] **A2: Outworld Station.** Same audit. The trait surface
+- [ ] **A2: Outworld Station**. Same audit. The trait surface
   needs to fit both.
-- [ ] **A3: Storage / inventory transfer.** For auto-farming
+- [ ] **A3: Storage / inventory transfer**. For auto-farming
   to land items into a chest, identify the game's "add item to
   inventory" UFunction.
 
-**Phase B: design lock-in.** Trait surface against the two
-games' constraints. Pick the handle type (UObject address vs
-mod-generated FGuid), storage location, tick model.
+#### Phase B: design lock-in
 
-**Phase C: framework implementation.**
+Trait surface against the two games' constraints. Pick the
+handle type (UObject address vs mod-generated FGuid), storage
+location, tick model.
+
+#### Phase C: framework implementation
 
 - [ ] C1: `ueforge::buildings::BuildingDef<S, C>` + catalog row.
 - [ ] C2: `BuildingsTracker<S, C, Sp>` with `activate_slot` /
@@ -687,7 +301,7 @@ mod-generated FGuid), storage location, tick model.
 - [ ] C5: `ueforge::buildings::ops` standard debug ops.
 - [ ] C6: `ueforge::buildings::tab::render` ImGui template.
 
-**Phase D: g2rpg consumer (proof of concept).**
+#### Phase D: g2rpg consumer (proof of concept)
 
 - [ ] D1: One concrete buildable. The
   **auto-fiber-harvester** (yields plant fibers at a configured
@@ -697,25 +311,26 @@ mod-generated FGuid), storage location, tick model.
 - [ ] D3: G2 spawner impl.
 - [ ] D4: ImGui "Buildings" tab.
 
-**Phase E: tests.** Pester-style scenario DSL extended for
-buildings (e.g.
+#### Phase E: tests
+
+Pester-style scenario DSL extended for buildings (e.g.
 `scenario::for_building(api, "auto_harvester").placed_at(loc).advanced_time(60s).should_yield_at_least(10, "plant_fiber")`).
 
 ### Open design questions (decide during Phase A/B)
 
-- **Handle type.** UObject address (stable while game is running,
+- **Handle type**. UObject address (stable while game is running,
   invalid across saves) vs mod-generated FGuid (stable across
   saves, requires translation). Likely: FGuid for persistence +
   separate live UObject cache.
-- **Asset references.** v1 reuses vanilla assets (less moving
+- **Asset references**. v1 reuses vanilla assets (less moving
   parts); pak-side custom assets land later.
-- **Build-mode integration.** v1 ships ImGui-only spawn (lower
+- **Build-mode integration**. v1 ships ImGui-only spawn (lower
   risk). Vanilla-menu integration is Phase D+1.
-- **Multiplayer.** Out of scope for v1. Single-player / host-only.
-- **Tick clock.** Game-time vs real-time. Save-and-quit
+- **Multiplayer**. Out of scope for v1. Single-player / host-only.
+- **Tick clock**. Game-time vs real-time. Save-and-quit
   shouldn't run the farm for 8 hours when you reload. Use
   game-time OR clamp dt to `min(real_dt, configured_max_dt)`.
-- **Network authority.** Yields go through the game's
+- **Network authority**. Yields go through the game's
   authoritative inventory API, not direct field writes.
 
 ### Estimated scope
@@ -732,32 +347,33 @@ is the leverage point.
 Each entry is one [`skills::CATALOG`](../grounded2-rpg/src/rpg/skills.rs)
 row of an existing `SkillEffect` shape unless noted.
 
-- [ ] **Critical Chance + Critical Damage.** `before` callback
+- [ ] **Critical Chance + Critical Damage**. `before` callback
   on the live damage hook returns `Some(damage * (1 + crit))` on
   roll. RNG needs a per-mod seed; reuse `rand` crate.
-- [ ] **Evasion / Dodge.** `before` returns `Some(0.0)` on roll
+- [ ] **Evasion / Dodge**. `before` returns `Some(0.0)` on roll
   for player-taken hits.
-- [ ] **Thorns.** `after` resolves the attacker's HC (instigator
+- [ ] **Thorns**. `after` resolves the attacker's HC (instigator
   -> controller -> possessed pawn -> HC at +0x1340) and writes
   `event.damage * thorns_fraction` to its CurrentDamage. Same
   healing pattern proven via Lifesteal.
 - [ ] **Leap Distance**. LANDED untested
   (`PlayerMovementMult` over AirControl trio).
-- [ ] **Auto-pickup (range).** Per-frame proximity scan picks up
+- [ ] **Auto-pickup (range)**. Per-frame proximity scan picks up
   loose items. Open design: mechanism (existing proximity-pickup
   field vs per-frame scan), filter (which items qualify),
   throttle, multiplayer authority.
-- [ ] **Stamina Pool + Stamina Regen.** `UStaminaComponent` on
+- [ ] **Stamina Pool + Stamina Regen**. `UStaminaComponent` on
   ASurvivalCharacter at +0x1358; offsets need a Dumper-7 dive.
-- [ ] **Gear Hardiness.** Find durability-loss-per-use field;
+- [ ] **Gear Hardiness**. Find durability-loss-per-use field;
   per-item durability scaling.
-- [ ] **Climb Speed.** May or may not exist as a separate
+- [ ] **Climb Speed**. May or may not exist as a separate
   CharMovement field; check before adding.
-- [ ] **Collision / Impact Damage Resistance.** Reduce / negate
+- [ ] **Collision / Impact Damage Resistance**. Reduce / negate
   the lethal self-damage from slamming into plants / terrain.
   Likely home: live damage hook surface.
 
-Catalog target: ~25 skills. Today: 13.
+!!! tip "Catalog target"
+    ~25 skills. Today: 13.
 
 ## g2rpg. Live-instance writes
 
@@ -768,10 +384,11 @@ combat effects need the same. Each `SkillEffect` variant grows a
 
 ## g2rpg. Pkg(0) instigator bug
 
-Some legitimate player kills attribute to
-`/Script/CoreUObject (Package)` because
-`LastDamageInfo.InstigatorController` is an unset
-`FWeakObjectPtr` (index=0 -> Package). User loses XP.
+!!! bug "Repro"
+    Some legitimate player kills attribute to
+    `/Script/CoreUObject (Package)` because
+    `LastDamageInfo.InstigatorController` is an unset
+    `FWeakObjectPtr` (index=0 -> Package). User loses XP.
 
 Investigation:
 
@@ -792,10 +409,10 @@ status-effect surface first; rest of catalog follows. Detail in
 
 Concrete next steps:
 
-- [ ] **Optimize the discovery test.**
+- [ ] **Optimize the discovery test**.
   `tests/explore_status_effect_rows.rs`. Batch read_bytes (one
   big chunk) so it runs in seconds. Capture FName for each row.
-- [ ] **Pick target row per stat type.**
+- [ ] **Pick target row per stat type**.
 - [ ] **Implement `SkillEffect::PlayerStatusEffect` variant** in
   `skills.rs`.
 - [ ] **One generic apply arm in `apply.rs`** that resolves the
@@ -805,15 +422,15 @@ Concrete next steps:
 - [ ] **Validate via the regression test**: bandages must heal
   even with impact_resistance enabled.
 - [ ] **Migrate the rest** row-by-row:
-  - `health_regen` -> `Type=Health (24)`, drop UGlobalCombatData
-    mutation
-  - `max_health` -> `Type=MaxHealth (5)`, drop direct HC.MaxHealth
-  - `lifesteal` -> `Type=LifeSteal (38)`, drop Runtime no-op
-  - `attack_damage` -> `Type=AttackDamage (23)`
-  - `armor` -> `Type=DamageReduction (29)` or
-    `DamageReductionMultiplier (30)`
-  - `fall_resistance` -> ALSO apply `Type=FallDamage (14)` for
-    consistency (keep velocity-stomp as the validated mechanism)
+    - `health_regen` -> `Type=Health (24)`, drop UGlobalCombatData
+      mutation
+    - `max_health` -> `Type=MaxHealth (5)`, drop direct HC.MaxHealth
+    - `lifesteal` -> `Type=LifeSteal (38)`, drop Runtime no-op
+    - `attack_damage` -> `Type=AttackDamage (23)`
+    - `armor` -> `Type=DamageReduction (29)` or
+      `DamageReductionMultiplier (30)`
+    - `fall_resistance` -> ALSO apply `Type=FallDamage (14)` for
+      consistency (keep velocity-stomp as the validated mechanism)
 
 Movement skills stay on direct CMC field writes. The
 status-effect surface doesn't expose movement parameters with
@@ -833,10 +450,10 @@ Open until we play more.
 
 ## g2rpg. Distribution
 
-- [ ] **Vortex / Nexus packaging.** `cargo deploy package`
+- [ ] **Vortex / Nexus packaging**. `cargo deploy package`
   produces the right zip layout. Need a Nexus listing
   (description, screenshots, mod page).
-- [ ] **Project rename.** "grounded2-rpg" no longer fits when
+- [ ] **Project rename**. "grounded2-rpg" no longer fits when
   the mod is an RPG / level-up system. Candidates:
   `grounded-rpg`, `g2-rpg`, `groundlevel`, `instar`,
   `huntmaster`. Touches: Cargo.toml package name, workspace
@@ -844,7 +461,7 @@ Open until we play more.
 
 ## g2rpg. Feature ideas (not yet scoped)
 
-- [ ] **Auto-farming buildings.** First concrete consumer of the
+- [ ] **Auto-farming buildings**. First concrete consumer of the
   buildings module above. Plant-fiber / resin auto-harvester as
   the first building.
 
@@ -866,7 +483,7 @@ Reference design + test coverage principle:
 
 ### Drive surface
 
-- [ ] **High-frequency drain site for the PE queue.**
+- [ ] **High-frequency drain site for the PE queue**.
   `kill_hook`'s trampoline only fires on player HC vtable
   events. With `impact_resistance` mask = 0xFFFFFFFF, multicast
   traffic drops near zero, starving the drain. `call` ops time
@@ -921,20 +538,17 @@ Error paths:
   scope; would need a custom DX11 hook or BPModLoader-shipped
   widget. ImGui tab is sufficient.
 
-## Open: hot-reload the mod DLL while the game is running
+## Open: hot-reload follow-ups
 
 Phase B (in-DLL teardown of hooks / servers / settings watchers
-+ side-file rename) shipped 2026-05-10. End-to-end:
-edit -> `cargo deploy install` -> Ctrl+R in-game -> ~1-2s per
-iteration. State on disk (save slots, settings, catalog
-progress) survives. See
++ side-file rename) shipped 2026-05-10. See
 [`../ueforge/docs/lifecycle.md`](../ueforge/docs/lifecycle.md)
-"Phase B complete".
+"Hot-reload (Ctrl+R)" for the implemented surface.
 
 Optional follow-ups (defer until needed):
 
 - [ ] **Phase B+: programmatic Ctrl+R from `cargo deploy install
-  --hot`.** Mod watches a sentinel file; on change, synthesizes
+  --hot`**. Mod watches a sentinel file; on change, synthesizes
   Ctrl+R via UE4SS's `register_keydown_event`.
 - [ ] **Phase B++: HTTP `reload` op** that calls
   `UE4SSProgram::queue_reinstall_mods` directly. Smaller side

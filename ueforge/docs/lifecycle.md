@@ -184,6 +184,21 @@ Always-safe C++ (imgui + the UI bridge) is also compiled when
 your crate is built as a test or build-script binary, so unit
 tests and `cargo deploy` runs don't need UE4SS.dll on PATH.
 
+### `UE4SS.lib` symbol presence check
+
+The build script does a naive byte-scan of
+`ueforge/ue4ss/UE4SS.lib` for the two MSVC-mangled symbols
+`ueforge_shim.cpp` imports:
+
+- `?get_current_imgui_context@UE4SSProgram@RC@@`
+- `?get_current_imgui_allocator_functions@UE4SSProgram@RC@@`
+
+If either is missing, the framework build panics with a clear
+message pointing at the regen path instead of failing at the
+consumer cdylib's link step. `.lib` files are `ar` archives where
+mangled names appear as literal substrings, so no `dumpbin`
+dependency is required.
+
 ## Cargo.toml
 
 ueforge requires three identical lines:
@@ -499,6 +514,16 @@ Until Phase B lands, hot-reload of mods that install PE hooks
 remain pointing into freed memory. The reload-as-test cycle
 works fine for code paths that don't involve PE hooks; for
 hook-touching changes, restart the game.
+
+## `dll_dir_wait` happens-before
+
+`log::dll_dir()` reads the atomic that DllMain populates with the
+DLL's load path. Workers spawned from `on_unreal_init` MAY race
+DllMain on early UE4SS init paths. `log::dll_dir_wait(timeout)`
+polls the atomic every 1ms up to the configured timeout; use it
+from any worker that needs `dll_dir()` before user code is sure
+DllMain has run. The non-blocking `dll_dir()` is fine once the
+main worker has reached steady state.
 
 ## Logging
 

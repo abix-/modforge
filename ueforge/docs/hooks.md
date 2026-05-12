@@ -154,6 +154,29 @@ The retry logs "pending (<error>), will retry" on each unique
 error string transition (so if your install fn returns
 `"WBP_X not loaded"` ten times, you get one log line, not ten).
 
+Each retry sleep carries an inline +/-25% jitter so a fleet of
+mods retrying the same target doesn't synchronize their wakeups.
+The seed is `Instant::now().elapsed().subsec_nanos()` passed
+through one xorshift; no `rand`-crate dep. A unit test asserts
+every sample over 500 trials stays in range.
+
+### vtable patching via the `region` crate
+
+`hook::vtable::write_slot` patches the function pointer in a
+class's vtable via `region::protect_with_handle`. The RAII guard
+restores the original page protection on drop, replacing the
+older two-step `VirtualProtect` (write, restore) dance. The
+guard makes the write-then-restore pairing structural so a panic
+or early return cannot leave the page writable.
+
+The same crate backs `winproc::is_addr_readable` (cheap committed
++ not-guarded + not-NOACCESS check used on hot UE traversal
+paths) and `scanner::is_writable` (range-fits-within-committed-
+writable check). The three remaining VirtualQuery sites that
+need `MEM_PRIVATE` vs `MEM_IMAGE` vs `MEM_MAPPED` distinctions
+stay on raw VirtualQuery; the `region` crate's public API does
+not surface those.
+
 ## function_table!. Declared identity dispatch
 
 For hooks that need to identity-dispatch many UFunctions on a

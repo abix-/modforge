@@ -157,6 +157,23 @@ back in `parms_hex_after`.
 See [memory-tools.md](memory-tools.md) for the full scanner /
 freeze story.
 
+`scan_memory` checks `scanner::SCAN_CANCEL` (an `AtomicBool`) at
+every 64 KiB chunk boundary. The companion `scan_cancel` op flips
+the flag, so a runaway scan can be aborted from a second curl.
+Worst-case latency between op call and abort is one
+`ReadProcessMemory` call (typically sub-ms). `scan_memory`
+returns `cancelled: bool` in its response so clients can tell.
+
+### Op telemetry
+
+| Op | Returns |
+|---|---|
+| `op_metrics` | per-op `{calls, errors, total_ns, max_ns}` sorted by `total_ns` desc |
+
+`OpRegistry::dispatch` records the four counters per op name.
+The `op_metrics` op returns the snapshot. Scan duration is
+implicitly covered because `scan_memory` routes through dispatch.
+
 ### Win32 process probes
 
 | Op | Args | Returns |

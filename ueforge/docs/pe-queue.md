@@ -93,6 +93,26 @@ fn drain(&self) -> DrainStats {
 mutex on the empty path. This means a trampoline draining a
 queue that's empty 99% of the time pays ~5ns per fire.
 
+### Per-job oneshot reply channel
+
+Each enqueued job carries its own `crossbeam_channel::bounded(1)`
+reply channel. The enqueue side sends once, the drain side
+recv's once, single-slot allocation. This replaces the older
+`std::sync::mpsc::channel` shape; the bounded(1) form is the
+canonical oneshot and avoids a multi-slot allocator on the hot
+enqueue path.
+
+### Reentrance contract test
+
+`pe_queue` ships four tests that pin the documented behaviour:
+
+| Test | Asserts |
+|---|---|
+| `drain_empty_is_noop` | empty queue drain returns `DrainStats::default()` |
+| `enqueue_then_drain_returns_result` | enqueue + drain round-trips the job result |
+| `reentrant_drain_is_skipped` | drain called while DRAINING returns `reentered: true` without recursing |
+| `cancelled_jobs_are_skipped` | jobs whose enqueue caller timed out are dropped on the floor instead of running |
+
 ## DrainSite. Queue + counters in one static
 
 `ueforge::pe_queue::DrainSite` wraps `Queue` with the standard

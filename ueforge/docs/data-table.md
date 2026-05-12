@@ -267,6 +267,105 @@ looked up against the `classes` section of the discovery cache.
 `resolve_class_field(class, field) -> Option<(offset, element_size)>`
 is the underlying lookup.
 
+## Runtime tweak ops (HTTP / ImGui driven)
+
+The `tweak_*` debug ops let you declare and apply a tweak from
+outside the running process. Same captured-vanilla + idempotent
+semantics as `FieldTweak<T>`; coordinates are
+`(table, field, kind, op, value)` JSON. Resolves offsets through
+the discovery cache, so no SDK header dive.
+
+| Op | What it does |
+|---|---|
+| `tweak_apply` | Apply a `{table, field, kind, op, value}` tweak. First call per (table, field) captures vanilla for every row; subsequent calls re-base on captured vanilla. |
+| `tweak_list` | Return every currently-applied dynamic tweak. |
+| `tweak_revert` | Restore captured vanilla for one (table, field) pair. |
+
+`kind` is `i32 | f32 | u32`. `op` is `set | multiply | add`.
+`Multiply` skips vanilla-zero rows the same way `TweakDef` does.
+
+Hot-iteration loop without rebuilding:
+
+```sh
+curl -s -X POST 127.0.0.1:17171/debug -d '{"op":"tweak_apply","args":{
+    "table":"DT_Materials","field":"MaxCanStack","kind":"i32",
+    "op":"multiply","value":4}}'
+
+# adjust value, re-apply, revert when done
+curl -s -X POST 127.0.0.1:17171/debug -d '{"op":"tweak_revert","args":{
+    "table":"DT_Materials","field":"MaxCanStack"}}'
+```
+
+## Persisted tweaks (`tweaks.json`)
+
+Successful `tweak_apply` calls write to `<DLL_dir>/tweaks.json`
+atomically. Schema 1 envelope:
+
+```json
+{
+  "schema_version": 1,
+  "tweaks": [
+    {"table":"DT_Materials","field":"MaxCanStack",
+     "kind":"i32","op":"multiply","value":4}
+  ]
+}
+```
+
+`tweak_revert` clears the matching entry. Game crates call
+`data_table::restore_persisted_at_init()` from their
+`on_unreal_init` worker after `discovery::run_at_load` to reload +
+reapply on every boot (and every Ctrl+R).
+
+Three companion ops:
+
+| Op | What it does |
+|---|---|
+| `tweak_persisted_list` | Returns the on-disk envelope as-is. |
+| `tweak_persisted_load` | Re-reads `tweaks.json` into memory without applying. |
+| `tweak_persisted_reapply` | Reads + applies every entry. |
+
+## validate_registry
+
+`data_table::validate_registry(reg)` compares each `DataTableDef`'s
+field list against the live `FProperty` chain in the discovery
+cache. Returns a JSON drift report and logs each drift line via
+`ueforge::log!`. Call from `on_unreal_init` after
+`discovery::run_at_load()`. The no-op case (empty registry) costs
+one HashMap allocation. Catches UE-version mismatches before any
+tweak runs.
+
+## ImGui browser tab
+
+`ueforge::ui_data_table_browser::render` is the framework's
+read-only browser. Lists every discovered `UDataTable` from the
+`ueforge::discovery` cache. Click **Open** to load a snapshot
+(schema + first N rows), **Refresh discovery** to re-walk
+GObjects, **max rows** slider to control per-table row count. A
+name filter box matches by case-insensitive substring; inside an
+open table, a row-FName filter narrows the rows tree.
+
+Wire into a mod's tab list:
+
+```rust
+pub static MOD_INFO: ModDef = ModDef {
+    tabs: &[
+        ueforge::ui_data_table_browser::TAB,
+        // ...
+    ],
+    // ...
+};
+```
+
+Both g2rpg and ows-tweaks ship this tab as "Tables".
+
+## find_by_short_name cache
+
+`find_by_short_name` is backed by an `RwLock<HashMap>` mirroring
+`find_class_fast`'s shape. UDataTable instances are stable in
+GObjects for the process lifetime, so a hit is permanent. Misses
+are NOT cached (the table may stream in later); the next call
+re-walks.
+
 ## DataTable reads return copies
 
 The single most important fact:
