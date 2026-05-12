@@ -24,7 +24,15 @@ mod common;
 use serde_json::json;
 
 #[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(
+    Default,
+    Copy,
+    Clone,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::Immutable,
+    zerocopy::KnownLayout,
+)]
 struct AddHealthParms {
     amount: f32,
     _pad: [u8; 4],
@@ -73,7 +81,7 @@ fn impact_resistance_does_not_block_healing() {
     }
 
     let parms = AddHealthParms { amount: 20.0, _pad: [0; 4], causer: 0 };
-    let bytes = unsafe { common::parms_as_bytes(&parms) };
+    let bytes = common::parms_as_bytes(&parms);
     let (_after, post) = api
         .call_ufunction("HealthComponent", "AddHealth", "live_player_hc", bytes)
         .expect("AddHealth call failed");

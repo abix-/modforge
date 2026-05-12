@@ -280,16 +280,30 @@ In-game smoke test (P0 below) is the acceptance gate.
 After the rtfm pass; sort here is by leverage, not alphabetical.
 Maintenance status confirmed via `gh api` 2026-05-12.
 
-1. **`zerocopy`**. HIGH gain, ~half day.
-   Replaces ~50 `read_unaligned` matchups across `damage/mod.rs`,
-   `data_table.rs::decode_field`, and the kill_hook / fall_hook
-   / inv_hook parm decoders with derive-based
-   `FromBytes::ref_from_bytes`. Layout verified at COMPILE time
-   (size + alignment + padding-with-pointers rejected) for zero
-   runtime cost. Catches the wrong-offset / wrong-type bug class
-   at build time instead of game-crash time. Google-maintained,
-   BSD-3-Clause, last commit 2026-05-12.
-   https://docs.rs/zerocopy/
+1. **`zerocopy`**. IN PROGRESS (first wave shipped).
+   Workspace dep + derives on the POD types most often read from
+   raw bytes (`FGuid`, `FWeakObjectPtr`). `ueforge::parms::
+   as_bytes` / `from_bytes` rewritten as SAFE fns gated on
+   `T: IntoBytes + Immutable` / `T: FromBytes + KnownLayout`;
+   `Api::call_ufunction_typed` loses its `unsafe fn` signature.
+   Test-side parm structs (`AddHealthParms`,
+   `GetValueForStatParms`) adopt the four zerocopy derives;
+   their `unsafe { ... }` wrappers at call sites are gone. Net
+   effect: 4 fewer unsafe blocks + compile-time layout
+   verification on FGuid / FWeakObjectPtr / every test parm
+   struct.
+
+   Still open (the dynamic-offset / dynamic-type sites where a
+   single zerocopy struct doesn't fit all callers):
+   - `damage/mod.rs::on_event` (offsets configured at runtime
+     via `DamageHookConfig`).
+   - `data_table.rs::decode_field` (T chosen at runtime by
+     FProperty class string).
+   - kill_hook / fall_hook / inv_hook parm decoders (each could
+     define one `#[repr(C)]` + zerocopy struct per UFunction
+     shape; ~6 structs total).
+   - `FDataTableRowHandle` (has a `*const UObject`; pointer
+     rejects FromBytes; would need a split type).
 
 2. **`proptest`**. MEDIUM-HIGH gain, ~quarter day.
    Random-input fuzzing on the TArray / TMap / FieldTweak walkers.

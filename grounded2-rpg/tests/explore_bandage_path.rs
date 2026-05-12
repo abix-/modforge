@@ -29,7 +29,15 @@ mod common;
 /// AddHealth tolerates a null causer (it's just for kill-attribution
 /// in the receiver path).
 #[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(
+    Default,
+    Copy,
+    Clone,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::Immutable,
+    zerocopy::KnownLayout,
+)]
 struct AddHealthParms {
     amount: f32,
     _pad: [u8; 4],
@@ -38,7 +46,7 @@ struct AddHealthParms {
 
 fn call_add_health(api: &common::Api, amount: f32) -> Result<common::Snapshot, String> {
     let parms = AddHealthParms { amount, _pad: [0; 4], causer: 0 };
-    let bytes = unsafe { common::parms_as_bytes(&parms) };
+    let bytes = common::parms_as_bytes(&parms);
     let (_after, state) = api.call_ufunction(
         "HealthComponent",
         "AddHealth",

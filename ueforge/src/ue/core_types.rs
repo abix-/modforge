@@ -4,15 +4,31 @@
 //! every mod ends up redefining locally. Layouts are stable across
 //! UE 5.0-5.7; offset constants for game-specific containers (where
 //! these fields live on a UObject) stay game-side.
+//!
+//! ## Zero-copy layout verification
+//!
+//! Every public POD struct in this module derives `zerocopy`'s
+//! `FromBytes`, `IntoBytes`, `KnownLayout`, and `Immutable`. The
+//! derive macros verify at **compile time** that the layout is
+//! actually POD: no padding-with-pointers, no `Drop`, alignment
+//! known. If a future field break that invariant the build fails
+//! at the derive site instead of producing UB at the read site.
+//! Consumers (FDataTableRowHandle parm decoders, save-slot key
+//! reads, FDamageInfo.InstigatorController reads, etc.) can use
+//! `T::ref_from_bytes(slice)` for verified-safe transmute.
 
 #![allow(clippy::unused_unit)]
+
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 use crate::ue::UObject;
 
 /// `FGuid`. Four u32s. Used everywhere UE5 needs a stable
 /// identifier (save GUIDs, asset GUIDs, replication identifiers).
 #[repr(C)]
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, Debug, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 pub struct FGuid {
     pub a: u32,
     pub b: u32,
@@ -51,7 +67,9 @@ impl FGuid {
 /// view). Use this struct as a layout mirror in parm structs and
 /// at known offsets on host objects (e.g. `FDamageInfo.InstigatorController`).
 #[repr(C)]
-#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+#[derive(
+    Clone, Copy, Default, PartialEq, Eq, Debug, FromBytes, IntoBytes, KnownLayout, Immutable,
+)]
 pub struct FWeakObjectPtr {
     pub object_index: i32,
     pub object_serial_number: i32,

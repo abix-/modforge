@@ -78,10 +78,22 @@ fn probe_player_status_effects() {
 // ---------------------------------------------------------------
 
 #[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(
+    Default,
+    Copy,
+    Clone,
+    zerocopy::FromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::Immutable,
+    zerocopy::KnownLayout,
+)]
 struct GetValueForStatParms {
     stat_type: u8,
-    temporary_only: bool,
+    /// UE bool. Stored as u8 here because zerocopy::FromBytes
+    /// rejects `bool` (not every byte pattern is a valid bool
+    /// in Rust). Engine writes 0 or 1; treat non-zero as true
+    /// in callers.
+    temporary_only: u8,
     _pad: [u8; 2],
     return_value: f32,
 }
@@ -105,18 +117,16 @@ fn probe_status_effect_values() {
     for (name, stat_type) in PROBE_STAT_TYPES {
         let parms = GetValueForStatParms {
             stat_type: *stat_type,
-            temporary_only: false,
+            temporary_only: 0,
             _pad: [0; 2],
             return_value: 0.0,
         };
-        match unsafe {
-            api.inner().call_ufunction_typed::<GetValueForStatParms>(
-                "StatusEffectComponent",
-                "GetValueForStat",
-                &sec_sel,
-                parms,
-            )
-        } {
+        match api.inner().call_ufunction_typed::<GetValueForStatParms>(
+            "StatusEffectComponent",
+            "GetValueForStat",
+            &sec_sel,
+            parms,
+        ) {
             Ok((after, _state)) => {
                 summary.push_str(&format!(" {}({})={:.3}", name, stat_type, after.return_value));
             }

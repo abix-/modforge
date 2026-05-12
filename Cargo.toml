@@ -28,6 +28,7 @@ arc-swap = "1"
 hex = "0.4"
 crossbeam-channel = "0.5"
 region = "3"
+zerocopy = { version = "0.8", features = ["derive"] }
 # patternsleuth: UE4SS-blessed Rust sig-scan crate. No crates.io
 # release; pinned to a recent master SHA. Workspace package
 # licensed "MIT OR Apache-2.0" (per the upstream Cargo.toml,

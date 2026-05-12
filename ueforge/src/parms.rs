@@ -1,39 +1,37 @@
 //! Test-side helpers for the `call` op's parm-buffer round-trip.
 //!
-//! Tests author `#[repr(C)]` structs that mirror the SDK's
-//! UFunction parm layout, then use these helpers to view them as
-//! bytes (for sending) and back (for OUT params the engine wrote
-//! during the call).
+//! Tests author `#[repr(C)] #[derive(zerocopy::FromBytes,
+//! zerocopy::IntoBytes, zerocopy::Immutable, zerocopy::KnownLayout)]`
+//! structs that mirror the SDK's UFunction parm layout, then use
+//! these helpers to view them as bytes (for sending) and back
+//! (for OUT params the engine wrote during the call).
+//!
+//! Compile-time layout verification via the zerocopy derives
+//! makes both helpers SAFE: the trait bounds reject any parm
+//! struct that has padding-with-pointers, non-POD fields, or
+//! unknown alignment, before the bytes ever cross the FFI
+//! boundary.
 
-use std::mem::{MaybeUninit, size_of};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
-/// View a parm struct as bytes for `Api::call_ufunction`.
-///
-/// # Safety
-/// `T` must be a plain-old-data struct with no padding traps and
-/// no references / non-owned pointers. Use `#[repr(C)]` and
-/// explicit pad fields.
-pub unsafe fn as_bytes<T: Sized>(parms: &T) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(parms as *const T as *const u8, size_of::<T>()) }
+/// View a parm struct as bytes for `Api::call_ufunction`. Safe
+/// because `T: IntoBytes` is the proof that every byte of `T`
+/// is initialized + the layout is well-defined.
+pub fn as_bytes<T: IntoBytes + Immutable>(parms: &T) -> &[u8] {
+    parms.as_bytes()
 }
 
 /// Decode raw bytes back into a parm struct (e.g. to read OUT
-/// parameters the engine wrote during the call).
-///
-/// # Safety
-/// Same constraints as `as_bytes`. `bytes.len()` must equal
-/// `size_of::<T>()`.
-pub unsafe fn from_bytes<T: Sized + Copy>(bytes: &[u8]) -> Result<T, String> {
-    if bytes.len() != size_of::<T>() {
-        return Err(format!(
-            "parm size mismatch: bytes={} expected={}",
+/// parameters the engine wrote during the call). Safe because
+/// `T: FromBytes` is the proof that any byte pattern of the
+/// right length is a valid `T` (no validity invariants like
+/// "non-null pointer" or "valid utf-8" allowed in `T`'s fields).
+pub fn from_bytes<T: FromBytes + KnownLayout + Copy>(bytes: &[u8]) -> Result<T, String> {
+    T::read_from_bytes(bytes).map_err(|e| {
+        format!(
+            "parm decode failed (bytes={} expected={}): {e}",
             bytes.len(),
-            size_of::<T>()
-        ));
-    }
-    let mut t = MaybeUninit::<T>::uninit();
-    unsafe {
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), t.as_mut_ptr() as *mut u8, bytes.len());
-        Ok(t.assume_init())
-    }
+            std::mem::size_of::<T>()
+        )
+    })
 }

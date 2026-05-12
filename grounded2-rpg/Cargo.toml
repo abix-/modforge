@@ -53,6 +53,7 @@ ueforge = { path = "../ueforge" }
 [dev-dependencies]
 ueforge = { path = "../ueforge" }
 hex = { workspace = true }
+zerocopy = { workspace = true }
 
 [lints]
 workspace = true

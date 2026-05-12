@@ -202,24 +202,32 @@ impl<S: DeserializeOwned> Api<S> {
     }
 
     /// Typed `call_ufunction`. Game-side parm struct is a
-    /// `#[repr(C)] T`; this method serializes it via
-    /// `parms::as_bytes`, calls the engine, decodes the
-    /// post-call buffer back into `T`, and returns it (so OUT
-    /// fields the engine wrote are visible).
+    /// `#[repr(C)] T` with the zerocopy derives (`FromBytes` +
+    /// `IntoBytes` + `Immutable` + `KnownLayout`); this method
+    /// serializes it, calls the engine, decodes the post-call
+    /// buffer back into `T`, and returns it (so OUT fields the
+    /// engine wrote are visible).
     ///
-    /// # Safety
-    /// `T` MUST be a `#[repr(C)]` POD struct matching the
-    /// UFunction's parm layout exactly.
-    pub unsafe fn call_ufunction_typed<T: Copy>(
+    /// Safe: the zerocopy trait bounds prove `T`'s layout is
+    /// POD (no padding-with-pointers, no Drop, no validity
+    /// invariants). No `unsafe` block needed at the call sites.
+    pub fn call_ufunction_typed<T>(
         &self,
         class: &str,
         function: &str,
         instance_selector: &str,
         parms: T,
-    ) -> Result<(T, S), String> {
-        let bytes = unsafe { crate::parms::as_bytes(&parms) };
+    ) -> Result<(T, S), String>
+    where
+        T: zerocopy::FromBytes
+            + zerocopy::IntoBytes
+            + zerocopy::Immutable
+            + zerocopy::KnownLayout
+            + Copy,
+    {
+        let bytes = crate::parms::as_bytes(&parms);
         let (after, state) = self.call_ufunction(class, function, instance_selector, bytes)?;
-        let out: T = unsafe { crate::parms::from_bytes(&after)? };
+        let out: T = crate::parms::from_bytes(&after)?;
         Ok((out, state))
     }
 
