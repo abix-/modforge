@@ -288,16 +288,52 @@ In-game smoke test (P0 below) is the acceptance gate.
   offset" class of bugs at build time instead of runtime.
   https://docs.rs/zerocopy/
 
-  Still open: actually porting UE4SS upstream signatures for
-  `g_objects` / `g_names` / `g_world` / `process_event` /
-  `append_string` and wiring them through
-  `PlatformOffsets::scan()`. Has to be done with the running
-  game (curl the `sig_scan` op with candidate patterns from
-  UE4SS Signatures.cpp until each resolves to the same address
-  the hardcoded STEAM/XBOX blocks point at, then bake the
-  pattern into a `SigSpec` constant). Each pattern needs to be
-  verified per platform (STEAM vs XBOX) because compiler
-  inlining differs.
+- [ ] **`insta` for op-JSON snapshot tests.** Every debug op
+  returns a JSON envelope; snapshot tests would catch
+  regressions on the response shape across refactors without
+  hand-writing `assert_eq!(json!(...))` per op. Light dep, huge
+  test coverage win. https://docs.rs/insta/
+- [ ] **`fastrand` for the jitter PRNG.** `hook/install.rs::
+  jitter` hand-rolls xorshift over Instant nanos. Two-line
+  swap to `fastrand::u32(..)`; deletes 18 lines of bespoke
+  state-machine. https://docs.rs/fastrand/
+- [ ] **`proptest` for walker fuzz tests.** Extends the
+  boundary tests in `ue/tmap.rs` + `ue/tarray.rs` to
+  random-input fuzzing of TMap headers, TArray descriptors,
+  and `FieldTweak::apply_to` row mutations. The cargo-fuzz
+  alternative needs nightly + a separate fuzz target tree;
+  proptest stays in the regular test harness. https://docs.rs/proptest/
+- [ ] **`smallvec` for `Tracker::fire`'s subscriber buffer.**
+  Currently `[(Option<&SkillDef>, u32); 32]` stack array with a
+  manual count cap. `SmallVec<[(...); 32]>` gives the same
+  zero-alloc happy path with a safer API + heap spillover if
+  the catalog ever exceeds 32 subscribers per trigger kind.
+  https://docs.rs/smallvec/
+
+### Crate-shopping verdicts (don't re-investigate)
+
+After patternsleuth + zerocopy + the four above, the remaining
+crate options are evaluated and not worth doing:
+
+- **`tracing`**: huge migration touching every `log!` site for
+  per-call timing + structured fields. Defer; current custom
+  logger is fine.
+- **`dashmap`**: concurrent HashMap. Marginal until profiling
+  shows real contention on the discovery cache or tweak
+  registries (both are write-rare).
+- **`bytemuck`**: covered by zerocopy.
+- **`once_cell`**: `std::sync::OnceLock` is stable in 1.95.
+- **`windows` crate** (vs windows-sys): touches too much for a
+  documentation-style win (see earlier rejected-alternatives).
+- **`cxx` / `bindgen`**: overkill for our 4 UE4SS symbols + a
+  handful of `windows-sys` items per file.
+- **`object` / `goblin`**: PE parser. Was useful when we
+  hand-rolled `text_section`; patternsleuth absorbed that.
+- **`tokio` / `rayon`**: we don't need async runtimes or
+  parallelism. patternsleuth's internal futures are driven
+  sync.
+- **`serde_with`**: hex-byte-arrays-as-strings helpers.
+  Marginal; our op JSON shapes are simple.
 - [x] **Generic schema versioning baked into `SlotStore`**.
   `rpg::store::Versioned<S>` envelope (`{schema_version,
   payload}`); `SchemaMigrate` trait with `CURRENT_VERSION` const
