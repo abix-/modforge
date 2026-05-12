@@ -106,6 +106,7 @@ pub mod ui_data_table_browser;
 pub mod ui_dynamic_tweaks;
 pub mod ui_scanner;
 pub mod ui_struct_browser;
+pub mod ui_tweaks;
 pub mod winproc;
 pub mod worker;
 
