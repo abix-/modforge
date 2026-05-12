@@ -94,12 +94,11 @@ confirmed via `gh api` 2026-05-12.
    - `FDataTableRowHandle` (has a `*const UObject`; pointer
      rejects FromBytes; would need a split type).
 
-2. **`proptest`** (IN PROGRESS). MEDIUM-HIGH gain. Two
-   property tests landed: TArray garbage-header check +
-   TMap `find_value_by_fname_key` correctness across random
-   16-entry maps. Still open: FieldTweak decoder,
-   `Val::from_json` round trips, `inspect_address` byte
-   slabs.
+2. **`proptest`** (IN PROGRESS). MEDIUM-HIGH gain. Property
+   tests landed on TArray garbage headers, TMap
+   `find_value_by_fname_key` correctness, and `Val::from_json`
+   round-trips for all 10 scanner value types. Still open:
+   FieldTweak decoder + `inspect_address` byte slabs.
 
 3. **`insta`** (IN PROGRESS). MEDIUM gain. Wired as dev-dep
    with four envelope-shape snapshots in `envelope.rs`
@@ -131,9 +130,9 @@ confirmed via `gh api` 2026-05-12.
   silently returns wrong names. Pair with the sig-scan work.
 - [/] **Property tests on walkers**. Boundary tests shipped (5
   on `tarray`, 7 on `tmap`). Proptests landed on TArray
-  (garbage headers) + TMap (find_value correctness). Still
-  open: FieldTweak decoder, `Val::from_json`,
-  `inspect_address` byte slabs.
+  (garbage headers), TMap (find_value correctness), and
+  `Val::from_json` (10 types). Still open: FieldTweak
+  decoder + `inspect_address` byte slabs.
 - [ ] **`tiny_http` / `ureq 2` migration window**. Both on a 2-5
   year support horizon.
 - [ ] **PE hook trampoline linear search**. Index by vtable

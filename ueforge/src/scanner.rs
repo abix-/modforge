@@ -835,3 +835,85 @@ fn parse_addr(s: &str) -> Result<usize, String> {
         .unwrap_or(s);
     usize::from_str_radix(hex, 16).map_err(|e| format!("bad address '{s}': {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Property: every numeric Ty round-trips through
+    // `Val::from_json` -> `Val::bytes` so the scanner's
+    // "compare against user-supplied value" path can't
+    // truncate or sign-extend the input incorrectly. The
+    // byte length must match `Ty::size`; the decoded bytes
+    // must match `value.to_le_bytes()` for the corresponding
+    // primitive.
+    proptest::proptest! {
+        #[test]
+        fn val_u8_round_trips(v in proptest::prelude::any::<u8>()) {
+            let bits = Val::from_json(&json!(v), Ty::U8).unwrap().bytes();
+            assert_eq!(bits, vec![v]);
+        }
+        #[test]
+        fn val_i8_round_trips(v in proptest::prelude::any::<i8>()) {
+            let bits = Val::from_json(&json!(v), Ty::I8).unwrap().bytes();
+            assert_eq!(bits, vec![v as u8]);
+        }
+        #[test]
+        fn val_u32_round_trips(v in proptest::prelude::any::<u32>()) {
+            let bits = Val::from_json(&json!(v), Ty::U32).unwrap().bytes();
+            assert_eq!(bits, v.to_le_bytes().to_vec());
+        }
+        #[test]
+        fn val_i32_round_trips(v in proptest::prelude::any::<i32>()) {
+            let bits = Val::from_json(&json!(v), Ty::I32).unwrap().bytes();
+            assert_eq!(bits, (v as u32).to_le_bytes().to_vec());
+        }
+        #[test]
+        fn val_u64_round_trips(v in proptest::prelude::any::<u64>()) {
+            let bits = Val::from_json(&json!(v), Ty::U64).unwrap().bytes();
+            assert_eq!(bits, v.to_le_bytes().to_vec());
+        }
+        #[test]
+        fn val_i64_round_trips(v in proptest::prelude::any::<i64>()) {
+            let bits = Val::from_json(&json!(v), Ty::I64).unwrap().bytes();
+            assert_eq!(bits, (v as u64).to_le_bytes().to_vec());
+        }
+        #[test]
+        fn val_f32_round_trips(v in proptest::prelude::any::<f32>()) {
+            // NaN payloads survive: bits comparison, not value
+            // equality, lets us assert across NaN.
+            let bits = Val::from_json(&json!(v as f64), Ty::F32).unwrap().bytes();
+            assert_eq!(bits, v.to_bits().to_le_bytes().to_vec());
+        }
+        #[test]
+        fn val_f64_round_trips(v in proptest::prelude::any::<f64>()) {
+            let bits = Val::from_json(&json!(v), Ty::F64).unwrap().bytes();
+            assert_eq!(bits, v.to_bits().to_le_bytes().to_vec());
+        }
+    }
+
+    #[test]
+    fn val_rejects_out_of_range_u8() {
+        let err = Val::from_json(&json!(256u32), Ty::U8).unwrap_err();
+        assert!(err.contains("u8"));
+    }
+
+    #[test]
+    fn val_rejects_negative_for_unsigned() {
+        let err = Val::from_json(&json!(-1i32), Ty::U32).unwrap_err();
+        assert!(err.contains("u32"));
+    }
+
+    #[test]
+    fn parse_addr_accepts_hex_with_prefix() {
+        assert_eq!(parse_addr("0xDEAD").unwrap(), 0xDEAD);
+        assert_eq!(parse_addr("0XBEEF").unwrap(), 0xBEEF);
+        assert_eq!(parse_addr("CAFE").unwrap(), 0xCAFE);
+    }
+
+    #[test]
+    fn parse_addr_rejects_garbage() {
+        assert!(parse_addr("zzz").is_err());
+    }
+}

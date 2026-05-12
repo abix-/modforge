@@ -12,6 +12,16 @@
 
 Newest first.
 
+## 2026-05-12 (proptest scanner round-trips)
+
+- 8 new property tests on `scanner::Val::from_json` covering
+  every numeric `Ty` (u8/i8/u16/i16/u32/i32/u64/i64/f32/f64).
+  Each runs across the full domain and asserts the bytes
+  match `value.to_le_bytes()`. f32/f64 use bits comparison so
+  NaN payloads survive the round trip. Plus 4 unit tests on
+  out-of-range rejection + `parse_addr` hex prefix handling.
+  scanner.rs previously had zero tests.
+
 ## 2026-05-12 (insta adoption seed)
 
 - **`insta` 1** added as a workspace + ueforge dev-dep with
