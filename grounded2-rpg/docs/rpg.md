@@ -80,10 +80,10 @@ shape adds one Effect impl + static instance and references it from one CATALOG 
 | Leap Distance    | movement   | +500% AirControl + boost mult + boost threshold |
 | Glide Speed      | movement   | +300% MaxFlySpeed                |
 | Fall Damage Resistance | survival | targets fall mitigation; field writes are confirmed, but full immunity is not verified yet |
-| Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Implemented as a `RuntimeEffect` (no CDO write): the `damage::DamageHook` binder's `after` callback in `kill_hook.rs` identifies environmental events by `FDamageInfo.DamageType` class name containing "Environmental" and subtracts `damage * reduction` from the player HC's `CurrentDamage` post-application. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
+| Impact Damage Resistance | survival | -100% environmental damage at L100. Per-level sqrt scaling. Catalog row: `trigger: &ON_DAMAGE_TAKEN`, `effect: &effects::IMPACT_REVERSAL` (`ImpactReversalEffect`). Per damage taken event the framework fires `TriggerCtx::DamageTaken`; the Effect short-circuits unless `victim_is_player` and `FDamageInfo.DamageType` name contains "Environmental", then subtracts `damage * sqrt(level/100)` from `event.victim_component`'s CurrentDamage. Does NOT touch fall damage, creature combat, or heals. Bandages work normally. |
 | Max Health       | survival   | +200 HP via `Standard(PlayerSubcomponentAdditive)`. Captures vanilla MaxHealth on first sight, writes `vanilla + bonus * progress` on player CDOs + live pawn. |
 | Health Regen     | survival   | +500% out-of-combat regen tick % + 6x tick rate (UGlobalCombatData) via `Standard(ClassFieldsMultiply)` with `(offset, exponent)` pairs. Exponent +1 for tick-pct (grow), -1 for tick-rate (shrink). |
-| Lifesteal        | combat     | +90% of damage dealt healed back. **Live as of 2026-05-10.** Catalog row is `Standard(Runtime)`; the binder's `after` callback in `kill_hook.rs` reads the tracker level on every player-dealt non-player hit, walks the live player HC, and decrements `CurrentDamage` by `damage * 0.90 * sqrt(level/100)`. Honors the skill-disabled toggle. |
+| Lifesteal        | combat     | +90% of damage dealt healed back. Catalog row: `trigger: &ON_DAMAGE_DEALT`, `effect: &effects::LIFESTEAL` (`LifestealEffect`). The framework fires `TriggerCtx::DamageDealt` on every player-instigator hit; the Effect short-circuits unless `attacker_is_player && !victim_is_player && damage > 0`, then walks the live player HC and decrements `CurrentDamage` by `damage * 0.90 * sqrt(level/100)`. DisabledSkills toggle handled by `Tracker::fire` (skipped at dispatch). |
 
 ### Per-level scaling
 
@@ -239,18 +239,24 @@ The four arms in `apply_skill`:
 | `SurvivalDrain` | Hunger, Thirst | Walk SurvivalComponent CDO, write `vanilla * settings_mult * (1 - skill_red * progress)`. |
 | `PlayerFallDamageReduction` | Fall Damage Resistance | Multi-component composite: HC ratio + GMS CDO + SMMC live + `UpdateCustomSettings` UFunction. |
 
-Live-damage skills (Lifesteal today, Critical / Evasion / Thorns
-to come) ride on the `damage::DamageHook` framework. They're
-catalog rows whose effect references a `RuntimeEffect` static and
-the binder's `before` / `after` callbacks in `kill_hook.rs` do
-the actual heal / mutate / reflect.
+Live-damage skills (Lifesteal + Impact Resistance today;
+Critical / Evasion / Thorns to come) ride on the
+`damage::DamageHook` framework via the event-driven trigger
+system. Each is a catalog row with `trigger: &ON_DAMAGE_DEALT`
+or `&ON_DAMAGE_TAKEN`; the framework `Tracker::fire(ctx)` fans
+events out to subscribed Effects. `G2DamageBinder` in
+`kill_hook.rs` calls `TRACKER.fire(DamageDealt)` in `before` and
+`TRACKER.fire(DamageTaken)` in `after`; the Effect impl
+(`LifestealEffect`, `ImpactReversalEffect`) does the actual heal
+/ mutate / reflect via TypedField writes on the resolved
+component.
 
 CDO writes propagate to newly-spawned instances. Movement skills
 also mirror the same writes onto the *current* player pawn (the
 framework's `PlayerSubcomponentMultiply` variant does this in
 both directions). Lifesteal (post-application heal) lives via
-the damage-hook binder + a direct `CurrentDamage` decrement on
-the live HC.
+the `ON_DAMAGE_DEALT` trigger + a direct `CurrentDamage`
+decrement on the live HC from inside `LifestealEffect::apply`.
 
 ### Fall damage and environmental damage
 
@@ -303,15 +309,15 @@ mechanisms because the underlying damage paths differ. See
   forwarding to the original BP event. Native `ApplyFallDamage`
   reads the mutated velocity live and produces scaled / zero damage.
   Validated: -3431 cm/s landing at level 100 -> zero damage.
-- **Impact Damage Resistance** uses
-  `RuntimeEffect`. No CDO write. The
-  `damage::DamageHook` binder's `after` callback identifies
-  environmental events by `FDamageInfo.DamageType` class name
-  containing "Environmental" and subtracts
-  `damage * sqrt(level/100)` from the player HC's
-  `CurrentDamage` post-application. Bandages work normally
-  because the reversal only fires on environmental damage,
-  not heals or creature combat. This replaced the older
+- **Impact Damage Resistance** uses `ImpactReversalEffect`
+  subscribed to `&ON_DAMAGE_TAKEN`. No CDO write. The
+  `damage::DamageHook` binder fires `TriggerCtx::DamageTaken`
+  via `TRACKER.fire`; the Effect identifies environmental events
+  by `FDamageInfo.DamageType` class name containing
+  "Environmental" and subtracts `damage * sqrt(level/100)` from
+  the player HC's `CurrentDamage` post-application. Bandages
+  work normally because the reversal only fires on environmental
+  damage, not heals or creature combat. This replaced the older
   binary-mask approach (`RequiredDamageTypeFlags = 0xFFFFFFFF`)
   which blocked bandage heal-ticks; see changelog 2026-05-09
   for the migration. Full sqrt-curve scaling now works (level

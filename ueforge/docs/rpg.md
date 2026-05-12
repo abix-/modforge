@@ -176,15 +176,31 @@ shipped (PE re-entry hazard; gated on Wave E1 safe drain site).
 ## Triggers
 
 Each catalog row carries `trigger: &'static TriggerDef`. The
-framework ships `ON_SLOT_CHANGE` (the trigger every CDO-write
-skill uses); future event-driven triggers (`OnDamageDealt`,
-`OnKill`, `OnFall`, `Periodic`) will land in the framework so
-event-driven skills declare them inline.
+framework ships five firers as of Phase 5c (2026-05-11):
 
-`Tracker` fires `TriggerCtx::SlotChange` on activate / spend /
-refund / toggle. Per-trigger event dispatchers (lifted from
-today's `kill_hook` / `fall_hook` / `damage::DamageHook`) fire
-the typed variants when their underlying event happens.
+| TriggerDef | Variant fired | Source |
+|---|---|---|
+| `ON_SLOT_CHANGE` | `TriggerCtx::SlotChange` | `Tracker::activate_slot` / spend / refund / reapply_* |
+| `ON_DAMAGE_DEALT` | `TriggerCtx::DamageDealt(&damage::DamageEvent)` | Game-side `DamageBinder::before` calls `TRACKER.fire` |
+| `ON_DAMAGE_TAKEN` | `TriggerCtx::DamageTaken(&damage::DamageEvent)` | Game-side `DamageBinder::after` calls `TRACKER.fire` |
+| `ON_KILL` | `TriggerCtx::Kill(&KillEvent)` | Game-side binder on confirmed kill |
+| `ON_FALL` | `TriggerCtx::Fall(&FallEvent)` | `ueforge::fall::FallBinder` calls `TRACKER.fire` |
+
+`Tracker::fire(ctx)` walks the catalog under a single
+`inner.lock()`, snapshots `(skill, level)` pairs for subscribed
+skills (filter: `skill.trigger.kind` matches the `ctx` variant)
+into a 32-slot stack array, drops the lock, then calls
+`Effect::apply` outside the lock so an Effect that re-enters
+Tracker (e.g. an OnKill effect calling `record_xp`) cannot
+deadlock. Zero heap allocs per fire.
+
+`Tracker::apply_one_unlocked` (drives activate / spend / refund /
+reapply_*) filters to OnSlotChange-kinded skills only.
+Event-driven Effects only fire on their event source, never via
+SlotChange.
+
+`TriggerCtx::Tick { dt }` is a reserved variant with no firer
+yet (periodic poller defers until a periodic skill needs it).
 
 See [architecture.md](architecture.md) "Composition model" for
 the full Hook vs Trigger layering rationale.

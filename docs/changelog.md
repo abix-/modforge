@@ -12,6 +12,83 @@
 
 Newest first.
 
+## 2026-05-11 (Triggers Phase 5c. event-driven catalog dispatch)
+
+Five commits ship the event-driven trigger system end-to-end
+(3516276..2b2c66d) plus tracking updates (60e1ece..9c01f3a).
+Lifesteal + impact resistance are now real catalog rows with
+their own EffectDef + TriggerDef; fall_hook PE plumbing lives in
+ueforge; every g2rpg damage / kill / fall event flows through
+`Tracker::fire`.
+
+### Framework
+
+- Real event types replace the three stubs:
+  `KillEvent { victim, victim_class_name, attacker,
+  attacker_is_player, damage }`, `FallEvent { player, cmc,
+  velocity_z_before }`. `TriggerCtx::DamageDealt / DamageTaken`
+  reuse `ueforge::damage::DamageEvent`.
+- Four new framework `TriggerDef`s: `ON_DAMAGE_DEALT`,
+  `ON_DAMAGE_TAKEN`, `ON_KILL`, `ON_FALL`.
+- `Tracker::fire(ctx)` event dispatch. Walks the catalog under
+  one `inner.lock()`, snapshots `(skill, level)` pairs to a
+  32-slot stack array, drops the lock, then calls `Effect::apply`
+  outside the lock so effects can re-enter Tracker (record_xp,
+  etc.) without deadlocking. Zero heap allocs per fire. Kind is
+  matched from the ctx variant.
+- New `ueforge::fall::FallHook<B>` module mirroring
+  `ueforge::damage::DamageHook` shape. PE-install +
+  LazyFunctionPtr OnLanded filter + Velocity.Z snapshot from CMC
+  + before/after dispatch. `FallEvent.cmc: Option<&UObject>` lets
+  binders/effects write Velocity.Z without re-resolving the
+  pointer offset.
+- `Tracker::apply_one_unlocked` filters to OnSlotChange-kinded
+  skills only. Event-driven Effects no longer get spurious
+  SlotChange fires on activate / spend / refund / toggle.
+
+### Grounded 2 migration
+
+- `fall_hook.rs` collapses from ~270 to ~210 LoC; PE-install
+  plumbing now in `ueforge::fall::FallHook`. The G2FallBinder
+  owns the G2 bits: PE-queue drain, velocity stomp for
+  fall_resistance, fan-out via `TRACKER.fire(TriggerCtx::Fall)`.
+  Status-effect snapshot helpers stay in the file (used by debug
+  endpoint).
+- `effects.rs` adds `LifestealEffect` (subscribed to
+  `ON_DAMAGE_DEALT`) and `ImpactReversalEffect`
+  (`ON_DAMAGE_TAKEN`). Both `let-else` on the TriggerCtx variant
+  they want and short-circuit otherwise.
+- `kill_hook.rs` `G2DamageBinder` lost ~70 LoC: dropped
+  `apply_lifesteal` and `apply_impact_resistance_reversal`
+  (moved to Effects). Now fires `TRACKER.fire(DamageDealt)` on
+  player-instigator hits in `before()`, `TRACKER.fire(DamageTaken)`
+  on player-target hits in `after()`, and `TRACKER.fire(Kill)` on
+  confirmed creature kills. Kill credit + KillerKind classifier
+  stay in the binder (XP bookkeeping, not a catalog skill).
+- `skills.rs` catalog rows: `SKILL_LIFESTEAL` ->
+  `trigger=ON_DAMAGE_DEALT` with `LifestealEffect`;
+  `SKILL_IMPACT_RESISTANCE` -> `trigger=ON_DAMAGE_TAKEN` with
+  `ImpactReversalEffect`. Drops two `RuntimeEffect` placeholders.
+
+### Hygiene
+
+- Every unsafe block added in 5c.1..5c.5 carries a `// SAFETY:`
+  comment (clippy::undocumented_unsafe_blocks is workspace-warn).
+
+### Deferred from 5c
+
+- `TriggerCtx::Tick { dt }` reserved variant has no firer.
+  Periodic poller defers until a periodic skill needs it.
+- Generic ueforge-side `FallVelocityStompEffect` is not in the
+  standard effect library. G2's stomp lives in G2FallBinder
+  because SKILL_FALL_RESISTANCE already uses ON_SLOT_CHANGE for
+  CDO writes (PlayerFallDamageReductionEffect); promoting to a
+  second SkillDef would be ugly UX. Revisit if a second game
+  wants the stomp.
+
+In-game smoke test pending. ueforge 67/67 unit tests pass; both
+crates build clean release. Behavior should be unchanged.
+
 ## 2026-05-10 (composition model. Effects + Triggers + Skills)
 
 The architectural shift articulated in
