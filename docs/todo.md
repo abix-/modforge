@@ -344,10 +344,18 @@ In-game smoke test (P0 below) is the acceptance gate.
 - [ ] **UE-version-aware `ffield` / `fproperty` / `ustruct`
   offsets.** Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
   silently returns wrong names. Pair with the sig-scan work.
-- [ ] **Fuzz / property tests on walkers.** `TArray`, `TMap`,
-  `FieldTweak`, `inspect_address`, `Val::from_json`. Today's
-  `MAX_LINEAR_SCAN = 65_536` is an iteration cap; bound time, not
-  iterations.
+- [/] **Boundary / property tests on walkers.** `tarray.rs`
+  gets 5 unit tests (empty default, negative num, null data,
+  slice round-trip, repr(C) layout). `tmap.rs` gets 7 (empty
+  map, single slot, find-by-key hit / miss / null-value, null
+  data ptr, negative num). Both walkers now have boundary-input
+  defenses verified at unit-test time; the engine-supplied
+  garbage states (negative num, null data, key-matched-but-
+  value-null free slot) all short-circuit cleanly. The
+  cargo-fuzz / proptest fuzzing layer is still open if we want
+  to throw random byte slabs at FieldTweak / inspect_address /
+  Val::from_json; the boundary coverage above catches the cases
+  we've actually seen crash the host historically.
 - [x] **`UE4SS.lib` build-time symbol-presence check.** Naive
   byte-scan of `ueforge/ue4ss/UE4SS.lib` for the two MSVC-mangled
   symbols `ueforge_shim.cpp` imports (`?get_current_imgui_
