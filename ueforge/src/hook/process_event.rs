@@ -33,6 +33,11 @@ impl OriginalProcessEvent {
         // if the handler panics AFTER this returns. Double-call on
         // a kill multicast would double-credit XP.
         CALLED_ORIGINAL.with(|c| c.set(true));
+        // SAFETY: `self.f` was captured from the patched vtable slot
+        // at install time; it has the engine's ProcessEvent ABI.
+        // Caller's `unsafe fn` contract requires this/function to
+        // be live UObject + UFunction (handed in by the engine
+        // trampoline that called us).
         unsafe { (self.f)(this as *const UObject, function as *const UFunction, parms) };
     }
 }
@@ -82,7 +87,14 @@ pub struct HookDef {
 // engine memory; those pointers are only dereferenced from the
 // trampoline / shutdown path under invariants documented in
 // hooks.md. The handler closure is Send + Sync by trait bound.
+// SAFETY: HookDef holds an immutable `&'static` slot pointer + raw
+// vtable / original function pointers (read-only after install)
+// plus AtomicUsize / AtomicU64 counters + a Send+Sync boxed
+// handler. Nothing requires non-Sendability.
 unsafe impl Send for HookDef {}
+// SAFETY: see Send impl. The trampoline reads through SNAPSHOT
+// (ArcSwap of leaked entries) without taking any lock; immutable
+// fields are safe to share across the trampoline threads.
 unsafe impl Sync for HookDef {}
 
 impl HookDef {
@@ -154,6 +166,10 @@ impl ProcessEventHook {
         let cls: &UClass = find_class_fast(class_name).ok_or("class not found")?;
         let cdo = cls.class_default_object().ok_or("class has no CDO")?;
 
+        // SAFETY: cdo is the class default object returned by
+        // `class_default_object()` (a live UObject). Reading its
+        // first 8 bytes as a vtable pointer matches every C++ UE
+        // class layout on x86-64; offsets::uobject::VTABLE is 0.
         let vtable: *mut *mut c_void = unsafe {
             (cdo as *const UObject as *const u8)
                 .add(ue::offsets::uobject::VTABLE)
@@ -168,11 +184,19 @@ impl ProcessEventHook {
             .ok_or("ueforge runtime not initialized; install hooks AFTER init_runtime")?
             .platform_offsets
             .process_event_idx;
+        // SAFETY: vtable points at the class's virtual-method
+        // table; slot_idx is the platform-configured index of
+        // ProcessEvent within that table.
         let slot = unsafe { vtable.add(slot_idx) };
+        // SAFETY: vtable slots are pointer-sized; the slot
+        // contains the engine's ProcessEvent function pointer.
         let original_raw = unsafe { *slot };
         if original_raw.is_null() {
             return Err("ProcessEvent slot is null");
         }
+        // SAFETY: original_raw is a *mut c_void that we know is
+        // the engine's ProcessEvent fn pointer. Transmute to the
+        // typed ProcessEventFn matches the engine's ABI signature.
         let original: ProcessEventFn = unsafe { std::mem::transmute(original_raw) };
 
         // Leak the entry: lifetimes must outlive every dispatch, even if the
@@ -199,6 +223,10 @@ impl ProcessEventHook {
             publish_snapshot(&reg);
         }
 
+        // SAFETY: vtable::write_slot wraps the page-protection
+        // dance via region::protect_with_handle. slot is the
+        // ProcessEvent slot we just read from; trampoline is our
+        // static fn whose ABI matches the engine's ProcessEventFn.
         let prev = unsafe { vtable::write_slot(slot, trampoline as *mut c_void) };
         if prev.is_none() {
             // back out: remove from registry, leak entry (rare path)
@@ -274,6 +302,10 @@ impl Drop for ProcessEventHook {
         // 1. Restore the engine's original ProcessEvent slot.
         //    New PE calls go straight to the engine; our trampoline
         //    is no longer reached.
+        // SAFETY: self.entry.slot was captured at install time +
+        // remains valid for process lifetime (leaked HookDef);
+        // self.entry.original is the engine fn pointer we cached
+        // before patching.
         unsafe {
             vtable::write_slot(self.entry.slot, self.entry.original as *mut c_void);
         }
@@ -311,6 +343,10 @@ unsafe extern "system" fn trampoline(
     parms: *mut c_void,
 ) {
     // Look up the entry whose vtable matches the incoming object's vtable.
+    // SAFETY: `this` is the engine-supplied UObject pointer to
+    // the trampoline. Reading its first 8 bytes as the vtable
+    // matches the standard C++/UE class layout (UE puts the
+    // vtable at offset 0).
     let live_vtable: *mut *mut c_void = unsafe {
         (this as *const u8)
             .add(ue::offsets::uobject::VTABLE)
@@ -335,6 +371,10 @@ unsafe extern "system" fn trampoline(
     // Skip the handler and forward to the engine to avoid touching
     // a dying state.
     if SHUTTING_DOWN.load(Ordering::Acquire) {
+        // SAFETY: original wraps the engine's captured fn ptr;
+        // this/function are the engine-supplied call args; we
+        // pass through unchanged during shutdown to avoid
+        // touching a dying handler.
         unsafe { original.call(&*this, &*function, parms) };
         return;
     }
@@ -344,6 +384,9 @@ unsafe extern "system" fn trampoline(
     // (handler -> UFunction -> our hook again) don't corrupt the
     // outer frame's "called original" state.
     let prev_called = CALLED_ORIGINAL.with(|c| c.replace(false));
+    // SAFETY: this/function are engine-supplied UObject + UFunction
+    // pointers (live for the duration of the call); we
+    // dereference them to satisfy the handler's typed signature.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         (entry.handler)(&*this, &*function, parms, original)
     }));
@@ -361,6 +404,8 @@ unsafe extern "system" fn trampoline(
             // handler had already called original, do NOT call it
             // again. That would double-fire the multicast (e.g.
             // double-credit XP on a kill).
+            // SAFETY: same as the SHUTTING_DOWN passthrough above;
+            // engine-supplied args, captured fn ptr.
             unsafe { original.call(&*this, &*function, parms) };
         }
     }

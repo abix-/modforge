@@ -22,6 +22,33 @@
 //! the life of the UE process once they exist in GObjects. The
 //! handle hands out `&'static` references; callers that want a
 //! shorter lifetime can re-borrow.
+//!
+//! ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//!
+//! Two block shapes appear in this file:
+//!
+//! 1. **`GObjectsView::from_image(rt.image_base, rt.platform_offsets)`**:
+//!    builds the read-only GObjects walker. Safe given a valid
+//!    `try_runtime()` (the runtime is set once by
+//!    `detect_and_init` from `DllMain`-adjacent code; every
+//!    caller in this file precedes the build with a
+//!    `let Some(rt) = try_runtime()?` so the image_base +
+//!    offsets are the values that runtime init validated).
+//!
+//! 2. **`*const UObject` -> `&'static UObject` lifetime
+//!    extension** (and the same for `UClass` / `UFunction`):
+//!    every yielded object came from the GObjects walker, which
+//!    only yields live UObjects that the engine has registered.
+//!    UObjects live for the process lifetime; CDOs + UFunctions
+//!    live as long as their owning UClass. `'static` extension
+//!    is the standard contract documented in
+//!    `selector::resolve_generic`.
+//!
+//! Both shapes are categorically safe given the
+//! framework-internal invariants. We allow the workspace lint at
+//! the module level rather than repeat the same SAFETY comment
+//! 10 times.
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::sync::OnceLock;
 

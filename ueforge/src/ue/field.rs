@@ -11,6 +11,28 @@
 //! `write_unaligned` on `obj.field_ptr(offset)`. The pointer is
 //! valid as long as the &UObject is, which is the caller's
 //! responsibility.
+//!
+//! ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//!
+//! Every `unsafe { (obj.field_ptr(offset) as *const T).read_*() }`
+//! (and write variant) call in this file shares the same
+//! invariants:
+//!
+//! 1. The caller holds a `&UObject` reference; for the duration of
+//!    that borrow, `field_ptr(offset)` produces a valid byte pointer
+//!    into the live object's storage.
+//! 2. The caller is responsible for the offset being a real `T`
+//!    field on this UObject (the framework's `TypedField<T>`
+//!    structure exists specifically to encode this at the type
+//!    level; these untyped helpers trust the caller's offset).
+//! 3. `read_unaligned` / `write_unaligned` is robust to odd
+//!    alignment on the UE-side struct layout; no `T` we touch
+//!    here is `Drop`, so no in-place destructor concerns.
+//!
+//! These are categorically safe given (1)-(3); we allow the
+//! workspace lint at the module level rather than repeating the
+//! same SAFETY comment 11 times.
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 use crate::ue::UObject;
 

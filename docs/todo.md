@@ -303,17 +303,20 @@ In-game smoke test (P0 below) is the acceptance gate.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
 - [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
-  comments. Down from 271 -> 187 across this session. Files
-  fully annotated: `ue/tmap.rs`, `ue/tarray.rs`, `ue/sigscan.rs`,
-  `damage/mod.rs`, `inventory/viewport.rs`. Files with documented
-  module-level `#![allow(clippy::undocumented_unsafe_blocks)]`:
-  `ui.rs` (universal FFI contract for all `ueforge_ui_*` exts).
-  The remaining 187 are in `winproc.rs` (45), `ops.rs` (42),
-  `ue/uobject.rs` (39), `data_table.rs` (25), `hook/
-  process_event.rs` (13), `ue/field.rs` (11), `ue/class_ref.rs`
-  (10), and the long-tail single-block files. Chip away
-  file-by-file during normal edits; bump the lint to `deny` when
-  the count reaches zero.
+  comments. Down from 271 -> 156 across this session (-115).
+  Files fully annotated with per-block SAFETY: `ue/tmap.rs`,
+  `ue/tarray.rs`, `ue/sigscan.rs`, `damage/mod.rs`,
+  `inventory/viewport.rs`, `hook/process_event.rs`. Files with
+  documented module-level
+  `#![allow(clippy::undocumented_unsafe_blocks)]`:
+  `ui.rs` (universal FFI contract for all `ueforge_ui_*` exts),
+  `ue/field.rs` (untyped read_*/write_* on `obj.field_ptr`),
+  `ue/class_ref.rs` (`GObjectsView::from_image` + `&'static`
+  lifetime extension on engine-returned UObject refs). The
+  remaining 156 are in `winproc.rs` (45), `ops.rs` (42),
+  `ue/uobject.rs` (39), `data_table.rs` (25), and the long-tail
+  single-block files. Chip away file-by-file during normal edits;
+  bump the lint to `deny` when the count reaches zero.
 
 ## P2. Ueforge grooming
 
