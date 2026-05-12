@@ -586,6 +586,10 @@ where
     let obj = resolve(&selector)?;
     check_object_bounds(obj, offset, length)?;
     let mut out = vec![0u8; length];
+    // SAFETY: check_object_bounds verified `[offset, offset+length)`
+    // lies within `obj`'s allocation; copy_nonoverlapping reads
+    // `length` bytes from that region into the freshly-allocated
+    // `out` vector (non-overlapping because `out` is a new alloc).
     unsafe {
         let base = obj.field_ptr(offset);
         std::ptr::copy_nonoverlapping(base, out.as_mut_ptr(), length);
@@ -611,6 +615,11 @@ where
     }
     let obj = resolve(&selector)?;
     check_object_bounds(obj, offset, bytes.len())?;
+    // SAFETY: check_object_bounds verified the write range fits;
+    // bytes is a Vec<u8> from the parsed hex input; the
+    // destination is owned by `obj`. copy_nonoverlapping
+    // semantics: source and destination don't alias (bytes
+    // came from a separate heap allocation).
     unsafe {
         let dst = obj.field_ptr(offset) as *mut u8;
         std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
@@ -636,6 +645,9 @@ pub fn walk_class(args: &Json) -> Result<Json, String> {
     let rt = ue::try_runtime().ok_or("ueforge: ue runtime not initialized")?;
     let class = ue::find_class_fast(&class_name)
         .ok_or_else(|| format!("class '{class_name}' not found"))?;
+    // SAFETY: rt was returned by try_runtime(), which is set
+    // once by detect_and_init from DllMain-adjacent code; the
+    // image_base + offsets pair is what runtime init validated.
     let view = unsafe { ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return Err("gobjects view invalid".to_string());
@@ -680,8 +692,15 @@ pub fn walk_class(args: &Json) -> Result<Json, String> {
 /// Result: `{ "string": "<name>" }`.
 pub fn fname_to_string(args: &Json) -> Result<Json, String> {
     let raw = arg_u64(args, "fname", None)?;
+    // SAFETY: FName is an 8-byte { comparison_index: i32,
+    // number: u32 } struct; transmute_copy from a u64 with the
+    // same little-endian byte layout is well-defined.
     let fname: FName = unsafe { std::mem::transmute_copy(&raw) };
     let rt = ue::try_runtime().ok_or("ueforge: ue runtime not initialized")?;
+    // SAFETY: rt.name_resolver is initialized at runtime detect;
+    // to_string accepts any FName (including ones whose
+    // comparison_index is out of range. It returns a fallback
+    // string rather than panicking).
     let s = unsafe { rt.name_resolver.to_string(fname) };
     Ok(serde_json::json!({ "string": s }))
 }
@@ -696,6 +715,9 @@ fn locate_property(
     class: &UObject,
     offset_in_instance: u32,
 ) -> Option<(String, u32, u32)> {
+    // SAFETY: caller passes a UObject that IS a UClass instance
+    // (resolved via find_class_fast); UClass extends UObject in
+    // memory layout so the cast is well-defined.
     let mut cur: Option<&ue::UClass> = Some(unsafe {
         &*(class as *const UObject as *const ue::UClass)
     });
@@ -749,6 +771,9 @@ pub fn inspect_address(args: &Json) -> Result<Json, String> {
     let target = parse_addr(addr_str)?;
 
     let rt = ue::try_runtime().ok_or("ueforge: ue runtime not initialized")?;
+    // SAFETY: rt was returned by try_runtime(), which is set
+    // once by detect_and_init from DllMain-adjacent code; the
+    // image_base + offsets pair is what runtime init validated.
     let view = unsafe { ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
     if !view.is_valid() {
         return Err("gobjects view invalid".into());
@@ -824,6 +849,13 @@ pub fn exec_call(
     let func = class.get_function(class_name, function_name).ok_or_else(|| {
         format!("function '{function_name}' not found on '{class_name}'")
     })?;
+    // SAFETY: `instance` is a live UObject; `func` is its
+    // UFunction returned by get_function (also live in
+    // GObjects); `parms.as_mut_ptr()` points at a Vec<u8> buffer
+    // owned by this fn for the duration of the call. The engine
+    // reads from + writes into the buffer per the UFunction's
+    // parm layout (caller is responsible for sizing parms
+    // correctly via the framework's parm_size helpers).
     unsafe {
         instance.process_event(func, parms.as_mut_ptr() as *mut c_void);
     }

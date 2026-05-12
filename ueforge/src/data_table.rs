@@ -1123,17 +1123,27 @@ impl<T: Copy + PartialEq + Send + 'static> ClassNamedFieldTweak<T> {
 /// Returns `None` if the table can't be resolved or has no RowStruct.
 pub fn snapshot_table(table_name: &str, max_rows: Option<usize>) -> Option<Json> {
     let table = ue::datatable::find_by_short_name(table_name)?;
+    // SAFETY: `table` is a live UDataTable; ROW_STRUCT is the
+    // documented offset of its `RowStruct` UScriptStruct pointer.
+    // read_unaligned because nothing guarantees pointer alignment
+    // on the row layout.
     let row_struct_ptr: *const UObject = unsafe {
         (table.as_ptr().add(crate::ue::offsets::datatable::ROW_STRUCT)
             as *const *const UObject)
             .read_unaligned()
     };
+    // SAFETY: row_struct_ptr was just read from the live table;
+    // .as_ref() returns None for null without dereferencing.
     let row_struct = unsafe { row_struct_ptr.as_ref()? };
     let schema = ue::probe::walk_struct_fields(row_struct);
 
     let rt = ue::try_runtime()?;
     let mut rows: Vec<Json> = Vec::new();
     let mut total_rows = 0usize;
+    // SAFETY: iter_rows is documented as unsafe over the live
+    // UDataTable + its row map; each yielded (fname, ptr) pair is
+    // valid while we hold the &UObject. transmute of fname_key
+    // u64 to FName matches the engine's 8-byte FName layout.
     unsafe {
         for (fname_key, row_ptr) in ue::datatable::iter_rows(table) {
             total_rows += 1;
@@ -1314,6 +1324,10 @@ fn decode_row_fields(row_ptr: *const u8, schema: &[Json]) -> Json {
         let class = f["class"].as_str().unwrap_or("");
         let offset = f["offset"].as_i64().unwrap_or(0) as usize;
         let element_size = f["element_size"].as_i64().unwrap_or(0) as usize;
+        // SAFETY: row_ptr came from iter_rows (a live row in a
+        // live UDataTable); offset / element_size / class came
+        // from the discovery cache's reflected FProperty chain so
+        // the byte read matches the engine's row layout.
         let value = unsafe { decode_field(row_ptr, offset, element_size, class) };
         map.insert(name, value);
     }
@@ -1321,6 +1335,14 @@ fn decode_row_fields(row_ptr: *const u8, schema: &[Json]) -> Json {
 }
 
 unsafe fn decode_field(row_ptr: *const u8, offset: usize, element_size: usize, class: &str) -> Json {
+    // SAFETY: caller's `unsafe fn` contract requires row_ptr +
+    // offset to be a valid byte address within a live row, and
+    // `class` to be the FProperty class name reflected for that
+    // field. Each match arm casts to the matching T and reads
+    // via read_unaligned (or unaligned-safe slice construction
+    // for FString/raw bytes). No allocation happens through a
+    // raw pointer; `&*ptr` extension for Object* yields a UObject
+    // ref whose lifetime is tied to GObjects.
     unsafe {
         let p = row_ptr.add(offset);
         match class {

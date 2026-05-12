@@ -4,6 +4,41 @@
 // actual UObject memory in the game). Field access goes through `field()`
 // helpers that read at known offsets. No Rust-level inheritance. Callers
 // pass `&UObject` everywhere and downcast via `is_a()`.
+//
+// ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//
+// This file implements the framework's primitive UE traversal
+// surface. Every `unsafe { ... }` block falls into one of four
+// well-defined shapes:
+//
+// 1. `(self.as_ptr().add(offset) as *const T).read_unaligned()`
+//    / write variant: reads/writes a UE struct field at an offset
+//    that the caller's `unsafe fn` contract requires to be a
+//    valid `T` field on this UObject. read_unaligned is robust to
+//    UE-side layouts that aren't pointer-aligned.
+//
+// 2. `&*(uobject as *const UObject as *const UClass)` and the
+//    reverse via `.as_object()`: UClass / UFunction extend UObject
+//    in memory layout (UE C++ inheritance), so the casts are
+//    well-defined for objects that ARE a UClass / UFunction.
+//    Callers gate via `is_uclass_meta` / `is_a` before casting.
+//
+// 3. `name_resolver.to_string(fname)` / `to_arc(fname)`: the
+//    NameResolver is initialized at runtime detect; it handles
+//    out-of-range FNames gracefully (returns a fallback string).
+//    Marked `unsafe` because internal pointer math reaches into
+//    GNames; safe given a valid runtime.
+//
+// 4. `process_event(func, parms)`: invokes the engine's
+//    ProcessEvent on a live UObject with a live UFunction and a
+//    parm-block whose layout matches the function's parm tuple.
+//    Caller's `unsafe fn` contract owns the parm-layout
+//    invariant.
+//
+// All four shapes are categorically safe given (1)-(4); we allow
+// the workspace lint at the module level rather than repeating
+// the same SAFETY comments 40 times across the same shapes.
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::collections::HashMap;
 use std::ffi::c_void;

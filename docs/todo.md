@@ -303,20 +303,23 @@ In-game smoke test (P0 below) is the acceptance gate.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
 - [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
-  comments. Down from 271 -> 156 across this session (-115).
+  comments. Down from 271 -> 110 across this session (-161).
   Files fully annotated with per-block SAFETY: `ue/tmap.rs`,
   `ue/tarray.rs`, `ue/sigscan.rs`, `damage/mod.rs`,
-  `inventory/viewport.rs`, `hook/process_event.rs`. Files with
+  `inventory/viewport.rs`, `hook/process_event.rs`,
+  `data_table.rs`, `ops.rs` (top-level handlers). Files with
   documented module-level
-  `#![allow(clippy::undocumented_unsafe_blocks)]`:
-  `ui.rs` (universal FFI contract for all `ueforge_ui_*` exts),
-  `ue/field.rs` (untyped read_*/write_* on `obj.field_ptr`),
-  `ue/class_ref.rs` (`GObjectsView::from_image` + `&'static`
-  lifetime extension on engine-returned UObject refs). The
-  remaining 156 are in `winproc.rs` (45), `ops.rs` (42),
-  `ue/uobject.rs` (39), `data_table.rs` (25), and the long-tail
-  single-block files. Chip away file-by-file during normal edits;
-  bump the lint to `deny` when the count reaches zero.
+  `#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
+  universal-contract module doc: `ui.rs` (FFI-call uniform
+  shape), `ue/field.rs` (untyped read_*/write_* on
+  `obj.field_ptr`), `ue/class_ref.rs` (`GObjectsView::from_image`
+  + `&'static` lifetime extension), `ue/uobject.rs` (the four
+  primitive shapes: field_ptr math / UClass-UFunction-UObject
+  casts / NameResolver / process_event). The remaining 110 are
+  mostly in `winproc.rs` (45, leak-diagnostic mass-walker with
+  distinct per-block invariants) plus the long-tail
+  single-block files. Chip away file-by-file during normal
+  edits; bump the lint to `deny` when the count reaches zero.
 
 ## P2. Ueforge grooming
 
