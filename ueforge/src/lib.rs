@@ -98,6 +98,7 @@ pub mod server;
 pub mod settings;
 pub mod shutdown;
 pub mod stacks;
+pub mod tweak;
 pub mod uasset;
 pub mod ue;
 pub mod ui;

@@ -134,11 +134,27 @@ discovery before snapshot / browser / static catalog rows.
   (always re-base on captured vanilla). Powers a hot-iteration
   loop (curl an op, change a field, curl `tweak_revert` to
   restore) without rebuilding.
-- [ ] **TweakDef unification**. Collapse `stacks::StackDef` +
-  `difficulty::DifficultyDef` + future field tweaks into one
-  Def shape that targets either `(DataTableDef, field)` or
-  `(Class, field)`. The dynamic primitives already cover the
-  shape; the static side is the remaining lift.
+- [x] **TweakDef unification**. `ueforge::tweak::TweakDef` ships
+  with `TweakTarget` (DataTable | Class), `TweakKind` (i32 / f32
+  / u32), `TweakOp` (set / multiply / add), atomic
+  current_value_bits + default_value_bits, six const constructors
+  (`data_table_i32`, `data_table_f32`, `data_table_u32`,
+  `class_i32`, `class_f32`, `class_u32`), load/store helpers
+  per kind, `apply` / `revert` / `reset_to_default` / `resolved`.
+  Plus `TweakRegistry` slice-of-refs wrapper with `apply_all` /
+  `revert_all`. Apply delegates to the existing
+  `data_table::dynamic_apply_*` for DataTable targets and a new
+  symmetric class-tweak dynamic registry (`DYN_CLASS_I32/F32/U32`)
+  for Class targets, so captured vanilla survives across reapplies
+  and shares with the runtime tweak surface.
+- [ ] **Migrate `stacks::StackDef` to `TweakDef`**. Each StackDef
+  becomes a `TweakDef::data_table_i32(..., TweakOp::Multiply, ...)`.
+  Non-breaking via #[deprecated]; collapse StackRegistry into
+  TweakRegistry on the next sweep. Defer until a real second
+  consumer of StackDef (none today; g2rpg + ows-tweaks).
+- [ ] **Migrate `difficulty::DifficultyDef` to `TweakDef`**. Each
+  DifficultyDef becomes a `TweakDef::class_f32(..., TweakOp::
+  Multiply, ...)`. Same deprecation path as Stack.
 - [x] **Persisted-tweak surface**. `<DLL_dir>/tweaks.json`
   written atomically on every successful `tweak_apply`; cleared
   per-entry by `tweak_revert`. Schema 1 envelope:
