@@ -134,11 +134,11 @@ const LEAP_DISTANCE_OFFSETS: &[usize] = &[
 // ---------------------------------------------------------------------
 
 use ueforge::rpg::{
-    ClassFieldsMultiplyEffect, EffectDef, PlayerFloatEffect, RuntimeEffect, SkillDef,
+    ClassFieldsMultiplyEffect, EffectDef, PlayerFloatEffect, SkillDef,
     SkillRegistry, SubcomponentAdditiveEffect, SubcomponentFloatEffect,
     SubcomponentMultiplyEffect,
 };
-use ueforge::rpg::trigger::ON_SLOT_CHANGE;
+use ueforge::rpg::trigger::{ON_DAMAGE_DEALT, ON_DAMAGE_TAKEN, ON_SLOT_CHANGE};
 use ueforge::ue::TypedField;
 
 static EFFECT_ATTACK_DAMAGE: PlayerFloatEffect = PlayerFloatEffect {
@@ -194,13 +194,6 @@ static EFFECT_GLIDE_SPEED: SubcomponentMultiplyEffect = SubcomponentMultiplyEffe
     vanilla: &crate::rpg::apply::MOVEMENT_VANILLA,
 };
 
-static EFFECT_IMPACT_RESISTANCE: RuntimeEffect = RuntimeEffect {
-    max_bonus: 1.0,
-    format: PercentFormat::MinusPercent {
-        word: "environmental damage",
-    },
-};
-
 static EFFECT_MAX_HEALTH: SubcomponentAdditiveEffect = SubcomponentAdditiveEffect {
     player: &crate::rpg::apply::PLAYER,
     component_offset: TypedField::at(crate::rpg::apply::ASC_HEALTH_COMPONENT),
@@ -216,11 +209,6 @@ static EFFECT_HEALTH_REGEN: ClassFieldsMultiplyEffect = ClassFieldsMultiplyEffec
     max_bonus: 5.00,
     format_word: "regen",
     vanilla: &crate::rpg::apply::GLOBAL_DATA_VANILLA,
-};
-
-static EFFECT_LIFESTEAL: RuntimeEffect = RuntimeEffect {
-    max_bonus: 0.90,
-    format: PercentFormat::PlusPercent { word: "lifesteal" },
 };
 
 // ---------------------------------------------------------------------
@@ -305,8 +293,11 @@ pub const CATALOG_ENTRIES: &[SkillDef] = &[
         id: SKILL_IMPACT_RESISTANCE,
         display_name: "Impact Damage Resistance",
         max_level: SKILL_MAX_LEVEL,
-        effect: EffectDef::new("Runtime", &EFFECT_IMPACT_RESISTANCE),
-        trigger: &ON_SLOT_CHANGE,
+        effect: EffectDef::new(
+            "ImpactReversal",
+            &crate::rpg::effects::IMPACT_REVERSAL,
+        ),
+        trigger: &ON_DAMAGE_TAKEN,
     },
     SkillDef {
         id: SKILL_MAX_HEALTH,
@@ -326,8 +317,11 @@ pub const CATALOG_ENTRIES: &[SkillDef] = &[
         id: SKILL_LIFESTEAL,
         display_name: "Lifesteal",
         max_level: SKILL_MAX_LEVEL,
-        effect: EffectDef::new("Runtime", &EFFECT_LIFESTEAL),
-        trigger: &ON_SLOT_CHANGE,
+        effect: EffectDef::new(
+            "Lifesteal",
+            &crate::rpg::effects::LIFESTEAL,
+        ),
+        trigger: &ON_DAMAGE_DEALT,
     },
 ];
 

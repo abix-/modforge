@@ -242,3 +242,144 @@ pub static FALL_DAMAGE: PlayerFallDamageReductionEffect = PlayerFallDamageReduct
 pub(crate) fn vanilla_fall_damage_ratio() -> Option<f32> {
     VANILLA_FALL_DAMAGE_RATIO.get().copied()
 }
+
+// ---------------------------------------------------------------
+// LifestealEffect. Player-instigator damage heals the player.
+// Subscribed to ON_DAMAGE_DEALT; runs inside the DamageHook
+// trampoline before/after the engine's apply (we use the post-
+// engine fire so `event.damage` reflects any pre-mutation by
+// crit/evasion when those land).
+// ---------------------------------------------------------------
+
+pub struct LifestealEffect {
+    pub player: &'static ueforge::ue::PlayerRef,
+    pub health_component_offset: usize,
+    pub current_damage_offset: usize,
+    pub max_fraction: f32,
+}
+
+impl Effect for LifestealEffect {
+    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx) {
+        let ueforge::rpg::TriggerCtx::DamageDealt(event) = ctx else {
+            return;
+        };
+        if !event.attacker_is_player || event.victim_is_player || event.damage <= 0.0 {
+            return;
+        }
+        let progress =
+            ueforge::rpg::progress::sqrt_progress(level, max_level);
+        let fraction = self.max_fraction * progress;
+        let heal = event.damage * fraction;
+        if heal <= 0.0 {
+            return;
+        }
+        unsafe {
+            let Some(pawn) = self.player.first_live_static() else {
+                return;
+            };
+            let Some(hc) =
+                ueforge::ue::field::read_component_ptr(pawn, self.health_component_offset)
+            else {
+                return;
+            };
+            let cd_field: ueforge::ue::TypedField<f32> =
+                ueforge::ue::TypedField::at(self.current_damage_offset);
+            let cd_now = cd_field.read(hc);
+            if cd_now <= 0.0 {
+                return;
+            }
+            let new_cd = (cd_now - heal).max(0.0);
+            cd_field.write(hc, new_cd);
+            ueforge::log!(
+                "rpg/lifesteal: dealt {:.2} -> heal {:.2} (level={}, frac={:.3}); CurrentDamage {:.2} -> {:.2}",
+                event.damage,
+                heal,
+                level,
+                fraction,
+                cd_now,
+                new_cd
+            );
+        }
+    }
+
+    fn format(&self, level: u32, max_level: u32) -> String {
+        ueforge::rpg::format::format_pct(
+            0.0,
+            self.max_fraction,
+            level,
+            max_level,
+            &ueforge::rpg::PercentFormat::PlusPercent { word: "lifesteal" },
+        )
+    }
+}
+
+pub static LIFESTEAL: LifestealEffect = LifestealEffect {
+    player: &apply::PLAYER,
+    health_component_offset: apply::ASC_HEALTH_COMPONENT,
+    current_damage_offset: 0x032C, // UHealthComponent.CurrentDamage
+    max_fraction: 0.90,
+};
+
+// ---------------------------------------------------------------
+// ImpactReversalEffect. After the engine applies damage to the
+// player, subtract the env-damage portion from HC.CurrentDamage.
+// Subscribed to ON_DAMAGE_TAKEN; filters by damage-type name
+// containing "Environmental".
+// ---------------------------------------------------------------
+
+pub struct ImpactReversalEffect {
+    pub damage_info: ueforge::ue::damage_info::DamageInfoLayout,
+    pub current_damage_offset: usize,
+    pub damage_type_marker: &'static str,
+}
+
+impl Effect for ImpactReversalEffect {
+    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx) {
+        let ueforge::rpg::TriggerCtx::DamageTaken(event) = ctx else {
+            return;
+        };
+        if !event.victim_is_player || event.damage <= 0.0 {
+            return;
+        }
+        let damage_type_name = self.damage_info.damage_type_name(event.victim_component);
+        if !damage_type_name.contains(self.damage_type_marker) {
+            return;
+        }
+        let progress =
+            ueforge::rpg::progress::sqrt_progress(level, max_level);
+        let to_reverse = event.damage * progress;
+        let cd_field: ueforge::ue::TypedField<f32> =
+            ueforge::ue::TypedField::at(self.current_damage_offset);
+        unsafe {
+            let cd_now = cd_field.read(event.victim_component);
+            let new_cd = (cd_now - to_reverse).max(0.0);
+            cd_field.write(event.victim_component, new_cd);
+            ueforge::log!(
+                "rpg/impact: reversed env damage {:.2} (raw={:.2}, level={}); CurrentDamage {:.2} -> {:.2}",
+                to_reverse,
+                event.damage,
+                level,
+                cd_now,
+                new_cd
+            );
+        }
+    }
+
+    fn format(&self, level: u32, max_level: u32) -> String {
+        ueforge::rpg::format::format_pct(
+            0.0,
+            1.0,
+            level,
+            max_level,
+            &ueforge::rpg::PercentFormat::MinusPercent {
+                word: "environmental damage",
+            },
+        )
+    }
+}
+
+pub static IMPACT_REVERSAL: ImpactReversalEffect = ImpactReversalEffect {
+    damage_info: crate::rpg::kill_hook::DAMAGE_INFO,
+    current_damage_offset: 0x032C, // UHealthComponent.CurrentDamage
+    damage_type_marker: "Environmental",
+};

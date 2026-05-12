@@ -107,8 +107,15 @@ pub struct KillEvent<'a> {
 pub struct FallEvent<'a> {
     /// The player pawn whose `OnLanded` fired.
     pub player: &'a crate::ue::UObject,
-    /// Live `CharacterMovementComponent.Velocity.Z` snapshot
-    /// taken just before the engine processes the landing.
+    /// Resolved `CharacterMovementComponent` (the pointer at
+    /// `config.char_movement_component_offset` on `player`).
+    /// `None` if the pointer was null. Effects writing
+    /// `Velocity.Z` use this directly to avoid re-resolving the
+    /// offset; the framework already paid the deref cost.
+    pub cmc: Option<&'a crate::ue::UObject>,
+    /// Live `Velocity.Z` snapshot taken from `cmc` just before
+    /// the engine processes the landing. Zero when `cmc` is
+    /// `None`.
     pub velocity_z_before: f64,
 }
 

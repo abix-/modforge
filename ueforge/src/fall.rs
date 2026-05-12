@@ -168,19 +168,20 @@ fn on_event<B: FallBinder>(
         return;
     }
 
-    // Snapshot Velocity.Z before engine reads it.
+    // Snapshot Velocity.Z before engine reads it. Resolve CMC
+    // once and pass to binder/Effects via FallEvent.cmc.
     let cmc_field: TypedField<*mut UObject> =
         TypedField::at(hook.config.char_movement_component_offset);
     let vz_field: TypedField<f64> = TypedField::at(hook.config.velocity_z_offset);
-    let velocity_z_before = unsafe {
-        match cmc_field.deref(this) {
-            Some(cmc) => vz_field.read(cmc),
-            None => 0.0,
-        }
+    let cmc = unsafe { cmc_field.deref(this) };
+    let velocity_z_before = match cmc {
+        Some(c) => unsafe { vz_field.read(c) },
+        None => 0.0,
     };
 
     let event = FallEvent {
         player: this,
+        cmc,
         velocity_z_before,
     };
 

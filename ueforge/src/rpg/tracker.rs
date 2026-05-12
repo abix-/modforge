@@ -537,6 +537,7 @@ mod tests {
         // Phase 1: fire before slot active -> no fires.
         let fev = FallEvent {
             player: fake_uobject(),
+            cmc: None,
             velocity_z_before: -500.0,
         };
         t.fire(&TriggerCtx::Fall(&fev));

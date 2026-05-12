@@ -1,110 +1,82 @@
-use std::ffi::c_void;
+//! G2 binder for `ueforge::fall::FallHook`. PE-install plumbing
+//! and OnLanded filtering live framework-side; this file owns:
+//!
+//! - G2-specific `FallHookConfig` (player BP classes, CMC offset,
+//!   absolute Velocity.Z offset).
+//! - G2FallBinder: drains the debug PE queue, applies the
+//!   Fall Resistance velocity stomp, and fires
+//!   `TriggerCtx::Fall` to subscribers via `TRACKER.fire`.
+//! - Unrelated helpers that have historically lived in this file:
+//!   `snapshot_player_status_effects`, `lookup_data_table_row`.
 
-use ueforge::hook::{LazyFunctionPtr, OriginalProcessEvent, ProcessEventHook};
+use ueforge::fall::{FallBinder, FallHook, FallHookConfig};
+use ueforge::hook::ProcessEventHook;
+use ueforge::rpg::{FallEvent, TriggerCtx};
+use ueforge::ue::TypedField;
+use ueforge::ue::UObject;
+
 use crate::rpg::{skills, tracker};
-use ueforge::ue::{UFunction, UObject};
 
-const PLAYER_FALL_HOOK_CLASSES: &[&str] = &[
-    "BP_SurvivalPlayerCharacter_C",
-    "BP_SurvivalPlayerCharacter_Female02_C",
-    "BP_SurvivalPlayerCharacter_Gellarde_C",
-];
+const G2_FALL_CONFIG: FallHookConfig = FallHookConfig {
+    player_classes: &[
+        "BP_SurvivalPlayerCharacter_C",
+        "BP_SurvivalPlayerCharacter_Female02_C",
+        "BP_SurvivalPlayerCharacter_Gellarde_C",
+    ],
+    on_landed_fn: "OnLanded",
+    // ASurvivalCharacter.CharMovementComponent ptr at +0x1380.
+    char_movement_component_offset: 0x1380,
+    // UMovementComponent.Velocity (FVector, doubles) at +0xD8.
+    // FVector.Z at +0x10 inside FVector -> absolute +0xE8 on CMC.
+    velocity_z_offset: 0x00E8,
+};
 
-const FN_ON_LANDED: &str = "OnLanded";
+static HOOK: FallHook<G2FallBinder> = FallHook::new(G2_FALL_CONFIG);
 
-/// Lazily-cached UFunction pointer for `OnLanded`. The trampoline
-/// pointer-compares against this via `LazyFunctionPtr::matches` so
-/// non-OnLanded fires bail with a single atomic load + branch. No
-/// FName resolve, no heap alloc.
-static ON_LANDED: LazyFunctionPtr = LazyFunctionPtr::new();
+struct G2FallBinder;
 
-pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
-    ProcessEventHook::install_many(PLAYER_FALL_HOOK_CLASSES, |this, function, parms, original| {
-        on_player_fall_event(this, function, parms, original)
-    })
-}
+impl FallBinder for G2FallBinder {
+    fn before(&self, event: &FallEvent) {
+        let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_FALL_HOOK);
+        ueforge::counters::bump(&crate::counters::FALL_HOOK_FIRES);
 
-fn on_player_fall_event(
-    this: &UObject,
-    function: &UFunction,
-    parms: *mut c_void,
-    original: OriginalProcessEvent,
-) {
-    let _t = ueforge::counters::time_scope(&crate::counters::TIME_NS_FALL_HOOK);
-    ueforge::counters::bump(&crate::counters::FALL_HOOK_FIRES);
+        // Drain the debug PE queue. drain_pending fast-paths on
+        // an empty queue (one atomic load), so this is sub-ns when
+        // nothing is queued.
+        crate::debug::drain_pending();
 
-    // Drain the debug PE queue here. The drain_pending fast path
-    // is a single atomic load when the queue is empty (the
-    // common case), so this is sub-ns when nothing is queued.
-    crate::debug::drain_pending();
-
-    // FAST PATH: identity-cached OnLanded check. Warm path is one
-    // atomic load + one branch; cold path resolves the FName once
-    // and caches.
-    let is_on_landed = ON_LANDED.matches(function, FN_ON_LANDED);
-    if !is_on_landed {
-        unsafe { original.call(this, function, parms) };
-        return;
-    }
-
-    // Velocity-stomp: works for fall landings (OnLanded fires before
-    // native ApplyFallDamage reads live Velocity.Z). Does NOT work
-    // for collisions (engine zeroes V.Z during collision response
-    // before any PE event fires), so we only stomp on OnLanded.
-    // OnLanded does not suppress; we forward to original so
-    // animations and sounds still run.
-    let is_player = is_player_character(this);
-    if is_player {
+        // Fall Resistance velocity stomp. The framework already
+        // resolved `event.cmc` for us; we just compute the scale
+        // and write Velocity.Z back. OnLanded fires before native
+        // ApplyFallDamage reads live Velocity.Z, so this lands in
+        // time.
         let reduction = current_fall_resistance_reduction();
-        if reduction > 0.0 {
+        if reduction > 0.0
+            && let Some(cmc) = event.cmc
+        {
             let scale = (1.0 - reduction).max(0.0) as f64;
-            let stomped = stomp_player_velocity_z(this, scale);
-            // Skip the log when V.Z was already zero. The engine
-            // has already absorbed the velocity and our stomp is a
-            // no-op.
-            if stomped.before.abs() > 0.001 {
+            let vz: TypedField<f64> = TypedField::at(G2_FALL_CONFIG.velocity_z_offset);
+            let before = event.velocity_z_before;
+            let after = before * scale;
+            unsafe { vz.write(cmc, after) };
+            if before.abs() > 0.001 {
                 ueforge::log!(
                     "rpg/fall: stomped Velocity.Z {:.2} -> {:.2} on {} (reduction={:.3})",
-                    stomped.before,
-                    stomped.after,
-                    this.name(),
+                    before,
+                    after,
+                    event.player.name(),
                     reduction,
                 );
             }
         }
-    }
 
-    unsafe { original.call(this, function, parms) };
+        // Fire to subscribed Effects (none yet. 5c.4 follow-up).
+        tracker::TRACKER.fire(&TriggerCtx::Fall(event));
+    }
 }
 
-struct VelocityStomp {
-    before: f64,
-    after: f64,
-}
-
-fn stomp_player_velocity_z(player: &UObject, scale: f64) -> VelocityStomp {
-    // ASurvivalCharacter.CharMovementComponent ptr at +0x1380.
-    // UMovementComponent.Velocity (FVector, doubles) at +0xD8.
-    // FVector.Z at +0x10 inside FVector -> absolute +0xE8 on CMC.
-    const ASC_CHAR_MOVEMENT_COMPONENT: usize = 0x1380;
-    const CMC_VELOCITY_Z: usize = 0x00E8;
-    unsafe {
-        let cmc: *mut UObject = player
-            .field_ptr(ASC_CHAR_MOVEMENT_COMPONENT)
-            .cast::<*mut UObject>()
-            .read_unaligned();
-        let Some(cmc) = cmc.as_ref() else {
-            return VelocityStomp {
-                before: 0.0,
-                after: 0.0,
-            };
-        };
-        let z_ptr = cmc.field_ptr(CMC_VELOCITY_Z) as *mut f64;
-        let before = z_ptr.read_unaligned();
-        let after = before * scale;
-        z_ptr.write_unaligned(after);
-        VelocityStomp { before, after }
-    }
+pub fn install() -> Result<Vec<ProcessEventHook>, &'static str> {
+    HOOK.install(G2FallBinder)
 }
 
 fn current_fall_resistance_reduction() -> f32 {
@@ -122,15 +94,15 @@ fn current_fall_resistance_reduction() -> f32 {
     .unwrap_or(0.0)
 }
 
-fn is_player_character(obj: &UObject) -> bool {
-    obj.full_name().contains("BP_SurvivalPlayerCharacter")
-}
+// ---------------------------------------------------------------
+// Unrelated helpers: player status-effect snapshot (used by the
+// debug HTTP endpoint). Kept here for historical reasons; not
+// part of the fall hook.
+// ---------------------------------------------------------------
 
 /// Look up a row in a `UDataTable` by FName-as-u64. Thin wrapper
 /// over `ueforge::ue::tmap::find_value_by_fname_key` at the
-/// `UDataTable.RowMap` offset. The TMap walking mechanics +
-/// stride / pair-value layout constants live in ueforge so every
-/// UE-mod project shares the same vetted code.
+/// `UDataTable.RowMap` offset.
 pub(crate) fn lookup_data_table_row(table: &UObject, row_name: u64) -> Option<*const u8> {
     use ueforge::ue::offsets::datatable;
     unsafe { ueforge::ue::tmap::find_value_by_fname_key(table, datatable::ROW_MAP, row_name) }
@@ -148,9 +120,6 @@ fn read_status_effect_row(row: *const u8) -> (u8, f32) {
     }
 }
 
-/// One entry in the player's StatusEffects array, formatted for
-/// the debug snapshot. Mirrors the data the `sfx-list` log line
-/// already emits.
 #[derive(Debug, Clone)]
 pub struct StatusEffectEntry {
     pub row: String,
@@ -159,11 +128,6 @@ pub struct StatusEffectEntry {
     pub value: Option<f32>,
 }
 
-/// Snapshot variant of `probe_player_status_effects`. Walks the
-/// first live player and returns the StatusEffects array as a
-/// Vec. None when no live player is available. Used by the debug
-/// HTTP endpoint to expose status effects without requiring a log
-/// scrape.
 pub fn snapshot_player_status_effects() -> Option<Vec<StatusEffectEntry>> {
     use crate::rpg::apply;
 
@@ -248,16 +212,3 @@ fn collect_status_effects(player: &UObject) -> Vec<StatusEffectEntry> {
     }
     entries
 }
-
-
-pub(crate) fn current_impact_resistance_level() -> u32 {
-    tracker::with_state(|state| {
-        state
-            .skill_levels
-            .get(skills::SKILL_IMPACT_RESISTANCE)
-            .copied()
-            .unwrap_or(0)
-    })
-    .unwrap_or(0)
-}
-
