@@ -12,32 +12,25 @@
 //!           Controller=per-trigger-type install + dispatch logic
 //! ```
 //!
-//! ## Phase 1 (current): metadata only
+//! ## Triggers shipped by the framework
 //!
-//! The framework ships [`OnSlotChangeTrigger`]. The trigger every
-//! CDO-write skill uses. `Tracker` fires effects on slot
-//! activate / spend / refund just like before. The `trigger`
-//! field on `SkillDef` is metadata: it documents intent and
-//! enables the `list_triggers` op for client discovery.
+//! - [`OnSlotChangeTrigger`] (`ON_SLOT_CHANGE`). Fired by
+//!   `Tracker` on slot activate / spend / refund / toggle. The
+//!   trigger every CDO-write skill uses.
+//! - [`OnDamageDealtTrigger`] (`ON_DAMAGE_DEALT`). Fires per
+//!   player-instigator damage hit (Lifesteal, Crit).
+//! - [`OnDamageTakenTrigger`] (`ON_DAMAGE_TAKEN`). Fires per
+//!   player-target damage hit (Evasion, Thorns).
+//! - [`OnKillTrigger`] (`ON_KILL`). Fires per confirmed kill
+//!   (kill-credit driven skills).
+//! - [`OnFallTrigger`] (`ON_FALL`). Fires per player fall landing
+//!   (Fall Resistance, Impact Resistance).
 //!
-//! ## Future phases: event-driven dispatch
-//!
-//! Each non-trivial trigger gets its own struct + install method
-//! (matching `damage::DamageHook`'s pattern):
-//!
-//! - `OnDamageDealtTrigger`. Wraps damage-multicast hook,
-//!   filters player-instigator hits, fires per-event with a
-//!   `&DamageEvent`.
-//! - `OnKillTrigger`. Wraps the kill multicast filter,
-//!   fires with `&KillEvent`.
-//! - `OnFallTrigger`. Wraps fall_hook, fires with
-//!   `&FallEvent`.
-//! - `PeriodicTrigger(Duration)`. Poller-driven.
-//!
-//! Each trigger TYPE owns its own subscribe + dispatch. Effects
-//! that care about that trigger's events get the typed event
-//! through a per-trigger Binder trait (matching
-//! `damage::DamageBinder`'s pattern).
+//! Dispatch for the event-driven triggers is wired by the
+//! game crate when it installs the underlying `DamageHook` /
+//! fall hook. The framework provides the `TriggerCtx` payloads
+//! and the static Defs; per-trigger dispatch helpers land in
+//! Phase 5c.2.
 //!
 //! ## Why both HookDef AND TriggerDef
 //!
@@ -61,39 +54,63 @@
 /// trigger kind. Adding a new trigger type adds a new variant
 /// here + a new struct implementing [`Trigger`] + the framework
 /// dispatcher that fires the variant when the event happens.
-///
-/// Phase 2a (current): only `SlotChange` is fired. Phase 2b
-/// lifts kill_hook / fall_hook into framework triggers that fire
-/// `Kill(&'a KillEvent)` / `Fall(&'a FallEvent)` etc.
 pub enum TriggerCtx<'a> {
     /// Fired by `Tracker` on slot activate / spend / refund /
     /// toggle. CDO-write effects use this.
     SlotChange,
-    /// Fired by the future `OnDamageDealtTrigger` per
-    /// player-instigator damage hit.
-    DamageDealt(&'a DamageEventStub),
-    /// Fired by the future `OnDamageTakenTrigger` per
-    /// player-target damage hit.
-    DamageTaken(&'a DamageEventStub),
-    /// Fired by the future `KillTrigger` per confirmed kill.
-    Kill(&'a KillEventStub),
-    /// Fired by the future `FallTrigger` per fall event.
-    Fall(&'a FallEventStub),
-    /// Fired by the future `PeriodicTrigger` per tick.
+    /// Fired by [`OnDamageDealtTrigger`] per player-instigator
+    /// damage hit, BEFORE the engine applies the damage.
+    /// Effects may inspect `damage` but cannot mutate it from
+    /// here (use a `DamageBinder::before` for mutation).
+    DamageDealt(&'a crate::damage::DamageEvent<'a>),
+    /// Fired by [`OnDamageTakenTrigger`] per player-target
+    /// damage hit, AFTER the engine applies the damage.
+    DamageTaken(&'a crate::damage::DamageEvent<'a>),
+    /// Fired by [`OnKillTrigger`] per confirmed creature kill
+    /// (killing-blow flag set). Carries the resolved victim
+    /// class name so subscribers don't have to re-resolve.
+    Kill(&'a KillEvent<'a>),
+    /// Fired by [`OnFallTrigger`] when the player's `OnLanded`
+    /// UFunction fires. Velocity-Z at landing is exposed for
+    /// fall-damage and impact-resistance effects.
+    Fall(&'a FallEvent<'a>),
+    /// Fired by a periodic poller per tick (reserved; no
+    /// in-tree consumer yet).
     Tick { dt: std::time::Duration },
 }
 
-// Stub event types. Placeholder shapes until Phase 2b lifts
-// the real event decoders (currently in g2rpg's kill_hook /
-// fall_hook). The stubs keep the variants typed and the doc
-// surface honest; framework dispatchers don't fire these yet.
+/// Confirmed kill event. The killing-blow flag has been checked
+/// upstream so subscribers fire unconditionally.
+pub struct KillEvent<'a> {
+    /// The actor that died (typically the victim component's
+    /// outer).
+    pub victim: &'a crate::ue::UObject,
+    /// Resolved name of `victim`'s UClass, pre-allocated by the
+    /// trigger dispatcher so subscribers don't pay the FName
+    /// lookup per fire.
+    pub victim_class_name: &'a str,
+    /// Damage instigator resolved from `FDamageInfo`. None if
+    /// the weak pointer was unset.
+    pub attacker: Option<&'static crate::ue::UObject>,
+    /// Convenience: `attacker.class_chain_contains(player_controller_filter)`.
+    pub attacker_is_player: bool,
+    /// Damage value of the killing blow (after engine mutation,
+    /// if any).
+    pub damage: f32,
+}
 
-#[doc(hidden)]
-pub struct DamageEventStub;
-#[doc(hidden)]
-pub struct KillEventStub;
-#[doc(hidden)]
-pub struct FallEventStub;
+/// Player-fall landing event. Fires from inside the OnLanded
+/// trampoline BEFORE the engine reads the live Velocity.Z, so
+/// effects that mutate `Velocity.Z` (Fall Resistance) and
+/// effects that subtract post-impact damage (Impact Resistance)
+/// both work off the same fire.
+pub struct FallEvent<'a> {
+    /// The player pawn whose `OnLanded` fired.
+    pub player: &'a crate::ue::UObject,
+    /// Live `CharacterMovementComponent.Velocity.Z` snapshot
+    /// taken just before the engine processes the landing.
+    pub velocity_z_before: f64,
+}
 
 /// Trigger trait. Currently a marker with a `kind` tag for
 /// discoverability. Per-trigger wiring (install / subscribe /
@@ -141,3 +158,59 @@ static ON_SLOT_CHANGE_IMP: OnSlotChangeTrigger = OnSlotChangeTrigger;
 /// directly: `trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE`.
 pub static ON_SLOT_CHANGE: TriggerDef =
     TriggerDef::new("OnSlotChange", &ON_SLOT_CHANGE_IMP);
+
+/// Fires per player-instigator damage hit, BEFORE the engine
+/// applies the damage. Used by Lifesteal, Critical, etc. The
+/// underlying hook is `ueforge::damage::DamageHook`; the game
+/// crate installs the hook and the framework dispatcher fans
+/// out `TriggerCtx::DamageDealt(&event)` to subscribed skills.
+pub struct OnDamageDealtTrigger;
+impl Trigger for OnDamageDealtTrigger {
+    fn kind(&self) -> &'static str {
+        "OnDamageDealt"
+    }
+}
+static ON_DAMAGE_DEALT_IMP: OnDamageDealtTrigger = OnDamageDealtTrigger;
+pub static ON_DAMAGE_DEALT: TriggerDef =
+    TriggerDef::new("OnDamageDealt", &ON_DAMAGE_DEALT_IMP);
+
+/// Fires per player-target damage hit, AFTER the engine
+/// applies the damage. Used by Evasion (pre-mutate via binder)
+/// and Thorns (post-react). Same underlying hook as
+/// [`OnDamageDealtTrigger`].
+pub struct OnDamageTakenTrigger;
+impl Trigger for OnDamageTakenTrigger {
+    fn kind(&self) -> &'static str {
+        "OnDamageTaken"
+    }
+}
+static ON_DAMAGE_TAKEN_IMP: OnDamageTakenTrigger = OnDamageTakenTrigger;
+pub static ON_DAMAGE_TAKEN: TriggerDef =
+    TriggerDef::new("OnDamageTaken", &ON_DAMAGE_TAKEN_IMP);
+
+/// Fires per confirmed creature kill (killing-blow flag set on
+/// the damage multicast). Used by kill-credit driven skills.
+/// Reuses the [`OnDamageDealtTrigger`] hook plumbing; the
+/// dispatcher classifies + fires `TriggerCtx::Kill(&KillEvent)`.
+pub struct OnKillTrigger;
+impl Trigger for OnKillTrigger {
+    fn kind(&self) -> &'static str {
+        "OnKill"
+    }
+}
+static ON_KILL_IMP: OnKillTrigger = OnKillTrigger;
+pub static ON_KILL: TriggerDef = TriggerDef::new("OnKill", &ON_KILL_IMP);
+
+/// Fires when the player's `OnLanded` UFunction fires. Used by
+/// Fall Resistance + Impact Resistance. The underlying hook is
+/// the framework `FallHook` (planned Phase 5c.4); the game crate
+/// supplies player classes + velocity offsets and the framework
+/// dispatcher fans out `TriggerCtx::Fall(&FallEvent)`.
+pub struct OnFallTrigger;
+impl Trigger for OnFallTrigger {
+    fn kind(&self) -> &'static str {
+        "OnFall"
+    }
+}
+static ON_FALL_IMP: OnFallTrigger = OnFallTrigger;
+pub static ON_FALL: TriggerDef = TriggerDef::new("OnFall", &ON_FALL_IMP);

@@ -58,8 +58,9 @@ pub use status::{StatusDef, StatusRegistry};
 pub use store::SlotStore;
 pub use tracker::{Tracker, XpResult};
 pub use trigger::{
-    DamageEventStub, FallEventStub, KillEventStub, OnSlotChangeTrigger, Trigger,
-    TriggerCtx, TriggerDef,
+    FallEvent, KillEvent, OnDamageDealtTrigger, OnDamageTakenTrigger, OnFallTrigger,
+    OnKillTrigger, OnSlotChangeTrigger, Trigger, TriggerCtx, TriggerDef,
+    ON_DAMAGE_DEALT, ON_DAMAGE_TAKEN, ON_FALL, ON_KILL, ON_SLOT_CHANGE,
 };
 pub use vanilla::VanillaCache;
 pub use xp::{CreatureDef, CreatureRegistry, Curve};
