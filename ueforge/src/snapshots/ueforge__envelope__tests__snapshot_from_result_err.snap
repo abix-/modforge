@@ -1,0 +1,13 @@
+---
+source: ueforge/src/envelope.rs
+expression: r
+---
+{
+  "ok": false,
+  "op": "spend_skill",
+  "error": "insufficient skill points",
+  "result": null,
+  "state": {
+    "xp": 1234
+  }
+}

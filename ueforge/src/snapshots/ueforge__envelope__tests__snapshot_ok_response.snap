@@ -1,0 +1,15 @@
+---
+source: ueforge/src/envelope.rs
+expression: r
+---
+{
+  "ok": true,
+  "op": "snapshot",
+  "error": null,
+  "result": {
+    "foo": 42
+  },
+  "state": {
+    "alive": true
+  }
+}

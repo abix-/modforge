@@ -101,11 +101,13 @@ confirmed via `gh api` 2026-05-12.
    `Val::from_json` round trips, `inspect_address` byte
    slabs.
 
-3. **`insta`**. MEDIUM gain, ~1 hour to wire. Snapshot testing
-   for op JSON responses. Each `.snap` file is one human review;
-   refactor regressions surface as diffs without hand-writing
-   `assert_eq!(json!(...))` per op. Apache-2.0 (Mitsuhiko), last
-   commit 2026-05-02. <https://docs.rs/insta/>
+3. **`insta`** (IN PROGRESS). MEDIUM gain. Wired as dev-dep
+   with four envelope-shape snapshots in `envelope.rs`
+   (`OpResponse::ok` / `err` / `from_result` x ok/err). Run
+   `cargo insta review` to accept future shape changes. Still
+   open: per-op snapshots for the standard debug-op set
+   (`skill_toggle` / `spend` / `refund` / etc.). Gated on
+   building a stateless test fixture for those.
 
 ### Open durability follow-ups
 

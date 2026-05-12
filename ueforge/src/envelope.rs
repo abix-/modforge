@@ -57,6 +57,56 @@ impl<S> OpResponse<S> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // Insta snapshots: lock the wire shape so envelope refactors
+    // surface as reviewable diffs instead of silent breakage.
+    // Run `cargo insta review` to accept/reject after changes.
+
+    #[test]
+    fn snapshot_ok_response() {
+        let r: OpResponse<serde_json::Value> = OpResponse::ok(
+            "snapshot",
+            json!({"foo": 42}),
+            json!({"alive": true}),
+        );
+        insta::assert_json_snapshot!(r);
+    }
+
+    #[test]
+    fn snapshot_err_response() {
+        let r: OpResponse<serde_json::Value> = OpResponse::err(
+            "snapshot",
+            "no slot active",
+            json!({"alive": false}),
+        );
+        insta::assert_json_snapshot!(r);
+    }
+
+    #[test]
+    fn snapshot_from_result_ok() {
+        let r: OpResponse<serde_json::Value> = OpResponse::from_result(
+            "spend_skill",
+            Ok(json!({"spent": 1, "level": 4})),
+            json!({"xp": 1234}),
+        );
+        insta::assert_json_snapshot!(r);
+    }
+
+    #[test]
+    fn snapshot_from_result_err() {
+        let r: OpResponse<serde_json::Value> = OpResponse::from_result(
+            "spend_skill",
+            Err("insufficient skill points".to_string()),
+            json!({"xp": 1234}),
+        );
+        insta::assert_json_snapshot!(r);
+    }
+}
+
 /// Parse a request body into `(op, args)`. `args` defaults to `Null`
 /// if missing. The op string is empty when the field is absent so
 /// callers can produce a uniform "missing op" error.

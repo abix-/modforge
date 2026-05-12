@@ -31,6 +31,7 @@ region = "3"
 smallvec = "1"
 fastrand = "2"
 proptest = "1"
+insta = { version = "1", features = ["json"] }
 zerocopy = { version = "0.8", features = ["derive"] }
 # patternsleuth: UE4SS-blessed Rust sig-scan crate. No crates.io
 # release; pinned to a recent master SHA. Workspace package

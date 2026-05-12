@@ -12,6 +12,18 @@
 
 Newest first.
 
+## 2026-05-12 (insta adoption seed)
+
+- **`insta` 1** added as a workspace + ueforge dev-dep with
+  the `json` feature. Four envelope-shape snapshots seeded
+  in `envelope.rs` covering `OpResponse::ok`, `err`, and both
+  arms of `from_result`. Snapshots live at
+  `ueforge/src/snapshots/*.snap`. Wire-shape changes now
+  surface as reviewable diffs (`cargo insta review`) instead
+  of silent breakage downstream.
+- Per-op snapshots for the standard debug-op set still
+  pending. See [`todo.md`](todo.md).
+
 ## 2026-05-12 (proptest adoption first wave)
 
 - **`proptest` 1** added as a workspace + ueforge dev-dep.
