@@ -482,6 +482,204 @@ pub fn dynamic_revert_all() -> usize {
     total
 }
 
+/// Revert one specific `(table, field)` dynamic tweak across every
+/// primitive registry it might have been registered in. Returns the
+/// total rows reverted. Zero when nothing matches.
+pub fn dynamic_revert_one(table: &str, field: &str) -> usize {
+    let key = (table.to_string(), field.to_string());
+    let mut total = 0usize;
+    if let Some(reg) = DYN_I32.get() {
+        if let Some(tw) = reg.lock().get(&key)
+            && let Ok(n) = tw.revert()
+        {
+            total += n;
+        }
+    }
+    if let Some(reg) = DYN_F32.get() {
+        if let Some(tw) = reg.lock().get(&key)
+            && let Ok(n) = tw.revert()
+        {
+            total += n;
+        }
+    }
+    if let Some(reg) = DYN_U32.get() {
+        if let Some(tw) = reg.lock().get(&key)
+            && let Ok(n) = tw.revert()
+        {
+            total += n;
+        }
+    }
+    total
+}
+
+/// JSON list of every active dynamic tweak across the three
+/// primitive registries. Each entry: `{kind: "i32"|"f32"|"u32",
+/// table_name, offset, vanilla_count}`. Powers the
+/// `tweak_list` debug op.
+pub fn dynamic_list_json() -> Json {
+    let mut tweaks: Vec<Json> = Vec::new();
+    if let Some(reg) = DYN_I32.get() {
+        for ((table, field), tw) in reg.lock().iter() {
+            tweaks.push(json!({
+                "kind": "i32",
+                "table_name": table,
+                "field_name": field,
+                "offset": tw.offset(),
+                "vanilla_count": tw.vanilla_count(),
+            }));
+        }
+    }
+    if let Some(reg) = DYN_F32.get() {
+        for ((table, field), tw) in reg.lock().iter() {
+            tweaks.push(json!({
+                "kind": "f32",
+                "table_name": table,
+                "field_name": field,
+                "offset": tw.offset(),
+                "vanilla_count": tw.vanilla_count(),
+            }));
+        }
+    }
+    if let Some(reg) = DYN_U32.get() {
+        for ((table, field), tw) in reg.lock().iter() {
+            tweaks.push(json!({
+                "kind": "u32",
+                "table_name": table,
+                "field_name": field,
+                "offset": tw.offset(),
+                "vanilla_count": tw.vanilla_count(),
+            }));
+        }
+    }
+    json!({
+        "count": tweaks.len(),
+        "tweaks": tweaks,
+    })
+}
+
+/// Op-dispatch entry. Parses the JSON args of the `tweak_apply`
+/// debug op and routes to the right `dynamic_apply_*` per `kind`.
+///
+/// Args shape:
+/// ```json
+/// {
+///   "table": "DT_Materials",
+///   "field": "MaxCanStack",
+///   "kind":  "i32",        // i32 | f32 | u32
+///   "op":    "multiply",   // set | multiply | add
+///   "value": 4.0
+/// }
+/// ```
+///
+/// `set` writes the literal value. `multiply` multiplies the
+/// captured vanilla by the value (vanilla * value). `add` adds.
+/// Operations always re-base on the captured vanilla so they're
+/// idempotent: repeated calls with the same op + value land the
+/// same final field value.
+pub fn tweak_apply_from_args(args: &Json) -> Result<Json, String> {
+    let table = args
+        .get("table")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "tweak_apply: missing 'table'".to_string())?;
+    let field = args
+        .get("field")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "tweak_apply: missing 'field'".to_string())?;
+    let kind = args
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "tweak_apply: missing 'kind' (i32|f32|u32)".to_string())?;
+    let op = args
+        .get("op")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "tweak_apply: missing 'op' (set|multiply|add)".to_string())?;
+    let value = args
+        .get("value")
+        .ok_or_else(|| "tweak_apply: missing 'value'".to_string())?;
+
+    let touched = match kind {
+        "i32" => {
+            let v = value
+                .as_i64()
+                .ok_or_else(|| format!("tweak_apply: 'value' not i64-like: {value}"))?
+                as i32;
+            match op {
+                "set" => dynamic_apply_i32(table, field, |_| v, |_| false)?,
+                "multiply" => dynamic_apply_i32(
+                    table,
+                    field,
+                    |vanilla| vanilla.saturating_mul(v),
+                    |vanilla| vanilla == 0,
+                )?,
+                "add" => dynamic_apply_i32(
+                    table,
+                    field,
+                    |vanilla| vanilla.saturating_add(v),
+                    |_| false,
+                )?,
+                other => return Err(format!("tweak_apply: unknown i32 op '{other}'")),
+            }
+        }
+        "u32" => {
+            let v = value
+                .as_u64()
+                .ok_or_else(|| format!("tweak_apply: 'value' not u64-like: {value}"))?
+                as u32;
+            match op {
+                "set" => dynamic_apply_u32(table, field, |_| v, |_| false)?,
+                "multiply" => dynamic_apply_u32(
+                    table,
+                    field,
+                    |vanilla| vanilla.saturating_mul(v),
+                    |vanilla| vanilla == 0,
+                )?,
+                "add" => dynamic_apply_u32(
+                    table,
+                    field,
+                    |vanilla| vanilla.saturating_add(v),
+                    |_| false,
+                )?,
+                other => return Err(format!("tweak_apply: unknown u32 op '{other}'")),
+            }
+        }
+        "f32" => {
+            let v = value
+                .as_f64()
+                .ok_or_else(|| format!("tweak_apply: 'value' not f64-like: {value}"))?
+                as f32;
+            match op {
+                "set" => dynamic_apply_f32(table, field, |_| v, |_| false)?,
+                "multiply" => dynamic_apply_f32(
+                    table,
+                    field,
+                    move |vanilla| vanilla * v,
+                    |vanilla| !vanilla.is_finite(),
+                )?,
+                "add" => dynamic_apply_f32(
+                    table,
+                    field,
+                    move |vanilla| vanilla + v,
+                    |vanilla| !vanilla.is_finite(),
+                )?,
+                other => return Err(format!("tweak_apply: unknown f32 op '{other}'")),
+            }
+        }
+        other => return Err(format!("tweak_apply: unknown kind '{other}' (i32|f32|u32)")),
+    };
+
+    crate::log::log(format_args!(
+        "tweak_apply: {kind} {op} {value} on '{table}.{field}' -> {touched} rows"
+    ));
+    Ok(json!({
+        "table": table,
+        "field": field,
+        "kind": kind,
+        "op": op,
+        "value": value,
+        "rows_touched": touched,
+    }))
+}
+
 // ---- Class field, name-based --------------------------------------------
 
 /// Look up `field_name` on `class_name` in the discovery cache's

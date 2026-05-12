@@ -12,6 +12,36 @@
 
 Newest first.
 
+## 2026-05-11 (DataTableDef Phase 2 begun. runtime tweak ops)
+
+Phase 2 of the DataTableDef plan opens: declare-and-apply tweaks
+at runtime, without recompiling. The dynamic write primitives
+(`data_table::dynamic_apply_i32 / f32 / u32`) already existed;
+this lift wires three new debug ops on top of them.
+
+- **`tweak_apply`**. JSON args `{table, field, kind, op, value}`.
+  Resolves offset via the discovery cache, captures vanilla per
+  row on first apply, then writes `set` / `multiply` / `add`
+  using the captured baseline. Re-applying is idempotent (same
+  op + value lands the same final field value). Kinds: `i32`,
+  `f32`, `u32`. Returns rows touched.
+- **`tweak_list`**. JSON snapshot of every active dynamic
+  tweak across the three primitive registries. Each entry
+  reports kind, table_name, field_name, offset, vanilla_count.
+- **`tweak_revert`**. Reverts one specific `(table, field)` to
+  captured vanilla, OR all dynamic tweaks at once when args are
+  empty. Returns total rows reverted.
+
+Plus the supporting framework surface: `dynamic_revert_one`,
+`dynamic_list_json`, `tweak_apply_from_args`.
+
+The static-side TweakDef unification (collapse stacks +
+difficulty + field tweaks into one Def shape) is still open;
+the persistence layer that survives Ctrl+R is open too.
+
+ueforge 67/67 tests pass; both crates build clean release.
+In-game smoke test still pending.
+
 ## 2026-05-11 (Triggers Phase 5c. event-driven catalog dispatch)
 
 Five commits ship the event-driven trigger system end-to-end

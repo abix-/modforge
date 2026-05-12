@@ -341,6 +341,44 @@ pub fn register_builtins() {
             |_args| Ok(crate::data_table::list_json()),
         ),
         OpDef::new(
+            "tweak_apply",
+            "Apply a runtime-declared tweak: captures vanilla per row \
+             on first apply, then writes `set` / `multiply` / `add` of \
+             the configured value. Re-applies are idempotent (always \
+             re-base on captured vanilla).",
+            "{table: str, field: str, kind: \"i32\"|\"f32\"|\"u32\", op: \"set\"|\"multiply\"|\"add\", value: number}",
+            |args| crate::data_table::tweak_apply_from_args(args),
+        ),
+        OpDef::new(
+            "tweak_list",
+            "Every dynamic tweak currently registered across the i32 / \
+             f32 / u32 primitive registries. Each entry reports the \
+             captured vanilla_count.",
+            "{}",
+            |_args| Ok(crate::data_table::dynamic_list_json()),
+        ),
+        OpDef::new(
+            "tweak_revert",
+            "Revert one specific (table, field) dynamic tweak, OR all \
+             of them when args are empty. Returns total rows reverted.",
+            "{table?: str, field?: str}",
+            |args| {
+                let table = args.get("table").and_then(|v| v.as_str());
+                let field = args.get("field").and_then(|v| v.as_str());
+                let touched = match (table, field) {
+                    (Some(t), Some(f)) => crate::data_table::dynamic_revert_one(t, f),
+                    (None, None) => crate::data_table::dynamic_revert_all(),
+                    _ => {
+                        return Err(
+                            "tweak_revert: pass both `table` and `field`, or neither (revert all)"
+                                .to_string(),
+                        );
+                    }
+                };
+                Ok(serde_json::json!({ "rows_reverted": touched }))
+            },
+        ),
+        OpDef::new(
             "list_ops",
             "Auto-generated catalog of every registered debug op",
             "{}",

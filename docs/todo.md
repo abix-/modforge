@@ -124,25 +124,32 @@ discovery before snapshot / browser / static catalog rows.
   `(offset, element_size, FProperty class)`. Useful for ad-hoc
   scripts + future generic tweak builders.
 
-### Deferred to Phase 2 (write surface)
+### Phase 2 (write surface)
 
-The pain begins:
-
-- TweakDef unification (stack + difficulty + future field tweaks
-  collapse into one Def that targets a (DataTableDef, field) or
-  (Class, field) pair).
-- `tweak_register` runtime op for declare-and-apply without code
-  changes.
-- Mutation safety: row writes need vanilla capture per row,
-  rollback on save fail (echoing the spend/refund stage-save-
-  commit pattern), respect for replicated fields, and a sane
-  serialize/deserialize so mod-applied tweaks survive Ctrl+R
-  hot-reload.
-- Field types beyond primitives: writing FString / TArray rows
-  needs the engine's FMemory allocator (ABI work).
-
-Don't start any of Phase 2 until 1a-e land + we've used the
-browser enough to know what shape the write surface should take.
+- [x] **Runtime declare-and-apply ops**. `tweak_apply`,
+  `tweak_list`, `tweak_revert` shipped 2026-05-11. Take
+  `{table, field, kind, op, value}` JSON; resolve offset from
+  discovery; capture vanilla per row on first apply; rewrite
+  rows via `set` / `multiply` / `add`; idempotent on re-apply
+  (always re-base on captured vanilla). Powers a hot-iteration
+  loop (curl an op, change a field, curl `tweak_revert` to
+  restore) without rebuilding.
+- [ ] **TweakDef unification**. Collapse `stacks::StackDef` +
+  `difficulty::DifficultyDef` + future field tweaks into one
+  Def shape that targets either `(DataTableDef, field)` or
+  `(Class, field)`. The dynamic primitives already cover the
+  shape; the static side is the remaining lift.
+- [ ] **Persisted-tweak surface**. Settings-driven applies that
+  survive Ctrl+R hot-reload. Today the dynamic registry is in
+  process memory only; a save-file shape (`{tweaks: [{table,
+  field, kind, op, value}, ...]}`) + reload-at-init would close
+  the loop. Echoes the spend/refund stage-save-commit pattern.
+- [ ] **Replicated-field respect**. Some row fields are
+  replicated to clients; writes during a server's authority
+  drop get desynced. Defer until we hit a real case.
+- [ ] **Non-primitive field types**. Writing `FString` /
+  `TArray` rows needs the engine's `FMemory` allocator (ABI
+  work). Defer until a real consumer needs it.
 
 ## P0. In-game smoke test
 
