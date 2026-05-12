@@ -38,6 +38,8 @@ use crate::ue::offsets::tmap as off;
 /// 8-byte key + 8-byte value-pointer immediately and don't hold
 /// the slot pointer across drains.
 pub unsafe fn slots(obj: &UObject, offset: usize) -> impl Iterator<Item = (usize, *const u8)> {
+    // SAFETY: forwards `obj` + `offset` to `header`; the caller's
+    // contract (live UObject, valid TMap offset) flows through.
     let (data_ptr, count) = unsafe { header(obj, offset) };
     let scan = count.min(off::MAX_LINEAR_SCAN);
     if count > off::MAX_LINEAR_SCAN {
@@ -51,7 +53,14 @@ pub unsafe fn slots(obj: &UObject, offset: usize) -> impl Iterator<Item = (usize
     }
     (0..scan)
         .filter(move |_| !data_ptr.is_null())
-        .map(move |i| (i, unsafe { data_ptr.add(i * off::ELEMENT_SIZE) }))
+        .map(move |i| {
+            // SAFETY: `data_ptr` is the TSparseArray storage base; `i`
+            // is bounded by the array's reported slot count (clamped
+            // to MAX_LINEAR_SCAN). Each slot is `ELEMENT_SIZE = 24`
+            // bytes per the TSetElement<TPair> layout. Pointer
+            // arithmetic stays within the allocated array.
+            (i, unsafe { data_ptr.add(i * off::ELEMENT_SIZE) })
+        })
 }
 
 /// Read the TMap header at `obj.field_ptr(offset)`: returns
@@ -61,6 +70,11 @@ pub unsafe fn slots(obj: &UObject, offset: usize) -> impl Iterator<Item = (usize
 /// # Safety
 /// Same as [`slots`].
 pub unsafe fn header(obj: &UObject, offset: usize) -> (*const u8, usize) {
+    // SAFETY: the caller's `unsafe fn` contract requires `obj` to be
+    // a live UObject and `offset` to point at a valid TMap. Reading
+    // the first 8 bytes (data pointer) and the i32 at +DATA_NUM is
+    // well-defined for that layout. `read_unaligned` covers the case
+    // where the TMap straddles a non-8-aligned offset on the row.
     unsafe {
         let row_map = obj.field_ptr(offset);
         let data_ptr = (row_map as *const *const u8).read_unaligned();
@@ -84,6 +98,13 @@ pub unsafe fn find_value_by_fname_key(
     offset: usize,
     row_name: u64,
 ) -> Option<*const u8> {
+    // SAFETY: `slots` yields valid 24-byte slot pointers within the
+    // TSparseArray storage. Reading the first 8 bytes as the FName
+    // key matches the TPair<FName, *void> layout; reading
+    // +PAIR_VALUE as a *const u8 matches the value half. Free-list
+    // slots whose first 8 bytes happen to collide with `row_name`
+    // are vanishingly unlikely; callers tolerate the null-check on
+    // the value pointer as the second filter.
     unsafe {
         for (_, element) in slots(obj, offset) {
             let key: u64 = (element as *const u64).read_unaligned();
