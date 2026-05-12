@@ -15,15 +15,18 @@ Newest first.
 ## 2026-05-12 (proptest adoption first wave)
 
 - **`proptest` 1** added as a workspace + ueforge dev-dep.
-  First property test seeded:
-  `TArray::is_empty_holds_for_garbage_headers` runs
-  `(num, max, data_addr)` triples across the full i32/usize
-  space and asserts the walker never claims non-empty on a
-  null pointer or negative `num`. Extends the hand-written
-  boundary tests (5 cases) to property-based shapes without
-  re-decoding garbage memory.
-- TMap walker (stride=24 + sparse-array bitarray) +
-  FieldTweak decoder + `Val::from_json` + `inspect_address`
+  Property tests seeded on both walkers:
+  - `TArray::is_empty_holds_for_garbage_headers` runs
+    `(num, max, data_addr)` triples across the full
+    i32/usize space and asserts the walker never claims
+    non-empty on a null pointer or negative `num`.
+  - `TMap::find_value_matches_or_misses` builds synthetic
+    TMaps from up to 16 random `(u64, u64)` entries and
+    asserts `find_value_by_fname_key` returns exactly the
+    matching value (or None for absent keys). De-dupes
+    inputs so duplicate-key non-determinism isn't a false
+    positive.
+- FieldTweak decoder + `Val::from_json` + `inspect_address`
   byte slabs still open. See [`todo.md`](todo.md).
 
 ## 2026-05-12 (fastrand + smallvec quick wins)

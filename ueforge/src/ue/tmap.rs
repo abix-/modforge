@@ -231,6 +231,45 @@ mod tests {
         assert_eq!(n, 0);
     }
 
+    // Property test: arbitrary (key, value) sets built into a
+    // synthetic TMap, then looked up by `find_value_by_fname_key`.
+    // The walker must always return the matching value (or None
+    // if absent), with no false positives from collisions inside
+    // the slot bytes.
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config {
+            cases: 64,
+            .. proptest::test_runner::Config::default()
+        })]
+        #[test]
+        fn find_value_matches_or_misses(
+            entries in proptest::collection::vec(
+                (proptest::prelude::any::<u64>(), 1u64..u64::MAX),
+                0..16usize,
+            ),
+            probe_key in proptest::prelude::any::<u64>(),
+        ) {
+            // Skip degenerate input: duplicate keys could legitimately
+            // resolve to either entry, which isn't a walker bug.
+            let mut keys: Vec<u64> = entries.iter().map(|&(k, _)| k).collect();
+            keys.sort();
+            keys.dedup();
+            if keys.len() != entries.len() { return Ok(()); }
+
+            let obj = make_tmap(0, &entries);
+            // SAFETY: synthetic buffer.
+            let hit = unsafe { find_value_by_fname_key(obj, 0, probe_key) };
+            let expected: Option<u64> = entries.iter()
+                .find(|&&(k, _)| k == probe_key)
+                .map(|&(_, v)| v);
+            match (hit, expected) {
+                (None, None) => {},
+                (Some(p), Some(v)) => assert_eq!(p as usize as u64, v),
+                (a, b) => panic!("walker mismatch: got {a:?}, expected {b:?}"),
+            }
+        }
+    }
+
     #[test]
     fn negative_num_yields_no_slots() {
         let mut buf = vec![0u8; 32];

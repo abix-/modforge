@@ -94,11 +94,12 @@ confirmed via `gh api` 2026-05-12.
    - `FDataTableRowHandle` (has a `*const UObject`; pointer
      rejects FromBytes; would need a split type).
 
-2. **`proptest`** (IN PROGRESS). MEDIUM-HIGH gain. First property
-   test landed: `TArray::is_empty_holds_for_garbage_headers` in
-   `ue/tarray.rs`. Still open: TMap walker (stride=24 + sparse
-   array bitarray), FieldTweak decoder, `Val::from_json` round
-   trips, `inspect_address` byte slabs.
+2. **`proptest`** (IN PROGRESS). MEDIUM-HIGH gain. Two
+   property tests landed: TArray garbage-header check +
+   TMap `find_value_by_fname_key` correctness across random
+   16-entry maps. Still open: FieldTweak decoder,
+   `Val::from_json` round trips, `inspect_address` byte
+   slabs.
 
 3. **`insta`**. MEDIUM gain, ~1 hour to wire. Snapshot testing
    for op JSON responses. Each `.snap` file is one human review;
@@ -127,9 +128,10 @@ confirmed via `gh api` 2026-05-12.
   offsets**. Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
   silently returns wrong names. Pair with the sig-scan work.
 - [/] **Property tests on walkers**. Boundary tests shipped (5
-  on `tarray`, 7 on `tmap`). First proptest landed on TArray.
-  Still open: TMap walker, FieldTweak decoder,
-  `Val::from_json`, `inspect_address` byte slabs.
+  on `tarray`, 7 on `tmap`). Proptests landed on TArray
+  (garbage headers) + TMap (find_value correctness). Still
+  open: FieldTweak decoder, `Val::from_json`,
+  `inspect_address` byte slabs.
 - [ ] **`tiny_http` / `ureq 2` migration window**. Both on a 2-5
   year support horizon.
 - [ ] **PE hook trampoline linear search**. Index by vtable
