@@ -125,6 +125,81 @@ impl<'a> IntoIterator for &'a DataTableRegistry {
     }
 }
 
+// ---- Process-global registration ----------------------------------------
+//
+// Game crates call `register(&MY_REGISTRY)` from their worker init
+// so the `list_data_tables` debug op + ImGui surfaces can enumerate
+// statically-declared tables. Optional: most consumers today rely
+// on the runtime `discovery` cache, which covers every live table
+// regardless of registration.
+
+static REGISTERED: std::sync::OnceLock<&'static DataTableRegistry> =
+    std::sync::OnceLock::new();
+
+/// Register the process-wide `DataTableRegistry`. Idempotent on
+/// first set; later calls are silently ignored (first writer wins,
+/// same shape as the other framework registries). Game crates
+/// call this from their `on_unreal_init` worker.
+pub fn register(reg: &'static DataTableRegistry) {
+    let _ = REGISTERED.set(reg);
+}
+
+/// Borrow the registered `DataTableRegistry`, if any consumer has
+/// called [`register`]. None when no game crate has declared a
+/// catalog yet; in that case use the runtime `discovery` cache
+/// for table enumeration.
+pub fn registered() -> Option<&'static DataTableRegistry> {
+    REGISTERED.get().copied()
+}
+
+/// JSON of the registered `DataTableRegistry` (id + table_name +
+/// row_struct schema). Powers the `list_data_tables` debug op +
+/// the registry-only ImGui surface. Returns
+/// `{"registered": false, ...}` when no consumer has registered.
+pub fn list_json() -> serde_json::Value {
+    use serde_json::json;
+    let Some(reg) = registered() else {
+        return json!({
+            "registered": false,
+            "count": 0,
+            "tables": [],
+            "note": "no DataTableRegistry registered. \
+                     game crates call ueforge::data_table::register \
+                     from their worker init to populate this.",
+        });
+    };
+    let tables: Vec<serde_json::Value> = reg
+        .iter()
+        .map(|d| {
+            let fields: Vec<serde_json::Value> = d
+                .row_struct
+                .fields
+                .iter()
+                .map(|f| {
+                    json!({
+                        "name": f.name,
+                        "offset": f.offset,
+                        "element_size": f.element_size,
+                    })
+                })
+                .collect();
+            json!({
+                "id": d.id,
+                "table_name": d.table_name,
+                "row_struct": {
+                    "name": d.row_struct.name,
+                    "fields": fields,
+                },
+            })
+        })
+        .collect();
+    json!({
+        "registered": true,
+        "count": tables.len(),
+        "tables": tables,
+    })
+}
+
 // ---- Snapshot (Phase 1b) -------------------------------------------------
 
 use std::sync::OnceLock;

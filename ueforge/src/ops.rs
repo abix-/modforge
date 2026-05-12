@@ -333,6 +333,14 @@ pub fn register_builtins() {
             },
         ),
         OpDef::new(
+            "list_data_tables",
+            "Enumerate the registered DataTableRegistry \
+             (statically-declared catalog; for the runtime-discovered \
+             universe use discover_data_tables)",
+            "{}",
+            |_args| Ok(crate::data_table::list_json()),
+        ),
+        OpDef::new(
             "list_ops",
             "Auto-generated catalog of every registered debug op",
             "{}",

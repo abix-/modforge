@@ -74,10 +74,14 @@ discovery before snapshot / browser / static catalog rows.
 - [x] **`discover_data_tables` / `discover_classes` /
   `discover_structs`**. Read from the in-memory discovery
   cache; `{refresh: true}` re-walks GObjects.
-- [ ] **`list_data_tables` (registry-only)**. Enumerate
-  registered `DataTableDef`s rather than every discovered table.
-  Deferred until a per-mod `DataTableRegistry` is actually
-  populated. Today discovery covers the universe.
+- [x] **`list_data_tables` (registry-only)**. Enumerates the
+  registered `DataTableRegistry` (declared static catalog),
+  separate from the runtime `discover_data_tables` cache. Game
+  crates opt in via `data_table::register(&MY_REGISTRY)` from
+  their worker init; when no registry has been registered the op
+  returns `{registered: false, ...}` so clients can tell. No
+  game has populated this yet; discovery still covers the
+  universe.
 
 ### Phase 1d: ImGui browser tab
 
@@ -90,8 +94,11 @@ discovery before snapshot / browser / static catalog rows.
   "Tables".
 - [x] Filter box on table name. `ueforge::ui::input_text` +
   `cstr_view` added; the browser tab now filters the table list
-  by case-insensitive substring. Row-FName filtering on the
-  selected table is open work.
+  by case-insensitive substring.
+- [x] Row-FName filter on the selected table. Inside the
+  rows tree, a `row filter` input box matches row_name
+  case-insensitively + a `filtered: N rows matching '...'`
+  footer.
 
 ### Phase 1e: validation
 

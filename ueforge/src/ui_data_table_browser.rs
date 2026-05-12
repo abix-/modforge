@@ -32,6 +32,7 @@ struct DtBrowserUi {
     snapshot_error: Option<String>,
     max_rows: i32,
     filter: [u8; 128],
+    row_filter: [u8; 128],
 }
 
 impl DtBrowserUi {
@@ -42,6 +43,7 @@ impl DtBrowserUi {
             snapshot_error: None,
             max_rows: 50,
             filter: [0u8; 128],
+            row_filter: [0u8; 128],
         }
     }
 }
@@ -135,7 +137,7 @@ pub fn render() {
         ui::text(&format!("{table_name}  -- {row_struct}  ({field_count} fields)"));
 
         if selected {
-            render_selected(&s);
+            render_selected(&mut s);
         }
     }
     if !filter.is_empty() {
@@ -161,18 +163,26 @@ fn load_snapshot(s: &mut DtBrowserUi, table_name: &str) {
     }
 }
 
-fn render_selected(s: &DtBrowserUi) {
+fn render_selected(s: &mut DtBrowserUi) {
     ui::indent();
     if let Some(err) = &s.snapshot_error {
         ui::text_colored(err, (1.0, 0.4, 0.4, 1.0));
         ui::unindent();
         return;
     }
-    let Some(j) = &s.snapshot else {
+    if s.snapshot.is_none() {
         ui::unindent();
         return;
-    };
+    }
 
+    // Row-FName filter input (case-insensitive substring on
+    // row_name). Hoisted out of the borrow on s.snapshot so we
+    // can pass &mut s.row_filter to input_text.
+    ui::input_text("row filter##dt_browser_rows", &mut s.row_filter);
+    let row_filter_owned = ui::cstr_view(&s.row_filter).to_ascii_lowercase();
+    let row_filter = row_filter_owned.as_str();
+
+    let j = s.snapshot.as_ref().unwrap();
     let total = j.get("rows_total").and_then(|v| v.as_u64()).unwrap_or(0);
     let shown = j.get("rows_returned").and_then(|v| v.as_u64()).unwrap_or(0);
     ui::text(&format!("rows: {shown}/{total} shown"));
@@ -197,11 +207,18 @@ fn render_selected(s: &DtBrowserUi) {
     if ui::tree_node("rows") {
         let empty = Vec::new();
         let rows = j.get("rows").and_then(|v| v.as_array()).unwrap_or(&empty);
+        let mut matched = 0usize;
         for r in rows {
             let row_name = r
                 .get("row_name")
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
+            if !row_filter.is_empty()
+                && !row_name.to_ascii_lowercase().contains(row_filter)
+            {
+                continue;
+            }
+            matched += 1;
             let fields = r
                 .get("fields")
                 .and_then(|v| v.as_object())
@@ -217,6 +234,11 @@ fn render_selected(s: &DtBrowserUi) {
                 line.push_str("  ");
             }
             ui::text(&line);
+        }
+        if !row_filter.is_empty() {
+            ui::text_disabled(&format!(
+                "filtered: {matched} rows matching '{row_filter}'"
+            ));
         }
         ui::tree_pop();
     }
