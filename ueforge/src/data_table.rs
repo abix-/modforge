@@ -512,6 +512,30 @@ pub fn dynamic_revert_one(table: &str, field: &str) -> usize {
     total
 }
 
+/// How many vanilla baselines have been captured for the data-
+/// table dynamic tweak at `(table, field)`. Walks each primitive
+/// registry; returns the first hit. Used by surface code that
+/// reports per-tweak status.
+pub fn dynamic_vanilla_count(table: &str, field: &str) -> usize {
+    let key = (table.to_string(), field.to_string());
+    if let Some(reg) = DYN_I32.get()
+        && let Some(tw) = reg.lock().get(&key)
+    {
+        return tw.vanilla_count();
+    }
+    if let Some(reg) = DYN_F32.get()
+        && let Some(tw) = reg.lock().get(&key)
+    {
+        return tw.vanilla_count();
+    }
+    if let Some(reg) = DYN_U32.get()
+        && let Some(tw) = reg.lock().get(&key)
+    {
+        return tw.vanilla_count();
+    }
+    0
+}
+
 /// JSON list of every active dynamic tweak across the three
 /// primitive registries. Each entry: `{kind: "i32"|"f32"|"u32",
 /// table_name, offset, vanilla_count}`. Powers the

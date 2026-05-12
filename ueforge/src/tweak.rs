@@ -427,6 +427,27 @@ impl TweakDef {
         }
     }
 
+    /// How many vanilla baselines have been captured so far.
+    /// Surfaces the underlying dynamic registry's count without
+    /// requiring callers to plumb in their own counter.
+    pub fn vanilla_count(&self) -> usize {
+        match self.target {
+            TweakTarget::DataTable { table, field } => {
+                crate::data_table::dynamic_vanilla_count(table, field)
+            }
+            TweakTarget::Class { class, field } => {
+                let Some((offset, _)) = crate::data_table::resolve_class_field(class, field) else {
+                    return 0;
+                };
+                match self.kind {
+                    TweakKind::I32 => dyn_class_i32(class, offset).vanilla_count(),
+                    TweakKind::U32 => dyn_class_u32(class, offset).vanilla_count(),
+                    TweakKind::F32 => dyn_class_f32(class, offset).vanilla_count(),
+                }
+            }
+        }
+    }
+
     /// Quick `(offset, element_size)` peek through the discovery
     /// cache for status surfaces. None when the cache is empty or
     /// the target field can't be resolved.

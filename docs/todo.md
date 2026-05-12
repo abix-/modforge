@@ -147,19 +147,19 @@ discovery before snapshot / browser / static catalog rows.
   symmetric class-tweak dynamic registry (`DYN_CLASS_I32/F32/U32`)
   for Class targets, so captured vanilla survives across reapplies
   and shares with the runtime tweak surface.
-- [x] **Mark `stacks::StackDef` + `StackRegistry` as
-  `#[deprecated]`**. Pointing at
-  `TweakDef::data_table_i32(..., TweakOp::Multiply, ...)`.
-  Module-level `#![allow(deprecated)]` keeps internal noise out;
-  external consumers (ows-tweaks) get the deprecation warning.
-- [x] **Mark `difficulty::DifficultyDef` + `DifficultyRegistry`
-  as `#[deprecated]`**. Same shape, pointing at
-  `TweakDef::class_f32(..., TweakOp::Multiply, ...)`.
-- [ ] **Sweep the consumer-side declarations**. g2rpg's
-  `survival.rs` `DifficultyDef`s + ows-tweaks's `stacks.rs`
-  `StackDef`s migrate to `TweakDef`. After the sweep, delete the
-  deprecated modules. Defer until in-game smoke validates the
-  TweakDef path actually works.
+- [x] **`stacks` + `difficulty` modules deleted**. Consumer
+  sweep shipped: `outworld-station-tweaks/src/stacks.rs` now
+  declares `static MATERIALS_TWEAK: TweakDef =
+  TweakDef::data_table_i32(..., TweakOp::Multiply, 4)` with
+  local `AtomicUsize` / `AtomicBool` for the status counters;
+  `grounded2-rpg/src/survival.rs` now declares two
+  `TweakDef::class_f32(..., TweakOp::Multiply, 1.0)` statics for
+  hunger + thirst (field NAMES `HungerSettings.AdjustmentPerSecond`
+  + `ThirstSettings.AdjustmentPerSecond` resolved from discovery).
+  `ueforge/src/stacks.rs` + `ueforge/src/difficulty.rs` removed;
+  `pub mod` declarations gone from `lib.rs`. The four deprecation
+  warnings that flagged the consumer sites are now silent because
+  the code paths are gone.
 - [x] **Persisted-tweak surface**. `<DLL_dir>/tweaks.json`
   written atomically on every successful `tweak_apply`; cleared
   per-entry by `tweak_revert`. Schema 1 envelope:

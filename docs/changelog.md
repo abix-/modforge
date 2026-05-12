@@ -120,12 +120,31 @@ intact. Migration to TweakDef is a follow-up; non-breaking
 because both shapes share the dynamic vanilla cache when
 targeting the same field.
 
+### Consumer-side sweep + module deletion
+
+After the deprecation marker landed, the two consumer sites
+migrated and the deprecated modules came out:
+
+- `outworld-station-tweaks/src/stacks.rs` now declares
+  `static MATERIALS_TWEAK: TweakDef = TweakDef::data_table_i32(
+   "materials", "DT_Materials", "MaxCanStack",
+   TweakOp::Multiply, DEFAULT_MULTIPLIER)`. Status counters
+  (`last_applied_rows`, `ever_applied`) moved to local
+  `AtomicUsize` / `AtomicBool`; `vanilla_count` reads through
+  the new `TweakDef::vanilla_count()` accessor.
+- `grounded2-rpg/src/survival.rs` now declares two
+  `TweakDef::class_f32("hunger" / "thirst", "SurvivalComponent",
+  "HungerSettings.AdjustmentPerSecond" / "ThirstSettings...",
+  TweakOp::Multiply, 1.0)` statics. Offsets removed (resolved by
+  field name from the discovery cache).
+- `ueforge/src/stacks.rs` + `ueforge/src/difficulty.rs` deleted;
+  their `pub mod` lines removed from `lib.rs`. Workspace README
+  + ueforge README pointers updated.
+- New surface added in support: `TweakDef::vanilla_count()` +
+  `data_table::dynamic_vanilla_count(table, field)`.
+
 ### Still open in Phase 2
 
-- Migrate StackDef -> `TweakDef::data_table_i32(...,
-  TweakOp::Multiply, ...)`.
-- Migrate DifficultyDef -> `TweakDef::class_f32(...,
-  TweakOp::Multiply, ...)`.
 - Replicated-field respect (defer until concrete case).
 - Non-primitive (FString / TArray) writes (FMemory ABI work).
 

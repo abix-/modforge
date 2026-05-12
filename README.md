@@ -94,9 +94,10 @@ Build / deploy: [`grounded2-rpg/docs/building.md`](grounded2-rpg/docs/building.m
 ### outworld-station-tweaks
 
 A second UE5 mod (for **Outworld Station**) that validates
-ueforge against another game. Currently ships the **stacks**
-module: `DT_Materials.MaxCanStack` multiplier via
-`ueforge::stacks::StackTweak`. Future tweaks land here.
+ueforge against another game. Currently ships a stack-size
+tweak: `DT_Materials.MaxCanStack` multiplier via a
+`ueforge::tweak::TweakDef::data_table_i32(..., TweakOp::Multiply,
+...)` static. Future tweaks land here.
 
 Source: [`outworld-station-tweaks/`](outworld-station-tweaks/).
 Research notes (DT walks, class lookups): the test crate's
