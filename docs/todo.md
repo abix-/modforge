@@ -260,12 +260,29 @@ In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Ueforge durability (kovarex review wave 2, remaining)
 
-- [ ] **Sig-scan the four base offsets** instead of hardcoding.
-  `ueforge/src/ue/offsets.rs` STEAM/XBOX blocks (`g_objects` /
-  `g_names` / `g_world` / `process_event`). Every UE patch shifts
-  these and ships a code update from us. UE4SS upstream has
-  working signatures to copy. Highest-leverage 10-year-bar item
-  in the framework.
+- [/] **Sig-scan the four base offsets** (framework shipped;
+  signature porting pending). `ueforge::ue::sigscan` provides the
+  full primitive: `Pattern::parse` (IDA-style hex with `?`
+  wildcards), `find` / `find_all` linear scanner,
+  `resolve_rip32` RIP-relative target decoder, `text_section()`
+  PE header walk that returns the host exe's .text as a
+  `'static` slice, and `find_image_relative_rip32` convenience
+  for stuffing into `PlatformOffsets`. Plus a `sig_scan` debug
+  op that lets you iteratively test patterns against the running
+  game without rebuilding. 8 unit tests covering pattern
+  parsing, scanning, and RIP-32 decode (positive + negative
+  disp).
+
+  Still open: actually porting UE4SS upstream signatures for
+  `g_objects` / `g_names` / `g_world` / `process_event` /
+  `append_string` and wiring them through
+  `PlatformOffsets::scan()`. Has to be done with the running
+  game (curl the `sig_scan` op with candidate patterns from
+  UE4SS Signatures.cpp until each resolves to the same address
+  the hardcoded STEAM/XBOX blocks point at, then bake the
+  pattern into a `SigSpec` constant). Each pattern needs to be
+  verified per platform (STEAM vs XBOX) because compiler
+  inlining differs.
 - [ ] **Generic schema versioning baked into `SlotStore`**, not
   per-consumer. `SkillsState` carries `schema_version` today;
   the planned `BuildingsTracker` would re-invent it. Envelope:

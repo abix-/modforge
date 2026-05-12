@@ -498,6 +498,15 @@ pub fn register_builtins() {
             |_args| Ok(crate::ops::metrics_json()),
         ),
         OpDef::new(
+            "sig_scan",
+            "Scan the host exe's .text for an IDA-style hex pattern. \
+             Optional disp_offset + next_instr_offset resolve a \
+             RIP-relative target. Returns image-relative offset for \
+             stuffing into PlatformOffsets.",
+            "{pattern: str, disp_offset?: u64, next_instr_offset?: u64, all?: bool}",
+            |args| crate::ue::sigscan::op_sig_scan(args),
+        ),
+        OpDef::new(
             "list_selectors",
             "Auto-generated catalog of every registered selector kind",
             "{}",
