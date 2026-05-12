@@ -12,6 +12,44 @@
 
 Newest first.
 
+## 2026-05-12 (zerocopy first wave)
+
+Wave one of zerocopy adoption shipped after the crate-shopping
+pass. Compile-time POD layout verification replaces hand-rolled
+byte-cast unsafe at the parm-buffer surface.
+
+Framework:
+- `ue::core_types::FGuid` + `FWeakObjectPtr` derive
+  `FromBytes` + `IntoBytes` + `KnownLayout` + `Immutable`. The
+  derive verifies at compile time that no field breaks POD (no
+  padding-with-pointers, no `Drop`, alignment known).
+- `ueforge::parms::as_bytes` / `from_bytes` rewritten as SAFE
+  fns gated on `T: IntoBytes + Immutable` /
+  `T: FromBytes + KnownLayout`. The previous `unsafe fn`
+  signature is gone; safety contract moves into the trait
+  bounds the consumer's derive proves.
+- `Api::call_ufunction_typed` loses its `unsafe fn` marker.
+  Callers pass any `T` that derives the four zerocopy traits;
+  the compiler proves POD-ness for us.
+
+Consumers:
+- `grounded2-rpg` dev-deps gain `zerocopy`. Test-side parm
+  structs (`AddHealthParms`, `GetValueForStatParms`) get the
+  four zerocopy derives.
+- 3 `unsafe { common::parms_as_bytes(...) }` wrappers + the
+  unsafe call to `call_ufunction_typed` are gone.
+- `GetValueForStatParms.temporary_only` is now `u8` instead of
+  `bool` (zerocopy correctly rejects `bool` because only 0/1
+  are valid byte patterns; 2-255 would be UB).
+
+Workspace clippy: 50 -> 40 unsafe-block warnings.
+
+Still open in the zerocopy migration: dynamic-offset sites
+(`damage::on_event` driven by `DamageHookConfig`, `decode_field`
+driven by FProperty class string), per-UFunction parm decoder
+structs in kill/fall/inv_hooks, and `FDataTableRowHandle`
+(contains a raw pointer; would need a split type).
+
 ## 2026-05-12 (patternsleuth integration + workspace LICENSE + crate survey)
 
 ### patternsleuth integration
