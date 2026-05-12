@@ -260,19 +260,21 @@ In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Ueforge durability (kovarex review wave 2, remaining)
 
-- [ ] **Adopt `patternsleuth` instead of hand-rolling
-  `ue::sigscan` (P0 leverage; supersedes the sig-scan item
-  below).** `trumank/patternsleuth` is THE Rust sig-scan crate
-  UE4SS itself uses to locate engine functions at runtime.
-  Comes with a battle-tested test suite of UE-specific patterns
-  (`GUObjectArray`, `GNames`, `GWorld`, `StaticConstructObject_
-  Internal`, `ProcessEvent`, `FName::AppendString`) already
-  vetted across UE 4.x → 5.x patches; ranked-candidate
-  multi-pattern support; `image-pe` + `process-internal`
-  feature flags. Drop `ue::sigscan` once verified equivalent
-  against the hardcoded STEAM/XBOX offsets in the running game.
-  This is the actual fix for "UE patches break us", not
-  extending our own scanner. https://github.com/trumank/patternsleuth
+- [x] **Adopt `patternsleuth`**. Workspace dep pinned to
+  `trumank/patternsleuth` master @9573c52 (workspace package is
+  `MIT OR Apache-2.0`). New module `ueforge::ue::resolvers` wraps
+  the three UE resolvers we use: `GUObjectArray`, `FNamePool`,
+  `FNameToString` (UE's `AppendString`). `resolve_image_offsets()`
+  reads the host image via `patternsleuth::process::internal::
+  read_image()`, calls `exe.resolve(UeResolution::resolver())`,
+  returns image-relative offsets. New debug op `resolve_offsets`
+  returns a side-by-side comparison against the configured
+  hardcoded STEAM/XBOX offsets so drift on a future game patch
+  is visible without rebuilding. Hand-rolled `ue::sigscan` deleted
+  (was 466 LoC; patternsleuth ships the equivalent + a UE
+  pattern library + UE-version-aware ranking). `ProcessEvent`
+  vtable index stays hardcoded. It's a vtable slot, not an
+  image offset, and patternsleuth doesn't ship a resolver for it.
 - [ ] **Adopt `zerocopy` for parm decoders + `decode_field`
   matchups.** `google/zerocopy` (or `bytemuck` for simpler POD
   casts) replaces every `(ptr as *const T).read_unaligned()`
@@ -285,20 +287,6 @@ In-game smoke test (P0 below) is the acceptance gate.
   structs. Compile-time layout verification catches the "wrong
   offset" class of bugs at build time instead of runtime.
   https://docs.rs/zerocopy/
-- [/] **Sig-scan the four base offsets** (framework shipped;
-  signature porting pending; superseded by patternsleuth above).
-  `ueforge::ue::sigscan` provides the full primitive:
-  `Pattern::parse` (IDA-style hex with `?` wildcards), `find` /
-  `find_all` linear scanner, `resolve_rip32` RIP-relative target
-  decoder, `text_section()` PE header walk that returns the host
-  exe's .text as a `'static` slice, and
-  `find_image_relative_rip32` convenience for stuffing into
-  `PlatformOffsets`. Plus a `sig_scan` debug op that lets you
-  iteratively test patterns against the running game without
-  rebuilding. 8 unit tests covering pattern parsing, scanning,
-  and RIP-32 decode (positive + negative disp). If patternsleuth
-  adoption lands, this module is DELETED (its scanner+rip32
-  logic is what patternsleuth ships).
 
   Still open: actually porting UE4SS upstream signatures for
   `g_objects` / `g_names` / `g_world` / `process_event` /

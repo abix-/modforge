@@ -6,7 +6,7 @@ members = ["grounded2-rpg", "outworld-station-tweaks", "ueforge"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-license = "MIT"
+license = "GPL-3.0-only"
 publish = false
 
 [workspace.dependencies]
@@ -28,6 +28,11 @@ arc-swap = "1"
 hex = "0.4"
 crossbeam-channel = "0.5"
 region = "3"
+# patternsleuth: UE4SS-blessed Rust sig-scan crate. No crates.io
+# release; pinned to a recent master SHA. Workspace package
+# licensed "MIT OR Apache-2.0" (per the upstream Cargo.toml,
+# even though the root has no LICENSE file).
+patternsleuth = { git = "https://github.com/trumank/patternsleuth.git", rev = "9573c52e8227af1d219782353e0ee6e9c6ec940c", features = ["process-internal", "image-pe"] }
 
 # Workspace-wide lints. Crates opt in with `[lints] workspace = true`.
 #

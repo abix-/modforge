@@ -21,7 +21,7 @@ pub mod pe_call;
 pub mod platform;
 pub mod player;
 pub mod probe;
-pub mod sigscan;
+pub mod resolvers;
 pub mod status_effect;
 pub mod tarray;
 pub mod tmap;
