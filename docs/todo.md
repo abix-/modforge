@@ -154,32 +154,47 @@ If any of that fails, triage from the log lines.
 
 ---
 
-## P0. Triggers Phase 5c: lift kill/fall into framework triggers
+## Triggers Phase 5c: event-driven dispatch (SHIPPED 2026-05-11)
 
-Phases 5a + 5b shipped 2026-05-10 (TriggerDef + TriggerCtx +
-Effect::apply(ctx) + Tracker fires SlotChange). The remaining
-piece formalises event-driven dispatch:
+Five commits land the lift (3516276..2b2c66d):
 
-- [ ] **`KillTrigger`**. Lift g2rpg's kill_hook into a
-  framework module matching `damage::DamageHook`'s shape.
-  Decodes MulticastHandleEffectsWithDamageFlags + KillingBlow
-  filter. Fires `TriggerCtx::Kill(&KillEvent)` to subscribed
-  effects. Game declares a `KillBinder` if it needs custom
-  filter logic; otherwise framework default applies.
-- [ ] **`FallTrigger`**. Same lift for fall_hook. Fires
-  `TriggerCtx::Fall(&FallEvent)`.
-- [ ] **`OnDamageDealtTrigger` / `OnDamageTakenTrigger`**.
-  wrap `damage::DamageHook` so skills declare the trigger
-  inline rather than implementing `DamageBinder` directly.
-- [ ] **Replace stub event types** (`DamageEventStub`,
-  `KillEventStub`, `FallEventStub`) with real shapes when the
-  decoders move to the framework.
-- [ ] **g2rpg lifesteal** migrates from bespoke kill_hook
-  trampoline to `trigger: &ON_DAMAGE_DEALT`.
+- [x] Real `KillEvent` / `FallEvent` types; drop the three
+  `*EventStub` placeholders.
+- [x] Four new framework TriggerDefs: `ON_DAMAGE_DEALT`,
+  `ON_DAMAGE_TAKEN`, `ON_KILL`, `ON_FALL`. `TriggerCtx::
+  DamageDealt / DamageTaken` reuse `damage::DamageEvent`.
+- [x] `Tracker::fire(ctx)` dispatch. Walks catalog under one
+  lock, snapshots `(skill, level)` pairs to a 32-slot stack
+  array, drops the lock, then fires `Effect::apply` outside
+  the lock so re-entry is safe. Zero heap allocs.
+- [x] Framework `ueforge::fall::FallHook<B>` mirroring
+  `damage::DamageHook`. PE-install + OnLanded filter + Velocity.Z
+  snapshot. `FallEvent.cmc` exposed so binders/effects can
+  write Velocity.Z without re-resolving offsets.
+- [x] g2rpg/fall_hook.rs migrated to a thin G2FallBinder.
+- [x] g2rpg/kill_hook.rs `G2DamageBinder` fires
+  `TRACKER.fire(DamageDealt | DamageTaken | Kill)` at the
+  pre/post slots; lost ~70 LoC of inline apply_lifesteal +
+  apply_impact_resistance_reversal.
+- [x] Catalog rows: `SKILL_LIFESTEAL` -> `trigger=ON_DAMAGE_DEALT`
+  with `LifestealEffect`; `SKILL_IMPACT_RESISTANCE` ->
+  `trigger=ON_DAMAGE_TAKEN` with `ImpactReversalEffect`. Drops
+  two `RuntimeEffect` placeholders.
+- [x] `Tracker::apply_one_unlocked` filters to OnSlotChange-
+  kinded skills only. Event-driven Effects no longer get
+  spurious SlotChange fires on activate / spend / refund /
+  toggle.
 
-Eliminates ~300 LoC of bespoke g2rpg hook code; future
-event-driven skills (crit, evasion, thorns) become catalog rows
-instead of new trampoline modules.
+Deferred from 5c:
+- `TriggerCtx::Tick { dt }` has no firer (Periodic poller not
+  yet built; defer until a periodic skill needs it).
+- ueforge-side generic `FallVelocityStompEffect` for catalog
+  use; G2's stomp lives in the binder because
+  SKILL_FALL_RESISTANCE already uses ON_SLOT_CHANGE for CDO
+  writes. Promoting to a second SkillDef is ugly UX; revisit
+  if a second game wants the stomp.
+
+In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Registry alignment (remaining)
 
