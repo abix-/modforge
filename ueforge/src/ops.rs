@@ -125,7 +125,10 @@ impl OpRegistry {
             let g = self.entries.lock();
             g.iter().find(|o| o.name == name)?.handler.clone()
         };
+        let started = std::time::Instant::now();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| handler(args)));
+        let elapsed_ns = started.elapsed().as_nanos() as u64;
+        record_op_latency(name, elapsed_ns, matches!(result, Ok(Ok(_))));
         Some(match result {
             Ok(r) => r,
             Err(_) => Err(format!("handler '{name}' panicked")),
@@ -172,6 +175,66 @@ impl Default for OpRegistry {
 /// their ops here at worker init; the HTTP `handle()` calls
 /// `OP_REGISTRY.dispatch(op, args)` for every request.
 pub static OP_REGISTRY: OpRegistry = OpRegistry::new();
+
+// ---- Per-op latency metrics --------------------------------------------
+//
+// `dispatch` records `(calls, errors, total_ns, max_ns)` per op
+// name. Hot-path-safe (atomic adds in a HashMap behind a Mutex;
+// reasonable for HTTP-dispatched ops which are cold relative to
+// the trampoline). `tweak_metrics_*` ops would surface this if
+// wanted; for now `op_metrics` returns the full snapshot.
+
+#[derive(Default, Debug, Clone)]
+struct OpMetrics {
+    calls: u64,
+    errors: u64,
+    total_ns: u64,
+    max_ns: u64,
+}
+
+static METRICS: std::sync::OnceLock<Mutex<std::collections::HashMap<String, OpMetrics>>> =
+    std::sync::OnceLock::new();
+
+fn metrics_map() -> &'static Mutex<std::collections::HashMap<String, OpMetrics>> {
+    METRICS.get_or_init(|| Mutex::new(std::collections::HashMap::with_capacity(64)))
+}
+
+fn record_op_latency(name: &str, elapsed_ns: u64, ok: bool) {
+    let mut g = metrics_map().lock();
+    let e = g.entry(name.to_string()).or_default();
+    e.calls = e.calls.saturating_add(1);
+    if !ok {
+        e.errors = e.errors.saturating_add(1);
+    }
+    e.total_ns = e.total_ns.saturating_add(elapsed_ns);
+    if elapsed_ns > e.max_ns {
+        e.max_ns = elapsed_ns;
+    }
+}
+
+/// JSON snapshot of every recorded op's metrics. Sorted by
+/// total_ns descending so the slow ones surface first.
+pub fn metrics_json() -> Json {
+    let g = metrics_map().lock();
+    let mut items: Vec<(String, OpMetrics)> =
+        g.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    items.sort_by(|a, b| b.1.total_ns.cmp(&a.1.total_ns));
+    let entries: Vec<Json> = items
+        .into_iter()
+        .map(|(name, m)| {
+            let avg_ns = if m.calls > 0 { m.total_ns / m.calls } else { 0 };
+            serde_json::json!({
+                "name": name,
+                "calls": m.calls,
+                "errors": m.errors,
+                "total_ns": m.total_ns,
+                "max_ns": m.max_ns,
+                "avg_ns": avg_ns,
+            })
+        })
+        .collect();
+    serde_json::json!({ "ops": entries })
+}
 
 /// Register every framework-shipped op that does NOT need
 /// per-game context (no tracker, no selector resolver, no PE
@@ -427,6 +490,12 @@ pub fn register_builtins() {
             "Auto-generated catalog of every registered debug op",
             "{}",
             |_args| Ok(OP_REGISTRY.list_json()),
+        ),
+        OpDef::new(
+            "op_metrics",
+            "Per-op latency metrics: calls / errors / total_ns / max_ns / avg_ns (sorted by total_ns)",
+            "{}",
+            |_args| Ok(crate::ops::metrics_json()),
         ),
         OpDef::new(
             "list_selectors",

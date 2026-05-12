@@ -1,8 +1,19 @@
 // SDK-version-coupled offset constants. Cross-checked against
-// `C:\Tools\work\sdk\SDK\Basic.hpp` from Dumper-7.
+// Dumper-7's `SDK/Basic.hpp` for Grounded 2 on the active UE 5.4
+// build. To regenerate against a new game patch:
 //
-// Two builds: Steam and Xbox Game Pass. We pick at runtime by matching the
-// host process exe name. See `detect_platform`.
+//   1. Run Dumper-7 (https://github.com/Encryqed/Dumper-7) against
+//      the running Maine-Win64-Shipping.exe.
+//   2. Open the generated `SDK/Basic.hpp` and read off
+//      `UObject` / `UField` / `UClass` / `UFunction` / `FName` /
+//      `FProperty` offsets.
+//   3. Update the constants in this file; bump
+//      `PlatformOffsets::g_objects` / `g_names` / `process_event`
+//      via the latest UE4SS upstream `Signatures.cpp` (or the
+//      sig-scan work tracked in docs/todo.md).
+//
+// Two builds: Steam and Xbox Game Pass. We pick at runtime by
+// matching the host process exe name. See `detect_platform`.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {

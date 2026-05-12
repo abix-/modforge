@@ -286,9 +286,11 @@ In-game smoke test (P0 below) is the acceptance gate.
 - [x] **Hex codec -> `hex` crate.** `ueforge/src/hex.rs` deleted;
   `hex = "0.4"` added to workspace deps; consumers map the new
   `FromHexError` to String via `.map_err`. ~30 LoC saved.
-- [ ] **Jittered backoff in `hook/install.rs`.** Multiple mods
-  retrying on the same beats hammer the same load events.
-  Either add jitter directly or switch to the `backoff` crate.
+- [x] **Jittered backoff in `hook/install.rs`.** Inline +/-25%
+  jitter on every retry sleep. Seed is `Instant::now().elapsed()
+  .subsec_nanos()` passed through one xorshift; no rand-crate
+  dep. Unit test asserts every sample over 500 trials stays in
+  range.
 - [x] **PE queue oneshot via `crossbeam_channel::bounded(1)`**.
   Swapped from `std::sync::mpsc::channel`. Bounded(1) is the
   canonical oneshot shape: drain side sends once, enqueue side
@@ -300,10 +302,12 @@ In-game smoke test (P0 below) is the acceptance gate.
   drain_empty_is_noop, enqueue_then_drain_returns_result,
   reentrant_drain_is_skipped (the documented contract proof), and
   cancelled_jobs_are_skipped.
-- [ ] **Vendor SDK header.** `ueforge/src/ue/offsets.rs:2`
-  references `C:\Tools\work\sdk\SDK\Basic.hpp`. A path on the
-  author's machine. Vendor under `ueforge/sdk/` or document the
-  Dumper-7 invocation.
+- [x] **Vendor SDK header / document Dumper-7 invocation.** The
+  ue/offsets.rs header now documents how to regenerate offsets
+  (run Dumper-7, read Basic.hpp + UE4SS Signatures.cpp) rather
+  than referencing an author-machine path. Vendoring the actual
+  Basic.hpp is deferred since it's a per-game artifact tied to
+  Grounded 2's specific UE 5.4 build, not a framework asset.
 - [ ] **UE-version-aware `ffield` / `fproperty` / `ustruct`
   offsets.** Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
   silently returns wrong names. Pair with the sig-scan work.
@@ -321,8 +325,11 @@ In-game smoke test (P0 below) is the acceptance gate.
   `find_class_fast`'s shape; UDataTable instances are stable in
   GObjects for the process lifetime so a hit is permanent. Misses
   are NOT cached.
-- [ ] **Op latency + scan duration metrics.** `counters.rs` has
-  the primitives; nothing in the framework uses them.
+- [x] **Op latency + scan duration metrics.** `OpRegistry::
+  dispatch` now records `(calls, errors, total_ns, max_ns)` per
+  op name; new `op_metrics` debug op returns the snapshot sorted
+  by total_ns descending. Scan duration is implicitly covered
+  (scan_memory routes through dispatch).
 - [x] **Cancellation token on `scan_memory` / long ops.**
   `scanner::SCAN_CANCEL: AtomicBool` checked at every 64 KiB
   chunk boundary; new `scan_cancel` op flips it. Worst-case

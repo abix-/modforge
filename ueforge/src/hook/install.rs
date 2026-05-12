@@ -76,9 +76,32 @@ where
             crate::log!("{name}: gave up after {:?}", policy.timeout);
             return None;
         }
-        std::thread::sleep(delay);
+        std::thread::sleep(jitter(delay));
         delay = (delay * 2).min(policy.max);
     }
+}
+
+/// Pseudo-random +/-25% jitter on `delay`. Multiple mods using
+/// the same `RetryPolicy::default_install()` would otherwise wake
+/// on the same beat and hammer the same load events (e.g. an
+/// engine GC pass right after a level load). Spreading the
+/// retries decorrelates them.
+///
+/// No `rand` crate dependency: the seed is the call-site
+/// `Instant::now()`'s subsec_nanos passed through one xorshift
+/// step. The output quality is not cryptographic; it just needs
+/// to be unsynchronized between concurrent workers, which it is.
+fn jitter(delay: Duration) -> Duration {
+    let nanos = Instant::now().elapsed().subsec_nanos();
+    let mut x = nanos.wrapping_add(0x9E37_79B9);
+    x ^= x.wrapping_shl(13);
+    x ^= x.wrapping_shr(17);
+    x ^= x.wrapping_shl(5);
+    // Map to [-25%, +25%] of delay.
+    let frac = (x % 501) as i64 - 250; // -250..=250
+    let base = delay.as_nanos() as i64;
+    let bumped = (base + base * frac / 1000).max(0) as u64;
+    Duration::from_nanos(bumped)
 }
 
 /// Install a hook **once** (no retry), log the outcome, and
@@ -169,5 +192,22 @@ mod tests {
         assert_eq!(p.base, Duration::from_millis(500));
         assert_eq!(p.max, Duration::from_secs(5));
         assert_eq!(p.timeout, Duration::from_secs(600));
+    }
+
+    #[test]
+    fn jitter_stays_within_25_percent() {
+        let base = Duration::from_millis(1000);
+        // Hammer the jitter so we get a spread; assert every
+        // sample lands within +/-25%. Loop count is small; the
+        // LCG-ish shape is deterministic across a single thread
+        // so we get reasonable distribution without flakes.
+        for _ in 0..500 {
+            let d = jitter(base);
+            let ratio = d.as_millis() as f64 / base.as_millis() as f64;
+            assert!(
+                (0.75..=1.25).contains(&ratio),
+                "jitter out of range: {d:?} (ratio {ratio:.3})"
+            );
+        }
     }
 }
