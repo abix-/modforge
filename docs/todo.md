@@ -147,14 +147,19 @@ discovery before snapshot / browser / static catalog rows.
   symmetric class-tweak dynamic registry (`DYN_CLASS_I32/F32/U32`)
   for Class targets, so captured vanilla survives across reapplies
   and shares with the runtime tweak surface.
-- [ ] **Migrate `stacks::StackDef` to `TweakDef`**. Each StackDef
-  becomes a `TweakDef::data_table_i32(..., TweakOp::Multiply, ...)`.
-  Non-breaking via #[deprecated]; collapse StackRegistry into
-  TweakRegistry on the next sweep. Defer until a real second
-  consumer of StackDef (none today; g2rpg + ows-tweaks).
-- [ ] **Migrate `difficulty::DifficultyDef` to `TweakDef`**. Each
-  DifficultyDef becomes a `TweakDef::class_f32(..., TweakOp::
-  Multiply, ...)`. Same deprecation path as Stack.
+- [x] **Mark `stacks::StackDef` + `StackRegistry` as
+  `#[deprecated]`**. Pointing at
+  `TweakDef::data_table_i32(..., TweakOp::Multiply, ...)`.
+  Module-level `#![allow(deprecated)]` keeps internal noise out;
+  external consumers (ows-tweaks) get the deprecation warning.
+- [x] **Mark `difficulty::DifficultyDef` + `DifficultyRegistry`
+  as `#[deprecated]`**. Same shape, pointing at
+  `TweakDef::class_f32(..., TweakOp::Multiply, ...)`.
+- [ ] **Sweep the consumer-side declarations**. g2rpg's
+  `survival.rs` `DifficultyDef`s + ows-tweaks's `stacks.rs`
+  `StackDef`s migrate to `TweakDef`. After the sweep, delete the
+  deprecated modules. Defer until in-game smoke validates the
+  TweakDef path actually works.
 - [x] **Persisted-tweak surface**. `<DLL_dir>/tweaks.json`
   written atomically on every successful `tweak_apply`; cleared
   per-entry by `tweak_revert`. Schema 1 envelope:

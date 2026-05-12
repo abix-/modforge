@@ -7,6 +7,80 @@
 > timing rules that make data-table mutations actually propagate
 > in-game.
 
+## Where the tweak primitives live (cheat sheet)
+
+| Need | Use |
+|---|---|
+| One-off ad-hoc write at a known offset | `FieldTweak<T>` (`ue::datatable`) or `ClassFieldTweak<T>` (`ue::class_tweak`) |
+| Settings-driven write resolved by field NAME | `data_table::NamedFieldTweak<T>` (data tables) / `ClassNamedFieldTweak<T>` (class instances) |
+| Runtime declare-and-apply from HTTP / ImGui | `data_table::tweak_apply_from_args` + the `tweak_*` debug ops |
+| **Static catalog row** with atomic value + apply/revert | **`tweak::TweakDef`** (data-table OR class target, one Def shape) |
+| Catalog of TweakDefs | `tweak::TweakRegistry` |
+| Stack-size catalog (existing) | `stacks::StackDef` (deprecated; collapses to `TweakDef::data_table_i32(..., Multiply, ...)`) |
+| Difficulty CDO catalog (existing) | `difficulty::DifficultyDef` (deprecated; collapses to `TweakDef::class_f32(..., Multiply, ...)`) |
+
+`TweakDef` is the workspace-standard catalog form for the write
+surface. All paths share captured-vanilla state via the dynamic
+registries inside `data_table` / `tweak`, so mixing them on the
+same (table, field) coordinates correctly.
+
+## TweakDef (Phase 2, unified static catalog)
+
+`ueforge::tweak::TweakDef` is one Def shape that subsumes both
+data-table-row tweaks AND live-class-instance tweaks behind a
+single catalog form.
+
+```rust
+use ueforge::tweak::{TweakDef, TweakRegistry, TweakOp};
+
+static STACK_MATERIALS: TweakDef = TweakDef::data_table_i32(
+    "stack_materials",
+    "DT_Materials", "MaxCanStack",
+    TweakOp::Multiply, 4,
+);
+
+static BACKPACK_SLOTS: TweakDef = TweakDef::class_i32(
+    "backpack_slots",
+    "InventoryComponent", "SlotCount",
+    TweakOp::Set, 40,
+);
+
+pub static TWEAKS: TweakRegistry =
+    TweakRegistry::new(&[&STACK_MATERIALS, &BACKPACK_SLOTS]);
+```
+
+Six const constructors covering every (target × kind) combo:
+
+| Constructor | Target | Kind |
+|---|---|---|
+| `data_table_i32` | DataTable | i32 |
+| `data_table_f32` | DataTable | f32 |
+| `data_table_u32` | DataTable | u32 |
+| `class_i32` | Class | i32 |
+| `class_f32` | Class | f32 |
+| `class_u32` | Class | u32 |
+
+`TweakOp`: `Set`, `Multiply`, `Add`. `Multiply` skips
+vanilla-zero rows (won't make non-stackable items stack);
+`Set`/`Add` always touch.
+
+Runtime tunable: `current_value_bits: AtomicU64`. Use
+`load_i32/u32/f32` + `store_i32/u32/f32` from sliders.
+`reset_to_default()` reverts to the construction-time value and
+re-applies. Captured vanilla is NOT touched; future re-applies
+still re-base correctly.
+
+Apply walks every target row / instance, captures vanilla on
+first sight, writes the op result. Idempotent on re-apply.
+`TweakRegistry::apply_all()` returns
+`Vec<(id, Result<rows, err>)>` so partial-success (fields not
+yet in discovery cache) is visible.
+
+The Class target path uses a new symmetric dynamic registry
+(`DYN_CLASS_I32 / F32 / U32`) keyed by `(class_name, offset)`.
+Same captured-vanilla shape as the data-table path; revert
+restores every captured instance.
+
 ## DataTableDef + DataTableRegistry (Phase 1)
 
 ```text

@@ -12,34 +12,124 @@
 
 Newest first.
 
-## 2026-05-11 (DataTableDef Phase 2 begun. runtime tweak ops)
+## 2026-05-11 (DataTableDef Phase 2 + 1 stragglers)
 
-Phase 2 of the DataTableDef plan opens: declare-and-apply tweaks
-at runtime, without recompiling. The dynamic write primitives
-(`data_table::dynamic_apply_i32 / f32 / u32`) already existed;
-this lift wires three new debug ops on top of them.
+Five commits across the day land the full Phase 1 finish and
+most of Phase 2: read filtering, registered-catalog ops, runtime
+write ops, on-disk persistence, ImGui surface, and the unified
+static `TweakDef`.
 
-- **`tweak_apply`**. JSON args `{table, field, kind, op, value}`.
-  Resolves offset via the discovery cache, captures vanilla per
-  row on first apply, then writes `set` / `multiply` / `add`
-  using the captured baseline. Re-applying is idempotent (same
-  op + value lands the same final field value). Kinds: `i32`,
-  `f32`, `u32`. Returns rows touched.
-- **`tweak_list`**. JSON snapshot of every active dynamic
-  tweak across the three primitive registries. Each entry
-  reports kind, table_name, field_name, offset, vanilla_count.
-- **`tweak_revert`**. Reverts one specific `(table, field)` to
-  captured vanilla, OR all dynamic tweaks at once when args are
-  empty. Returns total rows reverted.
+### Phase 1 stragglers (66413c9)
 
-Plus the supporting framework surface: `dynamic_revert_one`,
-`dynamic_list_json`, `tweak_apply_from_args`.
+- `ui_data_table_browser`: row-FName filter input inside the
+  rows tree of the selected table. Case-insensitive substring
+  match on `row_name`; footer shows `filtered: N rows matching
+  '...'`.
+- `data_table::register(&'static DataTableRegistry)` +
+  `registered()` + `list_json()`. Per-process catalog
+  registration so the new `list_data_tables` op enumerates
+  statically-declared tables separately from the runtime
+  discovery cache.
+- `list_data_tables` op in `register_builtins`. Returns
+  `{registered: false, count: 0, tables: [], note: ...}` when
+  no consumer has registered; otherwise the full catalog JSON.
 
-The static-side TweakDef unification (collapse stacks +
-difficulty + field tweaks into one Def shape) is still open;
-the persistence layer that survives Ctrl+R is open too.
+### Phase 2 runtime tweak ops (1acc7db)
 
-ueforge 67/67 tests pass; both crates build clean release.
+The dynamic write primitives (`dynamic_apply_i32 / f32 / u32`)
+already existed; this lift wires three new debug ops:
+
+- **`tweak_apply`** `{table, field, kind, op, value}`. Resolves
+  offset via discovery cache, captures vanilla per row on first
+  apply, writes `set` / `multiply` / `add` using the captured
+  baseline. Idempotent on re-apply.
+- **`tweak_list`** snapshots every active tweak across the
+  three primitive registries with vanilla_count per entry.
+- **`tweak_revert`** reverts one specific `(table, field)` or
+  all when args are empty.
+
+Supporting surface: `dynamic_revert_one`, `dynamic_list_json`,
+`tweak_apply_from_args`.
+
+### Phase 2 persisted-tweak surface (8aa3d79)
+
+Tweaks survive Ctrl+R hot-reload.
+
+- Every successful `tweak_apply` writes
+  `<DLL_dir>/tweaks.json` atomically (temp + fsync + rename).
+- `tweak_revert` removes the matching entry; the no-args form
+  clears the file.
+- Schema 1 envelope: `{schema_version, tweaks: [{table, field,
+  kind, op, value}, ...]}`. Missing/unparseable files start
+  fresh, no error.
+- Game crates call `data_table::restore_persisted_at_init()`
+  from their `on_unreal_init` worker (after
+  `discovery::run_at_load`) to reload + reapply at boot and
+  after every Ctrl+R.
+- Three new ops: `tweak_persisted_list`,
+  `tweak_persisted_load`, `tweak_persisted_reapply`.
+- New surface: `PersistedTweak` (serde), `record_persisted`
+  (private), `forget_persisted{,_all}_pub`,
+  `persisted_list_json`, `load_persisted_from_disk`,
+  `reapply_persisted`, `restore_persisted_at_init`.
+  `tweak_apply_inner(args, persist)` is the shared body so
+  reload-time replay skips the redundant IO storm.
+
+### Phase 2 ImGui tab (531e51c)
+
+New module `ueforge::ui_tweaks::render`. Games include it in
+`MOD_INFO.tabs` for a hot-iteration tweak UX without curl.
+Three collapsing sections:
+
+- **Apply a tweak**: table/field text inputs, kind toggle
+  (i32/f32/u32), op toggle (set/multiply/add), value input.
+  Apply button calls `tweak_apply_from_args`; result or error
+  displayed below.
+- **Active tweaks (in-memory)**: per-row Revert + Revert-all.
+- **Persisted on disk**: file path + count + Reload + Reapply
+  buttons + entry list.
+
+### Phase 2 static TweakDef unification (a8c3156)
+
+The big architectural piece. New module `ueforge::tweak`.
+
+- `TweakTarget` enum: `DataTable { table, field }` |
+  `Class { class, field }`.
+- `TweakKind` enum: `I32` / `F32` / `U32`.
+- `TweakOp` enum: `Set` / `Multiply` / `Add`.
+- `TweakDef` carries `AtomicU64 current_value_bits` (runtime-
+  tunable via store_*) + `default_value_bits` (for
+  reset_to_default).
+- Six const constructors covering every (target × kind):
+  `data_table_i32 / f32 / u32`, `class_i32 / f32 / u32`.
+- `apply` / `revert` / `reset_to_default` / `resolved` methods;
+  `load_*` / `store_*` per kind.
+- `TweakRegistry` slice-of-refs wrapper with `apply_all` /
+  `revert_all` returning `Vec<(id, Result<rows, err>)>`.
+- Backend reuse: DataTable apply delegates to
+  `data_table::dynamic_apply_*` so static TweakDefs and the
+  runtime tweak surface share captured vanilla on the same
+  field. Class apply uses a new symmetric `DYN_CLASS_I32 / F32
+  / U32` registry, same shape as the data-table side.
+- Unit tests: const-construction across all six constructors,
+  load/store round-trip, op math, Multiply-skips-vanilla-zero,
+  registry lookup.
+
+Existing `stacks::StackDef` + `difficulty::DifficultyDef` left
+intact. Migration to TweakDef is a follow-up; non-breaking
+because both shapes share the dynamic vanilla cache when
+targeting the same field.
+
+### Still open in Phase 2
+
+- Migrate StackDef -> `TweakDef::data_table_i32(...,
+  TweakOp::Multiply, ...)`.
+- Migrate DifficultyDef -> `TweakDef::class_f32(...,
+  TweakOp::Multiply, ...)`.
+- Replicated-field respect (defer until concrete case).
+- Non-primitive (FString / TArray) writes (FMemory ABI work).
+
+ueforge 71/71 tests pass; both crates build clean release.
 In-game smoke test still pending.
 
 ## 2026-05-11 (Triggers Phase 5c. event-driven catalog dispatch)

@@ -1,3 +1,9 @@
+// Module is deprecated in favor of `ueforge::tweak::TweakDef`,
+// but internal impls/registry references intentionally keep
+// using the local types. Suppress the resulting internal-only
+// noise; external consumers still see the per-Def deprecation.
+#![allow(deprecated)]
+
 //! Game difficulty / drain-rate tweak framework. One of
 //! ueforge's opinionated UE5 mod modules (rpg / stacks /
 //! difficulty / inventory / damage).
@@ -50,6 +56,19 @@ use crate::ue::class_tweak::{ClassFieldTweak, ClassTweakStats};
 /// the configured class. `apply_to_all` writes to every instance
 /// (CDOs + live), useful for fields the engine reads from live
 /// instances rather than the CDO.
+///
+/// **Deprecated**: prefer
+/// [`crate::tweak::TweakDef::class_f32`] with
+/// [`crate::tweak::TweakOp::Multiply`]. The unified TweakDef shape
+/// shares captured-vanilla state with every other class-field
+/// write entry point.
+#[deprecated(
+    since = "0.1.0",
+    note = "use ueforge::tweak::TweakDef::class_f32(id, class, \
+            field_name, TweakOp::Multiply, default). field_offset \
+            is now resolved from the discovery cache by FIELD \
+            NAME rather than hand-typed."
+)]
 pub struct DifficultyDef {
     /// Stable id for [`DifficultyRegistry::def`] lookup.
     pub id: &'static str,
@@ -134,6 +153,14 @@ impl DifficultyDef {
 /// can declare each Def as its own named static + inline the
 /// registry literal without hitting Rust's const-eval Drop
 /// restriction. See architecture.md "Naming contract".
+///
+/// **Deprecated**: prefer [`crate::tweak::TweakRegistry`].
+#[deprecated(
+    since = "0.1.0",
+    note = "use ueforge::tweak::TweakRegistry holding TweakDef \
+            entries that are TweakDef::class_f32(... \
+            TweakOp::Multiply ...)"
+)]
 pub struct DifficultyRegistry {
     entries: &'static [&'static DifficultyDef],
 }

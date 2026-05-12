@@ -1,3 +1,9 @@
+// Module is deprecated in favor of `ueforge::tweak::TweakDef`,
+// but internal impls/registry references intentionally keep
+// using the local types. Suppress the resulting internal-only
+// noise; external consumers still see the per-Def deprecation.
+#![allow(deprecated)]
+
 //! Inventory stack-size tweak framework. One of ueforge's
 //! opinionated UE5 mod modules (rpg / stacks / difficulty /
 //! inventory / damage).
@@ -52,6 +58,20 @@ use crate::ue::datatable::FieldTweak;
 /// Def/Registry/Instance/Controller pattern: declared once at
 /// compile time, holds both the immutable config + the runtime
 /// state (vanilla cache, multiplier atomic, apply counters).
+///
+/// **Deprecated**: prefer
+/// [`crate::tweak::TweakDef::data_table_i32`] with
+/// [`crate::tweak::TweakOp::Multiply`]. The unified TweakDef shape
+/// shares captured-vanilla state across all tweak entry points
+/// (static catalog, runtime ops, ImGui tab) so a future migration
+/// of g2rpg + ows-tweaks StackDefs is non-breaking.
+#[deprecated(
+    since = "0.1.0",
+    note = "use ueforge::tweak::TweakDef::data_table_i32(id, table, \
+            field_name, TweakOp::Multiply, default). \
+            field_offset is now resolved from the discovery cache by \
+            FIELD NAME rather than hand-typed."
+)]
 pub struct StackDef {
     /// Stable id for [`StackRegistry::def`] lookup. Lowercase
     /// snake_case by convention (`"materials"`, `"crops"`).
@@ -146,6 +166,14 @@ impl StackDef {
 /// declare each Def as its own named static + inline the
 /// registry literal without hitting Rust's const-eval Drop
 /// restriction. See architecture.md "Naming contract".
+///
+/// **Deprecated**: prefer [`crate::tweak::TweakRegistry`].
+#[deprecated(
+    since = "0.1.0",
+    note = "use ueforge::tweak::TweakRegistry holding TweakDef \
+            entries that are TweakDef::data_table_i32(... \
+            TweakOp::Multiply ...)"
+)]
 pub struct StackRegistry {
     entries: &'static [&'static StackDef],
 }
