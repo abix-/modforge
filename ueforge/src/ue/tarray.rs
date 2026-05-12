@@ -99,6 +99,34 @@ mod tests {
         assert_eq!(s, &[11, 22, 33, 44]);
     }
 
+    // Property test: arbitrary `num` / `max` combinations with
+    // arbitrary non-null `data` must never produce a non-empty
+    // slice when `num` is negative or zero, and must never crash
+    // the `is_empty` check. Pairs with the hand-written boundary
+    // cases above.
+    proptest::proptest! {
+        #[test]
+        fn is_empty_holds_for_garbage_headers(
+            num in proptest::prelude::any::<i32>(),
+            max in proptest::prelude::any::<i32>(),
+            data_addr in proptest::prelude::any::<usize>(),
+        ) {
+            // Pointer is constructed from an arbitrary integer.
+            // We never deref it: only `len()` / `is_empty()` are
+            // exercised. Both are pointer-safe queries.
+            let a: TArray<u8> = TArray {
+                data: data_addr as *mut u8,
+                num,
+                max,
+            };
+            assert_eq!(a.len(), num);
+            let empty = a.is_empty();
+            if num <= 0 || data_addr == 0 {
+                assert!(empty);
+            }
+        }
+    }
+
     #[test]
     fn repr_c_layout_matches_engine() {
         // The TArray<T> = { data, num, max } layout is 16 bytes

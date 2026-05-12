@@ -80,6 +80,9 @@ regex = { workspace = true }
 winreg = { workspace = true }
 zip = { workspace = true }
 
+[dev-dependencies]
+proptest = { workspace = true }
+
 [lints]
 workspace = true
 

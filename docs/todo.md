@@ -94,13 +94,11 @@ confirmed via `gh api` 2026-05-12.
    - `FDataTableRowHandle` (has a `*const UObject`; pointer
      rejects FromBytes; would need a split type).
 
-2. **`proptest`**. MEDIUM-HIGH gain, ~quarter day.
-   Random-input fuzzing on the TArray / TMap / FieldTweak walkers.
-   Extends the boundary tests we landed earlier (12 hand-written
-   garbage-input cases) to property-based shapes. Catches walker
-   bugs the boundary tests miss (FName index OOB, freed-page
-   reads, malformed sparse-array headers). Apache-2.0, last
-   commit 2026-04-30. <https://docs.rs/proptest/>
+2. **`proptest`** (IN PROGRESS). MEDIUM-HIGH gain. First property
+   test landed: `TArray::is_empty_holds_for_garbage_headers` in
+   `ue/tarray.rs`. Still open: TMap walker (stride=24 + sparse
+   array bitarray), FieldTweak decoder, `Val::from_json` round
+   trips, `inspect_address` byte slabs.
 
 3. **`insta`**. MEDIUM gain, ~1 hour to wire. Snapshot testing
    for op JSON responses. Each `.snap` file is one human review;
@@ -129,9 +127,9 @@ confirmed via `gh api` 2026-05-12.
   offsets**. Hardcoded for UE 5.4 in `ue/offsets.rs`. UE 5.5+
   silently returns wrong names. Pair with the sig-scan work.
 - [/] **Property tests on walkers**. Boundary tests shipped (5
-  on `tarray`, 7 on `tmap`). The cargo-fuzz / proptest layer is
-  still open if we want random byte slabs at FieldTweak /
-  `inspect_address` / `Val::from_json`.
+  on `tarray`, 7 on `tmap`). First proptest landed on TArray.
+  Still open: TMap walker, FieldTweak decoder,
+  `Val::from_json`, `inspect_address` byte slabs.
 - [ ] **`tiny_http` / `ureq 2` migration window**. Both on a 2-5
   year support horizon.
 - [ ] **PE hook trampoline linear search**. Index by vtable
