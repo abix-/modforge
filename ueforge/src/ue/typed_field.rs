@@ -27,6 +27,18 @@
 //! Centralizes the `read_unaligned` / `write_unaligned` discipline
 //! and gives one place to add bounds validation against
 //! [`UClass::properties_size`] later.
+//!
+//! ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//!
+//! Every `unsafe { ... }` block forwards to a paired `unsafe fn`
+//! on `UObject` (`read_field` / `write_field` / `field_ptr`). The
+//! caller's `unsafe fn` contract is identical: `&UObject` is live
+//! for the borrow + `self.offset` is a real `T` field on that
+//! object. The wrappers exist to bundle the offset with its `T`
+//! at the type level; they don't introduce new invariants. We
+//! allow the workspace lint at module level rather than repeating
+//! the trivial "forwards to obj.read_field" comment ~4 times.
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::marker::PhantomData;
 

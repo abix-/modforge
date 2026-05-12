@@ -64,6 +64,10 @@ impl FWeakObjectPtr {
 
     /// Read an `FWeakObjectPtr` from `parent` at byte `offset`.
     pub fn read(parent: &super::UObject, offset: usize) -> Self {
+        // SAFETY: caller's contract is that `offset` is the byte
+        // offset of an FWeakObjectPtr field on `parent`. The struct
+        // is 8 bytes #[repr(C)]; read_unaligned tolerates any
+        // alignment.
         unsafe {
             parent
                 .field_ptr(offset)

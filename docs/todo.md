@@ -260,18 +260,45 @@ In-game smoke test (P0 below) is the acceptance gate.
 
 ## P1. Ueforge durability (kovarex review wave 2, remaining)
 
+- [ ] **Adopt `patternsleuth` instead of hand-rolling
+  `ue::sigscan` (P0 leverage; supersedes the sig-scan item
+  below).** `trumank/patternsleuth` is THE Rust sig-scan crate
+  UE4SS itself uses to locate engine functions at runtime.
+  Comes with a battle-tested test suite of UE-specific patterns
+  (`GUObjectArray`, `GNames`, `GWorld`, `StaticConstructObject_
+  Internal`, `ProcessEvent`, `FName::AppendString`) already
+  vetted across UE 4.x → 5.x patches; ranked-candidate
+  multi-pattern support; `image-pe` + `process-internal`
+  feature flags. Drop `ue::sigscan` once verified equivalent
+  against the hardcoded STEAM/XBOX offsets in the running game.
+  This is the actual fix for "UE patches break us", not
+  extending our own scanner. https://github.com/trumank/patternsleuth
+- [ ] **Adopt `zerocopy` for parm decoders + `decode_field`
+  matchups.** `google/zerocopy` (or `bytemuck` for simpler POD
+  casts) replaces every `(ptr as *const T).read_unaligned()`
+  site with a derive-based `FromBytes::ref_from_bytes` call.
+  The struct's layout is verified at COMPILE time (size,
+  alignment, padding-with-pointers all rejected) for zero
+  runtime cost. Net effect: ~50 unsafe blocks across
+  `damage/mod.rs`, `data_table.rs::decode_field`, kill_hook /
+  fall_hook / inv_hook parm decoders collapse into typed parm
+  structs. Compile-time layout verification catches the "wrong
+  offset" class of bugs at build time instead of runtime.
+  https://docs.rs/zerocopy/
 - [/] **Sig-scan the four base offsets** (framework shipped;
-  signature porting pending). `ueforge::ue::sigscan` provides the
-  full primitive: `Pattern::parse` (IDA-style hex with `?`
-  wildcards), `find` / `find_all` linear scanner,
-  `resolve_rip32` RIP-relative target decoder, `text_section()`
-  PE header walk that returns the host exe's .text as a
-  `'static` slice, and `find_image_relative_rip32` convenience
-  for stuffing into `PlatformOffsets`. Plus a `sig_scan` debug
-  op that lets you iteratively test patterns against the running
-  game without rebuilding. 8 unit tests covering pattern
-  parsing, scanning, and RIP-32 decode (positive + negative
-  disp).
+  signature porting pending; superseded by patternsleuth above).
+  `ueforge::ue::sigscan` provides the full primitive:
+  `Pattern::parse` (IDA-style hex with `?` wildcards), `find` /
+  `find_all` linear scanner, `resolve_rip32` RIP-relative target
+  decoder, `text_section()` PE header walk that returns the host
+  exe's .text as a `'static` slice, and
+  `find_image_relative_rip32` convenience for stuffing into
+  `PlatformOffsets`. Plus a `sig_scan` debug op that lets you
+  iteratively test patterns against the running game without
+  rebuilding. 8 unit tests covering pattern parsing, scanning,
+  and RIP-32 decode (positive + negative disp). If patternsleuth
+  adoption lands, this module is DELETED (its scanner+rip32
+  logic is what patternsleuth ships).
 
   Still open: actually porting UE4SS upstream signatures for
   `g_objects` / `g_names` / `g_world` / `process_event` /
@@ -327,6 +354,51 @@ In-game smoke test (P0 below) is the acceptance gate.
   (actor / hot_reload / slot_key / sigscan op + the rpg/mod
   re-export shim). Chip away during normal edits; bump the lint
   to `deny` when the count reaches zero.
+
+## Evaluated + actively rejected (don't re-investigate)
+
+Items I considered for "make the code safer" and decided against
+after looking at the prior art:
+
+- **`windows` crate migration (`windows-sys` -> `windows`)**.
+  Would give Result-typed APIs instead of the `if n == 0 {
+  return None }` dance scattered through `winproc.rs` + `log.rs`
+  + `scanner.rs`. Touches a lot of FFI for a documentation-style
+  win; not worth the breakage risk against the current `windows-
+  sys` baseline. Revisit only if a consumer-facing safety bug
+  traces back to a missed return-code check.
+- **`retour-rs` / `detour-rs`**. Inline-detour libraries. We
+  use vtable patching (`hook::vtable::write_slot`) which is a
+  different mechanism. The detour crates would compete with our
+  existing hook framework rather than complement it.
+- **`iced-x86` instruction decoder for sig-scan**. Would
+  auto-compute `disp_offset` / `next_instr_offset` from the
+  matched opcode. Marginal: patternsleuth (P1 above) already
+  handles RIP-relative resolution. Skip unless we keep our own
+  sig-scan.
+- **`cxx` crate for the C++ shim FFI**. Generates type-safe C++
+  bindings. Overkill for the four UE4SS symbols `ueforge_shim.
+  cpp` calls; the existing extern "C" wrapper is fine. cxx
+  shines when you have hundreds of C++ types crossing the FFI.
+- **Phantom types on `ProcessEventHook<Installed>` /
+  `<Uninstalled>`**. Type-state pattern. Marginal because
+  `OnceLock` + Drop already enforce install-once semantics.
+  Adds API friction with no real safety win.
+- **`NonNull<UObject>` instead of `*mut UObject`**. We use
+  `&UObject` (which is non-null by Rust rules) in 95% of the
+  code; the remaining 5% (raw pointer fields read from engine
+  memory) are tagged with their own null-check path. Cosmetic
+  change.
+- **`pdb` crate for symbol resolution at runtime**. Only works
+  on debug builds of the game. Shipping UE5 games strip
+  symbols. Skip.
+- **Continue grinding SAFETY comments to zero**. Documentation
+  discipline, not real safety. The runtime defensive primitives
+  (`is_addr_readable`, `catch_unwind` per trampoline, SEH wraps
+  on `AppendString`, the DRAINING guard, `ReadProcessMemory`
+  fault-safe reads) are what actually prevent crashes. The 50
+  remaining warnings are low-leverage; bump the lint to `allow`
+  or live with the noise.
 
 ## P2. Ueforge grooming
 
