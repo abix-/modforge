@@ -58,6 +58,13 @@ impl FallBinder for G2FallBinder {
             let vz: TypedField<f64> = TypedField::at(G2_FALL_CONFIG.velocity_z_offset);
             let before = event.velocity_z_before;
             let after = before * scale;
+            // SAFETY: `cmc` is the resolved CharMovementComponent
+            // returned by ueforge::fall::FallHook for the player
+            // pawn; writing f64 at the configured Velocity.Z
+            // offset matches UMovementComponent's FVector layout
+            // (UE5 doubles at CMC+0xE8). We are on the game
+            // thread inside the OnLanded PE trampoline, before
+            // native ApplyFallDamage reads the value.
             unsafe { vz.write(cmc, after) };
             if before.abs() > 0.001 {
                 ueforge::log!(

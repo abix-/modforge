@@ -511,6 +511,11 @@ mod tests {
     struct FakeObj([u8; 256]);
     static FAKE_OBJ: FakeObj = FakeObj([0; 256]);
     fn fake_uobject() -> &'static crate::ue::UObject {
+        // SAFETY: FAKE_OBJ is a `'static` 256-byte aligned buffer;
+        // casting its address to `*const UObject` gives a non-null
+        // well-aligned pointer. The test never reads UObject
+        // fields through this reference (the CountingEffect ignores
+        // it), so misinterpreting the bytes as UObject is fine.
         unsafe { &*(&FAKE_OBJ as *const FakeObj as *const crate::ue::UObject) }
     }
 

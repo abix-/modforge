@@ -114,7 +114,12 @@ struct HookState<B> {
     binder: B,
 }
 
+// SAFETY: `HookState` only holds a `B: FallBinder` (which requires
+// `Send + Sync` itself) and a `usize` cached function pointer.
+// Nothing in `HookState` is `!Send` or `!Sync` on its own.
 unsafe impl<B: FallBinder> Send for HookState<B> {}
+// SAFETY: see Send impl. `HookState` is concurrent-safe because
+// `B: FallBinder` is required to be `Sync` and `usize` is `Sync`.
 unsafe impl<B: FallBinder> Sync for HookState<B> {}
 
 impl<B: FallBinder> FallHook<B> {
@@ -157,6 +162,9 @@ fn on_event<B: FallBinder>(
     original: OriginalProcessEvent,
 ) {
     let Some(state) = hook.state.get() else {
+        // SAFETY: `original` was captured by ProcessEventHook from
+        // the engine's vtable; the trampoline contract guarantees
+        // `this/function/parms` are the engine-supplied call args.
         unsafe { original.call(this, function, parms) };
         return;
     };
@@ -164,6 +172,7 @@ fn on_event<B: FallBinder>(
     // Fast path: identity-cached OnLanded check. One atomic
     // load + branch on warm path.
     if !hook.on_landed_ptr.matches(function, hook.config.on_landed_fn) {
+        // SAFETY: see above; pure passthrough to the engine.
         unsafe { original.call(this, function, parms) };
         return;
     }
@@ -173,8 +182,17 @@ fn on_event<B: FallBinder>(
     let cmc_field: TypedField<*mut UObject> =
         TypedField::at(hook.config.char_movement_component_offset);
     let vz_field: TypedField<f64> = TypedField::at(hook.config.velocity_z_offset);
+    // SAFETY: `this` is the player UObject passed by the engine
+    // into ProcessEvent; reading a pointer field at the
+    // configured CMC offset is well-defined for the configured
+    // player BP class. `deref` returns None if the pointer field
+    // is null.
     let cmc = unsafe { cmc_field.deref(this) };
     let velocity_z_before = match cmc {
+        // SAFETY: `c` is the CMC reference resolved by `deref`
+        // above; reading f64 at `velocity_z_offset` matches
+        // UMovementComponent's FVector layout (Velocity.Z at
+        // +0xE8 in UE5).
         Some(c) => unsafe { vz_field.read(c) },
         None => 0.0,
     };
@@ -187,6 +205,10 @@ fn on_event<B: FallBinder>(
 
     state.binder.before(&event);
 
+    // SAFETY: forward to the captured engine ProcessEvent. The
+    // binder may have written into `parms` (e.g. Fall Resistance
+    // stomp on CMC.Velocity.Z); the engine then reads the
+    // mutated state via its own native path.
     unsafe { original.call(this, function, parms) };
 
     state.binder.after(&event);

@@ -273,6 +273,13 @@ impl Effect for LifestealEffect {
         if heal <= 0.0 {
             return;
         }
+        // SAFETY: PlayerRef::first_live_static walks GObjects on
+        // the game thread (we are inside the DamageHook
+        // trampoline). read_component_ptr does a typed read of a
+        // *mut UObject at the configured offset on the resolved
+        // pawn. TypedField::read/write require the offset to be
+        // a valid HC.CurrentDamage f32 field, which it is for the
+        // ASurvivalCharacter HC layout.
         unsafe {
             let Some(pawn) = self.player.first_live_static() else {
                 return;
@@ -350,6 +357,13 @@ impl Effect for ImpactReversalEffect {
         let to_reverse = event.damage * progress;
         let cd_field: ueforge::ue::TypedField<f32> =
             ueforge::ue::TypedField::at(self.current_damage_offset);
+        // SAFETY: event.victim_component is the player HC reference
+        // decoded by ueforge::damage::DamageHook from the live
+        // ProcessEvent call; CurrentDamage is a valid f32 field on
+        // UHealthComponent at the configured offset. We are on the
+        // game thread inside the trampoline after the engine's
+        // damage application; rewriting CurrentDamage here lands
+        // before any other reader sees the post-damage value.
         unsafe {
             let cd_now = cd_field.read(event.victim_component);
             let new_cd = (cd_now - to_reverse).max(0.0);
