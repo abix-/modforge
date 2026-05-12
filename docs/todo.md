@@ -292,11 +292,16 @@ In-game smoke test (P0 below) is the acceptance gate.
   installed; assert no thread leak, hook leak, slot regression.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
-- [ ] **Annotate the 271 existing unsafe blocks** with `// SAFETY:`
-  comments. Lint is `warn` workspace-wide (`Cargo.toml`
-  `[workspace.lints.clippy]`); flip to `deny` when the count
-  reaches zero. Track via
-  `cargo clippy --workspace 2>&1 | rg -c "unsafe block missing a safety comment"`.
+- [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
+  comments. Down from 271 -> 216 across this session (tmap.rs
+  walker annotated; ui.rs accepts a module-level
+  `#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
+  universal-FFI-contract module doc; sigscan.rs new code carries
+  per-block SAFETY where each unsafe op has a distinct
+  invariant). The remaining 216 across winproc / ops / ue::
+  uobject / data_table / inventory::viewport / damage / hook::
+  process_event etc. is the long tail; chip away during normal
+  edits and bump the lint to `deny` when the count reaches zero.
 
 ## P2. Ueforge grooming
 
@@ -343,8 +348,15 @@ In-game smoke test (P0 below) is the acceptance gate.
   `FieldTweak`, `inspect_address`, `Val::from_json`. Today's
   `MAX_LINEAR_SCAN = 65_536` is an iteration cap; bound time, not
   iterations.
-- [ ] **`UE4SS.lib` build-time symbol-presence check.** Parse
-  `dumpbin /exports`, assert on the ~10 symbols we use.
+- [x] **`UE4SS.lib` build-time symbol-presence check.** Naive
+  byte-scan of `ueforge/ue4ss/UE4SS.lib` for the two MSVC-mangled
+  symbols `ueforge_shim.cpp` imports (`?get_current_imgui_
+  context@UE4SSProgram@RC@@` + `?get_current_imgui_allocator_
+  functions@UE4SSProgram@RC@@`). If missing the framework build
+  panics with a clear message pointing at the regen path instead
+  of failing at the consumer cdylib's link step. No dumpbin
+  dependency; .libs are ar archives where mangled names appear
+  as literal substrings.
 - [ ] **`tiny_http` / `ureq 2` migration window.** Both on a 2-5
   year support horizon.
 - [ ] **PE hook trampoline linear search.** Index by vtable

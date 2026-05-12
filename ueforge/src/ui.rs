@@ -8,6 +8,29 @@
 //! Surface starts small and grows on demand. For anything missing,
 //! the C side bridge file is `ueforge/cpp/ueforge_ui.cpp`; add the
 //! extern "C" wrapper there and the safe wrapper here.
+//!
+//! ## Universal SAFETY contract (all `unsafe` blocks in this module)
+//!
+//! Every `unsafe { ueforge_ui_* }` call in this file forwards a
+//! Rust `&str` (or `&mut T` for slider / input / out-bool params)
+//! to the matching `extern "C"` wrapper in `cpp/ueforge_ui.cpp`.
+//! The C side:
+//!
+//! 1. Reads the UTF-8 byte range `(ptr, len)` once; never retains
+//!    the pointer past the call.
+//! 2. For out-params (`*mut bool`, `*mut c_int`, `*mut f32`),
+//!    writes through the pointer at most once. Pointers come from
+//!    Rust `&mut` references so aliasing is borrow-check safe.
+//! 3. Calls into ImGui (vendored v1.92.1; matches UE4SS's
+//!    bundled version) which never deallocates the buffer and
+//!    never re-enters Rust.
+//! 4. Returns a primitive (or void). No ownership transfer.
+//!
+//! The C ABI guarantees about FFI parameter passing + the
+//! single-call lifetime of every pointer make these blocks
+//! categorically safe. We allow the workspace lint on this file
+//! rather than repeating the same SAFETY comment 30+ times.
+#![allow(clippy::undocumented_unsafe_blocks)]
 
 use std::os::raw::{c_char, c_int};
 
