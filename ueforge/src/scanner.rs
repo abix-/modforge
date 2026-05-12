@@ -503,20 +503,32 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
     let target = Val::from_json(v, ty)?;
     let Val::U64Bits(target_bits, _) = target;
 
+    // Clear any prior cancellation flag so this scan starts fresh.
+    SCAN_CANCEL.store(false, Ordering::Release);
+
     let regions = iter_private_rw_regions();
     let step = ty.size();
     let mut survivors = Vec::new();
+    let mut cancelled = false;
     // 64 KiB scratch. Amortizes the ReadProcessMemory syscall
     // (one per chunk, not one per value) while keeping the failure
     // domain of a freed page to that chunk only.
     const CHUNK: usize = 64 * 1024;
     let mut scratch = vec![0u8; CHUNK];
-    for r in &regions {
+    'outer: for r in &regions {
         if r.size < step {
             continue;
         }
         let mut chunk_off = 0usize;
         while chunk_off < r.size {
+            // Cancellation check at the chunk boundary. Cheap (one
+            // atomic load per ~64 KiB of memory walked). Bounds the
+            // worst-case latency between op call and abort to ~one
+            // ReadProcessMemory call (typically sub-ms).
+            if SCAN_CANCEL.load(Ordering::Acquire) {
+                cancelled = true;
+                break 'outer;
+            }
             let want = (r.size - chunk_off).min(CHUNK);
             let got = safe_read_chunk(r.base + chunk_off, &mut scratch[..want]);
             if got < step {
@@ -536,6 +548,8 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
             chunk_off += got;
         }
     }
+    // Reset the flag so a stale set doesn't bleed into the next scan.
+    SCAN_CANCEL.store(false, Ordering::Release);
 
     // Build the JSON sample BEFORE taking the sessions lock so
     // long scans don't block other ops (freeze_list, scan_close,
@@ -561,7 +575,24 @@ pub fn scan_memory(args: &Json) -> Result<Json, String> {
         "matches": matches,
         "regions_scanned": regions.len(),
         "sample": sample,
+        "cancelled": cancelled,
     }))
+}
+
+/// Cancellation flag for [`scan_memory`] / [`scan_rescan`]. Set
+/// by [`scan_cancel`]; the scan loops check it at every
+/// 64 KiB chunk boundary and bail with whatever survivors they
+/// have so far.
+static SCAN_CANCEL: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Abort the in-flight `scan_memory` / `scan_rescan` (if any).
+/// Returns the snapshot of the flag prior to setting. The scan
+/// loop checks the flag at every 64 KiB chunk boundary; worst-
+/// case latency is one ReadProcessMemory call.
+pub fn scan_cancel(_args: &Json) -> Result<Json, String> {
+    let was = SCAN_CANCEL.swap(true, Ordering::Release);
+    Ok(json!({ "previous": was }))
 }
 
 pub fn scan_rescan(args: &Json) -> Result<Json, String> {
@@ -773,7 +804,7 @@ pub fn freeze_list(_args: &Json) -> Result<Json, String> {
             let mut row = json!({
                 "addr": format!("0x{addr:X}"),
                 "type": format!("{:?}", job.ty).to_lowercase(),
-                "bytes_hex": crate::hex::encode(&job.bytes),
+                "bytes_hex": hex::encode(&job.bytes),
                 "hz": job.hz,
             });
             match &job.source {

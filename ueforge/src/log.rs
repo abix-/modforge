@@ -97,6 +97,10 @@ pub fn init(cfg: Config) {
 /// Resolve the directory containing the DLL captured via
 /// `set_dll_module`. Returns `None` if the HMODULE is null or
 /// `GetModuleFileNameW` fails.
+///
+/// Workers that may race `DllMain` should call
+/// [`dll_dir_wait`] instead; this function is the non-blocking
+/// shape.
 pub fn dll_dir() -> Option<PathBuf> {
     let hmod = DLL_HMODULE.load(Ordering::Acquire) as HMODULE;
     if hmod.is_null() {
@@ -111,6 +115,26 @@ pub fn dll_dir() -> Option<PathBuf> {
     let mut p = PathBuf::from(path);
     p.pop();
     Some(p)
+}
+
+/// Like [`dll_dir`] but spins up to `timeout` waiting for
+/// `set_dll_module` to land. Used by workers that may start
+/// before `DllMain` finishes wiring the HMODULE. Returns `None`
+/// after `timeout` elapses with no HMODULE captured. Poll
+/// interval is 1ms; cheap on the worker that's about to do real
+/// work anyway.
+pub fn dll_dir_wait(timeout: std::time::Duration) -> Option<PathBuf> {
+    if let Some(p) = dll_dir() {
+        return Some(p);
+    }
+    let deadline = std::time::Instant::now() + timeout;
+    while std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        if let Some(p) = dll_dir() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 fn log_path(file_name: &str) -> PathBuf {

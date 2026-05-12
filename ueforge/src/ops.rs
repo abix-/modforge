@@ -29,7 +29,6 @@ use parking_lot::Mutex;
 use serde_json::Value as Json;
 
 use crate::args::{arg_str, arg_u64};
-use crate::hex;
 use crate::ue::{self, UObject, fname::FName};
 
 // =====================================================================
@@ -254,6 +253,12 @@ pub fn register_builtins() {
             "Drop a scan session's state",
             "{session_id: u64}",
             |args| crate::scanner::scan_close(args),
+        ),
+        OpDef::new(
+            "scan_cancel",
+            "Abort the in-flight scan_memory / scan_rescan (chunk-boundary check)",
+            "{}",
+            |args| crate::scanner::scan_cancel(args),
         ),
         OpDef::new(
             "freeze",
@@ -521,7 +526,8 @@ where
 {
     let selector = arg_str(args, "instance_selector")?.to_string();
     let offset = arg_u64(args, "offset", Some(0))? as usize;
-    let bytes = hex::decode(arg_str(args, "bytes_hex")?)?;
+    let bytes = hex::decode(arg_str(args, "bytes_hex")?)
+        .map_err(|e| format!("bad hex: {e}"))?;
     if bytes.len() > BYTE_OP_CAP {
         return Err(format!("bytes len {} > 1MB cap", bytes.len()));
     }

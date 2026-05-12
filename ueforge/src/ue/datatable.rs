@@ -255,11 +255,17 @@ impl<T: Copy + PartialEq + Send + 'static> FieldTweak<T> {
 }
 
 /// Find the first non-CDO `UDataTable` instance whose short name
-/// matches `name`. Walks GObjects; cost is one full pass. Returns
-/// the live UObject reference (lifetime extended to `'static`,
-/// caller is on a game-thread / quiescent-period stability
-/// contract. See `ueforge::selector::resolve_generic`).
+/// matches `name`. Walks GObjects on the first miss; the result is
+/// cached by name for the rest of the process. Mirrors
+/// [`crate::ue::find_class_fast`]'s shape: UDataTable instances
+/// are stable in GObjects for the process lifetime, so a hit is
+/// permanent. Misses (table not loaded yet) are NOT cached;
+/// a later call after the table loads walks again and finds it.
 pub fn find_by_short_name(name: &str) -> Option<&'static UObject> {
+    let cache = table_cache();
+    if let Some(t) = cache.read().get(name) {
+        return Some(*t);
+    }
     let rt = ue::try_runtime()?;
     let class = ue::find_class_fast("DataTable")?;
     let view = unsafe { ue::GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
@@ -274,11 +280,20 @@ pub fn find_by_short_name(name: &str) -> Option<&'static UObject> {
             continue;
         }
         if obj.name() == name {
-            // SAFETY: lifetime extension. See selector::resolve_generic.
+            // SAFETY: lifetime extension. UDataTables are stable in
+            // GObjects for the process lifetime. See
+            // selector::resolve_generic for the broader contract.
             let extended: &'static UObject =
                 unsafe { std::mem::transmute::<&UObject, &'static UObject>(obj) };
+            cache.write().insert(name.to_string(), extended);
             return Some(extended);
         }
     }
     None
+}
+
+static TABLE_CACHE: OnceLock<parking_lot::RwLock<HashMap<String, &'static UObject>>> =
+    OnceLock::new();
+fn table_cache() -> &'static parking_lot::RwLock<HashMap<String, &'static UObject>> {
+    TABLE_CACHE.get_or_init(|| parking_lot::RwLock::new(HashMap::with_capacity(64)))
 }

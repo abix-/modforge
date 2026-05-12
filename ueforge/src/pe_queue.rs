@@ -24,7 +24,7 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{Sender, channel};
+use crossbeam_channel::{Sender, bounded};
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -120,7 +120,11 @@ impl Queue {
         F: FnOnce() -> Result<Json, String> + Send + 'static,
     {
         let cancelled = Arc::new(AtomicBool::new(false));
-        let (tx, rx) = channel();
+        // bounded(1) is the canonical oneshot shape: drain side
+        // sends once, enqueue side recv's once, allocation is a
+        // single slot. mpsc::channel was unbounded which is
+        // wasteful for a oneshot path.
+        let (tx, rx) = bounded(1);
         {
             let mut q = self.inner.lock();
             if q.len() >= self.max_depth {
@@ -312,5 +316,158 @@ impl DrainSite {
 impl Default for DrainSite {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::sync::atomic::AtomicUsize;
+    use std::thread;
+
+    /// Empty-queue fast path: `drain()` returns zero-stats without
+    /// touching the inner mutex.
+    #[test]
+    fn drain_empty_is_noop() {
+        let q = Queue::new();
+        let s = q.drain();
+        assert_eq!(s.peak, 0);
+        assert_eq!(s.drained, 0);
+        assert!(!s.reentered);
+    }
+
+    /// Standard enqueue + drain round trip. The reply channel
+    /// (bounded(1) crossbeam) delivers the closure's result.
+    #[test]
+    fn enqueue_then_drain_returns_result() {
+        // Need a separate thread so the drain side can run while
+        // the enqueue is parked on recv_timeout.
+        let q: Arc<Queue> = Arc::new(Queue::new());
+        let q2 = q.clone();
+        let drainer = thread::spawn(move || {
+            // Wait briefly for the enqueue to land.
+            for _ in 0..20 {
+                if !q2.is_empty() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            q2.drain()
+        });
+        let r = q
+            .enqueue(|| Ok(json!({"ok": true})), Duration::from_secs(1))
+            .expect("enqueue should succeed");
+        let stats = drainer.join().unwrap();
+        assert_eq!(r, json!({"ok": true}));
+        assert_eq!(stats.drained, 1);
+        assert_eq!(stats.peak, 1);
+        assert!(!stats.reentered);
+    }
+
+    /// Re-entrance proof. The DRAINING guard rejects a recursive
+    /// drain() call when the queue is non-empty during the
+    /// recursion. Documented contract for hooks where a job
+    /// fans out PE work that re-enters the same trampoline.
+    ///
+    /// The trick to detecting the guard: the outer drain pulls
+    /// every job into a local Vec and sets size=0 before running
+    /// closures, so a naive recursive call hits the empty-fast-
+    /// path and returns `reentered: false`. To actually exercise
+    /// the guard the job must enqueue a *new* sibling job (which
+    /// bumps size to 1) BEFORE the recursive drain.
+    #[test]
+    fn reentrant_drain_is_skipped() {
+        let q: Arc<Queue> = Arc::new(Queue::new());
+        let q_inside = q.clone();
+        let reentered_seen = Arc::new(AtomicUsize::new(0));
+        let r_seen = reentered_seen.clone();
+
+        let job = move || -> Result<Json, String> {
+            // Enqueue a sibling from another thread so the
+            // recursive drain sees a non-empty queue. The sibling
+            // will time out (its enqueue blocks on the reply but
+            // the recursive drain bails via the guard); the
+            // outer drain we never see won't run it either.
+            // That's fine: the cancellation path eats it.
+            let q_for_sibling = q_inside.clone();
+            let _sibling_join = thread::spawn(move || {
+                let _ = q_for_sibling
+                    .enqueue(|| Ok(json!("sibling")), Duration::from_millis(50));
+            });
+            // Wait briefly for the sibling enqueue to land.
+            for _ in 0..40 {
+                if !q_inside.is_empty() {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(2));
+            }
+            // Recursive call. Size > 0 + DRAINING=true ->
+            // reentered=true short-circuits.
+            let s = q_inside.drain();
+            if s.reentered {
+                r_seen.store(1, Ordering::Release);
+            }
+            Ok(json!({"nested_reentered": s.reentered}))
+        };
+
+        let q_outer = q.clone();
+        let enqueue_join = thread::spawn(move || {
+            q_outer.enqueue(job, Duration::from_secs(2))
+        });
+        // Wait for the outer job to land.
+        for _ in 0..40 {
+            if !q.is_empty() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+        let stats = q.drain();
+        let job_result = enqueue_join.join().unwrap();
+
+        assert_eq!(
+            reentered_seen.load(Ordering::Acquire),
+            1,
+            "nested drain should have reported reentered=true"
+        );
+        let v = job_result.expect("outer enqueue should succeed");
+        assert_eq!(v, json!({"nested_reentered": true}));
+        assert_eq!(stats.drained, 1, "outer drain ran exactly one job");
+        assert!(!stats.reentered);
+    }
+
+    /// Cancelled jobs (enqueue side's recv_timeout fired) are
+    /// skipped at drain time so non-idempotent ops don't double-
+    /// execute after the client retried.
+    #[test]
+    fn cancelled_jobs_are_skipped() {
+        let q: Arc<Queue> = Arc::new(Queue::new());
+        let q2 = q.clone();
+        let ran = Arc::new(AtomicBool::new(false));
+        let ran2 = ran.clone();
+        // Enqueue with an aggressively short timeout so the recv
+        // bails before we drain.
+        let join = thread::spawn(move || {
+            q2.enqueue(
+                move || {
+                    ran2.store(true, Ordering::Release);
+                    Ok(json!(1))
+                },
+                Duration::from_millis(10),
+            )
+        });
+        // Give the enqueue side time to time out + mark cancelled.
+        let err = join.join().unwrap();
+        assert!(err.is_err(), "expected timeout error, got {err:?}");
+        // Now drain. Job is in the queue; cancelled flag suppresses
+        // execution.
+        let stats = q.drain();
+        assert!(
+            !ran.load(Ordering::Acquire),
+            "cancelled job should NOT have run"
+        );
+        // drained reports the number of jobs that actually executed;
+        // cancellations skip the counter.
+        assert_eq!(stats.drained, 0, "stats.drained counts executed jobs");
     }
 }

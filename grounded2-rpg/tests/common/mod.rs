@@ -35,7 +35,7 @@ pub fn open_perf_log(test_name: &str) -> PerfLog {
 // `ueforge` (`client` feature). Re-export so test files keep using
 // the same short names without churn.
 #[allow(unused_imports)]
-pub use ueforge::hex::{decode as hex_decode, encode as hex_encode};
+pub use hex::{decode as hex_decode, encode as hex_encode};
 #[allow(unused_imports)]
 pub use ueforge::parms::{as_bytes as parms_as_bytes, from_bytes as bytes_as_parms};
 

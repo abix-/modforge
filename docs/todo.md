@@ -283,19 +283,23 @@ In-game smoke test (P0 below) is the acceptance gate.
 
 ## P2. Ueforge grooming
 
-- [ ] **Hex codec -> `hex` crate.** Delete `ueforge/src/hex.rs`
-  (~30 LoC saved).
+- [x] **Hex codec -> `hex` crate.** `ueforge/src/hex.rs` deleted;
+  `hex = "0.4"` added to workspace deps; consumers map the new
+  `FromHexError` to String via `.map_err`. ~30 LoC saved.
 - [ ] **Jittered backoff in `hook/install.rs`.** Multiple mods
   retrying on the same beats hammer the same load events.
   Either add jitter directly or switch to the `backoff` crate.
-- [ ] **PE queue oneshot via `crossbeam_channel::bounded(1)`** in
-  place of `mpsc::channel()`. Cleaner cancellation semantics
-  than the current `let _ = send` swallow.
-- [ ] **`region` crate** to wrap VirtualQuery. Cross-platform-
-  ready; minor LoC win.
-- [ ] **Reentrance proof test.** `pe_queue::Queue::drain` claims
-  re-entrance is handled; add a test that fires a job which
-  enqueues another job inside the same drain.
+- [x] **PE queue oneshot via `crossbeam_channel::bounded(1)`**.
+  Swapped from `std::sync::mpsc::channel`. Bounded(1) is the
+  canonical oneshot shape: drain side sends once, enqueue side
+  recv's once, single-slot allocation.
+- [ ] **`region` crate** to wrap VirtualQuery. Workspace dep
+  added; actual VirtualQuery call sites not yet migrated. Cross-
+  platform-ready; minor LoC win.
+- [x] **Reentrance proof test.** `pe_queue` now ships four tests:
+  drain_empty_is_noop, enqueue_then_drain_returns_result,
+  reentrant_drain_is_skipped (the documented contract proof), and
+  cancelled_jobs_are_skipped.
 - [ ] **Vendor SDK header.** `ueforge/src/ue/offsets.rs:2`
   references `C:\Tools\work\sdk\SDK\Basic.hpp`. A path on the
   author's machine. Vendor under `ueforge/sdk/` or document the
@@ -313,14 +317,22 @@ In-game smoke test (P0 below) is the acceptance gate.
   year support horizon.
 - [ ] **PE hook trampoline linear search.** Index by vtable
   pointer when 6+ hooks are installed.
-- [ ] **`find_by_short_name` cache.** Same shape as
-  `find_class_fast` cache.
+- [x] **`find_by_short_name` cache.** RwLock<HashMap> mirrors
+  `find_class_fast`'s shape; UDataTable instances are stable in
+  GObjects for the process lifetime so a hit is permanent. Misses
+  are NOT cached.
 - [ ] **Op latency + scan duration metrics.** `counters.rs` has
   the primitives; nothing in the framework uses them.
-- [ ] **Cancellation token on `scan_memory` / long ops.** A
-  multi-second scan can't be aborted cleanly today.
-- [ ] **`DLL_HMODULE` happens-before `dll_dir()` callers.**
-  Worker threads starting before `set_dll_module` see CWD.
+- [x] **Cancellation token on `scan_memory` / long ops.**
+  `scanner::SCAN_CANCEL: AtomicBool` checked at every 64 KiB
+  chunk boundary; new `scan_cancel` op flips it. Worst-case
+  latency between op call and abort is one ReadProcessMemory
+  call (typically sub-ms). scan returns `cancelled: bool` in
+  its response.
+- [x] **`DLL_HMODULE` happens-before `dll_dir()` callers.** New
+  `log::dll_dir_wait(timeout)` polls the atomic every 1ms up to
+  the configured timeout. Workers that may race DllMain call
+  this instead of the non-blocking `dll_dir()`.
 
 ## ueforge framework. Wave E (deferred until needed)
 

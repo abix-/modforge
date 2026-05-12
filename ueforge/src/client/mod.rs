@@ -25,7 +25,6 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::envelope::OpResponse;
-use crate::hex;
 
 pub mod diff;
 pub mod perf;

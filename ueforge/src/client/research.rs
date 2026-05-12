@@ -32,7 +32,6 @@ use serde::de::DeserializeOwned;
 use serde_json::json;
 
 use super::Api;
-use crate::hex;
 
 // UDataTable.RowMap (TMap<FName, uint8*>) at +0x30 on UE 5.x.
 // Mirror of `ueforge::ue::offsets::datatable::ROW_MAP`.

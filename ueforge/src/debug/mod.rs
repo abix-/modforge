@@ -251,7 +251,8 @@ where
     let class = args::arg_str(args_json, "class")?.to_string();
     let function = args::arg_str(args_json, "function")?.to_string();
     let selector = args::arg_str(args_json, "instance_selector")?.to_string();
-    let parms = crate::hex::decode(args::arg_str(args_json, "parms_hex")?)?;
+    let parms = hex::decode(args::arg_str(args_json, "parms_hex")?)
+        .map_err(|e| format!("bad hex: {e}"))?;
     enqueue_pe(pe_queue, Duration::from_secs(5), hint, move || {
         let instance = resolver(&selector)?;
         let mut out = crate::ops::exec_call(instance, &class, &function, parms)?;

@@ -80,7 +80,6 @@ pub mod discovery;
 pub mod dynamic_tweaks;
 pub mod envelope;
 pub mod fall;
-pub mod hex;
 pub mod hook;
 pub mod hot_reload;
 pub mod inventory;

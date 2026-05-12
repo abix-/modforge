@@ -25,6 +25,9 @@ winreg = "0.55"
 zip = "5"
 parking_lot = "0.12"
 arc-swap = "1"
+hex = "0.4"
+crossbeam-channel = "0.5"
+region = "3"
 
 # Workspace-wide lints. Crates opt in with `[lints] workspace = true`.
 #
