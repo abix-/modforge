@@ -184,7 +184,12 @@ struct HookState<B> {
     damage_fn_ptr: usize,
 }
 
+// SAFETY: HookState holds a B (DamageBinder is Send + Sync by
+// trait bound) and a usize-cached UFunction pointer. Nothing
+// in HookState is !Send or !Sync.
 unsafe impl<B: DamageBinder> Send for HookState<B> {}
+// SAFETY: see Send impl. The cached pointer is read-only after
+// install; concurrent reads from the trampoline are safe.
 unsafe impl<B: DamageBinder> Sync for HookState<B> {}
 
 impl<B: DamageBinder> DamageHook<B> {
@@ -243,24 +248,39 @@ fn on_event<B: DamageBinder>(
     original: crate::hook::OriginalProcessEvent,
 ) {
     let Some(state) = hook.state.get() else {
+        // SAFETY: `original` was captured from the engine vtable at
+        // install time; the trampoline contract guarantees this /
+        // function / parms are the engine-supplied call args. We
+        // pass through unchanged when the hook state isn't ready.
         unsafe { original.call(this, function, parms) };
         return;
     };
 
     let fn_ptr = function as *const UFunction as usize;
     if fn_ptr != state.damage_fn_ptr || parms.is_null() {
+        // SAFETY: see above; identity-cached fast path for
+        // not-our-function fires + null-parms defense.
         unsafe { original.call(this, function, parms) };
         return;
     }
 
-    // Decode parms.
+    // Decode parms. SAFETY for each parm read: `parms` points at
+    // the UFunction's stack-allocated parm block; the offsets in
+    // `cfg` are the configured byte offsets of the matching parm
+    // within that block. `read_unaligned` is robust against any
+    // odd alignment of the (Hit, Damage, Flags) parm tuple. The
+    // parms layout is checked once via discovery against the
+    // FProperty chain.
     let cfg = &hook.config;
+    // SAFETY: see decode comment above; offset stays within the
+    // engine-provided parm block.
     let mut damage: f32 = unsafe {
         (parms as *const u8)
             .add(cfg.damage_parm_offset)
             .cast::<f32>()
             .read_unaligned()
     };
+    // SAFETY: see decode comment above.
     let damage_flags: i32 = unsafe {
         (parms as *const u8)
             .add(cfg.damage_flags_parm_offset)
@@ -270,6 +290,7 @@ fn on_event<B: DamageBinder>(
     let type_flags: u32 = if cfg.type_flags_parm_offset == 0 && cfg.damage_flags_parm_offset == 0 {
         0
     } else {
+        // SAFETY: see decode comment above.
         unsafe {
             (parms as *const u8)
                 .add(cfg.type_flags_parm_offset)
@@ -301,6 +322,10 @@ fn on_event<B: DamageBinder>(
     // Pre-call: binder may override damage.
     if let Some(new_damage) = state.binder.before(&event) {
         if new_damage != damage {
+            // SAFETY: same parm-block + offset as the earlier
+            // read; we are still inside the trampoline before
+            // the engine reads the value, so writing here lands
+            // before the engine's native damage application.
             unsafe {
                 (parms as *mut u8)
                     .add(cfg.damage_parm_offset)
@@ -312,11 +337,16 @@ fn on_event<B: DamageBinder>(
         }
     }
 
-    // Engine application.
+    // SAFETY: forward to the captured engine ProcessEvent. The
+    // parm block may have been mutated by the binder above; the
+    // engine reads the new value as part of its native path.
     unsafe { original.call(this, function, parms) };
 
     // Post-call: re-read damage in case the engine wrote OUT, then
     // notify the binder.
+    // SAFETY: same offset as the original decode; the parm block
+    // is still mapped (the engine returns out of ProcessEvent
+    // without freeing its caller's stack frame).
     let post_damage: f32 = unsafe {
         (parms as *const u8)
             .add(cfg.damage_parm_offset)

@@ -165,7 +165,14 @@ struct HookState<B: ViewportBinder> {
     in_synthetic_refresh: AtomicBool,
 }
 
+// SAFETY: HookState carries B (ViewportBinder is Send + Sync
+// by trait bound), AtomicBool, cached usize-encoded UFunction
+// pointers (immutable after install), and Mutex-guarded
+// per-widget state.
 unsafe impl<B: ViewportBinder> Send for HookState<B> {}
+// SAFETY: see Send impl. Cached pointers are read-only after
+// install; mutex-guarded state is the canonical concurrent-
+// access pattern.
 unsafe impl<B: ViewportBinder> Sync for HookState<B> {}
 
 impl<B: ViewportBinder> ViewportHook<B> {
@@ -288,6 +295,9 @@ fn dispatch<B: ViewportBinder>(
     original: OriginalProcessEvent,
 ) {
     let Some(class_name) = this.class().map(|c| c.as_object().name()) else {
+        // SAFETY: original was captured from the engine vtable
+        // at install time; this/function/parms are the engine-
+        // supplied call args. Forwarded unchanged on early-out.
         unsafe { original.call(this, function, parms) };
         return;
     };
@@ -299,9 +309,14 @@ fn dispatch<B: ViewportBinder>(
             .map(|(_, addr)| *addr)
     };
     let Some(addr) = addr else {
+        // SAFETY: same trampoline contract as above; no hook
+        // matches this class, forward to the engine.
         unsafe { original.call(this, function, parms) };
         return;
     };
+    // SAFETY: `addr` came from `register_dispatch` which stored
+    // `(class, &'static ViewportHook<B> as usize)`; the static
+    // lifetime + same B parameter is the install-side invariant.
     let hook: &ViewportHook<B> = unsafe { &*(addr as *const ViewportHook<B>) };
     on_event(hook, this, function, parms, original);
 }
@@ -314,10 +329,13 @@ fn on_event<B: ViewportBinder>(
     original: OriginalProcessEvent,
 ) {
     let Some(state) = hook.state.get() else {
+        // SAFETY: trampoline contract; hook state not ready yet,
+        // forward unchanged.
         unsafe { original.call(this, function, parms) };
         return;
     };
     if state.in_synthetic_refresh.load(Ordering::Acquire) {
+        // SAFETY: same; re-entrance guard short-circuits.
         unsafe { original.call(this, function, parms) };
         return;
     }
@@ -329,6 +347,9 @@ fn on_event<B: ViewportBinder>(
         set_viewport_start(state, this, 0);
     }
 
+    // SAFETY: forward to the captured engine ProcessEvent. We do
+    // not mutate parms before the call; pre-refresh state bookkeeping
+    // happens above. Post-call handlers run below.
     unsafe { original.call(this, function, parms) };
 
     if fn_id == state.fn_on_mouse_wheel {
@@ -352,6 +373,10 @@ fn handle_mouse_wheel<B: ViewportBinder>(
     if capacity <= hook.config.page_size || parms.is_null() {
         return;
     }
+    // SAFETY: forwarding the engine's parm block to the binder's
+    // typed decoder; the binder's `unsafe fn mouse_wheel_delta`
+    // contract is to read the configured offsets within `parms`
+    // without retaining the pointer.
     let Some(delta) = (unsafe { state.binder.mouse_wheel_delta(parms) }) else {
         return;
     };
@@ -375,6 +400,10 @@ fn rebind<B: ViewportBinder>(
     new_start: i32,
     reason: &str,
 ) -> Result<(), &'static str> {
+    // SAFETY: `widget` is the engine-supplied panel UObject;
+    // hook.config.item_grid_offset is the configured offset of the
+    // *mut UObject pointer to the child item-grid panel within
+    // that widget's layout.
     let item_grid_ptr = unsafe {
         widget
             .field_ptr(hook.config.item_grid_offset)
@@ -384,6 +413,9 @@ fn rebind<B: ViewportBinder>(
     if item_grid_ptr.is_null() {
         return Err("item_grid is null");
     }
+    // SAFETY: pointer is non-null per the check above; the item-
+    // grid is a live UObject child of the widget for the duration
+    // of this rebind (game thread, no GC interleave).
     let item_grid = unsafe { &*item_grid_ptr };
 
     let child_count = panel_children_count(state, item_grid);
@@ -403,11 +435,19 @@ fn rebind<B: ViewportBinder>(
     let old_start = get_viewport_start(state, widget);
 
     state.in_synthetic_refresh.store(true, Ordering::Release);
+    // SAFETY: binder's `unsafe fn begin_rebind` contract: takes
+    // the engine widget ref, returns a per-binder context that
+    // lives until dropped at the end of this rebind. We're on
+    // the game thread inside the trampoline.
     let ctx = unsafe { state.binder.begin_rebind(widget) };
     for visible in 0..hook.config.page_size {
         let child = panel_child_at(state, item_grid, visible);
         let Some(child) = child else { continue };
         let absolute = clamped + visible;
+        // SAFETY: bind_slot's `unsafe fn` contract: re-binds the
+        // child UObject's stored slot index to `absolute`. The
+        // widget + child + ctx are all live UObjects produced by
+        // the engine for this frame.
         unsafe {
             state.binder.bind_slot(widget, &ctx, child, absolute);
         }
@@ -432,8 +472,14 @@ fn panel_children_count<B: ViewportBinder>(state: &HookState<B>, panel: &UObject
     struct IntReturn {
         v: i32,
     }
+    // SAFETY: `state.panel_get_children_count` was cached at
+    // install time from the resolved UFunction; it lives for the
+    // process lifetime in GObjects.
     let func = unsafe { &*(state.panel_get_children_count as *const UFunction) };
     let mut parms = IntReturn { v: -1 };
+    // SAFETY: panel is a live UObject; `func` is its
+    // GetChildrenCount; parms holds the i32 return slot the
+    // function writes through.
     unsafe {
         panel.process_event(func, &mut parms as *mut _ as *mut c_void);
     }
@@ -451,18 +497,26 @@ fn panel_child_at<B: ViewportBinder>(
         _pad: i32,
         ret: *mut UObject,
     }
+    // SAFETY: cached UFunction pointer from install time.
     let func = unsafe { &*(state.panel_get_child_at as *const UFunction) };
     let mut parms = GetChildAt {
         index,
         _pad: 0,
         ret: std::ptr::null_mut(),
     };
+    // SAFETY: panel live UObject + matching GetChildAt UFunction
+    // + parms layout matches the engine's parm block.
     unsafe {
         panel.process_event(func, &mut parms as *mut _ as *mut c_void);
     }
     if parms.ret.is_null() {
         None
     } else {
+        // SAFETY: ret was written by the engine; child UObject is
+        // live for the rest of this frame at minimum (game thread,
+        // no GC interleave inside the trampoline). We extend
+        // lifetime to 'static which is the standard contract for
+        // engine-returned UObject refs.
         Some(unsafe { &*parms.ret })
     }
 }

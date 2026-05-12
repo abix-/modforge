@@ -303,15 +303,17 @@ In-game smoke test (P0 below) is the acceptance gate.
   Path is "tested once" today. Requires running game; gated on
   in-game test harness.
 - [/] **Annotate the existing unsafe blocks** with `// SAFETY:`
-  comments. Down from 271 -> 216 across this session (tmap.rs
-  walker annotated; ui.rs accepts a module-level
-  `#![allow(clippy::undocumented_unsafe_blocks)]` justified by a
-  universal-FFI-contract module doc; sigscan.rs new code carries
-  per-block SAFETY where each unsafe op has a distinct
-  invariant). The remaining 216 across winproc / ops / ue::
-  uobject / data_table / inventory::viewport / damage / hook::
-  process_event etc. is the long tail; chip away during normal
-  edits and bump the lint to `deny` when the count reaches zero.
+  comments. Down from 271 -> 187 across this session. Files
+  fully annotated: `ue/tmap.rs`, `ue/tarray.rs`, `ue/sigscan.rs`,
+  `damage/mod.rs`, `inventory/viewport.rs`. Files with documented
+  module-level `#![allow(clippy::undocumented_unsafe_blocks)]`:
+  `ui.rs` (universal FFI contract for all `ueforge_ui_*` exts).
+  The remaining 187 are in `winproc.rs` (45), `ops.rs` (42),
+  `ue/uobject.rs` (39), `data_table.rs` (25), `hook/
+  process_event.rs` (13), `ue/field.rs` (11), `ue/class_ref.rs`
+  (10), and the long-tail single-block files. Chip away
+  file-by-file during normal edits; bump the lint to `deny` when
+  the count reaches zero.
 
 ## P2. Ueforge grooming
 
