@@ -283,11 +283,21 @@ In-game smoke test (P0 below) is the acceptance gate.
   pattern into a `SigSpec` constant). Each pattern needs to be
   verified per platform (STEAM vs XBOX) because compiler
   inlining differs.
-- [ ] **Generic schema versioning baked into `SlotStore`**, not
-  per-consumer. `SkillsState` carries `schema_version` today;
-  the planned `BuildingsTracker` would re-invent it. Envelope:
-  `{schema_version, payload}` with a `Migrate` trait the
-  consumer implements.
+- [x] **Generic schema versioning baked into `SlotStore`**.
+  `rpg::store::Versioned<S>` envelope (`{schema_version,
+  payload}`); `SchemaMigrate` trait with `CURRENT_VERSION` const
+  + `migrate(from, raw)` fn; `load_versioned_with_migrate(path)`
+  loader that tries the envelope first, falls back to legacy
+  non-enveloped state (so existing g2rpg SkillsState files still
+  load when SkillsState eventually adopts the envelope shape),
+  and finally falls back to `S::default()` rather than panicking
+  on corrupted save data. `save_versioned(store, slot, payload)`
+  helper wraps an `S` in the envelope and routes through
+  `SlotStore::save`'s atomic-write semantics. Six unit tests
+  cover round-trip / migrate / failed-migrate fallback /
+  legacy-non-enveloped / missing-file / save-on-disk shape.
+  Existing SkillsState left untouched; new consumers
+  (BuildingsTracker etc.) adopt the envelope from day one.
 - [ ] **Hot-reload torture test.** 1000x Ctrl+R loop with hooks
   installed; assert no thread leak, hook leak, slot regression.
   Path is "tested once" today. Requires running game; gated on

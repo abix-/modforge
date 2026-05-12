@@ -141,6 +141,153 @@ where
     }
 }
 
+// ---- Versioned envelope ------------------------------------------------
+//
+// SkillsState carries a `schema_version` field inline today. The
+// planned BuildingsTracker would re-invent it. Generic versioning:
+// wrap the persisted payload in a `Versioned<S>` envelope and the
+// schema_version lives one level up, separate from the payload
+// shape. Old SkillsState-style states still load via the
+// `LegacyOr` adapter (tries the envelope first; falls back to the
+// raw payload). New consumers (BuildingsTracker etc.) save the
+// envelope form from day one.
+//
+// Migration trait: consumers that ship multiple schema versions
+// implement `SchemaMigrate` and load returns the migrated `S`.
+// Consumers that don't (yet) need migrations leave it at default.
+
+/// Envelope shape on disk: `{"schema_version": N, "payload": ...}`.
+/// Consumers that want generic versioning use
+/// `SlotStore<Versioned<S>>` directly + the
+/// [`load_versioned_with_migrate`] helper.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct Versioned<S> {
+    pub schema_version: u32,
+    pub payload: S,
+}
+
+impl<S: Default> Default for Versioned<S> {
+    fn default() -> Self {
+        Self {
+            schema_version: 0,
+            payload: S::default(),
+        }
+    }
+}
+
+/// Schema migration contract. New consumers (BuildingsTracker
+/// etc.) impl this for their persisted payload to get
+/// version-aware loading. Default impl is a no-op (`migrate`
+/// returns `None`, the loader falls back to `S::default()`).
+pub trait SchemaMigrate: Sized + serde::Serialize + DeserializeOwned + Default {
+    /// Current on-disk schema version of this payload shape.
+    /// Bump whenever a non-additive change lands; pair with a
+    /// new arm in `migrate`.
+    const CURRENT_VERSION: u32;
+
+    /// Migrate `raw` (parsed JSON value) from `from_version` to
+    /// `CURRENT_VERSION`. Return `Some(S)` on success, `None` to
+    /// fall back to `S::default()`. The default impl is `None`
+    /// for every version mismatch.
+    fn migrate(_from_version: u32, _raw: serde_json::Value) -> Option<Self> {
+        None
+    }
+}
+
+/// Load a versioned payload + run migrations. Tries the envelope
+/// shape first; on parse failure or wrong version, calls
+/// [`SchemaMigrate::migrate`]; on its failure, falls back to
+/// `S::default()`. Always returns an `S` value (silent fall-
+/// through to default is the right behavior for unrecoverable
+/// save corruption. Better than panicking the host).
+pub fn load_versioned_with_migrate<S: SchemaMigrate>(path: &Path) -> S {
+    let text = match fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(_) => {
+            crate::log!(
+                "rpg/store: no prior save at {}; starting fresh",
+                path.display()
+            );
+            return S::default();
+        }
+    };
+    let value: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            crate::log!(
+                "rpg/store: parse failed for {} ({e}); starting fresh",
+                path.display()
+            );
+            return S::default();
+        }
+    };
+
+    // Try envelope shape: { schema_version, payload }.
+    if let (Some(ver), Some(payload)) = (
+        value.get("schema_version").and_then(|v| v.as_u64()),
+        value.get("payload").cloned(),
+    ) {
+        let ver = ver as u32;
+        if ver == S::CURRENT_VERSION {
+            match serde_json::from_value::<S>(payload) {
+                Ok(s) => return s,
+                Err(e) => {
+                    crate::log!(
+                        "rpg/store: current-version payload at {} failed to \
+                         parse ({e}); falling back to default",
+                        path.display()
+                    );
+                    return S::default();
+                }
+            }
+        }
+        crate::log!(
+            "rpg/store: migrating {} from schema_version {} -> {}",
+            path.display(),
+            ver,
+            S::CURRENT_VERSION
+        );
+        return S::migrate(ver, payload).unwrap_or_else(|| {
+            crate::log!(
+                "rpg/store: migrate({} -> {}) returned None; using default",
+                ver,
+                S::CURRENT_VERSION
+            );
+            S::default()
+        });
+    }
+
+    // Legacy non-enveloped payload (existing SkillsState files).
+    // Try a direct parse before giving up.
+    match serde_json::from_value::<S>(value.clone()) {
+        Ok(s) => {
+            crate::log!(
+                "rpg/store: loaded legacy non-enveloped state at {}",
+                path.display()
+            );
+            s
+        }
+        Err(_) => S::default(),
+    }
+}
+
+/// Save the in-memory `S` as a versioned envelope. Wraps
+/// [`SlotStore::save_to_path`]'s atomic-write semantics through a
+/// helper because callers typically already have a `SlotStore`
+/// and want the versioned shape without reinventing the temp +
+/// fsync + rename dance.
+pub fn save_versioned<S: SchemaMigrate>(
+    store: &SlotStore<Versioned<S>>,
+    slot: &str,
+    payload: S,
+) -> io::Result<()> {
+    let envelope = Versioned {
+        schema_version: S::CURRENT_VERSION,
+        payload,
+    };
+    store.save(slot, &envelope)
+}
+
 fn is_valid_slot(slot: &str) -> bool {
     if slot.is_empty() {
         return false;
@@ -380,5 +527,111 @@ mod tests {
         // Original file untouched.
         let reloaded = store.load_from_path(&good_path);
         assert_eq!(reloaded, original);
+    }
+
+    // ---- Versioned envelope tests ---------------------------------------
+
+    #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+    #[allow(dead_code)] // referenced by docs / migrate arm but never constructed by name
+    struct V1 {
+        n: u32,
+    }
+    #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Eq, Clone)]
+    struct V2 {
+        n: u32,
+        // V2 adds a name field. Migration from V1 fills it with
+        // "<unknown>".
+        name: String,
+    }
+
+    impl SchemaMigrate for V2 {
+        const CURRENT_VERSION: u32 = 2;
+
+        fn migrate(from: u32, raw: serde_json::Value) -> Option<Self> {
+            if from != 1 {
+                return None;
+            }
+            let n = raw.get("n").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            Some(V2 {
+                n,
+                name: "<unknown>".to_string(),
+            })
+        }
+    }
+
+    #[test]
+    fn versioned_round_trip_current_schema() {
+        let s = Scratch::new("vers_current");
+        let path = s.path.join("v.json");
+        // Hand-write an envelope at schema_version 2 (current).
+        let json =
+            r#"{"schema_version":2,"payload":{"n":42,"name":"alice"}}"#;
+        fs::write(&path, json).expect("write");
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded, V2 { n: 42, name: "alice".into() });
+    }
+
+    #[test]
+    fn versioned_runs_migration_on_old_schema() {
+        let s = Scratch::new("vers_migrate");
+        let path = s.path.join("v.json");
+        // V1 envelope: schema_version 1 + payload {n}.
+        let json = r#"{"schema_version":1,"payload":{"n":7}}"#;
+        fs::write(&path, json).expect("write");
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded.n, 7);
+        assert_eq!(loaded.name, "<unknown>");
+    }
+
+    #[test]
+    fn versioned_falls_back_to_default_on_failed_migration() {
+        let s = Scratch::new("vers_fail");
+        let path = s.path.join("v.json");
+        // schema_version 0 has no migration arm -> fall back to
+        // V2::default(), not panic.
+        let json = r#"{"schema_version":0,"payload":{"n":99}}"#;
+        fs::write(&path, json).expect("write");
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded, V2::default());
+    }
+
+    #[test]
+    fn versioned_accepts_legacy_non_enveloped_state() {
+        let s = Scratch::new("vers_legacy");
+        let path = s.path.join("v.json");
+        // No envelope; just the V2 payload directly. Existing
+        // SkillsState files look like this; they MUST still load
+        // after a consumer adopts the envelope shape.
+        let json = r#"{"n":13,"name":"legacy"}"#;
+        fs::write(&path, json).expect("write");
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded, V2 { n: 13, name: "legacy".into() });
+    }
+
+    #[test]
+    fn versioned_missing_file_returns_default() {
+        let s = Scratch::new("vers_missing");
+        let path = s.path.join("nope.json");
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded, V2::default());
+    }
+
+    #[test]
+    fn save_versioned_writes_envelope() {
+        let s = Scratch::new("vers_save");
+        let store: SlotStore<Versioned<V2>> = SlotStore::new("__test__");
+        let path = s.path.join("v.json");
+        let v = V2 { n: 1, name: "bob".into() };
+        store
+            .save_to_path(&path, &Versioned { schema_version: V2::CURRENT_VERSION, payload: v.clone() })
+            .expect("save");
+        // On-disk shape: { schema_version: 2, payload: {...} }.
+        let raw = fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(parsed.get("schema_version").and_then(|v| v.as_u64()), Some(2));
+        assert!(parsed.get("payload").is_some());
+        // Round-trip through the migration loader.
+        let loaded: V2 = load_versioned_with_migrate(&path);
+        assert_eq!(loaded, v);
     }
 }
