@@ -30,35 +30,23 @@
 /// process. The check is microsecond-scale but not free; only
 /// apply to reads that have actually shown up in crash dumps.
 pub fn is_addr_readable(addr: usize) -> bool {
-    use windows_sys::Win32::System::Memory::{
-        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_GUARD, PAGE_NOACCESS, VirtualQuery,
-    };
     if addr < 0x1_0000 {
         return false;
     }
-    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
-    let n = unsafe {
-        VirtualQuery(
-            addr as *const _,
-            &mut info,
-            std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
-        )
+    // `region::query` accepts any address; it returns Err for
+    // unmapped regions. Safe wrapper, no unsafe block needed.
+    let region = match region::query(addr as *const std::ffi::c_void) {
+        Ok(r) => r,
+        Err(_) => return false,
     };
-    if n == 0 {
+    if !region.is_committed() {
         return false;
     }
-    if info.State != MEM_COMMIT {
+    if region.is_guarded() {
         return false;
     }
-    let protect = info.Protect;
-    if protect == 0 {
-        return false;
-    }
-    let base = protect & 0xFF;
-    if base == PAGE_NOACCESS as u32 {
-        return false;
-    }
-    if (protect & PAGE_GUARD) != 0 {
+    // PAGE_NOACCESS: every Protection flag bit is clear.
+    if region.protection() == region::Protection::NONE {
         return false;
     }
     true

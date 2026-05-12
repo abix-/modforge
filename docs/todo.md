@@ -295,9 +295,20 @@ In-game smoke test (P0 below) is the acceptance gate.
   Swapped from `std::sync::mpsc::channel`. Bounded(1) is the
   canonical oneshot shape: drain side sends once, enqueue side
   recv's once, single-slot allocation.
-- [ ] **`region` crate** to wrap VirtualQuery. Workspace dep
-  added; actual VirtualQuery call sites not yet migrated. Cross-
-  platform-ready; minor LoC win.
+- [x] **`region` crate** (partial). Three of the six VirtualQuery
+  / VirtualProtect call sites migrated to the `region` crate:
+  `hook/vtable.rs::write_slot` (`protect_with_handle` RAII guard
+  replacing the two-step VirtualProtect dance),
+  `winproc.rs::is_addr_readable` (cheap committed + not-guarded
+  + not-NOACCESS check used on hot UE traversal paths), and
+  `scanner.rs::is_writable` (range fits within committed
+  writable region). The remaining three sites
+  (`scanner.rs::iter_private_rw_regions` +
+  `winproc.rs::process_regions_json` + the
+  `hook/process_event.rs:208` log string) stay on raw
+  VirtualQuery: they need MEM_PRIVATE vs MEM_IMAGE vs MEM_MAPPED
+  distinctions which the `region` crate's public API does not
+  surface in v3.
 - [x] **Reentrance proof test.** `pe_queue` now ships four tests:
   drain_empty_is_noop, enqueue_then_drain_returns_result,
   reentrant_drain_is_skipped (the documented contract proof), and

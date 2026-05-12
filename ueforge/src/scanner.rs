@@ -462,36 +462,25 @@ fn sweeper_loop(stop: Arc<AtomicBool>) {
 }
 
 /// True if the address range [addr, addr+len) lies entirely within
-/// a single committed, writable, private region. Cheap (one
-/// `VirtualQuery`); call before every freeze write to avoid
-/// faulting on a guard page when the source allocation is freed.
+/// a single committed, writable region. Cheap (one `region::query`);
+/// call before every freeze write to avoid faulting on a guard
+/// page when the source allocation is freed.
 fn is_writable(addr: usize, len: usize) -> bool {
-    use windows_sys::Win32::System::Memory::{
-        MEM_COMMIT, MEMORY_BASIC_INFORMATION, PAGE_READWRITE, PAGE_WRITECOPY, VirtualQuery,
-    };
     if addr == 0 {
         return false;
     }
-    let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
-    let n = unsafe {
-        VirtualQuery(
-            addr as *const _,
-            &mut info,
-            std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
-        )
+    let region = match region::query(addr as *const std::ffi::c_void) {
+        Ok(r) => r,
+        Err(_) => return false,
     };
-    if n == 0 {
+    if !region.is_committed() {
         return false;
     }
-    if info.State != MEM_COMMIT {
-        return false;
-    }
-    let p = info.Protect & 0xFF;
-    if p != PAGE_READWRITE && p != PAGE_WRITECOPY {
+    if !region.protection().contains(region::Protection::WRITE) {
         return false;
     }
     // Reject writes that span the end of the queried region.
-    let region_end = info.BaseAddress as usize + info.RegionSize;
+    let region_end = region.as_range().end as usize;
     addr.saturating_add(len) <= region_end
 }
 

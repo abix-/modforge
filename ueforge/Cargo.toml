@@ -67,6 +67,7 @@ parking_lot = { workspace = true }
 arc-swap = { workspace = true }
 hex = { workspace = true }
 crossbeam-channel = { workspace = true }
+region = { workspace = true }
 # Used only by the `ueforge-deploy` bin target. Cargo only
 # compiles them when that bin is being built; consumers that
 # only link the lib don't pay the compile cost.
