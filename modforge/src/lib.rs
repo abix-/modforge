@@ -11,6 +11,7 @@ pub mod counters;
 pub mod envelope;
 pub mod hot_reload;
 pub mod log;
+pub mod ops;
 pub mod ring;
 pub mod scanner;
 pub mod server;
