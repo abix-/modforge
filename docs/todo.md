@@ -21,6 +21,18 @@ The session that just ended built generation-versioned hot
 reload + deployed it. Verification + the next-largest
 chunks of remaining work, in order:
 
+0. **Unblock the user's demo-end stall.** WWM hit
+   `DemoCompleteScreen` (UI/Screens/DemoCompleteScreen,
+   GameObject handle 11006 in that session). Gameplay
+   scene still loaded behind it; disabling the panel
+   would resume play. `invoke_method` / `write_field`
+   currently time out via main-thread queue while
+   timeScale=0. Fix the shim drain in
+   `cs-shim-mono/Plugin.cs` to tick off
+   `Time.unscaledDeltaTime` (or unconditionally per
+   Update). Hot-deploy, then `SetActive(false)` on the
+   panel GameObject. Persistent fix: Harmony prefix on
+   whatever opens `DemoCompleteScreen`.
 1. **Verify the hot-reload cycle works in-game.** Launch
    WWM, observe `Unityforge.Shim: ready (generation 0)`,
    then run `build_and_deploy.ps1 -Hot` from a separate
