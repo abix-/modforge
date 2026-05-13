@@ -21,24 +21,16 @@ The session that just ended built generation-versioned hot
 reload + deployed it. Verification + the next-largest
 chunks of remaining work, in order:
 
-0. **Unblock the user's demo-end stall (failed 2026-05-14).**
-   Six patch strategies tried, none worked. Full postmortem
-   in [`wild-west-miner-research.md` §7.7](wild-west-miner-research.md#77-demo-end-block-attempt-2026-05-14-session-failed).
-   Critical unknowns:
-   - The actual call path that opens the panel (not
-     `Show()`, not direct `SetActive`).
-   - Why Unity doesn't call `Update` on
-     `DemoCompleteScreenUI` despite the controller being
-     enabled+active.
-   - Why the shim's `MonoBehaviour.Update` stops firing
-     at game-clock ~15s in-scene (main-thread queue dies
-     with it; write_field/invoke_method become unusable).
-   Highest-leverage next attempt: patch
-   `TutorialTaskSellItem.OnFinish` (or whatever name
-   `list_methods` reveals) on the SellGoldBar task to
-   skip its `onFinishEvent.Invoke`. If that fails, patch
-   `UnityEvent.Invoke()` with a filter on the specific
-   event reference.
+0. **~~Unblock the user's demo-end stall~~** SOLVED
+   2026-05-14 attempt 7. Harmony prefix returning false
+   on `TutorialManager.CompleteDemo` +
+   `CompleteDemoCoroutine`. Lives in
+   `unityforge/cs-shim-mono/Plugin.cs`
+   `InstallDemoCompleteBlock`. Full lessons doc in
+   [`wild-west-miner-research.md` §7.7](wild-west-miner-research.md#77-demo-end-block-2026-05-14-solved-on-attempt-7).
+   Methodology takeaway: `list_methods` against the
+   most-obvious manager class as the FIRST move, not the
+   last.
 
 0a. **Fix the silently broken Harmony bridge in
     `cs-shim-common/HarmonyBridge.cs`.** PatchPrefix +

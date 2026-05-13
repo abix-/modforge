@@ -626,7 +626,85 @@ that one is blocking the user right now.
 
 ---
 
-## 7.7. Demo-end block attempt (2026-05-14 session): failed
+## 7.7. Demo-end block (2026-05-14): SOLVED on attempt 7
+
+Resolved after 6 failed strategies. The winning move was
+the canonical Harmony "patch upstream" pattern: target
+the manager method that fires the panel, not the panel
+itself.
+
+### The fix
+
+Harmony prefix returning `false` on:
+- `TutorialManager.CompleteDemo`
+- `TutorialManager.CompleteDemoCoroutine`
+
+Both live in `unityforge/cs-shim-mono/Plugin.cs`
+`InstallDemoCompleteBlock` -> `PatchSingle`. The prefix
+(`WwmCompleteDemo_Prefix`) returns false unconditionally,
+which tells Harmony to skip the original. The methods
+are both managed C# (no extern, no lifecycle), so the
+patch sticks and Unity invokes the patched version.
+
+### Discovery path that worked
+
+1. `list_methods` HTTP op enumerates every method on a
+   type with declaring-type info.
+2. `curl list_methods TutorialManager` listed 15 declared
+   methods. Two stood out by name alone:
+   `CompleteDemo` + `CompleteDemoCoroutine`.
+3. Patch both. Done.
+
+The discovery cost was one curl call. We should have
+done this on attempt 1.
+
+### Why this works where the others failed
+
+| Strategy | Why it failed |
+|---|---|
+| 1-2. Patch DemoCompleteScreenUI.OnEnable / guessed methods | OnEnable inherited from MonoBehaviour, AccessTools returns null |
+| 3, 5. Patch declared methods on DemoCompleteScreenUI (Update / Show / etc.) | Harmony issue #374: patching MonoBehaviour lifecycle methods breaks Unity's method-pointer cache. Unity stops invoking them after the patch. Patch "installed" but never fires |
+| 4, 6. Patch GameObject.SetActive | `extern` method. Prefix/postfix don't work on extern; only transpiler-only patches do |
+| **7. Patch TutorialManager.CompleteDemo (winner)** | Managed C# method, declared on a non-MonoBehaviour-lifecycle class. Standard Harmony prefix works. This is "patch upstream" per the edge-cases doc |
+
+### Lessons
+
+1. **`list_methods` is the right starting move** for any
+   "block this UI thing" task. One curl call against the
+   most-obvious manager class beats every guess. Add this
+   to the methodology.
+2. **Don't patch the UI controller**. Find the manager
+   that decides to show it.
+3. **Don't patch MonoBehaviour lifecycle methods**
+   (Awake, Update, Start, OnEnable, OnDisable,
+   OnDestroy). Per Harmony #374. Patch a non-lifecycle
+   helper method the lifecycle calls into.
+4. **Don't patch extern methods**. Prefix/postfix silent
+   no-op. Find the managed caller instead.
+5. **Defense-in-depth pattern**: also patched
+   `TutorialTaskSellItem` and `TutorialTask` declared
+   methods with an instance-name filter for "SellGoldBar".
+   On a fresh save the task progression never advances
+   past SellGoldBar -> `onFinishEvent.Invoke()` never
+   fires -> `CompleteDemo` never gets called either.
+   `CompleteDemo` patch is the load-time backstop; the
+   task-class patches are the progression-time backstop.
+
+### Bridge gaps that remain (queued for next session)
+
+- **`HarmonyBridge.PatchPrefix` in `cs-shim-common/`** still
+  uses `new Action(() => del(...))` (instance-method
+  lambda). HarmonyLib silently rejects. Every Rust-side
+  `patch_prefix` / `patch_postfix` in the workspace is a
+  no-op (including wwm-rpg's XP postfixes on
+  `DigManager.Dig` + `PlayerManager.AddPlayerCurrency`).
+  Replace with a static dispatcher keyed by patch handle.
+- **Why the main-thread queue stops draining at
+  game-clock ~15s** in the in-scene state. We worked
+  around it via static-method shim patches; need to
+  diagnose for the long term.
+
+## 7.7-OLD. Demo-end block (failed attempts, kept for reference)
 
 Spent a long session trying to block the demo-end panel.
 None of six patch strategies worked. Documenting every dead

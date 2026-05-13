@@ -108,28 +108,34 @@ namespace Unityforge.Shim
 
         private static void InstallDemoCompleteBlock()
         {
+            // Patch upstream per Harmony edge-cases doc. The
+            // panel itself is opened by an asset-level event;
+            // patching the panel's lifecycle methods is forbidden
+            // (Harmony issue #374. Unity caches MonoBehaviour
+            // method pointers and loses them after a patch). The
+            // upstream caller is the SellGoldBar tutorial task's
+            // condition-check / on-finish method. Patching it
+            // with `__instance.name == "SellGoldBar"` filter
+            // prevents the task from ever firing onFinishEvent.
             try
             {
-                // The trigger that opens the demo-end panel is a
-                // Unity-asset-level event call to
-                // `DemoCompleteScreen.SetActive(true)` (no managed
-                // code on the controller is involved). Patching
-                // GameObject.SetActive itself, with a cheap name
-                // check, is the only sound interception point.
                 if (_wwmHarmony == null)
                     _wwmHarmony = new HarmonyLib.Harmony("abix.unityforge.shim.wwmblock");
-                var setActive = HarmonyLib.AccessTools.Method(
-                    typeof(UnityEngine.GameObject), "SetActive",
-                    new Type[] { typeof(bool) });
-                if (setActive == null)
-                {
-                    ShimLogger.Source?.LogError("WWM block: GameObject.SetActive not found");
-                    return;
-                }
-                _wwmHarmony.Patch(setActive, prefix: new HarmonyLib.HarmonyMethod(
-                    typeof(UnityforgeShimPlugin),
-                    nameof(BlockDemoComplete_SetActivePrefix)));
-                ShimLogger.Source?.LogInfo("WWM block: patched GameObject.SetActive (filter name==DemoCompleteScreen)");
+
+                // Direct upstream patch: TutorialManager.CompleteDemo
+                // (and CompleteDemoCoroutine) are the methods that
+                // fire the demo-complete screen, including on save
+                // reload when tutorialCurrentStep is already past
+                // the threshold. Confirmed via list_methods.
+                PatchSingle("TutorialManager", "CompleteDemo");
+                PatchSingle("TutorialManager", "CompleteDemoCoroutine");
+
+                // Defense in depth: also patch the sell task in
+                // case the user is on a fresh save that hasn't
+                // turned in the gold bars yet.
+                int patched = PatchTaskClass("TutorialTaskSellItem");
+                int patchedBase = PatchTaskClass("TutorialTask");
+                ShimLogger.Source?.LogInfo($"WWM block: patched {patched} on TutorialTaskSellItem, {patchedBase} on TutorialTask");
             }
             catch (Exception e)
             {
@@ -137,19 +143,106 @@ namespace Unityforge.Shim
             }
         }
 
-        // Filters on name to keep the per-frame overhead at a
-        // ~50ns string compare. Returns true (run original) for
-        // every call except activating DemoCompleteScreen.
-        public static bool BlockDemoComplete_SetActivePrefix(
-            UnityEngine.GameObject __instance, bool value)
+        private static readonly HashSet<string> _wwmSkipMethodNames = new HashSet<string>
         {
-            if (value && __instance != null && __instance.name == "DemoCompleteScreen")
+            // Unity lifecycle. Patching these breaks Unity's
+            // method-pointer cache (Harmony #374).
+            "Awake", "Start", "Update", "FixedUpdate", "LateUpdate",
+            "OnEnable", "OnDisable", "OnDestroy", "OnGUI",
+            "OnTriggerEnter", "OnTriggerExit", "OnCollisionEnter",
+            // Trivial / safe to leave alone.
+            "ToString", "GetHashCode", "Equals",
+        };
+
+        private static void PatchSingle(string typeName, string methodName)
+        {
+            try
             {
-                ShimLogger.Source?.LogInfo(
-                    "WWM block: blocked SetActive(true) on DemoCompleteScreen");
-                return false;
+                var t = TypeCache.Resolve(typeName);
+                if (t == null)
+                {
+                    ShimLogger.Source?.LogWarning($"WWM block: type {typeName} not found");
+                    return;
+                }
+                var m = HarmonyLib.AccessTools.Method(t, methodName);
+                if (m == null)
+                {
+                    ShimLogger.Source?.LogWarning($"WWM block: {typeName}.{methodName} not found");
+                    return;
+                }
+                _wwmHarmony.Patch(m, prefix: new HarmonyLib.HarmonyMethod(
+                    typeof(UnityforgeShimPlugin),
+                    nameof(WwmCompleteDemo_Prefix)));
+                ShimLogger.Source?.LogInfo($"WWM block: patched {typeName}.{methodName} (return false)");
             }
-            return true;
+            catch (Exception e)
+            {
+                ShimLogger.Source?.LogError($"WWM block: patch {typeName}.{methodName} threw: " + e);
+            }
+        }
+
+        public static bool WwmCompleteDemo_Prefix(System.Reflection.MethodBase __originalMethod)
+        {
+            ShimLogger.Source?.LogInfo($"WWM block: intercepted {__originalMethod?.DeclaringType?.Name}.{__originalMethod?.Name}() -- demo complete blocked");
+            return false;
+        }
+
+        private static int PatchTaskClass(string typeName)
+        {
+            var t = TypeCache.Resolve(typeName);
+            if (t == null)
+            {
+                ShimLogger.Source?.LogWarning($"WWM block: type {typeName} not found");
+                return 0;
+            }
+            var prefix = new HarmonyLib.HarmonyMethod(
+                typeof(UnityforgeShimPlugin),
+                nameof(WwmTaskMethod_Prefix));
+            int count = 0;
+            var methods = t.GetMethods(System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.DeclaredOnly);
+            foreach (var m in methods)
+            {
+                if (m.IsAbstract) continue;
+                if (m.Name.StartsWith("get_") || m.Name.StartsWith("set_")) continue;
+                if (m.Name.StartsWith("add_") || m.Name.StartsWith("remove_")) continue;
+                if (_wwmSkipMethodNames.Contains(m.Name)) continue;
+                try
+                {
+                    _wwmHarmony.Patch(m, prefix: prefix);
+                    count++;
+                }
+                catch (Exception e)
+                {
+                    ShimLogger.Source?.LogWarning($"WWM block: patch {typeName}.{m.Name} threw: {e.Message}");
+                }
+            }
+            return count;
+        }
+
+        private static int _wwmInterceptCount;
+        public static bool WwmTaskMethod_Prefix(
+            UnityEngine.MonoBehaviour __instance,
+            System.Reflection.MethodBase __originalMethod)
+        {
+            try
+            {
+                if (__instance == null || __instance.name != "SellGoldBar") return true;
+                _wwmInterceptCount++;
+                if (_wwmInterceptCount <= 5)
+                {
+                    ShimLogger.Source?.LogInfo(
+                        $"WWM block: intercepted SellGoldBar.{__originalMethod?.Name}() #{_wwmInterceptCount}");
+                }
+                return false; // skip original on the SellGoldBar task
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Source?.LogError("WWM block: prefix threw: " + e);
+                return true;
+            }
         }
 
         private static bool _demoBlockInstalled;
