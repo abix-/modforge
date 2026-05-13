@@ -726,17 +726,62 @@ also stopped draining at game-clock ~15s. Update on the
 shim's MonoBehaviour ran briefly then stopped. We never
 diagnosed why Update stops in the in-game scene.
 
+### Why each strategy actually failed (post-rtfm research)
+
+After the failed session, /rtfm research surfaced two
+canonical Harmony gotchas that explain everything:
+
+**Gotcha A: patching MonoBehaviour lifecycle methods breaks
+Unity's internal pointer cache.** Per
+[pardeike/Harmony#374](https://github.com/pardeike/Harmony/issues/374),
+when Harmony patches `Awake` / `Update` / `Start` /
+`OnEnable` on a MonoBehaviour, Unity's engine loses the
+reference to the original method (it caches a pre-compiled
+pointer at MonoBehaviour instantiation) and **stops calling
+the method entirely**. Harmony reports the patch as
+installed; Unity never invokes it. Strategies 3 and 5 in
+the table above are textbook instances of this bug. Don't
+patch lifecycle methods on a MonoBehaviour.
+
+**Gotcha B: extern methods can only be patched via
+transpilers.** Per the
+[Harmony edge-cases doc](https://harmony.pardeike.net/articles/patching-edgecases.html):
+> "A method that has only an external implementation (like
+> a native Unity method) can normally not be patched. ...
+> you can patch native methods with a transpiler-only
+> patch that ignores the (empty) input and returns a new
+> implementation that will replace the original."
+
+`GameObject.SetActive(bool)`, `Behaviour.set_enabled`,
+and `Object.Destroy` are all extern. Prefix/postfix on
+them silently no-ops. Strategy 6 above (SetActive name
+filter) is doomed.
+
+**The canonical pattern is "patch upstream in the call
+chain."** Same doc:
+> "find a spot higher up in the call chain that is not
+> inlined. This sometimes requires mass-patching all
+> occurrences of all methods that call the inlined method
+> and patching there (`TargetMethods()` is your friend)."
+
+Translation for our problem: don't patch the panel, don't
+patch SetActive. Find the manager class whose managed
+method calls `panel.SetActive(true)` (or fires the
+UnityEvent that ultimately does), and patch THAT method's
+prefix to early-return.
+
 ### Next-session attack angles (ranked)
 
-1. **Patch `TutorialTaskSellItem.OnFinish` (or whatever
-   method names map to "task complete").** Call
-   `list_methods` against `TutorialTaskSellItem` to
-   confirm. If a managed method on this class fires the
-   onFinishEvent, patching it returns false skips
-   onFinishEvent.Invoke() and the demo-end never
-   triggers. Highest leverage; if `TutorialTaskSellItem`
-   declares its own task-complete method (not inherited),
-   Harmony works.
+1. **Patch `TutorialTaskSellItem`'s task-complete method
+   (whichever name `list_methods` returns).** This is the
+   "patch upstream" pattern from the edge-cases doc. The
+   class's condition-check method is managed C#, not a
+   MonoBehaviour lifecycle method, not extern. Returning
+   false from a prefix prevents `onFinishEvent.Invoke()`,
+   which means the panel never opens. The list_methods op
+   already exists; one curl call names the target.
+   Confirmed-applicable per [Harmony #374 Gotcha A]
+   and the [edge-cases doc].
 2. **Patch `UnityEvent.Invoke()` (managed, on
    `UnityEngine.Events.UnityEvent`).** Filter on the
    specific UnityEvent reference (the SellGoldBar task's
