@@ -17,9 +17,10 @@
 
 ## Next up (2026-05-14+)
 
-The session that just ended built generation-versioned hot
-reload + deployed it. Verification + the next-largest
-chunks of remaining work, in order:
+WWM put down for now. Demo-end blocked successfully;
+the rest of the in-flight WWM work is captured below.
+Pick up another front (Endless / ueforge / Outworld)
+in the next session unless the user redirects.
 
 0. **~~Unblock the user's demo-end stall~~** SOLVED
    2026-05-14 attempt 7. Harmony prefix returning false
@@ -31,6 +32,21 @@ chunks of remaining work, in order:
    Methodology takeaway: `list_methods` against the
    most-obvious manager class as the FIRST move, not the
    last.
+
+0b. **~~Plot Enlargement / Land Surveyor "buy" feature~~**
+    INVESTIGATED 2026-05-14, NOT PURSUING. The Bank's
+    Land Surveyor board (`Bank / .../ WoodenBoard /
+    PlotOffer{,(1),(2),(3)}`) is a demo-cut feature.
+    Visual assets shipped (4 PlotOffer GameObjects with
+    labels + prices), but ZERO managed code references
+    them across ANY DLL in `Managed/`. Not wired into
+    the game's `BuyPopup` / `BuySection` system either.
+    Making it work would mean writing the
+    `PlotPurchase` MonoBehaviour from scratch + deciding
+    what "unlock a plot" means (no reference behavior
+    in the demo to copy). Content development, not
+    modding. Full evidence in
+    [`wild-west-miner-research.md` §7.8](wild-west-miner-research.md#78-plot-enlargement--land-surveyor-search-2026-05-14-partial).
 
 0a. **Fix the silently broken Harmony bridge in
     `cs-shim-common/HarmonyBridge.cs`.** PatchPrefix +
