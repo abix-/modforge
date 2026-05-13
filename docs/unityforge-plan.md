@@ -35,6 +35,11 @@ inputs to this plan.
 
 ## 2. What goes in modforge
 
+**No duplication.** If a subsystem is engine-agnostic, it lives
+in modforge once and both frameworks consume it. ueforge moves
+those files out of its own tree (or re-exports from modforge);
+unityforge consumes via FFI. Audit below.
+
 modforge owns three tiers of shared asset. Tiers 1-2 are free
 to share. Tier 3 is real binary code, lifted from ueforge into
 a Rust crate that ueforge depends on natively and unityforge
@@ -63,23 +68,89 @@ consumes via FFI:
 | External HTTP client | One implementation (Python today, lifted from `timberbot/script/timberbot.py` + ueforge's client; merged) |
 | Deploy tool | `modforge-deploy` (Rust binary lifted from `ueforge/src/bin/ueforge_deploy.rs`) reading per-crate `[package.metadata.modforge]` for Rust or an MSBuild target for C# |
 
-**Tier 3: shared Rust core (consumed natively by ueforge, via
-P/Invoke by unityforge)**
+**Tier 3: `modforge/core/` Rust crate (consumed natively by
+ueforge, via P/Invoke by unityforge)**
 
-| Asset | Form |
-|---|---|
-| `modforge/rpg-core/` (Phase 0) | Rust crate with `crate-type = ["cdylib", "rlib"]`. Holds the pure-logic RPG files lifted out of `ueforge/src/rpg/`: XP curve, progress curve, percent formatting, in-memory state types, JSON persistence shape, skill-catalog JSON loader. C ABI via `extern "C"` + `cbindgen`-emitted header |
-| future `modforge/<subject>-core/` crates | Same shape, added only when a subject's pure-logic files duplicate identically between ueforge and a written-once unityforge equivalent. Don't speculatively extract; extract on second duplication |
+One crate, multiple submodules. `crate-type = ["cdylib", "rlib"]`.
+C ABI via `extern "C"` + `cbindgen`-emitted header for the
+C# side.
 
-What stays per-framework:
+```
+modforge/core/src/
+  lib.rs
+  envelope/    # OpResponse + parse_request + envelope shape
+  ops/         # OpDef + OpRegistry + dispatch
+  selector/    # grammar parser (the grammar; engine resolvers stay per-framework)
+  settings/    # JSON file + debounced save
+  counters/    # AtomicU64 counter + TimeScope
+  ring/        # bounded ring buffer
+  scanner/     # process memory scanner mechanics
+  winproc/     # Win32 process probes (threads, modules, regions, memory)
+  server/      # tiny_http listener wrapper
+  shutdown/    # registry pattern for shutdown handlers
+  log/         # file + stdout sink, level enum, format
+  hot_reload/  # protocol types
+  rpg/         # xp, progress, format, state, store, disabled, catalog (the pure RPG)
+  ffi.rs       # C ABI surface for unityforge
+headers/
+  modforge_core.h
+```
+
+### Module audit (where each ueforge subsystem goes)
+
+| ueforge today | Lines | Destination | Notes |
+|---|---|---|---|
+| `args.rs` | small | `modforge/core/args` | JSON arg helpers, pure |
+| `client/` | 1751 | `modforge/client` | HTTP test client. Engine-agnostic. Lifted whole |
+| `counters.rs` | small | `modforge/core/counters` | AtomicU64 + TimeScope |
+| `damage/` | 360 | **ueforge** | UE damage hook (unityforge has its own equivalent module later) |
+| `data_table.rs` | 1410 | **ueforge** | UDataTable (unityforge: ScriptableObject browser, separate module) |
+| `debug/` | 264 | partial | shape -> modforge spec; UE handlers stay |
+| `discovery.rs` | 421 | **ueforge** | UE GObjects walker |
+| `dynamic_tweaks.rs` | 247 | **ueforge** | UE CDO writes |
+| `envelope.rs` | small | `modforge/core/envelope` | OpResponse + parse_request |
+| `fall.rs` | 215 | **ueforge** | UE fall hook |
+| `hook/` | 1102 | **ueforge** | UE vtable + PE (unityforge: Harmony wrapper, separate) |
+| `hot_reload.rs` | small | partial | protocol types -> `modforge/core/hot_reload`; the cdylib swap impl stays in ueforge |
+| `inventory/` | 560 | **ueforge** | UE inventory hooks |
+| `log.rs` | 214 | `modforge/core/log` | sink + level enum + format |
+| `mod_main.rs` | 329 | **ueforge** | CppUserModBase + UE4SS entry |
+| `ops.rs` | 866 | partial split | `OpDef` + `OpRegistry` + dispatch shape -> `modforge/core/ops`. The specific UE primitives (`read_bytes`, `walk_class`, `inspect_address`, `fname_to_string`, `exec_call`) stay in ueforge. unityforge ships C# equivalents with the same op-name surface (different impl: C# reflection vs FProperty walk) |
+| `parms.rs` | small | **ueforge** | UE UFunction parm marshalling |
+| `pe_queue.rs` | 473 | **ueforge** | UE ProcessEvent queue (unityforge: MainThreadQueue, separate module) |
+| `ring.rs` | 138 | `modforge/core/ring` | bounded ring buffer |
+| `rpg/` | 4325 | partial | pure: xp, progress, format, state, store, disabled, catalog -> `modforge/core/rpg`. per-engine: effect, trigger, tracker, vanilla, slot_key, std_effect, ops, tab, health, status |
+| `scanner.rs` | 919 | `modforge/core/scanner` | process memory scanning. Engine-agnostic |
+| `selector.rs` | 217 | partial | grammar parser -> `modforge/core/selector`. UE-specific resolvers (`class:`, `first_class:`, `singleton:`) stay in ueforge; unityforge registers its own resolvers against the shared parser |
+| `server.rs` | 213 | `modforge/core/server` | tiny_http wrapper; small enough to share without controversy |
+| `settings.rs` | 290 | `modforge/core/settings` | JSON + debounce |
+| `shutdown.rs` | 162 | `modforge/core/shutdown` | registry pattern; handler types stay per-engine |
+| `snapshots/` | 0 | partial | snapshot envelope shape -> `modforge/core/snapshot`. Per-frame projection types are generics; per-engine |
+| `tweak.rs` | 696 | **ueforge** | UE CDO tweak primitives |
+| `uasset.rs` | 332 | **ueforge** | UE pak/utoc parser |
+| `ue/` | 4034 | **ueforge** | UObject SDK (unityforge's equivalent module wraps Unity reflection + Singleton<T> access) |
+| `ui.rs` + `ui_*.rs` | ~1500 | **ueforge** | UE-specific ImGui bindings + browser tabs. unityforge does its own UI module; the *declarative tab API* may end up in `modforge/core/ui` as a thin shape if the two converge |
+| `winproc.rs` | 880 | `modforge/core/winproc` | Win32 process probes; engine-agnostic |
+| `bin/ueforge-deploy.rs` | ~250 | `modforge/deploy` | one deploy tool for both kinds of mod |
+| `bin/dump-strings.rs` + `read-property.rs` | ~400 | **ueforge** | uasset-specific |
+| `build.rs` | 183 | **ueforge** | C++ shim build glue (UE-specific) |
+| `worker.rs` | small | **ueforge** | UE-thread worker (unityforge: BepInEx MonoBehaviour Update, separate) |
+
+Totals: ~10k lines move into `modforge/core` over time;
+ueforge keeps its UE-specific ~15-18k lines; unityforge writes
+~4-6k lines of Unity-specific code that mirrors ueforge's
+engine-specific surfaces.
+
+What stays per-framework (categorical, not duplicated):
 
 - Traits and interfaces (`trait Effect` in Rust,
   `interface IEffect` in C#). Trait objects don't cross FFI.
 - Standard Effect / Trigger implementations that touch the
-  engine (engine-specific by definition).
-- Trackers and dispatch loops (they call language-specific
+  engine.
+- Trackers and dispatch loops (call language-specific
   trait/interface methods).
-- Hooks, vanilla cache, slot-key resolution (engine-specific).
+- Hooks, vanilla cache, slot-key resolution, engine SDK
+  (UObject vs Unity reflection).
 
 What this gives us:
 
@@ -215,239 +286,290 @@ grounded2mods/
   outworld-station-tweaks/        # exists
 ```
 
-## 6. Sequencing: RPG first
+## 6. Sequencing: HTTP debug server + RPG, in parallel
 
-The whole plan rides on one driving goal: **extract ueforge's
-RPG module (Skills + Effects + Triggers + Tracker + XP + slot
-key + persistence) into modforge so unityforge can build on
-it, then prove it works by shipping an RPG mod for Wild West
-Miner.**
+**Two top-priority subsystems, not one.**
 
-Everything we build before that is the minimum scaffolding
-needed to make RPG run. Everything we build after is whatever
-the next concrete consumer demands. No speculative modules.
+1. **HTTP debug control plane.** The single most important
+   research / testing / inspection surface either framework
+   exposes. Tests drive the live game from outside. Research
+   questions become test files. Without it, modders are blind.
+   ueforge's `docs/http.md` calls it the most important thing
+   the framework ships, and that goes double during unityforge
+   bring-up: we'll be reverse-engineering Wild West Miner from
+   the HTTP endpoint.
+2. **RPG.** The densest module in ueforge and the
+   highest-leverage proof of the framework. Forces every
+   architectural mandate (Def/Registry, Effects + Triggers +
+   Skills, hooks, persistence, op envelope) into coherent
+   shape on the Unity side.
 
-### What "extract into modforge" means across Rust and C#
-
-The frameworks are different languages. modforge owns three
-kinds of asset, with different reuse mechanics:
-
-| Layer | Form | ueforge consumes | unityforge consumes |
-|---|---|---|---|
-| **Spec** | JSON schemas, ABNF grammars, markdown docs (`spec/`, `docs/`) | reads at design time | reads at design time |
-| **Test corpus** | `request -> expected response` JSON files (`test-corpus/`) | loaded by ueforge's tests; HTTP round-trip asserts | loaded by unityforge's tests; same round-trip asserts |
-| **Code core (Rust)** | `modforge-rpg-core` Rust crate. XP curve, progress curve, percent formatting, pure state types, JSON persistence file shape | direct `[dependencies]` entry, native Rust call | `[DllImport]` against a built `modforge_rpg_core.dll` + a C ABI surface |
-
-The first two are free. The third is the genuinely-shared
-binary that we extract ueforge's pure-logic files into:
-
-```
-modforge/
-  rpg-core/                       # Rust crate. cdylib + rlib.
-    Cargo.toml
-    src/
-      lib.rs
-      xp.rs                       # FROM: ueforge/src/rpg/xp.rs
-      progress.rs                 # FROM: ueforge/src/rpg/progress.rs
-      format.rs                   # FROM: ueforge/src/rpg/format.rs (pure parts)
-      state.rs                    # FROM: ueforge/src/rpg/state.rs
-      store.rs                    # FROM: ueforge/src/rpg/store.rs (json serde only)
-      disabled.rs                 # FROM: ueforge/src/rpg/disabled.rs
-      catalog.rs                  # NEW: SkillDef in catalog-JSON form
-      ffi.rs                      # C ABI surface for unityforge
-    headers/
-      modforge_rpg_core.h         # generated cbindgen header for C# DllImport
-```
-
-What's NOT in `modforge/rpg-core/`:
-
-- The `Effect` and `Trigger` traits. Rust trait objects don't
-  cross FFI. Each framework defines its own interface
-  (`trait Effect` in Rust, `interface IEffect` in C#) and
-  implementation list. The catalog spec defines the *kinds*;
-  each framework binds those kinds to its own implementation
-  types.
-- Standard Effect implementations that touch the engine
-  (`PlayerFloatEffect`, etc). UE-specific in ueforge,
-  Unity-specific in unityforge.
-- The Tracker. Stays per-language because it dispatches through
-  the language-specific Effect trait/interface. State *types*
-  (`SkillsState`, `SlotKey`) are shared via FFI; dispatch isn't.
-- Hooks, slot-key resolution, vanilla cache. Engine-specific.
-
-What this gives us:
-
-- One implementation of the XP curve math. A bug fix is one
-  patch, not two.
-- One persistence file format. ueforge and unityforge mods
-  can read each other's save files (academically; in practice
-  each game has its own slot, but the *format* is identical).
-- One catalog JSON loader. Game mods can define skills as data
-  (not code) and the same JSON parses identically in both
-  frameworks.
-- A real test surface in the shared crate. Phase 0 ships XP
-  + progress unit tests; both frameworks inherit them.
-
-What it costs:
-
-- ~200-300 lines of `extern "C"` FFI glue + `cbindgen` setup.
-- unityforge's build packages a Rust-built `modforge_rpg_core.dll`
-  alongside its own DLL. Modder deploys both.
-- P/Invoke marshalling overhead per call. Negligible for the
-  surface we expose (XP math + persistence load/save are cold;
-  Tracker dispatch is per-language and never crosses FFI).
-
-### Why RPG first
-
-- **It's the densest module in ueforge.** ~4.3k lines across
-  19 files in `ueforge/src/rpg/`. Doing it first forces the
-  Def/Registry pattern, hook abstraction, persistence shape,
-  op envelope, settings, and HTTP control plane to all land
-  in coherent form on the Unity side.
-- **Wild West Miner is an unusually clean RPG target.** Plain
-  Mono, public singletons, currency / dig-action / sell events
-  already exposed. We avoid fighting an engine while validating
-  a framework.
-- **RPG is what ueforge is known to do well.** Porting it
-  cleanly is the strongest possible signal that unityforge has
-  the right shape.
-- **It produces a real, playable mod at the end.** Not a
-  framework demo. A thing the player runs.
+Both go in Phase 0 + Phase 1. RPG-the-mod is Phase 3 and
+depends on both. Nothing else gets built in this pass.
 
 ### Dependency graph
 
 ```
-modforge specs (RPG schema, persistence, XP, op envelope, naming)
-                            |
-                            v
-unityforge skeleton (csproj + BepInEx entry + IUnityforgeHost)
-                            |
-              ----------------------------
-              |             |            |
-              v             v            v
-        Logger / Settings   HTTP+Ops   Hooks (HarmonyLib)
-                            |             |
-                            v             v
-                     unityforge.Rpg (Effects + Triggers + Skills + Tracker + XP + slot)
+                modforge/core extraction
+        (envelope + ops + selector + settings +
+         ring + counters + scanner + winproc +
+         server + shutdown + log + rpg-core)
+                          |
+            -------------------------------
+            |                             |
+            v                             v
+        ueforge migration         unityforge skeleton
+        (consume modforge)        (BepInEx + IUnityforgeHost)
+                                          |
+                          --------------------------------
+                          |                              |
+                          v                              v
+              unityforge HTTP control plane     unityforge.Hooks
+              (FULL: ops registry, selectors,   (HarmonyLib wrapper)
+               snapshot, reflection inspector,
+               generic primitives)
+                          |                              |
+                          ---------------------------------
                                           |
                                           v
-                                  wwm-rpg (the Wild West Miner mod)
+                                 unityforge.Rpg
+                                          |
+                                          v
+                                 wwm-rpg (the proof)
 ```
 
-Nothing else gets built in this pass. **Snapshots, webhooks,
-agent, in-game UI, stacks, difficulty, ScriptableObject browser,
-hot reload all wait** until something concrete demands them.
+Other framework concerns wait until something concrete demands
+them: snapshots framework, webhooks, agent, in-game UI,
+stacks, difficulty, ScriptableObject browser, hot reload.
 
 ### Phases
 
-#### Phase 0: modforge essentials for RPG (~3-4 days)
+#### Phase 0: modforge extraction (~5-7 days)
 
-Both the spec-only assets and the shared Rust core. RPG-only
-slice; nothing else from modforge gets built yet.
+Spec assets + the `modforge/core/` Rust crate covering both
+the HTTP debug surface AND the RPG pure-logic. ueforge
+migrates module-by-module; each migrated submodule ships
+green tests before the next moves. unityforge consumes the
+whole crate via P/Invoke in Phase 1.
 
-**0a. Specs and docs (~1 day)**
+**0a. Specs and docs (~1.5 days)**
 
 - `modforge/` workspace folder + README.
 - `spec/op-envelope.json`. JSON schema for `{ op, args }` /
-  `{ ok, op, error, result, state }`. Lift from ueforge.
-- `spec/skill-catalog.json`. JSON schema for `SkillDef`:
+  `{ ok, op, error, result, state }`. Lifted from ueforge.
+- `spec/selector-grammar.md`. ABNF for `addr:0x...`,
+  `class:Foo`, `first_class:Foo`, `singleton:Bar`. Parser is
+  engine-agnostic; resolvers register per-framework.
+- `spec/op-registry.md`. The `OpDef` shape, dispatch rules,
+  `list_ops` / `list_selectors` auto-generation.
+- `spec/generic-primitives.md`. The op-name surface every
+  framework ships: `ping`, `snapshot`, `read_bytes`,
+  `write_bytes`, `walk_class`, `inspect_address`,
+  `exec_call`, `list_ops`, `list_selectors`, `scan_memory`,
+  `freeze`, etc. Each op declares stable args+result
+  schemas. **Implementations** are per-engine (UE walks
+  UObject; Unity walks managed reflection); **op names +
+  envelope shapes** are shared.
+- `spec/skill-catalog.json`. Schema for `SkillDef`:
   `{ id, display_name, max_level, effect: { kind, params },
   trigger: { kind, params } }`.
-- `spec/rpg-persistence.json`. JSON schema for per-slot
-  state file: `{ skill_levels: {id: u32}, xp: u64,
-  available_points: u32 }`.
-- `spec/xp-curve.md`. The math + reference pseudocode
-  (`cumulative_xp_for_level(level)` + `level_for_xp(xp)`).
-- `spec/effect-kinds.md`. Catalog of standard Effect kinds
-  + their param shapes. The same kinds appear in both
-  frameworks; each framework supplies its own implementation
-  bound to the kind name.
-- `spec/trigger-kinds.md`. Standard Trigger kinds + param
-  shapes.
+- `spec/rpg-persistence.json`. Per-slot state file schema.
+- `spec/xp-curve.md`. Math + reference pseudocode.
+- `spec/effect-kinds.md` + `spec/trigger-kinds.md`. Standard
+  Effect / Trigger kinds and their param shapes.
+- `docs/methodology.md`. RESEARCH.md content elevated.
 - `docs/composition-model.md`. Effects + Triggers + Skills,
-  engine-agnostic, extracted from
-  `ueforge/docs/architecture.md`.
-- `docs/def-registry.md`. The Def/Registry/Instance/Controller
-  pattern.
+  engine-agnostic.
+- `docs/def-registry.md`. The CRD pattern.
 - `docs/naming.md`. Naming both frameworks follow.
 
-**0b. `modforge/rpg-core/` Rust crate (~2-3 days)**
+**0b. `modforge/core/` Rust crate (~3-4 days)**
 
-The pure-logic core ueforge already has, lifted into a
-crate both frameworks consume.
+One crate, multiple submodules. `crate-type = ["cdylib",
+"rlib"]`. C ABI via `extern "C"` + `cbindgen`-emitted
+header for the C# side.
 
-- `modforge/rpg-core/Cargo.toml` with
-  `crate-type = ["cdylib", "rlib"]` and a `cbindgen` build
-  step.
-- Port (verbatim, with `pub use` re-exports):
-  `xp.rs`, `progress.rs`, `format.rs` (pure parts only),
-  `state.rs`, `store.rs` (the JSON ser/de half), `disabled.rs`.
-- Add `catalog.rs`: a `SkillDefData` struct that parses from
-  the modforge skill-catalog JSON. The Effect / Trigger
-  fields are `{kind: String, params: serde_json::Value}`;
-  each framework binds the kind to its own implementation
-  list at load time.
-- Add `ffi.rs`: `extern "C"` surface for unityforge.
-  Minimal:
-  - `mfrpg_xp_for_level(curve_base, exp, max_level, level) -> u64`
-  - `mfrpg_level_for_xp(curve_base, exp, max_level, xp) -> u32`
-  - `mfrpg_format_percent(*kind, level, max_level, *out_buf, buf_len) -> u32`
-  - `mfrpg_state_load(*path) -> *State` / `mfrpg_state_save(*State, *path)`
-  - `mfrpg_state_get_level(*State, *skill_id) -> u32`
-  - `mfrpg_state_set_level(*State, *skill_id, level)` etc.
-  - `mfrpg_state_free(*State)`
-- `cbindgen.toml` + `build.rs` to emit
-  `headers/modforge_rpg_core.h` for the C# side's reference.
-- ueforge migrates: replace `ueforge/src/rpg/xp.rs` with
-  `pub use modforge_rpg_core::xp::*;` etc. Tracker still
-  lives in ueforge (it dispatches Rust trait objects).
-- Unit tests in `modforge/rpg-core/tests/` cover XP curve,
-  state round-trip, catalog JSON parse, FFI smoke. These
-  tests are the shared-truth assertion every other place
-  inherits.
+Submodules in migration order. Each row corresponds to one
+ueforge file moving under `modforge/core/src/<submodule>/`,
+with ueforge replacing the original with a `pub use
+modforge_core::<submodule>::*;` re-export so existing call
+sites compile unchanged:
 
-**0c. Test corpus (~half day)**
+| # | Submodule | From | Tests |
+|---|---|---|---|
+| 1 | `ring` | `ueforge/src/ring.rs` | bounded ring round-trip |
+| 2 | `counters` | `ueforge/src/counters.rs` | atomic increment + TimeScope |
+| 3 | `log` | `ueforge/src/log.rs` | sink + level + format |
+| 4 | `args` | `ueforge/src/args.rs` | JSON arg helper round-trip |
+| 5 | `envelope` | `ueforge/src/envelope.rs` | parse_request + OpResponse |
+| 6 | `settings` | `ueforge/src/settings.rs` | JSON debounce save |
+| 7 | `shutdown` | `ueforge/src/shutdown.rs` | registry order + run_all |
+| 8 | `selector` | `ueforge/src/selector.rs` (grammar half) | grammar parser |
+| 9 | `ops` | `ueforge/src/ops.rs` (registry half) | OpDef + dispatch + list_ops |
+| 10 | `server` | `ueforge/src/server.rs` | tiny_http listener + auth token |
+| 11 | `scanner` | `ueforge/src/scanner.rs` | memory scan + cancel |
+| 12 | `winproc` | `ueforge/src/winproc.rs` | threads/modules/regions/cpu |
+| 13 | `hot_reload` | `ueforge/src/hot_reload.rs` (protocol) | handshake types |
+| 14 | `rpg` | `ueforge/src/rpg/{xp,progress,format,state,store,disabled}.rs` + new `catalog.rs` | XP curve + state round-trip + catalog parse |
 
-- `modforge/test-corpus/rpg/`. Six request/response pairs
-  covering level-up, refund, slot-activate,
-  snapshot-with-skills, bad-skill-id, max-level-cap.
-  Both frameworks load this corpus in their tests; both
-  must produce the expected envelopes.
+Per submodule the migration is mechanical: move file,
+re-export, run `cargo test`, commit. The bigger ones
+(`ops`, `selector`, `rpg`) need a careful split of the
+generic shape (moves) from the engine-specific handlers
+(stays in ueforge).
 
-**Exit gate:** `cargo test -p modforge-rpg-core` is green;
-ueforge builds against the new crate (Tracker still works
-end-to-end against g2rpg's catalog); a Rust integration
-test calls every FFI entry point.
+`ffi.rs` is added last. It exposes the surface unityforge
+needs at runtime (XP math, state ops, settings load/save,
+catalog parse, envelope encode/decode, selector parse,
+scanner control, log emit). `cbindgen` emits
+`headers/modforge_core.h`.
 
-#### Phase 1: unityforge skeleton + bare plumbing for RPG (~3 days)
+**0c. Test corpus (~1 day)**
 
-The minimum unityforge needs to make RPG run end-to-end. No
-snapshots framework yet. No webhooks. No fancy UI.
+- `modforge/test-corpus/ops/`. One file per generic
+  primitive: input args + expected envelope shape:
+  `ping.json`, `snapshot.json`, `list_ops.json`,
+  `list_selectors.json`, `read_bytes.json`,
+  `write_bytes.json`, `walk_class.json`,
+  `inspect_address.json`, `exec_call.json`,
+  `scan_memory.json`, `freeze.json`.
+- `modforge/test-corpus/rpg/`. Level-up, refund,
+  slot-activate, snapshot-with-skills, bad-skill-id,
+  max-level-cap.
+- `modforge/test-corpus/selector/`. Each selector form +
+  expected resolved-handle envelope.
 
-- `grounded2mods/unityforge/unityforge.csproj` (netstandard2.1,
-  no game-DLL references).
+Both frameworks load this corpus in their integration
+tests; both must produce identical envelopes.
+
+**Exit gate:**
+- `cargo test -p modforge-core` is green.
+- ueforge builds and runs against the new crate. g2rpg
+  in-game tab renders. HTTP debug endpoint responds. No
+  behavior change vs. pre-extraction.
+- A Rust integration test exercises every `extern "C"`
+  entry the FFI surface ships; this smoke-tests the
+  unityforge consumption shape before Phase 1 starts.
+
+#### Phase 1: unityforge skeleton + full HTTP control plane (~5-6 days)
+
+The minimum unityforge needs for both **research** (the HTTP
+debug surface that lets us reverse-engineer Wild West Miner)
+and RPG plumbing (settings, logger, hooks).
+
+**The HTTP control plane is the priority deliverable.** Once
+this phase exits, an empty BepInEx plugin on any Unity-Mono
+game opens a debug port and accepts the full generic-primitive
+op surface. Phase 2's RPG work and Phase 3's wwm-rpg both
+ride on that.
+
+**1a. Project + host contract (~half day)**
+
+- `grounded2mods/unityforge/unityforge.csproj` (netstandard2.1).
+  References Newtonsoft.Json. **Build-output also copies
+  `modforge_core.dll` + `0Harmony.dll` next to the plugin DLL.**
 - BepInEx 5 plugin shell. `UnityforgeMod` base class with
-  `OnEnable()` / `OnDisable()` hooks for subclasses.
+  `OnEnable()` / `OnDisable()` for subclasses + a
+  MonoBehaviour driver that calls `TickFrame()` each Update.
 - `IUnityforgeHost` interface (`Now()`, `ModDataDir()`,
-  `QueueWrite(Action)`, `Log(level, msg)`).
-- `Logger` lift from `TimberbotLog`.
-- `Settings` (load + in-memory `JObject` + debounced
-  writeback, lifted from `TimberbotService`).
-- Tiny HTTP server. Lift `TimberbotHttpServer` and trim to
-  GET/POST `/op` only. ~150 lines. No write-job budget yet
-  (RPG ops are cheap; single-frame execution is fine).
-- `OpDef` + `OpRegistry.Dispatch(op, args, host) -> Envelope`.
-  Mirrors ueforge's surface. Two built-in ops: `ping`,
-  `snapshot` (returns the host's current snapshot JSON).
-- `Hook` + `HookDef` + `HookRegistry` wrapping HarmonyLib.
-  `Hook.RegisterPrefix(...)`, `Hook.RegisterPostfix(...)`,
-  `HookRegistry.ShutdownAll()`.
-- Unit tests: Settings round-trip, OpRegistry dispatch,
-  HookRegistry patch+unpatch.
+  `QueueWrite(Action)`, `Log(level, msg)`, `Snapshot() -> JObject`).
 
-**Exit gate:** an empty BepInEx plugin extending
-`UnityforgeMod` loads in any Unity Mono game, opens the HTTP
-port, responds to `POST /op {op:"ping"}` with the envelope.
+**1b. modforge-core P/Invoke layer (~1 day)**
+
+- `Native/ModforgeCore.cs`. `[DllImport("modforge_core")]`
+  declarations matching the cbindgen header.
+- Marshalling helpers for strings, `JObject` <-> JSON bytes,
+  opaque handles (settings, scanner sessions).
+- Wrappers: `Settings`, `Logger`, `Counters`, `Envelope`,
+  `OpRegistry`, `SelectorRegistry`, `Scanner`, `Winproc`,
+  `ShutdownRegistry`. Each one is a thin C# class over the
+  native entry points; ueforge's behaviors come along for
+  free.
+
+**1c. HTTP control plane (~2 days)**
+
+The big one. Full ueforge parity for the debug surface:
+
+- `Unityforge.HttpServer`. Listener thread + accept loop +
+  POST routing. Mirrors `ueforge::server::spawn`. Per-launch
+  auth token + 1 MiB body cap. Panics in op handlers caught
+  so a buggy op doesn't drop the listener.
+- `Unityforge.MainThreadQueue`. `ConcurrentQueue<Action>` +
+  re-entrance guard + budgeted drain on `TickFrame()`. The
+  C# parallel to `PE_QUEUE`. POST handlers that touch Unity
+  state enqueue here; GET handlers run on the listener
+  thread against snapshots.
+- `Unityforge.OpRegistry` (C# wrapper over the native one).
+  Built-in ops registered by Phase-1 framework code:
+  - `ping`, `snapshot`, `list_ops`, `list_selectors` (free
+    from modforge-core).
+- **C# implementations of the generic-primitive op family
+  for Unity Mono**, with the same op-name + args + result
+  schemas as ueforge's UE versions:
+  - `walk_class` -> enumerates live MonoBehaviour /
+    ScriptableObject / `Singleton<T>` instances of a named
+    type via reflection. Returns `{ instances: [{ address,
+    name, full_name }] }`.
+  - `inspect_address` -> dump fields of a managed object
+    handle. Returns `{ class_name, properties: [{ name,
+    offset?, value }] }`.
+  - `read_field` -> typed managed read. Replaces UE's
+    raw `read_bytes` (different memory model, same op
+    name semantics: read a value by selector + path).
+  - `write_field` -> typed managed write, queued to main
+    thread.
+  - `invoke_method` -> reflection invoke with JSON args /
+    result. Unity's parallel to UE's `exec_call`.
+  - `list_singletons` -> enumerate all live `Singleton<T>` /
+    `StaticInstance<T>` instances (game-pattern probe).
+- `Unityforge.SelectorRegistry` registers the Unity-side
+  resolvers against the shared parser: `addr:`, `class:`,
+  `first_class:`, `singleton:`, `static_instance:`,
+  `monobehaviour:`. Names match ueforge where the concept
+  matches; new names where Unity differs.
+- `Unityforge.Hook` + `HookDef` + `HookRegistry` wrapping
+  HarmonyLib. `RegisterPrefix`, `RegisterPostfix`,
+  `RegisterFinalizer`, `ShutdownAll()`. Panic counters per
+  hook (parity with ueforge).
+
+**1d. Reflection inspector (~1 day)**
+
+- `Unityforge.ReflectionInspector`. C#'s answer to ueforge's
+  `discovery` + `inspect_address`. Walks managed types and
+  field metadata. Used by `inspect_address`, `walk_class`,
+  `list_singletons`. Caches `FieldInfo` / `PropertyInfo`
+  per-type to avoid hot-path reflection.
+
+**1e. Logger + Settings + Service wiring (~half day)**
+
+- `Logger`. Thin facade over the native sink + Unity
+  `Debug.Log` mirror.
+- `Settings`. Wraps `modforge_core::settings` with a
+  typed-accessor helper.
+- `UnityforgeService`. `TickFrame(now)` calls drain queue +
+  process snapshot requests + flush settings.
+
+**1f. Unit + integration tests (~1 day)**
+
+- C# unit tests for marshalling each FFI entry.
+- Integration: load the modforge `test-corpus/ops/`
+  corpus, run each request against a stub host, assert
+  envelope shape parity with what ueforge produces for the
+  same corpus.
+
+**Exit gate:**
+
+- An empty BepInEx plugin extending `UnityforgeMod` loads in
+  Wild West Miner (verified end-to-end).
+- `curl POST localhost:<port>/op -d '{"op":"ping"}'` returns
+  the expected envelope.
+- `curl ... {"op":"list_ops"}` returns the generic-primitive
+  set + the built-in ueforge-parity set.
+- `curl ... {"op":"walk_class","args":{"class":"PlayerManager"}}`
+  returns the live `PlayerManager` instance address.
+- `curl ... {"op":"inspect_address","args":{"addr":"<above>"}}`
+  dumps PlayerData via reflection.
+- Conformance corpus passes.
 
 #### Phase 2: unityforge.Rpg (~4-5 days)
 
