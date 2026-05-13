@@ -1,0 +1,491 @@
+# Wild West Miner: modding research
+
+> **Status:** initial research pass, 2026-05-12. No code yet. The
+> question this doc answers: how hard would it be to mod Wild
+> West Miner Simulator (Demo), and is the right shape (a) a
+> shared "modforge" core that supports both Unreal and Unity,
+> (b) a parallel `unityforge` sibling to `ueforge`, or (c)
+> something else.
+
+## 1. Why this question exists
+
+We have two mature mod frameworks in the abix orbit:
+
+| Framework | Engine | Language | Repo | Lines of mod-code | Posture |
+|---|---|---|---|---|---|
+| **ueforge** | UE5 (UE4SS host) | Rust | `grounded2mods/ueforge` | ~15k Rust framework, ~3.5k per game mod | UE-specific, deep |
+| **Timberbot** | Unity Mono (Bindito DI host) | C# | `timberborn/timberbot` | ~13k C# (single mod, no framework split yet) | One game, but the patterns are generalizable |
+
+Both expose the same loop: an HTTP control plane on localhost,
+snapshots of live game state, write ops applied on the main
+thread, an in-game ImGui/UI tab, hot reload, an LLM-friendly
+read format (`toon`) alongside `json`.
+
+The shapes match. The plumbing is engine-specific.
+
+A third game (Wild West Miner) appeared in the user's library
+and the natural question is: do we want to mod it, and if yes,
+with what?
+
+## 2. Wild West Miner: technical profile
+
+### 2.1 Game shell
+
+| Property | Value |
+|---|---|
+| Install path | `C:\Games\Steam\steamapps\common\Wild West Miner Simulator Demo\` |
+| Engine | Unity (Mono scripted, **NOT** IL2CPP) |
+| Build GUID | `d498052cf0224d53bbcb80c6e5e84846` (from `boot.config`) |
+| Publisher | Digital Melody Games |
+| Mod loader shipped | None (no BepInEx, no MelonLoader, no built-in mod system) |
+| Save format | `Newtonsoft.Json` blobs in `SaveDat` files |
+| Anti-cheat | None observed in shipped DLLs |
+
+### 2.2 Code shape (Assembly-CSharp.dll)
+
+| Metric | Value |
+|---|---|
+| `Assembly-CSharp.dll` size | ~600 KB |
+| Top-level classes | **723** |
+| `Assembly-CSharp-firstpass.dll` | DOTween only (third-party, ignore) |
+| Third-party DLLs of note | `Digger.Core` + `Digger.Runtime` + `Digger.Splines` + `Digger.AdvancedOperations` (Unity asset-store voxel terrain), `DOTween`, `Newtonsoft.Json`, `Unity.Addressables`, `Steamworks.NET` |
+
+Top-level classes break out roughly:
+
+- `*Manager` (Singleton<T>): `PlayerManager`, `GameplayManager`,
+  `AudioManager`, `EnvironmentManager`, `NpcsManager`,
+  `MinesManager`, `WorkersManager`, `BarrelsManager`,
+  `FurnacesManager`, `DigManager`, `DigSpawningManager`, ... (~30
+  total).
+- `*Data` / `*SO` (ScriptableObject configs): `PlayerData`,
+  `MineDataSO`, `WorkerModel`, `GameDataSO`, `BedDataSO`,
+  `CloudSO`, `Cloud_NeedSO`, `LocalizationDataSO`,
+  `ToolDataSO`, ... (~50+ SOs hand-authored as game assets).
+- `*Database` (per-entity save records): `PlayerDatabase`,
+  `WorkerDatabase`, `BarrelsDatabase`, `FurnaceDatabase`, ...
+  (~25 total). One per persistable entity type.
+- Tutorial system: `*TutorialObjective` and `TO_*` classes (~30
+  total). Drives the demo's onboarding flow.
+- Player controllers: `PlayerController`, `PlayerWalkingController`,
+  `PlayerCarryingController`, `PlayerDynamiteController`,
+  `PlayerWheelbarrowController`, `PlayerTrunkController`,
+  `PlayerEqController`, `PlayerInteractionObjectsController`,
+  `PlayerPlacingController`. Decomposed by verb.
+
+### 2.3 Architecture patterns observed
+
+**Custom service locator, not DI.** The game uses three
+hand-rolled generic singletons:
+
+| Pattern | Lifetime | Used by |
+|---|---|---|
+| `Singleton<T>` | scene-lifetime | gameplay managers (PlayerManager, DigManager) |
+| `StaticInstance<T>` | scene-lifetime | view-layer (GameplayManager, MoneyPanelUI) |
+| `PersistentSingleton<T>` | app-lifetime | infra (GameSerializationSystem) |
+
+Translation: every interesting service is reachable via
+`PlayerManager.Instance` / `StaticInstance<X>.Instance`. No
+Bindito-style container to navigate. Easier than Timberborn for
+this reason.
+
+**Custom persistence interface.** Every persistable manager
+implements `ISerializable`:
+
+```csharp
+public async Task SaveData(GameSerializationData data) { data.AddData("PLAYER_DATA", _playerData); }
+public void LoadData(GameSerializationData data) { ... }
+```
+
+Managers register themselves with
+`GameSerializationSystem` on `Start`. Save key is a string
+(`PLAYER_DATA`, etc.). Newtonsoft.Json under the hood. Trivial
+to read or inject extra mod-side keys.
+
+**Events expose state changes.** `PlayerManager` ships:
+
+```csharp
+public static event Action<bool> e_OnPlayerActiveStateChanged;
+public static event Action<bool> e_OnPlayerCurrencyChanged;
+public static event Action e_OnPlayerExpChanged;
+```
+
+Same pattern across managers. A mod subscribes once at load and
+gets state-change pushes without polling. This is rare and nice;
+Timberborn doesn't even ship this much.
+
+**Worked example: PlayerData is one float.** Full source of
+the type that holds the player's wallet:
+
+```csharp
+[Serializable]
+public class PlayerData {
+    [JsonProperty] public float PlayerMoneyCurrency { get; private set; } = 10f;
+    public void ChangeCurrencyValue(float newCurrencyValue) {
+        PlayerMoneyCurrency = newCurrencyValue;
+    }
+}
+```
+
+That is the entire vault. The mod surface for "give the player
+gold" is one method call: `PlayerManager.Instance.AddPlayerCurrency(1e9f)`.
+
+**Digger voxel terrain is the differentiator.** The Mine system
+wraps `Digger.Modules.Core.Sources.DiggerSystem`. Modifying
+mined volumes (placing ore back, regenerating veins, painting
+textures) goes through Digger's public API and is fully
+documented at the asset-store level. Out-of-band of game code,
+not difficult, just a separate API surface to learn.
+
+## 3. ueforge stack (current state, summarized)
+
+> Source: `ueforge/docs/architecture.md`, `lib.rs`,
+> `cpp/` (502 lines of C++ shim).
+
+**Surface layers:**
+
+1. **C++ shim** (502 lines, fixed cost): `CppUserModBase`
+   subclass + ImGui bridge + `extern "C"` boundary. Imgui itself
+   is a vendored submodule. UE4SS-specific.
+2. **Rust framework** (~15k lines): UObject SDK, FName/FString,
+   TArray/TMap, GObjects view, vtable hooks, ProcessEvent
+   trampoline, PE queue (game-thread serialization), settings,
+   hot reload, logger, debug HTTP server, op envelope, selector
+   grammar, snapshot machinery, RPG/stacks/difficulty/damage
+   modules.
+3. **Per-game mod crates** (~3.5k Rust each):
+   `grounded2-rpg`, `outworld-station-tweaks`. Declare a
+   `ModDef`, register Effects/Triggers/Skills, wire game-specific
+   class names + offsets, supply tab content.
+
+**Architectural rules ueforge follows:**
+
+- **Def -> Registry -> Instance -> Controller** (CRD-style) for
+  every subject (skills, hooks, ops, selectors, status effects,
+  data tables, tabs, shutdown handlers).
+- **Effects + Triggers + Skills** composition: a Skill is one
+  Effect + one Trigger. New games add Effects only when the game
+  has a unique operation no other game shares.
+- Universal patterns live in ueforge. Game-specific code is
+  `&'static` config + an opt-in trait impl.
+
+**Where the framework cost lives:** the UE-specific bottom
+~30%. UObject memory layout, FName interning, vtable hook
+mechanics, ProcessEvent decode, PE queue (re-entrance guard +
+game-thread dispatch). Everything else (HTTP, snapshots, ops,
+selectors, settings, hot reload, ImGui, logger) is generic.
+
+## 4. Timberbot stack (current state, summarized)
+
+> Source: `timberborn/docs/architecture.md`,
+> `timberborn/timberbot/src/*.cs`.
+
+**Surface layers:**
+
+1. **BepInEx publicizer** (`BepInEx.AssemblyPublicizer.MSBuild`).
+   At compile time, exposes the game's `internal` types so the
+   mod can call them. No runtime patching.
+2. **Bindito DI registration** (`TimberbotConfigurator`).
+   `[Context("Game")]` declares a configurator the game's DI
+   container picks up at game load.
+3. **Game-singleton classes** implementing
+   `ILoadableSingleton` / `IUpdatableSingleton` /
+   `IUnloadableSingleton`. The game calls `Load()` at game start
+   and `UpdateSingleton()` every frame.
+4. **The mod itself** (~13k C# in `timberbot/src/`):
+   - `TimberbotService` (orchestrator, per-frame dispatch).
+   - `TimberbotHttpServer` (background listener thread + main-
+     thread drain).
+   - `TimberbotReadV2` (snapshot pipeline with `ProjectionSnapshot
+     <TDef, TState, TDetail>`).
+   - `TimberbotWrite` (POST write ops, budgeted).
+   - `TimberbotPlacement` (building placement, A* path routing).
+   - `TimberbotWebhook` (batched push events).
+   - `TimberbotEntityRegistry` (GUID/numeric ID bridge).
+   - `TimberbotJw` (zero-alloc JSON writer).
+   - `TimberbotAgent` (Claude/Codex launcher).
+   - `TimberbotPanel` (in-game movable widget + settings modal).
+
+**Key facts that shape the comparison:**
+
+- Timberborn ships its own mod loader + Bindito DI. Timberbot
+  does **not** need a third-party loader. Plugin just lives in
+  `Documents/Timberborn/Mods/Timberbot/`.
+- Timberbot has **no framework / mod split yet**. The 13k lines
+  are one project. Generalizable patterns (HTTP, Jw,
+  ProjectionSnapshot, agent, panel) are mixed in with
+  Timberborn-specific code (Bindito wiring, Beaver/Bot logic,
+  Timberborn class refs).
+- The architecture rhymes with ueforge: per-frame dispatch,
+  background listener, main-thread drain, snapshot publish,
+  budgeted write jobs, toon vs json output. Independent
+  inventions converged on the same shape.
+
+## 5. Side-by-side: how each does the same thing
+
+| Concern | ueforge (UE5) | Timberbot (Unity Mono) | Wild West Miner |
+|---|---|---|---|
+| Loader | UE4SS (third-party DLL injector + CppUserModBase) | Timberborn's built-in mod system (Bindito DI) | **BepInEx 5 (Mono)** would need to be installed |
+| Calling into game | UObject -> UFunction -> ProcessEvent + vtable hooks; FName for identity | Direct C# method calls on publicized internals | Direct C# method calls on **already-public** singletons; trivially the easiest of the three |
+| Reading game state | Walk UObject tree, FProperty offsets, GObjectsView | `Bindito.Inject` and call `Manager.Property` on game singletons | `StaticInstance<X>.Instance.Property` / `Singleton<X>.Instance.Property`. Same as Timberbot conceptually |
+| Threading | PE queue + game-thread guard; one drain per tick | Background listener thread + `_pending` queue drained on `UpdateSingleton()` | Same Unity model as Timberbot. Same approach works verbatim |
+| Hooks / events | ProcessEvent trampoline on a class vtable slot. ~100% of UE5 surface area accessible by patching one method | HarmonyLib for arbitrary method patching; many state changes already eventbus-driven | HarmonyLib **plus** the game already exposes `static event Action` per state change. Often no patch needed |
+| State persistence | Mod owns its `<guid>.json` per slot | Mod owns its settings JSON | Game's own `GameSerializationData` happily accepts a mod-side `[Serializable]` blob under a new key |
+| Snapshot to HTTP | `ueforge::ops::snapshot`, double-buffered, JSON envelope | `ProjectionSnapshot<TDef,TState,TDetail>` + double-buffered capture | Either pattern transfers. Pick Timberbot's; it's cleaner C# |
+| Hot reload | `ueforge::hot_reload` swap of running cdylib | BepInEx ScriptEngine / dnSpy edit-and-continue | Same as Timberbot |
+| In-game UI | Bundled ImGui v1.92.1 inside the mod DLL | Timberborn's own UIElements panel | Unity UI / Unity IMGUI / build your own. **Imgui is the universal answer**, ueforge's ImGui setup transfers |
+| LLM-friendly output | `toon` format from `OpResponse<S>` | `TimberbotJw` writes both `toon` and `json` per endpoint | Same pattern works |
+| Per-game work | Class names + offsets + UFunction parm shapes + game-specific Effect impls | Each game-specific manager + each event subscription + each write op | The game has fewer types to chase than Timberborn (723 vs Timberborn's ~thousands); estimate **smaller than Timberbot** in absolute size |
+
+## 6. Work estimate: a "Goldbot" for Wild West Miner
+
+Define the v0 scope identical to Timberbot v0:
+
+- Local HTTP control plane on a port.
+- GET endpoints: player money, currently equipped tool, mines
+  list with progress, workers list, inventory, savefile slot.
+- POST endpoints: add currency, hire/fire worker, clear a mine
+  (via `Mine.ClearMine()`), set dig tool, teleport.
+- Webhooks for the three `e_On*` events the game already fires.
+- In-game settings + toggle panel.
+- Snapshot for an LLM agent to read every frame.
+
+**Estimated effort, fresh (no shared framework):** ~2-3 weeks
+of solo work. Comparable to where Timberbot was at v0.4.
+
+**Why it's faster than Timberbot was:**
+
+- No DI graph to learn (it's `Singleton<T>.Instance`).
+- Game already publishes state-change events.
+- ~723 classes is roughly half of Timberborn's surface.
+- Save format is plain Newtonsoft JSON with a string key.
+- All currency / progression types are tiny (PlayerData is one
+  field).
+
+**Why it's still real work:**
+
+- BepInEx loader, plugin manifest, deploy path: ~1 day.
+- HTTP server + thread drain pattern: copy from Timberbot. ~1
+  day to retype.
+- Webhook batcher: copy from Timberbot. ~half day.
+- Reflection-based debug inspector: ~1 day.
+- Per-endpoint capture + snapshot code: most of week 2.
+- Digger voxel API integration (place/remove ore): unknown,
+  call it 3-5 days of reading Digger docs.
+- In-game UI (imgui-based panel or Unity UI): ~2-3 days.
+- Polish + skill file + LLM agent wiring: ~2 days.
+
+If we lift the generic Timberbot pieces into a shared `unityforge`
+crate **first**, the v0 work above drops to roughly **1 week**
+because seven of the bullets above become "wire up the shared
+framework."
+
+## 7. Should we build "modforge" (UE+Unity) or `unityforge` (sibling to ueforge)?
+
+> **Update 2026-05-12:** the recommendation below evolved into the
+> plan in [`unityforge-plan.md`](unityforge-plan.md). The short
+> version: build a `modforge` workspace (shared spec, test corpus,
+> client, deploy tool, methodology) alongside `unityforge` (the
+> Unity Mono framework, ueforge-equivalent in scope. Skills,
+> effects, triggers, hooks, registry pattern, snapshots, agent,
+> UI). Both `ueforge` and `unityforge` adopt `modforge`. Game
+> mods are downstream consumers, not blockers. The options below
+> are kept for context.
+
+This is the core decision. Three options:
+
+### Option A: one polyglot `modforge` workspace (Rust + C#, single home)
+
+**Shape:** one repo, ueforge moves in as the UE side, a new C#
+project moves in as the Unity side. Shared docs, shared
+methodology, shared release notes, **separate** binaries.
+
+**Pros:**
+- Single source of methodology truth (RESEARCH.md, op envelope,
+  toon format, snapshot patterns).
+- Cross-pollination of features is one PR away.
+- One skill file (`modforge.md`) documents both stacks.
+
+**Cons:**
+- The two binaries cannot share *code*. Rust cdylib and a C#
+  netstandard2.1 DLL are different artifacts. The "shared core"
+  is essentially "shared spec + shared docs."
+- Build infra has to host both Cargo and dotnet pipelines.
+- One repo doing two things at once tends to slow each by ~30%
+  in practice (workspace gravity, mixed CI, mixed reviews).
+
+**Verdict:** mostly a documentation framing. Real code reuse is
+zero. Not worth the merge cost.
+
+### Option B: `unityforge` as a sibling C# library to ueforge (recommended)
+
+**Shape:** new repo (`abix-/unityforge`) or new folder
+(`grounded2mods/unityforge/`) containing the generic C#
+framework Timberbot's `src/` already implies. The Timberbot
+project becomes the first consumer. A new Wild West Miner mod
+(`wwm-goldbot`) becomes the second consumer. ueforge stays
+exactly where it is, owns the UE side, no churn.
+
+**Pros:**
+- Honest about the artifact boundary. C# DLL is a different
+  thing from a Rust cdylib; pretending otherwise wastes time.
+- Shares the *spec* (op envelope, toon, selector grammar) and
+  the *patterns* (PE queue == main-thread drain, snapshot
+  publish, projection schema) without forcing shared code.
+- Refactor target is real: Timberbot has a clean
+  `TimberbotHttpServer` + `TimberbotJw` + `ProjectionSnapshot`
+  + `TimberbotEntityRegistry` already. They generalize cleanly.
+  Lift, parameterize, ship.
+- The second mod (Wild West Miner) immediately proves the
+  abstractions. Without a second consumer the abstractions
+  drift toward "whatever Timberbot needs."
+- The methodology doc (RESEARCH.md style) can live in a
+  third repo or a top-level doc that both reference.
+
+**Cons:**
+- More repos to maintain.
+- "Same idea expressed in two languages" is a documentation
+  burden if either side drifts.
+- Risk: extracting unityforge from Timberbot is itself a 1-2
+  week refactor. Not free.
+
+### Option C: do nothing, build a one-off WWM mod from scratch
+
+**Pros:**
+- No framework investment. WWM mod ships in 2-3 weeks.
+
+**Cons:**
+- The third Unity mod (whatever comes next) re-invents the same
+  scaffolding a third time.
+- Wastes the leverage we already paid for in Timberbot.
+
+### Recommendation
+
+**Option B, but build `unityforge` from day one.** We already
+have two consumers: Timberbot is shipped and stable (the
+reference), Goldbot is the about-to-be-built second consumer.
+The usual "design against one consumer = bad abstractions"
+risk does not apply here, because Timberbot already exists in
+finished form. Its `src/*.cs` is the spec.
+
+Execution:
+
+1. **Create `grounded2mods/unityforge/`** as a `netstandard2.1`
+   class library. Lift the generic pieces out of Timberbot
+   line-by-line:
+   - `TimberbotHttpServer` -> `UnityforgeHttpServer`
+   - `TimberbotJw` -> `UnityforgeJw`
+   - `ProjectionSnapshot<TDef, TState, TDetail>` -> verbatim
+   - `TimberbotEntityRegistry` -> `UnityforgeEntityRegistry`
+     (generic over entity-id type; Timberborn uses GUIDs,
+     Wild West Miner uses int IDs)
+   - thread-drain pattern (`_pending` queue + budget)
+   - settings JSON load + debounced save
+   - webhook batcher
+   - debug reflection inspector
+   - skill-file generator + agent launcher
+   Game-specific code stays in Timberbot's repo; only the
+   generic shapes move.
+2. **Build Goldbot as `grounded2mods/wwm-goldbot/`** on top of
+   `unityforge` from the first commit. Goldbot's csproj
+   references `unityforge.dll`; no copy-paste of Timberbot's
+   patterns.
+3. **Port Timberbot onto `unityforge`** as a second step,
+   on its own timeline. Timberbot in `timberborn/` keeps its
+   repo identity; it consumes `unityforge` as a NuGet package
+   (preferred), a git submodule, or just a referenced project.
+   Mechanical refactor: replace `TimberbotJw` with
+   `UnityforgeJw`, etc. Behavior unchanged.
+
+Sequencing rationale:
+
+- Goldbot writing against the extracted framework is the only
+  way to confirm Timberbot's abstractions actually generalized.
+  If something doesn't fit, fix it in `unityforge` before
+  porting Timberbot. Cheaper than fixing it after the port.
+- Timberbot stays shippable the whole time. Port is independent
+  work, not a blocker.
+- Wild West Miner ships v0 in ~1 week instead of 2-3, because
+  Goldbot inherits HTTP server + Jw + snapshot pipeline +
+  webhooks + settings + reflection inspector + agent launcher
+  on day one.
+
+Naming: `unityforge` matches `ueforge`. C# sibling, not a
+Rust translation. Different artifact, same posture.
+
+## 8. Open research questions
+
+Things this pass did NOT answer:
+
+1. **Digger voxel API.** What does it take to programmatically
+   place/remove ore? Does Digger ship public methods, or do we
+   need reflection? Open the four `Digger.*.dll` files in
+   ilspy and read.
+2. **Save file path on disk.** Where does `SaveDat` live?
+   Probably `%USERPROFILE%/AppData/LocalLow/<Publisher>/<Game>/`.
+   Worth confirming so the mod's snapshot can include "current
+   save slot."
+3. **Addressables catalog scan.** `StreamingAssets/aa/catalog.bin`
+   lists every loadable asset. Does it expose ore/worker
+   prefabs by stable string ID? If yes, modifying entity spawn
+   tables becomes a string-key edit instead of a code patch.
+4. **In-game UI hosting choice.** Does the game's Unity version
+   support `UnityEngine.IMGUI` (`OnGUI`) trivially? If yes,
+   skip the imgui-bundle-in-DLL trick ueforge uses. Just call
+   `GUI.Button` and ship.
+5. **BepInEx 5 vs 6.** 5.x is the stable Mono branch and
+   matches what every other Unity-Mono mod community ships. 6.x
+   is in preview. Confirm 5.x works against this game's Unity
+   version before committing.
+6. **Game version churn.** This is the Demo. The full game will
+   ship with different DLL hashes. Use Harmony patches by name
+   and reflection for fields not for IL offsets. Do not embed
+   offsets in source.
+7. **What's actually fun to mod.** Currency cheat is the joke
+   answer. Real interesting mod: dynamic difficulty, worker AI
+   overrides, train route editor, biome mods via Digger.
+
+## 9. Next steps (in order)
+
+1. Install BepInEx 5.x against this game; verify a "Hello,
+   miner" plugin loads. ~1 hour.
+2. Spike: 50-line plugin that calls
+   `PlayerManager.Instance.AddPlayerCurrency(1e6f)` on F8.
+   ~1 hour. Confirms BepInEx + the singleton pattern + the
+   game's mod-loadability before any framework work.
+3. Read the Digger API. ~half day. Determines whether
+   terraforming mods are within v0 scope.
+4. **Create `grounded2mods/unityforge/`.** Walk
+   `timberborn/timberbot/src/*.cs`; for each file, decide
+   "generic -> unityforge" vs "Timberborn-specific -> stays in
+   Timberbot." Copy the generic side into unityforge, parameterize
+   on entity-id type, ship as `netstandard2.1`. Aim for the
+   first usable cut in ~3-4 days.
+5. **Create `grounded2mods/wwm-goldbot/`.** csproj references
+   `unityforge` + `Assembly-CSharp.dll` (publicized). Wire one
+   GET (player money) and one POST (add money) using the
+   shared HTTP server + Jw. ~2 days.
+6. Fill in the rest of Goldbot v0: mines list, workers list,
+   inventory, webhooks for the three `e_On*` events, settings
+   panel, agent launcher. ~3-4 days.
+7. Port Timberbot onto `unityforge`. Mechanical refactor in
+   Timberbot's repo. ~2-3 days; no behavior change; landed when
+   Goldbot has shaken out any unityforge API gaps.
+8. Land this doc plus the spike under
+   `grounded2mods/wwm-goldbot/docs/` as that crate's first
+   doc entry.
+
+## 10. Summary
+
+Wild West Miner is the easiest of the three games to mod. Plain
+Mono, public singletons, JSON saves, event-driven state changes,
+no DI to navigate. A Goldbot mod is **2-3 weeks** fresh or **~1
+week** if we share Timberbot's generic pieces.
+
+A unified `modforge` (UE + Unity in one crate) is a
+documentation framing, not real code sharing. Skip it.
+
+`unityforge` (C# sibling to `ueforge`) is the right shape and
+we already have two consumers: Timberbot (shipped, stable, the
+spec) and Goldbot (about to be built). Extract `unityforge`
+**first**, build Goldbot against it from commit 1, port
+Timberbot onto it after.

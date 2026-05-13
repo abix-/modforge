@@ -10,6 +10,8 @@
 |---|---|
 | [todo.md](todo.md) | Open work across the workspace, ordered by leverage. |
 | [changelog.md](changelog.md) | Chronological history of milestones, investigations, and design pivots across every crate. |
+| [wild-west-miner-research.md](wild-west-miner-research.md) | Research pass on modding Wild West Miner Simulator. ueforge vs Timberbot vs a hypothetical `unityforge`. |
+| [unityforge-plan.md](unityforge-plan.md) | Extraction plan for `unityforge`: the C# sibling to ueforge that Goldbot will build on and Timberbot will port onto. |
 
 ## Per-crate docs
 
