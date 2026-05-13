@@ -311,25 +311,10 @@ impl Effect<UeEngine> for ClassFieldsMultiplyEffect {
     }
 }
 
-/// No CDO write. The skill's effect is implemented entirely
-/// in a hot-path callback (kill_hook trampoline reads the
-/// level on every fire). The struct exists to formalize "this
-/// is a Runtime skill" in the catalog so the format helper
-/// can render the right text.
-pub struct RuntimeEffect {
-    pub max_bonus: f32,
-    pub format: PercentFormat,
-}
-
-impl Effect<UeEngine> for RuntimeEffect {
-    fn apply(&self, _level: u32, _max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
-        // No-op. The hot-path callback owns the actual effect.
-    }
-
-    fn format(&self, level: u32, max_level: u32) -> String {
-        format_pct(0.0, self.max_bonus, level, max_level, &self.format)
-    }
-}
+// `RuntimeEffect` moved to `modforge::rpg::std_effect` during
+// Phase 0b row 16. Engine-agnostic; blanket `impl<E: Engine>
+// Effect<E>`. Re-exported via `crate::rpg::RuntimeEffect`.
+pub use modforge::rpg::std_effect::RuntimeEffect;
 
 /// Apply a UE5 row-driven status effect to the player's
 /// `UStatusEffectComponent`. Mutates the row's `Value` field to

@@ -35,68 +35,12 @@ use serde_json::Value as Json;
 use crate::args;
 use crate::pe_queue::DrainSite;
 use crate::ring::EventRing;
-use crate::rpg::{SkillDef, SkillsState};
 
-/// Universal player-state view for the debug snapshot. Serde-
-/// friendly mapping of `SkillsState` fields. `skill_levels` is a
-/// JSON object so per-skill-id lookups in tests don't require a
-/// linear scan.
-#[derive(Serialize)]
-pub struct PlayerStateView {
-    pub xp: u64,
-    pub level: u32,
-    pub skill_points: u32,
-    pub skill_levels: serde_json::Map<String, serde_json::Value>,
-}
-
-impl PlayerStateView {
-    /// Build a view from a `SkillsState`. Allocates one
-    /// `serde_json::Map` for the skill-levels field.
-    pub fn from_state(s: &SkillsState) -> Self {
-        let mut skill_levels = serde_json::Map::new();
-        for (id, lv) in &s.skill_levels {
-            skill_levels.insert(id.clone(), serde_json::Value::Number((*lv).into()));
-        }
-        PlayerStateView {
-            xp: s.xp,
-            level: s.level,
-            skill_points: s.skill_points,
-            skill_levels,
-        }
-    }
-}
-
-/// One row in a serializable catalog view. `effect_kind` is a
-/// game-supplied identifier (typically the SkillEffect variant
-/// name) so test assertions key off catalog rows without coupling
-/// to the live enum layout.
-#[derive(Serialize)]
-pub struct CatalogEntry {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub max_level: u32,
-    pub effect_kind: &'static str,
-}
-
-/// Map a game's `[SkillDef]` slice into a serializable
-/// `Vec<CatalogEntry>`. The `effect_kind` field is taken from
-/// each row's [`crate::rpg::EffectDef::kind`] tag. No
-/// game-specific dispatch needed.
-///
-/// ```ignore
-/// let view = ueforge::debug::catalog_view(skills::CATALOG.entries());
-/// ```
-pub fn catalog_view(catalog: &'static [SkillDef]) -> Vec<CatalogEntry> {
-    catalog
-        .iter()
-        .map(|s| CatalogEntry {
-            id: s.id,
-            display_name: s.display_name,
-            max_level: s.max_level,
-            effect_kind: s.effect.kind,
-        })
-        .collect()
-}
+// `PlayerStateView`, `CatalogEntry`, and `catalog_view` lifted
+// to `modforge::debug` during Phase 0b row 19 (engine-agnostic
+// half). UE-specific debug helpers (ProcessSnapshot,
+// DamageRing, enqueue_pe / register_pe_call) stay below.
+pub use modforge::debug::{CatalogEntry, PlayerStateView, catalog_view};
 
 
 /// Recent damage / multicast PE event captured by a damage hook.

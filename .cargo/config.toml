@@ -4,4 +4,4 @@ target-dir = "target"
 
 # `cargo deploy install -p grounded2-rpg` etc.
 [alias]
-deploy = "run -p ueforge --bin ueforge-deploy --release --quiet --"
+deploy = "run -p modforge --bin modforge-deploy --release --quiet --"

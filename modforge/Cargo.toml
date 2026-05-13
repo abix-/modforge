@@ -45,6 +45,19 @@ tiny_http = { workspace = true }
 ureq = { workspace = true }
 hex = { workspace = true }
 region = { workspace = true }
+zerocopy = { workspace = true }
+
+# Used only by the `modforge-deploy` bin target. Cargo only
+# compiles them when that bin is being built; consumers that
+# only link the lib don't pay the compile cost.
+clap = { workspace = true }
+regex = { workspace = true }
+winreg = { workspace = true }
+zip = { workspace = true }
+
+[[bin]]
+name = "modforge-deploy"
+path = "src/bin/modforge_deploy.rs"
 
 [dev-dependencies]
 insta = { workspace = true }

@@ -65,14 +65,10 @@ pub struct ModDef {
     pub tabs: &'static [TabDef],
 }
 
-/// One ImGui tab declaration. Per the workspace Def-suffix
-/// mandate (architecture.md "Naming contract"), the type is
-/// `TabDef`; `MOD_INFO.tabs: &[TabDef]` is the bare-slice
-/// registry carve-out.
-pub struct TabDef {
-    pub name: &'static str,
-    pub render: fn(),
-}
+// `TabDef` lifted to `modforge::ui::TabDef` during Phase 0b
+// row 21. Re-exported here so existing ueforge call sites
+// compile unchanged.
+pub use modforge::ui::TabDef;
 
 /// Wire a `static ModDef` into the shipped C++ shim. Emits the
 /// full set of `extern "C"` hooks plus `DllMain`.

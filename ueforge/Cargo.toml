@@ -27,14 +27,10 @@ path = "src/bin/dump_strings.rs"
 name = "read-property"
 path = "src/bin/read_property.rs"
 
-# Framework-level deploy CLI for any ueforge-based UE4SS Rust mod
-# in this workspace. Each mod opts in by adding a
-# [package.metadata.ueforge] block to its Cargo.toml; the
-# `cargo deploy ...` alias (configured in `.cargo/config.toml`)
-# runs this binary.
-[[bin]]
-name = "ueforge-deploy"
-path = "src/bin/ueforge_deploy.rs"
+# `ueforge-deploy` lifted to `modforge-deploy` during Phase 0b
+# row 18. The bin now lives at
+# `modforge/src/bin/modforge_deploy.rs`; the `cargo deploy ...`
+# alias was repointed at the new name.
 
 [dependencies]
 modforge = { path = "../modforge" }
@@ -73,13 +69,6 @@ smallvec = { workspace = true }
 fastrand = { workspace = true }
 patternsleuth = { workspace = true }
 zerocopy = { workspace = true }
-# Used only by the `ueforge-deploy` bin target. Cargo only
-# compiles them when that bin is being built; consumers that
-# only link the lib don't pay the compile cost.
-clap = { workspace = true }
-regex = { workspace = true }
-winreg = { workspace = true }
-zip = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

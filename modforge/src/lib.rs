@@ -7,7 +7,9 @@
 //! both consumers are Rust.
 
 pub mod args;
+pub mod client;
 pub mod counters;
+pub mod debug;
 pub mod envelope;
 pub mod hot_reload;
 pub mod log;
@@ -18,4 +20,7 @@ pub mod scanner;
 pub mod server;
 pub mod settings;
 pub mod shutdown;
+pub mod snapshots;
+pub mod ui;
 pub mod winproc;
+pub mod worker;

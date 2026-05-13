@@ -864,9 +864,9 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "libbz2-rs-sys"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3a6a8c165077efc8f3a971534c50ea6a1a18b329ef4a66e897a7e3a1494565f"
+checksum = "f8fc329e1457d97a9d58a4e2ca49e3be572431a7e096008efc2e3a3c19d428f4"
 
 [[package]]
 name = "libc"
@@ -951,12 +951,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
+ "clap",
  "crossbeam-channel",
  "fastrand",
  "hex",
  "insta",
  "parking_lot",
  "proptest",
+ "regex",
  "region",
  "serde",
  "serde_json",
@@ -964,6 +966,9 @@ dependencies = [
  "tiny_http",
  "ureq",
  "windows-sys 0.61.2",
+ "winreg",
+ "zerocopy",
+ "zip",
 ]
 
 [[package]]
@@ -1628,7 +1633,6 @@ dependencies = [
  "anyhow",
  "arc-swap",
  "cc",
- "clap",
  "crossbeam-channel",
  "fastrand",
  "hex",
@@ -1638,7 +1642,6 @@ dependencies = [
  "parking_lot",
  "patternsleuth",
  "proptest",
- "regex",
  "region",
  "serde",
  "serde_json",
@@ -1647,9 +1650,7 @@ dependencies = [
  "ureq",
  "widestring",
  "windows-sys 0.61.2",
- "winreg",
  "zerocopy",
- "zip",
 ]
 
 [[package]]
