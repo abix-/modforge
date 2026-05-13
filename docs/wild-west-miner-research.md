@@ -533,6 +533,99 @@ rope length, speed multiplier, save persistence, UI refresh).
 (Items from §8 below that this session DID answer are
 crossed out where applicable.)
 
+## 7.6. Demo-end screen anatomy (2026-05-14 session)
+
+User hit the "Congratulations, you have beaten the demo"
+modal mid-session and wanted to keep playing. Researched
+the panel live via HTTP reads.
+
+### What it is
+
+| Surface | Value |
+|---|---|
+| Controller class | `DemoCompleteScreenUI` (MonoBehaviour) |
+| Path in scene | `UI/Screens/DemoCompleteScreen` |
+| Serialized fields | `panel` (child GameObject), `escapeDemoCompleteText` (TMP_Text), `selectedButton` (focused button) |
+| Escape-text content | `"Press <color=#FFC500>[SPACE]</color> to return to menu"` |
+| Buttons on the panel | `Steam`, `Discord`, `Survey`, `PlayWay`. Wishlist links only. No "continue" |
+| Gameplay scene state when shown | Still loaded. `DigManager`, `PlayerController`, `MoneyPanelUI`, `GameplayManager` all live. Disabling the panel would resume play |
+
+### What triggers it
+
+The demo end fires when the last tutorial task completes.
+
+| Probe | Reading |
+|---|---|
+| `TutorialDatabase.tutorialCurrentStep` | 26 (rolled past the last initialized step) |
+| `TutorialDatabase.tutorialLastInitializedStep` | 25 |
+| `TutorialManager.currentTask` | null (no active task remains) |
+| Last task instance | `SellGoldBar` (`TutorialTaskSellItem`, `Id=24`) |
+| `SellGoldBar.target` | `NpcBanker` GameObject at `Bank` building |
+| `SellGoldBar.item` / `amount` | `102_GoldBar` x 2 |
+| `SellGoldBar.soldItemsAmount` | 2 (task complete) |
+| `SellGoldBar.onFinishEvent` | UnityEvent. Its persistent-call list (`m_PersistentCalls`) is where the "show demo-complete" wire-up lives. Our bridge couldn't read it: reflection only walks declared fields, not inherited base-class fields |
+
+### Revert paths
+
+1. **Block the trigger before it fires (cleanest).** Harmony
+   prefix on `DemoCompleteScreenUI.OnEnable` (or whatever
+   method activates the panel: `Show`, `Open`, ...) returning
+   `false`. Permanent fix, survives saves. Needs a
+   `list_methods` op to confirm the actual entry point.
+2. **Dismiss after it shows.** `SetActive(false)` on the
+   `DemoCompleteScreen` GameObject + force
+   `Time.timeScale = 1`. Blocked today because every
+   `invoke_method` and `write_field` returns
+   `main-thread queue timed out` while the panel is up: the
+   game sets `Time.timeScale = 0` and the shim drain in
+   `cs-shim-mono/Plugin.cs` stalls. Fix: drive the drain
+   off `Time.unscaledDeltaTime` (or unconditionally per
+   Update).
+3. **Rewind tutorial state.** Write `tutorialCurrentStep`
+   back below 25 BEFORE SellGoldBar finishes. Too late once
+   the panel is up; re-completing the task would re-trigger.
+
+### Bridge gaps this session exposed
+
+- **No array-index read.** Could not read `_items[25]` on
+  the `List<TutorialTask>` to confirm the last entry; had
+  to fall back to `walk_class TutorialTask` and trust order.
+- **Reflection skips base-class fields.** UnityEvent's
+  `m_PersistentCalls` / `m_Calls` (declared on
+  `UnityEventBase`) returned `not found`. Same for any
+  inherited fields on subclassed MonoBehaviours.
+- **No type-substring search.** Finding `DemoCompleteScreenUI`
+  cost ~15 guess-and-walk attempts. A
+  `find_types {contains: str}` op would have answered in
+  one call.
+- **No method enumeration.** `list_methods {handle}` would
+  let us pick the exact Harmony prefix target without
+  dnSpy.
+
+These four are the highest-leverage additions to the next
+bridge revision; queued behind the drain-stall fix because
+that one is blocking the user right now.
+
+### Technique notes (worth remembering)
+
+- **Walk transform parents to find a UI panel's root.**
+  Starting from any leaf widget (button, image, text),
+  repeated `read_field {handle, field: "parent"}` walks up
+  the RectTransform hierarchy until `null`. Six hops from a
+  wishlist button to `DemoCompleteScreen` to the UI canvas
+  root. Works even when the panel's controller class name is
+  unknown.
+- **`walk_class UnityEngine.UI.Button` filters to active
+  buttons in the scene.** Four matches all under the
+  demo-end panel = strong signal that the panel is the only
+  interactive modal up.
+- **`include_inactive: true` on `walk_class` matters** for
+  controllers behind toggled GameObjects, but for a panel
+  that's currently shown, the default (active-only) is
+  fine.
+
+---
+
 ## 8. Open research questions
 
 Things this pass did NOT answer:
