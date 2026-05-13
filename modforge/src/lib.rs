@@ -13,6 +13,7 @@ pub mod hot_reload;
 pub mod log;
 pub mod ops;
 pub mod ring;
+pub mod rpg;
 pub mod scanner;
 pub mod server;
 pub mod settings;
