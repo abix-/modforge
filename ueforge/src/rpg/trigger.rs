@@ -1,83 +1,66 @@
-//! Trigger trait + per-trigger struct types.
+//! UE-specific Engine + Event enum + concrete event-driven
+//! triggers.
 //!
-//! Per the workspace
-//! [composition model](../../docs/architecture.md), a Skill is
-//! an Effect (WHAT) + a Trigger (WHEN). Triggers are first-class
-//! Defs, symmetric with Effects:
+//! The trait shapes (`Trigger`, `TriggerDef`, `TriggerCtx<E>`,
+//! `OnSlotChange*`) live in [`modforge::rpg::trigger`]. This
+//! file plugs in the UE engine:
 //!
-//! ```text
-//! K8s slot: Def=TriggerDef { kind, imp: &'static dyn Trigger },
-//!           Registry=catalog (each SkillDef carries one TriggerDef inline),
-//!           Instance=&'static dyn Trigger resolved per skill,
-//!           Controller=per-trigger-type install + dispatch logic
-//! ```
+//! - [`UeEngine`]: the zero-sized type carrying the
+//!   `Event<'a> = UeEvent<'a>` association.
+//! - [`UeEvent`]: enum of UE event payloads (damage, kill, fall).
+//! - [`TriggerCtx`]: type alias for
+//!   `modforge::rpg::TriggerCtx<'_, UeEngine>`.
+//! - [`OnDamageDealtTrigger`], [`OnDamageTakenTrigger`],
+//!   [`OnKillTrigger`], [`OnFallTrigger`] + their static
+//!   `TriggerDef`s.
 //!
-//! ## Triggers shipped by the framework
-//!
-//! - [`OnSlotChangeTrigger`] (`ON_SLOT_CHANGE`). Fired by
-//!   `Tracker` on slot activate / spend / refund / toggle. The
-//!   trigger every CDO-write skill uses.
-//! - [`OnDamageDealtTrigger`] (`ON_DAMAGE_DEALT`). Fires per
-//!   player-instigator damage hit (Lifesteal, Crit).
-//! - [`OnDamageTakenTrigger`] (`ON_DAMAGE_TAKEN`). Fires per
-//!   player-target damage hit (Evasion, Thorns).
-//! - [`OnKillTrigger`] (`ON_KILL`). Fires per confirmed kill
-//!   (kill-credit driven skills).
-//! - [`OnFallTrigger`] (`ON_FALL`). Fires per player fall landing
-//!   (Fall Resistance, Impact Resistance).
-//!
-//! Dispatch for the event-driven triggers is wired by the
-//! game crate when it installs the underlying `DamageHook` /
-//! fall hook. The framework provides the `TriggerCtx` payloads
-//! and the static Defs; per-trigger dispatch helpers land in
-//! Phase 5c.2.
-//!
-//! ## Why both HookDef AND TriggerDef
-//!
-//! Different layers, different responsibilities:
-//!
-//! - `HookDef`. Low-level vtable patch primitive. One per
-//!   patched class. Plumbing.
-//! - `TriggerDef`. Semantic event source. May install N
-//!   underlying HookDefs OR no hooks at all (Periodic is a
-//!   poller). Owns filter + decode + typed event dispatch.
-//!
-//! N:M between them: one trigger may install hooks on multiple
-//! classes; one hook may fire multiple triggers (the damage
-//! hook serves OnDamageDealt + OnDamageTaken).
-//!
-//! See [architecture.md](../../docs/architecture.md) "Composition
-//! model" for the full rationale.
+//! `OnSlotChange` is engine-agnostic; it's defined in modforge
+//! and re-exported via [`crate::rpg::ON_SLOT_CHANGE`].
 
-/// Typed event context passed to `Effect::apply`. Each variant
-/// carries the data the effect needs to do its work for that
-/// trigger kind. Adding a new trigger type adds a new variant
-/// here + a new struct implementing [`Trigger`] + the framework
-/// dispatcher that fires the variant when the event happens.
-pub enum TriggerCtx<'a> {
-    /// Fired by `Tracker` on slot activate / spend / refund /
-    /// toggle. CDO-write effects use this.
-    SlotChange,
+pub use modforge::rpg::trigger::{
+    ON_SLOT_CHANGE, OnSlotChangeTrigger, Trigger, TriggerDef,
+};
+
+use modforge::rpg::Engine;
+
+/// UE engine plug-in. Zero-sized; only carries the
+/// `Event<'a>` association.
+pub struct UeEngine;
+
+impl Engine for UeEngine {
+    type Event<'a> = UeEvent<'a>;
+
+    fn event_kind<'a>(event: &Self::Event<'a>) -> &'static str {
+        match event {
+            UeEvent::DamageDealt(_) => "OnDamageDealt",
+            UeEvent::DamageTaken(_) => "OnDamageTaken",
+            UeEvent::Kill(_) => "OnKill",
+            UeEvent::Fall(_) => "OnFall",
+        }
+    }
+}
+
+/// UE event payload. Wraps borrowed references to the engine
+/// event structs so effects can read damage / kill / fall data
+/// without copying.
+pub enum UeEvent<'a> {
     /// Fired by [`OnDamageDealtTrigger`] per player-instigator
     /// damage hit, BEFORE the engine applies the damage.
-    /// Effects may inspect `damage` but cannot mutate it from
-    /// here (use a `DamageBinder::before` for mutation).
     DamageDealt(&'a crate::damage::DamageEvent<'a>),
     /// Fired by [`OnDamageTakenTrigger`] per player-target
     /// damage hit, AFTER the engine applies the damage.
     DamageTaken(&'a crate::damage::DamageEvent<'a>),
     /// Fired by [`OnKillTrigger`] per confirmed creature kill
-    /// (killing-blow flag set). Carries the resolved victim
-    /// class name so subscribers don't have to re-resolve.
+    /// (killing-blow flag set).
     Kill(&'a KillEvent<'a>),
     /// Fired by [`OnFallTrigger`] when the player's `OnLanded`
-    /// UFunction fires. Velocity-Z at landing is exposed for
-    /// fall-damage and impact-resistance effects.
+    /// UFunction fires.
     Fall(&'a FallEvent<'a>),
-    /// Fired by a periodic poller per tick (reserved; no
-    /// in-tree consumer yet).
-    Tick { dt: std::time::Duration },
 }
+
+/// Type alias for ergonomic ueforge call sites. The full type
+/// is [`modforge::rpg::TriggerCtx`] specialized to [`UeEngine`].
+pub type TriggerCtx<'a> = modforge::rpg::TriggerCtx<'a, UeEngine>;
 
 /// Confirmed kill event. The killing-blow flag has been checked
 /// upstream so subscribers fire unconditionally.
@@ -119,58 +102,16 @@ pub struct FallEvent<'a> {
     pub velocity_z_before: f64,
 }
 
-/// Trigger trait. Currently a marker with a `kind` tag for
-/// discoverability. Per-trigger wiring (install / subscribe /
-/// dispatch) lives in dedicated methods on the concrete trigger
-/// struct, because each trigger has its own event type variant
-/// in [`TriggerCtx`].
-pub trait Trigger: Send + Sync + 'static {
-    /// Stable name for client discovery (e.g. `"OnSlotChange"`,
-    /// `"OnDamageDealt"`).
-    fn kind(&self) -> &'static str;
-}
-
-/// Catalog-row reference to a Trigger implementation, plus a
-/// kind tag duplicated for fast dispatch without virtual call.
-pub struct TriggerDef {
-    pub kind: &'static str,
-    pub imp: &'static dyn Trigger,
-}
-
-impl TriggerDef {
-    pub const fn new(kind: &'static str, imp: &'static dyn Trigger) -> Self {
-        Self { kind, imp }
-    }
-}
-
 // =====================================================================
-// Standard triggers shipped by the framework.
+// UE event-driven triggers.
 // =====================================================================
-
-/// Fires when the player's skill state changes (slot activate,
-/// spend, refund, toggle). Used by every CDO-write skill.
-/// effects fire on level change, do their writes, done. No
-/// underlying hook; the Tracker drives dispatch directly.
-pub struct OnSlotChangeTrigger;
-
-impl Trigger for OnSlotChangeTrigger {
-    fn kind(&self) -> &'static str {
-        "OnSlotChange"
-    }
-}
-
-static ON_SLOT_CHANGE_IMP: OnSlotChangeTrigger = OnSlotChangeTrigger;
-
-/// Pre-built TriggerDef pointer. Catalog rows reference this
-/// directly: `trigger: &ueforge::rpg::trigger::ON_SLOT_CHANGE`.
-pub static ON_SLOT_CHANGE: TriggerDef =
-    TriggerDef::new("OnSlotChange", &ON_SLOT_CHANGE_IMP);
 
 /// Fires per player-instigator damage hit, BEFORE the engine
 /// applies the damage. Used by Lifesteal, Critical, etc. The
 /// underlying hook is `ueforge::damage::DamageHook`; the game
 /// crate installs the hook and the framework dispatcher fans
-/// out `TriggerCtx::DamageDealt(&event)` to subscribed skills.
+/// out `TriggerCtx::Engine(UeEvent::DamageDealt(&event))` to
+/// subscribed skills.
 pub struct OnDamageDealtTrigger;
 impl Trigger for OnDamageDealtTrigger {
     fn kind(&self) -> &'static str {
@@ -198,7 +139,8 @@ pub static ON_DAMAGE_TAKEN: TriggerDef =
 /// Fires per confirmed creature kill (killing-blow flag set on
 /// the damage multicast). Used by kill-credit driven skills.
 /// Reuses the [`OnDamageDealtTrigger`] hook plumbing; the
-/// dispatcher classifies + fires `TriggerCtx::Kill(&KillEvent)`.
+/// dispatcher classifies + fires
+/// `TriggerCtx::Engine(UeEvent::Kill(&KillEvent))`.
 pub struct OnKillTrigger;
 impl Trigger for OnKillTrigger {
     fn kind(&self) -> &'static str {
@@ -209,10 +151,7 @@ static ON_KILL_IMP: OnKillTrigger = OnKillTrigger;
 pub static ON_KILL: TriggerDef = TriggerDef::new("OnKill", &ON_KILL_IMP);
 
 /// Fires when the player's `OnLanded` UFunction fires. Used by
-/// Fall Resistance + Impact Resistance. The underlying hook is
-/// the framework `FallHook` (planned Phase 5c.4); the game crate
-/// supplies player classes + velocity offsets and the framework
-/// dispatcher fans out `TriggerCtx::Fall(&FallEvent)`.
+/// Fall Resistance + Impact Resistance.
 pub struct OnFallTrigger;
 impl Trigger for OnFallTrigger {
     fn kind(&self) -> &'static str {

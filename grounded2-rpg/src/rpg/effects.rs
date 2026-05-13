@@ -46,8 +46,8 @@ pub struct BackpackSlotsEffect {
     pub max_bonus_slots: i32,
 }
 
-impl Effect for BackpackSlotsEffect {
-    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
+impl Effect<ueforge::rpg::UeEngine> for BackpackSlotsEffect {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx<'_>) {
         let Some(settings) = world_loader::loaded_settings() else {
             return;
         };
@@ -93,8 +93,8 @@ pub struct SurvivalDrainEffect {
     pub kind: SurvivalKind,
 }
 
-impl Effect for SurvivalDrainEffect {
-    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
+impl Effect<ueforge::rpg::UeEngine> for SurvivalDrainEffect {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx<'_>) {
         let Some(settings) = world_loader::loaded_settings() else {
             return;
         };
@@ -154,8 +154,8 @@ pub struct PlayerFallDamageReductionEffect {
     pub max_reduction: f32,
 }
 
-impl Effect for PlayerFallDamageReductionEffect {
-    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx) {
+impl Effect<ueforge::rpg::UeEngine> for PlayerFallDamageReductionEffect {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &ueforge::rpg::TriggerCtx<'_>) {
         let reduction = skill_bonus(self.max_reduction, level).min(1.0);
         let cdo_count = apply_to_player_character_cdos(|player_cdo| {
             let cur = read_f32(player_cdo, self.ratio_offset);
@@ -258,9 +258,10 @@ pub struct LifestealEffect {
     pub max_fraction: f32,
 }
 
-impl Effect for LifestealEffect {
-    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx) {
-        let ueforge::rpg::TriggerCtx::DamageDealt(event) = ctx else {
+impl Effect<ueforge::rpg::UeEngine> for LifestealEffect {
+    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx<'_>) {
+        let ueforge::rpg::TriggerCtx::Engine(ueforge::rpg::UeEvent::DamageDealt(event)) = ctx
+        else {
             return;
         };
         if !event.attacker_is_player || event.victim_is_player || event.damage <= 0.0 {
@@ -340,9 +341,10 @@ pub struct ImpactReversalEffect {
     pub damage_type_marker: &'static str,
 }
 
-impl Effect for ImpactReversalEffect {
-    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx) {
-        let ueforge::rpg::TriggerCtx::DamageTaken(event) = ctx else {
+impl Effect<ueforge::rpg::UeEngine> for ImpactReversalEffect {
+    fn apply(&self, level: u32, max_level: u32, ctx: &ueforge::rpg::TriggerCtx<'_>) {
+        let ueforge::rpg::TriggerCtx::Engine(ueforge::rpg::UeEvent::DamageTaken(event)) = ctx
+        else {
             return;
         };
         if !event.victim_is_player || event.damage <= 0.0 {

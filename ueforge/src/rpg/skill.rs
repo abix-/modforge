@@ -1,17 +1,12 @@
-//! Skill catalog row + lookup. Per the workspace
-//! [composition model](../../docs/architecture.md), a Skill is
-//! one or more Effects applied with parameters; this struct is
-//! the leveling / persistence / UI scaffolding around an
-//! [`EffectDef`](super::EffectDef).
+//! UE-side type aliases for the engine-generic skill catalog.
 //!
-//! ```text
-//! K8s slot: Def=SkillDef, Registry=SkillRegistry,
-//!           Instance=SkillsState.skill_levels[id],
-//!           Controller=Tracker
-//! ```
+//! The shapes (`SkillDef<E>`, `SkillRegistry<E>`) live in
+//! [`modforge::rpg::skill`]. UE catalog rows use these aliases
+//! so they don't have to name the engine type parameter.
 //!
 //! ```ignore
-//! use ueforge::rpg::{EffectDef, SkillDef, SkillRegistry};
+//! use ueforge::rpg::{EffectDef, SkillDef, SkillRegistry,
+//!                    trigger::ON_SLOT_CHANGE};
 //!
 //! pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
 //!     SkillDef {
@@ -19,94 +14,12 @@
 //!         display_name: "Attack Damage",
 //!         max_level: 100,
 //!         effect: EffectDef::new("PlayerFloat", &ATTACK_DAMAGE_EFFECT),
+//!         trigger: &ON_SLOT_CHANGE,
 //!     },
-//!     // ...
 //! ]);
-//!
-//! let s = CATALOG.def("attack_damage");
 //! ```
 
-use super::{EffectDef, TriggerDef};
+use crate::rpg::trigger::UeEngine;
 
-/// Skill catalog row. The Def in the workspace's
-/// Def/Registry/Instance/Controller pattern. A skill is a
-/// composition: an [`EffectDef`] (WHAT to do) + a [`TriggerDef`]
-/// (WHEN to do it). Plus the player-facing identity (id /
-/// display_name / max_level).
-pub struct SkillDef {
-    pub id: &'static str,
-    pub display_name: &'static str,
-    pub max_level: u32,
-    pub effect: EffectDef,
-    /// When the effect fires. Most CDO-write skills use
-    /// `&ueforge::rpg::trigger::ON_SLOT_CHANGE`. The effect
-    /// fires on slot activate / spend / refund. Event-driven
-    /// skills (lifesteal, crit, thorns, evasion) declare a
-    /// damage-event trigger so the framework wires the dispatch.
-    pub trigger: &'static TriggerDef,
-}
-
-/// Skill registry. The workspace-standard `<Subject>Registry`
-/// wrapper around a static catalog slice. Game crates declare:
-///
-/// ```ignore
-/// pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
-///     SkillDef { id: "...", display_name: "...", max_level: 100,
-///                effect: EffectDef::new("Kind", &INSTANCE) },
-///     // ...
-/// ]);
-/// ```
-///
-/// and look up by id via the canonical `def` method:
-///
-/// ```ignore
-/// let s = CATALOG.def("attack_damage");
-/// ```
-pub struct SkillRegistry {
-    entries: &'static [SkillDef],
-}
-
-impl SkillRegistry {
-    /// Construct a registry from a `'static` catalog slice.
-    /// `const fn` so consumers can declare `static CATALOG:
-    /// SkillRegistry = SkillRegistry::new(&[...])`.
-    pub const fn new(entries: &'static [SkillDef]) -> Self {
-        Self { entries }
-    }
-
-    /// Canonical lookup. O(N) linear scan; catalogs are tiny
-    /// (~25 rows) and lookups are cold-path. No hash map needed.
-    pub fn def(&self, id: &str) -> Option<&'static SkillDef> {
-        self.entries.iter().find(|s| s.id == id)
-    }
-
-    /// Borrow the underlying static slice for iteration (e.g.
-    /// the ImGui tab renders one row per entry).
-    pub fn entries(&self) -> &'static [SkillDef] {
-        self.entries
-    }
-
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
-    /// Convenience for `for skill in registry` patterns.
-    pub fn iter(&self) -> std::slice::Iter<'_, SkillDef> {
-        self.entries.iter()
-    }
-}
-
-// `for x in &CATALOG` works through this impl. `for x in CATALOG`
-// (consuming the registry) doesn't make sense. The registry IS
-// the catalog handle, not a sequence to consume.
-impl<'a> IntoIterator for &'a SkillRegistry {
-    type Item = &'a SkillDef;
-    type IntoIter = std::slice::Iter<'a, SkillDef>;
-    fn into_iter(self) -> Self::IntoIter {
-        self.entries.iter()
-    }
-}
+pub type SkillDef = modforge::rpg::SkillDef<UeEngine>;
+pub type SkillRegistry = modforge::rpg::SkillRegistry<UeEngine>;

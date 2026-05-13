@@ -78,7 +78,7 @@ impl FallBinder for G2FallBinder {
         }
 
         // Fire to subscribed Effects (none yet. 5c.4 follow-up).
-        tracker::TRACKER.fire(&TriggerCtx::Fall(event));
+        tracker::TRACKER.fire(&TriggerCtx::Engine(ueforge::rpg::UeEvent::Fall(event)));
     }
 }
 

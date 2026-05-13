@@ -32,52 +32,21 @@ use std::ffi::c_void;
 
 use crate::rpg::format::{self, PercentFormat, format_pct};
 use crate::rpg::progress::sqrt_progress;
+use crate::rpg::trigger::UeEngine;
 use crate::rpg::vanilla::VanillaCache;
 use crate::ue::{ClassRef, PlayerRef, TypedField, UObject};
 
-/// Per-skill behavior. Implementors describe HOW the skill
-/// applies and how it renders in the ImGui row. Implementations
-/// live as `'static`s; [`EffectDef`] wraps the `&'static dyn`
-/// reference.
-///
-/// `apply` receives a [`TriggerCtx`]. The typed event context
-/// that fired the trigger. CDO-write effects ignore it (only
-/// fire on `TriggerCtx::SlotChange`); event-driven effects
-/// match on the variant they care about.
-pub trait Effect: Send + Sync + 'static {
-    /// Apply the effect at `level`. `max_level` is the skill's
-    /// configured cap (used to compute progress). `ctx` carries
-    /// the typed event data when the trigger fired.
-    fn apply(&self, level: u32, max_level: u32, ctx: &crate::rpg::TriggerCtx);
+// The `Effect` trait + `EffectDef` shape live in modforge::rpg
+// as engine-generic types. UE call sites use the modforge
+// trait directly + a `UeEngine` type parameter on each impl;
+// catalog rows use the type alias below.
+pub use modforge::rpg::Effect;
 
-    /// Render the at-level effect text for the ImGui row.
-    fn format(&self, level: u32, max_level: u32) -> String;
-}
-
-/// Catalog-row reference to an Effect implementation, plus a
-/// kind tag for client discovery.
-pub struct EffectDef {
-    /// Stable name of the operation (e.g. `"PlayerFloat"`,
-    /// `"BackpackSlots"`). Surfaced in `list_ops` /
-    /// catalog-view JSON so test clients can group skills by
-    /// the operation they perform.
-    pub kind: &'static str,
-    pub imp: &'static dyn Effect,
-}
-
-impl EffectDef {
-    pub const fn new(kind: &'static str, imp: &'static dyn Effect) -> Self {
-        Self { kind, imp }
-    }
-
-    pub fn apply(&self, level: u32, max_level: u32, ctx: &crate::rpg::TriggerCtx) {
-        self.imp.apply(level, max_level, ctx);
-    }
-
-    pub fn format(&self, level: u32, max_level: u32) -> String {
-        self.imp.format(level, max_level)
-    }
-}
+/// UE-side type alias for the engine-generic
+/// [`modforge::rpg::EffectDef`]. Catalog rows declare
+/// `EffectDef::new("Kind", &INSTANCE)` without naming the
+/// engine type parameter.
+pub type EffectDef = modforge::rpg::EffectDef<UeEngine>;
 
 // =====================================================================
 // Standard Effect implementations. The canonical UE5 RPG operation
@@ -98,8 +67,8 @@ pub struct PlayerFloatEffect {
     pub format: PercentFormat,
 }
 
-impl Effect for PlayerFloatEffect {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for PlayerFloatEffect {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let value = self.base + self.max_bonus * progress;
         self.player.for_each_cdo(|cdo| {
@@ -132,8 +101,8 @@ pub struct SubcomponentFloatEffect {
     pub format: PercentFormat,
 }
 
-impl Effect for SubcomponentFloatEffect {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for SubcomponentFloatEffect {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let value = self.base + self.max_bonus * progress;
         let comp_offset = self.component_offset;
@@ -169,8 +138,8 @@ pub struct SubcomponentAdditiveEffect {
     pub vanilla: &'static VanillaCache<usize, f32>,
 }
 
-impl Effect for SubcomponentAdditiveEffect {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for SubcomponentAdditiveEffect {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let off_key = self.field_offset.offset();
         let comp_offset = self.component_offset;
@@ -219,8 +188,8 @@ pub struct SubcomponentU32MaskEffect {
     pub vanilla: &'static VanillaCache<usize, u32>,
 }
 
-impl Effect for SubcomponentU32MaskEffect {
-    fn apply(&self, level: u32, _max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for SubcomponentU32MaskEffect {
+    fn apply(&self, level: u32, _max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let off_key = self.field_offset.offset();
         let comp_offset = self.component_offset;
         let field_offset = self.field_offset;
@@ -265,8 +234,8 @@ pub struct SubcomponentMultiplyEffect {
     pub vanilla: &'static VanillaCache<usize, f32>,
 }
 
-impl Effect for SubcomponentMultiplyEffect {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for SubcomponentMultiplyEffect {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let mult = 1.0 + self.max_bonus * progress;
         let comp_offset = self.component_offset;
@@ -312,8 +281,8 @@ pub struct ClassFieldsMultiplyEffect {
     pub vanilla: &'static VanillaCache<usize, f32>,
 }
 
-impl Effect for ClassFieldsMultiplyEffect {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for ClassFieldsMultiplyEffect {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let mult = 1.0 + self.max_bonus * progress;
         let offsets = self.offsets;
@@ -352,8 +321,8 @@ pub struct RuntimeEffect {
     pub format: PercentFormat,
 }
 
-impl Effect for RuntimeEffect {
-    fn apply(&self, _level: u32, _max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for RuntimeEffect {
+    fn apply(&self, _level: u32, _max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         // No-op. The hot-path callback owns the actual effect.
     }
 
@@ -391,8 +360,8 @@ pub struct StatusEffectApply {
     pub format_word: &'static str,
 }
 
-impl Effect for StatusEffectApply {
-    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx) {
+impl Effect<UeEngine> for StatusEffectApply {
+    fn apply(&self, level: u32, max_level: u32, _ctx: &crate::rpg::TriggerCtx<'_>) {
         let progress = sqrt_progress(level, max_level);
         let Some(table) = (self.status.table_finder)() else {
             crate::log!("rpg/effect: status-effect: table not loaded yet");

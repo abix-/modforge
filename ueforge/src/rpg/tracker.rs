@@ -321,16 +321,10 @@ impl Tracker {
     ///   `SkillsState`.
     ///
     /// Caller wires this from the trampoline that decoded the
-    /// event: `tracker.fire(&TriggerCtx::Kill(&kill_event))`.
+    /// event:
+    /// `tracker.fire(&TriggerCtx::Engine(UeEvent::Kill(&kill_event)))`.
     pub fn fire(&self, ctx: &crate::rpg::TriggerCtx) {
-        let kind = match ctx {
-            crate::rpg::TriggerCtx::SlotChange => "OnSlotChange",
-            crate::rpg::TriggerCtx::DamageDealt(_) => "OnDamageDealt",
-            crate::rpg::TriggerCtx::DamageTaken(_) => "OnDamageTaken",
-            crate::rpg::TriggerCtx::Kill(_) => "OnKill",
-            crate::rpg::TriggerCtx::Fall(_) => "OnFall",
-            crate::rpg::TriggerCtx::Tick { .. } => "Tick",
-        };
+        let kind = ctx.kind();
 
         // 32-slot inline buffer: every realistic catalog stays
         // well under, so the happy path allocates nothing. Heap
@@ -451,8 +445,8 @@ mod tests {
         last_level: AtomicU32,
     }
 
-    impl Effect for CountingEffect {
-        fn apply(&self, level: u32, _max_level: u32, _ctx: &TriggerCtx) {
+    impl Effect<crate::rpg::UeEngine> for CountingEffect {
+        fn apply(&self, level: u32, _max_level: u32, _ctx: &TriggerCtx<'_>) {
             self.fires.fetch_add(1, Ordering::Relaxed);
             self.last_level.store(level, Ordering::Relaxed);
         }
@@ -549,7 +543,7 @@ mod tests {
             cmc: None,
             velocity_z_before: -500.0,
         };
-        t.fire(&TriggerCtx::Fall(&fev));
+        t.fire(&TriggerCtx::Engine(crate::rpg::UeEvent::Fall(&fev)));
         assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), 0);
 
         // activate_slot applies only OnSlotChange-kinded skills.
@@ -563,7 +557,7 @@ mod tests {
         assert!(slot_baseline >= 1);
 
         // Phase 2: fire(Fall) at level 0 -> no additional fires.
-        t.fire(&TriggerCtx::Fall(&fev));
+        t.fire(&TriggerCtx::Engine(crate::rpg::UeEvent::Fall(&fev)));
         assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline);
 
         // Phase 3: set levels directly + fire OnKill. Only the
@@ -582,20 +576,20 @@ mod tests {
             attacker_is_player: true,
             damage: 42.0,
         };
-        t.fire(&TriggerCtx::Kill(&kev));
+        t.fire(&TriggerCtx::Engine(crate::rpg::UeEvent::Kill(&kev)));
         assert_eq!(FX_KILL.fires.load(Ordering::Relaxed), kill_baseline + 1);
         assert_eq!(FX_KILL.last_level.load(Ordering::Relaxed), 3);
         assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline);
         assert_eq!(FX_SLOT.fires.load(Ordering::Relaxed), slot_baseline);
 
         // Phase 4: OnFall fires the fall skill at its level.
-        t.fire(&TriggerCtx::Fall(&fev));
+        t.fire(&TriggerCtx::Engine(crate::rpg::UeEvent::Fall(&fev)));
         assert_eq!(FX_FALL.fires.load(Ordering::Relaxed), fall_baseline + 1);
         assert_eq!(FX_FALL.last_level.load(Ordering::Relaxed), 7);
 
         // Phase 5: disabled toggle suppresses the kill fire.
         t.disabled_skills().set("fire_kill", true);
-        t.fire(&TriggerCtx::Kill(&kev));
+        t.fire(&TriggerCtx::Engine(crate::rpg::UeEvent::Kill(&kev)));
         assert_eq!(FX_KILL.fires.load(Ordering::Relaxed), kill_baseline + 1);
     }
 }

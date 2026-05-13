@@ -119,7 +119,7 @@ impl DamageBinder for G2DamageBinder {
         // it only reads `event.damage`. Calling once per
         // player-instigator event is the doctrine.
         if event.attacker_is_player {
-            crate::rpg::tracker::TRACKER.fire(&TriggerCtx::DamageDealt(event));
+            crate::rpg::tracker::TRACKER.fire(&TriggerCtx::Engine(ueforge::rpg::UeEvent::DamageDealt(event)));
         }
 
         // Live-damage pre-mutation slots (Critical multiplier,
@@ -132,7 +132,7 @@ impl DamageBinder for G2DamageBinder {
         // Resistance subscribes here (env-damage reversal on
         // HC.CurrentDamage runs after the engine wrote it).
         if event.victim_is_player {
-            crate::rpg::tracker::TRACKER.fire(&TriggerCtx::DamageTaken(event));
+            crate::rpg::tracker::TRACKER.fire(&TriggerCtx::Engine(ueforge::rpg::UeEvent::DamageTaken(event)));
         }
 
         // Kill credit on killing-blow events targeting creatures.
@@ -197,7 +197,7 @@ impl DamageBinder for G2DamageBinder {
             attacker_is_player: event.attacker_is_player,
             damage: event.damage,
         };
-        crate::rpg::tracker::TRACKER.fire(&TriggerCtx::Kill(&kev));
+        crate::rpg::tracker::TRACKER.fire(&TriggerCtx::Engine(ueforge::rpg::UeEvent::Kill(&kev)));
     }
 }
 
