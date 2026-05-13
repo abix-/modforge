@@ -110,11 +110,42 @@ where
     L: Fn(&str) + Send + 'static,
 {
     let addr = format!("127.0.0.1:{}", cfg.port);
-    let server = match Server::http(&addr) {
-        Ok(s) => Arc::new(s),
-        Err(e) => {
-            on_log(&format!("ueforge: bind {addr} failed: {e}"));
-            return;
+    // Hot reload: if a prior generation was listening on the
+    // same port and just shut down, the OS may not have
+    // released the bind yet (TIME_WAIT, socket-close lag,
+    // whatever). Retry with brief backoff for up to ~2s before
+    // giving up.
+    const MAX_ATTEMPTS: u32 = 20;
+    const BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+    let server = {
+        let mut last_err = None;
+        let mut bound = None;
+        for attempt in 1..=MAX_ATTEMPTS {
+            match Server::http(&addr) {
+                Ok(s) => {
+                    if attempt > 1 {
+                        on_log(&format!(
+                            "ueforge: bound {addr} after {attempt} attempts"
+                        ));
+                    }
+                    bound = Some(Arc::new(s));
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(format!("{e}"));
+                    std::thread::sleep(BACKOFF);
+                }
+            }
+        }
+        match bound {
+            Some(s) => s,
+            None => {
+                on_log(&format!(
+                    "ueforge: bind {addr} failed after {MAX_ATTEMPTS} attempts: {}",
+                    last_err.unwrap_or_else(|| "<no error>".into())
+                ));
+                return;
+            }
         }
     };
     on_log(&format!("ueforge: listening on {addr}{}", cfg.endpoint));

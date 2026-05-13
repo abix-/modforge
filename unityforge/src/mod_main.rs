@@ -83,11 +83,22 @@ macro_rules! unityforge_mod {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn unityforge_shutdown() {
+            // Every stage is catch_unwind'd independently so a
+            // panic in one stage (e.g. a Harmony unpatch hitting
+            // an IL Compile Error) doesn't prevent the following
+            // stages from running. Critical for hot reload:
+            // SHUTDOWN_REGISTRY.run_all must run even if hook
+            // teardown faults so the HTTP listener actually
+            // releases its port and threads actually join.
             if let Some(cb) = $mod_info.on_shutdown {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(cb));
             }
-            $crate::hook::HOOK_REGISTRY.shutdown_all();
-            modforge::shutdown::SHUTDOWN_REGISTRY.run_all();
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                $crate::hook::HOOK_REGISTRY.shutdown_all();
+            }));
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                modforge::shutdown::SHUTDOWN_REGISTRY.run_all();
+            }));
         }
     };
 }

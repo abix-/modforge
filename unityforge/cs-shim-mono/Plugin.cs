@@ -191,11 +191,15 @@ namespace Unityforge.Shim
                 // still-mapped image.
             }
 
-            // Step 3: clear C#-side state held on Rust's
-            // behalf. Harmony patches were already unpatched by
-            // the old shutdown; this also resets handle/input
-            // tables so the new generation starts fresh.
-            HarmonyBridge.UnpatchAll();
+            // Step 3: clear input bindings + handle table.
+            // Harmony patches were already unpatched per-handle
+            // by Rust's HOOK_REGISTRY.shutdown_all (which calls
+            // back into HarmonyBridge.Unpatch for each one).
+            // Calling _harmony.UnpatchSelf() here in addition
+            // tries to detour-back already-cleaned methods and
+            // hits "IL Compile Error" inside HarmonyX. Skip it;
+            // the per-handle path is sufficient and the
+            // _patches dictionary is already empty.
             InputBridge.Clear();
             MonoBridge.ClearHandles();
 
