@@ -704,6 +704,88 @@ done this on attempt 1.
   around it via static-method shim patches; need to
   diagnose for the long term.
 
+## 7.8. "Plot enlargement" / Land Surveyor search (2026-05-14, partial)
+
+User reported a Land Surveyor board appearing after they
+built the Bank, offering "plot enlargement" for $300.
+Wanted to know if we can trigger the enlargement without
+paying.
+
+### What we tried, what we found
+
+- `walk_class` on ~30 candidate names (`PlotEnlargement`,
+  `LandSurveyor`, `Surveyor`, `Sign`, `Board`,
+  `Enlargement`, `Expand*`, `Land*`, `Plot*`, etc.) all
+  miss. Either the class name doesn't contain those
+  substrings, or it's not loaded yet (Addressables
+  lazy-loading).
+- `Building` exists (253 methods, base class of all
+  buildings). `Home`, `Mine`, `MineArea`, `MineDataSO`,
+  `Bank` (the prior session captured the Bank as a
+  `Building` named "Bank" but as a current `walk_class`
+  it returns `type 'Bank' not found`. The Bank may be
+  a subclass-by-id, not a class).
+- `Banker` class exists but has zero live instances
+  (NPCs not spawned yet in this scene state, or named
+  differently).
+- `Blockade` class IS the wood-beam home blockades you
+  remove with money. Methods: `Interact`,
+  `CanBeInteracted`, `HandleLongInteraction`. NOT the
+  surveyor board; those are for the For Sale blockades
+  around the starting plot.
+- `LocalizationSystem.GetLocalizedString("plot_enlargement")`
+  returned the key echoed back, meaning the key doesn't
+  exist with that exact spelling.
+- Tried 516 `LocalizedString` entries via
+  `list.get_Item` -> `inspect_object`: zero hits for
+  "plot" / "enlarg" / "expan" in either Key or Text.
+- Grepping `Assembly-CSharp.dll` for "plot" / "enlarg" /
+  "survey" returned no matches against the
+  UTF-8-stripped string table. The .NET metadata stores
+  identifiers in UTF-8 too; this is genuine absence, not
+  encoding skew. **Conclusion: the in-game "Plot
+  Enlargement" label uses a completely different
+  internal name.**
+
+### Most likely explanations
+
+1. The feature uses internal names that don't contain
+   "plot" / "enlarg" / "survey" as English roots.
+   Possibilities: `Expand`, `Unlock`, `Border`, `Area`,
+   `Lot`, plus localized labels via keys that don't
+   match the English visible text.
+2. The Land Surveyor board is loaded as part of an
+   Addressables bundle that only loads when the Bank
+   reaches a specific build state. The class exists in
+   the assembly but the instance isn't in memory at the
+   current scene state.
+
+### Methodology lesson
+
+`walk_class` against substring guesses kept missing.
+A `find_types {contains: str}` bridge op (substring
+search across all loaded assembly types) would have
+short-circuited 20 rounds of guessing. Same lesson as
+the DemoCompleteScreenUI hunt; that's the highest-
+leverage bridge addition for next session.
+
+### Next-session attack (when user is at the Bank)
+
+1. **User walks up to the Land Surveyor board.** With the
+   board active in-scene, the controller MonoBehaviour
+   should be reachable.
+2. **`walk_class UnityEngine.UI.Button`** while the
+   board's interaction UI is up; trace parent
+   `Transform` chain to find the root panel's class
+   name. Same technique that worked for the demo-end
+   panel (`DemoCompleteScreenUI`).
+3. **Once the controller class is known:** `list_methods`
+   to find the purchase/unlock method. Patch it (prefix
+   that bypasses cost check and proceeds with the
+   unlock) OR call it directly via `invoke_method`.
+
+---
+
 ## 7.7-OLD. Demo-end block (failed attempts, kept for reference)
 
 Spent a long session trying to block the demo-end panel.
