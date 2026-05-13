@@ -110,26 +110,32 @@ Deep-dive:
 - [x] **Lucky** (RuntimeEffect: format-only Effect; hot-path
   probability scaling lives in a future Harmony postfix
   callback that reads the level on every fire).
-- [ ] **Strong Back, Charisma, Resilient: repoint via
-  one-hop indirection**. Verified during the 2026-05-13
-  session that:
-  - `PlayerCarryingController._maxCapacity` doesn't exist;
-    real cap is `GameDataSO._inventoryBaseSlotsCount`
-    (Int32, vanilla 5) reached via `GameplayManager._gameData`.
-  - `WorkersManager._hireCostMultiplier` doesn't exist; the
-    `WorkersManager` type has no singleton instance. Real
-    candidate: `GameDataSO._moneyEnergyRestoreCost` (Int32,
-    vanilla 75) via the same one-hop indirection.
-  - `PlayerStaminaController` class doesn't exist; real
-    candidate: `GameDataSO._jetpackEnergyConsumeAmount`
-    (Single, vanilla 0.02) via indirection.
-  Blocked on shipping
-  `UnityIndirectField{Additive,Multiply}Effect` (singleton
-  -> object via named field -> target field).
+- [ ] **Ship `UnitySkillProxyEffect`** + repoint Strong Back
+  at the game's built-in `Bag` skill. Major finding from the
+  2026-05-13 session: the game ships `SkillsManager` with a
+  full RPG API (`SetSkillLevel`, `LevelUpSkill`,
+  `GetCurrentSkillLevel`, etc.) and four built-in skills
+  (`Bag`, `Energy`, `Rope`, `Speed`). Calling
+  `SetSkillLevel("Bag", 4)` via `invoke_method` grew the
+  player's backpack from 5 to 12 slots live in-game (no save
+  reload). The right framework shape is a proxy Effect that
+  maps our level to a game-skill level and lets the game
+  handle the live mutation. See
+  [`docs/wild-west-miner-research.md` §7.5](wild-west-miner-research.md#75-in-game-findings-2026-05-13-session).
+- [ ] **Research Charisma + Resilient mappings**. Neither has
+  an obvious built-in game-skill match. Either find a custom
+  proxy through the existing four (Energy regen for
+  Resilient?) or write a raw-field Effect against
+  `GameDataSO._jetpackEnergyConsumeAmount` /
+  `_moneyEnergyRestoreCost`. The latter needs a one-hop
+  indirection Effect (singleton -> SO field -> target field)
+  since GameDataSO is reached via `GameplayManager._gameData`.
 - [ ] **Verify Greedy Miner in-save**. `MineDataSO` has zero
-  instances at main menu (SOs instantiate with a save).
-  Defer verification + field-name confirmation to an in-save
-  test session.
+  instances at main menu (SOs instantiate with a save). The
+  game has no built-in skill for ore value either, so this
+  is the one case where raw-field Effects on
+  `MineDataSO._oreValue` (verified field name TBD) is the
+  right path. Defer to an in-save test session.
 - [x] **Declarative UI tab**. `ModDef.tabs` field added on
   the unityforge side; `register_ui_ops` exposes `list_tabs`
   + `render_tab` via HTTP. `wwm-rpg::skills::render_tab`

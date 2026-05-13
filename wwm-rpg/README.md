@@ -40,25 +40,40 @@ Effect dispatch round-trip works: spending 10 points on
 4.5 exactly (3.0 * (1 + 0.5 * 1.0), matching the
 `UnityFieldMultiplyEffect` math).
 
-**Field-name verification status.** Quick Pickaxe + the slot
-key are right; the other four scalable skills (Strong Back,
-Greedy Miner, Charisma, Resilient) target classes that don't
-match the live runtime:
+**Major finding: the game ships its own skill system.**
+`SkillsManager` (singleton) exposes `SetSkillLevel`,
+`LevelUpSkill`, `GetCurrentSkillLevel`, `GetCurrentSkillValue`,
+plus 4 built-in skills (`Bag`, `Energy`, `Rope`, `Speed`).
+Calling `SkillsManager.SetSkillLevel("Bag", 4)` via
+`invoke_method` grew the player's backpack from 5 to 12 slots
+**live**, no save reload, no field hunting. The right shape
+for wwm-rpg is a `UnitySkillProxyEffect` that maps our levels
+to game-skill levels and calls `SetSkillLevel`; the game does
+the actual mutation + save persistence + UI refresh. See
+[`docs/wild-west-miner-research.md` §7.5](../docs/wild-west-miner-research.md#75-in-game-findings-2026-05-13-session)
+for the full state graph + method surface.
 
-| Skill | Declared target | Reality |
+**Field-name verification status.** Both surviving raw-field
+targets (Quick Pickaxe + slot key) are right. The four others
+are obsoleted by the SkillsManager finding above (any wwm-rpg
+skill that wants to scale a vanilla game stat should proxy
+through `SkillsManager.SetSkillLevel` instead of writing
+fields).
+
+| Skill | Approach | Status |
 |---|---|---|
-| Quick Pickaxe | `DigManager._digRange` (Single, 3.0) | **verified working** |
-| Slot key | `GameSerializationSystem._currentLoadedSaveNumber` (Int32, 0) | **verified working** |
-| Strong Back | `PlayerCarryingController._maxCapacity` | Field doesn't exist. Real cap source: `GameDataSO._inventoryBaseSlotsCount` (Int32, vanilla 5). Reached via `GameplayManager._gameData`. Needs a one-hop-indirection Effect (singleton -> SO -> field). |
-| Greedy Miner | `MineDataSO._oreValue` | `MineDataSO` has zero instances at main menu (SOs load with a save). Defer verification to an in-save session. |
-| Charisma | `WorkersManager._hireCostMultiplier` | `WorkersManager` type exists but has no singleton instance. Real candidate: `GameDataSO._moneyEnergyRestoreCost` (Int32, vanilla 75) via the same one-hop indirection. |
-| Resilient | `PlayerStaminaController._staminaDrainMultiplier` | Class doesn't exist on this build. Real candidate: `GameDataSO._jetpackEnergyConsumeAmount` (Single, vanilla 0.02) via one-hop indirection. |
-| Lucky | (RuntimeEffect, no target) | unchanged. |
+| Quick Pickaxe | `UnityFieldMultiplyEffect` on `DigManager._digRange` (Single, vanilla 3.0). Not covered by SkillsManager. | **verified working** |
+| Slot key | Read `GameSerializationSystem._currentLoadedSaveNumber` (Int32, 0 at main menu). | **verified working** |
+| Strong Back | Move from raw field write to `UnitySkillProxyEffect` -> `SkillsManager.SetSkillLevel("Bag", N)`. The game does the slot-list growth + save. | open (needs new Effect) |
+| Greedy Miner | Proxy candidate unclear: no built-in `Gold` or `OreValue` skill. May still need a raw-field Effect against `MineDataSO._oreValue`, but `MineDataSO` instances don't load at the main menu; verify in-save. | open |
+| Charisma | No matching built-in skill. Repoint to `Energy`-flavored game skill OR write a custom proxy that calls multiple `SetSkillLevel`s. | open (research) |
+| Resilient | Proxy to `Energy` game skill (controls energy capacity/regen) or scale `_jetpackEnergyConsumeAmount` directly. | open (research) |
+| Lucky | `RuntimeEffect` (no target; future hot-path postfix). | unchanged |
 
-Next change: ship a `UnityIndirectField{Additive,Multiply}Effect`
-that resolves `singleton.field` to a referenced object, then
-read/writes the named field on that object. Repoint the
-three indirection-needing skills + verify in-game.
+Next change: ship `UnitySkillProxyEffect`. Repoint Strong
+Back at it first (the verified path). Then research what the
+other game skills (`Energy`, `Rope`, `Speed`) actually scale
+to figure out the right mapping for Charisma / Resilient.
 
 ---
 

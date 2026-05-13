@@ -412,6 +412,127 @@ Sequencing rationale:
 Naming: `unityforge` matches `ueforge`. C# sibling, not a
 Rust translation. Different artifact, same posture.
 
+## 7.5. In-game findings (2026-05-13 session)
+
+First live session against WWM Gold Rush (Unity 6000.0.58)
+with BepInEx 5.4.23.2 Mono + unityforge bridge. Probed via
+HTTP debug ops. Findings reshape the modding posture:
+
+### The game has its own skill system. Stop fighting raw fields.
+
+`SkillsManager` (`Singleton<SkillsManager>`) ships a complete
+RPG/upgrade API. Hooking into it is dramatically cheaper than
+writing field-level Effect impls.
+
+**SkillsManager method surface** (via reflection on the live
+type, 87 methods total; the relevant ones):
+
+| Method | Args | Returns | Use |
+|---|---|---|---|
+| `SetSkillLevel` | `(SkillType, int)` | void | Jump a skill straight to a level. Drives all the downstream live-state mutations the game does on a real upgrade |
+| `LevelUpSkill` | `(SkillType)` | void | +1 level (probably the same surface a "buy upgrade" UI button calls) |
+| `GetCurrentSkillLevel` | `(SkillType)` | int | Current level |
+| `GetCurrentSkillValue` | `(SkillType)` | float | Numeric value at current level (e.g. Bag level 3 -> 12 slots) |
+| `GetSkillLevelsAmount` | `(SkillType)` | int | Max level for that skill |
+| `GetSkillPrice` | `(SkillType, int)` | float | Money cost to reach level N |
+| `GetSkillValue` | `(SkillType, int)` | float | Value at level N (for previewing) |
+| `LoadSkills` | () | void | Re-applies levels from save (fires on slot load) |
+
+**SkillType enum** (4 variants): `Bag`, `Energy`, `Rope`, `Speed`.
+
+**Bag progression** (verified via `SkillData_Bag` SO at
+`SkillsDataSO.skillDatas[0]`):
+
+| Level | Value (slots) | Price (money) |
+|---|---|---|
+| 0 | 5 | 0 |
+| 1 | 7 | 50 |
+| 2 | 9 | 200 |
+| 3 | 12 | 500 |
+| 4 | 15 | 1000 |
+
+Verified live: `SetSkillLevel("Bag", 4)` on the running game
+increased the player's backpack from 5 to 12 slots
+immediately (no save reload, no other action). One value
+discrepancy worth tracking: SetSkillLevel(4) settled at value
+12 (level 3's value), not 15 (level 4's). Either the level
+arg saturates at `maxLevel-1` or skillDatas[0] is the
+"start" sentinel and gameplay levels start at 1. Verify by
+calling `GetSkillLevelsAmount("Bag")` and reading what
+SetSkillLevel actually wrote post-call.
+
+### State graph
+
+```
+SkillsManager (Singleton)
+  ├─ skillsData : SkillsDataSO
+  │     └─ skillDatas : List<SkillDataSO>  (4 items: Bag/Energy/Rope/Speed)
+  │           └─ each SkillDataSO has:
+  │                ├─ skillType : SkillType
+  │                └─ skillDatas : List<SkillData>  (5 levels)
+  │                       └─ each SkillData has: value (float), price (float)
+  └─ database : SkillsDatabase
+        └─ skillsData : SkillsData
+              └─ skillsData : Dictionary<SkillType, int>  (current level per skill)
+```
+
+The SO subtree is config (level table). The database subtree
+is mutable state (current level per skill).
+
+### What this means for wwm-rpg
+
+The framework's `UnityFieldMultiplyEffect` was the wrong
+shape for WWM. The right shape is a **skill-proxy effect**
+that maps our level (0..max_level) to a game-skill level via
+`SetSkillLevel`. The game does the live mutation; we drive
+*when* it fires + gate it behind whatever XP/condition system
+we own.
+
+Sketch:
+
+```rust
+pub struct UnitySkillProxyEffect {
+    /// Game skill name as the enum variant ("Bag", "Energy",
+    /// "Rope", "Speed").
+    pub game_skill: &'static str,
+    /// Mapping from our level to a game-skill level. Identity
+    /// (our level = game level) is the typical case; a u8
+    /// array lets a 10-step our-side map to a 5-step game-side
+    /// with custom pacing.
+    pub level_map: &'static [u8],
+}
+```
+
+apply: read our level, look up `level_map[level]`, call
+`SkillsManager.SetSkillLevel(game_skill, mapped_level)`. The
+game handles everything downstream (slot count, energy regen,
+rope length, speed multiplier, save persistence, UI refresh).
+
+### Other live findings
+
+- `GameSerializationSystem._currentLoadedSaveNumber` confirmed
+  as the slot key (Int32, 0 at main menu). Slot poller in
+  unityforge::rpg::slot_key resolves it correctly.
+- `GameDataSO._inventoryBaseSlotsCount` is config consulted
+  at slot-spawn time, NOT a live cap field. Writing 20 to it
+  from main menu did not grow the live carrying list. Don't
+  target it as an effect field.
+- `PlayerCarryingController.carryingSocketDatas` is a
+  `List<CarringSocketData>`; capacity grows by `Add`-ing
+  entries, not by writing a count. The game does this
+  internally on Bag-skill upgrades.
+- `PlayerStaminaController` and `WorkersManager` singletons
+  don't exist on this build; the energy/worker state lives
+  on different paths than the research-doc names suggested.
+- `walk_class MineDataSO` returns zero instances at the main
+  menu (SOs load with a save). Need an in-save session to
+  inspect ore-value scaling.
+
+### Updated open research questions
+
+(Items from §8 below that this session DID answer are
+crossed out where applicable.)
+
 ## 8. Open research questions
 
 Things this pass did NOT answer:
