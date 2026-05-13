@@ -769,20 +769,68 @@ short-circuited 20 rounds of guessing. Same lesson as
 the DemoCompleteScreenUI hunt; that's the highest-
 leverage bridge addition for next session.
 
-### Next-session attack (when user is at the Bank)
+### Verdict (after live probing the board): not implemented in demo
 
-1. **User walks up to the Land Surveyor board.** With the
-   board active in-scene, the controller MonoBehaviour
-   should be reachable.
-2. **`walk_class UnityEngine.UI.Button`** while the
-   board's interaction UI is up; trace parent
-   `Transform` chain to find the root panel's class
-   name. Same technique that worked for the demo-end
-   panel (`DemoCompleteScreenUI`).
-3. **Once the controller class is known:** `list_methods`
-   to find the purchase/unlock method. Patch it (prefix
-   that bypasses cost check and proceeds with the
-   unlock) OR call it directly via `invoke_method`.
+After the user built the Bank, walked up to the board,
+probed live via HTTP. The "board" sits inside the Bank
+prefab itself, not as a separate buyable. Full hierarchy:
+
+```
+Bank / CompletedState / CompletedBuilding / Model /
+  WoodenBoard /
+    PlotOffer      ("Plot enlargement", $300)
+    PlotOffer (1)  ("Rocky plot")
+    PlotOffer (2)  ("Oil plot")
+```
+
+Each `PlotOffer` GameObject has **zero MonoBehaviour
+components attached**. The labels (`Label1`, `LabelPrice`)
+are just `TextMeshPro` text. There's no controller, no
+click handler, no purchase method. The board is **purely
+decorative in the demo build**. A teaser for content
+that exists only as a visual asset.
+
+### Discovery technique that worked
+
+Direct text scan of all `TMPro.TextMeshPro` instances
+for the substring "Plot enlargement". This is the
+generally-applicable pattern when:
+- The class name is unknown.
+- The user can identify the visible label text.
+- The trigger isn't event-driven (no UnityEvent to
+  trace upstream).
+
+```python
+inst = op('walk_class', {'class': 'TMPro.TextMeshPro',
+                          'include_inactive': True})
+for i in inst:
+    text = op('read_field', {'handle': i['handle'],
+                              'field': 'text'})['result']
+    if 'plot enlargement' in text.lower():
+        # walk transform.parent chain to locate
+        ...
+```
+
+The same technique worked for the wishlist-button hunt
+in the demo-end panel investigation.
+
+### Why the user can't buy it
+
+The Land Surveyor / Plot Enlargement isn't a Harmony-
+patchable feature missing a button. It's an unwired
+asset. To "make it work" would require writing the
+purchase + unlock + plot-spawn logic from scratch,
+which is a content-creation task, not a modding task.
+
+### Confirmed strings in the assembly
+
+`grep` on `Assembly-CSharp.dll` for "plot" / "enlarg" /
+"survey" returned ZERO hits. The text "Plot enlargement"
+lives only in localization data (Addressables-loaded at
+runtime), not in compiled C# code. There is genuinely no
+managed code that references the feature. This is the
+fingerprint of a "demo cut" feature: assets shipped,
+code stripped.
 
 ---
 
