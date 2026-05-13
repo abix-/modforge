@@ -6,11 +6,12 @@
 > **Stack decision (2026-05-12, final):** all Rust. unityforge
 > is a Rust crate peer of ueforge. modforge is a Rust crate
 > consumed natively by both. Game mods are Rust crates. The
-> only C# is a small per-host shim (analogous to ueforge's
-> 502-line C++ shim against UE4SS) that bootstraps the Rust
-> cdylib inside BepInEx and bridges Mono reflection +
-> HarmonyLib to Rust function pointers. **No FFI between
-> Rust crates**. The only FFI is the shim seam.
+> only C# is a small per-host shim (one per Unity backend:
+> Mono and IL2CPP; analogous to ueforge's 502-line C++ shim
+> against UE4SS) that bootstraps the Rust cdylib inside
+> BepInEx and bridges Unity reflection + HarmonyX to Rust
+> function pointers. **No FFI between Rust crates**. The
+> only FFI is the shim seam.
 >
 > Supersedes the earlier draft of this doc that proposed a
 > C# unityforge consuming a Rust modforge-core via P/Invoke.
@@ -19,11 +20,18 @@
 > lowest-common-denominator APIs.
 >
 > **North star.** The goal isn't a Wild West Miner mod. The
-> goal is to make modding *any random UE5 or Unity Mono game*
-> cheap going forward. UE5 + Unity Mono cover the
-> overwhelming majority of mid-budget PC games shipping
-> today. Wild West Miner is the proof-point for the
-> unityforge half; Grounded 2 / Outworld Station are the
+> goal is to make modding *any random UE5 or Unity game*
+> cheap going forward. UE5 + Unity (both Mono AND IL2CPP
+> backends) cover the overwhelming majority of mid-budget PC
+> games shipping today. Schedule 1, recent Hello Games and
+> Devolver titles, and most 2024-2026 Unity releases ship
+> IL2CPP; older / smaller titles (Timberborn, Wild West Miner)
+> ship Mono. Restricting unityforge to Mono cuts roughly half
+> the addressable Unity market and breaks the north star, so
+> **unityforge ships Mono and IL2CPP from day one as
+> first-class peers**, behind one Rust SDK surface. Wild West
+> Miner is the Mono proof-point; an IL2CPP proof-point lands
+> in the same phase. Grounded 2 / Outworld Station are the
 > proof-points for the ueforge half. After both halves
 > exist, picking up a new target collapses from "months of
 > research + plumbing" to "a Rust crate against a known
@@ -49,19 +57,29 @@ Four Rust crates plus one C# shim:
    bindings. Adds UObject SDK, vtable + PE hooks, PE queue,
    data tables, UE-specific Effect implementations, the C++
    shim against UE4SS. Depends on `modforge`.
-3. **unityforge** (new Rust crate). The Unity Mono bindings.
-   Adds Mono reflection wrappers, HarmonyLib bridge,
-   `Singleton<T>` / `StaticInstance<T>` access,
-   ScriptableObject browser, Unity-specific Effect
-   implementations. Depends on `modforge`. Ships a small
-   C# shim DLL beside its cdylib (see below).
-4. **`unityforge-shim`** (small C# project). One
+3. **unityforge** (new Rust crate). The Unity bindings,
+   covering both backends Unity ships: Mono and IL2CPP.
+   Adds the runtime-abstracted Type / Object / Field /
+   Method SDK, Harmony bridge (`HarmonyX` on Mono,
+   `HarmonyX` on IL2CPP via Il2CppInterop), `Singleton<T>` /
+   `StaticInstance<T>` access, ScriptableObject browser,
+   Unity-specific Effect implementations. Depends on
+   `modforge`. Ships two small C# shim DLLs beside its
+   cdylib (see below); only one shim is loaded per game
+   process (whichever the target uses).
+4. **`unityforge-shim-mono` + `unityforge-shim-il2cpp`** (two
+   small C# projects sharing most code). Each is a
    `[BepInPlugin]` that loads `unityforge.dll` via
-   `[DllImport]`, passes a function-pointer bridge table for
-   Mono reflection + HarmonyLib, and forwards
-   `Awake` / `Update` / `OnDestroy` into Rust. Analogous to
-   ueforge's `cpp/ueforge_shim.cpp` (502 lines). Likely
-   under 1000 lines of C#.
+   `[DllImport]`, passes a function-pointer bridge table,
+   tags the runtime kind (Mono vs IL2CPP) at init, and
+   forwards `Awake` / `Update` / `OnDestroy` into Rust.
+   `unityforge-shim-mono` runs in BepInEx 5 against Unity
+   Mono. `unityforge-shim-il2cpp` runs in BepInEx 6 IL2CPP
+   (via Il2CppInterop) against IL2CPP games. Both populate
+   the SAME Rust-side bridge ABI; the implementations of
+   each entry differ but the Rust SDK is agnostic. Analogous
+   to ueforge's `cpp/ueforge_shim.cpp` (502 lines). Each
+   shim likely under 1500 lines of C# with shared base.
 5. **Game mods** (Rust cdylib crates). `grounded2-rpg` and
    `outworld-station-tweaks` exist. `wwm-rpg` is new. All
    pure Rust. Depend on `ueforge` or `unityforge` plus
@@ -191,7 +209,7 @@ modforge::<mod>::*;`. No FFI seams.
 | `rpg/store.rs` | 637 | `modforge::rpg::store` | JSON persistence |
 | `rpg/disabled.rs` | 117 | `modforge::rpg::disabled` | per-skill toggle |
 | `rpg/poller.rs` | 254 | `modforge::rpg::poller` | slot-key polling loop |
-| `rpg/slot_key.rs` | 78 | partial | trait -> `modforge::rpg::slot_key`. UE-specific resolver impl stays in ueforge; unityforge implements the trait for Mono |
+| `rpg/slot_key.rs` | 78 | partial | trait -> `modforge::rpg::slot_key`. UE-specific resolver impl stays in ueforge; unityforge implements the trait once against the runtime-tagged bridge (works on Mono + IL2CPP) |
 | `rpg/std_effect.rs` | 543 | partial | engine-agnostic effects (e.g. progress-curve formatters) -> `modforge::rpg::std_effect`. Engine-touching ones (`PlayerFloatEffect` reading UObject CDO) stay in ueforge; unityforge ships its own |
 | `rpg/vanilla.rs` | 166 | partial | generic cache mechanics -> `modforge::rpg::vanilla`. Engine-specific field-handle type stays per-framework |
 | `rpg/ops.rs` | 133 | `modforge::rpg::ops` | `skill_list`, `skill_levelup`, `skill_refund`, `skill_state` ops |
@@ -217,18 +235,20 @@ modforge::<mod>::*;`. No FFI seams.
 
 Totals: ~12k Rust lines move into `modforge`. ueforge keeps
 ~10-12k UE-specific lines plus its C++ shim. unityforge
-writes ~5-7k Rust lines for Unity bindings plus a ~1k-line
-C# shim.
+writes ~6-8k Rust lines for Unity bindings plus two
+~1k-line C# shims (Mono and IL2CPP), sharing ~50% of code
+via `cs-shim-common/`.
 
 What stays per-framework (engine-specific, never duplicated
 across modforge):
 
-- Engine SDK (UObject vs Mono reflection).
-- Hooks (vtable + PE vs HarmonyLib).
+- Engine SDK (UObject vs Unity reflection).
+- Hooks (vtable + PE vs HarmonyX).
 - Main-thread dispatch (PE queue vs Unity Update tick).
 - Engine-touching Effect implementations.
 - Asset format parsers (uasset vs Unity asset bundles).
-- Mod entry shim (UE4SS C++ vs BepInEx C#).
+- Mod entry shims (UE4SS C++ vs BepInEx 5 Mono C# vs
+  BepInEx 6 IL2CPP C#).
 
 What this gives us:
 
@@ -244,32 +264,45 @@ What this gives us:
 
 ## 3. What unityforge owns (the Unity-side framework)
 
-unityforge is a Rust cdylib + a small C# shim. The cdylib
-holds everything; the shim bootstraps it inside BepInEx and
-bridges Mono reflection + HarmonyLib via function pointers.
+unityforge is a Rust cdylib + two small C# shims (one per
+Unity backend). The cdylib holds everything; the active shim
+bootstraps it inside BepInEx and bridges Type lookup +
+reflection + Harmony via function pointers.
 
-### 3.1 The C# shim (`unityforge-shim`)
+### 3.1 The C# shims (`unityforge-shim-mono` and `-il2cpp`)
 
-A single small C# project. `netstandard2.1`. Built once,
-shipped beside every unityforge-based mod.
+Two C# projects sharing most code through a `Common` folder.
+`netstandard2.1` (Mono) / `net6.0` (IL2CPP). Each is built
+once and shipped beside the unityforge-based mods that
+target that backend. Only one ever loads per game.
 
-**Responsibilities (all of them small):**
+**Responsibilities (identical surface; backend-specific impls):**
 
 - `[BepInPlugin]` entry. Locates `unityforge.dll` (the Rust
   cdylib) and `LoadLibrary`s it. Calls
-  `unityforge_init(bridge)` with a function-pointer bridge
-  table.
-- The bridge table: ~30-50 `IntPtr` slots pointing at static
+  `unityforge_init(bridge, runtime_kind)` with a function-
+  pointer bridge table and a `runtime_kind` tag (0 = Mono,
+  1 = IL2CPP). The Rust side stores the kind in a
+  `OnceLock<RuntimeKind>` so any code that needs to branch
+  on the backend can.
+- The bridge table: ~40-60 `IntPtr` slots pointing at static
   C# methods that Rust can call back through. Covers:
-  - Mono reflection: `find_type(name)`, `get_singleton(name)`,
-    `get_field`, `set_field`, `invoke_method`, `walk_class`,
-    `inspect_object` (dump fields by reflection),
-    `box`/`unbox` for value types.
+  - Type lookup + reflection: `find_type(name)`,
+    `get_singleton(name)`, `get_field`, `set_field`,
+    `invoke_method`, `walk_class`, `inspect_object` (dump
+    fields by reflection), `box`/`unbox` for value types.
+    The Mono shim implements these against
+    `System.Reflection` + `HarmonyX`. The IL2CPP shim
+    implements them against `Il2CppInterop.Runtime`
+    (`Il2CppType`, `Il2CppObjectBase`,
+    `IL2CPP.il2cpp_field_*` / `il2cpp_method_*`) + the
+    IL2CPP build of `HarmonyX`. The Rust side neither knows
+    nor cares which.
   - Harmony patching: `patch_prefix(class, method, fn_ptr)`,
     `patch_postfix(...)`, `unpatch(handle)`. The C# side
     wraps unmanaged function pointers in managed delegates
     via `Marshal.GetDelegateForFunctionPointer` so Harmony
-    can target them.
+    can target them. HarmonyX works on both Mono and IL2CPP.
   - Unity tick: `register_update(fn_ptr)`. Called once at
     init; the shim's MonoBehaviour's `Update` invokes the
     function pointer every frame.
@@ -278,11 +311,13 @@ shipped beside every unityforge-based mod.
 - `Update()` in the shim calls `unityforge_tick(now)`.
 - `OnDestroy()` calls `unityforge_shutdown()`.
 
-That's it. **The shim does not know what unityforge does.**
-It exposes a fixed set of Mono+Harmony primitives. Adding
-features to unityforge does not modify the shim.
+That's it. **Neither shim knows what unityforge does.** Each
+exposes a fixed set of Unity reflection + Harmony primitives.
+Adding features to unityforge does not modify the shims
+unless the bridge ABI grows (additive only).
 
-Sizing: estimate 500-1000 lines of C#. Once correct, frozen.
+Sizing: estimate 600-1200 lines of C# per shim, with ~50%
+shared via linked source files. Once correct, frozen.
 
 ### 3.2 The Rust unityforge crate
 
@@ -294,15 +329,15 @@ come from modforge so they're identical.
 |---|---|---|
 | `modforge::server` | direct use | direct use |
 | `modforge::ops::OpRegistry` | direct use | direct use |
-| `modforge::selector::SelectorRegistry` | direct use; registers `class:`/`first_class:`/`singleton:` resolvers against UObject | direct use; registers `class:`/`first_class:`/`singleton:`/`static_instance:`/`monobehaviour:` resolvers against Mono via the shim bridge |
+| `modforge::selector::SelectorRegistry` | direct use; registers `class:`/`first_class:`/`singleton:` resolvers against UObject | direct use; registers `class:`/`first_class:`/`singleton:`/`static_instance:`/`monobehaviour:` resolvers against the Unity runtime via the active shim bridge (works on both Mono and IL2CPP) |
 | `modforge::rpg::SkillRegistry` | direct use | direct use |
 | `modforge::rpg::tracker::Tracker` | direct use; instantiated with ueforge's Effect impls | direct use; instantiated with unityforge's Effect impls |
-| Mod entry | `ueforge::ModDef` + `ue4ss_mod!` macro + C++ shim | `unityforge::ModDef` + `unityforge_mod!` macro + C# shim |
-| Engine SDK | `ueforge::ue::*` (UObject, UClass, FName, TArray, FString) | `unityforge::mono::*` (MonoType, MonoObject, MonoField, MonoMethod). Wraps the shim bridge in idiomatic Rust |
-| Hooks | `ueforge::hook::ProcessEventHook` (vtable + PE trampoline) | `unityforge::hook::HarmonyHook` (calls `patch_prefix` / `patch_postfix` via the shim) |
+| Mod entry | `ueforge::ModDef` + `ue4ss_mod!` macro + C++ shim | `unityforge::ModDef` + `unityforge_mod!` macro + active C# shim (Mono or IL2CPP, picked by target game) |
+| Engine SDK | `ueforge::ue::*` (UObject, UClass, FName, TArray, FString) | `unityforge::unity::*` (Type, Object, Field, Method) plus backend-specific tables `unityforge::mono::*` and `unityforge::il2cpp::*`. The high-level `unity::*` SDK dispatches via the runtime tag set at init; mod code stays backend-agnostic for the common path |
+| Hooks | `ueforge::hook::ProcessEventHook` (vtable + PE trampoline) | `unityforge::hook::HarmonyHook` (calls `patch_prefix` / `patch_postfix` via the shim; HarmonyX works on both Mono and IL2CPP) |
 | Main-thread queue | `ueforge::PE_QUEUE` | `unityforge::MAIN_QUEUE` (drained by the shim's `Update` tick) |
 | Generic primitives | `read_bytes`, `walk_class`, `inspect_address`, `exec_call`, `fname_to_string` | `walk_class`, `inspect_object`, `read_field`, `write_field`, `invoke_method`, `list_singletons` (Unity names; same op-envelope contract) |
-| Standard Effects (engine-touching) | `PlayerFloatEffect` (reads UObject CDO) | `MonoFloatEffect` (reads via shim bridge) |
+| Standard Effects (engine-touching) | `PlayerFloatEffect` (reads UObject CDO) | `UnityFieldAdditiveEffect`, `UnityFieldMultiplyEffect`, `UnityMethodInvokeEffect` (read/write fields + invoke methods via the runtime-tagged bridge; same struct shape regardless of Mono vs IL2CPP backend) |
 | Stacks / data-asset tweaks | `StackDef` against UDataTable | `StackDef` against ScriptableObject |
 | In-game UI | bundled imgui via C++ shim | bundled imgui via the same Rust ImGui bindings + a Unity IMGUI fallback (revisit) |
 | Webhooks | new in modforge; added to both | new in modforge; added to both |
@@ -423,43 +458,55 @@ grounded2mods/
         read-property.rs
     cpp/                          # CppUserModBase shim
     docs/
-  unityforge/                     # new Rust crate + tiny C# shim
+  unityforge/                     # new Rust crate + two tiny C# shims
     Cargo.toml                    # [lib] crate-type = ["cdylib", "rlib"]
     src/
       lib.rs
       mod_main.rs                 # unityforge_mod! macro + extern "C" entry points
-      mono/                       # Mono reflection (calls into shim bridge table)
+      unity/                      # backend-agnostic SDK; dispatches via runtime tag
         mod.rs
-        types.rs                  # MonoType + MonoObject + MonoField wrappers
+        types.rs                  # Type + Object + Field + Method wrappers
         singleton.rs              # Singleton<T> / StaticInstance<T> access
-      hook/                       # HarmonyLib bridge wrapper + HookRegistry
+      mono/                       # Mono-only escape hatches (rare)
+      il2cpp/                     # IL2CPP-only escape hatches (rare)
+      hook/                       # HarmonyX bridge wrapper + HookRegistry
       main_thread_queue.rs        # parallel to ueforge::pe_queue
       ops/                        # Unity-specific generic primitives
       selector/                   # Unity-side resolvers
       rpg/
-        std_effect.rs             # engine-touching standard effects for Mono
-        slot_key_mono.rs          # Mono ISlotKeyResolver impl
-        vanilla_mono.rs           # cache for MonoField handles
+        std_effect.rs             # runtime-tagged standard effects (Mono + IL2CPP)
+        slot_key_unity.rs         # Unity SlotKeyResolver impl (works on both)
+        vanilla_unity.rs          # cache for Field handles
       stacks/                     # ScriptableObject field tweak
       ui.rs                       # ImGui-via-shim or Unity IMGUI
       bridge.rs                   # the shim function-pointer table (Rust side)
-    cs-shim/
-      Unityforge.Shim.csproj      # netstandard2.1
-      Unityforge.Shim.cs          # [BepInPlugin] entry
-      MonoBridge.cs               # reflection helpers exposed to Rust
-      HarmonyBridge.cs            # patch handle registry
+    cs-shim-mono/
+      Unityforge.Shim.Mono.csproj # netstandard2.1, BepInEx 5
+      ShimEntry.cs                # [BepInPlugin] entry
+      MonoBridge.cs               # System.Reflection helpers exposed to Rust
+      HarmonyBridge.cs            # patch handle registry (HarmonyX-Mono)
+    cs-shim-il2cpp/
+      Unityforge.Shim.Il2Cpp.csproj # net6.0, BepInEx 6 IL2CPP
+      ShimEntry.cs                # [BepInPlugin] entry, Il2CppInterop init
+      Il2CppBridge.cs             # Il2CppInterop reflection helpers
+      HarmonyBridge.cs            # patch handle registry (HarmonyX-Il2Cpp)
+    cs-shim-common/               # linked into both shims
+      Bridge.cs                   # function-pointer struct layout
+      Logger.cs                   # BepInEx logger forwarding
     docs/
       README.md
       architecture.md
-      shim.md                     # the C# seam + bridge table
+      shim.md                     # the C# seams + bridge table
       mono.md                     # Mono reflection model
+      il2cpp.md                   # IL2CPP / Il2CppInterop notes + quirks
       hooks.md
       rpg.md
       lifecycle.md
     tests/
   grounded2-rpg/                  # exists; depends on ueforge + modforge
   outworld-station-tweaks/        # exists; depends on ueforge + modforge
-  wwm-rpg/                        # NEW Rust mod; depends on unityforge + modforge
+  wwm-rpg/                        # NEW Rust mod (Mono target); depends on unityforge + modforge
+  <il2cpp-smoke>/                 # NEW Rust mod (IL2CPP target); depends on unityforge + modforge
 ```
 
 ## 6. Sequencing: HTTP debug server + RPG, in parallel
@@ -497,15 +544,15 @@ depends on both. Nothing else gets built in this pass.
             -------------------------------
             |                             |
             v                             v
-        ueforge stable             unityforge: C# shim +
+        ueforge stable             unityforge: Mono + IL2CPP shims +
        (working as before)         Rust crate skeleton +
-                                   Mono bridge + HarmonyLib bridge
+                                   runtime-tagged bridge + HarmonyX
                                           |
                           --------------------------------
                           |                              |
                           v                              v
               unityforge HTTP control plane    unityforge.Hooks
-              (full ueforge parity:            (Harmony via shim,
+              (full ueforge parity:            (HarmonyX via active shim,
                OpRegistry, selectors,           HookRegistry mirrors
                generic primitives,              ueforge surface)
                reflection inspector)
@@ -515,10 +562,12 @@ depends on both. Nothing else gets built in this pass.
                                           v
                                  unityforge::rpg
                             (instantiates modforge::rpg
-                             with Mono-side Effect impls)
+                             with Unity Effect impls
+                             that work on both backends)
                                           |
                                           v
-                                 wwm-rpg Rust cdylib (proof)
+                          wwm-rpg (Mono proof) + IL2CPP smoke
+                                  (Rust cdylibs)
 ```
 
 Other framework concerns wait until something concrete demands
@@ -603,12 +652,18 @@ Mechanical otherwise.
 - ueforge in-game: g2rpg ImGui tab still renders, HTTP debug
   still answers. Zero behavior change.
 
-#### Phase 1: unityforge skeleton + C# shim + HTTP control plane (~6-8 days)
+#### Phase 1: unityforge skeleton + both C# shims + HTTP control plane (~10-12 days)
 
-The biggest phase. Stand up the C# shim seam, prove a Rust
-cdylib loads in BepInEx and can call into Mono + Harmony,
-expose the full HTTP debug surface. Once Phase 1 exits we
-can research any Unity Mono game by curl.
+The biggest phase. Stand up the Mono shim AND the IL2CPP
+shim, prove a Rust cdylib loads in BepInEx under each
+backend and can call into reflection + Harmony, expose the
+full HTTP debug surface. Once Phase 1 exits we can research
+any Unity game (Mono or IL2CPP) by curl.
+
+Sequencing inside Phase 1: build Mono first (lower friction;
+WWM is the smoke target), then IL2CPP (Schedule 1 or any
+IL2CPP smoke target). The Rust-side bridge ABI is identical;
+only the C# implementations differ.
 
 **1a. Cargo crate + workspace wiring (~half day)**
 
@@ -619,20 +674,23 @@ can research any Unity Mono game by curl.
 - `unityforge::ModDef` + `unityforge_mod!` macro. Emits
   the `extern "C"` entry points (`unityforge_init`,
   `unityforge_tick`, `unityforge_shutdown`).
+  `unityforge_init` accepts `(bridge_ptr, runtime_kind)` and
+  stashes both in `OnceLock`s.
 
-**1b. C# shim project (~2 days)**
+**1b. C# Mono shim project (~2 days)**
 
-- `unityforge/cs-shim/Unityforge.Shim.csproj`
-  (netstandard2.1). References:
-  `BepInEx`, `HarmonyLib` (0Harmony.dll), Unity
-  `UnityEngine.CoreModule.dll`. No game-DLL refs.
-- `Unityforge.Shim.cs`: `[BepInPlugin]` entry. Locates
+- `unityforge/cs-shim-mono/Unityforge.Shim.Mono.csproj`
+  (netstandard2.1, BepInEx 5). References: `BepInEx`,
+  `HarmonyX`, Unity `UnityEngine.CoreModule.dll`. No
+  game-DLL refs.
+- `ShimEntry.cs`: `[BepInPlugin]` entry. Locates
   `unityforge.dll` next to itself, `LoadLibrary`s it,
   `GetProcAddress` for the three Rust entry points,
-  calls `unityforge_init(bridge_table_ptr)`.
-- `Bridge.cs`: a `[StructLayout(LayoutKind.Sequential)]`
-  struct of function pointers. Static methods on
-  `MonoBridge` and `HarmonyBridge` are exposed via
+  calls `unityforge_init(bridge_ptr, runtime_kind=0)`.
+- `Bridge.cs` (in `cs-shim-common/`, linked into both shims):
+  a `[StructLayout(LayoutKind.Sequential)]` struct of
+  function pointers. Static methods on `MonoBridge` and
+  `HarmonyBridge` are exposed via
   `Marshal.GetFunctionPointerForDelegate` into the bridge
   struct.
 - `MonoBridge.cs`: static methods for `find_type(utf8_name)`,
@@ -640,33 +698,72 @@ can research any Unity Mono game by curl.
   field_name)`, `set_field(handle, field_name, value)`,
   `invoke_method(handle, method_name, args_json) ->
   result_json`, `walk_class(type_handle)`, `dump_object
-  (object_handle) -> json`. Each method translates Rust
-  callsites to managed reflection.
+  (object_handle) -> json`. Implemented via
+  `System.Reflection`.
 - `HarmonyBridge.cs`: static methods `patch_prefix(class,
   method, native_fn_ptr) -> handle`, `patch_postfix(...)`,
   `unpatch(handle)`. Wraps unmanaged function pointers in
   managed delegates via
-  `Marshal.GetDelegateForFunctionPointer` so HarmonyLib can
+  `Marshal.GetDelegateForFunctionPointer` so HarmonyX can
   target them. Tracks handles in a `Dictionary<int,
   HarmonyMethod>`.
 - `Update()` on the shim's MonoBehaviour calls
   `unityforge_tick(Time.realtimeSinceStartup)`.
 - `OnDestroy()` calls `unityforge_shutdown()`.
 
-Estimate: ~600-900 lines of C#. Once correct, frozen.
+Estimate: ~700-1000 lines of C# including shared
+`cs-shim-common/`. Once correct, frozen.
 
-**1c. Rust Mono bridge wrapper (~1 day)**
+**1b-il2cpp. C# IL2CPP shim project (~2-3 days)**
+
+- `unityforge/cs-shim-il2cpp/Unityforge.Shim.Il2Cpp.csproj`
+  (net6.0, BepInEx 6 IL2CPP). References: `BepInEx`,
+  `BepInEx.Unity.IL2CPP`, `Il2CppInterop.Runtime`,
+  `HarmonyX`. Optional Il2Cpp-shape game-DLL refs are
+  avoided; the shim stays game-agnostic.
+- `ShimEntry.cs`: `[BepInPlugin]` BepInEx 6 IL2CPP entry.
+  Same load + call sequence as the Mono shim; passes
+  `runtime_kind=1` to `unityforge_init`.
+- `Bridge.cs`: linked from `cs-shim-common/`, identical
+  layout to the Mono path. The Rust-side bridge ABI is one
+  struct shared by both shims; entries that are
+  Mono-specific or IL2CPP-specific are populated with
+  function pointers that target the right implementation
+  (or NULL with a documented "not supported on this
+  runtime" contract).
+- `Il2CppBridge.cs`: implements the same surface as
+  `MonoBridge.cs` against `Il2CppInterop.Runtime`. Uses
+  `Il2CppType.From(name)` for type lookup; `IL2CPP.il2cpp_*`
+  for low-level field/method access; the Il2CppInterop
+  wrapper classes for boxed-value handling.
+- `HarmonyBridge.cs`: identical surface; uses the
+  IL2CPP-flavored HarmonyX (it works on both backends via
+  the same API, so the C# code may even be linked).
+
+Estimate: ~800-1300 lines of C# (a chunk shared with Mono
+via `cs-shim-common/`). The Il2CppInterop API surface is
+where this work concentrates; once correct, frozen.
+
+**1c. Rust Unity bridge wrapper (~1.5 days)**
 
 - `unityforge::bridge`. A `BridgeTable` struct mirroring the
   C# struct, populated at `unityforge_init`. Stored in a
-  `OnceLock<BridgeTable>`.
-- `unityforge::mono::{MonoType, MonoObject, MonoField,
-  MonoMethod}`. Idiomatic Rust types wrapping opaque
-  handles. Method calls go through the bridge table.
-  Drop impls release handles back to the shim.
+  `OnceLock<BridgeTable>`. Also stores
+  `RUNTIME_KIND: OnceLock<RuntimeKind>` for code paths that
+  must branch on backend.
+- `unityforge::unity::{Type, Object, Field, Method}`.
+  Idiomatic Rust types wrapping opaque handles. Method
+  calls go through the bridge table; the Rust side is
+  Mono/IL2CPP-agnostic for the common surface. Drop impls
+  release handles back to the active shim.
+- `unityforge::mono::*` and `unityforge::il2cpp::*` for the
+  rare cases where a mod needs backend-specific behavior
+  (e.g. `Il2CppObjectBase` lifetime quirks). These are
+  thin layers over `unity::*`; most mod code never touches
+  them.
 - Safety: handles are 32-bit cookies (not pointers) so a
-  stale handle dispatched after game-state change returns an
-  error instead of UB. The shim owns the
+  stale handle dispatched after game-state change returns
+  an error instead of UB. The shim owns the
   `Dictionary<int, object>` and `GCHandle`s where needed.
 
 **1d. HTTP control plane (~1.5 days)**
@@ -676,16 +773,18 @@ Pure reuse of `modforge::server` + `modforge::ops` +
 registering the Unity-side ops and selector resolvers:
 
 - `unityforge::ops`. Register Unity primitives against the
-  shared `OpRegistry`:
-  - `walk_class` (calls `MonoBridge.walk_class`).
-  - `inspect_object` (calls `MonoBridge.dump_object`).
+  shared `OpRegistry`. Each calls through the active bridge
+  table (Mono or IL2CPP, populated by whichever shim is
+  loaded):
+  - `walk_class` (calls `bridge.walk_class`).
+  - `inspect_object` (calls `bridge.dump_object`).
   - `read_field`, `write_field`.
   - `invoke_method`.
   - `list_singletons` (Unity-pattern probe).
 - `unityforge::selector`. Register resolvers for `class:`,
   `first_class:`, `singleton:`, `static_instance:`,
   `monobehaviour:`. Each one looks up the live object via
-  the Mono bridge.
+  the active bridge.
 - `unityforge::main_thread_queue`. Parallel to
   `ueforge::pe_queue`. Lock-free fast path, re-entrance
   guard, budgeted drain on every tick.
@@ -701,25 +800,40 @@ registering the Unity-side ops and selector resolvers:
 - The trampoline catches panics in user prefix/postfix
   bodies so one bad hook doesn't crash the shim.
 
-**1f. Tests + WWM smoke (~1-1.5 days)**
+**1f. Tests + Mono smoke (WWM) + IL2CPP smoke (~2-3 days)**
 
 - Rust unit tests for the bridge wrappers (mock bridge
   table).
 - Integration: load the modforge `test-corpus/ops/` corpus,
   run against a stub bridge, assert envelope parity.
-- End-to-end: build `unityforge.dll` + shim, drop into
-  WWM's BepInEx plugins dir, launch the game, `curl POST
+- End-to-end on Mono: build `unityforge.dll` +
+  `Unityforge.Shim.Mono.dll`, drop into WWM's BepInEx 5
+  plugins dir, launch the game, `curl POST
   localhost:<port>/op {"op":"ping"}` -> envelope.
 - `walk_class PlayerManager` -> live instance handle.
 - `inspect_object <handle>` -> PlayerData fields.
 - `invoke_method PlayerManager AddPlayerCurrency [1e6]`
   -> player balance jumps in-game.
+- End-to-end on IL2CPP: build `unityforge.dll` +
+  `Unityforge.Shim.Il2Cpp.dll`, drop into an IL2CPP smoke
+  target (Schedule 1 or another currently-shipping IL2CPP
+  Unity game; pick at phase entry). Same curl checks:
+  `ping`, `walk_class` on a known IL2CPP type,
+  `inspect_object`, one round-trip `read_field` /
+  `write_field` on a primitive (`float` / `int`).
+- Same Rust cdylib for both targets; only the active C# shim
+  differs.
 
 **Exit gate:**
 
-- Hello-plugin Rust cdylib loads inside WWM via the shim.
-- Full generic-primitive op surface answers curl.
-- Conformance corpus passes against unityforge.
+- Hello-plugin Rust cdylib loads inside WWM via the Mono shim.
+- Hello-plugin Rust cdylib loads inside the IL2CPP smoke
+  target via the IL2CPP shim.
+- Full generic-primitive op surface answers curl on both
+  backends.
+- Conformance corpus passes against unityforge in both
+  runtime modes (corpus is identical; backend is the
+  environment).
 
 #### Phase 2: unityforge::rpg (~3-4 days)
 
@@ -733,15 +847,16 @@ Phase 2 is the engine-binding half:
 
 | What | Where | Notes |
 |---|---|---|
-| `unityforge::rpg::slot_key_mono` | unityforge | Implements `modforge::rpg::SlotKeyResolver` for Mono. Reads a configurable singleton + field via the bridge. Game crates configure with `(singleton_name, field_name)` |
-| `unityforge::rpg::vanilla_mono` | unityforge | Per-class vanilla-value cache; key type is `MonoField` handle |
-| `unityforge::rpg::std_effect` | unityforge | Mono-specific Effect implementations: `MonoFloatFieldEffect`, `MonoFieldMultiplyEffect`, `MonoFieldAdditiveEffect`, `MonoMethodInvokeEffect`. Each implements `modforge::rpg::Effect`. Uses the bridge to read/write fields and invoke methods |
-| `unityforge::rpg::trigger_harmony` | unityforge | `OnHarmonyPatch` trigger: the framework patches a target method via the Harmony bridge and fires the trigger on pre/post. Also a thin `OnMonoEvent` trigger for games like WWM that already expose `static event Action` |
+| `unityforge::rpg::slot_key_unity` | unityforge | Implements `modforge::rpg::SlotKeyResolver` against the `unity::*` SDK. Reads a configurable singleton + field via the bridge. Works on both Mono and IL2CPP because it calls the runtime-tagged bridge. Game crates configure with `(singleton_name, field_name)` |
+| `unityforge::rpg::vanilla_unity` | unityforge | Per-class vanilla-value cache; key type is `unity::Field` handle |
+| `unityforge::rpg::std_effect` | unityforge | Runtime-tagged Effect implementations: `UnityFloatFieldEffect`, `UnityFieldMultiplyEffect`, `UnityFieldAdditiveEffect`, `UnityMethodInvokeEffect`. Each implements `modforge::rpg::Effect`. Uses the bridge to read/write fields and invoke methods; the same struct works on Mono and IL2CPP because the bridge entries are populated by whichever shim is loaded |
+| `unityforge::rpg::trigger_harmony` | unityforge | `OnHarmonyPatch` trigger: the framework patches a target method via the Harmony bridge and fires the trigger on pre/post. Also a thin `OnUnityEvent` trigger for games that already expose `static event Action` (Mono-friendly; the IL2CPP variant goes through Il2CppInterop's event-add helpers) |
 | `unityforge::rpg::ops_register` | unityforge | Wires `modforge::rpg::ops` handlers into the unityforge `OpRegistry` |
 
 That's it. The Tracker is shared. The catalog parser is
 shared. The XP math is shared. unityforge contributes only
-the parts that *touch Mono*.
+the parts that *touch the Unity runtime*, and those work on
+both backends through the bridge.
 
 Phase 2 deliverable: a `unityforge.dll` whose RPG surface
 matches ueforge's, byte-for-byte on the conformance corpus
@@ -750,22 +865,27 @@ where the game-specific config is held constant.
 Tests (mostly inherited from modforge):
 - Catalog parse / state round-trip / XP curve. Already passing
   in modforge.
-- Mono-specific Effect impls tested against a stub bridge.
+- Unity Effect impls tested against a stub bridge that can
+  simulate either Mono or IL2CPP responses.
 - Conformance: load `modforge/test-corpus/rpg/` against a
   unityforge process running a stub catalog; envelope parity
-  with ueforge.
+  with ueforge. Repeat under both runtime tags.
 
-**Exit gate:** unityforge's `list_ops` includes the RPG ops;
-the conformance corpus passes; a stub catalog can be
-loaded + leveled + saved + reloaded via curl.
+**Exit gate:** unityforge's `list_ops` includes the RPG ops
+on both backends; the conformance corpus passes on both;
+a stub catalog can be loaded + leveled + saved + reloaded
+via curl on both.
 
-#### Phase 3: wwm-rpg (the Wild West Miner RPG mod, ~5-7 days)
+#### Phase 3: wwm-rpg (Mono proof, ~5-7 days) + IL2CPP proof (~2-3 days)
 
-The proof. A Rust cdylib crate built on unityforge that
-ships skills to the player. The C# shim is the same one
-unityforge already provides; the only WWM-specific C# is a
-trivial `[BepInPlugin]` that loads `wwm-rpg.dll` instead of
-the framework's hello plugin.
+The proof points. WWM is the Mono target; an IL2CPP target
+(picked at phase entry) is the IL2CPP target. Both prove the
+framework end-to-end. The Rust mod sources are
+backend-agnostic where possible; the only backend-specific
+detail is which game classes get patched and which fields
+get read.
+
+##### 3a. wwm-rpg (Mono)
 
 - New Rust crate: `grounded2mods/wwm-rpg/Cargo.toml` with
   `crate-type = ["cdylib"]`. Depends on
@@ -773,8 +893,8 @@ the framework's hello plugin.
 - `static MOD_INFO: unityforge::ModDef = ...;`
   `unityforge::unityforge_mod!(MOD_INFO);` and that's the
   whole entry surface.
-- Configures the Mono slot-key resolver:
-  `MonoSlotKey::new("GameSerializationSystem",
+- Configures the Unity slot-key resolver:
+  `UnitySlotKey::new("GameSerializationSystem",
   "_currentLoadedSaveNumber")`.
 - Hook wiring (Rust, calls the Harmony bridge through
   unityforge):
@@ -788,17 +908,17 @@ the framework's hello plugin.
     site. For "Lucky" skill.
 - Catalog: 5-8 skills declared as `static
   SkillDef`s referencing `unityforge::rpg::std_effect`
-  implementations (`MonoFieldMultiplyEffect`,
-  `MonoFieldAdditiveEffect`):
-  - **Greedy Miner**: MonoFieldMultiply on a
+  implementations (`UnityFieldMultiplyEffect`,
+  `UnityFieldAdditiveEffect`):
+  - **Greedy Miner**: UnityFieldMultiply on a
     `MineDataSO.OreValue`.
-  - **Strong Back**: MonoFieldAdditive on
+  - **Strong Back**: UnityFieldAdditive on
     `PlayerCarryingController.MaxCapacity`.
-  - **Quick Pickaxe**: MonoFieldMultiply on
+  - **Quick Pickaxe**: UnityFieldMultiply on
     `DigManager._digRange`.
   - **Lucky**: probability-scaler Effect.
-  - **Charisma**: MonoFieldMultiply on hire cost.
-  - **Resilient**: MonoFieldMultiply on stamina drain.
+  - **Charisma**: UnityFieldMultiply on hire cost.
+  - **Resilient**: UnityFieldMultiply on stamina drain.
 - XP curve: ueforge defaults (`base=100`, `exponent=1.8`,
   `max_level=50`).
 - UI: ImGui tab declared via
@@ -811,12 +931,38 @@ the framework's hello plugin.
   `modforge::rpg::store`. Cleaner than piggybacking on
   `GameSerializationData`.
 
-**Exit gate:** load the game, dig some ore, see XP accrue,
+##### 3b. IL2CPP proof-point
+
+A second Rust cdylib crate proving the IL2CPP shim works
+end-to-end. Scope is intentionally smaller than wwm-rpg: a
+single read/write/invoke + a single Harmony patch on an
+IL2CPP target. Goal is to demonstrate the same Rust SDK
+surface drives an IL2CPP game; not to ship a full RPG mod.
+
+- Target game: pick at phase entry. Candidates: Schedule 1
+  (IL2CPP, known target), an IL2CPP-flavored small game on
+  hand, or a stripped IL2CPP build of a Unity sample.
+- Rust crate: `grounded2mods/<target>-il2cpp-smoke/`,
+  `crate-type = ["cdylib"]`. Same `unityforge_mod!`
+  surface.
+- Smoke checklist (curl-driven):
+  - `walk_class <known type>` returns fields.
+  - `read_field` on a primitive field returns the runtime
+    value.
+  - `write_field` mutates and the game reflects the
+    change.
+  - One Harmony postfix observably fires when the player
+    does the corresponding action; XP atomic increments
+    in response.
+
+**Exit gate:** load WWM, dig some ore, see XP accrue,
 level up Strong Back, observe inventory cap visibly
 increase, save + reload, observe state persisted. Quit and
 relaunch, state still there.
 `curl POST /op {"op":"skill_state"}` returns the same
-numbers. Same op set as ueforge's grounded2-rpg.
+numbers. Same op set as ueforge's grounded2-rpg. Plus: the
+IL2CPP smoke target loads the same Rust cdylib pattern via
+the IL2CPP shim and answers all curl checks listed above.
 
 #### What's deferred (and why)
 
@@ -828,23 +974,28 @@ numbers. Same op set as ueforge's grounded2-rpg.
 | Stacks / Difficulty / SO browser | No consumer demanding them yet; unityforge writes its own when one appears |
 | Hot reload of the Rust cdylib through the shim | Defer until Phase 1 / 2 are stable. Both ueforge and Timberbot shipped value before hot reload mattered |
 | Conformance test for non-RPG ops | The corpus covers it; ueforge/unityforge will close any drift as we hit it |
-| IL2CPP support | Mono-only through wwm-rpg. Il2CppInterop bridge is v2 |
 | Bundled imgui inside Unity process | Spike during Phase 1; if hard, fall back to Unity IMGUI for v1 |
+| MelonLoader shim variant | BepInEx (5 Mono + 6 IL2CPP) covers both backends. MelonLoader is a sibling host; same Rust side, additional small shim project if a target demands it |
 
-**Total Phase 0-3: ~18-24 days.** Roughly 3-4 weeks. End
+**Total Phase 0-3: ~25-35 days.** Roughly 5-7 weeks. End
 state: modforge owns ~12k engine-agnostic Rust lines that
 both frameworks depend on. ueforge stays working through the
-migration. unityforge ships as a Rust cdylib + a ~1k-line C#
-shim. Wild West Miner has a Rust-native RPG mod that proves
-the framework. Future Unity-Mono game = new Rust cdylib +
-the same shim, days not months.
+migration. unityforge ships as a Rust cdylib + two ~1k-line
+C# shims (Mono and IL2CPP). Wild West Miner has a
+Rust-native RPG mod that proves the framework on Mono; an
+IL2CPP smoke target proves the same Rust SDK drives an
+IL2CPP game. Future Unity game (either backend) = new Rust
+cdylib + the matching shim, days not months.
 
 ## 7. Open design questions
 
-1. **IL2CPP scope in v1?** Both Timberborn and Wild West Miner
-   are Mono. Schedule 1 is IL2CPP. unityforge v1 is Mono-only;
-   IL2CPP via Il2CppInterop is a v2 expansion. The C# shim
-   pattern still applies, just with an Il2Cpp-flavored bridge.
+1. **Bridge ABI: one struct with backend-specific entries, or
+   two structs?** Leaning one struct, with entries that don't
+   apply to one backend populated by a stub function that
+   returns a `not_supported` error. Pros: Rust side stays
+   unified; the runtime tag lets backend-aware ops branch
+   when needed; ABI bumps are additive. Cons: a few slots are
+   dead on one side. Picked at Phase 1a.
 2. **In-game UI: imgui via shim, or native Unity IMGUI?**
    ueforge bundles imgui v1.92.1 in its C++ shim. unityforge
    could ship imgui in a native renderer DLL plus a render
@@ -869,9 +1020,11 @@ the same shim, days not months.
 
 | Risk | Mitigation |
 |---|---|
-| 3-4 weeks is long; momentum risk for solo work | Per-phase exit criteria. Each phase ships a buildable, tested, observable artifact. Hello-plugin running in WWM is an explicit Phase 1 exit gate; that's playable signal long before Phase 3 |
+| 5-7 weeks is long; momentum risk for solo work | Per-phase exit criteria. Each phase ships a buildable, tested, observable artifact. Hello-plugin running in WWM (Mono) is an explicit Phase 1 exit gate; that's playable signal long before Phase 3. The IL2CPP smoke target is the second Phase 1 exit gate |
 | Mono reflection through a function-pointer bridge is unfamiliar | Phase 1b spike up front. There's prior art (BepInEx native plugins, MonoMod). If the bridge surface needs expansion, the shim is small and easy to extend |
-| Harmony patches calling unmanaged function pointers | `Marshal.GetDelegateForFunctionPointer` + a managed stub delegate handles this. Standard pattern; not bleeding edge |
+| Il2CppInterop API surface churn | Il2CppInterop is actively maintained and stable across the BepInEx 6 IL2CPP timeline. Pin the version in the C# csproj. Bridge entries that touch Il2CppInterop are concentrated in `Il2CppBridge.cs` so an upstream rename hits one file, not the framework. Mono shim has zero Il2CppInterop coupling, so the Mono side never breaks from IL2CPP-side churn |
+| IL2CPP generic-instantiation walking (e.g. `List<T>` instances) | Out of scope for v1 smoke. Mod authors that hit it use the bridge's `walk_class` on the concrete instantiation; the framework doesn't need to do generic-type math itself. Document the limitation; revisit when a consumer demands it |
+| Harmony patches calling unmanaged function pointers | `Marshal.GetDelegateForFunctionPointer` + a managed stub delegate handles this. Standard pattern on both backends via HarmonyX |
 | ueforge migration regression (the existing UE mods break) | The migration is a series of file moves + `pub use` re-exports. Workspace tests run between each step. If a step breaks tests, it's reverted before moving on |
 | Bridge ABI versioning across shim/Rust drift | The bridge table is a versioned struct with a magic number + version field at the head. Mismatches refuse to init with a clear error |
 | Hot reload through shim is harder than ueforge's pure-Rust swap | Defer to a later phase. Both Timberbot and ueforge shipped value long before hot reload mattered |
@@ -888,16 +1041,22 @@ The plan is "done" when:
 - ueforge's existing game mods (`grounded2-rpg`,
   `outworld-station-tweaks`) still work in-game,
   byte-for-byte identical to pre-extraction.
-- `unityforge.dll` + `Unityforge.Shim.dll` load into Wild
-  West Miner via BepInEx. `curl` to the debug port returns
-  the full generic-primitive op surface.
-- `wwm-rpg` Rust cdylib loads via the same shim, ships a
+- `unityforge.dll` + `Unityforge.Shim.Mono.dll` load into
+  Wild West Miner via BepInEx 5. `curl` to the debug port
+  returns the full generic-primitive op surface.
+- `unityforge.dll` + `Unityforge.Shim.Il2Cpp.dll` load into
+  the chosen IL2CPP smoke target via BepInEx 6 IL2CPP.
+  Same `curl` surface answers the same op set.
+- `wwm-rpg` Rust cdylib loads via the Mono shim, ships a
   catalog of 5-8 skills, and gameplay shows skill effects
   applied + persisted across save/load.
-- `modforge/test-corpus/` passes against both ueforge and
-  unityforge.
+- IL2CPP smoke crate loads via the IL2CPP shim and passes
+  the IL2CPP smoke checklist (`walk_class`, `read_field`,
+  `write_field`, one Harmony postfix observed).
+- `modforge/test-corpus/` passes against ueforge AND
+  unityforge under both runtime tags.
 - The methodology doc + composition-model doc + def-registry
   doc are the single source of truth for both frameworks.
-- A new Unity-Mono game can be picked up as a Rust cdylib
-  consuming unityforge in days, not weeks. (Verified by the
-  next consumer when one appears.)
+- A new Unity game (Mono or IL2CPP) can be picked up as a
+  Rust cdylib consuming unityforge in days, not weeks.
+  (Verified by the next consumer when one appears.)
