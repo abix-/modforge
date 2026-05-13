@@ -15,61 +15,96 @@
 
 ---
 
-## P0. Unityforge: ship generation-versioned hot reload (Phase 4)
+## Next up (2026-05-14+)
 
-The naive FreeLibrary-based hot reload shipped 2026-05-13
-crashed WWM with an access violation on the first attempt:
-`unityforge_shutdown` signals stop flags to background
-threads (HTTP server, slot poller) but does NOT join them,
-500 ms sleep isn't enough for blocked-on-syscall threads,
-and `FreeLibrary` then unmaps the cdylib while threads
-still have IPs inside it. Textbook crash. After rtfm
-research, picked **generation-versioned loading** as the
-canonical fix. Old DLL never unloads; each reload
-`LoadLibrary`s a new image with a unique filename. Deep-dive:
-[`unityforge-plan.md` §6.5](unityforge-plan.md#65-hot-reload-phase-4-planned).
+The session that just ended built generation-versioned hot
+reload + deployed it. Verification + the next-largest
+chunks of remaining work, in order:
 
-What ships TODAY (safety patch, 2026-05-13 post-rtfm):
+1. **Verify the hot-reload cycle works in-game.** Launch
+   WWM, observe `Unityforge.Shim: ready (generation 0)`,
+   then run `build_and_deploy.ps1 -Hot` from a separate
+   terminal, watch BepInEx log for `hot reload generation
+   0 -> 1`. Confirm curl ops still answer after the swap.
+   If it works, mark Phase 4 verified in
+   [§6.5](unityforge-plan.md#65-hot-reload-phase-4).
+2. **Fix the janky jump.** The current `Translate(0,3,0) +
+   isGrounded=false` is unreliable. Investigate
+   `PlayerController` per-frame movement to find what
+   clobbers our position/velocity. Likely needs a Harmony
+   prefix on the per-frame movement method to inject a
+   jump-velocity boost.
+3. **Ship `UnitySkillProxyEffect`** + repoint Strong Back
+   at `SkillsManager.SetSkillLevel("Bag", N)`. The game
+   already grows the slot list when you call this. A way
+   bigger payoff than fighting raw fields. Verified live
+   in the 2026-05-13 session (5 -> 12 slots).
+4. **Verify Greedy Miner in-save.** Load a save in WWM,
+   `walk_class MineDataSO` to confirm field names. Repoint
+   the catalog if needed.
+5. **Mirror generation-loader into IL2CPP shim** before
+   shipping the IL2CPP smoke target end-to-end.
 
-- [x] Disable the broken auto-watcher in
-  `cs-shim-mono/Plugin.cs`: detecting `<dll>.new` logs a
-  warning + deletes the staging file; no swap attempted.
-- [x] Neuter `build_and_deploy.ps1 -Hot` so it exits with
-  an explanation instead of staging a landmine.
+The detailed checkboxes below cover everything else, but
+those five are the immediate path forward.
 
-What's open for the real fix:
+---
 
-- [ ] **Shim: generation pointers + per-gen state.** Each
-  generation has its own loaded module + entry points +
-  bridge table. The active pointer switches on reload; old
-  generations stay in the shim's list until their threads
-  exit.
-- [ ] **Shim: watcher routes to LoadLibrary, never
-  FreeLibrary.** Drop `wwm_rpg.unityforge.gen<N>.dll` ->
-  shim bumps N, loads it, quiesces N-1, switches active.
-- [ ] **Cdylib: `unityforge_shutdown` must actually join
-  background threads.** Currently signals stop only. The
-  HTTP server thread (tiny_http accept loop) doesn't
-  unblock without explicit listener close; needs a
-  shutdown hook in `modforge::server` that closes the
-  socket. Slot poller's `handle.stop()` is correct but the
-  thread sleeps up to 1 s before noticing.
-- [ ] **HTTP port allocation strategy.** G_new can't bind
-  17172 if G_active still holds it. Either `SO_REUSEADDR`
-  on tiny_http or shift port per generation (17172 + N).
-- [ ] **Harmony patch lifecycle on swap.** G_active
-  unpatches its own patches in `unityforge_shutdown`;
-  G_new applies fresh patches in `on_init`. Verify
-  HarmonyX cleans up correctly per generation.
-- [ ] **Handle-table namespace per generation.** Either
-  high-bit encode generation in the int handle or accept
-  that G_active threads can't dispatch to C# after
-  shutdown (they should be exiting anyway).
-- [ ] **Deploy script: `-Hot` writes `*.gen<N>.dll`** with
-  N = max-existing + 1, instead of `.new`.
+## P0. Unityforge: generation-versioned hot reload (Phase 4)
 
-Phase priority is post-Phase-3. Estimated 2-3 days when
-the rest of the framework is stable.
+Naive FreeLibrary hot reload crashed WWM 2026-05-13.
+Replaced with generation-versioned loading after rtfm
+research: never `FreeLibrary`, each reload `LoadLibrary`s a
+new image with a unique filename. Deep-dive:
+[`unityforge-plan.md` §6.5](unityforge-plan.md#65-hot-reload-phase-4).
+
+Built + deployed 2026-05-13 (awaiting in-game verification
+of the first hot-swap cycle).
+
+- [x] **Cdylib: `unityforge_shutdown` actually joins
+  background threads.** `modforge::server::shutdown_all`
+  (already wired) calls `Server::unblock` + thread join.
+  `modforge::rpg::poller::shutdown_all` (new) uses a
+  `Condvar` to wake the sleeping poller immediately and
+  joins the thread. Both registered in
+  `modforge::shutdown::SHUTDOWN_REGISTRY` at order 200/250.
+- [x] **Shim: generation pointers + per-gen state.**
+  `cs-shim-mono/Plugin.cs` rewrote `UnityforgeShimPlugin`
+  around a `Generation` class (module handle, init/tick/
+  shutdown delegates, pinned bridge table). One `_active`
+  + a `_quiesced` list. Per-gen tick dispatch.
+- [x] **Shim: watcher routes to LoadLibrary, never
+  FreeLibrary.** Per-second scan for
+  `*.unityforge.gen<N>.dll`; highest N > active triggers
+  `HotSwap`. `NativeLibrary.Free` removed from the helper
+  entirely.
+- [x] **HTTP port + Harmony lifecycle on swap.** Old
+  generation's `unityforge_shutdown` joins HTTP listener
+  (port released) + unpatches Harmony patches via
+  `HOOK_REGISTRY.shutdown_all` before new gen's `init`
+  fires. Shared C# `Harmony` instance + per-gen patch sets
+  in the `_patches` dictionary; cross-gen patches don't
+  collide because old gen removes its own first.
+- [x] **Deploy script: `-Hot` writes `gen<N>.dll`.**
+  `build_and_deploy.ps1 -Hot` scans the plugin dir for the
+  highest existing `gen<N>.dll`, writes the build as N+1.
+
+Known follow-up (not blocking the reload cycle):
+
+- [ ] **Handle-table namespace per generation.** Currently
+  shared across generations via `MonoBridge._handles`.
+  Old gen's still-held handles are stale references after
+  swap. Harmless in practice (old gen has shut down +
+  exited threads) but worth high-bit-encoding the
+  generation if collision matters later.
+- [ ] **Periodic GC of quiesced generations.** The
+  `_quiesced` list grows forever in the current shim. Once
+  a gen's threads have exited, we could free its
+  GCHandle. Detecting "threads exited" reliably without
+  hard joins is tricky; defer.
+- [ ] **IL2CPP shim also needs the gen-loader.** Only Mono
+  shim got rewritten. Mirror the change into
+  `cs-shim-il2cpp/Plugin.cs` before shipping IL2CPP smoke.
 
 ## P0. Unityforge: finish the modforge extraction (Phase 0b remainder)
 

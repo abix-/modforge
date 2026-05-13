@@ -987,7 +987,12 @@ IL2CPP smoke target proves the same Rust SDK drives an
 IL2CPP game. Future Unity game (either backend) = new Rust
 cdylib + the matching shim, days not months.
 
-## 6.5. Hot reload (Phase 4, planned)
+## 6.5. Hot reload (Phase 4)
+
+> **Status:** built + deployed 2026-05-13. In-game
+> verification of the first gen-0 -> gen-1 swap still
+> pending; once observed working, this section anchors the
+> shipped doctrine.
 
 ### Background: why the first attempt crashed
 
@@ -1129,15 +1134,47 @@ work is concentrated in:
 Estimate: 2-3 days once the rest of the framework is
 stable. Not blocking shipping unityforge v1.
 
-### What's deployed today (post-rtfm 2026-05-13)
+### Shipped (2026-05-13 hot reload landing)
 
-- The shim's auto-watcher is **disabled** in source:
-  detecting `<dll>.new` logs a warning and deletes the
-  staging file. No swap is attempted. Safe.
-- The `-Hot` flag on `build_and_deploy.ps1` is **neutered**:
-  prints an explanation and exits non-zero.
-- Quit + relaunch is the iteration loop until the
-  generation-loading shim ships.
+- **`modforge::rpg::poller`** rewritten around a `Condvar`.
+  `stop()` wakes the sleeping thread immediately (no
+  waiting for the next interval) and joins. Auto-registers
+  every spawned poller into `POLLER_REGISTRY`;
+  `poller::shutdown_all` (registered with
+  `SHUTDOWN_REGISTRY` at order 250) stops everything in
+  one call.
+- **`modforge::server`** already had graceful shutdown via
+  `Server::unblock` + thread join. Verified registered at
+  order 200 in `SHUTDOWN_REGISTRY`.
+- **`cs-shim-mono/Plugin.cs`** rewritten around the
+  `Generation` class. The shim tracks `_active` + a
+  `_quiesced` list. Per-second watcher scans for
+  `*.unityforge.gen<N>.dll`; highest N > active triggers
+  `HotSwap` which: stops ticking active, calls Rust
+  shutdown (real thread joins now), unpatches Harmony,
+  clears input bindings + handle table, LoadLibrarys the
+  new image, initializes its bridge, switches active.
+  Never calls FreeLibrary.
+- **`NativeLibrary.Free` removed** from the shim helper.
+  Per the doctrine: never FreeLibrary a generation. Process
+  exit unmaps everything; pre-exit, OS unmaps a generation
+  once its refcount + thread-IP references hit zero, on
+  its own schedule.
+- **`build_and_deploy.ps1 -Hot`** writes the build as
+  `wwm_rpg.unityforge.gen<max+1>.dll` next to the canonical
+  DLL. Shim picks it up within ~1 second.
+
+### Iteration loop
+
+1. Change Rust code.
+2. `./wwm-rpg/scripts/build_and_deploy.ps1 -Hot`
+3. BepInEx log: `Unityforge.Shim: hot reload generation N -> N+1`
+4. Continue driving via curl. New code is live.
+
+The C# shim itself still needs a quit + relaunch when
+modified. That's the same constraint hot-lib-reloader and
+live-reloading-rs operate under (the host stays running;
+only the reloadable library swaps).
 
 ## 7. Open design questions
 
