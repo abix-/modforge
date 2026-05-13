@@ -1627,6 +1627,7 @@ dependencies = [
  "hex",
  "insta",
  "memoffset",
+ "modforge",
  "parking_lot",
  "patternsleuth",
  "proptest",

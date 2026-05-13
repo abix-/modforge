@@ -108,6 +108,11 @@ pub mod ui_tweaks;
 pub mod winproc;
 pub mod worker;
 
+// Re-export modforge macros so existing call sites compile
+// unchanged. Phase 0b migration: counters + ring moved into
+// modforge; their macros are #[macro_export]'d there.
+pub use modforge::{counter, counter_json, peak};
+
 pub use envelope::{OpResponse, parse_request};
 pub use mod_main::{ModDef, TabDef};
 pub use pe_queue::{DrainStats, Queue};

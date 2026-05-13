@@ -12,5 +12,5 @@
 //! `pub use modforge::<mod>::*;` re-export left in ueforge so
 //! existing call sites compile unchanged.
 
-// Phase 0b will land the actual submodules. This file stays
-// minimal until the first migration step commits its module.
+pub mod counters;
+pub mod ring;
