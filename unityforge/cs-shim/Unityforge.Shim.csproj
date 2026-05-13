@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>Unityforge.Shim</AssemblyName>
+    <Version>0.1.0</Version>
+    <LangVersion>9.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <UserHome Condition="'$(UserHome)' == '' and '$(USERPROFILE)' != ''">$(USERPROFILE)</UserHome>
+    <UserHome Condition="'$(UserHome)' == '' and '$(HOME)' != ''">$(HOME)</UserHome>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      BepInEx + HarmonyLib + Unity references. Users compile with
+      the BepInEx core pack the target game already ships with.
+      Adjust HintPaths via -p:BepInExDir / -p:UnityDir when
+      building against a specific install.
+    -->
+    <Reference Include="BepInEx" Condition="'$(BepInExDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(BepInExDir)\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="0Harmony" Condition="'$(BepInExDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(BepInExDir)\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine" Condition="'$(UnityDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(UnityDir)\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule" Condition="'$(UnityDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(UnityDir)\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

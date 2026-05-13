@@ -1,0 +1,37 @@
+[package]
+name = "unityforge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Unity Mono / BepInEx framework. Peer of ueforge. Depends on
+# modforge for the engine-agnostic core (envelope, ops registry,
+# selector grammar, settings, counters, ring, scanner, winproc,
+# server, shutdown, log). Adds Mono-specific surfaces:
+#   - unityforge::mono: reflection wrappers (calls through the
+#     C# shim's function-pointer bridge)
+#   - unityforge::hook: HarmonyLib wrapper + HookRegistry
+#   - unityforge::main_thread_queue: parallel to ueforge::pe_queue
+#   - unityforge::ops: Unity generic-primitive op handlers
+#   - unityforge::selector: Unity-side selector resolvers
+#   - unityforge::rpg::std_effect: Mono Effect implementations
+#
+# Game mods (e.g. wwm-rpg) consume this as a normal crate dep.
+# A small C# shim project (cs-shim/) bootstraps the Rust cdylib
+# inside BepInEx and exposes the Mono+Harmony bridge.
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+arc-swap = { workspace = true }
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

@@ -1665,6 +1665,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "unityforge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ureq"
 version = "2.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1869,6 +1881,18 @@ name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ffae5123b2d3fc086436f8834ae3ab053a283cfac8fe0a0b8eaae044768a4c4"
+
+[[package]]
+name = "wwm-rpg"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "unityforge",
+]
 
 [[package]]
 name = "yoke"
