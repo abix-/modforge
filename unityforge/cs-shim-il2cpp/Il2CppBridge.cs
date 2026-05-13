@@ -84,6 +84,14 @@ namespace Unityforge.Shim
             }
         }
 
+        /// <summary>
+        /// Drop every cached handle. Used during hot reload.
+        /// </summary>
+        public static void ClearHandles()
+        {
+            lock (_lock) { _handles.Clear(); _next = 1; }
+        }
+
         // ---- delegate types --------------------------------------------
 
         public delegate int FindTypeFn(IntPtr nameUtf8);

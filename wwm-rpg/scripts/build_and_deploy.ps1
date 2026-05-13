@@ -16,7 +16,8 @@
 param(
     [string]$WwmDir = 'C:\Games\Steam\steamapps\common\Wild West Miner Simulator Demo',
     [string]$ShimBepInExDir = '',
-    [switch]$NoCopy
+    [switch]$NoCopy,
+    [switch]$Hot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -60,6 +61,16 @@ if (-not (Test-Path $pluginDir)) {
 
 $rustDll = Join-Path $repoRoot 'target\x86_64-pc-windows-msvc\release\wwm_rpg.dll'
 $shimDll = Join-Path $repoRoot 'unityforge\cs-shim-mono\bin\Release\netstandard2.1\Unityforge.Shim.Mono.dll'
+
+if ($Hot) {
+    Write-Host "==> -Hot is currently disabled." -ForegroundColor Yellow
+    Write-Host "    The previous FreeLibrary-based hot reload crashed the game" -ForegroundColor Yellow
+    Write-Host "    because the cdylib spawns background threads. Generation-" -ForegroundColor Yellow
+    Write-Host "    versioned loading is the planned fix; see" -ForegroundColor Yellow
+    Write-Host "    docs/unityforge-plan.md section 'Hot reload'." -ForegroundColor Yellow
+    Write-Host "    Quit the game + rerun this script without -Hot." -ForegroundColor Yellow
+    exit 1
+}
 
 Copy-Item -Force $rustDll (Join-Path $pluginDir 'wwm_rpg.unityforge.dll')
 Copy-Item -Force $shimDll (Join-Path $pluginDir 'Unityforge.Shim.Mono.dll')

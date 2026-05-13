@@ -66,6 +66,15 @@ namespace Unityforge.Shim
             }
         }
 
+        /// <summary>
+        /// Drop every cached handle. Used during hot reload so
+        /// the new Rust image starts with a fresh handle space.
+        /// </summary>
+        public static void ClearHandles()
+        {
+            lock (_lock) { _handles.Clear(); _next = 1; }
+        }
+
         // ---- delegate types --------------------------------------------
 
         public delegate int FindTypeFn(IntPtr nameUtf8);
@@ -308,6 +317,28 @@ namespace Unityforge.Shim
             if (t == typeof(double)) return tok.Value<double>();
             if (t == typeof(string)) return tok.Value<string>();
             if (t.IsEnum) return Enum.Parse(t, tok.Value<string>());
+            // Unity struct types from { x, y, z [, w] }.
+            if (t == typeof(UnityEngine.Vector2) && tok is JObject v2o)
+                return new UnityEngine.Vector2(
+                    v2o["x"]?.Value<float>() ?? 0f,
+                    v2o["y"]?.Value<float>() ?? 0f);
+            if (t == typeof(UnityEngine.Vector3) && tok is JObject v3o)
+                return new UnityEngine.Vector3(
+                    v3o["x"]?.Value<float>() ?? 0f,
+                    v3o["y"]?.Value<float>() ?? 0f,
+                    v3o["z"]?.Value<float>() ?? 0f);
+            if (t == typeof(UnityEngine.Vector4) && tok is JObject v4o)
+                return new UnityEngine.Vector4(
+                    v4o["x"]?.Value<float>() ?? 0f,
+                    v4o["y"]?.Value<float>() ?? 0f,
+                    v4o["z"]?.Value<float>() ?? 0f,
+                    v4o["w"]?.Value<float>() ?? 0f);
+            if (t == typeof(UnityEngine.Quaternion) && tok is JObject qo)
+                return new UnityEngine.Quaternion(
+                    qo["x"]?.Value<float>() ?? 0f,
+                    qo["y"]?.Value<float>() ?? 0f,
+                    qo["z"]?.Value<float>() ?? 0f,
+                    qo["w"]?.Value<float>() ?? 1f);
             // object handle: { "handle": <int> }
             if (tok is JObject jo && jo["handle"] != null)
             {

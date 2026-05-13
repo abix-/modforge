@@ -987,6 +987,158 @@ IL2CPP smoke target proves the same Rust SDK drives an
 IL2CPP game. Future Unity game (either backend) = new Rust
 cdylib + the matching shim, days not months.
 
+## 6.5. Hot reload (Phase 4, planned)
+
+### Background: why the first attempt crashed
+
+The naive approach (the one shipped 2026-05-13 and crashed
+WWM) was a watcher that, on detecting `<dll>.new`:
+
+1. Calls `unityforge_shutdown()` on the cdylib.
+2. Sleeps 500 ms.
+3. `FreeLibrary`s the cdylib.
+4. Renames `.new` over the canonical name.
+5. `LoadLibrary`s + re-inits.
+
+This is the classic FreeLibrary-while-threads-running bug.
+The cdylib spawns:
+
+- HTTP server thread (tiny_http, blocked on `accept`).
+- Slot poller thread (sleeps up to 1 s between ticks).
+- Worker threads via `unityforge::worker::spawn` if any mod
+  uses them.
+
+`unityforge_shutdown` signals stop flags but does NOT join.
+500 ms is rarely enough for blocked-on-syscall threads to
+notice. `FreeLibrary` unmaps the cdylib's code segment.
+Microseconds later, one of those threads wakes up,
+dereferences its (now-unmapped) instruction pointer, and the
+process takes an access violation.
+
+References:
+
+- [hot-lib-reloader-rs README][hlrr]: "You can't have any
+  global state in your library; everything must be owned by
+  the host."
+- [Microsoft `FreeLibraryAndExitThread` doc][fleat]: the
+  sanctioned way for in-DLL threads to unload themselves.
+- [Old New Thing: FreeLibraryAndExitThread][onnt-fleat]: the
+  textbook crash mode.
+- [ForrestTheWoods: Debugging a library that wouldn't
+  unload][fwt]: "The root cause is a failure to properly
+  cleanup all background threads."
+
+[hlrr]: https://github.com/rksm/hot-lib-reloader-rs
+[fleat]: https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibraryandexitthread
+[onnt-fleat]: https://devblogs.microsoft.com/oldnewthing/20131105-00/?p=2733
+[fwt]: https://www.forrestthewoods.com/blog/debugging-a-dynamic-library-that-wouldnt-unload/
+
+### Chosen design: generation-versioned loading
+
+Never `FreeLibrary` an old image. Each reload loads a NEW
+cdylib with a unique filename. Old DLL stays mapped; its
+threads keep running until they observe their stop signals
+and exit cleanly. The OS unmaps the old DLL once its
+refcount + thread-IP references hit zero, on its own
+schedule.
+
+```
+plugins/wwm-rpg/
+  wwm_rpg.unityforge.dll          (generation 0, loaded at BepInEx Awake)
+  wwm_rpg.unityforge.gen1.dll     (staged by deploy; shim LoadLibrarys + activates)
+  wwm_rpg.unityforge.gen2.dll     (next reload)
+  ...
+```
+
+#### Reload sequence
+
+1. **Deploy step writes `*.gen<N>.dll`** with `<N> =
+   max-existing + 1` next to the canonical DLL.
+2. **Shim watcher** detects the file. Bumps generation.
+3. **Quiesce the active generation** (G_active):
+   - Mark `_active = false` so the shim's Update stops
+     calling `_tick` on G_active.
+   - Stop dispatching curl ops to G_active (route to "no
+     active mod" until G_new is up).
+   - Call `unityforge_shutdown` on G_active. This signals
+     stop to its threads + unpatches its Harmony patches.
+4. **LoadLibrary the new generation** (G_new). Resolve
+   entry points. Construct a fresh BridgeTable (same
+   delegate fn pointers; the bridge struct itself can be a
+   new heap allocation per generation so each cdylib gets
+   its own pinned copy).
+5. **Init G_new** with the new bridge. G_new's
+   `on_init` registers its own ops + spawns its own threads
+   + applies its own Harmony patches.
+6. **Switch active pointers** to G_new. From this tick on,
+   `_tick` calls G_new's `unityforge_tick`.
+7. **G_active threads keep draining** in the background.
+   Once their accept loops / pollers see the stop flag, they
+   exit. The cdylib image stays mapped until then;
+   no-op for users.
+
+#### State preservation
+
+Statics in G_active are gone (their memory is part of the
+G_active DLL's data segment; new code can't see them). The
+new generation re-runs its `on_init` from scratch. State
+that must survive across reloads is the user's
+responsibility to persist (the slot store already does this
+for the RPG Tracker; everything reloadable is durable
+through `<slot>.json`).
+
+Per-mod fixes for clean reload:
+
+- Slot poller's `activate_slot` re-runs on next tick →
+  Tracker loads from disk → effects re-apply → state is
+  visually identical.
+- HTTP port allocation: G_new might fail to bind 17172 if
+  G_active's listener hasn't exited yet. Use SO_REUSEADDR
+  or shift the port per generation; document the choice.
+
+#### Resource conflicts to design around
+
+| Resource | Conflict | Resolution |
+|---|---|---|
+| HTTP port 17172 | G_active still holds the socket | `tiny_http` with `SO_REUSEADDR`, or G_new probes nearby ports (17173, 17174, ...) |
+| Harmony patches | G_active's patches still fire and call into G_active's `extern "C"` trampolines (safe; their DLL is still mapped) but produce stale behavior | `unityforge_shutdown` unpatches G_active's patches before G_new init |
+| Singleton handles in C# `Dictionary<int, object>` | G_active's handle ints conflict with G_new's | Per-generation handle namespace (high bits encode generation) OR clear handles at swap (G_active threads exit before their next handle dispatch anyway) |
+| Slot save file | both generations could race the same `<slot>.json` | Quiesce step calls G_active's `deactivate_slot` which flushes pending writes before G_new takes over |
+
+#### Reloading the C# shim itself
+
+Out of scope. The shim ships frozen; only the cdylib
+generations swap. If the shim changes, quit + relaunch is
+the only path. This is the same constraint hot-lib-reloader
+and live-reloading-rs operate under (the host stays
+running).
+
+### Phasing
+
+Land as Phase 4 after Phase 3 (wwm-rpg + IL2CPP smoke). The
+work is concentrated in:
+
+1. C# shim: per-generation Plugin state, generation-counter
+   bumping, watcher routing.
+2. Rust cdylib: ensure `unityforge_shutdown` actually
+   joins HTTP + poller threads (currently signals stop but
+   doesn't join. A real bug regardless of hot reload).
+3. Per-mod conventions: HTTP port allocation, Harmony
+   patch lifecycle, save-file write ordering.
+
+Estimate: 2-3 days once the rest of the framework is
+stable. Not blocking shipping unityforge v1.
+
+### What's deployed today (post-rtfm 2026-05-13)
+
+- The shim's auto-watcher is **disabled** in source:
+  detecting `<dll>.new` logs a warning and deletes the
+  staging file. No swap is attempted. Safe.
+- The `-Hot` flag on `build_and_deploy.ps1` is **neutered**:
+  prints an explanation and exits non-zero.
+- Quit + relaunch is the iteration loop until the
+  generation-loading shim ships.
+
 ## 7. Open design questions
 
 1. **Bridge ABI: one struct with backend-specific entries, or

@@ -17,7 +17,7 @@ namespace Unityforge.Shim
     public static class BridgeConstants
     {
         public const uint Magic = 0x52424655u; // "UFBR"
-        public const uint Version = 2u;        // bumped: added RuntimeKind + neutral field names
+        public const uint Version = 3u;        // bumped: added input key-binding entries
     }
 
     public enum RuntimeKind : uint
@@ -51,6 +51,10 @@ namespace Unityforge.Shim
         public IntPtr HarmonyPatchPrefix;
         public IntPtr HarmonyPatchPostfix;
         public IntPtr HarmonyUnpatch;
+
+        // input (v3+; shared, populated from InputBridge)
+        public IntPtr RegisterKeyBinding;
+        public IntPtr UnregisterKeyBinding;
     }
 
     /// <summary>
@@ -97,6 +101,9 @@ namespace Unityforge.Shim
                 HarmonyPatchPrefix = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPrefixDelegate),
                 HarmonyPatchPostfix = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixDelegate),
                 HarmonyUnpatch = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.UnpatchDelegate),
+
+                RegisterKeyBinding = Marshal.GetFunctionPointerForDelegate(InputBridge.RegisterDelegate),
+                UnregisterKeyBinding = Marshal.GetFunctionPointerForDelegate(InputBridge.UnregisterDelegate),
             };
         }
     }

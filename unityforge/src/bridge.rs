@@ -25,10 +25,9 @@ use std::sync::OnceLock;
 /// in little-endian.
 pub const BRIDGE_MAGIC: u32 = 0x52424655;
 
-/// Current ABI version. v2 added RuntimeKind + renamed mono_*
-/// fields to neutral names (each shim populates with its own
-/// backend's implementation).
-pub const BRIDGE_VERSION: u32 = 2;
+/// Current ABI version. v3 added input key-binding entries
+/// (`register_key_binding` / `unregister_key_binding`).
+pub const BRIDGE_VERSION: u32 = 3;
 
 /// Unity runtime backend. Stored in the bridge struct at init;
 /// read via [`runtime_kind`] for code that must branch on
@@ -167,6 +166,19 @@ pub struct BridgeTable {
 
     /// Remove a Harmony patch. Idempotent.
     pub harmony_unpatch: extern "C" fn(patch: PatchHandle),
+
+    // ---- input (added in v3) -------------------------------------------
+    /// Register a callback that fires on `Input.GetKeyDown(keycode)`.
+    /// `keycode` is a UnityEngine.KeyCode integer (e.g. 32 = Space).
+    /// `callback` is a `extern "C" fn()` invoked from the shim's
+    /// Update on the Unity main thread when the key is first
+    /// pressed each frame. Returns a binding handle (0 on
+    /// failure; idempotent for the same callback).
+    pub register_key_binding:
+        extern "C" fn(keycode: i32, callback: extern "C" fn()) -> i32,
+
+    /// Remove a key binding. Idempotent.
+    pub unregister_key_binding: extern "C" fn(binding: i32),
 }
 
 static BRIDGE: OnceLock<BridgeTable> = OnceLock::new();

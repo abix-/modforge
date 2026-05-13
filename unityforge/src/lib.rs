@@ -12,6 +12,7 @@
 pub mod bridge;
 pub mod hook;
 pub mod il2cpp;
+pub mod input;
 pub mod main_thread_queue;
 pub mod mod_main;
 pub mod mono;

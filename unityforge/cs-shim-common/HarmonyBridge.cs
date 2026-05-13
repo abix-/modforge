@@ -43,6 +43,26 @@ namespace Unityforge.Shim
             if (_harmony == null) _harmony = new Harmony(instanceId);
         }
 
+        /// <summary>
+        /// Drop every active patch. Used during hot reload so
+        /// HarmonyX doesn't dispatch into a freed Rust DLL.
+        /// </summary>
+        public static void UnpatchAll()
+        {
+            lock (_lock)
+            {
+                if (_harmony != null)
+                {
+                    try { _harmony.UnpatchSelf(); }
+                    catch (Exception e)
+                    {
+                        ShimLogger.Source?.LogError("HarmonyBridge.UnpatchAll: " + e);
+                    }
+                }
+                _patches.Clear();
+            }
+        }
+
         private class PatchEntry
         {
             public MethodBase Target;

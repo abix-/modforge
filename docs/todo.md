@@ -15,6 +15,62 @@
 
 ---
 
+## P0. Unityforge: ship generation-versioned hot reload (Phase 4)
+
+The naive FreeLibrary-based hot reload shipped 2026-05-13
+crashed WWM with an access violation on the first attempt:
+`unityforge_shutdown` signals stop flags to background
+threads (HTTP server, slot poller) but does NOT join them,
+500 ms sleep isn't enough for blocked-on-syscall threads,
+and `FreeLibrary` then unmaps the cdylib while threads
+still have IPs inside it. Textbook crash. After rtfm
+research, picked **generation-versioned loading** as the
+canonical fix. Old DLL never unloads; each reload
+`LoadLibrary`s a new image with a unique filename. Deep-dive:
+[`unityforge-plan.md` §6.5](unityforge-plan.md#65-hot-reload-phase-4-planned).
+
+What ships TODAY (safety patch, 2026-05-13 post-rtfm):
+
+- [x] Disable the broken auto-watcher in
+  `cs-shim-mono/Plugin.cs`: detecting `<dll>.new` logs a
+  warning + deletes the staging file; no swap attempted.
+- [x] Neuter `build_and_deploy.ps1 -Hot` so it exits with
+  an explanation instead of staging a landmine.
+
+What's open for the real fix:
+
+- [ ] **Shim: generation pointers + per-gen state.** Each
+  generation has its own loaded module + entry points +
+  bridge table. The active pointer switches on reload; old
+  generations stay in the shim's list until their threads
+  exit.
+- [ ] **Shim: watcher routes to LoadLibrary, never
+  FreeLibrary.** Drop `wwm_rpg.unityforge.gen<N>.dll` ->
+  shim bumps N, loads it, quiesces N-1, switches active.
+- [ ] **Cdylib: `unityforge_shutdown` must actually join
+  background threads.** Currently signals stop only. The
+  HTTP server thread (tiny_http accept loop) doesn't
+  unblock without explicit listener close; needs a
+  shutdown hook in `modforge::server` that closes the
+  socket. Slot poller's `handle.stop()` is correct but the
+  thread sleeps up to 1 s before noticing.
+- [ ] **HTTP port allocation strategy.** G_new can't bind
+  17172 if G_active still holds it. Either `SO_REUSEADDR`
+  on tiny_http or shift port per generation (17172 + N).
+- [ ] **Harmony patch lifecycle on swap.** G_active
+  unpatches its own patches in `unityforge_shutdown`;
+  G_new applies fresh patches in `on_init`. Verify
+  HarmonyX cleans up correctly per generation.
+- [ ] **Handle-table namespace per generation.** Either
+  high-bit encode generation in the int handle or accept
+  that G_active threads can't dispatch to C# after
+  shutdown (they should be exiting anyway).
+- [ ] **Deploy script: `-Hot` writes `*.gen<N>.dll`** with
+  N = max-existing + 1, instead of `.new`.
+
+Phase priority is post-Phase-3. Estimated 2-3 days when
+the rest of the framework is stable.
+
 ## P0. Unityforge: finish the modforge extraction (Phase 0b remainder)
 
 Phase 0b lifts ~12k Rust lines out of ueforge into the engine-agnostic

@@ -39,6 +39,14 @@ namespace Unityforge.Shim
         private GCHandle _bridgeHandle;
         private bool _started;
 
+        // Hot reload state. Drop a `<dll>.new` next to the
+        // canonical DLL and the shim swaps it in on the next
+        // Update tick. See `Reload()` for the sequence.
+        private string _canonicalDllPath;
+        private string _stagingDllPath;
+        private float _lastReloadCheck;
+        private const float ReloadCheckIntervalSec = 1.0f;
+
         private void Awake()
         {
             ShimLogger.Source = base.Logger;
@@ -51,6 +59,8 @@ namespace Unityforge.Shim
                 return;
             }
             ShimLogger.Source.LogInfo("Unityforge.Shim: loading " + dllPath);
+            _canonicalDllPath = dllPath;
+            _stagingDllPath = dllPath + ".new";
 
             _rustModule = NativeLibrary.Load(dllPath);
             if (_rustModule == IntPtr.Zero)
@@ -92,8 +102,41 @@ namespace Unityforge.Shim
         private void Update()
         {
             if (!_started) return;
+            InputBridge.PollAll();
+            CheckHotReload();
             try { _tick(Time.realtimeSinceStartup); }
             catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: tick threw: " + e); }
+        }
+
+        // Hot reload is NOT IMPLEMENTED in this shim. The previous
+        // FreeLibrary-and-swap approach crashed because the
+        // cdylib spawns background threads (HTTP server, slot
+        // poller) that hold instruction pointers into the
+        // mapped DLL. FreeLibrary'ing it while those threads
+        // run = access violation on their next instruction.
+        //
+        // The canonical fix is generation-versioned loading:
+        // each reload `LoadLibrary`s a NEW image with a unique
+        // filename and never `FreeLibrary`s the old one. Old
+        // threads exit on their own stop signal; the OS unmaps
+        // the old DLL once its refcount hits zero. Designing
+        // that properly is tracked in
+        // docs/unityforge-plan.md section "Hot reload".
+        //
+        // For now: if a `<dll>.new` file is present, log a
+        // warning and ignore. Don't auto-swap.
+        private void CheckHotReload()
+        {
+            var now = Time.realtimeSinceStartup;
+            if (now - _lastReloadCheck < ReloadCheckIntervalSec) return;
+            _lastReloadCheck = now;
+            if (string.IsNullOrEmpty(_stagingDllPath)) return;
+            if (!File.Exists(_stagingDllPath)) return;
+            ShimLogger.Source.LogWarning(
+                "Unityforge.Shim: ignoring " + Path.GetFileName(_stagingDllPath)
+                + " (hot reload disabled until generation-versioned loading lands)");
+            try { File.Delete(_stagingDllPath); }
+            catch { /* leave the file; next deploy will overwrite */ }
         }
 
         private void OnDestroy()

@@ -12,6 +12,7 @@
 //! 5. The shim's MonoBehaviour.Update calls `unityforge_tick`
 //!    every frame, which drains the main-thread queue.
 
+mod jump;
 mod skills;
 
 use unityforge::ModDef;
@@ -44,6 +45,11 @@ fn on_init() {
 
     // RPG catalog + Harmony hooks.
     skills::install();
+
+    // Spacebar -> jump. WWM has no native jump; this adds one
+    // by Translate-ing the player +3m on press. Gravity does
+    // the descent.
+    jump::install();
 
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,

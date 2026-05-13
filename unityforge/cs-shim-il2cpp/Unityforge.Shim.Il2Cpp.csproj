@@ -22,6 +22,9 @@
     <Compile Include="..\cs-shim-common\Logger.cs">
       <Link>Common\Logger.cs</Link>
     </Compile>
+    <Compile Include="..\cs-shim-common\InputBridge.cs">
+      <Link>Common\InputBridge.cs</Link>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -54,6 +57,10 @@
       <!-- IL2CPP runtime: Il2CppInterop generates managed shims under
            BepInEx/interop/. Reference the auto-generated one. -->
       <HintPath>$(BepInExDir)\interop\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule" Condition="'$(BepInExDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(BepInExDir)\interop\UnityEngine.InputLegacyModule.dll</HintPath>
     </Reference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
   </ItemGroup>

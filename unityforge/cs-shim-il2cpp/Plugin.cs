@@ -140,6 +140,7 @@ namespace Unityforge.Shim
         private void Update()
         {
             if (Tick == null) return;
+            InputBridge.PollAll();
             try { Tick(Time.realtimeSinceStartup); }
             catch (Exception e) { ShimLogger.Source?.LogError("Unityforge.Shim.Il2Cpp: tick threw: " + e); }
         }
