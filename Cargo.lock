@@ -953,10 +953,13 @@ dependencies = [
  "arc-swap",
  "crossbeam-channel",
  "fastrand",
+ "insta",
  "parking_lot",
+ "proptest",
  "serde",
  "serde_json",
  "smallvec",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

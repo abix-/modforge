@@ -30,6 +30,15 @@ anyhow = { workspace = true }
 crossbeam-channel = { workspace = true }
 smallvec = { workspace = true }
 fastrand = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+] }
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }
 
 [lints]
 workspace = true

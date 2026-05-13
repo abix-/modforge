@@ -12,5 +12,8 @@
 //! `pub use modforge::<mod>::*;` re-export left in ueforge so
 //! existing call sites compile unchanged.
 
+pub mod args;
 pub mod counters;
+pub mod envelope;
+pub mod log;
 pub mod ring;
