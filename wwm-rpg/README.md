@@ -17,17 +17,22 @@ accepts `ping`, `walk_class`, `inspect_object`, `read_field`,
 What's not done yet (this v0 is the path to "ready to test",
 not "feature complete"):
 
-- The C# shim's HTTP server (and the ops surface) lives in
-  unityforge but is not wired into the shim yet. The shim
-  currently just bridges Mono + Harmony. The Rust side
-  registers ops against `modforge::ops::OP_REGISTRY`; serving
-  them over HTTP from the shim is the next step.
 - Effect application (FieldMultiply on
   `PlayerCarryingController.MaxCapacity` etc) is stubbed.
   The Harmony postfixes increment XP but don't apply
-  field-mutation effects yet.
+  field-mutation effects yet. Once `walk_class` confirms the
+  game's field offsets in-running, wire them into the
+  postfixes.
 - modforge::rpg Tracker / Skill / Effect traits are not in
-  place; this v0 keeps state in atomics.
+  place; this v0 keeps state in atomics. Once they migrate,
+  this mod will declaratively compose Effects + Triggers.
+- Thread safety: the HTTP listener spawns a background
+  thread. Ops that touch Unity types (`walk_class`,
+  `read_field` on a UnityEngine.Object, `invoke_method`)
+  may not be thread-safe; the framework's `write_field` /
+  `invoke_method` already route through MAIN_QUEUE, but
+  reads currently do not. Add main-thread routing for reads
+  if you see Unity-side asserts in the log.
 
 ## Build
 
