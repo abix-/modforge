@@ -82,6 +82,12 @@ pub fn register_builtins() {
             "{}",
             |_args| Ok(crate::selector::list_json()),
         ),
+        OpDef::new(
+            "list_methods",
+            "Enumerate methods on a type (walks inheritance chain)",
+            "{class: str}",
+            list_methods,
+        ),
     ]);
 }
 
@@ -93,6 +99,24 @@ fn walk_class(args: &Json) -> Result<Json, String> {
         .unwrap_or(false);
     let ty = MonoType::find(class).ok_or_else(|| format!("type '{class}' not found"))?;
     ty.walk(include_inactive)
+}
+
+fn list_methods(args: &Json) -> Result<Json, String> {
+    use std::ffi::CString;
+    let class = arg_str(args, "class")?;
+    let bridge = crate::bridge::try_get()?;
+    let c_name = CString::new(class).map_err(|e| format!("bad class: {e}"))?;
+    let mut buf = vec![0u8; 65536];
+    let n = (bridge.list_methods)(
+        c_name.as_ptr(),
+        buf.as_mut_ptr() as *mut std::os::raw::c_char,
+        buf.len() as i32,
+    );
+    if n < 0 {
+        return Err("list_methods: buffer too small".into());
+    }
+    buf.truncate(n as usize);
+    serde_json::from_slice::<Json>(&buf).map_err(|e| format!("list_methods json: {e}"))
 }
 
 fn inspect_object(args: &Json) -> Result<Json, String> {

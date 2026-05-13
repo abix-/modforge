@@ -17,7 +17,7 @@ namespace Unityforge.Shim
     public static class BridgeConstants
     {
         public const uint Magic = 0x52424655u; // "UFBR"
-        public const uint Version = 3u;        // bumped: added input key-binding entries
+        public const uint Version = 4u;        // bumped: added ListMethods
     }
 
     public enum RuntimeKind : uint
@@ -55,6 +55,9 @@ namespace Unityforge.Shim
         // input (v3+; shared, populated from InputBridge)
         public IntPtr RegisterKeyBinding;
         public IntPtr UnregisterKeyBinding;
+
+        // reflection (v4+; method-list helper)
+        public IntPtr ListMethods;
     }
 
     /// <summary>
@@ -74,6 +77,7 @@ namespace Unityforge.Shim
         IntPtr WriteField { get; }
         IntPtr InvokeMethod { get; }
         IntPtr ReleaseHandle { get; }
+        IntPtr ListMethods { get; }
     }
 
     public static class Bridge
@@ -104,6 +108,8 @@ namespace Unityforge.Shim
 
                 RegisterKeyBinding = Marshal.GetFunctionPointerForDelegate(InputBridge.RegisterDelegate),
                 UnregisterKeyBinding = Marshal.GetFunctionPointerForDelegate(InputBridge.UnregisterDelegate),
+
+                ListMethods = backend.ListMethods,
             };
         }
     }

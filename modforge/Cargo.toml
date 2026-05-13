@@ -42,6 +42,7 @@ windows-sys = { workspace = true, features = [
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
 tiny_http = { workspace = true }
+socket2 = { workspace = true }
 ureq = { workspace = true }
 hex = { workspace = true }
 region = { workspace = true }

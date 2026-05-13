@@ -25,9 +25,8 @@ use std::sync::OnceLock;
 /// in little-endian.
 pub const BRIDGE_MAGIC: u32 = 0x52424655;
 
-/// Current ABI version. v3 added input key-binding entries
-/// (`register_key_binding` / `unregister_key_binding`).
-pub const BRIDGE_VERSION: u32 = 3;
+/// Current ABI version. v4 added `list_methods`.
+pub const BRIDGE_VERSION: u32 = 4;
 
 /// Unity runtime backend. Stored in the bridge struct at init;
 /// read via [`runtime_kind`] for code that must branch on
@@ -179,6 +178,20 @@ pub struct BridgeTable {
 
     /// Remove a key binding. Idempotent.
     pub unregister_key_binding: extern "C" fn(binding: i32),
+
+    // ---- reflection (v4+) -----------------------------------------------
+    /// Enumerate methods on a type by name. Walks the inheritance
+    /// chain so methods declared on a base class (e.g.
+    /// `Singleton<T>.Awake`) are included along with declared
+    /// methods, each tagged with their declaring type. Result is
+    /// JSON `{ "type": str, "methods": [{name, declared_on,
+    /// params, static, return}] }`. Returns bytes written, or -1
+    /// on cap-too-small.
+    pub list_methods: extern "C" fn(
+        type_name_utf8: *const c_char,
+        out_json_utf8: *mut c_char,
+        cap: i32,
+    ) -> i32,
 }
 
 static BRIDGE: OnceLock<BridgeTable> = OnceLock::new();

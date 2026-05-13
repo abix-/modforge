@@ -35,6 +35,7 @@ namespace Unityforge.Shim
         public IntPtr WriteField => Marshal.GetFunctionPointerForDelegate(MonoBridge.WriteFieldDelegate);
         public IntPtr InvokeMethod => Marshal.GetFunctionPointerForDelegate(MonoBridge.InvokeMethodDelegate);
         public IntPtr ReleaseHandle => Marshal.GetFunctionPointerForDelegate(MonoBridge.ReleaseHandleDelegate);
+        public IntPtr ListMethods => Marshal.GetFunctionPointerForDelegate(MonoBridge.ListMethodsDelegate);
     }
 
     public static class MonoBridge
@@ -86,6 +87,7 @@ namespace Unityforge.Shim
         public delegate int WriteFieldFn(int handle, IntPtr fieldNameUtf8, IntPtr valueJsonUtf8);
         public delegate int InvokeMethodFn(int handle, IntPtr methodNameUtf8, IntPtr argsJsonUtf8, IntPtr outBuf, int cap);
         public delegate void ReleaseHandleFn(int handle);
+        public delegate int ListMethodsFn(IntPtr typeNameUtf8, IntPtr outBuf, int cap);
 
         // Static delegate refs keep the closures alive against the GC.
         public static readonly FindTypeFn FindTypeDelegate = FindType;
@@ -97,6 +99,7 @@ namespace Unityforge.Shim
         public static readonly WriteFieldFn WriteFieldDelegate = WriteField;
         public static readonly InvokeMethodFn InvokeMethodDelegate = InvokeMethod;
         public static readonly ReleaseHandleFn ReleaseHandleDelegate = ReleaseHandle;
+        public static readonly ListMethodsFn ListMethodsDelegate = ListMethods;
 
         // ---- implementations -------------------------------------------
 
@@ -266,6 +269,58 @@ namespace Unityforge.Shim
                 }
             }
             return -2;
+        }
+
+        private static int ListMethods(IntPtr typeNameUtf8, IntPtr outBuf, int cap)
+        {
+            var name = Marshal.PtrToStringAnsi(typeNameUtf8);
+            if (string.IsNullOrEmpty(name))
+                return WriteJson(outBuf, cap, new JObject { ["error"] = "type name required" });
+            var t = TypeCache.Resolve(name);
+            if (t == null)
+                return WriteJson(outBuf, cap, new JObject { ["error"] = $"type '{name}' not found" });
+
+            // Walk the inheritance chain so inherited methods on the
+            // class (Singleton<T>, MonoBehaviour, etc.) are reported
+            // alongside declared methods. Each entry tags the
+            // declaring type so Harmony patch decisions are
+            // unambiguous.
+            var methods = new JArray();
+            var seen = new HashSet<string>();
+            var cur = t;
+            while (cur != null && cur != typeof(object))
+            {
+                var mis = cur.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
+                    | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                foreach (var mi in mis)
+                {
+                    var pars = mi.GetParameters();
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append(mi.Name).Append("(");
+                    for (int i = 0; i < pars.Length; i++)
+                    {
+                        if (i > 0) sb.Append(",");
+                        sb.Append(pars[i].ParameterType.Name);
+                    }
+                    sb.Append(")");
+                    var sig = cur.FullName + "::" + sb.ToString();
+                    if (!seen.Add(sig)) continue;
+                    methods.Add(new JObject
+                    {
+                        ["name"] = mi.Name,
+                        ["declared_on"] = cur.FullName,
+                        ["params"] = pars.Length,
+                        ["static"] = mi.IsStatic,
+                        ["return"] = mi.ReturnType?.Name ?? "void",
+                    });
+                }
+                cur = cur.BaseType;
+            }
+            return WriteJson(outBuf, cap, new JObject
+            {
+                ["type"] = t.FullName,
+                ["methods"] = methods,
+            });
         }
 
         private static void ReleaseHandle(int handle)

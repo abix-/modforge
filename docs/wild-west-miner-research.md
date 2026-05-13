@@ -626,6 +626,168 @@ that one is blocking the user right now.
 
 ---
 
+## 7.7. Demo-end block attempt (2026-05-14 session): failed
+
+Spent a long session trying to block the demo-end panel.
+None of six patch strategies worked. Documenting every dead
+end so we don't repeat them.
+
+### What we built that DID work
+
+- **`list_methods` HTTP op + bridge entry.** Enumerates
+  every method on a type, walking the inheritance chain so
+  base-class methods are reported with their declaring
+  type. Confirmed `DemoCompleteScreenUI` declares: `Update`,
+  `Show`, `FocusCoroutine`, `GetEscapeButtonName`,
+  `UpdateEscape`, `<FocusCoroutine>b__5_0` (lambda). Bumped
+  bridge ABI to v4.
+- **`SO_REUSEADDR` on the HTTP listener bind.**
+  `modforge::server::spawn` now builds the TCP socket via
+  `socket2` and sets `SO_REUSEADDR` before binding.
+  Eliminates the 20-attempt retry that previously failed
+  after Windows TIME_WAIT held port 17172 for minutes
+  across a hot reload. Confirmed working: gen0 -> gen1 hot
+  swap now sees gen1's listener bind cleanly on the same
+  port.
+- **Hot reload (Rust cdylib) is functional.** Generation
+  versioning + condvar-wake shutdown + SO_REUSEADDR makes
+  `build_and_deploy.ps1 -Hot` a real iteration loop for
+  Rust changes.
+
+### The six patch strategies and why each failed
+
+1. **Harmony prefix on `DemoCompleteScreenUI.OnEnable`.**
+   `OnEnable` is a Unity message inherited from
+   `MonoBehaviour`. `AccessTools.Method` with the derived
+   type returns null. HarmonyX logs:
+   `Could not find method for type DemoCompleteScreenUI
+   and name OnEnable and parameters`.
+2. **Harmony prefix on 15 guessed method names** (`Show`,
+   `Open`, `Display`, `Awake`, etc.). Same `Could not find
+   method` for 13 of the 15. `Awake` matched the inherited
+   `Singleton<T>::Awake` and HarmonyX warned the patch
+   would target the base. We didn't proceed.
+3. **`list_methods` + patch every method declared on the
+   class itself** (Rust-side bridge). All six declared
+   methods reported `harmony_patch_prefix(...) failed`.
+   Root cause: the `HarmonyBridge.PatchPrefix` in
+   `cs-shim-common/HarmonyBridge.cs` constructs the Harmony
+   patch from `new Action(() => del(...))`. An
+   **instance-method lambda**. HarmonyLib rejects
+   instance methods as patch targets (the exception is
+   caught and the handle returned is 0). Every Rust-side
+   `patch_prefix` call has been silently failing.
+4. **Shim-side direct Harmony patch on
+   `DemoCompleteScreenUI.Show`** (bypassing the Rust
+   bridge). `Patch()` succeeded ("WWM block: patched ...
+   .Show"). But the intercept prefix never fired. **`Show`
+   is never called**. The panel activates through a
+   different code path.
+5. **Shim-side patch on all five declared methods
+   (`Update`, `Show`, `FocusCoroutine`,
+   `GetEscapeButtonName`, `UpdateEscape`).** All five
+   patches "installed". None ever fired. So even `Update`
+   isn't running on this MonoBehaviour, despite
+   `enabled=true`, `isActiveAndEnabled=true`,
+   `didAwake=true`, `didStart=true`. Either Unity has
+   cached "no Update" at instantiation in a way Harmony
+   can't override, OR the controller is structurally
+   inactive in a way that doesn't surface to reflection.
+6. **Shim-side patch on
+   `UnityEngine.GameObject.SetActive(bool)` with a name
+   filter.** `Patch()` succeeded. Prefix never fired for
+   any GameObject. **`SetActive` is declared `extern` in
+   Unity**. It has no IL body, just a native call.
+   Harmony cannot detour extern methods. The patch is
+   silently a no-op.
+
+### What we still don't understand
+
+- **The actual mechanism the panel uses to appear.** Not
+  `Show()`, not `Update`, not direct `SetActive`. Likely a
+  Unity-asset-level `UnityEvent` persistent call wired in
+  the editor that points at SOMETHING (possibly an
+  `Animator`, a custom screen-manager, or
+  `GameObject.SetActiveRecursivelyOnHierarchy`). We never
+  found the caller.
+- **Why managed methods on `DemoCompleteScreenUI` are
+  never called by Unity** even though every state flag
+  says the MonoBehaviour is active and enabled. This is
+  the deepest mystery; needs Unity-internal investigation.
+
+### Live state collateral damage
+
+While the panel is up, `Time.timeScale = 0`. The shim's
+main-thread queue stops draining (this we suspected; not
+yet proven, but `invoke_method` / `write_field` ops
+timed out for the entire session while the panel was
+shown). Once the user returned to main menu, the queue
+also stopped draining at game-clock ~15s. Update on the
+shim's MonoBehaviour ran briefly then stopped. We never
+diagnosed why Update stops in the in-game scene.
+
+### Next-session attack angles (ranked)
+
+1. **Patch `TutorialTaskSellItem.OnFinish` (or whatever
+   method names map to "task complete").** Call
+   `list_methods` against `TutorialTaskSellItem` to
+   confirm. If a managed method on this class fires the
+   onFinishEvent, patching it returns false skips
+   onFinishEvent.Invoke() and the demo-end never
+   triggers. Highest leverage; if `TutorialTaskSellItem`
+   declares its own task-complete method (not inherited),
+   Harmony works.
+2. **Patch `UnityEvent.Invoke()` (managed, on
+   `UnityEngine.Events.UnityEvent`).** Filter on the
+   specific UnityEvent reference (the SellGoldBar task's
+   `onFinishEvent`, handle was 12301 in the
+   2026-05-13 session). Hot-path overhead acceptable for
+   a per-frame check.
+3. **Fix the broken Rust-side
+   `HarmonyBridge.PatchPrefix` first.** Replace the
+   instance-method lambda with a static dispatcher keyed
+   by patch handle. Every Rust-side patch in the
+   workspace has been silently failing. Including
+   `DigManager.Dig` and `PlayerManager.AddPlayerCurrency`
+   postfixes that wwm-rpg relies on for XP tracking.
+   Until this lands, anything Rust patches doesn't fire.
+4. **Diagnose why Update stops at game-clock ~15s.**
+   Add explicit per-frame logging to Plugin.Update.
+   Until we know why, the main-thread queue is
+   unreliable and we can't drive in-game state changes
+   from HTTP.
+5. **Add `list_callers` / `find_caller` op.** Given a
+   target method (`GameObject.SetActive`), enumerate
+   managed methods that reference it via IL. That would
+   pinpoint which class calls SetActive on the
+   `DemoCompleteScreen` GameObject. Requires IL parsing
+   via Mono.Cecil; doable.
+
+### Files touched this session
+
+- `modforge/src/server.rs`. SO_REUSEADDR bind path.
+- `modforge/Cargo.toml` + `Cargo.toml`. Added `socket2`.
+- `unityforge/src/bridge.rs`. Bumped to v4, added
+  `list_methods` fn pointer.
+- `unityforge/src/ops.rs`. Added `list_methods` HTTP
+  op.
+- `unityforge/cs-shim-common/Bridge.cs`. V4 layout,
+  `ListMethods` in `IBackendBridge` and `BridgeTable`.
+- `unityforge/cs-shim-mono/MonoBridge.cs`. `ListMethods`
+  impl walking inheritance chain.
+- `unityforge/cs-shim-mono/Plugin.cs`. Six iterations of
+  `InstallDemoCompleteBlock` / `DoPatch` /
+  `BlockDemoComplete_*Prefix`. Final state patches
+  `GameObject.SetActive` with a name filter (no-op
+  because extern). Dead code left in for the next
+  session to pick up from.
+- `wwm-rpg/src/block_demo_end.rs`. Rust-side multi-
+  method patch attempt. Currently a no-op (every
+  patch_prefix returns 0 due to the
+  HarmonyBridge.PatchPrefix bug).
+
+---
+
 ## 8. Open research questions
 
 Things this pass did NOT answer:

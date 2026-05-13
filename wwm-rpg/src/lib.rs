@@ -12,6 +12,7 @@
 //! 5. The shim's MonoBehaviour.Update calls `unityforge_tick`
 //!    every frame, which drains the main-thread queue.
 
+mod block_demo_end;
 mod jump;
 mod skills;
 
@@ -50,6 +51,8 @@ fn on_init() {
     // by Translate-ing the player +3m on press. Gravity does
     // the descent.
     jump::install();
+
+    block_demo_end::install();
 
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,

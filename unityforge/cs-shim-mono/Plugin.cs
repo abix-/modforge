@@ -89,6 +89,14 @@ namespace Unityforge.Shim
 
             HarmonyBridge.EnsureHarmony(PluginGuid);
 
+            // WWM-specific: block the demo-end panel by patching
+            // DemoCompleteScreenUI.Show with a static prefix that
+            // returns false. The Rust-side patch path uses an
+            // instance-method bridge which HarmonyX rejects; until
+            // that lands, this direct shim-side patch unblocks
+            // gameplay so the demo screen never opens.
+            InstallDemoCompleteBlock();
+
             _active = LoadGeneration(dllPath, generationNumber: 0);
             if (_active == null)
             {
@@ -96,6 +104,135 @@ namespace Unityforge.Shim
                 return;
             }
             ShimLogger.Source.LogInfo("Unityforge.Shim: ready (generation 0)");
+        }
+
+        private static void InstallDemoCompleteBlock()
+        {
+            try
+            {
+                // The trigger that opens the demo-end panel is a
+                // Unity-asset-level event call to
+                // `DemoCompleteScreen.SetActive(true)` (no managed
+                // code on the controller is involved). Patching
+                // GameObject.SetActive itself, with a cheap name
+                // check, is the only sound interception point.
+                if (_wwmHarmony == null)
+                    _wwmHarmony = new HarmonyLib.Harmony("abix.unityforge.shim.wwmblock");
+                var setActive = HarmonyLib.AccessTools.Method(
+                    typeof(UnityEngine.GameObject), "SetActive",
+                    new Type[] { typeof(bool) });
+                if (setActive == null)
+                {
+                    ShimLogger.Source?.LogError("WWM block: GameObject.SetActive not found");
+                    return;
+                }
+                _wwmHarmony.Patch(setActive, prefix: new HarmonyLib.HarmonyMethod(
+                    typeof(UnityforgeShimPlugin),
+                    nameof(BlockDemoComplete_SetActivePrefix)));
+                ShimLogger.Source?.LogInfo("WWM block: patched GameObject.SetActive (filter name==DemoCompleteScreen)");
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Source?.LogError("WWM block: install threw: " + e);
+            }
+        }
+
+        // Filters on name to keep the per-frame overhead at a
+        // ~50ns string compare. Returns true (run original) for
+        // every call except activating DemoCompleteScreen.
+        public static bool BlockDemoComplete_SetActivePrefix(
+            UnityEngine.GameObject __instance, bool value)
+        {
+            if (value && __instance != null && __instance.name == "DemoCompleteScreen")
+            {
+                ShimLogger.Source?.LogInfo(
+                    "WWM block: blocked SetActive(true) on DemoCompleteScreen");
+                return false;
+            }
+            return true;
+        }
+
+        private static bool _demoBlockInstalled;
+        private static void OnSceneLoadedTryBlock(
+            UnityEngine.SceneManagement.Scene scene,
+            UnityEngine.SceneManagement.LoadSceneMode mode)
+        {
+            if (_demoBlockInstalled) return;
+            try
+            {
+                var t = TypeCache.Resolve("DemoCompleteScreenUI");
+                if (t == null) return;
+                DoPatch(t);
+                _demoBlockInstalled = true;
+                UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnSceneLoadedTryBlock;
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Source?.LogError("WWM block: scene-load retry threw: " + e);
+            }
+        }
+
+        private static HarmonyLib.Harmony _wwmHarmony;
+        private static readonly string[] _wwmTargetMethods = new[]
+        {
+            "Update", "Show", "FocusCoroutine",
+            "GetEscapeButtonName", "UpdateEscape",
+        };
+
+        private static void DoPatch(Type t)
+        {
+            if (_wwmHarmony == null)
+                _wwmHarmony = new HarmonyLib.Harmony("abix.unityforge.shim.wwmblock");
+            int patched = 0;
+            foreach (var name in _wwmTargetMethods)
+            {
+                try
+                {
+                    var m = HarmonyLib.AccessTools.Method(t, name);
+                    if (m == null)
+                    {
+                        ShimLogger.Source?.LogWarning($"WWM block: method {name} not found");
+                        continue;
+                    }
+                    _wwmHarmony.Patch(m, prefix: new HarmonyLib.HarmonyMethod(
+                        typeof(UnityforgeShimPlugin), nameof(BlockDemoComplete_UpdatePrefix)));
+                    ShimLogger.Source?.LogInfo($"WWM block: patched {name}");
+                    patched++;
+                }
+                catch (Exception e)
+                {
+                    ShimLogger.Source?.LogError($"WWM block: patch {name} threw: " + e);
+                }
+            }
+            _demoBlockInstalled = patched > 0;
+            ShimLogger.Source?.LogInfo($"WWM block: total patched = {patched}");
+        }
+
+        // Universal prefix used for every patched method on
+        // DemoCompleteScreenUI. Whichever method fires first
+        // deactivates the panel GameObject and stops the original
+        // from running. The first log line tells us which method
+        // Unity actually invokes; that diagnostic is the point.
+        public static bool BlockDemoComplete_UpdatePrefix(
+            UnityEngine.MonoBehaviour __instance,
+            System.Reflection.MethodBase __originalMethod)
+        {
+            try
+            {
+                string mname = __originalMethod != null ? __originalMethod.Name : "<unknown>";
+                ShimLogger.Source?.LogInfo($"WWM block: intercepted {mname}() on DemoCompleteScreenUI");
+                if (__instance != null && __instance.gameObject != null
+                    && __instance.gameObject.activeSelf)
+                {
+                    __instance.gameObject.SetActive(false);
+                    ShimLogger.Source?.LogInfo("WWM block: deactivated DemoCompleteScreen GameObject");
+                }
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Source?.LogError("WWM block: prefix threw: " + e);
+            }
+            return false; // skip original
         }
 
         private void Update()

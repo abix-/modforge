@@ -21,18 +21,37 @@ The session that just ended built generation-versioned hot
 reload + deployed it. Verification + the next-largest
 chunks of remaining work, in order:
 
-0. **Unblock the user's demo-end stall.** WWM hit
-   `DemoCompleteScreen` (UI/Screens/DemoCompleteScreen,
-   GameObject handle 11006 in that session). Gameplay
-   scene still loaded behind it; disabling the panel
-   would resume play. `invoke_method` / `write_field`
-   currently time out via main-thread queue while
-   timeScale=0. Fix the shim drain in
-   `cs-shim-mono/Plugin.cs` to tick off
-   `Time.unscaledDeltaTime` (or unconditionally per
-   Update). Hot-deploy, then `SetActive(false)` on the
-   panel GameObject. Persistent fix: Harmony prefix on
-   whatever opens `DemoCompleteScreen`.
+0. **Unblock the user's demo-end stall (failed 2026-05-14).**
+   Six patch strategies tried, none worked. Full postmortem
+   in [`wild-west-miner-research.md` §7.7](wild-west-miner-research.md#77-demo-end-block-attempt-2026-05-14-session-failed).
+   Critical unknowns:
+   - The actual call path that opens the panel (not
+     `Show()`, not direct `SetActive`).
+   - Why Unity doesn't call `Update` on
+     `DemoCompleteScreenUI` despite the controller being
+     enabled+active.
+   - Why the shim's `MonoBehaviour.Update` stops firing
+     at game-clock ~15s in-scene (main-thread queue dies
+     with it; write_field/invoke_method become unusable).
+   Highest-leverage next attempt: patch
+   `TutorialTaskSellItem.OnFinish` (or whatever name
+   `list_methods` reveals) on the SellGoldBar task to
+   skip its `onFinishEvent.Invoke`. If that fails, patch
+   `UnityEvent.Invoke()` with a filter on the specific
+   event reference.
+
+0a. **Fix the silently broken Harmony bridge in
+    `cs-shim-common/HarmonyBridge.cs`.** PatchPrefix +
+    PatchPostfix both construct the Harmony target from
+    `new Action(() => del(...))`. An instance-method
+    lambda which HarmonyLib rejects. Every Rust-side
+    `patch_prefix` / `patch_postfix` call in the workspace
+    has been silently failing for the whole session
+    (`DigManager.Dig` and `PlayerManager.AddPlayerCurrency`
+    postfixes wwm-rpg relies on for XP also never fire).
+    Replace with a static dispatcher keyed by patch
+    handle. Until this lands, Rust-side Harmony patching
+    does nothing.
 1. **Verify the hot-reload cycle works in-game.** Launch
    WWM, observe `Unityforge.Shim: ready (generation 0)`,
    then run `build_and_deploy.ps1 -Hot` from a separate

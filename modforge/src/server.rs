@@ -8,10 +8,12 @@
 //! in the embedding crate.
 
 use std::io::{Cursor, Read};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
 
 use parking_lot::Mutex;
+use socket2::{Domain, Protocol, Socket, Type};
 use tiny_http::{Header, Method, Response, Server};
 
 /// Cap on POST body size. Localhost-only API, but a misbehaving
@@ -109,46 +111,50 @@ where
     H: Fn(&str) -> Vec<u8> + Send + Sync + 'static,
     L: Fn(&str) + Send + 'static,
 {
-    let addr = format!("127.0.0.1:{}", cfg.port);
-    // Hot reload: if a prior generation was listening on the
-    // same port and just shut down, the OS may not have
-    // released the bind yet (TIME_WAIT, socket-close lag,
-    // whatever). Retry with brief backoff for up to ~2s before
-    // giving up.
-    const MAX_ATTEMPTS: u32 = 20;
-    const BACKOFF: std::time::Duration = std::time::Duration::from_millis(100);
+    let addr_str = format!("127.0.0.1:{}", cfg.port);
+    // Hot reload friendliness: a prior generation's listener may
+    // have closed its socket microseconds ago, but Windows holds
+    // the port in TIME_WAIT for several minutes by default. Set
+    // SO_REUSEADDR on our socket so the bind succeeds anyway.
+    // Without this, every hot-reload that touches the listener
+    // crate would fail to rebind for ~4 minutes on Windows.
     let server = {
-        let mut last_err = None;
-        let mut bound = None;
-        for attempt in 1..=MAX_ATTEMPTS {
-            match Server::http(&addr) {
-                Ok(s) => {
-                    if attempt > 1 {
-                        on_log(&format!(
-                            "ueforge: bound {addr} after {attempt} attempts"
-                        ));
-                    }
-                    bound = Some(Arc::new(s));
-                    break;
-                }
-                Err(e) => {
-                    last_err = Some(format!("{e}"));
-                    std::thread::sleep(BACKOFF);
-                }
+        let addr: SocketAddr = match addr_str.parse() {
+            Ok(a) => a,
+            Err(e) => {
+                on_log(&format!("ueforge: bad addr {addr_str}: {e}"));
+                return;
             }
+        };
+        let sock = match Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)) {
+            Ok(s) => s,
+            Err(e) => {
+                on_log(&format!("ueforge: socket() failed: {e}"));
+                return;
+            }
+        };
+        if let Err(e) = sock.set_reuse_address(true) {
+            on_log(&format!("ueforge: SO_REUSEADDR failed: {e}"));
+            // continue anyway; bind may still succeed
         }
-        match bound {
-            Some(s) => s,
-            None => {
-                on_log(&format!(
-                    "ueforge: bind {addr} failed after {MAX_ATTEMPTS} attempts: {}",
-                    last_err.unwrap_or_else(|| "<no error>".into())
-                ));
+        if let Err(e) = sock.bind(&addr.into()) {
+            on_log(&format!("ueforge: bind {addr_str} failed: {e}"));
+            return;
+        }
+        if let Err(e) = sock.listen(128) {
+            on_log(&format!("ueforge: listen {addr_str} failed: {e}"));
+            return;
+        }
+        let listener: std::net::TcpListener = sock.into();
+        match Server::from_listener(listener, None) {
+            Ok(s) => Arc::new(s),
+            Err(e) => {
+                on_log(&format!("ueforge: tiny_http from_listener failed: {e}"));
                 return;
             }
         }
     };
-    on_log(&format!("ueforge: listening on {addr}{}", cfg.endpoint));
+    on_log(&format!("ueforge: listening on {addr_str}{}", cfg.endpoint));
 
     let handler = Arc::new(handler);
     let server_for_thread = server.clone();
