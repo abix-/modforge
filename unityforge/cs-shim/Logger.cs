@@ -6,7 +6,7 @@ using BepInEx.Logging;
 
 namespace Unityforge.Shim
 {
-    public static class Logger
+    public static class ShimLogger
     {
         public static ManualLogSource Source;
 

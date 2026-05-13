@@ -34,7 +34,20 @@ not "feature complete"):
   reads currently do not. Add main-thread routing for reads
   if you see Unity-side asserts in the log.
 
-## Build
+## Quick path (PowerShell helper)
+
+```ps1
+# From repo root:
+./wwm-rpg/scripts/build_and_deploy.ps1
+```
+
+Builds both DLLs and deploys them into
+`<WWM>/BepInEx/plugins/wwm-rpg/`. Override the game dir or
+the shim's BepInEx ref with `-WwmDir <path>` /
+`-ShimBepInExDir <path>`. Pass `-NoCopy` to skip the copy
+step.
+
+## Manual build
 
 ```sh
 # From repo root:

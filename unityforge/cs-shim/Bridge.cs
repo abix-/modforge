@@ -57,7 +57,7 @@ namespace Unityforge.Shim
                 Magic = BridgeConstants.Magic,
                 Version = BridgeConstants.Version,
 
-                LogEmit = Marshal.GetFunctionPointerForDelegate(Logger.EmitDelegate),
+                LogEmit = Marshal.GetFunctionPointerForDelegate(ShimLogger.EmitDelegate),
 
                 MonoFindType = Marshal.GetFunctionPointerForDelegate(MonoBridge.FindTypeDelegate),
                 MonoSingletonInstance = Marshal.GetFunctionPointerForDelegate(MonoBridge.SingletonInstanceDelegate),

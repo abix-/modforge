@@ -41,21 +41,21 @@ namespace Unityforge.Shim
 
         private void Awake()
         {
-            Logger.Source = base.Logger;
-            Logger.Source.LogInfo("Unityforge.Shim: Awake");
+            ShimLogger.Source = base.Logger;
+            ShimLogger.Source.LogInfo("Unityforge.Shim: Awake");
 
             var dllPath = LocateRustDll();
             if (dllPath == null)
             {
-                Logger.Source.LogError("Unityforge.Shim: no Rust target DLL found. Set " + TargetEnv + " or drop a *.unityforge.dll next to this plugin.");
+                ShimLogger.Source.LogError("Unityforge.Shim: no Rust target DLL found. Set " + TargetEnv + " or drop a *.unityforge.dll next to this plugin.");
                 return;
             }
-            Logger.Source.LogInfo("Unityforge.Shim: loading " + dllPath);
+            ShimLogger.Source.LogInfo("Unityforge.Shim: loading " + dllPath);
 
             _rustModule = NativeLibrary.Load(dllPath);
             if (_rustModule == IntPtr.Zero)
             {
-                Logger.Source.LogError("Unityforge.Shim: LoadLibrary failed: " + Marshal.GetLastWin32Error());
+                ShimLogger.Source.LogError("Unityforge.Shim: LoadLibrary failed: " + Marshal.GetLastWin32Error());
                 return;
             }
             _init = ResolveSymbol<UnityforgeInitFn>("unityforge_init");
@@ -63,7 +63,7 @@ namespace Unityforge.Shim
             _shutdown = ResolveSymbol<UnityforgeShutdownFn>("unityforge_shutdown");
             if (_init == null || _tick == null || _shutdown == null)
             {
-                Logger.Source.LogError("Unityforge.Shim: target DLL is missing one of unityforge_init / unityforge_tick / unityforge_shutdown");
+                ShimLogger.Source.LogError("Unityforge.Shim: target DLL is missing one of unityforge_init / unityforge_tick / unityforge_shutdown");
                 return;
             }
 
@@ -76,31 +76,31 @@ namespace Unityforge.Shim
                 int rc = _init(_bridgeHandle.AddrOfPinnedObject());
                 if (rc != 0)
                 {
-                    Logger.Source.LogError("Unityforge.Shim: unityforge_init returned " + rc);
+                    ShimLogger.Source.LogError("Unityforge.Shim: unityforge_init returned " + rc);
                     return;
                 }
             }
             catch (Exception e)
             {
-                Logger.Source.LogError("Unityforge.Shim: unityforge_init threw: " + e);
+                ShimLogger.Source.LogError("Unityforge.Shim: unityforge_init threw: " + e);
                 return;
             }
             _started = true;
-            Logger.Source.LogInfo("Unityforge.Shim: ready");
+            ShimLogger.Source.LogInfo("Unityforge.Shim: ready");
         }
 
         private void Update()
         {
             if (!_started) return;
             try { _tick(Time.realtimeSinceStartup); }
-            catch (Exception e) { Logger.Source.LogError("Unityforge.Shim: tick threw: " + e); }
+            catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: tick threw: " + e); }
         }
 
         private void OnDestroy()
         {
             if (!_started) return;
             try { _shutdown(); }
-            catch (Exception e) { Logger.Source.LogError("Unityforge.Shim: shutdown threw: " + e); }
+            catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: shutdown threw: " + e); }
             if (_bridgeHandle.IsAllocated) _bridgeHandle.Free();
             if (_rustModule != IntPtr.Zero) NativeLibrary.Free(_rustModule);
             _started = false;
