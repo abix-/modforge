@@ -5,15 +5,15 @@
 //! Both per-framework crates depend on `modforge = { path =
 //! "../modforge" }` and call into it natively. There is no FFI:
 //! both consumers are Rust.
-//!
-//! Submodules track the Phase 0 migration in
-//! `docs/unityforge-plan.md`. As each ueforge file moves into
-//! this crate it lands under the corresponding submodule with a
-//! `pub use modforge::<mod>::*;` re-export left in ueforge so
-//! existing call sites compile unchanged.
 
 pub mod args;
 pub mod counters;
 pub mod envelope;
+pub mod hot_reload;
 pub mod log;
 pub mod ring;
+pub mod scanner;
+pub mod server;
+pub mod settings;
+pub mod shutdown;
+pub mod winproc;

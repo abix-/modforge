@@ -953,12 +953,16 @@ dependencies = [
  "arc-swap",
  "crossbeam-channel",
  "fastrand",
+ "hex",
  "insta",
  "parking_lot",
  "proptest",
+ "region",
  "serde",
  "serde_json",
  "smallvec",
+ "tiny_http",
+ "ureq",
  "windows-sys 0.61.2",
 ]
 

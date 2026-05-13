@@ -250,6 +250,12 @@ pub fn metrics_json() -> Json {
 /// `read_bytes`, `write_bytes`, sim ops) are registered by the
 /// game crate, not here.
 pub fn register_builtins() {
+    // Phase 0b: scanner moved to modforge but its freeze op
+    // resolves selectors against the engine. Install ueforge's
+    // UObject + selector resolver into modforge::scanner before
+    // any scanner op fires. Idempotent.
+    crate::scanner::install_ue_resolver();
+
     OP_REGISTRY.register_many([
         OpDef::new(
             "walk_class",

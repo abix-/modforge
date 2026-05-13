@@ -33,8 +33,18 @@ fastrand = { workspace = true }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",
     "Win32_System_Console",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
 ] }
+tiny_http = { workspace = true }
+ureq = { workspace = true }
+hex = { workspace = true }
+region = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
