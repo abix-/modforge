@@ -1,119 +1,308 @@
 # wwm-rpg
 
 Wild West Miner Simulator (Demo) RPG mod. Rust cdylib loaded
-into the game by the Unityforge.Shim BepInEx plugin.
+into the game by the `Unityforge.Shim.Mono` BepInEx plugin.
 
 ## Status
 
-**Phase 3 v0:** builds, exports the three `unityforge_*`
-entry points, ships a two-skill catalog skeleton
-(Strong Back + Greedy Miner), and registers Harmony hooks on
-`DigManager.Dig` + `PlayerManager.AddPlayerCurrency`. Once
-loaded in-game, the HTTP debug surface (default port 17172)
-accepts `ping`, `walk_class`, `inspect_object`, `read_field`,
-`write_field`, `invoke_method`, `list_singletons`,
-`skill_state`, `skill_add_xp`, `skill_levelup` ops.
+**Phase 3a complete (declarative).** Six-skill catalog wired
+through `modforge::rpg::Tracker<UnityEngine>` with
+`UnityField{Additive,Multiply}Effect`s + a `RuntimeEffect`.
+Save/load via `modforge::rpg::store` (JSON under
+`<DLL_dir>/wwm-rpg/<slot>.json`, atomic temp+fsync+rename).
+Harmony postfixes route through `TRACKER.record_xp`. HTTP
+control plane on port 17172 (`ping`, `walk_class`,
+`inspect_object`, `read_field`, `write_field`,
+`invoke_method`, `skill_state`, `skill_spend`, `skill_refund`,
+`skill_toggle`, `reload_slot`, `set_skill_points`,
+`skill_add_xp`, `skill_grant_points`, `list_tabs`,
+`render_tab`).
 
-What's not done yet (this v0 is the path to "ready to test",
-not "feature complete"):
+Catalog (`wwm-rpg/src/skills.rs`):
 
-- Effect application (FieldMultiply on
-  `PlayerCarryingController.MaxCapacity` etc) is stubbed.
-  The Harmony postfixes increment XP but don't apply
-  field-mutation effects yet. Once `walk_class` confirms the
-  game's field offsets in-running, wire them into the
-  postfixes.
-- modforge::rpg Tracker / Skill / Effect traits are not in
-  place; this v0 keeps state in atomics. Once they migrate,
-  this mod will declaratively compose Effects + Triggers.
-- Thread safety: the HTTP listener spawns a background
-  thread. Ops that touch Unity types (`walk_class`,
-  `read_field` on a UnityEngine.Object, `invoke_method`)
-  may not be thread-safe; the framework's `write_field` /
-  `invoke_method` already route through MAIN_QUEUE, but
-  reads currently do not. Add main-thread routing for reads
-  if you see Unity-side asserts in the log.
+| Skill | Effect | Target |
+|---|---|---|
+| Strong Back | `UnityFieldAdditive` | `PlayerCarryingController._maxCapacity` |
+| Greedy Miner | `UnityFieldMultiply` | `MineDataSO._oreValue` |
+| Quick Pickaxe | `UnityFieldMultiply` | `DigManager._digRange` |
+| Charisma | `UnityFieldMultiply` | `WorkersManager._hireCostMultiplier` |
+| Resilient | `UnityFieldMultiply` | `PlayerStaminaController._staminaDrainMultiplier` |
+| Lucky | `RuntimeEffect` (format-only) | (hot-path postfix, future) |
 
-## Quick path (PowerShell helper)
+Harmony postfixes: `DigManager.Dig` (+5 XP/swing),
+`PlayerManager.AddPlayerCurrency` (+10 XP/event).
 
-```ps1
-# From repo root:
-./wwm-rpg/scripts/build_and_deploy.ps1
+**What's NOT verified.** Class + field + method names above
+are best guesses from the WWM research doc. First in-game
+launch is the only way to confirm; expect to fix at least one
+of them against `walk_class` evidence (see step 6 below).
+
+---
+
+## Testing in WWM
+
+### 1. One-time: install BepInEx 5.x Mono
+
+WWM ships no mod loader. Grab **BepInEx 5.4.x x64 Mono** from
+the [BepInEx releases page][bep] (file like
+`BepInEx_win_x64_5.4.x.zip`; **NOT** the IL2CPP build).
+Extract the zip's contents into:
+
+```
+C:\Games\Steam\steamapps\common\Wild West Miner Simulator Demo\
 ```
 
-Builds both DLLs and deploys them into
-`<WWM>/BepInEx/plugins/wwm-rpg/`. Override the game dir or
-the shim's BepInEx ref with `-WwmDir <path>` /
-`-ShimBepInExDir <path>`. Pass `-NoCopy` to skip the copy
-step.
+so that `BepInEx\core\BepInEx.dll` lands at the game root.
+Launch the game once with BepInEx in place; it generates
+`BepInEx\config\BepInEx.cfg`. Quit.
 
-## Manual build
+Open `BepInEx\config\BepInEx.cfg`, find the
+`[Logging.Console]` section, set `Enabled = true`. Optional
+but ergonomic; without it tail `BepInEx\LogOutput.log`
+instead.
+
+[bep]: https://github.com/BepInEx/BepInEx/releases
+
+### 2. Build + deploy
+
+From the repo root:
+
+```powershell
+.\wwm-rpg\scripts\build_and_deploy.ps1
+```
+
+That:
+
+1. Builds `wwm_rpg.dll` (`cargo build --release -p wwm-rpg`).
+2. Builds `Unityforge.Shim.Mono.dll`
+   (`dotnet build -c Release` on
+   `unityforge\cs-shim-mono\Unityforge.Shim.Mono.csproj`,
+   using the BepInEx + Unity DLLs that already shipped with
+   WWM).
+3. Copies both into
+   `<WWM>\BepInEx\plugins\wwm-rpg\`:
+   - `wwm_rpg.unityforge.dll` (renamed from `wwm_rpg.dll`)
+   - `Unityforge.Shim.Mono.dll`
+
+If WWM lives somewhere else, pass `-WwmDir 'D:\Games\...'`.
+Pass `-NoCopy` to skip the deploy step (build only).
+
+The script prints the BepInEx log path + a curl sample on
+success.
+
+### 3. Launch + verify the bridge loaded
+
+Launch WWM. In the BepInEx console (or
+`BepInEx\LogOutput.log`) expect:
+
+```
+[Info   :Unityforge.Shim] Unityforge.Shim: Awake
+[Info   :Unityforge.Shim] Unityforge.Shim: loading <path>\wwm_rpg.unityforge.dll
+[Info   :Unityforge.Shim] Unityforge.Shim: ready
+[Info   :Unityforge.Shim] unityforge: init WildWestMinerRpg v0.1.0
+[Info   :Unityforge.Shim] wwm-rpg: ready (ops + selectors + skills installed)
+```
+
+Failure modes:
+
+- `Unityforge.Shim: no Rust target DLL found.`. The
+  `*.unityforge.dll` naming convention was missed. Check
+  the file at `BepInEx\plugins\wwm-rpg\` is literally named
+  `wwm_rpg.unityforge.dll`.
+- `Unityforge.Shim: LoadLibrary failed: <code>`. Usually a
+  missing dependency. The Rust cdylib only links MSVC + Win32
+  imports; this is rare. If it happens, run
+  `dumpbin /DEPENDENTS wwm_rpg.unityforge.dll` and check for
+  anything unexpected.
+- `Unityforge.Shim: target DLL is missing one of
+  unityforge_init / unityforge_tick / unityforge_shutdown` --
+  the cdylib was built without the macro emit; verify
+  `unityforge::unityforge_mod!(MOD_INFO)` is uncommented in
+  `wwm-rpg/src/lib.rs`.
+
+### 4. Drive the HTTP control plane
+
+From a separate terminal:
+
+```powershell
+# Always use 127.0.0.1 on Windows. localhost adds ~200 ms.
+$op = 'http://127.0.0.1:17172/op'
+
+# Sanity check.
+curl.exe -s $op -d '{"op":"ping"}'
+
+# What ops are registered?
+curl.exe -s $op -d '{"op":"list_ops"}'
+
+# Catalog + state snapshot (no slot yet -> "no slot active").
+curl.exe -s $op -d '{"op":"skill_state"}'
+
+# The framework's RPG ops:
+curl.exe -s $op -d '{"op":"set_skill_points","args":{"count":50}}'
+curl.exe -s $op -d '{"op":"skill_spend","args":{"id":"strong_back","count":5}}'
+curl.exe -s $op -d '{"op":"skill_refund","args":{"id":"strong_back","count":1}}'
+curl.exe -s $op -d '{"op":"skill_toggle","args":{"id":"strong_back","enabled":false}}'
+curl.exe -s $op -d '{"op":"reload_slot"}'
+
+# Render the declarative tab (logs catalog + state to BepInEx).
+curl.exe -s $op -d '{"op":"render_tab","args":{"name":"RPG"}}'
+```
+
+### 5. Verify the slot poller catches a save
+
+Load a save in-game. The slot poller polls
+`GameSerializationSystem._currentLoadedSaveNumber` every
+second; once a save is active, BepInEx log should show:
+
+```
+rpg/tracker: activated slot=<N> level=0 xp=0 skill_points=0
+```
+
+If that line never appears:
+
+- The `GameSerializationSystem` class name or field name is
+  wrong. Fix in `wwm-rpg/src/skills.rs`:
+  ```rust
+  static SLOT_KEY: UnitySlotKey = UnitySlotKey::new(
+      "<actual class>", "<actual field>");
+  ```
+  Find the actual identifiers via `walk_class` (step 6).
+
+### 6. Verify field names (likely fix-up pass)
+
+I declared the six skill targets as best guesses from the WWM
+research pass. First launch is when reality hits. For each
+declared target, confirm with:
+
+```powershell
+# Get a handle on the live singleton.
+curl.exe -s $op -d '{"op":"singleton","args":{"class":"PlayerCarryingController"}}'
+
+# Dump every field on it.
+curl.exe -s $op -d '{"op":"inspect_object","args":{"handle":<N>}}'
+```
+
+Compare the returned field names against
+`wwm-rpg/src/skills.rs`. For each mismatch:
+
+```rust
+// Before
+static STRONG_BACK_EFFECT: UnityFieldAdditiveEffect =
+    UnityFieldAdditiveEffect::new(
+        "PlayerCarryingController", "_maxCapacity",
+        50.0, "carry capacity", &STRONG_BACK_VANILLA);
+
+// After (whatever inspect_object actually shows)
+static STRONG_BACK_EFFECT: UnityFieldAdditiveEffect =
+    UnityFieldAdditiveEffect::new(
+        "PlayerCarryingController", "maxCapacity",   // dropped underscore
+        50.0, "carry capacity", &STRONG_BACK_VANILLA);
+```
+
+Re-run `build_and_deploy.ps1`, restart the game.
+
+The six declared field targets:
+
+| Class | Field |
+|---|---|
+| `PlayerCarryingController` | `_maxCapacity` |
+| `MineDataSO` | `_oreValue` |
+| `DigManager` | `_digRange` |
+| `WorkersManager` | `_hireCostMultiplier` |
+| `PlayerStaminaController` | `_staminaDrainMultiplier` |
+
+And the two declared method targets (for Harmony):
+
+| Class | Method |
+|---|---|
+| `DigManager` | `Dig` |
+| `PlayerManager` | `AddPlayerCurrency` |
+
+If a Harmony patch target doesn't exist, BepInEx logs
+`HarmonyX patch failed: <class>::<method> not found`. Pick a
+closer-named method via `walk_class` + `inspect_object` and
+fix in `wwm-rpg/src/skills.rs::install_hooks`.
+
+### 7. Drive the full skill loop
+
+Once the field names are correct + a slot is active:
+
+```powershell
+# Grant points + level up Strong Back. Watch BepInEx log for
+#   rpg/tracker: spent N on strong_back: level 0 -> 5 (45 points left)
+curl.exe -s $op -d '{"op":"set_skill_points","args":{"count":50}}'
+curl.exe -s $op -d '{"op":"skill_spend","args":{"id":"strong_back","count":5}}'
+
+# Confirm via state snapshot.
+curl.exe -s $op -d '{"op":"skill_state"}'
+
+# Open inventory in-game; carry capacity should be the
+# pre-mod vanilla baseline + 25 (sqrt(5/10) * 50 = 35.4
+# rounded to int).
+
+# Dig some ore -> XP increments; eventually levels up.
+# Tail the BepInEx log for:
+#   rpg/tracker: LEVEL UP! 0 -> 1 (+1 skill points; total 46)
+```
+
+### 8. Iteration loop
+
+Quit the game, edit code, rerun `build_and_deploy.ps1`,
+relaunch. Windows refuses to overwrite a DLL that's currently
+mapped into a process; if the deploy step errors with
+"access denied," WWM is still running.
+
+The save file lives at:
+
+```
+<WWM>\BepInEx\plugins\wwm-rpg\wwm-rpg\<slot>.json
+```
+
+Delete it to reset a slot's RPG state without affecting the
+game's own save.
+
+### 9. Removing the mod
+
+Delete `<WWM>\BepInEx\plugins\wwm-rpg\`. The mod's save
+sidecar JSON goes with it. The game's vanilla saves are
+untouched.
+
+---
+
+## File layout
+
+```
+wwm-rpg/
+  Cargo.toml
+  README.md                       # this file
+  scripts/
+    build_and_deploy.ps1
+  src/
+    lib.rs                        # ModDef + unityforge_mod!() macro
+    skills.rs                     # catalog + ops + Harmony postfixes
+```
+
+## Manual build (no PowerShell)
 
 ```sh
-# From repo root:
+# Rust cdylib
 cargo build --release -p wwm-rpg
-```
+# -> target/x86_64-pc-windows-msvc/release/wwm_rpg.dll
 
-Output: `target/x86_64-pc-windows-msvc/release/wwm_rpg.dll`.
-
-The C# shim is built separately (see
-`../unityforge/cs-shim/`). It needs BepInEx + Unity reference
-DLLs:
-
-```sh
-cd ../unityforge/cs-shim
-# Adjust paths to your WWM install:
+# C# Mono shim
+cd unityforge/cs-shim-mono
 dotnet build -c Release \
   -p:BepInExDir="C:\Games\Steam\steamapps\common\Wild West Miner Simulator Demo\BepInEx" \
   -p:UnityDir="C:\Games\Steam\steamapps\common\Wild West Miner Simulator Demo\Wild West Miner - Gold Rush_Data\Managed"
+# -> bin/Release/netstandard2.1/Unityforge.Shim.Mono.dll
 ```
 
-Output: `bin/Release/netstandard2.1/Unityforge.Shim.dll`.
+Then copy both files into `<WWM>\BepInEx\plugins\wwm-rpg\`,
+renaming the Rust DLL to `wwm_rpg.unityforge.dll`.
 
-## Deploy
+## How the loader picks the cdylib
 
-1. Install BepInEx 5.x (Mono) into Wild West Miner if you
-   haven't already. Drop the BepInEx distribution into the
-   game folder, run the game once to bootstrap; quit.
-2. Copy these files into
-   `<WWM>/BepInEx/plugins/wwm-rpg/`:
-   - `Unityforge.Shim.dll`
-   - `wwm_rpg.unityforge.dll` (rename from `wwm_rpg.dll`)
-3. Launch the game. The BepInEx console should show:
-   ```
-   [Info] Unityforge.Shim: loading <path>\wwm_rpg.unityforge.dll
-   [Info] Unityforge.Shim: ready
-   [Info] wwm-rpg: ready (ops + selectors + skills installed)
-   ```
-
-The shim auto-detects `*.unityforge.dll`; override with the
-`UNITYFORGE_TARGET` env var pointing to a different path if
-needed.
-
-## Test surface (once HTTP shim lands)
-
-```sh
-# Health check
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"ping"}' | jq
-
-# Find PlayerManager
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"list_singletons","args":{"types":["PlayerManager"]}}' | jq
-
-# Read the player's money
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"inspect_object","args":{"handle":<from above>}}' | jq
-
-# Manually add XP
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"skill_add_xp","args":{"amount":1000}}' | jq
-
-# Level up Strong Back
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"skill_levelup","args":{"id":"strong_back"}}' | jq
-
-# State
-curl -s -XPOST http://localhost:17172/op \
-  -d '{"op":"skill_state"}' | jq
-```
+The shim's `Awake` scans its own directory for any
+`*.unityforge.dll`. If exactly one is present, it loads it.
+Override with the `UNITYFORGE_TARGET` env var (absolute path
+to the cdylib) when iterating against a non-default location.
