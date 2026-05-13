@@ -832,6 +832,77 @@ managed code that references the feature. This is the
 fingerprint of a "demo cut" feature: assets shipped,
 code stripped.
 
+### Deeper dig (when the user pushed back)
+
+Scanned **every** managed DLL in `Managed/`, not just
+`Assembly-CSharp`:
+
+```bash
+ls Managed/*.dll | xargs -I{} grep -aoE "Plot[A-Za-z_0-9]*" "{}"
+# zero hits across all DLLs
+```
+
+Same for `[Ee]nlarg`: zero hits anywhere in compiled
+managed code.
+
+Then scanned `level2` (the Unity scene asset). All
+"plot" strings found:
+
+```
+'- Own several different plots of land and mines'
+'Oil plot'
+'Plot enlargement'
+'PlotOffer'
+'PlotOffer (1)'
+'PlotOffer (2)'
+'PlotOffer (3)'      <- exists in scene but inactive (user sees 3)
+'Rocky plot'
+```
+
+Plus context dump around each `PlotOffer` showed only
+transform / mesh / text data. No `MonoBehaviour` script
+GUIDs attached.
+
+Plus context dump around all `[Ss]urvey`: only
+`OpenSurvey` (a `SocialsPanelUI` method that opens a
+demo feedback URL) and "Survey" in animation rig names.
+No `LandSurveyor` class anywhere.
+
+Plus the `Buy*` class scan (looking for whether the buy
+panel system might handle plots): found `BuyPopup`,
+`BuyPopupUI`, `BuyBedPopup`, `BuyBedPopupUI`, plus a
+bunch of `BuySection_*` GameObjects (the standard buy
+sections inside Furniture / Food / Blacksmith stands).
+No `BuyPlot` or `BuyLand` class. The Plot Offers do NOT
+appear in any `BuySection_*`. They're parented under
+`WoodenBoard`, not under any building's buy section.
+
+### Final verdict (after deeper dig)
+
+The Plot Enlargement / Land Surveyor feature is
+**unambiguously a demo-cut feature**:
+
+- Visual assets present (4 PlotOffer GameObjects, prices,
+  labels).
+- ZERO managed code references anywhere in any DLL.
+- ZERO `MonoBehaviour` scripts on the PlotOffer
+  GameObjects in the scene.
+- Not wired into the existing `BuyPopup` / `BuySection`
+  UI system that handles every other purchase in the
+  game.
+
+To make the feature work would require:
+1. Writing a new `PlotPurchase` MonoBehaviour with click
+   handler, cost check, deduction, and unlock logic.
+2. Wiring it onto each `PlotOffer` GameObject at runtime
+   via Harmony injection or scene-load patch.
+3. Defining what "unlock a plot" actually does (spawn a
+   new mine? remove a blockade? load an Addressable
+   bundle?). The full game's behavior is unknown.
+
+This is content development, not modding. There is
+nothing in the demo binary to patch.
+
 ---
 
 ## 7.7-OLD. Demo-end block (failed attempts, kept for reference)
