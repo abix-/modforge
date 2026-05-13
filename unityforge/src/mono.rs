@@ -23,7 +23,7 @@ impl MonoType {
     pub fn find(name: &str) -> Option<Self> {
         let bridge = bridge::get()?;
         let c = CString::new(name).ok()?;
-        let handle = (bridge.mono_find_type)(c.as_ptr());
+        let handle = (bridge.find_type)(c.as_ptr());
         if handle.is_null() {
             None
         } else {
@@ -39,7 +39,7 @@ impl MonoType {
     /// derived from the game's `Singleton<T>` template.
     pub fn singleton_instance(&self) -> Option<MonoObject> {
         let bridge = bridge::get()?;
-        let h = (bridge.mono_singleton_instance)(self.handle);
+        let h = (bridge.singleton_instance)(self.handle);
         if h.is_null() {
             None
         } else {
@@ -50,7 +50,7 @@ impl MonoType {
     /// `StaticInstance<T>.Instance` for this type.
     pub fn static_instance(&self) -> Option<MonoObject> {
         let bridge = bridge::get()?;
-        let h = (bridge.mono_static_instance)(self.handle);
+        let h = (bridge.static_instance)(self.handle);
         if h.is_null() {
             None
         } else {
@@ -63,7 +63,7 @@ impl MonoType {
     pub fn walk(&self, include_inactive: bool) -> Result<Json, String> {
         let bridge = bridge::try_get()?;
         let mut buf = vec![0u8; 64 * 1024];
-        let n = (bridge.mono_walk_class)(
+        let n = (bridge.walk_class)(
             self.handle,
             if include_inactive { 1 } else { 0 },
             buf.as_mut_ptr() as *mut _,
@@ -84,7 +84,7 @@ impl MonoType {
 impl Drop for MonoType {
     fn drop(&mut self) {
         if let Some(bridge) = bridge::get() {
-            (bridge.mono_release_handle)(self.handle);
+            (bridge.release_handle)(self.handle);
         }
     }
 }
@@ -116,7 +116,7 @@ impl MonoObject {
         let bridge = bridge::try_get()?;
         let c = CString::new(field).map_err(|e| format!("bad field name: {e}"))?;
         let mut buf = vec![0u8; 4096];
-        let n = (bridge.mono_read_field)(
+        let n = (bridge.read_field)(
             self.handle,
             c.as_ptr(),
             buf.as_mut_ptr() as *mut _,
@@ -138,7 +138,7 @@ impl MonoObject {
         let value_s =
             serde_json::to_string(value).map_err(|e| format!("write_field: bad value: {e}"))?;
         let value_c = CString::new(value_s).map_err(|e| format!("bad value: {e}"))?;
-        let r = (bridge.mono_write_field)(self.handle, field_c.as_ptr(), value_c.as_ptr());
+        let r = (bridge.write_field)(self.handle, field_c.as_ptr(), value_c.as_ptr());
         match r {
             0 => Ok(()),
             -1 => Err(format!("write_field '{field}': type mismatch")),
@@ -154,7 +154,7 @@ impl MonoObject {
         let args_s = serde_json::to_string(args).map_err(|e| format!("bad args: {e}"))?;
         let args_c = CString::new(args_s).map_err(|e| format!("bad args: {e}"))?;
         let mut buf = vec![0u8; 8192];
-        let r = (bridge.mono_invoke_method)(
+        let r = (bridge.invoke_method)(
             self.handle,
             method_c.as_ptr(),
             args_c.as_ptr(),
@@ -187,7 +187,7 @@ impl MonoObject {
     pub fn dump(&self) -> Result<Json, String> {
         let bridge = bridge::try_get()?;
         let mut buf = vec![0u8; 32 * 1024];
-        let n = (bridge.mono_inspect_object)(
+        let n = (bridge.inspect_object)(
             self.handle,
             buf.as_mut_ptr() as *mut _,
             buf.len() as i32,
@@ -204,7 +204,7 @@ impl MonoObject {
 impl Drop for MonoObject {
     fn drop(&mut self) {
         if let Some(bridge) = bridge::get() {
-            (bridge.mono_release_handle)(self.handle);
+            (bridge.release_handle)(self.handle);
         }
     }
 }

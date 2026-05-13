@@ -18,6 +18,25 @@ using Newtonsoft.Json.Linq;
 
 namespace Unityforge.Shim
 {
+    /// <summary>
+    /// IBackendBridge adapter so Bridge.Build can populate the
+    /// neutral-named struct from MonoBridge's Mono-flavored
+    /// delegates.
+    /// </summary>
+    public sealed class MonoBackendBridge : IBackendBridge
+    {
+        public RuntimeKind Kind => RuntimeKind.Mono;
+        public IntPtr FindType => Marshal.GetFunctionPointerForDelegate(MonoBridge.FindTypeDelegate);
+        public IntPtr SingletonInstance => Marshal.GetFunctionPointerForDelegate(MonoBridge.SingletonInstanceDelegate);
+        public IntPtr StaticInstance => Marshal.GetFunctionPointerForDelegate(MonoBridge.StaticInstanceDelegate);
+        public IntPtr WalkClass => Marshal.GetFunctionPointerForDelegate(MonoBridge.WalkClassDelegate);
+        public IntPtr InspectObject => Marshal.GetFunctionPointerForDelegate(MonoBridge.InspectObjectDelegate);
+        public IntPtr ReadField => Marshal.GetFunctionPointerForDelegate(MonoBridge.ReadFieldDelegate);
+        public IntPtr WriteField => Marshal.GetFunctionPointerForDelegate(MonoBridge.WriteFieldDelegate);
+        public IntPtr InvokeMethod => Marshal.GetFunctionPointerForDelegate(MonoBridge.InvokeMethodDelegate);
+        public IntPtr ReleaseHandle => Marshal.GetFunctionPointerForDelegate(MonoBridge.ReleaseHandleDelegate);
+    }
+
     public static class MonoBridge
     {
         // ---- handle table ----------------------------------------------

@@ -42,11 +42,11 @@ Write-Host "==> Build wwm_rpg.dll (Rust release)" -ForegroundColor Cyan
 & cargo build --release -p wwm-rpg
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "==> Build Unityforge.Shim.dll (C# release)" -ForegroundColor Cyan
+Write-Host "==> Build Unityforge.Shim.Mono.dll (C# release; WWM is Mono)" -ForegroundColor Cyan
 & dotnet build -c Release `
     -p:BepInExDir="$ShimBepInExDir" `
     -p:UnityDir="$wwmManaged" `
-    (Join-Path $repoRoot 'unityforge\cs-shim\Unityforge.Shim.csproj')
+    (Join-Path $repoRoot 'unityforge\cs-shim-mono\Unityforge.Shim.Mono.csproj')
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($NoCopy) {
@@ -59,10 +59,10 @@ if (-not (Test-Path $pluginDir)) {
 }
 
 $rustDll = Join-Path $repoRoot 'target\x86_64-pc-windows-msvc\release\wwm_rpg.dll'
-$shimDll = Join-Path $repoRoot 'unityforge\cs-shim\bin\Release\netstandard2.1\Unityforge.Shim.dll'
+$shimDll = Join-Path $repoRoot 'unityforge\cs-shim-mono\bin\Release\netstandard2.1\Unityforge.Shim.Mono.dll'
 
 Copy-Item -Force $rustDll (Join-Path $pluginDir 'wwm_rpg.unityforge.dll')
-Copy-Item -Force $shimDll (Join-Path $pluginDir 'Unityforge.Shim.dll')
+Copy-Item -Force $shimDll (Join-Path $pluginDir 'Unityforge.Shim.Mono.dll')
 
 Write-Host "==> Deployed:" -ForegroundColor Green
 Get-ChildItem $pluginDir | Select-Object Name, Length | Format-Table -AutoSize

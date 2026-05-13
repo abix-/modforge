@@ -11,11 +11,13 @@
 
 pub mod bridge;
 pub mod hook;
+pub mod il2cpp;
 pub mod main_thread_queue;
 pub mod mod_main;
 pub mod mono;
 pub mod ops;
 pub mod rpg;
 pub mod selector;
+pub mod unity;
 
 pub use mod_main::ModDef;

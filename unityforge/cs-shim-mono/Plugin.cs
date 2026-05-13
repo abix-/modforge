@@ -69,7 +69,7 @@ namespace Unityforge.Shim
 
             HarmonyBridge.EnsureHarmony(PluginGuid);
 
-            _bridge = Bridge.Build();
+            _bridge = Bridge.Build(new MonoBackendBridge());
             _bridgeHandle = GCHandle.Alloc(_bridge, GCHandleType.Pinned);
             try
             {
