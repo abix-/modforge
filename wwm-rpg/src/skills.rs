@@ -1,48 +1,116 @@
-//! Wild West Miner skill catalog + Harmony hook wiring.
+//! Wild West Miner skill catalog + HTTP ops + Harmony hooks.
 //!
-//! v0 scope: enough plumbing to prove the bridge works end-to-end.
-//! Two skills, one trigger source, in-memory state, manual
-//! Add-XP / Level-Up via the HTTP debug surface.
+//! Catalog is fully declarative: each `SkillDef` references a
+//! `UnityField*Effect` static so a level-change writes the
+//! corresponding singleton field on the active slot. State
+//! mutation goes through [`modforge::rpg::Tracker`] which
+//! transactionally persists to disk under
+//! `<DLL_dir>/wwm-rpg/<slot>.json`.
 //!
-//! As modforge::rpg lands its Tracker / Skill / Effect traits,
-//! migrate this to declarative catalog rows.
+//! The two Harmony postfixes grant XP per dig swing and per
+//! currency event. `TRACKER.record_xp` does the curve math,
+//! awards skill points on level-up, and persists.
 
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::ffi::c_void;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 use serde_json::{Value as Json, json};
 
 use modforge::args::arg_str;
 use modforge::ops::{OP_REGISTRY, OpDef};
+use modforge::rpg::poller::{PollerHandle, SlotPoller};
+use modforge::rpg::vanilla::VanillaCache;
+use modforge::rpg::xp::Curve;
 
 use unityforge::hook::{HOOK_REGISTRY, patch_postfix};
+use unityforge::rpg::{
+    SkillDef, SkillRegistry, Tracker, UnityFieldAdditiveEffect,
+    UnityFieldMultiplyEffect, UnitySlotKey,
+};
 
-/// Per-skill state for v0. Real state goes in modforge::rpg once
-/// migrated. For now, atomics are enough to prove the round-trip.
-static XP: AtomicU64 = AtomicU64::new(0);
-static LEVEL_STRONG_BACK: AtomicU32 = AtomicU32::new(0);
-static LEVEL_GREEDY_MINER: AtomicU32 = AtomicU32::new(0);
+// ---- Effects --------------------------------------------------------
 
-/// XP curve. Mirrors ueforge defaults: base=100, exponent=1.8.
-fn cumulative_xp_for_level(level: u32) -> u64 {
-    if level <= 1 {
-        return 0;
-    }
-    let n = level.min(50) as f64;
-    (100.0 * n.powf(1.8)).round() as u64
-}
+// Each effect needs a `'static` VanillaCache so the engine's
+// first-seen value is captured once and used as the baseline
+// for level/refund/toggle. Field names are best guesses from
+// the WWM research doc; verify with `walk_class` once the
+// plugin is running.
 
-fn level_for_xp(xp: u64) -> u32 {
-    let mut k = 1;
-    while k < 50 && cumulative_xp_for_level(k + 1) <= xp {
-        k += 1;
-    }
-    k
-}
+static STRONG_BACK_VANILLA: VanillaCache<&'static str, f32> = VanillaCache::new();
+static STRONG_BACK_EFFECT: UnityFieldAdditiveEffect = UnityFieldAdditiveEffect::new(
+    "PlayerCarryingController",
+    "_maxCapacity",
+    50.0,
+    "carry capacity",
+    &STRONG_BACK_VANILLA,
+);
+
+static GREEDY_MINER_VANILLA: VanillaCache<&'static str, f32> = VanillaCache::new();
+static GREEDY_MINER_EFFECT: UnityFieldMultiplyEffect = UnityFieldMultiplyEffect::new(
+    "MineDataSO",
+    "_oreValue",
+    1.0,
+    "gold per ore",
+    &GREEDY_MINER_VANILLA,
+);
+
+// ---- Catalog --------------------------------------------------------
+
+pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
+    SkillDef {
+        id: "strong_back",
+        display_name: "Strong Back",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new(
+            "UnityFieldAdditive",
+            &STRONG_BACK_EFFECT,
+        ),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
+    SkillDef {
+        id: "greedy_miner",
+        display_name: "Greedy Miner",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new(
+            "UnityFieldMultiply",
+            &GREEDY_MINER_EFFECT,
+        ),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
+]);
+
+// ---- Tracker --------------------------------------------------------
+
+pub static TRACKER: Tracker = Tracker::new(
+    &CATALOG,
+    Curve::new(100.0, 1.8, 50),
+    "wwm-rpg",
+);
+
+// ---- Slot poller ----------------------------------------------------
+
+static SLOT_KEY: UnitySlotKey =
+    UnitySlotKey::new("GameSerializationSystem", "_currentLoadedSaveNumber");
+
+static POLLER: OnceLock<PollerHandle> = OnceLock::new();
+
+// ---- Install --------------------------------------------------------
 
 pub fn install() {
     register_ops();
     install_hooks();
+    spawn_slot_poller();
+}
+
+fn spawn_slot_poller() {
+    let handle = SlotPoller::spawn(
+        Duration::from_secs(1),
+        || SLOT_KEY.resolve(),
+        |slot| TRACKER.activate_slot(slot),
+        || TRACKER.deactivate_slot(),
+    );
+    let _ = POLLER.set(handle);
 }
 
 fn register_ops() {
@@ -52,67 +120,121 @@ fn register_ops() {
             "Snapshot of the wwm-rpg skill state",
             "{}",
             |_args| {
-                let xp = XP.load(Ordering::Relaxed);
-                Ok(json!({
-                    "xp": xp,
-                    "level": level_for_xp(xp),
-                    "skills": {
-                        "strong_back": LEVEL_STRONG_BACK.load(Ordering::Relaxed),
-                        "greedy_miner": LEVEL_GREEDY_MINER.load(Ordering::Relaxed),
+                let snapshot = TRACKER.with_state(|s| {
+                    let mut skills = serde_json::Map::new();
+                    for skill in CATALOG.iter() {
+                        skills.insert(
+                            skill.id.to_string(),
+                            json!(s.level_of(skill.id)),
+                        );
                     }
+                    json!({
+                        "xp": s.xp,
+                        "level": s.level,
+                        "skill_points": s.skill_points,
+                        "skills": Json::Object(skills),
+                    })
+                });
+                Ok(snapshot.unwrap_or_else(|| {
+                    json!({
+                        "active": false,
+                        "msg": "no slot active",
+                    })
                 }))
             },
         ),
         OpDef::new(
             "skill_add_xp",
-            "Manually add XP (debug)",
+            "Manually award XP (debug)",
             "{amount: u64}",
             |args| {
                 let amount = args.get("amount").and_then(Json::as_u64).unwrap_or(0);
-                let n = XP.fetch_add(amount, Ordering::Relaxed) + amount;
-                Ok(json!({"xp": n, "level": level_for_xp(n)}))
+                let Some(result) = TRACKER.record_xp(amount) else {
+                    return Err("no slot active or save failed".into());
+                };
+                Ok(json!({
+                    "awarded": result.awarded,
+                    "total_xp": result.total_xp,
+                    "old_level": result.old_level,
+                    "new_level": result.new_level,
+                    "points_gained": result.points_gained,
+                }))
             },
         ),
         OpDef::new(
             "skill_levelup",
-            "Spend one point on a skill",
-            "{id: str}",
+            "Spend points on a skill",
+            "{id: str, count?: u32}",
             |args| {
                 let id = arg_str(args, "id")?;
-                let counter = match id {
-                    "strong_back" => &LEVEL_STRONG_BACK,
-                    "greedy_miner" => &LEVEL_GREEDY_MINER,
-                    other => return Err(format!("unknown skill '{other}'")),
-                };
-                let n = counter.fetch_add(1, Ordering::Relaxed) + 1;
-                Ok(json!({"id": id, "level": n}))
+                let count = args
+                    .get("count")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(1) as u32;
+                let spent = TRACKER.spend_skill_points(id, count);
+                Ok(json!({
+                    "id": id,
+                    "spent": spent,
+                    "level": TRACKER
+                        .with_state(|s| s.level_of(id))
+                        .unwrap_or(0),
+                }))
+            },
+        ),
+        OpDef::new(
+            "skill_refund",
+            "Refund points from a skill",
+            "{id: str, count?: u32}",
+            |args| {
+                let id = arg_str(args, "id")?;
+                let count = args
+                    .get("count")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(1) as u32;
+                let refunded = TRACKER.refund_skill_points(id, count);
+                Ok(json!({
+                    "id": id,
+                    "refunded": refunded,
+                    "level": TRACKER
+                        .with_state(|s| s.level_of(id))
+                        .unwrap_or(0),
+                }))
+            },
+        ),
+        OpDef::new(
+            "skill_grant_points",
+            "DEBUG: grant skill points without earning them",
+            "{n: u32}",
+            |args| {
+                let n = args.get("n").and_then(Json::as_u64).unwrap_or(1) as u32;
+                let ok = TRACKER.debug_grant_skill_points(n);
+                Ok(json!({"granted": ok, "n": n}))
             },
         ),
     ]);
 }
 
 fn install_hooks() {
-    // Harmony postfix on DigManager.Dig (whatever the actual
-    // method name is). For v0 we wire it as a placeholder; the
-    // catalog patch points get tuned once the user runs
-    // `walk_class DigManager` + `inspect_object` against a
-    // running game.
+    // Harmony postfix on DigManager.Dig. Each swing awards 5 XP.
+    // Real method name + signature TBD via `walk_class DigManager`
+    // once the plugin is loaded; the framework will surface the
+    // patch error if the target isn't found.
     if let Ok(hook) = patch_postfix("DigManager", "Dig", on_dig_postfix) {
         HOOK_REGISTRY.register(hook);
     }
-    if let Ok(hook) = patch_postfix("PlayerManager", "AddPlayerCurrency", on_currency_postfix) {
+    // Harmony postfix on PlayerManager.AddPlayerCurrency. Each
+    // currency event awards 10 XP.
+    if let Ok(hook) =
+        patch_postfix("PlayerManager", "AddPlayerCurrency", on_currency_postfix)
+    {
         HOOK_REGISTRY.register(hook);
     }
 }
 
-/// Fired after every `DigManager.Dig`. Grants flat XP per swing.
-/// Real catalog will gate on which Effect cares about OnDig.
 extern "C" fn on_dig_postfix(_ctx: *const c_void) {
-    XP.fetch_add(5, Ordering::Relaxed);
+    let _ = TRACKER.record_xp(5);
 }
 
-/// Fired after every `PlayerManager.AddPlayerCurrency`. Grants
-/// XP proportional to the sale (placeholder: flat 10).
 extern "C" fn on_currency_postfix(_ctx: *const c_void) {
-    XP.fetch_add(10, Ordering::Relaxed);
+    let _ = TRACKER.record_xp(10);
 }
