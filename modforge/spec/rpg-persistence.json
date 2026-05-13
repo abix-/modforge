@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modforge.dev/spec/rpg-persistence.json",
+  "title": "modforge RPG per-slot state file",
+  "description": "Saved per save-slot under '<ModDataDir>/<slot_key>.json'. Holds current skill levels, accumulated XP, and points available to spend. Atomic save: temp file + rename, never partial.",
+  "type": "object",
+  "required": ["schema_version", "skill_levels", "xp", "available_points"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "skill_levels": {
+      "type": "object",
+      "description": "Map of skill id to current level. Missing entries default to 0.",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "xp": { "type": "integer", "minimum": 0 },
+    "available_points": { "type": "integer", "minimum": 0 },
+    "disabled": {
+      "type": "array",
+      "description": "Skill ids the player has toggled off",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

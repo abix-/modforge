@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modforge.dev/spec/skill-catalog.json",
+  "title": "modforge skill catalog",
+  "description": "Catalog of skills a game mod exposes. Each SkillDef composes one Effect (WHAT) + one Trigger (WHEN). Effects and Triggers are referenced by 'kind' name; each framework binds kinds to its own Rust impl list at load time.",
+  "type": "object",
+  "required": ["skills"],
+  "properties": {
+    "skills": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/skill" }
+    }
+  },
+  "$defs": {
+    "skill": {
+      "type": "object",
+      "required": ["id", "display_name", "max_level", "effect", "trigger"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "display_name": { "type": "string" },
+        "max_level": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "effect": { "$ref": "#/$defs/effect_ref" },
+        "trigger": { "$ref": "#/$defs/trigger_ref" }
+      },
+      "additionalProperties": false
+    },
+    "effect_ref": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "description": "Effect type name; see spec/effect-kinds.md" },
+        "params": { "type": "object", "description": "kind-specific parameters" }
+      },
+      "additionalProperties": false
+    },
+    "trigger_ref": {
+      "type": "object",
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string", "description": "Trigger type name; see spec/trigger-kinds.md" },
+        "params": { "type": "object", "description": "kind-specific parameters" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

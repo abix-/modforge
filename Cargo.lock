@@ -946,6 +946,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "modforge"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "crossbeam-channel",
+ "fastrand",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "smallvec",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

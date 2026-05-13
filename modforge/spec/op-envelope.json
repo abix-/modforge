@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://modforge.dev/spec/op-envelope.json",
+  "title": "modforge op envelope",
+  "description": "Wire format for the debug HTTP control plane. Every request is {op, args}; every response carries {ok, op, error, result, state}. The 'state' field is the framework's snapshot blob, returned with every response regardless of which op fired so tests assert against snapshot rather than per-op result.",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "required": ["op"],
+      "properties": {
+        "op": { "type": "string", "description": "Op name; framework dispatches by exact match" },
+        "args": { "type": "object", "description": "Op-specific argument bag" }
+      },
+      "additionalProperties": false
+    },
+    "response": {
+      "type": "object",
+      "required": ["ok", "op", "error", "result", "state"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "op": { "type": "string", "description": "Echoed op name; '<missing>' or '<parse-error>' on envelope-level failure" },
+        "error": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string" }
+          ],
+          "description": "null on success; error message on failure"
+        },
+        "result": {
+          "description": "Op-specific success payload; null on failure"
+        },
+        "state": {
+          "description": "Framework-supplied snapshot blob; shape is per-mod; always present"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
