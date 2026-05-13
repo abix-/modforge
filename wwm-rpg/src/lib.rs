@@ -23,6 +23,12 @@ static MOD_INFO: ModDef = ModDef {
     on_init: Some(on_init),
     on_tick: None,
     on_shutdown: Some(on_shutdown),
+    tabs: &[
+        modforge::ui::TabDef {
+            name: "RPG",
+            render: skills::render_tab,
+        },
+    ],
 };
 
 unityforge::unityforge_mod!(MOD_INFO);

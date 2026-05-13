@@ -55,6 +55,47 @@ static GREEDY_MINER_EFFECT: UnityFieldMultiplyEffect = UnityFieldMultiplyEffect:
     &GREEDY_MINER_VANILLA,
 );
 
+static QUICK_PICKAXE_VANILLA: VanillaCache<&'static str, f32> = VanillaCache::new();
+static QUICK_PICKAXE_EFFECT: UnityFieldMultiplyEffect = UnityFieldMultiplyEffect::new(
+    "DigManager",
+    "_digRange",
+    0.5,
+    "dig range",
+    &QUICK_PICKAXE_VANILLA,
+);
+
+static CHARISMA_VANILLA: VanillaCache<&'static str, f32> = VanillaCache::new();
+static CHARISMA_EFFECT: UnityFieldMultiplyEffect = UnityFieldMultiplyEffect::new(
+    "WorkersManager",
+    "_hireCostMultiplier",
+    -0.5,
+    "hire cost",
+    &CHARISMA_VANILLA,
+);
+
+static RESILIENT_VANILLA: VanillaCache<&'static str, f32> = VanillaCache::new();
+static RESILIENT_EFFECT: UnityFieldMultiplyEffect = UnityFieldMultiplyEffect::new(
+    "PlayerStaminaController",
+    "_staminaDrainMultiplier",
+    -0.5,
+    "stamina drain",
+    &RESILIENT_VANILLA,
+);
+
+// Lucky uses a RuntimeEffect: the actual probability-scaling
+// behavior lives in a hot-path Harmony postfix that reads the
+// skill level on every fire. The Effect impl is a no-op apply
+// + a formatter that renders "+X% lucky drops" in the ImGui
+// tab.
+use modforge::rpg::std_effect::RuntimeEffect;
+use modforge::rpg::format::PercentFormat;
+static LUCKY_EFFECT: RuntimeEffect = RuntimeEffect {
+    max_bonus: 0.5,
+    format: PercentFormat::PlusPercent {
+        word: "lucky drops",
+    },
+};
+
 // ---- Catalog --------------------------------------------------------
 
 pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
@@ -78,6 +119,43 @@ pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
         ),
         trigger: &modforge::rpg::ON_SLOT_CHANGE,
     },
+    SkillDef {
+        id: "quick_pickaxe",
+        display_name: "Quick Pickaxe",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new(
+            "UnityFieldMultiply",
+            &QUICK_PICKAXE_EFFECT,
+        ),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
+    SkillDef {
+        id: "charisma",
+        display_name: "Charisma",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new(
+            "UnityFieldMultiply",
+            &CHARISMA_EFFECT,
+        ),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
+    SkillDef {
+        id: "resilient",
+        display_name: "Resilient",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new(
+            "UnityFieldMultiply",
+            &RESILIENT_EFFECT,
+        ),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
+    SkillDef {
+        id: "lucky",
+        display_name: "Lucky",
+        max_level: 10,
+        effect: modforge::rpg::EffectDef::new("Runtime", &LUCKY_EFFECT),
+        trigger: &modforge::rpg::ON_SLOT_CHANGE,
+    },
 ]);
 
 // ---- Tracker --------------------------------------------------------
@@ -97,7 +175,37 @@ static POLLER: OnceLock<PollerHandle> = OnceLock::new();
 
 // ---- Install --------------------------------------------------------
 
+/// Render fn invoked by the `render_tab` op for the "RPG"
+/// tab. Logs a snapshot of the catalog + state to the BepInEx
+/// log sink. Once an in-process ImGui binding lands on
+/// unityforge, this will draw widgets directly; today it's a
+/// log line so the user can see the tab is wired and the
+/// catalog state.
+pub fn render_tab() {
+    let snapshot = TRACKER.with_state(|s| {
+        let mut line = format!(
+            "RPG: xp={} level={} points={}",
+            s.xp, s.level, s.skill_points
+        );
+        for skill in CATALOG.iter() {
+            let lv = s.level_of(skill.id);
+            let txt = TRACKER.format_effect(skill, lv);
+            line.push_str(&format!(
+                "\n  {} L{}/{}  {}",
+                skill.display_name, lv, skill.max_level, txt
+            ));
+        }
+        line
+    });
+    let line = snapshot.unwrap_or_else(|| "RPG: <no slot active>".to_string());
+    unityforge::mono::log(unityforge::mono::LogLevel::Info, &line);
+}
+
 pub fn install() {
+    // Framework's standard RPG op set: skill_toggle / skill_spend /
+    // skill_refund / reload_slot / set_skill_points. Wired against
+    // our static TRACKER<UnityEngine>.
+    unityforge::rpg::ops::register(&TRACKER);
     register_ops();
     install_hooks();
     spawn_slot_poller();

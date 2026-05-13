@@ -785,6 +785,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "il2cpp-smoke"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "unityforge",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

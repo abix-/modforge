@@ -25,6 +25,11 @@ pub struct ModDef {
     pub on_tick: Option<fn(now: f32)>,
     /// Optional shutdown callback.
     pub on_shutdown: Option<fn()>,
+    /// Declarative UI tabs. The render fn fires when the
+    /// caller invokes the `render_tab` op or when the in-
+    /// process ImGui pass (when bundled imgui lands) walks
+    /// this list. Empty for mods that ship no UI.
+    pub tabs: &'static [modforge::ui::TabDef],
 }
 
 /// Default per-frame job-drain budget. Override per mod by
@@ -60,6 +65,7 @@ macro_rules! unityforge_mod {
             if let Some(cb) = $mod_info.on_init {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(cb));
             }
+            $crate::mod_main::register_ui_ops(&$mod_info);
             if $mod_info.http_port != 0 {
                 $crate::mod_main::start_http_server($mod_info.http_port);
             }
@@ -122,6 +128,53 @@ pub fn start_http_server(port: u16) {
             crate::mono::log(crate::mono::LogLevel::Info, msg);
         },
     );
+}
+
+/// Register the declarative-UI ops against the workspace
+/// [`modforge::ops::OP_REGISTRY`]. Called automatically from
+/// `unityforge_init` after the mod's `on_init`.
+///
+/// Registers:
+/// - `list_tabs`: returns `[ { name } ]` for each declared
+///   tab.
+/// - `render_tab`: invokes the named tab's `render` fn. The
+///   render fn has a unit return type today (a fallback for
+///   the in-process ImGui pass that hasn't shipped yet); the
+///   op response is `{ "rendered": <name> }` for now.
+pub fn register_ui_ops(mod_info: &'static ModDef) {
+    use modforge::ops::{OP_REGISTRY, OpDef};
+    use serde_json::{Value as Json, json};
+    OP_REGISTRY.register(OpDef::new(
+        "list_tabs",
+        "List declarative UI tabs the mod ships",
+        "{}",
+        move |_args| {
+            let arr: Vec<_> = mod_info
+                .tabs
+                .iter()
+                .map(|t| json!({ "name": t.name }))
+                .collect();
+            Ok(Json::Array(arr))
+        },
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "render_tab",
+        "Invoke the named tab's render fn",
+        "{name: str}",
+        move |args| {
+            let name = args
+                .get("name")
+                .and_then(Json::as_str)
+                .ok_or_else(|| "missing 'name'".to_string())?;
+            for tab in mod_info.tabs.iter() {
+                if tab.name == name {
+                    (tab.render)();
+                    return Ok(json!({"rendered": name}));
+                }
+            }
+            Err(format!("unknown tab '{name}'"))
+        },
+    ));
 }
 
 /// Helper called by the macro. Lifted out so the macro body
