@@ -15,6 +15,159 @@
 
 ---
 
+## P0. Unityforge: finish the modforge extraction (Phase 0b remainder)
+
+Phase 0b lifts ~12k Rust lines out of ueforge into the engine-agnostic
+`modforge` crate. Most rows shipped (ring, counters, log, args,
+envelope, settings, shutdown, selector grammar, ops registry, server,
+scanner, winproc, hot_reload, RPG traits, RPG pure math, tracker,
+poller, slot store, vanilla, disabled). Deep-dive:
+[`unityforge-plan.md` §6 Phases 0a/0b](unityforge-plan.md#phases).
+
+What's open:
+
+- [x] **Phase 0a: specs + docs**. `modforge/spec/*` and
+  `modforge/docs/*` exist (op-envelope, selector-grammar,
+  op-registry, generic-primitives, skill-catalog, rpg-persistence,
+  xp-curve, effect-kinds, trigger-kinds; methodology,
+  composition-model, def-registry, naming).
+- [x] **Phase 0b rows 1-15**. Engine-agnostic infrastructure +
+  rpg traits + rpg pure math + tracker all migrated.
+- [ ] **Phase 0b row 16: generic `std_effect_pure`**. Lift the
+  formatting-only effects out of `ueforge/src/rpg/std_effect.rs`
+  into `modforge::rpg::std_effect_pure`. Pure formatting; no
+  engine deps. Small.
+
+## P0. Unityforge: IL2CPP support + Rust SDK unification (Phase 1 remainder)
+
+Plan revised 2026-05-13: unityforge ships Mono AND IL2CPP from day
+one as first-class peers (north star: any random UE5 or Unity game).
+Currently only the Mono shim exists; the IL2CPP shim and the
+backend-agnostic Rust SDK are not built yet. Deep-dive:
+[`unityforge-plan.md` §6 Phase 1](unityforge-plan.md#phase-1-unityforge-skeleton--both-c-shims--http-control-plane-10-12-days).
+
+- [x] **Phase 1a: Cargo crate + workspace wiring**.
+- [x] **Phase 1b: C# Mono shim** (`unityforge/cs-shim/`).
+- [ ] **Phase 1b: split shim into `cs-shim-mono/` +
+  `cs-shim-common/`**. Current single `cs-shim/` is Mono-only;
+  refactor so the shared `Bridge` struct, `Logger`, and
+  function-pointer layout live in `cs-shim-common/` and link
+  from both backend shims. See plan §3.1.
+- [ ] **Phase 1b-il2cpp: C# IL2CPP shim** (`cs-shim-il2cpp/`).
+  BepInEx 6 IL2CPP + Il2CppInterop + HarmonyX-IL2CPP. Same
+  bridge ABI as Mono; `Il2CppBridge.cs` implements the surface
+  against `Il2CppInterop.Runtime`. ~800-1300 lines C#.
+- [ ] **Phase 1c: Rust `unity::*` SDK refactor**. Currently
+  `unityforge::mono::{MonoType, MonoObject, MonoField,
+  MonoMethod}`. Plan wants `unityforge::unity::{Type, Object,
+  Field, Method}` as the backend-agnostic surface dispatching
+  via runtime tag, with `mono::*` and `il2cpp::*` as escape
+  hatches for the rare backend-specific case. Add
+  `runtime_kind: i32` arg to `unityforge_init` and stash in a
+  `OnceLock`.
+- [x] **Phase 1d: HTTP control plane**.
+- [x] **Phase 1e: Hook bridge**.
+
+## P1. Unityforge::rpg: framework completeness (Phase 2 remainder)
+
+Skeleton shipped 2026-05-13: `UnityEngine`, `UnityEvent`,
+`UnitySlotKey`, `UnityField{Additive,Multiply}Effect`,
+`UnityMethodInvokeEffect`, `Tracker` / `SkillDef` /
+`SkillRegistry` aliases. Deep-dive:
+[`unityforge-plan.md` §6 Phase 2](unityforge-plan.md#phase-2-unityforgerpg-3-4-days).
+
+- [x] **Phase 2: slot_key_unity + vanilla cache + std_effect
+  (3 effects) + tracker/skill type aliases**.
+- [ ] **Phase 2: `trigger_harmony` + `OnUnityEvent`**. Currently
+  wwm-rpg installs Harmony postfixes manually and calls
+  `TRACKER.record_xp` from each. The framework should ship an
+  `OnHarmonyPatch` trigger that takes `(class, method)` at
+  catalog declaration time, auto-installs the patch, and fires
+  `TriggerCtx::Engine(UnityEvent::HarmonyPre/Post)`. Plus a
+  thin `OnUnityEvent` for `static event Action` subscriptions.
+- [ ] **Phase 2: `ops_register` for RPG ops**. The
+  `modforge::rpg::ops` handlers (skill_list / skill_levelup /
+  skill_refund / skill_state from spec) aren't wired into
+  unityforge's `OpRegistry`. Each mod re-registers its own
+  today; the framework should ship a one-liner that wires the
+  standard set against a `Tracker<UnityEngine>`.
+
+## P1. wwm-rpg: complete the Mono proof (Phase 3a remainder)
+
+Catalog now declarative through `modforge::rpg::Tracker` with
+two skills. Plan calls for 5-8 skills + ImGui tab + save/load
+persistence. Save/load is done (via Tracker + slot store).
+Deep-dive:
+[`unityforge-plan.md` §6 Phase 3a](unityforge-plan.md#3a-wwm-rpg-mono).
+
+- [x] **Strong Back + Greedy Miner**. Both declarative via
+  `UnityFieldAdditiveEffect` and `UnityFieldMultiplyEffect`.
+- [x] **Slot poller + UnitySlotKey wiring**. Polls
+  `GameSerializationSystem._currentLoadedSaveNumber`.
+- [x] **Save/load via `modforge::rpg::store`**. JSON under
+  `<DLL_dir>/wwm-rpg/<slot>.json` written atomically by the
+  Tracker.
+- [ ] **Quick Pickaxe** (UnityFieldMultiply on
+  `DigManager._digRange` or equivalent).
+- [ ] **Lucky** (probability-scaler effect; needs a new
+  `UnityProbabilityEffect` shape or a hook-based trigger).
+- [ ] **Charisma** (UnityFieldMultiply on hire cost field).
+- [ ] **Resilient** (UnityFieldMultiply on stamina drain).
+- [ ] **Verify field names** for declared skills against a
+  live `walk_class` from a running game. Currently best guesses
+  from the WWM research doc; first launch will surface any
+  miss.
+- [ ] **ImGui tab** via `unityforge::ui::Tab { name: "RPG",
+  render: ... }`. Plan allows an OnGUI fallback if bundled
+  imgui inside the Unity process is blocked. The whole `ui`
+  module doesn't exist yet on the unityforge side; spike during
+  this task or after Phase 0b row 21 (ui declarative shape)
+  lands.
+
+## P1. Unityforge: IL2CPP proof-point (Phase 3b)
+
+Demonstrates the same Rust SDK drives an IL2CPP game.
+Smaller in scope than wwm-rpg: smoke checklist only, not a
+full RPG mod. Deep-dive:
+[`unityforge-plan.md` §6 Phase 3b](unityforge-plan.md#3b-il2cpp-proof-point).
+
+- [ ] **Pick IL2CPP smoke target**. Candidates: Schedule 1
+  (known target), another IL2CPP-flavored small game on hand,
+  or a stripped IL2CPP build of a Unity sample.
+- [ ] **Build smoke cdylib**:
+  `grounded2mods/<target>-il2cpp-smoke/`, `crate-type =
+  ["cdylib"]`, same `unityforge_mod!` surface as wwm-rpg.
+- [ ] **Smoke checklist (curl-driven)**: `walk_class
+  <known type>`, `read_field` on a primitive, `write_field`
+  with observable game effect, one Harmony postfix observed.
+
+## P2. Modforge: framework-wide subsystem migration (Phase 0b rows 17-22)
+
+Lower-leverage extractions; rows that no unityforge consumer
+demands yet. Pull in when a consumer surfaces. Deep-dive:
+[`unityforge-plan.md` §6 Phase 0b](unityforge-plan.md#phase-0-modforge-extraction-4-5-days).
+
+- [ ] **Row 17: `client`** -> `modforge/client/`. ueforge's HTTP
+  client + scenario DSL. Lift when unityforge needs to author
+  HTTP-driven integration tests.
+- [ ] **Row 18: `bin/ueforge-deploy`** -> `modforge/deploy/`.
+  One deploy tool, Rust binary, parametric over the target
+  framework.
+- [ ] **Row 19: `debug` glue** -> `modforge/src/debug/`. The
+  framework-agnostic half of the debug surface.
+- [ ] **Row 20: `snapshots` generics** ->
+  `modforge/src/snapshots/`. ProjectionSnapshot generics.
+  Folder exists; per-frame projection types added when a
+  consumer needs them.
+- [ ] **Row 21: `ui` declarative shape** -> `modforge/src/ui/`.
+  Declarative Tab API; rendering stays per-framework.
+  Blocks unityforge's ImGui tab work (P1 above).
+- [ ] **Row 22: `worker` shape** -> `modforge/src/worker/`.
+  Worker trait; UE impl stays in ueforge, unityforge writes
+  its own.
+
+---
+
 ## P0. In-game smoke test
 
 The full 2026-05-10 wave is build-clean and unit-tested but not
