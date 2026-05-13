@@ -8,7 +8,7 @@
 //! in; the poller handles transition detection.
 //!
 //! ```ignore
-//! let handle = ueforge::rpg::SlotPoller::spawn(
+//! let handle = modforge::rpg::SlotPoller::spawn(
 //!     std::time::Duration::from_secs(1),
 //!     game::current_slot_key,        // -> Option<String>
 //!     |slot| tracker::activate(slot),
@@ -19,67 +19,102 @@
 //! handle.stop();
 //! ```
 //!
-//! The handle's `stop()` flips an atomic; the worker exits at the
-//! next interval tick (~1s typical, bounded by `interval`).
-//! Required for hot-reload safety. Without a stop signal the
-//! worker thread would outlive an unloaded DLL and segfault on
-//! the next callback into freed memory.
+//! Stop is graceful: the worker uses a `Condvar` keyed off the stop
+//! flag so `stop()` wakes the thread immediately (no waiting up to
+//! `interval` for the next poll). The handle stores a thread join
+//! and `stop()` blocks until the thread has exited. Required for
+//! hot-reload-safe shutdown.
+//!
+//! Spawned handles are also auto-registered into
+//! [`POLLER_REGISTRY`]; the framework's shutdown sequence
+//! ([`shutdown_all`]) stops every running poller without the
+//! caller needing to thread its handle through.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
-use parking_lot::Mutex;
+use parking_lot::{Condvar, Mutex};
 
-/// Handle to a running [`SlotPoller`]. Drop is a no-op (handles
-/// are designed to be `forget`-friendly so the static instance
-/// can outlive whoever called `spawn`); call [`Self::stop`]
-/// explicitly from `on_shutdown` to signal the worker.
+/// Handle to a running [`SlotPoller`]. Call [`Self::stop`] to
+/// signal the worker, wake it from sleep, and join its thread.
+/// Idempotent. Auto-called on drop.
 pub struct PollerHandle {
-    stop: Arc<AtomicBool>,
-    /// Per-spawn diagnostic counter. Incremented every time the
-    /// worker catches a panic from the resolver or callbacks.
-    /// Snapshot surface so silent thread death stops being
-    /// silent.
-    panics: Arc<AtomicU64>,
-    /// Most recent panic message; cleared on no-op tick.
-    last_panic: Arc<Mutex<Option<String>>>,
+    inner: Arc<HandleInner>,
+}
+
+struct HandleInner {
+    stop: AtomicBool,
+    wake: Condvar,
+    wake_mu: Mutex<()>,
+    panics: AtomicU64,
+    last_panic: Mutex<Option<String>>,
+    join: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl PollerHandle {
-    /// Signal the worker to exit. The worker checks the flag at
-    /// every interval tick, so the actual exit is bounded by the
-    /// configured interval (typical 1s).
+    /// Signal the worker to exit, wake it from sleep, and join
+    /// the thread. Idempotent.
     pub fn stop(&self) {
-        self.stop.store(true, Ordering::Release);
+        self.inner.stop.store(true, Ordering::Release);
+        // Wake the sleeping thread immediately.
+        self.inner.wake.notify_all();
+        if let Some(j) = self.inner.join.lock().take() {
+            let _ = j.join();
+        }
     }
 
-    /// Total panics caught from the resolver / callbacks since
-    /// spawn.
     pub fn panic_count(&self) -> u64 {
-        self.panics.load(Ordering::Relaxed)
+        self.inner.panics.load(Ordering::Relaxed)
     }
 
-    /// Most recent panic message, if any. Cleared on the next
-    /// successful tick.
     pub fn last_panic(&self) -> Option<String> {
-        self.last_panic.lock().clone()
+        self.inner.last_panic.lock().clone()
+    }
+}
+
+impl Drop for PollerHandle {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Process-global registry so the framework's shutdown sequence
+/// can stop every running poller without threading individual
+/// handles around. Populated by every `SlotPoller::spawn` call.
+static POLLER_REGISTRY: Mutex<Vec<Arc<HandleInner>>> = Mutex::new(Vec::new());
+
+/// Stop every running poller. Called from
+/// [`crate::shutdown::SHUTDOWN_REGISTRY`] during
+/// `unityforge_shutdown` / `ueforge_shutdown`.
+pub fn shutdown_all() {
+    let inners: Vec<Arc<HandleInner>> = {
+        let mut g = POLLER_REGISTRY.lock();
+        std::mem::take(&mut *g)
+    };
+    let n = inners.len();
+    for inner in inners {
+        inner.stop.store(true, Ordering::Release);
+        inner.wake.notify_all();
+        if let Some(j) = inner.join.lock().take() {
+            let _ = j.join();
+        }
+    }
+    if n > 0 {
+        crate::log!("rpg/poller: shutdown_all stopped {n} poller(s)");
     }
 }
 
 pub struct SlotPoller;
 
 impl SlotPoller {
-    /// Spawn the watcher on a named Rust thread (visible to
-    /// debuggers via the OS thread description). Returns a
-    /// [`PollerHandle`] that can stop the worker.
-    ///
-    /// Panics in the resolver / callbacks are caught, logged
-    /// with the message payload, counted, and the most recent
-    /// is exposed via [`PollerHandle::last_panic`]. The worker
-    /// keeps running. A single bad tick doesn't kill slot
-    /// tracking for the rest of the session.
+    /// Spawn the watcher on a named Rust thread. Returns a
+    /// [`PollerHandle`] that can stop + join the worker.
+    /// Panics in the resolver / callbacks are caught, logged,
+    /// counted, and the most recent is exposed via
+    /// [`PollerHandle::last_panic`]. A single bad tick doesn't
+    /// kill slot tracking for the rest of the session.
     pub fn spawn<R, A, D>(
         interval: Duration,
         resolve: R,
@@ -91,15 +126,17 @@ impl SlotPoller {
         A: Fn(String) + Send + 'static,
         D: Fn() + Send + 'static,
     {
-        let stop = Arc::new(AtomicBool::new(false));
-        let panics = Arc::new(AtomicU64::new(0));
-        let last_panic = Arc::new(Mutex::new(None::<String>));
+        let inner = Arc::new(HandleInner {
+            stop: AtomicBool::new(false),
+            wake: Condvar::new(),
+            wake_mu: Mutex::new(()),
+            panics: AtomicU64::new(0),
+            last_panic: Mutex::new(None),
+            join: Mutex::new(None),
+        });
 
-        let handle_stop = stop.clone();
-        let handle_panics = panics.clone();
-        let handle_last_panic = last_panic.clone();
-
-        let result = std::thread::Builder::new()
+        let thread_inner = inner.clone();
+        let join = std::thread::Builder::new()
             .name("modforge/rpg/slot-poller".to_string())
             .spawn(move || {
                 run(Cfg {
@@ -107,21 +144,22 @@ impl SlotPoller {
                     resolve: Box::new(resolve),
                     on_activate: Box::new(on_activate),
                     on_deactivate: Box::new(on_deactivate),
-                    stop: handle_stop,
-                    panics: handle_panics,
-                    last_panic: handle_last_panic,
+                    inner: thread_inner,
                 });
             });
 
-        if let Err(e) = result {
-            crate::log!("rpg/poller: spawn failed: {e}");
+        match join {
+            Ok(j) => {
+                inner.join.lock().replace(j);
+            }
+            Err(e) => {
+                crate::log!("rpg/poller: spawn failed: {e}");
+            }
         }
 
-        PollerHandle {
-            stop,
-            panics,
-            last_panic,
-        }
+        POLLER_REGISTRY.lock().push(inner.clone());
+
+        PollerHandle { inner }
     }
 }
 
@@ -130,19 +168,14 @@ struct Cfg {
     resolve: Box<dyn Fn() -> Option<String> + Send + 'static>,
     on_activate: Box<dyn Fn(String) + Send + 'static>,
     on_deactivate: Box<dyn Fn() + Send + 'static>,
-    stop: Arc<AtomicBool>,
-    panics: Arc<AtomicU64>,
-    last_panic: Arc<Mutex<Option<String>>>,
+    inner: Arc<HandleInner>,
 }
 
 fn run(cfg: Cfg) {
     crate::log!("rpg/poller: started, interval={:?}", cfg.interval);
     let mut last: Option<String> = None;
 
-    while !cfg.stop.load(Ordering::Acquire) {
-        // Each tick is wrapped in catch_unwind so a single panic
-        // inside the resolver / activate / deactivate callbacks
-        // doesn't kill the watcher.
+    while !cfg.inner.stop.load(Ordering::Acquire) {
         let cur_result = std::panic::catch_unwind(AssertUnwindSafe(|| (cfg.resolve)()));
         let cur = match cur_result {
             Ok(v) => v,
@@ -162,7 +195,17 @@ fn run(cfg: Cfg) {
             _ => {}
         }
         last = cur;
-        std::thread::sleep(cfg.interval);
+
+        // Cond-var sleep: wake immediately on stop, otherwise
+        // wait at most `interval`. wait_for releases the mutex
+        // while waiting and re-acquires on wake; we don't need
+        // the mutex for any real shared state, only for the
+        // condvar's contract.
+        let mut g = cfg.inner.wake_mu.lock();
+        if cfg.inner.stop.load(Ordering::Acquire) {
+            break;
+        }
+        let _ = cfg.inner.wake.wait_for(&mut g, cfg.interval);
     }
 
     crate::log!("rpg/poller: stop signal received, exiting");
@@ -175,7 +218,7 @@ fn fire(cfg: &Cfg, kind: &str, work: impl FnOnce()) {
 }
 
 fn record_panic(cfg: &Cfg, kind: &str, payload: &Box<dyn std::any::Any + Send>) {
-    cfg.panics.fetch_add(1, Ordering::Relaxed);
+    cfg.inner.panics.fetch_add(1, Ordering::Relaxed);
     let msg = if let Some(s) = payload.downcast_ref::<&'static str>() {
         (*s).to_string()
     } else if let Some(s) = payload.downcast_ref::<String>() {
@@ -184,7 +227,7 @@ fn record_panic(cfg: &Cfg, kind: &str, payload: &Box<dyn std::any::Any + Send>) 
         "<non-string panic payload>".to_string()
     };
     crate::log!("rpg/poller: panic in {kind}: {msg}");
-    *cfg.last_panic.lock() = Some(format!("[{kind}] {msg}"));
+    *cfg.inner.last_panic.lock() = Some(format!("[{kind}] {msg}"));
 }
 
 #[cfg(test)]
@@ -200,15 +243,30 @@ mod tests {
             |_| {},
             || {},
         );
-        // Let the thread make a few ticks.
         std::thread::sleep(Duration::from_millis(50));
         h.stop();
-        // Bounded by interval; give the worker time to notice.
+        assert!(h.inner.stop.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn stop_wakes_immediately() {
+        // Long interval; without condvar wake this test would
+        // block for the full duration. With it, stop should
+        // return in ~10ms.
+        let h = SlotPoller::spawn(
+            Duration::from_secs(60),
+            || None,
+            |_| {},
+            || {},
+        );
         std::thread::sleep(Duration::from_millis(50));
-        // We can't directly observe thread exit without a join
-        // handle; the stop flag IS the contract. Verify it at
-        // least propagated.
-        assert!(h.stop.load(Ordering::Acquire));
+        let t0 = std::time::Instant::now();
+        h.stop();
+        let elapsed = t0.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "stop took {elapsed:?}; condvar wake didn't fire"
+        );
     }
 
     #[test]
@@ -227,11 +285,8 @@ mod tests {
             |_| {},
             || {},
         );
-        // Wait long enough for at least the panicking tick + one
-        // recovery tick.
         std::thread::sleep(Duration::from_millis(100));
         h.stop();
-        std::thread::sleep(Duration::from_millis(50));
         assert!(h.panic_count() >= 1, "panics={}", h.panic_count());
         assert!(h.last_panic().is_some());
         assert!(counter.load(Ordering::Relaxed) >= 2,

@@ -1,11 +1,28 @@
 // Plugin.cs. BepInEx entry. Loads the Rust cdylib next to this
 // DLL, calls unityforge_init with a function-pointer bridge,
 // then drives unityforge_tick from a MonoBehaviour's Update.
+//
+// Hot reload: generation-versioned. Each iteration drops a
+// `*.gen<N>.dll` next to the canonical DLL. The shim's
+// per-second watcher picks it up, calls `unityforge_shutdown`
+// on the active generation (which runs the modforge shutdown
+// registry. HTTP server unblock + slot poller wake + thread
+// joins. So all background threads exit before we proceed),
+// then `LoadLibrary`s the new generation, calls its
+// `unityforge_init`, and switches active. The OLD module is
+// never FreeLibrary'd; the OS unmaps it on its own schedule
+// once nothing references it.
+//
+// See docs/unityforge-plan.md section 6.5 "Hot reload" for the
+// full design + rationale.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using BepInEx;
 using UnityEngine;
 
@@ -18,12 +35,6 @@ namespace Unityforge.Shim
         public const string PluginName = "Unityforge.Shim";
         public const string PluginVersion = "0.1.0";
 
-        /// <summary>
-        /// Name of the Rust cdylib to load. Override by setting
-        /// the UNITYFORGE_TARGET env var before launching the
-        /// game, otherwise we autodetect a single *.unityforge.dll
-        /// next to this plugin.
-        /// </summary>
         private const string TargetEnv = "UNITYFORGE_TARGET";
 
         // P/Invoke targets resolved by GetProcAddress at runtime.
@@ -31,21 +42,35 @@ namespace Unityforge.Shim
         private delegate void UnityforgeTickFn(float now);
         private delegate void UnityforgeShutdownFn();
 
-        private IntPtr _rustModule;
-        private UnityforgeInitFn _init;
-        private UnityforgeTickFn _tick;
-        private UnityforgeShutdownFn _shutdown;
-        private BridgeTable _bridge;
-        private GCHandle _bridgeHandle;
-        private bool _started;
+        /// <summary>
+        /// One loaded image of the Rust cdylib. The shim
+        /// holds at most one active generation at a time; old
+        /// generations are dropped from `_quiesced` once their
+        /// background threads have been signaled to stop and
+        /// joined (by `_shutdown()`). We never FreeLibrary.
+        /// the OS unmaps the image once nothing references
+        /// its code segment.
+        /// </summary>
+        private class Generation
+        {
+            public int N;                                 // 0 = initial, then 1, 2, ...
+            public string Path;
+            public IntPtr Module;
+            public UnityforgeInitFn Init;
+            public UnityforgeTickFn Tick;
+            public UnityforgeShutdownFn Shutdown;
+            public BridgeTable Bridge;
+            public GCHandle BridgeHandle;                 // pinned pointer passed to Rust
+        }
 
-        // Hot reload state. Drop a `<dll>.new` next to the
-        // canonical DLL and the shim swaps it in on the next
-        // Update tick. See `Reload()` for the sequence.
+        private Generation _active;
+        private readonly List<Generation> _quiesced = new List<Generation>();
+        private string _canonicalDir;
         private string _canonicalDllPath;
-        private string _stagingDllPath;
         private float _lastReloadCheck;
         private const float ReloadCheckIntervalSec = 1.0f;
+        private static readonly Regex GenFilenameRe = new Regex(
+            @"\.gen(\d+)\.dll$", RegexOptions.IgnoreCase);
 
         private void Awake()
         {
@@ -58,95 +83,207 @@ namespace Unityforge.Shim
                 ShimLogger.Source.LogError("Unityforge.Shim: no Rust target DLL found. Set " + TargetEnv + " or drop a *.unityforge.dll next to this plugin.");
                 return;
             }
-            ShimLogger.Source.LogInfo("Unityforge.Shim: loading " + dllPath);
             _canonicalDllPath = dllPath;
-            _stagingDllPath = dllPath + ".new";
-
-            _rustModule = NativeLibrary.Load(dllPath);
-            if (_rustModule == IntPtr.Zero)
-            {
-                ShimLogger.Source.LogError("Unityforge.Shim: LoadLibrary failed: " + Marshal.GetLastWin32Error());
-                return;
-            }
-            _init = ResolveSymbol<UnityforgeInitFn>("unityforge_init");
-            _tick = ResolveSymbol<UnityforgeTickFn>("unityforge_tick");
-            _shutdown = ResolveSymbol<UnityforgeShutdownFn>("unityforge_shutdown");
-            if (_init == null || _tick == null || _shutdown == null)
-            {
-                ShimLogger.Source.LogError("Unityforge.Shim: target DLL is missing one of unityforge_init / unityforge_tick / unityforge_shutdown");
-                return;
-            }
+            _canonicalDir = Path.GetDirectoryName(dllPath);
+            ShimLogger.Source.LogInfo("Unityforge.Shim: loading " + dllPath);
 
             HarmonyBridge.EnsureHarmony(PluginGuid);
 
-            _bridge = Bridge.Build(new MonoBackendBridge());
-            _bridgeHandle = GCHandle.Alloc(_bridge, GCHandleType.Pinned);
-            try
+            _active = LoadGeneration(dllPath, generationNumber: 0);
+            if (_active == null)
             {
-                int rc = _init(_bridgeHandle.AddrOfPinnedObject());
-                if (rc != 0)
-                {
-                    ShimLogger.Source.LogError("Unityforge.Shim: unityforge_init returned " + rc);
-                    return;
-                }
-            }
-            catch (Exception e)
-            {
-                ShimLogger.Source.LogError("Unityforge.Shim: unityforge_init threw: " + e);
+                ShimLogger.Source.LogError("Unityforge.Shim: initial generation failed to load");
                 return;
             }
-            _started = true;
-            ShimLogger.Source.LogInfo("Unityforge.Shim: ready");
+            ShimLogger.Source.LogInfo("Unityforge.Shim: ready (generation 0)");
         }
 
         private void Update()
         {
-            if (!_started) return;
+            if (_active == null) return;
             InputBridge.PollAll();
             CheckHotReload();
-            try { _tick(Time.realtimeSinceStartup); }
+            if (_active == null) return; // reload may have left us unactive
+            try { _active.Tick(Time.realtimeSinceStartup); }
             catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: tick threw: " + e); }
         }
 
-        // Hot reload is NOT IMPLEMENTED in this shim. The previous
-        // FreeLibrary-and-swap approach crashed because the
-        // cdylib spawns background threads (HTTP server, slot
-        // poller) that hold instruction pointers into the
-        // mapped DLL. FreeLibrary'ing it while those threads
-        // run = access violation on their next instruction.
-        //
-        // The canonical fix is generation-versioned loading:
-        // each reload `LoadLibrary`s a NEW image with a unique
-        // filename and never `FreeLibrary`s the old one. Old
-        // threads exit on their own stop signal; the OS unmaps
-        // the old DLL once its refcount hits zero. Designing
-        // that properly is tracked in
-        // docs/unityforge-plan.md section "Hot reload".
-        //
-        // For now: if a `<dll>.new` file is present, log a
-        // warning and ignore. Don't auto-swap.
+        private void OnDestroy()
+        {
+            if (_active != null)
+            {
+                try { _active.Shutdown(); }
+                catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: shutdown threw: " + e); }
+                if (_active.BridgeHandle.IsAllocated) _active.BridgeHandle.Free();
+                _active = null;
+            }
+            foreach (var g in _quiesced)
+            {
+                if (g.BridgeHandle.IsAllocated) g.BridgeHandle.Free();
+            }
+            _quiesced.Clear();
+            // Intentionally NO FreeLibrary calls. Process exit
+            // unmaps everything; before that, old generations'
+            // threads may still be exiting on stop signals.
+        }
+
+        // ---- hot reload --------------------------------------------------
+
         private void CheckHotReload()
         {
             var now = Time.realtimeSinceStartup;
             if (now - _lastReloadCheck < ReloadCheckIntervalSec) return;
             _lastReloadCheck = now;
-            if (string.IsNullOrEmpty(_stagingDllPath)) return;
-            if (!File.Exists(_stagingDllPath)) return;
-            ShimLogger.Source.LogWarning(
-                "Unityforge.Shim: ignoring " + Path.GetFileName(_stagingDllPath)
-                + " (hot reload disabled until generation-versioned loading lands)");
-            try { File.Delete(_stagingDllPath); }
-            catch { /* leave the file; next deploy will overwrite */ }
+            if (string.IsNullOrEmpty(_canonicalDir)) return;
+
+            // Find the highest .gen<N>.dll in the plugin dir.
+            // We swap to whichever generation is newest on disk
+            // higher than the active one. Lower-numbered files
+            // are ignored (stale staging from a prior run).
+            string[] candidates;
+            try { candidates = Directory.GetFiles(_canonicalDir, "*.gen*.dll"); }
+            catch { return; }
+
+            int bestN = _active.N;
+            string bestPath = null;
+            foreach (var c in candidates)
+            {
+                var m = GenFilenameRe.Match(c);
+                if (!m.Success) continue;
+                if (!int.TryParse(m.Groups[1].Value, out var n)) continue;
+                if (n > bestN) { bestN = n; bestPath = c; }
+            }
+            if (bestPath == null) return;
+
+            ShimLogger.Source.LogInfo(
+                $"Unityforge.Shim: hot reload generation {_active.N} -> {bestN}");
+            HotSwap(bestN, bestPath);
         }
 
-        private void OnDestroy()
+        private void HotSwap(int newGen, string newPath)
         {
-            if (!_started) return;
-            try { _shutdown(); }
-            catch (Exception e) { ShimLogger.Source.LogError("Unityforge.Shim: shutdown threw: " + e); }
-            if (_bridgeHandle.IsAllocated) _bridgeHandle.Free();
-            if (_rustModule != IntPtr.Zero) NativeLibrary.Free(_rustModule);
-            _started = false;
+            var old = _active;
+
+            // Step 1: stop ticking the old generation. We do
+            // this BEFORE touching the new image so a long shim
+            // shutdown doesn't double-fire ops while new is
+            // half-init.
+            _active = null;
+
+            // Step 2: graceful shutdown on the old generation.
+            // This runs the Rust SHUTDOWN_REGISTRY which:
+            //  - server::shutdown_all unblocks tiny_http and
+            //    joins the listener thread
+            //  - rpg::poller::shutdown_all wakes the poller's
+            //    condvar and joins
+            //  - HOOK_REGISTRY.shutdown_all unpatches Harmony
+            // After this call returns, no Rust thread from the
+            // old generation should be executing in its code
+            // segment.
+            try { old.Shutdown(); }
+            catch (Exception e)
+            {
+                ShimLogger.Source.LogError(
+                    $"Unityforge.Shim: old gen {old.N} shutdown threw: " + e);
+                // Continue anyway. Threads MAY still be
+                // exiting; we just don't FreeLibrary so the
+                // worst case is they finish executing into a
+                // still-mapped image.
+            }
+
+            // Step 3: clear C#-side state held on Rust's
+            // behalf. Harmony patches were already unpatched by
+            // the old shutdown; this also resets handle/input
+            // tables so the new generation starts fresh.
+            HarmonyBridge.UnpatchAll();
+            InputBridge.Clear();
+            MonoBridge.ClearHandles();
+
+            // Step 4: park the old generation in `_quiesced`.
+            // We keep its module mapped (no FreeLibrary) so any
+            // stray thread that didn't quite finish exiting can
+            // still run its last instructions safely.
+            _quiesced.Add(old);
+
+            // Step 5: load the new image.
+            var fresh = LoadGeneration(newPath, newGen);
+            if (fresh == null)
+            {
+                ShimLogger.Source.LogError(
+                    $"Unityforge.Shim: gen {newGen} failed to load; rolling back");
+                // Re-arm the old generation. Its threads are
+                // gone but the code is still mapped; we can
+                // call init again.
+                _quiesced.Remove(old);
+                try
+                {
+                    int rc = old.Init(old.BridgeHandle.AddrOfPinnedObject());
+                    if (rc == 0)
+                    {
+                        _active = old;
+                        return;
+                    }
+                }
+                catch (Exception e)
+                {
+                    ShimLogger.Source.LogError(
+                        $"Unityforge.Shim: rollback re-init threw: " + e);
+                }
+                return;
+            }
+
+            _active = fresh;
+            ShimLogger.Source.LogInfo(
+                $"Unityforge.Shim: hot reload complete (now generation {newGen}; {_quiesced.Count} draining)");
+        }
+
+        private Generation LoadGeneration(string path, int generationNumber)
+        {
+            var module = NativeLibrary.Load(path);
+            if (module == IntPtr.Zero)
+            {
+                ShimLogger.Source.LogError(
+                    $"Unityforge.Shim: LoadLibrary failed for {path}: " + Marshal.GetLastWin32Error());
+                return null;
+            }
+            var gen = new Generation { N = generationNumber, Path = path, Module = module };
+            gen.Init = ResolveSymbol<UnityforgeInitFn>(module, "unityforge_init");
+            gen.Tick = ResolveSymbol<UnityforgeTickFn>(module, "unityforge_tick");
+            gen.Shutdown = ResolveSymbol<UnityforgeShutdownFn>(module, "unityforge_shutdown");
+            if (gen.Init == null || gen.Tick == null || gen.Shutdown == null)
+            {
+                ShimLogger.Source.LogError(
+                    $"Unityforge.Shim: gen {generationNumber} DLL is missing one of unityforge_init / unityforge_tick / unityforge_shutdown");
+                return null;
+            }
+
+            // Each generation gets its own pinned BridgeTable
+            // instance. The function pointers inside point at
+            // the same shared C# delegates; the struct itself
+            // lives separately so the Rust side's pointer
+            // stays valid for the lifetime of that generation.
+            gen.Bridge = Bridge.Build(new MonoBackendBridge());
+            gen.BridgeHandle = GCHandle.Alloc(gen.Bridge, GCHandleType.Pinned);
+
+            try
+            {
+                int rc = gen.Init(gen.BridgeHandle.AddrOfPinnedObject());
+                if (rc != 0)
+                {
+                    ShimLogger.Source.LogError(
+                        $"Unityforge.Shim: gen {generationNumber} unityforge_init returned " + rc);
+                    if (gen.BridgeHandle.IsAllocated) gen.BridgeHandle.Free();
+                    return null;
+                }
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Source.LogError(
+                    $"Unityforge.Shim: gen {generationNumber} unityforge_init threw: " + e);
+                if (gen.BridgeHandle.IsAllocated) gen.BridgeHandle.Free();
+                return null;
+            }
+            return gen;
         }
 
         private string LocateRustDll()
@@ -156,38 +293,39 @@ namespace Unityforge.Shim
                 return explicitTarget;
             var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             if (string.IsNullOrEmpty(dir)) return null;
-            // Convention: <mod>.unityforge.dll next to the shim.
-            var candidates = Directory.GetFiles(dir, "*.unityforge.dll");
+            // Canonical name is `*.unityforge.dll` (not
+            // `*.unityforge.gen<N>.dll`). The generation files
+            // are picked up by the hot-reload watcher, not at
+            // initial load.
+            var candidates = Directory.GetFiles(dir, "*.unityforge.dll")
+                .Where(f => !GenFilenameRe.IsMatch(f))
+                .ToArray();
             if (candidates.Length == 1) return candidates[0];
             return null;
         }
 
-        private T ResolveSymbol<T>(string name) where T : class
+        private T ResolveSymbol<T>(IntPtr module, string name) where T : class
         {
-            if (!NativeLibrary.TryGetExport(_rustModule, name, out var addr) || addr == IntPtr.Zero)
+            if (!NativeLibrary.TryGetExport(module, name, out var addr) || addr == IntPtr.Zero)
                 return null;
             return Marshal.GetDelegateForFunctionPointer(addr, typeof(T)) as T;
         }
     }
 
-    // NativeLibrary is .NET 5+; netstandard2.1 doesn't have it.
-    // Provide a tiny shim against the Win32 LoadLibrary entrypoints.
     internal static class NativeLibrary
     {
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr LoadLibraryW(string path);
         [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Ansi)]
         private static extern IntPtr GetProcAddress(IntPtr module, string name);
-        [DllImport("kernel32", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool FreeLibrary(IntPtr module);
 
         public static IntPtr Load(string path) => LoadLibraryW(path);
-        public static void Free(IntPtr module) { if (module != IntPtr.Zero) FreeLibrary(module); }
         public static bool TryGetExport(IntPtr module, string name, out IntPtr addr)
         {
             addr = GetProcAddress(module, name);
             return addr != IntPtr.Zero;
         }
+        // No Free(): generation-versioned loading never
+        // FreeLibrary's an old image.
     }
 }

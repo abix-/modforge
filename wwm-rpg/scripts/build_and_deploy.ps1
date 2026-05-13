@@ -63,13 +63,35 @@ $rustDll = Join-Path $repoRoot 'target\x86_64-pc-windows-msvc\release\wwm_rpg.dl
 $shimDll = Join-Path $repoRoot 'unityforge\cs-shim-mono\bin\Release\netstandard2.1\Unityforge.Shim.Mono.dll'
 
 if ($Hot) {
-    Write-Host "==> -Hot is currently disabled." -ForegroundColor Yellow
-    Write-Host "    The previous FreeLibrary-based hot reload crashed the game" -ForegroundColor Yellow
-    Write-Host "    because the cdylib spawns background threads. Generation-" -ForegroundColor Yellow
-    Write-Host "    versioned loading is the planned fix; see" -ForegroundColor Yellow
-    Write-Host "    docs/unityforge-plan.md section 'Hot reload'." -ForegroundColor Yellow
-    Write-Host "    Quit the game + rerun this script without -Hot." -ForegroundColor Yellow
-    exit 1
+    # Generation-versioned hot reload. Find the highest
+    # existing `<dll>.gen<N>.dll` in the plugin dir and stage
+    # this build as N+1. The running shim's per-second watcher
+    # picks it up, shuts down the active generation, loads the
+    # new one, and switches active. Old generation's image
+    # stays mapped (never FreeLibrary); old threads exit on
+    # their stop signals and the OS unmaps the image once
+    # nothing references it.
+    #
+    # See docs/unityforge-plan.md section 6.5 for the design.
+    if (-not (Test-Path $pluginDir)) {
+        New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
+    }
+    $maxGen = 0
+    $existing = Get-ChildItem -Path $pluginDir -Filter 'wwm_rpg.unityforge.gen*.dll' -ErrorAction SilentlyContinue
+    foreach ($f in $existing) {
+        if ($f.Name -match 'gen(\d+)\.dll$') {
+            $n = [int]$Matches[1]
+            if ($n -gt $maxGen) { $maxGen = $n }
+        }
+    }
+    $newGen = $maxGen + 1
+    $stagingDll = Join-Path $pluginDir "wwm_rpg.unityforge.gen$newGen.dll"
+    Copy-Item -Force $rustDll $stagingDll
+    Write-Host "==> Staged Rust DLL as generation $newGen" -ForegroundColor Green
+    Write-Host "      $stagingDll" -ForegroundColor Green
+    Write-Host "    The running shim will pick it up within ~1s." -ForegroundColor Green
+    Write-Host "    Tail BepInEx/LogOutput.log for 'hot reload generation' line." -ForegroundColor Green
+    exit 0
 }
 
 Copy-Item -Force $rustDll (Join-Path $pluginDir 'wwm_rpg.unityforge.dll')

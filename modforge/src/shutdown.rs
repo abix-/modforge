@@ -145,6 +145,11 @@ pub fn register_modforge_builtins() {
             run: || crate::server::shutdown_all(),
         },
         ShutdownHandlerDef {
+            name: "rpg::poller::shutdown_all",
+            order: 250,
+            run: || crate::rpg::poller::shutdown_all(),
+        },
+        ShutdownHandlerDef {
             name: "settings::shutdown_all",
             order: 300,
             run: || crate::settings::shutdown_all(),
