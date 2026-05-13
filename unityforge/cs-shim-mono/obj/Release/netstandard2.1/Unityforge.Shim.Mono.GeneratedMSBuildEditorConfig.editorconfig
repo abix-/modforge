@@ -1,0 +1,5 @@
+is_global = true
+build_property.RootNamespace = Unityforge.Shim
+build_property.ProjectDir = C:\code\grounded2mods\unityforge\cs-shim-mono\
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 

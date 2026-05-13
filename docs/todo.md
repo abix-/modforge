@@ -104,19 +104,32 @@ Deep-dive:
   `<DLL_dir>/wwm-rpg/<slot>.json` written atomically by the
   Tracker.
 - [x] **Quick Pickaxe** (UnityFieldMultiply on
-  `DigManager._digRange`).
+  `DigManager._digRange`). **VERIFIED IN-GAME 2026-05-13**:
+  spending 10 points mutated `_digRange` 3.0 -> 4.5 exactly;
+  save persisted to `<WWM>/wwm-rpg/0.json`.
 - [x] **Lucky** (RuntimeEffect: format-only Effect; hot-path
   probability scaling lives in a future Harmony postfix
   callback that reads the level on every fire).
-- [x] **Charisma** (UnityFieldMultiply on
-  `WorkersManager._hireCostMultiplier`).
-- [x] **Resilient** (UnityFieldMultiply on
-  `PlayerStaminaController._staminaDrainMultiplier`).
-- [ ] **Verify field names** for declared skills against a
-  live `walk_class` from a running game. Currently best
-  guesses from the WWM research doc; requires running the
-  game (out of scope for "ignore testing" but tracked here
-  for the eventual first-launch session).
+- [ ] **Strong Back, Charisma, Resilient: repoint via
+  one-hop indirection**. Verified during the 2026-05-13
+  session that:
+  - `PlayerCarryingController._maxCapacity` doesn't exist;
+    real cap is `GameDataSO._inventoryBaseSlotsCount`
+    (Int32, vanilla 5) reached via `GameplayManager._gameData`.
+  - `WorkersManager._hireCostMultiplier` doesn't exist; the
+    `WorkersManager` type has no singleton instance. Real
+    candidate: `GameDataSO._moneyEnergyRestoreCost` (Int32,
+    vanilla 75) via the same one-hop indirection.
+  - `PlayerStaminaController` class doesn't exist; real
+    candidate: `GameDataSO._jetpackEnergyConsumeAmount`
+    (Single, vanilla 0.02) via indirection.
+  Blocked on shipping
+  `UnityIndirectField{Additive,Multiply}Effect` (singleton
+  -> object via named field -> target field).
+- [ ] **Verify Greedy Miner in-save**. `MineDataSO` has zero
+  instances at main menu (SOs instantiate with a save).
+  Defer verification + field-name confirmation to an in-save
+  test session.
 - [x] **Declarative UI tab**. `ModDef.tabs` field added on
   the unityforge side; `register_ui_ops` exposes `list_tabs`
   + `render_tab` via HTTP. `wwm-rpg::skills::render_tab`

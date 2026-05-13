@@ -32,10 +32,33 @@ Catalog (`wwm-rpg/src/skills.rs`):
 Harmony postfixes: `DigManager.Dig` (+5 XP/swing),
 `PlayerManager.AddPlayerCurrency` (+10 XP/event).
 
-**What's NOT verified.** Class + field + method names above
-are best guesses from the WWM research doc. First in-game
-launch is the only way to confirm; expect to fix at least one
-of them against `walk_class` evidence (see step 6 below).
+**End-to-end verified in-game (2026-05-13 session).** Plugin
+loads, HTTP control plane answers, slot poller activates,
+catalog state persists to disk across spend/refund, and the
+Effect dispatch round-trip works: spending 10 points on
+`quick_pickaxe` mutated `DigManager._digRange` from 3.0 to
+4.5 exactly (3.0 * (1 + 0.5 * 1.0), matching the
+`UnityFieldMultiplyEffect` math).
+
+**Field-name verification status.** Quick Pickaxe + the slot
+key are right; the other four scalable skills (Strong Back,
+Greedy Miner, Charisma, Resilient) target classes that don't
+match the live runtime:
+
+| Skill | Declared target | Reality |
+|---|---|---|
+| Quick Pickaxe | `DigManager._digRange` (Single, 3.0) | **verified working** |
+| Slot key | `GameSerializationSystem._currentLoadedSaveNumber` (Int32, 0) | **verified working** |
+| Strong Back | `PlayerCarryingController._maxCapacity` | Field doesn't exist. Real cap source: `GameDataSO._inventoryBaseSlotsCount` (Int32, vanilla 5). Reached via `GameplayManager._gameData`. Needs a one-hop-indirection Effect (singleton -> SO -> field). |
+| Greedy Miner | `MineDataSO._oreValue` | `MineDataSO` has zero instances at main menu (SOs load with a save). Defer verification to an in-save session. |
+| Charisma | `WorkersManager._hireCostMultiplier` | `WorkersManager` type exists but has no singleton instance. Real candidate: `GameDataSO._moneyEnergyRestoreCost` (Int32, vanilla 75) via the same one-hop indirection. |
+| Resilient | `PlayerStaminaController._staminaDrainMultiplier` | Class doesn't exist on this build. Real candidate: `GameDataSO._jetpackEnergyConsumeAmount` (Single, vanilla 0.02) via one-hop indirection. |
+| Lucky | (RuntimeEffect, no target) | unchanged. |
+
+Next change: ship a `UnityIndirectField{Additive,Multiply}Effect`
+that resolves `singleton.field` to a referenced object, then
+read/writes the named field on that object. Repoint the
+three indirection-needing skills + verify in-game.
 
 ---
 
