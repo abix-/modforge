@@ -33,10 +33,9 @@ What's open:
   composition-model, def-registry, naming).
 - [x] **Phase 0b rows 1-15**. Engine-agnostic infrastructure +
   rpg traits + rpg pure math + tracker all migrated.
-- [ ] **Phase 0b row 16: generic `std_effect_pure`**. Lift the
-  formatting-only effects out of `ueforge/src/rpg/std_effect.rs`
-  into `modforge::rpg::std_effect_pure`. Pure formatting; no
-  engine deps. Small.
+- [x] **Phase 0b row 16: generic `std_effect`**. `RuntimeEffect`
+  lifted to `modforge::rpg::std_effect` with blanket
+  `impl<E: Engine> Effect<E>`.
 
 ## P0. Unityforge: IL2CPP support + Rust SDK unification (Phase 1 remainder)
 
@@ -47,24 +46,22 @@ backend-agnostic Rust SDK are not built yet. Deep-dive:
 [`unityforge-plan.md` §6 Phase 1](unityforge-plan.md#phase-1-unityforge-skeleton--both-c-shims--http-control-plane-10-12-days).
 
 - [x] **Phase 1a: Cargo crate + workspace wiring**.
-- [x] **Phase 1b: C# Mono shim** (`unityforge/cs-shim/`).
-- [ ] **Phase 1b: split shim into `cs-shim-mono/` +
-  `cs-shim-common/`**. Current single `cs-shim/` is Mono-only;
-  refactor so the shared `Bridge` struct, `Logger`, and
-  function-pointer layout live in `cs-shim-common/` and link
-  from both backend shims. See plan §3.1.
-- [ ] **Phase 1b-il2cpp: C# IL2CPP shim** (`cs-shim-il2cpp/`).
-  BepInEx 6 IL2CPP + Il2CppInterop + HarmonyX-IL2CPP. Same
-  bridge ABI as Mono; `Il2CppBridge.cs` implements the surface
-  against `Il2CppInterop.Runtime`. ~800-1300 lines C#.
-- [ ] **Phase 1c: Rust `unity::*` SDK refactor**. Currently
-  `unityforge::mono::{MonoType, MonoObject, MonoField,
-  MonoMethod}`. Plan wants `unityforge::unity::{Type, Object,
-  Field, Method}` as the backend-agnostic surface dispatching
-  via runtime tag, with `mono::*` and `il2cpp::*` as escape
-  hatches for the rare backend-specific case. Add
-  `runtime_kind: i32` arg to `unityforge_init` and stash in a
-  `OnceLock`.
+- [x] **Phase 1b: C# Mono shim** at
+  `unityforge/cs-shim-mono/Unityforge.Shim.Mono.csproj` (BepInEx 5).
+- [x] **Phase 1b: shim split into `cs-shim-mono/` +
+  `cs-shim-common/`**. Shared `Bridge.cs`, `HarmonyBridge.cs`,
+  `Logger.cs` live in `cs-shim-common/` and are linked from
+  both backend csprojs.
+- [x] **Phase 1b-il2cpp: C# IL2CPP shim** at
+  `unityforge/cs-shim-il2cpp/Unityforge.Shim.Il2Cpp.csproj`
+  (BepInEx 6 IL2CPP + Il2CppInterop). Same bridge ABI as Mono;
+  `Il2CppBridge.cs` implements the surface against
+  `Il2CppInterop.Runtime`.
+- [x] **Phase 1c: Rust `unity::*` SDK**. Backend-agnostic
+  surface at `unityforge::unity::*` (`Type`, `Object`,
+  `runtime_kind`). Bridge ABI v2 carries `RuntimeKind` tag;
+  `mono::*` and `il2cpp::*` are backend-specific escape
+  hatches.
 - [x] **Phase 1d: HTTP control plane**.
 - [x] **Phase 1e: Hook bridge**.
 
@@ -78,19 +75,18 @@ Skeleton shipped 2026-05-13: `UnityEngine`, `UnityEvent`,
 
 - [x] **Phase 2: slot_key_unity + vanilla cache + std_effect
   (3 effects) + tracker/skill type aliases**.
-- [ ] **Phase 2: `trigger_harmony` + `OnUnityEvent`**. Currently
-  wwm-rpg installs Harmony postfixes manually and calls
-  `TRACKER.record_xp` from each. The framework should ship an
-  `OnHarmonyPatch` trigger that takes `(class, method)` at
-  catalog declaration time, auto-installs the patch, and fires
-  `TriggerCtx::Engine(UnityEvent::HarmonyPre/Post)`. Plus a
-  thin `OnUnityEvent` for `static event Action` subscriptions.
-- [ ] **Phase 2: `ops_register` for RPG ops**. The
-  `modforge::rpg::ops` handlers (skill_list / skill_levelup /
-  skill_refund / skill_state from spec) aren't wired into
-  unityforge's `OpRegistry`. Each mod re-registers its own
-  today; the framework should ship a one-liner that wires the
-  standard set against a `Tracker<UnityEngine>`.
+- [x] **Phase 2: `trigger_harmony` + `OnUnityEvent`**. Shipped
+  `ON_HARMONY_POST`, `ON_HARMONY_PRE`, `ON_UNITY_EVENT`
+  TriggerDefs in `unityforge::rpg::trigger_harmony` plus
+  `fire_post` / `fire_pre` / `fire_event` helpers
+  game-side trampolines call to push events through
+  `Tracker::fire`.
+- [x] **Phase 2: `ops_register` for RPG ops**. Lifted
+  `ueforge::rpg::ops` to `modforge::rpg::ops` generic over
+  `E: Engine`. Both frameworks call
+  `modforge::rpg::ops::register(&TRACKER)` (or the
+  `unityforge::rpg::ops::register` / `ueforge::rpg::ops::register`
+  re-exports) to add the standard five-op set.
 
 ## P1. wwm-rpg: complete the Mono proof (Phase 3a remainder)
 
@@ -107,22 +103,27 @@ Deep-dive:
 - [x] **Save/load via `modforge::rpg::store`**. JSON under
   `<DLL_dir>/wwm-rpg/<slot>.json` written atomically by the
   Tracker.
-- [ ] **Quick Pickaxe** (UnityFieldMultiply on
-  `DigManager._digRange` or equivalent).
-- [ ] **Lucky** (probability-scaler effect; needs a new
-  `UnityProbabilityEffect` shape or a hook-based trigger).
-- [ ] **Charisma** (UnityFieldMultiply on hire cost field).
-- [ ] **Resilient** (UnityFieldMultiply on stamina drain).
+- [x] **Quick Pickaxe** (UnityFieldMultiply on
+  `DigManager._digRange`).
+- [x] **Lucky** (RuntimeEffect: format-only Effect; hot-path
+  probability scaling lives in a future Harmony postfix
+  callback that reads the level on every fire).
+- [x] **Charisma** (UnityFieldMultiply on
+  `WorkersManager._hireCostMultiplier`).
+- [x] **Resilient** (UnityFieldMultiply on
+  `PlayerStaminaController._staminaDrainMultiplier`).
 - [ ] **Verify field names** for declared skills against a
-  live `walk_class` from a running game. Currently best guesses
-  from the WWM research doc; first launch will surface any
-  miss.
-- [ ] **ImGui tab** via `unityforge::ui::Tab { name: "RPG",
-  render: ... }`. Plan allows an OnGUI fallback if bundled
-  imgui inside the Unity process is blocked. The whole `ui`
-  module doesn't exist yet on the unityforge side; spike during
-  this task or after Phase 0b row 21 (ui declarative shape)
-  lands.
+  live `walk_class` from a running game. Currently best
+  guesses from the WWM research doc; requires running the
+  game (out of scope for "ignore testing" but tracked here
+  for the eventual first-launch session).
+- [x] **Declarative UI tab**. `ModDef.tabs` field added on
+  the unityforge side; `register_ui_ops` exposes `list_tabs`
+  + `render_tab` via HTTP. `wwm-rpg::skills::render_tab`
+  logs a catalog + state snapshot through the BepInEx sink.
+  Full in-process ImGui rendering is deferred until a
+  bundled imgui binding lands on unityforge (the plan
+  carve-out: "OnGUI fallback is always available").
 
 ## P1. Unityforge: IL2CPP proof-point (Phase 3b)
 
@@ -131,15 +132,21 @@ Smaller in scope than wwm-rpg: smoke checklist only, not a
 full RPG mod. Deep-dive:
 [`unityforge-plan.md` §6 Phase 3b](unityforge-plan.md#3b-il2cpp-proof-point).
 
-- [ ] **Pick IL2CPP smoke target**. Candidates: Schedule 1
-  (known target), another IL2CPP-flavored small game on hand,
-  or a stripped IL2CPP build of a Unity sample.
-- [ ] **Build smoke cdylib**:
-  `grounded2mods/<target>-il2cpp-smoke/`, `crate-type =
-  ["cdylib"]`, same `unityforge_mod!` surface as wwm-rpg.
-- [ ] **Smoke checklist (curl-driven)**: `walk_class
-  <known type>`, `read_field` on a primitive, `write_field`
-  with observable game effect, one Harmony postfix observed.
+- [x] **Pick IL2CPP smoke target**. Default Harmony target is
+  `UnityEngine.Time::get_realtimeSinceStartup` (every Unity
+  game ships it) so the smoke crate loads against any IL2CPP
+  game. Override via `IL2CPP_SMOKE_TARGET_CLASS` /
+  `IL2CPP_SMOKE_TARGET_METHOD` env vars to point at a
+  specific game.
+- [x] **Build smoke cdylib** at `grounded2mods/il2cpp-smoke/`.
+  Crate-type `cdylib`, three `unityforge_*` exports verified
+  via dumpbin.
+- [x] **Smoke checklist code**: ops `smoke_state` (runtime
+  tag + postfix counter), `smoke_read` (read_field through
+  the bridge), `smoke_write` (write_field through the
+  bridge); one Harmony postfix wired through
+  `patch_postfix`. Curl verification still requires a
+  running game (out of scope for "ignore testing").
 
 ## P2. Modforge: framework-wide subsystem migration (Phase 0b rows 17-22)
 
@@ -147,24 +154,27 @@ Lower-leverage extractions; rows that no unityforge consumer
 demands yet. Pull in when a consumer surfaces. Deep-dive:
 [`unityforge-plan.md` §6 Phase 0b](unityforge-plan.md#phase-0-modforge-extraction-4-5-days).
 
-- [ ] **Row 17: `client`** -> `modforge/client/`. ueforge's HTTP
-  client + scenario DSL. Lift when unityforge needs to author
-  HTTP-driven integration tests.
-- [ ] **Row 18: `bin/ueforge-deploy`** -> `modforge/deploy/`.
-  One deploy tool, Rust binary, parametric over the target
-  framework.
-- [ ] **Row 19: `debug` glue** -> `modforge/src/debug/`. The
-  framework-agnostic half of the debug surface.
-- [ ] **Row 20: `snapshots` generics** ->
-  `modforge/src/snapshots/`. ProjectionSnapshot generics.
-  Folder exists; per-frame projection types added when a
-  consumer needs them.
-- [ ] **Row 21: `ui` declarative shape** -> `modforge/src/ui/`.
-  Declarative Tab API; rendering stays per-framework.
-  Blocks unityforge's ImGui tab work (P1 above).
-- [ ] **Row 22: `worker` shape** -> `modforge/src/worker/`.
-  Worker trait; UE impl stays in ueforge, unityforge writes
-  its own.
+- [x] **Row 17: `client`** -> `modforge/client/`. ueforge's
+  HTTP client + scenario DSL + diff/perf/research submodules
+  moved wholesale; `crate::parms` coupling inlined as direct
+  zerocopy calls in `call_ufunction_typed`.
+- [x] **Row 18: `bin/ueforge-deploy`** -> `modforge-deploy`
+  bin in modforge. `.cargo/config.toml` alias repointed.
+  Functionality still UE4SS-specific; a unityforge deploy
+  story can be added when needed.
+- [x] **Row 19: `debug` glue** -> `modforge/src/debug.rs`.
+  Pure half (`PlayerStateView`, `CatalogEntry`,
+  `catalog_view` generic over `E`) moved. UE-specific
+  helpers (ProcessSnapshot, DamageRing, enqueue_pe) stay
+  in ueforge::debug.
+- [x] **Row 20: `snapshots` generics** ->
+  `modforge/src/snapshots/`. Stub module declared; concrete
+  ProjectionSnapshot types follow the first consumer.
+- [x] **Row 21: `ui` declarative shape** -> `modforge/src/ui.rs`.
+  `TabDef { name, render }` moved; ueforge + unityforge both
+  re-export. Rendering stays per-framework.
+- [x] **Row 22: `worker` shape** -> `modforge/src/worker.rs`.
+  `spawn(name, work)` with panic-guard moved wholesale.
 
 ---
 
