@@ -163,6 +163,96 @@ The user's fatigue complaint is solved BY THE GAME ITSELF if they can trigger th
 
 **Lifespan complaint**: not yet found a built-in cheat. The retirement function at `FUN_1400df280` is the next read target. We know it references the format string `"%s retired %s (old) ch %d races %d wins %d%s"` so the actual age comparison is in there.
 
+## Retirement mechanic (lifespan answer)
+
+References: `FUN_1400dbe10` @ 0x1400dbe10 (caller) and `FUN_1400df280` @ 0x1400df280 (the retirement handler).
+
+### Trigger gate
+
+`FUN_1400dbe10` (the per-frame "after race finishes" handler) calls retirement only if:
+
+```c
+if (*(int *)(param_1 + 600) != 0) {              // some mode != 0
+  FUN_1400d0a00(param_1, 1);
+  if (*(int *)(param_1 + 0x464) < *(int *)(DAT_1403fb0d8 + 0x314)) {   // last_retirement_year < current_year
+    FUN_1400df280(param_1, ...);
+  }
+}
+```
+
+So retirement is gated to **at most once per game year**. The "last_retirement_year" counter lives at `param_1 + 0x464`.
+
+### Retirement scan loop
+
+`FUN_1400df280` iterates a list of horses at `param_1 + 0x130..0x138` (likely "horses currently on the track" or "horses in stable"). For each horse it checks fitness and produces ONE of three retirement messages:
+
+```c
+"%s retired %s (old) ch %d races %d wins %d%s"      // had a record (won races)
+"%s retired %s (bails) age %d ch %d"                // no record, gave up after enough tries
+"%s retired %s (useless) age %d ch %d"              // no record, never had skill
+```
+
+### Which retirement message fires
+
+```c
+if (cVar2 == '\0') {                                  // some "had record" check (FUN_1400b76a0)
+  if (uVar26 < 6) goto SKIP;                          // <-- list size < 6: skip retiring this horse
+  if (horse_skill < (mode != 4 ? 2 : 1)) {           // horse->+0x21c (skill) below threshold
+    if (race_count < (mode != 4 ? 4 : 3)) skip;       // stats->+0x50 (race_count) below 3-4
+    log "(useless)";
+  } else {
+    log "(bails)";
+  }
+} else {
+  log "(old) ch %d races %d wins %d";                 // had a record
+}
+```
+
+### Retirement struct fields confirmed
+
+`param_1` (game-state sub-struct, probably the Track manager):
+- `+0x130` / `+0x138` = begin/end of horse list (vector). Length = (end - begin) / 8 pointers.
+- `+0x148` = some special horse to skip (perhaps the player's active horse)
+- `+0x464` = last_retirement_year (gates one retirement per year)
+- `+0x468` = some retirement-attempt counter (incremented each call)
+- `+0x600` = mode/state field (zero = don't run, 3 = racing, 4 = something)
+
+Horse struct (`puVar21` is `undefined8 *`):
+- byte `+0x1fc` = **age (int32)**
+- byte `+0x200` = **max_age (int32)** (compared as `age < max_age - 1`)
+- byte `+0x21c` = skill/fitness counter (int32)
+- byte `+0x3f * 8 = 0x1f8` = some ID passed to FUN_1400c78c0 (name lookup?)
+
+### Release-into-wild branch (NEW finding)
+
+Line 130181-130187:
+
+```c
+if (((horse->age < horse->max_age - 1) &&
+    (3 < game_state->year) &&
+    (FUN_1400c6580(4) == 0)) {                       // random check (4-way)
+  log " - released into the wild";
+  FUN_140100e30(game_state, horse);                  // release into wild
+}
+else {
+  (**(code **)*puVar21)(puVar21, 1);                 // virtual call (destructor?)
+}
+```
+
+Translation: if the horse still has lifespan left AND the year is > 3 AND a 1-in-4 random check passes, instead of removing the horse, it's released back into the wild. Otherwise the horse's vtable destructor runs (final removal).
+
+This is the "set free a still-young horse" alternative ending.
+
+### What this means for lifespan modding
+
+The actual death-of-old-age trigger is NOT in this function. Retirement here is about fitness/track-life, not actual death. The DEATH-OF-OLD-AGE handler (`Horse is dead!` / `Why that horse is deceased`) is at a different address.
+
+But we have the max_age field offset: **byte +0x200 of the horse struct**. Whatever sets that field is the lifespan tuner. The genetics expression code (which reads `OLD_AGE` from the genome and writes to `horse->+0x200`) is the lever.
+
+Next read targets:
+- `FUN_1400c0660` ("Horse is dead!") - the actual death handler.
+- The gene-expression function that writes `horse->+0x200` from `OLD_AGE` gene allele.
+
 ## Confidence levels
 
 - "No Tire" toggle disables tiredness via per-frame flag reset: **HIGH** (direct reading of the code)
