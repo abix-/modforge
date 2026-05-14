@@ -26,6 +26,7 @@
 
 pub mod fatigue;
 pub mod gamestate;
+pub mod genes;
 pub mod horse;
 pub mod ops;
 pub mod patches;
