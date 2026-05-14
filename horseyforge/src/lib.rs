@@ -28,6 +28,7 @@ pub mod fatigue;
 pub mod gamestate;
 pub mod horse;
 pub mod ops;
+pub mod patches;
 pub mod snapshot;
 pub mod targets;
 
@@ -75,19 +76,30 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
-    // 5. Start the fatigue suppressor.
+    // 5. Install the sleep_safe_no_tire patch.
     //
-    //   The game's built-in `no_tire` cheat zeroes BOTH +0x205 and
-    //   +0x206 on every horse every frame. +0x206 is what the sleep
-    //   gate checks for "any horse tired"; if it's always zero,
-    //   sleep is refused with "None of your horses are tired".
+    //   The game's `no_tire` cheat (DAT_1403d95c5) drives a per-frame
+    //   loop in FUN_1400ceb60 that zeroes BOTH +0x205 and +0x206 on
+    //   every horse. +0x206 is the sleep-gate's "is any horse tired"
+    //   counter. When it's always 0, the player can't sleep.
     //
-    //   Our suppressor zeroes only +0x205 (the race-eligibility
-    //   flag), so race gates pass while the sleep gate keeps working
-    //   normally. This is the "no_tire that doesn't break sleep"
-    //   the game's own cheat is missing.
-    fatigue::spawn_suppressor();
-    modforge::log!("horseyforge: fatigue suppressor enabled (only +0x205, not +0x206)");
+    //   This patch NOPs the +0x206 zero, leaving the +0x205 zero in
+    //   place. Net effect: enabling no_tire bypasses race-eligibility
+    //   fatigue without breaking the day cycle.
+    match patches::sleep_safe_no_tire::apply() {
+        Ok(()) => {
+            // Now we can safely enable the game's own no_tire.
+            gamestate::set_no_tire(true);
+            modforge::log!(
+                "horseyforge: sleep_safe_no_tire patched + game no_tire enabled"
+            );
+        }
+        Err(e) => {
+            modforge::log!(
+                "horseyforge: sleep_safe_no_tire FAILED ({e}); leaving no_tire off so sleep still works"
+            );
+        }
+    }
 
     // 5. Start the HTTP server. Single endpoint /op, auth via header.
     let server_cfg = modforge::server::Config {
@@ -174,6 +186,16 @@ pub extern "system" fn DllMain(
             // Stop every server modforge has running so the listener
             // thread doesn't keep our DLL pinned past unload.
             modforge::server::shutdown_all();
+            // Restore the bytes we overwrote in Horsey.exe so the
+            // game runs vanilla again after we detach. CRITICAL.
+            // without this, a hot-reload would leave NOPs in the
+            // exe and the next-gen DLL would re-patch on top of
+            // already-NOP'd code.
+            patches::revert_all();
+            // Best-effort: also turn off no_tire so the game's own
+            // per-frame loop (with our NOPs reverted) doesn't keep
+            // zeroing the tired flags.
+            gamestate::set_no_tire(false);
         }
         DLL_THREAD_ATTACH | DLL_THREAD_DETACH => {}
         _ => {}

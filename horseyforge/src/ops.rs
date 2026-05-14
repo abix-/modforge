@@ -16,6 +16,7 @@ use serde_json::{json, Value as Json};
 use crate::fatigue;
 use crate::gamestate;
 use crate::horse;
+use crate::patches;
 
 /// Register every Horsey op on the modforge global registry.
 /// Called once from the worker thread at DLL init.
@@ -148,20 +149,26 @@ fatigue.suppressor.set which only zeroes the race-eligibility flag.",
         ),
         OpDef::new(
             "fatigue.suppressor.get",
-            "Read whether horseyforge's split-flag fatigue suppressor is on.",
+            "Status of the (deprecated) per-frame Rust-side suppressor.",
             "",
             |_| Ok(json!({"enabled": fatigue::is_enabled()})),
         ),
         OpDef::new(
             "fatigue.suppressor.set",
-            "Toggle horseyforge's split-flag fatigue suppressor. On = race \
-gate passes (no tire), sleep gate still works.",
+            "Toggle the (deprecated) per-frame Rust-side suppressor. \
+The proper fix is sleep_safe_no_tire (already auto-applied at attach).",
             "{enabled: bool}",
             |args| {
                 let v = args_bool(args, "enabled")?;
                 fatigue::set_enabled(v);
                 Ok(json!({"enabled": fatigue::is_enabled()}))
             },
+        ),
+        OpDef::new(
+            "patches.list",
+            "List the binary patches currently applied to Horsey.exe.",
+            "",
+            |_| Ok(json!({"applied": patches::applied_names()})),
         ),
         OpDef::new(
             "cheats.debug_mode.get",
