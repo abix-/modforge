@@ -104,7 +104,7 @@ When the operation isn't in the framework menu, the game crate
 declares its own type + impl + static instance:
 
 ```rust
-// grounded2-rpg/src/rpg/effects.rs
+// grounded2-mod/src/rpg/effects.rs
 use ueforge::rpg::Effect;
 
 pub struct BackpackSlotsEffect {

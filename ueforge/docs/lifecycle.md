@@ -27,9 +27,9 @@ declares your mod to UE4SS:
 
 ```rust
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
-    name: "Grounded2RPG",                      // shown in UE4SS console
+    name: "Grounded2Mod",                      // shown in UE4SS console
     version: "0.1.0",
-    log_file: "grounded2_rpg.log",             // file in DLL dir
+    log_file: "grounded2_mod.log",             // file in DLL dir
     console_title: "Grounded 2 - RPG System",            // console window title
     console: cfg!(feature = "console"),          // gate console alloc
     on_unreal_init: bbp_on_unreal_init,          // fn pointer
@@ -157,7 +157,7 @@ consumer cdylib.
 
 If for some reason you need a custom shim (rare), call
 `CppShim::new().skip_default_shim()` in your `build.rs` and
-provide your own. grounded2-rpg used to do this; the dedup
+provide your own. grounded2-mod used to do this; the dedup
 work removed the custom shim.
 
 ## build.rs
@@ -224,10 +224,10 @@ reads:
 
 ```toml
 [package.metadata.ueforge]
-mod_name        = "Grounded2RPG"
+mod_name        = "Grounded2Mod"
 game_name_regex = "^Grounded\\s*2$"
 game_sub_path   = "Augusta\\Binaries\\WinGRTS"
-target_dir      = "target/grounded2-rpg"
+target_dir      = "target/grounded2-mod"
 ```
 
 `target_dir` keeps two cdylibs in the same workspace from
@@ -414,7 +414,7 @@ leftover `main-old.dll`.
 
 ```
 1. edit Rust
-2. cargo deploy install -p grounded2-rpg
+2. cargo deploy install -p grounded2-mod
    -> writes main-new.dll (UE4SS still has main.dll mapped)
 3. alt-tab to game, press Ctrl+R
    -> UE4SS calls our ueforge_mod_shutdown
@@ -467,11 +467,11 @@ UE4SS's event-loop thread. The flow:
 ```sh
 # 1. Edit Rust code.
 # 2. Build + deploy without closing the game:
-cargo deploy install -p grounded2-rpg
+cargo deploy install -p grounded2-mod
 
 # 3. Alt-tab to game, press Ctrl+R.
 # 4. Tail the log to confirm the new init ran:
-tail -f "<game-install>/.../BetterBackpack/dlls/grounded2_rpg.log"
+tail -f "<game-install>/.../BetterBackpack/dlls/grounded2_mod.log"
 ```
 
 UE4SS's event loop is distinct from the game's UE thread, but

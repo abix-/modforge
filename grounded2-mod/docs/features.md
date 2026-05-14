@@ -40,7 +40,7 @@ All numeric settings are runtime-configurable via
 ## Distribution
 
 Shipping shape: **UE4SS CPPMod**. The cdylib lands at
-`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\Grounded2RPG\dlls\main.dll`
+`<game>\Augusta\Binaries\WinGRTS\ue4ss\Mods\Grounded2Mod\dlls\main.dll`
 and UE4SS handles loading via its standard CPPMod entry point. UE4SS
 itself ships as a DLL proxy that the user installs first; we ride
 on top.
@@ -146,8 +146,8 @@ offset is known.
 ## Versioning
 
 When a Grounded 2 game patch ships, double-check the offset constants
-in `grounded2-rpg/src/sdk/offsets.rs`. If they shift, dump a fresh
+in `grounded2-mod/src/sdk/offsets.rs`. If they shift, dump a fresh
 SDK and update both the platform-level offsets and any per-class field
 offsets used by the patch modules. The layout tests in
-`grounded2-rpg/tests/layout.rs` catch our own struct shape; they do
+`grounded2-mod/tests/layout.rs` catch our own struct shape; they do
 **not** catch game-side offset drift.

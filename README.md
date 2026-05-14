@@ -24,7 +24,7 @@ crates that consume modforge directly or through a forge.
     └────┬────┘         └─────┬─────┘
          │                    │
    ┌─────┴─────────┐    ┌─────┴─────────┐    ┌──────────────┐
-   │ grounded2-rpg │    │   wwm-mod     │    │ horseyforge  │
+   │ grounded2-mod │    │   wwm-mod     │    │ horseyforge  │
    │ outworld-     │    │ il2cpp-smoke  │    │ (Horsey Game,│
    │ station-      │    │               │    │  PE inject)  │
    │ tweaks        │    │               │    │              │
@@ -96,7 +96,7 @@ See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge
 
 | Crate                     | Game              | Bound via    | What it does                                                                 |
 |---------------------------|-------------------|--------------|------------------------------------------------------------------------------|
-| `grounded2-rpg`           | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
+| `grounded2-mod`           | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
 | `outworld-station-mod`    | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
 | `wwm-mod`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
 | `il2cpp-smoke`            | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
@@ -116,7 +116,7 @@ it's never locked). All Horsey-specific. See
 
 Per-game research notes:
 
-- [`grounded2-rpg/docs/`](grounded2-rpg/docs/). Damage
+- [`grounded2-mod/docs/`](grounded2-mod/docs/). Damage
   internals (combat / fall / environmental), inventory,
   catalog, persistence.
 - [`docs/wild-west-miner-research.md`](docs/wild-west-miner-research.md).
@@ -132,7 +132,7 @@ Per-game research notes:
 +- modforge/                  -- the foundation crate
 +- ueforge/                   -- UE5 / UE4SS forge (60+ submodules, 5 modules)
 +- unityforge/                -- Unity Mono + IL2CPP forge (with C# shim)
-+- grounded2-rpg/             -- Grounded 2 RPG / level-up mod (ueforge)
++- grounded2-mod/             -- Grounded 2 RPG / level-up mod (ueforge)
 +- outworld-station-mod/      -- Outworld Station mod (ueforge)
 +- wwm-mod/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
@@ -151,7 +151,7 @@ Each game-side mod has its own deploy command:
 
 ```sh
 # Grounded 2 (UE5 / UE4SS)
-cargo deploy install -p grounded2-rpg
+cargo deploy install -p grounded2-mod
 
 # Outworld Station (UE5 / UE4SS)
 cargo deploy install -p outworld-station-mod
@@ -215,7 +215,7 @@ Each forge has its own hot-reload story:
   Binary-patch infra landed; first patch
   (`sleep_safe_no_tire`) wip (pattern-scan disambiguator
   unsolved).
-- **grounded2-rpg**: 13 skills live including Lifesteal in the
+- **grounded2-mod**: 13 skills live including Lifesteal in the
   damage hook. Tested against Grounded 2 Steam build
   `++Augusta+release-0.4.0.2-CL-2673661`.
 - **outworld-station-mod**: stacks tweak shipped.
@@ -254,7 +254,7 @@ Per-crate docs:
 - [`ueforge/README.md`](ueforge/README.md) + [`ueforge/docs/`](ueforge/docs/).
 - [`unityforge/`](unityforge/).
 - [`horseyforge/README.md`](horseyforge/README.md).
-- [`grounded2-rpg/docs/`](grounded2-rpg/docs/).
+- [`grounded2-mod/docs/`](grounded2-mod/docs/).
 - [`horseygame/`](horseygame/). Horsey Game research notes.
 
 ## Credits
@@ -285,7 +285,7 @@ Per-crate docs:
   patching pattern.
 - The author of [**RPG System**](https://mods.factorio.com/mod/RPGsystem)
   for Factorio. The headline RPG-style level-up mod whose
-  vocabulary `grounded2-rpg` and `wwm-mod` borrow verbatim.
+  vocabulary `grounded2-mod` and `wwm-mod` borrow verbatim.
 - The author of [**RimWorld RPG Mod / Combat Skills RPG**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858).
 - The authors of the [War3CS / War3FT](https://war3cs2.wiki.gg/)
   Counter-Strike Warcraft mod line, whose flat-skill-catalog

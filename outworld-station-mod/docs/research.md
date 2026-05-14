@@ -248,7 +248,7 @@ BetterStack_P/
    how invasive we can be
 
 ## Folder convention for this repo
-- Following the `grounded2-rpg/` pattern from Grounded 2 work
+- Following the `grounded2-mod/` pattern from Grounded 2 work
 - First mod crate: `outworld-station-mod/`. A multi-mod bundle
   (stack-size adjustments first, more tweaks layered on the same
   scaffold over time)
@@ -399,7 +399,7 @@ state shape + handlers.
 
 Total reusable infrastructure now: ~2,690 LoC across `ueforge`
 (~2,170 LoC, 19 files) and `ueforge-client` (~240 LoC, 3 files).
-grounded2-rpg has shed ~2,000 LoC of generic mod plumbing.
+grounded2-mod has shed ~2,000 LoC of generic mod plumbing.
 
 ### The OWS scaffold once slices 9-11 land
 
@@ -437,7 +437,7 @@ research surface: ~150-200, not 2,500.
 Phase-1 scaffolding plan (when ready):
 1. Create `outworld-station-<feature>/` with Cargo manifest + cdylib
    (`name = "main"` for UE4SS Mods/<Name>/dlls/main.dll)
-2. Copy/adapt `cpp/shim.cpp` + `build.rs` from grounded2-rpg
+2. Copy/adapt `cpp/shim.cpp` + `build.rs` from grounded2-mod
 3. `src/lib.rs` worker entry; `src/debug.rs` calls `ueforge::spawn(...)`
    with a `Snapshot { /* empty */ }` and `handle()` matching only
    "snapshot" initially

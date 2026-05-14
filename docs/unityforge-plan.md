@@ -80,7 +80,7 @@ Four Rust crates plus one C# shim:
    each entry differ but the Rust SDK is agnostic. Analogous
    to ueforge's `cpp/ueforge_shim.cpp` (502 lines). Each
    shim likely under 1500 lines of C# with shared base.
-5. **Game mods** (Rust cdylib crates). `grounded2-rpg` and
+5. **Game mods** (Rust cdylib crates). `grounded2-mod` and
    `outworld-station-mod` exist. `wwm-mod` is new. All
    pure Rust. Depend on `ueforge` or `unityforge` plus
    `modforge`.
@@ -503,7 +503,7 @@ grounded2mods/
       rpg.md
       lifecycle.md
     tests/
-  grounded2-rpg/                  # exists; depends on ueforge + modforge
+  grounded2-mod/                  # exists; depends on ueforge + modforge
   outworld-station-mod/        # exists; depends on ueforge + modforge
   wwm-mod/                        # NEW Rust mod (Mono target); depends on unityforge + modforge
   <il2cpp-smoke>/                 # NEW Rust mod (IL2CPP target); depends on unityforge + modforge
@@ -960,7 +960,7 @@ level up Strong Back, observe inventory cap visibly
 increase, save + reload, observe state persisted. Quit and
 relaunch, state still there.
 `curl POST /op {"op":"skill_state"}` returns the same
-numbers. Same op set as ueforge's grounded2-rpg. Plus: the
+numbers. Same op set as ueforge's grounded2-mod. Plus: the
 IL2CPP smoke target loads the same Rust cdylib pattern via
 the IL2CPP shim and answers all curl checks listed above.
 
@@ -1227,7 +1227,7 @@ The plan is "done" when:
 - `cargo build --workspace` builds all four crates (modforge,
   ueforge, unityforge, modforge-deploy).
 - `cargo test --workspace` passes.
-- ueforge's existing game mods (`grounded2-rpg`,
+- ueforge's existing game mods (`grounded2-mod`,
   `outworld-station-mod`) still work in-game,
   byte-for-byte identical to pre-extraction.
 - `unityforge.dll` + `Unityforge.Shim.Mono.dll` load into

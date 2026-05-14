@@ -335,7 +335,7 @@ That's the full mod skeleton. ~50 LoC.
 ### `your-mod/src/debug.rs`
 
 See `outworld-station-mod/docs/research.md` and the existing
-`grounded2-rpg/src/debug.rs` for the snapshot + dispatcher
+`grounded2-mod/src/debug.rs` for the snapshot + dispatcher
 pattern.
 
 ## TDD pattern
@@ -442,7 +442,7 @@ matches the existing community "Better Item Stacks" pak mod's
 effect. But via runtime DLL, so other features in the same mod
 can layer on top dynamically.
 
-## Audit: ueforge vs grounded2-rpg vs ows-tweaks
+## Audit: ueforge vs grounded2-mod vs ows-tweaks
 
 Three-way map of every load-bearing feature across the
 framework and the two consumer mods. Use this when deciding
@@ -462,7 +462,7 @@ else?". Update on every major slice.
 
 ### Lifecycle / loader plumbing
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 1 | `ModInfo` + `ue4ss_mod!` macro | ✅ | · | · | done (g2rpg migrated 2026-05-10) |
 | 2 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done. G2rpg's `cpp/shim.cpp` deleted |
@@ -474,7 +474,7 @@ else?". Update on every major slice.
 
 ### UObject SDK
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 8 | `UObject` / `UClass` / `UFunction` wrappers | ✅ | · | · | done. G2rpg's `sdk/` deleted |
 | 9 | `FName` / `FString` | ✅ (with FName→string cache) | · | · | done |
@@ -489,7 +489,7 @@ else?". Update on every major slice.
 
 ### Hooking
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 18 | PE / vtable hook framework | ✅ (`ProcessEventHook`) | · |. | done. G2rpg's `hook/` deleted |
 | 19 | Game-thread `Queue` + re-entrance guard | ✅ | · (drained from `kill_hook`) |. | done |
@@ -498,7 +498,7 @@ else?". Update on every major slice.
 
 ### Control plane (HTTP / TDD)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 22 | HTTP listener (`server::spawn`) | ✅ | · | · | done |
 | 23 | `OpResponse<S>` envelope + `parse_request` | ✅ | · | · | done |
@@ -511,7 +511,7 @@ else?". Update on every major slice.
 
 ### Memory tools
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 30 | Cheat-Engine-style scanner (scan / rescan / paginate) | ✅ |. | · | done |
 | 31 | Address-validated freezes (selector-relative, `VirtualQuery` per write) | ✅ |. | · | done |
@@ -521,7 +521,7 @@ else?". Update on every major slice.
 
 ### ImGui
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 35 | Vendored ImGui v1.92.1 + bridge | ✅ | · | · | done. G2rpg's `cpp/imgui` deleted |
 | 36 | Rust ImGui wrappers (`ui::text`, `button`, `slider_*`, etc.) | ✅ | · (RPG tab is now Rust, see `rpg/tab.rs`) | · | done |
@@ -529,7 +529,7 @@ else?". Update on every major slice.
 
 ### Build & deploy
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 38 | `CppShim::new().compile()` builder | ✅ | · (1-line `build.rs`) | · | done |
 | 39 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · (manifest entry) | · | done |
@@ -537,7 +537,7 @@ else?". Update on every major slice.
 
 ### **RPG module** (Phase 3 complete)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 41 | `Skill<E>` row + `find_skill` lookup (generic over the game's effect enum) | ✅ (`rpg::Skill<E>`, `rpg::find_skill`) | · (`pub type Skill = ueforge::rpg::Skill<SkillEffect>;`) |. | done |
 | 42 | Sqrt level curve (`progress = sqrt(level/max)`) | ✅ (`rpg::progress::sqrt_progress`) | · |. | done |
@@ -557,7 +557,7 @@ else?". Update on every major slice.
 
 ### Stacks module (inventory stack-size tweaks)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 56 | `FieldTweak<T>` (data-table row tweak with vanilla cache) | ✅ (`ue::datatable::FieldTweak<T>`) | · (used by `patch.rs`) | · | done |
 | 57 | `StackTweak` opinionated stacks wrapper (multiplier atomic + apply-now / counters) | ✅ (`stacks::StackTweak`) |. | · (`stacks.rs` is 64 lines) | done |
@@ -565,14 +565,14 @@ else?". Update on every major slice.
 
 ### Difficulty module (per-class CDO field tweaks)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 59 | `ClassFieldTweak<T>` (live-UObject vanilla cache) | ✅ (`ue::class_tweak::ClassFieldTweak<T>`) | · | · | done |
 | 60 | `DifficultyKnob` opinionated difficulty wrapper (f32 multiplier atomic + apply_to_cdos / apply_to_all) | ✅ (`difficulty::DifficultyKnob`) | · (`survival.rs` is 41 lines, two knobs) |. | done |
 
 ### Inventory module (viewport paging + future CRUD ops)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 60a | `inventory::viewport`. Fixed-size visible grid over a larger underlying inventory: mouse-wheel scroll, per-widget viewport-start state, synthetic-refresh re-entrance guard, post-refresh rebind, construct reset | ✅ (`inventory::viewport::ViewportHook` + `ViewportConfig` + `ViewportBinder` trait) | · (`inv_hook.rs` is 220 lines: a `ViewportBinder` impl + UFunction wiring; was 396) |. | done |
 | 60b | UMG `PanelWidget` `GetChildrenCount` / `GetChildAt` helpers | ✅ (private to viewport hook) | · |. | done |
@@ -580,14 +580,14 @@ else?". Update on every major slice.
 
 ### Damage module (universal damage-event hook)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 60d | `damage::DamageHook<B>`. Multicast damage UFunction trampoline + parm decode + FDamageInfo lookup + Player/Other classification + `before` (mutate damage) / `after` (react) dispatch | ✅ (`damage::DamageHook` + `DamageHookConfig` + `DamageBinder` trait + `DamageEvent`) | · (`kill_hook.rs` is 238 lines: a `DamageBinder` impl with kill credit + damage trace + impact reversal + lifesteal; was 474 across 3 files) |. | done |
 | 60e | Live-damage skill plumbing (Lifesteal heal-on-hit, future: Critical / Evasion / Thorns) | ✅ (binder before/after + DamageEvent surface) | · (Lifesteal landed; reads tracker level + heals via direct HC.CurrentDamage write) |. | Lifesteal done; Crit/Evasion/Thorns pending catalog rows |
 
 ### UE SDK helpers (used by every module)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 61 | UObject byte-level helpers (`read_f32` / `write_f32` / `read_u32` / `write_u32` / `read_i32` / `write_i32` / `read_bool` / `write_bool` / `read_component_ptr`) | ✅ (`ue::field`) | · (re-exported as `apply::read_*`) | · | done |
 | 62 | `TypedField<T>` (typed offset wrapper) | ✅ (`ue::typed_field`) | · | · | done |
@@ -603,7 +603,7 @@ else?". Update on every major slice.
 
 ### Hooks + game-thread queue
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 72 | PE / vtable hook framework | ✅ (`hook::ProcessEventHook`) | · |. | done |
 | 73 | Cached `&UFunction` identity dispatch | ✅ (`hook::function_ptr` / `function_table!`) | · (kill_hook + inv_hook) |. | done |
@@ -613,7 +613,7 @@ else?". Update on every major slice.
 
 ### Debug HTTP endpoint
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 77 | HTTP listener (`server::spawn`) | ✅ | · | · | done |
 | 78 | `OpResponse<S>` envelope + `parse_request` | ✅ (`envelope`) | · | · | done |
@@ -633,7 +633,7 @@ else?". Update on every major slice.
 
 ### Settings + logging + counters
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 92 | `Settings<T>` JSON load + atomic save | ✅ (`settings::Settings`) | · | · | done |
 | 93 | `Settings::reload` + `watch(interval, on_reload)` (mtime-poller hot-reload) | ✅ (`settings::WatchHandle`) |. (not yet adopted) |. (not yet adopted) | done |
@@ -643,7 +643,7 @@ else?". Update on every major slice.
 
 ### Memory tools (built for ows-tweaks research, used by both)
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 97 | Cheat-Engine-style scanner (scan / rescan / paginate / freeze) | ✅ (`scanner`) |. | · | done |
 | 98 | Built-in Scanner ImGui tab | ✅ (`ui_scanner::render`) |. | · | done |
@@ -651,7 +651,7 @@ else?". Update on every major slice.
 
 ### ImGui
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 100 | Vendored ImGui v1.92.1 (git submodule) + bridge | ✅ | · | · | done |
 | 101 | Rust ImGui wrappers (`ui::text` / `button` / `slider_*` / `Disabled` / etc.) | ✅ (`ui`) | · | · | done |
@@ -659,7 +659,7 @@ else?". Update on every major slice.
 
 ### Build & deploy
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 103 | `CppShim::new().compile()` builder | ✅ (`build`) | · (1-line `build.rs`) | · | done |
 | 104 | `cargo deploy install/uninstall/package` | ✅ (`ueforge` `[[bin]]` target) | · | · | done |
@@ -667,7 +667,7 @@ else?". Update on every major slice.
 
 ### Lifecycle / loader plumbing
 
-| # | Feature | ueforge | grounded2-rpg | ows-tweaks | Verdict |
+| # | Feature | ueforge | grounded2-mod | ows-tweaks | Verdict |
 |---|---|---|---|---|---|
 | 106 | `ModInfo` + `ue4ss_mod!` macro | ✅ (`mod_main`) | · | · | done |
 | 107 | C++ shim (`CppUserModBase` mirror, factory, `DllMain`) | ✅ (`ueforge_shim.cpp`) | · | · | done |
@@ -682,7 +682,7 @@ else?". Update on every major slice.
 
 ### Game-specific (correctly stays in the game crate)
 
-| # | Feature | grounded2-rpg | ows-tweaks | Notes |
+| # | Feature | grounded2-mod | ows-tweaks | Notes |
 |---|---|---|---|---|
 | 200 | `PlatformOffsets` (per-build addresses) | 📦 | 📦 | per game, per platform |
 | 201 | Game-specific selectors (`live_player`, `live_player_hc`) | 📦 |. | wraps `selector::resolve_generic` |
@@ -764,7 +764,7 @@ Some piece of plumbing every mod needs that's not here yet?
 **Add it to ueforge first.** Open the relevant module
 (`ui` for ImGui calls, `ue` for engine helpers, `ops` for new
 generic primitives, etc.), add the surface, validate by either
-grounded2-rpg or the next mod referencing it. Then build the
+grounded2-mod or the next mod referencing it. Then build the
 game-specific code on top.
 
 If you find yourself copy-pasting between two game crates.

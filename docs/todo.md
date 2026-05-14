@@ -5,7 +5,7 @@
     not what's done. Completed milestones live in
     [`changelog.md`](changelog.md). Per-subject deep dives live in
     each crate's `docs/` folder ([`../ueforge/docs/`](../ueforge/docs/)
-    for the framework, [`../grounded2-rpg/docs/`](../grounded2-rpg/docs/)
+    for the framework, [`../grounded2-mod/docs/`](../grounded2-mod/docs/)
     for the Grounded 2 mod). Read those FIRST when investigating a
     subject.
 
@@ -112,7 +112,7 @@ to land in one commit per crate so it bisects clean.
 
 | Current                     | New                       | Status |
 |-----------------------------|---------------------------|--------|
-| `grounded2-rpg`             | `grounded2-mod`           | TODO   |
+| `grounded2-rpg`             | `grounded2-mod`           | DONE   |
 | `wwm-rpg`                   | `wwm-mod`                 | DONE   |
 | `outworld-station-tweaks`   | `outworld-station-mod`    | DONE   |
 | `horseyforge`               | `horsey-mod`              | TODO   |
@@ -209,6 +209,170 @@ Strong default: subtree-merge, same as horseygame.
 Not pursuing now. Schedule for after the
 `<game>-mod` rename standardization lands and the
 horseyforge `sleep_safe_no_tire` patch is unstuck.
+
+---
+
+## RE-to-Rust: Fission fork (`rustforge`)
+
+User direction 2026-05-14: we are doing a LOT of game RE,
+workspace is ~70% Rust, hand-translating Ghidra C into Rust
+on every read wastes time. Commit to a binary-to-Rust
+pipeline under our full control. The artifact: 10,332 Horsey
+functions emitted directly as Rust by *our* decompiler, then
+extended to UE4 (Outworld, Grounded 2) binaries.
+
+### Why a Rust "view" of decomp output
+
+- Reading Rust matches the rest of the stack; no
+  per-function context switch.
+- Assigning Rust types (`&mut Horse`, `*mut Horse`,
+  `#[repr(C)]` struct fields) IS the act of understanding
+  the function. C decomp lets vagueness hide.
+- Struct + field names produced during RE drop straight
+  into modforge / horsey-mod hook layer with zero
+  translation.
+- rust-analyzer gives jump-to-def / find-references /
+  rename-symbol across 10k+ functions. Ghidra-C
+  workflows do not.
+
+Output is a *notation*, not compilable. `unsafe fn` with
+raw pointers and `transmute` is fine.
+
+### Why not the alternatives
+
+Survey done 2026-05-14:
+
+- **c2rust** (immunant). C99-source-to-Rust. Ghidra
+  pseudocode is not compilable C (`undefined8`,
+  fabricated types, no `#include`s). Not a drop-in;
+  heavy preprocessing tax.
+- **LLM binary-decompilers** (c0ral1ne, Lami99,
+  HKalbasi, several others). All emit C. Closest
+  architectural match but wrong output target. Useful
+  as a fallback transpile path on top of Ghidra C, not
+  as a primary pipeline.
+- **Ghidra plugin** (Java, NSA-owned, plugin API
+  churn). We don't write Java anywhere else; we'd own
+  only the renderer, not the lifter/IR/structuring;
+  big upstream changes break the plugin. Wrong stack.
+- **rust-reversing tooling** (cxiao, cha512). Helps RE
+  binaries *compiled from* Rust. Irrelevant for native
+  C++ targets.
+- **Roll our own from scratch**. 3-5 year project.
+  Not happening.
+
+No prior art for `binary -> Rust notation`. The path is
+novel.
+
+### The path: fork Fission
+
+[sjkim1127/Fission](https://github.com/sjkim1127/Fission)
+is a Rust-native rewrite of the Ghidra/Sleigh pipeline
+(loader -> Sleigh lift -> P-code -> NIR/HIR -> structuring
+-> printer). Created 2025-12-06, AGPL-3.0, actively
+developed. Architecture is explicitly modular: "each layer
+owns its contract independently". Currently renders
+C-style pseudocode in `fission-pcode::printer`. The whole
+pipeline upstream of the printer is language-neutral, so
+adding a Rust renderer is a localized change in the layer
+that was designed to be pluggable.
+
+Fork lives at `grounded2mods/rustforge/` (workspace member,
+subtree of Fission). We add `fission-pcode::printer::rust`
+as the first contribution, then extend type recovery,
+struct inference, and name recovery as needed for Horsey
+and UE4 targets.
+
+**AGPL note**: the license covers the tool, not the tool's
+output. Decompiled Rust files we produce are ours.
+Distribution obligations only kick in if we publish the
+tool itself; even then, AGPL allows source-form
+distribution with no additional encumbrance. A private
+fork has zero obligations.
+
+### Phased plan
+
+#### Phase 0: validate the bet (1-2 sessions)
+
+- [ ] Clone Fission. Build `fission_cli` on this Windows
+  box. Confirm it produces output on `Horsey.exe`.
+  Compare to our existing Ghidra dump (10,332 functions,
+  18.3 MB). Note coverage gaps (Fission is younger than
+  Ghidra; some functions may not lift cleanly).
+- [ ] Read the printer code (`fission-pcode` printer
+  module). Map the AST shape we'd render from. Identify
+  the extension point for a new backend.
+- [ ] Decide upstream vs private fork. If upstream is
+  receptive and active, contribute back. If churn cost
+  is high, run a private fork.
+
+#### Phase 1: minimum Rust renderer (3-5 sessions)
+
+- [ ] Add `fission-pcode::printer::rust` module. Mirror
+  the C printer's surface; emit a Rust translation per
+  AST node. Initial scope: function signatures, locals,
+  basic expressions, branches, loops, struct field
+  access, function calls. Output `unsafe fn` everywhere.
+- [ ] Define the output shape: `#[repr(C)]` struct
+  declarations, raw-pointer field access
+  (`(*ptr).field_18`), `transmute` for reinterprets,
+  `unsafe { *raw }` for dereferences, `as` for casts.
+  No allocator types, no `Vec`/`String`, no lifetimes.
+- [ ] Hand-pick 10 documented functions from
+  `horseygame/decompiled/key-funcs/` as golden tests.
+  Snapshot the Rust output; require it to compile under
+  rustc (even if it does nothing useful).
+
+#### Phase 2: type and name recovery extensions (4-6 sessions)
+
+- [ ] Per-target struct schemas. YAML side-table that
+  names struct fields and types. Printer consumes the
+  schema when rendering. Schema lives next to the
+  binary (`horseygame/structs.yaml`).
+- [ ] Function-name override table (FNV / symbol /
+  string-anchor hits we've already mined into
+  `horseygame/decompiled/INDEX.md`). Printer renames on
+  emit.
+- [ ] Re-run on full Horsey binary. Output lands in
+  `horseygame/decompiled/rust/`. rust-analyzer indexes
+  the directory; jump-to-def works across the 10k
+  functions.
+
+#### Phase 3: UE4 targets (open scope)
+
+- [ ] Run pipeline against Outworld Station / Grounded 2
+  binaries. UE4 has SDK-recoverable symbols
+  (UClass/UFunction names) that should plug into the
+  name-override table for free. Expect higher quality
+  out the gate than Horsey because of richer symbols.
+- [ ] Integration with ueforge: decompiled Rust files
+  become the cross-reference target for any
+  `#[repr(C)]` struct shipped in ueforge / modforge
+  hook code. One source of truth for game internals.
+
+### Open design questions
+
+- **Workspace layout**. `grounded2mods/rustforge/` as a
+  subtree of Fission's `main` branch, or a separate
+  sibling repo that vendors Fission as a submodule.
+  Subtree is simpler for cross-crate work; submodule
+  is cleaner for upstreaming. Default: subtree, same as
+  horseygame absorption.
+- **Render mode toggle**. Single binary, `--render=rust`
+  flag, vs separate `fission_cli_rust` binary. Default:
+  flag, matches Fission's CLI shape.
+- **Snapshot harness**. Adopt our existing `insta`
+  patterns (ueforge envelope.rs) for printer output.
+
+### Non-goals
+
+- Compilable Rust. Output is a notation. If it happens to
+  compile, fine; we don't fight the borrow checker.
+- A general-purpose binary-to-Rust transpiler product.
+  This is a tool for our RE workflow.
+- Replacing Ghidra entirely. Ghidra stays installed as a
+  reference / cross-check for when Fission misses
+  something.
 
 ---
 
@@ -458,7 +622,7 @@ yet validated in-game.
 !!! warning "Acceptance gate"
     Drive from your machine. All checks must pass:
 
-    - Game launches; `grounded2_rpg.log` shows `ueforge` init lines.
+    - Game launches; `grounded2_mod.log` shows `ueforge` init lines.
     - ImGui tab opens on `Insert`; RPG content renders.
     - Load a save -> slot activate fires; tracker loads
       `<guid>.json`; backpack capacity reflects skill levels.
@@ -731,7 +895,7 @@ location, tick model.
   **auto-fiber-harvester** (yields plant fibers at a configured
   rate, per-instance `{accumulated_units, last_yield}` state,
   transfers to nearest storage on threshold).
-- [ ] D2: Catalog row in `grounded2-rpg/src/buildings/catalog.rs`.
+- [ ] D2: Catalog row in `grounded2-mod/src/buildings/catalog.rs`.
 - [ ] D3: G2 spawner impl.
 - [ ] D4: ImGui "Buildings" tab.
 
@@ -768,7 +932,7 @@ is the leverage point.
 
 ## g2rpg. Catalog expansion
 
-Each entry is one [`skills::CATALOG`](../grounded2-rpg/src/rpg/skills.rs)
+Each entry is one [`skills::CATALOG`](../grounded2-mod/src/rpg/skills.rs)
 row of an existing `SkillEffect` shape unless noted.
 
 - [ ] **Critical Chance + Critical Damage**. `before` callback
@@ -829,7 +993,7 @@ Investigation:
 
 Migrate Impact Damage Resistance and Lifesteal to the canonical
 status-effect surface first; rest of catalog follows. Detail in
-[`../grounded2-rpg/docs/damage.md`](../grounded2-rpg/docs/damage.md).
+[`../grounded2-mod/docs/damage.md`](../grounded2-mod/docs/damage.md).
 
 Concrete next steps:
 
@@ -877,11 +1041,9 @@ Open until we play more.
 - [ ] **Vortex / Nexus packaging**. `cargo deploy package`
   produces the right zip layout. Need a Nexus listing
   (description, screenshots, mod page).
-- [ ] **Project rename**. "grounded2-rpg" no longer fits when
-  the mod is an RPG / level-up system. Candidates:
-  `grounded-rpg`, `g2-rpg`, `groundlevel`, `instar`,
-  `huntmaster`. Touches: Cargo.toml package name, workspace
-  dir, settings file path, log header, README, Vortex zip name.
+- [x] **Project rename**. Standardized on `<game>-mod` form.
+  Crate is now `grounded2-mod` per the workspace rename pass
+  (see "Naming standardization" earlier in this file).
 
 ## g2rpg. Feature ideas (not yet scoped)
 
@@ -894,7 +1056,7 @@ Open until we play more.
 ## g2rpg. Integration testing
 
 Reference design + test coverage principle:
-[`../grounded2-rpg/docs/testing.md`](../grounded2-rpg/docs/testing.md)
+[`../grounded2-mod/docs/testing.md`](../grounded2-mod/docs/testing.md)
 + [`../ueforge/docs/RESEARCH.md`](../ueforge/docs/RESEARCH.md)
 "Test coverage principle".
 

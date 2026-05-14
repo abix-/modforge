@@ -377,7 +377,7 @@ What changed concretely:
 - g2rpg's `SkillEffect` enum. DELETED. Three game-specific
   Effects (`BackpackSlotsEffect`, `SurvivalDrainEffect`,
   `PlayerFallDamageReductionEffect`) live in
-  `grounded2-rpg::rpg::effects`; the catalog rows reference them
+  `grounded2-mod::rpg::effects`; the catalog rows reference them
   the same way they reference framework Effects.
 - g2rpg's `applier.rs` (the GameApplier). DELETED.
 - g2rpg's `apply.rs`. The giant `apply_skill` dispatch match

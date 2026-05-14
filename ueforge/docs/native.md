@@ -160,7 +160,7 @@ small, generic, and shared by every mod in the workspace.
 | Domain | Where |
 |---|---|
 | All framework code | `ueforge/src/**` |
-| Grounded 2 mod | `grounded2-rpg/src/**` |
+| Grounded 2 mod | `grounded2-mod/src/**` |
 | Outworld Station mod | `outworld-station-mod/src/**` |
 | Deploy CLI | `ueforge/src/bin/ueforge_deploy.rs` |
 | Asset inspection tools | `ueforge::uasset` + `dump-strings` / `read-property` bins |

@@ -39,7 +39,7 @@ each is the closure body invoked by the trampoline.
 
 ### 1. Inventory-interface event handler
 
-`grounded2-rpg/src/inv_hook.rs::on_event`. The closure invoked by the
+`grounded2-mod/src/inv_hook.rs::on_event`. The closure invoked by the
 trampoline.
 
 Per-call cost:
@@ -127,7 +127,7 @@ Steady-state log volume in release: zero per frame, zero per second.
 
 When something is logged: one syscall to `WriteConsoleA` against the
 spawned debug console, one buffered file write to
-`%TEMP%\Grounded2RPG.log` followed by a flush. Fine.
+`%TEMP%\Grounded2Mod.log` followed by a flush. Fine.
 
 ## What was *not* done (deliberately)
 

@@ -8,7 +8,7 @@
 //! Mods that want the shipped UE4SS factory (`start_mod` /
 //! `uninstall_mod` / `DllMain` + the `UespyMod` CppUserModBase
 //! subclass) call [`build::CppShim::new`]`.compile()` from their
-//! own `build.rs`. Mods with their own shim (grounded2-rpg
+//! own `build.rs`. Mods with their own shim (grounded2-mod
 //! today) chain `.skip_default_shim()`.
 //!
 //! Operating principle: always change ueforge first. Game-specific

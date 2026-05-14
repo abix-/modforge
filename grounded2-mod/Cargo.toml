@@ -1,5 +1,5 @@
 [package]
-name = "grounded2-rpg"
+name = "grounded2-mod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,12 +12,12 @@ crate-type = ["cdylib", "rlib"]
 
 # Consumed by ueforge/scripts/deploy.ps1.
 [package.metadata.ueforge]
-mod_folder_name  = "Grounded2RPG"
+mod_folder_name  = "Grounded2Mod"
 game_name_regex  = "Grounded"
 game_sub_path    = "Augusta/Binaries/WinGRTS"
-zip_prefix       = "grounded2-rpg"
-target_dir       = "target/grounded2-rpg"
-example_settings = "grounded2-rpg/settings.example.json"
+zip_prefix       = "grounded2-mod"
+target_dir       = "target/grounded2-mod"
+example_settings = "grounded2-mod/settings.example.json"
 
 [features]
 console = []

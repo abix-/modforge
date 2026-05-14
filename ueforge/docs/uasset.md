@@ -130,7 +130,7 @@ value)` per hit.
 ## Worked examples
 
 The Grounded 2 mod's
-[`grounded2-rpg/docs/inspection.md`](../../grounded2-rpg/docs/inspection.md)
+[`grounded2-mod/docs/inspection.md`](../../grounded2-mod/docs/inspection.md)
 walks two real worked examples (Player Tweaks, Bigger Backpack)
 using these tools end-to-end. Pak unpack, FName table walk,
 property tag scan, asset diff. Recommended reading for anyone

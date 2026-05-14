@@ -8,7 +8,7 @@
 // subclass) is intentionally NOT compiled here. Mods that want
 // the default factory call `ueforge::build::CppShim::new()
 // .compile()` from their build.rs; mods with their own shim
-// (grounded2-rpg today) skip the default. Otherwise factory
+// (grounded2-mod today) skip the default. Otherwise factory
 // symbols would collide.
 //
 // /DELAYLOAD:UE4SS.dll keeps build-script binaries linkable. The

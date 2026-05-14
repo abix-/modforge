@@ -612,7 +612,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "grounded2-rpg"
+name = "grounded2-mod"
 version = "0.1.0"
 dependencies = [
  "anyhow",

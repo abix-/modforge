@@ -8,7 +8,7 @@
 //!   - unnamed thread -> crash dumps showed `Thread N: ?? @ 0x...`
 //!
 //! ```ignore
-//! ueforge::worker::spawn("grounded2_rpg/init", || {
+//! ueforge::worker::spawn("grounded2_mod/init", || {
 //!     // ... heavy init: settings load, GObjects walks, hook installs ...
 //! });
 //! ```

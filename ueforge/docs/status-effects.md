@@ -10,7 +10,7 @@
 >
 > For Grounded 2's specific layout (Maine offsets, enum
 > values, the validated `Table_StatusEffects` data table) see
-> [`../../grounded2-rpg/docs/damage.md`](../../grounded2-rpg/docs/damage.md)
+> [`../../grounded2-mod/docs/damage.md`](../../grounded2-mod/docs/damage.md)
 > "Status Effect system". For Outworld Station's surface (when
 > we wire it) see the ows-tweaks docs.
 
@@ -177,7 +177,7 @@ To wire this against a game ueforge hasn't been tested on:
 5. **Validate via a probe.** Use ueforge's debug HTTP +
    `client::research` to walk the table, dump a few rows,
    confirm row-struct offsets match. The probe pattern lives
-   in `grounded2-rpg/tests/explore_status_effect_rows.rs` as
+   in `grounded2-mod/tests/explore_status_effect_rows.rs` as
    a reference.
 
 ## See also
@@ -186,7 +186,7 @@ To wire this against a game ueforge hasn't been tested on:
   ueforge catalog variant that binds to this pattern.
 - [`testing.md`](testing.md) -- `client::research` helpers
   for probing tables + rows.
-- [`../../grounded2-rpg/docs/damage.md`](../../grounded2-rpg/docs/damage.md)
+- [`../../grounded2-mod/docs/damage.md`](../../grounded2-mod/docs/damage.md)
   "Status Effect system". The Grounded 2 / Maine
   implementation: specific offsets, enum values, validated
   probe output, the live `Table_StatusEffects` instance.

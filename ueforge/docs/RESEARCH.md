@@ -237,7 +237,7 @@ test is the bug the user finds.
 Each mod keeps a per-feature investigation log alongside the
 code. Use it as the cross-link between the SDK headers, the
 hypotheses, the failed approaches, and the eventual fix.
-`docs/damage.md` in grounded2-rpg is the canonical shape:
+`docs/damage.md` in grounded2-mod is the canonical shape:
 
 - One header per feature / regression.
 - "What we know". Citations into SDK headers, file:line.

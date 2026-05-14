@@ -139,14 +139,14 @@ stops rendering. Cost goes to zero.
 
 ### `on_update`. Empty in our shim
 
-Source: `cpp/shim.cpp::Grounded2RPGMod::on_update`.
+Source: `cpp/shim.cpp::Grounded2ModMod::on_update`.
 
 UE4SS calls this every frame. Our override is `virtual auto
 on_update() -> void {}` (default empty). **No ongoing cost.**
 
 ### `on_unreal_init`. One-shot
 
-Calls `grounded2_rpg_start()` once, then is never called
+Calls `grounded2_mod_start()` once, then is never called
 again.
 
 ## 4. FFI exports called from C++ shim
@@ -171,7 +171,7 @@ Cold ones (only on user click):
 Source: `log.rs::log()`.
 
 **Every `bbp_log!` call writes a line to
-`<DLL_dir>/grounded2_rpg.log` AND calls `f.flush()` (fsync).**
+`<DLL_dir>/grounded2_mod.log` AND calls `f.flush()` (fsync).**
 Also writes to `WriteConsoleA` if the `console` cargo feature
 is enabled (it is, by default).
 
@@ -781,19 +781,19 @@ real second. "Our 0.30%" means our hot-path code consumes
 
 1. Build + deploy the mod:
    ```
-   cargo build --release -p grounded2-rpg
+   cargo build --release -p grounded2-mod
    pwsh -NoProfile -File scripts/deploy.ps1 -Install -SkipBuild
    ```
 2. Launch Grounded 2 (UE4SS will load the mod). The debug HTTP
    server starts on `http://127.0.0.1:7777` (search for
-   "Grounded2RPG: HTTP debug listening on" in the mod log to
+   "Grounded2Mod: HTTP debug listening on" in the mod log to
    confirm).
 3. Get to the desired in-game state (the missing variable from
    this run. Record where the player is and what they are
    doing).
 4. Run the perf test from another terminal:
    ```
-   cargo test --release -p grounded2-rpg --test explore_perf_counters -- --ignored --nocapture
+   cargo test --release -p grounded2-mod --test explore_perf_counters -- --ignored --nocapture
    ```
    Test takes 30s, prints per-counter deltas, top-growing-class
    table, per-thread CPU table, and process_memory delta.
@@ -803,15 +803,15 @@ real second. "Our 0.30%" means our hot-path code consumes
 
 Diagnostic surfaces in the mod side, by file:
 
-- `grounded2-rpg/src/counters.rs`. AtomicU64 hot-path counters
+- `grounded2-mod/src/counters.rs`. AtomicU64 hot-path counters
   + `time_scope` Drop guard + `process_memory_json` +
   `process_cpu_json` + `process_threads_json` + `game_population_json`.
-- `grounded2-rpg/src/debug.rs`. Snapshot endpoint includes all
+- `grounded2-mod/src/debug.rs`. Snapshot endpoint includes all
   of the above under top-level keys `counters`, `process_memory`,
   `process_cpu`, `process_threads`, `game_population`.
-- `grounded2-rpg/tests/common/mod.rs` -- `Snapshot` struct +
+- `grounded2-mod/tests/common/mod.rs` -- `Snapshot` struct +
   `snapshot()` API.
-- `grounded2-rpg/tests/explore_perf_counters.rs`. The test
+- `grounded2-mod/tests/explore_perf_counters.rs`. The test
   itself; T0 / sleep 30s / T1 / pretty-print deltas sorted
   descending.
 
@@ -965,9 +965,9 @@ Run pattern, after the game is up with the new build:
 
 ```
 set BBP_DEBUG_PORT=17171
-cargo test --release -p grounded2-rpg \
+cargo test --release -p grounded2-mod \
   --test explore_leak_source -- --nocapture
-cargo test --release -p grounded2-rpg \
+cargo test --release -p grounded2-mod \
   --test explore_perf_timeseries -- --nocapture
 ```
 

@@ -1,4 +1,4 @@
-//! HTTP control plane. Mirrors grounded2-rpg's pattern but
+//! HTTP control plane. Mirrors grounded2-mod's pattern but
 //! starts empty. Fields and ops grow as research lands.
 
 use serde::Serialize;

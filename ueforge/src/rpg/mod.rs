@@ -17,7 +17,7 @@
 //!   transitions on the consumer's behalf.
 //!
 //! Game crates wire those into their own SkillEffect dispatcher and
-//! ImGui tab. The `grounded2-rpg` crate is the reference consumer.
+//! ImGui tab. The `grounded2-mod` crate is the reference consumer.
 //!
 //! Persistence shape is intentionally generic over `S: Serialize +
 //! DeserializeOwned + Default`: g2rpg uses an extended struct with

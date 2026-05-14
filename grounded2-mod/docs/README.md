@@ -1,4 +1,4 @@
-# grounded2-rpg docs
+# grounded2-mod docs
 
 > **Authoritative on:** the Grounded 2 RPG / level-up mod
 > (Grounded2RPG). Per-subject deep dives, all

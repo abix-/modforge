@@ -13,7 +13,7 @@
 ## Enabling the endpoint
 
 Off by default. Add to
-`<install>/Augusta/Binaries/WinGRTS/ue4ss/Mods/Grounded2RPG/dlls/settings.json`:
+`<install>/Augusta/Binaries/WinGRTS/ue4ss/Mods/Grounded2Mod/dlls/settings.json`:
 
 ```json
 { "debug": { "http_port": 17171 } }
@@ -21,7 +21,7 @@ Off by default. Add to
 
 Restart Grounded 2. Look for the log line
 `debug-http: listening on 127.0.0.1:17171` in
-`grounded2_rpg.log` to confirm.
+`grounded2_mod.log` to confirm.
 
 ## Connect environment variable
 
@@ -70,7 +70,7 @@ RPG-side state:
 ```
 
 Live-player fields are Maine class layouts; their offsets +
-collectors live in `grounded2-rpg/src/debug.rs`. See
+collectors live in `grounded2-mod/src/debug.rs`. See
 [`rpg.md`](rpg.md) for the catalog state model and
 [`damage.md`](damage.md) for what `hc_u32_masks` /
 `required_damage_type_flags` mean.

@@ -157,10 +157,10 @@ At level 100 with default settings, target = 100 + 460 = 560.
 
 Three layers, each with a different failure mode:
 
-1. **DLL loaded.** UE4SS log shows `Starting C++ mod 'Grounded2RPG'`.
-   Mod log at `<DLL_dir>/grounded2_rpg.log` shows the banner and
+1. **DLL loaded.** UE4SS log shows `Starting C++ mod 'Grounded2Mod'`.
+   Mod log at `<DLL_dir>/grounded2_mod.log` shows the banner and
    `GObjects` count.
-2. **Data-side patched.** `grounded2_rpg.log` shows
+2. **Data-side patched.** `grounded2_mod.log` shows
    `PATCH InventoryComponent ...: 40 -> N (verify=N)` lines, at least
    one for each player BP class CDO and at least one for the live
    pawn.

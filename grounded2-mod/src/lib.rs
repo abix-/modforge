@@ -18,10 +18,10 @@ pub mod survival;
 use ueforge::ue::offsets::{STEAM, XBOX};
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
-    name: "Grounded2RPG",
+    name: "Grounded2Mod",
     version: "0.1.0",
-    log_file: "grounded2_rpg.log",
-    console_title: "Grounded 2 - RPG System",
+    log_file: "grounded2_mod.log",
+    console_title: "Grounded 2 Mod",
     console: cfg!(feature = "console"),
     on_unreal_init: bbp_on_unreal_init,
     on_shutdown: bbp_on_shutdown,
@@ -51,7 +51,7 @@ fn bbp_on_unreal_init() {
     // Run heavy init off the engine init thread so any panic doesn't
     // propagate up into UE4SS. ueforge::worker::spawn names the
     // thread + catches panics with a logged message.
-    ueforge::worker::spawn("grounded2_rpg/init", || unsafe { worker() });
+    ueforge::worker::spawn("grounded2_mod/init", || unsafe { worker() });
 }
 
 fn bbp_on_shutdown() {
@@ -60,7 +60,7 @@ fn bbp_on_shutdown() {
     // a worker thread that needs an explicit stop signal so it
     // doesn't outlive an unloaded DLL during hot-reload.
     rpg::world_loader::shutdown();
-    ueforge::log!("grounded2-rpg: shutdown");
+    ueforge::log!("grounded2-mod: shutdown");
 }
 
 unsafe fn worker() {
