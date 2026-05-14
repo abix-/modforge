@@ -1,5 +1,56 @@
 # Horsey mods TODO
 
+## Current status
+
+| Layer | Status |
+|---|---|
+| Decompilation | **DONE** (100% functions, 25 deep annotations, 1234 batch entries) |
+| `horseyforge` crate | **SHIPPED** in grounded2mods workspace |
+| DLL injection + HTTP control plane | **WORKING** (verified live) |
+| 18 ops for read/write of game state | **WORKING** |
+| `no_tire = true` by default at attach | **WORKING** |
+| Cargo rebuild while game running | **WORKING** (staged-DLL pattern) |
+| `--reload` swap | **PARTIAL** (swap works but crashes after; hardening below) |
+| MinHook trampolines | not started |
+| SDL3 input hooks | not started |
+| Roster UI | not started |
+| Hotkeys | not started |
+| Save sidecar | not started |
+| RPG layer | not started |
+
+Latest milestone: [`MILESTONE-FIRST-INJECTION.md`](MILESTONE-FIRST-INJECTION.md).
+
+---
+
+## Active blocker
+
+### Hot-reload crash
+
+`horseyforge-inject.exe --reload` performs the swap and reports success, but
+the game crashes a few seconds later. The post-reload state is briefly
+visible (verified: `no_tire: true` was readable after the swap before crash).
+
+Most likely cause: helper threads inside the old DLL haven't fully unwound
+their stack when `FreeLibrary` is called. The `_shutdown` op spawns a
+`horseyforge-shutdown` thread that lives inside the old DLL; if that thread
+hasn't exited, the FreeLibrary returns "successfully" but the next time
+that thread tries to return into freed code: crash.
+
+Fix candidates:
+1. Make `_shutdown` synchronous: stop the server in the request handler,
+   wait until `shutdown_all()` has truly returned (all listeners joined),
+   then return the HTTP response.
+2. Injector polls port 33077 after `_shutdown` until it's closed, then
+   waits another 500ms for in-flight helper threads, then `FreeLibrary`.
+3. From the last remaining thread, call `FreeLibraryAndExitThread`.
+
+Recommended: try (1) first (simplest, no injector change). If that's
+insufficient, add (2). Use (3) only if both fail.
+
+Workaround until fixed: relaunch Horsey + re-inject fresh on each rebuild.
+
+---
+
 ## High-priority features
 
 ### Hotkey-driven actions (CRITICAL for ease-of-use)
@@ -162,30 +213,59 @@ full UI library into the game's render path.
 
 ---
 
-## Mod foundations to build
+## Mod foundations
 
-### 1. `horseyforge` crate (per-engine binding for modforge)
+### 1. `horseyforge` crate (per-engine binding for modforge) **SHIPPED**
 
-Third sibling alongside `ueforge` (UE5) and `unityforge` (Unity). Provides:
-- DLL injection via proxy `steam_api64.dll`
-- MinHook (native function hooking)
-- Game-specific struct accessors (using offsets from our decompilation)
-- Game-specific Effect/Trigger/Skill impls on top of modforge's traits
+Status: **working**. Lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods)
+as a third sibling to `ueforge` and `unityforge`. Pivoted from the originally-planned
+proxy-`steam_api64.dll` approach to a `CreateRemoteThread(LoadLibraryW)` injector
+after MSVC link.exe's `.DEF` forwarder syntax failed for 1,089 Steam API exports.
 
-Once `horseyforge` exists, every Horsey mod (hotkeys, RPG layer, custom
-species attributes, etc.) inherits modforge's HTTP control plane, RPG
-system, settings, hot reload, scanner, counters, etc.
+What's done:
+- `horseyforge-inject.exe` finds Horsey.exe and injects `horseyforge.dll`
+- DllMain spawns a worker thread that initializes modforge logging, settings,
+  HTTP server with auth
+- 18 ops registered for read/write of game state + cheats + horse fields
+- Staged-DLL pattern: each inject copies the cargo output to a fresh
+  timestamped filename so cargo can rebuild while the game is running
+- `_shutdown` op + `--reload` flag implement the hot-reload swap
+- `no_tire = true` set at every DLL attach
 
-### 2. HTTP control plane (free from modforge)
+What's pending:
+- **Hot-reload hardening** (currently causes delayed crash). The `_shutdown`
+  op acknowledges, the listener thread joins, but helper threads inside
+  the old DLL may still have stack frames when `FreeLibrary` is called.
+  Options under consideration:
+  - Poll port 33077 in injector after `_shutdown` until truly closed, then
+    wait another ~500ms before `FreeLibrary`
+  - Have `_shutdown` itself call `FreeLibraryAndExitThread` from the last
+    remaining thread (atomic self-unload)
+  - Add a `_drain` op that returns only after all helper threads have exited
+- MinHook integration (zero progress; foundational for everything else)
+- `horses.live` walks the wrong list (track-manager's on-track horses, not the
+  full roster). Need to find the right list pointer for the roster UI.
 
-Wire up modforge's `tiny_http` server with Horsey-specific endpoints. The
-op registry + selector grammar are already in modforge; we just register
-Horsey ops:
-- `horse.list` / `horse.read.<id>` / `horse.write.<id>.<field>`
-- `game.year` / `game.money` / `game.sleeps`
-- `genes.read` / `genes.write`
-- `pop.spawn.<name>` / `pop.list`
-- `cheats.no-tire` / `cheats.money` / `cheats.loaded`
+### 2. HTTP control plane **SHIPPED**
+
+`modforge::server::spawn` is used directly. The 18 registered ops are in
+`horseyforge/src/ops.rs`. Auth is in `X-Ueforge-Auth` header; token is
+written to `horseyforge.auth` next to the DLL on each launch.
+
+Currently registered ops:
+- Liveness: `ping`, `list_ops`
+- State reads: `game.read`, `game.money.get`, `game.year.get`, `cheats.*`
+- State writes: `game.money.set`, `game.money.add`, `game.year.set`,
+  `cheats.no_tire.set`, `cheats.debug_mode.set`
+- Horses: `horses.count`, `horses.roster_addr`, `horses.live`, `horse.read`,
+  `horse.set_age`, `horse.set_max_age`, `horse.clear_tiredness`
+- Hot reload: `_shutdown`
+
+To add:
+- `horses.list_full` walking the full roster (not just on-track)
+- `save.export` / `save.import` for save backup ops
+- `pop.spawn` and `pop.list` for population creation
+- `genes.read` / `genes.write` for runtime gene editing (when MinHook lands)
 
 ### 3. Save-edit tool (in-progress, see `save_edit.py`)
 
@@ -206,13 +286,14 @@ First skills:
 Map each skill to a `StandardEffect` variant that adjusts the appropriate
 horse-struct field or hooks the appropriate game function.
 
-### 5. Hotkey system (this todo's #1)
+### 5. Hotkey system
 
-After horseyforge exists, add a `hotkeys` module that:
+After `horseyforge` gets MinHook + SDL3 input hook, add a `hotkeys` module
+that:
 - Hooks SDL's keyboard/mouse input handlers in Horsey.exe
 - Translates modifier+click into game actions
 - Persists key bindings via modforge's settings system
-- Live-reload bindings via Ctrl+R (modforge's hot-reload pattern)
+- Live-reload bindings via `--reload` once hot-reload is hardened
 
 ---
 

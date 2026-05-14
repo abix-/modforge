@@ -4,15 +4,21 @@ Game: `C:\Games\Steam\steamapps\common\Horsey Game`. Build mtime 2026-05-08. Sur
 
 ## TL;DR
 
-The game ships with a **builtin cheat menu** unlocked by typing `"debug"` in the pause menu. It includes:
+**We have a working external mod framework for Horsey Game.**
 
-- **"No Tire"** toggle: disables horse tiredness (zeros tiredness flags every frame on every horse).
-- **"Money"** button: +$1000 per click.
-- **"Loaded"** button: +20 to each of 7 supply counters.
+1. **100% of `Horsey.exe` decompiled** to C-like pseudocode (10,331 functions across 1,234 game-logic + 9,097 vendor). Every game function has a header comment; the 25 most critical have deep manual annotations.
 
-This directly addresses the user's fatigue complaint with no modding required. Full details and code citations in [`MECHANICS.md`](MECHANICS.md).
+2. **`horseyforge` Rust crate** lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods) as a third sibling to `ueforge`/`unityforge`, built on the shared `modforge` framework.
 
-The lifespan complaint is still open. The retirement-by-age handler is identified (`FUN_1400df280`) but not yet read in detail.
+3. **DLL injection + HTTP control plane working.** `horseyforge-inject.exe` attaches `horseyforge.dll` to a running Horsey.exe via `CreateRemoteThread(LoadLibraryW)`. An HTTP server runs at `127.0.0.1:33077` exposing 18 ops for live read/write of game state.
+
+4. **Hot reload partial.** Cargo can rebuild while the game is running (staged DLLs avoid file lock). `--reload` swaps generations cleanly in some cases but currently causes a delayed crash because helper threads inside the old DLL haven't fully unwound when `FreeLibrary` is called. Hardening pending.
+
+5. **`no_tire = true` by default** every time the DLL loads. The user's headline complaint (horses tire after one race) is solved by injection alone, no in-game cheat menu typing.
+
+The game also ships with a **built-in cheat menu** unlocked by typing `"debug"` in the pause menu. It has "No Tire" / "Money" / "Loaded" buttons. See [`MECHANICS.md`](MECHANICS.md).
+
+The lifespan complaint is still open. The retirement-by-age handler is identified (`FUN_1400df280`) but lifespan tuning requires more reverse-engineering.
 
 ## Primary Goal
 
@@ -37,18 +43,35 @@ Custom native C/C++ engine on **SDL3** + **cute_sound** + **stb_image_write**. R
 
 What it is NOT: not Unity, Unreal, Godot, GameMaker, Haxe, OpenFL, Love2D, MonoGame, libGDX. No Mono, no IL2CPP, no Lua, no Python embed. No PDB. No exposed scripting layer.
 
-## Decompilation state (as of commit `e5c442a`)
+## Decompilation state
 
 | Metric | Value |
 |---|---|
 | Binary functions decompiled | 10,331 / 10,332 |
 | Decompiled pseudocode | 18.3 MB |
-| Game-logic functions (call-graph filtered) | 971 |
-| Vendor functions excluded | 9,360 |
-| Per-function .md scaffolds | 971 |
-| Functions with pattern-based classification | 298 |
-| Functions with string-anchored role | 17 |
-| Functions read manually for `MECHANICS.md` | 1 (`FUN_140066200`) |
+| Game-logic functions (call-graph filtered) | 1,234 (after seed expansion) |
+| Vendor functions excluded | 9,097 |
+| Per-function .md scaffolds | 1,234 (one per game function) |
+| Functions with pattern-based classification | 1,234 (100%) |
+| Functions with string-anchored role | 283 (22.9%) |
+| Functions with deep manual annotation | 25 (in `decompiled/annotated/*.c`) |
+| Functions with batch annotation entry | all 1,234 (BATCH-01..14.md) |
+
+## Mod framework state (as of grounded2mods commit `c37fa54`)
+
+| Component | Status |
+|---|---|
+| `horseyforge` crate | shipped, builds clean |
+| `horseyforge.dll` + `horseyforge-inject.exe` | working artifacts |
+| DLL injection via `CreateRemoteThread(LoadLibraryW)` | working |
+| HTTP control plane on `127.0.0.1:33077` | working, 18 ops registered |
+| Auth via `X-Ueforge-Auth` + token file | working |
+| `_shutdown` op + staged-DLL hot-reload | reload swap works, **but causes delayed crash** (hardening TODO) |
+| `cheats.no_tire = true` by default at attach | **working**. Confirmed live |
+| MinHook trampolines on game functions | not started |
+| SDL3 input hooks for hotkeys | not started |
+| Save-writer hook for sidecar state | not started |
+| Roster UI (web frontend) | not started |
 
 ## Key findings (each with code citations)
 
@@ -147,11 +170,11 @@ Full proper docs pending decompilation of `FUN_140089510` (save loader) and `FUN
 
 ## Open next reads (priority order)
 
-1. `FUN_1400df280` retirement handler — pinpoint the age threshold for "horse is too old to race".
-2. `FUN_1400a3eb0` chromomap loader — confirm how `genes.xml` attributes map to runtime behavior, esp. `OLD_AGE` direction.
-3. `FUN_140089510` save-file open/write — get the save struct layout.
-4. `FUN_14008ffc0` genome clipboard copy — get the human-readable genome format.
-5. `FUN_140033a10` price formula — confirm the `* years` factor and the age field offset on the horse struct.
+1. `FUN_1400df280` retirement handler. Pinpoint the age threshold for "horse is too old to race".
+2. `FUN_1400a3eb0` chromomap loader. Confirm how `genes.xml` attributes map to runtime behavior, esp. `OLD_AGE` direction.
+3. `FUN_140089510` save-file open/write. Get the save struct layout.
+4. `FUN_14008ffc0` genome clipboard copy. Get the human-readable genome format.
+5. `FUN_140033a10` price formula. Confirm the `* years` factor and the age field offset on the horse struct.
 
 ## Repo artifacts
 
