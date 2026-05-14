@@ -83,6 +83,21 @@ in the next session unless the user redirects.
    the catalog if needed.
 5. **Mirror generation-loader into IL2CPP shim** before
    shipping the IL2CPP smoke target end-to-end.
+6. **horseyforge: `sleep_safe_no_tire` patch site
+   discovery.** wip in [`a31246f`](.). The patch infra
+   works (VirtualProtect / write / FlushInstructionCache /
+   revert on detach), but `find_patch_site` cannot
+   uniquely identify the `+0x206` zero-store inside the
+   no_tire loop at `FUN_1400ceb60`. Three iterations
+   tried (RAX-only, all-regs / 2 candidates, proximity
+   to `+0x205` sibling within 64 bytes); none uniquely
+   match. Next idea: walk back from the
+   `DAT_1403d95c5` read inside the function and pick
+   the FIRST `+0x206` zero-store that follows it. If
+   that also ambiguates, fall back to a hand-disassembled
+   offset baked into a per-build constant. Until this
+   lands, the split-flag suppressor (zero `+0x205` from a
+   Rust worker thread) is the shipping path.
 
 The detailed checkboxes below cover everything else, but
 those five are the immediate path forward.

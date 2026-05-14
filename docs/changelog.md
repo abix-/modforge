@@ -12,6 +12,84 @@
 
 Newest first.
 
+## 2026-05-14 (horseyforge: split-flag fatigue + binary-patch infra wip)
+
+- **Split-flag fatigue suppressor** ([`608f994`](.)).
+  Replaces use of the game's built-in `no_tire` cheat
+  (`DAT_1403d95c5`), which zeroes BOTH `+0x205`
+  (race-eligibility) AND `+0x206` (sleep-prompt counter)
+  on every horse every frame. The `+0x206` write breaks
+  the sleep-gate check at `FUN_1400e0aa0:131551`: the
+  game decides "no horses are tired" and refuses to let
+  the player sleep, blocking day advancement.
+  Fix: spawn our own 50ms worker
+  (`horseyforge/src/fatigue.rs`) that zeros only `+0x205`,
+  leaving `+0x206` untouched. Race gate always passes;
+  sleep gate works normally. Toggled via
+  `fatigue.suppressor.{get,set}` ops. `cheats.no_tire.set`
+  is kept but its docstring now warns about the sleep
+  break.
+- **Binary-patch infrastructure** ([`a31246f`](.)). Wip.
+  New `horseyforge::patches` module with `patch_bytes(name,
+  addr, new_bytes)` (VirtualProtect + write +
+  FlushInstructionCache + originals saved) and
+  `revert_all` (called on DLL detach so future hot-reload
+  generations don't re-patch already-NOP'd bytes). New
+  op `patches.list`. **First use case
+  `sleep_safe_no_tire` is NOT YET WORKING**: pattern scan
+  for the `+0x206` zero-store inside the no_tire loop at
+  `FUN_1400ceb60` finds zero or multiple sites depending
+  on the disambiguator. Three iterations tried; current
+  proximity heuristic (find a `+0x206` store with a
+  `+0x205` sibling within 64 bytes) still failing on the
+  user's build. Next idea: walk back from the
+  `DAT_1403d95c5` read and pick the FIRST `+0x206` store
+  after it. See [`todo.md`](todo.md) "horseyforge:
+  sleep_safe_no_tire patch site discovery".
+
+## 2026-05-13 (horseyforge: native-PE binding + hot reload)
+
+- **Native-PE binding of `modforge` for Horsey Game**
+  ([`e9d3345`](.)). New crate `horseyforge` (sibling to
+  `ueforge` and `unityforge`). Where those rely on a
+  managed-runtime plugin loader, horseyforge attaches via
+  an injector EXE that `CreateRemoteThread`s a
+  `LoadLibraryW(horseyforge.dll)` into the running
+  `Horsey.exe`. HTTP control plane on `127.0.0.1:33077`
+  with auth (powered by `modforge::server`), exposing
+  `game.read`, `game.money.{get,set,add}`,
+  `game.year.{get,set}`, `cheats.{no_tire,debug_mode}.
+  {get,set}`, `horses.count`, `horses.roster_addr`,
+  `horse.{read,set_age,set_max_age,clear_tiredness}`.
+  Initially planned to proxy `steam_api64.dll` (1,089
+  forwarders); MSVC link.exe's `.DEF` forwarder support
+  was too brittle. Injector pattern: simpler, hot-reload
+  friendly, game-agnostic.
+- **Hot reload via staged DLLs + `_shutdown` op**
+  ([`91f79f5`](.)). Solves the file-lock problem: cargo
+  cannot rebuild `horseyforge.dll` while Horsey has it
+  loaded. `inject.exe` always COPIES `horseyforge.dll` to
+  a timestamped staged path
+  (`horseyforge-<ts>.dll`) before `LoadLibraryW`; cargo's
+  output is never loaded directly so it's never locked.
+  State persisted to `horseyforge.injstate` (HMODULE +
+  staged path). `--reload` POSTs `_shutdown` to release
+  the listener, `CreateRemoteThread`s `FreeLibrary` on
+  the old HMODULE, deletes the old staged file
+  (best-effort retry), stages the new build, loads it,
+  updates state. `--fresh` ignores existing state.
+- **`no_tire` enabled by default at DLL attach**
+  ([`c37fa54`](.)). `worker_main` flips
+  `DAT_1403d95c5` to 1 right after registering ops.
+  `NO_TIRE_TOGGLE` lives in `.data` (static address, not
+  behind a pointer), so the write is valid before any
+  save is loaded. First successful test of the hot-reload
+  pipeline: HMODULE swapped from `0x7ffd999b0000` to
+  `0x7ffdbf190000`, game state preserved, `no_tire:true`
+  visible immediately. Later superseded by the
+  split-flag suppressor (above) once the sleep-gate
+  break was diagnosed.
+
 ## 2026-05-12 (proptest scanner round-trips)
 
 - 8 new property tests on `scanner::Val::from_json` covering
