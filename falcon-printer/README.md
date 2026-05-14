@@ -6,6 +6,13 @@
 > pseudocode. The output is for *reading*, not compiling: it gives us
 > a Rust-syntax view of game functions so RE artifacts live in the
 > same language as the mods that consume them.
+>
+> **2026-05-14 status: migrating to [r2sleigh](https://github.com/radareorg/r2sleigh)**.
+> Falcon's x86-64 lifter is missing SSE/AVX semantics (we use a lossy
+> `Intrinsic` fallback) and our hand-built structurer is a toy compared
+> to what the radare2 org's r2sleigh ships. The Rust-output goal stays;
+> we're swapping the engine underneath for a much more mature one. See
+> [`docs/strategy.md`](docs/strategy.md) for the phased migration plan.
 
 ## Why
 

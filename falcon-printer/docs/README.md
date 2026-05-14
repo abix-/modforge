@@ -4,13 +4,20 @@
 > dives. The crate-level `../README.md` is the one-page intro;
 > these files are the "why this and not that" rationale, the
 > implementation walkthrough, and the open polish ladder.
+>
+> **2026-05-14**: decision to migrate substrate from Falcon to
+> [r2sleigh](https://github.com/radareorg/r2sleigh).
+> See [`strategy.md`](strategy.md) for the phased plan. The
+> rest of these docs describe the current Falcon-based
+> implementation, which is being decommissioned. Read
+> strategy.md before reading anything else.
 
 ## Contents
 
 | File | Subject |
 |---|---|
 | [survey.md](survey.md) | Decompiler primer (what a lifter is, what a printer is). Survey of Rust binary-analysis options (Falcon, libsla, Fission, rsleigh, GhidRust, yaxpeax, iced-x86, c2rust) + the second-pass audit that surfaced r2sleigh, ReOxide, and LLM4Decompile. |
-| [strategy.md](strategy.md) | Three paths to Rust output (falcon-printer / r2sleigh fork / LLM pipeline). When to use each. Why multi-path beats picking one. |
+| [strategy.md](strategy.md) | **Migration plan: switch substrate from Falcon to r2sleigh.** Phased plan with decision gate after the phase-1 spike. Supersedes the earlier "three paths" framing. |
 | [architecture.md](architecture.md) | The pipeline diagram. What Falcon owns vs what falcon-printer owns. The Falcon IL shape. |
 | [passes.md](passes.md) | One section per middle-end pass: temp folding, flag-pattern recognition, cross-block flag propagation, synth-block collapse, condition simplification, call recovery, ret recovery, dead-flag cleanup. With before/after IL snippets. |
 | [coverage.md](coverage.md) | Lift-rate measurement methodology. Current numbers: 88.8% on 10,332 Horsey functions. Failure-class breakdown. What we'd need to push higher. |
@@ -24,7 +31,8 @@
 | Symptom | First file to read |
 |---|---|
 | "Why does this exist at all?" | [survey.md](survey.md) |
-| "Should we even keep building this, or use r2sleigh / LLM pipeline?" | [strategy.md](strategy.md) |
+| "Why are we switching to r2sleigh?" | [strategy.md](strategy.md) |
+| "What's the migration plan?" | [strategy.md](strategy.md) (phased plan with decision gates) |
 | "How does the pipeline work?" | [architecture.md](architecture.md) |
 | "Why does my output look weird?" | [passes.md](passes.md) (then `falcon-printer dump-il` to inspect pre-printer IL, see [usage.md](usage.md)) |
 | "Build fails on bad64-sys or capstone" | [building.md](building.md) |

@@ -127,32 +127,35 @@ Per-game research notes:
 
 ## Research tooling
 
-### falcon-printer. Binary-to-Rust output backend
+### falcon-printer. Binary-to-Rust output backend (migrating to r2sleigh)
 
-Sits next to the mod crates as a workspace member. Lifts a
-stripped PE binary through [Falcon](https://github.com/falconre/falcon)
-(Rust binary-analysis framework), runs a small middle-end
-(temp folding, x86 flag-pattern recognition, call/ret
-recovery, synth-block collapse, condition simplification),
-and emits Rust-shaped pseudocode for human reading.
+Sits next to the mod crates as a workspace member. Today
+the implementation lifts stripped PE binaries through
+[Falcon](https://github.com/falconre/falcon) and emits
+Rust-shaped pseudocode via a small middle-end.
 
-The goal: Rust as the daily-driver notation for RE artifacts
-so they live in the same language as the mods that consume
-them. Output is *notation*, not compilable Rust;
-`unsafe fn` with raw pointers and explicit block labels.
+**Decision 2026-05-14**: migrate the substrate from Falcon
+to [r2sleigh](https://github.com/radareorg/r2sleigh)
+(radare2 org's pure-Rust SLEIGH decompiler with full
+x86-64, SSA pipeline, real structurer, type inference).
+The Rust-output goal stays; the engine underneath swaps
+out for a more mature one. Phased migration plan in
+[`falcon-printer/docs/strategy.md`](falcon-printer/docs/strategy.md).
 
-Current status: **88.8% lift rate** on 10,332 Horsey
-functions. 11 sample artifacts shipped at
+Current Falcon-based status: **88.8% lift rate** on
+10,332 Horsey functions. 11 sample artifacts shipped at
 [`horseygame/decompiled/rust/`](horseygame/decompiled/rust/)
 including `save_filename_format`,
 `click_race_when_ready_dialog`, `simulation_paused_status`,
-`price_or_score_formula`, `SDL_CloseSensor`.
+`price_or_score_formula`, `SDL_CloseSensor`. These are the
+prototype output; the r2sleigh-based rewrite is expected
+to push past parity on SSE-heavy and loop-heavy functions.
 
 See [`falcon-printer/README.md`](falcon-printer/README.md)
 for the one-page intro and
 [`falcon-printer/docs/`](falcon-printer/docs/) for the deep
 dives (architecture, passes walkthrough, coverage
-methodology, polish ladder, non-goals).
+methodology, the strategy migration plan, non-goals).
 
 ## Repository layout
 

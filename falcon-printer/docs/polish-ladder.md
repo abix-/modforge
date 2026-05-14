@@ -1,14 +1,22 @@
 # Polish ladder
 
-> What's left between "shippable v0.1" (today) and "great
-> reading experience". Ordered by leverage. Pick from the
-> top when starting a session.
+> 2026-05-14: this ladder is **frozen** pending the
+> r2sleigh migration described in
+> [`strategy.md`](strategy.md). Most items below
+> (loop / switch structurization, SSA, type inference,
+> tail-call recognition) are r2sleigh's responsibility
+> upstream; we don't build them ourselves anymore.
 >
-> **Read [`strategy.md`](strategy.md) first**. After the
-> 2026-05-14 audit, falcon-printer is one of three viable
-> paths to the Rust-output goal. This ladder is Path A
-> work; the alternatives (r2sleigh fork, LLM pipeline)
-> may earn back faster on the harder items below.
+> The active work is now the migration itself:
+> phase 1 spike, then phases 2-4 rewrite. See
+> strategy.md for the phased plan and decision gates.
+>
+> Items below are preserved as the historical record
+> of where falcon-printer was headed before the
+> substrate switch. Re-evaluate each one against
+> r2sleigh's actual output after phase 1 lands;
+> only items r2sleigh DOESN'T already solve survive
+> as new ladder items on the post-migration crate.
 
 ## 0. ~~Consolidate the five binaries into one~~ DONE 2026-05-14
 

@@ -1,180 +1,254 @@
-# Strategy: three paths to Rust output
+# Strategy: switch the substrate to r2sleigh
 
-> Goal: Rust as the daily-driver notation for game RE
-> output. Three viable paths surfaced by the
-> [`survey.md`](survey.md) second pass. This doc proposes
-> a multi-path workflow that uses each where it's
-> strongest rather than picking one and ignoring the
-> others.
+> 2026-05-14 decision: migrate the Rust-output backend from
+> Falcon onto [`radareorg/r2sleigh`](https://github.com/radareorg/r2sleigh).
+> The Rust-output goal stays. The substrate underneath
+> changes.
+>
+> This doc supersedes the earlier "three paths" framing.
+> Path A (falcon-printer) becomes the prototype that
+> taught us what passes to build. Paths B and C
+> (LLM4Decompile-Ref pipeline) stay available as future
+> options but are not the primary plan.
 
-## The paths
+## Why we're switching
 
-### Path A: falcon-printer (the current crate)
+falcon-printer hit its ceiling fast. The honest tally
+after one session of building:
 
-Status: shipping v0.1, 88.8% lift rate, single-binary
-CLI with `print` / `batch` / `sweep` / `dump-il`
-subcommands.
+| Dimension | falcon-printer | r2sleigh |
+|---|---|---|
+| Lifter coverage | ~88.8% (SSE/AVX via lossy `Intrinsic` fallback) | Full x86-64 via Sleigh specs; SSE/AVX have real semantics |
+| IR | Falcon IL, 6 ops, 23 exprs | R2IL, 60+ opcodes from Sleigh, full SSA pipeline |
+| Structurer | ~80 LoC of if/else for inverse-cond pairs | `structure.rs` is 2,500+ LoC: region analysis, dominator-based reduction, for-loop detection, switch recovery, break/continue inference |
+| Type recovery | None | Constraint-based with struct / signature support |
+| SSA / DCE / CSE / SCCP | DCE only | Full pipeline |
+| Symbolic execution | None | Z3-backed with path exploration |
+| Taint analysis | None | SSA-based |
+| Tests | 0 | 200+ across 8 crates |
+| Maintainers | 1 (this session) | radare2 community + Pancake; active Feb 2026 roadmap |
+| License | Apache-2.0 | GPL-3.0 (we like GPL-3) |
+| Output language | Rust (the goal) | C (becomes Rust when we fork the printer) |
 
-When it wins:
-- Need a fast Rust-shaped view of a function during
-  active investigation.
-- Want full Rust ownership end-to-end (no external
-  runtime, no GPU, no Python in the loop).
-- Doing many lifts in a tight RE loop where
-  per-function latency matters more than output
-  fidelity.
-- Want to use Falcon's other analyses (concrete
-  execution, symbolic execution, taint, def-use
-  chains) alongside the decompilation.
+r2sleigh's `structure.rs` alone is bigger than the entire
+falcon-printer crate. Their stack ships everything on the
+old polish ladder (loop / switch structurization,
+SSA, type inference) plus things we hadn't even put on
+the ladder.
 
-When it doesn't:
-- Function has heavy SSE/AVX float math the
-  intrinsics-fallback drops on the floor.
-- Function has complex control flow (nested loops,
-  switches, computed gotos) our naive structurer
-  can't recover.
-- Function needs struct shape recovery to be readable
-  (raw `wrapping_add(0x124)` offsets get old fast).
+The only structural objection was GPL-3 viral on tool
+redistribution. The user is fine with GPL-3. So the
+case for switching is unambiguous.
 
-Owner: us. License: Apache-2.0 (workspace default).
+## What stays the same
 
-### Path B: r2sleigh + Rust printer fork
+- **The Rust-output goal.** r2sleigh emits C natively;
+  we fork the printer stage to emit Rust instead. The
+  entire pipeline below that stage we get for free.
+- **The artifact shape.** Output lands in
+  `horseygame/decompiled/rust/` per-function.
+- **The CLI surface.** `print` / `batch` / `sweep` /
+  `dump-il` subcommands still make sense; they just
+  drive a different engine.
+- **The workspace home.** Crate stays inside this
+  repository. Rename TBD (see "Open questions").
 
-Status: not built yet. r2sleigh + r2dec ships C output
-through a mature structurer; we'd fork to replace the C
-emit stage with our own Rust emit.
+## What changes
 
-When it wins:
-- Function uses SSE/AVX and we want real semantics
-  (Sleigh has the full instruction model).
-- Function has loops / switches our structurer can't
-  handle.
-- We're willing to spend engineering on the substrate
-  in exchange for better output across the board.
+- **Substrate**: Falcon -> r2sleigh + r2dec (Sleigh
+  P-code + their middle-end).
+- **Crate name**: `falcon-printer` no longer
+  accurate; rename during cutover. Candidates:
+  `sleighprint`, `rdec-rust`, `rust-decomp`,
+  `r2-rust`. Pick before cutover.
+- **Output quality**: target jumps from "naive
+  pseudocode with if/else and goto comments" to
+  "structured Rust with for/while/match plus
+  recovered types and names".
+- **Dependency posture**: r2sleigh is grant-funded
+  and actively developed; we move from carrying the
+  substrate to being a downstream contributor.
 
-When it doesn't:
-- One-off RE pass where falcon-printer is good enough
-  and fork maintenance overhead doesn't earn back.
-- We want to redistribute the tool (GPL-3 viral).
-- Building the Rust printer fork takes more time than
-  just LLM-translating the C anyway.
+## Migration plan
 
-Owner: would be us (fork). License: GPL-3.0 inherited.
-The artifacts (decompiled Rust files) are ours;
-distribution of the *tool* triggers GPL.
+### Phase 1: spike and validate (1 session, gated)
 
-Engineering cost: medium-large. Fork r2sleigh, locate
-the printer extension point, write the Rust emit
-backend. Their C emit is multi-thousand lines; we'd
-mirror only the parts the existing falcon-printer
-already does, then grow over time.
+Goal: confirm r2sleigh's C output on Horsey is
+actually as good as the README claims before we
+commit to the rewrite.
 
-### Path C: Ghidra C -> LLM4Decompile-Ref -> Claude Rust transform
+- [ ] Clone `radareorg/r2sleigh` to a sibling dir
+  (NOT a workspace member yet).
+- [ ] Build the r2sleigh CLI (whatever the
+  decompile entrypoint is; check `r2sleigh-cli`
+  and `r2dec/src/lib.rs`).
+- [ ] Run it on `Horsey.exe` against the same 11
+  documented key-funcs we have falcon-printer
+  output for.
+- [ ] Side-by-side compare: `horseygame/decompiled/rust/fn_140089510.rs`
+  (falcon-printer) vs the C output r2sleigh
+  produces for `0x140089510`. Specifically check:
+  - SSE-heavy functions (`price_or_score_formula`,
+    `simulation_paused_status`). Does r2sleigh
+    model SSE properly?
+  - Loop-heavy functions (`click_race_when_ready_dialog`).
+    Does the structurer recover loops cleanly?
+  - Small functions (`save_filename_format`).
+    Confirm parity on the easy cases.
+- [ ] Quality bar: if r2sleigh's output is
+  meaningfully cleaner on the hard cases, proceed.
+  If it's a wash, escalate (maybe Path C / LLM
+  pipeline is the right answer after all).
 
-Status: not built. Pipeline of existing tools.
+**Decision gate at end of phase 1**: go / no-go on
+the rewrite. If go, proceed to phase 2.
 
-Pipeline:
-```
-horsey.exe + ghidra_addrs.txt
-  |
-  v
-Ghidra (decompile.py, already done)
-  |  -> all_functions.c (18.3 MB)
-  v
-LLM4Decompile-Ref (open weights, MIT, GPU)
-  |  -> refined-C per-function (cleaner names, recovered idioms)
-  v
-Claude / local LLM (Rust transform prompt)
-  |  -> Rust pseudocode
-  v
-horseygame/decompiled/rust/fn_<addr>.rs
-```
+### Phase 2: printer-fork design (1 session)
 
-When it wins:
-- Top-quality output is what matters more than speed.
-- The function is too complex for falcon-printer's
-  structurer.
-- We want recovered variable names / idioms /
-  comments that only LLM passes produce.
-- One-shot work: render a few key functions for deep
-  understanding, no need to do all 10k.
+Goal: locate the printer extension point in r2dec
+and design our Rust emit.
 
-When it doesn't:
-- No GPU available.
-- We don't want a Python toolchain.
-- Bulk pass: 9k functions through two LLM passes is
-  cost-prohibitive at scale.
+- [ ] Read `r2dec/src/codegen.rs` (the C emit) and
+  `r2dec/src/ast.rs` (the AST it emits from).
+  Understand the AST -> C pipeline.
+- [ ] Decide between:
+  - **(a) Upstream PR for a pluggable printer
+    trait**: cleanest long-term; depends on
+    Pancake accepting the design.
+  - **(b) Fork r2sleigh, maintain a long-lived
+    branch**: more control, more maintenance,
+    GPL-3 means we have to publish source if we
+    redistribute.
+  - **(c) New crate downstream of r2sleigh that
+    consumes its AST and emits Rust**: no upstream
+    change; we depend on `r2dec` and re-export
+    a parallel `r2dec-rust`. This is probably the
+    right answer because it keeps us independent
+    without forking.
+- [ ] Sketch the new crate (`rdec-rust` or
+  whatever) layout: takes r2dec's AST, walks it,
+  emits Rust syntax. Mirrors `r2dec`'s codegen.rs
+  but with Rust-specific peepholes (`int64_t` ->
+  `u64`, `core::ptr::read` instead of `*`,
+  `unsafe fn` wrapper, etc.).
+- [ ] Decide naming. See "Open questions".
 
-Owner: external tools (LLM4Decompile is MIT, Claude
-is API). License: each piece independent; final
-output is ours.
+### Phase 3: implementation (2-3 sessions)
 
-Engineering cost: low. Write a thin pipeline script
-(`scripts/llm_decomp.py` or similar). Wire LLM4Decompile-Ref
-via its Python API, hand-craft the Rust-transform
-prompt for Claude, snapshot the output.
+Goal: produce Rust output for every documented
+key-func with the new substrate.
 
-## The multi-path proposal
+- [ ] Stand up the new crate as a workspace
+  member. Pin `r2sleigh` as a git dependency at a
+  specific commit until they publish on crates.io.
+- [ ] Port the CLI (`print` / `batch` / `sweep` /
+  `dump-il`) so subcommands feel identical.
+  Implementation underneath is now r2sleigh +
+  r2dec + our Rust printer instead of Falcon +
+  our middle-end + our printer.
+- [ ] Port the naming layer (load
+  `horseygame/decompiled/INDEX.md` + `key-funcs/`
+  slugs). Independent of substrate.
+- [ ] Implement the Rust emit: walk the r2dec AST,
+  produce `unsafe fn`-shaped Rust. Reuse the
+  type-mapping logic from falcon-printer
+  (u1 -> bool, etc.). Memory access through
+  `core::ptr::read` / `core::ptr::write`.
+- [ ] Regenerate the 11 sample artifacts. Diff
+  against the falcon-printer outputs for the
+  before/after record.
+- [ ] Run the new sweep. Target: ~100% lift rate
+  (Sleigh has full instruction semantics; remaining
+  failures should be Ghidra-over-discovery noise
+  only).
 
-Use all three.
+### Phase 4: cutover (1 session)
 
-| Situation | Path |
-|---|---|
-| Bulk pre-rendering of 9k functions for grep/index | A (falcon-printer batch) |
-| Quick "what does fn_X do" during RE | A (falcon-printer print) |
-| Function that falcon-printer mangles (lots of SSE/loops) | B (when built) OR C (today) |
-| Deep dive on a critical function before mod work | C (LLM pipeline) |
-| Function in another arch (ARM64, MIPS) | A or B (falcon and r2sleigh both support) |
-| Function whose output we want as compilable Rust | None (none of the paths target this; see [`non-goals.md`](non-goals.md)) |
+Goal: replace falcon-printer in the workspace.
 
-The output formats are *additive*: a function can have
-both a falcon-printer Rust file AND an LLM-pipeline
-Rust file. The repo can carry both side-by-side. The
-reader picks whichever reads better for the function
-at hand.
+- [ ] Rename the dir (`falcon-printer/` -> new
+  name). Use `git mv` to preserve history.
+- [ ] Update workspace `Cargo.toml` member list.
+- [ ] Update the repo `README.md` "Research tooling"
+  section.
+- [ ] Update `docs/todo.md` pointer.
+- [ ] Move falcon-printer's old `src/main.rs` to
+  the new crate as `legacy/falcon_printer.rs` for
+  reference, or delete cleanly. Decision: probably
+  delete; git history is the archive.
+- [ ] Delete `docs/falcon-printer.md` workspace
+  doc if it still exists. (It was already moved to
+  per-crate docs.)
 
-## Concrete next steps
+### Phase 5: polish ladder reset (open)
 
-Phase A keeps progressing on falcon-printer (see
-[`polish-ladder.md`](polish-ladder.md)).
+Most of the old polish ladder (loops / switches /
+SSA / type inference) is now upstream's
+responsibility. New ladder items are Rust-idiom
+polish:
 
-Phase B (deferred): once falcon-printer hits its
-ceiling on loop/switch heavy functions, evaluate the
-r2sleigh fork. Spike: clone r2sleigh, get a sample
-function output as C, sketch the Rust printer
-extension point. Decision after spike.
+- Recover Rust-style enum patterns where switch
+  cases match a tag field.
+- Emit `Option<*const T>` for nullable pointer
+  parameters (recover from null checks).
+- Pull `derive(Debug)`-style annotation onto
+  recovered structs.
+- Tail-call recognition (if r2sleigh doesn't
+  already detect them).
+- LLM-assisted naming (Phase 5+) for the
+  ~9k functions that don't have a Ghidra symbol.
 
-Phase C (independent track, can start anytime): spike
-the Ghidra->LLM4Decompile-Ref->Rust pipeline. Output
-to `horseygame/decompiled/rust-llm/` to keep separate
-from the falcon-printer output. Compare quality on the
-documented key-funcs. If quality is meaningfully better
-than falcon-printer for those functions, promote to
-primary path for deep dives.
+## Open questions
 
-## Why not just pick one
+- **Crate name post-cutover.** Candidates:
+  `sleighprint` (parallels falcon-printer), `rdec-rust`
+  (mirrors `r2dec`), `rust-decomp` (boring/clear,
+  matches `<game>-mod` convention),
+  `r2-rust` (short, says-what-it-is). User
+  preference welcome.
+- **Upstream vs downstream crate.** Phase 2 picks
+  one. Default: downstream new crate (option c)
+  for independence.
+- **r2sleigh pinning.** Git dep on a commit hash
+  until they publish on crates.io. Update
+  cadence: pull upstream weekly during active
+  development; pin firmly when we cut a release.
+- **Existing artifacts.** The 11 sample
+  `horseygame/decompiled/rust/*.rs` files are
+  falcon-printer output. Keep them as
+  before/after evidence, or regenerate from
+  r2sleigh in place? Likely: keep falcon-printer
+  versions in `rust-falcon/` subdir as historical
+  comparison; new output goes to `rust/`.
 
-We don't have to. Each path has a coverage envelope
-where it's the right call:
+## What if the spike fails
 
-- Path A is best for **speed and ownership**.
-- Path B would be best for **mid-quality on a Rust
-  stack** (if we build it).
-- Path C is best for **quality on critical
-  functions** (no extra dev cost; just runs the
-  existing models).
+If r2sleigh's C output is not meaningfully better
+than falcon-printer's pseudocode on Horsey:
 
-Committing to one prematurely forces the user to wait
-on whichever path's weakness is currently blocking
-them. Maintaining three at once means we pay a thin
-maintenance tax per path and gain coverage across the
-problem space. Rust output remains the goal in all
-three.
+- The structurer-quality argument disappears.
+- The substrate argument (Sleigh > Falcon for SSE)
+  still holds and is enough to justify the switch
+  by itself, just less dramatically.
+- Alternative: re-evaluate Path C (LLM4Decompile-Ref
+  + Claude Rust transform). The LLM pipeline output
+  quality is the actual benchmark; if neither
+  Falcon nor r2sleigh beats it, the right answer
+  may be no custom decompiler at all.
 
-## What this doc replaces
+We'll only know after the phase 1 spike.
 
-This supersedes the simpler "build Falcon, treat libsla
-as fallback" framing in [`survey.md`](survey.md) "Open
-at decision time" section. That framing was true at
-Phase 0 (before the second-pass audit); the wider
-landscape makes a single-path plan the wrong shape.
+## What this doc supersedes
+
+- The "three paths" framing in the previous
+  `strategy.md`. Path A (falcon-printer) is
+  decommissioned after cutover. Path C (LLM
+  pipeline) remains a future option but is not the
+  primary plan.
+- The implicit "polish falcon-printer for months"
+  trajectory in `polish-ladder.md`. Most ladder
+  items are now upstream's problem; the ladder
+  gets rewritten after phase 4.
+- The "Falcon vs libsla" decision criterion in
+  `survey.md` "Open at decision time". Both are
+  superseded by the r2sleigh substrate choice.

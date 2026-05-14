@@ -212,32 +212,34 @@ horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ---
 
-## RE-to-Rust pipeline (`falcon-printer`)
+## RE-to-Rust pipeline (migrating to r2sleigh)
 
-Moved 2026-05-14 to per-crate docs:
-[`../falcon-printer/docs/`](../falcon-printer/docs/).
+Decision 2026-05-14: **switch substrate from Falcon to
+[r2sleigh](https://github.com/radareorg/r2sleigh)**.
+The Rust-output goal stays. The migration is phased
+with a decision gate after the phase-1 spike.
 
-TL;DR: Falcon-based binary-to-Rust output backend.
-**88.8% lift rate** on 10,332 Horsey functions. 11
-sample artifacts in `horseygame/decompiled/rust/`.
+Why: r2sleigh ships Sleigh-based lifting (full
+SSE/AVX, every x86-64 instruction with real
+semantics), an SSA pipeline, a 2,500-line structurer
+with for-loop and switch detection, type inference,
+and Z3 symbolic execution. All of that is upstream
+work we'd otherwise build ourselves. GPL-3 is fine
+with us.
 
-**Strategic question (audit 2026-05-14):** the
-Rust-output goal stays, but a second-pass survey
-surfaced two alternatives we should evaluate:
-[r2sleigh](https://github.com/radareorg/r2sleigh)
-(radare2 org, Rust, Sleigh, has a real structurer)
-and the
-[LLM4Decompile](https://github.com/albertan017/LLM4Decompile)-Ref
-pipeline (refines Ghidra C into cleaner C; one more
-LLM pass yields Rust). The multi-path proposal lives
-in
+The migration plan, decision gates, and open
+questions (new crate name, upstream vs downstream
+fork) live in
 [`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
-Open polish work for Path A tracked in
-[`../falcon-printer/docs/polish-ladder.md`](../falcon-printer/docs/polish-ladder.md).
 
-Read strategy.md before sinking more time into
-falcon-printer-specific features that r2sleigh or the
-LLM pipeline already solve better.
+The existing falcon-printer crate is the prototype;
+its docs at
+[`../falcon-printer/docs/`](../falcon-printer/docs/)
+record what we learned. The polish ladder is frozen
+pending the phase-1 spike.
+
+Phase 1 (spike + validate) is the next session of
+work on this front.
 
 
 ---
