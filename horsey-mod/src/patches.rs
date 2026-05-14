@@ -4,6 +4,14 @@
 //! All patches go through [`patch_bytes`] which takes care of
 //! VirtualProtect, byte write, and protection restore. Original
 //! bytes are saved in [`APPLIED`] so revert() puts them back.
+//!
+//! Submodules:
+//! - [`sleep_safe_no_tire`]: NOPs the +0x206 zero-store inside the
+//!   no_tire loop so the day-cycle sleep gate keeps working.
+//! - [`ext_genes`]: D1 scaffolding for the gene-doubling project.
+//!   Not yet active; arms via HTTP only.
+
+pub mod ext_genes;
 
 use parking_lot::Mutex;
 use windows_sys::Win32::System::Memory::{
@@ -83,8 +91,10 @@ pub fn patch_bytes(name: &'static str, addr: usize, new_bytes: &[u8]) -> anyhow:
     Ok(())
 }
 
-/// Revert every applied patch, in reverse order.
+/// Revert every applied patch, in reverse order. Also reverts the
+/// ext_genes detours (no-op if they were never armed).
 pub fn revert_all() {
+    ext_genes::revert();
     let mut g = APPLIED.lock();
     while let Some(p) = g.pop() {
         let len = p.original.len();

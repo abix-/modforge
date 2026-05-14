@@ -531,6 +531,46 @@ Mirrors FUN_1400a5d20's math against our sidecar buffers.",
             },
         ),
         OpDef::new(
+            "genes.ext.dryrun",
+            "Walk each D1 detour target and return its runtime address + first 16 bytes. \
+Read-only; never mutates game memory. Use to verify target addresses look correct \
+before calling `genes.ext.arm`.",
+            "",
+            |_| {
+                let reports = patches::ext_genes::dryrun();
+                let json_reports: Vec<_> = reports
+                    .iter()
+                    .map(|r| {
+                        json!({
+                            "name": r.name,
+                            "rva": format!("0x{:x}", r.rva),
+                            "runtime_addr": format!("0x{:x}", r.runtime_addr),
+                            "prologue_bytes": r.prologue_bytes
+                                .iter()
+                                .map(|b| format!("{b:02x}"))
+                                .collect::<Vec<_>>()
+                                .join(" "),
+                        })
+                    })
+                    .collect();
+                Ok(json!({
+                    "armed": patches::ext_genes::is_armed(),
+                    "targets": json_reports,
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.arm",
+            "Install the D1 detours. Currently a STUB: returns an error since the \
+trampoline machinery isn't implemented yet. When implemented, this op atomically \
+patches each detour target. Use `genes.ext.dryrun` first to validate addresses.",
+            "",
+            |_| match patches::ext_genes::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
             "genes.ext.reload",
             "Re-parse `genes-extended.xml` from disk and replace EXT_GENE_TABLE entries. \
 Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",

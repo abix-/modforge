@@ -499,6 +499,20 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
+**WIP**. Scaffolding landed (`horsey-mod/src/patches/ext_genes.rs`),
+implementation deferred behind D5. Exposes `genes.ext.dryrun` (safe,
+read-only address+prologue dump) and `genes.ext.arm` (currently a
+stub that errors loudly).
+
+**Scope decision 2026-05-14:** for v1 "480 genes producing visible
+effects in-game", D1 (the per-function detours on
+`FUN_1400a5d20`/`a5e00`/`c0660`/`c03a0`) is **not on the critical
+path**. The simpler D5 trampoline (4 call-site patches between
+`FUN_14009f680` and `FUN_1400ab3d0`) gets us extended-gene visuals
+without touching the gene-table readers. D1 is needed only if we
+later want the CRISPR UI / death-driven mutation drift to be aware
+of extended genes. Defer until v2.
+
 Make the engine's 240-slot gene table behave as if it
 has N slots, where slots 0..239 are vanilla
 `DAT_1403ee4a4` and slots 240..N-1 live in our heap

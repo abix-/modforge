@@ -131,6 +131,56 @@ pub mod fn_addr {
     /// here to attach extension state to new horses.
     pub const APPLY_GENE_TO_HORSE: usize = 0x14009f680;
 
+    /// `eval_diploid_blend_a` (`FUN_1400a5d20`). One of two
+    /// allele-blend evaluators. Takes `(horse_genome*, gene_idx: i32)`
+    /// and returns a blended `f32`. Called by `APPLY_GENE_TO_HORSE`
+    /// 233 times per horse with literal indices 0..239.
+    /// D1 trampoline target: dispatch to `EXT_GENE_TABLE` when
+    /// `gene_idx >= 240`.
+    pub const EVAL_DIPLOID_BLEND_A: usize = 0x1400a5d20;
+
+    /// `eval_diploid_blend_b` (`FUN_1400a5e00`). Sibling evaluator
+    /// using the same record layout but a different blend formula.
+    /// Same trampoline strategy as the A variant.
+    pub const EVAL_DIPLOID_BLEND_B: usize = 0x1400a5e00;
+
+    /// `gene_table_consumer_or_horse_dies` (`FUN_1400c0660`). The
+    /// "horse death" handler that ALSO mutates gene-table mutation
+    /// rates by +/-5. D1 trampoline target: when its mutation
+    /// targets `gene_idx >= 240`, redirect to `EXT_GENE_TABLE`.
+    pub const GENE_DEATH_DRIFT: usize = 0x1400c0660;
+
+    /// `gene_allele_renumber_sync` (`FUN_1400c03a0`). When alleles
+    /// X and Y of a gene are swapped, this function syncs the swap
+    /// across every pop record. D1 trampoline target: when called
+    /// with `gene_idx >= 240`, swap inside `EXT_POP_WEIGHTS` and
+    /// `EXT_GENE_TABLE` instead.
+    pub const GENE_ALLELE_SWAP: usize = 0x1400c03a0;
+
+    /// `gene_table_xml_writer` (`FUN_1400a4880`). Serializes the
+    /// 240-slot gene table back to XML. Vanilla iterates 0..239.
+    /// D1 trampoline target (optional): also dump
+    /// `EXT_GENE_TABLE` to a sidecar XML.
+    pub const GENE_TABLE_XML_WRITER: usize = 0x1400a4880;
+
+    /// `gene_table_loader` (`FUN_1400a3eb0`). Loads `genes.xml`
+    /// into the 240-slot table at startup. Not patched in v1; we
+    /// run our own loader for `genes-extended.xml` from
+    /// `worker_main`.
+    pub const GENE_TABLE_LOADER: usize = 0x1400a3eb0;
+
+    /// `pop_xml_loader` (`FUN_1400a4fe0`). Loads `pop.xml`
+    /// populations. Not patched in v1; pop authoring stays vanilla
+    /// and our extended pop weights are stored in `EXT_POP_WEIGHTS`.
+    pub const POP_XML_LOADER: usize = 0x1400a4fe0;
+
+    /// `gene_engine_consumer` (`FUN_1400ab3d0`). Called immediately
+    /// after `APPLY_GENE_TO_HORSE` to transcribe the temp render
+    /// param array into the persistent horse render struct. The D5
+    /// trampoline lives at the boundary between APPLY_GENE_TO_HORSE
+    /// and this function.
+    pub const GENE_ENGINE_CONSUMER: usize = 0x1400ab3d0;
+
     /// `check_horse_eligibility`. The "Horse is too tired/old/young/hungry"
     /// dispatcher. Hook to override eligibility decisions.
     pub const CHECK_HORSE_ELIGIBILITY: usize = 0x1400dde40;
