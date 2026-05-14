@@ -1,0 +1,143 @@
+// Hint: found_chromosomes_log
+// Address: 0x1400fd3e0
+// Ghidra name: FUN_1400fd3e0
+// ============ 0x1400fd3e0 FUN_1400fd3e0 (size=375) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_1400fd3e0(longlong param_1,undefined8 param_2)
+
+
+
+{
+
+  longlong lVar1;
+
+  float fVar2;
+
+  uint uVar3;
+
+  ulonglong uVar4;
+
+  uint uVar5;
+
+  longlong lVar6;
+
+  ulonglong uVar7;
+
+  ulonglong uVar8;
+
+  char local_58 [64];
+
+  
+
+  uVar3 = _DAT_14039cab0;
+
+  fVar2 = DAT_1403053ec;
+
+  lVar6 = *(longlong *)(param_1 + 0xb8);
+
+  local_58[0x10] = '\0';
+
+  local_58[0x11] = '\0';
+
+  local_58[0x12] = '\0';
+
+  local_58[0x13] = '\0';
+
+  uVar4 = 0;
+
+  local_58[0] = '\0';
+
+  local_58[1] = '\0';
+
+  local_58[2] = '\0';
+
+  local_58[3] = '\0';
+
+  local_58[4] = '\0';
+
+  local_58[5] = '\0';
+
+  local_58[6] = '\0';
+
+  local_58[7] = '\0';
+
+  local_58[8] = '\0';
+
+  local_58[9] = '\0';
+
+  local_58[10] = '\0';
+
+  local_58[0xb] = '\0';
+
+  local_58[0xc] = '\0';
+
+  local_58[0xd] = '\0';
+
+  local_58[0xe] = '\0';
+
+  local_58[0xf] = '\0';
+
+  uVar7 = uVar4;
+
+  uVar8 = uVar4;
+
+  if (*(longlong *)(param_1 + 0xc0) - lVar6 >> 3 != 0) {
+
+    do {
+
+      lVar6 = *(longlong *)(uVar7 + lVar6);
+
+      if ((((*(char *)(lVar6 + 0x11) == '\0') && ((int)uVar4 != *(int *)(param_1 + 0x350))) &&
+
+          ((float)((uint)(*(float *)(lVar6 + 0x28) - *(float *)(param_1 + 0x39c)) & uVar3) < fVar2))
+
+         && ((float)((uint)(*(float *)(lVar6 + 0x2c) - *(float *)(param_1 + 0x3a0)) & uVar3) < fVar2
+
+            )) {
+
+        if (((*(int *)(lVar6 + 8) == 0) && (lVar1 = *(longlong *)(lVar6 + 0x80), lVar1 != 0)) &&
+
+           ((-1 < *(int *)(lVar1 + 0x234) && (local_58[*(int *)(lVar1 + 0x234)] == '\0')))) {
+
+          FUN_1400b39b0(lVar1,param_2);
+
+          uVar8 = (ulonglong)((int)uVar8 + 1);
+
+          local_58[*(int *)(*(longlong *)(lVar6 + 0x80) + 0x234)] = '\x01';
+
+        }
+
+        *(undefined1 *)(lVar6 + 0x11) = 1;
+
+      }
+
+      lVar6 = *(longlong *)(param_1 + 0xb8);
+
+      uVar5 = (int)uVar4 + 1;
+
+      uVar4 = (ulonglong)uVar5;
+
+      uVar7 = uVar7 + 8;
+
+    } while ((ulonglong)(longlong)(int)uVar5 <
+
+             (ulonglong)(*(longlong *)(param_1 + 0xc0) - lVar6 >> 3));
+
+  }
+
+  *(uint *)(param_1 + 0x268) = (*(int *)(*(longlong *)(param_1 + 0x300) + 0xa4) != 0) + 1;
+
+  FUN_1400c4320("Found %d/%d chromosomes",uVar8,0x14);
+
+  return;
+
+}
+
+
+
+

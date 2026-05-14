@@ -4,4 +4,6 @@ __pycache__/
 .vscode/
 *.gpr
 *.rep/
-ghidra_project/
+ghidra-project/
+ghidra-dl/
+decompile.log
