@@ -1,0 +1,13 @@
+[package]
+name = "rustforge_spike"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+falcon = "0.6"
+
+[lints]
+workspace = true
