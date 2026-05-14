@@ -228,21 +228,40 @@ fn read_function_bytes(
 
 fn decompile_one(
     binary: &Path,
-    ctx: &SleighCtx,
+    _ctx: &SleighCtx,
     addr: u64,
     size: usize,
     names: &HashMap<u64, String>,
 ) -> Result<CFunction, Box<dyn std::error::Error>> {
     let bytes = read_function_bytes(binary, addr, size)?;
-    let block = ctx.disasm.lift_block(&bytes, addr, bytes.len())?;
-    let ssa = SSAFunction::from_blocks_for_decompile(&[block], Some(&ctx.arch))
-        .ok_or("SSAFunction::from_blocks_for_decompile returned None")?;
-    let dec = Decompiler::new(DecompilerConfig::default());
-    let mut func = dec.build_function(&ssa);
-    // Override the function name from INDEX.md / key-funcs if available.
-    if let Some(name) = names.get(&addr) {
-        func.name = name.clone();
-    }
+    let name_override = names.get(&addr).cloned();
+    // Whole pipeline runs in a 1GB-stack thread. r2sleigh's internal
+    // recursion (Sleigh lift through libsla, SSA construction, decompile
+    // structurer) is deep enough that the default 8MB stack overflows
+    // on dense float-math functions. Mirrors what the r2 plugin does
+    // in run_full_decompile_on_large_stack.
+    const STACK_SIZE: usize = 1024 * 1024 * 1024;
+    let join = std::thread::Builder::new()
+        .stack_size(STACK_SIZE)
+        .spawn(move || -> Result<CFunction, String> {
+            let ctx = SleighCtx::new().map_err(|e| e.to_string())?;
+            let block = ctx
+                .disasm
+                .lift_block(&bytes, addr, bytes.len())
+                .map_err(|e| e.to_string())?;
+            let ssa = SSAFunction::from_blocks_for_decompile(&[block], Some(&ctx.arch))
+                .ok_or("SSAFunction::from_blocks_for_decompile returned None".to_string())?;
+            let dec = Decompiler::new(DecompilerConfig::default());
+            let mut func = dec.build_function(&ssa);
+            if let Some(name) = name_override {
+                func.name = name;
+            }
+            Ok(func)
+        })?;
+    let func = join
+        .join()
+        .map_err(|_| "decompile thread panicked")?
+        .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     Ok(func)
 }
 

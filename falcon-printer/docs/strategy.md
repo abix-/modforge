@@ -158,23 +158,55 @@ parity and workspace integration (Phase 4).
   function calls keep their argument lists; ram:HEX
   refs become `fn_HEX`. ~300 lines.
 - [x] Generate sample artifacts.
-  `horseygame/decompiled/rust-r2sleigh/`:
-  `fn_140089510.rs` (176 lines), `fn_140094a20.rs`
-  (160 lines), `fn_140122690.rs` (9 lines).
-- [ ] CLI port: subcommands `print` / `batch` /
-  `sweep` / `dump-il` matching falcon-printer's
-  surface. Currently the spike has a positional
-  `addr` + a `c | rust` mode flag.
-- [ ] Naming layer port: load
-  `horseygame/decompiled/INDEX.md` to override
-  `fn_<addr>` with friendly names. Same logic as
-  in falcon-printer, ported.
-- [ ] Sweep coverage rerun. Target: ~100% lift
-  rate on Horsey via Sleigh's full instruction
-  semantics.
-- [ ] Bulk-regenerate the 11 documented key-funcs
-  with names. SSE-heavy ones may need longer
-  timeouts or basic-block splitting.
+  `horseygame/decompiled/rust-r2sleigh/`: 16 files,
+  including 13 of the 18 documented key-funcs
+  (`save_filename_format`, `price_or_score_formula`,
+  `click_race_when_ready_dialog`,
+  `tired_looking_horse_dialog`,
+  `rest_your_horse_or_too_young`,
+  `settings_xml_handler`, `settings_xml_handler_2`,
+  `chromomap_loader`, `getting_old_buy_horse`,
+  `interact_dispatch_or_status_check`,
+  `retirement_branch`,
+  `none_of_horses_are_tired`,
+  `found_chromosomes_log`,
+  `horse_is_deceased_handler`,
+  `SDL_CloseSensor`).
+- [x] CLI port: `decomp print` / `decomp batch` /
+  `decomp dump-il` shipping, clap derive. Matches
+  falcon-printer's surface (sans `sweep`, which is
+  more complex to port; deferred to phase 5).
+- [x] Naming layer port: loads INDEX.md plus
+  `key-funcs/*.c` filename slugs at startup;
+  overrides r2dec's `sub_<addr>` default. Examples
+  shipped:
+  `pub unsafe fn price_or_score_formula(arg1: i64, arg2: i64) {`
+  instead of `pub unsafe fn sub_140033a10(...)`.
+- [x] Large-stack guard: r2sleigh's internal
+  recursion (Sleigh lift through libsla, SSA
+  construction, structurer) overflows the default
+  8MB Rust thread stack on dense functions. Spike
+  spawns the whole pipeline on a 1GB-stack thread,
+  mirroring r2sleigh's plugin
+  `run_full_decompile_on_large_stack`.
+- [/] 5 of 18 key-funcs still fail with internal
+  libsla stack overflows (the overflow happens in
+  a libsla-internal thread our 1GB Rust stack
+  doesn't reach):
+  `simulation_paused_status`,
+  `save_path_writer_1`,
+  `genome_clipboard_copy_paste`,
+  `genes_dat_handler`, `horse_is_dead_handler`.
+  Out of scope for phase 3; needs upstream fix in
+  libsla-sys or basic-block-splitting on our side
+  (single big R2ILBlock builds deeper SSA than
+  per-bb input).
+- [ ] Sweep coverage rerun on all 10,332
+  Ghidra-discovered addresses. Deferred: a full
+  sweep through libsla is hours given the
+  per-function cost; better done after r2sleigh
+  gains a faster sweep entry point or basic-block
+  splitting lands.
 
 ### Phase 4: cutover (1 session)
 
