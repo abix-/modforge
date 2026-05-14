@@ -1,8 +1,9 @@
 # `FUN_1402eeef8` @ 0x1402eeef8
 
 **Size**: 53 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `helper` - General helper (calls other funcs, no idiom matched)
+**Evidence**: calls 1 other funcs
 
 **Game callers** (2): [`FUN_1402d74e0`](1402d74e0_FUN_1402d74e0.md), [`FUN_1402eeef8`](1402eeef8_FUN_1402eeef8.md)
 

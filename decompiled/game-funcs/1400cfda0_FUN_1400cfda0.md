@@ -1,8 +1,10 @@
 # `FUN_1400cfda0` @ 0x1400cfda0
 
 **Size**: 1047 bytes
-**Role**: `iterates_logic` - Large loop-containing function  _(evidence: contains a loop)_
-**Pattern category**: `iterates_logic`
+**Role**: `lab_location` (string-anchored)
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `loop_heavy` - Large loop-containing function
+**Evidence**: large loop-containing function
 
 **Game callers** (2): [`FUN_1400cfda0`](1400cfda0_FUN_1400cfda0.md), [`FUN_140106b90`](140106b90_FUN_140106b90.md)
 

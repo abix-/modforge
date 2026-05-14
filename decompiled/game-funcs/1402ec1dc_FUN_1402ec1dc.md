@@ -1,8 +1,9 @@
 # `FUN_1402ec1dc` @ 0x1402ec1dc
 
 **Size**: 92 bytes
-**Role**: `plays_sound` - Triggers a named sound  _(evidence: sound='AppPolicyGetProcessTerminationMethod')_
-**Pattern category**: `plays_sound`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `plays_sound_or_event` - Triggers a named sound/event
+**Evidence**: trigger='AppPolicyGetProcessTerminationMethod'
 
 **Strings referenced**:
 - `'AppPolicyGetProcessTerminationMethod'`

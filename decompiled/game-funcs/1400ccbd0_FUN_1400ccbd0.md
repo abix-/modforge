@@ -1,8 +1,9 @@
 # `FUN_1400ccbd0` @ 0x1400ccbd0
 
 **Size**: 551 bytes
-**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 16 float vars (geometry/physics/genetics?))_
-**Pattern category**: `float_math_heavy`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `iterates_horse_list_0xb8` - Iterates the horse list at obj+0xb8/+0xc0
+**Evidence**: horse-list iter at +0xb8/+0xc0
 
 **Game callers** (2): [`FUN_1400ccbd0`](1400ccbd0_FUN_1400ccbd0.md), [`FUN_1400cead0`](1400cead0_FUN_1400cead0.md)
 

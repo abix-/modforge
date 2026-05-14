@@ -1,8 +1,9 @@
 # `FUN_1400fdee0` @ 0x1400fdee0
 
 **Size**: 1018 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `save_io` - save file IO
+**Pattern**: `repeated_op` - Calls one function many times (vector init or batch op)
+**Evidence**: calls FUN_1402c704c x24
 
 **Game callers** (2): [`FUN_14006e480`](14006e480_FUN_14006e480.md), [`FUN_1400fdee0`](1400fdee0_FUN_1400fdee0.md)
 

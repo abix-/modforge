@@ -1,8 +1,10 @@
 # `FUN_1400cddd0` @ 0x1400cddd0
 
 **Size**: 1833 bytes
-**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 20 float vars (geometry/physics/genetics?))_
-**Pattern category**: `float_math_heavy`
+**Role**: `lab_location` (string-anchored)
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `repeated_op` - Calls one function many times (vector init or batch op)
+**Evidence**: calls FUN_1402f8e20 x8
 
 **Game callers** (7): [`FUN_14002d7c0`](14002d7c0_FUN_14002d7c0.md), [`FUN_140061f40`](140061f40_FUN_140061f40.md), [`FUN_1400c02b0`](1400c02b0_FUN_1400c02b0.md), [`FUN_1400c0660`](1400c0660_FUN_1400c0660.md), [`FUN_1400c9980`](1400c9980_FUN_1400c9980.md), [`FUN_1400cddd0`](1400cddd0_FUN_1400cddd0.md), [`FUN_1400d6a40`](1400d6a40_FUN_1400d6a40.md)
 

@@ -1,8 +1,10 @@
 # `FUN_1402cfda0` @ 0x1402cfda0
 
 **Size**: 502 bytes
-**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 18 float vars (geometry/physics/genetics?))_
-**Pattern category**: `float_math_heavy`
+**Role**: `lab_location` (string-anchored)
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `float_math` - Float-heavy math (geometry / physics / genetics)
+**Evidence**: 18 float vars, 47 consts
 
 **Game callers** (29): [`FUN_140006950`](140006950_FUN_140006950.md), [`FUN_14000d4e0`](14000d4e0_FUN_14000d4e0.md), [`FUN_14000f8d0`](14000f8d0_FUN_14000f8d0.md), [`FUN_140010010`](140010010_FUN_140010010.md), [`FUN_140010240`](140010240_FUN_140010240.md), [`FUN_140012ba0`](140012ba0_FUN_140012ba0.md), [`FUN_140013290`](140013290_FUN_140013290.md), [`FUN_1400138c0`](1400138c0_FUN_1400138c0.md), [`FUN_140013d80`](140013d80_FUN_140013d80.md), [`FUN_140017910`](140017910_FUN_140017910.md)
   ... +19 more

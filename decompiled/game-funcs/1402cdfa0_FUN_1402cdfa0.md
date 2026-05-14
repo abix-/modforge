@@ -1,8 +1,10 @@
 # `FUN_1402cdfa0` @ 0x1402cdfa0
 
 **Size**: 155 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Role**: `lab_location` (string-anchored)
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `helper` - General helper (calls other funcs, no idiom matched)
+**Evidence**: calls 3 other funcs
 
 **Strings referenced**:
 - `'sqrtf'`

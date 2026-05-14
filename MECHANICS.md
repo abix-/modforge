@@ -8,6 +8,10 @@ Verified findings from decompiled `Horsey.exe`. Every claim cites a function add
 
 We also found the Money cheat and the "Loaded" multi-counter cheat that ships with the game.
 
+**Cross-verified**: a Steam community guide by JumboDS64 independently confirms the debug-mode unlock ("spelling d-e-b-u-g in the pause menu"). See [`EXTERNAL-KNOWLEDGE.md`](EXTERNAL-KNOWLEDGE.md). Additional cheat from that guide we hadn't found:
+
+- **Press `5` while in the hot air balloon** -> x300 game speed.
+
 ## Debug mode (the cheat unlock)
 
 Reference: `FUN_140066200` @ 0x140066200, around line 60371-60376 of `decompiled/all_functions.c`.

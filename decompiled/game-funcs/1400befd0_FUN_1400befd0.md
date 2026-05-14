@@ -1,8 +1,9 @@
 # `FUN_1400befd0` @ 0x1400befd0
 
 **Size**: 155 bytes
-**Role**: `init_struct` - Zero-initializes consecutive struct fields  _(evidence: zero-initializes 18 fields)_
-**Pattern category**: `init_struct`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `struct_init` - Zero-initializes consecutive struct fields (constructor-like)
+**Evidence**: zero-inits 17 fields
 
 **Game callers** (2): [`FUN_1400be740`](1400be740_FUN_1400be740.md), [`FUN_1400befd0`](1400befd0_FUN_1400befd0.md)
 

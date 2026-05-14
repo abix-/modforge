@@ -1,8 +1,9 @@
 # `FUN_1400cdae0` @ 0x1400cdae0
 
 **Size**: 733 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `iterates_horse_list_0x26` - Iterates a horse list at param[0x26]/param[0x27]
+**Evidence**: horse-list iter at param[0x26]/param[0x27]
 
 **Strings referenced**:
 - `'DropHorseFail'`

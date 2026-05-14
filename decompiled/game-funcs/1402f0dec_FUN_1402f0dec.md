@@ -1,8 +1,9 @@
 # `FUN_1402f0dec` @ 0x1402f0dec
 
 **Size**: 25 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `simple_return` - Short function whose body is just a return
+**Evidence**: small return-only function
 
 **Game callers** (2): [`FUN_1402da06c`](1402da06c_FUN_1402da06c.md), [`FUN_1402f0dec`](1402f0dec_FUN_1402f0dec.md)
 

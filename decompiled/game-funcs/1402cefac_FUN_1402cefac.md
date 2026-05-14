@@ -1,8 +1,9 @@
 # `FUN_1402cefac` @ 0x1402cefac
 
 **Size**: 85 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `helper` - General helper (calls other funcs, no idiom matched)
+**Evidence**: calls 1 other funcs
 
 **Game callers** (3): [`FUN_1402ceb78`](1402ceb78_FUN_1402ceb78.md), [`FUN_1402cecc8`](1402cecc8_FUN_1402cecc8.md), [`FUN_1402cefac`](1402cefac_FUN_1402cefac.md)
 

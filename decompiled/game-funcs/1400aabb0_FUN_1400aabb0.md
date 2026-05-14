@@ -1,8 +1,9 @@
 # `FUN_1400aabb0` @ 0x1400aabb0
 
 **Size**: 159 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `struct_handler` - Many field accesses on a struct pointer
+**Evidence**: 11 field accesses on param_1
 
 **Game callers** (3): [`FUN_1400aabb0`](1400aabb0_FUN_1400aabb0.md), [`FUN_1400b9540`](1400b9540_FUN_1400b9540.md), [`FUN_1400ba940`](1400ba940_FUN_1400ba940.md)
 

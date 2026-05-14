@@ -1,10 +1,12 @@
 # `__scrt_common_main_seh` @ 0x1402c793c
 
 **Size**: 343 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Role**: `lab_location` (string-anchored)
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `helper` - General helper (calls other funcs, no idiom matched)
+**Evidence**: calls 13 other funcs
 
-**Game callers**: (none - entry point, vendor-called, or only called by vendor)
+**Game callers**: none (entry point or vendor-called only)
 
 **Game callees** (3): [`FUN_1400c35b0`](1400c35b0_FUN_1400c35b0.md), [`FUN_1402da20c`](1402da20c_FUN_1402da20c.md), [`FUN_1402da254`](1402da254_FUN_1402da254.md)
 

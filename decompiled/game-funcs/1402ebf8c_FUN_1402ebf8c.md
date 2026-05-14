@@ -1,8 +1,9 @@
 # `FUN_1402ebf8c` @ 0x1402ebf8c
 
 **Size**: 21 bytes
-**Role**: _unclassified - needs manual reading_
-**Pattern category**: `unclassified`
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `wrapper` - Tiny wrapper that delegates to one other function
+**Evidence**: single delegated call to FUN_1402ebf8c
 
 **Game callers** (2): [`FUN_1402cf520`](1402cf520_FUN_1402cf520.md), [`FUN_1402ebf8c`](1402ebf8c_FUN_1402ebf8c.md)
 

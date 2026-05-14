@@ -1,979 +1,979 @@
 # Game-logic function index
 
-Total game-logic functions: 971
+Total: 971 game-logic functions, sorted by body size (largest first).
 
-Sorted by body size (descending). Largest functions hold the most logic.
+Columns: # | address | name | size (bytes) | callers | callees | role | domain | pattern
 
-| # | Address | Name | Size | Callers | Callees | Role |
-|---|---|---|---|---|---|---|
-| 1 | [0x14009f680](14009f680_FUN_14009f680.md) | `FUN_14009f680` | 14074 | 5 | 12 | unclassified game logic |
-| 2 | [0x140094a20](140094a20_FUN_140094a20.md) | `FUN_140094a20` | 13205 | 1 | 62 | race start prompt / track UI |
-| 3 | [0x140107660](140107660_FUN_140107660.md) | `FUN_140107660` | 12134 | 3 | 51 | unclassified game logic |
-| 4 | [0x140050ad0](140050ad0_FUN_140050ad0.md) | `FUN_140050ad0` | 11025 | 2 | 31 | unclassified game logic |
-| 5 | [0x1400f6fe0](1400f6fe0_FUN_1400f6fe0.md) | `FUN_1400f6fe0` | 9683 | 1 | 36 | unclassified game logic |
-| 6 | [0x140089510](140089510_FUN_140089510.md) | `FUN_140089510` | 8654 | 1 | 31 | genome clipboard serializer (debug / save sharing) |
-| 7 | [0x1400ab3d0](1400ab3d0_FUN_1400ab3d0.md) | `FUN_1400ab3d0` | 8647 | 5 | 31 | unclassified game logic |
-| 8 | [0x14008ffc0](14008ffc0_FUN_14008ffc0.md) | `FUN_14008ffc0` | 8565 | 2 | 50 | race state handler |
-| 9 | [0x140058480](140058480_FUN_140058480.md) | `FUN_140058480` | 7589 | 1 | 20 | world/island setup |
-| 10 | [0x1400b0740](1400b0740_FUN_1400b0740.md) | `FUN_1400b0740` | 7483 | 2 | 11 | unclassified game logic |
-| 11 | [0x1400ba940](1400ba940_FUN_1400ba940.md) | `FUN_1400ba940` | 7179 | 2 | 32 | unclassified game logic |
-| 12 | [0x1400e0aa0](1400e0aa0_FUN_1400e0aa0.md) | `FUN_1400e0aa0` | 6908 | 1 | 32 | breeding event |
-| 13 | [0x140033a10](140033a10_FUN_140033a10.md) | `FUN_140033a10` | 6233 | 1 | 25 | DNA sampling mechanic |
-| 14 | [0x140039190](140039190_FUN_140039190.md) | `FUN_140039190` | 6047 | 1 | 35 | unclassified game logic |
-| 15 | [0x1400c0660](1400c0660_FUN_1400c0660.md) | `FUN_1400c0660` | 5765 | 1 | 25 | debug log of horse roster stats |
-| 16 | [0x14007b2e0](14007b2e0_FUN_14007b2e0.md) | `FUN_14007b2e0` | 5750 | 1 | 43 | unclassified game logic |
-| 17 | [0x140061f40](140061f40_FUN_140061f40.md) | `FUN_140061f40` | 5304 | 1 | 33 | unclassified game logic |
-| 18 | [0x14010a5e0](14010a5e0_FUN_14010a5e0.md) | `FUN_14010a5e0` | 5188 | 1 | 22 | unclassified game logic |
-| 19 | [0x140092820](140092820_FUN_140092820.md) | `FUN_140092820` | 5156 | 2 | 30 | unclassified game logic |
-| 20 | [0x1400b9540](1400b9540_FUN_1400b9540.md) | `FUN_1400b9540` | 5110 | 3 | 22 | unclassified game logic |
-| 21 | [0x1402f6c9c](1402f6c9c_FUN_1402f6c9c.md) | `FUN_1402f6c9c` | 4734 | 4 | 13 | unclassified game logic |
-| 22 | [0x14010ba40](14010ba40_FUN_14010ba40.md) | `FUN_14010ba40` | 4610 | 6 | 18 | debug log of population stats |
-| 23 | [0x1400df280](1400df280_FUN_1400df280.md) | `FUN_1400df280` | 4364 | 4 | 35 | retirement handler (logs retirement reason and removes horse) |
-| 24 | [0x140066200](140066200_FUN_140066200.md) | `FUN_140066200` | 4188 | 1 | 15 | debug status print (year/sleeps/races counters) |
-| 25 | [0x14004dc90](14004dc90_FUN_14004dc90.md) | `FUN_14004dc90` | 4047 | 2 | 6 | unclassified game logic |
-| 26 | [0x14002d7c0](14002d7c0_FUN_14002d7c0.md) | `FUN_14002d7c0` | 4033 | 1 | 27 | unclassified game logic |
-| 27 | [0x1400d0c80](1400d0c80_FUN_1400d0c80.md) | `FUN_1400d0c80` | 4008 | 21 | 23 | unclassified game logic |
-| 28 | [0x14007c970](14007c970_FUN_14007c970.md) | `FUN_14007c970` | 3987 | 1 | 28 | championship-related |
-| 29 | [0x140060a80](140060a80_FUN_140060a80.md) | `FUN_140060a80` | 3713 | 1 | 16 | fatigue/stamina check (gates racing on horse tiredness) |
-| 30 | [0x140076a10](140076a10_FUN_140076a10.md) | `FUN_140076a10` | 3488 | 2 | 15 | unclassified game logic |
-| 31 | [0x1402d8d60](1402d8d60_FUN_1402d8d60.md) | `FUN_1402d8d60` | 3443 | 3 | 2 | unclassified game logic |
-| 32 | [0x14003f810](14003f810_FUN_14003f810.md) | `FUN_14003f810` | 3359 | 2 | 29 | unclassified game logic |
-| 33 | [0x1400c35b0](1400c35b0_FUN_1400c35b0.md) | `FUN_1400c35b0` | 3356 | 2 | 17 | unclassified game logic |
-| 34 | [0x14007e030](14007e030_FUN_14007e030.md) | `FUN_14007e030` | 3320 | 1 | 9 | unclassified game logic |
-| 35 | [0x1400da2f0](1400da2f0_FUN_1400da2f0.md) | `FUN_1400da2f0` | 3290 | 2 | 5 | unclassified game logic |
-| 36 | [0x140006950](140006950_FUN_140006950.md) | `FUN_140006950` | 3264 | 2 | 12 | unclassified game logic |
-| 37 | [0x1400ad5c0](1400ad5c0_FUN_1400ad5c0.md) | `FUN_1400ad5c0` | 3254 | 2 | 12 | ribbon/prize-related |
-| 38 | [0x140016c70](140016c70_FUN_140016c70.md) | `FUN_140016c70` | 3150 | 3 | 5 | unclassified game logic |
-| 39 | [0x140053a40](140053a40_FUN_140053a40.md) | `FUN_140053a40` | 3042 | 3 | 11 | unclassified game logic |
-| 40 | [0x140086910](140086910_FUN_140086910.md) | `FUN_140086910` | 3007 | 5 | 10 | unclassified game logic |
-| 41 | [0x14006b040](14006b040_FUN_14006b040.md) | `FUN_14006b040` | 2987 | 1 | 17 | unclassified game logic |
-| 42 | [0x14001f7b0](14001f7b0_FUN_14001f7b0.md) | `FUN_14001f7b0` | 2954 | 3 | 1 | unclassified game logic |
-| 43 | [0x1400a74e0](1400a74e0_FUN_1400a74e0.md) | `FUN_1400a74e0` | 2941 | 1 | 16 | unclassified game logic |
-| 44 | [0x1401035b0](1401035b0_FUN_1401035b0.md) | `FUN_1401035b0` | 2834 | 2 | 13 | unclassified game logic |
-| 45 | [0x14004b960](14004b960_FUN_14004b960.md) | `FUN_14004b960` | 2740 | 2 | 8 | unclassified game logic |
-| 46 | [0x1400ca260](1400ca260_FUN_1400ca260.md) | `FUN_1400ca260` | 2646 | 26 | 17 | unclassified game logic |
-| 47 | [0x1400aed30](1400aed30_FUN_1400aed30.md) | `FUN_1400aed30` | 2595 | 2 | 9 | unclassified game logic |
-| 48 | [0x1400b3dc0](1400b3dc0_FUN_1400b3dc0.md) | `FUN_1400b3dc0` | 2575 | 7 | 11 | unclassified game logic |
-| 49 | [0x1400463e0](1400463e0_FUN_1400463e0.md) | `FUN_1400463e0` | 2552 | 2 | 10 | unclassified game logic |
-| 50 | [0x1400d98f0](1400d98f0_FUN_1400d98f0.md) | `FUN_1400d98f0` | 2517 | 3 | 4 | unclassified game logic |
-| 51 | [0x1400cacd0](1400cacd0_FUN_1400cacd0.md) | `FUN_1400cacd0` | 2454 | 2 | 15 | unclassified game logic |
-| 52 | [0x14006e480](14006e480_FUN_14006e480.md) | `FUN_14006e480` | 2439 | 2 | 30 | save file path builder / save loader / save writer |
-| 53 | [0x140106140](140106140_FUN_140106140.md) | `FUN_140106140` | 2405 | 2 | 15 | unclassified game logic |
-| 54 | [0x1400bd820](1400bd820_FUN_1400bd820.md) | `FUN_1400bd820` | 2270 | 2 | 19 | unclassified game logic |
-| 55 | [0x1400d52c0](1400d52c0_FUN_1400d52c0.md) | `FUN_1400d52c0` | 2253 | 2 | 15 | unclassified game logic |
-| 56 | [0x1400fd580](1400fd580_FUN_1400fd580.md) | `FUN_1400fd580` | 2159 | 2 | 15 | unclassified game logic |
-| 57 | [0x1400b2490](1400b2490_FUN_1400b2490.md) | `FUN_1400b2490` | 2096 | 2 | 5 | unclassified game logic |
-| 58 | [0x1400b4b10](1400b4b10_FUN_1400b4b10.md) | `FUN_1400b4b10` | 2053 | 4 | 12 | unclassified game logic |
-| 59 | [0x140097dd0](140097dd0_FUN_140097dd0.md) | `FUN_140097dd0` | 2046 | 2 | 15 | unclassified game logic |
-| 60 | [0x140013d80](140013d80_FUN_140013d80.md) | `FUN_140013d80` | 2038 | 2 | 8 | unclassified game logic |
-| 61 | [0x1400cc1d0](1400cc1d0_FUN_1400cc1d0.md) | `FUN_1400cc1d0` | 2029 | 2 | 5 | unclassified game logic |
-| 62 | [0x14006dc80](14006dc80_FUN_14006dc80.md) | `FUN_14006dc80` | 2026 | 5 | 28 | save file path builder / save loader / save writer |
-| 63 | [0x1402d0790](1402d0790_FUN_1402d0790.md) | `FUN_1402d0790` | 2022 | 2 | 7 | unclassified game logic |
-| 64 | [0x140080e40](140080e40_FUN_140080e40.md) | `FUN_140080e40` | 1972 | 3 | 18 | unclassified game logic |
-| 65 | [0x1400bfa90](1400bfa90_FUN_1400bfa90.md) | `FUN_1400bfa90` | 1970 | 3 | 11 | unclassified game logic |
-| 66 | [0x140093d90](140093d90_FUN_140093d90.md) | `FUN_140093d90` | 1956 | 3 | 2 | unclassified game logic |
-| 67 | [0x1400bcb00](1400bcb00_FUN_1400bcb00.md) | `FUN_1400bcb00` | 1924 | 2 | 17 | unclassified game logic |
-| 68 | [0x1400cba60](1400cba60_FUN_1400cba60.md) | `FUN_1400cba60` | 1894 | 4 | 23 | unclassified game logic |
-| 69 | [0x140017910](140017910_FUN_140017910.md) | `FUN_140017910` | 1887 | 2 | 11 | unclassified game logic |
-| 70 | [0x14009c8c0](14009c8c0_FUN_14009c8c0.md) | `FUN_14009c8c0` | 1881 | 2 | 6 | unclassified game logic |
-| 71 | [0x1400cddd0](1400cddd0_FUN_1400cddd0.md) | `FUN_1400cddd0` | 1833 | 7 | 14 | unclassified game logic |
-| 72 | [0x14001eae0](14001eae0_FUN_14001eae0.md) | `FUN_14001eae0` | 1832 | 3 | 4 | unclassified game logic |
-| 73 | [0x14000eef0](14000eef0_FUN_14000eef0.md) | `FUN_14000eef0` | 1814 | 2 | 1 | unclassified game logic |
-| 74 | [0x140012ba0](140012ba0_FUN_140012ba0.md) | `FUN_140012ba0` | 1765 | 2 | 4 | unclassified game logic |
-| 75 | [0x14005d710](14005d710_FUN_14005d710.md) | `FUN_14005d710` | 1728 | 2 | 17 | unclassified game logic |
-| 76 | [0x140015c30](140015c30_FUN_140015c30.md) | `FUN_140015c30` | 1718 | 3 | 1 | unclassified game logic |
-| 77 | [0x140047cd0](140047cd0_FUN_140047cd0.md) | `FUN_140047cd0` | 1675 | 2 | 4 | unclassified game logic |
-| 78 | [0x1400afc20](1400afc20_FUN_1400afc20.md) | `FUN_1400afc20` | 1664 | 2 | 10 | unclassified game logic |
-| 79 | [0x1400ae6b0](1400ae6b0_FUN_1400ae6b0.md) | `FUN_1400ae6b0` | 1656 | 4 | 9 | unclassified game logic |
-| 80 | [0x14002fe00](14002fe00_FUN_14002fe00.md) | `FUN_14002fe00` | 1630 | 1 | 16 | unclassified game logic |
-| 81 | [0x140102df0](140102df0_FUN_140102df0.md) | `FUN_140102df0` | 1621 | 2 | 19 | unclassified game logic |
-| 82 | [0x1400e0420](1400e0420_FUN_1400e0420.md) | `FUN_1400e0420` | 1610 | 2 | 12 | unclassified game logic |
-| 83 | [0x14009d750](14009d750_FUN_14009d750.md) | `FUN_14009d750` | 1577 | 2 | 11 | unclassified game logic |
-| 84 | [0x140013290](140013290_FUN_140013290.md) | `FUN_140013290` | 1575 | 2 | 4 | unclassified game logic |
-| 85 | [0x1400d03f0](1400d03f0_FUN_1400d03f0.md) | `FUN_1400d03f0` | 1539 | 2 | 12 | unclassified game logic |
-| 86 | [0x1400fa910](1400fa910_FUN_1400fa910.md) | `FUN_1400fa910` | 1539 | 2 | 12 | unclassified game logic |
-| 87 | [0x1400449e0](1400449e0_FUN_1400449e0.md) | `FUN_1400449e0` | 1493 | 2 | 3 | unclassified game logic |
-| 88 | [0x140106bc0](140106bc0_FUN_140106bc0.md) | `FUN_140106bc0` | 1463 | 3 | 9 | unclassified game logic |
-| 89 | [0x14001f210](14001f210_FUN_14001f210.md) | `FUN_14001f210` | 1430 | 2 | 1 | unclassified game logic |
-| 90 | [0x140010540](140010540_FUN_140010540.md) | `FUN_140010540` | 1427 | 2 | 5 | unclassified game logic |
-| 91 | [0x14010d7e0](14010d7e0_FUN_14010d7e0.md) | `FUN_14010d7e0` | 1413 | 2 | 4 | unclassified game logic |
-| 92 | [0x1402e4980](1402e4980_FUN_1402e4980.md) | `FUN_1402e4980` | 1386 | 2 | 2 | unclassified game logic |
-| 93 | [0x1400b3070](1400b3070_FUN_1400b3070.md) | `FUN_1400b3070` | 1367 | 8 | 16 | unclassified game logic |
-| 94 | [0x1400063f0](1400063f0_FUN_1400063f0.md) | `FUN_1400063f0` | 1364 | 2 | 6 | unclassified game logic |
-| 95 | [0x1402f8e20](1402f8e20_FUN_1402f8e20.md) | `FUN_1402f8e20` | 1353 | 103 | 1 | unclassified game logic |
-| 96 | [0x140049630](140049630_FUN_140049630.md) | `FUN_140049630` | 1339 | 2 | 1 | unclassified game logic |
-| 97 | [0x1400e3670](1400e3670_FUN_1400e3670.md) | `FUN_1400e3670` | 1319 | 2 | 3 | unclassified game logic |
-| 98 | [0x140020bb0](140020bb0_FUN_140020bb0.md) | `FUN_140020bb0` | 1306 | 2 | 4 | unclassified game logic |
-| 99 | [0x1402d0f80](1402d0f80_FUN_1402d0f80.md) | `FUN_1402d0f80` | 1277 | 2 | 5 | unclassified game logic |
-| 100 | [0x140048e90](140048e90_FUN_140048e90.md) | `FUN_140048e90` | 1264 | 2 | 1 | unclassified game logic |
-| 101 | [0x1400155f0](1400155f0_FUN_1400155f0.md) | `FUN_1400155f0` | 1250 | 3 | 3 | unclassified game logic |
-| 102 | [0x1400d5ff0](1400d5ff0_FUN_1400d5ff0.md) | `FUN_1400d5ff0` | 1241 | 2 | 17 | unclassified game logic |
-| 103 | [0x14001e5e0](14001e5e0_FUN_14001e5e0.md) | `FUN_14001e5e0` | 1229 | 3 | 2 | unclassified game logic |
-| 104 | [0x140102060](140102060_FUN_140102060.md) | `FUN_140102060` | 1225 | 2 | 7 | unclassified game logic |
-| 105 | [0x140105260](140105260_FUN_140105260.md) | `FUN_140105260` | 1223 | 2 | 6 | unclassified game logic |
-| 106 | [0x14000bfe0](14000bfe0_FUN_14000bfe0.md) | `FUN_14000bfe0` | 1221 | 3 | 2 | unclassified game logic |
-| 107 | [0x1400693b0](1400693b0_FUN_1400693b0.md) | `FUN_1400693b0` | 1207 | 1 | 11 | unclassified game logic |
-| 108 | [0x1400138c0](1400138c0_FUN_1400138c0.md) | `FUN_1400138c0` | 1203 | 2 | 3 | unclassified game logic |
-| 109 | [0x140020700](140020700_FUN_140020700.md) | `FUN_140020700` | 1199 | 2 | 4 | unclassified game logic |
-| 110 | [0x1400aa2b0](1400aa2b0_FUN_1400aa2b0.md) | `FUN_1400aa2b0` | 1183 | 3 | 6 | unclassified game logic |
-| 111 | [0x1400d7830](1400d7830_FUN_1400d7830.md) | `FUN_1400d7830` | 1181 | 2 | 3 | unclassified game logic |
-| 112 | [0x1402edc48](1402edc48_FUN_1402edc48.md) | `FUN_1402edc48` | 1171 | 2 | 6 | unclassified game logic |
-| 113 | [0x1400c86f0](1400c86f0_FUN_1400c86f0.md) | `FUN_1400c86f0` | 1167 | 2 | 9 | unclassified game logic |
-| 114 | [0x1402de160](1402de160_FUN_1402de160.md) | `FUN_1402de160` | 1164 | 2 | 1 | unclassified game logic |
-| 115 | [0x1400af790](1400af790_FUN_1400af790.md) | `FUN_1400af790` | 1158 | 2 | 8 | unclassified game logic |
-| 116 | [0x140018070](140018070_FUN_140018070.md) | `FUN_140018070` | 1141 | 2 | 10 | unclassified game logic |
-| 117 | [0x1400b87e0](1400b87e0_FUN_1400b87e0.md) | `FUN_1400b87e0` | 1137 | 18 | 5 | unclassified game logic |
-| 118 | [0x1402d5aec](1402d5aec_FUN_1402d5aec.md) | `FUN_1402d5aec` | 1133 | 3 | 12 | unclassified game logic |
-| 119 | [0x14005f1f0](14005f1f0_FUN_14005f1f0.md) | `FUN_14005f1f0` | 1125 | 1 | 9 | unclassified game logic |
-| 120 | [0x1400db270](1400db270_FUN_1400db270.md) | `FUN_1400db270` | 1124 | 3 | 8 | unclassified game logic |
-| 121 | [0x1400b02b0](1400b02b0_FUN_1400b02b0.md) | `FUN_1400b02b0` | 1116 | 2 | 5 | unclassified game logic |
-| 122 | [0x1400a9c80](1400a9c80_FUN_1400a9c80.md) | `FUN_1400a9c80` | 1093 | 2 | 3 | unclassified game logic |
-| 123 | [0x1400b7fe0](1400b7fe0_FUN_1400b7fe0.md) | `FUN_1400b7fe0` | 1073 | 9 | 11 | unclassified game logic |
-| 124 | [0x140054630](140054630_FUN_140054630.md) | `FUN_140054630` | 1065 | 2 | 2 | unclassified game logic |
-| 125 | [0x1400ae280](1400ae280_FUN_1400ae280.md) | `FUN_1400ae280` | 1059 | 2 | 7 | unclassified game logic |
-| 126 | [0x14000da90](14000da90_FUN_14000da90.md) | `FUN_14000da90` | 1057 | 2 | 1 | unclassified game logic |
-| 127 | [0x14010f7e0](14010f7e0_FUN_14010f7e0.md) | `FUN_14010f7e0` | 1050 | 2 | 7 | unclassified game logic |
-| 128 | [0x1400c8e70](1400c8e70_FUN_1400c8e70.md) | `FUN_1400c8e70` | 1049 | 5 | 1 | unclassified game logic |
-| 129 | [0x1400b5b50](1400b5b50_FUN_1400b5b50.md) | `FUN_1400b5b50` | 1048 | 5 | 6 | unclassified game logic |
-| 130 | [0x1400cfda0](1400cfda0_FUN_1400cfda0.md) | `FUN_1400cfda0` | 1047 | 2 | 10 | unclassified game logic |
-| 131 | [0x1400b39b0](1400b39b0_FUN_1400b39b0.md) | `FUN_1400b39b0` | 1034 | 2 | 2 | unclassified game logic |
-| 132 | [0x14009e2f0](14009e2f0_FUN_14009e2f0.md) | `FUN_14009e2f0` | 1027 | 2 | 11 | unclassified game logic |
-| 133 | [0x1400d9010](1400d9010_FUN_1400d9010.md) | `FUN_1400d9010` | 1018 | 2 | 3 | unclassified game logic |
-| 134 | [0x1400fdee0](1400fdee0_FUN_1400fdee0.md) | `FUN_1400fdee0` | 1018 | 2 | 26 | unclassified game logic |
-| 135 | [0x1402cd4e0](1402cd4e0_FUN_1402cd4e0.md) | `FUN_1402cd4e0` | 1018 | 2 | 3 | unclassified game logic |
-| 136 | [0x14004c420](14004c420_FUN_14004c420.md) | `FUN_14004c420` | 1017 | 2 | 1 | unclassified game logic |
-| 137 | [0x14001b740](14001b740_FUN_14001b740.md) | `FUN_14001b740` | 1014 | 2 | 2 | unclassified game logic |
-| 138 | [0x140011cb0](140011cb0_FUN_140011cb0.md) | `FUN_140011cb0` | 1012 | 2 | 4 | unclassified game logic |
-| 139 | [0x1401046c0](1401046c0_FUN_1401046c0.md) | `FUN_1401046c0` | 1004 | 4 | 11 | unclassified game logic |
-| 140 | [0x1400113e0](1400113e0_FUN_1400113e0.md) | `FUN_1400113e0` | 1002 | 2 | 1 | unclassified game logic |
-| 141 | [0x140071420](140071420_FUN_140071420.md) | `FUN_140071420` | 993 | 2 | 4 | unclassified game logic |
-| 142 | [0x140073c30](140073c30_FUN_140073c30.md) | `FUN_140073c30` | 989 | 2 | 1 | unclassified game logic |
-| 143 | [0x1400c4a10](1400c4a10_FUN_1400c4a10.md) | `FUN_1400c4a10` | 965 | 4 | 7 | unclassified game logic |
-| 144 | [0x140057c20](140057c20_FUN_140057c20.md) | `FUN_140057c20` | 961 | 2 | 7 | unclassified game logic |
-| 145 | [0x1400c9420](1400c9420_FUN_1400c9420.md) | `FUN_1400c9420` | 961 | 26 | 6 | unclassified game logic |
-| 146 | [0x140020340](140020340_FUN_140020340.md) | `FUN_140020340` | 948 | 3 | 2 | unclassified game logic |
-| 147 | [0x14004d8d0](14004d8d0_FUN_14004d8d0.md) | `FUN_14004d8d0` | 946 | 2 | 6 | unclassified game logic |
-| 148 | [0x140086570](140086570_FUN_140086570.md) | `FUN_140086570` | 919 | 9 | 5 | unclassified game logic |
-| 149 | [0x14010d260](14010d260_FUN_14010d260.md) | `FUN_14010d260` | 918 | 2 | 4 | unclassified game logic |
-| 150 | [0x1402cf520](1402cf520_FUN_1402cf520.md) | `FUN_1402cf520` | 916 | 3 | 5 | unclassified game logic |
-| 151 | [0x1402eef9c](1402eef9c_FUN_1402eef9c.md) | `FUN_1402eef9c` | 915 | 2 | 6 | unclassified game logic |
-| 152 | [0x1400168e0](1400168e0_FUN_1400168e0.md) | `FUN_1400168e0` | 904 | 2 | 1 | unclassified game logic |
-| 153 | [0x140105da0](140105da0_FUN_140105da0.md) | `FUN_140105da0` | 904 | 3 | 9 | unclassified game logic |
-| 154 | [0x1400aac60](1400aac60_FUN_1400aac60.md) | `FUN_1400aac60` | 902 | 12 | 2 | unclassified game logic |
-| 155 | [0x1402eb6f0](1402eb6f0_FUN_1402eb6f0.md) | `FUN_1402eb6f0` | 882 | 2 | 3 | unclassified game logic |
-| 156 | [0x1402d4650](1402d4650_FUN_1402d4650.md) | `FUN_1402d4650` | 878 | 2 | 6 | unclassified game logic |
-| 157 | [0x1400bea50](1400bea50_FUN_1400bea50.md) | `FUN_1400bea50` | 869 | 2 | 6 | unclassified game logic |
-| 158 | [0x1400d2740](1400d2740_FUN_1400d2740.md) | `FUN_1400d2740` | 869 | 2 | 10 | unclassified game logic |
-| 159 | [0x140060710](140060710_FUN_140060710.md) | `FUN_140060710` | 855 | 2 | 11 | unclassified game logic |
-| 160 | [0x1400164b0](1400164b0_FUN_1400164b0.md) | `FUN_1400164b0` | 854 | 2 | 2 | unclassified game logic |
-| 161 | [0x14004d3b0](14004d3b0_FUN_14004d3b0.md) | `FUN_14004d3b0` | 851 | 2 | 1 | unclassified game logic |
-| 162 | [0x1400b3650](1400b3650_FUN_1400b3650.md) | `FUN_1400b3650` | 851 | 2 | 2 | unclassified game logic |
-| 163 | [0x1400379e0](1400379e0_FUN_1400379e0.md) | `FUN_1400379e0` | 850 | 2 | 11 | unclassified game logic |
-| 164 | [0x140067ad0](140067ad0_FUN_140067ad0.md) | `FUN_140067ad0` | 850 | 3 | 8 | unclassified game logic |
-| 165 | [0x1400b6fd0](1400b6fd0_FUN_1400b6fd0.md) | `FUN_1400b6fd0` | 849 | 2 | 5 | unclassified game logic |
-| 166 | [0x1400c8220](1400c8220_FUN_1400c8220.md) | `FUN_1400c8220` | 831 | 2 | 7 | unclassified game logic |
-| 167 | [0x1402cf1e0](1402cf1e0_FUN_1402cf1e0.md) | `FUN_1402cf1e0` | 830 | 2 | 5 | unclassified game logic |
-| 168 | [0x1400d2090](1400d2090_FUN_1400d2090.md) | `FUN_1400d2090` | 821 | 2 | 7 | unclassified game logic |
-| 169 | [0x14006ee10](14006ee10_FUN_14006ee10.md) | `FUN_14006ee10` | 816 | 2 | 12 | unclassified game logic |
-| 170 | [0x1402ee62c](1402ee62c_FUN_1402ee62c.md) | `FUN_1402ee62c` | 815 | 2 | 10 | unclassified game logic |
-| 171 | [0x140102530](140102530_FUN_140102530.md) | `FUN_140102530` | 805 | 2 | 4 | unclassified game logic |
-| 172 | [0x14008f6e0](14008f6e0_FUN_14008f6e0.md) | `FUN_14008f6e0` | 804 | 2 | 7 | unclassified game logic |
-| 173 | [0x1400479b0](1400479b0_FUN_1400479b0.md) | `FUN_1400479b0` | 800 | 2 | 2 | unclassified game logic |
-| 174 | [0x140101990](140101990_FUN_140101990.md) | `FUN_140101990` | 799 | 2 | 3 | unclassified game logic |
-| 175 | [0x1402cdc50](1402cdc50_FUN_1402cdc50.md) | `FUN_1402cdc50` | 785 | 32 | 2 | unclassified game logic |
-| 176 | [0x1400119a0](1400119a0_FUN_1400119a0.md) | `FUN_1400119a0` | 780 | 2 | 2 | unclassified game logic |
-| 177 | [0x1402ebab0](1402ebab0_FUN_1402ebab0.md) | `FUN_1402ebab0` | 778 | 4 | 3 | unclassified game logic |
-| 178 | [0x140088000](140088000_FUN_140088000.md) | `FUN_140088000` | 775 | 2 | 6 | unclassified game logic |
-| 179 | [0x14006f150](14006f150_FUN_14006f150.md) | `FUN_14006f150` | 772 | 2 | 16 | unclassified game logic |
-| 180 | [0x140024220](140024220_FUN_140024220.md) | `FUN_140024220` | 766 | 2 | 9 | unclassified game logic |
-| 181 | [0x140080730](140080730_FUN_140080730.md) | `FUN_140080730` | 766 | 4 | 5 | unclassified game logic |
-| 182 | [0x140048b90](140048b90_FUN_140048b90.md) | `FUN_140048b90` | 765 | 2 | 1 | unclassified game logic |
-| 183 | [0x1400120b0](1400120b0_FUN_1400120b0.md) | `FUN_1400120b0` | 754 | 2 | 2 | unclassified game logic |
-| 184 | [0x140055060](140055060_FUN_140055060.md) | `FUN_140055060` | 753 | 3 | 1 | unclassified game logic |
-| 185 | [0x14008d460](14008d460_FUN_14008d460.md) | `FUN_14008d460` | 752 | 2 | 8 | unclassified game logic |
-| 186 | [0x14009b7b0](14009b7b0_FUN_14009b7b0.md) | `FUN_14009b7b0` | 751 | 2 | 6 | unclassified game logic |
-| 187 | [0x1400d4f50](1400d4f50_FUN_1400d4f50.md) | `FUN_1400d4f50` | 747 | 5 | 7 | unclassified game logic |
-| 188 | [0x14006d790](14006d790_FUN_14006d790.md) | `FUN_14006d790` | 746 | 2 | 14 | unclassified game logic |
-| 189 | [0x14000f8d0](14000f8d0_FUN_14000f8d0.md) | `FUN_14000f8d0` | 740 | 2 | 3 | unclassified game logic |
-| 190 | [0x1400b9250](1400b9250_FUN_1400b9250.md) | `FUN_1400b9250` | 740 | 3 | 10 | unclassified game logic |
-| 191 | [0x1402efaac](1402efaac_FUN_1402efaac.md) | `FUN_1402efaac` | 740 | 2 | 7 | unclassified game logic |
-| 192 | [0x14008cc80](14008cc80_FUN_14008cc80.md) | `FUN_14008cc80` | 736 | 2 | 3 | unclassified game logic |
-| 193 | [0x1400cdae0](1400cdae0_FUN_1400cdae0.md) | `FUN_1400cdae0` | 733 | 25 | 12 | unclassified game logic |
-| 194 | [0x1402d8688](1402d8688_FUN_1402d8688.md) | `FUN_1402d8688` | 731 | 2 | 7 | unclassified game logic |
-| 195 | [0x140005a10](140005a10_FUN_140005a10.md) | `FUN_140005a10` | 725 | 2 | 2 | unclassified game logic |
-| 196 | [0x1402f94c0](1402f94c0_FUN_1402f94c0.md) | `FUN_1402f94c0` | 725 | 49 | 1 | unclassified game logic |
-| 197 | [0x140074020](140074020_FUN_140074020.md) | `FUN_140074020` | 722 | 2 | 2 | unclassified game logic |
-| 198 | [0x1400aa760](1400aa760_FUN_1400aa760.md) | `FUN_1400aa760` | 711 | 2 | 4 | unclassified game logic |
-| 199 | [0x140071150](140071150_FUN_140071150.md) | `FUN_140071150` | 710 | 2 | 5 | unclassified game logic |
-| 200 | [0x14000fd50](14000fd50_FUN_14000fd50.md) | `FUN_14000fd50` | 698 | 3 | 1 | unclassified game logic |
-| 201 | [0x1402d1e3c](1402d1e3c_FUN_1402d1e3c.md) | `FUN_1402d1e3c` | 692 | 2 | 4 | unclassified game logic |
-| 202 | [0x140008030](140008030_FUN_140008030.md) | `FUN_140008030` | 688 | 3 | 4 | unclassified game logic |
-| 203 | [0x140049380](140049380_FUN_140049380.md) | `FUN_140049380` | 688 | 2 | 2 | unclassified game logic |
-| 204 | [0x1400c9980](1400c9980_FUN_1400c9980.md) | `FUN_1400c9980` | 680 | 2 | 10 | unclassified game logic |
-| 205 | [0x1400d7fe0](1400d7fe0_FUN_1400d7fe0.md) | `FUN_1400d7fe0` | 673 | 2 | 6 | unclassified game logic |
-| 206 | [0x140102b40](140102b40_FUN_140102b40.md) | `FUN_140102b40` | 673 | 4 | 9 | unclassified game logic |
-| 207 | [0x140101dc0](140101dc0_FUN_140101dc0.md) | `FUN_140101dc0` | 663 | 2 | 5 | unclassified game logic |
-| 208 | [0x140105b00](140105b00_FUN_140105b00.md) | `FUN_140105b00` | 661 | 5 | 7 | unclassified game logic |
-| 209 | [0x140049b70](140049b70_FUN_140049b70.md) | `FUN_140049b70` | 655 | 2 | 2 | unclassified game logic |
-| 210 | [0x140010ce0](140010ce0_FUN_140010ce0.md) | `FUN_140010ce0` | 653 | 3 | 3 | unclassified game logic |
-| 211 | [0x140084060](140084060_FUN_140084060.md) | `FUN_140084060` | 653 | 2 | 11 | unclassified game logic |
-| 212 | [0x140104370](140104370_FUN_140104370.md) | `FUN_140104370` | 650 | 5 | 1 | unclassified game logic |
-| 213 | [0x1400cd2d0](1400cd2d0_FUN_1400cd2d0.md) | `FUN_1400cd2d0` | 640 | 2 | 5 | unclassified game logic |
-| 214 | [0x140032320](140032320_FUN_140032320.md) | `FUN_140032320` | 639 | 2 | 5 | unclassified game logic |
-| 215 | [0x1400c7d80](1400c7d80_FUN_1400c7d80.md) | `FUN_1400c7d80` | 639 | 2 | 11 | unclassified game logic |
-| 216 | [0x140043810](140043810_FUN_140043810.md) | `FUN_140043810` | 638 | 2 | 3 | unclassified game logic |
-| 217 | [0x1400b8f90](1400b8f90_FUN_1400b8f90.md) | `FUN_1400b8f90` | 636 | 11 | 2 | unclassified game logic |
-| 218 | [0x140048360](140048360_FUN_140048360.md) | `FUN_140048360` | 634 | 5 | 3 | unclassified game logic |
-| 219 | [0x1400d86a0](1400d86a0_FUN_1400d86a0.md) | `FUN_1400d86a0` | 632 | 2 | 6 | unclassified game logic |
-| 220 | [0x140048910](140048910_FUN_140048910.md) | `FUN_140048910` | 630 | 2 | 2 | unclassified game logic |
-| 221 | [0x1400bf3c0](1400bf3c0_FUN_1400bf3c0.md) | `FUN_1400bf3c0` | 623 | 2 | 4 | unclassified game logic |
-| 222 | [0x140042b70](140042b70_FUN_140042b70.md) | `FUN_140042b70` | 608 | 2 | 7 | unclassified game logic |
-| 223 | [0x1400820a0](1400820a0_FUN_1400820a0.md) | `FUN_1400820a0` | 607 | 2 | 6 | unclassified game logic |
-| 224 | [0x140047690](140047690_FUN_140047690.md) | `FUN_140047690` | 603 | 5 | 1 | unclassified game logic |
-| 225 | [0x1402e6268](1402e6268_FUN_1402e6268.md) | `FUN_1402e6268` | 602 | 2 | 6 | unclassified game logic |
-| 226 | [0x14000e0e0](14000e0e0_FUN_14000e0e0.md) | `FUN_14000e0e0` | 601 | 7 | 3 | unclassified game logic |
-| 227 | [0x1402d6bc0](1402d6bc0_FUN_1402d6bc0.md) | `FUN_1402d6bc0` | 601 | 2 | 5 | unclassified game logic |
-| 228 | [0x14004d150](14004d150_FUN_14004d150.md) | `FUN_14004d150` | 600 | 2 | 1 | unclassified game logic |
-| 229 | [0x1400d5d90](1400d5d90_FUN_1400d5d90.md) | `FUN_1400d5d90` | 597 | 2 | 6 | unclassified game logic |
-| 230 | [0x1402d7d00](1402d7d00_FUN_1402d7d00.md) | `FUN_1402d7d00` | 593 | 4 | 5 | unclassified game logic |
-| 231 | [0x140073780](140073780_FUN_140073780.md) | `FUN_140073780` | 592 | 2 | 3 | unclassified game logic |
-| 232 | [0x140069ee0](140069ee0_FUN_140069ee0.md) | `FUN_140069ee0` | 590 | 2 | 6 | unclassified game logic |
-| 233 | [0x1400fb050](1400fb050_FUN_1400fb050.md) | `FUN_1400fb050` | 589 | 2 | 9 | unclassified game logic |
-| 234 | [0x14003f340](14003f340_FUN_14003f340.md) | `FUN_14003f340` | 575 | 6 | 13 | unclassified game logic |
-| 235 | [0x140094540](140094540_FUN_140094540.md) | `FUN_140094540` | 574 | 2 | 7 | unclassified game logic |
-| 236 | [0x1401107d0](1401107d0_FUN_1401107d0.md) | `FUN_1401107d0` | 571 | 2 | 7 | unclassified game logic |
-| 237 | [0x1400c7910](1400c7910_FUN_1400c7910.md) | `FUN_1400c7910` | 566 | 9 | 10 | unclassified game logic |
-| 238 | [0x140026080](140026080_FUN_140026080.md) | `FUN_140026080` | 562 | 2 | 6 | unclassified game logic |
-| 239 | [0x1400c31e0](1400c31e0_FUN_1400c31e0.md) | `FUN_1400c31e0` | 555 | 2 | 6 | unclassified game logic |
-| 240 | [0x140005eb0](140005eb0_FUN_140005eb0.md) | `FUN_140005eb0` | 554 | 3 | 5 | unclassified game logic |
-| 241 | [0x140053810](140053810_FUN_140053810.md) | `FUN_140053810` | 553 | 4 | 5 | unclassified game logic |
-| 242 | [0x140092150](140092150_FUN_140092150.md) | `FUN_140092150` | 552 | 2 | 5 | unclassified game logic |
-| 243 | [0x1400b6aa0](1400b6aa0_FUN_1400b6aa0.md) | `FUN_1400b6aa0` | 551 | 3 | 4 | unclassified game logic |
-| 244 | [0x1400ccbd0](1400ccbd0_FUN_1400ccbd0.md) | `FUN_1400ccbd0` | 551 | 2 | 10 | unclassified game logic |
-| 245 | [0x14005bc30](14005bc30_FUN_14005bc30.md) | `FUN_14005bc30` | 548 | 1 | 12 | unclassified game logic |
-| 246 | [0x140041900](140041900_FUN_140041900.md) | `FUN_140041900` | 544 | 2 | 7 | unclassified game logic |
-| 247 | [0x14009bea0](14009bea0_FUN_14009bea0.md) | `FUN_14009bea0` | 543 | 3 | 7 | unclassified game logic |
-| 248 | [0x1400ab1b0](1400ab1b0_FUN_1400ab1b0.md) | `FUN_1400ab1b0` | 535 | 8 | 6 | unclassified game logic |
-| 249 | [0x140100a40](140100a40_FUN_140100a40.md) | `FUN_140100a40` | 535 | 7 | 3 | unclassified game logic |
-| 250 | [0x140030940](140030940_FUN_140030940.md) | `FUN_140030940` | 528 | 2 | 7 | unclassified game logic |
-| 251 | [0x1400bedc0](1400bedc0_FUN_1400bedc0.md) | `FUN_1400bedc0` | 528 | 3 | 1 | unclassified game logic |
-| 252 | [0x14007dbf0](14007dbf0_FUN_14007dbf0.md) | `FUN_14007dbf0` | 518 | 2 | 6 | unclassified game logic |
-| 253 | [0x1400b6610](1400b6610_FUN_1400b6610.md) | `FUN_1400b6610` | 518 | 19 | 3 | unclassified game logic |
-| 254 | [0x1402e6d50](1402e6d50_FUN_1402e6d50.md) | `FUN_1402e6d50` | 518 | 2 | 1 | unclassified game logic |
-| 255 | [0x1402d285c](1402d285c_FUN_1402d285c.md) | `FUN_1402d285c` | 515 | 2 | 5 | unclassified game logic |
-| 256 | [0x1402d2c6c](1402d2c6c_FUN_1402d2c6c.md) | `FUN_1402d2c6c` | 515 | 2 | 5 | unclassified game logic |
-| 257 | [0x1402d307c](1402d307c_FUN_1402d307c.md) | `FUN_1402d307c` | 515 | 2 | 5 | unclassified game logic |
-| 258 | [0x1400c8010](1400c8010_FUN_1400c8010.md) | `FUN_1400c8010` | 513 | 2 | 12 | unclassified game logic |
-| 259 | [0x1400d8e00](1400d8e00_FUN_1400d8e00.md) | `FUN_1400d8e00` | 511 | 2 | 5 | unclassified game logic |
-| 260 | [0x1402eda40](1402eda40_FUN_1402eda40.md) | `FUN_1402eda40` | 510 | 2 | 1 | unclassified game logic |
-| 261 | [0x140046e50](140046e50_FUN_140046e50.md) | `FUN_140046e50` | 506 | 2 | 8 | unclassified game logic |
-| 262 | [0x1400a9360](1400a9360_FUN_1400a9360.md) | `FUN_1400a9360` | 502 | 9 | 3 | unclassified game logic |
-| 263 | [0x1402cfda0](1402cfda0_FUN_1402cfda0.md) | `FUN_1402cfda0` | 502 | 29 | 5 | unclassified game logic |
-| 264 | [0x14009ebd0](14009ebd0_FUN_14009ebd0.md) | `FUN_14009ebd0` | 499 | 2 | 1 | unclassified game logic |
-| 265 | [0x140040ca0](140040ca0_FUN_140040ca0.md) | `FUN_140040ca0` | 497 | 37 | 6 | unclassified game logic |
-| 266 | [0x1400c5d10](1400c5d10_FUN_1400c5d10.md) | `FUN_1400c5d10` | 497 | 2 | 4 | unclassified game logic |
-| 267 | [0x140011000](140011000_FUN_140011000.md) | `FUN_140011000` | 494 | 4 | 1 | unclassified game logic |
-| 268 | [0x1400111f0](1400111f0_FUN_1400111f0.md) | `FUN_1400111f0` | 493 | 2 | 3 | unclassified game logic |
-| 269 | [0x1400749b0](1400749b0_FUN_1400749b0.md) | `FUN_1400749b0` | 486 | 5 | 6 | unclassified game logic |
-| 270 | [0x1400a9560](1400a9560_FUN_1400a9560.md) | `FUN_1400a9560` | 486 | 3 | 2 | unclassified game logic |
-| 271 | [0x14005de20](14005de20_FUN_14005de20.md) | `FUN_14005de20` | 485 | 2 | 8 | unclassified game logic |
-| 272 | [0x1400a2ed0](1400a2ed0_FUN_1400a2ed0.md) | `FUN_1400a2ed0` | 485 | 5 | 4 | unclassified game logic |
-| 273 | [0x1402ecb70](1402ecb70_FUN_1402ecb70.md) | `FUN_1402ecb70` | 483 | 3 | 1 | unclassified game logic |
-| 274 | [0x1402ef434](1402ef434_FUN_1402ef434.md) | `FUN_1402ef434` | 480 | 3 | 5 | unclassified game logic |
-| 275 | [0x14005c9b0](14005c9b0_FUN_14005c9b0.md) | `FUN_14005c9b0` | 472 | 3 | 6 | unclassified game logic |
-| 276 | [0x1400aa0d0](1400aa0d0_FUN_1400aa0d0.md) | `FUN_1400aa0d0` | 472 | 7 | 3 | unclassified game logic |
-| 277 | [0x1400cd0f0](1400cd0f0_FUN_1400cd0f0.md) | `FUN_1400cd0f0` | 472 | 2 | 4 | unclassified game logic |
-| 278 | [0x14010d600](14010d600_FUN_14010d600.md) | `FUN_14010d600` | 472 | 2 | 4 | unclassified game logic |
-| 279 | [0x140037710](140037710_FUN_140037710.md) | `FUN_140037710` | 467 | 13 | 6 | unclassified game logic |
-| 280 | [0x140094810](140094810_FUN_140094810.md) | `FUN_140094810` | 467 | 2 | 6 | unclassified game logic |
-| 281 | [0x1400117d0](1400117d0_FUN_1400117d0.md) | `FUN_1400117d0` | 459 | 5 | 4 | unclassified game logic |
-| 282 | [0x14008f130](14008f130_FUN_14008f130.md) | `FUN_14008f130` | 459 | 1 | 7 | unclassified game logic |
-| 283 | [0x1402e06dc](1402e06dc_FUN_1402e06dc.md) | `FUN_1402e06dc` | 457 | 2 | 2 | unclassified game logic |
-| 284 | [0x140012630](140012630_FUN_140012630.md) | `FUN_140012630` | 456 | 4 | 3 | unclassified game logic |
-| 285 | [0x1400c9c30](1400c9c30_FUN_1400c9c30.md) | `FUN_1400c9c30` | 456 | 22 | 3 | unclassified game logic |
-| 286 | [0x140048740](140048740_FUN_140048740.md) | `FUN_140048740` | 455 | 2 | 2 | unclassified game logic |
-| 287 | [0x1400d6f40](1400d6f40_FUN_1400d6f40.md) | `FUN_1400d6f40` | 455 | 2 | 2 | unclassified game logic |
-| 288 | [0x1401057b0](1401057b0_FUN_1401057b0.md) | `FUN_1401057b0` | 455 | 2 | 4 | unclassified game logic |
-| 289 | [0x1402dff58](1402dff58_FUN_1402dff58.md) | `FUN_1402dff58` | 455 | 2 | 4 | unclassified game logic |
-| 290 | [0x14001d240](14001d240_FUN_14001d240.md) | `FUN_14001d240` | 454 | 2 | 2 | unclassified game logic |
-| 291 | [0x1401003e0](1401003e0_FUN_1401003e0.md) | `FUN_1401003e0` | 454 | 3 | 4 | unclassified game logic |
-| 292 | [0x140072100](140072100_FUN_140072100.md) | `FUN_140072100` | 453 | 3 | 3 | unclassified game logic |
-| 293 | [0x14004cf80](14004cf80_FUN_14004cf80.md) | `FUN_14004cf80` | 452 | 2 | 1 | unclassified game logic |
-| 294 | [0x1400cf620](1400cf620_FUN_1400cf620.md) | `FUN_1400cf620` | 451 | 3 | 4 | unclassified game logic |
-| 295 | [0x14005d190](14005d190_FUN_14005d190.md) | `FUN_14005d190` | 450 | 5 | 2 | unclassified game logic |
-| 296 | [0x140006230](140006230_FUN_140006230.md) | `FUN_140006230` | 446 | 5 | 2 | unclassified game logic |
-| 297 | [0x1402f0198](1402f0198_FUN_1402f0198.md) | `FUN_1402f0198` | 445 | 3 | 4 | unclassified game logic |
-| 298 | [0x140087c70](140087c70_FUN_140087c70.md) | `FUN_140087c70` | 442 | 3 | 7 | unclassified game logic |
-| 299 | [0x140055360](140055360_FUN_140055360.md) | `FUN_140055360` | 441 | 2 | 7 | unclassified game logic |
-| 300 | [0x1402d05a0](1402d05a0_FUN_1402d05a0.md) | `FUN_1402d05a0` | 441 | 2 | 2 | unclassified game logic |
-| 301 | [0x1400c7320](1400c7320_FUN_1400c7320.md) | `FUN_1400c7320` | 438 | 3 | 10 | unclassified game logic |
-| 302 | [0x1401017d0](1401017d0_FUN_1401017d0.md) | `FUN_1401017d0` | 437 | 2 | 4 | unclassified game logic |
-| 303 | [0x1402f0444](1402f0444_FUN_1402f0444.md) | `FUN_1402f0444` | 437 | 2 | 2 | unclassified game logic |
-| 304 | [0x14004d710](14004d710_FUN_14004d710.md) | `FUN_14004d710` | 434 | 2 | 1 | unclassified game logic |
-| 305 | [0x140104c00](140104c00_FUN_140104c00.md) | `FUN_140104c00` | 433 | 7 | 4 | unclassified game logic |
-| 306 | [0x1402ec028](1402ec028_FUN_1402ec028.md) | `FUN_1402ec028` | 433 | 2 | 2 | unclassified game logic |
-| 307 | [0x1400d6b90](1400d6b90_FUN_1400d6b90.md) | `FUN_1400d6b90` | 432 | 2 | 8 | unclassified game logic |
-| 308 | [0x1402efd94](1402efd94_FUN_1402efd94.md) | `FUN_1402efd94` | 432 | 3 | 6 | unclassified game logic |
-| 309 | [0x14005fad0](14005fad0_FUN_14005fad0.md) | `FUN_14005fad0` | 431 | 2 | 7 | unclassified game logic |
-| 310 | [0x1400760f0](1400760f0_FUN_1400760f0.md) | `FUN_1400760f0` | 424 | 4 | 5 | unclassified game logic |
-| 311 | [0x14004a250](14004a250_FUN_14004a250.md) | `FUN_14004a250` | 423 | 2 | 2 | unclassified game logic |
-| 312 | [0x1402eb470](1402eb470_FUN_1402eb470.md) | `FUN_1402eb470` | 421 | 2 | 7 | unclassified game logic |
-| 313 | [0x140064380](140064380_FUN_140064380.md) | `FUN_140064380` | 420 | 2 | 7 | unclassified game logic |
-| 314 | [0x140100230](140100230_FUN_140100230.md) | `FUN_140100230` | 419 | 2 | 10 | unclassified game logic |
-| 315 | [0x1400753f0](1400753f0_FUN_1400753f0.md) | `FUN_1400753f0` | 418 | 2 | 11 | unclassified game logic |
-| 316 | [0x14007da00](14007da00_FUN_14007da00.md) | `FUN_14007da00` | 418 | 2 | 4 | unclassified game logic |
-| 317 | [0x140071d20](140071d20_FUN_140071d20.md) | `FUN_140071d20` | 417 | 6 | 3 | unclassified game logic |
-| 318 | [0x1400b47e0](1400b47e0_FUN_1400b47e0.md) | `FUN_1400b47e0` | 417 | 16 | 6 | unclassified game logic |
-| 319 | [0x1400be740](1400be740_FUN_1400be740.md) | `FUN_1400be740` | 416 | 2 | 9 | unclassified game logic |
-| 320 | [0x140027c80](140027c80_FUN_140027c80.md) | `FUN_140027c80` | 415 | 3 | 6 | unclassified game logic |
-| 321 | [0x140049f80](140049f80_FUN_140049f80.md) | `FUN_140049f80` | 411 | 2 | 1 | unclassified game logic |
-| 322 | [0x1402e0a58](1402e0a58_FUN_1402e0a58.md) | `FUN_1402e0a58` | 406 | 2 | 1 | unclassified game logic |
-| 323 | [0x1400c8b90](1400c8b90_FUN_1400c8b90.md) | `FUN_1400c8b90` | 404 | 2 | 2 | unclassified game logic |
-| 324 | [0x14006f840](14006f840_FUN_14006f840.md) | `FUN_14006f840` | 403 | 2 | 7 | unclassified game logic |
-| 325 | [0x14006fb70](14006fb70_FUN_14006fb70.md) | `FUN_14006fb70` | 403 | 2 | 7 | unclassified game logic |
-| 326 | [0x140076550](140076550_FUN_140076550.md) | `FUN_140076550` | 403 | 2 | 7 | unclassified game logic |
-| 327 | [0x140032610](140032610_FUN_140032610.md) | `FUN_140032610` | 402 | 2 | 4 | unclassified game logic |
-| 328 | [0x1400c9290](1400c9290_FUN_1400c9290.md) | `FUN_1400c9290` | 400 | 3 | 8 | unclassified game logic |
-| 329 | [0x14000fbc0](14000fbc0_FUN_14000fbc0.md) | `FUN_14000fbc0` | 398 | 4 | 4 | unclassified game logic |
-| 330 | [0x14006f9e0](14006f9e0_FUN_14006f9e0.md) | `FUN_14006f9e0` | 397 | 2 | 7 | unclassified game logic |
-| 331 | [0x140074da0](140074da0_FUN_140074da0.md) | `FUN_140074da0` | 392 | 2 | 7 | unclassified game logic |
-| 332 | [0x1402d50cc](1402d50cc_FUN_1402d50cc.md) | `FUN_1402d50cc` | 391 | 2 | 3 | unclassified game logic |
-| 333 | [0x1402cee24](1402cee24_FUN_1402cee24.md) | `FUN_1402cee24` | 390 | 2 | 1 | unclassified game logic |
-| 334 | [0x1400d1c40](1400d1c40_FUN_1400d1c40.md) | `FUN_1400d1c40` | 386 | 8 | 8 | unclassified game logic |
-| 335 | [0x1402e6bc0](1402e6bc0_FUN_1402e6bc0.md) | `FUN_1402e6bc0` | 385 | 3 | 1 | unclassified game logic |
-| 336 | [0x1400450b0](1400450b0_FUN_1400450b0.md) | `FUN_1400450b0` | 384 | 5 | 1 | unclassified game logic |
-| 337 | [0x1400153e0](1400153e0_FUN_1400153e0.md) | `FUN_1400153e0` | 383 | 3 | 2 | unclassified game logic |
-| 338 | [0x140025f00](140025f00_FUN_140025f00.md) | `FUN_140025f00` | 383 | 3 | 6 | unclassified game logic |
-| 339 | [0x1400b8420](1400b8420_FUN_1400b8420.md) | `FUN_1400b8420` | 383 | 7 | 5 | unclassified game logic |
-| 340 | [0x1400b2ee0](1400b2ee0_FUN_1400b2ee0.md) | `FUN_1400b2ee0` | 382 | 10 | 6 | unclassified game logic |
-| 341 | [0x1400d7e60](1400d7e60_FUN_1400d7e60.md) | `FUN_1400d7e60` | 382 | 2 | 2 | unclassified game logic |
-| 342 | [0x140007610](140007610_FUN_140007610.md) | `FUN_140007610` | 381 | 2 | 5 | unclassified game logic |
-| 343 | [0x140049e00](140049e00_FUN_140049e00.md) | `FUN_140049e00` | 381 | 2 | 4 | unclassified game logic |
-| 344 | [0x14002cd80](14002cd80_FUN_14002cd80.md) | `FUN_14002cd80` | 379 | 2 | 6 | unclassified game logic |
-| 345 | [0x140100e30](140100e30_FUN_140100e30.md) | `FUN_140100e30` | 379 | 6 | 10 | unclassified game logic |
-| 346 | [0x140071810](140071810_FUN_140071810.md) | `FUN_140071810` | 378 | 8 | 3 | unclassified game logic |
-| 347 | [0x140072a10](140072a10_FUN_140072a10.md) | `FUN_140072a10` | 378 | 2 | 2 | unclassified game logic |
-| 348 | [0x140076790](140076790_FUN_140076790.md) | `FUN_140076790` | 378 | 2 | 6 | unclassified game logic |
-| 349 | [0x140065a90](140065a90_FUN_140065a90.md) | `FUN_140065a90` | 376 | 1 | 6 | unclassified game logic |
-| 350 | [0x1400bf7f0](1400bf7f0_FUN_1400bf7f0.md) | `FUN_1400bf7f0` | 376 | 2 | 3 | unclassified game logic |
-| 351 | [0x1402eff44](1402eff44_FUN_1402eff44.md) | `FUN_1402eff44` | 376 | 2 | 4 | unclassified game logic |
-| 352 | [0x140012a20](140012a20_FUN_140012a20.md) | `FUN_140012a20` | 374 | 2 | 1 | unclassified game logic |
-| 353 | [0x140105980](140105980_FUN_140105980.md) | `FUN_140105980` | 374 | 3 | 9 | championship-related |
-| 354 | [0x14006f6c0](14006f6c0_FUN_14006f6c0.md) | `FUN_14006f6c0` | 373 | 2 | 5 | unclassified game logic |
-| 355 | [0x1400c4e20](1400c4e20_FUN_1400c4e20.md) | `FUN_1400c4e20` | 373 | 2 | 6 | unclassified game logic |
-| 356 | [0x1402ee300](1402ee300_FUN_1402ee300.md) | `FUN_1402ee300` | 372 | 2 | 2 | unclassified game logic |
-| 357 | [0x140027f50](140027f50_FUN_140027f50.md) | `FUN_140027f50` | 369 | 22 | 6 | unclassified game logic |
-| 358 | [0x14006d610](14006d610_FUN_14006d610.md) | `FUN_14006d610` | 368 | 2 | 8 | unclassified game logic |
-| 359 | [0x140030680](140030680_FUN_140030680.md) | `FUN_140030680` | 366 | 15 | 6 | unclassified game logic |
-| 360 | [0x14000d4e0](14000d4e0_FUN_14000d4e0.md) | `FUN_14000d4e0` | 365 | 2 | 3 | unclassified game logic |
-| 361 | [0x1401041f0](1401041f0_FUN_1401041f0.md) | `FUN_1401041f0` | 365 | 4 | 7 | unclassified game logic |
-| 362 | [0x14010de70](14010de70_FUN_14010de70.md) | `FUN_14010de70` | 365 | 3 | 4 | unclassified game logic |
-| 363 | [0x1402cd188](1402cd188_FUN_1402cd188.md) | `FUN_1402cd188` | 365 | 2 | 3 | unclassified game logic |
-| 364 | [0x140064060](140064060_FUN_140064060.md) | `FUN_140064060` | 363 | 4 | 6 | unclassified game logic |
-| 365 | [0x1400aaa30](1400aaa30_FUN_1400aaa30.md) | `FUN_1400aaa30` | 363 | 5 | 3 | unclassified game logic |
-| 366 | [0x140080cc0](140080cc0_FUN_140080cc0.md) | `FUN_140080cc0` | 362 | 4 | 4 | unclassified game logic |
-| 367 | [0x140075120](140075120_FUN_140075120.md) | `FUN_140075120` | 359 | 4 | 1 | unclassified game logic |
-| 368 | [0x1400b5fe0](1400b5fe0_FUN_1400b5fe0.md) | `FUN_1400b5fe0` | 357 | 5 | 3 | unclassified game logic |
-| 369 | [0x140016340](140016340_FUN_140016340.md) | `FUN_140016340` | 356 | 3 | 2 | unclassified game logic |
-| 370 | [0x1400924b0](1400924b0_FUN_1400924b0.md) | `FUN_1400924b0` | 356 | 2 | 5 | unclassified game logic |
-| 371 | [0x14003ee40](14003ee40_FUN_14003ee40.md) | `FUN_14003ee40` | 354 | 2 | 6 | unclassified game logic |
-| 372 | [0x140036850](140036850_FUN_140036850.md) | `FUN_140036850` | 352 | 3 | 6 | unclassified game logic |
-| 373 | [0x140027b20](140027b20_FUN_140027b20.md) | `FUN_140027b20` | 348 | 2 | 6 | unclassified game logic |
-| 374 | [0x1400485e0](1400485e0_FUN_1400485e0.md) | `FUN_1400485e0` | 348 | 3 | 4 | unclassified game logic |
-| 375 | [0x140074f80](140074f80_FUN_140074f80.md) | `FUN_140074f80` | 348 | 2 | 5 | unclassified game logic |
-| 376 | [0x1402cecc8](1402cecc8_FUN_1402cecc8.md) | `FUN_1402cecc8` | 347 | 2 | 2 | unclassified game logic |
-| 377 | [0x1402ebe30](1402ebe30_FUN_1402ebe30.md) | `FUN_1402ebe30` | 345 | 2 | 4 | unclassified game logic |
-| 378 | [0x1400739e0](1400739e0_FUN_1400739e0.md) | `FUN_1400739e0` | 344 | 2 | 1 | unclassified game logic |
-| 379 | [0x1402c793c](1402c793c___scrt_common_main_seh.md) | `__scrt_common_main_seh` | 343 | 0 | 3 | unclassified game logic |
-| 380 | [0x1400d8290](1400d8290_FUN_1400d8290.md) | `FUN_1400d8290` | 342 | 2 | 6 | unclassified game logic |
-| 381 | [0x1400be8f0](1400be8f0_FUN_1400be8f0.md) | `FUN_1400be8f0` | 341 | 2 | 7 | unclassified game logic |
-| 382 | [0x1400b7770](1400b7770_FUN_1400b7770.md) | `FUN_1400b7770` | 340 | 3 | 6 | unclassified game logic |
-| 383 | [0x1400d7190](1400d7190_FUN_1400d7190.md) | `FUN_1400d7190` | 339 | 2 | 2 | unclassified game logic |
-| 384 | [0x1402ef840](1402ef840_FUN_1402ef840.md) | `FUN_1402ef840` | 338 | 2 | 5 | unclassified game logic |
-| 385 | [0x1400a8890](1400a8890_FUN_1400a8890.md) | `FUN_1400a8890` | 337 | 6 | 3 | unclassified game logic |
-| 386 | [0x1402ceb78](1402ceb78_FUN_1402ceb78.md) | `FUN_1402ceb78` | 336 | 2 | 5 | unclassified game logic |
-| 387 | [0x1400d6a40](1400d6a40_FUN_1400d6a40.md) | `FUN_1400d6a40` | 335 | 2 | 7 | unclassified game logic |
-| 388 | [0x14010cd90](14010cd90_FUN_14010cd90.md) | `FUN_14010cd90` | 335 | 2 | 5 | unclassified game logic |
-| 389 | [0x1402ef6f0](1402ef6f0_FUN_1402ef6f0.md) | `FUN_1402ef6f0` | 333 | 3 | 4 | unclassified game logic |
-| 390 | [0x140015ae0](140015ae0_FUN_140015ae0.md) | `FUN_140015ae0` | 332 | 3 | 3 | unclassified game logic |
-| 391 | [0x14004cb40](14004cb40_FUN_14004cb40.md) | `FUN_14004cb40` | 330 | 5 | 3 | unclassified game logic |
-| 392 | [0x1402f08b0](1402f08b0_FUN_1402f08b0.md) | `FUN_1402f08b0` | 330 | 2 | 3 | unclassified game logic |
-| 393 | [0x14004ec60](14004ec60_FUN_14004ec60.md) | `FUN_14004ec60` | 328 | 2 | 1 | unclassified game logic |
-| 394 | [0x1400409d0](1400409d0_FUN_1400409d0.md) | `FUN_1400409d0` | 326 | 4 | 3 | unclassified game logic |
-| 395 | [0x1400060e0](1400060e0_FUN_1400060e0.md) | `FUN_1400060e0` | 324 | 3 | 2 | unclassified game logic |
-| 396 | [0x140055c30](140055c30_FUN_140055c30.md) | `FUN_140055c30` | 323 | 2 | 4 | unclassified game logic |
-| 397 | [0x1402eca20](1402eca20_FUN_1402eca20.md) | `FUN_1402eca20` | 323 | 2 | 1 | unclassified game logic |
-| 398 | [0x140007dd0](140007dd0_FUN_140007dd0.md) | `FUN_140007dd0` | 321 | 4 | 4 | unclassified game logic |
-| 399 | [0x140084370](140084370_FUN_140084370.md) | `FUN_140084370` | 321 | 2 | 5 | unclassified game logic |
-| 400 | [0x1400a2d80](1400a2d80_FUN_1400a2d80.md) | `FUN_1400a2d80` | 321 | 2 | 2 | unclassified game logic |
-| 401 | [0x14005c5d0](14005c5d0_FUN_14005c5d0.md) | `FUN_14005c5d0` | 320 | 1 | 6 | unclassified game logic |
-| 402 | [0x1402e8f40](1402e8f40_FUN_1402e8f40.md) | `FUN_1402e8f40` | 320 | 7 | 6 | unclassified game logic |
-| 403 | [0x1400d8ab0](1400d8ab0_FUN_1400d8ab0.md) | `FUN_1400d8ab0` | 319 | 4 | 6 | unclassified game logic |
-| 404 | [0x1400535f0](1400535f0_FUN_1400535f0.md) | `FUN_1400535f0` | 318 | 3 | 4 | unclassified game logic |
-| 405 | [0x140009ca0](140009ca0_FUN_140009ca0.md) | `FUN_140009ca0` | 315 | 4 | 1 | unclassified game logic |
-| 406 | [0x1400123b0](1400123b0_FUN_1400123b0.md) | `FUN_1400123b0` | 314 | 2 | 1 | unclassified game logic |
-| 407 | [0x140047420](140047420_FUN_140047420.md) | `FUN_140047420` | 314 | 2 | 6 | unclassified game logic |
-| 408 | [0x14006fe60](14006fe60_FUN_14006fe60.md) | `FUN_14006fe60` | 309 | 35 | 6 | unclassified game logic |
-| 409 | [0x1402e8e00](1402e8e00_FUN_1402e8e00.md) | `FUN_1402e8e00` | 307 | 3 | 6 | unclassified game logic |
-| 410 | [0x140064590](140064590_FUN_140064590.md) | `FUN_140064590` | 306 | 2 | 5 | unclassified game logic |
-| 411 | [0x1402c6b54](1402c6b54_FUN_1402c6b54.md) | `FUN_1402c6b54` | 306 | 2 | 4 | unclassified game logic |
-| 412 | [0x1402f6830](1402f6830_FUN_1402f6830.md) | `FUN_1402f6830` | 304 | 2 | 1 | unclassified game logic |
-| 413 | [0x140007ca0](140007ca0_FUN_140007ca0.md) | `FUN_140007ca0` | 302 | 3 | 2 | unclassified game logic |
-| 414 | [0x1400279c0](1400279c0_FUN_1400279c0.md) | `FUN_1400279c0` | 302 | 17 | 5 | unclassified game logic |
-| 415 | [0x1402c9210](1402c9210_FUN_1402c9210.md) | `FUN_1402c9210` | 302 | 2 | 1 | unclassified game logic |
-| 416 | [0x140010010](140010010_FUN_140010010.md) | `FUN_140010010` | 301 | 2 | 5 | unclassified game logic |
-| 417 | [0x140071f00](140071f00_FUN_140071f00.md) | `FUN_140071f00` | 301 | 6 | 4 | unclassified game logic |
-| 418 | [0x14006f590](14006f590_FUN_14006f590.md) | `FUN_14006f590` | 298 | 4 | 3 | unclassified game logic |
-| 419 | [0x1402d0130](1402d0130_FUN_1402d0130.md) | `FUN_1402d0130` | 298 | 2 | 2 | unclassified game logic |
-| 420 | [0x14004c8a0](14004c8a0_FUN_14004c8a0.md) | `FUN_14004c8a0` | 295 | 3 | 2 | unclassified game logic |
-| 421 | [0x1400184f0](1400184f0_FUN_1400184f0.md) | `FUN_1400184f0` | 294 | 3 | 1 | unclassified game logic |
-| 422 | [0x140047560](140047560_FUN_140047560.md) | `FUN_140047560` | 293 | 5 | 6 | unclassified game logic |
-| 423 | [0x1402e0d04](1402e0d04_FUN_1402e0d04.md) | `FUN_1402e0d04` | 292 | 2 | 5 | unclassified game logic |
-| 424 | [0x140092380](140092380_FUN_140092380.md) | `FUN_140092380` | 290 | 2 | 3 | unclassified game logic |
-| 425 | [0x140083480](140083480_FUN_140083480.md) | `FUN_140083480` | 289 | 2 | 3 | unclassified game logic |
-| 426 | [0x14009c390](14009c390_FUN_14009c390.md) | `FUN_14009c390` | 289 | 2 | 6 | unclassified game logic |
-| 427 | [0x1400b2cd0](1400b2cd0_FUN_1400b2cd0.md) | `FUN_1400b2cd0` | 288 | 6 | 5 | unclassified game logic |
-| 428 | [0x1400c6bd0](1400c6bd0_FUN_1400c6bd0.md) | `FUN_1400c6bd0` | 288 | 4 | 1 | unclassified game logic |
-| 429 | [0x140010310](140010310_FUN_140010310.md) | `FUN_140010310` | 285 | 2 | 4 | unclassified game logic |
-| 430 | [0x1402ee50c](1402ee50c_FUN_1402ee50c.md) | `FUN_1402ee50c` | 285 | 2 | 3 | unclassified game logic |
-| 431 | [0x140027e30](140027e30_FUN_140027e30.md) | `FUN_140027e30` | 284 | 30 | 5 | unclassified game logic |
-| 432 | [0x14003e600](14003e600_FUN_14003e600.md) | `FUN_14003e600` | 284 | 7 | 6 | unclassified game logic |
-| 433 | [0x1400447e0](1400447e0_FUN_1400447e0.md) | `FUN_1400447e0` | 284 | 3 | 2 | unclassified game logic |
-| 434 | [0x1400b8c60](1400b8c60_FUN_1400b8c60.md) | `FUN_1400b8c60` | 283 | 3 | 2 | unclassified game logic |
-| 435 | [0x1402ee1e4](1402ee1e4_FUN_1402ee1e4.md) | `FUN_1402ee1e4` | 283 | 2 | 1 | unclassified game logic |
-| 436 | [0x1400f4ea0](1400f4ea0_FUN_1400f4ea0.md) | `FUN_1400f4ea0` | 282 | 2 | 5 | unclassified game logic |
-| 437 | [0x1400bf970](1400bf970_FUN_1400bf970.md) | `FUN_1400bf970` | 281 | 3 | 6 | unclassified game logic |
-| 438 | [0x140082430](140082430_FUN_140082430.md) | `FUN_140082430` | 280 | 3 | 2 | unclassified game logic |
-| 439 | [0x1400cb8c0](1400cb8c0_FUN_1400cb8c0.md) | `FUN_1400cb8c0` | 280 | 6 | 4 | unclassified game logic |
-| 440 | [0x1400c57a0](1400c57a0_FUN_1400c57a0.md) | `FUN_1400c57a0` | 277 | 5 | 1 | unclassified game logic |
-| 441 | [0x1402ce36c](1402ce36c_FUN_1402ce36c.md) | `FUN_1402ce36c` | 275 | 16 | 6 | unclassified game logic |
-| 442 | [0x140077ae0](140077ae0_FUN_140077ae0.md) | `FUN_140077ae0` | 274 | 2 | 4 | unclassified game logic |
-| 443 | [0x140086450](140086450_FUN_140086450.md) | `FUN_140086450` | 274 | 6 | 1 | unclassified game logic |
-| 444 | [0x1400c6ab0](1400c6ab0_FUN_1400c6ab0.md) | `FUN_1400c6ab0` | 274 | 7 | 3 | unclassified game logic |
-| 445 | [0x1400c7c60](1400c7c60_FUN_1400c7c60.md) | `FUN_1400c7c60` | 274 | 3 | 7 | unclassified game logic |
-| 446 | [0x140071000](140071000_FUN_140071000.md) | `FUN_140071000` | 272 | 11 | 4 | unclassified game logic |
-| 447 | [0x1402f6b8c](1402f6b8c_FUN_1402f6b8c.md) | `FUN_1402f6b8c` | 272 | 4 | 4 | unclassified game logic |
-| 448 | [0x140075fd0](140075fd0_FUN_140075fd0.md) | `FUN_140075fd0` | 271 | 2 | 1 | unclassified game logic |
-| 449 | [0x1400c7600](1400c7600_FUN_1400c7600.md) | `FUN_1400c7600` | 270 | 11 | 3 | unclassified game logic |
-| 450 | [0x1402e0948](1402e0948_FUN_1402e0948.md) | `FUN_1402e0948` | 269 | 2 | 1 | unclassified game logic |
-| 451 | [0x1400a9180](1400a9180_FUN_1400a9180.md) | `FUN_1400a9180` | 263 | 9 | 3 | unclassified game logic |
-| 452 | [0x1402ee0dc](1402ee0dc_FUN_1402ee0dc.md) | `FUN_1402ee0dc` | 263 | 2 | 1 | unclassified game logic |
-| 453 | [0x140083c30](140083c30_FUN_140083c30.md) | `FUN_140083c30` | 262 | 3 | 3 | unclassified game logic |
-| 454 | [0x140005cf0](140005cf0_FUN_140005cf0.md) | `FUN_140005cf0` | 260 | 3 | 2 | unclassified game logic |
-| 455 | [0x140007f20](140007f20_FUN_140007f20.md) | `FUN_140007f20` | 260 | 3 | 3 | unclassified game logic |
-| 456 | [0x140104df0](140104df0_FUN_140104df0.md) | `FUN_140104df0` | 260 | 2 | 3 | unclassified game logic |
-| 457 | [0x1402ef330](1402ef330_FUN_1402ef330.md) | `FUN_1402ef330` | 260 | 3 | 4 | unclassified game logic |
-| 458 | [0x14006d470](14006d470_FUN_14006d470.md) | `FUN_14006d470` | 259 | 3 | 2 | unclassified game logic |
-| 459 | [0x140072fe0](140072fe0_FUN_140072fe0.md) | `FUN_140072fe0` | 259 | 6 | 5 | unclassified game logic |
-| 460 | [0x1400d1e10](1400d1e10_FUN_1400d1e10.md) | `FUN_1400d1e10` | 259 | 13 | 5 | unclassified game logic |
-| 461 | [0x1402e8cf0](1402e8cf0_FUN_1402e8cf0.md) | `FUN_1402e8cf0` | 257 | 3 | 5 | unclassified game logic |
-| 462 | [0x140076910](140076910_FUN_140076910.md) | `FUN_140076910` | 255 | 5 | 6 | unclassified game logic |
-| 463 | [0x1400ab0a0](1400ab0a0_FUN_1400ab0a0.md) | `FUN_1400ab0a0` | 255 | 4 | 2 | unclassified game logic |
-| 464 | [0x1400bf2c0](1400bf2c0_FUN_1400bf2c0.md) | `FUN_1400bf2c0` | 253 | 3 | 3 | unclassified game logic |
-| 465 | [0x1400cfa00](1400cfa00_FUN_1400cfa00.md) | `FUN_1400cfa00` | 253 | 4 | 2 | unclassified game logic |
-| 466 | [0x140092710](140092710_FUN_140092710.md) | `FUN_140092710` | 252 | 2 | 5 | unclassified game logic |
-| 467 | [0x1400b6990](1400b6990_FUN_1400b6990.md) | `FUN_1400b6990` | 252 | 5 | 2 | unclassified game logic |
-| 468 | [0x1400c9e00](1400c9e00_FUN_1400c9e00.md) | `FUN_1400c9e00` | 251 | 5 | 5 | unclassified game logic |
-| 469 | [0x1402ce864](1402ce864_FUN_1402ce864.md) | `FUN_1402ce864` | 250 | 2 | 2 | unclassified game logic |
-| 470 | [0x1400c85f0](1400c85f0_FUN_1400c85f0.md) | `FUN_1400c85f0` | 249 | 3 | 4 | unclassified game logic |
-| 471 | [0x1400457f0](1400457f0_FUN_1400457f0.md) | `FUN_1400457f0` | 247 | 3 | 3 | unclassified game logic |
-| 472 | [0x1402cf0e0](1402cf0e0_FUN_1402cf0e0.md) | `FUN_1402cf0e0` | 246 | 2 | 1 | unclassified game logic |
-| 473 | [0x14004edb0](14004edb0_FUN_14004edb0.md) | `FUN_14004edb0` | 244 | 3 | 5 | unclassified game logic |
-| 474 | [0x1400a6cb0](1400a6cb0_FUN_1400a6cb0.md) | `FUN_1400a6cb0` | 244 | 2 | 5 | unclassified game logic |
-| 475 | [0x140075a80](140075a80_FUN_140075a80.md) | `FUN_140075a80` | 243 | 2 | 3 | unclassified game logic |
-| 476 | [0x1402e01d4](1402e01d4_FUN_1402e01d4.md) | `FUN_1402e01d4` | 241 | 2 | 5 | unclassified game logic |
-| 477 | [0x140071990](140071990_FUN_140071990.md) | `FUN_140071990` | 239 | 2 | 4 | unclassified game logic |
-| 478 | [0x14004a120](14004a120_FUN_14004a120.md) | `FUN_14004a120` | 236 | 3 | 1 | unclassified game logic |
-| 479 | [0x140009f80](140009f80_FUN_140009f80.md) | `FUN_140009f80` | 235 | 3 | 2 | unclassified game logic |
-| 480 | [0x1402ce960](1402ce960_FUN_1402ce960.md) | `FUN_1402ce960` | 234 | 2 | 3 | unclassified game logic |
-| 481 | [0x1402d1900](1402d1900_FUN_1402d1900.md) | `FUN_1402d1900` | 234 | 2 | 5 | unclassified game logic |
-| 482 | [0x14007ad10](14007ad10_FUN_14007ad10.md) | `FUN_14007ad10` | 231 | 2 | 6 | unclassified game logic |
-| 483 | [0x1400cb670](1400cb670_FUN_1400cb670.md) | `FUN_1400cb670` | 230 | 3 | 5 | unclassified game logic |
-| 484 | [0x1400b6170](1400b6170_FUN_1400b6170.md) | `FUN_1400b6170` | 229 | 3 | 2 | unclassified game logic |
-| 485 | [0x14005bad0](14005bad0_FUN_14005bad0.md) | `FUN_14005bad0` | 228 | 2 | 5 | unclassified game logic |
-| 486 | [0x140010b00](140010b00_FUN_140010b00.md) | `FUN_140010b00` | 227 | 2 | 1 | unclassified game logic |
-| 487 | [0x14003f590](14003f590_FUN_14003f590.md) | `FUN_14003f590` | 227 | 2 | 3 | unclassified game logic |
-| 488 | [0x140082550](140082550_FUN_140082550.md) | `FUN_140082550` | 227 | 2 | 3 | unclassified game logic |
-| 489 | [0x140092620](140092620_FUN_140092620.md) | `FUN_140092620` | 227 | 2 | 4 | unclassified game logic |
-| 490 | [0x1402da06c](1402da06c_FUN_1402da06c.md) | `FUN_1402da06c` | 227 | 3 | 5 | unclassified game logic |
-| 491 | [0x14002f0f0](14002f0f0_FUN_14002f0f0.md) | `FUN_14002f0f0` | 225 | 2 | 5 | unclassified game logic |
-| 492 | [0x14009c7d0](14009c7d0_FUN_14009c7d0.md) | `FUN_14009c7d0` | 225 | 3 | 4 | unclassified game logic |
-| 493 | [0x1400c69c0](1400c69c0_FUN_1400c69c0.md) | `FUN_1400c69c0` | 225 | 2 | 1 | unclassified game logic |
-| 494 | [0x1400a32c0](1400a32c0_FUN_1400a32c0.md) | `FUN_1400a32c0` | 224 | 3 | 2 | unclassified game logic |
-| 495 | [0x1402cfa08](1402cfa08_FUN_1402cfa08.md) | `FUN_1402cfa08` | 222 | 2 | 6 | unclassified game logic |
-| 496 | [0x1402f31e0](1402f31e0_FUN_1402f31e0.md) | `FUN_1402f31e0` | 222 | 4 | 1 | unclassified game logic |
-| 497 | [0x140010430](140010430_FUN_140010430.md) | `FUN_140010430` | 220 | 2 | 4 | unclassified game logic |
-| 498 | [0x140075850](140075850_FUN_140075850.md) | `FUN_140075850` | 220 | 4 | 4 | unclassified game logic |
-| 499 | [0x1400762a0](1400762a0_FUN_1400762a0.md) | `FUN_1400762a0` | 220 | 2 | 2 | unclassified game logic |
-| 500 | [0x140100c90](140100c90_FUN_140100c90.md) | `FUN_140100c90` | 220 | 5 | 4 | unclassified game logic |
-| 501 | [0x140038f20](140038f20_FUN_140038f20.md) | `FUN_140038f20` | 218 | 2 | 4 | unclassified game logic |
-| 502 | [0x140053730](140053730_FUN_140053730.md) | `FUN_140053730` | 218 | 3 | 4 | unclassified game logic |
-| 503 | [0x1400b4a10](1400b4a10_FUN_1400b4a10.md) | `FUN_1400b4a10` | 216 | 19 | 4 | unclassified game logic |
-| 504 | [0x1402f66e0](1402f66e0_FUN_1402f66e0.md) | `FUN_1402f66e0` | 216 | 2 | 1 | unclassified game logic |
-| 505 | [0x1400a5e00](1400a5e00_FUN_1400a5e00.md) | `FUN_1400a5e00` | 215 | 2 | 2 | unclassified game logic |
-| 506 | [0x140107550](140107550_FUN_140107550.md) | `FUN_140107550` | 214 | 3 | 4 | unclassified game logic |
-| 507 | [0x14000ce00](14000ce00_FUN_14000ce00.md) | `FUN_14000ce00` | 213 | 2 | 2 | unclassified game logic |
-| 508 | [0x140082330](140082330_FUN_140082330.md) | `FUN_140082330` | 213 | 2 | 4 | unclassified game logic |
-| 509 | [0x1402ef618](1402ef618_FUN_1402ef618.md) | `FUN_1402ef618` | 213 | 2 | 4 | unclassified game logic |
-| 510 | [0x1400a5d20](1400a5d20_FUN_1400a5d20.md) | `FUN_1400a5d20` | 212 | 2 | 2 | unclassified game logic |
-| 511 | [0x14004eeb0](14004eeb0_FUN_14004eeb0.md) | `FUN_14004eeb0` | 211 | 10 | 2 | unclassified game logic |
-| 512 | [0x1400cf540](1400cf540_FUN_1400cf540.md) | `FUN_1400cf540` | 211 | 16 | 2 | unclassified game logic |
-| 513 | [0x140083b50](140083b50_FUN_140083b50.md) | `FUN_140083b50` | 210 | 2 | 5 | unclassified game logic |
-| 514 | [0x1402d7098](1402d7098_FUN_1402d7098.md) | `FUN_1402d7098` | 210 | 2 | 2 | unclassified game logic |
-| 515 | [0x1402f6abc](1402f6abc_FUN_1402f6abc.md) | `FUN_1402f6abc` | 208 | 2 | 1 | unclassified game logic |
-| 516 | [0x14009c6a0](14009c6a0_FUN_14009c6a0.md) | `FUN_14009c6a0` | 207 | 4 | 4 | unclassified game logic |
-| 517 | [0x1402e6770](1402e6770_FUN_1402e6770.md) | `FUN_1402e6770` | 207 | 5 | 1 | unclassified game logic |
-| 518 | [0x1400874e0](1400874e0_FUN_1400874e0.md) | `FUN_1400874e0` | 205 | 2 | 2 | unclassified game logic |
-| 519 | [0x140104b20](140104b20_FUN_140104b20.md) | `FUN_140104b20` | 205 | 11 | 3 | unclassified game logic |
-| 520 | [0x1402e9cd4](1402e9cd4_FUN_1402e9cd4.md) | `FUN_1402e9cd4` | 205 | 2 | 4 | unclassified game logic |
-| 521 | [0x14009f350](14009f350_FUN_14009f350.md) | `FUN_14009f350` | 203 | 2 | 1 | unclassified game logic |
-| 522 | [0x14008d2d0](14008d2d0_FUN_14008d2d0.md) | `FUN_14008d2d0` | 202 | 2 | 4 | unclassified game logic |
-| 523 | [0x1400a9290](1400a9290_FUN_1400a9290.md) | `FUN_1400a9290` | 201 | 7 | 2 | unclassified game logic |
-| 524 | [0x140075320](140075320_FUN_140075320.md) | `FUN_140075320` | 199 | 2 | 3 | unclassified game logic |
-| 525 | [0x1400bf630](1400bf630_FUN_1400bf630.md) | `FUN_1400bf630` | 199 | 2 | 3 | unclassified game logic |
-| 526 | [0x1400c7720](1400c7720_FUN_1400c7720.md) | `FUN_1400c7720` | 199 | 4 | 5 | unclassified game logic |
-| 527 | [0x140010240](140010240_FUN_140010240.md) | `FUN_140010240` | 198 | 3 | 4 | unclassified game logic |
-| 528 | [0x140042de0](140042de0_FUN_140042de0.md) | `FUN_140042de0` | 198 | 2 | 4 | unclassified game logic |
-| 529 | [0x140016810](140016810_FUN_140016810.md) | `FUN_140016810` | 196 | 3 | 2 | unclassified game logic |
-| 530 | [0x1400bf700](1400bf700_FUN_1400bf700.md) | `FUN_1400bf700` | 195 | 6 | 2 | unclassified game logic |
-| 531 | [0x1402da530](1402da530_FUN_1402da530.md) | `FUN_1402da530` | 195 | 2 | 2 | unclassified game logic |
-| 532 | [0x140037420](140037420_FUN_140037420.md) | `FUN_140037420` | 193 | 2 | 2 | unclassified game logic |
-| 533 | [0x1402e9b78](1402e9b78_FUN_1402e9b78.md) | `FUN_1402e9b78` | 193 | 2 | 3 | unclassified game logic |
-| 534 | [0x1400c9f10](1400c9f10_FUN_1400c9f10.md) | `FUN_1400c9f10` | 189 | 23 | 5 | unclassified game logic |
-| 535 | [0x1400c6d00](1400c6d00_FUN_1400c6d00.md) | `FUN_1400c6d00` | 188 | 3 | 3 | unclassified game logic |
-| 536 | [0x14004f150](14004f150_FUN_14004f150.md) | `FUN_14004f150` | 187 | 2 | 3 | unclassified game logic |
-| 537 | [0x1402f4ed4](1402f4ed4_FUN_1402f4ed4.md) | `FUN_1402f4ed4` | 186 | 2 | 4 | unclassified game logic |
-| 538 | [0x1400128b0](1400128b0_FUN_1400128b0.md) | `FUN_1400128b0` | 184 | 4 | 1 | unclassified game logic |
-| 539 | [0x140027750](140027750_FUN_140027750.md) | `FUN_140027750` | 184 | 2 | 4 | unclassified game logic |
-| 540 | [0x1400dc2d0](1400dc2d0_FUN_1400dc2d0.md) | `FUN_1400dc2d0` | 183 | 2 | 6 | unclassified game logic |
-| 541 | [0x1402d0290](1402d0290_FUN_1402d0290.md) | `FUN_1402d0290` | 183 | 2 | 2 | unclassified game logic |
-| 542 | [0x1402cd39c](1402cd39c_FUN_1402cd39c.md) | `FUN_1402cd39c` | 182 | 26 | 3 | unclassified game logic |
-| 543 | [0x1402d7230](1402d7230_FUN_1402d7230.md) | `FUN_1402d7230` | 182 | 2 | 3 | unclassified game logic |
-| 544 | [0x1402e0598](1402e0598_FUN_1402e0598.md) | `FUN_1402e0598` | 181 | 2 | 3 | unclassified game logic |
-| 545 | [0x1402e8544](1402e8544_FUN_1402e8544.md) | `FUN_1402e8544` | 181 | 3 | 2 | unclassified game logic |
-| 546 | [0x1400a3200](1400a3200_FUN_1400a3200.md) | `FUN_1400a3200` | 179 | 2 | 1 | unclassified game logic |
-| 547 | [0x1402d8ca8](1402d8ca8_FUN_1402d8ca8.md) | `FUN_1402d8ca8` | 179 | 2 | 3 | unclassified game logic |
-| 548 | [0x1400124f0](1400124f0_FUN_1400124f0.md) | `FUN_1400124f0` | 177 | 2 | 1 | unclassified game logic |
-| 549 | [0x140044ff0](140044ff0_FUN_140044ff0.md) | `FUN_140044ff0` | 177 | 3 | 3 | unclassified game logic |
-| 550 | [0x1402ece80](1402ece80_FUN_1402ece80.md) | `FUN_1402ece80` | 177 | 2 | 2 | unclassified game logic |
-| 551 | [0x1400c9fe0](1400c9fe0_FUN_1400c9fe0.md) | `FUN_1400c9fe0` | 176 | 4 | 5 | unclassified game logic |
-| 552 | [0x1402d3908](1402d3908_FUN_1402d3908.md) | `FUN_1402d3908` | 176 | 2 | 1 | unclassified game logic |
-| 553 | [0x140005960](140005960_FUN_140005960.md) | `FUN_140005960` | 175 | 2 | 1 | unclassified game logic |
-| 554 | [0x1402eaf4c](1402eaf4c_FUN_1402eaf4c.md) | `FUN_1402eaf4c` | 175 | 2 | 3 | unclassified game logic |
-| 555 | [0x1400b8720](1400b8720_FUN_1400b8720.md) | `FUN_1400b8720` | 174 | 5 | 1 | unclassified game logic |
-| 556 | [0x1400d8d00](1400d8d00_FUN_1400d8d00.md) | `FUN_1400d8d00` | 174 | 2 | 5 | unclassified game logic |
-| 557 | [0x1402e93d0](1402e93d0_FUN_1402e93d0.md) | `FUN_1402e93d0` | 174 | 2 | 2 | unclassified game logic |
-| 558 | [0x14004f0a0](14004f0a0_FUN_14004f0a0.md) | `FUN_14004f0a0` | 173 | 3 | 2 | unclassified game logic |
-| 559 | [0x140012800](140012800_FUN_140012800.md) | `FUN_140012800` | 170 | 2 | 1 | unclassified game logic |
-| 560 | [0x1402d3580](1402d3580_FUN_1402d3580.md) | `FUN_1402d3580` | 170 | 2 | 1 | unclassified game logic |
-| 561 | [0x1400471e0](1400471e0_FUN_1400471e0.md) | `FUN_1400471e0` | 169 | 2 | 1 | unclassified game logic |
-| 562 | [0x1400b2e30](1400b2e30_FUN_1400b2e30.md) | `FUN_1400b2e30` | 169 | 3 | 5 | unclassified game logic |
-| 563 | [0x14009bcc0](14009bcc0_FUN_14009bcc0.md) | `FUN_14009bcc0` | 168 | 5 | 2 | unclassified game logic |
-| 564 | [0x1400a8680](1400a8680_FUN_1400a8680.md) | `FUN_1400a8680` | 168 | 2 | 3 | unclassified game logic |
-| 565 | [0x1402d1ca8](1402d1ca8_FUN_1402d1ca8.md) | `FUN_1402d1ca8` | 168 | 5 | 2 | unclassified game logic |
-| 566 | [0x1402c8240](1402c8240_FUN_1402c8240.md) | `FUN_1402c8240` | 167 | 7 | 1 | unclassified game logic |
-| 567 | [0x140081600](140081600_FUN_140081600.md) | `FUN_140081600` | 166 | 2 | 2 | unclassified game logic |
-| 568 | [0x14000cee0](14000cee0_FUN_14000cee0.md) | `FUN_14000cee0` | 165 | 2 | 2 | unclassified game logic |
-| 569 | [0x1400bf070](1400bf070_FUN_1400bf070.md) | `FUN_1400bf070` | 165 | 3 | 1 | unclassified game logic |
-| 570 | [0x1402ce1e0](1402ce1e0_FUN_1402ce1e0.md) | `FUN_1402ce1e0` | 165 | 2 | 5 | unclassified game logic |
-| 571 | [0x14005e310](14005e310_FUN_14005e310.md) | `FUN_14005e310` | 164 | 3 | 6 | unclassified game logic |
-| 572 | [0x1400641d0](1400641d0_FUN_1400641d0.md) | `FUN_1400641d0` | 164 | 2 | 2 | unclassified game logic |
-| 573 | [0x1400ca150](1400ca150_FUN_1400ca150.md) | `FUN_1400ca150` | 164 | 7 | 1 | unclassified game logic |
-| 574 | [0x140074460](140074460_FUN_140074460.md) | `FUN_140074460` | 163 | 3 | 4 | unclassified game logic |
-| 575 | [0x1400ce9b0](1400ce9b0_FUN_1400ce9b0.md) | `FUN_1400ce9b0` | 163 | 7 | 4 | unclassified game logic |
-| 576 | [0x1402f0358](1402f0358_FUN_1402f0358.md) | `FUN_1402f0358` | 163 | 2 | 4 | unclassified game logic |
-| 577 | [0x140012970](140012970_FUN_140012970.md) | `FUN_140012970` | 162 | 5 | 1 | unclassified game logic |
-| 578 | [0x1402ed0c0](1402ed0c0_FUN_1402ed0c0.md) | `FUN_1402ed0c0` | 162 | 2 | 2 | unclassified game logic |
-| 579 | [0x1402f7f1c](1402f7f1c_FUN_1402f7f1c.md) | `FUN_1402f7f1c` | 162 | 3 | 3 | unclassified game logic |
-| 580 | [0x1402d185c](1402d185c_FUN_1402d185c.md) | `FUN_1402d185c` | 161 | 3 | 3 | unclassified game logic |
-| 581 | [0x140025e00](140025e00_FUN_140025e00.md) | `FUN_140025e00` | 160 | 2 | 1 | unclassified game logic |
-| 582 | [0x14004cee0](14004cee0_FUN_14004cee0.md) | `FUN_14004cee0` | 160 | 7 | 1 | unclassified game logic |
-| 583 | [0x1400aabb0](1400aabb0_FUN_1400aabb0.md) | `FUN_1400aabb0` | 159 | 3 | 5 | unclassified game logic |
-| 584 | [0x1402e08a8](1402e08a8_FUN_1402e08a8.md) | `FUN_1402e08a8` | 159 | 2 | 2 | unclassified game logic |
-| 585 | [0x140005e10](140005e10_FUN_140005e10.md) | `FUN_140005e10` | 158 | 3 | 3 | unclassified game logic |
-| 586 | [0x140075f20](140075f20_FUN_140075f20.md) | `FUN_140075f20` | 158 | 4 | 1 | unclassified game logic |
-| 587 | [0x1400c8dc0](1400c8dc0_FUN_1400c8dc0.md) | `FUN_1400c8dc0` | 157 | 16 | 1 | unclassified game logic |
-| 588 | [0x140010c10](140010c10_FUN_140010c10.md) | `FUN_140010c10` | 156 | 4 | 1 | unclassified game logic |
-| 589 | [0x1402d15ac](1402d15ac_FUN_1402d15ac.md) | `FUN_1402d15ac` | 156 | 2 | 2 | unclassified game logic |
-| 590 | [0x140067e60](140067e60_FUN_140067e60.md) | `FUN_140067e60` | 155 | 2 | 5 | unclassified game logic |
-| 591 | [0x140087ec0](140087ec0_FUN_140087ec0.md) | `FUN_140087ec0` | 155 | 7 | 3 | unclassified game logic |
-| 592 | [0x1400befd0](1400befd0_FUN_1400befd0.md) | `FUN_1400befd0` | 155 | 2 | 1 | unclassified game logic |
-| 593 | [0x1400bf150](1400bf150_FUN_1400bf150.md) | `FUN_1400bf150` | 155 | 2 | 3 | unclassified game logic |
-| 594 | [0x1400c5580](1400c5580_FUN_1400c5580.md) | `FUN_1400c5580` | 155 | 6 | 2 | unclassified game logic |
-| 595 | [0x1402cd300](1402cd300_FUN_1402cd300.md) | `FUN_1402cd300` | 155 | 2 | 3 | unclassified game logic |
-| 596 | [0x1402cdfa0](1402cdfa0_FUN_1402cdfa0.md) | `FUN_1402cdfa0` | 155 | 17 | 3 | unclassified game logic |
-| 597 | [0x1402ce7c8](1402ce7c8_FUN_1402ce7c8.md) | `FUN_1402ce7c8` | 155 | 2 | 5 | unclassified game logic |
-| 598 | [0x1402cea4c](1402cea4c_FUN_1402cea4c.md) | `FUN_1402cea4c` | 155 | 5 | 3 | unclassified game logic |
-| 599 | [0x1402eb16c](1402eb16c_FUN_1402eb16c.md) | `FUN_1402eb16c` | 154 | 2 | 3 | unclassified game logic |
-| 600 | [0x140037380](140037380_FUN_140037380.md) | `FUN_140037380` | 153 | 9 | 2 | unclassified game logic |
-| 601 | [0x1400642e0](1400642e0_FUN_1400642e0.md) | `FUN_1400642e0` | 153 | 5 | 2 | unclassified game logic |
-| 602 | [0x1402d72e8](1402d72e8_FUN_1402d72e8.md) | `FUN_1402d72e8` | 153 | 2 | 3 | unclassified game logic |
-| 603 | [0x1402ed000](1402ed000_FUN_1402ed000.md) | `FUN_1402ed000` | 153 | 2 | 2 | unclassified game logic |
-| 604 | [0x1402ce288](1402ce288_FUN_1402ce288.md) | `FUN_1402ce288` | 152 | 6 | 3 | unclassified game logic |
-| 605 | [0x1402cf00c](1402cf00c_FUN_1402cf00c.md) | `FUN_1402cf00c` | 152 | 7 | 3 | unclassified game logic |
-| 606 | [0x1400766f0](1400766f0_FUN_1400766f0.md) | `FUN_1400766f0` | 149 | 3 | 2 | unclassified game logic |
-| 607 | [0x140008300](140008300_FUN_140008300.md) | `FUN_140008300` | 148 | 2 | 2 | unclassified game logic |
-| 608 | [0x14000e340](14000e340_FUN_14000e340.md) | `FUN_14000e340` | 148 | 2 | 1 | unclassified game logic |
-| 609 | [0x140101220](140101220_FUN_140101220.md) | `FUN_140101220` | 148 | 2 | 2 | unclassified game logic |
-| 610 | [0x140075940](140075940_FUN_140075940.md) | `FUN_140075940` | 146 | 2 | 2 | unclassified game logic |
-| 611 | [0x140025730](140025730_FUN_140025730.md) | `FUN_140025730` | 145 | 3 | 2 | unclassified game logic |
-| 612 | [0x14009bb10](14009bb10_FUN_14009bb10.md) | `FUN_14009bb10` | 145 | 2 | 2 | unclassified game logic |
-| 613 | [0x1402e86c4](1402e86c4_FUN_1402e86c4.md) | `FUN_1402e86c4` | 144 | 5 | 3 | unclassified game logic |
-| 614 | [0x1402f3150](1402f3150_FUN_1402f3150.md) | `FUN_1402f3150` | 144 | 2 | 1 | unclassified game logic |
-| 615 | [0x14004f010](14004f010_FUN_14004f010.md) | `FUN_14004f010` | 143 | 3 | 1 | unclassified game logic |
-| 616 | [0x14009f5e0](14009f5e0_FUN_14009f5e0.md) | `FUN_14009f5e0` | 141 | 2 | 1 | unclassified game logic |
-| 617 | [0x1402ceae8](1402ceae8_FUN_1402ceae8.md) | `FUN_1402ceae8` | 141 | 2 | 5 | unclassified game logic |
-| 618 | [0x1402d3e44](1402d3e44_FUN_1402d3e44.md) | `FUN_1402d3e44` | 141 | 2 | 2 | unclassified game logic |
-| 619 | [0x1400c7560](1400c7560_FUN_1400c7560.md) | `FUN_1400c7560` | 140 | 5 | 2 | unclassified game logic |
-| 620 | [0x1402e1948](1402e1948_FUN_1402e1948.md) | `FUN_1402e1948` | 140 | 4 | 2 | unclassified game logic |
-| 621 | [0x1402e9320](1402e9320_FUN_1402e9320.md) | `FUN_1402e9320` | 140 | 2 | 2 | unclassified game logic |
-| 622 | [0x1402e9480](1402e9480_FUN_1402e9480.md) | `FUN_1402e9480` | 140 | 2 | 2 | unclassified game logic |
-| 623 | [0x140040ee0](140040ee0_FUN_140040ee0.md) | `FUN_140040ee0` | 139 | 3 | 2 | unclassified game logic |
-| 624 | [0x14008d200](14008d200_FUN_14008d200.md) | `FUN_14008d200` | 138 | 2 | 4 | unclassified game logic |
-| 625 | [0x1400c5c80](1400c5c80_FUN_1400c5c80.md) | `FUN_1400c5c80` | 138 | 4 | 1 | unclassified game logic |
-| 626 | [0x1402d19ec](1402d19ec_FUN_1402d19ec.md) | `FUN_1402d19ec` | 138 | 2 | 3 | unclassified game logic |
-| 627 | [0x14004c9d0](14004c9d0_FUN_14004c9d0.md) | `FUN_14004c9d0` | 137 | 2 | 2 | unclassified game logic |
-| 628 | [0x1402d0350](1402d0350_FUN_1402d0350.md) | `FUN_1402d0350` | 135 | 4 | 2 | unclassified game logic |
-| 629 | [0x14008d760](14008d760_FUN_14008d760.md) | `FUN_14008d760` | 134 | 23 | 4 | unclassified game logic |
-| 630 | [0x1402c8190](1402c8190_FUN_1402c8190.md) | `FUN_1402c8190` | 134 | 4 | 2 | unclassified game logic |
-| 631 | [0x140015560](140015560_FUN_140015560.md) | `FUN_140015560` | 133 | 3 | 1 | unclassified game logic |
-| 632 | [0x1402e0510](1402e0510_FUN_1402e0510.md) | `FUN_1402e0510` | 133 | 2 | 1 | unclassified game logic |
-| 633 | [0x1402d36ec](1402d36ec_FUN_1402d36ec.md) | `FUN_1402d36ec` | 132 | 2 | 1 | unclassified game logic |
-| 634 | [0x1402d3a7c](1402d3a7c_FUN_1402d3a7c.md) | `FUN_1402d3a7c` | 132 | 2 | 1 | unclassified game logic |
-| 635 | [0x1400cead0](1400cead0_FUN_1400cead0.md) | `FUN_1400cead0` | 131 | 15 | 6 | unclassified game logic |
-| 636 | [0x14004cab0](14004cab0_FUN_14004cab0.md) | `FUN_14004cab0` | 130 | 5 | 3 | unclassified game logic |
-| 637 | [0x14006d580](14006d580_FUN_14006d580.md) | `FUN_14006d580` | 129 | 2 | 2 | unclassified game logic |
-| 638 | [0x140027810](140027810_FUN_140027810.md) | `FUN_140027810` | 128 | 10 | 3 | small helper (purpose unclear without reading) |
-| 639 | [0x1400e35f0](1400e35f0_FUN_1400e35f0.md) | `FUN_1400e35f0` | 128 | 2 | 1 | small helper (purpose unclear without reading) |
-| 640 | [0x140072f50](140072f50_FUN_140072f50.md) | `FUN_140072f50` | 126 | 5 | 4 | small helper (purpose unclear without reading) |
-| 641 | [0x1400fb7f0](1400fb7f0_FUN_1400fb7f0.md) | `FUN_1400fb7f0` | 126 | 3 | 2 | small helper (purpose unclear without reading) |
-| 642 | [0x1402e8180](1402e8180_FUN_1402e8180.md) | `FUN_1402e8180` | 126 | 5 | 3 | small helper (purpose unclear without reading) |
-| 643 | [0x1400c8570](1400c8570_FUN_1400c8570.md) | `FUN_1400c8570` | 125 | 3 | 1 | small helper (purpose unclear without reading) |
-| 644 | [0x140112100](140112100_FUN_140112100.md) | `FUN_140112100` | 125 | 2 | 1 | small helper (purpose unclear without reading) |
-| 645 | [0x1400125b0](1400125b0_FUN_1400125b0.md) | `FUN_1400125b0` | 124 | 4 | 2 | small helper (purpose unclear without reading) |
-| 646 | [0x140072e40](140072e40_FUN_140072e40.md) | `FUN_140072e40` | 124 | 2 | 3 | small helper (purpose unclear without reading) |
-| 647 | [0x1402d6ad0](1402d6ad0_FUN_1402d6ad0.md) | `FUN_1402d6ad0` | 124 | 2 | 1 | small helper (purpose unclear without reading) |
-| 648 | [0x14004ef90](14004ef90_FUN_14004ef90.md) | `FUN_14004ef90` | 123 | 4 | 1 | small helper (purpose unclear without reading) |
-| 649 | [0x1402c7138](1402c7138_FUN_1402c7138.md) | `FUN_1402c7138` | 123 | 26 | 1 | small helper (purpose unclear without reading) |
-| 650 | [0x1400058e0](1400058e0_FUN_1400058e0.md) | `FUN_1400058e0` | 122 | 5 | 2 | small helper (purpose unclear without reading) |
-| 651 | [0x1402ce164](1402ce164_FUN_1402ce164.md) | `FUN_1402ce164` | 122 | 2 | 5 | small helper (purpose unclear without reading) |
-| 652 | [0x1400727d0](1400727d0_FUN_1400727d0.md) | `FUN_1400727d0` | 120 | 10 | 1 | small helper (purpose unclear without reading) |
-| 653 | [0x1400cc9d0](1400cc9d0_FUN_1400cc9d0.md) | `FUN_1400cc9d0` | 120 | 11 | 4 | small helper (purpose unclear without reading) |
-| 654 | [0x14004ce60](14004ce60_FUN_14004ce60.md) | `FUN_14004ce60` | 119 | 2 | 2 | small helper (purpose unclear without reading) |
-| 655 | [0x1402e9b00](1402e9b00_FUN_1402e9b00.md) | `FUN_1402e9b00` | 119 | 2 | 2 | small helper (purpose unclear without reading) |
-| 656 | [0x1402ecd60](1402ecd60_FUN_1402ecd60.md) | `FUN_1402ecd60` | 119 | 3 | 1 | small helper (purpose unclear without reading) |
-| 657 | [0x1402d74e0](1402d74e0_FUN_1402d74e0.md) | `FUN_1402d74e0` | 118 | 12 | 4 | small helper (purpose unclear without reading) |
-| 658 | [0x1402d8964](1402d8964_FUN_1402d8964.md) | `FUN_1402d8964` | 118 | 3 | 1 | small helper (purpose unclear without reading) |
-| 659 | [0x1400764d0](1400764d0_FUN_1400764d0.md) | `FUN_1400764d0` | 117 | 13 | 2 | small helper (purpose unclear without reading) |
-| 660 | [0x140080b00](140080b00_FUN_140080b00.md) | `FUN_140080b00` | 117 | 2 | 1 | small helper (purpose unclear without reading) |
-| 661 | [0x1402f4f90](1402f4f90_FUN_1402f4f90.md) | `FUN_1402f4f90` | 117 | 3 | 4 | small helper (purpose unclear without reading) |
-| 662 | [0x14008de50](14008de50_FUN_14008de50.md) | `FUN_14008de50` | 115 | 2 | 5 | small helper (purpose unclear without reading) |
-| 663 | [0x1400fb2b0](1400fb2b0_FUN_1400fb2b0.md) | `FUN_1400fb2b0` | 115 | 3 | 2 | small helper (purpose unclear without reading) |
-| 664 | [0x1402f6960](1402f6960_FUN_1402f6960.md) | `FUN_1402f6960` | 115 | 2 | 1 | small helper (purpose unclear without reading) |
-| 665 | [0x14004c820](14004c820_FUN_14004c820.md) | `FUN_14004c820` | 114 | 2 | 3 | small helper (purpose unclear without reading) |
-| 666 | [0x140072640](140072640_FUN_140072640.md) | `FUN_140072640` | 113 | 6 | 1 | small helper (purpose unclear without reading) |
-| 667 | [0x140027900](140027900_FUN_140027900.md) | `FUN_140027900` | 112 | 45 | 2 | small helper (purpose unclear without reading) |
-| 668 | [0x140046de0](140046de0_FUN_140046de0.md) | `FUN_140046de0` | 112 | 6 | 1 | small helper (purpose unclear without reading) |
-| 669 | [0x140105730](140105730_FUN_140105730.md) | `FUN_140105730` | 112 | 2 | 2 | small helper (purpose unclear without reading) |
-| 670 | [0x1400d8c00](1400d8c00_FUN_1400d8c00.md) | `FUN_1400d8c00` | 111 | 4 | 2 | small helper (purpose unclear without reading) |
-| 671 | [0x1402f8670](1402f8670_FUN_1402f8670.md) | `FUN_1402f8670` | 111 | 2 | 3 | small helper (purpose unclear without reading) |
-| 672 | [0x1400743e0](1400743e0_FUN_1400743e0.md) | `FUN_1400743e0` | 109 | 4 | 2 | small helper (purpose unclear without reading) |
-| 673 | [0x1400fb8c0](1400fb8c0_FUN_1400fb8c0.md) | `FUN_1400fb8c0` | 109 | 2 | 3 | small helper (purpose unclear without reading) |
-| 674 | [0x1402d348c](1402d348c_FUN_1402d348c.md) | `FUN_1402d348c` | 109 | 2 | 1 | small helper (purpose unclear without reading) |
-| 675 | [0x1402d3810](1402d3810_FUN_1402d3810.md) | `FUN_1402d3810` | 109 | 2 | 1 | small helper (purpose unclear without reading) |
-| 676 | [0x14007b260](14007b260_FUN_14007b260.md) | `FUN_14007b260` | 108 | 2 | 2 | small helper (purpose unclear without reading) |
-| 677 | [0x1400c6940](1400c6940_FUN_1400c6940.md) | `FUN_1400c6940` | 108 | 26 | 1 | small helper (purpose unclear without reading) |
-| 678 | [0x140030810](140030810_FUN_140030810.md) | `FUN_140030810` | 107 | 4 | 2 | small helper (purpose unclear without reading) |
-| 679 | [0x1400308d0](1400308d0_FUN_1400308d0.md) | `FUN_1400308d0` | 107 | 5 | 2 | small helper (purpose unclear without reading) |
-| 680 | [0x1400985e0](1400985e0_FUN_1400985e0.md) | `FUN_1400985e0` | 107 | 2 | 3 | small helper (purpose unclear without reading) |
-| 681 | [0x1402cd0d0](1402cd0d0_FUN_1402cd0d0.md) | `FUN_1402cd0d0` | 106 | 2 | 2 | small helper (purpose unclear without reading) |
-| 682 | [0x1402d3dd8](1402d3dd8_FUN_1402d3dd8.md) | `FUN_1402d3dd8` | 106 | 2 | 1 | small helper (purpose unclear without reading) |
-| 683 | [0x1400285e0](1400285e0_FUN_1400285e0.md) | `FUN_1400285e0` | 105 | 99 | 3 | small helper (purpose unclear without reading) |
-| 684 | [0x1400a8610](1400a8610_FUN_1400a8610.md) | `FUN_1400a8610` | 104 | 9 | 1 | small helper (purpose unclear without reading) |
-| 685 | [0x1400757e0](1400757e0_FUN_1400757e0.md) | `FUN_1400757e0` | 103 | 2 | 2 | small helper (purpose unclear without reading) |
-| 686 | [0x140084300](140084300_FUN_140084300.md) | `FUN_140084300` | 103 | 2 | 4 | small helper (purpose unclear without reading) |
-| 687 | [0x1400c5680](1400c5680_FUN_1400c5680.md) | `FUN_1400c5680` | 103 | 2 | 3 | small helper (purpose unclear without reading) |
-| 688 | [0x1402cd068](1402cd068_FUN_1402cd068.md) | `FUN_1402cd068` | 102 | 11 | 3 | small helper (purpose unclear without reading) |
-| 689 | [0x14009b740](14009b740_FUN_14009b740.md) | `FUN_14009b740` | 101 | 2 | 1 | small helper (purpose unclear without reading) |
-| 690 | [0x1400b6820](1400b6820_FUN_1400b6820.md) | `FUN_1400b6820` | 101 | 8 | 2 | small helper (purpose unclear without reading) |
-| 691 | [0x1400c68d0](1400c68d0_FUN_1400c68d0.md) | `FUN_1400c68d0` | 100 | 2 | 1 | small helper (purpose unclear without reading) |
-| 692 | [0x1402da180](1402da180_FUN_1402da180.md) | `FUN_1402da180` | 100 | 3 | 1 | small helper (purpose unclear without reading) |
-| 693 | [0x1402f87d0](1402f87d0_FUN_1402f87d0.md) | `FUN_1402f87d0` | 100 | 2 | 2 | small helper (purpose unclear without reading) |
-| 694 | [0x140080680](140080680_FUN_140080680.md) | `FUN_140080680` | 99 | 5 | 2 | small helper (purpose unclear without reading) |
-| 695 | [0x140081fa0](140081fa0_FUN_140081fa0.md) | `FUN_140081fa0` | 99 | 2 | 2 | small helper (purpose unclear without reading) |
-| 696 | [0x140087e30](140087e30_FUN_140087e30.md) | `FUN_140087e30` | 99 | 3 | 1 | small helper (purpose unclear without reading) |
-| 697 | [0x1400a8a00](1400a8a00_FUN_1400a8a00.md) | `FUN_1400a8a00` | 99 | 2 | 1 | small helper (purpose unclear without reading) |
-| 698 | [0x1402cf9a4](1402cf9a4_FUN_1402cf9a4.md) | `FUN_1402cf9a4` | 97 | 2 | 2 | small helper (purpose unclear without reading) |
-| 699 | [0x1402f8700](1402f8700_FUN_1402f8700.md) | `FUN_1402f8700` | 97 | 3 | 4 | small helper (purpose unclear without reading) |
-| 700 | [0x1400250c0](1400250c0_FUN_1400250c0.md) | `FUN_1400250c0` | 96 | 2 | 1 | small helper (purpose unclear without reading) |
-| 701 | [0x1400372c0](1400372c0_FUN_1400372c0.md) | `FUN_1400372c0` | 95 | 3 | 2 | small helper (purpose unclear without reading) |
-| 702 | [0x140050a70](140050a70_FUN_140050a70.md) | `FUN_140050a70` | 95 | 2 | 3 | small helper (purpose unclear without reading) |
-| 703 | [0x1402f6598](1402f6598_FUN_1402f6598.md) | `FUN_1402f6598` | 95 | 2 | 3 | small helper (purpose unclear without reading) |
-| 704 | [0x14003f680](14003f680_FUN_14003f680.md) | `FUN_14003f680` | 93 | 3 | 2 | small helper (purpose unclear without reading) |
-| 705 | [0x140070f90](140070f90_FUN_140070f90.md) | `FUN_140070f90` | 92 | 2 | 2 | small helper (purpose unclear without reading) |
-| 706 | [0x1402ec1dc](1402ec1dc_FUN_1402ec1dc.md) | `FUN_1402ec1dc` | 92 | 2 | 2 | small helper (purpose unclear without reading) |
-| 707 | [0x1402e8754](1402e8754_FUN_1402e8754.md) | `FUN_1402e8754` | 91 | 3 | 2 | small helper (purpose unclear without reading) |
-| 708 | [0x1402e8c20](1402e8c20_FUN_1402e8c20.md) | `FUN_1402e8c20` | 90 | 5 | 1 | small helper (purpose unclear without reading) |
-| 709 | [0x1400755f0](1400755f0_FUN_1400755f0.md) | `FUN_1400755f0` | 89 | 2 | 4 | small helper (purpose unclear without reading) |
-| 710 | [0x14008ff60](14008ff60_FUN_14008ff60.md) | `FUN_14008ff60` | 88 | 2 | 4 | small helper (purpose unclear without reading) |
-| 711 | [0x1400833d0](1400833d0_FUN_1400833d0.md) | `FUN_1400833d0` | 87 | 2 | 2 | small helper (purpose unclear without reading) |
-| 712 | [0x1400256d0](1400256d0_FUN_1400256d0.md) | `FUN_1400256d0` | 86 | 4 | 1 | small helper (purpose unclear without reading) |
-| 713 | [0x14003e720](14003e720_FUN_14003e720.md) | `FUN_14003e720` | 86 | 2 | 4 | small helper (purpose unclear without reading) |
-| 714 | [0x140023f30](140023f30_FUN_140023f30.md) | `FUN_140023f30` | 85 | 2 | 3 | small helper (purpose unclear without reading) |
-| 715 | [0x14008cc20](14008cc20_FUN_14008cc20.md) | `FUN_14008cc20` | 85 | 2 | 4 | small helper (purpose unclear without reading) |
-| 716 | [0x1402cefac](1402cefac_FUN_1402cefac.md) | `FUN_1402cefac` | 85 | 3 | 1 | small helper (purpose unclear without reading) |
-| 717 | [0x1402e1bf8](1402e1bf8_FUN_1402e1bf8.md) | `FUN_1402e1bf8` | 85 | 4 | 4 | small helper (purpose unclear without reading) |
-| 718 | [0x1402f67d0](1402f67d0_FUN_1402f67d0.md) | `FUN_1402f67d0` | 85 | 2 | 1 | small helper (purpose unclear without reading) |
-| 719 | [0x140024a60](140024a60_FUN_140024a60.md) | `FUN_140024a60` | 84 | 2 | 2 | small helper (purpose unclear without reading) |
-| 720 | [0x140064530](140064530_FUN_140064530.md) | `FUN_140064530` | 84 | 3 | 2 | small helper (purpose unclear without reading) |
-| 721 | [0x14009c330](14009c330_FUN_14009c330.md) | `FUN_14009c330` | 84 | 6 | 2 | small helper (purpose unclear without reading) |
-| 722 | [0x140104ac0](140104ac0_FUN_140104ac0.md) | `FUN_140104ac0` | 84 | 4 | 3 | small helper (purpose unclear without reading) |
-| 723 | [0x140104f00](140104f00_FUN_140104f00.md) | `FUN_140104f00` | 84 | 2 | 1 | small helper (purpose unclear without reading) |
-| 724 | [0x14000b3a0](14000b3a0_FUN_14000b3a0.md) | `FUN_14000b3a0` | 83 | 2 | 1 | small helper (purpose unclear without reading) |
-| 725 | [0x1400b49b0](1400b49b0_FUN_1400b49b0.md) | `FUN_1400b49b0` | 83 | 3 | 1 | small helper (purpose unclear without reading) |
-| 726 | [0x1402dfea0](1402dfea0_FUN_1402dfea0.md) | `FUN_1402dfea0` | 83 | 2 | 2 | small helper (purpose unclear without reading) |
-| 727 | [0x14009bab0](14009bab0_FUN_14009bab0.md) | `FUN_14009bab0` | 82 | 2 | 1 | small helper (purpose unclear without reading) |
-| 728 | [0x1400c4340](1400c4340_FUN_1400c4340.md) | `FUN_1400c4340` | 82 | 10 | 3 | small helper (purpose unclear without reading) |
-| 729 | [0x1400745d0](1400745d0_FUN_1400745d0.md) | `FUN_1400745d0` | 81 | 9 | 1 | small helper (purpose unclear without reading) |
-| 730 | [0x1402ed930](1402ed930_FUN_1402ed930.md) | `FUN_1402ed930` | 81 | 3 | 2 | small helper (purpose unclear without reading) |
-| 731 | [0x1402f8770](1402f8770_FUN_1402f8770.md) | `FUN_1402f8770` | 81 | 2 | 4 | small helper (purpose unclear without reading) |
-| 732 | [0x140028310](140028310_FUN_140028310.md) | `FUN_140028310` | 80 | 17 | 2 | small helper (purpose unclear without reading) |
-| 733 | [0x14005bf10](14005bf10_FUN_14005bf10.md) | `FUN_14005bf10` | 79 | 2 | 4 | small helper (purpose unclear without reading) |
-| 734 | [0x140067850](140067850_FUN_140067850.md) | `FUN_140067850` | 79 | 2 | 4 | small helper (purpose unclear without reading) |
-| 735 | [0x1401123f0](1401123f0_FUN_1401123f0.md) | `FUN_1401123f0` | 79 | 2 | 4 | small helper (purpose unclear without reading) |
-| 736 | [0x1400c5740](1400c5740_FUN_1400c5740.md) | `FUN_1400c5740` | 76 | 4 | 1 | small helper (purpose unclear without reading) |
-| 737 | [0x1402cd13c](1402cd13c_FUN_1402cd13c.md) | `FUN_1402cd13c` | 76 | 2 | 1 | small helper (purpose unclear without reading) |
-| 738 | [0x140040980](140040980_FUN_140040980.md) | `FUN_140040980` | 74 | 2 | 2 | small helper (purpose unclear without reading) |
-| 739 | [0x1400c56f0](1400c56f0_FUN_1400c56f0.md) | `FUN_1400c56f0` | 74 | 7 | 1 | small helper (purpose unclear without reading) |
-| 740 | [0x1402ed9d0](1402ed9d0_FUN_1402ed9d0.md) | `FUN_1402ed9d0` | 74 | 3 | 2 | small helper (purpose unclear without reading) |
-| 741 | [0x1400c6180](1400c6180_FUN_1400c6180.md) | `FUN_1400c6180` | 73 | 4 | 1 | small helper (purpose unclear without reading) |
-| 742 | [0x1400fb380](1400fb380_FUN_1400fb380.md) | `FUN_1400fb380` | 73 | 1 | 3 | small helper (purpose unclear without reading) |
-| 743 | [0x14004ca60](14004ca60_FUN_14004ca60.md) | `FUN_14004ca60` | 72 | 5 | 2 | small helper (purpose unclear without reading) |
-| 744 | [0x1400d8db0](1400d8db0_FUN_1400d8db0.md) | `FUN_1400d8db0` | 72 | 2 | 2 | small helper (purpose unclear without reading) |
-| 745 | [0x140009e10](140009e10_FUN_140009e10.md) | `FUN_140009e10` | 71 | 3 | 1 | small helper (purpose unclear without reading) |
-| 746 | [0x14000b2a0](14000b2a0_FUN_14000b2a0.md) | `FUN_14000b2a0` | 71 | 5 | 1 | small helper (purpose unclear without reading) |
-| 747 | [0x1402c5b14](1402c5b14_FUN_1402c5b14.md) | `FUN_1402c5b14` | 71 | 2 | 2 | small helper (purpose unclear without reading) |
-| 748 | [0x1402c5bd4](1402c5bd4_FUN_1402c5bd4.md) | `FUN_1402c5bd4` | 71 | 2 | 2 | small helper (purpose unclear without reading) |
-| 749 | [0x1402f03fc](1402f03fc_FUN_1402f03fc.md) | `FUN_1402f03fc` | 71 | 2 | 2 | small helper (purpose unclear without reading) |
-| 750 | [0x14003f6f0](14003f6f0_FUN_14003f6f0.md) | `FUN_14003f6f0` | 70 | 10 | 3 | small helper (purpose unclear without reading) |
-| 751 | [0x1402c6c88](1402c6c88_FUN_1402c6c88.md) | `FUN_1402c6c88` | 70 | 2 | 4 | small helper (purpose unclear without reading) |
-| 752 | [0x1400162f0](1400162f0_FUN_1400162f0.md) | `FUN_1400162f0` | 69 | 2 | 1 | small helper (purpose unclear without reading) |
-| 753 | [0x140076480](140076480_FUN_140076480.md) | `FUN_140076480` | 69 | 3 | 2 | small helper (purpose unclear without reading) |
-| 754 | [0x140075bd0](140075bd0_FUN_140075bd0.md) | `FUN_140075bd0` | 68 | 2 | 1 | small helper (purpose unclear without reading) |
-| 755 | [0x1400509e0](1400509e0_FUN_1400509e0.md) | `FUN_1400509e0` | 67 | 3 | 1 | small helper (purpose unclear without reading) |
-| 756 | [0x140075790](140075790_FUN_140075790.md) | `FUN_140075790` | 67 | 4 | 2 | small helper (purpose unclear without reading) |
-| 757 | [0x140009e60](140009e60_FUN_140009e60.md) | `FUN_140009e60` | 66 | 6 | 1 | small helper (purpose unclear without reading) |
-| 758 | [0x140009eb0](140009eb0_FUN_140009eb0.md) | `FUN_140009eb0` | 66 | 3 | 1 | small helper (purpose unclear without reading) |
-| 759 | [0x14000b2f0](14000b2f0_FUN_14000b2f0.md) | `FUN_14000b2f0` | 66 | 7 | 1 | small helper (purpose unclear without reading) |
-| 760 | [0x14000b340](14000b340_FUN_14000b340.md) | `FUN_14000b340` | 66 | 3 | 1 | small helper (purpose unclear without reading) |
-| 761 | [0x1400755a0](1400755a0_FUN_1400755a0.md) | `FUN_1400755a0` | 66 | 2 | 2 | small helper (purpose unclear without reading) |
-| 762 | [0x14006fd10](14006fd10_FUN_14006fd10.md) | `FUN_14006fd10` | 65 | 2 | 2 | small helper (purpose unclear without reading) |
-| 763 | [0x140075e80](140075e80_FUN_140075e80.md) | `FUN_140075e80` | 65 | 3 | 1 | small helper (purpose unclear without reading) |
-| 764 | [0x140080ab0](140080ab0_FUN_140080ab0.md) | `FUN_140080ab0` | 65 | 2 | 1 | small helper (purpose unclear without reading) |
-| 765 | [0x1400c65c0](1400c65c0_FUN_1400c65c0.md) | `FUN_1400c65c0` | 65 | 3 | 1 | small helper (purpose unclear without reading) |
-| 766 | [0x1400c78c0](1400c78c0_FUN_1400c78c0.md) | `FUN_1400c78c0` | 65 | 4 | 1 | small helper (purpose unclear without reading) |
-| 767 | [0x140075d50](140075d50_FUN_140075d50.md) | `FUN_140075d50` | 64 | 3 | 1 | small helper (purpose unclear without reading) |
-| 768 | [0x140075ed0](140075ed0_FUN_140075ed0.md) | `FUN_140075ed0` | 64 | 2 | 1 | small helper (purpose unclear without reading) |
-| 769 | [0x1402f6a7c](1402f6a7c_FUN_1402f6a7c.md) | `FUN_1402f6a7c` | 64 | 2 | 1 | small helper (purpose unclear without reading) |
-| 770 | [0x1400410f0](1400410f0_FUN_1400410f0.md) | `FUN_1400410f0` | 63 | 2 | 2 | small helper (purpose unclear without reading) |
-| 771 | [0x140075cb0](140075cb0_FUN_140075cb0.md) | `FUN_140075cb0` | 63 | 3 | 1 | small helper (purpose unclear without reading) |
-| 772 | [0x1401010d0](1401010d0_FUN_1401010d0.md) | `FUN_1401010d0` | 63 | 4 | 1 | small helper (purpose unclear without reading) |
-| 773 | [0x140025320](140025320_FUN_140025320.md) | `FUN_140025320` | 62 | 3 | 1 | small helper (purpose unclear without reading) |
-| 774 | [0x140025450](140025450_FUN_140025450.md) | `FUN_140025450` | 62 | 2 | 1 | small helper (purpose unclear without reading) |
-| 775 | [0x140075c60](140075c60_FUN_140075c60.md) | `FUN_140075c60` | 62 | 3 | 1 | small helper (purpose unclear without reading) |
-| 776 | [0x14000f890](14000f890_FUN_14000f890.md) | `FUN_14000f890` | 61 | 2 | 1 | small helper (purpose unclear without reading) |
-| 777 | [0x140075b80](140075b80_FUN_140075b80.md) | `FUN_140075b80` | 61 | 4 | 1 | small helper (purpose unclear without reading) |
-| 778 | [0x1402ed8c0](1402ed8c0_FUN_1402ed8c0.md) | `FUN_1402ed8c0` | 61 | 3 | 2 | small helper (purpose unclear without reading) |
-| 779 | [0x140084570](140084570_FUN_140084570.md) | `FUN_140084570` | 60 | 2 | 2 | small helper (purpose unclear without reading) |
-| 780 | [0x1402e9a80](1402e9a80_FUN_1402e9a80.md) | `FUN_1402e9a80` | 60 | 7 | 3 | small helper (purpose unclear without reading) |
-| 781 | [0x1400730f0](1400730f0_FUN_1400730f0.md) | `FUN_1400730f0` | 59 | 11 | 1 | small helper (purpose unclear without reading) |
-| 782 | [0x140075e30](140075e30_FUN_140075e30.md) | `FUN_140075e30` | 59 | 4 | 1 | small helper (purpose unclear without reading) |
-| 783 | [0x1400c8d30](1400c8d30_FUN_1400c8d30.md) | `FUN_1400c8d30` | 59 | 5 | 1 | small helper (purpose unclear without reading) |
-| 784 | [0x1402c704c](1402c704c_FUN_1402c704c.md) | `FUN_1402c704c` | 59 | 44 | 4 | small helper (purpose unclear without reading) |
-| 785 | [0x140075c20](140075c20_FUN_140075c20.md) | `FUN_140075c20` | 58 | 2 | 1 | small helper (purpose unclear without reading) |
-| 786 | [0x140050a30](140050a30_FUN_140050a30.md) | `FUN_140050a30` | 57 | 2 | 1 | small helper (purpose unclear without reading) |
-| 787 | [0x1400b7660](1400b7660_FUN_1400b7660.md) | `FUN_1400b7660` | 57 | 5 | 1 | small helper (purpose unclear without reading) |
-| 788 | [0x140040fe0](140040fe0_FUN_140040fe0.md) | `FUN_140040fe0` | 56 | 7 | 2 | small helper (purpose unclear without reading) |
-| 789 | [0x1400c6580](1400c6580_FUN_1400c6580.md) | `FUN_1400c6580` | 56 | 52 | 1 | small helper (purpose unclear without reading) |
-| 790 | [0x1402f0160](1402f0160_FUN_1402f0160.md) | `FUN_1402f0160` | 56 | 2 | 1 | small helper (purpose unclear without reading) |
-| 791 | [0x140027980](140027980_FUN_140027980.md) | `FUN_140027980` | 55 | 4 | 2 | small helper (purpose unclear without reading) |
-| 792 | [0x1400c7520](1400c7520_FUN_1400c7520.md) | `FUN_1400c7520` | 55 | 20 | 2 | small helper (purpose unclear without reading) |
-| 793 | [0x1402e6fb0](1402e6fb0_FUN_1402e6fb0.md) | `FUN_1402e6fb0` | 55 | 2 | 1 | small helper (purpose unclear without reading) |
-| 794 | [0x1402ed990](1402ed990_FUN_1402ed990.md) | `FUN_1402ed990` | 55 | 3 | 2 | small helper (purpose unclear without reading) |
-| 795 | [0x14000cdc0](14000cdc0_FUN_14000cdc0.md) | `FUN_14000cdc0` | 53 | 2 | 1 | small helper (purpose unclear without reading) |
-| 796 | [0x140040ea0](140040ea0_FUN_140040ea0.md) | `FUN_140040ea0` | 53 | 11 | 2 | small helper (purpose unclear without reading) |
-| 797 | [0x140075da0](140075da0_FUN_140075da0.md) | `FUN_140075da0` | 53 | 5 | 1 | small helper (purpose unclear without reading) |
-| 798 | [0x1400b7730](1400b7730_FUN_1400b7730.md) | `FUN_1400b7730` | 53 | 4 | 2 | small helper (purpose unclear without reading) |
-| 799 | [0x1402d8374](1402d8374_FUN_1402d8374.md) | `FUN_1402d8374` | 53 | 2 | 1 | small helper (purpose unclear without reading) |
-| 800 | [0x1402eeef8](1402eeef8_FUN_1402eeef8.md) | `FUN_1402eeef8` | 53 | 2 | 1 | small helper (purpose unclear without reading) |
-| 801 | [0x1402eef64](1402eef64_FUN_1402eef64.md) | `FUN_1402eef64` | 53 | 2 | 2 | small helper (purpose unclear without reading) |
-| 802 | [0x14004a210](14004a210_FUN_14004a210.md) | `FUN_14004a210` | 52 | 2 | 1 | small helper (purpose unclear without reading) |
-| 803 | [0x14009be60](14009be60_FUN_14009be60.md) | `FUN_14009be60` | 52 | 2 | 3 | small helper (purpose unclear without reading) |
-| 804 | [0x140082060](140082060_FUN_140082060.md) | `FUN_140082060` | 51 | 2 | 1 | small helper (purpose unclear without reading) |
-| 805 | [0x1402e6f60](1402e6f60_FUN_1402e6f60.md) | `FUN_1402e6f60` | 51 | 2 | 2 | small helper (purpose unclear without reading) |
-| 806 | [0x1402ebdf0](1402ebdf0_FUN_1402ebdf0.md) | `FUN_1402ebdf0` | 51 | 3 | 2 | small helper (purpose unclear without reading) |
-| 807 | [0x14003ed30](14003ed30_FUN_14003ed30.md) | `FUN_14003ed30` | 50 | 1 | 3 | small helper (purpose unclear without reading) |
-| 808 | [0x1400679e0](1400679e0_FUN_1400679e0.md) | `FUN_1400679e0` | 50 | 1 | 3 | small helper (purpose unclear without reading) |
-| 809 | [0x1400c66c0](1400c66c0_FUN_1400c66c0.md) | `FUN_1400c66c0` | 50 | 5 | 1 | small helper (purpose unclear without reading) |
-| 810 | [0x140113380](140113380_FUN_140113380.md) | `FUN_140113380` | 50 | 1 | 3 | small helper (purpose unclear without reading) |
-| 811 | [0x1400453a0](1400453a0_FUN_1400453a0.md) | `FUN_1400453a0` | 49 | 2 | 1 | small helper (purpose unclear without reading) |
-| 812 | [0x1400a5370](1400a5370_FUN_1400a5370.md) | `FUN_1400a5370` | 49 | 2 | 1 | small helper (purpose unclear without reading) |
-| 813 | [0x1402e1c60](1402e1c60_FUN_1402e1c60.md) | `FUN_1402e1c60` | 48 | 2 | 1 | small helper (purpose unclear without reading) |
-| 814 | [0x14005c970](14005c970_FUN_14005c970.md) | `FUN_14005c970` | 47 | 2 | 2 | small helper (purpose unclear without reading) |
-| 815 | [0x140080b80](140080b80_FUN_140080b80.md) | `FUN_140080b80` | 47 | 2 | 1 | small helper (purpose unclear without reading) |
-| 816 | [0x1402e7d80](1402e7d80_FUN_1402e7d80.md) | `FUN_1402e7d80` | 47 | 4 | 1 | small helper (purpose unclear without reading) |
-| 817 | [0x1402ec97c](1402ec97c_FUN_1402ec97c.md) | `FUN_1402ec97c` | 47 | 2 | 3 | small helper (purpose unclear without reading) |
-| 818 | [0x1402ed900](1402ed900_FUN_1402ed900.md) | `FUN_1402ed900` | 47 | 3 | 2 | small helper (purpose unclear without reading) |
-| 819 | [0x14009f5a0](14009f5a0_FUN_14009f5a0.md) | `FUN_14009f5a0` | 46 | 2 | 1 | small helper (purpose unclear without reading) |
-| 820 | [0x1400a8750](1400a8750_FUN_1400a8750.md) | `FUN_1400a8750` | 45 | 2 | 1 | small helper (purpose unclear without reading) |
-| 821 | [0x1401012c0](1401012c0_FUN_1401012c0.md) | `FUN_1401012c0` | 45 | 2 | 1 | small helper (purpose unclear without reading) |
-| 822 | [0x1400c02b0](1400c02b0_FUN_1400c02b0.md) | `FUN_1400c02b0` | 44 | 2 | 4 | small helper (purpose unclear without reading) |
-| 823 | [0x1402da150](1402da150_FUN_1402da150.md) | `FUN_1402da150` | 44 | 2 | 2 | small helper (purpose unclear without reading) |
-| 824 | [0x1402eba80](1402eba80_FUN_1402eba80.md) | `FUN_1402eba80` | 42 | 2 | 2 | small helper (purpose unclear without reading) |
-| 825 | [0x1402ebdc0](1402ebdc0_FUN_1402ebdc0.md) | `FUN_1402ebdc0` | 42 | 2 | 2 | small helper (purpose unclear without reading) |
-| 826 | [0x1402f8d60](1402f8d60_FUN_1402f8d60.md) | `FUN_1402f8d60` | 42 | 2 | 1 | small helper (purpose unclear without reading) |
-| 827 | [0x14009e2c0](14009e2c0_FUN_14009e2c0.md) | `FUN_14009e2c0` | 41 | 4 | 2 | small helper (purpose unclear without reading) |
-| 828 | [0x1400fb9c0](1400fb9c0_FUN_1400fb9c0.md) | `FUN_1400fb9c0` | 41 | 3 | 2 | small helper (purpose unclear without reading) |
-| 829 | [0x1400c8d90](1400c8d90_FUN_1400c8d90.md) | `FUN_1400c8d90` | 40 | 3 | 1 | small helper (purpose unclear without reading) |
-| 830 | [0x1400cf9d0](1400cf9d0_FUN_1400cf9d0.md) | `FUN_1400cf9d0` | 40 | 2 | 2 | small helper (purpose unclear without reading) |
-| 831 | [0x1400ca0f0](1400ca0f0_FUN_1400ca0f0.md) | `FUN_1400ca0f0` | 38 | 3 | 1 | small helper (purpose unclear without reading) |
-| 832 | [0x140040950](140040950_FUN_140040950.md) | `FUN_140040950` | 37 | 2 | 2 | small helper (purpose unclear without reading) |
-| 833 | [0x1402e6840](1402e6840_FUN_1402e6840.md) | `FUN_1402e6840` | 37 | 2 | 4 | small helper (purpose unclear without reading) |
-| 834 | [0x1400845c0](1400845c0_FUN_1400845c0.md) | `FUN_1400845c0` | 36 | 2 | 2 | small helper (purpose unclear without reading) |
-| 835 | [0x140071ed0](140071ed0_FUN_140071ed0.md) | `FUN_140071ed0` | 35 | 8 | 2 | small helper (purpose unclear without reading) |
-| 836 | [0x1402e688c](1402e688c_FUN_1402e688c.md) | `FUN_1402e688c` | 35 | 4 | 2 | small helper (purpose unclear without reading) |
-| 837 | [0x1402e68b0](1402e68b0_FUN_1402e68b0.md) | `FUN_1402e68b0` | 35 | 26 | 2 | small helper (purpose unclear without reading) |
-| 838 | [0x1400844c0](1400844c0_FUN_1400844c0.md) | `FUN_1400844c0` | 34 | 2 | 3 | small helper (purpose unclear without reading) |
-| 839 | [0x1400c6520](1400c6520_FUN_1400c6520.md) | `FUN_1400c6520` | 34 | 3 | 1 | small helper (purpose unclear without reading) |
-| 840 | [0x14010dde0](14010dde0_FUN_14010dde0.md) | `FUN_14010dde0` | 34 | 2 | 1 | small helper (purpose unclear without reading) |
-| 841 | [0x14010de10](14010de10_FUN_14010de10.md) | `FUN_14010de10` | 34 | 2 | 1 | small helper (purpose unclear without reading) |
-| 842 | [0x1402c5c3c](1402c5c3c_FUN_1402c5c3c.md) | `FUN_1402c5c3c` | 34 | 5 | 3 | small helper (purpose unclear without reading) |
-| 843 | [0x1402c5c60](1402c5c60_FUN_1402c5c60.md) | `FUN_1402c5c60` | 34 | 2 | 3 | small helper (purpose unclear without reading) |
-| 844 | [0x1402e6868](1402e6868_FUN_1402e6868.md) | `FUN_1402e6868` | 34 | 4 | 2 | small helper (purpose unclear without reading) |
-| 845 | [0x140024060](140024060_FUN_140024060.md) | `FUN_140024060` | 33 | 2 | 1 | small helper (purpose unclear without reading) |
-| 846 | [0x1402c5a60](1402c5a60_FUN_1402c5a60.md) | `FUN_1402c5a60` | 33 | 2 | 1 | small helper (purpose unclear without reading) |
-| 847 | [0x14009dd90](14009dd90_FUN_14009dd90.md) | `FUN_14009dd90` | 32 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 848 | [0x1400c6df0](1400c6df0_FUN_1400c6df0.md) | `FUN_1400c6df0` | 32 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 849 | [0x1402e7d50](1402e7d50_FUN_1402e7d50.md) | `FUN_1402e7d50` | 32 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 850 | [0x1402ecfa0](1402ecfa0_FUN_1402ecfa0.md) | `FUN_1402ecfa0` | 32 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 851 | [0x1402ed0a0](1402ed0a0_FUN_1402ed0a0.md) | `FUN_1402ed0a0` | 32 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 852 | [0x1402f86e0](1402f86e0_FUN_1402f86e0.md) | `FUN_1402f86e0` | 32 | 4 | 3 | stub/thunk/getter (unknown specific role) |
-| 853 | [0x140024090](140024090_FUN_140024090.md) | `FUN_140024090` | 31 | 63 | 3 | stub/thunk/getter (unknown specific role) |
-| 854 | [0x1400278e0](1400278e0_FUN_1400278e0.md) | `FUN_1400278e0` | 31 | 23 | 2 | stub/thunk/getter (unknown specific role) |
-| 855 | [0x140082010](140082010_FUN_140082010.md) | `FUN_140082010` | 31 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 856 | [0x1402c5c1c](1402c5c1c_FUN_1402c5c1c.md) | `FUN_1402c5c1c` | 31 | 2 | 3 | stub/thunk/getter (unknown specific role) |
-| 857 | [0x1402c7c00](1402c7c00_FUN_1402c7c00.md) | `FUN_1402c7c00` | 31 | 2 | 3 | stub/thunk/getter (unknown specific role) |
-| 858 | [0x1400b9220](1400b9220_FUN_1400b9220.md) | `FUN_1400b9220` | 30 | 7 | 2 | stub/thunk/getter (unknown specific role) |
-| 859 | [0x1402cd454](1402cd454_FUN_1402cd454.md) | `FUN_1402cd454` | 30 | 14 | 2 | stub/thunk/getter (unknown specific role) |
-| 860 | [0x140027b00](140027b00_FUN_140027b00.md) | `FUN_140027b00` | 29 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 861 | [0x1402e8c00](1402e8c00_FUN_1402e8c00.md) | `FUN_1402e8c00` | 29 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 862 | [0x1402e8cc0](1402e8cc0_FUN_1402e8cc0.md) | `FUN_1402e8cc0` | 29 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 863 | [0x1400a3610](1400a3610_FUN_1400a3610.md) | `FUN_1400a3610` | 28 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 864 | [0x1400c6120](1400c6120_FUN_1400c6120.md) | `FUN_1400c6120` | 28 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 865 | [0x1400cf970](1400cf970_FUN_1400cf970.md) | `FUN_1400cf970` | 28 | 12 | 5 | stub/thunk/getter (unknown specific role) |
-| 866 | [0x1400cf9a0](1400cf9a0_FUN_1400cf9a0.md) | `FUN_1400cf9a0` | 28 | 8 | 5 | stub/thunk/getter (unknown specific role) |
-| 867 | [0x140104dc0](140104dc0_FUN_140104dc0.md) | `FUN_140104dc0` | 28 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 868 | [0x140106b90](140106b90_FUN_140106b90.md) | `FUN_140106b90` | 28 | 2 | 3 | stub/thunk/getter (unknown specific role) |
-| 869 | [0x1402f4460](1402f4460_FUN_1402f4460.md) | `FUN_1402f4460` | 28 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 870 | [0x14000b270](14000b270_FUN_14000b270.md) | `FUN_14000b270` | 27 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 871 | [0x1400c5530](1400c5530_FUN_1400c5530.md) | `FUN_1400c5530` | 27 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 872 | [0x1402c6a38](1402c6a38_FUN_1402c6a38.md) | `FUN_1402c6a38` | 27 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 873 | [0x1402f0dec](1402f0dec_FUN_1402f0dec.md) | `FUN_1402f0dec` | 25 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 874 | [0x1402e8664](1402e8664_FUN_1402e8664.md) | `FUN_1402e8664` | 24 | 3 | 3 | stub/thunk/getter (unknown specific role) |
-| 875 | [0x1402f05fc](1402f05fc_FUN_1402f05fc.md) | `FUN_1402f05fc` | 24 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 876 | [0x1402f0e08](1402f0e08_FUN_1402f0e08.md) | `FUN_1402f0e08` | 24 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 877 | [0x140082410](140082410_FUN_140082410.md) | `FUN_140082410` | 23 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 878 | [0x1400b4990](1400b4990_FUN_1400b4990.md) | `FUN_1400b4990` | 23 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 879 | [0x1400cf950](1400cf950_FUN_1400cf950.md) | `FUN_1400cf950` | 23 | 9 | 2 | stub/thunk/getter (unknown specific role) |
-| 880 | [0x140075750](140075750_FUN_140075750.md) | `FUN_140075750` | 22 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 881 | [0x1402cd4c0](1402cd4c0_FUN_1402cd4c0.md) | `FUN_1402cd4c0` | 22 | 9 | 4 | stub/thunk/getter (unknown specific role) |
-| 882 | [0x1402d0770](1402d0770_FUN_1402d0770.md) | `FUN_1402d0770` | 22 | 3 | 8 | stub/thunk/getter (unknown specific role) |
-| 883 | [0x140072ca0](140072ca0_FUN_140072ca0.md) | `FUN_140072ca0` | 21 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 884 | [0x140072cc0](140072cc0_FUN_140072cc0.md) | `FUN_140072cc0` | 21 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 885 | [0x140075770](140075770_FUN_140075770.md) | `FUN_140075770` | 21 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 886 | [0x1400a53b0](1400a53b0_FUN_1400a53b0.md) | `FUN_1400a53b0` | 21 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 887 | [0x1402c5ac0](1402c5ac0_FUN_1402c5ac0.md) | `FUN_1402c5ac0` | 21 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 888 | [0x1402ebf8c](1402ebf8c_FUN_1402ebf8c.md) | `FUN_1402ebf8c` | 21 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 889 | [0x1400756b0](1400756b0_FUN_1400756b0.md) | `FUN_1400756b0` | 20 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 890 | [0x1400756d0](1400756d0_FUN_1400756d0.md) | `FUN_1400756d0` | 20 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 891 | [0x1400c6500](1400c6500_FUN_1400c6500.md) | `FUN_1400c6500` | 20 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 892 | [0x1402f7fc8](1402f7fc8_FUN_1402f7fc8.md) | `FUN_1402f7fc8` | 20 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 893 | [0x140075670](140075670_FUN_140075670.md) | `FUN_140075670` | 19 | 5 | 2 | stub/thunk/getter (unknown specific role) |
-| 894 | [0x140075690](140075690_FUN_140075690.md) | `FUN_140075690` | 19 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 895 | [0x140075710](140075710_FUN_140075710.md) | `FUN_140075710` | 19 | 4 | 2 | stub/thunk/getter (unknown specific role) |
-| 896 | [0x140075730](140075730_FUN_140075730.md) | `FUN_140075730` | 19 | 4 | 2 | stub/thunk/getter (unknown specific role) |
-| 897 | [0x1402e9080](1402e9080_FUN_1402e9080.md) | `FUN_1402e9080` | 19 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 898 | [0x1400082e0](1400082e0_FUN_1400082e0.md) | `FUN_1400082e0` | 18 | 5 | 2 | stub/thunk/getter (unknown specific role) |
-| 899 | [0x14005e210](14005e210_FUN_14005e210.md) | `FUN_14005e210` | 18 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 900 | [0x14005e250](14005e250_FUN_14005e250.md) | `FUN_14005e250` | 18 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 901 | [0x14005e270](14005e270_FUN_14005e270.md) | `FUN_14005e270` | 18 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 902 | [0x140110750](140110750_FUN_140110750.md) | `FUN_140110750` | 18 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 903 | [0x1402e93b0](1402e93b0_FUN_1402e93b0.md) | `FUN_1402e93b0` | 18 | 2 | 2 | stub/thunk/getter (unknown specific role) |
-| 904 | [0x14002cca0](14002cca0_FUN_14002cca0.md) | `FUN_14002cca0` | 17 | 4 | 2 | stub/thunk/getter (unknown specific role) |
-| 905 | [0x140040fc0](140040fc0_FUN_140040fc0.md) | `FUN_140040fc0` | 17 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 906 | [0x14009c780](14009c780_FUN_14009c780.md) | `FUN_14009c780` | 17 | 7 | 1 | stub/thunk/getter (unknown specific role) |
-| 907 | [0x1400c5f10](1400c5f10_FUN_1400c5f10.md) | `FUN_1400c5f10` | 17 | 11 | 1 | stub/thunk/getter (unknown specific role) |
-| 908 | [0x1400c5f30](1400c5f30_FUN_1400c5f30.md) | `FUN_1400c5f30` | 17 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 909 | [0x1400c5f50](1400c5f50_FUN_1400c5f50.md) | `FUN_1400c5f50` | 17 | 8 | 1 | stub/thunk/getter (unknown specific role) |
-| 910 | [0x1400c5f70](1400c5f70_FUN_1400c5f70.md) | `FUN_1400c5f70` | 17 | 11 | 1 | stub/thunk/getter (unknown specific role) |
-| 911 | [0x1400ca240](1400ca240_FUN_1400ca240.md) | `FUN_1400ca240` | 17 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 912 | [0x1402eda20](1402eda20_FUN_1402eda20.md) | `FUN_1402eda20` | 17 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 913 | [0x140024130](140024130_FUN_140024130.md) | `FUN_140024130` | 16 | 27 | 2 | stub/thunk/getter (unknown specific role) |
-| 914 | [0x14002f0d0](14002f0d0_FUN_14002f0d0.md) | `FUN_14002f0d0` | 16 | 58 | 2 | stub/thunk/getter (unknown specific role) |
-| 915 | [0x1400478f0](1400478f0_FUN_1400478f0.md) | `FUN_1400478f0` | 16 | 5 | 2 | stub/thunk/getter (unknown specific role) |
-| 916 | [0x140067e30](140067e30_FUN_140067e30.md) | `FUN_140067e30` | 16 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 917 | [0x1400b76a0](1400b76a0_FUN_1400b76a0.md) | `FUN_1400b76a0` | 16 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 918 | [0x1400bc560](1400bc560_FUN_1400bc560.md) | `FUN_1400bc560` | 16 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 919 | [0x1400bf7d0](1400bf7d0_FUN_1400bf7d0.md) | `FUN_1400bf7d0` | 16 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 920 | [0x1400c4320](1400c4320_FUN_1400c4320.md) | `FUN_1400c4320` | 16 | 27 | 1 | stub/thunk/getter (unknown specific role) |
-| 921 | [0x140086310](140086310_FUN_140086310.md) | `FUN_140086310` | 15 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 922 | [0x1400c6550](1400c6550_FUN_1400c6550.md) | `FUN_1400c6550` | 15 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 923 | [0x1400cd560](1400cd560_FUN_1400cd560.md) | `FUN_1400cd560` | 15 | 4 | 2 | stub/thunk/getter (unknown specific role) |
-| 924 | [0x14009c320](14009c320_FUN_14009c320.md) | `FUN_14009c320` | 14 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 925 | [0x140075650](140075650_FUN_140075650.md) | `FUN_140075650` | 13 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 926 | [0x1402e8ce0](1402e8ce0_FUN_1402e8ce0.md) | `FUN_1402e8ce0` | 13 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 927 | [0x1400b6150](1400b6150_FUN_1400b6150.md) | `FUN_1400b6150` | 12 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 928 | [0x1400cd580](1400cd580_FUN_1400cd580.md) | `FUN_1400cd580` | 12 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 929 | [0x1402da20c](1402da20c_FUN_1402da20c.md) | `FUN_1402da20c` | 12 | 4 | 2 | stub/thunk/getter (unknown specific role) |
-| 930 | [0x1400b4af0](1400b4af0_FUN_1400b4af0.md) | `FUN_1400b4af0` | 11 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 931 | [0x1402c7c2c](1402c7c2c_FUN_1402c7c2c.md) | `FUN_1402c7c2c` | 11 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 932 | [0x1402ce0f8](1402ce0f8_FUN_1402ce0f8.md) | `FUN_1402ce0f8` | 11 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 933 | [0x1402e1710](1402e1710_FUN_1402e1710.md) | `FUN_1402e1710` | 11 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 934 | [0x1402e171c](1402e171c_FUN_1402e171c.md) | `FUN_1402e171c` | 11 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 935 | [0x1400b7720](1400b7720_FUN_1400b7720.md) | `FUN_1400b7720` | 10 | 11 | 1 | stub/thunk/getter (unknown specific role) |
-| 936 | [0x1400c4de0](1400c4de0_FUN_1400c4de0.md) | `FUN_1400c4de0` | 10 | 4 | 3 | stub/thunk/getter (unknown specific role) |
-| 937 | [0x1402da254](1402da254_FUN_1402da254.md) | `FUN_1402da254` | 10 | 3 | 2 | stub/thunk/getter (unknown specific role) |
-| 938 | [0x1402e8ca0](1402e8ca0_FUN_1402e8ca0.md) | `FUN_1402e8ca0` | 10 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 939 | [0x1402e8cb0](1402e8cb0_FUN_1402e8cb0.md) | `FUN_1402e8cb0` | 10 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 940 | [0x1402ec3b0](1402ec3b0_FUN_1402ec3b0.md) | `FUN_1402ec3b0` | 10 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 941 | [0x140009de0](140009de0_FUN_140009de0.md) | `FUN_140009de0` | 9 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 942 | [0x140009df0](140009df0_FUN_140009df0.md) | `FUN_140009df0` | 9 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 943 | [0x1402e90a0](1402e90a0_FUN_1402e90a0.md) | `FUN_1402e90a0` | 9 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 944 | [0x1402f5700](1402f5700_FUN_1402f5700.md) | `FUN_1402f5700` | 9 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 945 | [0x140005e00](140005e00_FUN_140005e00.md) | `FUN_140005e00` | 8 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 946 | [0x140009e00](140009e00_FUN_140009e00.md) | `FUN_140009e00` | 8 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 947 | [0x14000b290](14000b290_FUN_14000b290.md) | `FUN_14000b290` | 8 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 948 | [0x14000b390](14000b390_FUN_14000b390.md) | `FUN_14000b390` | 8 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 949 | [0x140023ec0](140023ec0_FUN_140023ec0.md) | `FUN_140023ec0` | 8 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 950 | [0x140023ed0](140023ed0_FUN_140023ed0.md) | `FUN_140023ed0` | 8 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 951 | [0x140086330](140086330_FUN_140086330.md) | `FUN_140086330` | 8 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 952 | [0x14008d2c0](14008d2c0_FUN_14008d2c0.md) | `FUN_14008d2c0` | 8 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 953 | [0x1400a89f0](1400a89f0_FUN_1400a89f0.md) | `FUN_1400a89f0` | 8 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 954 | [0x1400b7650](1400b7650_FUN_1400b7650.md) | `FUN_1400b7650` | 8 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 955 | [0x1400c43c0](1400c43c0_FUN_1400c43c0.md) | `FUN_1400c43c0` | 8 | 10 | 1 | stub/thunk/getter (unknown specific role) |
-| 956 | [0x1400c4df0](1400c4df0_FUN_1400c4df0.md) | `FUN_1400c4df0` | 8 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 957 | [0x1400c4e00](1400c4e00_FUN_1400c4e00.md) | `FUN_1400c4e00` | 8 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 958 | [0x1400c5c20](1400c5c20_FUN_1400c5c20.md) | `FUN_1400c5c20` | 8 | 8 | 1 | stub/thunk/getter (unknown specific role) |
-| 959 | [0x1400c5c30](1400c5c30_FUN_1400c5c30.md) | `FUN_1400c5c30` | 8 | 6 | 1 | stub/thunk/getter (unknown specific role) |
-| 960 | [0x1400c6570](1400c6570_FUN_1400c6570.md) | `FUN_1400c6570` | 8 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 961 | [0x1402c6cd0](1402c6cd0_FUN_1402c6cd0.md) | `FUN_1402c6cd0` | 8 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 962 | [0x1402f7fc0](1402f7fc0_FUN_1402f7fc0.md) | `FUN_1402f7fc0` | 8 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 963 | [0x14003f330](14003f330_FUN_14003f330.md) | `FUN_14003f330` | 7 | 4 | 1 | stub/thunk/getter (unknown specific role) |
-| 964 | [0x1402e7d34](1402e7d34_FUN_1402e7d34.md) | `FUN_1402e7d34` | 7 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 965 | [0x1400c5c00](1400c5c00_FUN_1400c5c00.md) | `FUN_1400c5c00` | 5 | 5 | 1 | stub/thunk/getter (unknown specific role) |
-| 966 | [0x1400c5c10](1400c5c10_FUN_1400c5c10.md) | `FUN_1400c5c10` | 5 | 11 | 1 | stub/thunk/getter (unknown specific role) |
-| 967 | [0x1402c7088](1402c7088_FUN_1402c7088.md) | `FUN_1402c7088` | 5 | 152 | 1 | stub/thunk/getter (unknown specific role) |
-| 968 | [0x1402eba70](1402eba70_FUN_1402eba70.md) | `FUN_1402eba70` | 5 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 969 | [0x1400734c0](1400734c0_FUN_1400734c0.md) | `FUN_1400734c0` | 3 | 3 | 1 | stub/thunk/getter (unknown specific role) |
-| 970 | [0x1400bcaf0](1400bcaf0_FUN_1400bcaf0.md) | `FUN_1400bcaf0` | 3 | 2 | 1 | stub/thunk/getter (unknown specific role) |
-| 971 | [0x1400c8d80](1400c8d80_FUN_1400c8d80.md) | `FUN_1400c8d80` | 3 | 2 | 1 | stub/thunk/getter (unknown specific role) |
+| # | Addr | Name | Size | C-in | C-out | Role | Domain | Pattern |
+|---|---|---|---|---|---|---|---|---|
+| 1 | [0x14009f680](14009f680_FUN_14009f680.md) | `FUN_14009f680` | 14074 | 5 | 12 | lab_location | world_event | struct_init |
+| 2 | [0x140094a20](140094a20_FUN_140094a20.md) | `FUN_140094a20` | 13205 | 1 | 62 | race_start_prompt | race | struct_init |
+| 3 | [0x140107660](140107660_FUN_140107660.md) | `FUN_140107660` | 12134 | 3 | 51 | zoo_location | world_event | struct_init |
+| 4 | [0x140050ad0](140050ad0_FUN_140050ad0.md) | `FUN_140050ad0` | 11025 | 2 | 31 | lab_location | world_event | repeated_op |
+| 5 | [0x1400f6fe0](1400f6fe0_FUN_1400f6fe0.md) | `FUN_1400f6fe0` | 9683 | 1 | 36 | lab_location | world_event | struct_init |
+| 6 | [0x140089510](140089510_FUN_140089510.md) | `FUN_140089510` | 8654 | 1 | 31 | genome_clipboard_copy | world_event | struct_init |
+| 7 | [0x1400ab3d0](1400ab3d0_FUN_1400ab3d0.md) | `FUN_1400ab3d0` | 8647 | 5 | 31 | lab_location | world_event | struct_init |
+| 8 | [0x14008ffc0](14008ffc0_FUN_14008ffc0.md) | `FUN_14008ffc0` | 8565 | 2 | 50 | lab_location | world_event | struct_init |
+| 9 | [0x140058480](140058480_FUN_140058480.md) | `FUN_140058480` | 7589 | 1 | 20 | lab_location | world_event | struct_init |
+| 10 | [0x1400b0740](1400b0740_FUN_1400b0740.md) | `FUN_1400b0740` | 7483 | 2 | 11 | lab_location | world_event | repeated_op |
+| 11 | [0x1400ba940](1400ba940_FUN_1400ba940.md) | `FUN_1400ba940` | 7179 | 2 | 32 | lab_location | world_event | struct_init |
+| 12 | [0x1400e0aa0](1400e0aa0_FUN_1400e0aa0.md) | `FUN_1400e0aa0` | 6908 | 1 | 32 | fatigue_all_rested | fatigue | repeated_op |
+| 13 | [0x140033a10](140033a10_FUN_140033a10.md) | `FUN_140033a10` | 6233 | 1 | 25 | dna_sample | genetics | repeated_op |
+| 14 | [0x140039190](140039190_FUN_140039190.md) | `FUN_140039190` | 6047 | 1 | 35 | circus_location | world_event | struct_init |
+| 15 | [0x1400c0660](1400c0660_FUN_1400c0660.md) | `FUN_1400c0660` | 5765 | 1 | 25 | debug_roster_stats | debug | struct_init |
+| 16 | [0x14007b2e0](14007b2e0_FUN_14007b2e0.md) | `FUN_14007b2e0` | 5750 | 1 | 43 | sumo_location | world_event | struct_init |
+| 17 | [0x140061f40](140061f40_FUN_140061f40.md) | `FUN_140061f40` | 5304 | 1 | 33 | lab_location | world_event | repeated_op |
+| 18 | [0x14010a5e0](14010a5e0_FUN_14010a5e0.md) | `FUN_14010a5e0` | 5188 | 1 | 22 | lab_location | world_event | struct_init |
+| 19 | [0x140092820](140092820_FUN_140092820.md) | `FUN_140092820` | 5156 | 2 | 30 | lab_location | world_event | struct_init |
+| 20 | [0x1400b9540](1400b9540_FUN_1400b9540.md) | `FUN_1400b9540` | 5110 | 3 | 22 | balloon_event | world_event | struct_init |
+| 21 | [0x1402f6c9c](1402f6c9c_FUN_1402f6c9c.md) | `FUN_1402f6c9c` | 4734 | 4 | 13 | lab_location | world_event | repeated_op |
+| 22 | [0x14010ba40](14010ba40_FUN_14010ba40.md) | `FUN_14010ba40` | 4610 | 6 | 18 | debug_population_stats | debug | repeated_op |
+| 23 | [0x1400df280](1400df280_FUN_1400df280.md) | `FUN_1400df280` | 4364 | 4 | 35 | horse_retirement_handler | aging | repeated_op |
+| 24 | [0x140066200](140066200_FUN_140066200.md) | `FUN_140066200` | 4188 | 1 | 15 | debug_pause_status | debug | struct_init |
+| 25 | [0x14004dc90](14004dc90_FUN_14004dc90.md) | `FUN_14004dc90` | 4047 | 2 | 6 | lab_location | world_event | repeated_op |
+| 26 | [0x14002d7c0](14002d7c0_FUN_14002d7c0.md) | `FUN_14002d7c0` | 4033 | 1 | 27 | race_won_event | race | struct_init |
+| 27 | [0x1400d0c80](1400d0c80_FUN_1400d0c80.md) | `FUN_1400d0c80` | 4008 | 21 | 23 | lab_location | world_event | repeated_op |
+| 28 | [0x14007c970](14007c970_FUN_14007c970.md) | `FUN_14007c970` | 3987 | 1 | 28 | champion_handling | race | repeated_op |
+| 29 | [0x140060a80](140060a80_FUN_140060a80.md) | `FUN_140060a80` | 3713 | 1 | 16 | fatigue_rest_prompt | fatigue | repeated_op |
+| 30 | [0x140076a10](140076a10_FUN_140076a10.md) | `FUN_140076a10` | 3488 | 2 | 15 | settings_xml_io | settings_io | repeated_op |
+| 31 | [0x1402d8d60](1402d8d60_FUN_1402d8d60.md) | `FUN_1402d8d60` | 3443 | 3 | 2 | lab_location | world_event | repeated_op |
+| 32 | [0x14003f810](14003f810_FUN_14003f810.md) | `FUN_14003f810` | 3359 | 2 | 29 | lab_location | world_event | repeated_op |
+| 33 | [0x1400c35b0](1400c35b0_FUN_1400c35b0.md) | `FUN_1400c35b0` | 3356 | 2 | 17 | lab_location | world_event | repeated_op |
+| 34 | [0x14007e030](14007e030_FUN_14007e030.md) | `FUN_14007e030` | 3320 | 1 | 9 | paddock_event | world_event | repeated_op |
+| 35 | [0x1400da2f0](1400da2f0_FUN_1400da2f0.md) | `FUN_1400da2f0` | 3290 | 2 | 5 | - | world_event | float_math_complex |
+| 36 | [0x140006950](140006950_FUN_140006950.md) | `FUN_140006950` | 3264 | 2 | 12 | lab_location | world_event | repeated_op |
+| 37 | [0x1400ad5c0](1400ad5c0_FUN_1400ad5c0.md) | `FUN_1400ad5c0` | 3254 | 2 | 12 | ribbon_handling | race | repeated_op |
+| 38 | [0x140016c70](140016c70_FUN_140016c70.md) | `FUN_140016c70` | 3150 | 3 | 5 | lab_location | world_event | float_math_complex |
+| 39 | [0x140053a40](140053a40_FUN_140053a40.md) | `FUN_140053a40` | 3042 | 3 | 11 | lab_location | world_event | float_math_complex |
+| 40 | [0x140086910](140086910_FUN_140086910.md) | `FUN_140086910` | 3007 | 5 | 10 | lab_location | world_event | repeated_op |
+| 41 | [0x14006b040](14006b040_FUN_14006b040.md) | `FUN_14006b040` | 2987 | 1 | 17 | lab_location | world_event | repeated_op |
+| 42 | [0x14001f7b0](14001f7b0_FUN_14001f7b0.md) | `FUN_14001f7b0` | 2954 | 3 | 1 | lab_location | world_event | float_math_complex |
+| 43 | [0x1400a74e0](1400a74e0_FUN_1400a74e0.md) | `FUN_1400a74e0` | 2941 | 1 | 16 | glue_factory | world_event | struct_init |
+| 44 | [0x1401035b0](1401035b0_FUN_1401035b0.md) | `FUN_1401035b0` | 2834 | 2 | 13 | lab_location | world_event | repeated_op |
+| 45 | [0x14004b960](14004b960_FUN_14004b960.md) | `FUN_14004b960` | 2740 | 2 | 8 | lab_location | world_event | struct_init |
+| 46 | [0x1400ca260](1400ca260_FUN_1400ca260.md) | `FUN_1400ca260` | 2646 | 26 | 17 | lab_location | world_event | struct_init |
+| 47 | [0x1400aed30](1400aed30_FUN_1400aed30.md) | `FUN_1400aed30` | 2595 | 2 | 9 | - | world_event | repeated_op |
+| 48 | [0x1400b3dc0](1400b3dc0_FUN_1400b3dc0.md) | `FUN_1400b3dc0` | 2575 | 7 | 11 | lab_location | world_event | struct_init |
+| 49 | [0x1400463e0](1400463e0_FUN_1400463e0.md) | `FUN_1400463e0` | 2552 | 2 | 10 | lab_location | world_event | loop_heavy |
+| 50 | [0x1400d98f0](1400d98f0_FUN_1400d98f0.md) | `FUN_1400d98f0` | 2517 | 3 | 4 | - | world_event | repeated_op |
+| 51 | [0x1400cacd0](1400cacd0_FUN_1400cacd0.md) | `FUN_1400cacd0` | 2454 | 2 | 15 | - | race | repeated_op |
+| 52 | [0x14006e480](14006e480_FUN_14006e480.md) | `FUN_14006e480` | 2439 | 2 | 30 | save_file_path | save_io | repeated_op |
+| 53 | [0x140106140](140106140_FUN_140106140.md) | `FUN_140106140` | 2405 | 2 | 15 | lab_location | world_event | repeated_op |
+| 54 | [0x1400bd820](1400bd820_FUN_1400bd820.md) | `FUN_1400bd820` | 2270 | 2 | 19 | lab_location | world_event | float_math_complex |
+| 55 | [0x1400d52c0](1400d52c0_FUN_1400d52c0.md) | `FUN_1400d52c0` | 2253 | 2 | 15 | lab_location | world_event | repeated_op |
+| 56 | [0x1400fd580](1400fd580_FUN_1400fd580.md) | `FUN_1400fd580` | 2159 | 2 | 15 | zoo_location | world_event | struct_init |
+| 57 | [0x1400b2490](1400b2490_FUN_1400b2490.md) | `FUN_1400b2490` | 2096 | 2 | 5 | - | world_event | repeated_op |
+| 58 | [0x1400b4b10](1400b4b10_FUN_1400b4b10.md) | `FUN_1400b4b10` | 2053 | 4 | 12 | lab_location | world_event | repeated_op |
+| 59 | [0x140097dd0](140097dd0_FUN_140097dd0.md) | `FUN_140097dd0` | 2046 | 2 | 15 | lab_location | world_event | repeated_op |
+| 60 | [0x140013d80](140013d80_FUN_140013d80.md) | `FUN_140013d80` | 2038 | 2 | 8 | lab_location | world_event | repeated_op |
+| 61 | [0x1400cc1d0](1400cc1d0_FUN_1400cc1d0.md) | `FUN_1400cc1d0` | 2029 | 2 | 5 | lab_location | world_event | repeated_op |
+| 62 | [0x14006dc80](14006dc80_FUN_14006dc80.md) | `FUN_14006dc80` | 2026 | 5 | 28 | save_file_path | save_io | repeated_op |
+| 63 | [0x1402d0790](1402d0790_FUN_1402d0790.md) | `FUN_1402d0790` | 2022 | 2 | 7 | lab_location | world_event | float_math_complex |
+| 64 | [0x140080e40](140080e40_FUN_140080e40.md) | `FUN_140080e40` | 1972 | 3 | 18 | stable_event | world_event | repeated_op |
+| 65 | [0x1400bfa90](1400bfa90_FUN_1400bfa90.md) | `FUN_1400bfa90` | 1970 | 3 | 11 | lab_location | world_event | repeated_op |
+| 66 | [0x140093d90](140093d90_FUN_140093d90.md) | `FUN_140093d90` | 1956 | 3 | 2 | - | world_event | float_math_complex |
+| 67 | [0x1400bcb00](1400bcb00_FUN_1400bcb00.md) | `FUN_1400bcb00` | 1924 | 2 | 17 | - | world_event | float_math_complex |
+| 68 | [0x1400cba60](1400cba60_FUN_1400cba60.md) | `FUN_1400cba60` | 1894 | 4 | 23 | lab_location | world_event | repeated_op |
+| 69 | [0x140017910](140017910_FUN_140017910.md) | `FUN_140017910` | 1887 | 2 | 11 | lab_location | world_event | float_math_complex |
+| 70 | [0x14009c8c0](14009c8c0_FUN_14009c8c0.md) | `FUN_14009c8c0` | 1881 | 2 | 6 | - | world_event | repeated_op |
+| 71 | [0x1400cddd0](1400cddd0_FUN_1400cddd0.md) | `FUN_1400cddd0` | 1833 | 7 | 14 | lab_location | world_event | repeated_op |
+| 72 | [0x14001eae0](14001eae0_FUN_14001eae0.md) | `FUN_14001eae0` | 1832 | 3 | 4 | - | world_event | float_math_complex |
+| 73 | [0x14000eef0](14000eef0_FUN_14000eef0.md) | `FUN_14000eef0` | 1814 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 74 | [0x140012ba0](140012ba0_FUN_140012ba0.md) | `FUN_140012ba0` | 1765 | 2 | 4 | - | world_event | float_math_complex |
+| 75 | [0x14005d710](14005d710_FUN_14005d710.md) | `FUN_14005d710` | 1728 | 2 | 17 | treasure_event | world_event | repeated_op |
+| 76 | [0x140015c30](140015c30_FUN_140015c30.md) | `FUN_140015c30` | 1718 | 3 | 1 | - | world_event | float_math_complex |
+| 77 | [0x140047cd0](140047cd0_FUN_140047cd0.md) | `FUN_140047cd0` | 1675 | 2 | 4 | lab_location | world_event | loop_heavy |
+| 78 | [0x1400afc20](1400afc20_FUN_1400afc20.md) | `FUN_1400afc20` | 1664 | 2 | 10 | - | world_event | repeated_op |
+| 79 | [0x1400ae6b0](1400ae6b0_FUN_1400ae6b0.md) | `FUN_1400ae6b0` | 1656 | 4 | 9 | lab_location | world_event | repeated_op |
+| 80 | [0x14002fe00](14002fe00_FUN_14002fe00.md) | `FUN_14002fe00` | 1630 | 1 | 16 | - | world_event | repeated_op |
+| 81 | [0x140102df0](140102df0_FUN_140102df0.md) | `FUN_140102df0` | 1621 | 2 | 19 | lab_location | world_event | iterates_horse_list_0xb8 |
+| 82 | [0x1400e0420](1400e0420_FUN_1400e0420.md) | `FUN_1400e0420` | 1610 | 2 | 12 | lab_location | world_event | repeated_op |
+| 83 | [0x14009d750](14009d750_FUN_14009d750.md) | `FUN_14009d750` | 1577 | 2 | 11 | lab_location | world_event | float_math_complex |
+| 84 | [0x140013290](140013290_FUN_140013290.md) | `FUN_140013290` | 1575 | 2 | 4 | - | world_event | repeated_op |
+| 85 | [0x1400d03f0](1400d03f0_FUN_1400d03f0.md) | `FUN_1400d03f0` | 1539 | 2 | 12 | lab_location | world_event | loop_heavy |
+| 86 | [0x1400fa910](1400fa910_FUN_1400fa910.md) | `FUN_1400fa910` | 1539 | 2 | 12 | zoo_location | world_event | repeated_op |
+| 87 | [0x1400449e0](1400449e0_FUN_1400449e0.md) | `FUN_1400449e0` | 1493 | 2 | 3 | lab_location | world_event | loop_heavy |
+| 88 | [0x140106bc0](140106bc0_FUN_140106bc0.md) | `FUN_140106bc0` | 1463 | 3 | 9 | lab_location | world_event | repeated_op |
+| 89 | [0x14001f210](14001f210_FUN_14001f210.md) | `FUN_14001f210` | 1430 | 2 | 1 | - | world_event | float_math_complex |
+| 90 | [0x140010540](140010540_FUN_140010540.md) | `FUN_140010540` | 1427 | 2 | 5 | - | world_event | repeated_op |
+| 91 | [0x14010d7e0](14010d7e0_FUN_14010d7e0.md) | `FUN_14010d7e0` | 1413 | 2 | 4 | - | world_event | repeated_op |
+| 92 | [0x1402e4980](1402e4980_FUN_1402e4980.md) | `FUN_1402e4980` | 1386 | 2 | 2 | lab_location | world_event | repeated_op |
+| 93 | [0x1400b3070](1400b3070_FUN_1400b3070.md) | `FUN_1400b3070` | 1367 | 8 | 16 | lab_location | world_event | repeated_op |
+| 94 | [0x1400063f0](1400063f0_FUN_1400063f0.md) | `FUN_1400063f0` | 1364 | 2 | 6 | - | world_event | struct_init |
+| 95 | [0x1402f8e20](1402f8e20_FUN_1402f8e20.md) | `FUN_1402f8e20` | 1353 | 103 | 1 | - | world_event | switch_dispatcher |
+| 96 | [0x140049630](140049630_FUN_140049630.md) | `FUN_140049630` | 1339 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 97 | [0x1400e3670](1400e3670_FUN_1400e3670.md) | `FUN_1400e3670` | 1319 | 2 | 3 | - | aging | repeated_op |
+| 98 | [0x140020bb0](140020bb0_FUN_140020bb0.md) | `FUN_140020bb0` | 1306 | 2 | 4 | - | world_event | float_math_complex |
+| 99 | [0x1402d0f80](1402d0f80_FUN_1402d0f80.md) | `FUN_1402d0f80` | 1277 | 2 | 5 | - | world_event | float_math_complex |
+| 100 | [0x140048e90](140048e90_FUN_140048e90.md) | `FUN_140048e90` | 1264 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 101 | [0x1400155f0](1400155f0_FUN_1400155f0.md) | `FUN_1400155f0` | 1250 | 3 | 3 | - | world_event | float_math_complex |
+| 102 | [0x1400d5ff0](1400d5ff0_FUN_1400d5ff0.md) | `FUN_1400d5ff0` | 1241 | 2 | 17 | lab_location | world_event | loop_heavy |
+| 103 | [0x14001e5e0](14001e5e0_FUN_14001e5e0.md) | `FUN_14001e5e0` | 1229 | 3 | 2 | - | world_event | float_math_complex |
+| 104 | [0x140102060](140102060_FUN_140102060.md) | `FUN_140102060` | 1225 | 2 | 7 | lab_location | world_event | repeated_op |
+| 105 | [0x140105260](140105260_FUN_140105260.md) | `FUN_140105260` | 1223 | 2 | 6 | - | world_event | repeated_op |
+| 106 | [0x14000bfe0](14000bfe0_FUN_14000bfe0.md) | `FUN_14000bfe0` | 1221 | 3 | 2 | - | world_event | float_math_complex |
+| 107 | [0x1400693b0](1400693b0_FUN_1400693b0.md) | `FUN_1400693b0` | 1207 | 1 | 11 | lab_location | world_event | float_math_complex |
+| 108 | [0x1400138c0](1400138c0_FUN_1400138c0.md) | `FUN_1400138c0` | 1203 | 2 | 3 | - | world_event | float_math_complex |
+| 109 | [0x140020700](140020700_FUN_140020700.md) | `FUN_140020700` | 1199 | 2 | 4 | - | world_event | float_math_complex |
+| 110 | [0x1400aa2b0](1400aa2b0_FUN_1400aa2b0.md) | `FUN_1400aa2b0` | 1183 | 3 | 6 | - | race | float_math_complex |
+| 111 | [0x1400d7830](1400d7830_FUN_1400d7830.md) | `FUN_1400d7830` | 1181 | 2 | 3 | - | world_event | repeated_op |
+| 112 | [0x1402edc48](1402edc48_FUN_1402edc48.md) | `FUN_1402edc48` | 1171 | 2 | 6 | lab_location | world_event | loop_heavy |
+| 113 | [0x1400c86f0](1400c86f0_FUN_1400c86f0.md) | `FUN_1400c86f0` | 1167 | 2 | 9 | - | race | float_math_complex |
+| 114 | [0x1402de160](1402de160_FUN_1402de160.md) | `FUN_1402de160` | 1164 | 2 | 1 | lab_location | world_event | loop_heavy |
+| 115 | [0x1400af790](1400af790_FUN_1400af790.md) | `FUN_1400af790` | 1158 | 2 | 8 | - | world_event | float_math_complex |
+| 116 | [0x140018070](140018070_FUN_140018070.md) | `FUN_140018070` | 1141 | 2 | 10 | - | world_event | float_math_complex |
+| 117 | [0x1400b87e0](1400b87e0_FUN_1400b87e0.md) | `FUN_1400b87e0` | 1137 | 18 | 5 | lab_location | world_event | float_math_complex |
+| 118 | [0x1402d5aec](1402d5aec_FUN_1402d5aec.md) | `FUN_1402d5aec` | 1133 | 3 | 12 | lab_location | world_event | loop_heavy |
+| 119 | [0x14005f1f0](14005f1f0_FUN_14005f1f0.md) | `FUN_14005f1f0` | 1125 | 1 | 9 | - | world_event | repeated_op |
+| 120 | [0x1400db270](1400db270_FUN_1400db270.md) | `FUN_1400db270` | 1124 | 3 | 8 | - | world_event | repeated_op |
+| 121 | [0x1400b02b0](1400b02b0_FUN_1400b02b0.md) | `FUN_1400b02b0` | 1116 | 2 | 5 | - | world_event | repeated_op |
+| 122 | [0x1400a9c80](1400a9c80_FUN_1400a9c80.md) | `FUN_1400a9c80` | 1093 | 2 | 3 | lab_location | world_event | float_math_complex |
+| 123 | [0x1400b7fe0](1400b7fe0_FUN_1400b7fe0.md) | `FUN_1400b7fe0` | 1073 | 9 | 11 | - | world_event | loop_heavy |
+| 124 | [0x140054630](140054630_FUN_140054630.md) | `FUN_140054630` | 1065 | 2 | 2 | lab_location | world_event | repeated_op |
+| 125 | [0x1400ae280](1400ae280_FUN_1400ae280.md) | `FUN_1400ae280` | 1059 | 2 | 7 | lab_location | world_event | float_math_complex |
+| 126 | [0x14000da90](14000da90_FUN_14000da90.md) | `FUN_14000da90` | 1057 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 127 | [0x14010f7e0](14010f7e0_FUN_14010f7e0.md) | `FUN_14010f7e0` | 1050 | 2 | 7 | lab_location | world_event | float_math_complex |
+| 128 | [0x1400c8e70](1400c8e70_FUN_1400c8e70.md) | `FUN_1400c8e70` | 1049 | 5 | 1 | - | world_event | loop_heavy |
+| 129 | [0x1400b5b50](1400b5b50_FUN_1400b5b50.md) | `FUN_1400b5b50` | 1048 | 5 | 6 | lab_location | world_event | repeated_op |
+| 130 | [0x1400cfda0](1400cfda0_FUN_1400cfda0.md) | `FUN_1400cfda0` | 1047 | 2 | 10 | lab_location | world_event | loop_heavy |
+| 131 | [0x1400b39b0](1400b39b0_FUN_1400b39b0.md) | `FUN_1400b39b0` | 1034 | 2 | 2 | - | world_event | repeated_op |
+| 132 | [0x14009e2f0](14009e2f0_FUN_14009e2f0.md) | `FUN_14009e2f0` | 1027 | 2 | 11 | lab_location | world_event | float_math_complex |
+| 133 | [0x1400d9010](1400d9010_FUN_1400d9010.md) | `FUN_1400d9010` | 1018 | 2 | 3 | - | world_event | float_math_complex |
+| 134 | [0x1400fdee0](1400fdee0_FUN_1400fdee0.md) | `FUN_1400fdee0` | 1018 | 2 | 26 | - | save_io | repeated_op |
+| 135 | [0x1402cd4e0](1402cd4e0_FUN_1402cd4e0.md) | `FUN_1402cd4e0` | 1018 | 2 | 3 | lab_location | world_event | repeated_op |
+| 136 | [0x14004c420](14004c420_FUN_14004c420.md) | `FUN_14004c420` | 1017 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 137 | [0x14001b740](14001b740_FUN_14001b740.md) | `FUN_14001b740` | 1014 | 2 | 2 | - | world_event | float_math_complex |
+| 138 | [0x140011cb0](140011cb0_FUN_140011cb0.md) | `FUN_140011cb0` | 1012 | 2 | 4 | - | world_event | loop_heavy |
+| 139 | [0x1401046c0](1401046c0_FUN_1401046c0.md) | `FUN_1401046c0` | 1004 | 4 | 11 | stable_event | world_event | struct_handler |
+| 140 | [0x1400113e0](1400113e0_FUN_1400113e0.md) | `FUN_1400113e0` | 1002 | 2 | 1 | - | world_event | loop_heavy |
+| 141 | [0x140071420](140071420_FUN_140071420.md) | `FUN_140071420` | 993 | 2 | 4 | - | world_event | medium_loop |
+| 142 | [0x140073c30](140073c30_FUN_140073c30.md) | `FUN_140073c30` | 989 | 2 | 1 | - | world_event | float_math_complex |
+| 143 | [0x1400c4a10](1400c4a10_FUN_1400c4a10.md) | `FUN_1400c4a10` | 965 | 4 | 7 | - | world_event | repeated_op |
+| 144 | [0x140057c20](140057c20_FUN_140057c20.md) | `FUN_140057c20` | 961 | 2 | 7 | - | save_io | repeated_op |
+| 145 | [0x1400c9420](1400c9420_FUN_1400c9420.md) | `FUN_1400c9420` | 961 | 26 | 6 | - | world_event | struct_init |
+| 146 | [0x140020340](140020340_FUN_140020340.md) | `FUN_140020340` | 948 | 3 | 2 | - | world_event | float_math_complex |
+| 147 | [0x14004d8d0](14004d8d0_FUN_14004d8d0.md) | `FUN_14004d8d0` | 946 | 2 | 6 | - | world_event | float_math_complex |
+| 148 | [0x140086570](140086570_FUN_140086570.md) | `FUN_140086570` | 919 | 9 | 5 | lab_location | world_event | medium_loop |
+| 149 | [0x14010d260](14010d260_FUN_14010d260.md) | `FUN_14010d260` | 918 | 2 | 4 | - | world_event | repeated_op |
+| 150 | [0x1402cf520](1402cf520_FUN_1402cf520.md) | `FUN_1402cf520` | 916 | 3 | 5 | lab_location | world_event | medium_loop |
+| 151 | [0x1402eef9c](1402eef9c_FUN_1402eef9c.md) | `FUN_1402eef9c` | 915 | 2 | 6 | lab_location | world_event | medium_loop |
+| 152 | [0x1400168e0](1400168e0_FUN_1400168e0.md) | `FUN_1400168e0` | 904 | 2 | 1 | lab_location | world_event | float_math_complex |
+| 153 | [0x140105da0](140105da0_FUN_140105da0.md) | `FUN_140105da0` | 904 | 3 | 9 | - | world_event | iterates_horse_list_0xb8 |
+| 154 | [0x1400aac60](1400aac60_FUN_1400aac60.md) | `FUN_1400aac60` | 902 | 12 | 2 | - | world_event | struct_init |
+| 155 | [0x1402eb6f0](1402eb6f0_FUN_1402eb6f0.md) | `FUN_1402eb6f0` | 882 | 2 | 3 | lab_location | world_event | float_math_complex |
+| 156 | [0x1402d4650](1402d4650_FUN_1402d4650.md) | `FUN_1402d4650` | 878 | 2 | 6 | lab_location | world_event | struct_init |
+| 157 | [0x1400bea50](1400bea50_FUN_1400bea50.md) | `FUN_1400bea50` | 869 | 2 | 6 | - | world_event | iterates_horse_list_0xb8 |
+| 158 | [0x1400d2740](1400d2740_FUN_1400d2740.md) | `FUN_1400d2740` | 869 | 2 | 10 | - | race | float_math_complex |
+| 159 | [0x140060710](140060710_FUN_140060710.md) | `FUN_140060710` | 855 | 2 | 11 | - | save_io | medium_loop |
+| 160 | [0x1400164b0](1400164b0_FUN_1400164b0.md) | `FUN_1400164b0` | 854 | 2 | 2 | - | world_event | float_math_complex |
+| 161 | [0x14004d3b0](14004d3b0_FUN_14004d3b0.md) | `FUN_14004d3b0` | 851 | 2 | 1 | - | world_event | float_math_complex |
+| 162 | [0x1400b3650](1400b3650_FUN_1400b3650.md) | `FUN_1400b3650` | 851 | 2 | 2 | - | world_event | repeated_op |
+| 163 | [0x1400379e0](1400379e0_FUN_1400379e0.md) | `FUN_1400379e0` | 850 | 2 | 11 | circus_location | world_event | plays_sound_or_event |
+| 164 | [0x140067ad0](140067ad0_FUN_140067ad0.md) | `FUN_140067ad0` | 850 | 3 | 8 | lab_location | world_event | medium_loop |
+| 165 | [0x1400b6fd0](1400b6fd0_FUN_1400b6fd0.md) | `FUN_1400b6fd0` | 849 | 2 | 5 | - | race | float_math_complex |
+| 166 | [0x1400c8220](1400c8220_FUN_1400c8220.md) | `FUN_1400c8220` | 831 | 2 | 7 | - | world_event | medium_loop |
+| 167 | [0x1402cf1e0](1402cf1e0_FUN_1402cf1e0.md) | `FUN_1402cf1e0` | 830 | 2 | 5 | - | world_event | repeated_op |
+| 168 | [0x1400d2090](1400d2090_FUN_1400d2090.md) | `FUN_1400d2090` | 821 | 2 | 7 | lab_location | world_event | float_math_complex |
+| 169 | [0x14006ee10](14006ee10_FUN_14006ee10.md) | `FUN_14006ee10` | 816 | 2 | 12 | - | save_io | repeated_op |
+| 170 | [0x1402ee62c](1402ee62c_FUN_1402ee62c.md) | `FUN_1402ee62c` | 815 | 2 | 10 | lab_location | world_event | medium_loop |
+| 171 | [0x140102530](140102530_FUN_140102530.md) | `FUN_140102530` | 805 | 2 | 4 | lab_location | world_event | iterates_horse_list_0xb8 |
+| 172 | [0x14008f6e0](14008f6e0_FUN_14008f6e0.md) | `FUN_14008f6e0` | 804 | 2 | 7 | paddock_event | world_event | struct_init |
+| 173 | [0x1400479b0](1400479b0_FUN_1400479b0.md) | `FUN_1400479b0` | 800 | 2 | 2 | - | world_event | float_math |
+| 174 | [0x140101990](140101990_FUN_140101990.md) | `FUN_140101990` | 799 | 2 | 3 | lab_location | world_event | float_math |
+| 175 | [0x1402cdc50](1402cdc50_FUN_1402cdc50.md) | `FUN_1402cdc50` | 785 | 32 | 2 | lab_location | world_event | float_math |
+| 176 | [0x1400119a0](1400119a0_FUN_1400119a0.md) | `FUN_1400119a0` | 780 | 2 | 2 | - | world_event | repeated_op |
+| 177 | [0x1402ebab0](1402ebab0_FUN_1402ebab0.md) | `FUN_1402ebab0` | 778 | 4 | 3 | - | world_event | float_math |
+| 178 | [0x140088000](140088000_FUN_140088000.md) | `FUN_140088000` | 775 | 2 | 6 | lab_location | world_event | repeated_op |
+| 179 | [0x14006f150](14006f150_FUN_14006f150.md) | `FUN_14006f150` | 772 | 2 | 16 | - | save_io | repeated_op |
+| 180 | [0x140024220](140024220_FUN_140024220.md) | `FUN_140024220` | 766 | 2 | 9 | lab_location | world_event | helper |
+| 181 | [0x140080730](140080730_FUN_140080730.md) | `FUN_140080730` | 766 | 4 | 5 | lab_location | world_event | struct_handler |
+| 182 | [0x140048b90](140048b90_FUN_140048b90.md) | `FUN_140048b90` | 765 | 2 | 1 | - | world_event | medium_loop |
+| 183 | [0x1400120b0](1400120b0_FUN_1400120b0.md) | `FUN_1400120b0` | 754 | 2 | 2 | - | world_event | repeated_op |
+| 184 | [0x140055060](140055060_FUN_140055060.md) | `FUN_140055060` | 753 | 3 | 1 | lab_location | world_event | medium_loop |
+| 185 | [0x14008d460](14008d460_FUN_14008d460.md) | `FUN_14008d460` | 752 | 2 | 8 | lab_location | world_event | helper |
+| 186 | [0x14009b7b0](14009b7b0_FUN_14009b7b0.md) | `FUN_14009b7b0` | 751 | 2 | 6 | - | world_event | medium_loop |
+| 187 | [0x1400d4f50](1400d4f50_FUN_1400d4f50.md) | `FUN_1400d4f50` | 747 | 5 | 7 | - | race | medium_loop |
+| 188 | [0x14006d790](14006d790_FUN_14006d790.md) | `FUN_14006d790` | 746 | 2 | 14 | - | save_io | repeated_op |
+| 189 | [0x14000f8d0](14000f8d0_FUN_14000f8d0.md) | `FUN_14000f8d0` | 740 | 2 | 3 | - | world_event | float_math |
+| 190 | [0x1400b9250](1400b9250_FUN_1400b9250.md) | `FUN_1400b9250` | 740 | 3 | 10 | lab_location | world_event | medium_loop |
+| 191 | [0x1402efaac](1402efaac_FUN_1402efaac.md) | `FUN_1402efaac` | 740 | 2 | 7 | lab_location | world_event | medium_loop |
+| 192 | [0x14008cc80](14008cc80_FUN_14008cc80.md) | `FUN_14008cc80` | 736 | 2 | 3 | - | world_event | repeated_op |
+| 193 | [0x1400cdae0](1400cdae0_FUN_1400cdae0.md) | `FUN_1400cdae0` | 733 | 25 | 12 | - | world_event | iterates_horse_list_0x26 |
+| 194 | [0x1402d8688](1402d8688_FUN_1402d8688.md) | `FUN_1402d8688` | 731 | 2 | 7 | lab_location | world_event | medium_loop |
+| 195 | [0x140005a10](140005a10_FUN_140005a10.md) | `FUN_140005a10` | 725 | 2 | 2 | - | world_event | struct_init |
+| 196 | [0x1402f94c0](1402f94c0_FUN_1402f94c0.md) | `FUN_1402f94c0` | 725 | 49 | 1 | - | world_event | switch_dispatcher |
+| 197 | [0x140074020](140074020_FUN_140074020.md) | `FUN_140074020` | 722 | 2 | 2 | - | world_event | float_math |
+| 198 | [0x1400aa760](1400aa760_FUN_1400aa760.md) | `FUN_1400aa760` | 711 | 2 | 4 | - | race | float_math |
+| 199 | [0x140071150](140071150_FUN_140071150.md) | `FUN_140071150` | 710 | 2 | 5 | - | race | float_math |
+| 200 | [0x14000fd50](14000fd50_FUN_14000fd50.md) | `FUN_14000fd50` | 698 | 3 | 1 | - | world_event | float_math |
+| 201 | [0x1402d1e3c](1402d1e3c_FUN_1402d1e3c.md) | `FUN_1402d1e3c` | 692 | 2 | 4 | lab_location | world_event | helper |
+| 202 | [0x140008030](140008030_FUN_140008030.md) | `FUN_140008030` | 688 | 3 | 4 | - | world_event | float_math |
+| 203 | [0x140049380](140049380_FUN_140049380.md) | `FUN_140049380` | 688 | 2 | 2 | lab_location | world_event | medium_loop |
+| 204 | [0x1400c9980](1400c9980_FUN_1400c9980.md) | `FUN_1400c9980` | 680 | 2 | 10 | - | world_event | iterates_horse_list_0x26 |
+| 205 | [0x1400d7fe0](1400d7fe0_FUN_1400d7fe0.md) | `FUN_1400d7fe0` | 673 | 2 | 6 | - | world_event | medium_loop |
+| 206 | [0x140102b40](140102b40_FUN_140102b40.md) | `FUN_140102b40` | 673 | 4 | 9 | - | world_event | struct_handler |
+| 207 | [0x140101dc0](140101dc0_FUN_140101dc0.md) | `FUN_140101dc0` | 663 | 2 | 5 | - | world_event | float_math |
+| 208 | [0x140105b00](140105b00_FUN_140105b00.md) | `FUN_140105b00` | 661 | 5 | 7 | - | world_event | medium_loop |
+| 209 | [0x140049b70](140049b70_FUN_140049b70.md) | `FUN_140049b70` | 655 | 2 | 2 | lab_location | world_event | float_math |
+| 210 | [0x140010ce0](140010ce0_FUN_140010ce0.md) | `FUN_140010ce0` | 653 | 3 | 3 | - | world_event | medium_loop |
+| 211 | [0x140084060](140084060_FUN_140084060.md) | `FUN_140084060` | 653 | 2 | 11 | lab_location | world_event | repeated_op |
+| 212 | [0x140104370](140104370_FUN_140104370.md) | `FUN_140104370` | 650 | 5 | 1 | - | - | medium_loop |
+| 213 | [0x1400cd2d0](1400cd2d0_FUN_1400cd2d0.md) | `FUN_1400cd2d0` | 640 | 2 | 5 | - | world_event | repeated_op |
+| 214 | [0x140032320](140032320_FUN_140032320.md) | `FUN_140032320` | 639 | 2 | 5 | lab_location | world_event | medium_loop |
+| 215 | [0x1400c7d80](1400c7d80_FUN_1400c7d80.md) | `FUN_1400c7d80` | 639 | 2 | 11 | - | save_io | repeated_op |
+| 216 | [0x140043810](140043810_FUN_140043810.md) | `FUN_140043810` | 638 | 2 | 3 | - | world_event | helper |
+| 217 | [0x1400b8f90](1400b8f90_FUN_1400b8f90.md) | `FUN_1400b8f90` | 636 | 11 | 2 | - | world_event | struct_init |
+| 218 | [0x140048360](140048360_FUN_140048360.md) | `FUN_140048360` | 634 | 5 | 3 | lab_location | world_event | medium_loop |
+| 219 | [0x1400d86a0](1400d86a0_FUN_1400d86a0.md) | `FUN_1400d86a0` | 632 | 2 | 6 | - | world_event | repeated_op |
+| 220 | [0x140048910](140048910_FUN_140048910.md) | `FUN_140048910` | 630 | 2 | 2 | - | world_event | medium_loop |
+| 221 | [0x1400bf3c0](1400bf3c0_FUN_1400bf3c0.md) | `FUN_1400bf3c0` | 623 | 2 | 4 | - | world_event | medium_loop |
+| 222 | [0x140042b70](140042b70_FUN_140042b70.md) | `FUN_140042b70` | 608 | 2 | 7 | lab_location | world_event | struct_init |
+| 223 | [0x1400820a0](1400820a0_FUN_1400820a0.md) | `FUN_1400820a0` | 607 | 2 | 6 | - | world_event | medium_loop |
+| 224 | [0x140047690](140047690_FUN_140047690.md) | `FUN_140047690` | 603 | 5 | 1 | lab_location | world_event | medium_loop |
+| 225 | [0x1402e6268](1402e6268_FUN_1402e6268.md) | `FUN_1402e6268` | 602 | 2 | 6 | lab_location | world_event | repeated_op |
+| 226 | [0x14000e0e0](14000e0e0_FUN_14000e0e0.md) | `FUN_14000e0e0` | 601 | 7 | 3 | lab_location | world_event | float_math |
+| 227 | [0x1402d6bc0](1402d6bc0_FUN_1402d6bc0.md) | `FUN_1402d6bc0` | 601 | 2 | 5 | - | world_event | medium_loop |
+| 228 | [0x14004d150](14004d150_FUN_14004d150.md) | `FUN_14004d150` | 600 | 2 | 1 | - | world_event | float_math |
+| 229 | [0x1400d5d90](1400d5d90_FUN_1400d5d90.md) | `FUN_1400d5d90` | 597 | 2 | 6 | - | race | repeated_op |
+| 230 | [0x1402d7d00](1402d7d00_FUN_1402d7d00.md) | `FUN_1402d7d00` | 593 | 4 | 5 | lab_location | world_event | helper |
+| 231 | [0x140073780](140073780_FUN_140073780.md) | `FUN_140073780` | 592 | 2 | 3 | - | world_event | float_math |
+| 232 | [0x140069ee0](140069ee0_FUN_140069ee0.md) | `FUN_140069ee0` | 590 | 2 | 6 | saloon_location | world_event | repeated_op |
+| 233 | [0x1400fb050](1400fb050_FUN_1400fb050.md) | `FUN_1400fb050` | 589 | 2 | 9 | lab_location | world_event | struct_handler |
+| 234 | [0x14003f340](14003f340_FUN_14003f340.md) | `FUN_14003f340` | 575 | 6 | 13 | - | world_event | helper |
+| 235 | [0x140094540](140094540_FUN_140094540.md) | `FUN_140094540` | 574 | 2 | 7 | - | race | medium_loop |
+| 236 | [0x1401107d0](1401107d0_FUN_1401107d0.md) | `FUN_1401107d0` | 571 | 2 | 7 | - | aging | medium_loop |
+| 237 | [0x1400c7910](1400c7910_FUN_1400c7910.md) | `FUN_1400c7910` | 566 | 9 | 10 | - | world_event | helper |
+| 238 | [0x140026080](140026080_FUN_140026080.md) | `FUN_140026080` | 562 | 2 | 6 | - | world_event | medium_loop |
+| 239 | [0x1400c31e0](1400c31e0_FUN_1400c31e0.md) | `FUN_1400c31e0` | 555 | 2 | 6 | - | world_event | medium_loop |
+| 240 | [0x140005eb0](140005eb0_FUN_140005eb0.md) | `FUN_140005eb0` | 554 | 3 | 5 | - | world_event | medium_loop |
+| 241 | [0x140053810](140053810_FUN_140053810.md) | `FUN_140053810` | 553 | 4 | 5 | lab_location | world_event | repeated_op |
+| 242 | [0x140092150](140092150_FUN_140092150.md) | `FUN_140092150` | 552 | 2 | 5 | - | race | medium_loop |
+| 243 | [0x1400b6aa0](1400b6aa0_FUN_1400b6aa0.md) | `FUN_1400b6aa0` | 551 | 3 | 4 | - | world_event | float_math |
+| 244 | [0x1400ccbd0](1400ccbd0_FUN_1400ccbd0.md) | `FUN_1400ccbd0` | 551 | 2 | 10 | - | world_event | iterates_horse_list_0xb8 |
+| 245 | [0x14005bc30](14005bc30_FUN_14005bc30.md) | `FUN_14005bc30` | 548 | 1 | 12 | - | world_event | medium_loop |
+| 246 | [0x140041900](140041900_FUN_140041900.md) | `FUN_140041900` | 544 | 2 | 7 | lab_location | world_event | repeated_op |
+| 247 | [0x14009bea0](14009bea0_FUN_14009bea0.md) | `FUN_14009bea0` | 543 | 3 | 7 | - | world_event | medium_loop |
+| 248 | [0x1400ab1b0](1400ab1b0_FUN_1400ab1b0.md) | `FUN_1400ab1b0` | 535 | 8 | 6 | - | world_event | float_math |
+| 249 | [0x140100a40](140100a40_FUN_140100a40.md) | `FUN_140100a40` | 535 | 7 | 3 | lab_location | world_event | medium_loop |
+| 250 | [0x140030940](140030940_FUN_140030940.md) | `FUN_140030940` | 528 | 2 | 7 | - | save_io | plays_sound_or_event |
+| 251 | [0x1400bedc0](1400bedc0_FUN_1400bedc0.md) | `FUN_1400bedc0` | 528 | 3 | 1 | - | world_event | medium_loop |
+| 252 | [0x14007dbf0](14007dbf0_FUN_14007dbf0.md) | `FUN_14007dbf0` | 518 | 2 | 6 | lasso_action | world_event | repeated_op |
+| 253 | [0x1400b6610](1400b6610_FUN_1400b6610.md) | `FUN_1400b6610` | 518 | 19 | 3 | - | world_event | float_math |
+| 254 | [0x1402e6d50](1402e6d50_FUN_1402e6d50.md) | `FUN_1402e6d50` | 518 | 2 | 1 | - | world_event | medium_loop |
+| 255 | [0x1402d285c](1402d285c_FUN_1402d285c.md) | `FUN_1402d285c` | 515 | 2 | 5 | lab_location | world_event | struct_handler |
+| 256 | [0x1402d2c6c](1402d2c6c_FUN_1402d2c6c.md) | `FUN_1402d2c6c` | 515 | 2 | 5 | lab_location | world_event | struct_handler |
+| 257 | [0x1402d307c](1402d307c_FUN_1402d307c.md) | `FUN_1402d307c` | 515 | 2 | 5 | lab_location | world_event | struct_handler |
+| 258 | [0x1400c8010](1400c8010_FUN_1400c8010.md) | `FUN_1400c8010` | 513 | 2 | 12 | - | save_io | repeated_op |
+| 259 | [0x1400d8e00](1400d8e00_FUN_1400d8e00.md) | `FUN_1400d8e00` | 511 | 2 | 5 | - | world_event | helper |
+| 260 | [0x1402eda40](1402eda40_FUN_1402eda40.md) | `FUN_1402eda40` | 510 | 2 | 1 | - | world_event | medium_loop |
+| 261 | [0x140046e50](140046e50_FUN_140046e50.md) | `FUN_140046e50` | 506 | 2 | 8 | - | world_event | medium_loop |
+| 262 | [0x1400a9360](1400a9360_FUN_1400a9360.md) | `FUN_1400a9360` | 502 | 9 | 3 | - | world_event | float_math |
+| 263 | [0x1402cfda0](1402cfda0_FUN_1402cfda0.md) | `FUN_1402cfda0` | 502 | 29 | 5 | lab_location | world_event | float_math |
+| 264 | [0x14009ebd0](14009ebd0_FUN_14009ebd0.md) | `FUN_14009ebd0` | 499 | 2 | 1 | lab_location | world_event | medium_loop |
+| 265 | [0x140040ca0](140040ca0_FUN_140040ca0.md) | `FUN_140040ca0` | 497 | 37 | 6 | - | world_event | helper |
+| 266 | [0x1400c5d10](1400c5d10_FUN_1400c5d10.md) | `FUN_1400c5d10` | 497 | 2 | 4 | lab_location | world_event | medium_loop |
+| 267 | [0x140011000](140011000_FUN_140011000.md) | `FUN_140011000` | 494 | 4 | 1 | - | world_event | helper |
+| 268 | [0x1400111f0](1400111f0_FUN_1400111f0.md) | `FUN_1400111f0` | 493 | 2 | 3 | lab_location | world_event | medium_loop |
+| 269 | [0x1400749b0](1400749b0_FUN_1400749b0.md) | `FUN_1400749b0` | 486 | 5 | 6 | - | world_event | helper |
+| 270 | [0x1400a9560](1400a9560_FUN_1400a9560.md) | `FUN_1400a9560` | 486 | 3 | 2 | - | world_event | repeated_op |
+| 271 | [0x14005de20](14005de20_FUN_14005de20.md) | `FUN_14005de20` | 485 | 2 | 8 | - | world_event | helper |
+| 272 | [0x1400a2ed0](1400a2ed0_FUN_1400a2ed0.md) | `FUN_1400a2ed0` | 485 | 5 | 4 | - | world_event | medium_loop |
+| 273 | [0x1402ecb70](1402ecb70_FUN_1402ecb70.md) | `FUN_1402ecb70` | 483 | 3 | 1 | - | world_event | medium_loop |
+| 274 | [0x1402ef434](1402ef434_FUN_1402ef434.md) | `FUN_1402ef434` | 480 | 3 | 5 | - | world_event | medium_loop |
+| 275 | [0x14005c9b0](14005c9b0_FUN_14005c9b0.md) | `FUN_14005c9b0` | 472 | 3 | 6 | - | world_event | struct_handler |
+| 276 | [0x1400aa0d0](1400aa0d0_FUN_1400aa0d0.md) | `FUN_1400aa0d0` | 472 | 7 | 3 | - | world_event | float_math |
+| 277 | [0x1400cd0f0](1400cd0f0_FUN_1400cd0f0.md) | `FUN_1400cd0f0` | 472 | 2 | 4 | - | world_event | iterates_horse_list_0xb8 |
+| 278 | [0x14010d600](14010d600_FUN_14010d600.md) | `FUN_14010d600` | 472 | 2 | 4 | - | world_event | repeated_op |
+| 279 | [0x140037710](140037710_FUN_140037710.md) | `FUN_140037710` | 467 | 13 | 6 | lab_location | world_event | helper |
+| 280 | [0x140094810](140094810_FUN_140094810.md) | `FUN_140094810` | 467 | 2 | 6 | - | race | float_math |
+| 281 | [0x1400117d0](1400117d0_FUN_1400117d0.md) | `FUN_1400117d0` | 459 | 5 | 4 | lab_location | world_event | medium_loop |
+| 282 | [0x14008f130](14008f130_FUN_14008f130.md) | `FUN_14008f130` | 459 | 1 | 7 | lab_location | world_event | struct_handler |
+| 283 | [0x1402e06dc](1402e06dc_FUN_1402e06dc.md) | `FUN_1402e06dc` | 457 | 2 | 2 | lab_location | world_event | struct_init |
+| 284 | [0x140012630](140012630_FUN_140012630.md) | `FUN_140012630` | 456 | 4 | 3 | - | world_event | medium_loop |
+| 285 | [0x1400c9c30](1400c9c30_FUN_1400c9c30.md) | `FUN_1400c9c30` | 456 | 22 | 3 | - | world_event | medium_loop |
+| 286 | [0x140048740](140048740_FUN_140048740.md) | `FUN_140048740` | 455 | 2 | 2 | - | world_event | float_math |
+| 287 | [0x1400d6f40](1400d6f40_FUN_1400d6f40.md) | `FUN_1400d6f40` | 455 | 2 | 2 | - | world_event | repeated_op |
+| 288 | [0x1401057b0](1401057b0_FUN_1401057b0.md) | `FUN_1401057b0` | 455 | 2 | 4 | - | aging | medium_loop |
+| 289 | [0x1402dff58](1402dff58_FUN_1402dff58.md) | `FUN_1402dff58` | 455 | 2 | 4 | lab_location | world_event | struct_init |
+| 290 | [0x14001d240](14001d240_FUN_14001d240.md) | `FUN_14001d240` | 454 | 2 | 2 | - | world_event | float_math |
+| 291 | [0x1401003e0](1401003e0_FUN_1401003e0.md) | `FUN_1401003e0` | 454 | 3 | 4 | lab_location | world_event | medium_loop |
+| 292 | [0x140072100](140072100_FUN_140072100.md) | `FUN_140072100` | 453 | 3 | 3 | - | world_event | medium_loop |
+| 293 | [0x14004cf80](14004cf80_FUN_14004cf80.md) | `FUN_14004cf80` | 452 | 2 | 1 | - | world_event | float_math |
+| 294 | [0x1400cf620](1400cf620_FUN_1400cf620.md) | `FUN_1400cf620` | 451 | 3 | 4 | lab_location | world_event | float_math |
+| 295 | [0x14005d190](14005d190_FUN_14005d190.md) | `FUN_14005d190` | 450 | 5 | 2 | - | world_event | medium_loop |
+| 296 | [0x140006230](140006230_FUN_140006230.md) | `FUN_140006230` | 446 | 5 | 2 | - | world_event | medium_loop |
+| 297 | [0x1402f0198](1402f0198_FUN_1402f0198.md) | `FUN_1402f0198` | 445 | 3 | 4 | lab_location | world_event | medium_loop |
+| 298 | [0x140087c70](140087c70_FUN_140087c70.md) | `FUN_140087c70` | 442 | 3 | 7 | - | world_event | medium_loop |
+| 299 | [0x140055360](140055360_FUN_140055360.md) | `FUN_140055360` | 441 | 2 | 7 | lab_location | world_event | repeated_op |
+| 300 | [0x1402d05a0](1402d05a0_FUN_1402d05a0.md) | `FUN_1402d05a0` | 441 | 2 | 2 | lab_location | world_event | repeated_op |
+| 301 | [0x1400c7320](1400c7320_FUN_1400c7320.md) | `FUN_1400c7320` | 438 | 3 | 10 | - | world_event | medium_loop |
+| 302 | [0x1401017d0](1401017d0_FUN_1401017d0.md) | `FUN_1401017d0` | 437 | 2 | 4 | lab_location | world_event | medium_loop |
+| 303 | [0x1402f0444](1402f0444_FUN_1402f0444.md) | `FUN_1402f0444` | 437 | 2 | 2 | - | world_event | medium_loop |
+| 304 | [0x14004d710](14004d710_FUN_14004d710.md) | `FUN_14004d710` | 434 | 2 | 1 | - | world_event | float_math |
+| 305 | [0x140104c00](140104c00_FUN_140104c00.md) | `FUN_140104c00` | 433 | 7 | 4 | - | world_event | helper |
+| 306 | [0x1402ec028](1402ec028_FUN_1402ec028.md) | `FUN_1402ec028` | 433 | 2 | 2 | lab_location | world_event | medium_loop |
+| 307 | [0x1400d6b90](1400d6b90_FUN_1400d6b90.md) | `FUN_1400d6b90` | 432 | 2 | 8 | - | world_event | medium_loop |
+| 308 | [0x1402efd94](1402efd94_FUN_1402efd94.md) | `FUN_1402efd94` | 432 | 3 | 6 | lab_location | world_event | helper |
+| 309 | [0x14005fad0](14005fad0_FUN_14005fad0.md) | `FUN_14005fad0` | 431 | 2 | 7 | paddock_event | world_event | plays_sound_or_event |
+| 310 | [0x1400760f0](1400760f0_FUN_1400760f0.md) | `FUN_1400760f0` | 424 | 4 | 5 | - | save_io | medium_loop |
+| 311 | [0x14004a250](14004a250_FUN_14004a250.md) | `FUN_14004a250` | 423 | 2 | 2 | - | world_event | medium_loop |
+| 312 | [0x1402eb470](1402eb470_FUN_1402eb470.md) | `FUN_1402eb470` | 421 | 2 | 7 | - | world_event | helper |
+| 313 | [0x140064380](140064380_FUN_140064380.md) | `FUN_140064380` | 420 | 2 | 7 | - | race | medium_loop |
+| 314 | [0x140100230](140100230_FUN_140100230.md) | `FUN_140100230` | 419 | 2 | 10 | - | world_event | medium_loop |
+| 315 | [0x1400753f0](1400753f0_FUN_1400753f0.md) | `FUN_1400753f0` | 418 | 2 | 11 | lab_location | world_event | helper |
+| 316 | [0x14007da00](14007da00_FUN_14007da00.md) | `FUN_14007da00` | 418 | 2 | 4 | - | race | repeated_op |
+| 317 | [0x140071d20](140071d20_FUN_140071d20.md) | `FUN_140071d20` | 417 | 6 | 3 | - | world_event | medium_loop |
+| 318 | [0x1400b47e0](1400b47e0_FUN_1400b47e0.md) | `FUN_1400b47e0` | 417 | 16 | 6 | - | world_event | struct_init |
+| 319 | [0x1400be740](1400be740_FUN_1400be740.md) | `FUN_1400be740` | 416 | 2 | 9 | - | world_event | medium_loop |
+| 320 | [0x140027c80](140027c80_FUN_140027c80.md) | `FUN_140027c80` | 415 | 3 | 6 | lab_location | world_event | repeated_op |
+| 321 | [0x140049f80](140049f80_FUN_140049f80.md) | `FUN_140049f80` | 411 | 2 | 1 | - | world_event | medium_loop |
+| 322 | [0x1402e0a58](1402e0a58_FUN_1402e0a58.md) | `FUN_1402e0a58` | 406 | 2 | 1 | - | world_event | struct_init |
+| 323 | [0x1400c8b90](1400c8b90_FUN_1400c8b90.md) | `FUN_1400c8b90` | 404 | 2 | 2 | - | race | helper |
+| 324 | [0x14006f840](14006f840_FUN_14006f840.md) | `FUN_14006f840` | 403 | 2 | 7 | - | save_io | helper |
+| 325 | [0x14006fb70](14006fb70_FUN_14006fb70.md) | `FUN_14006fb70` | 403 | 2 | 7 | - | save_io | helper |
+| 326 | [0x140076550](140076550_FUN_140076550.md) | `FUN_140076550` | 403 | 2 | 7 | - | save_io | helper |
+| 327 | [0x140032610](140032610_FUN_140032610.md) | `FUN_140032610` | 402 | 2 | 4 | - | world_event | medium_loop |
+| 328 | [0x1400c9290](1400c9290_FUN_1400c9290.md) | `FUN_1400c9290` | 400 | 3 | 8 | - | world_event | medium_loop |
+| 329 | [0x14000fbc0](14000fbc0_FUN_14000fbc0.md) | `FUN_14000fbc0` | 398 | 4 | 4 | - | world_event | medium_loop |
+| 330 | [0x14006f9e0](14006f9e0_FUN_14006f9e0.md) | `FUN_14006f9e0` | 397 | 2 | 7 | - | save_io | helper |
+| 331 | [0x140074da0](140074da0_FUN_140074da0.md) | `FUN_140074da0` | 392 | 2 | 7 | - | world_event | helper |
+| 332 | [0x1402d50cc](1402d50cc_FUN_1402d50cc.md) | `FUN_1402d50cc` | 391 | 2 | 3 | lab_location | world_event | struct_handler |
+| 333 | [0x1402cee24](1402cee24_FUN_1402cee24.md) | `FUN_1402cee24` | 390 | 2 | 1 | - | world_event | medium_loop |
+| 334 | [0x1400d1c40](1400d1c40_FUN_1400d1c40.md) | `FUN_1400d1c40` | 386 | 8 | 8 | - | world_event | helper |
+| 335 | [0x1402e6bc0](1402e6bc0_FUN_1402e6bc0.md) | `FUN_1402e6bc0` | 385 | 3 | 1 | - | world_event | medium_loop |
+| 336 | [0x1400450b0](1400450b0_FUN_1400450b0.md) | `FUN_1400450b0` | 384 | 5 | 1 | - | - | float_math |
+| 337 | [0x1400153e0](1400153e0_FUN_1400153e0.md) | `FUN_1400153e0` | 383 | 3 | 2 | - | world_event | medium_loop |
+| 338 | [0x140025f00](140025f00_FUN_140025f00.md) | `FUN_140025f00` | 383 | 3 | 6 | - | world_event | medium_loop |
+| 339 | [0x1400b8420](1400b8420_FUN_1400b8420.md) | `FUN_1400b8420` | 383 | 7 | 5 | - | world_event | medium_loop |
+| 340 | [0x1400b2ee0](1400b2ee0_FUN_1400b2ee0.md) | `FUN_1400b2ee0` | 382 | 10 | 6 | - | world_event | medium_loop |
+| 341 | [0x1400d7e60](1400d7e60_FUN_1400d7e60.md) | `FUN_1400d7e60` | 382 | 2 | 2 | lab_location | world_event | repeated_op |
+| 342 | [0x140007610](140007610_FUN_140007610.md) | `FUN_140007610` | 381 | 2 | 5 | lab_location | world_event | struct_init |
+| 343 | [0x140049e00](140049e00_FUN_140049e00.md) | `FUN_140049e00` | 381 | 2 | 4 | - | world_event | medium_loop |
+| 344 | [0x14002cd80](14002cd80_FUN_14002cd80.md) | `FUN_14002cd80` | 379 | 2 | 6 | - | save_io | plays_sound_or_event |
+| 345 | [0x140100e30](140100e30_FUN_140100e30.md) | `FUN_140100e30` | 379 | 6 | 10 | - | world_event | helper |
+| 346 | [0x140071810](140071810_FUN_140071810.md) | `FUN_140071810` | 378 | 8 | 3 | - | world_event | medium_loop |
+| 347 | [0x140072a10](140072a10_FUN_140072a10.md) | `FUN_140072a10` | 378 | 2 | 2 | - | world_event | switch_dispatcher |
+| 348 | [0x140076790](140076790_FUN_140076790.md) | `FUN_140076790` | 378 | 2 | 6 | - | save_io | helper |
+| 349 | [0x140065a90](140065a90_FUN_140065a90.md) | `FUN_140065a90` | 376 | 1 | 6 | lab_location | world_event | struct_handler |
+| 350 | [0x1400bf7f0](1400bf7f0_FUN_1400bf7f0.md) | `FUN_1400bf7f0` | 376 | 2 | 3 | - | world_event | helper |
+| 351 | [0x1402eff44](1402eff44_FUN_1402eff44.md) | `FUN_1402eff44` | 376 | 2 | 4 | - | world_event | helper |
+| 352 | [0x140012a20](140012a20_FUN_140012a20.md) | `FUN_140012a20` | 374 | 2 | 1 | - | world_event | float_math |
+| 353 | [0x140105980](140105980_FUN_140105980.md) | `FUN_140105980` | 374 | 3 | 9 | champion_handling | race | helper |
+| 354 | [0x14006f6c0](14006f6c0_FUN_14006f6c0.md) | `FUN_14006f6c0` | 373 | 2 | 5 | - | save_io | repeated_op |
+| 355 | [0x1400c4e20](1400c4e20_FUN_1400c4e20.md) | `FUN_1400c4e20` | 373 | 2 | 6 | - | save_io | helper |
+| 356 | [0x1402ee300](1402ee300_FUN_1402ee300.md) | `FUN_1402ee300` | 372 | 2 | 2 | lab_location | world_event | medium_loop |
+| 357 | [0x140027f50](140027f50_FUN_140027f50.md) | `FUN_140027f50` | 369 | 22 | 6 | lab_location | world_event | helper |
+| 358 | [0x14006d610](14006d610_FUN_14006d610.md) | `FUN_14006d610` | 368 | 2 | 8 | - | save_io | iterates_horse_list_0xb8 |
+| 359 | [0x140030680](140030680_FUN_140030680.md) | `FUN_140030680` | 366 | 15 | 6 | - | world_event | helper |
+| 360 | [0x14000d4e0](14000d4e0_FUN_14000d4e0.md) | `FUN_14000d4e0` | 365 | 2 | 3 | - | world_event | struct_init |
+| 361 | [0x1401041f0](1401041f0_FUN_1401041f0.md) | `FUN_1401041f0` | 365 | 4 | 7 | - | world_event | struct_init |
+| 362 | [0x14010de70](14010de70_FUN_14010de70.md) | `FUN_14010de70` | 365 | 3 | 4 | - | world_event | float_math |
+| 363 | [0x1402cd188](1402cd188_FUN_1402cd188.md) | `FUN_1402cd188` | 365 | 2 | 3 | - | world_event | helper |
+| 364 | [0x140064060](140064060_FUN_140064060.md) | `FUN_140064060` | 363 | 4 | 6 | - | world_event | helper |
+| 365 | [0x1400aaa30](1400aaa30_FUN_1400aaa30.md) | `FUN_1400aaa30` | 363 | 5 | 3 | - | world_event | float_math |
+| 366 | [0x140080cc0](140080cc0_FUN_140080cc0.md) | `FUN_140080cc0` | 362 | 4 | 4 | lab_location | world_event | struct_init |
+| 367 | [0x140075120](140075120_FUN_140075120.md) | `FUN_140075120` | 359 | 4 | 1 | - | world_event | float_math |
+| 368 | [0x1400b5fe0](1400b5fe0_FUN_1400b5fe0.md) | `FUN_1400b5fe0` | 357 | 5 | 3 | - | race | medium_loop |
+| 369 | [0x140016340](140016340_FUN_140016340.md) | `FUN_140016340` | 356 | 3 | 2 | lab_location | world_event | helper |
+| 370 | [0x1400924b0](1400924b0_FUN_1400924b0.md) | `FUN_1400924b0` | 356 | 2 | 5 | - | race | medium_loop |
+| 371 | [0x14003ee40](14003ee40_FUN_14003ee40.md) | `FUN_14003ee40` | 354 | 2 | 6 | sound_xml_loader | world_event | helper |
+| 372 | [0x140036850](140036850_FUN_140036850.md) | `FUN_140036850` | 352 | 3 | 6 | - | world_event | helper |
+| 373 | [0x140027b20](140027b20_FUN_140027b20.md) | `FUN_140027b20` | 348 | 2 | 6 | lab_location | world_event | helper |
+| 374 | [0x1400485e0](1400485e0_FUN_1400485e0.md) | `FUN_1400485e0` | 348 | 3 | 4 | lab_location | world_event | medium_loop |
+| 375 | [0x140074f80](140074f80_FUN_140074f80.md) | `FUN_140074f80` | 348 | 2 | 5 | lab_location | world_event | medium_loop |
+| 376 | [0x1402cecc8](1402cecc8_FUN_1402cecc8.md) | `FUN_1402cecc8` | 347 | 2 | 2 | - | world_event | helper |
+| 377 | [0x1402ebe30](1402ebe30_FUN_1402ebe30.md) | `FUN_1402ebe30` | 345 | 2 | 4 | lab_location | world_event | repeated_op |
+| 378 | [0x1400739e0](1400739e0_FUN_1400739e0.md) | `FUN_1400739e0` | 344 | 2 | 1 | - | world_event | float_math |
+| 379 | [0x1402c793c](1402c793c___scrt_common_main_seh.md) | `__scrt_common_main_seh` | 343 | 0 | 3 | lab_location | world_event | helper |
+| 380 | [0x1400d8290](1400d8290_FUN_1400d8290.md) | `FUN_1400d8290` | 342 | 2 | 6 | - | world_event | medium_loop |
+| 381 | [0x1400be8f0](1400be8f0_FUN_1400be8f0.md) | `FUN_1400be8f0` | 341 | 2 | 7 | - | world_event | medium_loop |
+| 382 | [0x1400b7770](1400b7770_FUN_1400b7770.md) | `FUN_1400b7770` | 340 | 3 | 6 | - | aging | struct_handler |
+| 383 | [0x1400d7190](1400d7190_FUN_1400d7190.md) | `FUN_1400d7190` | 339 | 2 | 2 | - | world_event | repeated_op |
+| 384 | [0x1402ef840](1402ef840_FUN_1402ef840.md) | `FUN_1402ef840` | 338 | 2 | 5 | - | world_event | medium_loop |
+| 385 | [0x1400a8890](1400a8890_FUN_1400a8890.md) | `FUN_1400a8890` | 337 | 6 | 3 | - | world_event | float_math |
+| 386 | [0x1402ceb78](1402ceb78_FUN_1402ceb78.md) | `FUN_1402ceb78` | 336 | 2 | 5 | - | world_event | helper |
+| 387 | [0x1400d6a40](1400d6a40_FUN_1400d6a40.md) | `FUN_1400d6a40` | 335 | 2 | 7 | - | save_io | iterates_horse_list_0x26 |
+| 388 | [0x14010cd90](14010cd90_FUN_14010cd90.md) | `FUN_14010cd90` | 335 | 2 | 5 | - | world_event | medium_loop |
+| 389 | [0x1402ef6f0](1402ef6f0_FUN_1402ef6f0.md) | `FUN_1402ef6f0` | 333 | 3 | 4 | - | world_event | medium_loop |
+| 390 | [0x140015ae0](140015ae0_FUN_140015ae0.md) | `FUN_140015ae0` | 332 | 3 | 3 | - | world_event | float_math |
+| 391 | [0x14004cb40](14004cb40_FUN_14004cb40.md) | `FUN_14004cb40` | 330 | 5 | 3 | lab_location | world_event | medium_loop |
+| 392 | [0x1402f08b0](1402f08b0_FUN_1402f08b0.md) | `FUN_1402f08b0` | 330 | 2 | 3 | - | world_event | switch_dispatcher |
+| 393 | [0x14004ec60](14004ec60_FUN_14004ec60.md) | `FUN_14004ec60` | 328 | 2 | 1 | lab_location | world_event | medium_loop |
+| 394 | [0x1400409d0](1400409d0_FUN_1400409d0.md) | `FUN_1400409d0` | 326 | 4 | 3 | - | world_event | helper |
+| 395 | [0x1400060e0](1400060e0_FUN_1400060e0.md) | `FUN_1400060e0` | 324 | 3 | 2 | - | world_event | medium_loop |
+| 396 | [0x140055c30](140055c30_FUN_140055c30.md) | `FUN_140055c30` | 323 | 2 | 4 | - | race | helper |
+| 397 | [0x1402eca20](1402eca20_FUN_1402eca20.md) | `FUN_1402eca20` | 323 | 2 | 1 | - | world_event | medium_loop |
+| 398 | [0x140007dd0](140007dd0_FUN_140007dd0.md) | `FUN_140007dd0` | 321 | 4 | 4 | - | world_event | float_math |
+| 399 | [0x140084370](140084370_FUN_140084370.md) | `FUN_140084370` | 321 | 2 | 5 | - | world_event | helper |
+| 400 | [0x1400a2d80](1400a2d80_FUN_1400a2d80.md) | `FUN_1400a2d80` | 321 | 2 | 2 | lab_location | world_event | medium_loop |
+| 401 | [0x14005c5d0](14005c5d0_FUN_14005c5d0.md) | `FUN_14005c5d0` | 320 | 1 | 6 | - | world_event | medium_loop |
+| 402 | [0x1402e8f40](1402e8f40_FUN_1402e8f40.md) | `FUN_1402e8f40` | 320 | 7 | 6 | - | world_event | helper |
+| 403 | [0x1400d8ab0](1400d8ab0_FUN_1400d8ab0.md) | `FUN_1400d8ab0` | 319 | 4 | 6 | - | world_event | helper |
+| 404 | [0x1400535f0](1400535f0_FUN_1400535f0.md) | `FUN_1400535f0` | 318 | 3 | 4 | lab_location | world_event | struct_init |
+| 405 | [0x140009ca0](140009ca0_FUN_140009ca0.md) | `FUN_140009ca0` | 315 | 4 | 1 | - | world_event | struct_handler |
+| 406 | [0x1400123b0](1400123b0_FUN_1400123b0.md) | `FUN_1400123b0` | 314 | 2 | 1 | - | world_event | medium_loop |
+| 407 | [0x140047420](140047420_FUN_140047420.md) | `FUN_140047420` | 314 | 2 | 6 | - | world_event | medium_loop |
+| 408 | [0x14006fe60](14006fe60_FUN_14006fe60.md) | `FUN_14006fe60` | 309 | 35 | 6 | - | world_event | medium_loop |
+| 409 | [0x1402e8e00](1402e8e00_FUN_1402e8e00.md) | `FUN_1402e8e00` | 307 | 3 | 6 | - | world_event | helper |
+| 410 | [0x140064590](140064590_FUN_140064590.md) | `FUN_140064590` | 306 | 2 | 5 | hutch_location | world_event | struct_init |
+| 411 | [0x1402c6b54](1402c6b54_FUN_1402c6b54.md) | `FUN_1402c6b54` | 306 | 2 | 4 | - | world_event | medium_loop |
+| 412 | [0x1402f6830](1402f6830_FUN_1402f6830.md) | `FUN_1402f6830` | 304 | 2 | 1 | lab_location | world_event | helper |
+| 413 | [0x140007ca0](140007ca0_FUN_140007ca0.md) | `FUN_140007ca0` | 302 | 3 | 2 | lab_location | world_event | helper |
+| 414 | [0x1400279c0](1400279c0_FUN_1400279c0.md) | `FUN_1400279c0` | 302 | 17 | 5 | lab_location | world_event | helper |
+| 415 | [0x1402c9210](1402c9210_FUN_1402c9210.md) | `FUN_1402c9210` | 302 | 2 | 1 | - | world_event | medium_loop |
+| 416 | [0x140010010](140010010_FUN_140010010.md) | `FUN_140010010` | 301 | 2 | 5 | - | world_event | medium_loop |
+| 417 | [0x140071f00](140071f00_FUN_140071f00.md) | `FUN_140071f00` | 301 | 6 | 4 | - | world_event | medium_loop |
+| 418 | [0x14006f590](14006f590_FUN_14006f590.md) | `FUN_14006f590` | 298 | 4 | 3 | - | save_io | helper |
+| 419 | [0x1402d0130](1402d0130_FUN_1402d0130.md) | `FUN_1402d0130` | 298 | 2 | 2 | - | world_event | repeated_op |
+| 420 | [0x14004c8a0](14004c8a0_FUN_14004c8a0.md) | `FUN_14004c8a0` | 295 | 3 | 2 | lab_location | world_event | repeated_op |
+| 421 | [0x1400184f0](1400184f0_FUN_1400184f0.md) | `FUN_1400184f0` | 294 | 3 | 1 | - | world_event | helper |
+| 422 | [0x140047560](140047560_FUN_140047560.md) | `FUN_140047560` | 293 | 5 | 6 | - | world_event | helper |
+| 423 | [0x1402e0d04](1402e0d04_FUN_1402e0d04.md) | `FUN_1402e0d04` | 292 | 2 | 5 | - | world_event | helper |
+| 424 | [0x140092380](140092380_FUN_140092380.md) | `FUN_140092380` | 290 | 2 | 3 | - | race | struct_handler |
+| 425 | [0x140083480](140083480_FUN_140083480.md) | `FUN_140083480` | 289 | 2 | 3 | - | world_event | float_math |
+| 426 | [0x14009c390](14009c390_FUN_14009c390.md) | `FUN_14009c390` | 289 | 2 | 6 | - | world_event | helper |
+| 427 | [0x1400b2cd0](1400b2cd0_FUN_1400b2cd0.md) | `FUN_1400b2cd0` | 288 | 6 | 5 | - | world_event | helper |
+| 428 | [0x1400c6bd0](1400c6bd0_FUN_1400c6bd0.md) | `FUN_1400c6bd0` | 288 | 4 | 1 | - | world_event | helper |
+| 429 | [0x140010310](140010310_FUN_140010310.md) | `FUN_140010310` | 285 | 2 | 4 | - | world_event | helper |
+| 430 | [0x1402ee50c](1402ee50c_FUN_1402ee50c.md) | `FUN_1402ee50c` | 285 | 2 | 3 | - | world_event | struct_init |
+| 431 | [0x140027e30](140027e30_FUN_140027e30.md) | `FUN_140027e30` | 284 | 30 | 5 | lab_location | world_event | helper |
+| 432 | [0x14003e600](14003e600_FUN_14003e600.md) | `FUN_14003e600` | 284 | 7 | 6 | - | world_event | helper |
+| 433 | [0x1400447e0](1400447e0_FUN_1400447e0.md) | `FUN_1400447e0` | 284 | 3 | 2 | - | - | repeated_op |
+| 434 | [0x1400b8c60](1400b8c60_FUN_1400b8c60.md) | `FUN_1400b8c60` | 283 | 3 | 2 | - | world_event | helper |
+| 435 | [0x1402ee1e4](1402ee1e4_FUN_1402ee1e4.md) | `FUN_1402ee1e4` | 283 | 2 | 1 | - | world_event | helper |
+| 436 | [0x1400f4ea0](1400f4ea0_FUN_1400f4ea0.md) | `FUN_1400f4ea0` | 282 | 2 | 5 | - | save_io | repeated_op |
+| 437 | [0x1400bf970](1400bf970_FUN_1400bf970.md) | `FUN_1400bf970` | 281 | 3 | 6 | - | aging | helper |
+| 438 | [0x140082430](140082430_FUN_140082430.md) | `FUN_140082430` | 280 | 3 | 2 | - | world_event | helper |
+| 439 | [0x1400cb8c0](1400cb8c0_FUN_1400cb8c0.md) | `FUN_1400cb8c0` | 280 | 6 | 4 | - | world_event | helper |
+| 440 | [0x1400c57a0](1400c57a0_FUN_1400c57a0.md) | `FUN_1400c57a0` | 277 | 5 | 1 | - | world_event | helper |
+| 441 | [0x1402ce36c](1402ce36c_FUN_1402ce36c.md) | `FUN_1402ce36c` | 275 | 16 | 6 | lab_location | world_event | helper |
+| 442 | [0x140077ae0](140077ae0_FUN_140077ae0.md) | `FUN_140077ae0` | 274 | 2 | 4 | lab_location | world_event | helper |
+| 443 | [0x140086450](140086450_FUN_140086450.md) | `FUN_140086450` | 274 | 6 | 1 | lab_location | world_event | helper |
+| 444 | [0x1400c6ab0](1400c6ab0_FUN_1400c6ab0.md) | `FUN_1400c6ab0` | 274 | 7 | 3 | - | world_event | helper |
+| 445 | [0x1400c7c60](1400c7c60_FUN_1400c7c60.md) | `FUN_1400c7c60` | 274 | 3 | 7 | - | world_event | helper |
+| 446 | [0x140071000](140071000_FUN_140071000.md) | `FUN_140071000` | 272 | 11 | 4 | - | world_event | helper |
+| 447 | [0x1402f6b8c](1402f6b8c_FUN_1402f6b8c.md) | `FUN_1402f6b8c` | 272 | 4 | 4 | lab_location | world_event | helper |
+| 448 | [0x140075fd0](140075fd0_FUN_140075fd0.md) | `FUN_140075fd0` | 271 | 2 | 1 | - | save_io | helper |
+| 449 | [0x1400c7600](1400c7600_FUN_1400c7600.md) | `FUN_1400c7600` | 270 | 11 | 3 | - | world_event | helper |
+| 450 | [0x1402e0948](1402e0948_FUN_1402e0948.md) | `FUN_1402e0948` | 269 | 2 | 1 | lab_location | world_event | struct_handler |
+| 451 | [0x1400a9180](1400a9180_FUN_1400a9180.md) | `FUN_1400a9180` | 263 | 9 | 3 | - | world_event | helper |
+| 452 | [0x1402ee0dc](1402ee0dc_FUN_1402ee0dc.md) | `FUN_1402ee0dc` | 263 | 2 | 1 | - | world_event | helper |
+| 453 | [0x140083c30](140083c30_FUN_140083c30.md) | `FUN_140083c30` | 262 | 3 | 3 | - | world_event | helper |
+| 454 | [0x140005cf0](140005cf0_FUN_140005cf0.md) | `FUN_140005cf0` | 260 | 3 | 2 | - | world_event | repeated_op |
+| 455 | [0x140007f20](140007f20_FUN_140007f20.md) | `FUN_140007f20` | 260 | 3 | 3 | - | world_event | helper |
+| 456 | [0x140104df0](140104df0_FUN_140104df0.md) | `FUN_140104df0` | 260 | 2 | 3 | - | world_event | helper |
+| 457 | [0x1402ef330](1402ef330_FUN_1402ef330.md) | `FUN_1402ef330` | 260 | 3 | 4 | - | world_event | helper |
+| 458 | [0x14006d470](14006d470_FUN_14006d470.md) | `FUN_14006d470` | 259 | 3 | 2 | - | save_io | helper |
+| 459 | [0x140072fe0](140072fe0_FUN_140072fe0.md) | `FUN_140072fe0` | 259 | 6 | 5 | - | world_event | helper |
+| 460 | [0x1400d1e10](1400d1e10_FUN_1400d1e10.md) | `FUN_1400d1e10` | 259 | 13 | 5 | - | world_event | helper |
+| 461 | [0x1402e8cf0](1402e8cf0_FUN_1402e8cf0.md) | `FUN_1402e8cf0` | 257 | 3 | 5 | - | world_event | helper |
+| 462 | [0x140076910](140076910_FUN_140076910.md) | `FUN_140076910` | 255 | 5 | 6 | - | save_io | helper |
+| 463 | [0x1400ab0a0](1400ab0a0_FUN_1400ab0a0.md) | `FUN_1400ab0a0` | 255 | 4 | 2 | - | world_event | helper |
+| 464 | [0x1400bf2c0](1400bf2c0_FUN_1400bf2c0.md) | `FUN_1400bf2c0` | 253 | 3 | 3 | - | world_event | helper |
+| 465 | [0x1400cfa00](1400cfa00_FUN_1400cfa00.md) | `FUN_1400cfa00` | 253 | 4 | 2 | - | world_event | helper |
+| 466 | [0x140092710](140092710_FUN_140092710.md) | `FUN_140092710` | 252 | 2 | 5 | - | world_event | helper |
+| 467 | [0x1400b6990](1400b6990_FUN_1400b6990.md) | `FUN_1400b6990` | 252 | 5 | 2 | - | world_event | helper |
+| 468 | [0x1400c9e00](1400c9e00_FUN_1400c9e00.md) | `FUN_1400c9e00` | 251 | 5 | 5 | - | world_event | helper |
+| 469 | [0x1402ce864](1402ce864_FUN_1402ce864.md) | `FUN_1402ce864` | 250 | 2 | 2 | lab_location | world_event | helper |
+| 470 | [0x1400c85f0](1400c85f0_FUN_1400c85f0.md) | `FUN_1400c85f0` | 249 | 3 | 4 | - | world_event | helper |
+| 471 | [0x1400457f0](1400457f0_FUN_1400457f0.md) | `FUN_1400457f0` | 247 | 3 | 3 | - | world_event | helper |
+| 472 | [0x1402cf0e0](1402cf0e0_FUN_1402cf0e0.md) | `FUN_1402cf0e0` | 246 | 2 | 1 | - | world_event | helper |
+| 473 | [0x14004edb0](14004edb0_FUN_14004edb0.md) | `FUN_14004edb0` | 244 | 3 | 5 | lab_location | world_event | struct_handler |
+| 474 | [0x1400a6cb0](1400a6cb0_FUN_1400a6cb0.md) | `FUN_1400a6cb0` | 244 | 2 | 5 | glue_factory | save_io | helper |
+| 475 | [0x140075a80](140075a80_FUN_140075a80.md) | `FUN_140075a80` | 243 | 2 | 3 | - | save_io | helper |
+| 476 | [0x1402e01d4](1402e01d4_FUN_1402e01d4.md) | `FUN_1402e01d4` | 241 | 2 | 5 | - | world_event | struct_handler |
+| 477 | [0x140071990](140071990_FUN_140071990.md) | `FUN_140071990` | 239 | 2 | 4 | - | world_event | helper |
+| 478 | [0x14004a120](14004a120_FUN_14004a120.md) | `FUN_14004a120` | 236 | 3 | 1 | - | world_event | helper |
+| 479 | [0x140009f80](140009f80_FUN_140009f80.md) | `FUN_140009f80` | 235 | 3 | 2 | - | world_event | float_math |
+| 480 | [0x1402ce960](1402ce960_FUN_1402ce960.md) | `FUN_1402ce960` | 234 | 2 | 3 | - | world_event | struct_handler |
+| 481 | [0x1402d1900](1402d1900_FUN_1402d1900.md) | `FUN_1402d1900` | 234 | 2 | 5 | - | world_event | helper |
+| 482 | [0x14007ad10](14007ad10_FUN_14007ad10.md) | `FUN_14007ad10` | 231 | 2 | 6 | sumo_location | world_event | helper |
+| 483 | [0x1400cb670](1400cb670_FUN_1400cb670.md) | `FUN_1400cb670` | 230 | 3 | 5 | - | world_event | helper |
+| 484 | [0x1400b6170](1400b6170_FUN_1400b6170.md) | `FUN_1400b6170` | 229 | 3 | 2 | - | world_event | helper |
+| 485 | [0x14005bad0](14005bad0_FUN_14005bad0.md) | `FUN_14005bad0` | 228 | 2 | 5 | - | save_io | plays_sound_or_event |
+| 486 | [0x140010b00](140010b00_FUN_140010b00.md) | `FUN_140010b00` | 227 | 2 | 1 | - | world_event | switch_dispatcher |
+| 487 | [0x14003f590](14003f590_FUN_14003f590.md) | `FUN_14003f590` | 227 | 2 | 3 | - | - | helper |
+| 488 | [0x140082550](140082550_FUN_140082550.md) | `FUN_140082550` | 227 | 2 | 3 | - | world_event | helper |
+| 489 | [0x140092620](140092620_FUN_140092620.md) | `FUN_140092620` | 227 | 2 | 4 | - | world_event | helper |
+| 490 | [0x1402da06c](1402da06c_FUN_1402da06c.md) | `FUN_1402da06c` | 227 | 3 | 5 | - | world_event | helper |
+| 491 | [0x14002f0f0](14002f0f0_FUN_14002f0f0.md) | `FUN_14002f0f0` | 225 | 2 | 5 | - | save_io | plays_sound_or_event |
+| 492 | [0x14009c7d0](14009c7d0_FUN_14009c7d0.md) | `FUN_14009c7d0` | 225 | 3 | 4 | - | race | helper |
+| 493 | [0x1400c69c0](1400c69c0_FUN_1400c69c0.md) | `FUN_1400c69c0` | 225 | 2 | 1 | lab_location | world_event | helper |
+| 494 | [0x1400a32c0](1400a32c0_FUN_1400a32c0.md) | `FUN_1400a32c0` | 224 | 3 | 2 | - | world_event | repeated_op |
+| 495 | [0x1402cfa08](1402cfa08_FUN_1402cfa08.md) | `FUN_1402cfa08` | 222 | 2 | 6 | - | world_event | helper |
+| 496 | [0x1402f31e0](1402f31e0_FUN_1402f31e0.md) | `FUN_1402f31e0` | 222 | 4 | 1 | lab_location | world_event | helper |
+| 497 | [0x140010430](140010430_FUN_140010430.md) | `FUN_140010430` | 220 | 2 | 4 | - | world_event | helper |
+| 498 | [0x140075850](140075850_FUN_140075850.md) | `FUN_140075850` | 220 | 4 | 4 | - | save_io | helper |
+| 499 | [0x1400762a0](1400762a0_FUN_1400762a0.md) | `FUN_1400762a0` | 220 | 2 | 2 | - | save_io | helper |
+| 500 | [0x140100c90](140100c90_FUN_140100c90.md) | `FUN_140100c90` | 220 | 5 | 4 | - | world_event | struct_handler |
+| 501 | [0x140038f20](140038f20_FUN_140038f20.md) | `FUN_140038f20` | 218 | 2 | 4 | - | world_event | helper |
+| 502 | [0x140053730](140053730_FUN_140053730.md) | `FUN_140053730` | 218 | 3 | 4 | lab_location | world_event | struct_handler |
+| 503 | [0x1400b4a10](1400b4a10_FUN_1400b4a10.md) | `FUN_1400b4a10` | 216 | 19 | 4 | - | world_event | float_math |
+| 504 | [0x1402f66e0](1402f66e0_FUN_1402f66e0.md) | `FUN_1402f66e0` | 216 | 2 | 1 | - | world_event | helper |
+| 505 | [0x1400a5e00](1400a5e00_FUN_1400a5e00.md) | `FUN_1400a5e00` | 215 | 2 | 2 | - | world_event | helper |
+| 506 | [0x140107550](140107550_FUN_140107550.md) | `FUN_140107550` | 214 | 3 | 4 | - | world_event | helper |
+| 507 | [0x14000ce00](14000ce00_FUN_14000ce00.md) | `FUN_14000ce00` | 213 | 2 | 2 | - | world_event | struct_handler |
+| 508 | [0x140082330](140082330_FUN_140082330.md) | `FUN_140082330` | 213 | 2 | 4 | - | world_event | helper |
+| 509 | [0x1402ef618](1402ef618_FUN_1402ef618.md) | `FUN_1402ef618` | 213 | 2 | 4 | - | world_event | helper |
+| 510 | [0x1400a5d20](1400a5d20_FUN_1400a5d20.md) | `FUN_1400a5d20` | 212 | 2 | 2 | - | world_event | helper |
+| 511 | [0x14004eeb0](14004eeb0_FUN_14004eeb0.md) | `FUN_14004eeb0` | 211 | 10 | 2 | lab_location | world_event | struct_handler |
+| 512 | [0x1400cf540](1400cf540_FUN_1400cf540.md) | `FUN_1400cf540` | 211 | 16 | 2 | - | world_event | helper |
+| 513 | [0x140083b50](140083b50_FUN_140083b50.md) | `FUN_140083b50` | 210 | 2 | 5 | - | world_event | helper |
+| 514 | [0x1402d7098](1402d7098_FUN_1402d7098.md) | `FUN_1402d7098` | 210 | 2 | 2 | - | world_event | struct_handler |
+| 515 | [0x1402f6abc](1402f6abc_FUN_1402f6abc.md) | `FUN_1402f6abc` | 208 | 2 | 1 | - | world_event | helper |
+| 516 | [0x14009c6a0](14009c6a0_FUN_14009c6a0.md) | `FUN_14009c6a0` | 207 | 4 | 4 | - | world_event | helper |
+| 517 | [0x1402e6770](1402e6770_FUN_1402e6770.md) | `FUN_1402e6770` | 207 | 5 | 1 | lab_location | world_event | helper |
+| 518 | [0x1400874e0](1400874e0_FUN_1400874e0.md) | `FUN_1400874e0` | 205 | 2 | 2 | - | world_event | helper |
+| 519 | [0x140104b20](140104b20_FUN_140104b20.md) | `FUN_140104b20` | 205 | 11 | 3 | - | world_event | helper |
+| 520 | [0x1402e9cd4](1402e9cd4_FUN_1402e9cd4.md) | `FUN_1402e9cd4` | 205 | 2 | 4 | lab_location | world_event | repeated_op |
+| 521 | [0x14009f350](14009f350_FUN_14009f350.md) | `FUN_14009f350` | 203 | 2 | 1 | - | world_event | helper |
+| 522 | [0x14008d2d0](14008d2d0_FUN_14008d2d0.md) | `FUN_14008d2d0` | 202 | 2 | 4 | - | world_event | helper |
+| 523 | [0x1400a9290](1400a9290_FUN_1400a9290.md) | `FUN_1400a9290` | 201 | 7 | 2 | - | world_event | float_math |
+| 524 | [0x140075320](140075320_FUN_140075320.md) | `FUN_140075320` | 199 | 2 | 3 | - | world_event | helper |
+| 525 | [0x1400bf630](1400bf630_FUN_1400bf630.md) | `FUN_1400bf630` | 199 | 2 | 3 | - | world_event | destructor_like |
+| 526 | [0x1400c7720](1400c7720_FUN_1400c7720.md) | `FUN_1400c7720` | 199 | 4 | 5 | - | world_event | destructor_like |
+| 527 | [0x140010240](140010240_FUN_140010240.md) | `FUN_140010240` | 198 | 3 | 4 | - | world_event | struct_handler |
+| 528 | [0x140042de0](140042de0_FUN_140042de0.md) | `FUN_140042de0` | 198 | 2 | 4 | - | world_event | helper |
+| 529 | [0x140016810](140016810_FUN_140016810.md) | `FUN_140016810` | 196 | 3 | 2 | - | world_event | struct_handler |
+| 530 | [0x1400bf700](1400bf700_FUN_1400bf700.md) | `FUN_1400bf700` | 195 | 6 | 2 | - | world_event | destructor_like |
+| 531 | [0x1402da530](1402da530_FUN_1402da530.md) | `FUN_1402da530` | 195 | 2 | 2 | - | world_event | helper |
+| 532 | [0x140037420](140037420_FUN_140037420.md) | `FUN_140037420` | 193 | 2 | 2 | - | world_event | destructor_like |
+| 533 | [0x1402e9b78](1402e9b78_FUN_1402e9b78.md) | `FUN_1402e9b78` | 193 | 2 | 3 | - | world_event | helper |
+| 534 | [0x1400c9f10](1400c9f10_FUN_1400c9f10.md) | `FUN_1400c9f10` | 189 | 23 | 5 | - | world_event | helper |
+| 535 | [0x1400c6d00](1400c6d00_FUN_1400c6d00.md) | `FUN_1400c6d00` | 188 | 3 | 3 | - | world_event | helper |
+| 536 | [0x14004f150](14004f150_FUN_14004f150.md) | `FUN_14004f150` | 187 | 2 | 3 | - | world_event | helper |
+| 537 | [0x1402f4ed4](1402f4ed4_FUN_1402f4ed4.md) | `FUN_1402f4ed4` | 186 | 2 | 4 | lab_location | world_event | helper |
+| 538 | [0x1400128b0](1400128b0_FUN_1400128b0.md) | `FUN_1400128b0` | 184 | 4 | 1 | - | world_event | struct_handler |
+| 539 | [0x140027750](140027750_FUN_140027750.md) | `FUN_140027750` | 184 | 2 | 4 | - | world_event | destructor_like |
+| 540 | [0x1400dc2d0](1400dc2d0_FUN_1400dc2d0.md) | `FUN_1400dc2d0` | 183 | 2 | 6 | - | fatigue | destructor_like |
+| 541 | [0x1402d0290](1402d0290_FUN_1402d0290.md) | `FUN_1402d0290` | 183 | 2 | 2 | - | world_event | helper |
+| 542 | [0x1402cd39c](1402cd39c_FUN_1402cd39c.md) | `FUN_1402cd39c` | 182 | 26 | 3 | - | world_event | destructor_like |
+| 543 | [0x1402d7230](1402d7230_FUN_1402d7230.md) | `FUN_1402d7230` | 182 | 2 | 3 | lab_location | world_event | struct_handler |
+| 544 | [0x1402e0598](1402e0598_FUN_1402e0598.md) | `FUN_1402e0598` | 181 | 2 | 3 | - | world_event | struct_handler |
+| 545 | [0x1402e8544](1402e8544_FUN_1402e8544.md) | `FUN_1402e8544` | 181 | 3 | 2 | - | world_event | helper |
+| 546 | [0x1400a3200](1400a3200_FUN_1400a3200.md) | `FUN_1400a3200` | 179 | 2 | 1 | - | world_event | helper |
+| 547 | [0x1402d8ca8](1402d8ca8_FUN_1402d8ca8.md) | `FUN_1402d8ca8` | 179 | 2 | 3 | - | world_event | helper |
+| 548 | [0x1400124f0](1400124f0_FUN_1400124f0.md) | `FUN_1400124f0` | 177 | 2 | 1 | - | world_event | helper |
+| 549 | [0x140044ff0](140044ff0_FUN_140044ff0.md) | `FUN_140044ff0` | 177 | 3 | 3 | - | - | helper |
+| 550 | [0x1402ece80](1402ece80_FUN_1402ece80.md) | `FUN_1402ece80` | 177 | 2 | 2 | - | world_event | helper |
+| 551 | [0x1400c9fe0](1400c9fe0_FUN_1400c9fe0.md) | `FUN_1400c9fe0` | 176 | 4 | 5 | - | world_event | helper |
+| 552 | [0x1402d3908](1402d3908_FUN_1402d3908.md) | `FUN_1402d3908` | 176 | 2 | 1 | - | world_event | struct_handler |
+| 553 | [0x140005960](140005960_FUN_140005960.md) | `FUN_140005960` | 175 | 2 | 1 | - | world_event | struct_handler |
+| 554 | [0x1402eaf4c](1402eaf4c_FUN_1402eaf4c.md) | `FUN_1402eaf4c` | 175 | 2 | 3 | - | world_event | helper |
+| 555 | [0x1400b8720](1400b8720_FUN_1400b8720.md) | `FUN_1400b8720` | 174 | 5 | 1 | - | world_event | helper |
+| 556 | [0x1400d8d00](1400d8d00_FUN_1400d8d00.md) | `FUN_1400d8d00` | 174 | 2 | 5 | - | world_event | helper |
+| 557 | [0x1402e93d0](1402e93d0_FUN_1402e93d0.md) | `FUN_1402e93d0` | 174 | 2 | 2 | - | world_event | helper |
+| 558 | [0x14004f0a0](14004f0a0_FUN_14004f0a0.md) | `FUN_14004f0a0` | 173 | 3 | 2 | - | world_event | helper |
+| 559 | [0x140012800](140012800_FUN_140012800.md) | `FUN_140012800` | 170 | 2 | 1 | - | world_event | helper |
+| 560 | [0x1402d3580](1402d3580_FUN_1402d3580.md) | `FUN_1402d3580` | 170 | 2 | 1 | - | world_event | struct_handler |
+| 561 | [0x1400471e0](1400471e0_FUN_1400471e0.md) | `FUN_1400471e0` | 169 | 2 | 1 | - | world_event | helper |
+| 562 | [0x1400b2e30](1400b2e30_FUN_1400b2e30.md) | `FUN_1400b2e30` | 169 | 3 | 5 | - | aging | helper |
+| 563 | [0x14009bcc0](14009bcc0_FUN_14009bcc0.md) | `FUN_14009bcc0` | 168 | 5 | 2 | - | world_event | destructor_like |
+| 564 | [0x1400a8680](1400a8680_FUN_1400a8680.md) | `FUN_1400a8680` | 168 | 2 | 3 | - | world_event | struct_handler |
+| 565 | [0x1402d1ca8](1402d1ca8_FUN_1402d1ca8.md) | `FUN_1402d1ca8` | 168 | 5 | 2 | - | world_event | helper |
+| 566 | [0x1402c8240](1402c8240_FUN_1402c8240.md) | `FUN_1402c8240` | 167 | 7 | 1 | - | world_event | helper |
+| 567 | [0x140081600](140081600_FUN_140081600.md) | `FUN_140081600` | 166 | 2 | 2 | lab_location | world_event | helper |
+| 568 | [0x14000cee0](14000cee0_FUN_14000cee0.md) | `FUN_14000cee0` | 165 | 2 | 2 | - | world_event | helper |
+| 569 | [0x1400bf070](1400bf070_FUN_1400bf070.md) | `FUN_1400bf070` | 165 | 3 | 1 | - | world_event | struct_init |
+| 570 | [0x1402ce1e0](1402ce1e0_FUN_1402ce1e0.md) | `FUN_1402ce1e0` | 165 | 2 | 5 | - | world_event | helper |
+| 571 | [0x14005e310](14005e310_FUN_14005e310.md) | `FUN_14005e310` | 164 | 3 | 6 | - | world_event | helper |
+| 572 | [0x1400641d0](1400641d0_FUN_1400641d0.md) | `FUN_1400641d0` | 164 | 2 | 2 | - | race | helper |
+| 573 | [0x1400ca150](1400ca150_FUN_1400ca150.md) | `FUN_1400ca150` | 164 | 7 | 1 | - | world_event | helper |
+| 574 | [0x140074460](140074460_FUN_140074460.md) | `FUN_140074460` | 163 | 3 | 4 | - | world_event | helper |
+| 575 | [0x1400ce9b0](1400ce9b0_FUN_1400ce9b0.md) | `FUN_1400ce9b0` | 163 | 7 | 4 | - | world_event | helper |
+| 576 | [0x1402f0358](1402f0358_FUN_1402f0358.md) | `FUN_1402f0358` | 163 | 2 | 4 | - | world_event | helper |
+| 577 | [0x140012970](140012970_FUN_140012970.md) | `FUN_140012970` | 162 | 5 | 1 | - | world_event | struct_handler |
+| 578 | [0x1402ed0c0](1402ed0c0_FUN_1402ed0c0.md) | `FUN_1402ed0c0` | 162 | 2 | 2 | - | world_event | helper |
+| 579 | [0x1402f7f1c](1402f7f1c_FUN_1402f7f1c.md) | `FUN_1402f7f1c` | 162 | 3 | 3 | lab_location | world_event | helper |
+| 580 | [0x1402d185c](1402d185c_FUN_1402d185c.md) | `FUN_1402d185c` | 161 | 3 | 3 | - | save_io | helper |
+| 581 | [0x140025e00](140025e00_FUN_140025e00.md) | `FUN_140025e00` | 160 | 2 | 1 | - | world_event | helper |
+| 582 | [0x14004cee0](14004cee0_FUN_14004cee0.md) | `FUN_14004cee0` | 160 | 7 | 1 | - | world_event | helper |
+| 583 | [0x1400aabb0](1400aabb0_FUN_1400aabb0.md) | `FUN_1400aabb0` | 159 | 3 | 5 | - | world_event | struct_handler |
+| 584 | [0x1402e08a8](1402e08a8_FUN_1402e08a8.md) | `FUN_1402e08a8` | 159 | 2 | 2 | - | world_event | struct_init |
+| 585 | [0x140005e10](140005e10_FUN_140005e10.md) | `FUN_140005e10` | 158 | 3 | 3 | - | world_event | struct_handler |
+| 586 | [0x140075f20](140075f20_FUN_140075f20.md) | `FUN_140075f20` | 158 | 4 | 1 | - | save_io | helper |
+| 587 | [0x1400c8dc0](1400c8dc0_FUN_1400c8dc0.md) | `FUN_1400c8dc0` | 157 | 16 | 1 | - | world_event | helper |
+| 588 | [0x140010c10](140010c10_FUN_140010c10.md) | `FUN_140010c10` | 156 | 4 | 1 | - | world_event | helper |
+| 589 | [0x1402d15ac](1402d15ac_FUN_1402d15ac.md) | `FUN_1402d15ac` | 156 | 2 | 2 | - | save_io | helper |
+| 590 | [0x140067e60](140067e60_FUN_140067e60.md) | `FUN_140067e60` | 155 | 2 | 5 | power_plant_location | world_event | plays_sound_or_event |
+| 591 | [0x140087ec0](140087ec0_FUN_140087ec0.md) | `FUN_140087ec0` | 155 | 7 | 3 | - | world_event | destructor_like |
+| 592 | [0x1400befd0](1400befd0_FUN_1400befd0.md) | `FUN_1400befd0` | 155 | 2 | 1 | - | world_event | struct_init |
+| 593 | [0x1400bf150](1400bf150_FUN_1400bf150.md) | `FUN_1400bf150` | 155 | 2 | 3 | - | world_event | destructor_like |
+| 594 | [0x1400c5580](1400c5580_FUN_1400c5580.md) | `FUN_1400c5580` | 155 | 6 | 2 | - | world_event | destructor_like |
+| 595 | [0x1402cd300](1402cd300_FUN_1402cd300.md) | `FUN_1402cd300` | 155 | 2 | 3 | - | world_event | helper |
+| 596 | [0x1402cdfa0](1402cdfa0_FUN_1402cdfa0.md) | `FUN_1402cdfa0` | 155 | 17 | 3 | lab_location | world_event | helper |
+| 597 | [0x1402ce7c8](1402ce7c8_FUN_1402ce7c8.md) | `FUN_1402ce7c8` | 155 | 2 | 5 | - | world_event | helper |
+| 598 | [0x1402cea4c](1402cea4c_FUN_1402cea4c.md) | `FUN_1402cea4c` | 155 | 5 | 3 | - | world_event | helper |
+| 599 | [0x1402eb16c](1402eb16c_FUN_1402eb16c.md) | `FUN_1402eb16c` | 154 | 2 | 3 | - | world_event | helper |
+| 600 | [0x140037380](140037380_FUN_140037380.md) | `FUN_140037380` | 153 | 9 | 2 | - | world_event | destructor_like |
+| 601 | [0x1400642e0](1400642e0_FUN_1400642e0.md) | `FUN_1400642e0` | 153 | 5 | 2 | - | world_event | destructor_like |
+| 602 | [0x1402d72e8](1402d72e8_FUN_1402d72e8.md) | `FUN_1402d72e8` | 153 | 2 | 3 | - | world_event | struct_handler |
+| 603 | [0x1402ed000](1402ed000_FUN_1402ed000.md) | `FUN_1402ed000` | 153 | 2 | 2 | - | world_event | helper |
+| 604 | [0x1402ce288](1402ce288_FUN_1402ce288.md) | `FUN_1402ce288` | 152 | 6 | 3 | - | world_event | helper |
+| 605 | [0x1402cf00c](1402cf00c_FUN_1402cf00c.md) | `FUN_1402cf00c` | 152 | 7 | 3 | - | world_event | helper |
+| 606 | [0x1400766f0](1400766f0_FUN_1400766f0.md) | `FUN_1400766f0` | 149 | 3 | 2 | - | world_event | destructor_like |
+| 607 | [0x140008300](140008300_FUN_140008300.md) | `FUN_140008300` | 148 | 2 | 2 | - | world_event | helper |
+| 608 | [0x14000e340](14000e340_FUN_14000e340.md) | `FUN_14000e340` | 148 | 2 | 1 | - | race | helper |
+| 609 | [0x140101220](140101220_FUN_140101220.md) | `FUN_140101220` | 148 | 2 | 2 | - | world_event | helper |
+| 610 | [0x140075940](140075940_FUN_140075940.md) | `FUN_140075940` | 146 | 2 | 2 | - | save_io | helper |
+| 611 | [0x140025730](140025730_FUN_140025730.md) | `FUN_140025730` | 145 | 3 | 2 | - | world_event | helper |
+| 612 | [0x14009bb10](14009bb10_FUN_14009bb10.md) | `FUN_14009bb10` | 145 | 2 | 2 | - | world_event | helper |
+| 613 | [0x1402e86c4](1402e86c4_FUN_1402e86c4.md) | `FUN_1402e86c4` | 144 | 5 | 3 | - | world_event | helper |
+| 614 | [0x1402f3150](1402f3150_FUN_1402f3150.md) | `FUN_1402f3150` | 144 | 2 | 1 | lab_location | world_event | helper |
+| 615 | [0x14004f010](14004f010_FUN_14004f010.md) | `FUN_14004f010` | 143 | 3 | 1 | - | world_event | helper |
+| 616 | [0x14009f5e0](14009f5e0_FUN_14009f5e0.md) | `FUN_14009f5e0` | 141 | 2 | 1 | - | world_event | helper |
+| 617 | [0x1402ceae8](1402ceae8_FUN_1402ceae8.md) | `FUN_1402ceae8` | 141 | 2 | 5 | - | world_event | helper |
+| 618 | [0x1402d3e44](1402d3e44_FUN_1402d3e44.md) | `FUN_1402d3e44` | 141 | 2 | 2 | - | world_event | helper |
+| 619 | [0x1400c7560](1400c7560_FUN_1400c7560.md) | `FUN_1400c7560` | 140 | 5 | 2 | - | world_event | helper |
+| 620 | [0x1402e1948](1402e1948_FUN_1402e1948.md) | `FUN_1402e1948` | 140 | 4 | 2 | - | world_event | helper |
+| 621 | [0x1402e9320](1402e9320_FUN_1402e9320.md) | `FUN_1402e9320` | 140 | 2 | 2 | - | world_event | helper |
+| 622 | [0x1402e9480](1402e9480_FUN_1402e9480.md) | `FUN_1402e9480` | 140 | 2 | 2 | - | world_event | helper |
+| 623 | [0x140040ee0](140040ee0_FUN_140040ee0.md) | `FUN_140040ee0` | 139 | 3 | 2 | - | world_event | helper |
+| 624 | [0x14008d200](14008d200_FUN_14008d200.md) | `FUN_14008d200` | 138 | 2 | 4 | - | world_event | helper |
+| 625 | [0x1400c5c80](1400c5c80_FUN_1400c5c80.md) | `FUN_1400c5c80` | 138 | 4 | 1 | - | world_event | helper |
+| 626 | [0x1402d19ec](1402d19ec_FUN_1402d19ec.md) | `FUN_1402d19ec` | 138 | 2 | 3 | - | world_event | helper |
+| 627 | [0x14004c9d0](14004c9d0_FUN_14004c9d0.md) | `FUN_14004c9d0` | 137 | 2 | 2 | - | world_event | struct_init |
+| 628 | [0x1402d0350](1402d0350_FUN_1402d0350.md) | `FUN_1402d0350` | 135 | 4 | 2 | - | world_event | float_math |
+| 629 | [0x14008d760](14008d760_FUN_14008d760.md) | `FUN_14008d760` | 134 | 23 | 4 | - | world_event | helper |
+| 630 | [0x1402c8190](1402c8190_FUN_1402c8190.md) | `FUN_1402c8190` | 134 | 4 | 2 | - | world_event | helper |
+| 631 | [0x140015560](140015560_FUN_140015560.md) | `FUN_140015560` | 133 | 3 | 1 | - | world_event | helper |
+| 632 | [0x1402e0510](1402e0510_FUN_1402e0510.md) | `FUN_1402e0510` | 133 | 2 | 1 | lab_location | world_event | helper |
+| 633 | [0x1402d36ec](1402d36ec_FUN_1402d36ec.md) | `FUN_1402d36ec` | 132 | 2 | 1 | - | world_event | struct_handler |
+| 634 | [0x1402d3a7c](1402d3a7c_FUN_1402d3a7c.md) | `FUN_1402d3a7c` | 132 | 2 | 1 | - | world_event | struct_handler |
+| 635 | [0x1400cead0](1400cead0_FUN_1400cead0.md) | `FUN_1400cead0` | 131 | 15 | 6 | - | world_event | helper |
+| 636 | [0x14004cab0](14004cab0_FUN_14004cab0.md) | `FUN_14004cab0` | 130 | 5 | 3 | lab_location | world_event | struct_handler |
+| 637 | [0x14006d580](14006d580_FUN_14006d580.md) | `FUN_14006d580` | 129 | 2 | 2 | - | save_io | helper |
+| 638 | [0x140027810](140027810_FUN_140027810.md) | `FUN_140027810` | 128 | 10 | 3 | - | world_event | helper |
+| 639 | [0x1400e35f0](1400e35f0_FUN_1400e35f0.md) | `FUN_1400e35f0` | 128 | 2 | 1 | - | aging | helper |
+| 640 | [0x140072f50](140072f50_FUN_140072f50.md) | `FUN_140072f50` | 126 | 5 | 4 | - | world_event | helper |
+| 641 | [0x1400fb7f0](1400fb7f0_FUN_1400fb7f0.md) | `FUN_1400fb7f0` | 126 | 3 | 2 | - | save_io | struct_handler |
+| 642 | [0x1402e8180](1402e8180_FUN_1402e8180.md) | `FUN_1402e8180` | 126 | 5 | 3 | - | world_event | helper |
+| 643 | [0x1400c8570](1400c8570_FUN_1400c8570.md) | `FUN_1400c8570` | 125 | 3 | 1 | - | world_event | helper |
+| 644 | [0x140112100](140112100_FUN_140112100.md) | `FUN_140112100` | 125 | 2 | 1 | - | aging | helper |
+| 645 | [0x1400125b0](1400125b0_FUN_1400125b0.md) | `FUN_1400125b0` | 124 | 4 | 2 | - | world_event | struct_handler |
+| 646 | [0x140072e40](140072e40_FUN_140072e40.md) | `FUN_140072e40` | 124 | 2 | 3 | - | world_event | helper |
+| 647 | [0x1402d6ad0](1402d6ad0_FUN_1402d6ad0.md) | `FUN_1402d6ad0` | 124 | 2 | 1 | lab_location | world_event | struct_handler |
+| 648 | [0x14004ef90](14004ef90_FUN_14004ef90.md) | `FUN_14004ef90` | 123 | 4 | 1 | - | world_event | helper |
+| 649 | [0x1402c7138](1402c7138_FUN_1402c7138.md) | `FUN_1402c7138` | 123 | 26 | 1 | lab_location | world_event | helper |
+| 650 | [0x1400058e0](1400058e0_FUN_1400058e0.md) | `FUN_1400058e0` | 122 | 5 | 2 | - | world_event | helper |
+| 651 | [0x1402ce164](1402ce164_FUN_1402ce164.md) | `FUN_1402ce164` | 122 | 2 | 5 | - | world_event | helper |
+| 652 | [0x1400727d0](1400727d0_FUN_1400727d0.md) | `FUN_1400727d0` | 120 | 10 | 1 | - | world_event | helper |
+| 653 | [0x1400cc9d0](1400cc9d0_FUN_1400cc9d0.md) | `FUN_1400cc9d0` | 120 | 11 | 4 | - | world_event | helper |
+| 654 | [0x14004ce60](14004ce60_FUN_14004ce60.md) | `FUN_14004ce60` | 119 | 2 | 2 | lab_location | world_event | helper |
+| 655 | [0x1402e9b00](1402e9b00_FUN_1402e9b00.md) | `FUN_1402e9b00` | 119 | 2 | 2 | - | world_event | helper |
+| 656 | [0x1402ecd60](1402ecd60_FUN_1402ecd60.md) | `FUN_1402ecd60` | 119 | 3 | 1 | - | world_event | helper |
+| 657 | [0x1402d74e0](1402d74e0_FUN_1402d74e0.md) | `FUN_1402d74e0` | 118 | 12 | 4 | - | world_event | helper |
+| 658 | [0x1402d8964](1402d8964_FUN_1402d8964.md) | `FUN_1402d8964` | 118 | 3 | 1 | - | world_event | helper |
+| 659 | [0x1400764d0](1400764d0_FUN_1400764d0.md) | `FUN_1400764d0` | 117 | 13 | 2 | - | save_io | helper |
+| 660 | [0x140080b00](140080b00_FUN_140080b00.md) | `FUN_140080b00` | 117 | 2 | 1 | - | world_event | helper |
+| 661 | [0x1402f4f90](1402f4f90_FUN_1402f4f90.md) | `FUN_1402f4f90` | 117 | 3 | 4 | - | world_event | helper |
+| 662 | [0x14008de50](14008de50_FUN_14008de50.md) | `FUN_14008de50` | 115 | 2 | 5 | - | save_io | plays_sound_or_event |
+| 663 | [0x1400fb2b0](1400fb2b0_FUN_1400fb2b0.md) | `FUN_1400fb2b0` | 115 | 3 | 2 | - | race | helper |
+| 664 | [0x1402f6960](1402f6960_FUN_1402f6960.md) | `FUN_1402f6960` | 115 | 2 | 1 | - | world_event | helper |
+| 665 | [0x14004c820](14004c820_FUN_14004c820.md) | `FUN_14004c820` | 114 | 2 | 3 | lab_location | world_event | struct_handler |
+| 666 | [0x140072640](140072640_FUN_140072640.md) | `FUN_140072640` | 113 | 6 | 1 | - | world_event | helper |
+| 667 | [0x140027900](140027900_FUN_140027900.md) | `FUN_140027900` | 112 | 45 | 2 | - | world_event | destructor_like |
+| 668 | [0x140046de0](140046de0_FUN_140046de0.md) | `FUN_140046de0` | 112 | 6 | 1 | - | world_event | helper |
+| 669 | [0x140105730](140105730_FUN_140105730.md) | `FUN_140105730` | 112 | 2 | 2 | - | world_event | helper |
+| 670 | [0x1400d8c00](1400d8c00_FUN_1400d8c00.md) | `FUN_1400d8c00` | 111 | 4 | 2 | - | world_event | helper |
+| 671 | [0x1402f8670](1402f8670_FUN_1402f8670.md) | `FUN_1402f8670` | 111 | 2 | 3 | - | world_event | helper |
+| 672 | [0x1400743e0](1400743e0_FUN_1400743e0.md) | `FUN_1400743e0` | 109 | 4 | 2 | - | world_event | helper |
+| 673 | [0x1400fb8c0](1400fb8c0_FUN_1400fb8c0.md) | `FUN_1400fb8c0` | 109 | 2 | 3 | - | world_event | helper |
+| 674 | [0x1402d348c](1402d348c_FUN_1402d348c.md) | `FUN_1402d348c` | 109 | 2 | 1 | - | world_event | struct_handler |
+| 675 | [0x1402d3810](1402d3810_FUN_1402d3810.md) | `FUN_1402d3810` | 109 | 2 | 1 | - | world_event | struct_handler |
+| 676 | [0x14007b260](14007b260_FUN_14007b260.md) | `FUN_14007b260` | 108 | 2 | 2 | - | world_event | struct_handler |
+| 677 | [0x1400c6940](1400c6940_FUN_1400c6940.md) | `FUN_1400c6940` | 108 | 26 | 1 | - | world_event | helper |
+| 678 | [0x140030810](140030810_FUN_140030810.md) | `FUN_140030810` | 107 | 4 | 2 | - | world_event | destructor_like |
+| 679 | [0x1400308d0](1400308d0_FUN_1400308d0.md) | `FUN_1400308d0` | 107 | 5 | 2 | - | world_event | destructor_like |
+| 680 | [0x1400985e0](1400985e0_FUN_1400985e0.md) | `FUN_1400985e0` | 107 | 2 | 3 | - | race | helper |
+| 681 | [0x1402cd0d0](1402cd0d0_FUN_1402cd0d0.md) | `FUN_1402cd0d0` | 106 | 2 | 2 | - | world_event | helper |
+| 682 | [0x1402d3dd8](1402d3dd8_FUN_1402d3dd8.md) | `FUN_1402d3dd8` | 106 | 2 | 1 | - | world_event | helper |
+| 683 | [0x1400285e0](1400285e0_FUN_1400285e0.md) | `FUN_1400285e0` | 105 | 99 | 3 | - | world_event | destructor_like |
+| 684 | [0x1400a8610](1400a8610_FUN_1400a8610.md) | `FUN_1400a8610` | 104 | 9 | 1 | - | world_event | helper |
+| 685 | [0x1400757e0](1400757e0_FUN_1400757e0.md) | `FUN_1400757e0` | 103 | 2 | 2 | - | save_io | repeated_op |
+| 686 | [0x140084300](140084300_FUN_140084300.md) | `FUN_140084300` | 103 | 2 | 4 | - | world_event | helper |
+| 687 | [0x1400c5680](1400c5680_FUN_1400c5680.md) | `FUN_1400c5680` | 103 | 2 | 3 | - | world_event | helper |
+| 688 | [0x1402cd068](1402cd068_FUN_1402cd068.md) | `FUN_1402cd068` | 102 | 11 | 3 | - | world_event | helper |
+| 689 | [0x14009b740](14009b740_FUN_14009b740.md) | `FUN_14009b740` | 101 | 2 | 1 | - | world_event | helper |
+| 690 | [0x1400b6820](1400b6820_FUN_1400b6820.md) | `FUN_1400b6820` | 101 | 8 | 2 | - | world_event | helper |
+| 691 | [0x1400c68d0](1400c68d0_FUN_1400c68d0.md) | `FUN_1400c68d0` | 100 | 2 | 1 | - | race | helper |
+| 692 | [0x1402da180](1402da180_FUN_1402da180.md) | `FUN_1402da180` | 100 | 3 | 1 | - | world_event | helper |
+| 693 | [0x1402f87d0](1402f87d0_FUN_1402f87d0.md) | `FUN_1402f87d0` | 100 | 2 | 2 | - | world_event | helper |
+| 694 | [0x140080680](140080680_FUN_140080680.md) | `FUN_140080680` | 99 | 5 | 2 | - | world_event | helper |
+| 695 | [0x140081fa0](140081fa0_FUN_140081fa0.md) | `FUN_140081fa0` | 99 | 2 | 2 | - | world_event | helper |
+| 696 | [0x140087e30](140087e30_FUN_140087e30.md) | `FUN_140087e30` | 99 | 3 | 1 | - | world_event | helper |
+| 697 | [0x1400a8a00](1400a8a00_FUN_1400a8a00.md) | `FUN_1400a8a00` | 99 | 2 | 1 | - | world_event | struct_handler |
+| 698 | [0x1402cf9a4](1402cf9a4_FUN_1402cf9a4.md) | `FUN_1402cf9a4` | 97 | 2 | 2 | - | - | helper |
+| 699 | [0x1402f8700](1402f8700_FUN_1402f8700.md) | `FUN_1402f8700` | 97 | 3 | 4 | - | world_event | helper |
+| 700 | [0x1400250c0](1400250c0_FUN_1400250c0.md) | `FUN_1400250c0` | 96 | 2 | 1 | - | world_event | struct_init |
+| 701 | [0x1400372c0](1400372c0_FUN_1400372c0.md) | `FUN_1400372c0` | 95 | 3 | 2 | - | genetics | destructor_like |
+| 702 | [0x140050a70](140050a70_FUN_140050a70.md) | `FUN_140050a70` | 95 | 2 | 3 | - | world_event | helper |
+| 703 | [0x1402f6598](1402f6598_FUN_1402f6598.md) | `FUN_1402f6598` | 95 | 2 | 3 | - | world_event | helper |
+| 704 | [0x14003f680](14003f680_FUN_14003f680.md) | `FUN_14003f680` | 93 | 3 | 2 | - | world_event | helper |
+| 705 | [0x140070f90](140070f90_FUN_140070f90.md) | `FUN_140070f90` | 92 | 2 | 2 | - | race | helper |
+| 706 | [0x1402ec1dc](1402ec1dc_FUN_1402ec1dc.md) | `FUN_1402ec1dc` | 92 | 2 | 2 | - | world_event | plays_sound_or_event |
+| 707 | [0x1402e8754](1402e8754_FUN_1402e8754.md) | `FUN_1402e8754` | 91 | 3 | 2 | - | world_event | helper |
+| 708 | [0x1402e8c20](1402e8c20_FUN_1402e8c20.md) | `FUN_1402e8c20` | 90 | 5 | 1 | - | world_event | helper |
+| 709 | [0x1400755f0](1400755f0_FUN_1400755f0.md) | `FUN_1400755f0` | 89 | 2 | 4 | - | save_io | helper |
+| 710 | [0x14008ff60](14008ff60_FUN_14008ff60.md) | `FUN_14008ff60` | 88 | 2 | 4 | - | race | helper |
+| 711 | [0x1400833d0](1400833d0_FUN_1400833d0.md) | `FUN_1400833d0` | 87 | 2 | 2 | - | world_event | helper |
+| 712 | [0x1400256d0](1400256d0_FUN_1400256d0.md) | `FUN_1400256d0` | 86 | 4 | 1 | - | world_event | helper |
+| 713 | [0x14003e720](14003e720_FUN_14003e720.md) | `FUN_14003e720` | 86 | 2 | 4 | - | save_io | helper |
+| 714 | [0x140023f30](140023f30_FUN_140023f30.md) | `FUN_140023f30` | 85 | 2 | 3 | - | world_event | helper |
+| 715 | [0x14008cc20](14008cc20_FUN_14008cc20.md) | `FUN_14008cc20` | 85 | 2 | 4 | - | world_event | helper |
+| 716 | [0x1402cefac](1402cefac_FUN_1402cefac.md) | `FUN_1402cefac` | 85 | 3 | 1 | - | world_event | helper |
+| 717 | [0x1402e1bf8](1402e1bf8_FUN_1402e1bf8.md) | `FUN_1402e1bf8` | 85 | 4 | 4 | - | world_event | helper |
+| 718 | [0x1402f67d0](1402f67d0_FUN_1402f67d0.md) | `FUN_1402f67d0` | 85 | 2 | 1 | - | world_event | helper |
+| 719 | [0x140024a60](140024a60_FUN_140024a60.md) | `FUN_140024a60` | 84 | 2 | 2 | - | world_event | helper |
+| 720 | [0x140064530](140064530_FUN_140064530.md) | `FUN_140064530` | 84 | 3 | 2 | - | race | destructor_like |
+| 721 | [0x14009c330](14009c330_FUN_14009c330.md) | `FUN_14009c330` | 84 | 6 | 2 | - | world_event | destructor_like |
+| 722 | [0x140104ac0](140104ac0_FUN_140104ac0.md) | `FUN_140104ac0` | 84 | 4 | 3 | - | world_event | helper |
+| 723 | [0x140104f00](140104f00_FUN_140104f00.md) | `FUN_140104f00` | 84 | 2 | 1 | lab_location | world_event | helper |
+| 724 | [0x14000b3a0](14000b3a0_FUN_14000b3a0.md) | `FUN_14000b3a0` | 83 | 2 | 1 | - | world_event | helper |
+| 725 | [0x1400b49b0](1400b49b0_FUN_1400b49b0.md) | `FUN_1400b49b0` | 83 | 3 | 1 | - | world_event | helper |
+| 726 | [0x1402dfea0](1402dfea0_FUN_1402dfea0.md) | `FUN_1402dfea0` | 83 | 2 | 2 | - | world_event | helper |
+| 727 | [0x14009bab0](14009bab0_FUN_14009bab0.md) | `FUN_14009bab0` | 82 | 2 | 1 | - | world_event | helper |
+| 728 | [0x1400c4340](1400c4340_FUN_1400c4340.md) | `FUN_1400c4340` | 82 | 10 | 3 | - | world_event | helper |
+| 729 | [0x1400745d0](1400745d0_FUN_1400745d0.md) | `FUN_1400745d0` | 81 | 9 | 1 | - | world_event | helper |
+| 730 | [0x1402ed930](1402ed930_FUN_1402ed930.md) | `FUN_1402ed930` | 81 | 3 | 2 | - | world_event | helper |
+| 731 | [0x1402f8770](1402f8770_FUN_1402f8770.md) | `FUN_1402f8770` | 81 | 2 | 4 | - | world_event | helper |
+| 732 | [0x140028310](140028310_FUN_140028310.md) | `FUN_140028310` | 80 | 17 | 2 | - | world_event | destructor_like |
+| 733 | [0x14005bf10](14005bf10_FUN_14005bf10.md) | `FUN_14005bf10` | 79 | 2 | 4 | - | save_io | helper |
+| 734 | [0x140067850](140067850_FUN_140067850.md) | `FUN_140067850` | 79 | 2 | 4 | - | save_io | helper |
+| 735 | [0x1401123f0](1401123f0_FUN_1401123f0.md) | `FUN_1401123f0` | 79 | 2 | 4 | zoo_location | world_event | helper |
+| 736 | [0x1400c5740](1400c5740_FUN_1400c5740.md) | `FUN_1400c5740` | 76 | 4 | 1 | - | world_event | helper |
+| 737 | [0x1402cd13c](1402cd13c_FUN_1402cd13c.md) | `FUN_1402cd13c` | 76 | 2 | 1 | - | world_event | helper |
+| 738 | [0x140040980](140040980_FUN_140040980.md) | `FUN_140040980` | 74 | 2 | 2 | - | world_event | helper |
+| 739 | [0x1400c56f0](1400c56f0_FUN_1400c56f0.md) | `FUN_1400c56f0` | 74 | 7 | 1 | - | world_event | helper |
+| 740 | [0x1402ed9d0](1402ed9d0_FUN_1402ed9d0.md) | `FUN_1402ed9d0` | 74 | 3 | 2 | - | world_event | helper |
+| 741 | [0x1400c6180](1400c6180_FUN_1400c6180.md) | `FUN_1400c6180` | 73 | 4 | 1 | - | world_event | helper |
+| 742 | [0x1400fb380](1400fb380_FUN_1400fb380.md) | `FUN_1400fb380` | 73 | 1 | 3 | - | world_event | helper |
+| 743 | [0x14004ca60](14004ca60_FUN_14004ca60.md) | `FUN_14004ca60` | 72 | 5 | 2 | - | world_event | helper |
+| 744 | [0x1400d8db0](1400d8db0_FUN_1400d8db0.md) | `FUN_1400d8db0` | 72 | 2 | 2 | - | world_event | helper |
+| 745 | [0x140009e10](140009e10_FUN_140009e10.md) | `FUN_140009e10` | 71 | 3 | 1 | - | world_event | helper |
+| 746 | [0x14000b2a0](14000b2a0_FUN_14000b2a0.md) | `FUN_14000b2a0` | 71 | 5 | 1 | - | world_event | helper |
+| 747 | [0x1402c5b14](1402c5b14_FUN_1402c5b14.md) | `FUN_1402c5b14` | 71 | 2 | 2 | - | world_event | helper |
+| 748 | [0x1402c5bd4](1402c5bd4_FUN_1402c5bd4.md) | `FUN_1402c5bd4` | 71 | 2 | 2 | - | world_event | helper |
+| 749 | [0x1402f03fc](1402f03fc_FUN_1402f03fc.md) | `FUN_1402f03fc` | 71 | 2 | 2 | - | world_event | helper |
+| 750 | [0x14003f6f0](14003f6f0_FUN_14003f6f0.md) | `FUN_14003f6f0` | 70 | 10 | 3 | - | - | helper |
+| 751 | [0x1402c6c88](1402c6c88_FUN_1402c6c88.md) | `FUN_1402c6c88` | 70 | 2 | 4 | - | world_event | helper |
+| 752 | [0x1400162f0](1400162f0_FUN_1400162f0.md) | `FUN_1400162f0` | 69 | 2 | 1 | - | world_event | helper |
+| 753 | [0x140076480](140076480_FUN_140076480.md) | `FUN_140076480` | 69 | 3 | 2 | - | save_io | helper |
+| 754 | [0x140075bd0](140075bd0_FUN_140075bd0.md) | `FUN_140075bd0` | 68 | 2 | 1 | - | save_io | helper |
+| 755 | [0x1400509e0](1400509e0_FUN_1400509e0.md) | `FUN_1400509e0` | 67 | 3 | 1 | - | world_event | helper |
+| 756 | [0x140075790](140075790_FUN_140075790.md) | `FUN_140075790` | 67 | 4 | 2 | - | save_io | helper |
+| 757 | [0x140009e60](140009e60_FUN_140009e60.md) | `FUN_140009e60` | 66 | 6 | 1 | - | world_event | helper |
+| 758 | [0x140009eb0](140009eb0_FUN_140009eb0.md) | `FUN_140009eb0` | 66 | 3 | 1 | - | world_event | helper |
+| 759 | [0x14000b2f0](14000b2f0_FUN_14000b2f0.md) | `FUN_14000b2f0` | 66 | 7 | 1 | - | world_event | helper |
+| 760 | [0x14000b340](14000b340_FUN_14000b340.md) | `FUN_14000b340` | 66 | 3 | 1 | - | world_event | helper |
+| 761 | [0x1400755a0](1400755a0_FUN_1400755a0.md) | `FUN_1400755a0` | 66 | 2 | 2 | - | save_io | helper |
+| 762 | [0x14006fd10](14006fd10_FUN_14006fd10.md) | `FUN_14006fd10` | 65 | 2 | 2 | - | save_io | helper |
+| 763 | [0x140075e80](140075e80_FUN_140075e80.md) | `FUN_140075e80` | 65 | 3 | 1 | - | save_io | helper |
+| 764 | [0x140080ab0](140080ab0_FUN_140080ab0.md) | `FUN_140080ab0` | 65 | 2 | 1 | - | world_event | helper |
+| 765 | [0x1400c65c0](1400c65c0_FUN_1400c65c0.md) | `FUN_1400c65c0` | 65 | 3 | 1 | - | world_event | helper |
+| 766 | [0x1400c78c0](1400c78c0_FUN_1400c78c0.md) | `FUN_1400c78c0` | 65 | 4 | 1 | - | - | helper |
+| 767 | [0x140075d50](140075d50_FUN_140075d50.md) | `FUN_140075d50` | 64 | 3 | 1 | - | save_io | helper |
+| 768 | [0x140075ed0](140075ed0_FUN_140075ed0.md) | `FUN_140075ed0` | 64 | 2 | 1 | - | save_io | helper |
+| 769 | [0x1402f6a7c](1402f6a7c_FUN_1402f6a7c.md) | `FUN_1402f6a7c` | 64 | 2 | 1 | - | world_event | helper |
+| 770 | [0x1400410f0](1400410f0_FUN_1400410f0.md) | `FUN_1400410f0` | 63 | 2 | 2 | - | world_event | helper |
+| 771 | [0x140075cb0](140075cb0_FUN_140075cb0.md) | `FUN_140075cb0` | 63 | 3 | 1 | - | save_io | helper |
+| 772 | [0x1401010d0](1401010d0_FUN_1401010d0.md) | `FUN_1401010d0` | 63 | 4 | 1 | - | world_event | helper |
+| 773 | [0x140025320](140025320_FUN_140025320.md) | `FUN_140025320` | 62 | 3 | 1 | - | world_event | helper |
+| 774 | [0x140025450](140025450_FUN_140025450.md) | `FUN_140025450` | 62 | 2 | 1 | - | world_event | helper |
+| 775 | [0x140075c60](140075c60_FUN_140075c60.md) | `FUN_140075c60` | 62 | 3 | 1 | - | save_io | helper |
+| 776 | [0x14000f890](14000f890_FUN_14000f890.md) | `FUN_14000f890` | 61 | 2 | 1 | - | race | helper |
+| 777 | [0x140075b80](140075b80_FUN_140075b80.md) | `FUN_140075b80` | 61 | 4 | 1 | - | save_io | helper |
+| 778 | [0x1402ed8c0](1402ed8c0_FUN_1402ed8c0.md) | `FUN_1402ed8c0` | 61 | 3 | 2 | - | world_event | helper |
+| 779 | [0x140084570](140084570_FUN_140084570.md) | `FUN_140084570` | 60 | 2 | 2 | - | world_event | helper |
+| 780 | [0x1402e9a80](1402e9a80_FUN_1402e9a80.md) | `FUN_1402e9a80` | 60 | 7 | 3 | - | world_event | helper |
+| 781 | [0x1400730f0](1400730f0_FUN_1400730f0.md) | `FUN_1400730f0` | 59 | 11 | 1 | - | world_event | helper |
+| 782 | [0x140075e30](140075e30_FUN_140075e30.md) | `FUN_140075e30` | 59 | 4 | 1 | - | save_io | helper |
+| 783 | [0x1400c8d30](1400c8d30_FUN_1400c8d30.md) | `FUN_1400c8d30` | 59 | 5 | 1 | - | world_event | helper |
+| 784 | [0x1402c704c](1402c704c_FUN_1402c704c.md) | `FUN_1402c704c` | 59 | 44 | 4 | - | world_event | helper |
+| 785 | [0x140075c20](140075c20_FUN_140075c20.md) | `FUN_140075c20` | 58 | 2 | 1 | - | save_io | helper |
+| 786 | [0x140050a30](140050a30_FUN_140050a30.md) | `FUN_140050a30` | 57 | 2 | 1 | - | world_event | helper |
+| 787 | [0x1400b7660](1400b7660_FUN_1400b7660.md) | `FUN_1400b7660` | 57 | 5 | 1 | - | world_event | helper |
+| 788 | [0x140040fe0](140040fe0_FUN_140040fe0.md) | `FUN_140040fe0` | 56 | 7 | 2 | - | world_event | helper |
+| 789 | [0x1400c6580](1400c6580_FUN_1400c6580.md) | `FUN_1400c6580` | 56 | 52 | 1 | - | world_event | helper |
+| 790 | [0x1402f0160](1402f0160_FUN_1402f0160.md) | `FUN_1402f0160` | 56 | 2 | 1 | - | world_event | helper |
+| 791 | [0x140027980](140027980_FUN_140027980.md) | `FUN_140027980` | 55 | 4 | 2 | - | world_event | helper |
+| 792 | [0x1400c7520](1400c7520_FUN_1400c7520.md) | `FUN_1400c7520` | 55 | 20 | 2 | - | world_event | helper |
+| 793 | [0x1402e6fb0](1402e6fb0_FUN_1402e6fb0.md) | `FUN_1402e6fb0` | 55 | 2 | 1 | - | world_event | helper |
+| 794 | [0x1402ed990](1402ed990_FUN_1402ed990.md) | `FUN_1402ed990` | 55 | 3 | 2 | - | world_event | helper |
+| 795 | [0x14000cdc0](14000cdc0_FUN_14000cdc0.md) | `FUN_14000cdc0` | 53 | 2 | 1 | - | world_event | helper |
+| 796 | [0x140040ea0](140040ea0_FUN_140040ea0.md) | `FUN_140040ea0` | 53 | 11 | 2 | - | world_event | helper |
+| 797 | [0x140075da0](140075da0_FUN_140075da0.md) | `FUN_140075da0` | 53 | 5 | 1 | - | save_io | helper |
+| 798 | [0x1400b7730](1400b7730_FUN_1400b7730.md) | `FUN_1400b7730` | 53 | 4 | 2 | - | - | helper |
+| 799 | [0x1402d8374](1402d8374_FUN_1402d8374.md) | `FUN_1402d8374` | 53 | 2 | 1 | - | world_event | helper |
+| 800 | [0x1402eeef8](1402eeef8_FUN_1402eeef8.md) | `FUN_1402eeef8` | 53 | 2 | 1 | - | world_event | helper |
+| 801 | [0x1402eef64](1402eef64_FUN_1402eef64.md) | `FUN_1402eef64` | 53 | 2 | 2 | - | world_event | helper |
+| 802 | [0x14004a210](14004a210_FUN_14004a210.md) | `FUN_14004a210` | 52 | 2 | 1 | - | world_event | helper |
+| 803 | [0x14009be60](14009be60_FUN_14009be60.md) | `FUN_14009be60` | 52 | 2 | 3 | - | world_event | helper |
+| 804 | [0x140082060](140082060_FUN_140082060.md) | `FUN_140082060` | 51 | 2 | 1 | - | world_event | helper |
+| 805 | [0x1402e6f60](1402e6f60_FUN_1402e6f60.md) | `FUN_1402e6f60` | 51 | 2 | 2 | - | world_event | helper |
+| 806 | [0x1402ebdf0](1402ebdf0_FUN_1402ebdf0.md) | `FUN_1402ebdf0` | 51 | 3 | 2 | - | world_event | helper |
+| 807 | [0x14003ed30](14003ed30_FUN_14003ed30.md) | `FUN_14003ed30` | 50 | 1 | 3 | - | world_event | helper |
+| 808 | [0x1400679e0](1400679e0_FUN_1400679e0.md) | `FUN_1400679e0` | 50 | 1 | 3 | - | world_event | helper |
+| 809 | [0x1400c66c0](1400c66c0_FUN_1400c66c0.md) | `FUN_1400c66c0` | 50 | 5 | 1 | - | race | helper |
+| 810 | [0x140113380](140113380_FUN_140113380.md) | `FUN_140113380` | 50 | 1 | 3 | - | world_event | helper |
+| 811 | [0x1400453a0](1400453a0_FUN_1400453a0.md) | `FUN_1400453a0` | 49 | 2 | 1 | - | - | helper |
+| 812 | [0x1400a5370](1400a5370_FUN_1400a5370.md) | `FUN_1400a5370` | 49 | 2 | 1 | - | world_event | helper |
+| 813 | [0x1402e1c60](1402e1c60_FUN_1402e1c60.md) | `FUN_1402e1c60` | 48 | 2 | 1 | - | world_event | helper |
+| 814 | [0x14005c970](14005c970_FUN_14005c970.md) | `FUN_14005c970` | 47 | 2 | 2 | - | save_io | helper |
+| 815 | [0x140080b80](140080b80_FUN_140080b80.md) | `FUN_140080b80` | 47 | 2 | 1 | - | world_event | helper |
+| 816 | [0x1402e7d80](1402e7d80_FUN_1402e7d80.md) | `FUN_1402e7d80` | 47 | 4 | 1 | - | world_event | helper |
+| 817 | [0x1402ec97c](1402ec97c_FUN_1402ec97c.md) | `FUN_1402ec97c` | 47 | 2 | 3 | - | world_event | helper |
+| 818 | [0x1402ed900](1402ed900_FUN_1402ed900.md) | `FUN_1402ed900` | 47 | 3 | 2 | - | world_event | helper |
+| 819 | [0x14009f5a0](14009f5a0_FUN_14009f5a0.md) | `FUN_14009f5a0` | 46 | 2 | 1 | - | world_event | helper |
+| 820 | [0x1400a8750](1400a8750_FUN_1400a8750.md) | `FUN_1400a8750` | 45 | 2 | 1 | - | world_event | helper |
+| 821 | [0x1401012c0](1401012c0_FUN_1401012c0.md) | `FUN_1401012c0` | 45 | 2 | 1 | - | save_io | helper |
+| 822 | [0x1400c02b0](1400c02b0_FUN_1400c02b0.md) | `FUN_1400c02b0` | 44 | 2 | 4 | - | debug | helper |
+| 823 | [0x1402da150](1402da150_FUN_1402da150.md) | `FUN_1402da150` | 44 | 2 | 2 | - | world_event | helper |
+| 824 | [0x1402eba80](1402eba80_FUN_1402eba80.md) | `FUN_1402eba80` | 42 | 2 | 2 | - | world_event | helper |
+| 825 | [0x1402ebdc0](1402ebdc0_FUN_1402ebdc0.md) | `FUN_1402ebdc0` | 42 | 2 | 2 | - | world_event | helper |
+| 826 | [0x1402f8d60](1402f8d60_FUN_1402f8d60.md) | `FUN_1402f8d60` | 42 | 2 | 1 | - | world_event | helper |
+| 827 | [0x14009e2c0](14009e2c0_FUN_14009e2c0.md) | `FUN_14009e2c0` | 41 | 4 | 2 | - | - | helper |
+| 828 | [0x1400fb9c0](1400fb9c0_FUN_1400fb9c0.md) | `FUN_1400fb9c0` | 41 | 3 | 2 | - | world_event | helper |
+| 829 | [0x1400c8d90](1400c8d90_FUN_1400c8d90.md) | `FUN_1400c8d90` | 40 | 3 | 1 | - | world_event | helper |
+| 830 | [0x1400cf9d0](1400cf9d0_FUN_1400cf9d0.md) | `FUN_1400cf9d0` | 40 | 2 | 2 | - | race | helper |
+| 831 | [0x1400ca0f0](1400ca0f0_FUN_1400ca0f0.md) | `FUN_1400ca0f0` | 38 | 3 | 1 | - | world_event | helper |
+| 832 | [0x140040950](140040950_FUN_140040950.md) | `FUN_140040950` | 37 | 2 | 2 | - | world_event | helper |
+| 833 | [0x1402e6840](1402e6840_FUN_1402e6840.md) | `FUN_1402e6840` | 37 | 2 | 4 | - | world_event | helper |
+| 834 | [0x1400845c0](1400845c0_FUN_1400845c0.md) | `FUN_1400845c0` | 36 | 2 | 2 | - | world_event | helper |
+| 835 | [0x140071ed0](140071ed0_FUN_140071ed0.md) | `FUN_140071ed0` | 35 | 8 | 2 | - | - | helper |
+| 836 | [0x1402e688c](1402e688c_FUN_1402e688c.md) | `FUN_1402e688c` | 35 | 4 | 2 | - | world_event | helper |
+| 837 | [0x1402e68b0](1402e68b0_FUN_1402e68b0.md) | `FUN_1402e68b0` | 35 | 26 | 2 | - | world_event | helper |
+| 838 | [0x1400844c0](1400844c0_FUN_1400844c0.md) | `FUN_1400844c0` | 34 | 2 | 3 | - | world_event | helper |
+| 839 | [0x1400c6520](1400c6520_FUN_1400c6520.md) | `FUN_1400c6520` | 34 | 3 | 1 | - | world_event | helper |
+| 840 | [0x14010dde0](14010dde0_FUN_14010dde0.md) | `FUN_14010dde0` | 34 | 2 | 1 | - | save_io | helper |
+| 841 | [0x14010de10](14010de10_FUN_14010de10.md) | `FUN_14010de10` | 34 | 2 | 1 | - | save_io | helper |
+| 842 | [0x1402c5c3c](1402c5c3c_FUN_1402c5c3c.md) | `FUN_1402c5c3c` | 34 | 5 | 3 | - | world_event | helper |
+| 843 | [0x1402c5c60](1402c5c60_FUN_1402c5c60.md) | `FUN_1402c5c60` | 34 | 2 | 3 | - | world_event | helper |
+| 844 | [0x1402e6868](1402e6868_FUN_1402e6868.md) | `FUN_1402e6868` | 34 | 4 | 2 | - | world_event | helper |
+| 845 | [0x140024060](140024060_FUN_140024060.md) | `FUN_140024060` | 33 | 2 | 1 | - | world_event | helper |
+| 846 | [0x1402c5a60](1402c5a60_FUN_1402c5a60.md) | `FUN_1402c5a60` | 33 | 2 | 1 | - | world_event | helper |
+| 847 | [0x14009dd90](14009dd90_FUN_14009dd90.md) | `FUN_14009dd90` | 32 | 2 | 2 | - | world_event | helper |
+| 848 | [0x1400c6df0](1400c6df0_FUN_1400c6df0.md) | `FUN_1400c6df0` | 32 | 4 | 1 | - | world_event | simple_return |
+| 849 | [0x1402e7d50](1402e7d50_FUN_1402e7d50.md) | `FUN_1402e7d50` | 32 | 4 | 1 | - | world_event | simple_return |
+| 850 | [0x1402ecfa0](1402ecfa0_FUN_1402ecfa0.md) | `FUN_1402ecfa0` | 32 | 2 | 2 | - | world_event | helper |
+| 851 | [0x1402ed0a0](1402ed0a0_FUN_1402ed0a0.md) | `FUN_1402ed0a0` | 32 | 2 | 2 | - | world_event | helper |
+| 852 | [0x1402f86e0](1402f86e0_FUN_1402f86e0.md) | `FUN_1402f86e0` | 32 | 4 | 3 | - | world_event | simple_return |
+| 853 | [0x140024090](140024090_FUN_140024090.md) | `FUN_140024090` | 31 | 63 | 3 | - | world_event | helper |
+| 854 | [0x1400278e0](1400278e0_FUN_1400278e0.md) | `FUN_1400278e0` | 31 | 23 | 2 | - | - | helper |
+| 855 | [0x140082010](140082010_FUN_140082010.md) | `FUN_140082010` | 31 | 2 | 2 | - | world_event | helper |
+| 856 | [0x1402c5c1c](1402c5c1c_FUN_1402c5c1c.md) | `FUN_1402c5c1c` | 31 | 2 | 3 | - | world_event | helper |
+| 857 | [0x1402c7c00](1402c7c00_FUN_1402c7c00.md) | `FUN_1402c7c00` | 31 | 2 | 3 | - | world_event | helper |
+| 858 | [0x1400b9220](1400b9220_FUN_1400b9220.md) | `FUN_1400b9220` | 30 | 7 | 2 | - | - | helper |
+| 859 | [0x1402cd454](1402cd454_FUN_1402cd454.md) | `FUN_1402cd454` | 30 | 14 | 2 | - | world_event | helper |
+| 860 | [0x140027b00](140027b00_FUN_140027b00.md) | `FUN_140027b00` | 29 | 2 | 1 | - | race | simple_return |
+| 861 | [0x1402e8c00](1402e8c00_FUN_1402e8c00.md) | `FUN_1402e8c00` | 29 | 3 | 1 | - | world_event | simple_return |
+| 862 | [0x1402e8cc0](1402e8cc0_FUN_1402e8cc0.md) | `FUN_1402e8cc0` | 29 | 5 | 1 | - | world_event | wrapper |
+| 863 | [0x1400a3610](1400a3610_FUN_1400a3610.md) | `FUN_1400a3610` | 28 | 2 | 1 | - | world_event | simple_return |
+| 864 | [0x1400c6120](1400c6120_FUN_1400c6120.md) | `FUN_1400c6120` | 28 | 6 | 1 | - | world_event | simple_return |
+| 865 | [0x1400cf970](1400cf970_FUN_1400cf970.md) | `FUN_1400cf970` | 28 | 12 | 5 | - | world_event | simple_return |
+| 866 | [0x1400cf9a0](1400cf9a0_FUN_1400cf9a0.md) | `FUN_1400cf9a0` | 28 | 8 | 5 | - | world_event | simple_return |
+| 867 | [0x140104dc0](140104dc0_FUN_140104dc0.md) | `FUN_140104dc0` | 28 | 2 | 1 | - | world_event | wrapper |
+| 868 | [0x140106b90](140106b90_FUN_140106b90.md) | `FUN_140106b90` | 28 | 2 | 3 | lab_location | world_event | simple_return |
+| 869 | [0x1402f4460](1402f4460_FUN_1402f4460.md) | `FUN_1402f4460` | 28 | 2 | 2 | - | world_event | helper |
+| 870 | [0x14000b270](14000b270_FUN_14000b270.md) | `FUN_14000b270` | 27 | 4 | 1 | - | world_event | simple_return |
+| 871 | [0x1400c5530](1400c5530_FUN_1400c5530.md) | `FUN_1400c5530` | 27 | 2 | 1 | - | world_event | wrapper |
+| 872 | [0x1402c6a38](1402c6a38_FUN_1402c6a38.md) | `FUN_1402c6a38` | 27 | 2 | 1 | - | - | simple_return |
+| 873 | [0x1402f0dec](1402f0dec_FUN_1402f0dec.md) | `FUN_1402f0dec` | 25 | 2 | 1 | - | world_event | simple_return |
+| 874 | [0x1402e8664](1402e8664_FUN_1402e8664.md) | `FUN_1402e8664` | 24 | 3 | 3 | - | world_event | helper |
+| 875 | [0x1402f05fc](1402f05fc_FUN_1402f05fc.md) | `FUN_1402f05fc` | 24 | 2 | 1 | - | world_event | simple_return |
+| 876 | [0x1402f0e08](1402f0e08_FUN_1402f0e08.md) | `FUN_1402f0e08` | 24 | 2 | 1 | - | world_event | simple_return |
+| 877 | [0x140082410](140082410_FUN_140082410.md) | `FUN_140082410` | 23 | 2 | 1 | - | debug | simple_return |
+| 878 | [0x1400b4990](1400b4990_FUN_1400b4990.md) | `FUN_1400b4990` | 23 | 4 | 1 | - | race | simple_return |
+| 879 | [0x1400cf950](1400cf950_FUN_1400cf950.md) | `FUN_1400cf950` | 23 | 9 | 2 | - | world_event | helper |
+| 880 | [0x140075750](140075750_FUN_140075750.md) | `FUN_140075750` | 22 | 2 | 2 | - | save_io | helper |
+| 881 | [0x1402cd4c0](1402cd4c0_FUN_1402cd4c0.md) | `FUN_1402cd4c0` | 22 | 9 | 4 | lab_location | world_event | simple_return |
+| 882 | [0x1402d0770](1402d0770_FUN_1402d0770.md) | `FUN_1402d0770` | 22 | 3 | 8 | lab_location | world_event | simple_return |
+| 883 | [0x140072ca0](140072ca0_FUN_140072ca0.md) | `FUN_140072ca0` | 21 | 6 | 1 | - | world_event | simple_return |
+| 884 | [0x140072cc0](140072cc0_FUN_140072cc0.md) | `FUN_140072cc0` | 21 | 5 | 1 | - | world_event | simple_return |
+| 885 | [0x140075770](140075770_FUN_140075770.md) | `FUN_140075770` | 21 | 2 | 2 | - | save_io | helper |
+| 886 | [0x1400a53b0](1400a53b0_FUN_1400a53b0.md) | `FUN_1400a53b0` | 21 | 2 | 1 | - | world_event | simple_return |
+| 887 | [0x1402c5ac0](1402c5ac0_FUN_1402c5ac0.md) | `FUN_1402c5ac0` | 21 | 2 | 1 | - | world_event | simple_return |
+| 888 | [0x1402ebf8c](1402ebf8c_FUN_1402ebf8c.md) | `FUN_1402ebf8c` | 21 | 2 | 1 | - | world_event | wrapper |
+| 889 | [0x1400756b0](1400756b0_FUN_1400756b0.md) | `FUN_1400756b0` | 20 | 3 | 2 | - | save_io | helper |
+| 890 | [0x1400756d0](1400756d0_FUN_1400756d0.md) | `FUN_1400756d0` | 20 | 3 | 2 | - | save_io | helper |
+| 891 | [0x1400c6500](1400c6500_FUN_1400c6500.md) | `FUN_1400c6500` | 20 | 3 | 1 | - | debug | wrapper |
+| 892 | [0x1402f7fc8](1402f7fc8_FUN_1402f7fc8.md) | `FUN_1402f7fc8` | 20 | 4 | 1 | - | world_event | simple_return |
+| 893 | [0x140075670](140075670_FUN_140075670.md) | `FUN_140075670` | 19 | 5 | 2 | - | save_io | helper |
+| 894 | [0x140075690](140075690_FUN_140075690.md) | `FUN_140075690` | 19 | 3 | 2 | - | save_io | helper |
+| 895 | [0x140075710](140075710_FUN_140075710.md) | `FUN_140075710` | 19 | 4 | 2 | - | save_io | helper |
+| 896 | [0x140075730](140075730_FUN_140075730.md) | `FUN_140075730` | 19 | 4 | 2 | - | save_io | helper |
+| 897 | [0x1402e9080](1402e9080_FUN_1402e9080.md) | `FUN_1402e9080` | 19 | 3 | 1 | - | world_event | simple_return |
+| 898 | [0x1400082e0](1400082e0_FUN_1400082e0.md) | `FUN_1400082e0` | 18 | 5 | 2 | - | world_event | helper |
+| 899 | [0x14005e210](14005e210_FUN_14005e210.md) | `FUN_14005e210` | 18 | 2 | 1 | - | debug | simple_return |
+| 900 | [0x14005e250](14005e250_FUN_14005e250.md) | `FUN_14005e250` | 18 | 4 | 1 | - | aging | simple_return |
+| 901 | [0x14005e270](14005e270_FUN_14005e270.md) | `FUN_14005e270` | 18 | 2 | 1 | - | aging | simple_return |
+| 902 | [0x140110750](140110750_FUN_140110750.md) | `FUN_140110750` | 18 | 3 | 1 | - | save_io | simple_return |
+| 903 | [0x1402e93b0](1402e93b0_FUN_1402e93b0.md) | `FUN_1402e93b0` | 18 | 2 | 2 | - | world_event | helper |
+| 904 | [0x14002cca0](14002cca0_FUN_14002cca0.md) | `FUN_14002cca0` | 17 | 4 | 2 | - | world_event | helper |
+| 905 | [0x140040fc0](140040fc0_FUN_140040fc0.md) | `FUN_140040fc0` | 17 | 2 | 1 | - | race | wrapper |
+| 906 | [0x14009c780](14009c780_FUN_14009c780.md) | `FUN_14009c780` | 17 | 7 | 1 | - | world_event | wrapper |
+| 907 | [0x1400c5f10](1400c5f10_FUN_1400c5f10.md) | `FUN_1400c5f10` | 17 | 11 | 1 | - | world_event | simple_return |
+| 908 | [0x1400c5f30](1400c5f30_FUN_1400c5f30.md) | `FUN_1400c5f30` | 17 | 4 | 1 | - | world_event | simple_return |
+| 909 | [0x1400c5f50](1400c5f50_FUN_1400c5f50.md) | `FUN_1400c5f50` | 17 | 8 | 1 | - | world_event | simple_return |
+| 910 | [0x1400c5f70](1400c5f70_FUN_1400c5f70.md) | `FUN_1400c5f70` | 17 | 11 | 1 | - | world_event | simple_return |
+| 911 | [0x1400ca240](1400ca240_FUN_1400ca240.md) | `FUN_1400ca240` | 17 | 5 | 1 | - | world_event | wrapper |
+| 912 | [0x1402eda20](1402eda20_FUN_1402eda20.md) | `FUN_1402eda20` | 17 | 3 | 1 | - | world_event | simple_return |
+| 913 | [0x140024130](140024130_FUN_140024130.md) | `FUN_140024130` | 16 | 27 | 2 | - | world_event | helper |
+| 914 | [0x14002f0d0](14002f0d0_FUN_14002f0d0.md) | `FUN_14002f0d0` | 16 | 58 | 2 | - | world_event | helper |
+| 915 | [0x1400478f0](1400478f0_FUN_1400478f0.md) | `FUN_1400478f0` | 16 | 5 | 2 | - | world_event | helper |
+| 916 | [0x140067e30](140067e30_FUN_140067e30.md) | `FUN_140067e30` | 16 | 2 | 1 | - | - | simple_return |
+| 917 | [0x1400b76a0](1400b76a0_FUN_1400b76a0.md) | `FUN_1400b76a0` | 16 | 4 | 1 | - | - | simple_return |
+| 918 | [0x1400bc560](1400bc560_FUN_1400bc560.md) | `FUN_1400bc560` | 16 | 2 | 1 | - | world_event | wrapper |
+| 919 | [0x1400bf7d0](1400bf7d0_FUN_1400bf7d0.md) | `FUN_1400bf7d0` | 16 | 3 | 2 | - | world_event | helper |
+| 920 | [0x1400c4320](1400c4320_FUN_1400c4320.md) | `FUN_1400c4320` | 16 | 27 | 1 | - | world_event | wrapper |
+| 921 | [0x140086310](140086310_FUN_140086310.md) | `FUN_140086310` | 15 | 6 | 1 | - | world_event | simple_return |
+| 922 | [0x1400c6550](1400c6550_FUN_1400c6550.md) | `FUN_1400c6550` | 15 | 3 | 1 | - | world_event | wrapper |
+| 923 | [0x1400cd560](1400cd560_FUN_1400cd560.md) | `FUN_1400cd560` | 15 | 4 | 2 | - | race | helper |
+| 924 | [0x14009c320](14009c320_FUN_14009c320.md) | `FUN_14009c320` | 14 | 2 | 1 | - | world_event | wrapper |
+| 925 | [0x140075650](140075650_FUN_140075650.md) | `FUN_140075650` | 13 | 3 | 1 | - | save_io | simple_return |
+| 926 | [0x1402e8ce0](1402e8ce0_FUN_1402e8ce0.md) | `FUN_1402e8ce0` | 13 | 2 | 1 | - | world_event | simple_return |
+| 927 | [0x1400b6150](1400b6150_FUN_1400b6150.md) | `FUN_1400b6150` | 12 | 6 | 1 | - | world_event | wrapper |
+| 928 | [0x1400cd580](1400cd580_FUN_1400cd580.md) | `FUN_1400cd580` | 12 | 3 | 2 | - | debug | helper |
+| 929 | [0x1402da20c](1402da20c_FUN_1402da20c.md) | `FUN_1402da20c` | 12 | 4 | 2 | - | world_event | helper |
+| 930 | [0x1400b4af0](1400b4af0_FUN_1400b4af0.md) | `FUN_1400b4af0` | 11 | 5 | 1 | - | world_event | simple_return |
+| 931 | [0x1402c7c2c](1402c7c2c_FUN_1402c7c2c.md) | `FUN_1402c7c2c` | 11 | 2 | 1 | - | world_event | wrapper |
+| 932 | [0x1402ce0f8](1402ce0f8_FUN_1402ce0f8.md) | `FUN_1402ce0f8` | 11 | 4 | 1 | - | world_event | wrapper |
+| 933 | [0x1402e1710](1402e1710_FUN_1402e1710.md) | `FUN_1402e1710` | 11 | 6 | 1 | - | world_event | wrapper |
+| 934 | [0x1402e171c](1402e171c_FUN_1402e171c.md) | `FUN_1402e171c` | 11 | 6 | 1 | - | world_event | wrapper |
+| 935 | [0x1400b7720](1400b7720_FUN_1400b7720.md) | `FUN_1400b7720` | 10 | 11 | 1 | - | world_event | simple_return |
+| 936 | [0x1400c4de0](1400c4de0_FUN_1400c4de0.md) | `FUN_1400c4de0` | 10 | 4 | 3 | - | world_event | helper |
+| 937 | [0x1402da254](1402da254_FUN_1402da254.md) | `FUN_1402da254` | 10 | 3 | 2 | - | world_event | helper |
+| 938 | [0x1402e8ca0](1402e8ca0_FUN_1402e8ca0.md) | `FUN_1402e8ca0` | 10 | 2 | 1 | - | world_event | simple_return |
+| 939 | [0x1402e8cb0](1402e8cb0_FUN_1402e8cb0.md) | `FUN_1402e8cb0` | 10 | 2 | 1 | - | world_event | wrapper |
+| 940 | [0x1402ec3b0](1402ec3b0_FUN_1402ec3b0.md) | `FUN_1402ec3b0` | 10 | 2 | 1 | - | world_event | wrapper |
+| 941 | [0x140009de0](140009de0_FUN_140009de0.md) | `FUN_140009de0` | 9 | 3 | 1 | - | world_event | getter |
+| 942 | [0x140009df0](140009df0_FUN_140009df0.md) | `FUN_140009df0` | 9 | 3 | 1 | - | world_event | getter |
+| 943 | [0x1402e90a0](1402e90a0_FUN_1402e90a0.md) | `FUN_1402e90a0` | 9 | 5 | 1 | - | world_event | simple_return |
+| 944 | [0x1402f5700](1402f5700_FUN_1402f5700.md) | `FUN_1402f5700` | 9 | 2 | 1 | - | world_event | simple_return |
+| 945 | [0x140005e00](140005e00_FUN_140005e00.md) | `FUN_140005e00` | 8 | 2 | 1 | - | world_event | empty_stub |
+| 946 | [0x140009e00](140009e00_FUN_140009e00.md) | `FUN_140009e00` | 8 | 3 | 1 | - | world_event | empty_stub |
+| 947 | [0x14000b290](14000b290_FUN_14000b290.md) | `FUN_14000b290` | 8 | 5 | 1 | - | world_event | empty_stub |
+| 948 | [0x14000b390](14000b390_FUN_14000b390.md) | `FUN_14000b390` | 8 | 3 | 1 | - | world_event | empty_stub |
+| 949 | [0x140023ec0](140023ec0_FUN_140023ec0.md) | `FUN_140023ec0` | 8 | 4 | 1 | - | world_event | empty_stub |
+| 950 | [0x140023ed0](140023ed0_FUN_140023ed0.md) | `FUN_140023ed0` | 8 | 2 | 1 | - | world_event | empty_stub |
+| 951 | [0x140086330](140086330_FUN_140086330.md) | `FUN_140086330` | 8 | 4 | 1 | - | world_event | empty_stub |
+| 952 | [0x14008d2c0](14008d2c0_FUN_14008d2c0.md) | `FUN_14008d2c0` | 8 | 4 | 1 | - | world_event | empty_stub |
+| 953 | [0x1400a89f0](1400a89f0_FUN_1400a89f0.md) | `FUN_1400a89f0` | 8 | 5 | 1 | - | world_event | empty_stub |
+| 954 | [0x1400b7650](1400b7650_FUN_1400b7650.md) | `FUN_1400b7650` | 8 | 5 | 1 | - | world_event | empty_stub |
+| 955 | [0x1400c43c0](1400c43c0_FUN_1400c43c0.md) | `FUN_1400c43c0` | 8 | 10 | 1 | - | world_event | empty_stub |
+| 956 | [0x1400c4df0](1400c4df0_FUN_1400c4df0.md) | `FUN_1400c4df0` | 8 | 4 | 1 | - | save_io | empty_stub |
+| 957 | [0x1400c4e00](1400c4e00_FUN_1400c4e00.md) | `FUN_1400c4e00` | 8 | 2 | 1 | - | world_event | empty_stub |
+| 958 | [0x1400c5c20](1400c5c20_FUN_1400c5c20.md) | `FUN_1400c5c20` | 8 | 8 | 1 | - | world_event | empty_stub |
+| 959 | [0x1400c5c30](1400c5c30_FUN_1400c5c30.md) | `FUN_1400c5c30` | 8 | 6 | 1 | - | world_event | empty_stub |
+| 960 | [0x1400c6570](1400c6570_FUN_1400c6570.md) | `FUN_1400c6570` | 8 | 3 | 1 | - | world_event | empty_stub |
+| 961 | [0x1402c6cd0](1402c6cd0_FUN_1402c6cd0.md) | `FUN_1402c6cd0` | 8 | 2 | 1 | - | - | empty_stub |
+| 962 | [0x1402f7fc0](1402f7fc0_FUN_1402f7fc0.md) | `FUN_1402f7fc0` | 8 | 4 | 1 | - | world_event | empty_stub |
+| 963 | [0x14003f330](14003f330_FUN_14003f330.md) | `FUN_14003f330` | 7 | 4 | 1 | - | - | empty_stub |
+| 964 | [0x1402e7d34](1402e7d34_FUN_1402e7d34.md) | `FUN_1402e7d34` | 7 | 2 | 1 | - | world_event | empty_stub |
+| 965 | [0x1400c5c00](1400c5c00_FUN_1400c5c00.md) | `FUN_1400c5c00` | 5 | 5 | 1 | - | world_event | empty_stub |
+| 966 | [0x1400c5c10](1400c5c10_FUN_1400c5c10.md) | `FUN_1400c5c10` | 5 | 11 | 1 | - | world_event | empty_stub |
+| 967 | [0x1402c7088](1402c7088_FUN_1402c7088.md) | `FUN_1402c7088` | 5 | 152 | 1 | - | world_event | empty_stub |
+| 968 | [0x1402eba70](1402eba70_FUN_1402eba70.md) | `FUN_1402eba70` | 5 | 2 | 1 | - | world_event | empty_stub |
+| 969 | [0x1400734c0](1400734c0_FUN_1400734c0.md) | `FUN_1400734c0` | 3 | 3 | 1 | - | world_event | empty_stub |
+| 970 | [0x1400bcaf0](1400bcaf0_FUN_1400bcaf0.md) | `FUN_1400bcaf0` | 3 | 2 | 1 | - | world_event | empty_stub |
+| 971 | [0x1400c8d80](1400c8d80_FUN_1400c8d80.md) | `FUN_1400c8d80` | 3 | 2 | 1 | - | world_event | empty_stub |
