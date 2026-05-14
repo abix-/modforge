@@ -35,6 +35,133 @@ Probably easiest as a `horseyforge` mod once that foundation exists (see
 
 ---
 
+### Horse-crowd management (CRITICAL for 50+ horse households)
+
+When many horses are at the same location (e.g. all your horses parked at
+home), they stack on top of each other. Vanilla problems:
+
+- Horses overlap pixel-for-pixel; you can't see how many are there.
+- Clicking one horse is a lottery (you get whichever is rendered last).
+- No way to tell at a glance which horses are hungry / tired / sick.
+- Breeding setup is painful: you can't easily pick two specific parents.
+- Counting "how many horses do I own?" requires moving the camera to find
+  every stack.
+
+#### Sub-features
+
+**1. Auto-spread overlapping horses**
+
+When N >= 2 horses share a tile, render them in a small fan/circle around
+the actual position so each is individually clickable. Hover one horse to
+"lift" it forward for emphasis.
+
+Implementation: hook the per-horse render call. Detect overlap by
+quantizing positions to half-tile buckets. For each bucket with >1
+horse, offset each horse's render position by a deterministic angle
+(`horse_id % N * 360/N`) and a small radius. The actual game-state
+position stays unchanged; only the render position is offset.
+
+**2. Roster panel overlay**
+
+A side-panel UI showing ALL horses with one row each, columns sortable:
+
+| Name | Loc | Age | Hunger | Tired | Breed-Ready | Skill | Status |
+
+Click a row to focus camera + select that horse. Filter chips at top:
+"Hungry only", "Tired only", "Old", "At home", "On track", etc.
+
+Backend: the data already lives in our `horses.count`/`horse.read` ops.
+Front-end is either:
+- ImGui overlay (DX12-hook integration; significant work)
+- **Web UI** served from `modforge::server` (much faster path; user
+  has it open in a side browser window)
+
+The web UI is the right first cut. ~200 lines of HTML/JS pulling from
+our existing HTTP control plane.
+
+**3. Status badges on stacked horses**
+
+Above each horse, render small icons matching what the engine already
+draws (`StatusHungry`, `StatusTired`, `StatusOld`) but ENLARGED and
+ALWAYS-VISIBLE (not just on hover). Color-coded:
+
+- Red dot = needs food urgently
+- Yellow dot = tired
+- Blue dot = ready to breed
+- Skull = imminent death from old age
+
+Hook the existing `render_horse_thought_bubble` family (we annotated
+those at `0x1400bd820` etc.) and always-draw the badges instead of
+gating on hover state.
+
+**4. Hotkey horse cycling**
+
+When multiple horses are stacked, pressing `Tab` cycles selection
+through them. Useful when auto-spread is off or when zoomed out.
+
+**5. Count display**
+
+Floating "N" badge above a stack of overlapping horses, showing the
+count. Disappears when you mouse-over (so it doesn't block the spread
+view).
+
+**6. Breeding picker**
+
+A dedicated overlay: pick parent A from the roster, pick parent B,
+preview the predicted offspring stats (using our knowledge of the
+breeding formula: `litter = min(parentA.litter, parentB.litter) +
+rng_bonus`). Click "Breed" to drag both horses to the barn
+automatically.
+
+**7. Smart auto-feeding**
+
+A toggle: "auto-feed hungry horses from inventory hay". When on, any
+horse whose hunger crosses the threshold gets fed automatically as
+long as hay is in stock. Removes the manual feeding chore entirely.
+
+**8. Group operations**
+
+Select multiple horses (Ctrl+click or via the roster panel), then:
+- Move them all to a location
+- Feed them all
+- Put them all to sleep
+- Retire them all
+- Bulk-sell at the glue factory
+
+#### Why this matters
+
+The user explicitly identified this as the second-biggest tedium source
+after fatigue/aging. Without these features the late-game experience
+(50+ horses) is dominated by UI friction, not gameplay.
+
+#### Implementation path
+
+This entire feature stack rides on `horseyforge`:
+
+| Sub-feature | Backend | Frontend |
+|---|---|---|
+| Auto-spread | Hook per-horse render | none (positions just shift) |
+| Roster panel | Existing `horses.*` ops | Web UI page (HTML + JS) |
+| Status badges | Hook status-bubble render | none (badge always-on) |
+| Hotkey cycling | SDL input hook | none |
+| Count display | Hook overlap detection | rendered via render hook |
+| Breeding picker | New `breed.preview` op | Web UI page |
+| Auto-feed | New `auto_feed` toggle setting | none (runs automatically) |
+| Group ops | New `horses.bulk_*` ops | Web UI page |
+
+The web-UI approach is the unblocker: don't try to inject UI into the
+SDL3 renderer right away. Use `modforge::server`'s HTTP plane plus a
+single-page HTML app served from our DLL. The user keeps a Chrome tab
+open on `http://localhost:33077/ui` with all the management features.
+The IN-GAME view (auto-spread, status badges, count display) is the
+in-game-rendered subset; the heavy UI lives in the browser.
+
+This split is also how serious modders ship overlays in 2026: the
+external-tool-via-localhost pattern is friction-free vs. embedding a
+full UI library into the game's render path.
+
+---
+
 ## Mod foundations to build
 
 ### 1. `horseyforge` crate (per-engine binding for modforge)
@@ -145,7 +272,7 @@ These could change the modding architecture; worth investigating early:
 - [ ] Does Horsey have an existing ImGui integration we can reuse? (Probably no.)
 - [ ] Is the SDL3 input layer hookable cleanly via DLL? (Probably yes via SDL3
       public API forwarding.)
-- [ ] How does the game integrate with Steam — does it call SteamAPI_Init,
+- [ ] How does the game integrate with Steam. Does it call SteamAPI_Init,
       SteamUtils, etc.? (Yes; we have `SteamUtils010` reference at
       `0x1400c35b0`.)
 - [ ] Are there per-frame update hooks we can hijack cleanly? (`0x1400dbe10`
