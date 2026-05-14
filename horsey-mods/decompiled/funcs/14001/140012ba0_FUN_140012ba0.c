@@ -1,0 +1,424 @@
+// Address: 0x140012ba0
+// Ghidra name: FUN_140012ba0
+// ============ 0x140012ba0 FUN_140012ba0 (size=1765) ============
+
+
+undefined8
+
+FUN_140012ba0(longlong *param_1,longlong param_2,longlong param_3,longlong *param_4,longlong param_5
+
+             ,undefined8 *param_6,float param_7)
+
+
+
+{
+
+  float *pfVar1;
+
+  float fVar2;
+
+  float fVar3;
+
+  float fVar4;
+
+  float fVar5;
+
+  byte bVar6;
+
+  short sVar7;
+
+  longlong lVar8;
+
+  longlong lVar9;
+
+  ulonglong uVar10;
+
+  float fVar11;
+
+  float fVar12;
+
+  undefined8 uVar13;
+
+  undefined8 uVar14;
+
+  uint uVar15;
+
+  undefined4 uVar16;
+
+  float fVar17;
+
+  float fVar18;
+
+  float fVar19;
+
+  float fVar20;
+
+  float fVar21;
+
+  float fVar22;
+
+  float fVar23;
+
+  float fVar24;
+
+  
+
+  sVar7 = *(short *)(param_2 + 4);
+
+  *param_1 = param_3;
+
+  param_1[1] = param_5;
+
+  if (1 < (ushort)(sVar7 - 1U)) {
+
+    FID_conflict__assert
+
+              (L"0 < count && count < 3",L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2TimeOfImpact.cpp",
+
+               0x32);
+
+  }
+
+  fVar19 = DAT_14039ca44;
+
+  lVar8 = param_4[1];
+
+  param_1[2] = *param_4;
+
+  param_1[3] = lVar8;
+
+  lVar8 = param_4[3];
+
+  fVar19 = fVar19 - param_7;
+
+  param_1[4] = param_4[2];
+
+  param_1[5] = lVar8;
+
+  *(int *)(param_1 + 6) = (int)param_4[4];
+
+  uVar13 = param_6[1];
+
+  *(undefined8 *)((longlong)param_1 + 0x34) = *param_6;
+
+  *(undefined8 *)((longlong)param_1 + 0x3c) = uVar13;
+
+  uVar13 = param_6[3];
+
+  *(undefined8 *)((longlong)param_1 + 0x44) = param_6[2];
+
+  *(undefined8 *)((longlong)param_1 + 0x4c) = uVar13;
+
+  *(undefined4 *)((longlong)param_1 + 0x54) = *(undefined4 *)(param_6 + 4);
+
+  fVar17 = param_7 * *(float *)((longlong)param_1 + 0x2c) + fVar19 * *(float *)(param_1 + 5);
+
+  fVar11 = (float)FUN_1402cdc50(fVar17);
+
+  uVar13 = FUN_1402cfda0(fVar17);
+
+  fVar17 = (float)uVar13;
+
+  fVar24 = (param_7 * *(float *)((longlong)param_1 + 0x24) +
+
+           fVar19 * *(float *)((longlong)param_1 + 0x1c)) -
+
+           (*(float *)(param_1 + 2) * fVar11 + *(float *)((longlong)param_1 + 0x14) * fVar17);
+
+  fVar18 = param_7 * *(float *)(param_1 + 10) + fVar19 * *(float *)((longlong)param_1 + 0x4c);
+
+  fVar23 = (fVar19 * *(float *)(param_1 + 3) + param_7 * *(float *)(param_1 + 4)) -
+
+           (*(float *)(param_1 + 2) * fVar17 - *(float *)((longlong)param_1 + 0x14) * fVar11);
+
+  fVar12 = (float)FUN_1402cdc50(fVar18);
+
+  uVar14 = FUN_1402cfda0(fVar18);
+
+  uVar16 = (undefined4)((ulonglong)uVar14 >> 0x20);
+
+  fVar18 = (float)uVar14;
+
+  fVar21 = (fVar19 * *(float *)((longlong)param_1 + 0x3c) +
+
+           param_7 * *(float *)((longlong)param_1 + 0x44)) -
+
+           (fVar18 * *(float *)((longlong)param_1 + 0x34) - fVar12 * *(float *)(param_1 + 7));
+
+  bVar6 = *(byte *)(param_2 + 6);
+
+  uVar10 = (ulonglong)bVar6;
+
+  fVar19 = (fVar19 * *(float *)(param_1 + 8) + param_7 * *(float *)(param_1 + 9)) -
+
+           (fVar12 * *(float *)((longlong)param_1 + 0x34) + fVar18 * *(float *)(param_1 + 7));
+
+  if (sVar7 == 1) {
+
+    lVar8 = *param_1;
+
+    *(undefined4 *)(param_1 + 0xb) = 0;
+
+    if (*(int *)(lVar8 + 0x18) <= (int)(uint)bVar6) {
+
+      FID_conflict__assert
+
+                (L"0 <= index && index < m_count",L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h"
+
+                 ,0x67);
+
+    }
+
+    lVar8 = *(longlong *)(lVar8 + 0x10);
+
+    bVar6 = *(byte *)(param_2 + 9);
+
+    lVar9 = param_1[1];
+
+    fVar2 = *(float *)(lVar8 + uVar10 * 8);
+
+    fVar3 = *(float *)(lVar8 + 4 + uVar10 * 8);
+
+    if (*(int *)(lVar9 + 0x18) <= (int)(uint)bVar6) {
+
+      FID_conflict__assert
+
+                (L"0 <= index && index < m_count",L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h"
+
+                 ,0x67);
+
+    }
+
+    lVar8 = *(longlong *)(lVar9 + 0x10);
+
+    fVar20 = *(float *)(lVar8 + (ulonglong)bVar6 * 8);
+
+    fVar22 = *(float *)(lVar8 + 4 + (ulonglong)bVar6 * 8);
+
+    *(float *)(param_1 + 0xd) =
+
+         (fVar18 * fVar22 + fVar12 * fVar20 + fVar19) - (fVar3 * fVar17 + fVar2 * fVar11 + fVar24);
+
+    *(float *)((longlong)param_1 + 100) =
+
+         ((fVar18 * fVar20 - fVar12 * fVar22) + fVar21) -
+
+         ((fVar2 * fVar17 - fVar3 * fVar11) + fVar23);
+
+    uVar13 = FUN_1400058e0();
+
+  }
+
+  else {
+
+    if (bVar6 == *(byte *)(param_2 + 7)) {
+
+      bVar6 = *(byte *)(param_2 + 9);
+
+      *(undefined4 *)(param_1 + 0xb) = 2;
+
+      if (*(int *)(param_5 + 0x18) <= (int)(uint)bVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      fVar2 = *(float *)(*(longlong *)(param_5 + 0x10) + (ulonglong)bVar6 * 8);
+
+      fVar3 = *(float *)(*(longlong *)(param_5 + 0x10) + 4 + (ulonglong)bVar6 * 8);
+
+      bVar6 = *(byte *)(param_2 + 10);
+
+      if (*(int *)(param_5 + 0x18) <= (int)(uint)bVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      pfVar1 = (float *)((longlong)param_1 + 100);
+
+      fVar20 = *(float *)(*(longlong *)(param_5 + 0x10) + 4 + (ulonglong)bVar6 * 8);
+
+      fVar22 = *(float *)(*(longlong *)(param_5 + 0x10) + (ulonglong)bVar6 * 8);
+
+      *pfVar1 = fVar20 - fVar3;
+
+      *(float *)(param_1 + 0xd) = (fVar22 - fVar2) * DAT_14039ca80;
+
+      FUN_1400058e0(pfVar1);
+
+      fVar4 = *(float *)(param_1 + 0xd);
+
+      fVar5 = *pfVar1;
+
+      fVar20 = (fVar3 + fVar20) * DAT_14039ca34;
+
+      fVar3 = *(float *)(param_1 + 0xd);
+
+      fVar22 = (fVar2 + fVar22) * DAT_14039ca34;
+
+      fVar2 = *pfVar1;
+
+      *(float *)(param_1 + 0xc) = fVar20;
+
+      *(float *)((longlong)param_1 + 0x5c) = fVar22;
+
+      uVar10 = (ulonglong)*(byte *)(param_2 + 6);
+
+      if (*(int *)(param_3 + 0x18) <= (int)(uint)*(byte *)(param_2 + 6)) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      lVar8 = *(longlong *)(param_3 + 0x10);
+
+      fVar19 = (((fVar17 * *(float *)(lVar8 + uVar10 * 8) -
+
+                 fVar11 * *(float *)(lVar8 + 4 + uVar10 * 8)) + fVar23) -
+
+               ((fVar22 * fVar18 - fVar20 * fVar12) + fVar21)) * (fVar18 * fVar5 - fVar12 * fVar4) +
+
+               ((fVar17 * *(float *)(lVar8 + 4 + uVar10 * 8) +
+
+                 fVar11 * *(float *)(lVar8 + uVar10 * 8) + fVar24) -
+
+               (fVar20 * fVar18 + fVar22 * fVar12 + fVar19)) * (fVar18 * fVar3 + fVar12 * fVar2);
+
+      uVar16 = (int)((ulonglong)uVar13 >> 0x20);
+
+    }
+
+    else {
+
+      lVar8 = *param_1;
+
+      *(undefined4 *)(param_1 + 0xb) = 1;
+
+      if (*(int *)(lVar8 + 0x18) <= (int)(uint)bVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      lVar8 = *(longlong *)(lVar8 + 0x10);
+
+      lVar9 = *param_1;
+
+      fVar2 = *(float *)(lVar8 + uVar10 * 8);
+
+      fVar3 = *(float *)(lVar8 + 4 + uVar10 * 8);
+
+      bVar6 = *(byte *)(param_2 + 7);
+
+      if (*(int *)(lVar9 + 0x18) <= (int)(uint)bVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      lVar8 = *(longlong *)(lVar9 + 0x10);
+
+      pfVar1 = (float *)((longlong)param_1 + 100);
+
+      fVar20 = *(float *)(lVar8 + 4 + (ulonglong)bVar6 * 8);
+
+      fVar22 = *(float *)(lVar8 + (ulonglong)bVar6 * 8);
+
+      *pfVar1 = fVar20 - fVar3;
+
+      *(float *)(param_1 + 0xd) = (fVar22 - fVar2) * DAT_14039ca80;
+
+      FUN_1400058e0(pfVar1);
+
+      bVar6 = *(byte *)(param_2 + 9);
+
+      uVar10 = (ulonglong)bVar6;
+
+      fVar4 = *(float *)(param_1 + 0xd);
+
+      fVar5 = *pfVar1;
+
+      fVar20 = (fVar3 + fVar20) * DAT_14039ca34;
+
+      fVar3 = *(float *)(param_1 + 0xd);
+
+      fVar22 = (fVar2 + fVar22) * DAT_14039ca34;
+
+      fVar2 = *pfVar1;
+
+      *(float *)(param_1 + 0xc) = fVar20;
+
+      *(float *)((longlong)param_1 + 0x5c) = fVar22;
+
+      lVar8 = param_1[1];
+
+      if (*(int *)(lVar8 + 0x18) <= (int)(uint)bVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < m_count",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2Distance.h",0x67);
+
+      }
+
+      lVar8 = *(longlong *)(lVar8 + 0x10);
+
+      fVar19 = (((fVar18 * *(float *)(lVar8 + uVar10 * 8) -
+
+                 fVar12 * *(float *)(lVar8 + 4 + uVar10 * 8)) + fVar21) -
+
+               ((fVar22 * fVar17 - fVar20 * fVar11) + fVar23)) * (fVar17 * fVar5 - fVar11 * fVar4) +
+
+               ((fVar18 * *(float *)(lVar8 + 4 + uVar10 * 8) +
+
+                 fVar12 * *(float *)(lVar8 + uVar10 * 8) + fVar19) -
+
+               (fVar20 * fVar17 + fVar22 * fVar11 + fVar24)) * (fVar17 * fVar3 + fVar11 * fVar2);
+
+    }
+
+    uVar13 = CONCAT44(uVar16,fVar19);
+
+    if (fVar19 < 0.0) {
+
+      uVar13 = CONCAT44(uVar16,(uint)fVar19 ^ DAT_14039cac0);
+
+      uVar15 = *(uint *)(param_1 + 0xd) ^ DAT_14039cac0;
+
+      *(uint *)((longlong)param_1 + 100) = *(uint *)((longlong)param_1 + 100) ^ DAT_14039cac0;
+
+      *(uint *)(param_1 + 0xd) = uVar15;
+
+    }
+
+  }
+
+  return uVar13;
+
+}
+
+
+
+

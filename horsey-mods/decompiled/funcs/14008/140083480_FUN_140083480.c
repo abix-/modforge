@@ -1,0 +1,110 @@
+// Address: 0x140083480
+// Ghidra name: FUN_140083480
+// ============ 0x140083480 FUN_140083480 (size=289) ============
+
+
+void FUN_140083480(undefined8 param_1,undefined8 param_2,undefined8 param_3,char param_4,
+
+                  undefined4 param_5,undefined4 param_6,undefined4 param_7)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  undefined8 local_f8;
+
+  undefined8 local_f0;
+
+  undefined ***local_e8;
+
+  undefined8 local_e0;
+
+  undefined4 local_d8;
+
+  undefined4 local_d4;
+
+  undefined4 local_d0;
+
+  undefined1 local_cc;
+
+  undefined4 local_ca;
+
+  undefined2 local_c6;
+
+  undefined **local_b8;
+
+  undefined4 local_b0;
+
+  undefined8 local_ac;
+
+  undefined4 local_a4;
+
+  undefined4 local_20;
+
+  
+
+  local_b8 = b2PolygonShape::vftable;
+
+  local_b0 = 2;
+
+  local_ac = 0x3c23d70a;
+
+  local_20 = 0;
+
+  local_a4 = 0;
+
+  local_f0._4_4_ = (float)((ulonglong)param_3 >> 0x20);
+
+  local_f0._0_4_ = (float)param_3;
+
+  local_f8 = param_2;
+
+  if (param_4 == '\0') {
+
+    local_f8._0_4_ = (float)param_2;
+
+    local_f8._4_4_ = (float)((ulonglong)param_2 >> 0x20);
+
+    local_f8 = CONCAT44(local_f8._4_4_ + local_f0._4_4_ * DAT_14039ca34,
+
+                        (float)local_f8 + (float)local_f0 * DAT_14039ca34);
+
+  }
+
+  fVar1 = local_f0._4_4_ * DAT_14039ca34;
+
+  fVar2 = (float)local_f0 * DAT_14039ca34;
+
+  local_f0 = param_3;
+
+  FUN_14000d4e0(&local_b8,fVar2,fVar1,&local_f8,0);
+
+  local_e0 = 0;
+
+  local_ca = 0xffff0001;
+
+  local_c6 = 0;
+
+  local_cc = 0;
+
+  local_e8 = &local_b8;
+
+  local_d0 = param_5;
+
+  local_d8 = param_6;
+
+  local_d4 = param_7;
+
+  FUN_14000fbc0(param_1,&local_e8);
+
+  return;
+
+}
+
+
+
+

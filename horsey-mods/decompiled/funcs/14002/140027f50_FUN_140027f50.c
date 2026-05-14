@@ -1,0 +1,150 @@
+// Address: 0x140027f50
+// Ghidra name: FUN_140027f50
+// ============ 0x140027f50 FUN_140027f50 (size=369) ============
+
+
+ulonglong * FUN_140027f50(ulonglong *param_1,undefined8 param_2,ulonglong param_3)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  longlong lVar2;
+
+  ulonglong uVar3;
+
+  ulonglong uVar4;
+
+  ulonglong *puVar5;
+
+  ulonglong uVar6;
+
+  
+
+  uVar1 = param_1[3];
+
+  if (param_3 <= uVar1) {
+
+    puVar5 = param_1;
+
+    if (0xf < uVar1) {
+
+      puVar5 = (ulonglong *)*param_1;
+
+    }
+
+    param_1[2] = param_3;
+
+    FUN_1402f8e20(puVar5);
+
+    *(undefined1 *)((longlong)puVar5 + param_3) = 0;
+
+    return param_1;
+
+  }
+
+  uVar6 = 0x7fffffffffffffff;
+
+  if (0x7fffffffffffffff < param_3) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_140024130();
+
+  }
+
+  uVar3 = param_3 | 0xf;
+
+  if ((uVar3 < 0x8000000000000000) && (uVar1 <= 0x7fffffffffffffff - (uVar1 >> 1))) {
+
+    uVar4 = uVar1 + (uVar1 >> 1);
+
+    uVar6 = uVar3;
+
+    if (uVar3 < uVar4) {
+
+      uVar6 = uVar4;
+
+    }
+
+    if (uVar6 == 0xffffffffffffffff) {
+
+      uVar3 = 0;
+
+    }
+
+    else {
+
+      if (0xfff < uVar6 + 1) {
+
+        if (uVar6 + 0x28 <= uVar6 + 1) {
+
+                    /* WARNING: Subroutine does not return */
+
+          FUN_140024090();
+
+        }
+
+        goto LAB_14002800c;
+
+      }
+
+      uVar3 = FUN_1402c704c();
+
+    }
+
+  }
+
+  else {
+
+LAB_14002800c:
+
+    lVar2 = FUN_1402c704c();
+
+    if (lVar2 == 0) goto LAB_1400280ab;
+
+    uVar3 = lVar2 + 0x27U & 0xffffffffffffffe0;
+
+    *(longlong *)(uVar3 - 8) = lVar2;
+
+  }
+
+  param_1[2] = param_3;
+
+  param_1[3] = uVar6;
+
+  FUN_1402f8e20(uVar3,param_2);
+
+  *(undefined1 *)(uVar3 + param_3) = 0;
+
+  if (0xf < uVar1) {
+
+    uVar6 = *param_1;
+
+    uVar4 = uVar6;
+
+    if ((0xfff < uVar1 + 1) && (uVar4 = *(ulonglong *)(uVar6 - 8), 0x1f < (uVar6 - uVar4) - 8)) {
+
+LAB_1400280ab:
+
+                    /* WARNING: Subroutine does not return */
+
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+    }
+
+    FUN_1402c7088(uVar4);
+
+  }
+
+  *param_1 = uVar3;
+
+  return param_1;
+
+}
+
+
+
+

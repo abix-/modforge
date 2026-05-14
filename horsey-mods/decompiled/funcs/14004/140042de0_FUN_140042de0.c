@@ -1,0 +1,86 @@
+// Address: 0x140042de0
+// Ghidra name: FUN_140042de0
+// ============ 0x140042de0 FUN_140042de0 (size=198) ============
+
+
+ulonglong FUN_140042de0(longlong param_1,int param_2,undefined8 param_3,ulonglong param_4)
+
+
+
+{
+
+  uint uVar1;
+
+  uint uVar2;
+
+  ulonglong uVar3;
+
+  int iVar4;
+
+  undefined8 local_res18 [2];
+
+  undefined8 in_stack_ffffffffffffffb8;
+
+  undefined8 local_28 [2];
+
+  
+
+  uVar1 = (uint)((ulonglong)in_stack_ffffffffffffffb8 >> 0x20);
+
+  iVar4 = (int)param_4;
+
+  local_res18[0] = param_3;
+
+  if (param_2 == 1) {
+
+    local_28[0] = 0;
+
+    uVar1 = FUN_140042b70(param_1,0,local_28);
+
+    uVar3 = (ulonglong)uVar1;
+
+    if (iVar4 < (int)uVar1) {
+
+      uVar3 = param_4 & 0xffffffff;
+
+    }
+
+    if ((int)uVar3 != 0) {
+
+      FUN_140049e00(1,local_res18,0,*(undefined4 *)(param_1 + 4),local_28[0],0,(int)uVar3);
+
+    }
+
+  }
+
+  else {
+
+    uVar2 = FUN_140042b70(param_1,0,local_28);
+
+    uVar3 = (ulonglong)uVar2;
+
+    if (uVar2 != 0) {
+
+      if (iVar4 < (int)(uVar2 * param_2)) {
+
+        uVar3 = (longlong)((ulonglong)(uint)(iVar4 >> 0x1f) << 0x20 | param_4 & 0xffffffff) /
+
+                (longlong)param_2 & 0xffffffff;
+
+      }
+
+      FUN_140049b70(param_2,param_3,*(undefined4 *)(param_1 + 4),local_28[0],
+
+                    (ulonglong)uVar1 << 0x20,(int)uVar3);
+
+    }
+
+  }
+
+  return uVar3;
+
+}
+
+
+
+

@@ -1,0 +1,76 @@
+// Address: 0x1400128b0
+// Ghidra name: FUN_1400128b0
+// ============ 0x1400128b0 FUN_1400128b0 (size=184) ============
+
+
+longlong FUN_1400128b0(longlong param_1,int param_2)
+
+
+
+{
+
+  int iVar1;
+
+  longlong lVar2;
+
+  longlong *plVar3;
+
+  
+
+  if (0x1f < *(int *)(param_1 + 0x19210)) {
+
+    FID_conflict__assert
+
+              (L"m_entryCount < b2_maxStackEntries",
+
+               L"C:\\dev\\Box2d2\\Box2D\\Common\\b2StackAllocator.cpp",0x26);
+
+  }
+
+  plVar3 = (longlong *)(((longlong)*(int *)(param_1 + 0x19210) + 0x1901) * 0x10 + param_1);
+
+  *(int *)(plVar3 + 1) = param_2;
+
+  iVar1 = *(int *)(param_1 + 0x19000);
+
+  if (iVar1 + param_2 < 0x19001) {
+
+    *(undefined1 *)((longlong)plVar3 + 0xc) = 0;
+
+    *plVar3 = param_1 + iVar1;
+
+    *(int *)(param_1 + 0x19000) = *(int *)(param_1 + 0x19000) + param_2;
+
+  }
+
+  else {
+
+    lVar2 = _malloc_base((longlong)param_2);
+
+    *plVar3 = lVar2;
+
+    *(undefined1 *)((longlong)plVar3 + 0xc) = 1;
+
+  }
+
+  *(int *)(param_1 + 0x19004) = *(int *)(param_1 + 0x19004) + param_2;
+
+  iVar1 = *(int *)(param_1 + 0x19004);
+
+  if (*(int *)(param_1 + 0x19004) < *(int *)(param_1 + 0x19008)) {
+
+    iVar1 = *(int *)(param_1 + 0x19008);
+
+  }
+
+  *(int *)(param_1 + 0x19210) = *(int *)(param_1 + 0x19210) + 1;
+
+  *(int *)(param_1 + 0x19008) = iVar1;
+
+  return *plVar3;
+
+}
+
+
+
+

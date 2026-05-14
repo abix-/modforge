@@ -1,0 +1,526 @@
+// Address: 0x14001f7b0
+// Ghidra name: FUN_14001f7b0
+// ============ 0x14001f7b0 FUN_14001f7b0 (size=2954) ============
+
+
+void FUN_14001f7b0(longlong param_1)
+
+
+
+{
+
+  float *pfVar1;
+
+  float *pfVar2;
+
+  float *pfVar3;
+
+  float fVar4;
+
+  float fVar5;
+
+  float fVar6;
+
+  float fVar7;
+
+  float fVar8;
+
+  int iVar9;
+
+  longlong lVar10;
+
+  longlong lVar11;
+
+  float *pfVar12;
+
+  longlong lVar13;
+
+  longlong lVar14;
+
+  int iVar15;
+
+  longlong lVar16;
+
+  longlong lVar17;
+
+  float fVar18;
+
+  float fVar19;
+
+  uint uVar20;
+
+  float fVar21;
+
+  float fVar22;
+
+  float fVar23;
+
+  float fVar24;
+
+  float fVar25;
+
+  float fVar26;
+
+  float fVar27;
+
+  float fVar28;
+
+  float fVar29;
+
+  float fVar30;
+
+  float fVar31;
+
+  float fVar32;
+
+  float fVar33;
+
+  float fVar34;
+
+  float fVar35;
+
+  float local_res8;
+
+  float local_res10;
+
+  float local_114;
+
+  
+
+  iVar15 = 0;
+
+  if (0 < *(int *)(param_1 + 0x48)) {
+
+    lVar13 = 0;
+
+    uVar20 = DAT_14039cac0;
+
+    do {
+
+      lVar10 = *(longlong *)(param_1 + 0x38);
+
+      lVar11 = *(longlong *)(param_1 + 0x20);
+
+      fVar27 = *(float *)(lVar10 + 0x48 + lVar13);
+
+      fVar4 = *(float *)(lVar10 + 0x80 + lVar13);
+
+      fVar23 = fVar27 * DAT_14039ca80;
+
+      lVar16 = (longlong)*(int *)(lVar10 + 0x70 + lVar13);
+
+      lVar17 = (longlong)*(int *)(lVar10 + 0x74 + lVar13);
+
+      iVar9 = *(int *)(lVar10 + 0x90 + lVar13);
+
+      lVar14 = (longlong)iVar9;
+
+      fVar25 = *(float *)(lVar10 + 0x4c + lVar13);
+
+      fVar5 = *(float *)(lVar10 + 0x78 + lVar13);
+
+      fVar34 = *(float *)(lVar11 + lVar16 * 0xc);
+
+      fVar35 = *(float *)(lVar11 + 4 + lVar16 * 0xc);
+
+      fVar30 = *(float *)(lVar11 + 8 + lVar16 * 0xc);
+
+      local_res10 = *(float *)(lVar11 + lVar17 * 0xc);
+
+      fVar6 = *(float *)(lVar10 + 0x7c + lVar13);
+
+      fVar31 = *(float *)(lVar11 + 8 + lVar17 * 0xc);
+
+      fVar7 = *(float *)(lVar10 + 0x84 + lVar13);
+
+      fVar22 = *(float *)(lVar10 + 0x88 + lVar13);
+
+      local_res8 = *(float *)(lVar11 + 4 + lVar17 * 0xc);
+
+      if ((iVar9 != 1) && (iVar9 != 2)) {
+
+        FID_conflict__assert
+
+                  (L"pointCount == 1 || pointCount == 2",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\Contacts\\b2ContactSolver.cpp",0x137);
+
+        uVar20 = DAT_14039cac0;
+
+      }
+
+      if (0 < iVar9) {
+
+        pfVar12 = (float *)(lVar10 + 0xc + lVar13);
+
+        do {
+
+          fVar24 = fVar22 * pfVar12[1];
+
+          fVar8 = *pfVar12;
+
+          pfVar1 = pfVar12 + -1;
+
+          pfVar2 = pfVar12 + -3;
+
+          fVar21 = (float)((uint)((((local_res10 - fVar8 * fVar31) - fVar34) -
+
+                                  (float)((uint)fVar30 ^ DAT_14039cac0) * pfVar12[-2]) * fVar25 +
+
+                                 (((*pfVar1 * fVar31 + local_res8) - fVar35) - *pfVar2 * fVar30) *
+
+                                 fVar23) ^ DAT_14039cac0) * pfVar12[4] + pfVar12[2];
+
+          if (fVar24 <= fVar21) {
+
+            fVar21 = fVar24;
+
+          }
+
+          fVar26 = (float)((uint)fVar24 ^ uVar20);
+
+          if ((float)((uint)fVar24 ^ uVar20) <= fVar21) {
+
+            fVar26 = fVar21;
+
+          }
+
+          fVar21 = pfVar12[2];
+
+          pfVar12[2] = fVar26;
+
+          fVar24 = fVar23 * (fVar26 - fVar21);
+
+          fVar21 = fVar25 * (fVar26 - fVar21);
+
+          fVar35 = fVar35 - fVar5 * fVar24;
+
+          fVar34 = fVar34 - fVar5 * fVar21;
+
+          pfVar3 = pfVar12 + -2;
+
+          pfVar12 = pfVar12 + 9;
+
+          local_res10 = local_res10 + fVar6 * fVar21;
+
+          fVar30 = fVar30 - (fVar24 * *pfVar2 - fVar21 * *pfVar3) * fVar4;
+
+          local_res8 = local_res8 + fVar6 * fVar24;
+
+          fVar31 = fVar31 + (fVar24 * *pfVar1 - fVar21 * fVar8) * fVar7;
+
+          lVar14 = lVar14 + -1;
+
+          uVar20 = DAT_14039cac0;
+
+        } while (lVar14 != 0);
+
+      }
+
+      if (*(int *)(lVar10 + 0x90 + lVar13) == 1) {
+
+        fVar23 = *(float *)(lVar10 + 0xc + lVar13);
+
+        fVar8 = *(float *)(lVar10 + 8 + lVar13);
+
+        fVar22 = (((((local_res10 - fVar23 * fVar31) - fVar34) -
+
+                   (float)((uint)fVar30 ^ DAT_14039cac0) * *(float *)(lVar10 + 4 + lVar13)) * fVar27
+
+                  + (((fVar8 * fVar31 + local_res8) - fVar35) - *(float *)(lVar10 + lVar13) * fVar30
+
+                    ) * fVar25) - *(float *)(lVar10 + 0x20 + lVar13)) *
+
+                 (float)(*(uint *)(lVar10 + 0x18 + lVar13) ^ DAT_14039cac0) +
+
+                 *(float *)(lVar10 + 0x10 + lVar13);
+
+        if (fVar22 <= 0.0) {
+
+          fVar22 = 0.0;
+
+        }
+
+        fVar21 = fVar22 - *(float *)(lVar10 + 0x10 + lVar13);
+
+        *(float *)(lVar10 + 0x10 + lVar13) = fVar22;
+
+        fVar25 = fVar21 * fVar25;
+
+        fVar21 = fVar21 * fVar27;
+
+        fVar32 = fVar5 * fVar25;
+
+        fVar34 = fVar34 - fVar5 * fVar21;
+
+        fVar33 = fVar6 * fVar25;
+
+        fVar22 = fVar6 * fVar21;
+
+        fVar30 = fVar30 - (fVar25 * *(float *)(lVar10 + lVar13) -
+
+                          fVar21 * *(float *)(lVar10 + 4 + lVar13)) * fVar4;
+
+        fVar31 = fVar31 + (fVar25 * fVar8 - fVar21 * fVar23) * fVar7;
+
+LAB_14001ff38:
+
+        local_res10 = local_res10 + fVar22;
+
+        fVar35 = fVar35 - fVar32;
+
+        local_res8 = local_res8 + fVar33;
+
+      }
+
+      else {
+
+        fVar22 = *(float *)(lVar10 + 0x10 + lVar13);
+
+        fVar23 = *(float *)(lVar10 + 0x34 + lVar13);
+
+        if ((fVar22 < 0.0) || (fVar23 < 0.0)) {
+
+          FID_conflict__assert
+
+                    (L"a.x >= 0.0f && a.y >= 0.0f",
+
+                     L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\Contacts\\b2ContactSolver.cpp",0x196);
+
+        }
+
+        fVar8 = *(float *)(lVar10 + 0x28 + lVar13);
+
+        fVar21 = *(float *)(lVar10 + 0x2c + lVar13);
+
+        fVar24 = *(float *)(lVar10 + 0x24 + lVar13);
+
+        fVar26 = *(float *)(lVar10 + 0x30 + lVar13);
+
+        fVar33 = *(float *)(lVar10 + 0x68 + lVar13);
+
+        fVar32 = (((((*(float *)(lVar10 + 8 + lVar13) * fVar31 + local_res8) - fVar35) -
+
+                   *(float *)(lVar10 + lVar13) * fVar30) * fVar25 +
+
+                  ((((float)((uint)fVar31 ^ DAT_14039cac0) * *(float *)(lVar10 + 0xc + lVar13) +
+
+                    local_res10) - fVar34) -
+
+                  *(float *)(lVar10 + 4 + lVar13) * (float)((uint)fVar30 ^ DAT_14039cac0)) * fVar27)
+
+                 - *(float *)(lVar10 + 0x20 + lVar13)) -
+
+                 (fVar22 * *(float *)(lVar10 + 0x60 + lVar13) + fVar33 * fVar23);
+
+        fVar18 = (((((fVar21 * fVar31 + local_res8) - fVar35) - fVar24 * fVar30) * fVar25 +
+
+                  (((*(float *)(lVar10 + 0x30 + lVar13) * (float)((uint)fVar31 ^ DAT_14039cac0) +
+
+                    local_res10) - fVar34) -
+
+                  *(float *)(lVar10 + 0x28 + lVar13) * (float)((uint)fVar30 ^ DAT_14039cac0)) *
+
+                  fVar27) - *(float *)(lVar10 + 0x44 + lVar13)) -
+
+                 (fVar23 * *(float *)(lVar10 + 0x6c + lVar13) +
+
+                 *(float *)(lVar10 + 100 + lVar13) * fVar22);
+
+        fVar19 = (float)((uint)(fVar18 * *(float *)(lVar10 + 0x58 + lVar13) +
+
+                               fVar32 * *(float *)(lVar10 + 0x50 + lVar13)) ^ DAT_14039cac0);
+
+        local_114 = (float)((uint)(fVar18 * *(float *)(lVar10 + 0x5c + lVar13) +
+
+                                  fVar32 * *(float *)(lVar10 + 0x54 + lVar13)) ^ DAT_14039cac0);
+
+        if ((0.0 <= fVar19) && (0.0 <= local_114)) {
+
+          fVar28 = (fVar19 - fVar22) * fVar25;
+
+          fVar32 = (fVar19 - fVar22) * fVar27;
+
+          fVar27 = (local_114 - fVar23) * fVar27;
+
+          fVar25 = (local_114 - fVar23) * fVar25;
+
+          fVar22 = fVar27 + fVar32;
+
+          fVar33 = fVar25 + fVar28;
+
+          fVar29 = fVar28 * *(float *)(lVar10 + 8 + lVar13);
+
+          fVar18 = fVar32 * *(float *)(lVar10 + 0xc + lVar13);
+
+          fVar23 = (fVar28 * *(float *)(lVar10 + lVar13) - fVar32 * *(float *)(lVar10 + 4 + lVar13))
+
+                   + (fVar25 * fVar24 - fVar27 * fVar8);
+
+          *(float *)(lVar10 + 0x10 + lVar13) = fVar19;
+
+LAB_14001fee9:
+
+          fVar34 = fVar34 - fVar5 * fVar22;
+
+          *(float *)(lVar10 + 0x34 + lVar13) = local_114;
+
+          fVar32 = fVar5 * fVar33;
+
+          fVar30 = fVar30 - fVar23 * fVar4;
+
+          fVar22 = fVar6 * fVar22;
+
+          fVar33 = fVar6 * fVar33;
+
+          fVar31 = fVar31 + ((fVar29 - fVar18) + (fVar25 * fVar21 - fVar27 * fVar26)) * fVar7;
+
+          goto LAB_14001ff38;
+
+        }
+
+        fVar19 = (float)(*(uint *)(lVar10 + 0x18 + lVar13) ^ DAT_14039cac0) * fVar32;
+
+        if ((fVar19 < 0.0) || (fVar19 * *(float *)(lVar10 + 100 + lVar13) + fVar18 < 0.0)) {
+
+          local_114 = (float)(*(uint *)(lVar10 + 0x3c + lVar13) ^ DAT_14039cac0) * fVar18;
+
+          if ((0.0 <= local_114) && (0.0 <= fVar33 * local_114 + fVar32)) {
+
+            fVar19 = (0.0 - fVar22) * fVar25;
+
+            fVar32 = (0.0 - fVar22) * fVar27;
+
+            fVar27 = (local_114 - fVar23) * fVar27;
+
+            fVar25 = (local_114 - fVar23) * fVar25;
+
+            fVar22 = fVar27 + fVar32;
+
+            fVar33 = fVar25 + fVar19;
+
+            fVar29 = fVar19 * *(float *)(lVar10 + 8 + lVar13);
+
+            fVar18 = fVar32 * *(float *)(lVar10 + 0xc + lVar13);
+
+            *(undefined4 *)(lVar10 + 0x10 + lVar13) = 0;
+
+            fVar23 = (fVar19 * *(float *)(lVar10 + lVar13) -
+
+                     fVar32 * *(float *)(lVar10 + 4 + lVar13)) + (fVar25 * fVar24 - fVar27 * fVar8);
+
+            goto LAB_14001fee9;
+
+          }
+
+          if ((0.0 <= fVar32) && (0.0 <= fVar18)) {
+
+            fVar19 = (0.0 - fVar22) * fVar25;
+
+            fVar18 = (0.0 - fVar22) * fVar27;
+
+            fVar25 = (0.0 - fVar23) * fVar25;
+
+            fVar27 = (0.0 - fVar23) * fVar27;
+
+            fVar32 = fVar5 * (fVar19 + fVar25);
+
+            fVar34 = fVar34 - fVar5 * (fVar18 + fVar27);
+
+            *(undefined4 *)(lVar10 + 0x10 + lVar13) = 0;
+
+            *(undefined4 *)(lVar10 + 0x34 + lVar13) = 0;
+
+            fVar33 = fVar6 * (fVar19 + fVar25);
+
+            fVar22 = fVar6 * (fVar18 + fVar27);
+
+            fVar30 = fVar30 - ((fVar24 * fVar25 - fVar8 * fVar27) +
+
+                              (fVar19 * *(float *)(lVar10 + lVar13) -
+
+                              fVar18 * *(float *)(lVar10 + 4 + lVar13))) * fVar4;
+
+            fVar31 = fVar31 + ((fVar21 * fVar25 - fVar26 * fVar27) +
+
+                              (fVar19 * *(float *)(lVar10 + 8 + lVar13) -
+
+                              fVar18 * *(float *)(lVar10 + 0xc + lVar13))) * fVar7;
+
+            goto LAB_14001ff38;
+
+          }
+
+        }
+
+        else {
+
+          fVar33 = (0.0 - fVar23) * fVar25;
+
+          fVar23 = (0.0 - fVar23) * fVar27;
+
+          fVar25 = (fVar19 - fVar22) * fVar25;
+
+          fVar27 = (fVar19 - fVar22) * fVar27;
+
+          fVar35 = fVar35 - fVar5 * (fVar33 + fVar25);
+
+          fVar34 = fVar34 - fVar5 * (fVar23 + fVar27);
+
+          local_res10 = local_res10 + fVar6 * (fVar23 + fVar27);
+
+          *(float *)(lVar10 + 0x10 + lVar13) = fVar19;
+
+          *(undefined4 *)(lVar10 + 0x34 + lVar13) = 0;
+
+          local_res8 = local_res8 + fVar6 * (fVar33 + fVar25);
+
+          fVar30 = fVar30 - ((fVar25 * *(float *)(lVar10 + lVar13) -
+
+                             fVar27 * *(float *)(lVar10 + 4 + lVar13)) +
+
+                            (fVar33 * fVar24 - fVar23 * fVar8)) * fVar4;
+
+          fVar31 = fVar31 + ((fVar25 * *(float *)(lVar10 + 8 + lVar13) -
+
+                             fVar27 * *(float *)(lVar10 + 0xc + lVar13)) +
+
+                            (fVar33 * fVar21 - fVar23 * fVar26)) * fVar7;
+
+        }
+
+      }
+
+      uVar20 = DAT_14039cac0;
+
+      lVar10 = *(longlong *)(param_1 + 0x20);
+
+      iVar15 = iVar15 + 1;
+
+      lVar13 = lVar13 + 0x98;
+
+      *(float *)(lVar10 + lVar16 * 0xc) = fVar34;
+
+      *(float *)(lVar10 + 4 + lVar16 * 0xc) = fVar35;
+
+      *(float *)(*(longlong *)(param_1 + 0x20) + 8 + lVar16 * 0xc) = fVar30;
+
+      lVar10 = *(longlong *)(param_1 + 0x20);
+
+      *(float *)(lVar10 + lVar17 * 0xc) = local_res10;
+
+      *(float *)(lVar10 + 4 + lVar17 * 0xc) = local_res8;
+
+      *(float *)(*(longlong *)(param_1 + 0x20) + 8 + lVar17 * 0xc) = fVar31;
+
+    } while (iVar15 < *(int *)(param_1 + 0x48));
+
+  }
+
+  return;
+
+}
+
+
+
+

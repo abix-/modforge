@@ -1,0 +1,62 @@
+// Address: 0x1400c7600
+// Ghidra name: FUN_1400c7600
+// ============ 0x1400c7600 FUN_1400c7600 (size=270) ============
+
+
+ulonglong FUN_1400c7600(undefined1 param_1,undefined4 param_2,undefined4 param_3,int param_4,
+
+                       int param_5)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  longlong lVar2;
+
+  int iVar3;
+
+  int local_res8 [2];
+
+  
+
+  uVar1 = (DAT_1403f34e8 - DAT_1403f34e0) / 0x88;
+
+  iVar3 = (int)uVar1;
+
+  local_res8[0] = iVar3;
+
+  FUN_1400c85f0(&DAT_1403f34e0,(longlong)(iVar3 + 1));
+
+  *(undefined1 *)((longlong)iVar3 * 0x88 + 0x40 + DAT_1403f34e0) = param_1;
+
+  lVar2 = (longlong)iVar3 * 0x88;
+
+  *(undefined4 *)(lVar2 + 0x44 + DAT_1403f34e0) = param_2;
+
+  *(undefined4 *)(lVar2 + 100 + DAT_1403f34e0) = param_3;
+
+  *(int *)(lVar2 + 0x48 + DAT_1403f34e0) = param_4;
+
+  *(int *)(lVar2 + 0x4c + DAT_1403f34e0) = param_5;
+
+  if (param_4 != -1) {
+
+    FUN_1400bf970((longlong)param_4 * 0x88 + DAT_1403f34e0 + 0x70,local_res8);
+
+  }
+
+  if (param_5 != -1) {
+
+    FUN_1400bf970((longlong)param_5 * 0x88 + DAT_1403f34e0 + 0x70,local_res8);
+
+  }
+
+  return uVar1 & 0xffffffff;
+
+}
+
+
+
+

@@ -1,0 +1,74 @@
+// Address: 0x1400a8680
+// Ghidra name: FUN_1400a8680
+// ============ 0x1400a8680 FUN_1400a8680 (size=168) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+undefined8 * FUN_1400a8680(undefined8 *param_1,undefined4 param_2,undefined4 param_3)
+
+
+
+{
+
+  int iVar1;
+
+  
+
+  *param_1 = &PTR_FUN_14030d040;
+
+  _DAT_1403f30b0 = _DAT_1403f30b0 + 1;
+
+  *(undefined2 *)(param_1 + 2) = 1;
+
+  *(undefined4 *)(param_1 + 1) = param_2;
+
+  *(undefined4 *)((longlong)param_1 + 0xc) = 0;
+
+  *(undefined8 *)((longlong)param_1 + 0x14) = 0;
+
+  *(undefined4 *)(param_1 + 6) = 0x42000000;
+
+  *(undefined4 *)((longlong)param_1 + 0x34) = 0x42000000;
+
+  param_1[5] = 0;
+
+  *(undefined4 *)((longlong)param_1 + 0x24) = 0;
+
+  *(undefined4 *)(param_1 + 7) = 1;
+
+  *(undefined4 *)(param_1 + 8) = 0xffffffff;
+
+  *(undefined4 *)((longlong)param_1 + 0x44) = 0;
+
+  *(undefined4 *)(param_1 + 9) = 0x17;
+
+  param_1[0xd] = 0;
+
+  param_1[10] = 0;
+
+  param_1[0xb] = 0;
+
+  param_1[0xc] = 0xffffffffffffffff;
+
+  *param_1 = &PTR_FUN_14030d040;
+
+  *(undefined4 *)((longlong)param_1 + 0x3c) = param_3;
+
+  iVar1 = FUN_140072ca0(param_3);
+
+  *(float *)(param_1 + 6) = (float)iVar1;
+
+  iVar1 = FUN_140072cc0(*(undefined4 *)((longlong)param_1 + 0x3c));
+
+  *(float *)((longlong)param_1 + 0x34) = (float)iVar1;
+
+  return param_1;
+
+}
+
+
+
+

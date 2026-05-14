@@ -1,0 +1,148 @@
+// Address: 0x140032610
+// Ghidra name: FUN_140032610
+// ============ 0x140032610 FUN_140032610 (size=402) ============
+
+
+void FUN_140032610(longlong param_1)
+
+
+
+{
+
+  longlong *plVar1;
+
+  undefined4 *puVar2;
+
+  undefined4 uVar3;
+
+  char *pcVar4;
+
+  longlong lVar5;
+
+  int iVar6;
+
+  int iVar7;
+
+  undefined4 local_18;
+
+  int local_14;
+
+  undefined4 local_10;
+
+  
+
+  *(undefined4 *)(param_1 + 0x690) = 0;
+
+  pcVar4 = (char *)(param_1 + 0x2ba);
+
+  lVar5 = 0xf0;
+
+  do {
+
+    if (pcVar4[-2] != '\0') {
+
+      *(int *)(param_1 + 0x690) = *(int *)(param_1 + 0x690) + 1;
+
+    }
+
+    if (pcVar4[-1] != '\0') {
+
+      *(int *)(param_1 + 0x690) = *(int *)(param_1 + 0x690) + 1;
+
+    }
+
+    if (*pcVar4 != '\0') {
+
+      *(int *)(param_1 + 0x690) = *(int *)(param_1 + 0x690) + 1;
+
+    }
+
+    if (pcVar4[1] != '\0') {
+
+      *(int *)(param_1 + 0x690) = *(int *)(param_1 + 0x690) + 1;
+
+    }
+
+    pcVar4 = pcVar4 + 4;
+
+    lVar5 = lVar5 + -1;
+
+  } while (lVar5 != 0);
+
+  iVar6 = *(int *)(param_1 + 0x690);
+
+  plVar1 = (longlong *)(param_1 + 0x678);
+
+  lVar5 = *(longlong *)(param_1 + 0x680) - *plVar1;
+
+  lVar5 = lVar5 / 6 + (lVar5 >> 0x3f);
+
+  if ((ulonglong)((lVar5 >> 1) - (lVar5 >> 0x3f)) <
+
+      (ulonglong)(longlong)((int)(iVar6 + (iVar6 >> 0x1f & 7U)) >> 3)) {
+
+    do {
+
+      uVar3 = FUN_1400c6580(0x24);
+
+      iVar6 = *(int *)(param_1 + 0x690);
+
+      if (iVar6 < 0) {
+
+        iVar6 = iVar6 + 0x1f;
+
+      }
+
+      iVar7 = (iVar6 >> 5) + -2;
+
+      local_18 = uVar3;
+
+      iVar6 = FUN_1400c6580(iVar7);
+
+      iVar6 = iVar6 + (0x1e - iVar7);
+
+      local_14 = iVar6;
+
+      local_10 = FUN_1400c6580(4);
+
+      puVar2 = *(undefined4 **)(param_1 + 0x680);
+
+      if (puVar2 == *(undefined4 **)(param_1 + 0x688)) {
+
+        FUN_140036850(plVar1,puVar2,&local_18);
+
+      }
+
+      else {
+
+        *puVar2 = uVar3;
+
+        puVar2[1] = iVar6;
+
+        puVar2[2] = local_10;
+
+        *(longlong *)(param_1 + 0x680) = *(longlong *)(param_1 + 0x680) + 0xc;
+
+      }
+
+      lVar5 = *(longlong *)(param_1 + 0x680) - *plVar1;
+
+      iVar6 = *(int *)(param_1 + 0x690);
+
+      lVar5 = lVar5 / 6 + (lVar5 >> 0x3f);
+
+    } while ((ulonglong)((lVar5 >> 1) - (lVar5 >> 0x3f)) <
+
+             (ulonglong)(longlong)((int)(iVar6 + (iVar6 >> 0x1f & 7U)) >> 3));
+
+  }
+
+  FUN_1400c4320("genepool size %d",iVar6);
+
+  return;
+
+}
+
+
+
+

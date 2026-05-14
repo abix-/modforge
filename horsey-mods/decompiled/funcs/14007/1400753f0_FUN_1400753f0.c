@@ -1,0 +1,140 @@
+// Address: 0x1400753f0
+// Ghidra name: FUN_1400753f0
+// ============ 0x1400753f0 FUN_1400753f0 (size=418) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+undefined8 FUN_1400753f0(char param_1,undefined8 *param_2)
+
+
+
+{
+
+  int iVar1;
+
+  FILE *_File;
+
+  longlong lVar2;
+
+  size_t sVar3;
+
+  undefined8 uVar4;
+
+  ulonglong uVar5;
+
+  ulonglong uVar6;
+
+  ulonglong uVar7;
+
+  ulonglong _Count;
+
+  
+
+  if (param_1 == '\0') {
+
+    if (0xf < (ulonglong)param_2[3]) {
+
+      param_2 = (undefined8 *)*param_2;
+
+    }
+
+    _File = (FILE *)FUN_1402ce0f8(param_2,&DAT_14039be7c);
+
+    if (_File != (FILE *)0x0) {
+
+      FUN_1402cea4c(_File,0,2);
+
+      iVar1 = FUN_1402cf00c(_File);
+
+      _Count = (ulonglong)iVar1;
+
+      FUN_1402d19ec(_File);
+
+      lVar2 = DAT_1403ead30;
+
+      uVar7 = DAT_1403ead30 - (longlong)DAT_1403ead28;
+
+      if (_Count < uVar7) {
+
+        DAT_1403ead30 = (longlong)DAT_1403ead28 + _Count;
+
+      }
+
+      else if (uVar7 < _Count) {
+
+        uVar5 = DAT_1403ead38 - (longlong)DAT_1403ead28;
+
+        if (uVar5 < _Count) {
+
+          if (0x7fffffffffffffff < _Count) {
+
+                    /* WARNING: Subroutine does not return */
+
+            FUN_14002f0d0();
+
+          }
+
+          uVar6 = 0x7fffffffffffffff;
+
+          if ((uVar5 <= 0x7fffffffffffffff - (uVar5 >> 1)) &&
+
+             (uVar6 = (uVar5 >> 1) + uVar5, uVar6 < _Count)) {
+
+            uVar6 = _Count;
+
+          }
+
+          lVar2 = FUN_1400285e0(uVar6);
+
+          FUN_1402f94c0(uVar7 + lVar2,0,_Count - uVar7);
+
+          FUN_1402f8e20(lVar2,DAT_1403ead28,DAT_1403ead30 - (longlong)DAT_1403ead28);
+
+          FUN_1400766f0(&DAT_1403ead28,lVar2,_Count,uVar6);
+
+        }
+
+        else {
+
+          FUN_1402f94c0(DAT_1403ead30,0,_Count - uVar7);
+
+          DAT_1403ead30 = (_Count - uVar7) + lVar2;
+
+        }
+
+      }
+
+      sVar3 = fread(DAT_1403ead28,1,_Count,_File);
+
+      FUN_1402ce288(_File);
+
+      if (iVar1 <= (int)sVar3) goto LAB_14007555d;
+
+    }
+
+    uVar4 = 0;
+
+  }
+
+  else {
+
+LAB_14007555d:
+
+    _DAT_1403ead18 = DAT_1403ead28;
+
+    DAT_1403ead20 = DAT_1403ead28;
+
+    uVar4 = 1;
+
+  }
+
+  return uVar4;
+
+}
+
+
+
+

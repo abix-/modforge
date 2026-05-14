@@ -1,0 +1,62 @@
+// Address: 0x1402c8190
+// Ghidra name: FUN_1402c8190
+// ============ 0x1402c8190 FUN_1402c8190 (size=134) ============
+
+
+void FUN_1402c8190(longlong *param_1,longlong *param_2)
+
+
+
+{
+
+  longlong lVar1;
+
+  longlong lVar2;
+
+  
+
+  if (((char)param_1[1] == '\0') || (*param_1 == 0)) {
+
+    *param_2 = *param_1;
+
+    *(undefined1 *)(param_2 + 1) = 0;
+
+  }
+
+  else {
+
+    lVar1 = -1;
+
+    do {
+
+      lVar2 = lVar1;
+
+      lVar1 = lVar2 + 1;
+
+    } while (*(char *)(*param_1 + lVar1) != '\0');
+
+    lVar2 = lVar2 + 2;
+
+    lVar1 = _malloc_base(lVar2);
+
+    if (lVar1 != 0) {
+
+      FUN_1402e8180(lVar1,lVar2,*param_1);
+
+      *param_2 = lVar1;
+
+      *(undefined1 *)(param_2 + 1) = 1;
+
+    }
+
+    thunk_FUN_1402e9a80(0);
+
+  }
+
+  return;
+
+}
+
+
+
+

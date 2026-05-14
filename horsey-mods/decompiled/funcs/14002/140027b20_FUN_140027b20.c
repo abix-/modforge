@@ -1,0 +1,134 @@
+// Address: 0x140027b20
+// Ghidra name: FUN_140027b20
+// ============ 0x140027b20 FUN_140027b20 (size=348) ============
+
+
+ulonglong * FUN_140027b20(ulonglong *param_1,ulonglong param_2)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  longlong lVar2;
+
+  ulonglong uVar3;
+
+  ulonglong uVar4;
+
+  ulonglong uVar5;
+
+  
+
+  uVar4 = 0x7fffffffffffffff;
+
+  if (0x7fffffffffffffff - param_1[2] < param_2) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_140024130();
+
+  }
+
+  param_2 = param_1[2] + param_2;
+
+  uVar3 = param_2 | 0xf;
+
+  uVar1 = param_1[3];
+
+  if ((uVar3 < 0x8000000000000000) && (uVar1 <= 0x7fffffffffffffff - (uVar1 >> 1))) {
+
+    uVar5 = uVar1 + (uVar1 >> 1);
+
+    uVar4 = uVar3;
+
+    if (uVar3 < uVar5) {
+
+      uVar4 = uVar5;
+
+    }
+
+    if (uVar4 == 0xffffffffffffffff) {
+
+      uVar3 = 0;
+
+    }
+
+    else {
+
+      if (0xfff < uVar4 + 1) {
+
+        if (uVar4 + 0x28 <= uVar4 + 1) {
+
+                    /* WARNING: Subroutine does not return */
+
+          FUN_140024090();
+
+        }
+
+        goto LAB_140027bbe;
+
+      }
+
+      uVar3 = FUN_1402c704c();
+
+    }
+
+  }
+
+  else {
+
+LAB_140027bbe:
+
+    lVar2 = FUN_1402c704c();
+
+    if (lVar2 == 0) goto LAB_140027c5a;
+
+    uVar3 = lVar2 + 0x27U & 0xffffffffffffffe0;
+
+    *(longlong *)(uVar3 - 8) = lVar2;
+
+  }
+
+  param_1[2] = param_2;
+
+  param_1[3] = uVar4;
+
+  if (uVar1 < 0x10) {
+
+    FUN_1402f8e20(uVar3,param_1);
+
+  }
+
+  else {
+
+    uVar4 = *param_1;
+
+    FUN_1402f8e20(uVar3,uVar4);
+
+    uVar5 = uVar4;
+
+    if ((0xfff < uVar1 + 1) && (uVar5 = *(ulonglong *)(uVar4 - 8), 0x1f < (uVar4 - uVar5) - 8)) {
+
+LAB_140027c5a:
+
+                    /* WARNING: Subroutine does not return */
+
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+    }
+
+    FUN_1402c7088(uVar5);
+
+  }
+
+  *param_1 = uVar3;
+
+  return param_1;
+
+}
+
+
+
+

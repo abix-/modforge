@@ -1,0 +1,90 @@
+// Address: 0x14004a120
+// Ghidra name: FUN_14004a120
+// ============ 0x14004a120 FUN_14004a120 (size=236) ============
+
+
+void FUN_14004a120(longlong param_1,int param_2,undefined4 param_3,undefined4 param_4,
+
+                  undefined4 param_5,undefined4 param_6,int param_7)
+
+
+
+{
+
+  undefined4 *puVar1;
+
+  
+
+  if (param_7 == 0) {
+
+    puVar1 = (undefined4 *)(param_1 + (longlong)param_2 * 0x10);
+
+    *puVar1 = param_3;
+
+    puVar1[1] = param_4;
+
+    puVar1[2] = param_5;
+
+    puVar1[3] = param_6;
+
+  }
+
+  else {
+
+    if (param_7 == 1) {
+
+      puVar1 = (undefined4 *)(param_1 + (longlong)param_2 * 0x10);
+
+      *puVar1 = param_3;
+
+      puVar1[1] = 0;
+
+      puVar1[2] = 0;
+
+      puVar1[3] = 0;
+
+      return;
+
+    }
+
+    if (param_7 == 2) {
+
+      puVar1 = (undefined4 *)(param_1 + (longlong)param_2 * 0x10);
+
+      *puVar1 = param_3;
+
+      puVar1[1] = param_4;
+
+      puVar1[2] = 0;
+
+      puVar1[3] = 0;
+
+      return;
+
+    }
+
+    if (param_7 == 3) {
+
+      puVar1 = (undefined4 *)(param_1 + (longlong)param_2 * 0x10);
+
+      *puVar1 = param_3;
+
+      puVar1[1] = param_4;
+
+      puVar1[2] = param_5;
+
+      puVar1[3] = 0;
+
+      return;
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

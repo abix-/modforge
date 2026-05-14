@@ -1,0 +1,238 @@
+// Address: 0x1400cce00
+// Ghidra name: FUN_1400cce00
+// ============ 0x1400cce00 FUN_1400cce00 (size=728) ============
+
+
+void FUN_1400cce00(longlong param_1)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  int iVar2;
+
+  undefined8 *puVar3;
+
+  longlong *plVar4;
+
+  longlong *plVar5;
+
+  ulonglong uVar6;
+
+  longlong *plVar7;
+
+  ulonglong uVar8;
+
+  longlong *plVar9;
+
+  longlong lVar10;
+
+  int iVar11;
+
+  longlong local_res8;
+
+  longlong *local_48;
+
+  longlong *plStack_40;
+
+  longlong *local_38;
+
+  
+
+  if (*(int *)(param_1 + 8) != -1) {
+
+    local_48 = (longlong *)0x0;
+
+    plStack_40 = (longlong *)0x0;
+
+    local_38 = (longlong *)0x0;
+
+    iVar11 = 0;
+
+    lVar10 = *(longlong *)(param_1 + 0xb8);
+
+    if (*(longlong *)(param_1 + 0xc0) - lVar10 >> 3 != 0) {
+
+      local_res8 = 0;
+
+      do {
+
+        plVar4 = plStack_40;
+
+        puVar3 = *(undefined8 **)(lVar10 + local_res8);
+
+        if (*(char *)((longlong)puVar3 + 0x11) == '\0') {
+
+          if (plStack_40 == local_38) {
+
+            lVar10 = (longlong)plStack_40 - (longlong)local_48 >> 3;
+
+            if (lVar10 == 0x1fffffffffffffff) {
+
+                    /* WARNING: Subroutine does not return */
+
+              FUN_14002f0d0();
+
+            }
+
+            uVar1 = lVar10 + 1;
+
+            uVar8 = (longlong)local_38 - (longlong)local_48 >> 3;
+
+            if (0x1fffffffffffffff - (uVar8 >> 1) < uVar8) {
+
+              uVar6 = 0x1fffffffffffffff;
+
+            }
+
+            else {
+
+              uVar8 = (uVar8 >> 1) + uVar8;
+
+              uVar6 = uVar1;
+
+              if (uVar1 <= uVar8) {
+
+                uVar6 = uVar8;
+
+              }
+
+              if (0x1fffffffffffffff < uVar6) {
+
+                    /* WARNING: Subroutine does not return */
+
+                FUN_140024090();
+
+              }
+
+            }
+
+            plVar5 = (longlong *)FUN_1400285e0(uVar6 * 8);
+
+            plVar5[lVar10] = (longlong)puVar3;
+
+            plVar7 = plVar5;
+
+            plVar9 = local_48;
+
+            if (plVar4 != plStack_40) {
+
+              FUN_1402f8e20(plVar5,local_48,(longlong)plVar4 - (longlong)local_48);
+
+              plVar7 = plVar5 + lVar10 + 1;
+
+              plVar9 = plVar4;
+
+            }
+
+            FUN_1402f8e20(plVar7,plVar9);
+
+            if (local_48 != (longlong *)0x0) {
+
+              if ((0xfff < ((longlong)local_38 - (longlong)local_48 & 0xfffffffffffffff8U)) &&
+
+                 (0x1f < (ulonglong)((longlong)local_48 + (-8 - local_48[-1])))) {
+
+                    /* WARNING: Subroutine does not return */
+
+                _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+              }
+
+              FUN_1402c7088();
+
+            }
+
+            plStack_40 = plVar5 + uVar1;
+
+            local_38 = plVar5 + uVar6;
+
+            local_48 = plVar5;
+
+          }
+
+          else {
+
+            *plStack_40 = (longlong)puVar3;
+
+            plStack_40 = plStack_40 + 1;
+
+          }
+
+        }
+
+        else {
+
+          iVar2 = *(int *)(param_1 + 0xd0);
+
+          if (iVar11 == iVar2) {
+
+            *(undefined4 *)(param_1 + 0xd0) = 0xffffffff;
+
+          }
+
+          else if (iVar11 < iVar2) {
+
+            *(int *)(param_1 + 0xd0) = iVar2 + -1;
+
+          }
+
+          iVar2 = *(int *)(param_1 + 0xd4);
+
+          if (iVar11 == iVar2) {
+
+            *(undefined4 *)(param_1 + 0xd4) = 0xffffffff;
+
+          }
+
+          else if (iVar11 < iVar2) {
+
+            *(int *)(param_1 + 0xd4) = iVar2 + -1;
+
+          }
+
+          (**(code **)*puVar3)(puVar3,1);
+
+        }
+
+        iVar11 = iVar11 + 1;
+
+        local_res8 = local_res8 + 8;
+
+        lVar10 = *(longlong *)(param_1 + 0xb8);
+
+      } while ((ulonglong)(longlong)iVar11 <
+
+               (ulonglong)(*(longlong *)(param_1 + 0xc0) - lVar10 >> 3));
+
+    }
+
+    FUN_1400d8ab0(param_1 + 0xb8,&local_48);
+
+    if (local_48 != (longlong *)0x0) {
+
+      if ((0xfff < ((longlong)local_38 - (longlong)local_48 & 0xfffffffffffffff8U)) &&
+
+         (0x1f < (ulonglong)((longlong)local_48 + (-8 - local_48[-1])))) {
+
+                    /* WARNING: Subroutine does not return */
+
+        _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+      }
+
+      FUN_1402c7088();
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

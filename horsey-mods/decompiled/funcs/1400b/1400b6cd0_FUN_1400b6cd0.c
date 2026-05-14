@@ -1,0 +1,142 @@
+// Address: 0x1400b6cd0
+// Ghidra name: FUN_1400b6cd0
+// ============ 0x1400b6cd0 FUN_1400b6cd0 (size=430) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+int FUN_1400b6cd0(longlong param_1,int param_2)
+
+
+
+{
+
+  float fVar1;
+
+  int iVar2;
+
+  longlong lVar3;
+
+  longlong lVar4;
+
+  int *piVar5;
+
+  undefined4 uVar6;
+
+  float *pfVar7;
+
+  longlong lVar8;
+
+  undefined1 local_res8 [8];
+
+  ulonglong in_stack_ffffffffffffffb8;
+
+  longlong local_38;
+
+  ulonglong uStack_30;
+
+  undefined8 local_28;
+
+  ulonglong uStack_20;
+
+  
+
+  lVar8 = (longlong)param_2 * 0xb8;
+
+  iVar2 = *(int *)(lVar8 + 0x10 + *(longlong *)(param_1 + 0x40));
+
+  if (iVar2 != -1) {
+
+    *(undefined4 *)(lVar8 + 0x10 + *(longlong *)(param_1 + 0x40)) = 0xffffffff;
+
+    lVar3 = *(longlong *)(param_1 + 0x40);
+
+    lVar4 = *(longlong *)(lVar8 + 0x30 + lVar3);
+
+    if (lVar4 != 0) {
+
+      pfVar7 = (float *)FUN_1400c6bd0(local_res8);
+
+      piVar5 = *(int **)(lVar8 + 0x30 + lVar3);
+
+      if (*piVar5 == 2) {
+
+        if ((*(ushort *)(piVar5 + 1) & 2) == 0) {
+
+          *(ushort *)(piVar5 + 1) = *(ushort *)(piVar5 + 1) | 2;
+
+          piVar5[0x2b] = 0;
+
+        }
+
+        fVar1 = pfVar7[1];
+
+        piVar5[0x10] = (int)((float)piVar5[0x25] * *pfVar7 + (float)piVar5[0x10]);
+
+        piVar5[0x11] = (int)((float)piVar5[0x25] * fVar1 + (float)piVar5[0x11]);
+
+        piVar5[0x12] = (int)(((*(float *)(lVar4 + 0xc) - (float)piVar5[0xb]) * pfVar7[1] -
+
+                             (*(float *)(lVar4 + 0x10) - (float)piVar5[0xc]) * *pfVar7) *
+
+                             (float)piVar5[0x27] + (float)piVar5[0x12]);
+
+      }
+
+    }
+
+    local_28 = _DAT_1403033f0;
+
+    uStack_20 = _UNK_1403033f8;
+
+    local_38._0_1_ = s_HelixPluck_14030d7b8[0];
+
+    local_38._1_1_ = s_HelixPluck_14030d7b8[1];
+
+    local_38._2_1_ = s_HelixPluck_14030d7b8[2];
+
+    local_38._3_1_ = s_HelixPluck_14030d7b8[3];
+
+    local_38._4_1_ = s_HelixPluck_14030d7b8[4];
+
+    local_38._5_1_ = s_HelixPluck_14030d7b8[5];
+
+    local_38._6_1_ = s_HelixPluck_14030d7b8[6];
+
+    local_38._7_1_ = s_HelixPluck_14030d7b8[7];
+
+    uStack_30 = (ulonglong)(ushort)s_HelixPluck_14030d7b8._8_2_;
+
+    uVar6 = FUN_140040fe0(*(undefined4 *)(lVar8 + 0x40 + *(longlong *)(param_1 + 0x40)));
+
+    FUN_140040ca0(&local_38,100,uVar6,DAT_14039ca44,in_stack_ffffffffffffffb8 & 0xffffffffffffff00);
+
+    if (0xf < uStack_20) {
+
+      if (0xfff < uStack_20 + 1) {
+
+        if (0x1f < (local_38 - *(longlong *)(local_38 + -8)) - 8U) {
+
+                    /* WARNING: Subroutine does not return */
+
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+        }
+
+      }
+
+      FUN_1402c7088();
+
+    }
+
+  }
+
+  return iVar2;
+
+}
+
+
+
+

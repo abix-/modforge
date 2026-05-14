@@ -1,0 +1,44 @@
+// Address: 0x1402ce7c8
+// Ghidra name: FUN_1402ce7c8
+// ============ 0x1402ce7c8 FUN_1402ce7c8 (size=155) ============
+
+
+undefined4 FUN_1402ce7c8(longlong param_1,undefined8 param_2,uint param_3,longlong param_4)
+
+
+
+{
+
+  undefined4 uVar1;
+
+  
+
+  if ((param_1 == 0) || (2 < param_3)) {
+
+    *(undefined1 *)(param_4 + 0x30) = 1;
+
+    *(undefined4 *)(param_4 + 0x2c) = 0x16;
+
+    FUN_1402cd39c(0,0,0,0,0,param_4);
+
+    uVar1 = 0xffffffff;
+
+  }
+
+  else {
+
+    FUN_1402e1710();
+
+    uVar1 = FUN_1402ce960(param_1,param_2,param_3,param_4);
+
+    FUN_1402e171c(param_1);
+
+  }
+
+  return uVar1;
+
+}
+
+
+
+

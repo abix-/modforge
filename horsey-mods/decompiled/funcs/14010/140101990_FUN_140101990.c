@@ -1,0 +1,220 @@
+// Address: 0x140101990
+// Ghidra name: FUN_140101990
+// ============ 0x140101990 FUN_140101990 (size=799) ============
+
+
+ulonglong FUN_140101990(longlong param_1,int *param_2,undefined4 *param_3,int param_4,int param_5,
+
+                       undefined4 param_6,int param_7,char param_8,char param_9,char param_10,
+
+                       undefined4 param_11,float param_12)
+
+
+
+{
+
+  longlong lVar1;
+
+  float fVar2;
+
+  float fVar3;
+
+  int iVar4;
+
+  int iVar5;
+
+  longlong lVar6;
+
+  longlong lVar7;
+
+  int iVar8;
+
+  int iVar9;
+
+  float fVar10;
+
+  float fVar11;
+
+  float fVar12;
+
+  float fVar13;
+
+  float fVar14;
+
+  
+
+  fVar3 = DAT_14039ca34;
+
+  fVar2 = DAT_14030335c;
+
+  if (param_7 != 0) {
+
+    iVar8 = -1;
+
+    fVar13 = DAT_14039ca60;
+
+    if (param_12 != 0.0) {
+
+      fVar13 = DAT_14039ca44 / param_12;
+
+    }
+
+    iVar5 = 0;
+
+    fVar14 = DAT_140313a34;
+
+    do {
+
+      lVar1 = *(longlong *)(param_1 + 0x270);
+
+      fVar12 = 0.0;
+
+      lVar6 = (longlong)iVar5;
+
+      iVar9 = ((&DAT_1403f4f38)[lVar6 * 10] + param_5) * *(int *)(param_1 + 0x278) +
+
+              (&DAT_1403f4f34)[lVar6 * 10] + param_4;
+
+      lVar7 = (longlong)iVar9;
+
+      if ((param_7 == 1) || (param_8 != '\0')) {
+
+        iVar4 = *(int *)(lVar1 + lVar7 * 0x28);
+
+        fVar10 = (float)*(int *)(lVar1 + 4 + lVar7 * 0x28);
+
+        if ((iVar4 == 3) != (bool)param_10) {
+
+          fVar10 = fVar10 * fVar3;
+
+        }
+
+        if (iVar4 - 9U < 3 != (bool)param_9) {
+
+          fVar10 = fVar10 * fVar3;
+
+        }
+
+        iVar4 = *(int *)(lVar1 + 0x20 + lVar7 * 0x28);
+
+        if (100 < iVar4) {
+
+          iVar4 = 100;
+
+        }
+
+        fVar10 = fVar10 + (float)iVar4;
+
+        if (param_7 != 2) {
+
+          if (0 < *(int *)(lVar1 + 0x24 + lVar7 * 0x28)) {
+
+            fVar10 = fVar10 * fVar2;
+
+          }
+
+          goto LAB_140101b45;
+
+        }
+
+        iVar4 = *(int *)(lVar1 + 0x24 + lVar7 * 0x28);
+
+        fVar10 = fVar10 * fVar3;
+
+        if (100 < iVar4) {
+
+          iVar4 = 100;
+
+        }
+
+        fVar12 = (float)iVar4;
+
+      }
+
+      else {
+
+        fVar10 = 0.0;
+
+        if (param_7 != 2) {
+
+LAB_140101b45:
+
+          if (param_8 == '\0') goto LAB_140101b67;
+
+        }
+
+        iVar4 = *(int *)(lVar1 + 0x24 + lVar7 * 0x28);
+
+        if (100 < iVar4) {
+
+          iVar4 = 100;
+
+        }
+
+        fVar12 = (float)iVar4;
+
+        if (param_7 == 1) {
+
+          fVar12 = fVar12 * fVar3;
+
+        }
+
+      }
+
+LAB_140101b67:
+
+      fVar12 = (fVar12 + fVar10 + 0.0) -
+
+               (float)((*(int *)(lVar1 + 0x1c + lVar7 * 0x28) +
+
+                       *(int *)(lVar1 + 0x18 + lVar7 * 0x28)) * (&DAT_1403f4f44)[lVar6 * 10]) *
+
+               fVar13;
+
+      if (0.0 < fVar12) {
+
+        fVar11 = (float)(int)(&DAT_1403f4f44)[lVar6 * 10] * fVar13;
+
+        fVar10 = (float)FUN_1400c6940();
+
+        fVar10 = fVar10 + (fVar12 - (fVar11 + fVar11));
+
+        if (fVar14 < fVar10) {
+
+          fVar14 = fVar10;
+
+          iVar8 = iVar9;
+
+        }
+
+      }
+
+      register0x00000020 =
+
+           (BADSPACEBASE *)FUN_140100a40(param_1,iVar5,param_4,param_5,param_6,param_11);
+
+      iVar5 = (int)register0x00000020;
+
+    } while (iVar5 != -1);
+
+    if (iVar8 != -1) {
+
+      *param_2 = iVar8 % *(int *)(param_1 + 0x278);
+
+      lVar1 = (longlong)iVar8 / (longlong)*(int *)(param_1 + 0x278);
+
+      *param_3 = (int)lVar1;
+
+      return CONCAT71((uint7)((ulonglong)lVar1 >> 8) & 0xffffff,1);
+
+    }
+
+  }
+
+  return (ulonglong)register0x00000020 & 0xffffffffffffff00;
+
+}
+
+
+
+

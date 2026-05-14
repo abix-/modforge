@@ -1,0 +1,180 @@
+// Address: 0x1400b54a0
+// Ghidra name: FUN_1400b54a0
+// ============ 0x1400b54a0 FUN_1400b54a0 (size=546) ============
+
+
+undefined8 FUN_1400b54a0(longlong param_1,int param_2,undefined8 param_3,int *param_4)
+
+
+
+{
+
+  longlong lVar1;
+
+  bool bVar2;
+
+  float fVar3;
+
+  uint uVar4;
+
+  int iVar5;
+
+  longlong lVar6;
+
+  longlong lVar7;
+
+  longlong *plVar8;
+
+  ulonglong uVar9;
+
+  undefined4 uVar10;
+
+  float fVar11;
+
+  float fVar12;
+
+  float local_68;
+
+  float fStack_64;
+
+  
+
+  if ((((*(int *)(param_1 + 0x1c) < 4) || (param_2 == 4)) && (*(int *)(param_1 + 0x1fc) != 0)) &&
+
+     ((*(longlong *)(param_1 + 0x240) == 0 && (*(int *)(param_1 + 0x24c) != 0)))) {
+
+    iVar5 = FUN_14005e210(param_2);
+
+    uVar4 = DAT_14039cac0;
+
+    fVar3 = DAT_140304b30;
+
+    if ((iVar5 != 0) || ((*(int *)(param_1 + 0x284) == 0xc && (param_2 == 8)))) {
+
+      bVar2 = false;
+
+      if (*(int *)(param_1 + 0x24c) == 1) {
+
+        if (iVar5 == 2) {
+
+          bVar2 = true;
+
+        }
+
+      }
+
+      else if ((*(int *)(param_1 + 0x24c) == 2) && (bVar2 = false, iVar5 == 1)) {
+
+        bVar2 = true;
+
+      }
+
+      iVar5 = 0;
+
+      lVar6 = *(longlong *)(param_1 + 0x48) - *(longlong *)(param_1 + 0x40);
+
+      lVar6 = lVar6 + SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar6),8);
+
+      lVar7 = lVar6 >> 7;
+
+      lVar6 = lVar6 >> 0x3f;
+
+      if (lVar7 != lVar6) {
+
+        fStack_64 = (float)((ulonglong)param_3 >> 0x20);
+
+        plVar8 = (longlong *)(*(longlong *)(param_1 + 0x40) + 0x30);
+
+        local_68 = (float)param_3;
+
+        do {
+
+          if (((int)plVar8[-5] == 7) && (lVar1 = *plVar8, lVar1 != 0)) {
+
+            fVar12 = *(float *)(param_1 + 0x138);
+
+            if (*(char *)(param_1 + 0x1a) != '\0') {
+
+              fVar12 = (float)((uint)fVar12 ^ uVar4);
+
+            }
+
+            fVar11 = ((*(float *)(lVar1 + 0x18) * fVar12 -
+
+                      *(float *)(lVar1 + 0x14) * *(float *)(param_1 + 0x13c)) +
+
+                     *(float *)(lVar1 + 0xc)) - local_68;
+
+            fVar12 = (*(float *)(lVar1 + 0x14) * fVar12 +
+
+                      *(float *)(lVar1 + 0x18) * *(float *)(param_1 + 0x13c) +
+
+                     *(float *)(lVar1 + 0x10)) - fStack_64;
+
+            fVar12 = fVar12 * fVar12 + fVar11 * fVar11;
+
+            if (fVar12 < 0.0) {
+
+              uVar9 = FUN_1402cdfa0(fVar12);
+
+            }
+
+            else {
+
+              uVar9 = (ulonglong)(uint)SQRT(fVar12);
+
+            }
+
+            uVar10 = (undefined4)(uVar9 >> 0x20);
+
+            fVar12 = (float)uVar9;
+
+            if (fVar12 < fVar3) {
+
+              *param_4 = iVar5;
+
+              if ((((*(char *)(param_1 + 0x205) == '\0') || (0 < *(int *)(param_1 + 0x238))) ||
+
+                  (3 < *(int *)(param_1 + 0x1c))) || (bVar2)) {
+
+                fVar12 = fVar12 + DAT_14039ca58;
+
+              }
+
+              if (*(char *)(param_1 + 0x206) != '\0') {
+
+                fVar12 = fVar12 + DAT_14039ca34;
+
+              }
+
+              goto LAB_1400b5659;
+
+            }
+
+          }
+
+          iVar5 = iVar5 + 1;
+
+          plVar8 = plVar8 + 0x17;
+
+        } while ((ulonglong)(longlong)iVar5 < (ulonglong)(lVar7 - lVar6));
+
+      }
+
+    }
+
+  }
+
+  fVar12 = 0.0;
+
+  uVar10 = 0;
+
+LAB_1400b5659:
+
+  return CONCAT44(uVar10,fVar12);
+
+}
+
+
+
+

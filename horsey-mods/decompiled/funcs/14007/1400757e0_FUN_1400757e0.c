@@ -1,0 +1,48 @@
+// Address: 0x1400757e0
+// Ghidra name: FUN_1400757e0
+// ============ 0x1400757e0 FUN_1400757e0 (size=103) ============
+
+
+void FUN_1400757e0(undefined4 param_1)
+
+
+
+{
+
+  undefined1 uStackX_9;
+
+  undefined1 uStackX_a;
+
+  undefined1 uStackX_b;
+
+  
+
+  *DAT_1403ead20 = (char)param_1;
+
+  FUN_1400764d0(1);
+
+  uStackX_9 = (undefined1)((uint)param_1 >> 8);
+
+  *DAT_1403ead20 = uStackX_9;
+
+  FUN_1400764d0(1);
+
+  uStackX_a = (undefined1)((uint)param_1 >> 0x10);
+
+  *DAT_1403ead20 = uStackX_a;
+
+  FUN_1400764d0(1);
+
+  uStackX_b = (undefined1)((uint)param_1 >> 0x18);
+
+  *DAT_1403ead20 = uStackX_b;
+
+  FUN_1400764d0(1);
+
+  return;
+
+}
+
+
+
+

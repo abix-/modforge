@@ -1,0 +1,70 @@
+// Address: 0x140082330
+// Ghidra name: FUN_140082330
+// ============ 0x140082330 FUN_140082330 (size=213) ============
+
+
+void FUN_140082330(longlong param_1)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  undefined4 uVar3;
+
+  undefined4 uVar4;
+
+  int iVar5;
+
+  longlong lVar6;
+
+  float fVar7;
+
+  float fVar8;
+
+  
+
+  uVar4 = DAT_14030ad5c;
+
+  uVar3 = DAT_1403033ac;
+
+  lVar6 = 0xcc;
+
+  do {
+
+    if (*(int *)(lVar6 + *(longlong *)(param_1 + 0x80)) != -1) {
+
+      iVar5 = FUN_1400c6580(100);
+
+      if (iVar5 < 0x50) {
+
+        fVar1 = *(float *)(param_1 + 0x2c);
+
+        fVar7 = (float)FUN_1400c6940(uVar4,uVar3);
+
+        fVar2 = *(float *)(param_1 + 0x28);
+
+        fVar8 = (float)FUN_1400c6940(uVar4,uVar3);
+
+        FUN_1400cc9d0(DAT_1403fb0d8,*(undefined4 *)(*(longlong *)(param_1 + 0x80) + lVar6),
+
+                      fVar8 + fVar2,fVar7 + fVar1);
+
+      }
+
+    }
+
+    lVar6 = lVar6 + 4;
+
+  } while (lVar6 < 0x120);
+
+  return;
+
+}
+
+
+
+

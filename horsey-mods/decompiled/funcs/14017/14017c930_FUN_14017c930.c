@@ -1,0 +1,96 @@
+// Address: 0x14017c930
+// Ghidra name: FUN_14017c930
+// ============ 0x14017c930 FUN_14017c930 (size=345) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_14017c930(void)
+
+
+
+{
+
+  HMODULE hModule;
+
+  undefined **ppuVar1;
+
+  
+
+  if (DAT_1403fc5a8 == (code *)0x0) {
+
+    ppuVar1 = &PTR_FUN_140336df0;
+
+    hModule = GetModuleHandleW(L"kernel32.dll");
+
+    if ((((hModule != (HMODULE)0x0) &&
+
+         (DAT_1403fc570 = GetProcAddress(hModule,"InitializeSRWLock"), DAT_1403fc570 != (FARPROC)0x0
+
+         )) && (_DAT_1403fc578 = GetProcAddress(hModule,"ReleaseSRWLockShared"),
+
+               _DAT_1403fc578 != (FARPROC)0x0)) &&
+
+       (((_DAT_1403fc580 = GetProcAddress(hModule,"AcquireSRWLockShared"),
+
+         _DAT_1403fc580 != (FARPROC)0x0 &&
+
+         (DAT_1403fc588 = GetProcAddress(hModule,"TryAcquireSRWLockShared"),
+
+         DAT_1403fc588 != (FARPROC)0x0)) &&
+
+        ((_DAT_1403fc590 = GetProcAddress(hModule,"ReleaseSRWLockExclusive"),
+
+         _DAT_1403fc590 != (FARPROC)0x0 &&
+
+         (DAT_1403fc598 = GetProcAddress(hModule,"AcquireSRWLockExclusive"),
+
+         DAT_1403fc598 != (FARPROC)0x0)))))) {
+
+      DAT_1403fc5a0 = GetProcAddress(hModule,"TryAcquireSRWLockExclusive");
+
+      ppuVar1 = &PTR_FUN_140336db8;
+
+      if (DAT_1403fc5a0 == (FARPROC)0x0) {
+
+        ppuVar1 = &PTR_FUN_140336df0;
+
+      }
+
+    }
+
+    _DAT_1403fc5b8 = ppuVar1[2];
+
+    _DAT_1403fc5c0 = ppuVar1[3];
+
+    DAT_1403fc5a8 = (code *)*ppuVar1;
+
+    _DAT_1403fc5b0 = ppuVar1[1];
+
+    _DAT_1403fc5c8 = *(undefined4 *)(ppuVar1 + 4);
+
+    uRam00000001403fc5cc = *(undefined4 *)((longlong)ppuVar1 + 0x24);
+
+    _DAT_1403fc5d0 = *(undefined4 *)(ppuVar1 + 5);
+
+    uRam00000001403fc5d4 = *(undefined4 *)((longlong)ppuVar1 + 0x2c);
+
+    _DAT_1403fc5d8 = ppuVar1[6];
+
+  }
+
+                    /* WARNING: Could not recover jumptable at 0x00014017ca86. Too many branches */
+
+                    /* WARNING: Treating indirect jump as call */
+
+  (*DAT_1403fc5a8)();
+
+  return;
+
+}
+
+
+
+

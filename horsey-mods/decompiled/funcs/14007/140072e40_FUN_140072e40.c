@@ -1,0 +1,66 @@
+// Address: 0x140072e40
+// Ghidra name: FUN_140072e40
+// ============ 0x140072e40 FUN_140072e40 (size=124) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_140072e40(undefined8 param_1)
+
+
+
+{
+
+  undefined8 uVar1;
+
+  undefined8 *puVar2;
+
+  undefined4 local_18;
+
+  undefined4 uStack_14;
+
+  
+
+  puVar2 = DAT_1403eacf8;
+
+  uVar1 = _DAT_1403d94e0;
+
+  local_18 = (undefined4)param_1;
+
+  uStack_14 = (undefined4)((ulonglong)param_1 >> 0x20);
+
+  if (DAT_1403eacf8 != DAT_1403ead00) {
+
+    *DAT_1403eacf8 = _DAT_1403d94d8;
+
+    puVar2[1] = uVar1;
+
+    uVar1 = uRam00000001403d94f0;
+
+    puVar2[2] = _DAT_1403d94e8;
+
+    puVar2[3] = uVar1;
+
+    *(undefined4 *)(puVar2 + 4) = DAT_1403d94f8;
+
+    DAT_1403eacf8 = (undefined8 *)((longlong)DAT_1403eacf8 + 0x24);
+
+    FUN_1400743e0(local_18,uStack_14);
+
+    return;
+
+  }
+
+  FUN_1400749b0(&DAT_1403eacf0,DAT_1403eacf8,&DAT_1403d94d8);
+
+  FUN_1400743e0(local_18,uStack_14);
+
+  return;
+
+}
+
+
+
+

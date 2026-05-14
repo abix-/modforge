@@ -1,0 +1,158 @@
+// Address: 0x140080cc0
+// Ghidra name: FUN_140080cc0
+// ============ 0x140080cc0 FUN_140080cc0 (size=362) ============
+
+
+void FUN_140080cc0(longlong param_1,uint param_2,undefined4 param_3)
+
+
+
+{
+
+  int iVar1;
+
+  undefined4 uVar2;
+
+  uint uVar3;
+
+  undefined8 uVar4;
+
+  
+
+  if (param_2 == 10) {
+
+    iVar1 = FUN_1400c6580(4);
+
+    if ((iVar1 != 0) || (param_2 = 0xb, *(char *)(*(longlong *)(param_1 + 0x80) + 0x162) != '\0')) {
+
+      param_2 = 0;
+
+    }
+
+  }
+
+  *(uint *)(param_1 + 0x70) = param_2;
+
+  *(undefined4 *)(param_1 + 0x78) = 0;
+
+  *(undefined4 *)(param_1 + 0x18) = 0;
+
+  *(undefined4 *)(param_1 + 0xb4) = param_3;
+
+  if (((*(int *)(*(longlong *)(param_1 + 0x80) + 0x234) < 0) &&
+
+      ((*(byte *)(*(longlong *)(param_1 + 0x80) + 600) & 0x50) != 0)) ||
+
+     (*(float *)(param_1 + 0xa8) <= 0.0)) {
+
+    if (((9 < param_2) || ((0x234U >> (param_2 & 0x1f) & 1) == 0)) && (param_2 != 8))
+
+    goto LAB_140080d44;
+
+    *(undefined4 *)(param_1 + 0x70) = 0;
+
+    param_2 = 0;
+
+LAB_140080d4d:
+
+    *(undefined8 *)(param_1 + 0x50) = 0;
+
+  }
+
+  else {
+
+    if ((param_2 == 2) || (param_2 == 4)) goto LAB_140080d4d;
+
+LAB_140080d44:
+
+    if ((param_2 == 0) || (param_2 == 0xb)) goto LAB_140080d4d;
+
+  }
+
+  uVar4 = 1;
+
+  if ((param_2 < 10) && ((0x334U >> (param_2 & 0x1f) & 1) != 0)) {
+
+    uVar4 = 3;
+
+  }
+
+  else if (param_2 == 1) {
+
+    uVar4 = 2;
+
+  }
+
+  else if (param_2 == 0xc) {
+
+    uVar4 = 5;
+
+  }
+
+  else if (param_2 == 0xd) {
+
+    uVar4 = 7;
+
+  }
+
+  else if (param_2 == 0xb) {
+
+    uVar4 = 6;
+
+  }
+
+  FUN_1400bc560(*(undefined8 *)(param_1 + 0x80),uVar4);
+
+  if (*(int *)(param_1 + 0x70) == 0xd) {
+
+    uVar4 = 6;
+
+  }
+
+  else if (*(int *)(param_1 + 0x70) == 0xb) {
+
+    uVar4 = 4;
+
+  }
+
+  else {
+
+    if (*(int *)(*(longlong *)(param_1 + 0x80) + 0x1c) != 4) goto LAB_140080df3;
+
+    uVar4 = 0;
+
+  }
+
+  FUN_1400b8f90(*(longlong *)(param_1 + 0x80),uVar4);
+
+LAB_140080df3:
+
+  if (*(int *)(param_1 + 0x70) == 1) {
+
+    uVar3 = (int)*(float *)(param_1 + 0x28) & 0x8000001f;
+
+    if ((int)uVar3 < 0) {
+
+      uVar3 = (uVar3 - 1 | 0xffffffe0) + 1;
+
+    }
+
+    uVar2 = 0xffffffff;
+
+    if ((int)uVar3 < 0x10) {
+
+      uVar2 = 1;
+
+    }
+
+    *(undefined4 *)(param_1 + 0x38) = uVar2;
+
+  }
+
+  return;
+
+}
+
+
+
+

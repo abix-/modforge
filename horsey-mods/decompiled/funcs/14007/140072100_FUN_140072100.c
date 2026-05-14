@@ -1,0 +1,198 @@
+// Address: 0x140072100
+// Ghidra name: FUN_140072100
+// ============ 0x140072100 FUN_140072100 (size=453) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_140072100(int param_1,float param_2,float param_3,float param_4,float param_5,
+
+                  undefined4 param_6,undefined4 param_7,undefined4 param_8,undefined4 param_9)
+
+
+
+{
+
+  undefined8 uVar1;
+
+  undefined8 uVar2;
+
+  float *pfVar3;
+
+  longlong lVar4;
+
+  float local_108;
+
+  float local_104;
+
+  undefined4 local_100;
+
+  undefined4 local_fc;
+
+  undefined8 local_f8;
+
+  undefined8 uStack_f0;
+
+  float local_e8;
+
+  float fStack_e4;
+
+  undefined4 uStack_e0;
+
+  undefined4 uStack_dc;
+
+  undefined8 local_d8;
+
+  undefined8 uStack_d0;
+
+  float local_c8;
+
+  float fStack_c4;
+
+  undefined4 uStack_c0;
+
+  undefined4 uStack_bc;
+
+  undefined8 local_b8;
+
+  undefined8 uStack_b0;
+
+  float local_a8;
+
+  float fStack_a4;
+
+  undefined4 uStack_a0;
+
+  undefined4 uStack_9c;
+
+  undefined8 local_98;
+
+  undefined8 uStack_90;
+
+  float local_88;
+
+  float fStack_84;
+
+  undefined4 uStack_80;
+
+  undefined4 uStack_7c;
+
+  undefined8 local_78;
+
+  undefined8 uStack_70;
+
+  float local_68;
+
+  float local_64;
+
+  undefined4 local_60;
+
+  undefined4 local_5c;
+
+  undefined8 local_58;
+
+  undefined8 uStack_50;
+
+  
+
+  pfVar3 = &local_108;
+
+  lVar4 = 6;
+
+  local_e8 = param_2 + param_4;
+
+  fStack_c4 = param_3 + param_5;
+
+  uStack_e0 = param_7;
+
+  uStack_dc = param_8;
+
+  uStack_a0 = param_7;
+
+  uStack_9c = param_8;
+
+  local_100 = param_6;
+
+  local_fc = param_8;
+
+  local_60 = param_7;
+
+  local_5c = param_9;
+
+  local_f8 = _DAT_1403d94c0;
+
+  uStack_f0 = _DAT_1403d94c8;
+
+  local_d8 = _DAT_1403d94c0;
+
+  uStack_d0 = _DAT_1403d94c8;
+
+  local_b8 = _DAT_1403d94c0;
+
+  uStack_b0 = _DAT_1403d94c8;
+
+  local_98 = _DAT_1403d94c0;
+
+  uStack_90 = _DAT_1403d94c8;
+
+  uStack_c0 = param_6;
+
+  uStack_bc = param_9;
+
+  uStack_80 = param_6;
+
+  uStack_7c = param_9;
+
+  local_78 = _DAT_1403d94c0;
+
+  uStack_70 = _DAT_1403d94c8;
+
+  local_58 = _DAT_1403d94c0;
+
+  uStack_50 = _DAT_1403d94c8;
+
+  uVar1 = *(undefined8 *)((longlong)param_1 * 0x38 + DAT_1403eacd8);
+
+  local_108 = param_2;
+
+  local_104 = param_3;
+
+  fStack_e4 = param_3;
+
+  local_c8 = param_2;
+
+  local_a8 = local_e8;
+
+  fStack_a4 = param_3;
+
+  local_88 = param_2;
+
+  fStack_84 = fStack_c4;
+
+  local_68 = local_e8;
+
+  local_64 = fStack_c4;
+
+  do {
+
+    FUN_1400745d0(pfVar3);
+
+    pfVar3 = pfVar3 + 8;
+
+    lVar4 = lVar4 + -1;
+
+  } while (lVar4 != 0);
+
+  uVar2 = FUN_1400c43c0();
+
+  SDL_RenderGeometryRaw(uVar2,uVar1,&local_108,0x20,&local_f8,0x20,&local_100,0x20,6,0,0,0);
+
+  return;
+
+}
+
+
+
+

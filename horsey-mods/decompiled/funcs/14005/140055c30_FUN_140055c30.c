@@ -1,0 +1,106 @@
+// Address: 0x140055c30
+// Ghidra name: FUN_140055c30
+// ============ 0x140055c30 FUN_140055c30 (size=323) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_140055c30(longlong param_1,undefined8 param_2)
+
+
+
+{
+
+  longlong lVar1;
+
+  undefined1 uVar2;
+
+  undefined8 local_28;
+
+  undefined8 uStack_20;
+
+  undefined8 local_18;
+
+  ulonglong uStack_10;
+
+  
+
+  *(undefined8 *)(param_1 + 0x270) = param_2;
+
+  *(undefined2 *)(param_1 + 0x278) = 0x100;
+
+  *(undefined4 *)(param_1 + 0x27c) = 0;
+
+  *(undefined4 *)(param_1 + 0x26c) = 0;
+
+  DAT_1403f3554 = 0;
+
+  if ((*(char *)(DAT_1403fb0d8 + 0x41c) == '\0') && (DAT_1403d959b == '\0')) {
+
+    uVar2 = 0;
+
+  }
+
+  else {
+
+    uVar2 = 1;
+
+  }
+
+  *(undefined1 *)(*(longlong *)(param_1 + 0x60) + 0x335) = uVar2;
+
+  *(undefined1 *)(*(longlong *)(param_1 + 0x60) + 0x39d) = 0;
+
+  if (*(int *)(*(longlong *)(param_1 + 0x270) + 0x1f8) != -1) {
+
+    lVar1 = FUN_1400c7520();
+
+    if ((((0 < *(int *)(lVar1 + 0x5c)) && (0 < *(int *)(lVar1 + 0x54))) &&
+
+        (*(char *)(lVar1 + 0x60) != '\0')) &&
+
+       (((*(char *)(lVar1 + 0x61) != '\0' && (*(char *)(lVar1 + 0x62) != '\0')) &&
+
+        (*(char *)(lVar1 + 99) != '\0')))) {
+
+      uStack_20 = 0;
+
+      local_18 = _DAT_140304080;
+
+      uStack_10 = _UNK_140304088;
+
+      local_28 = (ulonglong)CONCAT14(DAT_1403043a0,DAT_14030439c);
+
+      FUN_140037710(&local_28);
+
+      if (0xf < uStack_10) {
+
+        if (0xfff < uStack_10 + 1) {
+
+          if (0x1f < (local_28 - *(longlong *)(local_28 - 8)) - 8) {
+
+                    /* WARNING: Subroutine does not return */
+
+            _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+          }
+
+        }
+
+        FUN_1402c7088();
+
+      }
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

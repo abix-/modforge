@@ -1,0 +1,168 @@
+// Address: 0x140005eb0
+// Ghidra name: FUN_140005eb0
+// ============ 0x140005eb0 FUN_140005eb0 (size=554) ============
+
+
+void FUN_140005eb0(longlong param_1,undefined8 *param_2)
+
+
+
+{
+
+  undefined8 *puVar1;
+
+  longlong *plVar2;
+
+  longlong lVar3;
+
+  longlong lVar4;
+
+  undefined8 *puVar5;
+
+  uint uVar6;
+
+  
+
+  if (*(int *)(param_1 + 0x19330) < 1) {
+
+    FID_conflict__assert(L"m_bodyCount > 0",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2World.cpp",0x85);
+
+  }
+
+  if (((*(byte *)(param_1 + 0x19298) & 2) == 0) ||
+
+     (FID_conflict__assert
+
+                (L"IsLocked() == false",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2World.cpp",0x86),
+
+     (*(byte *)(param_1 + 0x19298) & 2) == 0)) {
+
+    lVar4 = param_2[0x10];
+
+    while (lVar4 != 0) {
+
+      plVar2 = *(longlong **)(param_1 + 0x19348);
+
+      lVar3 = *(longlong *)(lVar4 + 0x18);
+
+      if (plVar2 != (longlong *)0x0) {
+
+        (**(code **)(*plVar2 + 0x10))(plVar2,*(undefined8 *)(lVar4 + 8));
+
+      }
+
+      FUN_140006230(param_1,*(undefined8 *)(lVar4 + 8));
+
+      param_2[0x10] = lVar3;
+
+      lVar4 = lVar3;
+
+    }
+
+    lVar4 = param_2[0x11];
+
+    param_2[0x10] = 0;
+
+    while (lVar4 != 0) {
+
+      puVar1 = (undefined8 *)(lVar4 + 8);
+
+      lVar4 = *(longlong *)(lVar4 + 0x18);
+
+      FUN_140011000(param_1 + 0x192a0,*puVar1);
+
+    }
+
+    param_2[0x11] = 0;
+
+    puVar1 = (undefined8 *)param_2[0xe];
+
+    while (puVar1 != (undefined8 *)0x0) {
+
+      plVar2 = *(longlong **)(param_1 + 0x19348);
+
+      puVar5 = (undefined8 *)puVar1[1];
+
+      if (plVar2 != (longlong *)0x0) {
+
+        (**(code **)(*plVar2 + 8))(plVar2,puVar1);
+
+      }
+
+      FUN_140007f20(puVar1,param_1 + 0x192a0);
+
+      FUN_140007ca0(puVar1,param_1);
+
+      uVar6 = (uint)DAT_1403ff988;
+
+      if (0xd < uVar6) {
+
+        FID_conflict__assert
+
+                  (L"0 <= index && index < b2_blockSizes",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Common\\b2BlockAllocator.cpp",0xad);
+
+      }
+
+      *puVar1 = *(undefined8 *)(param_1 + 0x10 + (ulonglong)uVar6 * 8);
+
+      *(undefined8 **)(param_1 + (ulonglong)uVar6 * 8 + 0x10) = puVar1;
+
+      *(int *)(param_2 + 0xf) = *(int *)(param_2 + 0xf) + -1;
+
+      param_2[0xe] = puVar5;
+
+      puVar1 = puVar5;
+
+    }
+
+    param_2[0xe] = 0;
+
+    *(undefined4 *)(param_2 + 0xf) = 0;
+
+    if (param_2[0xc] != 0) {
+
+      *(undefined8 *)(param_2[0xc] + 0x68) = param_2[0xd];
+
+    }
+
+    if (param_2[0xd] != 0) {
+
+      *(undefined8 *)(param_2[0xd] + 0x60) = param_2[0xc];
+
+    }
+
+    if (param_2 == *(undefined8 **)(param_1 + 0x19320)) {
+
+      *(undefined8 *)(param_1 + 0x19320) = param_2[0xd];
+
+    }
+
+    *(int *)(param_1 + 0x19330) = *(int *)(param_1 + 0x19330) + -1;
+
+    uVar6 = (uint)DAT_1403ff9f8;
+
+    if (0xd < uVar6) {
+
+      FID_conflict__assert
+
+                (L"0 <= index && index < b2_blockSizes",
+
+                 L"C:\\dev\\Box2d2\\Box2D\\Common\\b2BlockAllocator.cpp",0xad);
+
+    }
+
+    *param_2 = *(undefined8 *)(param_1 + 0x10 + (ulonglong)uVar6 * 8);
+
+    *(undefined8 **)(param_1 + (ulonglong)uVar6 * 8 + 0x10) = param_2;
+
+  }
+
+  return;
+
+}
+
+
+
+

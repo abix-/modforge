@@ -1,0 +1,56 @@
+// Address: 0x140012970
+// Ghidra name: FUN_140012970
+// ============ 0x140012970 FUN_140012970 (size=162) ============
+
+
+void FUN_140012970(longlong param_1,longlong param_2)
+
+
+
+{
+
+  longlong *plVar1;
+
+  
+
+  if (*(int *)(param_1 + 0x19210) < 1) {
+
+    FID_conflict__assert
+
+              (L"m_entryCount > 0",L"C:\\dev\\Box2d2\\Box2D\\Common\\b2StackAllocator.cpp",0x3f);
+
+  }
+
+  plVar1 = (longlong *)(((longlong)*(int *)(param_1 + 0x19210) + 0x1900) * 0x10 + param_1);
+
+  if (param_2 != *plVar1) {
+
+    FID_conflict__assert
+
+              (L"p == entry->data",L"C:\\dev\\Box2d2\\Box2D\\Common\\b2StackAllocator.cpp",0x41);
+
+  }
+
+  if (*(char *)((longlong)plVar1 + 0xc) == '\0') {
+
+    *(int *)(param_1 + 0x19000) = *(int *)(param_1 + 0x19000) - (int)plVar1[1];
+
+  }
+
+  else {
+
+    thunk_FUN_1402e9a80(param_2);
+
+  }
+
+  *(int *)(param_1 + 0x19004) = *(int *)(param_1 + 0x19004) - (int)plVar1[1];
+
+  *(int *)(param_1 + 0x19210) = *(int *)(param_1 + 0x19210) + -1;
+
+  return;
+
+}
+
+
+
+

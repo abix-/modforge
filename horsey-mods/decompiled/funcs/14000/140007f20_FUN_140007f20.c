@@ -1,0 +1,108 @@
+// Address: 0x140007f20
+// Ghidra name: FUN_140007f20
+// ============ 0x140007f20 FUN_140007f20 (size=260) ============
+
+
+void FUN_140007f20(longlong param_1,longlong param_2)
+
+
+
+{
+
+  int iVar1;
+
+  longlong lVar2;
+
+  longlong lVar3;
+
+  int iVar4;
+
+  longlong lVar5;
+
+  int iVar6;
+
+  
+
+  iVar6 = 0;
+
+  if (0 < *(int *)(param_1 + 0x30)) {
+
+    lVar5 = 0;
+
+    do {
+
+      lVar2 = *(longlong *)(param_1 + 0x28);
+
+      iVar4 = 0;
+
+      iVar1 = *(int *)(lVar2 + 0x1c + lVar5);
+
+      if (0 < *(int *)(param_2 + 0x3c)) {
+
+        lVar3 = 0;
+
+        do {
+
+          if (*(int *)(lVar3 + *(longlong *)(param_2 + 0x30)) == iVar1) {
+
+            *(undefined4 *)(lVar3 + *(longlong *)(param_2 + 0x30)) = 0xffffffff;
+
+          }
+
+          iVar4 = iVar4 + 1;
+
+          lVar3 = lVar3 + 4;
+
+        } while (iVar4 < *(int *)(param_2 + 0x3c));
+
+      }
+
+      *(int *)(param_2 + 0x28) = *(int *)(param_2 + 0x28) + -1;
+
+      if ((iVar1 < 0) || (*(int *)(param_2 + 0x14) <= iVar1)) {
+
+        FID_conflict__assert
+
+                  (L"0 <= proxyId && proxyId < m_nodeCapacity",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2DynamicTree.cpp",0x7e);
+
+      }
+
+      if (*(int *)(*(longlong *)(param_2 + 8) + 0x1c + (longlong)iVar1 * 0x28) != -1) {
+
+        FID_conflict__assert
+
+                  (L"m_nodes[proxyId].IsLeaf()",
+
+                   L"C:\\dev\\Box2d2\\Box2D\\Collision\\b2DynamicTree.cpp",0x7f);
+
+      }
+
+      FUN_140015ae0(param_2,iVar1);
+
+      FUN_140015560();
+
+      *(undefined4 *)(lVar2 + 0x1c + lVar5) = 0xffffffff;
+
+      iVar6 = iVar6 + 1;
+
+      lVar5 = lVar5 + 0x20;
+
+    } while (iVar6 < *(int *)(param_1 + 0x30));
+
+    *(undefined4 *)(param_1 + 0x30) = 0;
+
+    return;
+
+  }
+
+  *(undefined4 *)(param_1 + 0x30) = 0;
+
+  return;
+
+}
+
+
+
+

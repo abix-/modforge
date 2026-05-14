@@ -1,0 +1,80 @@
+// Address: 0x1402d3a7c
+// Ghidra name: FUN_1402d3a7c
+// ============ 0x1402d3a7c FUN_1402d3a7c (size=132) ============
+
+
+void FUN_1402d3a7c(longlong param_1,ulonglong param_2,byte param_3)
+
+
+
+{
+
+  byte bVar1;
+
+  ulonglong uVar2;
+
+  byte *pbVar3;
+
+  byte *pbVar4;
+
+  longlong lVar5;
+
+  
+
+  lVar5 = *(longlong *)(param_1 + 0x458);
+
+  if (lVar5 == 0) {
+
+    uVar2 = 0x200;
+
+    lVar5 = param_1 + 0x50;
+
+  }
+
+  else {
+
+    uVar2 = *(ulonglong *)(param_1 + 0x450) >> 1;
+
+  }
+
+  pbVar3 = (byte *)(lVar5 + -1 + uVar2);
+
+  *(byte **)(param_1 + 0x40) = pbVar3;
+
+  pbVar4 = pbVar3;
+
+  while ((0 < *(int *)(param_1 + 0x30) || (param_2 != 0))) {
+
+    *(int *)(param_1 + 0x30) = *(int *)(param_1 + 0x30) + -1;
+
+    bVar1 = (byte)param_2;
+
+    param_2 = param_2 >> 4;
+
+    bVar1 = (bVar1 & 0xf) + 0x30;
+
+    if (0x39 < bVar1) {
+
+      bVar1 = (param_3 ^ 1) * ' ' + '\a' + bVar1;
+
+    }
+
+    *pbVar4 = bVar1;
+
+    *(longlong *)(param_1 + 0x40) = *(longlong *)(param_1 + 0x40) + -1;
+
+    pbVar4 = *(byte **)(param_1 + 0x40);
+
+  }
+
+  *(int *)(param_1 + 0x48) = (int)pbVar3 - *(int *)(param_1 + 0x40);
+
+  *(byte **)(param_1 + 0x40) = pbVar4 + 1;
+
+  return;
+
+}
+
+
+
+

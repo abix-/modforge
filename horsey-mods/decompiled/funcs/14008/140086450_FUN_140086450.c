@@ -1,0 +1,136 @@
+// Address: 0x140086450
+// Ghidra name: FUN_140086450
+// ============ 0x140086450 FUN_140086450 (size=274) ============
+
+
+int FUN_140086450(longlong param_1,byte *param_2)
+
+
+
+{
+
+  int iVar1;
+
+  uint uVar2;
+
+  uint uVar3;
+
+  uint uVar4;
+
+  ulonglong uVar5;
+
+  int iVar6;
+
+  byte bVar7;
+
+  uint uVar8;
+
+  uint local_res10;
+
+  
+
+  bVar7 = *param_2;
+
+  iVar6 = 0;
+
+  uVar3 = 0;
+
+  uVar8 = 0;
+
+  if (bVar7 != 0) {
+
+    uVar5 = (ulonglong)local_res10;
+
+    do {
+
+      if (uVar3 == 0) {
+
+        uVar4 = 0xff >> ((&DAT_14030ad90)[bVar7] & 0x1f) & (uint)bVar7;
+
+      }
+
+      else {
+
+        uVar4 = bVar7 & 0x3f | (int)uVar5 << 6;
+
+      }
+
+      uVar5 = (ulonglong)uVar4;
+
+      iVar1 = uVar3 + 0x10;
+
+      uVar3 = (uint)(byte)(&DAT_14030ad90)[iVar1 * 0x10 + (uint)(byte)(&DAT_14030ad90)[bVar7]];
+
+      uVar2 = uVar8;
+
+      if ((&DAT_14030ad90)[iVar1 * 0x10 + (uint)(byte)(&DAT_14030ad90)[bVar7]] == 0) {
+
+        if (uVar4 < 0x2165) {
+
+          bVar7 = (&DAT_1403eaf30)[uVar5];
+
+          uVar2 = (uint)bVar7;
+
+          if (bVar7 == 0x20) {
+
+            iVar6 = iVar6 + *(int *)(param_1 + 0x2320);
+
+          }
+
+          else if (bVar7 != 0) {
+
+            if (bVar7 == 0xff) goto LAB_1400864fc;
+
+            goto LAB_140086510;
+
+          }
+
+        }
+
+        else {
+
+LAB_1400864fc:
+
+          uVar4 = uVar4 & 0x80000007;
+
+          if ((int)uVar4 < 0) {
+
+            uVar4 = (uVar4 - 1 | 0xfffffff8) + 1;
+
+          }
+
+          uVar2 = uVar4 + 0x12;
+
+LAB_140086510:
+
+          if (0 < (int)uVar8) {
+
+            iVar6 = iVar6 + *(char *)((longlong)(int)uVar8 * 0x118 + (longlong)(int)uVar2 + 0x28 +
+
+                                     param_1);
+
+          }
+
+          iVar6 = iVar6 + *(int *)((longlong)(int)uVar2 * 0x118 + 0x20 + param_1);
+
+        }
+
+      }
+
+      uVar8 = uVar2;
+
+      bVar7 = param_2[1];
+
+      param_2 = param_2 + 1;
+
+    } while (bVar7 != 0);
+
+  }
+
+  return iVar6 + -1;
+
+}
+
+
+
+

@@ -1,0 +1,192 @@
+// Address: 0x140100a40
+// Ghidra name: FUN_140100a40
+// ============ 0x140100a40 FUN_140100a40 (size=535) ============
+
+
+int FUN_140100a40(longlong param_1,int param_2,int param_3,int param_4,int param_5,uint param_6)
+
+
+
+{
+
+  int *piVar1;
+
+  longlong lVar2;
+
+  char cVar3;
+
+  int iVar4;
+
+  longlong lVar5;
+
+  int *piVar6;
+
+  longlong lVar7;
+
+  int iVar8;
+
+  int iVar9;
+
+  int iVar10;
+
+  int iVar11;
+
+  
+
+  if (0xc < param_5) {
+
+    FUN_1400c4340("radius bigger than spiral!");
+
+  }
+
+  if (param_2 == 0) {
+
+    FUN_1402f94c0(&DAT_1403fb180,0,0x271);
+
+  }
+
+  param_2 = param_2 + 1;
+
+  if ((longlong)param_2 < 0x271) {
+
+    piVar6 = &DAT_1403f4f3c + (longlong)param_2 * 10;
+
+    do {
+
+      if (param_5 < piVar6[2]) {
+
+        return -1;
+
+      }
+
+      if (((&DAT_1403fb180)[*piVar6] == '\0') &&
+
+         ((piVar6[1] == 0 || ((&DAT_1403fb180)[piVar6[1]] == '\0')))) {
+
+        iVar11 = piVar6[-1] + param_4;
+
+        iVar10 = piVar6[-2] + param_3;
+
+        if ((-1 < iVar10) &&
+
+           (((iVar4 = *(int *)(param_1 + 0x278), iVar10 < iVar4 && (-1 < iVar11)) &&
+
+            (iVar11 < *(int *)(param_1 + 0x27c))))) {
+
+          lVar5 = *(longlong *)(param_1 + 0x270);
+
+          lVar7 = (longlong)(iVar4 * iVar11 + iVar10);
+
+          lVar2 = lVar5 + lVar7 * 0x28;
+
+          if ((*(uint *)(&DAT_1403132d4 + (longlong)*(int *)(lVar5 + lVar7 * 0x28) * 0x1c) & param_6
+
+              ) == 0) {
+
+            if ((param_6 & 4) == 0) break;
+
+            iVar9 = piVar6[4] + param_4;
+
+            iVar8 = piVar6[3] + param_3;
+
+            lVar7 = (longlong)(iVar9 * iVar4 + iVar8);
+
+            if (iVar9 < iVar11) {
+
+              cVar3 = *(char *)(lVar2 + 0xc);
+
+LAB_140100b90:
+
+              if (cVar3 != '\0') goto LAB_140100c06;
+
+            }
+
+            else if (iVar11 < iVar9) {
+
+              cVar3 = *(char *)(lVar5 + 0xc + lVar7 * 0x28);
+
+              goto LAB_140100b90;
+
+            }
+
+            if (iVar8 < iVar10) {
+
+              cVar3 = *(char *)(lVar2 + 0xd);
+
+LAB_140100ba6:
+
+              if (cVar3 != '\0') goto LAB_140100c06;
+
+            }
+
+            else if (iVar10 < iVar8) {
+
+              cVar3 = *(char *)(lVar5 + 0xd + lVar7 * 0x28);
+
+              goto LAB_140100ba6;
+
+            }
+
+            if (piVar6[1] == 0) break;
+
+            iVar9 = piVar6[6] + param_4;
+
+            iVar8 = piVar6[5] + param_3;
+
+            lVar7 = (longlong)(iVar9 * iVar4 + iVar8);
+
+            if (iVar9 < iVar11) {
+
+              cVar3 = *(char *)(lVar2 + 0xc);
+
+LAB_140100bdd:
+
+              if (cVar3 != '\0') goto LAB_140100c06;
+
+            }
+
+            else if (iVar11 < iVar9) {
+
+              cVar3 = *(char *)(lVar5 + 0xc + lVar7 * 0x28);
+
+              goto LAB_140100bdd;
+
+            }
+
+            if (((iVar10 <= iVar8) || (*(char *)(lVar2 + 0xd) == '\0')) &&
+
+               ((iVar8 <= iVar10 || (*(char *)(lVar5 + 0xd + lVar7 * 0x28) == '\0')))) break;
+
+          }
+
+        }
+
+      }
+
+LAB_140100c06:
+
+      piVar1 = piVar6 + -3;
+
+      param_2 = param_2 + 1;
+
+      piVar6 = piVar6 + 10;
+
+      (&DAT_1403fb180)[*piVar1] = 1;
+
+    } while ((longlong)piVar6 < 0x1403fb0e4);
+
+  }
+
+  if (0x270 < param_2) {
+
+    param_2 = -1;
+
+  }
+
+  return param_2;
+
+}
+
+
+
+

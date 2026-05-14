@@ -1,0 +1,70 @@
+// Address: 0x140010430
+// Ghidra name: FUN_140010430
+// ============ 0x140010430 FUN_140010430 (size=220) ============
+
+
+void FUN_140010430(longlong param_1)
+
+
+
+{
+
+  longlong lVar1;
+
+  longlong lVar2;
+
+  
+
+  FUN_140010310(param_1,0);
+
+  for (lVar1 = *(longlong *)(param_1 + 0x70); lVar1 != 0; lVar1 = *(longlong *)(lVar1 + 8)) {
+
+    (**(code **)(**(longlong **)(lVar1 + 0x18) + 0x38))();
+
+  }
+
+  for (lVar1 = *(longlong *)(param_1 + 0x80); lVar1 != 0; lVar1 = *(longlong *)(lVar1 + 0x18)) {
+
+    if ((*(longlong **)(lVar1 + 8))[0xc] == param_1) {
+
+      (**(code **)(**(longlong **)(lVar1 + 8) + 0x20))();
+
+    }
+
+  }
+
+  FUN_14000fd50(param_1);
+
+  if ((*(byte *)(*(longlong *)(param_1 + 0x58) + 0x19298) & 2) != 0) {
+
+    FID_conflict__assert
+
+              (L"m_world->IsLocked() == false",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x1ee
+
+              );
+
+  }
+
+  if ((*(ushort *)(param_1 + 4) & 0x20) == 0) {
+
+    lVar1 = *(longlong *)(param_1 + 0x70);
+
+    lVar2 = *(longlong *)(param_1 + 0x58);
+
+    *(ushort *)(param_1 + 4) = *(ushort *)(param_1 + 4) | 0x20;
+
+    for (; lVar1 != 0; lVar1 = *(longlong *)(lVar1 + 8)) {
+
+      FUN_140007dd0(lVar1,lVar2 + 0x192a0,param_1 + 0xc);
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

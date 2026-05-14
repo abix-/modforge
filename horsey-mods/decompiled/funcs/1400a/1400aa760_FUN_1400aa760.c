@@ -1,0 +1,142 @@
+// Address: 0x1400aa760
+// Ghidra name: FUN_1400aa760
+// ============ 0x1400aa760 FUN_1400aa760 (size=711) ============
+
+
+void FUN_1400aa760(undefined8 param_1,undefined8 param_2,float param_3,float param_4,float param_5,
+
+                  float param_6,float param_7,char param_8,undefined4 param_9,undefined4 param_10)
+
+
+
+{
+
+  undefined4 uVar1;
+
+  float fVar2;
+
+  int iVar3;
+
+  int iVar4;
+
+  int iVar5;
+
+  float fVar6;
+
+  float fVar7;
+
+  float fVar8;
+
+  float fVar9;
+
+  uint in_stack_ffffffffffffff60;
+
+  
+
+  param_6 = param_6 - param_4;
+
+  param_5 = param_5 - param_3;
+
+  fVar6 = param_6 * param_6 + param_5 * param_5;
+
+  if (fVar6 < 0.0) {
+
+    fVar6 = (float)FUN_1402cdfa0(fVar6);
+
+  }
+
+  else {
+
+    fVar6 = SQRT(fVar6);
+
+  }
+
+  fVar7 = DAT_14039ca44;
+
+  fVar2 = DAT_14039ca34;
+
+  uVar1 = DAT_14030374c;
+
+  if (DAT_14039c9f0 <= fVar6) {
+
+    param_5 = (DAT_14039ca44 / fVar6) * param_5;
+
+    param_6 = (DAT_14039ca44 / fVar6) * param_6;
+
+  }
+
+  else {
+
+    fVar6 = 0.0;
+
+  }
+
+  iVar4 = 0;
+
+  fVar9 = (float)((uint)param_6 ^ DAT_14039cac0);
+
+  iVar5 = (int)(fVar6 / param_7);
+
+  fVar6 = fVar6 / (float)iVar5;
+
+  if (0 < iVar5) {
+
+    if (param_8 == '\0') {
+
+      do {
+
+        fVar7 = (float)iVar4;
+
+        iVar4 = iVar4 + 1;
+
+        fVar8 = (fVar7 + fVar2) * fVar6;
+
+        fVar7 = fVar7 * fVar6;
+
+        FUN_1400aa0d0(param_1,param_2,fVar7 * param_5 + param_3,fVar7 * param_6 + param_4,
+
+                      (fVar8 * param_5 + param_3) - fVar9 * fVar6,
+
+                      (fVar8 * param_6 + param_4) - param_5 * fVar6,
+
+                      (float)iVar4 * fVar6 * param_5 + param_3,
+
+                      (float)iVar4 * fVar6 * param_6 + param_4,param_9,param_10);
+
+      } while (iVar4 < iVar5);
+
+    }
+
+    else {
+
+      do {
+
+        in_stack_ffffffffffffff60 = in_stack_ffffffffffffff60 & 0xffffff00;
+
+        iVar3 = iVar4 + 1;
+
+        FUN_1400aa2b0(param_1,param_2,(float)iVar3 * fVar6 * param_5 + param_3,
+
+                      (float)iVar3 * fVar6 * param_6 + param_4,
+
+                      (float)iVar4 * fVar6 * param_5 + param_3,
+
+                      (float)iVar4 * fVar6 * param_6 + param_4,uVar1,param_9,fVar7,
+
+                      in_stack_ffffffffffffff60);
+
+        iVar4 = iVar3;
+
+      } while (iVar3 < iVar5);
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

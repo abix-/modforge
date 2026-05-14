@@ -1,0 +1,184 @@
+// Address: 0x14000fd50
+// Ghidra name: FUN_14000fd50
+// ============ 0x14000fd50 FUN_14000fd50 (size=698) ============
+
+
+void FUN_14000fd50(int *param_1)
+
+
+
+{
+
+  int iVar1;
+
+  float *pfVar2;
+
+  float *pfVar3;
+
+  float fVar4;
+
+  float fVar5;
+
+  float fVar6;
+
+  float fVar7;
+
+  float fVar8;
+
+  float local_68;
+
+  float local_64;
+
+  float local_60;
+
+  float local_5c;
+
+  
+
+  param_1[0x24] = 0;
+
+  param_1[0x25] = 0;
+
+  param_1[0x26] = 0;
+
+  param_1[0x27] = 0;
+
+  param_1[7] = 0;
+
+  param_1[8] = 0;
+
+  iVar1 = *param_1;
+
+  if ((iVar1 != 0) && (iVar1 != 1)) {
+
+    if (iVar1 != 2) {
+
+      FID_conflict__assert
+
+                (L"m_type == b2_dynamicBody",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x11c);
+
+    }
+
+    fVar8 = DAT_14039ca44;
+
+    fVar6 = (float)DAT_1403ffbe8;
+
+    fVar7 = DAT_1403ffbe8._4_4_;
+
+    for (pfVar2 = *(float **)(param_1 + 0x1c); DAT_14039ca44 = fVar8, pfVar2 != (float *)0x0;
+
+        pfVar2 = *(float **)(pfVar2 + 2)) {
+
+      if (*pfVar2 != 0.0) {
+
+        (**(code **)(**(longlong **)(pfVar2 + 6) + 0x30))(*(longlong **)(pfVar2 + 6),&local_68);
+
+        fVar6 = fVar6 + local_64 * local_68;
+
+        param_1[0x24] = (int)(local_68 + (float)param_1[0x24]);
+
+        fVar7 = fVar7 + local_60 * local_68;
+
+        param_1[0x26] = (int)(local_5c + (float)param_1[0x26]);
+
+      }
+
+      fVar8 = DAT_14039ca44;
+
+    }
+
+    pfVar3 = (float *)(param_1 + 0x26);
+
+    pfVar2 = (float *)(param_1 + 0x24);
+
+    if (*pfVar2 <= 0.0) {
+
+      *pfVar2 = 1.0;
+
+      fVar4 = fVar8;
+
+    }
+
+    else {
+
+      fVar4 = fVar8 / *pfVar2;
+
+      fVar6 = fVar6 * fVar4;
+
+      fVar7 = fVar7 * fVar4;
+
+    }
+
+    param_1[0x25] = (int)fVar4;
+
+    if ((*pfVar3 <= 0.0) || ((*(byte *)(param_1 + 1) & 0x10) != 0)) {
+
+      *pfVar3 = 0.0;
+
+      fVar8 = 0.0;
+
+    }
+
+    else {
+
+      fVar4 = *pfVar3 - (fVar7 * fVar7 + fVar6 * fVar6) * *pfVar2;
+
+      *pfVar3 = fVar4;
+
+      if (fVar4 <= 0.0) {
+
+        FID_conflict__assert(L"m_I > 0.0f",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x13f);
+
+      }
+
+      fVar8 = fVar8 / *pfVar3;
+
+    }
+
+    param_1[0x27] = (int)fVar8;
+
+    fVar8 = (float)param_1[0xb];
+
+    fVar4 = (float)param_1[0xc];
+
+    param_1[7] = (int)fVar6;
+
+    param_1[8] = (int)fVar7;
+
+    fVar5 = ((float)param_1[6] * fVar6 - (float)param_1[5] * fVar7) + (float)param_1[3];
+
+    fVar6 = (float)param_1[5] * fVar6 + (float)param_1[6] * fVar7 + (float)param_1[4];
+
+    param_1[0xb] = (int)fVar5;
+
+    param_1[9] = (int)fVar5;
+
+    param_1[0xc] = (int)fVar6;
+
+    param_1[10] = (int)fVar6;
+
+    param_1[0x11] = (int)((fVar5 - fVar8) * (float)param_1[0x12] + (float)param_1[0x11]);
+
+    param_1[0x10] = (int)((float)param_1[0x10] - (fVar6 - fVar4) * (float)param_1[0x12]);
+
+    return;
+
+  }
+
+  param_1[9] = param_1[3];
+
+  param_1[10] = param_1[4];
+
+  param_1[0xb] = param_1[3];
+
+  param_1[0xc] = param_1[4];
+
+  param_1[0xd] = param_1[0xe];
+
+  return;
+
+}
+
+
+
+

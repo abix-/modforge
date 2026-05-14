@@ -1,0 +1,48 @@
+// Address: 0x140050a70
+// Ghidra name: FUN_140050a70
+// ============ 0x140050a70 FUN_140050a70 (size=95) ============
+
+
+void FUN_140050a70(longlong param_1,int param_2)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  int iVar2;
+
+  
+
+  if (*(longlong *)(param_1 + 0x40) == 0) {
+
+    iVar2 = FUN_1402cf00c(*(undefined8 *)(param_1 + 0x30));
+
+    FUN_1402cea4c(*(undefined8 *)(param_1 + 0x30),iVar2 + param_2,0);
+
+  }
+
+  else {
+
+    uVar1 = *(longlong *)(param_1 + 0x40) + (longlong)param_2;
+
+    *(ulonglong *)(param_1 + 0x40) = uVar1;
+
+    if (*(ulonglong *)(param_1 + 0x50) <= uVar1) {
+
+      *(undefined4 *)(param_1 + 0x98) = 1;
+
+      return;
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

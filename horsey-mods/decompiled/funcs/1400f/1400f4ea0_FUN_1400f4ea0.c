@@ -1,0 +1,48 @@
+// Address: 0x1400f4ea0
+// Ghidra name: FUN_1400f4ea0
+// ============ 0x1400f4ea0 FUN_1400f4ea0 (size=282) ============
+
+
+undefined8 * FUN_1400f4ea0(undefined8 *param_1)
+
+
+
+{
+
+  undefined4 uVar1;
+
+  
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_140312568;
+
+  FUN_1400278e0(param_1 + 3,"Sweetie\'s House");
+
+  FUN_1400278e0(param_1 + 7,"Sweetie");
+
+  FUN_1400c9f10(param_1);
+
+  uVar1 = DAT_140303398;
+
+  FUN_1400cf540(param_1,1,0,DAT_140303398,DAT_140303398,DAT_140303398);
+
+  FUN_1400cf540(param_1,2,DAT_14030339c,DAT_14030338c,uVar1,DAT_14030338c);
+
+  FUN_1400cf540(param_1,3,DAT_14039ca44,DAT_14039ca44,DAT_140303394,DAT_140303394);
+
+  FUN_1400cf540(param_1,4,DAT_140304c08,DAT_140303390,DAT_14030374c,DAT_14030374c);
+
+  param_1[0x4c] = 0;
+
+  *(undefined4 *)(param_1 + 0x4f) = 0;
+
+  *(undefined4 *)(param_1 + 0x4d) = 0;
+
+  return param_1;
+
+}
+
+
+
+

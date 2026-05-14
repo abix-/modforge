@@ -1,0 +1,50 @@
+// Address: 0x1402e9b00
+// Ghidra name: FUN_1402e9b00
+// ============ 0x1402e9b00 FUN_1402e9b00 (size=119) ============
+
+
+undefined4
+
+FUN_1402e9b00(undefined8 param_1,undefined4 *param_2,undefined8 *param_3,undefined4 *param_4)
+
+
+
+{
+
+  longlong lVar1;
+
+  undefined4 uVar2;
+
+  
+
+  __acrt_lowio_lock_fh(*param_2);
+
+  lVar1 = param_3[1];
+
+  if ((*(byte *)((&DAT_1403ff160)[(longlong)(int)*(uint *)*param_3 >> 6] + 0x38 +
+
+                (ulonglong)(*(uint *)*param_3 & 0x3f) * 0x48) & 1) == 0) {
+
+    *(undefined1 *)(lVar1 + 0x30) = 1;
+
+    *(undefined4 *)(lVar1 + 0x2c) = 9;
+
+    uVar2 = 0xffffffff;
+
+  }
+
+  else {
+
+    uVar2 = FUN_1402e9cd4();
+
+  }
+
+  __acrt_lowio_unlock_fh(*param_4);
+
+  return uVar2;
+
+}
+
+
+
+

@@ -1,0 +1,126 @@
+// Address: 0x1400b5fe0
+// Ghidra name: FUN_1400b5fe0
+// ============ 0x1400b5fe0 FUN_1400b5fe0 (size=357) ============
+
+
+void FUN_1400b5fe0(longlong param_1)
+
+
+
+{
+
+  longlong lVar1;
+
+  uint uVar2;
+
+  ulonglong uVar3;
+
+  ulonglong uVar4;
+
+  longlong lVar5;
+
+  longlong lVar6;
+
+  undefined4 uVar7;
+
+  
+
+  lVar6 = *(longlong *)(param_1 + 0x40);
+
+  lVar5 = *(longlong *)(param_1 + 0x48) - lVar6;
+
+  uVar3 = 0;
+
+  lVar5 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar5),8) + lVar5;
+
+  lVar1 = lVar5 >> 7;
+
+  lVar5 = lVar5 >> 0x3f;
+
+  if (*(char *)(param_1 + 0x1a) == '\0') {
+
+    uVar4 = uVar3;
+
+    uVar7 = DAT_14030d9fc;
+
+    if (lVar1 != lVar5) {
+
+      do {
+
+        lVar5 = *(longlong *)(uVar4 + 0x30 + lVar6);
+
+        if ((lVar5 != 0) && (*(char *)(uVar4 + 0x14 + lVar6) != '\0')) {
+
+          for (lVar6 = *(longlong *)(lVar5 + 0x70); lVar6 != 0; lVar6 = *(longlong *)(lVar6 + 8)) {
+
+            uVar7 = FUN_1400c5c10(uVar7,*(undefined4 *)(*(longlong *)(lVar6 + 0x28) + 8));
+
+          }
+
+        }
+
+        lVar6 = *(longlong *)(param_1 + 0x40);
+
+        uVar2 = (int)uVar3 + 1;
+
+        uVar3 = (ulonglong)uVar2;
+
+        lVar5 = *(longlong *)(param_1 + 0x48) - lVar6;
+
+        lVar5 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar5),8) + lVar5;
+
+        uVar4 = uVar4 + 0xb8;
+
+      } while ((ulonglong)(longlong)(int)uVar2 < (ulonglong)((lVar5 >> 7) - (lVar5 >> 0x3f)));
+
+    }
+
+  }
+
+  else {
+
+    uVar4 = uVar3;
+
+    uVar7 = DAT_14039ca5c;
+
+    if (lVar1 != lVar5) {
+
+      do {
+
+        lVar5 = *(longlong *)(uVar4 + 0x30 + lVar6);
+
+        if ((lVar5 != 0) && (*(char *)(uVar4 + 0x14 + lVar6) != '\0')) {
+
+          for (lVar6 = *(longlong *)(lVar5 + 0x70); lVar6 != 0; lVar6 = *(longlong *)(lVar6 + 8)) {
+
+            uVar7 = FUN_1400c5c00(uVar7,**(undefined4 **)(lVar6 + 0x28));
+
+          }
+
+        }
+
+        lVar6 = *(longlong *)(param_1 + 0x40);
+
+        uVar2 = (int)uVar3 + 1;
+
+        uVar3 = (ulonglong)uVar2;
+
+        lVar5 = *(longlong *)(param_1 + 0x48) - lVar6;
+
+        lVar5 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar5),8) + lVar5;
+
+        uVar4 = uVar4 + 0xb8;
+
+      } while ((ulonglong)(longlong)(int)uVar2 < (ulonglong)((lVar5 >> 7) - (lVar5 >> 0x3f)));
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

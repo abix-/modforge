@@ -1,0 +1,74 @@
+// Address: 0x140057c20
+// Ghidra name: FUN_140057c20
+// ============ 0x140057c20 FUN_140057c20 (size=961) ============
+
+
+undefined8 * FUN_140057c20(undefined8 *param_1)
+
+
+
+{
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_140305698;
+
+  FUN_1400278e0(param_1 + 3,&DAT_140305758);
+
+  FUN_1400278e0(param_1 + 7,&DAT_140305758);
+
+  FUN_1400cf540(param_1,1,0,DAT_140303398,DAT_140303398,DAT_140303398);
+
+  FUN_1400c9f10(param_1);
+
+  FUN_1400cb670(param_1,param_1 + 0x4b,7,0x99,0x22,3);
+
+  FUN_1400cb670(param_1,(longlong)param_1 + 0x26c,8,0xad,0x22,3);
+
+  FUN_1400cb670(param_1,param_1 + 0x50,9,0x99,0x2c,3);
+
+  FUN_1400cb670(param_1,(longlong)param_1 + 0x294,10,0xad,0x2c,3);
+
+  FUN_1400cb670(param_1,param_1 + 0x55,0xb,0x9a,0x38,4);
+
+  FUN_1400c9c30(param_1,0xc,6,0x18,0x80,1,1);
+
+  FUN_1400c9c30(param_1,0xd,0xf0,0x53,0x29,8,1);
+
+  FUN_1400c9c30(param_1,0xe,0xd5,0x5d,0x5e,10,1);
+
+  FUN_1400c9c30(param_1,0xf,0xd5,0x68,0x5e,10,1);
+
+  FUN_1400c9c30(param_1,0x10,0xd5,0x78,0x5e,0x25,1);
+
+  FUN_1400c9c30(param_1,0x11,0x128,0x52,10,9,1);
+
+  FUN_1400c9c30(param_1,0x12,0xe4,10,0x23,0x18,1);
+
+  FUN_1400c9c30(param_1,0x13,0x96,8,0x2a,0x16,1);
+
+  FUN_1400c9c30(param_1,0x14,0xb0,0x79,0x13,0x19,1);
+
+  FUN_1400c9c30(param_1,0x15,0xce,0x26,0x54,0xc,1);
+
+  FUN_1400c9c30(param_1,0x16,0xce,0x32,0x54,0xb,1);
+
+  FUN_1400c9c30(param_1,0x17,0xce,0x3d,0x54,0xb,1);
+
+  *(undefined8 *)((longlong)param_1 + 0x2cc) = 0;
+
+  *(undefined1 *)((longlong)param_1 + 0x2db) = 0;
+
+  *(undefined4 *)((longlong)param_1 + 0x2d4) = 0;
+
+  *(undefined4 *)(param_1 + 0x59) = 0;
+
+  *(undefined2 *)(param_1 + 0x5b) = 0;
+
+  return param_1;
+
+}
+
+
+
+

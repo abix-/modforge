@@ -1,0 +1,160 @@
+// Address: 0x1402ba810
+// Ghidra name: FUN_1402ba810
+// ============ 0x1402ba810 FUN_1402ba810 (size=546) ============
+
+
+void FUN_1402ba810(longlong param_1)
+
+
+
+{
+
+  byte bVar1;
+
+  byte bVar2;
+
+  byte bVar3;
+
+  byte bVar4;
+
+  uint uVar5;
+
+  int iVar6;
+
+  uint uVar7;
+
+  ushort uVar8;
+
+  ushort uVar9;
+
+  ushort uVar10;
+
+  ushort uVar11;
+
+  int iVar12;
+
+  uint uVar13;
+
+  uint *puVar14;
+
+  uint *puVar15;
+
+  uint uVar16;
+
+  
+
+  uVar5 = *(uint *)(param_1 + 0x78);
+
+  bVar1 = *(byte *)(param_1 + 0x80);
+
+  bVar2 = *(byte *)(param_1 + 0x81);
+
+  bVar3 = *(byte *)(param_1 + 0x82);
+
+  bVar4 = *(byte *)(param_1 + 0x83);
+
+  iVar6 = *(int *)(param_1 + 0x3c);
+
+  while (iVar6 != 0) {
+
+    iVar12 = *(int *)(param_1 + 0x38);
+
+    puVar15 = *(uint **)(param_1 + 8);
+
+    puVar14 = *(uint **)(param_1 + 0x30);
+
+    *(int *)(param_1 + 0x3c) = iVar6 + -1;
+
+    if (iVar12 != 0) {
+
+      uVar16 = uVar5 & 2;
+
+      if ((uVar5 & 1) == 0) {
+
+        do {
+
+          uVar7 = *puVar15;
+
+          uVar13 = uVar7 >> 0x18;
+
+          if (uVar16 != 0) {
+
+            uVar8 = (ushort)bVar4 * (ushort)(byte)(uVar7 >> 0x18) + 1;
+
+            uVar13 = (uint)((ushort)((uVar8 >> 8) + uVar8) >> 8);
+
+          }
+
+          puVar15 = puVar15 + 1;
+
+          *puVar14 = ((uVar13 << 8 | uVar7 >> 0x10 & 0xff) << 8 | uVar7 >> 8 & 0xff) << 8 |
+
+                     uVar7 & 0xff;
+
+          puVar14 = puVar14 + 1;
+
+          iVar12 = iVar12 + -1;
+
+        } while (iVar12 != 0);
+
+      }
+
+      else {
+
+        do {
+
+          uVar7 = *puVar15;
+
+          uVar13 = uVar7 >> 0x18;
+
+          uVar8 = ((ushort)uVar7 & 0xff) * (ushort)bVar1 + 1;
+
+          uVar9 = ((ushort)(uVar7 >> 8) & 0xff) * (ushort)bVar2 + 1;
+
+          uVar10 = ((ushort)(uVar7 >> 0x10) & 0xff) * (ushort)bVar3 + 1;
+
+          if (uVar16 != 0) {
+
+            uVar11 = (ushort)bVar4 * (ushort)(byte)(uVar7 >> 0x18) + 1;
+
+            uVar13 = (uint)((ushort)((uVar11 >> 8) + uVar11) >> 8);
+
+          }
+
+          puVar15 = puVar15 + 1;
+
+          *puVar14 = ((ushort)((uVar10 >> 8) + uVar10) & 0xffffff00 | uVar13 << 0x10 |
+
+                     (uint)((ushort)((uVar9 >> 8) + uVar9) >> 8)) << 8 |
+
+                     (uint)((ushort)((uVar8 >> 8) + uVar8) >> 8);
+
+          puVar14 = puVar14 + 1;
+
+          iVar12 = iVar12 + -1;
+
+        } while (iVar12 != 0);
+
+      }
+
+    }
+
+    *(longlong *)(param_1 + 8) = *(longlong *)(param_1 + 8) + (longlong)*(int *)(param_1 + 0x18);
+
+    *(longlong *)(param_1 + 0x30) =
+
+         *(longlong *)(param_1 + 0x30) + (longlong)*(int *)(param_1 + 0x40);
+
+    iVar6 = *(int *)(param_1 + 0x3c);
+
+  }
+
+  *(undefined4 *)(param_1 + 0x3c) = 0xffffffff;
+
+  return;
+
+}
+
+
+
+

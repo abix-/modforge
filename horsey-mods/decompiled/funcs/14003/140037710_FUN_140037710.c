@@ -1,0 +1,206 @@
+// Address: 0x140037710
+// Ghidra name: FUN_140037710
+// ============ 0x140037710 FUN_140037710 (size=467) ============
+
+
+void FUN_140037710(undefined8 *param_1)
+
+
+
+{
+
+  ulonglong _Size;
+
+  char *_Str;
+
+  int iVar1;
+
+  ulonglong uVar2;
+
+  undefined8 ****ppppuVar3;
+
+  size_t sVar4;
+
+  longlong *plVar5;
+
+  undefined8 ****_Buf1;
+
+  int iVar6;
+
+  undefined8 *puVar7;
+
+  undefined **ppuVar8;
+
+  longlong lVar9;
+
+  ulonglong uVar10;
+
+  undefined8 ***local_48;
+
+  undefined8 uStack_40;
+
+  ulonglong local_38;
+
+  ulonglong local_30;
+
+  
+
+  iVar6 = 0;
+
+  local_48 = (undefined8 ***)0x0;
+
+  uStack_40 = 0;
+
+  local_30 = 0;
+
+  puVar7 = param_1;
+
+  if (0xf < (ulonglong)param_1[3]) {
+
+    puVar7 = (undefined8 *)*param_1;
+
+  }
+
+  _Size = param_1[2];
+
+  if (0x7fffffffffffffff < _Size) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_140024130();
+
+  }
+
+  local_38 = _Size;
+
+  if (_Size < 0x10) {
+
+    ppppuVar3 = (undefined8 ****)*puVar7;
+
+    uStack_40 = puVar7[1];
+
+    uVar10 = 0xf;
+
+    local_30 = 0xf;
+
+    local_48 = ppppuVar3;
+
+  }
+
+  else {
+
+    uVar2 = _Size | 0xf;
+
+    uVar10 = 0x7fffffffffffffff;
+
+    if ((uVar2 < 0x8000000000000000) && (uVar10 = uVar2, uVar2 < 0x16)) {
+
+      uVar10 = 0x16;
+
+    }
+
+    ppppuVar3 = (undefined8 ****)FUN_1400285e0(uVar10 + 1);
+
+    local_48 = ppppuVar3;
+
+    local_30 = uVar10;
+
+    FUN_1402f8e20(ppppuVar3,puVar7,_Size + 1);
+
+  }
+
+  ppuVar8 = &PTR_DAT_1403d41e0;
+
+  while( true ) {
+
+    _Str = *ppuVar8;
+
+    sVar4 = strlen(_Str);
+
+    _Buf1 = &local_48;
+
+    if (0xf < uVar10) {
+
+      _Buf1 = ppppuVar3;
+
+    }
+
+    if ((_Size == sVar4) && ((_Size == 0 || (iVar1 = memcmp(_Buf1,_Str,_Size), iVar1 == 0)))) break;
+
+    iVar6 = iVar6 + 1;
+
+    ppuVar8 = ppuVar8 + 2;
+
+    if (0x1403d437f < (longlong)ppuVar8) {
+
+      FUN_140027900(&local_48);
+
+LAB_140037826:
+
+      if (0xf < (ulonglong)param_1[3]) {
+
+        param_1 = (undefined8 *)*param_1;
+
+      }
+
+      FUN_1400c4320("Cheevo %s not found!",param_1);
+
+      return;
+
+    }
+
+  }
+
+  FUN_140027900(&local_48);
+
+  if (iVar6 != -1) {
+
+    lVar9 = (longlong)iVar6;
+
+    if ((&DAT_1403ea120)[lVar9] != '\0') {
+
+      return;
+
+    }
+
+    (&DAT_1403ea120)[lVar9] = 1;
+
+    if (0xf < (ulonglong)param_1[3]) {
+
+      param_1 = (undefined8 *)*param_1;
+
+    }
+
+    FUN_1400c4320("got cheevo: %s",param_1);
+
+    if (DAT_1403f3354 == '\0') {
+
+      return;
+
+    }
+
+    plVar5 = (longlong *)SteamInternal_ContextInit(&PTR_FUN_1403d4380);
+
+    plVar5 = (longlong *)*plVar5;
+
+    if (plVar5 == (longlong *)0x0) {
+
+      return;
+
+    }
+
+    (**(code **)(*plVar5 + 0x30))(plVar5,(&PTR_DAT_1403d41e0)[lVar9 * 2]);
+
+    (**(code **)(*plVar5 + 0x48))(plVar5);
+
+    return;
+
+  }
+
+  goto LAB_140037826;
+
+}
+
+
+
+

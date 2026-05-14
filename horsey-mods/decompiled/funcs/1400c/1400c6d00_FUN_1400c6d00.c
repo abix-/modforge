@@ -1,0 +1,48 @@
+// Address: 0x1400c6d00
+// Ghidra name: FUN_1400c6d00
+// ============ 0x1400c6d00 FUN_1400c6d00 (size=188) ============
+
+
+/* WARNING: Removing unreachable block (ram,0x0001400c6d55) */
+
+
+
+float * FUN_1400c6d00(float *param_1,float param_2)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  float fVar2;
+
+  uint uVar3;
+
+  float fVar4;
+
+  
+
+  uVar1 = DAT_1403da740 << 0xd ^ DAT_1403da740;
+
+  uVar1 = uVar1 >> 7 ^ uVar1;
+
+  DAT_1403da740 = uVar1 << 0x11 ^ uVar1;
+
+  fVar4 = (float)(DAT_1403da740 & 0xffff) * DAT_1403053bc * DAT_14039ca54 + 0.0;
+
+  fVar2 = (float)FUN_1402cfda0(fVar4);
+
+  *param_1 = fVar2 * param_2;
+
+  uVar3 = FUN_1402cdc50(fVar4);
+
+  param_1[1] = (float)(uVar3 ^ DAT_14039cac0) * param_2;
+
+  return param_1;
+
+}
+
+
+
+

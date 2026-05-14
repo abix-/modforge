@@ -1,0 +1,180 @@
+// Address: 0x140012a20
+// Ghidra name: FUN_140012a20
+// ============ 0x140012a20 FUN_140012a20 (size=374) ============
+
+
+int FUN_140012a20(longlong param_1,float *param_2)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  int iVar3;
+
+  int iVar4;
+
+  float *pfVar5;
+
+  float *pfVar6;
+
+  int iVar7;
+
+  int iVar8;
+
+  longlong lVar9;
+
+  float fVar10;
+
+  float fVar11;
+
+  float fVar12;
+
+  
+
+  pfVar5 = *(float **)(param_1 + 0x10);
+
+  iVar8 = 0;
+
+  fVar1 = param_2[1];
+
+  fVar2 = *param_2;
+
+  iVar3 = *(int *)(param_1 + 0x18);
+
+  iVar7 = 1;
+
+  fVar10 = fVar1 * pfVar5[1] + fVar2 * *pfVar5;
+
+  if (iVar3 < 2) {
+
+    return 0;
+
+  }
+
+  lVar9 = 1;
+
+  if (3 < iVar3 + -1) {
+
+    pfVar6 = pfVar5 + 7;
+
+    do {
+
+      fVar11 = fVar2 * pfVar6[-5] + fVar1 * pfVar6[-4];
+
+      fVar12 = fVar10;
+
+      if (fVar10 < fVar11) {
+
+        fVar12 = fVar11;
+
+      }
+
+      iVar4 = iVar7;
+
+      if (fVar11 <= fVar10) {
+
+        iVar4 = iVar8;
+
+      }
+
+      fVar11 = fVar2 * pfVar6[-3] + fVar1 * pfVar6[-2];
+
+      fVar10 = fVar12;
+
+      if (fVar12 < fVar11) {
+
+        fVar10 = fVar11;
+
+      }
+
+      iVar8 = iVar7 + 1;
+
+      if (fVar11 <= fVar12) {
+
+        iVar8 = iVar4;
+
+      }
+
+      fVar11 = fVar2 * pfVar6[-1] + fVar1 * *pfVar6;
+
+      fVar12 = fVar10;
+
+      if (fVar10 < fVar11) {
+
+        fVar12 = fVar11;
+
+      }
+
+      iVar4 = iVar7 + 2;
+
+      if (fVar11 <= fVar10) {
+
+        iVar4 = iVar8;
+
+      }
+
+      fVar10 = fVar2 * pfVar6[1] + fVar1 * pfVar6[2];
+
+      iVar8 = iVar7 + 3;
+
+      if (fVar10 <= fVar12) {
+
+        iVar8 = iVar4;
+
+        fVar10 = fVar12;
+
+      }
+
+      lVar9 = lVar9 + 4;
+
+      pfVar6 = pfVar6 + 8;
+
+      iVar7 = iVar7 + 4;
+
+    } while (iVar7 < iVar3 + -3);
+
+    if (iVar3 <= iVar7) {
+
+      return iVar8;
+
+    }
+
+  }
+
+  pfVar5 = pfVar5 + lVar9 * 2;
+
+  do {
+
+    fVar12 = fVar1 * pfVar5[1] + fVar2 * *pfVar5;
+
+    iVar4 = iVar7;
+
+    if (fVar12 <= fVar10) {
+
+      iVar4 = iVar8;
+
+      fVar12 = fVar10;
+
+    }
+
+    fVar10 = fVar12;
+
+    pfVar5 = pfVar5 + 2;
+
+    iVar7 = iVar7 + 1;
+
+    iVar8 = iVar4;
+
+  } while (iVar7 < iVar3);
+
+  return iVar4;
+
+}
+
+
+
+

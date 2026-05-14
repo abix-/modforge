@@ -1,0 +1,314 @@
+// Address: 0x1400b39b0
+// Ghidra name: FUN_1400b39b0
+// ============ 0x1400b39b0 FUN_1400b39b0 (size=1034) ============
+
+
+void FUN_1400b39b0(longlong param_1,longlong param_2)
+
+
+
+{
+
+  undefined1 uVar1;
+
+  longlong lVar2;
+
+  longlong lVar3;
+
+  int iVar4;
+
+  longlong lVar5;
+
+  longlong lVar6;
+
+  int iVar7;
+
+  uint uVar8;
+
+  ulonglong uVar10;
+
+  ulonglong uVar11;
+
+  ulonglong uVar12;
+
+  ulonglong uVar13;
+
+  longlong lVar14;
+
+  ulonglong uVar9;
+
+  
+
+  lVar2 = (longlong)(int)*(uint *)(param_1 + 0x234);
+
+  if (*(uint *)(param_1 + 0x234) < 0x14) {
+
+    uVar12 = 0;
+
+    uVar8 = 0;
+
+    DAT_1403da354 = 0;
+
+    uVar9 = uVar12;
+
+    uVar10 = uVar12;
+
+    if (*(int *)(&DAT_14030d110 + lVar2 * 0x44) != -1) {
+
+      do {
+
+        uVar9 = uVar10;
+
+        uVar8 = (uint)uVar9;
+
+        if (0xf < (int)uVar8) break;
+
+        uVar8 = uVar8 + 1;
+
+        uVar9 = (ulonglong)uVar8;
+
+        uVar10 = (ulonglong)uVar8;
+
+      } while (*(int *)(&DAT_14030d110 + (lVar2 * 0x11 + (longlong)(int)uVar8) * 4) != -1);
+
+      DAT_1403da354 = (uint)uVar9;
+
+    }
+
+    DAT_1403da358 =
+
+         (int)uVar8 / 3 + ((int)uVar8 >> 0x1f) +
+
+         (int)(((longlong)(int)uVar8 / 3 + ((longlong)(int)uVar8 >> 0x3f) & 0xffffffffU) >> 0x1f);
+
+    DAT_1403da35c = uVar8 - DAT_1403da358;
+
+    lVar3 = *(longlong *)(param_1 + 0x48) - *(longlong *)(param_1 + 0x40);
+
+    lVar3 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar3),8) + lVar3;
+
+    iVar4 = ((int)(lVar3 >> 7) - (int)(lVar3 >> 0x3f)) + -1;
+
+    lVar3 = (longlong)iVar4;
+
+    if (-1 < iVar4) {
+
+      lVar14 = lVar3 * 0xb8;
+
+      uVar10 = uVar12;
+
+      do {
+
+        iVar4 = (int)uVar12;
+
+        if ((DAT_1403da358 <= iVar4) || ((int)uVar9 <= iVar4)) break;
+
+        if (*(int *)(*(longlong *)(param_1 + 0x40) + 8 + lVar14) == 3) {
+
+          if (-1 < *(int *)(*(longlong *)(param_1 + 0x40) + 0x10 + lVar14)) {
+
+            iVar7 = *(int *)(&DAT_14030d110 + (lVar2 * 0x11 + uVar10) * 4);
+
+            uVar1 = FUN_1400a5370(iVar7);
+
+            *(undefined1 *)(iVar7 + param_2) = uVar1;
+
+            uVar9 = (ulonglong)DAT_1403da354;
+
+          }
+
+          uVar12 = (ulonglong)(iVar4 + 1);
+
+          uVar10 = uVar10 + 1;
+
+        }
+
+        lVar14 = lVar14 + -0xb8;
+
+        lVar3 = lVar3 + -1;
+
+      } while (-1 < lVar3);
+
+    }
+
+    uVar10 = 0;
+
+    lVar3 = *(longlong *)(param_1 + 0x48);
+
+    lVar14 = *(longlong *)(param_1 + 0x40);
+
+    lVar5 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar3 - lVar14),8) + (lVar3 - lVar14);
+
+    if (lVar5 >> 7 != lVar5 >> 0x3f) {
+
+      lVar5 = (longlong)(int)uVar12;
+
+      uVar11 = uVar10;
+
+      uVar13 = uVar10;
+
+      do {
+
+        if ((DAT_1403da35c <= (int)uVar10) || ((int)uVar9 <= (int)uVar12)) break;
+
+        if (*(int *)(lVar14 + 8 + uVar11) == 2) {
+
+          if (-1 < *(int *)(lVar14 + 0x10 + uVar11)) {
+
+            iVar4 = *(int *)(&DAT_14030d110 + (lVar2 * 0x11 + lVar5) * 4);
+
+            uVar1 = FUN_1400a5370(iVar4);
+
+            *(undefined1 *)(iVar4 + param_2) = uVar1;
+
+            lVar14 = *(longlong *)(param_1 + 0x40);
+
+            uVar9 = (ulonglong)DAT_1403da354;
+
+          }
+
+          uVar10 = (ulonglong)((int)uVar10 + 1);
+
+          uVar12 = (ulonglong)((int)uVar12 + 1);
+
+          lVar5 = lVar5 + 1;
+
+        }
+
+        lVar3 = *(longlong *)(param_1 + 0x48);
+
+        uVar8 = (int)uVar13 + 1;
+
+        uVar13 = (ulonglong)uVar8;
+
+        uVar11 = uVar11 + 0xb8;
+
+        lVar6 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar3 - lVar14),8) + (lVar3 - lVar14);
+
+      } while ((ulonglong)(longlong)(int)uVar8 < (ulonglong)((lVar6 >> 7) - (lVar6 >> 0x3f)));
+
+    }
+
+    lVar5 = 0;
+
+    iVar7 = 0;
+
+    lVar3 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar3 - lVar14),8) + (lVar3 - lVar14);
+
+    iVar4 = ((int)(lVar3 >> 7) - (int)(lVar3 >> 0x3f)) + -1;
+
+    lVar3 = (longlong)iVar4;
+
+    if (-1 < iVar4) {
+
+      lVar14 = lVar3 * 0xb8;
+
+      do {
+
+        if ((DAT_1403da358 <= iVar7) || ((int)uVar9 <= iVar7)) break;
+
+        if (*(int *)(*(longlong *)(param_1 + 0x40) + 8 + lVar14) == 4) {
+
+          if (-1 < *(int *)(*(longlong *)(param_1 + 0x40) + 0x10 + lVar14)) {
+
+            iVar4 = *(int *)(&DAT_14030d110 + (lVar2 * 0x11 + lVar5) * 4);
+
+            uVar1 = FUN_1400a5370(iVar4);
+
+            *(undefined1 *)((longlong)iVar4 + 0xf0 + param_2) = uVar1;
+
+            uVar9 = (ulonglong)DAT_1403da354;
+
+          }
+
+          iVar7 = iVar7 + 1;
+
+          lVar5 = lVar5 + 1;
+
+        }
+
+        lVar14 = lVar14 + -0xb8;
+
+        lVar3 = lVar3 + -1;
+
+      } while (-1 < lVar3);
+
+    }
+
+    uVar10 = 0;
+
+    lVar3 = *(longlong *)(param_1 + 0x40);
+
+    lVar14 = *(longlong *)(param_1 + 0x48) - lVar3;
+
+    lVar14 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar14),8) + lVar14;
+
+    if (lVar14 >> 7 != lVar14 >> 0x3f) {
+
+      lVar14 = (longlong)iVar7;
+
+      uVar12 = uVar10;
+
+      uVar11 = uVar10;
+
+      do {
+
+        if (DAT_1403da35c <= (int)uVar10) {
+
+          return;
+
+        }
+
+        if ((int)uVar9 <= iVar7) {
+
+          return;
+
+        }
+
+        if (*(int *)(lVar3 + 8 + uVar12) == 1) {
+
+          if (-1 < *(int *)(lVar3 + 0x10 + uVar12)) {
+
+            iVar4 = *(int *)(&DAT_14030d110 + (lVar2 * 0x11 + lVar14) * 4);
+
+            uVar1 = FUN_1400a5370(iVar4);
+
+            *(undefined1 *)((longlong)iVar4 + 0xf0 + param_2) = uVar1;
+
+            lVar3 = *(longlong *)(param_1 + 0x40);
+
+            uVar9 = (ulonglong)DAT_1403da354;
+
+          }
+
+          uVar10 = (ulonglong)((int)uVar10 + 1);
+
+          iVar7 = iVar7 + 1;
+
+          lVar14 = lVar14 + 1;
+
+        }
+
+        lVar5 = *(longlong *)(param_1 + 0x48) - lVar3;
+
+        uVar8 = (int)uVar11 + 1;
+
+        uVar11 = (ulonglong)uVar8;
+
+        uVar12 = uVar12 + 0xb8;
+
+        lVar5 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar5),8) + lVar5;
+
+      } while ((ulonglong)(longlong)(int)uVar8 < (ulonglong)((lVar5 >> 7) - (lVar5 >> 0x3f)));
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+
