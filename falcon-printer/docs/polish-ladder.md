@@ -4,6 +4,43 @@
 > reading experience". Ordered by leverage. Pick from the
 > top when starting a session.
 
+## 0. Consolidate the five binaries into one
+
+**Symptom:** we currently ship five separate binaries
+(`rust_print`, `batch_print`, `sweep_ghidra`, `sweep`,
+`dump_il`). That's the spike's natural sprawl, not a
+considered CLI. Each binary has its own arg-parsing
+boilerplate, default-path duplication, and discovery cost
+for a new reader. The user shouldn't need a cheat sheet
+just to figure out which binary to run.
+
+**Fix:** collapse to a single `falcon-printer` binary
+with clap subcommands:
+
+```
+falcon-printer print  --addr 0x140089510 [BIN]      # was rust_print
+falcon-printer batch  [--out DIR] [BIN] < addrs.txt # was batch_print
+falcon-printer sweep  [--addrs FILE] [BIN]          # was sweep_ghidra / sweep merged
+falcon-printer dump-il --addr 0x140089510 [BIN]     # was dump_il
+```
+
+A shared `Args` struct holds the binary path,
+`unsupported_are_intrinsics(true)`, and the friendly-name
+table loaded once. Subcommands dispatch on
+`clap::Subcommand`. `sweep` and `sweep_ghidra` collapse to
+one subcommand with a flag selecting which address source
+(Falcon's PE entries vs the Ghidra address list).
+
+**Effort:** small. ~150 LOC reorg in one sitting; mostly
+cut-and-paste from existing bin sources into mod files
+under `src/bin/falcon_printer/` or `src/`. Update
+`README.md`, `docs/usage.md`, and the powershell snippets.
+
+**Blocker for nothing** in particular, but worth doing
+before polish ladder #3 (struct schema) and #5 (mass
+naming) because those will add more shared state and the
+existing duplication will compound.
+
 ## 1. Tail-call recognition
 
 **Symptom:** functions sometimes show the body of a tail-callee
