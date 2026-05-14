@@ -1,3 +1,8 @@
+//! dump_il: print raw Falcon IL (pre-printer) for one function. Use
+//! when investigating why `rust_print` output looks wrong; lets you
+//! see what the lifter actually produced before our middle-end passes
+//! touch it. One section per basic block, plus the CFG edges.
+
 use falcon::loader::{Loader, Pe};
 use std::env;
 use std::path::Path;

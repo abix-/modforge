@@ -1,3 +1,9 @@
+//! sweep_ghidra: lift every address in a list (default
+//! `ghidra_addrs.txt`, pulled from Ghidra's INDEX.md). Report
+//! pass/fail counts and the top failure classes with sample addresses.
+//! Uses `unsupported_are_intrinsics(true)` so SSE/AVX gaps don't fail
+//! the whole function. Current rate: 88.8% on 10,332 Horsey functions.
+
 use falcon::loader::{Loader, Pe};
 use falcon::translator::Options;
 use std::collections::HashMap;

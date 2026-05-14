@@ -1,3 +1,8 @@
+//! rustforge_spike legacy entry point. Prints arch / function count /
+//! first-block IL for a single function. The real Rust-print path is in
+//! `src/bin/rust_print.rs`; this main.rs survives only as the crate's
+//! `[[bin]]` default and as a smoke test that Falcon loads the binary.
+
 use falcon::loader::{Loader, Pe};
 use std::env;
 use std::path::Path;

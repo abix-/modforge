@@ -1,3 +1,9 @@
+//! sweep: lift every function Falcon's PE loader finds via the PE
+//! exception/export tables. Report the pass/fail count and group
+//! failures by reason. Sanity check that the toolchain works end-to-end
+//! on a small (~1.3k) entry set; for the real coverage measurement use
+//! `sweep_ghidra` against Ghidra's 10k-address list.
+
 use falcon::loader::{Loader, Pe};
 use std::collections::HashMap;
 use std::env;
