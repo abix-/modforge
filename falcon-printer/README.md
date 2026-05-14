@@ -1,18 +1,39 @@
-# falcon-printer
+# falcon-printer (RETIRED 2026-05-14)
 
+> **This crate has been retired** in favor of
+> [`../decomp/`](../decomp/), which uses
+> [r2sleigh](https://github.com/radareorg/r2sleigh)
+> (SLEIGH-based, full SSE/AVX, multi-thousand-line
+> structurer) instead of Falcon. Cargo.toml + src/ removed;
+> docs preserved as a historical archive of the prototype
+> and the migration reasoning.
+>
+> Look here for:
+> - [`docs/strategy.md`](docs/strategy.md): the migration
+>   plan + phase-by-phase status.
+> - [`docs/survey.md`](docs/survey.md): the ecosystem
+>   survey that surfaced r2sleigh as the right substrate.
+> - [`docs/passes.md`](docs/passes.md): the middle-end
+>   passes the falcon-printer prototype built. Most are
+>   r2sleigh's responsibility upstream now, but the pass
+>   names + patterns documented here may inform future
+>   r2sleigh contributions.
+> - [`docs/architecture.md`](docs/architecture.md): the
+>   Falcon-based pipeline (now historical).
+>
+> For the active tool, see [`../decomp/`](../decomp/).
+>
+> What follows is the original README, preserved for
+> historical context.
+>
+> ---
+>
 > Rust output backend for [Falcon](https://github.com/falconre/falcon).
 > Takes a stripped PE binary, lifts each function to Falcon IL, runs
 > a small set of middle-end passes, and prints `unsafe fn`-shaped Rust
 > pseudocode. The output is for *reading*, not compiling: it gives us
 > a Rust-syntax view of game functions so RE artifacts live in the
 > same language as the mods that consume them.
->
-> **2026-05-14 status: migrating to [r2sleigh](https://github.com/radareorg/r2sleigh)**.
-> Falcon's x86-64 lifter is missing SSE/AVX semantics (we use a lossy
-> `Intrinsic` fallback) and our hand-built structurer is a toy compared
-> to what the radare2 org's r2sleigh ships. The Rust-output goal stays;
-> we're swapping the engine underneath for a much more mature one. See
-> [`docs/strategy.md`](docs/strategy.md) for the phased migration plan.
 
 ## Why
 

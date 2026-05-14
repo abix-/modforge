@@ -212,34 +212,26 @@ horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ---
 
-## RE-to-Rust pipeline (migrating to r2sleigh)
+## RE-to-Rust pipeline (`decomp`)
 
-Decision 2026-05-14: **switch substrate from Falcon to
-[r2sleigh](https://github.com/radareorg/r2sleigh)**.
-The Rust-output goal stays. The migration is phased
-with a decision gate after the phase-1 spike.
+Lives at [`../decomp/`](../decomp/). r2sleigh-based
+binary-to-Rust decompiler that replaced the prototype
+`falcon-printer/` on 2026-05-14.
 
-Why: r2sleigh ships Sleigh-based lifting (full
-SSE/AVX, every x86-64 instruction with real
-semantics), an SSA pipeline, a 2,500-line structurer
-with for-loop and switch detection, type inference,
-and Z3 symbolic execution. All of that is upstream
-work we'd otherwise build ourselves. GPL-3 is fine
-with us.
+CLI: `decomp print --addr 0xADDR` / `batch` / `dump-il`.
+WSL-only build today (libsla-sys' Ghidra C++ has Windows
+MSVC compat gaps tracked at
+[`../decomp/docs/polish-ladder.md`](../decomp/docs/polish-ladder.md)
+item 1).
 
-The migration plan, decision gates, and open
-questions (new crate name, upstream vs downstream
-fork) live in
+13 of 18 documented Horsey key-funcs decompile cleanly
+with friendly names at
+[`../horseygame/decompiled/rust-r2sleigh/`](../horseygame/decompiled/rust-r2sleigh/).
+
+Migration history + reasoning preserved at
 [`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
-
-The existing falcon-printer crate is the prototype;
-its docs at
-[`../falcon-printer/docs/`](../falcon-printer/docs/)
-record what we learned. The polish ladder is frozen
-pending the phase-1 spike.
-
-Phase 1 (spike + validate) is the next session of
-work on this front.
+Active polish work tracked at
+[`../decomp/docs/polish-ladder.md`](../decomp/docs/polish-ladder.md).
 
 
 ---

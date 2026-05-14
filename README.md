@@ -127,35 +127,55 @@ Per-game research notes:
 
 ## Research tooling
 
-### falcon-printer. Binary-to-Rust output backend (migrating to r2sleigh)
+### decomp. Binary-to-Rust output backend
 
-Sits next to the mod crates as a workspace member. Today
-the implementation lifts stripped PE binaries through
-[Falcon](https://github.com/falconre/falcon) and emits
-Rust-shaped pseudocode via a small middle-end.
+Sits alongside the mod crates as the active RE tool. Built
+on [r2sleigh](https://github.com/radareorg/r2sleigh) (the
+radare2 org's SLEIGH-based pure-Rust decompiler stack with
+full x86-64, SSA pipeline, real structurer, type
+inference). Walks r2sleigh's public `r2dec::ast::CFunction`
+and emits `unsafe fn`-shaped Rust pseudocode for human
+reading.
 
-**Decision 2026-05-14**: migrate the substrate from Falcon
-to [r2sleigh](https://github.com/radareorg/r2sleigh)
-(radare2 org's pure-Rust SLEIGH decompiler with full
-x86-64, SSA pipeline, real structurer, type inference).
-The Rust-output goal stays; the engine underneath swaps
-out for a more mature one. Phased migration plan in
-[`falcon-printer/docs/strategy.md`](falcon-printer/docs/strategy.md).
+CLI: `decomp print --addr 0xADDR` / `batch` / `dump-il`.
+Names recovered from Ghidra's INDEX.md plus key-funcs/
+filename slugs. Sample output:
 
-Current Falcon-based status: **88.8% lift rate** on
-10,332 Horsey functions. 11 sample artifacts shipped at
-[`horseygame/decompiled/rust/`](horseygame/decompiled/rust/)
-including `save_filename_format`,
-`click_race_when_ready_dialog`, `simulation_paused_status`,
-`price_or_score_formula`, `SDL_CloseSensor`. These are the
-prototype output; the r2sleigh-based rewrite is expected
-to push past parity on SSE-heavy and loop-heavy functions.
+```rust
+pub unsafe fn price_or_score_formula(arg1: i64, arg2: i64) {
+    rbx = fn_1400285e0();
+    fn_1400ca670();
+    ecx = *(fn_1400285e0() + 596_i64);
+    *(fn_1400285e0() + 596_i64) = *(rcx + 596_i64) + 1_i64;
+    ...
+}
+```
 
-See [`falcon-printer/README.md`](falcon-printer/README.md)
-for the one-page intro and
-[`falcon-printer/docs/`](falcon-printer/docs/) for the deep
-dives (architecture, passes walkthrough, coverage
-methodology, the strategy migration plan, non-goals).
+Sample artifacts shipped at
+[`horseygame/decompiled/rust-r2sleigh/`](horseygame/decompiled/rust-r2sleigh/):
+13 of 18 documented Horsey key-funcs with friendly names
+recovered.
+
+**Build:** WSL only (libsla-sys' Ghidra C++ source needs
+Windows MSVC compat work; see
+[`decomp/docs/polish-ladder.md`](decomp/docs/polish-ladder.md)
+item 1). Decomp is intentionally NOT a cargo workspace
+member yet for the same reason. Clone r2sleigh as a
+sibling, `cargo build --release` in WSL.
+
+See [`decomp/README.md`](decomp/README.md) for the
+one-page intro and [`decomp/docs/`](decomp/docs/) for the
+ladder.
+
+#### History: falcon-printer (retired 2026-05-14)
+
+`decomp/` replaces [`falcon-printer/`](falcon-printer/),
+the prototype that taught us what passes we needed. The
+retired crate's docs are preserved at
+[`falcon-printer/docs/`](falcon-printer/docs/) (strategy
+migration plan, ecosystem survey, middle-end passes
+walkthrough, architecture). The Cargo.toml + src/ are
+deleted; git history is the archive.
 
 ## Repository layout
 
@@ -170,7 +190,8 @@ methodology, the strategy migration plan, non-goals).
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
 +- horsey-mod/                -- Horsey Game mod (PE inject; modforge directly)
 +- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
-+- falcon-printer/            -- Rust output backend for Falcon (binary-to-Rust RE tool)
++- decomp/                    -- Binary-to-Rust decompiler (r2sleigh-based; WSL-only)
++- falcon-printer/            -- prototype that decomp replaces; archive (docs only)
 +- docs/                      -- workspace-level (todo, changelog, research)
 +- Cargo.toml                 -- workspace manifest
 +- README.md                  -- this file
@@ -288,7 +309,8 @@ Per-crate docs:
 - [`unityforge/`](unityforge/).
 - [`horsey-mod/README.md`](horsey-mod/README.md).
 - [`grounded2-mod/docs/`](grounded2-mod/docs/).
-- [`falcon-printer/README.md`](falcon-printer/README.md) + [`falcon-printer/docs/`](falcon-printer/docs/). Binary-to-Rust RE tool.
+- [`decomp/README.md`](decomp/README.md) + [`decomp/docs/`](decomp/docs/). Active binary-to-Rust RE tool (r2sleigh-based).
+- [`falcon-printer/`](falcon-printer/). Retired prototype that decomp replaces; docs preserved as historical archive.
 - [`horseygame/`](horseygame/). Horsey Game research notes.
 
 ## Credits

@@ -208,23 +208,30 @@ parity and workspace integration (Phase 4).
   gains a faster sweep entry point or basic-block
   splitting lands.
 
-### Phase 4: cutover (1 session)
+### Phase 4: cutover (DONE 2026-05-14)
 
-Goal: replace falcon-printer in the workspace.
-
-- [ ] Rename the dir (`falcon-printer/` -> new
-  name). Use `git mv` to preserve history.
-- [ ] Update workspace `Cargo.toml` member list.
-- [ ] Update the repo `README.md` "Research tooling"
-  section.
-- [ ] Update `docs/todo.md` pointer.
-- [ ] Move falcon-printer's old `src/main.rs` to
-  the new crate as `legacy/falcon_printer.rs` for
-  reference, or delete cleanly. Decision: probably
-  delete; git history is the archive.
-- [ ] Delete `docs/falcon-printer.md` workspace
-  doc if it still exists. (It was already moved to
-  per-crate docs.)
+- [x] Standup `decomp/` crate at workspace top-level
+  (NOT a workspace member; libsla-sys Windows
+  blocker. See polish ladder item 1).
+- [x] Update workspace `Cargo.toml` member list:
+  removed `falcon-printer`. `decomp` deliberately
+  not added until Windows build works.
+- [x] Update the repo `README.md` "Research tooling"
+  section: now leads with `decomp`, lists
+  falcon-printer as retired prototype.
+- [x] Update `docs/todo.md` pointer: points at
+  decomp; migration history references falcon-printer
+  archive.
+- [x] Delete falcon-printer's `Cargo.toml` + `src/`.
+  Docs at `falcon-printer/docs/` preserved as
+  historical archive (strategy, survey, passes,
+  architecture). README.md updated with a "RETIRED"
+  banner.
+- [x] `ghidra_addrs.txt` moved from `falcon-printer/`
+  to `decomp/`.
+- [x] Workspace `docs/falcon-printer.md` was already
+  removed earlier; the per-crate docs at
+  `falcon-printer/docs/` are the survivors.
 
 ### Phase 5: polish ladder reset (open)
 

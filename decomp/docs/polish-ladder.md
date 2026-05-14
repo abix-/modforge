@@ -15,29 +15,57 @@ falcon-printer: `print` / `batch` / `dump-il`. Names
 recovered from `horseygame/decompiled/INDEX.md` plus
 `horseygame/decompiled/key-funcs/*.c` filename slugs.
 
-## 1. Windows build (libsla-sys POSIX shims)
+## 1. Windows build (libsla-sys, two-stage fix)
 
-**Symptom:** `cargo build` on Windows MSVC fails because
-Ghidra's C++ libsla source uses POSIX `<unistd.h>` headers
-not present in MSVC's stdlib.
+**Symptom:** `cargo build` on Windows MSVC fails on
+`filemanage.cc` with "cannot open include file: 'unistd.h'".
 
-**Fix:** upstream PR to `libsla-sys` adding Windows
-compat shims:
-- `unistd.h` -> `io.h` + Win32 equivalents for read/write
-  semantics.
-- `pthread.h` -> Win32 threading or std::thread inside
-  the C++ source.
-- Path separator handling.
-- The actual sleigh decoder logic is platform-neutral;
-  the surface code that wraps it is what needs the
-  shims.
+**Investigation 2026-05-14:**
 
-**Effort:** moderate. Multi-engineer-week of C++ work
-on libsla-sys. Most realistic path: contribute upstream.
+Stage 1: **Ghidra source ALREADY has Windows branches.**
+filemanage.cc has `#ifdef _WINDOWS / #else / #endif`
+splitting Win32 vs POSIX paths. The Win32 branch uses
+`<windows.h>` which exists on MSVC. The bug is just that
+libsla-sys's `build.rs` doesn't define `_WINDOWS` when
+building on Windows. Minimal patch:
 
-**Unblocks:** Phase 4 cutover. Once libsla-sys builds on
-Windows, decomp becomes a regular workspace member and
-the falcon-printer crate retires.
+```rust
+if cfg!(target_os = "windows") {
+    build.define("_WINDOWS", "1");
+}
+```
+
+Verified locally by patching the cached crate: this gets
+past the `unistd.h` failure entirely.
+
+Stage 2: **cxx-bridge double-include on Windows.**
+After stage 1, compilation reaches `bridge.cc` and hits
+`error C2011: 'RustAssemblyEmitProxy': 'class' type
+redefinition`. The same `bridge.hh` is being included via
+two paths (cxxbridge's OUT_DIR copy and the registry's
+src dir) and the MSVC preprocessor doesn't unify them.
+On Linux/clang the include path resolves cleanly. Needs
+either:
+  - cxxbridge config adjustment in libsla-sys's `bridge!`
+    macro arguments
+  - Explicit include guards added to bridge.hh /
+    error_handling.hh that survive the dual inclusion
+  - cargo's `links = "..."` field tweak in libsla-sys
+
+**Effort:** stage 1 is a one-line PR to libsla-sys.
+Stage 2 needs ~half-day of cxxbridge debugging on a
+real Windows machine.
+
+**Unblocks:** Phase 4 cutover (decomp as workspace
+member, falcon-printer retirement). Today, decomp ships
+source-only with a WSL build path; Windows is a known
+ladder item.
+
+Concrete next steps:
+- [ ] File issue / PR to `mnemonikr/libsla-sys` for the
+  `_WINDOWS` define patch (small win, gets stage 1 done).
+- [ ] Investigate cxxbridge dual-include on Windows
+  MSVC; if it's a cxxbridge bug, file upstream there.
 
 ## 2. libsla-internal stack overflows
 
