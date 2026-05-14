@@ -64,19 +64,22 @@ opaque `Intrinsic` IL nodes via
 function still lifts cleanly even when float-math interleaves with
 integer game-state code.
 
-## Binaries
+## Subcommands
 
-| Bin | What it does |
+One binary, `falcon-printer.exe`, with four subcommands:
+
+| Subcommand | What it does |
 |---|---|
-| `rust_print` | Lift one function at `--addr`, print Rust to stdout. |
-| `batch_print` | Read addresses from stdin, write one `.rs` per function to a target dir. |
-| `sweep_ghidra` | Lift every Ghidra-discovered address; report pass/fail counts and failure-class breakdown. |
-| `dump_il` | Dump raw Falcon IL for one function (debug aid; pre-printer). |
-| `sweep` | Lift every Falcon-discovered PE entry. Sanity check. |
+| `print --addr 0xADDR` | Lift one function, print Rust to stdout. |
+| `batch [--out DIR]` | Read addresses from stdin, write one `.rs` per fn. |
+| `sweep [--addrs FILE] [--falcon-entries]` | Lift many addresses; report pass/fail counts + failure breakdown. |
+| `dump-il --addr 0xADDR` | Dump raw Falcon IL for one function (debug aid). |
 
-Default binary path: `Horsey.exe` at
-`C:/Games/Steam/steamapps/common/Horsey Game/Horsey.exe`.
-Default address list: `falcon-printer/ghidra_addrs.txt`
+Global flag: `--bin <PATH>` overrides the default
+target binary (`Horsey.exe` at
+`C:/Games/Steam/steamapps/common/Horsey Game/Horsey.exe`).
+
+Default sweep address source: `falcon-printer/ghidra_addrs.txt`
 (10,332 entries pulled from Ghidra's INDEX.md).
 
 ## Quick start
@@ -85,13 +88,14 @@ Default address list: `falcon-printer/ghidra_addrs.txt`
 cd C:\code\grounded2mods\falcon-printer
 
 # print one function as Rust
-..\target\release\rust_print.exe `
-    "C:/Games/Steam/steamapps/common/Horsey Game/Horsey.exe" `
-    0x140089510
+..\target\release\falcon-printer.exe print --addr 0x140089510
 
-# bulk lift the documented key-funcs into ../horseygame/decompiled/rust/
-Get-Content .\ghidra_addrs.txt | `
-    ..\target\release\batch_print.exe
+# bulk lift everything Ghidra found, into ../horseygame/decompiled/rust/
+Get-Content .\ghidra_addrs.txt `
+    | ..\target\release\falcon-printer.exe batch
+
+# measure current lift coverage
+..\target\release\falcon-printer.exe sweep
 ```
 
 ## Status

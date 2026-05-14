@@ -4,42 +4,21 @@
 > reading experience". Ordered by leverage. Pick from the
 > top when starting a session.
 
-## 0. Consolidate the five binaries into one
+## 0. ~~Consolidate the five binaries into one~~ DONE 2026-05-14
 
-**Symptom:** we currently ship five separate binaries
-(`rust_print`, `batch_print`, `sweep_ghidra`, `sweep`,
-`dump_il`). That's the spike's natural sprawl, not a
-considered CLI. Each binary has its own arg-parsing
-boilerplate, default-path duplication, and discovery cost
-for a new reader. The user shouldn't need a cheat sheet
-just to figure out which binary to run.
+Done. Single binary `falcon-printer` with four clap
+subcommands (`print`, `batch`, `sweep`, `dump-il`).
+`sweep_ghidra` and `sweep` merged into one subcommand with
+`--falcon-entries` flag. Old binaries (`rust_print.exe`,
+`batch_print.exe`, `sweep_ghidra.exe`, `sweep.exe`,
+`dump_il.exe`) deleted; their code is consolidated into
+`src/main.rs`. `Cargo.toml` declares
+`[[bin]] name = "falcon-printer"`. See
+[`../README.md`](../README.md) and
+[`usage.md`](usage.md) for new invocations.
 
-**Fix:** collapse to a single `falcon-printer` binary
-with clap subcommands:
-
-```
-falcon-printer print  --addr 0x140089510 [BIN]      # was rust_print
-falcon-printer batch  [--out DIR] [BIN] < addrs.txt # was batch_print
-falcon-printer sweep  [--addrs FILE] [BIN]          # was sweep_ghidra / sweep merged
-falcon-printer dump-il --addr 0x140089510 [BIN]     # was dump_il
-```
-
-A shared `Args` struct holds the binary path,
-`unsupported_are_intrinsics(true)`, and the friendly-name
-table loaded once. Subcommands dispatch on
-`clap::Subcommand`. `sweep` and `sweep_ghidra` collapse to
-one subcommand with a flag selecting which address source
-(Falcon's PE entries vs the Ghidra address list).
-
-**Effort:** small. ~150 LOC reorg in one sitting; mostly
-cut-and-paste from existing bin sources into mod files
-under `src/bin/falcon_printer/` or `src/`. Update
-`README.md`, `docs/usage.md`, and the powershell snippets.
-
-**Blocker for nothing** in particular, but worth doing
-before polish ladder #3 (struct schema) and #5 (mass
-naming) because those will add more shared state and the
-existing duplication will compound.
+Batch is now in-process (no subprocess spawn per address)
+which makes it dramatically faster for large lists.
 
 ## 1. Tail-call recognition
 
@@ -152,10 +131,9 @@ that the loop-heavy ones become the bottleneck.
 **Symptom:** today only 11 sample artifacts shipped. The
 remaining ~9,100 successful lifts aren't on disk.
 
-**Fix:** add a `cargo run -p falcon_printer --bin
-batch_print < ghidra_addrs.txt` to a `regenerate.ps1`
-script in the spike. Cost: ~30 minutes of wall time, ~50MB
-of `.rs` files.
+**Fix:** add a `regenerate.ps1` script that runs
+`Get-Content ghidra_addrs.txt | falcon-printer.exe batch`.
+Cost: ~30 minutes of wall time, ~50MB of `.rs` files.
 
 **Effort:** trivial mechanically; but the output dir will
 need to be gitignored or partitioned (we don't want a 50MB

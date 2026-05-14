@@ -6,7 +6,7 @@
 > the file to consult.
 
 All passes live in
-[`src/bin/rust_print.rs`](../src/bin/rust_print.rs). The
+[`src/main.rs`](../src/main.rs). The
 entry-point `main()` runs them in this exact order.
 
 ## 1. lower_to_rust_ir
@@ -205,7 +205,7 @@ Walks the post-passes RustIr:
 1. Define the input pattern as either a Stmt-sequence match
    or a single-Stmt predicate. Put the function near the
    existing ones in
-   [`src/bin/rust_print.rs`](../src/bin/rust_print.rs).
+   [`src/main.rs`](../src/main.rs).
 2. Document the pattern + transformation here in
    `passes.md` before merging.
 3. Add the pass call in `main()` AFTER any pass it depends
@@ -213,7 +213,7 @@ Walks the post-passes RustIr:
    the call-site triple is consecutive; ret-recovery must
    run after temp-folding so the load-rsp inlines into the
    branch).
-4. Re-run `sweep_ghidra` to check for regressions in lift
+4. Re-run `falcon-printer sweep` to check for regressions in lift
    coverage.
 5. Regenerate at least one sample artifact and diff against
    the prior version to confirm the pass does what you

@@ -1,7 +1,7 @@
 # Architecture
 
 > The pipeline diagram and the ownership split between Falcon
-> and falcon-printer. Read this before touching `rust_print.rs`
+> and falcon-printer. Read this before touching `main.rs`
 > so you know which layer to modify.
 
 ## The pipeline
@@ -72,7 +72,7 @@ horsey.exe (PE bytes)
 ## What falcon-printer owns
 
 - **`RustIr`**: our own enum hierarchy in
-  [`src/bin/rust_print.rs`](../src/bin/rust_print.rs). Block
+  [`src/main.rs`](../src/main.rs). Block
   + Stmt + Expr that mirror Rust syntax shape, decoupled
   from Falcon IL. Lowering Falcon -> RustIr happens once,
   then passes operate on RustIr only.
@@ -143,24 +143,23 @@ flag-recognition has propagated through.
 
 ```
 falcon-printer/
-  Cargo.toml             package = "falcon_printer"
+  Cargo.toml             package = "falcon_printer"; bin "falcon-printer"
   README.md              one-page intro
   ghidra_addrs.txt       10,332 hex addresses, one per line
   src/
-    main.rs              legacy smoke test (prints arch + IL)
-    bin/
-      rust_print.rs      the printer + middle-end (single file)
-      batch_print.rs     stdin -> rust_print -> .rs files
-      sweep_ghidra.rs    coverage measurement
-      sweep.rs           sanity sweep over Falcon PE entries
-      dump_il.rs         raw IL dump (pre-printer)
+    main.rs              everything: clap CLI + lower + passes + printer
   docs/                  you are here
 ```
 
-## Why one big file for the printer + passes
+One binary, one file, four subcommands (`print`, `batch`,
+`sweep`, `dump-il`).
 
-`rust_print.rs` is ~700 lines and growing. It will eventually
-split into modules (`ir.rs`, `passes/*.rs`, `print.rs`) but
-the surface is small enough today that a single file is
-faster to iterate on. Re-evaluate the split when passes
-start needing shared utility traits.
+## Why one big file
+
+`main.rs` is ~1300 lines today (clap dispatch + RustIr +
+lowering + 8 passes + printer + name table). It will
+eventually split into modules (`ir.rs`, `passes/*.rs`,
+`print.rs`, `bin/falcon-printer.rs`) but the surface is
+small enough that a single file is faster to iterate on.
+Re-evaluate the split when passes start needing shared
+utility traits or when the file passes ~2,000 lines.

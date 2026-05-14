@@ -67,7 +67,7 @@ are seconds.
 
 Single binary:
 ```powershell
-cargo build --release --bin rust_print -p falcon_printer
+cargo build --release --bin falcon-printer -p falcon_printer
 ```
 
 ## Common failures

@@ -63,7 +63,7 @@ game on ARM64), add it then. Not now.
 Optimizing for our RE workflow on game binaries. Specifically:
 
 - We assume the target is a PE binary (no ELF helpers in
-  `rust_print` today, even though Falcon supports them).
+  `print` today, even though Falcon supports them).
 - We assume function discovery comes from Ghidra (we read
   `ghidra_addrs.txt`); we don't try to discover from the
   binary alone.

@@ -1,13 +1,13 @@
 # Coverage
 
 > Lift-rate measurement methodology and current numbers.
-> Re-run `sweep_ghidra` after any change that could touch
+> Re-run `falcon-printer sweep` after any change that could touch
 > Falcon coverage (version bump, new pass that mutates
 > pre-lift state, etc.).
 
 ## Methodology
 
-`sweep_ghidra` reads addresses from
+`sweep` reads addresses from
 [`../ghidra_addrs.txt`](../ghidra_addrs.txt) (one hex per
 line, 10,332 entries pulled from Ghidra's INDEX.md), tries
 `pe.function_extended(addr, &opts)` for each, and tallies:
@@ -116,8 +116,8 @@ that's acceptable.
 ```powershell
 $env:LIBCLANG_PATH = "C:/Program Files/LLVM/bin"
 $env:PATH += ";C:/Program Files/CMake/bin"
-cargo build --release --bin sweep_ghidra -p falcon_printer
-..\target\release\sweep_ghidra.exe `
+cargo build --release -p falcon_printer
+..\target\release\sweep.exe `
     "C:/Games/Steam/steamapps/common/Horsey Game/Horsey.exe" `
     .\ghidra_addrs.txt
 ```
