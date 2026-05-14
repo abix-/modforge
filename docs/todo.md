@@ -104,6 +104,114 @@ those five are the immediate path forward.
 
 ---
 
+## Naming standardization: `<game>-mod`
+
+User direction 2026-05-14: per-game mod crates standardize
+on `<game>-mod`. Boring, consistent, future-proof. Renames
+to land in one commit per crate so it bisects clean.
+
+| Current                     | New                       |
+|-----------------------------|---------------------------|
+| `grounded2-rpg`             | `grounded2-mod`           |
+| `wwm-rpg`                   | `wwm-mod`                 |
+| `outworld-station-tweaks`   | `outworld-station-mod`    |
+| `horseyforge`               | `horsey-mod`              |
+
+`il2cpp-smoke` is a smoke target, not a per-game mod.
+Name unchanged.
+
+Open call: keep RPG-shape advertised in the name?
+Default is the pure `<game>-mod` form above. The alternative
+`<game>-mod-rpg` is on the table if losing the RPG hint
+hurts readability. Decide before the rename starts.
+
+What touches:
+- Directory rename for each crate.
+- Workspace `Cargo.toml` member list.
+- Each crate's `[package].name` and `[lib].name` (Rust
+  identifier flips from e.g. `grounded2_rpg` to
+  `grounded2_mod`).
+- `[package.metadata.ueforge]` (deploy paths, log
+  filenames, mod name registered in `mods.txt`). Deployed
+  log file changes from `grounded2_rpg.log` to
+  `grounded2_mod.log` etc; old DLLs in user installs need
+  a one-shot uninstall step or a documented manual
+  cleanup.
+- Every `use grounded2_rpg::` / `use wwm_rpg::` site
+  (tests + scripts).
+- Sweep workspace docs (`README.md`, `docs/changelog.md`,
+  `docs/todo.md`, `docs/wild-west-miner-research.md`).
+- Each renamed crate's own `docs/` and `README.md`.
+- `.claude/project_state.md` (gitignored, but kept in sync).
+- `~/.claude/skills/grounded2/SKILL.md` references
+  `grounded2-rpg`; update there too. Same for any other
+  skill files that name the old crates.
+- PowerShell scripts (`wwm-rpg/scripts/build_and_deploy.ps1`
+  becomes `wwm-mod/scripts/build_and_deploy.ps1`).
+- Horseygame docs reference deployed `horseyforge.dll` /
+  `horseyforge-inject.exe` / `horseyforge.log` /
+  `horseyforge.injstate`; those become `horsey.dll` /
+  `horsey-inject.exe` / `horsey.log` / `horsey.injstate`.
+- GitHub Actions / CI YAML if any (none today; check
+  before assuming).
+
+Order: do `horseyforge` last, since the binary rename
+churns the user-visible deploy artifacts the most. Start
+with `outworld-station-tweaks -> outworld-station-mod`
+(smallest blast radius) to validate the rename pattern.
+
+---
+
+## Future: absorb the C# mod repos (Timberbot + Schedule 1)
+
+User direction 2026-05-14: this repo is the home for ALL
+game modding. The two outstanding C# repos eventually move
+in:
+
+- [`abix-/TimberbornMods`](https://github.com/abix-/TimberbornMods).
+  Timberborn (Unity, IL2CPP). C# with Bindito DI +
+  publicizer + Timberbot. Sister Python client.
+- [`abix-/Schedule1Mods`](https://github.com/abix-/Schedule1Mods).
+  Schedule 1 (Unity, IL2CPP). C# with MelonLoader +
+  Harmony + Il2CppInterop.
+
+This is a bigger lift than the horseygame subtree-merge
+because the Rust forge model doesn't fit C#-only mods
+end-to-end:
+- Cargo workspace can't host C# projects directly. Either
+  the C# stays in `<game>-mod/csharp/*.csproj` outside the
+  workspace manifest with a separate build script, or we
+  add a top-level `dotnet/` directory next to the Rust
+  crates with its own `.sln`.
+- The IL2CPP forge path (`unityforge` + Il2CppInterop) is
+  the natural Rust analogue, but Timberbot + Schedule 1
+  already use mature C# stacks (Bindito / MelonLoader)
+  with their own ergonomics. Forcing them onto unityforge
+  would be a rewrite, not an integration. Likely we keep
+  them C# and just colocate the source.
+- Build / deploy: Timberbot has `build.py`, Schedule 1 has
+  its own MelonLoader pipeline. Both need to keep working
+  after the move.
+- Skills (`~/.claude/skills/timberborn`, `timberbot`,
+  `schedule1`) reference the source repos by URL; those
+  pointers update on the move.
+
+When the move happens, decide between:
+1. **Subtree-merge** (preserves history, mirror of how
+   horseygame landed). One subtree per source repo:
+   `dotnet/timberbot/`, `dotnet/schedule1/` (or kept under
+   their existing repo structure inside this one).
+2. **Fresh import** with a one-shot history snapshot. Less
+   git overhead, loses authoring history.
+
+Strong default: subtree-merge, same as horseygame.
+
+Not pursuing now. Schedule for after the
+`<game>-mod` rename standardization lands and the
+horseyforge `sleep_safe_no_tire` patch is unstuck.
+
+---
+
 ## P0. Unityforge: generation-versioned hot reload (Phase 4)
 
 Naive FreeLibrary hot reload crashed WWM 2026-05-13.
