@@ -1,185 +1,221 @@
-# abix's UE5 mods (ueforge + game-side mods)
+# modforge
 
-A workspace of Unreal Engine 5 mods that all run on top of one
-shared Rust framework: **`ueforge`**. Each game-side mod is a
-thin consumer of the framework that contributes only
-game-specific knowledge (UE class names, field offsets,
-UFunction parm shapes, gameplay design).
+A Rust workspace for game mods. One foundation crate
+(**`modforge`**), three runtime-binding "forge" crates that
+adapt it to a specific host runtime, and per-game mod crates
+that consume them.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                       ueforge                           │
-│  modules: rpg · stacks · difficulty · inventory · damage │
-│  + UE SDK shim + Hooks + Debug HTTP + ImGui + Build     │
-│  + Settings + Hot-reload + Test client                  │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-        ┌──────────────┼──────────────┬───────────────┐
-        │              │              │               │
-   ┌────▼────┐   ┌─────▼─────┐   ┌────▼────┐    ┌─────▼─────┐
-   │grounded2│   │  outworld │   │  (next  │    │  (next    │
-   │  -rpg   │   │  -station │   │   UE5   │    │   UE5     │
-   │         │   │  -tweaks  │   │  game)  │    │   game)   │
-   └─────────┘   └───────────┘   └─────────┘    └───────────┘
+                     ┌────────────────────────────┐
+                     │          modforge          │
+                     │  HTTP server · op registry │
+                     │  selector grammar · RPG    │
+                     │  log · scanner · winproc   │
+                     │  shutdown · settings       │
+                     └─────────────┬──────────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────┐
+        │                          │                      │
+   ┌────▼────┐                ┌────▼─────┐         ┌──────▼──────┐
+   │ ueforge │                │unityforge│         │ horseyforge │
+   │  UE5    │                │  Unity   │         │  Native PE  │
+   │  UE4SS  │                │ Mono /   │         │  inject     │
+   │         │                │  IL2CPP  │         │             │
+   └────┬────┘                └────┬─────┘         └──────┬──────┘
+        │                          │                      │
+   ┌────▼────────┐         ┌───────▼──────┐        ┌──────▼──────┐
+   │grounded2-rpg│         │   wwm-rpg    │        │ horsey mods │
+   │ outworld-   │         │ il2cpp-smoke │        │ (planned)   │
+   │ station-    │         │              │        │             │
+   │ tweaks      │         │              │        │             │
+   └─────────────┘         └──────────────┘        └─────────────┘
 ```
 
-The repo's headline product is `ueforge`. Game-side mods are
-consumers that prove the framework's reach and inherit every
-upgrade.
+## modforge. The foundation
 
-## ueforge. The framework
+Everything game-agnostic lives here: the localhost HTTP control
+plane, the op registry, the selector grammar that lets ops
+address running-process state by name, the RPG module
+(`Effect` / `Trigger` / `Skill`), the scanner (typed memory
+reads / writes / pattern scans), the winproc helpers (module
+base, address-rebase, VirtualProtect), the per-line-flushed
+log, the shutdown registry, and the settings file loader.
 
-`ueforge` is a UE4SS Rust mod framework. It owns every pattern
-that every UE5 mod reimplements: lifecycle (`ue4ss_mod!` macro,
-C++ shim, hot-reload via Ctrl+R), UE SDK shim (UObject /
-UClass / UFunction / GObjects / TypedField), hooks
-(ProcessEvent vtable patches + per-hook drain on shutdown),
-debug HTTP endpoint with op routing + auth, ImGui bindings,
-build/deploy plumbing, settings with hot-reload, the test
-client.
+## The three forges
 
-**The five opinionated modules** ship the most common UE5 mod
-shapes:
+A "forge" is a thin crate that binds modforge into one host
+runtime and contributes runtime-specific machinery only.
 
-| Module | Crate path | What you write per-game |
-|---|---|---|
-| RPG | `ueforge::rpg` | A catalog of `Skill<E>` rows. 9 of the 10 universal skill shapes are covered by the `StandardEffect` variant menu. |
-| Stacks | `ueforge::stacks` | `StackTweak::new(table, offset, default_mult, skip)` static |
-| Difficulty | `ueforge::difficulty` | `DifficultyKnob::new(class, offset)` per knob |
-| Inventory | `ueforge::inventory::viewport` | A `ViewportBinder` trait impl (parm shapes + bind_slot logic) |
-| Damage | `ueforge::damage` | A `DamageBinder` trait impl (Critical / Evasion in `before`, Lifesteal / Thorns / kill credit in `after`) |
+### ueforge. UE5 / UE4SS
 
-Modules are independent; mods opt in to whatever they use. A
-pure stack-size tweak doesn't pay for an RPG. An RPG-only mod
-doesn't pay for inventory paging.
+The first forge. Owns the UE SDK shim (UObject / UClass /
+UFunction / GObjects / TypedField), the `ue4ss_mod!` macro,
+the C++ shim, ProcessEvent vtable hooks with per-hook drain
+on shutdown, ImGui bindings, hot-reload (Phase A + B), and
+five opinionated mod-shape modules:
 
-**Test framework**: `ueforge::client::{research, diff, scenario}`
-collapses test boilerplate to Pester-style one-liners:
+| Module     | What you write per-game                             |
+|------------|-----------------------------------------------------|
+| RPG        | A catalog of `Skill<E>` rows. 9 of 10 universal shapes covered by `StandardEffect`. |
+| Stacks     | `StackTweak::new(table, offset, default_mult, skip)` |
+| Difficulty | `DifficultyKnob::new(class, offset)` per knob       |
+| Inventory  | `ViewportBinder` trait impl                         |
+| Damage     | `DamageBinder` trait impl                           |
 
-```rust
-scenario::for_skill(api.inner(), "attack_damage")
-    .reads(|s| Some(s.live_player.as_ref()?.asc.as_ref()?.custom_damage_multiplier))
-    .should_grow_when_spent();
-```
+Test framework: `ueforge::client::{research, diff, scenario}`
+collapses test boilerplate to Pester-style one-liners.
 
-See [`ueforge/README.md`](ueforge/README.md) for the full
-audit table (every framework surface mapped to game-side
-consumers) and [`ueforge/docs/`](ueforge/docs/) for per-subsystem
-deep dives.
+See [`ueforge/README.md`](ueforge/README.md).
+
+### unityforge. Unity (Mono + IL2CPP)
+
+Binds modforge into Unity games via a BepInEx-loaded
+`Unityforge.Shim.{Mono,Il2Cpp}.dll` C# shim that LoadLibrarys
+the per-game Rust cdylib and dispatches per-frame Update +
+generation-versioned hot reload. Ships a Mono bridge
+(reflection over loaded assemblies, Harmony patching,
+GameObject / Component / field access), an IL2CPP bridge, and
+a Unity-side Input bridge. Generation-versioned hot reload
+(never `FreeLibrary`; each reload is a `LoadLibrary` of a
+freshly-named gen file) avoids the FreeLibrary crash class.
+
+See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge-plan.md).
+
+### horseyforge. Native PE (no managed runtime)
+
+Binds modforge into native-PE Windows games where there is no
+plugin loader. Attaches via a small injector EXE that
+`CreateRemoteThread`s a `LoadLibraryW` on `horseyforge.dll`
+into the running game process. Currently targets Horsey Game.
+Hot reload via timestamped staged DLLs (cargo's output is
+never the file the game has loaded, so it's never locked); a
+`--reload` subcommand cleanly swaps generations and a
+`patches::revert_all` runs on detach so future generations
+don't re-patch already-NOP'd bytes.
+
+See [`horseyforge/README.md`](horseyforge/README.md) and
+[`horseygame/`](horseygame/) for the Horsey Game research
+notes.
 
 ## Game-side mods
 
-### grounded2-rpg
+| Crate                       | Game              | Forge        | What it does                                                                 |
+|-----------------------------|-------------------|--------------|------------------------------------------------------------------------------|
+| `grounded2-rpg`             | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
+| `outworld-station-tweaks`   | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
+| `wwm-rpg`                   | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
+| `il2cpp-smoke`              | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
+| `horseyforge` (also a forge)| Horsey Game       | (native PE)  | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. |
 
-A Factorio-style RPG / level-up mod for **Grounded 2**. The
-first ueforge consumer and the workspace's most-tested mod.
+Per-game research notes:
 
-- 13 skills, target ~25. `sqrt(level / 100)` diminishing returns.
-- ImGui tab in UE4SS overlay; default `Insert` to summon.
-- Per-playthrough persistence via UE5 save GUID.
-- Combat skills (Attack Damage, Armor, Max Health, Health
-  Regen, Lifesteal, Impact Damage Resistance), survival
-  skills (Hunger / Thirst Resistance, Fall Damage Resistance,
-  Backpack), movement skills (Move Speed, Jump Height, Glide,
-  Leap Distance).
-- Status-effect-system migration in flight for
-  status-shaped skills (Crit / Thorns / Evasion will land
-  there too).
-
-Catalog + math + persistence: [`grounded2-rpg/docs/rpg.md`](grounded2-rpg/docs/rpg.md).
-Damage internals (combat / fall / environmental, status effects,
-instigator resolution): [`grounded2-rpg/docs/damage.md`](grounded2-rpg/docs/damage.md).
-Build / deploy: [`grounded2-rpg/docs/building.md`](grounded2-rpg/docs/building.md).
-
-### outworld-station-tweaks
-
-A second UE5 mod (for **Outworld Station**) that validates
-ueforge against another game. Currently ships a stack-size
-tweak: `DT_Materials.MaxCanStack` multiplier via a
-`ueforge::tweak::TweakDef::data_table_i32(..., TweakOp::Multiply,
-...)` static. Future tweaks land here.
-
-Source: [`outworld-station-tweaks/`](outworld-station-tweaks/).
-Research notes (DT walks, class lookups): the test crate's
-`explore_*` tests.
-
-### Future mods
-
-Adding a new UE5 game mod to this workspace is the design
-target. The framework's audit table in
-[`ueforge/README.md`](ueforge/README.md) lists every reusable
-surface; per-game crates supply only the rows under "Game-
-specific" (per-build offsets, BP class names, UFunction parm
-shapes, gameplay design).
+- [`grounded2-rpg/docs/`](grounded2-rpg/docs/). Damage
+  internals (combat / fall / environmental), inventory,
+  catalog, persistence.
+- [`docs/wild-west-miner-research.md`](docs/wild-west-miner-research.md).
+  Wild West Miner managed-side research log.
+- [`horseygame/`](horseygame/). Horsey Game decompilation
+  + function annotations + RE notes (subtree-merged from the
+  former `horsey-mods` repo).
 
 ## Repository layout
 
 ```
 .
-├── ueforge/                  -- the framework (60+ submodules, 5 opinionated modules)
-├── grounded2-rpg/            -- Grounded 2 RPG / level-up mod
-├── outworld-station-tweaks/  -- Outworld Station tweaks (stacks)
-├── docs/                     -- workspace-level (todo, changelog)
-├── Cargo.toml                -- workspace manifest
-└── README.md                 -- this file
++- modforge/                  -- the foundation crate
++- ueforge/                   -- UE5 / UE4SS forge (60+ submodules, 5 modules)
++- unityforge/                -- Unity Mono + IL2CPP forge (with C# shim)
++- horseyforge/               -- Native-PE / inject forge
++- grounded2-rpg/             -- Grounded 2 RPG / level-up mod (ueforge)
++- outworld-station-tweaks/   -- Outworld Station tweaks (ueforge)
++- wwm-rpg/                   -- Wild West Miner mod (unityforge / Mono)
++- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
++- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
++- docs/                      -- workspace-level (todo, changelog, research)
++- Cargo.toml                 -- workspace manifest
++- README.md                  -- this file
 ```
 
-Per-crate docs are co-located in each crate's `docs/` folder.
+Per-crate docs live in each crate's `docs/` folder.
 
 ## Install (per game)
 
-Each game-side mod targets UE4SS. After installing UE4SS for
-your game, deploy any of the mods:
+Each game-side mod has its own deploy command:
 
 ```sh
-# Grounded 2
+# Grounded 2 (UE5 / UE4SS)
 cargo deploy install -p grounded2-rpg
 
-# Outworld Station
+# Outworld Station (UE5 / UE4SS)
 cargo deploy install -p outworld-station-tweaks
+
+# Wild West Miner (Unity Mono / BepInEx)
+wwm-rpg/scripts/build_and_deploy.ps1
+
+# Horsey Game (native PE / inject)
+cargo build -p horseyforge --release
+target/x86_64-pc-windows-msvc/release/horseyforge-inject.exe \
+  --dll target/x86_64-pc-windows-msvc/release/horseyforge.dll
 ```
 
-`cargo deploy install -p <mod>` builds `main.dll`, auto-detects
-the Steam install for that game (via the `[package.metadata.ueforge]`
-config in the crate's Cargo.toml), copies the DLL + a default
-settings.json into UE4SS's `Mods/` directory, and registers the
-mod in `mods.txt`.
+`cargo deploy install -p <mod>` (for the ueforge mods)
+auto-detects the Steam install via the
+`[package.metadata.ueforge]` config in the crate's
+`Cargo.toml`, copies the DLL + a default `settings.json` into
+UE4SS's `Mods/` directory, and registers the mod in
+`mods.txt`.
 
-For redistribution: `cargo deploy package -p <mod>` produces a
-Vortex-installable zip in `dist/`.
+For Vortex packaging: `cargo deploy package -p <mod>` produces
+a Vortex-installable zip in `dist/`.
 
-### Hot-update (Ctrl+R while the game runs)
+### Hot reload
 
-UE4SS supports cpp-mod hot-update natively. The dev loop is:
+Each forge has its own hot-reload story:
 
-```
-1. edit Rust
-2. cargo deploy install -p <mod>     # writes main-new.dll
-3. alt-tab to the game, press Ctrl+R  # ~1-2s reload
-4. test
-```
+- **ueforge**: Ctrl+R inside UE4SS. The framework swaps a
+  side-file (`main-new.dll`) into place during `on_shutdown`;
+  UE4SS reloads the new image. Hook teardown + thread joins +
+  vtable restoration are framework-side. State on disk
+  survives.
+- **unityforge**: Generation-versioned. Run
+  `wwm-rpg/scripts/build_and_deploy.ps1 -Hot` to stage a new
+  `*.unityforge.gen<N>.dll`. The C# shim's per-second watcher
+  picks it up and `HotSwap`s. Old generation is quiesced (its
+  code stays mapped); never `FreeLibrary`.
+- **horseyforge**: `horseyforge-inject.exe --reload`. POSTs
+  `_shutdown` to release the listener, `CreateRemoteThread`s
+  `FreeLibrary` on the old HMODULE, deletes the old staged
+  file, stages the new build to a fresh timestamped path,
+  loads it.
 
-UE4SS unloads the old DLL, the framework swaps the side-file
-into place during `on_shutdown`, UE4SS reloads the new image.
-Hook teardown + thread joins + vtable restoration all framework-
-side (see [`ueforge/docs/lifecycle.md`](ueforge/docs/lifecycle.md)
-"Hot-reload"). State on disk (save slots, settings) survives.
+## Status (2026-05-14)
 
-## Status (2026-05-10)
-
+- **modforge**: foundation crate stable. Server with
+  `SO_REUSEADDR` (hot-reload swaps bind cleanly), op registry,
+  selector grammar, RPG primitives, scanner, shutdown
+  registry, settings.
 - **ueforge**: five framework modules shipped (rpg / stacks /
   difficulty / inventory / damage), hot-reload (Phase A + B)
-  complete, Pester-style test DSL complete. Build-clean release.
-  62 unit tests passing.
+  complete, Pester-style test DSL complete.
+- **unityforge**: generation-versioned hot reload built and
+  deployed (Phase 4). Mono + IL2CPP shims.
+  `HarmonyBridge.PatchPrefix/Postfix` known-broken (queued for
+  fix); Mono `MonoBridge.ListMethods` shipped (+ ABI v4).
+- **horseyforge**: native-PE binding shipped, hot reload
+  works, `no_tire`-by-default replaced by split-flag fatigue
+  suppressor (race-eligible without breaking sleep). Binary-
+  patch infra landed; first patch (`sleep_safe_no_tire`) wip
+  (pattern-scan disambiguator unsolved).
 - **grounded2-rpg**: 13 skills live including Lifesteal in the
   damage hook. Tested against Grounded 2 Steam build
-  `++Augusta+release-0.4.0.2-CL-2673661`. In-game smoke test
-  of the post-refactor architecture pending.
-- **outworld-station-tweaks**: stacks tweak shipped, validates
-  the framework on a second UE5 game.
+  `++Augusta+release-0.4.0.2-CL-2673661`.
+- **outworld-station-tweaks**: stacks tweak shipped.
+- **wwm-rpg**: demo-end block shipped (Harmony prefix on
+  `TutorialManager.CompleteDemo`); RPG side parked while the
+  Harmony bridge is repaired.
 
-Open work tracked in [`docs/todo.md`](docs/todo.md), ordered by
-leverage. Chronology of milestones in
+Open work tracked in [`docs/todo.md`](docs/todo.md), ordered
+by leverage. Chronology of milestones in
 [`docs/changelog.md`](docs/changelog.md).
 
 ## Build prerequisites
@@ -187,43 +223,44 @@ leverage. Chronology of milestones in
 - Windows 10/11 x64
 - Rust toolchain (rustup; stable pinned via `rust-toolchain.toml`)
 - Visual Studio Build Tools 2022+ with the C++ workload
-- The target game's UE4SS install
-- For framework dev: clone with submodules (`--recurse-submodules`)
- . Dear ImGui v1.92.1 lives in a submodule.
+- For ueforge mods: the target game's UE4SS install
+- For unityforge mods: the target game's BepInEx install
+- For framework dev: clone with `--recurse-submodules`. Dear
+  ImGui v1.92.1 lives in a submodule.
 
 ## Docs
 
-Workspace-level (this repo's open work + chronology) lives at
-the root:
+Workspace-level (open work + chronology) lives at the root:
 
 - [`docs/README.md`](docs/README.md). Workspace docs index
 - [`docs/todo.md`](docs/todo.md). Open work across all crates
 - [`docs/changelog.md`](docs/changelog.md). Milestones, newest first
+- [`docs/unityforge-plan.md`](docs/unityforge-plan.md). The
+  unityforge architecture plan (phases 1-4)
+- [`docs/wild-west-miner-research.md`](docs/wild-west-miner-research.md).
+  Wild West Miner managed-side research log
 
-Framework docs are in [`ueforge/docs/`](ueforge/docs/):
+Per-crate docs:
 
-- [`ueforge/README.md`](ueforge/README.md). Entry point + audit
-  table mapping every framework surface to game-side consumers
-- [`ueforge/docs/PERFORMANCE.md`](ueforge/docs/PERFORMANCE.md). Hot-path doctrine
-- [`ueforge/docs/RESEARCH.md`](ueforge/docs/RESEARCH.md). TDD investigation methodology
-- [`ueforge/docs/lifecycle.md`](ueforge/docs/lifecycle.md) -- `ue4ss_mod!`, hot-reload, build/deploy
-- [`ueforge/docs/ue-sdk.md`](ueforge/docs/ue-sdk.md). UE SDK shim
-- [`ueforge/docs/hooks.md`](ueforge/docs/hooks.md). ProcessEvent + hook teardown
-- [`ueforge/docs/rpg.md`](ueforge/docs/rpg.md). RPG module
-- [`ueforge/docs/testing.md`](ueforge/docs/testing.md). Test client + research/diff/scenario DSL
-- (and the rest. Per-subsystem reference)
-
-Per-mod docs live next to the mod's source.
+- [`ueforge/README.md`](ueforge/README.md) + [`ueforge/docs/`](ueforge/docs/).
+- [`unityforge/`](unityforge/).
+- [`horseyforge/README.md`](horseyforge/README.md).
+- [`grounded2-rpg/docs/`](grounded2-rpg/docs/).
+- [`horseygame/`](horseygame/). Horsey Game research notes.
 
 ## Credits
 
 - **UE4SS-RE** for [RE-UE4SS](https://github.com/UE4SS-RE/RE-UE4SS),
-  the CPPMod host every mod here targets.
+  the CPPMod host every UE5 mod here targets.
+- **BepInEx** for the Unity plugin loader unityforge attaches
+  to.
+- **HarmonyX** for the runtime patching library the unityforge
+  C# shim uses.
 - **x0reaxeax** for [Grounded2Minimal](https://github.com/x0reaxeax/Grounded2Minimal)
   and [G2Dumper](https://github.com/x0reaxeax/G2Dumper).
 - **Encryqed** for [Dumper-7](https://github.com/Encryqed/Dumper-7),
   the SDK generator that produced reference headers for every
-  game we target.
+  UE5 game we target.
 - **RLGingerBiscuit** for [G2Utils](https://github.com/RLGingerBiscuit/G2Utils),
   which corroborated class names + inventory bindings on
   Grounded 2.
@@ -239,13 +276,14 @@ Per-mod docs live next to the mod's source.
   patching pattern.
 - The author of [**RPG System**](https://mods.factorio.com/mod/RPGsystem)
   for Factorio. The headline RPG-style level-up mod whose
-  vocabulary `grounded2-rpg` borrows verbatim.
+  vocabulary `grounded2-rpg` and `wwm-rpg` borrow verbatim.
 - The author of [**RimWorld RPG Mod / Combat Skills RPG**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858).
 - The authors of the [War3CS / War3FT](https://war3cs2.wiki.gg/)
   Counter-Strike Warcraft mod line, whose flat-skill-catalog
   pattern shapes the RPG catalog layout.
-- The game studios whose UE5 titles we mod (Obsidian Entertainment
-  for [Grounded 2](https://grounded2.obsidian.net/) and the
-  Outworld Station team). We modify only what the official games
+- The game studios whose titles we mod (Obsidian Entertainment
+  for [Grounded 2](https://grounded2.obsidian.net/), the
+  Outworld Station team, the Wild West Miner team, and the
+  Horsey Game team). We modify only what the official games
   ship under fair-use modding norms; no game assets are
   redistributed.
