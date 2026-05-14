@@ -212,15 +212,15 @@ horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ---
 
-## RE-to-Rust pipeline (`rustforge`)
+## RE-to-Rust pipeline (`falcon-printer`)
 
 Moved 2026-05-14 to its own doc:
-[`rustforge.md`](rustforge.md).
+[`falcon-printer.md`](falcon-printer.md).
 
 TL;DR: Falcon 0.6 based binary-to-Rust spike. **88.8%
 lift rate** on 10,332 Horsey functions. 11 sample
 artifacts in `horseygame/decompiled/rust/`. Spike crate
-at `rustforge-spike/`.
+at `falcon-printer/`.
 
 Full plan, survey of alternatives, pipeline diagram,
 and remaining polish ladder live in the new doc.

@@ -1,7 +1,7 @@
-# rustforge: binary-to-Rust decompilation pipeline
+# falcon-printer: Rust output backend for Falcon
 
 !!! info "Scope"
-    Tracks the spike crate `rustforge-spike/` and the broader
+    Tracks the spike crate `falcon-printer/` and the broader
     plan to make Rust the daily-driver notation for game RE
     output. Lifted off [`todo.md`](todo.md) 2026-05-14 once the
     section grew past 300 lines.
@@ -15,7 +15,7 @@
 
 ---
 
-## RE-to-Rust: Falcon-based pipeline (`rustforge`)
+## RE-to-Rust: Falcon-based pipeline (`falcon-printer`)
 
 User direction 2026-05-14: we are doing a LOT of game RE,
 workspace is ~70% Rust, hand-translating Ghidra C into Rust
@@ -65,16 +65,17 @@ raw pointers and `transmute` is fine.
 
 ### Survey 2026-05-14
 
-Fission fork attempt (logged below for the record): forked
+Fission fork attempt (logged for the record): forked
 [sjkim1127/Fission](https://github.com/sjkim1127/Fission)
 to [abix-/Fission](https://github.com/abix-/Fission),
-cloned to `grounded2mods/rustforge/`. Built clean in 2m.
+cloned locally, built clean in 2m.
 **Fission's x86-64 lifter is incomplete**
 (`fission-sleigh/README.md`: "ExecutableCandidate, but
 p-code template execution is still incomplete"). Every
 decode fails with `DecodeNoMatch`. Path is blocked on
-upstream finishing x86-64 lift. Timeline unknown. Fork
-marked parked.
+upstream finishing x86-64 lift. Timeline unknown. Local
+clone deleted 2026-05-14; remote fork preserved if we
+need to revisit.
 
 Second-pass survey via `/rtfm` surfaced the right
 substrate.
@@ -139,7 +140,7 @@ substrate.
 #### Phase 0: Falcon validation (DONE 2026-05-14)
 
 - [x] Add `falcon = "0.6"` to scratch crate
-  `grounded2mods/rustforge-spike/`. Build dep chain
+  `grounded2mods/falcon-printer/`. Build dep chain
   needed `winget install LLVM` (libclang for `bad64-sys`)
   and `winget install Kitware.CMake` (capstone bundled
   source). Build time ~2m clean.
@@ -171,7 +172,7 @@ substrate.
 
 #### Phase 1: middle-end + Rust printer (DONE 2026-05-14 shippable v0.1)
 
-Built `rustforge-spike/src/bin/rust_print.rs`. Pipeline:
+Built `falcon-printer/src/bin/rust_print.rs`. Pipeline:
 
 ```
 Falcon lift  ->  Falcon dead-code-elimination
@@ -187,9 +188,9 @@ Falcon lift  ->  Falcon dead-code-elimination
 ```
 
 Auxiliary helpers built:
-- `rustforge-spike/src/bin/sweep_ghidra.rs`. Coverage measurement
-- `rustforge-spike/src/bin/dump_il.rs`     . Raw Falcon IL inspector
-- `rustforge-spike/src/bin/batch_print.rs` . Pipe addrs in, get .rs out
+- `falcon-printer/src/bin/sweep_ghidra.rs`. Coverage measurement
+- `falcon-printer/src/bin/dump_il.rs`     . Raw Falcon IL inspector
+- `falcon-printer/src/bin/batch_print.rs` . Pipe addrs in, get .rs out
 
 Naming: loads `horseygame/decompiled/INDEX.md` (10k
 addr -> Ghidra name) and `horseygame/decompiled/key-funcs/`
@@ -294,12 +295,11 @@ target: 63% -> 80% lift rate.
 
 ### Open design questions
 
-- **Workspace layout**. Spike lives at
-  `grounded2mods/rustforge-spike/` (workspace member).
-  Parked Fission fork sits at `grounded2mods/rustforge/`
-  (NOT a workspace member). Once SSE coverage lands,
-  promote spike to `rustforge` (rename the Fission dir
-  to `rustforge-fission-parked/` or delete).
+- **Workspace layout**. Crate lives at
+  `grounded2mods/falcon-printer/` (workspace member).
+  Fission fork was deleted 2026-05-14 (cleanup);
+  remote at [abix-/Fission](https://github.com/abix-/Fission)
+  still exists if we ever want to revisit.
 - **Falcon vs libsla decision (2026-05-14 update)**:
   Phase 0 sweep showed 63% lift rate which is above the
   earlier "pivot if >20% fail" trigger. But most
@@ -313,7 +313,7 @@ target: 63% -> 80% lift rate.
 - **Build deps not in CI yet**: LLVM (libclang) +
   CMake. Installed via winget 2026-05-14. Document
   for fresh checkouts; ueforge's Cargo.lock /
-  workspace will pick rustforge-spike up at next
+  workspace will pick falcon-printer up at next
   clone and need both.
 
 ### Non-goals
@@ -327,10 +327,6 @@ target: 63% -> 80% lift rate.
 
 ### Artifacts in the repo today
 
-- `grounded2mods/rustforge/`. Cloned `abix-/Fission`
-  fork. **Parked** until upstream x86-64 lifter ships.
-  Do not delete; revisit periodically. Not a workspace
-  member; built standalone.
 - `horseygame/decompiled/all_functions.c`. 18.3 MB
   Ghidra C output. Source of truth for cross-checking
   Falcon output during Phase 0.

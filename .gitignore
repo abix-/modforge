@@ -14,4 +14,3 @@ Cargo.lock.bak
 
 # Stray cargo target that sometimes shows up under ueforge/cpp/.
 ueforge/cpp/target/
-/rustforge/
