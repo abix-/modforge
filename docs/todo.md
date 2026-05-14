@@ -212,26 +212,32 @@ horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ---
 
-## RE-to-Rust pipeline (`decomp`)
+## RE-to-Rust pipeline (`decomp`, exploratory archive)
 
 Lives at [`../decomp/`](../decomp/). r2sleigh-based
-binary-to-Rust decompiler that replaced the prototype
-`falcon-printer/` on 2026-05-14.
+binary-to-Rust decompiler.
 
-CLI: `decomp print --addr 0xADDR` / `batch` / `dump-il`.
-WSL-only build today (libsla-sys' Ghidra C++ has Windows
-MSVC compat gaps tracked at
+**Status 2026-05-14: parked**. Honest assessment in
+[`../decomp/docs/retrospective.md`](../decomp/docs/retrospective.md):
+Ghidra C decomp at
+[`../horseygame/decompiled/all_functions.c`](../horseygame/decompiled/all_functions.c)
+already solves the actual RE workflow; `decomp`'s Rust
+syntax is cosmetic and costs more than it returns. The
+crate works as a spike; ladder items in
 [`../decomp/docs/polish-ladder.md`](../decomp/docs/polish-ladder.md)
-item 1).
+are real but unlikely to ship without a specific
+forcing function.
 
-13 of 18 documented Horsey key-funcs decompile cleanly
-with friendly names at
-[`../horseygame/decompiled/rust-r2sleigh/`](../horseygame/decompiled/rust-r2sleigh/).
+If you need Rust syntax for a specific function: paste
+the Ghidra C into Claude with "rewrite as unsafe Rust
+pseudocode, keep semantics". 30 seconds, no
+infrastructure. Beats `decomp`'s output on any given
+function.
 
-Migration history + reasoning preserved at
+Sample artifacts kept at
+[`../horseygame/decompiled/rust-r2sleigh/`](../horseygame/decompiled/rust-r2sleigh/)
+as proof-of-concept evidence. Migration history at
 [`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
-Active polish work tracked at
-[`../decomp/docs/polish-ladder.md`](../decomp/docs/polish-ladder.md).
 
 
 ---

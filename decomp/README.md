@@ -6,11 +6,13 @@
 > SLEIGH-based decompiler stack) and walks the public `r2dec::ast::CFunction`
 > AST to emit Rust syntax instead of C.
 >
-> Status: **Phase 3 spike** per
-> [`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
-> Lifts work, decompile works, Rust emit works. CLI parity with
-> falcon-printer is pending. Phase 4 cutover (rename, workspace
-> integration, falcon-printer retirement) is the next session.
+> **Read [`docs/retrospective.md`](docs/retrospective.md) before
+> investing further.** The honest 2026-05-14 assessment is that this
+> project was mostly a waste of time relative to the Ghidra C decomp
+> we already had. The crate still works as a spike; the artifacts are
+> proof-of-concept, not deliverables. If you're here to use the tool,
+> proceed below. If you're here to extend it, read the retrospective
+> first.
 
 ## Build
 

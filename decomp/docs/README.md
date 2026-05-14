@@ -6,12 +6,18 @@
 > one-page intro and quick-start; these files are the
 > deeper rationale, the pipeline walkthrough, and the open
 > ladder.
+>
+> **Start here:** [`retrospective.md`](retrospective.md).
+> The honest 2026-05-14 assessment of whether this
+> project was worth doing. Short answer: mostly not.
+> Read it before deciding to invest further.
 
 ## Contents
 
 | File | Subject |
 |---|---|
-| [polish-ladder.md](polish-ladder.md) | Open work for `decomp`. Different ladder from falcon-printer because the substrate is different. |
+| [retrospective.md](retrospective.md) | **Read first.** Honest assessment of whether the project was worth building. Verdict: mostly not. Lessons + recommended posture going forward. |
+| [polish-ladder.md](polish-ladder.md) | Open work for `decomp` if you decide to keep investing. Most items are unlikely to ship per retrospective. |
 
 ## Cross-references
 

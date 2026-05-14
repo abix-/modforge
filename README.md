@@ -127,10 +127,19 @@ Per-game research notes:
 
 ## Research tooling
 
-### decomp. Binary-to-Rust output backend
+### decomp. Binary-to-Rust output backend (exploratory archive)
 
-Sits alongside the mod crates as the active RE tool. Built
-on [r2sleigh](https://github.com/radareorg/r2sleigh) (the
+> **2026-05-14 honest assessment**: this exists but probably
+> shouldn't be a daily driver. Read
+> [`decomp/docs/retrospective.md`](decomp/docs/retrospective.md)
+> before investing further. Ghidra's existing C decomp at
+> [`horseygame/decompiled/all_functions.c`](horseygame/decompiled/all_functions.c)
+> covers the actual RE workflow. `decomp` adds Rust syntax
+> as a cosmetic-but-not-pivotal win, at the cost of WSL-only
+> builds, 0.15% coverage relative to Ghidra, and a naming
+> layer that depends on Ghidra anyway.
+
+Built on [r2sleigh](https://github.com/radareorg/r2sleigh) (the
 radare2 org's SLEIGH-based pure-Rust decompiler stack with
 full x86-64, SSA pipeline, real structurer, type
 inference). Walks r2sleigh's public `r2dec::ast::CFunction`
