@@ -1,0 +1,76 @@
+[package]
+name = "horseyforge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Native-PE binding for modforge, targeting Horsey Game
+# (and other SDL3 + native-Windows games).
+#
+# Sibling to ueforge (UE5/UE4SS) and unityforge (Unity Mono/IL2CPP).
+# Whereas those rely on a managed-runtime plugin loader, horseyforge
+# attaches via a SEPARATE INJECTOR `horseyforge-inject.exe` which
+# CreateRemoteThread's a LoadLibraryW(horseyforge.dll) into the
+# running Horsey.exe.
+#
+# We chose injector-over-proxy because:
+# 1. Proxying steam_api64.dll requires forwarding 1,089 exports.
+#    MSVC link.exe's .DEF forwarder support is brittle in modern
+#    versions; the alternative (1,089 hand-written stubs that
+#    GetProcAddress + tail-call) is a lot of generated code.
+# 2. Injection allows hot-reload without restarting Horsey
+#    (detach our DLL via FreeLibrary, rebuild, re-inject).
+# 3. Same pattern works for any native-PE Windows game; we don't
+#    Have to per-game-identify the right host DLL to proxy.
+#
+# A consumer crate (horsey-rpg, horsey-hotkeys, ...) is a cdylib
+# that depends on this crate via
+# `horseyforge = { path = "../horseyforge" }` and registers its
+# own ops, hooks, settings.
+
+[lib]
+# Two crate types:
+# - cdylib: produces horseyforge.dll, the thing we inject.
+# - rlib: lets downstream Horsey mod crates `use horseyforge::*`.
+crate-type = ["cdylib", "rlib"]
+
+# Injector binary. `cargo run -p horseyforge --bin horseyforge-inject`
+# attaches horseyforge.dll to a running Horsey.exe.
+[[bin]]
+name = "horseyforge-inject"
+path = "src/bin/inject.rs"
+
+[package.metadata.horseyforge]
+game_name_regex = "Horsey"
+game_sub_path   = ""
+
+[dependencies]
+modforge = { path = "../modforge" }
+
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+arc-swap = { workspace = true }
+crossbeam-channel = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_SystemServices",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_ProcessStatus",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
+widestring = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
