@@ -221,10 +221,23 @@ TL;DR: Falcon-based binary-to-Rust output backend.
 **88.8% lift rate** on 10,332 Horsey functions. 11
 sample artifacts in `horseygame/decompiled/rust/`.
 
-Open polish work tracked in
-[`../falcon-printer/docs/polish-ladder.md`](../falcon-printer/docs/polish-ladder.md);
-pick from there when starting a session on the
-decompiler side.
+**Strategic question (audit 2026-05-14):** the
+Rust-output goal stays, but a second-pass survey
+surfaced two alternatives we should evaluate:
+[r2sleigh](https://github.com/radareorg/r2sleigh)
+(radare2 org, Rust, Sleigh, has a real structurer)
+and the
+[LLM4Decompile](https://github.com/albertan017/LLM4Decompile)-Ref
+pipeline (refines Ghidra C into cleaner C; one more
+LLM pass yields Rust). The multi-path proposal lives
+in
+[`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
+Open polish work for Path A tracked in
+[`../falcon-printer/docs/polish-ladder.md`](../falcon-printer/docs/polish-ladder.md).
+
+Read strategy.md before sinking more time into
+falcon-printer-specific features that r2sleigh or the
+LLM pipeline already solve better.
 
 
 ---

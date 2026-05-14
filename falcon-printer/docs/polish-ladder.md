@@ -3,6 +3,12 @@
 > What's left between "shippable v0.1" (today) and "great
 > reading experience". Ordered by leverage. Pick from the
 > top when starting a session.
+>
+> **Read [`strategy.md`](strategy.md) first**. After the
+> 2026-05-14 audit, falcon-printer is one of three viable
+> paths to the Rust-output goal. This ladder is Path A
+> work; the alternatives (r2sleigh fork, LLM pipeline)
+> may earn back faster on the harder items below.
 
 ## 0. ~~Consolidate the five binaries into one~~ DONE 2026-05-14
 
