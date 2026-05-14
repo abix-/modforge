@@ -84,111 +84,95 @@ cites. The decisions in Phase 1 reference that doc.
 
 #### Pop system (engine-level questions)
 
-- [ ] **Q-pop-1.** Does the engine accept arbitrary new pop
-      NAMES, or is the pop set bounded? Read the `pop.xml`
-      loader (likely near `FUN_1400a3eb0`'s call site or
-      a sibling `load_pop_xml`).
-- [ ] **Q-pop-2.** What does a spawner do with a pop name
-      it doesn't recognize? Silent fallback to `default`,
-      log + skip, or hard-crash?
-- [ ] **Q-pop-3.** Are pops stored in a fixed-size table
-      (like genes) or a hashmap/vector? Find the in-memory
-      data structure.
-- [ ] **Q-pop-4.** Inheritance semantics: does a child pop
-      override only the genes it names, or does it reset
-      everything? Determines authoring strategy.
+- [x] **Q-pop-1.** ANSWERED. Pops are unbounded
+      heap-grown std::vector at
+      `DAT_1403f2fc0/8/d0` (begin/end/cap triple).
+      See [`VIABILITY.md`](VIABILITY.md) Q-pop-1.
+- [x] **Q-pop-2.** ANSWERED. Unknown pop name -> hard
+      crash via `FUN_1400c4340("pop not found %s")`
+      (MessageBox + INT3 abort). No silent fallback.
+- [x] **Q-pop-3.** ANSWERED. 4120-byte (`0x1018`)
+      records in std::vector. Per-pop weight at offset
+      `0x28 + (gene * 4 + allele) * 4`.
+- [x] **Q-pop-4.** ANSWERED. Inherit-then-override.
+      Child copies parent's full 480-pair gene-weight
+      block, then patches by `<gene name="X">`. Loader
+      at `FUN_1400a5ee0`.
 
 #### Gene system (the table extension question)
 
-- [ ] **Q-gene-1.** Map every reader of `DAT_1403ee4a4`
-      (the 240-slot gene table at
-      [`horseygame/decompiled/annotated/0x1400a3eb0_load_genes_xml.c`](../../horseygame/decompiled/annotated/0x1400a3eb0_load_genes_xml.c)).
-      Use Ghidra cross-refs. Document each access pattern
-      (record copy, indexed read, offset arithmetic).
-- [ ] **Q-gene-2.** Find every literal `0xf0` (240) and
-      `0x1e00` (7680 = 240*32) in code. Each is a candidate
-      loop bound or allocation size that must be patched
-      to extend the table.
-- [ ] **Q-gene-3.** For every gene-by-INDEX consumer
-      (rendering, breeding, scoring, save, load),
-      classify as:
-      - (a) name-lookup-via-chromomap (safe to extend), or
-      - (b) literal-index-baked-into-code (each one is a
-        separate patch site).
-      Count (b)s. If the count is small (single digits),
-      patching them is normal. If huge, the strategy
-      changes.
-- [ ] **Q-gene-4.** Decide table-extension strategy
-      candidates:
-      - in-place: keep `DAT_1403ee4a4` as base, grow the
-        static allocation if possible (likely impossible;
-        confirm).
-      - heap redirect: patch every reader to dereference
-        through a pointer we own. Big patch surface,
-        unbounded cap.
-      - fixed expand: pick a new cap (e.g. 512), allocate
-        once, patch loop bounds, leave readers alone.
-        Small patch surface, bounded.
-- [ ] **Q-gene-5.** How many of the 242 vanilla genes are
-      unused or under-used? Triggered by Q-gene-3 finding
-      that gene effects are baked in `FUN_14009f680` by
-      literal index. If we can find vanilla genes that
-      `FUN_14009f680` references but no `pop.xml` entry
-      drives, we can repurpose them in our trampoline
-      WITHOUT extending the table at all. Method:
-      cross-reference `FUN_14009f680`'s 219 referenced
-      indices against vanilla `pop.xml` to find genes
-      that exist in the engine but no pop authors.
+- [x] **Q-gene-1.** ANSWERED. 7 reader functions touch
+      the gene table. All by-variable indexing, none
+      by literal. 32-byte stride throughout. 3 mutate
+      live (death handler, allele swap, CRISPR UI).
+- [x] **Q-gene-2.** ANSWERED. `0xf0` as table bound
+      appears in 3 loops. `0x1e00` (full table size)
+      doesn't appear. No allocation literal to patch.
+- [x] **Q-gene-3.** ANSWERED. 233 of 240 indices baked
+      LITERALLY in `FUN_14009f680` (gene-effect
+      engine). One concentrated function, not
+      scattered. Forces the trampoline strategy.
+- [x] **Q-gene-4.** DECIDED. Detour-and-dispatch via
+      D1 detours (NOT heap redirect of DAT_1403ee4a4).
+      Sidecar `EXT_GENE_TABLE` for slots 240..480.
+      Vanilla static table untouched. See D1 plan.
+- [x] **Q-gene-5.** ANSWERED. Only 7 hard-free vanilla
+      slots (56, 57, 107, 183, 184, 209, 216). Not
+      enough to carry the bestiary on repurposing
+      alone; full extension is the chosen path.
 
 #### Save / load (compat question)
 
-- [ ] **Q-save-1.** How are per-horse gene allele values
-      stored? By gene index, by gene name, length-prefixed
-      array? See
-      [`horseygame/SAVE-FORMAT.md`](../../horseygame/SAVE-FORMAT.md).
-- [ ] **Q-save-2.** Is the per-horse allele array sized by
-      a literal (240) anywhere in save / load? If yes,
-      extending the table breaks save compat unless we
-      patch save / load too.
-- [ ] **Q-save-3.** Decide: do we accept save-incompat for
-      modded saves, or do we patch save / load to write a
-      backwards-compatible extended record?
+- [x] **Q-save-1.** ANSWERED. 480 bytes per horse at
+      `horse[0x78]` (diploid, 240 alleles x 2). Save
+      packs to 240 bytes per horse via 3-bit-per-allele
+      encoding `(b+1)<<3 | (a+1)`. Allocator
+      `FUN_14005cf70` / `FUN_14005d190`.
+- [x] **Q-save-2.** ANSWERED. 11 patch sites for
+      genome save / load + alloc / walk + 7 more for
+      pop record layer. Full table in
+      [`VIABILITY.md`](VIABILITY.md) Q-save-2.
+- [x] **Q-save-3.** DECIDED. Sidecar `save<N>.dat.ext`.
+      Vanilla save bytes never modified. See D4 plan.
+      Locked in 2026-05-14 user direction.
 
 #### Renderer / behavior (gene-effect question)
 
-- [ ] **Q-render-1.** For each "new visual mode" we want
-      (wings, wheels, transparency, faceted body, etc.),
-      figure out:
-      - does any vanilla pop already exhibit it (e.g.
-        `car` for wheels)? If yes, what gene drives it?
-      - if no vanilla equivalent, what gene-handler code
-        would we have to write or patch to make it work?
-- [ ] **Q-render-2.** For each existing gene, document
-      what it actually controls (the gene NAMES are
-      suggestive but not always literal). Cross-reference
-      against the renderer code.
-- [ ] **Q-render-3.** Is the renderer driven by a
-      gene-handler dispatch table we can extend, or is
-      every gene's behavior hardcoded by index in the
-      render loop?
+- [ ] **Q-render-1.** OPEN. Needs live vanilla `pop.xml`
+      to determine which genes drive vanilla unusual
+      modes (`car` wheels, `helix` shape). Not blocking
+      D0/D1; deferred until specific bestiary species
+      need it.
+- [x] **Q-render-2.** ANSWERED. Per-horse render param
+      array is 353 floats (1412 bytes). `FUN_14009f680`
+      writes 258 unique slots. ~95 slots in [0..352]
+      are touched by neither engine nor consumer:
+      candidate trampoline outputs.
+- [x] **Q-render-3.** ANSWERED (well enough for
+      trampoline design). Pipeline is
+      `FUN_14009f680(buf, horse) -> FUN_1400ab3d0(horse, buf)`.
+      Consumer reads 61 of 258 slots. We hook between
+      them OR after consumer to add new gene effects.
 
 #### Hot reload (iteration speed question)
 
-- [ ] **Q-reload-1.** Can `pop.xml` and `genes.xml` be
-      reparsed in-process without restarting the game?
-      If yes, the iteration loop becomes 5 seconds
-      instead of 30.
-- [ ] **Q-reload-2.** Can we ship the Gene Editor HTTP ops
-      (live `pop.gene.set`) before any species are
-      authored, so authoring happens against a live
-      target?
+- [ ] **Q-reload-1.** OPEN. Needs runtime experiment
+      (call vanilla loader twice and observe). Not
+      blocking: D7 ops cover the modded-side reload
+      via our own loader.
+- [x] **Q-reload-2.** DONE. The HTTP ops shipped in
+      D0.6 ARE the live editor: `genes.ext.set` /
+      `pop.ext.weight.set` / `horse.ext.alleles.set`
+      mutate sidecar state without restarting.
 
 #### Phase 0 exit criteria
 
-Phase 0 is complete when `VIABILITY.md` answers every Q
-above with a file:line cite or a reasoned "unanswerable
-without runtime experiment." At that point, Phase 1
-(decisions) opens with full context.
+Phase 0 EXITED 2026-05-14. Every blocking research
+question is answered with file:line cites in
+[`VIABILITY.md`](VIABILITY.md). Q-render-1 and
+Q-reload-1 remain open but deferred (don't block
+D0..D5; will be revisited as needed during bestiary
+authoring).
 
 ---
 
@@ -480,43 +464,38 @@ ENGINE            233 hardcoded indices                 evaluate genes 240..479
 Pre-work before any patches go in. Builds the
 infrastructure the later phases assume.
 
-- [ ] **D0.1.** Decide N (target gene count). Default
-      480 (exactly double). Could go higher (512, 1024)
-      with no extra patch sites; the cost is just bigger
-      heap buffers. Document the chosen N in a constant
-      `EXT_GENE_COUNT` at the top of
-      `horsey-mod/src/genes.rs`.
-- [ ] **D0.2.** Add a sidecar gene-table buffer to
-      `horsey-mod`. `static EXT_GENE_TABLE: Mutex<Vec<GeneRecord>>`
-      where `GeneRecord` matches the vanilla 32-byte
-      layout. Initialize on attach with default values
-      (m=100, s=1, all-zero alleles).
-- [ ] **D0.3.** Add a sidecar pop-weight buffer.
-      `static EXT_POP_WEIGHTS: Mutex<HashMap<u32, ExtPopRecord>>`
-      where `ExtPopRecord` holds the extended 240
-      genes' per-allele weights (240 * 4 * 4 = 3840
-      bytes per pop). Keyed by vanilla pop_id.
-- [ ] **D0.4.** Add a sidecar horse-genome buffer.
-      `static EXT_HORSE_GENOMES: Mutex<HashMap<u64, [u8; 480]>>`
-      keyed by some stable horse identifier. Need to
-      determine the right key first: a horse's roster
-      index can change between saves; the stable key is
-      probably the int32 ID assigned at creation
-      (stored in the horse struct, exact offset TBD).
-- [ ] **D0.5.** Extend `horsey-mod/src/patches.rs` with
-      a helper for the heap-redirect pattern: given a
-      static address that vanilla code reads via a
-      RIP-relative `lea`, patch the instruction to
-      either (a) load from a different fixed address,
-      or (b) detour through our trampoline. Concrete
-      shape TBD by the disassembly of the first reader
-      we patch.
-- [ ] **D0.6.** Extend the existing HTTP control plane
-      with `genes.ext.list`, `genes.ext.add`,
-      `genes.ext.set`, `pop.ext.weight.set`, and
-      `horse.ext.genome.{get,set}` ops. These are how
-      we'll iterate on extended-gene definitions
-      without rebuilding.
+- [x] **D0.1.** Decide N (target gene count). DONE.
+      Picked 240 (exactly double, total 480). Lives as
+      `EXT_GENE_COUNT` constant in `horsey-mod/src/genes.rs`.
+- [x] **D0.2.** Add sidecar gene-table buffer. DONE.
+      `gene_table()` in `horsey-mod/src/genes.rs` returns
+      a `RwLock<Vec<ExtGene>>` of `EXT_GENE_COUNT` entries,
+      initialized to vanilla defaults (m=100, s=1,
+      all-zero alleles, name `BX_RESERVED_NNN`).
+- [x] **D0.3.** Add sidecar pop-weight buffer. DONE.
+      `pop_weights()` returns
+      `RwLock<HashMap<u32, ExtPopWeights>>`. Each entry
+      is 240 genes x 4 alleles defaulting to weight 1.
+      Auto-init via `get_or_init_pop_weights(pop_id)`.
+- [x] **D0.4.** Add sidecar horse-genome buffer. DONE.
+      `horse_genomes()` returns
+      `RwLock<HashMap<u64, ExtHorseGenome>>`. Each entry
+      is a flat `Vec<u8>` of length `2 * EXT_GENE_COUNT`
+      with the same i / i+EXT_GENE_COUNT diploid layout
+      vanilla uses. **Open follow-up:** the stable key
+      (currently u64) needs to be wired to a real
+      horse_id field once D4.4 finds it.
+- [ ] **D0.5.** Heap-redirect helper in `patches.rs`.
+      Deferred to D1 (the first reader we patch will
+      determine the concrete instruction-rewrite shape).
+- [x] **D0.6.** HTTP control-plane ops. DONE. 12 ops
+      shipped in `horsey-mod/src/ops.rs`:
+      `genes.ext.{count,list,get,set,find,dump}`,
+      `pop.ext.{weights.get,weight.set}`,
+      `horse.ext.{genome.get,genome.set,alleles.set,
+      genome.drop,evaluate}`. Plus
+      `genes::evaluate_ext_gene()` mirrors the vanilla
+      diploid blend formula for the extended range.
 
 ### Phase D1: Static gene table extension
 
@@ -772,18 +751,20 @@ painful.
       `pop.xml.reload` HTTP ops (Q-reload-1 still open;
       may not be feasible if vanilla doesn't expose a
       reentrant loader).
-- [ ] **D7.2.** Implement `genes.ext.reload` for our
-      sidecar genes file. Easy: just re-parse and
-      replace `EXT_GENE_TABLE`.
-- [ ] **D7.3.** Add a `genes.dump` HTTP op that
-      returns the full gene table state (vanilla 240 +
-      our extended N-240) as JSON. Useful for sanity
-      checks during dev.
-- [ ] **D7.4.** Add a `horse.dump` HTTP op that
-      returns one horse's full state (vanilla genome +
-      our extended genome + computed render param
-      array). Useful for verifying the trampoline did
-      what we expected.
+- [ ] **D7.2.** WIP. `genes-extended.xml` parser
+      drafted in `horsey-mod/src/genes_xml.rs` with
+      regex-based extraction. Tests written; currently
+      debugging parallel-test state pollution
+      (multiple tests share global gene table). Once
+      tests pass, add `genes.ext.reload {path}` op.
+- [x] **D7.3.** DONE. `genes.ext.dump` op shipped in
+      D0.6 returns full extended-gene snapshot. Vanilla
+      side dump deferred (would require reading
+      `DAT_1403ee4a4` via process memory; nice-to-have
+      not blocker).
+- [ ] **D7.4.** Deferred. Per-horse full dump op needs
+      a stable horse_id (open in D4.4) before it's
+      meaningful.
 
 ### Phase D8: Verification
 
