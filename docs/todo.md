@@ -110,12 +110,12 @@ User direction 2026-05-14: per-game mod crates standardize
 on `<game>-mod`. Boring, consistent, future-proof. Renames
 to land in one commit per crate so it bisects clean.
 
-| Current                     | New                       |
-|-----------------------------|---------------------------|
-| `grounded2-rpg`             | `grounded2-mod`           |
-| `wwm-rpg`                   | `wwm-mod`                 |
-| `outworld-station-tweaks`   | `outworld-station-mod`    |
-| `horseyforge`               | `horsey-mod`              |
+| Current                     | New                       | Status |
+|-----------------------------|---------------------------|--------|
+| `grounded2-rpg`             | `grounded2-mod`           | TODO   |
+| `wwm-rpg`                   | `wwm-mod`                 | TODO   |
+| `outworld-station-tweaks`   | `outworld-station-mod`    | DONE   |
+| `horseyforge`               | `horsey-mod`              | TODO   |
 
 `il2cpp-smoke` is a smoke target, not a per-game mod.
 Name unchanged.

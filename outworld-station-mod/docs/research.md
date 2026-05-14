@@ -68,7 +68,7 @@ new game" for what each item means):
 | Anti-cheat | none observed | no EAC / BattlEye folders in install |
 | UE4SS installed | yes | `OutworldStation\Binaries\Win64\ue4ss\`. Main HEAD commit `06474186`, built 2026-05-08 |
 | `UE4SS.lib` regenerated for this DLL | yes | ~4063 exports; commit `6246b90` |
-| Mod scaffold | yes | `outworld-station-tweaks/` (multi-mod) |
+| Mod scaffold | yes | `outworld-station-mod/` (multi-mod) |
 | `/debug` endpoint live | yes | `127.0.0.1:17172`, smoke test passes 3/3 |
 | SDK dump | yes | `OutworldStation\Binaries\Win64\ue4ss\CXXHeaderDump\` (956 .hpp files, 8.4 MB) |
 | PlatformOffsets filled in | yes | g_objects=0x07A938D0, append_string=0x010DF9D0, process_event=0x012AF540, layout=WrappedChunked |
@@ -110,8 +110,8 @@ those OWS will need until we try. So:
    (thousands of `.hpp` files) plus an offsets summary file.
 4. Copy `g_objects`, `append_string`, `g_names`, `g_world`,
    `process_event` (image-relative addresses) into
-   `outworld-station-tweaks/src/lib.rs::STEAM`.
-5. Rebuild + redeploy with `outworld-station-tweaks/scripts/deploy.ps1 -Install`.
+   `outworld-station-mod/src/lib.rs::STEAM`.
+5. Rebuild + redeploy with `outworld-station-mod/scripts/deploy.ps1 -Install`.
 6. Re-run smoke + run `explore_datatables`. `walk_class`
    should now flip to `ok=true` and print the DataTable list.
 
@@ -249,14 +249,14 @@ BetterStack_P/
 
 ## Folder convention for this repo
 - Following the `grounded2-rpg/` pattern from Grounded 2 work
-- First mod crate: `outworld-station-tweaks/`. A multi-mod bundle
+- First mod crate: `outworld-station-mod/`. A multi-mod bundle
   (stack-size adjustments first, more tweaks layered on the same
   scaffold over time)
 - Shared shim/injector code from `injector/` and `archive/winhttp-proxy/` may be reusable
 
 ## First mod target: stack tweaks (multi-mod foundation)
 
-The first feature in `outworld-station-tweaks/` is item-stack
+The first feature in `outworld-station-mod/` is item-stack
 adjustments. Reproduce/extend the existing community "Better Item
 Stacks" approach, but as a runtime mod via ueforge instead of a
 static `_P` pak. Why: a runtime mod gives us live introspection
@@ -296,7 +296,7 @@ that exists today. The only mod-side code is:
 
 ### Subsequent tweaks layer on the same scaffold
 
-Once `outworld-station-tweaks` has a working `/debug` endpoint + drain trampoline:
+Once `outworld-station-mod` has a working `/debug` endpoint + drain trampoline:
 - Hunger / thirst rate tweaks: same pattern, different DataTable / CDO field
 - Inventory slot count: write to `UInventoryComponent.DefaultMaxSize`
 - Movement / fall-damage tweaks: `write_bytes` to character CDOs
@@ -404,7 +404,7 @@ grounded2-rpg has shed ~2,000 LoC of generic mod plumbing.
 ### The OWS scaffold once slices 9-11 land
 
 ```rust
-// outworld-station-tweaks/src/lib.rs
+// outworld-station-mod/src/lib.rs
 #[unsafe(no_mangle)]
 pub extern "C" fn ows_start() {
     ueforge::log::set_dll_module(/* HMODULE captured in DllMain */);

@@ -1,5 +1,5 @@
 [package]
-name = "outworld-station-tweaks"
+name = "outworld-station-mod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,22 +15,22 @@ publish.workspace = true
 
 [lib]
 # Output is `main.dll`, dropped at
-# OutworldStation\Binaries\Win64\ue4ss\Mods\OutworldStationTweaks\dlls\main.dll.
+# OutworldStation\Binaries\Win64\ue4ss\Mods\OutworldStationMod\dlls\main.dll.
 name = "main"
 crate-type = ["cdylib", "rlib"]
 
 # Consumed by ueforge's ueforge-deploy bin.
 [package.metadata.ueforge]
-mod_folder_name = "OutworldStationTweaks"
+mod_folder_name = "OutworldStationMod"
 game_name_regex = "Outworld"
 game_sub_path   = "OutworldStation/Binaries/Win64"
-zip_prefix      = "outworld-station-tweaks"
-target_dir      = "target/outworld-station-tweaks"
+zip_prefix      = "outworld-station-mod"
+target_dir      = "target/outworld-station-mod"
 
 [features]
 # Spawn a console window inside the game process for live log
 # output. Off by default for shipping; the file log at
-# <DLL_dir>/outworld_station_tweaks.log is the durable record.
+# <DLL_dir>/outworld_station_mod.log is the durable record.
 console = []
 default = ["console"]
 

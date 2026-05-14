@@ -81,7 +81,7 @@ Four Rust crates plus one C# shim:
    to ueforge's `cpp/ueforge_shim.cpp` (502 lines). Each
    shim likely under 1500 lines of C# with shared base.
 5. **Game mods** (Rust cdylib crates). `grounded2-rpg` and
-   `outworld-station-tweaks` exist. `wwm-rpg` is new. All
+   `outworld-station-mod` exist. `wwm-rpg` is new. All
    pure Rust. Depend on `ueforge` or `unityforge` plus
    `modforge`.
 
@@ -504,7 +504,7 @@ grounded2mods/
       lifecycle.md
     tests/
   grounded2-rpg/                  # exists; depends on ueforge + modforge
-  outworld-station-tweaks/        # exists; depends on ueforge + modforge
+  outworld-station-mod/        # exists; depends on ueforge + modforge
   wwm-rpg/                        # NEW Rust mod (Mono target); depends on unityforge + modforge
   <il2cpp-smoke>/                 # NEW Rust mod (IL2CPP target); depends on unityforge + modforge
 ```
@@ -1228,7 +1228,7 @@ The plan is "done" when:
   ueforge, unityforge, modforge-deploy).
 - `cargo test --workspace` passes.
 - ueforge's existing game mods (`grounded2-rpg`,
-  `outworld-station-tweaks`) still work in-game,
+  `outworld-station-mod`) still work in-game,
   byte-for-byte identical to pre-extraction.
 - `unityforge.dll` + `Unityforge.Shim.Mono.dll` load into
   Wild West Miner via BepInEx 5. `curl` to the debug port

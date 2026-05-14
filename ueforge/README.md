@@ -224,7 +224,7 @@ matching mangled names of the symbols we actually use
 
 Each game keeps its bootstrap status in a research-notes
 markdown under that game's folder. See
-`outworld-station-tweaks/docs/research.md` for the canonical shape:
+`outworld-station-mod/docs/research.md` for the canonical shape:
 
 - Game / engine version
 - UE4SS build installed (commit / version)
@@ -334,7 +334,7 @@ That's the full mod skeleton. ~50 LoC.
 
 ### `your-mod/src/debug.rs`
 
-See `outworld-station-tweaks/docs/research.md` and the existing
+See `outworld-station-mod/docs/research.md` and the existing
 `grounded2-rpg/src/debug.rs` for the snapshot + dispatcher
 pattern.
 
@@ -436,7 +436,7 @@ options when this matters:
    Bulletproof against any cache because we intercept at
    call-site. Worth building when (1) doesn't propagate (rare).
 
-Reference implementation: `outworld-station-tweaks/src/stacks.rs`
+Reference implementation: `outworld-station-mod/src/stacks.rs`
 ships this pattern for the OWS stack-size mod. 4x bump that
 matches the existing community "Better Item Stacks" pak mod's
 effect. But via runtime DLL, so other features in the same mod
@@ -756,7 +756,7 @@ counter atomics, or the snapshot scaffolding.
   For the ~95% case, dump-driven research is dramatically
   faster (30 sec / field vs 20-30 min / field). Estimated
   ~200 LoC when we get to it. Motivating use case in
-  `outworld-station-tweaks/docs/research.md`.
+  `outworld-station-mod/docs/research.md`.
 
 ## Adding to ueforge
 

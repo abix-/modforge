@@ -13,10 +13,10 @@
 //!
 //! ```ignore
 //! static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
-//!     name: "OWS Tweaks",
+//!     name: "Outworld Station Mod",
 //!     version: "0.1.0",
-//!     log_file: "ows_outworld_station_tweaks.log",
-//!     console_title: "OWS Tweaks",
+//!     log_file: "outworld_station_mod.log",
+//!     console_title: "Outworld Station Mod",
 //!     console: cfg!(feature = "console"),
 //!     on_unreal_init: || { ows::start(); },
 //!     on_shutdown: || { ows::stop(); },

@@ -97,7 +97,7 @@ See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge
 | Crate                     | Game              | Bound via    | What it does                                                                 |
 |---------------------------|-------------------|--------------|------------------------------------------------------------------------------|
 | `grounded2-rpg`           | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
-| `outworld-station-tweaks` | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
+| `outworld-station-mod`    | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
 | `wwm-rpg`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
 | `il2cpp-smoke`            | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
 | `horseyforge`             | Horsey Game       | modforge (PE inject) | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. Carries its own injector EXE. |
@@ -133,7 +133,7 @@ Per-game research notes:
 +- ueforge/                   -- UE5 / UE4SS forge (60+ submodules, 5 modules)
 +- unityforge/                -- Unity Mono + IL2CPP forge (with C# shim)
 +- grounded2-rpg/             -- Grounded 2 RPG / level-up mod (ueforge)
-+- outworld-station-tweaks/   -- Outworld Station tweaks (ueforge)
++- outworld-station-mod/      -- Outworld Station mod (ueforge)
 +- wwm-rpg/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
 +- horseyforge/               -- Horsey Game mod (PE inject; modforge directly)
@@ -154,7 +154,7 @@ Each game-side mod has its own deploy command:
 cargo deploy install -p grounded2-rpg
 
 # Outworld Station (UE5 / UE4SS)
-cargo deploy install -p outworld-station-tweaks
+cargo deploy install -p outworld-station-mod
 
 # Wild West Miner (Unity Mono / BepInEx)
 wwm-rpg/scripts/build_and_deploy.ps1
@@ -218,7 +218,7 @@ Each forge has its own hot-reload story:
 - **grounded2-rpg**: 13 skills live including Lifesteal in the
   damage hook. Tested against Grounded 2 Steam build
   `++Augusta+release-0.4.0.2-CL-2673661`.
-- **outworld-station-tweaks**: stacks tweak shipped.
+- **outworld-station-mod**: stacks tweak shipped.
 - **wwm-rpg**: demo-end block shipped (Harmony prefix on
   `TutorialManager.CompleteDemo`); RPG side parked while the
   Harmony bridge is repaired.
