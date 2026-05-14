@@ -1,0 +1,21 @@
+[package]
+name = "decomp"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0"
+publish = false
+
+# This crate is NOT a workspace member yet. libsla-sys (Ghidra's libsla
+# C++ wrapped for Rust) does not build on Windows MSVC because Ghidra
+# uses POSIX <unistd.h>. Build in WSL for now: clone r2sleigh as a
+# sibling of this crate (e.g. ~/decomp/ and ~/r2sleigh/) and run
+# `cargo build --release`. When libsla-sys grows Windows support, this
+# crate gets promoted to a workspace member at falcon-printer/'s spot.
+
+[dependencies]
+r2sleigh-lift = { path = "../r2sleigh/crates/r2sleigh-lift" }
+r2il = { path = "../r2sleigh/crates/r2il" }
+r2ssa = { path = "../r2sleigh/crates/r2ssa" }
+r2dec = { path = "../r2sleigh/crates/r2dec" }
+sleigh-config = { version = "1.0", features = ["x86"] }
+goblin = "0.10"

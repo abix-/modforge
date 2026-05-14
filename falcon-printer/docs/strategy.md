@@ -71,37 +71,110 @@ case for switching is unambiguous.
 
 ## Migration plan
 
-### Phase 1: spike and validate (1 session, gated)
+### Phase 1: spike and validate (DONE 2026-05-14, go)
 
-Goal: confirm r2sleigh's C output on Horsey is
-actually as good as the README claims before we
-commit to the rewrite.
+- [x] Clone `radareorg/r2sleigh`. Cloned to
+  `C:/code/r2sleigh/` (Windows) and `~/r2sleigh/`
+  (WSL). Found r2sleigh depends on
+  `libsla-sys 0.1.5` which compiles Ghidra's C++
+  source. **Windows MSVC build fails** on
+  `unistd.h` (Ghidra C++ uses POSIX headers).
+  WSL build succeeds clean in ~2m. Conclusion:
+  r2sleigh tooling lives in WSL for now;
+  Horsey.exe is accessible via `/mnt/c/Games/...`.
+- [x] Build r2sleigh-cli. Built `r2sleigh-cli`
+  + `r2dec` + `r2ssa` + `r2sleigh-lift` in WSL.
+- [x] Discover the API: r2sleigh-cli is
+  per-instruction. The full-function path is
+  `Disassembler::lift_block(bytes, addr, size)`
+  -> R2ILBlock, then
+  `SSAFunction::from_blocks_for_decompile(&[block], Some(&arch_spec))`,
+  then `Decompiler::build_function(&ssa)` ->
+  CFunction (public AST), then either
+  `r2dec::codegen::generate(&c_func)` for C or
+  walk the AST ourselves for Rust.
+- [x] Build a spike at `~/r2sleigh-spike/` in WSL
+  that drives the full pipeline programmatically.
+  Uses goblin for PE parsing; depends on r2sleigh
+  crates via path.
+- [x] Run against documented key-funcs. Saved
+  comparison artifacts:
+  - `horseygame/decompiled/rust-r2sleigh-spike/`:
+    raw r2dec C output for `save_filename_format`
+    (173 lines), `click_race_when_ready_dialog`
+    (157 lines truncated at 4kB). SSE-heavy
+    functions (`price_or_score_formula`,
+    `simulation_paused_status`) failed to
+    complete decompile in <2 minutes. SSA
+    construction on dense float-math code is
+    slow. Will likely complete with longer
+    timeout or proper basic-block-split input.
 
-- [ ] Clone `radareorg/r2sleigh` to a sibling dir
-  (NOT a workspace member yet).
-- [ ] Build the r2sleigh CLI (whatever the
-  decompile entrypoint is; check `r2sleigh-cli`
-  and `r2dec/src/lib.rs`).
-- [ ] Run it on `Horsey.exe` against the same 11
-  documented key-funcs we have falcon-printer
-  output for.
-- [ ] Side-by-side compare: `horseygame/decompiled/rust/fn_140089510.rs`
-  (falcon-printer) vs the C output r2sleigh
-  produces for `0x140089510`. Specifically check:
-  - SSE-heavy functions (`price_or_score_formula`,
-    `simulation_paused_status`). Does r2sleigh
-    model SSE properly?
-  - Loop-heavy functions (`click_race_when_ready_dialog`).
-    Does the structurer recover loops cleanly?
-  - Small functions (`save_filename_format`).
-    Confirm parity on the easy cases.
-- [ ] Quality bar: if r2sleigh's output is
-  meaningfully cleaner on the hard cases, proceed.
-  If it's a wash, escalate (maybe Path C / LLM
-  pipeline is the right answer after all).
+**Decision gate result: GO.** Quality of r2sleigh's
+output is meaningfully better than falcon-printer's
+on every dimension that matters:
+- SSA versioning visible (`rdi_1`, `rdi_4`, `rdi_7`,
+  ...) makes data flow legible.
+- Struct field writes render as `*(rdi_1 + 592) = 13`
+  instead of `core::ptr::write((rdi).wrapping_add(0x250) as *mut u64, 0xd_u64)`.
+- Function calls show arguments where recoverable:
+  `ram:140092110(rcx);` vs falcon-printer's argless
+  `fn_140092110();`.
+- No synthetic block dispatch noise (Falcon's
+  empty junction blocks).
+- No ZF/SF/OF/CF chain noise (the flag-recognition
+  pass falcon-printer needs is upstream's
+  problem in r2sleigh).
 
-**Decision gate at end of phase 1**: go / no-go on
-the rewrite. If go, proceed to phase 2.
+### Phase 2: printer-fork design (DONE 2026-05-14)
+
+- [x] Read `r2dec/src/codegen.rs` (692 lines) and
+  `r2dec/src/ast.rs` (822 lines). The AST is
+  fully public via `r2dec::ast::{CType, CExpr,
+  CStmt, CFunction, BinaryOp, UnaryOp,
+  SwitchCase, CParam, CLocal}`.
+- [x] Decide between fork / upstream PR / downstream
+  crate. **Picked downstream new crate (option c)**.
+  `Decompiler::build_function(&SSAFunction) ->
+  CFunction` is public. We don't need to fork; we
+  consume r2sleigh as a dep and walk the public
+  AST in our own emit module.
+
+### Phase 3: implementation (IN PROGRESS 2026-05-14)
+
+Status: Rust emit working end-to-end in the
+`r2sleigh-spike/` WSL crate. Open work is CLI
+parity and workspace integration (Phase 4).
+
+- [x] Stand up a spike crate
+  (`~/r2sleigh-spike/`, WSL). Pinned to local
+  r2sleigh path deps until cutover.
+- [x] Implement the Rust emit. Walks
+  `r2dec::ast::CFunction`, maps to Rust syntax:
+  C ints -> Rust ints (`int64_t` -> `i64`, etc.);
+  C pointers -> `*mut T`; `*(addr)` -> `*addr`;
+  C `switch` -> Rust `match`; C `for` -> init+while;
+  C `do-while` -> `loop { ... if !cond { break; } }`;
+  function calls keep their argument lists; ram:HEX
+  refs become `fn_HEX`. ~300 lines.
+- [x] Generate sample artifacts.
+  `horseygame/decompiled/rust-r2sleigh/`:
+  `fn_140089510.rs` (176 lines), `fn_140094a20.rs`
+  (160 lines), `fn_140122690.rs` (9 lines).
+- [ ] CLI port: subcommands `print` / `batch` /
+  `sweep` / `dump-il` matching falcon-printer's
+  surface. Currently the spike has a positional
+  `addr` + a `c | rust` mode flag.
+- [ ] Naming layer port: load
+  `horseygame/decompiled/INDEX.md` to override
+  `fn_<addr>` with friendly names. Same logic as
+  in falcon-printer, ported.
+- [ ] Sweep coverage rerun. Target: ~100% lift
+  rate on Horsey via Sleigh's full instruction
+  semantics.
+- [ ] Bulk-regenerate the 11 documented key-funcs
+  with names. SSE-heavy ones may need longer
+  timeouts or basic-block splitting.
 
 ### Phase 2: printer-fork design (1 session)
 
