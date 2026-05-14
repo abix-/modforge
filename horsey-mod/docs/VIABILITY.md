@@ -490,14 +490,125 @@ So unknown pop_id at load time also crashes hard.
 
 ### Q-pop-4: inheritance semantics
 
-**OPEN.** The per-pop processor `FUN_1400a5ee0` (called
-at :462 with depth marker `0xffffffff`) is the next
-read target. Hypothesis: child pops inherit parent gene
-weights and override only the genes they explicitly
-name. Worth confirming by reading the function.
+**ANSWERED: inherit-then-override.**
 
-- [ ] Read `FUN_1400a5ee0` and document the inheritance
-      mechanism.
+`FUN_1400a5ee0` is the per-pop XML processor
+([`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c`](../../horseygame/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c)).
+Takes (xml_doc, child_record, parent_id). Behavior:
+
+1. **Pop record allocation.** New pop record is allocated
+   at `DAT_1403f2fc0 + pop_id * 0x1018` (line 286), so
+   pops are stored as a **fixed-stride array** with 4120
+   bytes per record (not the 3840-byte std::vector
+   estimated earlier; the extra 280 bytes are header /
+   metadata).
+2. **Parent copy.** Lines 306-322 copy the full 3840-byte
+   gene-weight block from parent into child via a
+   480-iteration `lVar14 = 0x1e0; ... piVar12 += 2`
+   loop (480 x 8 bytes = 3840 bytes). Then lines
+   326-338 copy a 240-byte secondary block (probably
+   per-gene flags or codon-order bytes).
+3. **Per-`<gene>` override.** Lines 354+ iterate child
+   XML siblings. The literal `0x656e6567` (line 362) is
+   little-endian "gene", checking if the element name
+   is `<gene>`. For each `<gene name="X" ...>` element,
+   the code red-black-tree-looks up gene X in the
+   chromomap (lines 414-476, walking
+   `DAT_1403f2fd8`'s color bits) and patches that
+   gene's entry only.
+
+### Implications for the bestiary mod
+
+- **Authoring is straightforward.** Nest a new pop
+  inside a parent and the new pop starts with the
+  parent's full gene-weight setup. Only override what
+  you care about. Matches the existing
+  [`CONTENT-MODDING.md`](../../horseygame/CONTENT-MODDING.md)
+  documented behavior.
+- **NEW pop_id detail.** `DAT_1403f2fc0 + pop_id *
+  0x1018` means the pop array is a CONTIGUOUS
+  preallocated block, not a heap vector that grows.
+  This contradicts the earlier Q-pop-3 finding from
+  the loader. It's possible:
+  - `FUN_1400a4fe0` allocates the std::vector container,
+  - `FUN_1400a5ee0` walks it via raw stride math.
+  Either way, **there's an upper bound on pop count
+  determined by the size of the block at
+  `DAT_1403f2fc0`**. Need to find that allocation to
+  know the true cap. Updated to-do below.
+- **Pop record stride is 0x1018 (4120) bytes**, not
+  the 0xf00 (3840) we initially read. So the per-pop
+  data is 3840 bytes of gene weights + 280 bytes of
+  header / metadata.
+
+### Q-pop-3 (follow-up): pop array IS heap-grown unbounded
+
+**ANSWERED.** Confirmed `DAT_1403f2fc0` / `DAT_1403f2fc8`
+/ `DAT_1403f2fd0` are the std::vector begin/end/capacity
+triple. Grow-realloc happens at
+[`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c:190`](../../horseygame/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c):
+
+```c
+if ((DAT_1403f2fd0 - DAT_1403f2fc0) / 0x1018 < uVar19) {
+    FUN_1400a6970(&DAT_1403f2fc0, uVar19);  // realloc grow
+}
+```
+
+So the pop count is bounded only by available memory
+(plus the save-format pop_id uint8 cap of 255 from
+Q-save-3).
+
+### Pop record layout (final)
+
+| Offset | Size | Field |
+|---|---|---|
+| 0x000 | 4 | pop_id |
+| 0x004 | 4 | parent_id |
+| 0x008 | 32 | name (std::string SSO buffer) |
+| 0x028 | 3840 | 240 genes x 4 alleles x 4 bytes (gene weights) |
+| 0xfa8 | 240 | per-gene secondary block (codon order or "is set" flags) |
+| 0x1018 |. | total = 4120 bytes per pop |
+
+Inferred from:
+- `FUN_1400c03a0:54` accesses pop weight at offset
+  `0x28 + (gene*4 + allele) * 4`.
+- `FUN_1400a5ee0:286` allocates with stride `0x1018`.
+- `FUN_1400a5ee0:306-322` copies 480 iter x 8 bytes
+  = 3840 bytes (gene weights).
+- `FUN_1400a5ee0:326-338` copies 120 iter x 2 bytes
+  = 240 bytes (secondary block).
+
+### Gene-table reader reclassification
+
+After re-reading `FUN_1400c03a0`:
+
+- `FUN_1400c03a0` is an **allele-renumber sync**: when
+  alleles X and Y of gene N are reordered in the global
+  gene-table alleles array (`DAT_1403ee4b0`), this
+  function syncs every pop's per-allele weight at
+  `0x28 + (N*4 + j) * 4` to match. Reads BOTH the gene
+  table AND the pop array.
+- `FUN_1400c1cf0` is a **UI display reader**: reads the
+  currently-selected gene's table fields (scale at +8,
+  name at -0x18 from base) and the current pop's
+  weight for that gene. Probably the in-game gene
+  inspector / CRISPR UI.
+
+### Pop record patch sites for "extend gene count to N"
+
+Adding the pop layer to the previous patch list:
+
+| Function | Cite | Stride / Literal | Meaning |
+|---|---|---|---|
+| `FUN_1400a4fe0:276` | per-pop memset | `0xefc` | bytes zeroed in pop scratch |
+| `FUN_1400a4fe0:278` | per-pop init loop | `0xf0` | gene-weight init iterations |
+| `FUN_1400a4fe0:392` | per-pop record copy | `0xf00` | bytes copied |
+| `FUN_1400a5ee0:310` | parent->child gene copy | `0x1e0` | iter count (480) |
+| `FUN_1400a5ee0:326` | parent->child secondary copy | `0x78` | iter count (120) |
+| `FUN_1400c03a0:72` | per-pop sync sweep |. | iterates `(end-begin)/0x1018`, no literal |
+| `FUN_1400a5ee0:286` | record allocation | `0x1018` | per-pop record size |
+
+7 more patch sites just for the pop record layer.
 
 ---
 
@@ -660,7 +771,73 @@ species" ambition.
 
 ## Renderer / behavior (Q-render-*)
 
-**Status:** OPEN. Not yet researched.
+**Status:** PARTIAL. Q-render-2 partial answer; Q-render-1
+and Q-render-3 still open.
+
+### Q-render-2: per-horse render parameter array shape
+
+**ANSWERED (size + occupancy).**
+
+`FUN_14009f680(float *param_1, undefined8 *param_2)` is
+called per horse per frame (or similar cadence). `param_1`
+is the horse's per-frame render parameter array.
+
+Static analysis of the function:
+
+| Metric | Value |
+|---|---|
+| Unique `param_1[N]` slots accessed | 258 |
+| Slot index range | 1 .. 352 |
+| Per-horse render array size (min) | (352+1) x 4 = 1412 bytes |
+| Slots NOT accessed by this function | ~95 within [0..352] |
+
+The 95 unaccessed slots in the [0..352] range are
+candidates for **trampoline output targets**. We don't
+yet know if they're reserved by other code (collision
+mesh, animation, audio cues) or genuinely free.
+
+### Trampoline design implication
+
+Per the "layer on top" design principle, our extended
+gene effects work as follows:
+
+```rust
+// Pseudocode for the post-FUN_14009f680 trampoline.
+fn on_horse_param_update(horse_id: u32, param: *mut [f32; 353]) {
+    // Vanilla FUN_14009f680 has just finished. param_1 is populated.
+    let extra_alleles = read_sidecar_alleles(horse_id);  // genes 240+
+    for (gene_idx, alleles) in extra_alleles.iter().enumerate() {
+        let value = evaluate_diploid(alleles, gene_idx);
+        apply_extra_gene_effect(gene_idx, value, param);
+        // apply_extra_gene_effect either ADDS to an existing slot
+        // (wings = boost limb slot N) or writes to an UNUSED slot
+        // (transparency = new slot M that vanilla never touches).
+    }
+}
+```
+
+Pre-req for `apply_extra_gene_effect`: knowing what each
+existing `param_1[N]` slot DOES so we can choose to add
+or override safely. That's Q-render-3.
+
+### Q-render-3 (still open)
+
+- [ ] Map each `param_1[N]` slot to its semantic
+      (size, head_aspect, color_R, etc.) by tracing
+      its caller use. The renderer / animation system
+      reads `param_1` somewhere; tracing back will
+      reveal slot meanings.
+- [ ] Identify the ~95 unused slots in [0..352] and
+      confirm they're truly free (not used by other
+      systems via offsets into the same struct).
+
+### Q-render-1 (still open)
+
+- [ ] For each "new visual mode" we want (wings, wheels,
+      transparency, etc.), determine if any vanilla
+      pop already exhibits it (specifically: does `car`
+      reuse some gene to drive wheel rendering?). Need
+      live `pop.xml` to answer.
 
 ---
 
@@ -682,12 +859,14 @@ species" ambition.
 | Pop Q-pop-1 (cap) | ANSWERED | Pops are unbounded, heap-grown vector |
 | Pop Q-pop-2 (unknown name) | ANSWERED | Hard crash: MessageBox + INT3 abort |
 | Pop Q-pop-3 (in-memory layout) | ANSWERED | 3840-byte records, std::vector grows freely |
-| Pop Q-pop-4 (inheritance) | OPEN | Need to read `FUN_1400a5ee0` |
+| Pop Q-pop-4 (inheritance) | ANSWERED | Inherit-then-override; child copies parent then patches |
 | Save Q-save-1 (genome location) | ANSWERED | 480 bytes at horse[0x78], packed to 240 in save |
 | Save Q-save-2 (literal sizes) | ANSWERED | 11 patch sites identified across 5 functions |
-| Save Q-save-3 (compat strategy) | OPEN | 4-bit pack vs more bytes vs sidecar file |
-| Renderer (Q-render-*) | OPEN | covered by Q-gene-3 finding for now |
-| Hot reload (Q-reload-*) | OPEN | needs runtime experiment |
+| Save Q-save-3 (compat strategy) | LEANING | Sidecar `.ext` file (matches design principle) |
+| Render Q-render-1 (visual modes) | OPEN | Needs live `pop.xml` to compare |
+| Render Q-render-2 (param array) | ANSWERED | 353 floats, 258 used by gene engine, 95 unused candidates |
+| Render Q-render-3 (slot semantics) | OPEN | Map each `param_1[N]` to what it controls |
+| Hot reload (Q-reload-*) | OPEN | Needs runtime experiment |
 
 ### Early read (revised after Q-gene-3 landed)
 
