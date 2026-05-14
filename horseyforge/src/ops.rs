@@ -22,6 +22,36 @@ pub fn register_all() {
     OP_REGISTRY.register_many(vec![
         OpDef::new("ping", "Liveness check", "", |_| Ok(json!("pong"))),
 
+        // ===== Hot-reload protocol =====
+        //
+        // The injector (`horseyforge-inject.exe --reload`) issues this op
+        // before remotely calling FreeLibrary on our HMODULE. After the
+        // op returns we drop every SpawnHandle in modforge's registry
+        // so the HTTP listener thread joins and releases port 33077.
+        //
+        // We schedule the actual shutdown on a fresh thread so we can
+        // RETURN the success response to the client first. If we
+        // shut the server down before returning, the client never
+        // sees the OK and may panic.
+        OpDef::new(
+            "_shutdown",
+            "Stop the HTTP server. Used by the injector before unloading the DLL for hot-reload.",
+            "",
+            |_| {
+                std::thread::Builder::new()
+                    .name("horseyforge-shutdown".into())
+                    .spawn(|| {
+                        // Tiny delay so the in-flight HTTP response
+                        // has time to flush to the client socket.
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        modforge::log!("horseyforge: _shutdown -> dropping server");
+                        modforge::server::shutdown_all();
+                    })
+                    .ok();
+                Ok(json!({"shutting_down": true}))
+            },
+        ),
+
         OpDef::new(
             "list_ops",
             "List every op registered on the global registry.",
@@ -133,7 +163,7 @@ pub fn register_all() {
         // ===== Horse roster =====
         OpDef::new(
             "horses.count",
-            "Number of horses in the roster.",
+            "Number of horses in the roster (36-byte records).",
             "",
             |_| Ok(json!({"count": gamestate::horse_count()})),
         ),
@@ -145,6 +175,35 @@ pub fn register_all() {
                 let i = args_usize(args, "index")?;
                 let p = gamestate::horse_roster_entry(i);
                 Ok(json!({"address": p.map(|a| format!("0x{:x}", a))}))
+            },
+        ),
+        OpDef::new(
+            "horses.live",
+            "Walk gamestate+0x130/+0x138 and return every live horse with its full state. Powers the roster UI.",
+            "",
+            |_| {
+                let n = gamestate::live_horse_count();
+                let mut out = Vec::with_capacity(n);
+                for i in 0..n {
+                    let Some(h) = gamestate::live_horse_ptr(i) else { continue };
+                    if h == 0 { continue; }
+                    out.push(json!({
+                        "index": i,
+                        "address": format!("0x{:x}", h),
+                        "age": horse::age(h),
+                        "max_age": horse::max_age(h),
+                        "skill": horse::skill(h),
+                        "tired_a": horse::tired_a(h),
+                        "tired_b": horse::tired_b(h),
+                        "species": horse::species(h),
+                        "name_id": horse::name_id(h),
+                        "litter_stat": horse::litter_stat(h),
+                    }));
+                }
+                Ok(json!({
+                    "count": n,
+                    "horses": out,
+                }))
             },
         ),
 

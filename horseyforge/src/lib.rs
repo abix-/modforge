@@ -32,10 +32,9 @@ pub mod targets;
 
 use std::sync::OnceLock;
 
-use parking_lot::Mutex;
-
-/// Handle to the HTTP server, kept alive for the process lifetime.
-static SERVER: Mutex<Option<modforge::server::SpawnHandle>> = Mutex::new(None);
+// modforge::server::spawn() pushes its SpawnHandle into a global
+// SERVER_REGISTRY and doesn't return it. To stop the server (e.g.
+// during a hot-reload), call modforge::server::shutdown_all().
 
 /// Per-launch random auth token. Tests / clients read it from
 /// `horseyforge.auth` written next to the DLL.
@@ -157,11 +156,9 @@ pub extern "system" fn DllMain(
             std::thread::spawn(worker_main);
         }
         DLL_PROCESS_DETACH => {
-            // Stop the server cleanly so the listener thread doesn't
-            // keep our DLL pinned past unload.
-            if let Some(handle) = SERVER.lock().take() {
-                handle.stop();
-            }
+            // Stop every server modforge has running so the listener
+            // thread doesn't keep our DLL pinned past unload.
+            modforge::server::shutdown_all();
         }
         DLL_THREAD_ATTACH | DLL_THREAD_DETACH => {}
         _ => {}

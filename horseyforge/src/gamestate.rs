@@ -195,3 +195,51 @@ pub fn horse_roster_entry(i: usize) -> Option<usize> {
     }
     Some(begin + i * 0x24)
 }
+
+// =============================================================================
+// Live-horse pointer list (gamestate + 0x130 / +0x138)
+// =============================================================================
+//
+// The retirement handler iterates `*(longlong *)(param_1 + 0x130)`. Through
+// our decompilation pass, `param_1` at that callsite traces back to
+// `DAT_1403fb0d8`, the GameState. The list holds 8-byte pointers to the
+// full live-Horse objects whose +0x1fc/+0x200/+0x205/+0x206/+0x21c/+0x254
+// fields we already model.
+
+/// Live-horse list begin offset on GameState.
+const LIVE_HORSES_BEGIN: usize = 0x130;
+/// Live-horse list end offset on GameState.
+const LIVE_HORSES_END: usize = 0x138;
+
+/// Count of live horse pointers in the gamestate `+0x130..+0x138` list.
+pub fn live_horse_count() -> usize {
+    let p = ptr();
+    if p == 0 {
+        return 0;
+    }
+    // SAFETY: begin/end pointers are stable while the world is alive.
+    let begin = unsafe { *((p + LIVE_HORSES_BEGIN) as *const usize) };
+    let end = unsafe { *((p + LIVE_HORSES_END) as *const usize) };
+    if end < begin {
+        0
+    } else {
+        (end - begin) / 8
+    }
+}
+
+/// Get the i-th live Horse pointer. Returns None if out of range or
+/// the list is empty.
+pub fn live_horse_ptr(i: usize) -> Option<usize> {
+    let p = ptr();
+    if p == 0 {
+        return None;
+    }
+    // SAFETY: begin is a stable pointer; loading 8 bytes at `begin + i*8`
+    // is in-bounds when i < count.
+    let begin = unsafe { *((p + LIVE_HORSES_BEGIN) as *const usize) };
+    if begin == 0 || i >= live_horse_count() {
+        return None;
+    }
+    // SAFETY: read one pointer-sized slot inside the vector.
+    Some(unsafe { *((begin + i * 8) as *const usize) })
+}

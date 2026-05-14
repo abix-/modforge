@@ -1,27 +1,35 @@
-//! horseyforge-inject. Attach horseyforge.dll to a running Horsey.exe.
+//! horseyforge-inject. Inject + hot-reload horseyforge.dll in a
+//! running Horsey.exe.
 //!
-//! Walks the process snapshot looking for `Horsey.exe`, opens it,
-//! allocates a string for our DLL path, then calls
-//! `CreateRemoteThread(target, NULL, 0, &LoadLibraryW, dll_path, 0, NULL)`
-//! so the OS loads our DLL inside the target's address space. Our
-//! DllMain (in `horseyforge.dll`) then takes over.
+//! The first inject:
+//! - copies `horseyforge.dll` to a *staged* path with a timestamped
+//!   filename, leaving the cargo-output `horseyforge.dll` free for
+//!   subsequent rebuilds
+//! - LoadLibraryW's the staged path inside Horsey.exe via
+//!   CreateRemoteThread
+//! - captures the returned HMODULE
+//! - writes the staged path + HMODULE to `horseyforge.injstate`
+//!   alongside the source DLL
 //!
-//! Usage:
+//! A reload (`--reload`):
+//! - POSTs `_shutdown` to the running HTTP server so it releases
+//!   the listener thread + port
+//! - CreateRemoteThread'd FreeLibrary on the recorded HMODULE
+//! - deletes the old staged file (best effort)
+//! - copies the new `horseyforge.dll` to a fresh staged path
+//! - LoadLibraryW's the new staged path
+//! - updates `horseyforge.injstate`
 //!
-//!   cargo run -p horseyforge --bin horseyforge-inject. \
-//!         --dll C:/path/to/horseyforge.dll \
-//!         --process Horsey.exe
-//!
-//! The DLL path defaults to the cdylib's release artifact next to
-//! the injector if `--dll` is omitted. The process name defaults
-//! to `Horsey.exe`.
+//! Run with `--fresh` to ignore (and overwrite) any existing state.
 
 use std::ffi::OsString;
+use std::io::Read;
 use std::os::windows::ffi::OsStrExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use clap::Parser;
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HMODULE};
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
     TH32CS_SNAPPROCESS,
@@ -31,108 +39,278 @@ use windows_sys::Win32::System::Memory::{
     VirtualAllocEx, VirtualFreeEx, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateRemoteThread, OpenProcess, WaitForSingleObject, INFINITE, PROCESS_ALL_ACCESS,
+    CreateRemoteThread, GetExitCodeThread, OpenProcess, WaitForSingleObject, INFINITE,
+    PROCESS_ALL_ACCESS,
 };
 
 #[derive(Parser, Debug)]
-#[command(version, about = "Inject horseyforge.dll into a running Horsey.exe")]
+#[command(version, about = "Inject + hot-reload horseyforge.dll in Horsey.exe")]
 struct Args {
-    /// Path to horseyforge.dll. Defaults to ./horseyforge.dll next
-    /// to the injector binary.
+    /// Path to the freshly-built horseyforge.dll (cargo's release output).
+    /// Defaults to `./horseyforge.dll` next to the injector binary.
     #[arg(long)]
     dll: Option<PathBuf>,
 
     /// Target process executable name to search for.
     #[arg(long, default_value = "Horsey.exe")]
     process: String,
+
+    /// Hot-reload: shutdown + unload the current generation, stage the
+    /// new DLL, load it.
+    #[arg(long)]
+    reload: bool,
+
+    /// Discard any existing injstate and inject as if for the first time.
+    #[arg(long)]
+    fresh: bool,
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let dll_path = match args.dll {
+
+    let source_dll = match args.dll.clone() {
         Some(p) => p,
-        None => {
-            // Default: alongside the injector binary.
-            let exe = std::env::current_exe()?;
-            exe.parent()
-                .ok_or_else(|| anyhow::anyhow!("injector has no parent dir"))?
-                .join("horseyforge.dll")
-        }
+        None => std::env::current_exe()?
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("injector has no parent dir"))?
+            .join("horseyforge.dll"),
     };
-
-    if !dll_path.exists() {
-        anyhow::bail!("DLL not found at {}", dll_path.display());
+    if !source_dll.exists() {
+        anyhow::bail!("source DLL not found at {}", source_dll.display());
     }
-    let dll_path = std::fs::canonicalize(&dll_path)?;
-
-    println!("[inject] DLL: {}", dll_path.display());
+    let source_dll = std::fs::canonicalize(&source_dll)?;
+    println!("[inject] source DLL: {}", source_dll.display());
     println!("[inject] target: {}", args.process);
+
+    let state_path = source_dll
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("source DLL has no parent"))?
+        .join("horseyforge.injstate");
 
     let pid = find_pid_by_name(&args.process)?;
     println!("[inject] found PID {pid}");
 
-    inject_dll(pid, &dll_path)?;
-    println!("[inject] OK");
+    let prev_state = if !args.fresh && state_path.exists() {
+        InjState::load(&state_path).ok()
+    } else {
+        None
+    };
+
+    if args.reload {
+        let Some(prev) = prev_state.as_ref() else {
+            anyhow::bail!(
+                "--reload requires a prior inject; no state file at {}",
+                state_path.display()
+            );
+        };
+        println!(
+            "[inject] previous gen: hmod=0x{:x} staged={}",
+            prev.hmodule,
+            prev.staged_path.display()
+        );
+
+        // Step 1: graceful shutdown so the listener releases the port.
+        match send_shutdown_op(prev) {
+            Ok(()) => println!("[inject] _shutdown op acknowledged"),
+            Err(e) => println!("[inject] _shutdown op failed (continuing anyway): {e}"),
+        }
+        std::thread::sleep(Duration::from_millis(250));
+
+        // Step 2: remote FreeLibrary on the recorded HMODULE.
+        let h_proc = open_process(pid)?;
+        call_freelibrary_remote(h_proc, prev.hmodule)?;
+        println!("[inject] FreeLibrary on old generation: OK");
+
+        // Step 3: clean up old staged file. Best effort. Windows may
+        // still hold it briefly after FreeLibrary.
+        for _ in 0..10 {
+            if std::fs::remove_file(&prev.staged_path).is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        // Step 4: stage + load the new build.
+        let staged = stage_dll(&source_dll)?;
+        let hmodule = load_library_remote(h_proc, &staged)?;
+        println!(
+            "[inject] new gen: hmod=0x{:x} staged={}",
+            hmodule,
+            staged.display()
+        );
+
+        // SAFETY: h_proc was returned by OpenProcess.
+        unsafe { CloseHandle(h_proc) };
+
+        InjState { hmodule, staged_path: staged }.save(&state_path)?;
+        println!("[inject] reload OK");
+        return Ok(());
+    }
+
+    // First-time inject (or --fresh): just stage + load.
+    if let Some(prev) = prev_state {
+        println!(
+            "[inject] WARNING: state file exists ({}); use --reload to swap, or --fresh to ignore.",
+            state_path.display()
+        );
+        println!(
+            "[inject] previous gen: hmod=0x{:x} staged={}",
+            prev.hmodule,
+            prev.staged_path.display()
+        );
+        anyhow::bail!("aborting; pass --reload or --fresh");
+    }
+
+    let h_proc = open_process(pid)?;
+    let staged = stage_dll(&source_dll)?;
+    let hmodule = load_library_remote(h_proc, &staged)?;
+    // SAFETY: h_proc was returned by OpenProcess.
+    unsafe { CloseHandle(h_proc) };
+
+    InjState { hmodule, staged_path: staged }.save(&state_path)?;
+    println!("[inject] OK; hmod=0x{:x}", hmodule);
     Ok(())
 }
 
-/// Walk the running-process snapshot for `name` (case-insensitive).
+// =============================================================================
+// State persistence
+// =============================================================================
+
+#[derive(Debug)]
+struct InjState {
+    hmodule: u64,
+    staged_path: PathBuf,
+}
+
+impl InjState {
+    fn save(&self, path: &Path) -> anyhow::Result<()> {
+        std::fs::write(
+            path,
+            format!("{:#x}\n{}\n", self.hmodule, self.staged_path.display()),
+        )?;
+        Ok(())
+    }
+
+    fn load(path: &Path) -> anyhow::Result<Self> {
+        let s = std::fs::read_to_string(path)?;
+        let mut lines = s.lines();
+        let hex = lines.next().ok_or_else(|| anyhow::anyhow!("empty injstate"))?;
+        let hex = hex.trim().trim_start_matches("0x");
+        let hmodule = u64::from_str_radix(hex, 16)?;
+        let staged = lines.next().ok_or_else(|| anyhow::anyhow!("missing staged path"))?;
+        Ok(Self {
+            hmodule,
+            staged_path: PathBuf::from(staged.trim()),
+        })
+    }
+}
+
+// =============================================================================
+// Staging
+// =============================================================================
+
+/// Copy `source` to a unique timestamped path next to it. Returns
+/// the path. Cargo always rebuilds to `source`; we never load
+/// `source` directly so it's never locked.
+fn stage_dll(source: &Path) -> anyhow::Result<PathBuf> {
+    let parent = source
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("source has no parent"))?;
+    let stem = source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow::anyhow!("source has no stem"))?;
+    let ts = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_millis();
+    let staged = parent.join(format!("{stem}-{ts}.dll"));
+    std::fs::copy(source, &staged)?;
+    let staged = std::fs::canonicalize(&staged)?;
+    println!("[inject] staged DLL: {}", staged.display());
+    Ok(staged)
+}
+
+// =============================================================================
+// Process / remote-call primitives
+// =============================================================================
+
 fn find_pid_by_name(name: &str) -> anyhow::Result<u32> {
     // SAFETY: CreateToolhelp32Snapshot is safe; we close the handle.
     let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
     if snap.is_null() || (snap as isize) == -1 {
         anyhow::bail!("CreateToolhelp32Snapshot failed");
     }
-
     let mut found_pid: u32 = 0;
     let target = name.to_ascii_lowercase();
-
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
     entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-
-    // SAFETY: Process32FirstW reads from snapshot we own; entry is
-    // valid for size.
+    // SAFETY: snap is valid; entry has its dwSize set.
     if unsafe { Process32FirstW(snap, &mut entry) } != 0 {
         loop {
-            // Convert UTF-16 process name to String.
             let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
-            let proc_name =
-                widestring::U16Str::from_slice(&entry.szExeFile[..len]).to_string_lossy();
+            let proc_name = widestring::U16Str::from_slice(&entry.szExeFile[..len])
+                .to_string_lossy();
             if proc_name.to_ascii_lowercase() == target {
                 found_pid = entry.th32ProcessID;
                 break;
             }
-            // SAFETY: same conditions as the first read.
+            // SAFETY: same as the first read.
             if unsafe { Process32NextW(snap, &mut entry) } == 0 {
                 break;
             }
         }
     }
-    // SAFETY: snap was returned by CreateToolhelp32Snapshot.
+    // SAFETY: snap was created above.
     unsafe { CloseHandle(snap) };
-
     if found_pid == 0 {
         anyhow::bail!("process not found: {name}");
     }
     Ok(found_pid)
 }
 
-fn inject_dll(pid: u32, dll_path: &std::path::Path) -> anyhow::Result<()> {
-    // SAFETY: OpenProcess is safe; we close the handle.
-    let h_proc: HANDLE = unsafe { OpenProcess(PROCESS_ALL_ACCESS, 0, pid) };
-    if h_proc.is_null() {
+fn open_process(pid: u32) -> anyhow::Result<HANDLE> {
+    // SAFETY: OpenProcess never UB. Returns NULL on failure.
+    let h: HANDLE = unsafe { OpenProcess(PROCESS_ALL_ACCESS, 0, pid) };
+    if h.is_null() {
         anyhow::bail!(
             "OpenProcess(PID={pid}) failed (need admin? Game running as different user?)"
         );
     }
+    Ok(h)
+}
 
-    // Build a UTF-16, NUL-terminated wide string of the DLL path.
+/// Resolve `kernel32.dll!<name>` in this process. Returns the address;
+/// it IS the same address in the target process (kernel32 is loaded
+/// at the same base across a session).
+fn resolve_kernel32_proc(name: &[u8]) -> anyhow::Result<usize> {
+    let mod_name: Vec<u16> = OsString::from("kernel32.dll")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: kernel32 is always loaded.
+    let kernel32 = unsafe { GetModuleHandleW(mod_name.as_ptr()) };
+    if kernel32.is_null() {
+        anyhow::bail!("GetModuleHandleW(kernel32.dll) failed");
+    }
+    // name must be NUL-terminated.
+    debug_assert!(name.ends_with(b"\0"));
+    // SAFETY: name is ASCII NUL-terminated; kernel32 is a valid module.
+    let addr = unsafe { GetProcAddress(kernel32, name.as_ptr()) };
+    let addr = addr.ok_or_else(|| anyhow::anyhow!("GetProcAddress({:?}) failed", name))?;
+    Ok(addr as usize)
+}
+
+/// LoadLibraryW(`dll_path`) inside the target process. Returns the
+/// HMODULE the target loader assigned.
+fn load_library_remote(h_proc: HANDLE, dll_path: &Path) -> anyhow::Result<u64> {
+    let load_library_w =
+        resolve_kernel32_proc(b"LoadLibraryW\0")?;
+
     let mut wide: Vec<u16> = OsString::from(dll_path).encode_wide().collect();
     wide.push(0);
     let wide_bytes = wide.len() * 2;
 
-    // Allocate writable memory in the target process.
-    // SAFETY: VirtualAllocEx with valid handle + writable flags.
+    // SAFETY: target handle valid, writable region requested.
     let remote_mem = unsafe {
         VirtualAllocEx(
             h_proc,
@@ -143,12 +321,9 @@ fn inject_dll(pid: u32, dll_path: &std::path::Path) -> anyhow::Result<()> {
         )
     };
     if remote_mem.is_null() {
-        // SAFETY: h_proc was returned by OpenProcess and not yet closed.
-        unsafe { CloseHandle(h_proc) };
         anyhow::bail!("VirtualAllocEx failed");
     }
 
-    // Write the DLL path into target's memory.
     let mut written: usize = 0;
     // SAFETY: WriteProcessMemory with valid params.
     let ok = unsafe {
@@ -161,39 +336,14 @@ fn inject_dll(pid: u32, dll_path: &std::path::Path) -> anyhow::Result<()> {
         )
     };
     if ok == 0 || written != wide_bytes {
-        // SAFETY: remote_mem was allocated by VirtualAllocEx above.
+        // SAFETY: remote_mem allocated by VirtualAllocEx above.
         unsafe { VirtualFreeEx(h_proc, remote_mem, 0, MEM_RELEASE) };
-        unsafe { CloseHandle(h_proc) };
         anyhow::bail!("WriteProcessMemory failed");
     }
 
-    // Look up LoadLibraryW in OUR process. It's at the same address
-    // in the target because kernel32.dll is loaded at the same base
-    // in both (Windows ASLR is shared per session for system DLLs).
-    // SAFETY: GetModuleHandleW(L"kernel32.dll") never fails for a
-    // process with kernel32 loaded.
-    let kernel32 = unsafe {
-        GetModuleHandleW(
-            widestring::U16CString::from_str("kernel32.dll")
-                .unwrap()
-                .as_ptr(),
-        )
-    };
-    if kernel32.is_null() {
-        anyhow::bail!("GetModuleHandleW(kernel32.dll) failed");
-    }
-    let load_library_w_name = b"LoadLibraryW\0";
-    // SAFETY: GetProcAddress is always safe with a valid module handle.
-    let load_library_w =
-        unsafe { GetProcAddress(kernel32, load_library_w_name.as_ptr()) };
-    if load_library_w.is_none() {
-        anyhow::bail!("GetProcAddress(LoadLibraryW) failed");
-    }
-
-    // CreateRemoteThread to call LoadLibraryW(remote_mem) in target.
-    // SAFETY: All handles + addresses are valid; the start address
-    // points to LoadLibraryW which has the correct (LPVOID) -> DWORD
-    // signature for a thread proc.
+    // CreateRemoteThread on LoadLibraryW(remote_mem). The thread
+    // proc signature matches LoadLibraryW's (LPCWSTR -> HMODULE).
+    // SAFETY: all addresses are valid; ABI matches.
     let h_thread = unsafe {
         CreateRemoteThread(
             h_proc,
@@ -206,21 +356,154 @@ fn inject_dll(pid: u32, dll_path: &std::path::Path) -> anyhow::Result<()> {
         )
     };
     if h_thread.is_null() {
-        // SAFETY: remote_mem was allocated by VirtualAllocEx above.
+        // SAFETY: remote_mem allocated above.
         unsafe { VirtualFreeEx(h_proc, remote_mem, 0, MEM_RELEASE) };
-        unsafe { CloseHandle(h_proc) };
-        anyhow::bail!("CreateRemoteThread failed");
+        anyhow::bail!("CreateRemoteThread(LoadLibraryW) failed");
     }
 
-    // SAFETY: h_thread is valid; INFINITE wait is safe.
+    // SAFETY: h_thread valid.
     let _ = unsafe { WaitForSingleObject(h_thread, INFINITE) };
+    let mut exit_code: u32 = 0;
+    // SAFETY: h_thread valid; exit_code is a u32 we own.
+    unsafe { GetExitCodeThread(h_thread, &mut exit_code) };
+    // GetExitCodeThread returns only u32; LoadLibraryW's HMODULE is
+    // 64-bit. For our purposes the low 32 bits are sufficient as a
+    // sentinel ("nonzero = success"), but for accurate FreeLibrary
+    // calls we need the full 64-bit value. Read it from the target's
+    // module list instead.
+    let hmodule = if exit_code == 0 {
+        0
+    } else {
+        find_module_hmodule(h_proc, dll_path)?
+    };
 
-    // Cleanup target-process resources.
-    // SAFETY: All handles were returned by their respective creators.
+    // SAFETY: h_thread + remote_mem both valid; we're done with them.
     unsafe {
-        VirtualFreeEx(h_proc, remote_mem, 0, MEM_RELEASE);
         CloseHandle(h_thread);
-        CloseHandle(h_proc);
+        VirtualFreeEx(h_proc, remote_mem, 0, MEM_RELEASE);
     }
+
+    if hmodule == 0 {
+        anyhow::bail!("LoadLibraryW returned NULL in target");
+    }
+    Ok(hmodule)
+}
+
+/// Locate the loaded module's full 64-bit base address in the target
+/// process by matching the path against EnumProcessModulesEx output.
+fn find_module_hmodule(h_proc: HANDLE, dll_path: &Path) -> anyhow::Result<u64> {
+    use windows_sys::Win32::System::ProcessStatus::{
+        EnumProcessModulesEx, GetModuleFileNameExW, LIST_MODULES_ALL,
+    };
+
+    let want = dll_path.canonicalize().unwrap_or_else(|_| dll_path.to_path_buf());
+    let want_str = want.to_string_lossy().to_lowercase();
+
+    let mut handles: Vec<HMODULE> = vec![std::ptr::null_mut(); 4096];
+    let bytes_needed_room = (handles.len() * std::mem::size_of::<HMODULE>()) as u32;
+    let mut bytes_needed: u32 = 0;
+    // SAFETY: target handle valid; buffer is owned + sized.
+    let ok = unsafe {
+        EnumProcessModulesEx(
+            h_proc,
+            handles.as_mut_ptr(),
+            bytes_needed_room,
+            &mut bytes_needed,
+            LIST_MODULES_ALL,
+        )
+    };
+    if ok == 0 {
+        anyhow::bail!("EnumProcessModulesEx failed");
+    }
+    let n = (bytes_needed as usize) / std::mem::size_of::<HMODULE>();
+
+    let mut path_buf = [0u16; 32768];
+    for hmod in handles.iter().take(n).copied() {
+        // SAFETY: hmod returned by EnumProcessModulesEx; target valid.
+        let len = unsafe {
+            GetModuleFileNameExW(
+                h_proc,
+                hmod,
+                path_buf.as_mut_ptr(),
+                path_buf.len() as u32,
+            )
+        };
+        if len == 0 {
+            continue;
+        }
+        let s = widestring::U16Str::from_slice(&path_buf[..len as usize]).to_string_lossy();
+        let s_lower = s.to_lowercase();
+        if s_lower.ends_with(&want_str) || want_str.ends_with(&s_lower) {
+            return Ok(hmod as u64);
+        }
+    }
+    anyhow::bail!("loaded module not found in process module list");
+}
+
+/// CreateRemoteThread on FreeLibrary with `hmodule`. Returns when
+/// the call completes (FreeLibrary returns).
+fn call_freelibrary_remote(h_proc: HANDLE, hmodule: u64) -> anyhow::Result<()> {
+    let free_library = resolve_kernel32_proc(b"FreeLibrary\0")?;
+    // SAFETY: ABI matches: FreeLibrary(HMODULE) -> BOOL.
+    let h_thread = unsafe {
+        CreateRemoteThread(
+            h_proc,
+            std::ptr::null(),
+            0,
+            std::mem::transmute(free_library),
+            hmodule as *mut std::ffi::c_void,
+            0,
+            std::ptr::null_mut(),
+        )
+    };
+    if h_thread.is_null() {
+        anyhow::bail!("CreateRemoteThread(FreeLibrary) failed");
+    }
+    // SAFETY: valid handle.
+    unsafe { WaitForSingleObject(h_thread, INFINITE) };
+    // SAFETY: valid handle, done with it.
+    unsafe { CloseHandle(h_thread) };
+    Ok(())
+}
+
+// =============================================================================
+// _shutdown HTTP op
+// =============================================================================
+
+fn send_shutdown_op(prev: &InjState) -> anyhow::Result<()> {
+    let auth_path = prev
+        .staged_path
+        .parent()
+        .map(|p| p.join("horseyforge.auth"))
+        .ok_or_else(|| anyhow::anyhow!("no parent for staged path"))?;
+    let token = std::fs::read_to_string(&auth_path)?.trim().to_string();
+
+    // Tiny synchronous POST without pulling in a runtime/reqwest.
+    use std::io::Write;
+    use std::net::TcpStream;
+    let mut stream = TcpStream::connect_timeout(
+        &"127.0.0.1:33077".parse()?,
+        Duration::from_secs(2),
+    )?;
+    stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+    stream.set_read_timeout(Some(Duration::from_secs(2)))?;
+
+    let body = r#"{"op":"_shutdown"}"#;
+    let req = format!(
+        "POST /op HTTP/1.1\r\n\
+         Host: 127.0.0.1\r\n\
+         Content-Type: application/json\r\n\
+         Content-Length: {}\r\n\
+         X-Ueforge-Auth: {}\r\n\
+         Connection: close\r\n\
+         \r\n\
+         {}",
+        body.len(),
+        token,
+        body
+    );
+    stream.write_all(req.as_bytes())?;
+    let mut resp = String::new();
+    let _ = stream.read_to_string(&mut resp);
     Ok(())
 }
