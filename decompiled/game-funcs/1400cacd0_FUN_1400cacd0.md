@@ -1,19 +1,20 @@
 # `FUN_1400cacd0` @ 0x1400cacd0
 
 **Size**: 2454 bytes
-**Role**: unclassified game logic
+**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 32 float vars (geometry/physics/genetics?))_
+**Pattern category**: `float_math_heavy`
 
 **Strings referenced**:
 - `'Plinth'`
 - `'PrizePresent'`
 - `'SleepMoon'`
 
-**Game callers** (2): `FUN_14007c970`, `FUN_1400cacd0`
+**Game callers** (2): [`FUN_14007c970`](14007c970_FUN_14007c970.md), [`FUN_1400cacd0`](1400cacd0_FUN_1400cacd0.md)
 
-**Game callees** (15): `FUN_140040ca0`, `FUN_14006fe60`, `FUN_140071000`, `FUN_140071810`, `FUN_140071d20`, `FUN_140071ed0`, `FUN_1400727d0`, `FUN_140086570`, `FUN_14008d2c0`, `FUN_14009e2c0`
+**Game callees** (15): [`FUN_140040ca0`](140040ca0_FUN_140040ca0.md), [`FUN_14006fe60`](14006fe60_FUN_14006fe60.md), [`FUN_140071000`](140071000_FUN_140071000.md), [`FUN_140071810`](140071810_FUN_140071810.md), [`FUN_140071d20`](140071d20_FUN_140071d20.md), [`FUN_140071ed0`](140071ed0_FUN_140071ed0.md), [`FUN_1400727d0`](1400727d0_FUN_1400727d0.md), [`FUN_140086570`](140086570_FUN_140086570.md), [`FUN_14008d2c0`](14008d2c0_FUN_14008d2c0.md), [`FUN_14009e2c0`](14009e2c0_FUN_14009e2c0.md)
   ... +5 more
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

@@ -1,13 +1,14 @@
 # `FUN_1402eeef8` @ 0x1402eeef8
 
 **Size**: 53 bytes
-**Role**: small helper (purpose unclear without reading)
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (2): `FUN_1402d74e0`, `FUN_1402eeef8`
+**Game callers** (2): [`FUN_1402d74e0`](1402d74e0_FUN_1402d74e0.md), [`FUN_1402eeef8`](1402eeef8_FUN_1402eeef8.md)
 
-**Game callees** (1): `FUN_1402eeef8`
+**Game callees** (1): [`FUN_1402eeef8`](1402eeef8_FUN_1402eeef8.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

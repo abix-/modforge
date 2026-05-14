@@ -1,13 +1,14 @@
 # `FUN_1402ebab0` @ 0x1402ebab0
 
 **Size**: 778 bytes
-**Role**: unclassified game logic
+**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 54 float vars (geometry/physics/genetics?))_
+**Pattern category**: `float_math_heavy`
 
-**Game callers** (4): `FUN_1402eb470`, `FUN_1402eba80`, `FUN_1402ebab0`, `FUN_1402ebdc0`
+**Game callers** (4): [`FUN_1402eb470`](1402eb470_FUN_1402eb470.md), [`FUN_1402eba80`](1402eba80_FUN_1402eba80.md), [`FUN_1402ebab0`](1402ebab0_FUN_1402ebab0.md), [`FUN_1402ebdc0`](1402ebdc0_FUN_1402ebdc0.md)
 
-**Game callees** (3): `FUN_1402e8c00`, `FUN_1402e8ce0`, `FUN_1402ebab0`
+**Game callees** (3): [`FUN_1402e8c00`](1402e8c00_FUN_1402e8c00.md), [`FUN_1402e8ce0`](1402e8ce0_FUN_1402e8ce0.md), [`FUN_1402ebab0`](1402ebab0_FUN_1402ebab0.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

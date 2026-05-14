@@ -1,13 +1,14 @@
 # `FUN_1400bedc0` @ 0x1400bedc0
 
 **Size**: 528 bytes
-**Role**: unclassified game logic
+**Role**: `iterates_logic` - Large loop-containing function  _(evidence: contains a loop)_
+**Pattern category**: `iterates_logic`
 
-**Game callers** (3): `FUN_1400ab3d0`, `FUN_1400be740`, `FUN_1400bedc0`
+**Game callers** (3): [`FUN_1400ab3d0`](1400ab3d0_FUN_1400ab3d0.md), [`FUN_1400be740`](1400be740_FUN_1400be740.md), [`FUN_1400bedc0`](1400bedc0_FUN_1400bedc0.md)
 
-**Game callees** (1): `FUN_1400bedc0`
+**Game callees** (1): [`FUN_1400bedc0`](1400bedc0_FUN_1400bedc0.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

@@ -1,16 +1,17 @@
 # `FUN_1402ec1dc` @ 0x1402ec1dc
 
 **Size**: 92 bytes
-**Role**: small helper (purpose unclear without reading)
+**Role**: `plays_sound` - Triggers a named sound  _(evidence: sound='AppPolicyGetProcessTerminationMethod')_
+**Pattern category**: `plays_sound`
 
 **Strings referenced**:
 - `'AppPolicyGetProcessTerminationMethod'`
 
-**Game callers** (2): `FUN_1402ec1dc`, `FUN_1402ec97c`
+**Game callers** (2): [`FUN_1402ec1dc`](1402ec1dc_FUN_1402ec1dc.md), [`FUN_1402ec97c`](1402ec97c_FUN_1402ec97c.md)
 
-**Game callees** (2): `FUN_1402ec028`, `FUN_1402ec1dc`
+**Game callees** (2): [`FUN_1402ec028`](1402ec028_FUN_1402ec028.md), [`FUN_1402ec1dc`](1402ec1dc_FUN_1402ec1dc.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

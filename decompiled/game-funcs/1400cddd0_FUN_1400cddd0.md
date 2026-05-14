@@ -1,14 +1,15 @@
 # `FUN_1400cddd0` @ 0x1400cddd0
 
 **Size**: 1833 bytes
-**Role**: unclassified game logic
+**Role**: `float_math_heavy` - Heavy floating-point math (geometry/physics/genetics)  _(evidence: 20 float vars (geometry/physics/genetics?))_
+**Pattern category**: `float_math_heavy`
 
-**Game callers** (7): `FUN_14002d7c0`, `FUN_140061f40`, `FUN_1400c02b0`, `FUN_1400c0660`, `FUN_1400c9980`, `FUN_1400cddd0`, `FUN_1400d6a40`
+**Game callers** (7): [`FUN_14002d7c0`](14002d7c0_FUN_14002d7c0.md), [`FUN_140061f40`](140061f40_FUN_140061f40.md), [`FUN_1400c02b0`](1400c02b0_FUN_1400c02b0.md), [`FUN_1400c0660`](1400c0660_FUN_1400c0660.md), [`FUN_1400c9980`](1400c9980_FUN_1400c9980.md), [`FUN_1400cddd0`](1400cddd0_FUN_1400cddd0.md), [`FUN_1400d6a40`](1400d6a40_FUN_1400d6a40.md)
 
-**Game callees** (14): `FUN_140024090`, `FUN_1400285e0`, `FUN_14002f0d0`, `FUN_140030680`, `FUN_140037380`, `FUN_1400b4a10`, `FUN_1400b6610`, `FUN_1400c56f0`, `FUN_1400cddd0`, `FUN_1400d8ab0`
+**Game callees** (14): [`FUN_140024090`](140024090_FUN_140024090.md), [`FUN_1400285e0`](1400285e0_FUN_1400285e0.md), [`FUN_14002f0d0`](14002f0d0_FUN_14002f0d0.md), [`FUN_140030680`](140030680_FUN_140030680.md), [`FUN_140037380`](140037380_FUN_140037380.md), [`FUN_1400b4a10`](1400b4a10_FUN_1400b4a10.md), [`FUN_1400b6610`](1400b6610_FUN_1400b6610.md), [`FUN_1400c56f0`](1400c56f0_FUN_1400c56f0.md), [`FUN_1400cddd0`](1400cddd0_FUN_1400cddd0.md), [`FUN_1400d8ab0`](1400d8ab0_FUN_1400d8ab0.md)
   ... +4 more
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

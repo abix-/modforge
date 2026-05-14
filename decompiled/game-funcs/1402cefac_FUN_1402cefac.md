@@ -1,13 +1,14 @@
 # `FUN_1402cefac` @ 0x1402cefac
 
 **Size**: 85 bytes
-**Role**: small helper (purpose unclear without reading)
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (3): `FUN_1402ceb78`, `FUN_1402cecc8`, `FUN_1402cefac`
+**Game callers** (3): [`FUN_1402ceb78`](1402ceb78_FUN_1402ceb78.md), [`FUN_1402cecc8`](1402cecc8_FUN_1402cecc8.md), [`FUN_1402cefac`](1402cefac_FUN_1402cefac.md)
 
-**Game callees** (1): `FUN_1402cefac`
+**Game callees** (1): [`FUN_1402cefac`](1402cefac_FUN_1402cefac.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

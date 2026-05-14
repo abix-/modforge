@@ -1,13 +1,14 @@
 # `FUN_1402ebdf0` @ 0x1402ebdf0
 
 **Size**: 51 bytes
-**Role**: small helper (purpose unclear without reading)
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (3): `FUN_1402e8e00`, `FUN_1402e8f40`, `FUN_1402ebdf0`
+**Game callers** (3): [`FUN_1402e8e00`](1402e8e00_FUN_1402e8e00.md), [`FUN_1402e8f40`](1402e8f40_FUN_1402e8f40.md), [`FUN_1402ebdf0`](1402ebdf0_FUN_1402ebdf0.md)
 
-**Game callees** (2): `FUN_1402e68b0`, `FUN_1402ebdf0`
+**Game callees** (2): [`FUN_1402e68b0`](1402e68b0_FUN_1402e68b0.md), [`FUN_1402ebdf0`](1402ebdf0_FUN_1402ebdf0.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

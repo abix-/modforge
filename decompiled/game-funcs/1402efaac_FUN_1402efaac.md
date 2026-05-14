@@ -1,13 +1,14 @@
 # `FUN_1402efaac` @ 0x1402efaac
 
 **Size**: 740 bytes
-**Role**: unclassified game logic
+**Role**: `iterates_logic` - Large loop-containing function  _(evidence: contains a loop)_
+**Pattern category**: `iterates_logic`
 
-**Game callers** (2): `FUN_1402d6bc0`, `FUN_1402efaac`
+**Game callers** (2): [`FUN_1402d6bc0`](1402d6bc0_FUN_1402d6bc0.md), [`FUN_1402efaac`](1402efaac_FUN_1402efaac.md)
 
-**Game callees** (7): `FUN_1402cd39c`, `FUN_1402e8180`, `FUN_1402eef9c`, `FUN_1402ef330`, `FUN_1402ef618`, `FUN_1402ef840`, `FUN_1402efaac`
+**Game callees** (7): [`FUN_1402cd39c`](1402cd39c_FUN_1402cd39c.md), [`FUN_1402e8180`](1402e8180_FUN_1402e8180.md), [`FUN_1402eef9c`](1402eef9c_FUN_1402eef9c.md), [`FUN_1402ef330`](1402ef330_FUN_1402ef330.md), [`FUN_1402ef618`](1402ef618_FUN_1402ef618.md), [`FUN_1402ef840`](1402ef840_FUN_1402ef840.md), [`FUN_1402efaac`](1402efaac_FUN_1402efaac.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

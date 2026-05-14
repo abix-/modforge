@@ -1,13 +1,14 @@
 # `__scrt_common_main_seh` @ 0x1402c793c
 
 **Size**: 343 bytes
-**Role**: unclassified game logic
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (0): (none in game neighborhood)
+**Game callers**: (none - entry point, vendor-called, or only called by vendor)
 
-**Game callees** (3): `FUN_1400c35b0`, `FUN_1402da20c`, `FUN_1402da254`
+**Game callees** (3): [`FUN_1400c35b0`](1400c35b0_FUN_1400c35b0.md), [`FUN_1402da20c`](1402da20c_FUN_1402da20c.md), [`FUN_1402da254`](1402da254_FUN_1402da254.md)
 
-**Vendor callees** (10) - SDL/CRT/etc.
+**Vendor callees**: 10 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

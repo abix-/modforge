@@ -1,13 +1,14 @@
 # `FUN_1400befd0` @ 0x1400befd0
 
 **Size**: 155 bytes
-**Role**: unclassified game logic
+**Role**: `init_struct` - Zero-initializes consecutive struct fields  _(evidence: zero-initializes 18 fields)_
+**Pattern category**: `init_struct`
 
-**Game callers** (2): `FUN_1400be740`, `FUN_1400befd0`
+**Game callers** (2): [`FUN_1400be740`](1400be740_FUN_1400be740.md), [`FUN_1400befd0`](1400befd0_FUN_1400befd0.md)
 
-**Game callees** (1): `FUN_1400befd0`
+**Game callees** (1): [`FUN_1400befd0`](1400befd0_FUN_1400befd0.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

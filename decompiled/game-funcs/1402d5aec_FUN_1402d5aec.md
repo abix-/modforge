@@ -1,14 +1,15 @@
 # `FUN_1402d5aec` @ 0x1402d5aec
 
 **Size**: 1133 bytes
-**Role**: unclassified game logic
+**Role**: `iterates_logic` - Large loop-containing function  _(evidence: contains a loop)_
+**Pattern category**: `iterates_logic`
 
-**Game callers** (3): `FUN_1402d4650`, `FUN_1402d50cc`, `FUN_1402d5aec`
+**Game callers** (3): [`FUN_1402d4650`](1402d4650_FUN_1402d4650.md), [`FUN_1402d50cc`](1402d50cc_FUN_1402d50cc.md), [`FUN_1402d5aec`](1402d5aec_FUN_1402d5aec.md)
 
-**Game callees** (12): `FUN_1402d285c`, `FUN_1402d2c6c`, `FUN_1402d307c`, `FUN_1402d5aec`, `FUN_1402d6ad0`, `FUN_1402d6bc0`, `FUN_1402d7098`, `FUN_1402d7230`, `FUN_1402d72e8`, `FUN_1402d74e0`
+**Game callees** (12): [`FUN_1402d285c`](1402d285c_FUN_1402d285c.md), [`FUN_1402d2c6c`](1402d2c6c_FUN_1402d2c6c.md), [`FUN_1402d307c`](1402d307c_FUN_1402d307c.md), [`FUN_1402d5aec`](1402d5aec_FUN_1402d5aec.md), [`FUN_1402d6ad0`](1402d6ad0_FUN_1402d6ad0.md), [`FUN_1402d6bc0`](1402d6bc0_FUN_1402d6bc0.md), [`FUN_1402d7098`](1402d7098_FUN_1402d7098.md), [`FUN_1402d7230`](1402d7230_FUN_1402d7230.md), [`FUN_1402d72e8`](1402d72e8_FUN_1402d72e8.md), [`FUN_1402d74e0`](1402d74e0_FUN_1402d74e0.md)
   ... +2 more
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

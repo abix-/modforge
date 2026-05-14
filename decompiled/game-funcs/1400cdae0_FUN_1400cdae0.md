@@ -1,19 +1,20 @@
 # `FUN_1400cdae0` @ 0x1400cdae0
 
 **Size**: 733 bytes
-**Role**: unclassified game logic
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
 **Strings referenced**:
 - `'DropHorseFail'`
 - `'TruckLeaveLocation'`
 
-**Game callers** (25): `FUN_14002d7c0`, `FUN_14002fe00`, `FUN_140033a10`, `FUN_140039190`, `FUN_14003ed30`, `FUN_140058480`, `FUN_14005bc30`, `FUN_14005c5d0`, `FUN_14005f1f0`, `FUN_140061f40`
+**Game callers** (25): [`FUN_14002d7c0`](14002d7c0_FUN_14002d7c0.md), [`FUN_14002fe00`](14002fe00_FUN_14002fe00.md), [`FUN_140033a10`](140033a10_FUN_140033a10.md), [`FUN_140039190`](140039190_FUN_140039190.md), [`FUN_14003ed30`](14003ed30_FUN_14003ed30.md), [`FUN_140058480`](140058480_FUN_140058480.md), [`FUN_14005bc30`](14005bc30_FUN_14005bc30.md), [`FUN_14005c5d0`](14005c5d0_FUN_14005c5d0.md), [`FUN_14005f1f0`](14005f1f0_FUN_14005f1f0.md), [`FUN_140061f40`](140061f40_FUN_140061f40.md)
   ... +15 more
 
-**Game callees** (12): `FUN_1400285e0`, `FUN_14003f6f0`, `FUN_140040ca0`, `FUN_140040fe0`, `FUN_1400b4a10`, `FUN_1400b6610`, `FUN_1400c8d90`, `FUN_1400cba60`, `FUN_1400cdae0`, `FUN_1400ce9b0`
+**Game callees** (12): [`FUN_1400285e0`](1400285e0_FUN_1400285e0.md), [`FUN_14003f6f0`](14003f6f0_FUN_14003f6f0.md), [`FUN_140040ca0`](140040ca0_FUN_140040ca0.md), [`FUN_140040fe0`](140040fe0_FUN_140040fe0.md), [`FUN_1400b4a10`](1400b4a10_FUN_1400b4a10.md), [`FUN_1400b6610`](1400b6610_FUN_1400b6610.md), [`FUN_1400c8d90`](1400c8d90_FUN_1400c8d90.md), [`FUN_1400cba60`](1400cba60_FUN_1400cba60.md), [`FUN_1400cdae0`](1400cdae0_FUN_1400cdae0.md), [`FUN_1400ce9b0`](1400ce9b0_FUN_1400ce9b0.md)
   ... +2 more
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

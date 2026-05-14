@@ -1,14 +1,15 @@
 # `FUN_1400fdee0` @ 0x1400fdee0
 
 **Size**: 1018 bytes
-**Role**: unclassified game logic
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (2): `FUN_14006e480`, `FUN_1400fdee0`
+**Game callers** (2): [`FUN_14006e480`](14006e480_FUN_14006e480.md), [`FUN_1400fdee0`](1400fdee0_FUN_1400fdee0.md)
 
-**Game callees** (26): `FUN_14002cd80`, `FUN_14002f0f0`, `FUN_140030940`, `FUN_1400379e0`, `FUN_14003e720`, `FUN_140057c20`, `FUN_14005bad0`, `FUN_14005bf10`, `FUN_14005e310`, `FUN_14005fad0`
+**Game callees** (26): [`FUN_14002cd80`](14002cd80_FUN_14002cd80.md), [`FUN_14002f0f0`](14002f0f0_FUN_14002f0f0.md), [`FUN_140030940`](140030940_FUN_140030940.md), [`FUN_1400379e0`](1400379e0_FUN_1400379e0.md), [`FUN_14003e720`](14003e720_FUN_14003e720.md), [`FUN_140057c20`](140057c20_FUN_140057c20.md), [`FUN_14005bad0`](14005bad0_FUN_14005bad0.md), [`FUN_14005bf10`](14005bf10_FUN_14005bf10.md), [`FUN_14005e310`](14005e310_FUN_14005e310.md), [`FUN_14005fad0`](14005fad0_FUN_14005fad0.md)
   ... +16 more
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 

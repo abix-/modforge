@@ -1,13 +1,14 @@
 # `FUN_1402ceae8` @ 0x1402ceae8
 
 **Size**: 141 bytes
-**Role**: unclassified game logic
+**Role**: _unclassified - needs manual reading_
+**Pattern category**: `unclassified`
 
-**Game callers** (2): `FUN_1402ceae8`, `FUN_1402cf00c`
+**Game callers** (2): [`FUN_1402ceae8`](1402ceae8_FUN_1402ceae8.md), [`FUN_1402cf00c`](1402cf00c_FUN_1402cf00c.md)
 
-**Game callees** (5): `FUN_1402cd39c`, `FUN_1402ceae8`, `FUN_1402ceb78`, `FUN_1402e1710`, `FUN_1402e171c`
+**Game callees** (5): [`FUN_1402cd39c`](1402cd39c_FUN_1402cd39c.md), [`FUN_1402ceae8`](1402ceae8_FUN_1402ceae8.md), [`FUN_1402ceb78`](1402ceb78_FUN_1402ceb78.md), [`FUN_1402e1710`](1402e1710_FUN_1402e1710.md), [`FUN_1402e171c`](1402e171c_FUN_1402e171c.md)
 
-**Vendor callees** (0) - SDL/CRT/etc.
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
 
 ## Decompiled
 
