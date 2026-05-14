@@ -24,6 +24,7 @@
 //! game functions we identified during decompilation) is staged
 //! for a follow-up phase.
 
+pub mod fatigue;
 pub mod gamestate;
 pub mod horse;
 pub mod ops;
@@ -74,11 +75,19 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
-    // 4b. Default-on cheats. NO_TIRE_TOGGLE lives in .data (static
-    //     address, not behind a pointer), so this write is valid
-    //     even before any save is loaded.
-    gamestate::set_no_tire(true);
-    modforge::log!("horseyforge: no_tire enabled by default");
+    // 5. Start the fatigue suppressor.
+    //
+    //   The game's built-in `no_tire` cheat zeroes BOTH +0x205 and
+    //   +0x206 on every horse every frame. +0x206 is what the sleep
+    //   gate checks for "any horse tired"; if it's always zero,
+    //   sleep is refused with "None of your horses are tired".
+    //
+    //   Our suppressor zeroes only +0x205 (the race-eligibility
+    //   flag), so race gates pass while the sleep gate keeps working
+    //   normally. This is the "no_tire that doesn't break sleep"
+    //   the game's own cheat is missing.
+    fatigue::spawn_suppressor();
+    modforge::log!("horseyforge: fatigue suppressor enabled (only +0x205, not +0x206)");
 
     // 5. Start the HTTP server. Single endpoint /op, auth via header.
     let server_cfg = modforge::server::Config {

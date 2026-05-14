@@ -13,6 +13,7 @@
 use modforge::ops::{OpDef, OP_REGISTRY};
 use serde_json::{json, Value as Json};
 
+use crate::fatigue;
 use crate::gamestate;
 use crate::horse;
 
@@ -135,12 +136,31 @@ pub fn register_all() {
         ),
         OpDef::new(
             "cheats.no_tire.set",
-            "Enable / disable the No Tire fatigue-zeroing override.",
+            "Enable / disable the GAME's built-in No Tire cheat. Note: \
+this zeroes BOTH tired flags so the sleep gate breaks. Prefer \
+fatigue.suppressor.set which only zeroes the race-eligibility flag.",
             "{enabled: bool}",
             |args| {
                 let v = args_bool(args, "enabled")?;
                 gamestate::set_no_tire(v);
                 Ok(json!({"no_tire": gamestate::no_tire()}))
+            },
+        ),
+        OpDef::new(
+            "fatigue.suppressor.get",
+            "Read whether horseyforge's split-flag fatigue suppressor is on.",
+            "",
+            |_| Ok(json!({"enabled": fatigue::is_enabled()})),
+        ),
+        OpDef::new(
+            "fatigue.suppressor.set",
+            "Toggle horseyforge's split-flag fatigue suppressor. On = race \
+gate passes (no tire), sleep gate still works.",
+            "{enabled: bool}",
+            |args| {
+                let v = args_bool(args, "enabled")?;
+                fatigue::set_enabled(v);
+                Ok(json!({"enabled": fatigue::is_enabled()}))
             },
         ),
         OpDef::new(
