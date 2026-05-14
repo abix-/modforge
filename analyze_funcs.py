@@ -1,16 +1,10 @@
-"""Better classification: size distribution + thunks + call-graph based.
+"""Better classification: size + call graph + comprehensive game-string seeds.
 
-A 'thunk' is a 5-byte jmp wrapper - one function calling another.
-Anything <= 8 bytes is functionally a stub/thunk/trap.
-Anything in a tight cluster of similar tiny functions is C++ generated boilerplate.
-
-For more nuanced classification we need to look at:
-- Which functions call our KNOWN game-logic functions (e.g. anything that calls
-  the function that references 'Horse is too tired!' is game code).
-- Which functions call SDL_*, cute_*, MSVC CRT functions exclusively.
+Game neighborhood = transitive closure (callers + callees) of any function that
+references a game-specific string. Vendor = everything else.
 """
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 DECOMP = Path(r"C:/code/horsey-mods/decompiled/all_functions.c")
@@ -19,7 +13,6 @@ text = DECOMP.read_text(encoding="utf-8", errors="replace")
 func_re = re.compile(r"^// ============ 0x([0-9a-f]+) (\S+) \(size=(\d+)\) ============$", re.MULTILINE)
 matches = list(func_re.finditer(text))
 
-# Build address -> (name, size, body)
 funcs = {}
 for i, m in enumerate(matches):
     addr = int(m.group(1), 16)
@@ -32,117 +25,124 @@ for i, m in enumerate(matches):
 
 print(f"Total functions: {len(funcs)}")
 
-# Size distribution
-sizes = [s for _, s, _ in funcs.values()]
-print()
-print("Size distribution:")
-buckets = [
-    (1, 8, "tiny stub (1-8B)"),
-    (9, 32, "small (9-32B)"),
-    (33, 128, "medium (33-128B)"),
-    (129, 512, "regular (129-512B)"),
-    (513, 2048, "large (513-2KB)"),
-    (2049, 99999, "huge (>2KB)"),
-]
-for lo, hi, label in buckets:
-    n = sum(1 for s in sizes if lo <= s <= hi)
-    pct = n / len(sizes) * 100
-    tot = sum(s for s in sizes if lo <= s <= hi)
-    print(f"  {label:<25s} {n:>5d} funcs ({pct:>5.1f}%)  total {tot/1024:>7.1f} KB")
-
-# Extract calls from each function: FUN_140xxxxxx and named-function calls
-call_re = re.compile(r"\b(FUN_140[0-9a-f]+|[A-Za-z_][A-Za-z_0-9]*)\s*\(")
-
-callers_of = {}  # addr -> set of addresses that call it
-callees_of = {}  # addr -> set of addresses it calls
-
-# First pass: collect every "FUN_xxxx" reference in each body
-for addr, (name, size, body) in funcs.items():
-    called_funs = set()
+# Call graph (game-internal: FUN_140xxxxxx)
+call_re = re.compile(r"\bFUN_(140[0-9a-f]+)\s*\(")
+callers = defaultdict(set)
+callees = defaultdict(set)
+for addr, (_, _, body) in funcs.items():
     for m in call_re.finditer(body):
-        callee_name = m.group(1)
-        if callee_name.startswith("FUN_"):
-            try:
-                callee_addr = int(callee_name[4:], 16)
-                if callee_addr in funcs:
-                    called_funs.add(callee_addr)
-            except ValueError:
-                pass
-    callees_of[addr] = called_funs
-    for callee in called_funs:
-        callers_of.setdefault(callee, set()).add(addr)
+        try:
+            t = int(m.group(1), 16)
+            if t in funcs:
+                callees[addr].add(t)
+                callers[t].add(addr)
+        except ValueError:
+            pass
 
-# Stats
-print()
-print(f"Avg callees per function: {sum(len(v) for v in callees_of.values())/len(funcs):.1f}")
-print(f"Functions with no callees (leaves): {sum(1 for v in callees_of.values() if not v)}")
-print(f"Functions never called: {sum(1 for a in funcs if a not in callers_of)}")
-
-# Find "isolated families": functions that are only ever called by similarly
-# unrecognized functions, and form a closed sub-graph. These are likely vendor.
-# Heuristic: a function is "game logic" if it's reachable from any function
-# that references game-specific strings (Horse, gene, race, etc.).
-
-# Find game-marker functions
+# Seeds: any function referencing one of these strings is game logic.
 GAME_STRING_PATTERNS = [
-    r"\bHorse_is_too_tired\b", r"\bHorse_is_too_old\b", r"\bHorse_is_too_young\b",
-    r"\bHorse_is_too_hungry\b", r"\bGenome_copied\b", r"\bSimulation_Paused\b",
-    r"\bclick_race\b", r"\bGene_%d\b", r"\bSAMPLING_DNA\b", r"\bStartDNAExtract\b",
+    # Status / dialog
+    r"\bHorse_is_too\b", r"\bHorse is too\b",
+    r"\bGenome_copied\b", r"\bGenome copied\b",
+    r"\bPasting_genome\b", r"\bPasting genome\b",
+    r"\bSimulation_Paused\b", r"\bSimulation Paused\b",
+    r"\bClick_Race_when_ready\b", r"\bClick Race\b",
+    r"\bGene_%d\b", r"\bGene %d\b",
+    r"\bSAMPLING_DNA\b", r"\bSAMPLING DNA\b",
+    r"\bStartDNAExtract\b", r"\bSampleDNA\b",
+    r"\bchromoMap\b", r"\bGeneEnum\b",
+    # File paths (assets)
     r'"save%d\.dat"', r'"genes\.dat"', r'"genes\.xml"', r'"pop\.xml"',
     r'"sound\.xml"', r'"sprites\.xml"', r'"horsey\.tmx"', r'"names\.txt"',
-    r"\bChampion\b", r"\bRibbon\b", r"\bChevyRay\b",
+    r'"furniture\.xml"', r'"locs\.xml"', r'"terrain\.xml"', r'"veg\.xml"',
+    r'"settings\.xml"',
+    # Retirement / aging / death
+    r"retired %s", r"retired_old", r"retired_bails", r"retired_useless",
+    r"is_getting_old", r"is getting old",
+    r"too_old_to_race", r"too old to race",
+    r"Horse_is_dead", r"Horse is dead",
+    r"is_deceased", r"is deceased",
+    r"HorsesAge", r"horses_age",
+    # Stamina / sleep
+    r"\bI_m_tired\b", r"\bI'm tired\b",
+    r"\bI_m_awake\b", r"\bI'm awake\b",
+    r"\bSleepy_me\b", r"\bSleepy weepy\b",
+    r"\bWakey_wakey\b", r"\bWakey wakey\b",
+    r"\bI_require_rest\b", r"\bI require rest\b",
+    r"\bI_require_sleep\b", r"\bI require sleep\b",
+    r"\bTime_for_a_power_nap\b",
+    # Racing / champion / ribbon
+    r"\bChampion\b", r"\bRibbon\b", r"\bWonRace\b", r"\bLoseRace\b",
+    r"\bRaceGetSet\b", r"\bRaceGo\b", r"\brace_of_champions\b",
+    # Breeding
+    r"\bWildMating\b", r"\bBarnMating\b", r"\bLet_s_mate\b", r"\bLet's mate\b",
+    r"\bMate_two_horses\b",
+    # Locations / dialogues
+    r"\bChevyRay\b",
+    r"\bHorseMart\b", r"\bHorseTouching\b",
+    r"\bI'm_a_geneticist\b", r"\bgeneticist\b",
+    r"\bHorse population is critically low\b",
+    r"\bFound %d/%d chromosomes\b",
+    # Save / settings strings
+    r'"horsey\.tmx"',
+    # Dev cheat tokens
+    r"\bdebug\b", r"\bNo_Tire\b", r"\bYes_Tire\b", r"\bNo Tire\b", r"\bYes Tire\b",
+    # Format specific to game state
+    r"horses: %d", r"year %d  herb", r"Race %d-%s",
+    r"%s = \(%d rand",
+    # Goal text
+    r"\bGoal 1: get the horse population\b", r"\bGoal 2: get genetic diversity\b",
+    # Action sounds
+    r"\bWhipCrack\b", r"\bBalloonFly\b", r"\bFillHole\b",
+    r"\bDestroyTree\b", r"\bDestroyMountain\b", r"\bReclaimLand\b",
+    # CRISPR
+    r"\bCRISPR\b", r"\bEngaging GENE DRIVE\b", r"\bStartGeneDrive\b",
+    r"\bSwitchToGeneDrive\b",
+    # Item / world events / UI labels with horse/horse-related semantics
+    r"\bAnimSleep\b", r"\bSleepMoon\b", r"\bStatusOld\b", r"\bStatusTired\b",
+    r"\bStatusHungry\b", r"\bThoughtTired\b", r"\bThoughtHungry\b", r"\bAgeWord\b",
+    # Camera / hot air balloon
+    r"\bbig logo\b", r"\bbiglogo\b",
 ]
 game_pat = re.compile("|".join(GAME_STRING_PATTERNS))
 
+# Find seed functions
 game_seeds = set()
-for addr, (name, size, body) in funcs.items():
+for addr, (_, _, body) in funcs.items():
     if game_pat.search(body):
         game_seeds.add(addr)
+print(f"Game seed functions (reference a game string): {len(game_seeds)}")
 
-print()
-print(f"Game-logic SEED functions (reference game strings): {len(game_seeds)}")
 
-# BFS outward from seeds (both callers and callees)
-# Functions reachable from game seeds = "game logic neighborhood"
-def reachable_from(seeds, edges):
-    frontier = set(seeds)
+# BFS outward through callers AND callees
+def transitive_closure(seeds, edges):
     seen = set(seeds)
+    frontier = set(seeds)
     while frontier:
-        next_frontier = set()
+        nxt = set()
         for a in frontier:
             for b in edges.get(a, set()):
                 if b not in seen:
                     seen.add(b)
-                    next_frontier.add(b)
-        frontier = next_frontier
+                    nxt.add(b)
+        frontier = nxt
     return seen
 
-# Callees from game seeds: functions called by game code
-called_by_game = reachable_from(game_seeds, callees_of)
-# Callers of game seeds: functions that invoke game code
-calls_into_game = reachable_from(game_seeds, callers_of)
+
+called_by_game = transitive_closure(game_seeds, callees)
+calls_into_game = transitive_closure(game_seeds, callers)
 game_neighborhood = called_by_game | calls_into_game
 
-print(f"Functions reachable downward from game seeds (callees of callees ...): {len(called_by_game)}")
-print(f"Functions reachable upward from game seeds (callers of callers ...): {len(calls_into_game)}")
-print(f"Total in 'game neighborhood': {len(game_neighborhood)}")
-print(f"Functions OUTSIDE game neighborhood (likely pure vendor): {len(funcs) - len(game_neighborhood)}")
+print(f"Reachable downward (callees of callees ...): {len(called_by_game)}")
+print(f"Reachable upward (callers of callers ...): {len(calls_into_game)}")
+print(f"Total game neighborhood: {len(game_neighborhood)}")
+print(f"Pure vendor (no path to/from game): {len(funcs) - len(game_neighborhood)}")
 
-# Of the game neighborhood, how many are FUN_ vs Ghidra-named?
-unnamed_game = sum(1 for a in game_neighborhood if funcs[a][0].startswith("FUN_"))
-named_game = len(game_neighborhood) - unnamed_game
-print()
-print(f"In game neighborhood:")
-print(f"  Auto-named (FUN_...): {unnamed_game}")
-print(f"  Ghidra-named: {named_game}")
-print()
-
-# Save the lists
+# Write outputs
 Path(r"C:/code/horsey-mods/decompiled/game_neighborhood.txt").write_text(
     "\n".join(f"0x{a:x}\t{funcs[a][0]}\t{funcs[a][1]}"
              for a in sorted(game_neighborhood)), encoding="utf-8")
 Path(r"C:/code/horsey-mods/decompiled/vendor_funcs.txt").write_text(
     "\n".join(f"0x{a:x}\t{funcs[a][0]}\t{funcs[a][1]}"
              for a in sorted(set(funcs) - game_neighborhood)), encoding="utf-8")
-print("Wrote decompiled/game_neighborhood.txt")
-print("Wrote decompiled/vendor_funcs.txt")
+print("Wrote game_neighborhood.txt and vendor_funcs.txt")

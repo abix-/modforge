@@ -5,7 +5,7 @@
 **Pattern**: `helper` - General helper (calls other funcs, no idiom matched)
 **Evidence**: calls 3 other funcs
 
-**Game callers** (2): [`FUN_1402eaf4c`](1402eaf4c_FUN_1402eaf4c.md), [`FUN_1402eb16c`](1402eb16c_FUN_1402eb16c.md)
+**Game callers** (3): [`FUN_1402eada0`](1402eada0_FUN_1402eada0.md), [`FUN_1402eaf4c`](1402eaf4c_FUN_1402eaf4c.md), [`FUN_1402eb16c`](1402eb16c_FUN_1402eb16c.md)
 
 **Game callees** (3): [`FUN_1402e6868`](1402e6868_FUN_1402e6868.md), [`FUN_1402eaf4c`](1402eaf4c_FUN_1402eaf4c.md), [`FUN_1402f4f90`](1402f4f90_FUN_1402f4f90.md)
 

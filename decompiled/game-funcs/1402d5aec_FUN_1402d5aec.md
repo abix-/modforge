@@ -6,7 +6,7 @@
 **Pattern**: `loop_heavy` - Large loop-containing function
 **Evidence**: large loop-containing function
 
-**Game callers** (3): [`FUN_1402d4650`](1402d4650_FUN_1402d4650.md), [`FUN_1402d50cc`](1402d50cc_FUN_1402d50cc.md), [`FUN_1402d5aec`](1402d5aec_FUN_1402d5aec.md)
+**Game callers** (4): [`FUN_1402d42e8`](1402d42e8_FUN_1402d42e8.md), [`FUN_1402d4650`](1402d4650_FUN_1402d4650.md), [`FUN_1402d50cc`](1402d50cc_FUN_1402d50cc.md), [`FUN_1402d5aec`](1402d5aec_FUN_1402d5aec.md)
 
 **Game callees** (12): [`FUN_1402d285c`](1402d285c_FUN_1402d285c.md), [`FUN_1402d2c6c`](1402d2c6c_FUN_1402d2c6c.md), [`FUN_1402d307c`](1402d307c_FUN_1402d307c.md), [`FUN_1402d5aec`](1402d5aec_FUN_1402d5aec.md), [`FUN_1402d6ad0`](1402d6ad0_FUN_1402d6ad0.md), [`FUN_1402d6bc0`](1402d6bc0_FUN_1402d6bc0.md), [`FUN_1402d7098`](1402d7098_FUN_1402d7098.md), [`FUN_1402d7230`](1402d7230_FUN_1402d7230.md), [`FUN_1402d72e8`](1402d72e8_FUN_1402d72e8.md), [`FUN_1402d74e0`](1402d74e0_FUN_1402d74e0.md)
   ... +2 more

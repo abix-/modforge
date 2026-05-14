@@ -773,7 +773,7 @@
     "role": null,
     "category": "empty_stub",
     "evidence": "size=8",
-    "domain": "world_event"
+    "domain": null
   },
   "0x140023ed0": {
     "name": "FUN_140023ed0",
@@ -823,6 +823,14 @@
     "evidence": "calls 9 other funcs",
     "domain": "world_event"
   },
+  "0x1400249e0": {
+    "name": "FUN_1400249e0",
+    "size": 116,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
   "0x140024a60": {
     "name": "FUN_140024a60",
     "size": 84,
@@ -831,12 +839,28 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x140024b40": {
+    "name": "FUN_140024b40",
+    "size": 161,
+    "role": null,
+    "category": "struct_init",
+    "evidence": "zero-inits 3 fields",
+    "domain": "world_event"
+  },
   "0x1400250c0": {
     "name": "FUN_1400250c0",
     "size": 96,
     "role": null,
     "category": "struct_init",
     "evidence": "zero-inits 4 fields",
+    "domain": "world_event"
+  },
+  "0x140025120": {
+    "name": "FUN_140025120",
+    "size": 497,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
   "0x140025320": {
@@ -855,6 +879,14 @@
     "evidence": "calls 1 other funcs",
     "domain": "world_event"
   },
+  "0x140025490": {
+    "name": "FUN_140025490",
+    "size": 201,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "debug"
+  },
   "0x1400256d0": {
     "name": "FUN_1400256d0",
     "size": 86,
@@ -869,6 +901,54 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400257d0": {
+    "name": "FUN_1400257d0",
+    "size": 84,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400258d0": {
+    "name": "FUN_1400258d0",
+    "size": 44,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x140025900": {
+    "name": "FUN_140025900",
+    "size": 44,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x140025930": {
+    "name": "FUN_140025930",
+    "size": 65,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x140025980": {
+    "name": "FUN_140025980",
+    "size": 65,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x140025dc0": {
+    "name": "FUN_140025dc0",
+    "size": 50,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
     "domain": "world_event"
   },
   "0x140025e00": {
@@ -895,6 +975,62 @@
     "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
+  "0x1400262c0": {
+    "name": "FUN_1400262c0",
+    "size": 163,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x1400267d0": {
+    "name": "FUN_1400267d0",
+    "size": 107,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
+  "0x1400272d0": {
+    "name": "FUN_1400272d0",
+    "size": 264,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400273e0": {
+    "name": "FUN_1400273e0",
+    "size": 141,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x140027470": {
+    "name": "FUN_140027470",
+    "size": 202,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "debug"
+  },
+  "0x140027540": {
+    "name": "FUN_140027540",
+    "size": 292,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400276e0": {
+    "name": "FUN_1400276e0",
+    "size": 98,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
   "0x140027750": {
     "name": "FUN_140027750",
     "size": 184,
@@ -917,7 +1053,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 2 other funcs",
-    "domain": null
+    "domain": "world_event"
   },
   "0x140027900": {
     "name": "FUN_140027900",
@@ -999,6 +1135,30 @@
     "evidence": "calls delete/free helpers",
     "domain": "world_event"
   },
+  "0x140028820": {
+    "name": "FUN_140028820",
+    "size": 209,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400293d0": {
+    "name": "FUN_1400293d0",
+    "size": 790,
+    "role": "lab_location",
+    "category": "struct_init",
+    "evidence": "zero-inits 3 fields",
+    "domain": "world_event"
+  },
+  "0x1400297b0": {
+    "name": "FUN_1400297b0",
+    "size": 728,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c704c x5",
+    "domain": "world_event"
+  },
   "0x14002cca0": {
     "name": "FUN_14002cca0",
     "size": 17,
@@ -1013,7 +1173,7 @@
     "role": null,
     "category": "plays_sound_or_event",
     "evidence": "trigger='Abandoned'",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14002d7c0": {
     "name": "FUN_14002d7c0",
@@ -1037,7 +1197,7 @@
     "role": null,
     "category": "plays_sound_or_event",
     "evidence": "trigger='Acres'",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14002fe00": {
     "name": "FUN_14002fe00",
@@ -1077,7 +1237,7 @@
     "role": null,
     "category": "plays_sound_or_event",
     "evidence": "trigger='Biohacker'",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x140032320": {
     "name": "FUN_140032320",
@@ -1181,7 +1341,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14003ed30": {
     "name": "FUN_14003ed30",
@@ -1198,6 +1358,22 @@
     "category": "helper",
     "evidence": "calls 6 other funcs",
     "domain": "world_event"
+  },
+  "0x14003f290": {
+    "name": "FUN_14003f290",
+    "size": 35,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "debug"
+  },
+  "0x14003f2c0": {
+    "name": "FUN_14003f2c0",
+    "size": 95,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "debug"
   },
   "0x14003f330": {
     "name": "FUN_14003f330",
@@ -1238,6 +1414,22 @@
     "category": "helper",
     "evidence": "calls 3 other funcs",
     "domain": null
+  },
+  "0x14003f740": {
+    "name": "FUN_14003f740",
+    "size": 103,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x14003f7b0": {
+    "name": "FUN_14003f7b0",
+    "size": 78,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
   },
   "0x14003f810": {
     "name": "FUN_14003f810",
@@ -1863,6 +2055,14 @@
     "evidence": "calls FUN_14004cb40 x4",
     "domain": "world_event"
   },
+  "0x140055b20": {
+    "name": "FUN_140055b20",
+    "size": 263,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
   "0x140055c30": {
     "name": "FUN_140055c30",
     "size": 323,
@@ -1871,13 +2071,29 @@
     "evidence": "calls 4 other funcs",
     "domain": "race"
   },
+  "0x140057a60": {
+    "name": "FUN_140057a60",
+    "size": 365,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
   "0x140057c20": {
     "name": "FUN_140057c20",
     "size": 961,
     "role": null,
     "category": "repeated_op",
     "evidence": "calls FUN_1400c9c30 x12",
-    "domain": "save_io"
+    "domain": "world_event"
+  },
+  "0x1400581a0": {
+    "name": "FUN_1400581a0",
+    "size": 715,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
   },
   "0x140058480": {
     "name": "FUN_140058480",
@@ -1893,7 +2109,7 @@
     "role": null,
     "category": "plays_sound_or_event",
     "evidence": "trigger='GifLand'",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14005bc30": {
     "name": "FUN_14005bc30",
@@ -1909,7 +2125,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14005c5d0": {
     "name": "FUN_14005c5d0",
@@ -1935,6 +2151,22 @@
     "evidence": "13 field accesses on param_1",
     "domain": "world_event"
   },
+  "0x14005cda0": {
+    "name": "FUN_14005cda0",
+    "size": 19,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x14005cf70": {
+    "name": "FUN_14005cf70",
+    "size": 534,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
   "0x14005d190": {
     "name": "FUN_14005d190",
     "size": 450,
@@ -1942,6 +2174,14 @@
     "category": "medium_loop",
     "evidence": "moderate loop-containing function",
     "domain": "world_event"
+  },
+  "0x14005d360": {
+    "name": "FUN_14005d360",
+    "size": 267,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": null
   },
   "0x14005d710": {
     "name": "FUN_14005d710",
@@ -1965,7 +2205,15 @@
     "role": null,
     "category": "simple_return",
     "evidence": "small return-only function",
-    "domain": "debug"
+    "domain": "world_event"
+  },
+  "0x14005e230": {
+    "name": "FUN_14005e230",
+    "size": 18,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "aging"
   },
   "0x14005e250": {
     "name": "FUN_14005e250",
@@ -1973,7 +2221,7 @@
     "role": null,
     "category": "simple_return",
     "evidence": "small return-only function",
-    "domain": "aging"
+    "domain": "world_event"
   },
   "0x14005e270": {
     "name": "FUN_14005e270",
@@ -2087,6 +2335,14 @@
     "evidence": "20 field accesses on param_1",
     "domain": "world_event"
   },
+  "0x140066180": {
+    "name": "FUN_140066180",
+    "size": 43,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
   "0x140066200": {
     "name": "FUN_140066200",
     "size": 4188,
@@ -2095,13 +2351,53 @@
     "evidence": "zero-inits 3 fields",
     "domain": "debug"
   },
+  "0x140067270": {
+    "name": "FUN_140067270",
+    "size": 174,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x140067330": {
+    "name": "FUN_140067330",
+    "size": 343,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "debug"
+  },
+  "0x140067490": {
+    "name": "FUN_140067490",
+    "size": 193,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "debug"
+  },
+  "0x140067560": {
+    "name": "FUN_140067560",
+    "size": 333,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "debug"
+  },
+  "0x1400676c0": {
+    "name": "FUN_1400676c0",
+    "size": 324,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "debug"
+  },
   "0x140067850": {
     "name": "FUN_140067850",
     "size": 79,
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x1400679e0": {
     "name": "FUN_1400679e0",
@@ -2149,6 +2445,14 @@
     "role": "saloon_location",
     "category": "repeated_op",
     "evidence": "calls FUN_1400c9c30 x5",
+    "domain": "world_event"
+  },
+  "0x14006a420": {
+    "name": "FUN_14006a420",
+    "size": 1505,
+    "role": null,
+    "category": "struct_init",
+    "evidence": "zero-inits 6 fields",
     "domain": "world_event"
   },
   "0x14006b040": {
@@ -2223,6 +2527,14 @@
     "evidence": "calls FUN_140075c60 x8",
     "domain": "save_io"
   },
+  "0x14006f4e0": {
+    "name": "FUN_14006f4e0",
+    "size": 173,
+    "role": null,
+    "category": "struct_handler",
+    "evidence": "11 field accesses on param_1",
+    "domain": "save_io"
+  },
   "0x14006f590": {
     "name": "FUN_14006f590",
     "size": 298,
@@ -2279,6 +2591,14 @@
     "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
+  "0x14006ffa0": {
+    "name": "FUN_14006ffa0",
+    "size": 165,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
   "0x140070f90": {
     "name": "FUN_140070f90",
     "size": 92,
@@ -2294,6 +2614,14 @@
     "category": "helper",
     "evidence": "calls 4 other funcs",
     "domain": "world_event"
+  },
+  "0x140071120": {
+    "name": "FUN_140071120",
+    "size": 37,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "debug"
   },
   "0x140071150": {
     "name": "FUN_140071150",
@@ -2406,6 +2734,14 @@
     "category": "helper",
     "evidence": "calls 3 other funcs",
     "domain": "world_event"
+  },
+  "0x140072ed0": {
+    "name": "FUN_140072ed0",
+    "size": 120,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
   },
   "0x140072f50": {
     "name": "FUN_140072f50",
@@ -2967,6 +3303,14 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1400816b0": {
+    "name": "FUN_1400816b0",
+    "size": 1610,
+    "role": "breeding_event",
+    "category": "loop_heavy",
+    "evidence": "large loop-containing function",
+    "domain": "breeding"
+  },
   "0x140081fa0": {
     "name": "FUN_140081fa0",
     "size": 99,
@@ -3029,6 +3373,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140082640": {
+    "name": "FUN_140082640",
+    "size": 2966,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_140080cc0 x6",
     "domain": "world_event"
   },
   "0x1400833d0": {
@@ -3117,7 +3469,7 @@
     "role": null,
     "category": "simple_return",
     "evidence": "small return-only function",
-    "domain": "world_event"
+    "domain": null
   },
   "0x140086330": {
     "name": "FUN_140086330",
@@ -3191,6 +3543,22 @@
     "evidence": "calls FUN_1400c9c30 x6",
     "domain": "world_event"
   },
+  "0x1400886a0": {
+    "name": "FUN_1400886a0",
+    "size": 739,
+    "role": null,
+    "category": "float_math",
+    "evidence": "23 float vars, 2 consts",
+    "domain": "world_event"
+  },
+  "0x140088990": {
+    "name": "FUN_140088990",
+    "size": 817,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400c6580 x11",
+    "domain": "world_event"
+  },
   "0x140089510": {
     "name": "FUN_140089510",
     "size": 8654,
@@ -3215,12 +3583,36 @@
     "evidence": "calls FUN_1402f94c0 x5",
     "domain": "world_event"
   },
+  "0x14008d0a0": {
+    "name": "FUN_14008d0a0",
+    "size": 158,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x14008d150": {
+    "name": "FUN_14008d150",
+    "size": 160,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
   "0x14008d200": {
     "name": "FUN_14008d200",
     "size": 138,
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x14008d290": {
+    "name": "FUN_14008d290",
+    "size": 30,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
   "0x14008d2c0": {
@@ -3261,7 +3653,7 @@
     "role": null,
     "category": "plays_sound_or_event",
     "evidence": "trigger='CarLot'",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x14008f130": {
     "name": "FUN_14008f130",
@@ -3278,6 +3670,22 @@
     "category": "struct_init",
     "evidence": "zero-inits 5 fields",
     "domain": "world_event"
+  },
+  "0x14008fce0": {
+    "name": "FUN_14008fce0",
+    "size": 477,
+    "role": "paddock_event",
+    "category": "struct_init",
+    "evidence": "zero-inits 3 fields",
+    "domain": "world_event"
+  },
+  "0x14008fed0": {
+    "name": "FUN_14008fed0",
+    "size": 126,
+    "role": null,
+    "category": "struct_init",
+    "evidence": "zero-inits 3 fields",
+    "domain": null
   },
   "0x14008ff60": {
     "name": "FUN_14008ff60",
@@ -3487,6 +3895,14 @@
     "evidence": "single delegated call to FUN_14009c780",
     "domain": "world_event"
   },
+  "0x14009c7a0": {
+    "name": "FUN_14009c7a0",
+    "size": 39,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
+  },
   "0x14009c7d0": {
     "name": "FUN_14009c7d0",
     "size": 225,
@@ -3607,6 +4023,14 @@
     "evidence": "calls FUN_1400c6580 x6",
     "domain": "world_event"
   },
+  "0x1400a33b0": {
+    "name": "FUN_1400a33b0",
+    "size": 501,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
   "0x1400a3610": {
     "name": "FUN_1400a3610",
     "size": 28,
@@ -3614,6 +4038,30 @@
     "category": "simple_return",
     "evidence": "small return-only function",
     "domain": "world_event"
+  },
+  "0x1400a3eb0": {
+    "name": "FUN_1400a3eb0",
+    "size": 2491,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c7088 x4",
+    "domain": "world_event"
+  },
+  "0x1400a4880": {
+    "name": "FUN_1400a4880",
+    "size": 1397,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_140025900 x4",
+    "domain": "debug"
+  },
+  "0x1400a4e00": {
+    "name": "FUN_1400a4e00",
+    "size": 468,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 14 other funcs",
+    "domain": "debug"
   },
   "0x1400a5370": {
     "name": "FUN_1400a5370",
@@ -3629,6 +4077,30 @@
     "role": null,
     "category": "simple_return",
     "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x1400a5400": {
+    "name": "FUN_1400a5400",
+    "size": 1178,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402f8e20 x5",
+    "domain": "world_event"
+  },
+  "0x1400a58b0": {
+    "name": "FUN_1400a58b0",
+    "size": 151,
+    "role": null,
+    "category": "destructor_like",
+    "evidence": "calls delete/free helpers",
+    "domain": "world_event"
+  },
+  "0x1400a5950": {
+    "name": "FUN_1400a5950",
+    "size": 810,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
   "0x1400a5d20": {
@@ -3647,13 +4119,21 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1400a65d0": {
+    "name": "FUN_1400a65d0",
+    "size": 920,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_140025900 x4",
+    "domain": "debug"
+  },
   "0x1400a6cb0": {
     "name": "FUN_1400a6cb0",
     "size": 244,
     "role": "glue_factory",
     "category": "helper",
     "evidence": "calls 5 other funcs",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x1400a74e0": {
     "name": "FUN_1400a74e0",
@@ -3709,6 +4189,14 @@
     "role": null,
     "category": "struct_handler",
     "evidence": "15 field accesses on param_1",
+    "domain": "world_event"
+  },
+  "0x1400a8e00": {
+    "name": "FUN_1400a8e00",
+    "size": 47,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
   "0x1400a9180": {
@@ -3909,7 +4397,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 5 other funcs",
-    "domain": "aging"
+    "domain": "world_event"
   },
   "0x1400b2ee0": {
     "name": "FUN_1400b2ee0",
@@ -3926,6 +4414,14 @@
     "category": "repeated_op",
     "evidence": "calls FUN_1402f94c0 x4",
     "domain": "world_event"
+  },
+  "0x1400b35f0": {
+    "name": "FUN_1400b35f0",
+    "size": 89,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "debug"
   },
   "0x1400b3650": {
     "name": "FUN_1400b3650",
@@ -3999,6 +4495,22 @@
     "evidence": "calls FUN_1402f8e20 x6",
     "domain": "world_event"
   },
+  "0x1400b54a0": {
+    "name": "FUN_1400b54a0",
+    "size": 546,
+    "role": "lab_location",
+    "category": "float_math",
+    "evidence": "28 float vars, 4 consts",
+    "domain": "world_event"
+  },
+  "0x1400b56d0": {
+    "name": "FUN_1400b56d0",
+    "size": 761,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
   "0x1400b5b50": {
     "name": "FUN_1400b5b50",
     "size": 1048,
@@ -4006,6 +4518,14 @@
     "category": "repeated_op",
     "evidence": "calls FUN_1402f8e20 x4",
     "domain": "world_event"
+  },
+  "0x1400b5f80": {
+    "name": "FUN_1400b5f80",
+    "size": 78,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "aging"
   },
   "0x1400b5fe0": {
     "name": "FUN_1400b5fe0",
@@ -4031,6 +4551,22 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1400b6260": {
+    "name": "FUN_1400b6260",
+    "size": 244,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400b6360": {
+    "name": "FUN_1400b6360",
+    "size": 682,
+    "role": "lab_location",
+    "category": "float_math",
+    "evidence": "71 float vars, 17 consts",
+    "domain": "world_event"
+  },
   "0x1400b6610": {
     "name": "FUN_1400b6610",
     "size": 518,
@@ -4047,6 +4583,14 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1400b6890": {
+    "name": "FUN_1400b6890",
+    "size": 236,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
   "0x1400b6990": {
     "name": "FUN_1400b6990",
     "size": 252,
@@ -4061,6 +4605,22 @@
     "role": null,
     "category": "float_math",
     "evidence": "20 float vars, 0 consts",
+    "domain": "world_event"
+  },
+  "0x1400b6cd0": {
+    "name": "FUN_1400b6cd0",
+    "size": 430,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400b6e90": {
+    "name": "FUN_1400b6e90",
+    "size": 307,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
     "domain": "world_event"
   },
   "0x1400b6fd0": {
@@ -4117,7 +4677,15 @@
     "role": null,
     "category": "struct_handler",
     "evidence": "12 field accesses on param_1",
-    "domain": "aging"
+    "domain": "world_event"
+  },
+  "0x1400b78d0": {
+    "name": "FUN_1400b78d0",
+    "size": 1787,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400c5c10 x11",
+    "domain": "world_event"
   },
   "0x1400b7fe0": {
     "name": "FUN_1400b7fe0",
@@ -4133,6 +4701,14 @@
     "role": null,
     "category": "medium_loop",
     "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1400b85b0": {
+    "name": "FUN_1400b85b0",
+    "size": 167,
+    "role": null,
+    "category": "struct_handler",
+    "evidence": "11 field accesses on param_1",
     "domain": "world_event"
   },
   "0x1400b8720": {
@@ -4341,7 +4917,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 6 other funcs",
-    "domain": "aging"
+    "domain": "world_event"
   },
   "0x1400bfa90": {
     "name": "FUN_1400bfa90",
@@ -4357,6 +4933,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
+    "domain": "debug"
+  },
+  "0x1400c03a0": {
+    "name": "FUN_1400c03a0",
+    "size": 235,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
     "domain": "debug"
   },
   "0x1400c0660": {
@@ -4383,6 +4967,30 @@
     "evidence": "calls FUN_1400c5f50 x6",
     "domain": "world_event"
   },
+  "0x1400c42e0": {
+    "name": "FUN_1400c42e0",
+    "size": 8,
+    "role": null,
+    "category": "empty_stub",
+    "evidence": "size=8",
+    "domain": "debug"
+  },
+  "0x1400c42f0": {
+    "name": "FUN_1400c42f0",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_1400c42f0",
+    "domain": "debug"
+  },
+  "0x1400c4310": {
+    "name": "FUN_1400c4310",
+    "size": 8,
+    "role": null,
+    "category": "empty_stub",
+    "evidence": "size=8",
+    "domain": "debug"
+  },
   "0x1400c4320": {
     "name": "FUN_1400c4320",
     "size": 16,
@@ -4405,6 +5013,14 @@
     "role": null,
     "category": "empty_stub",
     "evidence": "size=8",
+    "domain": "world_event"
+  },
+  "0x1400c43d0": {
+    "name": "FUN_1400c43d0",
+    "size": 935,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c7088 x5",
     "domain": "world_event"
   },
   "0x1400c4a10": {
@@ -4437,7 +5053,7 @@
     "role": null,
     "category": "empty_stub",
     "evidence": "size=8",
-    "domain": "world_event"
+    "domain": "debug"
   },
   "0x1400c4e20": {
     "name": "FUN_1400c4e20",
@@ -4453,6 +5069,14 @@
     "role": null,
     "category": "wrapper",
     "evidence": "single delegated call to FUN_1400c5530",
+    "domain": "world_event"
+  },
+  "0x1400c5560": {
+    "name": "FUN_1400c5560",
+    "size": 27,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_1400c5560",
     "domain": "world_event"
   },
   "0x1400c5580": {
@@ -4703,6 +5327,14 @@
     "evidence": "small return-only function",
     "domain": "world_event"
   },
+  "0x1400c6e80": {
+    "name": "FUN_1400c6e80",
+    "size": 125,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
   "0x1400c7320": {
     "name": "FUN_1400c7320",
     "size": 438,
@@ -4725,7 +5357,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 2 other funcs",
-    "domain": "world_event"
+    "domain": null
   },
   "0x1400c7600": {
     "name": "FUN_1400c7600",
@@ -4749,7 +5381,7 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 1 other funcs",
-    "domain": null
+    "domain": "aging"
   },
   "0x1400c7910": {
     "name": "FUN_1400c7910",
@@ -4941,7 +5573,7 @@
     "role": null,
     "category": "wrapper",
     "evidence": "single delegated call to FUN_1400ca240",
-    "domain": "world_event"
+    "domain": null
   },
   "0x1400ca260": {
     "name": "FUN_1400ca260",
@@ -4965,6 +5597,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400cb760": {
+    "name": "FUN_1400cb760",
+    "size": 337,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
     "domain": "world_event"
   },
   "0x1400cb8c0": {
@@ -4999,9 +5639,25 @@
     "evidence": "calls 4 other funcs",
     "domain": "world_event"
   },
+  "0x1400cca50": {
+    "name": "FUN_1400cca50",
+    "size": 182,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
   "0x1400ccbd0": {
     "name": "FUN_1400ccbd0",
     "size": 551,
+    "role": null,
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
+    "domain": "world_event"
+  },
+  "0x1400cce00": {
+    "name": "FUN_1400cce00",
+    "size": 728,
     "role": null,
     "category": "iterates_horse_list_0xb8",
     "evidence": "horse-list iter at +0xb8/+0xc0",
@@ -5039,6 +5695,14 @@
     "evidence": "calls 2 other funcs",
     "domain": "debug"
   },
+  "0x1400cd5a0": {
+    "name": "FUN_1400cd5a0",
+    "size": 1326,
+    "role": null,
+    "category": "float_math_complex",
+    "evidence": "45 float vars, 25 consts",
+    "domain": "world_event"
+  },
   "0x1400cdae0": {
     "name": "FUN_1400cdae0",
     "size": 733,
@@ -5069,6 +5733,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400ceb60": {
+    "name": "FUN_1400ceb60",
+    "size": 2502,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c7088 x5",
     "domain": "world_event"
   },
   "0x1400cf540": {
@@ -5143,6 +5815,14 @@
     "evidence": "large loop-containing function",
     "domain": "world_event"
   },
+  "0x1400d0c50": {
+    "name": "FUN_1400d0c50",
+    "size": 39,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": null
+  },
   "0x1400d0c80": {
     "name": "FUN_1400d0c80",
     "size": 4008,
@@ -5167,12 +5847,28 @@
     "evidence": "calls 5 other funcs",
     "domain": "world_event"
   },
+  "0x1400d1f20": {
+    "name": "FUN_1400d1f20",
+    "size": 350,
+    "role": null,
+    "category": "struct_handler",
+    "evidence": "10 field accesses on param_1",
+    "domain": "fatigue"
+  },
   "0x1400d2090": {
     "name": "FUN_1400d2090",
     "size": 821,
     "role": "lab_location",
     "category": "float_math_complex",
     "evidence": "28 float vars, 20 consts",
+    "domain": "world_event"
+  },
+  "0x1400d23d0": {
+    "name": "FUN_1400d23d0",
+    "size": 873,
+    "role": "lab_location",
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
     "domain": "world_event"
   },
   "0x1400d2740": {
@@ -5182,6 +5878,14 @@
     "category": "float_math_complex",
     "evidence": "27 float vars, 12 consts",
     "domain": "race"
+  },
+  "0x1400d2ab0": {
+    "name": "FUN_1400d2ab0",
+    "size": 9349,
+    "role": "lab_location",
+    "category": "struct_init",
+    "evidence": "zero-inits 4 fields",
+    "domain": "world_event"
   },
   "0x1400d4f50": {
     "name": "FUN_1400d4f50",
@@ -5231,12 +5935,28 @@
     "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
+  "0x1400d6d50": {
+    "name": "FUN_1400d6d50",
+    "size": 482,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400b6150 x4",
+    "domain": "world_event"
+  },
   "0x1400d6f40": {
     "name": "FUN_1400d6f40",
     "size": 455,
     "role": null,
     "category": "repeated_op",
     "evidence": "calls FUN_1400b6150 x8",
+    "domain": "world_event"
+  },
+  "0x1400d7110": {
+    "name": "FUN_1400d7110",
+    "size": 126,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
   "0x1400d7190": {
@@ -5247,12 +5967,28 @@
     "evidence": "calls FUN_1400b6150 x12",
     "domain": "world_event"
   },
+  "0x1400d72f0": {
+    "name": "FUN_1400d72f0",
+    "size": 1342,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400b6150 x16",
+    "domain": "world_event"
+  },
   "0x1400d7830": {
     "name": "FUN_1400d7830",
     "size": 1181,
     "role": null,
     "category": "repeated_op",
     "evidence": "calls FUN_1400b6150 x32",
+    "domain": "world_event"
+  },
+  "0x1400d7cd0": {
+    "name": "FUN_1400d7cd0",
+    "size": 399,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400b6150 x4",
     "domain": "world_event"
   },
   "0x1400d7e60": {
@@ -5279,6 +6015,14 @@
     "evidence": "moderate loop-containing function",
     "domain": "world_event"
   },
+  "0x1400d83f0": {
+    "name": "FUN_1400d83f0",
+    "size": 680,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1400b6150 x4",
+    "domain": "world_event"
+  },
   "0x1400d86a0": {
     "name": "FUN_1400d86a0",
     "size": 632,
@@ -5298,6 +6042,14 @@
   "0x1400d8c00": {
     "name": "FUN_1400d8c00",
     "size": 111,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1400d8c70": {
+    "name": "FUN_1400d8c70",
+    "size": 139,
     "role": null,
     "category": "helper",
     "evidence": "calls 2 other funcs",
@@ -5359,12 +6111,36 @@
     "evidence": "calls FUN_1400cf540 x8",
     "domain": "world_event"
   },
+  "0x1400dbe10": {
+    "name": "FUN_1400dbe10",
+    "size": 896,
+    "role": "lab_location",
+    "category": "struct_init",
+    "evidence": "zero-inits 4 fields",
+    "domain": "world_event"
+  },
   "0x1400dc2d0": {
     "name": "FUN_1400dc2d0",
     "size": 183,
     "role": null,
     "category": "destructor_like",
     "evidence": "calls delete/free helpers",
+    "domain": "fatigue"
+  },
+  "0x1400dcab0": {
+    "name": "FUN_1400dcab0",
+    "size": 4986,
+    "role": "age_too_old_check",
+    "category": "struct_init",
+    "evidence": "zero-inits 7 fields",
+    "domain": "aging"
+  },
+  "0x1400dde40": {
+    "name": "FUN_1400dde40",
+    "size": 5159,
+    "role": "fatigue_eligibility_check",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c7088 x11",
     "domain": "fatigue"
   },
   "0x1400df280": {
@@ -5413,7 +6189,7 @@
     "role": null,
     "category": "repeated_op",
     "evidence": "calls FUN_1400cf540 x4",
-    "domain": "save_io"
+    "domain": "world_event"
   },
   "0x1400f6fe0": {
     "name": "FUN_1400f6fe0",
@@ -5421,6 +6197,14 @@
     "role": "lab_location",
     "category": "struct_init",
     "evidence": "zero-inits 6 fields",
+    "domain": "world_event"
+  },
+  "0x1400f9b40": {
+    "name": "FUN_1400f9b40",
+    "size": 129,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
     "domain": "world_event"
   },
   "0x1400fa910": {
@@ -5479,6 +6263,30 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1400fce70": {
+    "name": "FUN_1400fce70",
+    "size": 860,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1400fd1e0": {
+    "name": "FUN_1400fd1e0",
+    "size": 495,
+    "role": null,
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
+    "domain": "world_event"
+  },
+  "0x1400fd3e0": {
+    "name": "FUN_1400fd3e0",
+    "size": 375,
+    "role": "chromosome_extractor",
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
+    "domain": "genetics"
+  },
   "0x1400fd580": {
     "name": "FUN_1400fd580",
     "size": 2159,
@@ -5495,6 +6303,38 @@
     "evidence": "calls FUN_1402c704c x24",
     "domain": "save_io"
   },
+  "0x1400fe2e0": {
+    "name": "FUN_1400fe2e0",
+    "size": 5277,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1402c704c x26",
+    "domain": "world_event"
+  },
+  "0x1400ff790": {
+    "name": "FUN_1400ff790",
+    "size": 886,
+    "role": null,
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
+    "domain": "world_event"
+  },
+  "0x1400ffb10": {
+    "name": "FUN_1400ffb10",
+    "size": 484,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1400ffd00": {
+    "name": "FUN_1400ffd00",
+    "size": 565,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
   "0x140100230": {
     "name": "FUN_140100230",
     "size": 419,
@@ -5509,6 +6349,14 @@
     "role": "lab_location",
     "category": "medium_loop",
     "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1401005b0": {
+    "name": "FUN_1401005b0",
+    "size": 1157,
+    "role": "lab_location",
+    "category": "loop_heavy",
+    "evidence": "large loop-containing function",
     "domain": "world_event"
   },
   "0x140100a40": {
@@ -5527,12 +6375,28 @@
     "evidence": "8 field accesses on param_1",
     "domain": "world_event"
   },
+  "0x140100d80": {
+    "name": "FUN_140100d80",
+    "size": 163,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
   "0x140100e30": {
     "name": "FUN_140100e30",
     "size": 379,
     "role": null,
     "category": "helper",
     "evidence": "calls 10 other funcs",
+    "domain": "world_event"
+  },
+  "0x140100fc0": {
+    "name": "FUN_140100fc0",
+    "size": 207,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
     "domain": "world_event"
   },
   "0x1401010d0": {
@@ -5611,6 +6475,14 @@
     "name": "FUN_140102df0",
     "size": 1621,
     "role": "lab_location",
+    "category": "iterates_horse_list_0xb8",
+    "evidence": "horse-list iter at +0xb8/+0xc0",
+    "domain": "world_event"
+  },
+  "0x140103450": {
+    "name": "FUN_140103450",
+    "size": 334,
+    "role": null,
     "category": "iterates_horse_list_0xb8",
     "evidence": "horse-list iter at +0xb8/+0xc0",
     "domain": "world_event"
@@ -5831,6 +6703,14 @@
     "evidence": "calls FUN_1400c6940 x28",
     "domain": "world_event"
   },
+  "0x14010dd70": {
+    "name": "FUN_14010dd70",
+    "size": 92,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
   "0x14010dde0": {
     "name": "FUN_14010dde0",
     "size": 34,
@@ -5879,6 +6759,54 @@
     "evidence": "moderate loop-containing function",
     "domain": "aging"
   },
+  "0x140110a10": {
+    "name": "FUN_140110a10",
+    "size": 473,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x140110bf0": {
+    "name": "FUN_140110bf0",
+    "size": 625,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x140110ef0": {
+    "name": "FUN_140110ef0",
+    "size": 442,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401112f0": {
+    "name": "FUN_1401112f0",
+    "size": 1624,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_140110ef0 x4",
+    "domain": "world_event"
+  },
+  "0x140111a50": {
+    "name": "FUN_140111a50",
+    "size": 508,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x140111f20": {
+    "name": "FUN_140111f20",
+    "size": 477,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
   "0x140112100": {
     "name": "FUN_140112100",
     "size": 125,
@@ -5901,6 +6829,1070 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012dec0": {
+    "name": "FUN_14012dec0",
+    "size": 54,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012df60": {
+    "name": "FUN_14012df60",
+    "size": 144,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012dff0": {
+    "name": "FUN_14012dff0",
+    "size": 89,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e0b0": {
+    "name": "FUN_14012e0b0",
+    "size": 42,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e0e0": {
+    "name": "FUN_14012e0e0",
+    "size": 42,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e110": {
+    "name": "FUN_14012e110",
+    "size": 323,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 7 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e2e0": {
+    "name": "FUN_14012e2e0",
+    "size": 42,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e730": {
+    "name": "FUN_14012e730",
+    "size": 61,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e770": {
+    "name": "FUN_14012e770",
+    "size": 29,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x14012e790": {
+    "name": "FUN_14012e790",
+    "size": 188,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e850": {
+    "name": "FUN_14012e850",
+    "size": 39,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012e880": {
+    "name": "FUN_14012e880",
+    "size": 432,
+    "role": null,
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x14012ee40": {
+    "name": "FUN_14012ee40",
+    "size": 34,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012ef10": {
+    "name": "FUN_14012ef10",
+    "size": 29,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012ef60": {
+    "name": "FUN_14012ef60",
+    "size": 200,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012f0d0": {
+    "name": "FUN_14012f0d0",
+    "size": 76,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012f1a0": {
+    "name": "FUN_14012f1a0",
+    "size": 97,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012f790": {
+    "name": "FUN_14012f790",
+    "size": 203,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012f860": {
+    "name": "FUN_14012f860",
+    "size": 114,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x14012fd40": {
+    "name": "FUN_14012fd40",
+    "size": 30,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x1401300a0": {
+    "name": "FUN_1401300a0",
+    "size": 352,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x140138fb0": {
+    "name": "FUN_140138fb0",
+    "size": 7,
+    "role": null,
+    "category": "empty_stub",
+    "evidence": "size=7",
+    "domain": "world_event"
+  },
+  "0x140138fc0": {
+    "name": "FUN_140138fc0",
+    "size": 11,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x140138fe0": {
+    "name": "FUN_140138fe0",
+    "size": 14,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140138fe0",
+    "domain": "world_event"
+  },
+  "0x140139010": {
+    "name": "FUN_140139010",
+    "size": 5,
+    "role": null,
+    "category": "empty_stub",
+    "evidence": "size=5",
+    "domain": "world_event"
+  },
+  "0x140142630": {
+    "name": "FUN_140142630",
+    "size": 131,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401426c0": {
+    "name": "FUN_1401426c0",
+    "size": 89,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401427d0": {
+    "name": "FUN_1401427d0",
+    "size": 364,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 11 other funcs",
+    "domain": "world_event"
+  },
+  "0x140142960": {
+    "name": "FUN_140142960",
+    "size": 126,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 7 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401429e0": {
+    "name": "FUN_1401429e0",
+    "size": 57,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x140142b00": {
+    "name": "FUN_140142b00",
+    "size": 173,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401492f0": {
+    "name": "FUN_1401492f0",
+    "size": 14,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x140163700": {
+    "name": "FUN_140163700",
+    "size": 199,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401637d0": {
+    "name": "FUN_1401637d0",
+    "size": 205,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401638b0": {
+    "name": "FUN_1401638b0",
+    "size": 120,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140163ab0": {
+    "name": "FUN_140163ab0",
+    "size": 12,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x140163ac0": {
+    "name": "FUN_140163ac0",
+    "size": 378,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_140138fe0 x4",
+    "domain": "world_event"
+  },
+  "0x140163c40": {
+    "name": "FUN_140163c40",
+    "size": 100,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174040": {
+    "name": "FUN_140174040",
+    "size": 20,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140174040",
+    "domain": "world_event"
+  },
+  "0x1401745e0": {
+    "name": "FUN_1401745e0",
+    "size": 8,
+    "role": null,
+    "category": "empty_stub",
+    "evidence": "size=8",
+    "domain": "world_event"
+  },
+  "0x1401746e0": {
+    "name": "FUN_1401746e0",
+    "size": 242,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 11 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401747e0": {
+    "name": "FUN_1401747e0",
+    "size": 81,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174920": {
+    "name": "FUN_140174920",
+    "size": 44,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174970": {
+    "name": "FUN_140174970",
+    "size": 103,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1401841e0 x4",
+    "domain": "world_event"
+  },
+  "0x1401749e0": {
+    "name": "FUN_1401749e0",
+    "size": 257,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174c40": {
+    "name": "FUN_140174c40",
+    "size": 234,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174d30": {
+    "name": "FUN_140174d30",
+    "size": 153,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174dd0": {
+    "name": "FUN_140174dd0",
+    "size": 148,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140174e70": {
+    "name": "FUN_140174e70",
+    "size": 332,
+    "role": null,
+    "category": "float_math",
+    "evidence": "23 float vars, 2 consts",
+    "domain": "world_event"
+  },
+  "0x140174fc0": {
+    "name": "FUN_140174fc0",
+    "size": 19,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x140175050": {
+    "name": "FUN_140175050",
+    "size": 86,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401750b0": {
+    "name": "FUN_1401750b0",
+    "size": 292,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 9 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401753d0": {
+    "name": "FUN_1401753d0",
+    "size": 173,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x140175500": {
+    "name": "FUN_140175500",
+    "size": 145,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401755c0": {
+    "name": "FUN_1401755c0",
+    "size": 60,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140179150": {
+    "name": "FUN_140179150",
+    "size": 323,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1401792e0": {
+    "name": "FUN_1401792e0",
+    "size": 125,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x140179430": {
+    "name": "FUN_140179430",
+    "size": 35,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x140179690": {
+    "name": "FUN_140179690",
+    "size": 30,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140179a30": {
+    "name": "FUN_140179a30",
+    "size": 255,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x140179b30": {
+    "name": "FUN_140179b30",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140179b30",
+    "domain": "world_event"
+  },
+  "0x140179b40": {
+    "name": "FUN_140179b40",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140179b40",
+    "domain": "world_event"
+  },
+  "0x140179b60": {
+    "name": "FUN_140179b60",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140179b60",
+    "domain": "world_event"
+  },
+  "0x14017c930": {
+    "name": "FUN_14017c930",
+    "size": 345,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x14017ca90": {
+    "name": "FUN_14017ca90",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_14017ca90",
+    "domain": "world_event"
+  },
+  "0x14017caa0": {
+    "name": "FUN_14017caa0",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_14017caa0",
+    "domain": "world_event"
+  },
+  "0x14017cab0": {
+    "name": "FUN_14017cab0",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_14017cab0",
+    "domain": "world_event"
+  },
+  "0x14017cae0": {
+    "name": "FUN_14017cae0",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_14017cae0",
+    "domain": "world_event"
+  },
+  "0x14017ffb0": {
+    "name": "FUN_14017ffb0",
+    "size": 17,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x1401840e0": {
+    "name": "FUN_1401840e0",
+    "size": 61,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401841a0": {
+    "name": "FUN_1401841a0",
+    "size": 51,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401841e0": {
+    "name": "FUN_1401841e0",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_1401841e0",
+    "domain": "world_event"
+  },
+  "0x1401841f0": {
+    "name": "FUN_1401841f0",
+    "size": 49,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x140184230": {
+    "name": "FUN_140184230",
+    "size": 49,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401842c0": {
+    "name": "FUN_1401842c0",
+    "size": 85,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140184320": {
+    "name": "FUN_140184320",
+    "size": 339,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140184480": {
+    "name": "FUN_140184480",
+    "size": 262,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x140188550": {
+    "name": "FUN_140188550",
+    "size": 85,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401885b0": {
+    "name": "FUN_1401885b0",
+    "size": 185,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x140188670": {
+    "name": "FUN_140188670",
+    "size": 13,
+    "role": null,
+    "category": "wrapper",
+    "evidence": "single delegated call to FUN_140188670",
+    "domain": "world_event"
+  },
+  "0x140196db0": {
+    "name": "FUN_140196db0",
+    "size": 2291,
+    "role": "lab_location",
+    "category": "switch_dispatcher",
+    "evidence": "22 case branches",
+    "domain": "world_event"
+  },
+  "0x140197710": {
+    "name": "FUN_140197710",
+    "size": 29,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
+    "domain": "world_event"
+  },
+  "0x140197730": {
+    "name": "FUN_140197730",
+    "size": 233,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x140197820": {
+    "name": "FUN_140197820",
+    "size": 407,
+    "role": "lab_location",
+    "category": "float_math",
+    "evidence": "28 float vars, 0 consts",
+    "domain": "world_event"
+  },
+  "0x1401979c0": {
+    "name": "FUN_1401979c0",
+    "size": 207,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_140179690 x4",
+    "domain": "world_event"
+  },
+  "0x1401a9ed0": {
+    "name": "FUN_1401a9ed0",
+    "size": 30,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401a9ef0": {
+    "name": "FUN_1401a9ef0",
+    "size": 230,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401aa890": {
+    "name": "FUN_1401aa890",
+    "size": 234,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 7 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401aaea0": {
+    "name": "FUN_1401aaea0",
+    "size": 59,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401aaee0": {
+    "name": "FUN_1401aaee0",
+    "size": 179,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401aafa0": {
+    "name": "FUN_1401aafa0",
+    "size": 54,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401aaff0": {
+    "name": "FUN_1401aaff0",
+    "size": 171,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab100": {
+    "name": "FUN_1401ab100",
+    "size": 257,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 8 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab340": {
+    "name": "FUN_1401ab340",
+    "size": 144,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab3d0": {
+    "name": "FUN_1401ab3d0",
+    "size": 229,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab4c0": {
+    "name": "FUN_1401ab4c0",
+    "size": 112,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab530": {
+    "name": "FUN_1401ab530",
+    "size": 47,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab560": {
+    "name": "FUN_1401ab560",
+    "size": 199,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab630": {
+    "name": "FUN_1401ab630",
+    "size": 290,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab760": {
+    "name": "FUN_1401ab760",
+    "size": 51,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401ab7a0": {
+    "name": "FUN_1401ab7a0",
+    "size": 162,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401acdd0": {
+    "name": "FUN_1401acdd0",
+    "size": 225,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 7 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401acec0": {
+    "name": "FUN_1401acec0",
+    "size": 3099,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1401841f0 x14",
+    "domain": "world_event"
+  },
+  "0x1401b52b0": {
+    "name": "FUN_1401b52b0",
+    "size": 517,
+    "role": "lab_location",
+    "category": "float_math",
+    "evidence": "21 float vars, 2 consts",
+    "domain": "world_event"
+  },
+  "0x1401b54e0": {
+    "name": "FUN_1401b54e0",
+    "size": 197,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401b5d50": {
+    "name": "FUN_1401b5d50",
+    "size": 805,
+    "role": "lab_location",
+    "category": "float_math_complex",
+    "evidence": "20 float vars, 1 consts",
+    "domain": "world_event"
+  },
+  "0x1401bbf50": {
+    "name": "FUN_1401bbf50",
+    "size": 828,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1401749e0 x5",
+    "domain": "world_event"
+  },
+  "0x1401c0ba0": {
+    "name": "FUN_1401c0ba0",
+    "size": 259,
+    "role": null,
+    "category": "switch_dispatcher",
+    "evidence": "9 case branches",
+    "domain": "world_event"
+  },
+  "0x1401c10d0": {
+    "name": "FUN_1401c10d0",
+    "size": 4690,
+    "role": "lab_location",
+    "category": "repeated_op",
+    "evidence": "calls FUN_1401c97e0 x17",
+    "domain": "world_event"
+  },
+  "0x1401c4180": {
+    "name": "FUN_1401c4180",
+    "size": 314,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c42c0": {
+    "name": "FUN_1401c42c0",
+    "size": 146,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c5df0": {
+    "name": "FUN_1401c5df0",
+    "size": 148,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c7e90": {
+    "name": "FUN_1401c7e90",
+    "size": 267,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c85b0": {
+    "name": "FUN_1401c85b0",
+    "size": 232,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c86a0": {
+    "name": "FUN_1401c86a0",
+    "size": 214,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c95c0": {
+    "name": "FUN_1401c95c0",
+    "size": 111,
+    "role": null,
+    "category": "struct_handler",
+    "evidence": "8 field accesses on param_1",
+    "domain": "world_event"
+  },
+  "0x1401c9630": {
+    "name": "FUN_1401c9630",
+    "size": 181,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_1401841e0 x10",
+    "domain": "world_event"
+  },
+  "0x1401c9730": {
+    "name": "FUN_1401c9730",
+    "size": 44,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c9760": {
+    "name": "FUN_1401c9760",
+    "size": 59,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c97e0": {
+    "name": "FUN_1401c97e0",
+    "size": 1105,
+    "role": null,
+    "category": "struct_init",
+    "evidence": "zero-inits 17 fields",
+    "domain": "world_event"
+  },
+  "0x1401c9c60": {
+    "name": "FUN_1401c9c60",
+    "size": 101,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c9e50": {
+    "name": "FUN_1401c9e50",
+    "size": 204,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401c9f60": {
+    "name": "FUN_1401c9f60",
+    "size": 637,
+    "role": null,
+    "category": "repeated_op",
+    "evidence": "calls FUN_14012e0b0 x8",
+    "domain": "world_event"
+  },
+  "0x1401ca4b0": {
+    "name": "FUN_1401ca4b0",
+    "size": 50,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cade0": {
+    "name": "FUN_1401cade0",
+    "size": 80,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cb240": {
+    "name": "FUN_1401cb240",
+    "size": 285,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cba40": {
+    "name": "FUN_1401cba40",
+    "size": 117,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cbac0": {
+    "name": "FUN_1401cbac0",
+    "size": 101,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cbb30": {
+    "name": "FUN_1401cbb30",
+    "size": 188,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1401cbbf0": {
+    "name": "FUN_1401cbbf0",
+    "size": 116,
+    "role": null,
+    "category": "plays_sound_or_event",
+    "evidence": "trigger='DXGIGetDebugInterface'",
+    "domain": "world_event"
+  },
+  "0x1401cd800": {
+    "name": "FUN_1401cd800",
+    "size": 88,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x140217520": {
+    "name": "FUN_140217520",
+    "size": 34,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402175d0": {
+    "name": "FUN_1402175d0",
+    "size": 64,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
     "domain": "world_event"
   },
   "0x1402c5a60": {
@@ -6407,6 +8399,14 @@
     "evidence": "calls 3 other funcs",
     "domain": "world_event"
   },
+  "0x1402d1af8": {
+    "name": "FUN_1402d1af8",
+    "size": 431,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
   "0x1402d1ca8": {
     "name": "FUN_1402d1ca8",
     "size": 168,
@@ -6511,6 +8511,14 @@
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
   },
+  "0x1402d42e8": {
+    "name": "FUN_1402d42e8",
+    "size": 871,
+    "role": "lab_location",
+    "category": "struct_init",
+    "evidence": "zero-inits 8 fields",
+    "domain": "world_event"
+  },
   "0x1402d4650": {
     "name": "FUN_1402d4650",
     "size": 878,
@@ -6583,6 +8591,14 @@
     "evidence": "calls 4 other funcs",
     "domain": "world_event"
   },
+  "0x1402d7b3c": {
+    "name": "FUN_1402d7b3c",
+    "size": 449,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
   "0x1402d7d00": {
     "name": "FUN_1402d7d00",
     "size": 593,
@@ -6599,6 +8615,14 @@
     "evidence": "calls 1 other funcs",
     "domain": "world_event"
   },
+  "0x1402d83ac": {
+    "name": "FUN_1402d83ac",
+    "size": 729,
+    "role": "lab_location",
+    "category": "medium_loop",
+    "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
   "0x1402d8688": {
     "name": "FUN_1402d8688",
     "size": 731,
@@ -6613,6 +8637,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 1 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402d8a8c": {
+    "name": "FUN_1402d8a8c",
+    "size": 177,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
     "domain": "world_event"
   },
   "0x1402d8ca8": {
@@ -6678,6 +8710,22 @@
     "category": "helper",
     "evidence": "calls 2 other funcs",
     "domain": "world_event"
+  },
+  "0x1402daf2c": {
+    "name": "FUN_1402daf2c",
+    "size": 356,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 6 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402db0a8": {
+    "name": "FUN_1402db0a8",
+    "size": 152,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "debug"
   },
   "0x1402de160": {
     "name": "FUN_1402de160",
@@ -6765,6 +8813,14 @@
     "role": null,
     "category": "helper",
     "evidence": "calls 5 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402e16a0": {
+    "name": "FUN_1402e16a0",
+    "size": 17,
+    "role": null,
+    "category": "simple_return",
+    "evidence": "small return-only function",
     "domain": "world_event"
   },
   "0x1402e1710": {
@@ -7111,9 +9167,25 @@
     "evidence": "calls FUN_1402f4f90 x4",
     "domain": "world_event"
   },
+  "0x1402eada0": {
+    "name": "FUN_1402eada0",
+    "size": 286,
+    "role": null,
+    "category": "struct_init",
+    "evidence": "zero-inits 3 fields",
+    "domain": "world_event"
+  },
   "0x1402eaf4c": {
     "name": "FUN_1402eaf4c",
     "size": 175,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402eb0c8": {
+    "name": "FUN_1402eb0c8",
+    "size": 154,
     "role": null,
     "category": "helper",
     "evidence": "calls 3 other funcs",
@@ -7397,6 +9469,38 @@
     "role": "lab_location",
     "category": "medium_loop",
     "evidence": "moderate loop-containing function",
+    "domain": "world_event"
+  },
+  "0x1402ee95c": {
+    "name": "FUN_1402ee95c",
+    "size": 247,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402eeb50": {
+    "name": "FUN_1402eeb50",
+    "size": 136,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 2 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402eebd8": {
+    "name": "FUN_1402eebd8",
+    "size": 203,
+    "role": "lab_location",
+    "category": "helper",
+    "evidence": "calls 4 other funcs",
+    "domain": "world_event"
+  },
+  "0x1402eed70": {
+    "name": "FUN_1402eed70",
+    "size": 73,
+    "role": null,
+    "category": "helper",
+    "evidence": "calls 3 other funcs",
     "domain": "world_event"
   },
   "0x1402eeef8": {

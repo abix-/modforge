@@ -1,0 +1,104 @@
+# `FUN_1402eada0` @ 0x1402eada0
+
+**Size**: 286 bytes
+**Domain**: `world_event` - world location / event / action
+**Pattern**: `struct_init` - Zero-initializes consecutive struct fields (constructor-like)
+**Evidence**: zero-inits 3 fields
+
+**Game callers** (2): [`FUN_1402eada0`](1402eada0_FUN_1402eada0.md), [`FUN_1402eb0c8`](1402eb0c8_FUN_1402eb0c8.md)
+
+**Game callees** (3): [`FUN_1402cd39c`](1402cd39c_FUN_1402cd39c.md), [`FUN_1402eada0`](1402eada0_FUN_1402eada0.md), [`FUN_1402eaf4c`](1402eaf4c_FUN_1402eaf4c.md)
+
+**Vendor callees**: 0 (SDL/CRT/etc, not shown)
+
+## Decompiled
+
+```c
+undefined8 FUN_1402eada0(uint param_1,undefined8 param_2,undefined4 param_3,longlong param_4)
+
+{
+
+  bool bVar1;
+
+  undefined8 uVar2;
+
+  if (param_1 == 0xfffffffe) {
+
+    *(undefined1 *)(param_4 + 0x38) = 1;
+
+    *(undefined4 *)(param_4 + 0x34) = 0;
+
+    *(undefined1 *)(param_4 + 0x30) = 1;
+
+    *(undefined4 *)(param_4 + 0x2c) = 9;
+
+  }
+
+  else {
+
+    if (((int)param_1 < 0) || (DAT_1403ff560 <= param_1)) {
+
+      bVar1 = false;
+
+    }
+
+    else {
+
+      bVar1 = true;
+
+    }
+
+    if (bVar1) {
+
+      if ((*(byte *)((&DAT_1403ff160)[(longlong)(int)param_1 >> 6] + 0x38 +
+
+                    (ulonglong)(param_1 & 0x3f) * 0x48) & 1) != 0) {
+
+        __acrt_lowio_lock_fh(param_1);
+
+        uVar2 = 0xffffffffffffffff;
+
+        if ((*(byte *)((&DAT_1403ff160)[(longlong)(int)param_1 >> 6] + 0x38 +
+
+                      (ulonglong)(param_1 & 0x3f) * 0x48) & 1) == 0) {
+
+          *(undefined1 *)(param_4 + 0x30) = 1;
+
+          *(undefined4 *)(param_4 + 0x2c) = 9;
+
+          *(undefined1 *)(param_4 + 0x38) = 1;
+
+          *(undefined4 *)(param_4 + 0x34) = 0;
+
+        }
+
+        else {
+
+          uVar2 = FUN_1402eaf4c(param_1,param_2,param_3,param_4);
+
+        }
+
+        __acrt_lowio_unlock_fh(param_1);
+
+        return uVar2;
+
+      }
+
+    }
+
+    *(undefined1 *)(param_4 + 0x38) = 1;
+
+    *(undefined4 *)(param_4 + 0x34) = 0;
+
+    *(undefined1 *)(param_4 + 0x30) = 1;
+
+    *(undefined4 *)(param_4 + 0x2c) = 9;
+
+    FUN_1402cd39c(0,0,0,0,0,param_4);
+
+  }
+
+  return 0xffffffffffffffff;
+
+}
+```

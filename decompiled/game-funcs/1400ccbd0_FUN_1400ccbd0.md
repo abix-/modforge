@@ -5,7 +5,7 @@
 **Pattern**: `iterates_horse_list_0xb8` - Iterates the horse list at obj+0xb8/+0xc0
 **Evidence**: horse-list iter at +0xb8/+0xc0
 
-**Game callers** (2): [`FUN_1400ccbd0`](1400ccbd0_FUN_1400ccbd0.md), [`FUN_1400cead0`](1400cead0_FUN_1400cead0.md)
+**Game callers** (3): [`FUN_1400ccbd0`](1400ccbd0_FUN_1400ccbd0.md), [`FUN_1400cead0`](1400cead0_FUN_1400cead0.md), [`FUN_1400d2ab0`](1400d2ab0_FUN_1400d2ab0.md)
 
 **Game callees** (10): [`FUN_140024090`](140024090_FUN_140024090.md), [`FUN_1400285e0`](1400285e0_FUN_1400285e0.md), [`FUN_14002f0d0`](14002f0d0_FUN_14002f0d0.md), [`FUN_140037380`](140037380_FUN_140037380.md), [`FUN_14005c9b0`](14005c9b0_FUN_14005c9b0.md), [`FUN_1400b4a10`](1400b4a10_FUN_1400b4a10.md), [`FUN_1400b6170`](1400b6170_FUN_1400b6170.md), [`FUN_1400ccbd0`](1400ccbd0_FUN_1400ccbd0.md), [`FUN_1402c704c`](1402c704c_FUN_1402c704c.md), [`FUN_1402f8e20`](1402f8e20_FUN_1402f8e20.md)
 
