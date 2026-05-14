@@ -140,11 +140,17 @@ on every dimension that matters:
   consume r2sleigh as a dep and walk the public
   AST in our own emit module.
 
-### Phase 3: implementation (IN PROGRESS 2026-05-14)
+### Phase 3: implementation (DONE 2026-05-14, substantively)
 
-Status: Rust emit working end-to-end in the
-`r2sleigh-spike/` WSL crate. Open work is CLI
-parity and workspace integration (Phase 4).
+Status: Rust emit working end-to-end. CLI parity
+(`print` / `batch` / `dump-il`), naming layer, and
+1GB-stack guard all shipped. 13 of 18 documented
+Horsey key-funcs decompile cleanly with friendly
+names. The remaining 5 hit libsla-internal stack
+overflows; logged in
+[`../../decomp/docs/polish-ladder.md`](../../decomp/docs/polish-ladder.md)
+item 2. The `sweep` subcommand is deferred to the
+post-cutover ladder.
 
 - [x] Stand up a spike crate
   (`~/r2sleigh-spike/`, WSL). Pinned to local
@@ -233,46 +239,49 @@ parity and workspace integration (Phase 4).
   removed earlier; the per-crate docs at
   `falcon-printer/docs/` are the survivors.
 
-### Phase 5: polish ladder reset (open)
+### Phase 5: polish ladder reset (DONE 2026-05-14)
 
-Most of the old polish ladder (loops / switches /
-SSA / type inference) is now upstream's
-responsibility. New ladder items are Rust-idiom
-polish:
+New ladder lives at
+[`../../decomp/docs/polish-ladder.md`](../../decomp/docs/polish-ladder.md).
+8 prioritized items, ordered by leverage:
 
-- Recover Rust-style enum patterns where switch
-  cases match a tag field.
-- Emit `Option<*const T>` for nullable pointer
-  parameters (recover from null checks).
-- Pull `derive(Debug)`-style annotation onto
-  recovered structs.
-- Tail-call recognition (if r2sleigh doesn't
-  already detect them).
-- LLM-assisted naming (Phase 5+) for the
-  ~9k functions that don't have a Ghidra symbol.
+1. Windows build (libsla-sys `_WINDOWS` define
+   + cxx-bridge double-include; investigated this
+   session, partial fix proven).
+2. libsla-internal stack overflows on 5 dense
+   functions (basic-block splitting before lift
+   would fix).
+3. `sweep` subcommand port.
+4. Argument recovery + parameter types (lean on
+   r2types upstream).
+5. Struct shape recovery (per-binary YAML schema).
+6. Rust-idiom polish (`Option<*const T>` for
+   nullable pointers, etc.).
+7. Comment passthrough from Ghidra annotated C.
+8. Workspace integration + final cutover (gated on
+   item 1).
 
-## Open questions
+## Open questions (resolved)
 
-- **Crate name post-cutover.** Candidates:
-  `sleighprint` (parallels falcon-printer), `rdec-rust`
-  (mirrors `r2dec`), `rust-decomp` (boring/clear,
-  matches `<game>-mod` convention),
-  `r2-rust` (short, says-what-it-is). User
-  preference welcome.
-- **Upstream vs downstream crate.** Phase 2 picks
-  one. Default: downstream new crate (option c)
-  for independence.
-- **r2sleigh pinning.** Git dep on a commit hash
-  until they publish on crates.io. Update
-  cadence: pull upstream weekly during active
-  development; pin firmly when we cut a release.
-- **Existing artifacts.** The 11 sample
-  `horseygame/decompiled/rust/*.rs` files are
-  falcon-printer output. Keep them as
-  before/after evidence, or regenerate from
-  r2sleigh in place? Likely: keep falcon-printer
-  versions in `rust-falcon/` subdir as historical
-  comparison; new output goes to `rust/`.
+- **Crate name post-cutover.** Settled on `decomp`
+  (boring + clear, matches the `<game>-mod` naming
+  convention). Top-level `decomp/` dir.
+- **Upstream vs downstream crate.** Settled on
+  downstream: r2sleigh stays as path/registry dep,
+  we consume `r2dec::ast::CFunction` public AST and
+  emit Rust in our own crate. No fork required.
+- **r2sleigh pinning.** Today: path dep to local
+  `~/r2sleigh/` clone in WSL. Promote to git dep on
+  a fixed commit when the workspace integration
+  lands (gated on the Windows build).
+- **Existing artifacts.** Resolved by keeping
+  falcon-printer outputs in
+  `horseygame/decompiled/rust/` as before/after
+  evidence, and the new r2sleigh-based outputs in
+  `horseygame/decompiled/rust-r2sleigh/`. Once the
+  workspace cutover lands, the directories swap
+  (r2sleigh becomes `rust/`, falcon becomes
+  `rust-falcon-archive/`).
 
 ## What if the spike fails
 
