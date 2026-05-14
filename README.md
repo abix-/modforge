@@ -1,35 +1,45 @@
 # modforge
 
 A Rust workspace for game mods. One foundation crate
-(**`modforge`**), three runtime-binding "forge" crates that
-adapt it to a specific host runtime, and per-game mod crates
-that consume them.
+(**`modforge`**), two engine-binding "forge" crates that adapt
+it to a specific host runtime (UE5, Unity), and per-game mod
+crates that consume modforge directly or through a forge.
 
 ```
-                     ┌────────────────────────────┐
-                     │          modforge          │
-                     │  HTTP server · op registry │
-                     │  selector grammar · RPG    │
-                     │  log · scanner · winproc   │
-                     │  shutdown · settings       │
-                     └─────────────┬──────────────┘
-                                   │
-        ┌──────────────────────────┼──────────────────────┐
-        │                          │                      │
-   ┌────▼────┐                ┌────▼─────┐         ┌──────▼──────┐
-   │ ueforge │                │unityforge│         │ horseyforge │
-   │  UE5    │                │  Unity   │         │  Native PE  │
-   │  UE4SS  │                │ Mono /   │         │  inject     │
-   │         │                │  IL2CPP  │         │             │
-   └────┬────┘                └────┬─────┘         └──────┬──────┘
-        │                          │                      │
-   ┌────▼────────┐         ┌───────▼──────┐        ┌──────▼──────┐
-   │grounded2-rpg│         │   wwm-rpg    │        │ horsey mods │
-   │ outworld-   │         │ il2cpp-smoke │        │ (planned)   │
-   │ station-    │         │              │        │             │
-   │ tweaks      │         │              │        │             │
-   └─────────────┘         └──────────────┘        └─────────────┘
+                ┌────────────────────────────┐
+                │          modforge          │
+                │  HTTP server · op registry │
+                │  selector grammar · RPG    │
+                │  log · scanner · winproc   │
+                │  shutdown · settings       │
+                └─────────────┬──────────────┘
+                              │
+         ┌────────────────────┼────────────────────┐
+         │                    │                    │
+    ┌────▼────┐         ┌─────▼─────┐    (no engine; per-game
+    │ ueforge │         │unityforge │     crate consumes modforge
+    │  UE5    │         │   Unity   │     directly with its own
+    │  UE4SS  │         │  Mono /   │     loader, e.g. PE inject)
+    │         │         │   IL2CPP  │
+    └────┬────┘         └─────┬─────┘
+         │                    │
+   ┌─────┴─────────┐    ┌─────┴─────────┐    ┌──────────────┐
+   │ grounded2-rpg │    │   wwm-rpg     │    │ horseyforge  │
+   │ outworld-     │    │ il2cpp-smoke  │    │ (Horsey Game,│
+   │ station-      │    │               │    │  PE inject)  │
+   │ tweaks        │    │               │    │              │
+   └───────────────┘    └───────────────┘    └──────────────┘
 ```
+
+An "engine forge" is reusable: any UE5 game sits on ueforge,
+any Unity game sits on unityforge. A native-PE game has no
+managed loader to lean on, so its per-game crate carries its
+own injector + game-specific accessors and consumes modforge
+directly. The first such crate is `horseyforge` (Horsey Game).
+If a second native-PE game shows up, the
+`inject + HTTP-bind + binary-patch` pattern in horseyforge
+gets lifted into a shared `modforge::inject` module; until
+then it lives where it's used.
 
 ## modforge. The foundation
 
@@ -41,10 +51,11 @@ reads / writes / pattern scans), the winproc helpers (module
 base, address-rebase, VirtualProtect), the per-line-flushed
 log, the shutdown registry, and the settings file loader.
 
-## The three forges
+## The two engine forges
 
-A "forge" is a thin crate that binds modforge into one host
-runtime and contributes runtime-specific machinery only.
+An engine forge is a thin crate that binds modforge into one
+host *engine* runtime and contributes engine-specific
+machinery only. Any game built on that engine sits on top.
 
 ### ueforge. UE5 / UE4SS
 
@@ -81,31 +92,27 @@ freshly-named gen file) avoids the FreeLibrary crash class.
 
 See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge-plan.md).
 
-### horseyforge. Native PE (no managed runtime)
-
-Binds modforge into native-PE Windows games where there is no
-plugin loader. Attaches via a small injector EXE that
-`CreateRemoteThread`s a `LoadLibraryW` on `horseyforge.dll`
-into the running game process. Currently targets Horsey Game.
-Hot reload via timestamped staged DLLs (cargo's output is
-never the file the game has loaded, so it's never locked); a
-`--reload` subcommand cleanly swaps generations and a
-`patches::revert_all` runs on detach so future generations
-don't re-patch already-NOP'd bytes.
-
-See [`horseyforge/README.md`](horseyforge/README.md) and
-[`horseygame/`](horseygame/) for the Horsey Game research
-notes.
-
 ## Game-side mods
 
-| Crate                       | Game              | Forge        | What it does                                                                 |
-|-----------------------------|-------------------|--------------|------------------------------------------------------------------------------|
-| `grounded2-rpg`             | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
-| `outworld-station-tweaks`   | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
-| `wwm-rpg`                   | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
-| `il2cpp-smoke`              | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
-| `horseyforge` (also a forge)| Horsey Game       | (native PE)  | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. |
+| Crate                     | Game              | Bound via    | What it does                                                                 |
+|---------------------------|-------------------|--------------|------------------------------------------------------------------------------|
+| `grounded2-rpg`           | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
+| `outworld-station-tweaks` | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
+| `wwm-rpg`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
+| `il2cpp-smoke`            | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
+| `horseyforge`             | Horsey Game       | modforge (PE inject) | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. Carries its own injector EXE. |
+
+`horseyforge` is the odd one out: Horsey Game has no
+third-party plugin loader, so the crate consumes modforge
+directly and ships a small injector EXE that
+`CreateRemoteThread`s a `LoadLibraryW` into the running
+process. It also owns the binary-patch infrastructure
+(VirtualProtect / write / FlushInstructionCache /
+revert-on-detach) and hot reload via timestamped staged DLLs
+(cargo's output is never the file the game has loaded, so
+it's never locked). All Horsey-specific. See
+[`horseyforge/README.md`](horseyforge/README.md) and
+[`horseygame/`](horseygame/) for the Horsey Game research.
 
 Per-game research notes:
 
@@ -125,11 +132,11 @@ Per-game research notes:
 +- modforge/                  -- the foundation crate
 +- ueforge/                   -- UE5 / UE4SS forge (60+ submodules, 5 modules)
 +- unityforge/                -- Unity Mono + IL2CPP forge (with C# shim)
-+- horseyforge/               -- Native-PE / inject forge
 +- grounded2-rpg/             -- Grounded 2 RPG / level-up mod (ueforge)
 +- outworld-station-tweaks/   -- Outworld Station tweaks (ueforge)
 +- wwm-rpg/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
++- horseyforge/               -- Horsey Game mod (PE inject; modforge directly)
 +- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
 +- docs/                      -- workspace-level (todo, changelog, research)
 +- Cargo.toml                 -- workspace manifest
@@ -201,11 +208,13 @@ Each forge has its own hot-reload story:
   deployed (Phase 4). Mono + IL2CPP shims.
   `HarmonyBridge.PatchPrefix/Postfix` known-broken (queued for
   fix); Mono `MonoBridge.ListMethods` shipped (+ ABI v4).
-- **horseyforge**: native-PE binding shipped, hot reload
-  works, `no_tire`-by-default replaced by split-flag fatigue
-  suppressor (race-eligible without breaking sleep). Binary-
-  patch infra landed; first patch (`sleep_safe_no_tire`) wip
-  (pattern-scan disambiguator unsolved).
+- **horseyforge** (Horsey Game mod, PE inject): injector +
+  HTTP control plane shipped, hot reload works,
+  `no_tire`-by-default replaced by split-flag fatigue
+  suppressor (race-eligible without breaking sleep).
+  Binary-patch infra landed; first patch
+  (`sleep_safe_no_tire`) wip (pattern-scan disambiguator
+  unsolved).
 - **grounded2-rpg**: 13 skills live including Lifesteal in the
   damage hook. Tested against Grounded 2 Steam build
   `++Augusta+release-0.4.0.2-CL-2673661`.
