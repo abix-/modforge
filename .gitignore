@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.gpr
+*.rep/
+ghidra_project/
