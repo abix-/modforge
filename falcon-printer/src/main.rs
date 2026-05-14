@@ -1,10 +1,10 @@
 //! falcon-printer: Rust output backend for Falcon.
 //!
-//! One binary with subcommands:
-//!   print    . Lift one function, print Rust to stdout
-//!   batch    . Read addresses from stdin, write one .rs per fn to a dir
-//!   sweep    . Lift many addresses, report pass/fail breakdown
-//!   dump-il  . Print raw Falcon IL for one function (debug aid)
+//! Subcommands:
+//!   print     lift one function, print Rust to stdout
+//!   batch     read addresses from stdin, write one .rs per fn to a dir
+//!   sweep     lift many addresses, report pass/fail breakdown
+//!   dump-il   print raw Falcon IL for one function (debug aid)
 //!
 //! See docs/usage.md for examples. Pipeline:
 //!   1. Falcon lifts bytes -> il::Function
