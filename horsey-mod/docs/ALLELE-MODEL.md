@@ -1,0 +1,340 @@
+# Horsey Game allele / gene model
+
+Reference doc: how the gene system actually works in the
+binary. Synthesized from decomp findings in
+[`VIABILITY.md`](VIABILITY.md). Prerequisite reading
+before any mod work that touches genes, alleles, pops,
+or breeding.
+
+---
+
+## TL;DR
+
+Three layers stacked on top of each other:
+
+1. **Gene definitions** (engine-wide, 240 fixed slots).
+   Each gene has 4 possible allele values + a mutation
+   rate + a scale.
+2. **Pop weights** (per-species, in pop.xml). Per-pop
+   probabilities that each of the 4 alleles is chosen
+   when a horse of that pop is born. Weights are
+   INVERSE: lower number = more likely.
+3. **Per-horse genome** (one per horse, diploid).
+   Stores 2 allele indices per gene (mom's pick + dad's
+   pick).
+
+Each frame, the renderer evaluates each gene's effect
+as a mutation-blended mix of the dominant and recessive
+allele values. The resulting floats drive size, color,
+limb lengths, tail shape, etc.
+
+---
+
+## Layer 1: gene definitions
+
+Stored in the 240-slot table at `DAT_1403ee4a4`. Each
+record is 32 bytes:
+
+| Offset | Size | Field | Default |
+|---|---|---|---|
+| +0x00 | uint32 | gene index (self-check, must equal slot index) | i |
+| +0x04 | uint32 | mutation rate `m` | 100 |
+| +0x08 | uint64 | scale `s` | 1 |
+| +0x10 | 4 x uint32 | allele values g0, g1, g2, g3 | 0 |
+
+Loaded from `data/genes.xml` by `FUN_1400a3eb0` at
+startup. `m`, `s`, and `g0..g3` come from XML
+attributes. Vanilla ships ~241 gene definitions filling
+the table to capacity.
+
+Think of a gene as a 4-payload enum:
+
+```
+gene SIZE:
+  m = 100, s = 1
+  g0 = 10   (small)
+  g1 = 20   (medium)
+  g2 = 40   (large)
+  g3 = 80   (huge)
+```
+
+Numbers above are illustrative. Real gene values come
+from `genes.xml` and the engine itself; we have not
+mapped every gene's meaning yet (see Q-render-3 in
+[`VIABILITY.md`](VIABILITY.md)).
+
+---
+
+## Layer 2: pop weights
+
+Each pop record at `DAT_1403f2fc0 + pop_id * 0x1018`
+contains 240 genes x 4 alleles x 4 bytes of weights at
+offset +0x28.
+
+```
+pop default:
+  SIZE:  p0 = 1   p1 = 1   p2 = 1   p3 = 1     (any size equally likely)
+
+pop bx_mini (nested inside default):
+  SIZE:  p0 = 1   p1 = 20  p2 = 20  p3 = 20    (almost always picks g0 = small)
+
+pop bx_elephant (nested inside default):
+  SIZE:  p0 = 20  p1 = 20  p2 = 20  p3 = 1     (almost always picks g3 = huge)
+```
+
+Critical gotcha: **weights are INVERSE.** Higher number
+= less likely. p=1 is dominant. p=20 is rare. Same as
+the existing
+[`CONTENT-MODDING.md`](../../horseygame/CONTENT-MODDING.md)
+documentation. Confirmed by the JumboDS64 community
+guide; engine-side confirmation pending (see
+Q-gene-3 in `VIABILITY.md`).
+
+### Pop inheritance
+
+Per `FUN_1400a5ee0`: child pops **inherit then
+override**. When `pop.xml` defines:
+
+```xml
+<pop name="default">
+  <gene name="SIZE" p0="1" p1="1" p2="1" p3="1" />
+  <gene name="COLOR_R" p0="3" p1="3" p2="3" p3="3" />
+  <pop name="bx_mini">
+    <gene name="SIZE" p0="1" p1="20" p2="20" p3="20" />
+  </pop>
+</pop>
+```
+
+`bx_mini` starts with the FULL parent weight set
+(SIZE + COLOR_R + everything else default touches),
+then patches only `SIZE`. Authoring rule of thumb:
+nest under the closest sensible parent and only
+override what makes your pop distinctive.
+
+### Spawning a new horse
+
+When the game spawns a horse of a given pop:
+
+1. For each of the 240 genes:
+2. Randomly pick allele index 0..3 weighted by the
+   pop's `1/p0, 1/p1, 1/p2, 1/p3` (inverse weights).
+3. Do this TWICE (once for each diploid copy).
+4. Store both picks in the horse's 480-byte genome
+   block at `horse[0x78]` (one at offset `g`, one
+   at offset `g + 240`).
+
+So pop weights determine the SHAPE of the random pick,
+not the value. The value comes from the gene
+definition's allele payload (g0..g3).
+
+### Unknown pop name
+
+Hard crash. `FUN_1400a2ed0` panics with
+`MessageBoxA(NULL, "pop not found <name>", "Error", 0)`
+then `INT 3` aborts. No silent fallback. Misspell a
+pop in `pop.xml` or `horsey.tmx` and the game dies
+on the spot.
+
+---
+
+## Layer 3: per-horse genome
+
+Each horse has a 480-byte block allocated by
+`FUN_14005cf70` / `FUN_14005d190`, freed by
+`FUN_14005cd00`, pointer at `horse[0x78]`.
+
+Layout: **diploid pair stored as two 240-byte halves.**
+
+```
+horse->genome:
+  [0]   maternal allele index for gene 0   (0..3)
+  [1]   maternal allele index for gene 1
+  ...
+  [239] maternal allele index for gene 239
+  [240] paternal allele index for gene 0   (0..3)
+  [241] paternal allele index for gene 1
+  ...
+  [479] paternal allele index for gene 239
+```
+
+Each byte stores an allele INDEX (0..3, which of g0..g3
+to use), not an allele VALUE. The save format actually
+allows 3 bits per byte (range 0..6 with -1 sentinel)
+giving slack in the save encoding.
+
+### Save encoding
+
+Per `FUN_14006d470` (write) and `FUN_14006d580` (read):
+each diploid pair is bit-packed into one byte:
+
+```
+packed_byte = (paternal_allele + 1) << 3 | (maternal_allele + 1)
+```
+
+So 480 bytes of in-memory alleles compress to 240
+packed bytes per horse on disk. Top 2 bits of each
+saved byte are unused.
+
+---
+
+## Per-frame: evaluating a gene's effect
+
+`FUN_1400a5d20` is the diploid evaluator. Called by
+`FUN_14009f680` (the gene-effect engine) 293 times per
+horse per frame, with literal gene indices spanning
+233 of the 240 slots.
+
+Pseudocode:
+
+```rust
+fn evaluate_diploid_gene(horse: &Horse, gene_idx: usize) -> f32 {
+    let m_allele = horse.genome[gene_idx]       & 0x3;  // maternal pick (0..3)
+    let p_allele = horse.genome[gene_idx + 240] & 0x3;  // paternal pick (0..3)
+
+    let dom_idx = max(m_allele, p_allele);
+    let rec_idx = min(m_allele, p_allele);
+
+    let dom_value = gene_table[gene_idx].alleles[dom_idx];  // dominant payload
+    let rec_value = gene_table[gene_idx].alleles[rec_idx];  // recessive payload
+
+    let m = gene_table[gene_idx].mutation_rate as f32;
+    let s = gene_table[gene_idx].scale as f32;
+
+    // DAT_14039ca44 and DAT_14039ca5c are runtime constants.
+    let base = DAT_14039ca44;
+    let norm = DAT_14039ca5c;
+
+    (base - m / norm) * dom_value + (m / norm) * rec_value
+}
+```
+
+So the gene's expressed value each frame is a
+**mutation-rate-weighted blend** of the two parent
+alleles, not just one of them. High mutation rate
+shifts the blend toward the recessive allele. Low
+mutation rate makes the dominant allele dominate.
+
+### Why max/min?
+
+The `max(m_allele, p_allele)` = dominant convention is
+arbitrary engine choice. `g3` is always more dominant
+than `g0`. So if you author allele payloads in
+ascending strength (`g0 = small, g3 = huge`) the
+engine will lean toward the bigger allele when both
+parents disagree. Authoring tip: order alleles
+intentionally; the engine treats higher index as
+dominant.
+
+---
+
+## Population genetics: live mutation drift
+
+`FUN_1400c0660` (the death handler) mutates the
+gene-table mutation rate `m` of specific genes by
+**±5 per horse death**. So as horses live and die,
+the gene-table itself drifts. Genes whose mutation
+rate climbs produce more recessive-leaning
+expressions in future generations; genes whose rate
+falls become more deterministic.
+
+This is real population genetics in code, not just
+config. Implications:
+
+- A long-running save will diverge from the genes.xml
+  starting state.
+- The XML round-trip serializer at `FUN_1400a4880`
+  (which writes table state back out as
+  `<gene name="..." m="..." s="..." />`) preserves
+  the drifted state somewhere. Need to find where.
+- Hot-reloading `genes.xml` would clobber the drift.
+  Mod tooling that does this should warn the user.
+
+---
+
+## CRISPR Lab and runtime allele swap
+
+`FUN_1400c1cf0` is the in-game gene inspector / CRISPR
+UI. Reads the currently-selected gene's table fields
+(scale, name) and the current pop's per-allele weights
+for that gene. Lets the player view and (probably)
+edit allele picks directly.
+
+`FUN_1400c03a0` is the **allele-renumber sync**: when
+alleles X and Y of gene N are reordered (probably for
+display sorting or normalization), this function
+swaps:
+
+- `gene_table[N].alleles[X]` <-> `gene_table[N].alleles[Y]`
+- AND for every pop in the global pop array,
+  `pop.weights[N][X]` <-> `pop.weights[N][Y]`
+
+So allele identity is consistent across the whole game
+state at all times. This is non-trivial code that we
+must NOT break when extending the table.
+
+---
+
+## Breeding (combining two parents)
+
+`FUN_14005d190` is the genome copy function. Takes a
+source genome block and copies it byte-by-byte into
+another horse's genome block, in 6-byte chunks within
+a 240-byte stride loop (so the diploid layout is
+preserved).
+
+Plus a version-12 conditional fixup (lines 90+ of
+that function) that swaps adjacent bytes when
+`*(int*)(param_1 + 0xc) == 0xc`. Probably normalizes
+the diploid to put the dominant allele in a canonical
+position. Not yet fully understood.
+
+We have NOT yet found the function that computes the
+CHILD's genome from two parents (likely an actual
+"for each gene, pick one allele from each parent at
+random" function). Worth tracking down before
+designing extended breeding logic.
+
+To do:
+
+- [ ] Find the breeding combinator function. Probably
+      called `FUN_14005d190` with one parent then
+      again with the other, or a higher-level function
+      that does both.
+- [ ] Confirm the runtime mutation-during-breeding
+      behavior: does the child get random allele
+      flips beyond the parent picks?
+
+---
+
+## What this enables for modding
+
+Without ANY binary patching:
+
+- **Add a new pop** that picks extreme alleles of
+  existing genes. (`bx_elephant` with `SIZE` weight
+  `p3=1`, all others `p=20` -> almost every horse
+  of that pop gets the huge size payload.)
+- **Tweak existing pop weights** to widen or narrow
+  a vanilla pop's variety.
+- **Edit allele payloads in genes.xml** to change
+  the actual numeric outputs (`SIZE g3 = 80 -> 200`
+  -> giants get gigantic).
+
+With binary patching (the bestiary expansion project):
+
+- **Add new gene definitions** beyond slot 240
+  (extend the table; layered via heap redirect of
+  the 7 reader functions).
+- **Add new gene-effect logic** for those new genes
+  via a trampoline on `FUN_14009f680` writing to
+  the per-horse render param array.
+- **Persist new alleles in saves** via a sidecar
+  `.ext` file keyed by horse ID.
+
+Cannot be done at all without massive rework:
+
+- **Add allele #5 to a gene** (the `*4` indexing is
+  baked into pop record layout, save encoding, and
+  the diploid evaluator's `& 0x3` mask). Would
+  require widening every gene record AND every pop
+  record AND the save format simultaneously.

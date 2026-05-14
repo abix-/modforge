@@ -820,16 +820,92 @@ Pre-req for `apply_extra_gene_effect`: knowing what each
 existing `param_1[N]` slot DOES so we can choose to add
 or override safely. That's Q-render-3.
 
-### Q-render-3 (still open)
+### Q-render-3: param array consumer mapped
 
-- [ ] Map each `param_1[N]` slot to its semantic
-      (size, head_aspect, color_R, etc.) by tracing
-      its caller use. The renderer / animation system
-      reads `param_1` somewhere; tracing back will
-      reveal slot meanings.
-- [ ] Identify the ~95 unused slots in [0..352] and
-      confirm they're truly free (not used by other
-      systems via offsets into the same struct).
+**ANSWERED (well enough for trampoline design).**
+
+The full pipeline is:
+
+```c
+// Caller (8 sites in 5 functions):
+float local_buf[353];                            // stack-allocated temp
+FUN_14009f680(local_buf, horse + 0x2b8);         // gene engine populates
+FUN_1400ab3d0(horse, local_buf);                 // consumer transcribes into horse struct
+```
+
+The temp buffer is per-call stack-allocated, not part
+of the horse struct. It exists only between these two
+calls. `FUN_1400ab3d0` reads slots from it and writes
+to fields of the persistent horse struct (offsets
+seen: `horse + 0x124`, `+0x128`, `+0x130`, ..., `+0x154`).
+
+Slot occupancy across the two halves of the pipeline:
+
+| Metric | Count |
+|---|---|
+| Slots gene-engine WRITES to local_buf | 258 |
+| Slots consumer READS from local_buf | 61 |
+| Overlap (engine writes -> consumer reads) | 57 |
+| Engine writes consumer doesn't read | 201 |
+| Consumer reads engine doesn't write | 4 (slots 320, 325-327, populated elsewhere) |
+| Slots in [0..352] used by NEITHER | 91 |
+
+### Trampoline architecture options
+
+Two viable hook points, both compatible with the design
+principle:
+
+1. **Pre-consumer trampoline (between engine and consumer).**
+   We hook the 4 caller sites that follow the
+   `FUN_14009f680(buf, ...) -> FUN_1400ab3d0(horse, buf)`
+   pattern. After vanilla gene-engine populates `buf`,
+   our code modifies / extends `buf` slots, then
+   `FUN_1400ab3d0` (vanilla) reads our extended values
+   and writes to horse struct.
+   - **Pros:** zero changes to vanilla consumer logic;
+     we just push more data through the existing pipe.
+   - **Cons:** capped to slots `FUN_1400ab3d0` reads
+     (61 slots). New visual modes the consumer doesn't
+     read can't be expressed via this hook alone.
+2. **Post-consumer trampoline (after FUN_1400ab3d0).**
+   Hook AFTER `FUN_1400ab3d0` returns. Vanilla render
+   state is fully populated in the horse struct. Our
+   code reads our extended alleles (from sidecar
+   buffer keyed by horse ID), computes effects,
+   writes ADDITIONAL fields into the horse struct at
+   offsets vanilla doesn't use.
+   - **Pros:** unbounded headroom (we just need free
+     offsets in the horse struct); clean separation.
+   - **Cons:** the rest of the renderer has to know to
+     LOOK at our new fields; otherwise the horse looks
+     vanilla regardless of what we wrote.
+
+Strategy: **use both.** Pre-consumer trampoline for
+extending existing visual mechanics (size, color,
+shape variations). Post-consumer trampoline for genuine
+new visual modes that need their own renderer code
+(which we'd have to add via separate render-pass hooks
+later).
+
+### Outstanding render questions
+
+The remaining unknowns don't block Phase 1 decisions:
+
+- [ ] Q-render-1 still needs live `pop.xml` to
+      determine what genes vanilla pops use for unusual
+      effects (the `car` pop's wheels, the `helix`
+      pop's shape, etc.).
+- [ ] Map each of the 61 consumer-read slots to its
+      horse-struct destination offset. Doable by
+      reading `FUN_1400ab3d0` more thoroughly. Required
+      before we author specific gene-effect code, not
+      before Phase 1 strategy decisions.
+- [ ] Confirm the 91 fully-unused slots are not
+      touched by other consumer chains (e.g. the
+      breeding compatibility check
+      `FUN_1400b78d0` calls `FUN_1400c5c10` with two
+      buffers but uses different stack offsets, so it
+      may consume more slots).
 
 ### Q-render-1 (still open)
 
