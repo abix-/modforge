@@ -1,7 +1,7 @@
-//! horseyforge: native-PE binding of modforge for Horsey Game.
+//! horsey-mod: native-PE binding of modforge for Horsey Game.
 //!
 //! Sibling to ueforge (UE5) and unityforge (Unity). Whereas those
-//! frameworks ride on a managed plugin loader, horseyforge injects
+//! frameworks ride on a managed plugin loader, horsey-mod injects
 //! via the proxy-DLL pattern: the cdylib produced here ships as
 //! `steam_api64.dll`, the user renames the real one to
 //! `steam_api64_real.dll`, and Windows loads us first because the
@@ -39,7 +39,7 @@ use std::sync::OnceLock;
 // during a hot-reload), call modforge::server::shutdown_all().
 
 /// Per-launch random auth token. Tests / clients read it from
-/// `horseyforge.auth` written next to the DLL.
+/// `horsey.auth` written next to the DLL.
 static AUTH_TOKEN: OnceLock<&'static str> = OnceLock::new();
 
 /// One-shot startup. Spawned from a worker thread by DllMain to
@@ -49,11 +49,11 @@ fn worker_main() {
     //    same directory as the DLL (resolved via `set_dll_module`
     //    which DllMain called before spawning us).
     modforge::log::init(modforge::log::Config {
-        file_name: "horseyforge.log",
-        console_title: "horseyforge",
+        file_name: "horsey.log",
+        console_title: "horsey-mod",
         console: false,
     });
-    modforge::log!("horseyforge worker thread started");
+    modforge::log!("horsey-mod worker thread started");
 
     // 2. Resolve the DLL directory for our auth-file write.
     let dll_dir = modforge::log::dll_dir_wait(std::time::Duration::from_secs(5))
@@ -63,14 +63,14 @@ fn worker_main() {
     let token: String = (0..16).map(|_| format!("{:02x}", random_byte())).collect();
     let token: &'static str = Box::leak(token.into_boxed_str());
     let _ = AUTH_TOKEN.set(token);
-    let auth_path = dll_dir.join("horseyforge.auth");
+    let auth_path = dll_dir.join("horsey.auth");
     if let Err(e) = std::fs::write(&auth_path, token) {
         modforge::log!(
-            "horseyforge: failed to write auth file {}: {e}",
+            "horsey-mod: failed to write auth file {}: {e}",
             auth_path.display()
         );
     } else {
-        modforge::log!("horseyforge: auth token written to {}", auth_path.display());
+        modforge::log!("horsey-mod: auth token written to {}", auth_path.display());
     }
 
     // 4. Register Horsey-specific ops on the modforge global registry.
@@ -91,12 +91,12 @@ fn worker_main() {
             // Now we can safely enable the game's own no_tire.
             gamestate::set_no_tire(true);
             modforge::log!(
-                "horseyforge: sleep_safe_no_tire patched + game no_tire enabled"
+                "horsey-mod: sleep_safe_no_tire patched + game no_tire enabled"
             );
         }
         Err(e) => {
             modforge::log!(
-                "horseyforge: sleep_safe_no_tire FAILED ({e}); leaving no_tire off so sleep still works"
+                "horsey-mod: sleep_safe_no_tire FAILED ({e}); leaving no_tire off so sleep still works"
             );
         }
     }
@@ -105,7 +105,7 @@ fn worker_main() {
     let server_cfg = modforge::server::Config {
         port: 33077,
         endpoint: "/op",
-        thread_name: "horseyforge-http",
+        thread_name: "horsey-http",
         auth_token: Some(token),
     };
     modforge::server::spawn(
@@ -134,7 +134,7 @@ fn worker_main() {
         |msg| modforge::log!("{msg}"),
     );
 
-    modforge::log!("horseyforge: listening on 127.0.0.1:33077 (auth in horseyforge.auth)");
+    modforge::log!("horsey-mod: listening on 127.0.0.1:33077 (auth in horsey.auth)");
 }
 
 fn random_byte() -> u8 {

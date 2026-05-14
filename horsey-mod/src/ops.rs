@@ -4,7 +4,7 @@
 //!
 //! Wire format: requests are JSON `{"op":"name","args":{...}}`,
 //! posted to `127.0.0.1:33077/op` with the auth header
-//! `X-Ueforge-Auth: <token>` (token is in `horseyforge.auth`).
+//! `X-Ueforge-Auth: <token>` (token is in `horsey.auth`).
 //!
 //! Each op returns a `Json` result; the envelope around it
 //! (`{"ok":..., "op":..., "result":..., "state":...}`) is added
@@ -26,7 +26,7 @@ pub fn register_all() {
 
         // ===== Hot-reload protocol =====
         //
-        // The injector (`horseyforge-inject.exe --reload`) issues this op
+        // The injector (`horsey-inject.exe --reload`) issues this op
         // before remotely calling FreeLibrary on our HMODULE. After the
         // op returns we drop every SpawnHandle in modforge's registry
         // so the HTTP listener thread joins and releases port 33077.
@@ -41,12 +41,12 @@ pub fn register_all() {
             "",
             |_| {
                 std::thread::Builder::new()
-                    .name("horseyforge-shutdown".into())
+                    .name("horsey-shutdown".into())
                     .spawn(|| {
                         // Tiny delay so the in-flight HTTP response
                         // has time to flush to the client socket.
                         std::thread::sleep(std::time::Duration::from_millis(100));
-                        modforge::log!("horseyforge: _shutdown -> dropping server");
+                        modforge::log!("horsey-mod: _shutdown -> dropping server");
                         modforge::server::shutdown_all();
                     })
                     .ok();
@@ -291,7 +291,7 @@ The proper fix is sleep_safe_no_tire (already auto-applied at attach).",
             },
         ),
     ]);
-    modforge::log!("horseyforge: registered ops");
+    modforge::log!("horsey-mod: registered ops");
 }
 
 // =============================================================================

@@ -83,7 +83,7 @@ in the next session unless the user redirects.
    the catalog if needed.
 5. **Mirror generation-loader into IL2CPP shim** before
    shipping the IL2CPP smoke target end-to-end.
-6. **horseyforge: `sleep_safe_no_tire` patch site
+6. **horsey-mod: `sleep_safe_no_tire` patch site
    discovery.** wip in [`a31246f`](.). The patch infra
    works (VirtualProtect / write / FlushInstructionCache /
    revert on detach), but `find_patch_site` cannot
@@ -115,7 +115,7 @@ to land in one commit per crate so it bisects clean.
 | `grounded2-rpg`             | `grounded2-mod`           | DONE   |
 | `wwm-rpg`                   | `wwm-mod`                 | DONE   |
 | `outworld-station-tweaks`   | `outworld-station-mod`    | DONE   |
-| `horseyforge`               | `horsey-mod`              | TODO   |
+| `horseyforge`               | `horsey-mod`              | DONE   |
 
 `il2cpp-smoke` is a smoke target, not a per-game mod.
 Name unchanged.
@@ -208,7 +208,7 @@ Strong default: subtree-merge, same as horseygame.
 
 Not pursuing now. Schedule for after the
 `<game>-mod` rename standardization lands and the
-horseyforge `sleep_safe_no_tire` patch is unstuck.
+horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ---
 

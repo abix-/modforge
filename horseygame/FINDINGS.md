@@ -8,9 +8,9 @@ Game: `C:\Games\Steam\steamapps\common\Horsey Game`. Build mtime 2026-05-08. Sur
 
 1. **100% of `Horsey.exe` decompiled** to C-like pseudocode (10,331 functions across 1,234 game-logic + 9,097 vendor). Every game function has a header comment; the 25 most critical have deep manual annotations.
 
-2. **`horseyforge` Rust crate** lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods) as a third sibling to `ueforge`/`unityforge`, built on the shared `modforge` framework.
+2. **`horsey-mod` Rust crate** lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods) as a third sibling to `ueforge`/`unityforge`, built on the shared `modforge` framework.
 
-3. **DLL injection + HTTP control plane working.** `horseyforge-inject.exe` attaches `horseyforge.dll` to a running Horsey.exe via `CreateRemoteThread(LoadLibraryW)`. An HTTP server runs at `127.0.0.1:33077` exposing 18 ops for live read/write of game state.
+3. **DLL injection + HTTP control plane working.** `horsey-inject.exe` attaches `horsey.dll` to a running Horsey.exe via `CreateRemoteThread(LoadLibraryW)`. An HTTP server runs at `127.0.0.1:33077` exposing 18 ops for live read/write of game state.
 
 4. **Hot reload partial.** Cargo can rebuild while the game is running (staged DLLs avoid file lock). `--reload` swaps generations cleanly in some cases but currently causes a delayed crash because helper threads inside the old DLL haven't fully unwound when `FreeLibrary` is called. Hardening pending.
 
@@ -61,8 +61,8 @@ What it is NOT: not Unity, Unreal, Godot, GameMaker, Haxe, OpenFL, Love2D, MonoG
 
 | Component | Status |
 |---|---|
-| `horseyforge` crate | shipped, builds clean |
-| `horseyforge.dll` + `horseyforge-inject.exe` | working artifacts |
+| `horsey-mod` crate | shipped, builds clean |
+| `horsey.dll` + `horsey-inject.exe` | working artifacts |
 | DLL injection via `CreateRemoteThread(LoadLibraryW)` | working |
 | HTTP control plane on `127.0.0.1:33077` | working, 18 ops registered |
 | Auth via `X-Ueforge-Auth` + token file | working |

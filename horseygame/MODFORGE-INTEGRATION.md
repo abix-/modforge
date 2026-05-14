@@ -45,14 +45,14 @@ All of this is **free** for a Horsey mod. We don't reimplement any of it.
 
 ---
 
-## What we need to build: `horseyforge`
+## What we need to build: `horsey-mod`
 
 A third sibling crate alongside `ueforge` and `unityforge`. Same role:
 provide the engine-specific bindings that satisfy modforge's traits.
 
 ### How Horsey differs from UE5 / Unity
 
-| Concern | UE5 / ueforge | Unity / unityforge | Horsey / horseyforge |
+| Concern | UE5 / ueforge | Unity / unityforge | Horsey / horsey-mod |
 |---|---|---|---|
 | Plugin loader | UE4SS C++ shim | BepInEx C# shim | **None**. Must inject via proxy DLL |
 | Runtime introspection | UObject reflection | Mono reflection | **None**. Use hardcoded addresses from our decompilation |
@@ -64,12 +64,12 @@ provide the engine-specific bindings that satisfy modforge's traits.
 The first three are why Horsey is HARDER to bind than UE5 / Unity. The
 last three are why our **prior 100% decompilation work is the
 prerequisite**. Without the addresses and offsets we extracted,
-horseyforge has nothing to bind to.
+horsey-mod has nothing to bind to.
 
-### horseyforge crate layout (proposed)
+### horsey-mod crate layout (proposed)
 
 ```
-horseyforge/
+horsey-mod/
 ├── Cargo.toml         (depends on modforge; crate-type = ["cdylib", "rlib"])
 ├── build.rs           (compiles a small C++ shim for SDL hooks)
 ├── src/
@@ -91,12 +91,12 @@ horseyforge/
     └── shim.cpp       (minimal C++ for SDL3 interop; mirrors ueforge/cpp/)
 ```
 
-### Key bindings horseyforge provides
+### Key bindings horsey-mod provides
 
 #### A. DLL injection (proxy `steam_api64.dll`)
 
 Horsey loads Steamworks at startup. We rename `steam_api64.dll` →
-`steam_api64_real.dll`, drop our `horseyforge.dll` as `steam_api64.dll`.
+`steam_api64_real.dll`, drop our `horsey.dll` as `steam_api64.dll`.
 DllMain:
 
 ```rust
@@ -112,7 +112,7 @@ pub extern "system" fn DllMain(hinst: HINSTANCE, reason: u32, _: *mut ()) -> i32
             modforge::server::start_with_auth(SERVER_ADDR, AUTH_TOKEN);
             hooks::install_all();
             ops::register_horsey_ops();
-            log::info!("horseyforge attached");
+            log::info!("horsey-mod attached");
         });
     }
     1
@@ -258,13 +258,13 @@ via JSON and live-reload via Ctrl+R.
 | Worker handle | `modforge::worker` | free |
 
 What we have to build:
-1. `horseyforge::injection`. Proxy steam_api64.dll
-2. `horseyforge::hooks`. MinHook wrapper + the 18 target function addresses
-3. `horseyforge::horse` / `gamestate`. Typed accessors using our offsets
-4. `horseyforge::ops`. Register Horsey-specific ops
-5. `horseyforge::rpg::HorseyEffect`. Concrete Effect impls
-6. `horseyforge::input`. SDL3 hook for hotkeys
-7. `horseyforge::ui`. Overlay (TBD: ImGui via DX12 hook, or web-only)
+1. `horsey-mod::injection`. Proxy steam_api64.dll
+2. `horsey-mod::hooks`. MinHook wrapper + the 18 target function addresses
+3. `horsey-mod::horse` / `gamestate`. Typed accessors using our offsets
+4. `horsey-mod::ops`. Register Horsey-specific ops
+5. `horsey-mod::rpg::HorseyEffect`. Concrete Effect impls
+6. `horsey-mod::input`. SDL3 hook for hotkeys
+7. `horsey-mod::ui`. Overlay (TBD: ImGui via DX12 hook, or web-only)
 
 Probably **~3000-6000 lines of Rust** for the full binding, given we already
 have all the addresses. Each game-side mod (RPG layer, hotkeys, custom
@@ -275,10 +275,10 @@ species, etc.) is much smaller (~500 lines each).
 ## Concrete first-week plan
 
 **Day 1: bootstrap**
-- Add `horseyforge/` to `grounded2mods/Cargo.toml` workspace
+- Add `horsey-mod/` to `grounded2mods/Cargo.toml` workspace
 - Set up `Cargo.toml` with `modforge = { path = "../modforge" }`
 - Wire up DllMain that loads real steam_api64
-- Verify game launches with our DLL attached (log a "horseyforge attached" line)
+- Verify game launches with our DLL attached (log a "horsey-mod attached" line)
 
 **Day 2: control plane**
 - Bring up `modforge::server` with auth
@@ -309,7 +309,7 @@ species, etc.) is much smaller (~500 lines each).
 **Day 7: hotkey skeleton**
 - Hook `SDL_PollEvent`
 - Detect `Shift+Click` and log it (no game action yet)
-- Verify: console logs `[horseyforge] shift+click at (x,y)`
+- Verify: console logs `[horsey-mod] shift+click at (x,y)`
 
 After this week we have a working DLL with HTTP, hooks, and the foundation
 for everything else.
@@ -318,14 +318,14 @@ for everything else.
 
 ## What it means strategically
 
-Without modforge: building horseyforge from scratch = 2-3 months.
+Without modforge: building horsey-mod from scratch = 2-3 months.
 
-With modforge: building horseyforge = **2-3 weeks** because:
+With modforge: building horsey-mod = **2-3 weeks** because:
 - HTTP server, auth, JSON envelope, op registry: **already built**
 - RPG system, settings, hot reload: **already built**
 - Logging, counters, scanner: **already built**
 
-Each Horsey mod that consumes horseyforge benefits from modforge upgrades
+Each Horsey mod that consumes horsey-mod benefits from modforge upgrades
 automatically (the same way grounded2-rpg benefits from ueforge upgrades).
 
 Your existing infrastructure compresses what would have been a major
@@ -341,7 +341,7 @@ gave us the addresses; modforge gives us the rest of the runtime.
    commit and pin against it.
 
 2. **Per-binary-version offsets**: when Horsey updates, function addresses
-   shift. `horseyforge::version` should detect the binary hash and load
+   shift. `horsey-mod::version` should detect the binary hash and load
    the right offset table. modforge's `scanner` module is useful here for
    pattern-based fallback.
 
@@ -363,12 +363,12 @@ gave us the addresses; modforge gives us the rest of the runtime.
 
 ## Decision
 
-**YES, build horseyforge as a sibling crate in grounded2mods.** It's the
+**YES, build horsey-mod as a sibling crate in grounded2mods.** It's the
 clean answer. Everything we've planned for Horsey modding (hotkeys, RPG
 layer, custom genes, content extensions, control plane) becomes a
-horseyforge consumer.
+horsey-mod consumer.
 
 The first mod to ship: a simple `horsey-hotkeys` crate that adds
 Shift+Click + the rest of the keybindings. ~500 lines on top of
-horseyforge. After that we layer on the RPG and the gene-extension
+horsey-mod. After that we layer on the RPG and the gene-extension
 work.

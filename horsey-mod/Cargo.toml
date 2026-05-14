@@ -1,18 +1,21 @@
 [package]
-name = "horseyforge"
+name = "horsey-mod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Native-PE binding for modforge, targeting Horsey Game
-# (and other SDL3 + native-Windows games).
+# Horsey Game mod. Native-PE binding consuming modforge directly.
 #
-# Sibling to ueforge (UE5/UE4SS) and unityforge (Unity Mono/IL2CPP).
-# Whereas those rely on a managed-runtime plugin loader, horseyforge
-# attaches via a SEPARATE INJECTOR `horseyforge-inject.exe` which
-# CreateRemoteThread's a LoadLibraryW(horseyforge.dll) into the
+# Sibling to ueforge (UE5/UE4SS) and unityforge (Unity Mono/IL2CPP)
+# in the sense that it adapts modforge to a host runtime. The
+# difference: ueforge and unityforge bind to ENGINES (any UE5 /
+# Unity game can sit on top); horsey-mod is glued to one specific
+# native-PE Windows game and carries its own injector.
+#
+# Attaches via a SEPARATE INJECTOR `horsey-inject.exe` which
+# CreateRemoteThread's a LoadLibraryW(horsey.dll) into the
 # running Horsey.exe.
 #
 # We chose injector-over-proxy because:
@@ -22,27 +25,24 @@ publish.workspace = true
 #    GetProcAddress + tail-call) is a lot of generated code.
 # 2. Injection allows hot-reload without restarting Horsey
 #    (detach our DLL via FreeLibrary, rebuild, re-inject).
-# 3. Same pattern works for any native-PE Windows game; we don't
-#    Have to per-game-identify the right host DLL to proxy.
-#
-# A consumer crate (horsey-rpg, horsey-hotkeys, ...) is a cdylib
-# that depends on this crate via
-# `horseyforge = { path = "../horseyforge" }` and registers its
-# own ops, hooks, settings.
+# 3. Same pattern works for any native-PE Windows game; if a
+#    second one shows up, this scaffolding gets lifted into a
+#    shared `modforge::inject` module.
 
 [lib]
 # Two crate types:
-# - cdylib: produces horseyforge.dll, the thing we inject.
-# - rlib: lets downstream Horsey mod crates `use horseyforge::*`.
+# - cdylib: produces horsey.dll, the thing we inject.
+# - rlib: kept so downstream extensions can `use horsey_mod::*`.
+name = "horsey"
 crate-type = ["cdylib", "rlib"]
 
-# Injector binary. `cargo run -p horseyforge --bin horseyforge-inject`
-# attaches horseyforge.dll to a running Horsey.exe.
+# Injector binary. `cargo run -p horsey-mod --bin horsey-inject`
+# attaches horsey.dll to a running Horsey.exe.
 [[bin]]
-name = "horseyforge-inject"
+name = "horsey-inject"
 path = "src/bin/inject.rs"
 
-[package.metadata.horseyforge]
+[package.metadata.horsey-mod]
 game_name_regex = "Horsey"
 game_sub_path   = ""
 

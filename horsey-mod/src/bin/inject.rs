@@ -1,14 +1,14 @@
-//! horseyforge-inject. Inject + hot-reload horseyforge.dll in a
+//! horsey-inject. Inject + hot-reload horsey.dll in a
 //! running Horsey.exe.
 //!
 //! The first inject:
-//! - copies `horseyforge.dll` to a *staged* path with a timestamped
-//!   filename, leaving the cargo-output `horseyforge.dll` free for
+//! - copies `horsey.dll` to a *staged* path with a timestamped
+//!   filename, leaving the cargo-output `horsey.dll` free for
 //!   subsequent rebuilds
 //! - LoadLibraryW's the staged path inside Horsey.exe via
 //!   CreateRemoteThread
 //! - captures the returned HMODULE
-//! - writes the staged path + HMODULE to `horseyforge.injstate`
+//! - writes the staged path + HMODULE to `horsey.injstate`
 //!   alongside the source DLL
 //!
 //! A reload (`--reload`):
@@ -16,9 +16,9 @@
 //!   the listener thread + port
 //! - CreateRemoteThread'd FreeLibrary on the recorded HMODULE
 //! - deletes the old staged file (best effort)
-//! - copies the new `horseyforge.dll` to a fresh staged path
+//! - copies the new `horsey.dll` to a fresh staged path
 //! - LoadLibraryW's the new staged path
-//! - updates `horseyforge.injstate`
+//! - updates `horsey.injstate`
 //!
 //! Run with `--fresh` to ignore (and overwrite) any existing state.
 
@@ -44,10 +44,10 @@ use windows_sys::Win32::System::Threading::{
 };
 
 #[derive(Parser, Debug)]
-#[command(version, about = "Inject + hot-reload horseyforge.dll in Horsey.exe")]
+#[command(version, about = "Inject + hot-reload horsey.dll in Horsey.exe")]
 struct Args {
-    /// Path to the freshly-built horseyforge.dll (cargo's release output).
-    /// Defaults to `./horseyforge.dll` next to the injector binary.
+    /// Path to the freshly-built horsey.dll (cargo's release output).
+    /// Defaults to `./horsey.dll` next to the injector binary.
     #[arg(long)]
     dll: Option<PathBuf>,
 
@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
         None => std::env::current_exe()?
             .parent()
             .ok_or_else(|| anyhow::anyhow!("injector has no parent dir"))?
-            .join("horseyforge.dll"),
+            .join("horsey.dll"),
     };
     if !source_dll.exists() {
         anyhow::bail!("source DLL not found at {}", source_dll.display());
@@ -85,7 +85,7 @@ fn main() -> anyhow::Result<()> {
     let state_path = source_dll
         .parent()
         .ok_or_else(|| anyhow::anyhow!("source DLL has no parent"))?
-        .join("horseyforge.injstate");
+        .join("horsey.injstate");
 
     let pid = find_pid_by_name(&args.process)?;
     println!("[inject] found PID {pid}");
@@ -474,7 +474,7 @@ fn send_shutdown_op(prev: &InjState) -> anyhow::Result<()> {
     let auth_path = prev
         .staged_path
         .parent()
-        .map(|p| p.join("horseyforge.auth"))
+        .map(|p| p.join("horsey.auth"))
         .ok_or_else(|| anyhow::anyhow!("no parent for staged path"))?;
     let token = std::fs::read_to_string(&auth_path)?.trim().to_string();
 

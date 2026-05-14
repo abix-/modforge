@@ -37,7 +37,7 @@ pub fn is_enabled() -> bool {
 
 pub fn set_enabled(on: bool) {
     ENABLED.store(on, Ordering::Relaxed);
-    modforge::log!("horseyforge: fatigue suppressor -> {on}");
+    modforge::log!("horsey-mod: fatigue suppressor -> {on}");
 }
 
 /// Spawn the worker. Idempotent: only the first call starts a
@@ -48,7 +48,7 @@ pub fn spawn_suppressor() {
         return;
     }
     let _ = std::thread::Builder::new()
-        .name("horseyforge-fatigue".into())
+        .name("horsey-fatigue".into())
         .spawn(run);
 }
 

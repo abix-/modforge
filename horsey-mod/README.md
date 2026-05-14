@@ -1,11 +1,11 @@
-# horseyforge
+# horsey-mod
 
 Native-PE binding of [`modforge`](../modforge) for Horsey Game.
 
 Sibling to `ueforge` (UE5/UE4SS) and `unityforge` (Unity Mono/IL2CPP).
-Where those rely on a managed-runtime plugin loader, horseyforge attaches
+Where those rely on a managed-runtime plugin loader, horsey-mod attaches
 via an injector EXE that `CreateRemoteThread`s a `LoadLibraryW` on
-`horseyforge.dll` into the running `Horsey.exe`.
+`horsey.dll` into the running `Horsey.exe`.
 
 ## What you get out of the box
 
@@ -37,37 +37,37 @@ A localhost HTTP control plane on `127.0.0.1:33077` with auth, powered by
 
 1. Build:
    ```
-   cargo build -p horseyforge --release
+   cargo build -p horsey-mod --release
    ```
    This produces:
-   - `target/x86_64-pc-windows-msvc/release/horseyforge.dll`
-   - `target/x86_64-pc-windows-msvc/release/horseyforge-inject.exe`
+   - `target/x86_64-pc-windows-msvc/release/horsey.dll`
+   - `target/x86_64-pc-windows-msvc/release/horsey-inject.exe`
 
 2. Launch `Horsey.exe` normally (via Steam or directly).
 
 3. Inject:
    ```
-   target\x86_64-pc-windows-msvc\release\horseyforge-inject.exe \
-     --dll target\x86_64-pc-windows-msvc\release\horseyforge.dll
+   target\x86_64-pc-windows-msvc\release\horsey-inject.exe \
+     --dll target\x86_64-pc-windows-msvc\release\horsey.dll
    ```
    The injector finds `Horsey.exe` and `CreateRemoteThread`s
-   `LoadLibraryW(horseyforge.dll)` into it.
+   `LoadLibraryW(horsey.dll)` into it.
 
 4. Check the log:
    ```
-   type "C:\Games\Steam\steamapps\common\Horsey Game\horseyforge.log"
+   type "C:\Games\Steam\steamapps\common\Horsey Game\horsey.log"
    ```
-   You should see `horseyforge: listening on 127.0.0.1:33077`.
+   You should see `horsey-mod: listening on 127.0.0.1:33077`.
 
 5. Read the auth token:
    ```
-   type "C:\Games\Steam\steamapps\common\Horsey Game\horseyforge.auth"
+   type "C:\Games\Steam\steamapps\common\Horsey Game\horsey.auth"
    ```
 
 6. Test:
    ```
    curl -X POST http://127.0.0.1:33077/op \
-     -H "X-Ueforge-Auth: <token from horseyforge.auth>" \
+     -H "X-Ueforge-Auth: <token from horsey.auth>" \
      -d '{"op":"ping"}'
    ```
 
@@ -83,7 +83,7 @@ A localhost HTTP control plane on `127.0.0.1:33077` with auth, powered by
         ┌──────────────────────────┼──────────────────────┐
         │                          │                      │
    ┌────▼────┐                ┌────▼─────┐         ┌──────▼──────┐
-   │ ueforge │                │unityforge│         │ horseyforge │
+   │ ueforge │                │unityforge│         │ horsey-mod │
    │  UE5    │                │  Unity   │         │  Native PE  │
    │  UE4SS  │                │ BepInEx  │         │   inject    │
    └─────────┘                └──────────┘         └─────────────┘
@@ -111,7 +111,7 @@ add a small launcher EXE that combines "start Horsey via Steam" with
 
 ## Next phases
 
-Currently horseyforge provides READ + simple WRITE access via the HTTP
+Currently horsey-mod provides READ + simple WRITE access via the HTTP
 control plane. Phase 2 will add:
 
 - **MinHook trampolines** on the 18 game function addresses (see

@@ -667,7 +667,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "horseyforge"
+name = "horsey-mod"
 version = "0.1.0"
 dependencies = [
  "anyhow",

@@ -24,10 +24,10 @@ crates that consume modforge directly or through a forge.
     └────┬────┘         └─────┬─────┘
          │                    │
    ┌─────┴─────────┐    ┌─────┴─────────┐    ┌──────────────┐
-   │ grounded2-mod │    │   wwm-mod     │    │ horseyforge  │
+   │ grounded2-mod │    │   wwm-mod     │    │  horsey-mod  │
    │ outworld-     │    │ il2cpp-smoke  │    │ (Horsey Game,│
-   │ station-      │    │               │    │  PE inject)  │
-   │ tweaks        │    │               │    │              │
+   │ station-mod   │    │               │    │  PE inject)  │
+   │               │    │               │    │              │
    └───────────────┘    └───────────────┘    └──────────────┘
 ```
 
@@ -35,9 +35,9 @@ An "engine forge" is reusable: any UE5 game sits on ueforge,
 any Unity game sits on unityforge. A native-PE game has no
 managed loader to lean on, so its per-game crate carries its
 own injector + game-specific accessors and consumes modforge
-directly. The first such crate is `horseyforge` (Horsey Game).
+directly. The first such crate is `horsey-mod` (Horsey Game).
 If a second native-PE game shows up, the
-`inject + HTTP-bind + binary-patch` pattern in horseyforge
+`inject + HTTP-bind + binary-patch` pattern in horsey-mod
 gets lifted into a shared `modforge::inject` module; until
 then it lives where it's used.
 
@@ -100,9 +100,9 @@ See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge
 | `outworld-station-mod`    | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
 | `wwm-mod`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
 | `il2cpp-smoke`            | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
-| `horseyforge`             | Horsey Game       | modforge (PE inject) | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. Carries its own injector EXE. |
+| `horsey-mod`             | Horsey Game       | modforge (PE inject) | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. Carries its own injector EXE. |
 
-`horseyforge` is the odd one out: Horsey Game has no
+`horsey-mod` is the odd one out: Horsey Game has no
 third-party plugin loader, so the crate consumes modforge
 directly and ships a small injector EXE that
 `CreateRemoteThread`s a `LoadLibraryW` into the running
@@ -111,7 +111,7 @@ process. It also owns the binary-patch infrastructure
 revert-on-detach) and hot reload via timestamped staged DLLs
 (cargo's output is never the file the game has loaded, so
 it's never locked). All Horsey-specific. See
-[`horseyforge/README.md`](horseyforge/README.md) and
+[`horsey-mod/README.md`](horsey-mod/README.md) and
 [`horseygame/`](horseygame/) for the Horsey Game research.
 
 Per-game research notes:
@@ -136,7 +136,7 @@ Per-game research notes:
 +- outworld-station-mod/      -- Outworld Station mod (ueforge)
 +- wwm-mod/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
-+- horseyforge/               -- Horsey Game mod (PE inject; modforge directly)
++- horsey-mod/                -- Horsey Game mod (PE inject; modforge directly)
 +- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
 +- docs/                      -- workspace-level (todo, changelog, research)
 +- Cargo.toml                 -- workspace manifest
@@ -160,9 +160,9 @@ cargo deploy install -p outworld-station-mod
 wwm-mod/scripts/build_and_deploy.ps1
 
 # Horsey Game (native PE / inject)
-cargo build -p horseyforge --release
-target/x86_64-pc-windows-msvc/release/horseyforge-inject.exe \
-  --dll target/x86_64-pc-windows-msvc/release/horseyforge.dll
+cargo build -p horsey-mod --release
+target/x86_64-pc-windows-msvc/release/horsey-inject.exe \
+  --dll target/x86_64-pc-windows-msvc/release/horsey.dll
 ```
 
 `cargo deploy install -p <mod>` (for the ueforge mods)
@@ -189,7 +189,7 @@ Each forge has its own hot-reload story:
   `*.unityforge.gen<N>.dll`. The C# shim's per-second watcher
   picks it up and `HotSwap`s. Old generation is quiesced (its
   code stays mapped); never `FreeLibrary`.
-- **horseyforge**: `horseyforge-inject.exe --reload`. POSTs
+- **horsey-mod**: `horsey-inject.exe --reload`. POSTs
   `_shutdown` to release the listener, `CreateRemoteThread`s
   `FreeLibrary` on the old HMODULE, deletes the old staged
   file, stages the new build to a fresh timestamped path,
@@ -208,7 +208,7 @@ Each forge has its own hot-reload story:
   deployed (Phase 4). Mono + IL2CPP shims.
   `HarmonyBridge.PatchPrefix/Postfix` known-broken (queued for
   fix); Mono `MonoBridge.ListMethods` shipped (+ ABI v4).
-- **horseyforge** (Horsey Game mod, PE inject): injector +
+- **horsey-mod** (Horsey Game mod, PE inject): injector +
   HTTP control plane shipped, hot reload works,
   `no_tire`-by-default replaced by split-flag fatigue
   suppressor (race-eligible without breaking sleep).
@@ -253,7 +253,7 @@ Per-crate docs:
 
 - [`ueforge/README.md`](ueforge/README.md) + [`ueforge/docs/`](ueforge/docs/).
 - [`unityforge/`](unityforge/).
-- [`horseyforge/README.md`](horseyforge/README.md).
+- [`horsey-mod/README.md`](horsey-mod/README.md).
 - [`grounded2-mod/docs/`](grounded2-mod/docs/).
 - [`horseygame/`](horseygame/). Horsey Game research notes.
 

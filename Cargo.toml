@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["grounded2-mod", "horseyforge", "il2cpp-smoke", "modforge", "outworld-station-mod", "ueforge", "unityforge", "wwm-mod"]
+members = ["grounded2-mod", "horsey-mod", "il2cpp-smoke", "modforge", "outworld-station-mod", "ueforge", "unityforge", "wwm-mod"]
 
 [workspace.package]
 version = "0.1.0"

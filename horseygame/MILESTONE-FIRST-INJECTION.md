@@ -7,25 +7,25 @@ DLL injection → live HTTP mutation → **visible in-game effect**.
 
 - Horsey.exe running normally via Steam (PID 13372)
 - Save loaded: 48 horses, year 48, $12,033 in cash, 11 sleeps, 35 races
-- `horseyforge.dll` (493 KB) and `horseyforge-inject.exe` (452 KB) built
+- `horsey.dll` (493 KB) and `horsey-inject.exe` (452 KB) built
   from `grounded2mods` workspace at commit `e9d3345`
 
 ## Sequence
 
 ```
-$ target\x86_64-pc-windows-msvc\release\horseyforge-inject.exe
-[inject] DLL: \\?\C:\code\grounded2mods\target\x86_64-pc-windows-msvc\release\horseyforge.dll
+$ target\x86_64-pc-windows-msvc\release\horsey-inject.exe
+[inject] DLL: \\?\C:\code\grounded2mods\target\x86_64-pc-windows-msvc\release\horsey.dll
 [inject] target: Horsey.exe
 [inject] found PID 13372
 [inject] OK
 ```
 
-`horseyforge.log` confirmed inside the running process:
+`horsey.log` confirmed inside the running process:
 
 ```
-[03:35:41] horseyforge worker thread started
-[03:35:41] horseyforge: auth token written to ...horseyforge.auth
-[03:35:41] horseyforge: registered ops
+[03:35:41] horsey-mod worker thread started
+[03:35:41] horsey-mod: auth token written to ...horsey.auth
+[03:35:41] horsey-mod: registered ops
 [03:35:41] ueforge: listening on 127.0.0.1:33077/op
 ```
 
@@ -83,7 +83,7 @@ write → engine behavior change. **All four layers worked first try.**
 
 ## Next phase
 
-The control-plane half of horseyforge is proven. The hook half remains:
+The control-plane half of horsey-mod is proven. The hook half remains:
 
 1. **MinHook integration** so we can install trampolines on the 18
    game functions identified in `targets::fn_addr`.
@@ -92,25 +92,25 @@ The control-plane half of horseyforge is proven. The hook half remains:
 3. **SDL3 input hook** for the hotkey system.
 4. **Save-writer hook** for sidecar persistence.
 
-With those, horseyforge is at feature-parity with what ueforge offers
+With those, horsey-mod is at feature-parity with what ueforge offers
 the UE5 ecosystem.
 
 ## Reproduce
 
 ```bash
 # 1. Build (from grounded2mods workspace root)
-cargo build -p horseyforge --release
+cargo build -p horsey-mod --release
 
 # 2. Launch Horsey via Steam
 # 3. Inject
 cd target\x86_64-pc-windows-msvc\release
-.\horseyforge-inject.exe
+.\horsey-inject.exe
 
 # 4. Read auth token
-type horseyforge.auth
+type horsey.auth
 
 # 5. Test from terminal
-TOKEN=$(cat horseyforge.auth)
+TOKEN=$(cat horsey.auth)
 curl -s -X POST http://127.0.0.1:33077/op \
   -H "X-Ueforge-Auth: $TOKEN" -d '{"op":"game.read"}'
 ```

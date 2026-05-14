@@ -5,7 +5,7 @@
 | Layer | Status |
 |---|---|
 | Decompilation | **DONE** (100% functions, 25 deep annotations, 1234 batch entries) |
-| `horseyforge` crate | **SHIPPED** in grounded2mods workspace |
+| `horsey-mod` crate | **SHIPPED** in grounded2mods workspace |
 | DLL injection + HTTP control plane | **WORKING** (verified live) |
 | 18 ops for read/write of game state | **WORKING** |
 | `no_tire = true` by default at attach | **WORKING** |
@@ -26,13 +26,13 @@ Latest milestone: [`MILESTONE-FIRST-INJECTION.md`](MILESTONE-FIRST-INJECTION.md)
 
 ### Hot-reload crash
 
-`horseyforge-inject.exe --reload` performs the swap and reports success, but
+`horsey-inject.exe --reload` performs the swap and reports success, but
 the game crashes a few seconds later. The post-reload state is briefly
 visible (verified: `no_tire: true` was readable after the swap before crash).
 
 Most likely cause: helper threads inside the old DLL haven't fully unwound
 their stack when `FreeLibrary` is called. The `_shutdown` op spawns a
-`horseyforge-shutdown` thread that lives inside the old DLL; if that thread
+`horsey-shutdown` thread that lives inside the old DLL; if that thread
 hasn't exited, the FreeLibrary returns "successfully" but the next time
 that thread tries to return into freed code: crash.
 
@@ -81,7 +81,7 @@ for every action. Bulk hotkeys turn tedious chores into one keypress.
 DLL hooks SDL input events and short-circuits them to game actions before
 the engine sees the raw click.
 
-Probably easiest as a `horseyforge` mod once that foundation exists (see
+Probably easiest as a `horsey-mod` mod once that foundation exists (see
 [`MODFORGE-INTEGRATION.md`](MODFORGE-INTEGRATION.md)).
 
 ---
@@ -187,7 +187,7 @@ after fatigue/aging. Without these features the late-game experience
 
 #### Implementation path
 
-This entire feature stack rides on `horseyforge`:
+This entire feature stack rides on `horsey-mod`:
 
 | Sub-feature | Backend | Frontend |
 |---|---|---|
@@ -215,7 +215,7 @@ full UI library into the game's render path.
 
 ## Mod foundations
 
-### 1. `horseyforge` crate (per-engine binding for modforge) **SHIPPED**
+### 1. `horsey-mod` crate (per-engine binding for modforge) **SHIPPED**
 
 Status: **working**. Lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods)
 as a third sibling to `ueforge` and `unityforge`. Pivoted from the originally-planned
@@ -223,7 +223,7 @@ proxy-`steam_api64.dll` approach to a `CreateRemoteThread(LoadLibraryW)` injecto
 after MSVC link.exe's `.DEF` forwarder syntax failed for 1,089 Steam API exports.
 
 What's done:
-- `horseyforge-inject.exe` finds Horsey.exe and injects `horseyforge.dll`
+- `horsey-inject.exe` finds Horsey.exe and injects `horsey.dll`
 - DllMain spawns a worker thread that initializes modforge logging, settings,
   HTTP server with auth
 - 18 ops registered for read/write of game state + cheats + horse fields
@@ -249,8 +249,8 @@ What's pending:
 ### 2. HTTP control plane **SHIPPED**
 
 `modforge::server::spawn` is used directly. The 18 registered ops are in
-`horseyforge/src/ops.rs`. Auth is in `X-Ueforge-Auth` header; token is
-written to `horseyforge.auth` next to the DLL on each launch.
+`horsey-mod/src/ops.rs`. Auth is in `X-Ueforge-Auth` header; token is
+written to `horsey.auth` next to the DLL on each launch.
 
 Currently registered ops:
 - Liveness: `ping`, `list_ops`
@@ -288,7 +288,7 @@ horse-struct field or hooks the appropriate game function.
 
 ### 5. Hotkey system
 
-After `horseyforge` gets MinHook + SDL3 input hook, add a `hotkeys` module
+After `horsey-mod` gets MinHook + SDL3 input hook, add a `hotkeys` module
 that:
 - Hooks SDL's keyboard/mouse input handlers in Horsey.exe
 - Translates modifier+click into game actions
@@ -301,7 +301,7 @@ that:
 
 ### Genetic complexity beyond 240 genes
 
-- **Extension gene table** in horseyforge (sidecar to vanilla's chromoMap).
+- **Extension gene table** in horsey-mod (sidecar to vanilla's chromoMap).
 - New axes: personality matrix (16-dim), lineage drift, environmental
   adaptation, social temperament.
 - Display via custom UI panel (web frontend or imgui overlay).
@@ -317,7 +317,7 @@ that:
 - Hook the world-action dispatcher.
 - Add a "Repurposed Building" overlay on an unused-feeling vanilla building
   (e.g. Pawn shop) that triggers custom logic.
-- Eventually: a fully scripted location built entirely in horseyforge.
+- Eventually: a fully scripted location built entirely in horsey-mod.
 
 ### Social / herd mechanics
 
@@ -336,7 +336,7 @@ that:
 
 - Add "research points", "fame", "favor" as separate currencies.
 - Each tied to specific activities.
-- Stored in horseyforge sidecar state.
+- Stored in horsey-mod sidecar state.
 
 ### Weather + seasons
 
@@ -367,9 +367,9 @@ These could change the modding architecture; worth investigating early:
 
 Goal: Horsey modding becomes a real ecosystem. Required steps:
 
-1. Publish `horseyforge` to crates.io (or git URL).
+1. Publish `horsey-mod` to crates.io (or git URL).
 2. Write a tutorial: "Build your first Horsey mod in 30 minutes".
 3. Reference mod (e.g. a clean RPG layer) for new modders to copy.
 4. Steam Workshop integration? (Unclear if SDK supports custom uploads.)
-5. Auto-updater for horseyforge itself (so mod authors don't pin to ancient
+5. Auto-updater for horsey-mod itself (so mod authors don't pin to ancient
    game versions).
