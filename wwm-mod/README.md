@@ -1,4 +1,4 @@
-# wwm-rpg
+# wwm-mod
 
 Wild West Miner Simulator (Demo) RPG mod. Rust cdylib loaded
 into the game by the `Unityforge.Shim.Mono` BepInEx plugin.
@@ -9,7 +9,7 @@ into the game by the `Unityforge.Shim.Mono` BepInEx plugin.
 through `modforge::rpg::Tracker<UnityEngine>` with
 `UnityField{Additive,Multiply}Effect`s + a `RuntimeEffect`.
 Save/load via `modforge::rpg::store` (JSON under
-`<DLL_dir>/wwm-rpg/<slot>.json`, atomic temp+fsync+rename).
+`<DLL_dir>/wwm-mod/<slot>.json`, atomic temp+fsync+rename).
 Harmony postfixes route through `TRACKER.record_xp`. HTTP
 control plane on port 17172 (`ping`, `walk_class`,
 `inspect_object`, `read_field`, `write_field`,
@@ -18,7 +18,7 @@ control plane on port 17172 (`ping`, `walk_class`,
 `skill_add_xp`, `skill_grant_points`, `list_tabs`,
 `render_tab`).
 
-Catalog (`wwm-rpg/src/skills.rs`):
+Catalog (`wwm-mod/src/skills.rs`):
 
 | Skill | Effect | Target |
 |---|---|---|
@@ -47,7 +47,7 @@ plus 4 built-in skills (`Bag`, `Energy`, `Rope`, `Speed`).
 Calling `SkillsManager.SetSkillLevel("Bag", 4)` via
 `invoke_method` grew the player's backpack from 5 to 12 slots
 **live**, no save reload, no field hunting. The right shape
-for wwm-rpg is a `UnitySkillProxyEffect` that maps our levels
+for wwm-mod is a `UnitySkillProxyEffect` that maps our levels
 to game-skill levels and calls `SetSkillLevel`; the game does
 the actual mutation + save persistence + UI refresh. See
 [`docs/wild-west-miner-research.md` §7.5](../docs/wild-west-miner-research.md#75-in-game-findings-2026-05-13-session)
@@ -55,7 +55,7 @@ for the full state graph + method surface.
 
 **Field-name verification status.** Both surviving raw-field
 targets (Quick Pickaxe + slot key) are right. The four others
-are obsoleted by the SkillsManager finding above (any wwm-rpg
+are obsoleted by the SkillsManager finding above (any wwm-mod
 skill that wants to scale a vanilla game stat should proxy
 through `SkillsManager.SetSkillLevel` instead of writing
 fields).
@@ -106,20 +106,20 @@ instead.
 From the repo root:
 
 ```powershell
-.\wwm-rpg\scripts\build_and_deploy.ps1
+.\wwm-mod\scripts\build_and_deploy.ps1
 ```
 
 That:
 
-1. Builds `wwm_rpg.dll` (`cargo build --release -p wwm-rpg`).
+1. Builds `wwm_mod.dll` (`cargo build --release -p wwm-mod`).
 2. Builds `Unityforge.Shim.Mono.dll`
    (`dotnet build -c Release` on
    `unityforge\cs-shim-mono\Unityforge.Shim.Mono.csproj`,
    using the BepInEx + Unity DLLs that already shipped with
    WWM).
 3. Copies both into
-   `<WWM>\BepInEx\plugins\wwm-rpg\`:
-   - `wwm_rpg.unityforge.dll` (renamed from `wwm_rpg.dll`)
+   `<WWM>\BepInEx\plugins\wwm-mod\`:
+   - `wwm_mod.unityforge.dll` (renamed from `wwm_mod.dll`)
    - `Unityforge.Shim.Mono.dll`
 
 If WWM lives somewhere else, pass `-WwmDir 'D:\Games\...'`.
@@ -135,28 +135,28 @@ Launch WWM. In the BepInEx console (or
 
 ```
 [Info   :Unityforge.Shim] Unityforge.Shim: Awake
-[Info   :Unityforge.Shim] Unityforge.Shim: loading <path>\wwm_rpg.unityforge.dll
+[Info   :Unityforge.Shim] Unityforge.Shim: loading <path>\wwm_mod.unityforge.dll
 [Info   :Unityforge.Shim] Unityforge.Shim: ready
 [Info   :Unityforge.Shim] unityforge: init WildWestMinerRpg v0.1.0
-[Info   :Unityforge.Shim] wwm-rpg: ready (ops + selectors + skills installed)
+[Info   :Unityforge.Shim] wwm-mod: ready (ops + selectors + skills installed)
 ```
 
 Failure modes:
 
 - `Unityforge.Shim: no Rust target DLL found.`. The
   `*.unityforge.dll` naming convention was missed. Check
-  the file at `BepInEx\plugins\wwm-rpg\` is literally named
-  `wwm_rpg.unityforge.dll`.
+  the file at `BepInEx\plugins\wwm-mod\` is literally named
+  `wwm_mod.unityforge.dll`.
 - `Unityforge.Shim: LoadLibrary failed: <code>`. Usually a
   missing dependency. The Rust cdylib only links MSVC + Win32
   imports; this is rare. If it happens, run
-  `dumpbin /DEPENDENTS wwm_rpg.unityforge.dll` and check for
+  `dumpbin /DEPENDENTS wwm_mod.unityforge.dll` and check for
   anything unexpected.
 - `Unityforge.Shim: target DLL is missing one of
   unityforge_init / unityforge_tick / unityforge_shutdown` --
   the cdylib was built without the macro emit; verify
   `unityforge::unityforge_mod!(MOD_INFO)` is uncommented in
-  `wwm-rpg/src/lib.rs`.
+  `wwm-mod/src/lib.rs`.
 
 ### 4. Drive the HTTP control plane
 
@@ -199,7 +199,7 @@ rpg/tracker: activated slot=<N> level=0 xp=0 skill_points=0
 If that line never appears:
 
 - The `GameSerializationSystem` class name or field name is
-  wrong. Fix in `wwm-rpg/src/skills.rs`:
+  wrong. Fix in `wwm-mod/src/skills.rs`:
   ```rust
   static SLOT_KEY: UnitySlotKey = UnitySlotKey::new(
       "<actual class>", "<actual field>");
@@ -221,7 +221,7 @@ curl.exe -s $op -d '{"op":"inspect_object","args":{"handle":<N>}}'
 ```
 
 Compare the returned field names against
-`wwm-rpg/src/skills.rs`. For each mismatch:
+`wwm-mod/src/skills.rs`. For each mismatch:
 
 ```rust
 // Before
@@ -259,7 +259,7 @@ And the two declared method targets (for Harmony):
 If a Harmony patch target doesn't exist, BepInEx logs
 `HarmonyX patch failed: <class>::<method> not found`. Pick a
 closer-named method via `walk_class` + `inspect_object` and
-fix in `wwm-rpg/src/skills.rs::install_hooks`.
+fix in `wwm-mod/src/skills.rs::install_hooks`.
 
 ### 7. Drive the full skill loop
 
@@ -293,7 +293,7 @@ mapped into a process; if the deploy step errors with
 The save file lives at:
 
 ```
-<WWM>\BepInEx\plugins\wwm-rpg\wwm-rpg\<slot>.json
+<WWM>\BepInEx\plugins\wwm-mod\wwm-mod\<slot>.json
 ```
 
 Delete it to reset a slot's RPG state without affecting the
@@ -301,7 +301,7 @@ game's own save.
 
 ### 9. Removing the mod
 
-Delete `<WWM>\BepInEx\plugins\wwm-rpg\`. The mod's save
+Delete `<WWM>\BepInEx\plugins\wwm-mod\`. The mod's save
 sidecar JSON goes with it. The game's vanilla saves are
 untouched.
 
@@ -310,7 +310,7 @@ untouched.
 ## File layout
 
 ```
-wwm-rpg/
+wwm-mod/
   Cargo.toml
   README.md                       # this file
   scripts/
@@ -324,8 +324,8 @@ wwm-rpg/
 
 ```sh
 # Rust cdylib
-cargo build --release -p wwm-rpg
-# -> target/x86_64-pc-windows-msvc/release/wwm_rpg.dll
+cargo build --release -p wwm-mod
+# -> target/x86_64-pc-windows-msvc/release/wwm_mod.dll
 
 # C# Mono shim
 cd unityforge/cs-shim-mono
@@ -335,8 +335,8 @@ dotnet build -c Release \
 # -> bin/Release/netstandard2.1/Unityforge.Shim.Mono.dll
 ```
 
-Then copy both files into `<WWM>\BepInEx\plugins\wwm-rpg\`,
-renaming the Rust DLL to `wwm_rpg.unityforge.dll`.
+Then copy both files into `<WWM>\BepInEx\plugins\wwm-mod\`,
+renaming the Rust DLL to `wwm_mod.unityforge.dll`.
 
 ## How the loader picks the cdylib
 

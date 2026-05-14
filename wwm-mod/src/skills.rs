@@ -5,7 +5,7 @@
 //! corresponding singleton field on the active slot. State
 //! mutation goes through [`modforge::rpg::Tracker`] which
 //! transactionally persists to disk under
-//! `<DLL_dir>/wwm-rpg/<slot>.json`.
+//! `<DLL_dir>/wwm-mod/<slot>.json`.
 //!
 //! The two Harmony postfixes grant XP per dig swing and per
 //! currency event. `TRACKER.record_xp` does the curve math,
@@ -163,7 +163,7 @@ pub static CATALOG: SkillRegistry = SkillRegistry::new(&[
 pub static TRACKER: Tracker = Tracker::new(
     &CATALOG,
     Curve::new(100.0, 1.8, 50),
-    "wwm-rpg",
+    "wwm-mod",
 );
 
 // ---- Slot poller ----------------------------------------------------
@@ -225,7 +225,7 @@ fn register_ops() {
     OP_REGISTRY.register_many([
         OpDef::new(
             "skill_state",
-            "Snapshot of the wwm-rpg skill state",
+            "Snapshot of the wwm-mod skill state",
             "{}",
             |_args| {
                 let snapshot = TRACKER.with_state(|s| {

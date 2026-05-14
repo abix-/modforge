@@ -81,7 +81,7 @@ Four Rust crates plus one C# shim:
    to ueforge's `cpp/ueforge_shim.cpp` (502 lines). Each
    shim likely under 1500 lines of C# with shared base.
 5. **Game mods** (Rust cdylib crates). `grounded2-rpg` and
-   `outworld-station-mod` exist. `wwm-rpg` is new. All
+   `outworld-station-mod` exist. `wwm-mod` is new. All
    pure Rust. Depend on `ueforge` or `unityforge` plus
    `modforge`.
 
@@ -505,7 +505,7 @@ grounded2mods/
     tests/
   grounded2-rpg/                  # exists; depends on ueforge + modforge
   outworld-station-mod/        # exists; depends on ueforge + modforge
-  wwm-rpg/                        # NEW Rust mod (Mono target); depends on unityforge + modforge
+  wwm-mod/                        # NEW Rust mod (Mono target); depends on unityforge + modforge
   <il2cpp-smoke>/                 # NEW Rust mod (IL2CPP target); depends on unityforge + modforge
 ```
 
@@ -566,7 +566,7 @@ depends on both. Nothing else gets built in this pass.
                              that work on both backends)
                                           |
                                           v
-                          wwm-rpg (Mono proof) + IL2CPP smoke
+                          wwm-mod (Mono proof) + IL2CPP smoke
                                   (Rust cdylibs)
 ```
 
@@ -876,7 +876,7 @@ on both backends; the conformance corpus passes on both;
 a stub catalog can be loaded + leveled + saved + reloaded
 via curl on both.
 
-#### Phase 3: wwm-rpg (Mono proof, ~5-7 days) + IL2CPP proof (~2-3 days)
+#### Phase 3: wwm-mod (Mono proof, ~5-7 days) + IL2CPP proof (~2-3 days)
 
 The proof points. WWM is the Mono target; an IL2CPP target
 (picked at phase entry) is the IL2CPP target. Both prove the
@@ -885,9 +885,9 @@ backend-agnostic where possible; the only backend-specific
 detail is which game classes get patched and which fields
 get read.
 
-##### 3a. wwm-rpg (Mono)
+##### 3a. wwm-mod (Mono)
 
-- New Rust crate: `grounded2mods/wwm-rpg/Cargo.toml` with
+- New Rust crate: `grounded2mods/wwm-mod/Cargo.toml` with
   `crate-type = ["cdylib"]`. Depends on
   `unityforge = { path = "../unityforge" }`.
 - `static MOD_INFO: unityforge::ModDef = ...;`
@@ -934,7 +934,7 @@ get read.
 ##### 3b. IL2CPP proof-point
 
 A second Rust cdylib crate proving the IL2CPP shim works
-end-to-end. Scope is intentionally smaller than wwm-rpg: a
+end-to-end. Scope is intentionally smaller than wwm-mod: a
 single read/write/invoke + a single Harmony patch on an
 IL2CPP target. Goal is to demonstrate the same Rust SDK
 surface drives an IL2CPP game; not to ship a full RPG mod.
@@ -1048,10 +1048,10 @@ refcount + thread-IP references hit zero, on its own
 schedule.
 
 ```
-plugins/wwm-rpg/
-  wwm_rpg.unityforge.dll          (generation 0, loaded at BepInEx Awake)
-  wwm_rpg.unityforge.gen1.dll     (staged by deploy; shim LoadLibrarys + activates)
-  wwm_rpg.unityforge.gen2.dll     (next reload)
+plugins/wwm-mod/
+  wwm_mod.unityforge.dll          (generation 0, loaded at BepInEx Awake)
+  wwm_mod.unityforge.gen1.dll     (staged by deploy; shim LoadLibrarys + activates)
+  wwm_mod.unityforge.gen2.dll     (next reload)
   ...
 ```
 
@@ -1120,7 +1120,7 @@ running).
 
 ### Phasing
 
-Land as Phase 4 after Phase 3 (wwm-rpg + IL2CPP smoke). The
+Land as Phase 4 after Phase 3 (wwm-mod + IL2CPP smoke). The
 work is concentrated in:
 
 1. C# shim: per-generation Plugin state, generation-counter
@@ -1161,13 +1161,13 @@ stable. Not blocking shipping unityforge v1.
   once its refcount + thread-IP references hit zero, on
   its own schedule.
 - **`build_and_deploy.ps1 -Hot`** writes the build as
-  `wwm_rpg.unityforge.gen<max+1>.dll` next to the canonical
+  `wwm_mod.unityforge.gen<max+1>.dll` next to the canonical
   DLL. Shim picks it up within ~1 second.
 
 ### Iteration loop
 
 1. Change Rust code.
-2. `./wwm-rpg/scripts/build_and_deploy.ps1 -Hot`
+2. `./wwm-mod/scripts/build_and_deploy.ps1 -Hot`
 3. BepInEx log: `Unityforge.Shim: hot reload generation N -> N+1`
 4. Continue driving via curl. New code is live.
 
@@ -1236,7 +1236,7 @@ The plan is "done" when:
 - `unityforge.dll` + `Unityforge.Shim.Il2Cpp.dll` load into
   the chosen IL2CPP smoke target via BepInEx 6 IL2CPP.
   Same `curl` surface answers the same op set.
-- `wwm-rpg` Rust cdylib loads via the Mono shim, ships a
+- `wwm-mod` Rust cdylib loads via the Mono shim, ships a
   catalog of 5-8 skills, and gameplay shows skill effects
   applied + persisted across save/load.
 - IL2CPP smoke crate loads via the IL2CPP shim and passes

@@ -18,7 +18,7 @@ publish.workspace = true
 #   - unityforge::selector: Unity-side selector resolvers
 #   - unityforge::rpg::std_effect: Mono Effect implementations
 #
-# Game mods (e.g. wwm-rpg) consume this as a normal crate dep.
+# Game mods (e.g. wwm-mod) consume this as a normal crate dep.
 # A small C# shim project (cs-shim/) bootstraps the Rust cdylib
 # inside BepInEx and exposes the Mono+Harmony bridge.
 

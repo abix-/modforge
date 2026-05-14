@@ -1,10 +1,10 @@
-# wwm-rpg build + deploy. Run from repo root or anywhere.
+# wwm-mod build + deploy. Run from repo root or anywhere.
 #
 # Builds:
-#   1. wwm_rpg.dll (Rust cdylib, release)
+#   1. wwm_mod.dll (Rust cdylib, release)
 #   2. Unityforge.Shim.dll (C# BepInEx plugin, release)
 #
-# Deploys both into <WWM>/BepInEx/plugins/wwm-rpg/.
+# Deploys both into <WWM>/BepInEx/plugins/wwm-mod/.
 #
 # Prerequisites:
 #   - Cargo + rustc (workspace toolchain via rust-toolchain.toml).
@@ -27,7 +27,7 @@ Set-Location $repoRoot
 
 $wwmManaged = Join-Path $WwmDir 'Wild West Miner - Gold Rush_Data\Managed'
 $wwmBep     = Join-Path $WwmDir 'BepInEx'
-$pluginDir  = Join-Path $wwmBep 'plugins\wwm-rpg'
+$pluginDir  = Join-Path $wwmBep 'plugins\wwm-mod'
 
 if (-not $ShimBepInExDir) {
     $ShimBepInExDir = $wwmBep
@@ -39,8 +39,8 @@ if (-not (Test-Path (Join-Path $ShimBepInExDir 'core\BepInEx.dll'))) {
     exit 1
 }
 
-Write-Host "==> Build wwm_rpg.dll (Rust release)" -ForegroundColor Cyan
-& cargo build --release -p wwm-rpg
+Write-Host "==> Build wwm_mod.dll (Rust release)" -ForegroundColor Cyan
+& cargo build --release -p wwm-mod
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> Build Unityforge.Shim.Mono.dll (C# release; WWM is Mono)" -ForegroundColor Cyan
@@ -59,7 +59,7 @@ if (-not (Test-Path $pluginDir)) {
     New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
 }
 
-$rustDll = Join-Path $repoRoot 'target\x86_64-pc-windows-msvc\release\wwm_rpg.dll'
+$rustDll = Join-Path $repoRoot 'target\x86_64-pc-windows-msvc\release\wwm_mod.dll'
 $shimDll = Join-Path $repoRoot 'unityforge\cs-shim-mono\bin\Release\netstandard2.1\Unityforge.Shim.Mono.dll'
 
 if ($Hot) {
@@ -77,7 +77,7 @@ if ($Hot) {
         New-Item -ItemType Directory -Force -Path $pluginDir | Out-Null
     }
     $maxGen = 0
-    $existing = Get-ChildItem -Path $pluginDir -Filter 'wwm_rpg.unityforge.gen*.dll' -ErrorAction SilentlyContinue
+    $existing = Get-ChildItem -Path $pluginDir -Filter 'wwm_mod.unityforge.gen*.dll' -ErrorAction SilentlyContinue
     foreach ($f in $existing) {
         if ($f.Name -match 'gen(\d+)\.dll$') {
             $n = [int]$Matches[1]
@@ -85,7 +85,7 @@ if ($Hot) {
         }
     }
     $newGen = $maxGen + 1
-    $stagingDll = Join-Path $pluginDir "wwm_rpg.unityforge.gen$newGen.dll"
+    $stagingDll = Join-Path $pluginDir "wwm_mod.unityforge.gen$newGen.dll"
     Copy-Item -Force $rustDll $stagingDll
     Write-Host "==> Staged Rust DLL as generation $newGen" -ForegroundColor Green
     Write-Host "      $stagingDll" -ForegroundColor Green
@@ -94,7 +94,7 @@ if ($Hot) {
     exit 0
 }
 
-Copy-Item -Force $rustDll (Join-Path $pluginDir 'wwm_rpg.unityforge.dll')
+Copy-Item -Force $rustDll (Join-Path $pluginDir 'wwm_mod.unityforge.dll')
 Copy-Item -Force $shimDll (Join-Path $pluginDir 'Unityforge.Shim.Mono.dll')
 
 Write-Host "==> Deployed:" -ForegroundColor Green

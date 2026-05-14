@@ -1,19 +1,19 @@
 [package]
-name = "wwm-rpg"
+name = "wwm-mod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Wild West Miner RPG mod. Rust cdylib loaded into the game by
+# Wild West Miner mod. Rust cdylib loaded into the game by
 # the Unityforge.Shim BepInEx plugin. The shim resolves the
 # three `unityforge_*` extern "C" entry points via
 # GetProcAddress and drives them.
 
 [lib]
 crate-type = ["cdylib"]
-name = "wwm_rpg"
+name = "wwm_mod"
 
 [dependencies]
 modforge = { path = "../modforge" }
@@ -25,7 +25,7 @@ anyhow = { workspace = true }
 
 # Deploy convention: the C# shim looks for `*.unityforge.dll`
 # next to itself. After building, rename / copy the cdylib to
-# `wwm_rpg.unityforge.dll` and drop both files into the game's
+# `wwm_mod.unityforge.dll` and drop both files into the game's
 # `BepInEx/plugins/` directory. See README for the full deploy
 # steps.
 
@@ -35,4 +35,4 @@ workspace = true
 [package.metadata.unityforge]
 # The shim's autodetect picks up *.unityforge.dll automatically,
 # but you can override with the UNITYFORGE_TARGET env var.
-deploy_name = "wwm_rpg.unityforge.dll"
+deploy_name = "wwm_mod.unityforge.dll"

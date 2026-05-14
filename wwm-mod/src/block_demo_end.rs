@@ -24,7 +24,7 @@ pub fn install() {
         Err(e) => {
             unityforge::mono::log(
                 unityforge::mono::LogLevel::Warn,
-                &format!("wwm-rpg: list_methods({TYPE_NAME}) failed: {e}"),
+                &format!("wwm-mod: list_methods({TYPE_NAME}) failed: {e}"),
             );
             return;
         }
@@ -33,7 +33,7 @@ pub fn install() {
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,
         &format!(
-            "wwm-rpg: {} declares {} method(s):",
+            "wwm-mod: {} declares {} method(s):",
             TYPE_NAME,
             methods.len()
         ),
@@ -70,7 +70,7 @@ pub fn install() {
             Err(e) => {
                 unityforge::mono::log(
                     unityforge::mono::LogLevel::Warn,
-                    &format!("wwm-rpg: patch_prefix({}, {}) err: {e}", TYPE_NAME, m.name),
+                    &format!("wwm-mod: patch_prefix({}, {}) err: {e}", TYPE_NAME, m.name),
                 );
             }
         }
@@ -78,12 +78,12 @@ pub fn install() {
     if blocked.is_empty() {
         unityforge::mono::log(
             unityforge::mono::LogLevel::Warn,
-            "wwm-rpg: no patchable methods found on DemoCompleteScreenUI",
+            "wwm-mod: no patchable methods found on DemoCompleteScreenUI",
         );
     } else {
         unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
-            &format!("wwm-rpg: blocked {} method(s): {}", blocked.len(), blocked.join(", ")),
+            &format!("wwm-mod: blocked {} method(s): {}", blocked.len(), blocked.join(", ")),
         );
     }
 }
@@ -91,7 +91,7 @@ pub fn install() {
 extern "C" fn on_blocked_prefix(_ctx: *const c_void) -> i32 {
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,
-        "wwm-rpg: skipped DemoCompleteScreenUI method (panel blocked)",
+        "wwm-mod: skipped DemoCompleteScreenUI method (panel blocked)",
     );
     1
 }

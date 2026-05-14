@@ -44,19 +44,19 @@ pub fn install() {
     if let Some(handle) = register_key_press(KeyCode::Space, on_space_pressed) {
         log(
             LogLevel::Info,
-            &format!("wwm-rpg/jump: spacebar bound (handle {handle})"),
+            &format!("wwm-mod/jump: spacebar bound (handle {handle})"),
         );
     } else {
         log(
             LogLevel::Warn,
-            "wwm-rpg/jump: register_key_press returned None (bridge not installed?)",
+            "wwm-mod/jump: register_key_press returned None (bridge not installed?)",
         );
     }
 }
 
 extern "C" fn on_space_pressed() {
     if let Err(e) = do_jump() {
-        log(LogLevel::Warn, &format!("wwm-rpg/jump: {e}"));
+        log(LogLevel::Warn, &format!("wwm-mod/jump: {e}"));
     }
 }
 

@@ -56,7 +56,7 @@ in the next session unless the user redirects.
     `patch_prefix` / `patch_postfix` call in the workspace
     has been silently failing for the whole session
     (`DigManager.Dig` and `PlayerManager.AddPlayerCurrency`
-    postfixes wwm-rpg relies on for XP also never fire).
+    postfixes wwm-mod relies on for XP also never fire).
     Replace with a static dispatcher keyed by patch
     handle. Until this lands, Rust-side Harmony patching
     does nothing.
@@ -113,7 +113,7 @@ to land in one commit per crate so it bisects clean.
 | Current                     | New                       | Status |
 |-----------------------------|---------------------------|--------|
 | `grounded2-rpg`             | `grounded2-mod`           | TODO   |
-| `wwm-rpg`                   | `wwm-mod`                 | TODO   |
+| `wwm-rpg`                   | `wwm-mod`                 | DONE   |
 | `outworld-station-tweaks`   | `outworld-station-mod`    | DONE   |
 | `horseyforge`               | `horsey-mod`              | TODO   |
 
@@ -341,25 +341,25 @@ Skeleton shipped 2026-05-13: `UnityEngine`, `UnityEvent`,
   `unityforge::rpg::ops::register` / `ueforge::rpg::ops::register`
   re-exports) to add the standard five-op set.
 
-## P1. wwm-rpg: complete the Mono proof (Phase 3a remainder)
+## P1. wwm-mod: complete the Mono proof (Phase 3a remainder)
 
 Catalog now declarative through `modforge::rpg::Tracker` with
 two skills. Plan calls for 5-8 skills + ImGui tab + save/load
 persistence. Save/load is done (via Tracker + slot store).
 Deep-dive:
-[`unityforge-plan.md` §6 Phase 3a](unityforge-plan.md#3a-wwm-rpg-mono).
+[`unityforge-plan.md` §6 Phase 3a](unityforge-plan.md#3a-wwm-mod-mono).
 
 - [x] **Strong Back + Greedy Miner**. Both declarative via
   `UnityFieldAdditiveEffect` and `UnityFieldMultiplyEffect`.
 - [x] **Slot poller + UnitySlotKey wiring**. Polls
   `GameSerializationSystem._currentLoadedSaveNumber`.
 - [x] **Save/load via `modforge::rpg::store`**. JSON under
-  `<DLL_dir>/wwm-rpg/<slot>.json` written atomically by the
+  `<DLL_dir>/wwm-mod/<slot>.json` written atomically by the
   Tracker.
 - [x] **Quick Pickaxe** (UnityFieldMultiply on
   `DigManager._digRange`). **VERIFIED IN-GAME 2026-05-13**:
   spending 10 points mutated `_digRange` 3.0 -> 4.5 exactly;
-  save persisted to `<WWM>/wwm-rpg/0.json`.
+  save persisted to `<WWM>/wwm-mod/0.json`.
 - [x] **Lucky** (RuntimeEffect: format-only Effect; hot-path
   probability scaling lives in a future Harmony postfix
   callback that reads the level on every fire).
@@ -391,7 +391,7 @@ Deep-dive:
   right path. Defer to an in-save test session.
 - [x] **Declarative UI tab**. `ModDef.tabs` field added on
   the unityforge side; `register_ui_ops` exposes `list_tabs`
-  + `render_tab` via HTTP. `wwm-rpg::skills::render_tab`
+  + `render_tab` via HTTP. `wwm-mod::skills::render_tab`
   logs a catalog + state snapshot through the BepInEx sink.
   Full in-process ImGui rendering is deferred until a
   bundled imgui binding lands on unityforge (the plan
@@ -400,7 +400,7 @@ Deep-dive:
 ## P1. Unityforge: IL2CPP proof-point (Phase 3b)
 
 Demonstrates the same Rust SDK drives an IL2CPP game.
-Smaller in scope than wwm-rpg: smoke checklist only, not a
+Smaller in scope than wwm-mod: smoke checklist only, not a
 full RPG mod. Deep-dive:
 [`unityforge-plan.md` §6 Phase 3b](unityforge-plan.md#3b-il2cpp-proof-point).
 

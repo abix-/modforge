@@ -3,7 +3,7 @@
 //! Phase 3b proof-point for the unityforge plan: demonstrates
 //! the same Rust SDK + bridge ABI drives an IL2CPP game when
 //! loaded through `Unityforge.Shim.Il2Cpp.dll`. Scope is
-//! intentionally smaller than wwm-rpg: a curl checklist
+//! intentionally smaller than wwm-mod: a curl checklist
 //! covering the four corner pieces of the bridge (ping,
 //! walk_class, read_field + write_field round-trip, one
 //! Harmony postfix).

@@ -24,7 +24,7 @@ crates that consume modforge directly or through a forge.
     └────┬────┘         └─────┬─────┘
          │                    │
    ┌─────┴─────────┐    ┌─────┴─────────┐    ┌──────────────┐
-   │ grounded2-rpg │    │   wwm-rpg     │    │ horseyforge  │
+   │ grounded2-rpg │    │   wwm-mod     │    │ horseyforge  │
    │ outworld-     │    │ il2cpp-smoke  │    │ (Horsey Game,│
    │ station-      │    │               │    │  PE inject)  │
    │ tweaks        │    │               │    │              │
@@ -98,7 +98,7 @@ See [`unityforge/`](unityforge/) and [`docs/unityforge-plan.md`](docs/unityforge
 |---------------------------|-------------------|--------------|------------------------------------------------------------------------------|
 | `grounded2-rpg`           | Grounded 2        | ueforge      | Factorio-style RPG / level-up. 13 skills, target ~25.                        |
 | `outworld-station-mod`    | Outworld Station  | ueforge      | Stack-size tweak (DT_Materials.MaxCanStack multiplier). Validates ueforge on a second UE5 game. |
-| `wwm-rpg`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
+| `wwm-mod`                 | Wild West Miner   | unityforge   | RPG / level-up + demo-end block (TutorialManager.CompleteDemo prefix). Mono. |
 | `il2cpp-smoke`            | (smoke target)    | unityforge   | End-to-end test of the IL2CPP path before shipping a real IL2CPP game mod.   |
 | `horseyforge`             | Horsey Game       | modforge (PE inject) | Cheats + research surface. Sleep-safe fatigue suppressor, money/year/horse ops, debug-mode unlock. Carries its own injector EXE. |
 
@@ -134,7 +134,7 @@ Per-game research notes:
 +- unityforge/                -- Unity Mono + IL2CPP forge (with C# shim)
 +- grounded2-rpg/             -- Grounded 2 RPG / level-up mod (ueforge)
 +- outworld-station-mod/      -- Outworld Station mod (ueforge)
-+- wwm-rpg/                   -- Wild West Miner mod (unityforge / Mono)
++- wwm-mod/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
 +- horseyforge/               -- Horsey Game mod (PE inject; modforge directly)
 +- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
@@ -157,7 +157,7 @@ cargo deploy install -p grounded2-rpg
 cargo deploy install -p outworld-station-mod
 
 # Wild West Miner (Unity Mono / BepInEx)
-wwm-rpg/scripts/build_and_deploy.ps1
+wwm-mod/scripts/build_and_deploy.ps1
 
 # Horsey Game (native PE / inject)
 cargo build -p horseyforge --release
@@ -185,7 +185,7 @@ Each forge has its own hot-reload story:
   vtable restoration are framework-side. State on disk
   survives.
 - **unityforge**: Generation-versioned. Run
-  `wwm-rpg/scripts/build_and_deploy.ps1 -Hot` to stage a new
+  `wwm-mod/scripts/build_and_deploy.ps1 -Hot` to stage a new
   `*.unityforge.gen<N>.dll`. The C# shim's per-second watcher
   picks it up and `HotSwap`s. Old generation is quiesced (its
   code stays mapped); never `FreeLibrary`.
@@ -219,7 +219,7 @@ Each forge has its own hot-reload story:
   damage hook. Tested against Grounded 2 Steam build
   `++Augusta+release-0.4.0.2-CL-2673661`.
 - **outworld-station-mod**: stacks tweak shipped.
-- **wwm-rpg**: demo-end block shipped (Harmony prefix on
+- **wwm-mod**: demo-end block shipped (Harmony prefix on
   `TutorialManager.CompleteDemo`); RPG side parked while the
   Harmony bridge is repaired.
 
@@ -285,7 +285,7 @@ Per-crate docs:
   patching pattern.
 - The author of [**RPG System**](https://mods.factorio.com/mod/RPGsystem)
   for Factorio. The headline RPG-style level-up mod whose
-  vocabulary `grounded2-rpg` and `wwm-rpg` borrow verbatim.
+  vocabulary `grounded2-rpg` and `wwm-mod` borrow verbatim.
 - The author of [**RimWorld RPG Mod / Combat Skills RPG**](https://steamcommunity.com/sharedfiles/filedetails/?id=2891939858).
 - The authors of the [War3CS / War3FT](https://war3cs2.wiki.gg/)
   Counter-Strike Warcraft mod line, whose flat-skill-catalog
