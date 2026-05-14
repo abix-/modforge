@@ -74,6 +74,12 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
+    // 4b. Default-on cheats. NO_TIRE_TOGGLE lives in .data (static
+    //     address, not behind a pointer), so this write is valid
+    //     even before any save is loaded.
+    gamestate::set_no_tire(true);
+    modforge::log!("horseyforge: no_tire enabled by default");
+
     // 5. Start the HTTP server. Single endpoint /op, auth via header.
     let server_cfg = modforge::server::Config {
         port: 33077,
