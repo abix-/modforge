@@ -20,8 +20,25 @@ explicit `goto`-style block labels is the target shape. It will not
 compile cleanly. That's fine; we read it, then write the mod against
 the patterns we see.
 
-Deep-dive (survey of alternatives, pipeline diagram, polish ladder):
-[`../docs/falcon-printer.md`](../docs/falcon-printer.md).
+Deep-dive lives in [`docs/`](docs/):
+
+- [`docs/survey.md`](docs/survey.md). Why Falcon and not the
+  alternatives (Fission, libsla, c2rust, LLM transpilers,
+  Ghidra plugin).
+- [`docs/architecture.md`](docs/architecture.md). The full
+  pipeline, the Falcon-vs-falcon-printer ownership split,
+  the Falcon IL shape.
+- [`docs/passes.md`](docs/passes.md). One section per
+  middle-end pass with input / output / examples.
+- [`docs/coverage.md`](docs/coverage.md). Lift-rate
+  measurement methodology and current numbers.
+- [`docs/usage.md`](docs/usage.md). How to drive each binary.
+- [`docs/building.md`](docs/building.md). Build deps,
+  common failures.
+- [`docs/polish-ladder.md`](docs/polish-ladder.md). Open
+  work.
+- [`docs/non-goals.md`](docs/non-goals.md). What we
+  explicitly are NOT building.
 
 ## Pipeline
 
@@ -96,8 +113,7 @@ Get-Content .\ghidra_addrs.txt | `
 ## Polish ladder
 
 In priority order. Full details in
-[`../docs/falcon-printer.md`](../docs/falcon-printer.md) under "What
-still needs work":
+[`docs/polish-ladder.md`](docs/polish-ladder.md):
 
 1. Tail-call recognition (Falcon currently inlines tail-called
    helpers).

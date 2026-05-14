@@ -125,6 +125,35 @@ Per-game research notes:
   + function annotations + RE notes (subtree-merged from the
   former `horsey-mods` repo).
 
+## Research tooling
+
+### falcon-printer. Binary-to-Rust output backend
+
+Sits next to the mod crates as a workspace member. Lifts a
+stripped PE binary through [Falcon](https://github.com/falconre/falcon)
+(Rust binary-analysis framework), runs a small middle-end
+(temp folding, x86 flag-pattern recognition, call/ret
+recovery, synth-block collapse, condition simplification),
+and emits Rust-shaped pseudocode for human reading.
+
+The goal: Rust as the daily-driver notation for RE artifacts
+so they live in the same language as the mods that consume
+them. Output is *notation*, not compilable Rust;
+`unsafe fn` with raw pointers and explicit block labels.
+
+Current status: **88.8% lift rate** on 10,332 Horsey
+functions. 11 sample artifacts shipped at
+[`horseygame/decompiled/rust/`](horseygame/decompiled/rust/)
+including `save_filename_format`,
+`click_race_when_ready_dialog`, `simulation_paused_status`,
+`price_or_score_formula`, `SDL_CloseSensor`.
+
+See [`falcon-printer/README.md`](falcon-printer/README.md)
+for the one-page intro and
+[`falcon-printer/docs/`](falcon-printer/docs/) for the deep
+dives (architecture, passes walkthrough, coverage
+methodology, polish ladder, non-goals).
+
 ## Repository layout
 
 ```
@@ -138,6 +167,7 @@ Per-game research notes:
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
 +- horsey-mod/                -- Horsey Game mod (PE inject; modforge directly)
 +- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
++- falcon-printer/            -- Rust output backend for Falcon (binary-to-Rust RE tool)
 +- docs/                      -- workspace-level (todo, changelog, research)
 +- Cargo.toml                 -- workspace manifest
 +- README.md                  -- this file
@@ -255,6 +285,7 @@ Per-crate docs:
 - [`unityforge/`](unityforge/).
 - [`horsey-mod/README.md`](horsey-mod/README.md).
 - [`grounded2-mod/docs/`](grounded2-mod/docs/).
+- [`falcon-printer/README.md`](falcon-printer/README.md) + [`falcon-printer/docs/`](falcon-printer/docs/). Binary-to-Rust RE tool.
 - [`horseygame/`](horseygame/). Horsey Game research notes.
 
 ## Credits

@@ -214,16 +214,17 @@ horsey-mod `sleep_safe_no_tire` patch is unstuck.
 
 ## RE-to-Rust pipeline (`falcon-printer`)
 
-Moved 2026-05-14 to its own doc:
-[`falcon-printer.md`](falcon-printer.md).
+Moved 2026-05-14 to per-crate docs:
+[`../falcon-printer/docs/`](../falcon-printer/docs/).
 
-TL;DR: Falcon 0.6 based binary-to-Rust spike. **88.8%
-lift rate** on 10,332 Horsey functions. 11 sample
-artifacts in `horseygame/decompiled/rust/`. Spike crate
-at `falcon-printer/`.
+TL;DR: Falcon-based binary-to-Rust output backend.
+**88.8% lift rate** on 10,332 Horsey functions. 11
+sample artifacts in `horseygame/decompiled/rust/`.
 
-Full plan, survey of alternatives, pipeline diagram,
-and remaining polish ladder live in the new doc.
+Open polish work tracked in
+[`../falcon-printer/docs/polish-ladder.md`](../falcon-printer/docs/polish-ladder.md);
+pick from there when starting a session on the
+decompiler side.
 
 
 ---
