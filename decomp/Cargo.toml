@@ -19,3 +19,4 @@ r2ssa = { path = "../r2sleigh/crates/r2ssa" }
 r2dec = { path = "../r2sleigh/crates/r2dec" }
 sleigh-config = { version = "1.0", features = ["x86"] }
 goblin = "0.10"
+clap = { version = "=4.5.60", features = ["derive"] }

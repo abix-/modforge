@@ -2,7 +2,7 @@
 // Pipeline: r2sleigh (Sleigh lift -> SSA -> structurer) -> our Rust printer
 
 #[allow(non_snake_case, unused_assignments, unused_variables, unused_mut, dead_code, unused_parens)]
-pub unsafe fn fn_140094a20() {
+pub unsafe fn click_race_when_ready_dialog() {
     *(fn_1400285e0() - 168_i64) = ((edx_8 & 0x80000001_u64) - 1_i64 | 0xfffffffe_u64) + 1_i64;
     *(fn_1400285e0() - 184_i64) = xmm13;
     *(fn_1400285e0() - 200_i64) = xmm14;

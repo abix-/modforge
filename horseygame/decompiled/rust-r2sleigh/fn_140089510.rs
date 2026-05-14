@@ -2,8 +2,8 @@
 // Pipeline: r2sleigh (Sleigh lift -> SSA -> structurer) -> our Rust printer
 
 #[allow(non_snake_case, unused_assignments, unused_variables, unused_mut, dead_code, unused_parens)]
-pub unsafe fn fn_140089510() {
-    fn_1403ed558 = 0_i64;
+pub unsafe fn save_filename_format() {
+    fn_1403ed558 = (0_i64 as i8);
     *(rdi_1 + 592_i64) = 13_i64;
     fn_1400ca670();
     fn_1400cef70();

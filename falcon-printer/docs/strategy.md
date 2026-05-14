@@ -176,65 +176,6 @@ parity and workspace integration (Phase 4).
   with names. SSE-heavy ones may need longer
   timeouts or basic-block splitting.
 
-### Phase 2: printer-fork design (1 session)
-
-Goal: locate the printer extension point in r2dec
-and design our Rust emit.
-
-- [ ] Read `r2dec/src/codegen.rs` (the C emit) and
-  `r2dec/src/ast.rs` (the AST it emits from).
-  Understand the AST -> C pipeline.
-- [ ] Decide between:
-  - **(a) Upstream PR for a pluggable printer
-    trait**: cleanest long-term; depends on
-    Pancake accepting the design.
-  - **(b) Fork r2sleigh, maintain a long-lived
-    branch**: more control, more maintenance,
-    GPL-3 means we have to publish source if we
-    redistribute.
-  - **(c) New crate downstream of r2sleigh that
-    consumes its AST and emits Rust**: no upstream
-    change; we depend on `r2dec` and re-export
-    a parallel `r2dec-rust`. This is probably the
-    right answer because it keeps us independent
-    without forking.
-- [ ] Sketch the new crate (`rdec-rust` or
-  whatever) layout: takes r2dec's AST, walks it,
-  emits Rust syntax. Mirrors `r2dec`'s codegen.rs
-  but with Rust-specific peepholes (`int64_t` ->
-  `u64`, `core::ptr::read` instead of `*`,
-  `unsafe fn` wrapper, etc.).
-- [ ] Decide naming. See "Open questions".
-
-### Phase 3: implementation (2-3 sessions)
-
-Goal: produce Rust output for every documented
-key-func with the new substrate.
-
-- [ ] Stand up the new crate as a workspace
-  member. Pin `r2sleigh` as a git dependency at a
-  specific commit until they publish on crates.io.
-- [ ] Port the CLI (`print` / `batch` / `sweep` /
-  `dump-il`) so subcommands feel identical.
-  Implementation underneath is now r2sleigh +
-  r2dec + our Rust printer instead of Falcon +
-  our middle-end + our printer.
-- [ ] Port the naming layer (load
-  `horseygame/decompiled/INDEX.md` + `key-funcs/`
-  slugs). Independent of substrate.
-- [ ] Implement the Rust emit: walk the r2dec AST,
-  produce `unsafe fn`-shaped Rust. Reuse the
-  type-mapping logic from falcon-printer
-  (u1 -> bool, etc.). Memory access through
-  `core::ptr::read` / `core::ptr::write`.
-- [ ] Regenerate the 11 sample artifacts. Diff
-  against the falcon-printer outputs for the
-  before/after record.
-- [ ] Run the new sweep. Target: ~100% lift rate
-  (Sleigh has full instruction semantics; remaining
-  failures should be Ghidra-over-discovery noise
-  only).
-
 ### Phase 4: cutover (1 session)
 
 Goal: replace falcon-printer in the workspace.

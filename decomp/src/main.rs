@@ -1,5 +1,8 @@
-//! r2sleigh-spike: Phase 1-3 validation per
-//! falcon-printer/docs/strategy.md.
+//! decomp / r2sleigh-spike.
+//!
+//! r2sleigh-substrate Rust-output decompiler. Subcommands match
+//! falcon-printer's CLI surface so the workflow is identical
+//! regardless of which crate is driving the lift.
 //!
 //! Pipeline:
 //!   PE file (goblin)
@@ -9,96 +12,83 @@
 //!     -> r2ssa SSAFunction          (SSA + analyses)
 //!     -> r2dec Decompiler::build_function -> CFunction (AST)
 //!     -> our Rust emitter walks CFunction -> Rust pseudocode
-//!
-//! Goal: end-to-end proof that consuming r2sleigh as a library
-//! and emitting our own Rust syntax produces output meaningfully
-//! better than falcon-printer's current output.
 
+use clap::{Parser, Subcommand};
 use goblin::pe::PE;
 use r2dec::ast::{BinaryOp, CExpr, CFunction, CStmt, CType, SwitchCase, UnaryOp};
 use r2dec::{Decompiler, DecompilerConfig};
 use r2sleigh_lift::disasm::Disassembler;
 use r2sleigh_lift::sleigh::build_arch_spec;
+use r2il::ArchSpec;
 use r2ssa::SSAFunction;
-use std::env;
+use std::collections::HashMap;
 use std::fs;
+use std::io::{self, BufRead, Write};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+const DEFAULT_BINARY: &str =
+    "/mnt/c/Games/Steam/steamapps/common/Horsey Game/Horsey.exe";
+const DEFAULT_INDEX_MD: &str =
+    "/mnt/c/code/grounded2mods/horseygame/decompiled/INDEX.md";
+const DEFAULT_KEY_FUNCS_DIR: &str =
+    "/mnt/c/code/grounded2mods/horseygame/decompiled/key-funcs";
+const DEFAULT_OUT_DIR: &str =
+    "/mnt/c/code/grounded2mods/horseygame/decompiled/rust-r2sleigh";
+
+#[derive(Parser)]
+#[command(
+    name = "decomp",
+    about = "r2sleigh-based binary-to-Rust decompiler. Lifts PE binaries to readable Rust pseudocode."
+)]
+struct Cli {
+    /// Path to the target binary. Defaults to Horsey.exe.
+    #[arg(long, global = true)]
+    bin: Option<PathBuf>,
+
+    /// Function size to lift in bytes (default 4096).
+    #[arg(long, global = true, default_value_t = 4096)]
+    size: usize,
+
+    #[command(subcommand)]
+    cmd: Cmd,
+}
+
+#[derive(Subcommand)]
+enum Cmd {
+    /// Lift one function and print Rust to stdout.
+    Print {
+        #[arg(long, short = 'a')]
+        addr: String,
+        /// Output mode: rust (default) or c (raw r2dec output).
+        #[arg(long, default_value = "rust")]
+        emit: String,
+    },
+
+    /// Read addresses from stdin (one per line, hex). Write
+    /// one `fn_<addr>.rs` per function to the output directory.
+    Batch {
+        #[arg(long, short = 'o', default_value = DEFAULT_OUT_DIR)]
+        out: PathBuf,
+    },
+
+    /// Dump raw r2il for one function (pre-AST, debug aid).
+    DumpIl {
+        #[arg(long, short = 'a')]
+        addr: String,
+    },
+}
+
 fn main() -> ExitCode {
-    let bin = env::args().nth(1).unwrap_or_else(|| {
-        "/mnt/c/Games/Steam/steamapps/common/Horsey Game/Horsey.exe".to_string()
-    });
-    let addr_hex = env::args().nth(2).unwrap_or_else(|| "0x140089510".into());
-    let size: usize = env::args()
-        .nth(3)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(4096);
-    // emit: "c" (default, r2dec output) or "rust"
-    let emit = env::args().nth(4).unwrap_or_else(|| "rust".into());
+    let cli = Cli::parse();
+    let binary = cli.bin.unwrap_or_else(|| PathBuf::from(DEFAULT_BINARY));
+    let size = cli.size;
 
-    let addr = match u64::from_str_radix(addr_hex.trim_start_matches("0x"), 16) {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("bad addr {addr_hex}: {e}");
-            return ExitCode::FAILURE;
-        }
+    let result: Result<(), Box<dyn std::error::Error>> = match cli.cmd {
+        Cmd::Print { addr, emit } => cmd_print(&binary, &addr, size, &emit),
+        Cmd::Batch { out } => cmd_batch(&binary, &out, size),
+        Cmd::DumpIl { addr } => cmd_dump_il(&binary, &addr, size),
     };
-
-    let result: Result<(), Box<dyn std::error::Error>> = (|| {
-        let data = fs::read(&bin)?;
-        let pe = PE::parse(&data)?;
-        let image_base = pe.image_base as u64;
-        let rva = addr.checked_sub(image_base).ok_or("addr < image base")?;
-        let section = pe
-            .sections
-            .iter()
-            .find(|s| {
-                let va = s.virtual_address as u64;
-                rva >= va && rva < va + s.virtual_size as u64
-            })
-            .ok_or("addr not in any PE section")?;
-        let file_offset =
-            (rva - section.virtual_address as u64) + section.pointer_to_raw_data as u64;
-        let file_offset = file_offset as usize;
-        let avail = data.len().saturating_sub(file_offset);
-        let size = size.min(avail);
-        let bytes = &data[file_offset..file_offset + size];
-
-        eprintln!(
-            "[spike] {} bytes @ 0x{addr:x} (file_offset 0x{file_offset:x}, section {})",
-            bytes.len(),
-            std::str::from_utf8(&section.name).unwrap_or("?"),
-        );
-
-        let arch_spec = build_arch_spec(
-            sleigh_config::processor_x86::SLA_X86_64,
-            sleigh_config::processor_x86::PSPEC_X86_64,
-            "x86-64",
-        )?;
-        let disasm = Disassembler::from_sla(
-            sleigh_config::processor_x86::SLA_X86_64,
-            sleigh_config::processor_x86::PSPEC_X86_64,
-            "x86-64",
-        )?;
-
-        let block = disasm.lift_block(bytes, addr, bytes.len())?;
-        eprintln!("[spike] r2il block: {} ops", block.ops.len());
-
-        let ssa = SSAFunction::from_blocks_for_decompile(&[block], Some(&arch_spec))
-            .ok_or("SSAFunction::from_blocks_for_decompile returned None")?;
-        eprintln!("[spike] SSA function: {} blocks", ssa.num_blocks());
-
-        let dec = Decompiler::new(DecompilerConfig::default());
-        let c_func = dec.build_function(&ssa);
-
-        match emit.as_str() {
-            "c" => println!("{}", r2dec::codegen::generate(&c_func)),
-            "rust" => println!("{}", emit_rust(&c_func, addr)),
-            other => return Err(format!("unknown emit mode: {other}").into()),
-        }
-        Ok(())
-    })();
-
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -108,13 +98,205 @@ fn main() -> ExitCode {
     }
 }
 
+fn parse_addr(s: &str) -> Result<u64, std::num::ParseIntError> {
+    u64::from_str_radix(s.trim().trim_start_matches("0x"), 16)
+}
+
+// ---------------------------------------------------------------- subcommands
+
+fn cmd_print(
+    binary: &Path,
+    addr: &str,
+    size: usize,
+    emit: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = parse_addr(addr)?;
+    let names = load_name_table();
+    let ctx = SleighCtx::new()?;
+    let func = decompile_one(binary, &ctx, addr, size, &names)?;
+    match emit {
+        "c" => println!("{}", r2dec::codegen::generate(&func)),
+        "rust" | _ => println!("{}", emit_rust(&func, addr)),
+    }
+    Ok(())
+}
+
+fn cmd_batch(
+    binary: &Path,
+    out_dir: &Path,
+    size: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(out_dir)?;
+    let names = load_name_table();
+    let ctx = SleighCtx::new()?;
+    let stdin = io::stdin();
+    let addrs: Vec<u64> = stdin
+        .lock()
+        .lines()
+        .filter_map(|l| l.ok())
+        .map(|l| l.trim().to_string())
+        .filter(|s| !s.is_empty() && !s.starts_with('#'))
+        .filter_map(|s| parse_addr(&s).ok())
+        .collect();
+    let mut ok = 0usize;
+    let mut err = 0usize;
+    for addr in &addrs {
+        let path = out_dir.join(format!("fn_{:x}.rs", addr));
+        match decompile_one(binary, &ctx, *addr, size, &names) {
+            Ok(func) => {
+                let rust = emit_rust(&func, *addr);
+                fs::write(&path, rust)?;
+                ok += 1;
+                eprintln!("[batch] ok 0x{addr:x} -> {}", path.display());
+            }
+            Err(e) => {
+                err += 1;
+                eprintln!("[batch] err 0x{addr:x}: {e}");
+            }
+        }
+    }
+    eprintln!("[batch] {ok} ok, {err} err, {} total", addrs.len());
+    Ok(())
+}
+
+fn cmd_dump_il(
+    binary: &Path,
+    addr: &str,
+    size: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let addr = parse_addr(addr)?;
+    let ctx = SleighCtx::new()?;
+    let bytes = read_function_bytes(binary, addr, size)?;
+    eprintln!("[dump-il] {} bytes @ 0x{addr:x}", bytes.len());
+    let block = ctx.disasm.lift_block(&bytes, addr, bytes.len())?;
+    println!("# Function 0x{addr:x}");
+    println!("# {} r2il ops", block.ops.len());
+    println!();
+    for (i, op) in block.ops.iter().enumerate() {
+        println!("{i:4}  {op:?}");
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------- shared helpers
+
+struct SleighCtx {
+    disasm: Disassembler,
+    arch: ArchSpec,
+}
+
+impl SleighCtx {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let arch = build_arch_spec(
+            sleigh_config::processor_x86::SLA_X86_64,
+            sleigh_config::processor_x86::PSPEC_X86_64,
+            "x86-64",
+        )?;
+        let disasm = Disassembler::from_sla(
+            sleigh_config::processor_x86::SLA_X86_64,
+            sleigh_config::processor_x86::PSPEC_X86_64,
+            "x86-64",
+        )?;
+        Ok(Self { disasm, arch })
+    }
+}
+
+fn read_function_bytes(
+    binary: &Path,
+    addr: u64,
+    size: usize,
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let data = fs::read(binary)?;
+    let pe = PE::parse(&data)?;
+    let image_base = pe.image_base as u64;
+    let rva = addr.checked_sub(image_base).ok_or("addr < image base")?;
+    let section = pe
+        .sections
+        .iter()
+        .find(|s| {
+            let va = s.virtual_address as u64;
+            rva >= va && rva < va + s.virtual_size as u64
+        })
+        .ok_or("addr not in any PE section")?;
+    let file_offset =
+        (rva - section.virtual_address as u64) + section.pointer_to_raw_data as u64;
+    let file_offset = file_offset as usize;
+    let avail = data.len().saturating_sub(file_offset);
+    let size = size.min(avail);
+    Ok(data[file_offset..file_offset + size].to_vec())
+}
+
+fn decompile_one(
+    binary: &Path,
+    ctx: &SleighCtx,
+    addr: u64,
+    size: usize,
+    names: &HashMap<u64, String>,
+) -> Result<CFunction, Box<dyn std::error::Error>> {
+    let bytes = read_function_bytes(binary, addr, size)?;
+    let block = ctx.disasm.lift_block(&bytes, addr, bytes.len())?;
+    let ssa = SSAFunction::from_blocks_for_decompile(&[block], Some(&ctx.arch))
+        .ok_or("SSAFunction::from_blocks_for_decompile returned None")?;
+    let dec = Decompiler::new(DecompilerConfig::default());
+    let mut func = dec.build_function(&ssa);
+    // Override the function name from INDEX.md / key-funcs if available.
+    if let Some(name) = names.get(&addr) {
+        func.name = name.clone();
+    }
+    Ok(func)
+}
+
+// ---------------------------------------------------------------- name table
+
+fn load_name_table() -> HashMap<u64, String> {
+    let mut map = HashMap::new();
+    if let Ok(text) = fs::read_to_string(DEFAULT_INDEX_MD) {
+        for line in text.lines() {
+            let line = line.trim();
+            if !line.starts_with("| 0x") {
+                continue;
+            }
+            let cols: Vec<&str> = line.split('|').map(str::trim).collect();
+            if cols.len() < 3 {
+                continue;
+            }
+            let addr_str = cols[1].trim_start_matches("0x");
+            let Ok(addr) = u64::from_str_radix(addr_str, 16) else {
+                continue;
+            };
+            let raw_name = cols[2].trim_matches('`').to_string();
+            // Skip FUN_ placeholder names; key-funcs filenames override below.
+            if !raw_name.starts_with("FUN_") {
+                map.insert(addr, raw_name);
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir(DEFAULT_KEY_FUNCS_DIR) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if let Some(rest) = name.strip_prefix("0x") {
+                if let Some(end) = rest.find('_') {
+                    let addr_str = &rest[..end];
+                    if let Ok(addr) = u64::from_str_radix(addr_str, 16) {
+                        let slug = rest[end + 1..]
+                            .trim_end_matches(".c")
+                            .to_string();
+                        map.insert(addr, slug);
+                    }
+                }
+            }
+        }
+    }
+    map
+}
+
 // ---------------------------------------------------------------- Rust emitter
 
 fn emit_rust(func: &CFunction, addr: u64) -> String {
     let mut out = String::new();
     out.push_str(&format!("// Decompiled from Horsey.exe @ 0x{addr:x}\n"));
     out.push_str("// Pipeline: r2sleigh (Sleigh lift -> SSA -> structurer) -> our Rust printer\n");
-    out.push_str("\n");
+    out.push('\n');
     out.push_str("#[allow(non_snake_case, unused_assignments, unused_variables, unused_mut, dead_code, unused_parens)]\n");
     out.push_str(&format!("pub unsafe fn {}(", sanitize_ident(&func.name)));
     for (i, p) in func.params.iter().enumerate() {
@@ -125,7 +307,6 @@ fn emit_rust(func: &CFunction, addr: u64) -> String {
     }
     out.push_str(") {\n");
 
-    // Locals (declared up front; the structurer hoists them).
     for local in &func.locals {
         out.push_str(&format!(
             "    let mut {}: {};\n",
@@ -134,7 +315,7 @@ fn emit_rust(func: &CFunction, addr: u64) -> String {
         ));
     }
     if !func.locals.is_empty() {
-        out.push_str("\n");
+        out.push('\n');
     }
 
     for stmt in &func.body {
@@ -185,7 +366,6 @@ fn emit_stmt(out: &mut String, stmt: &CStmt, indent: usize) {
             out.push_str(&format!("{pad}}}\n"));
         }
         CStmt::DoWhile { body, cond } => {
-            // Rust doesn't have do-while; emit as loop+break.
             out.push_str(&format!("{pad}loop {{  // do-while\n"));
             emit_stmt_body(out, body, indent + 1);
             out.push_str(&format!(
@@ -195,7 +375,6 @@ fn emit_stmt(out: &mut String, stmt: &CStmt, indent: usize) {
             out.push_str(&format!("{pad}}}\n"));
         }
         CStmt::For { init, cond, update, body } => {
-            // Rust for-loop expects iterator; emit as init+while.
             if let Some(i) = init {
                 emit_stmt(out, i, indent);
             }
@@ -206,11 +385,7 @@ fn emit_stmt(out: &mut String, stmt: &CStmt, indent: usize) {
             out.push_str(&format!("{pad}while {cond_str} {{\n"));
             emit_stmt_body(out, body, indent + 1);
             if let Some(u) = update {
-                out.push_str(&format!(
-                    "{}    {};\n",
-                    pad,
-                    emit_expr(u, 0)
-                ));
+                out.push_str(&format!("{}    {};\n", pad, emit_expr(u, 0)));
             }
             out.push_str(&format!("{pad}}}\n"));
         }
@@ -228,6 +403,9 @@ fn emit_stmt(out: &mut String, stmt: &CStmt, indent: usize) {
             }
             out.push_str(&format!("{pad}}}\n"));
         }
+        // r2dec emits `return 0;` from void-style functions sometimes;
+        // emit `return;` for the void case to avoid clutter.
+        CStmt::Return(Some(CExpr::IntLit(0))) => out.push_str(&format!("{pad}return;\n")),
         CStmt::Return(None) => out.push_str(&format!("{pad}return;\n")),
         CStmt::Return(Some(e)) => out.push_str(&format!("{pad}return {};\n", emit_expr(e, 0))),
         CStmt::Break => out.push_str(&format!("{pad}break;\n")),
@@ -277,7 +455,7 @@ fn emit_expr(e: &CExpr, parent_prec: u8) -> String {
             let inner = emit_expr(operand, p);
             match op {
                 UnaryOp::Not => format!("!{inner}"),
-                UnaryOp::BitNot => format!("!{inner}"),  // Rust uses ! for bitwise NOT on integers
+                UnaryOp::BitNot => format!("!{inner}"),
                 UnaryOp::Neg => format!("-{inner}"),
                 UnaryOp::PreInc => format!("{{ {inner} += 1; {inner} }}"),
                 UnaryOp::PreDec => format!("{{ {inner} -= 1; {inner} }}"),
@@ -306,7 +484,9 @@ fn emit_expr(e: &CExpr, parent_prec: u8) -> String {
         CExpr::Subscript { base, index } => {
             format!("{}[{}]", emit_expr(base, p), emit_expr(index, 0))
         }
-        CExpr::Member { base, member } => format!("{}.{}", emit_expr(base, p), sanitize_ident(member)),
+        CExpr::Member { base, member } => {
+            format!("{}.{}", emit_expr(base, p), sanitize_ident(member))
+        }
         CExpr::PtrMember { base, member } => {
             format!("(*{}).{}", emit_expr(base, p), sanitize_ident(member))
         }
@@ -407,19 +587,15 @@ fn rust_ty(ty: &CType) -> String {
 }
 
 fn sanitize_ident(s: &str) -> String {
-    // r2dec emits names like "ram:1400ca670" for direct addresses.
-    // Map them to fn_<addr>-style identifiers.
     if let Some(rest) = s.strip_prefix("ram:") {
         if rest.chars().all(|c| c.is_ascii_hexdigit()) {
             return format!("fn_{rest}");
         }
     }
-    // sub_140089510 -> fn_140089510
     if let Some(rest) = s.strip_prefix("sub_") {
         if rest.chars().all(|c| c.is_ascii_hexdigit()) {
             return format!("fn_{rest}");
         }
     }
-    // Replace : and other non-ident chars.
     s.replace(':', "_").replace('.', "_").replace('-', "_")
 }
