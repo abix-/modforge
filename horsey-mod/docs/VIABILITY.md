@@ -11,6 +11,46 @@
 
 ---
 
+## Design principle: layer on top of vanilla
+
+**User direction 2026-05-14:** our code sits ON TOP of
+vanilla. We do NOT rewrite vanilla functionality. We
+only override vanilla where overriding is the only way
+to accomplish the goal.
+
+This principle ranks every strategy choice in this doc:
+
+- Prefer a **trampoline / postfix patch** (let vanilla
+  run, then add our effects on top) over a vanilla
+  rewrite.
+- Prefer a **sidecar file** for new save data over
+  modifying the vanilla save format.
+- Prefer **heap redirect** of vanilla data structures
+  over inline table expansion (the readers stay
+  vanilla; we just point them at bigger backing
+  storage).
+- Accept full vanilla rewrites ONLY where:
+  - the goal genuinely cannot be achieved by layering
+    (e.g. extending a fixed-cap loop bound), and
+  - the rewrite is small and surgical (a few literal
+    patches), not a logic re-implementation.
+
+Concrete consequences elsewhere in this doc:
+
+- Q-gene-3 / Q-gene-4: gene-effect engine. We add a
+  trampoline that runs after `FUN_14009f680` and adds
+  new gene effects on top of its `param_1[]` output
+  array. We do NOT reimplement the 14KB function.
+- Q-save-3: save format strategy. The sidecar-file
+  option (write modded data to a `.ext` file
+  alongside the vanilla save) becomes the LEADING
+  candidate, not just one option among three.
+- Per-horse genome: we leave the 480-byte vanilla
+  block alone and store our extended alleles in a
+  parallel buffer keyed by horse ID.
+
+---
+
 ## Q-gene-1: every reader of the gene table
 
 **Status:** ANSWERED.
@@ -415,15 +455,49 @@ redirect (touches 7 reader functions). Plus the pop-
 record-size change cascades to whatever else copies pop
 records.
 
-### Q-pop-2 and Q-pop-4 still open
+### Q-pop-2: unknown pop name behavior
 
-- [ ] Q-pop-2: spawner behavior with unknown pop name.
-      Need to find the spawner call site.
-- [ ] Q-pop-4: inheritance semantics. Probably handled
-      by `FUN_1400a5ee0(lVar5, &local_2068, 0xffffffff)`
-      at :462 which is the per-pop processor (and
-      probably recurses into nested `<pop>` children
-      with depth marker `0xffffffff`).
+**ANSWERED: hard crash with modal error dialog.**
+
+Pop lookup happens in `FUN_1400a2ed0` and `FUN_1400a30c0`
+(likely "lookup_pop_by_name" and a sibling). On miss, both
+call `FUN_1400c4340("pop not found %s", name)`
+([`funcs/1400a/1400a2ed0_FUN_1400a2ed0.c:106`](../../horseygame/decompiled/funcs/1400a/1400a2ed0_FUN_1400a2ed0.c)
+and
+[`funcs/1400a/1400a30c0_FUN_1400a30c0.c:70`](../../horseygame/decompiled/funcs/1400a/1400a30c0_FUN_1400a30c0.c)).
+
+`FUN_1400c4340` is the panic helper
+([`funcs/1400c/1400c4340_FUN_1400c4340.c`](../../horseygame/decompiled/funcs/1400c/1400c4340_FUN_1400c4340.c)):
+
+```
+MessageBoxA(NULL, formatted_msg, "Error", 0);
+FUN_1402da254(0);
+swi(3);  // INT 3, software interrupt -> abort
+```
+
+**Implication for the bestiary mod:** misspelled pop
+names in `pop.xml`, `horsey.tmx`, or anywhere else are
+detected loudly. We never get silent data corruption.
+But mod-update churn that removes a pop while saves
+reference it will crash existing saves with a modal
+dialog. Need authoring discipline + a "lint pop refs"
+script as part of the build.
+
+Same `FUN_1400a2ed0` also has a `"Bad Pop %d"` panic at
+:116. Probably the integer pop_id lookup (used at save
+load time, when `horse.pop_id` byte resolves to a pop).
+So unknown pop_id at load time also crashes hard.
+
+### Q-pop-4: inheritance semantics
+
+**OPEN.** The per-pop processor `FUN_1400a5ee0` (called
+at :462 with depth marker `0xffffffff`) is the next
+read target. Hypothesis: child pops inherit parent gene
+weights and override only the genes they explicitly
+name. Worth confirming by reading the function.
+
+- [ ] Read `FUN_1400a5ee0` and document the inheritance
+      mechanism.
 
 ---
 
@@ -458,11 +532,109 @@ will have 480 bytes per horse; modded saves will have
 is achievable (pad with default alleles). Reading a
 modded save with old code will fail or load garbage.
 
-### Q-save-2: literal table size in save / load code?
+### Q-save-2: literal table sizes in save / load code
 
-**OPEN.** Need to grep save and load functions for
-literal `0xf0` and `0x1e0` (480) and `0x2d0` (720)
-values.
+**ANSWERED.** Save format hardcodes the 240-gene cap in
+several places. Per-horse genome serialization
+identified at `FUN_14006d470` (write) and `FUN_14006d580`
+(read), called from the per-horse save record writer
+`FUN_14006dbf0`.
+
+#### Encoding scheme
+
+Each diploid allele pair (2 alleles per gene) is packed
+into one byte:
+
+```
+packed_byte = (allele_b + 1) * 8 | (allele_a + 1)
+            = ((b+1) << 3) | (a+1)
+```
+
+3 bits per allele, range 0..6. So 240 genes x 2 alleles
+= 480 alleles compress to 240 packed bytes per horse.
+Top 2 bits of each byte are unused. Decode:
+`a = (byte & 7) - 1; b = (byte >> 3 & 7) - 1`.
+
+#### Patch sites for genome save / load
+
+| Function | Cite | Literal | Meaning |
+|---|---|---|---|
+| `FUN_14006d470` (write) | [`funcs/14006/14006d470_FUN_14006d470.c:18`](../../horseygame/decompiled/funcs/14006/14006d470_FUN_14006d470.c) | `0x28` | Outer loop count (40 iter x 6 packed bytes) |
+| `FUN_14006d470` (write) | :22-44 | `0xef..0xf4` | Offsets reaching into the second diploid half |
+| `FUN_14006d470` (write) | :60 | `0xf0` | Bulk-write byte count = 240 |
+| `FUN_14006d580` (read) | [`funcs/14006/14006d580_FUN_14006d580.c:18`](../../horseygame/decompiled/funcs/14006/14006d580_FUN_14006d580.c) | `0xf0` | Bulk-read byte count = 240 |
+| `FUN_14006d580` (read) | :22 | `0x78` | Outer loop count (120 iter x 4 alleles) |
+| `FUN_14006d580` (read) | :26-34 | `0xef`, `0xf0` | Same diploid-half offsets |
+
+#### Patch sites for genome alloc / free / walk
+
+| Function | Cite | Literal | Meaning |
+|---|---|---|---|
+| `FUN_14005cf70` (alloc-only) | [`funcs/14005/14005cf70_FUN_14005cf70.c:152`](../../horseygame/decompiled/funcs/14005/14005cf70_FUN_14005cf70.c) | `FUN_1402c704c(0x1e0)` | 480-byte heap alloc |
+| `FUN_14005d190` (alloc + copy) | [`funcs/14005/14005d190_FUN_14005d190.c:40`](../../horseygame/decompiled/funcs/14005/14005d190_FUN_14005d190.c) | `FUN_1402c704c(0x1e0)` | Same |
+| `FUN_14005d190` (copy loop) | :84, :88 | `0xf0`, `0x1e0` | Inner / outer copy stride |
+| `FUN_14005cd00` (free) | [`funcs/14005/14005cd00_FUN_14005cd00.c:16`](../../horseygame/decompiled/funcs/14005/14005cd00_FUN_14005cd00.c) | `FUN_1402c7088(param_1[0xf], 0x1e0)` | 480-byte free |
+| `FUN_140032ac0` (diploid walk) | [`funcs/14003/140032ac0_FUN_140032ac0.c:194`](../../horseygame/decompiled/funcs/14003/140032ac0_FUN_140032ac0.c) | `0xf0`, `0x1e0` | `uVar10 += 0xf0; while uVar10 < 0x1e0` |
+
+### Genome lifecycle summary
+
+| Stage | Function | Per-horse storage |
+|---|---|---|
+| Alloc (load / breed) | `FUN_14005cf70` / `FUN_14005d190` | 480 bytes at `horse[0x78]` |
+| Copy (parent -> child) | `FUN_14005d190` |. |
+| Walk (read for evaluation) | `FUN_1400a5d20` / `FUN_1400a5e00` | i and i+0xf0 stride |
+| Mutate (live) | `FUN_1400c0660` / `FUN_1400c03a0` |. |
+| Save | `FUN_14006d470` (via `FUN_14006dbf0`) | Packs 480 alleles into 240 bytes |
+| Load | `FUN_14006d580` | Unpacks 240 bytes into 480 alleles |
+| Free | `FUN_14005cd00` | 480-byte free |
+
+### Patch surface for "extend gene count to N"
+
+Total identified sites for the genome path alone:
+
+| Layer | Sites |
+|---|---|
+| Static gene table (per Q-gene-1) | 7 reader functions + 3 loop bounds |
+| Per-pop gene-weight array (per Q-pop-3) | 3 sites in `FUN_1400a4fe0` |
+| Per-horse genome alloc / free / walk | 5 sites across 3 functions |
+| Per-horse genome save / load | 6 sites across 2 functions |
+| Gene-effect engine (per Q-gene-3) | `FUN_14009f680` trampoline (1 site, but big logic) |
+| Runtime mutation (per Q-gene-1) | `FUN_1400c0660` already known |
+
+Grand total: roughly **25 patch sites**, all identified
+with file:line cites. Plus the gene-effect trampoline
+which is a logic addition, not a literal patch.
+
+### Save-compat strategy decision
+
+Three options for the encoding (re-ranked per the
+"layer on top of vanilla" design principle):
+
+1. **(Recommended) Sidecar `.ext` file.** Vanilla
+   save / load runs untouched, writing the first 240
+   genes the vanilla way. Our patch layer writes a
+   parallel `<save>.ext` file containing extra alleles
+   for genes 240+, keyed by horse ID. On load, we
+   read both, merge in memory. Vanilla saves remain
+   readable; modded saves degrade gracefully if the
+   `.ext` is missing (extra genes default to vanilla
+   defaults). ZERO vanilla save-format patches required.
+   Cost: save-management complexity (two files, one
+   keyed by horse ID).
+2. **Replace 3-bit packing with 4-bit.** Reworks both
+   `FUN_14006d470` and `FUN_14006d580` to use values
+   0..15. Doubles allele range AND increases save bytes
+   per horse. Requires patching multiple vanilla
+   functions. Violates "layer on top." Only consider if
+   sidecar approach can't carry the design.
+3. **Keep 3-bit packing, write more bytes.** Smallest
+   vanilla rewrite (just bump byte counts in 5
+   functions), but still rewrites vanilla rather than
+   layering.
+
+**Decision (pending Phase 1 lock-in):** go with sidecar.
+Falls cleanly out of the design principle and gives
+backwards compat for free.
 
 ### Q-save-3: pop_id field width
 
@@ -507,10 +679,15 @@ species" ambition.
 | Gene-by-index consumers (Q-gene-3) | ANSWERED | 233 literal indices in ONE big function (`FUN_14009f680`) |
 | Table extension strategy (Q-gene-4) | OPEN | Heap redirect + trampoline on `FUN_14009f680` |
 | Unused gene slots (Q-gene-5) | ANSWERED | Only 7 hard-free slots; need soft-free count next |
-| Pop system (Q-pop-*) | OPEN |. |
-| Save / load (Q-save-*) | OPEN | **Critical:** per-horse genome uses 240-stride |
-| Renderer (Q-render-*) | OPEN |. |
-| Hot reload (Q-reload-*) | OPEN |. |
+| Pop Q-pop-1 (cap) | ANSWERED | Pops are unbounded, heap-grown vector |
+| Pop Q-pop-2 (unknown name) | ANSWERED | Hard crash: MessageBox + INT3 abort |
+| Pop Q-pop-3 (in-memory layout) | ANSWERED | 3840-byte records, std::vector grows freely |
+| Pop Q-pop-4 (inheritance) | OPEN | Need to read `FUN_1400a5ee0` |
+| Save Q-save-1 (genome location) | ANSWERED | 480 bytes at horse[0x78], packed to 240 in save |
+| Save Q-save-2 (literal sizes) | ANSWERED | 11 patch sites identified across 5 functions |
+| Save Q-save-3 (compat strategy) | OPEN | 4-bit pack vs more bytes vs sidecar file |
+| Renderer (Q-render-*) | OPEN | covered by Q-gene-3 finding for now |
+| Hot reload (Q-reload-*) | OPEN | needs runtime experiment |
 
 ### Early read (revised after Q-gene-3 landed)
 
