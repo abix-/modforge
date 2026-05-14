@@ -389,6 +389,48 @@ authoring) if Q-reload-2 says it's cheap and high-value.
 
 ## P0. Gene Table Doubling: 240 -> 480 implementation plan
 
+### Locked decisions (2026-05-14)
+
+These are sticky. Future sessions assume them.
+
+- **Game install path:**
+  `C:\Games\Steam\steamapps\common\Horsey Game`. Verified
+  to contain `Horsey.exe`, `data/` (with `genes.xml`,
+  `pop.xml`, `horsey.tmx`, `genes.dat`), `save/`,
+  `sound/`, `steam_api64.dll`. Use this path for:
+  - reading vanilla `genes.xml` / `pop.xml` /
+    `horsey.tmx` during development
+  - backing up vanilla data files before any test edits
+  - writing sidecar files (`save<N>.dat.ext`,
+    `genes-extended.xml`)
+  - injecting via `horsey-inject.exe`
+    (target process: `Horsey.exe`)
+- **Layered design.** Code sits ON TOP of vanilla. Don't
+  rewrite vanilla unless we MUST. Trampolines, sidecars,
+  heap redirects preferred over inline rewrites. When
+  designing any new patch, ask "can vanilla still run
+  unchanged?" first.
+- **Authoring format.** Extended genes are defined in a
+  user-editable XML file (`genes-extended.xml`)
+  mirroring vanilla `genes.xml` shape. Phase D5.3's
+  per-gene metadata (`extends="..."` mapping) goes in
+  this XML.
+- **Save compat.** Sidecar `save<N>.dat.ext` next to
+  vanilla save. Vanilla save bytes never modified. Old
+  saves keep working when the mod is uninstalled. ALL
+  extended state goes through the sidecar; never patch
+  the vanilla save serializer.
+- **Phase order.** Build infra first (D0 + D7) before
+  any vanilla patches. Sidecar buffers, HTTP ops,
+  reload tooling get built and verified before touching
+  any binary. If tempted to start patching
+  `FUN_1400a5d20` to test something, first check
+  whether the same insight could come from a
+  `genes.ext.dump` HTTP op.
+
+---
+
+
 > **Goal:** double the engine's gene capacity from 240
 > to 480 so the bestiary expansion can introduce up to
 > 240 brand-new gene types. Built per the "layer on
