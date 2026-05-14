@@ -306,6 +306,173 @@ To do:
 
 ---
 
+## Worked examples
+
+These walk through the math of what actually happens when
+the engine evaluates a gene for a horse. All numbers are
+illustrative; real allele values come from `genes.xml`.
+
+### Example 1: homozygous dominant (parents agree on g3)
+
+Setup. Gene `SIZE`:
+- m = 100, s = 1, g0 = 10, g1 = 20, g2 = 40, g3 = 80
+- horse genome[SIZE] = 3 (maternal pick = g3)
+- horse genome[SIZE + 240] = 3 (paternal pick = g3)
+
+Eval. `m_allele = 3, p_allele = 3`. Then
+`dom_idx = max(3,3) = 3`, `rec_idx = min(3,3) = 3`. So
+`dom_value = rec_value = 80`.
+
+Blend (assume DAT_14039ca44 = 1.0, DAT_14039ca5c = 100):
+
+```
+result = (1.0 - 100/100) * 80 + (100/100) * 80
+       = 0.0 * 80 + 1.0 * 80
+       = 80
+```
+
+When parents agree, mutation rate doesn't matter. The
+horse expresses the agreed allele cleanly. Makes sense.
+
+### Example 2: heterozygous (parents disagree, g0 vs g3)
+
+Same gene, but now:
+- horse genome[SIZE] = 0 (maternal g0 = small)
+- horse genome[SIZE + 240] = 3 (paternal g3 = huge)
+
+Eval. `dom_idx = max(0,3) = 3`, `rec_idx = min(0,3) = 0`.
+`dom_value = 80`, `rec_value = 10`.
+
+Blend at vanilla mutation rate m=100:
+
+```
+result = (1.0 - 100/100) * 80 + (100/100) * 10
+       = 0.0 * 80 + 1.0 * 10
+       = 10
+```
+
+Wait, that's pure recessive. With m=100 the engine fully
+expresses the SMALLER allele. That's counter-intuitive
+unless `DAT_14039ca44` is NOT 1.0 in vanilla. The constant
+`DAT_14039ca44 - m/s` controls dominance balance. If
+vanilla has `DAT_14039ca44 = 2.0` and `DAT_14039ca5c = 100`
+then the blend would be `(2 - 1) * dom + 1 * rec = dom + rec`,
+giving an additive effect rather than blend.
+
+**Caveat:** the actual vanilla values of `DAT_14039ca44`
+and `DAT_14039ca5c` are not yet documented. Worth dumping
+them at runtime via the `horsey-mod` HTTP control plane.
+The qualitative behavior holds: when parents disagree,
+mutation rate decides how much each contributes.
+
+### Example 3: weight-driven spawn (no genes involved)
+
+Setup. New horse spawning into pop `bx_mini` whose SIZE
+weights are `p0=1, p1=20, p2=20, p3=20`.
+
+Inverse weight math: relative probabilities are
+`1/p0 : 1/p1 : 1/p2 : 1/p3 = 1.000 : 0.050 : 0.050 : 0.050`.
+
+Sum = 1.150. So allele 0 gets picked
+`1.000 / 1.150 = 87%` of the time. The other three each
+get `0.050 / 1.150 = 4.3%`.
+
+Result: ~87% of `bx_mini` foals get a "small" allele
+from each parent. Probability of a foal being homozygous
+small is `0.87 * 0.87 = 76%`. So the pop is
+overwhelmingly small but not strictly so. Variation
+comes through.
+
+### Example 4: extreme weight (close to deterministic)
+
+Setup. Pop `bx_giant_strict` with SIZE weights
+`p0=255, p1=255, p2=255, p3=1`.
+
+Inverse weights: `0.0039 : 0.0039 : 0.0039 : 1.000`.
+
+Sum = 1.012. Allele 3 gets picked
+`1.000 / 1.012 = 98.8%`. Each other allele gets 0.4%.
+Probability of homozygous huge: `0.988 * 0.988 = 97.6%`.
+
+Practical takeaway: max weight 255 (uint8) on three
+alleles makes the fourth nearly deterministic but not
+guaranteed. If you want absolute determinism (every
+foal of this pop is huge, no exceptions), you can't get
+it through weights alone; you'd need to override the
+gene's allele payloads to make all four payloads equal
+for that pop.
+
+### Example 5: drift over generations
+
+Setup. Gene SIZE starts with m=100. Over 100 in-game
+horse deaths, `FUN_1400c0660` adjusts SIZE.m by ±5
+per death (probably ±5 weighted by some game event,
+maybe the dying horse's own SIZE).
+
+If drift averages -5 per death, after 100 deaths
+m = 100 - 500 = drops past 0. Probably clamped (the
+function probably has bounds). The blend formula
+`(base - m/norm) * dom + (m/norm) * rec` shifts:
+- High m: rec contribution dominates (recessive
+  alleles get expressed more often).
+- Low m: dom contribution dominates (cleaner Mendelian
+  inheritance).
+
+So a save where lots of horses died with small SIZE
+would over time make even heterozygous foals lean
+small. Real population genetics, real evolutionary
+pressure.
+
+---
+
+## Allele indexing edge cases
+
+### Allele 0..3 only (no extras)
+
+The `& 0x3` mask in the diploid evaluator means stored
+allele indices are masked to 0..3. Save format allows
+0..6 storage (3 bits). The extra bits are reserved
+slack, not meaningful.
+
+If we store an allele index of 5 in the genome, it
+gets masked to 1 at evaluation time. Quietly wrong.
+
+### Sentinel value -1
+
+Save unpack does `(byte_low & 7) - 1`. So a saved
+value of 0 unpacks to -1 (sentinel for "no allele
+set"?). Vanilla packing always adds 1 before saving
+so 0..3 -> 1..4. The 0 saved value would be unusual
+and probably indicates an uninitialized gene.
+
+### What happens if gene table has fewer alleles than expected
+
+A gene record could in theory have only g0 and g1
+defined (g2, g3 = 0). If a horse's allele index is 2
+or 3, it reads payload value 0. Probably interpreted
+as "no effect" rather than crashing. Worth confirming
+via experiment if we ever author genes with fewer
+than 4 alleles.
+
+---
+
+## Pop record on-disk layout cheat sheet
+
+| Offset | Size | Contents |
+|---|---|---|
+| 0x000 | 4 | pop_id |
+| 0x004 | 4 | parent_id |
+| 0x008 | 32 | name (std::string SSO buffer) |
+| 0x028 | 3840 | gene weights: 240 genes x 4 alleles x 4 bytes |
+| 0xfa8 | 240 | per-gene secondary block (codon order or "is set" flags) |
+
+For gene `g`, allele `a`:
+`weight = pop[0x28 + (g * 4 + a) * 4]`
+
+Pop record total size: 0x1018 = 4120 bytes.
+
+---
+
 ## What this enables for modding
 
 Without ANY binary patching:
