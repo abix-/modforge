@@ -751,12 +751,14 @@ painful.
       `pop.xml.reload` HTTP ops (Q-reload-1 still open;
       may not be feasible if vanilla doesn't expose a
       reentrant loader).
-- [ ] **D7.2.** WIP. `genes-extended.xml` parser
-      drafted in `horsey-mod/src/genes_xml.rs` with
-      regex-based extraction. Tests written; currently
-      debugging parallel-test state pollution
-      (multiple tests share global gene table). Once
-      tests pass, add `genes.ext.reload {path}` op.
+- [x] **D7.2.** DONE. `genes-extended.xml` parser in
+      `horsey-mod/src/genes_xml.rs`. Auto-loaded on
+      DLL attach (worker_main reads
+      `<DLL_DIR>/genes-extended.xml` if present). Live
+      reload via `genes.ext.reload {path?}` op. 5/5
+      parser tests pass. Format documented in the
+      module docstring. Conflict detection skips slots
+      already populated with a different name.
 - [x] **D7.3.** DONE. `genes.ext.dump` op shipped in
       D0.6 returns full extended-gene snapshot. Vanilla
       side dump deferred (would require reading

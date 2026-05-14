@@ -18,6 +18,7 @@ use crate::gamestate;
 use crate::genes::{
     self, ExtGene, ExtHorseGenome, RenderMapping, RenderMode, EXT_GENE_COUNT,
 };
+use crate::genes_xml;
 use crate::horse;
 use crate::patches;
 
@@ -527,6 +528,35 @@ Mirrors FUN_1400a5d20's math against our sidecar buffers.",
                 let ext_gene_idx = args_usize(args, "ext_gene_idx")?;
                 let value = genes::evaluate_ext_gene(horse_id, ext_gene_idx);
                 Ok(json!({"value": value}))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.reload",
+            "Re-parse `genes-extended.xml` from disk and replace EXT_GENE_TABLE entries. \
+Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
+            "{path?: string}",
+            |args| {
+                let path: std::path::PathBuf = match args.get("path").and_then(Json::as_str) {
+                    Some(p) => std::path::PathBuf::from(p),
+                    None => modforge::log::dll_dir_wait(std::time::Duration::from_secs(1))
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                        .join("genes-extended.xml"),
+                };
+                if !path.exists() {
+                    return Err(format!("file not found: {}", path.display()));
+                }
+                match genes_xml::load_from_file(&path) {
+                    Ok(stats) => Ok(json!({
+                        "path": path.display().to_string(),
+                        "parsed": stats.parsed,
+                        "placed": stats.placed,
+                        "skipped_oor": stats.skipped_oor,
+                        "skipped_conflict": stats.skipped_conflict,
+                        "render_mappings": stats.render_mappings,
+                        "errors": stats.errors,
+                    })),
+                    Err(e) => Err(e),
+                }
             },
         ),
     ]);

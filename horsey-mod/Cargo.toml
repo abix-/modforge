@@ -71,6 +71,7 @@ windows-sys = { workspace = true, features = [
 ] }
 widestring = { workspace = true }
 clap = { workspace = true }
+regex = { workspace = true }
 
 [lints]
 workspace = true

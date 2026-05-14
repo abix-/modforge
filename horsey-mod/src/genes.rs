@@ -418,17 +418,43 @@ pub fn snapshot() -> ExtSnapshot {
     }
 }
 
+/// Test-only: reset every sidecar buffer so tests that mutate
+/// global state can run independently. Production code never calls
+/// this. Keeps the table at vanilla defaults.
+#[cfg(test)]
+pub fn reset_all_for_tests() {
+    let mut t = gene_table().write();
+    t.clear();
+    for i in 0..EXT_GENE_COUNT {
+        t.push(ExtGene::default_named(format!("BX_RESERVED_{i:03}")));
+    }
+    drop(t);
+    pop_weights().write().clear();
+    horse_genomes().write().clear();
+}
+
+/// Test-only mutex serializing every test that touches global gene
+/// state. Hold for the entire test body. Without it, parallel tests
+/// pollute each other and assertions about `set_ext_gene` /
+/// `set_horse_ext_alleles` outcomes are unreliable.
+#[cfg(test)]
+pub static TEST_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn default_table_has_ext_gene_count_entries() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         assert_eq!(list_ext_genes().len(), EXT_GENE_COUNT);
     }
 
     #[test]
     fn set_then_get_ext_gene() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         let g = ExtGene {
             name: "TEST_GENE".into(),
             mutation_rate: 50,
@@ -447,6 +473,8 @@ mod tests {
 
     #[test]
     fn pop_weights_default_to_ones() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         let w = get_or_init_pop_weights(42);
         assert_eq!(w.weights.len(), EXT_GENE_COUNT);
         assert_eq!(w.weights[0], [1, 1, 1, 1]);
@@ -454,6 +482,8 @@ mod tests {
 
     #[test]
     fn horse_genome_diploid_layout() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         set_horse_ext_alleles(7, 5, 2, 3).unwrap();
         let (m, p) = get_horse_ext_alleles(7, 5).unwrap();
         assert_eq!((m, p), (2, 3));
@@ -461,6 +491,8 @@ mod tests {
 
     #[test]
     fn evaluate_homozygous() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         let g = ExtGene {
             name: "T".into(),
             mutation_rate: 100,
@@ -476,6 +508,8 @@ mod tests {
 
     #[test]
     fn evaluate_no_horse_genome_returns_zero() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
         assert_eq!(evaluate_ext_gene(99999, 0), 0.0);
     }
 }

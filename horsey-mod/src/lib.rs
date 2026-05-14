@@ -27,6 +27,7 @@
 pub mod fatigue;
 pub mod gamestate;
 pub mod genes;
+pub mod genes_xml;
 pub mod horse;
 pub mod ops;
 pub mod patches;
@@ -76,6 +77,32 @@ fn worker_main() {
 
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
+
+    // 4b. Auto-load `genes-extended.xml` if it exists next to the DLL.
+    //     Failure to find or parse the file is non-fatal: the
+    //     extended-gene table just stays at defaults and authors
+    //     can populate it via HTTP ops or the `genes.ext.reload` op.
+    let genes_xml_path = dll_dir.join("genes-extended.xml");
+    if genes_xml_path.exists() {
+        match crate::genes_xml::load_from_file(&genes_xml_path) {
+            Ok(stats) => modforge::log!(
+                "horsey-mod: loaded genes-extended.xml -- parsed={} placed={} render={} errors={}",
+                stats.parsed,
+                stats.placed,
+                stats.render_mappings,
+                stats.errors.len()
+            ),
+            Err(e) => modforge::log!(
+                "horsey-mod: failed to load {}: {e}",
+                genes_xml_path.display()
+            ),
+        }
+    } else {
+        modforge::log!(
+            "horsey-mod: no genes-extended.xml found at {} (extended-gene table stays at defaults)",
+            genes_xml_path.display()
+        );
+    }
 
     // 5. Install the sleep_safe_no_tire patch.
     //
