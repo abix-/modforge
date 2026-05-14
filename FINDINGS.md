@@ -2,69 +2,98 @@
 
 Game: `C:\Games\Steam\steamapps\common\Horsey Game`. Build mtime 2026-05-08. Surveyed 2026-05-13.
 
+## TL;DR
+
+The game ships with a **builtin cheat menu** unlocked by typing `"debug"` in the pause menu. It includes:
+
+- **"No Tire"** toggle: disables horse tiredness (zeros tiredness flags every frame on every horse).
+- **"Money"** button: +$1000 per click.
+- **"Loaded"** button: +20 to each of 7 supply counters.
+
+This directly addresses the user's fatigue complaint with no modding required. Full details and code citations in [`MECHANICS.md`](MECHANICS.md).
+
+The lifespan complaint is still open. The retirement-by-age handler is identified (`FUN_1400df280`) but not yet read in detail.
+
 ## Primary Goal
 
-**100% of `Horsey.exe` decompiled and documented.** Every game-logic function identified, named, and described. Every struct (Horse, Gene, Population, World, etc.) reconstructed. Every hardcoded constant catalogued. Behavior documented in this repo.
+**100% of `Horsey.exe` decompiled and documented.** Every game-logic function identified, named, and described. Every struct (Horse, Gene, Population, World, etc.) reconstructed. Every hardcoded constant catalogued.
 
 Completion criterion: every function in the binary is either (a) identified as third-party library code (SDL3, cute_sound, stb_image_write, MSVC CRT) and skipped, or (b) documented in this repo with name, address, signature, behavior, and the data it touches.
 
 Mod targets like "stamina threshold" and "lifespan" come out of this work as side effects. The deliverable is the documentation itself.
 
-## Scope reality check
-
-`Horsey.exe` is 4.4 MB stripped PE x64. Estimate: 500-2000 game-logic functions after excluding vendor libraries. This is a multi-week project at minimum. We will work incrementally, documenting in chunks, and the docs are the source of truth as we go.
-
 ## Working principle
 
-Inferring meaning from binary patterns or filenames is guessing in disguise. Any claim in our docs must be backed by either:
+Every claim must be backed by either:
 
-1. **Decompiled code** from `Horsey.exe` (Ghidra), with the function address cited.
-2. **An in-game observation** that directly tests the claim (e.g. save-diff after a known action).
+1. **Decompiled code** from `Horsey.exe`, with the function address cited.
+2. **An in-game observation** that directly tests the claim (save-diff after a known action).
 
 Anything else is labelled `(INFERRED, NOT VERIFIED)` or removed.
 
-## Secondary goal (player motivation)
-
-Reduce the tedium of swap/sleep/breed/kill cycles. Two complaints:
-
-1. Horses can run only ONE race before they're tired.
-2. Horses have a short life and die fast.
-
-These mods fall out of the decompilation naturally.
-
-## Engine (KNOWN)
+## Engine (KNOWN, decompiled)
 
 Custom native C/C++ engine on **SDL3** + **cute_sound** + **stb_image_write**. Renders via SDL_GPU (D3D12/D3D11/OpenGL/GLES backends selected at runtime). Tiled (`.tmx`) for the world map. ChevyRay bitmap fonts. Saves to `save%d.dat` (format string confirmed in exe).
 
 What it is NOT: not Unity, Unreal, Godot, GameMaker, Haxe, OpenFL, Love2D, MonoGame, libGDX. No Mono, no IL2CPP, no Lua, no Python embed. No PDB. No exposed scripting layer.
 
-Consequence: no MelonLoader / BepInEx / Harmony equivalent exists. Code mods require native reverse engineering.
+## Decompilation state (as of commit `e5c442a`)
 
-## File layout (KNOWN)
-
-```
-Horsey.exe         4.4 MB     stripped native PE x64
-steam_api64.dll    312 KB
-data/              1.9 MB     gameplay data + atlases
-sound/              47 MB     402 .wav + .ogg music
-save/                         save1.dat (~245 KB), settings.xml
-```
-
-### data/ inventory (KNOWN)
-
-| File | Content |
+| Metric | Value |
 |---|---|
-| `genes.xml` (242 lines) | Gene definitions: name, mutation rate, scale, 4 allele values, codon order. |
-| `pop.xml` (2714) | Per-population (default, human, freak, tiger, ...) per-gene spawn weights over 4 alleles. |
-| `sound.xml` (668) | Sound + music registry. |
-| `sprites.xml` (322) | UI sprite atlas. |
-| `furniture.xml`, `locs.xml`, `terrain.xml`, `veg.xml`, `biglogo.xml` | Sprite atlases. |
-| `horsey.tmx` | Tiled world map, 400x225 tiles at 32px. |
-| `names.txt` | 4999 horse names. |
-| `*.crf` + `*.png` + `*.txt` | ChevyRay bitmap fonts. |
-| `genes.dat` | Binary cache of gene table. Regenerated from `genes.xml` (delete to force regen). |
+| Binary functions decompiled | 10,331 / 10,332 |
+| Decompiled pseudocode | 18.3 MB |
+| Game-logic functions (call-graph filtered) | 971 |
+| Vendor functions excluded | 9,360 |
+| Per-function .md scaffolds | 971 |
+| Functions with pattern-based classification | 298 |
+| Functions with string-anchored role | 17 |
+| Functions read manually for `MECHANICS.md` | 1 (`FUN_140066200`) |
 
-## Gene system (PARTIALLY KNOWN, PARTIALLY INFERRED)
+## Key findings (each with code citations)
+
+All findings are derived from real decompiled code. See [`MECHANICS.md`](MECHANICS.md) for full source-line citations.
+
+### Built-in cheats (the BIG find)
+
+The dev shipped cheats and they ship in the public binary. Unlock by typing `"debug"`:
+
+- `FUN_140066200` line 60371-60376: character-by-character match against the literal string `"debug"`. When complete, sets `DAT_1403d959b = 1` (debug mode active).
+- Debug mode shows extra status line and unlocks the cheat buttons in pause menu: "Betting Mode", "Gong", "Money", "Loaded", "No Tire" / "Yes Tire".
+
+### Tiredness toggle (`DAT_1403d95c5`)
+
+- `FUN_140066200` line 60434-60443: pause-menu button labelled "No Tire" or "Yes Tire" that toggles the flag.
+- `FUN_1400ce6c0`-area line 121172-121184: per-frame update loop. When flag is set, zeroes out `horse + 0x205` and `horse + 0x206` on every horse on the track. Result: horses never accumulate tiredness state.
+
+### Game state struct (`DAT_1403fb0d8`)
+
+Single global pointer to the world state. Confirmed fields:
+
+| Offset | Field |
+|---|---|
+| 0x308 | Money (int32) |
+| 0x314 | Year counter (int32, displayed +1) |
+| 0x318 | Sleeps counter (int32) |
+| 0x31c..0x349 | 7 supply types in 12-byte-strided records (counter int32 + 2 flag bytes each) |
+
+### Horse struct (partial)
+
+| Offset | Field |
+|---|---|
+| 0x1c | type/kind (int32) |
+| 0x1c4 | unknown delta |
+| 0x1c8 | bool flag |
+| 0x205 | tiredness flag A (uint8) |
+| 0x206 | tiredness flag B (uint8) |
+
+More fields will be reconstructed as we read more functions.
+
+### Races counter
+
+Lives in a separate global `DAT_1403eded8` (not in the main game-state struct).
+
+## Gene system (PARTIALLY KNOWN, INFERENCE FLAGGED)
 
 ### KNOWN from the XML
 
@@ -75,137 +104,84 @@ save/                         save1.dat (~245 KB), settings.xml
 
 ### INFERRED, NOT VERIFIED
 
-- That `s=1` means discrete integer and `s=100` means continuous/percent. Plausible but not proven.
-- That higher `OLD_AGE` value = dies sooner. Based on the name and human-population usage. Could be the opposite.
-- The direction of `NARCOLEPSY`, `WHITE_IS_LETHAL`, `STIFF_JOINTS`, `LIMP`, `FLU_IMMUNITY` effects. All inferred from the name.
+- That `s=1` means discrete integer and `s=100` means continuous/percent. Plausible, not proven.
+- The semantics of `OLD_AGE`, `NARCOLEPSY`, `WHITE_IS_LETHAL`, `STIFF_JOINTS`, `LIMP`, `FLU_IMMUNITY`. All inferred from name.
 
-These inferences look reasonable but they could all be wrong. Editing them is gambling until verified.
-
-## Gene/mechanic candidates found in `genes.xml`
-
-Listed for completeness, NOT as a mod plan. Each row's "guess" column is exactly that.
-
-| Gene | Line | Values (g0/g1/g2/g3) | Guess (NOT verified) |
-|---|---|---|---|
-| `OLD_AGE` | 215 | 0 / 0 / -1 / +2 | Aging modifier |
-| `NARCOLEPSY` | 217 | 0 / 0 / 1 / 0 | Spontaneous sleep trait |
-| `WHITE_IS_LETHAL` | 190 | 0 / 1 / 0 / 0 | Lethal-white death trigger |
-| `LITTER_SIZE` | 214 | 1 / 2 / 3 / 5 | Babies per breeding |
-| `FLU_IMMUNITY` | 218 | 0 / 0 / 0 / 1 | Immunity flag |
-| `LIMP` | 216 | 0 / 1 / 0 / 2 | Limp severity |
-| `STIFF_JOINTS` | 220 | 0 / 18 / 50 / 0 | Movement restriction |
-| `RAMPAGE` | 209 | 0 / 0 / 0 / 1 | Rampage behavior |
+These are gambling targets until verified by reading the gene-application code (next target: `FUN_1400a3eb0` chromomap loader and the function that maps each gene to its in-game effect).
 
 ## What's NOT in any data file (KNOWN by exhaustive grep)
 
-Stamina, fatigue, race cooldown, base lifespan, hunger/thirst rate, sleep duration. None of these are XML-tunable. All are in `Horsey.exe`.
+Stamina, fatigue, race cooldown, base lifespan, hunger/thirst rate, sleep duration. None of these are XML-tunable. All are in `Horsey.exe`. UI sprites confirm the mechanics exist (`StatusOld`, `StatusTired`, `StatusHungry`, `ThoughtTired`, `ThoughtHungry`, `AnimSleep`, `SleepMoon`, `AgeWord`).
 
-UI sprites confirm the mechanics exist: `StatusOld`, `StatusTired`, `StatusHungry`, `ThoughtTired`, `ThoughtHungry`, `AnimSleep`, `SleepMoon`, `AgeWord`. Sound name `HorsesAge` confirms an aging event.
+## Save format (PARTIALLY KNOWN)
 
-## Save format (PARTIALLY KNOWN, MOSTLY UNKNOWN)
+Static-analysis pass on `save1.dat`:
 
-We did a static-analysis pass on `save1.dat` and walked enough records to confirm:
+- Header: 20 bytes (5 uint32s). First is save format version (12). Other four: unknown.
+- 0x14..~0xc6f: horse roster of ~80-85 variable-length records. Per record: length-prefixed UTF-8 name, 6 flag bytes, two parent IDs (int32, -1=none), unknown uint32, child count, child IDs.
+- Remaining 98% of the file: opaque binary blocks (likely genomes, world state, item positions).
 
-- Header is 20 bytes (5 uint32s). First field is the save version (12). Other fields' meanings: unknown.
-- 0x14..~0xc6f is a horse roster of ~80-85 variable-length records. Each record has: name (length-prefixed UTF-8), 6 flag bytes, two parent IDs (int32, -1 = none), an unknown uint32, child count, and child ID list.
-- The roster is small (~3KB of 245KB). The remaining 98% of the file is opaque binary blocks (likely genomes, world state, item positions).
+Full proper docs pending decompilation of `FUN_140089510` (save loader) and `FUN_140089510`'s caller.
 
-This work is in `SAVE-FORMAT.md` and `parse_save.py`. It's good enough to walk the roster, but identifying which bytes are age, fatigue, race count, or genome would be guessing without the exe's loader code.
+## Toolchain (installed)
 
-The save format will be properly documented after we decompile the loader in Ghidra.
+| Component | Version | Path |
+|---|---|---|
+| Microsoft OpenJDK | 21.0.11.10 | `C:\Program Files\Microsoft\jdk-21.0.11.10-hotspot` |
+| Ghidra | 12.1 (released 2026-05-13) | `C:\code\ghidra_12.1_PUBLIC` |
+| pyghidra | 3.0.2 | pip |
+| JPype1 | 1.5.2 | pip |
+| Ghidra project | created | `C:\code\horsey-mods\ghidra-project\horsey.gpr` |
 
-## Plan
-
-### Stage 0: tooling setup
-
-- Install Ghidra (free, NSA-built). Auto-analyze `Horsey.exe`. First pass takes 15-30 min.
-- Optional: IDA Free / Binary Ninja Cloud / Cutter as cross-check.
-- Set up a Ghidra project that we can re-export to docs reproducibly.
-
-### Stage 1: identify and exclude vendor libraries
-
-Eliminate the noise so we focus only on game-logic functions. Vendor code we exclude:
-
-- SDL3 (huge: thousands of functions across rendering, audio, input, threading, file I/O, window management).
-- cute_sound (small, all functions prefixed `cs_` or `cute_sound_`).
-- stb_image_write (single header, one function family).
-- MSVC CRT runtime (memcpy, malloc, fopen, the C++ exception machinery).
-- D3D12/D3D11/DXGI shim wrappers (SDL_GPU emits these).
-
-Method: Ghidra's "Function ID" analyzer with public signature databases (SDL3 release symbols, MSVC version-specific), plus manual review of unmatched functions with vendor-looking patterns.
-
-Deliverable: `VENDOR-FUNCTIONS.md` listing every address range identified as third-party so we never look at it again.
-
-### Stage 2: bootstrap with string-anchored functions
-
-For every "obviously game-logic" string in the binary (we already collected hundreds in `RE-NOTES.md`), find the function that references it. Name and document the function. This gives us a starting graph of ~100-300 named functions.
-
-Anchors prioritized:
-- `Horse is too tired!`, `Horse is too old!`, `Horse is too hungry!`
-- `%s retired %s (old) ch %d races %d wins %d%s`
-- `< Simulation Paused - Year %d  Sleeps %d  Races %d >`
-- `%s = (%d rand + %d nice + %d record) * %d years + %d deco` (price formula)
-- `Genome copied to clipboard!`, `Pasting genome from clipboard!`
-- `Gene %d not in chromoMap`, `GeneEnum.h`
-- `save%d.dat`, `genes.dat`, `settings.xml`
-
-Deliverable: `FUNCTIONS.md` with one entry per identified game-logic function.
-
-### Stage 3: reconstruct structs
-
-Walk callers and callees of named functions. Identify struct accesses (`mov rax, [rcx+0x80]` patterns). Build up struct definitions one field at a time. Cross-reference with our save-format work.
-
-Key structs to reconstruct:
-- `Horse` (or whatever the game calls it).
-- `Gene`, `GeneTable`, `chromoMap`.
-- `Population`.
-- `World`/`GameState`.
-- `Race`, `Champion`, `Ribbon`.
-
-Deliverable: `STRUCTS.md` with C-style struct definitions.
-
-### Stage 4: catalogue constants
-
-Every hardcoded number in the binary that affects gameplay. Fatigue thresholds, base lifespan, hunger depletion rate, race rewards, etc.
-
-Deliverable: `CONSTANTS.md` with one row per tunable constant: address, default value, where it's used, what it affects, how to patch it.
-
-### Stage 5: fill in the rest
-
-Iterate through every remaining unnamed function. Some will be obvious from callers; some will need decompiler reading. Document each.
-
-Done when every function is either vendor-excluded or game-documented.
-
-### Stage 6: mod artifacts
-
-With full understanding in hand, build the mods:
-- Save-edit tool (Python): manipulate save fields directly.
-- XML mod pack: tuned `genes.xml` / `pop.xml` with KNOWN effects.
-- DLL hook: intercept any threshold check we can't reach via save/XML.
-
-## Progress tracker
+## Plan progress
 
 | Stage | Status | Output |
 |---|---|---|
-| 0. Tooling | not started | Ghidra installed |
-| 1. Vendor exclusion | not started | `VENDOR-FUNCTIONS.md` |
-| 2. String-anchored functions | not started | `FUNCTIONS.md` |
-| 3. Structs | not started | `STRUCTS.md` |
-| 4. Constants | not started | `CONSTANTS.md` |
-| 5. Remaining functions | not started | `FUNCTIONS.md` complete |
-| 6. Mod artifacts | not started | `mods/` |
+| 0. Tooling | **DONE** | Ghidra + pyghidra installed |
+| 1. Vendor exclusion | **DONE** (call-graph based) | `decompiled/vendor_funcs.txt` (9,360 funcs) |
+| 2. String-anchored functions | **PARTIAL** | 17 / 971 game funcs role-tagged from strings |
+| 3. Structs | **STARTED** | game-state + horse struct partial in `MECHANICS.md` |
+| 4. Constants | **STARTED** | Money +1000, Loaded +20 captured in `MECHANICS.md` |
+| 5. Remaining functions | **STARTED** | 298 / 971 pattern-classified; 673 unclassified |
+| 6. Mod artifacts | not started | none yet |
 
-Pre-Ghidra work completed: data-file survey (`RESEARCH.md`), exe string dump and anchor categorization (`RE-NOTES.md`), partial save-format walking (`SAVE-FORMAT.md`).
+## Open next reads (priority order)
 
-## Current artifacts in this repo
+1. `FUN_1400df280` retirement handler — pinpoint the age threshold for "horse is too old to race".
+2. `FUN_1400a3eb0` chromomap loader — confirm how `genes.xml` attributes map to runtime behavior, esp. `OLD_AGE` direction.
+3. `FUN_140089510` save-file open/write — get the save struct layout.
+4. `FUN_14008ffc0` genome clipboard copy — get the human-readable genome format.
+5. `FUN_140033a10` price formula — confirm the `* years` factor and the age field offset on the horse struct.
+
+## Repo artifacts
 
 | File | Purpose |
 |---|---|
+| [`MECHANICS.md`](MECHANICS.md) | **PRIMARY**: verified game mechanics from decompiled code with citations. |
 | `FINDINGS.md` | This file. Current state and direction. |
+| `DECOMPILATION-STATUS.md` | Decompilation pipeline, toolchain, statistics. |
+| `FUNCTION-BREAKDOWN.md` | Why 10,332 functions isn't crazy (vendor vs game). |
+| `TOOL-RESEARCH.md` | Why we picked Ghidra + pyghidra. |
 | `RESEARCH.md` | Historical working log of the data-file survey. |
-| `RE-NOTES.md` | All exe strings useful as Ghidra anchors. The starting point for Phase 2. |
-| `SAVE-FORMAT.md` | Static-analysis pass on `save1.dat`. Identifies the roster format. The rest is TBD. |
-| `parse_save.py` | Walks the horse roster. |
-| `diff_save.py` | Byte-diff two saves. |
-| `save-snapshots/save_A.dat` | Baseline save snapshot. |
-| `save-snapshots/save_B.dat` | Post-action save snapshot. |
+| `RE-NOTES.md` | Exe strings useful as Ghidra anchors. |
+| `SAVE-FORMAT.md` | Static-analysis pass on `save1.dat`. |
+| `decompiled/all_functions.c` | 18.3 MB of decompiled pseudocode for all 10,332 functions. |
+| `decompiled/INDEX.md` | Per-function index (address, name, size, signature). |
+| `decompiled/KEY-FUNCTIONS.md` | String anchors -> function addresses. |
+| `decompiled/funcs/` | One C file per decompiled function (sharded by addr). |
+| `decompiled/game-funcs/` | 971 per-function .md scaffolds (with classification + role + code). |
+| `decompiled/game-funcs/INDEX.md` | Sorted by size; jump point for which function to read next. |
+| `decompiled/game-funcs/CLASSIFICATION.md` | Pattern-based category breakdown. |
+| `decompiled/key-funcs/` | 20 highest-priority functions extracted individually. |
+| `decompiled/game_neighborhood.txt` | 971 game-logic addresses. |
+| `decompiled/vendor_funcs.txt` | 9,360 vendor addresses. |
+| `decompile.py` | pyghidra driver to (re)build `all_functions.c`. |
+| `search_decomp.py` | Regex search across decompiled output. |
+| `extract_funcs.py`, `extract_all.py` | Carve function bodies into individual files. |
+| `analyze_funcs.py` | Call-graph based game-vs-vendor classifier. |
+| `classify_funcs.py` | Naive name/body classifier (cross-check). |
+| `smart_classify.py` | Pattern-based per-function classifier. |
+| `merge_classifications.py` | Re-emit per-function .md with classification baked in. |
+| `document_game_funcs.py` | Scaffold per-function .md for game-logic addresses. |
+| `parse_save.py`, `diff_save.py` | Save file parsing/diffing. |
+| `save-snapshots/save_A.dat`, `save_B.dat` | Captured save snapshots. |
