@@ -1,4 +1,4 @@
-# Batch annotation 12 — 200 functions
+# Batch annotation 12. 200 functions
 
 Terse mode. Only specific game-logic strings get unique names; the rest are
 classified by call-graph context.
@@ -216,5 +216,5 @@ New specific finds:
 - `0x140038f20`: freak_handler (`Freak` - circus freak tent reference)
 - `0x1400a5e00/1400a5d20`: Bad-Gene-Index loggers (two paths)
 - `0x140104b20`: gain_money_event (`GainMoney` sound)
-- `0x14005bad0`: gif_land_handler (`GifLand` — possibly an animated terrain tile?)
+- `0x14005bad0`: gif_land_handler (`GifLand`. Possibly an animated terrain tile?)
 - `0x14009c7d0`: show_stats_screen (`ShowStatsScreen`)

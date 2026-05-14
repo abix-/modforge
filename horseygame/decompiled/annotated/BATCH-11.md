@@ -1,4 +1,4 @@
-# Batch annotation 11 — 150 functions
+# Batch annotation 11. 150 functions
 
 | # | Addr | Size | Proposed name | Note |
 |---|---|---|---|---|

@@ -1,4 +1,4 @@
-# modforge Integration — Yes, It Helps Massively
+# modforge Integration. Yes, It Helps Massively
 
 You already built the runtime control plane I was about to suggest. This
 doc maps your existing **modforge** ecosystem onto Horsey.
@@ -54,16 +54,16 @@ provide the engine-specific bindings that satisfy modforge's traits.
 
 | Concern | UE5 / ueforge | Unity / unityforge | Horsey / horseyforge |
 |---|---|---|---|
-| Plugin loader | UE4SS C++ shim | BepInEx C# shim | **None** — must inject via proxy DLL |
-| Runtime introspection | UObject reflection | Mono reflection | **None** — use hardcoded addresses from our decompilation |
-| Universal hook point | `UFunction::ProcessEvent` | `MonoMethod` invocation | **None** — per-function MinHook hooks |
+| Plugin loader | UE4SS C++ shim | BepInEx C# shim | **None**. Must inject via proxy DLL |
+| Runtime introspection | UObject reflection | Mono reflection | **None**. Use hardcoded addresses from our decompilation |
+| Universal hook point | `UFunction::ProcessEvent` | `MonoMethod` invocation | **None**. Per-function MinHook hooks |
 | UI overlay | UE4SS ImGui | BepInEx ImGui | TBD (ImGui via DX12 hook, or web frontend only) |
 | Class lookup | `GObjects` walk | Mono class lookup | Hardcoded function pointers from our analysis |
 | Field access | UE reflection | Mono reflection | `*(T *)(ptr + 0xOFFSET)` using our struct offsets |
 
 The first three are why Horsey is HARDER to bind than UE5 / Unity. The
 last three are why our **prior 100% decompilation work is the
-prerequisite** — without the addresses and offsets we extracted,
+prerequisite**. Without the addresses and offsets we extracted,
 horseyforge has nothing to bind to.
 
 ### horseyforge crate layout (proposed)
@@ -119,7 +119,7 @@ pub extern "system" fn DllMain(hinst: HINSTANCE, reason: u32, _: *mut ()) -> i32
 }
 ```
 
-#### B. Op registry — Horsey-specific endpoints
+#### B. Op registry. Horsey-specific endpoints
 
 Register Horsey ops onto modforge's existing op registry:
 
@@ -258,13 +258,13 @@ via JSON and live-reload via Ctrl+R.
 | Worker handle | `modforge::worker` | free |
 
 What we have to build:
-1. `horseyforge::injection` — proxy steam_api64.dll
-2. `horseyforge::hooks` — MinHook wrapper + the 18 target function addresses
-3. `horseyforge::horse` / `gamestate` — typed accessors using our offsets
-4. `horseyforge::ops` — register Horsey-specific ops
-5. `horseyforge::rpg::HorseyEffect` — concrete Effect impls
-6. `horseyforge::input` — SDL3 hook for hotkeys
-7. `horseyforge::ui` — overlay (TBD: ImGui via DX12 hook, or web-only)
+1. `horseyforge::injection`. Proxy steam_api64.dll
+2. `horseyforge::hooks`. MinHook wrapper + the 18 target function addresses
+3. `horseyforge::horse` / `gamestate`. Typed accessors using our offsets
+4. `horseyforge::ops`. Register Horsey-specific ops
+5. `horseyforge::rpg::HorseyEffect`. Concrete Effect impls
+6. `horseyforge::input`. SDL3 hook for hotkeys
+7. `horseyforge::ui`. Overlay (TBD: ImGui via DX12 hook, or web-only)
 
 Probably **~3000-6000 lines of Rust** for the full binding, given we already
 have all the addresses. Each game-side mod (RPG layer, hotkeys, custom

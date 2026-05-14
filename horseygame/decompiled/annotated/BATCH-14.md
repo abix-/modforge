@@ -1,4 +1,4 @@
-# Batch annotation 14 — final 376 helpers (full catalog)
+# Batch annotation 14. Final 376 helpers (full catalog)
 
 All remaining game_neighborhood functions, listed for 100% coverage.
 
@@ -399,17 +399,17 @@ data globals (`DAT_14038eb14`), assertion stub (`"false"`), props builder
 Every function in `game_neighborhood.txt` now has at least one annotation
 record across:
 
-1. `decompiled/annotated/*.c` — deep manual annotations for 25 critical functions.
-2. `decompiled/annotated/BATCH-01..13.md` — concise per-function entries
+1. `decompiled/annotated/*.c`. Deep manual annotations for 25 critical functions.
+2. `decompiled/annotated/BATCH-01..13.md`. Concise per-function entries
    with proposed name + 1-line purpose.
-3. `decompiled/annotated/BATCH-14.md` (this file) — exhaustive catalog of
+3. `decompiled/annotated/BATCH-14.md` (this file). Exhaustive catalog of
    the remaining 376 small helpers.
 
 For each function, additional records exist in:
-- `decompiled/game-funcs/<addr>_<name>.md` — auto-extracted with classification,
+- `decompiled/game-funcs/<addr>_<name>.md`. Auto-extracted with classification,
    callers/callees, strings, full decompiled body.
-- `decompiled/all_functions_annotated.c` — the full decompiled output with
+- `decompiled/all_functions_annotated.c`. The full decompiled output with
    header comments above every function.
-- `FUNCTIONS.md`, `ALL-FUNCTIONS.md` — flat tables grouped by domain.
+- `FUNCTIONS.md`, `ALL-FUNCTIONS.md`. Flat tables grouped by domain.
 
 100% of the game-logic neighborhood is now classified and documented.

@@ -1,4 +1,4 @@
-# Batch annotation 10 — 120 functions
+# Batch annotation 10. 120 functions
 
 Terse format. Real addresses verified from game_neighborhood.txt.
 

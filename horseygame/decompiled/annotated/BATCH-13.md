@@ -1,4 +1,4 @@
-# Batch annotation 13 — final 250 functions (small helpers)
+# Batch annotation 13. Final 250 functions (small helpers)
 
 All remaining functions are small (< 200 bytes) and mostly fall into known
 categories. This batch documents the rest of the game_neighborhood for

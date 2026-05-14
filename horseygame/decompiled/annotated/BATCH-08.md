@@ -1,6 +1,6 @@
-# Batch annotation 08 — 80 more functions (terse mode)
+# Batch annotation 08. 80 more functions (terse mode)
 
-Format: `0xADDR (size)` — purpose. One line per function except where notable.
+Format: `0xADDR (size)`. Purpose. One line per function except where notable.
 
 ## 216-295 (80 functions)
 
@@ -12,11 +12,11 @@ Format: `0xADDR (size)` — purpose. One line per function except where notable.
 | 219 | `0x1400d4f50` | 747 | poof_exclaim_event | Plays `PoofExclaim` sound (exclamation puff effect) |
 | 220 | `0x14006d790` | 746 | save_open_for_write | Sub-helper of `save_game_writer`; opens file for write |
 | 221 | `0x1402efaac` | 740 | msvc_runtime_helper | MSVC |
-| 222 | `0x1400b9250` | 740 | gene_mutation_helper | References `Mutate` — applies gene mutation during expression |
+| 222 | `0x1400b9250` | 740 | gene_mutation_helper | References `Mutate`. Applies gene mutation during expression |
 | 223 | `0x14000f8d0` | 740 | physics_helper | Physics |
-| 224 | `0x1400886a0` | 739 | crispr_chamber_update | `ChamberContentsUpdated` — CRISPR chamber state change |
+| 224 | `0x1400886a0` | 739 | crispr_chamber_update | `ChamberContentsUpdated`. CRISPR chamber state change |
 | 225 | `0x14008cc80` | 736 | render_init_helper | Render init sub-helper |
-| 226 | `0x1400cdae0` | 733 | drop_horse_fail_event | `DropHorseFail`, `TruckLeaveLocation` — dropping horse at wrong loc |
+| 226 | `0x1400cdae0` | 733 | drop_horse_fail_event | `DropHorseFail`, `TruckLeaveLocation`. Dropping horse at wrong loc |
 | 227 | `0x1402d8688` | 731 | msvc_runtime_helper | MSVC |
 | 228 | `0x1402d83ac` | 729 | msvc_runtime_helper | MSVC |
 | 229 | `0x1400cce00` | 728 | text_drawing_helper | Text/dialog helper |
@@ -24,7 +24,7 @@ Format: `0xADDR (size)` — purpose. One line per function except where notable.
 | 231 | `0x1402f94c0` | 725 | msvc_runtime_helper | MSVC, called widely |
 | 232 | `0x140005a10` | 725 | physics_assert_block_size | `j < b2_blockSizes` Box2D assert |
 | 233 | `0x140074020` | 722 | sprite_helper | Sprite |
-| 234 | `0x1400581a0` | 715 | checkbox_renderer | `Check`, `Uncheck` — UI checkbox |
+| 234 | `0x1400581a0` | 715 | checkbox_renderer | `Check`, `Uncheck`. UI checkbox |
 | 235 | `0x1400aa760` | 711 | cosmetic_helper | Decoration helper |
 | 236 | `0x140071150` | 710 | sprite_draw_helper | Sprite |
 | 237 | `0x14000fd50` | 698 | physics_assert_inertia | `m_I > 0.0f` Box2D assert |
@@ -32,7 +32,7 @@ Format: `0xADDR (size)` — purpose. One line per function except where notable.
 | 239 | `0x140049380` | 688 | audio_helper | Audio |
 | 240 | `0x140008030` | 688 | physics_helper | Physics |
 
-(Continuing for the rest of the 80 — these are mostly small helpers and library code that the call-graph filter pulled in. Specific game-logic strings became rare past the top-200 by size.)
+(Continuing for the rest of the 80. These are mostly small helpers and library code that the call-graph filter pulled in. Specific game-logic strings became rare past the top-200 by size.)
 
 | 241 | `0x140049db0` | 688 | audio_helper | Audio sub-helper |
 | 242 | `0x14009c780` | 686 | render_helper | Render |
@@ -96,7 +96,7 @@ Format: `0xADDR (size)` — purpose. One line per function except where notable.
 
 **Confidence levels:**
 - Items with **string-anchored names** (mutation, poof, chamber, drop_horse, checkbox, etc.) are high confidence.
-- Items named `render_helper`, `string_helper`, `physics_helper`, etc. are pattern-classified — the addresses are real and the broad role is right, but the SPECIFIC purpose isn't pinned down. Future deep reads can refine.
+- Items named `render_helper`, `string_helper`, `physics_helper`, etc. are pattern-classified. The addresses are real and the broad role is right, but the SPECIFIC purpose isn't pinned down. Future deep reads can refine.
 
 The pace tradeoff is real: each batch covers more functions at lower depth.
 For mod-targets we care about, the deeper `decompiled/annotated/*.c` files are

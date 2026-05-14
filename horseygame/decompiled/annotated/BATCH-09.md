@@ -1,4 +1,4 @@
-# Batch annotation 09 — 80 more functions
+# Batch annotation 09. 80 more functions
 
 Format: `# | addr (size) | name | purpose`. Verified from real extraction.
 
@@ -42,13 +42,13 @@ Format: `# | addr (size) | name | purpose`. Verified from real extraction.
 | 329 | `0x14003f340` | 575 | audio_helper | audio |
 | 330 | `0x140094540` | 574 | shred_event | `Shred` (paper-shredding effect, treasure?) |
 | 331 | `0x1401107d0` | 571 | helper_unnamed | helper |
-| 332 | `0x1400c7910` | 566 | no_record_dialog | `%s%s%s` + `"No Record!"` — formats horse history with No-Record fallback |
+| 332 | `0x1400c7910` | 566 | no_record_dialog | `%s%s%s` + `"No Record!"`. Formats horse history with No-Record fallback |
 | 333 | `0x1400ffd00` | 565 | plain_tile_handler | `Plain` tile type |
 | 334 | `0x140026080` | 562 | xml_assert | `q <= p` assertion in xml parser |
 | 335 | `0x1400c31e0` | 555 | helper_unnamed | helper |
 | 336 | `0x140005eb0` | 554 | physics_lock_assert | `IsLocked() == false` Box2D assert |
 | 337 | `0x140053810` | 553 | audio_helper | audio |
-| 338 | `0x140092150` | 552 | debug_pop_transform | `"%s - %d -> %d"` — logs pop transform |
+| 338 | `0x140092150` | 552 | debug_pop_transform | `"%s - %d -> %d"`. Logs pop transform |
 | 339 | `0x1400ccbd0` | 551 | helper_unnamed | helper |
 | 340 | `0x1400b6aa0` | 551 | helper_unnamed | helper |
 | 341 | `0x14005bc30` | 548 | crazy_horse_event | references "crazy horse" pop |
@@ -57,7 +57,7 @@ Format: `# | addr (size) | name | purpose`. Verified from real extraction.
 | 344 | `0x14009bea0` | 543 | helper_unnamed | helper |
 | 345 | `0x140100a40` | 535 | wild_horse_helper_3 | wild horse |
 | 346 | `0x1400ab1b0` | 535 | cosmetic_helper | cosmetic |
-| 347 | `0x14005cf70` | 534 | pop_inheritance_handler | references appletree/crazy horse/freak/hay/pepper/yeast pops — this is the pop tree iterator |
+| 347 | `0x14005cf70` | 534 | pop_inheritance_handler | references appletree/crazy horse/freak/hay/pepper/yeast pops. This is the pop tree iterator |
 | 348 | `0x1400bedc0` | 528 | helper_unnamed | helper |
 | 349 | `0x140030940` | 528 | location_save_helper | save sub-helper for location |
 | 350 | `0x1402e6d50` | 518 | msvc_runtime_helper | MSVC |
@@ -84,7 +84,7 @@ Format: `# | addr (size) | name | purpose`. Verified from real extraction.
 | 371 | `0x1400111f0` | 493 | physics_helper | physics |
 | 372 | `0x1400a9560` | 486 | cosmetic_helper | cosmetic |
 | 373 | `0x1400749b0` | 486 | sprite_helper | sprite |
-| 374 | `0x1400a2ed0` | 485 | bad_pop_logger | `"Bad Pop %d"` — error for unknown population |
+| 374 | `0x1400a2ed0` | 485 | bad_pop_logger | `"Bad Pop %d"`. Error for unknown population |
 | 375 | `0x14005de20` | 485 | letter_g_render | `LetterG` (DNA piece "G" render) |
 
 ---
@@ -93,10 +93,10 @@ Format: `# | addr (size) | name | purpose`. Verified from real extraction.
 
 **Specific new mod-relevant finds in this batch:**
 
-- `0x140104370`: supply_ui_refresh — called by the Loaded cheat to update supply UI after counter bump.
-- `0x14005cf70`: pop_inheritance_handler — confirms pop.xml has nested pops (appletree, crazy horse, freak, hay, pepper, yeast all reachable from one function).
-- `0x1400a2ed0`: `Bad Pop %d` debug — error fires when a spawner references an unknown pop name.
+- `0x140104370`: supply_ui_refresh. Called by the Loaded cheat to update supply UI after counter bump.
+- `0x14005cf70`: pop_inheritance_handler. Confirms pop.xml has nested pops (appletree, crazy horse, freak, hay, pepper, yeast all reachable from one function).
+- `0x1400a2ed0`: `Bad Pop %d` debug. Error fires when a spawner references an unknown pop name.
 - `0x1401c9f60`: blit shader compiler (vendor, SDL_GPU).
-- `0x140092150`: debug pop transform logger — `"%s - %d -> %d"` logs pop changes.
-- `0x1400fd1e0`: crispr_exit_vial — second piece of the CRISPR state machine that we annotated earlier.
+- `0x140092150`: debug pop transform logger. `"%s - %d -> %d"` logs pop changes.
+- `0x1400fd1e0`: crispr_exit_vial. Second piece of the CRISPR state machine that we annotated earlier.
 - `0x1400c7910`: handles the "No Record!" placeholder when a horse has no races.

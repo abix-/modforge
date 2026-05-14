@@ -48,7 +48,7 @@ Their general makeup (estimated by name pattern + body inspection):
 - **Windows API wrappers**: ~200-500
 - **Misc** (stb_image_write, controller HID parsers, etc.): ~100-200
 
-Realistic numbers, but unverified — proper vendor identification needs Ghidra's Function ID analyzer with public SDL3 signature databases. That's a one-time setup we can do later if needed.
+Realistic numbers, but unverified. Proper vendor identification needs Ghidra's Function ID analyzer with public SDL3 signature databases. That's a one-time setup we can do later if needed.
 
 ## Output files
 

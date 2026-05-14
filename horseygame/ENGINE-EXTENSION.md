@@ -1,4 +1,4 @@
-# Horsey as a Base Class — Engine Extension Modding
+# Horsey as a Base Class. Engine Extension Modding
 
 **Premise**: the data files are the game's narrow public API. The binary is
 the implementation. To build anything you want, treat the binary as malleable
@@ -30,21 +30,21 @@ Nothing is out of the question. The cost scales with how far you push.
 240+ throws "Gene %d not in chromoMap". The gene-application loops in
 `apply_gene_to_horse` (`0x14009f680`) iterate up to the table size.
 
-**Approach A — replace, don't extend**: 242 vanilla genes is already close
+**Approach A. Replace, don't extend**: 242 vanilla genes is already close
 to 240, so most of the table is in use. You can REPLACE the semantically
 useless ones (e.g. `L_TAIL_FTOB_EVENT` patterns) with your own gene names
 and behaviors. Cost: you redefine what those genes DO in the
 gene-expression code (a binary patch or DLL hook). Each replaced gene gets
 a fresh trait you control.
 
-**Approach B — expand the table**: patch the binary's `0xf0` (240) constant
+**Approach B. Expand the table**: patch the binary's `0xf0` (240) constant
 to a larger value (e.g. `0x200` = 512). Also patch any iteration bounds
 that check against this. The table allocation size (`240 * 32 = 0x1e00`
 bytes) needs to grow correspondingly. Difficulty: medium-hard, because the
 constant appears in multiple places (loader, lookup, expression). Tooling:
 sigscan + bulk patch script.
 
-**Approach C — bolt on a sidecar gene table**: leave the original 240 alone
+**Approach C. Bolt on a sidecar gene table**: leave the original 240 alone
 but maintain your own parallel "extension genes" table in a DLL. Add hook
 calls into `apply_gene_to_horse` so the extension genes' effects run after
 the vanilla ones. The horse's "real" data structure stays the same; your
@@ -122,18 +122,18 @@ trait Horse {
 The engine provides the base implementation. Your DLL implements the
 extensions by:
 
-1. Hooking the horse-construction function — `apply_gene_to_horse`
+1. Hooking the horse-construction function. `apply_gene_to_horse`
    (`0x14009f680`) is the entry point. After the engine builds the horse,
    your code attaches extension state via a `std::unordered_map<HorsePtr,
    ExtensionState>` keyed by the horse's memory address.
 
-2. Hooking horse-update functions — most per-frame updates pass the horse
+2. Hooking horse-update functions. Most per-frame updates pass the horse
    pointer; you can run extension logic post-engine each frame.
 
-3. Hooking horse-destruction — `*(code**)*horse_ptr` is the vtable
+3. Hooking horse-destruction. `*(code**)*horse_ptr` is the vtable
    destructor; intercept it to clean up your extension state.
 
-4. Hooking save/load — `save_game_writer` (`0x14006dc80`) and `load_game`
+4. Hooking save/load. `save_game_writer` (`0x14006dc80`) and `load_game`
    (`0x14006e480`) are the I/O points. Save your extension state in a
    sidecar file (`save<N>.ext.dat`) keyed by horse roster ID.
 
@@ -201,13 +201,13 @@ For your custom horse state (the "psionic potential" axis or whatever):
 
 ## Concrete first-month roadmap
 
-**Week 1 — Foundation**
+**Week 1. Foundation**
 - Set up Visual Studio with a DLL project.
 - Build the proxy DLL that loads alongside Steam.
 - Verify the game launches with your DLL attached.
 - Add a hello-world log to confirm DllMain ran.
 
-**Week 2 — Control plane**
+**Week 2. Control plane**
 - Embed an HTTP server (`crow.h`, single-file C++ HTTP).
 - Expose 5 endpoints: `GET /ping`, `GET /horses`, `POST /horses/<id>/name`,
   `GET /game/year`, `POST /game/money`.
@@ -215,15 +215,15 @@ For your custom horse state (the "psionic potential" axis or whatever):
   - Money: `game_state[+0x308]` from our `MECHANICS.md`.
   - Year: `game_state[+0x314]`.
   - Horse list: `game_state[+0x130..+0x138]` (or use `+0xb8/+0xc0` for the
-    main horse-list iter — depends on which list you want).
+    main horse-list iter. Depends on which list you want).
 
-**Week 3 — First hook**
+**Week 3. First hook**
 - Install a MinHook on `apply_gene_to_horse` (`0x14009f680`).
 - Post-call, read the horse's vanilla traits.
 - Store an extension state in your hashmap.
 - Expose it via `GET /horses/<id>/extension`.
 
-**Week 4 — First custom mechanic**
+**Week 4. First custom mechanic**
 - Pick a small "extension axis", e.g. "musical talent" (0-100).
 - Wire it up:
   - Random init in your hook.
@@ -232,7 +232,7 @@ For your custom horse state (the "psionic potential" axis or whatever):
   - Visual indicator: hook the horse status-render function and overlay a
     small icon when musical_talent > 50.
 
-**Month 2 — Real complexity**
+**Month 2. Real complexity**
 - New mechanic: dynasties. Track ancestry through breeding (the engine
   already has parent IDs in the horse roster; you build a lineage graph on
   top).

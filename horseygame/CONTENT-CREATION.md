@@ -1,4 +1,4 @@
-# Horsey Game — Content Creation Guide
+# Horsey Game. Content Creation Guide
 
 A self-contained guide to creating mod content for Horsey Game. Derived from
 decompiling `Horsey.exe` (verified) and the JumboDS64 Steam guide (community-verified).
@@ -179,7 +179,7 @@ Spawners are **objects** placed in `horsey.tmx` using Tiled.
 ### Tile to use
 
 Use one of the 7 vanilla animal-tile sprites. There are also 2 unused tiles
-(bunny, dinosaur) in the tileset — JumboDS64 notes these may have been
+(bunny, dinosaur) in the tileset. JumboDS64 notes these may have been
 intended for natural spawns at some point.
 
 ### Required properties
@@ -211,7 +211,7 @@ A radius of 5 means horses spawn in an 11×11 square centered on the spawner.
 
 Buildings on the map are **first-instance-wins**. The engine scans the tmx for
 each building tile-ID once and uses the first object it finds. You cannot
-place two of the same building type (e.g. two Stables) — the second is
+place two of the same building type (e.g. two Stables). The second is
 ignored.
 
 ### Restart+ spawn marker
@@ -232,7 +232,7 @@ You can plant any item on any tile so players find it when digging with a shovel
 1. In Tiled, place a **capital-I-shaped** object on the target tile.
 2. Add a custom property:
    - Name: `buried`
-   - Type: **string** (NOT int — the engine reads it as a string)
+   - Type: **string** (NOT int. The engine reads it as a string)
    - Value: the item ID number as a string (e.g. `"14"` for treasure chest)
 
 The full item ID list is in [Reference: item ID table](#item-ids) below.
@@ -265,11 +265,11 @@ JumboDS64's guide; the engine has a hardcoded item table.)
 ### Tilesets
 
 The map uses two tilesets:
-- `terrain.tsx` — terrain tiles (firstgid `1`)
-- `locs.tsx` — building/location tiles (firstgid `97`)
+- `terrain.tsx`. Terrain tiles (firstgid `1`)
+- `locs.tsx`. Building/location tiles (firstgid `97`)
 
 These `.tsx` files are NOT shipped with the game. JumboDS64 reconstructed
-them and shared on Google Drive — see his Steam guide for the link. Without
+them and shared on Google Drive. See his Steam guide for the link. Without
 them, Tiled shows a grid of X marks.
 
 ### Editing terrain
@@ -289,7 +289,7 @@ authoring oddity, not a runtime mechanic.
 ### Buildings
 
 Click the "Objects" layer. Use "Insert Tile" with one of the location tiles
-from `locs.tsx`. The game finds buildings by **tile ID**, not by class name —
+from `locs.tsx`. The game finds buildings by **tile ID**, not by class name.
 the class name in Tiled is for editor convenience.
 
 **Only one of each building type** can exist. The game uses the first one it
@@ -325,7 +325,7 @@ within the PNG. If you redraw a PNG, **keep the same dimensions and tile
 positions** or the XML rects will be wrong.
 
 To extend: you CAN add new `<sprite>` entries pointing to new pixel rects in
-the PNG. But the game only renders sprites it knows about by name — so
+the PNG. But the game only renders sprites it knows about by name. So
 purely decorative additions won't appear in-game.
 
 ### Sounds (WAV)
@@ -334,7 +334,7 @@ purely decorative additions won't appear in-game.
 with one of the same filename to swap the sound. WAVs must be **mono or
 stereo PCM** (cute_sound library limitation).
 
-You CANNOT add new sound events — the engine triggers sounds by hardcoded
+You CANNOT add new sound events. The engine triggers sounds by hardcoded
 name. New WAVs without a matching entry in `sound.xml` are dead files.
 
 ### Music (OGG)
@@ -417,7 +417,7 @@ The cache must be regenerated. If you skip this, your edits are silently ignored
 
 ### Caveats
 
-- Editing `s="1"` to `s="100"` (or vice versa) may break things — the engine
+- Editing `s="1"` to `s="100"` (or vice versa) may break things. The engine
   probably handles those scales differently in the gene-expression code.
 - Negative `OLD_AGE` values that are too large may make horses die instantly
   if the base lifespan is small. Start conservative.
@@ -644,7 +644,7 @@ JumboDS64 guide.
 
 1. Pause the game (Escape).
 2. Type `d`, then `e`, then `b`, then `u`, then `g`. (You won't see anything
-   while typing — the keystrokes are matched against the literal string `"debug"`.)
+   while typing. The keystrokes are matched against the literal string `"debug"`.)
 3. The pause menu changes: the status line now says
    `< Simulation Paused - Year X  Sleeps Y  Races Z >` and extra cheat
    buttons appear.
@@ -721,7 +721,7 @@ To rollback after a bad mod:
 3. Delete `data/genes.dat` (the cache regenerates on launch).
 4. Launch.
 
-The game also keeps a `.prev` save automatically — if your save loads and
+The game also keeps a `.prev` save automatically. If your save loads and
 breaks, restore `save1.dat.prev` over `save1.dat`.
 
 ---
@@ -732,8 +732,8 @@ breaks, restore `save1.dat.prev` over `save1.dat`.
 The game's mod community is small but JumboDS64's Steam guide names these
 distribution targets:
 
-- **Gamebanana** — common indie-mod host
-- **ModDB** — long-running mod platform
+- **Gamebanana**. Common indie-mod host
+- **ModDB**. Long-running mod platform
 - Steam Community guides (text-only descriptions of file edits)
 
 A typical mod package contains:
@@ -745,7 +745,7 @@ You usually distribute as a ZIP. The user manually overwrites their `data/`
 folder.
 
 For binary patches (changes to `Horsey.exe`), distribute as a diff or a
-patcher tool — never the patched exe itself (copyright).
+patcher tool. Never the patched exe itself (copyright).
 
 ---
 
