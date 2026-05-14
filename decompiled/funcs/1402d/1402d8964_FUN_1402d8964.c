@@ -1,0 +1,56 @@
+// Address: 0x1402d8964
+// Ghidra name: FUN_1402d8964
+// ============ 0x1402d8964 FUN_1402d8964 (size=118) ============
+
+
+uint FUN_1402d8964(int param_1,uint param_2,_locale_t param_3)
+
+
+
+{
+
+  ushort *puVar1;
+
+  uint uVar2;
+
+  
+
+  uVar2 = 0;
+
+  if (param_3 == (_locale_t)0x0) {
+
+    puVar1 = __pctype_func();
+
+    if (param_1 + 1U < 0x101) {
+
+      uVar2 = puVar1[param_1] & param_2;
+
+    }
+
+  }
+
+  else if (param_1 + 1U < 0x101) {
+
+    uVar2 = *(ushort *)(*(longlong *)param_3->locinfo + (longlong)param_1 * 2) & param_2;
+
+  }
+
+  else if ((int)param_3->locinfo->lc_collate_cp < 2) {
+
+    uVar2 = 0;
+
+  }
+
+  else {
+
+    uVar2 = _isctype_l(param_1,param_2,param_3);
+
+  }
+
+  return uVar2;
+
+}
+
+
+
+

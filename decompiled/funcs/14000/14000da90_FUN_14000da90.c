@@ -1,0 +1,276 @@
+// Address: 0x14000da90
+// Ghidra name: FUN_14000da90
+// ============ 0x14000da90 FUN_14000da90 (size=1057) ============
+
+
+float * FUN_14000da90(float *param_1,float *param_2,int param_3)
+
+
+
+{
+
+  float *pfVar1;
+
+  float *pfVar2;
+
+  float *pfVar3;
+
+  float *pfVar4;
+
+  float *pfVar5;
+
+  float *pfVar6;
+
+  float *pfVar7;
+
+  float fVar8;
+
+  longlong lVar9;
+
+  float fVar10;
+
+  float fVar11;
+
+  float *pfVar12;
+
+  longlong lVar13;
+
+  int iVar14;
+
+  int iVar15;
+
+  float *pfVar16;
+
+  float *pfVar17;
+
+  float *pfVar18;
+
+  float *pfVar19;
+
+  ulonglong uVar20;
+
+  longlong lVar21;
+
+  float fVar22;
+
+  float fVar23;
+
+  float fVar24;
+
+  float fVar25;
+
+  float fVar26;
+
+  float fVar27;
+
+  float fVar28;
+
+  float fVar29;
+
+  float fVar30;
+
+  float fVar31;
+
+  
+
+  lVar21 = 0;
+
+  iVar14 = 0;
+
+  uVar20 = (ulonglong)param_3;
+
+  param_1[0] = 0.0;
+
+  fVar11 = DAT_14039ca34;
+
+  fVar10 = DAT_14039ca30;
+
+  param_1[1] = 0.0;
+
+  fVar31 = 0.0;
+
+  if (param_3 < 3) {
+
+    return param_1;
+
+  }
+
+  fVar29 = 0.0;
+
+  fVar30 = 0.0;
+
+  if (uVar20 < 4) {
+
+LAB_14000dd7a:
+
+    if ((longlong)uVar20 <= lVar21) goto LAB_14000de37;
+
+  }
+
+  else {
+
+    pfVar12 = param_2 + 5;
+
+    fVar30 = 0.0;
+
+    fVar29 = 0.0;
+
+    lVar13 = (uVar20 - 4 >> 2) + 1;
+
+    iVar15 = 2;
+
+    iVar14 = (int)lVar13 * 4;
+
+    lVar21 = lVar13 * 4;
+
+    do {
+
+      pfVar1 = pfVar12 + -5;
+
+      pfVar2 = pfVar12 + -4;
+
+      pfVar16 = param_2;
+
+      if (iVar15 + -1 < param_3) {
+
+        pfVar16 = param_2 + (longlong)(iVar15 + -1) * 2;
+
+      }
+
+      fVar22 = ((pfVar16[1] - 0.0) * (*pfVar1 - 0.0) - (*pfVar16 - 0.0) * (*pfVar2 - 0.0)) * fVar11;
+
+      fVar23 = fVar22 * fVar10;
+
+      pfVar3 = pfVar12 + -3;
+
+      pfVar4 = pfVar12 + -2;
+
+      pfVar17 = param_2;
+
+      if (iVar15 < param_3) {
+
+        pfVar17 = param_2 + (longlong)iVar15 * 2;
+
+      }
+
+      fVar24 = ((pfVar17[1] - 0.0) * (*pfVar3 - 0.0) - (*pfVar17 - 0.0) * (*pfVar4 - 0.0)) * fVar11;
+
+      fVar25 = fVar24 * fVar10;
+
+      pfVar5 = pfVar12 + -1;
+
+      fVar8 = *pfVar12;
+
+      pfVar18 = param_2;
+
+      if (iVar15 + 1 < param_3) {
+
+        pfVar18 = param_2 + (longlong)(iVar15 + 1) * 2;
+
+      }
+
+      pfVar6 = pfVar12 + 1;
+
+      fVar26 = ((pfVar18[1] - 0.0) * (*pfVar5 - 0.0) - (*pfVar18 - 0.0) * (fVar8 - 0.0)) * fVar11;
+
+      fVar27 = fVar26 * fVar10;
+
+      pfVar7 = pfVar12 + 2;
+
+      pfVar19 = param_2;
+
+      if (iVar15 + 2 < param_3) {
+
+        pfVar19 = param_2 + (longlong)(iVar15 + 2) * 2;
+
+      }
+
+      iVar15 = iVar15 + 4;
+
+      pfVar12 = pfVar12 + 8;
+
+      fVar28 = ((pfVar19[1] - 0.0) * (*pfVar6 - 0.0) - (*pfVar19 - 0.0) * (*pfVar7 - 0.0)) * fVar11;
+
+      fVar31 = fVar31 + fVar22 + fVar24 + fVar26 + fVar28;
+
+      fVar28 = fVar28 * fVar10;
+
+      fVar30 = (*pfVar6 + 0.0 + *pfVar19) * fVar28 +
+
+               fVar30 + (*pfVar1 + 0.0 + *pfVar16) * fVar23 + (*pfVar3 + 0.0 + *pfVar17) * fVar25 +
+
+               (*pfVar5 + 0.0 + *pfVar18) * fVar27;
+
+      fVar29 = (*pfVar7 + 0.0 + pfVar19[1]) * fVar28 +
+
+               fVar29 + (*pfVar2 + 0.0 + pfVar16[1]) * fVar23 +
+
+               (*pfVar4 + 0.0 + pfVar17[1]) * fVar25 + (fVar8 + 0.0 + pfVar18[1]) * fVar27;
+
+      *param_1 = fVar30;
+
+      lVar13 = lVar13 + -1;
+
+    } while (lVar13 != 0);
+
+    param_1[1] = fVar29;
+
+    if ((longlong)uVar20 <= lVar21) goto LAB_14000dd7a;
+
+  }
+
+  do {
+
+    iVar14 = iVar14 + 1;
+
+    lVar13 = lVar21 * 2;
+
+    lVar9 = lVar21 * 2;
+
+    pfVar12 = param_2;
+
+    if (iVar14 < param_3) {
+
+      pfVar12 = param_2 + (longlong)iVar14 * 2;
+
+    }
+
+    lVar21 = lVar21 + 1;
+
+    fVar22 = ((pfVar12[1] - 0.0) * (param_2[lVar13] - 0.0) -
+
+             (*pfVar12 - 0.0) * (param_2[lVar9 + 1] - 0.0)) * fVar11;
+
+    fVar31 = fVar31 + fVar22;
+
+    fVar22 = fVar22 * fVar10;
+
+    fVar30 = (param_2[lVar13] + 0.0 + *pfVar12) * fVar22 + fVar30;
+
+    fVar29 = (param_2[lVar9 + 1] + 0.0 + pfVar12[1]) * fVar22 + fVar29;
+
+  } while (lVar21 < (longlong)uVar20);
+
+  *param_1 = fVar30;
+
+  param_1[1] = fVar29;
+
+LAB_14000de37:
+
+  if (DAT_14039c9f0 < fVar31) {
+
+    fVar31 = DAT_14039ca44 / fVar31;
+
+    param_1[1] = fVar31 * fVar29;
+
+    *param_1 = fVar31 * fVar30;
+
+  }
+
+  return param_1;
+
+}
+
+
+
+

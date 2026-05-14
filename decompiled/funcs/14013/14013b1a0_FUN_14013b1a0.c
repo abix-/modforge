@@ -1,0 +1,32 @@
+// Address: 0x14013b1a0
+// Ghidra name: FUN_14013b1a0
+// ============ 0x14013b1a0 FUN_14013b1a0 (size=111) ============
+
+
+void FUN_14013b1a0(void)
+
+
+
+{
+
+  FUN_1401ce0a0();
+
+  FUN_14013b880();
+
+  FUN_14013b210();
+
+  FUN_140142b00("SDL_POLL_SENTINEL",FUN_14013b010,0);
+
+  FUN_140142b00("SDL_EVENT_LOGGING",FUN_140139460,0);
+
+  FUN_140142b00("SDL_AUTO_UPDATE_JOYSTICKS",FUN_1401391e0,0);
+
+  FUN_140142b00("SDL_AUTO_UPDATE_SENSORS",FUN_140139200,0);
+
+  return;
+
+}
+
+
+
+

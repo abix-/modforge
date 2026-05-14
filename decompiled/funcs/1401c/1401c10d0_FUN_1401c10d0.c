@@ -1,0 +1,1098 @@
+// Address: 0x1401c10d0
+// Ghidra name: FUN_1401c10d0
+// ============ 0x1401c10d0 FUN_1401c10d0 (size=4690) ============
+
+
+undefined8 * FUN_1401c10d0(char param_1,char param_2,undefined4 param_3)
+
+
+
+{
+
+  uint *puVar1;
+
+  char cVar2;
+
+  int iVar3;
+
+  undefined4 uVar4;
+
+  undefined4 uVar5;
+
+  undefined8 *puVar6;
+
+  longlong lVar7;
+
+  undefined8 uVar8;
+
+  code *pcVar9;
+
+  code *pcVar10;
+
+  undefined8 *puVar11;
+
+  char *pcVar12;
+
+  longlong *plVar13;
+
+  uint uVar14;
+
+  ulonglong uVar15;
+
+  ulonglong uVar16;
+
+  undefined4 uVar17;
+
+  char local_res20;
+
+  undefined8 in_stack_fffffffffffffd78;
+
+  undefined8 *puVar18;
+
+  int local_268 [2];
+
+  longlong *local_260;
+
+  longlong *local_258;
+
+  longlong *local_250;
+
+  undefined4 local_248;
+
+  undefined4 local_244;
+
+  undefined8 *local_240;
+
+  undefined4 local_238;
+
+  longlong *local_230;
+
+  longlong *local_228;
+
+  longlong *local_220;
+
+  uint local_218;
+
+  undefined4 uStack_214;
+
+  undefined8 local_210;
+
+  undefined8 uStack_208;
+
+  undefined8 local_200;
+
+  undefined8 local_1f8;
+
+  undefined1 local_1f0 [4];
+
+  int local_1ec;
+
+  undefined4 local_1e8 [2];
+
+  int local_1e0;
+
+  int local_1dc;
+
+  int local_1d8 [8];
+
+  undefined1 local_1b8 [64];
+
+  undefined1 local_178 [320];
+
+  
+
+  uVar5 = (undefined4)((ulonglong)in_stack_fffffffffffffd78 >> 0x20);
+
+  cVar2 = FUN_1401749e0(param_3,"SDL.gpu.device.create.verbose",1);
+
+  puVar6 = (undefined8 *)FUN_1401841a0(1,0x230);
+
+  local_res20 = '\0';
+
+  lVar7 = FUN_1401885b0("dxgi.dll");
+
+  puVar6[5] = lVar7;
+
+  if (lVar7 == 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    if (*(char *)(puVar6 + 0x13) == '\0') {
+
+      FUN_14012e850(&DAT_14039bf30,"Could not find dxgi.dll");
+
+      return (undefined8 *)0x0;
+
+    }
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,&DAT_14039bf30,"Could not find dxgi.dll");
+
+  }
+
+  if (param_1 != '\0') {
+
+    local_res20 = FUN_1401cbbf0(puVar6);
+
+  }
+
+  lVar7 = FUN_1401885b0("WinPixEventRuntime.dll");
+
+  uVar8 = 0;
+
+  puVar6[7] = lVar7;
+
+  if (lVar7 == 0) {
+
+    FUN_14012e2e0(9,
+
+                  "WinPixEventRuntime.dll is not available. It is required for SDL_Push/PopGPUDebugGroup and SDL_InsertGPUDebugLabel to function correctly. See here for instructions on how to obtain it: https://devblogs.microsoft.com/pix/winpixeventruntime/"
+
+                 );
+
+    puVar6[8] = 0;
+
+    puVar6[9] = 0;
+
+  }
+
+  else {
+
+    uVar8 = FUN_140188550(lVar7,"PIXBeginEventOnCommandList");
+
+    puVar6[8] = uVar8;
+
+    uVar8 = FUN_140188550(puVar6[7],"PIXEndEventOnCommandList");
+
+    puVar6[9] = uVar8;
+
+    uVar8 = FUN_140188550(puVar6[7],"PIXSetMarkerOnCommandList");
+
+  }
+
+  puVar6[10] = uVar8;
+
+  pcVar9 = (code *)FUN_140188550(puVar6[5],"CreateDXGIFactory1");
+
+  if (pcVar9 == (code *)0x0) {
+
+    FUN_1401c97e0(puVar6);
+
+    if (*(char *)(puVar6 + 0x13) == '\0') {
+
+      FUN_14012e850(&DAT_14039bf30,"Could not load function: CreateDXGIFactory1");
+
+      return (undefined8 *)0x0;
+
+    }
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,&DAT_14039bf30,"Could not load function: CreateDXGIFactory1");
+
+  }
+
+  iVar3 = (*pcVar9)(&DAT_140349228,&local_230);
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"Could not create DXGIFactory",iVar3);
+
+    return (undefined8 *)0x0;
+
+  }
+
+  iVar3 = (**(code **)*local_230)(local_230,&DAT_140349238,puVar6 + 2);
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"DXGI1.4 support not found, required for DX12",iVar3);
+
+    return (undefined8 *)0x0;
+
+  }
+
+  (**(code **)(*local_230 + 0x10))();
+
+  iVar3 = (*(code *)**(undefined8 **)puVar6[2])((undefined8 *)puVar6[2],&DAT_140349248,&local_228);
+
+  uVar17 = 4;
+
+  if (-1 < iVar3) {
+
+    iVar3 = (**(code **)(*local_228 + 0xe0))(local_228,0,puVar6 + 0xc,4);
+
+    if (iVar3 < 0) {
+
+      *(undefined4 *)(puVar6 + 0xc) = 0;
+
+    }
+
+    (**(code **)(*local_228 + 0x10))();
+
+  }
+
+  puVar11 = puVar6 + 4;
+
+  iVar3 = (*(code *)**(undefined8 **)puVar6[2])((undefined8 *)puVar6[2],&DAT_140349258,&local_220);
+
+  if (iVar3 < 0) {
+
+    iVar3 = (**(code **)(*(longlong *)puVar6[2] + 0x60))((longlong *)puVar6[2],0,puVar11);
+
+  }
+
+  else {
+
+    puVar18 = puVar11;
+
+    iVar3 = (**(code **)(*local_220 + 0xe8))
+
+                      (local_220,0,2 - (uint)(param_2 != '\0'),&DAT_140349268,puVar11);
+
+    uVar5 = (undefined4)((ulonglong)puVar18 >> 0x20);
+
+    (**(code **)(*local_220 + 0x10))();
+
+  }
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"Could not find adapter for D3D12Device",iVar3);
+
+    return (undefined8 *)0x0;
+
+  }
+
+  iVar3 = (**(code **)(*(longlong *)*puVar11 + 0x50))((longlong *)*puVar11,local_178);
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"Could not get adapter description",iVar3);
+
+    return (undefined8 *)0x0;
+
+  }
+
+  iVar3 = (**(code **)(*(longlong *)*puVar11 + 0x48))
+
+                    ((longlong *)*puVar11,&DAT_140349278,&local_218);
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"Could not get adapter driver version",iVar3);
+
+    return (undefined8 *)0x0;
+
+  }
+
+  uVar4 = FUN_1401746e0();
+
+  *(undefined4 *)(puVar6 + 0x14) = uVar4;
+
+  if (cVar2 != '\0') {
+
+    FUN_14012e0e0(9,"SDL_GPU Driver: D3D12");
+
+  }
+
+  lVar7 = FUN_14012fd40(local_178);
+
+  uVar8 = FUN_140197820(&DAT_14039c6f0,"WCHAR_T",local_178,lVar7 * 2 + 2);
+
+  FUN_140175500(*(undefined4 *)(puVar6 + 0x14),"SDL.gpu.device.name",uVar8);
+
+  if (cVar2 != '\0') {
+
+    FUN_14012e0e0(9,"D3D12 Adapter: %s",uVar8);
+
+  }
+
+  FUN_1401841e0(uVar8);
+
+  FUN_14012ef10(local_1b8,0x40,"%d.%d.%d.%d",(short)((uint)uStack_214 >> 0x10),
+
+                CONCAT44(uVar5,uStack_214) & 0xffffffff0000ffff,
+
+                (uint)(CONCAT44(uStack_214,local_218) >> 0x10) & 0xffff,local_218 & 0xffff);
+
+  FUN_140175500(*(undefined4 *)(puVar6 + 0x14),"SDL.gpu.device.driver_version",local_1b8);
+
+  if (cVar2 != '\0') {
+
+    FUN_14012e0e0(9,"D3D12 Driver: %s",local_1b8);
+
+  }
+
+  lVar7 = FUN_1401885b0("d3d12.dll");
+
+  puVar6[0xd] = lVar7;
+
+  if (lVar7 == 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    if (*(char *)(puVar6 + 0x13) == '\0') {
+
+      FUN_14012e850(&DAT_14039bf30,"Could not find d3d12.dll");
+
+      return (undefined8 *)0x0;
+
+    }
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,&DAT_14039bf30,"Could not find d3d12.dll");
+
+  }
+
+  pcVar9 = (code *)FUN_140188550(lVar7,"D3D12CreateDevice");
+
+  if (pcVar9 == (code *)0x0) {
+
+    FUN_1401c97e0(puVar6);
+
+    if (*(char *)(puVar6 + 0x13) == '\0') {
+
+      FUN_14012e850(&DAT_14039bf30,"Could not load function: D3D12CreateDevice");
+
+      return (undefined8 *)0x0;
+
+    }
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,&DAT_14039bf30,"Could not load function: D3D12CreateDevice");
+
+  }
+
+  lVar7 = FUN_140188550(puVar6[0xd],"D3D12SerializeRootSignature");
+
+  puVar6[0xf] = lVar7;
+
+  if (lVar7 == 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    if (*(char *)(puVar6 + 0x13) == '\0') {
+
+      FUN_14012e850(&DAT_14039bf30,"Could not load function: D3D12SerializeRootSignature");
+
+      return (undefined8 *)0x0;
+
+    }
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,&DAT_14039bf30,"Could not load function: D3D12SerializeRootSignature");
+
+  }
+
+  local_260 = (longlong *)0x0;
+
+  cVar2 = FUN_140174fc0(param_3,"SDL.gpu.device.create.d3d12.agility_sdk_path");
+
+  if ((cVar2 != '\0') &&
+
+     (cVar2 = FUN_140174fc0(param_3,"SDL.gpu.device.create.d3d12.agility_sdk_version"),
+
+     cVar2 != '\0')) {
+
+    uVar5 = FUN_140174c40(param_3,"SDL.gpu.device.create.d3d12.agility_sdk_version",0);
+
+    uVar8 = FUN_140174e70(param_3,"SDL.gpu.device.create.d3d12.agility_sdk_path",".\\D3D12\\");
+
+    pcVar10 = (code *)FUN_140188550(puVar6[0xd],"D3D12GetInterface");
+
+    if (pcVar10 == (code *)0x0) {
+
+      FUN_14012e2e0(9,"Could not load D3D12GetInterface, custom D3D12 SDK will not load.");
+
+    }
+
+    local_250 = (longlong *)0x0;
+
+    iVar3 = (*pcVar10)(&DAT_1403493a8,&DAT_1403493c8,&local_250);
+
+    if (iVar3 < 0) {
+
+      FUN_14012e2e0(9,"Failed to load vendored D3D12 SDK Configuration");
+
+    }
+
+    else {
+
+      local_258 = (longlong *)0x0;
+
+      iVar3 = (**(code **)*local_250)(local_250,&DAT_1403493d8,&local_258);
+
+      if (-1 < iVar3) {
+
+        iVar3 = (**(code **)(*local_258 + 0x20))(local_258,uVar5,uVar8,&DAT_1403493e8,&local_260);
+
+        if (iVar3 < 0) {
+
+          FUN_14012e2e0(9,"Failed to load vendored D3D12Core.dll");
+
+        }
+
+        else {
+
+          FUN_14012e0e0(9,"Loaded vendored D3D12Core.dll");
+
+        }
+
+        (**(code **)(*local_258 + 0x10))();
+
+      }
+
+      (**(code **)(*local_250 + 0x10))();
+
+    }
+
+  }
+
+  if (param_1 == '\0') goto LAB_1401c180c;
+
+  cVar2 = FUN_1401cba40(puVar6,local_260);
+
+  if (local_res20 == '\0') {
+
+    pcVar12 = "Validation layers not found, continuing without validation";
+
+    if (cVar2 != '\0') goto LAB_1401c17fb;
+
+  }
+
+  else {
+
+    if (cVar2 != '\0') {
+
+      FUN_14012e0e0(9,"Validation layers enabled, expect debug level performance!");
+
+      goto LAB_1401c180c;
+
+    }
+
+LAB_1401c17fb:
+
+    pcVar12 = "Validation layers partially enabled, some warnings may not be available";
+
+  }
+
+  FUN_14012e2e0(9,pcVar12);
+
+LAB_1401c180c:
+
+  puVar18 = puVar6 + 0xe;
+
+  if (local_260 == (longlong *)0x0) {
+
+    iVar3 = (*pcVar9)(*puVar11,0xb000,&DAT_1403492c8,puVar18);
+
+  }
+
+  else {
+
+    (**(code **)(*local_260 + 0x28))(local_260,1);
+
+    iVar3 = (**(code **)(*local_260 + 0x48))(local_260,*puVar11,0xb000,&DAT_1403492c8,puVar18);
+
+    (**(code **)(*local_260 + 0x10))();
+
+  }
+
+  if (iVar3 < 0) {
+
+    FUN_1401c97e0(puVar6);
+
+    FUN_1401cb240(puVar6,"Could not create D3D12Device",iVar3);
+
+  }
+
+  else {
+
+    if (param_1 != '\0') {
+
+      FUN_1401cbb30(puVar6);
+
+      FUN_1401cbac0(puVar6);
+
+    }
+
+    local_1e8[0] = 0;
+
+    iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x68))((longlong *)*puVar18,1,local_1e8,0x10);
+
+    if (iVar3 < 0) {
+
+      FUN_1401c97e0(puVar6);
+
+      FUN_1401cb240(puVar6,"Could not get device architecture",iVar3);
+
+    }
+
+    else {
+
+      *(bool *)((longlong)puVar6 + 0x9b) = local_1e0 != 0;
+
+      *(undefined1 *)((longlong)puVar6 + 0x99) = 0;
+
+      *(bool *)((longlong)puVar6 + 0x9c) = local_1dc != 0;
+
+      iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x68))((longlong *)*puVar18,0x2d,local_1f0,8);
+
+      if (-1 < iVar3) {
+
+        *(bool *)((longlong)puVar6 + 0x99) = local_1ec != 0;
+
+      }
+
+      iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x68))((longlong *)*puVar18,0x2a,local_1d8,0x18);
+
+      if (iVar3 < 0) {
+
+        FUN_14012e2e0(9,
+
+                      "CheckFeatureSupport for UnrestrictedBufferTextureCopyPitchSupported failed. You may need to provide a vendored D3D12Core.dll through the Agility SDK on older platforms."
+
+                     );
+
+      }
+
+      else {
+
+        *(bool *)((longlong)puVar6 + 0x9a) = local_1d8[0] != 0;
+
+      }
+
+      local_1f8 = 0;
+
+      local_200 = 0;
+
+      iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x40))
+
+                        ((longlong *)*puVar18,&local_200,&DAT_1403492d8,puVar6 + 0x12);
+
+      if (iVar3 < 0) {
+
+        FUN_1401c97e0(puVar6);
+
+        FUN_1401cb240(puVar6,"Could not create D3D12CommandQueue",iVar3);
+
+      }
+
+      else {
+
+        local_238 = 0;
+
+        local_240 = &local_210;
+
+        local_248 = 0x10;
+
+        local_244 = 1;
+
+        local_210 = 0;
+
+        uStack_208 = 0;
+
+        iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x148))
+
+                          ((longlong *)*puVar18,&local_248,0,&DAT_140349358,puVar6 + 0x15);
+
+        if (iVar3 < 0) {
+
+          FUN_1401c97e0(puVar6);
+
+          FUN_1401cb240(puVar6,"Could not create indirect draw command signature",iVar3);
+
+        }
+
+        else {
+
+          local_210._0_4_ = 1;
+
+          local_240 = &local_210;
+
+          local_248 = 0x14;
+
+          iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x148))
+
+                            ((longlong *)*puVar18,&local_248,0,&DAT_140349358,puVar6 + 0x16);
+
+          if (iVar3 < 0) {
+
+            FUN_1401c97e0(puVar6);
+
+            FUN_1401cb240(puVar6,"Could not create indirect indexed draw command signature",iVar3);
+
+          }
+
+          else {
+
+            local_210 = CONCAT44(local_210._4_4_,2);
+
+            local_248 = 0xc;
+
+            local_240 = &local_210;
+
+            iVar3 = (**(code **)(*(longlong *)*puVar18 + 0x148))
+
+                              ((longlong *)*puVar18,&local_248,0,&DAT_140349358,puVar6 + 0x17);
+
+            if (iVar3 < 0) {
+
+              FUN_1401c97e0(puVar6);
+
+              FUN_1401cb240(puVar6,"Could not create indirect dispatch command signature",iVar3);
+
+            }
+
+            else {
+
+              *(undefined4 *)((longlong)puVar6 + 300) = 4;
+
+              *(undefined4 *)(puVar6 + 0x25) = 0;
+
+              lVar7 = FUN_1401841a0(4,8);
+
+              puVar6[0x24] = lVar7;
+
+              if (lVar7 != 0) {
+
+                *(undefined4 *)((longlong)puVar6 + 0x13c) = 4;
+
+                *(undefined4 *)(puVar6 + 0x27) = 0;
+
+                lVar7 = FUN_1401841a0(4,8);
+
+                puVar6[0x26] = lVar7;
+
+                if (lVar7 != 0) {
+
+                  *(undefined4 *)((longlong)puVar6 + 0x14c) = 4;
+
+                  *(undefined4 *)(puVar6 + 0x29) = 0;
+
+                  lVar7 = FUN_1401841a0(4,8);
+
+                  puVar6[0x28] = lVar7;
+
+                  if (lVar7 != 0) {
+
+                    *(undefined4 *)((longlong)puVar6 + 0x15c) = 4;
+
+                    *(undefined4 *)(puVar6 + 0x2b) = 0;
+
+                    lVar7 = FUN_1401841a0(4,8);
+
+                    puVar6[0x2a] = lVar7;
+
+                    if (lVar7 != 0) {
+
+                      uVar14 = 0;
+
+                      plVar13 = puVar6 + 0x2c;
+
+                      do {
+
+                        lVar7 = FUN_1401c86a0(puVar6,uVar14);
+
+                        *plVar13 = lVar7;
+
+                        if (lVar7 == 0) goto LAB_1401c22f7;
+
+                        uVar14 = uVar14 + 1;
+
+                        plVar13 = plVar13 + 1;
+
+                      } while (uVar14 < 4);
+
+                      uVar16 = 0;
+
+                      do {
+
+                        uVar8 = FUN_140179a30();
+
+                        puVar6[uVar16 * 3 + 0x32] = uVar8;
+
+                        *(undefined4 *)((longlong)puVar6 + uVar16 * 0x18 + 0x184) = 4;
+
+                        puVar1 = (uint *)(puVar6 + (uVar16 + 0x10) * 3);
+
+                        *puVar1 = 4;
+
+                        uVar8 = FUN_1401841a0(4,8);
+
+                        uVar15 = 0;
+
+                        puVar6[uVar16 * 3 + 0x31] = uVar8;
+
+                        if (*puVar1 != 0) {
+
+                          uVar5 = 0x800;
+
+                          if ((int)uVar16 == 0) {
+
+                            uVar5 = 0x10000;
+
+                          }
+
+                          do {
+
+                            uVar8 = FUN_1401c7e90(puVar6,uVar16,uVar5,0);
+
+                            *(undefined8 *)(uVar15 * 8 + puVar6[uVar16 * 3 + 0x31]) = uVar8;
+
+                            if (*(longlong *)(uVar15 * 8 + puVar6[uVar16 * 3 + 0x31]) == 0)
+
+                            goto LAB_1401c22f7;
+
+                            uVar14 = (int)uVar15 + 1;
+
+                            uVar15 = (ulonglong)uVar14;
+
+                          } while (uVar14 < *puVar1);
+
+                        }
+
+                        uVar14 = (int)uVar16 + 1;
+
+                        uVar16 = (ulonglong)uVar14;
+
+                      } while (uVar14 < 2);
+
+                      *(undefined4 *)((longlong)puVar6 + 0x1bc) = 4;
+
+                      *(undefined4 *)(puVar6 + 0x37) = 0;
+
+                      lVar7 = FUN_1401841a0(4,8);
+
+                      puVar6[0x36] = lVar7;
+
+                      if (lVar7 != 0) {
+
+                        *(undefined4 *)((longlong)puVar6 + 0x1cc) = 4;
+
+                        *(undefined4 *)(puVar6 + 0x39) = 0;
+
+                        lVar7 = FUN_1401841a0(4,8);
+
+                        puVar6[0x38] = lVar7;
+
+                        if (lVar7 != 0) {
+
+                          *(undefined4 *)((longlong)puVar6 + 0x1dc) = 4;
+
+                          *(undefined4 *)(puVar6 + 0x3b) = 0;
+
+                          lVar7 = FUN_1401841a0(4,8);
+
+                          puVar6[0x3a] = lVar7;
+
+                          if (lVar7 != 0) {
+
+                            *(undefined4 *)((longlong)puVar6 + 0x1ec) = 4;
+
+                            *(undefined4 *)(puVar6 + 0x3d) = 0;
+
+                            lVar7 = FUN_1401841a0(4,8);
+
+                            puVar6[0x3c] = lVar7;
+
+                            if (lVar7 != 0) {
+
+                              *(undefined4 *)((longlong)puVar6 + 0x1fc) = 4;
+
+                              *(undefined4 *)(puVar6 + 0x3f) = 0;
+
+                              lVar7 = FUN_1401841a0(4,8);
+
+                              puVar6[0x3e] = lVar7;
+
+                              if (lVar7 != 0) {
+
+                                uVar8 = FUN_140179a30();
+
+                                puVar6[0x40] = uVar8;
+
+                                uVar8 = FUN_140179a30();
+
+                                puVar6[0x41] = uVar8;
+
+                                uVar8 = FUN_140179a30();
+
+                                puVar6[0x42] = uVar8;
+
+                                uVar8 = FUN_140179a30();
+
+                                puVar6[0x43] = uVar8;
+
+                                uVar8 = FUN_140179a30();
+
+                                puVar6[0x44] = uVar8;
+
+                                uVar8 = FUN_140179a30();
+
+                                *(char *)(puVar6 + 0x13) = param_1;
+
+                                puVar6[0x45] = uVar8;
+
+                                *(undefined4 *)((longlong)puVar6 + 0xa4) = 2;
+
+                                uVar8 = FUN_140174e70(param_3,"SDL.gpu.device.create.d3d12.semantic"
+
+                                                      ,"TEXCOORD");
+
+                                uVar8 = FUN_14012f0d0(uVar8);
+
+                                puVar6[0x10] = uVar8;
+
+                                FUN_1401c9f60(puVar6);
+
+                                puVar11 = (undefined8 *)FUN_1401841a0(1,0x2b0);
+
+                                if (puVar11 != (undefined8 *)0x0) {
+
+                                  local_268[0] = 0x60;
+
+                                  iVar3 = (**(code **)(*(longlong *)puVar6[0xe] + 0x68))
+
+                                                    ((longlong *)puVar6[0xe],7,local_268,4);
+
+                                  if ((-1 < iVar3) && (uVar17 = 4, 0x5f < local_268[0])) {
+
+                                    uVar17 = 0xc;
+
+                                  }
+
+                                  *puVar11 = FUN_1401c44b0;
+
+                                  puVar11[1] = &LAB_1401c5490;
+
+                                  puVar11[2] = FUN_1401c3bd0;
+
+                                  puVar11[3] = FUN_1401c3db0;
+
+                                  puVar11[4] = FUN_1401c4180;
+
+                                  puVar11[5] = FUN_1401c42c0;
+
+                                  puVar11[6] = FUN_1401c4360;
+
+                                  puVar11[7] = FUN_1401c3bb0;
+
+                                  puVar11[8] = FUN_1401c4480;
+
+                                  puVar11[9] = FUN_1401cc320;
+
+                                  puVar11[10] = FUN_1401cc570;
+
+                                  puVar11[0xb] = &LAB_1401cbd30;
+
+                                  puVar11[0xc] = &LAB_1401cbe10;
+
+                                  puVar11[0xd] = &LAB_1401cbdd0;
+
+                                  puVar11[0xe] = &LAB_1401cc0c0;
+
+                                  puVar11[0xf] = FUN_1401cc000;
+
+                                  puVar11[0x10] = &LAB_1401cbe90;
+
+                                  puVar11[0x11] = &LAB_1401cbe90;
+
+                                  puVar11[0x12] = FUN_1401cc090;
+
+                                  puVar11[0x13] = FUN_1401cbea0;
+
+                                  puVar11[0x14] = FUN_1401cbf70;
+
+                                  puVar11[0x15] = FUN_1401c27f0;
+
+                                  puVar11[0x16] = FUN_1401c31e0;
+
+                                  puVar11[0x17] = FUN_1401cc600;
+
+                                  puVar11[0x18] = FUN_1401cc3b0;
+
+                                  puVar11[0x19] = FUN_1401cc2f0;
+
+                                  puVar11[0x1a] = FUN_1401cc400;
+
+                                  puVar11[0x1b] = FUN_1401c33b0;
+
+                                  puVar11[0x1c] = FUN_1401c3320;
+
+                                  puVar11[0x1d] = FUN_1401c3490;
+
+                                  puVar11[0x1e] = FUN_1401c3620;
+
+                                  puVar11[0x1f] = FUN_1401c3570;
+
+                                  puVar11[0x20] = FUN_1401c2fb0;
+
+                                  puVar11[0x21] = FUN_1401c3140;
+
+                                  puVar11[0x22] = FUN_1401c3090;
+
+                                  puVar11[0x23] = FUN_1401cbe50;
+
+                                  puVar11[0x24] = FUN_1401cbe30;
+
+                                  puVar11[0x25] = FUN_1401c4a30;
+
+                                  puVar11[0x26] = FUN_1401c4b10;
+
+                                  puVar11[0x27] = FUN_1401c4b70;
+
+                                  puVar11[0x28] = FUN_1401c4a90;
+
+                                  puVar11[0x29] = FUN_1401c4f60;
+
+                                  puVar11[0x2a] = FUN_1401c26f0;
+
+                                  puVar11[0x2b] = FUN_1401c2b70;
+
+                                  puVar11[0x2c] = FUN_1401c2d30;
+
+                                  puVar11[0x2d] = FUN_1401c2ed0;
+
+                                  puVar11[0x2e] = FUN_1401c2e10;
+
+                                  puVar11[0x2f] = FUN_1401cbdf0;
+
+                                  puVar11[0x30] = FUN_1401c4530;
+
+                                  puVar11[0x31] = FUN_1401c4590;
+
+                                  puVar11[0x32] = FUN_1401c4bf0;
+
+                                  puVar11[0x33] = FUN_1401cbd50;
+
+                                  puVar11[0x34] = &LAB_1401cce70;
+
+                                  puVar11[0x35] = _guard_check_icall;
+
+                                  puVar11[0x36] = FUN_1401ccf50;
+
+                                  puVar11[0x37] = FUN_1401cce90;
+
+                                  puVar11[0x3b] = FUN_1401c46c0;
+
+                                  puVar11[0x3c] = FUN_1401c4610;
+
+                                  puVar11[0x38] = FUN_1401c3a30;
+
+                                  puVar11[0x39] = FUN_1401c3960;
+
+                                  puVar11[0x3a] = FUN_1401c5280;
+
+                                  puVar11[0x3d] = _guard_check_icall;
+
+                                  puVar11[0x3e] = FUN_1401c36c0;
+
+                                  puVar11[0x3f] = FUN_1401ccc40;
+
+                                  puVar11[0x40] = FUN_1401ccbb0;
+
+                                  puVar11[0x41] = FUN_1401c37e0;
+
+                                  puVar11[0x42] = FUN_1401cc0d0;
+
+                                  puVar11[0x43] = FUN_1401cc420;
+
+                                  puVar11[0x44] = FUN_1401cc240;
+
+                                  puVar11[0x45] = FUN_1401c54a0;
+
+                                  puVar11[0x46] = FUN_1401c2330;
+
+                                  puVar11[0x47] = FUN_1401c26c0;
+
+                                  puVar11[0x48] = FUN_1401cd770;
+
+                                  puVar11[0x49] = FUN_1401cd580;
+
+                                  puVar11[0x4a] = FUN_1401cc650;
+
+                                  puVar11[0x4b] = FUN_1401ccb80;
+
+                                  puVar11[0x4c] = FUN_1401c3750;
+
+                                  puVar11[0x4d] = FUN_1401cd410;
+
+                                  puVar11[0x4e] = FUN_1401cd5b0;
+
+                                  puVar11[0x4f] = FUN_1401cbe70;
+
+                                  puVar11[0x50] = FUN_1401cbf30;
+
+                                  puVar11[0x53] = puVar6;
+
+                                  puVar11[0x51] = FUN_1401ccd30;
+
+                                  puVar11[0x52] = FUN_1401ccbd0;
+
+                                  *(undefined4 *)(puVar11 + 0x55) = uVar17;
+
+                                  *(char *)((longlong)puVar11 + 0x2ac) = param_1;
+
+                                  *puVar6 = puVar11;
+
+                                  return puVar11;
+
+                                }
+
+                              }
+
+                            }
+
+                          }
+
+                        }
+
+                      }
+
+                    }
+
+                  }
+
+                }
+
+              }
+
+LAB_1401c22f7:
+
+              FUN_1401c97e0(puVar6);
+
+            }
+
+          }
+
+        }
+
+      }
+
+    }
+
+  }
+
+  return (undefined8 *)0x0;
+
+}
+
+
+
+

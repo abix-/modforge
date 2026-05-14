@@ -1,0 +1,88 @@
+// Address: 0x1400123b0
+// Ghidra name: FUN_1400123b0
+// ============ 0x1400123b0 FUN_1400123b0 (size=314) ============
+
+
+void FUN_1400123b0(longlong param_1,longlong param_2,ulonglong param_3,undefined8 *param_4,
+
+                  code *param_5)
+
+
+
+{
+
+  longlong lVar1;
+
+  undefined8 *puVar2;
+
+  char cVar3;
+
+  longlong lVar4;
+
+  longlong lVar5;
+
+  
+
+  lVar4 = (longlong)(param_3 - 1) >> 1;
+
+  lVar5 = param_2;
+
+  while (lVar5 < lVar4) {
+
+    lVar1 = param_1 + (lVar5 * 2 + 2) * 0xc;
+
+    cVar3 = (*param_5)(lVar1,lVar1 + -0xc);
+
+    puVar2 = (undefined8 *)(param_1 + lVar5 * 0xc);
+
+    lVar5 = (2 - (ulonglong)(cVar3 != '\0')) + lVar5 * 2;
+
+    *puVar2 = *(undefined8 *)(param_1 + lVar5 * 0xc);
+
+    *(undefined4 *)(puVar2 + 1) = *(undefined4 *)(param_1 + 8 + lVar5 * 0xc);
+
+  }
+
+  if ((lVar5 == lVar4) && ((param_3 & 1) == 0)) {
+
+    puVar2 = (undefined8 *)(param_1 + lVar5 * 0xc);
+
+    *puVar2 = *(undefined8 *)(param_1 + -0xc + param_3 * 0xc);
+
+    *(undefined4 *)(puVar2 + 1) = *(undefined4 *)(param_1 + -4 + param_3 * 0xc);
+
+    lVar5 = param_3 - 1;
+
+  }
+
+  while (param_2 < lVar5) {
+
+    lVar4 = lVar5 + -1 >> 1;
+
+    puVar2 = (undefined8 *)(param_1 + lVar4 * 0xc);
+
+    cVar3 = (*param_5)(puVar2,param_4);
+
+    if (cVar3 == '\0') break;
+
+    *(undefined8 *)(param_1 + lVar5 * 0xc) = *puVar2;
+
+    *(undefined4 *)(param_1 + lVar5 * 0xc + 8) = *(undefined4 *)(puVar2 + 1);
+
+    lVar5 = lVar4;
+
+  }
+
+  puVar2 = (undefined8 *)(param_1 + lVar5 * 0xc);
+
+  *puVar2 = *param_4;
+
+  *(undefined4 *)(puVar2 + 1) = *(undefined4 *)(param_4 + 1);
+
+  return;
+
+}
+
+
+
+

@@ -1,0 +1,44 @@
+// Address: 0x1400a6cb0
+// Ghidra name: FUN_1400a6cb0
+// ============ 0x1400a6cb0 FUN_1400a6cb0 (size=244) ============
+
+
+undefined8 * FUN_1400a6cb0(undefined8 *param_1)
+
+
+
+{
+
+  undefined4 uVar1;
+
+  
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_14030cde0;
+
+  FUN_1400278e0(param_1 + 3,"Sue\'s Glues");
+
+  FUN_1400278e0(param_1 + 7,&DAT_14030ceac);
+
+  FUN_1400c9f10(param_1);
+
+  FUN_1400cf540(param_1,1,0,DAT_140303398,DAT_140303398,DAT_140303398);
+
+  uVar1 = DAT_140303394;
+
+  FUN_1400cf540(param_1,3,DAT_14030339c,DAT_14039ca34,DAT_140303750,DAT_140303394);
+
+  FUN_1400cf540(param_1,2,DAT_140303380,DAT_140303380,uVar1,DAT_140309bf0);
+
+  param_1[0x4e] = 0;
+
+  *(undefined4 *)((longlong)param_1 + 0x27c) = 0xffffffff;
+
+  return param_1;
+
+}
+
+
+
+

@@ -1,0 +1,74 @@
+// Address: 0x140027750
+// Ghidra name: FUN_140027750
+// ============ 0x140027750 FUN_140027750 (size=184) ============
+
+
+void FUN_140027750(longlong *param_1,ulonglong param_2)
+
+
+
+{
+
+  ulonglong uVar1;
+
+  ulonglong uVar2;
+
+  longlong lVar3;
+
+  longlong lVar4;
+
+  
+
+  uVar1 = param_1[2];
+
+  if (uVar1 <= param_2) {
+
+    uVar2 = param_1[3];
+
+    if (uVar2 != param_2) {
+
+      if (uVar2 < param_2) {
+
+        FUN_140027b20(param_1,param_2 - uVar1);
+
+        param_1[2] = uVar1;
+
+        return;
+
+      }
+
+      if ((param_2 < 0x10) && (0xf < uVar2)) {
+
+        lVar3 = *param_1;
+
+        FUN_1402f8e20(param_1,lVar3);
+
+        lVar4 = lVar3;
+
+        if ((0xfff < param_1[3] + 1U) &&
+
+           (lVar4 = *(longlong *)(lVar3 + -8), 0x1f < (lVar3 - lVar4) - 8U)) {
+
+                    /* WARNING: Subroutine does not return */
+
+          _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+        }
+
+        FUN_1402c7088(lVar4);
+
+        param_1[3] = 0xf;
+
+      }
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

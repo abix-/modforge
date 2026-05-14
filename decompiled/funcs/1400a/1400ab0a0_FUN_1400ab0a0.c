@@ -1,0 +1,78 @@
+// Address: 0x1400ab0a0
+// Ghidra name: FUN_1400ab0a0
+// ============ 0x1400ab0a0 FUN_1400ab0a0 (size=255) ============
+
+
+int * FUN_1400ab0a0(longlong param_1,int param_2,int param_3,longlong param_4,int param_5,
+
+                   int param_6,int param_7,int param_8,int param_9)
+
+
+
+{
+
+  longlong *plVar1;
+
+  int iVar2;
+
+  longlong lVar3;
+
+  int *piVar4;
+
+  undefined1 local_res10 [8];
+
+  
+
+  plVar1 = (longlong *)(param_1 + 0x40);
+
+  lVar3 = *(longlong *)(param_1 + 0x48) - *plVar1;
+
+  lVar3 = lVar3 + SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar3),8);
+
+  iVar2 = (int)(lVar3 >> 7) - (int)(lVar3 >> 0x3f);
+
+  FUN_1400be740(plVar1,(longlong)(iVar2 + 1),local_res10);
+
+  piVar4 = (int *)((longlong)iVar2 * 0xb8 + *plVar1);
+
+  piVar4[0x10] = param_6;
+
+  piVar4[0x12] = param_8;
+
+  piVar4[0x11] = param_7;
+
+  *piVar4 = iVar2;
+
+  piVar4[2] = param_2;
+
+  piVar4[3] = param_2;
+
+  piVar4[1] = param_3;
+
+  piVar4[0x22] = param_5;
+
+  if (param_4 != 0) {
+
+    piVar4[0x23] = *(int *)(param_4 + 0x1c);
+
+    piVar4[0x25] = *(int *)(param_4 + 0x24);
+
+    piVar4[0x24] = *(int *)(param_4 + 0x20);
+
+    piVar4[0x26] = *(int *)(param_4 + 0x28);
+
+  }
+
+  piVar4[0x20] = param_9;
+
+  *(undefined8 *)(piVar4 + 0x17) = *(undefined8 *)(piVar4 + 0x10);
+
+  *(undefined1 *)(piVar4 + 0x21) = 0;
+
+  return piVar4;
+
+}
+
+
+
+

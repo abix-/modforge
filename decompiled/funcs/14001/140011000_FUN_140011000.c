@@ -1,0 +1,164 @@
+// Address: 0x140011000
+// Ghidra name: FUN_140011000
+// ============ 0x140011000 FUN_140011000 (size=494) ============
+
+
+void FUN_140011000(longlong param_1,longlong param_2)
+
+
+
+{
+
+  longlong *plVar1;
+
+  int iVar2;
+
+  int iVar3;
+
+  longlong lVar4;
+
+  longlong lVar5;
+
+  undefined8 uVar6;
+
+  
+
+  lVar4 = *(longlong *)(*(longlong *)(param_2 + 0x60) + 0x10);
+
+  lVar5 = *(longlong *)(*(longlong *)(param_2 + 0x68) + 0x10);
+
+  if ((*(longlong **)(param_1 + 0x70) != (longlong *)0x0) && ((*(byte *)(param_2 + 8) & 2) != 0)) {
+
+    (**(code **)(**(longlong **)(param_1 + 0x70) + 0x10))();
+
+  }
+
+  if (*(longlong *)(param_2 + 0x10) != 0) {
+
+    *(undefined8 *)(*(longlong *)(param_2 + 0x10) + 0x18) = *(undefined8 *)(param_2 + 0x18);
+
+  }
+
+  if (*(longlong *)(param_2 + 0x18) != 0) {
+
+    *(undefined8 *)(*(longlong *)(param_2 + 0x18) + 0x10) = *(undefined8 *)(param_2 + 0x10);
+
+  }
+
+  if (param_2 == *(longlong *)(param_1 + 0x58)) {
+
+    *(undefined8 *)(param_1 + 0x58) = *(undefined8 *)(param_2 + 0x18);
+
+  }
+
+  plVar1 = (longlong *)(param_2 + 0x38);
+
+  if (*(longlong *)(param_2 + 0x30) != 0) {
+
+    *(longlong *)(*(longlong *)(param_2 + 0x30) + 0x18) = *plVar1;
+
+  }
+
+  if (*plVar1 != 0) {
+
+    *(undefined8 *)(*plVar1 + 0x10) = *(undefined8 *)(param_2 + 0x30);
+
+  }
+
+  if (param_2 + 0x20 == *(longlong *)(lVar4 + 0x88)) {
+
+    *(longlong *)(lVar4 + 0x88) = *plVar1;
+
+  }
+
+  plVar1 = (longlong *)(param_2 + 0x58);
+
+  if (*(longlong *)(param_2 + 0x50) != 0) {
+
+    *(longlong *)(*(longlong *)(param_2 + 0x50) + 0x18) = *plVar1;
+
+  }
+
+  if (*plVar1 != 0) {
+
+    *(undefined8 *)(*plVar1 + 0x10) = *(undefined8 *)(param_2 + 0x50);
+
+  }
+
+  if (param_2 + 0x40 == *(longlong *)(lVar5 + 0x88)) {
+
+    *(longlong *)(lVar5 + 0x88) = *plVar1;
+
+  }
+
+  uVar6 = *(undefined8 *)(param_1 + 0x78);
+
+  if (DAT_1403ff7b4 != '\x01') {
+
+    FID_conflict__assert
+
+              (L"s_initialized == true",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\Contacts\\b2Contact.cpp"
+
+               ,0x67);
+
+  }
+
+  if (0 < *(int *)(param_2 + 0xb4)) {
+
+    lVar4 = *(longlong *)(*(longlong *)(param_2 + 0x60) + 0x10);
+
+    if ((*(ushort *)(lVar4 + 4) & 2) == 0) {
+
+      *(undefined4 *)(lVar4 + 0xac) = 0;
+
+      *(ushort *)(lVar4 + 4) = *(ushort *)(lVar4 + 4) | 2;
+
+    }
+
+    lVar4 = *(longlong *)(*(longlong *)(param_2 + 0x68) + 0x10);
+
+    if ((*(ushort *)(lVar4 + 4) & 2) == 0) {
+
+      *(undefined4 *)(lVar4 + 0xac) = 0;
+
+      *(ushort *)(lVar4 + 4) = *(ushort *)(lVar4 + 4) | 2;
+
+    }
+
+  }
+
+  iVar2 = *(int *)(*(longlong *)(*(longlong *)(param_2 + 0x60) + 0x18) + 8);
+
+  iVar3 = *(int *)(*(longlong *)(*(longlong *)(param_2 + 0x68) + 0x18) + 8);
+
+  if ((iVar2 < 0) || (3 < iVar3)) {
+
+    FID_conflict__assert
+
+              (L"0 <= typeA && typeB < b2Shape::e_typeCount",
+
+               L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\Contacts\\b2Contact.cpp",0x72);
+
+    if ((iVar2 < 0) || (3 < iVar3)) {
+
+      FID_conflict__assert
+
+                (L"0 <= typeA && typeB < b2Shape::e_typeCount",
+
+                 L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\Contacts\\b2Contact.cpp",0x73);
+
+    }
+
+  }
+
+  (**(code **)(&DAT_1403ff7c8 + ((longlong)iVar3 + (longlong)iVar2 * 4) * 0x18))(param_2,uVar6);
+
+  *(int *)(param_1 + 0x60) = *(int *)(param_1 + 0x60) + -1;
+
+  return;
+
+}
+
+
+
+

@@ -1,0 +1,162 @@
+// Address: 0x1400485e0
+// Ghidra name: FUN_1400485e0
+// ============ 0x1400485e0 FUN_1400485e0 (size=348) ============
+
+
+ulonglong FUN_1400485e0(longlong param_1,longlong param_2)
+
+
+
+{
+
+  int *piVar1;
+
+  byte bVar2;
+
+  short sVar3;
+
+  byte *pbVar4;
+
+  int iVar5;
+
+  uint uVar6;
+
+  ulonglong uVar7;
+
+  bool bVar8;
+
+  
+
+  if (*(char *)(param_2 + 0x19) == '\0') {
+
+    *(undefined4 *)(param_1 + 0x9c) = 0x15;
+
+    return 0xffffffff;
+
+  }
+
+  if (*(int *)(param_1 + 0x6f8) < 10) {
+
+    if (*(int *)(param_1 + 0x6f8) == 0) {
+
+      *(undefined4 *)(param_1 + 0x6f4) = 0;
+
+    }
+
+    do {
+
+      if (*(int *)(param_1 + 0x6ec) == 0) {
+
+        if (*(char *)(param_1 + 0x6e4) == '\0') {
+
+          iVar5 = FUN_14004eeb0();
+
+          bVar8 = iVar5 == 0;
+
+          goto LAB_140048655;
+
+        }
+
+      }
+
+      else {
+
+        bVar8 = *(char *)(param_1 + 0x6e4) == '\0';
+
+LAB_140048655:
+
+        if (bVar8) break;
+
+      }
+
+      *(char *)(param_1 + 0x6e4) = *(char *)(param_1 + 0x6e4) + -1;
+
+      *(int *)(param_1 + 0x6fc) = *(int *)(param_1 + 0x6fc) + 1;
+
+      pbVar4 = *(byte **)(param_1 + 0x40);
+
+      if (pbVar4 == (byte *)0x0) {
+
+        uVar6 = FUN_1402ce36c(*(undefined8 *)(param_1 + 0x30));
+
+        if (uVar6 == 0xffffffff) goto LAB_14004868e;
+
+      }
+
+      else if (pbVar4 < *(byte **)(param_1 + 0x50)) {
+
+        uVar6 = (uint)*pbVar4;
+
+        *(byte **)(param_1 + 0x40) = pbVar4 + 1;
+
+      }
+
+      else {
+
+LAB_14004868e:
+
+        uVar6 = 0;
+
+        *(undefined4 *)(param_1 + 0x98) = 1;
+
+      }
+
+      *(int *)(param_1 + 0x6f4) =
+
+           *(int *)(param_1 + 0x6f4) + ((uVar6 & 0xff) << ((byte)*(int *)(param_1 + 0x6f8) & 0x1f));
+
+      iVar5 = *(int *)(param_1 + 0x6f8) + 8;
+
+      *(int *)(param_1 + 0x6f8) = iVar5;
+
+    } while (iVar5 < 0x19);
+
+  }
+
+  sVar3 = *(short *)(param_2 + 0x30 + (ulonglong)(*(uint *)(param_1 + 0x6f4) & 0x3ff) * 2);
+
+  uVar7 = (ulonglong)sVar3;
+
+  if (sVar3 < 0) {
+
+    uVar6 = FUN_140048360(param_1,param_2);
+
+    uVar7 = (ulonglong)uVar6;
+
+    if (-1 < (int)uVar6) goto LAB_14004872e;
+
+  }
+
+  else {
+
+    bVar2 = *(byte *)(*(longlong *)(param_2 + 8) + uVar7);
+
+    piVar1 = (int *)(param_1 + 0x6f8);
+
+    *piVar1 = *piVar1 - (uint)bVar2;
+
+    *(uint *)(param_1 + 0x6f4) = *(uint *)(param_1 + 0x6f4) >> (bVar2 & 0x1f);
+
+    if (-1 < *piVar1) goto LAB_14004872e;
+
+    *(undefined4 *)(param_1 + 0x6f8) = 0;
+
+    uVar7 = 0xffffffff;
+
+  }
+
+  if ((*(char *)(param_1 + 0x6e4) != '\0') || (*(int *)(param_1 + 0x6ec) == 0)) {
+
+    *(undefined4 *)(param_1 + 0x9c) = 0x15;
+
+  }
+
+LAB_14004872e:
+
+  return uVar7 & 0xffffffff;
+
+}
+
+
+
+

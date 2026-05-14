@@ -1,0 +1,298 @@
+// Address: 0x140073c30
+// Ghidra name: FUN_140073c30
+// ============ 0x140073c30 FUN_140073c30 (size=989) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_140073c30(longlong param_1,float param_2,float param_3,float param_4,undefined8 param_5)
+
+
+
+{
+
+  float *pfVar1;
+
+  float fVar2;
+
+  float *pfVar3;
+
+  float *pfVar4;
+
+  longlong lVar5;
+
+  float fVar6;
+
+  float fVar7;
+
+  float fVar8;
+
+  float fVar9;
+
+  float local_c8 [2];
+
+  undefined8 uStack_c0;
+
+  undefined8 local_b8;
+
+  undefined8 uStack_b0;
+
+  undefined8 local_a8;
+
+  undefined8 uStack_a0;
+
+  undefined8 local_98;
+
+  undefined8 uStack_90;
+
+  undefined8 local_88;
+
+  undefined8 uStack_80;
+
+  undefined8 local_78;
+
+  undefined8 uStack_70;
+
+  undefined8 local_68;
+
+  undefined8 uStack_60;
+
+  undefined8 local_58;
+
+  undefined8 uStack_50;
+
+  undefined4 local_48;
+
+  undefined4 local_44;
+
+  
+
+  pfVar4 = (float *)(param_1 + 0x38);
+
+  lVar5 = 4;
+
+  uStack_c0 = _UNK_14030a318;
+
+  local_b8 = _DAT_14030a2f0;
+
+  uStack_b0 = _UNK_14030a2f8;
+
+  local_a8 = _DAT_14030a360;
+
+  uStack_a0 = _UNK_14030a368;
+
+  local_98 = _DAT_14030a370;
+
+  uStack_90 = _UNK_14030a378;
+
+  local_88 = _DAT_14030a380;
+
+  uStack_80 = _UNK_14030a388;
+
+  local_78 = _DAT_14030a350;
+
+  uStack_70 = _UNK_14030a358;
+
+  local_68 = _DAT_14030a300;
+
+  uStack_60 = _UNK_14030a308;
+
+  local_58 = _DAT_14030a320;
+
+  uStack_50 = _UNK_14030a328;
+
+  local_48 = 0;
+
+  local_44 = 0x3f800000;
+
+  pfVar3 = (float *)&uStack_c0;
+
+  fVar6 = (float)(byte)param_5 / DAT_14030a2d0;
+
+  fVar9 = (float)param_5._3_1_ / DAT_14030a2d0;
+
+  fVar7 = (float)param_5._1_1_ / DAT_14030a2d0;
+
+  fVar8 = (float)param_5._2_1_ / DAT_14030a2d0;
+
+  do {
+
+    pfVar4[-0xe] = param_2;
+
+    pfVar4[-0xd] = param_3;
+
+    pfVar4[-10] = fVar6;
+
+    pfVar4[-9] = fVar7;
+
+    pfVar4[-8] = fVar8;
+
+    pfVar4[-7] = fVar9;
+
+    fVar2 = pfVar3[-2];
+
+    pfVar4[-6] = param_4 * pfVar3[-1] + param_2;
+
+    pfVar4[-5] = param_3 - param_4 * fVar2;
+
+    pfVar4[-2] = fVar6;
+
+    pfVar4[-1] = fVar7;
+
+    *pfVar4 = fVar8;
+
+    pfVar4[1] = fVar9;
+
+    fVar2 = *pfVar3;
+
+    pfVar4[2] = param_4 * pfVar3[1] + param_2;
+
+    pfVar4[3] = param_3 - param_4 * fVar2;
+
+    pfVar4[6] = fVar6;
+
+    pfVar4[7] = fVar7;
+
+    pfVar4[8] = fVar8;
+
+    pfVar4[9] = fVar9;
+
+    pfVar4[10] = param_2;
+
+    pfVar4[0xb] = param_3;
+
+    pfVar4[0xe] = fVar6;
+
+    pfVar4[0xf] = fVar7;
+
+    pfVar4[0x10] = fVar8;
+
+    pfVar4[0x11] = fVar9;
+
+    fVar2 = *pfVar3;
+
+    pfVar4[0x12] = param_4 * pfVar3[1] + param_2;
+
+    pfVar4[0x13] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x16] = fVar6;
+
+    pfVar4[0x17] = fVar7;
+
+    pfVar4[0x18] = fVar8;
+
+    pfVar4[0x19] = fVar9;
+
+    fVar2 = pfVar3[2];
+
+    pfVar4[0x1a] = param_4 * pfVar3[3] + param_2;
+
+    pfVar4[0x1b] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x1e] = fVar6;
+
+    pfVar4[0x1f] = fVar7;
+
+    pfVar4[0x20] = fVar8;
+
+    pfVar4[0x21] = fVar9;
+
+    pfVar4[0x22] = param_2;
+
+    pfVar4[0x23] = param_3;
+
+    pfVar4[0x26] = fVar6;
+
+    pfVar4[0x27] = fVar7;
+
+    pfVar4[0x28] = fVar8;
+
+    pfVar4[0x29] = fVar9;
+
+    fVar2 = pfVar3[2];
+
+    pfVar4[0x2a] = param_4 * pfVar3[3] + param_2;
+
+    pfVar4[0x2b] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x2e] = fVar6;
+
+    pfVar4[0x2f] = fVar7;
+
+    pfVar4[0x30] = fVar8;
+
+    pfVar4[0x31] = fVar9;
+
+    fVar2 = pfVar3[4];
+
+    pfVar4[0x32] = param_4 * pfVar3[5] + param_2;
+
+    pfVar4[0x33] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x36] = fVar6;
+
+    pfVar4[0x37] = fVar7;
+
+    pfVar4[0x38] = fVar8;
+
+    pfVar4[0x39] = fVar9;
+
+    pfVar4[0x3a] = param_2;
+
+    pfVar4[0x3b] = param_3;
+
+    pfVar4[0x3e] = fVar6;
+
+    pfVar4[0x3f] = fVar7;
+
+    pfVar4[0x40] = fVar8;
+
+    pfVar4[0x41] = fVar9;
+
+    fVar2 = pfVar3[4];
+
+    pfVar4[0x42] = param_4 * pfVar3[5] + param_2;
+
+    pfVar4[0x43] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x46] = fVar6;
+
+    pfVar4[0x47] = fVar7;
+
+    pfVar4[0x48] = fVar8;
+
+    pfVar4[0x49] = fVar9;
+
+    pfVar1 = pfVar3 + 7;
+
+    fVar2 = pfVar3[6];
+
+    pfVar3 = pfVar3 + 8;
+
+    pfVar4[0x4a] = param_4 * *pfVar1 + param_2;
+
+    pfVar4[0x4b] = param_3 - param_4 * fVar2;
+
+    pfVar4[0x4e] = fVar6;
+
+    pfVar4[0x4f] = fVar7;
+
+    pfVar4[0x50] = fVar8;
+
+    pfVar4[0x51] = fVar9;
+
+    pfVar4 = pfVar4 + 0x60;
+
+    lVar5 = lVar5 + -1;
+
+  } while (lVar5 != 0);
+
+  return;
+
+}
+
+
+
+

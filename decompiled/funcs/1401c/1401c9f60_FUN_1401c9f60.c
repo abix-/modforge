@@ -1,0 +1,212 @@
+// Address: 0x1401c9f60
+// Ghidra name: FUN_1401c9f60
+// ============ 0x1401c9f60 FUN_1401c9f60 (size=637) ============
+
+
+void FUN_1401c9f60(longlong param_1)
+
+
+
+{
+
+  undefined8 uVar1;
+
+  longlong lVar2;
+
+  undefined8 local_48;
+
+  undefined *local_40;
+
+  undefined4 local_38;
+
+  undefined4 uStack_34;
+
+  undefined4 local_30;
+
+  undefined4 uStack_2c;
+
+  undefined8 local_28;
+
+  undefined8 uStack_20;
+
+  undefined8 local_18;
+
+  
+
+  *(undefined4 *)(param_1 + 0x10c) = 2;
+
+  *(undefined4 *)(param_1 + 0x108) = 0;
+
+  uVar1 = FUN_1401841f0(0x20);
+
+  *(undefined8 *)(param_1 + 0x100) = uVar1;
+
+  local_38 = 0;
+
+  uStack_34 = 0;
+
+  local_40 = &DAT_140342870;
+
+  local_18 = 0;
+
+  local_28 = 0;
+
+  uStack_20 = 0;
+
+  local_48 = 0xd4d;
+
+  local_30 = 8;
+
+  uStack_2c = 0;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xc0) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile vertex shader for blit!");
+
+  }
+
+  local_48 = 0x122b;
+
+  local_40 = &DAT_1403435c0;
+
+  uStack_2c = 1;
+
+  local_28 = CONCAT44(local_28._4_4_,1);
+
+  uStack_20._4_4_ = 1;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 200) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile BlitFrom2D pixel shader!");
+
+  }
+
+  local_48 = 0x1283;
+
+  local_40 = &DAT_1403447f0;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xd0) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile BlitFrom2DArray pixel shader!");
+
+  }
+
+  local_48 = 0x123f;
+
+  local_40 = &DAT_140345a80;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xd8) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile BlitFrom3D pixel shader!");
+
+  }
+
+  local_48 = 0x1297;
+
+  local_40 = &DAT_140346cc0;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xe0) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile BlitFromCube pixel shader!");
+
+  }
+
+  local_48 = 0x12c3;
+
+  local_40 = &DAT_140347f60;
+
+  lVar2 = FUN_1401c42c0(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xe8) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to compile BlitFromCubeArray pixel shader!");
+
+  }
+
+  local_38 = 2;
+
+  uStack_34 = 2;
+
+  local_30 = 0;
+
+  uStack_20._4_4_ = uStack_20._4_4_ & 0xffff0000;
+
+  local_48 = 0;
+
+  local_40 = (undefined *)0x200000000;
+
+  uStack_20 = CONCAT44(uStack_20._4_4_,0x447a0000);
+
+  uStack_2c = 0x3f800000;
+
+  local_28 = 1;
+
+  lVar2 = FUN_1401c4180(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xf0) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to create blit nearest sampler!");
+
+  }
+
+  local_48 = 0x100000001;
+
+  local_40 = (undefined *)CONCAT44(local_40._4_4_,1);
+
+  lVar2 = FUN_1401c4180(param_1,&local_48);
+
+  *(longlong *)(param_1 + 0xf8) = lVar2;
+
+  if (lVar2 == 0) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14012e0b0(9,"Failed to create blit linear sampler!");
+
+  }
+
+  return;
+
+}
+
+
+
+

@@ -1,0 +1,54 @@
+// Address: 0x140009ca0
+// Ghidra name: FUN_140009ca0
+// ============ 0x140009ca0 FUN_140009ca0 (size=315) ============
+
+
+float FUN_140009ca0(longlong param_1)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  longlong lVar3;
+
+  longlong lVar4;
+
+  
+
+  lVar3 = *(longlong *)(param_1 + 0x68);
+
+  lVar4 = *(longlong *)(param_1 + 0x60);
+
+  fVar1 = *(float *)(lVar4 + 0x18);
+
+  fVar2 = *(float *)(lVar4 + 0x14);
+
+  return ((*(float *)(param_1 + 0x88) * *(float *)(lVar3 + 0x14) +
+
+           *(float *)(lVar3 + 0x18) * *(float *)(param_1 + 0x8c) + *(float *)(lVar3 + 0x10)) -
+
+         (*(float *)(param_1 + 0x80) * fVar2 + fVar1 * *(float *)(param_1 + 0x84) +
+
+         *(float *)(lVar4 + 0x10))) *
+
+         (*(float *)(param_1 + 0x94) * fVar1 + *(float *)(param_1 + 0x90) * fVar2) +
+
+         (((*(float *)(lVar3 + 0x18) * *(float *)(param_1 + 0x88) -
+
+           *(float *)(lVar3 + 0x14) * *(float *)(param_1 + 0x8c)) + *(float *)(lVar3 + 0xc)) -
+
+         ((fVar1 * *(float *)(param_1 + 0x80) - fVar2 * *(float *)(param_1 + 0x84)) +
+
+         *(float *)(lVar4 + 0xc))) *
+
+         (*(float *)(param_1 + 0x90) * fVar1 - *(float *)(param_1 + 0x94) * fVar2);
+
+}
+
+
+
+

@@ -1,0 +1,184 @@
+// Address: 0x14005cf70
+// Ghidra name: FUN_14005cf70
+// ============ 0x14005cf70 FUN_14005cf70 (size=534) ============
+
+
+void FUN_14005cf70(longlong param_1)
+
+
+
+{
+
+  uint uVar1;
+
+  int iVar2;
+
+  undefined8 uVar3;
+
+  char *pcVar4;
+
+  longlong local_88 [4];
+
+  char *local_68 [4];
+
+  undefined *local_48;
+
+  char *local_40;
+
+  char *local_38;
+
+  char *local_30;
+
+  undefined4 *local_28;
+
+  char *local_20;
+
+  char *local_18;
+
+  
+
+  if (*(longlong *)(param_1 + 0x78) != 0) {
+
+    return;
+
+  }
+
+  local_88[1] = 0;
+
+  local_88[2] = 0;
+
+  local_88[3] = 0xf;
+
+  local_88[0] = 0;
+
+  uVar1 = *(uint *)(param_1 + 0xc);
+
+  if (uVar1 == 4) {
+
+    pcVar4 = "pepper";
+
+  }
+
+  else if (uVar1 == 3) {
+
+    pcVar4 = "yeast";
+
+  }
+
+  else if (uVar1 == 2) {
+
+    pcVar4 = "appletree";
+
+  }
+
+  else if (uVar1 < 2) {
+
+    pcVar4 = "hay";
+
+  }
+
+  else if (uVar1 == 0xd) {
+
+    pcVar4 = "freak";
+
+  }
+
+  else if (uVar1 == 8) {
+
+    pcVar4 = "crazy horse";
+
+  }
+
+  else if (uVar1 == 7) {
+
+    pcVar4 = "crazy horse";
+
+  }
+
+  else {
+
+    if ((uVar1 != 6) && (uVar1 != 0xc)) goto LAB_14005d126;
+
+    iVar2 = FUN_1400c6580(100);
+
+    if (iVar2 < 0x1e) {
+
+      pcVar4 = "crazy horse";
+
+    }
+
+    else if (iVar2 < 0x60) {
+
+      local_68[0] = "dino";
+
+      local_68[1] = "alligator";
+
+      local_68[2] = "moose";
+
+      local_68[3] = "tiger";
+
+      local_48 = &DAT_14030697c;
+
+      local_40 = "giraffe";
+
+      local_38 = "impala";
+
+      local_30 = "rabbit";
+
+      local_28 = &DAT_140306984;
+
+      local_20 = "human";
+
+      local_18 = "dachshund";
+
+      iVar2 = FUN_1400c6580(0xb);
+
+      pcVar4 = local_68[iVar2];
+
+    }
+
+    else {
+
+      pcVar4 = "freak";
+
+    }
+
+  }
+
+  FUN_1400278e0(local_88,pcVar4);
+
+  if (local_88[2] != 0) {
+
+    uVar3 = FUN_1402c704c(0x1e0);
+
+    *(undefined8 *)(param_1 + 0x78) = uVar3;
+
+    FUN_1400a2ed0(uVar3,local_88);
+
+  }
+
+LAB_14005d126:
+
+  if (0xf < (ulonglong)local_88[3]) {
+
+    if ((0xfff < local_88[3] + 1U) && (0x1f < (local_88[0] - *(longlong *)(local_88[0] + -8)) - 8U))
+
+    {
+
+                    /* WARNING: Subroutine does not return */
+
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+    }
+
+    FUN_1402c7088();
+
+  }
+
+  return;
+
+}
+
+
+
+

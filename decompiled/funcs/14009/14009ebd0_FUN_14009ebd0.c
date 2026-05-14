@@ -1,0 +1,240 @@
+// Address: 0x14009ebd0
+// Ghidra name: FUN_14009ebd0
+// ============ 0x14009ebd0 FUN_14009ebd0 (size=499) ============
+
+
+float FUN_14009ebd0(longlong param_1,byte *param_2,char param_3)
+
+
+
+{
+
+  byte *pbVar1;
+
+  char cVar2;
+
+  char cVar3;
+
+  longlong *plVar4;
+
+  float *pfVar5;
+
+  float fVar6;
+
+  int iVar7;
+
+  longlong *plVar8;
+
+  longlong *plVar9;
+
+  byte bVar10;
+
+  longlong *plVar11;
+
+  uint uVar12;
+
+  int iVar13;
+
+  longlong *plVar14;
+
+  float fVar15;
+
+  
+
+  bVar10 = *param_2;
+
+  fVar6 = 0.0;
+
+  do {
+
+    if (bVar10 == 0) {
+
+      return fVar6 * *(float *)(param_1 + 0x24) * *(float *)(param_1 + 0x28);
+
+    }
+
+    bVar10 = *param_2;
+
+    fVar15 = 0.0;
+
+    do {
+
+      if (bVar10 == 10) break;
+
+      uVar12 = (uint)bVar10;
+
+      if (0x7f < bVar10) {
+
+        if ((bVar10 & 0xe0) == 0xc0) {
+
+          pbVar1 = param_2 + 1;
+
+          param_2 = param_2 + 1;
+
+          uVar12 = (bVar10 & 0x1f) * 0x40 + ((int)(char)*pbVar1 & 0x3fU);
+
+        }
+
+        else {
+
+          if ((bVar10 & 0xf0) == 0xe0) {
+
+            iVar13 = (uVar12 & 0xf) << 0xc;
+
+            iVar7 = (param_2[1] & 0x3f) << 6;
+
+            param_2 = param_2 + 2;
+
+          }
+
+          else {
+
+            if ((bVar10 & 0xf8) != 0xf0) goto LAB_14009ec8b;
+
+            iVar7 = (param_2[1] & 0x3f) * 0x1000 + (param_2[2] & 0x3f) * 0x40;
+
+            iVar13 = (uVar12 & 7) << 0x12;
+
+            param_2 = param_2 + 3;
+
+          }
+
+          uVar12 = ((int)(char)*param_2 & 0x3fU) + iVar7 + iVar13;
+
+        }
+
+      }
+
+LAB_14009ec8b:
+
+      plVar4 = *(longlong **)(param_1 + 0x10);
+
+      param_2 = param_2 + 1;
+
+      plVar8 = (longlong *)plVar4[1];
+
+      cVar2 = *(char *)((longlong)plVar8 + 0x19);
+
+      plVar9 = plVar4;
+
+      while (cVar2 == '\0') {
+
+        plVar11 = plVar8;
+
+        if ((int)plVar8[4] < (int)uVar12) {
+
+          plVar8 = plVar8 + 2;
+
+          plVar11 = plVar9;
+
+        }
+
+        plVar8 = (longlong *)*plVar8;
+
+        plVar9 = plVar11;
+
+        cVar2 = *(char *)((longlong)plVar8 + 0x19);
+
+      }
+
+      if ((*(char *)((longlong)plVar9 + 0x19) != '\0') || ((int)uVar12 < (int)plVar9[4])) {
+
+        uVar12 = 0x3f;
+
+      }
+
+      plVar9 = (longlong *)plVar4[1];
+
+      cVar3 = *(char *)((longlong)plVar9 + 0x19);
+
+      plVar11 = plVar4;
+
+      plVar8 = plVar9;
+
+      cVar2 = cVar3;
+
+      while (cVar2 == '\0') {
+
+        plVar14 = plVar8;
+
+        if ((int)plVar8[4] < (int)uVar12) {
+
+          plVar8 = plVar8 + 2;
+
+          plVar14 = plVar11;
+
+        }
+
+        plVar8 = (longlong *)*plVar8;
+
+        plVar11 = plVar14;
+
+        cVar2 = *(char *)((longlong)plVar8 + 0x19);
+
+      }
+
+      if ((*(char *)((longlong)plVar11 + 0x19) == '\0') &&
+
+         (plVar8 = plVar4, (int)plVar11[4] <= (int)uVar12)) {
+
+        while (cVar3 == '\0') {
+
+          plVar11 = plVar9;
+
+          if ((int)plVar9[4] < (int)uVar12) {
+
+            plVar9 = plVar9 + 2;
+
+            plVar11 = plVar8;
+
+          }
+
+          plVar9 = (longlong *)*plVar9;
+
+          plVar8 = plVar11;
+
+          cVar3 = *(char *)((longlong)plVar9 + 0x19);
+
+        }
+
+        if ((*(char *)((longlong)plVar8 + 0x19) != '\0') || ((int)uVar12 < (int)plVar8[4])) {
+
+          plVar8 = plVar4;
+
+        }
+
+        pfVar5 = (float *)plVar8[5];
+
+        fVar15 = fVar15 + *pfVar5 + pfVar5[8] + pfVar5[9] + *(float *)(param_1 + 0x30);
+
+      }
+
+      bVar10 = *param_2;
+
+    } while (bVar10 != 0);
+
+    if (param_3 == '\0') {
+
+      return fVar15 * *(float *)(param_1 + 0x24) * *(float *)(param_1 + 0x28);
+
+    }
+
+    if (fVar15 <= fVar6) {
+
+      fVar15 = fVar6;
+
+    }
+
+    for (; (bVar10 = *param_2, bVar10 == 10 || (fVar6 = fVar15, bVar10 == 0xd));
+
+        param_2 = param_2 + 1) {
+
+    }
+
+  } while( true );
+
+}
+
+
+
+

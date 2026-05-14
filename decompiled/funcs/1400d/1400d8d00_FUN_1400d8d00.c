@@ -1,0 +1,82 @@
+// Address: 0x1400d8d00
+// Ghidra name: FUN_1400d8d00
+// ============ 0x1400d8d00 FUN_1400d8d00 (size=174) ============
+
+
+void FUN_1400d8d00(longlong *param_1,ulonglong param_2)
+
+
+
+{
+
+  longlong lVar1;
+
+  ulonglong uVar2;
+
+  
+
+  if (0x1fffffffffffffff < param_2) {
+
+                    /* WARNING: Subroutine does not return */
+
+    FUN_14002f0d0();
+
+  }
+
+  lVar1 = *param_1;
+
+  uVar2 = param_1[2] - lVar1 >> 3;
+
+  if (0x1fffffffffffffff - (uVar2 >> 1) < uVar2) {
+
+    uVar2 = 0x1fffffffffffffff;
+
+  }
+
+  else {
+
+    uVar2 = (uVar2 >> 1) + uVar2;
+
+    if (uVar2 < param_2) {
+
+      uVar2 = param_2;
+
+    }
+
+  }
+
+  if (lVar1 != 0) {
+
+    FUN_14009c330(param_1,lVar1);
+
+    *param_1 = 0;
+
+    param_1[1] = 0;
+
+    param_1[2] = 0;
+
+  }
+
+  if (uVar2 < 0x2000000000000000) {
+
+    lVar1 = FUN_1400285e0(uVar2 * 8);
+
+    *param_1 = lVar1;
+
+    param_1[1] = lVar1;
+
+    param_1[2] = lVar1 + uVar2 * 8;
+
+    return;
+
+  }
+
+                    /* WARNING: Subroutine does not return */
+
+  FUN_140024090();
+
+}
+
+
+
+

@@ -1,0 +1,156 @@
+// Address: 0x140012630
+// Ghidra name: FUN_140012630
+// ============ 0x140012630 FUN_140012630 (size=456) ============
+
+
+longlong * FUN_140012630(longlong *param_1,int param_2)
+
+
+
+{
+
+  int iVar1;
+
+  int iVar2;
+
+  longlong *plVar3;
+
+  longlong lVar4;
+
+  undefined8 uVar5;
+
+  ulonglong uVar6;
+
+  int *piVar7;
+
+  longlong lVar8;
+
+  ulonglong uVar9;
+
+  uint uVar10;
+
+  
+
+  if (param_2 == 0) {
+
+    return (longlong *)0x0;
+
+  }
+
+  if (param_2 < 1) {
+
+    FID_conflict__assert(L"0 < size",L"C:\\dev\\Box2d2\\Box2D\\Common\\b2BlockAllocator.cpp",0x68);
+
+  }
+
+  else if (0x280 < param_2) {
+
+    plVar3 = (longlong *)_malloc_base((longlong)param_2);
+
+    return plVar3;
+
+  }
+
+  uVar6 = (ulonglong)(byte)(&DAT_1403ff940)[param_2];
+
+  if (0xd < (byte)(&DAT_1403ff940)[param_2]) {
+
+    FID_conflict__assert
+
+              (L"0 <= index && index < b2_blockSizes",
+
+               L"C:\\dev\\Box2d2\\Box2D\\Common\\b2BlockAllocator.cpp",0x70);
+
+  }
+
+  plVar3 = (longlong *)param_1[uVar6 + 2];
+
+  if (plVar3 == (longlong *)0x0) {
+
+    if ((int)param_1[1] == *(int *)((longlong)param_1 + 0xc)) {
+
+      lVar8 = *param_1;
+
+      iVar1 = *(int *)((longlong)param_1 + 0xc) + 0x80;
+
+      *(int *)((longlong)param_1 + 0xc) = iVar1;
+
+      lVar4 = _malloc_base((longlong)(iVar1 * 0x10));
+
+      *param_1 = lVar4;
+
+      FUN_1402f8e20(lVar4,lVar8,(longlong)(int)param_1[1] << 4);
+
+      FUN_1402f94c0((longlong)(int)param_1[1] * 0x10 + *param_1,0);
+
+      thunk_FUN_1402e9a80(lVar8);
+
+    }
+
+    piVar7 = (int *)((longlong)(int)param_1[1] * 0x10 + *param_1);
+
+    uVar5 = _malloc_base(0x4000);
+
+    iVar1 = *(int *)(&DAT_140399f70 + uVar6 * 4);
+
+    *(undefined8 *)(piVar7 + 2) = uVar5;
+
+    *piVar7 = iVar1;
+
+    iVar2 = (int)(0x4000 / (longlong)iVar1);
+
+    if (0x4000 < iVar1 * iVar2) {
+
+      FID_conflict__assert
+
+                (L"blockCount * blockSize <= b2_chunkSize",
+
+                 L"C:\\dev\\Box2d2\\Box2D\\Common\\b2BlockAllocator.cpp",0x8c);
+
+    }
+
+    uVar10 = iVar2 - 1;
+
+    if (0 < (int)uVar10) {
+
+      uVar9 = (ulonglong)uVar10;
+
+      lVar8 = 0;
+
+      do {
+
+        *(longlong *)(lVar8 + *(longlong *)(piVar7 + 2)) = lVar8 + iVar1 + *(longlong *)(piVar7 + 2)
+
+        ;
+
+        uVar9 = uVar9 - 1;
+
+        lVar8 = lVar8 + iVar1;
+
+      } while (uVar9 != 0);
+
+    }
+
+    *(undefined8 *)((longlong)(int)(uVar10 * iVar1) + *(longlong *)(piVar7 + 2)) = 0;
+
+    param_1[uVar6 + 2] = **(longlong **)(piVar7 + 2);
+
+    *(int *)(param_1 + 1) = (int)param_1[1] + 1;
+
+    plVar3 = *(longlong **)(piVar7 + 2);
+
+  }
+
+  else {
+
+    param_1[uVar6 + 2] = *plVar3;
+
+  }
+
+  return plVar3;
+
+}
+
+
+
+

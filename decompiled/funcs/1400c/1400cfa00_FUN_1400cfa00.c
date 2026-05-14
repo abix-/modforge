@@ -1,0 +1,100 @@
+// Address: 0x1400cfa00
+// Ghidra name: FUN_1400cfa00
+// ============ 0x1400cfa00 FUN_1400cfa00 (size=253) ============
+
+
+bool FUN_1400cfa00(undefined8 param_1,longlong param_2,int param_3)
+
+
+
+{
+
+  int iVar1;
+
+  longlong lVar2;
+
+  
+
+  if (*(int *)(param_2 + 0x1f8) == -1) {
+
+    return true;
+
+  }
+
+  lVar2 = FUN_1400c7520();
+
+  iVar1 = *(int *)(lVar2 + 0x54);
+
+  if ((param_3 == 5) || (param_3 == 6)) {
+
+    return 1 < iVar1;
+
+  }
+
+  if ((iVar1 < 3) && ((iVar1 < 2 || (*(int *)(param_2 + 0x1fc) < *(int *)(param_2 + 0x200) + -2))))
+
+  {
+
+    if (param_3 == 2) {
+
+      return 0 < iVar1;
+
+    }
+
+    if (param_3 == 3) {
+
+      if (0 < iVar1) {
+
+        return true;
+
+      }
+
+      if (*(int *)(lVar2 + 0x50) == 0) {
+
+        return true;
+
+      }
+
+    }
+
+    else if (param_3 == 4) {
+
+      if (((1 < *(int *)(lVar2 + 0x50)) && (iVar1 == 0)) && (*(int *)(param_2 + 0x21c) < 2)) {
+
+        return true;
+
+      }
+
+    }
+
+    else {
+
+      if (param_3 == 7) {
+
+        return *(int *)(lVar2 + 0x50) == 0;
+
+      }
+
+      if (param_3 != 8) {
+
+        return true;
+
+      }
+
+      if (((1 < *(int *)(lVar2 + 0x50)) && (1 < *(int *)(param_2 + 0x21c))) && (iVar1 < 2)) {
+
+        return true;
+
+      }
+
+    }
+
+  }
+
+  return false;
+
+}
+
+
+
+

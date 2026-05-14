@@ -1,0 +1,104 @@
+// Address: 0x14005fad0
+// Ghidra name: FUN_14005fad0
+// ============ 0x14005fad0 FUN_14005fad0 (size=431) ============
+
+
+undefined8 * FUN_14005fad0(undefined8 *param_1)
+
+
+
+{
+
+  longlong lVar1;
+
+  longlong *plVar2;
+
+  uint uVar3;
+
+  undefined8 local_28;
+
+  undefined8 uStack_20;
+
+  undefined8 local_18;
+
+  undefined8 local_10;
+
+  
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_1403072b0;
+
+  param_1[0x4f] = 0;
+
+  param_1[0x50] = 0;
+
+  param_1[0x51] = 0;
+
+  param_1[0x53] = 0;
+
+  param_1[0x54] = 0;
+
+  param_1[0x55] = 0;
+
+  plVar2 = param_1 + 3;
+
+  FUN_140027f50(plVar2,"Paddock",7);
+
+  if (param_1 + 7 != plVar2) {
+
+    if (0xf < (ulonglong)param_1[6]) {
+
+      plVar2 = (longlong *)*plVar2;
+
+    }
+
+    FUN_140027f50(param_1 + 7,plVar2,param_1[5]);
+
+  }
+
+  uVar3 = DAT_140303398;
+
+  FUN_1400cf540(param_1,1,0,DAT_140303398,DAT_140303398,DAT_140303398);
+
+  FUN_1400c9f10(param_1);
+
+  uStack_20 = 0;
+
+  local_18 = 5;
+
+  local_10 = 0xf;
+
+  local_28 = (ulonglong)CONCAT14(s_Track_140307378[4],s_Track_140307378._0_4_);
+
+  lVar1 = FUN_1400c9e00(param_1,7,&local_28,0x108,0x28,uVar3 & 0xffffff00,1,1);
+
+  *(undefined4 *)(lVar1 + 0x54) = 5;
+
+  FUN_1400c9c30(param_1,6,200,0x2c,0x14,0x14,0x21);
+
+  *(undefined2 *)((longlong)param_1 + 0x294) = 0;
+
+  *(undefined4 *)((longlong)param_1 + 0x2b4) = 0;
+
+  param_1[0x4a] = 0x9c4;
+
+  *(undefined2 *)((longlong)param_1 + 0x26d) = 0;
+
+  param_1[0x4c] = 0;
+
+  *(undefined4 *)((longlong)param_1 + 0x25c) = 3;
+
+  *(undefined4 *)((longlong)param_1 + 700) = 0;
+
+  *(undefined1 *)(param_1 + 0x45) = 1;
+
+  *(undefined1 *)((longlong)param_1 + 0x26c) = 0;
+
+  return param_1;
+
+}
+
+
+
+

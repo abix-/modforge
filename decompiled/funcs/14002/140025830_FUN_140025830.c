@@ -1,0 +1,94 @@
+// Address: 0x140025830
+// Ghidra name: FUN_140025830
+// ============ 0x140025830 FUN_140025830 (size=145) ============
+
+
+undefined8 FUN_140025830(longlong param_1,longlong param_2,undefined8 param_3)
+
+
+
+{
+
+  char cVar1;
+
+  char cVar2;
+
+  longlong lVar3;
+
+  int iVar4;
+
+  char *pcVar5;
+
+  longlong *plVar6;
+
+  undefined8 uVar7;
+
+  longlong lVar8;
+
+  
+
+  lVar3 = *(longlong *)(param_1 + 0xd0);
+
+  do {
+
+    if (lVar3 == param_1 + 0x68) {
+
+      return 1;
+
+    }
+
+    pcVar5 = (char *)(lVar3 + 0x20);
+
+    if (0xf < *(ulonglong *)(lVar3 + 0x38)) {
+
+      pcVar5 = *(char **)pcVar5;
+
+    }
+
+    lVar8 = param_2 - (longlong)pcVar5;
+
+    do {
+
+      cVar1 = *pcVar5;
+
+      cVar2 = pcVar5[lVar8];
+
+      if (cVar1 != cVar2) break;
+
+      pcVar5 = pcVar5 + 1;
+
+    } while (cVar2 != '\0');
+
+    if (cVar1 == cVar2) {
+
+      plVar6 = (longlong *)(lVar3 + 0x40);
+
+      if (0xf < *(ulonglong *)(lVar3 + 0x58)) {
+
+        plVar6 = (longlong *)*plVar6;
+
+      }
+
+      iVar4 = FUN_140023f30(plVar6,&DAT_14039bf08,param_3);
+
+      uVar7 = 0;
+
+      if (iVar4 != 1) {
+
+        uVar7 = 2;
+
+      }
+
+      return uVar7;
+
+    }
+
+    lVar3 = *(longlong *)(lVar3 + 0x68);
+
+  } while( true );
+
+}
+
+
+
+

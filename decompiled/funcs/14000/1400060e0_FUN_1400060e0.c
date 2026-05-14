@@ -1,0 +1,116 @@
+// Address: 0x1400060e0
+// Ghidra name: FUN_1400060e0
+// ============ 0x1400060e0 FUN_1400060e0 (size=324) ============
+
+
+longlong FUN_1400060e0(longlong param_1,longlong param_2)
+
+
+
+{
+
+  undefined8 *puVar1;
+
+  longlong lVar2;
+
+  longlong *plVar3;
+
+  longlong lVar4;
+
+  
+
+  if ((*(byte *)(param_1 + 0x19298) & 2) != 0) {
+
+    FID_conflict__assert
+
+              (L"IsLocked() == false",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2World.cpp",0xd6);
+
+  }
+
+  if ((*(byte *)(param_1 + 0x19298) & 2) == 0) {
+
+    lVar4 = FUN_140010540(param_2,param_1);
+
+    *(undefined8 *)(lVar4 + 0x10) = 0;
+
+    *(undefined8 *)(lVar4 + 0x18) = *(undefined8 *)(param_1 + 0x19328);
+
+    if (*(longlong *)(param_1 + 0x19328) != 0) {
+
+      *(longlong *)(*(longlong *)(param_1 + 0x19328) + 0x10) = lVar4;
+
+    }
+
+    *(int *)(param_1 + 0x19334) = *(int *)(param_1 + 0x19334) + 1;
+
+    puVar1 = (undefined8 *)(lVar4 + 0x20);
+
+    *(longlong *)(param_1 + 0x19328) = lVar4;
+
+    *(longlong *)(lVar4 + 0x28) = lVar4;
+
+    *puVar1 = *(undefined8 *)(lVar4 + 0x68);
+
+    *(undefined8 *)(lVar4 + 0x30) = 0;
+
+    *(undefined8 *)(lVar4 + 0x38) = *(undefined8 *)(*(longlong *)(lVar4 + 0x60) + 0x80);
+
+    lVar2 = *(longlong *)(*(longlong *)(lVar4 + 0x60) + 0x80);
+
+    if (lVar2 != 0) {
+
+      *(undefined8 **)(lVar2 + 0x10) = puVar1;
+
+    }
+
+    *(undefined8 **)(*(longlong *)(lVar4 + 0x60) + 0x80) = puVar1;
+
+    puVar1 = (undefined8 *)(lVar4 + 0x40);
+
+    *(longlong *)(lVar4 + 0x48) = lVar4;
+
+    *puVar1 = *(undefined8 *)(lVar4 + 0x60);
+
+    *(undefined8 *)(lVar4 + 0x50) = 0;
+
+    *(undefined8 *)(lVar4 + 0x58) = *(undefined8 *)(*(longlong *)(lVar4 + 0x68) + 0x80);
+
+    lVar2 = *(longlong *)(*(longlong *)(lVar4 + 0x68) + 0x80);
+
+    if (lVar2 != 0) {
+
+      *(undefined8 **)(lVar2 + 0x10) = puVar1;
+
+    }
+
+    *(undefined8 **)(*(longlong *)(lVar4 + 0x68) + 0x80) = puVar1;
+
+    lVar2 = *(longlong *)(param_2 + 0x10);
+
+    if (*(char *)(param_2 + 0x20) == '\0') {
+
+      for (plVar3 = *(longlong **)(*(longlong *)(param_2 + 0x18) + 0x88); plVar3 != (longlong *)0x0;
+
+          plVar3 = (longlong *)plVar3[3]) {
+
+        if (*plVar3 == lVar2) {
+
+          *(uint *)(plVar3[1] + 8) = *(uint *)(plVar3[1] + 8) | 8;
+
+        }
+
+      }
+
+    }
+
+    return lVar4;
+
+  }
+
+  return 0;
+
+}
+
+
+
+

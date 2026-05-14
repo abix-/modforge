@@ -1,0 +1,68 @@
+// Address: 0x14006d470
+// Ghidra name: FUN_14006d470
+// ============ 0x14006d470 FUN_14006d470 (size=259) ============
+
+
+void FUN_14006d470(longlong param_1)
+
+
+
+{
+
+  char cVar1;
+
+  char cVar2;
+
+  char *pcVar3;
+
+  longlong lVar4;
+
+  byte abStack_f9 [241];
+
+  
+
+  lVar4 = 0x28;
+
+  pcVar3 = (char *)(param_1 + 1);
+
+  do {
+
+    cVar1 = *pcVar3;
+
+    pcVar3[(longlong)(abStack_f9 + (1 - param_1) + -1)] =
+
+         (pcVar3[0xef] + '\x01') * '\b' | pcVar3[-1] + 1U;
+
+    cVar2 = pcVar3[1];
+
+    pcVar3[(longlong)(abStack_f9 + (1 - param_1))] = (pcVar3[0xf0] + '\x01') * '\b' | cVar1 + 1U;
+
+    cVar1 = pcVar3[2];
+
+    pcVar3[(longlong)(abStack_f9 + (2 - param_1))] = (pcVar3[0xf1] + '\x01') * '\b' | cVar2 + 1U;
+
+    cVar2 = pcVar3[3];
+
+    pcVar3[(longlong)(abStack_f9 + (3 - param_1))] = (pcVar3[0xf2] + '\x01') * '\b' | cVar1 + 1U;
+
+    cVar1 = pcVar3[4];
+
+    pcVar3[(longlong)(abStack_f9 + (4 - param_1))] = (pcVar3[0xf3] + '\x01') * '\b' | cVar2 + 1U;
+
+    pcVar3[(longlong)(abStack_f9 + (5 - param_1))] = (pcVar3[0xf4] + '\x01') * '\b' | cVar1 + 1U;
+
+    lVar4 = lVar4 + -1;
+
+    pcVar3 = pcVar3 + 6;
+
+  } while (lVar4 != 0);
+
+  FUN_140075a80(abStack_f9 + 1,0xf0);
+
+  return;
+
+}
+
+
+
+

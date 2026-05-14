@@ -1,0 +1,42 @@
+// Address: 0x1402cf9a4
+// Ghidra name: FUN_1402cf9a4
+// ============ 0x1402cf9a4 FUN_1402cf9a4 (size=97) ============
+
+
+undefined8 * FUN_1402cf9a4(LPCWSTR param_1,undefined8 param_2)
+
+
+
+{
+
+  undefined8 *puVar1;
+
+  
+
+  puVar1 = (undefined8 *)_calloc_base(1);
+
+  FUN_1402e9a80(0);
+
+  if (puVar1 == (undefined8 *)0x0) {
+
+    puVar1 = (undefined8 *)0x0;
+
+  }
+
+  else {
+
+    *puVar1 = param_1;
+
+    puVar1[1] = param_2;
+
+    GetModuleHandleExW(4,param_1,(HMODULE *)(puVar1 + 3));
+
+  }
+
+  return puVar1;
+
+}
+
+
+
+

@@ -1,0 +1,88 @@
+// Address: 0x1402e08a8
+// Ghidra name: FUN_1402e08a8
+// ============ 0x1402e08a8 FUN_1402e08a8 (size=159) ============
+
+
+undefined8 FUN_1402e08a8(longlong param_1)
+
+
+
+{
+
+  char *pcVar1;
+
+  uint uVar2;
+
+  longlong lVar3;
+
+  longlong local_res8 [4];
+
+  
+
+  pcVar1 = *(char **)(param_1 + 8);
+
+  if ((byte)(*pcVar1 - 0x30U) < 10) {
+
+    uVar2 = (int)*pcVar1 - 0x30;
+
+  }
+
+  else if ((byte)(*pcVar1 + 0x9fU) < 0x1a) {
+
+    uVar2 = (int)*pcVar1 - 0x57;
+
+  }
+
+  else {
+
+    if (0x19 < (byte)(*pcVar1 + 0xbfU)) {
+
+      return 1;
+
+    }
+
+    uVar2 = (int)*pcVar1 - 0x37;
+
+  }
+
+  if (uVar2 < 10) {
+
+    local_res8[0] = 0;
+
+    lVar3 = FUN_1402d8ca8(pcVar1,local_res8,10);
+
+    if ((lVar3 == 0) || (local_res8[0] == *(longlong *)(param_1 + 8))) {
+
+      *(undefined4 *)(param_1 + 0x14) = 0;
+
+      *(undefined2 *)(param_1 + 0x18) = 0;
+
+      *(undefined8 *)(param_1 + 0x20) = 0;
+
+      *(undefined4 *)(param_1 + 0x28) = 0;
+
+      *(undefined4 *)(param_1 + 0x30) = 0;
+
+      *(undefined1 *)(param_1 + 0x1a) = 0;
+
+      *(undefined1 *)(param_1 + 0x2c) = 0;
+
+      *(undefined4 *)(param_1 + 0x10) = 0x16;
+
+      return 0;
+
+    }
+
+    *(longlong *)(param_1 + 0x20) = lVar3;
+
+    *(longlong *)(param_1 + 8) = local_res8[0];
+
+  }
+
+  return 1;
+
+}
+
+
+
+

@@ -1,0 +1,70 @@
+// Address: 0x140104f00
+// Ghidra name: FUN_140104f00
+// ============ 0x140104f00 FUN_140104f00 (size=84) ============
+
+
+ulonglong FUN_140104f00(longlong param_1,int param_2,int param_3)
+
+
+
+{
+
+  uint uVar1;
+
+  ulonglong uVar2;
+
+  
+
+  if (param_2 == 2) {
+
+    uVar2 = 2;
+
+    if (*(char *)(param_1 + 0x330) != '\0') {
+
+      if (*(int *)(param_1 + 900) != 0) goto LAB_140104f51;
+
+      *(undefined4 *)(param_1 + 900) = 0x78;
+
+      goto LAB_140104f26;
+
+    }
+
+  }
+
+  else {
+
+    uVar2 = (ulonglong)param_2;
+
+  }
+
+  if (*(char *)(param_1 + 800 + uVar2 * 8) == '\0') {
+
+    param_1 = param_1 + uVar2 * 8;
+
+    uVar1 = *(uint *)(param_1 + 0x31c);
+
+    uVar2 = (ulonglong)uVar1;
+
+    if (param_3 <= (int)uVar1) {
+
+      *(uint *)(param_1 + 0x31c) = uVar1 - param_3;
+
+      return CONCAT71((uint7)(uint3)(uVar1 - param_3 >> 8),1);
+
+    }
+
+LAB_140104f51:
+
+    return uVar2 & 0xffffffffffffff00;
+
+  }
+
+LAB_140104f26:
+
+  return CONCAT71((int7)(uVar2 >> 8),1);
+
+}
+
+
+
+

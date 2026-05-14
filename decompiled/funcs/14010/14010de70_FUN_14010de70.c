@@ -1,0 +1,108 @@
+// Address: 0x14010de70
+// Ghidra name: FUN_14010de70
+// ============ 0x14010de70 FUN_14010de70 (size=365) ============
+
+
+/* WARNING: Globals starting with '_' overlap smaller symbols at the same address */
+
+
+
+void FUN_14010de70(longlong param_1,undefined8 param_2,int param_3,undefined8 param_4,int param_5,
+
+                  int param_6)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  float fVar3;
+
+  float fVar4;
+
+  float local_28;
+
+  float fStack_24;
+
+  
+
+  if (*(char *)(param_1 + 0x260) != '\0') {
+
+    local_28 = (float)param_4;
+
+    fStack_24 = (float)((ulonglong)param_4 >> 0x20);
+
+    local_28 = local_28 - *(float *)(*(longlong *)(param_1 + 0x300) + 0x28);
+
+    fVar1 = *(float *)(param_1 + 0x114);
+
+    if (DAT_14039ca44 <= *(float *)(param_1 + 0x114)) {
+
+      fVar1 = DAT_14039ca44;
+
+    }
+
+    fVar4 = DAT_14039ca44;
+
+    if (2 < *(int *)(param_1 + 0x268)) {
+
+      fVar4 = DAT_14030374c;
+
+    }
+
+    fVar2 = (float)((uint)local_28 & _DAT_14039cab0);
+
+    fVar3 = (float)((uint)((fStack_24 - *(float *)(*(longlong *)(param_1 + 0x300) + 0x2c)) *
+
+                          _DAT_14030d99c) & _DAT_14039cab0);
+
+    if (fVar3 <= fVar2) {
+
+      fVar3 = fVar2;
+
+    }
+
+    fVar4 = (float)param_5 * DAT_1403033ac * fVar4;
+
+    if (fVar3 <= fVar4) {
+
+      fVar4 = DAT_14039ca44 - fVar3 / fVar4;
+
+      if (2 < *(int *)(param_1 + 0x268)) {
+
+        fVar4 = fVar4 * _DAT_140313a1c;
+
+      }
+
+      if (DAT_14039ca0c <= fVar4) {
+
+        fVar1 = (float)FUN_1400c6180(local_28,param_2,((float)DAT_14030b680 * DAT_14039ca34) / fVar1
+
+                                     ,param_4,DAT_14039ca5c);
+
+        if (0 < param_3) {
+
+          FUN_1400409d0(param_3);
+
+          return;
+
+        }
+
+        FUN_140040ca0(param_2,(int)((float)param_6 * fVar4),(int)fVar1);
+
+      }
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

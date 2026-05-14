@@ -1,0 +1,166 @@
+// Address: 0x14004a250
+// Ghidra name: FUN_14004a250
+// ============ 0x14004a250 FUN_14004a250 (size=423) ============
+
+
+void FUN_14004a250(longlong param_1,ulonglong param_2,undefined8 param_3)
+
+
+
+{
+
+  undefined4 *puVar1;
+
+  int iVar2;
+
+  ulonglong *puVar3;
+
+  longlong lVar4;
+
+  undefined4 uVar5;
+
+  undefined4 uVar6;
+
+  uint uVar7;
+
+  undefined8 uVar8;
+
+  ulonglong uVar9;
+
+  ulonglong uVar10;
+
+  longlong lVar11;
+
+  ulonglong *puVar12;
+
+  uint uVar13;
+
+  longlong lVar14;
+
+  
+
+  iVar2 = *(int *)(param_1 + 0x10);
+
+  lVar14 = (longlong)iVar2;
+
+  if (iVar2 / 2 <= *(int *)(param_1 + 0x14)) {
+
+    *(int *)(param_1 + 0x10) = iVar2 * 2;
+
+    lVar11 = (longlong)(iVar2 * 2) << 4;
+
+    puVar3 = *(ulonglong **)(param_1 + 8);
+
+    uVar8 = _malloc_base(lVar11);
+
+    *(undefined8 *)(param_1 + 8) = uVar8;
+
+    FUN_1402f94c0(uVar8,0,lVar11);
+
+    uVar13 = *(int *)(param_1 + 0x10) - 1;
+
+    puVar12 = puVar3;
+
+    if (0 < iVar2) {
+
+      do {
+
+        uVar9 = *puVar12;
+
+        if (uVar9 != 0) {
+
+          lVar11 = *(longlong *)(param_1 + 8);
+
+          uVar9 = ~uVar9 + uVar9 * 0x40000;
+
+          uVar9 = (uVar9 >> 0x1f ^ uVar9) * 0x15;
+
+          uVar9 = (uVar9 >> 0xb ^ uVar9) * 0x41;
+
+          uVar7 = ((uint)(uVar9 >> 0x16) ^ (uint)uVar9) & uVar13;
+
+          lVar4 = *(longlong *)(lVar11 + (longlong)(int)uVar7 * 0x10);
+
+          while (lVar4 != 0) {
+
+            uVar7 = uVar7 + 1 & uVar13;
+
+            lVar4 = *(longlong *)(lVar11 + (longlong)(int)uVar7 * 0x10);
+
+          }
+
+          uVar5 = *(undefined4 *)((longlong)puVar12 + 4);
+
+          uVar9 = puVar12[1];
+
+          uVar6 = *(undefined4 *)((longlong)puVar12 + 0xc);
+
+          puVar1 = (undefined4 *)(lVar11 + (longlong)(int)uVar7 * 0x10);
+
+          *puVar1 = (int)*puVar12;
+
+          puVar1[1] = uVar5;
+
+          puVar1[2] = (int)uVar9;
+
+          puVar1[3] = uVar6;
+
+        }
+
+        lVar14 = lVar14 + -1;
+
+        puVar12 = puVar12 + 2;
+
+      } while (lVar14 != 0);
+
+    }
+
+    thunk_FUN_1402e9a80(puVar3);
+
+  }
+
+  lVar14 = *(longlong *)(param_1 + 8);
+
+  uVar7 = *(int *)(param_1 + 0x10) - 1;
+
+  uVar9 = param_2 * 0x40000 + ~param_2;
+
+  uVar9 = (uVar9 >> 0x1f ^ uVar9) * 0x15;
+
+  uVar9 = (uVar9 >> 0xb ^ uVar9) * 0x41;
+
+  uVar13 = ((uint)(uVar9 >> 0x16) ^ (uint)uVar9) & uVar7;
+
+  uVar10 = (ulonglong)uVar13;
+
+  uVar9 = *(ulonglong *)(lVar14 + (longlong)(int)uVar13 * 0x10);
+
+  while ((uVar9 != 0 && (uVar13 = (uint)uVar10, uVar9 != param_2))) {
+
+    uVar13 = uVar13 + 1 & uVar7;
+
+    uVar10 = (ulonglong)(int)uVar13;
+
+    uVar9 = *(ulonglong *)(lVar14 + uVar10 * 0x10);
+
+  }
+
+  lVar11 = (longlong)(int)uVar13;
+
+  if (*(longlong *)(lVar14 + lVar11 * 0x10) == 0) {
+
+    *(int *)(param_1 + 0x14) = *(int *)(param_1 + 0x14) + 1;
+
+  }
+
+  *(ulonglong *)(lVar14 + lVar11 * 0x10) = param_2;
+
+  *(undefined8 *)(*(longlong *)(param_1 + 8) + 8 + lVar11 * 0x10) = param_3;
+
+  return;
+
+}
+
+
+
+

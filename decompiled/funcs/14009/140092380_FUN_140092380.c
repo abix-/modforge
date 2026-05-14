@@ -1,0 +1,98 @@
+// Address: 0x140092380
+// Ghidra name: FUN_140092380
+// ============ 0x140092380 FUN_140092380 (size=290) ============
+
+
+void FUN_140092380(longlong param_1)
+
+
+
+{
+
+  undefined8 *puVar1;
+
+  longlong lVar2;
+
+  int iVar3;
+
+  
+
+  iVar3 = 0;
+
+  if (0 < *(int *)(param_1 + 0x298)) {
+
+    lVar2 = 0;
+
+    do {
+
+      puVar1 = *(undefined8 **)(lVar2 + *(longlong *)(param_1 + 0x130));
+
+      if (*(int *)(puVar1 + 0x43) == 999) {
+
+        if (puVar1 != (undefined8 *)0x0) {
+
+          (**(code **)*puVar1)(puVar1,1);
+
+        }
+
+      }
+
+      else {
+
+        *(undefined4 *)((longlong)puVar1 + 0x224) = 0;
+
+      }
+
+      if ((ulonglong)(longlong)iVar3 <
+
+          (ulonglong)(*(longlong *)(param_1 + 0x380) - *(longlong *)(param_1 + 0x378) >> 3)) {
+
+        FUN_1400b47e0(*(undefined8 *)(lVar2 + *(longlong *)(param_1 + 0x378)));
+
+      }
+
+      iVar3 = iVar3 + 1;
+
+      lVar2 = lVar2 + 8;
+
+    } while (iVar3 < *(int *)(param_1 + 0x298));
+
+  }
+
+  if (*(longlong *)(param_1 + 0x3a8) != 0) {
+
+    FUN_1400b47e0();
+
+  }
+
+  FUN_1400ce9b0(param_1);
+
+  if (*(longlong *)(param_1 + 0x130) != *(longlong *)(param_1 + 0x138)) {
+
+    *(longlong *)(param_1 + 0x138) = *(longlong *)(param_1 + 0x130);
+
+  }
+
+  if (*(longlong *)(param_1 + 0x360) != *(longlong *)(param_1 + 0x368)) {
+
+    *(longlong *)(param_1 + 0x368) = *(longlong *)(param_1 + 0x360);
+
+  }
+
+  if (*(longlong *)(param_1 + 0x378) != *(longlong *)(param_1 + 0x380)) {
+
+    *(longlong *)(param_1 + 0x380) = *(longlong *)(param_1 + 0x378);
+
+  }
+
+  *(undefined4 *)(param_1 + 0x250) = 0;
+
+  *(undefined4 *)(param_1 + 0x298) = 0;
+
+  return;
+
+}
+
+
+
+

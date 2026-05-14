@@ -1,0 +1,90 @@
+// Address: 0x1400457f0
+// Ghidra name: FUN_1400457f0
+// ============ 0x1400457f0 FUN_1400457f0 (size=247) ============
+
+
+undefined8 FUN_1400457f0(int *param_1,undefined1 (*param_2) [16])
+
+
+
+{
+
+  double dVar1;
+
+  undefined1 auVar2 [16];
+
+  undefined8 *puVar3;
+
+  float fVar4;
+
+  float fVar5;
+
+  float fVar6;
+
+  
+
+  dVar1 = *(double *)param_2[1];
+
+  auVar2 = *param_2;
+
+  if (*(longlong *)(DAT_1403ea2a8 + 0xa8) == 0) {
+
+    FUN_14004ef90();
+
+  }
+
+  puVar3 = *(undefined8 **)(DAT_1403ea2a8 + 0xa8);
+
+  *(undefined8 *)(DAT_1403ea2a8 + 0xa8) = puVar3[6];
+
+  if (*(longlong *)(DAT_1403ea2a8 + 0xa8) != 0) {
+
+    *(undefined8 *)(*(longlong *)(DAT_1403ea2a8 + 0xa8) + 0x38) = 0;
+
+  }
+
+  fVar4 = DAT_14039ca44;
+
+  fVar5 = 0.0;
+
+  if (0.0 <= auVar2._8_4_) {
+
+    fVar5 = auVar2._8_4_;
+
+  }
+
+  *(undefined1 *)(puVar3 + 1) = 0;
+
+  puVar3[5] = param_1;
+
+  *(char *)((longlong)puVar3 + 10) = auVar2[0];
+
+  fVar6 = fVar4;
+
+  if (fVar5 <= fVar4) {
+
+    fVar6 = fVar5;
+
+  }
+
+  *(int *)((longlong)puVar3 + 0xc) = auVar2._4_4_;
+
+  *(int *)(puVar3 + 3) = auVar2._12_4_;
+
+  *(char *)((longlong)puVar3 + 0xb) = auVar2[1];
+
+  *(float *)((longlong)puVar3 + 0x14) = fVar6;
+
+  *(float *)(puVar3 + 2) = fVar4 - fVar6;
+
+  puVar3[4] = (double)*param_1 * dVar1;
+
+  FUN_14004f0a0(puVar3);
+
+  return *puVar3;
+
+}
+
+
+
+

@@ -1,0 +1,74 @@
+// Address: 0x14012e790
+// Ghidra name: FUN_14012e790
+// ============ 0x14012e790 FUN_14012e790 (size=188) ============
+
+
+ulonglong FUN_14012e790(longlong param_1,undefined8 param_2)
+
+
+
+{
+
+  int iVar1;
+
+  ulonglong in_RAX;
+
+  undefined4 *puVar2;
+
+  ulonglong uVar3;
+
+  longlong lVar4;
+
+  longlong lVar5;
+
+  
+
+  if (param_1 == 0) {
+
+    return in_RAX & 0xffffffffffffff00;
+
+  }
+
+  puVar2 = (undefined4 *)FUN_1401637d0(1);
+
+  *puVar2 = 1;
+
+  uVar3 = FUN_14012f860(*(undefined8 *)(puVar2 + 2),*(undefined8 *)(puVar2 + 4),param_1,param_2);
+
+  iVar1 = (int)uVar3;
+
+  if (-1 < iVar1) {
+
+    if ((*(ulonglong *)(puVar2 + 4) <= (ulonglong)(longlong)iVar1) &&
+
+       (uVar3 = 0, *(code **)(puVar2 + 6) != (code *)0x0)) {
+
+      lVar5 = (longlong)iVar1 + 1;
+
+      lVar4 = (**(code **)(puVar2 + 6))(*(undefined8 *)(puVar2 + 2),lVar5);
+
+      uVar3 = 0;
+
+      if (lVar4 != 0) {
+
+        *(longlong *)(puVar2 + 2) = lVar4;
+
+        *(longlong *)(puVar2 + 4) = lVar5;
+
+        uVar3 = FUN_14012f860(lVar4,lVar5,param_1,param_2);
+
+      }
+
+    }
+
+    return uVar3 & 0xffffffffffffff00;
+
+  }
+
+  return uVar3 & 0xffffffffffffff00;
+
+}
+
+
+
+

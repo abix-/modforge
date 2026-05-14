@@ -1,0 +1,88 @@
+// Address: 0x1402c6b54
+// Ghidra name: FUN_1402c6b54
+// ============ 0x1402c6b54 FUN_1402c6b54 (size=306) ============
+
+
+/* WARNING: Function: __security_check_cookie replaced with injection: security_check_cookie */
+
+
+
+undefined8 *
+
+FUN_1402c6b54(undefined8 *param_1,undefined4 param_2,undefined8 param_3,longlong param_4)
+
+
+
+{
+
+  longlong lVar1;
+
+  undefined1 auStackY_88 [32];
+
+  undefined8 *local_58;
+
+  undefined8 uStack_50;
+
+  longlong local_48 [6];
+
+  
+
+  local_48[4] = DAT_1403e8b00 ^ (ulonglong)auStackY_88;
+
+  local_48[0] = 0;
+
+  local_48[1] = 0;
+
+  local_48[2] = 0;
+
+  local_48[3] = 0;
+
+  lVar1 = -1;
+
+  do {
+
+    lVar1 = lVar1 + 1;
+
+  } while (*(char *)(param_4 + lVar1) != '\0');
+
+  local_58 = param_1;
+
+  FUN_140027e30(local_48,param_4);
+
+  local_58 = (undefined8 *)CONCAT44(local_58._4_4_,param_2);
+
+  uStack_50 = param_3;
+
+  FUN_140024220(param_1,&local_58);
+
+  if (0xf < (ulonglong)local_48[3]) {
+
+    if (DAT_140398db8 != '\0') {
+
+      _guard_check_icall();
+
+    }
+
+    if ((0xfff < local_48[3] + 1U) && (0x1f < (local_48[0] - *(longlong *)(local_48[0] + -8)) - 8U))
+
+    {
+
+                    /* WARNING: Subroutine does not return */
+
+      _invoke_watson((wchar_t *)0x0,(wchar_t *)0x0,(wchar_t *)0x0,0,0);
+
+    }
+
+    FUN_1402c7088();
+
+  }
+
+  *param_1 = std::system_error::vftable;
+
+  return param_1;
+
+}
+
+
+
+

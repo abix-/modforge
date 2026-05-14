@@ -1,0 +1,108 @@
+// Address: 0x1400b8420
+// Ghidra name: FUN_1400b8420
+// ============ 0x1400b8420 FUN_1400b8420 (size=383) ============
+
+
+void FUN_1400b8420(longlong param_1)
+
+
+
+{
+
+  int iVar1;
+
+  longlong lVar2;
+
+  longlong lVar3;
+
+  ulonglong uVar4;
+
+  uint uVar5;
+
+  ulonglong uVar6;
+
+  
+
+  if (*(int *)(param_1 + 0xc) != 1) {
+
+    *(undefined4 *)(param_1 + 0xc) = 1;
+
+    uVar4 = 0;
+
+    *(undefined4 *)(param_1 + 0x270) = 0;
+
+    lVar3 = *(longlong *)(param_1 + 0x40);
+
+    lVar2 = *(longlong *)(param_1 + 0x48) - lVar3;
+
+    lVar2 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar2),8) + lVar2;
+
+    uVar6 = uVar4;
+
+    if (lVar2 >> 7 != lVar2 >> 0x3f) {
+
+      do {
+
+        if ((*(longlong *)(uVar4 + 0x30 + lVar3) != 0) &&
+
+           (lVar2 = *(longlong *)(uVar4 + 0x38 + lVar3), lVar2 != 0)) {
+
+          iVar1 = *(int *)(uVar4 + 100 + lVar3);
+
+          if ((iVar1 == 0) || (iVar1 == 1)) {
+
+            FUN_14000b2f0(lVar2,0);
+
+            FUN_14000b340(lVar2);
+
+          }
+
+          else if (iVar1 == 2) {
+
+            FUN_140009e60(lVar2,0);
+
+            FUN_140009eb0(lVar2);
+
+          }
+
+          *(undefined8 *)(uVar4 + 0xa4 + lVar3) = 0;
+
+          *(undefined4 *)(uVar4 + 0xac + lVar3) = 0;
+
+          if ((((*(int *)(uVar4 + 8 + lVar3) == 1) && (*(int *)(uVar4 + 100 + lVar3) != 1)) &&
+
+              (*(char *)(uVar4 + 0x84 + lVar3) == '\0')) && (*(int *)(param_1 + 0x1c) != 2)) {
+
+            *(undefined4 *)(uVar4 + 0xa4 + lVar3) = 2;
+
+            *(undefined4 *)(uVar4 + 0xac + lVar3) = 0x3f800000;
+
+          }
+
+        }
+
+        lVar3 = *(longlong *)(param_1 + 0x40);
+
+        uVar5 = (int)uVar6 + 1;
+
+        lVar2 = *(longlong *)(param_1 + 0x48) - lVar3;
+
+        uVar4 = uVar4 + 0xb8;
+
+        lVar2 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar2),8) + lVar2;
+
+        uVar6 = (ulonglong)uVar5;
+
+      } while ((ulonglong)(longlong)(int)uVar5 < (ulonglong)((lVar2 >> 7) - (lVar2 >> 0x3f)));
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

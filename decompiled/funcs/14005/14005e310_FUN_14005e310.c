@@ -1,0 +1,32 @@
+// Address: 0x14005e310
+// Ghidra name: FUN_14005e310
+// ============ 0x14005e310 FUN_14005e310 (size=164) ============
+
+
+undefined8 * FUN_14005e310(undefined8 *param_1)
+
+
+
+{
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_140307068;
+
+  FUN_1400278e0(param_1 + 3,&DAT_14039bcb9);
+
+  FUN_1400278e0(param_1 + 7,&DAT_140307128);
+
+  FUN_1400cf540(param_1,1,0,DAT_140303398,DAT_140303398,DAT_140303398);
+
+  FUN_1400c9f10(param_1);
+
+  FUN_1400c9c30(param_1,7,0x37,0x30,0x18,0x13,1);
+
+  return param_1;
+
+}
+
+
+
+

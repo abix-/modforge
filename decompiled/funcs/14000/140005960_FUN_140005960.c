@@ -1,0 +1,48 @@
+// Address: 0x140005960
+// Ghidra name: FUN_140005960
+// ============ 0x140005960 FUN_140005960 (size=175) ============
+
+
+void FUN_140005960(longlong param_1,float param_2)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  
+
+  fVar2 = DAT_14039ca44;
+
+  if (DAT_14039ca44 < *(float *)(param_1 + 0x20) || DAT_14039ca44 == *(float *)(param_1 + 0x20)) {
+
+    FID_conflict__assert(L"alpha0 < 1.0f",L"C:\\dev\\Box2d2\\Box2D\\Common\\b2Math.h",0x2c5);
+
+  }
+
+  fVar1 = (param_2 - *(float *)(param_1 + 0x20)) / (fVar2 - *(float *)(param_1 + 0x20));
+
+  fVar2 = fVar2 - fVar1;
+
+  *(float *)(param_1 + 8) = fVar1 * *(float *)(param_1 + 0x10) + fVar2 * *(float *)(param_1 + 8);
+
+  *(float *)(param_1 + 0x20) = param_2;
+
+  *(float *)(param_1 + 0xc) = fVar1 * *(float *)(param_1 + 0x14) + fVar2 * *(float *)(param_1 + 0xc)
+
+  ;
+
+  *(float *)(param_1 + 0x18) =
+
+       fVar1 * *(float *)(param_1 + 0x1c) + fVar2 * *(float *)(param_1 + 0x18);
+
+  return;
+
+}
+
+
+
+

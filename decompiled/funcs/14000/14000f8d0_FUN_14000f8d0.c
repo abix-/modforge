@@ -1,0 +1,236 @@
+// Address: 0x14000f8d0
+// Ghidra name: FUN_14000f8d0
+// ============ 0x14000f8d0 FUN_14000f8d0 (size=740) ============
+
+
+int * FUN_14000f8d0(int *param_1,int *param_2,undefined8 param_3)
+
+
+
+{
+
+  float fVar1;
+
+  float fVar2;
+
+  float fVar3;
+
+  ushort uVar4;
+
+  int iVar5;
+
+  int iVar6;
+
+  
+
+  fVar3 = DAT_14039ca90;
+
+  fVar2 = DAT_14039ca68;
+
+  if (((((float)param_2[1] <= DAT_14039ca90) || (DAT_14039ca68 <= (float)param_2[1])) ||
+
+      ((float)param_2[2] <= DAT_14039ca90)) || (DAT_14039ca68 <= (float)param_2[2])) {
+
+    FID_conflict__assert
+
+              (L"bd->position.IsValid()",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x1b);
+
+  }
+
+  if ((((float)param_2[4] <= fVar3) || (fVar2 <= (float)param_2[4])) ||
+
+     (((float)param_2[5] <= fVar3 || (fVar2 <= (float)param_2[5])))) {
+
+    FID_conflict__assert
+
+              (L"bd->linearVelocity.IsValid()",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x1c)
+
+    ;
+
+  }
+
+  if (((float)param_2[3] <= fVar3) || (fVar2 <= (float)param_2[3])) {
+
+    FID_conflict__assert
+
+              (L"b2IsValid(bd->angle)",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x1d);
+
+  }
+
+  if (((float)param_2[6] <= fVar3) || (fVar2 <= (float)param_2[6])) {
+
+    FID_conflict__assert
+
+              (L"b2IsValid(bd->angularVelocity)",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",
+
+               0x1e);
+
+  }
+
+  fVar1 = (float)param_2[8];
+
+  if (((fVar1 <= fVar3) || (fVar2 <= fVar1)) || (fVar1 < 0.0)) {
+
+    FID_conflict__assert
+
+              (L"b2IsValid(bd->angularDamping) && bd->angularDamping >= 0.0f",
+
+               L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x1f);
+
+  }
+
+  fVar1 = (float)param_2[7];
+
+  if (((fVar1 <= fVar3) || (fVar2 <= fVar1)) || (fVar1 < 0.0)) {
+
+    FID_conflict__assert
+
+              (L"b2IsValid(bd->linearDamping) && bd->linearDamping >= 0.0f",
+
+               L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x20);
+
+  }
+
+  uVar4 = 0;
+
+  *(undefined2 *)(param_1 + 1) = 0;
+
+  if (*(char *)((longlong)param_2 + 0x27) != '\0') {
+
+    uVar4 = 8;
+
+    *(undefined2 *)(param_1 + 1) = 8;
+
+  }
+
+  if (*(char *)((longlong)param_2 + 0x26) != '\0') {
+
+    uVar4 = uVar4 | 0x10;
+
+    *(ushort *)(param_1 + 1) = uVar4;
+
+  }
+
+  if ((char)param_2[9] != '\0') {
+
+    uVar4 = uVar4 | 4;
+
+    *(ushort *)(param_1 + 1) = uVar4;
+
+  }
+
+  if (*(char *)((longlong)param_2 + 0x25) != '\0') {
+
+    uVar4 = uVar4 | 2;
+
+    *(ushort *)(param_1 + 1) = uVar4;
+
+  }
+
+  if ((char)param_2[10] != '\0') {
+
+    *(ushort *)(param_1 + 1) = uVar4 | 0x20;
+
+  }
+
+  *(undefined8 *)(param_1 + 0x16) = param_3;
+
+  *(undefined8 *)(param_1 + 3) = *(undefined8 *)(param_2 + 1);
+
+  iVar6 = param_2[3];
+
+  iVar5 = FUN_1402cdc50(iVar6);
+
+  param_1[5] = iVar5;
+
+  iVar6 = FUN_1402cfda0(iVar6);
+
+  param_1[6] = iVar6;
+
+  param_1[7] = 0;
+
+  param_1[8] = 0;
+
+  param_1[9] = param_1[3];
+
+  param_1[10] = param_1[4];
+
+  param_1[0xb] = param_1[3];
+
+  param_1[0xc] = param_1[4];
+
+  param_1[0xd] = param_2[3];
+
+  param_1[0xe] = param_2[3];
+
+  param_1[0xf] = 0;
+
+  param_1[0x20] = 0;
+
+  param_1[0x21] = 0;
+
+  param_1[0x22] = 0;
+
+  param_1[0x23] = 0;
+
+  param_1[0x18] = 0;
+
+  param_1[0x19] = 0;
+
+  param_1[0x1a] = 0;
+
+  param_1[0x1b] = 0;
+
+  *(undefined8 *)(param_1 + 0x10) = *(undefined8 *)(param_2 + 4);
+
+  param_1[0x12] = param_2[6];
+
+  param_1[0x28] = param_2[7];
+
+  param_1[0x29] = param_2[8];
+
+  param_1[0x2a] = param_2[0xe];
+
+  param_1[0x13] = 0;
+
+  param_1[0x14] = 0;
+
+  param_1[0x15] = 0;
+
+  param_1[0x2b] = 0;
+
+  iVar6 = *param_2;
+
+  *param_1 = iVar6;
+
+  iVar5 = 0;
+
+  if (iVar6 == 2) {
+
+    iVar5 = DAT_14039ca44;
+
+  }
+
+  param_1[0x24] = iVar5;
+
+  param_1[0x25] = iVar5;
+
+  param_1[0x26] = 0;
+
+  param_1[0x27] = 0;
+
+  *(undefined8 *)(param_1 + 0x2c) = *(undefined8 *)(param_2 + 0xc);
+
+  param_1[0x1c] = 0;
+
+  param_1[0x1d] = 0;
+
+  param_1[0x1e] = 0;
+
+  return param_1;
+
+}
+
+
+
+

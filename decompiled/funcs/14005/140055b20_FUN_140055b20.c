@@ -1,0 +1,60 @@
+// Address: 0x140055b20
+// Ghidra name: FUN_140055b20
+// ============ 0x140055b20 FUN_140055b20 (size=263) ============
+
+
+undefined8 * FUN_140055b20(undefined8 *param_1)
+
+
+
+{
+
+  uint in_stack_ffffffffffffffc0;
+
+  uint in_stack_ffffffffffffffc8;
+
+  undefined8 local_28;
+
+  undefined8 uStack_20;
+
+  undefined8 local_18;
+
+  undefined8 local_10;
+
+  
+
+  FUN_1400c9420();
+
+  *param_1 = &PTR_FUN_1403054b0;
+
+  param_1[0x4a] = 0;
+
+  param_1[0x4b] = 0;
+
+  param_1[0x4c] = 0;
+
+  param_1[0x4e] = 0;
+
+  uStack_20 = 0;
+
+  local_18 = 5;
+
+  local_10 = 0xf;
+
+  local_28 = (ulonglong)CONCAT14(s_Close_140305570[4],s_Close_140305570._0_4_);
+
+  FUN_1400c9e00(param_1,3,&local_28,0x10f,0x97,in_stack_ffffffffffffffc0 & 0xffffff00,
+
+                in_stack_ffffffffffffffc8 & 0xffffff00,1);
+
+  FUN_1400c9c30(param_1,7,0xa6,0x86,0x11,0xb,1);
+
+  FUN_1400c9c30(param_1,8,0xe,0xe,8,8,1);
+
+  return param_1;
+
+}
+
+
+
+

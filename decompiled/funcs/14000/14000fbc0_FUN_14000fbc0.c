@@ -1,0 +1,152 @@
+// Address: 0x14000fbc0
+// Ghidra name: FUN_14000fbc0
+// ============ 0x14000fbc0 FUN_14000fbc0 (size=398) ============
+
+
+float * FUN_14000fbc0(longlong param_1,undefined8 *param_2)
+
+
+
+{
+
+  uint *puVar1;
+
+  longlong lVar2;
+
+  int iVar3;
+
+  float *pfVar4;
+
+  longlong *plVar5;
+
+  undefined8 uVar6;
+
+  longlong lVar7;
+
+  longlong lVar8;
+
+  
+
+  if ((*(byte *)(*(longlong *)(param_1 + 0x58) + 0x19298) & 2) != 0) {
+
+    FID_conflict__assert
+
+              (L"m_world->IsLocked() == false",L"C:\\dev\\Box2d2\\Box2D\\Dynamics\\b2Body.cpp",0x99)
+
+    ;
+
+  }
+
+  lVar2 = *(longlong *)(param_1 + 0x58);
+
+  if ((*(byte *)(lVar2 + 0x19298) & 2) == 0) {
+
+    pfVar4 = (float *)FUN_140012630(lVar2,0x48);
+
+    lVar7 = 0;
+
+    pfVar4[0x10] = 0.0;
+
+    pfVar4[0x11] = 0.0;
+
+    pfVar4[4] = 0.0;
+
+    pfVar4[5] = 0.0;
+
+    pfVar4[2] = 0.0;
+
+    pfVar4[3] = 0.0;
+
+    pfVar4[10] = 0.0;
+
+    pfVar4[0xb] = 0.0;
+
+    pfVar4[0xc] = 0.0;
+
+    pfVar4[6] = 0.0;
+
+    pfVar4[7] = 0.0;
+
+    *pfVar4 = 0.0;
+
+    *(undefined8 *)(pfVar4 + 0x10) = param_2[1];
+
+    pfVar4[8] = *(float *)(param_2 + 2);
+
+    pfVar4[9] = *(float *)((longlong)param_2 + 0x14);
+
+    *(longlong *)(pfVar4 + 4) = param_1;
+
+    pfVar4[0xd] = *(float *)((longlong)param_2 + 0x1e);
+
+    *(undefined2 *)(pfVar4 + 0xe) = *(undefined2 *)((longlong)param_2 + 0x22);
+
+    *(undefined1 *)((longlong)pfVar4 + 0x3a) = *(undefined1 *)((longlong)param_2 + 0x1c);
+
+    plVar5 = (longlong *)(**(code **)(*(longlong *)*param_2 + 8))((longlong *)*param_2,lVar2);
+
+    *(longlong **)(pfVar4 + 6) = plVar5;
+
+    iVar3 = (**(code **)(*plVar5 + 0x10))(plVar5);
+
+    lVar8 = (longlong)iVar3;
+
+    uVar6 = FUN_140012630(lVar2,iVar3 << 5);
+
+    *(undefined8 *)(pfVar4 + 10) = uVar6;
+
+    if (0 < lVar8) {
+
+      do {
+
+        lVar7 = lVar7 + 0x20;
+
+        *(undefined8 *)(*(longlong *)(pfVar4 + 10) + -0x10 + lVar7) = 0;
+
+        *(undefined4 *)(*(longlong *)(pfVar4 + 10) + -4 + lVar7) = 0xffffffff;
+
+        lVar8 = lVar8 + -1;
+
+      } while (lVar8 != 0);
+
+    }
+
+    pfVar4[0xc] = 0.0;
+
+    *pfVar4 = *(float *)(param_2 + 3);
+
+    if ((*(byte *)(param_1 + 4) & 0x20) != 0) {
+
+      FUN_140007dd0(pfVar4,*(longlong *)(param_1 + 0x58) + 0x192a0,param_1 + 0xc);
+
+    }
+
+    *(undefined8 *)(pfVar4 + 2) = *(undefined8 *)(param_1 + 0x70);
+
+    *(int *)(param_1 + 0x78) = *(int *)(param_1 + 0x78) + 1;
+
+    *(float **)(param_1 + 0x70) = pfVar4;
+
+    *(longlong *)(pfVar4 + 4) = param_1;
+
+    if (0.0 < *pfVar4) {
+
+      FUN_14000fd50(param_1);
+
+    }
+
+    puVar1 = (uint *)(*(longlong *)(param_1 + 0x58) + 0x19298);
+
+    *puVar1 = *puVar1 | 1;
+
+    return pfVar4;
+
+  }
+
+  return (float *)0x0;
+
+}
+
+
+
+

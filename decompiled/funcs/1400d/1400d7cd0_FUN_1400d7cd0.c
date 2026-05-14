@@ -1,0 +1,134 @@
+// Address: 0x1400d7cd0
+// Ghidra name: FUN_1400d7cd0
+// ============ 0x1400d7cd0 FUN_1400d7cd0 (size=399) ============
+
+
+void FUN_1400d7cd0(longlong param_1,longlong param_2,ulonglong param_3,int *param_4,longlong param_5
+
+                  )
+
+
+
+{
+
+  int iVar1;
+
+  bool bVar2;
+
+  longlong lVar3;
+
+  longlong lVar4;
+
+  longlong lVar5;
+
+  longlong lVar6;
+
+  longlong *plVar7;
+
+  float fVar8;
+
+  float fVar9;
+
+  
+
+  plVar7 = (longlong *)(param_5 + 0x130);
+
+  lVar4 = (longlong)(param_3 - 1) >> 1;
+
+  lVar5 = param_2;
+
+  while (lVar5 < lVar4) {
+
+    lVar6 = (longlong)*(int *)(param_1 + 8 + lVar5 * 8);
+
+    lVar3 = (longlong)*(int *)(param_1 + 4 + lVar5 * 8);
+
+    fVar8 = (float)FUN_1400b6150(*(undefined8 *)(*plVar7 + lVar6 * 8));
+
+    fVar9 = (float)FUN_1400b6150(*(undefined8 *)(*plVar7 + lVar3 * 8));
+
+    if (fVar8 == fVar9) {
+
+      bVar2 = *(int *)(*(longlong *)(*plVar7 + lVar6 * 8) + 0x1d0) <
+
+              *(int *)(*(longlong *)(*plVar7 + lVar3 * 8) + 0x1d0);
+
+    }
+
+    else {
+
+      bVar2 = fVar8 < fVar9;
+
+    }
+
+    lVar3 = ((ulonglong)bVar2 ^ 1) + 1 + lVar5 * 2;
+
+    *(undefined4 *)(param_1 + lVar5 * 4) = *(undefined4 *)(param_1 + lVar3 * 4);
+
+    lVar5 = lVar3;
+
+  }
+
+  if ((lVar5 == lVar4) && ((param_3 & 1) == 0)) {
+
+    *(undefined4 *)(param_1 + lVar5 * 4) = *(undefined4 *)(param_1 + -4 + param_3 * 4);
+
+    lVar5 = param_3 - 1;
+
+  }
+
+  if (param_2 < lVar5) {
+
+    do {
+
+      iVar1 = *param_4;
+
+      lVar4 = lVar5 + -1 >> 1;
+
+      lVar3 = (longlong)*(int *)(param_1 + lVar4 * 4);
+
+      fVar8 = (float)FUN_1400b6150(*(undefined8 *)(*plVar7 + lVar3 * 8));
+
+      fVar9 = (float)FUN_1400b6150(*(undefined8 *)(*plVar7 + (longlong)iVar1 * 8));
+
+      if (fVar8 == fVar9) {
+
+        bVar2 = *(int *)(*(longlong *)(*plVar7 + lVar3 * 8) + 0x1d0) <
+
+                *(int *)(*(longlong *)(*plVar7 + (longlong)iVar1 * 8) + 0x1d0);
+
+      }
+
+      else {
+
+        bVar2 = fVar8 < fVar9;
+
+      }
+
+      if (!bVar2) goto LAB_1400d7e3e;
+
+      *(undefined4 *)(param_1 + lVar5 * 4) = *(undefined4 *)(param_1 + lVar4 * 4);
+
+      lVar5 = lVar4;
+
+    } while (param_2 < lVar4);
+
+    *(int *)(param_1 + lVar4 * 4) = *param_4;
+
+  }
+
+  else {
+
+LAB_1400d7e3e:
+
+    *(int *)(param_1 + lVar5 * 4) = *param_4;
+
+  }
+
+  return;
+
+}
+
+
+
+

@@ -1,0 +1,58 @@
+// Address: 0x1400ca150
+// Ghidra name: FUN_1400ca150
+// ============ 0x1400ca150 FUN_1400ca150 (size=164) ============
+
+
+void FUN_1400ca150(longlong param_1,uint param_2,int param_3)
+
+
+
+{
+
+  int iVar1;
+
+  longlong lVar2;
+
+  longlong lVar3;
+
+  
+
+  if (param_2 < 5) {
+
+    lVar2 = *(longlong *)(param_1 + 0x60);
+
+    if ((((ulonglong)(longlong)param_3 < (ulonglong)((*(longlong *)(param_1 + 0x68) - lVar2) / 0x68)
+
+         ) && (lVar3 = (longlong)param_3 * 0x68, *(char *)(lVar3 + 0x5d + lVar2) != '\0')) &&
+
+       (*(char *)(lVar3 + 0x5e + lVar2) != '\0')) {
+
+      iVar1 = *(int *)(&DAT_14030e6e0 + (longlong)(int)param_2 * 4);
+
+      if ((&DAT_1403ed650)[iVar1] != '\0') {
+
+        *(int *)(param_1 + 0xd8) = param_3;
+
+        *(int *)(param_1 + 0xdc) = param_3;
+
+      }
+
+      if ((&DAT_1403ed750)[iVar1] != '\0') {
+
+        *(undefined4 *)(param_1 + 0xdc) = 0xffffffff;
+
+        *(int *)(param_1 + 0xe0) = param_3;
+
+      }
+
+    }
+
+  }
+
+  return;
+
+}
+
+
+
+

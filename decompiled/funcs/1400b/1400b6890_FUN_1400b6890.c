@@ -1,0 +1,82 @@
+// Address: 0x1400b6890
+// Ghidra name: FUN_1400b6890
+// ============ 0x1400b6890 FUN_1400b6890 (size=236) ============
+
+
+void FUN_1400b6890(longlong param_1)
+
+
+
+{
+
+  longlong lVar1;
+
+  longlong lVar2;
+
+  int iVar3;
+
+  longlong lVar4;
+
+  undefined2 local_res8;
+
+  undefined4 local_resa;
+
+  
+
+  FUN_1400b8420();
+
+  iVar3 = 0;
+
+  local_resa = 0xfd;
+
+  *(undefined4 *)(param_1 + 0x1dc) = 0;
+
+  local_res8 = 2;
+
+  *(undefined1 *)(param_1 + 0x1e0) = 0;
+
+  lVar4 = *(longlong *)(param_1 + 0x40);
+
+  lVar1 = *(longlong *)(param_1 + 0x48) - lVar4;
+
+  lVar1 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar1),8) + lVar1;
+
+  if (lVar1 >> 7 != lVar1 >> 0x3f) {
+
+    lVar1 = 0;
+
+    do {
+
+      lVar2 = *(longlong *)(lVar1 + 0x30 + lVar4);
+
+      if ((lVar2 != 0) && (*(char *)(lVar1 + 0x14 + lVar4) != '\0')) {
+
+        for (lVar4 = *(longlong *)(lVar2 + 0x70); lVar4 != 0; lVar4 = *(longlong *)(lVar4 + 8)) {
+
+          FUN_1400082e0(lVar4,&local_res8);
+
+        }
+
+      }
+
+      lVar4 = *(longlong *)(param_1 + 0x40);
+
+      iVar3 = iVar3 + 1;
+
+      lVar2 = *(longlong *)(param_1 + 0x48) - lVar4;
+
+      lVar1 = lVar1 + 0xb8;
+
+      lVar2 = SUB168(SEXT816(-0x4de9bd37a6f4de9b) * SEXT816(lVar2),8) + lVar2;
+
+    } while ((ulonglong)(longlong)iVar3 < (ulonglong)((lVar2 >> 7) - (lVar2 >> 0x3f)));
+
+  }
+
+  return;
+
+}
+
+
+
+
