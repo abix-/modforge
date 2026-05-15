@@ -241,6 +241,14 @@ SteamPath := RegRead("HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")
 
 Goal: every address the production hot path reads goes through `targets::resolve::*` (pattern-scan via `modforge::patterns::sleuth`) instead of a `pub const usize`. Hardcoded RVAs stay only as fallback inside the resolver functions, sourced from one decomp build. R3 in commit `ae333c6` was the first migration; the tables below track every entry.
 
+### Why this migration matters (P0 reasoning, locked 2026-05-15)
+
+Every address in `targets.rs` must be pattern-resolved. Not optional, not negotiable.
+
+- **Game updates break us.** The shipping Horsey build is a moving target. Save-target RVAs have already drifted -277 to -1548 bytes between builds (`bd95252` re-derivation). The same drift will hit every other hardcoded address eventually. Note: the 2026-05-15 "GAMESTATE_PTR returns 0x864c38" case was not version drift, it was wrong-sigs matching unrelated globals; see "Historical incidents" below.
+- **Patches won't persist.** D1/D3/D4/D5 detours all install at fixed RVAs. When the next game update ships, every detour misses its target and arms either zero subsystems or, worse, patches a different function. Every patch becomes a latent crash bug. Pattern-resolved addresses move with the code.
+- **No partial migration.** "Most are resolved" is not enough. A single hardcoded address in the hot path means the next game update bricks the mod for everyone. Either everything resolves or the mod's reliability story is "works on the 2026-05-08 build only."
+
 Status legend: **R** = resolved (production reads through resolver), **R-parity** = resolved sig exists + tested, but production still uses the hardcoded const, **H** = hardcoded only, **N/A** = struct field offset (not an absolute address; drift handled differently).
 
 ### Data globals
