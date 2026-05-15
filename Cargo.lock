@@ -680,6 +680,7 @@ dependencies = [
  "retour",
  "serde",
  "serde_json",
+ "sha2",
  "widestring",
  "windows-sys 0.61.2",
 ]

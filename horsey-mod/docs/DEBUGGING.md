@@ -153,6 +153,68 @@ did not. Refusing to arm at a non-entry is enforced now in
 `patches/render_trampoline.rs::arm()` and the equivalent
 skip in `patches/ext_genes.rs::arm()`.
 
+### Ghidra-indexed entry is 16 bytes INTO the function
+
+**Discovered 2026-05-14, after wasting half a session blaming a
+nonexistent game update.** Our pyghidra decomp pass indexes
+function entries off-by-16 for the MSVC-compiled Horsey.exe.
+Every `0x14XXXXXX` address in `horseygame/decompiled/INDEX.md`
+points 16 bytes INSIDE the function body, past the register-save
+prologue.
+
+Two real-prologue shapes appear at `ghidra_addr - 16`:
+
+1. **Big functions** (`APPLY_GENE_TO_HORSE`, `GENE_DEATH_DRIFT`,
+   `GENE_ENGINE_CONSUMER`):
+   ```
+   48 8b c4              ; mov rax, rsp
+   55 53 56 57           ; push rbp, rbx, rsi, rdi
+   41 54 41 55 41 56 41 57   ; push r12..r15
+   ```
+   16 bytes; this is MSVC's frame-pointer-omission prologue
+   that saves the original rsp in rax for later use by
+   `lea rbp, [rax-X]` at offset +16.
+
+2. **Small functions** (`EVAL_DIPLOID_BLEND_A`, `EVAL_DIPLOID_BLEND_B`,
+   `GENE_ALLELE_SWAP`):
+   ```
+   48 89 5c 24 08    ; mov [rsp+8], rbx
+   48 89 6c 24 10    ; mov [rsp+0x10], rbp
+   48 89 74 24 18    ; mov [rsp+0x18], rsi
+   57                ; push rdi
+   ```
+   16 bytes; shadow-space stores of callee-saved registers
+   plus one push.
+
+**Why this matters for hooking.** retour's trampoline copies
+the first N bytes of the target into a relocated page. If the
+true prologue includes `mov rax, rsp`, our handler's normal
+Rust code clobbers RAX before the trampoline runs (RAX is
+volatile in Win64 ABI). The relocated `lea rbp, [rax-X]` then
+computes garbage. Crash signature: SEH READ at
+`bad_addr=0xFFFFFFFFFFFFFFFF` inside the vanilla function
+body, ~13 bytes after the JMP we installed.
+
+**Why some functions "worked" at the wrong address.** EVAL_A
+and EVAL_B have a shadow-space-saves prologue. After 16 bytes,
+the next instructions (`sub rsp, 0x20; movsxd rbx, edx`) don't
+depend on any preserved register state. retour copies those
+into the trampoline; trampoline jumps back; vanilla continues
+normally. The address was wrong but the failure was masked.
+
+**Fix.** Every address in `targets::fn_addr::*` has been
+adjusted by -16. Verification: at the corrected address, the
+first 16 bytes must match one of the two prologue shapes
+above. New addresses MUST be verified before adding.
+
+**Why this isn't `pad_count` / alignment.** Ghidra didn't find
+extra padding at the true entries; the previous function ends
+with `RET` + `INT3 cc` padding to align to 16 bytes, then the
+NEXT function starts. Ghidra just decided the NEXT function
+starts 16 bytes later than it does. Likely a quirk of how
+Ghidra's analyzer walks call targets vs structured-exception
+data; we didn't chase down the root cause inside Ghidra.
+
 ### `0xc0000005` READ at a small constant offset from a deterministic high address
 
 Cause: an integer was misused as a pointer. The offset is

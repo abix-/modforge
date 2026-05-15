@@ -74,6 +74,7 @@ widestring = { workspace = true }
 clap = { workspace = true }
 regex = { workspace = true }
 retour = { workspace = true }
+sha2 = { workspace = true }
 
 [lints]
 workspace = true

@@ -41,6 +41,7 @@ fastrand = "2"
 # Used by the horsey-mod D1 / D5 detours. See
 # `horsey-mod/docs/HOOKING-STRATEGY.md` for the strategy rationale.
 retour = "0.3"
+sha2 = "0.10"
 proptest = "1"
 insta = { version = "1", features = ["json"] }
 zerocopy = { version = "0.8", features = ["derive"] }

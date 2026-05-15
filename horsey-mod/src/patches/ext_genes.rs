@@ -385,12 +385,14 @@ pub fn arm() -> anyhow::Result<()> {
         revert();
         return Err(e);
     }
-    // ALLELE_SWAP stays disabled until the real entry address is
-    // re-located in the current build. See DEBUGGING.md §5.
-    modforge::log!(
-        "ext_genes: GENE_ALLELE_SWAP install SKIPPED (mid-function address; see DEBUGGING.md)"
-    );
-    let _ = install_allele_swap;
+    // ALLELE_SWAP re-enabled 2026-05-14 after the
+    // Ghidra-off-by-16 finding: real entry at 0x1400c0390
+    // (NOT 0x1400c03a0). See targets.rs and DEBUGGING.md.
+    if let Err(e) = install_allele_swap() {
+        // Rollback A + B if SWAP fails.
+        revert();
+        return Err(e);
+    }
     reset_stats();
     Ok(())
 }

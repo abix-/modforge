@@ -141,23 +141,20 @@ pub fn arm() -> anyhow::Result<()> {
     let runtime_addr = targets::rebase(fn_addr::APPLY_GENE_TO_HORSE);
     let handler_addr = engine_handler as *const () as usize;
 
-    // Pre-arm prologue sanity check. See `docs/DEBUGGING.md` §5. The
-    // May 2026 build has 0x14009f680 starting with
-    // `8d a8 d8 fb ff ff` (`LEA EBP, [RAX-0x428]`), which is NOT a
-    // Win64 function entry. Arming there crashed the game inside
-    // vanilla at offset +13 with a -1 bad-addr. Refuse to arm until
-    // the real entry is re-located in the current binary.
-    // SAFETY: target address is in our loaded image; 16 bytes
+    // Sanity-log the prologue at arm time so any future regression
+    // is visible in the log without needing the dryrun op.
+    // SAFETY: target address is in our loaded image; 8 bytes
     // available for read.
-    let prologue = unsafe { std::slice::from_raw_parts(runtime_addr as *const u8, 6) };
-    if prologue == [0x8d, 0xa8, 0xd8, 0xfb, 0xff, 0xff] {
-        anyhow::bail!(
-            "render_trampoline: ABORTED. Prologue at 0x{runtime_addr:x} starts \
-             with `LEA EBP, [RAX-0x428]` which is mid-function, not a function \
-             entry. Re-decompile to find the real APPLY_GENE_TO_HORSE entry \
-             before re-enabling this op. See docs/DEBUGGING.md §5."
-        );
-    }
+    let prologue = unsafe { std::slice::from_raw_parts(runtime_addr as *const u8, 8) };
+    let prologue_hex: String = prologue
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    modforge::log!(
+        "render_trampoline: APPLY_GENE_TO_HORSE prologue=[{prologue_hex}] \
+         (expecting 48 8b c4 ... = mov rax, rsp + register saves)"
+    );
 
     modforge::log!(
         "render_trampoline: install APPLY_GENE_TO_HORSE target=0x{runtime_addr:x} \

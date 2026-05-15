@@ -125,37 +125,66 @@ pub mod horse_offset {
 // Game function addresses (for MinHook trampoline targets)
 // =============================================================================
 
+// CRITICAL CORRECTION (2026-05-14):
+//
+// Ghidra's pyghidra decomp pass indexes function entries OFF-BY-16
+// for the MSVC-compiled Horsey.exe. Every address in the pyghidra
+// `INDEX.md` points 16 bytes INTO the function body, past the
+// register-save prologue. The true entry is at `ghidra_addr - 16`.
+//
+// Why this matters: if we hook at Ghidra's address, retour's
+// trampoline copies bytes that depend on register values set up by
+// the SKIPPED prologue (specifically `mov rax, rsp; push rbp; ...`
+// for big functions). When our handler runs between caller-CALL and
+// trampoline-execution, it clobbers RAX (volatile in Win64 ABI),
+// and the trampoline's relocated `lea rbp, [rax-X]` reads garbage.
+//
+// Most functions Ghidra indexed in this build have one of these
+// shapes 16 bytes BEFORE their indexed entry:
+//   - `48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57`
+//     = `mov rax, rsp; push rbp; push rbx; ... push r15`
+//   - `48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57`
+//     = shadow-space saves of rbx/rbp/rsi + push rdi
+//
+// All addresses below have been adjusted to the TRUE entry. The
+// original Ghidra address is in a comment for cross-reference
+// with `horseygame/decompiled/INDEX.md`.
+
 pub mod fn_addr {
     /// `apply_gene_to_horse`. The gene expression function. The
     /// entry point for "construct a horse from its genome". Hook
     /// here to attach extension state to new horses.
-    pub const APPLY_GENE_TO_HORSE: usize = 0x14009f680;
+    /// Ghidra indexed as `FUN_14009f680`; true entry -16 bytes.
+    pub const APPLY_GENE_TO_HORSE: usize = 0x14009f670;
 
-    /// `eval_diploid_blend_a` (`FUN_1400a5d20`). One of two
-    /// allele-blend evaluators. Takes `(horse_genome*, gene_idx: i32)`
-    /// and returns a blended `f32`. Called by `APPLY_GENE_TO_HORSE`
-    /// 233 times per horse with literal indices 0..239.
-    /// D1 trampoline target: dispatch to `EXT_GENE_TABLE` when
-    /// `gene_idx >= 240`.
-    pub const EVAL_DIPLOID_BLEND_A: usize = 0x1400a5d20;
+    /// `eval_diploid_blend_a`. One of two allele-blend evaluators.
+    /// Takes `(horse_genome*, gene_idx: i32)` and returns a blended
+    /// `f32`. Called by `APPLY_GENE_TO_HORSE` 233 times per horse
+    /// with literal indices 0..239. D1 trampoline target:
+    /// dispatch to `EXT_GENE_TABLE` when `gene_idx >= 240`.
+    /// Ghidra indexed as `FUN_1400a5d20`; true entry -16 bytes.
+    pub const EVAL_DIPLOID_BLEND_A: usize = 0x1400a5d10;
 
-    /// `eval_diploid_blend_b` (`FUN_1400a5e00`). Sibling evaluator
-    /// using the same record layout but a different blend formula.
-    /// Same trampoline strategy as the A variant.
-    pub const EVAL_DIPLOID_BLEND_B: usize = 0x1400a5e00;
+    /// `eval_diploid_blend_b`. Sibling evaluator using the same
+    /// record layout but a different blend formula. Same trampoline
+    /// strategy as the A variant.
+    /// Ghidra indexed as `FUN_1400a5e00`; true entry -16 bytes.
+    pub const EVAL_DIPLOID_BLEND_B: usize = 0x1400a5df0;
 
-    /// `gene_table_consumer_or_horse_dies` (`FUN_1400c0660`). The
-    /// "horse death" handler that ALSO mutates gene-table mutation
-    /// rates by +/-5. D1 trampoline target: when its mutation
-    /// targets `gene_idx >= 240`, redirect to `EXT_GENE_TABLE`.
-    pub const GENE_DEATH_DRIFT: usize = 0x1400c0660;
+    /// `gene_table_consumer_or_horse_dies`. The "horse death"
+    /// handler that ALSO mutates gene-table mutation rates by +/-5.
+    /// D1 trampoline target: when its mutation targets
+    /// `gene_idx >= 240`, redirect to `EXT_GENE_TABLE`.
+    /// Ghidra indexed as `FUN_1400c0660`; true entry -16 bytes.
+    pub const GENE_DEATH_DRIFT: usize = 0x1400c0650;
 
-    /// `gene_allele_renumber_sync` (`FUN_1400c03a0`). When alleles
-    /// X and Y of a gene are swapped, this function syncs the swap
-    /// across every pop record. D1 trampoline target: when called
-    /// with `gene_idx >= 240`, swap inside `EXT_POP_WEIGHTS` and
+    /// `gene_allele_renumber_sync`. When alleles X and Y of a gene
+    /// are swapped, this function syncs the swap across every pop
+    /// record. D1 trampoline target: when called with
+    /// `gene_idx >= 240`, swap inside `EXT_POP_WEIGHTS` and
     /// `EXT_GENE_TABLE` instead.
-    pub const GENE_ALLELE_SWAP: usize = 0x1400c03a0;
+    /// Ghidra indexed as `FUN_1400c03a0`; true entry -16 bytes.
+    pub const GENE_ALLELE_SWAP: usize = 0x1400c0390;
 
     /// `gene_table_xml_writer` (`FUN_1400a4880`). Serializes the
     /// 240-slot gene table back to XML. Vanilla iterates 0..239.
@@ -174,12 +203,13 @@ pub mod fn_addr {
     /// and our extended pop weights are stored in `EXT_POP_WEIGHTS`.
     pub const POP_XML_LOADER: usize = 0x1400a4fe0;
 
-    /// `gene_engine_consumer` (`FUN_1400ab3d0`). Called immediately
-    /// after `APPLY_GENE_TO_HORSE` to transcribe the temp render
-    /// param array into the persistent horse render struct. The D5
+    /// `gene_engine_consumer`. Called immediately after
+    /// `APPLY_GENE_TO_HORSE` to transcribe the temp render param
+    /// array into the persistent horse render struct. The D5
     /// trampoline lives at the boundary between APPLY_GENE_TO_HORSE
     /// and this function.
-    pub const GENE_ENGINE_CONSUMER: usize = 0x1400ab3d0;
+    /// Ghidra indexed as `FUN_1400ab3d0`; true entry -16 bytes.
+    pub const GENE_ENGINE_CONSUMER: usize = 0x1400ab3c0;
 
     /// `check_horse_eligibility`. The "Horse is too tired/old/young/hungry"
     /// dispatcher. Hook to override eligibility decisions.
@@ -253,4 +283,89 @@ pub fn image_base() -> usize {
 pub fn rebase(absolute_from_dump: usize) -> usize {
     let delta = image_base().wrapping_sub(PREFERRED_IMAGE_BASE);
     absolute_from_dump.wrapping_add(delta)
+}
+
+// =============================================================================
+// Build identification (Phase R1 from docs/ADDRESS-RESOLUTION.md)
+// =============================================================================
+
+/// SHA256 of the loaded Horsey.exe image's .text section. Used to
+/// pin "which build am I on" so we can correlate crashes to a
+/// specific binary. Skip .reloc + .rsrc because those carry
+/// per-load fixups / locale strings that drift between identical
+/// builds.
+///
+/// Caches the result in a `OnceLock` so repeated calls are free.
+pub fn image_text_sha256() -> String {
+    use sha2::{Digest, Sha256};
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<String> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            let Some((text_addr, text_size)) = find_text_section() else {
+                return "unavailable".to_string();
+            };
+            // SAFETY: text_addr / text_size point at the loaded image's
+            // .text bytes; readable for the lifetime of the process.
+            let bytes =
+                unsafe { std::slice::from_raw_parts(text_addr as *const u8, text_size) };
+            let mut hasher = Sha256::new();
+            hasher.update(bytes);
+            let digest = hasher.finalize();
+            digest.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        })
+        .clone()
+}
+
+/// Walk the PE header at `image_base()` to find the .text section's
+/// runtime address and size. Returns None on any parse failure.
+/// caller should treat that as "build identification not available
+/// this session" and continue.
+fn find_text_section() -> Option<(usize, usize)> {
+    let base = image_base();
+    if base == 0 {
+        return None;
+    }
+    // SAFETY: PE images are mapped read-only from offset 0; the
+    // DOS header is always present at the image base, and the PE
+    // header follows after a small jump.
+    unsafe {
+        // DOS header `e_lfanew` is at offset 0x3c.
+        let e_lfanew = *((base + 0x3c) as *const u32) as usize;
+        let pe = base + e_lfanew;
+        // PE signature must be "PE\0\0".
+        let sig = *(pe as *const [u8; 4]);
+        if sig != *b"PE\0\0" {
+            return None;
+        }
+        // COFF File Header sits right after the signature (4 bytes).
+        let num_sections = *((pe + 4 + 2) as *const u16) as usize;
+        let opt_header_size = *((pe + 4 + 16) as *const u16) as usize;
+        let opt_header = pe + 4 + 20;
+        let section_table = opt_header + opt_header_size;
+        // Walk section headers; each is 40 bytes.
+        for i in 0..num_sections {
+            let hdr = section_table + i * 40;
+            let name_bytes = *(hdr as *const [u8; 8]);
+            // Section name is null-padded ASCII, ".text\0\0\0".
+            if &name_bytes[..5] == b".text" {
+                let virtual_size = *((hdr + 8) as *const u32) as usize;
+                let virtual_addr = *((hdr + 12) as *const u32) as usize;
+                return Some((base + virtual_addr, virtual_size));
+            }
+        }
+    }
+    None
+}
+
+/// Mtime + size of the on-disk Horsey.exe, if findable.
+pub fn image_file_info() -> Option<(std::path::PathBuf, std::time::SystemTime, u64)> {
+    // GetModuleFileNameW for HMODULE = image_base() returns the
+    // path. We resolve through std::env::current_exe() since the
+    // injected DLL shares the same process and main exe.
+    let path = std::env::current_exe().ok()?;
+    let meta = std::fs::metadata(&path).ok()?;
+    let mtime = meta.modified().ok()?;
+    let size = meta.len();
+    Some((path, mtime, size))
 }
