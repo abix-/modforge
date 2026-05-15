@@ -27,7 +27,7 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets: **R4 in progress, 19/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~18 fields need anchors authored.
+- Field offsets: **R4 in progress, 21/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~16 fields need anchors authored.
 
 **Open work in this section:**
 - [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
@@ -67,7 +67,7 @@ Status codes:
 | `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H-gb** | needs R4 |
 | `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb** | needs R4 |
 | `gs_offset::horses_begin/end()` 0x280/0x288 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x200, 0x300]` window |
-| `gs_offset::TRAILING_278/27C` | targets.rs:91-92 | struct field offset (2) | **H-gb** | needs R4 |
+| `gs_offset::map_width/map_height()` 0x278/0x27c | targets.rs | struct field offset (2) | **R** | HLT labels `kOffMapWidth/Height`; adjacent r32-load pair (delta 4) in `[0x270, 0x290]` window |
 | `horse_offset::TYPE_OR_SPECIES/NAME_ID` 0x1c/0x1f8 | targets.rs:109,111 | struct field offset (2) | **H-gb** | needs R4 |
 | `horse_offset::age()` 0x1fc | targets.rs | struct field offset | **R** | `(bails) age %d ch %d` format string + `44 8b` r9d-load (4th printf arg) |
 | `horse_offset::max_age()` 0x200 | targets.rs | struct field offset | **R** | derived `age + 4` (adjacent int32 in release-to-wild cmp) |
@@ -84,11 +84,11 @@ Status codes:
 | GameState alloc size 0x448 | resolver comments | struct size | **H-gb** | anchor for FUN_14009c6a0 |
 | `horse_offset::alloc_size()` 0x498 | targets.rs | struct size | **R** | call-site lookback at `e8 X<HORSE_CONSTRUCTOR>`: `b9 <imm32>` (mov ecx, alloc size) within 32-byte preamble; histogram top |
 
-**H-gb migration progress: 19 done / ~18 remaining.**
+**H-gb migration progress: 21 done / ~16 remaining.**
 
-Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
+Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
 
-Remaining: FRAME_TICK (0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TRAILING_278/27C, TYPE_OR_SPECIES (0x1c), NAME_ID (0x1f8), SKILL/LITTER_SIZE_STAT (0x21c/0x254), roster stride 0x24, GameState alloc 0x448, no_tire FN_RVA + FN_SIZE.
+Remaining: FRAME_TICK (0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TYPE_OR_SPECIES (0x1c), NAME_ID (0x1f8), SKILL/LITTER_SIZE_STAT (0x21c/0x254), roster stride 0x24, GameState alloc 0x448, no_tire FN_RVA + FN_SIZE.
 
 #### Algorithm constants (H-alg): we own; intentional
 

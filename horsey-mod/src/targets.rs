@@ -282,8 +282,43 @@ pub mod gs_offset {
         static CACHE: OnceLock<usize> = OnceLock::new();
         *CACHE.get_or_init(|| resolve_horses_pair().map(|p| p.1).unwrap_or(HORSES_END))
     }
+    /// Old decomp constant. Production should call [`map_width()`].
+    /// HLT labels this `kOffMapWidth`.
     pub const TRAILING_278: usize = 0x278;
+    /// Old decomp constant. Production should call [`map_height()`].
+    /// HLT labels this `kOffMapHeight`.
     pub const TRAILING_27C: usize = 0x27c;
+
+    fn resolve_map_dims_pair() -> Option<(usize, usize)> {
+        // Width and height are loaded back-to-back for the tile-count
+        // multiplication (`width * height`). Scan for two adjacent
+        // 32-bit field loads (`mov r32, [base+disp32]`) with delta 4
+        // and disp1 in the trailing-GameState band [0x270, 0x290].
+        let hist = modforge::research::in_process_decode_disp_pair_with_delta(
+            "8b ?? ?? ?? ?? ?? 8b ?? ?? ?? ?? ??",
+            2, 8, 4, 4,
+        ).ok()?;
+        let mut top: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x270 && *v < 0x290)
+            .collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.first().map(|&(d, _)| (d as usize, (d + 4) as usize))
+    }
+
+    /// Pattern-resolved offset of the world-map width int32.
+    /// Anchors on the width/height back-to-back load pair (HLT
+    /// `kOffMapWidth/kOffMapHeight`). Falls back to `TRAILING_278`.
+    pub fn map_width() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_map_dims_pair().map(|p| p.0).unwrap_or(TRAILING_278))
+    }
+
+    /// Pattern-resolved offset of the world-map height int32
+    /// (= `map_width + 4`). Falls back to `TRAILING_27C`.
+    pub fn map_height() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_map_dims_pair().map(|p| p.1).unwrap_or(TRAILING_27C))
+    }
 }
 
 // =============================================================================

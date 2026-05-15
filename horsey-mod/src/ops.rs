@@ -479,6 +479,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::sim_horses_end()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::FIELD_268),
                     },
+                    "map_width": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::map_width()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::TRAILING_278),
+                    },
+                    "map_height": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::map_height()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::TRAILING_27C),
+                    },
                     "horse_alloc_size": {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::alloc_size()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::HORSE_ALLOC_SIZE),
