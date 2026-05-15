@@ -78,60 +78,17 @@ What it is NOT: not Unity, Unreal, Godot, GameMaker, Haxe, OpenFL, Love2D, MonoG
 
 All findings are derived from real decompiled code. See [`MECHANICS.md`](MECHANICS.md) for full source-line citations.
 
-### Built-in cheats (the BIG find)
+### Headline findings (one-line each)
 
-The dev shipped cheats and they ship in the public binary. Unlock by typing `"debug"`:
+- **Built-in cheat menu**: unlock by typing `"debug"` in the pause menu (Money, Loaded, No Tire, Gong, Betting). Full citation: [`MECHANICS.md`](MECHANICS.md).
+- **Tiredness toggle**: a single global flag (`DAT_1403d95c5`) zeros out `horse+0x205/0x206` every frame when set. Full citation: [`MECHANICS.md`](MECHANICS.md).
+- **Game-state struct**: `DAT_1403fb0d8` is the world-state pointer; layout in [`STRUCTS.md`](STRUCTS.md).
+- **Horse struct**: partial layout in [`STRUCTS.md`](STRUCTS.md).
+- **Races counter**: `DAT_1403eded8` (separate global, not in the game-state struct).
 
-- `FUN_140066200` line 60371-60376: character-by-character match against the literal string `"debug"`. When complete, sets `DAT_1403d959b = 1` (debug mode active).
-- Debug mode shows extra status line and unlocks the cheat buttons in pause menu: "Betting Mode", "Gong", "Money", "Loaded", "No Tire" / "Yes Tire".
+## Gene system (overview)
 
-### Tiredness toggle (`DAT_1403d95c5`)
-
-- `FUN_140066200` line 60434-60443: pause-menu button labelled "No Tire" or "Yes Tire" that toggles the flag.
-- `FUN_1400ce6c0`-area line 121172-121184: per-frame update loop. When flag is set, zeroes out `horse + 0x205` and `horse + 0x206` on every horse on the track. Result: horses never accumulate tiredness state.
-
-### Game state struct (`DAT_1403fb0d8`)
-
-Single global pointer to the world state. Confirmed fields:
-
-| Offset | Field |
-|---|---|
-| 0x308 | Money (int32) |
-| 0x314 | Year counter (int32, displayed +1) |
-| 0x318 | Sleeps counter (int32) |
-| 0x31c..0x349 | 7 supply types in 12-byte-strided records (counter int32 + 2 flag bytes each) |
-
-### Horse struct (partial)
-
-| Offset | Field |
-|---|---|
-| 0x1c | type/kind (int32) |
-| 0x1c4 | unknown delta |
-| 0x1c8 | bool flag |
-| 0x205 | tiredness flag A (uint8) |
-| 0x206 | tiredness flag B (uint8) |
-
-More fields will be reconstructed as we read more functions.
-
-### Races counter
-
-Lives in a separate global `DAT_1403eded8` (not in the main game-state struct).
-
-## Gene system (PARTIALLY KNOWN, INFERENCE FLAGGED)
-
-### KNOWN from the XML
-
-- `genes.xml` declares each gene. Attributes: `m` (mutation %), `s` (scale: 1 or 100), `g0..g3` (four allele values), `n` (4-letter ACGT codon order).
-- `pop.xml` declares populations. Each `<gene>` inside a `<pop>` block has `p0..p3` attributes weighting which allele spawns.
-- 28 populations exist: default, scratch, fest horse, crazy horse, impala, alligator, giraffe, rabbit, duck, dino, centipede, tiger, moose, dachshund, bear, cow, human, centaur test, jockey, leprechaun, pepper, car, appletree, yeast, hay, fish, helix, freak.
-- 242 genes total.
-
-### INFERRED, NOT VERIFIED
-
-- That `s=1` means discrete integer and `s=100` means continuous/percent. Plausible, not proven.
-- The semantics of `OLD_AGE`, `NARCOLEPSY`, `WHITE_IS_LETHAL`, `STIFF_JOINTS`, `LIMP`, `FLU_IMMUNITY`. All inferred from name.
-
-These are gambling targets until verified by reading the gene-application code (next target: `FUN_1400a3eb0` chromomap loader and the function that maps each gene to its in-game effect).
+Conceptual model lives in [`ALLELE-MODEL.md`](ALLELE-MODEL.md); per-gene reference in [`GENE-CATALOG.md`](GENE-CATALOG.md); engine-side gene -> render-slot mapping in [`SLOT-MAP.md`](SLOT-MAP.md). One-line summary: `genes.xml` declares 240 genes (attrs `m`/`s`/`g0..g3`/`n`); `pop.xml` declares 28 populations with per-allele weights `p0..p3`. Behavioral genes (OLD_AGE, NARCOLEPSY, WHITE_IS_LETHAL, STIFF_JOINTS, LIMP, FLU_IMMUNITY) are still inference-flagged until the gene-application code is traced.
 
 ## What's NOT in any data file (KNOWN by exhaustive grep)
 
@@ -233,16 +190,7 @@ Reviewed: `genes.xml` (242 lines, all), `pop.xml` (2714, all gene refs grepped),
 
 #### How the gene system works
 
-Two-file design:
-
-- **`genes.xml`** declares each gene. Attributes:
-  - `m` = mutation rate (%).
-  - `s` = scale (`1` = discrete integer, `100` = continuous/percent).
-  - `g0`, `g1`, `g2`, `g3` = the FOUR possible allele values. A horse's actual trait is some combination of inherited alleles.
-  - `n` = codon order (the 4-letter ACGT permutation used to encode this gene in the DNA).
-- **`pop.xml`** declares each population (`default`, `human`, `freak`, `tiger`, ...) and per-gene SPAWN WEIGHTS over the four alleles: `<gene name="X" p0="1" p2="18" />` means at spawn, allele g0 is weight 1 and g2 is weight 18 (heavily favored).
-
-So genes.xml says what the trait VALUES are; pop.xml says how often each allele spawns per population.
+Two-file design: `genes.xml` declares each gene's value table; `pop.xml` declares per-population spawn weights over alleles. Full conceptual model in [`ALLELE-MODEL.md`](ALLELE-MODEL.md); per-gene reference in [`GENE-CATALOG.md`](GENE-CATALOG.md).
 
 #### Genes directly relevant to user's complaints
 

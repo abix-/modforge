@@ -637,45 +637,7 @@ You cannot add new gene names. You CAN edit any of these values.
 <a name="cheats"></a>
 ## 14. Debug mode + cheats
 
-The dev ships a hidden cheat menu unlocked by typing `"debug"` while the
-game is paused. Confirmed by both decompilation (`0x140066200`) and the
-JumboDS64 guide.
-
-### Unlocking debug mode
-
-1. Pause the game (Escape).
-2. Type `d`, then `e`, then `b`, then `u`, then `g`. (You won't see anything
-   while typing. The keystrokes are matched against the literal string `"debug"`.)
-3. The pause menu changes: the status line now says
-   `< Simulation Paused - Year X  Sleeps Y  Races Z >` and extra cheat
-   buttons appear.
-
-### Cheat buttons
-
-| Button | Effect |
-|---|---|
-| Continue | Resume |
-| Reset Game | Restart the game from intro |
-| Betting Mode | Force betting mode |
-| Gong | Trigger gong sound |
-| Money | +$1000 per click |
-| Loaded | +20 to each of 7 supply counters + sets some flags |
-| No Tire / Yes Tire | Toggle fatigue-disabled mode |
-
-### "No Tire" specifically
-
-When the No-Tire toggle is on, **every frame** the game zeros out the per-horse
-tiredness flags at offsets `+0x205` and `+0x206`. Horses never accumulate
-tiredness. This is the cleanest answer to "horses get tired after one race"
-in vanilla, and requires no modding.
-
-### Hot air balloon speed cheat
-
-While in the hot air balloon (with debug mode enabled), press `5` to set
-game sim speed to **x300**.
-
-(Confirmed by `BalloonSimFaster` / `BalloonSimSlower` in
-`0x14010a5e0`, and JumboDS64's guide.)
+The dev ships a hidden cheat menu. Pause the game and type `d-e-b-u-g` to unlock it: Money, Loaded, No Tire, Gong, Betting Mode plus the hot-air-balloon `5` -> x300 speed shortcut. Full citations (function addresses, struct offsets, frame-update mechanics) live in [`MECHANICS.md`](MECHANICS.md). Auto-enable from launch via the `debug` CLI flag below.
 
 ---
 
