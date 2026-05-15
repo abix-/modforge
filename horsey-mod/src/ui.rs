@@ -25,6 +25,13 @@ fn render_overview() {
     ui::text_disabled(&format!("ext gene slots: {}", EXT_GENE_COUNT));
     ui::separator();
 
+    if !gamestate::looks_loaded() {
+        ui::text_disabled("(no save loaded -- start a game)");
+        let races = gamestate::races();
+        ui::text(&format!("Races:  {races}"));
+        return;
+    }
+
     let money = gamestate::money().unwrap_or(0);
     ui::text(&format!("Money:  ${money}"));
 
@@ -39,6 +46,10 @@ fn render_overview() {
 }
 
 fn render_horses() {
+    if !gamestate::looks_loaded() {
+        ui::text_disabled("(no save loaded -- start a game)");
+        return;
+    }
     let live = gamestate::live_horse_count();
     let total = gamestate::horse_count();
     ui::text(&format!("Live horses: {live} / {total} roster slots"));

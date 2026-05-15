@@ -24,40 +24,37 @@ pub struct HorseyState {
 
 impl HorseyState {
     /// Read the live state from the game. Cheap; ~10 atomic reads.
+    ///
+    /// When the world is not loaded (main menu, pre-save state) the
+    /// money/year/sleeps reads return whatever bytes happen to live
+    /// at those offsets, which can include fill patterns the engine
+    /// writes during transient states (e.g. year=16842752, sleeps=65793,
+    /// both byte-pattern leaks). To prevent garbage values from
+    /// bleeding into clients, we report `None` for those fields when
+    /// `looks_loaded()` returns false.
     pub fn capture() -> Self {
-        modforge::log!("capture: enter; reading gamestate ptr");
-        let gs = gamestate::ptr();
-        modforge::log!("capture: gamestate ptr = 0x{gs:x}");
-        modforge::log!("capture: reading money");
-        let money = gamestate::money();
-        modforge::log!("capture: money read OK");
-        modforge::log!("capture: reading year");
-        let year = gamestate::year();
-        modforge::log!("capture: year read OK");
-        modforge::log!("capture: reading sleeps");
-        let sleeps = gamestate::sleeps();
-        modforge::log!("capture: sleeps read OK");
-        modforge::log!("capture: reading races");
-        let races = gamestate::races();
-        modforge::log!("capture: races read OK");
-        modforge::log!("capture: reading horse_count");
-        let horse_count = gamestate::horse_count();
-        modforge::log!("capture: horse_count read OK ({horse_count})");
-        modforge::log!("capture: reading no_tire");
-        let no_tire = gamestate::no_tire();
-        modforge::log!("capture: no_tire read OK ({no_tire})");
-        modforge::log!("capture: reading debug_mode");
-        let debug_mode = gamestate::debug_mode();
-        modforge::log!("capture: debug_mode read OK ({debug_mode}); done");
+        let loaded = gamestate::looks_loaded();
+        if !loaded {
+            return Self {
+                world_loaded: false,
+                money: None,
+                year: None,
+                sleeps: None,
+                races: gamestate::races(),
+                horse_count: 0,
+                no_tire: gamestate::no_tire(),
+                debug_mode: gamestate::debug_mode(),
+            };
+        }
         Self {
-            world_loaded: gs != 0,
-            money,
-            year,
-            sleeps,
-            races,
-            horse_count,
-            no_tire,
-            debug_mode,
+            world_loaded: true,
+            money: gamestate::money(),
+            year: gamestate::year(),
+            sleeps: gamestate::sleeps(),
+            races: gamestate::races(),
+            horse_count: gamestate::horse_count(),
+            no_tire: gamestate::no_tire(),
+            debug_mode: gamestate::debug_mode(),
         }
     }
 

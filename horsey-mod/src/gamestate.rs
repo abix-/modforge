@@ -42,6 +42,64 @@ pub fn ptr() -> usize {
     targets::rebase(targets::GAMESTATE_PTR)
 }
 
+/// Heuristic: is a save actually loaded?
+///
+/// `ptr()` is always non-zero (the GameState struct is statically
+/// embedded in `.data`), so a presence check is meaningless. Instead
+/// we read the roster vector at `+0x280/+0x288`:
+///
+///   - Both pointers must be non-null and within a plausible heap
+///     range (`begin >= 0x10000`).
+///   - `end >= begin` (sane vector ordering).
+///   - `end - begin` must be a multiple of 0x24 (the roster entry
+///     stride) and yield a count under a sanity bound.
+///
+/// When no save is loaded, these slots usually hold null or leftover
+/// values from a prior session and one of the checks fails. When a
+/// save IS loaded, vanilla writes a real `std::vector<HorseEntry>`
+/// span into them and every check passes. Empirically reliable; if
+/// the game ever ships a build where the roster sits empty mid-load,
+/// the UI just shows "no save loaded" for that frame instead of
+/// garbage values.
+///
+/// Used by `snapshot::HorseyState::world_loaded` and by the in-game
+/// UI's loaded-vs-menu gate.
+pub fn looks_loaded() -> bool {
+    let p = ptr();
+    if p == 0 {
+        return false;
+    }
+    // SAFETY: GameState struct is statically embedded and always
+    // mapped; reading two pointer-sized fields at known offsets is
+    // safe regardless of whether a save is loaded. We never deref
+    // begin/end here, just inspect their numeric values.
+    let begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
+    let end = unsafe { *((p + gs_offset::HORSES_END) as *const usize) };
+    roster_span_looks_loaded(begin, end)
+}
+
+/// Pure decision: does a `(begin, end)` pair for the roster vector at
+/// `+0x280/+0x288` look like a real loaded-save span?
+///
+/// Extracted from `looks_loaded` so the heuristic itself is unit-
+/// testable without needing a live GameState.
+#[inline]
+pub fn roster_span_looks_loaded(begin: usize, end: usize) -> bool {
+    // Both pointers must look like heap addresses; nulls and tiny
+    // values are leftover / uninitialized.
+    if begin < 0x10000 || end < begin {
+        return false;
+    }
+    let span = end - begin;
+    if span % 0x24 != 0 {
+        return false;
+    }
+    let count = span / 0x24;
+    // Vanilla save format caps the roster around 256; allow 10x slack
+    // for modded saves. Anything bigger is fill-pattern noise.
+    count < 2560
+}
+
 /// Read a uint32 field from GameState at the given offset.
 pub fn read_u32(off: usize) -> Option<u32> {
     let p = ptr();
@@ -251,4 +309,57 @@ pub fn live_horse_ptr(i: usize) -> Option<usize> {
     }
     // SAFETY: read one pointer-sized slot inside the vector.
     Some(unsafe { *((begin + i * 8) as *const usize) })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::roster_span_looks_loaded as ok;
+
+    #[test]
+    fn null_pointers_are_not_loaded() {
+        assert!(!ok(0, 0));
+        assert!(!ok(0, 0x1000));
+        assert!(!ok(0x1000, 0x2000), "addrs below 0x10000 don't look like heap");
+    }
+
+    #[test]
+    fn end_before_begin_is_not_loaded() {
+        assert!(!ok(0x80000000, 0x70000000));
+    }
+
+    #[test]
+    fn misaligned_span_is_not_loaded() {
+        // span of 0x25 is not divisible by 0x24
+        assert!(!ok(0x80000000, 0x80000000 + 0x25));
+    }
+
+    #[test]
+    fn empty_but_aligned_span_is_loaded() {
+        // begin == end, span = 0; 0 % 0x24 == 0; count = 0 < 2560
+        assert!(ok(0x80000000, 0x80000000));
+    }
+
+    #[test]
+    fn typical_save_span_is_loaded() {
+        // 32 horses = 32 * 0x24 = 0x480
+        assert!(ok(0x80000000, 0x80000000 + 0x480));
+    }
+
+    #[test]
+    fn implausibly_huge_span_is_not_loaded() {
+        // 100k horses worth of stride: pure fill-pattern noise.
+        let huge = 100_000 * 0x24;
+        assert!(!ok(0x80000000, 0x80000000 + huge));
+    }
+
+    #[test]
+    fn fill_pattern_pointers_fail() {
+        // Reproduce the 2026-05-15 main-menu state: bytes at the
+        // roster slots hold a 0x01010101 fill pattern. Both pointers
+        // are < 0x10000 -> fails the first gate. Even if they were
+        // larger, the span is wildly off-stride.
+        let begin = 0x01010101usize;
+        let end = 0x02020202usize;
+        assert!(!ok(begin, end));
+    }
 }
