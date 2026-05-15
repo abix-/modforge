@@ -423,6 +423,10 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::sleeps()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::SLEEPS),
                     },
+                    "horse_ctx_offset": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::ctx_offset()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::HORSE_CTX_OFFSET),
+                    },
                 }))
             },
         ),

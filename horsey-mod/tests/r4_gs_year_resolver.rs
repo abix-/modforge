@@ -42,7 +42,20 @@ fn gs_year_resolver_agrees_with_hardcoded() {
         sresolved, shardcoded,
         "sleeps offset resolver mismatch: resolved=0x{sresolved:x} hardcoded=0x{shardcoded:x}"
     );
+
+    let ctx = result.get("horse_ctx_offset").expect("horse_ctx_offset entry");
+    let cresolved = u64_of_hex(ctx, "resolved").expect("resolved");
+    let chardcoded = u64_of_hex(ctx, "hardcoded").expect("hardcoded");
+    game.log().event(
+        "R4-CTX",
+        &format!("resolved=0x{cresolved:x} hardcoded=0x{chardcoded:x}"),
+    );
+    assert_eq!(
+        cresolved, chardcoded,
+        "horse_ctx_offset resolver mismatch: resolved=0x{cresolved:x} hardcoded=0x{chardcoded:x}"
+    );
+
     game.pass(&format!(
-        "gs_offset: year=0x{resolved:x} sleeps=0x{sresolved:x} (both match hardcoded)"
+        "R4: year=0x{resolved:x} sleeps=0x{sresolved:x} ctx=0x{cresolved:x} (all match hardcoded)"
     ));
 }

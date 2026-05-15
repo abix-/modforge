@@ -22,8 +22,10 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
 /// Vanilla offset from `horse` to the inline genome ctx the
-/// combinator takes. Mirror of `render_trampoline::HORSE_CTX_OFFSET`.
-const HORSE_CTX_OFFSET: usize = 0x2b8;
+/// combinator takes. Mirror of `render_trampoline::horse_ctx_offset()`.
+fn horse_ctx_offset() -> usize {
+    crate::targets::horse_offset::ctx_offset()
+}
 
 /// `FUN_1400a2d80` signature: three `longlong` pointers, void return.
 /// Decomp: `void FUN_1400a2d80(longlong param_1, longlong param_2,
@@ -84,9 +86,9 @@ unsafe extern "system" fn combinator_handler(
 
     // Recover horse base pointers. Vanilla call site:
     // FUN_1400a2d80(parent_a + 0x2b8, parent_b + 0x2b8, child + 0x2b8)
-    let pa_id = (p_a_ctx as usize).wrapping_sub(HORSE_CTX_OFFSET) as u64;
-    let pb_id = (p_b_ctx as usize).wrapping_sub(HORSE_CTX_OFFSET) as u64;
-    let child_id = (child_ctx as usize).wrapping_sub(HORSE_CTX_OFFSET) as u64;
+    let pa_id = (p_a_ctx as usize).wrapping_sub(horse_ctx_offset()) as u64;
+    let pb_id = (p_b_ctx as usize).wrapping_sub(horse_ctx_offset()) as u64;
+    let child_id = (child_ctx as usize).wrapping_sub(horse_ctx_offset()) as u64;
 
     combinator_slowpath(pa_id, pb_id, child_id);
     COMBINES_DONE.fetch_add(1, Ordering::Relaxed);

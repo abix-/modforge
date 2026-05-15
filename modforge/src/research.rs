@@ -312,6 +312,70 @@ pub fn histogram_top(hist: &BTreeMap<i64, usize>) -> Option<i64> {
     hist.iter().max_by_key(|&(_, count)| *count).map(|(&val, _)| val)
 }
 
+/// In-process: scan `.text` for `sig` and return matches whose
+/// address is in `[window_start, window_start + window_len)`.
+/// Patternsleuth-backed.
+pub fn in_process_scan_in_window(
+    sig: &str,
+    window_start: u64,
+    window_len: u64,
+) -> Result<Vec<u64>> {
+    let all = sleuth::scan_all_matches(sig)?;
+    Ok(all.into_iter()
+        .map(|a| a as u64)
+        .filter(|&a| a >= window_start && a < window_start + window_len)
+        .collect())
+}
+
+/// In-process: decode an immediate operand inside an instruction
+/// matching `opcode_prefix` somewhere in `[window_start, window_start
+/// + window_len)`. Returns a histogram of decoded imms (caller
+/// picks top, usually unique).
+///
+/// Use to recover constants embedded in instruction immediates:
+/// struct sizes (`mov ecx, 0x498`), field offsets (`add rcx,
+/// 0x2b8`), thresholds (`cmp eax, 5`), etc.
+pub fn in_process_decode_imm_in_window(
+    opcode_prefix: &str,
+    imm_offset: usize,
+    imm_size: usize,
+    window_start: u64,
+    window_len: u64,
+) -> Result<BTreeMap<i64, usize>> {
+    anyhow::ensure!(matches!(imm_size, 1 | 4), "imm_size must be 1 or 4");
+    // Build a full sig with imm wildcards: `<prefix> ?? ?? ?? ??`
+    // for imm_size=4 etc. patternsleuth needs explicit wildcards.
+    let mut sig = opcode_prefix.to_string();
+    // The opcode_prefix may end without trailing wildcards.
+    // Append imm_size wildcards so patternsleuth scans the full
+    // instruction width. imm_offset is the position WITHIN the
+    // matched bytes (not within the instruction beyond the match).
+    let prefix_bytes = parse_hex_bytes(opcode_prefix).len();
+    let total_match_len = imm_offset + imm_size;
+    if total_match_len > prefix_bytes {
+        for _ in prefix_bytes..total_match_len {
+            sig.push_str(" ??");
+        }
+    }
+    let hits = in_process_scan_in_window(&sig, window_start, window_len)?;
+    let mut hist: BTreeMap<i64, usize> = BTreeMap::new();
+    for instr_addr in hits {
+        // SAFETY: instr_addr is inside .text, mapped. The imm
+        // may be misaligned in the byte stream so use
+        // read_unaligned.
+        let imm_addr = instr_addr.wrapping_add(imm_offset as u64);
+        let val: i64 = unsafe {
+            if imm_size == 1 {
+                (imm_addr as *const i8).read_unaligned() as i64
+            } else {
+                (imm_addr as *const i32).read_unaligned() as i64
+            }
+        };
+        *hist.entry(val).or_insert(0) += 1;
+    }
+    Ok(hist)
+}
+
 /// R4: for every `e8 X<target_fn>` (rel32 call to a known
 /// function), walk backward `lookback` bytes for `imm_opcode`
 /// (e.g. `b9` for `mov ecx, imm32`) and decode the immediate.

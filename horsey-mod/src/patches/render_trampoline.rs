@@ -31,7 +31,9 @@ use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
 
 /// Vanilla offset from `horse` to the ctx pointer the engine takes.
 /// `FUN_14009f680(buf, horse + 0x2b8)`.
-const HORSE_CTX_OFFSET: usize = 0x2b8;
+fn horse_ctx_offset() -> usize {
+    crate::targets::horse_offset::ctx_offset()
+}
 
 /// Vanilla buffer length (floats). The caller stack-allocates
 /// `local_buf[353]` in every site we surveyed.
@@ -93,7 +95,7 @@ unsafe extern "system" fn engine_handler(buf: *mut f32, ctx: *mut c_void) {
     }
 
     // Back-compute the horse pointer; use it as a session-local id.
-    let horse_ptr = (ctx as usize).wrapping_sub(HORSE_CTX_OFFSET);
+    let horse_ptr = (ctx as usize).wrapping_sub(horse_ctx_offset());
     let horse_id = horse_ptr as u64;
 
     // SAFETY: vanilla allocated `float[353]` and just wrote into it;

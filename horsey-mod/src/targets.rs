@@ -201,6 +201,41 @@ pub mod horse_offset {
     /// Litter-size stat (int32). Used in breeding: children =
     /// min(parent_a.litter, parent_b.litter) + rng_bonus.
     pub const LITTER_SIZE_STAT: usize = 0x254;
+
+    /// Old decomp constant for the working-genome offset on the
+    /// Horse struct. Production should call [`ctx_offset()`].
+    pub const HORSE_CTX_OFFSET: usize = 0x2b8;
+
+    /// Pattern-resolved offset of the working genome inside the
+    /// Horse struct. Anchors on `HORSE_SAVE_LOADER`'s body, where
+    /// the function does `add rcx, 0x2b8` (or whatever the live
+    /// offset is) to advance from the Horse base to the genome
+    /// buffer. Decodes the imm32 of that instruction.
+    ///
+    /// Falls back to the hardcoded `HORSE_CTX_OFFSET` const when
+    /// the pattern misses.
+    pub fn ctx_offset() -> usize {
+        use std::sync::OnceLock;
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let Some(loader) = super::resolve::horse_save_loader() else {
+                return HORSE_CTX_OFFSET;
+            };
+            // Scan within the first 256 bytes of HORSE_SAVE_LOADER
+            // for `48 81 c1 ?? ?? ?? ??` (add rcx, imm32).
+            let hist = match modforge::research::in_process_decode_imm_in_window(
+                "48 81 c1", 3, 4, loader as u64, 256,
+            ) {
+                Ok(h) => h,
+                Err(_) => return HORSE_CTX_OFFSET,
+            };
+            // Pick the most-frequent imm; expect exactly one
+            // `add rcx, 0x2b8` in the function prologue.
+            modforge::research::histogram_top(&hist)
+                .map(|v| v as usize)
+                .unwrap_or(HORSE_CTX_OFFSET)
+        })
+    }
 }
 
 // =============================================================================
