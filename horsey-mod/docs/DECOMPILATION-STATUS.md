@@ -114,11 +114,7 @@ The decompilation engine has done its part. The remaining work is human (or AI-d
 
 ## Next steps
 
-1. Read and document each of the 20 extracted key functions. Curated names + descriptions land in [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md) (the merged function index).
-2. From those, reconstruct the `Horse` struct (the offsets like `+0x350`, `+0x39c`, `+0x3a0` from `interact_dispatch_or_status_check` are all fields of the same horse struct).
-3. Identify the fatigue counter byte and the age field. These are the targets for our mod.
-4. Walk callers and callees of named functions; document those too. Expand outward.
-5. Use `Function ID` Ghidra analyzer with public SDL3/MSVC signature databases to bulk-name vendor functions and exclude them from manual work.
+Action items tracked in [`todo.md`](todo.md) under "Decompilation next steps".
 
 ## Scripts in this repo
 

@@ -266,10 +266,6 @@ so our new genes can drive them.
 
 ### Mutator callers: still to trace
 
-- [ ] `FUN_1400c0660` (±5 mutator). Find callers,
-      check for literal indices.
-- [ ] `FUN_1400c03a0` (allele swap). Find callers.
-- [ ] `FUN_1400c1cf0` (CRISPR?). Find callers.
 
 ### Genome-layout side-finding
 
@@ -318,11 +314,6 @@ with reader patching.**
 
 Open sub-questions:
 
-- [ ] Is there unused padding after `DAT_1403ee4a4` we
-      could exploit for in-place expansion? Check the
-      symbol immediately following in the binary.
-- [ ] How much headroom do we want? 256 = double, 512 =
-      quadruple, 1024 = future-proof.
 
 ---
 
@@ -364,16 +355,6 @@ engine, not just what its alleles are.
 
 To do (folded into Phase 0 for completeness):
 
-- [ ] Cross-reference vanilla `pop.xml` against the 233
-      referenced indices to find genes that exist in code
-      but no pop authors at non-default weights. Those
-      are "soft-free" and may be safely repurposed by
-      having our trampoline override their effect.
-- [ ] Read each of the 7 hard-free slots (56, 57, 107,
-      183, 184, 209, 216) and confirm they're really
-      effect-free (the regex extracted only direct
-      `FUN_1400a5d20(local_508, N)` calls; the gene
-      might be read by other paths I haven't grepped).
 
 ### Net read
 
@@ -892,29 +873,9 @@ later).
 
 The remaining unknowns don't block Phase 1 decisions:
 
-- [ ] Q-render-1 still needs live `pop.xml` to
-      determine what genes vanilla pops use for unusual
-      effects (the `car` pop's wheels, the `helix`
-      pop's shape, etc.).
-- [ ] Map each of the 61 consumer-read slots to its
-      horse-struct destination offset. Doable by
-      reading `FUN_1400ab3d0` more thoroughly. Required
-      before we author specific gene-effect code, not
-      before Phase 1 strategy decisions.
-- [ ] Confirm the 91 fully-unused slots are not
-      touched by other consumer chains (e.g. the
-      breeding compatibility check
-      `FUN_1400b78d0` calls `FUN_1400c5c10` with two
-      buffers but uses different stack offsets, so it
-      may consume more slots).
 
 ### Q-render-1 (still open)
 
-- [ ] For each "new visual mode" we want (wings, wheels,
-      transparency, etc.), determine if any vanilla
-      pop already exhibits it (specifically: does `car`
-      reuse some gene to drive wheel rendering?). Need
-      live `pop.xml` to answer.
 
 ---
 
@@ -1010,3 +971,5 @@ we choose to redefine.
 Worth investigating in Phase 0 before committing to
 full table extension. Adds Q-gene-5: "how many of the
 242 vanilla genes are unused / under-used?"
+
+> **Action items** for this doc are tracked in [`todo.md`](todo.md#bestiary-viability-research).

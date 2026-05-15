@@ -147,8 +147,5 @@ Treat the JumboDS64 facts as high confidence where they intersect with our findi
 
 ## Things to verify against our decompilation
 
-- [ ] Confirm pop.xml `p0`/`p1`/`p2`/`p3` are INVERSE weights (read the spawn code in chromomap loader or similar).
-- [ ] Confirm "press 5 in balloon" = x300 speed by reading the balloon controller / pause input handler.
-- [ ] Find the buried-item ID -> item-type table in code (offsets 0-47).
-- [ ] Find the building-uniqueness check (first-instance-wins logic).
-- [ ] Find the CRISPR-Lab world-swap logic (vial sub-map teleport).
+
+> **Action items** for this doc are tracked in [`todo.md`](todo.md#external-knowledge-verification-gaps).

@@ -325,13 +325,6 @@ designing extended breeding logic.
 
 To do:
 
-- [ ] Find the breeding combinator function. Probably
-      called `FUN_14005d190` with one parent then
-      again with the other, or a higher-level function
-      that does both.
-- [ ] Confirm the runtime mutation-during-breeding
-      behavior: does the child get random allele
-      flips beyond the parent picks?
 
 ---
 

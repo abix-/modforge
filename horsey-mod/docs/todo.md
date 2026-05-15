@@ -1458,3 +1458,173 @@ User wants to mod out the tedium loop:
 2. Horse lifespan: horses die too quickly, forcing constant breeding/killing/swapping. Want longer lifespans (or much slower aging).
 
 Complaint is FREQUENCY, not the mechanics. Goal is to dial knobs down, not delete mechanics. Target outcome: play sessions focused on racing and farming, not constant rotation of dying horses.
+
+
+---
+
+# Appendix: Action items consolidated from subject docs (2026-05-15)
+
+Each subsection below was extracted from the doc named in its header. The source doc now keeps the narrative/plan structure but the actionable checkboxes live here as the single source of truth.
+
+## Address resolution (R1-R5 phased plan)
+
+_Source: [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md)._
+
+- [ ] Add `targets::image_sha256()`: read the running Horsey.exe
+      bytes from the loaded module, hash the .text + .data
+      sections (skip the .reloc table that changes per-load),
+      log the result at attach.
+- [ ] Add an HTTP op `game.build_info` returning hash + mtime +
+      `image_base()` + a "known build name" if the hash matches
+      one we've recorded.
+- [ ] Add `horsey-mod/research/known-builds.toml`: a per-build manifest
+      with `{ hash: "...", date: "...", decomp_index_path: "..." }`
+      so future sessions can be told "you're on build X, decomp
+      at Y" without guessing.
+- [ ] Add a `targets::resolved` module. For each function we
+      hook, define a patternsleuth signature. A sequence of
+      bytes from the function's prologue, with `?` wildcards
+      for compiler-shifted instructions (RIP-relative LEA
+      displacements, immediate constants that the linker
+      adjusts).
+- [ ] At DLL attach (before any patch / detour), run a single
+      patternsleuth scan over the .text section for all
+      registered patterns. Populate a static map
+      `(symbol, resolved_addr)`.
+- [ ] `targets::fn_addr::APPLY_GENE_TO_HORSE` (and friends)
+      become lookups into the map instead of `const usize`
+      values. Pre-existing fixed-address callers keep working
+      via accessor functions.
+- [ ] HTTP op `targets.scan_report` returns
+      `{ symbol: "...", resolved_addr: "0x...", matched_via:
+      "pattern_id", confidence: "exact" | "fuzzy" }` so we can
+      diff against the previous run.
+- [ ] `horsey-mod/research/extract-signatures.py`. Inputs: the
+      `decompiled/INDEX.md` + the function-body files. Output:
+      a TOML / Rust constants file with prologue bytes and
+      suggested wildcards for each function we care about.
+      Wildcards picked by diffing the same function across
+      multiple known builds. Bytes that differ across builds
+      become `?`.
+- [ ] CI / pre-merge check: run the extractor on the latest
+      decomp, diff against the committed signatures, fail if
+      any drift > threshold.
+- [ ] Per-function comment in `targets/resolved.rs` cites the
+      decomp file the signature was derived from
+      (e.g. "from 1400a/1400a5d20.c lines 1-15").
+- [ ] If a critical-path function fails resolution (e.g.
+      EVAL_DIPLOID_BLEND_A), `arm()` for the related detour
+      refuses to install and logs a clear "function not found
+      in this build; re-extract signatures or extend wildcards"
+      message.
+- [ ] If a non-critical function (CRISPR UI dispatcher) fails,
+      log + continue. The mod still works minus that feature.
+- [ ] `dryrun` HTTP ops report `resolved: bool` per target so
+      the operator can see what's missing before arming.
+- [ ] At attach: compare `image_sha256()` to the hash that
+      generated the current `decompiled/INDEX.md`. If different,
+      print a big-yellow log line: "Game updated since last
+      decomp; addresses MAY be stale."
+- [ ] Optional: a `tools/refresh-decomp.ps1` wrapper that
+      runs `horsey-mod/research/decompile.py` + `extract-signatures.py`
+      back-to-back, commits the diff under a `chore:` prefix.
+- [ ] Optional: a GitHub Actions job triggered manually that
+      runs the same on a Windows runner with Ghidra installed.
+
+## External-knowledge verification gaps
+
+_Source: [`EXTERNAL-KNOWLEDGE.md`](EXTERNAL-KNOWLEDGE.md)._
+
+- [ ] Confirm pop.xml `p0`/`p1`/`p2`/`p3` are INVERSE weights (read the spawn code in chromomap loader or similar).
+- [ ] Confirm "press 5 in balloon" = x300 speed by reading the balloon controller / pause input handler.
+- [ ] Find the buried-item ID -> item-type table in code (offsets 0-47).
+- [ ] Find the building-uniqueness check (first-instance-wins logic).
+- [ ] Find the CRISPR-Lab world-swap logic (vial sub-map teleport).
+
+## Bestiary viability research
+
+_Source: [`VIABILITY.md`](VIABILITY.md)._
+
+- [ ] `FUN_1400c0660` (±5 mutator). Find callers,
+      check for literal indices.
+- [ ] `FUN_1400c03a0` (allele swap). Find callers.
+- [ ] `FUN_1400c1cf0` (CRISPR?). Find callers.
+- [ ] Is there unused padding after `DAT_1403ee4a4` we
+      could exploit for in-place expansion? Check the
+      symbol immediately following in the binary.
+- [ ] How much headroom do we want? 256 = double, 512 =
+      quadruple, 1024 = future-proof.
+- [ ] Cross-reference vanilla `pop.xml` against the 233
+      referenced indices to find genes that exist in code
+      but no pop authors at non-default weights. Those
+      are "soft-free" and may be safely repurposed by
+      having our trampoline override their effect.
+- [ ] Read each of the 7 hard-free slots (56, 57, 107,
+      183, 184, 209, 216) and confirm they're really
+      effect-free (the regex extracted only direct
+      `FUN_1400a5d20(local_508, N)` calls; the gene
+      might be read by other paths I haven't grepped).
+- [ ] Q-render-1 still needs live `pop.xml` to
+      determine what genes vanilla pops use for unusual
+      effects (the `car` pop's wheels, the `helix`
+      pop's shape, etc.).
+- [ ] Map each of the 61 consumer-read slots to its
+      horse-struct destination offset. Doable by
+      reading `FUN_1400ab3d0` more thoroughly. Required
+      before we author specific gene-effect code, not
+      before Phase 1 strategy decisions.
+- [ ] Confirm the 91 fully-unused slots are not
+      touched by other consumer chains (e.g. the
+      breeding compatibility check
+      `FUN_1400b78d0` calls `FUN_1400c5c10` with two
+      buffers but uses different stack offsets, so it
+      may consume more slots).
+- [ ] For each "new visual mode" we want (wings, wheels,
+      transparency, etc.), determine if any vanilla
+      pop already exhibits it (specifically: does `car`
+      reuse some gene to drive wheel rendering?). Need
+      live `pop.xml` to answer.
+
+## Content-creation verification gaps
+
+_Source: [`CONTENT-CREATION.md`](CONTENT-CREATION.md)._
+
+- [ ] **`p0..p3` are inverse weights** - read the gene-allele selection code.
+- [ ] **Adding new gene NAMES** - read `FUN_1400a3eb0` (chromomap loader). Does it accept arbitrary names or only the 242 enum'd ones?
+- [ ] **First-instance-wins building rule** - find the building-placement scan code.
+- [ ] **Item ID 48+ bug** - find the item table.
+- [ ] **400x225 map size** - find the tmx parser.
+
+## Gene system open questions
+
+_Source: [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1: Conceptual model._
+
+- [ ] Find the breeding combinator function. Probably
+      called `FUN_14005d190` with one parent then
+      again with the other, or a higher-level function
+      that does both.
+- [ ] Confirm the runtime mutation-during-breeding
+      behavior: does the child get random allele
+      flips beyond the parent picks?
+
+## Decompilation next steps
+
+_Source: [`DECOMPILATION-STATUS.md`](DECOMPILATION-STATUS.md)._
+
+- [ ] Read and document each of the 20 extracted key functions. Curated names + descriptions land in [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md) (the merged function index).
+- [ ] Reconstruct the `Horse` struct (offsets like `+0x350`, `+0x39c`, `+0x3a0` from `interact_dispatch_or_status_check` are all fields of the same horse struct).
+- [ ] Identify the fatigue counter byte and the age field. Mod targets.
+- [ ] Walk callers and callees of named functions; document those too. Expand outward.
+- [ ] Use `Function ID` Ghidra analyzer with public SDL3/MSVC signature databases to bulk-name vendor functions and exclude them from manual work.
+
+## Save format research
+
+_Source: [`SAVE-FORMAT.md`](SAVE-FORMAT.md)._
+
+Find the two fields needed to address the user's complaints, both presumably in one of the big binary blocks of `save1.dat` (most likely the 55KB block at 0x0d4f, possibly the 188KB tail):
+
+- [ ] **Fatigue counter** (post-race tiredness). Save-diff procedure: save (state A), race a horse exactly once, save (state B), byte-diff. The bytes that changed are: race counter, fatigue, timestamp, RNG state, horse position, audience state. The fatigue counter should be at the same offset relative to the raced horse's record.
+- [ ] **Age field** (and the retirement threshold). Save-diff procedure: save A, let many in-game days pass (no race/breed), save B. Bytes that monotonically increased = age candidates.
+- [ ] **Identify genome location**. 242 genes x ~4 bytes = ~970 bytes per horse; 55KB block / 85 horses = 646 bytes/horse. Close enough to test. Per-horse genome may be variable length depending on which genes apply to that pop.
+- [ ] **Confirm pop_id mapping** in the roster. Cross-reference observed pop_id values (1, 2, 3, 4, 5, 7, 12, 255) against `pop.xml` ordering. If it matches we have a free byte to mod a horse's apparent population without re-rolling its genome.
+- [ ] **Decode flag_a..flag_e** in the 22-byte trailer. Could be sex, gender-marker, pregnant state, current location, breed sub-type, color.

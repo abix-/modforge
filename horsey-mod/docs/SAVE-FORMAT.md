@@ -70,37 +70,9 @@ Observed values: 1, 2, 3, 4, 5, 7, 12, 255. From `pop.xml`, the populations in o
 
 If we number them 0..N (or 1..N), 1=default fits "Dale" being an ordinary horse, and 12=moose or similar fits a weird horse. 255 looks like a sentinel for "freak" or "custom". Worth testing.
 
-## What we DON'T know yet (and need to find)
+## Open work
 
-To address the user's complaints, we need:
-1. **The fatigue counter** (post-race tiredness).
-2. **The age field** (and what threshold triggers retirement).
-
-Neither is in the 22-byte horse-roster record. Both are presumably in one of the big binary blocks (most likely the 55KB block at 0x0d4f, but possibly the 188KB tail).
-
-## How to actually find them: save-diff experiment
-
-This is the cleanest, lowest-effort way to KNOW which bytes are the fatigue counter and which are the age. No reverse engineering needed.
-
-Procedure:
-
-1. In-game: save the game manually (call it state A). Copy `save1.dat` to e.g. `save_A.dat`.
-2. In-game: race a horse exactly once. Save again (state B). Copy to `save_B.dat`.
-3. Diff the two byte-by-byte. Most bytes will be unchanged. The bytes that DID change are: incremented race counter, incremented fatigue, maybe a timestamp, maybe an RNG state, the horse position, the audience state.
-4. Filter: the FATIGUE COUNTER should be at the same offset relative to the raced horse's record. Other state changes (audience, RNG) will be in other regions. Cross-reference with the horse's roster offset.
-
-For age:
-1. Save (state A). Copy.
-2. In-game: let many in-game days pass (don't race, don't breed).
-3. Save (state B). Copy.
-4. Diff. Bytes that monotonically increased = candidates for age fields.
-
-## Next experiments (in order)
-
-1. **Save-diff for fatigue**: race once, diff. Find the byte that incremented for the raced horse.
-2. **Save-diff for age**: pass time, diff. Find the bytes that monotonically increased per horse.
-3. **Identify genome location**: count alleles in `genes.xml` (242 genes × ~4 bytes = ~970 bytes per horse), divide the 55KB block by 85 horses (= 646 bytes/horse). Doesn't quite match, but close enough to test. Per-horse genome may be variable length depending on which genes apply to that pop.
-4. **Confirm pop_id mapping**: cross-reference observed pop_id values in roster against `pop.xml` ordering. If it matches, we have a free byte to mod (change a horse's apparent population without re-rolling its genome).
+Action items (find fatigue/age fields, identify genome location, confirm pop_id mapping, run save-diff experiments) are tracked in [`todo.md`](todo.md#save-format-research).
 
 ## Tools
 

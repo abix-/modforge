@@ -52,88 +52,28 @@ Trivial; unblocks everything else. Goal: every attach logs the
 exact build we're on, so when something breaks we can tell
 "this is the build we tested" vs "this is a new build."
 
-- [ ] Add `targets::image_sha256()`: read the running Horsey.exe
-      bytes from the loaded module, hash the .text + .data
-      sections (skip the .reloc table that changes per-load),
-      log the result at attach.
-- [ ] Add an HTTP op `game.build_info` returning hash + mtime +
-      `image_base()` + a "known build name" if the hash matches
-      one we've recorded.
-- [ ] Add `horsey-mod/research/known-builds.toml`: a per-build manifest
-      with `{ hash: "...", date: "...", decomp_index_path: "..." }`
-      so future sessions can be told "you're on build X, decomp
-      at Y" without guessing.
 
 ### Phase R2: patternsleuth resolver
 
 Replace fixed `targets::fn_addr::*` constants with a runtime
 resolver that pattern-scans the loaded image.
 
-- [ ] Add a `targets::resolved` module. For each function we
-      hook, define a patternsleuth signature. A sequence of
-      bytes from the function's prologue, with `?` wildcards
-      for compiler-shifted instructions (RIP-relative LEA
-      displacements, immediate constants that the linker
-      adjusts).
-- [ ] At DLL attach (before any patch / detour), run a single
-      patternsleuth scan over the .text section for all
-      registered patterns. Populate a static map
-      `(symbol, resolved_addr)`.
-- [ ] `targets::fn_addr::APPLY_GENE_TO_HORSE` (and friends)
-      become lookups into the map instead of `const usize`
-      values. Pre-existing fixed-address callers keep working
-      via accessor functions.
-- [ ] HTTP op `targets.scan_report` returns
-      `{ symbol: "...", resolved_addr: "0x...", matched_via:
-      "pattern_id", confidence: "exact" | "fuzzy" }` so we can
-      diff against the previous run.
 
 ### Phase R3: Signature authoring workflow
 
 Make it 1-command to derive a new signature after a decomp pass.
 
-- [ ] `horsey-mod/research/extract-signatures.py`. Inputs: the
-      `decompiled/INDEX.md` + the function-body files. Output:
-      a TOML / Rust constants file with prologue bytes and
-      suggested wildcards for each function we care about.
-      Wildcards picked by diffing the same function across
-      multiple known builds. Bytes that differ across builds
-      become `?`.
-- [ ] CI / pre-merge check: run the extractor on the latest
-      decomp, diff against the committed signatures, fail if
-      any drift > threshold.
-- [ ] Per-function comment in `targets/resolved.rs` cites the
-      decomp file the signature was derived from
-      (e.g. "from 1400a/1400a5d20.c lines 1-15").
 
 ### Phase R4: Graceful degradation
 
 When a pattern fails to match (function genuinely rewritten),
 the mod must NOT silently install a detour at a stale address.
 
-- [ ] If a critical-path function fails resolution (e.g.
-      EVAL_DIPLOID_BLEND_A), `arm()` for the related detour
-      refuses to install and logs a clear "function not found
-      in this build; re-extract signatures or extend wildcards"
-      message.
-- [ ] If a non-critical function (CRISPR UI dispatcher) fails,
-      log + continue. The mod still works minus that feature.
-- [ ] `dryrun` HTTP ops report `resolved: bool` per target so
-      the operator can see what's missing before arming.
 
 ### Phase R5: Auto-decomp on detected build change
 
 The expensive piece. Only worth it if game updates are weekly+.
 
-- [ ] At attach: compare `image_sha256()` to the hash that
-      generated the current `decompiled/INDEX.md`. If different,
-      print a big-yellow log line: "Game updated since last
-      decomp; addresses MAY be stale."
-- [ ] Optional: a `tools/refresh-decomp.ps1` wrapper that
-      runs `horsey-mod/research/decompile.py` + `extract-signatures.py`
-      back-to-back, commits the diff under a `chore:` prefix.
-- [ ] Optional: a GitHub Actions job triggered manually that
-      runs the same on a Windows runner with Ghidra installed.
 
 ## Tooling we already have
 
@@ -204,3 +144,5 @@ worth it.
 - A fresh decomp is running in the background as of this doc
   being written. Outputs land in
   `C:/code/horsey-mods/decompiled` and will be mirrored.
+
+> **Action items** for this doc are tracked in [`todo.md`](todo.md#address-resolution-r1-r5-phased-plan).

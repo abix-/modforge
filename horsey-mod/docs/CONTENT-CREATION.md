@@ -762,10 +762,7 @@ Open verification questions where the JumboDS64 guide is our only source. To clo
 
 These claims need verification against our decompilation:
 
-- [ ] **`p0..p3` are inverse weights** - read the gene-allele selection code.
-- [ ] **Adding new gene NAMES** - read `FUN_1400a3eb0` (chromomap loader). Does it accept arbitrary names or only the 242 enum'd ones?
-- [ ] **First-instance-wins building rule** - find the building-placement scan code.
-- [ ] **Item ID 48+ bug** - find the item table.
-- [ ] **400x225 map size** - find the tmx parser.
 
 Where the guide and our decompilation agree (debug mode unlock), confidence is very high. Where the guide is the only source (e.g. item ID list), treat as community-verified but not engine-verified.
+
+> **Action items** for this doc are tracked in [`todo.md`](todo.md#content-creation-verification-gaps).
