@@ -146,3 +146,16 @@ worth it.
   `C:/code/horsey-mods/decompiled` and will be mirrored.
 
 > **Action items** for this doc are tracked in [`todo.md`](todo.md#address-resolution-r1-r5-phased-plan).
+
+## Game install location (Steam)
+
+Horsey Game's **Steam AppID is `3602570`** (sourced from [`ZyonixGaming/Horsey-Game-Save-Manager`](https://github.com/ZyonixGaming/Horsey-Game-Save-Manager) `.ahk` script, MIT). Auto-detect the install folder from the registry:
+
+```
+SteamPath := RegRead("HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")
+# Parse SteamPath\steamapps\libraryfolders.vdf for the library containing appid 3602570.
+# Install path: <library>\steamapps\common\Horsey Game
+# Save dir:     <library>\steamapps\common\Horsey Game\save  (contains save1.dat, save1.dat.prev, settings.xml)
+```
+
+`horsey-mod`'s injector already takes `--dll <path>` so this isn't blocking, but it's the right pattern for any UI/tooling that wants to one-click "open my Horsey install". Credit ZyonixGaming for the AppID + the registry-walk recipe.

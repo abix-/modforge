@@ -42,6 +42,55 @@ These are the candidates worth deep-reading.
 | `FUN_1401c5ac0` | +0x70, +0x98, +0x200 | 3/23 |
 | `FUN_1401f32b0` | +0x80, +0x90, +0x2a8 | 3/23 |
 
+### Cross-reference with ALL-FUNCTIONS.md
+
+Manually classified 2026-05-15 by cross-referencing the candidate list against [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md):
+
+**Confirmed horse-handlers (read real horse fields):**
+
+| Function | Name in ALL-FUNCTIONS | Subsystem |
+|---|---|---|
+| `FUN_1400df280` | `retire_horse_handler` | gameplay (retirement) |
+| `FUN_140089510` | `copy_genome_to_clipboard` | UI / serialization |
+| `FUN_14010ba40` | `debug_print_population_stats` | debug print |
+| `FUN_140094a20` | `show_race_ready_prompt` | UI prompt |
+| `FUN_1400dcab0` | `show_getting_old_sale_dialog` | UI (buyer dialog) |
+| `FUN_1400e0aa0` | `show_all_rested_message` | UI message |
+
+**Likely false positives (regex collision with non-horse structs):**
+
+| Function | Name | Why noise |
+|---|---|---|
+| `FUN_1400ba940` | `init_struct` (auto-named) | 7179-byte body iterates a different entity list at `param_1+0x40` stride 0xb8; offsets match inner record, not horse |
+| `FUN_140107660` | `init_struct` | sequential field init pattern |
+| `FUN_1401c97e0` | `init_struct` | sequential field init pattern |
+| `FUN_14007b2e0` | `init_struct` | sequential field init pattern |
+| `FUN_140080e40` | `batch_call_080cc0` | loop-call wrapper |
+| `FUN_140102060` | `batch_call_0c5c20` | loop-call wrapper |
+| `FUN_140106bc0` | `batch_call_2c7088` | loop-call wrapper |
+| `FUN_1400d2090` | `float_math_main` | generic math |
+| `FUN_140101dc0` | `float_helper` | generic math |
+| `FUN_140081600` | `helper_with_2_callees` | generic helper |
+
+**Unclassified (no entry in ALL-FUNCTIONS.md, need first-look):** `FUN_14003d890`, `FUN_140155130`, `FUN_1401ef800`, `FUN_14003c8c0`, `FUN_1400e25b0`.
+
+**Key finding:** none of the confirmed horse-handlers are in the renderer call chain. They're all UI / gameplay / debug. The renderer reads the horse-struct fields the consumer wrote, but the regex fingerprint isn't isolating it. Likely the renderer reads through a NESTED pointer (e.g. `horse->render_state->field`) which our `var + 0xNN` regex doesn't capture cleanly, or uses field names after Ghidra struct propagation that strip the offset literal.
+
+### Consumer call-site forward trace (2026-05-15)
+
+All 6 known call sites of `FUN_1400ab3d0` in `all_functions.c` are **regeneration events**, not per-frame render calls:
+
+| Caller | Line | Context |
+|---|---|---|
+| `FUN_1400b2e30` | 104380 | child-from-parents (calls genome-merge `FUN_1400a2d80` first) |
+| `FUN_1400b2ee0` | 104441 | horse init with pop, sets `+0x234` and `+0x1fc=2` after |
+| `FUN_1400b3070` | 104585, 104614 | horse regen wrapping CRISPR-style flows; iterates entity list at 0xb8 stride |
+| `FUN_1400c1xxx` | 113025, 113052 | CRISPR genome mutate then regen, sets `+0x1fc=2` |
+
+The consumer's job is **persistent overwrite of horse-struct fields whenever gene-derived attributes change** (birth, CRISPR, respawn). The renderer reads those fields independently, per frame, decoupled from these call sites. Forward-tracing from the consumer's callers leads to event triggers, not the renderer.
+
+**Conclusion:** don't chase the renderer statically. Finding it cleanly needs Ghidra struct propagation across the horse type. The slot map is good enough to ship with: gene -> slot (per-gene table in GENE-CATALOG.md) + slot -> horse struct offset (consumer map) + working D5 trampoline + one empirically confirmed slot. Per-feature classification of the remaining 22 direct-copy slots will be populated as a side effect of bestiary authoring, not enumerated ahead of demand.
+
 ## Per-offset reader tables (full, unfiltered)
 
 ## `+0x58` (88 dec)

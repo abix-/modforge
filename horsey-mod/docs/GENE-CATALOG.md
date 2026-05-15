@@ -863,6 +863,17 @@ value via the D5 post-hook and observing in-game.
 |---|---|---|---|
 | 0 | 200.0 | "Full screen width" babies (mated 2 horses, offspring rendered enormously wide). Drives a primary scale parameter; consumer reads `*param_2` (slot 0) and compares with slot 1 to gate which write path runs. | `BX_TEST_SLOT0` set mode (3,3) blend = 200.0 |
 
+#### Per-feature classification of the other 22 direct-copy slots: deliberately deferred
+
+We tried to derive `slot -> visible feature` statically.
+What we found:
+
+- Direct field-reader regex (`research/extract-field-readers.py`) pulled 2339 candidate readers across the 23 direct-copy offsets, narrowed by horse-handler fingerprint (>= 3 offsets + one of the rare high offsets `+0x200`/`+0x254`/`+0x2a8`) to 24 candidates, then cross-referenced against `ALL-FUNCTIONS.md`. **None are renderers.** Confirmed handlers are gameplay/UI/debug only (`retire_horse_handler`, `copy_genome_to_clipboard`, `debug_print_population_stats`, etc.).
+- Forward-trace from `FUN_1400ab3d0`'s 6 known call sites (2026-05-15) showed every call site is a **regeneration event** (birth, CRISPR, pop-respawn), not a per-frame render call. The consumer writes horse-struct fields persistently; the renderer reads them per-frame in a decoupled path. Forward-tracing leads to event triggers, not the renderer.
+- The renderer almost certainly reads through nested pointers (`horse->subsystem->field`) or vtable dispatch into a render subsystem, so the `*(T*)(var + 0xNN)` regex never matches it. Finding it cleanly needs Ghidra struct propagation across the horse type. Hours of skilled RE work.
+
+**Decision: ship with the slot map as-is.** We have gene -> slot (per-gene table) + slot -> horse-struct offset (consumer map) + working D5 trampoline + one confirmed slot. Per-feature classification of the other 22 will be populated as a side effect of bestiary authoring (each new species naturally probes a few slots) rather than enumerated speculatively. See [`FIELD-READERS.md`](FIELD-READERS.md) for the static analysis output.
+
 ### Modder workflow
 
 #### To make a new SPECIES (new pop)
@@ -1368,4 +1379,166 @@ In-game color coding for bases: **A = yellow**, **T = red**, **C = blue**, **G =
 Notes:
 - 240 genes spread across 20 helices.
 - The `SIZE` gene has no explicit helix-position assignment in the executable. The Genome Mapper team speculates it fills Helix 6 position 0 by default and evaluates at baseline (95) independently.
-- Both strands at the same position store independent allele picks; the diploid blend in Part 1 combines them.
+- Both strands at the same position store independent allele picks; the diploid blend in Part 1 combines them.## Part 5: Per-gene semantic descriptions (community-sourced)
+
+> Sourced from [`alexjthomson/horsey-crispr`](https://github.com/alexjthomson/horsey-crispr) (`index.html`, `GENE_DESCRIPTIONS` constant). 153 hand-written descriptions of what each gene does in-game, with the best/worst base for behavior- and stat-relevant genes. Many cite the [Horsey Game wiki at horseygame.miraheze.org](https://horseygame.miraheze.org) - community-verified knowledge we should incorporate where it doesn't conflict with our decomp findings.
+
+Confidence note: these descriptions are community wiki + reading the gene tables, NOT direct decomp citations. Treat as **medium confidence** unless cross-validated by our gene engine trace (Part 2).
+
+| Gene | Description |
+|---|---|
+| `NARCOLEPSY` | Horse randomly falls asleep when idle if nonzero. Keep A, T, or C to avoid random sleep; G is the only narcoleptic value. |
+| `RAMPAGE` | Rampage/aggression state value. Wiki mapping places C as active value 1; A, T, and G are 0. During rampage, locomotion signals may be overridden and the horse may fight, bolt, and flee. |
+| `HIGH_INTELLECT` | Enables progression to genius behaviour. T and G are active; A and C are inactive. Required for philosophical/refusal states. |
+| `BRAIN_SPASTIC` | Applies random positional jitter each tick, causing twitching and erratic movement. A is the strongest spasm value, G is mild, T/C are none. When active, it may suppress visible old-age perturbation effects. |
+| `WHITE_IS_LETHAL` | If active and WHITE coat is expressed in a foal, a lethal check may be applied at birth. G is the active lethal-white value according to the wiki table. |
+| `FLU_IMMUNITY` | Grants immunity to the flu mechanic. G is immune; A/T/C are susceptible. This appears tied to the sickness/immunity mechanic sometimes referred to as Sweetie. |
+| `LIMP` | Affects gait asymmetry. C produces the strong limp value, G the slight limp value, A/T are normal. Likely worsens with age. |
+| `LEG_AND_ARM_LIMP` | Applies limp to all limbs simultaneously instead of just an asymmetric gait. C is active in the wiki table. |
+| `OMNIVORE` | Enables carnivorous/omnivorous behaviour. A is active in the wiki table; T/C/G are inactive. When active, the horse may chase and eat NPCs or other horses instead of grazing normally. |
+| `LITTER_SIZE` | Directly controls number of offspring per birth. A=3, T=2, C=1, G=5. G is the high-litter allele. |
+| `SPINAL_LOCO` | Controls locomotion mode: 0 = legs only, 1 = mild spinal undulation, 2 = full serpentine/worm-like movement. A gives the maximum serpentine mode; C/G are safest for normal racing movement. |
+| `LOCO_SYNC` | Global locomotion synchronisation flag. T enables coordinated limb timing; A/C/G leave limbs free-running, which can produce chaotic motion. |
+| `BREAK_FORCE` | Controls stamina/rest drain behaviour. T or G gives 0, which may help speed because lower values reduce braking/rest pressure. |
+| `MUSCLE_USE` | Global body-wide force multiplier used throughout movement physics. C/G give maximum output; higher values give more power but can make movement more erratic. |
+| `STIFF_JOINTS` | Reduces joint flexibility. A is the stiffest value in the wiki table; T/C are 0 and G is moderate. |
+| `OSTODERM` | Adds bony skin plates/osteoderms. Related to OSTO_SIZE, which controls their scale. |
+| `TAIL_BOTTOM` | Controls tail attachment/bottom setting visually and appears to serve as an internal structural anchor/sentinel in game data. |
+| `NECK_STIFF` | Disables or reduces neck flexibility. A and G are stiff values; T/C are flexible values. May suppress NECK_FLEXIBILITY and related neck motion. |
+| `GUT_IS_UDDER` | Transforms the body mesh into an udder-like shape by offsetting ventral geometry. Visual effect only. |
+| `GIANT_DWARF` | Applies a body scale preset: A=66 dwarf, C=133 giant, T/G=100 normal. Stacks with other body proportion genes. |
+| `WHITE` | Activates white coat expression. T is active in the wiki table. If WHITE_IS_LETHAL is also active, white foals may die at birth. |
+| `AGOUTI` | Restricts pigment to the extremities, producing a bay-like pattern with darker points and lighter body/belly regions. |
+| `COON_EYE` | Applies a dark eye-mask marking. A is strongest, C is partial, T/G are off. |
+| `EAR_COMP` | Applies alternate/complementary colour to the ears. C is the strongest value, A is lower, T/G are off. |
+| `SWAP_BASE_SPOT` | Swaps the base coat colour with the spot/pattern colour, inverting the colour distribution. |
+| `SWAP_ALT_SPOT` | Swaps the alternate colour layer with the spot colour layer. Can combine with SWAP_BASE_SPOT. |
+| `OLD_AGE` | Applies progressive physical degradation over time through visible body-coordinate perturbations. C=-1, G=2, A/T=0. Retirement age itself appears hardcoded. |
+| `TAIL_ALT` | Selects between different prebuilt tail meshes. This is a mode selector, not a continuous adjustment. |
+| `TAIL_SHAPE` | Controls tail curvature by bending the currently selected tail mesh. Higher values produce stronger curve. |
+| `TAIL_ASPECT` | Controls tail thickness/roundness in cross-section. Lower values make it flatter/thinner; higher values thicker/rounder. |
+| `OSTO_SIZE` | Controls spike size if dorsal spikes/osteoderms are present. Most relevant when OSTODERM is active. |
+| `CHEST_SMALL` | Affects body size and chest shape. Likely complements or opposes CHEST_BIG depending on expression. |
+| `SPEED_FACTOR` | Primary movement speed multiplier. T=133 is the highest-value allele for speed-focused builds. |
+| `LEG_STRENGTH` | Controls leg force output. C=120 is the highest-value allele for raw leg force; useful for racing if stable locomotion is preserved. |
+| `LEG_LENGTH` | Controls leg length. T=120 is the longest-leg allele and can improve stride length. |
+| `HEAD_SIZE` | Controls head scale. Values are additive across both strands: A=75, T=133, C=50, G=100. |
+| `EYE_STYLE` | Selects eye type/style variant. Treated as a discrete style selector rather than a continuous physical parameter. |
+| `BUGEYE` | Controls eye protrusion. T=2 is most bulging, A=1 is partial, C/G are flat. |
+| `EYE_SIZE` | Controls eye size. Values are additive across both strands: A=50, T=125, C=75, G=50. |
+| `PUPIL_SIZE` | Controls pupil diameter. A=80 is largest; T/G=40 are smallest; C=66 is mid-sized. |
+| `LEG_IS_CIRCLE` | Changes leg geometry into a circular/wheel-like form. T is active. |
+| `FOOT_IS_CIRCLE` | Changes foot geometry into a circular/wheel-like form. A is active. |
+| `HAS_MOUTH` | Controls whether a mouth exists. G disables the mouth; A/T/C keep it present. |
+| `TEETH_SHAPE` | Selects tooth form/style. May affect whether the horse behaves more like a herbivore, carnivore, or omnivore in addition to visible tooth shape. |
+| `LEG_COUNT` | Controls number of legs. A=7 is the high-leg-count setting. |
+| `HEAD_ASPECT` | Controls the aspect ratio of the head. Works alongside HEAD_SIZE. |
+| `HEAD_GIANT` | Additional head enlargement modifier. A/T are large; C/G are normal. |
+| `HEAD_SHRUNK` | Additional head reduction modifier. T=50 is most shrunken, A=70 partial, C/G normal. |
+| `HEAD_X_GROWTH` | Directional scaling along head X axis. T narrows, C/G widen. |
+| `HEAD_Y_GROWTH` | Directional scaling along head Y axis. A increases, C compresses, T/G neutral. |
+| `HEAD_SQUARE` | Biases the head toward a square/block-like form. T is strongest, A partial, C/G off. |
+| `HEAD_HAS_BACK` | Controls rear/back-of-head geometry. G=11 is extended, A=1 is present, T/C are off. |
+| `HEAD_CHIMERA` | Enables mixed or blended head structure. T is active. |
+| `EYEBOX_X` | Controls horizontal eye-box placement/spacing. |
+| `EYEBOX_Y` | Controls vertical eye-box offset. |
+| `EYEBOX_SIZE` | Controls the size of the eye socket region containing the eyes. |
+| `HAS_PUPIL` | Toggles pupils. A is active; T/C/G disable pupils. |
+| `BROW_SIZE` | Controls brow ridge size. A/T are prominent; C/G are off. |
+| `BROW_SLANT` | Controls brow ridge angle. A and T tilt in opposite directions. |
+| `EYE_HUE` | Controls primary eye colour/hue. |
+| `EAR_STYLE` | Selects discrete ear type/style. |
+| `EAR_SHAPE` | Controls general ear form within the selected style. |
+| `EAR_SIZE` | Controls overall ear scale. |
+| `EAR_ASPECT` | Controls ear aspect ratio. |
+| `EAR_SLANT` | Controls ear angle/tilt relative to the head. |
+| `EAR_INTERIOR` | Controls inner-ear detail. T is active. |
+| `EAR_FLOP` | Controls how much the ears droop or flop downward. G is very floppy. |
+| `NECK_FLEXIBILITY` | Controls how freely the neck can bend during movement. C is high, G/A/T are lower depending on desired stiffness. |
+| `NECK_FLEX_BIAS` | Directional bias for neck bending. |
+| `ARM_FLEXIBILITY` | Controls how freely the arms/front limbs bend. |
+| `ARM_FLEX_BIAS` | Directional bias for arm bending. |
+| `LEG_FLEXIBILITY` | Controls how freely the legs bend during locomotion. |
+| `LEG_FLEX_BIAS` | Directional bias for leg bending. |
+| `TAIL_FLEXIBILITY` | Controls tail bending range. G is highest, C is lowest. |
+| `TAIL_STIFF` | Binary/low-range modifier that reduces or disables tail flexibility. T and C are stiff values. |
+| `TAIL_SPEED` | Controls tail movement speed. C=200 is fastest; T=0 is still. |
+| `ARM_STRETCH` | Applies stretching to arm length beyond base ARM_LENGTH. |
+| `LEG_STRETCH` | Applies stretching to leg length beyond base LEG_LENGTH. |
+| `ARM_SKEW` | Applies positional/angular skew to arms. |
+| `LEG_SKEW` | Applies positional/angular skew to legs. |
+| `ARM_NODE_SCALE` | Controls scaling of internal arm segments/nodes. |
+| `LEG_TYPE` | Selects leg structural type/configuration. |
+| `ARM_TYPE` | Selects arm structural type/configuration. |
+| `HAS_FOOT` | Toggles whether feet are present. T/C present, A/G absent. |
+| `FOOT_SIZE` | Controls foot size. |
+| `FOOT_THICKNESS` | Controls how thick or bulky feet are. |
+| `FOOT_TOE` | Controls toe size/prominence. |
+| `FOOT_BACKWARDS` | Reverses/flips foot orientation. T=2, G=1. |
+| `HAS_HAND` | Toggles whether hands are present on arms. A/G present, T/C absent. |
+| `HAND_WIDTH` | Controls horizontal hand size. |
+| `HAND_LENGTH` | Controls hand length. |
+| `HAND_FINGER` | Controls finger length/count/prominence. |
+| `SKIN_HANDS` | Controls whether hands use skin-like rendering/material. |
+| `SKIN_HEAD` | Controls whether head uses skin-like rendering/material. |
+| `BASE_BROWN` | Controls contribution of brown pigment to base coat colour. |
+| `BASE_BLACK` | Controls contribution of black pigment to base coat colour. |
+| `BASE_RED` | Controls contribution of red pigment to base coat colour. |
+| `BASE_GREEN` | Controls contribution of green pigment to base coat colour. |
+| `GREEN_KNOCKOUT` | Suppresses/removes green pigment from final coat colour. A is active. |
+| `BASE_CREAM` | Adds cream/light pigment into base coat colour. G=100 is active. |
+| `ALT_BLUE` | Controls blue tint in alternate/secondary colour layers. |
+| `SPOT_YELLOW` | Controls yellow pigmentation in spot/pattern regions. |
+| `SKIN_HUE` | Controls primary skin hue. |
+| `NOSE_HUE` | Controls nose colour independently of overall skin tone. |
+| `HOOF_COLOR` | Controls colour of hooves or hoof-like structures. |
+| `PAT_SPLIT` | Controls split between coat colour regions. |
+| `PAT_STRIPE` | Controls stripe pattern intensity/presence. |
+| `PAT_SPOT` | Controls spot pattern intensity/presence. |
+| `PAT_PERLIN` | Applies noise-based coat patterning. |
+| `PAT_PERLIN_SIZE` | Controls scale of Perlin/noise patterns. |
+| `TAIL_JOINT_TYPE` | Selects tail joint type. |
+| `LEG_JOINT_TYPE` | Selects leg joint type and articulation. |
+| `ARM_JOINT_TYPE` | Selects arm/front-limb joint type. |
+| `NECK_JOINT_TYPE` | Selects neck joint type. |
+| `HEAD_JOINTED` | Controls whether head is jointed or rigidly fixed. A is active. |
+| `HAS_KNEE` | Toggles knee joint presence. C is active. |
+| `KNEE_MIN` | Controls minimum knee angle limit. |
+| `KNEE_MAX` | Controls maximum knee angle limit. |
+| `HAS_ELBOW` | Toggles elbow joint presence. A is active. |
+| `ELBOW_RANGE` | Controls elbow angular range. |
+| `BIPED` | Enables bipedal locomotion mode. A/C are active according to the wiki table. |
+| `QUADRUPED` | Enables quadrupedal locomotion mode. A/C are active according to the wiki table. |
+| `TAIL_EXISTS` | Controls whether a tail is present. C disables; A/G present; T has value 2. |
+| `LEG_HAS_FOOT` | Controls whether legs terminate with feet. A/G present; T/C absent. |
+| `ARM_HAS_HAND` | Controls whether arms terminate with hands. T/C present; A/G absent. |
+| `FOOT_IS_HOOF` | Switches feet to hoof-like structures. A/T active; C/G off. |
+| `UPARM_Y` | Controls vertical placement of upper arms relative to the body. |
+| `EAR_X` | Controls horizontal ear placement relative to head center. |
+| `LEG_TAG` | Selects leg style/type preset. |
+| `ARM_TAG` | Selects arm/front-limb style/type preset. |
+| `NECK_TAG` | Selects neck style/type preset. |
+| `TAIL_TAG` | Selects tail style/type preset. |
+| `UPARM_TAG` | Selects upper-arm style/type preset. |
+| `L_LEG_SIGNAL` | Broadcast signal ID emitted by legs during locomotion. |
+| `L_ARM_SIGNAL` | Broadcast signal ID emitted by arms/front limbs during locomotion. |
+| `L_TAIL_SIGNAL` | Tail synchronisation signal. |
+| `L_NECK_SIGNAL` | Neck synchronisation signal. |
+| `L_LEG_FTOB_REACT` | Leg listener for forward-to-back power stroke. |
+| `L_LEG_FTOB_EVENT` | Signal emitted by leg after forward-to-back stroke. |
+| `L_LEG_BTOF_REACT` | Leg listener for back-to-forward recovery stroke. |
+| `L_LEG_BTOF_EVENT` | Signal emitted by leg after back-to-forward stroke. |
+| `L_ARM_FTOB_REACT` | Arm listener for forward-to-back power stroke. |
+| `L_ARM_FTOB_EVENT` | Signal emitted by arm after forward-to-back stroke. |
+| `L_ARM_BTOF_REACT` | Arm listener for back-to-forward recovery stroke. |
+| `L_ARM_BTOF_EVENT` | Signal emitted by arm after back-to-forward stroke. |
+| `L_TAIL_FTOB_REACT` | Tail listener for forward movement phase. |
+| `L_TAIL_FTOB_EVENT` | Signal emitted by tail after forward phase. |
+| `L_TAIL_BTOF_REACT` | Tail listener for recovery movement phase. |
+| `L_TAIL_BTOF_EVENT` | Signal emitted by tail after recovery phase. |
+| `L_NECK_FTOB_REACT` | Neck listener for forward movement phase. |
+| `L_NECK_FTOB_EVENT` | Signal emitted by neck after forward phase. |
+| `L_NECK_BTOF_REACT` | Neck listener for recovery movement phase. |
+| `L_NECK_BTOF_EVENT` | Signal emitted by neck after recovery phase. |
+
+_Credit: 153 descriptions by [alexjthomson](https://github.com/alexjthomson) (MIT license). Many descriptions reference the [Horsey Game miraheze wiki](https://horseygame.miraheze.org)._

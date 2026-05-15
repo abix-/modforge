@@ -220,3 +220,61 @@ Three independent encodings now exist for the same diploid genome:
 | URL share (ZyonixGaming) | 2 bits per base, base64url | 120 bytes | Sharing genomes |
 
 The save format encodes the **pair**; the URL format encodes the **bases**. Both round-trip cleanly given the per-gene `n` codon-order from `genes.xml`.
+
+### Practical gene shortlists (curated by community)
+
+**Racing-relevant genes**. From [`Istopx/horsey-game-gene-calculator`](https://github.com/Istopx/horsey-game-gene-calculator). Player-derived shortlist of the genes that actually matter for race performance, with the "best" and "worst" base to set at each position:
+
+| Helix · Position | Gene | Goal | Best base | Worst base | Note |
+|---|---|---|---|---|---|
+| H18 · P0 | `NARCOLEPSY` | avoid sleep | A | G | G is the only narcoleptic value |
+| H18 · P1 | `SPEED_FACTOR` | max speed | T | C | T allele = 133 (peak speed) |
+| H18 · P4 | `SPINAL_LOCO` | stable locomotion | A | C | A = peak locomotion sync |
+| H18 · P10 | `LOCO_SYNC` | enable sync | T | A | T turns on coordinated gait |
+| H8 · P4 | `LEG_STRENGTH` | leg force | C | T | C = 120 leg force |
+| H8 · P1 | `LEG_LENGTH` | stride length | T | A | T = 120 leg length |
+| H4 · P9 | `BREAK_FORCE` | no breaking | T (or G) | A | low BREAK_FORCE = sustained speed |
+
+Credit: [Istopx](https://github.com/Istopx) for the shortlist + Best/Worst annotations. This is the "racehorse blueprint" you'd target if breeding for the track.
+
+### Helix theme labels (player-friendly)
+
+[`alexjthomson/horsey-crispr`](https://github.com/alexjthomson/horsey-crispr) ships a 20-entry `HELIX_DESCRIPTIONS` constant naming each helix in player-friendly terms. These match our own thematic tour in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 4 but the labels are sharper:
+
+| Helix | Theme |
+|---|---|
+| 0 | Body Structure |
+| 1 | Gut, Behavior, Pattern |
+| 2 | Flexibility & Muscle |
+| 3 | Joints & Angles |
+| 4 | Limb Tags & Counts |
+| 5 | Locomotion Type & Upper Arms |
+| 6 | Body Size & Neck Shape |
+| 7 | Tail |
+| 8 | Leg & Arm Dimensions |
+| 9 | Feet & Hands |
+| 10 | Head Shape |
+| 11 | Eyes & Ears |
+| 12 | Mouth & Nose |
+| 13 | Antlers & Hat Pom |
+| 14 | Antler Detail |
+| 15 | Hat |
+| 16 | Color |
+| 17 | Pattern & Coat |
+| 18 | Speed & Locomotion Control |
+| 19 | Locomotion Signals |
+
+Credit: [alexjthomson](https://github.com/alexjthomson).
+
+### Base ordering conventions (watch out!)
+
+Different tools use **different base->index orderings**. Pin down which one applies before reading or writing genome data:
+
+| Tool | Order | Implies for `g0..g3` mapping |
+|---|---|---|
+| `genes.xml` (ours) | per-gene `n` codon (e.g. `"CTAG"`) | base position in `n` -> allele index. Different per gene. |
+| `alexjthomson/horsey-crispr` `BASE_INDEX` | A=0, T=1, C=2, G=3 | their per-gene `g:[a,t,c,g]` array is letter-ordered. |
+| `ZyonixGaming/crispr` `BASE_TO_BITS` | A=00, C=01, G=10, T=11 | 2-bit encoding, ACGT order. |
+| `alexjthomson/horsey-save-editor` rank-formula | per-gene rank table (varies) | the rank assignment depends on the gene's `n` attribute, so each gene has its own A/T/C/G->rank map. |
+
+If you take a gene's `g` array from one source and read a strand pick from another, you MUST translate via the gene's `n` attribute. Cross-checking the same gene's expressed value across two tools is the cheapest verification.

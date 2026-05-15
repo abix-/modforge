@@ -595,18 +595,82 @@ Research plan to derive the map:
    candidate `FUN_1401beac0` touches 20/23.
    Output: [`FIELD-READERS.md`](FIELD-READERS.md).
 
-   Still open: walk the top-coverage handlers and
-   classify each per-offset reader by subsystem
-   (renderer / physics / breeding / dead). Caveats:
-   `FUN_1401beac0` is called as
-   `FUN_1401beac0(param_2 + 0x48, ...)`, so its
-   offsets are biased by 0x48 from the horse base
-   (may be a sub-struct view, may be a different
-   entity entirely). Resolve case-by-case. Populate
-   GENE-CATALOG.md "Confirmed visible-effect slots"
-   with rows
-   `{ slot | struct field | readers (FUN_xxxxx:line)
-   | subsystem | feature }`.
+   First-pass classification done 2026-05-15. v1
+   fingerprint "touches >= 3 offsets" produced 218
+   functions, dominated by SDL/Vulkan feature-struct
+   noise (`FUN_1401beac0` is the SDL_GPU Vulkan
+   `VkPhysicalDeviceFeatures` checker, not a horse
+   handler). Refined v2 fingerprint adds "must also
+   touch one of `+0x200` / `+0x254` / `+0x2a8`" (rare
+   high offsets the consumer writes). v2 narrows to
+   **24 candidates**.
+
+   Cross-referenced 24 candidates against
+   [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md):
+
+   Confirmed horse-handlers (6):
+   - `FUN_1400df280` retire_horse_handler (gameplay)
+   - `FUN_140089510` copy_genome_to_clipboard (UI)
+   - `FUN_14010ba40` debug_print_population_stats
+   - `FUN_140094a20` show_race_ready_prompt (UI)
+   - `FUN_1400dcab0` show_getting_old_sale_dialog (UI)
+   - `FUN_1400e0aa0` show_all_rested_message (UI)
+
+   Noise (10): auto-named `init_struct`,
+   `batch_call_*`, `float_helper`, `float_math_main`
+   patterns whose sequential field access collides
+   with the regex.
+
+   Unclassified (5): `FUN_14003d890`, `FUN_140155130`,
+   `FUN_1401ef800`, `FUN_14003c8c0`, `FUN_1400e25b0`.
+
+   **Open gap:** none of the confirmed horse-handlers
+   are in the renderer call chain. The regex
+   fingerprint isn't catching the renderer because it
+   probably reads through a nested pointer
+   (`horse->render_state->field`) rather than a direct
+   `var + 0xNN` literal.
+
+   **Forward-trace from consumer call sites, done
+   2026-05-15:** all 6 known call sites of the
+   consumer `FUN_1400ab3d0` (lines 104380, 104441,
+   104585, 104614, 113025, 113052 in
+   `all_functions.c`) are **regeneration events**, not
+   per-frame render calls:
+   - `FUN_1400b2e30`: child-from-parents setup (calls
+     genome-merge `FUN_1400a2d80` first)
+   - `FUN_1400b2ee0`: horse init with pop, sets
+     `+0x234` and `+0x1fc=2` after
+   - `FUN_1400b3070`: horse regen wrapping CRISPR-
+     style flows; iterates entity list at 0xb8 stride
+   - `FUN_1400c1xxx` (113025/113052): CRISPR genome
+     mutate then regen, sets `+0x1fc=2`
+
+   The consumer's job is to **persistently overwrite
+   horse-struct fields whenever gene-derived
+   attributes change** (birth, CRISPR, respawn). The
+   renderer reads those fields independently, per
+   frame, decoupled. Forward-tracing the consumer's
+   callers leads to event triggers, not the renderer.
+
+   **Implication: don't chase the renderer
+   statically.** Finding it cleanly needs Ghidra
+   struct propagation across the horse type, hours of
+   skilled RE work for diminishing returns. The slot
+   map we have is good enough to ship with:
+   gene -> slot (per-gene table) + slot -> horse
+   struct offset (consumer map) + working trampoline
+   that puts arbitrary values into those slots + one
+   empirically confirmed slot (slot 0).
+   Per-feature classification of the remaining 22
+   direct-copy slots can be populated as a side
+   effect of bestiary authoring (each new species
+   naturally probes a few slots). Trying to enumerate
+   it ahead of demand is speculative work.
+
+   Output: [`FIELD-READERS.md`](FIELD-READERS.md)
+   with classified table + consumer call-site
+   regeneration finding.
 
 Output: a reliable map from "I want feature X" to "extend
 gene G with render slot S, allele payload P0..P3, value
