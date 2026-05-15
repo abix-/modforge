@@ -882,4 +882,157 @@ mod tests {
         assert!((buf[5] - 6.0).abs() < 1e-6, "mul: 2 * 3 = 6, got {}", buf[5]);
         assert!((buf[6] - 77.0).abs() < 1e-6, "set: 77, got {}", buf[6]);
     }
+
+    // -----------------------------------------------------------------
+    // D3.4 combinator Mendelian unit tests
+    // -----------------------------------------------------------------
+
+    /// Build a parent genome where strand A's alleles are all `a` and
+    /// strand B's alleles are all `b`. Lets us assert that the child's
+    /// alleles must come from {a, b} only.
+    fn parent_with_uniform_strands(a: u8, b: u8) -> ExtHorseGenome {
+        let mut g = ExtHorseGenome::empty();
+        for i in 0..EXT_GENE_COUNT {
+            g.alleles[i] = a & 0x3;
+            g.alleles[i + EXT_GENE_COUNT] = b & 0x3;
+        }
+        g
+    }
+
+    #[test]
+    fn combinator_child_strand_0_comes_from_parent_a_only() {
+        // Parent A's strands hold values (1, 2).
+        // Parent B's strands hold values (0, 3).
+        // Child's strand 0 must contain only 1 or 2 (one of parent A's
+        // strands per gene); child's strand 1 must contain only 0 or 3.
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        set_horse_ext_genome(100, parent_with_uniform_strands(1, 2));
+        set_horse_ext_genome(200, parent_with_uniform_strands(0, 3));
+
+        combine_for_breeding(100, 200, 300);
+        let child = get_horse_ext_genome(300)
+            .expect("child genome should exist after combinator");
+
+        for i in 0..EXT_GENE_COUNT {
+            let mat = child.alleles[i];
+            let pat = child.alleles[i + EXT_GENE_COUNT];
+            assert!(
+                mat == 1 || mat == 2,
+                "child strand 0 gene {i} = {mat}, must be from parent A {{1, 2}}"
+            );
+            assert!(
+                pat == 0 || pat == 3,
+                "child strand 1 gene {i} = {pat}, must be from parent B {{0, 3}}"
+            );
+        }
+    }
+
+    #[test]
+    fn combinator_picks_both_strands_of_each_parent_over_many_genes() {
+        // With 240 genes and a fair coin, each parent's strand A and
+        // strand B should both appear in the child at least once.
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        set_horse_ext_genome(100, parent_with_uniform_strands(1, 2));
+        set_horse_ext_genome(200, parent_with_uniform_strands(0, 3));
+
+        combine_for_breeding(100, 200, 300);
+        let child = get_horse_ext_genome(300).unwrap();
+
+        let strand0: Vec<u8> = (0..EXT_GENE_COUNT).map(|i| child.alleles[i]).collect();
+        let strand1: Vec<u8> =
+            (0..EXT_GENE_COUNT).map(|i| child.alleles[i + EXT_GENE_COUNT]).collect();
+
+        assert!(strand0.iter().any(|&a| a == 1), "no 1 in strand 0 (parent A strand A never selected)");
+        assert!(strand0.iter().any(|&a| a == 2), "no 2 in strand 0 (parent A strand B never selected)");
+        assert!(strand1.iter().any(|&a| a == 0), "no 0 in strand 1 (parent B strand A never selected)");
+        assert!(strand1.iter().any(|&a| a == 3), "no 3 in strand 1 (parent B strand B never selected)");
+    }
+
+    #[test]
+    fn combinator_no_parents_produces_zero_genome() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        // Neither parent has an ext genome entry. Child should still
+        // get an entry (so downstream lookups don't fail open) but
+        // every allele is 0.
+        combine_for_breeding(100, 200, 300);
+        let child = get_horse_ext_genome(300)
+            .expect("child genome should be created even without parents");
+        assert!(
+            child.alleles.iter().all(|&a| a == 0),
+            "missing-parent path should produce all-zero alleles"
+        );
+    }
+
+    #[test]
+    fn combinator_one_missing_parent_falls_back_to_default() {
+        // Parent A has a known genome; parent B is missing. Child's
+        // strand 0 must come from parent A; strand 1 from the default
+        // (all zeros).
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        set_horse_ext_genome(100, parent_with_uniform_strands(2, 2));
+        combine_for_breeding(100, 200 /* missing */, 300);
+
+        let child = get_horse_ext_genome(300).unwrap();
+        for i in 0..EXT_GENE_COUNT {
+            assert_eq!(child.alleles[i], 2, "strand 0 gene {i} != 2");
+            assert_eq!(child.alleles[i + EXT_GENE_COUNT], 0, "strand 1 gene {i} should be 0");
+        }
+    }
+
+    #[test]
+    fn combinator_masks_alleles_to_0_3() {
+        // Even if a parent has a bad byte (e.g. 0xff), the child's
+        // alleles must be masked to 0..3 (& 0x3 guard).
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        let mut bad = ExtHorseGenome::empty();
+        for i in 0..EXT_GENE_COUNT {
+            bad.alleles[i] = 0xff;
+            bad.alleles[i + EXT_GENE_COUNT] = 0xfe;
+        }
+        set_horse_ext_genome(100, bad.clone());
+        set_horse_ext_genome(200, bad);
+
+        combine_for_breeding(100, 200, 300);
+        let child = get_horse_ext_genome(300).unwrap();
+        for &a in &child.alleles {
+            assert!(a < 4, "allele {a} not masked to 0..3");
+        }
+    }
+
+    #[test]
+    fn combinator_distinct_breedings_diverge() {
+        // Two breedings of the same parents into the same child id
+        // should not produce IDENTICAL outputs (the nonce ensures
+        // different RNG streams). Otherwise consecutive offspring of
+        // the same pair would always be carbon copies.
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+
+        set_horse_ext_genome(100, parent_with_uniform_strands(1, 2));
+        set_horse_ext_genome(200, parent_with_uniform_strands(0, 3));
+
+        combine_for_breeding(100, 200, 300);
+        let first = get_horse_ext_genome(300).unwrap();
+
+        combine_for_breeding(100, 200, 301);
+        let second = get_horse_ext_genome(301).unwrap();
+
+        // With 240 genes and two independent random streams, the
+        // probability of identical alleles is 2^-240. If they ARE
+        // equal, the nonce / RNG seeding is broken.
+        assert_ne!(
+            first.alleles, second.alleles,
+            "two breedings of same parents produced identical children; RNG nonce broken"
+        );
+    }
 }

@@ -214,6 +214,192 @@ fn crc32_update(crc: u32, bytes: &[u8]) -> u32 {
 }
 
 // ---------------------------------------------------------------------------
+// Pure codec functions (testable via Cursor<Vec<u8>>; reused by the
+// live File-based writer/reader).
+// ---------------------------------------------------------------------------
+
+/// Write magic + version + ext_count + horse_count.
+pub fn write_header<W: Write>(
+    w: &mut W,
+    ext_count: u32,
+    horse_count: u32,
+) -> std::io::Result<()> {
+    w.write_all(MAGIC)?;
+    w.write_all(&VERSION.to_le_bytes())?;
+    w.write_all(&ext_count.to_le_bytes())?;
+    w.write_all(&horse_count.to_le_bytes())?;
+    Ok(())
+}
+
+/// Header parsed from disk. Returned by [`read_header`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedHeader {
+    pub version: u32,
+    pub ext_count: u32,
+    pub horse_count: u32,
+}
+
+/// Parse + validate sidecar header. Bails on bad magic or unsupported
+/// version. Caller checks `ext_count == EXT_GENE_COUNT` if it cares
+/// about strict match.
+pub fn read_header<R: Read>(r: &mut R) -> std::io::Result<ParsedHeader> {
+    let mut magic = [0u8; 8];
+    r.read_exact(&mut magic)?;
+    if &magic != MAGIC {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("bad magic: {magic:?}"),
+        ));
+    }
+    let mut buf4 = [0u8; 4];
+    r.read_exact(&mut buf4)?;
+    let version = u32::from_le_bytes(buf4);
+    if version != VERSION {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unsupported version {version} (expected {VERSION})"),
+        ));
+    }
+    r.read_exact(&mut buf4)?;
+    let ext_count = u32::from_le_bytes(buf4);
+    r.read_exact(&mut buf4)?;
+    let horse_count = u32::from_le_bytes(buf4);
+    Ok(ParsedHeader {
+        version,
+        ext_count,
+        horse_count,
+    })
+}
+
+/// Write one horse's `2 * EXT_GENE_COUNT` dense allele bytes.
+pub fn write_horse_record<W: Write>(
+    w: &mut W,
+    genome: &genes::ExtHorseGenome,
+) -> std::io::Result<()> {
+    w.write_all(&genome.alleles)
+}
+
+/// Read one horse's dense alleles into a fresh `ExtHorseGenome`,
+/// masking each byte to 0..3 to defend against tampered files.
+pub fn read_horse_record<R: Read>(
+    r: &mut R,
+) -> std::io::Result<genes::ExtHorseGenome> {
+    let mut bytes = vec![0u8; 2 * EXT_GENE_COUNT];
+    r.read_exact(&mut bytes)?;
+    let mut g = genes::ExtHorseGenome::empty();
+    for (dst, src) in g.alleles.iter_mut().zip(bytes.iter()) {
+        *dst = *src & 0x3;
+    }
+    Ok(g)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    fn make_genome(seed: u8) -> genes::ExtHorseGenome {
+        let mut g = genes::ExtHorseGenome::empty();
+        for i in 0..EXT_GENE_COUNT {
+            g.alleles[i] = ((seed.wrapping_add(i as u8)) & 0x3) as u8;
+            g.alleles[i + EXT_GENE_COUNT] =
+                ((seed.wrapping_mul(3).wrapping_add(i as u8)) & 0x3) as u8;
+        }
+        g
+    }
+
+    #[test]
+    fn header_roundtrip_preserves_fields() {
+        let mut buf = Vec::new();
+        write_header(&mut buf, EXT_GENE_COUNT as u32, 42).unwrap();
+        let mut r = Cursor::new(&buf);
+        let h = read_header(&mut r).unwrap();
+        assert_eq!(h.version, VERSION);
+        assert_eq!(h.ext_count, EXT_GENE_COUNT as u32);
+        assert_eq!(h.horse_count, 42);
+    }
+
+    #[test]
+    fn header_rejects_bad_magic() {
+        let buf = vec![0u8; 20];
+        // Leave magic zeroed; rest of header is fine bytes but we
+        // shouldn't even reach it.
+        let mut r = Cursor::new(&buf[..]);
+        let err = read_header(&mut r).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn header_rejects_future_version() {
+        let mut buf = Vec::new();
+        buf.extend_from_slice(MAGIC);
+        buf.extend_from_slice(&99u32.to_le_bytes()); // version 99
+        buf.extend_from_slice(&(EXT_GENE_COUNT as u32).to_le_bytes());
+        buf.extend_from_slice(&0u32.to_le_bytes());
+        let mut r = Cursor::new(&buf);
+        let err = read_header(&mut r).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn horse_record_roundtrip_preserves_alleles() {
+        let g = make_genome(7);
+        let mut buf = Vec::new();
+        write_horse_record(&mut buf, &g).unwrap();
+        assert_eq!(buf.len(), 2 * EXT_GENE_COUNT);
+
+        let mut r = Cursor::new(&buf);
+        let back = read_horse_record(&mut r).unwrap();
+        assert_eq!(g.alleles, back.alleles, "round-trip changed alleles");
+    }
+
+    #[test]
+    fn horse_record_masks_corrupted_bytes_to_0_3() {
+        // Disk had bad bytes (someone hand-edited the sidecar).
+        // Reader must mask to 0..3 and not propagate corruption.
+        let mut bad = vec![0xffu8; 2 * EXT_GENE_COUNT];
+        bad[10] = 0xaa;
+        let mut r = Cursor::new(&bad);
+        let g = read_horse_record(&mut r).unwrap();
+        for &a in &g.alleles {
+            assert!(a < 4, "byte 0x{a:02x} not masked to 0..3");
+        }
+    }
+
+    #[test]
+    fn full_sidecar_roundtrip_three_horses() {
+        // Header + 3 horse records, round-tripped through a Vec<u8>.
+        let parents = [make_genome(1), make_genome(2), make_genome(3)];
+        let mut buf = Vec::new();
+        write_header(&mut buf, EXT_GENE_COUNT as u32, parents.len() as u32).unwrap();
+        for p in &parents {
+            write_horse_record(&mut buf, p).unwrap();
+        }
+
+        // Expected size: 8 magic + 4 version + 4 ext_count + 4 horse_count
+        // + 3 horses * 2 * EXT_GENE_COUNT bytes.
+        let expected_size =
+            8 + 4 + 4 + 4 + parents.len() * 2 * EXT_GENE_COUNT;
+        assert_eq!(buf.len(), expected_size);
+
+        let mut r = Cursor::new(&buf);
+        let h = read_header(&mut r).unwrap();
+        assert_eq!(h.horse_count as usize, parents.len());
+        for (i, expected) in parents.iter().enumerate() {
+            let back = read_horse_record(&mut r).unwrap();
+            assert_eq!(expected.alleles, back.alleles, "horse {i} drifted");
+        }
+    }
+
+    #[test]
+    fn crc32_known_vector() {
+        // Standard test vector: CRC32 of "123456789" is 0xCBF43926.
+        let crc = crc32_update(0, b"123456789");
+        assert_eq!(crc, 0xCBF43926, "CRC32 IEEE failed standard test vector");
+    }
+}
+
+// ---------------------------------------------------------------------------
 // D4.1: save-write path
 // ---------------------------------------------------------------------------
 
