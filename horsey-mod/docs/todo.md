@@ -131,10 +131,14 @@ cites. The decisions in Phase 1 reference that doc.
 
 #### Renderer / behavior (gene-effect question)
 
-- [ ] **Q-render-1.** OPEN. Needs live vanilla `pop.xml`
-      to determine which genes drive vanilla unusual
-      modes (`car` wheels, `helix` shape). Not blocking
-      D0/D1; deferred until specific bestiary species
+- [~] **Q-render-1.** PARTIAL. Vanilla `pop.xml` is
+      now checked in at [`vanilla-pop.xml`](vanilla-pop.xml)
+      (28 pops). Cross-reference work to map unusual
+      modes (`car` wheels via `LEG_IS_CIRCLE`, `helix`
+      shape, etc.) to specific gene weights is partially
+      done in GENE-CATALOG.md Part 2 "Vanilla pops"
+      section. Full per-pop oddity decomposition still
+      open; deferred until specific bestiary species
       need it.
 - [x] **Q-render-2.** ANSWERED. Per-horse render param
       array is 353 floats (1412 bytes). `FUN_14009f680`
@@ -202,10 +206,9 @@ the existing example). Goal: confirm end-to-end that an
 edit to `pop.xml` + a spawner in `horsey.tmx` produces a
 visible new creature in-game without crashing the loader.
 
-- [ ] Locate the user's installed Horsey Game `data/`
-      directory. Document the path in
-      [`MODFORGE-INTEGRATION.md`](MODFORGE-INTEGRATION.md)
-      or a new `INSTALL-LAYOUT.md`.
+- [x] **DONE.** Game install path locked at
+      `C:\Games\Steam\steamapps\common\Horsey Game`.
+      See "Locked decisions (2026-05-14)" below.
 - [ ] Back up vanilla `pop.xml`, `horsey.tmx`, and
       `genes.dat` (the cache).
 - [ ] Add one `<pop name="smoketest">` block under
@@ -549,30 +552,43 @@ Don't guess at slots; map them. From VIABILITY.md Q-render-3:
 
 Research plan to derive the map:
 
-1. **Dump vanilla `genes.xml`** from the game's `data/`
-   directory. Inventory the 240 vanilla gene names and any
-   metadata. Names like `SIZE`, `BONES`, `LEG_LENGTH`,
-   `OSTODERM` are the human-readable handles.
-2. **Read `FUN_14009f680`'s decomp** (14kB function in
-   `horsey-mod/research/decompiled/all_functions.c`). For each of
-   the 233 baked literal gene indices in that function,
-   identify the buf slot it writes to. Build
-   `(gene_idx, gene_name, buf_slot)` triples.
-3. **Read `FUN_1400ab3d0`'s decomp** (8kB consumer).
-   Enumerate which buf slots it reads
-   (`param_2[X]` accesses) and which horse-struct fields
-   it writes to (offsets `+0x124`..`+0x154`).
-4. **Cross-reference**: for each consumer-read buf slot,
-   the chain is "gene X writes to slot N which the
-   consumer transcribes to horse-struct field +0xYY which
-   the renderer reads as feature Z."
-5. **Author the map** as
-   `GENE-CATALOG.md` (Part 2: Engine pipeline + slot map): per-slot row with
-   `{ slot, vanilla_gene_name, horse_struct_field,
-   visible_feature, candidate_value_range }`.
-6. **Validate** by editing one vanilla gene at a time via
-   `genes.ext.set` and observing. The proven extension
-   path is also a research instrument.
+1. [x] **DONE.** Vanilla `genes.xml` dumped to
+   [`vanilla-genes.xml`](vanilla-genes.xml). 240 names
+   indexed in document order matching the engine's
+   gene_idx 0..239.
+2. [x] **DONE.** Per-gene flow analysis on
+   `FUN_14009f680` shipped via
+   `research/build-gene-catalog.py`. Auto-derives
+   `slots_written`, `slots_gated`, and `calls` for all
+   240 genes. Output: [`GENE-CATALOG.md`](GENE-CATALOG.md)
+   per-gene table.
+3. [x] **DONE.** Consumer-map extractor
+   `research/extract-consumer-map.py` enumerates 62
+   `param_2[X]` reads in `FUN_1400ab3d0`. 23 are direct
+   copies to horse-struct fields `+0x58..+0xa4`,
+   `+0x200`, `+0x254`, `+0x2a8`. 38 feed conditionals /
+   intermediate math. Output: GENE-CATALOG.md Part 2
+   "Buf-slot -> horse-struct field" table.
+4. [x] **DONE.** Cluster map authored in GENE-CATALOG.md
+   Part 2 (gene_idx range -> feature area). Slots 0..3
+   SQRT formula reverse-engineered from
+   `FUN_14009f680:94066-94143`. The per-slot
+   `{gene -> slot -> struct field}` chain is derivable
+   by intersecting the per-gene table (step 2) with the
+   consumer map (step 3).
+5. [x] **DONE.** GENE-CATALOG.md Part 2 ships with
+   cluster map + consumer map + engine internals
+   (slots 0..3 formula) + modder workflow. The
+   "Confirmed visible-effect slots" section is the
+   live-validated subset.
+6. [ ] **OPEN.** Empirical validation. Only slot 0 is
+   confirmed (full-screen-width babies, 2026-05-14).
+   Need to author one extended gene per direct-copy
+   slot (313..332, 349, 351, 352 = 23 slots), set its
+   alleles via `horse.ext.default_alleles.set`, and
+   record the visible effect. Populates "Confirmed
+   visible-effect slots" table. Highest-leverage
+   remaining work for unblocking bestiary authoring.
 
 Output: a reliable map from "I want feature X" to "extend
 gene G with render slot S, allele payload P0..P3, value
@@ -1564,15 +1580,19 @@ _Source: [`VIABILITY.md`](VIABILITY.md)._
       effect-free (the regex extracted only direct
       `FUN_1400a5d20(local_508, N)` calls; the gene
       might be read by other paths I haven't grepped).
-- [ ] Q-render-1 still needs live `pop.xml` to
-      determine what genes vanilla pops use for unusual
-      effects (the `car` pop's wheels, the `helix`
-      pop's shape, etc.).
-- [ ] Map each of the 61 consumer-read slots to its
-      horse-struct destination offset. Doable by
-      reading `FUN_1400ab3d0` more thoroughly. Required
-      before we author specific gene-effect code, not
-      before Phase 1 strategy decisions.
+- [~] Q-render-1: `pop.xml` checked in at
+      [`vanilla-pop.xml`](vanilla-pop.xml). Per-oddity
+      decomposition (which genes drive `car` wheels,
+      `helix` shape, etc.) partially captured in
+      GENE-CATALOG.md Part 2 "Vanilla pops"; full
+      breakdown still pending per-species.
+- [x] **DONE.** Map each of the 61 consumer-read
+      slots to its horse-struct destination offset.
+      `research/extract-consumer-map.py` auto-derives:
+      23 direct-copy slots map to `+0x58..+0xa4`,
+      `+0x200`, `+0x254`, `+0x2a8`. 38 are
+      conditional/intermediate (not direct copies).
+      Output: GENE-CATALOG.md Part 2.
 - [ ] Confirm the 91 fully-unused slots are not
       touched by other consumer chains (e.g. the
       breeding compatibility check

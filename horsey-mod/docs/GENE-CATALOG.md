@@ -449,7 +449,15 @@ pressure.
 
 The most-asked question: **how does a foal actually get its 240 genes from two parents?** Here's the whole flow.
 
-**How many genes per horse.** Every horse carries the full **240-gene catalog** (see Part 3). Each gene has a maternal pick and a paternal pick, so a horse stores **480 allele indices** total (240 maternal + 240 paternal). On disk in `save1.dat` this is ~240 bytes per horse (one byte per gene, encoded as the diploid PAIR via the `0x09 + rank(s2)*8 + rank(s1)` rank-formula documented in [`SAVE-FORMAT.md`](SAVE-FORMAT.md)). In the CRISPR Lab UI those 240 byte-pairs render as **20 helices** (Part 4); each helix position is one gene's diploid pair shown as two stacked bases.
+**How many genes per horse.** Every horse carries the full **240-gene catalog** (see Part 3). Horses are **diploid**: for each of the 240 genes the horse stores TWO picks, one inherited from mom and one from dad. Each pick is just an index 0..3 (which of the gene's four `g0..g3` values applies to this strand). So:
+
+- **240 genes** per horse (the gene list is universal. Every horse has the same genes).
+- **2 picks per gene** (maternal strand + paternal strand).
+- **240 + 240 = 480 picks total** stored per horse genome.
+
+Same shape as real biology: 240 gene loci, two alleles per locus, 480 allele picks total.
+
+On disk in `save1.dat` the 240 pairs are stored as ~240 bytes per horse (one byte per gene encodes the PAIR via the `0x09 + rank(s2)*8 + rank(s1)` rank-formula from [`SAVE-FORMAT.md`](SAVE-FORMAT.md)). In the CRISPR Lab UI those 240 byte-pairs render as **20 helices** (Part 4); each helix position shows one gene's diploid pair as two stacked bases (one strand from each parent).
 
 **Setup.** Two parents, picked from the player's stable:
 
