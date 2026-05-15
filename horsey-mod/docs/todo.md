@@ -37,7 +37,34 @@ Roughly ordered by leverage.
 
 ---
 
-## Current status (2026-05-15, after commit `5ff0cfc`)
+## Current status (2026-05-15 session 2, latest commit `0f97176`)
+
+### What shipped this session
+
+| Commit | What |
+|---|---|
+| `d0f2f3c` | Phase A: standalone Win32 + D3D11 + ImGui backend in `modforge::ui::native`. Live test `tests/native_ui_lifecycle.rs` green. Sibling consumer for ueforge / horsey-mod / future native-PE mods, behind the `native-ui` Cargo feature. |
+| `81f4bea` | `modforge::ui::api` (text/button/checkbox/slider/separator/spacing/same_line) + horsey-mod's first 3 in-game tabs (Overview / Horses / Cheats). |
+| `ae50745` | Horses tab roster table (species, age/max, skill, tired_a/b, name_id, ptr; capped at 32 rows). |
+| `4a7c73b` | Bestiary v1: `horsey-mod/bestiary/genes-extended.xml` with `BX_GIANT_BABY` at ext idx 0 (alleles `[0, 50, 100, 200]`, render `slot=0 mode=set`). `horsey-inject` auto-deploys it next to the staged DLL. 2 locking tests (`bestiary_v1.rs` unit, `bestiary_v1_live.rs` end-to-end through HTTP). |
+| `5b5ad7a` | Cheats tab `no_tire` and `debug_mode` toggles via `api::checkbox`. HTTP `state` snapshot now captured AFTER op dispatch so write ops surface post-write state. |
+| `d7a9501` | `gamestate::looks_loaded()` heuristic on roster vector at `+0x280/+0x288`. Snapshot returns null for money/year/sleeps when not loaded. UI Overview + Horses gate on the heuristic. 7 unit tests on the pure decision; 1 live regression. |
+| `0f97176` | `gamestate.diag` HTTP op + `MODFORGE_ATTACH=1` harness mode so tests can attach to a manually-loaded save. `tests/gamestate_diag.rs` (consistency + env-gated in-save assertion). |
+
+### Known broken (must-fix before any more UI work)
+
+**`looks_loaded()` returns false in real in-save state.** With a save loaded, $176 visible on screen, all the offsets the heuristic and snapshot read (roster begin/end, money, year, sleeps) come back null/zero. Diag dump of the first 16 KB at `rebase(GAMESTATE_PTR)` contains no value matching the on-screen money. So either:
+
+- `GAMESTATE_PTR` (currently `0x1403fb0d8`) has drifted between builds and now points at an unrelated struct in the same `.data` neighbourhood, OR
+- The struct is at the right address but the field offsets (MONEY=0x308, YEAR=0x314, SLEEPS=0x318, HORSES_BEGIN=0x280, HORSES_END=0x288) have all shifted together.
+
+User impact: in-game UI says "(no save loaded. Start a game)" while the user is mid-save. Cheats tab still works because `NO_TIRE_TOGGLE` and `DEBUG_MODE_ACTIVE` are different globals.
+
+Recovery path is the documented one in `ADDRESS-RESOLUTION.md`: pattern-scan via `modforge::patterns::sleuth` (already shipped, see `tests/r2_catalog_resolves_all_green_targets.rs`) to relocate `GAMESTATE_PTR` and the field offsets for this build hash, then wire `gamestate::ptr()` through the resolved address. The build identity is already pinned (`game.build_info` ships sha256 + size + mtime).
+
+Forensic data captured in this session: `target/diag.json` (16 KB hex dump from `0x1403fb0d8` rebased, no money/year/sleeps hits, sparse heap pointers starting at +0x10d8). Reproduce on any future build state with `MODFORGE_ATTACH=1 cargo test -p horsey-mod --test gamestate_diag -- --nocapture` against a manually-loaded save; see `docs/TESTING.md` "Attach-to-existing mode" for the workflow.
+
+## Current status (2026-05-15 session 1, after commit `5ff0cfc`)
 
 ### Test suite
 

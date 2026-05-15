@@ -110,12 +110,16 @@ pub fn diag() -> serde_json::Value {
     // when the player is actually in a save. The candidate set
     // mirrors `targets::gs_offset` so future drift is obvious.
     let r_u32 = |off: usize| -> u32 {
-        // SAFETY: same rationale as the roster reads above.
-        unsafe { *((p + off) as *const u32) }
+        // SAFETY: same rationale as the roster reads above. Uses
+        // read_unaligned because a few documented offsets (e.g.
+        // 0x415) sit on byte boundaries that the underlying field
+        // type doesn't require to be u32-aligned.
+        unsafe { ((p + off) as *const u32).read_unaligned() }
     };
     let r_u64 = |off: usize| -> u64 {
-        // SAFETY: as above.
-        unsafe { *((p + off) as *const u64) }
+        // SAFETY: as above; read_unaligned guards against off-stride
+        // pointer offsets in the candidate set.
+        unsafe { ((p + off) as *const u64).read_unaligned() }
     };
 
     serde_json::json!({
@@ -165,7 +169,27 @@ pub fn diag() -> serde_json::Value {
             "races": races(),
         },
         "verdict_looks_loaded": looks_loaded(),
+        // Hex dump of the first 0x4000 bytes of GameState. When the
+        // money offset has drifted between builds, grepping this for
+        // the on-screen money value finds the new offset in one
+        // round-trip.
+        "hex_dump_0x000_0x4000": hex_dump(p, 0x4000),
     })
+}
+
+fn hex_dump(base: usize, n: usize) -> String {
+    let mut out = String::with_capacity(n * 3);
+    for i in 0..n {
+        // SAFETY: range is within the statically-mapped GameState
+        // struct; reads are byte-aligned.
+        let b = unsafe { *((base + i) as *const u8) };
+        if i > 0 && i % 16 == 0 {
+            out.push('\n');
+        }
+        use std::fmt::Write;
+        let _ = write!(out, "{b:02x} ");
+    }
+    out
 }
 
 /// Pure decision: does a `(begin, end)` pair for the roster vector at
