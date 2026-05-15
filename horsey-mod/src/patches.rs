@@ -159,16 +159,17 @@ pub mod sleep_safe_no_tire {
     use super::patch_bytes;
     use crate::targets;
 
-    /// Function containing the per-frame no_tire loop.
-    const FN_RVA: usize = 0x1400ceb60;
-    const FN_SIZE: usize = 2502;
-
     pub fn apply() -> anyhow::Result<()> {
-        let fn_start = targets::rebase(FN_RVA);
-        // SAFETY: fn_start..fn_start+FN_SIZE is inside the running
-        // Horsey.exe image (we resolved it via GetModuleHandleW(NULL)).
+        // Pattern-resolved function bounds via the no_tire byte-zero
+        // pair anchor + int3-padding walkout. Falls back to
+        // hardcoded `NO_TIRE_LOOP_FN_RVA / BODY_SIZE` if anchor
+        // misses.
+        let fn_start = targets::horse_offset::no_tire_loop_entry();
+        let fn_size = targets::horse_offset::no_tire_loop_size();
+        // SAFETY: fn_start..fn_start+fn_size is inside the running
+        // Horsey.exe image (resolver returned bounds within .text).
         // Bytes are static for the lifetime of the process.
-        let bytes = unsafe { std::slice::from_raw_parts(fn_start as *const u8, FN_SIZE) };
+        let bytes = unsafe { std::slice::from_raw_parts(fn_start as *const u8, fn_size) };
 
         let (offset, length) = find_patch_site(bytes)?;
         let patch_addr = fn_start + offset;

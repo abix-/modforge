@@ -483,32 +483,93 @@ pub mod horse_offset {
     /// Old decomp constant; production should call [`tired_flag_b()`].
     pub const TIRED_FLAG_B: usize = 0x206;
 
-    /// RVA of the no_tire per-frame loop function (`FUN_1400ceb60`
-    /// in the decomp; matches `patches::sleep_safe_no_tire::FN_RVA`).
-    const NO_TIRE_LOOP_FN_RVA: usize = 0x1400ceb60;
-    const NO_TIRE_LOOP_BODY_SIZE: u64 = 2502;
+    /// Old decomp constants for the no_tire per-frame loop function
+    /// (`FUN_1400ceb60` in the decomp). Production should call
+    /// [`no_tire_loop_entry`] and [`no_tire_loop_size`].
+    pub const NO_TIRE_LOOP_FN_RVA: usize = 0x1400ceb60;
+    pub const NO_TIRE_LOOP_BODY_SIZE: usize = 2502;
+
+    /// Globally scan `.text` for the unique adjacent pair of byte-
+    /// zero stores at `horse+disp_a` and `horse+disp_b` (delta 1)
+    /// that the no_tire per-frame loop runs each frame. Returns
+    /// `(disp_a, disp_b, location_of_first_store)`. The location is
+    /// inside the no_tire loop body and can be walked outward to
+    /// recover function bounds.
+    fn find_no_tire_pair() -> Option<(usize, usize, usize)> {
+        static CACHE: OnceLock<Option<(usize, usize, usize)>> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let hits = modforge::patterns::sleuth::scan_all_matches(
+                "c6 ?? ?? ?? ?? ?? 00",
+            ).ok()?;
+            // Read disp32 from each candidate store and keep those
+            // whose disp falls in the horse-struct flag region.
+            let mut stores: Vec<(usize, i32)> = Vec::with_capacity(hits.len());
+            for addr in hits {
+                // SAFETY: addr matched in .text, 7 bytes mapped.
+                let bytes: &[u8] = unsafe {
+                    std::slice::from_raw_parts(addr as *const u8, 7)
+                };
+                let disp = i32::from_le_bytes([bytes[2], bytes[3], bytes[4], bytes[5]]);
+                if (0x100..0x500).contains(&disp) {
+                    stores.push((addr, disp));
+                }
+            }
+            stores.sort_by_key(|&(a, _)| a);
+            // Find adjacent stores within 64 bytes with delta=1 disps.
+            for i in 0..stores.len() {
+                for j in i + 1..stores.len() {
+                    if stores[j].0 - stores[i].0 > 64 {
+                        break;
+                    }
+                    let (d1, d2) = (stores[i].1, stores[j].1);
+                    if d2 == d1 + 1 {
+                        return Some((d1 as usize, d2 as usize, stores[i].0));
+                    }
+                    if d1 == d2 + 1 {
+                        return Some((d2 as usize, d1 as usize, stores[j].0));
+                    }
+                }
+            }
+            None
+        })
+    }
 
     fn resolve_tired_pair() -> Option<(usize, usize)> {
-        let fn_start = super::rebase(NO_TIRE_LOOP_FN_RVA);
-        // Scan body for `c6 ?? <disp32> 00` (mov byte [reg+disp32], 0).
-        // disp32 at offset 2, imm at offset 6.
-        let hist = modforge::research::in_process_decode_imm_in_window(
-            "c6 ?? ?? ?? ?? ?? 00",
-            2,
-            4,
-            fn_start as u64,
-            NO_TIRE_LOOP_BODY_SIZE,
-        ).ok()?;
-        // Find a pair (a, b) with b == a + 1 and both in
-        // [0x100, 0x500] (typical horse-struct flag region).
-        let mut sorted: Vec<i64> = hist.keys().copied().filter(|&v| v >= 0x100 && v < 0x500).collect();
-        sorted.sort();
-        for w in sorted.windows(2) {
-            if w[1] == w[0] + 1 {
-                return Some((w[0] as usize, w[1] as usize));
-            }
-        }
-        None
+        find_no_tire_pair().map(|(a, b, _)| (a, b))
+    }
+
+    /// Pattern-resolved entry RVA of the no_tire per-frame loop
+    /// function. Anchors on the unique adjacent tired-flag byte-
+    /// zero pair (see [`find_no_tire_pair`]) and walks back through
+    /// MSVC `0xcc` inter-function padding via
+    /// [`super::find_function_bounds_via_int3`] to find the
+    /// function entry. Falls back to the hardcoded
+    /// `NO_TIRE_LOOP_FN_RVA` (rebased) on miss.
+    pub fn no_tire_loop_entry() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            no_tire_loop_bounds_resolved()
+                .map(|(s, _)| s)
+                .unwrap_or_else(|| super::rebase(NO_TIRE_LOOP_FN_RVA))
+        })
+    }
+
+    /// Pattern-resolved body size of the no_tire per-frame loop
+    /// function (end of body minus entry; the body is `[entry,
+    /// entry + size)`). Falls back to `NO_TIRE_LOOP_BODY_SIZE` on
+    /// miss.
+    pub fn no_tire_loop_size() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            no_tire_loop_bounds_resolved()
+                .map(|(s, e)| e - s)
+                .unwrap_or(NO_TIRE_LOOP_BODY_SIZE)
+        })
+    }
+
+    fn no_tire_loop_bounds_resolved() -> Option<(usize, usize)> {
+        let (_a, _b, loc) = find_no_tire_pair()?;
+        super::find_function_bounds_via_int3(loc, 4096, 4096)
     }
 
     /// Pattern-resolved offset of tiredness flag A. Anchors on the
@@ -1949,6 +2010,48 @@ pub mod resolve {
         );
         None
     }
+}
+
+/// Walk back/forward through `.text` from `addr_inside` until we
+/// hit MSVC inter-function padding (2+ consecutive `0xcc`).
+/// Returns `(function_start, function_end_exclusive)`. The end is
+/// the first `0xcc` of the trailing padding run; function body is
+/// `[start, end)`.
+///
+/// SAFETY: caller is responsible for `addr_inside` being inside
+/// `.text` and the windows fitting within the section.
+pub fn find_function_bounds_via_int3(
+    addr_inside: usize,
+    lookback: usize,
+    lookahead: usize,
+) -> Option<(usize, usize)> {
+    let back_start = addr_inside.saturating_sub(lookback);
+    let back_len = addr_inside - back_start;
+    let back_bytes: &[u8] = unsafe {
+        std::slice::from_raw_parts(back_start as *const u8, back_len)
+    };
+    let mut start: Option<usize> = None;
+    for p in (1..back_bytes.len()).rev() {
+        if back_bytes[p] == 0xcc && back_bytes[p - 1] == 0xcc {
+            start = Some(back_start + p + 1);
+            break;
+        }
+    }
+    let start = start?;
+
+    let fwd_bytes: &[u8] = unsafe {
+        std::slice::from_raw_parts(addr_inside as *const u8, lookahead)
+    };
+    let mut end: Option<usize> = None;
+    for p in 0..fwd_bytes.len().saturating_sub(1) {
+        if fwd_bytes[p] == 0xcc && fwd_bytes[p + 1] == 0xcc {
+            end = Some(addr_inside + p);
+            break;
+        }
+    }
+    let end = end?;
+
+    Some((start, end))
 }
 
 pub fn image_base() -> usize {

@@ -503,6 +503,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::skill()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::SKILL),
                     },
+                    "no_tire_loop_entry": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::no_tire_loop_entry()),
+                        "hardcoded": format!("0x{:x}", crate::targets::rebase(crate::targets::horse_offset::NO_TIRE_LOOP_FN_RVA)),
+                    },
+                    "no_tire_loop_size": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::no_tire_loop_size()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::NO_TIRE_LOOP_BODY_SIZE),
+                    },
                     "gamestate_alloc_size": {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::alloc_size()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::GAMESTATE_ALLOC_SIZE),
