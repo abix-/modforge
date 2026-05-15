@@ -125,8 +125,9 @@ pub fn diag() -> serde_json::Value {
     let live_begin = unsafe { *((p + 0x130) as *const usize) };
     let live_end = unsafe { *((p + 0x138) as *const usize) };
 
+    let stride = gs_offset::roster_stride();
     let roster_count = if roster_end >= roster_begin && roster_begin != 0 {
-        roster_end.checked_sub(roster_begin).map(|s| s / 0x24)
+        roster_end.checked_sub(roster_begin).map(|s| s / stride)
     } else {
         None
     };
@@ -237,10 +238,11 @@ pub fn roster_span_looks_loaded(begin: usize, end: usize) -> bool {
         return false;
     }
     let span = end - begin;
-    if span % 0x24 != 0 {
+    let stride = gs_offset::roster_stride();
+    if span % stride != 0 {
         return false;
     }
-    let count = span / 0x24;
+    let count = span / stride;
     // Vanilla save format caps the roster around 256; allow 10x slack
     // for modded saves. Anything bigger is fill-pattern noise.
     count < 2560
@@ -390,7 +392,7 @@ pub fn horse_count() -> usize {
     if end < begin {
         0
     } else {
-        (end - begin) / 0x24
+        (end - begin) / gs_offset::roster_stride()
     }
 }
 
@@ -411,7 +413,7 @@ pub fn horse_roster_entry(i: usize) -> Option<usize> {
     if i >= horse_count() {
         return None;
     }
-    Some(begin + i * 0x24)
+    Some(begin + i * gs_offset::roster_stride())
 }
 
 // =============================================================================

@@ -515,6 +515,10 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::alloc_size()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::GAMESTATE_ALLOC_SIZE),
                     },
+                    "roster_stride": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::roster_stride()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::ROSTER_STRIDE),
+                    },
                 }))
             },
         ),

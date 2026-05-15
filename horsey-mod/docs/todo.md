@@ -27,7 +27,7 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets: **R4 in progress, 27/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~10 fields: 1 must (roster stride), 1 should (TYPE_OR_SPECIES), 9 low (diag-only).
+- Field offsets: **R4 in progress, 28/37 done.** All `must` items resolved. Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~9 fields: 1 should (TYPE_OR_SPECIES), 9 low (diag-only).
 
 **Open work in this section:**
 - [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
@@ -160,7 +160,7 @@ Status codes:
 | `horse_offset::skill()` 0x21c | targets.rs | struct field offset | **R** | `(useless)` retire-handler format string + `8b` r32 loads in ±256B window; histogram top in `[0x210, 0x240]` |
 | `horse_offset::litter_size_stat()` 0x254 | targets.rs | struct field offset | **R** | `8b` r32-from-disp32 loads within BREEDING body 8KB; histogram top in `[0x240, 0x270]` (both parents read it) |
 | `gs_offset::live_horses_begin/end()` 0x130/0x138 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x100, 0x200]` window |
-| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb-must** | hot path: 4 production sites do roster iteration + count math; drift = corrupted horse count + bogus pointers |
+| `gs_offset::roster_stride()` 0x24 | targets.rs / gamestate.rs | struct stride | **R** | call-site lookback at `e8 X<HORSE_SAVE_WRITER>`: `6b ?? <imm8>` (imul r32, imm8) inside iterator loop within 128 bytes; histogram top |
 | `horse_offset::ctx_offset()` 0x2b8 | targets.rs | struct field offset | **R** | `add rcx, imm32` inside HORSE_SAVE_LOADER body (256-byte window) |
 | `horse_offset::no_tire_loop_entry/size()` 0x1400ceb60 / 2502 | targets.rs / patches.rs | function entry + size | **R** | global scan for unique adjacent tired-pair byte-zero stores; `find_function_bounds_via_int3` walks back/forward through MSVC `0xcc` padding; bootstraps the no_tire patch + all 4 downstream tired-pair resolvers |
 | Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs | struct field offset | **R** | now reads `horse_offset::tired_flag_b()` resolver |
@@ -168,17 +168,16 @@ Status codes:
 | `gs_offset::alloc_size()` 0x448 | targets.rs | struct size | **R** | anchor on unique `mov [rip+disp32], reg` store of GAMESTATE_PTR; lookback 256B for `b9 <imm32>`; histogram top |
 | `horse_offset::alloc_size()` 0x498 | targets.rs | struct size | **R** | call-site lookback at `e8 X<HORSE_CONSTRUCTOR>`: `b9 <imm32>` (mov ecx, alloc size) within 32-byte preamble; histogram top |
 
-**H-gb migration progress: 27 done / ~10 remaining.**
+**H-gb migration progress: 28 done / ~9 remaining.**
 
-Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
+Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
 
-Remaining by criticality:
+**All `must` items done.** Remaining by criticality:
 
-- **must** (1): roster stride 0x24
 - **should** (1): TYPE_OR_SPECIES (0x1c)
 - **low** (9): FRAME_TICK (gs+0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440). All diag-only via `gamestate.diag`; drift harmless
 
-Practical target: 29/37 (27 done + 2 to do); the 9 low-priority items stay tracked but unmigrated unless they become hot-path consumers.
+Practical target: 29/37 (28 done + 1 should-do); the 9 low-priority items stay tracked but unmigrated unless they become hot-path consumers.
 
 #### Algorithm constants (H-alg): we own; intentional
 

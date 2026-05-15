@@ -320,6 +320,56 @@ pub mod gs_offset {
         *CACHE.get_or_init(|| resolve_map_dims_pair().map(|p| p.1).unwrap_or(TRAILING_27C))
     }
 
+    /// Old decomp constant for the roster entry stride (each
+    /// in-memory horse-list entry is 36 bytes). Production should
+    /// call [`roster_stride()`].
+    pub const ROSTER_STRIDE: usize = 0x24;
+
+    /// Pattern-resolved roster entry stride. Anchors on the
+    /// per-horse save writer `HORSE_SAVE_WRITER`: the iterator
+    /// function (`FUN_14006d610`) calls it once per roster entry,
+    /// and just before each call computes
+    /// `entry = roster_base + index * stride` via
+    /// `imul reg, reg, <stride>` (encoded `6b ?? <imm8>`). Look back
+    /// 128 bytes from every call site, histogram imm8 of any
+    /// `imul r32, r/m32, imm8` instruction, top wins.
+    ///
+    /// Falls back to the hardcoded `ROSTER_STRIDE` const.
+    pub fn roster_stride() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_roster_stride().unwrap_or(ROSTER_STRIDE))
+    }
+
+    fn resolve_roster_stride() -> Option<usize> {
+        let target = super::resolve::horse_save_writer()?;
+        let sig = format!("e8 X0x{target:x}");
+        let call_sites = modforge::patterns::sleuth::scan_all_matches(&sig).ok()?;
+        if call_sites.is_empty() {
+            return None;
+        }
+        const LOOKBACK: usize = 128;
+        let mut hist: std::collections::BTreeMap<i64, usize> =
+            std::collections::BTreeMap::new();
+        for call_addr in call_sites {
+            let start = call_addr.saturating_sub(LOOKBACK);
+            // SAFETY: start..call_addr is inside .text, mapped.
+            let bytes: &[u8] = unsafe {
+                std::slice::from_raw_parts(start as *const u8, LOOKBACK)
+            };
+            for i in 0..bytes.len().saturating_sub(3) {
+                if bytes[i] == 0x6b {
+                    let imm8 = bytes[i + 2] as i8 as i64;
+                    if (0x10..=0xff).contains(&imm8) {
+                        *hist.entry(imm8).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+        hist.into_iter()
+            .max_by_key(|(_, c)| *c)
+            .map(|(v, _)| v as usize)
+    }
+
     /// Old decomp constant for the GameState struct alloc size.
     /// Production should call [`alloc_size()`].
     pub const GAMESTATE_ALLOC_SIZE: usize = 0x448;
