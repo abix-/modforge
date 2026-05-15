@@ -40,7 +40,17 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 
 ### Hardcoded-constants inventory (zero-hardcoding audit, 2026-05-15)
 
-Every magic integer baked into Rust source code that originates from the GAME BINARY (not algorithm constants). User-locked: there should be **zero** hardcoded game-binary constants; everything pattern-resolved.
+Every magic integer baked into Rust source code. User-locked: nothing is out of scope. Audit, classify, then decide what to migrate.
+
+Status codes:
+- **R**: pattern-resolved at runtime via patternsleuth.
+- **H-gb**: hardcoded, GAME-BINARY DERIVED. Drift risk on Horsey updates. Target for migration.
+- **H-alg**: hardcoded ALGORITHM CONSTANT. We control the algorithm; the value is fixed by definition (CRC polynomial, hash mixer). Migration value = none, but still audit so we know it's intentional.
+- **H-os**: hardcoded HOST-OS CONSTANT. Windows ABI/exception codes. Migration value = none unless we ship on a non-Windows platform.
+- **H-design**: hardcoded DESIGN CHOICE we own (sidecar version, UI row cap, gene-count target). Migration value = none; these are policy.
+- **H-test**: hardcoded TEST FIXTURE. Migration value = none.
+
+#### Game-binary derived (H-gb): MUST migrate
 
 | Constant | File:line | Kind | Status | Notes |
 |---|---|---|---|---|
@@ -51,33 +61,79 @@ Every magic integer baked into Rust source code that originates from the GAME BI
 | `DEBUG_MODE_ACTIVE` 0x1403d957b | targets.rs:51 | data global | **R** | unlock-block delta |
 | `DEBUG_LOG_GATE` 0x1403d9506 | targets.rs:59 | data global | **R** | init-triplet sig |
 | `fn_addr::*` (31 entries) | targets.rs:166-371 | function entry | **R** | 32-48 byte body sigs |
-| `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H, drift suspected** | needs R4 |
-| `gs_offset::FIELD_268` 0x268 | targets.rs:67 | struct field offset | **H, drift suspected** | needs R4 |
-| `gs_offset::MONEY` 0x308 | targets.rs:68 | struct field offset | **H, drift suspected** | anchor: cheat-money handler |
-| `gs_offset::YEAR` 0x314 | targets.rs:69 | struct field offset | **H, DRIFT OBSERVED** | reads 336 on new game; anchor: "Year %d" printf |
-| `gs_offset::SLEEPS` 0x318 | targets.rs:70 | struct field offset | **H, drift suspected** | anchor: "Sleeps %d" printf |
-| `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H, drift suspected** | needs R4 |
-| `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H, drift suspected** | needs R4 |
-| `gs_offset::HORSES_BEGIN` 0x280 | targets.rs:87 | struct field offset | **H, drift suspected** | roster pointer; looks_loaded reads this |
-| `gs_offset::HORSES_END` 0x288 | targets.rs:90 | struct field offset | **H, drift suspected** | needs R4 |
-| `gs_offset::TRAILING_278/27C` | targets.rs:91-92 | struct field offset (2) | **H, drift suspected** | needs R4 |
-| `horse_offset::TYPE_OR_SPECIES` 0x1c | targets.rs:109 | struct field offset | **H** | needs R4 |
-| `horse_offset::NAME_ID` 0x1f8 | targets.rs:111 | struct field offset | **H** | needs R4 |
-| `horse_offset::AGE/MAX_AGE` 0x1fc/0x200 | targets.rs:113,116 | struct field offset (2) | **H** | needs R4 |
-| `horse_offset::ON_TRACK_FLAG` 0x204 | targets.rs:118 | struct field offset | **H** | needs R4 |
-| `horse_offset::TIRED_FLAG_A/B` 0x205/0x206 | targets.rs:120,122 | struct field offset (2) | **H** | anchor: sleep_safe_no_tire patch site |
-| `horse_offset::BREEDING_FLAG` 0x207 | targets.rs:124 | struct field offset | **H** | needs R4 |
-| `horse_offset::SKILL` 0x21c | targets.rs:126 | struct field offset | **H** | needs R4 |
-| `horse_offset::LITTER_SIZE_STAT` 0x254 | targets.rs:129 | struct field offset | **H** | needs R4 |
-| `LIVE_HORSES_BEGIN/END` 0x130/0x138 | gamestate.rs:428,430 | struct field offset | **H** | needs R4; should move to gs_offset |
-| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct size | **H** | repeated 4x; one resolver should feed all |
-| `HORSE_CTX_OFFSET` 0x2b8 | combinator.rs:26, render_trampoline.rs:34 | struct field offset | **H** | the working-genome offset; HORSE_SAVE_LOADER uses `add rcx, 0x2b8` as its anchor. Decode that for the runtime value |
-| GameState alloc size 0x448 | targets.rs resolver comments | struct size | **H** | not yet consumed by production but referenced in resolver code |
-| Horse alloc size 0x498 | targets.rs resolver comments | struct size | **H** | not yet consumed by production but referenced in resolver code |
+| `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H-gb** | needs R4 |
+| `gs_offset::FIELD_268` 0x268 | targets.rs:67 | struct field offset | **H-gb** | needs R4 |
+| `gs_offset::MONEY` 0x308 | targets.rs:68 | struct field offset | **H-gb** | anchor: cheat-money handler |
+| `gs_offset::YEAR` 0x314 | targets.rs:69 | struct field offset | **H-gb DRIFT OBSERVED** | reads 336 on new game; anchor: "Year %d" printf |
+| `gs_offset::SLEEPS` 0x318 | targets.rs:70 | struct field offset | **H-gb** | anchor: "Sleeps %d" printf |
+| `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H-gb** | needs R4 |
+| `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb** | needs R4 |
+| `gs_offset::HORSES_BEGIN/END` 0x280/0x288 | targets.rs:87,90 | struct field offset (2) | **H-gb** | roster pointer pair; looks_loaded reads these |
+| `gs_offset::TRAILING_278/27C` | targets.rs:91-92 | struct field offset (2) | **H-gb** | needs R4 |
+| `horse_offset::TYPE_OR_SPECIES/NAME_ID` 0x1c/0x1f8 | targets.rs:109,111 | struct field offset (2) | **H-gb** | needs R4 |
+| `horse_offset::AGE/MAX_AGE` 0x1fc/0x200 | targets.rs:113,116 | struct field offset (2) | **H-gb** | needs R4 |
+| `horse_offset::ON_TRACK_FLAG/BREEDING_FLAG` 0x204/0x207 | targets.rs:118,124 | struct field offset (2) | **H-gb** | needs R4 |
+| `horse_offset::TIRED_FLAG_A/B` 0x205/0x206 | targets.rs:120,122 | struct field offset (2) | **H-gb** | anchor: sleep_safe_no_tire patch site |
+| `horse_offset::SKILL/LITTER_SIZE_STAT` 0x21c/0x254 | targets.rs:126,129 | struct field offset (2) | **H-gb** | needs R4 |
+| `LIVE_HORSES_BEGIN/END` 0x130/0x138 | gamestate.rs:428,430 | struct field offset (2) | **H-gb** | should move to gs_offset |
+| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb** | repeated 4x; one resolver feeds all |
+| `HORSE_CTX_OFFSET` 0x2b8 | combinator.rs:26, render_trampoline.rs:34 | struct field offset | **H-gb** | HORSE_SAVE_LOADER uses `add rcx, 0x2b8`; decode that instr's imm32 |
+| `FN_RVA` 0x1400ceb60 + `FN_SIZE` 2502 | patches.rs:163,164 | function entry + size | **H-gb** | sleep_safe_no_tire patch site; FN_RVA needs body sig, FN_SIZE needs end-of-function detection |
+| Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs:195 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_B; should reference R4 resolver |
+| Patch-site offset 0x205 (TIRE_FLAG_A store) | patches.rs:199 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_A |
+| GameState alloc size 0x448 | resolver comments | struct size | **H-gb** | anchor for FUN_14009c6a0 |
+| Horse alloc size 0x498 | resolver comments | struct size | **H-gb** | anchor for HORSE_CONSTRUCTOR |
 
-**Out of scope (algorithm constants, not game-binary):** CRC32 polynomial `0xEDB88320`; splitmix64 mixers `0x9E3779B97F4A7C15` / `0xBF58476D1CE4E5B9` / `0x94D049BB133111EB`; pointer-shape validation bounds `0x10000` / `0x7fff_ffff_ffff` (Windows OS facts, not Horsey facts).
+**H-gb count: 32 struct-field offsets + 3 struct sizes + 1 stride + 1 patch-site fn pair + 2 duplicate field offsets in patches.rs = ~37 game-binary constants left to migrate.**
 
-**Approximate count remaining:** 32 struct-field offsets + 3 struct sizes + 1 roster stride = **36 hardcoded game-binary constants** to migrate.
+#### Algorithm constants (H-alg): we own; intentional
+
+| Constant | File:line | Kind | Notes |
+|---|---|---|---|
+| CRC32 polynomial 0xEDB88320 | save_sidecar.rs:210 | algorithm | reflected zlib poly; sidecar format we define |
+| splitmix64 mixer 0x9E3779B97F4A7C15 | genes.rs:455,488 | algorithm | seed-mixing constant for child-id RNG |
+| splitmix64 mixer 0xBF58476D1CE4E5B9 | genes.rs:456,489 | algorithm | same |
+| splitmix64 mixer 0x94D049BB133111EB | genes.rs:457,490 | algorithm | same |
+| Initial RNG seed 0xa5a5_a5a5_a5a5_a5a5 | genes.rs:481 | algorithm | static counter seed |
+| Increment 0x100000001b3 | genes.rs:482 | algorithm | FNV prime; fetch_add for RNG state |
+
+#### Host-OS constants (H-os): Windows ABI
+
+| Constant | File:line | Notes |
+|---|---|---|
+| EXCEPTION_ACCESS_VIOLATION 0xc000_0005 | lib.rs:187 | NT status code |
+| EXCEPTION_ILLEGAL_INSTRUCTION 0xc000_001d | lib.rs:188 | NT status code |
+| EXCEPTION_STACK_OVERFLOW 0xc000_00fd | lib.rs:189 | NT status code |
+| EXCEPTION_INT_DIVIDE_BY_ZERO 0xc000_0094 | lib.rs:190 | NT status code |
+| EXCEPTION_PRIV_INSTRUCTION 0xc000_0096 | lib.rs:191 | NT status code |
+| DLL_PROCESS_ATTACH/THREAD_ATTACH/THREAD_DETACH/PROCESS_DETACH | lib.rs:297-300 | DllMain reason codes |
+| Heap-pointer bounds 0x10000 / 0x7fff_ffff_ffff / & 0x7 alignment | gamestate.rs:74 | x64 Windows user-mode address space facts |
+
+#### Design choices (H-design): policy we control
+
+| Constant | File:line | Notes |
+|---|---|---|
+| EXT_GENE_COUNT 240 | genes.rs:33 | our target gene-table extension size |
+| TOTAL_GENE_COUNT 240+EXT | genes.rs:36 | derived from above + vanilla 240 |
+| DEFAULT_MUTATION_RATE 100 | genes.rs:40 | default for ext gene mutation rates |
+| DEFAULT_SCALE 1 | genes.rs:43 | default ext-gene scale |
+| Sidecar format VERSION 1 | save_sidecar.rs:54 | BXSAVEXT version we author |
+| BUF_LEN_FLOATS 353 | render_trampoline.rs:38 | render trampoline buffer size (matches engine layout but ours to set) |
+| MAX_ROWS 32 | ui.rs:68 | UI cap on Horses tab row count |
+| alias_check sentinels 0xAB / 0xCD | ops.rs:392,393 | distinct sentinel bytes for byte-aliasing probe |
+
+#### Test fixtures (H-test): not production
+
+| Constant | File:line | Notes |
+|---|---|---|
+| 0x1234, 0x5678, 0xDEAD | genes.rs:795,818,822,844 | unit-test horse ids |
+| 0x01010101 / 0x02020202 fill | gamestate.rs:561,562 | regression fixture for fill-pattern roster |
+| 0xff / 0xfe bad-bytes | save_sidecar.rs:360,361 + genes.rs:999,1000 | corruption-handling fixtures |
+
+#### Summary
+
+- **Migrate (H-gb): 37 constants** -> R4 work below.
+- **Not migrating (H-alg / H-os / H-design / H-test): ~25 constants**, all intentional. Audited and acknowledged.
 
 ## Ship status pointers
 
