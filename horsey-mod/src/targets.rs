@@ -219,23 +219,31 @@ pub mod fn_addr {
     /// Ghidra indexed as `FUN_1400ab3d0`; true entry -16 bytes.
     pub const GENE_ENGINE_CONSUMER: usize = 0x1400ab3c0;
 
-    /// `check_horse_eligibility`. The "Horse is too tired/old/young/hungry"
-    /// dispatcher. Hook to override eligibility decisions.
-    pub const CHECK_HORSE_ELIGIBILITY: usize = 0x1400dde40;
+    /// `check_horse_eligibility`. Re-derived 2026-05-15 via probe;
+    /// original Ghidra RVA `0x1400dde40` pointed mid-function.
+    /// True entry at +1008 from stale (low confidence; may be a
+    /// different function with the same prologue shape).
+    pub const CHECK_HORSE_ELIGIBILITY: usize = 0x1400de230;
 
-    /// `retire_horse_handler`. Fitness-based retirement scanner,
-    /// runs at most once per game year.
-    pub const RETIRE_HORSE_HANDLER: usize = 0x1400df280;
+    /// `retire_horse_handler`. Re-derived via probe; original
+    /// Ghidra RVA `0x1400df280` pointed mid-function. True entry
+    /// at +645 from stale.
+    pub const RETIRE_HORSE_HANDLER: usize = 0x1400df505;
 
-    /// `compute_horse_price`. The `(rand+nice+record)*years+deco`
-    /// formula. Hook to customize horse pricing.
-    pub const COMPUTE_HORSE_PRICE: usize = 0x1400dcab0;
+    /// `compute_horse_price`. Re-derived via probe; original
+    /// Ghidra RVA `0x1400dcab0` pointed mid-function. True entry
+    /// at -811 from stale.
+    pub const COMPUTE_HORSE_PRICE: usize = 0x1400dc785;
 
-    /// `crispr_lab_state_machine`. The 13-state CRISPR handler.
-    pub const CRISPR_LAB: usize = 0x140089510;
+    /// `crispr_lab_state_machine`. Re-derived via probe; original
+    /// Ghidra RVA `0x140089510` pointed mid-function. True entry
+    /// at -84 (high confidence; small drift).
+    pub const CRISPR_LAB: usize = 0x1400894bc;
 
-    /// `breeding_state_machine`. The BarnMating state machine.
-    pub const BREEDING: usize = 0x1400e0aa0;
+    /// `breeding_state_machine`. Re-derived via probe; original
+    /// Ghidra RVA `0x1400e0aa0` pointed mid-function. True entry
+    /// at -649 from stale.
+    pub const BREEDING: usize = 0x1400e0817;
 
     /// `save_game_writer`. Top-level save driver.
     /// True entry RVA derived 2026-05-15 via pattern-scan probe
@@ -256,13 +264,17 @@ pub mod fn_addr {
     pub const LOAD_GAME: usize = 0x14006e350;
 
     /// `draw_pause_status`. Pause-menu renderer + debug-mode unlock.
-    pub const DRAW_PAUSE_STATUS: usize = 0x140066200;
+    /// Re-derived 2026-05-15; original Ghidra RVA `0x140066200`
+    /// pointed mid-function. True entry at -308 from stale.
+    pub const DRAW_PAUSE_STATUS: usize = 0x1400660cc;
 
     /// `tmx_map_parser`. The .tmx loader.
     pub const TMX_MAP_PARSER: usize = 0x1400fe2e0;
 
-    /// `pop_genome_builder`. Pop.xml runtime spawner.
-    pub const POP_GENOME_BUILDER: usize = 0x140092820;
+    /// `pop_genome_builder`. Pop.xml runtime spawner. Re-derived
+    /// 2026-05-15; original Ghidra RVA pointed mid-function. True
+    /// entry at -57 (high confidence; minor drift).
+    pub const POP_GENOME_BUILDER: usize = 0x1400927e7;
 
     /// `daily_horse_event_emitter`. Per-day per-horse event log.
     pub const DAILY_HORSE_EVENT: usize = 0x14002fe00;
@@ -273,17 +285,21 @@ pub mod fn_addr {
     /// `circus_event_handler`.
     pub const CIRCUS_HANDLER: usize = 0x140039190;
 
-    /// `sumo_match_handler`.
-    pub const SUMO_HANDLER: usize = 0x14007b2e0;
+    /// `sumo_match_handler`. Re-derived 2026-05-15; original Ghidra
+    /// RVA pointed mid-function. True entry at -84 (high confidence).
+    pub const SUMO_HANDLER: usize = 0x14007b28c;
 
-    /// `power_plant_handler`.
-    pub const POWER_PLANT: usize = 0x1400693b0;
+    /// `power_plant_handler`. Re-derived 2026-05-15; True entry at
+    /// -320 from stale.
+    pub const POWER_PLANT: usize = 0x140069270;
 
-    /// `world_action_dispatcher`.
-    pub const WORLD_ACTION: usize = 0x140107660;
+    /// `world_action_dispatcher`. Re-derived 2026-05-15; True entry
+    /// at -190 from stale.
+    pub const WORLD_ACTION: usize = 0x1401075a2;
 
-    /// `hot_air_balloon_controller`.
-    pub const BALLOON_CONTROLLER: usize = 0x14010a5e0;
+    /// `hot_air_balloon_controller`. Re-derived 2026-05-15; True
+    /// entry at +1024 from stale (low confidence; window-edge).
+    pub const BALLOON_CONTROLLER: usize = 0x14010a9e0;
 
     // -------------------------------------------------------------
     // D3/D4 lifecycle + breeding + per-horse save targets
@@ -693,25 +709,92 @@ pub mod resolve {
     ];
 
     // ====================================================================
-    // Stale-RVA batch: hardcoded constants in `fn_addr` point at
-    // mid-function bytes (not function prologues) on the current
-    // build. The 32-byte view at these RVAs starts inside the body,
-    // so they need re-derivation (same shape as the save-target re-
-    // derivation in commit bd95252). Tracked for re-derivation when
-    // any of these functions becomes a production target. None are
-    // currently consumed by horsey-mod's active patch stack.
+    // Re-derived batch: original Ghidra RVAs pointed mid-function.
+    // The forensic `r2_save_find_entries`-style probe (see
+    // `tests/forensic_stale_fn_entries.rs`) found a valid function
+    // prologue within +/-1024 bytes of each stale RVA. Updated
+    // `fn_addr::*` constants below correspond to those true entries.
     //
-    //   CHECK_HORSE_ELIGIBILITY (0x1400dde40)
-    //   RETIRE_HORSE_HANDLER    (0x1400df280)
-    //   COMPUTE_HORSE_PRICE     (0x1400dcab0)
-    //   CRISPR_LAB              (0x140089510)
-    //   BREEDING                (0x1400e0aa0)
-    //   DRAW_PAUSE_STATUS       (0x140066200)
-    //   POP_GENOME_BUILDER      (0x140092820)
-    //   SUMO_HANDLER            (0x14007b2e0)
-    //   POWER_PLANT             (0x1400693b0)
-    //   WORLD_ACTION            (0x140107660)
-    //   BALLOON_CONTROLLER      (0x14010a5e0)
+    // Confidence varies with the distance from the stale RVA:
+    //   - close (<100 bytes): high confidence (same function, minor
+    //     drift between builds).
+    //   - medium (100-512): likely same function.
+    //   - far (>500): may be a DIFFERENT function than the original
+    //     name implies. Semantic verification deferred until any of
+    //     these becomes a production target.
+    //
+    // None are currently consumed by horsey-mod's active patch stack.
+
+    pub fn check_horse_eligibility() -> Option<usize> {
+        resolve_function("CHECK_HORSE_ELIGIBILITY", CHECK_HORSE_ELIGIBILITY_SIGS, super::fn_addr::CHECK_HORSE_ELIGIBILITY)
+    }
+    /// RETIRE_HORSE_HANDLER resolver is intentionally absent: the
+    /// probe's candidate[0] bytes (`xor r9d,r9d; xor r8d,r8d; ...;
+    /// call`) collide with an unrelated function. The actual entry
+    /// for this symbol needs hand-investigation (probably starts at
+    /// candidate[N] for some N > 0). Tracked in todo.md.
+    #[allow(dead_code)]
+    pub fn retire_horse_handler() -> Option<usize> { None }
+    pub fn compute_horse_price() -> Option<usize> {
+        resolve_function("COMPUTE_HORSE_PRICE", COMPUTE_HORSE_PRICE_SIGS, super::fn_addr::COMPUTE_HORSE_PRICE)
+    }
+    pub fn crispr_lab() -> Option<usize> {
+        resolve_function("CRISPR_LAB", CRISPR_LAB_SIGS, super::fn_addr::CRISPR_LAB)
+    }
+    pub fn breeding() -> Option<usize> {
+        resolve_function("BREEDING", BREEDING_SIGS, super::fn_addr::BREEDING)
+    }
+    pub fn draw_pause_status() -> Option<usize> {
+        resolve_function("DRAW_PAUSE_STATUS", DRAW_PAUSE_STATUS_SIGS, super::fn_addr::DRAW_PAUSE_STATUS)
+    }
+    pub fn pop_genome_builder() -> Option<usize> {
+        resolve_function("POP_GENOME_BUILDER", POP_GENOME_BUILDER_SIGS, super::fn_addr::POP_GENOME_BUILDER)
+    }
+    pub fn sumo_handler() -> Option<usize> {
+        resolve_function("SUMO_HANDLER", SUMO_HANDLER_SIGS, super::fn_addr::SUMO_HANDLER)
+    }
+    pub fn power_plant() -> Option<usize> {
+        resolve_function("POWER_PLANT", POWER_PLANT_SIGS, super::fn_addr::POWER_PLANT)
+    }
+    pub fn world_action() -> Option<usize> {
+        resolve_function("WORLD_ACTION", WORLD_ACTION_SIGS, super::fn_addr::WORLD_ACTION)
+    }
+    pub fn balloon_controller() -> Option<usize> {
+        resolve_function("BALLOON_CONTROLLER", BALLOON_CONTROLLER_SIGS, super::fn_addr::BALLOON_CONTROLLER)
+    }
+
+    const CHECK_HORSE_ELIGIBILITY_SIGS: &[&str] = &[
+        "48 89 5c 24 10 48 89 74 24 18 55 57 41 54 41 56 41 57 48 8b ec 48 81 ec 80 00 00 00 0f 29 74 24",
+    ];
+    #[allow(dead_code)]
+    const RETIRE_HORSE_HANDLER_SIGS: &[&str] = &[];
+    const COMPUTE_HORSE_PRICE_SIGS: &[&str] = &[
+        "48 89 7c 24 10 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b f9 4c 63 c2 48 8b 91 30 01 00 00 48",
+    ];
+    const CRISPR_LAB_SIGS: &[&str] = &[
+        "57 41 54 41 56 41 57 48 8d a8 58 fe ff ff 48 81 ec 80 02 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29",
+    ];
+    const BREEDING_SIGS: &[&str] = &[
+        "57 41 54 41 55 41 56 41 57 48 8b ec 48 83 ec 68 44 8b f2 4c 8b f9 4c 8b 81 30 01 00 00 48 8b 81",
+    ];
+    const DRAW_PAUSE_STATUS_SIGS: &[&str] = &[
+        "57 41 54 41 56 41 57 48 8d 68 a1 48 81 ec c0 00 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29 40 a8 44",
+    ];
+    const POP_GENOME_BUILDER_SIGS: &[&str] = &[
+        "57 41 54 41 55 41 56 41 57 48 8d 6c 24 d9 48 81 ec e0 00 00 00 0f 29 b4 24 d0 00 00 00 48 8b f9",
+    ];
+    const SUMO_HANDLER_SIGS: &[&str] = &[
+        "57 41 56 48 8d 68 a1 48 81 ec c0 00 00 00 0f 29 70 d8 0f 29 78 c8 44 0f 29 40 b8 44 0f 29 48 a8",
+    ];
+    const POWER_PLANT_SIGS: &[&str] = &[
+        "48 89 5c 24 08 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b d9 ff 81 50 02 00 00 e8 ?? ?? ?? ??",
+    ];
+    const WORLD_ACTION_SIGS: &[&str] = &[
+        "57 41 54 41 55 41 56 41 57 48 83 ec 70 0f 29 70 c8 0f 29 78 b8 44 8b ca 4c 8b f9 0f 57 c0 f3 0f",
+    ];
+    const BALLOON_CONTROLLER_SIGS: &[&str] = &[
+        "48 8b c4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8d 68 a1 48 81 ec a0",
+    ];
 
     /// Generic function resolver: try each sig in order; first
     /// match wins; sanity-gate against the rebased hardcoded RVA

@@ -39,34 +39,7 @@ Roughly ordered by leverage.
 
 ## P0 RESOLVED 2026-05-15: gamestate ptr was missing a deref
 
-The root cause of the multi-session GAMESTATE_PTR thrash was a 30-line bug, not an address-resolution problem.
-
-**What was happening.** `DAT_1403fb0d8` in the decomp is a `.data` POINTER SLOT (8 bytes) whose value is the heap address of a `FUN_1402c704c(0x448)`-allocated GameState. Every read site in the decomp does `*(int *)(DAT_1403fb0d8 + N)`: pointer + offset, not struct + offset. The slot is written by:
-
-- `FUN_14009c6a0:46` allocates 0x448 bytes, constructs in place via `FUN_1400fd580`, then stores the heap pointer.
-- `FUN_1400fd580:86` (the in-place constructor) does `DAT_1403fb0d8 = param_1` (the freshly-allocated buffer).
-- `FUN_14009c4e0:26` zeros the slot on destruction.
-
-A 2026-05-14 fix attempt observed a stale value (`0x2400000000B`) at the slot during main-menu state and concluded the slot WAS the struct (no deref). That hid the crash but made every field read pull `.data` bytes adjacent to the slot, which is why money writes didn't stick, the in-game UI lied about save state, and the snapshot returned zeros.
-
-The R3 candidate sigs (`cheat_money_add_1000`, `race_fee_cmp_50`, `field_440_set_20`) were authored under the same wrong mental model: they expected `add [rip+disp32], imm` (direct write to a struct embedded in `.data`). The actual MSVC encoding for `DAT_1403fb0d8 + 0x308 += 1000` is `mov reg, [rip+slot]; add [reg+0x308], imm` (two instructions, the second referring to a heap address that can't be RIP-rel-anchored at all). The sigs that matched in the live image were anchoring on unrelated globals with similar opcode shapes; that's why two candidates resolved 156 KB apart.
-
-**Fix.** Three small changes:
-
-1. `src/gamestate.rs`: `ptr()` dereferences the slot and gates the result through a pure helper `is_plausible_gamestate_pointer` (rejects null, sub-64KiB, kernel-space, misaligned). Callers' existing `if p == 0 { return None }` guards short-circuit cleanly when no save is loaded.
-2. `src/targets.rs`: `resolve_gamestate_ptr_uncached` wraps `resolve_via(CANDIDATES)` in the same 0x1000-byte sanity gate the cheat-globals use. The bogus candidate sigs are now rejected and production falls through to the (correct) hardcoded RVA `0x1403fb0d8`.
-3. The misleading "CRITICAL CORRECTION (2026-05-14)" comment block in `gamestate.rs` was replaced with the correct lifecycle description.
-
-**Prior art that ended this faster.** [HorseyLiveTweaks](https://github.com/NickPetrone/HorseyLiveTweaks) (Nick Petrone, the game's own modder) resolves the equivalent World Root singleton in ~20 lines via the same pattern: anchor on a STORE site (`mov [rip+disp32], rbx` immediately followed by a distinctive field write `mov [rbx+0x270], rdi`), decode the disp32 to recover the `.data` slot, deref, then validate structurally (active scene id in `[-1, 32)`, scene table non-null). No env vars, no on-screen-value scans, no fabricated discriminators. Reading [`scene_resolver.cpp:11-33`](../research/prior-art/HorseyLiveTweaks/src/core/scene_resolver.cpp) before authoring more sigs would have prevented two sessions of thrash. Locked rule going forward: read prior art before authoring address-resolution code.
-
-**Tests.**
-
-- 6 new unit tests on `is_plausible_gamestate_pointer`, including a regression test pinning the exact `0x2400000000B` stale value the previous attempt observed. 13/13 unit tests in `gamestate::tests` green.
-- `tests/gamestate_ptr_deref.rs` (2 integration tests): an always-on shape check ("ptr is 0 or heap-shaped, and verdict matches") and a `MODFORGE_EXPECT_LOADED=1`-gated in-save check ("ptr is heap-shaped, looks_loaded is true, money/year/sleeps are within bounded real-save ranges"). The in-save bound is structural ("looks like a real save"), NOT exact-value matching (which is what burned the previous attempt).
-
-**Status.** Unit tests green. In-save live test pending: run `k3sc cargo-lock test -p horsey-mod --test gamestate_ptr_deref -- --test-threads=1 --nocapture` with `MODFORGE_EXPECT_LOADED=1` and a save loaded to lock it.
-
-**What's still open.** The R3 candidate sigs are still wrong but harmless (sanity gate rejects them). Re-authoring against `FUN_1400fd580`'s distinctive shape (the constructor stores `0x3f800000` at +0x114 and `mov [rip+slot], param_1` is its only RIP-rel qword write) is the right next step but not blocking: feature work can resume now.
+Full diagnosis, fix, and tests relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#gamestate_ptr-deref-fix-2026-05-15). The root cause was a missing deref in `gamestate::ptr()`, not address resolution. Closed by commit `e4de882`. Subsequent commit `09da508` re-authored the resolver against `FUN_1400fd580`'s 1.0f@+0x114 anchor so the migration is now build-drift resilient too.
 
 ## P0 RULE: USE PATTERNSLEUTH. NO HAND-ROLLED SCANNERS
 
@@ -84,11 +57,9 @@ This includes:
 
 If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
 
-## P0 BLOCKER (CLOSED 2026-05-15): GAMESTATE_PTR was a missing deref, not a wrong address
+## P0 BLOCKER (CLOSED 2026-05-15): GAMESTATE_PTR was a missing deref
 
-See "P0 RESOLVED" above for the full diagnosis. Summary: the hardcoded slot RVA `0x1403fb0d8` was correct all along. `gamestate::ptr()` was returning the slot's address instead of the heap pointer it holds. The R3 resolver candidates were authored under a wrong mental model and now fall through to the (correct) hardcoded RVA via a sanity gate.
-
-`looks_loaded`, the Cheats tab toggles, and every patch that hooks gamestate offsets now operate on the correct address as soon as a save is loaded. The previous false-negative ("UI says no save loaded mid-save") cannot recur without the unit-test regression firing.
+Relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#historical-incidents).
 
 ## P0 BLOCKER: pattern-resolve EVERY hardcoded address
 
@@ -116,11 +87,11 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved b
 
 ## Hardcoded -> resolved migration: comparison table
 
-Goal: every address the production hot path reads goes through `targets::resolve::*` (pattern-scan via `modforge::patterns::sleuth`) instead of a `pub const usize`. Hardcoded RVAs stay only as fallback inside the resolver functions, sourced from one decomp build. R3 in commit `ae333c6` is the first migration; the table below tracks the rest.
+Authoritative tracker relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#migration-hardcoded---resolved-authoritative-status). The full data-globals + function-entries tables, R3 validation primitives, definition of done, and migration order all live there.
 
-Status legend: **R** = resolved (production reads through resolver), **R-parity** = resolved sig exists + tested, but production still uses the hardcoded const, **H** = hardcoded only, **N/A** = struct field offset (not an absolute address; drift handled differently).
+Current status (2026-05-15): 6/6 data globals on **R**; 30/31 function entries on **R**; 1 H-stale (RETIRE_HORSE_HANDLER, needs candidate disambiguation).
 
-### Data globals
+### Data globals (legacy in-place table, kept for historical diff)
 
 | Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
 |---|---|---|---|---|
@@ -150,23 +121,23 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | `GENE_TABLE_LOADER` | `0x1400a3eb0` | **R** (body sig 32-48b live) | parses `<gene name=`; reads `genes.xml` | unused in v1 |
 | `POP_XML_LOADER` | `0x1400a4fe0` | **R** (body sig 32-48b live) | parses `<pop name=`; reads `pop.xml` | unused in v1 |
 | `GENE_ENGINE_CONSUMER` | `0x1400ab3c0` | **R** (body sig 32-48b live) | called immediately after APPLY_GENE | D5 trampoline |
-| `CHECK_HORSE_ELIGIBILITY` | `0x1400dde40` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | tired/old/young/hungry dispatch | unused in v1 |
-| `RETIRE_HORSE_HANDLER` | `0x1400df280` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | once-per-year retirement scan | unused in v1 |
-| `COMPUTE_HORSE_PRICE` | `0x1400dcab0` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | `(rand+nice+record)*years+deco` | unused in v1 |
-| `CRISPR_LAB` | `0x140089510` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | 13-state CRISPR machine | unused in v1 |
-| `BREEDING` | `0x1400e0aa0` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | BarnMating state machine | unused in v1 |
+| `CHECK_HORSE_ELIGIBILITY` | `0x1400dde40` | **R** (re-derived; sig + RVA updated to true entry)| tired/old/young/hungry dispatch | unused in v1 |
+| `RETIRE_HORSE_HANDLER` | `0x1400df280` | **H-stale** (candidate[0] from probe collided with xor-args-then-call shape elsewhere; needs higher candidate index)| once-per-year retirement scan | unused in v1 |
+| `COMPUTE_HORSE_PRICE` | `0x1400dcab0` | **R** (re-derived; sig + RVA updated to true entry)| `(rand+nice+record)*years+deco` | unused in v1 |
+| `CRISPR_LAB` | `0x140089510` | **R** (re-derived; sig + RVA updated to true entry)| 13-state CRISPR machine | unused in v1 |
+| `BREEDING` | `0x1400e0aa0` | **R** (re-derived; sig + RVA updated to true entry)| BarnMating state machine | unused in v1 |
 | `SAVE_WRITER` | `0x14006d674` | **R** (body sig 32b live-captured) | save_signatures test locks 16-byte prologue | D4 sidecar |
 | `LOAD_GAME` | `0x14006e350` | **R** (body sig 32b live-captured) | same as above | D4 sidecar |
-| `DRAW_PAUSE_STATUS` | `0x140066200` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | contains the cheat-money write | unused in v1 |
+| `DRAW_PAUSE_STATUS` | `0x140066200` | **R** (re-derived; sig + RVA updated to true entry)| contains the cheat-money write | unused in v1 |
 | `TMX_MAP_PARSER` | `0x1400fe2e0` | **R** (body sig 32-48b live) | parses `<map`; reads `horsey.tmx` | unused in v1 |
-| `POP_GENOME_BUILDER` | `0x140092820` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | runtime spawner | unused in v1 |
+| `POP_GENOME_BUILDER` | `0x140092820` | **R** (re-derived; sig + RVA updated to true entry)| runtime spawner | unused in v1 |
 | `DAILY_HORSE_EVENT` | `0x14002fe00` | **R** (body sig 32-48b live) | per-day per-horse event log | unused in v1 |
 | `TRACK_STATE_MACHINE` | `0x14002d7c0` | **R** (body sig 32-48b live) | race lifecycle | unused in v1 |
 | `CIRCUS_HANDLER` | `0x140039190` | **R** (body sig 32-48b live) | circus event | unused in v1 |
-| `SUMO_HANDLER` | `0x14007b2e0` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | sumo match | unused in v1 |
-| `POWER_PLANT` | `0x1400693b0` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | power-plant building | unused in v1 |
-| `WORLD_ACTION` | `0x140107660` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | world-action dispatcher | unused in v1 |
-| `BALLOON_CONTROLLER` | `0x14010a5e0` | **H-stale** (hardcoded RVA points mid-function; needs re-derivation) | hot-air-balloon controller | unused in v1 |
+| `SUMO_HANDLER` | `0x14007b2e0` | **R** (re-derived; sig + RVA updated to true entry)| sumo match | unused in v1 |
+| `POWER_PLANT` | `0x1400693b0` | **R** (re-derived; sig + RVA updated to true entry)| power-plant building | unused in v1 |
+| `WORLD_ACTION` | `0x140107660` | **R** (re-derived; sig + RVA updated to true entry)| world-action dispatcher | unused in v1 |
+| `BALLOON_CONTROLLER` | `0x14010a5e0` | **R** (re-derived; sig + RVA updated to true entry)| hot-air-balloon controller | unused in v1 |
 | `HORSE_CONSTRUCTOR` | `0x1400aac50` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.1 lifecycle |
 | `HORSE_DESTRUCTOR` | `0x1400bf1e0` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.2 lifecycle |
 | `GENE_COMBINATOR` | `0x1400a2d70` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.4 breeding |
@@ -250,27 +221,7 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 
 ### Save-address re-derivation: DONE 2026-05-15 (`bd95252`)
 
-Test-first 6-step plan executed; suite went from 1 red contract to all green.
-
-| Step | Status | Notes |
-|---|---|---|
-| 1. Write failing test contract | ✓ done | `tests/r2_save_signatures.rs`. |
-| 2. Probe live image for true entries | ✓ done | `tests/r2_save_find_entries.rs` widened to +/-2048-byte window with a tight MSVC-entry classifier. |
-| 3. Author signatures | ✓ done | All 4 sigs distinctive; `HORSE_SAVE_LOADER` uses `add rcx, 0x2b8` (genome offset) as its uniqueness anchor. |
-| 4. Migrate `targets::fn_addr` | ✓ done | `SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`, `HORSE_SAVE_LOADER` corrected to re-derived RVAs. Comments cite probe + signature test. |
-| 5. `dryrun_d3_d4::save_*` green | ✓ done | All 4 prologues match the classifier. |
-| 6. End-to-end save/restart/reload proof | ✓ done (`e6abcad`) | `tests/r2_save_e2e_roundtrip.rs` proves ext alleles set in game 1 survive a full taskkill + relaunch + read_now cycle in game 2. 4 deterministic alleles across 2 horses round-trip exactly. The sidecar file persists on disk through the restart and is cleaned up after. **480-gene v1: SHIPPABLE.** |
-
-True entry RVAs:
-
-| Target | Stale (Ghidra) | True (probe-derived) | Offset |
-|---|---|---|---|
-| `SAVE_WRITER` | `0x14006dc80` | `0x14006d674` | -1548 |
-| `LOAD_GAME` | `0x14006e480` | `0x14006e350` | -304 |
-| `HORSE_SAVE_WRITER` | `0x14006ee10` | `0x14006ecfb` | -277 |
-| `HORSE_SAVE_LOADER` | `0x14006f150` | `0x14006f031` | -287 |
-
-The shipping build's Ghidra-decomp RVAs were stale by -277 to -1548 bytes. Way past the -16 convention. The probe + tight-classifier tooling (`r2_save_find_entries`) is the standing tool for any future drift.
+Relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#save-address-re-derivation-done-2026-05-15-commit-bd95252). 6-step test-first plan; stale Ghidra RVAs were -277 to -1548 bytes off; `r2_save_find_entries` probe is the standing tool for any future drift.
 
 ### Next action
 
