@@ -559,3 +559,51 @@ located.
 - Pattern we explicitly are NOT using (different problem
   shape, here for reviewer context):
   - [Bethesda ESL form-ID encoding](https://en.uesp.net/wiki/Skyrim:Form_ID)
+
+## 8. Implementation status (locked 2026-05-15)
+
+Every detour discussed above is either shipped, deferred with a reason, or address-broken.
+
+### D5 (visuals via S2): SHIPPED
+
+Module `horsey-mod/src/patches/render_trampoline.rs`. Post-hook on `FUN_14009f680` via `retour::GenericDetour<unsafe extern "system" fn(*mut f32, *mut c_void)>`. Runs vanilla, then calls `genes::apply_render_to_buf(buf, 353, horse_id)` which walks `EXT_GENE_TABLE`, evaluates each ext gene's blend, and writes to the buf slot per the `<render slot mode>` mapping in `genes-extended.xml`.
+
+HTTP ops: `genes.ext.render.{dryrun, arm, disarm, stats}`. Counters: `call_count` + `genes_applied_total`. The shipped `tests/dryrun_d1_d5` + `tests/arm_render_trampoline` cover dryrun + arm; full proof against the live build is in [`TESTING.md`](TESTING.md).
+
+In-game verification 2026-05-14: an authored `BX_TEST_SLOT0` ext gene with default alleles (3, 3) → blend value 200.0 → slot 0 set mode → rendered "full screen width" babies after breeding. **Visuals data path works.** The specific slot-to-feature map for the other 22 direct-copy slots is empirically derived from per-bestiary work in [`GENE-CATALOG.md`](GENE-CATALOG.md).
+
+### D1 (DI-A per-function detours): 3 of 5 SHIPPED, 2 DEFERRED
+
+Module `horsey-mod/src/patches/ext_genes.rs`. Per-target dispatch: `gene_idx < 240` → vanilla trampoline; `gene_idx >= 240` → sidecar path (read `EXT_GENE_TABLE` / write `EXT_HORSE_GENOMES`).
+
+| Detour | RVA | Status | Notes |
+|---|---|---|---|
+| `EVAL_DIPLOID_BLEND_A` (`FUN_1400a5d20`) | `0x1400a5d10` (Ghidra -16) | SHIPPED | Returns blended `f32`; dispatch by `param_2` (gene_idx). |
+| `EVAL_DIPLOID_BLEND_B` (`FUN_1400a5e00`) | `0x1400a5df0` (Ghidra -16) | SHIPPED | Returns `u32` bit-pattern; dispatch via `.to_bits()` on the ext result. |
+| `GENE_ALLELE_SWAP` (`FUN_1400c03a0`) | `0x1400c0390` (Ghidra -16) | SHIPPED | When `gene_idx >= 240`, swaps via `genes::swap_ext_alleles` across `EXT_GENE_TABLE` + every `EXT_POP_WEIGHTS` entry. Skips vanilla entirely for ext indices (vanilla would walk `DAT_1403ee4b0` out-of-range and crash). |
+| `GENE_DEATH_DRIFT` (`FUN_1400c0660`) | `0x1400c0650` (Ghidra -16) | DEFERRED | Mutator runs mid-function (gene_idx is a local, not a param). Needs a mid-function patch via `patch_bytes`, not an entry-point detour. Reopen with a worked example. |
+| `CRISPR_LAB_UI` (`FUN_1400c1cf0`) | TBD | DEFERRED | State-machine function (5311 bytes); need to map which states read which gene-indexed data before splicing. Not blocking v1. |
+
+Loop-bound patches `D1.5/6/7` (vanilla 0xf0 loops in `FUN_1400a3eb0` and `FUN_1400a4880`) are **NOT needed**: we use sidecar XML loaders / serializers for the ext range so the vanilla loops can stay at 240.
+
+Full pipeline verified in-game 2026-05-14: vanilla path through `EVAL_A` saw `max_idx_seen=239` (full 0..240 range); ext path stays at 0 until an ext gene fires; `genes_applied_total` matches `call_count` 1:1 in the D5 post-hook.
+
+Handler discipline + the 5 distinct "all-ones bad_addr" crash modes that bracketed bring-up are documented in [`DEBUGGING.md`](DEBUGGING.md) §4b, §5.
+
+### D3.1 / D3.2 (lifecycle anchors): SHIPPED
+
+Module `horsey-mod/src/patches/lifecycle.rs`. Post-hook on horse constructor `FUN_1400aac60` (true entry `0x1400aac50`, Ghidra -16) initializes `EXT_HORSE_GENOMES[ret_ptr]` via `genes::ensure_horse_ext_genome`. Pre-hook on horse destructor `FUN_1400bf1f0` (true entry `0x1400bf1e0`) drops the entry. Counters: `ctor_calls`, `dtor_calls`, `entries_created`, `entries_dropped`.
+
+Verified 2026-05-15: `tests/arm_lifecycle` captured 550 ctor + 3 dtor calls in 5s of menu idle. Strict `ctor_calls == entries_created` invariant holds when armed before any horse construct; the relaxed `entries_created <= ctor_calls` invariant holds when armed mid-session (dtor fires for pre-arm horses with no entry).
+
+Horse struct is 0x498 bytes; constructor + destructor + the genome layout discovery (working genome inline at `horse + 0x2b8`, not at the heap pointer at `+0x78`) are documented in [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Save pipeline functions" + [`GENE-CATALOG.md`](GENE-CATALOG.md) Layer 3.
+
+### D3.4 (breeding combinator): SHIPPED
+
+Module `horsey-mod/src/patches/combinator.rs`. Post-hook on `FUN_1400a2d80` (true entry `0x1400a2d70`, Ghidra -16). Recovers horse base pointers as `param - 0x2b8`, then calls `genes::combine_for_breeding(pa_id, pb_id, child_id)` which runs SplitMix64-seeded Mendelian over `EXT_HORSE_GENOMES`. 6 unit tests in `genes::tests` lock the algorithm contract (parent-strand picking, allele masking, RNG nonce divergence).
+
+Vanilla combinator algorithm + the linked-inheritance cluster ranges (Neck, Head/Face/Hat, palette) are documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1 Step 1.
+
+### D4 (save sidecar): code SHIPPED, addresses STALE
+
+Implementation lives in `horsey-mod/src/patches/save_sidecar.rs`; the BXSAVEXT codec is unit-tested in `patches::save_sidecar::tests`. The four detour target RVAs (`SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`, `HORSE_SAVE_LOADER`) are mid-function in the current shipping build; `genes.ext.save.arm` is UNSAFE to arm until they're re-derived via pattern-scan. Full details in [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Sidecar format".

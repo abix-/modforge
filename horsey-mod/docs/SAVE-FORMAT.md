@@ -138,3 +138,74 @@ The save-editor reads money at `tableEnd + 0x14` where `tableEnd` is after the r
 - The genome storage we couldn't fit in the 22-byte horse-roster trailer is one byte per gene, encoded via the rank-formula, stored elsewhere in the file (likely the 55KB block our static pass identified).
 - The CRISPR Lab UI (helix display) maps directly to these bytes: each helix position is one diploid byte; the player sees the pair of bases and edits one strand at a time.
 - The flag-bits enum decodes part of `flag_a..flag_e` in our 22-byte trailer. Bit 0x02 (Championship) and 0x04 (GMO Horse) line up with achievements we can validate in-game.
+
+## Save pipeline functions (resolved 2026-05-15)
+
+The save / load code path is decomposed across four functions, all reachable from the top-level save / load drivers. Patches must hook at the per-horse level so a `.ext` sidecar can be emitted / consumed in the same iteration order as vanilla.
+
+| Function | RVA (Ghidra) | Role |
+|---|---|---|
+| `FUN_14006d610` | `0x14006d610` | Roster save driver. Iterates `gamestate[+0x130]` `std::vector<Horse*>` and calls the per-horse writer for each entry. |
+| `FUN_14006ee10` | `0x14006ee10` | Per-horse save writer. Calls `FUN_14006d470(horse + 0x2b8)` to pack the 480-byte genome to 240 bytes (3-bit-per-allele encoding). Writes ~12 other small fields (`name_id`, `age`, flag bits, etc.) inline. |
+| `FUN_14006d470` | `0x14006d470` | Per-genome packer. Reads from `horse + 0x2b8`, emits 240 packed bytes. |
+| `FUN_14006f150` | `0x14006f150` | Per-horse save loader. Calls `FUN_14006d580(horse + 0x2b8)` to unpack the 240 bytes back into the inline genome, then `FUN_1400b3070(horse)` to regenerate derived render fields by re-running engine + consumer. |
+| `FUN_14006d580` | `0x14006d580` | Per-genome unpacker (mirror of `FUN_14006d470`). |
+| `FUN_1400b3070` | `0x1400b3070` | "Rebuild equipment and physics". Derived-state regen called at end of per-horse load + at every CRISPR / regen event. Our D1 + D5 detours fire during this regen, so if `EXT_HORSE_GENOMES` is populated BEFORE `FUN_14006f150` calls it, ext alleles are auto-applied to the render buf. |
+
+Roster save / load order is **`gamestate[+0x130]` vector position**. The sidecar serializes per-horse records in the same order; positional index is the de facto stable horse id.
+
+## Horse-id field (D4.4 finding): there isn't one
+
+Investigated 2026-05-15. No dedicated `horse_id` int32 exists on the horse struct. The fields surveyed:
+
+- `horse[+0xc]` = `pop_id` (verified: `FUN_14005cf70` indexes pop names "pepper" / "yeast" etc. by this field; `FUN_14005cf50` indexes a 0x58-stride table by it).
+- `horse[+0x18]` = increment counter (e.g. `FUN_14005d480` does `*(int*)(h + 0x18) += 1`). Used for state ticks, not a stable id.
+- `horse[+0x40]` = genome hash (`FUN_14005d360` computes a deterministic hash of the genome bytes for freak pops; not an assigned id).
+- `horse[+0x78]` = pop-seed genome blob (480 bytes; allocated by `FUN_14005cf70`, populated from pop initial-allele weights).
+
+Roster lives at `gamestate[+0x130]/+0x138` as a `std::vector<Horse*>` (stride 8). Per `FUN_1400c0660:112458-112470`.
+
+Save header `+0x10` holds a "next id" counter (value 93 vs 85 active records), suggesting monotonic id issuance. But no horse-struct field surveyed so far stores it.
+
+Save record `parent_a`/`parent_b`/`child_ids[]` are int32s; the SAVE-FORMAT.md notes ("Whirlwind Romance has p1=2, p2=3") describe them as cross-referencing **earlier record indices** in the roster, i.e. positional.
+
+**Working hypothesis (locked):** Horsey uses roster-slot position as the stable id. The save's "next id" counter `93 > 85` is consistent with slots being retained-with-dead-flag (93 ever issued, 85 live, 8 retained / dead). Sidecar files reference horses by positional index in the same save-time iteration order; vanilla parent / child refs use the same indexing.
+
+Open: confirm by save-diff experiment (kill a horse mid-save, observe whether the slot keeps existing or is removed). Until confirmed, treat the index as session-stable but sequence-fragile.
+
+## Sidecar format `save<N>.dat.ext` (shipped 2026-05-15)
+
+Per the "layer on top of vanilla" design principle (see [`VIABILITY.md`](VIABILITY.md) Q-save-3), vanilla save bytes are never modified. Extended state lives in a sibling sidecar.
+
+Path: `save<N>.dat.ext` co-located with the vanilla save (game `save/` directory).
+
+Binary layout (locked 2026-05-15):
+
+```
+magic[8]      = "BXSAVEXT"
+version: u32  = 1
+ext_count: u32  = EXT_GENE_COUNT (currently 240)
+horse_count: u32  (back-patched at close)
+per_horse_record[horse_count]:
+    ext_alleles: u8[2 * EXT_GENE_COUNT]  (strand A then strand B; values 0..3)
+payload_crc: u32  (CRC32 IEEE)
+```
+
+Dense records (every horse gets a full 2*EXT_GENE_COUNT byte block) per user direction; simple beats sparse-with-tag at this scale.
+
+Implementation: `horsey-mod/src/patches/save_sidecar.rs` ships 4 detours, all registered as post-hooks via `retour::GenericDetour`:
+
+| Detour | Target RVA | Role |
+|---|---|---|
+| `SAVE_WRITER` | `0x14006dc80` | Top-level save driver. **Address stale 2026-05-15** (the prologue at this RVA is mid-function code, not a function entry; needs re-derivation via pattern-scan). |
+| `LOAD_GAME` | `0x14006e480` | Top-level load driver. **Same stale-address issue.** |
+| `HORSE_SAVE_WRITER` | `0x14006ee10` | Per-horse serializer. **Stale.** |
+| `HORSE_SAVE_LOADER` | `0x14006f150` | Per-horse deserializer. **Stale.** |
+
+Sidecar I/O code is correct (the BXSAVEXT codec has 7 unit tests in `patches::save_sidecar::tests`, all green); only the address binding is broken. `genes.ext.save.arm` is UNSAFE TO ARM until the four addresses are re-derived via pattern-scan (see [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md) R2). The failing harness test `dryrun_d3_d4::save_dryrun_prologues_ok` enforces this.
+
+HTTP ops shipped (`horsey-mod/src/ops.rs`): `genes.ext.save.{dryrun,arm,disarm,stats}`.
+
+Loader-side ordering: when the per-horse loader runs, we populate `EXT_HORSE_GENOMES[horse_ptr]` BEFORE the vanilla trampoline returns, so that vanilla's tail call to `FUN_1400b3070` (regen) reads the freshly-loaded ext alleles via the existing D1 + D5 detours. This means ext effects auto-apply on save / load without a second pass.
+
+Save-uninstall policy (locked 2026-05-15): orphan `.ext` files left in place when horsey-mod is removed. They're inert without the DLL and reactivate cleanly on re-install.
