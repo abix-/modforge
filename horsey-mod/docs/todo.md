@@ -30,11 +30,9 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 - Field offsets: **R4 in progress, 10/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b`. Remaining ~27 fields need anchors authored.
 
 **Open work in this section:**
-- [ ] **R4: Field-offset resolver tier.** Same model as R3 for data globals, except the disp32 to decode is the FIELD OFFSET (instruction's RIP-rel `disp8`/`disp32` operand) rather than the global's address. Workflow per field:
-  - Anchor on a unique site that reads the field: e.g. for YEAR, the pause-menu printf `"< Simulation Paused - Year %d >"` (in `FUN_140066200` at decomp `FUN_14008d760(local_88, "< Simulation Paused - Year %d >", *(undefined4 *)(DAT_1403fb0d8 + 0x314))`). The MSVC instruction is `mov reg32, [rax + disp32]` where rax = dereffed GAMESTATE_PTR and disp32 = current YEAR offset.
-  - Reuse the format-string-xref technique from `find_retire_horse_handler` to locate the printf site, then decode the `mov reg32, [rax + ??]` immediately preceding it.
-  - Per field: one resolver `gs_offset::year() -> usize` cached in a `OnceLock`. Production reads go through it.
-- [ ] Apply R4 to every gs_offset + horse_offset entry.
+- [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
+- [ ] **Apply R4 to remaining ~27 field offsets.** Recipes proven; per-field work is authoring the right anchor (format string, allocator call site, surrounding xref) and decoding the operand.
+- [ ] **Adopt 5 HLT patterns** (see "Learn from HorseyLiveTweaks" below): structural-plausibility validation, vtable check, direct vanilla-fn calls, SEH wrapping of vanilla calls, injector elevation auto-detect.
 - [ ] Author second candidate signatures for every resolver so a single MSVC reorder between builds doesn't break it (current Definition of Done #2; one sig each today).
 - [ ] CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs (Definition of Done #4).
 
@@ -63,28 +61,32 @@ Status codes:
 | `fn_addr::*` (31 entries) | targets.rs:166-371 | function entry | **R** | 32-48 byte body sigs |
 | `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H-gb** | needs R4 |
 | `gs_offset::FIELD_268` 0x268 | targets.rs:67 | struct field offset | **H-gb** | needs R4 |
-| `gs_offset::MONEY` 0x308 | targets.rs:68 | struct field offset | **H-gb** | anchor: cheat-money handler |
-| `gs_offset::YEAR` 0x314 | targets.rs:69 | struct field offset | **H-gb DRIFT OBSERVED** | reads 336 on new game; anchor: "Year %d" printf |
-| `gs_offset::SLEEPS` 0x318 | targets.rs:70 | struct field offset | **H-gb** | anchor: "Sleeps %d" printf |
+| `gs_offset::money()` 0x308 | targets.rs | struct field offset | **R** | cheat-money `add [base+disp], 1000` literal in DRAW_PAUSE_STATUS |
+| `gs_offset::year()` 0x314 | targets.rs | struct field offset | **R** | "Year %d" pause-menu format string + `mov r8d, [base+disp]` |
+| `gs_offset::sleeps()` 0x318 | targets.rs | struct field offset | **R** | debug pause-menu format string + `mov r9d, [base+disp]` |
 | `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H-gb** | needs R4 |
 | `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb** | needs R4 |
-| `gs_offset::HORSES_BEGIN/END` 0x280/0x288 | targets.rs:87,90 | struct field offset (2) | **H-gb** | roster pointer pair; looks_loaded reads these |
+| `gs_offset::horses_begin/end()` 0x280/0x288 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x200, 0x300]` window |
 | `gs_offset::TRAILING_278/27C` | targets.rs:91-92 | struct field offset (2) | **H-gb** | needs R4 |
 | `horse_offset::TYPE_OR_SPECIES/NAME_ID` 0x1c/0x1f8 | targets.rs:109,111 | struct field offset (2) | **H-gb** | needs R4 |
 | `horse_offset::AGE/MAX_AGE` 0x1fc/0x200 | targets.rs:113,116 | struct field offset (2) | **H-gb** | needs R4 |
 | `horse_offset::ON_TRACK_FLAG/BREEDING_FLAG` 0x204/0x207 | targets.rs:118,124 | struct field offset (2) | **H-gb** | needs R4 |
-| `horse_offset::TIRED_FLAG_A/B` 0x205/0x206 | targets.rs:120,122 | struct field offset (2) | **H-gb** | anchor: sleep_safe_no_tire patch site |
+| `horse_offset::tired_flag_a/b()` 0x205/0x206 | targets.rs | struct field offset (2) | **R** | adjacent byte-zero pair inside no_tire per-frame loop |
 | `horse_offset::SKILL/LITTER_SIZE_STAT` 0x21c/0x254 | targets.rs:126,129 | struct field offset (2) | **H-gb** | needs R4 |
-| `LIVE_HORSES_BEGIN/END` 0x130/0x138 | gamestate.rs:428,430 | struct field offset (2) | **H-gb** | should move to gs_offset |
+| `gs_offset::live_horses_begin/end()` 0x130/0x138 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x100, 0x200]` window |
 | Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb** | repeated 4x; one resolver feeds all |
-| `HORSE_CTX_OFFSET` 0x2b8 | combinator.rs:26, render_trampoline.rs:34 | struct field offset | **H-gb** | HORSE_SAVE_LOADER uses `add rcx, 0x2b8`; decode that instr's imm32 |
+| `horse_offset::ctx_offset()` 0x2b8 | targets.rs | struct field offset | **R** | `add rcx, imm32` inside HORSE_SAVE_LOADER body (256-byte window) |
 | `FN_RVA` 0x1400ceb60 + `FN_SIZE` 2502 | patches.rs:163,164 | function entry + size | **H-gb** | sleep_safe_no_tire patch site; FN_RVA needs body sig, FN_SIZE needs end-of-function detection |
 | Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs:195 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_B; should reference R4 resolver |
 | Patch-site offset 0x205 (TIRE_FLAG_A store) | patches.rs:199 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_A |
 | GameState alloc size 0x448 | resolver comments | struct size | **H-gb** | anchor for FUN_14009c6a0 |
 | Horse alloc size 0x498 | resolver comments | struct size | **H-gb** | anchor for HORSE_CONSTRUCTOR |
 
-**H-gb count: 32 struct-field offsets + 3 struct sizes + 1 stride + 1 patch-site fn pair + 2 duplicate field offsets in patches.rs = ~37 game-binary constants left to migrate.**
+**H-gb migration progress: 10 done / ~27 remaining.**
+
+Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b`.
+
+Remaining: FRAME_TICK (0x254), FIELD_268 (0x268), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TRAILING_278/27C, TYPE_OR_SPECIES (0x1c), NAME_ID (0x1f8), AGE/MAX_AGE (0x1fc/0x200), ON_TRACK_FLAG/BREEDING_FLAG (0x204/0x207), SKILL/LITTER_SIZE_STAT (0x21c/0x254), roster stride 0x24, GameState alloc 0x448, Horse alloc 0x498, no_tire FN_RVA + FN_SIZE, two duplicate patch-site offsets in patches.rs.
 
 #### Algorithm constants (H-alg): we own; intentional
 
@@ -132,8 +134,8 @@ Status codes:
 
 #### Summary
 
-- **Migrate (H-gb): 37 constants** -> R4 work below.
-- **Not migrating (H-alg / H-os / H-design / H-test): ~25 constants**, all intentional. Audited and acknowledged.
+- **Migrate (H-gb):** 10 done, ~27 remaining -> R4 work below.
+- **Not migrating (H-alg / H-os / H-design / H-test):** ~25 constants, all intentional. Audited and acknowledged.
 
 ### Learn from HorseyLiveTweaks (audit 2026-05-15)
 
