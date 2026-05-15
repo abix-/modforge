@@ -509,6 +509,24 @@ prologues fit a 5-byte JMP (retour handles longer needs
 via relays, but cheaper if the prologue is already a
 push-rbp / sub-rsp pair).
 
+### 6.3 Lessons from first DI-A bring-up
+
+First in-game arming exposed a class of failure that doesn't
+show up in any unit test: `retour::GenericDetour::new()` will
+HAPPILY install a detour at any disassemblable address, even
+mid-function. ALLELE_SWAP at RVA 0x1400c03a0 in the May 2026
+build started with `63 fa 48 be c1 d4 1c 42 29 8f a0 3f`. A
+`movsxd; movabs rsi, <double bits>` pair, clearly inside a FP
+routine, not a function entry. Arming succeeded; the game
+crashed seconds later when a game thread fell through the
+mangled basic block.
+
+The mitigation is in [`DEBUGGING.md`](DEBUGGING.md) §5: every
+new detour PR must verify the prologue matches a Win64
+function-entry pattern before arming. ALLELE_SWAP install is
+disabled in `ext_genes::arm` until the real entry address is
+located.
+
 ## 7. References (real shipped code, not theory)
 
 - [retour crate](https://crates.io/crates/retour). Chosen library
