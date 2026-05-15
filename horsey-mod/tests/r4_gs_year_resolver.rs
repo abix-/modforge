@@ -30,5 +30,19 @@ fn gs_year_resolver_agrees_with_hardcoded() {
         resolved, hardcoded,
         "year offset resolver mismatch: resolved=0x{resolved:x} hardcoded=0x{hardcoded:x}"
     );
-    game.pass(&format!("gs_offset::year() resolves to 0x{resolved:x} (matches hardcoded)"));
+
+    let sleeps = result.get("sleeps").expect("sleeps entry");
+    let sresolved = u64_of_hex(sleeps, "resolved").expect("resolved");
+    let shardcoded = u64_of_hex(sleeps, "hardcoded").expect("hardcoded");
+    game.log().event(
+        "R4-SLEEPS",
+        &format!("resolved=0x{sresolved:x} hardcoded=0x{shardcoded:x}"),
+    );
+    assert_eq!(
+        sresolved, shardcoded,
+        "sleeps offset resolver mismatch: resolved=0x{sresolved:x} hardcoded=0x{shardcoded:x}"
+    );
+    game.pass(&format!(
+        "gs_offset: year=0x{resolved:x} sleeps=0x{sresolved:x} (both match hardcoded)"
+    ));
 }

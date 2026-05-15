@@ -73,34 +73,72 @@ pub mod gs_offset {
     pub const YEAR: usize = 0x314;
     pub const SLEEPS: usize = 0x318;
 
-    /// Pattern-resolved offset of the in-game year (the field read
-    /// by the pause-menu printf `"< Simulation Paused - Year %d >"`).
-    /// Anchors on the format string in `.rdata`, finds the `lea rdx`
-    /// that loads it, then decodes the `mov r8d, [base+disp32]`
-    /// that supplies the year as arg3.
+    // Pause-menu format string `"< Simulation Paused - Year %d >"`.
+    // Hex; used as the anchor for YEAR (only year passed).
+    const PAUSE_YEAR_ONLY_HEX: &str = "3c 20 53 69 6d 75 6c 61 74 69 6f 6e 20 50 61 75 73 65 64 20 2d 20 59 65 61 72 20 25 64 20 3e";
+    // Debug-mode pause-menu format string
+    // `"< Simulation Paused - Year %d  Sleeps %d  Races %d >"`.
+    // Hex; used as the anchor for SLEEPS (year + sleeps + races).
+    const PAUSE_DEBUG_HEX: &str = "3c 20 53 69 6d 75 6c 61 74 69 6f 6e 20 50 61 75 73 65 64 20 2d 20 59 65 61 72 20 25 64 20 20 53 6c 65 65 70 73 20 25 64 20 20 52 61 63 65 73 20 25 64 20 3e";
+
+    /// Pattern-resolved offset of the in-game year. Anchors on the
+    /// pause-menu format string, finds the `lea rdx` that loads it,
+    /// then decodes the `mov r8d, [base+disp32]` that supplies the
+    /// year as arg3 (Windows x64 fastcall).
     ///
     /// Falls back to the hardcoded `YEAR` const when the pattern
-    /// misses (e.g. format string text changed between builds).
+    /// misses.
     pub fn year() -> usize {
         static CACHE: OnceLock<usize> = OnceLock::new();
         *CACHE.get_or_init(|| {
-            // Hex of `< Simulation Paused - Year %d >`.
-            const STRING_HEX: &str = "3c 20 53 69 6d 75 6c 61 74 69 6f 6e 20 50 61 75 73 65 64 20 2d 20 59 65 61 72 20 25 64 20 3e";
-            // `mov r8d, [base+disp32]` opcode prefix (REX.R + 8b).
-            // The base-register byte is the 3rd byte of the
-            // instruction, so the disp starts at offset 3 (after
-            // `44 8b XX`).
-            const DISP_OPCODE: &str = "44 8b";
-            const DISP_OFF: usize = 3;
-            const DISP_SIZE: usize = 4;
-            const WINDOW: u64 = 64;
             match modforge::research::in_process_decode_field_offset_via_string(
-                STRING_HEX, 0, DISP_OPCODE, DISP_OFF, DISP_SIZE, WINDOW,
+                PAUSE_YEAR_ONLY_HEX, 0, "44 8b", 3, 4, 64,
             ) {
                 Ok(hist) => modforge::research::histogram_top(&hist)
                     .map(|v| v as usize)
                     .unwrap_or(YEAR),
                 Err(_) => YEAR,
+            }
+        })
+    }
+
+    /// Pattern-resolved offset of the sleeps counter. Anchors on
+    /// the debug-mode pause-menu format string (which passes year +
+    /// sleeps + races), finds the `lea rdx` to it, then decodes the
+    /// `mov r9d, [base+disp32]` (arg4 = sleeps).
+    ///
+    /// The histogram will likely contain BOTH the year (r8d) and
+    /// sleeps (r9d) loads since both use `44 8b XX disp32`. We use
+    /// the SECOND-most-frequent value: year matches in BOTH format
+    /// strings' xref windows, sleeps only in this one. Falls back
+    /// to the hardcoded `SLEEPS` const when the pattern misses.
+    pub fn sleeps() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            // `mov r9d, [base+disp32]` is encoded with ModR/M byte
+            // 0x89 (r9 dest, [rcx] base) for the most common case.
+            // The base register varies; we want any `44 8b XX` where
+            // XX has top bit pattern 0b10001xxx (mod=10, reg=001 for
+            // r9d, rm=base). All such ModR/Ms are 0x88..0x8F.
+            // Easier: just scan `44 8b` and let the histogram find
+            // the right disp via the YEAR vs SLEEPS frequency split.
+            match modforge::research::in_process_decode_field_offset_via_string(
+                PAUSE_DEBUG_HEX, 0, "44 8b", 3, 4, 64,
+            ) {
+                Ok(hist) => {
+                    // Build a sorted view, pick the largest disp
+                    // that's > YEAR's offset (sleeps is positioned
+                    // after year in the struct).
+                    let year_off = year() as i64;
+                    let mut sorted: Vec<(i64, usize)> = hist.into_iter().collect();
+                    sorted.sort_by(|a, b| b.1.cmp(&a.1));
+                    // Find the most-frequent disp that's NOT year.
+                    sorted.iter()
+                        .find(|(d, _)| *d != year_off && *d > 0)
+                        .map(|(d, _)| *d as usize)
+                        .unwrap_or(SLEEPS)
+                }
+                Err(_) => SLEEPS,
             }
         })
     }

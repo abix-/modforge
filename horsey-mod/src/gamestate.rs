@@ -313,7 +313,7 @@ pub fn set_year(value: u32) -> bool {
 }
 
 pub fn sleeps() -> Option<u32> {
-    read_u32(gs_offset::SLEEPS)
+    read_u32(gs_offset::sleeps())
 }
 
 pub fn frame_tick() -> Option<u32> {

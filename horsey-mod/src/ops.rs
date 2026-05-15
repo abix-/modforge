@@ -419,6 +419,10 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::year()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::YEAR),
                     },
+                    "sleeps": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::sleeps()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::SLEEPS),
+                    },
                 }))
             },
         ),
