@@ -354,6 +354,24 @@ pub fn drop_horse_ext_genome(horse_id: u64) -> bool {
     horse_genomes().write().remove(&horse_id).is_some()
 }
 
+/// Ensure a horse has an entry in `EXT_HORSE_GENOMES`. Returns true
+/// if a NEW entry was created, false if one already existed. Called
+/// from the D3.1 lifecycle anchor (constructor post-hook). The
+/// default value is from `get_default_ext_genome()` if set, else
+/// all-zeros.
+pub fn ensure_horse_ext_genome(horse_id: u64) -> bool {
+    let mut g = horse_genomes().write();
+    if g.contains_key(&horse_id) {
+        return false;
+    }
+    let default = default_horse_genome()
+        .read()
+        .clone()
+        .unwrap_or_else(ExtHorseGenome::empty);
+    g.insert(horse_id, default);
+    true
+}
+
 /// Read both diploid alleles for a specific extended gene of a
 /// specific horse. Returns (maternal, paternal) allele indices each
 /// in [0..3], or None if the horse has no extended genome.
@@ -397,6 +415,80 @@ pub fn list_horse_genome_ids() -> Vec<u64> {
     let mut v: Vec<_> = horse_genomes().read().keys().copied().collect();
     v.sort();
     v
+}
+
+// =============================================================================
+// D3.4 breeding combinator (mirrors FUN_1400a2d80 for the ext range)
+// =============================================================================
+
+/// Mendelian recombination of two parents' extended genomes into a
+/// child's extended genome. Mirrors vanilla `FUN_1400a2d80` semantics
+/// over the ext range:
+///   - child strand 0 (maternal) draws from parent A; each gene's
+///     allele picks one of parent A's two strands at random.
+///   - child strand 1 (paternal) draws from parent B; same.
+///
+/// User-locked design (2026-05-15): default is **independent
+/// per-gene inheritance**. Vanilla forces same-parent inheritance
+/// across 3 cluster ranges (Neck, Head, palette base) but for v1
+/// the ext range does not include such linkage. A future XML
+/// extension (`<linked-cluster>` in `genes-extended.xml`) can opt
+/// in per-gene; not implemented here.
+///
+/// Lazy semantics: if either parent has no entry, the child gets
+/// default-zero alleles from the missing parent's side. If both
+/// parents are missing, the child entry is still created (all
+/// zeros) so downstream lookups don't fail open.
+pub fn combine_for_breeding(parent_a_id: u64, parent_b_id: u64, child_id: u64) {
+    let (pa, pb) = {
+        let g = horse_genomes().read();
+        (g.get(&parent_a_id).cloned(), g.get(&parent_b_id).cloned())
+    };
+    let pa = pa.unwrap_or_else(ExtHorseGenome::empty);
+    let pb = pb.unwrap_or_else(ExtHorseGenome::empty);
+
+    let mut child = ExtHorseGenome::empty();
+    // Use a fast, non-cryptographic RNG seeded per-call from horse
+    // pointers + a process-local nonce. We don't need crypto
+    // randomness; vanilla uses FUN_1400c6580 (a basic PRNG) too.
+    let seed = parent_a_id
+        .wrapping_mul(0x9E3779B97F4A7C15)
+        .wrapping_add(parent_b_id.wrapping_mul(0xBF58476D1CE4E5B9))
+        .wrapping_add(child_id.wrapping_mul(0x94D049BB133111EB))
+        .wrapping_add(combine_nonce());
+    let mut rng = seed;
+
+    // strand 0 of child <- random pick from parent A
+    for g in 0..EXT_GENE_COUNT {
+        rng = next_lcg(rng);
+        let coin = ((rng >> 33) & 1) as usize;
+        child.alleles[g] = pa.alleles[coin * EXT_GENE_COUNT + g] & 0x3;
+    }
+    // strand 1 of child <- random pick from parent B
+    for g in 0..EXT_GENE_COUNT {
+        rng = next_lcg(rng);
+        let coin = ((rng >> 33) & 1) as usize;
+        child.alleles[EXT_GENE_COUNT + g] = pb.alleles[coin * EXT_GENE_COUNT + g] & 0x3;
+    }
+
+    horse_genomes().write().insert(child_id, child);
+}
+
+/// Per-process monotonic combiner nonce so identical (a,b,c) triples
+/// across separate breedings get different RNG streams.
+fn combine_nonce() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0xa5a5_a5a5_a5a5_a5a5);
+    N.fetch_add(0x100000001b3, Ordering::Relaxed)
+}
+
+/// SplitMix64-style step. Cheap, non-crypto.
+#[inline]
+fn next_lcg(x: u64) -> u64 {
+    let z = x.wrapping_add(0x9E3779B97F4A7C15);
+    let z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    let z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
 }
 
 // =============================================================================

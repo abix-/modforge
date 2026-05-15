@@ -12,9 +12,15 @@
 //! - [`render_trampoline`]: D5 post-hook on FUN_14009f680 that
 //!   layers extended-gene render mappings onto vanilla's buf.
 //!   Arms via HTTP.
+//! - [`combinator`]: D3.4 post-hook on FUN_1400a2d80 that runs an
+//!   independent Mendelian combinator over EXT_HORSE_GENOMES so
+//!   children inherit extended alleles from parents. Arms via HTTP.
 
+pub mod combinator;
 pub mod ext_genes;
+pub mod lifecycle;
 pub mod render_trampoline;
+pub mod save_sidecar;
 
 use parking_lot::Mutex;
 use windows_sys::Win32::System::Memory::{
@@ -98,6 +104,10 @@ pub fn patch_bytes(name: &'static str, addr: usize, new_bytes: &[u8]) -> anyhow:
 /// ext_genes detours and the D5 render trampoline (no-op if never
 /// armed).
 pub fn revert_all() {
+    // LIFO order: most recently armed reverts first.
+    save_sidecar::revert();
+    lifecycle::revert();
+    combinator::revert();
     render_trampoline::revert();
     ext_genes::revert();
     let mut g = APPLIED.lock();

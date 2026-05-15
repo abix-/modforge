@@ -1,5 +1,8 @@
 # horsey-mod TODO
 
+> **Major prior art (2026-05-15):** [NickPetrone/HorseyLiveTweaks](https://github.com/NickPetrone/HorseyLiveTweaks) by Nick Petrone (Twisternick) is an independent Horsey Game modding framework with ~4500 lines of C++, in-game ImGui UI, and pattern-scan address resolution. Cross-validates our `horse+0x2b8` working-genome model and our `FUN_1400b3070` regen function. **Different scope** (they tweak the vanilla 240; we extend to 480). Full credit + comparison in [`PRIOR-ART-HorseyLiveTweaks.md`](PRIOR-ART-HorseyLiveTweaks.md). Their pattern-scan approach is the reference we should port for our R1/R2 address-resolution work.
+
+
 > **Authoritative on:** open work and feature wishlist for the `horsey-mod` crate (native-PE binding for Horsey Game) AND for Horsey-Game content mods shipping alongside it. Workspace-wide framework work lives in [`../../docs/todo.md`](../../docs/todo.md).
 
 Roughly ordered by leverage.
@@ -894,25 +897,133 @@ Each horse gets a parallel 480-byte buffer in
 `EXT_HORSE_GENOMES[horse_id]` for the extended genes'
 diploid alleles.
 
-- [ ] **D3.1.** Detour `FUN_14005cf70` and
-      `FUN_14005d190` (genome alloc functions). When
-      they create a new 480-byte block, also create
-      an `EXT_HORSE_GENOMES[horse_id]` entry.
-- [ ] **D3.2.** Detour `FUN_14005cd00` (genome free).
-      When vanilla frees a horse's 480-byte block,
-      also drop the matching `EXT_HORSE_GENOMES`
-      entry.
-- [ ] **D3.3.** Detour `FUN_14005d190` (the
-      parent-to-child copy). Mirror the copy: when
-      vanilla copies parent_h's 480-byte vanilla
-      genome to child_h, ALSO copy
-      `EXT_HORSE_GENOMES[parent_h]` to
-      `EXT_HORSE_GENOMES[child_h]`.
-- [ ] **D3.4.** Find and detour the breeding combinator
-      (the function that picks one allele from each
-      parent for the child). Currently un-located; see
-      `GENE-CATALOG.md` (Part 1: Conceptual model) open question. Mirror its logic
-      for the extended genes.
+**Revised plan 2026-05-15:** Working genome is inline
+at `horse + 0x2b8`, NOT at `horse[+0x78]`. The original
+D3.1-D3.3 targets (`FUN_14005cf70/cd00/d190`) operate on
+the heap blob at `+0x78`, which is a pop-seed / archive
+buffer loosely coupled to rendering. They are NOT the
+right anchors for `EXT_HORSE_GENOMES` lifecycle because:
+
+- `FUN_14005cf70` bails early if `+0x78` already set,
+  and breeding flow `FUN_1400b2e30` does NOT call it
+  (combinator writes `+0x2b8` directly, never touches
+  `+0x78`). Bred horses would skip the anchor.
+- `FUN_14005d190` is a pop-seed copy (UI / CRISPR
+  snapshot), not the breeding combinator.
+
+The correct lifecycle anchor is the **horse-struct
+allocator itself** (currently unfound). Open research
+2026-05-15: `FUN_1400cc9d0` allocates 0x80 bytes and
+pushes to `gamestate[+0xb8]` (the "track entity" list);
+that's too small for the full horse with fields at
++0x800. There must be a separate `FUN_xxxxxxxx` that
+allocates the full Horse struct and pushes to
+`gamestate[+0x130]`. Need to find it.
+
+- [x] **D3.0 (research).** ANSWERED 2026-05-15.
+      Horse struct size is **0x498 bytes (1176)** =
+      `0x2b8 + 0x1e0` (header up to +0x2b7, inline
+      genome +0x2b8..+0x497). 40+ call sites alloc
+      via `FUN_1402c704c(0x498)` followed by the
+      single constructor `FUN_1400aac60`. Examples:
+      lines 28589, 29161, 32559, 34040, 54169, 55517,
+      59098, 62233, 64176, 65267 (save load), 76563,
+      84065, 112352, 119180, 121872, 130208, 145756.
+      Constructor `FUN_1400aac60`:
+      - Sets vtable `&PTR_FUN_14030d660`
+      - Zeros 50+ fields
+      - Sets default `max_age = 0x1e` (30 years) at
+        `+0x44`
+      - Increments live-count global `_DAT_1403f311c`
+      - Returns the same pointer it received
+      Destructor `FUN_1400bf1f0`:
+      - Resets vtable
+      - Decrements `_DAT_1403f311c`
+      - Releases sub-objects (`param_1[0x3e]` via
+        `FUN_1402c7088(p, 0x1f48)`, and the std::string
+        SSO buffers at `+0x51/+0x31/+0x2d`)
+      - Frees the 0x498 buffer if delete-flag set
+        (line 111549)
+- [x] **D3.1.** SHIPPED 2026-05-15.
+      `src/patches/lifecycle.rs`. Post-hook on
+      `FUN_1400aac60`; calls
+      `genes::ensure_horse_ext_genome(ret_ptr)`. HTTP:
+      `genes.ext.lifecycle.{dryrun,arm,disarm,stats}`.
+- [x] **D3.2.** SHIPPED 2026-05-15. Same module as D3.1.
+      Pre-hook on `FUN_1400bf1f0`; calls
+      `genes::drop_horse_ext_genome(param_1)`.
+- [ ] **D3.3.** SKIPPED. The original plan to mirror
+      `FUN_14005d190` (parent-to-child heap copy) is
+      unnecessary: that function only writes the +0x78
+      archive, not the working genome. Combinator
+      (D3.4) handles the parent-to-child working-genome
+      copy on its own.
+- [x] **D3.4 (research).** ANSWERED 2026-05-15.
+      Combinator is `FUN_1400a2d80(parent_a + 0x2b8,
+      parent_b + 0x2b8, child + 0x2b8)`. Called from
+      `FUN_1400b2e30:104367` (child-from-parents
+      setup) before `FUN_14009f680` engine evaluates
+      the new child.
+
+      Algorithm: outer loop 2 strands × inner loop 240
+      genes. Per (strand, gene): `FUN_1400c6580()` RNG
+      coinflip selects which parent's strand to copy
+      from, then `*(child + gene) = *(parent +
+      coinflip * 0xf0 + gene)`. Advance child by 0xf0
+      after each strand. Standard Mendelian: one
+      strand per parent, each strand draws from one of
+      that parent's two strands at random.
+
+      **Linked inheritance:** a bitmask at lines
+      95541-95551 forces the SAME parent across three
+      gene-index ranges:
+      - 72..86 (Neck cluster)
+      - 97..174 (Head/Eye/Brow/Ear/Teeth/Mouth/Nose/
+        Antlers/Hat)
+      - 183..197 (palette base + colors)
+      Plus exclusions at idx 83 and 107. Matches the
+      GENE-CATALOG cluster map. Player can't get a
+      giraffe head with a tiger jaw.
+
+      **Bonus correction:** the working genome is
+      INLINE at `horse + 0x2b8` (0x1e0 = 480 bytes,
+      2 strands × 240 alleles), NOT at `horse[+0x78]`.
+      The heap-alloc at `+0x78` is a separate pop-seed
+      / snapshot blob. Engine `FUN_14009f680` and
+      consumer `FUN_1400ab3d0` both take
+      `param_1 + 0x2b8` as the genome input. **This
+      changes D5.7 and D3 design assumptions: ext
+      genomes should mirror the +0x2b8 inline layout,
+      not the +0x78 heap-pointer pattern.**
+
+      Patch plan (user decisions 2026-05-15):
+      - Post-hook detour on `FUN_1400a2d80`. After
+        vanilla returns, recover horse base pointers
+        as `param_N - 0x2b8` (params are
+        `parent_a + 0x2b8`, `parent_b + 0x2b8`,
+        `child + 0x2b8`), then run our own combinator
+        on `EXT_HORSE_GENOMES[parent_a_ptr]` +
+        `EXT_HORSE_GENOMES[parent_b_ptr]` ->
+        `EXT_HORSE_GENOMES[child_ptr]`.
+      - Default inheritance: **independent per gene**
+        (no cluster locking). Linked-inheritance is
+        future XML extension via a `<linked-cluster>`
+        element in `genes-extended.xml`; not in v1.
+      - `horse[+0x78]` is **ignored entirely** for ext
+        purposes (pop-seed / CRISPR snapshot only,
+        not read for rendering). No parallel ext
+        buffer at +0x78. Modders can't author effects
+        riding on +0x78.
+
+      **D3.4 patch SHIPPED 2026-05-15.** Implemented as
+      `src/patches/combinator.rs`. Post-hook detour on
+      `FUN_1400a2d80` via `retour::GenericDetour<unsafe
+      extern "system" fn(*mut c_void, *mut c_void,
+      *mut c_void)>`. Slow path delegates to
+      `genes::combine_for_breeding(pa_id, pb_id,
+      child_id)` which runs SplitMix64-seeded Mendelian
+      over `EXT_HORSE_GENOMES`. HTTP ops:
+      `genes.ext.combinator.{dryrun,arm,disarm,stats}`.
 
 ### Phase D4: Save format extension
 
@@ -920,31 +1031,99 @@ Per the "layer on top" design principle: vanilla save
 file stays untouched. Our extended state lives in a
 sidecar `save<N>.dat.ext` next to the vanilla save.
 
-- [ ] **D4.1.** Hook the save-write completion path.
-      After `FUN_14006dc80` finishes writing
-      `save<N>.dat`, write `save<N>.dat.ext` containing:
-      - `EXT_GENE_TABLE` (full N-240 record dump)
-      - `EXT_POP_WEIGHTS` (one entry per pop_id, only
-        non-default weights)
-      - `EXT_HORSE_GENOMES` (one 480-byte entry per
-        live horse, keyed by stable horse_id)
-- [ ] **D4.2.** Hook the save-read completion path.
-      After vanilla finishes loading `save<N>.dat`,
-      look for `save<N>.dat.ext`. If present, populate
-      our sidecar buffers from it. If absent, leave
-      sidecars at defaults (modded-aware game running
-      a vanilla save degrades gracefully).
-- [ ] **D4.3.** Pick a sidecar file format: simple
-      length-prefixed binary, or a JSON / TOML doc.
-      Binary is faster and matches vanilla style;
-      JSON is debuggable. Recommend a simple binary
-      with magic bytes "BXSAVEEXT" + version u32 +
-      payload sections.
-- [ ] **D4.4.** Determine the stable horse_id field.
-      Inspect the horse struct around the offsets
-      we already know (0x70, 0x78). The save header's
-      "next horse ID" hint suggests an int32 ID is
-      assigned at creation. Find it; that's our key.
+**Revised plan 2026-05-15:** Per-horse hooks identified
+via decomp pass. User decisions: dense per-horse records
+(simple); orphan `.ext` files left in place on uninstall.
+
+Per-horse save writer: `FUN_14006ee10`. Calls
+`FUN_14006d470(horse + 0x2b8)` to pack the 480-byte
+genome to 240 bytes. Also writes ~12 other small fields
+(name_id, age, flags, etc.). Called per pointer from
+roster iteration in `FUN_14006d610`.
+
+Per-horse save loader: `FUN_14006f150`. Calls
+`FUN_14006d580(horse + 0x2b8)` to unpack, then
+`FUN_1400b3070(horse)` to regenerate render fields by
+re-running engine + consumer. Our D1/D5 detours fire
+during that regen, so ext alleles in `EXT_HORSE_GENOMES`
+populated BEFORE `FUN_1400b3070` runs will be applied to
+the render buf automatically.
+
+Roster save order = `gamestate[+0x130]` vector order
+(confirmed). Sidecar serializes per-horse records in
+the same order; D4.4's roster-slot-index hypothesis is
+implicit in the sequence.
+
+**D4.1/D4.2/D4.3 SHIPPED 2026-05-15.** Single module
+`src/patches/save_sidecar.rs` with 4 detours:
+`SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`,
+`HORSE_SAVE_LOADER`. Loader detour writes
+`EXT_HORSE_GENOMES` BEFORE calling the vanilla loader
+trampoline so that vanilla's own `FUN_1400b3070` regen
+call at the end picks up ext alleles via D1/D5
+detours. Sidecar format implemented exactly as locked:
+
+```
+magic[8] = "BXSAVEXT"
+version: u32 = 1
+ext_count: u32 = EXT_GENE_COUNT (240)
+horse_count: u32  (back-patched at close)
+per_horse_record[horse_count]:
+    ext_alleles: u8[2 * EXT_GENE_COUNT]
+payload_crc: u32 (CRC32 IEEE)
+```
+
+HTTP ops: `genes.ext.save.{dryrun,arm,disarm,stats}`.
+- [~] **D4.4.** Determine the stable horse_id field.
+      **PARTIAL: probably no dedicated field exists;
+      roster slot position IS the id.**
+
+      Findings 2026-05-15:
+      - `horse[+0xc]` = pop_id (verified: `FUN_14005cf70`
+        indexes pop names "pepper"/"yeast" etc. by this
+        field; `FUN_14005cf50` indexes a 0x58-stride
+        table by it).
+      - `horse[+0x18]` = increment counter (e.g.
+        `FUN_14005d480` does `*(int*)(h+0x18) += 1`).
+        Used for state ticks, not a stable id.
+      - `horse[+0x40]` = genome hash (`FUN_14005d360`
+        computes a deterministic hash of the genome
+        bytes for freak pops; not an assigned id).
+      - `horse[+0x78]` = genome pointer (0x1e0 bytes).
+      - **Roster lives at `gamestate[+0x130]/+0x138`
+        as a `std::vector<Horse*>` (stride 8).** Per
+        `FUN_1400c0660:112458-112470`.
+      - Save header `+0x10` holds a "next id" counter
+        (value 93 vs 85 active records), suggesting
+        monotonic id issuance. But no horse-struct
+        field surveyed so far stores it.
+      - Save record `parent_a`/`parent_b`/`child_ids[]`
+        are int32s; the existing SAVE-FORMAT.md note
+        ("Whirlwind Romance has p1=2, p2=3") describes
+        them as cross-referencing **earlier record
+        indices** in the roster, i.e. positional.
+
+      Working hypothesis: **Horsey uses roster-slot
+      position as the stable id.** When a horse is
+      removed, either (a) the slot is kept with a "dead"
+      flag (id preserved) or (b) the vector compacts and
+      saved references rewrite. The save's "next id"
+      counter `93 > 85` is consistent with (a): 93 slots
+      ever issued, 85 live + 8 retained/dead.
+
+      Implication for D4 sidecar: index extended state
+      by roster slot position at save time. Compute the
+      index by scanning `gamestate[+0x130]` for the
+      horse pointer (O(N), N <= ~100). At load time,
+      apply ext state in the same positional order.
+      Vanilla save bytes still untouched.
+
+      Open: confirm hypothesis (a) by save-diff
+      experiment (kill a horse mid-save, observe whether
+      the slot keeps existing or is removed). Until
+      confirmed, treat the index as session-stable but
+      sequence-fragile. D5.7 unchanged: pointer key
+      works in-session; sidecar can use slot index.
 
 ### Phase D5: Gene-effect engine extension (trampoline)
 
@@ -1120,9 +1299,11 @@ declaring victory.
 
 | Risk | Mitigation |
 |---|---|
-| The breeding combinator function is unfound (GENE-CATALOG.md open question). Without it, child horses get default-zero extended alleles. | Phase D3.4. Locate before D3 starts. If we cannot find it, hook the genome alloc path to populate extended alleles from parent picks at horse-creation time. |
+| ~~Breeding combinator unfound~~ RESOLVED 2026-05-15: `FUN_1400a2d80`. See D3.4. |
 | `FUN_1400a5d20`'s detour may be hot enough that the per-call branch costs measurable frame time. | Profile in D8.5. If it's a problem, JIT-patch the detour to skip vanilla frames where no extended genes are defined. |
-| Stable horse_id field not located. | Phase D4.4. Without it, we can't key `EXT_HORSE_GENOMES`. Find this BEFORE D3 since D3 needs it. |
+| ~~Stable horse_id field not located~~ PARTIAL 2026-05-15: no dedicated field; roster slot position IS the id. Sidecar uses positional ordering (iteration order matches save order). See D4.4. |
+| ~~horse-struct allocator unfound~~ RESOLVED 2026-05-15. Horse struct is 0x498 bytes. Constructor `FUN_1400aac60`, destructor `FUN_1400bf1f0`. 40+ call sites alloc via `FUN_1402c704c(0x498)` and ALL route through the single constructor. See D3.0. |
+| **NEW: working genome misidentified as `+0x78`.** Real working genome is inline at `horse + 0x2b8` (engine + consumer + save all use it). `+0x78` is pop-seed / archive only. Original D3.1-D3.3 plan was wrong; revised plan in D3 section. | Done: docs updated. |
 | Vanilla's `genes.dat` cache format may include the gene table in a way that doesn't survive our patches. | Recommend deleting `genes.dat` on attach to force regen. Document. |
 | `FUN_14009f680` runs on a non-render thread (audio? AI?) and our trampoline triggers thread-safety issues. | Audit the calling thread context for each of the 4 caller sites in D5.1. |
 
@@ -1196,36 +1377,42 @@ Workaround until fixed: relaunch Horsey + re-inject fresh on each rebuild.
 
 ## High-priority features
 
-### Hotkey-driven actions (CRITICAL for ease-of-use)
+### Hotkeys
 
-Repetitive clicking is the second-biggest tedium source after fatigue/aging.
-Implement modifier-click + keyboard hotkeys for common actions.
+User-locked scope 2026-05-15: **`Shift+Click` (on horse) = transfer to current location.** That's the first and only hotkey in v1. Everything else stays out of scope until that one ships and gets real use.
 
-| Hotkey | Action |
-|---|---|
-| `Shift+Click` (on horse) | Transfer the horse to truck / corral / current location |
-| `Ctrl+Click` (on horse) | Toggle "favorite" (excludes from retire/sell candidates) |
-| `Alt+Click` (on horse) | Show full stats panel |
-| `Shift+Click` (on item) | Auto-buy 10 (or the bulk-buy default) |
-| `Shift+Click` (on horse in roster) | Quick-feed (uses inventory hay) |
-| `R` | Race the currently-selected horse |
-| `F` | Feed all hungry horses (drains hay from inventory) |
-| `S` | Sleep all tired horses |
-| `B` | Open breeding menu with currently-selected horse pre-filled |
-| `T` | Open transfer menu |
-| `Esc+1..9` | Quick-switch player slots / save slots |
-| `Numpad +` / `Numpad -` | Increase / decrease sim speed |
+- [ ] **HK1. Shift+Click smart-transfer.** Vanilla forces a click-and-drag every time you move a horse between the three locations:
+      - **Vehicle** (truck the player drives around)
+      - **Pasture** (home / corral)
+      - **Race line** (starting position at the track, "ready to race")
+      And these transfers happen constantly: load truck before going to a race, unload at the track to put horses on the line, reload to truck after the race, unload back to pasture at home, repeat. Every transfer is a manual click-drag of one horse at a time.
 
-**Why this matters**: vanilla forces you to click-by-click on every horse
-for every action. Bulk hotkeys turn tedious chores into one keypress.
+      HK1 collapses each transfer to a single Shift+Click on the horse. The mod **infers the right destination from context**:
+      - At the track? Vehicle horse -> race line. Race-line horse -> vehicle.
+      - At the pasture? Vehicle horse -> pasture. Pasture horse -> vehicle.
+      - Anywhere else? Pasture <-> vehicle, since pasture is the implicit "home" target.
 
-**Implementation path**: requires DLL injection (Tier 3+ from
-`ENGINE-EXTENSION.md`) because the input handler is in `Horsey.exe`. The
-DLL hooks SDL input events and short-circuits them to game actions before
-the engine sees the raw click.
+      Effect: every routine "load up for race day" / "put horses on starting line" / "bring everyone home" loop becomes Shift+Click per horse instead of click-drag per horse. Future bulk variants (Shift+Click on a group, hotkey to transfer ALL eligible) are out of v1.
 
-Probably easiest as a `horsey-mod` mod once that foundation exists (see
-[`MODFORGE-INTEGRATION.md`](MODFORGE-INTEGRATION.md)).
+#### Groundwork that ships alongside HK1
+
+Build the foundation so future hotkeys are cheap to add. Don't add any hotkeys beyond HK1 in v1.
+
+- [ ] SDL input hook. Intercept mouse/keyboard events before the engine handles them. Single dispatch point inside `horsey-mod`.
+- [ ] Modifier-key state tracker. Reusable for any future modifier-click binding.
+- [ ] "Currently hovered/selected horse" resolver. Given mouse position + game state, return the horse pointer under the cursor. Reusable for any horse-targeted hotkey.
+- [ ] "Where is this horse now?" + "Where should it go from here?" resolvers. Read the horse's current container (vehicle / pasture / race line) and the player's current scene to pick the destination.
+- [ ] "Move horse to <destination>" op. Wraps whatever vanilla function the click-drag flow calls when the player releases a dragged horse on a valid drop target. Find it via the existing transfer-menu code; reuse rather than re-implement so the move keeps all side effects vanilla expects (fatigue clearing on race-line drop, etc.).
+- [ ] Settings entry for enabling/disabling HK1 (so users can opt out).
+
+#### Deferred (NOT in v1)
+
+Originally listed but never asked for; revisit only if HK1 ships and the user explicitly asks for more. Kept as a parking-lot list so we don't lose the ideas:
+
+- `Ctrl+Click` favorite toggle, `Alt+Click` stats panel
+- `Shift+Click` (item) bulk-buy, `Shift+Click` (roster) quick-feed
+- Keyboard hotkeys: `R` race, `F` feed all, `S` sleep all, `B` breed, `T` transfer menu
+- `Esc+1..9` save-slot switch, `Numpad +` / `Numpad -` sim speed
 
 ---
 
@@ -1265,13 +1452,16 @@ Click a row to focus camera + select that horse. Filter chips at top:
 "Hungry only", "Tired only", "Old", "At home", "On track", etc.
 
 Backend: the data already lives in our `horses.count`/`horse.read` ops.
-Front-end is either:
-- ImGui overlay (DX12-hook integration; significant work)
-- **Web UI** served from `modforge::server` (much faster path; user
-  has it open in a side browser window)
-
-The web UI is the right first cut. ~200 lines of HTML/JS pulling from
-our existing HTTP control plane.
+Front-end:
+- **ImGui overlay in MODFORGE** (locked 2026-05-15). Same approach
+  HorseyLiveTweaks ships (see
+  [`PRIOR-ART-HorseyLiveTweaks.md`](PRIOR-ART-HorseyLiveTweaks.md))
+  and the same one we use in other game-mod projects. Build it
+  ONCE in `modforge` as a reusable in-game-window primitive so
+  every per-game mod (horsey-mod, schedule1, grounded2, etc.)
+  gets it for free. horsey-mod is the first consumer.
+- Web UI served from `modforge::server` stays as the secondary /
+  scripting surface (browser tab + curl), not the primary UX.
 
 **3. Status badges on stacked horses**
 
@@ -1335,20 +1525,20 @@ This entire feature stack rides on `horsey-mod`:
 | Sub-feature | Backend | Frontend |
 |---|---|---|
 | Auto-spread | Hook per-horse render | none (positions just shift) |
-| Roster panel | Existing `horses.*` ops | Web UI page (HTML + JS) |
+| Roster panel | Existing `horses.*` ops | modforge ImGui panel |
 | Status badges | Hook status-bubble render | none (badge always-on) |
-| Hotkey cycling | SDL input hook | none |
+| Hotkey cycling | SDL input hook (modforge primitive) | none |
 | Count display | Hook overlap detection | rendered via render hook |
-| Breeding picker | New `breed.preview` op | Web UI page |
+| Breeding picker | New `breed.preview` op | modforge ImGui panel |
 | Auto-feed | New `auto_feed` toggle setting | none (runs automatically) |
-| Group ops | New `horses.bulk_*` ops | Web UI page |
+| Group ops | New `horses.bulk_*` ops | modforge ImGui panel |
 
-The web-UI approach is the unblocker: don't try to inject UI into the
-SDL3 renderer right away. Use `modforge::server`'s HTTP plane plus a
-single-page HTML app served from our DLL. The user keeps a Chrome tab
-open on `http://localhost:33077/ui` with all the management features.
-The IN-GAME view (auto-spread, status badges, count display) is the
-in-game-rendered subset; the heavy UI lives in the browser.
+Build the ImGui shell in `modforge` once (D-X-style swap-chain hook +
+window/panel API) so horsey-mod, schedule1, grounded2 and future
+per-game mods all get the same in-game control window. horsey-mod is
+the first consumer and drives the API shape. The web UI on
+`modforge::server` remains as the secondary scripting/automation
+surface; ImGui is the primary user-facing UX.
 
 This split is also how serious modders ship overlays in 2026: the
 external-tool-via-localhost pattern is friction-free vs. embedding a
@@ -1701,13 +1891,24 @@ _Source: [`CONTENT-CREATION.md`](CONTENT-CREATION.md)._
 
 _Source: [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1: Conceptual model._
 
-- [ ] Find the breeding combinator function. Probably
-      called `FUN_14005d190` with one parent then
-      again with the other, or a higher-level function
-      that does both.
+- [x] **DONE 2026-05-15.** Breeding combinator is
+      `FUN_1400a2d80(parent_a + 0x2b8, parent_b + 0x2b8,
+      child + 0x2b8)`. Called from `FUN_1400b2e30:104367`.
+      Plain Mendelian (one strand per parent, each strand
+      picks one of the parent's two strands at random)
+      plus linked inheritance across 3 cluster ranges
+      (Neck 72..86, Head/Face/Hat 97..174, palette base
+      183..197). See GENE-CATALOG.md Part 1 Step 1 for
+      the algorithm.
 - [ ] Confirm the runtime mutation-during-breeding
       behavior: does the child get random allele
       flips beyond the parent picks?
+      (Not seen in `FUN_1400a2d80` body; pure parent
+      copy. Mutation may be applied elsewhere, e.g. in
+      `FUN_1400b2e30` after the combinator + engine
+      run, or it may not exist for child-creation and
+      drift only happens via `FUN_1400c0660` death
+      handler.)
 
 ## Decompilation next steps
 

@@ -714,6 +714,203 @@ evaluated).",
             },
         ),
         OpDef::new(
+            "genes.ext.combinator.dryrun",
+            "Read-only address + prologue dump for the D3.4 post-hook target \
+(GENE_COMBINATOR / FUN_1400a2d80). Use to verify the address is plausible before \
+calling `genes.ext.combinator.arm`.",
+            "",
+            |_| {
+                let r = patches::combinator::dryrun();
+                Ok(json!({
+                    "armed": patches::combinator::is_armed(),
+                    "name": r.name,
+                    "rva": format!("0x{:x}", r.rva),
+                    "runtime_addr": format!("0x{:x}", r.runtime_addr),
+                    "prologue_bytes": r.prologue_bytes
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.combinator.arm",
+            "Install the D3.4 post-hook on FUN_1400a2d80. After this returns OK, every \
+breeding event (child born from two parents) runs vanilla's Mendelian on the inline \
+genome at horse+0x2b8, then our handler runs an independent Mendelian on \
+EXT_HORSE_GENOMES so the child inherits extended alleles too. Without this, bred \
+horses get default-zero ext alleles.",
+            "",
+            |_| match patches::combinator::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
+            "genes.ext.combinator.disarm",
+            "Revert the D3.4 post-hook. Bred horses stop inheriting ext alleles. No-op \
+if not armed. Runs automatically on DLL detach.",
+            "",
+            |_| {
+                patches::combinator::revert();
+                Ok(json!({"armed": patches::combinator::is_armed()}))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.combinator.stats",
+            "D3.4 combinator post-hook counters. `call_count` = total invocations of \
+FUN_1400a2d80 since arming; `combines_done` = ext combinations actually executed \
+(equal to call_count once vanilla returns cleanly).",
+            "",
+            |_| {
+                let s = patches::combinator::stats();
+                Ok(json!({
+                    "armed": patches::combinator::is_armed(),
+                    "call_count": s.call_count,
+                    "combines_done": s.combines_done,
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.lifecycle.dryrun",
+            "Read-only address + prologue dump for the D3.1/D3.2 lifecycle anchors \
+(HORSE_CONSTRUCTOR / FUN_1400aac60 and HORSE_DESTRUCTOR / FUN_1400bf1f0).",
+            "",
+            |_| {
+                let c = patches::lifecycle::dryrun_ctor();
+                let d = patches::lifecycle::dryrun_dtor();
+                let fmt = |r: patches::lifecycle::TargetReport| {
+                    json!({
+                        "name": r.name,
+                        "rva": format!("0x{:x}", r.rva),
+                        "runtime_addr": format!("0x{:x}", r.runtime_addr),
+                        "prologue_bytes": r.prologue_bytes
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    })
+                };
+                Ok(json!({
+                    "armed_ctor": patches::lifecycle::is_armed_ctor(),
+                    "armed_dtor": patches::lifecycle::is_armed_dtor(),
+                    "ctor": fmt(c),
+                    "dtor": fmt(d),
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.lifecycle.arm",
+            "Install the D3.1/D3.2 horse-struct lifecycle anchors. After this returns OK, \
+every horse creation triggers a default-zero EXT_HORSE_GENOMES entry, and every horse \
+destruction drops the entry. Without this, ext entries leak across game sessions and \
+new horses won't have ext alleles unless explicitly set.",
+            "",
+            |_| match patches::lifecycle::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
+            "genes.ext.lifecycle.disarm",
+            "Revert the D3.1/D3.2 lifecycle anchors. EXT_HORSE_GENOMES no longer mirrors \
+horse births/deaths automatically. No-op if not armed. Runs automatically on DLL detach.",
+            "",
+            |_| {
+                patches::lifecycle::revert();
+                Ok(json!({
+                    "armed_ctor": patches::lifecycle::is_armed_ctor(),
+                    "armed_dtor": patches::lifecycle::is_armed_dtor(),
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.dryrun",
+            "Read-only address + prologue dump for the D4 save-sidecar hooks \
+(SAVE_WRITER, LOAD_GAME, HORSE_SAVE_WRITER, HORSE_SAVE_LOADER).",
+            "",
+            |_| {
+                let r = patches::save_sidecar::dryrun_all();
+                let fmt = |x: &patches::save_sidecar::TargetReport| {
+                    json!({
+                        "name": x.name,
+                        "rva": format!("0x{:x}", x.rva),
+                        "runtime_addr": format!("0x{:x}", x.runtime_addr),
+                        "prologue_bytes": x.prologue_bytes
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    })
+                };
+                Ok(json!({
+                    "armed": patches::save_sidecar::is_armed(),
+                    "targets": [fmt(&r[0]), fmt(&r[1]), fmt(&r[2]), fmt(&r[3])],
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.arm",
+            "Install the D4 save-sidecar hooks. After this returns OK, saves write \
+a `save<N>.dat.ext` sidecar containing dense ext alleles for every horse in roster \
+order. Loads consume it before vanilla regenerates render fields, so ext effects \
+survive save/load.",
+            "",
+            |_| match patches::save_sidecar::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.disarm",
+            "Revert the D4 save-sidecar hooks. Future saves/loads ignore ext alleles. \
+Existing sidecar files are left in place. No-op if not armed. Runs automatically on \
+DLL detach.",
+            "",
+            |_| {
+                patches::save_sidecar::revert();
+                Ok(json!({"armed": patches::save_sidecar::is_armed()}))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.stats",
+            "D4 save-sidecar counters. `save_calls`/`load_calls` = top-level save/load \
+invocations; `horse_writes`/`horse_reads` = per-horse records appended/consumed; \
+`files_written`/`files_read` = sidecar files successfully written/read.",
+            "",
+            |_| {
+                let s = patches::save_sidecar::stats();
+                Ok(json!({
+                    "armed": patches::save_sidecar::is_armed(),
+                    "save_calls": s.save_calls,
+                    "load_calls": s.load_calls,
+                    "horse_writes": s.horse_writes,
+                    "horse_reads": s.horse_reads,
+                    "files_written": s.files_written,
+                    "files_read": s.files_read,
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.lifecycle.stats",
+            "D3.1/D3.2 lifecycle anchor counters. `ctor_calls`/`dtor_calls` = total \
+invocations of FUN_1400aac60/FUN_1400bf1f0; `entries_created`/`entries_dropped` = \
+new vs removed EXT_HORSE_GENOMES entries.",
+            "",
+            |_| {
+                let s = patches::lifecycle::stats();
+                Ok(json!({
+                    "armed_ctor": patches::lifecycle::is_armed_ctor(),
+                    "armed_dtor": patches::lifecycle::is_armed_dtor(),
+                    "ctor_calls": s.ctor_calls,
+                    "dtor_calls": s.dtor_calls,
+                    "entries_created": s.entries_created,
+                    "entries_dropped": s.entries_dropped,
+                }))
+            },
+        ),
+        OpDef::new(
             "genes.ext.reload",
             "Re-parse `genes-extended.xml` from disk and replace EXT_GENE_TABLE entries. \
 Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",

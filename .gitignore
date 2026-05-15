@@ -14,3 +14,7 @@ Cargo.lock.bak
 
 # Stray cargo target that sometimes shows up under ueforge/cpp/.
 ueforge/cpp/target/
+
+# GPL-3 prior-art clones used only as research reference.
+# Their source has its own .git history and must not be redistributed in our MIT tree.
+horsey-mod/research/prior-art/

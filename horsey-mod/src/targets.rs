@@ -265,6 +265,62 @@ pub mod fn_addr {
 
     /// `hot_air_balloon_controller`.
     pub const BALLOON_CONTROLLER: usize = 0x14010a5e0;
+
+    // -------------------------------------------------------------
+    // D3/D4 lifecycle + breeding + per-horse save targets
+    // (research closed 2026-05-15; see todo.md D3.0/D3.4/D4.1b/D4.2b)
+    // -------------------------------------------------------------
+
+    /// Horse struct constructor. Caller passes a freshly allocated
+    /// 0x498-byte buffer (`FUN_1402c704c(0x498)`); the constructor
+    /// installs the vtable `&PTR_FUN_14030d660`, zeros 50+ fields,
+    /// sets default `max_age = 0x1e` at +0x44, increments the global
+    /// live-count `_DAT_1403f311c`, and returns the same pointer.
+    /// Single entry point for ALL horse-creation paths (40+ call
+    /// sites). D3.1 lifecycle anchor for `EXT_HORSE_GENOMES`.
+    /// Ghidra indexed as `FUN_1400aac60`; true entry -16 bytes.
+    pub const HORSE_CONSTRUCTOR: usize = 0x1400aac50;
+
+    /// Horse struct destructor. Resets vtable, decrements
+    /// `_DAT_1403f311c`, releases sub-objects (`+0x3e` sub-struct,
+    /// std::string SSO buffers at +0x51/+0x31/+0x2d), then frees
+    /// the 0x498 buffer if `param_2 & 1` (C++ delete flag).
+    /// Mirror partner of `HORSE_CONSTRUCTOR`. D3.2 lifecycle anchor.
+    /// Ghidra indexed as `FUN_1400bf1f0`; true entry -16 bytes.
+    pub const HORSE_DESTRUCTOR: usize = 0x1400bf1e0;
+
+    /// Breeding combinator. Mendelian recombination of two parents'
+    /// 0x1e0-byte inline genomes (at `horse + 0x2b8`) into a child's
+    /// inline genome. Signature:
+    /// `(parent_a + 0x2b8, parent_b + 0x2b8, child + 0x2b8)`.
+    /// Body: outer loop 2 strands x inner loop 240 genes, per
+    /// (strand, gene) calls `FUN_1400c6580()` for an RNG coinflip
+    /// selecting one parent's strand to copy from. Plus linked-
+    /// inheritance bitmask forcing same-parent across 3 ranges:
+    /// 72..86 (Neck), 97..174 (Head/etc.), 183..197 (palette base).
+    /// D3.4 detour target. Post-hook recovers horse base ptrs as
+    /// `param_N - 0x2b8` and runs own Mendelian on `EXT_HORSE_GENOMES`.
+    /// Ghidra indexed as `FUN_1400a2d80`; true entry -16 bytes.
+    pub const GENE_COMBINATOR: usize = 0x1400a2d70;
+
+    /// Per-horse save serializer. Called per pointer from the roster
+    /// iterator (`FUN_14006d610`). Writes the inline genome at
+    /// `horse + 0x2b8` via `FUN_14006d470`, then ~12 other small
+    /// fields (name_id, age, flags, etc.). D4.1b sidecar-write
+    /// anchor: post-hook appends our ext alleles for the same horse
+    /// in the same iteration order.
+    /// Ghidra indexed as `FUN_14006ee10`; true entry -16 bytes.
+    pub const HORSE_SAVE_WRITER: usize = 0x14006ee00;
+
+    /// Per-horse save loader. Mirror of `HORSE_SAVE_WRITER`. Reads
+    /// the inline genome via `FUN_14006d580(horse + 0x2b8)`, then
+    /// the small fields, then calls `FUN_1400b3070(horse)` at line
+    /// :65182 to regenerate render fields by re-running the engine
+    /// + consumer. Our D1/D5 detours fire during that regen, so any
+    /// ext alleles in `EXT_HORSE_GENOMES` populated BEFORE this
+    /// returns get applied automatically. D4.2b sidecar-read anchor.
+    /// Ghidra indexed as `FUN_14006f150`; true entry -16 bytes.
+    pub const HORSE_SAVE_LOADER: usize = 0x14006f140;
 }
 
 /// Resolve the running process's image base. Safe to call from any

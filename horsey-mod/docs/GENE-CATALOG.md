@@ -168,11 +168,22 @@ on the spot.
 
 ### Layer 3: per-horse genome
 
-Each horse has a 480-byte block allocated by
-`FUN_14005cf70` / `FUN_14005d190`, freed by
-`FUN_14005cd00`, pointer at `horse[0x78]`.
+The **working genome** is inline at `horse + 0x2b8`,
+a 480-byte block (2 strands x 240 alleles). This is
+what the engine `FUN_14009f680` and consumer
+`FUN_1400ab3d0` read (both take `param_2 = horse + 0x2b8`),
+and what the breeding combinator `FUN_1400a2d80` writes
+into.
 
-Layout: **diploid pair stored as two 240-byte halves.**
+There is also a separate heap-allocated 480-byte blob
+referenced from `horse[+0x78]`, allocated by
+`FUN_14005cf70`/`FUN_14005d190` and freed by
+`FUN_14005cd00`. Based on `FUN_14005cf70` populating it
+from per-pop initial allele data via `FUN_1400a2ed0`,
+this looks like a pop-seed / snapshot blob, not the
+live working genome. Treat it as secondary.
+
+Layout (same for both blocks): **diploid pair stored as two 240-byte halves.**
 
 ```
 horse->genome:
@@ -476,15 +487,19 @@ Maternal (Honky) and paternal (Dale) genomes at three illustrative positions:
 
 So Honky is `SIZE: 100/100` (homozygous 100, big mom), `OLD_AGE: 0/0` (homozygous neutral aging), `LITTER_SIZE: 2/1` (heterozygous, two-baby litter expressed). Dale is `SIZE: 100/35` (heterozygous big+small), `OLD_AGE: +2/0` (heterozygous, carrying short-life allele), `LITTER_SIZE: 3/2`.
 
-**Step 1: breeding combinator (the part the engine does).** Per [`eldritch-hue/hhgm-EGM`'s breeding model](https://github.com/eldritch-hue/hhgm-EGM) (independently verified by the in-game observation that foals always inherit one allele per gene from each parent):
+**Step 1: breeding combinator (the part the engine does).** Verified 2026-05-15 in `FUN_1400a2d80` (lines 95511-95571). Called from `FUN_1400b2e30:104367` (child-from-parents setup) with `(parent_a + 0x2b8, parent_b + 0x2b8, child + 0x2b8)` before the engine + consumer re-evaluate the new child:
 
 ```text
-for each gene g in 0..240:
-    child.maternal_pick[g] = random_choice(honky.strand_A[g], honky.strand_B[g])  // 50/50
-    child.paternal_pick[g] = random_choice(dale.strand_A[g],   dale.strand_B[g])    // 50/50
+for strand in 0..2:                                 # child gets 2 strands
+    for g in 0..240:
+        coin = rand()                               # FUN_1400c6580()
+        parent = parent_a if (strand_pick == 0) else parent_b
+        child.strand[strand][g] = parent.strand[coin][g]
 ```
 
-Mutation during breeding (the `m` attribute's runtime role) is still being traced. See Part 1 "Population genetics: live mutation drift" for what `FUN_1400c0660` does to the table across deaths. The child-generation step is straight Mendelian.
+Plus a **linked-inheritance override**: for the gene-index ranges 72..86 (Neck), 97..174 (Head/Eye/Brow/Ear/Teeth/Mouth/Nose/Antlers/Hat), and 183..197 (palette base + colors). Minus exclusions at idx 83 and 107. The picker forces the SAME parent across the whole cluster. So a foal can't get a giraffe head with a tiger jaw. The bitmask `(uVar5 < 0x61 || 0xae < uVar5) && (0xe < uVar5 - 0x48) && (0xe < uVar5 - 0xb7 || ...)` at lines 95541-95551 encodes this. The ranges match the cluster boundaries documented in Part 2's cluster map.
+
+Mutation during breeding (the `m` attribute's runtime role) is still being traced. See Part 1 "Population genetics: live mutation drift" for what `FUN_1400c0660` does to the table across deaths. The child-generation step is straight Mendelian + linked inheritance.
 
 Say the RNG rolls (one coin flip per gene per parent):
 
