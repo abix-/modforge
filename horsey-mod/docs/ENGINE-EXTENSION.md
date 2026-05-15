@@ -1,4 +1,5 @@
 # Horsey as a Base Class. Engine Extension Modding
+> **Authoritative on:** the tier model for going beyond data-only mods into engine extension (binary patches, hooking, sidecar state).
 
 **Premise**: the data files are the game's narrow public API. The binary is
 the implementation. To build anything you want, treat the binary as malleable

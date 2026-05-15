@@ -1,8 +1,6 @@
 # Debugging native-PE crashes in horsey-mod
 
-> **Authoritative.** Steady-state reference for diagnosing crashes
-> inside Horsey.exe after the DLL is attached. Living document;
-> update when new failure modes or new tooling land.
+> **Authoritative on:** diagnosing crashes inside Horsey.exe after the DLL is attached. Living document; update when new failure modes or new tooling land.
 
 ## 1. Where the logs live
 

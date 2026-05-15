@@ -1,4 +1,5 @@
 # Horsey.exe game-function naming table
+> **Authoritative on:** the curated 971-function table with proposed names organized by domain. For the broader 1234-function auto-summarized index, see [ALL-FUNCTIONS.md](ALL-FUNCTIONS.md).
 
 All 971 game-logic functions with a proposed name and description.
 

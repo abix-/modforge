@@ -1,4 +1,5 @@
 # Bestiary Expansion: Viability Research
+> **Authoritative on:** per-question viability research for bestiary expansion (does the engine support X, what would it take).
 
 > **Status:** in progress (started 2026-05-14).
 > **Owner:** horsey-mod.

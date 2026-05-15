@@ -1,8 +1,6 @@
 # Address resolution across game updates
 
-> **Authoritative.** How horsey-mod resolves Horsey.exe addresses
-> in a way that survives game updates. Living plan; promotes to
-> implementation as pieces land.
+> **Authoritative on:** how horsey-mod resolves Horsey.exe addresses in a way that survives game updates. Living plan; promotes to implementation as pieces land.
 
 ## Why this exists
 

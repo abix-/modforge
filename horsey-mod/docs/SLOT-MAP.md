@@ -1,4 +1,5 @@
 # Render-buf slot map (vanilla Horsey gene engine)
+> **Authoritative on:** the gene-index -> render-buf slot mapping derived from FUN_14009f680 + FUN_1400ab3d0 traces.
 
 > **Living doc.** Built incrementally as we trace
 > `FUN_14009f680` (the gene engine) and `FUN_1400ab3d0`

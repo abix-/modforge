@@ -1,4 +1,5 @@
 # Milestone: First Successful Injection (2026-05-13)
+> **Authoritative on:** the historical record of the first successful DLL injection (2026-05-13).
 
 Verified end-to-end: native decompilation → struct offsets → Rust binding →
 DLL injection → live HTTP mutation → **visible in-game effect**.

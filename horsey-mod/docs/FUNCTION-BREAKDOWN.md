@@ -1,4 +1,5 @@
 # Function breakdown - why 10,332 isn't crazy
+> **Authoritative on:** the explainer for why 10,332 functions in a small game is not unreasonable (size distribution, vendor vs game-logic split).
 
 You correctly noticed that 10,332 functions sounds like way too many for a small game. Mostly correct. Here's the breakdown.
 

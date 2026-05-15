@@ -1,4 +1,5 @@
 # save1.dat - format notes
+> **Authoritative on:** format notes for save1.dat (partial; static-analysis pass).
 
 Live save dumped 2026-05-13. Total size 245,151 bytes.
 

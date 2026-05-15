@@ -1,4 +1,5 @@
 # Decompilation tooling research
+> **Authoritative on:** the decompilation toolchain selection (why Ghidra + pyghidra).
 
 Goal: 100% decompile `Horsey.exe` (4.4 MB stripped PE x64) with behavior documented to file.
 

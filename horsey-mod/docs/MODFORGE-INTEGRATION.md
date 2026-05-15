@@ -1,4 +1,5 @@
 # modforge Integration. Yes, It Helps Massively
+> **Authoritative on:** how horsey-mod consumes the modforge framework (HTTP server, ops registry, settings, RPG layer).
 
 You already built the runtime control plane I was about to suggest. This
 doc maps your existing **modforge** ecosystem onto Horsey.

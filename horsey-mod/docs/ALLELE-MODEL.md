@@ -1,4 +1,5 @@
 # Horsey Game allele / gene model
+> **Authoritative on:** the conceptual model of Horsey's gene/allele system. For per-gene specifics see [GENE-CATALOG.md](GENE-CATALOG.md); for the engine implementation see [SLOT-MAP.md](SLOT-MAP.md).
 
 Reference doc: how the gene system actually works in the
 binary. Synthesized from decomp findings in

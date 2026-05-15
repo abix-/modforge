@@ -1,4 +1,5 @@
 # Horsey game mechanics (decompiled)
+> **Authoritative on:** verified game-mechanic findings with decomp citations (tiredness, money, debug cheats, struct offsets).
 
 Verified findings from decompiled `Horsey.exe`. Every claim cites a function address or global address you can grep in `decompiled/all_functions.c`.
 

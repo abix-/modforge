@@ -1,4 +1,5 @@
 # Horsey.exe - Reverse Engineering Notes
+> **Authoritative on:** extracted strings from Horsey.exe useful as Ghidra anchors when navigating the decompilation.
 
 Strings extracted 2026-05-13 from `Horsey.exe` (build mtime 2026-05-08). These are anchors to identify the fatigue / age / lifecycle code in Ghidra (or IDA / Cutter).
 

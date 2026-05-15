@@ -1,4 +1,5 @@
 # Decompilation status
+> **Authoritative on:** the state of the Ghidra decompilation pipeline (toolchain, statistics, output artifacts).
 
 ## TL;DR
 

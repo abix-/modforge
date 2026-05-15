@@ -1,4 +1,5 @@
 # Hooking strategy review: making 480 genes drive in-game visuals
+> **Authoritative on:** the decision record for how we hook FUN_14009f680 + FUN_1400ab3d0 for gene-effect mods.
 
 > **Status:** APPROVED 2026-05-14 with scope expansion.
 > v1 ships both:

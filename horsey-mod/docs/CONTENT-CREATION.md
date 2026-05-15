@@ -1,4 +1,5 @@
 # Horsey Game. Content Creation Guide
+> **Authoritative on:** end-user guide to creating mod content for Horsey Game (pop.xml, horsey.tmx, sprites, sounds) without writing code.
 
 A self-contained guide to creating mod content for Horsey Game. Derived from
 decompiling `Horsey.exe` (verified) and the JumboDS64 Steam guide (community-verified).
@@ -789,3 +790,20 @@ Every claim in this document is backed by one of:
 
 If something here doesn't match what you see in-game, file an issue against
 this repo with: which claim, what you saw, and your save file.
+
+---
+
+## Appendix: Verification gaps (merged from CONTENT-MODDING.md, 2026-05-15)
+
+Open verification questions where the JumboDS64 guide is our only source. To close, read the cited function in the decomp and confirm the behavior.
+
+
+These claims need verification against our decompilation:
+
+- [ ] **`p0..p3` are inverse weights** - read the gene-allele selection code.
+- [ ] **Adding new gene NAMES** - read `FUN_1400a3eb0` (chromomap loader). Does it accept arbitrary names or only the 242 enum'd ones?
+- [ ] **First-instance-wins building rule** - find the building-placement scan code.
+- [ ] **Item ID 48+ bug** - find the item table.
+- [ ] **400x225 map size** - find the tmx parser.
+
+Where the guide and our decompilation agree (debug mode unlock), confidence is very high. Where the guide is the only source (e.g. item ID list), treat as community-verified but not engine-verified.

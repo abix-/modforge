@@ -1,11 +1,7 @@
 # Gene catalog (all 240 vanilla genes)
+> **Authoritative on:** per-gene reference for all 240 vanilla genes (alleles, slots written, slots gated, semantic notes).
 
-Authoritative per-gene reference. Auto-derived columns
-(idx, alleles, slots written, slots gated, calls) come from
-`research/build-gene-catalog.py` running flow analysis on
-`FUN_14009f680`. Manual semantic notes are merged into the
-`notes` column and persist across regenerations (the script
-preserves them).
+Auto-derived columns (idx, alleles, slots written, slots gated, calls) come from `research/build-gene-catalog.py` running flow analysis on `FUN_14009f680`. Manual semantic notes are merged into the `notes` column and persist across regenerations (the script preserves them).
 
 Columns:
 - **idx**: 0-based position in `vanilla-genes.xml`.

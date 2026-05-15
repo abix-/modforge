@@ -1,4 +1,5 @@
 # External knowledge from other modders / wiki / community
+> **Authoritative on:** facts sourced from the community/wiki/Steam guides (not from our decompilation). Citations attached.
 
 Knowledge not derived from our decompilation but from existing public sources. Cited so we know what's verified-by-other-people vs verified-by-us.
 

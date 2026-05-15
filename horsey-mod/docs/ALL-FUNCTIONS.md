@@ -1,4 +1,5 @@
 # All game-logic functions (auto-summarized)
+> **Authoritative on:** the full auto-generated index of all 1234 game-logic functions in Horsey.exe. For the curated 971-function subset with proposed names + domain groupings, see [FUNCTIONS.md](FUNCTIONS.md).
 
 1234 game-logic functions. Each has a one-line summary.
 
