@@ -364,6 +364,35 @@ pub fn register_all() {
         ),
 
         OpDef::new(
+            "targets.resolve.data_globals",
+            "Resolve RACES_COUNTER + SAVE_VERSION_GLOBAL via patternsleuth.",
+            "",
+            |_| {
+                let image_base = crate::targets::image_base();
+                fn entry(addr: Option<usize>, fallback_rva: usize) -> Json {
+                    let addr_hex = match addr {
+                        Some(a) => format!("0x{a:x}"),
+                        None => "0x0".to_string(),
+                    };
+                    json!({
+                        "address": addr_hex,
+                        "hardcoded": format!("0x{:x}", crate::targets::rebase(fallback_rva)),
+                    })
+                }
+                Ok(json!({
+                    "image_base": format!("0x{image_base:x}"),
+                    "races_counter": entry(
+                        crate::targets::resolve::races_counter(),
+                        crate::targets::RACES_COUNTER,
+                    ),
+                    "save_version_global": entry(
+                        crate::targets::resolve::save_version_global(),
+                        crate::targets::SAVE_VERSION_GLOBAL,
+                    ),
+                }))
+            },
+        ),
+        OpDef::new(
             "targets.resolve.cheat_globals",
             "Resolve NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE at runtime via patternsleuth.",
             "",

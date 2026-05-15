@@ -505,6 +505,107 @@ pub mod resolve {
         }
     }
 
+    /// Resolved runtime address of `RACES_COUNTER`
+    /// (`DAT_1403eded8`). Cached.
+    pub fn races_counter() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let resolved = resolve_races_counter_via_minus_10p5f_anchor()?;
+            let hardcoded = super::rebase(super::RACES_COUNTER);
+            let delta = resolved.abs_diff(hardcoded);
+            if delta > 0x1000 {
+                modforge::log!(
+                    "R3 RACES_COUNTER sanity gate rejected resolved=0x{resolved:x}; \
+                     hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+                );
+                return None;
+            }
+            Some(resolved)
+        })
+    }
+
+    /// Resolved runtime address of `SAVE_VERSION_GLOBAL`
+    /// (`DAT_1403fb0e0`). Cached.
+    ///
+    /// SAVE_VERSION_GLOBAL is structurally at GAMESTATE_PTR + 8
+    /// (the slot for the save format version sits immediately
+    /// after the GameState pointer slot in `.data`). Same layout
+    /// as the original decomp (`0x1403fb0e0` - `0x1403fb0d8` = 8).
+    /// Derive from the resolved GAMESTATE_PTR rather than scanning
+    /// the binary independently.
+    pub fn save_version_global() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let gs = gamestate_ptr()?;
+            let resolved = gs.wrapping_add(8);
+            let hardcoded = super::rebase(super::SAVE_VERSION_GLOBAL);
+            let delta = resolved.abs_diff(hardcoded);
+            if delta > 0x1000 {
+                modforge::log!(
+                    "R3 SAVE_VERSION_GLOBAL sanity gate rejected resolved=0x{resolved:x}; \
+                     hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+                );
+                return None;
+            }
+            Some(resolved)
+        })
+    }
+
+    /// Locate RACES_COUNTER via the adjacent -10.5f float-init
+    /// then RACES_COUNTER zero-init pattern. Decomp
+    /// (all_functions.c:84919-84920):
+    ///
+    /// ```c
+    /// *(undefined4 *)((longlong)param_1 + 0x10c) = 0xc1280000;  // -10.5f
+    /// DAT_1403eded8 = 0;                                         // RACES_COUNTER
+    /// ```
+    ///
+    /// MSVC emits:
+    ///   c7 ?? 0c 01 00 00 00 00 28 c1   ; mov dword [reg+0x10c], 0xc1280000  (10b)
+    ///   c7 05 dd dd dd dd 00 00 00 00   ; mov dword [rip+disp_RACES], 0      (10b)
+    /// 20 bytes total. The float constant `0xc1280000` (= -10.5)
+    /// stored at offset 0x10c on a register is rare enough that
+    /// combined with the immediately-following RIP-rel zero-store
+    /// it uniquely fingerprints this init site.
+    fn resolve_races_counter_via_minus_10p5f_anchor() -> Option<usize> {
+        use modforge::patterns::sleuth;
+        // Anchor: the -10.5f float-init at [reg+0x10c] (10 bytes),
+        // followed by `mov [rip+disp32], edi` (6 bytes, the
+        // RACES_COUNTER = 0 store; MSVC uses edi which was zeroed
+        // earlier rather than the longer `c7 05 ... 00 00 00 00`
+        // imm32 encoding), followed by the 0xffffffff-init at
+        // [reg+0x250] (10 bytes) which bookends the sequence.
+        // 26 bytes total.
+        const SIG: &str =
+            "c7 ?? 0c 01 00 00 00 00 28 c1 89 3d ?? ?? ?? ?? c7 ?? 50 02 00 00 ff ff ff ff";
+        let hits = sleuth::scan_all_matches(SIG).ok()?;
+        let mut accepted: Vec<usize> = Vec::new();
+        for instr_addr in hits {
+            // RACES_COUNTER store (`89 3d`) starts at offset 10.
+            // disp32 at offset 12, instr_len 6 (so next_ip is
+            // match_start + 16). SAFETY: instr_addr is inside
+            // `.text`, mapped.
+            let disp = unsafe {
+                ((instr_addr + 12) as *const i32).read_unaligned()
+            } as isize;
+            let target = instr_addr.wrapping_add(16).wrapping_add(disp as usize);
+            accepted.push(target);
+        }
+        accepted.sort_unstable();
+        accepted.dedup();
+        match accepted.len() {
+            0 => {
+                modforge::log!("R3 RACES_COUNTER: no anchor match");
+                None
+            }
+            1 => Some(accepted[0]),
+            n => {
+                modforge::log!("R3 RACES_COUNTER: {n} distinct candidates; sig is ambiguous");
+                None
+            }
+        }
+    }
+
     /// Resolved runtime address of `DEBUG_LOG_GATE` (the
     /// retirement-message printf gate at `DAT_1403d9526`). Cached.
     pub fn debug_log_gate() -> Option<usize> {

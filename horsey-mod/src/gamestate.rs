@@ -364,7 +364,8 @@ pub fn set_debug_mode(enabled: bool) {
 
 /// Read the races counter (separate global, not in GameState).
 pub fn races() -> u32 {
-    let abs = targets::rebase(targets::RACES_COUNTER);
+    let abs = targets::resolve::races_counter()
+        .unwrap_or_else(|| targets::rebase(targets::RACES_COUNTER));
     // SAFETY: races counter is a uint32 in .data; always valid.
     unsafe { *(abs as *const u32) }
 }

@@ -125,11 +125,11 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
 |---|---|---|---|---|
 | `GAMESTATE_PTR` | `0x1403fb0d8` | **R (constructor-anchored, sanity-gated)** | resolved via `resolve_gamestate_ptr_via_constructor`: 1.0f@+0x114 anchor inside `FUN_1400fd580`, scan 14 ModR/M variants of `mov [rip+disp32], reg` filtered to within 600 bytes preceding the anchor, expect exactly one. 0x1000 sanity gate vs hardcoded; falls back to hardcoded on miss. `tests/r3_gamestate_resolves.rs` locks the contract (slot near hardcoded + heap-shaped deref in-save) | very high; every state read + write |
-| `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
+| `RACES_COUNTER` | `0x1403eded8` | **R** (-10.5f anchor + 0xffffffff bookend) | sig `c7 ?? 0c 01 00 00 00 00 28 c1 89 3d .. c7 ?? 50 02 00 00 ff ff ff ff`. MSVC stores 0 via `mov [rip+disp], edi` (edi pre-zeroed), bracketed by the -10.5f init at +0x10c and the 0xffffffff init at +0x250. RVA unchanged on this build (delta 0) | low; one read per snapshot |
 | `NO_TIRE_TOGGLE` | `0x1403d95a5` | **R** (cmp-sete-direct-to-same-byte) | sig `80 3d ?? ?? ?? ?? 00 0f 94 05 ?? ?? ?? ??`; both disp32s validated equal. RVA -0x20 from old decomp 0x3d95c5 | medium; every Cheats tab toggle |
 | `DEBUG_MODE_ACTIVE` | `0x1403d957b` | **R** (unlock-block delta) | bespoke resolver: scan `c6 05 .. 01 c6 05 .. 00`, filter to matches where target2 - target1 == -0x79 (decomp distance from DAT_1403d9522). RVA -0x20 from old | medium; gates cheat menu |
 | `DEBUG_LOG_GATE` | `0x1403d9506` | **R** (init-triplet, anchored on adjacent 3rd-4th write) | bespoke resolver: scan `c7 05 .. 00 01 00 00 c7 05 .. ff ff ff ff` (3rd write = 0x100, 4th = 0xffffffff), apply decomp's -0x72 relative offset. The 5th write (DEBUG_LOG_GATE init) isn't adjacent in this build; MSVC reordered | low |
-| `SAVE_VERSION_GLOBAL` | `0x1403fb0e0` | H | first `uint32` of save file written here | low; one read per load |
+| `SAVE_VERSION_GLOBAL` | `0x1403fb0e0` | **R** (derived from GAMESTATE_PTR + 8) | the version slot lives 8 bytes after the GameState pointer slot in `.data` by struct construction; no independent scan needed | low; one read per load |
 
 ### R3 validation primitives (locked)
 
