@@ -147,6 +147,14 @@ pub fn scan_data_matches(sig: &str) -> Result<Vec<usize>> {
     scan_section(sig, Some(object::SectionKind::Data))
 }
 
+/// Patternsleuth scan restricted to read-only initialized data
+/// (`.rdata`). String literals, vtables, jump tables, and other
+/// constant rodata live here. Use to locate format strings or
+/// vtable signatures so callers in `.text` can be xref-found.
+pub fn scan_rdata_matches(sig: &str) -> Result<Vec<usize>> {
+    scan_section(sig, Some(object::SectionKind::ReadOnlyData))
+}
+
 /// Patternsleuth scan with a caller-chosen section restriction.
 /// Pass `None` to scan every section the crate walks (note:
 /// patternsleuth's image walker still excludes non-loadable

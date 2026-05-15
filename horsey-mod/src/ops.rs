@@ -147,7 +147,15 @@ pub fn register_all() {
                     ("mov_r32",     "8b 05",        2, 0),
                     ("mov_store64", "48 89 05",     3, 0),
                     ("mov_store32", "89 05",        2, 0),
-                    ("lea_r64",     "48 8d 05",     3, 0),
+                    ("lea_rax",     "48 8d 05",     3, 0),
+                    ("lea_rcx",     "48 8d 0d",     3, 0),
+                    ("lea_rdx",     "48 8d 15",     3, 0),
+                    ("lea_rbx",     "48 8d 1d",     3, 0),
+                    ("lea_rbp",     "48 8d 2d",     3, 0),
+                    ("lea_rsi",     "48 8d 35",     3, 0),
+                    ("lea_rdi",     "48 8d 3d",     3, 0),
+                    ("lea_r8",      "4c 8d 05",     3, 0),
+                    ("lea_r9",      "4c 8d 0d",     3, 0),
                     ("add_imm32",   "81 05",        2, 4),
                     ("add_imm8",    "83 05",        2, 1),
                     ("cmp_dw_imm8", "83 3d",        2, 1),
@@ -314,6 +322,43 @@ pub fn register_all() {
                 Ok(json!({
                     "sig": sig,
                     "kind": kind,
+                    "total_hits": total,
+                    "hits": entries,
+                }))
+            },
+        ),
+
+        // Scan the loaded image's `.rdata` (read-only data section,
+        // where string literals + vtables + constants live) for an
+        // IDA-style sig. Use to locate format strings, vtable
+        // signatures, and other rodata anchors that aren't reachable
+        // via .text or .data scans.
+        OpDef::new(
+            "mem.scan_rdata",
+            "Patternsleuth scan of .rdata for arbitrary bytes (IDA-style sig with `??` wildcards). \
+            Returns every matching address.",
+            "{sig: string, max_hits?: usize}",
+            |args| {
+                let sig = args
+                    .get("sig")
+                    .and_then(Json::as_str)
+                    .ok_or_else(|| "missing string arg: sig".to_string())?
+                    .to_string();
+                let max_hits = args
+                    .get("max_hits")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(64) as usize;
+                let mut addrs = modforge::patterns::sleuth::scan_rdata_matches(&sig)
+                    .map_err(|e| format!("sleuth scan_rdata_matches failed: {e}"))?;
+                let total = addrs.len();
+                addrs.truncate(max_hits);
+                let entries: Vec<Json> = addrs
+                    .iter()
+                    .map(|a| json!({"addr": format!("0x{a:x}")}))
+                    .collect();
+                Ok(json!({
+                    "sig": sig,
+                    "section": "rdata",
                     "total_hits": total,
                     "hits": entries,
                 }))

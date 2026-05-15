@@ -26,12 +26,10 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
-- 30/31 function entries on **R**
-- 1 H-stale: `RETIRE_HORSE_HANDLER` (candidate[0] from the probe collided with a 4-arg-zero-then-call shape; needs a higher candidate index or a tighter sig)
+- 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
 - Field offsets (`gs_offset::*`, `horse_offset::*`) deferred until a build is observed where one has actually shifted
 
 **Open work in this section:**
-- [ ] Re-derive `RETIRE_HORSE_HANDLER` true entry. Use `research_find_function_entry` with a wider window; manually pick the candidate that ISN'T the int3-padded stub thunk shape.
 - [ ] Author second candidate signatures for every resolver so a single MSVC reorder between builds doesn't break it (current Definition of Done #2; one sig each today).
 - [ ] CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs (Definition of Done #4).
 

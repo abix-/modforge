@@ -225,10 +225,13 @@ pub mod fn_addr {
     /// different function with the same prologue shape).
     pub const CHECK_HORSE_ELIGIBILITY: usize = 0x1400de230;
 
-    /// `retire_horse_handler`. Re-derived via probe; original
-    /// Ghidra RVA `0x1400df280` pointed mid-function. True entry
-    /// at +645 from stale.
-    pub const RETIRE_HORSE_HANDLER: usize = 0x1400df505;
+    /// `retire_horse_handler`. Re-derived via the format-string
+    /// xref method (`tests/find_retire_horse_handler.rs`): scan
+    /// `.rdata` for the unique "%s retired %s (useless)..." format
+    /// literal, xref to the `lea rcx` inside the function, walk
+    /// backward through .text past int3-padding to the prologue.
+    /// True entry +1013 bytes from old Ghidra RVA 0x1400df280.
+    pub const RETIRE_HORSE_HANDLER: usize = 0x1400df675;
 
     /// `compute_horse_price`. Re-derived via probe; original
     /// Ghidra RVA `0x1400dcab0` pointed mid-function. True entry
@@ -728,13 +731,16 @@ pub mod resolve {
     pub fn check_horse_eligibility() -> Option<usize> {
         resolve_function("CHECK_HORSE_ELIGIBILITY", CHECK_HORSE_ELIGIBILITY_SIGS, super::fn_addr::CHECK_HORSE_ELIGIBILITY)
     }
-    /// RETIRE_HORSE_HANDLER resolver is intentionally absent: the
-    /// probe's candidate[0] bytes (`xor r9d,r9d; xor r8d,r8d; ...;
-    /// call`) collide with an unrelated function. The actual entry
-    /// for this symbol needs hand-investigation (probably starts at
-    /// candidate[N] for some N > 0). Tracked in todo.md.
-    #[allow(dead_code)]
-    pub fn retire_horse_handler() -> Option<usize> { None }
+    /// Resolved runtime address of `RETIRE_HORSE_HANDLER`. Cached.
+    /// True entry re-derived 2026-05-15 via the format-string xref
+    /// method (see `tests/find_retire_horse_handler.rs`).
+    pub fn retire_horse_handler() -> Option<usize> {
+        resolve_function(
+            "RETIRE_HORSE_HANDLER",
+            RETIRE_HORSE_HANDLER_SIGS,
+            super::fn_addr::RETIRE_HORSE_HANDLER,
+        )
+    }
     pub fn compute_horse_price() -> Option<usize> {
         resolve_function("COMPUTE_HORSE_PRICE", COMPUTE_HORSE_PRICE_SIGS, super::fn_addr::COMPUTE_HORSE_PRICE)
     }
@@ -766,8 +772,15 @@ pub mod resolve {
     const CHECK_HORSE_ELIGIBILITY_SIGS: &[&str] = &[
         "48 89 5c 24 10 48 89 74 24 18 55 57 41 54 41 56 41 57 48 8b ec 48 81 ec 80 00 00 00 0f 29 74 24",
     ];
-    #[allow(dead_code)]
-    const RETIRE_HORSE_HANDLER_SIGS: &[&str] = &[];
+    const RETIRE_HORSE_HANDLER_SIGS: &[&str] = &[
+        // 32-byte prologue captured live 2026-05-15:
+        //   push rbx; push rsi; push rdi; push r12; push r13; push r14;
+        //   push r15; lea rbp, [rsp - 0x1f]; sub rsp, 0xf8; mov r13, rcx;
+        //   xor r12d, r12d; mov dword [rbp + ??], r12d
+        // The trailing `?? ` wildcards the rbp-relative disp8 of the
+        // first mov; everything before is stable across builds.
+        "53 56 57 41 54 41 55 41 56 41 57 48 8d 6c 24 e1 48 81 ec f8 00 00 00 4c 8b e9 45 33 e4 44 89 65",
+    ];
     const COMPUTE_HORSE_PRICE_SIGS: &[&str] = &[
         "48 89 7c 24 10 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b f9 4c 63 c2 48 8b 91 30 01 00 00 48",
     ];

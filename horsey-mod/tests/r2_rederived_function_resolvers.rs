@@ -19,6 +19,8 @@ fn rederived_function_resolvers() {
     let targets: &[(&str, u64, &[&str])] = &[
         ("CHECK_HORSE_ELIGIBILITY", 0x1400de230,
          &["48 89 5c 24 10 48 89 74 24 18 55 57 41 54 41 56 41 57 48 8b ec 48 81 ec 80 00 00 00 0f 29 74 24"]),
+        ("RETIRE_HORSE_HANDLER", 0x1400df675,
+         &["53 56 57 41 54 41 55 41 56 41 57 48 8d 6c 24 e1 48 81 ec f8 00 00 00 4c 8b e9 45 33 e4 44 89 65"]),
         ("COMPUTE_HORSE_PRICE", 0x1400dc785,
          &["48 89 7c 24 10 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b f9 4c 63 c2 48 8b 91 30 01 00 00 48"]),
         ("CRISPR_LAB", 0x1400894bc,

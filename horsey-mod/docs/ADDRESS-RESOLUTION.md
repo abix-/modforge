@@ -298,7 +298,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | `POP_XML_LOADER` | `0x1400a4fe0` | **R** (body sig 32-48b live) | parses `<pop name=`; reads `pop.xml` | unused in v1 |
 | `GENE_ENGINE_CONSUMER` | `0x1400ab3c0` | **R** (body sig 32-48b live) | called immediately after APPLY_GENE | D5 trampoline |
 | `CHECK_HORSE_ELIGIBILITY` | `0x1400de230` | **R** (re-derived; sig + RVA updated to true entry) | tired/old/young/hungry dispatch | unused in v1 |
-| `RETIRE_HORSE_HANDLER` | `0x1400df280` | **H-stale** (candidate[0] from probe collided with xor-args-then-call shape elsewhere; needs higher candidate index) | once-per-year retirement scan | unused in v1 |
+| `RETIRE_HORSE_HANDLER` | `0x1400df675` | **R** (re-derived 2026-05-15 via format-string xref: scan .rdata for "%s retired %s (useless)..." literal, find_xrefs to the lea inside the function, walk back past cc-padding to the prologue) | once-per-year retirement scan | unused in v1 |
 | `COMPUTE_HORSE_PRICE` | `0x1400dc785` | **R** (re-derived; sig + RVA updated to true entry) | `(rand+nice+record)*years+deco` | unused in v1 |
 | `CRISPR_LAB` | `0x1400894bc` | **R** (re-derived; sig + RVA updated to true entry) | 13-state CRISPR machine | unused in v1 |
 | `BREEDING` | `0x1400e0817` | **R** (re-derived; sig + RVA updated to true entry) | BarnMating state machine | unused in v1 |
