@@ -112,7 +112,7 @@ pub fn species(horse: usize) -> Option<i32> {
         return None;
     }
     // SAFETY: int32 read at +0x1c.
-    Some(unsafe { *((horse + horse_offset::TYPE_OR_SPECIES) as *const i32) })
+    Some(unsafe { *((horse + horse_offset::type_or_species()) as *const i32) })
 }
 
 pub fn name_id(horse: usize) -> Option<u32> {

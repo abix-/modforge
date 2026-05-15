@@ -503,6 +503,10 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::skill()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::SKILL),
                     },
+                    "type_or_species": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::type_or_species()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::TYPE_OR_SPECIES),
+                    },
                     "no_tire_loop_entry": {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::no_tire_loop_entry()),
                         "hardcoded": format!("0x{:x}", crate::targets::rebase(crate::targets::horse_offset::NO_TIRE_LOOP_FN_RVA)),

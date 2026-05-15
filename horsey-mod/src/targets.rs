@@ -445,9 +445,62 @@ pub mod gs_offset {
 pub mod horse_offset {
     use std::sync::OnceLock;
 
-    /// Horse type/species code. Compared to 2/3/4/6 in various
+    /// Old decomp constant. Production should call [`type_or_species()`].
+    /// Horse type/species code. Compared to 1/2/4/6 in various
     /// dispatchers.
     pub const TYPE_OR_SPECIES: usize = 0x1c;
+
+    /// Pattern-resolved horse type/species offset. Anchors on the
+    /// `cmp dword [horse+disp8], imm8` dispatcher sites scattered
+    /// across `.text` (the type code is compared to 1, 2, 4, 6 in
+    /// dozens of places). Pattern `83 7? <disp8> <imm8>` decodes to
+    /// `cmp r/m32, imm8` with `/7` opcode extension; filter modrm
+    /// to non-rbp/rsp register bases. Histogram disp8 across all
+    /// four imm values; the dominant value in `[0x10, 0x80]` is
+    /// TYPE_OR_SPECIES.
+    ///
+    /// Falls back to the hardcoded `TYPE_OR_SPECIES` const.
+    pub fn type_or_species() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_type_or_species().unwrap_or(TYPE_OR_SPECIES))
+    }
+
+    fn resolve_type_or_species() -> Option<usize> {
+        let mut hist: std::collections::BTreeMap<i64, usize> =
+            std::collections::BTreeMap::new();
+        for imm in &[1u8, 2, 4, 6] {
+            let sig = format!("83 ?? ?? {imm:02x}");
+            let hits = match modforge::patterns::sleuth::scan_all_matches(&sig) {
+                Ok(h) => h,
+                Err(_) => continue,
+            };
+            for addr in hits {
+                // SAFETY: addr matched in .text, 4 bytes mapped.
+                let bytes: &[u8] = unsafe {
+                    std::slice::from_raw_parts(addr as *const u8, 4)
+                };
+                let modrm = bytes[1];
+                // mod=01 (disp8) + reg=111 (cmp /7) = 0x78..0x7F.
+                let is_cmp7 = (modrm & 0xC0) == 0x40 && (modrm & 0x38) == 0x38;
+                if !is_cmp7 {
+                    continue;
+                }
+                // Exclude rsp (rm=100) and rbp (rm=101) bases:
+                // those are stack-frame cmps, not horse-field reads.
+                let rm = modrm & 0x07;
+                if rm == 4 || rm == 5 {
+                    continue;
+                }
+                let disp = bytes[2] as i8 as i64;
+                if (0x10..0x80).contains(&disp) {
+                    *hist.entry(disp).or_insert(0) += 1;
+                }
+            }
+        }
+        hist.into_iter()
+            .max_by_key(|(_, c)| *c)
+            .map(|(v, _)| v as usize)
+    }
     /// Horse name ID (passed to `name_resolve` / FUN_1400c78c0).
     pub const NAME_ID: usize = 0x1f8;
     /// Horse age (years; int32). Old decomp constant; production

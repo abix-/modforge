@@ -27,7 +27,7 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets: **R4 in progress, 28/37 done.** All `must` items resolved. Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~9 fields: 1 should (TYPE_OR_SPECIES), 9 low (diag-only).
+- Field offsets: **R4 done, 29/37.** All `must` + `should` items resolved. Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size/type_or_species`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining 9 fields are `H-gb-low` (diag-only, no unique anchor, drift harmless).
 
 **Open work in this section:**
 - [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
@@ -150,7 +150,7 @@ Status codes:
 | `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb-low** | diag-only (`gamestate.diag` dump, lines 181-188); semantic unknown; drift harmless |
 | `gs_offset::horses_begin/end()` 0x280/0x288 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x200, 0x300]` window |
 | `gs_offset::map_width/map_height()` 0x278/0x27c | targets.rs | struct field offset (2) | **R** | HLT labels `kOffMapWidth/Height`; adjacent r32-load pair (delta 4) in `[0x270, 0x290]` window |
-| `horse_offset::TYPE_OR_SPECIES` 0x1c | targets.rs | struct field offset | **H-gb-should** | read by `horse.read` HTTP op (`horse.rs:115`); drift = wrong type code in diag, no patch breaks |
+| `horse_offset::type_or_species()` 0x1c | targets.rs | struct field offset | **R** | `cmp dword [horse+disp8], imm8` dispatcher sites (`83 7? <disp8> <imm8>`) across `.text`; histogram across `imm in {1,2,4,6}` with modrm-filter (cmp /7, non-rsp/rbp base); top in `[0x10, 0x80]` |
 | `horse_offset::name_id()` 0x1f8 | targets.rs | struct field offset | **R** | `(bails)` retire-handler format string + `8b 8? <disp32>` (mov ecx, [horse+disp32]) before `call name_resolve`; filter excludes age/max_age |
 | `horse_offset::age()` 0x1fc | targets.rs | struct field offset | **R** | `(bails) age %d ch %d` format string + `44 8b` r9d-load (4th printf arg) |
 | `horse_offset::max_age()` 0x200 | targets.rs | struct field offset | **R** | derived `age + 4` (adjacent int32 in release-to-wild cmp) |
@@ -168,16 +168,22 @@ Status codes:
 | `gs_offset::alloc_size()` 0x448 | targets.rs | struct size | **R** | anchor on unique `mov [rip+disp32], reg` store of GAMESTATE_PTR; lookback 256B for `b9 <imm32>`; histogram top |
 | `horse_offset::alloc_size()` 0x498 | targets.rs | struct size | **R** | call-site lookback at `e8 X<HORSE_CONSTRUCTOR>`: `b9 <imm32>` (mov ecx, alloc size) within 32-byte preamble; histogram top |
 
-**H-gb migration progress: 28 done / ~9 remaining.**
+**H-gb migration progress: 29 done / 9 remaining (all `H-gb-low`).**
 
-Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
+Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size/roster_stride`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill/no_tire_loop_entry/no_tire_loop_size/type_or_species`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
 
-**All `must` items done.** Remaining by criticality:
+**All `must` + `should` items done.** Remaining 9 are `H-gb-low`:
 
-- **should** (1): TYPE_OR_SPECIES (0x1c)
-- **low** (9): FRAME_TICK (gs+0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440). All diag-only via `gamestate.diag`; drift harmless
+- FRAME_TICK (gs+0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440).
 
-Practical target: 29/37 (28 done + 1 should-do); the 9 low-priority items stay tracked but unmigrated unless they become hot-path consumers.
+These are diag-only fields dumped by `gamestate.diag` and not used anywhere else. They have no unique pattern-anchor: each field's accessors are either (a) generic `mov reg, [ptr+disp32]` indistinguishable from any other field load, or (b) localized to one obscure handler we haven't resolved. Distinguishing them from sibling fields requires either:
+
+1. A bespoke per-field signature based on a specific imm-write or distinctive context, OR
+2. Resolving every accessor function to R2 first, then anchoring there.
+
+Both have real cost. The fields drift harmlessly (wrong values in `gamestate.diag` dump, no patch breaks, no save corruption). Accepted drift risk: HIGH (these are exact-offset reads that WILL silently return wrong data on game updates), but BLAST RADIUS: LOW (consumers are diag-only).
+
+**Decision: stop here at 29/37 = 100% of `must` + `should`.** Revisit if any `H-gb-low` field becomes a hot-path consumer.
 
 #### Algorithm constants (H-alg): we own; intentional
 
