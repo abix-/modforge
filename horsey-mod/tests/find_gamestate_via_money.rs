@@ -74,62 +74,70 @@ fn find_gamestate_ptr_by_money_xref_count() {
          not in-save or money is stored at a non-u32-aligned offset"
     );
 
-    // Step 2: per candidate, run find_xrefs and count gameplay hits.
-    let mut ranked: Vec<(u64, usize, Vec<String>)> = Vec::new();
+    // Step 2: for each candidate, verify by reading adjacent fields.
+    // GameState layout per decomp:
+    //   +0x308 money  (we just scanned for this value)
+    //   +0x314 year   (sane: 0..100 typically, year-since-game-start)
+    //   +0x318 sleeps (sane: small monotonic counter, < ~10000)
+    // A candidate is plausible iff year < 100 AND sleeps < 10_000_000.
+    // GameState is heap-allocated; the EXE-relative xref-count test
+    // doesn't apply (RIP-rel disp32 can't reach heap addresses past
+    // ±2GB from .text).
+    fn peek_u32(game: &modforge::harness::RunningGame, addr: u64) -> Option<u32> {
+        let resp = game
+            .op_json("mem.peek", &json!({"addr": addr, "kind": "u32"}))
+            .ok()?;
+        resp.get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_u64())
+            .map(|v| v as u32)
+    }
+    let mut ranked: Vec<(u64, u32, u32, u32, bool)> = Vec::new();
     for h in hits.iter() {
         let money_addr = u64_of(h, "addr").expect("addr");
-        let xref = game
-            .op_json(
-                "mem.find_xrefs",
-                &json!({"target_addr": money_addr, "max_hits": 64}),
-            )
-            .expect("mem.find_xrefs must succeed");
-        let xref_hits = xref
-            .get("result")
-            .and_then(|r| r.get("hits"))
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default();
-        let opcode_classes: Vec<String> = xref_hits
-            .iter()
-            .filter_map(|h| {
-                h.get("opcode_class")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
-        ranked.push((money_addr, xref_hits.len(), opcode_classes));
-        if ranked.len() >= 16 {
-            break;
-        }
+        let m = peek_u32(&game, money_addr).unwrap_or(0);
+        // year at money + 0xC (offset 0x314 - 0x308 = 0xC)
+        let year = peek_u32(&game, money_addr + 0xC).unwrap_or(u32::MAX);
+        // sleeps at money + 0x10
+        let sleeps = peek_u32(&game, money_addr + 0x10).unwrap_or(u32::MAX);
+        let plausible = m == expect_money && year < 100 && sleeps < 10_000_000;
+        ranked.push((money_addr, m, year, sleeps, plausible));
     }
 
-    // Step 3: rank by xref count descending and log.
-    ranked.sort_by(|a, b| b.1.cmp(&a.1));
-    for (money_addr, count, classes) in &ranked {
-        let classes_str = classes.join(",");
+    // Log every candidate (sorted plausible-first).
+    ranked.sort_by(|a, b| b.4.cmp(&a.4));
+    for (money_addr, m, year, sleeps, plausible) in &ranked {
         let candidate_base = money_addr.saturating_sub(0x308);
         game.log().event(
             "FIND-GS",
             &format!(
-                "money@0x{money_addr:x} (gamestate@0x{candidate_base:x}): \
-                 {count} xref(s) [{classes_str}]"
+                "{} money@0x{money_addr:x} (gamestate@0x{candidate_base:x}): \
+                 money={m} year={year} sleeps={sleeps}",
+                if *plausible { "OK" } else { "??" },
             ),
         );
     }
 
-    let top = ranked.first().expect("at least one candidate");
+    let plausible: Vec<_> = ranked.iter().filter(|r| r.4).collect();
     assert!(
-        top.1 > 1,
-        "best candidate for money has only {} xref(s); real gamestate \
-         money slot should have many (cmp / mov / add from cheat / race / \
-         save code). Ranking: {ranked:?}",
-        top.1,
+        !plausible.is_empty(),
+        "no candidate has plausible year+sleeps near the money slot. \
+         Ranking: {ranked:?}"
     );
+    assert_eq!(
+        plausible.len(),
+        1,
+        "more than one candidate looks plausible; need a tighter \
+         discriminator (e.g. also check supplies / horse_count). \
+         Plausible: {plausible:?}",
+    );
+    let top = plausible[0];
     game.pass(&format!(
-        "best gamestate_ptr candidate: 0x{:x} (money 0x{:x}, {} xrefs)",
+        "real gamestate_ptr = 0x{:x} (money@0x{:x}={}, year={}, sleeps={})",
         top.0.saturating_sub(0x308),
         top.0,
         top.1,
+        top.2,
+        top.3,
     ));
 }

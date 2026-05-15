@@ -199,6 +199,47 @@ pub fn register_all() {
             },
         ),
 
+        // Read a primitive at an absolute address. For tests that
+        // need to verify candidate addresses by inspecting their
+        // surroundings (e.g. "this candidate is the money slot iff
+        // money+0xC reads as a plausible year").
+        OpDef::new(
+            "mem.peek",
+            "Read a u8 / u32 / u64 at addr. Used to verify candidate \
+            addresses by their surrounding bytes.",
+            "{addr: u64, kind?: 'u8'|'u32'|'u64'}",
+            |args| {
+                let addr = args
+                    .get("addr")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing or non-u64 arg: addr".to_string())?
+                    as usize;
+                if addr == 0 {
+                    return Err("zero address rejected".to_string());
+                }
+                let kind = args
+                    .get("kind")
+                    .and_then(Json::as_str)
+                    .unwrap_or("u32");
+                // SAFETY: caller-controlled address; misuse crashes
+                // the host (acceptable for a test-only op).
+                let value = match kind {
+                    "u8" => json!(unsafe { (addr as *const u8).read_unaligned() }),
+                    "u32" => json!(unsafe { (addr as *const u32).read_unaligned() }),
+                    "u64" => json!(format!(
+                        "0x{:x}",
+                        unsafe { (addr as *const u64).read_unaligned() }
+                    )),
+                    other => return Err(format!("unknown kind: {other}")),
+                };
+                Ok(json!({
+                    "addr": format!("0x{addr:x}"),
+                    "kind": kind,
+                    "value": value,
+                }))
+            },
+        ),
+
         // Find every `.data` position containing a given u32 / u64
         // / arbitrary-byte value. Backed by patternsleuth
         // (`sleuth::scan_data_matches`); no hand-rolled scanning.
