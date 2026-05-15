@@ -1,0 +1,235 @@
+
+##   0  SIZE  (2 calls)
+  L432  [var-assign]  fVar37 = (float)FUN_1400a5d20(local_508,0);
+  L634  [var-assign]  fVar38 = (float)FUN_1400a5d20(local_508,0);
+
+##   1  ASPECT  (2 calls)
+  L438  [var-assign]  fVar34 = (float)FUN_1400a5d20(local_508,1);
+  L632  [var-assign]  fVar39 = (float)FUN_1400a5d20(local_508,1);
+
+##   2  SKINNY  (1 calls)
+  L436  [var-assign]  fVar33 = (float)FUN_1400a5d20(local_508,2);
+
+##   3  BONES  (1 calls)
+  L414  [var-assign]  fVar33 = (float)FUN_1400a5d20(local_508,3);
+
+##   4  BONES2  (1 calls)
+  L420  [var-assign]  fVar34 = (float)FUN_1400a5d20(local_508,4);
+
+##   6  CHEST_SMALL  (2 calls)
+  L428  [var-assign]  fVar33 = (float)FUN_1400a5d20(local_508,6);
+  L440  [var-assign]  fVar36 = (float)FUN_1400a5d20(local_508,6);
+
+##  10  BIPED  (1 calls)
+  L450  [var-assign]  local_31c = FUN_1400a5e00(local_508,10);
+
+##  32  TAIL_BOTTOM  (2 calls)
+  L1520  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x20);
+  L1928  [conditional]  if (((param_1[0xa5] != 0.0) && (iVar17 = FUN_1400a5e00(local_508,0x20), iVar17 == 0)) &&
+
+##  33  TAIL_SEGMENTS  (1 calls)
+  L716  [conditional]  if ((param_1[0xa9] == 1.4013e-45) && (iVar15 = FUN_1400a5e00(local_508,0x21), 1 < iVar15)) {
+
+##  44  LEG_THRUST_BACK  (2 calls)
+  L1650  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x2c);
+  L2184  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x2c);
+
+##  45  LEG_IS_CIRCLE  (2 calls)
+  L864  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x2d);
+  L1040  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x2d);
+
+##  48  LEG_PENCIL  (1 calls)
+  L876  [var-assign]  fVar40 = (float)FUN_1400a5d20(local_508,0x30);
+
+##  50  HAS_KNEE  (2 calls)
+  L832  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x32);
+  L848  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x32);
+
+##  51  KNEE_MIN  (1 calls)
+  L836  [var-assign]  fVar39 = (float)FUN_1400a5d20(local_508,0x33);
+
+##  52  KNEE_MAX  (1 calls)
+  L852  [var-assign]  fVar39 = (float)FUN_1400a5d20(local_508,0x34);
+
+##  56  ARM_STRETCH  (0 calls)
+
+##  57  ARM_STRETCH2  (0 calls)
+
+##  66  HAS_ELBOW  (1 calls)
+  L972  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x42);
+
+##  67  ELBOW_RANGE  (1 calls)
+  L976  [var-assign]  fVar43 = (float)FUN_1400a5d20(local_508,0x43);
+
+##  69  UPARM_Y  (1 calls)
+  L1850  [other]  auVar47._0_8_ = FUN_1400a5d20(local_508,0x45);
+
+##  71  UPARM_GOOFY  (1 calls)
+  L1892  [var-assign]  iVar17 = FUN_1400a5e00(local_508,0x47);
+
+##  82  NECK_SLOUCH  (1 calls)
+  L1994  [var-assign]  fVar40 = (float)FUN_1400a5d20(local_508,0x52);
+
+##  83  NECK_ONTOP  (2 calls)
+  L458  [var-assign]  fVar34 = (float)FUN_1400a5d20(local_508,0x53);
+  L1970  [var-assign]  fVar37 = (float)FUN_1400a5d20(local_508,0x53);
+
+##  91  FOOT_IS_CIRCLE  (2 calls)
+  L868  [direct-or-ptr-write]  ((*(char *)(param_1 + 0x8d) == '\0' || (iVar15 = FUN_1400a5e00(local_508,0x5b), iVar15 == 0))))
+  L1042  [conditional]  if ((iVar16 != 0) && (iVar16 = FUN_1400a5e00(local_508,0x5b), iVar16 != 0)) {
+
+##  92  FOOT_BACKWARDS  (1 calls)
+  L1048  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0x5c);
+
+##  97  HEAD_SIZE  (1 calls)
+  L1146  [var-assign]  fVar40 = (float)FUN_1400a5d20(local_508,0x61);
+
+##  98  HEAD_THICK_SKULL  (1 calls)
+  L1144  [var-assign]  fVar38 = (float)FUN_1400a5d20(local_508,0x62);
+
+## 101  HEAD_ASPECT  (1 calls)
+  L1154  [var-assign]  fVar35 = (float)FUN_1400a5d20(local_508,0x65);
+
+## 102  HEAD_SQUARE  (1 calls)
+  L1150  [var-assign]  fVar35 = (float)FUN_1400a5d20(local_508,0x66);
+
+## 105  HEAD_SHRUNK  (2 calls)
+  L1140  [var-assign]  fVar35 = (float)FUN_1400a5d20(local_508,0x69);
+  L3040  [var-assign]  fVar43 = (float)FUN_1400a5d20(local_508,0x69);
+
+## 106  HEAD_JOINTED  (1 calls)
+  L1126  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x6a);
+
+## 107  HEAD_CHIMERA  (0 calls)
+
+## 109  BUGEYE  (2 calls)
+  L1194  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x6d);
+  L1266  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x6d);
+
+## 112  EYEBOX_SIZE  (1 calls)
+  L1208  [other]  auVar45._0_8_ = FUN_1400a5d20(local_508,0x70);
+
+## 115  HAS_PUPIL  (1 calls)
+  L1236  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x73);
+
+## 127  HAS_MOUTH  (1 calls)
+  L1352  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x7f);
+
+## 131  TEETH_UPPER  (1 calls)
+  L1366  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x83);
+
+## 132  TEETH_UPPER2  (1 calls)
+  L1368  [conditional]  if ((iVar15 == 0) || (iVar15 = FUN_1400a5e00(local_508,0x84), iVar15 == 0)) {
+
+## 136  NOSE_INNY  (1 calls)
+  L1412  [conditional]  if ((param_1[0x108] == 0.0) && (iVar15 = FUN_1400a5e00(local_508,0x88), iVar15 != 0)) {
+
+## 138  NOSE_SIZE  (1 calls)
+  L1402  [var-assign]  fVar38 = (float)FUN_1400a5d20(local_508,0x8a);
+
+## 140  HAS_ANTLERS  (2 calls)
+  L2402  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x8c);
+  L2940  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0x8c);
+
+## 148  POM_USECOLOR  (1 calls)
+  L2228  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0x94);
+
+## 160  HAT_EXISTS  (1 calls)
+  L2306  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xa0);
+
+## 166  HAT_POM_IS_LID  (1 calls)
+  L2330  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xa6);
+
+## 175  BASE_BROWN  (1 calls)
+  L2412  [var-assign]  uVar18 = FUN_1400a5e00(local_508,0xaf);
+
+## 176  BASE_BLACK  (2 calls)
+  L2734  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xb0);
+  L3050  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xb0);
+
+## 177  BASE_RED  (1 calls)
+  L2416  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0xb1);
+
+## 178  BASE_GREEN  (1 calls)
+  L2422  [var-assign]  iVar17 = FUN_1400a5e00(local_508,0xb2);
+
+## 179  GREEN_KNOCKOUT  (1 calls)
+  L2418  [var-assign]  iVar17 = FUN_1400a5e00(local_508,0xb3);
+
+## 180  BASE_CREAM  (1 calls)
+  L2546  [var-assign]  fVar36 = (float)FUN_1400a5d20(local_508,0xb4);
+
+## 181  ALT_BLUE  (1 calls)
+  L2556  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xb5);
+
+## 182  SPOT_YELLOW  (1 calls)
+  L2578  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xb6);
+
+## 183  SKIN_HUE  (0 calls)
+
+## 184  SKIN_HUE2  (0 calls)
+
+## 185  SWAP_BASE_SPOT  (1 calls)
+  L2664  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xb9);
+
+## 186  SWAP_ALT_SPOT  (1 calls)
+  L2680  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xba);
+
+## 187  WHITE  (1 calls)
+  L2616  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xbb);
+
+## 188  WHITE_IS_LETHAL  (1 calls)
+  L2618  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0xbc);
+
+## 189  EYE_HUE  (2 calls)
+  L2726  [var-assign]  uVar18 = FUN_1400a5e00(local_508,0xbd);
+  L3084  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xbd);
+
+## 190  NOSE_HUE  (1 calls)
+  L3018  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xbe);
+
+## 192  AGOUTI  (1 calls)
+  L2738  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc0);
+
+## 194  SKIN_HEAD  (2 calls)
+  L2846  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc2);
+  L2856  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc2);
+
+## 195  SKIN_HANDS  (2 calls)
+  L2866  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc3);
+  L2874  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc3);
+
+## 196  FOOT_IS_HOOF  (2 calls)
+  L1028  [conditional]  if (((iVar16 == 3) && (iVar16 = FUN_1400a5e00(local_508,0xc4), iVar16 == 0)) &&
+  L2838  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xc4);
+
+## 199  TAIL_ALT  (2 calls)
+  L2818  [var-assign]  iVar20 = FUN_1400a5e00(local_508,199);
+  L2828  [var-assign]  iVar20 = FUN_1400a5e00(local_508,199);
+
+## 207  RAMPAGE  (1 calls)
+  L3100  [conditional]  if ((param_1[0xfc] == 4.2039e-45) && (iVar15 = FUN_1400a5e00(local_508,0xcf), iVar15 != 0)) {
+
+## 208  SPINAL_LOCO  (2 calls)
+  L2954  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xd0);
+  L3126  [var-assign]  iVar15 = FUN_1400a5e00(local_508,0xd0);
+
+## 209  BRAIN_SPASTIC  (0 calls)
+
+## 210  HIGH_INTELLECT  (1 calls)
+  L2930  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xd2);
+
+## 214  LIMP  (2 calls)
+  L764  [var-assign]  fVar35 = (float)FUN_1400a5d20(local_508,0xd6);
+  L2964  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xd6);
+
+## 215  NARCOLEPSY  (1 calls)
+  L2972  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xd7);
+
+## 216  FLU_IMMUNITY  (0 calls)
+
+## 217  TAIL_WAG  (1 calls)
+  L2982  [var-assign]  iVar20 = FUN_1400a5e00(local_508,0xd9);
+
+## 239  LOCO_SYNC  (1 calls)
+  L1690  [var-assign]  iVar16 = FUN_1400a5e00(local_508,0xef);
