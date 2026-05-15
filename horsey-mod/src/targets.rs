@@ -333,6 +333,38 @@ pub mod horse_offset {
     }
     /// Breeding flag (uint8). Set on both parents during BarnMating.
     pub const BREEDING_FLAG: usize = 0x207;
+
+    /// Pattern-resolved offset of the on-track flag.
+    ///
+    /// Derived by adjacency from the pattern-resolved tired-flag
+    /// pair: documented to sit at `tired_flag_a - 1` in the
+    /// horse-struct flag region (0x204 / 0x205 / 0x206 / 0x207 are
+    /// on_track / tired_a / tired_b / breeding). The underlying
+    /// anchor is the no_tire per-frame loop's adjacent byte-zero
+    /// stores. If the no_tire pair resolver misses, falls back to
+    /// the hardcoded `ON_TRACK_FLAG`.
+    pub fn on_track_flag() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            resolve_tired_pair()
+                .map(|(a, _)| a.saturating_sub(1))
+                .unwrap_or(ON_TRACK_FLAG)
+        })
+    }
+
+    /// Pattern-resolved offset of the breeding flag.
+    ///
+    /// Derived by adjacency from the pattern-resolved tired-flag
+    /// pair (= `tired_flag_b + 1`). Same anchor and fallback as
+    /// [`on_track_flag`].
+    pub fn breeding_flag() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            resolve_tired_pair()
+                .map(|(_, b)| b + 1)
+                .unwrap_or(BREEDING_FLAG)
+        })
+    }
     /// Skill / fitness counter (int32). Used by retirement.
     pub const SKILL: usize = 0x21c;
     /// Litter-size stat (int32). Used in breeding: children =

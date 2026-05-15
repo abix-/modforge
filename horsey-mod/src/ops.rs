@@ -439,6 +439,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::tired_flag_b()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::TIRED_FLAG_B),
                     },
+                    "on_track_flag": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::on_track_flag()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::ON_TRACK_FLAG),
+                    },
+                    "breeding_flag": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::breeding_flag()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::BREEDING_FLAG),
+                    },
                     "horses_begin": {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::horses_begin()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::HORSES_BEGIN),

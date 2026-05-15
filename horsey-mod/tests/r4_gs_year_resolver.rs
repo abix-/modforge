@@ -70,6 +70,8 @@ fn gs_year_resolver_agrees_with_hardcoded() {
     for (name, key) in &[
         ("tired_flag_a", "tired_flag_a"),
         ("tired_flag_b", "tired_flag_b"),
+        ("on_track_flag", "on_track_flag"),
+        ("breeding_flag", "breeding_flag"),
         ("horses_begin", "horses_begin"),
         ("horses_end",   "horses_end"),
         ("live_horses_begin", "live_horses_begin"),
