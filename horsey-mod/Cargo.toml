@@ -42,6 +42,13 @@ crate-type = ["cdylib", "rlib"]
 name = "horsey-inject"
 path = "src/bin/inject.rs"
 
+# Easy-button play binary. `cargo run -p horsey-mod --bin horsey-play --release`
+# builds the mod, launches Horsey via Steam, injects, then exits leaving the
+# game running.
+[[bin]]
+name = "horsey-play"
+path = "src/bin/play.rs"
+
 [package.metadata.horsey-mod]
 game_name_regex = "Horsey"
 game_sub_path   = ""

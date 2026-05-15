@@ -17,7 +17,7 @@ use crate::horse;
 pub static TABS: &[TabDef] = &[
     TabDef { name: "Overview", render: render_overview },
     TabDef { name: "Horses",   render: render_horses },
-    TabDef { name: "Cheats",   render: render_cheats },
+    TabDef { name: "Debug",    render: render_debug },
 ];
 
 fn render_overview() {
@@ -85,7 +85,8 @@ fn render_horses() {
     }
 }
 
-fn render_cheats() {
+fn render_debug() {
+    // --- Toggles ---
     let mut no_tire = gamestate::no_tire();
     if ui::checkbox("no_tire (vanilla)", &mut no_tire) {
         gamestate::set_no_tire(no_tire);
@@ -96,7 +97,69 @@ fn render_cheats() {
         gamestate::set_debug_mode(debug);
     }
 
+    if !gamestate::looks_loaded() {
+        ui::separator();
+        ui::text_disabled("(no save loaded -- start a game to enable money/year/horses)");
+        return;
+    }
+
+    // --- Money ---
     ui::separator();
-    ui::text_disabled("HTTP equivalents:");
-    ui::text_disabled("  cheats.no_tire.set / cheats.debug_mode.set");
+    let money = gamestate::money().unwrap_or(0);
+    ui::text(&format!("Money:  ${money}"));
+    if ui::button("+1k")          { gamestate::set_money(money.saturating_add(1_000)); }
+    ui::same_line();
+    if ui::button("+10k")         { gamestate::set_money(money.saturating_add(10_000)); }
+    ui::same_line();
+    if ui::button("+100k")        { gamestate::set_money(money.saturating_add(100_000)); }
+    ui::same_line();
+    if ui::button("+1M")          { gamestate::set_money(money.saturating_add(1_000_000)); }
+    ui::same_line();
+    if ui::button("MAX")          { gamestate::set_money(99_999_999); }
+    ui::same_line();
+    if ui::button("zero##money")  { gamestate::set_money(0); }
+
+    // --- Time ---
+    ui::separator();
+    let year = gamestate::year().unwrap_or(0);
+    ui::text(&format!("Year:   {} (raw {year})", year + 1));
+    if ui::button("Year +1")  { gamestate::set_year(year.saturating_add(1)); }
+    ui::same_line();
+    if ui::button("Year +10") { gamestate::set_year(year.saturating_add(10)); }
+    ui::same_line();
+    if ui::button("Year -1")  { gamestate::set_year(year.saturating_sub(1)); }
+    ui::same_line();
+    if ui::button("Year = 0") { gamestate::set_year(0); }
+
+    let sleeps = gamestate::sleeps().unwrap_or(0);
+    ui::text(&format!("Sleeps: {sleeps}"));
+
+    // --- Bulk horse ops ---
+    ui::separator();
+    let live = gamestate::live_horse_count();
+    ui::text(&format!("Horses (live): {live}"));
+    if ui::button("Clear ALL tiredness") {
+        for i in 0..live {
+            if let Some(p) = gamestate::live_horse_ptr(i) {
+                horse::clear_tiredness(p);
+            }
+        }
+    }
+    ui::same_line();
+    if ui::button("Make ALL immortal (max_age=999)") {
+        for i in 0..live {
+            if let Some(p) = gamestate::live_horse_ptr(i) {
+                horse::set_max_age(p, 999);
+            }
+        }
+    }
+    ui::same_line();
+    if ui::button("Reset ALL age to 0") {
+        for i in 0..live {
+            if let Some(p) = gamestate::live_horse_ptr(i) {
+                horse::set_age(p, 0);
+            }
+        }
+    }
+
 }

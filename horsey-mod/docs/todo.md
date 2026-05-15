@@ -644,6 +644,21 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
+### Horses tab counts are wrong (live=0, total drifts)
+
+User observation 2026-05-15: in-game owns 2 horses. UI Horses tab showed `0/1`, then `0/2`, then `0/4` across observations. Live count always 0, total count unstable.
+
+Decomp findings (`all_functions.c`):
+- **Roster (GameState +0x280/+0x288, stride 0x24):** confirmed real at `:53951` (`/0x24`) and `:52322-52323` (begin==end check). Each entry is a 36-byte SUMMARY record, not a Horse object. Owning 2 horses should yield roster_count=2 stably; the drift to 4 means we may be reading the wrong field pair OR `looks_loaded` is letting through a partially-initialized GameState OR the roster also includes non-player horses (NPCs / race participants / dead ancestors).
+- **Live-horse pointer vector (true offset is NOT GameState+0x130/+0x138):** lives on a NESTED struct reached via `*(GameState + 0x438) -> + ?? -> +0x130/+0x138`. Confirmed by `FUN_140107510:156866-156869` and the iterator `FUN_14006d610:64089-64108` (8-byte pointer stride). Our `live_horses_begin/end` read `*(GameState + 0x130)` directly which is garbage. Explains the constant 0.
+
+Action items:
+- [ ] Write `tests/investigate_horse_count.rs` that, with a save loaded, dumps each 36-byte roster entry as 4 qwords + 4 trailing bytes, plus the candidate Horse* chain via GS+0x438. Identifies which qword inside a roster entry holds a Horse*.
+- [ ] Confirm what the 36-byte roster entry actually contains (id? Horse*? inline horse summary?).
+- [ ] Decide live-count strategy: (a) follow `GS+0x438 -> +?? -> +0x130/+0x138` chain for the true live vector, or (b) walk the roster and deref the Horse* slot from each 36-byte entry.
+- [ ] Fix `gamestate::live_horse_count`, `live_horse_ptr`, and `ui::render_horses` accordingly.
+- [ ] Figure out why roster count drifted from 2 to 4 with no in-game horse change. Suspects: stale GameState pointer (re-resolve each call?), roster including non-player horses, or wrong begin/end offset hitting a different pair.
+
 ### Hot-reload crash hardening
 
 `horsey-inject.exe --reload` swap reports success but the
