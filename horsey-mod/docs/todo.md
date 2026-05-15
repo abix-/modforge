@@ -37,10 +37,6 @@ Roughly ordered by leverage.
 
 ---
 
-## P0 RESOLVED 2026-05-15: gamestate ptr was missing a deref
-
-Full diagnosis, fix, and tests relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#gamestate_ptr-deref-fix-2026-05-15). The root cause was a missing deref in `gamestate::ptr()`, not address resolution. Closed by commit `e4de882`. Subsequent commit `09da508` re-authored the resolver against `FUN_1400fd580`'s 1.0f@+0x114 anchor so the migration is now build-drift resilient too.
-
 ## P0 RULE: USE PATTERNSLEUTH. NO HAND-ROLLED SCANNERS
 
 User-locked 2026-05-15. Every pattern-scan, xref-find, or signature match in this repo MUST go through the `patternsleuth` crate via `modforge::patterns::sleuth`. NO exceptions. ZERO tolerance.
@@ -56,10 +52,6 @@ This includes:
 - `modforge::patterns::sleuth::scan_all_matches(sig)` added in `9fdeca9` as the all-hits companion to `resolve_all` (which returns only first per name).
 
 If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
-
-## P0 BLOCKER (CLOSED 2026-05-15): GAMESTATE_PTR was a missing deref
-
-Relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#historical-incidents).
 
 ## P0 BLOCKER: pattern-resolve EVERY hardcoded address
 
@@ -84,80 +76,6 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved b
 6. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
 
 **Feature backlog gate.** With GAMESTATE_PTR fixed, the in-save UI lies are gone and feature work CAN proceed in parallel with the broader migration. The strict "no features until everything is resolved" lock was justified when we couldn't trust state reads at all; that's no longer true. Items 3-6 above stay urgent for build-update resilience but don't block bestiary v2, HK1 Shift+Click, pasture auto-buy hay, or D2 pop-weight extension.
-
-## Hardcoded -> resolved migration: comparison table
-
-Authoritative tracker relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#migration-hardcoded---resolved-authoritative-status). The full data-globals + function-entries tables, R3 validation primitives, definition of done, and migration order all live there.
-
-Current status (2026-05-15): 6/6 data globals on **R**; 30/31 function entries on **R**; 1 H-stale (RETIRE_HORSE_HANDLER, needs candidate disambiguation).
-
-### Data globals (legacy in-place table, kept for historical diff)
-
-| Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
-|---|---|---|---|---|
-| `GAMESTATE_PTR` | `0x1403fb0d8` | **R (constructor-anchored, sanity-gated)** | resolved via `resolve_gamestate_ptr_via_constructor`: 1.0f@+0x114 anchor inside `FUN_1400fd580`, scan 14 ModR/M variants of `mov [rip+disp32], reg` filtered to within 600 bytes preceding the anchor, expect exactly one. 0x1000 sanity gate vs hardcoded; falls back to hardcoded on miss. `tests/r3_gamestate_resolves.rs` locks the contract (slot near hardcoded + heap-shaped deref in-save) | very high; every state read + write |
-| `RACES_COUNTER` | `0x1403eded8` | **R** (-10.5f anchor + 0xffffffff bookend) | sig `c7 ?? 0c 01 00 00 00 00 28 c1 89 3d .. c7 ?? 50 02 00 00 ff ff ff ff`. MSVC stores 0 via `mov [rip+disp], edi` (edi pre-zeroed), bracketed by the -10.5f init at +0x10c and the 0xffffffff init at +0x250. RVA unchanged on this build (delta 0) | low; one read per snapshot |
-| `NO_TIRE_TOGGLE` | `0x1403d95a5` | **R** (cmp-sete-direct-to-same-byte) | sig `80 3d ?? ?? ?? ?? 00 0f 94 05 ?? ?? ?? ??`; both disp32s validated equal. RVA -0x20 from old decomp 0x3d95c5 | medium; every Cheats tab toggle |
-| `DEBUG_MODE_ACTIVE` | `0x1403d957b` | **R** (unlock-block delta) | bespoke resolver: scan `c6 05 .. 01 c6 05 .. 00`, filter to matches where target2 - target1 == -0x79 (decomp distance from DAT_1403d9522). RVA -0x20 from old | medium; gates cheat menu |
-| `DEBUG_LOG_GATE` | `0x1403d9506` | **R** (init-triplet, anchored on adjacent 3rd-4th write) | bespoke resolver: scan `c7 05 .. 00 01 00 00 c7 05 .. ff ff ff ff` (3rd write = 0x100, 4th = 0xffffffff), apply decomp's -0x72 relative offset. The 5th write (DEBUG_LOG_GATE init) isn't adjacent in this build; MSVC reordered | low |
-| `SAVE_VERSION_GLOBAL` | `0x1403fb0e0` | **R** (derived from GAMESTATE_PTR + 8) | the version slot lives 8 bytes after the GameState pointer slot in `.data` by struct construction; no independent scan needed | low; one read per load |
-
-### R3 validation primitives (locked)
-
-- `mem.alias_check { addr_a, addr_b }`: writes 0xAB then 0xCD to A, reads B after each, restores A. `same_byte: true` iff both reads matched both writes. Proves two addresses point at the same byte.
-- `targets::resolve::resolve_data_global(candidates, hardcoded_rva)`: runs the sleuth scan, then sanity-gates the result against the rebased hardcoded RVA. Rejects any resolution > 0x1000 bytes from hardcoded. Caller falls back to hardcoded on `None`.
-- `tests/r3_cheat_globals_resolve.rs`: per global, if the resolver returned non-null, runs `mem.alias_check(hardcoded, resolved)` and FAILS LOUD on mismatch. The user can re-run this test against any future build to detect drift on first contact.
-
-### Function entries
-
-| Item | Hardcoded RVA | Status | Sig anchor candidate | Used by |
-|---|---|---|---|---|
-| `APPLY_GENE_TO_HORSE` | `0x14009f670` | **R** (body sig 32b live-captured) | 32-byte body from live image | D5 render trampoline |
-| `EVAL_DIPLOID_BLEND_A` | `0x1400a5d10` | **R** (body sig 32-48b live) | called 233x in APPLY_GENE_TO_HORSE | D1 detour |
-| `EVAL_DIPLOID_BLEND_B` | `0x1400a5df0` | **R** (body sig 32-48b live) | sibling of A; same record layout | D1 detour |
-| `GENE_DEATH_DRIFT` | `0x1400c0650` | **R** (body sig 32-48b live) | `+/- 5` mutation rate writes | D1 detour (deferred) |
-| `GENE_ALLELE_SWAP` | `0x1400c0390` | **R** (body sig 32-48b live) | iterates pop records, swaps slot[i] / slot[j] | D1 detour |
-| `GENE_TABLE_XML_WRITER` | `0x1400a4880` | **R** (body sig 32-48b live) | string-builds gene XML, calls `<gene name=` | unused in v1 |
-| `GENE_TABLE_LOADER` | `0x1400a3eb0` | **R** (body sig 32-48b live) | parses `<gene name=`; reads `genes.xml` | unused in v1 |
-| `POP_XML_LOADER` | `0x1400a4fe0` | **R** (body sig 32-48b live) | parses `<pop name=`; reads `pop.xml` | unused in v1 |
-| `GENE_ENGINE_CONSUMER` | `0x1400ab3c0` | **R** (body sig 32-48b live) | called immediately after APPLY_GENE | D5 trampoline |
-| `CHECK_HORSE_ELIGIBILITY` | `0x1400dde40` | **R** (re-derived; sig + RVA updated to true entry)| tired/old/young/hungry dispatch | unused in v1 |
-| `RETIRE_HORSE_HANDLER` | `0x1400df280` | **H-stale** (candidate[0] from probe collided with xor-args-then-call shape elsewhere; needs higher candidate index)| once-per-year retirement scan | unused in v1 |
-| `COMPUTE_HORSE_PRICE` | `0x1400dcab0` | **R** (re-derived; sig + RVA updated to true entry)| `(rand+nice+record)*years+deco` | unused in v1 |
-| `CRISPR_LAB` | `0x140089510` | **R** (re-derived; sig + RVA updated to true entry)| 13-state CRISPR machine | unused in v1 |
-| `BREEDING` | `0x1400e0aa0` | **R** (re-derived; sig + RVA updated to true entry)| BarnMating state machine | unused in v1 |
-| `SAVE_WRITER` | `0x14006d674` | **R** (body sig 32b live-captured) | save_signatures test locks 16-byte prologue | D4 sidecar |
-| `LOAD_GAME` | `0x14006e350` | **R** (body sig 32b live-captured) | same as above | D4 sidecar |
-| `DRAW_PAUSE_STATUS` | `0x140066200` | **R** (re-derived; sig + RVA updated to true entry)| contains the cheat-money write | unused in v1 |
-| `TMX_MAP_PARSER` | `0x1400fe2e0` | **R** (body sig 32-48b live) | parses `<map`; reads `horsey.tmx` | unused in v1 |
-| `POP_GENOME_BUILDER` | `0x140092820` | **R** (re-derived; sig + RVA updated to true entry)| runtime spawner | unused in v1 |
-| `DAILY_HORSE_EVENT` | `0x14002fe00` | **R** (body sig 32-48b live) | per-day per-horse event log | unused in v1 |
-| `TRACK_STATE_MACHINE` | `0x14002d7c0` | **R** (body sig 32-48b live) | race lifecycle | unused in v1 |
-| `CIRCUS_HANDLER` | `0x140039190` | **R** (body sig 32-48b live) | circus event | unused in v1 |
-| `SUMO_HANDLER` | `0x14007b2e0` | **R** (re-derived; sig + RVA updated to true entry)| sumo match | unused in v1 |
-| `POWER_PLANT` | `0x1400693b0` | **R** (re-derived; sig + RVA updated to true entry)| power-plant building | unused in v1 |
-| `WORLD_ACTION` | `0x140107660` | **R** (re-derived; sig + RVA updated to true entry)| world-action dispatcher | unused in v1 |
-| `BALLOON_CONTROLLER` | `0x14010a5e0` | **R** (re-derived; sig + RVA updated to true entry)| hot-air-balloon controller | unused in v1 |
-| `HORSE_CONSTRUCTOR` | `0x1400aac50` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.1 lifecycle |
-| `HORSE_DESTRUCTOR` | `0x1400bf1e0` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.2 lifecycle |
-| `GENE_COMBINATOR` | `0x1400a2d70` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.4 breeding |
-| `HORSE_SAVE_WRITER` | `0x14006ecfb` | **R** (body sig 32b live-captured) | prologue + body sig | D4.1b sidecar |
-| `HORSE_SAVE_LOADER` | `0x14006f031` | **R** (body sig 32b live-captured) | `add rcx, 0x2b8` is unique | D4.2b sidecar |
-
-### Struct field offsets (N/A for pattern-scan)
-
-`gs_offset::*` (20 fields) and `horse_offset::*` (10 fields) are not absolute addresses; they're integer constants compiled into accessor instructions. Drift is detected by reading nonsensical values, not by signature scan. Recovery is field-by-field through the same R3 trick: each field has a write site in the decomp; pattern-match the instruction, decode the displacement to get the field's current offset. Out of scope until a build is observed where a field offset has actually shifted.
-
-### Recommended migration order (next batch)
-
-1. **Cheat globals batch (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE).** Three single-byte globals in `.data`. Each is written from a known site: the cheat-menu code writes 1 to NO_TIRE_TOGGLE, the typed-string handler writes 1 to DEBUG_MODE_ACTIVE, etc. Same R3 candidate-list shape. Why first: small surface, used by the Cheats tab right now.
-2. **Lifecycle detour targets (HORSE_CONSTRUCTOR, HORSE_DESTRUCTOR, GENE_COMBINATOR, APPLY_GENE_TO_HORSE).** Already have R-parity sigs (32-byte body); flip the production reads. Why second: the parity contract already locks correctness.
-3. **Save targets (SAVE_WRITER, LOAD_GAME, HORSE_SAVE_WRITER, HORSE_SAVE_LOADER).** R-parity exists via `r2_save_signatures`. Same flip. Why third: D4 sidecar pipeline depends on these.
-4. **D1 detour targets (EVAL_DIPLOID_BLEND_A/B, GENE_ALLELE_SWAP).** Need fresh body sigs from the live image. Why fourth: lower iteration risk; D1 detours work today and are loaded in the arm path.
-5. **Unused-in-v1 functions (everything else).** Migrate as features land; no urgency.
-
-The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
-
 
 ## Ship status pointers
 
@@ -186,16 +104,6 @@ User-locked 2026-05-15: **horsey-mod is a CONTENT + QoL mod. We do NOT overlap w
 
 **Default answer to overlap requests:** "Use HorseyLiveTweaks for that. We add X on top." Bundle, don't duplicate.
 
-### Known limitations / risks
-
-Relocated to [`CHANGELOG.md`](CHANGELOG.md#known-limitations--risks-at-end-of-session-1) (end-of-session-1 snapshot).
-
----
-
-## `sleep_safe_no_tire` patch: SHIPPED 2026-05-14
-
-Patch-site discovery iterations (v1 RAX-only -> v2 all regs -> v3 proximity-anchor), the fallback plan (RIP-relative anchor + per-build constant), and the shared `patches::patch_bytes` infrastructure are all documented in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §10 "`sleep_safe_no_tire` patch".
-
 ---
 
 ## P0. Bestiary Expansion: double the species count
@@ -222,14 +130,6 @@ Vanilla baseline (verified in
 28 pops, of which roughly half are real horse-shaped
 creatures and the rest are oddities (cars, plants, humans,
 microbes, helix, freaks).
-
----
-
-### Phase 0: Viability research. CLOSED 2026-05-14
-
-All blocking questions answered with file:line cites in [`VIABILITY.md`](VIABILITY.md). 5 gene-system questions, 4 pop questions, 3 save questions, 3 renderer questions, 2 reload questions. Two stay open but DEFERRED (`Q-render-1` per-pop oddity decomposition; `Q-reload-1` reentrant chromomap loader); neither blocks downstream work.
-
-See VIABILITY.md for the full Q&A.
 
 ---
 
@@ -266,9 +166,6 @@ the existing example). Goal: confirm end-to-end that an
 edit to `pop.xml` + a spawner in `horsey.tmx` produces a
 visible new creature in-game without crashing the loader.
 
-- [x] **DONE.** Game install path locked at
-      `C:\Games\Steam\steamapps\common\Horsey Game`.
-      See [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3 "Locked design decisions".
 - [ ] Back up vanilla `pop.xml`, `horsey.tmx`, and
       `genes.dat` (the cache).
 - [ ] Add one `<pop name="smoketest">` block under

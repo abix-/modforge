@@ -317,7 +317,8 @@ pub fn dryrun() -> Vec<TargetReport> {
 // ---------------------------------------------------------------------------
 
 fn install_eval_a() -> anyhow::Result<()> {
-    let runtime_addr = targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_A);
+    let runtime_addr = targets::resolve::eval_diploid_blend_a()
+        .unwrap_or_else(|| targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_A));
     let handler_addr = eval_a_handler as *const () as usize;
     modforge::log!(
         "ext_genes: install EVAL_DIPLOID_BLEND_A target=0x{runtime_addr:x} \
@@ -339,7 +340,8 @@ fn install_eval_a() -> anyhow::Result<()> {
 }
 
 fn install_eval_b() -> anyhow::Result<()> {
-    let runtime_addr = targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_B);
+    let runtime_addr = targets::resolve::eval_diploid_blend_b()
+        .unwrap_or_else(|| targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_B));
     // SAFETY: address is the entry of FUN_1400a5e00.
     let target: EvalDiploidBlendBFn = unsafe { std::mem::transmute(runtime_addr) };
     // SAFETY: signatures match.
@@ -355,7 +357,8 @@ fn install_eval_b() -> anyhow::Result<()> {
 }
 
 fn install_allele_swap() -> anyhow::Result<()> {
-    let runtime_addr = targets::rebase(fn_addr::GENE_ALLELE_SWAP);
+    let runtime_addr = targets::resolve::gene_allele_swap()
+        .unwrap_or_else(|| targets::rebase(fn_addr::GENE_ALLELE_SWAP));
     // SAFETY: address is the entry of FUN_1400c03a0.
     let target: GeneAlleleSwapFn = unsafe { std::mem::transmute(runtime_addr) };
     // SAFETY: signatures match.
