@@ -33,6 +33,7 @@ pub mod ops;
 pub mod patches;
 pub mod snapshot;
 pub mod targets;
+pub mod ui;
 
 // modforge::server::spawn() pushes its SpawnHandle into a global
 // SERVER_REGISTRY and doesn't return it. To stop the server (e.g.
@@ -65,6 +66,10 @@ fn worker_main() {
 
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
+
+    // 4a. Register the in-game ImGui tabs. The window only opens when
+    //     `ui.native.spawn` is called; the tabs are picked up then.
+    modforge::ui::native::register_tabs(ui::TABS);
 
     // 4b. Auto-load `genes-extended.xml` if it exists next to the DLL.
     //     Failure to find or parse the file is non-fatal: the

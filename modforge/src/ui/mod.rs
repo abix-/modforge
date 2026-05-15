@@ -29,3 +29,6 @@ pub struct TabDef {
 
 #[cfg(feature = "native-ui")]
 pub mod native;
+
+#[cfg(feature = "native-ui")]
+pub mod api;
