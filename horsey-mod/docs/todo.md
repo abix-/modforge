@@ -93,9 +93,26 @@ teardown grace        3s
 
 Test log written to `target/test-runs/smoke_ping_returns_ok-<ts>.log` with every step timestamped + flushed per-line.
 
-#### Iteration 4: dryrun_d3_d4 test FAILING on JSON shape
+#### Iteration 4: dryrun_d3_d4 test catches TWO real bugs
 
-Test written: `horsey-mod/tests/dryrun_d3_d4.rs`. Three tests asserting prologue bytes for combinator, lifecycle (ctor+dtor), and save (4 targets). All three relaunch the game cleanly and reach the dryrun ops, but the test parser looks for fields at the wrong JSON path. The ops return the standard envelope `{ok, op, error, result, state}` and the dryrun payload is in `result`, not at the top level. Pending fix to test parser. This is exactly the "test-first" workflow: red test, then fix until green.
+`horsey-mod/tests/dryrun_d3_d4.rs` shipped as three tests asserting prologue bytes for combinator, lifecycle (ctor+dtor), and save (4 targets). After fixing the JSON parser (envelope payload lives in `result`), results split cleanly:
+
+**Passing (3 targets):**
+- `GENE_COMBINATOR` at `0x1400a2d70`, prologue `48 89 5c 24 08 ..` (shadow-space saves) ok
+- `HORSE_CONSTRUCTOR` at `0x1400aac50`, prologue `48 89 5c 24 10 ..` ok
+- `HORSE_DESTRUCTOR` at `0x1400bf1e0`, prologue `48 89 5c 24 08 ..` ok
+
+**Failing (4 targets, all in `genes.ext.save`):**
+- `SAVE_WRITER` 0x14006dc80 -> `7f 45 27 c6 ..` (JG + invalid; mid-function)
+- `LOAD_GAME` 0x14006e480 -> `76 00 00 48 ..` (JBE; mid-function)
+- `HORSE_SAVE_WRITER` 0x14006ee10 -> `48 8d 95 68 01 00 00 ..` (lea rdx; mid-function)
+- `HORSE_SAVE_LOADER` 0x14006f150 -> `48 83 fa 0f ..` (cmp rdx, 0xf; mid-function. The classifier had a false positive that was tightened in this iteration.)
+
+Both `-16` and `+0` placements were tested for all four save addresses; both land mid-function. The original Ghidra decomp's RVAs for the save-related functions are stale or mis-indexed for the current shipping build. Resolution: pattern-scan address resolution (R1/R2 work, already a queued item) is now critical-path for D4.
+
+**Operational rule (locked):** `genes.ext.save.arm` is UNSAFE until the four save-function addresses are re-derived. The dryrun test enforces this; CI / pre-arm checks should refuse if dryrun fails.
+
+This is the entire point of test-first. The patch infrastructure is correct; the addresses are wrong; we know which ones; we know which patches are safe to arm (combinator + lifecycle) and which aren't (save).
 
 ### Next action: re-run smoke test with `--fresh` fix
 

@@ -231,6 +231,10 @@ pub mod fn_addr {
 
     /// `save_game_writer`. The save-file writer. Hook to inject
     /// sidecar save data.
+    /// Test note 2026-05-15: tried -16 (`0x14006dc70`) and it
+    /// landed mid-function (prologue `7f 45 27 c6 ..`). Reverted
+    /// to the original Ghidra address; `tests/dryrun_d3_d4.rs`
+    /// will verify the prologue at this address next.
     pub const SAVE_WRITER: usize = 0x14006dc80;
 
     /// `load_game`. The matching loader.
@@ -309,8 +313,9 @@ pub mod fn_addr {
     /// fields (name_id, age, flags, etc.). D4.1b sidecar-write
     /// anchor: post-hook appends our ext alleles for the same horse
     /// in the same iteration order.
-    /// Ghidra indexed as `FUN_14006ee10`; true entry -16 bytes.
-    pub const HORSE_SAVE_WRITER: usize = 0x14006ee00;
+    /// Test note 2026-05-15: -16 placed this at mid-function code.
+    /// Reverted to Ghidra's address; dryrun test will verify.
+    pub const HORSE_SAVE_WRITER: usize = 0x14006ee10;
 
     /// Per-horse save loader. Mirror of `HORSE_SAVE_WRITER`. Reads
     /// the inline genome via `FUN_14006d580(horse + 0x2b8)`, then
@@ -319,8 +324,7 @@ pub mod fn_addr {
     /// + consumer. Our D1/D5 detours fire during that regen, so any
     /// ext alleles in `EXT_HORSE_GENOMES` populated BEFORE this
     /// returns get applied automatically. D4.2b sidecar-read anchor.
-    /// Ghidra indexed as `FUN_14006f150`; true entry -16 bytes.
-    pub const HORSE_SAVE_LOADER: usize = 0x14006f140;
+    pub const HORSE_SAVE_LOADER: usize = 0x14006f150;
 }
 
 /// Resolve the running process's image base. Safe to call from any
