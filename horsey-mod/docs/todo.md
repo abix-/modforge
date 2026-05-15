@@ -45,8 +45,8 @@ Roughly ordered by leverage.
 |---|---|---|
 | Unit (modforge::patterns + sleuth) | 20 | green |
 | Unit (horsey: genes / xml / sidecar) | 30 | green |
-| Harness (smoke + dryruns + arm + r2 + catalog + build_info + save_sigs + save_find_entries) | 16 | all green (save dryrun flipped 2026-05-15 after r2_save_signatures resolved 4 stale addresses) |
-| **Total** | **66** | **all green, no red contracts** |
+| Harness (smoke + dryruns + arm + r2 + catalog + build_info + save_sigs + save_find_entries + save_e2e_roundtrip) | 17 | all green; e2e proves ext alleles survive game restart |
+| **Total** | **67** | **all green, no red contracts. 480-gene v1 is SHIPPABLE.** |
 
 Live Horsey.exe build hash (this session): `742a6222ba73c99f757bd5576535e623106129fa08bf7aefd3af0da359cb7f71`. Stable across runs; changes when Steam ships an update.
 
@@ -81,7 +81,7 @@ Test-first 6-step plan executed; suite went from 1 red contract to all green.
 | 3. Author signatures | ✓ done | All 4 sigs distinctive; `HORSE_SAVE_LOADER` uses `add rcx, 0x2b8` (genome offset) as its uniqueness anchor. |
 | 4. Migrate `targets::fn_addr` | ✓ done | `SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`, `HORSE_SAVE_LOADER` corrected to re-derived RVAs. Comments cite probe + signature test. |
 | 5. `dryrun_d3_d4::save_*` green | ✓ done | All 4 prologues match the classifier. |
-| 6. End-to-end save/restart/reload proof | OPEN | Needs save-fixture handling in the harness (synthesizing a player save action + reload across two `GameHarness::launch` calls). Out of scope for this milestone. |
+| 6. End-to-end save/restart/reload proof | ✓ done (`e6abcad`) | `tests/r2_save_e2e_roundtrip.rs` proves ext alleles set in game 1 survive a full taskkill + relaunch + read_now cycle in game 2. 4 deterministic alleles across 2 horses round-trip exactly. The sidecar file persists on disk through the restart and is cleaned up after. **480-gene v1: SHIPPABLE.** |
 
 True entry RVAs:
 
@@ -96,13 +96,13 @@ The shipping build's Ghidra-decomp RVAs were stale by -277 to -1548 bytes. Way p
 
 ### Next action
 
-**Step 6 of the save-address plan** is the obvious next: end-to-end save / restart / reload proof. Needs save-fixture handling in the harness (synthesize a save action + reload across two `GameHarness::launch` calls). This is the shippable demonstration of the 480-gene system.
+**480-gene v1 is SHIPPABLE.** All 6 steps of the save-address plan are done. The bestiary thesis is now real: a modder can author an ext gene, set it on a horse, restart the game, and the allele survives.
 
-Alternatively, ship the v1 demonstration:
+Pick from the queue (in priority order):
 
-1. **End-to-end save round-trip** (step 6 above). Real proof of the 480-gene thesis.
-2. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
-3. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
+1. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
+2. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
+3. **First bestiary species.** With the 480-gene system shippable, the actual content payoff: author a real `bx_*` species in `genes-extended.xml` with a render-slot mapping that produces a recognizable visible effect. End-to-end demonstration for players.
 4. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.
 5. **Hand-author unique short signatures** for the existing green targets (replace 32-byte derived sigs in `r2_catalog` with body-byte + hand-picked-wildcard sigs that survive MSVC reorders).
 6. **Retire hardcoded `fn_addr::*` consts** in favor of resolver-backed accessors. Mechanical refactor; parity test already in place.
