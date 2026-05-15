@@ -499,41 +499,50 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
-**STATUS: 3 of 5 wired, 2 of 3 SUSPECTED-GOOD, arming crashes
-the game ~2s after install.** Strategy DI-A approved
-2026-05-14. Locked library: `retour 0.3`.
+**STATUS: D1.1 PROVEN IN-GAME 2026-05-14.** Game loaded a
+save, walked, handler fired 2222 times across vanilla
+indices 0..218 without a crash. DI-A pattern is validated
+end-to-end on the first detour. D1.2 and D1.4 are temporarily
+disabled in `arm()` during single-detour bring-up; ready to
+fan out now that the handler-discipline rules in
+[`DEBUGGING.md`](DEBUGGING.md) §4b are codified.
 
-#### In-game arming results (2026-05-14 session)
+Strategy DI-A approved 2026-05-14. Locked library:
+`retour 0.3`. Lock-free `AtomicPtr<GenericDetour<T>>`
+storage published at arm time; handlers do atomics +
+acquire-load + indirect call only (no `format!`, no
+`parking_lot`, no Rust TLS).
 
-- Dryrun returned plausible prologues for D1.1
-  (`48 83 ec 20 48 63 da ...` -- `sub rsp, 0x20; movsxd rbx, edx`)
-  and D1.2 (same shape).
-- D1.4 (`GENE_ALLELE_SWAP` at 0x1400c03a0) dryrun returned
-  `63 fa 48 be c1 d4 1c 42 29 8f a0 3f ...`. This is
-  `movsxd edi, edx; movabs rsi, 0x3fa08f29421cd4c1` (a
-  double-precision constant). **That's not a function entry.**
-  It's mid-function code. Either the address is wrong or
-  the function got inlined / moved in the May 2026 build.
-- `genes.ext.arm` returned `{armed: true}` (retour accepted
-  the bytes; it's a generic disassembler, not a sanity
-  checker).
-- ~2 seconds after arm, a game thread crashed at
-  `dll_base + 0x232e6` with `bad_addr=0xffffffffffffffff`.
-  The all-ones address is the classic signature of "we
-  read garbage where a pointer should be". Consistent
-  with the ALLELE_SWAP trampoline being corrupt because we
-  rewrote a prologue that was actually mid-function.
+#### Lessons captured (mode-A debugging, all in DEBUGGING.md)
+
+- 4 distinct "all-ones bad_addr" crash modes:
+  (a) double-deref of a non-pointer slot (`gamestate::ptr`
+      was reading the gamestate struct's first 8 bytes as
+      a pointer); (b) handler stack frame too big for
+      game's nested call chain; (c) parking_lot Mutex
+      accessing Rust TLS on a foreign game thread;
+      (d) detour target was not a function entry.
+- Handler discipline rules in
+  [`DEBUGGING.md`](DEBUGGING.md) §4b. Every new handler
+  must observe them. Reference impl: `eval_a_handler`.
+- Pre-arm prologue verification rule in
+  [`DEBUGGING.md`](DEBUGGING.md) §5: every new detour
+  must have its prologue eyeballed against Win64
+  function-entry patterns before arming.
 
 #### Immediate plan
 
-1. Disable D1.4 (ALLELE_SWAP) in `arm()` until the right
-   function entry is located. Re-decompile / re-scan the
-   address; the 235-byte FUN_1400c03a0 from the older
-   decomp pass may have moved or been inlined.
-2. Confirm D1.1 + D1.2 alone are stable by arming only
-   those two and walking the game.
-3. If stable, add D1.4 back once a real entry point is
-   identified.
+1. Re-enable D1.2 (`EVAL_DIPLOID_BLEND_B`) in `arm()` and
+   verify it co-arms with D1.1 without crashes (same
+   prologue shape, same handler discipline).
+2. Re-locate the real `GENE_ALLELE_SWAP` entry by
+   re-decompiling the current build. Re-enable D1.4 only
+   after the §5 prologue check passes.
+3. Arm D5 (render trampoline on `FUN_14009f680`) alongside
+   DI-A. Verify `genes.ext.render.stats` climbs.
+4. Author one test extended gene in `genes-extended.xml`
+   with a render mapping; set a horse's extended alleles
+   via HTTP; observe a visible effect in-game.
 
 Wired and arming via `genes.ext.arm` HTTP op:
 

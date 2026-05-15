@@ -590,9 +590,21 @@ extended evaluations).",
                     "ext_call_count": s.ext_call_count,
                     "max_idx_seen": s.max_idx_seen,
                     "per_target": {
-                        "eval_a": s.call_count_a,
-                        "eval_b": s.call_count_b,
-                        "allele_swap": s.call_count_swap,
+                        "eval_a": {
+                            "calls": s.call_count_a,
+                            "ext_path": s.ext_count_a,
+                            "last_idx": s.last_idx_a,
+                        },
+                        "eval_b": {
+                            "calls": s.call_count_b,
+                            "ext_path": s.ext_count_b,
+                            "last_idx": s.last_idx_b,
+                        },
+                        "allele_swap": {
+                            "calls": s.call_count_swap,
+                            "ext_path": s.ext_count_swap,
+                            "last_idx": s.last_idx_swap,
+                        },
                     },
                 }))
             },

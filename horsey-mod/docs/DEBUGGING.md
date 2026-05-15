@@ -81,7 +81,51 @@ held a canonical-but-unmapped value
 
 ### Game thread crashes with `bad_addr=0xffffffffffffffff` shortly after `arm`
 
-Cause: one of the detours installed via `retour::GenericDetour`
+This bad-address shape has shown up for **two distinct
+root causes**. Check both.
+
+**Cause A: handler stack frame too big.**
+The handler runs on the game's threads, often nested deep
+inside vanilla call chains where remaining stack budget is
+small. If the Rust handler allocates more stack than is
+free in the current page, the first `MOVAPS [rsp+disp], xmm`
+write (callee-saved register spill) faults. The crash RIP
+points inside the handler body, typically at the FIRST
+memory write after a `sub rsp, imm`.
+
+Tell: SEH log shows `rip` inside our DLL within the first
+~16 bytes of the handler's body, kind=READ (alignment
+fault) with all-ones bad_addr.
+
+Fix: strip the handler to **atomics + integer math + at
+most one indirect call**. NO `format!`, NO `modforge::log!`,
+NO stack-buffered `OutputDebugStringA`, NO `parking_lot`
+Mutex lock taken at handler entry. Push logging into the
+`arm()` path that runs on the HTTP thread; expose live
+state via atomic counters and HTTP polling.
+
+**Cause B: parking_lot Mutex / TLS on a foreign thread.**
+The handler initially took `static OnceLock<Mutex<...>>::lock()`
+to find the detour. `parking_lot` uses thread-local state
+for its parking queue; game threads (created by the game's
+C++ runtime, not Rust) don't have Rust-style TLS set up
+properly. The lock fault is reported as access violation
+~0x4E0 bytes past the handler entry. Inside parking_lot's
+TLS-touching code.
+
+Tell: SEH log shows `rip` inside our DLL but well past the
+handler body, RIP not in the obvious atomic-only handler
+range.
+
+Fix: handlers must not touch parking_lot, `OnceLock` init,
+or anything else that uses TLS-implicitly. Use lock-free
+`AtomicPtr<GenericDetour<T>>` cells published via
+`Box::into_raw` + `AtomicPtr::store(Release)` at arm time;
+handlers `load(Acquire)` then call. See
+`patches/ext_genes.rs` for the pattern.
+
+**Cause C (the original): detour target was not a function entry.**
+One of the detours installed via `retour::GenericDetour`
 targeted an address that is NOT a function entry. retour
 accepts any disassemblable bytes; it does not validate that
 the target is a coherent function. When normal game execution
@@ -100,6 +144,44 @@ usually a struct-field offset (e.g. 0x308 for MONEY, 0x314 for
 YEAR). The high half tells you which integer got picked up:
 0 = null deref, 0x240..0x7FF = stale .data byte read as a
 ptr, 0xFFFF... = -1 sign-extended.
+
+## 4b. Handler discipline rules (codified after the EVAL_A bring-up)
+
+Every `extern "system"` detour handler ships under these rules.
+They are NOT optional. Violating any one of them is a known
+crash trigger.
+
+1. **No Rust-TLS dependencies.** No `parking_lot::Mutex::lock`,
+   no `OnceLock::get_or_init` on the hot path, no `thread_local!`
+   reads, no `RefCell`, no anything that touches per-thread
+   state. Game threads were not created by Rust's runtime;
+   they don't have Rust TLS set up. Lock-free `AtomicPtr`,
+   `AtomicU64`, etc. are fine.
+2. **No formatting on the hot path.** No `format!`, no
+   `modforge::log!`, no `write!` to a `String`. These allocate
+   on the stack (Arguments<'_>, fmt machinery) and use 100+
+   bytes of frame that the game's nested call chain may not
+   have free.
+3. **No stack-buffered output.** No `let mut buf = [0u8; 256]`
+   patterns. The OutputDebugStringA "minimal trace" idea fails
+   for the same reason as #2. The buffer eats stack we can't
+   spare.
+4. **Atomics-only stats.** Counters live in `static`
+   `AtomicU64`. Surface them via HTTP polling
+   (`genes.ext.stats`) instead of logging on first call.
+5. **At most one indirect call.** The handler may load an
+   `AtomicPtr<GenericDetour<T>>` and call `(*p).call(...)` to
+   chain into the trampoline. That's it. Heavier work
+   (`evaluate_ext_gene`, etc.) is fine but must itself observe
+   rule 1.
+
+Mnemonic: think of the handler as **interrupt-handler-grade code**.
+The fact that it runs on the game's thread, not ours, means it
+inherits the constraints of an interrupt context for our
+purposes. Minimal stack, no thread-affined services.
+
+The reference implementation is `eval_a_handler` in
+`patches/ext_genes.rs`. Copy its shape for every new handler.
 
 ## 5. Pre-arm verification (mandatory before any new detour)
 
