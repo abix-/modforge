@@ -1321,11 +1321,24 @@ So the 240 genes -> 20 helices mapping is just **a labeled list of 20 sub-lists*
 
 The full per-helix gene list is in the table below.
 
-### Base to allele index
+### In-game CRISPR Lab workflow (critical UI fact)
 
-### Base to allele index
+**Yes, all 240 genes are visible** in the CRISPR Lab. **But you have to navigate through 20 separate helix displays** to reach them all. Each X-shape on screen = one helix = one of those 20 sub-lists = 8 to 16 gene positions on each of its two strands.
 
-In-game color coding: **A = yellow**, **T = red**, **C = blue**, **G = green**. Allele-index mapping per gene is controlled by the gene's `n` codon-order attribute (e.g. `n="ATGC"` means base A picks allele g0, T picks g1, G picks g2, C picks g3). See Part 1 (Conceptual model) for the diploid blend formula.
+The vanilla workflow:
+
+1. Sequence the horse at the CRISPR Lab. You get the genome readout.
+2. Pick which helix you want (1 of 20).
+3. View that helix's X-shape: 8 to 16 stacked positions visible at once, two bases per position (the diploid pair, mat strand + pat strand).
+4. Edit one base on one strand to change one allele pick.
+5. Want to touch another gene? It may live on a different helix entirely. Navigate to that helix and repeat.
+
+That friction is exactly why the prior-art tools exist:
+
+- [`hikazey/horseygamegm`](https://github.com/hikazey/horseygamegm) flattens all 20 helices into one searchable view so you don't have to remember which helix `OLD_AGE` is on (helix 1, position 10) or `WHITE_IS_LETHAL` (helix 5, position 7). The tool runs out-of-game next to your screen.
+- [`ZyonixGaming/crispr`](https://github.com/ZyonixGaming/crispr) (`biohack.html` + `dna-encoder.js`) lets you paste a 40-line genome (2 strands x 20 helices, one line each) and round-trip to a shareable URL. Confirms that "20 helix displays" is just how the dev chose to lay out the underlying 240-gene array. The same data, different representation.
+
+In-game color coding for bases: **A = yellow**, **T = red**, **C = blue**, **G = green**. Which base picks which allele depends on each gene's `n` codon-order attribute (e.g. `n="ATGC"` means base A picks allele g0, T picks g1, G picks g2, C picks g3). See Part 1 (Conceptual model) for the diploid blend formula that turns those picks into a single rendered value.
 
 ### Helix to gene table
 

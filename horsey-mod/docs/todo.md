@@ -581,31 +581,32 @@ Research plan to derive the map:
    (slots 0..3 formula) + modder workflow. The
    "Confirmed visible-effect slots" section is the
    live-validated subset.
-6. [ ] **OPEN.** Static decomp cross-reference (NOT
-   in-game validation; we have the code). For each of
-   the 23 direct-copy horse-struct offsets the consumer
-   writes (`+0x58`, `+0x5c`, `+0x60`, `+0x64`, `+0x68`,
-   `+0x6c`, `+0x70`, `+0x74`, `+0x78`, `+0x7c`, `+0x80`,
-   `+0x84`, `+0x88`, `+0x8c`, `+0x90`, `+0x94`, `+0x98`,
-   `+0x9c`, `+0xa0`, `+0xa4`, `+0x200`, `+0x254`,
-   `+0x2a8`): grep `research/decompiled/all_functions.c`
-   for every function that reads that offset off the
-   horse pointer. Classify each reader by subsystem:
-   - reader in renderer call chain -> visible feature
-     (size, limb length, color channel, etc.)
-   - reader in physics/animation tick -> behavior modifier
-   - reader in breeding/race code -> gameplay stat
-   - zero readers -> dead field
+6. [x] **EXTRACTION DONE, CLASSIFICATION OPEN.**
+   `research/extract-field-readers.py` shipped. Greps
+   `all_functions.c` for reads of all 23 direct-copy
+   horse-struct offsets (`+0x58`, `+0x5c`, `+0x60`,
+   `+0x64`, `+0x68`, `+0x6c`, `+0x70`, `+0x74`, `+0x78`,
+   `+0x7c`, `+0x80`, `+0x84`, `+0x88`, `+0x8c`, `+0x90`,
+   `+0x94`, `+0x98`, `+0x9c`, `+0xa0`, `+0xa4`, `+0x200`,
+   `+0x254`, `+0x2a8`). Raw output: 2339
+   function-occurrences, 3468 read sites.
+   Horse-handler fingerprint (>= 3 of 23 offsets in one
+   body) narrows to **218 likely handlers**. Top
+   candidate `FUN_1401beac0` touches 20/23.
+   Output: [`FIELD-READERS.md`](FIELD-READERS.md).
 
-   Output: populate GENE-CATALOG.md "Confirmed
-   visible-effect slots" with rows
-   `{ slot | struct field | readers (FUN_xxxxx:line) |
-   subsystem | feature }`. Built from decomp citations,
-   not screenshots. Cross-reference reader names against
-   [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md). Likely
-   scriptable as `research/extract-field-readers.py`.
-   Highest-leverage remaining work for unblocking
-   bestiary authoring.
+   Still open: walk the top-coverage handlers and
+   classify each per-offset reader by subsystem
+   (renderer / physics / breeding / dead). Caveats:
+   `FUN_1401beac0` is called as
+   `FUN_1401beac0(param_2 + 0x48, ...)`, so its
+   offsets are biased by 0x48 from the horse base
+   (may be a sub-struct view, may be a different
+   entity entirely). Resolve case-by-case. Populate
+   GENE-CATALOG.md "Confirmed visible-effect slots"
+   with rows
+   `{ slot | struct field | readers (FUN_xxxxx:line)
+   | subsystem | feature }`.
 
 Output: a reliable map from "I want feature X" to "extend
 gene G with render slot S, allele payload P0..P3, value

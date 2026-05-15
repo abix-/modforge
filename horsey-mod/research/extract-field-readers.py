@@ -96,6 +96,31 @@ def main():
                     snippet = snippet[:137] + "..."
                 by_offset[off][name].append((start + lineno_offset, snippet))
 
+    # Build per-function offset coverage. A function that touches
+    # multiple of the 23 target offsets in one body is almost
+    # certainly a horse-struct handler. Single-offset hits are
+    # mostly false positives (0x58 / 0x60 etc are common across
+    # the binary).
+    func_to_offsets: dict[str, set[int]] = defaultdict(set)
+    for off, funcs_for_off in by_offset.items():
+        for fname in funcs_for_off:
+            func_to_offsets[fname].add(off)
+
+    # Initial v1 fingerprint "touches >= 3 offsets" produced a 218-
+    # function list dominated by false positives. The 0x58..0xa4
+    # cluster collides with common struct shapes (SDL/Vulkan feature
+    # structs, vendor data structs). The high offsets +0x200,
+    # +0x254, +0x2a8 are MUCH rarer and the consumer writes them
+    # too, so requiring one of those plus low-cluster coverage is
+    # a far better filter.
+    HIGH_OFFSETS = {0x200, 0x254, 0x2a8}
+    HORSE_FP_THRESHOLD = 3
+    horse_funcs = {
+        f for f, offs in func_to_offsets.items()
+        if len(offs) >= HORSE_FP_THRESHOLD
+        and (offs & HIGH_OFFSETS)
+    }
+
     out_lines = [
         "# Horse-struct field readers",
         "",
@@ -107,9 +132,28 @@ def main():
         "",
         "Caveat: matches any `*(T*)(var + 0xNN)` pattern, so non-horse",
         "structs with the same offset will produce false positives.",
-        "Filter by function name / call chain when classifying.",
+        f"**Horse-handler fingerprint:** functions that touch >= "
+        f"{HORSE_FP_THRESHOLD} of the 23 target offsets in one body "
+        f"are very likely real horse-struct handlers; single-offset "
+        f"hits are mostly noise.",
         "",
+        f"## Likely horse-struct handlers ({len(horse_funcs)} functions)",
+        "",
+        "Functions touching >= 3 target offsets, sorted by coverage.",
+        "These are the candidates worth deep-reading.",
+        "",
+        "| Function | Offsets touched | Coverage |",
+        "|---|---|---|",
     ]
+    ordered_horse = sorted(horse_funcs,
+                           key=lambda f: (-len(func_to_offsets[f]), f))
+    for fname in ordered_horse:
+        offs = sorted(func_to_offsets[fname])
+        offs_str = ", ".join(f"+0x{o:x}" for o in offs)
+        out_lines.append(f"| `{fname}` | {offs_str} | {len(offs)}/23 |")
+    out_lines.append("")
+    out_lines.append("## Per-offset reader tables (full, unfiltered)")
+    out_lines.append("")
 
     for off in OFFSETS:
         funcs_for_off = by_offset.get(off, {})
