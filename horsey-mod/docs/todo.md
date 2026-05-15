@@ -67,17 +67,24 @@ Priority order:
 5. **D1.3 death-handler ±5 mutator** (mid-function patch). Low priority.
 6. **D1.8 CRISPR UI dispatch** (show ext genes in CRISPR Lab). Low priority.
 
-### Non-conflict policy with HorseyLiveTweaks
+### Scope and non-conflict with HorseyLiveTweaks
 
-User-locked 2026-05-15: **stay out of HorseyLiveTweaks' lane.** Their mod and ours should co-exist cleanly on the same `Horsey.exe`. Concretely:
+User-locked 2026-05-15: **horsey-mod is a CONTENT + QoL mod. We do NOT overlap with HorseyLiveTweaks.**
 
-- Do NOT re-implement features that already exist in HorseyLiveTweaks just because we can. If a user wants neighbor-sim tuning, terrain replacement, fence-tool overrides, wild-horse cleanup, money/race-bet editing, scene helpers, or a VAT CRISPR editor for the existing 240 genes, they should install HorseyLiveTweaks. Cite that doc and link them there.
-- Our scope is the **extension layer**: things HorseyLiveTweaks cannot do because it doesn't extend the gene table. Stays inside: new genes beyond slot 239, new visual modes via D5 render trampoline, sidecar saves for ext state, breeding inheritance for new genes, content-creation tooling around `genes-extended.xml`.
-- Where their hooks and ours target the same call sites or functions (especially the breeding combinator `FUN_1400a2d80` and the per-horse regen `FUN_1400b3070`), DO NOT install conflicting modifications. If both mods arm at the same time, we run AFTER vanilla via post-hook trampolines and only touch the ext range; HorseyLiveTweaks runs vanilla-side. Test running both mods loaded simultaneously before claiming compatibility.
-- If a feature request lands that overlaps their scope, the default answer is "use HorseyLiveTweaks for that part; ours adds X on top." Bundle, don't duplicate.
-- Patch-target choices should prefer entry detours (broad scope, all callers) for ext-only data paths, and AVOID call-site rel32 patching (their preferred mechanism) so we don't clobber a call site they hook. If we ever need call-site patching, coordinate via cross-reference against their `pattern_targets.cpp`.
+**In scope (ours):**
+- **Content:** new genes beyond vanilla's 240 (the 480-gene extension), new species (`genes-extended.xml` bestiary), new visual modes via D5 render trampoline, sidecar persistence of all new state.
+- **QoL:** smart hotkeys that reduce repetitive clicking (HK1 Shift+Click smart-transfer is the v1 example), bulk operations, anything that makes 50+ horse households tolerable. QoL means "make the existing game less tedious," NOT "tweak existing gameplay numbers."
 
-The goal is "horsey-mod + HorseyLiveTweaks installed together = strictly more capable than either alone, with no broken interactions." If we can't get there cleanly, we're doing it wrong.
+**Out of scope (theirs):**
+- Anything HorseyLiveTweaks already ships. Terrain replacement, fence-tool overrides, wild-horse cleanup, neighbor-sim tuning, money/race-bet editing, scene helpers, VAT CRISPR editor for the vanilla 240. Use their mod for those.
+- Anything that "tweaks vanilla state" without adding content or removing tedium. If it's "edit a vanilla knob," it belongs in HorseyLiveTweaks.
+
+**Co-existence rules:**
+- Test that horsey-mod + HorseyLiveTweaks installed simultaneously work. Both should arm cleanly.
+- Where both mods could hook the same function (combinator `FUN_1400a2d80`, regen `FUN_1400b3070`), we use post-hook trampolines that ONLY touch the ext range; vanilla data stays HorseyLiveTweaks' domain.
+- Prefer entry-detour patches (broad, all callers, ext-only data). AVOID call-site rel32 patching (their preferred mechanism) so we don't clobber a site they hook.
+
+**Default answer to overlap requests:** "Use HorseyLiveTweaks for that. We add X on top." Bundle, don't duplicate.
 
 ### Known limitations / risks
 
