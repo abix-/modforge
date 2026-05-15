@@ -1583,3 +1583,87 @@ Confidence note: these descriptions are community wiki + reading the gene tables
 | `L_NECK_BTOF_EVENT` | Signal emitted by neck after recovery phase. |
 
 _Credit: 153 descriptions by [alexjthomson](https://github.com/alexjthomson) (MIT license). Many descriptions reference the [Horsey Game miraheze wiki](https://horseygame.miraheze.org)._
+## Part 3: Extended (480-gene) layer
+
+This part documents the architecture, sidecar buffers, and locked design decisions for horsey-mod's gene-table extension from 240 to 480 slots. Code lives in `horsey-mod/src/genes.rs` (sidecar state) + `horsey-mod/src/patches/` (vanilla detours). The strategy + per-detour status is in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §8 (summary) and §9 (full implementation log).
+
+### Architecture in one diagram
+
+```
+                   vanilla 240 slots                     extended 240..479
+                  --------------------                  --------------------
+GENE TABLE        DAT_1403ee4a4 (static)        ---->   our_gene_table_ext (heap)
+                  7 readers, 3 loop bounds              hooked into same readers
+
+POP RECORDS       DAT_1403f2fc0 + i*0x1018      ---->   our_pop_weights_ext (heap)
+                  std::vector grows freely              one entry per pop_id
+                  per-pop weight at +0x28               240 extra gene weights x 4 alleles
+
+PER-HORSE GENOME  horse + 0x2b8 (inline, 480B)  ---->   our_horse_genome_ext (heap)
+                  diploid, 240 alleles x 2              keyed by horse pointer (session)
+                                                        or roster slot (cross-save)
+                                                        diploid, 240 alleles x 2
+
+SAVE FORMAT       save1.dat                     ---->   save1.dat.ext (sidecar)
+                  vanilla untouched                     BXSAVEXT v1 with CRC32
+
+GENE EFFECT       FUN_14009f680 -> param_1[N]   ---->   D5 post-hook trampoline
+ENGINE            233 hardcoded indices                 evaluates genes 240..479,
+                                                        writes to unused param_1 slots
+                                                        OR new horse-struct fields
+```
+
+**Goal:** double the engine's gene capacity from 240 to 480 so the bestiary expansion can introduce up to 240 brand-new gene types. Built per the "layer on top of vanilla" design principle in [`VIABILITY.md`](VIABILITY.md): vanilla functions stay intact wherever possible; we patch surgically and redirect to our own buffers for the extended range.
+
+### Locked design decisions (2026-05-14)
+
+These are sticky. Future sessions assume them.
+
+**Game install path:** `C:\Games\Steam\steamapps\common\Horsey Game`. Verified to contain `Horsey.exe`, `data/` (with `genes.xml`, `pop.xml`, `horsey.tmx`, `genes.dat`), `save/`, `sound/`, `steam_api64.dll`. Use this path for:
+
+- Reading vanilla `genes.xml` / `pop.xml` / `horsey.tmx` during development.
+- Backing up vanilla data files before any test edits.
+- Writing sidecar files (`save<N>.dat.ext`, `genes-extended.xml`).
+- Injecting via `horsey-inject.exe` (target process: `Horsey.exe`).
+
+**Layered design.** Code sits ON TOP of vanilla. Don't rewrite vanilla unless we MUST. Trampolines, sidecars, heap redirects preferred over inline rewrites. When designing any new patch, ask "can vanilla still run unchanged?" first.
+
+**Authoring format.** Extended genes are defined in a user-editable XML file (`genes-extended.xml`) mirroring vanilla `genes.xml` shape. Per-gene metadata (e.g. `extends="..."` mapping, `<render slot mode>` element) goes in this XML.
+
+**Save compat.** Sidecar `save<N>.dat.ext` next to vanilla save. Vanilla save bytes never modified. Old saves keep working when the mod is uninstalled. ALL extended state goes through the sidecar; never patch the vanilla save serializer. Full BXSAVEXT format in [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Sidecar format `save<N>.dat.ext`".
+
+**Phase order.** Build infra first (D0 + D7) before any vanilla patches. Sidecar buffers, HTTP ops, reload tooling get built and verified before touching any binary. If tempted to start patching `FUN_1400a5d20` to test something, first check whether the same insight could come from a `genes.ext.dump` HTTP op.
+
+### Sidecar buffers (D0 implementation prep, shipped)
+
+All buffers live in `horsey-mod/src/genes.rs`. Each is a `RwLock`-protected static initialized lazily via `OnceLock`.
+
+`EXT_GENE_COUNT` is the target gene count. Picked 240 (exactly double vanilla, total 480). Lives as a `pub const` in `genes.rs`. Code that needs both totals refers to `EXT_GENE_COUNT` (just the extended range, indices 240..479 in the combined space).
+
+**Gene table** (`gene_table()`): `RwLock<Vec<ExtGene>>` of `EXT_GENE_COUNT` entries, initialized to vanilla defaults (`m=100`, `s=1`, all-zero alleles, name `BX_RESERVED_NNN`). Modders populate by editing `<DLL_DIR>/genes-extended.xml` and reloading via the `genes.ext.reload` op.
+
+**Pop weight extension** (`pop_weights()`): `RwLock<HashMap<u32, ExtPopWeights>>`. Each entry is 240 genes x 4 alleles defaulting to weight 1. Auto-init via `get_or_init_pop_weights(pop_id)`. Modders populate either by editing a future `pop-extended.xml` (D2.2 open) or via `pop.ext.weight.set` HTTP ops.
+
+**Per-horse genome extension** (`horse_genomes()`): `RwLock<HashMap<u64, ExtHorseGenome>>`. Each entry is a flat `Vec<u8>` of length `2 * EXT_GENE_COUNT` (480 bytes) with the same `i / i+EXT_GENE_COUNT` diploid layout vanilla uses. Currently keyed by horse pointer (session-local); cross-save persistence uses roster-slot position per [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Horse-id field".
+
+### HTTP control-plane ops (D0.6, shipped)
+
+12 ops in `horsey-mod/src/ops.rs` cover the full surface of the sidecar buffers:
+
+- `genes.ext.count` / `list` / `get` / `set` / `find` / `dump` for the ext gene table.
+- `pop.ext.weights.get` / `pop.ext.weight.set` for per-pop ext weights.
+- `horse.ext.genome.get` / `genome.set` / `alleles.set` / `genome.drop` / `evaluate` for per-horse ext alleles.
+
+Plus `genes::evaluate_ext_gene()` mirrors the vanilla diploid blend formula for the extended range; the D5 render trampoline calls it per ext gene per horse per render. Combinator (`genes::combine_for_breeding`) implements Mendelian recombination on the ext range; see Part 1 Step 1 for the algorithm.
+
+### XML authoring format (D7.2, shipped)
+
+`<DLL_DIR>/genes-extended.xml` is auto-loaded at DLL attach (parser in `horsey-mod/src/genes_xml.rs`, 5 unit tests). Live reload via the `genes.ext.reload` op (no game restart needed). The 5/5 parser tests cover the standard `<gene name="..." m="..." s="..." g0..g3="...">` attributes plus the `<render slot="N" mode="add|set|mul"/>` child for slot mapping. Conflict detection skips ext slots already populated with a different name.
+
+Modder workflow:
+
+1. Add a `<gene>` entry to `<DLL_DIR>/genes-extended.xml` with a `<render slot=N mode=M />` mapping.
+2. Reload via the `genes.ext.reload` HTTP op (live, no restart).
+3. Decide whether to target a known consumer-read slot (visible) or an unused slot (dead computation, no effect). Cluster map + consumer map in Part 2 of this doc.
+4. Test by setting `horse.ext.default_alleles.set` so every horse picks up your effect.
+5. Once dialed in, set per-horse alleles via `horse.ext.alleles.set`.
