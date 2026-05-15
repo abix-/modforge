@@ -567,7 +567,7 @@ Research plan to derive the map:
    consumer transcribes to horse-struct field +0xYY which
    the renderer reads as feature Z."
 5. **Author the map** as
-   `horsey-mod/docs/SLOT-MAP.md`: per-slot row with
+   `GENE-CATALOG.md` (Part 2: Engine pipeline + slot map): per-slot row with
    `{ slot, vanilla_gene_name, horse_struct_field,
    visible_feature, candidate_value_range }`.
 6. **Validate** by editing one vanilla gene at a time via
@@ -813,7 +813,7 @@ diploid alleles.
 - [ ] **D3.4.** Find and detour the breeding combinator
       (the function that picks one allele from each
       parent for the child). Currently un-located; see
-      `ALLELE-MODEL.md` open question. Mirror its logic
+      `GENE-CATALOG.md` (Part 1: Conceptual model) open question. Mirror its logic
       for the extended genes.
 
 ### Phase D4: Save format extension
@@ -945,7 +945,7 @@ gets persisted if we can find where it's saved.
       does NOT persist the drift, we have nothing to
       mirror.
 - [ ] **D6.3.** Document the drift-persistence behavior
-      in [`ALLELE-MODEL.md`](ALLELE-MODEL.md) once
+      in [`GENE-CATALOG.md` (Part 1: Conceptual model)](GENE-CATALOG.md) once
       confirmed.
 
 ### Phase D7: Iteration and testing infrastructure
@@ -1001,7 +1001,7 @@ declaring victory.
 
 ### Phase D9: Documentation and rollout
 
-- [ ] **D9.1.** Update `ALLELE-MODEL.md` to document
+- [ ] **D9.1.** Update `GENE-CATALOG.md` (Part 1: Conceptual model) to document
       the extended layout: how `EXT_*` buffers are
       laid out, where they're stored, how gene
       indices map to vanilla vs extended.
@@ -1022,7 +1022,7 @@ declaring victory.
 
 | Risk | Mitigation |
 |---|---|
-| The breeding combinator function is unfound (ALLELE-MODEL.md open question). Without it, child horses get default-zero extended alleles. | Phase D3.4. Locate before D3 starts. If we cannot find it, hook the genome alloc path to populate extended alleles from parent picks at horse-creation time. |
+| The breeding combinator function is unfound (GENE-CATALOG.md open question). Without it, child horses get default-zero extended alleles. | Phase D3.4. Locate before D3 starts. If we cannot find it, hook the genome alloc path to populate extended alleles from parent picks at horse-creation time. |
 | `FUN_1400a5d20`'s detour may be hot enough that the per-call branch costs measurable frame time. | Profile in D8.5. If it's a problem, JIT-patch the detour to skip vanilla frames where no extended genes are defined. |
 | Stable horse_id field not located. | Phase D4.4. Without it, we can't key `EXT_HORSE_GENOMES`. Find this BEFORE D3 since D3 needs it. |
 | Vanilla's `genes.dat` cache format may include the gene table in a way that doesn't survive our patches. | Recommend deleting `genes.dat` on attach to force regen. Document. |
