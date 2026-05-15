@@ -45,8 +45,8 @@ Roughly ordered by leverage.
 |---|---|---|
 | Unit (modforge::patterns + sleuth) | 20 | green |
 | Unit (horsey: genes / xml / sidecar) | 30 | green |
-| Harness (smoke + dryruns + arm + r2 + catalog + build_info) | 14 | 13 green + 1 expected-red (save dryrun = R2 contract for stale save addresses) |
-| **Total** | **64** | **63 green + 1 contract-red** |
+| Harness (smoke + dryruns + arm + r2 + catalog + build_info + save_sigs + save_find_entries) | 16 | all green (save dryrun flipped 2026-05-15 after r2_save_signatures resolved 4 stale addresses) |
+| **Total** | **66** | **all green, no red contracts** |
 
 Live Horsey.exe build hash (this session): `742a6222ba73c99f757bd5576535e623106129fa08bf7aefd3af0da359cb7f71`. Stable across runs; changes when Steam ships an update.
 
@@ -70,31 +70,43 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 | `e8f6c89` | dryrun_d3_d4 catches stale save addresses |
 | `f0abb2a` | modforge::harness + horsey-mod test infrastructure |
 
-### Next action (locked 2026-05-15): re-derive 4 stale save addresses + arm D4 sidecar
+### Save-address re-derivation: DONE 2026-05-15 (`bd95252`)
 
-The 480-gene system is infrastructure-complete but unshippable until save round-trip works. Without it, every ext allele a modder authors vanishes on restart. The bestiary thesis can't ship.
+Test-first 6-step plan executed; suite went from 1 red contract to all green.
 
-The lone red test in the suite is `dryrun_d3_d4::save_dryrun_prologues_ok`. Making it green completes 480-gene v1.
+| Step | Status | Notes |
+|---|---|---|
+| 1. Write failing test contract | ✓ done | `tests/r2_save_signatures.rs`. |
+| 2. Probe live image for true entries | ✓ done | `tests/r2_save_find_entries.rs` widened to +/-2048-byte window with a tight MSVC-entry classifier. |
+| 3. Author signatures | ✓ done | All 4 sigs distinctive; `HORSE_SAVE_LOADER` uses `add rcx, 0x2b8` (genome offset) as its uniqueness anchor. |
+| 4. Migrate `targets::fn_addr` | ✓ done | `SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`, `HORSE_SAVE_LOADER` corrected to re-derived RVAs. Comments cite probe + signature test. |
+| 5. `dryrun_d3_d4::save_*` green | ✓ done | All 4 prologues match the classifier. |
+| 6. End-to-end save/restart/reload proof | OPEN | Needs save-fixture handling in the harness (synthesizing a player save action + reload across two `GameHarness::launch` calls). Out of scope for this milestone. |
 
-**Step-by-step (test-first):**
+True entry RVAs:
 
-1. **Write the failing contract test.** A new test asserts `patterns.sleuth.resolve` finds all 4 save targets via hand-authored signatures. Test is red because we have no signatures yet.
-2. **Derive signatures from the live image.** Read 64-128 bytes at each of `FUN_14006dc80` (SAVE_WRITER), `FUN_14006e480` (LOAD_GAME), `FUN_14006ee10` (HORSE_SAVE_WRITER), `FUN_14006f150` (HORSE_SAVE_LOADER) via `patterns.read_bytes`. Cross-check against the decomp body to identify stable vs compiler-shifted bytes. Author signatures with hand-picked wildcards.
-3. **Add to catalog.** Plug signatures into the `r2_catalog`-style test; watch it go green.
-4. **Migrate `targets::fn_addr` for the 4 save targets** to use the resolver. `genes.ext.save.arm` then arms against resolved addresses.
-5. **`dryrun_d3_d4::save_dryrun_prologues_ok` flips green.** D4 ships. Whole suite goes 100% green.
-6. **End-to-end proof.** Author one ext gene, set on a horse, save, restart, reload, verify ext allele survived. The shippable demonstration that the 480-gene system actually ships.
+| Target | Stale (Ghidra) | True (probe-derived) | Offset |
+|---|---|---|---|
+| `SAVE_WRITER` | `0x14006dc80` | `0x14006d674` | -1548 |
+| `LOAD_GAME` | `0x14006e480` | `0x14006e350` | -304 |
+| `HORSE_SAVE_WRITER` | `0x14006ee10` | `0x14006ecfb` | -277 |
+| `HORSE_SAVE_LOADER` | `0x14006f150` | `0x14006f031` | -287 |
 
-**Why this over the alternatives:** the 480-gene work is the load-bearing thesis of horsey-mod. ImGui-in-modforge (next-up after this), HK1 hotkey, pasture auto-buy, and bestiary content are all more useful WITH save persistence than without.
+The shipping build's Ghidra-decomp RVAs were stale by -277 to -1548 bytes. Way past the -16 convention. The probe + tight-classifier tooling (`r2_save_find_entries`) is the standing tool for any future drift.
 
-### Open follow-ups after the next action lands
+### Next action
 
-1. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
-2. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
-3. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.
-4. **Hand-author unique short signatures** for the existing green targets (replace 32-byte derived sigs in `r2_catalog` with body-byte + hand-picked-wildcard sigs that survive MSVC reorders).
-5. **Retire hardcoded `fn_addr::*` consts** in favor of resolver-backed accessors. Mechanical refactor; parity test already in place.
-6. **D6 mutation drift persistence.** Find whether vanilla persists `FUN_1400c0660` drift to genes.xml; mirror for the ext range if so.
+**Step 6 of the save-address plan** is the obvious next: end-to-end save / restart / reload proof. Needs save-fixture handling in the harness (synthesize a save action + reload across two `GameHarness::launch` calls). This is the shippable demonstration of the 480-gene system.
+
+Alternatively, ship the v1 demonstration:
+
+1. **End-to-end save round-trip** (step 6 above). Real proof of the 480-gene thesis.
+2. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
+3. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
+4. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.
+5. **Hand-author unique short signatures** for the existing green targets (replace 32-byte derived sigs in `r2_catalog` with body-byte + hand-picked-wildcard sigs that survive MSVC reorders).
+6. **Retire hardcoded `fn_addr::*` consts** in favor of resolver-backed accessors. Mechanical refactor; parity test already in place.
+7. **D6 mutation drift persistence.** Find whether vanilla persists `FUN_1400c0660` drift to genes.xml; mirror for the ext range if so.
 
 ### Completed this session
 
