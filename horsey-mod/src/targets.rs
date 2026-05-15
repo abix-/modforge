@@ -447,6 +447,33 @@ pub mod horse_offset {
         static CACHE: OnceLock<usize> = OnceLock::new();
         *CACHE.get_or_init(|| resolve_age().map(|a| a + 4).unwrap_or(MAX_AGE))
     }
+
+    /// Pattern-resolved name-id offset. Anchors on the (bails)
+    /// retire-handler format string and decodes the
+    /// `mov ecx, [horse+disp32]; call name_resolve` pair that sets
+    /// up the 3rd printf arg (horse.name = name_resolve(name_id)).
+    /// Pattern `8b 8? <disp32> e8 <rel32>` is 11 bytes with disp32
+    /// at offset 2. Filters to `[0x1d0, 0x210]` to avoid colliding
+    /// with the adjacent `age` (0x1fc) which is loaded with
+    /// `44 8b` (r9d), not `8b` (ecx).
+    ///
+    /// Falls back to the hardcoded `NAME_ID` const.
+    pub fn name_id() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let hist = match modforge::research::in_process_decode_field_offset_via_string(
+                BAILS_AGE_HEX, 0, "8b", 2, 4, 128,
+            ) {
+                Ok(h) => h,
+                Err(_) => return NAME_ID,
+            };
+            let mut top: Vec<(i64, usize)> = hist.into_iter()
+                .filter(|(v, _)| *v >= 0x1d0 && *v < 0x210 && *v != age() as i64 && *v != max_age() as i64)
+                .collect();
+            top.sort_by(|a, b| b.1.cmp(&a.1));
+            top.first().map(|&(d, _)| d as usize).unwrap_or(NAME_ID)
+        })
+    }
     /// "On track / unavailable" flag (uint8). When 0, price doubles.
     pub const ON_TRACK_FLAG: usize = 0x204;
     /// Tiredness flag A (uint8). Zeroed every frame by Yes Tire.
