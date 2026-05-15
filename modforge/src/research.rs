@@ -24,6 +24,7 @@
 //! env vars and call into these functions.
 
 use crate::harness::RunningGame;
+use crate::patterns::sleuth;
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -235,6 +236,80 @@ pub fn decode_field_offset_via_string(
         }
     }
     Ok(hist)
+}
+
+// =============================================================================
+// In-process (DLL-side) variants of the R4 workflows.
+//
+// The functions above route through the per-mod HTTP ops for use
+// from harness tests. The functions below run the same algorithms
+// using `modforge::patterns::sleuth` directly + raw pointer reads.
+// They're for PRODUCTION resolvers inside an injected DLL where
+// the harness isn't available.
+// =============================================================================
+
+/// In-process equivalent of [`decode_field_offset_via_string`].
+///
+/// SAFETY: caller is inside the injected DLL; all addresses are
+/// inside the loaded image and live for the process lifetime.
+/// Returns a histogram of decoded disp values (caller picks top).
+pub fn in_process_decode_field_offset_via_string(
+    string_hex: &str,
+    lea_offset: i64,
+    disp_opcode: &str,
+    disp_off: usize,
+    disp_size: usize,
+    window: u64,
+) -> Result<BTreeMap<i64, usize>> {
+    anyhow::ensure!(matches!(disp_size, 1 | 4), "disp_size must be 1 or 4");
+    let rdata_hits = sleuth::scan_rdata_matches(string_hex)?;
+    anyhow::ensure!(!rdata_hits.is_empty(), "string {string_hex:?} not in .rdata");
+    let str_addr = rdata_hits[0] as u64;
+    let lea_target = str_addr.wrapping_add_signed(lea_offset);
+    // Find xrefs via the same opcode-prefix sweep as `mem.find_xrefs`.
+    // For brevity, we use just the `lea` variants here (string-load).
+    let lea_sigs: &[&str] = &[
+        "48 8d 05", "48 8d 0d", "48 8d 15", "48 8d 1d", "48 8d 2d", "48 8d 35", "48 8d 3d",
+    ];
+    let mut xref_sites: Vec<u64> = Vec::new();
+    for prefix in lea_sigs {
+        let sig = format!("{prefix} X0x{lea_target:x}");
+        if let Ok(addrs) = sleuth::scan_all_matches(&sig) {
+            for a in addrs { xref_sites.push(a as u64); }
+        }
+    }
+    anyhow::ensure!(!xref_sites.is_empty(), "no .text lea xrefs to 0x{lea_target:x}");
+
+    let opcode_bytes = parse_hex_bytes(disp_opcode);
+    let mut hist: BTreeMap<i64, usize> = BTreeMap::new();
+    for instr_addr in xref_sites {
+        let lo = instr_addr.saturating_sub(window);
+        let total = window * 2;
+        // SAFETY: lo+total is inside .text; reads are safe.
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(lo as *const u8, total as usize)
+        };
+        if bytes.len() < opcode_bytes.len() + disp_off + disp_size { continue; }
+        for off in 0..=bytes.len().saturating_sub(opcode_bytes.len() + disp_off + disp_size) {
+            if bytes[off..off + opcode_bytes.len()] == opcode_bytes[..] {
+                let d = off + disp_off;
+                if d + disp_size > bytes.len() { break; }
+                let disp: i64 = if disp_size == 1 {
+                    bytes[d] as i8 as i64
+                } else {
+                    i32::from_le_bytes([bytes[d], bytes[d+1], bytes[d+2], bytes[d+3]]) as i64
+                };
+                *hist.entry(disp).or_insert(0) += 1;
+            }
+        }
+    }
+    Ok(hist)
+}
+
+/// Pick the most-frequent value from a histogram. Returns None
+/// for an empty histogram. Ties broken by lowest value.
+pub fn histogram_top(hist: &BTreeMap<i64, usize>) -> Option<i64> {
+    hist.iter().max_by_key(|&(_, count)| *count).map(|(&val, _)| val)
 }
 
 /// R4: for every `e8 X<target_fn>` (rel32 call to a known

@@ -63,11 +63,47 @@ pub const DEBUG_LOG_GATE: usize = 0x1403d9506;
 // =============================================================================
 
 pub mod gs_offset {
+    use std::sync::OnceLock;
+
     pub const FRAME_TICK: usize = 0x254;
     pub const FIELD_268: usize = 0x268;
     pub const MONEY: usize = 0x308;
+    /// Old decomp constant. Production should call [`year()`] which
+    /// pattern-resolves the offset at runtime.
     pub const YEAR: usize = 0x314;
     pub const SLEEPS: usize = 0x318;
+
+    /// Pattern-resolved offset of the in-game year (the field read
+    /// by the pause-menu printf `"< Simulation Paused - Year %d >"`).
+    /// Anchors on the format string in `.rdata`, finds the `lea rdx`
+    /// that loads it, then decodes the `mov r8d, [base+disp32]`
+    /// that supplies the year as arg3.
+    ///
+    /// Falls back to the hardcoded `YEAR` const when the pattern
+    /// misses (e.g. format string text changed between builds).
+    pub fn year() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            // Hex of `< Simulation Paused - Year %d >`.
+            const STRING_HEX: &str = "3c 20 53 69 6d 75 6c 61 74 69 6f 6e 20 50 61 75 73 65 64 20 2d 20 59 65 61 72 20 25 64 20 3e";
+            // `mov r8d, [base+disp32]` opcode prefix (REX.R + 8b).
+            // The base-register byte is the 3rd byte of the
+            // instruction, so the disp starts at offset 3 (after
+            // `44 8b XX`).
+            const DISP_OPCODE: &str = "44 8b";
+            const DISP_OFF: usize = 3;
+            const DISP_SIZE: usize = 4;
+            const WINDOW: u64 = 64;
+            match modforge::research::in_process_decode_field_offset_via_string(
+                STRING_HEX, 0, DISP_OPCODE, DISP_OFF, DISP_SIZE, WINDOW,
+            ) {
+                Ok(hist) => modforge::research::histogram_top(&hist)
+                    .map(|v| v as usize)
+                    .unwrap_or(YEAR),
+                Err(_) => YEAR,
+            }
+        })
+    }
     /// Start of the 6-supply array. Each supply is 8 bytes:
     /// `[uint32 count][uint8 flag_a][uint8 flag_b][2 bytes pad]`.
     /// The 7th supply field (used by the Loaded cheat) at +0x344 is

@@ -409,6 +409,20 @@ pub fn register_all() {
         ),
 
         OpDef::new(
+            "targets.resolve.field_offsets",
+            "Return runtime-resolved struct field offsets via R4 (pattern-anchored decoding). \
+             Compare to the hardcoded constants for drift detection.",
+            "",
+            |_| {
+                Ok(json!({
+                    "year": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::year()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::YEAR),
+                    },
+                }))
+            },
+        ),
+        OpDef::new(
             "targets.resolve.data_globals",
             "Resolve RACES_COUNTER + SAVE_VERSION_GLOBAL via patternsleuth.",
             "",

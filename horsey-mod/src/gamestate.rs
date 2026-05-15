@@ -306,10 +306,10 @@ pub fn set_money(value: u32) -> bool {
 }
 
 pub fn year() -> Option<u32> {
-    read_u32(gs_offset::YEAR)
+    read_u32(gs_offset::year())
 }
 pub fn set_year(value: u32) -> bool {
-    write_u32(gs_offset::YEAR, value)
+    write_u32(gs_offset::year(), value)
 }
 
 pub fn sleeps() -> Option<u32> {
