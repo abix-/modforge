@@ -218,6 +218,35 @@ pub mod gs_offset {
         top.first().map(|&(d, _)| (d as usize, (d + 8) as usize))
     }
 
+    fn resolve_sim_horses_pair() -> Option<(usize, usize)> {
+        // Same scan, narrowed to the sim-horses neighborhood
+        // (HLT labels these `kOffSimHorsesBegin/End` 0x260/0x268).
+        let hist = modforge::research::in_process_decode_disp_pair_with_delta(
+            "48 8b ?? ?? ?? ?? ?? 48 8b ?? ?? ?? ?? ??",
+            3, 10, 4, 8,
+        ).ok()?;
+        let mut top: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x250 && *v < 0x270)
+            .collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.first().map(|&(d, _)| (d as usize, (d + 8) as usize))
+    }
+
+    /// Pattern-resolved offset of the sim-horse pointer list begin.
+    /// HLT calls this `kOffSimHorsesBegin` (0x260); separate from
+    /// the roster (0x280) and live-horses (0x130) pairs.
+    pub fn sim_horses_begin() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_sim_horses_pair().map(|p| p.0).unwrap_or(0x260))
+    }
+
+    /// Pattern-resolved offset of the sim-horse pointer list end
+    /// (= `sim_horses_begin + 8`). Was hardcoded as `FIELD_268`.
+    pub fn sim_horses_end() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_sim_horses_pair().map(|p| p.1).unwrap_or(FIELD_268))
+    }
+
     fn resolve_live_horses_pair() -> Option<(usize, usize)> {
         // Same scan, narrowed to the live-horses neighborhood
         // (< 0x200).

@@ -471,6 +471,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::live_horses_end()),
                         "hardcoded": "0x138",
                     },
+                    "sim_horses_begin": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::sim_horses_begin()),
+                        "hardcoded": "0x260",
+                    },
+                    "sim_horses_end": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::sim_horses_end()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::FIELD_268),
+                    },
                 }))
             },
         ),

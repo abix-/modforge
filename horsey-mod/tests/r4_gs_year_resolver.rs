@@ -78,6 +78,8 @@ fn gs_year_resolver_agrees_with_hardcoded() {
         ("horses_end",   "horses_end"),
         ("live_horses_begin", "live_horses_begin"),
         ("live_horses_end",   "live_horses_end"),
+        ("sim_horses_begin",  "sim_horses_begin"),
+        ("sim_horses_end",    "sim_horses_end"),
     ] {
         let entry = result.get(*key).unwrap_or_else(|| panic!("{name} entry"));
         let r = u64_of_hex(entry, "resolved").expect("resolved");
