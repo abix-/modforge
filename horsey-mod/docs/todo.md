@@ -158,91 +158,9 @@ Current status (2026-05-15): 6/6 data globals on **R**; 30/31 function entries o
 
 The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
 
-## Current status (2026-05-15 session 2, latest commit `9fdeca9`)
+## Session log
 
-### What shipped this session
-
-| Commit | What |
-|---|---|
-| `d0f2f3c` | Phase A: standalone Win32 + D3D11 + ImGui backend in `modforge::ui::native`. Live test `tests/native_ui_lifecycle.rs` green. Sibling consumer for ueforge / horsey-mod / future native-PE mods, behind the `native-ui` Cargo feature. |
-| `81f4bea` | `modforge::ui::api` (text/button/checkbox/slider/separator/spacing/same_line) + horsey-mod's first 3 in-game tabs (Overview / Horses / Cheats). |
-| `ae50745` | Horses tab roster table (species, age/max, skill, tired_a/b, name_id, ptr; capped at 32 rows). |
-| `4a7c73b` | Bestiary v1: `horsey-mod/bestiary/genes-extended.xml` with `BX_GIANT_BABY` at ext idx 0 (alleles `[0, 50, 100, 200]`, render `slot=0 mode=set`). `horsey-inject` auto-deploys it next to the staged DLL. 2 locking tests (`bestiary_v1.rs` unit, `bestiary_v1_live.rs` end-to-end through HTTP). |
-| `5b5ad7a` | Cheats tab `no_tire` and `debug_mode` toggles via `api::checkbox`. HTTP `state` snapshot now captured AFTER op dispatch so write ops surface post-write state. |
-| `d7a9501` | `gamestate::looks_loaded()` heuristic on roster vector at `+0x280/+0x288`. Snapshot returns null for money/year/sleeps when not loaded. UI Overview + Horses gate on the heuristic. 7 unit tests on the pure decision; 1 live regression. |
-| `0f97176` | `gamestate.diag` HTTP op + `MODFORGE_ATTACH=1` harness mode so tests can attach to a manually-loaded save. `tests/gamestate_diag.rs` (consistency + env-gated in-save assertion). |
-| `ca7edf2` | Docs: session-2 status update + global CLAUDE.md absolute rule banning ad-hoc curl / python / PowerShell probes. Everything goes through tests or test-invoked diagnostic ops. |
-| `ae333c6` | **R3: GAMESTATE_PTR resolved via patternsleuth.** Three candidate signatures (cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14`) each decode a RIP-relative `disp32` to recover the base. Resolved `0x7ff63d864c38`; hardcoded was `0x7ff63d88b0d8` (delta 0x264a0 == 156 KB). `gamestate::ptr()` now uses resolved with hardcoded fallback. Closes the in-save false-negative for GAMESTATE_PTR. |
-| `ba96be8` | Docs: hardcoded -> resolved migration comparison table. Inventories every hardcoded address with current resolver status and a 5-batch migration plan. |
-| `06839d4` | **R3 batch 1: cheat-globals validation framework.** New `mem.alias_check` op (writes 0xAB / 0xCD to addr A, reads B, restores; proves byte aliasing). New `resolve_data_global` wrapper with a 0x1000-byte sanity gate against the hardcoded RVA. `tests/r3_cheat_globals_resolve.rs` runs alias-check per global and fails loud on mismatch. Production wiring uses resolver-or-hardcoded for `no_tire` / `debug_mode`. First-pass sigs for the 3 cheat globals all rejected by the sanity gate on this build (production cleanly falls back to hardcoded). |
-| `cac59c4` | Docs: P0 BLOCKER set. Every hardcoded address in `targets.rs` must be pattern-resolved before any more feature work. Feature backlog (bestiary v2, HK1, pasture, D2) is parked behind this. |
-| `3553f50` | `mem.find_xrefs` op (HAND-ROLLED scanner). Found that the R3 GAMESTATE_PTR resolution is wrong: only 1 xref to the supposed `+0x308`, an SSE write, not gameplay code. Ripped out in `9fdeca9` per the patternsleuth rule. |
-| `50fc2d0` | Docs: GAMESTATE_PTR resolution is wrong; next ticket is `mem.scan_data`. |
-| `31e371b` | **P0 RULE locked**: use patternsleuth for ALL pattern / xref / data scans. NO hand-rolled scanners. Added to top of todo + as absolute rule in global CLAUDE.md alongside the no-curl rule. |
-| `9fdeca9` | `mem.find_xrefs` re-implemented on patternsleuth. New `modforge::patterns::sleuth::scan_all_matches` returns all matches for one pattern (companion to `resolve_all`'s first-per-name). The op runs one anchored scan per common RIP-relative opcode prefix (mov, lea, add, cmp, mov-imm, byte-cmp, byte-xor, movzx, movdqa); each is terminated by patternsleuth's native `X<target_addr>` xref constraint. Reference implementation for the patternsleuth rule. |
-| (pending commit) | **GAMESTATE_PTR deref fix.** Decomp re-read (`FUN_14009c6a0:46` heap-allocates + stores; `FUN_1400fd580:86` constructor stores; `FUN_14009c4e0:26` zeros) confirmed the slot is a pointer, not the struct. `gamestate::ptr()` now dereferences the slot and gates the result through pure helper `is_plausible_gamestate_pointer` (rejects null, sub-64KiB, kernel-space, misaligned). `resolve_gamestate_ptr_uncached` now sanity-gates resolver candidates at 0x1000 bytes so wrong-encoding sigs fall through to the (correct) hardcoded RVA. 6 new unit tests including a regression test pinning the exact `0x2400000000B` stale value the previous fix attempt observed. New `tests/gamestate_ptr_deref.rs` integration test (always-on shape check + `MODFORGE_EXPECT_LOADED`-gated bounded-value check). Unblocks Cheats tab, looks_loaded, every patch that reads gamestate offsets. Prior art [HorseyLiveTweaks `scene_resolver.cpp:11-33`](../research/prior-art/HorseyLiveTweaks/src/core/scene_resolver.cpp) shows the same store-site-anchor + structural-validate pattern in 20 lines; locked rule: read prior art before authoring address-resolution code. |
-
-### Known broken: closed by deref fix
-
-GAMESTATE_PTR drift (in-game UI lying about save state) was misdiagnosed in `ae333c6`. The slot RVA was correct all along; `gamestate::ptr()` was missing a deref. Closed by the pending-commit fix above. In-save live test still needs to be run user-side with `MODFORGE_EXPECT_LOADED=1` to lock the bounded-value contract.
-
-## Current status (2026-05-15 session 1, after commit `5ff0cfc`)
-
-### Test suite
-
-| Category | Count | Status |
-|---|---|---|
-| Unit (modforge::patterns + sleuth) | 20 | green |
-| Unit (horsey: genes / xml / sidecar) | 30 | green |
-| Harness (smoke + dryruns + arm + r2 + catalog + build_info + save_sigs + save_find_entries + save_e2e_roundtrip) | 17 | all green; e2e proves ext alleles survive game restart |
-| **Total** | **67** | **all green, no red contracts. 480-gene v1 is SHIPPABLE.** |
-
-Live Horsey.exe build hash (this session): `742a6222ba73c99f757bd5576535e623106129fa08bf7aefd3af0da359cb7f71`. Stable across runs; changes when Steam ships an update.
-
-Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, with timestamped logs at `target/test-runs/<name>-<ts>.log`. Average 7-20s per harness test.
-
-### Commits this session (latest first)
-
-| Hash | What |
-|---|---|
-| `574beb0` | arm_render_trampoline + arm_full_safe_stack. 4-subsystem stack survives arm/idle/disarm |
-| `fe74e6b` | R1 finish: game.build_info HTTP op + r1_build_identification tests |
-| `0b5bc96` | todo status r2_catalog green |
-| `74846de` | r2_catalog: 4 green targets resolve identically via sleuth |
-| `e1af9cf` | todo status sync after R1 + R2 |
-| `5ff0cfc` | todo iter 6 R2 + migration proven |
-| `f1ad5d5` | r2_migration_combinator: legacy + sleuth converge |
-| `54d1c90` | **R2 ships**: modforge::patterns::sleuth wraps patternsleuth crate |
-| `c22778e` | R2 plan locked in ADDRESS-RESOLUTION.md |
-| `d0cbd27` | **R1 ships**: modforge::patterns + pattern_scan_runtime |
-| `291d37e` | 16 new tests: combinator math, BXSAVEXT codec, D1/D5 prologues, arm_combinator |
-| `e8f6c89` | dryrun_d3_d4 catches stale save addresses |
-| `f0abb2a` | modforge::harness + horsey-mod test infrastructure |
-
-### Save-address re-derivation: DONE 2026-05-15 (`bd95252`)
-
-Relocated to [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#save-address-re-derivation-done-2026-05-15-commit-bd95252). 6-step test-first plan; stale Ghidra RVAs were -277 to -1548 bytes off; `r2_save_find_entries` probe is the standing tool for any future drift.
-
-### Next action
-
-**480-gene v1 is SHIPPABLE.** All 6 steps of the save-address plan are done. The bestiary thesis is now real: a modder can author an ext gene, set it on a horse, restart the game, and the allele survives.
-
-Pick from the queue (in priority order):
-
-1. ~~**ImGui-in-modforge primitive.**~~ DONE 2026-05-15 (Phase A of [`docs/UI-CENTRALIZATION.md`](../../docs/UI-CENTRALIZATION.md)). Standalone Win32 + D3D11 + ImGui window in `modforge::ui::native` behind the `native-ui` Cargo feature. Live integration test `tests/native_ui_lifecycle.rs` green against Horsey.exe; `ui.native.spawn`/`shutdown`/`is_visible`/`stats` ops shipped. Tab render fns are SEH-wrapped. Roster UI + future QoL panels can now be authored as `TabDef`s with `modforge_ui_*` primitives.
-2. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
-3. ~~**First bestiary species.**~~ DONE 2026-05-15. Ships `horsey-mod/bestiary/genes-extended.xml` with `BX_GIANT_BABY` at ext idx 0 (alleles `[0, 50, 100, 200]`, render `slot=0, mode=set`). Auto-deployed by `horsey-inject` next to the staged DLL; `worker_main` auto-loads at attach. Two locking tests: `tests/bestiary_v1.rs` (unit-level parse contract) and `tests/bestiary_v1_live.rs` (end-to-end through inject + HTTP, green against Horsey.exe). Authors flip every horse to allele 3 via `horse.ext.default_alleles.set { ext_gene_idx: 0, maternal: 3, paternal: 3 }` for the giant-baby effect. v2 needs Phase D2 (per-pop weights) or per-horse alleles via stable horse-id (D4.4) to scope effects per species rather than globally.
-4. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.
-5. **Hand-author unique short signatures** for the existing green targets (replace 32-byte derived sigs in `r2_catalog` with body-byte + hand-picked-wildcard sigs that survive MSVC reorders).
-6. **Retire hardcoded `fn_addr::*` consts** in favor of resolver-backed accessors. Mechanical refactor; parity test already in place.
-7. **D6 mutation drift persistence.** Find whether vanilla persists `FUN_1400c0660` drift to genes.xml; mirror for the ext range if so.
-
-### Completed this session
-
-- ~~R1 build identification.~~ DONE (`fe74e6b`). `game.build_info` op shipped; image SHA-256 cached + exposed. r1_build_identification (2 tests) green.
-- ~~Arm-and-observe tests for D5 + lifecycle + full-stack.~~ DONE (`574beb0`). 4 arm tests green: combinator, lifecycle, render trampoline, full-stack. Lifecycle in isolation captured 550 ctor / 3 dtor calls in 5s of menu idle. Full-stack arms 4 subsystems together; game survives.
-- ~~R2 patternsleuth resolver shipped~~ DONE (`54d1c90`). `modforge::patterns::sleuth` wraps the crate; multi-target SIMD scan with first-match-wins per target. 3 harness tests green.
-- ~~R2 catalog parity proven~~ DONE (`74846de`). 4 known-good targets (GENE_COMBINATOR, APPLY_GENE_TO_HORSE, HORSE_CONSTRUCTOR, HORSE_DESTRUCTOR) resolve identically via sleuth as via legacy hardcoded RVAs. Migration pattern locked.
+Per-session commit tables, test-suite snapshots, completed-this-session lists, and known-limitations risk logs relocated to [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Ship status pointers
 
@@ -273,10 +191,7 @@ User-locked 2026-05-15: **horsey-mod is a CONTENT + QoL mod. We do NOT overlap w
 
 ### Known limitations / risks
 
-- Untested against the live binary. -16 prologue adjustment is convention but not verified for the 5 new addresses.
-- `LOAD_GAME = 0x14006e480` was already in `targets.rs` but the entry-point hasn't been prologue-verified.
-- Save-loader detour writes ext alleles BEFORE the vanilla loader runs. If vanilla zeros `EXT_HORSE_GENOMES` keys (horse pointers) by re-allocating horses during load, the entries get orphaned. Lifecycle anchors should drop them on dtor, but order-of-operations needs in-game confirmation.
-- `+0x690` ActiveGeneCount (HorseyLiveTweaks finding) might need updating for ext range. Unclear; not in v1.
+Relocated to [`CHANGELOG.md`](CHANGELOG.md#known-limitations--risks-at-end-of-session-1) (end-of-session-1 snapshot).
 
 ---
 
