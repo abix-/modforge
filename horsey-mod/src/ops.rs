@@ -874,6 +874,56 @@ DLL detach.",
             },
         ),
         OpDef::new(
+            "patterns.scan",
+            "Scan the loaded Horsey.exe .text section for an IDA-style byte pattern. \
+Returns the runtime address of the first match (or null if no match). Used by \
+test harness + future R1/R2 address-resolution code. Body: {sig: string}, where \
+sig is e.g. \"48 89 5c 24 ?? 57 48 83 ec\". Read-only.",
+            "{sig: string}",
+            |args| {
+                let sig = args.get("sig").and_then(Json::as_str).unwrap_or("");
+                if sig.is_empty() {
+                    return Err("missing or empty sig".into());
+                }
+                let found = modforge::patterns::scan_loaded_image(sig);
+                Ok(json!({
+                    "sig": sig,
+                    "found": found.map(|a| format!("0x{a:x}")),
+                }))
+            },
+        ),
+        OpDef::new(
+            "patterns.read_bytes",
+            "Read `n` bytes at a runtime address inside the loaded Horsey.exe image, \
+return as a hex-byte string suitable for direct use as a `patterns.scan` sig. Used \
+to derive test signatures from known-good function entries. Body: \
+{addr: \"0x...\", n: u32}.",
+            "{addr: string, n: u32}",
+            |args| {
+                let addr_str =
+                    args.get("addr").and_then(Json::as_str).unwrap_or("");
+                let n = args.get("n").and_then(Json::as_u64).unwrap_or(16) as usize;
+                let addr_str = addr_str.trim_start_matches("0x");
+                let addr = usize::from_str_radix(addr_str, 16)
+                    .map_err(|e| format!("bad addr: {e}"))?;
+                if n == 0 || n > 4096 {
+                    return Err(format!("n out of range: {n}"));
+                }
+                // SAFETY: caller asserts the address is inside the
+                // loaded image. We don't validate further; pattern
+                // search downstream will catch garbage.
+                let view = unsafe {
+                    std::slice::from_raw_parts(addr as *const u8, n)
+                };
+                let hex: String = view
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                Ok(json!({ "addr": format!("0x{addr:x}"), "n": n, "bytes": hex }))
+            },
+        ),
+        OpDef::new(
             "genes.ext.save.stats",
             "D4 save-sidecar counters. `save_calls`/`load_calls` = top-level save/load \
 invocations; `horse_writes`/`horse_reads` = per-horse records appended/consumed; \

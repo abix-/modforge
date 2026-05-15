@@ -15,6 +15,7 @@ pub mod harness;
 pub mod hot_reload;
 pub mod log;
 pub mod ops;
+pub mod patterns;
 pub mod ring;
 pub mod rpg;
 pub mod scanner;
