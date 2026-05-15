@@ -10,6 +10,7 @@ use modforge::ui::TabDef;
 
 use crate::gamestate;
 use crate::genes::EXT_GENE_COUNT;
+use crate::horse;
 
 /// All tabs the standalone window shows. Registered once at attach.
 pub static TABS: &[TabDef] = &[
@@ -40,6 +41,9 @@ fn render_horses() {
     let live = gamestate::live_horse_count();
     let total = gamestate::horse_count();
     ui::text(&format!("Live horses: {live} / {total} roster slots"));
+    ui::text_disabled(
+        "idx  species  age/max  skill  tired  name_id  ptr",
+    );
     ui::separator();
 
     if live == 0 {
@@ -52,9 +56,17 @@ fn render_horses() {
     const MAX_ROWS: usize = 32;
     let shown = live.min(MAX_ROWS);
     for i in 0..shown {
-        if let Some(p) = gamestate::live_horse_ptr(i) {
-            ui::text(&format!("#{i:>3} ptr=0x{p:x}"));
-        }
+        let Some(p) = gamestate::live_horse_ptr(i) else { continue };
+        let species = horse::species(p).unwrap_or(-1);
+        let age = horse::age(p).unwrap_or(-1);
+        let max_age = horse::max_age(p).unwrap_or(-1);
+        let skill = horse::skill(p).unwrap_or(-1);
+        let ta = horse::tired_a(p).unwrap_or(0);
+        let tb = horse::tired_b(p).unwrap_or(0);
+        let name_id = horse::name_id(p).unwrap_or(0);
+        ui::text(&format!(
+            "{i:>3}  {species:>7}  {age:>3}/{max_age:<3}  {skill:>5}  {ta}/{tb:>3}  {name_id:>7}  0x{p:x}"
+        ));
     }
     if live > shown {
         ui::text_disabled(&format!("... +{} more (UI cap)", live - shown));
