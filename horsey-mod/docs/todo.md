@@ -772,85 +772,12 @@ full UI library into the game's render path.
 
 ## Mod foundations
 
-### 1. `horsey-mod` crate (per-engine binding for modforge) **SHIPPED**
+All shipped or designed; details in [`MODFORGE-INTEGRATION.md`](MODFORGE-INTEGRATION.md):
 
-Status: **working**. Lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods)
-as a third sibling to `ueforge` and `unityforge`. Pivoted from the originally-planned
-proxy-`steam_api64.dll` approach to a `CreateRemoteThread(LoadLibraryW)` injector
-after MSVC link.exe's `.DEF` forwarder syntax failed for 1,089 Steam API exports.
-
-What's done:
-- `horsey-inject.exe` finds Horsey.exe and injects `horsey.dll`
-- DllMain spawns a worker thread that initializes modforge logging, settings,
-  HTTP server with auth
-- 18 ops registered for read/write of game state + cheats + horse fields
-- Staged-DLL pattern: each inject copies the cargo output to a fresh
-  timestamped filename so cargo can rebuild while the game is running
-- `_shutdown` op + `--reload` flag implement the hot-reload swap
-- `no_tire = true` set at every DLL attach
-
-What's pending:
-- **Hot-reload hardening** (currently causes delayed crash). The `_shutdown`
-  op acknowledges, the listener thread joins, but helper threads inside
-  the old DLL may still have stack frames when `FreeLibrary` is called.
-  Options under consideration:
-  - Poll port 33077 in injector after `_shutdown` until truly closed, then
-    wait another ~500ms before `FreeLibrary`
-  - Have `_shutdown` itself call `FreeLibraryAndExitThread` from the last
-    remaining thread (atomic self-unload)
-  - Add a `_drain` op that returns only after all helper threads have exited
-- MinHook integration (zero progress; foundational for everything else)
-- `horses.live` walks the wrong list (track-manager's on-track horses, not the
-  full roster). Need to find the right list pointer for the roster UI.
-
-### 2. HTTP control plane **SHIPPED**
-
-`modforge::server::spawn` is used directly. The 18 registered ops are in
-`horsey-mod/src/ops.rs`. Auth is in `X-Ueforge-Auth` header; token is
-written to `horsey.auth` next to the DLL on each launch.
-
-Currently registered ops:
-- Liveness: `ping`, `list_ops`
-- State reads: `game.read`, `game.money.get`, `game.year.get`, `cheats.*`
-- State writes: `game.money.set`, `game.money.add`, `game.year.set`,
-  `cheats.no_tire.set`, `cheats.debug_mode.set`
-- Horses: `horses.count`, `horses.roster_addr`, `horses.live`, `horse.read`,
-  `horse.set_age`, `horse.set_max_age`, `horse.clear_tiredness`
-- Hot reload: `_shutdown`
-
-To add:
-- `horses.list_full` walking the full roster (not just on-track)
-- `save.export` / `save.import` for save backup ops
-- `pop.spawn` and `pop.list` for population creation
-- `genes.read` / `genes.write` for runtime gene editing (when MinHook lands)
-
-### 3. Save-edit tool (in-progress, see `save_edit.py`)
-
-Extend `save_edit.py` with set/write operations now that we have the full
-save format documented in
-`decompiled/annotated/0x14006dc80_save_game_writer.c`.
-
-### 4. RPG layer for Horsey
-
-Use modforge's RPG module (Effect/Trigger/Skill + XP curve + persistence).
-First skills:
-- "Stable Master" - reduces fatigue accumulation rate
-- "Veterinarian" - increases lifespan
-- "Breeder" - boosts litter sizes
-- "Trainer" - boosts race speed
-- "Geneticist" - unlocks faster CRISPR
-
-Map each skill to a `StandardEffect` variant that adjusts the appropriate
-horse-struct field or hooks the appropriate game function.
-
-### 5. Hotkey system
-
-After `horsey-mod` gets MinHook + SDL3 input hook, add a `hotkeys` module
-that:
-- Hooks SDL's keyboard/mouse input handlers in Horsey.exe
-- Translates modifier+click into game actions
-- Persists key bindings via modforge's settings system
-- Live-reload bindings via `--reload` once hot-reload is hardened
+- §1 `horsey-mod` crate + HTTP control plane: SHIPPED 2026-05-13. See MODFORGE-INTEGRATION "Implementation status (2026-05-15)".
+- §3 Save-edit tool: design + reuse of BXSAVEXT codec in MODFORGE-INTEGRATION "Other modforge-consumer plans".
+- §4 RPG layer: skill list + Effect/Trigger/Skill mapping in MODFORGE-INTEGRATION "Other modforge-consumer plans".
+- §5 Hotkey system: SDL3 input hook design in MODFORGE-INTEGRATION "Other modforge-consumer plans".
 
 ---
 

@@ -385,3 +385,79 @@ The first mod to ship: a simple `horsey-hotkeys` crate that adds
 Shift+Click + the rest of the keybindings. ~500 lines on top of
 horsey-mod. After that we layer on the RPG and the gene-extension
 work.
+
+---
+
+## Implementation status (2026-05-15)
+
+### 1. `horsey-mod` crate (per-engine binding for modforge): SHIPPED
+
+Status: working. Lives in [`abix-/Grounded2Mods`](https://github.com/abix-/Grounded2Mods) as a third sibling to `ueforge` and `unityforge`. Pivoted from the originally-planned proxy-`steam_api64.dll` approach to a `CreateRemoteThread(LoadLibraryW)` injector after MSVC link.exe's `.DEF` forwarder syntax failed for 1,089 Steam API exports.
+
+What's done:
+
+- `horsey-inject.exe` finds Horsey.exe and injects `horsey.dll`.
+- DllMain spawns a worker thread that initializes modforge logging, settings, HTTP server with auth.
+- 18 ops (initial set) registered for read/write of game state + cheats + horse fields. (See GENE-CATALOG.md Part 3 for the 30+ ops shipped with the 480-gene work since.)
+- Staged-DLL pattern: each inject copies the cargo output to a fresh timestamped filename so cargo can rebuild while the game is running.
+- `_shutdown` op + `--reload` flag implement the hot-reload swap.
+- `no_tire = true` set at every DLL attach via `patches::sleep_safe_no_tire`.
+
+What's pending:
+
+- **Hot-reload hardening** (currently causes delayed crash). The `_shutdown` op acknowledges, the listener thread joins, but helper threads inside the old DLL may still have stack frames when `FreeLibrary` is called. Options under consideration:
+  - Poll port 33077 in injector after `_shutdown` until truly closed, then wait another ~500ms before `FreeLibrary`.
+  - Have `_shutdown` itself call `FreeLibraryAndExitThread` from the last remaining thread (atomic self-unload).
+  - Add a `_drain` op that returns only after all helper threads have exited.
+- MinHook integration (superseded by `retour` for shipped detours; see [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md)).
+- `horses.live` walks the wrong list (track-manager's on-track horses, not the full roster). Need to find the right list pointer for the roster UI.
+
+### 2. HTTP control plane: SHIPPED
+
+`modforge::server::spawn` is used directly. The 18 (initial) registered ops are in `horsey-mod/src/ops.rs`. Auth is in `X-Ueforge-Auth` header; token is written to `horsey.auth` next to the DLL on each launch.
+
+Currently registered ops (initial set; the 480-gene work added 30+ more under `genes.ext.*` / `patterns.*` / `game.build_info`):
+
+- Liveness: `ping`, `list_ops`.
+- State reads: `game.read`, `game.money.get`, `game.year.get`, `cheats.*`.
+- State writes: `game.money.set`, `game.money.add`, `game.year.set`, `cheats.no_tire.set`, `cheats.debug_mode.set`.
+- Horses: `horses.count`, `horses.roster_addr`, `horses.live`, `horse.read`, `horse.set_age`, `horse.set_max_age`, `horse.clear_tiredness`.
+- Hot reload: `_shutdown`.
+
+To add (still open):
+
+- `horses.list_full` walking the full roster (not just on-track).
+- `save.export` / `save.import` for save backup ops.
+- `pop.spawn` and `pop.list` for population creation.
+- `genes.read` / `genes.write` for runtime gene editing on the VANILLA range (the extended range already has these via `genes.ext.*`).
+
+## Other modforge-consumer plans
+
+These are horsey-mod features that ride on modforge primitives (rpg, settings, scanner). They're not all shipped; this section captures the design.
+
+### Save-edit tool (`save_edit.py`)
+
+Extend `save_edit.py` with set/write operations now that we have the full save format documented in `decompiled/annotated/0x14006dc80_save_game_writer.c`. Reuses the BXSAVEXT codec (see [`SAVE-FORMAT.md`](SAVE-FORMAT.md)) for ext alleles and the vanilla 3-bit-per-allele encoding for the original 240.
+
+### RPG layer for Horsey
+
+Use modforge's RPG module (Effect / Trigger / Skill + XP curve + persistence). First skills:
+
+- "Stable Master". Reduces fatigue accumulation rate.
+- "Veterinarian". Increases lifespan.
+- "Breeder". Boosts litter sizes.
+- "Trainer". Boosts race speed.
+- "Geneticist". Unlocks faster CRISPR.
+
+Map each skill to a `StandardEffect` variant that adjusts the appropriate horse-struct field or hooks the appropriate game function.
+
+### Hotkey system
+
+After `horsey-mod` gets an SDL3 input hook (D-tier 4 work; not yet started), add a `hotkeys` module that:
+
+- Hooks SDL's keyboard / mouse input handlers in Horsey.exe.
+- Translates modifier+click into game actions.
+- Persists key bindings via modforge's settings system.
+- Live-reload bindings via `--reload` once hot-reload is hardened.
+
+The user-locked v1 binding is `Shift+Click` smart-transfer of a horse between vehicle / pasture / race-line (see `todo.md` "Hotkeys"). All other bindings are parking-lotted.
