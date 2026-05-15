@@ -139,22 +139,16 @@ Status codes:
 
 After reading all of HLT's `pattern_scan.cpp`, `pattern_targets.cpp`, `offsets.h`, `scene_resolver.cpp`, `child_blend_hook.cpp`, and `injector_main.cpp`, the following patterns are strictly better than what we have and worth porting.
 
-#### License posture (HLT is GPL v3)
+#### License posture (HLT is GPL v3; we are GPL v3)
 
-HLT is GPL v3 (per its `LICENSE` file). We treat HLT as DOCUMENTATION, not source. Specifically:
+Both projects ship under GPL v3 (HLT's `LICENSE`; our workspace `LICENSE`). No collision: GPL v3 explicitly permits derivative works under the same license. We can lift code, pattern strings, offset values, or whole modules from HLT directly.
 
-- We READ their code to understand patterns / techniques / algorithms.
-- We WRITE OUR OWN Rust implementation; we do NOT copy their C++ text or translate it line-for-line.
-- We do NOT lift their pattern strings, offset values, or RVA constants verbatim. (One overlap exists: the byte sequence `48 89 1D ?? ?? ?? ??` appears in both codebases as an MSVC opcode encoding. That's a fact about how x86-64 `mov [rip+disp32], rbx` encodes; not copyrightable.)
-- We CREDIT them in docs (see todo.md preamble + `PRIOR-ART-HorseyLiveTweaks.md`).
+In practice we still PREFER reimplementing in Rust:
+- Cross-language ports are usually cleaner than line-for-line translations.
+- Our architecture (patternsleuth + xref constraint + multi-target scan) is materially different from HLT's hand-rolled byte loop; direct ports often regress on our infrastructure.
+- Engineering hygiene: understand the algorithm before copying.
 
-Copyright protects EXPRESSION, not METHODS (17 USC 102(b); Baker v. Selden 1879). Reimplementing a pattern in a different language with our own values and naming is clean-room reimplementation and does not trigger GPL.
-
-If we ever need to ship a feature whose only viable implementation IS a port of theirs (verbatim or close), we'd either:
-1. Ship that single module under GPL v3 (and keep our own work separable).
-2. Reimplement from the decomp or live binary observations without reading their source.
-
-For our current scope (data-globals + function-entries + field offsets via patternsleuth), we have not ported any HLT code. Only ideas.
+But direct ports are allowed and don't need clean-room hedging. CREDIT them in commit messages + the prior-art doc either way.
 
 #### Patterns to port
 
