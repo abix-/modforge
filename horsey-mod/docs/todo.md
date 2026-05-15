@@ -565,18 +565,6 @@ home), they stack on top of each other. Vanilla problems:
 
 #### Sub-features
 
-**1. Auto-spread overlapping horses**
-
-When N >= 2 horses share a tile, render them in a small fan/circle around
-the actual position so each is individually clickable. Hover one horse to
-"lift" it forward for emphasis.
-
-Implementation: hook the per-horse render call. Detect overlap by
-quantizing positions to half-tile buckets. For each bucket with >1
-horse, offset each horse's render position by a deterministic angle
-(`horse_id % N * 360/N`) and a small radius. The actual game-state
-position stays unchanged; only the render position is offset.
-
 **2. Roster panel overlay**
 
 A side-panel UI showing ALL horses with one row each, columns sortable:
@@ -598,54 +586,19 @@ Front-end:
 - Web UI served from `modforge::server` stays as the secondary /
   scripting surface (browser tab + curl), not the primary UX.
 
-**3. Status badges on stacked horses**
-
-Above each horse, render small icons matching what the engine already
-draws (`StatusHungry`, `StatusTired`, `StatusOld`) but ENLARGED and
-ALWAYS-VISIBLE (not just on hover). Color-coded:
-
-- Red dot = needs food urgently
-- Yellow dot = tired
-- Blue dot = ready to breed
-- Skull = imminent death from old age
-
-Hook the existing `render_horse_thought_bubble` family (we annotated
-those at `0x1400bd820` etc.) and always-draw the badges instead of
-gating on hover state.
-
-**4. Hotkey horse cycling**
-
-When multiple horses are stacked, pressing `Tab` cycles selection
-through them. Useful when auto-spread is off or when zoomed out.
-
 **5. Count display**
 
 Floating "N" badge above a stack of overlapping horses, showing the
 count. Disappears when you mouse-over (so it doesn't block the spread
 view).
 
-**6. Breeding picker**
+**7. Pasture auto-buy hay**
 
-A dedicated overlay: pick parent A from the roster, pick parent B,
-preview the predicted offspring stats (using our knowledge of the
-breeding formula: `litter = min(parentA.litter, parentB.litter) +
-rng_bonus`). Click "Breed" to drag both horses to the barn
-automatically.
+Horses already auto-eat from pasture hay; the actual chore is BUYING the hay from the store to keep the pasture stocked. Toggle: "auto-buy hay when the pasture stock drops below the threshold". On, the mod posts the buy at the store on the player's behalf. Off, you do it manually. Removes the trip-to-the-store loop.
 
-**7. Smart auto-feeding**
+Implementation: read pasture hay stock + price; when stock crosses a configurable low-water mark and the player has enough money, fire the in-game buy op for N units. Same buy primitive the player triggers; we just automate the trigger.
 
-A toggle: "auto-feed hungry horses from inventory hay". When on, any
-horse whose hunger crosses the threshold gets fed automatically as
-long as hay is in stock. Removes the manual feeding chore entirely.
-
-**8. Group operations**
-
-Select multiple horses (Ctrl+click or via the roster panel), then:
-- Move them all to a location
-- Feed them all
-- Put them all to sleep
-- Retire them all
-- Bulk-sell at the glue factory
+Group operations (multi-select move / sleep / retire / bulk-sell at glue factory) are folded into the roster UI; no separate sub-feature.
 
 #### Why this matters
 
@@ -659,14 +612,9 @@ This entire feature stack rides on `horsey-mod`:
 
 | Sub-feature | Backend | Frontend |
 |---|---|---|
-| Auto-spread | Hook per-horse render | none (positions just shift) |
 | Roster panel | Existing `horses.*` ops | modforge ImGui panel |
-| Status badges | Hook status-bubble render | none (badge always-on) |
-| Hotkey cycling | SDL input hook (modforge primitive) | none |
 | Count display | Hook overlap detection | rendered via render hook |
-| Breeding picker | New `breed.preview` op | modforge ImGui panel |
-| Auto-feed | New `auto_feed` toggle setting | none (runs automatically) |
-| Group ops | New `horses.bulk_*` ops | modforge ImGui panel |
+| Pasture auto-buy hay | New ops to read pasture hay stock + post a buy at the store on threshold | none (runs automatically) |
 
 Build the ImGui shell in `modforge` once (D-X-style swap-chain hook +
 window/panel API) so horsey-mod, schedule1, grounded2 and future
