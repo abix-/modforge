@@ -213,12 +213,13 @@ a candidate, manual re-read recommended.
 ## Buf-slot -> horse-struct field (consumer reads)
 
 Auto-derived from `FUN_1400ab3d0` decomp by
-`horseygame/extract-consumer-map.py`. Reads 61 distinct
+`horseygame/extract-consumer-map.py`. Reads 62 distinct
 buf slots; 23 are direct copies to a horse-struct field,
 the rest feed conditionals or intermediate math.
 
 | Buf slot | Horse struct field(s) | Note |
 |---|---|---|
+| 0 (0x0) | _(reads only)_ | conditional / intermediate |
 | 1 (0x1) | _(reads only)_ | conditional / intermediate |
 | 2 (0x2) | _(reads only)_ | conditional / intermediate |
 | 3 (0x3) | _(reads only)_ | conditional / intermediate |
@@ -280,6 +281,65 @@ the rest feed conditionals or intermediate math.
 | 350 (0x15e) | _(reads only)_ | conditional / intermediate |
 | 351 (0x15f) | +0x200 | direct copy |
 | 352 (0x160) | +0x2a8 | direct copy |
+
+## Engine internals (slots 0..3): the "horse fundamental size"
+
+Slots 0..3 are computed VERY early in `FUN_14009f680` from a
+fixed set of 7 base genes. They aren't directly copied by
+the consumer for the most part, but slot 0 is read by
+`FUN_1400ab3d0` via `*param_2` (the bare-dereference syntax
+our extractor v1 missed; v2 catches it).
+
+Evidence: `decompiled/all_functions.c` lines 94066-94143
+(inside `FUN_14009f680`).
+
+```
+fVar35 =   2 * gene_0 (SIZE)
+         * (gene_3 (BONES) + gene_4 (BONES2) + 1)
+         *  gene_5 (CHEST_BIG)
+         *  gene_6 (CHEST_SMALL)
+         *  gene_7 (GIANT_DWARF)
+
+fVar37 = (gene_6 (CHEST_SMALL) * gene_2 (SKINNY)
+          * gene_1 (ASPECT)) / gene_5 (CHEST_BIG)
+
+slot[0] = SQRT(fVar35 * fVar37)
+        = SQRT( 2 * SIZE * (BONES+BONES2+1)
+              * CHEST_SMALL^2 * SKINNY * ASPECT * GIANT_DWARF )
+
+slot[1] = fVar35 / slot[0]       // derived height / aspect-corrected size
+slot[2] = slot[1] / fVar37       // depends on iVar15 (gene_9 = QUADRUPED) branch
+slot[3] = fVar35 / slot[0]       // (set in some branches; see line 94137)
+```
+
+The conditional branches at lines 94086-94118 select
+different formulas based on `local_31c` (gene_10 = BIPED)
+and `iVar15` (gene_9 = QUADRUPED). This is why slot 0's
+value couples to four genes at once for biped horses vs.
+seven for quadrupeds.
+
+**Slot 0's indirect path through the consumer.** The
+consumer reads `*param_2` (slot 0) at line 494 and
+compares it to `param_2[1]` (slot 1) to drive
+`local_2f8 = slot1 <= slot0 && slot1 != slot0`. That
+boolean later gates which code path writes which struct
+fields. Our slot-0 = 200.0 override flipped this flag,
+making the consumer take a different write path that
+produced visually wider horses.
+
+**Implication for modding.** If a new gene wants to
+adjust overall horse size, the cleanest options are:
+
+1. Add to slot 0 with `mode=add` (not set), so the
+   underlying SQRT product is preserved and the comparison
+   stays consistent.
+2. Pick an unused slot in the consumer's direct-copy set
+   (the slots in the table above that map to a horse
+   struct field) and target a specific subsystem instead.
+
+Writing `mode=set` to slot 0 with a large value is too
+heavy-handed and will produce extreme effects. That's the
+giant-baby case from 2026-05-14.
 
 ## Confirmed visible-effect slots
 

@@ -21,6 +21,10 @@ _DIRECT = re.compile(
 )
 _INDIRECT = re.compile(r"param_2\[\s*(?P<slot>0x[0-9a-fA-F]+|\d+)\s*\]")
 
+# Bare `*param_2` reads slot 0 (the dereference shorthand the
+# decompiler emits instead of `param_2[0]`). Must be tracked too.
+_BARE_DEREF = re.compile(r"\*\s*(?:p\w*\s*=\s*)?param_2(?!\w)")
+
 
 def parse_num(s):
     s = s.strip()
@@ -44,6 +48,11 @@ def extract():
         all_slots.add(slot)
     for m in _INDIRECT.finditer(body):
         all_slots.add(parse_num(m.group("slot")))
+    # Slot 0 reads via bare `*param_2`. The decompiler emits this
+    # form whenever the C code uses `*param_2` (e.g. line 494
+    # `fVar60 = *param_2;`) instead of `param_2[0]`.
+    if _BARE_DEREF.search(body):
+        all_slots.add(0)
 
     return direct, all_slots
 
