@@ -1194,6 +1194,48 @@ Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
                 }
             },
         ),
+
+        // ===== Native ImGui window (Phase A) =====
+        //
+        // Opens a standalone top-level Win32 + D3D11 + ImGui window
+        // inside the injected DLL. Independent of any host engine;
+        // sits beside Horsey.exe's window and is alt-tabbable.
+        OpDef::new(
+            "ui.native.spawn",
+            "Spawn the standalone ImGui window. Idempotent.",
+            "{window_title?: str}",
+            |args| {
+                let title = args.get("window_title")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("horsey-mod");
+                let armed = modforge::ui::native::spawn(title);
+                Ok(json!({"armed": armed}))
+            },
+        ),
+        OpDef::new(
+            "ui.native.shutdown",
+            "Close the standalone ImGui window + join the render thread.",
+            "",
+            |_| {
+                modforge::ui::native::shutdown();
+                Ok(json!({"armed": modforge::ui::native::is_visible()}))
+            },
+        ),
+        OpDef::new(
+            "ui.native.is_visible",
+            "True if the standalone ImGui window currently exists.",
+            "",
+            |_| Ok(json!({"visible": modforge::ui::native::is_visible()})),
+        ),
+        OpDef::new(
+            "ui.native.stats",
+            "Render-loop stats (frame count, visibility).",
+            "",
+            |_| Ok(json!({
+                "visible": modforge::ui::native::is_visible(),
+                "frames": modforge::ui::native::frame_count(),
+            })),
+        ),
     ]);
     modforge::log!("horsey-mod: registered ops");
 }

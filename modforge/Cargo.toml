@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
+build = "build.rs"
 
 # Engine-agnostic core consumed natively by both ueforge (UE5 /
 # UE4SS / Rust) and unityforge (Unity Mono / BepInEx / Rust +
@@ -40,6 +41,8 @@ windows-sys = { workspace = true, features = [
     "Win32_System_ProcessStatus",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Gdi",
 ] }
 tiny_http = { workspace = true }
 socket2 = { workspace = true }
@@ -64,6 +67,17 @@ zip = { workspace = true }
 [[bin]]
 name = "modforge-deploy"
 path = "src/bin/modforge_deploy.rs"
+
+[features]
+# Phase A: standalone ImGui window for native-PE mods (horsey-mod
+# initially). Compiles modforge/cpp/modforge_ui_native.cpp + vendored
+# ImGui at ../ueforge/cpp/imgui/ into a static lib linked into the
+# consuming cdylib. Off by default so non-native-PE consumers
+# (ueforge with its UE4SS-bundled ImGui) don't pay the compile cost.
+native-ui = []
+
+[build-dependencies]
+cc = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

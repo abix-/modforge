@@ -100,7 +100,7 @@ The shipping build's Ghidra-decomp RVAs were stale by -277 to -1548 bytes. Way p
 
 Pick from the queue (in priority order):
 
-1. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
+1. ~~**ImGui-in-modforge primitive.**~~ DONE 2026-05-15 (Phase A of [`docs/UI-CENTRALIZATION.md`](../../docs/UI-CENTRALIZATION.md)). Standalone Win32 + D3D11 + ImGui window in `modforge::ui::native` behind the `native-ui` Cargo feature. Live integration test `tests/native_ui_lifecycle.rs` green against Horsey.exe; `ui.native.spawn`/`shutdown`/`is_visible`/`stats` ops shipped. Tab render fns are SEH-wrapped. Roster UI + future QoL panels can now be authored as `TabDef`s with `modforge_ui_*` primitives.
 2. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
 3. **First bestiary species.** With the 480-gene system shippable, the actual content payoff: author a real `bx_*` species in `genes-extended.xml` with a render-slot mapping that produces a recognizable visible effect. End-to-end demonstration for players.
 4. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.

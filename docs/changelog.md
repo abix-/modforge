@@ -12,6 +12,181 @@
 
 Newest first.
 
+## 2026-05-14 (relocated from todo.md: unityforge / wwm-mod / naming completions)
+
+Material below was tracked as `[x]` checkboxes in [`todo.md`](todo.md) until
+2026-05-15. Relocated here as the authoritative record. No new work; only the
+provenance changed.
+
+- **Demo-end block SOLVED** (attempt 7). Harmony prefix returning
+  false on `TutorialManager.CompleteDemo` +
+  `CompleteDemoCoroutine`. Implemented in
+  `unityforge/cs-shim-mono/Plugin.cs` `InstallDemoCompleteBlock`.
+  Full incident write-up in
+  [`wild-west-miner-research.md` §7.7](wild-west-miner-research.md#77-demo-end-block-2026-05-14-solved-on-attempt-7).
+  Methodology lesson: `list_methods` against the most-obvious
+  manager class as the FIRST move, not the last.
+- **Plot Enlargement / Land Surveyor "buy" feature investigated,
+  NOT PURSUING**. Bank's Land Surveyor board
+  (`Bank/.../WoodenBoard/PlotOffer{,(1),(2),(3)}`) is a demo-cut
+  feature. Visual assets shipped (4 PlotOffer GameObjects with
+  labels + prices), zero managed code references across any DLL
+  in `Managed/`, not wired into the game's `BuyPopup` /
+  `BuySection` system. Implementation would be content
+  development, not modding. Evidence in
+  [`wild-west-miner-research.md` §7.8](wild-west-miner-research.md#78-plot-enlargement--land-surveyor-search-2026-05-14-partial).
+- **Naming standardization landed**: per-game mod crates now use
+  the `<game>-mod` form. `grounded2-rpg` -> `grounded2-mod`,
+  `wwm-rpg` -> `wwm-mod`, `outworld-station-tweaks` ->
+  `outworld-station-mod`, `horseyforge` -> `horsey-mod`. One
+  commit per crate so it bisects clean. `il2cpp-smoke` kept its
+  name (smoke target, not a per-game mod). What the rename
+  touched per crate: directory rename, workspace `Cargo.toml`
+  member list, each crate's `[package].name` + `[lib].name`,
+  `[package.metadata.ueforge]` (deploy paths, log filenames,
+  `mods.txt` entry, deployed log filename change e.g.
+  `grounded2_rpg.log` -> `grounded2_mod.log`), every
+  `use grounded2_rpg::` / `use wwm_rpg::` import, workspace
+  docs sweep, each crate's own `docs/` + `README.md`,
+  `.claude/project_state.md`, skill files
+  (`~/.claude/skills/grounded2/SKILL.md` etc.), PowerShell
+  scripts (`build_and_deploy.ps1`), horsey-mod deployed
+  artifacts (`horseyforge.dll` -> `horsey.dll` and the matching
+  `inject.exe` / `.log` / `.injstate`).
+
+- **Unityforge Phase 4 generation-versioned hot reload**.
+  Deep-dive in
+  [`unityforge-plan.md` §6.5](unityforge-plan.md#65-hot-reload-phase-4).
+  Replaced naive-FreeLibrary cycle (which crashed WWM
+  2026-05-13). Cdylib `unityforge_shutdown` joins background
+  threads (`modforge::server::shutdown_all` calls
+  `Server::unblock` + thread join; `modforge::rpg::poller::
+  shutdown_all` uses a `Condvar` to wake the sleeping poller
+  immediately and joins; both registered in
+  `modforge::shutdown::SHUTDOWN_REGISTRY` at order 200/250).
+  Shim rewrote `UnityforgeShimPlugin` (cs-shim-mono/Plugin.cs)
+  around a `Generation` class (module handle, init/tick/shutdown
+  delegates, pinned bridge table) with one `_active` + a
+  `_quiesced` list and per-gen tick dispatch. Watcher routes
+  per-second scan for `*.unityforge.gen<N>.dll`; highest
+  N > active triggers `HotSwap`. `NativeLibrary.Free` removed
+  from the helper entirely. HTTP port + Harmony lifecycle on
+  swap: old generation's `unityforge_shutdown` joins HTTP
+  listener (port released) + unpatches via
+  `HOOK_REGISTRY.shutdown_all` before new gen's `init` fires.
+  Shared C# `Harmony` instance + per-gen patch sets in
+  `_patches` dict; cross-gen patches don't collide because old
+  gen removes its own first. `build_and_deploy.ps1 -Hot` scans
+  for highest existing `gen<N>.dll` and writes the build as N+1.
+
+- **Modforge extraction Phase 0a + 0b rows 1-16**. ~12k Rust
+  lines lifted out of ueforge into the engine-agnostic
+  `modforge` crate. Deep-dive in
+  [`unityforge-plan.md` §6 Phase 0](unityforge-plan.md#phase-0-modforge-extraction-4-5-days).
+  Phase 0a shipped `modforge/spec/*` and `modforge/docs/*`
+  (op-envelope, selector-grammar, op-registry,
+  generic-primitives, skill-catalog, rpg-persistence, xp-curve,
+  effect-kinds, trigger-kinds; methodology, composition-model,
+  def-registry, naming). Phase 0b rows 1-15 migrated
+  engine-agnostic infrastructure (ring, counters, log, args,
+  envelope, settings, shutdown, selector grammar, ops registry,
+  server, scanner, winproc, hot_reload, RPG traits, RPG pure
+  math, tracker, poller, slot store, vanilla, disabled) + RPG
+  traits + RPG pure math + tracker. Row 16: generic
+  `std_effect` lifted to `modforge::rpg::std_effect` with
+  blanket `impl<E: Engine> Effect<E>`.
+
+- **Modforge extraction Phase 0b rows 17-22** (framework-wide
+  subsystem migration). Row 17: `client` -> `modforge/client/`.
+  ueforge's HTTP client + scenario DSL + diff/perf/research
+  submodules moved wholesale; `crate::parms` coupling inlined
+  as direct zerocopy calls in `call_ufunction_typed`.
+  Row 18: `bin/ueforge-deploy` -> `modforge-deploy` bin in
+  modforge. `.cargo/config.toml` alias repointed.
+  Row 19: `debug` glue -> `modforge/src/debug.rs` (pure half:
+  `PlayerStateView`, `CatalogEntry`, `catalog_view` generic
+  over `E`). UE-specific helpers (ProcessSnapshot, DamageRing,
+  enqueue_pe) stay in `ueforge::debug`.
+  Row 20: snapshots generics -> `modforge/src/snapshots/`
+  (stub declared; concrete ProjectionSnapshot types follow the
+  first consumer).
+  Row 21: `ui` declarative shape -> `modforge/src/ui.rs`
+  (`TabDef { name, render }` moved; ueforge + unityforge both
+  re-export; rendering stays per-framework).
+  Row 22: `worker` shape -> `modforge/src/worker.rs`
+  (`spawn(name, work)` with panic-guard moved wholesale).
+
+- **Unityforge Phase 1: IL2CPP support + Rust SDK unification**.
+  Deep-dive in
+  [`unityforge-plan.md` §6 Phase 1](unityforge-plan.md#phase-1-unityforge-skeleton--both-c-shims--http-control-plane-10-12-days).
+  1a Cargo crate + workspace wiring. 1b C# Mono shim at
+  `unityforge/cs-shim-mono/Unityforge.Shim.Mono.csproj`
+  (BepInEx 5). 1b shim split: shared `Bridge.cs`,
+  `HarmonyBridge.cs`, `Logger.cs` live in `cs-shim-common/` and
+  are linked from both backend csprojs. 1b-il2cpp C# IL2CPP
+  shim at
+  `unityforge/cs-shim-il2cpp/Unityforge.Shim.Il2Cpp.csproj`
+  (BepInEx 6 IL2CPP + Il2CppInterop). Same bridge ABI as Mono;
+  `Il2CppBridge.cs` implements the surface against
+  `Il2CppInterop.Runtime`. 1c Rust `unity::*` SDK:
+  backend-agnostic surface at `unityforge::unity::*` (`Type`,
+  `Object`, `runtime_kind`); bridge ABI v2 carries
+  `RuntimeKind` tag; `mono::*` and `il2cpp::*` are
+  backend-specific escape hatches. 1d HTTP control plane.
+  1e Hook bridge.
+
+- **Unityforge Phase 2: rpg framework completeness**. Deep-dive
+  in [`unityforge-plan.md` §6 Phase 2](unityforge-plan.md#phase-2-unityforgerpg-3-4-days).
+  Shipped `slot_key_unity` + vanilla cache + std_effect
+  (3 effects) + tracker/skill type aliases. `trigger_harmony` +
+  `OnUnityEvent`: `ON_HARMONY_POST`, `ON_HARMONY_PRE`,
+  `ON_UNITY_EVENT` TriggerDefs in
+  `unityforge::rpg::trigger_harmony` plus `fire_post` /
+  `fire_pre` / `fire_event` helpers (game-side trampolines push
+  events through `Tracker::fire`). `ops_register` for RPG ops:
+  lifted `ueforge::rpg::ops` to `modforge::rpg::ops` generic
+  over `E: Engine`; both frameworks call
+  `modforge::rpg::ops::register(&TRACKER)` (or the
+  `unityforge::rpg::ops::register` /
+  `ueforge::rpg::ops::register` re-exports) to add the standard
+  five-op set.
+
+- **wwm-mod Phase 3a (Mono proof) milestones**. Deep-dive in
+  [`unityforge-plan.md` §6 Phase 3a](unityforge-plan.md#3a-wwm-mod-mono).
+  Strong Back + Greedy Miner declarative via
+  `UnityFieldAdditiveEffect` and `UnityFieldMultiplyEffect`.
+  Slot poller + UnitySlotKey wiring polls
+  `GameSerializationSystem._currentLoadedSaveNumber`.
+  Save/load via `modforge::rpg::store`: JSON under
+  `<DLL_dir>/wwm-mod/<slot>.json` written atomically by the
+  Tracker. **Quick Pickaxe VERIFIED IN-GAME 2026-05-13**:
+  spending 10 points mutated `DigManager._digRange` from 3.0
+  to 4.5 exactly; save persisted to `<WWM>/wwm-mod/0.json`.
+  Lucky shipped as a format-only RuntimeEffect (hot-path
+  probability scaling is a future Harmony postfix callback
+  that reads the level on every fire). Declarative UI:
+  `ModDef.tabs` field added on unityforge; `register_ui_ops`
+  exposes `list_tabs` + `render_tab` via HTTP;
+  `wwm-mod::skills::render_tab` logs a catalog + state snapshot
+  through the BepInEx sink. Full in-process ImGui rendering is
+  deferred until a bundled imgui binding lands on unityforge
+  (plan carve-out: "OnGUI fallback is always available").
+
+- **Unityforge Phase 3b: IL2CPP smoke proof-point**. Deep-dive
+  in [`unityforge-plan.md` §6 Phase 3b](unityforge-plan.md#3b-il2cpp-proof-point).
+  Default Harmony target is
+  `UnityEngine.Time::get_realtimeSinceStartup` (every Unity
+  game ships it) so the smoke crate loads against any IL2CPP
+  game; overridable via `IL2CPP_SMOKE_TARGET_CLASS` /
+  `IL2CPP_SMOKE_TARGET_METHOD` env vars. Smoke cdylib at
+  `grounded2mods/il2cpp-smoke/` with crate-type `cdylib` and
+  the three `unityforge_*` exports verified via dumpbin. Ops
+  `smoke_state` (runtime tag + postfix counter), `smoke_read`
+  (read_field through the bridge), `smoke_write` (write_field
+  through the bridge); one Harmony postfix wired through
+  `patch_postfix`. Curl verification still requires a running
+  game (out of scope).
+
 ## 2026-05-14 (horseyforge: split-flag fatigue + binary-patch infra wip)
 
 - **Split-flag fatigue suppressor** ([`608f994`](.)).

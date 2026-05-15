@@ -26,3 +26,6 @@ pub struct TabDef {
     pub name: &'static str,
     pub render: fn(),
 }
+
+#[cfg(feature = "native-ui")]
+pub mod native;

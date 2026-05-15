@@ -2,7 +2,7 @@
 
 > **Authoritative on:** the plan to consolidate the Rust ImGui API + C++ shim into modforge so every game-mod (ueforge / horsey-mod / unityforge / outworld-station-mod / grounded2-mod / future) uses the same surface, regardless of which host runtime (UE4SS, BepInEx, none) owns the actual ImGui context.
 
-Status: PROPOSED 2026-05-15. Not yet executed.
+Status: Phase A SHIPPED 2026-05-15. Phase B + C still open.
 
 ## Current state
 
@@ -47,6 +47,16 @@ Tab `render: fn()` bodies in game-mods stay BYTE-IDENTICAL across backends. The 
 ## Migration plan (phased, low-risk)
 
 ### Phase A: add the standalone-window backend without touching existing consumers
+
+**SHIPPED 2026-05-15.** Live integration test green against Horsey.exe: `ui.native.spawn` -> `is_visible=true` -> render thread presenting frames -> `ui.native.shutdown` -> `is_visible=false`. Total cycle 6.55s including Steam launch + inject. Tab `render_fn` calls are SEH-wrapped so a tab crash cannot take down the game.
+
+Files landed:
+
+- `modforge/build.rs`: compiles vendored ImGui (reused from `ueforge/cpp/imgui/`) + Win32/DX11 backends + native cpp into `libmodforge_native_ui.lib`, gated on the `native-ui` Cargo feature. Off by default; pure-rlib consumers pay zero compile cost.
+- `modforge/cpp/modforge_ui_native.cpp`: top-level Win32 window, D3D11 device + swap chain, ImGui context, render thread, tab walker. Owns its own message pump.
+- `modforge/src/ui/native.rs`: safe Rust wrapper exposing `spawn`, `shutdown`, `is_visible`, `frame_count`, `register_tabs`.
+- `horsey-mod`: enables `native-ui` feature; registers `ui.native.spawn`, `ui.native.shutdown`, `ui.native.is_visible`, `ui.native.stats` ops.
+- `horsey-mod/tests/native_ui_lifecycle.rs`: harness test that runs the full spawn-visible-shutdown cycle against the live game.
 
 This is the smallest move that unblocks horsey-mod without disrupting working code in ueforge / grounded2 / outworld-station.
 
@@ -102,4 +112,4 @@ Manual visual verification stays the source of truth for "the window looks right
 
 ## When to start
 
-User-approved 2026-05-15. Starting Phase A.
+User-approved 2026-05-15. Phase A shipped same day. Phase B + C remain open; pick up Phase B when there's an appetite to consolidate the Rust API surface across consumers (low urgency since Phase A unblocked horsey-mod and existing ueforge consumers are working).
