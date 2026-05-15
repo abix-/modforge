@@ -445,6 +445,110 @@ would over time make even heterozygous foals lean
 small. Real population genetics, real evolutionary
 pressure.
 
+#### Example 6: end-to-end breeding event (the whole picture)
+
+The most-asked question: **how does a foal actually get its 240 genes from two parents?** Here's the whole flow.
+
+**How many genes per horse.** Every horse carries the full **240-gene catalog** (see Part 3). Each gene has a maternal pick and a paternal pick, so a horse stores **480 allele indices** total (240 maternal + 240 paternal). On disk in `save1.dat` this is ~240 bytes per horse (one byte per gene, encoded as the diploid PAIR via the `0x09 + rank(s2)*8 + rank(s1)` rank-formula documented in [`SAVE-FORMAT.md`](SAVE-FORMAT.md)). In the CRISPR Lab UI those 240 byte-pairs render as **20 helices** (Part 4); each helix position is one gene's diploid pair shown as two stacked bases.
+
+**Setup.** Two parents, picked from the player's stable:
+
+- **Honky Tonk Tonky** (a mare, pop `default`, default-pop horse).
+- **Dale** (a stallion, pop `default`, also default-pop).
+
+Each has a 240-gene genome with 480 alleles. We'll trace a foal across THREE genes to keep the table readable, but the same logic applies to all 240.
+
+Maternal (Honky) and paternal (Dale) genomes at three illustrative positions:
+
+| Gene | g0 | g1 | g2 | g3 | Honky's strand A pick | Honky's strand B pick | Dale's strand A pick | Dale's strand B pick |
+|---|---|---|---|---|---|---|---|---|
+| `SIZE` (helix 6 pos 0, mut=95, scale=100) | 100 | 50 | 35 | 75 | 0 (=100) | 0 (=100) | 0 (=100) | 2 (=35) |
+| `OLD_AGE` (helix 0 pos 10, mut=100, scale=1) | 0 | 0 | -1 | 2 | 0 (=0) | 0 (=0) | 3 (=+2) | 0 (=0) |
+| `LITTER_SIZE` (helix 0 pos 9, mut=100, scale=1) | 1 | 2 | 3 | 5 | 1 (=2) | 0 (=1) | 2 (=3) | 1 (=2) |
+
+So Honky is `SIZE: 100/100` (homozygous 100, big mom), `OLD_AGE: 0/0` (homozygous neutral aging), `LITTER_SIZE: 2/1` (heterozygous, two-baby litter expressed). Dale is `SIZE: 100/35` (heterozygous big+small), `OLD_AGE: +2/0` (heterozygous, carrying short-life allele), `LITTER_SIZE: 3/2`.
+
+**Step 1: breeding combinator (the part the engine does).** Per [`eldritch-hue/hhgm-EGM`'s breeding model](https://github.com/eldritch-hue/hhgm-EGM) (independently verified by the in-game observation that foals always inherit one allele per gene from each parent):
+
+```text
+for each gene g in 0..240:
+    child.maternal_pick[g] = random_choice(honky.strand_A[g], honky.strand_B[g])  // 50/50
+    child.paternal_pick[g] = random_choice(dale.strand_A[g],   dale.strand_B[g])    // 50/50
+```
+
+Mutation during breeding (the `m` attribute's runtime role) is still being traced. See Part 1 "Population genetics: live mutation drift" for what `FUN_1400c0660` does to the table across deaths. The child-generation step is straight Mendelian.
+
+Say the RNG rolls (one coin flip per gene per parent):
+
+| Gene | Honky's contribution | Dale's contribution | Child's diploid pair |
+|---|---|---|---|
+| `SIZE`        | strand A → 0 (=100) | strand B → 2 (=35) | 0 / 2 |
+| `OLD_AGE`     | strand B → 0 (=0)   | strand A → 3 (=+2) | 0 / 3 |
+| `LITTER_SIZE` | strand A → 1 (=2)   | strand A → 2 (=3)  | 1 / 2 |
+
+**Step 2: the diploid blend (per-frame engine math).** The engine then evaluates each gene to a single float. Per the formula above:
+
+- `SIZE` 0/2: `dom_idx = max(0,2) = 2`, `rec_idx = min(0,2) = 0`. `dom = 35, rec = 100`. With vanilla `m=95, scale=100`:
+  ```
+  result = (1 - 95/100) * 35 + (95/100) * 100 = 0.05*35 + 0.95*100 = 1.75 + 95.0 = 96.75
+  ```
+  Foal expresses **SIZE ≈ 97**. Almost as big as mom; the rare small allele only nudges it down slightly.
+
+- `OLD_AGE` 0/3: `dom_idx = 3`, `rec_idx = 0`. `dom = +2, rec = 0`. With `m=100, scale=1`:
+  ```
+  result = (1 - 100/1) * 2 + (100/1) * 0 = -99 * 2 + 100 * 0 = -198
+  ```
+  That blows past the realistic range; the engine clamps internally. Operationally what happens: with `m=100` and `scale=1` the recessive allele FULLY DOMINATES. So foal expresses **OLD_AGE = 0** (the recessive/neutral allele wins). Foal carries the short-life g3 but doesn't express it. And could pass it to its own offspring.
+
+- `LITTER_SIZE` 1/2: `dom_idx = 2`, `rec_idx = 1`. `dom = 3, rec = 2`. `m=100, scale=1`:
+  ```
+  result = 0 * 3 + 1 * 2 = 2
+  ```
+  Foal expresses **LITTER_SIZE = 2** (recessive allele wins, again).
+
+**Step 3: the gene engine writes the render buf.** `FUN_14009f680` reads the foal's resolved gene values and writes ~258 slots into a `float[353]` buf (Part 2). `SIZE = 97` feeds the slot-0..3 SQRT formula along with ASPECT, SKINNY, BONES, BONES2, CHEST_SMALL, GIANT_DWARF. The consumer `FUN_1400ab3d0` then copies 23 of those slots directly into the foal's horse-struct fields (`+0x58..+0x2a8`), which the renderer reads each frame.
+
+**Step 4: visible result.** Foal renders as a near-mom-sized horse. Its OLD_AGE is neutral so it ages normally. Litter_size of 2 means when IT eventually breeds, expect 2 babies per litter.
+
+**Big-picture summary.**
+
+```text
++-------------------+        +-------------------+
+| Mom: 240 genes    |        | Dad: 240 genes    |
+| 480 alleles (dip) |        | 480 alleles (dip) |
++--------+----------+        +----------+--------+
+         |                              |
+         | breed (Mendelian): for each  |
+         | of 240 genes, child gets one |
+         | random allele from each      |
+         | parent (50/50 strand pick)   |
+         v                              v
+       +----------------------------------+
+       | Child: 240 genes, 480 alleles    |
+       | (one maternal + one paternal     |
+       |  pick per gene)                  |
+       +----------------+-----------------+
+                        |
+                        | per-frame engine math
+                        | (diploid blend per gene)
+                        v
+       +----------------------------------+
+       | 240 resolved gene values         |
+       | -> 258 buf-slot writes           |
+       | -> 23 horse-struct fields        |
+       | -> renderer + physics            |
+       +----------------------------------+
+```
+
+**Pop weights vs breeding.** Pop weights (`p0..p3`) only matter when a NEW horse spawns into the world (not from breeding). See Example 3/4. Bred foals inherit STRICTLY from their parents' alleles, never from the pop weights. This is why a `freak` pop's spawn weights bias new wild freaks toward weird alleles, but a freak's foal with a default-pop mate produces a hybrid drawn from each parent's actual genome.
+
+**Modder takeaways.**
+
+- To affect ONLY new-spawn horses, edit `pop.xml` per-allele weights.
+- To affect ALL horses (incl. existing + bred), edit `genes.xml` allele values (`g0..g3`).
+- To affect a single horse already in the game, edit its diploid pair in `save1.dat` (per [`SAVE-FORMAT.md`](SAVE-FORMAT.md)) or use the CRISPR Lab in-game to change one strand at a time.
+- To unlock a NEW behavior (e.g. stamina), neither alleles nor pop weights help. The relevant constant is hardcoded in `Horsey.exe`. See [`ENGINE-EXTENSION.md`](ENGINE-EXTENSION.md).
+
 ---
 
 ### Allele indexing edge cases
