@@ -27,7 +27,7 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets: **R4 in progress, 12/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag`. Remaining ~25 fields need anchors authored.
+- Field offsets: **R4 in progress, 14/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag`. Two duplicate patch-site hardcodes in patches.rs (0x205/0x206) now read the resolvers. Remaining ~23 fields need anchors authored.
 
 **Open work in this section:**
 - [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
@@ -78,16 +78,16 @@ Status codes:
 | Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb** | repeated 4x; one resolver feeds all |
 | `horse_offset::ctx_offset()` 0x2b8 | targets.rs | struct field offset | **R** | `add rcx, imm32` inside HORSE_SAVE_LOADER body (256-byte window) |
 | `FN_RVA` 0x1400ceb60 + `FN_SIZE` 2502 | patches.rs:163,164 | function entry + size | **H-gb** | sleep_safe_no_tire patch site; FN_RVA needs body sig, FN_SIZE needs end-of-function detection |
-| Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs:195 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_B; should reference R4 resolver |
-| Patch-site offset 0x205 (TIRE_FLAG_A store) | patches.rs:199 | struct field offset | **H-gb** | duplicate of horse_offset::TIRED_FLAG_A |
+| Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs | struct field offset | **R** | now reads `horse_offset::tired_flag_b()` resolver |
+| Patch-site offset 0x205 (TIRE_FLAG_A store) | patches.rs | struct field offset | **R** | now reads `horse_offset::tired_flag_a()` resolver |
 | GameState alloc size 0x448 | resolver comments | struct size | **H-gb** | anchor for FUN_14009c6a0 |
 | Horse alloc size 0x498 | resolver comments | struct size | **H-gb** | anchor for HORSE_CONSTRUCTOR |
 
-**H-gb migration progress: 12 done / ~25 remaining.**
+**H-gb migration progress: 14 done / ~23 remaining.**
 
-Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag`.
+Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
 
-Remaining: FRAME_TICK (0x254), FIELD_268 (0x268), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TRAILING_278/27C, TYPE_OR_SPECIES (0x1c), NAME_ID (0x1f8), AGE/MAX_AGE (0x1fc/0x200), SKILL/LITTER_SIZE_STAT (0x21c/0x254), roster stride 0x24, GameState alloc 0x448, Horse alloc 0x498, no_tire FN_RVA + FN_SIZE, two duplicate patch-site offsets in patches.rs.
+Remaining: FRAME_TICK (0x254), FIELD_268 (0x268), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TRAILING_278/27C, TYPE_OR_SPECIES (0x1c), NAME_ID (0x1f8), AGE/MAX_AGE (0x1fc/0x200), SKILL/LITTER_SIZE_STAT (0x21c/0x254), roster stride 0x24, GameState alloc 0x448, Horse alloc 0x498, no_tire FN_RVA + FN_SIZE.
 
 #### Algorithm constants (H-alg): we own; intentional
 

@@ -187,16 +187,20 @@ pub mod sleep_safe_no_tire {
     /// We accept either 7-byte (no REX) or 8-byte (REX-prefixed)
     /// instruction encoding for each of the two stores.
     fn find_patch_site(bytes: &[u8]) -> anyhow::Result<(usize, usize)> {
-        // Collect every +0x206=0 store with its instruction length.
-        // Also collect every +0x205=0 store (for proximity matching).
+        // Collect every +TIRED_FLAG_B=0 store with its instruction
+        // length. Also collect every +TIRED_FLAG_A=0 store (for
+        // proximity matching). Offsets resolved via R4 so they
+        // track on game updates.
+        let disp_b = targets::horse_offset::tired_flag_b() as u32;
+        let disp_a = targets::horse_offset::tired_flag_a() as u32;
         let mut sites_206: Vec<(usize, usize)> = Vec::new();
         let mut sites_205: Vec<(usize, usize)> = Vec::new();
         for i in 0..bytes.len() {
-            let (m206, l206) = parse_zero_store(&bytes[i..], 0x206);
+            let (m206, l206) = parse_zero_store(&bytes[i..], disp_b);
             if m206 {
                 sites_206.push((i, l206));
             }
-            let (m205, l205) = parse_zero_store(&bytes[i..], 0x205);
+            let (m205, l205) = parse_zero_store(&bytes[i..], disp_a);
             if m205 {
                 sites_205.push((i, l205));
             }
