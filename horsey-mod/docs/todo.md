@@ -37,6 +37,22 @@ Roughly ordered by leverage.
 
 ---
 
+## P0 RULE: USE PATTERNSLEUTH. NO HAND-ROLLED SCANNERS
+
+User-locked 2026-05-15. Every pattern-scan, xref-find, or signature match in this repo MUST go through the `patternsleuth` crate via `modforge::patterns::sleuth`. NO exceptions. ZERO tolerance.
+
+This includes:
+
+- **Address resolution** (functions + data globals): use `Pattern::new("opcode bytes ?? ?? ?? ?? imm")` + `sleuth::resolve_all`. Already done for the 9 R-parity function entries via the existing catalog.
+- **Xref scanning** (find every `.text` instruction whose `disp32` decodes to a target data address): use patternsleuth's built-in `X<target_addr>` pattern syntax. The crate already supports this (`patternsleuth_scanner/src/lib.rs:180-188` parses `X0x...` as a 4-byte wildcard with an xref constraint; `is_match` at line 232 does the disp32-decode check). Build a `Pattern::new("X0x<target>")` and feed it through the existing `sleuth::resolve_all` infrastructure. No byte loops, no manual `i32::from_le_bytes` over `.text`, no manual `next_ip` arithmetic.
+- **Data scans** (find a value in `.data`): use patternsleuth with the value bytes as a literal pattern (e.g. `"b0 00 00 00"` for u32 == 176).
+
+The hand-rolled `scan_xrefs` function shipped in commit `3553f50` violates this rule and is the first thing to fix. Replace with a patternsleuth-backed implementation that reuses the same `sleuth::resolve_all` flow R3 uses. Rip it out; do not add new hand-rolled scanning code anywhere in the repo.
+
+Why: patternsleuth has SIMD-accelerated scanning, well-tested xref decoding (including the `next_ip` math and signed disp32 handling we keep getting wrong), and a single-config-list API that processes 30+ patterns in one pass over `.text`. Rolling our own bypasses all of that and accumulates correctness bugs (the `tail_imm_width` heuristic in the current `scan_xrefs` is one).
+
+If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
+
 ## P0 BLOCKER (CRITICAL): the supposedly-resolved GAMESTATE_PTR is wrong
 
 Found 2026-05-15 via `mem.find_xrefs` (commit `3553f50`). The R3 resolver in commit `ae333c6` returned `GAMESTATE_PTR = 0x7ff63d864c38`. But:
