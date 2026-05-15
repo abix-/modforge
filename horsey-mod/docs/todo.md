@@ -11,29 +11,13 @@ Roughly ordered by leverage.
 
 ## Table of contents
 
-- [Current status (2026-05-15, after commit `352daed`)](#current-status-2026-05-15-after-commit-352daed)
-- [P0. `sleep_safe_no_tire` patch site discovery](#p0-sleep_safe_no_tire-patch-site-discovery)
+- [P0 RULE: USE PATTERNSLEUTH](#p0-rule-use-patternsleuth-no-hand-rolled-scanners)
+- [P0 BLOCKER: pattern-resolve EVERY hardcoded address](#p0-blocker-pattern-resolve-every-hardcoded-address)
+- [Ship status pointers](#ship-status-pointers)
 - [P0. Bestiary Expansion: double the species count](#p0-bestiary-expansion-double-the-species-count)
 - [P0. Gene Table Doubling: 240 -> 480 implementation plan](#p0-gene-table-doubling-240---480-implementation-plan)
 - [Other open work](#other-open-work)
-- [Done (recent)](#done-recent)
-- [Active blocker](#active-blocker)
-- [High-priority features](#high-priority-features)
-- [Mod foundations](#mod-foundations)
-- [Content-design ideas (for after foundations are in place)](#content-design-ideas-for-after-foundations-are-in-place)
-- [Open research questions](#open-research-questions)
-- [Long-term: open the platform](#long-term-open-the-platform)
-- [Known control-plane issues (carried over from first-injection milestone)](#known-control-plane-issues-carried-over-from-first-injection-milestone)
-- [Open next reads (priority order)](#open-next-reads-priority-order)
-- [Working principle](#working-principle)
-- [User's gameplay goal (the original motivator)](#users-gameplay-goal-the-original-motivator)
-- [Address resolution (R1-R5 phased plan)](#address-resolution-r1-r5-phased-plan)
-- [External-knowledge verification gaps](#external-knowledge-verification-gaps)
-- [Bestiary viability research](#bestiary-viability-research)
-- [Content-creation verification gaps](#content-creation-verification-gaps)
-- [Gene system open questions](#gene-system-open-questions)
-- [Decompilation next steps](#decompilation-next-steps)
-- [Save format research](#save-format-research)
+- [Appendix: Feature wishlist](#appendix-feature-wishlist-merged-from-roadmapmd-2026-05-15)
 
 ---
 
@@ -55,27 +39,20 @@ If a needed feature is missing from patternsleuth, add it to the upstream crate 
 
 ## P0 BLOCKER: pattern-resolve EVERY hardcoded address
 
-User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved before any more feature work lands. This is not optional and not negotiable. The reasoning:
+User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. Authoritative migration tracker (data-globals + function-entries tables, R3 validation primitives, definition of done): [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md#migration-hardcoded---resolved-authoritative-status).
 
-- **Game updates break us.** The shipping Horsey build is a moving target. Save-target RVAs have already drifted -277 to -1548 bytes between builds (`bd95252` re-derivation). The same drift will hit every other hardcoded address eventually. Note: the 2026-05-15 "GAMESTATE_PTR returns 0x864c38" case was not version drift, it was wrong-sigs matching unrelated globals; see "P0 RESOLVED" above.
-- **Patches won't persist.** D1/D3/D4/D5 detours all install at fixed RVAs. When the next game update ships, every detour misses its target and arms either zero subsystems or, worse, patches a different function. Every patch becomes a latent crash bug. Pattern-resolved addresses move with the code.
-- **No partial migration.** "Most are resolved" is not enough. A single hardcoded address in the hot path means the next game update bricks the mod for everyone. Either everything resolves or the mod's reliability story is "works on the 2026-05-08 build only."
+**Current status (2026-05-15):**
+- 6/6 data globals on **R**
+- 30/31 function entries on **R**
+- 1 H-stale: `RETIRE_HORSE_HANDLER` (candidate[0] from the probe collided with a 4-arg-zero-then-call shape; needs a higher candidate index or a tighter sig)
+- Field offsets (`gs_offset::*`, `horse_offset::*`) deferred until a build is observed where one has actually shifted
 
-**Definition of done:**
-1. Every entry in the comparison table below is **R** (production reads through resolver), not **R-parity** (sig exists but production still uses hardcoded) and not **H** (hardcoded only).
-2. Every resolver has at least 2 candidate signatures so a single MSVC reorder between builds doesn't break it.
-3. Every resolver has an alias-check test (`tests/r3_*.rs`) that fails loud on the next build whose drift the sigs don't survive.
-4. CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs.
+**Open work in this section:**
+- [ ] Re-derive `RETIRE_HORSE_HANDLER` true entry. Use `research_find_function_entry` with a wider window; manually pick the candidate that ISN'T the int3-padded stub thunk shape.
+- [ ] Author second candidate signatures for every resolver so a single MSVC reorder between builds doesn't break it (current Definition of Done #2; one sig each today).
+- [ ] CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs (Definition of Done #4).
 
-**Order of attack:**
-1. ~~Tooling first: `mem.find_xrefs`.~~ DONE in `9fdeca9` (patternsleuth-backed, multi-prefix anchored scan).
-2. ~~Re-resolve GAMESTATE_PTR.~~ NO LONGER URGENT. The slot RVA was correct all along; the bug was a missing deref in `gamestate::ptr()` (closed 2026-05-15, see "P0 RESOLVED" at top). Re-authoring its sigs against `FUN_1400fd580` is still valuable for build-drift resilience but isn't blocking.
-3. Author sigs for the remaining 5 data globals (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL). Each is single-writer (constructor / init code stores the value); anchor on the store site plus a discriminator instruction, decode the disp32 of the RIP-rel store to recover the slot. This is the HorseyLiveTweaks pattern from `scene_resolver.cpp:11-33`.
-4. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
-5. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
-6. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
-
-**Feature backlog gate.** With GAMESTATE_PTR fixed, the in-save UI lies are gone and feature work CAN proceed in parallel with the broader migration. The strict "no features until everything is resolved" lock was justified when we couldn't trust state reads at all; that's no longer true. Items 3-6 above stay urgent for build-update resilience but don't block bestiary v2, HK1 Shift+Click, pasture auto-buy hay, or D2 pop-weight extension.
+**Feature backlog gate.** With the migration effectively complete, feature work proceeds freely in parallel with the residual hardening above.
 
 ## Ship status pointers
 
