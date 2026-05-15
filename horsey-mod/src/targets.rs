@@ -346,6 +346,145 @@ pub mod fn_addr {
 
 /// Resolve the running process's image base. Safe to call from any
 /// thread after process init.
+/// R3: pattern-scan resolution of data globals whose hardcoded RVAs
+/// can drift between Horsey.exe builds.
+///
+/// Same primitive R1/R2 use for function entries: hand a few
+/// candidate signatures to `modforge::patterns::sleuth`, take the
+/// first that matches, then decode the RIP-relative displacement
+/// inside the matched instruction to recover the data address.
+pub mod resolve {
+    use modforge::patterns::sleuth::{self, Target};
+    use std::sync::OnceLock;
+
+    /// Resolved runtime address of GAMESTATE_PTR (the main game-state
+    /// struct base, `DAT_1403fb0d8` in the decomp). Cached on first
+    /// successful resolve. Returns `None` if every candidate
+    /// signature missed (game build has shifted further than the
+    /// catalogued sigs cover).
+    pub fn gamestate_ptr() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(resolve_gamestate_ptr_uncached)
+    }
+
+    /// One candidate way to recover GAMESTATE_PTR from a `.text`
+    /// instruction.
+    struct Candidate {
+        name: &'static str,
+        /// IDA-style sleuth signature for the instruction. Single
+        /// `?` per wildcard byte.
+        sig: &'static str,
+        /// Byte offset of disp32 inside the matched bytes.
+        disp32_offset: usize,
+        /// Total length of the matched instruction.
+        instr_len: usize,
+        /// Inline offset added to GAMESTATE_PTR by the instruction
+        /// (subtracted from the resolved target to recover the base).
+        inline_offset: usize,
+    }
+
+    /// Candidate set. Each references a decomp site that does
+    /// something with `DAT_1403fb0d8 + N`; the constant N is the
+    /// `inline_offset`. The instruction encoding is the most likely
+    /// MSVC emission for that C expression.
+    const CANDIDATES: &[Candidate] = &[
+        // `*(int *)(DAT_1403fb0d8 + 0x308) += 1000;` (cheat-money
+        // handler in draw_pause_status). The constant 0x3e8 (=1000)
+        // makes this site unique across the binary.
+        // Encoding: add dword ptr [rip+disp32], imm32
+        //   81 05 dd dd dd dd e8 03 00 00
+        Candidate {
+            name: "cheat_money_add_1000",
+            sig: "81 05 ?? ?? ?? ?? e8 03 00 00",
+            disp32_offset: 2,
+            instr_len: 10,
+            inline_offset: 0x308,
+        },
+        // `*(int *)(DAT_1403fb0d8 + 0x308) < 0x32` race-fee check.
+        // Encoding: cmp dword ptr [rip+disp32], imm8
+        //   83 3d dd dd dd dd 32
+        Candidate {
+            name: "race_fee_cmp_50",
+            sig: "83 3d ?? ?? ?? ?? 32",
+            disp32_offset: 2,
+            instr_len: 7,
+            inline_offset: 0x308,
+        },
+        // `*(undefined4 *)(DAT_1403fb0d8 + 0x440) = 0x14;` from
+        // some race-state-set path. Less unique than the above
+        // because the constant 0x14 is common, but the +0x440 is
+        // a distinct site.
+        // Encoding: mov dword ptr [rip+disp32], imm32
+        //   c7 05 dd dd dd dd 14 00 00 00
+        Candidate {
+            name: "field_440_set_20",
+            sig: "c7 05 ?? ?? ?? ?? 14 00 00 00",
+            disp32_offset: 2,
+            instr_len: 10,
+            inline_offset: 0x440,
+        },
+    ];
+
+    fn resolve_gamestate_ptr_uncached() -> Option<usize> {
+        let targets: Vec<Target<'_>> = CANDIDATES
+            .iter()
+            .map(|c| Target {
+                name: c.name,
+                sigs: std::slice::from_ref(&c.sig),
+            })
+            .collect();
+        let res = match sleuth::resolve_all(&targets) {
+            Ok(r) => r,
+            Err(e) => {
+                modforge::log!("R3 resolver scan failed: {e}");
+                return None;
+            }
+        };
+
+        let mut last_base: Option<usize> = None;
+        for c in CANDIDATES {
+            let Some(instr_addr) = res.get(c.name) else {
+                modforge::log!("R3 candidate {} missed", c.name);
+                continue;
+            };
+            // SAFETY: instr_addr is inside `.text`, mapped readable.
+            let disp_ptr = (instr_addr + c.disp32_offset) as *const i32;
+            let disp32 = unsafe { disp_ptr.read_unaligned() } as isize;
+            let next_ip = instr_addr.wrapping_add(c.instr_len);
+            let referenced = next_ip.wrapping_add(disp32 as usize);
+            if referenced < c.inline_offset {
+                modforge::log!(
+                    "R3 {} produced too-small target 0x{referenced:x}",
+                    c.name
+                );
+                continue;
+            }
+            let base = referenced - c.inline_offset;
+            modforge::log!(
+                "R3 candidate {name}: instr=0x{instr_addr:x} disp32={disp32:#x} \
+                 referenced=0x{referenced:x} base=0x{base:x}",
+                name = c.name,
+            );
+            // Cross-validate: if multiple candidates resolve, they
+            // should agree on the base. Keep the first; warn on
+            // disagreement.
+            if let Some(prev) = last_base {
+                if prev != base {
+                    modforge::log!(
+                        "R3 WARN candidate {} disagrees: prev=0x{prev:x} new=0x{base:x}",
+                        c.name
+                    );
+                }
+            }
+            last_base = Some(base);
+        }
+        if last_base.is_none() {
+            modforge::log!("R3 GAMESTATE_PTR: no candidate signature matched");
+        }
+        last_base
+    }
+}
+
 pub fn image_base() -> usize {
     use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
     // SAFETY: GetModuleHandleW(NULL) returns the .exe HMODULE,

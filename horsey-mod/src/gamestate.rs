@@ -39,6 +39,15 @@ use crate::targets::{self, gs_offset};
 /// as long as the offset is within the struct's allocated size,
 /// regardless of whether a save is loaded.
 pub fn ptr() -> usize {
+    // R3: prefer the pattern-scan-resolved address (correct for any
+    // build whose decomp still has the cheat-money / race-fee /
+    // field_440 sites in `draw_pause_status` / `track_state_machine`).
+    // Fall back to the hardcoded RVA so older builds that match the
+    // 2026-05-08 decomp keep working. The resolver caches; this is
+    // one branch on the hot path.
+    if let Some(resolved) = targets::resolve::gamestate_ptr() {
+        return resolved;
+    }
     targets::rebase(targets::GAMESTATE_PTR)
 }
 

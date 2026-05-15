@@ -94,6 +94,40 @@ pub fn register_all() {
             |_| Ok(gamestate::diag()),
         ),
 
+        // R3: pattern-scan-resolve the GAMESTATE_PTR data address
+        // via modforge::patterns::sleuth. Recovery path for the
+        // 'hardcoded address drifted' bug class.
+        OpDef::new(
+            "targets.resolve.gamestate_ptr",
+            "Resolve GAMESTATE_PTR at runtime via patternsleuth signatures.",
+            "",
+            |_| {
+                let image_base = crate::targets::image_base();
+                let resolved = crate::targets::resolve::gamestate_ptr();
+                let address_hex = match resolved {
+                    Some(a) => format!("0x{a:x}"),
+                    None => "0x0".to_string(),
+                };
+                // If resolved, also surface the u32 at +0x308 so the
+                // test can sanity-check it against on-screen money.
+                let money_at_resolved_plus_0x308 = resolved.and_then(|a| {
+                    // SAFETY: caller has just resolved this address;
+                    // if it's plausible (delta from image_base small),
+                    // reading a u32 from `+0x308` is in-bounds for
+                    // the embedded GameState struct. read_unaligned
+                    // guards against misalignment surprises.
+                    let p = (a + 0x308) as *const u32;
+                    Some(unsafe { p.read_unaligned() })
+                });
+                Ok(json!({
+                    "address": address_hex,
+                    "image_base": format!("0x{image_base:x}"),
+                    "hardcoded": format!("0x{:x}", crate::targets::rebase(crate::targets::GAMESTATE_PTR)),
+                    "money_at_resolved_plus_0x308": money_at_resolved_plus_0x308,
+                }))
+            },
+        ),
+
         // ===== Money cheats =====
         OpDef::new(
             "game.money.get",
