@@ -45,8 +45,8 @@ Roughly ordered by leverage.
 |---|---|---|
 | Unit (modforge::patterns + sleuth) | 20 | green |
 | Unit (horsey: genes / xml / sidecar) | 30 | green |
-| Harness (smoke + dryruns + arm + r2) | 9 | 8 green + 1 expected-red (save dryrun = R2 contract) |
-| **Total** | **59** | **58 green + 1 contract-red** |
+| Harness (smoke + dryruns + arm + r2 + catalog) | 10 | 9 green + 1 expected-red (save dryrun = R2 contract for stale save addresses) |
+| **Total** | **60** | **59 green + 1 contract-red** |
 
 Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, with timestamped logs at `target/test-runs/<name>-<ts>.log`. Average 7-20s per harness test.
 
@@ -54,6 +54,8 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 
 | Hash | What |
 |---|---|
+| `74846de` | r2_catalog: 4 green targets resolve identically via sleuth |
+| `e1af9cf` | todo status sync after R1 + R2 |
 | `5ff0cfc` | todo iter 6 R2 + migration proven |
 | `f1ad5d5` | r2_migration_combinator: legacy + sleuth converge |
 | `54d1c90` | **R2 ships**: modforge::patterns::sleuth wraps patternsleuth crate |
@@ -65,7 +67,7 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 
 ### Open follow-ups (test-first, in priority order)
 
-1. **Signature catalog for the 6 green targets.** Author body signatures for `GENE_COMBINATOR`, `APPLY_GENE_TO_HORSE`, `EVAL_DIPLOID_BLEND_A/B`, `GENE_ALLELE_SWAP`, `HORSE_CONSTRUCTOR`, `HORSE_DESTRUCTOR`. Test: `resolve_all(&CATALOG)` returns the same addresses the existing dryruns report. Mechanical now that parity is proven (per `r2_migration_combinator`).
+1. **Signature catalog: hand-author unique signatures.** Catalog `r2_catalog_resolves_all_green_targets` is green for 4 targets using 32-byte derived signatures (read from the runtime image). For production address resolution that survives game updates, replace those with hand-authored signatures that include body bytes + hand-picked wildcards so a single MSVC reorder doesn't break the match. Extending the catalog also needs to cover `EVAL_DIPLOID_BLEND_A/B` + `GENE_ALLELE_SWAP` (their dryrun returns multi-target arrays; the `CatalogEntry` shape needs a `legacy_path_pick` variant).
 2. **Retire hardcoded `fn_addr::*` consts.** Switch from `pub const NAME: usize = 0x...` to lazy `pub fn name() -> usize` reading from a resolved catalog. Test asserts every detour arms via the resolved address and behaves identically. Larger refactor.
 3. **Re-derive the 4 stale save addresses.** Needs fresh decomp pass OR string-xref tracing (the byte sequences at the original Ghidra RVAs are mid-function code, not entries). Once signatures exist, plug into catalog and `dryrun_d3_d4::save_*` goes green automatically.
 4. **R1 build identification.** Image SHA-256 at attach + `game.build_info` op. Small.
