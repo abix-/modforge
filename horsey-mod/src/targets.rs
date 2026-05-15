@@ -559,7 +559,40 @@ pub mod horse_offset {
         })
     }
     /// Skill / fitness counter (int32). Used by retirement.
+    /// Old decomp constant; production should call [`skill()`].
     pub const SKILL: usize = 0x21c;
+
+    // Retire handler (useless) format string. Skill check is the
+    // gate on the (useless) branch (`*(int*)(horse + skill) <
+    // (mode != 4 ? 2 : 1)`), loaded ~50-200 bytes BEFORE the
+    // (useless) lea. Wider window than BAILS_AGE_HEX.
+    const USELESS_AGE_HEX: &str =
+        "25 73 20 72 65 74 69 72 65 64 20 25 73 20 28 75 73 65 6c 65 73 73 29 20 61 67 65 20 25 64 20 63 68 20 25 64";
+
+    /// Pattern-resolved skill offset. Anchors on the (useless)
+    /// retire-handler format string with a 256-byte ±window and
+    /// scans for `8b` (mov r32) loads. Filters to `[0x210, 0x240]`
+    /// to bracket the documented `0x21c` between the surrounding
+    /// known offsets (BREEDING_FLAG 0x207, LITTER_SIZE_STAT 0x254)
+    /// and excludes already-resolved neighbors.
+    ///
+    /// Falls back to the hardcoded `SKILL` const.
+    pub fn skill() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let hist = match modforge::research::in_process_decode_field_offset_via_string(
+                USELESS_AGE_HEX, 0, "8b", 2, 4, 256,
+            ) {
+                Ok(h) => h,
+                Err(_) => return SKILL,
+            };
+            let mut top: Vec<(i64, usize)> = hist.into_iter()
+                .filter(|(v, _)| *v >= 0x210 && *v < 0x240)
+                .collect();
+            top.sort_by(|a, b| b.1.cmp(&a.1));
+            top.first().map(|&(d, _)| d as usize).unwrap_or(SKILL)
+        })
+    }
     /// Old decomp constant. Production should call [`litter_size_stat()`].
     /// Litter-size stat (int32). Used in breeding: children =
     /// min(parent_a.litter, parent_b.litter) + rng_bonus.
