@@ -575,30 +575,95 @@ confirm the detour is firing.",
         ),
         OpDef::new(
             "genes.ext.stats",
-            "Detour invocation counters. Useful for end-to-end verification: after \
-arming, walk the game a few frames; `call_count` should climb (proves the detour \
-fires); `ext_call_count` stays at 0 until a caller passes idx>=240 (D5 trampoline); \
-`max_idx_seen` is the highest gene index any caller has passed through the handler.",
+            "DI-A detour invocation counters across all wired handlers \
+(EVAL_DIPLOID_BLEND_A, EVAL_DIPLOID_BLEND_B, GENE_ALLELE_SWAP). \
+Use for end-to-end verification: after arming, walk the game; \
+`call_count` should climb (detours fire); `ext_call_count` stays at 0 \
+until a caller passes idx>=240 (i.e. once the render trampoline drives \
+extended evaluations).",
             "",
             |_| {
-                let (call_count, ext_call_count, max_idx_seen) =
-                    patches::ext_genes::stats();
+                let s = patches::ext_genes::stats();
                 Ok(json!({
                     "armed": patches::ext_genes::is_armed(),
-                    "call_count": call_count,
-                    "ext_call_count": ext_call_count,
-                    "max_idx_seen": max_idx_seen,
+                    "call_count": s.call_count,
+                    "ext_call_count": s.ext_call_count,
+                    "max_idx_seen": s.max_idx_seen,
+                    "per_target": {
+                        "eval_a": s.call_count_a,
+                        "eval_b": s.call_count_b,
+                        "allele_swap": s.call_count_swap,
+                    },
                 }))
             },
         ),
         OpDef::new(
             "genes.ext.disarm",
-            "Revert the DI-A detour. Returns to vanilla behavior for FUN_1400a5d20. \
-No-op if not armed. Also runs automatically on DLL detach.",
+            "Revert the DI-A detours. Returns to vanilla behavior for the 3 \
+wired functions. No-op if not armed. Also runs automatically on DLL detach.",
             "",
             |_| {
                 patches::ext_genes::revert();
                 Ok(json!({"armed": patches::ext_genes::is_armed()}))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.render.dryrun",
+            "Read-only address + prologue dump for the D5 post-hook target \
+(APPLY_GENE_TO_HORSE / FUN_14009f680). Use to verify the address is plausible \
+before calling `genes.ext.render.arm`.",
+            "",
+            |_| {
+                let r = patches::render_trampoline::dryrun();
+                Ok(json!({
+                    "armed": patches::render_trampoline::is_armed(),
+                    "name": r.name,
+                    "rva": format!("0x{:x}", r.rva),
+                    "runtime_addr": format!("0x{:x}", r.runtime_addr),
+                    "prologue_bytes": r.prologue_bytes
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.render.arm",
+            "Install the D5 post-hook on FUN_14009f680. After this returns OK, every \
+call to the gene-effect engine runs vanilla first, then our handler walks \
+EXT_GENE_TABLE applying render mappings to the buf. Visual extended-gene effects \
+become live for every horse with an extended genome.",
+            "",
+            |_| match patches::render_trampoline::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
+            "genes.ext.render.disarm",
+            "Revert the D5 post-hook. Visuals return to pure vanilla. No-op if not \
+armed. Runs automatically on DLL detach.",
+            "",
+            |_| {
+                patches::render_trampoline::revert();
+                Ok(json!({"armed": patches::render_trampoline::is_armed()}))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.render.stats",
+            "D5 post-hook invocation counters. `call_count` = total invocations of \
+FUN_14009f680 since arming; `genes_applied_total` = sum of extended-gene render \
+applications across all calls (0 until a horse with an extended genome is \
+evaluated).",
+            "",
+            |_| {
+                let s = patches::render_trampoline::stats();
+                Ok(json!({
+                    "armed": patches::render_trampoline::is_armed(),
+                    "call_count": s.call_count,
+                    "genes_applied_total": s.genes_applied_total,
+                }))
             },
         ),
         OpDef::new(

@@ -499,26 +499,48 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
-**STATUS: IN v1 SCOPE.** User direction 2026-05-14: CRISPR
-UI and all normal vanilla integration (death-drift,
-allele evaluators, allele swap) ship in v1, not v2.
+**STATUS: 3 of 5 wired in v1.** Strategy DI-A approved
+2026-05-14. Locked library: `retour 0.3`.
 
-**Strategy: DI-A (per-function detours via retour).**
-Recommended in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md)
-§6.2. Same library and pattern as the locked D5 / S2
-trampoline. Sub-strategy DI-B (heap redirect of
-`DAT_1403ee4a4`) considered and rejected for v1 because
-the 3 loop-bound bumps it requires have unsafe failure
-modes (vanilla loop into uncharted memory). DI-B may
-re-enter scope as a perf optimization for
-`FUN_1400a5d20` / `FUN_1400a5e00` (the hot evaluators)
-if D8.5 profiling shows the detour-indirect-call cost
-is meaningful; in that case the other 3 detours stay
-as DI-A. Decision deferred to profiling data.
+Wired and arming via `genes.ext.arm` HTTP op:
 
-Scaffolding `horsey-mod/src/patches/ext_genes.rs` (with
-its `dryrun` + `arm` stub) is the foundation. Each D1.x
-becomes a separate `retour::GenericDetour` install.
+- [x] **D1.1.** `EVAL_DIPLOID_BLEND_A` (FUN_1400a5d20).
+      Signature: `unsafe extern "system" fn(*const u8, i32) -> f32`.
+      Handler: idx<240 -> trampoline; idx>=240 ->
+      `genes::evaluate_ext_gene(genome_ptr as u64, idx-240)`.
+- [x] **D1.2.** `EVAL_DIPLOID_BLEND_B` (FUN_1400a5e00).
+      Signature: returns `u32` (bit pattern is f32). Same
+      dispatch as D1.1 but `.to_bits()` on the extended
+      result so the caller's bit-cast still works.
+- [x] **D1.4.** `GENE_ALLELE_SWAP` (FUN_1400c03a0).
+      Signature: `(usize, i32, i32, i32) -> void`. Handler:
+      idx<240 -> trampoline; idx>=240 ->
+      `genes::swap_ext_alleles(idx-240, a, b)` which swaps
+      the payload positions in `EXT_GENE_TABLE` AND every
+      `EXT_POP_WEIGHTS` entry. Skips vanilla entirely for
+      extended indices (vanilla would walk DAT_1403ee4b0
+      with an out-of-range index and crash).
+
+Deferred (not entry-point clean):
+
+- [ ] **D1.3.** `GENE_DEATH_DRIFT` (FUN_1400c0660). The
+      gene index is computed mid-function (~line :730 in
+      decomp), not passed as a parameter. Needs a
+      mid-function patch via `patch_bytes`, not an
+      entry-point detour. Defer until we have a worked
+      example of the +/-5 mutation site address.
+- [ ] **D1.8.** `CRISPR_LAB` UI gene dispatch
+      (FUN_1400c1cf0). Internal state machine, 5311 bytes.
+      Need to map which states read which gene-indexed
+      data before we know where to splice. Could be
+      multiple sub-detours or a single mid-function patch.
+      Defer until DI-A-3 ships and we have in-game UX
+      validation of the existing 3 detours.
+
+If profiling shows the per-call overhead of D1.1/D1.2
+matters (they're hot, called per-horse-per-frame),
+revisit DI-B (heap redirect) as a perf optimization for
+THOSE TWO only. Other detours stay as DI-A.
 
 Make the engine's 240-slot gene table behave as if it
 has N slots, where slots 0..239 are vanilla
@@ -706,66 +728,56 @@ Guild Wars 2).
 Net for D5: 1 patch site (the entry of `FUN_14009f680`),
 1 Rust handler, 1 sidecar module (`render_trampoline.rs`).
 
-- [ ] **D5.0.** Add `retour = "0.3"` to
-      `horsey-mod/Cargo.toml`. Verify build picks it up
-      and that `retour::GenericDetour` resolves.
-- [ ] **D5.1.** Create `horsey-mod/src/patches/render_trampoline.rs`
-      mirroring the arm / revert / dryrun shape of
-      `patches/ext_genes.rs`. Holds the
-      `GenericDetour<extern "system" fn(*mut f32, *mut c_void)>`,
-      the install / uninstall flag, and the handler.
-- [ ] **D5.2.** Implement the post-hook handler:
-      - Call `detour.trampoline()(buf, ctx)` first. This
-        runs the entire vanilla function and populates
-        `buf` with vanilla's 258 slot writes.
-      - Compute `horse = ctx - 0x2b8` (the back-pointer
-        trick from VIABILITY Q-render-3).
-      - Acquire a `RwLock::read()` on `EXT_HORSE_GENOMES`
-        and look up `EXT_HORSE_GENOMES[horse as u64]` (the
-        pointer-as-key approach; see D5.7 open issue).
-      - For each `(ext_idx, ExtGene)` in `EXT_GENE_TABLE`
-        where `gene.render.is_some()`, evaluate the
-        diploid blend (mirror `genes::evaluate_ext_gene`)
-        against the horse's extended alleles, apply the
-        `RenderMode` (add / mul / set) to
-        `buf[render.slot]`.
-- [ ] **D5.3.** (Already shipped in D7.2.) The
-      `<render slot=".." mode=".." />` child element on
-      `<gene>` in `genes-extended.xml` is parsed and
-      stored in `ExtGene.render`. The D5.2 handler
-      consumes it. No further work here.
-- [ ] **D5.4.** HTTP ops. Expose
-      `genes.ext.render.dryrun` (reports detour target
-      address + first 16 prologue bytes) and
-      `genes.ext.render.arm` (installs the detour). Mirror
-      the existing `genes.ext.dryrun` / `genes.ext.arm`
-      semantics so the same operator habits work.
-      Detour stays disarmed by default; arming is manual
-      after dryrun looks sane.
-- [ ] **D5.5.** Wire `revert()` into
-      `patches::revert_all` so a DLL detach restores the
-      original `FUN_14009f680` prologue. Test the
-      hot-reload cycle (inject -> arm -> reload DLL ->
-      verify game survives).
-- [ ] **D5.6.** Validation harness. The handler should
-      keep a counter of (a) total invocations,
-      (b) ext-gene evaluations performed,
-      (c) bytes-modified-in-buf. Expose via
-      `genes.ext.render.stats`. Lets us answer "is the
-      hook firing" without staring at a render.
-- [ ] **D5.7.** Open issue: horse-pointer-as-key. The
-      handler keys per-horse extended genome by the raw
-      horse pointer. This is fine for a session but won't
-      survive save / load (the pointer changes). Save
-      round-trip needs a stable horse-id (D4.4), but
-      runtime evaluation does not. Document the
-      limitation in `ALLELE-MODEL.md` once D5 ships.
-- [ ] **D5.8.** Re-entrancy audit. Confirm the handler
-      never takes a re-entrant `RwLock::write()` while
-      holding `read()`. Confirm `genes-extended.xml`
-      hot-reload (which takes write locks) cannot fire
-      while the handler is mid-evaluation. Add a debug
-      assertion if cheap.
+- [x] **D5.0.** DONE. `retour = "0.3"` added to workspace
+      `Cargo.toml` and `horsey-mod/Cargo.toml`. Build picks
+      up retour 0.3.1 + transitive deps (libudis86,
+      mmap-fixed-fixed, slice-pool2, winapi). Compiles
+      clean.
+- [x] **D5.1.** DONE.
+      `horsey-mod/src/patches/render_trampoline.rs` shipped.
+      Holds `GenericDetour<unsafe extern "system" fn(*mut f32, *mut c_void)>`
+      in a `OnceLock<Mutex<Option<...>>>`, with the same
+      arm / revert / dryrun shape as ext_genes. Targets
+      `fn_addr::APPLY_GENE_TO_HORSE` (0x14009f680).
+- [x] **D5.2.** DONE. Post-hook handler implemented:
+      runs trampoline first, computes
+      `horse_ptr = ctx - HORSE_CTX_OFFSET (0x2b8)`, then
+      calls `genes::apply_render_to_buf(buf, 353, horse_id)`.
+      The helper acquires `gene_table().read()` and
+      `horse_genomes().read()` ONCE per call (single lock
+      acquisition for the whole gene walk, not per gene).
+      Bounds-checks every slot write against the 353-float
+      buffer.
+- [x] **D5.3.** DONE in D7.2. `RenderMapping` parsed from
+      `<render slot mode>` and stored in `ExtGene.render`.
+      The D5.2 handler consumes it.
+- [x] **D5.4.** DONE. HTTP ops shipped:
+      `genes.ext.render.dryrun` (address + prologue),
+      `genes.ext.render.arm` (install detour),
+      `genes.ext.render.disarm` (revert),
+      `genes.ext.render.stats` (`call_count` +
+      `genes_applied_total`).
+- [x] **D5.5.** DONE. `patches::revert_all` now calls
+      `render_trampoline::revert()` BEFORE
+      `ext_genes::revert()` (LIFO order: D5 was the most
+      recently installed). DLL detach restores all prologues.
+- [x] **D5.6.** DONE. `call_count` (every invocation of
+      `FUN_14009f680` after arming) and `genes_applied_total`
+      (sum of extended-gene render applications across all
+      calls) surfaced via `genes.ext.render.stats`. The
+      "buf bytes modified" counter from the original plan
+      is the same number as genes_applied_total (one slot
+      per applied gene), so it's not separately tracked.
+- [ ] **D5.7.** Open. Horse-pointer-as-key works for a
+      session; save/load needs D4.4 (stable horse-id field).
+      Documented limitation; not blocking visual verification.
+- [ ] **D5.8.** Re-entrancy audit deferred until D5
+      validates in-game. The current design uses only
+      `RwLock::read()` inside the post-hook handler;
+      `genes.ext.reload` (which takes write) is operator-
+      triggered, not vanilla-triggered, so re-entrancy
+      from inside the engine is impossible. Lock-ordering
+      audit can wait until concurrent stress shows up.
 
 **D5.4 in the original plan is DROPPED from v1 scope.**
 The "post-consumer trampoline writing to new horse struct

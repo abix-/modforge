@@ -8,10 +8,13 @@
 //! Submodules:
 //! - [`sleep_safe_no_tire`]: NOPs the +0x206 zero-store inside the
 //!   no_tire loop so the day-cycle sleep gate keeps working.
-//! - [`ext_genes`]: D1 scaffolding for the gene-doubling project.
-//!   Not yet active; arms via HTTP only.
+//! - [`ext_genes`]: DI-A detours (3 of 5 v1 wired). Arms via HTTP.
+//! - [`render_trampoline`]: D5 post-hook on FUN_14009f680 that
+//!   layers extended-gene render mappings onto vanilla's buf.
+//!   Arms via HTTP.
 
 pub mod ext_genes;
+pub mod render_trampoline;
 
 use parking_lot::Mutex;
 use windows_sys::Win32::System::Memory::{
@@ -92,8 +95,10 @@ pub fn patch_bytes(name: &'static str, addr: usize, new_bytes: &[u8]) -> anyhow:
 }
 
 /// Revert every applied patch, in reverse order. Also reverts the
-/// ext_genes detours (no-op if they were never armed).
+/// ext_genes detours and the D5 render trampoline (no-op if never
+/// armed).
 pub fn revert_all() {
+    render_trampoline::revert();
     ext_genes::revert();
     let mut g = APPLIED.lock();
     while let Some(p) = g.pop() {

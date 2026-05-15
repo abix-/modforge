@@ -385,6 +385,85 @@ pub fn evaluate_ext_gene(horse_id: u64, ext_gene_idx: usize) -> f32 {
     dominant_weight * dom_value + recessive_weight * rec_value
 }
 
+/// Swap two allele payload positions for one extended gene. Used by
+/// the DI-A detour on `FUN_1400c03a0` (gene_allele_renumber_sync):
+/// when vanilla swaps alleles `a` and `b` of an extended gene, we
+/// mirror the swap in `EXT_GENE_TABLE[ext_idx].alleles` AND every
+/// pop's extended weights for that gene.
+///
+/// No-op if `ext_idx` or either allele index is out of range.
+pub fn swap_ext_alleles(ext_idx: usize, a: usize, b: usize) {
+    if ext_idx >= EXT_GENE_COUNT || a >= 4 || b >= 4 || a == b {
+        return;
+    }
+    {
+        let mut t = gene_table().write();
+        t[ext_idx].alleles.swap(a, b);
+    }
+    let mut w = pop_weights().write();
+    for entry in w.values_mut() {
+        if let Some(weights) = entry.weights.get_mut(ext_idx) {
+            weights.swap(a, b);
+        }
+    }
+}
+
+/// Evaluate every extended gene that has a render mapping for one
+/// horse and apply the result to `buf` per its `RenderMode`. Called
+/// by the D5 trampoline AFTER vanilla `FUN_14009f680` has populated
+/// `buf` with the 258 vanilla slot writes.
+///
+/// `buf_len` is the float-count of the buffer (vanilla allocates
+/// 353 floats). We bounds-check every slot write so a misauthored
+/// `genes-extended.xml` with an out-of-range slot can't corrupt
+/// stack neighbours.
+///
+/// SAFETY: caller guarantees `buf` is a valid `*mut f32` of length
+/// `buf_len`, live for the duration of this call.
+pub unsafe fn apply_render_to_buf(buf: *mut f32, buf_len: usize, horse_id: u64) -> usize {
+    let mut applied = 0usize;
+    let table = gene_table().read();
+    let horses = horse_genomes().read();
+    let Some(genome) = horses.get(&horse_id) else {
+        return 0;
+    };
+    for (ext_idx, gene) in table.iter().enumerate() {
+        let Some(render) = gene.render.as_ref() else {
+            continue;
+        };
+        let slot = render.slot as usize;
+        if slot >= buf_len {
+            continue;
+        }
+
+        // Inline the diploid blend math against the snapshot we
+        // already hold (avoid re-locking horse_genomes).
+        let m_allele = (genome.alleles[ext_idx] & 0x3) as usize;
+        let p_allele = (genome.alleles[ext_idx + EXT_GENE_COUNT] & 0x3) as usize;
+        let dom = m_allele.max(p_allele);
+        let rec = m_allele.min(p_allele);
+        let dom_value = gene.alleles[dom] as f32;
+        let rec_value = gene.alleles[rec] as f32;
+        let m = gene.mutation_rate as f32;
+        let s = gene.scale as f32;
+        let recessive_weight = (m / s.max(1e-6)).clamp(0.0, 1.0);
+        let dominant_weight = 1.0 - recessive_weight;
+        let value = dominant_weight * dom_value + recessive_weight * rec_value;
+
+        // SAFETY: bounds-checked above.
+        unsafe {
+            let p = buf.add(slot);
+            match render.mode {
+                RenderMode::Add => *p += value,
+                RenderMode::Mul => *p *= value,
+                RenderMode::Set => *p = value,
+            }
+        }
+        applied += 1;
+    }
+    applied
+}
+
 // =============================================================================
 // JSON snapshot (for HTTP dump op)
 // =============================================================================
@@ -511,5 +590,149 @@ mod tests {
         let _g = TEST_LOCK.lock();
         reset_all_for_tests();
         assert_eq!(evaluate_ext_gene(99999, 0), 0.0);
+    }
+
+    #[test]
+    fn swap_ext_alleles_swaps_payload_and_weights() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        let g = ExtGene {
+            name: "T".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [10, 20, 30, 40],
+            render: None,
+        };
+        set_ext_gene(2, g);
+        set_pop_ext_weight(7, 2, 0, 1).unwrap();
+        set_pop_ext_weight(7, 2, 3, 9).unwrap();
+
+        swap_ext_alleles(2, 0, 3);
+
+        let g_back = get_ext_gene(2).unwrap();
+        assert_eq!(g_back.alleles, [40, 20, 30, 10]);
+        let w = get_or_init_pop_weights(7);
+        assert_eq!(w.weights[2][0], 9);
+        assert_eq!(w.weights[2][3], 1);
+    }
+
+    #[test]
+    fn swap_ext_alleles_ignores_oor() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        // Should not panic.
+        swap_ext_alleles(EXT_GENE_COUNT + 1, 0, 1);
+        swap_ext_alleles(0, 0, 9);
+        swap_ext_alleles(0, 2, 2); // no-op self-swap
+    }
+
+    #[test]
+    fn apply_render_to_buf_writes_mapped_slot_in_add_mode() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        let g = ExtGene {
+            name: "BX_WING".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [0, 0, 0, 80],
+            render: Some(RenderMapping {
+                slot: 42,
+                mode: RenderMode::Add,
+            }),
+        };
+        set_ext_gene(0, g);
+        set_horse_ext_alleles(0x1234, 0, 3, 3).unwrap(); // homozygous 3 -> 80
+
+        let mut buf = vec![1.0f32; 353];
+        // SAFETY: buf is a live Vec we own; 353 floats.
+        let applied = unsafe { apply_render_to_buf(buf.as_mut_ptr(), buf.len(), 0x1234) };
+        assert_eq!(applied, 1);
+        assert!((buf[42] - 81.0).abs() < 1e-6, "expected 81.0 got {}", buf[42]);
+        // Adjacent slots untouched.
+        assert!((buf[41] - 1.0).abs() < 1e-6);
+        assert!((buf[43] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn apply_render_to_buf_skips_oor_slot() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        let g = ExtGene {
+            name: "BX_BAD".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [0, 0, 0, 99],
+            render: Some(RenderMapping {
+                slot: 9999, // out of range
+                mode: RenderMode::Set,
+            }),
+        };
+        set_ext_gene(0, g);
+        set_horse_ext_alleles(0x5678, 0, 3, 3).unwrap();
+
+        let mut buf = vec![1.0f32; 353];
+        // SAFETY: buf is a live Vec we own.
+        let applied = unsafe { apply_render_to_buf(buf.as_mut_ptr(), buf.len(), 0x5678) };
+        assert_eq!(applied, 0, "out-of-range slot must be skipped");
+    }
+
+    #[test]
+    fn apply_render_to_buf_no_genome_returns_zero() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        let g = ExtGene {
+            name: "BX_X".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [0, 0, 0, 50],
+            render: Some(RenderMapping {
+                slot: 10,
+                mode: RenderMode::Set,
+            }),
+        };
+        set_ext_gene(0, g);
+
+        let mut buf = vec![1.0f32; 353];
+        // SAFETY: buf is a live Vec we own.
+        let applied = unsafe { apply_render_to_buf(buf.as_mut_ptr(), buf.len(), 0xDEAD) };
+        assert_eq!(applied, 0);
+        assert!((buf[10] - 1.0).abs() < 1e-6, "buf must not be touched");
+    }
+
+    #[test]
+    fn apply_render_to_buf_mul_and_set_modes() {
+        let _g = TEST_LOCK.lock();
+        reset_all_for_tests();
+        let g_mul = ExtGene {
+            name: "BX_MUL".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [0, 0, 0, 3],
+            render: Some(RenderMapping {
+                slot: 5,
+                mode: RenderMode::Mul,
+            }),
+        };
+        let g_set = ExtGene {
+            name: "BX_SET".into(),
+            mutation_rate: 100,
+            scale: 1,
+            alleles: [0, 0, 0, 77],
+            render: Some(RenderMapping {
+                slot: 6,
+                mode: RenderMode::Set,
+            }),
+        };
+        set_ext_gene(0, g_mul);
+        set_ext_gene(1, g_set);
+        set_horse_ext_alleles(1, 0, 3, 3).unwrap();
+        set_horse_ext_alleles(1, 1, 3, 3).unwrap();
+
+        let mut buf = vec![2.0f32; 353];
+        // SAFETY: buf is a live Vec we own.
+        let applied = unsafe { apply_render_to_buf(buf.as_mut_ptr(), buf.len(), 1) };
+        assert_eq!(applied, 2);
+        assert!((buf[5] - 6.0).abs() < 1e-6, "mul: 2 * 3 = 6, got {}", buf[5]);
+        assert!((buf[6] - 77.0).abs() < 1e-6, "set: 77, got {}", buf[6]);
     }
 }

@@ -1,4 +1,4 @@
-//! D1 / DI-A detours for the extended-gene integration.
+//! DI-A detours for the extended-gene integration.
 //!
 //! Strategy: per-function trampolines via `retour::GenericDetour`.
 //! Each detour wraps a vanilla function that touches the gene table
@@ -6,10 +6,18 @@
 //! path for `idx < 240`, sidecar path for `idx >= 240`. See
 //! `horsey-mod/docs/HOOKING-STRATEGY.md` §6.2 for the rationale.
 //!
-//! v1 first slice: ONE detour on `FUN_1400a5d20`
-//! (allele evaluator A). Once in-game verification confirms the
-//! pattern works, we fan out to the 4 other DI-A targets
-//! (a5e00, c0660, c03a0, c1cf0).
+//! v1 covers 3 of the 5 DI-A targets:
+//!   - `EVAL_DIPLOID_BLEND_A` (FUN_1400a5d20)
+//!   - `EVAL_DIPLOID_BLEND_B` (FUN_1400a5e00)
+//!   - `GENE_ALLELE_SWAP`    (FUN_1400c03a0)
+//!
+//! Deferred (need separate analysis):
+//!   - `GENE_DEATH_DRIFT` (FUN_1400c0660): the gene index isn't a
+//!     function parameter; it's computed mid-function. Needs a
+//!     mid-function patch, not an entry-point detour.
+//!   - `CRISPR_LAB` UI dispatch (FUN_1400c1cf0): state-machine
+//!     function with internal gene-idx dispatch. Needs structural
+//!     analysis before we know where to detour.
 //!
 //! Safety posture: detours stay disarmed at attach by default. The
 //! operator runs `genes.ext.dryrun` to confirm addresses look sane,
@@ -30,100 +38,177 @@ use std::sync::OnceLock;
 /// `FUN_1400a5d20`: allele diploid blend evaluator (formula A).
 ///
 /// Decomp signature: `float FUN_1400a5d20(longlong param_1, int param_2)`
-/// - `param_1`: pointer to a horse's 480-byte genome buffer at
-///   `horse + 0x78`. Vanilla reads `*(char*)(param_1 + idx)` for
-///   the maternal allele and `*(char*)(param_1 + 0xf0 + idx)` for
-///   the paternal allele.
-/// - `param_2`: gene index in [0..240).
-/// - Returns: f32 blend value the caller writes into `param_1[N]`
-///   of the render buffer.
 type EvalDiploidBlendFn = unsafe extern "system" fn(*const u8, i32) -> f32;
 
+/// `FUN_1400a5e00`: allele diploid blend evaluator (formula B).
+///
+/// Decomp signature: `int FUN_1400a5e00(longlong param_1, int param_2)`.
+/// Returns an `int` per the decomp but the bit pattern IS an f32
+/// (vanilla's caller bit-casts). We model as f32 to keep the math
+/// path consistent; the win64 ABI returns both via XMM0 / RAX in
+/// the same low 32 bits for our purposes.
+type EvalDiploidBlendBFn = unsafe extern "system" fn(*const u8, i32) -> u32;
+
+/// `FUN_1400c03a0`: gene allele renumber sync.
+///
+/// Decomp signature: `void FUN_1400c03a0(undefined8 param_1, int param_2, int param_3, int param_4)`
+/// - `param_1`: opaque pointer (game state ctx). Passed through.
+/// - `param_2`: gene index. Same dispatch criterion as the others.
+/// - `param_3`, `param_4`: allele positions being swapped.
+type GeneAlleleSwapFn = unsafe extern "system" fn(usize, i32, i32, i32);
+
 // ---------------------------------------------------------------------------
-// State
+// Per-detour state
 // ---------------------------------------------------------------------------
 
-/// The single installed detour on `EVAL_DIPLOID_BLEND_A`. `None` when
-/// not armed; `Some` after `arm()` succeeds; back to `None` after
-/// `revert()`.
-static EVAL_A_DETOUR: OnceLock<Mutex<Option<GenericDetour<EvalDiploidBlendFn>>>> =
-    OnceLock::new();
-
-fn detour_slot() -> &'static Mutex<Option<GenericDetour<EvalDiploidBlendFn>>> {
-    EVAL_A_DETOUR.get_or_init(|| Mutex::new(None))
+struct DetourSet {
+    eval_a: Option<GenericDetour<EvalDiploidBlendFn>>,
+    eval_b: Option<GenericDetour<EvalDiploidBlendBFn>>,
+    allele_swap: Option<GenericDetour<GeneAlleleSwapFn>>,
 }
 
-/// Total handler invocations since `arm()`. Bumped on every call,
-/// regardless of vanilla vs extended dispatch. Surfaced via
-/// `genes.ext.stats` for "is the detour even firing" verification.
+fn detours() -> &'static Mutex<DetourSet> {
+    static T: OnceLock<Mutex<DetourSet>> = OnceLock::new();
+    T.get_or_init(|| {
+        Mutex::new(DetourSet {
+            eval_a: None,
+            eval_b: None,
+            allele_swap: None,
+        })
+    })
+}
+
+/// Total handler invocations across all detours since `arm()`.
 static CALL_COUNT: AtomicU64 = AtomicU64::new(0);
 
-/// Handler invocations that hit the extended path (`idx >= 240`).
+/// Handler invocations that took the extended path (`idx >= 240`).
 static EXT_CALL_COUNT: AtomicU64 = AtomicU64::new(0);
 
-/// Max gene index observed in any handler call. Useful for sanity:
-/// in v1 with no extended-aware caller, we expect this to stay
-/// strictly below 240 because vanilla `FUN_14009f680` only ever
-/// passes literal indices in [0..240). When the D5 trampoline
-/// starts driving extended-gene evaluations, this will climb above
-/// 240 and prove the detour pipeline is working end-to-end.
+/// Max gene index any handler has seen. Sanity: stays < 240 until
+/// something passes an extended index (e.g. the D5 trampoline
+/// evaluating extended slots).
 static MAX_IDX_SEEN: AtomicU64 = AtomicU64::new(0);
 
+/// Per-handler invocation counts. (a, b, swap).
+static CALL_COUNT_A: AtomicU64 = AtomicU64::new(0);
+static CALL_COUNT_B: AtomicU64 = AtomicU64::new(0);
+static CALL_COUNT_SWAP: AtomicU64 = AtomicU64::new(0);
+
 pub fn is_armed() -> bool {
-    detour_slot().lock().is_some()
+    let d = detours().lock();
+    d.eval_a.is_some() || d.eval_b.is_some() || d.allele_swap.is_some()
 }
 
-pub fn stats() -> (u64, u64, u64) {
-    (
-        CALL_COUNT.load(Ordering::Relaxed),
-        EXT_CALL_COUNT.load(Ordering::Relaxed),
-        MAX_IDX_SEEN.load(Ordering::Relaxed),
-    )
+pub fn stats() -> Stats {
+    Stats {
+        call_count: CALL_COUNT.load(Ordering::Relaxed),
+        ext_call_count: EXT_CALL_COUNT.load(Ordering::Relaxed),
+        max_idx_seen: MAX_IDX_SEEN.load(Ordering::Relaxed),
+        call_count_a: CALL_COUNT_A.load(Ordering::Relaxed),
+        call_count_b: CALL_COUNT_B.load(Ordering::Relaxed),
+        call_count_swap: CALL_COUNT_SWAP.load(Ordering::Relaxed),
+    }
 }
 
-pub fn reset_stats() {
+pub struct Stats {
+    pub call_count: u64,
+    pub ext_call_count: u64,
+    pub max_idx_seen: u64,
+    pub call_count_a: u64,
+    pub call_count_b: u64,
+    pub call_count_swap: u64,
+}
+
+fn reset_stats() {
     CALL_COUNT.store(0, Ordering::Relaxed);
     EXT_CALL_COUNT.store(0, Ordering::Relaxed);
     MAX_IDX_SEEN.store(0, Ordering::Relaxed);
+    CALL_COUNT_A.store(0, Ordering::Relaxed);
+    CALL_COUNT_B.store(0, Ordering::Relaxed);
+    CALL_COUNT_SWAP.store(0, Ordering::Relaxed);
 }
 
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
-
-/// Our replacement for `FUN_1400a5d20`. Dispatches on the gene index:
-///
-/// - `idx >= 240`: extended slot. Compute the diploid blend against
-///   our sidecar tables (`EXT_GENE_TABLE` + `EXT_HORSE_GENOMES`)
-///   using the horse genome pointer as a session-local key.
-/// - `idx < 240`: vanilla. Call the saved trampoline so the game's
-///   original math runs unchanged.
-///
-/// SAFETY: signature must match the vanilla function exactly. `extern
-/// "system"` on x64 Windows is the win64 ABI, which matches the
-/// decompiler's `(longlong, int) -> float` C signature.
-unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
+fn bump_common(idx: i32) {
     CALL_COUNT.fetch_add(1, Ordering::Relaxed);
     let idx_u64 = idx.max(0) as u64;
     MAX_IDX_SEEN.fetch_max(idx_u64, Ordering::Relaxed);
+}
 
+// ---------------------------------------------------------------------------
+// Handlers
+// ---------------------------------------------------------------------------
+
+/// EVAL_A handler. `idx<240` falls through to vanilla; `idx>=240`
+/// computes the diploid blend against `EXT_GENE_TABLE` +
+/// `EXT_HORSE_GENOMES`. See `genes::evaluate_ext_gene`.
+///
+/// SAFETY: signature matches the vanilla function. extern "system"
+/// on x64 Windows is the win64 ABI; matches `(longlong, int) -> float`.
+unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
+    bump_common(idx);
+    CALL_COUNT_A.fetch_add(1, Ordering::Relaxed);
     if idx >= 240 {
         EXT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
         let horse_id = genome as u64;
         let ext_idx = (idx - 240) as usize;
         return genes::evaluate_ext_gene(horse_id, ext_idx);
     }
-
-    // Vanilla path.
-    match detour_slot().lock().as_ref() {
-        // SAFETY: the trampoline is a valid function pointer for the
-        // original `FUN_1400a5d20`, produced by retour. Same ABI,
-        // same arguments. Calling it is no less safe than calling
-        // the original function directly.
+    let g = detours().lock();
+    match g.eval_a.as_ref() {
+        // SAFETY: trampoline is the saved original FUN_1400a5d20.
         Some(d) => unsafe { d.call(genome, idx) },
-        // Shouldn't happen: arm() installs before enabling. Defensive
-        // fallback returns 0.0 instead of crashing the game.
         None => 0.0,
+    }
+}
+
+/// EVAL_B handler. Same dispatch as EVAL_A but the vanilla return
+/// type is `int` (bit-cast f32). For the extended path we evaluate
+/// the same blend and bit-cast to u32 so the caller's bit-pattern
+/// expectation is preserved.
+///
+/// SAFETY: extern "system" matches `(longlong, int) -> int`.
+unsafe extern "system" fn eval_b_handler(genome: *const u8, idx: i32) -> u32 {
+    bump_common(idx);
+    CALL_COUNT_B.fetch_add(1, Ordering::Relaxed);
+    if idx >= 240 {
+        EXT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+        let horse_id = genome as u64;
+        let ext_idx = (idx - 240) as usize;
+        return genes::evaluate_ext_gene(horse_id, ext_idx).to_bits();
+    }
+    let g = detours().lock();
+    match g.eval_b.as_ref() {
+        // SAFETY: trampoline is the saved original FUN_1400a5e00.
+        Some(d) => unsafe { d.call(genome, idx) },
+        None => 0,
+    }
+}
+
+/// GENE_ALLELE_SWAP handler. For `idx<240` vanilla syncs the swap
+/// across every pop record. For `idx>=240` we mirror the swap in
+/// our `EXT_GENE_TABLE` and `EXT_POP_WEIGHTS` and SKIP vanilla
+/// (vanilla would walk DAT_1403ee4b0 with an out-of-range index
+/// and crash).
+///
+/// SAFETY: extern "system" matches `(undefined8, int, int, int) -> void`.
+unsafe extern "system" fn allele_swap_handler(
+    ctx: usize,
+    gene_idx: i32,
+    a: i32,
+    b: i32,
+) {
+    bump_common(gene_idx);
+    CALL_COUNT_SWAP.fetch_add(1, Ordering::Relaxed);
+    if gene_idx >= 240 {
+        EXT_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+        let ext_idx = (gene_idx - 240) as usize;
+        genes::swap_ext_alleles(ext_idx, a as usize, b as usize);
+        return;
+    }
+    let g = detours().lock();
+    if let Some(d) = g.allele_swap.as_ref() {
+        // SAFETY: trampoline is the saved original FUN_1400c03a0.
+        unsafe { d.call(ctx, gene_idx, a, b) };
     }
 }
 
@@ -131,36 +216,32 @@ unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
 // Dryrun (read-only diagnostic)
 // ---------------------------------------------------------------------------
 
-/// What `dryrun` learned about one target function.
 #[derive(Debug, Clone)]
 pub struct TargetReport {
     pub name: &'static str,
-    /// PE-relative address from `targets::fn_addr` constants.
     pub rva: usize,
-    /// Resolved runtime address.
     pub runtime_addr: usize,
-    /// First 16 bytes of the function (for visual sanity check that
-    /// we're pointing at code, not data).
     pub prologue_bytes: [u8; 16],
+    /// True if `arm()` wires up a real detour for this target.
+    pub wired: bool,
 }
 
 /// Per-target metadata. The full DI-A target set is enumerated for
-/// dryrun even though only the first is wired to `arm()` in v1.
-const TARGETS: &[(&str, usize)] = &[
-    ("EVAL_DIPLOID_BLEND_A", fn_addr::EVAL_DIPLOID_BLEND_A),
-    ("EVAL_DIPLOID_BLEND_B", fn_addr::EVAL_DIPLOID_BLEND_B),
-    ("GENE_DEATH_DRIFT", fn_addr::GENE_DEATH_DRIFT),
-    ("GENE_ALLELE_SWAP", fn_addr::GENE_ALLELE_SWAP),
+/// dryrun visibility even when some are not yet wired.
+const TARGETS: &[(&str, usize, bool)] = &[
+    ("EVAL_DIPLOID_BLEND_A", fn_addr::EVAL_DIPLOID_BLEND_A, true),
+    ("EVAL_DIPLOID_BLEND_B", fn_addr::EVAL_DIPLOID_BLEND_B, true),
+    ("GENE_ALLELE_SWAP", fn_addr::GENE_ALLELE_SWAP, true),
+    ("GENE_DEATH_DRIFT", fn_addr::GENE_DEATH_DRIFT, false),
 ];
 
 pub fn dryrun() -> Vec<TargetReport> {
     let mut out = Vec::with_capacity(TARGETS.len());
-    for (name, rva) in TARGETS {
+    for (name, rva, wired) in TARGETS {
         let runtime_addr = targets::rebase(*rva);
         let mut prologue = [0u8; 16];
         // SAFETY: `runtime_addr` is the entry of a known function
-        // inside the running Horsey.exe image. Reading 16 bytes is
-        // safe; we never write.
+        // in the running Horsey.exe image. Read-only.
         let view = unsafe { std::slice::from_raw_parts(runtime_addr as *const u8, 16) };
         prologue.copy_from_slice(view);
         out.push(TargetReport {
@@ -168,6 +249,7 @@ pub fn dryrun() -> Vec<TargetReport> {
             rva: *rva,
             runtime_addr,
             prologue_bytes: prologue,
+            wired: *wired,
         });
     }
     out
@@ -177,65 +259,118 @@ pub fn dryrun() -> Vec<TargetReport> {
 // Arm / revert
 // ---------------------------------------------------------------------------
 
-/// Install the DI-A v1 detour set (currently: just
-/// `EVAL_DIPLOID_BLEND_A`). Returns Ok once enabled. The detour
-/// then dispatches every call through `eval_a_handler`.
-///
-/// Idempotent against repeat calls: if already armed, returns an
-/// error so the operator notices instead of silently re-installing.
-pub fn arm() -> anyhow::Result<()> {
-    {
-        let g = detour_slot().lock();
-        if g.is_some() {
-            anyhow::bail!("ext_genes already armed");
-        }
-    }
-
+fn install_eval_a(set: &mut DetourSet) -> anyhow::Result<()> {
     let runtime_addr = targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_A);
-
-    // Transmute the raw address into our typed function pointer.
-    // SAFETY: `runtime_addr` is the entry of `FUN_1400a5d20`,
-    // resolved from a hardcoded PE-relative address into the running
-    // Horsey.exe image. The signature `EvalDiploidBlendFn` matches
-    // the vanilla decomp prototype. Transmuting a usize that is a
-    // valid function entry into a function pointer of the right
-    // ABI is well-defined.
+    // SAFETY: address is the entry of FUN_1400a5d20 in our image;
+    // signature matches the vanilla prototype.
     let target: EvalDiploidBlendFn = unsafe { std::mem::transmute(runtime_addr) };
-
-    // Build and enable the detour. SAFETY: retour requires the
-    // target be a valid function entry with our claimed signature;
-    // we just constructed it from the address resolved above. The
-    // replacement (`eval_a_handler`) has the same signature.
+    // SAFETY: target/replacement have identical signatures.
     let detour = unsafe { GenericDetour::new(target, eval_a_handler) }
-        .map_err(|e| anyhow::anyhow!("GenericDetour::new failed: {e}"))?;
-
-    // SAFETY: enable() writes the JMP rel32 at the target entry and
-    // installs the trampoline page. retour handles RIP-relative
-    // rewrites and >2GB relays internally.
+        .map_err(|e| anyhow::anyhow!("eval_a: GenericDetour::new failed: {e}"))?;
+    // SAFETY: enable writes the JMP + installs the trampoline.
     unsafe { detour.enable() }
-        .map_err(|e| anyhow::anyhow!("GenericDetour::enable failed: {e}"))?;
-
-    *detour_slot().lock() = Some(detour);
-    reset_stats();
-    modforge::log!(
-        "ext_genes: armed EVAL_DIPLOID_BLEND_A detour at 0x{runtime_addr:x}"
-    );
+        .map_err(|e| anyhow::anyhow!("eval_a: enable failed: {e}"))?;
+    set.eval_a = Some(detour);
+    modforge::log!("ext_genes: armed EVAL_DIPLOID_BLEND_A at 0x{runtime_addr:x}");
     Ok(())
 }
 
-/// Revert the installed detour. Called from
-/// `patches::revert_all` on DLL detach so hot reload is safe.
-/// Idempotent: no-op if not armed.
-pub fn revert() {
-    let detour = detour_slot().lock().take();
-    if let Some(d) = detour {
-        // SAFETY: disable() restores the original prologue bytes
-        // retour stashed during enable(). The detour value is then
-        // dropped (releasing the trampoline page).
-        let res = unsafe { d.disable() };
-        match res {
-            Ok(()) => modforge::log!("ext_genes: reverted EVAL_DIPLOID_BLEND_A detour"),
-            Err(e) => modforge::log!("ext_genes: revert FAILED: {e}"),
+fn install_eval_b(set: &mut DetourSet) -> anyhow::Result<()> {
+    let runtime_addr = targets::rebase(fn_addr::EVAL_DIPLOID_BLEND_B);
+    // SAFETY: address is the entry of FUN_1400a5e00 in our image.
+    let target: EvalDiploidBlendBFn = unsafe { std::mem::transmute(runtime_addr) };
+    // SAFETY: signatures match.
+    let detour = unsafe { GenericDetour::new(target, eval_b_handler) }
+        .map_err(|e| anyhow::anyhow!("eval_b: GenericDetour::new failed: {e}"))?;
+    // SAFETY: enable installs the detour.
+    unsafe { detour.enable() }
+        .map_err(|e| anyhow::anyhow!("eval_b: enable failed: {e}"))?;
+    set.eval_b = Some(detour);
+    modforge::log!("ext_genes: armed EVAL_DIPLOID_BLEND_B at 0x{runtime_addr:x}");
+    Ok(())
+}
+
+fn install_allele_swap(set: &mut DetourSet) -> anyhow::Result<()> {
+    let runtime_addr = targets::rebase(fn_addr::GENE_ALLELE_SWAP);
+    // SAFETY: address is the entry of FUN_1400c03a0 in our image.
+    let target: GeneAlleleSwapFn = unsafe { std::mem::transmute(runtime_addr) };
+    // SAFETY: signatures match.
+    let detour = unsafe { GenericDetour::new(target, allele_swap_handler) }
+        .map_err(|e| anyhow::anyhow!("allele_swap: GenericDetour::new failed: {e}"))?;
+    // SAFETY: enable installs the detour.
+    unsafe { detour.enable() }
+        .map_err(|e| anyhow::anyhow!("allele_swap: enable failed: {e}"))?;
+    set.allele_swap = Some(detour);
+    modforge::log!("ext_genes: armed GENE_ALLELE_SWAP at 0x{runtime_addr:x}");
+    Ok(())
+}
+
+/// Install the DI-A v1 detour set (EVAL_A, EVAL_B, ALLELE_SWAP).
+/// Errors out if any one fails; previously installed detours from
+/// the same `arm()` call are rolled back so we never half-arm.
+pub fn arm() -> anyhow::Result<()> {
+    let mut g = detours().lock();
+    if g.eval_a.is_some() || g.eval_b.is_some() || g.allele_swap.is_some() {
+        anyhow::bail!("ext_genes already armed");
+    }
+
+    if let Err(e) = install_eval_a(&mut g) {
+        return Err(e);
+    }
+    if let Err(e) = install_eval_b(&mut g) {
+        // Roll back eval_a so we never report partial arming.
+        if let Some(d) = g.eval_a.take() {
+            // SAFETY: disable restores the prologue.
+            let _ = unsafe { d.disable() };
         }
+        return Err(e);
+    }
+    if let Err(e) = install_allele_swap(&mut g) {
+        if let Some(d) = g.eval_b.take() {
+            // SAFETY: disable restores the prologue.
+            let _ = unsafe { d.disable() };
+        }
+        if let Some(d) = g.eval_a.take() {
+            // SAFETY: disable restores the prologue.
+            let _ = unsafe { d.disable() };
+        }
+        return Err(e);
+    }
+
+    reset_stats();
+    Ok(())
+}
+
+pub fn revert() {
+    let mut g = detours().lock();
+    let take_a = g.eval_a.take();
+    let take_b = g.eval_b.take();
+    let take_swap = g.allele_swap.take();
+    drop(g);
+
+    for (name, detour) in [
+        ("EVAL_DIPLOID_BLEND_A", take_a.map(|d| Box::new(d) as Box<dyn DisableAny>)),
+        ("EVAL_DIPLOID_BLEND_B", take_b.map(|d| Box::new(d) as Box<dyn DisableAny>)),
+        ("GENE_ALLELE_SWAP", take_swap.map(|d| Box::new(d) as Box<dyn DisableAny>)),
+    ] {
+        if let Some(d) = detour {
+            match d.disable_any() {
+                Ok(()) => modforge::log!("ext_genes: reverted {name}"),
+                Err(e) => modforge::log!("ext_genes: revert {name} FAILED: {e}"),
+            }
+        }
+    }
+}
+
+/// Type-erased disable wrapper so the revert loop can treat the
+/// three differently-typed detours uniformly.
+trait DisableAny {
+    fn disable_any(&self) -> Result<(), retour::Error>;
+}
+
+impl<T: retour::Function> DisableAny for GenericDetour<T> {
+    fn disable_any(&self) -> Result<(), retour::Error> {
+        // SAFETY: disable restores the prologue retour stashed at enable.
+        unsafe { self.disable() }
     }
 }
