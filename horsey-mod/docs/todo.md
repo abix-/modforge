@@ -31,10 +31,85 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 
 **Open work in this section:**
 - [x] **R4 toolkit + first 10 resolvers shipped.** `modforge::research` library (in-process + harness variants), 4 generic recipes (decode_field_offset_via_string, decode_imm_in_window, decode_disp_pair_with_delta, decode_imm_at_call_site). 10 field offsets migrated (see Hardcoded-constants inventory below for which).
-- [ ] **Apply R4 to remaining ~27 field offsets.** Recipes proven; per-field work is authoring the right anchor (format string, allocator call site, surrounding xref) and decoding the operand.
+- [ ] **Apply R4 to remaining ~12 field offsets.** Recipes proven; per-field work is authoring the right anchor (format string, allocator call site, surrounding xref) and decoding the operand. **Plan-of-attack:** see "R4 remaining: research plan" below.
 - [ ] **Adopt 5 HLT patterns** (see "Learn from HorseyLiveTweaks" below): structural-plausibility validation, vtable check, direct vanilla-fn calls, SEH wrapping of vanilla calls, injector elevation auto-detect.
 - [ ] Author second candidate signatures for every resolver so a single MSVC reorder between builds doesn't break it (current Definition of Done #2; one sig each today).
 - [ ] CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs (Definition of Done #4).
+
+### R4 remaining: research plan (2026-05-15)
+
+12 H-gb field offsets are left after this session's batch (25/37 done). Core insight: they fail not because they're hard to pattern-anchor, but because we don't know WHICH function accesses them. The decomp tells us. The HTTP gives us live verification. Once anchor function is identified, R4 recipe is mechanical.
+
+We have: decompiled source in `horsey-mod/research/decompiled/`, running game, full HTTP introspection (`mem.scan_rdata`, `patterns.sleuth.scan_all`, `mem.find_xrefs`, `patterns.read_bytes`, `gamestate.diag`).
+
+Remaining: `FRAME_TICK` (gs+0x254), `SUPPLIES_START` (0x31c), 8x `FIELD_*` (0x37c..0x440), `TYPE_OR_SPECIES` (0x1c), roster stride 0x24, `no_tire FN_RVA + FN_SIZE`.
+
+#### Phase A: decomp grep pass (no game; pure offline)
+
+For each remaining target, grep `research/decompiled/all_functions.c` (and per-function files) for the offset literal. Goal: map field -> list of accessor functions, then pick the smallest / most-anchored one.
+
+| Target | Grep term | Expected output |
+|---|---|---|
+| `TYPE_OR_SPECIES` 0x1c | `+ 0x1c)` / `[0x1c]` | dispatchers that cmp horse type |
+| `FIELD_37C..0x440` (8 fields) | `+ 0x37c)` etc. | producer + consumer per field |
+| `SUPPLIES_START` 0x31c | `+ 0x31c)` / `+ 0x344)` | supply-array loop entries |
+| `FRAME_TICK` gs+0x254 | `+ 0x254)` in GameState ctx | per-frame increment site |
+| roster stride 0x24 | `* 0x24` / `imul ... 0x24` | roster iterators |
+
+Deliverable: a markdown table appended below listing each target's anchor candidates with confidence ranking. ~30 min of grep work.
+
+#### Phase B: resolve missing anchor functions (R2 work)
+
+Some anchor functions from Phase A won't already be in `targets::resolve::*`. For each new anchor:
+
+1. Check decomp for unique prologue / body signature.
+2. Author R2 sig in `targets::resolve::*` following the existing pattern (function entry sig with optional alias-check).
+3. Validate via existing `r2_*` tests.
+
+Likely new anchors needed: `roster_iterator` (`FUN_14006d610`), `frame_tick_handler` (unknown function), `supply_loop` (unknown).
+
+#### Phase C: R4 resolvers (mechanical with anchor in hand)
+
+Once anchored, each resolver is one of the four existing recipes:
+
+- **Disp-load histogram** in function body window (already used 8x). For TYPE_OR_SPECIES, FIELD_*, SUPPLIES_START, FRAME_TICK.
+- **Adjacent-pair delta** for stride if iterator does `lea r, [r+r*8+r*4]` or similar.
+- **Call-site lookback** (already used 2x for alloc sizes). For stride `imul reg, reg, 0x24`.
+- **Format-string xref** (already used 4x). Unlikely useful for remaining (no format strings reference these fields).
+
+#### Phase D: `no_tire` FN_RVA + FN_SIZE (bootstrap improvement)
+
+Self-contained. Doesn't depend on Phase A. Recipe:
+
+1. Add `modforge::research::find_function_bounds_via_int3(addr_inside, lookback, lookahead) -> Option<(start, end)>`. Walks back/forward through `.text` until 2+ consecutive `0xcc` bytes (MSVC inter-function padding).
+2. In `horse_offset::resolve_tired_pair`, capture the address of the matched pair (currently discarded after disp decoding).
+3. New `resolve::no_tire_loop()` calls `find_function_bounds_via_int3(pair_addr, 4096, 4096)` -> (FN_RVA, FN_SIZE).
+4. Migrate `patches::sleep_safe_no_tire::FN_RVA` and `horse_offset::NO_TIRE_LOOP_FN_RVA` to read the resolver.
+
+Standalone test: assert resolved start/size match hardcoded.
+
+#### Phase E: semantic discovery for unknown `FIELD_*` (8 mystery fields)
+
+The hardest. Some may be transient render state without a useful semantic. Approach:
+
+1. **Static**: per Phase A grep, classify each as { read-only consumed by X, written-only by Y, read-and-written in loop Z }.
+2. **Dynamic**: use `gamestate.diag` HTTP op to dump these fields. Snapshot before/after specific game actions (race, sleep, save, load, day-tick). Diff identifies which field changes with which action -> semantic.
+3. **Categorize**:
+   - Sub-struct anchors (start of another array): pattern-resolve as ranges.
+   - Policy/config fields written once during load: anchor on `LOAD_GAME` body.
+   - No clear semantic: mark `H-unknown` and accept drift risk (low if not on hot path).
+
+Realistic: 1-2 hours per field of mixed decomp + live observation.
+
+#### Order of attack (recommended)
+
+1. **Phase D first**. Self-contained, ships the no_tire bootstrap improvement (2 targets) in one session. Validates the `find_function_bounds_via_int3` helper, which we'll need elsewhere.
+2. **Phase A**. 30 min grep gives the anchor map for everything else.
+3. **Phase C** for already-anchored targets. Likely 3-4 quick wins from Phase A.
+4. **Phase B + C** for new anchors. Each is ~30 min from sig to R4.
+5. **Phase E**. Last; some `FIELD_*` will resolve naturally during Phase A (if found all written in one constructor, pattern-anchor on that). Truly-mystery ones get marked `H-unknown`.
+
+Estimated final coverage: 32-35/37 with remainder acknowledged as unknown-but-tracked.
 
 ### Hardcoded-constants inventory (zero-hardcoding audit, 2026-05-15)
 
