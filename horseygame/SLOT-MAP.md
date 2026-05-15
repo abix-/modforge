@@ -384,6 +384,29 @@ Writing `mode=set` to slot 0 with a large value is too
 heavy-handed and will produce extreme effects. That's the
 giant-baby case from 2026-05-14.
 
+## Vanilla pops (28 species)
+
+Vanilla ships 28 pop definitions in
+[`vanilla-pop.xml`](vanilla-pop.xml). Each pop is a named
+weight-table over the 240 genes; weights are per-allele
+(`p0`..`p3`) and biased by inverse: lower = more likely.
+
+```
+default, hay, scratch, fest horse, crazy horse,
+appletree, helix, yeast, pepper, freak, jockey,
+leprechaun, car, centaur test, human, dachshund,
+bear, tiger, moose, alligator, impala, giraffe,
+duck, cow, fish, centipede, rabbit, dino
+```
+
+Inheritance: every pop inherits from `default` and patches
+specific genes by name. The car pop sets `QUADRUPED p2=12`
+(extreme bias for quadruped), `LEG_IS_CIRCLE p1=1` (wheels),
+extreme `OSTODERM` / `HAT_*` values; the result is a
+boxy four-wheeled "horse." See
+[`vanilla-pop.xml`](vanilla-pop.xml) for the full template
+to imitate when authoring new pops.
+
 ## Confirmed visible-effect slots
 
 Empirically verified by setting the slot to an extreme
