@@ -7,6 +7,22 @@ Where those rely on a managed-runtime plugin loader, horsey-mod attaches
 via an injector EXE that `CreateRemoteThread`s a `LoadLibraryW` on
 `horsey.dll` into the running `Horsey.exe`.
 
+## Status
+
+| Component | Status |
+|---|---|
+| `horsey-mod` crate | shipped, builds clean |
+| `horsey.dll` + `horsey-inject.exe` | working artifacts |
+| DLL injection via `CreateRemoteThread(LoadLibraryW)` | working |
+| HTTP control plane on `127.0.0.1:33077` | working, 18 ops registered |
+| Auth via `X-Ueforge-Auth` + token file | working |
+| `_shutdown` op + staged-DLL hot-reload | reload swap works, but causes delayed crash (hardening tracked in [`docs/todo.md`](docs/todo.md)) |
+| `cheats.no_tire = true` by default at attach | working. Confirmed live 2026-05-13 |
+| MinHook trampolines on game functions | not started |
+| SDL3 input hooks for hotkeys | not started |
+| Save-writer hook for sidecar state | not started |
+| Roster UI (web frontend) | not started |
+
 ## What you get out of the box
 
 A localhost HTTP control plane on `127.0.0.1:33077` with auth, powered by

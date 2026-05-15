@@ -83,6 +83,10 @@ When this loop runs every frame, those flags are constantly reset to zero, so th
 
 Or possibly the convention is "Yes Tire" means "yes [I want to remove] tire" or similar - the labels are ambiguous. What's NOT ambiguous: the FLAG being TRUE causes per-frame fatigue reset.
 
+### Verified live (2026-05-13)
+
+Toggling `DAT_1403d95c5` to 1 via `horsey-inject.exe` + `POST /op {cheats.no_tire.set true}` disabled horse fatigue in-game immediately. The full chain (decomp -> field offset -> DLL injection -> byte write -> per-frame zeroing -> visible behavior change) worked first try. This is the canonical evidence that the decompilation pass produces correct addresses for this build (no ASLR shift, no rebase mismatch). Also confirmed live the same day: `game.money.add` writing to `gamestate+0x308` updated the UI immediately.
+
 ## Money cheat
 
 Reference: line 60473:

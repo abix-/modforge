@@ -22,6 +22,22 @@ Nothing is out of the question. The cost scales with how far you push.
 
 ---
 
+## What's NOT in any data file (hardcoded mechanics)
+
+Confirmed by exhaustive grep of `data/*.xml` and `data/*.txt`:
+
+- **No `STAMINA`, `FATIGUE`, `TIRED`, `RACES_PER_REST`, `ENERGY`, `RECOVERY`, or `COOLDOWN` gene or attribute anywhere.** The "horse can only run one race before tired" mechanic is hardcoded.
+- **No base lifespan value.** `OLD_AGE` is a modifier, not a base. The base age-tick rate / death threshold is hardcoded.
+- **No hunger/thirst tunable.** `StatusHungry` and `ThoughtHungry` sprites exist (sprites.xml:147, 154) so the mechanic exists, but its rate is hardcoded.
+- **No `EnterSleep` / `WakeUp` cooldowns** in `sound.xml`. The sound registry just plays clips; it doesn't tune the mechanic.
+
+Useful RE search anchors for these hardcoded mechanics (use as Ghidra string searches):
+
+- **Sound names** (from `sound.xml`): `HorsesAge`, `WildMating`, `StartNextRace`, `RaceGo`, `WonRace`, `LoseRace`, `TitleCard`, `EnterLocationAbandoned`, `FillHole`, `DestroyTree`, `DestroyMountain`, `ReclaimLand`, `Fish`, `WhipCrack`, `BalloonFly`.
+- **UI sprites** (from `sprites.xml`): `StatusOld`, `StatusTired`, `StatusHungry`, `StatusHungry2`, `ThoughtTired`, `ThoughtHungry`, `ThoughtHungry2`, `AnimSleep`, `AnimSleep2`, `SleepMoon`, `AgeWord`.
+
+These are the levers that any "longer lifespan" / "less fatigue" / "no hunger" mod has to reach through engine extension (DLL hook), not XML editing.
+
 ## The hard ceilings in the engine (and how to break them)
 
 ### 1. The 240-gene limit

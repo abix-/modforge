@@ -165,3 +165,23 @@ The binary is 4.4 MB and stripped. Every patch will shift function addresses. Tw
 3. Find the function referencing `"Horse is too tired!"`. Identify the field offset within the horse struct that holds the fatigue counter, and the immediate it's compared against.
 4. Find the function referencing `"%s retired %s (old) ch %d races %d wins %d%s"`. Identify the age field and the retirement threshold.
 5. Decide: byte patch vs DLL hook. Byte patch is fine for a single-user mod that doesn't need to survive patches.
+
+## Engine-identification anchor table
+
+Binary strings/imports that nail the engine identification. Useful when re-anchoring after a game update.
+
+| Component | Evidence |
+|---|---|
+| **SDL3** | hundreds of `SDL.app.metadata.*`, `SDL.gpu.device.create.*`, `SDL.filedialog.*` strings. The `SDL.gpu.*` API is SDL3-only (SDL2 doesn't have it). |
+| **cute_sound** | `CUTE_SOUND_ERROR_CANT_INIT_SDL_AUDIO`, `CUTE_SOUND_ERROR_WAV_ONLY_MONO_OR_STEREO_IS_SUPPORTED`, etc. Single-header C lib by RandyGaul. |
+| **stb_image_write** | `stb_image_write.h` literal in binary. Single-header lib by nothings. |
+| **D3D12 / D3D11 / OpenGL / OpenGL ES** | dynamic imports of `d3d12.dll`, `d3d11.dll`, `dxgi.dll`, `opengl32.dll`, `libGLESv2.dll`, `d3dcompiler_47.dll`, `WinPixEventRuntime.dll`. SDL_GPU picks a backend at runtime. |
+| **Tiled** | `horsey.tmx` is the world map, plain XML with `tiledversion="2018.09.12"`. |
+| **ChevyRay fonts** | bitmap fonts (`Bubble Time`, `Classified`, `Picory`, `Soft Square`) are from chevyray.itch.io. `.crf` is the ChevyRay binary font format. |
+| **steam_api64.dll** | classic Steamworks, NOT Steamworks.NET. So no managed runtime. |
+
+No Mono. No IL2CPP. No CoreCLR. No Python embed. No Lua VM. No Haxe runtime. No `.NET` assemblies anywhere. Hand-rolled C/C++ on SDL3.
+
+The string `Aqualime` in the binary is NOT an engine name. It's part of `PDP Xbox One Aqualime`, an SDL controller database entry. Red herring.
+
+No PDB path or build-machine source path leaked into the binary, so the dev's build is stripped.

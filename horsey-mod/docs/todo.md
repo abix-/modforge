@@ -1418,3 +1418,43 @@ Goal: Horsey modding becomes a real ecosystem. Required steps:
 4. Steam Workshop integration? (Unclear if SDK supports custom uploads.)
 5. Auto-updater for horsey-mod itself (so mod authors don't pin to ancient
    game versions).
+
+---
+
+## Known control-plane issues (carried over from first-injection milestone)
+
+Recorded 2026-05-13 during the first successful injection (proof-of-life). These are bugs/refinements to the HTTP control plane, distinct from the mod-feature TODOs above.
+
+1. **Snapshot in WRITE responses captures pre-write state.** The `result` field reflects the new value (correct), but the `state` sub-object is captured a moment before the write commits. Cosmetic; the next readback shows correct state. Fix: capture snapshot after the handler runs.
+2. **No state-change broadcasting.** Clients have to poll `game.read` to see updates. A websocket or SSE upgrade is on the medium-term roadmap.
+3. **Write-op gating.** Bot operators have run write cheats (e.g. $100k money) unprompted during smoke tests. Going forward, write-ops should be user-approved only.
+
+---
+
+## Open next reads (priority order)
+
+Targets for the next decomp-and-document passes, in order of expected payoff:
+
+1. `FUN_1400df280` retirement handler. Pinpoint the age threshold for "horse is too old to race".
+2. `FUN_1400a3eb0` chromomap loader. Confirm how `genes.xml` attributes map to runtime behavior, esp. `OLD_AGE` direction.
+3. `FUN_140089510` save-file open/write. Get the save struct layout.
+4. `FUN_14008ffc0` genome clipboard copy. Get the human-readable genome format.
+5. `FUN_140033a10` price formula. Confirm the `* years` factor and the age field offset on the horse struct.
+
+## Working principle
+
+Every claim in any horsey-mod doc must be backed by either:
+
+1. Decompiled code from `Horsey.exe`, with the function address cited.
+2. An in-game observation that directly tests the claim (save-diff after a known action).
+
+Anything else is labelled `(INFERRED, NOT VERIFIED)` or removed.
+
+## User's gameplay goal (the original motivator)
+
+User wants to mod out the tedium loop:
+
+1. Horse stamina / fatigue: a horse can only run ONE race before it's tired and needs to sleep. Want this much higher, or remove fatigue entirely.
+2. Horse lifespan: horses die too quickly, forcing constant breeding/killing/swapping. Want longer lifespans (or much slower aging).
+
+Complaint is FREQUENCY, not the mechanics. Goal is to dial knobs down, not delete mechanics. Target outcome: play sessions focused on racing and farming, not constant rotation of dying horses.
