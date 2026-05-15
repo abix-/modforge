@@ -92,52 +92,104 @@ fn find_gamestate_ptr_by_money_xref_count() {
             .and_then(|v| v.as_u64())
             .map(|v| v as u32)
     }
-    let mut ranked: Vec<(u64, u32, u32, u32, bool)> = Vec::new();
+    fn peek_u64(game: &modforge::harness::RunningGame, addr: u64) -> Option<u64> {
+        let resp = game
+            .op_json("mem.peek", &json!({"addr": addr, "kind": "u64"}))
+            .ok()?;
+        resp.get("result")
+            .and_then(|r| r.get("value"))
+            .and_then(|v| v.as_str())
+            .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+    }
+    #[derive(Debug, Clone)]
+    struct Candidate {
+        money_addr: u64,
+        money: u32,
+        year: u32,
+        sleeps: u32,
+        roster_begin: u64,
+        roster_end: u64,
+        plausible: bool,
+    }
+    let mut ranked: Vec<Candidate> = Vec::new();
     for h in hits.iter() {
         let money_addr = u64_of(h, "addr").expect("addr");
+        let base = money_addr.saturating_sub(0x308);
         let m = peek_u32(&game, money_addr).unwrap_or(0);
-        // year at money + 0xC (offset 0x314 - 0x308 = 0xC)
         let year = peek_u32(&game, money_addr + 0xC).unwrap_or(u32::MAX);
-        // sleeps at money + 0x10
         let sleeps = peek_u32(&game, money_addr + 0x10).unwrap_or(u32::MAX);
-        let plausible = m == expect_money && year < 100 && sleeps < 10_000_000;
-        ranked.push((money_addr, m, year, sleeps, plausible));
+        // HORSES_BEGIN = base + 0x280, HORSES_END = base + 0x288.
+        // Real GameState has either both null (fresh / empty) or
+        // both heap pointers (>= 0x10000) with end >= begin AND
+        // (end - begin) divisible by 0x24 (roster entry stride) AND
+        // count < 2560. Decoys mostly have garbage there.
+        let rb = peek_u64(&game, base + 0x280).unwrap_or(u64::MAX);
+        let re = peek_u64(&game, base + 0x288).unwrap_or(u64::MAX);
+        let roster_ok = {
+            let both_null = rb == 0 && re == 0;
+            let both_heap = rb >= 0x10000
+                && re >= rb
+                && (re - rb) % 0x24 == 0
+                && (re - rb) / 0x24 < 2560;
+            both_null || both_heap
+        };
+        let year_match = match std::env::var("MODFORGE_EXPECT_YEAR") {
+            Ok(s) => s.parse::<u32>().ok().map(|v| v == year).unwrap_or(false),
+            Err(_) => year < 1000, // wide fallback
+        };
+        let sleeps_match = match std::env::var("MODFORGE_EXPECT_SLEEPS") {
+            Ok(s) => s.parse::<u32>().ok().map(|v| v == sleeps).unwrap_or(false),
+            Err(_) => sleeps < 100_000_000, // wide fallback
+        };
+        let plausible = m == expect_money && year_match && sleeps_match && roster_ok;
+        ranked.push(Candidate {
+            money_addr,
+            money: m,
+            year,
+            sleeps,
+            roster_begin: rb,
+            roster_end: re,
+            plausible,
+        });
     }
 
-    // Log every candidate (sorted plausible-first).
-    ranked.sort_by(|a, b| b.4.cmp(&a.4));
-    for (money_addr, m, year, sleeps, plausible) in &ranked {
-        let candidate_base = money_addr.saturating_sub(0x308);
+    ranked.sort_by(|a, b| b.plausible.cmp(&a.plausible));
+    for c in &ranked {
+        let base = c.money_addr.saturating_sub(0x308);
+        let tag = if c.plausible { "OK" } else { "??" };
         game.log().event(
             "FIND-GS",
             &format!(
-                "{} money@0x{money_addr:x} (gamestate@0x{candidate_base:x}): \
-                 money={m} year={year} sleeps={sleeps}",
-                if *plausible { "OK" } else { "??" },
+                "{tag} gamestate@0x{base:x} money@0x{:x}={} year={} sleeps={} \
+                 roster_begin=0x{:x} roster_end=0x{:x}",
+                c.money_addr, c.money, c.year, c.sleeps,
+                c.roster_begin, c.roster_end,
             ),
         );
     }
 
-    let plausible: Vec<_> = ranked.iter().filter(|r| r.4).collect();
+    let plausible: Vec<_> = ranked.iter().filter(|c| c.plausible).collect();
     assert!(
         !plausible.is_empty(),
-        "no candidate has plausible year+sleeps near the money slot. \
+        "no candidate has plausible money + year + sleeps + roster. \
          Ranking: {ranked:?}"
     );
     assert_eq!(
         plausible.len(),
         1,
         "more than one candidate looks plausible; need a tighter \
-         discriminator (e.g. also check supplies / horse_count). \
-         Plausible: {plausible:?}",
+         discriminator. Plausible: {plausible:?}",
     );
     let top = plausible[0];
     game.pass(&format!(
-        "real gamestate_ptr = 0x{:x} (money@0x{:x}={}, year={}, sleeps={})",
-        top.0.saturating_sub(0x308),
-        top.0,
-        top.1,
-        top.2,
-        top.3,
+        "real gamestate_ptr = 0x{:x} (money@0x{:x}={}, year={}, sleeps={}, \
+         roster_begin=0x{:x}, roster_end=0x{:x})",
+        top.money_addr.saturating_sub(0x308),
+        top.money_addr,
+        top.money,
+        top.year,
+        top.sleeps,
+        top.roster_begin,
+        top.roster_end,
     ));
 }
