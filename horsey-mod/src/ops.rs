@@ -491,6 +491,10 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::alloc_size()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::HORSE_ALLOC_SIZE),
                     },
+                    "gamestate_alloc_size": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::alloc_size()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::GAMESTATE_ALLOC_SIZE),
+                    },
                 }))
             },
         ),

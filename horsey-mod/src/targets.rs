@@ -319,6 +319,66 @@ pub mod gs_offset {
         static CACHE: OnceLock<usize> = OnceLock::new();
         *CACHE.get_or_init(|| resolve_map_dims_pair().map(|p| p.1).unwrap_or(TRAILING_27C))
     }
+
+    /// Old decomp constant for the GameState struct alloc size.
+    /// Production should call [`alloc_size()`].
+    pub const GAMESTATE_ALLOC_SIZE: usize = 0x448;
+
+    /// Pattern-resolved GameState struct alloc size. Anchors on
+    /// the unique `mov [rip+disp32], reg` store of the new GameState
+    /// pointer to `GAMESTATE_PTR` (inside the constructor), then
+    /// looks back ~256 bytes for `b9 <imm32>` (mov ecx, alloc_size)
+    /// that preceded the allocator call producing the buffer.
+    /// Histograms the imms; top in `[0x100, 0x10000)` is the size.
+    ///
+    /// Falls back to `GAMESTATE_ALLOC_SIZE` when the resolver chain
+    /// misses.
+    pub fn alloc_size() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_alloc_size().unwrap_or(GAMESTATE_ALLOC_SIZE))
+    }
+
+    fn resolve_alloc_size() -> Option<usize> {
+        let gs_ptr = super::resolve::gamestate_ptr()?;
+        // `mov [rip+disp32], reg` for any of the 8 common destination
+        // regs. The disp32 must rip-rel to `gs_ptr`.
+        const STORE_PREFIXES: &[&str] = &[
+            "48 89 05", "48 89 0d", "48 89 15", "48 89 1d",
+            "48 89 2d", "48 89 35", "48 89 3d",
+        ];
+        let mut anchor: Option<usize> = None;
+        for prefix in STORE_PREFIXES {
+            let sig = format!("{prefix} X0x{gs_ptr:x}");
+            if let Ok(hits) = modforge::patterns::sleuth::scan_all_matches(&sig) {
+                if let Some(&a) = hits.first() {
+                    anchor = Some(a);
+                    break;
+                }
+            }
+        }
+        let anchor = anchor?;
+        const LOOKBACK: usize = 256;
+        let start = anchor.saturating_sub(LOOKBACK);
+        // SAFETY: start..anchor is inside .text, mapped.
+        let bytes: &[u8] = unsafe {
+            std::slice::from_raw_parts(start as *const u8, LOOKBACK)
+        };
+        let mut hist: std::collections::BTreeMap<i64, usize> =
+            std::collections::BTreeMap::new();
+        for i in 0..bytes.len().saturating_sub(5) {
+            if bytes[i] == 0xb9 {
+                let imm = i32::from_le_bytes([
+                    bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4],
+                ]) as i64;
+                if (0x100..0x10000).contains(&imm) {
+                    *hist.entry(imm).or_insert(0) += 1;
+                }
+            }
+        }
+        hist.into_iter()
+            .max_by_key(|(_, c)| *c)
+            .map(|(v, _)| v as usize)
+    }
 }
 
 // =============================================================================
