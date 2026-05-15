@@ -431,6 +431,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::ctx_offset()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::HORSE_CTX_OFFSET),
                     },
+                    "tired_flag_a": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::tired_flag_a()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::TIRED_FLAG_A),
+                    },
+                    "tired_flag_b": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::tired_flag_b()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::TIRED_FLAG_B),
+                    },
                 }))
             },
         ),

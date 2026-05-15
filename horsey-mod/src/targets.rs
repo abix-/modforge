@@ -213,6 +213,8 @@ pub mod gs_offset {
 // differ.
 
 pub mod horse_offset {
+    use std::sync::OnceLock;
+
     /// Horse type/species code. Compared to 2/3/4/6 in various
     /// dispatchers.
     pub const TYPE_OR_SPECIES: usize = 0x1c;
@@ -226,9 +228,53 @@ pub mod horse_offset {
     /// "On track / unavailable" flag (uint8). When 0, price doubles.
     pub const ON_TRACK_FLAG: usize = 0x204;
     /// Tiredness flag A (uint8). Zeroed every frame by Yes Tire.
+    /// Old decomp constant; production should call [`tired_flag_a()`].
     pub const TIRED_FLAG_A: usize = 0x205;
     /// Tiredness flag B (uint8). Zeroed every frame by Yes Tire.
+    /// Old decomp constant; production should call [`tired_flag_b()`].
     pub const TIRED_FLAG_B: usize = 0x206;
+
+    /// RVA of the no_tire per-frame loop function (`FUN_1400ceb60`
+    /// in the decomp; matches `patches::sleep_safe_no_tire::FN_RVA`).
+    const NO_TIRE_LOOP_FN_RVA: usize = 0x1400ceb60;
+    const NO_TIRE_LOOP_BODY_SIZE: u64 = 2502;
+
+    fn resolve_tired_pair() -> Option<(usize, usize)> {
+        let fn_start = super::rebase(NO_TIRE_LOOP_FN_RVA);
+        // Scan body for `c6 ?? <disp32> 00` (mov byte [reg+disp32], 0).
+        // disp32 at offset 2, imm at offset 6.
+        let hist = modforge::research::in_process_decode_imm_in_window(
+            "c6 ?? ?? ?? ?? ?? 00",
+            2,
+            4,
+            fn_start as u64,
+            NO_TIRE_LOOP_BODY_SIZE,
+        ).ok()?;
+        // Find a pair (a, b) with b == a + 1 and both in
+        // [0x100, 0x500] (typical horse-struct flag region).
+        let mut sorted: Vec<i64> = hist.keys().copied().filter(|&v| v >= 0x100 && v < 0x500).collect();
+        sorted.sort();
+        for w in sorted.windows(2) {
+            if w[1] == w[0] + 1 {
+                return Some((w[0] as usize, w[1] as usize));
+            }
+        }
+        None
+    }
+
+    /// Pattern-resolved offset of tiredness flag A. Anchors on the
+    /// per-frame no_tire loop's two byte-zero stores: the LOWER of
+    /// the adjacent flag-zeroing disps is TIRED_FLAG_A.
+    pub fn tired_flag_a() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_tired_pair().map(|p| p.0).unwrap_or(TIRED_FLAG_A))
+    }
+
+    /// Pattern-resolved offset of tiredness flag B (= TIRED_FLAG_A + 1).
+    pub fn tired_flag_b() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_tired_pair().map(|p| p.1).unwrap_or(TIRED_FLAG_B))
+    }
     /// Breeding flag (uint8). Set on both parents during BarnMating.
     pub const BREEDING_FLAG: usize = 0x207;
     /// Skill / fitness counter (int32). Used by retirement.
