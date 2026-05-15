@@ -278,7 +278,7 @@ Columns:
 | 185 | `SWAP_BASE_SPOT` | 1 | 0 | 1 | 0 | 1 | 100 | ATCG | - | 312, 313, 314 | L2664 |   |
 | 186 | `SWAP_ALT_SPOT` | 1 | 0 | 1 | 0 | 1 | 100 | TGCA | 317 | 314, 315 | L2680 |   |
 | 187 | `WHITE` | 1 | 1 | 0 | 0 | 0 | 100 | TAGC | 313 | 314, 315 | L2616 |   |
-| 188 | `WHITE_IS_LETHAL` | 1 | 0 | 1 | 0 | 0 | 100 | AGCT | 313 | - | L2618 |   |
+| 188 | `WHITE_IS_LETHAL` | 1 | 0 | 1 | 0 | 0 | 100 | AGCT | 313 | - | L2618 | Real-horse genetics analogue: white-coat horses die. Setting all four alleles to 0 removes the lethal mechanic entirely. |
 
 ## 189..218: Colors + patterns + behavioral
 
@@ -307,13 +307,13 @@ Columns:
 | 209 | `BRAIN_SPASTIC` | 1 | 0 | 1 | 2 | 0 | 100 | TGAC | _unread_ | _unread_ | - | DEAD. Behavioral, never read by engine. Likely unfinished. Free slot. |
 | 210 | `HIGH_INTELLECT` | 1 | 0 | 1 | 0 | 1 | 100 | CTAG | - | 347 | L2930 |   |
 | 211 | `OMNIVORE` | 1 | 0 | 1 | 0 | 0 | 100 | CATG | 87 | - | L3170 |   |
-| 212 | `LITTER_SIZE` | 1 | 1 | 2 | 3 | 5 | 100 | CTAG | 322, 349 | - | L3166 |   |
-| 213 | `OLD_AGE` | 1 | 0 | 0 | -1 | 2 | 100 | TACG | 351 | - | L3174 |   |
-| 214 | `LIMP` | 1 | 0 | 1 | 0 | 2 | 100 | AGTC | 132, 194, 195 | 347 | L764, L2964 |   |
-| 215 | `NARCOLEPSY` | 1 | 0 | 0 | 1 | 0 | 100 | TCGA | - | 347 | L2972 |   |
-| 216 | `FLU_IMMUNITY` | 1 | 0 | 0 | 0 | 1 | 100 | CATG | _unread_ | _unread_ | - | DEAD. Behavioral, never read by engine. Likely unfinished. Free slot. |
+| 212 | `LITTER_SIZE` | 1 | 1 | 2 | 3 | 5 | 100 | CTAG | 322, 349 | - | L3166 | Babies per breeding. Bump alleles to 5/8/10/15 to drastically cut breeding upkeep sessions. |
+| 213 | `OLD_AGE` | 1 | 0 | 0 | -1 | 2 | 100 | TACG | 351 | - | L3174 | Aging modifier per horse. g3=+2 dies faster, g2=-1 lives longer. Default pop spawns only g0=0 (neutral baseline). `human` pop spawns g3 (line 1536 of pop.xml); `freak` pop mostly g2/g3 (line 2685). Caveat: very large negative values risk instant death if the base lifespan is small. Test with -5 first. |
+| 214 | `LIMP` | 1 | 0 | 1 | 0 | 2 | 100 | AGTC | 132, 194, 195 | 347 | L764, L2964 | g1/g3 give limping severity. Set all to 0 to remove the trait. |
+| 215 | `NARCOLEPSY` | 1 | 0 | 0 | 1 | 0 | 100 | TCGA | - | 347 | L2972 | g2=1 means "has narcolepsy". Default pop has p0=1 (no narcolepsy). Some pops (line 604, 2687 of pop.xml) have narcoleptic alleles. Set g2=0 globally to remove the trait. |
+| 216 | `FLU_IMMUNITY` | 1 | 0 | 0 | 0 | 1 | 100 | CATG | _unread_ | _unread_ | - | DEAD. Behavioral, never read by engine. Likely unfinished. Free slot. Theoretical mod: setting all alleles to 1 would grant universal immunity if the engine ever wires it up. |
 | 217 | `TAIL_WAG` | 1 | 1 | 0 | 0 | 0 | 100 | CTGA | - | 347 | L2982 |   |
-| 218 | `STIFF_JOINTS` | 100 | 0 | 18 | 50 | 0 | 100 | CGAT | 26, 27, 45, 46, 64, 65, 82, 83, 100, 101, 118, 119 | - | L3136 |   |
+| 218 | `STIFF_JOINTS` | 100 | 0 | 18 | 50 | 0 | 100 | CGAT | 26, 27, 45, 46, 64, 65, 82, 83, 100, 101, 118, 119 | - | L3136 | Probably reduces joint flexibility/movement. Multiplies 12 joint-flex slots simultaneously (tail, legs, arms, neck flex bias). |
 
 ## 219..239: Animation signals
 
