@@ -121,6 +121,27 @@ teardown grace        3s
 
 Test log written to `target/test-runs/smoke_ping_returns_ok-<ts>.log` with every step timestamped + flushed per-line.
 
+#### Iteration 6: R2 patternsleuth resolver + migration pattern proven
+
+Two new test files drove R2 end to end:
+
+- `tests/r2_resolver.rs` (3 green): multi-target single-pass resolution; missing-signature returns null; first-matching-sig-wins.
+- `tests/r2_migration_combinator.rs` (1 green): legacy hardcoded-RVA address equals patternsleuth-resolved address for `GENE_COMBINATOR`. **Migration pattern proven.**
+
+Implementation:
+
+- `modforge::patterns::sleuth` wraps the patternsleuth crate. API: `Target{name, sigs}`, `Resolution{by_name}`, `resolve_all(&[Target])`.
+- Per-target candidate-signature lists; first match wins.
+- Scans restricted to `.text` section (caught a real bug: 16 bytes of `0xff` false-matched in `.rdata` before the filter).
+- HTTP op `patterns.sleuth.resolve {patterns: [{name, sigs}]}` exposes it to tests + future attach-time use.
+
+Counts: 50 unit + 9 harness tests, all but one save dryrun green.
+
+Open follow-ups (each is its own failing-test-first piece):
+- Author per-target sleuth signatures for `GENE_COMBINATOR`, `APPLY_GENE_TO_HORSE`, `EVAL_DIPLOID_BLEND_A/B`, `GENE_ALLELE_SWAP`, `HORSE_CONSTRUCTOR`, `HORSE_DESTRUCTOR`. Migration is mechanical now that parity is proven.
+- Re-derive the 4 stale save addresses. They're not in the binary at the expected RVAs; need fresh decomp or some other discovery (string xref tracing). Once a signature exists, plug it into the catalog and the resolver finds it.
+- Build hash + image SHA-256 at attach (R1 finishing piece, still open).
+
 #### Iteration 5: pattern-scan primitive (R1) ships in modforge
 
 Test-first workflow drove `modforge::patterns`. Failing test
