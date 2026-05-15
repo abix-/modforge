@@ -180,7 +180,7 @@ pub fn is_armed() -> bool {
 /// We try CWD-relative `save/save<N>.dat.ext` first (matches vanilla's
 /// behavior of writing relative to game install), then fall back to
 /// the DLL dir if that's not writable.
-fn sidecar_path(channel: u32) -> PathBuf {
+pub fn sidecar_path(channel: u32) -> PathBuf {
     let filename = format!("save{channel}.dat.ext");
     // First choice: install_dir/save/. Game CWD is the install dir
     // when launched normally. If CWD isn't writable (rare), fall back

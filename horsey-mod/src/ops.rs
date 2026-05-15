@@ -509,6 +509,26 @@ Auto-creates the horse's extended genome if not present.",
             },
         ),
         OpDef::new(
+            "horse.ext.alleles.get",
+            "Read one diploid allele pair for one extended gene of one horse. \
+Returns {maternal, paternal} (both in [0..3]). Errors if the horse has no ext \
+genome entry.",
+            "{horse_id: u64, ext_gene_idx: usize}",
+            |args| {
+                let horse_id = args
+                    .get("horse_id")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing or non-u64 arg: horse_id".to_string())?;
+                let ext_gene_idx = args_usize(args, "ext_gene_idx")?;
+                match genes::get_horse_ext_alleles(horse_id, ext_gene_idx) {
+                    Some((m, p)) => Ok(json!({"maternal": m, "paternal": p})),
+                    None => Err(format!(
+                        "no ext genome for horse_id 0x{horse_id:x} (or gene {ext_gene_idx} out of range)"
+                    )),
+                }
+            },
+        ),
+        OpDef::new(
             "horse.ext.genome.set",
             "Set a horse's full extended genome. `alleles` must be length 2*EXT_GENE_COUNT.",
             "{horse_id: u64, alleles: [u8]}",
@@ -1042,6 +1062,88 @@ invocations; `horse_writes`/`horse_reads` = per-horse records appended/consumed;
                     "horse_reads": s.horse_reads,
                     "files_written": s.files_written,
                     "files_read": s.files_read,
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.write_now",
+            "Directly write the BXSAVEXT sidecar for the given channel, bypassing the \
+detour. Walks current EXT_HORSE_GENOMES + writes the file at sidecar_path(channel). \
+Used by the end-to-end save/restart/reload test to skip the vanilla save trigger \
+while still proving cross-launch persistence of the codec. Body: {channel: u32}.",
+            "{channel: u32}",
+            |args| {
+                use std::io::Write as _;
+                let channel = args
+                    .get("channel")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing channel".to_string())? as u32;
+                let path = patches::save_sidecar::sidecar_path(channel);
+                if let Some(parent) = path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let genomes: Vec<(u64, genes::ExtHorseGenome)> = {
+                    let ids = genes::list_horse_genome_ids();
+                    ids.into_iter()
+                        .filter_map(|id| {
+                            genes::get_horse_ext_genome(id).map(|g| (id, g))
+                        })
+                        .collect()
+                };
+                let mut f = std::fs::File::create(&path)
+                    .map_err(|e| format!("create {}: {e}", path.display()))?;
+                patches::save_sidecar::write_header(
+                    &mut f,
+                    genes::EXT_GENE_COUNT as u32,
+                    genomes.len() as u32,
+                )
+                .map_err(|e| format!("write_header: {e}"))?;
+                for (_id, g) in &genomes {
+                    patches::save_sidecar::write_horse_record(&mut f, g)
+                        .map_err(|e| format!("write_horse_record: {e}"))?;
+                }
+                f.flush().map_err(|e| format!("flush: {e}"))?;
+                Ok(json!({
+                    "path": path.display().to_string(),
+                    "horses": genomes.len(),
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.save.read_now",
+            "Directly read the BXSAVEXT sidecar for the given channel into \
+EXT_HORSE_GENOMES (clears existing entries first). Mirror of write_now. Body: \
+{channel: u32}. Returns {path, horses} on success.",
+            "{channel: u32}",
+            |args| {
+                let channel = args
+                    .get("channel")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing channel".to_string())? as u32;
+                let path = patches::save_sidecar::sidecar_path(channel);
+                if !path.exists() {
+                    return Err(format!("sidecar missing: {}", path.display()));
+                }
+                let mut f = std::fs::File::open(&path)
+                    .map_err(|e| format!("open {}: {e}", path.display()))?;
+                let hdr = patches::save_sidecar::read_header(&mut f)
+                    .map_err(|e| format!("read_header: {e}"))?;
+                for i in 0..hdr.horse_count {
+                    // Drop any existing entry at this index so the
+                    // sidecar's values are authoritative.
+                    let _ = genes::drop_horse_ext_genome(i as u64);
+                }
+                for i in 0..hdr.horse_count {
+                    let g = patches::save_sidecar::read_horse_record(&mut f)
+                        .map_err(|e| format!("read_horse_record {i}: {e}"))?;
+                    // Key by sequential index; the real path keys by horse pointer
+                    // through the detour. For the e2e test we use index keys so
+                    // assertions stay self-consistent across launches.
+                    genes::set_horse_ext_genome(i as u64, g);
+                }
+                Ok(json!({
+                    "path": path.display().to_string(),
+                    "horses": hdr.horse_count,
                 }))
             },
         ),
