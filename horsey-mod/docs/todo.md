@@ -70,13 +70,38 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 | `e8f6c89` | dryrun_d3_d4 catches stale save addresses |
 | `f0abb2a` | modforge::harness + horsey-mod test infrastructure |
 
-### Open follow-ups (test-first, in priority order)
+### Next action (locked 2026-05-15): re-derive 4 stale save addresses + arm D4 sidecar
 
-1. **Signature catalog: hand-author unique signatures.** Catalog `r2_catalog_resolves_all_green_targets` is green for 4 targets using 32-byte derived signatures (read from the runtime image). For production address resolution that survives game updates, replace those with hand-authored signatures that include body bytes + hand-picked wildcards so a single MSVC reorder doesn't break the match. Extending the catalog also needs to cover `EVAL_DIPLOID_BLEND_A/B` + `GENE_ALLELE_SWAP` (their dryrun returns multi-target arrays; the `CatalogEntry` shape needs a `legacy_path_pick` variant).
-2. **Retire hardcoded `fn_addr::*` consts.** Switch from `pub const NAME: usize = 0x...` to lazy `pub fn name() -> usize` reading from a resolved catalog. Test asserts every detour arms via the resolved address and behaves identically. Larger refactor.
-3. **Re-derive the 4 stale save addresses.** Needs fresh decomp pass OR string-xref tracing (the byte sequences at the original Ghidra RVAs are mid-function code, not entries). Once signatures exist, plug into catalog and `dryrun_d3_d4::save_*` goes green automatically.
-4. ~~R1 build identification.~~ DONE (`fe74e6b`). `game.build_info` op shipped; image SHA-256 cached + exposed. r1_build_identification (2 tests) green.
-5. ~~Arm-and-observe tests for D5 + lifecycle + full-stack.~~ DONE (`574beb0`). 4 arm tests green: combinator, lifecycle, render trampoline, full-stack. Lifecycle in isolation captured 550 ctor / 3 dtor calls in 5s of menu idle. Full-stack arms 4 subsystems together; game survives.
+The 480-gene system is infrastructure-complete but unshippable until save round-trip works. Without it, every ext allele a modder authors vanishes on restart. The bestiary thesis can't ship.
+
+The lone red test in the suite is `dryrun_d3_d4::save_dryrun_prologues_ok`. Making it green completes 480-gene v1.
+
+**Step-by-step (test-first):**
+
+1. **Write the failing contract test.** A new test asserts `patterns.sleuth.resolve` finds all 4 save targets via hand-authored signatures. Test is red because we have no signatures yet.
+2. **Derive signatures from the live image.** Read 64-128 bytes at each of `FUN_14006dc80` (SAVE_WRITER), `FUN_14006e480` (LOAD_GAME), `FUN_14006ee10` (HORSE_SAVE_WRITER), `FUN_14006f150` (HORSE_SAVE_LOADER) via `patterns.read_bytes`. Cross-check against the decomp body to identify stable vs compiler-shifted bytes. Author signatures with hand-picked wildcards.
+3. **Add to catalog.** Plug signatures into the `r2_catalog`-style test; watch it go green.
+4. **Migrate `targets::fn_addr` for the 4 save targets** to use the resolver. `genes.ext.save.arm` then arms against resolved addresses.
+5. **`dryrun_d3_d4::save_dryrun_prologues_ok` flips green.** D4 ships. Whole suite goes 100% green.
+6. **End-to-end proof.** Author one ext gene, set on a horse, save, restart, reload, verify ext allele survived. The shippable demonstration that the 480-gene system actually ships.
+
+**Why this over the alternatives:** the 480-gene work is the load-bearing thesis of horsey-mod. ImGui-in-modforge (next-up after this), HK1 hotkey, pasture auto-buy, and bestiary content are all more useful WITH save persistence than without.
+
+### Open follow-ups after the next action lands
+
+1. **ImGui-in-modforge primitive.** Unblocks roster UI + every future QoL panel across all game-mods. DX swap-chain hook + window/panel API. Large infrastructure piece; horsey-mod is first consumer.
+2. **HK1 Shift+Click smart-transfer.** First user-locked QoL feature. Needs SDL input hook + horse-under-cursor resolver + transfer primitive (all new modforge primitives).
+3. **Pasture auto-buy hay.** Real user-stated tedium. Needs store-buy + pasture-stock-read ops we don't have yet.
+4. **Hand-author unique short signatures** for the existing green targets (replace 32-byte derived sigs in `r2_catalog` with body-byte + hand-picked-wildcard sigs that survive MSVC reorders).
+5. **Retire hardcoded `fn_addr::*` consts** in favor of resolver-backed accessors. Mechanical refactor; parity test already in place.
+6. **D6 mutation drift persistence.** Find whether vanilla persists `FUN_1400c0660` drift to genes.xml; mirror for the ext range if so.
+
+### Completed this session
+
+- ~~R1 build identification.~~ DONE (`fe74e6b`). `game.build_info` op shipped; image SHA-256 cached + exposed. r1_build_identification (2 tests) green.
+- ~~Arm-and-observe tests for D5 + lifecycle + full-stack.~~ DONE (`574beb0`). 4 arm tests green: combinator, lifecycle, render trampoline, full-stack. Lifecycle in isolation captured 550 ctor / 3 dtor calls in 5s of menu idle. Full-stack arms 4 subsystems together; game survives.
+- ~~R2 patternsleuth resolver shipped~~ DONE (`54d1c90`). `modforge::patterns::sleuth` wraps the crate; multi-target SIMD scan with first-match-wins per target. 3 harness tests green.
+- ~~R2 catalog parity proven~~ DONE (`74846de`). 4 known-good targets (GENE_COMBINATOR, APPLY_GENE_TO_HORSE, HORSE_CONSTRUCTOR, HORSE_DESTRUCTOR) resolve identically via sleuth as via legacy hardcoded RVAs. Migration pattern locked.
 
 ## Ship status pointers
 
