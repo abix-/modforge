@@ -607,3 +607,582 @@ Vanilla combinator algorithm + the linked-inheritance cluster ranges (Neck, Head
 ### D4 (save sidecar): code SHIPPED, addresses STALE
 
 Implementation lives in `horsey-mod/src/patches/save_sidecar.rs`; the BXSAVEXT codec is unit-tested in `patches::save_sidecar::tests`. The four detour target RVAs (`SAVE_WRITER`, `LOAD_GAME`, `HORSE_SAVE_WRITER`, `HORSE_SAVE_LOADER`) are mid-function in the current shipping build; `genes.ext.save.arm` is UNSAFE to arm until they're re-derived via pattern-scan. Full details in [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Sidecar format".
+
+## 9. Full implementation log (D1 / D3 / D5)
+
+Detailed sub-task records preserved from the original implementation plan. Use §8 above for the quick status summary; this section is the authoritative log of WHAT got built, the alternatives that were rejected, and the operational rules in force.
+
+### Phase D1: Static gene table extension
+
+**STATUS: FULL PIPELINE PROVEN IN-GAME 2026-05-14.** All four
+detours co-arm cleanly; an authored extended gene
+(`BX_TEST_SLOT0` in `genes-extended.xml`) with a render
+mapping + a default-allele setting writes the computed value
+into the per-horse render buf on EVERY horse render. Visible
+effect not yet confirmed because the slot-to-feature map is
+unknown (see "Open follow-up" below).
+
+Latest in-game numbers (player walked ~10s after arming with
+`BX_TEST_SLOT0` authored at ext_idx 0, slot 0 set mode, default
+alleles (3,3) = blend value 200.0):
+
+| Target | Calls | Vanilla path | Ext path | Max idx seen |
+|---|---|---|---|---|
+| EVAL_DIPLOID_BLEND_A | 2233 | 2233 | 0 | 218 |
+| EVAL_DIPLOID_BLEND_B | 2012 | 2012 | 0 | 213 |
+| GENE_ALLELE_SWAP | 0 | 0 | 0 | n/a |
+| APPLY_GENE_TO_HORSE (D5 post-hook) | 16 | 16 | n/a | n/a |
+| Extended gene applications via D5 | n/a | n/a | 16 | n/a |
+
+`max_idx_seen=239` across A+B confirms the full vanilla
+[0..240) range is evaluated through our handler.
+`genes_applied_total=16` matches `D5.call_count=16` exactly:
+every horse render had our gene's blend value applied to its
+target slot. **The visuals data path works.**
+`ext_call_count=0` on the DI-A side is expected: no vanilla
+caller drives idx>=240 in this scenario (the D5 trampoline
+writes the buf directly without recursing through eval_a/b).
+`allele_swap=0` is expected. It only fires on the rare
+allele-renumber event.
+
+#### Confirmed: slot 0 has a major visible effect
+
+Test: `BX_TEST_SLOT0` -> slot 0 set 200.0, default alleles (3,3),
+mated two horses, the resulting babies rendered "full screen
+width." Slot 0 is **consumer-read** and drives some primary
+scale-like parameter. Exact feature TBD; the visible result was
+dramatic enough that we cleared the default alleles before
+further iteration.
+
+This proves the visuals pipeline writes effects the renderer
+honors. It does NOT prove "slot 0 = body width" specifically;
+without the slot-to-feature map below we can't assert that.
+
+#### Next phase: systematic vanilla-gene research
+
+Don't guess at slots; map them. From VIABILITY.md Q-render-3:
+
+- 353 total float slots in the render buf
+- 258 written by vanilla `FUN_14009f680` (the engine)
+- 61 read by vanilla `FUN_1400ab3d0` (the consumer that
+  transcribes into the horse struct at `+0x124`, `+0x128`,
+  `+0x130`..`+0x154`)
+- Only the 61 consumer-read slots produce visible effects
+
+Research plan to derive the map:
+
+1. [x] **DONE.** Vanilla `genes.xml` dumped to
+   [`vanilla-genes.xml`](vanilla-genes.xml). 240 names
+   indexed in document order matching the engine's
+   gene_idx 0..239.
+2. [x] **DONE.** Per-gene flow analysis on
+   `FUN_14009f680` shipped via
+   `research/build-gene-catalog.py`. Auto-derives
+   `slots_written`, `slots_gated`, and `calls` for all
+   240 genes. Output: [`GENE-CATALOG.md`](GENE-CATALOG.md)
+   per-gene table.
+3. [x] **DONE.** Consumer-map extractor
+   `research/extract-consumer-map.py` enumerates 62
+   `param_2[X]` reads in `FUN_1400ab3d0`. 23 are direct
+   copies to horse-struct fields `+0x58..+0xa4`,
+   `+0x200`, `+0x254`, `+0x2a8`. 38 feed conditionals /
+   intermediate math. Output: GENE-CATALOG.md Part 2
+   "Buf-slot -> horse-struct field" table.
+4. [x] **DONE.** Cluster map authored in GENE-CATALOG.md
+   Part 2 (gene_idx range -> feature area). Slots 0..3
+   SQRT formula reverse-engineered from
+   `FUN_14009f680:94066-94143`. The per-slot
+   `{gene -> slot -> struct field}` chain is derivable
+   by intersecting the per-gene table (step 2) with the
+   consumer map (step 3).
+5. [x] **DONE.** GENE-CATALOG.md Part 2 ships with
+   cluster map + consumer map + engine internals
+   (slots 0..3 formula) + modder workflow. The
+   "Confirmed visible-effect slots" section is the
+   live-validated subset.
+6. [x] **EXTRACTION DONE, CLASSIFICATION OPEN.**
+   `research/extract-field-readers.py` shipped. Greps
+   `all_functions.c` for reads of all 23 direct-copy
+   horse-struct offsets (`+0x58`, `+0x5c`, `+0x60`,
+   `+0x64`, `+0x68`, `+0x6c`, `+0x70`, `+0x74`, `+0x78`,
+   `+0x7c`, `+0x80`, `+0x84`, `+0x88`, `+0x8c`, `+0x90`,
+   `+0x94`, `+0x98`, `+0x9c`, `+0xa0`, `+0xa4`, `+0x200`,
+   `+0x254`, `+0x2a8`). Raw output: 2339
+   function-occurrences, 3468 read sites.
+   Horse-handler fingerprint (>= 3 of 23 offsets in one
+   body) narrows to **218 likely handlers**. Top
+   candidate `FUN_1401beac0` touches 20/23.
+   Output: [`FIELD-READERS.md`](FIELD-READERS.md).
+
+   First-pass classification done 2026-05-15. v1
+   fingerprint "touches >= 3 offsets" produced 218
+   functions, dominated by SDL/Vulkan feature-struct
+   noise (`FUN_1401beac0` is the SDL_GPU Vulkan
+   `VkPhysicalDeviceFeatures` checker, not a horse
+   handler). Refined v2 fingerprint adds "must also
+   touch one of `+0x200` / `+0x254` / `+0x2a8`" (rare
+   high offsets the consumer writes). v2 narrows to
+   **24 candidates**.
+
+   Cross-referenced 24 candidates against
+   [`ALL-FUNCTIONS.md`](ALL-FUNCTIONS.md):
+
+   Confirmed horse-handlers (6):
+   - `FUN_1400df280` retire_horse_handler (gameplay)
+   - `FUN_140089510` copy_genome_to_clipboard (UI)
+   - `FUN_14010ba40` debug_print_population_stats
+   - `FUN_140094a20` show_race_ready_prompt (UI)
+   - `FUN_1400dcab0` show_getting_old_sale_dialog (UI)
+   - `FUN_1400e0aa0` show_all_rested_message (UI)
+
+   Noise (10): auto-named `init_struct`,
+   `batch_call_*`, `float_helper`, `float_math_main`
+   patterns whose sequential field access collides
+   with the regex.
+
+   Unclassified (5): `FUN_14003d890`, `FUN_140155130`,
+   `FUN_1401ef800`, `FUN_14003c8c0`, `FUN_1400e25b0`.
+
+   **Open gap:** none of the confirmed horse-handlers
+   are in the renderer call chain. The regex
+   fingerprint isn't catching the renderer because it
+   probably reads through a nested pointer
+   (`horse->render_state->field`) rather than a direct
+   `var + 0xNN` literal.
+
+   **Forward-trace from consumer call sites, done
+   2026-05-15:** all 6 known call sites of the
+   consumer `FUN_1400ab3d0` (lines 104380, 104441,
+   104585, 104614, 113025, 113052 in
+   `all_functions.c`) are **regeneration events**, not
+   per-frame render calls:
+   - `FUN_1400b2e30`: child-from-parents setup (calls
+     genome-merge `FUN_1400a2d80` first)
+   - `FUN_1400b2ee0`: horse init with pop, sets
+     `+0x234` and `+0x1fc=2` after
+   - `FUN_1400b3070`: horse regen wrapping CRISPR-
+     style flows; iterates entity list at 0xb8 stride
+   - `FUN_1400c1xxx` (113025/113052): CRISPR genome
+     mutate then regen, sets `+0x1fc=2`
+
+   The consumer's job is to **persistently overwrite
+   horse-struct fields whenever gene-derived
+   attributes change** (birth, CRISPR, respawn). The
+   renderer reads those fields independently, per
+   frame, decoupled. Forward-tracing the consumer's
+   callers leads to event triggers, not the renderer.
+
+   **Implication: don't chase the renderer
+   statically.** Finding it cleanly needs Ghidra
+   struct propagation across the horse type, hours of
+   skilled RE work for diminishing returns. The slot
+   map we have is good enough to ship with:
+   gene -> slot (per-gene table) + slot -> horse
+   struct offset (consumer map) + working trampoline
+   that puts arbitrary values into those slots + one
+   empirically confirmed slot (slot 0).
+   Per-feature classification of the remaining 22
+   direct-copy slots can be populated as a side
+   effect of bestiary authoring (each new species
+   naturally probes a few slots). Trying to enumerate
+   it ahead of demand is speculative work.
+
+   Output: [`FIELD-READERS.md`](FIELD-READERS.md)
+   with classified table + consumer call-site
+   regeneration finding.
+
+Output: a reliable map from "I want feature X" to "extend
+gene G with render slot S, allele payload P0..P3, value
+range R." That unblocks the bestiary authoring work in
+Phase 2.
+
+Caveat on existing horses: ext alleles are stored
+per-horse-pointer with a default fallback. The "giant baby"
+horses from the slot-0 test now have alleles 0,0 (cleared
+default) but their LIVE render-struct fields will keep the
+old computed value until the next gene-evaluation pass for
+that horse. Save / reload reliably re-triggers eval.
+
+Strategy DI-A approved 2026-05-14. Locked library:
+`retour 0.3`. Lock-free `AtomicPtr<GenericDetour<T>>`
+storage published at arm time; handlers do atomics +
+acquire-load + indirect call only (no `format!`, no
+`parking_lot`, no Rust TLS).
+
+#### Lessons captured (all in DEBUGGING.md)
+
+- **5 distinct "all-ones bad_addr" crash modes:**
+  (a) double-deref of a non-pointer slot (`gamestate::ptr`
+      was reading the gamestate struct's first 8 bytes as
+      a pointer); (b) handler stack frame too big for
+      game's nested call chain; (c) parking_lot Mutex
+      accessing Rust TLS on a foreign game thread;
+      (d) detour target was not a function entry;
+      (e) Ghidra's pyghidra indexes function entries
+      OFF-BY-16 (the real entry is at `ghidra_addr - 16`,
+      where the MSVC register-save prologue lives).
+- **Handler discipline rules** in
+  [`DEBUGGING.md`](DEBUGGING.md) §4b. Every new handler
+  must observe them. Reference impl: `eval_a_handler`.
+- **Pre-arm prologue verification rule** in
+  [`DEBUGGING.md`](DEBUGGING.md) §5: every new detour
+  must have its prologue eyeballed against Win64
+  function-entry patterns before arming. The two
+  recognized shapes are documented.
+- **Ghidra-off-by-16 was the dominant blocker.** It made
+  EVAL_A/B appear to work and APPLY_GENE_TO_HORSE /
+  ALLELE_SWAP crash, looking like a build-update issue
+  for hours. The actual decomp pass against the current
+  binary returned identical addresses; we just trusted
+  Ghidra's entry-point attribution too much.
+
+#### Immediate plan (next session)
+
+1. Author one test extended gene in `genes-extended.xml`
+   with a `<render slot="..." mode="add"/>` mapping;
+   set a horse's extended alleles via HTTP
+   (`horse.ext.alleles.set`); observe `genes_applied_total`
+   climb on `genes.ext.render.stats`; verify the visible
+   render effect in-game. **This is the v1 finish line.**
+2. Implement Phase R1 from
+   [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md): image
+   SHA-256 logging + `game.build_info` op, so future game
+   updates show up loudly in the log.
+3. Implement Phase R2 (patternsleuth runtime resolution)
+   so future address drift gets resolved automatically
+   without needing manual address bumps.
+4. D1.3 (`GENE_DEATH_DRIFT`) and D1.8 (`CRISPR_LAB`) remain
+   deferred: D1.3 needs a mid-function patch, D1.8 needs
+   state-machine analysis. Not blocking v1.
+
+Wired and arming via `genes.ext.arm` HTTP op:
+
+- [x] **D1.1.** `EVAL_DIPLOID_BLEND_A` (FUN_1400a5d20).
+      Signature: `unsafe extern "system" fn(*const u8, i32) -> f32`.
+      Handler: idx<240 -> trampoline; idx>=240 ->
+      `genes::evaluate_ext_gene(genome_ptr as u64, idx-240)`.
+- [x] **D1.2.** `EVAL_DIPLOID_BLEND_B` (FUN_1400a5e00).
+      Signature: returns `u32` (bit pattern is f32). Same
+      dispatch as D1.1 but `.to_bits()` on the extended
+      result so the caller's bit-cast still works.
+- [x] **D1.4.** `GENE_ALLELE_SWAP` (FUN_1400c03a0).
+      Signature: `(usize, i32, i32, i32) -> void`. Handler:
+      idx<240 -> trampoline; idx>=240 ->
+      `genes::swap_ext_alleles(idx-240, a, b)` which swaps
+      the payload positions in `EXT_GENE_TABLE` AND every
+      `EXT_POP_WEIGHTS` entry. Skips vanilla entirely for
+      extended indices (vanilla would walk DAT_1403ee4b0
+      with an out-of-range index and crash).
+
+Deferred (not entry-point clean):
+
+- [ ] **D1.3.** `GENE_DEATH_DRIFT` (FUN_1400c0660). The
+      gene index is computed mid-function (~line :730 in
+      decomp), not passed as a parameter. Needs a
+      mid-function patch via `patch_bytes`, not an
+      entry-point detour. Defer until we have a worked
+      example of the +/-5 mutation site address.
+- [ ] **D1.8.** `CRISPR_LAB` UI gene dispatch
+      (FUN_1400c1cf0). Internal state machine, 5311 bytes.
+      Need to map which states read which gene-indexed
+      data before we know where to splice. Could be
+      multiple sub-detours or a single mid-function patch.
+      Defer until DI-A-3 ships and we have in-game UX
+      validation of the existing 3 detours.
+
+If profiling shows the per-call overhead of D1.1/D1.2
+matters (they're hot, called per-horse-per-frame),
+revisit DI-B (heap redirect) as a perf optimization for
+THOSE TWO only. Other detours stay as DI-A.
+
+Make the engine's 240-slot gene table behave as if it
+has N slots, where slots 0..239 are vanilla
+`DAT_1403ee4a4` and slots 240..N-1 live in our heap
+buffer.
+
+**Concrete decision: detour-and-dispatch, not heap
+redirect.** The 7 readers do `(&DAT_1403ee4a4)[i*8]`
+which the compiler turned into `lea reg, [DAT...]; mov reg, [reg + i*32]`.
+Patching every reader to dereference through a pointer
+variable is invasive (changes instruction sizes).
+Instead we hook each reader at function entry via
+detour, check the gene index, and dispatch to vanilla
+or our buffer.
+
+For functions that take the gene index as a parameter
+(the 4 evaluators / mutators):
+
+- [ ] **D1.1.** Detour `FUN_1400a5d20` (allele evaluator
+      formula 1). At entry, if `param_2 >= 240`:
+      compute the same blend formula against
+      `EXT_GENE_TABLE[param_2 - 240]` and the
+      per-horse extended genome at
+      `EXT_HORSE_GENOMES[horse_id][param_2 - 240]` and
+      `[..][param_2 - 240 + 240]`. Return that value.
+      Else fall through to vanilla.
+- [ ] **D1.2.** Detour `FUN_1400a5e00` (allele evaluator
+      formula 2). Same structure as D1.1 but with the
+      formula-2 math.
+- [ ] **D1.3.** Detour `FUN_1400c0660:730` (death
+      handler ±5 mutator). Inspect the index variable;
+      if >= 240, mutate `EXT_GENE_TABLE[index - 240]`
+      instead. Probably easier to just patch the
+      specific ADD/SUB instructions to also branch on
+      index range.
+- [ ] **D1.4.** Detour `FUN_1400c03a0` (allele renumber
+      sync). When called with gene index >= 240, swap
+      values in `EXT_GENE_TABLE` and the extended pop
+      weights, NOT vanilla.
+
+For functions that iterate the whole table (the loops
+at `0xf0`):
+
+- [ ] **D1.5.** Patch `FUN_1400a3eb0:156` loop bound
+      `0xf0` -> `N`. The default-init loop now writes
+      defaults for ALL N slots. Wait. This loop writes
+      to `&DAT_1403ee4a4 + i*32`, which is the static
+      table only sized for 240. If we extend the loop
+      bound, vanilla writes overflow into adjacent
+      `.data`. Two options:
+      - (a) Patch the loop body too to detour writes
+        for `i >= 240` into `EXT_GENE_TABLE`.
+      - (b) Leave the loop bound at 240; init
+        `EXT_GENE_TABLE` separately at attach.
+      Option (b) is cleaner and matches the design
+      principle. **Choose (b).**
+- [ ] **D1.6.** Patch `FUN_1400a3eb0:984` loop bound
+      similarly. This is the per-XML-write loop. For
+      each `<gene name="X">` in genes.xml, it looks up
+      X by name in the chromomap. If we extend genes.xml
+      with our own genes (or use a sidecar
+      `genes-extended.xml`), the loader needs to
+      populate `EXT_GENE_TABLE` for those. Two options:
+      - (a) Inject our extended genes into the same
+        chromomap so the vanilla loader handles them.
+      - (b) Run a separate loader on attach that reads
+        a sidecar XML and populates `EXT_GENE_TABLE`.
+      Option (b) is cleaner. **Choose (b).** Loop bound
+      stays at vanilla 0xf0.
+- [ ] **D1.7.** Patch `FUN_1400a4880:298` (XML serializer
+      loop). Same decision: leave vanilla bound, run our
+      own serializer for `EXT_GENE_TABLE` to write a
+      sidecar XML. Loop bound stays.
+- [ ] **D1.8.** Detour `FUN_1400c1cf0` (CRISPR UI). When
+      the player selects a gene index >= 240, read from
+      `EXT_GENE_TABLE`. Optional in v1; can defer if
+      CRISPR UI doesn't need to expose extended genes.
+
+**Net for D1:** 4 detours (D1.1-D1.4), 0 loop-bound
+patches (we use sidecar loaders / serializers), 1
+optional UI detour (D1.8).
+
+### Phase D3: Per-horse genome extension
+
+Each horse gets a parallel 480-byte buffer in
+`EXT_HORSE_GENOMES[horse_id]` for the extended genes'
+diploid alleles.
+
+**Revised plan 2026-05-15:** Working genome is inline
+at `horse + 0x2b8`, NOT at `horse[+0x78]`. The original
+D3.1-D3.3 targets (`FUN_14005cf70/cd00/d190`) operate on
+the heap blob at `+0x78`, which is a pop-seed / archive
+buffer loosely coupled to rendering. They are NOT the
+right anchors for `EXT_HORSE_GENOMES` lifecycle because:
+
+- `FUN_14005cf70` bails early if `+0x78` already set,
+  and breeding flow `FUN_1400b2e30` does NOT call it
+  (combinator writes `+0x2b8` directly, never touches
+  `+0x78`). Bred horses would skip the anchor.
+- `FUN_14005d190` is a pop-seed copy (UI / CRISPR
+  snapshot), not the breeding combinator.
+
+The correct lifecycle anchor is the **horse-struct
+allocator itself** (currently unfound). Open research
+2026-05-15: `FUN_1400cc9d0` allocates 0x80 bytes and
+pushes to `gamestate[+0xb8]` (the "track entity" list);
+that's too small for the full horse with fields at
++0x800. There must be a separate `FUN_xxxxxxxx` that
+allocates the full Horse struct and pushes to
+`gamestate[+0x130]`. Need to find it.
+
+- [x] **D3.0 (research).** ANSWERED 2026-05-15.
+      Horse struct size is **0x498 bytes (1176)** =
+      `0x2b8 + 0x1e0` (header up to +0x2b7, inline
+      genome +0x2b8..+0x497). 40+ call sites alloc
+      via `FUN_1402c704c(0x498)` followed by the
+      single constructor `FUN_1400aac60`. Examples:
+      lines 28589, 29161, 32559, 34040, 54169, 55517,
+      59098, 62233, 64176, 65267 (save load), 76563,
+      84065, 112352, 119180, 121872, 130208, 145756.
+      Constructor `FUN_1400aac60`:
+      - Sets vtable `&PTR_FUN_14030d660`
+      - Zeros 50+ fields
+      - Sets default `max_age = 0x1e` (30 years) at
+        `+0x44`
+      - Increments live-count global `_DAT_1403f311c`
+      - Returns the same pointer it received
+      Destructor `FUN_1400bf1f0`:
+      - Resets vtable
+      - Decrements `_DAT_1403f311c`
+      - Releases sub-objects (`param_1[0x3e]` via
+        `FUN_1402c7088(p, 0x1f48)`, and the std::string
+        SSO buffers at `+0x51/+0x31/+0x2d`)
+      - Frees the 0x498 buffer if delete-flag set
+        (line 111549)
+- [x] **D3.1.** SHIPPED 2026-05-15.
+      `src/patches/lifecycle.rs`. Post-hook on
+      `FUN_1400aac60`; calls
+      `genes::ensure_horse_ext_genome(ret_ptr)`. HTTP:
+      `genes.ext.lifecycle.{dryrun,arm,disarm,stats}`.
+- [x] **D3.2.** SHIPPED 2026-05-15. Same module as D3.1.
+      Pre-hook on `FUN_1400bf1f0`; calls
+      `genes::drop_horse_ext_genome(param_1)`.
+- [ ] **D3.3.** SKIPPED. The original plan to mirror
+      `FUN_14005d190` (parent-to-child heap copy) is
+      unnecessary: that function only writes the +0x78
+      archive, not the working genome. Combinator
+      (D3.4) handles the parent-to-child working-genome
+      copy on its own.
+- [x] **D3.4 (research).** ANSWERED 2026-05-15.
+      Combinator is `FUN_1400a2d80(parent_a + 0x2b8,
+      parent_b + 0x2b8, child + 0x2b8)`. Called from
+      `FUN_1400b2e30:104367` (child-from-parents
+      setup) before `FUN_14009f680` engine evaluates
+      the new child.
+
+      Algorithm: outer loop 2 strands × inner loop 240
+      genes. Per (strand, gene): `FUN_1400c6580()` RNG
+      coinflip selects which parent's strand to copy
+      from, then `*(child + gene) = *(parent +
+      coinflip * 0xf0 + gene)`. Advance child by 0xf0
+      after each strand. Standard Mendelian: one
+      strand per parent, each strand draws from one of
+      that parent's two strands at random.
+
+      **Linked inheritance:** a bitmask at lines
+      95541-95551 forces the SAME parent across three
+      gene-index ranges:
+      - 72..86 (Neck cluster)
+      - 97..174 (Head/Eye/Brow/Ear/Teeth/Mouth/Nose/
+        Antlers/Hat)
+      - 183..197 (palette base + colors)
+      Plus exclusions at idx 83 and 107. Matches the
+      GENE-CATALOG cluster map. Player can't get a
+      giraffe head with a tiger jaw.
+
+      **Bonus correction:** the working genome is
+      INLINE at `horse + 0x2b8` (0x1e0 = 480 bytes,
+      2 strands × 240 alleles), NOT at `horse[+0x78]`.
+      The heap-alloc at `+0x78` is a separate pop-seed
+      / snapshot blob. Engine `FUN_14009f680` and
+      consumer `FUN_1400ab3d0` both take
+      `param_1 + 0x2b8` as the genome input. **This
+      changes D5.7 and D3 design assumptions: ext
+      genomes should mirror the +0x2b8 inline layout,
+      not the +0x78 heap-pointer pattern.**
+
+      Patch plan (user decisions 2026-05-15):
+      - Post-hook detour on `FUN_1400a2d80`. After
+        vanilla returns, recover horse base pointers
+        as `param_N - 0x2b8` (params are
+        `parent_a + 0x2b8`, `parent_b + 0x2b8`,
+        `child + 0x2b8`), then run our own combinator
+        on `EXT_HORSE_GENOMES[parent_a_ptr]` +
+        `EXT_HORSE_GENOMES[parent_b_ptr]` ->
+        `EXT_HORSE_GENOMES[child_ptr]`.
+      - Default inheritance: **independent per gene**
+        (no cluster locking). Linked-inheritance is
+        future XML extension via a `<linked-cluster>`
+        element in `genes-extended.xml`; not in v1.
+      - `horse[+0x78]` is **ignored entirely** for ext
+        purposes (pop-seed / CRISPR snapshot only,
+        not read for rendering). No parallel ext
+        buffer at +0x78. Modders can't author effects
+        riding on +0x78.
+
+      **D3.4 patch SHIPPED 2026-05-15.** Implemented as
+      `src/patches/combinator.rs`. Post-hook detour on
+      `FUN_1400a2d80` via `retour::GenericDetour<unsafe
+      extern "system" fn(*mut c_void, *mut c_void,
+      *mut c_void)>`. Slow path delegates to
+      `genes::combine_for_breeding(pa_id, pb_id,
+      child_id)` which runs SplitMix64-seeded Mendelian
+      over `EXT_HORSE_GENOMES`. HTTP ops:
+      `genes.ext.combinator.{dryrun,arm,disarm,stats}`.
+
+### Phase D5: Gene-effect engine extension (trampoline)
+
+**Strategy locked 2026-05-14: S2 from
+[`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md).** One
+post-hook trampoline on `FUN_14009f680` via
+`retour::GenericDetour`. Senior eng approved; second-best
+(S1, per-callsite detour at the 6 call pairs) explicitly
+rejected for the reasons in
+[`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §5. Library:
+`retour = "0.3"` (Rust port of MS Detours, used in shipped
+Rust mods for Diablo 2, SAMP, Zoo Tycoon, Garry's Mod,
+Guild Wars 2).
+
+Net for D5: 1 patch site (the entry of `FUN_14009f680`),
+1 Rust handler, 1 sidecar module (`render_trampoline.rs`).
+
+- [x] **D5.0.** DONE. `retour = "0.3"` added to workspace
+      `Cargo.toml` and `horsey-mod/Cargo.toml`. Build picks
+      up retour 0.3.1 + transitive deps (libudis86,
+      mmap-fixed-fixed, slice-pool2, winapi). Compiles
+      clean.
+- [x] **D5.1.** DONE.
+      `horsey-mod/src/patches/render_trampoline.rs` shipped.
+      Holds `GenericDetour<unsafe extern "system" fn(*mut f32, *mut c_void)>`
+      in a `OnceLock<Mutex<Option<...>>>`, with the same
+      arm / revert / dryrun shape as ext_genes. Targets
+      `fn_addr::APPLY_GENE_TO_HORSE` (0x14009f680).
+- [x] **D5.2.** DONE. Post-hook handler implemented:
+      runs trampoline first, computes
+      `horse_ptr = ctx - HORSE_CTX_OFFSET (0x2b8)`, then
+      calls `genes::apply_render_to_buf(buf, 353, horse_id)`.
+      The helper acquires `gene_table().read()` and
+      `horse_genomes().read()` ONCE per call (single lock
+      acquisition for the whole gene walk, not per gene).
+      Bounds-checks every slot write against the 353-float
+      buffer.
+- [x] **D5.3.** DONE in D7.2. `RenderMapping` parsed from
+      `<render slot mode>` and stored in `ExtGene.render`.
+      The D5.2 handler consumes it.
+- [x] **D5.4.** DONE. HTTP ops shipped:
+      `genes.ext.render.dryrun` (address + prologue),
+      `genes.ext.render.arm` (install detour),
+      `genes.ext.render.disarm` (revert),
+      `genes.ext.render.stats` (`call_count` +
+      `genes_applied_total`).
+- [x] **D5.5.** DONE. `patches::revert_all` now calls
+      `render_trampoline::revert()` BEFORE
+      `ext_genes::revert()` (LIFO order: D5 was the most
+      recently installed). DLL detach restores all prologues.
+- [x] **D5.6.** DONE. `call_count` (every invocation of
+      `FUN_14009f680` after arming) and `genes_applied_total`
+      (sum of extended-gene render applications across all
+      calls) surfaced via `genes.ext.render.stats`. The
+      "buf bytes modified" counter from the original plan
+      is the same number as genes_applied_total (one slot
+      per applied gene), so it's not separately tracked.
+- [ ] **D5.7.** Open. Horse-pointer-as-key works for a
+      session; save/load needs D4.4 (stable horse-id field).
+      Documented limitation; not blocking visual verification.
+- [ ] **D5.8.** Re-entrancy audit deferred until D5
+      validates in-game. The current design uses only
+      `RwLock::read()` inside the post-hook handler;
+      `genes.ext.reload` (which takes write) is operator-
+      triggered, not vanilla-triggered, so re-entrancy
+      from inside the engine is impossible. Lock-ordering
+      audit can wait until concurrent stress shows up.
+
+**D5.4 in the original plan is DROPPED from v1 scope.**
+The "post-consumer trampoline writing to new horse struct
+fields" was meant for visual modes the consumer doesn't
+read (slots outside the 61 consumer-read set). Postpone:
+if v1 authoring hits a wall on "this effect needs a slot
+the consumer doesn't see," reopen as a sibling phase. We
+have 61 consumer-read slots and roughly 10 v1 genes; the
+pigeonhole says we won't hit the wall in v1.
+
