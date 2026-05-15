@@ -37,6 +37,73 @@ Roughly ordered by leverage.
 
 ---
 
+## Hardcoded -> resolved migration: comparison table
+
+Goal: every address the production hot path reads goes through `targets::resolve::*` (pattern-scan via `modforge::patterns::sleuth`) instead of a `pub const usize`. Hardcoded RVAs stay only as fallback inside the resolver functions, sourced from one decomp build. R3 in commit `ae333c6` is the first migration; the table below tracks the rest.
+
+Status legend: **R** = resolved (production reads through resolver), **R-parity** = resolved sig exists + tested, but production still uses the hardcoded const, **H** = hardcoded only, **N/A** = struct field offset (not an absolute address; drift handled differently).
+
+### Data globals
+
+| Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
+|---|---|---|---|---|
+| `GAMESTATE_PTR` | `0x1403fb0d8` | **R** (`ae333c6`) | cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14` | very high; every state read + write |
+| `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
+| `NO_TIRE_TOGGLE` | `0x1403d95c5` | H | cheat-menu button handler writes 1 byte | medium; every Cheats tab toggle |
+| `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H | `"debug"` typed-string check in pause menu | medium; gates cheat menu |
+| `DEBUG_LOG_GATE` | `0x1403d9526` | H | retirement-message printf branch | low |
+| `SAVE_VERSION_GLOBAL` | `0x1403fb0e0` | H | first `uint32` of save file written here | low; one read per load |
+
+### Function entries
+
+| Item | Hardcoded RVA | Status | Sig anchor candidate | Used by |
+|---|---|---|---|---|
+| `APPLY_GENE_TO_HORSE` | `0x14009f670` | R-parity (`74846de`) | 32-byte body from live image | D5 render trampoline |
+| `EVAL_DIPLOID_BLEND_A` | `0x1400a5d10` | H | called 233x in APPLY_GENE_TO_HORSE | D1 detour |
+| `EVAL_DIPLOID_BLEND_B` | `0x1400a5df0` | H | sibling of A; same record layout | D1 detour |
+| `GENE_DEATH_DRIFT` | `0x1400c0650` | H | `+/- 5` mutation rate writes | D1 detour (deferred) |
+| `GENE_ALLELE_SWAP` | `0x1400c0390` | H | iterates pop records, swaps slot[i] / slot[j] | D1 detour |
+| `GENE_TABLE_XML_WRITER` | `0x1400a4880` | H | string-builds gene XML, calls `<gene name=` | unused in v1 |
+| `GENE_TABLE_LOADER` | `0x1400a3eb0` | H | parses `<gene name=`; reads `genes.xml` | unused in v1 |
+| `POP_XML_LOADER` | `0x1400a4fe0` | H | parses `<pop name=`; reads `pop.xml` | unused in v1 |
+| `GENE_ENGINE_CONSUMER` | `0x1400ab3c0` | H | called immediately after APPLY_GENE | D5 trampoline |
+| `CHECK_HORSE_ELIGIBILITY` | `0x1400dde40` | H | tired/old/young/hungry dispatch | unused in v1 |
+| `RETIRE_HORSE_HANDLER` | `0x1400df280` | H | once-per-year retirement scan | unused in v1 |
+| `COMPUTE_HORSE_PRICE` | `0x1400dcab0` | H | `(rand+nice+record)*years+deco` | unused in v1 |
+| `CRISPR_LAB` | `0x140089510` | H | 13-state CRISPR machine | unused in v1 |
+| `BREEDING` | `0x1400e0aa0` | H | BarnMating state machine | unused in v1 |
+| `SAVE_WRITER` | `0x14006d674` | R-parity (`bd95252`) | save_signatures test locks 16-byte prologue | D4 sidecar |
+| `LOAD_GAME` | `0x14006e350` | R-parity (`bd95252`) | same as above | D4 sidecar |
+| `DRAW_PAUSE_STATUS` | `0x140066200` | H | contains the cheat-money write | unused in v1 |
+| `TMX_MAP_PARSER` | `0x1400fe2e0` | H | parses `<map`; reads `horsey.tmx` | unused in v1 |
+| `POP_GENOME_BUILDER` | `0x140092820` | H | runtime spawner | unused in v1 |
+| `DAILY_HORSE_EVENT` | `0x14002fe00` | H | per-day per-horse event log | unused in v1 |
+| `TRACK_STATE_MACHINE` | `0x14002d7c0` | H | race lifecycle | unused in v1 |
+| `CIRCUS_HANDLER` | `0x140039190` | H | circus event | unused in v1 |
+| `SUMO_HANDLER` | `0x14007b2e0` | H | sumo match | unused in v1 |
+| `POWER_PLANT` | `0x1400693b0` | H | power-plant building | unused in v1 |
+| `WORLD_ACTION` | `0x140107660` | H | world-action dispatcher | unused in v1 |
+| `BALLOON_CONTROLLER` | `0x14010a5e0` | H | hot-air-balloon controller | unused in v1 |
+| `HORSE_CONSTRUCTOR` | `0x1400aac50` | R-parity (`74846de`) | 32-byte body sig | D3.1 lifecycle |
+| `HORSE_DESTRUCTOR` | `0x1400bf1e0` | R-parity (`74846de`) | 32-byte body sig | D3.2 lifecycle |
+| `GENE_COMBINATOR` | `0x1400a2d70` | R-parity (`74846de`) | 32-byte body sig | D3.4 breeding |
+| `HORSE_SAVE_WRITER` | `0x14006ecfb` | R-parity (`bd95252`) | prologue + body sig | D4.1b sidecar |
+| `HORSE_SAVE_LOADER` | `0x14006f031` | R-parity (`bd95252`) | `add rcx, 0x2b8` is unique | D4.2b sidecar |
+
+### Struct field offsets (N/A for pattern-scan)
+
+`gs_offset::*` (20 fields) and `horse_offset::*` (10 fields) are not absolute addresses; they're integer constants compiled into accessor instructions. Drift is detected by reading nonsensical values, not by signature scan. Recovery is field-by-field through the same R3 trick: each field has a write site in the decomp; pattern-match the instruction, decode the displacement to get the field's current offset. Out of scope until a build is observed where a field offset has actually shifted.
+
+### Recommended migration order (next batch)
+
+1. **Cheat globals batch (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE).** Three single-byte globals in `.data`. Each is written from a known site: the cheat-menu code writes 1 to NO_TIRE_TOGGLE, the typed-string handler writes 1 to DEBUG_MODE_ACTIVE, etc. Same R3 candidate-list shape. Why first: small surface, used by the Cheats tab right now.
+2. **Lifecycle detour targets (HORSE_CONSTRUCTOR, HORSE_DESTRUCTOR, GENE_COMBINATOR, APPLY_GENE_TO_HORSE).** Already have R-parity sigs (32-byte body); flip the production reads. Why second: the parity contract already locks correctness.
+3. **Save targets (SAVE_WRITER, LOAD_GAME, HORSE_SAVE_WRITER, HORSE_SAVE_LOADER).** R-parity exists via `r2_save_signatures`. Same flip. Why third: D4 sidecar pipeline depends on these.
+4. **D1 detour targets (EVAL_DIPLOID_BLEND_A/B, GENE_ALLELE_SWAP).** Need fresh body sigs from the live image. Why fourth: lower iteration risk; D1 detours work today and are loaded in the arm path.
+5. **Unused-in-v1 functions (everything else).** Migrate as features land; no urgency.
+
+The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
+
 ## Current status (2026-05-15 session 2, latest commit `0f97176`)
 
 ### What shipped this session
