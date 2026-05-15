@@ -112,7 +112,7 @@ revert-on-detach) and hot reload via timestamped staged DLLs
 (cargo's output is never the file the game has loaded, so
 it's never locked). All Horsey-specific. See
 [`horsey-mod/README.md`](horsey-mod/README.md) and
-[`horseygame/`](horseygame/) for the Horsey Game research.
+[`horsey-mod/research/`](horsey-mod/research/) for the Horsey Game research.
 
 Per-game research notes:
 
@@ -121,7 +121,7 @@ Per-game research notes:
   catalog, persistence.
 - [`docs/wild-west-miner-research.md`](docs/wild-west-miner-research.md).
   Wild West Miner managed-side research log.
-- [`horseygame/`](horseygame/). Horsey Game decompilation
+- [`horsey-mod/research/`](horsey-mod/research/). Horsey Game decompilation
   + function annotations + RE notes (subtree-merged from the
   former `horsey-mods` repo).
 
@@ -133,7 +133,7 @@ Per-game research notes:
 > shouldn't be a daily driver. Read
 > [`decomp/docs/retrospective.md`](decomp/docs/retrospective.md)
 > before investing further. Ghidra's existing C decomp at
-> [`horseygame/decompiled/all_functions.c`](horseygame/decompiled/all_functions.c)
+> [`horsey-mod/research/decompiled/all_functions.c`](horsey-mod/research/decompiled/all_functions.c)
 > covers the actual RE workflow. `decomp` adds Rust syntax
 > as a cosmetic-but-not-pivotal win, at the cost of WSL-only
 > builds, 0.15% coverage relative to Ghidra, and a naming
@@ -161,7 +161,7 @@ pub unsafe fn price_or_score_formula(arg1: i64, arg2: i64) {
 ```
 
 Sample artifacts shipped at
-[`horseygame/decompiled/rust-r2sleigh/`](horseygame/decompiled/rust-r2sleigh/):
+[`horsey-mod/research/decompiled/rust-r2sleigh/`](horsey-mod/research/decompiled/rust-r2sleigh/):
 13 of 18 documented Horsey key-funcs with friendly names
 recovered.
 
@@ -198,7 +198,7 @@ deleted; git history is the archive.
 +- wwm-mod/                   -- Wild West Miner mod (unityforge / Mono)
 +- il2cpp-smoke/              -- IL2CPP smoke target (unityforge / IL2CPP)
 +- horsey-mod/                -- Horsey Game mod (PE inject; modforge directly)
-+- horseygame/                -- Horsey Game research (decomp, RE notes, plans)
++- horsey-mod/research/                -- Horsey Game research (decomp, RE notes, plans)
 +- decomp/                    -- Binary-to-Rust decompiler (r2sleigh-based; WSL-only)
 +- falcon-printer/            -- prototype that decomp replaces; archive (docs only)
 +- docs/                      -- workspace-level (todo, changelog, research)
@@ -320,7 +320,7 @@ Per-crate docs:
 - [`grounded2-mod/docs/`](grounded2-mod/docs/).
 - [`decomp/README.md`](decomp/README.md) + [`decomp/docs/`](decomp/docs/). Active binary-to-Rust RE tool (r2sleigh-based).
 - [`falcon-printer/`](falcon-printer/). Retired prototype that decomp replaces; docs preserved as historical archive.
-- [`horseygame/`](horseygame/). Horsey Game research notes.
+- [`horsey-mod/research/`](horsey-mod/research/). Horsey Game research notes.
 
 ## Credits
 

@@ -85,7 +85,7 @@ pop bx_elephant (nested inside default):
 Critical gotcha: **weights are INVERSE.** Higher number
 = less likely. p=1 is dominant. p=20 is rare. Same as
 the existing
-[`CONTENT-MODDING.md`](../../horseygame/CONTENT-MODDING.md)
+[`CONTENT-MODDING.md`](../../horsey-mod/research/CONTENT-MODDING.md)
 documentation. Confirmed by the JumboDS64 community
 guide; engine-side confirmation pending (see
 Q-gene-3 in `VIABILITY.md`).

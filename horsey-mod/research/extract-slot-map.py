@@ -287,7 +287,7 @@ def main():
     new_section = (
         f"{marker_open}\n\n"
         f"Auto-derived from `FUN_14009f680` decomp by\n"
-        f"`horseygame/extract-slot-map.py`. {len(by_gene)} of "
+        f"`horsey-mod/research/extract-slot-map.py`. {len(by_gene)} of "
         f"{len(names)} vanilla genes drive at least one buf slot.\n"
         f"`(via fVarX)` means the gene's value passes through a\n"
         f"temp variable. `(combined-with-others ...)` means the\n"

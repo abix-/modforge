@@ -38,7 +38,7 @@ function discovery (`ghidra_addrs.txt`).
 
 If a function lifts correctly in Falcon but the Rust output
 looks wrong, the FIRST debugging step is to compare against
-`horseygame/decompiled/all_functions.c` to see what Ghidra
+`horsey-mod/research/decompiled/all_functions.c` to see what Ghidra
 made of the same bytes.
 
 ## Not multi-architecture (yet)

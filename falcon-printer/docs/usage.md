@@ -39,7 +39,7 @@ Reading the output:
   stages that ran.
 - `pub unsafe fn <friendly_name>()` opens the function.
   Names come from
-  [`../../horseygame/decompiled/INDEX.md`](../../horseygame/decompiled/INDEX.md)
+  [`../../horsey-mod/research/decompiled/INDEX.md`](../../horsey-mod/research/decompiled/INDEX.md)
   and `key-funcs/` filenames; missing entries get
   `fn_<addr>`.
 - Block separators `// ---- bb<idx> @ 0x<addr> ----`
@@ -68,7 +68,7 @@ Reading the output:
 '@ | ..\target\release\falcon-printer.exe batch
 
 # all the documented key-funcs:
-Get-ChildItem ..\horseygame\decompiled\key-funcs\*.c `
+Get-ChildItem ..\horsey-mod\research\decompiled\key-funcs\*.c `
     | ForEach-Object { ($_.Name -split '_')[0] } `
     | ..\target\release\falcon-printer.exe batch
 
@@ -78,7 +78,7 @@ Get-Content .\ghidra_addrs.txt `
 ```
 
 Output dir defaults to
-`C:/code/grounded2mods/horseygame/decompiled/rust/`.
+`C:/code/grounded2mods/horsey-mod/research/decompiled/rust/`.
 Override with `--out <DIR>`. One `fn_<addr>.rs` per
 address that lifts successfully; failures are silently
 skipped (counted in stderr).

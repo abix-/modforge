@@ -3,7 +3,7 @@
 > **Living doc.** Built incrementally as we trace
 > `FUN_14009f680` (the gene engine) and `FUN_1400ab3d0`
 > (the consumer). Each row is evidence-cited to a line in
-> `horseygame/decompiled/all_functions.c`.
+> `horsey-mod/research/decompiled/all_functions.c`.
 
 ## Pipeline
 
@@ -78,7 +78,7 @@ sidecar) are cleaner for new genes.
 ## Gene-index -> buf-slot map (engine writes)
 
 Auto-derived from `FUN_14009f680` decomp by
-`horseygame/extract-slot-map.py`. 166 of 240 vanilla genes drive at least one buf slot.
+`horsey-mod/research/extract-slot-map.py`. 166 of 240 vanilla genes drive at least one buf slot.
 `(via fVarX)` means the gene's value passes through a
 temp variable. `(combined-with-others ...)` means the
 slot's value is a multi-gene expression; the row is
@@ -256,7 +256,7 @@ a candidate, manual re-read recommended.
 ## Buf-slot -> horse-struct field (consumer reads)
 
 Auto-derived from `FUN_1400ab3d0` decomp by
-`horseygame/extract-consumer-map.py`. Reads 62 distinct
+`horsey-mod/research/extract-consumer-map.py`. Reads 62 distinct
 buf slots; 23 are direct copies to a horse-struct field,
 the rest feed conditionals or intermediate math.
 

@@ -21,7 +21,7 @@ key-funcs decompiled. Shipping doesn't equal value.
 The stated user goal: "decompile game exes to figure out
 how they work then build mods in rust."
 
-Ghidra's existing dump did this. `horseygame/decompiled/all_functions.c`
+Ghidra's existing dump did this. `horsey-mod/research/decompiled/all_functions.c`
 (18.3 MB, 10,332 functions) plus the hand-curated
 `key-funcs/*.c` and `INDEX.md` naming was already a
 complete RE workflow. Reading C decomp to plan a mod is a
@@ -55,8 +55,8 @@ function is more likely to fail than succeed.
 
 ### The naming layer is a parasite on Ghidra
 
-`decomp` loads `horseygame/decompiled/INDEX.md` and
-`horseygame/decompiled/key-funcs/*.c` filenames at
+`decomp` loads `horsey-mod/research/decompiled/INDEX.md` and
+`horsey-mod/research/decompiled/key-funcs/*.c` filenames at
 startup. Without Ghidra's output, every function becomes
 `sub_<hex>` again. We did not replace Ghidra; we added a
 downstream view that depends on Ghidra to be readable.
@@ -137,7 +137,7 @@ output by an order of magnitude.
 1. **Stop investing in `decomp` and `falcon-printer`**
    for now. Don't delete. Keep as historical archive
    with this retrospective as the entry point. Sample
-   artifacts in `horseygame/decompiled/rust-r2sleigh/`
+   artifacts in `horsey-mod/research/decompiled/rust-r2sleigh/`
    stay as evidence the spike worked.
 2. **For specific functions where Rust syntax aids mod
    planning**, do it as a one-off: paste the Ghidra C

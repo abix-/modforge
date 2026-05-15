@@ -148,7 +148,7 @@ pub mod horse_offset {
 //
 // All addresses below have been adjusted to the TRUE entry. The
 // original Ghidra address is in a comment for cross-reference
-// with `horseygame/decompiled/INDEX.md`.
+// with `horsey-mod/research/decompiled/INDEX.md`.
 
 pub mod fn_addr {
     /// `apply_gene_to_horse`. The gene expression function. The

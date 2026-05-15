@@ -118,7 +118,7 @@ cd C:\code\grounded2mods\falcon-printer
 # print one function as Rust
 ..\target\release\falcon-printer.exe print --addr 0x140089510
 
-# bulk lift everything Ghidra found, into ../horseygame/decompiled/rust/
+# bulk lift everything Ghidra found, into ../horsey-mod/research/decompiled/rust/
 Get-Content .\ghidra_addrs.txt `
     | ..\target\release\falcon-printer.exe batch
 
@@ -131,14 +131,14 @@ Get-Content .\ghidra_addrs.txt `
 - Lift rate: **88.8%** (9,170 / 10,332 Ghidra-discovered functions).
   Failures are dominated by `DisasmFailureUnrecoverable` on
   Ghidra-over-discovered padding/data addresses, not real game code.
-- Sample artifacts shipped: 11 files in `../horseygame/decompiled/rust/`
+- Sample artifacts shipped: 11 files in `../horsey-mod/research/decompiled/rust/`
   totalling 30,527 lines. Highlights:
   `save_filename_format`, `click_race_when_ready_dialog`
   (9k lines, UI event handler), `simulation_paused_status`,
   `price_or_score_formula`, `SDL_CloseSensor`.
 - Function names pulled from
-  `../horseygame/decompiled/INDEX.md` (Ghidra index) and
-  `../horseygame/decompiled/key-funcs/` (slugs from documented
+  `../horsey-mod/research/decompiled/INDEX.md` (Ghidra index) and
+  `../horsey-mod/research/decompiled/key-funcs/` (slugs from documented
   filenames). Where neither is available, names default to
   `fn_<addr>`.
 
@@ -151,13 +151,13 @@ In priority order. Full details in
    helpers).
 2. SBB / ADC peephole (clean up x86 borrow chains).
 3. Struct-shape recovery via a per-binary YAML side-table
-   (`horseygame/structs.yaml`) so `*(rdi+0x124)` becomes
+   (`horsey-mod/research/structs.yaml`) so `*(rdi+0x124)` becomes
    `dialog.counter`.
 4. Comment passthrough from Ghidra's annotated C output.
 5. Mass function naming (today ~20 named; goal ~30%+).
 6. Loop / switch structurization beyond if/else.
 7. Bulk pass over all 9,170 lifted functions, output to
-   `horseygame/decompiled/rust/`, rust-analyzer indexed.
+   `horsey-mod/research/decompiled/rust/`, rust-analyzer indexed.
 
 ## Build deps
 

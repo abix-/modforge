@@ -220,7 +220,7 @@ binary-to-Rust decompiler.
 **Status 2026-05-14: parked**. Honest assessment in
 [`../decomp/docs/retrospective.md`](../decomp/docs/retrospective.md):
 Ghidra C decomp at
-[`../horseygame/decompiled/all_functions.c`](../horseygame/decompiled/all_functions.c)
+[`../horsey-mod/research/decompiled/all_functions.c`](../horsey-mod/research/decompiled/all_functions.c)
 already solves the actual RE workflow; `decomp`'s Rust
 syntax is cosmetic and costs more than it returns. The
 crate works as a spike; ladder items in
@@ -235,7 +235,7 @@ infrastructure. Beats `decomp`'s output on any given
 function.
 
 Sample artifacts kept at
-[`../horseygame/decompiled/rust-r2sleigh/`](../horseygame/decompiled/rust-r2sleigh/)
+[`../horsey-mod/research/decompiled/rust-r2sleigh/`](../horsey-mod/research/decompiled/rust-r2sleigh/)
 as proof-of-concept evidence. Migration history at
 [`../falcon-printer/docs/strategy.md`](../falcon-printer/docs/strategy.md).
 

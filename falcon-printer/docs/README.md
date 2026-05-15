@@ -46,7 +46,7 @@
   "RE-to-Rust pipeline (falcon-printer)".
 - Source: [`../src/main.rs`](../src/main.rs) (single binary, four subcommands).
 - Sample artifacts produced by this crate:
-  [`../../horseygame/decompiled/rust/`](../../horseygame/decompiled/rust/).
+  [`../../horsey-mod/research/decompiled/rust/`](../../horsey-mod/research/decompiled/rust/).
 - The Ghidra C output we use as ground truth:
-  [`../../horseygame/decompiled/all_functions.c`](../../horseygame/decompiled/all_functions.c)
+  [`../../horsey-mod/research/decompiled/all_functions.c`](../../horsey-mod/research/decompiled/all_functions.c)
   (18.3 MB; one fn per Ghidra-discovered address).

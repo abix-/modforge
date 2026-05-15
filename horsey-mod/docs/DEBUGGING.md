@@ -141,9 +141,9 @@ match Win64-typical prologue patterns. See §5 for the rule.
 silently pushes new builds. Functions move, get inlined, get
 renamed. Our `targets::fn_addr::*` constants are tied to one
 specific build. When `Horsey.exe`'s mtime is newer than the
-generation date in `horseygame/decompiled/INDEX.md`, assume
+generation date in `horsey-mod/research/decompiled/INDEX.md`, assume
 every address is suspect until verified by §5 prologue checks
-or by re-running `horseygame/decompile.py`.
+or by re-running `horsey-mod/research/decompile.py`.
 
 The 2026-05-14 session hit this: the May 2026 build moved
 `FUN_14009f680` and `FUN_1400c03a0` between two decomp runs
@@ -158,7 +158,7 @@ skip in `patches/ext_genes.rs::arm()`.
 **Discovered 2026-05-14, after wasting half a session blaming a
 nonexistent game update.** Our pyghidra decomp pass indexes
 function entries off-by-16 for the MSVC-compiled Horsey.exe.
-Every `0x14XXXXXX` address in `horseygame/decompiled/INDEX.md`
+Every `0x14XXXXXX` address in `horsey-mod/research/decompiled/INDEX.md`
 points 16 bytes INSIDE the function body, past the register-save
 prologue.
 

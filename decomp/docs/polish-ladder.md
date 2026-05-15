@@ -12,8 +12,8 @@ Working: lift + SSA + decompile + Rust emit for **13 of 18
 documented Horsey key-funcs**. Built in WSL (libsla-sys
 doesn't build on Windows MSVC). CLI parity with
 falcon-printer: `print` / `batch` / `dump-il`. Names
-recovered from `horseygame/decompiled/INDEX.md` plus
-`horseygame/decompiled/key-funcs/*.c` filename slugs.
+recovered from `horsey-mod/research/decompiled/INDEX.md` plus
+`horsey-mod/research/decompiled/key-funcs/*.c` filename slugs.
 
 ## 1. Windows build (libsla-sys, two-stage fix)
 
@@ -130,7 +130,7 @@ configuration tweak, medium if it needs new fact-flow.
 **Fix:** per-binary YAML schema (same idea as the
 falcon-printer ladder item, just now feeding r2types
 instead of our own printer). Schema lives at
-`horseygame/structs.yaml`; printer pass consumes
+`horsey-mod/research/structs.yaml`; printer pass consumes
 when rendering.
 
 **Effort:** medium. The schema population is per-struct
@@ -157,7 +157,7 @@ life:
 
 Same idea as falcon-printer's ladder item: read
 Ghidra's annotated C output from
-`horseygame/decompiled/annotated/`, lift the leading
+`horsey-mod/research/decompiled/annotated/`, lift the leading
 `/* ... */` comments, emit as Rust docstrings above the
 `unsafe fn`.
 
@@ -171,8 +171,8 @@ Once item 1 (Windows build) lands:
 - Delete falcon-printer/ (commit its source + docs to
   git history is the archive).
 - Repoint repo README.md, workspace todo.md.
-- Rename `horseygame/decompiled/rust-r2sleigh/` to
-  `horseygame/decompiled/rust/` (replacing the
+- Rename `horsey-mod/research/decompiled/rust-r2sleigh/` to
+  `horsey-mod/research/decompiled/rust/` (replacing the
   falcon-printer artifacts there).
 
 **Effort:** small mechanical work once unblocked.

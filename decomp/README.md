@@ -98,13 +98,13 @@ noise. The full r2sleigh substrate (SSA, type inference,
 loop/switch structurer) is upstream and we get it for free.
 
 Sample artifacts checked in at
-[`../horseygame/decompiled/rust-r2sleigh/`](../horseygame/decompiled/rust-r2sleigh/).
+[`../horsey-mod/research/decompiled/rust-r2sleigh/`](../horsey-mod/research/decompiled/rust-r2sleigh/).
 
 ## What's still on the ladder
 
 - **CLI subcommands**: port falcon-printer's `print` / `batch` /
   `sweep` / `dump-il` shape over to this crate.
-- **Naming layer**: load `horseygame/decompiled/INDEX.md` to
+- **Naming layer**: load `horsey-mod/research/decompiled/INDEX.md` to
   override `fn_<addr>` with friendly names. Lift the existing
   falcon-printer logic.
 - **Basic-block splitting**: today we lift the whole function as

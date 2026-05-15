@@ -70,7 +70,7 @@ Same for `adc reg, 0` (add carry).
 know `rdi` is a DialogState and 0x124 is the counter field.
 
 **Fix:** a per-binary side-table at
-`horseygame/structs.yaml`:
+`horsey-mod/research/structs.yaml`:
 ```yaml
 - name: DialogState
   size: 0x300
@@ -96,7 +96,7 @@ YAML is the actual labor (per-binary, per-struct).
 all you get is the address.
 
 **Fix:** read
-`horseygame/decompiled/annotated/<name>.c`. Take the
+`horsey-mod/research/decompiled/annotated/<name>.c`. Take the
 `/* ... */` and `//` blocks above the function in Ghidra's
 output. Emit as a `///` docstring above the `unsafe fn`.
 

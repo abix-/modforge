@@ -80,9 +80,9 @@ horsey.exe (PE bytes)
   [`passes.md`](passes.md). Each is a single function
   walking the RustIr.
 - **Naming layer**: loads
-  [`../../horseygame/decompiled/INDEX.md`](../../horseygame/decompiled/INDEX.md)
+  [`../../horsey-mod/research/decompiled/INDEX.md`](../../horsey-mod/research/decompiled/INDEX.md)
   (Ghidra address-to-name) and
-  [`../../horseygame/decompiled/key-funcs/`](../../horseygame/decompiled/key-funcs/)
+  [`../../horsey-mod/research/decompiled/key-funcs/`](../../horsey-mod/research/decompiled/key-funcs/)
   (slug from filename) at startup. Overrides `fn_<addr>` with
   the friendly name where available.
 - **Printer**: walks the post-passes RustIr, emits Rust syntax.

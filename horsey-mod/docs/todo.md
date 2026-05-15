@@ -5,7 +5,7 @@
 > Horsey-Game content mods that ship alongside it.
 >
 > Research / decomp tracking lives in
-> [`../../horseygame/TODO.md`](../../horseygame/TODO.md).
+> [`../../horsey-mod/research/TODO.md`](../../horsey-mod/research/TODO.md).
 > Workspace-wide framework work lives in
 > [`../../docs/todo.md`](../../docs/todo.md).
 
@@ -28,7 +28,7 @@ Three iterations tried; all ambiguous on the user's build:
   within 64 bytes") -> still failing
 
 Next idea (verified against decomp at
-[`horseygame/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c:612`](../../horseygame/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c)):
+[`horsey-mod/research/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c:612`](../../horsey-mod/research/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c)):
 anchor on the `DAT_1403d95c5` RIP-relative read at line 612,
 then take the first `mov byte ptr [reg+0x206], 0` after it.
 Only one other `+0x206` store exists in the function (at
@@ -63,7 +63,7 @@ or the build order until viability research clears the
 core technical questions.
 
 Vanilla baseline (verified in
-[`horseygame/CONTENT-CREATION.md:515`](../../horseygame/CONTENT-CREATION.md#12-reference-vanilla-populations)):
+[`horsey-mod/research/CONTENT-CREATION.md:515`](../../horsey-mod/research/CONTENT-CREATION.md#12-reference-vanilla-populations)):
 28 pops, of which roughly half are real horse-shaped
 creatures and the rest are oddities (cars, plants, humans,
 microbes, helix, freaks).
@@ -211,7 +211,7 @@ visible new creature in-game without crashing the loader.
 
 - [ ] Locate the user's installed Horsey Game `data/`
       directory. Document the path in
-      [`MODFORGE-INTEGRATION.md`](../../horseygame/MODFORGE-INTEGRATION.md)
+      [`MODFORGE-INTEGRATION.md`](../../horsey-mod/research/MODFORGE-INTEGRATION.md)
       or a new `INSTALL-LAYOUT.md`.
 - [ ] Back up vanilla `pop.xml`, `horsey.tmx`, and
       `genes.dat` (the cache).
@@ -561,7 +561,7 @@ Research plan to derive the map:
    metadata. Names like `SIZE`, `BONES`, `LEG_LENGTH`,
    `OSTODERM` are the human-readable handles.
 2. **Read `FUN_14009f680`'s decomp** (14kB function in
-   `horseygame/decompiled/all_functions.c`). For each of
+   `horsey-mod/research/decompiled/all_functions.c`). For each of
    the 233 baked literal gene indices in that function,
    identify the buf slot it writes to. Build
    `(gene_idx, gene_name, buf_slot)` triples.
@@ -574,7 +574,7 @@ Research plan to derive the map:
    consumer transcribes to horse-struct field +0xYY which
    the renderer reads as feature Z."
 5. **Author the map** as
-   `horseygame/SLOT-MAP.md`: per-slot row with
+   `horsey-mod/research/SLOT-MAP.md`: per-slot row with
    `{ slot, vanilla_gene_name, horse_struct_field,
    visible_feature, candidate_value_range }`.
 6. **Validate** by editing one vanilla gene at a time via
@@ -1043,7 +1043,7 @@ declaring victory.
 
 `horsey-inject.exe --reload` swap reports success but the
 game crashes a few seconds later. See
-[`horseygame/TODO.md`](../../horseygame/TODO.md) for the
+[`horsey-mod/research/TODO.md`](../../horsey-mod/research/TODO.md) for the
 research-side investigation.
 
 ### Save sidecar

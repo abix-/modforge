@@ -30,11 +30,11 @@ use std::process::ExitCode;
 const DEFAULT_BINARY: &str =
     "/mnt/c/Games/Steam/steamapps/common/Horsey Game/Horsey.exe";
 const DEFAULT_INDEX_MD: &str =
-    "/mnt/c/code/grounded2mods/horseygame/decompiled/INDEX.md";
+    "/mnt/c/code/grounded2mods/horsey-mod/research/decompiled/INDEX.md";
 const DEFAULT_KEY_FUNCS_DIR: &str =
-    "/mnt/c/code/grounded2mods/horseygame/decompiled/key-funcs";
+    "/mnt/c/code/grounded2mods/horsey-mod/research/decompiled/key-funcs";
 const DEFAULT_OUT_DIR: &str =
-    "/mnt/c/code/grounded2mods/horseygame/decompiled/rust-r2sleigh";
+    "/mnt/c/code/grounded2mods/horsey-mod/research/decompiled/rust-r2sleigh";
 
 #[derive(Parser)]
 #[command(

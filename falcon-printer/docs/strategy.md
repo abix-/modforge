@@ -46,7 +46,7 @@ case for switching is unambiguous.
   we fork the printer stage to emit Rust instead. The
   entire pipeline below that stage we get for free.
 - **The artifact shape.** Output lands in
-  `horseygame/decompiled/rust/` per-function.
+  `horsey-mod/research/decompiled/rust/` per-function.
 - **The CLI surface.** `print` / `batch` / `sweep` /
   `dump-il` subcommands still make sense; they just
   drive a different engine.
@@ -99,7 +99,7 @@ case for switching is unambiguous.
   crates via path.
 - [x] Run against documented key-funcs. Saved
   comparison artifacts:
-  - `horseygame/decompiled/rust-r2sleigh-spike/`:
+  - `horsey-mod/research/decompiled/rust-r2sleigh-spike/`:
     raw r2dec C output for `save_filename_format`
     (173 lines), `click_race_when_ready_dialog`
     (157 lines truncated at 4kB). SSE-heavy
@@ -164,7 +164,7 @@ post-cutover ladder.
   function calls keep their argument lists; ram:HEX
   refs become `fn_HEX`. ~300 lines.
 - [x] Generate sample artifacts.
-  `horseygame/decompiled/rust-r2sleigh/`: 16 files,
+  `horsey-mod/research/decompiled/rust-r2sleigh/`: 16 files,
   including 13 of the 18 documented key-funcs
   (`save_filename_format`, `price_or_score_formula`,
   `click_race_when_ready_dialog`,
@@ -276,9 +276,9 @@ New ladder lives at
   lands (gated on the Windows build).
 - **Existing artifacts.** Resolved by keeping
   falcon-printer outputs in
-  `horseygame/decompiled/rust/` as before/after
+  `horsey-mod/research/decompiled/rust/` as before/after
   evidence, and the new r2sleigh-based outputs in
-  `horseygame/decompiled/rust-r2sleigh/`. Once the
+  `horsey-mod/research/decompiled/rust-r2sleigh/`. Once the
   workspace cutover lands, the directories swap
   (r2sleigh becomes `rust/`, falcon becomes
   `rust-falcon-archive/`).

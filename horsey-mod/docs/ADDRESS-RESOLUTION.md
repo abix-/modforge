@@ -61,7 +61,7 @@ exact build we're on, so when something breaks we can tell
 - [ ] Add an HTTP op `game.build_info` returning hash + mtime +
       `image_base()` + a "known build name" if the hash matches
       one we've recorded.
-- [ ] Add `horseygame/known-builds.toml`: a per-build manifest
+- [ ] Add `horsey-mod/research/known-builds.toml`: a per-build manifest
       with `{ hash: "...", date: "...", decomp_index_path: "..." }`
       so future sessions can be told "you're on build X, decomp
       at Y" without guessing.
@@ -94,7 +94,7 @@ resolver that pattern-scans the loaded image.
 
 Make it 1-command to derive a new signature after a decomp pass.
 
-- [ ] `horseygame/extract-signatures.py`. Inputs: the
+- [ ] `horsey-mod/research/extract-signatures.py`. Inputs: the
       `decompiled/INDEX.md` + the function-body files. Output:
       a TOML / Rust constants file with prologue bytes and
       suggested wildcards for each function we care about.
@@ -132,17 +132,17 @@ The expensive piece. Only worth it if game updates are weekly+.
       print a big-yellow log line: "Game updated since last
       decomp; addresses MAY be stale."
 - [ ] Optional: a `tools/refresh-decomp.ps1` wrapper that
-      runs `horseygame/decompile.py` + `extract-signatures.py`
+      runs `horsey-mod/research/decompile.py` + `extract-signatures.py`
       back-to-back, commits the diff under a `chore:` prefix.
 - [ ] Optional: a GitHub Actions job triggered manually that
       runs the same on a Windows runner with Ghidra installed.
 
 ## Tooling we already have
 
-- **`horseygame/decompile.py`**. Pyghidra full-binary
+- **`horsey-mod/research/decompile.py`**. Pyghidra full-binary
   decompiler. ~30-60 min for a Horsey.exe-sized image. Outputs
   to `C:/code/horsey-mods/decompiled` (the sister repo); we
-  mirror into `grounded2mods/horseygame/decompiled` after.
+  mirror into `grounded2mods/horsey-mod/research/decompiled` after.
 - **`patternsleuth` crate**. In `workspace.dependencies`,
   unused so far. Has `process-internal` + `image-pe` features
   enabled.
@@ -187,7 +187,7 @@ worth it.
   (RIP-relative displacements, jump-table immediates) and audit
   by diffing builds.
 - Do we ship the decomp output in the repo, or hash-pin it to
-  an external store? Today's `horseygame/decompiled/` is
+  an external store? Today's `horsey-mod/research/decompiled/` is
   ~hundreds of MB. Recommend: keep in repo since GitHub LFS
   isn't on; revisit if it bloats further.
 

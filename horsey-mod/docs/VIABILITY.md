@@ -68,11 +68,11 @@ layout with three Ghidra symbols inside each record:
 
 Record size: 32 bytes (8 uint32). Confirmed by the
 loader's `puVar11 = puVar11 + 8` stride at
-[`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c`](../../horseygame/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c)
+[`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c`](../../horsey-mod/research/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c)
 and the readers' `[i*8]` indexing on `uint32*`.
 
 Layout confirmed by the self-check in
-[`funcs/1400a/1400a5d20_FUN_1400a5d20.c:24`](../../horseygame/decompiled/funcs/1400a/1400a5d20_FUN_1400a5d20.c):
+[`funcs/1400a/1400a5d20_FUN_1400a5d20.c:24`](../../horsey-mod/research/decompiled/funcs/1400a/1400a5d20_FUN_1400a5d20.c):
 `if ((&DAT_1403ee4a0)[lVar2 * 8] != param_2) FUN_1400c4340("Bad GX %d");`.
 The function asserts that record N's index field equals N
 and panics with `"Bad GX %d"` on mismatch. Important:
@@ -86,13 +86,13 @@ entire binary (after grepping all three record symbols):
 
 | Function | Role | Mutates? | Access pattern | Cite |
 |---|---|---|---|---|
-| `FUN_1400a3eb0` | XML loader (`load_genes_xml`) | yes (init + per-XML write) | sequential init, then per-name lookup | [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:134`](../../horseygame/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) |
-| `FUN_1400a4880` | XML serializer (writes attrs back) | reads | `*((longlong)&DAT_1403ee4a4 + uVar15)` | [`funcs/1400a/1400a4880_FUN_1400a4880.c:140`](../../horseygame/decompiled/funcs/1400a/1400a4880_FUN_1400a4880.c) |
-| `FUN_1400a5d20` | gene-allele evaluator (formula 1) | reads | `[i*8]` indexed by gene id | [`funcs/1400a/1400a5d20_FUN_1400a5d20.c:60`](../../horseygame/decompiled/funcs/1400a/1400a5d20_FUN_1400a5d20.c) |
-| `FUN_1400a5e00` | gene-allele evaluator (formula 2) | reads | same as above | [`funcs/1400a/1400a5e00_FUN_1400a5e00.c:62`](../../horseygame/decompiled/funcs/1400a/1400a5e00_FUN_1400a5e00.c) |
-| `FUN_1400c0660` | runtime mutator (±5) | **yes (live)** | `[i*8] += 5` and `[i*8] += -5` | [`funcs/1400c/1400c0660_FUN_1400c0660.c:730`](../../horseygame/decompiled/funcs/1400c/1400c0660_FUN_1400c0660.c) |
-| `FUN_1400c03a0` | allele swap (breeding?) | **yes (live)** | swaps `DAT_1403ee4b0[i]` with `DAT_1403ee4b0[j]` | [`funcs/1400c/1400c03a0_FUN_1400c03a0.c:40`](../../horseygame/decompiled/funcs/1400c/1400c03a0_FUN_1400c03a0.c) |
-| `FUN_1400c1cf0` | unknown (CRISPR? mixing?) | likely yes | accesses `&DAT_1403ee4a8 + i*8` AND `&DAT_1403ee488 + j*4` | [`funcs/1400c/1400c1cf0_FUN_1400c1cf0.c:270`](../../horseygame/decompiled/funcs/1400c/1400c1cf0_FUN_1400c1cf0.c) |
+| `FUN_1400a3eb0` | XML loader (`load_genes_xml`) | yes (init + per-XML write) | sequential init, then per-name lookup | [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:134`](../../horsey-mod/research/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) |
+| `FUN_1400a4880` | XML serializer (writes attrs back) | reads | `*((longlong)&DAT_1403ee4a4 + uVar15)` | [`funcs/1400a/1400a4880_FUN_1400a4880.c:140`](../../horsey-mod/research/decompiled/funcs/1400a/1400a4880_FUN_1400a4880.c) |
+| `FUN_1400a5d20` | gene-allele evaluator (formula 1) | reads | `[i*8]` indexed by gene id | [`funcs/1400a/1400a5d20_FUN_1400a5d20.c:60`](../../horsey-mod/research/decompiled/funcs/1400a/1400a5d20_FUN_1400a5d20.c) |
+| `FUN_1400a5e00` | gene-allele evaluator (formula 2) | reads | same as above | [`funcs/1400a/1400a5e00_FUN_1400a5e00.c:62`](../../horsey-mod/research/decompiled/funcs/1400a/1400a5e00_FUN_1400a5e00.c) |
+| `FUN_1400c0660` | runtime mutator (±5) | **yes (live)** | `[i*8] += 5` and `[i*8] += -5` | [`funcs/1400c/1400c0660_FUN_1400c0660.c:730`](../../horsey-mod/research/decompiled/funcs/1400c/1400c0660_FUN_1400c0660.c) |
+| `FUN_1400c03a0` | allele swap (breeding?) | **yes (live)** | swaps `DAT_1403ee4b0[i]` with `DAT_1403ee4b0[j]` | [`funcs/1400c/1400c03a0_FUN_1400c03a0.c:40`](../../horsey-mod/research/decompiled/funcs/1400c/1400c03a0_FUN_1400c03a0.c) |
+| `FUN_1400c1cf0` | unknown (CRISPR? mixing?) | likely yes | accesses `&DAT_1403ee4a8 + i*8` AND `&DAT_1403ee488 + j*4` | [`funcs/1400c/1400c1cf0_FUN_1400c1cf0.c:270`](../../horsey-mod/research/decompiled/funcs/1400c/1400c1cf0_FUN_1400c1cf0.c) |
 
 ### Key sub-findings
 
@@ -135,7 +135,7 @@ entire binary (after grepping all three record symbols):
 - **The table is not static config.** `FUN_1400c0660`
   mutates entries by ±5 at runtime (per the existing
   annotation file
-  [`key-funcs/0x1400c0660_horse_is_dead_handler.c`](../../horseygame/decompiled/key-funcs/0x1400c0660_horse_is_dead_handler.c)
+  [`key-funcs/0x1400c0660_horse_is_dead_handler.c`](../../horsey-mod/research/decompiled/key-funcs/0x1400c0660_horse_is_dead_handler.c)
   this is the death handler). Means gene-table rows are
   game state, not just config. Affects:
   - save/load: the runtime drift may be persisted (need
@@ -159,9 +159,9 @@ reader set:
 
 | Cite | Loop | Purpose |
 |---|---|---|
-| [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:156`](../../horseygame/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) | `while ((int)uVar21 < 0xf0)` | default-init loop |
-| [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:984`](../../horseygame/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) | `while ((int)uVar21 < 0xf0)` | per-XML write loop |
-| [`funcs/1400a/1400a4880_FUN_1400a4880.c:298`](../../horseygame/decompiled/funcs/1400a/1400a4880_FUN_1400a4880.c) | `while ((int)uVar17 < 0xf0)` | second writer loop |
+| [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:156`](../../horsey-mod/research/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) | `while ((int)uVar21 < 0xf0)` | default-init loop |
+| [`funcs/1400a/1400a3eb0_FUN_1400a3eb0.c:984`](../../horsey-mod/research/decompiled/funcs/1400a/1400a3eb0_FUN_1400a3eb0.c) | `while ((int)uVar21 < 0xf0)` | per-XML write loop |
+| [`funcs/1400a/1400a4880_FUN_1400a4880.c:298`](../../horsey-mod/research/decompiled/funcs/1400a/1400a4880_FUN_1400a4880.c) | `while ((int)uVar17 < 0xf0)` | second writer loop |
 
 The 5 non-loader readers (`a5d20`, `a5e00`, `c03a0`,
 `c0660`, `c1cf0`) take the gene index as an argument and
@@ -397,7 +397,7 @@ Q-pop-2 and Q-pop-4 still open.
 **ANSWERED: yes, unbounded.**
 
 Pop loader is `FUN_1400a4fe0`
-([`funcs/1400a/1400a4fe0_FUN_1400a4fe0.c`](../../horseygame/decompiled/funcs/1400a/1400a4fe0_FUN_1400a4fe0.c)).
+([`funcs/1400a/1400a4fe0_FUN_1400a4fe0.c`](../../horsey-mod/research/decompiled/funcs/1400a/1400a4fe0_FUN_1400a4fe0.c)).
 Identified by the `"pop.xml load fail"` error string at
 :254. Function size: 889 bytes, 502 lines decompiled.
 
@@ -462,12 +462,12 @@ records.
 Pop lookup happens in `FUN_1400a2ed0` and `FUN_1400a30c0`
 (likely "lookup_pop_by_name" and a sibling). On miss, both
 call `FUN_1400c4340("pop not found %s", name)`
-([`funcs/1400a/1400a2ed0_FUN_1400a2ed0.c:106`](../../horseygame/decompiled/funcs/1400a/1400a2ed0_FUN_1400a2ed0.c)
+([`funcs/1400a/1400a2ed0_FUN_1400a2ed0.c:106`](../../horsey-mod/research/decompiled/funcs/1400a/1400a2ed0_FUN_1400a2ed0.c)
 and
-[`funcs/1400a/1400a30c0_FUN_1400a30c0.c:70`](../../horseygame/decompiled/funcs/1400a/1400a30c0_FUN_1400a30c0.c)).
+[`funcs/1400a/1400a30c0_FUN_1400a30c0.c:70`](../../horsey-mod/research/decompiled/funcs/1400a/1400a30c0_FUN_1400a30c0.c)).
 
 `FUN_1400c4340` is the panic helper
-([`funcs/1400c/1400c4340_FUN_1400c4340.c`](../../horseygame/decompiled/funcs/1400c/1400c4340_FUN_1400c4340.c)):
+([`funcs/1400c/1400c4340_FUN_1400c4340.c`](../../horsey-mod/research/decompiled/funcs/1400c/1400c4340_FUN_1400c4340.c)):
 
 ```
 MessageBoxA(NULL, formatted_msg, "Error", 0);
@@ -493,7 +493,7 @@ So unknown pop_id at load time also crashes hard.
 **ANSWERED: inherit-then-override.**
 
 `FUN_1400a5ee0` is the per-pop XML processor
-([`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c`](../../horseygame/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c)).
+([`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c`](../../horsey-mod/research/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c)).
 Takes (xml_doc, child_record, parent_id). Behavior:
 
 1. **Pop record allocation.** New pop record is allocated
@@ -523,7 +523,7 @@ Takes (xml_doc, child_record, parent_id). Behavior:
   inside a parent and the new pop starts with the
   parent's full gene-weight setup. Only override what
   you care about. Matches the existing
-  [`CONTENT-MODDING.md`](../../horseygame/CONTENT-MODDING.md)
+  [`CONTENT-MODDING.md`](../../horsey-mod/research/CONTENT-MODDING.md)
   documented behavior.
 - **NEW pop_id detail.** `DAT_1403f2fc0 + pop_id *
   0x1018` means the pop array is a CONTIGUOUS
@@ -546,7 +546,7 @@ Takes (xml_doc, child_record, parent_id). Behavior:
 **ANSWERED.** Confirmed `DAT_1403f2fc0` / `DAT_1403f2fc8`
 / `DAT_1403f2fd0` are the std::vector begin/end/capacity
 triple. Grow-realloc happens at
-[`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c:190`](../../horseygame/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c):
+[`funcs/1400a/1400a5ee0_FUN_1400a5ee0.c:190`](../../horsey-mod/research/decompiled/funcs/1400a/1400a5ee0_FUN_1400a5ee0.c):
 
 ```c
 if ((DAT_1403f2fd0 - DAT_1403f2fc0) / 0x1018 < uVar19) {
@@ -615,7 +615,7 @@ Adding the pop layer to the previous patch list:
 ## Save / load (Q-save-*)
 
 **Status:** PARTIAL. Findings from existing
-[`SAVE-FORMAT.md`](../../horseygame/SAVE-FORMAT.md) plus
+[`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md) plus
 the new gene-table reader analysis.
 
 ### Q-save-1: per-horse genome storage
@@ -624,7 +624,7 @@ the new gene-table reader analysis.
 
 The horse roster record is 22 bytes + variable name +
 variable child list. Too small for 200+ alleles. Per
-[`SAVE-FORMAT.md`](../../horseygame/SAVE-FORMAT.md) the
+[`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md) the
 genome lives in one of the big binary blocks (probably
 the 55KB block at 0x0d4f, hypothesis "76 horses x 720
 bytes" or "114 horses x 480 bytes").
@@ -670,10 +670,10 @@ Top 2 bits of each byte are unused. Decode:
 
 | Function | Cite | Literal | Meaning |
 |---|---|---|---|
-| `FUN_14006d470` (write) | [`funcs/14006/14006d470_FUN_14006d470.c:18`](../../horseygame/decompiled/funcs/14006/14006d470_FUN_14006d470.c) | `0x28` | Outer loop count (40 iter x 6 packed bytes) |
+| `FUN_14006d470` (write) | [`funcs/14006/14006d470_FUN_14006d470.c:18`](../../horsey-mod/research/decompiled/funcs/14006/14006d470_FUN_14006d470.c) | `0x28` | Outer loop count (40 iter x 6 packed bytes) |
 | `FUN_14006d470` (write) | :22-44 | `0xef..0xf4` | Offsets reaching into the second diploid half |
 | `FUN_14006d470` (write) | :60 | `0xf0` | Bulk-write byte count = 240 |
-| `FUN_14006d580` (read) | [`funcs/14006/14006d580_FUN_14006d580.c:18`](../../horseygame/decompiled/funcs/14006/14006d580_FUN_14006d580.c) | `0xf0` | Bulk-read byte count = 240 |
+| `FUN_14006d580` (read) | [`funcs/14006/14006d580_FUN_14006d580.c:18`](../../horsey-mod/research/decompiled/funcs/14006/14006d580_FUN_14006d580.c) | `0xf0` | Bulk-read byte count = 240 |
 | `FUN_14006d580` (read) | :22 | `0x78` | Outer loop count (120 iter x 4 alleles) |
 | `FUN_14006d580` (read) | :26-34 | `0xef`, `0xf0` | Same diploid-half offsets |
 
@@ -681,11 +681,11 @@ Top 2 bits of each byte are unused. Decode:
 
 | Function | Cite | Literal | Meaning |
 |---|---|---|---|
-| `FUN_14005cf70` (alloc-only) | [`funcs/14005/14005cf70_FUN_14005cf70.c:152`](../../horseygame/decompiled/funcs/14005/14005cf70_FUN_14005cf70.c) | `FUN_1402c704c(0x1e0)` | 480-byte heap alloc |
-| `FUN_14005d190` (alloc + copy) | [`funcs/14005/14005d190_FUN_14005d190.c:40`](../../horseygame/decompiled/funcs/14005/14005d190_FUN_14005d190.c) | `FUN_1402c704c(0x1e0)` | Same |
+| `FUN_14005cf70` (alloc-only) | [`funcs/14005/14005cf70_FUN_14005cf70.c:152`](../../horsey-mod/research/decompiled/funcs/14005/14005cf70_FUN_14005cf70.c) | `FUN_1402c704c(0x1e0)` | 480-byte heap alloc |
+| `FUN_14005d190` (alloc + copy) | [`funcs/14005/14005d190_FUN_14005d190.c:40`](../../horsey-mod/research/decompiled/funcs/14005/14005d190_FUN_14005d190.c) | `FUN_1402c704c(0x1e0)` | Same |
 | `FUN_14005d190` (copy loop) | :84, :88 | `0xf0`, `0x1e0` | Inner / outer copy stride |
-| `FUN_14005cd00` (free) | [`funcs/14005/14005cd00_FUN_14005cd00.c:16`](../../horseygame/decompiled/funcs/14005/14005cd00_FUN_14005cd00.c) | `FUN_1402c7088(param_1[0xf], 0x1e0)` | 480-byte free |
-| `FUN_140032ac0` (diploid walk) | [`funcs/14003/140032ac0_FUN_140032ac0.c:194`](../../horseygame/decompiled/funcs/14003/140032ac0_FUN_140032ac0.c) | `0xf0`, `0x1e0` | `uVar10 += 0xf0; while uVar10 < 0x1e0` |
+| `FUN_14005cd00` (free) | [`funcs/14005/14005cd00_FUN_14005cd00.c:16`](../../horsey-mod/research/decompiled/funcs/14005/14005cd00_FUN_14005cd00.c) | `FUN_1402c7088(param_1[0xf], 0x1e0)` | 480-byte free |
+| `FUN_140032ac0` (diploid walk) | [`funcs/14003/140032ac0_FUN_140032ac0.c:194`](../../horsey-mod/research/decompiled/funcs/14003/140032ac0_FUN_140032ac0.c) | `0xf0`, `0x1e0` | `uVar10 += 0xf0; while uVar10 < 0x1e0` |
 
 ### Genome lifecycle summary
 
@@ -751,7 +751,7 @@ backwards compat for free.
 
 **ANSWERED: uint8 (1 byte), hard cap at 255 pops.**
 
-Per [`SAVE-FORMAT.md`](../../horseygame/SAVE-FORMAT.md)
+Per [`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md)
 the horse roster record's `pop_id` field is uint8 with
 observed values 1..12 and 255 (sentinel for "freak" or
 "custom").

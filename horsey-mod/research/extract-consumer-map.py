@@ -81,7 +81,7 @@ def main():
     new_section = (
         f"{marker_open}\n\n"
         f"Auto-derived from `FUN_1400ab3d0` decomp by\n"
-        f"`horseygame/extract-consumer-map.py`. Reads {len(all_slots)} distinct\n"
+        f"`horsey-mod/research/extract-consumer-map.py`. Reads {len(all_slots)} distinct\n"
         f"buf slots; {len(direct)} are direct copies to a horse-struct field,\n"
         f"the rest feed conditionals or intermediate math.\n\n"
         f"{table}\n\n"
