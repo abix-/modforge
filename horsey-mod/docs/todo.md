@@ -27,7 +27,7 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets (`gs_offset::*` 20 fields + `horse_offset::*` 10 fields): **H, drift observed.** Confirmed 2026-05-15 in-game: a new save with 1 sleep + 2 races reads `gs_offset::YEAR = 0x314` as 336 instead of 1. The struct layout has shifted between builds; field offsets need their own resolver tier.
+- Field offsets: **R4 in progress, 10/37 done.** Migrated via patternsleuth + in-process pattern decode: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b`. Remaining ~27 fields need anchors authored.
 
 **Open work in this section:**
 - [ ] **R4: Field-offset resolver tier.** Same model as R3 for data globals, except the disp32 to decode is the FIELD OFFSET (instruction's RIP-rel `disp8`/`disp32` operand) rather than the global's address. Workflow per field:

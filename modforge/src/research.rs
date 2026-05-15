@@ -312,6 +312,49 @@ pub fn histogram_top(hist: &BTreeMap<i64, usize>) -> Option<i64> {
     hist.iter().max_by_key(|&(_, count)| *count).map(|(&val, _)| val)
 }
 
+/// In-process: scan `.text` for a sig containing TWO disp32
+/// operands, decode both, filter to matches where
+/// `disp2 - disp1 == expected_delta`. Returns a histogram of
+/// `disp1` values among accepted matches.
+///
+/// Use for "find a pair of consecutive struct-field accesses
+/// where the offsets are a known distance apart" recipes
+/// (HORSES_BEGIN/END, lo/hi pointer pairs, etc.).
+pub fn in_process_decode_disp_pair_with_delta(
+    sig: &str,
+    disp1_offset: usize,
+    disp2_offset: usize,
+    disp_size: usize,
+    expected_delta: i64,
+) -> Result<BTreeMap<i64, usize>> {
+    anyhow::ensure!(matches!(disp_size, 1 | 4), "disp_size must be 1 or 4");
+    let hits = sleuth::scan_all_matches(sig)?;
+    let mut hist: BTreeMap<i64, usize> = BTreeMap::new();
+    for instr_addr in hits {
+        let p1 = (instr_addr as u64).wrapping_add(disp1_offset as u64);
+        let p2 = (instr_addr as u64).wrapping_add(disp2_offset as u64);
+        // SAFETY: instr_addr is inside .text, mapped.
+        let d1: i64 = unsafe {
+            if disp_size == 1 {
+                (p1 as *const i8).read_unaligned() as i64
+            } else {
+                (p1 as *const i32).read_unaligned() as i64
+            }
+        };
+        let d2: i64 = unsafe {
+            if disp_size == 1 {
+                (p2 as *const i8).read_unaligned() as i64
+            } else {
+                (p2 as *const i32).read_unaligned() as i64
+            }
+        };
+        if d2 - d1 == expected_delta {
+            *hist.entry(d1).or_insert(0) += 1;
+        }
+    }
+    Ok(hist)
+}
+
 /// In-process: scan `.text` for `sig` and return matches whose
 /// address is in `[window_start, window_start + window_len)`.
 /// Patternsleuth-backed.

@@ -105,8 +105,8 @@ pub fn looks_loaded() -> bool {
     // mapped; reading two pointer-sized fields at known offsets is
     // safe regardless of whether a save is loaded. We never deref
     // begin/end here, just inspect their numeric values.
-    let begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
-    let end = unsafe { *((p + gs_offset::HORSES_END) as *const usize) };
+    let begin = unsafe { *((p + gs_offset::horses_begin()) as *const usize) };
+    let end = unsafe { *((p + gs_offset::horses_end()) as *const usize) };
     roster_span_looks_loaded(begin, end)
 }
 
@@ -120,8 +120,8 @@ pub fn diag() -> serde_json::Value {
     }
     // SAFETY: GameState is statically embedded; offsets are within
     // its allocated range. We never deref the read pointers.
-    let roster_begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
-    let roster_end = unsafe { *((p + gs_offset::HORSES_END) as *const usize) };
+    let roster_begin = unsafe { *((p + gs_offset::horses_begin()) as *const usize) };
+    let roster_end = unsafe { *((p + gs_offset::horses_end()) as *const usize) };
     let live_begin = unsafe { *((p + 0x130) as *const usize) };
     let live_end = unsafe { *((p + 0x138) as *const usize) };
 
@@ -385,8 +385,8 @@ pub fn horse_count() -> usize {
     }
     // SAFETY: begin/end pointers are stable while the world is
     // alive; reading two pointer-sized fields from GameState.
-    let begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
-    let end = unsafe { *((p + gs_offset::HORSES_END) as *const usize) };
+    let begin = unsafe { *((p + gs_offset::horses_begin()) as *const usize) };
+    let end = unsafe { *((p + gs_offset::horses_end()) as *const usize) };
     if end < begin {
         0
     } else {
@@ -404,7 +404,7 @@ pub fn horse_roster_entry(i: usize) -> Option<usize> {
         return None;
     }
     // SAFETY: begin pointer is stable while world is alive.
-    let begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
+    let begin = unsafe { *((p + gs_offset::horses_begin()) as *const usize) };
     if begin == 0 {
         return None;
     }
@@ -424,10 +424,17 @@ pub fn horse_roster_entry(i: usize) -> Option<usize> {
 // full live-Horse objects whose +0x1fc/+0x200/+0x205/+0x206/+0x21c/+0x254
 // fields we already model.
 
-/// Live-horse list begin offset on GameState.
+/// Live-horse list begin offset on GameState. Old decomp constant;
+/// production reads go through `targets::gs_offset::live_horses_begin()`.
+#[allow(dead_code)]
 const LIVE_HORSES_BEGIN: usize = 0x130;
-/// Live-horse list end offset on GameState.
+/// Live-horse list end offset on GameState. Old decomp constant;
+/// production reads go through `targets::gs_offset::live_horses_end()`.
+#[allow(dead_code)]
 const LIVE_HORSES_END: usize = 0x138;
+
+fn live_horses_begin_off() -> usize { targets::gs_offset::live_horses_begin() }
+fn live_horses_end_off() -> usize { targets::gs_offset::live_horses_end() }
 
 /// Count of live horse pointers in the gamestate `+0x130..+0x138` list.
 pub fn live_horse_count() -> usize {
@@ -436,8 +443,8 @@ pub fn live_horse_count() -> usize {
         return 0;
     }
     // SAFETY: begin/end pointers are stable while the world is alive.
-    let begin = unsafe { *((p + LIVE_HORSES_BEGIN) as *const usize) };
-    let end = unsafe { *((p + LIVE_HORSES_END) as *const usize) };
+    let begin = unsafe { *((p + live_horses_begin_off()) as *const usize) };
+    let end = unsafe { *((p + live_horses_end_off()) as *const usize) };
     if end < begin {
         0
     } else {
@@ -454,7 +461,7 @@ pub fn live_horse_ptr(i: usize) -> Option<usize> {
     }
     // SAFETY: begin is a stable pointer; loading 8 bytes at `begin + i*8`
     // is in-bounds when i < count.
-    let begin = unsafe { *((p + LIVE_HORSES_BEGIN) as *const usize) };
+    let begin = unsafe { *((p + live_horses_begin_off()) as *const usize) };
     if begin == 0 || i >= live_horse_count() {
         return None;
     }

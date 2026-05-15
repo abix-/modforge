@@ -67,12 +67,19 @@ fn gs_year_resolver_agrees_with_hardcoded() {
         "horse_ctx_offset resolver mismatch: resolved=0x{cresolved:x} hardcoded=0x{chardcoded:x}"
     );
 
-    for (name, key) in &[("tired_flag_a", "tired_flag_a"), ("tired_flag_b", "tired_flag_b")] {
+    for (name, key) in &[
+        ("tired_flag_a", "tired_flag_a"),
+        ("tired_flag_b", "tired_flag_b"),
+        ("horses_begin", "horses_begin"),
+        ("horses_end",   "horses_end"),
+        ("live_horses_begin", "live_horses_begin"),
+        ("live_horses_end",   "live_horses_end"),
+    ] {
         let entry = result.get(*key).unwrap_or_else(|| panic!("{name} entry"));
         let r = u64_of_hex(entry, "resolved").expect("resolved");
         let h = u64_of_hex(entry, "hardcoded").expect("hardcoded");
         game.log().event(
-            "R4-TIRED",
+            "R4-EXTRA",
             &format!("{name}: resolved=0x{r:x} hardcoded=0x{h:x}"),
         );
         assert_eq!(r, h, "{name} mismatch: resolved=0x{r:x} hardcoded=0x{h:x}");

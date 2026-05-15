@@ -192,11 +192,67 @@ pub mod gs_offset {
     pub const FIELD_41C: usize = 0x41c;
     pub const FIELD_440: usize = 0x440;
     /// Begin pointer for the horse vector (stride 0x24 = 36 bytes
-    /// per in-memory horse).
+    /// per in-memory horse). Old decomp constant; production
+    /// should call [`horses_begin()`].
     pub const HORSES_BEGIN: usize = 0x280;
-    /// End pointer for the horse vector. `(end - begin) / 0x24` =
-    /// horse count.
+    /// End pointer for the horse vector. Old decomp constant;
+    /// production should call [`horses_end()`].
     pub const HORSES_END: usize = 0x288;
+
+    fn resolve_horses_pair() -> Option<(usize, usize)> {
+        // Scan for two adjacent `mov reg64, [base+disp32]` loads
+        // where disp2 == disp1 + 8. Multiple GameState fields are
+        // pointer pairs (live_horses at 0x130/0x138, roster at
+        // 0x280/0x288). To pick the ROSTER pair, filter to disps
+        // >= 0x200 (live-horses pair is below 0x200).
+        let hist = modforge::research::in_process_decode_disp_pair_with_delta(
+            "48 8b ?? ?? ?? ?? ?? 48 8b ?? ?? ?? ?? ??",
+            3, 10, 4, 8,
+        ).ok()?;
+        // Constrain to [0x200, 0x300]: above the live-horses pair
+        // (0x130), below other GameState pointer pairs (e.g. 0x4a0).
+        let mut top: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x200 && *v < 0x300)
+            .collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.first().map(|&(d, _)| (d as usize, (d + 8) as usize))
+    }
+
+    fn resolve_live_horses_pair() -> Option<(usize, usize)> {
+        // Same scan, narrowed to the live-horses neighborhood
+        // (< 0x200).
+        let hist = modforge::research::in_process_decode_disp_pair_with_delta(
+            "48 8b ?? ?? ?? ?? ?? 48 8b ?? ?? ?? ?? ??",
+            3, 10, 4, 8,
+        ).ok()?;
+        let mut top: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x100 && *v < 0x200)
+            .collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.first().map(|&(d, _)| (d as usize, (d + 8) as usize))
+    }
+
+    /// Pattern-resolved offset of the LIVE-horse pointer list
+    /// begin (separate from the roster `horses_begin`).
+    pub fn live_horses_begin() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_live_horses_pair().map(|p| p.0).unwrap_or(0x130))
+    }
+    /// Pattern-resolved offset of the LIVE-horse pointer list end.
+    pub fn live_horses_end() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_live_horses_pair().map(|p| p.1).unwrap_or(0x138))
+    }
+
+    pub fn horses_begin() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_horses_pair().map(|p| p.0).unwrap_or(HORSES_BEGIN))
+    }
+
+    pub fn horses_end() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_horses_pair().map(|p| p.1).unwrap_or(HORSES_END))
+    }
     pub const TRAILING_278: usize = 0x278;
     pub const TRAILING_27C: usize = 0x27c;
 }

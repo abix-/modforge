@@ -439,6 +439,22 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::tired_flag_b()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::TIRED_FLAG_B),
                     },
+                    "horses_begin": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::horses_begin()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::HORSES_BEGIN),
+                    },
+                    "horses_end": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::horses_end()),
+                        "hardcoded": format!("0x{:x}", crate::targets::gs_offset::HORSES_END),
+                    },
+                    "live_horses_begin": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::live_horses_begin()),
+                        "hardcoded": "0x130",
+                    },
+                    "live_horses_end": {
+                        "resolved": format!("0x{:x}", crate::targets::gs_offset::live_horses_end()),
+                        "hardcoded": "0x138",
+                    },
                 }))
             },
         ),
