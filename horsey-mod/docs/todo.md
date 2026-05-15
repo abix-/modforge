@@ -45,8 +45,10 @@ Roughly ordered by leverage.
 |---|---|---|
 | Unit (modforge::patterns + sleuth) | 20 | green |
 | Unit (horsey: genes / xml / sidecar) | 30 | green |
-| Harness (smoke + dryruns + arm + r2 + catalog) | 10 | 9 green + 1 expected-red (save dryrun = R2 contract for stale save addresses) |
-| **Total** | **60** | **59 green + 1 contract-red** |
+| Harness (smoke + dryruns + arm + r2 + catalog + build_info) | 14 | 13 green + 1 expected-red (save dryrun = R2 contract for stale save addresses) |
+| **Total** | **64** | **63 green + 1 contract-red** |
+
+Live Horsey.exe build hash (this session): `742a6222ba73c99f757bd5576535e623106129fa08bf7aefd3af0da359cb7f71`. Stable across runs; changes when Steam ships an update.
 
 Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, with timestamped logs at `target/test-runs/<name>-<ts>.log`. Average 7-20s per harness test.
 
@@ -54,6 +56,9 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 
 | Hash | What |
 |---|---|
+| `574beb0` | arm_render_trampoline + arm_full_safe_stack. 4-subsystem stack survives arm/idle/disarm |
+| `fe74e6b` | R1 finish: game.build_info HTTP op + r1_build_identification tests |
+| `0b5bc96` | todo status r2_catalog green |
 | `74846de` | r2_catalog: 4 green targets resolve identically via sleuth |
 | `e1af9cf` | todo status sync after R1 + R2 |
 | `5ff0cfc` | todo iter 6 R2 + migration proven |
@@ -70,8 +75,8 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 1. **Signature catalog: hand-author unique signatures.** Catalog `r2_catalog_resolves_all_green_targets` is green for 4 targets using 32-byte derived signatures (read from the runtime image). For production address resolution that survives game updates, replace those with hand-authored signatures that include body bytes + hand-picked wildcards so a single MSVC reorder doesn't break the match. Extending the catalog also needs to cover `EVAL_DIPLOID_BLEND_A/B` + `GENE_ALLELE_SWAP` (their dryrun returns multi-target arrays; the `CatalogEntry` shape needs a `legacy_path_pick` variant).
 2. **Retire hardcoded `fn_addr::*` consts.** Switch from `pub const NAME: usize = 0x...` to lazy `pub fn name() -> usize` reading from a resolved catalog. Test asserts every detour arms via the resolved address and behaves identically. Larger refactor.
 3. **Re-derive the 4 stale save addresses.** Needs fresh decomp pass OR string-xref tracing (the byte sequences at the original Ghidra RVAs are mid-function code, not entries). Once signatures exist, plug into catalog and `dryrun_d3_d4::save_*` goes green automatically.
-4. **R1 build identification.** Image SHA-256 at attach + `game.build_info` op. Small.
-5. **Arm-and-observe tests** for D5 render trampoline, lifecycle, full-stack. Regression fences. Arm-time covered by dryrun; post-arm behavior isn't yet.
+4. ~~R1 build identification.~~ DONE (`fe74e6b`). `game.build_info` op shipped; image SHA-256 cached + exposed. r1_build_identification (2 tests) green.
+5. ~~Arm-and-observe tests for D5 + lifecycle + full-stack.~~ DONE (`574beb0`). 4 arm tests green: combinator, lifecycle, render trampoline, full-stack. Lifecycle in isolation captured 550 ctor / 3 dtor calls in 5s of menu idle. Full-stack arms 4 subsystems together; game survives.
 
 ## Prior status (pre-R1) (2026-05-15, after commit `352daed`)
 
