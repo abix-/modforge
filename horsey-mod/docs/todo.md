@@ -5,7 +5,7 @@
 > Horsey-Game content mods that ship alongside it.
 >
 > Research / decomp tracking lives in
-> [`../../horsey-mod/research/TODO.md`](../../horsey-mod/research/TODO.md).
+> [`ROADMAP.md`](ROADMAP.md).
 > Workspace-wide framework work lives in
 > [`../../docs/todo.md`](../../docs/todo.md).
 
@@ -63,7 +63,7 @@ or the build order until viability research clears the
 core technical questions.
 
 Vanilla baseline (verified in
-[`horsey-mod/research/CONTENT-CREATION.md:515`](../../horsey-mod/research/CONTENT-CREATION.md#12-reference-vanilla-populations)):
+[`horsey-mod/docs/CONTENT-CREATION.md:515`](CONTENT-CREATION.md#12-reference-vanilla-populations)):
 28 pops, of which roughly half are real horse-shaped
 creatures and the rest are oddities (cars, plants, humans,
 microbes, helix, freaks).
@@ -211,7 +211,7 @@ visible new creature in-game without crashing the loader.
 
 - [ ] Locate the user's installed Horsey Game `data/`
       directory. Document the path in
-      [`MODFORGE-INTEGRATION.md`](../../horsey-mod/research/MODFORGE-INTEGRATION.md)
+      [`MODFORGE-INTEGRATION.md`](MODFORGE-INTEGRATION.md)
       or a new `INSTALL-LAYOUT.md`.
 - [ ] Back up vanilla `pop.xml`, `horsey.tmx`, and
       `genes.dat` (the cache).
@@ -574,7 +574,7 @@ Research plan to derive the map:
    consumer transcribes to horse-struct field +0xYY which
    the renderer reads as feature Z."
 5. **Author the map** as
-   `horsey-mod/research/SLOT-MAP.md`: per-slot row with
+   `horsey-mod/docs/SLOT-MAP.md`: per-slot row with
    `{ slot, vanilla_gene_name, horse_struct_field,
    visible_feature, candidate_value_range }`.
 6. **Validate** by editing one vanilla gene at a time via
@@ -1043,7 +1043,7 @@ declaring victory.
 
 `horsey-inject.exe --reload` swap reports success but the
 game crashes a few seconds later. See
-[`horsey-mod/research/TODO.md`](../../horsey-mod/research/TODO.md) for the
+[`horsey-mod/docs/ROADMAP.md`](ROADMAP.md) for the
 research-side investigation.
 
 ### Save sidecar

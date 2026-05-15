@@ -523,7 +523,7 @@ Takes (xml_doc, child_record, parent_id). Behavior:
   inside a parent and the new pop starts with the
   parent's full gene-weight setup. Only override what
   you care about. Matches the existing
-  [`CONTENT-MODDING.md`](../../horsey-mod/research/CONTENT-MODDING.md)
+  [`CONTENT-MODDING.md`](CONTENT-MODDING.md)
   documented behavior.
 - **NEW pop_id detail.** `DAT_1403f2fc0 + pop_id *
   0x1018` means the pop array is a CONTIGUOUS
@@ -615,7 +615,7 @@ Adding the pop layer to the previous patch list:
 ## Save / load (Q-save-*)
 
 **Status:** PARTIAL. Findings from existing
-[`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md) plus
+[`SAVE-FORMAT.md`](SAVE-FORMAT.md) plus
 the new gene-table reader analysis.
 
 ### Q-save-1: per-horse genome storage
@@ -624,7 +624,7 @@ the new gene-table reader analysis.
 
 The horse roster record is 22 bytes + variable name +
 variable child list. Too small for 200+ alleles. Per
-[`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md) the
+[`SAVE-FORMAT.md`](SAVE-FORMAT.md) the
 genome lives in one of the big binary blocks (probably
 the 55KB block at 0x0d4f, hypothesis "76 horses x 720
 bytes" or "114 horses x 480 bytes").
@@ -751,7 +751,7 @@ backwards compat for free.
 
 **ANSWERED: uint8 (1 byte), hard cap at 255 pops.**
 
-Per [`SAVE-FORMAT.md`](../../horsey-mod/research/SAVE-FORMAT.md)
+Per [`SAVE-FORMAT.md`](SAVE-FORMAT.md)
 the horse roster record's `pop_id` field is uint8 with
 observed values 1..12 and 255 (sentinel for "freak" or
 "custom").
