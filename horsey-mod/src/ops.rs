@@ -132,28 +132,40 @@ pub fn register_all() {
                 // emitted by MSVC for GameState-style global access:
                 // u32/u8 loads, stores, compares with imm8/imm32,
                 // adds with imm32, byte XORs, SSE moves.
-                const PREFIXES: &[(&str, &str, usize)] = &[
-                    // (name, prefix_bytes, disp32_offset_from_match_start)
-                    ("mov_r64",     "48 8b 05",     3),
-                    ("mov_r32",     "8b 05",        2),
-                    ("mov_store64", "48 89 05",     3),
-                    ("mov_store32", "89 05",        2),
-                    ("lea_r64",     "48 8d 05",     3),
-                    ("add_imm32",   "81 05",        2),
-                    ("add_imm8",    "83 05",        2),
-                    ("cmp_dw_imm8", "83 3d",        2),
-                    ("cmp_dw_imm32","81 3d",        2),
-                    ("mov_dw_imm",  "c7 05",        2),
-                    ("mov_b_imm",   "c6 05",        2),
-                    ("cmp_b_imm",   "80 3d",        2),
-                    ("xor_b_imm",   "80 35",        2),
-                    ("movzx",       "0f b6 05",     3),
-                    ("movdqa_xmm6", "66 0f 7f 35",  4),
+                // Each entry: (name, prefix_bytes, disp32_offset_from_match_start, imm_suffix_size).
+                // imm_suffix_size is how many bytes the actual instruction
+                // has AFTER its disp32. Patternsleuth's `X<addr>` constraint
+                // computes target relative to the byte right after the
+                // disp32 bytes in the PATTERN. The CPU computes target
+                // relative to the byte right after the FULL INSTRUCTION
+                // (which includes the imm suffix). So for imm-suffixed
+                // ops, patternsleuth_target = CPU_target - imm_size.
+                // We compensate by querying patternsleuth with
+                // (target - imm_size).
+                const PREFIXES: &[(&str, &str, usize, usize)] = &[
+                    ("mov_r64",     "48 8b 05",     3, 0),
+                    ("mov_r32",     "8b 05",        2, 0),
+                    ("mov_store64", "48 89 05",     3, 0),
+                    ("mov_store32", "89 05",        2, 0),
+                    ("lea_r64",     "48 8d 05",     3, 0),
+                    ("add_imm32",   "81 05",        2, 4),
+                    ("add_imm8",    "83 05",        2, 1),
+                    ("cmp_dw_imm8", "83 3d",        2, 1),
+                    ("cmp_dw_imm32","81 3d",        2, 4),
+                    ("mov_dw_imm",  "c7 05",        2, 4),
+                    ("mov_b_imm",   "c6 05",        2, 1),
+                    ("cmp_b_imm",   "80 3d",        2, 1),
+                    ("xor_b_imm",   "80 35",        2, 1),
+                    ("movzx",       "0f b6 05",     3, 0),
+                    ("movdqa_xmm6", "66 0f 7f 35",  4, 0),
                 ];
-                let target_hex = format!("X0x{target:x}");
                 let mut all_hits: Vec<(usize, &'static str, usize)> = Vec::new();
-                for (name, prefix, disp_off) in PREFIXES {
-                    let sig = format!("{prefix} {target_hex}");
+                for (name, prefix, disp_off, imm_size) in PREFIXES {
+                    // Compensate for patternsleuth's X<addr> being
+                    // computed against the end of the disp32 rather
+                    // than the end of the (longer) instruction.
+                    let patternsleuth_target = target.wrapping_sub(*imm_size);
+                    let sig = format!("{prefix} X0x{patternsleuth_target:x}");
                     match modforge::patterns::sleuth::scan_all_matches(&sig) {
                         Ok(addrs) => {
                             for addr in addrs {
@@ -1364,6 +1376,79 @@ Used by horsey-mod tests + future R2 attach-time address resolution.",
                     results.insert(name.clone(), v);
                 }
                 Ok(json!({ "results": Json::Object(results) }))
+            },
+        ),
+        OpDef::new(
+            "patterns.sleuth.scan_all",
+            "Scan `.text` for every match of one IDA-style signature; for each match \
+decode the disp32 at the given offset to a runtime target address. Returns \
+{hits: [{instr_addr, decoded_target, context_hex}, ...]}. Use to discover \
+where a hardcoded global has drifted to: scan for a UNIQUE instruction that \
+references the global, then read the decoded target address.\n\
+Body: {sig: string, disp32_offset: u32, instr_len: u32, context_bytes: u32 (default 16), max_hits: u32 (default 256)}.",
+            "{sig: string, disp32_offset: u32, instr_len: u32}",
+            |args| {
+                use modforge::patterns::sleuth;
+                let sig = args
+                    .get("sig")
+                    .and_then(Json::as_str)
+                    .ok_or_else(|| "missing sig".to_string())?
+                    .to_string();
+                let disp_off = args
+                    .get("disp32_offset")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing disp32_offset".to_string())?
+                    as usize;
+                let instr_len = args
+                    .get("instr_len")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing instr_len".to_string())?
+                    as usize;
+                let context = args
+                    .get("context_bytes")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(16) as usize;
+                let max_hits = args
+                    .get("max_hits")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(256) as usize;
+                if disp_off + 4 > instr_len {
+                    return Err(format!(
+                        "disp32_offset+4 ({}) > instr_len ({instr_len})",
+                        disp_off + 4
+                    ));
+                }
+                let mut addrs = sleuth::scan_all_matches(&sig).map_err(|e| e.to_string())?;
+                addrs.truncate(max_hits);
+                let entries: Vec<Json> = addrs.into_iter().map(|instr_addr| {
+                    // SAFETY: instr_addr is inside `.text`, mapped.
+                    let disp_ptr = (instr_addr + disp_off) as *const i32;
+                    let disp32 = unsafe { disp_ptr.read_unaligned() } as isize;
+                    let next_ip = instr_addr.wrapping_add(instr_len);
+                    let target = next_ip.wrapping_add(disp32 as usize);
+                    let ctx_len = context.max(instr_len);
+                    // SAFETY: ctx_len bytes starting at instr_addr
+                    // are inside `.text` for any reasonable context.
+                    let ctx: Vec<u8> = unsafe {
+                        std::slice::from_raw_parts(instr_addr as *const u8, ctx_len)
+                            .to_vec()
+                    };
+                    let context_hex = ctx
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    json!({
+                        "instr_addr": format!("0x{instr_addr:x}"),
+                        "disp32": format!("{disp32:#x}"),
+                        "decoded_target": format!("0x{target:x}"),
+                        "context_hex": context_hex,
+                    })
+                }).collect();
+                Ok(json!({
+                    "sig": sig,
+                    "hits": entries,
+                }))
             },
         ),
         OpDef::new(

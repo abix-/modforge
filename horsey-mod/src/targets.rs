@@ -37,18 +37,26 @@ pub const RACES_COUNTER: usize = 0x1403eded8;
 /// The "No Tire" / "Yes Tire" toggle byte. When non-zero, the
 /// per-frame update loop zeroes horse.+0x205 / +0x206 on every
 /// horse, effectively disabling tiredness.
-/// Toggled from the debug cheat menu (line 60442).
-pub const NO_TIRE_TOGGLE: usize = 0x1403d95c5;
+/// Toggled from the debug cheat menu (line 60442 in old decomp).
+/// Original decomp RVA was 0x1403d95c5; re-derived from the live
+/// image 2026-05-15 via the cmp/sete-direct-to-same-byte sig.
+/// Drift -0x20 from old hardcoded.
+pub const NO_TIRE_TOGGLE: usize = 0x1403d95a5;
 
 /// Debug-mode-active flag. Set when the player types "debug" in
 /// the pause menu. Gates the cheat-menu buttons + extended status
-/// line.
-pub const DEBUG_MODE_ACTIVE: usize = 0x1403d959b;
+/// line. Original decomp RVA was 0x1403d959b; re-derived from the
+/// live image via the unlock-block sig (set 1 followed by set 0
+/// at target1 - 0x79). Drift -0x20 from old hardcoded.
+pub const DEBUG_MODE_ACTIVE: usize = 0x1403d957b;
 
 /// Debug-mode log gate. When set, retirement messages,
 /// `%s = (%d rand + ...)` price formulas, and other debug lines
 /// print to the log. Independent of `DEBUG_MODE_ACTIVE`.
-pub const DEBUG_LOG_GATE: usize = 0x1403d9526;
+/// Original decomp RVA was 0x1403d9526; re-derived from the live
+/// image via the global-init triplet sig (0x100, 0xffffffff, 0).
+/// Drift -0x20 from old hardcoded.
+pub const DEBUG_LOG_GATE: usize = 0x1403d9506;
 
 // =============================================================================
 // GameState struct field offsets (from DAT_1403fb0d8)
@@ -416,20 +424,166 @@ pub mod resolve {
     /// debug-cheat-active flag at `DAT_1403d959b`). Cached.
     pub fn debug_mode_active() -> Option<usize> {
         static CACHE: OnceLock<Option<usize>> = OnceLock::new();
-        *CACHE.get_or_init(|| resolve_data_global(
-            CANDIDATES_DEBUG_MODE_ACTIVE,
-            super::DEBUG_MODE_ACTIVE,
-        ))
+        *CACHE.get_or_init(|| {
+            let resolved = resolve_debug_mode_active_via_unlock_block()?;
+            let hardcoded = super::rebase(super::DEBUG_MODE_ACTIVE);
+            let delta = resolved.abs_diff(hardcoded);
+            if delta > 0x1000 {
+                modforge::log!(
+                    "R3 DEBUG_MODE_ACTIVE sanity gate rejected resolved=0x{resolved:x}; \
+                     hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+                );
+                return None;
+            }
+            Some(resolved)
+        })
+    }
+
+    /// Locate DEBUG_MODE_ACTIVE via the d-e-b-u-g typed-string
+    /// unlock block. Decomp (FUN_140066200 line 537-539):
+    ///
+    /// ```c
+    /// DAT_1403d959b = '\x01';    // DEBUG_MODE_ACTIVE
+    /// DAT_1403d9522 = 0;          // adjacent flag, 0x79 below
+    /// ```
+    ///
+    /// MSVC emits these as two adjacent RIP-relative byte stores:
+    /// `c6 05 dd1 dd1 dd1 dd1 01  c6 05 dd2 dd2 dd2 dd2 00`. The
+    /// pair is rare in `.text` (most adjacent set-1/set-0 byte
+    /// stores target unrelated globals), but the SPECIFIC pair
+    /// where `target2 - target1 == -0x79` is unique by construction:
+    /// the 0x79-byte distance is a fingerprint of the decomp's
+    /// `.data` layout for the cheat-globals subsystem.
+    ///
+    /// Algorithm:
+    ///   1. Scan `.text` for the 14-byte adjacent-write pattern.
+    ///   2. For each match, decode both disp32s to CPU-effective
+    ///      target addresses.
+    ///   3. Filter to matches where `target2 == target1 - 0x79`.
+    ///   4. If exactly one match passes, return its target1.
+    fn resolve_debug_mode_active_via_unlock_block() -> Option<usize> {
+        use modforge::patterns::sleuth;
+        const SIG: &str = "c6 05 ?? ?? ?? ?? 01 c6 05 ?? ?? ?? ?? 00";
+        const PAIR_OFFSET: isize = -0x79;
+
+        let hits = sleuth::scan_all_matches(SIG).ok()?;
+        let mut accepted: Vec<usize> = Vec::new();
+        for instr_addr in hits {
+            // SAFETY: instr_addr is inside `.text`, mapped.
+            let disp1 = unsafe {
+                ((instr_addr + 2) as *const i32).read_unaligned()
+            } as isize;
+            let disp2 = unsafe {
+                ((instr_addr + 9) as *const i32).read_unaligned()
+            } as isize;
+            // CPU effective addrs. First instr is 7 bytes long;
+            // second instr starts at +7 and is 7 bytes long.
+            let target1 = instr_addr.wrapping_add(7).wrapping_add(disp1 as usize);
+            let target2 = instr_addr.wrapping_add(14).wrapping_add(disp2 as usize);
+            let delta = target2.wrapping_sub(target1) as isize;
+            if delta == PAIR_OFFSET {
+                accepted.push(target1);
+            }
+        }
+        accepted.sort_unstable();
+        accepted.dedup();
+        match accepted.len() {
+            0 => {
+                modforge::log!(
+                    "R3 DEBUG_MODE_ACTIVE: no unlock-block match with target delta -0x79"
+                );
+                None
+            }
+            1 => Some(accepted[0]),
+            n => {
+                modforge::log!(
+                    "R3 DEBUG_MODE_ACTIVE: {n} distinct candidate slots after \
+                     filtering for delta -0x79; sig is genuinely ambiguous"
+                );
+                None
+            }
+        }
     }
 
     /// Resolved runtime address of `DEBUG_LOG_GATE` (the
     /// retirement-message printf gate at `DAT_1403d9526`). Cached.
     pub fn debug_log_gate() -> Option<usize> {
         static CACHE: OnceLock<Option<usize>> = OnceLock::new();
-        *CACHE.get_or_init(|| resolve_data_global(
-            CANDIDATES_DEBUG_LOG_GATE,
-            super::DEBUG_LOG_GATE,
-        ))
+        *CACHE.get_or_init(|| {
+            let resolved = resolve_debug_log_gate_via_init_triplet()?;
+            let hardcoded = super::rebase(super::DEBUG_LOG_GATE);
+            let delta = resolved.abs_diff(hardcoded);
+            if delta > 0x1000 {
+                modforge::log!(
+                    "R3 DEBUG_LOG_GATE sanity gate rejected resolved=0x{resolved:x}; \
+                     hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+                );
+                return None;
+            }
+            Some(resolved)
+        })
+    }
+
+    /// Locate DEBUG_LOG_GATE via the global-init block sequence
+    /// `(_DAT_1403d9598 = 0x100; _DAT_1403d95c0 = 0xffffffff;)`.
+    ///
+    /// Decomp (all_functions.c:70335-70341) writes 8 dword
+    /// initializers in order. MSVC emits the 3rd and 4th writes
+    /// (`0x100`, then `0xffffffff`) adjacent in `.text`; this pair
+    /// is uniquely identifiable by the `(0x100, 0xffffffff)` imm32
+    /// sequence. The 5th write (DEBUG_LOG_GATE = 0) is NOT
+    /// adjacent in the live image. MSVC reordered it elsewhere.
+    /// We recover DEBUG_LOG_GATE by anchoring on the 3rd-write
+    /// target and applying the decomp's known relative offset
+    /// (`_DAT_1403d9526 - _DAT_1403d9598 = -0x72`), which holds
+    /// across the cheat-globals subsystem because all cheat
+    /// globals drift uniformly when `.data` is re-laid-out.
+    ///
+    /// If a future build breaks the relative-offset assumption,
+    /// the 0x1000-byte sanity gate against the hardcoded RVA will
+    /// reject the result and production falls back to hardcoded.
+    fn resolve_debug_log_gate_via_init_triplet() -> Option<usize> {
+        use modforge::patterns::sleuth;
+        // 3rd-write (0x100) + 4th-write (0xffffffff). disp32 of the
+        // 3rd write is at offset 2; the matched 20 bytes are exactly
+        // the two adjacent 10-byte instructions, so next_ip of the
+        // 3rd write = match_start + 10.
+        const SIG: &str =
+            "c7 05 ?? ?? ?? ?? 00 01 00 00 c7 05 ?? ?? ?? ?? ff ff ff ff";
+        // Decomp-derived relative offset from DAT_1403d9598 (3rd
+        // write target) to DAT_1403d9526 (DEBUG_LOG_GATE):
+        //   0x1403d9526 - 0x1403d9598 = -0x72
+        const REL_OFFSET_FROM_DAT9598: isize = -0x72;
+
+        let hits = sleuth::scan_all_matches(SIG).ok()?;
+        let mut accepted: Vec<usize> = Vec::new();
+        for instr_addr in hits {
+            // SAFETY: instr_addr is inside `.text`, mapped.
+            let disp1 = unsafe {
+                ((instr_addr + 2) as *const i32).read_unaligned()
+            } as isize;
+            // CPU effective of the 3rd write = (instr_addr + 10) + disp1.
+            let third_write_target = instr_addr.wrapping_add(10).wrapping_add(disp1 as usize);
+            let debug_log_gate = third_write_target.wrapping_add(REL_OFFSET_FROM_DAT9598 as usize);
+            accepted.push(debug_log_gate);
+        }
+        accepted.sort_unstable();
+        accepted.dedup();
+        match accepted.len() {
+            0 => {
+                modforge::log!(
+                    "R3 DEBUG_LOG_GATE: init-triplet sig found no matches"
+                );
+                None
+            }
+            1 => Some(accepted[0]),
+            n => {
+                modforge::log!(
+                    "R3 DEBUG_LOG_GATE: {n} distinct candidates; sig is ambiguous"
+                );
+                None
+            }
+        }
     }
 
     /// Wrapper around `resolve_via` that gates the result against
@@ -466,87 +620,70 @@ pub mod resolve {
 
     /// `DAT_1403d95c5 = DAT_1403d95c5 == '\0';` (toggle pattern in
     /// the cheat-menu button handler). MSVC compiles this to:
-    ///   cmp byte ptr [rip+disp1], 0      ; 80 3D dd dd dd dd 00
-    ///   sete al                          ; 0F 94 C0
-    ///   mov  byte ptr [rip+disp2], al    ; 88 05 dd dd dd dd
-    /// Both disp1 and disp2 resolve to NO_TIRE_TOGGLE. We anchor on
-    /// disp1 (first match field). 16 bytes total. This `cmp; sete;
-    /// mov` triple to the same byte address is extremely rare and
-    /// reliably uniquely matches the toggle compilation pattern.
+    ///   cmp  byte ptr [rip+disp1], 0   ; 80 3D dd1 dd1 dd1 dd1 00
+    ///   sete byte ptr [rip+disp2]      ; 0F 94 05 dd2 dd2 dd2 dd2
+    /// Both disp1 and disp2 resolve to NO_TIRE_TOGGLE (same byte
+    /// being tested + written). Total 14 bytes. The combination of
+    /// `cmp imm=0` then `sete` directly to memory at a RIP-rel
+    /// address is rare; constraining the two disp32s to the same
+    /// target locks it to NO_TIRE_TOGGLE empirically.
+    /// Bytes verified from the live image (forensic scan 2026-05-15):
+    /// instr at 0x7ff7517b6add reads `80 3d c1 2a 37 00 00 0f 94 05
+    /// ba 2a 37 00` decoding to slot 0x7ff751b295a5.
     const CANDIDATES_NO_TIRE_TOGGLE: &[Candidate] = &[
-        // Likely MSVC encoding: `xor byte ptr [rip+disp32], 1` (10
-        // bytes total with REX prefix and imm8). Compiles a simple
-        // bool toggle directly without a temporary. The XOR-with-1
-        // byte-write is rare globally.
         Candidate {
-            name: "no_tire_toggle_xor_1",
-            sig: "80 35 ?? ?? ?? ?? 01",
+            name: "no_tire_toggle_cmp_sete_to_same_byte",
+            sig: "80 3d ?? ?? ?? ?? 00 0f 94 05 ?? ?? ?? ??",
             disp32_offset: 2,
             instr_len: 7,
             inline_offset: 0,
-            validate_disp32: None,
-        },
-        // Fallback: cmp/sete/mov triple where both disp32 fields
-        // must agree (same byte being tested + written).
-        //   cmp byte ptr [rip+disp1], 0   ; 80 3D dd dd dd dd 00
-        //   sete al                       ; 0F 94 C0
-        //   mov  byte ptr [rip+disp2], al ; 88 05 dd dd dd dd
-        // Anchor on disp1 (offset 2, instr_len 7); validate disp2
-        // at offset 12, its next_ip at offset 16, points to the
-        // same target.
-        Candidate {
-            name: "no_tire_toggle_cmp_sete_mov",
-            sig: "80 3d ?? ?? ?? ?? 00 0f 94 c0 88 05 ?? ?? ?? ??",
-            disp32_offset: 2,
-            instr_len: 7,
-            inline_offset: 0,
-            validate_disp32: Some((12, 16)),
+            // disp32_2 at offset 10, its next_ip at offset 14 (end
+            // of the sete-mem instruction). Same target as disp32_1.
+            validate_disp32: Some((10, 14)),
         },
     ];
 
-    /// `if (DAT_1403d959b == '\0') DAT_1403d959b = '\x01';`
-    /// (typed-string handler unlocking debug mode). MSVC compiles to:
-    ///   cmp byte ptr [rip+disp1], 0     ; 80 3D dd dd dd dd 00
-    ///   jne short LABEL                 ; 75 imm8
-    ///   mov byte ptr [rip+disp2], 1     ; C6 05 dd dd dd dd 01
-    /// disp1 == disp2 refers to DEBUG_MODE_ACTIVE. Anchor on disp1.
-    const CANDIDATES_DEBUG_MODE_ACTIVE: &[Candidate] = &[
-        // The d-e-b-u-g unlock block in the typed-string handler:
-        //   DAT_1403d959b = '\x01';   // debug_mode_active = 1
-        //   DAT_1403d9522 = 0;        // some adjacent flag = 0
-        // MSVC compiles these adjacent writes back-to-back:
-        //   mov byte ptr [rip+disp1], 1    ; C6 05 dd dd dd dd 01
-        //   mov byte ptr [rip+disp2], 0    ; C6 05 dd dd dd dd 00
-        // Anchor on disp1 (first write, which sets DEBUG_MODE_ACTIVE).
-        // This 14-byte sequence is much more specific than the
-        // test-then-set-1 pattern alone; the unlock-block second
-        // write is unique in the codebase.
-        Candidate {
-            name: "debug_mode_set_1_then_set_0_adjacent",
-            sig: "c6 05 ?? ?? ?? ?? 01 c6 05 ?? ?? ?? ?? 00",
-            disp32_offset: 2,
-            instr_len: 7,
-            inline_offset: 0,
-            validate_disp32: None,
-        },
-    ];
+    /// DEBUG_MODE_ACTIVE is resolved by
+    /// `resolve_debug_mode_active_via_unlock_block` (below) rather
+    /// than the generic Candidate framework: the discriminator is
+    /// a non-zero delta between two disp32s in the same matched
+    /// pattern (target1 - target2 == 0x79), which the Candidate
+    /// validate_disp32 only supports for delta == 0.
+    #[allow(dead_code)]
+    const CANDIDATES_DEBUG_MODE_ACTIVE: &[Candidate] = &[];
 
-    /// `_DAT_1403d95c0 = 0xffffffff; _DAT_1403d9526 = 0; _DAT_1403d95c4 = 0;`
-    /// init block. MSVC compiles to:
-    ///   mov dword ptr [rip+disp1], 0xffffffff  ; C7 05 dd dd dd dd FF FF FF FF
-    ///   mov dword ptr [rip+disp2], 0           ; C7 05 dd dd dd dd 00 00 00 00
-    ///   mov dword ptr [rip+disp3], 0           ; C7 05 dd dd dd dd 00 00 00 00
-    /// The 0xFFFFFFFF init is rare; the three-instruction sequence
-    /// is unique. The MIDDLE `c7 05` (disp2 starting at offset 12 in
-    /// the match) refers to DEBUG_LOG_GATE.
-    const CANDIDATES_DEBUG_LOG_GATE: &[Candidate] = &[Candidate {
-        name: "debug_log_gate_init_after_0xffffffff",
-        sig: "c7 05 ?? ?? ?? ?? ff ff ff ff c7 05 ?? ?? ?? ?? 00 00 00 00 c7 05 ?? ?? ?? ?? 00 00 00 00",
-        disp32_offset: 12,
-        instr_len: 20,
-        inline_offset: 0,
-        validate_disp32: None,
-    }];
+    /// DEBUG_LOG_GATE init block (all_functions.c:70335-70341):
+    ///
+    /// ```c
+    /// DAT_1403d9590 = 0xffffffff;   //  1st: c7 05 dd dd dd dd ff ff ff ff
+    /// DAT_1403d9594 = 0;            //  2nd: c7 05 dd dd dd dd 00 00 00 00
+    /// _DAT_1403d9598 = 0x100;       //  3rd: c7 05 dd dd dd dd 00 01 00 00
+    /// _DAT_1403d95c0 = 0xffffffff;  //  4th: c7 05 dd dd dd dd ff ff ff ff
+    /// _DAT_1403d9526 = 0;           //  5th: c7 05 dd dd dd dd 00 00 00 00 <- DEBUG_LOG_GATE
+    /// ```
+    ///
+    /// Anchor on the 3rd->4th->5th triplet:
+    ///   imm32 = 0x100         (3rd)
+    ///   imm32 = 0xffffffff    (4th)
+    ///   imm32 = 0             (5th, DEBUG_LOG_GATE init)
+    ///
+    /// Total 30 bytes. The 5th instruction's disp32 starts at
+    /// offset 22 in the match; its instruction body is 10 bytes
+    /// (offset 20..30), so next_ip = match_start + 30.
+    ///
+    /// Why this triplet uniquely matches: the `(0x100, 0xffffffff,
+    /// 0)` imm32 sequence is rare in `.text`. The pair
+    /// `(0xffffffff, 0)` alone appears elsewhere (e.g. positions
+    /// 1-2 of this same init block), but preceded by `0x100` it
+    /// pins to positions 3-4-5.
+    /// Kept as documentation only; the actual resolver is
+    /// `resolve_debug_log_gate_via_init_triplet` below (the 5th
+    /// write isn't adjacent to the 4th in the live image, so this
+    /// 30-byte triplet would need to span MSVC's reordered output;
+    /// the bespoke resolver anchors on the 3rd-write target and
+    /// applies the decomp-derived relative offset).
+    #[allow(dead_code)]
+    const CANDIDATES_DEBUG_LOG_GATE: &[Candidate] = &[];
 
     /// Generic resolver: try each candidate signature in order.
     /// Cross-validates when multiple candidates resolve and warns on
