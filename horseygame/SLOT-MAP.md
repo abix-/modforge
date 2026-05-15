@@ -414,4 +414,85 @@ value via the D5 post-hook and observing in-game.
 
 | Slot | Set value | Visible effect | Set via |
 |---|---|---|---|
-| 0 | 200.0 | "Full screen width" babies (mated 2 horses, offspring rendered enormously wide). Drives some primary scale-like parameter. | `BX_TEST_SLOT0` set mode (3,3) blend = 200.0 |
+| 0 | 200.0 | "Full screen width" babies (mated 2 horses, offspring rendered enormously wide). Drives a primary scale parameter; consumer reads `*param_2` (slot 0) and compares with slot 1 to gate which write path runs. | `BX_TEST_SLOT0` set mode (3,3) blend = 200.0 |
+
+## Modder workflow
+
+### To make a new SPECIES (new pop)
+
+The standard vanilla path is to add a `<pop>` block to
+`pop.xml`. Inheritance: every pop inherits from
+`default` and patches by gene name.
+
+1. Pick the species concept ("clown horse").
+2. Find gene clusters that bias toward that concept:
+   - For a HEAD-driven oddity, weight up `HEAD_GIANT`
+     (idx 104) `p3` for "big-head" allele, weight down
+     `HEAD_SQUARE` to bias against the boxy variant.
+   - For PATTERN-driven looks, weight `PAT_*` genes
+     (idx 199..205) toward your desired spot/perlin
+     pattern alleles.
+3. Each `<gene name="X" pN="weight">` line sets that
+   allele's inverse weight (lower = more likely).
+4. Reload via `pop.xml.reload` (TODO: not yet shipped;
+   today this requires restart).
+
+### To make a new VISUAL EFFECT (extended gene)
+
+If vanilla can't express the effect you want, add an
+extended gene via our sidecar:
+
+1. Add a `<gene>` entry to
+   `<dll_dir>/genes-extended.xml` with `<render slot=N mode=M />`.
+2. Reload via `genes.ext.reload` HTTP op (live, no restart).
+3. Decide whether to target a known consumer-read slot
+   from the table above (visible) or an unused slot
+   (dead computation, no effect).
+4. Test by setting `horse.ext.default_alleles.set` so
+   every horse picks up your effect.
+5. Once dialed in, set per-horse alleles via
+   `horse.ext.alleles.set` (need stable horse-id, D4.4)
+   or fall back to the default-allele path.
+
+### Which slot to target for which effect
+
+The cluster table above tells you which vanilla genes
+*should* feed slots related to that feature area. Cross-
+reference with the "Buf-slot -> horse-struct field" table
+to confirm the slot is consumer-read.
+
+Worst-case empirical fallback: pick a candidate slot,
+write an extreme value with `mode=set`, walk in-game,
+observe. The 2026-05-14 giant-baby experiment is the
+exemplar.
+
+## What's still unknown
+
+The map is good enough to author content but not 100%
+complete. Open gaps:
+
+1. **74 of 240 genes have no engine->slot row** in the
+   auto-extracted table. They're processed in conditional
+   branches the simple regex can't trace cleanly. Each is
+   probably 1-3 slot writes; manual decomp reading would
+   resolve.
+2. **Conditional formulas.** Slots 0..3 have a BIPED
+   branch and a QUADRUPED branch with different formulas;
+   the doc shows the common case. Edge species (`car`,
+   `helix`, `centipede`) likely hit branches not yet
+   traced.
+3. **Horse struct field -> visible feature.** We know
+   23 buf slots are direct-copied to specific
+   `+0xNN` offsets in the horse struct. We don't know
+   which renderer code reads which offset to produce
+   which visible thing. That's another full decomp pass
+   over the render path.
+4. **Animation signal genes (idx 219..239).** The L_*
+   cluster appears unused in `FUN_14009f680` but is
+   referenced by `pop.xml` weights. They likely feed
+   into a separate animation system. Not blocking
+   visual modding.
+5. **CRISPR UI extension** for new genes (D1.8 in
+   horsey-mod todo). The UI iterates the gene table to
+   show editable names; extended genes 240..479 won't
+   appear there until we detour `FUN_1400c1cf0`.
