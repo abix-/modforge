@@ -8,17 +8,14 @@
 //! around it so a human can author a sleuth signature directly
 //! from real compiler output.
 //!
-//! Validation: target the already-resolved GAMESTATE_PTR address
-//! (we know its runtime address from R3 via `targets.resolve.
-//! gamestate_ptr`). Assert:
-//!   - at least one hit
-//!   - the cheat-money instruction bytes `81 05 .. .. .. .. e8 03 00 00`
-//!     appear in at least one returned context window (this is the
-//!     instruction the existing R3 sig anchors on)
-//!
-//! This proves the xref scanner finds the same site sleuth already
-//! locates, plus N more candidate sites the user can mine for
-//! additional signatures.
+//! Validation: target the already-resolved GAMESTATE_PTR slot
+//! address. Since the slot is a `.data` pointer slot, every read
+//! site in the decomp (`*(int*)(DAT_1403fb0d8 + N)`) compiles to
+//! `mov reg, [rip+disp_to_slot]; ...`, so the xref scan against
+//! the slot itself surfaces every load of the pointer. Assert:
+//!   - many hits (the slot is heavily referenced; the in-image
+//!     decomp has 364+ references to `DAT_1403fb0d8`).
+//!   - every hit's `instr_addr` is inside `.text`.
 
 mod common;
 
@@ -36,17 +33,18 @@ fn find_xrefs_locates_known_gamestate_references() {
         return;
     };
 
-    // Step 1: get the known-good GAMESTATE_PTR + 0x308 address (the
-    // operand of the cheat-money `add` instruction). We aim find_xrefs
-    // at this address and expect to land on at least the cheat-money
-    // site we already anchor a sleuth sig to.
+    // Step 1: get the resolved GAMESTATE_PTR slot address (a
+    // `.data` location that holds the heap GameState pointer). We
+    // target the SLOT itself, not slot+0x308: the slot is the
+    // RIP-rel target of every gamestate-read instruction, so the
+    // xref scan against it should surface dozens of gameplay sites.
     let resolve = game
         .op_json("targets.resolve.gamestate_ptr", &json!({}))
         .expect("targets.resolve.gamestate_ptr must succeed");
-    let gamestate_ptr = u64_of(resolve.get("result").unwrap(), "address")
+    let slot = u64_of(resolve.get("result").unwrap(), "slot")
         .expect("R3 must have resolved GAMESTATE_PTR before this test runs");
-    assert!(gamestate_ptr != 0, "GAMESTATE_PTR null; cannot find xrefs");
-    let target = gamestate_ptr + 0x308;
+    assert!(slot != 0, "GAMESTATE_PTR slot null; cannot find xrefs");
+    let target = slot;
 
     // Step 2: scan.
     let resp = game
@@ -59,17 +57,18 @@ fn find_xrefs_locates_known_gamestate_references() {
         .expect("result.hits array");
     game.log()
         .event("XREFS", &format!("target=0x{target:x} hits={}", hits.len()));
-    assert!(!hits.is_empty(), "no xrefs found for {target:#x}");
+    // Bound: at least 10 hits. The slot is loaded everywhere via
+    // `mov reg, [rip+disp_to_slot]`, and the decomp has 364+
+    // references to `DAT_1403fb0d8`. If we see fewer than 10, the
+    // slot address is wrong or the find_xrefs op regressed.
+    assert!(
+        hits.len() >= 10,
+        "expected at least 10 xrefs to GAMESTATE_PTR slot 0x{target:x}; \
+         got {}. Either the slot is wrong or find_xrefs regressed.",
+        hits.len()
+    );
 
-    // Step 3: at least one hit's context window must contain the
-    // cheat-money byte pattern. This is the existence proof: the
-    // scanner sees the site we already pattern-match elsewhere.
-    // Don't assert any specific opcode pattern: the cheat-money
-    // sig `81 05 .. e8 03 00 00` MISSES this build (the +$1000
-    // cheat compiles to a different encoding here). The scanner's
-    // job is to surface whatever instructions reference the
-    // target so signatures can be authored from real bytes. Log
-    // each hit verbatim into the harness log for inspection.
+    // Log all hits for human review.
     for h in hits.iter() {
         game.log().event(
             "XREF",
@@ -83,8 +82,7 @@ fn find_xrefs_locates_known_gamestate_references() {
     }
 
     game.pass(&format!(
-        "find_xrefs returned {} site(s) referencing 0x{target:x}; \
-         full hex windows logged for signature authoring",
+        "find_xrefs returned {} site(s) referencing slot 0x{target:x}",
         hits.len()
     ));
 }

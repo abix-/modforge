@@ -390,50 +390,17 @@ pub mod resolve {
         validate_disp32: Option<(usize, usize)>,
     }
 
-    /// Candidate set. Each references a decomp site that does
-    /// something with `DAT_1403fb0d8 + N`; the constant N is the
-    /// `inline_offset`. The instruction encoding is the most likely
-    /// MSVC emission for that C expression.
-    const CANDIDATES: &[Candidate] = &[
-        // `*(int *)(DAT_1403fb0d8 + 0x308) += 1000;` (cheat-money
-        // handler in draw_pause_status). The constant 0x3e8 (=1000)
-        // makes this site unique across the binary.
-        // Encoding: add dword ptr [rip+disp32], imm32
-        //   81 05 dd dd dd dd e8 03 00 00
-        Candidate {
-            name: "cheat_money_add_1000",
-            sig: "81 05 ?? ?? ?? ?? e8 03 00 00",
-            disp32_offset: 2,
-            instr_len: 10,
-            inline_offset: 0x308,
-            validate_disp32: None,
-        },
-        // `*(int *)(DAT_1403fb0d8 + 0x308) < 0x32` race-fee check.
-        // Encoding: cmp dword ptr [rip+disp32], imm8
-        //   83 3d dd dd dd dd 32
-        Candidate {
-            name: "race_fee_cmp_50",
-            sig: "83 3d ?? ?? ?? ?? 32",
-            disp32_offset: 2,
-            instr_len: 7,
-            inline_offset: 0x308,
-            validate_disp32: None,
-        },
-        // `*(undefined4 *)(DAT_1403fb0d8 + 0x440) = 0x14;` from
-        // some race-state-set path. Less unique than the above
-        // because the constant 0x14 is common, but the +0x440 is
-        // a distinct site.
-        // Encoding: mov dword ptr [rip+disp32], imm32
-        //   c7 05 dd dd dd dd 14 00 00 00
-        Candidate {
-            name: "field_440_set_20",
-            sig: "c7 05 ?? ?? ?? ?? 14 00 00 00",
-            disp32_offset: 2,
-            instr_len: 10,
-            inline_offset: 0x440,
-            validate_disp32: None,
-        },
-    ];
+    /// CANDIDATES kept empty: the GAMESTATE_PTR resolver no longer
+    /// uses the generic `Candidate` framework. The slot is recovered
+    /// by `resolve_gamestate_ptr_via_constructor` (below) which
+    /// anchors on a unique instruction inside the GameState
+    /// constructor `FUN_1400fd580` and scans the local function body
+    /// for the slot-store instruction. The historical Candidate
+    /// shape (single-instruction `add [rip+disp32], imm` against the
+    /// slot) was based on a wrong mental model where the slot was
+    /// treated as the struct itself.
+    #[allow(dead_code)]
+    const CANDIDATES: &[Candidate] = &[];
 
     /// Resolved runtime address of `NO_TIRE_TOGGLE` (the 1-byte
     /// cheat-toggle flag at `DAT_1403d95c5`). Cached.
@@ -659,20 +626,11 @@ pub mod resolve {
     }
 
     fn resolve_gamestate_ptr_uncached() -> Option<usize> {
-        let Some(resolved) = resolve_via(CANDIDATES) else {
-            modforge::log!("R3 GAMESTATE_PTR: no candidate signature matched");
-            return None;
-        };
-        // Sanity gate: the current candidate sigs assume the wrong
-        // MSVC encoding (direct `add [rip+disp32], imm` against the
-        // slot, treating it as a struct). In reality the slot is a
-        // pointer and the encoding is `mov reg, [rip+slot]; add
-        // [reg+N], imm`. Sigs that match in this build do so against
-        // unrelated globals with similar opcode shapes. Reject any
-        // resolved base that drifts more than 0x1000 from the
-        // hardcoded RVA so the caller falls back to the (correct)
-        // hardcoded slot. Remove this gate once sigs are re-authored
-        // against the real encoding.
+        let resolved = resolve_gamestate_ptr_via_constructor()?;
+        // Sanity gate: hardcoded RVA is the cross-check. The resolver
+        // can drift with the binary; if the new resolved address is
+        // wildly far from where we expect the slot to live, something
+        // matched the wrong instruction and we should fall back.
         let hardcoded = super::rebase(super::GAMESTATE_PTR);
         let delta = resolved.abs_diff(hardcoded);
         if delta > 0x1000 {
@@ -683,6 +641,163 @@ pub mod resolve {
             return None;
         }
         Some(resolved)
+    }
+
+    /// Recover GAMESTATE_PTR by anchoring on a distinctive
+    /// instruction inside the GameState constructor `FUN_1400fd580`
+    /// and decoding the disp32 of the RIP-relative slot store within
+    /// the same function body.
+    ///
+    /// Decomp evidence (`horsey-mod/research/decompiled/funcs/1400f/1400fd580_FUN_1400fd580.c`):
+    ///
+    /// ```c
+    /// // line 86: store the freshly-constructed object into the slot
+    /// DAT_1403fb0d8 = param_1;
+    /// // ... a handful of field zero-inits ...
+    /// // line 96: write the magic 1.0f constant at offset 0x114
+    /// *(undefined4 *)((longlong)param_1 + 0x114) = 0x3f800000;
+    /// ```
+    ///
+    /// The 1.0f-at-+0x114 write is a uniquely identifying byte
+    /// sequence (literal `00 00 80 3F` immediate + the disp32 `0x114`
+    /// inside a `mov dword [reg+disp32], imm32` encoding). It marks
+    /// the GameState constructor's body.
+    ///
+    /// The DAT_1403fb0d8 store is the only RIP-relative `mov [rip+
+    /// disp32], reg` (qword-store) inside this function. We find it
+    /// by enumerating the 14 ModR/M variants of that opcode and
+    /// keeping the unique match within ~600 bytes preceding the
+    /// 1.0f anchor.
+    ///
+    /// Same shape as HorseyLiveTweaks' `kPatWorldRootStore`
+    /// (`scene_resolver.cpp:11`): store-site anchor + RIP-relative
+    /// disp32 decode. The difference is that we use a separate
+    /// scan rather than a single pattern, because the constructor's
+    /// distance between the slot store and the next distinctive
+    /// instruction is too variable to encode as fixed wildcards.
+    fn resolve_gamestate_ptr_via_constructor() -> Option<usize> {
+        use modforge::patterns::sleuth;
+
+        // Anchor: literal `mov dword [reg+0x114], 0x3f800000`.
+        // Encoding: `[REX.B?] C7 <ModR/M> 14 01 00 00 00 00 80 3F`.
+        // Two variants for low (rax..rdi, no REX.B) vs high
+        // (r8..r15, REX.B = 0x41).
+        let anchor_low = sleuth::scan_all_matches(
+            "C7 ?? 14 01 00 00 00 00 80 3F",
+        ).ok().unwrap_or_default();
+        let anchor_high = sleuth::scan_all_matches(
+            "41 C7 ?? 14 01 00 00 00 00 80 3F",
+        ).ok().unwrap_or_default();
+        let mut anchors: Vec<usize> = Vec::new();
+        anchors.extend(anchor_low);
+        anchors.extend(anchor_high);
+        anchors.sort_unstable();
+        anchors.dedup();
+        if anchors.is_empty() {
+            modforge::log!(
+                "R3 GAMESTATE_PTR: no anchor match for 1.0f@+0x114 in any reg variant"
+            );
+            return None;
+        }
+        if anchors.len() > 1 {
+            modforge::log!(
+                "R3 GAMESTATE_PTR: {} anchor matches for 1.0f@+0x114; \
+                 will try each until exactly one produces a unique slot store",
+                anchors.len()
+            );
+        }
+
+        // Slot-store candidates: `mov [rip+disp32], reg` for the 7
+        // low regs (no REX.B, prefix 0x48) plus 7 high regs (REX.B,
+        // prefix 0x4C). rsp/r12 are skipped (their ModR/M encoding
+        // requires a SIB byte, and MSVC never keeps `this`-like
+        // values in rsp anyway).
+        const STORE_SIGS_LOW: &[&str] = &[
+            // mov [rip+disp32], rax
+            "48 89 05 ?? ?? ?? ??",
+            // mov [rip+disp32], rcx
+            "48 89 0D ?? ?? ?? ??",
+            // mov [rip+disp32], rdx
+            "48 89 15 ?? ?? ?? ??",
+            // mov [rip+disp32], rbx
+            "48 89 1D ?? ?? ?? ??",
+            // mov [rip+disp32], rbp
+            "48 89 2D ?? ?? ?? ??",
+            // mov [rip+disp32], rsi
+            "48 89 35 ?? ?? ?? ??",
+            // mov [rip+disp32], rdi
+            "48 89 3D ?? ?? ?? ??",
+        ];
+        const STORE_SIGS_HIGH: &[&str] = &[
+            // mov [rip+disp32], r8
+            "4C 89 05 ?? ?? ?? ??",
+            // mov [rip+disp32], r9
+            "4C 89 0D ?? ?? ?? ??",
+            // mov [rip+disp32], r10
+            "4C 89 15 ?? ?? ?? ??",
+            // mov [rip+disp32], r11
+            "4C 89 1D ?? ?? ?? ??",
+            // mov [rip+disp32], r13
+            "4C 89 2D ?? ?? ?? ??",
+            // mov [rip+disp32], r14
+            "4C 89 35 ?? ?? ?? ??",
+            // mov [rip+disp32], r15
+            "4C 89 3D ?? ?? ?? ??",
+        ];
+
+        let mut all_stores: Vec<usize> = Vec::new();
+        for sig in STORE_SIGS_LOW.iter().chain(STORE_SIGS_HIGH.iter()) {
+            if let Ok(hits) = sleuth::scan_all_matches(sig) {
+                all_stores.extend(hits);
+            }
+        }
+        all_stores.sort_unstable();
+        all_stores.dedup();
+        if all_stores.is_empty() {
+            modforge::log!("R3 GAMESTATE_PTR: zero RIP-rel qword stores in .text (impossible)");
+            return None;
+        }
+
+        // For each anchor, count slot-stores in the 600-byte window
+        // preceding it. The right anchor has exactly one. Decomp
+        // shows the DAT store ~5 field-zeros before the 1.0f store,
+        // so 600 is generous even after MSVC's SSE batching.
+        //
+        // The "exactly one" requirement is the discriminator: a
+        // false anchor in some other function might have zero or
+        // many candidate stores in its preceding window.
+        const WINDOW: usize = 600;
+        for &anchor in &anchors {
+            let lo = anchor.saturating_sub(WINDOW);
+            let preceding: Vec<usize> = all_stores
+                .iter()
+                .copied()
+                .filter(|&s| s >= lo && s < anchor)
+                .collect();
+            if preceding.len() == 1 {
+                let store_addr = preceding[0];
+                // Decode disp32: bytes at offset 3 of the instruction
+                // for low regs (48 89 XX d d d d), offset 3 for high
+                // regs too (4C 89 XX d d d d). Both 7-byte
+                // instructions; next_ip = store_addr + 7.
+                //
+                // SAFETY: store_addr is inside `.text`, readable.
+                let disp32 = unsafe {
+                    ((store_addr + 3) as *const i32).read_unaligned()
+                } as isize;
+                let next_ip = store_addr.wrapping_add(7);
+                let slot = next_ip.wrapping_add(disp32 as usize);
+                modforge::log!(
+                    "R3 GAMESTATE_PTR: anchor=0x{anchor:x} store=0x{store_addr:x} \
+                     disp32={disp32:#x} slot=0x{slot:x}"
+                );
+                return Some(slot);
+            }
+        }
+        modforge::log!(
+            "R3 GAMESTATE_PTR: no anchor had exactly one preceding qword-store within {WINDOW} bytes"
+        );
+        None
     }
 }
 

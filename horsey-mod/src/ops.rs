@@ -393,31 +393,44 @@ pub fn register_all() {
 
         OpDef::new(
             "targets.resolve.gamestate_ptr",
-            "Resolve GAMESTATE_PTR at runtime via patternsleuth signatures.",
+            "Resolve the GAMESTATE_PTR slot address via patternsleuth, then \
+             surface both the slot and its dereffed contents.",
             "",
             |_| {
                 let image_base = crate::targets::image_base();
-                let resolved = crate::targets::resolve::gamestate_ptr();
-                let address_hex = match resolved {
+                let hardcoded_slot = crate::targets::rebase(crate::targets::GAMESTATE_PTR);
+                let resolved_slot = crate::targets::resolve::gamestate_ptr();
+                let resolved_slot_hex = match resolved_slot {
                     Some(a) => format!("0x{a:x}"),
                     None => "0x0".to_string(),
                 };
-                // If resolved, also surface the u32 at +0x308 so the
-                // test can sanity-check it against on-screen money.
-                let money_at_resolved_plus_0x308 = resolved.and_then(|a| {
-                    // SAFETY: caller has just resolved this address;
-                    // if it's plausible (delta from image_base small),
-                    // reading a u32 from `+0x308` is in-bounds for
-                    // the embedded GameState struct. read_unaligned
-                    // guards against misalignment surprises.
-                    let p = (a + 0x308) as *const u32;
-                    Some(unsafe { p.read_unaligned() })
-                });
+                // The slot is a `.data` pointer slot. Deref to get
+                // the live GameState heap pointer (or 0 when no save
+                // is loaded). Then read money at +0x308 to give the
+                // test a value it can plausibility-check.
+                let (live_ptr, money) = match resolved_slot {
+                    Some(slot) => {
+                        // SAFETY: slot is in `.data`, always mapped.
+                        let raw = unsafe { *(slot as *const usize) };
+                        if crate::gamestate::is_plausible_gamestate_pointer(raw) {
+                            // SAFETY: heap pointer's +0x308 lives
+                            // inside the 0x448-byte GameState alloc.
+                            let m = unsafe {
+                                ((raw + 0x308) as *const u32).read_unaligned()
+                            };
+                            (raw, Some(m))
+                        } else {
+                            (raw, None)
+                        }
+                    }
+                    None => (0, None),
+                };
                 Ok(json!({
-                    "address": address_hex,
+                    "slot": resolved_slot_hex,
                     "image_base": format!("0x{image_base:x}"),
-                    "hardcoded": format!("0x{:x}", crate::targets::rebase(crate::targets::GAMESTATE_PTR)),
-                    "money_at_resolved_plus_0x308": money_at_resolved_plus_0x308,
+                    "hardcoded_slot": format!("0x{hardcoded_slot:x}"),
+                    "deref": format!("0x{live_ptr:x}"),
+                    "money_at_deref_plus_0x308": money,
                 }))
             },
         ),

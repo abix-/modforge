@@ -124,7 +124,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 | Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
 |---|---|---|---|---|
-| `GAMESTATE_PTR` | `0x1403fb0d8` | **H + sanity-gated R** (2026-05-15 fix) | slot RVA correct; production uses hardcoded with `ptr()` dereffing. Resolver candidates are still wrong-encoding but rejected by 0x1000 sanity gate. Re-author against `FUN_1400fd580` constructor (stores `0x3f800000` at +0x114; one RIP-rel qword store) when convenient | very high; every state read + write |
+| `GAMESTATE_PTR` | `0x1403fb0d8` | **R (constructor-anchored, sanity-gated)** | resolved via `resolve_gamestate_ptr_via_constructor`: 1.0f@+0x114 anchor inside `FUN_1400fd580`, scan 14 ModR/M variants of `mov [rip+disp32], reg` filtered to within 600 bytes preceding the anchor, expect exactly one. 0x1000 sanity gate vs hardcoded; falls back to hardcoded on miss. `tests/r3_gamestate_resolves.rs` locks the contract (slot near hardcoded + heap-shaped deref in-save) | very high; every state read + write |
 | `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
 | `NO_TIRE_TOGGLE` | `0x1403d95c5` | H, sig in flight | xor / cmp-sete-mov candidates authored but neither matches this build; sanity gate keeps fallback active | medium; every Cheats tab toggle |
 | `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H, sig in flight | adjacent-mov-pair candidate matched a false site 0x2640f bytes off; sanity gate rejected; need xref-derived sig | medium; gates cheat menu |
