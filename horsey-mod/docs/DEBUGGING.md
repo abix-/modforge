@@ -2,6 +2,19 @@
 
 > **Authoritative on:** diagnosing crashes inside Horsey.exe after the DLL is attached. Living document; update when new failure modes or new tooling land.
 
+## Table of contents
+
+- [1. Where the logs live](#1-where-the-logs-live)
+- [2. Always-on instrumentation](#2-always-on-instrumentation)
+- [3. The standard crash-diagnosis loop](#3-the-standard-crash-diagnosis-loop)
+- [4. Known-good crash-signature patterns](#4-known-good-crash-signature-patterns)
+- [4b. Handler discipline rules (codified after the EVAL_A bring-up)](#4b-handler-discipline-rules-codified-after-the-eval_a-bring-up)
+- [5. Pre-arm verification (mandatory before any new detour)](#5-pre-arm-verification-mandatory-before-any-new-detour)
+- [6. Per-detour first-call markers](#6-per-detour-first-call-markers)
+- [7. Auth on the HTTP control plane](#7-auth-on-the-http-control-plane)
+
+---
+
 ## 1. Where the logs live
 
 | File | Source | Purpose |

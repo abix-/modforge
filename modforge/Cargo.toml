@@ -47,6 +47,11 @@ ureq = { workspace = true }
 hex = { workspace = true }
 region = { workspace = true }
 zerocopy = { workspace = true }
+patternsleuth = { workspace = true }
+# Transitive dep of patternsleuth; we need its `SectionKind` enum to
+# restrict scans to .text. Version pinned to whatever patternsleuth
+# uses (currently 0.32.x) via Cargo's unification.
+object = { version = "0.32", default-features = false, features = ["read"] }
 
 # Used only by the `modforge-deploy` bin target. Cargo only
 # compiles them when that bin is being built; consumers that

@@ -3,6 +3,17 @@
 
 You correctly noticed that 10,332 functions sounds like way too many for a small game. Mostly correct. Here's the breakdown.
 
+## Table of contents
+
+- [Size distribution](#size-distribution)
+- [Vendor vs game-logic](#vendor-vs-game-logic)
+- [What about the ~9,360 vendor functions?](#what-about-the-9360-vendor-functions)
+- [Output files](#output-files)
+- [Refining the game-logic count](#refining-the-game-logic-count)
+- [What to focus on](#what-to-focus-on)
+
+---
+
 ## Size distribution
 
 | Bucket | Count | % | Total code |

@@ -5,6 +5,21 @@ Strings extracted 2026-05-13 from `Horsey.exe` (build mtime 2026-05-08). These a
 
 Stripped native PE x64. SDL3 + cute_sound + stb_image_write. No PDB. Source filenames leaked: at least `GeneEnum.h`.
 
+## Table of contents
+
+- [How to use these anchors](#how-to-use-these-anchors)
+- [Tier 1 anchors - directly tied to user's complaints](#tier-1-anchors---directly-tied-to-users-complaints)
+- [Tier 2 anchors - debug / format strings (extremely useful)](#tier-2-anchors---debug-format-strings-extremely-useful)
+- [Tier 3 anchors - source identifiers](#tier-3-anchors---source-identifiers)
+- [Tier 4 anchors - game state / mechanics](#tier-4-anchors---game-state-mechanics)
+- [Calling convention and ABI](#calling-convention-and-abi)
+- [Hooking strategies (when we get to patching)](#hooking-strategies-when-we-get-to-patching)
+- [Per-update fragility](#per-update-fragility)
+- [Order of operations for Phase 2](#order-of-operations-for-phase-2)
+- [Engine-identification anchor table](#engine-identification-anchor-table)
+
+---
+
 ## How to use these anchors
 
 In Ghidra:

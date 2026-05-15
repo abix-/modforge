@@ -3,6 +3,16 @@
 
 Knowledge not derived from our decompilation but from existing public sources. Cited so we know what's verified-by-other-people vs verified-by-us.
 
+## Table of contents
+
+- [Source: Steam guide "Editing horsey.tmx" by JumboDS64](#source-steam-guide-editing-horseytmx-by-jumbods64)
+- [Source: HorseyGame wiki at horseygame.miraheze.org](#source-horseygame-wiki-at-horseygamemirahezeorg)
+- [Confidence and how to use this](#confidence-and-how-to-use-this)
+- [Things to verify against our decompilation](#things-to-verify-against-our-decompilation)
+- [Prior-art repos (surveyed 2026-05-15 via `gh search repos "horsey game"`)](#prior-art-repos-surveyed-2026-05-15-via-gh-search-repos-horsey-game)
+
+---
+
 ## Source: Steam guide "Editing horsey.tmx" by JumboDS64
 
 URL pattern: Steam Community guides for Horsey Game (posted Apr 22 2026, updated May 5 2026).

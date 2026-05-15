@@ -6,6 +6,18 @@ doc maps your existing **modforge** ecosystem onto Horsey.
 
 ---
 
+## Table of contents
+
+- [What you have today](#what-you-have-today)
+- [What we need to build: `horsey-mod`](#what-we-need-to-build-horsey-mod)
+- [Reuse audit: what comes free from modforge](#reuse-audit-what-comes-free-from-modforge)
+- [Concrete first-week plan](#concrete-first-week-plan)
+- [What it means strategically](#what-it-means-strategically)
+- [Risks / open questions](#risks-open-questions)
+- [Decision](#decision)
+
+---
+
 ## What you have today
 
 ```

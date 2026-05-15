@@ -2,6 +2,19 @@
 
 > **Authoritative on:** how horsey-mod resolves Horsey.exe addresses in a way that survives game updates. Living plan; promotes to implementation as pieces land.
 
+## Table of contents
+
+- [Why this exists](#why-this-exists)
+- [What other shipping mods do](#what-other-shipping-mods-do)
+- [The plan](#the-plan)
+- [Tooling we already have](#tooling-we-already-have)
+- [Ordering rationale](#ordering-rationale)
+- [Open questions](#open-questions)
+- [What's in the repo right now (state at 2026-05-14)](#whats-in-the-repo-right-now-state-at-2026-05-14)
+- [Game install location (Steam)](#game-install-location-steam)
+
+---
+
 ## Why this exists
 
 Horsey is a live Steam game on the developer's update path. The

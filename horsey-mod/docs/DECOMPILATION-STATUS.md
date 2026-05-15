@@ -1,6 +1,21 @@
 # Decompilation status
 > **Authoritative on:** the state of the Ghidra decompilation pipeline (toolchain, statistics, output artifacts).
 
+## Table of contents
+
+- [TL;DR](#tldr)
+- [Pipeline](#pipeline)
+- [Numbers](#numbers)
+- [Toolchain installed](#toolchain-installed)
+- [What we have](#what-we-have)
+- [Quality notes](#quality-notes)
+- [What 100% decompilation does NOT mean](#what-100-decompilation-does-not-mean)
+- [Next steps](#next-steps)
+- [Scripts in this repo](#scripts-in-this-repo)
+- [Reproducibility](#reproducibility)
+
+---
+
 ## TL;DR
 
 All 10,332 functions in `Horsey.exe` have been decompiled to C-like pseudocode using Ghidra 12.1 (headless via pyghidra). 20 high-value functions identified via string anchors and extracted to individual files for documentation.

@@ -10,6 +10,36 @@ Caveat: matches any `*(T*)(var + 0xNN)` pattern, so non-horse
 structs with the same offset will produce false positives.
 **Horse-handler fingerprint:** functions that touch >= 3 of the 23 target offsets in one body are very likely real horse-struct handlers; single-offset hits are mostly noise.
 
+## Table of contents
+
+- [Likely horse-struct handlers (24 functions)](#likely-horse-struct-handlers-24-functions)
+- [Per-offset reader tables (full, unfiltered)](#per-offset-reader-tables-full-unfiltered)
+- [`+0x58` (88 dec)](#0x58-88-dec)
+- [`+0x5c` (92 dec)](#0x5c-92-dec)
+- [`+0x60` (96 dec)](#0x60-96-dec)
+- [`+0x64` (100 dec)](#0x64-100-dec)
+- [`+0x68` (104 dec)](#0x68-104-dec)
+- [`+0x6c` (108 dec)](#0x6c-108-dec)
+- [`+0x70` (112 dec)](#0x70-112-dec)
+- [`+0x74` (116 dec)](#0x74-116-dec)
+- [`+0x78` (120 dec)](#0x78-120-dec)
+- [`+0x7c` (124 dec)](#0x7c-124-dec)
+- [`+0x80` (128 dec)](#0x80-128-dec)
+- [`+0x84` (132 dec)](#0x84-132-dec)
+- [`+0x88` (136 dec)](#0x88-136-dec)
+- [`+0x8c` (140 dec)](#0x8c-140-dec)
+- [`+0x90` (144 dec)](#0x90-144-dec)
+- [`+0x94` (148 dec)](#0x94-148-dec)
+- [`+0x98` (152 dec)](#0x98-152-dec)
+- [`+0x9c` (156 dec)](#0x9c-156-dec)
+- [`+0xa0` (160 dec)](#0xa0-160-dec)
+- [`+0xa4` (164 dec)](#0xa4-164-dec)
+- [`+0x200` (512 dec)](#0x200-512-dec)
+- [`+0x254` (596 dec)](#0x254-596-dec)
+- [`+0x2a8` (680 dec)](#0x2a8-680-dec)
+
+---
+
 ## Likely horse-struct handlers (24 functions)
 
 Functions touching >= 3 target offsets, sorted by coverage.

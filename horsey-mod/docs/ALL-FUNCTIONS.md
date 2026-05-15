@@ -16,6 +16,21 @@ Columns:
 - **Source**: how the row's role was identified.
 - **Category**: code-shape tag (e.g. `repeated_op`, `float_math`, `struct_handler`).
 
+## Table of contents
+
+- [domain: `-` (24 functions)](#domain---24-functions)
+- [domain: `aging` (11 functions)](#domain-aging-11-functions)
+- [domain: `breeding` (1 functions)](#domain-breeding-1-functions)
+- [domain: `debug` (35 functions)](#domain-debug-35-functions)
+- [domain: `fatigue` (5 functions)](#domain-fatigue-5-functions)
+- [domain: `genetics` (3 functions)](#domain-genetics-3-functions)
+- [domain: `race` (40 functions)](#domain-race-40-functions)
+- [domain: `save_io` (65 functions)](#domain-save_io-65-functions)
+- [domain: `settings_io` (1 functions)](#domain-settings_io-1-functions)
+- [domain: `world_event` (1049 functions)](#domain-world_event-1049-functions)
+
+---
+
 ## domain: `-` (24 functions)
 
 | Addr | Size | Proposed name | Description | Source | Category |

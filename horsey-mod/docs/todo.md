@@ -9,6 +9,34 @@ Roughly ordered by leverage.
 
 ---
 
+## Table of contents
+
+- [Current status (2026-05-15, after commit `352daed`)](#current-status-2026-05-15-after-commit-352daed)
+- [P0. `sleep_safe_no_tire` patch site discovery](#p0-sleep_safe_no_tire-patch-site-discovery)
+- [P0. Bestiary Expansion: double the species count](#p0-bestiary-expansion-double-the-species-count)
+- [P0. Gene Table Doubling: 240 -> 480 implementation plan](#p0-gene-table-doubling-240---480-implementation-plan)
+- [Other open work](#other-open-work)
+- [Done (recent)](#done-recent)
+- [Active blocker](#active-blocker)
+- [High-priority features](#high-priority-features)
+- [Mod foundations](#mod-foundations)
+- [Content-design ideas (for after foundations are in place)](#content-design-ideas-for-after-foundations-are-in-place)
+- [Open research questions](#open-research-questions)
+- [Long-term: open the platform](#long-term-open-the-platform)
+- [Known control-plane issues (carried over from first-injection milestone)](#known-control-plane-issues-carried-over-from-first-injection-milestone)
+- [Open next reads (priority order)](#open-next-reads-priority-order)
+- [Working principle](#working-principle)
+- [User's gameplay goal (the original motivator)](#users-gameplay-goal-the-original-motivator)
+- [Address resolution (R1-R5 phased plan)](#address-resolution-r1-r5-phased-plan)
+- [External-knowledge verification gaps](#external-knowledge-verification-gaps)
+- [Bestiary viability research](#bestiary-viability-research)
+- [Content-creation verification gaps](#content-creation-verification-gaps)
+- [Gene system open questions](#gene-system-open-questions)
+- [Decompilation next steps](#decompilation-next-steps)
+- [Save format research](#save-format-research)
+
+---
+
 ## Current status (2026-05-15, after commit `352daed`)
 
 **480-gene project: infrastructure complete, untested in-game.**

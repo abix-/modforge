@@ -24,6 +24,32 @@ Columns:
 
 ---
 
+## Table of contents
+
+- [Part 1: Conceptual model](#part-1-conceptual-model)
+- [Part 2: Engine pipeline + slot map](#part-2-engine-pipeline-slot-map)
+- [Part 3: Per-gene reference (all 240 vanilla genes)](#part-3-per-gene-reference-all-240-vanilla-genes)
+- [0..10: Body fundamentals](#010-body-fundamentals)
+- [11..20: Body shape modifiers](#1120-body-shape-modifiers)
+- [21..33: Tail](#2133-tail)
+- [34..49: Legs](#3449-legs)
+- [50..66: Knee + Arm](#5066-knee-arm)
+- [67..71: Upper arm](#6771-upper-arm)
+- [72..86: Neck](#7286-neck)
+- [87..96: Foot + Hand](#8796-foot-hand)
+- [97..117: Head + Eye + Brow](#97117-head-eye-brow)
+- [118..126: Ear + Teeth](#118126-ear-teeth)
+- [127..140: Mouth + Nose + Antler-precursor](#127140-mouth-nose-antler-precursor)
+- [141..159: Antlers](#141159-antlers)
+- [160..174: Hat](#160174-hat)
+- [175..188: Palette / coloration base](#175188-palette-coloration-base)
+- [189..218: Colors + patterns + behavioral](#189218-colors-patterns-behavioral)
+- [219..239: Animation signals](#219239-animation-signals)
+- [Summary](#summary)
+- [Part 4: Helix layout (in-game CRISPR Lab DNA)](#part-4-helix-layout-in-game-crispr-lab-dna)
+
+---
+
 ## Part 1: Conceptual model
 
 > Was previously a separate doc (`ALLELE-MODEL.md`). Folded in 2026-05-15 to keep all gene knowledge in one place.

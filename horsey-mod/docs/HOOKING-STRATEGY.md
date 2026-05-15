@@ -27,6 +27,18 @@
 > separate decisions that ride on top of whichever hook
 > strategy we pick here.
 
+## Table of contents
+
+- [1. The problem in one paragraph](#1-the-problem-in-one-paragraph)
+- [2. Glossary](#2-glossary)
+- [3. Candidate strategies](#3-candidate-strategies)
+- [4. Comparison table](#4-comparison-table)
+- [5. Recommendation](#5-recommendation)
+- [6. Plan delta for [`todo.md`](todo.md)](#6-plan-delta-for-todomdtodomd)
+- [7. References (real shipped code, not theory)](#7-references-real-shipped-code-not-theory)
+
+---
+
 ## 1. The problem in one paragraph
 
 `FUN_14009f680` (14,074 bytes, the gene-effect engine) reads

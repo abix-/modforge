@@ -893,6 +893,72 @@ sig is e.g. \"48 89 5c 24 ?? 57 48 83 ec\". Read-only.",
             },
         ),
         OpDef::new(
+            "patterns.sleuth.resolve",
+            "Multi-target patternsleuth resolver. Body: \
+{patterns: [{name, sigs:[...]}, ...]}. Each target supplies one or more IDA-style \
+signatures; first match wins per target. Returns {results: {name: \"0x...\" | null}}. \
+Used by horsey-mod tests + future R2 attach-time address resolution.",
+            "{patterns: [{name: string, sigs: [string]}]}",
+            |args| {
+                use modforge::patterns::sleuth;
+                let arr = args
+                    .get("patterns")
+                    .and_then(Json::as_array)
+                    .ok_or_else(|| "missing patterns array".to_string())?;
+
+                // Collect owned strings first so the borrows live long
+                // enough; build Target<'a> views over them.
+                let mut owned: Vec<(String, Vec<String>)> =
+                    Vec::with_capacity(arr.len());
+                for entry in arr {
+                    let name = entry
+                        .get("name")
+                        .and_then(Json::as_str)
+                        .ok_or_else(|| "pattern entry missing `name`".to_string())?
+                        .to_string();
+                    let sigs = entry
+                        .get("sigs")
+                        .and_then(Json::as_array)
+                        .ok_or_else(|| {
+                            format!("pattern {name:?} missing `sigs` array")
+                        })?;
+                    let sig_strs: Vec<String> = sigs
+                        .iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect();
+                    if sig_strs.is_empty() {
+                        return Err(format!("pattern {name:?} has no sigs"));
+                    }
+                    owned.push((name, sig_strs));
+                }
+
+                // Borrow into Target<'a>.
+                let sigs_refs: Vec<Vec<&str>> = owned
+                    .iter()
+                    .map(|(_, sigs)| sigs.iter().map(String::as_str).collect())
+                    .collect();
+                let targets: Vec<sleuth::Target> = owned
+                    .iter()
+                    .zip(sigs_refs.iter())
+                    .map(|((n, _), s)| sleuth::Target { name: n, sigs: s })
+                    .collect();
+
+                let resolution = sleuth::resolve_all(&targets)
+                    .map_err(|e| e.to_string())?;
+
+                // Emit as {name: "0x..."} or null.
+                let mut results = serde_json::Map::new();
+                for (name, _) in &owned {
+                    let v = match resolution.get(name) {
+                        Some(addr) => Json::String(format!("0x{addr:x}")),
+                        None => Json::Null,
+                    };
+                    results.insert(name.clone(), v);
+                }
+                Ok(json!({ "results": Json::Object(results) }))
+            },
+        ),
+        OpDef::new(
             "patterns.read_bytes",
             "Read `n` bytes at a runtime address inside the loaded Horsey.exe image, \
 return as a hex-byte string suitable for direct use as a `patterns.scan` sig. Used \

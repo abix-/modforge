@@ -8,6 +8,19 @@
 **Discovered (by us):** 2026-05-15
 **Local clone:** `horsey-mod/research/prior-art/HorseyLiveTweaks/`
 
+## Table of contents
+
+- [The huge credit](#the-huge-credit)
+- [Confirmed agreements (cross-validation)](#confirmed-agreements-cross-validation)
+- [What they have that we don't (and should consider)](#what-they-have-that-we-dont-and-should-consider)
+- [What we have that they don't](#what-we-have-that-they-dont)
+- [Lessons we took from reading their code](#lessons-we-took-from-reading-their-code)
+- [Honest assessment](#honest-assessment)
+- [Going forward](#going-forward)
+- [One-line thank you](#one-line-thank-you)
+
+---
+
 ## The huge credit
 
 Nick Petrone independently reverse-engineered the same `Horsey.exe` binary we did and shipped a working, polished modding framework before we did. ~4500 lines of C++, in-game ImGui control window, pattern-scan address resolution that survives game updates, and a working DLL injector that handles UAC elevation. The README says "honestly, this whole thing is like 85% vibecoded" but the work product is substantial regardless.

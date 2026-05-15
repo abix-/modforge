@@ -9,6 +9,14 @@ dereferences) contribute to the Horse struct. `param_1` in functions that
 touch known GameState offsets contributes to GameState. The known-field
 names come from our manual annotations; the unknown ones are stub-named.
 
+## Table of contents
+
+- [struct `Horse`](#struct-horse)
+- [struct `GameState (DAT_1403fb0d8 or main `param_1`)`](#struct-gamestate-dat_1403fb0d8-or-main-param_1)
+- [`param_1` accesses (probably GameState or a major sub-state)](#param_1-accesses-probably-gamestate-or-a-major-sub-state)
+
+---
+
 ## struct `Horse`
 
 Total observed field offsets: 73

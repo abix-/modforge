@@ -12,6 +12,22 @@
 
 ---
 
+## Table of contents
+
+- [Design principle: layer on top of vanilla](#design-principle-layer-on-top-of-vanilla)
+- [Q-gene-1: every reader of the gene table](#q-gene-1-every-reader-of-the-gene-table)
+- [Q-gene-2: literals `0xf0` and `0x1e00` (table bounds)](#q-gene-2-literals-0xf0-and-0x1e00-table-bounds)
+- [Q-gene-3: gene-by-INDEX consumers (literal vs name-lookup)](#q-gene-3-gene-by-index-consumers-literal-vs-name-lookup)
+- [Q-gene-4: table-extension strategy](#q-gene-4-table-extension-strategy)
+- [Q-gene-5: how many vanilla gene slots are unused?](#q-gene-5-how-many-vanilla-gene-slots-are-unused)
+- [Pop system (Q-pop-*)](#pop-system-q-pop-)
+- [Save / load (Q-save-*)](#save-load-q-save-)
+- [Renderer / behavior (Q-render-*)](#renderer-behavior-q-render-)
+- [Hot reload (Q-reload-*)](#hot-reload-q-reload-)
+- [Running summary](#running-summary)
+
+---
+
 ## Design principle: layer on top of vanilla
 
 **User direction 2026-05-14:** our code sits ON TOP of

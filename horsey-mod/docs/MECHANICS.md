@@ -3,6 +3,22 @@
 
 Verified findings from decompiled `Horsey.exe`. Every claim cites a function address or global address you can grep in `decompiled/all_functions.c`.
 
+## Table of contents
+
+- [TL;DR for the user's complaints](#tldr-for-the-users-complaints)
+- [Debug mode (the cheat unlock)](#debug-mode-the-cheat-unlock)
+- [The "No Tire" cheat (DIRECTLY addresses user's complaint)](#the-no-tire-cheat-directly-addresses-users-complaint)
+- [Money cheat](#money-cheat)
+- [Loaded cheat (multi-counter)](#loaded-cheat-multi-counter)
+- [Global game-state struct (`DAT_1403fb0d8`)](#global-game-state-struct-dat_1403fb0d8)
+- [Races counter (separate global)](#races-counter-separate-global)
+- [Horse struct fields (incrementally identified)](#horse-struct-fields-incrementally-identified)
+- [Mod implications](#mod-implications)
+- [Retirement mechanic (lifespan answer)](#retirement-mechanic-lifespan-answer)
+- [Confidence levels](#confidence-levels)
+
+---
+
 ## TL;DR for the user's complaints
 
 **The game HAS A BUILT-IN CHEAT** that disables horse tiredness. Documented below as the "No Tire" toggle. We don't need a mod for the fatigue complaint - the dev shipped a way to disable it.

@@ -5,6 +5,15 @@ Goal: 100% decompile `Horsey.exe` (4.4 MB stripped PE x64) with behavior documen
 
 Researched 2026-05-13 via `gh search repos`. Below is what other people have already built. Picking from this list is much smarter than building from scratch.
 
+## Table of contents
+
+- [The landscape](#the-landscape)
+- [Recommended stack](#recommended-stack)
+- [Install plan (when user approves)](#install-plan-when-user-approves)
+- [What this changes for the goal](#what-this-changes-for-the-goal)
+
+---
+
 ## The landscape
 
 ### Decompiler engines

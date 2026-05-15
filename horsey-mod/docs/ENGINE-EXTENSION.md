@@ -9,6 +9,23 @@ Nothing is out of the question. The cost scales with how far you push.
 
 ---
 
+## Table of contents
+
+- [Cost ladder](#cost-ladder)
+- [What's NOT in any data file (hardcoded mechanics)](#whats-not-in-any-data-file-hardcoded-mechanics)
+- [The hard ceilings in the engine (and how to break them)](#the-hard-ceilings-in-the-engine-and-how-to-break-them)
+- [The "horse as a Rust trait" mental model](#the-horse-as-a-rust-trait-mental-model)
+- [Mod architecture recommendations](#mod-architecture-recommendations)
+- [Concrete first-month roadmap](#concrete-first-month-roadmap)
+- [Where in the engine to insert hooks](#where-in-the-engine-to-insert-hooks)
+- [Reference implementations (similar projects)](#reference-implementations-similar-projects)
+- [What this unlocks long-term](#what-this-unlocks-long-term)
+- [Practical tooling stack](#practical-tooling-stack)
+- [The "first thing to build" decision](#the-first-thing-to-build-decision)
+- [TL;DR](#tldr)
+
+---
+
 ## Cost ladder
 
 | Tier | What it lets you do | Tooling | Time investment |

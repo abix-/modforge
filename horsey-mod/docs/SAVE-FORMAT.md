@@ -5,6 +5,17 @@ Live save dumped 2026-05-13. Total size 245,151 bytes.
 
 All findings are from static analysis. Field meanings are HYPOTHESES until confirmed by a byte-diff experiment between two known-different saves.
 
+## Table of contents
+
+- [File map (high level)](#file-map-high-level)
+- [Header (first 20 bytes)](#header-first-20-bytes)
+- [Horse roster record (verified by walking)](#horse-roster-record-verified-by-walking)
+- [Open work](#open-work)
+- [Tools](#tools)
+- [Findings from prior-art `alexjthomson/horsey-save-editor`](#findings-from-prior-art-alexjthomsonhorsey-save-editor)
+
+---
+
 ## File map (high level)
 
 | Range | Size | Confidence | Content |
