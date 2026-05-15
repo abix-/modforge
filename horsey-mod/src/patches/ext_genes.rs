@@ -28,7 +28,7 @@ use crate::genes;
 use crate::targets::{self, fn_addr};
 use parking_lot::Mutex;
 use retour::GenericDetour;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 // ---------------------------------------------------------------------------
@@ -94,6 +94,22 @@ static CALL_COUNT_A: AtomicU64 = AtomicU64::new(0);
 static CALL_COUNT_B: AtomicU64 = AtomicU64::new(0);
 static CALL_COUNT_SWAP: AtomicU64 = AtomicU64::new(0);
 
+/// One-shot "first call seen" markers per handler so we get a SINGLE
+/// log line confirming the detour fired. Without these, hot-path
+/// handlers (called 233+ times per horse per frame) would flood the
+/// log if we logged every invocation.
+static FIRST_CALL_A: AtomicBool = AtomicBool::new(false);
+static FIRST_CALL_B: AtomicBool = AtomicBool::new(false);
+static FIRST_CALL_SWAP: AtomicBool = AtomicBool::new(false);
+
+/// One-shot "first trampoline returned cleanly" markers per handler.
+/// If we ever see "first call" but never see "first trampoline OK"
+/// for a given handler, the crash is INSIDE the trampoline -> that
+/// detour's prologue was misidentified.
+static FIRST_TRAMP_OK_A: AtomicBool = AtomicBool::new(false);
+static FIRST_TRAMP_OK_B: AtomicBool = AtomicBool::new(false);
+static FIRST_TRAMP_OK_SWAP: AtomicBool = AtomicBool::new(false);
+
 pub fn is_armed() -> bool {
     let d = detours().lock();
     d.eval_a.is_some() || d.eval_b.is_some() || d.allele_swap.is_some()
@@ -145,6 +161,12 @@ fn bump_common(idx: i32) {
 /// SAFETY: signature matches the vanilla function. extern "system"
 /// on x64 Windows is the win64 ABI; matches `(longlong, int) -> float`.
 unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
+    if !FIRST_CALL_A.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "DI-A: FIRST CALL eval_a (FUN_1400a5d20) genome=0x{:x} idx={idx}",
+            genome as usize
+        );
+    }
     bump_common(idx);
     CALL_COUNT_A.fetch_add(1, Ordering::Relaxed);
     if idx >= 240 {
@@ -154,11 +176,17 @@ unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
         return genes::evaluate_ext_gene(horse_id, ext_idx);
     }
     let g = detours().lock();
-    match g.eval_a.as_ref() {
+    let result = match g.eval_a.as_ref() {
         // SAFETY: trampoline is the saved original FUN_1400a5d20.
         Some(d) => unsafe { d.call(genome, idx) },
         None => 0.0,
+    };
+    if !FIRST_TRAMP_OK_A.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "DI-A: FIRST TRAMPOLINE OK eval_a (returned {result:.6} for idx={idx})"
+        );
     }
+    result
 }
 
 /// EVAL_B handler. Same dispatch as EVAL_A but the vanilla return
@@ -168,6 +196,12 @@ unsafe extern "system" fn eval_a_handler(genome: *const u8, idx: i32) -> f32 {
 ///
 /// SAFETY: extern "system" matches `(longlong, int) -> int`.
 unsafe extern "system" fn eval_b_handler(genome: *const u8, idx: i32) -> u32 {
+    if !FIRST_CALL_B.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "DI-A: FIRST CALL eval_b (FUN_1400a5e00) genome=0x{:x} idx={idx}",
+            genome as usize
+        );
+    }
     bump_common(idx);
     CALL_COUNT_B.fetch_add(1, Ordering::Relaxed);
     if idx >= 240 {
@@ -177,11 +211,17 @@ unsafe extern "system" fn eval_b_handler(genome: *const u8, idx: i32) -> u32 {
         return genes::evaluate_ext_gene(horse_id, ext_idx).to_bits();
     }
     let g = detours().lock();
-    match g.eval_b.as_ref() {
+    let result = match g.eval_b.as_ref() {
         // SAFETY: trampoline is the saved original FUN_1400a5e00.
         Some(d) => unsafe { d.call(genome, idx) },
         None => 0,
+    };
+    if !FIRST_TRAMP_OK_B.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "DI-A: FIRST TRAMPOLINE OK eval_b (returned 0x{result:08x} for idx={idx})"
+        );
     }
+    result
 }
 
 /// GENE_ALLELE_SWAP handler. For `idx<240` vanilla syncs the swap
@@ -197,6 +237,11 @@ unsafe extern "system" fn allele_swap_handler(
     a: i32,
     b: i32,
 ) {
+    if !FIRST_CALL_SWAP.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "DI-A: FIRST CALL allele_swap (FUN_1400c03a0) ctx=0x{ctx:x} idx={gene_idx} a={a} b={b}"
+        );
+    }
     bump_common(gene_idx);
     CALL_COUNT_SWAP.fetch_add(1, Ordering::Relaxed);
     if gene_idx >= 240 {
@@ -209,6 +254,11 @@ unsafe extern "system" fn allele_swap_handler(
     if let Some(d) = g.allele_swap.as_ref() {
         // SAFETY: trampoline is the saved original FUN_1400c03a0.
         unsafe { d.call(ctx, gene_idx, a, b) };
+        if !FIRST_TRAMP_OK_SWAP.swap(true, Ordering::Relaxed) {
+            modforge::log!(
+                "DI-A: FIRST TRAMPOLINE OK allele_swap (returned for idx={gene_idx})"
+            );
+        }
     }
 }
 
@@ -325,17 +375,20 @@ pub fn arm() -> anyhow::Result<()> {
         }
         return Err(e);
     }
-    if let Err(e) = install_allele_swap(&mut g) {
-        if let Some(d) = g.eval_b.take() {
-            // SAFETY: disable restores the prologue.
-            let _ = unsafe { d.disable() };
-        }
-        if let Some(d) = g.eval_a.take() {
-            // SAFETY: disable restores the prologue.
-            let _ = unsafe { d.disable() };
-        }
-        return Err(e);
-    }
+    // ALLELE_SWAP is intentionally skipped in v1: the dryrun
+    // prologue at RVA 0x1400c03a0 in the May 2026 build decodes
+    // as `movsxd edi, edx; movabs rsi, <double bits>`. This is
+    // mid-function code, not a function entry. Installing a
+    // retour detour there corrupted the surrounding instruction
+    // stream and crashed the game thread within seconds (see
+    // `docs/SESSION-2026-05-14-DI-A-BRINGUP.md` bug 3). Until
+    // we re-decompile and locate the real allele-swap function
+    // entry, this stays off.
+    modforge::log!(
+        "ext_genes: GENE_ALLELE_SWAP install SKIPPED (address points \
+         mid-function in current build; see SESSION-2026-05-14-DI-A-BRINGUP.md)"
+    );
+    let _ = install_allele_swap; // keep symbol live so future re-enable is a 1-line change
 
     reset_stats();
     Ok(())

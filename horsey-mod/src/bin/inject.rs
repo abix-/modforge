@@ -470,15 +470,9 @@ fn call_freelibrary_remote(h_proc: HANDLE, hmodule: u64) -> anyhow::Result<()> {
 // _shutdown HTTP op
 // =============================================================================
 
-fn send_shutdown_op(prev: &InjState) -> anyhow::Result<()> {
-    let auth_path = prev
-        .staged_path
-        .parent()
-        .map(|p| p.join("horsey.auth"))
-        .ok_or_else(|| anyhow::anyhow!("no parent for staged path"))?;
-    let token = std::fs::read_to_string(&auth_path)?.trim().to_string();
-
-    // Tiny synchronous POST without pulling in a runtime/reqwest.
+fn send_shutdown_op(_prev: &InjState) -> anyhow::Result<()> {
+    // Auth disabled on the in-process HTTP server (see lib.rs worker_main).
+    // POST is synchronous without pulling in a runtime/reqwest.
     use std::io::Write;
     use std::net::TcpStream;
     let mut stream = TcpStream::connect_timeout(
@@ -494,12 +488,10 @@ fn send_shutdown_op(prev: &InjState) -> anyhow::Result<()> {
          Host: 127.0.0.1\r\n\
          Content-Type: application/json\r\n\
          Content-Length: {}\r\n\
-         X-Ueforge-Auth: {}\r\n\
          Connection: close\r\n\
          \r\n\
          {}",
         body.len(),
-        token,
         body
     );
     stream.write_all(req.as_bytes())?;

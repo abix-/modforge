@@ -25,7 +25,7 @@ use crate::targets::{self, fn_addr};
 use parking_lot::Mutex;
 use retour::GenericDetour;
 use std::ffi::c_void;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 /// Vanilla offset from `horse` to the ctx pointer the engine takes.
@@ -48,6 +48,8 @@ fn detour_slot() -> &'static Mutex<Option<GenericDetour<GeneEffectEngineFn>>> {
 
 static CALL_COUNT: AtomicU64 = AtomicU64::new(0);
 static GENES_APPLIED_TOTAL: AtomicU64 = AtomicU64::new(0);
+static FIRST_CALL: AtomicBool = AtomicBool::new(false);
+static FIRST_TRAMP_OK: AtomicBool = AtomicBool::new(false);
 
 pub fn is_armed() -> bool {
     detour_slot().lock().is_some()
@@ -84,6 +86,13 @@ fn reset_stats() {
 /// slots into `buf` (a `float[353]` allocation), so reading and
 /// modifying any slot in [0..353) is safe.
 unsafe extern "system" fn engine_handler(buf: *mut f32, ctx: *mut c_void) {
+    if !FIRST_CALL.swap(true, Ordering::Relaxed) {
+        modforge::log!(
+            "D5: FIRST CALL engine_handler (FUN_14009f680) buf=0x{:x} ctx=0x{:x}",
+            buf as usize,
+            ctx as usize
+        );
+    }
     CALL_COUNT.fetch_add(1, Ordering::Relaxed);
 
     // Run vanilla.
@@ -95,6 +104,9 @@ unsafe extern "system" fn engine_handler(buf: *mut f32, ctx: *mut c_void) {
             // Shouldn't happen: enable() runs before we get here.
             None => return,
         }
+    }
+    if !FIRST_TRAMP_OK.swap(true, Ordering::Relaxed) {
+        modforge::log!("D5: FIRST TRAMPOLINE OK engine_handler");
     }
 
     if buf.is_null() || ctx.is_null() {

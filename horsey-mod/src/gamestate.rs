@@ -20,17 +20,26 @@
 
 use crate::targets::{self, gs_offset};
 
-/// Resolve the runtime pointer to the GameState struct.
-/// Returns 0 if the global isn't initialized yet (game still
-/// starting up).
+/// Resolve the runtime address of the GameState struct.
+///
+/// CRITICAL CORRECTION (2026-05-14): The slot at `GAMESTATE_PTR`
+/// (0x1403fb0d8) is NOT a pointer-to-struct. It IS the struct,
+/// embedded in the game's `.data` segment. The decomp evidence
+/// (e.g. cheat-money handler `*(int *)(DAT_1403fb0d8 + 0x308) += 1000`)
+/// does direct offset arithmetic with no double-deref. We were
+/// double-dereferencing and reading whatever the first 8 bytes of
+/// the struct happened to be. Usually zero (so `ptr() == 0`
+/// guards held and other code paths short-circuited), but on a
+/// freshly-launched game with the game in main-menu state, the
+/// first 8 bytes held the canonical-but-unmapped value
+/// 0x2400000000B which crashed every subsequent deref.
+///
+/// The struct lives in the binary; `rebase(GAMESTATE_PTR)` is its
+/// runtime address. Reads from offsets inside the struct are safe
+/// as long as the offset is within the struct's allocated size,
+/// regardless of whether a save is loaded.
 pub fn ptr() -> usize {
-    let abs = targets::rebase(targets::GAMESTATE_PTR);
-    // The symbol at GAMESTATE_PTR is a pointer-sized slot that the
-    // engine fills in at world-init time. Dereference once.
-    // SAFETY: We're reading a single pointer-sized slot from a
-    // module-data address that exists for the life of the
-    // process. Reads of natural-aligned uintptr are atomic on x64.
-    unsafe { *(abs as *const usize) }
+    targets::rebase(targets::GAMESTATE_PTR)
 }
 
 /// Read a uint32 field from GameState at the given offset.
