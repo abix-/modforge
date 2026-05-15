@@ -78,6 +78,13 @@ pub fn launch(test_name: &str) -> Option<RunningGame> {
         return None;
     }
     let s = spec();
+    if std::env::var("MODFORGE_ATTACH").ok().as_deref() == Some("1") {
+        eprintln!("MODFORGE_ATTACH=1: attaching to already-running game");
+        return match GameHarness::attach_existing(&s, test_name) {
+            Ok(g) => Some(g),
+            Err(e) => panic!("attach_existing failed: {e}"),
+        };
+    }
     match GameHarness::launch(&s, test_name) {
         Ok(g) => Some(g),
         Err(e) => panic!("harness launch failed: {e}"),

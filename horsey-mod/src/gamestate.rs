@@ -78,6 +78,96 @@ pub fn looks_loaded() -> bool {
     roster_span_looks_loaded(begin, end)
 }
 
+/// Forensic dump of every value the loaded-save heuristic touches.
+/// Returned as JSON so tests can capture + diff across game states
+/// (main menu vs. in-save) without re-implementing pointer reads.
+pub fn diag() -> serde_json::Value {
+    let p = ptr();
+    if p == 0 {
+        return serde_json::json!({"ptr": "0x0"});
+    }
+    // SAFETY: GameState is statically embedded; offsets are within
+    // its allocated range. We never deref the read pointers.
+    let roster_begin = unsafe { *((p + gs_offset::HORSES_BEGIN) as *const usize) };
+    let roster_end = unsafe { *((p + gs_offset::HORSES_END) as *const usize) };
+    let live_begin = unsafe { *((p + 0x130) as *const usize) };
+    let live_end = unsafe { *((p + 0x138) as *const usize) };
+
+    let roster_count = if roster_end >= roster_begin && roster_begin != 0 {
+        roster_end.checked_sub(roster_begin).map(|s| s / 0x24)
+    } else {
+        None
+    };
+    let live_count = if live_end >= live_begin && live_begin != 0 {
+        live_end.checked_sub(live_begin).map(|s| s / 8)
+    } else {
+        None
+    };
+
+    // Dump every documented GameState field at once. When the right
+    // "save loaded" signal is unknown, a single in-save run of
+    // `gamestate.diag` lets us see which field is non-zero only
+    // when the player is actually in a save. The candidate set
+    // mirrors `targets::gs_offset` so future drift is obvious.
+    let r_u32 = |off: usize| -> u32 {
+        // SAFETY: same rationale as the roster reads above.
+        unsafe { *((p + off) as *const u32) }
+    };
+    let r_u64 = |off: usize| -> u64 {
+        // SAFETY: as above.
+        unsafe { *((p + off) as *const u64) }
+    };
+
+    serde_json::json!({
+        "ptr": format!("0x{p:x}"),
+        "roster_0x280_0x288": {
+            "begin": format!("0x{roster_begin:x}"),
+            "end":   format!("0x{roster_end:x}"),
+            "span_bytes": roster_end.wrapping_sub(roster_begin),
+            "count_if_sane": roster_count,
+            "looks_loaded": roster_span_looks_loaded(roster_begin, roster_end),
+        },
+        "live_0x130_0x138": {
+            "begin": format!("0x{live_begin:x}"),
+            "end":   format!("0x{live_end:x}"),
+            "span_bytes": live_end.wrapping_sub(live_begin),
+            "count_if_sane": live_count,
+        },
+        "fields_u32": {
+            "frame_tick_0x254": r_u32(0x254),
+            "field_268_0x268":  r_u32(0x268),
+            "trailing_278_0x278": r_u32(0x278),
+            "trailing_27c_0x27c": r_u32(0x27c),
+            "money_0x308":  r_u32(gs_offset::MONEY),
+            "year_0x314":   r_u32(gs_offset::YEAR),
+            "sleeps_0x318": r_u32(gs_offset::SLEEPS),
+            "supplies_start_0x31c": r_u32(gs_offset::SUPPLIES_START),
+            "field_37c_0x37c": r_u32(gs_offset::FIELD_37C),
+            "field_39c_0x39c": r_u32(gs_offset::FIELD_39C),
+            "field_410_0x410": r_u32(gs_offset::FIELD_410),
+            "field_414_0x414": r_u32(gs_offset::FIELD_414),
+            "field_415_0x415": r_u32(gs_offset::FIELD_415),
+            "field_418_0x418": r_u32(gs_offset::FIELD_418),
+            "field_41c_0x41c": r_u32(gs_offset::FIELD_41C),
+            "field_440_0x440": r_u32(gs_offset::FIELD_440),
+        },
+        "fields_u64": {
+            // Pointers / 8-byte counters that might signal loaded state.
+            "ptr_at_0x130": format!("0x{:x}", r_u64(0x130)),
+            "ptr_at_0x138": format!("0x{:x}", r_u64(0x138)),
+            "ptr_at_0x140": format!("0x{:x}", r_u64(0x140)),
+            "ptr_at_0x148": format!("0x{:x}", r_u64(0x148)),
+            "ptr_at_0x280": format!("0x{:x}", r_u64(0x280)),
+            "ptr_at_0x288": format!("0x{:x}", r_u64(0x288)),
+            "ptr_at_0x290": format!("0x{:x}", r_u64(0x290)),
+        },
+        "globals_u32": {
+            "races": races(),
+        },
+        "verdict_looks_loaded": looks_loaded(),
+    })
+}
+
 /// Pure decision: does a `(begin, end)` pair for the roster vector at
 /// `+0x280/+0x288` look like a real loaded-save span?
 ///

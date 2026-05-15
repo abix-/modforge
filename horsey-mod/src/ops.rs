@@ -77,11 +77,21 @@ pub fn register_all() {
                     "sleeps": gamestate::sleeps(),
                     "races": gamestate::races(),
                     "horse_count": gamestate::horse_count(),
-                    "world_loaded": gamestate::ptr() != 0,
+                    "world_loaded": gamestate::looks_loaded(),
                     "no_tire": gamestate::no_tire(),
                     "debug_mode": gamestate::debug_mode(),
                 }))
             },
+        ),
+
+        // Forensic dump of every byte / value the loaded-save heuristic
+        // depends on. Driven by `tests/gamestate_diag.rs`. The op
+        // itself never asserts; consumers print + diff.
+        OpDef::new(
+            "gamestate.diag",
+            "Raw values used by gamestate::looks_loaded(). For tests / debugging.",
+            "",
+            |_| Ok(gamestate::diag()),
         ),
 
         // ===== Money cheats =====

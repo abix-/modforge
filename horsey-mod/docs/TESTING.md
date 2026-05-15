@@ -2,6 +2,20 @@
 
 This doc is the single source of truth for testing in horsey-mod (and, by extension, the shared `modforge::harness` primitive that every per-game mod consumes). Open work on testing lives in [`todo.md`](todo.md); the present file is the FINISHED record.
 
+## Attach-to-existing mode (for in-save forensics)
+
+The harness's default `common::launch` builds + relaunches Horsey via Steam and drops at the main menu, so it cannot inspect in-save state. Set `MODFORGE_ATTACH=1` to skip the launch step; the test then assumes Horsey is already running with the mod injected and the HTTP plane is up on 33077.
+
+Workflow:
+
+1. Launch Horsey via Steam yourself; load a save into the state you want to capture.
+2. `cargo run -p horsey-mod --bin horsey-inject -- --fresh` (or `--reload` for a hot swap) to inject the latest build.
+3. `MODFORGE_ATTACH=1 cargo test -p horsey-mod --test gamestate_diag -- --nocapture` to capture the forensic dump.
+
+The test logs the full `gamestate.diag` to `target/test-runs/gamestate_diag-<ts>.log` AND to stdout. The dump exposes every offset `gamestate::looks_loaded` touches plus 15+ adjacent `u32` fields, so when the heuristic disagrees with the player's reality the right "loaded" signal can be picked out of one snapshot.
+
+Add `MODFORGE_EXPECT_LOADED=1` to enable the in-save assertion: the test then DEMANDS `verdict_looks_loaded == true` and fails with the full dump if the heuristic disagrees. This is the regression catcher for "I'm in a save but the UI says no save loaded."
+
 ## The rule (locked 2026-05-15): TESTS FIRST
 
 Every new feature, patch, or research finding ships as a test first. The test asserts the contract before the implementation exists. We confirm the test fails, write the code until the test passes, then commit both together.
