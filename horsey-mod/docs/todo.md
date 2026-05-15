@@ -78,32 +78,13 @@ Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, 
 4. ~~R1 build identification.~~ DONE (`fe74e6b`). `game.build_info` op shipped; image SHA-256 cached + exposed. r1_build_identification (2 tests) green.
 5. ~~Arm-and-observe tests for D5 + lifecycle + full-stack.~~ DONE (`574beb0`). 4 arm tests green: combinator, lifecycle, render trampoline, full-stack. Lifecycle in isolation captured 550 ctor / 3 dtor calls in 5s of menu idle. Full-stack arms 4 subsystems together; game survives.
 
-## Prior status (pre-R1) (2026-05-15, after commit `352daed`)
+## Ship status pointers
 
-**480-gene project: infrastructure complete, untested in-game.**
-
-Built, clean, zero warnings:
-
-| Phase | What | Module |
-|---|---|---|
-| D0 | Sidecar buffers + 12 HTTP ops | `genes.rs` |
-| D1 | 3 of 5 detours (eval_a/b, allele_swap) | `patches/ext_genes.rs` |
-| D3.1 | Horse-ctor post-hook (`FUN_1400aac60`) | `patches/lifecycle.rs` |
-| D3.2 | Horse-dtor pre-hook (`FUN_1400bf1f0`) | `patches/lifecycle.rs` |
-| D3.4 | Combinator post-hook (`FUN_1400a2d80`) | `patches/combinator.rs` |
-| D4.1-D4.3 | Save sidecar (BXSAVEXT format) | `patches/save_sidecar.rs` |
-| D5 | Render trampoline post-hook | `patches/render_trampoline.rs` |
-| D7.2 | `genes-extended.xml` parser + live reload | `genes_xml.rs` |
-
-Research closed:
-- D3.0 horse-struct allocator: `FUN_1400aac60` ctor, `FUN_1400bf1f0` dtor, 0x498 bytes
-- D3.4 combinator: `FUN_1400a2d80(pA + 0x2b8, pB + 0x2b8, child + 0x2b8)`, Mendelian + 3 linked-inheritance cluster ranges
-- D4.4 horse_id: no dedicated field; roster slot position is the id
-- Save pipeline: `FUN_14006ee10` writer + `FUN_14006f150` loader, both via `gamestate[+0x130]` iteration order
-
-Cross-validated against [HorseyLiveTweaks](PRIOR-ART-HorseyLiveTweaks.md). Every offset matches; their independent RE confirms ours.
-
-Testing infrastructure + test-first rule + live test inventory: see [`TESTING.md`](TESTING.md).
+- **480-gene D0-D5 + D7 implementation status:** [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §8 (summary) + §9 (full implementation log).
+- **D0 sidecar buffers + locked design decisions + architecture diagram:** [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3.
+- **D4 save sidecar + horse-id finding + BXSAVEXT format:** [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Save pipeline functions", "Horse-id field", "Sidecar format".
+- **Test harness + test-first rule + live test inventory:** [`TESTING.md`](TESTING.md).
+- **Cross-validation with HorseyLiveTweaks:** [`PRIOR-ART-HorseyLiveTweaks.md`](PRIOR-ART-HorseyLiveTweaks.md). Every offset matches.
 
 ### Scope and non-conflict with HorseyLiveTweaks
 
@@ -209,7 +190,7 @@ visible new creature in-game without crashing the loader.
 
 - [x] **DONE.** Game install path locked at
       `C:\Games\Steam\steamapps\common\Horsey Game`.
-      See "Locked decisions (2026-05-14)" below.
+      See [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3 "Locked design decisions".
 - [ ] Back up vanilla `pop.xml`, `horsey.tmx`, and
       `genes.dat` (the cache).
 - [ ] Add one `<pop name="smoketest">` block under
@@ -930,13 +911,7 @@ _Source: [`VIABILITY.md`](VIABILITY.md)._
       `helix` shape, etc.) partially captured in
       GENE-CATALOG.md Part 2 "Vanilla pops"; full
       breakdown still pending per-species.
-- [x] **DONE.** Map each of the 61 consumer-read
-      slots to its horse-struct destination offset.
-      `research/extract-consumer-map.py` auto-derives:
-      23 direct-copy slots map to `+0x58..+0xa4`,
-      `+0x200`, `+0x254`, `+0x2a8`. 38 are
-      conditional/intermediate (not direct copies).
-      Output: GENE-CATALOG.md Part 2.
+- [x] **DONE.** Map each of the 61 consumer-read slots to its horse-struct destination offset. Tool: `research/extract-consumer-map.py`. Result: 23 direct-copy slots, 38 conditional/intermediate. Output documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 2 "Buf-slot -> horse-struct field".
 - [ ] Confirm the 91 fully-unused slots are not
       touched by other consumer chains (e.g. the
       breeding compatibility check
@@ -963,15 +938,7 @@ _Source: [`CONTENT-CREATION.md`](CONTENT-CREATION.md)._
 
 _Source: [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1: Conceptual model._
 
-- [x] **DONE 2026-05-15.** Breeding combinator is
-      `FUN_1400a2d80(parent_a + 0x2b8, parent_b + 0x2b8,
-      child + 0x2b8)`. Called from `FUN_1400b2e30:104367`.
-      Plain Mendelian (one strand per parent, each strand
-      picks one of the parent's two strands at random)
-      plus linked inheritance across 3 cluster ranges
-      (Neck 72..86, Head/Face/Hat 97..174, palette base
-      183..197). See GENE-CATALOG.md Part 1 Step 1 for
-      the algorithm.
+- [x] **DONE 2026-05-15.** Breeding combinator located + algorithm verified. Full details in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1 Step 1 "Breeding combinator".
 - [ ] Confirm the runtime mutation-during-breeding
       behavior: does the child get random allele
       flips beyond the parent picks?
