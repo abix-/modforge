@@ -326,21 +326,7 @@ authoring) if Q-reload-2 says it's cheap and high-value.
 
 ## P0. Gene Table Doubling: 240 -> 480 implementation plan
 
-### D0 / architecture / locked-decisions: SHIPPED 2026-05-14
-
-Sidecar buffers, the architecture diagram, locked design decisions (install path, layered design, authoring format, save compat, phase order), HTTP control-plane ops, and the `genes-extended.xml` authoring workflow are all documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) "Part 3: Extended (480-gene) layer".
-
-D0.5 (heap-redirect helper) was deferred during D1 and remains OPEN; not blocking.
-
-### Phase D1 + D3 + D5 (detours): SHIPPED 2026-05-15
-
-Strategy + implementation status documented in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §8 "Implementation status." Includes per-target RVAs, dispatch logic, deferred items (D1.3 mid-function death-drift mutator + D1.8 CRISPR UI), and the in-game verification numbers.
-
-In summary:
-- **D1 (ext_genes):** 3 of 5 detours shipped (`EVAL_DIPLOID_BLEND_A`/`B`, `GENE_ALLELE_SWAP`). 2 deferred (death drift, CRISPR UI). Loop-bound patches `D1.5/6/7` not needed (sidecar loaders cover the ext range).
-- **D3.1/D3.2 (lifecycle):** shipped; `tests/arm_lifecycle` captured 550 ctor + 3 dtor calls in 5s of menu idle.
-- **D3.4 (combinator):** shipped; 6 unit tests in `genes::tests` lock the Mendelian algorithm. Vanilla combinator + linked-inheritance details in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 1 Step 1.
-- **D5 (render trampoline):** shipped; in-game proof via slot 0 visual effect 2026-05-14.
+D0 architecture / locked-decisions and D1+D3+D5 detours shipped 2026-05-14 / 2026-05-15. See [`CHANGELOG.md`](CHANGELOG.md#d-phase-shipped-items-2026-05-14--2026-05-15). D0.5 (heap-redirect helper) deferred but not blocking.
 
 ### Phase D2 (per-pop weight extension): OPEN
 
@@ -383,10 +369,6 @@ gets persisted if we can find where it's saved.
 
 ### Phase D7: Iteration and testing infrastructure
 
-D7.2 (`genes-extended.xml` parser + live reload) shipped; documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3 "XML authoring format". D7.3 (`genes.ext.dump` op) shipped as part of D0.6; see GENE-CATALOG Part 3 "HTTP control-plane ops".
-
-Open:
-
 - [ ] **D7.1.** Implement the `genes.xml.reload` and `pop.xml.reload` HTTP ops (Q-reload-1 still open; may not be feasible if vanilla doesn't expose a reentrant loader).
 - [ ] **D7.4.** Per-horse full dump op. Needs a stable horse_id resolution per D4.4 finding (roster slot position) before it's meaningful.
 
@@ -406,23 +388,14 @@ Still open (need a save loaded + per-test save fixtures):
 
 ### Phase D9: Documentation and rollout
 
-D9.1 (extended layout documented in GENE-CATALOG.md Part 3): SHIPPED.
-D9.4 (sidecar file format documented in SAVE-FORMAT.md): SHIPPED.
-
-Open:
-
 - [ ] **D9.2.** Write a "How to author a new gene" guide aimed at non-engineers: `genes-extended.xml` format, `mode="..."` options, working examples.
 - [ ] **D9.3.** Decide rollout: ship the patch infra with zero extended genes by default and let authors add them via XML, OR ship a starter pack of 20-50 useful new genes.
 
-### Risks and unknowns
+### Risks and unknowns (open only; resolved entries relocated to [`CHANGELOG.md`](CHANGELOG.md#d-phase-risks-resolved-2026-05-15))
 
 | Risk | Mitigation |
 |---|---|
-| ~~Breeding combinator unfound~~ RESOLVED 2026-05-15: `FUN_1400a2d80`. See D3.4. |
 | `FUN_1400a5d20`'s detour may be hot enough that the per-call branch costs measurable frame time. | Profile in D8.5. If it's a problem, JIT-patch the detour to skip vanilla frames where no extended genes are defined. |
-| ~~Stable horse_id field not located~~ PARTIAL 2026-05-15: no dedicated field; roster slot position IS the id. Sidecar uses positional ordering (iteration order matches save order). See D4.4. |
-| ~~horse-struct allocator unfound~~ RESOLVED 2026-05-15. Horse struct is 0x498 bytes. Constructor `FUN_1400aac60`, destructor `FUN_1400bf1f0`. 40+ call sites alloc via `FUN_1402c704c(0x498)` and ALL route through the single constructor. See D3.0. |
-| **NEW: working genome misidentified as `+0x78`.** Real working genome is inline at `horse + 0x2b8` (engine + consumer + save all use it). `+0x78` is pop-seed / archive only. Original D3.1-D3.3 plan was wrong; revised plan in D3 section. | Done: docs updated. |
 | Vanilla's `genes.dat` cache format may include the gene table in a way that doesn't survive our patches. | Recommend deleting `genes.dat` on attach to force regen. Document. |
 | `FUN_14009f680` runs on a non-render thread (audio? AI?) and our trampoline triggers thread-safety issues. | Audit the calling thread context for each of the 4 caller sites in D5.1. |
 
@@ -446,18 +419,6 @@ the RPG layer.
 
 Tracked at the framework level for now; will graduate to
 this todo once the bestiary mod is shipping.
-
----
-
-## Done (recent)
-
-- 2026-05-13: native-PE binding ([`e9d3345`](.))
-- 2026-05-13: hot reload via staged DLLs ([`91f79f5`](.))
-- 2026-05-14: `no_tire` enabled by default ([`c37fa54`](.))
-- 2026-05-14: split-flag fatigue suppressor
-  ([`608f994`](.))
-- 2026-05-14: binary-patch infra (revert-on-detach)
-  ([`a31246f`](.))
 
 ---
 

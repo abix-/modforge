@@ -2,6 +2,36 @@
 
 Chronological commit history relocated from `todo.md`. Each entry preserves the verbatim summary written at commit time.
 
+## Done (recent). Pre-session-log relocation
+
+Originally in `todo.md` "Done (recent)":
+
+- 2026-05-13: native-PE binding (`e9d3345`)
+- 2026-05-13: hot reload via staged DLLs (`91f79f5`)
+- 2026-05-14: `no_tire` enabled by default (`c37fa54`)
+- 2026-05-14: split-flag fatigue suppressor (`608f994`)
+- 2026-05-14: binary-patch infra (revert-on-detach) (`a31246f`)
+
+## D-phase risks resolved 2026-05-15
+
+Originally in `todo.md` "Risks and unknowns" table:
+
+- **Breeding combinator unfound** RESOLVED 2026-05-15: `FUN_1400a2d80`. See D3.4 / GENE-CATALOG.md Part 1 Step 1.
+- **Stable horse_id field not located** PARTIAL 2026-05-15: no dedicated field; roster slot position IS the id. Sidecar uses positional ordering (iteration order matches save order). See D4.4 / SAVE-FORMAT.md.
+- **Horse-struct allocator unfound** RESOLVED 2026-05-15. Horse struct is 0x498 bytes. Constructor `FUN_1400aac60`, destructor `FUN_1400bf1f0`. 40+ call sites alloc via `FUN_1402c704c(0x498)` and ALL route through the single constructor. See D3.0 / GENE-CATALOG.md.
+- **Working genome misidentified as `+0x78`** RESOLVED 2026-05-15: real working genome is inline at `horse + 0x2b8` (engine + consumer + save all use it). `+0x78` is pop-seed / archive only. Original D3.1-D3.3 plan was wrong; revised in D3 section + docs updated.
+
+## D-phase shipped items 2026-05-14 / 2026-05-15
+
+Originally in `todo.md` `## P0. Gene Table Doubling`:
+
+- **D0 / architecture / locked-decisions: SHIPPED 2026-05-14.** Sidecar buffers, architecture diagram, locked design decisions (install path, layered design, authoring format, save compat, phase order), HTTP control-plane ops, and the `genes-extended.xml` authoring workflow documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) "Part 3: Extended (480-gene) layer". D0.5 (heap-redirect helper) was deferred during D1 and remains OPEN; not blocking.
+- **Phase D1 + D3 + D5 (detours): SHIPPED 2026-05-15.** Strategy + implementation status in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §8 "Implementation status." D1: 3 of 5 detours shipped (`EVAL_DIPLOID_BLEND_A`/`B`, `GENE_ALLELE_SWAP`); 2 deferred (death drift, CRISPR UI). D3.1/D3.2 (lifecycle): shipped; `tests/arm_lifecycle` captured 550 ctor + 3 dtor calls in 5s of menu idle. D3.4 (combinator): shipped; 6 unit tests in `genes::tests` lock the Mendelian algorithm. D5 (render trampoline): shipped; in-game proof via slot 0 visual effect 2026-05-14.
+- **D7.2** (`genes-extended.xml` parser + live reload) shipped; documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3 "XML authoring format".
+- **D7.3** (`genes.ext.dump` op) shipped as part of D0.6; see GENE-CATALOG Part 3 "HTTP control-plane ops".
+- **D9.1** (extended layout documented in GENE-CATALOG.md Part 3): SHIPPED.
+- **D9.4** (sidecar file format documented in SAVE-FORMAT.md): SHIPPED.
+
 ## Session 2 (2026-05-15, latest commit `9fdeca9` at relocation)
 
 ### What shipped
