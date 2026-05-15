@@ -49,10 +49,16 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 |---|---|---|---|---|
 | `GAMESTATE_PTR` | `0x1403fb0d8` | **R** (`ae333c6`) | cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14` | very high; every state read + write |
 | `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
-| `NO_TIRE_TOGGLE` | `0x1403d95c5` | H | cheat-menu button handler writes 1 byte | medium; every Cheats tab toggle |
-| `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H | `"debug"` typed-string check in pause menu | medium; gates cheat menu |
-| `DEBUG_LOG_GATE` | `0x1403d9526` | H | retirement-message printf branch | low |
+| `NO_TIRE_TOGGLE` | `0x1403d95c5` | H, sig in flight | xor / cmp-sete-mov candidates authored but neither matches this build; sanity gate keeps fallback active | medium; every Cheats tab toggle |
+| `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H, sig in flight | adjacent-mov-pair candidate matched a false site 0x2640f bytes off; sanity gate rejected; need xref-derived sig | medium; gates cheat menu |
+| `DEBUG_LOG_GATE` | `0x1403d9526` | H, sig in flight | 0xffffffff-then-zero init candidate doesn't match this build's instruction layout | low |
 | `SAVE_VERSION_GLOBAL` | `0x1403fb0e0` | H | first `uint32` of save file written here | low; one read per load |
+
+### R3 validation primitives (locked)
+
+- `mem.alias_check { addr_a, addr_b }`: writes 0xAB then 0xCD to A, reads B after each, restores A. `same_byte: true` iff both reads matched both writes. Proves two addresses point at the same byte.
+- `targets::resolve::resolve_data_global(candidates, hardcoded_rva)`: runs the sleuth scan, then sanity-gates the result against the rebased hardcoded RVA. Rejects any resolution > 0x1000 bytes from hardcoded. Caller falls back to hardcoded on `None`.
+- `tests/r3_cheat_globals_resolve.rs`: per global, if the resolver returned non-null, runs `mem.alias_check(hardcoded, resolved)` and FAILS LOUD on mismatch. The user can re-run this test against any future build to detect drift on first contact.
 
 ### Function entries
 

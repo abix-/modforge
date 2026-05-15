@@ -97,6 +97,89 @@ pub fn register_all() {
         // R3: pattern-scan-resolve the GAMESTATE_PTR data address
         // via modforge::patterns::sleuth. Recovery path for the
         // 'hardcoded address drifted' bug class.
+        // Two-address aliasing probe: write a sentinel byte at A,
+        // read at B; if they're the same byte the read returns the
+        // sentinel. Used by tests to prove a resolved address points
+        // at the same byte as the hardcoded one. Restores A's
+        // original value before returning, even on early-out.
+        OpDef::new(
+            "mem.alias_check",
+            "Test whether two byte addresses alias the same memory. \
+            Writes 0xAB then 0xCD to A, reads B after each, restores.",
+            "{addr_a: u64, addr_b: u64}",
+            |args| {
+                let a = args.get("addr_a").and_then(Json::as_u64)
+                    .ok_or_else(|| "missing or non-u64 arg: addr_a".to_string())? as usize;
+                let b = args.get("addr_b").and_then(Json::as_u64)
+                    .ok_or_else(|| "missing or non-u64 arg: addr_b".to_string())? as usize;
+                if a == 0 || b == 0 {
+                    return Err("zero address rejected".to_string());
+                }
+                // SAFETY: caller-controlled raw addresses. The op is
+                // intended only for `.data` byte globals; misuse
+                // crashes the host (acceptable for a test-only op).
+                let pa = a as *mut u8;
+                let pb = b as *const u8;
+                let original = unsafe { *pa };
+                let probe1 = 0xAB_u8;
+                let probe2 = 0xCD_u8;
+                unsafe { *pa = probe1; }
+                let read1 = unsafe { *pb };
+                unsafe { *pa = probe2; }
+                let read2 = unsafe { *pb };
+                unsafe { *pa = original; }
+                let same = read1 == probe1 && read2 == probe2;
+                Ok(json!({
+                    "addr_a": format!("0x{a:x}"),
+                    "addr_b": format!("0x{b:x}"),
+                    "same_byte": same,
+                    "read1_after_writing_0xab_to_a": read1,
+                    "read2_after_writing_0xcd_to_a": read2,
+                    "original_value_restored": original,
+                }))
+            },
+        ),
+
+        OpDef::new(
+            "targets.resolve.cheat_globals",
+            "Resolve NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE at runtime via patternsleuth.",
+            "",
+            |_| {
+                let image_base = crate::targets::image_base();
+                fn entry(addr: Option<usize>, fallback_rva: usize) -> Json {
+                    let resolved = addr;
+                    let addr_hex = match resolved {
+                        Some(a) => format!("0x{a:x}"),
+                        None => "0x0".to_string(),
+                    };
+                    let current_byte_value = resolved.map(|a| {
+                        // SAFETY: byte read from a mapped .data global.
+                        unsafe { *(a as *const u8) }
+                    });
+                    json!({
+                        "address": addr_hex,
+                        "hardcoded": format!("0x{:x}", crate::targets::rebase(fallback_rva)),
+                        "current_byte_value": current_byte_value,
+                    })
+                }
+                Ok(json!({
+                    "image_base": format!("0x{image_base:x}"),
+                    "no_tire_toggle": entry(
+                        crate::targets::resolve::no_tire_toggle(),
+                        crate::targets::NO_TIRE_TOGGLE,
+                    ),
+                    "debug_mode_active": entry(
+                        crate::targets::resolve::debug_mode_active(),
+                        crate::targets::DEBUG_MODE_ACTIVE,
+                    ),
+                    "debug_log_gate": entry(
+                        crate::targets::resolve::debug_log_gate(),
+                        crate::targets::DEBUG_LOG_GATE,
+                    ),
+                }))
+            },
+        ),
+
         OpDef::new(
             "targets.resolve.gamestate_ptr",
             "Resolve GAMESTATE_PTR at runtime via patternsleuth signatures.",

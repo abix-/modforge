@@ -367,20 +367,27 @@ pub mod resolve {
         *CACHE.get_or_init(resolve_gamestate_ptr_uncached)
     }
 
-    /// One candidate way to recover GAMESTATE_PTR from a `.text`
+    /// One candidate way to recover an address from a `.text`
     /// instruction.
     struct Candidate {
         name: &'static str,
-        /// IDA-style sleuth signature for the instruction. Single
-        /// `?` per wildcard byte.
+        /// IDA-style sleuth signature. `??` per wildcard byte.
         sig: &'static str,
-        /// Byte offset of disp32 inside the matched bytes.
+        /// Byte offset of the anchor `disp32` inside the matched
+        /// bytes (the one we decode to recover the target).
         disp32_offset: usize,
-        /// Total length of the matched instruction.
+        /// Total length of the instruction whose `next_ip` is the
+        /// reference point for the anchor `disp32`.
         instr_len: usize,
-        /// Inline offset added to GAMESTATE_PTR by the instruction
-        /// (subtracted from the resolved target to recover the base).
+        /// Inline offset added to the target by the instruction.
+        /// Subtracted from the resolved target to recover the base.
         inline_offset: usize,
+        /// Optional second `disp32` to cross-validate (must refer
+        /// to the SAME final target). Catches false matches where
+        /// the opcode shape is right but the operand is a different
+        /// global. `(disp32_offset, next_ip_offset)` relative to
+        /// the match start.
+        validate_disp32: Option<(usize, usize)>,
     }
 
     /// Candidate set. Each references a decomp site that does
@@ -399,6 +406,7 @@ pub mod resolve {
             disp32_offset: 2,
             instr_len: 10,
             inline_offset: 0x308,
+            validate_disp32: None,
         },
         // `*(int *)(DAT_1403fb0d8 + 0x308) < 0x32` race-fee check.
         // Encoding: cmp dword ptr [rip+disp32], imm8
@@ -409,6 +417,7 @@ pub mod resolve {
             disp32_offset: 2,
             instr_len: 7,
             inline_offset: 0x308,
+            validate_disp32: None,
         },
         // `*(undefined4 *)(DAT_1403fb0d8 + 0x440) = 0x14;` from
         // some race-state-set path. Less unique than the above
@@ -422,11 +431,161 @@ pub mod resolve {
             disp32_offset: 2,
             instr_len: 10,
             inline_offset: 0x440,
+            validate_disp32: None,
         },
     ];
 
-    fn resolve_gamestate_ptr_uncached() -> Option<usize> {
-        let targets: Vec<Target<'_>> = CANDIDATES
+    /// Resolved runtime address of `NO_TIRE_TOGGLE` (the 1-byte
+    /// cheat-toggle flag at `DAT_1403d95c5`). Cached.
+    pub fn no_tire_toggle() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_data_global(
+            CANDIDATES_NO_TIRE_TOGGLE,
+            super::NO_TIRE_TOGGLE,
+        ))
+    }
+
+    /// Resolved runtime address of `DEBUG_MODE_ACTIVE` (the 1-byte
+    /// debug-cheat-active flag at `DAT_1403d959b`). Cached.
+    pub fn debug_mode_active() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_data_global(
+            CANDIDATES_DEBUG_MODE_ACTIVE,
+            super::DEBUG_MODE_ACTIVE,
+        ))
+    }
+
+    /// Resolved runtime address of `DEBUG_LOG_GATE` (the
+    /// retirement-message printf gate at `DAT_1403d9526`). Cached.
+    pub fn debug_log_gate() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_data_global(
+            CANDIDATES_DEBUG_LOG_GATE,
+            super::DEBUG_LOG_GATE,
+        ))
+    }
+
+    /// Wrapper around `resolve_via` that gates the result against
+    /// the hardcoded RVA. If the resolved address drifts more than
+    /// 0x1000 bytes from the rebased hardcoded location, the
+    /// signature almost certainly matched a different `.data`
+    /// global; reject and let the caller fall back to the
+    /// hardcoded value. The 0x1000 bound is the size of a typical
+    /// `.data` neighbourhood for a single subsystem's flags in
+    /// Horsey.exe; addresses inside that band are plausibly the
+    /// real target, addresses outside it are not.
+    ///
+    /// As R3 batch 1 sigs get refined (or replaced via xref-derived
+    /// patterns) and the resolver consistently agrees with the
+    /// hardcoded RVA in tests, this gate can be relaxed. Until
+    /// then it protects the cheat-menu toggles from writing to the
+    /// wrong byte.
+    fn resolve_data_global(
+        candidates: &[Candidate],
+        hardcoded_rva: usize,
+    ) -> Option<usize> {
+        let resolved = resolve_via(candidates)?;
+        let hardcoded = super::rebase(hardcoded_rva);
+        let delta = resolved.abs_diff(hardcoded);
+        if delta > 0x1000 {
+            modforge::log!(
+                "R3 sanity gate rejected resolved=0x{resolved:x}; \
+                 hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+            );
+            return None;
+        }
+        Some(resolved)
+    }
+
+    /// `DAT_1403d95c5 = DAT_1403d95c5 == '\0';` (toggle pattern in
+    /// the cheat-menu button handler). MSVC compiles this to:
+    ///   cmp byte ptr [rip+disp1], 0      ; 80 3D dd dd dd dd 00
+    ///   sete al                          ; 0F 94 C0
+    ///   mov  byte ptr [rip+disp2], al    ; 88 05 dd dd dd dd
+    /// Both disp1 and disp2 resolve to NO_TIRE_TOGGLE. We anchor on
+    /// disp1 (first match field). 16 bytes total. This `cmp; sete;
+    /// mov` triple to the same byte address is extremely rare and
+    /// reliably uniquely matches the toggle compilation pattern.
+    const CANDIDATES_NO_TIRE_TOGGLE: &[Candidate] = &[
+        // Likely MSVC encoding: `xor byte ptr [rip+disp32], 1` (10
+        // bytes total with REX prefix and imm8). Compiles a simple
+        // bool toggle directly without a temporary. The XOR-with-1
+        // byte-write is rare globally.
+        Candidate {
+            name: "no_tire_toggle_xor_1",
+            sig: "80 35 ?? ?? ?? ?? 01",
+            disp32_offset: 2,
+            instr_len: 7,
+            inline_offset: 0,
+            validate_disp32: None,
+        },
+        // Fallback: cmp/sete/mov triple where both disp32 fields
+        // must agree (same byte being tested + written).
+        //   cmp byte ptr [rip+disp1], 0   ; 80 3D dd dd dd dd 00
+        //   sete al                       ; 0F 94 C0
+        //   mov  byte ptr [rip+disp2], al ; 88 05 dd dd dd dd
+        // Anchor on disp1 (offset 2, instr_len 7); validate disp2
+        // at offset 12, its next_ip at offset 16, points to the
+        // same target.
+        Candidate {
+            name: "no_tire_toggle_cmp_sete_mov",
+            sig: "80 3d ?? ?? ?? ?? 00 0f 94 c0 88 05 ?? ?? ?? ??",
+            disp32_offset: 2,
+            instr_len: 7,
+            inline_offset: 0,
+            validate_disp32: Some((12, 16)),
+        },
+    ];
+
+    /// `if (DAT_1403d959b == '\0') DAT_1403d959b = '\x01';`
+    /// (typed-string handler unlocking debug mode). MSVC compiles to:
+    ///   cmp byte ptr [rip+disp1], 0     ; 80 3D dd dd dd dd 00
+    ///   jne short LABEL                 ; 75 imm8
+    ///   mov byte ptr [rip+disp2], 1     ; C6 05 dd dd dd dd 01
+    /// disp1 == disp2 refers to DEBUG_MODE_ACTIVE. Anchor on disp1.
+    const CANDIDATES_DEBUG_MODE_ACTIVE: &[Candidate] = &[
+        // The d-e-b-u-g unlock block in the typed-string handler:
+        //   DAT_1403d959b = '\x01';   // debug_mode_active = 1
+        //   DAT_1403d9522 = 0;        // some adjacent flag = 0
+        // MSVC compiles these adjacent writes back-to-back:
+        //   mov byte ptr [rip+disp1], 1    ; C6 05 dd dd dd dd 01
+        //   mov byte ptr [rip+disp2], 0    ; C6 05 dd dd dd dd 00
+        // Anchor on disp1 (first write, which sets DEBUG_MODE_ACTIVE).
+        // This 14-byte sequence is much more specific than the
+        // test-then-set-1 pattern alone; the unlock-block second
+        // write is unique in the codebase.
+        Candidate {
+            name: "debug_mode_set_1_then_set_0_adjacent",
+            sig: "c6 05 ?? ?? ?? ?? 01 c6 05 ?? ?? ?? ?? 00",
+            disp32_offset: 2,
+            instr_len: 7,
+            inline_offset: 0,
+            validate_disp32: None,
+        },
+    ];
+
+    /// `_DAT_1403d95c0 = 0xffffffff; _DAT_1403d9526 = 0; _DAT_1403d95c4 = 0;`
+    /// init block. MSVC compiles to:
+    ///   mov dword ptr [rip+disp1], 0xffffffff  ; C7 05 dd dd dd dd FF FF FF FF
+    ///   mov dword ptr [rip+disp2], 0           ; C7 05 dd dd dd dd 00 00 00 00
+    ///   mov dword ptr [rip+disp3], 0           ; C7 05 dd dd dd dd 00 00 00 00
+    /// The 0xFFFFFFFF init is rare; the three-instruction sequence
+    /// is unique. The MIDDLE `c7 05` (disp2 starting at offset 12 in
+    /// the match) refers to DEBUG_LOG_GATE.
+    const CANDIDATES_DEBUG_LOG_GATE: &[Candidate] = &[Candidate {
+        name: "debug_log_gate_init_after_0xffffffff",
+        sig: "c7 05 ?? ?? ?? ?? ff ff ff ff c7 05 ?? ?? ?? ?? 00 00 00 00 c7 05 ?? ?? ?? ?? 00 00 00 00",
+        disp32_offset: 12,
+        instr_len: 20,
+        inline_offset: 0,
+        validate_disp32: None,
+    }];
+
+    /// Generic resolver: try each candidate signature in order.
+    /// Cross-validates when multiple candidates resolve and warns on
+    /// disagreement.
+    fn resolve_via(candidates: &[Candidate]) -> Option<usize> {
+        let targets: Vec<Target<'_>> = candidates
             .iter()
             .map(|c| Target {
                 name: c.name,
@@ -440,9 +599,8 @@ pub mod resolve {
                 return None;
             }
         };
-
-        let mut last_base: Option<usize> = None;
-        for c in CANDIDATES {
+        let mut last: Option<usize> = None;
+        for c in candidates {
             let Some(instr_addr) = res.get(c.name) else {
                 modforge::log!("R3 candidate {} missed", c.name);
                 continue;
@@ -459,16 +617,35 @@ pub mod resolve {
                 );
                 continue;
             }
+            // Optional second-disp32 self-validation: when the
+            // candidate pattern references the same target twice
+            // (e.g. cmp [x],0; mov [x],al), both disp32 must decode
+            // to the same address. Catches false positives where the
+            // opcode shape matches but the operand is some other
+            // global.
+            if let Some((off2, next_ip2_off)) = c.validate_disp32 {
+                // SAFETY: same rationale as above; offsets are
+                // inside the matched instruction window.
+                let disp2 = unsafe {
+                    ((instr_addr + off2) as *const i32).read_unaligned()
+                } as isize;
+                let next_ip2 = instr_addr.wrapping_add(next_ip2_off);
+                let ref2 = next_ip2.wrapping_add(disp2 as usize);
+                if ref2 != referenced {
+                    modforge::log!(
+                        "R3 {} validate_disp32 mismatch: ref1=0x{referenced:x} ref2=0x{ref2:x}",
+                        c.name
+                    );
+                    continue;
+                }
+            }
             let base = referenced - c.inline_offset;
             modforge::log!(
                 "R3 candidate {name}: instr=0x{instr_addr:x} disp32={disp32:#x} \
                  referenced=0x{referenced:x} base=0x{base:x}",
                 name = c.name,
             );
-            // Cross-validate: if multiple candidates resolve, they
-            // should agree on the base. Keep the first; warn on
-            // disagreement.
-            if let Some(prev) = last_base {
+            if let Some(prev) = last {
                 if prev != base {
                     modforge::log!(
                         "R3 WARN candidate {} disagrees: prev=0x{prev:x} new=0x{base:x}",
@@ -476,12 +653,17 @@ pub mod resolve {
                     );
                 }
             }
-            last_base = Some(base);
+            last = Some(base);
         }
-        if last_base.is_none() {
+        last
+    }
+
+    fn resolve_gamestate_ptr_uncached() -> Option<usize> {
+        let r = resolve_via(CANDIDATES);
+        if r.is_none() {
             modforge::log!("R3 GAMESTATE_PTR: no candidate signature matched");
         }
-        last_base
+        r
     }
 }
 
