@@ -476,6 +476,57 @@ pub mod horse_offset {
                 .unwrap_or(HORSE_CTX_OFFSET)
         })
     }
+
+    /// Old decomp constant for the Horse struct alloc size. Production
+    /// should call [`alloc_size()`].
+    pub const HORSE_ALLOC_SIZE: usize = 0x498;
+
+    /// Pattern-resolved Horse struct alloc size. Anchors on every
+    /// `e8 X<HORSE_CONSTRUCTOR>` call site, looks back ~32 bytes for
+    /// `b9 <imm32>` (mov ecx, imm32) which is the allocator-size
+    /// load preceding the `FUN_1402c704c(0x498)` call that produces
+    /// the buffer passed to the constructor. Histograms the imms
+    /// across all call sites; the most-frequent value in
+    /// `[0x100, 0x10000)` is the struct size.
+    ///
+    /// Falls back to `HORSE_ALLOC_SIZE` when the resolver chain
+    /// (function entry or call-site lookback) misses.
+    pub fn alloc_size() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_alloc_size().unwrap_or(HORSE_ALLOC_SIZE))
+    }
+
+    fn resolve_alloc_size() -> Option<usize> {
+        let target = super::resolve::horse_constructor()?;
+        let sig = format!("e8 X0x{target:x}");
+        let call_sites = modforge::patterns::sleuth::scan_all_matches(&sig).ok()?;
+        if call_sites.is_empty() {
+            return None;
+        }
+        const LOOKBACK: usize = 32;
+        let mut hist: std::collections::BTreeMap<i64, usize> =
+            std::collections::BTreeMap::new();
+        for call_addr in call_sites {
+            let start = call_addr.saturating_sub(LOOKBACK);
+            // SAFETY: start..call_addr is inside .text, mapped.
+            let bytes: &[u8] = unsafe {
+                std::slice::from_raw_parts(start as *const u8, LOOKBACK)
+            };
+            for i in 0..bytes.len().saturating_sub(5) {
+                if bytes[i] == 0xb9 {
+                    let imm = i32::from_le_bytes([
+                        bytes[i + 1], bytes[i + 2], bytes[i + 3], bytes[i + 4],
+                    ]) as i64;
+                    if (0x100..0x10000).contains(&imm) {
+                        *hist.entry(imm).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+        hist.into_iter()
+            .max_by_key(|(_, c)| *c)
+            .map(|(v, _)| v as usize)
+    }
 }
 
 // =============================================================================
