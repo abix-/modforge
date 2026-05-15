@@ -34,9 +34,78 @@ Research closed:
 
 Cross-validated against [HorseyLiveTweaks](PRIOR-ART-HorseyLiveTweaks.md). Every offset matches; their independent RE confirms ours.
 
-### Next action: in-game dryrun + arm
+### Engineering rule (locked 2026-05-15): TESTS FIRST
 
-Inject the built DLL against a real `Horsey.exe` and run:
+Every new feature, patch, or research finding ships as a test first. The test asserts the contract before the implementation exists. We confirm the test fails, write the code until the test passes, then commit both together.
+
+This applies to:
+- New detours / patches: a test asserting prologue bytes + post-arm `call_count > 0`.
+- New genome math: unit tests covering the algorithm against hand-checked values.
+- New HTTP ops: a test asserting wire shape + behavior.
+- Research findings (e.g. "this offset is the genome"): a test that reads from that offset and asserts it matches the known-good value from a save.
+
+No exceptions. Code that ships without a covering test is not finished.
+
+### Test harness status (2026-05-15)
+
+`modforge::harness` shipped today. Generic Steam-game launch + inject + HTTP-probe + taskkill loop. Modules:
+
+- `modforge/src/harness/mod.rs`. `GameSpec`, `HttpProbe`, `InjectorSpec`, `BuildSpec`
+- `modforge/src/harness/harness.rs`. `GameHarness::launch` / `attach_existing`, `RunningGame` with Drop taskkill
+- `modforge/src/harness/build.rs`. Wraps `cargo build -p <pkg>`
+- `modforge/src/harness/steam.rs`. `steam.exe -applaunch <id>` with `steam://rungameid` fallback
+- `modforge/src/harness/process.rs`. `tasklist`/`taskkill` helpers
+- `modforge/src/harness/injector.rs`. Runs the per-game injector exe
+- `modforge/src/harness/http_probe.rs`. POST to `<endpoint>/<op>`, poll-until-ready
+
+Per-game wiring shipped:
+
+- `horsey-mod/tests/common/mod.rs`. `GameSpec` for Horsey (AppID 3602570, `Horsey.exe`, port 33077, `/op` endpoint), passes `--fresh` to injector so stale state doesn't block.
+- `horsey-mod/tests/smoke.rs`. First test, asserts `ping` succeeds end-to-end.
+
+Env vars honored: `MODFORGE_NO_GAME=1` skips live launch; `MODFORGE_SKIP_BUILD=1` skips `cargo build`; `MODFORGE_STEAM_EXE` overrides Steam path.
+
+### First test runs (2026-05-15)
+
+#### Iteration 1: failed at stale injector state
+
+Loop reached the injector step but failed at horsey-inject's stale-state guard (it saw the prior manual injection's `.injstate` file and refused). Fix: pass `--fresh` from the test wiring.
+
+Lesson: injector binaries that maintain on-disk hot-reload state need a per-test clean-slate flag.
+
+#### Iteration 2: HTTP probe URL was wrong
+
+After the inject fix, the probe hung on HTTP wait. Root cause: probe was POSTing to `<endpoint>/<op>` (e.g. `/op/ping`) but `modforge::server` accepts POST only at the literal `endpoint` URL (`/op`) with `{"op": "<name>", "args": {...}}` in the BODY. Fix: rewrote `harness::http_probe` to use envelope shape.
+
+Lesson: the test harness is the right place to encode the wire shape. Tests should never hand-build URLs.
+
+#### Iteration 3: SMOKE PASSES end-to-end
+
+`cargo test -p horsey-mod --test smoke -- --test-threads=1 --nocapture` -> **7.1s total**, ping returns ok, taskkill on Drop:
+
+```
+kill old Horsey       120ms
+Steam launch          3.3s
+horsey-inject --fresh 500ms
+HTTP ping             ~1ms
+teardown grace        3s
+```
+
+Test log written to `target/test-runs/smoke_ping_returns_ok-<ts>.log` with every step timestamped + flushed per-line.
+
+#### Iteration 4: dryrun_d3_d4 test FAILING on JSON shape
+
+Test written: `horsey-mod/tests/dryrun_d3_d4.rs`. Three tests asserting prologue bytes for combinator, lifecycle (ctor+dtor), and save (4 targets). All three relaunch the game cleanly and reach the dryrun ops, but the test parser looks for fields at the wrong JSON path. The ops return the standard envelope `{ok, op, error, result, state}` and the dryrun payload is in `result`, not at the top level. Pending fix to test parser. This is exactly the "test-first" workflow: red test, then fix until green.
+
+### Next action: re-run smoke test with `--fresh` fix
+
+`cargo test -p horsey-mod --test smoke -- --test-threads=1 --nocapture`
+
+Expected: harness builds (or skips), kills any running Horsey, Steam launches a fresh instance, injector runs with `--fresh` and succeeds, HTTP plane comes up, `ping` returns OK, harness taskkills on Drop. End to end ~30-60s depending on Steam.
+
+Once smoke passes, add the real test:
+
+`horsey-mod/tests/dryrun_d3_d4.rs` calls each new dryrun op and asserts the returned prologue bytes match expected MSVC entry patterns:
 
 ```
 genes.ext.combinator.dryrun
@@ -44,18 +113,20 @@ genes.ext.lifecycle.dryrun
 genes.ext.save.dryrun
 ```
 
-Verify the printed prologue bytes match expected MSVC patterns (typically `48 89 5c 24 ..` or `48 8b c4 ..`). If a prologue looks off, the -16 Ghidra-offset adjustment is wrong for that address and needs re-derivation BEFORE arming, or the detour will crash.
+Acceptable prologues: `48 89 5c 24 ..` (shadow-space saves) or `48 8b c4 ..` (mov rax, rsp). Anything else means the -16 Ghidra adjustment is wrong for that target and arming would crash.
 
-If dryruns look OK, arm in order:
+After dryruns pass, add `horsey-mod/tests/arm_full_stack.rs` that arms in order:
 1. `genes.ext.arm` (D1)
 2. `genes.ext.render.arm` (D5)
 3. `genes.ext.lifecycle.arm`
 4. `genes.ext.combinator.arm`
 5. `genes.ext.save.arm`
 
-Then breed a pair of horses with set ext alleles, save, restart, reload, observe.
+Each step asserts `armed: true` and (after a brief settle) `call_count > 0` on the matching stats op. Failure mode: arming crashes the game, taskkill on Drop cleans up.
 
-If that passes, the 480-gene system is **functionally complete for v1**.
+Save-round-trip test deferred until per-game test helpers learn to drive "load save N". Out of scope for the initial loop.
+
+If smoke + dryrun + arm-full-stack all pass, the 480-gene system is **functionally complete for v1**.
 
 ### After v1 is verified
 
