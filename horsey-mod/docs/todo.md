@@ -530,39 +530,68 @@ writes the buf directly without recursing through eval_a/b).
 `allele_swap=0` is expected. It only fires on the rare
 allele-renumber event.
 
-#### Open follow-up: slot-to-feature mapping
+#### Confirmed: slot 0 has a major visible effect
 
-The mechanism is proven. We don't yet know which buf-slot
-drives which visible horse feature. From VIABILITY.md
-Q-render-3:
+Test: `BX_TEST_SLOT0` -> slot 0 set 200.0, default alleles (3,3),
+mated two horses, the resulting babies rendered "full screen
+width." Slot 0 is **consumer-read** and drives some primary
+scale-like parameter. Exact feature TBD; the visible result was
+dramatic enough that we cleared the default alleles before
+further iteration.
+
+This proves the visuals pipeline writes effects the renderer
+honors. It does NOT prove "slot 0 = body width" specifically;
+without the slot-to-feature map below we can't assert that.
+
+#### Next phase: systematic vanilla-gene research
+
+Don't guess at slots; map them. From VIABILITY.md Q-render-3:
 
 - 353 total float slots in the render buf
 - 258 written by vanilla `FUN_14009f680` (the engine)
 - 61 read by vanilla `FUN_1400ab3d0` (the consumer that
   transcribes into the horse struct at `+0x124`, `+0x128`,
   `+0x130`..`+0x154`)
-- Only the 61 consumer-read slots produce visible effects.
-  The other 197 written slots are dead computation.
+- Only the 61 consumer-read slots produce visible effects
 
-`BX_TEST_SLOT0` targets slot 0 in set mode with value 200.0.
-If slot 0 is in the 257 "engine writes but consumer ignores"
-set, there is no visible effect even though our value lands
-in the buf. This is the most likely outcome of a
-naively-chosen slot.
+Research plan to derive the map:
 
-Next iteration to find a producible visible effect:
+1. **Dump vanilla `genes.xml`** from the game's `data/`
+   directory. Inventory the 240 vanilla gene names and any
+   metadata. Names like `SIZE`, `BONES`, `LEG_LENGTH`,
+   `OSTODERM` are the human-readable handles.
+2. **Read `FUN_14009f680`'s decomp** (14kB function in
+   `horseygame/decompiled/all_functions.c`). For each of
+   the 233 baked literal gene indices in that function,
+   identify the buf slot it writes to. Build
+   `(gene_idx, gene_name, buf_slot)` triples.
+3. **Read `FUN_1400ab3d0`'s decomp** (8kB consumer).
+   Enumerate which buf slots it reads
+   (`param_2[X]` accesses) and which horse-struct fields
+   it writes to (offsets `+0x124`..`+0x154`).
+4. **Cross-reference**: for each consumer-read buf slot,
+   the chain is "gene X writes to slot N which the
+   consumer transcribes to horse-struct field +0xYY which
+   the renderer reads as feature Z."
+5. **Author the map** as
+   `horseygame/SLOT-MAP.md`: per-slot row with
+   `{ slot, vanilla_gene_name, horse_struct_field,
+   visible_feature, candidate_value_range }`.
+6. **Validate** by editing one vanilla gene at a time via
+   `genes.ext.set` and observing. The proven extension
+   path is also a research instrument.
 
-1. Read `FUN_1400ab3d0`'s decomp and enumerate the 61 slot
-   indices it reads (the `param_2[X]` accesses).
-2. Pick one of those 61 known-consumer-read slots (likely
-   candidates: low indices = primary scale / size, slots
-   near color channels or skeletal proportions).
-3. Edit `genes-extended.xml` `slot="N"` to that index, call
-   `genes.ext.reload`, observe.
-4. Once one visible slot is confirmed, document the
-   slot-to-feature map progressively in
-   [`VIABILITY.md`](VIABILITY.md) by iterating through the
-   consumer-read set.
+Output: a reliable map from "I want feature X" to "extend
+gene G with render slot S, allele payload P0..P3, value
+range R." That unblocks the bestiary authoring work in
+Phase 2.
+
+Caveat on existing horses: ext alleles are stored
+per-horse-pointer with a default fallback. The "giant baby"
+horses from the slot-0 test now have alleles 0,0 (cleared
+default) but their LIVE render-struct fields will keep the
+old computed value until the next gene-evaluation pass for
+that horse. Save / reload reliably re-triggers eval.
 
 Strategy DI-A approved 2026-05-14. Locked library:
 `retour 0.3`. Lock-free `AtomicPtr<GenericDetour<T>>`
