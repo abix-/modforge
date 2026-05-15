@@ -37,6 +37,22 @@ Roughly ordered by leverage.
 
 ---
 
+## P0 BLOCKER (CRITICAL): the supposedly-resolved GAMESTATE_PTR is wrong
+
+Found 2026-05-15 via `mem.find_xrefs` (commit `3553f50`). The R3 resolver in commit `ae333c6` returned `GAMESTATE_PTR = 0x7ff63d864c38`. But:
+
+- `cheat_money_add_1000` candidate sig (`81 05 ?? ?? ?? ?? e8 03 00 00`) MISSED in the live image. The +$1000 cheat compiled to a different encoding this build, so the most discriminating candidate didn't anchor anything.
+- `race_fee_cmp_50` and `field_440_set_20` both matched but resolved to DIFFERENT bases (`0x87dbd0` vs `0x864c38`). The resolver kept the last one (`0x864c38`) without raising the disagreement to a hard error.
+- `find_xrefs` against the picked base + 0x308 returns exactly 1 xref: an SSE `movdqa xmm6` write at `0x491c0a`, not the cheat-money pattern. That's not where money lives.
+
+So the in-game UI saying "no save loaded" mid-save was correct symptom of wrong address: `gamestate::ptr()` returns `0x864c38`, reading `+0x280` gives a null roster, `looks_loaded()` reports false. Even the original hardcoded RVA (`0x88b0d8`) is suspect.
+
+**Where the real GAMESTATE_PTR is**: somewhere in `.data` such that `+0x308` holds the user's current money. With $176 visible on screen, the search target is "u32 == 176 in `.data` near the image base".
+
+**Next ticket: `mem.scan_data { value, kind: u32 }`**. Scan the loaded image's `.data` section for a u32 matching `value`. Test (gated on `MODFORGE_EXPECT_LOADED` + a user-supplied `MODFORGE_EXPECT_MONEY=176`) takes the on-screen money, scans, returns the list of candidate addresses. Subtract `0x308` from each to get a GAMESTATE_PTR candidate. Run `find_xrefs` against each candidate `+0x308` to find xrefs in `.text`; the one with multiple reasonable xrefs (cmp / mov / add patterns referencing money in cheat / race / save code) is the real GAMESTATE_PTR. Author signatures from those xref byte windows.
+
+Until this is done the looks_loaded gate, the Cheats tab toggles, and every patch that hooks gamestate offsets are operating on wrong addresses.
+
 ## P0 BLOCKER: pattern-resolve EVERY hardcoded address
 
 User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved before any more feature work lands. This is not optional and not negotiable. The reasoning:
