@@ -127,6 +127,35 @@ pub fn resolve_all(targets: &[Target<'_>]) -> Result<Resolution> {
     Ok(Resolution { by_name })
 }
 
+/// Scan the loaded image's `.text` for every position matching a
+/// single patternsleuth signature. Unlike [`resolve_all`], returns
+/// EVERY hit (not just the first per name). Use this for xref
+/// scans (`X0x<target>`), enumerating all writes of a constant,
+/// etc.
+///
+/// Addresses are returned sorted ascending, deduplicated.
+pub fn scan_all_matches(sig: &str) -> Result<Vec<usize>> {
+    let pat = Pattern::new(sig)
+        .with_context(|| format!("sig {sig:?} parse failed"))?;
+    let config = PatternConfig::new(
+        (),
+        "scan_all".to_string(),
+        Some(TEXT_SECTION),
+        pat,
+    );
+    let image = read_image()
+        .map_err(|e| anyhow!("patternsleuth read_image failed: {e}"))?;
+    let configs = [config];
+    let scan_result: ScanResult<()> = image
+        .scan(&configs)
+        .map_err(|e| anyhow!("patternsleuth scan failed: {e}"))?;
+    let mut addrs: Vec<usize> =
+        scan_result.results.iter().map(|(_, r)| r.address as usize).collect();
+    addrs.sort_unstable();
+    addrs.dedup();
+    Ok(addrs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

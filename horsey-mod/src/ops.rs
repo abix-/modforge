@@ -98,15 +98,18 @@ pub fn register_all() {
         // via modforge::patterns::sleuth. Recovery path for the
         // 'hardcoded address drifted' bug class.
         // Scan `.text` for RIP-relative instructions whose decoded
-        // disp32 resolves to `target_addr`. Returns the address of
-        // each candidate disp32 plus a 16-byte context window so
+        // disp32 resolves to `target_addr`. Backed by
+        // `modforge::patterns::sleuth::scan_all_matches` with a
+        // patternsleuth `X<target>` xref pattern; no hand-rolled
+        // byte scanning (rule locked in horsey-mod/docs/todo.md
+        // "P0 RULE: USE PATTERNSLEUTH" and in global CLAUDE.md).
+        // For each hit returns a 16-byte context window so
         // signatures can be authored directly from real compiler
-        // output. This is the auto-derivation tool that replaces
-        // guessing MSVC encodings from the C decomp.
+        // output.
         OpDef::new(
             "mem.find_xrefs",
-            "Scan .text for RIP-relative xrefs to a target data address. \
-            Returns one hit per matching disp32 position with byte context.",
+            "Scan .text for RIP-relative xrefs to a target data address \
+            via patternsleuth X<target> pattern. Returns hits with byte context.",
             "{target_addr: u64, max_hits?: usize}",
             |args| {
                 let target = args
@@ -118,15 +121,80 @@ pub fn register_all() {
                     .get("max_hits")
                     .and_then(Json::as_u64)
                     .unwrap_or(64) as usize;
-                let (text_base, text_size) = crate::targets::find_text_section()
-                    .ok_or_else(|| "failed to locate .text section".to_string())?;
-                let hits = scan_xrefs(text_base, text_size, target, max_hits);
+                // Patternsleuth's SIMD grouper needs anchor bytes
+                // in the signature, so a bare `X<target>` won't
+                // scan. Instead enumerate the common RIP-relative
+                // opcode prefixes for x86_64 MSVC output and scan
+                // each separately. Patternsleuth handles each
+                // anchored scan; we union, dedupe, and return.
+                //
+                // The prefix list covers the encodings actually
+                // emitted by MSVC for GameState-style global access:
+                // u32/u8 loads, stores, compares with imm8/imm32,
+                // adds with imm32, byte XORs, SSE moves.
+                const PREFIXES: &[(&str, &str, usize)] = &[
+                    // (name, prefix_bytes, disp32_offset_from_match_start)
+                    ("mov_r64",     "48 8b 05",     3),
+                    ("mov_r32",     "8b 05",        2),
+                    ("mov_store64", "48 89 05",     3),
+                    ("mov_store32", "89 05",        2),
+                    ("lea_r64",     "48 8d 05",     3),
+                    ("add_imm32",   "81 05",        2),
+                    ("add_imm8",    "83 05",        2),
+                    ("cmp_dw_imm8", "83 3d",        2),
+                    ("cmp_dw_imm32","81 3d",        2),
+                    ("mov_dw_imm",  "c7 05",        2),
+                    ("mov_b_imm",   "c6 05",        2),
+                    ("cmp_b_imm",   "80 3d",        2),
+                    ("xor_b_imm",   "80 35",        2),
+                    ("movzx",       "0f b6 05",     3),
+                    ("movdqa_xmm6", "66 0f 7f 35",  4),
+                ];
+                let target_hex = format!("X0x{target:x}");
+                let mut all_hits: Vec<(usize, &'static str, usize)> = Vec::new();
+                for (name, prefix, disp_off) in PREFIXES {
+                    let sig = format!("{prefix} {target_hex}");
+                    match modforge::patterns::sleuth::scan_all_matches(&sig) {
+                        Ok(addrs) => {
+                            for addr in addrs {
+                                all_hits.push((addr, name, *disp_off));
+                            }
+                        }
+                        Err(e) => {
+                            modforge::log!("find_xrefs sig {sig:?} skipped: {e}");
+                        }
+                    }
+                }
+                all_hits.sort_unstable_by_key(|(a, _, _)| *a);
+                all_hits.dedup_by_key(|(a, _, _)| *a);
+                all_hits.truncate(max_hits);
+                let entries: Vec<Json> = all_hits.iter().map(|&(instr_addr, name, disp_off)| {
+                    let disp_addr = instr_addr + disp_off;
+                    let start = instr_addr;
+                    let end = disp_addr + 4 + 6;
+                    let len = end - start;
+                    // SAFETY: address is inside the .text section
+                    // patternsleuth scanned; readable for the
+                    // process lifetime.
+                    let bytes: Vec<u8> = unsafe {
+                        std::slice::from_raw_parts(start as *const u8, len).to_vec()
+                    };
+                    let context_hex = bytes
+                        .iter()
+                        .map(|b| format!("{b:02x}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    json!({
+                        "instr_addr": format!("0x{instr_addr:x}"),
+                        "disp32_addr": format!("0x{disp_addr:x}"),
+                        "opcode_class": name,
+                        "context_hex": context_hex,
+                    })
+                }).collect();
                 Ok(json!({
                     "target_addr": format!("0x{target:x}"),
-                    "text_base": format!("0x{text_base:x}"),
-                    "text_size": text_size,
                     "max_hits": max_hits,
-                    "hits": hits,
+                    "hits": entries,
                 }))
             },
         ),
@@ -1448,73 +1516,7 @@ fn args_hex_addr(args: &Json, key: &str) -> Result<usize, String> {
     usize::from_str_radix(s, 16).map_err(|e| format!("bad hex addr in {key}: {e}"))
 }
 
-/// Scan `.text` for RIP-relative `disp32` references to `target`.
-/// At each byte position p, a 4-byte disp32 D references `target`
-/// iff `(p + 4 + D as isize) == target`. We compute the expected
-/// `D` for each p and check; one comparison per byte. The opcode +
-/// ModR/M bytes that wrap the disp32 vary (`83 3D`, `81 05`,
-/// `48 8B 05`, `C7 05`, `80 35`, etc.), so we report a window
-/// CENTRED on each match instead of trying to identify the
-/// instruction start.
-fn scan_xrefs(
-    text_base: usize,
-    text_size: usize,
-    target: usize,
-    max_hits: usize,
-) -> Vec<serde_json::Value> {
-    let mut out: Vec<serde_json::Value> = Vec::new();
-    if text_size < 4 {
-        return out;
-    }
-    // SAFETY: text_base..text_base+text_size is the loaded `.text`
-    // section; readable for the process lifetime.
-    let text: &[u8] = unsafe {
-        std::slice::from_raw_parts(text_base as *const u8, text_size)
-    };
-    // The "next_ip" used by a RIP-relative instruction is the byte
-    // immediately past the LAST byte of the WHOLE instruction. For
-    // `mov rax, [rip+disp32]` the disp32 IS the last 4 bytes, so
-    // next_ip == disp32_pos + 4. For `add [rip+disp32], imm8` /
-    // `add [rip+disp32], imm32` the immediate sits AFTER the disp32,
-    // so next_ip is +1 or +4 further out. Cover all common cases by
-    // testing each candidate trailing-immediate width.
-    const TAIL_WIDTHS: &[usize] = &[0, 1, 4];
-    for p in 0..(text_size - 4) {
-        let abs_disp_pos = text_base + p;
-        let got = i32::from_le_bytes(
-            text[p..p + 4].try_into().expect("4 bytes by construction"),
-        );
-        let mut matched_tail: Option<usize> = None;
-        for &tail in TAIL_WIDTHS {
-            let next_ip = abs_disp_pos + 4 + tail;
-            let want = target.wrapping_sub(next_ip) as i32;
-            if got == want {
-                matched_tail = Some(tail);
-                break;
-            }
-        }
-        let Some(tail) = matched_tail else { continue };
-        // Hit. Capture a window from p-6 to p+4+tail+2 so caller sees
-        // both the opcode + ModR/M (typically 2-3 bytes before
-        // disp32) and the trailing immediate (if any).
-        let start = p.saturating_sub(6);
-        let end = (p + 4 + tail + 2).min(text_size);
-        let bytes = &text[start..end];
-        let context_hex = bytes
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect::<Vec<_>>()
-            .join(" ");
-        out.push(serde_json::json!({
-            "disp32_addr": format!("0x{abs_disp_pos:x}"),
-            "approx_instr_addr": format!("0x{:x}", abs_disp_pos.saturating_sub(2)),
-            "tail_imm_width": tail,
-            "context_offset_of_disp32_in_hex": (p - start) * 3,
-            "context_hex": context_hex,
-        }));
-        if out.len() >= max_hits {
-            break;
-        }
-    }
-    out
-}
+// `scan_xrefs` removed in favour of patternsleuth-backed
+// `modforge::patterns::sleuth::scan_all_matches` with an `X<target>`
+// pattern. See horsey-mod/docs/todo.md "P0 RULE: USE PATTERNSLEUTH"
+// and global CLAUDE.md.

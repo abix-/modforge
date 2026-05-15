@@ -74,9 +74,9 @@ fn find_xrefs_locates_known_gamestate_references() {
         game.log().event(
             "XREF",
             &format!(
-                "{} (tail={}): {}",
-                h.get("approx_instr_addr").and_then(|v| v.as_str()).unwrap_or("?"),
-                h.get("tail_imm_width").and_then(|v| v.as_u64()).unwrap_or(0),
+                "instr@{} ({}): {}",
+                h.get("instr_addr").and_then(|v| v.as_str()).unwrap_or("?"),
+                h.get("opcode_class").and_then(|v| v.as_str()).unwrap_or("?"),
                 h.get("context_hex").and_then(|v| v.as_str()).unwrap_or("?"),
             ),
         );
