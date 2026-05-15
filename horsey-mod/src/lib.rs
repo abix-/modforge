@@ -67,9 +67,13 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
-    // 4a. Register the in-game ImGui tabs. The window only opens when
-    //     `ui.native.spawn` is called; the tabs are picked up then.
+    // 4a. Register the in-game ImGui tabs AND spawn the window
+    //     immediately. The user wants the UI visible the moment
+    //     the DLL attaches; no separate `ui.native.spawn` HTTP
+    //     call needed. The op stays available for re-spawn after
+    //     an explicit shutdown.
     modforge::ui::native::register_tabs(ui::TABS);
+    let _armed = modforge::ui::native::spawn("horsey-mod");
 
     // 4b. Auto-load `genes-extended.xml` if it exists next to the DLL.
     //     Failure to find or parse the file is non-fatal: the

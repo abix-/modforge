@@ -320,9 +320,15 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | `HORSE_SAVE_WRITER` | `0x14006ecfb` | **R** (body sig 32b live-captured) | prologue + body sig | D4.1b sidecar |
 | `HORSE_SAVE_LOADER` | `0x14006f031` | **R** (body sig 32b live-captured) | `add rcx, 0x2b8` is unique | D4.2b sidecar |
 
-### Struct field offsets (N/A for pattern-scan)
+### Struct field offsets (R4: drift OBSERVED 2026-05-15)
 
-`gs_offset::*` (20 fields) and `horse_offset::*` (10 fields) are not absolute addresses; they're integer constants compiled into accessor instructions. Drift is detected by reading nonsensical values, not by signature scan. Recovery is field-by-field through the same R3 trick: each field has a write site in the decomp; pattern-match the instruction, decode the displacement to get the field's current offset. Out of scope until a build is observed where a field offset has actually shifted.
+`gs_offset::*` (20 fields) and `horse_offset::*` (10 fields) are not absolute addresses; they're integer constants compiled into accessor instructions. Drift is detected by reading nonsensical values, not by signature scan.
+
+**Confirmed drift on this build:** a new save with 1 sleep + 2 races reads `gs_offset::YEAR = 0x314` as 336 instead of 1. Either the YEAR field has moved or 0x314 was never the right offset for this build. Either way the field offsets need their own resolver tier.
+
+**R4 model:** each field gets a resolver that anchors on a unique read/write site and decodes the instruction's `disp8`/`disp32` operand (the field-offset constant baked into the instruction). For YEAR: anchor on the pause-menu format string `"< Simulation Paused - Year %d >"` (FUN_140066200) via the .rdata-xref method from R3; the `mov reg32, [rax + disp]` immediately before the printf call carries the live offset.
+
+Each resolver is one Rust accessor cached in a `OnceLock`, e.g. `gs_offset::year() -> usize`, with the old hardcoded value as a documented constant for cross-reference.
 
 ### Definition of done (P0 BLOCKER from todo.md, 2026-05-15)
 

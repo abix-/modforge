@@ -27,13 +27,57 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 **Current status (2026-05-15):**
 - 6/6 data globals on **R**
 - 31/31 function entries on **R** (RETIRE_HORSE_HANDLER re-derived 2026-05-15 via format-string xref method)
-- Field offsets (`gs_offset::*`, `horse_offset::*`) deferred until a build is observed where one has actually shifted
+- Field offsets (`gs_offset::*` 20 fields + `horse_offset::*` 10 fields): **H, drift observed.** Confirmed 2026-05-15 in-game: a new save with 1 sleep + 2 races reads `gs_offset::YEAR = 0x314` as 336 instead of 1. The struct layout has shifted between builds; field offsets need their own resolver tier.
 
 **Open work in this section:**
+- [ ] **R4: Field-offset resolver tier.** Same model as R3 for data globals, except the disp32 to decode is the FIELD OFFSET (instruction's RIP-rel `disp8`/`disp32` operand) rather than the global's address. Workflow per field:
+  - Anchor on a unique site that reads the field: e.g. for YEAR, the pause-menu printf `"< Simulation Paused - Year %d >"` (in `FUN_140066200` at decomp `FUN_14008d760(local_88, "< Simulation Paused - Year %d >", *(undefined4 *)(DAT_1403fb0d8 + 0x314))`). The MSVC instruction is `mov reg32, [rax + disp32]` where rax = dereffed GAMESTATE_PTR and disp32 = current YEAR offset.
+  - Reuse the format-string-xref technique from `find_retire_horse_handler` to locate the printf site, then decode the `mov reg32, [rax + ??]` immediately preceding it.
+  - Per field: one resolver `gs_offset::year() -> usize` cached in a `OnceLock`. Production reads go through it.
+- [ ] Apply R4 to every gs_offset + horse_offset entry.
 - [ ] Author second candidate signatures for every resolver so a single MSVC reorder between builds doesn't break it (current Definition of Done #2; one sig each today).
 - [ ] CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs (Definition of Done #4).
 
-**Feature backlog gate.** With the migration effectively complete, feature work proceeds freely in parallel with the residual hardening above.
+### Hardcoded-constants inventory (zero-hardcoding audit, 2026-05-15)
+
+Every magic integer baked into Rust source code that originates from the GAME BINARY (not algorithm constants). User-locked: there should be **zero** hardcoded game-binary constants; everything pattern-resolved.
+
+| Constant | File:line | Kind | Status | Notes |
+|---|---|---|---|---|
+| `GAMESTATE_PTR` 0x1403fb0d8 | targets.rs:26 | data global | **R** | constructor-anchored resolver |
+| `SAVE_VERSION_GLOBAL` 0x1403fb0e0 | targets.rs:31 | data global | **R** | derived from GAMESTATE_PTR+8 |
+| `RACES_COUNTER` 0x1403eded8 | targets.rs:35 | data global | **R** | -10.5f anchor |
+| `NO_TIRE_TOGGLE` 0x1403d95a5 | targets.rs:44 | data global | **R** | cmp-sete pair sig |
+| `DEBUG_MODE_ACTIVE` 0x1403d957b | targets.rs:51 | data global | **R** | unlock-block delta |
+| `DEBUG_LOG_GATE` 0x1403d9506 | targets.rs:59 | data global | **R** | init-triplet sig |
+| `fn_addr::*` (31 entries) | targets.rs:166-371 | function entry | **R** | 32-48 byte body sigs |
+| `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H, drift suspected** | needs R4 |
+| `gs_offset::FIELD_268` 0x268 | targets.rs:67 | struct field offset | **H, drift suspected** | needs R4 |
+| `gs_offset::MONEY` 0x308 | targets.rs:68 | struct field offset | **H, drift suspected** | anchor: cheat-money handler |
+| `gs_offset::YEAR` 0x314 | targets.rs:69 | struct field offset | **H, DRIFT OBSERVED** | reads 336 on new game; anchor: "Year %d" printf |
+| `gs_offset::SLEEPS` 0x318 | targets.rs:70 | struct field offset | **H, drift suspected** | anchor: "Sleeps %d" printf |
+| `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H, drift suspected** | needs R4 |
+| `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H, drift suspected** | needs R4 |
+| `gs_offset::HORSES_BEGIN` 0x280 | targets.rs:87 | struct field offset | **H, drift suspected** | roster pointer; looks_loaded reads this |
+| `gs_offset::HORSES_END` 0x288 | targets.rs:90 | struct field offset | **H, drift suspected** | needs R4 |
+| `gs_offset::TRAILING_278/27C` | targets.rs:91-92 | struct field offset (2) | **H, drift suspected** | needs R4 |
+| `horse_offset::TYPE_OR_SPECIES` 0x1c | targets.rs:109 | struct field offset | **H** | needs R4 |
+| `horse_offset::NAME_ID` 0x1f8 | targets.rs:111 | struct field offset | **H** | needs R4 |
+| `horse_offset::AGE/MAX_AGE` 0x1fc/0x200 | targets.rs:113,116 | struct field offset (2) | **H** | needs R4 |
+| `horse_offset::ON_TRACK_FLAG` 0x204 | targets.rs:118 | struct field offset | **H** | needs R4 |
+| `horse_offset::TIRED_FLAG_A/B` 0x205/0x206 | targets.rs:120,122 | struct field offset (2) | **H** | anchor: sleep_safe_no_tire patch site |
+| `horse_offset::BREEDING_FLAG` 0x207 | targets.rs:124 | struct field offset | **H** | needs R4 |
+| `horse_offset::SKILL` 0x21c | targets.rs:126 | struct field offset | **H** | needs R4 |
+| `horse_offset::LITTER_SIZE_STAT` 0x254 | targets.rs:129 | struct field offset | **H** | needs R4 |
+| `LIVE_HORSES_BEGIN/END` 0x130/0x138 | gamestate.rs:428,430 | struct field offset | **H** | needs R4; should move to gs_offset |
+| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct size | **H** | repeated 4x; one resolver should feed all |
+| `HORSE_CTX_OFFSET` 0x2b8 | combinator.rs:26, render_trampoline.rs:34 | struct field offset | **H** | the working-genome offset; HORSE_SAVE_LOADER uses `add rcx, 0x2b8` as its anchor. Decode that for the runtime value |
+| GameState alloc size 0x448 | targets.rs resolver comments | struct size | **H** | not yet consumed by production but referenced in resolver code |
+| Horse alloc size 0x498 | targets.rs resolver comments | struct size | **H** | not yet consumed by production but referenced in resolver code |
+
+**Out of scope (algorithm constants, not game-binary):** CRC32 polynomial `0xEDB88320`; splitmix64 mixers `0x9E3779B97F4A7C15` / `0xBF58476D1CE4E5B9` / `0x94D049BB133111EB`; pointer-shape validation bounds `0x10000` / `0x7fff_ffff_ffff` (Windows OS facts, not Horsey facts).
+
+**Approximate count remaining:** 32 struct-field offsets + 3 struct sizes + 1 roster stride = **36 hardcoded game-binary constants** to migrate.
 
 ## Ship status pointers
 
