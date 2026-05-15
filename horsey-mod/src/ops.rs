@@ -561,13 +561,44 @@ before calling `genes.ext.arm`.",
         ),
         OpDef::new(
             "genes.ext.arm",
-            "Install the D1 detours. Currently a STUB: returns an error since the \
-trampoline machinery isn't implemented yet. When implemented, this op atomically \
-patches each detour target. Use `genes.ext.dryrun` first to validate addresses.",
+            "Install the DI-A v1 detour set (currently: EVAL_DIPLOID_BLEND_A). \
+After this returns OK, every call to FUN_1400a5d20 routes through our handler: \
+idx<240 falls through to vanilla via the saved trampoline; idx>=240 returns \
+`genes::evaluate_ext_gene` against our sidecar tables. \
+Use `genes.ext.dryrun` first to validate addresses, `genes.ext.stats` after to \
+confirm the detour is firing.",
             "",
             |_| match patches::ext_genes::arm() {
                 Ok(()) => Ok(json!({"armed": true})),
                 Err(e) => Err(e.to_string()),
+            },
+        ),
+        OpDef::new(
+            "genes.ext.stats",
+            "Detour invocation counters. Useful for end-to-end verification: after \
+arming, walk the game a few frames; `call_count` should climb (proves the detour \
+fires); `ext_call_count` stays at 0 until a caller passes idx>=240 (D5 trampoline); \
+`max_idx_seen` is the highest gene index any caller has passed through the handler.",
+            "",
+            |_| {
+                let (call_count, ext_call_count, max_idx_seen) =
+                    patches::ext_genes::stats();
+                Ok(json!({
+                    "armed": patches::ext_genes::is_armed(),
+                    "call_count": call_count,
+                    "ext_call_count": ext_call_count,
+                    "max_idx_seen": max_idx_seen,
+                }))
+            },
+        ),
+        OpDef::new(
+            "genes.ext.disarm",
+            "Revert the DI-A detour. Returns to vanilla behavior for FUN_1400a5d20. \
+No-op if not armed. Also runs automatically on DLL detach.",
+            "",
+            |_| {
+                patches::ext_genes::revert();
+                Ok(json!({"armed": patches::ext_genes::is_armed()}))
             },
         ),
         OpDef::new(
