@@ -241,6 +241,22 @@ SteamPath := RegRead("HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath")
 
 Goal: every address the production hot path reads goes through `targets::resolve::*` (pattern-scan via `modforge::patterns::sleuth`) instead of a `pub const usize`. Hardcoded RVAs stay only as fallback inside the resolver functions, sourced from one decomp build. R3 in commit `ae333c6` was the first migration; the tables below track every entry.
 
+### P0 rule: use patternsleuth (relocated from todo.md 2026-05-15)
+
+User-locked 2026-05-15. Every pattern-scan, xref-find, or signature match in this repo MUST go through the `patternsleuth` crate via `modforge::patterns::sleuth`. NO exceptions. ZERO tolerance.
+
+This includes:
+
+- **Address resolution** (functions + data globals): use `Pattern::new("opcode bytes ?? ?? ?? ?? imm")` + `sleuth::resolve_all`. Already done for the 9 R-parity function entries via the existing catalog.
+- **Xref scanning** (find every `.text` instruction whose `disp32` decodes to a target data address): use patternsleuth's built-in `X<target_addr>` xref constraint inside an anchored pattern (`<opcode prefix> X<target>`). `is_match` at `patternsleuth_scanner/src/lib.rs:232` does the `next_ip + disp32 == target` check natively. NEVER iterate `.text` byte-by-byte. NEVER write your own `i32::from_le_bytes` over instruction bytes. The find_xrefs op in `horsey-mod/src/ops.rs` is the reference consumer: enumerates the common RIP-relative opcode prefixes (mov, lea, add, cmp imm8/imm32, mov-imm, byte-cmp, byte-xor, movzx, movdqa), runs one anchored scan per prefix via `sleuth::scan_all_matches`, unions and dedupes the results.
+- **Data scans** (find a value in `.data`): use patternsleuth with the value bytes as a literal pattern (e.g. `"b0 00 00 00"` for u32 == 176).
+
+**Done so far:**
+- `find_xrefs` shipped as a hand-rolled scanner in `3553f50` (rule violation), then ripped out and reimplemented on patternsleuth in `9fdeca9`. Reference implementation for any future scanning code.
+- `modforge::patterns::sleuth::scan_all_matches(sig)` added in `9fdeca9` as the all-hits companion to `resolve_all` (which returns only first per name).
+
+If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
+
 ### Why this migration matters (P0 reasoning, locked 2026-05-15)
 
 Every address in `targets.rs` must be pattern-resolved. Not optional, not negotiable.
