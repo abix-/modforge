@@ -499,13 +499,29 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
-**STATUS: D1.1 PROVEN IN-GAME 2026-05-14.** Game loaded a
-save, walked, handler fired 2222 times across vanilla
-indices 0..218 without a crash. DI-A pattern is validated
-end-to-end on the first detour. D1.2 and D1.4 are temporarily
-disabled in `arm()` during single-detour bring-up; ready to
-fan out now that the handler-discipline rules in
-[`DEBUGGING.md`](DEBUGGING.md) §4b are codified.
+**STATUS: D1.1 + D1.2 + D1.4 AND D5 ALL PROVEN IN-GAME 2026-05-14.**
+With the Ghidra-off-by-16 address correction
+([`DEBUGGING.md`](DEBUGGING.md) §4) and the lock-free
+`AtomicPtr<GenericDetour<T>>` handler discipline
+([`DEBUGGING.md`](DEBUGGING.md) §4b), all four detours
+co-arm cleanly and exercise normally as the player walks
+the game. End-to-end pipeline confirmed.
+
+Latest in-game numbers (player walked ~10s after arming):
+
+| Target | Calls | Vanilla path | Ext path | Max idx seen |
+|---|---|---|---|---|
+| EVAL_DIPLOID_BLEND_A | 2084 | 2084 | 0 | 218 |
+| EVAL_DIPLOID_BLEND_B | 1896 | 1896 | 0 | 213 |
+| GENE_ALLELE_SWAP | 0 | 0 | 0 | n/a |
+| APPLY_GENE_TO_HORSE (D5 post-hook) | 15 | 15 | n/a | n/a |
+
+`max_idx_seen=239` across A+B confirms the full vanilla
+[0..240) gene range is being evaluated through our handler.
+`ext_call_count=0` is expected. No extended gene with a
+render mapping is authored yet, so nothing drives idx>=240.
+`allele_swap=0` is expected. It only fires on the rare
+allele-renumber event.
 
 Strategy DI-A approved 2026-05-14. Locked library:
 `retour 0.3`. Lock-free `AtomicPtr<GenericDetour<T>>`
@@ -513,36 +529,51 @@ storage published at arm time; handlers do atomics +
 acquire-load + indirect call only (no `format!`, no
 `parking_lot`, no Rust TLS).
 
-#### Lessons captured (mode-A debugging, all in DEBUGGING.md)
+#### Lessons captured (all in DEBUGGING.md)
 
-- 4 distinct "all-ones bad_addr" crash modes:
+- **5 distinct "all-ones bad_addr" crash modes:**
   (a) double-deref of a non-pointer slot (`gamestate::ptr`
       was reading the gamestate struct's first 8 bytes as
       a pointer); (b) handler stack frame too big for
       game's nested call chain; (c) parking_lot Mutex
       accessing Rust TLS on a foreign game thread;
-      (d) detour target was not a function entry.
-- Handler discipline rules in
+      (d) detour target was not a function entry;
+      (e) Ghidra's pyghidra indexes function entries
+      OFF-BY-16 (the real entry is at `ghidra_addr - 16`,
+      where the MSVC register-save prologue lives).
+- **Handler discipline rules** in
   [`DEBUGGING.md`](DEBUGGING.md) §4b. Every new handler
   must observe them. Reference impl: `eval_a_handler`.
-- Pre-arm prologue verification rule in
+- **Pre-arm prologue verification rule** in
   [`DEBUGGING.md`](DEBUGGING.md) §5: every new detour
   must have its prologue eyeballed against Win64
-  function-entry patterns before arming.
+  function-entry patterns before arming. The two
+  recognized shapes are documented.
+- **Ghidra-off-by-16 was the dominant blocker.** It made
+  EVAL_A/B appear to work and APPLY_GENE_TO_HORSE /
+  ALLELE_SWAP crash, looking like a build-update issue
+  for hours. The actual decomp pass against the current
+  binary returned identical addresses; we just trusted
+  Ghidra's entry-point attribution too much.
 
-#### Immediate plan
+#### Immediate plan (next session)
 
-1. Re-enable D1.2 (`EVAL_DIPLOID_BLEND_B`) in `arm()` and
-   verify it co-arms with D1.1 without crashes (same
-   prologue shape, same handler discipline).
-2. Re-locate the real `GENE_ALLELE_SWAP` entry by
-   re-decompiling the current build. Re-enable D1.4 only
-   after the §5 prologue check passes.
-3. Arm D5 (render trampoline on `FUN_14009f680`) alongside
-   DI-A. Verify `genes.ext.render.stats` climbs.
-4. Author one test extended gene in `genes-extended.xml`
-   with a render mapping; set a horse's extended alleles
-   via HTTP; observe a visible effect in-game.
+1. Author one test extended gene in `genes-extended.xml`
+   with a `<render slot="..." mode="add"/>` mapping;
+   set a horse's extended alleles via HTTP
+   (`horse.ext.alleles.set`); observe `genes_applied_total`
+   climb on `genes.ext.render.stats`; verify the visible
+   render effect in-game. **This is the v1 finish line.**
+2. Implement Phase R1 from
+   [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md): image
+   SHA-256 logging + `game.build_info` op, so future game
+   updates show up loudly in the log.
+3. Implement Phase R2 (patternsleuth runtime resolution)
+   so future address drift gets resolved automatically
+   without needing manual address bumps.
+4. D1.3 (`GENE_DEATH_DRIFT`) and D1.8 (`CRISPR_LAB`) remain
+   deferred: D1.3 needs a mid-function patch, D1.8 needs
+   state-machine analysis. Not blocking v1.
 
 Wired and arming via `genes.ext.arm` HTTP op:
 
