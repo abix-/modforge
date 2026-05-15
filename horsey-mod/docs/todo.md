@@ -37,6 +37,29 @@ Roughly ordered by leverage.
 
 ---
 
+## P0 BLOCKER: pattern-resolve EVERY hardcoded address
+
+User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved before any more feature work lands. This is not optional and not negotiable. The reasoning:
+
+- **Game updates break us.** The shipping Horsey build is moving target. The session-2 GAMESTATE_PTR drift (delta 0x264a0 between hardcoded and resolver) is what made the in-game UI lie about save state. Same drift will hit every other hardcoded address eventually.
+- **Patches won't persist.** D1/D3/D4/D5 detours all install at fixed RVAs. When the next game update ships, every detour misses its target and arms either zero subsystems or, worse, patches a different function. Every patch becomes a latent crash bug. Pattern-resolved addresses move with the code.
+- **No partial migration.** "Most are resolved" is not enough. A single hardcoded address in the hot path means the next game update bricks the mod for everyone. Either everything resolves or the mod's reliability story is "works on the 2026-05-08 build only."
+
+**Definition of done:**
+1. Every entry in the comparison table below is **R** (production reads through resolver), not **R-parity** (sig exists but production still uses hardcoded) and not **H** (hardcoded only).
+2. Every resolver has at least 2 candidate signatures so a single MSVC reorder between builds doesn't break it.
+3. Every resolver has an alias-check test (`tests/r3_*.rs`) that fails loud on the next build whose drift the sigs don't survive.
+4. CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs.
+
+**Order of attack:**
+1. Tooling first: `mem.find_xrefs { target_addr }` op that scans `.text` for RIP-relative instructions whose disp32 lands on a given data address. Returns 16-byte context per xref. This is what lets us auto-derive sigs from the running build instead of guessing MSVC encodings. (Today's failure mode: guessing.)
+2. Use find_xrefs to author sigs for the 6 data globals (GAMESTATE_PTR is done; NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL still open).
+3. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
+4. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
+5. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
+
+**Until done, no:** new species in the bestiary, HK1 Shift+Click, pasture auto-buy hay, D2 pop weight extension. The whole feature backlog is parked behind this.
+
 ## Hardcoded -> resolved migration: comparison table
 
 Goal: every address the production hot path reads goes through `targets::resolve::*` (pattern-scan via `modforge::patterns::sleuth`) instead of a `pub const usize`. Hardcoded RVAs stay only as fallback inside the resolver functions, sourced from one decomp build. R3 in commit `ae333c6` is the first migration; the table below tracks the rest.
@@ -110,7 +133,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
 
-## Current status (2026-05-15 session 2, latest commit `0f97176`)
+## Current status (2026-05-15 session 2, latest commit `06839d4`)
 
 ### What shipped this session
 
@@ -123,19 +146,14 @@ The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate sig
 | `5b5ad7a` | Cheats tab `no_tire` and `debug_mode` toggles via `api::checkbox`. HTTP `state` snapshot now captured AFTER op dispatch so write ops surface post-write state. |
 | `d7a9501` | `gamestate::looks_loaded()` heuristic on roster vector at `+0x280/+0x288`. Snapshot returns null for money/year/sleeps when not loaded. UI Overview + Horses gate on the heuristic. 7 unit tests on the pure decision; 1 live regression. |
 | `0f97176` | `gamestate.diag` HTTP op + `MODFORGE_ATTACH=1` harness mode so tests can attach to a manually-loaded save. `tests/gamestate_diag.rs` (consistency + env-gated in-save assertion). |
+| `ca7edf2` | Docs: session-2 status update + global CLAUDE.md absolute rule banning ad-hoc curl / python / PowerShell probes. Everything goes through tests or test-invoked diagnostic ops. |
+| `ae333c6` | **R3: GAMESTATE_PTR resolved via patternsleuth.** Three candidate signatures (cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14`) each decode a RIP-relative `disp32` to recover the base. Resolved `0x7ff63d864c38`; hardcoded was `0x7ff63d88b0d8` (delta 0x264a0 == 156 KB). `gamestate::ptr()` now uses resolved with hardcoded fallback. Closes the in-save false-negative for GAMESTATE_PTR. |
+| `ba96be8` | Docs: hardcoded -> resolved migration comparison table. Inventories every hardcoded address with current resolver status and a 5-batch migration plan. |
+| `06839d4` | **R3 batch 1: cheat-globals validation framework.** New `mem.alias_check` op (writes 0xAB / 0xCD to addr A, reads B, restores; proves byte aliasing). New `resolve_data_global` wrapper with a 0x1000-byte sanity gate against the hardcoded RVA. `tests/r3_cheat_globals_resolve.rs` runs alias-check per global and fails loud on mismatch. Production wiring uses resolver-or-hardcoded for `no_tire` / `debug_mode`. First-pass sigs for the 3 cheat globals all rejected by the sanity gate on this build (production cleanly falls back to hardcoded). |
 
-### Known broken (must-fix before any more UI work)
+### Known broken: closed by `ae333c6`
 
-**`looks_loaded()` returns false in real in-save state.** With a save loaded, $176 visible on screen, all the offsets the heuristic and snapshot read (roster begin/end, money, year, sleeps) come back null/zero. Diag dump of the first 16 KB at `rebase(GAMESTATE_PTR)` contains no value matching the on-screen money. So either:
-
-- `GAMESTATE_PTR` (currently `0x1403fb0d8`) has drifted between builds and now points at an unrelated struct in the same `.data` neighbourhood, OR
-- The struct is at the right address but the field offsets (MONEY=0x308, YEAR=0x314, SLEEPS=0x318, HORSES_BEGIN=0x280, HORSES_END=0x288) have all shifted together.
-
-User impact: in-game UI says "(no save loaded. Start a game)" while the user is mid-save. Cheats tab still works because `NO_TIRE_TOGGLE` and `DEBUG_MODE_ACTIVE` are different globals.
-
-Recovery path is the documented one in `ADDRESS-RESOLUTION.md`: pattern-scan via `modforge::patterns::sleuth` (already shipped, see `tests/r2_catalog_resolves_all_green_targets.rs`) to relocate `GAMESTATE_PTR` and the field offsets for this build hash, then wire `gamestate::ptr()` through the resolved address. The build identity is already pinned (`game.build_info` ships sha256 + size + mtime).
-
-Forensic data captured in this session: `target/diag.json` (16 KB hex dump from `0x1403fb0d8` rebased, no money/year/sleeps hits, sparse heap pointers starting at +0x10d8). Reproduce on any future build state with `MODFORGE_ATTACH=1 cargo test -p horsey-mod --test gamestate_diag -- --nocapture` against a manually-loaded save; see `docs/TESTING.md` "Attach-to-existing mode" for the workflow.
+GAMESTATE_PTR drift (in-game UI lying about save state) closed by the R3 resolver. The next batch is the cheat globals and field offsets per the P0 BLOCKER section above.
 
 ## Current status (2026-05-15 session 1, after commit `5ff0cfc`)
 
