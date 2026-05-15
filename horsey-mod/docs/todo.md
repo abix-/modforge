@@ -994,12 +994,6 @@ that:
   (e.g. Pawn shop) that triggers custom logic.
 - Eventually: a fully scripted location built entirely in horsey-mod.
 
-### Social / herd mechanics
-
-- Per-horse personality affects breeding compatibility.
-- "Friends" / "rivals" relationships.
-- Herd hierarchies (alpha / beta / etc.) affecting race outcomes.
-
 ### Procedural events
 
 - Weekly random events: "An inspector arrives", "A storm damages fences",
