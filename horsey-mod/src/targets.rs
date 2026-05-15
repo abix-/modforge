@@ -719,7 +719,7 @@ pub fn image_text_sha256() -> String {
 /// runtime address and size. Returns None on any parse failure.
 /// caller should treat that as "build identification not available
 /// this session" and continue.
-fn find_text_section() -> Option<(usize, usize)> {
+pub fn find_text_section() -> Option<(usize, usize)> {
     let base = image_base();
     if base == 0 {
         return None;

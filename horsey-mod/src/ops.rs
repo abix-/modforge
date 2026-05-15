@@ -97,6 +97,40 @@ pub fn register_all() {
         // R3: pattern-scan-resolve the GAMESTATE_PTR data address
         // via modforge::patterns::sleuth. Recovery path for the
         // 'hardcoded address drifted' bug class.
+        // Scan `.text` for RIP-relative instructions whose decoded
+        // disp32 resolves to `target_addr`. Returns the address of
+        // each candidate disp32 plus a 16-byte context window so
+        // signatures can be authored directly from real compiler
+        // output. This is the auto-derivation tool that replaces
+        // guessing MSVC encodings from the C decomp.
+        OpDef::new(
+            "mem.find_xrefs",
+            "Scan .text for RIP-relative xrefs to a target data address. \
+            Returns one hit per matching disp32 position with byte context.",
+            "{target_addr: u64, max_hits?: usize}",
+            |args| {
+                let target = args
+                    .get("target_addr")
+                    .and_then(Json::as_u64)
+                    .ok_or_else(|| "missing or non-u64 arg: target_addr".to_string())?
+                    as usize;
+                let max_hits = args
+                    .get("max_hits")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(64) as usize;
+                let (text_base, text_size) = crate::targets::find_text_section()
+                    .ok_or_else(|| "failed to locate .text section".to_string())?;
+                let hits = scan_xrefs(text_base, text_size, target, max_hits);
+                Ok(json!({
+                    "target_addr": format!("0x{target:x}"),
+                    "text_base": format!("0x{text_base:x}"),
+                    "text_size": text_size,
+                    "max_hits": max_hits,
+                    "hits": hits,
+                }))
+            },
+        ),
+
         // Two-address aliasing probe: write a sentinel byte at A,
         // read at B; if they're the same byte the read returns the
         // sentinel. Used by tests to prove a resolved address points
@@ -1412,4 +1446,75 @@ fn args_hex_addr(args: &Json, key: &str) -> Result<usize, String> {
         .ok_or_else(|| format!("missing or non-string arg: {key}"))?;
     let s = s.strip_prefix("0x").unwrap_or(s);
     usize::from_str_radix(s, 16).map_err(|e| format!("bad hex addr in {key}: {e}"))
+}
+
+/// Scan `.text` for RIP-relative `disp32` references to `target`.
+/// At each byte position p, a 4-byte disp32 D references `target`
+/// iff `(p + 4 + D as isize) == target`. We compute the expected
+/// `D` for each p and check; one comparison per byte. The opcode +
+/// ModR/M bytes that wrap the disp32 vary (`83 3D`, `81 05`,
+/// `48 8B 05`, `C7 05`, `80 35`, etc.), so we report a window
+/// CENTRED on each match instead of trying to identify the
+/// instruction start.
+fn scan_xrefs(
+    text_base: usize,
+    text_size: usize,
+    target: usize,
+    max_hits: usize,
+) -> Vec<serde_json::Value> {
+    let mut out: Vec<serde_json::Value> = Vec::new();
+    if text_size < 4 {
+        return out;
+    }
+    // SAFETY: text_base..text_base+text_size is the loaded `.text`
+    // section; readable for the process lifetime.
+    let text: &[u8] = unsafe {
+        std::slice::from_raw_parts(text_base as *const u8, text_size)
+    };
+    // The "next_ip" used by a RIP-relative instruction is the byte
+    // immediately past the LAST byte of the WHOLE instruction. For
+    // `mov rax, [rip+disp32]` the disp32 IS the last 4 bytes, so
+    // next_ip == disp32_pos + 4. For `add [rip+disp32], imm8` /
+    // `add [rip+disp32], imm32` the immediate sits AFTER the disp32,
+    // so next_ip is +1 or +4 further out. Cover all common cases by
+    // testing each candidate trailing-immediate width.
+    const TAIL_WIDTHS: &[usize] = &[0, 1, 4];
+    for p in 0..(text_size - 4) {
+        let abs_disp_pos = text_base + p;
+        let got = i32::from_le_bytes(
+            text[p..p + 4].try_into().expect("4 bytes by construction"),
+        );
+        let mut matched_tail: Option<usize> = None;
+        for &tail in TAIL_WIDTHS {
+            let next_ip = abs_disp_pos + 4 + tail;
+            let want = target.wrapping_sub(next_ip) as i32;
+            if got == want {
+                matched_tail = Some(tail);
+                break;
+            }
+        }
+        let Some(tail) = matched_tail else { continue };
+        // Hit. Capture a window from p-6 to p+4+tail+2 so caller sees
+        // both the opcode + ModR/M (typically 2-3 bytes before
+        // disp32) and the trailing immediate (if any).
+        let start = p.saturating_sub(6);
+        let end = (p + 4 + tail + 2).min(text_size);
+        let bytes = &text[start..end];
+        let context_hex = bytes
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        out.push(serde_json::json!({
+            "disp32_addr": format!("0x{abs_disp_pos:x}"),
+            "approx_instr_addr": format!("0x{:x}", abs_disp_pos.saturating_sub(2)),
+            "tail_imm_width": tail,
+            "context_offset_of_disp32_in_hex": (p - start) * 3,
+            "context_hex": context_hex,
+        }));
+        if out.len() >= max_hits {
+            break;
+        }
+    }
+    out
 }
