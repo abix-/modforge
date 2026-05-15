@@ -1667,3 +1667,13 @@ Modder workflow:
 3. Decide whether to target a known consumer-read slot (visible) or an unused slot (dead computation, no effect). Cluster map + consumer map in Part 2 of this doc.
 4. Test by setting `horse.ext.default_alleles.set` so every horse picks up your effect.
 5. Once dialed in, set per-horse alleles via `horse.ext.alleles.set`.
+
+### Historical planning notes
+
+Preserved verbatim from the original implementation plan (before D0 / D1 / D3 / D5 shipped):
+
+> **Status:** PLANNED, not started. Prereqs: Phase 0 viability research is substantially complete (see [`VIABILITY.md`](VIABILITY.md)). Final go/no-go is Phase 1 lock-in.
+>
+> **Estimated scope:** ~25 patch sites, plus 2 new sidecar buffers, plus 1 trampoline. Roughly 1-2 weeks of focused work assuming each phase passes its verification step. Multiply by 2-3 if anything in Phase 0 was missed.
+
+Actual scope at shipping (2026-05-15): 6 detour modules (`patches/ext_genes.rs` + `combinator.rs` + `lifecycle.rs` + `render_trampoline.rs` + `save_sidecar.rs` + `sleep_safe_no_tire`), 3 sidecar buffers (`EXT_GENE_TABLE` + `EXT_POP_WEIGHTS` + `EXT_HORSE_GENOMES`), 30+ HTTP ops, 64 tests. Took ~1 calendar week of focused work; phase verification mostly held but ate detours discovering Ghidra's -16 entry-point offset convention and the stale save-function addresses.
