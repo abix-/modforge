@@ -9,6 +9,73 @@ Roughly ordered by leverage.
 
 ---
 
+## Current status (2026-05-15, after commit `352daed`)
+
+**480-gene project: infrastructure complete, untested in-game.**
+
+Built, clean, zero warnings:
+
+| Phase | What | Module |
+|---|---|---|
+| D0 | Sidecar buffers + 12 HTTP ops | `genes.rs` |
+| D1 | 3 of 5 detours (eval_a/b, allele_swap) | `patches/ext_genes.rs` |
+| D3.1 | Horse-ctor post-hook (`FUN_1400aac60`) | `patches/lifecycle.rs` |
+| D3.2 | Horse-dtor pre-hook (`FUN_1400bf1f0`) | `patches/lifecycle.rs` |
+| D3.4 | Combinator post-hook (`FUN_1400a2d80`) | `patches/combinator.rs` |
+| D4.1-D4.3 | Save sidecar (BXSAVEXT format) | `patches/save_sidecar.rs` |
+| D5 | Render trampoline post-hook | `patches/render_trampoline.rs` |
+| D7.2 | `genes-extended.xml` parser + live reload | `genes_xml.rs` |
+
+Research closed:
+- D3.0 horse-struct allocator: `FUN_1400aac60` ctor, `FUN_1400bf1f0` dtor, 0x498 bytes
+- D3.4 combinator: `FUN_1400a2d80(pA + 0x2b8, pB + 0x2b8, child + 0x2b8)`, Mendelian + 3 linked-inheritance cluster ranges
+- D4.4 horse_id: no dedicated field; roster slot position is the id
+- Save pipeline: `FUN_14006ee10` writer + `FUN_14006f150` loader, both via `gamestate[+0x130]` iteration order
+
+Cross-validated against [HorseyLiveTweaks](PRIOR-ART-HorseyLiveTweaks.md). Every offset matches; their independent RE confirms ours.
+
+### Next action: in-game dryrun + arm
+
+Inject the built DLL against a real `Horsey.exe` and run:
+
+```
+genes.ext.combinator.dryrun
+genes.ext.lifecycle.dryrun
+genes.ext.save.dryrun
+```
+
+Verify the printed prologue bytes match expected MSVC patterns (typically `48 89 5c 24 ..` or `48 8b c4 ..`). If a prologue looks off, the -16 Ghidra-offset adjustment is wrong for that address and needs re-derivation BEFORE arming, or the detour will crash.
+
+If dryruns look OK, arm in order:
+1. `genes.ext.arm` (D1)
+2. `genes.ext.render.arm` (D5)
+3. `genes.ext.lifecycle.arm`
+4. `genes.ext.combinator.arm`
+5. `genes.ext.save.arm`
+
+Then breed a pair of horses with set ext alleles, save, restart, reload, observe.
+
+If that passes, the 480-gene system is **functionally complete for v1**.
+
+### After v1 is verified
+
+Priority order:
+1. **R1/R2 pattern-scan address resolution** (port HorseyLiveTweaks pattern format to Rust). Survives game updates.
+2. **ImGui-in-`modforge` primitive**. Shared in-game window for horsey-mod + schedule1 + grounded2. horsey-mod first consumer.
+3. **HK1 Shift+Click smart-transfer** (vehicle <-> pasture <-> race line). User-locked hotkey v1 scope.
+4. **Bestiary content** (real species in `genes-extended.xml` once we trust the system).
+5. **D1.3 death-handler ±5 mutator** (mid-function patch). Low priority.
+6. **D1.8 CRISPR UI dispatch** (show ext genes in CRISPR Lab). Low priority.
+
+### Known limitations / risks
+
+- Untested against the live binary. -16 prologue adjustment is convention but not verified for the 5 new addresses.
+- `LOAD_GAME = 0x14006e480` was already in `targets.rs` but the entry-point hasn't been prologue-verified.
+- Save-loader detour writes ext alleles BEFORE the vanilla loader runs. If vanilla zeros `EXT_HORSE_GENOMES` keys (horse pointers) by re-allocating horses during load, the entries get orphaned. Lifecycle anchors should drop them on dtor, but order-of-operations needs in-game confirmation.
+- `+0x690` ActiveGeneCount (HorseyLiveTweaks finding) might need updating for ext range. Unclear; not in v1.
+
+---
+
 ## P0. `sleep_safe_no_tire` patch site discovery
 
 Wip in [`a31246f`](.). Patch infrastructure works
