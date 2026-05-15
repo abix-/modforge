@@ -77,3 +77,53 @@ Action items (find fatigue/age fields, identify genome location, confirm pop_id 
 ## Tools
 
 - `parse_save.py` (in this folder): walks the roster and dumps blocks. Read-only.
+
+## Findings from prior-art `alexjthomson/horsey-save-editor`
+
+Independent save-file reverse-engineering. Cross-validates and extends the static-analysis pass above. Source: [alexjthomson/horsey-save-editor](https://github.com/alexjthomson/horsey-save-editor), pure HTML/JS browser-side editor.
+
+### Header (confirmed)
+
+20-byte (0x14) header. Layout: `u32 / u64 / u32 / u32`; the **horse count** lives at offset `+0x10` (32-bit unsigned). Roster table starts at offset `+0x14`.
+
+### Diploid genome encoding (NEW)
+
+Per-gene the save stores **one byte per diploid pair**. The byte is computed as `byte = 0x09 + rank(second_strand_base) * 8 + rank(first_strand_base)` where the base ranks differ per gene (a per-gene table picks the rank assignment so the codon-order `n` attribute lines up with which integer index 0..3 is which base).
+
+Example pair-to-byte table for a gene whose rank is `{A: 0, C: 3, G: 2, T: 1}`:
+
+| Pair | Byte | Pair | Byte | Pair | Byte | Pair | Byte |
+|---|---|---|---|---|---|---|---|
+| AA | 09 | CA | 0c | GA | 0b | TA | 0a |
+| AC | 21 | CC | 24 | GC | 23 | TC | 22 |
+| AG | 19 | CG | 1c | GG | 1b | TG | 1a |
+| AT | 11 | CT | 14 | GT | 13 | TT | 12 |
+
+The save-editor JSON `raw_indices` (line 4028 of `index.html`) carries per-gene rank assignments derived from the genes.xml `n` codon-order attribute. The 16 homozygous + 16 heterozygous combinations land at deterministic byte values.
+
+### Horse flag-bits enum (NEW)
+
+The save-editor decodes a flag byte per horse with these bits:
+
+| Bit | Meaning |
+|---|---|
+| 0x01 | Unknown |
+| 0x02 | Championship Horse |
+| 0x04 | GMO Horse (CRISPR-edited) |
+| 0x08 | Won Diving Medal |
+| 0x10 | Won Strong Horse Medal |
+| 0x20 | Won Trampoline Medal |
+| 0x40 | Won Acrobat Medal |
+| 0x80 | Unknown |
+
+Two flag bits are still unknown. Worth diff-testing.
+
+### Money location (cross-check)
+
+The save-editor reads money at `tableEnd + 0x14` where `tableEnd` is after the roster table. Our decomp pass found the runtime money at `gamestate+0x308`. These are different views: their offset is into `save1.dat`, ours is into the `DAT_1403fb0d8` live struct. Both correct in context.
+
+### Implications
+
+- The genome storage we couldn't fit in the 22-byte horse-roster trailer is one byte per gene, encoded via the rank-formula, stored elsewhere in the file (likely the 55KB block our static pass identified).
+- The CRISPR Lab UI (helix display) maps directly to these bytes: each helix position is one diploid byte; the player sees the pair of bases and edits one strand at a time.
+- The flag-bits enum decodes part of `flag_a..flag_e` in our 22-byte trailer. Bit 0x02 (Championship) and 0x04 (GMO Horse) line up with achievements we can validate in-game.

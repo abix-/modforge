@@ -1162,3 +1162,43 @@ complete. Open gaps:
 - 22 genes only gate slot writes
 - 27 genes are read but neither (likely flow through 2+ vars)
 - 7 genes are never read by FUN_14009f680
+
+## Part 4: Helix layout (in-game CRISPR Lab DNA)
+
+> Sourced from [`hikazey/horseygamegm`](https://github.com/hikazey/horseygamegm) (Horsey Genome Mapper, MIT). They reverse-engineered the gene-to-helix-position table directly from the executable. Independent confirmation of our 240-gene catalog AND adds the user-facing in-game DNA layout we don't have on the engine side.
+
+Each horse has **20 double-stranded helices** displayed as X shapes in the CRISPR Lab. Each position in each helix maps to one gene; the base (A/T/C/G) at that position selects one of the 4 allele values (g0..g3). Both strands at the same position store independent allele picks (diploid).
+
+### Base to allele index
+
+In-game color coding: **A = yellow**, **T = red**, **C = blue**, **G = green**. Allele-index mapping per gene is controlled by the gene's `n` codon-order attribute (e.g. `n="ATGC"` means base A picks allele g0, T picks g1, G picks g2, C picks g3). See Part 1 (Conceptual model) for the diploid blend formula.
+
+### Helix to gene table
+
+| Helix | Genes (top to bottom, position 0 first) |
+|---|---|
+| 0 | `BONES`, `BONES2`, `OSTODERM`, `OSTO_SIZE`, `GIANT_DWARF`, `TAIL_BOTTOM`, `LEG_STRETCH2`, `ARM_STRETCH2`, `HEAD_THICK_SKULL`, `NECK_STIFF` |
+| 1 | `GUT`, `GUT_IS_UDDER`, `DERRIERE`, `LEG_IS_CIRCLE`, `FOOT_IS_CIRCLE`, `TONGUE`, `TONGUE_SEGS`, `BELLY_ALT`, `PAT_BELLY`, `LITTER_SIZE`, `OLD_AGE`, `OMNIVORE`, `LIMP` |
+| 2 | `MUSCLE_USE`, `TAIL_STIFF`, `LEG_FLEXIBILITY`, `LEG_FLEX_BIAS`, `TAIL_FLEXIBILITY`, `TAIL_SPEED`, `LEG_AND_ARM_LIMP`, `ARM_STRENGTH`, `ARM_FLEXIBILITY`, `ARM_FLEX_BIAS`, `NECK_FLEXIBILITY`, `NECK_FLEX_BIAS`, `BRAIN_SPASTIC` |
+| 3 | `SPLAY`, `LEG_IN`, `LEG_IN2`, `TAIL_ANGLE`, `TAIL_JOINT_TYPE`, `LEG_JOINT_TYPE`, `HAS_KNEE`, `KNEE_MIN`, `KNEE_MAX`, `ARM_JOINT_TYPE`, `HAS_ELBOW`, `ELBOW_RANGE`, `NECK_JOINT_TYPE`, `HEAD_JOINTED`, `STIFF_JOINTS` |
+| 4 | `LEG_TAG`, `LEG_HAS_FOOT`, `LEG_COUNT`, `LEG_THRUST_BACK`, `ARM_TAG`, `ARM_HAS_HAND`, `NECK_TAG`, `NECK_SLOUCH`, `NECK_ONTOP`, `BREAK_FORCE`, `EAR_X` |
+| 5 | `QUADRUPED`, `BIPED`, `UPARM_TAG`, `UPARM_Y`, `UPARM_GOOFY`, `ARM_FORWARD`, `UPARM_ANGLE`, `WHITE_IS_LETHAL` |
+| 6 | `ASPECT`, `SKINNY`, `CHEST_BIG`, `CHEST_SMALL`, `NECK_TYPE`, `NECK_LENGTH`, `NECK_GIRAFFE`, `NECK_THICKNESS`, `NECK_ANGLE`, `NECK_COCK` |
+| 7 | `TAIL_TAG`, `TAIL_EXISTS`, `TAIL_SIZE`, `TAIL_SHORT`, `TAIL_ASPECT`, `TAIL_SHAPE`, `TAIL_SEGMENTS`, `TAIL_WAG` |
+| 8 | `LEG_TYPE`, `LEG_LENGTH`, `LEG_STRETCH`, `LEG_SKEW`, `LEG_STRENGTH`, `LEG_PENCIL`, `ARM_TYPE`, `ARM_LENGTH`, `ARM_STRETCH`, `ARM_SKEW`, `ARM_NODE_SCALE` |
+| 9 | `HAS_FOOT`, `FOOT_SIZE`, `FOOT_CLOWN`, `FOOT_THICKNESS`, `FOOT_TOE`, `FOOT_BACKWARDS`, `HAS_HAND`, `HAND_WIDTH`, `HAND_LENGTH`, `HAND_FINGER`, `SKIN_HANDS` |
+| 10 | `HEAD_SIZE`, `HEAD_X_GROWTH`, `HEAD_Y_GROWTH`, `HEAD_ASPECT`, `HEAD_SQUARE`, `HEAD_HAS_BACK`, `HEAD_GIANT`, `HEAD_SHRUNK`, `HEAD_CHIMERA`, `EYEBOX_X`, `EYEBOX_Y`, `EYEBOX_SIZE`, `SKIN_HEAD` |
+| 11 | `EYE_STYLE`, `BUGEYE`, `EYE_SIZE`, `PUPIL_SIZE`, `HAS_PUPIL`, `BROW_SIZE`, `BROW_SLANT`, `EYE_HUE`, `EAR_STYLE`, `EAR_SHAPE`, `EAR_SIZE`, `EAR_ASPECT`, `EAR_SLANT`, `EAR_INTERIOR`, `EAR_FLOP` |
+| 12 | `TEETH_SHAPE`, `HAS_MOUTH`, `MOUTH_Y`, `MOUTH_SIZE`, `JAW`, `TEETH_UPPER`, `TEETH_UPPER2`, `NOSE_STYLE`, `NOSE_INNY`, `NOSE_Y`, `NOSE_SIZE`, `NOSE_INTERIOR`, `FLU_IMMUNITY` |
+| 13 | `HAS_ANTLERS`, `ANTLER_X`, `ANTLER_W`, `ANTLER_H`, `ANTLER_TAPER`, `ANTLER_POM`, `ANTLER_COLOR`, `POM_COLOR`, `POM_USECOLOR`, `HAT_POM`, `HAT_POM_IS_LID` |
+| 14 | `ANTLER_REC`, `ANTLER_REC2`, `ANTLER_FLIP`, `ANTLER_MOD`, `ANTLER_SCALEH`, `ANTLER_SCALEW`, `ANTLER_ANGLE`, `ANTLER_ANGLE2`, `ANTLER_ANGLE_RAND`, `ANTLER_T1`, `ANTLER_T2` |
+| 15 | `HAT_EXISTS`, `HAT_SIZE`, `HAT_RAKE`, `HAT_ASPECT`, `HAT_TAPER`, `HAT_CLONE`, `HAT_BACK_SCALE`, `HAT_FRONT_SCALE`, `HAT_BACK_ANGLE`, `HAT_FRONT_ANGLE`, `HAT_ANGLE_RAND`, `HAT_FLIP`, `HAT_T` |
+| 16 | `BASE_BROWN`, `BASE_BLACK`, `BASE_RED`, `BASE_GREEN`, `GREEN_KNOCKOUT`, `BASE_CREAM`, `ALT_BLUE`, `SPOT_YELLOW`, `SKIN_HUE`, `SKIN_HUE2`, `SWAP_BASE_SPOT`, `SWAP_ALT_SPOT`, `WHITE`, `NOSE_HUE`, `HOOF_COLOR` |
+| 17 | `AGOUTI`, `FOOT_IS_HOOF`, `COON_EYE`, `EAR_COMP`, `TAIL_ALT`, `PAT_SPLIT`, `PAT_STRIPE`, `PAT_SPOT`, `PAT_PERLIN`, `PAT_PERLIN2`, `PAT_PERLIN_SIZE` |
+| 18 | `NARCOLEPSY`, `SPEED_FACTOR`, `NECK_SPEED`, `RAMPAGE`, `SPINAL_LOCO`, `HIGH_INTELLECT`, `L_LEG_SIGNAL`, `L_ARM_SIGNAL`, `L_TAIL_SIGNAL`, `L_NECK_SIGNAL`, `LOCO_SYNC` |
+| 19 | `L_LEG_FTOB_REACT`, `L_LEG_FTOB_EVENT`, `L_LEG_BTOF_REACT`, `L_LEG_BTOF_EVENT`, `L_ARM_FTOB_REACT`, `L_ARM_FTOB_EVENT`, `L_ARM_BTOF_REACT`, `L_ARM_BTOF_EVENT`, `L_TAIL_FTOB_REACT`, `L_TAIL_FTOB_EVENT`, `L_TAIL_BTOF_REACT`, `L_TAIL_BTOF_EVENT`, `L_NECK_FTOB_REACT`, `L_NECK_FTOB_EVENT`, `L_NECK_BTOF_REACT`, `L_NECK_BTOF_EVENT` |
+
+Notes:
+- 240 genes spread across 20 helices.
+- The `SIZE` gene has no explicit helix-position assignment in the executable. The Genome Mapper team speculates it fills Helix 6 position 0 by default and evaluates at baseline (95) independently.
+- Both strands at the same position store independent allele picks; the diploid blend in Part 1 combines them.

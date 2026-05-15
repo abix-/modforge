@@ -149,3 +149,35 @@ Treat the JumboDS64 facts as high confidence where they intersect with our findi
 
 
 > **Action items** for this doc are tracked in [`todo.md`](todo.md#external-knowledge-verification-gaps).
+
+## Prior-art repos (surveyed 2026-05-15 via `gh search repos "horsey game"`)
+
+20 horsey-game-related repos found on GitHub. The ones with real RE/modding content (data we should mine before redoing the work):
+
+| Repo | Stars | Lang | What it contributes |
+|---|---|---|---|
+| [hikazey/horseygamegm](https://github.com/hikazey/horseygamegm) | 5 | HTML | **High-value.** Horsey Genome Mapper. Self-contained browser tool with full 240-gene table + the **20-helix gene-to-position map** (CRISPR Lab UI layout). The helix map is the user-facing data we did NOT have. Authors credit "Claude (Anthropic)" for the RE work that extracted the helix assignment from the binary. MIT. Comes with a Steam guide. Folded into [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 4. |
+| [alexjthomson/horsey-save-editor](https://github.com/alexjthomson/horsey-save-editor) | 1 | HTML | **High-value.** Save-file editor in pure HTML/JS. Has the **diploid genome encoding formula** (`byte = 0x09 + rank(second_strand)*8 + rank(first_strand)`), per-gene rank tables, **horse flag-bits enum** (Championship, GMO Horse, four medal bits), and a fully working save patcher. MIT. Folded into [`SAVE-FORMAT.md`](SAVE-FORMAT.md). |
+| [alexjthomson/horsey-crispr](https://github.com/alexjthomson/horsey-crispr) | 1 | HTML | CRISPR editor companion to the save editor. Same author. Useful for cross-reference on the strand-base allele picks. |
+| [eldritch-hue/hhgm-EGM](https://github.com/eldritch-hue/hhgm-EGM) | 1 | JS | "Genetic Tool for Horsey Game". Worth a read for any unique calculator logic. |
+| [ZyonixGaming/crispr](https://github.com/ZyonixGaming/crispr) | 0 | JS | Another gene editor. Very recent (2026-05-13). |
+| [ZyonixGaming/Horsey-Game-Save-Manager](https://github.com/ZyonixGaming/Horsey-Game-Save-Manager) | 0 | ? | Save manager (slot copy/swap rather than edit?). |
+| [Istopx/horsey-game-gene-calculator](https://github.com/Istopx/horsey-game-gene-calculator) | 0 | HTML | Gene calculator. |
+| [wjfjfm/HorseyGameMonitor](https://github.com/wjfjfm/HorseyGameMonitor) | 0 | Python | Race-data analyzer + pedigree visualizer (Tkinter desktop tool, Chinese-language). External tool that reads save data and tracks races / lineage / statistics. Not RE-focused but interesting design split between "record columns" and "stat columns". |
+| [hikazeyattis/HorseyGameGM](https://github.com/hikazeyattis/HorseyGameGM) | ? | ? | Earlier mirror / fork of hikazey/horseygamegm. |
+| [laine-hallot/horseygamegm](https://github.com/laine-hallot/horseygamegm) | ? | ? | Another fork. |
+
+Repos NOT useful for our work (game-jam clones, lookalikes, fan projects with no Horsey-Game data): `Tophat-Dev/redesigned-goggles`, `Kreedomz/HorseyGameJam`, `grimmytimmy12-code/chromebook-horsey`, `gnargnor/horsey-game`, `skyecraft92/horsey-race-planner`, `Markymarc34/horsey-game`, `DohmBoy64Bit/Horsey-Game`, `danielycshi-eng/Horsey-games`, `ursulahneumann/simulate-horsey-game`, `O9Creeps/horsey_game_2`.
+
+### What the community has NOT done (gaps where our work adds value)
+
+- **No DLL-injection mod** for Horsey Game. Everyone else is an external tool (save editor, gene calculator, race monitor). We are the first to attach a runtime control plane via `CreateRemoteThread`.
+- **No 100% decompilation index** is public. The helix map and rank-formula were the most-RE'd parts of the binary; the rest of `Horsey.exe`'s function table is undocumented in public repos.
+- **No engine-extension mod framework.** Existing tools edit on disk before / after the game runs. We can hook live.
+- **No struct layout doc.** Save editors implicitly use offsets but don't publish a `STRUCTS.md`-style reference for the in-memory game state.
+
+### Worth pulling later
+
+- The Steam guide linked from `hikazey/horseygamegm` ([sharedfiles/filedetails?id=3677395605](https://steamcommunity.com/sharedfiles/filedetails/?id=3677395605)). Likely has CRISPR-Lab editing recipes.
+- `wjfjfm/HorseyGameMonitor`'s data-model split (record cols vs stat cols) is a clean pattern if/when we build our own roster UI.
+- `eldritch-hue/hhgm-EGM` JS source. May have allele-blend formulas we haven't verified yet.
