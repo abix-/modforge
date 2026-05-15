@@ -1186,3 +1186,25 @@ the consumer doesn't see," reopen as a sibling phase. We
 have 61 consumer-read slots and roughly 10 v1 genes; the
 pigeonhole says we won't hit the wall in v1.
 
+
+## 10. `sleep_safe_no_tire` patch (shipped 2026-05-14)
+
+Module `horsey-mod/src/patches.rs::sleep_safe_no_tire`. NOPs the `mov byte ptr [reg+0x206], 0` zero-store inside the per-frame `no_tire` loop at `FUN_1400ceb60`, leaving the `+0x205` store intact. Race eligibility (`+0x205`) is still bypassed; sleep eligibility (`+0x206`) keeps working so the player can advance the day cycle.
+
+### Patch-site discovery: three iterations before shipping
+
+The instruction the patch targets is `mov byte ptr [<reg> + 0x206], 0` (7 or 8 bytes depending on REX prefix). The challenge: identifying THIS specific store, not the other `+0x206` writes in the function.
+
+- **v1: RAX-only.** Matched `mov byte ptr [rax+0x206], 0`. Zero matches on user build (compiler picked a different reg).
+- **v2: all regs.** Matched any `mov byte ptr [reg+0x206], 0`. Two candidates in the function; can't pick.
+- **v3 (shipped): proximity anchor.** Picks the `+0x206` zero-store that has a sibling `+0x205` zero-store within 64 bytes. The compiler emits both stores back-to-back in the no_tire loop, but never anywhere else, so this disambiguates.
+
+If v3 ever fails on a future build (e.g. compiler reorders so the stores aren't within 64 bytes), the fallback plan is to anchor on the `DAT_1403d95c5` RIP-relative read at `FUN_1400ceb60:612` and take the first `+0x206` store after it. Only one other `+0x206` store exists in the function (at `:382`) and it has no nearby `DAT_1403d95c5` read.
+
+If both fail: hand-disassemble per-build and bake the offset as a constant. Or migrate to pattern-scan via `modforge::patterns::sleuth` (see [`ADDRESS-RESOLUTION.md`](ADDRESS-RESOLUTION.md) R2).
+
+Until v3 was wired, the shipping path was a 50ms Rust worker zeroing only `+0x205` (`horsey-mod/src/fatigue.rs`); that remained as a fallback in case the patch reverted.
+
+### Patch infrastructure (shared across all binary patches)
+
+`horsey-mod/src/patches.rs::patch_bytes(name, addr, new_bytes)` is the workhorse: `VirtualProtect` to RW, `copy_nonoverlapping`, restore protect, `FlushInstructionCache`. Records original bytes in `APPLIED` so `revert_all()` puts them back on DLL detach. Used by `sleep_safe_no_tire` today; will be used by `D1.3` if/when we re-derive the mid-function death-drift mutator.

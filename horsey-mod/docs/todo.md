@@ -133,33 +133,9 @@ User-locked 2026-05-15: **horsey-mod is a CONTENT + QoL mod. We do NOT overlap w
 
 ---
 
-## P0. `sleep_safe_no_tire` patch site discovery
+## `sleep_safe_no_tire` patch: SHIPPED 2026-05-14
 
-Wip in [`a31246f`](.). Patch infrastructure works
-(VirtualProtect / write / FlushInstructionCache + revert on
-detach), but `find_patch_site` cannot uniquely identify the
-`+0x206` zero-store inside the no_tire loop at
-`FUN_1400ceb60`.
-
-Three iterations tried; all ambiguous on the user's build:
-- v1: RAX-only -> 0 matches
-- v2: all regs -> 2 candidates, can't pick
-- v3: proximity ("`+0x206` store with `+0x205` sibling
-  within 64 bytes") -> still failing
-
-Next idea (verified against decomp at
-[`horsey-mod/research/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c:612`](../../horsey-mod/research/decompiled/funcs/1400c/1400ceb60_FUN_1400ceb60.c)):
-anchor on the `DAT_1403d95c5` RIP-relative read at line 612,
-then take the first `mov byte ptr [reg+0x206], 0` after it.
-Only one other `+0x206` store exists in the function (at
-:382) and it has no nearby `DAT_1403d95c5` read, so this
-should disambiguate.
-
-If the RIP-relative scan is too much work, fall back to a
-hand-disassembled per-build offset baked into a constant.
-
-Until this lands, the split-flag suppressor (50ms Rust
-worker zeroing only `+0x205`) is the shipping path.
+Patch-site discovery iterations (v1 RAX-only -> v2 all regs -> v3 proximity-anchor), the fallback plan (RIP-relative anchor + per-build constant), and the shared `patches::patch_bytes` infrastructure are all documented in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §10 "`sleep_safe_no_tire` patch".
 
 ---
 
@@ -451,73 +427,36 @@ gets persisted if we can find where it's saved.
 
 ### Phase D7: Iteration and testing infrastructure
 
-Without a fast feedback loop, debugging the patches is
-painful.
+D7.2 (`genes-extended.xml` parser + live reload) shipped; documented in [`GENE-CATALOG.md`](GENE-CATALOG.md) Part 3 "XML authoring format". D7.3 (`genes.ext.dump` op) shipped as part of D0.6; see GENE-CATALOG Part 3 "HTTP control-plane ops".
 
-- [ ] **D7.1.** Implement the `genes.xml.reload` and
-      `pop.xml.reload` HTTP ops (Q-reload-1 still open;
-      may not be feasible if vanilla doesn't expose a
-      reentrant loader).
-- [x] **D7.2.** DONE. `genes-extended.xml` parser in
-      `horsey-mod/src/genes_xml.rs`. Auto-loaded on
-      DLL attach (worker_main reads
-      `<DLL_DIR>/genes-extended.xml` if present). Live
-      reload via `genes.ext.reload {path?}` op. 5/5
-      parser tests pass. Format documented in the
-      module docstring. Conflict detection skips slots
-      already populated with a different name.
-- [x] **D7.3.** DONE. `genes.ext.dump` op shipped in
-      D0.6 returns full extended-gene snapshot. Vanilla
-      side dump deferred (would require reading
-      `DAT_1403ee4a4` via process memory; nice-to-have
-      not blocker).
-- [ ] **D7.4.** Deferred. Per-horse full dump op needs
-      a stable horse_id (open in D4.4) before it's
-      meaningful.
+Open:
+
+- [ ] **D7.1.** Implement the `genes.xml.reload` and `pop.xml.reload` HTTP ops (Q-reload-1 still open; may not be feasible if vanilla doesn't expose a reentrant loader).
+- [ ] **D7.4.** Per-horse full dump op. Needs a stable horse_id resolution per D4.4 finding (roster slot position) before it's meaningful.
 
 ### Phase D8: Verification
 
-Run the full pipeline end to end on a real save before
-declaring victory.
+Most D8 items are now covered by harness + unit tests; see [`TESTING.md`](TESTING.md) for the test inventory. Specifically:
 
-- [ ] **D8.1.** Boot the game with horsey-mod attached
-      and no extended genes defined. Confirm vanilla
-      behavior is unchanged (regression check).
-- [ ] **D8.2.** Add ONE extended gene (e.g.
-      `BX_WING_SIZE` mapping to an unused param_1
-      slot). Spawn a horse of a pop that uses it.
-      Confirm the slot value matches the diploid
-      blend math.
-- [ ] **D8.3.** Save and reload. Confirm the extended
-      gene's allele picks survive the save round trip.
-- [ ] **D8.4.** Breed two horses with different
-      extended-gene alleles. Confirm the child's
-      alleles follow the expected combinator behavior.
-- [ ] **D8.5.** Add 100 extended genes at once. Stress-
-      test the save format size and the trampoline's
-      per-frame cost. Profile.
-- [ ] **D8.6.** Hot-reload extended genes via HTTP
-      while the game is running. Confirm visual
-      changes apply without restart.
+- **D8.1** (vanilla regression check): covered by `tests/smoke` + `tests/dryrun_d1_d5` + `tests/arm_full_safe_stack`.
+- **D8.4** (breeding inheritance): covered by 6 unit tests in `genes::tests::combinator_*`.
+
+Still open (need a save loaded + per-test save fixtures):
+
+- [ ] **D8.2.** Add ONE extended gene (e.g. `BX_WING_SIZE`); spawn a horse of a pop that uses it; confirm slot value matches diploid blend math.
+- [ ] **D8.3.** Save / reload round-trip for a horse with ext alleles. Blocked on D4 stale save addresses.
+- [ ] **D8.5.** Stress test: add 100 ext genes, profile per-frame cost of the D5 trampoline + sidecar file size.
+- [ ] **D8.6.** Hot-reload genes-extended.xml via HTTP mid-game, confirm visual change without restart.
 
 ### Phase D9: Documentation and rollout
 
-- [ ] **D9.1.** Update `GENE-CATALOG.md` (Part 1: Conceptual model) to document
-      the extended layout: how `EXT_*` buffers are
-      laid out, where they're stored, how gene
-      indices map to vanilla vs extended.
-- [ ] **D9.2.** Write a "How to author a new gene"
-      guide aimed at non-engineers: the
-      `genes-extended.xml` format, the `extends="..."`
-      mapping, the `mode="..."` options, working
-      examples.
-- [ ] **D9.3.** Decide rollout: ship the patch infra
-      with zero extended genes by default, and let
-      authors add them via XML. Or ship a starter
-      pack of 20-50 useful new genes.
-- [ ] **D9.4.** Document the sidecar file format
-      (`save<N>.dat.ext`) in case anyone wants to
-      write external tools.
+D9.1 (extended layout documented in GENE-CATALOG.md Part 3): SHIPPED.
+D9.4 (sidecar file format documented in SAVE-FORMAT.md): SHIPPED.
+
+Open:
+
+- [ ] **D9.2.** Write a "How to author a new gene" guide aimed at non-engineers: `genes-extended.xml` format, `mode="..."` options, working examples.
+- [ ] **D9.3.** Decide rollout: ship the patch infra with zero extended genes by default and let authors add them via XML, OR ship a starter pack of 20-50 useful new genes.
 
 ### Risks and unknowns
 
