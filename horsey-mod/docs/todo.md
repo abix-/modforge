@@ -93,6 +93,25 @@ teardown grace        3s
 
 Test log written to `target/test-runs/smoke_ping_returns_ok-<ts>.log` with every step timestamped + flushed per-line.
 
+#### Iteration 5: pattern-scan primitive (R1) ships in modforge
+
+Test-first workflow drove `modforge::patterns`. Failing test
+`horsey-mod/tests/pattern_scan_runtime.rs` referenced
+`modforge::patterns::scan_loaded_image` before it existed; compile
+failure was the contract. Implemented `parse` / `find_first` /
+`find_all` / `scan_loaded_image` over the loaded PE image. 17 unit
+tests + 3 harness tests all green.
+
+Mid-implementation, the test caught a second architectural bug:
+scanning runs in the TEST process (wrong .text section). Refactored to
+expose `patterns.scan` + `patterns.read_bytes` HTTP ops that run inside
+the GAME process. Tests use those ops; round-trip from known function
+entries verified for `GENE_COMBINATOR` and `APPLY_GENE_TO_HORSE`.
+
+This is the minimum primitive needed; R2 (full patternsleuth
+integration) is next. See `ADDRESS-RESOLUTION.md` "Pattern-scan
+primitive" + "Phase R2" for the locked plan.
+
 #### Iteration 4: dryrun_d3_d4 test catches TWO real bugs
 
 `horsey-mod/tests/dryrun_d3_d4.rs` shipped as three tests asserting prologue bytes for combinator, lifecycle (ctor+dtor), and save (4 targets). After fixing the JSON parser (envelope payload lives in `result`), results split cleanly:
@@ -113,6 +132,75 @@ Both `-16` and `+0` placements were tested for all four save addresses; both lan
 **Operational rule (locked):** `genes.ext.save.arm` is UNSAFE until the four save-function addresses are re-derived. The dryrun test enforces this; CI / pre-arm checks should refuse if dryrun fails.
 
 This is the entire point of test-first. The patch infrastructure is correct; the addresses are wrong; we know which ones; we know which patches are safe to arm (combinator + lifecycle) and which aren't (save).
+
+### Current test inventory (2026-05-15, post-iter-5)
+
+53 tests, 52 green + 1 red. The red one is the contract that drives R2.
+
+**Unit tests (48 green, ~0.02s total):**
+- `modforge::patterns::tests` x 17. Parser + byte search + known-Horsey regression fences
+- `horsey::genes::tests` x 19. Table init, eval math, combinator Mendelian properties, render-buf writes
+- `horsey::genes_xml::tests` x 5. XML parser edge cases
+- `horsey::patches::save_sidecar::tests` x 7. BXSAVEXT codec round-trip + CRC32
+
+**Harness tests (5 green, 1 red, ~7-20s each):**
+- `smoke::ping_returns_ok` green
+- `dryrun_d1_d5` (D1 + D5 prologue fences) green
+- `dryrun_d3_d4` (D3/D4 prologue fences) 2 green, **save** RED. Drives R2
+- `arm_combinator` green
+- `pattern_scan_runtime` (3 sub-tests) green
+
+### Next action: R2. Patternsleuth at the modforge level
+
+The hand-rolled `modforge::patterns::scan_loaded_image` works, but is
+not the long-term answer. Reasons:
+
+- Single-target, no concurrency. patternsleuth does SIMD-accelerated
+  multi-target scans.
+- No per-target multiple-signature fallback. patternsleuth supports
+  "try sig A, then B, then C. First match wins" which is critical
+  for surviving compiler-reordered prologues.
+- No structured failure reporting. patternsleuth tells you "this
+  target had N candidate matches" so we can detect ambiguity.
+
+The `patternsleuth` crate is already pinned in
+`workspace.dependencies`. Promote it to first-class modforge primitive
+so every game-mod gets the same resolver.
+
+Plan (locked):
+
+1. **Failing test first.** Write
+   `horsey-mod/tests/r2_save_addresses_resolved.rs` asserting the 4
+   stale save addresses (currently red in `dryrun_d3_d4`) get
+   resolved via patternsleuth signatures. Test stays red until R2
+   ships.
+2. **`modforge::patterns::sleuth` submodule.** Wraps the
+   patternsleuth crate. Builder-style API:
+   `Resolver::new().add(symbol, &[sig_a, sig_b]).resolve_all()`
+   returns `HashMap<&str, Option<usize>>`.
+3. **Per-game signature catalog.** Per game, a `targets/patterns.toml`
+   declares `[symbol] sigs = ["..", ".."]`. modforge reads it at
+   attach time.
+4. **`targets::fn_addr` becomes a fallback layer.** Resolved
+   addresses win when present; hardcoded constants are the failsafe.
+   Tests can force the hardcoded path via env var to compare.
+5. **Test goes green.** Then propagate to the live patches: D4 save
+   sidecar can finally arm safely against re-derived addresses.
+6. **Documentation pass on the API.** Once the shape is proven for
+   horsey-mod, schedule1 + grounded2 + future mods all consume the
+   same modforge primitive. Add an authoring guide alongside
+   `ADDRESS-RESOLUTION.md`.
+
+R2 is the LOAD-BEARING piece. It unblocks D4 save sidecar, retires
+the hardcoded-RVA brittleness, and gives future per-game mods a
+turnkey path from decomp address to resolved hook target.
+
+### Older next-action notes (kept for context)
+
+The pre-R1 "run dryruns then arm in order" plan below was written
+before the test harness existed; today every dryrun + arm step is
+covered by a test. Treat the next-action plan above (R2) as
+authoritative.
 
 ### Next action: re-run smoke test with `--fresh` fix
 

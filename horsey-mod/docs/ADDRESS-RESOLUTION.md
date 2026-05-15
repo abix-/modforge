@@ -52,11 +52,73 @@ Trivial; unblocks everything else. Goal: every attach logs the
 exact build we're on, so when something breaks we can tell
 "this is the build we tested" vs "this is a new build."
 
+**Status 2026-05-15:** PARTIAL. Build identification (image SHA-256)
+is open. But the underlying pattern-scan primitive is now SHIPPED at
+the modforge level, see "Patterns module shipped" below.
+
+### Pattern-scan primitive (modforge::patterns, shipped 2026-05-15)
+
+A hand-rolled pattern scanner now lives in `modforge::patterns` as a
+reusable primitive for every game-mod that depends on modforge. It is
+NOT the full patternsleuth integration; it is the minimum surface to
+prove the test-driven address-resolution workflow works end-to-end.
+
+What ships:
+
+- `modforge::patterns::parse(sig: &str)`. IDA-style `48 89 ?? 24 ??`
+  parser. Two-hex-digit tokens or `??` wildcards.
+- `modforge::patterns::find_first(&[u8], &str)` / `find_all`.
+  byte search with wildcards over an arbitrary haystack.
+- `modforge::patterns::scan_loaded_image(sig)`. Walks PE headers of
+  the loaded `.exe` via `GetModuleHandleW(NULL)`, finds the `.text`
+  section, scans it, returns the matched runtime address.
+- 17 unit tests covering parser correctness, byte search at
+  start/middle/end, wildcards, multiple matches, and regression
+  fences against known Horsey prologues.
+
+How tests drive it (horsey-mod):
+
+- HTTP op `patterns.scan {sig}` runs `scan_loaded_image` INSIDE the
+  game process and returns the match. Tests cannot scan from the
+  test process (wrong image base + wrong .text bytes).
+- HTTP op `patterns.read_bytes {addr, n}` returns hex-byte string;
+  used by tests to derive signatures from known-good function entries.
+- `horsey-mod/tests/pattern_scan_runtime.rs`: 3 green tests proving
+  self-derived signatures round-trip for `GENE_COMBINATOR` and
+  `APPLY_GENE_TO_HORSE`, and absent signatures return None.
 
 ### Phase R2: patternsleuth resolver
 
-Replace fixed `targets::fn_addr::*` constants with a runtime
-resolver that pattern-scans the loaded image.
+Promote the hand-rolled `modforge::patterns` to a full
+`patternsleuth`-backed resolver. The `patternsleuth` crate is
+already pinned in `workspace.dependencies` (git rev
+`9573c52e8227af1d219782353e0ee6e9c6ec940c`, features
+`process-internal` + `image-pe`).
+
+Goal: replace fixed `targets::fn_addr::*` constants with a runtime
+resolver that lives in modforge so every game-mod (horsey-mod,
+schedule1, grounded2) uses the same API.
+
+Concrete plan:
+
+1. Add `modforge::patterns::sleuth` submodule wrapping the
+   `patternsleuth` crate. Expose:
+   - `Resolver` builder with `add_target(symbol, &[signatures])`
+     (multiple signatures per symbol; first match wins).
+   - `resolve_all() -> HashMap<&str, Option<usize>>` running all
+     scans at once (patternsleuth does SIMD-accelerated multi-pass).
+2. Add per-target signature catalog. Per game, a `targets/patterns.toml`
+   (or hardcoded `&[(symbol, &[sigs])]`) is the source of truth.
+3. Per game's `targets.rs` switches from `pub const SYMBOL: usize =
+   0x...` to `pub fn symbol() -> usize` reading from a resolved map.
+   Falls back to the hardcoded RVA when MODFORGE_NO_PATTERN_SCAN=1
+   so tests can compare both paths.
+4. Live `fn_addr::*` constants become a fallback layer used only when
+   the resolver fails to find a match.
+5. Failing-test-first contract: write
+   `tests/r2_save_addresses_resolved_via_sleuth.rs` asserting that
+   the 4 save addresses (currently red in `dryrun_d3_d4`) get found
+   via patternsleuth signatures. Test stays red until R2 is done.
 
 
 ### Phase R3: Signature authoring workflow
