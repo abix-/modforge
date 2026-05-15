@@ -63,12 +63,15 @@ def parse_num(s):
 
 
 def analyse_engine():
-    """Return dict gene_idx -> dict with:
-        - call_lines: [int]
-        - direct_slots: set of slot ints (slot writes in next 30 lines
-                        that reference the var that received the gene)
-        - gate_slots: set of slot ints (slot writes inside a conditional
-                      block opened by the gene's var)
+    """Return dict gene_idx -> dict with call_lines, direct, gate.
+
+    For each call site, scan forward until either the var is reassigned
+    to something unrelated or we have left the function. Inside that
+    range:
+      - Direct: any slot write whose line text references the var.
+      - Gate: any slot write while inside an `if (... var ...) { ... }`
+        block. Brace-scoped; nested braces tracked. Reassignment of the
+        var to another gene-call clears the gate context.
     """
     lines = ENGINE_C.read_text(encoding="utf-8").splitlines()
     ptr_alias = {}
@@ -78,6 +81,8 @@ def analyse_engine():
             ptr_alias[m.group(1)] = parse_num(m.group(2))
 
     info = {}
+    REASSIGN_RE = lambda v: re.compile(rf"^\s*{re.escape(v)}\s*=")
+
     for i, line in enumerate(lines):
         m = CALL_RE.search(line)
         if not m:
@@ -85,41 +90,59 @@ def analyse_engine():
         idx = parse_num(m.group(1))
         rec = info.setdefault(idx, {"call_lines": [], "direct": set(), "gate": set()})
         rec["call_lines"].append(i + 1)
-        # Find the var that received the gene
         em = EVAL_RE.search(line)
         var = em.group("var") if em else None
-        # Look-ahead window
+        if not var:
+            continue
+
+        # Scan forward up to 500 lines. Stop when var is reassigned to
+        # a non-gene-call value, or when we exit the function (depth <
+        # the initial depth at the call line).
+        gate_depths = []  # stack of depths at which gate-opening ifs fired
         depth = 0
-        opened_at_window = False
-        for j in range(i, min(len(lines), i + 30)):
+        for j in range(i + 1, min(len(lines), i + 500)):
             ln = lines[j]
+
             # Slot writes
-            sm = SLOT_WRITE_RE.search(ln)
-            if sm:
-                slot = parse_num(sm.group(1))
-                if var and re.search(rf"\b{re.escape(var)}\b", ln):
+            for rx, kind in ((SLOT_WRITE_RE, "slot"), (BYTE_WRITE_RE, "byte"), (PTR_WRITE_RE, "ptr")):
+                sm = rx.search(ln)
+                if not sm:
+                    continue
+                raw = sm.group(1)
+                if kind == "ptr":
+                    if raw not in ptr_alias:
+                        continue
+                    slot = ptr_alias[raw]
+                elif kind == "byte":
+                    slot = parse_num(raw) // 4
+                else:
+                    slot = parse_num(raw)
+                if re.search(rf"\b{re.escape(var)}\b", ln):
                     rec["direct"].add(slot)
-                elif var and depth > 0 and opened_at_window:
+                elif gate_depths:
                     rec["gate"].add(slot)
-            bm = BYTE_WRITE_RE.search(ln)
-            if bm:
-                slot = parse_num(bm.group(1)) // 4
-                if var and re.search(rf"\b{re.escape(var)}\b", ln):
-                    rec["direct"].add(slot)
-                elif var and depth > 0 and opened_at_window:
-                    rec["gate"].add(slot)
-            pm = PTR_WRITE_RE.search(ln)
-            if pm and pm.group(1) in ptr_alias:
-                slot = ptr_alias[pm.group(1)]
-                if var and depth > 0 and opened_at_window:
-                    rec["gate"].add(slot)
-            # Track conditional blocks gated by our var
-            if var and re.search(rf"if\s*\([^)]*\b{re.escape(var)}\b", ln):
-                opened_at_window = True
-            # Brace tracking
-            depth += ln.count("{") - ln.count("}")
-            if depth < 0:
                 break
+
+            # Conditional that uses our var
+            if re.search(rf"if\s*\([^)]*\b{re.escape(var)}\b", ln):
+                gate_depths.append(depth)
+
+            # Brace tracking
+            delta = ln.count("{") - ln.count("}")
+            depth += delta
+            # Close any gate whose anchor depth is now above current depth
+            gate_depths = [d for d in gate_depths if d < depth]
+
+            # Stop only if the var is reassigned to a DIFFERENT gene call
+            # (carries another gene's value from here). Plain reassign
+            # (var = expr without FUN_1400a5*) doesn't immediately revoke
+            # existing gates; we still want to credit writes inside those.
+            r = REASSIGN_RE(var).match(ln)
+            if r and "FUN_1400a5d20" in ln or (r and "FUN_1400a5e00" in ln):
+                em2 = EVAL_RE.search(ln)
+                if em2 and parse_num(em2.group("idx")) != idx:
+                    break
+
     return info
 
 
