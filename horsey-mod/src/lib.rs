@@ -145,10 +145,14 @@ fn worker_main() {
                     return serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec());
                 }
             };
-            let state = snapshot::HorseyState::capture();
             let result = modforge::ops::OP_REGISTRY
                 .dispatch(&op, &args)
                 .unwrap_or_else(|| Err(format!("unknown op: {op}")));
+            // Snapshot AFTER dispatch so write ops show the post-write
+            // game state in the `state` sub-object. Fixes the cosmetic
+            // pre-write-snapshot issue tracked in
+            // horsey-mod/docs/todo.md "Known control-plane issues" #1.
+            let state = snapshot::HorseyState::capture();
             let resp = modforge::envelope::OpResponse::from_result(&op, result, state);
             serde_json::to_vec(&resp).unwrap_or_else(|_| b"{}".to_vec())
         },

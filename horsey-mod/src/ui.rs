@@ -2,8 +2,9 @@
 //! spawned by `modforge::ui::native`.
 //!
 //! Tab `render` functions run on the modforge render thread. They
-//! read game state via the same accessors the HTTP ops use; never
-//! write anything in here.
+//! read game state via the same accessors the HTTP ops use. Writes
+//! are intentionally fenced to the explicit toggle controls in the
+//! Cheats tab; everything else stays read-only.
 
 use modforge::ui::api as ui;
 use modforge::ui::TabDef;
@@ -74,18 +75,17 @@ fn render_horses() {
 }
 
 fn render_cheats() {
-    let no_tire = gamestate::no_tire();
-    ui::text(&format!(
-        "no_tire (vanilla cheat): {}",
-        if no_tire { "ON" } else { "off" }
-    ));
+    let mut no_tire = gamestate::no_tire();
+    if ui::checkbox("no_tire (vanilla)", &mut no_tire) {
+        gamestate::set_no_tire(no_tire);
+    }
 
-    let debug = gamestate::debug_mode();
-    ui::text(&format!(
-        "debug_mode: {}",
-        if debug { "ON" } else { "off" }
-    ));
+    let mut debug = gamestate::debug_mode();
+    if ui::checkbox("debug_mode", &mut debug) {
+        gamestate::set_debug_mode(debug);
+    }
+
     ui::separator();
-    ui::text_disabled("Read-only view. Mutate via the HTTP ops");
-    ui::text_disabled("(curl 127.0.0.1:33077/op).");
+    ui::text_disabled("HTTP equivalents:");
+    ui::text_disabled("  cheats.no_tire.set / cheats.debug_mode.set");
 }

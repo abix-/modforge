@@ -742,7 +742,7 @@ Goal: Horsey modding becomes a real ecosystem. Required steps:
 
 Recorded 2026-05-13 during the first successful injection (proof-of-life). These are bugs/refinements to the HTTP control plane, distinct from the mod-feature TODOs above.
 
-1. **Snapshot in WRITE responses captures pre-write state.** The `result` field reflects the new value (correct), but the `state` sub-object is captured a moment before the write commits. Cosmetic; the next readback shows correct state. Fix: capture snapshot after the handler runs.
+1. ~~**Snapshot in WRITE responses captures pre-write state.**~~ FIXED 2026-05-15. Snapshot moved AFTER the op dispatch in `lib.rs`'s HTTP handler so write ops surface the post-write game state in the `state` sub-object.
 2. **No state-change broadcasting.** Clients have to poll `game.read` to see updates. A websocket or SSE upgrade is on the medium-term roadmap.
 3. **Write-op gating.** Bot operators have run write cheats (e.g. $100k money) unprompted during smoke tests. Going forward, write-ops should be user-approved only.
 
