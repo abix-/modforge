@@ -38,11 +38,15 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved. 
 
 ### R4 remaining: research plan (2026-05-15)
 
-12 H-gb field offsets are left after this session's batch (25/37 done). Core insight: they fail not because they're hard to pattern-anchor, but because we don't know WHICH function accesses them. The decomp tells us. The HTTP gives us live verification. Once anchor function is identified, R4 recipe is mechanical.
+12 H-gb field offsets are left after this session's batch (25/37 done), but only **4 are on the production hot path or public surface** (3 `must`, 1 `should`). The remaining 9 are diagnostic-only (`gamestate.diag` dump) and can stay `H-gb-low`. Core insight: they fail not because they're hard to pattern-anchor, but because we don't know WHICH function accesses them. The decomp tells us. The HTTP gives us live verification. Once anchor function is identified, R4 recipe is mechanical.
 
 We have: decompiled source in `horsey-mod/research/decompiled/`, running game, full HTTP introspection (`mem.scan_rdata`, `patterns.sleuth.scan_all`, `mem.find_xrefs`, `patterns.read_bytes`, `gamestate.diag`).
 
-Remaining: `FRAME_TICK` (gs+0x254), `SUPPLIES_START` (0x31c), 8x `FIELD_*` (0x37c..0x440), `TYPE_OR_SPECIES` (0x1c), roster stride 0x24, `no_tire FN_RVA + FN_SIZE`.
+Remaining (by criticality):
+
+- **must** (3): roster stride 0x24, no_tire FN_RVA, no_tire FN_SIZE
+- **should** (1): TYPE_OR_SPECIES 0x1c
+- **low** (9, deferred): FRAME_TICK gs+0x254, SUPPLIES_START 0x31c, 8x FIELD_* 0x37c..0x440
 
 #### Phase A: decomp grep pass (no game; pure offline)
 
@@ -109,7 +113,7 @@ Realistic: 1-2 hours per field of mixed decomp + live observation.
 4. **Phase B + C** for new anchors. Each is ~30 min from sig to R4.
 5. **Phase E**. Last; some `FIELD_*` will resolve naturally during Phase A (if found all written in one constructor, pattern-anchor on that). Truly-mystery ones get marked `H-unknown`.
 
-Estimated final coverage: 32-35/37 with remainder acknowledged as unknown-but-tracked.
+Practical final coverage: **29/37** (all must + should resolved). The 9 `H-gb-low` diag-only fields stay tracked-but-not-migrated; upgrade their classification if they ever become hot-path consumers.
 
 ### Hardcoded-constants inventory (zero-hardcoding audit, 2026-05-15)
 
@@ -117,7 +121,10 @@ Every magic integer baked into Rust source code. User-locked: nothing is out of 
 
 Status codes:
 - **R**: pattern-resolved at runtime via patternsleuth.
-- **H-gb**: hardcoded, GAME-BINARY DERIVED. Drift risk on Horsey updates. Target for migration.
+- **H-gb-must**: hardcoded, GAME-BINARY DERIVED, ON HOT PATH. Drift breaks the mod (patch fails, corrupted reads/writes). Migration is required.
+- **H-gb-should**: hardcoded, GAME-BINARY DERIVED, public surface (HTTP read ops). Drift gives wrong diagnostic value; no patch breaks. Migration is recommended.
+- **H-gb-low**: hardcoded, GAME-BINARY DERIVED, diagnostic-only (dumped by `gamestate.diag` and nothing else). Drift is harmless. Migration deferred.
+- **H-gb**: hardcoded, GAME-BINARY DERIVED, criticality not yet classified. Treat as `must` until reviewed.
 - **H-alg**: hardcoded ALGORITHM CONSTANT. We control the algorithm; the value is fixed by definition (CRC polynomial, hash mixer). Migration value = none, but still audit so we know it's intentional.
 - **H-os**: hardcoded HOST-OS CONSTANT. Windows ABI/exception codes. Migration value = none unless we ship on a non-Windows platform.
 - **H-design**: hardcoded DESIGN CHOICE we own (sidecar version, UI row cap, gene-count target). Migration value = none; these are policy.
@@ -134,16 +141,16 @@ Status codes:
 | `DEBUG_MODE_ACTIVE` 0x1403d957b | targets.rs:51 | data global | **R** | unlock-block delta |
 | `DEBUG_LOG_GATE` 0x1403d9506 | targets.rs:59 | data global | **R** | init-triplet sig |
 | `fn_addr::*` (31 entries) | targets.rs:166-371 | function entry | **R** | 32-48 byte body sigs |
-| `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H-gb** | needs R4 |
+| `gs_offset::FRAME_TICK` 0x254 | targets.rs:66 | struct field offset | **H-gb-low** | diag-only (`gamestate.rs:320`); drift = wrong diag value, no production impact |
 | `gs_offset::sim_horses_begin/end()` 0x260/0x268 | targets.rs | struct field offset (2) | **R** | HLT labels `kOffSimHorsesBegin/End`; adjacent qword-load pair (delta 8) in `[0x250, 0x270]` window |
 | `gs_offset::money()` 0x308 | targets.rs | struct field offset | **R** | cheat-money `add [base+disp], 1000` literal in DRAW_PAUSE_STATUS |
 | `gs_offset::year()` 0x314 | targets.rs | struct field offset | **R** | "Year %d" pause-menu format string + `mov r8d, [base+disp]` |
 | `gs_offset::sleeps()` 0x318 | targets.rs | struct field offset | **R** | debug pause-menu format string + `mov r9d, [base+disp]` |
-| `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H-gb** | needs R4 |
-| `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb** | needs R4 |
+| `gs_offset::SUPPLIES_START` 0x31c | targets.rs:76 | struct field offset | **H-gb-low** | diag-only (`gamestate.diag` dump); drift harmless |
+| `gs_offset::FIELD_37C/39C/410/414/415/418/41C/440` | targets.rs:77-84 | struct field offset (8) | **H-gb-low** | diag-only (`gamestate.diag` dump, lines 181-188); semantic unknown; drift harmless |
 | `gs_offset::horses_begin/end()` 0x280/0x288 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x200, 0x300]` window |
 | `gs_offset::map_width/map_height()` 0x278/0x27c | targets.rs | struct field offset (2) | **R** | HLT labels `kOffMapWidth/Height`; adjacent r32-load pair (delta 4) in `[0x270, 0x290]` window |
-| `horse_offset::TYPE_OR_SPECIES` 0x1c | targets.rs | struct field offset | **H-gb** | needs R4 |
+| `horse_offset::TYPE_OR_SPECIES` 0x1c | targets.rs | struct field offset | **H-gb-should** | read by `horse.read` HTTP op (`horse.rs:115`); drift = wrong type code in diag, no patch breaks |
 | `horse_offset::name_id()` 0x1f8 | targets.rs | struct field offset | **R** | `(bails)` retire-handler format string + `8b 8? <disp32>` (mov ecx, [horse+disp32]) before `call name_resolve`; filter excludes age/max_age |
 | `horse_offset::age()` 0x1fc | targets.rs | struct field offset | **R** | `(bails) age %d ch %d` format string + `44 8b` r9d-load (4th printf arg) |
 | `horse_offset::max_age()` 0x200 | targets.rs | struct field offset | **R** | derived `age + 4` (adjacent int32 in release-to-wild cmp) |
@@ -153,9 +160,9 @@ Status codes:
 | `horse_offset::skill()` 0x21c | targets.rs | struct field offset | **R** | `(useless)` retire-handler format string + `8b` r32 loads in ±256B window; histogram top in `[0x210, 0x240]` |
 | `horse_offset::litter_size_stat()` 0x254 | targets.rs | struct field offset | **R** | `8b` r32-from-disp32 loads within BREEDING body 8KB; histogram top in `[0x240, 0x270]` (both parents read it) |
 | `gs_offset::live_horses_begin/end()` 0x130/0x138 | targets.rs | struct field offset (2) | **R** | adjacent qword-load pair (delta 8) in `[0x100, 0x200]` window |
-| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb** | repeated 4x; one resolver feeds all |
+| Roster entry stride 0x24 | gamestate.rs:129,243,393,414 | struct stride | **H-gb-must** | hot path: 4 production sites do roster iteration + count math; drift = corrupted horse count + bogus pointers |
 | `horse_offset::ctx_offset()` 0x2b8 | targets.rs | struct field offset | **R** | `add rcx, imm32` inside HORSE_SAVE_LOADER body (256-byte window) |
-| `FN_RVA` 0x1400ceb60 + `FN_SIZE` 2502 | patches.rs:163,164 | function entry + size | **H-gb** | sleep_safe_no_tire patch site; FN_RVA needs body sig, FN_SIZE needs end-of-function detection |
+| `FN_RVA` 0x1400ceb60 + `FN_SIZE` 2502 | patches.rs:163,164 | function entry + size | **H-gb-must** | sleep_safe_no_tire patch entry + body scan window; ALSO feeds `horse_offset::resolve_tired_pair` (4 downstream resolvers); drift = patch fails to install + 4 field resolvers fall back |
 | Patch-site offset 0x206 (TIRE_FLAG_B store) | patches.rs | struct field offset | **R** | now reads `horse_offset::tired_flag_b()` resolver |
 | Patch-site offset 0x205 (TIRE_FLAG_A store) | patches.rs | struct field offset | **R** | now reads `horse_offset::tired_flag_a()` resolver |
 | `gs_offset::alloc_size()` 0x448 | targets.rs | struct size | **R** | anchor on unique `mov [rip+disp32], reg` store of GAMESTATE_PTR; lookback 256B for `b9 <imm32>`; histogram top |
@@ -165,7 +172,13 @@ Status codes:
 
 Done: `gs_offset::year/sleeps/money/horses_begin/horses_end/live_horses_begin/live_horses_end/sim_horses_begin/sim_horses_end/map_width/map_height/alloc_size`, `horse_offset::ctx_offset/tired_flag_a/tired_flag_b/on_track_flag/breeding_flag/age/max_age/alloc_size/litter_size_stat/name_id/skill`, patches.rs duplicate sites for 0x205/0x206 now read the resolvers.
 
-Remaining: FRAME_TICK (0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440), TYPE_OR_SPECIES (0x1c), roster stride 0x24, no_tire FN_RVA + FN_SIZE.
+Remaining by criticality:
+
+- **must** (3): roster stride 0x24, no_tire FN_RVA (0x1400ceb60), no_tire FN_SIZE (2502)
+- **should** (1): TYPE_OR_SPECIES (0x1c)
+- **low** (9): FRAME_TICK (gs+0x254), SUPPLIES_START (0x31c), 8x FIELD_* (0x37c..0x440). All diag-only via `gamestate.diag`; drift harmless
+
+Practical target: 29/37 (25 done + 4 to do); the 9 low-priority items stay tracked but unmigrated unless they become hot-path consumers.
 
 #### Algorithm constants (H-alg): we own; intentional
 
