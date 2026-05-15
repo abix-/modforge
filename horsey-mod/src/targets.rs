@@ -418,6 +418,12 @@ fn find_text_section() -> Option<(usize, usize)> {
     None
 }
 
+/// Public accessor for the .text section's runtime size in bytes.
+/// Returns `None` on PE-parse failure.
+pub fn find_text_section_size() -> Option<usize> {
+    find_text_section().map(|(_addr, size)| size)
+}
+
 /// Mtime + size of the on-disk Horsey.exe, if findable.
 pub fn image_file_info() -> Option<(std::path::PathBuf, std::time::SystemTime, u64)> {
     // GetModuleFileNameW for HMODULE = image_base() returns the

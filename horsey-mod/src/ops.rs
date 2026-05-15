@@ -893,6 +893,43 @@ sig is e.g. \"48 89 5c 24 ?? 57 48 83 ec\". Read-only.",
             },
         ),
         OpDef::new(
+            "game.build_info",
+            "Return identification for the loaded Horsey.exe build: SHA-256 of the \
+.text section, image base, text size, and (when available) the on-disk \
+mtime + size of the .exe file. Stable per-build; changes only when Steam ships a new \
+binary. Used by tests + bug reports to pin which build was tested.",
+            "",
+            |_| {
+                use crate::targets;
+                let sha = targets::image_text_sha256();
+                let base = targets::image_base();
+                let text_size = targets::find_text_section_size().unwrap_or(0);
+                let file_info = targets::image_file_info();
+                let mut out = json!({
+                    "image_sha256": sha,
+                    "image_base": format!("0x{base:x}"),
+                    "text_size": text_size,
+                });
+                if let Some((path, mtime, size)) = file_info {
+                    let mtime_secs = mtime
+                        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+                    out.as_object_mut().unwrap().insert(
+                        "exe_path".into(),
+                        json!(path.display().to_string()),
+                    );
+                    out.as_object_mut()
+                        .unwrap()
+                        .insert("exe_mtime_unix".into(), json!(mtime_secs));
+                    out.as_object_mut()
+                        .unwrap()
+                        .insert("exe_size".into(), json!(size));
+                }
+                Ok(out)
+            },
+        ),
+        OpDef::new(
             "patterns.sleuth.resolve",
             "Multi-target patternsleuth resolver. Body: \
 {patterns: [{name, sigs:[...]}, ...]}. Each target supplies one or more IDA-style \
