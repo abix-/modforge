@@ -299,10 +299,10 @@ pub fn write_u8(off: usize, value: u8) -> bool {
 // =============================================================================
 
 pub fn money() -> Option<u32> {
-    read_u32(gs_offset::MONEY)
+    read_u32(gs_offset::money())
 }
 pub fn set_money(value: u32) -> bool {
-    write_u32(gs_offset::MONEY, value)
+    write_u32(gs_offset::money(), value)
 }
 
 pub fn year() -> Option<u32> {

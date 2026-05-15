@@ -67,7 +67,42 @@ pub mod gs_offset {
 
     pub const FRAME_TICK: usize = 0x254;
     pub const FIELD_268: usize = 0x268;
+    /// Old decomp constant. Production should call [`money()`].
     pub const MONEY: usize = 0x308;
+
+    /// Pattern-resolved offset of the player's money on GameState.
+    /// Anchors on the cheat-money handler inside DRAW_PAUSE_STATUS:
+    /// `add dword [reg+disp32], 1000` (the `+$1000` cheat). The
+    /// `e8 03 00 00` immediate (== 1000) is uniquely distinctive
+    /// within the function body. Decodes the disp32 -> MONEY.
+    ///
+    /// Falls back to the hardcoded `MONEY` const when the pattern
+    /// misses.
+    pub fn money() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| {
+            let Some(dps) = super::resolve::draw_pause_status() else {
+                return MONEY;
+            };
+            // `add r/m32, imm32` with disp32 + 0x3e8 imm:
+            //   81 <ModR/M> disp32 e8 03 00 00
+            // ModR/M has reg=000 (/0 = add), mod=10, rm=base reg.
+            // We wildcard the ModR/M byte and disp32; the imm is
+            // literal `e8 03 00 00`. Total 10 bytes; disp32 at
+            // offset 2. The function body's window covers the
+            // whole DRAW_PAUSE_STATUS.
+            const SIG: &str = "81 ?? ?? ?? ?? ?? e8 03 00 00";
+            let hist = match modforge::research::in_process_decode_imm_in_window(
+                SIG, 2, 4, dps as u64, 8192,
+            ) {
+                Ok(h) => h,
+                Err(_) => return MONEY,
+            };
+            modforge::research::histogram_top(&hist)
+                .map(|v| v as usize)
+                .unwrap_or(MONEY)
+        })
+    }
     /// Old decomp constant. Production should call [`year()`] which
     /// pattern-resolves the offset at runtime.
     pub const YEAR: usize = 0x314;

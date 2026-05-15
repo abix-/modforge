@@ -43,6 +43,18 @@ fn gs_year_resolver_agrees_with_hardcoded() {
         "sleeps offset resolver mismatch: resolved=0x{sresolved:x} hardcoded=0x{shardcoded:x}"
     );
 
+    let money = result.get("money").expect("money entry");
+    let mresolved = u64_of_hex(money, "resolved").expect("resolved");
+    let mhardcoded = u64_of_hex(money, "hardcoded").expect("hardcoded");
+    game.log().event(
+        "R4-MONEY",
+        &format!("resolved=0x{mresolved:x} hardcoded=0x{mhardcoded:x}"),
+    );
+    assert_eq!(
+        mresolved, mhardcoded,
+        "money offset resolver mismatch: resolved=0x{mresolved:x} hardcoded=0x{mhardcoded:x}"
+    );
+
     let ctx = result.get("horse_ctx_offset").expect("horse_ctx_offset entry");
     let cresolved = u64_of_hex(ctx, "resolved").expect("resolved");
     let chardcoded = u64_of_hex(ctx, "hardcoded").expect("hardcoded");
@@ -56,6 +68,6 @@ fn gs_year_resolver_agrees_with_hardcoded() {
     );
 
     game.pass(&format!(
-        "R4: year=0x{resolved:x} sleeps=0x{sresolved:x} ctx=0x{cresolved:x} (all match hardcoded)"
+        "R4: year=0x{resolved:x} sleeps=0x{sresolved:x} money=0x{mresolved:x} ctx=0x{cresolved:x} (all match hardcoded)"
     ));
 }
