@@ -229,16 +229,23 @@ pub mod fn_addr {
     /// `breeding_state_machine`. The BarnMating state machine.
     pub const BREEDING: usize = 0x1400e0aa0;
 
-    /// `save_game_writer`. The save-file writer. Hook to inject
-    /// sidecar save data.
-    /// Test note 2026-05-15: tried -16 (`0x14006dc70`) and it
-    /// landed mid-function (prologue `7f 45 27 c6 ..`). Reverted
-    /// to the original Ghidra address; `tests/dryrun_d3_d4.rs`
-    /// will verify the prologue at this address next.
-    pub const SAVE_WRITER: usize = 0x14006dc80;
+    /// `save_game_writer`. Top-level save driver.
+    /// True entry RVA derived 2026-05-15 via pattern-scan probe
+    /// (`tests/r2_save_find_entries.rs`); the original Ghidra RVA
+    /// `0x14006dc80` was -1548 bytes inside the function body.
+    /// Prologue: `57 41 56 48 81 ec 40 01 00 00 48 8b e9 48 8d 51`
+    /// (push rdi; push r14; sub rsp,0x140; mov rbp,rcx; lea rdx,...).
+    /// Verified by `tests/r2_save_signatures.rs`.
+    pub const SAVE_WRITER: usize = 0x14006d674;
 
-    /// `load_game`. The matching loader.
-    pub const LOAD_GAME: usize = 0x14006e480;
+    /// `load_game`. Top-level save loader.
+    /// Same correction as `SAVE_WRITER`: original Ghidra RVA
+    /// `0x14006e480` was -304 bytes inside the body. True entry
+    /// prologue: `48 89 5c 24 08 55 56 57 41 54 41 55 41 56 41 57
+    /// 48 8b ec 48 83 ec 70` (shadow-save rbx + push 7 regs +
+    /// mov rbp,rsp + sub rsp,0x70). Verified by
+    /// `tests/r2_save_signatures.rs`.
+    pub const LOAD_GAME: usize = 0x14006e350;
 
     /// `draw_pause_status`. Pause-menu renderer + debug-mode unlock.
     pub const DRAW_PAUSE_STATUS: usize = 0x140066200;
@@ -313,9 +320,12 @@ pub mod fn_addr {
     /// fields (name_id, age, flags, etc.). D4.1b sidecar-write
     /// anchor: post-hook appends our ext alleles for the same horse
     /// in the same iteration order.
-    /// Test note 2026-05-15: -16 placed this at mid-function code.
-    /// Reverted to Ghidra's address; dryrun test will verify.
-    pub const HORSE_SAVE_WRITER: usize = 0x14006ee10;
+    /// True entry RVA derived 2026-05-15 via probe; the original
+    /// Ghidra RVA `0x14006ee10` was -277 bytes inside the body.
+    /// Prologue: `57 41 56 48 83 ec 40 48 8b e9 e8 .. .. .. .. 48`
+    /// (push rdi; push r14; sub rsp,0x40; mov rbp,rcx; call rel32).
+    /// Verified by `tests/r2_save_signatures.rs`.
+    pub const HORSE_SAVE_WRITER: usize = 0x14006ecfb;
 
     /// Per-horse save loader. Mirror of `HORSE_SAVE_WRITER`. Reads
     /// the inline genome via `FUN_14006d580(horse + 0x2b8)`, then
@@ -324,7 +334,14 @@ pub mod fn_addr {
     /// + consumer. Our D1/D5 detours fire during that regen, so any
     /// ext alleles in `EXT_HORSE_GENOMES` populated BEFORE this
     /// returns get applied automatically. D4.2b sidecar-read anchor.
-    pub const HORSE_SAVE_LOADER: usize = 0x14006f150;
+    /// True entry RVA derived 2026-05-15 via probe; the original
+    /// Ghidra RVA `0x14006f150` was -287 bytes inside the body.
+    /// Prologue: `53 57 48 83 ec 58 48 8b f9 48 81 c1 b8 02 00 00`
+    /// (push rbx; push rdi; sub rsp,0x58; mov rdi,rcx; add rcx,0x2b8).
+    /// The `add rcx, 0x2b8` is the genome-offset reference and the
+    /// most distinctive signature byte sequence. Verified by
+    /// `tests/r2_save_signatures.rs`.
+    pub const HORSE_SAVE_LOADER: usize = 0x14006f031;
 }
 
 /// Resolve the running process's image base. Safe to call from any
