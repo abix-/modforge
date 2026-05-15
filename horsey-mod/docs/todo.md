@@ -135,6 +135,96 @@ Status codes:
 - **Migrate (H-gb): 37 constants** -> R4 work below.
 - **Not migrating (H-alg / H-os / H-design / H-test): ~25 constants**, all intentional. Audited and acknowledged.
 
+### Learn from HorseyLiveTweaks (audit 2026-05-15)
+
+After reading all of HLT's `pattern_scan.cpp`, `pattern_targets.cpp`, `offsets.h`, `scene_resolver.cpp`, `child_blend_hook.cpp`, and `injector_main.cpp`, the following patterns are strictly better than what we have and worth porting.
+
+#### License posture (HLT is GPL v3)
+
+HLT is GPL v3 (per its `LICENSE` file). We treat HLT as DOCUMENTATION, not source. Specifically:
+
+- We READ their code to understand patterns / techniques / algorithms.
+- We WRITE OUR OWN Rust implementation; we do NOT copy their C++ text or translate it line-for-line.
+- We do NOT lift their pattern strings, offset values, or RVA constants verbatim. (One overlap exists: the byte sequence `48 89 1D ?? ?? ?? ??` appears in both codebases as an MSVC opcode encoding. That's a fact about how x86-64 `mov [rip+disp32], rbx` encodes; not copyrightable.)
+- We CREDIT them in docs (see todo.md preamble + `PRIOR-ART-HorseyLiveTweaks.md`).
+
+Copyright protects EXPRESSION, not METHODS (17 USC 102(b); Baker v. Selden 1879). Reimplementing a pattern in a different language with our own values and naming is clean-room reimplementation and does not trigger GPL.
+
+If we ever need to ship a feature whose only viable implementation IS a port of theirs (verbatim or close), we'd either:
+1. Ship that single module under GPL v3 (and keep our own work separable).
+2. Reimplement from the decomp or live binary observations without reading their source.
+
+For our current scope (data-globals + function-entries + field offsets via patternsleuth), we have not ported any HLT code. Only ideas.
+
+#### Patterns to port
+
+##### 1. Structural-plausibility validation of dereffed pointers
+
+HLT's `is_probable_world_root()` (scene_resolver.cpp:36-52) doesn't just check the pointer is heap-shaped. It reads multiple fields off the candidate object and checks bounded ranges:
+- `active_scene_id` in `[-1, kMaxSceneSlots)` (i.e. -1..255).
+- `scene_table` pointer non-null AND its `[neighbor_scene_id]` slot readable.
+
+Only if BOTH pass is the candidate accepted as the live World Root. Catches the case where the slot deref returns a stale/dead heap object whose first 8 bytes happen to look like a pointer but whose later fields are garbage.
+
+Our current `gamestate::is_plausible_gamestate_pointer()` only checks heap-shape. Necessary but not sufficient.
+
+**Action items:**
+- [ ] Add `gamestate::looks_like_live_gamestate(ptr)` that reads bounded structural invariants (year in `[1, 10000]`, roster pointer pair via `roster_span_looks_loaded`, money <= 100M).
+- [ ] Promote `gamestate::ptr()` to call it. If the dereffed pointer fails structural checks, fall through to a re-scan or return 0.
+- [ ] Same treatment for any future singleton pointer (e.g. world-root if/when we use it).
+
+##### 2. Vtable-pointer validation for typed objects
+
+HLT's `is_neighbor_scene_ptr_usable()` (scene_resolver.cpp:72-81) reads the candidate object's first 8 bytes as a vtable pointer and compares against the EXPECTED vtable RVA. C++ objects always have their vtable as field 0; matching it confirms the object's TYPE.
+
+We don't do this. GameState is a C++ class with a vtable (`FUN_1400fd580:54` stores `&PTR_FUN_140313558` at `*param_1`).
+
+**Action items:**
+- [ ] Find the GameState vtable RVA (likely `0x140313558` per decomp; verify).
+- [ ] Pattern-resolve it via R3 (anchor on the constructor's `mov [param_1], <vtable>` instruction; decode disp32).
+- [ ] Add vtable check to `looks_like_live_gamestate`: dereffed pointer's first 8 bytes must equal the GameState vtable's runtime address.
+
+##### 3. Direct-call vanilla functions via fn-pointer cast
+
+HLT calls vanilla functions DIRECTLY without setting up a detour, just by casting `exe_base() + kRva*` to the function pointer type (child_blend_hook.cpp:31). Useful when we want to INVOKE vanilla logic (e.g. their `shuffle_int_array`, `copy_gene_lane_pairs`) rather than intercept it.
+
+We already do this in `patches/save_sidecar.rs` (calling the original via the trampoline). But for vanilla helpers we just want to call (not hook), an explicit `targets::fn_addr::FOO as TyA = transmute(targets::resolve::foo()?)` pattern is cleaner than going through MinHook.
+
+**Action items:**
+- [ ] Add a tiny `modforge::vanilla::call_fn::<F: Function>(addr) -> F` helper that wraps the transmute safely.
+- [ ] Use it when calling vanilla helpers from inside our patches/detours.
+
+##### 4. SEH-wrap any call into vanilla code
+
+HLT wraps vanilla-function calls in `__try` (child_blend_hook.cpp around `copy_gene_lanes` / `rebuild_horse`). A crash inside vanilla doesn't kill their DLL; the SEH filter logs + bails.
+
+We have SEH wrappers in `modforge::winproc` for UI render callbacks but don't blanket-wrap our trampolines or vanilla-call sites. Worth auditing.
+
+**Action items:**
+- [ ] Audit all detour/trampoline call sites (`patches/combinator.rs`, `lifecycle.rs`, `render_trampoline.rs`, `save_sidecar.rs`) for SEH coverage.
+- [ ] Wrap each call into vanilla with a `modforge::seh::guard(|| { ... })` helper that returns `Result<T, SehError>`.
+
+##### 5. Injector elevation auto-detection + re-launch
+
+HLT's injector (injector_main.cpp top) detects whether the target process needs elevation; if yes, the injector re-launches itself elevated via ShellExecute.
+
+`horsey-inject` currently doesn't do this. If a user runs `horsey-inject` from a non-elevated shell and Horsey.exe is running elevated, the injection fails silently (or with a permission error).
+
+**Action items:**
+- [ ] Audit `horsey-inject/src/main.rs` (or wherever the injector lives). If it doesn't already re-launch on `OpenProcess(PROCESS_VM_WRITE)` failure, add the elevation check.
+
+#### What HLT does WORSE than us (do not regress)
+
+- Hand-rolled 94-line byte-loop scanner vs our SIMD patternsleuth (orders of magnitude faster on full-image scans).
+- All 46 struct field offsets HARDCODED. No R4 migration. Game updates silently corrupt their writes.
+- No xref-constraint scanning (`X<addr>`); literal-byte scan only.
+- No `.rdata` scan; can't anchor on string literals.
+- One-shot resolution only. No fallback chain, no sanity gate, no cross-validation between multiple sigs per target.
+
+#### Cross-validation already done
+
+`PRIOR-ART-HorseyLiveTweaks.md` confirms every offset we share with HLT matches their value (kWorldRootPtrRva = 0x3FB0D8 = our GAMESTATE_PTR, kOffSceneHorseVecBegin = 0x130 = our LIVE_HORSES_BEGIN, etc.). Good independent confirmation we're reading the same binary correctly.
+
 ## Ship status pointers
 
 - **480-gene D0-D5 + D7 implementation status:** [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §8 (summary) + §9 (full implementation log).
