@@ -1279,7 +1279,49 @@ complete. Open gaps:
 
 > Sourced from [`hikazey/horseygamegm`](https://github.com/hikazey/horseygamegm) (Horsey Genome Mapper, MIT). They reverse-engineered the gene-to-helix-position table directly from the executable. Independent confirmation of our 240-gene catalog AND adds the user-facing in-game DNA layout we don't have on the engine side.
 
-Each horse has **20 double-stranded helices** displayed as X shapes in the CRISPR Lab. Each position in each helix maps to one gene; the base (A/T/C/G) at that position selects one of the 4 allele values (g0..g3). Both strands at the same position store independent allele picks (diploid).
+### How 240 genes map onto 20 helices
+
+The 20 helices are just **UI buckets** the dev chose to organize the 240 genes for the in-game CRISPR Lab. Each helix is one X-shape with two strands; **each position on a helix is one gene**; the two strands at that position are the gene's two diploid picks (maternal + paternal).
+
+The 240 genes are NOT split evenly across the 20 helices. Different helices hold different counts (8 to 16 genes each). Per-helix counts:
+
+```
+helix:  0  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19
+genes: 10 13 13 15 11  8 11  8 11 11 13 15 13 11 11 13 15 11 11 16   = 240 total
+```
+
+(Sums verified independently in [`hikazey/horseygamegm`](https://github.com/hikazey/horseygamegm) and [`ZyonixGaming/crispr`](https://github.com/ZyonixGaming/crispr)'s `FIXED_LENGTHS` array.)
+
+The bucketing is **thematic**. The dev grouped related genes onto the same helix so the CRISPR Lab UI reads coherently. Quick tour:
+
+| Helix | Theme | Example genes |
+|---|---|---|
+| 0 | Skeleton-fundamentals | BONES, BONES2, OSTODERM, GIANT_DWARF |
+| 1 | Belly / behavior triggers | GUT, LITTER_SIZE, OLD_AGE, LIMP |
+| 2 | Flex / strength | LEG_FLEXIBILITY, TAIL_SPEED, ARM_STRENGTH |
+| 3 | Joints | KNEE, ELBOW, STIFF_JOINTS, joint types |
+| 4 | Counts / tags | LEG_COUNT, ARM_HAS_HAND, NECK_SLOUCH |
+| 5 | Limb posture | QUADRUPED, BIPED, UPARM_* |
+| 6 | Torso + neck | ASPECT, SKINNY, CHEST_*, NECK_* |
+| 7 | Tail geometry | TAIL_TAG/EXISTS/SIZE/SHAPE/WAG |
+| 8 | Leg + arm shape | LEG_LENGTH/STRETCH/STRENGTH, ARM_* |
+| 9 | Foot + hand | FOOT_*, HAND_*, SKIN_HANDS |
+| 10 | Head | HEAD_*, EYEBOX_*, SKIN_HEAD |
+| 11 | Eyes + ears | EYE_*, BROW_*, EAR_* |
+| 12 | Mouth + nose | TEETH_*, NOSE_*, MOUTH_*, FLU_IMMUNITY |
+| 13 | Antlers (group A) | ANTLER_X/W/H/TAPER/COLOR, POM_* |
+| 14 | Antlers (group B) | ANTLER_REC/FLIP/ANGLE/T1/T2 |
+| 15 | Hat | HAT_* |
+| 16 | Base coloration | BASE_BROWN/BLACK/RED/GREEN/CREAM, WHITE |
+| 17 | Patterns + agouti | AGOUTI, PAT_SPLIT/STRIPE/SPOT/PERLIN |
+| 18 | Behavior + locomotion signals | NARCOLEPSY, SPEED_FACTOR, RAMPAGE, L_*_SIGNAL |
+| 19 | Locomotion reactions/events | L_LEG_FTOB_REACT, L_ARM_BTOF_EVENT, etc |
+
+So the 240 genes -> 20 helices mapping is just **a labeled list of 20 sub-lists** of gene names. The dev wrote it into the binary; we read it out. Nothing magical about the helices. They're a presentation layer for the player to find and edit genes in groups.
+
+The full per-helix gene list is in the table below.
+
+### Base to allele index
 
 ### Base to allele index
 
