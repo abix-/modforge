@@ -22,33 +22,56 @@ use crate::targets::{self, gs_offset};
 
 /// Resolve the runtime address of the GameState struct.
 ///
-/// CRITICAL CORRECTION (2026-05-14): The slot at `GAMESTATE_PTR`
-/// (0x1403fb0d8) is NOT a pointer-to-struct. It IS the struct,
-/// embedded in the game's `.data` segment. The decomp evidence
-/// (e.g. cheat-money handler `*(int *)(DAT_1403fb0d8 + 0x308) += 1000`)
-/// does direct offset arithmetic with no double-deref. We were
-/// double-dereferencing and reading whatever the first 8 bytes of
-/// the struct happened to be. Usually zero (so `ptr() == 0`
-/// guards held and other code paths short-circuited), but on a
-/// freshly-launched game with the game in main-menu state, the
-/// first 8 bytes held the canonical-but-unmapped value
-/// 0x2400000000B which crashed every subsequent deref.
+/// `GAMESTATE_PTR` (`0x1403fb0d8`) is a `.data` pointer slot whose
+/// 8 bytes hold the address of a heap-allocated GameState object.
+/// The decomp evidence is unambiguous: `FUN_14009c6a0` allocates
+/// 0x448 bytes via `FUN_1402c704c(0x448)`, runs the constructor
+/// `FUN_1400fd580` in place, then `DAT_1403fb0d8 = uVar2`. Every
+/// read site uses `*(int *)(DAT_1403fb0d8 + N)`, i.e. pointer +
+/// offset, not struct + offset.
 ///
-/// The struct lives in the binary; `rebase(GAMESTATE_PTR)` is its
-/// runtime address. Reads from offsets inside the struct are safe
-/// as long as the offset is within the struct's allocated size,
-/// regardless of whether a save is loaded.
+/// Lifecycle: when no save is loaded the slot holds 0 (set by
+/// `FUN_14009c4e0` on destruction). When a save is loaded the
+/// slot holds a heap address. Reading the slot is always safe
+/// (it lives in `.data`); dereferencing the heap pointer is only
+/// safe when the pointer is non-null and well-formed.
+///
+/// Returns 0 when the dereffed pointer is null or clearly not a
+/// heap address. Callers already gate every field access on
+/// `if p == 0 { return None; }`, so a 0 return short-circuits
+/// reads without crashing.
 pub fn ptr() -> usize {
-    // R3: prefer the pattern-scan-resolved address (correct for any
-    // build whose decomp still has the cheat-money / race-fee /
-    // field_440 sites in `draw_pause_status` / `track_state_machine`).
-    // Fall back to the hardcoded RVA so older builds that match the
-    // 2026-05-08 decomp keep working. The resolver caches; this is
-    // one branch on the hot path.
-    if let Some(resolved) = targets::resolve::gamestate_ptr() {
-        return resolved;
+    // Locate the `.data` slot. Resolver-or-hardcoded; the resolver
+    // is sanity-gated in targets::resolve and falls through to the
+    // hardcoded RVA when no candidate is plausible.
+    let slot = targets::resolve::gamestate_ptr()
+        .unwrap_or_else(|| targets::rebase(targets::GAMESTATE_PTR));
+    // SAFETY: slot lives inside the loaded image's `.data` section;
+    // reading 8 bytes from it is safe for the process lifetime.
+    let raw = unsafe { *(slot as *const usize) };
+    if is_plausible_gamestate_pointer(raw) {
+        raw
+    } else {
+        0
     }
-    targets::rebase(targets::GAMESTATE_PTR)
+}
+
+/// Pure structural check: does `raw` look like it could be a
+/// pointer to a heap-allocated GameState object?
+///
+///   - Null and tiny values are rejected (heap addresses on x64
+///     Windows live well above the first 64 KiB).
+///   - Kernel-space addresses (> canonical user range) are rejected.
+///   - Misaligned values are rejected (heap allocations are at
+///     least 8-aligned; the stale `0x2400000000B` we observed in
+///     main-menu state has low nibble `0xB`, which fails).
+///
+/// Returns `false` for the "no save loaded" null and for stale
+/// garbage in the slot. Returns `true` only for values whose shape
+/// matches a real heap pointer.
+#[inline]
+pub fn is_plausible_gamestate_pointer(raw: usize) -> bool {
+    raw >= 0x10000 && raw <= 0x7fff_ffff_ffff && (raw & 0x7) == 0
 }
 
 /// Heuristic: is a save actually loaded?
@@ -440,7 +463,56 @@ pub fn live_horse_ptr(i: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::roster_span_looks_loaded as ok;
+    use super::{is_plausible_gamestate_pointer as plausible, roster_span_looks_loaded as ok};
+
+    #[test]
+    fn null_slot_rejected() {
+        // No save loaded -> FUN_14009c4e0 zeros the slot. ptr() must
+        // return 0 so every `if p == 0 { return None }` guard fires.
+        assert!(!plausible(0));
+    }
+
+    #[test]
+    fn low_addresses_rejected() {
+        // x64 Windows reserves the first 64 KiB. Heap allocations
+        // never land there, so anything below is stale garbage.
+        assert!(!plausible(0x1));
+        assert!(!plausible(0xFFFF));
+    }
+
+    #[test]
+    fn kernel_space_addresses_rejected() {
+        // Anything above the canonical user-mode range is either
+        // sign-extended kernel garbage or noncanonical.
+        assert!(!plausible(0x8000_0000_0000_0000));
+        assert!(!plausible(usize::MAX));
+    }
+
+    #[test]
+    fn observed_main_menu_garbage_rejected() {
+        // The exact stale value the previous fix-attempt observed
+        // in main-menu state (low nibble 0xB; never an HMM-aligned
+        // heap pointer). This is the regression that prompted the
+        // (mistaken) "slot IS the struct" rewrite. Must reject.
+        assert!(!plausible(0x2400000000B));
+    }
+
+    #[test]
+    fn misaligned_values_rejected() {
+        // Heap allocations are at least 8-byte aligned. Any value
+        // with low 3 bits set is not a real heap pointer.
+        assert!(!plausible(0x1_0001));
+        assert!(!plausible(0x7FFF_FFFF_FFF7));
+    }
+
+    #[test]
+    fn plausible_heap_pointers_accepted() {
+        // Typical x64 Windows heap addresses: low-TiB range,
+        // 16-aligned.
+        assert!(plausible(0x0000_0240_1234_5670));
+        assert!(plausible(0x0000_7FF0_DEAD_BEE0));
+        assert!(plausible(0x1_0000)); // exactly at the low gate
+    }
 
     #[test]
     fn null_pointers_are_not_loaded() {

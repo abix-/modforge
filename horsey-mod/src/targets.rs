@@ -659,11 +659,30 @@ pub mod resolve {
     }
 
     fn resolve_gamestate_ptr_uncached() -> Option<usize> {
-        let r = resolve_via(CANDIDATES);
-        if r.is_none() {
+        let Some(resolved) = resolve_via(CANDIDATES) else {
             modforge::log!("R3 GAMESTATE_PTR: no candidate signature matched");
+            return None;
+        };
+        // Sanity gate: the current candidate sigs assume the wrong
+        // MSVC encoding (direct `add [rip+disp32], imm` against the
+        // slot, treating it as a struct). In reality the slot is a
+        // pointer and the encoding is `mov reg, [rip+slot]; add
+        // [reg+N], imm`. Sigs that match in this build do so against
+        // unrelated globals with similar opcode shapes. Reject any
+        // resolved base that drifts more than 0x1000 from the
+        // hardcoded RVA so the caller falls back to the (correct)
+        // hardcoded slot. Remove this gate once sigs are re-authored
+        // against the real encoding.
+        let hardcoded = super::rebase(super::GAMESTATE_PTR);
+        let delta = resolved.abs_diff(hardcoded);
+        if delta > 0x1000 {
+            modforge::log!(
+                "R3 GAMESTATE_PTR sanity gate rejected resolved=0x{resolved:x}; \
+                 hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+            );
+            return None;
         }
-        r
+        Some(resolved)
     }
 }
 

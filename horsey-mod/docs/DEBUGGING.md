@@ -77,18 +77,32 @@ These show up across sessions; recognize them on sight.
 
 ### "Capture stops at `reading X`" then SEH
 
-Cause: a `gamestate::*` read dereferenced a `.data` address that
-isn't actually a pointer slot. Fix: re-read the decomp evidence
-for that symbol. Treat it as a struct base, not a pointer to a
-struct, unless the decompiler shows `**` indirection in the
-write paths.
+Cause: a `gamestate::*` read dereferenced a stale or garbage
+value at a `.data` pointer slot without checking the value's
+shape first. Fix: gate every slot deref through a plausibility
+check on the dereffed value (heap range, alignment).
 
-Historical example: `gamestate::ptr()` used to `*deref` the
-`GAMESTATE_PTR` slot. The slot IS the struct. We were reading
-the first 8 bytes of the struct, treating them as a pointer,
-and dereferencing again. Which crashed when the first 8 bytes
-held a canonical-but-unmapped value
-(0x2400000000B in the May 2026 build, main-menu state).
+Historical example (2026-05-14 -> 2026-05-15): a fix attempt
+observed `gamestate::ptr()` deref-crashing on the stale value
+`0x2400000000B` at the `GAMESTATE_PTR` slot in main-menu state.
+The "fix" removed the deref entirely on the theory that the
+slot WAS the struct. That misread the decomp (`FUN_14009c6a0:46`
+heap-allocates 0x448 bytes then stores the pointer into the
+slot; `FUN_14009c4e0:26` zeros the slot on destruction). The
+no-deref version "worked" without crashing because reading
+`.data` bytes adjacent to the slot is always safe, but every
+field read returned wrong values, which is why the in-game UI
+reported "no save loaded" mid-save. Real fix: deref the slot
+AND gate the result through `is_plausible_gamestate_pointer`.
+The rejection set includes 0x2400000000B (low nibble 0xB fails
+alignment), so the original crash can't recur.
+
+Rule: for any `.data` symbol, if the decomp shows `*(T *)(SYM
++ N)` reads, SYM is a pointer slot and you MUST deref before
+offsetting. If the decomp shows `*(T *)&SYM` or no offsetting
+at all, SYM is the struct itself. The presence of `**`
+indirection in write paths is not the right discriminator;
+look at how reads access fields.
 
 ### Game thread crashes with `bad_addr=0xffffffffffffffff` shortly after `arm`
 

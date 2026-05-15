@@ -37,30 +37,36 @@ Roughly ordered by leverage.
 
 ---
 
-## P0 STATE: stuck because I keep ignoring what I already have
+## P0 RESOLVED 2026-05-15: gamestate ptr was missing a deref
 
-As of 2026-05-15 the address-resolution effort is broken and circling. Honest snapshot of why:
+The root cause of the multi-session GAMESTATE_PTR thrash was a 30-line bug, not an address-resolution problem.
 
-**What's true.**
-1. `targets::resolve::gamestate_ptr()` returns `0x7ff63d864c38`. That's wrong.
-2. `mem.find_xrefs` at the supposedly-real money slot (`+0x308`) returns ~1 SSE write, not gameplay. Confirms wrong.
-3. `mem.scan_data` for u32 == 176 finds 7 heap-region candidates. All `0x7ff751b...`, more than 2 GB from `.text`, so they CAN'T be reached by any RIP-relative `disp32` directly. That means GameState is heap-allocated and the EXE references it through a `.data` u64 pointer slot, not via direct RIP-rel.
+**What was happening.** `DAT_1403fb0d8` in the decomp is a `.data` POINTER SLOT (8 bytes) whose value is the heap address of a `FUN_1402c704c(0x448)`-allocated GameState. Every read site in the decomp does `*(int *)(DAT_1403fb0d8 + N)`: pointer + offset, not struct + offset. The slot is written by:
 
-**What I keep doing wrong.**
-1. I keep inventing extra inputs (year / sleeps env vars, plausibility heuristics for "fresh save") to discriminate the 7 candidates. The user has said many times: only money is given, figure the rest out. Stop fabricating thresholds.
-2. The repo already has the full decompilation tree at `horsey-mod/research/decompiled/`. The decomp contains the actual instructions that touch money (e.g. `*(int *)(DAT_1403fb0d8 + 0x308) += 1000;` in `draw_pause_status`, plus 364 other references to `DAT_1403fb0d8`). Every one of those is an instruction encoding I should be matching with patternsleuth. I have been guessing MSVC encodings from the C decomp INSTEAD OF reading the surrounding decompiled context and authoring sigs from real call patterns.
-3. I have been treating `mem.find_xrefs` xref counts as a discriminator for heap candidates. Heap addresses can't be RIP-rel referenced (> 2 GB from `.text`), so xref counts are statistical noise for these candidates. Already established; kept relying on it anyway.
-4. After the user said "use the endpoint" I rewrote the test FOUR times with progressively more added discriminators (env-var year, env-var sleeps, roster pointer sanity, supplies plausibility), every iteration violating the "only money is given" rule.
+- `FUN_14009c6a0:46` allocates 0x448 bytes, constructs in place via `FUN_1400fd580`, then stores the heap pointer.
+- `FUN_1400fd580:86` (the in-place constructor) does `DAT_1403fb0d8 = param_1` (the freshly-allocated buffer).
+- `FUN_14009c4e0:26` zeros the slot on destruction.
 
-**What the actual next step is.**
+A 2026-05-14 fix attempt observed a stale value (`0x2400000000B`) at the slot during main-menu state and concluded the slot WAS the struct (no deref). That hid the crash but made every field read pull `.data` bytes adjacent to the slot, which is why money writes didn't stick, the in-game UI lied about save state, and the snapshot returned zeros.
 
-Read `horsey-mod/research/decompiled/` for references to money and to `DAT_1403fb0d8`. The decomp gives the calling context for every load of that pointer (`mov rax, [rip + DAT_1403fb0d8]; ... ;` then field accesses). Use the SHAPE of that two-instruction pattern as the patternsleuth signature:
+The R3 candidate sigs (`cheat_money_add_1000`, `race_fee_cmp_50`, `field_440_set_20`) were authored under the same wrong mental model: they expected `add [rip+disp32], imm` (direct write to a struct embedded in `.data`). The actual MSVC encoding for `DAT_1403fb0d8 + 0x308 += 1000` is `mov reg, [rip+slot]; add [reg+0x308], imm` (two instructions, the second referring to a heap address that can't be RIP-rel-anchored at all). The sigs that matched in the live image were anchoring on unrelated globals with similar opcode shapes; that's why two candidates resolved 156 KB apart.
 
-1. Patternsleuth pattern: `mov rax, [rip+disp32_to_PTR_SLOT]` (encoding `48 8b 05 ?? ?? ?? ??`) immediately followed by a `cmp` / `mov` / `add` instruction that uses `[rax + 0x308]` (the money offset). The combined byte sequence is rare in `.text` and uniquely identifies the load-money pattern.
-2. From any match, decode the `disp32` to get the `.data` PTR slot. Dereference that slot at runtime to get the live heap GameState base.
-3. The 7 scan_data candidates become a SANITY-CHECK ONLY (one of them must equal the dereffed pointer); they're not the discrimination mechanism.
+**Fix.** Three small changes:
 
-No more invented discriminators. No more env vars beyond `MODFORGE_EXPECT_MONEY`. Read decomp, author sig, scan, dereference.
+1. `src/gamestate.rs`: `ptr()` dereferences the slot and gates the result through a pure helper `is_plausible_gamestate_pointer` (rejects null, sub-64KiB, kernel-space, misaligned). Callers' existing `if p == 0 { return None }` guards short-circuit cleanly when no save is loaded.
+2. `src/targets.rs`: `resolve_gamestate_ptr_uncached` wraps `resolve_via(CANDIDATES)` in the same 0x1000-byte sanity gate the cheat-globals use. The bogus candidate sigs are now rejected and production falls through to the (correct) hardcoded RVA `0x1403fb0d8`.
+3. The misleading "CRITICAL CORRECTION (2026-05-14)" comment block in `gamestate.rs` was replaced with the correct lifecycle description.
+
+**Prior art that ended this faster.** [HorseyLiveTweaks](https://github.com/NickPetrone/HorseyLiveTweaks) (Nick Petrone, the game's own modder) resolves the equivalent World Root singleton in ~20 lines via the same pattern: anchor on a STORE site (`mov [rip+disp32], rbx` immediately followed by a distinctive field write `mov [rbx+0x270], rdi`), decode the disp32 to recover the `.data` slot, deref, then validate structurally (active scene id in `[-1, 32)`, scene table non-null). No env vars, no on-screen-value scans, no fabricated discriminators. Reading [`scene_resolver.cpp:11-33`](../research/prior-art/HorseyLiveTweaks/src/core/scene_resolver.cpp) before authoring more sigs would have prevented two sessions of thrash. Locked rule going forward: read prior art before authoring address-resolution code.
+
+**Tests.**
+
+- 6 new unit tests on `is_plausible_gamestate_pointer`, including a regression test pinning the exact `0x2400000000B` stale value the previous attempt observed. 13/13 unit tests in `gamestate::tests` green.
+- `tests/gamestate_ptr_deref.rs` (2 integration tests): an always-on shape check ("ptr is 0 or heap-shaped, and verdict matches") and a `MODFORGE_EXPECT_LOADED=1`-gated in-save check ("ptr is heap-shaped, looks_loaded is true, money/year/sleeps are within bounded real-save ranges"). The in-save bound is structural ("looks like a real save"), NOT exact-value matching (which is what burned the previous attempt).
+
+**Status.** Unit tests green. In-save live test pending: run `k3sc cargo-lock test -p horsey-mod --test gamestate_ptr_deref -- --test-threads=1 --nocapture` with `MODFORGE_EXPECT_LOADED=1` and a save loaded to lock it.
+
+**What's still open.** The R3 candidate sigs are still wrong but harmless (sanity gate rejects them). Re-authoring against `FUN_1400fd580`'s distinctive shape (the constructor stores `0x3f800000` at +0x114 and `mov [rip+slot], param_1` is its only RIP-rel qword write) is the right next step but not blocking: feature work can resume now.
 
 ## P0 RULE: USE PATTERNSLEUTH. NO HAND-ROLLED SCANNERS
 
@@ -78,27 +84,17 @@ This includes:
 
 If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
 
-## P0 BLOCKER (CRITICAL): the supposedly-resolved GAMESTATE_PTR is wrong
+## P0 BLOCKER (CLOSED 2026-05-15): GAMESTATE_PTR was a missing deref, not a wrong address
 
-Confirmed 2026-05-15 via the patternsleuth-backed `mem.find_xrefs` op (commit `9fdeca9`, reimplemented from the hand-rolled scanner in `3553f50` per the patternsleuth rule). The R3 resolver in `ae333c6` returned `GAMESTATE_PTR = 0x7ff63d864c38`. But:
+See "P0 RESOLVED" above for the full diagnosis. Summary: the hardcoded slot RVA `0x1403fb0d8` was correct all along. `gamestate::ptr()` was returning the slot's address instead of the heap pointer it holds. The R3 resolver candidates were authored under a wrong mental model and now fall through to the (correct) hardcoded RVA via a sanity gate.
 
-- `cheat_money_add_1000` candidate sig (`81 05 ?? ?? ?? ?? e8 03 00 00`) MISSED in the live image. The +$1000 cheat compiled to a different encoding this build, so the most discriminating candidate didn't anchor anything.
-- `race_fee_cmp_50` and `field_440_set_20` both matched but resolved to DIFFERENT bases (`0x87dbd0` vs `0x864c38`). The resolver kept the last one (`0x864c38`) without raising the disagreement to a hard error.
-- `find_xrefs` against the picked base + 0x308 returns exactly 1 xref, classified as `movdqa_xmm6` (SSE bulk write at `0x7ff63d491c08`), not gameplay code. The real GameState would have dozens of xrefs (cmp / mov / add) from cheat, race, save, and UI code.
-
-So the in-game UI saying "no save loaded" mid-save was correct symptom of wrong address: `gamestate::ptr()` returns `0x864c38`, reading `+0x280` gives a null roster, `looks_loaded()` reports false. Even the original hardcoded RVA (`0x88b0d8`) is suspect.
-
-**Where the real GAMESTATE_PTR is**: somewhere in `.data` such that `+0x308` holds the user's current money. With $176 visible on screen, the search target is "u32 == 176 in `.data` near the image base".
-
-**Next ticket: `mem.scan_data { value, kind: u32 }`**. Patternsleuth scan of the loaded image's `.data` section for a u32 matching `value` (pattern: the 4 LE bytes; e.g. `"b0 00 00 00"` for 176). Test (gated on `MODFORGE_EXPECT_LOADED` + a user-supplied `MODFORGE_EXPECT_MONEY=176`) takes the on-screen money, scans, returns the list of candidate addresses. Subtract `0x308` from each to get a GAMESTATE_PTR candidate. Run `find_xrefs` against each candidate `+0x308`; the one with many sensible cmp / mov / add xrefs from gameplay code is the real GAMESTATE_PTR. Author signatures from those xref windows.
-
-Until this is done the looks_loaded gate, the Cheats tab toggles, and every patch that hooks gamestate offsets are operating on wrong addresses.
+`looks_loaded`, the Cheats tab toggles, and every patch that hooks gamestate offsets now operate on the correct address as soon as a save is loaded. The previous false-negative ("UI says no save loaded mid-save") cannot recur without the unit-test regression firing.
 
 ## P0 BLOCKER: pattern-resolve EVERY hardcoded address
 
 User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved before any more feature work lands. This is not optional and not negotiable. The reasoning:
 
-- **Game updates break us.** The shipping Horsey build is moving target. The session-2 GAMESTATE_PTR drift (delta 0x264a0 between hardcoded and resolver) is what made the in-game UI lie about save state. Same drift will hit every other hardcoded address eventually.
+- **Game updates break us.** The shipping Horsey build is a moving target. Save-target RVAs have already drifted -277 to -1548 bytes between builds (`bd95252` re-derivation). The same drift will hit every other hardcoded address eventually. Note: the 2026-05-15 "GAMESTATE_PTR returns 0x864c38" case was not version drift, it was wrong-sigs matching unrelated globals; see "P0 RESOLVED" above.
 - **Patches won't persist.** D1/D3/D4/D5 detours all install at fixed RVAs. When the next game update ships, every detour misses its target and arms either zero subsystems or, worse, patches a different function. Every patch becomes a latent crash bug. Pattern-resolved addresses move with the code.
 - **No partial migration.** "Most are resolved" is not enough. A single hardcoded address in the hot path means the next game update bricks the mod for everyone. Either everything resolves or the mod's reliability story is "works on the 2026-05-08 build only."
 
@@ -110,14 +106,13 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved b
 
 **Order of attack:**
 1. ~~Tooling first: `mem.find_xrefs`.~~ DONE in `9fdeca9` (patternsleuth-backed, multi-prefix anchored scan).
-2. Next tool: `mem.scan_data { value, kind: u32 }` patternsleuth scan of `.data` for a literal value. Required because the R3 GAMESTATE_PTR is wrong; we need to find the real address by anchoring on the on-screen money value.
-3. Re-resolve GAMESTATE_PTR for real: in-save test runs `mem.scan_data` for the known money, picks the candidate whose `+0x308` has many `find_xrefs` hits from gameplay code, authors signatures from those xref byte windows. R3 candidates rewritten on top of those sigs.
-4. Author sigs for the remaining 5 data globals (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL) via the same `find_xrefs` workflow.
-5. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
-6. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
-7. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
+2. ~~Re-resolve GAMESTATE_PTR.~~ NO LONGER URGENT. The slot RVA was correct all along; the bug was a missing deref in `gamestate::ptr()` (closed 2026-05-15, see "P0 RESOLVED" at top). Re-authoring its sigs against `FUN_1400fd580` is still valuable for build-drift resilience but isn't blocking.
+3. Author sigs for the remaining 5 data globals (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL). Each is single-writer (constructor / init code stores the value); anchor on the store site plus a discriminator instruction, decode the disp32 of the RIP-rel store to recover the slot. This is the HorseyLiveTweaks pattern from `scene_resolver.cpp:11-33`.
+4. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
+5. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
+6. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
 
-**Until done, no:** new species in the bestiary, HK1 Shift+Click, pasture auto-buy hay, D2 pop weight extension. The whole feature backlog is parked behind this.
+**Feature backlog gate.** With GAMESTATE_PTR fixed, the in-save UI lies are gone and feature work CAN proceed in parallel with the broader migration. The strict "no features until everything is resolved" lock was justified when we couldn't trust state reads at all; that's no longer true. Items 3-6 above stay urgent for build-update resilience but don't block bestiary v2, HK1 Shift+Click, pasture auto-buy hay, or D2 pop-weight extension.
 
 ## Hardcoded -> resolved migration: comparison table
 
@@ -129,7 +124,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 | Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
 |---|---|---|---|---|
-| `GAMESTATE_PTR` | `0x1403fb0d8` | **R-broken** (`ae333c6`, refuted `9fdeca9`) | cheat_money missed, race_fee + field_440 disagreed; resolver picked wrong base; `find_xrefs` confirms only 1 SSE-write xref. needs re-anchoring per the P0 BLOCKER section above | very high; every state read + write |
+| `GAMESTATE_PTR` | `0x1403fb0d8` | **H + sanity-gated R** (2026-05-15 fix) | slot RVA correct; production uses hardcoded with `ptr()` dereffing. Resolver candidates are still wrong-encoding but rejected by 0x1000 sanity gate. Re-author against `FUN_1400fd580` constructor (stores `0x3f800000` at +0x114; one RIP-rel qword store) when convenient | very high; every state read + write |
 | `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
 | `NO_TIRE_TOGGLE` | `0x1403d95c5` | H, sig in flight | xor / cmp-sete-mov candidates authored but neither matches this build; sanity gate keeps fallback active | medium; every Cheats tab toggle |
 | `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H, sig in flight | adjacent-mov-pair candidate matched a false site 0x2640f bytes off; sanity gate rejected; need xref-derived sig | medium; gates cheat menu |
@@ -214,10 +209,11 @@ The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate sig
 | `50fc2d0` | Docs: GAMESTATE_PTR resolution is wrong; next ticket is `mem.scan_data`. |
 | `31e371b` | **P0 RULE locked**: use patternsleuth for ALL pattern / xref / data scans. NO hand-rolled scanners. Added to top of todo + as absolute rule in global CLAUDE.md alongside the no-curl rule. |
 | `9fdeca9` | `mem.find_xrefs` re-implemented on patternsleuth. New `modforge::patterns::sleuth::scan_all_matches` returns all matches for one pattern (companion to `resolve_all`'s first-per-name). The op runs one anchored scan per common RIP-relative opcode prefix (mov, lea, add, cmp, mov-imm, byte-cmp, byte-xor, movzx, movdqa); each is terminated by patternsleuth's native `X<target_addr>` xref constraint. Reference implementation for the patternsleuth rule. |
+| (pending commit) | **GAMESTATE_PTR deref fix.** Decomp re-read (`FUN_14009c6a0:46` heap-allocates + stores; `FUN_1400fd580:86` constructor stores; `FUN_14009c4e0:26` zeros) confirmed the slot is a pointer, not the struct. `gamestate::ptr()` now dereferences the slot and gates the result through pure helper `is_plausible_gamestate_pointer` (rejects null, sub-64KiB, kernel-space, misaligned). `resolve_gamestate_ptr_uncached` now sanity-gates resolver candidates at 0x1000 bytes so wrong-encoding sigs fall through to the (correct) hardcoded RVA. 6 new unit tests including a regression test pinning the exact `0x2400000000B` stale value the previous fix attempt observed. New `tests/gamestate_ptr_deref.rs` integration test (always-on shape check + `MODFORGE_EXPECT_LOADED`-gated bounded-value check). Unblocks Cheats tab, looks_loaded, every patch that reads gamestate offsets. Prior art [HorseyLiveTweaks `scene_resolver.cpp:11-33`](../research/prior-art/HorseyLiveTweaks/src/core/scene_resolver.cpp) shows the same store-site-anchor + structural-validate pattern in 20 lines; locked rule: read prior art before authoring address-resolution code. |
 
-### Known broken: closed by `ae333c6`
+### Known broken: closed by deref fix
 
-GAMESTATE_PTR drift (in-game UI lying about save state) closed by the R3 resolver. The next batch is the cheat globals and field offsets per the P0 BLOCKER section above.
+GAMESTATE_PTR drift (in-game UI lying about save state) was misdiagnosed in `ae333c6`. The slot RVA was correct all along; `gamestate::ptr()` was missing a deref. Closed by the pending-commit fix above. In-save live test still needs to be run user-side with `MODFORGE_EXPECT_LOADED=1` to lock the bounded-value contract.
 
 ## Current status (2026-05-15 session 1, after commit `5ff0cfc`)
 
