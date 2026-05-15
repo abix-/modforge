@@ -44,28 +44,28 @@ User-locked 2026-05-15. Every pattern-scan, xref-find, or signature match in thi
 This includes:
 
 - **Address resolution** (functions + data globals): use `Pattern::new("opcode bytes ?? ?? ?? ?? imm")` + `sleuth::resolve_all`. Already done for the 9 R-parity function entries via the existing catalog.
-- **Xref scanning** (find every `.text` instruction whose `disp32` decodes to a target data address): use patternsleuth's built-in `X<target_addr>` pattern syntax. The crate already supports this (`patternsleuth_scanner/src/lib.rs:180-188` parses `X0x...` as a 4-byte wildcard with an xref constraint; `is_match` at line 232 does the disp32-decode check). Build a `Pattern::new("X0x<target>")` and feed it through the existing `sleuth::resolve_all` infrastructure. No byte loops, no manual `i32::from_le_bytes` over `.text`, no manual `next_ip` arithmetic.
+- **Xref scanning** (find every `.text` instruction whose `disp32` decodes to a target data address): use patternsleuth's built-in `X<target_addr>` xref constraint inside an anchored pattern (`<opcode prefix> X<target>`). `is_match` at `patternsleuth_scanner/src/lib.rs:232` does the `next_ip + disp32 == target` check natively. NEVER iterate `.text` byte-by-byte. NEVER write your own `i32::from_le_bytes` over instruction bytes. The find_xrefs op in `horsey-mod/src/ops.rs` is the reference consumer: enumerates the common RIP-relative opcode prefixes (mov, lea, add, cmp imm8/imm32, mov-imm, byte-cmp, byte-xor, movzx, movdqa), runs one anchored scan per prefix via `sleuth::scan_all_matches`, unions and dedupes the results.
 - **Data scans** (find a value in `.data`): use patternsleuth with the value bytes as a literal pattern (e.g. `"b0 00 00 00"` for u32 == 176).
 
-The hand-rolled `scan_xrefs` function shipped in commit `3553f50` violates this rule and is the first thing to fix. Replace with a patternsleuth-backed implementation that reuses the same `sleuth::resolve_all` flow R3 uses. Rip it out; do not add new hand-rolled scanning code anywhere in the repo.
-
-Why: patternsleuth has SIMD-accelerated scanning, well-tested xref decoding (including the `next_ip` math and signed disp32 handling we keep getting wrong), and a single-config-list API that processes 30+ patterns in one pass over `.text`. Rolling our own bypasses all of that and accumulates correctness bugs (the `tail_imm_width` heuristic in the current `scan_xrefs` is one).
+**Done so far:**
+- `find_xrefs` shipped as a hand-rolled scanner in `3553f50` (rule violation), then ripped out and reimplemented on patternsleuth in `9fdeca9`. Reference implementation for any future scanning code.
+- `modforge::patterns::sleuth::scan_all_matches(sig)` added in `9fdeca9` as the all-hits companion to `resolve_all` (which returns only first per name).
 
 If a needed feature is missing from patternsleuth, add it to the upstream crate or to `modforge::patterns::sleuth` wrapper. Do not work around it in horsey-mod.
 
 ## P0 BLOCKER (CRITICAL): the supposedly-resolved GAMESTATE_PTR is wrong
 
-Found 2026-05-15 via `mem.find_xrefs` (commit `3553f50`). The R3 resolver in commit `ae333c6` returned `GAMESTATE_PTR = 0x7ff63d864c38`. But:
+Confirmed 2026-05-15 via the patternsleuth-backed `mem.find_xrefs` op (commit `9fdeca9`, reimplemented from the hand-rolled scanner in `3553f50` per the patternsleuth rule). The R3 resolver in `ae333c6` returned `GAMESTATE_PTR = 0x7ff63d864c38`. But:
 
 - `cheat_money_add_1000` candidate sig (`81 05 ?? ?? ?? ?? e8 03 00 00`) MISSED in the live image. The +$1000 cheat compiled to a different encoding this build, so the most discriminating candidate didn't anchor anything.
 - `race_fee_cmp_50` and `field_440_set_20` both matched but resolved to DIFFERENT bases (`0x87dbd0` vs `0x864c38`). The resolver kept the last one (`0x864c38`) without raising the disagreement to a hard error.
-- `find_xrefs` against the picked base + 0x308 returns exactly 1 xref: an SSE `movdqa xmm6` write at `0x491c0a`, not the cheat-money pattern. That's not where money lives.
+- `find_xrefs` against the picked base + 0x308 returns exactly 1 xref, classified as `movdqa_xmm6` (SSE bulk write at `0x7ff63d491c08`), not gameplay code. The real GameState would have dozens of xrefs (cmp / mov / add) from cheat, race, save, and UI code.
 
 So the in-game UI saying "no save loaded" mid-save was correct symptom of wrong address: `gamestate::ptr()` returns `0x864c38`, reading `+0x280` gives a null roster, `looks_loaded()` reports false. Even the original hardcoded RVA (`0x88b0d8`) is suspect.
 
 **Where the real GAMESTATE_PTR is**: somewhere in `.data` such that `+0x308` holds the user's current money. With $176 visible on screen, the search target is "u32 == 176 in `.data` near the image base".
 
-**Next ticket: `mem.scan_data { value, kind: u32 }`**. Scan the loaded image's `.data` section for a u32 matching `value`. Test (gated on `MODFORGE_EXPECT_LOADED` + a user-supplied `MODFORGE_EXPECT_MONEY=176`) takes the on-screen money, scans, returns the list of candidate addresses. Subtract `0x308` from each to get a GAMESTATE_PTR candidate. Run `find_xrefs` against each candidate `+0x308` to find xrefs in `.text`; the one with multiple reasonable xrefs (cmp / mov / add patterns referencing money in cheat / race / save code) is the real GAMESTATE_PTR. Author signatures from those xref byte windows.
+**Next ticket: `mem.scan_data { value, kind: u32 }`**. Patternsleuth scan of the loaded image's `.data` section for a u32 matching `value` (pattern: the 4 LE bytes; e.g. `"b0 00 00 00"` for 176). Test (gated on `MODFORGE_EXPECT_LOADED` + a user-supplied `MODFORGE_EXPECT_MONEY=176`) takes the on-screen money, scans, returns the list of candidate addresses. Subtract `0x308` from each to get a GAMESTATE_PTR candidate. Run `find_xrefs` against each candidate `+0x308`; the one with many sensible cmp / mov / add xrefs from gameplay code is the real GAMESTATE_PTR. Author signatures from those xref windows.
 
 Until this is done the looks_loaded gate, the Cheats tab toggles, and every patch that hooks gamestate offsets are operating on wrong addresses.
 
@@ -84,11 +84,13 @@ User-locked 2026-05-15. Every address in `targets.rs` must be pattern-resolved b
 4. CI / pre-commit refuses to ship any new `pub const usize = 0x140...;` outside `targets::resolve::*` candidate sigs.
 
 **Order of attack:**
-1. Tooling first: `mem.find_xrefs { target_addr }` op that scans `.text` for RIP-relative instructions whose disp32 lands on a given data address. Returns 16-byte context per xref. This is what lets us auto-derive sigs from the running build instead of guessing MSVC encodings. (Today's failure mode: guessing.)
-2. Use find_xrefs to author sigs for the 6 data globals (GAMESTATE_PTR is done; NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL still open).
-3. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
-4. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
-5. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
+1. ~~Tooling first: `mem.find_xrefs`.~~ DONE in `9fdeca9` (patternsleuth-backed, multi-prefix anchored scan).
+2. Next tool: `mem.scan_data { value, kind: u32 }` patternsleuth scan of `.data` for a literal value. Required because the R3 GAMESTATE_PTR is wrong; we need to find the real address by anchoring on the on-screen money value.
+3. Re-resolve GAMESTATE_PTR for real: in-save test runs `mem.scan_data` for the known money, picks the candidate whose `+0x308` has many `find_xrefs` hits from gameplay code, authors signatures from those xref byte windows. R3 candidates rewritten on top of those sigs.
+4. Author sigs for the remaining 5 data globals (NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE, RACES_COUNTER, SAVE_VERSION_GLOBAL) via the same `find_xrefs` workflow.
+5. Flip the 9 R-parity function entries to **R** (the sigs already exist via `r2_catalog` and `r2_save_signatures`; production reads need to consult the resolver). Mostly mechanical.
+6. Author sigs for the remaining 20 H function entries. Most are unused-in-v1 today but matter the moment any future feature lands on them.
+7. Field offsets (`gs_offset::*`, `horse_offset::*`) get their own R3-style tooling: scan a write site, decode the displacement, recover the offset. Defer until a build is observed where a field offset has actually shifted.
 
 **Until done, no:** new species in the bestiary, HK1 Shift+Click, pasture auto-buy hay, D2 pop weight extension. The whole feature backlog is parked behind this.
 
@@ -102,7 +104,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 | Item | Hardcoded RVA | Status | Decomp anchor for sig | Leverage |
 |---|---|---|---|---|
-| `GAMESTATE_PTR` | `0x1403fb0d8` | **R** (`ae333c6`) | cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14` | very high; every state read + write |
+| `GAMESTATE_PTR` | `0x1403fb0d8` | **R-broken** (`ae333c6`, refuted `9fdeca9`) | cheat_money missed, race_fee + field_440 disagreed; resolver picked wrong base; `find_xrefs` confirms only 1 SSE-write xref. needs re-anchoring per the P0 BLOCKER section above | very high; every state read + write |
 | `RACES_COUNTER` | `0x1403eded8` | H | reset to 0 in track state machine (`*DAT = 0`) | low; one read per snapshot |
 | `NO_TIRE_TOGGLE` | `0x1403d95c5` | H, sig in flight | xor / cmp-sete-mov candidates authored but neither matches this build; sanity gate keeps fallback active | medium; every Cheats tab toggle |
 | `DEBUG_MODE_ACTIVE` | `0x1403d959b` | H, sig in flight | adjacent-mov-pair candidate matched a false site 0x2640f bytes off; sanity gate rejected; need xref-derived sig | medium; gates cheat menu |
@@ -165,7 +167,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
 
-## Current status (2026-05-15 session 2, latest commit `06839d4`)
+## Current status (2026-05-15 session 2, latest commit `9fdeca9`)
 
 ### What shipped this session
 
@@ -182,6 +184,11 @@ The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate sig
 | `ae333c6` | **R3: GAMESTATE_PTR resolved via patternsleuth.** Three candidate signatures (cheat-money `+1000`, race-fee `<$50`, field_440 `=0x14`) each decode a RIP-relative `disp32` to recover the base. Resolved `0x7ff63d864c38`; hardcoded was `0x7ff63d88b0d8` (delta 0x264a0 == 156 KB). `gamestate::ptr()` now uses resolved with hardcoded fallback. Closes the in-save false-negative for GAMESTATE_PTR. |
 | `ba96be8` | Docs: hardcoded -> resolved migration comparison table. Inventories every hardcoded address with current resolver status and a 5-batch migration plan. |
 | `06839d4` | **R3 batch 1: cheat-globals validation framework.** New `mem.alias_check` op (writes 0xAB / 0xCD to addr A, reads B, restores; proves byte aliasing). New `resolve_data_global` wrapper with a 0x1000-byte sanity gate against the hardcoded RVA. `tests/r3_cheat_globals_resolve.rs` runs alias-check per global and fails loud on mismatch. Production wiring uses resolver-or-hardcoded for `no_tire` / `debug_mode`. First-pass sigs for the 3 cheat globals all rejected by the sanity gate on this build (production cleanly falls back to hardcoded). |
+| `cac59c4` | Docs: P0 BLOCKER set. Every hardcoded address in `targets.rs` must be pattern-resolved before any more feature work. Feature backlog (bestiary v2, HK1, pasture, D2) is parked behind this. |
+| `3553f50` | `mem.find_xrefs` op (HAND-ROLLED scanner). Found that the R3 GAMESTATE_PTR resolution is wrong: only 1 xref to the supposed `+0x308`, an SSE write, not gameplay code. Ripped out in `9fdeca9` per the patternsleuth rule. |
+| `50fc2d0` | Docs: GAMESTATE_PTR resolution is wrong; next ticket is `mem.scan_data`. |
+| `31e371b` | **P0 RULE locked**: use patternsleuth for ALL pattern / xref / data scans. NO hand-rolled scanners. Added to top of todo + as absolute rule in global CLAUDE.md alongside the no-curl rule. |
+| `9fdeca9` | `mem.find_xrefs` re-implemented on patternsleuth. New `modforge::patterns::sleuth::scan_all_matches` returns all matches for one pattern (companion to `resolve_all`'s first-per-name). The op runs one anchored scan per common RIP-relative opcode prefix (mov, lea, add, cmp, mov-imm, byte-cmp, byte-xor, movzx, movdqa); each is terminated by patternsleuth's native `X<target_addr>` xref constraint. Reference implementation for the patternsleuth rule. |
 
 ### Known broken: closed by `ae333c6`
 
