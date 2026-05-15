@@ -227,7 +227,34 @@ fn stage_dll(source: &Path) -> anyhow::Result<PathBuf> {
     std::fs::copy(source, &staged)?;
     let staged = std::fs::canonicalize(&staged)?;
     println!("[inject] staged DLL: {}", staged.display());
+    stage_bestiary(parent);
     Ok(staged)
+}
+
+/// Drop the bestiary `genes-extended.xml` next to the staged DLL so
+/// horsey.dll's worker_main auto-loads it at attach. Skipped silently
+/// if the source file is missing (e.g. crate moved); skipped if a
+/// genes-extended.xml is already present so the player's edits don't
+/// get clobbered on re-inject.
+fn stage_bestiary(dll_dir: &Path) {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("bestiary")
+        .join("genes-extended.xml");
+    if !src.exists() {
+        return;
+    }
+    let dst = dll_dir.join("genes-extended.xml");
+    if dst.exists() {
+        println!(
+            "[inject] genes-extended.xml already at {} (leaving user copy)",
+            dst.display()
+        );
+        return;
+    }
+    match std::fs::copy(&src, &dst) {
+        Ok(_) => println!("[inject] staged bestiary: {}", dst.display()),
+        Err(e) => println!("[inject] WARN: stage bestiary failed: {e}"),
+    }
 }
 
 // =============================================================================

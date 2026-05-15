@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+horsey-mod bestiary v1: first shipped extended gene.
+
+`BX_GIANT_BABY` targets render slot 0 with `mode="set"` and pushes the
+horse's primary scale parameter to 200.0 when expressed. Slot 0 is the
+only empirically-verified visible-effect slot as of 2026-05-15
+(see horsey-mod/docs/GENE-CATALOG.md "Confirmed visible-effect slots":
+the 2026-05-14 "giant babies" experiment proved a value of 200.0 in
+slot 0 renders horses at roughly full screen width).
+
+Authors who want every horse to manifest this effect should call:
+  horse.ext.default_alleles.set { ext_gene_idx: 0, maternal: 3, paternal: 3 }
+which sets both diploid picks to allele 3 (value 200.0). Lower allele
+indices yield smaller scales (0 = no effect, 1 = 50, 2 = 100, 3 = 200).
+
+Deploy: copy this file next to the staged horsey.dll. The mod auto-loads
+it at attach via `worker_main`; live re-edits land via the
+`genes.ext.reload` HTTP op.
+-->
+<genes-extended>
+  <gene name="BX_GIANT_BABY" ext_idx="0"
+        m="100" s="1"
+        g0="0" g1="50" g2="100" g3="200">
+    <render slot="0" mode="set" />
+  </gene>
+</genes-extended>
