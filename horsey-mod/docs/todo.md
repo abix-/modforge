@@ -37,7 +37,41 @@ Roughly ordered by leverage.
 
 ---
 
-## Current status (2026-05-15, after commit `352daed`)
+## Current status (2026-05-15, after commit `5ff0cfc`)
+
+### Test suite
+
+| Category | Count | Status |
+|---|---|---|
+| Unit (modforge::patterns + sleuth) | 20 | green |
+| Unit (horsey: genes / xml / sidecar) | 30 | green |
+| Harness (smoke + dryruns + arm + r2) | 9 | 8 green + 1 expected-red (save dryrun = R2 contract) |
+| **Total** | **59** | **58 green + 1 contract-red** |
+
+Each harness test does full Steam relaunch + inject + HTTP + assert + taskkill, with timestamped logs at `target/test-runs/<name>-<ts>.log`. Average 7-20s per harness test.
+
+### Commits this session (latest first)
+
+| Hash | What |
+|---|---|
+| `5ff0cfc` | todo iter 6 R2 + migration proven |
+| `f1ad5d5` | r2_migration_combinator: legacy + sleuth converge |
+| `54d1c90` | **R2 ships**: modforge::patterns::sleuth wraps patternsleuth crate |
+| `c22778e` | R2 plan locked in ADDRESS-RESOLUTION.md |
+| `d0cbd27` | **R1 ships**: modforge::patterns + pattern_scan_runtime |
+| `291d37e` | 16 new tests: combinator math, BXSAVEXT codec, D1/D5 prologues, arm_combinator |
+| `e8f6c89` | dryrun_d3_d4 catches stale save addresses |
+| `f0abb2a` | modforge::harness + horsey-mod test infrastructure |
+
+### Open follow-ups (test-first, in priority order)
+
+1. **Signature catalog for the 6 green targets.** Author body signatures for `GENE_COMBINATOR`, `APPLY_GENE_TO_HORSE`, `EVAL_DIPLOID_BLEND_A/B`, `GENE_ALLELE_SWAP`, `HORSE_CONSTRUCTOR`, `HORSE_DESTRUCTOR`. Test: `resolve_all(&CATALOG)` returns the same addresses the existing dryruns report. Mechanical now that parity is proven (per `r2_migration_combinator`).
+2. **Retire hardcoded `fn_addr::*` consts.** Switch from `pub const NAME: usize = 0x...` to lazy `pub fn name() -> usize` reading from a resolved catalog. Test asserts every detour arms via the resolved address and behaves identically. Larger refactor.
+3. **Re-derive the 4 stale save addresses.** Needs fresh decomp pass OR string-xref tracing (the byte sequences at the original Ghidra RVAs are mid-function code, not entries). Once signatures exist, plug into catalog and `dryrun_d3_d4::save_*` goes green automatically.
+4. **R1 build identification.** Image SHA-256 at attach + `game.build_info` op. Small.
+5. **Arm-and-observe tests** for D5 render trampoline, lifecycle, full-stack. Regression fences. Arm-time covered by dryrun; post-arm behavior isn't yet.
+
+## Prior status (pre-R1) (2026-05-15, after commit `352daed`)
 
 **480-gene project: infrastructure complete, untested in-game.**
 
