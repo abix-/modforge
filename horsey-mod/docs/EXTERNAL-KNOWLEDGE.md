@@ -181,3 +181,42 @@ Repos NOT useful for our work (game-jam clones, lookalikes, fan projects with no
 - The Steam guide linked from `hikazey/horseygamegm` ([sharedfiles/filedetails?id=3677395605](https://steamcommunity.com/sharedfiles/filedetails/?id=3677395605)). Likely has CRISPR-Lab editing recipes.
 - `wjfjfm/HorseyGameMonitor`'s data-model split (record cols vs stat cols) is a clean pattern if/when we build our own roster UI.
 - `eldritch-hue/hhgm-EGM` JS source. May have allele-blend formulas we haven't verified yet.
+
+### Additional findings from deeper repo dives
+
+**[`ZyonixGaming/crispr`](https://github.com/ZyonixGaming/crispr). `dna-encoder.js`.** A URL-shareable genome encoding scheme:
+
+- 2 bits per base: A=00, C=01, G=10, T=11.
+- Per-helix base counts (the **FIXED_LENGTHS array**): `[10, 13, 13, 15, 11, 8, 11, 8, 11, 11, 13, 15, 13, 11, 11, 13, 15, 11, 11, 16]`. Sum across helices = 240; total bases (diploid) = 480; bits = 960 (= 120 bytes).
+- Output is base64url-encoded for sharing in URLs / chat.
+- Input format: 40 lines (2 per helix), each prefixed `NN:` where NN is the helix index. Useful as a canonical text format for genomes.
+
+This **independently confirms the 20-helix layout** from `hikazey/horseygamegm` and gives us the exact per-helix gene count. Credit to ZyonixGaming for the encoding scheme.
+
+**[`eldritch-hue/hhgm-EGM`](https://github.com/eldritch-hue/hhgm-EGM). `equine-genome-mapper.html`.** Adds a Breeder + Optimizer on top of hikazey's tool (the README explicitly credits hikazey/horseygamegm). The Breeder implements the **diploid Mendelian breeding model**:
+
+```js
+// for each position p:
+const offspringStrand1 = Math.random() < 0.5 ? parentA.S1[p] : parentA.S2[p];
+const offspringStrand2 = Math.random() < 0.5 ? parentB.S1[p] : parentB.S2[p];
+```
+
+Each parent independently contributes one of their two strands at each position with 50/50 probability. No mutation in this client-side model (game-side mutation is handled by the engine via the `m` attribute). The Optimizer is a hill-climbing tool that picks the best base at each position for selected target genes.
+
+Credit to eldritch-hue (the Breeder/Optimizer/Library logic) and hikazey (the underlying genome-mapper base).
+
+**[`wjfjfm/HorseyGameMonitor`](https://github.com/wjfjfm/HorseyGameMonitor). `record_schema.csv` + `stat_schema.csv`.** Race-data tracking schema (4-lane track times, knockdown count, win/lose bool). Useful pattern if/when we build our own runtime stats overlay. Credit wjfjfm for the data-model decomposition (record_cols vs stat_cols).
+
+**[`alexjthomson/horsey-crispr`](https://github.com/alexjthomson/horsey-crispr).** Companion CRISPR editor to the save editor. Same per-gene rank tables. Worth a side-by-side diff if a base->allele mapping ever disagrees with our GENE-CATALOG.
+
+### Encoding scheme summary
+
+Three independent encodings now exist for the same diploid genome:
+
+| Source | Encoding | Size | Use case |
+|---|---|---|---|
+| Engine in-memory | Two indices per gene (mom_idx, dad_idx, each 0..3) | 480 bytes (240 x 2 bytes? unknown exact layout) | Live game state |
+| `save1.dat` (alexjthomson) | One byte per pair, via rank-formula `0x09 + rank(s2)*8 + rank(s1)` | 240 bytes per horse genome block | Save persistence |
+| URL share (ZyonixGaming) | 2 bits per base, base64url | 120 bytes | Sharing genomes |
+
+The save format encodes the **pair**; the URL format encodes the **bases**. Both round-trip cleanly given the per-gene `n` codon-order from `genes.xml`.
