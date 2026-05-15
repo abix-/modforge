@@ -28,9 +28,52 @@ ignores are dead computation.
 
 240 genes, full list in
 [`vanilla-genes.xml`](vanilla-genes.xml). Gene index 0..239
-matches XML document order. Names like `SIZE`, `ASPECT`,
-`SKINNY`, `BONES`, `BONES2`, `CHEST_BIG`, `CHEST_SMALL`,
-`GIANT_DWARF`, `MUSCLE_USE`, `QUADRUPED` are the first 10.
+matches XML document order.
+
+### Cluster map (gene_idx -> feature area)
+
+Vanilla genes are arranged in functional clusters that
+match contiguous code blocks inside `FUN_14009f680`.
+
+| Range | Genes | Cluster | What it controls |
+|---|---|---|---|
+| 0..10 | 11 | **Body fundamentals** | Overall size, scale, body type. Feeds slots 0..3 via the SQRT formula in "Engine internals." `SIZE`, `ASPECT`, `SKINNY`, `BONES`, `BONES2`, `CHEST_BIG`, `CHEST_SMALL`, `GIANT_DWARF`, `MUSCLE_USE`, `QUADRUPED`, `BIPED`. |
+| 11..20 | 10 | **Body shape modifiers** | `SPLAY`, `LEG_IN`, `LEG_IN2`, `GUT`, `GUT_IS_UDDER`, `OSTODERM`, `OSTO_SIZE`, `DERRIERE`, `SPEED_FACTOR`, `BREAK_FORCE`. |
+| 21..33 | 13 | **Tail** | All `TAIL_*` (size, joints, speed, shape, segments). |
+| 34..49 | 16 | **Legs** | `LEG_TYPE`, `LEG_LENGTH`, `LEG_STRETCH*`, `LEG_STRENGTH`, `LEG_JOINT_TYPE`, `LEG_FLEXIBILITY`, `LEG_COUNT`, `LEG_HAS_FOOT`, etc. |
+| 50..66 | 17 | **Knee + Arm** | `HAS_KNEE`, `KNEE_MIN`, `KNEE_MAX`, all `ARM_*`, `HAS_ELBOW`. |
+| 67..71 | 5 | **Upper arm** | `ELBOW_RANGE`, `UPARM_TAG`, `UPARM_Y`, `UPARM_ANGLE`, `UPARM_GOOFY`. |
+| 72..86 | 15 | **Neck** | All `NECK_*` (length, thickness, angle, joints, flexibility) plus a stray `HAS_FOOT`. |
+| 87..96 | 10 | **Foot + Hand** | `FOOT_SIZE`, `FOOT_CLOWN`, `FOOT_THICKNESS`, `FOOT_TOE`, `HAND_*`. |
+| 97..117 | 21 | **Head + Eye + Brow** | `HEAD_*`, `EYE_*`, `EYEBOX_*`, `BROW_*`, `PUPIL_SIZE`. |
+| 118..126 | 9 | **Ear + Teeth** | `EAR_*` (8 genes) + `TEETH_SHAPE`. |
+| 127..140 | 14 | **Mouth + Nose + Antler-precursor** | `MOUTH_*`, `JAW`, `TEETH_UPPER*`, `TONGUE*`, `NOSE_*`, `HAS_ANTLERS`. |
+| 141..159 | 19 | **Antlers** | `ANTLER_*` (full geometry + colors). |
+| 160..174 | 15 | **Hat** | `HAT_*` (size, rake, taper, pom, angles). |
+| 175..188 | 14 | **Palette / coloration base** | `BASE_BROWN`, `BASE_BLACK`, `BASE_RED`, `BASE_GREEN`, `BASE_CREAM`, `ALT_BLUE`, `SPOT_YELLOW`, `SKIN_HUE*`, `WHITE`, `WHITE_IS_LETHAL`. |
+| 189..218 | 30 | **Colors + patterns + behavioral traits** | `EYE_HUE`, `NOSE_HUE`, `HOOF_COLOR`, `AGOUTI`, `BELLY_ALT`, `SKIN_HEAD`, `SKIN_HANDS`, `RACCOON_EYE`, `PAT_*` (8 pattern genes), behavioral: `RAMPAGE`, `SPINAL_LOCO`, `BRAIN_SPASTIC`, `HIGH_INTELLECT`, `OMNIVORE`, `LITTER_SIZE`, `OLD_AGE`, `LIMP`, `NARCOLEPSY`, `FLU_IMMUNITY`, `TAIL_WAG`, `STIFF_JOINTS`. |
+| 219..239 | 21 | **Animation signals** | `L_LEG_*`, `L_ARM_*`, `L_TAIL_*`, `L_NECK_*` (locomotion signals + reaction events), plus `LOCO_SYNC`. |
+
+### Genes the engine never reads (free slots)
+
+7 vanilla genes are defined in `genes.xml` but never queried
+by `FUN_14009f680`:
+
+| Idx | Name | Likely status |
+|---|---|---|
+| 56 | `ARM_STRETCH` | Removed sibling of `LEG_STRETCH` |
+| 57 | `ARM_STRETCH2` | Same. |
+| 107 | `HEAD_CHIMERA` | Removed feature placeholder |
+| 183 | `SKIN_HUE` | Possibly orphaned palette gene |
+| 184 | `SKIN_HUE2` | Same. |
+| 209 | `BRAIN_SPASTIC` | Behavioral; possibly unfinished |
+| 216 | `FLU_IMMUNITY` | Behavioral; possibly unfinished |
+
+These slots are "free" in the sense that we could repurpose
+them by adding handler logic in our DI-A detours, BUT
+vanilla breeding / CRISPR UI / xml authoring still see them,
+so they're not invisible. Extended slots 240..479 (our
+sidecar) are cleaner for new genes.
 
 ## Gene-index -> buf-slot map (engine writes)
 
@@ -43,172 +86,172 @@ a candidate, manual re-read recommended.
 
 | Gene idx | Gene name | Buf slot(s) | How |
 |---|---|---|---|
-| 0 | `SIZE` | 152 (combined-with-others (fVar41 * fVar38)) | |
-| 1 | `ASPECT` | 343 (via fVar39 (expr: (float)(int)fVar39)) | |
-| 2 | `SKINNY` | 70 (via fVar33), 70 (via fVar33 (expr: fVar33 - param_1[5])), 106 (combined-with-others (fVar33 - fVar35)) | |
-| 5 | `CHEST_BIG` | 2 (combined-with-others (fVar36 / fVar37)), 344 (via fVar37) | |
-| 6 | `CHEST_SMALL` | 1 (via fVar36), 2 (combined-with-others (fVar36 / fVar37)), 3 (via fVar36) | |
-| 7 | `GIANT_DWARF` | 173 (via fVar35), 174 (via fVar35) | |
-| 8 | `MUSCLE_USE` | 132 (combined-with-others ((fVar41 * fVar35 * fVar40) / fVar39)), 154 (combined-with-others (fVar43 * fVar37)), 155 (combined-with-others (fVar43 * fVar37)), 209 (combined-with-others (fVar38 + fVar37 + fVar43)) | |
-| 9 | `QUADRUPED` | 167 (combined-with-others (fVar35 / (float)iVar15)), 170 (via iVar15 (expr: (float)(iVar15 + -1))) | |
-| 11 | `SPLAY` | 35 (via fVar33), 35 (via fVar35), 54 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 54 (via fVar33 (expr: (float)((uint)fVar33 ^ uVar25))) | |
-| 12 | `LEG_IN` | 33 (combined-with-others (param_1[0x7d] * fVar43 + fVar35)), 33 (via fVar35) | |
-| 13 | `LEG_IN2` | 52 (combined-with-others (fVar35 - param_1[0x7d] * fVar43)), 52 (via fVar35) | |
-| 14 | `GUT` | 4 (via fVar39) | |
-| 15 | `GUT_IS_UDDER` | 6 (via fVar39) | |
-| 16 | `OSTODERM` | 7 (via fVar39) | |
-| 17 | `OSTO_SIZE` | 8 (via fVar39) | |
-| 18 | `DERRIERE` | 5 (via fVar40), 10 (via fVar40) | |
-| 19 | `SPEED_FACTOR` | 133 (via fVar39), 134 (via fVar39), 154 (combined-with-others (fVar43 * fVar37)), 155 (combined-with-others (fVar43 * fVar37)) | |
-| 20 | `BREAK_FORCE` | 47 (via fVar35), 66 (via fVar35) | |
-| 21 | `TAIL_TAG` | 18 (via fVar38) | |
-| 22 | `TAIL_EXISTS` | 165 (via fVar37) | |
-| 23 | `TAIL_SIZE` | 166 (combined-with-others (fVar40 * fVar39)) | |
+| 5 | `CHEST_BIG` | 2 (combined-with-others (fVar36 / fVar37)), 344 (via var) | |
+| 7 | `GIANT_DWARF` | 1 (via var), 173 (via var), 174 (via var), 2 (combined-with-others (fVar36 / fVar37)), 3 (via var) | |
+| 8 | `MUSCLE_USE` | 132 (via expr: (fVar41 * fVar35 * fVar40) / fVar39) | |
+| 9 | `QUADRUPED` | 167 (via expr: fVar35 / (float)iVar15), 170 (via expr: (float)(iVar15 + -1)) | |
+| 11 | `SPLAY` | 35 (via var), 54 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 54 (via expr: (float)((uint)fVar33 ^ uVar25)) | |
+| 12 | `LEG_IN` | 33 (via expr: param_1[0x7d] * fVar43 + fVar35), 33 (via var) | |
+| 13 | `LEG_IN2` | 52 (via expr: fVar35 - param_1[0x7d] * fVar43), 52 (via var) | |
+| 14 | `GUT` | 4 (via var) | |
+| 15 | `GUT_IS_UDDER` | 6 (via var) | |
+| 16 | `OSTODERM` | 7 (via var) | |
+| 17 | `OSTO_SIZE` | 8 (via var) | |
+| 18 | `DERRIERE` | 10 (via var) | |
+| 19 | `SPEED_FACTOR` | 133 (via var), 134 (via var), 154 (via expr: fVar43 * fVar37), 155 (via expr: fVar43 * fVar37) | |
+| 20 | `BREAK_FORCE` | 47 (via var), 66 (via var) | |
+| 21 | `TAIL_TAG` | 18 (via var) | |
+| 22 | `TAIL_EXISTS` | 165 (via var) | |
+| 23 | `TAIL_SIZE` | 166 (combined-with-others (fVar40 * fVar39)), 167 (via var) | |
+| 24 | `TAIL_SHORT` | 167 (via expr: fVar39 * fVar37) | |
 | 25 | `TAIL_ASPECT` | 166 (combined-with-others (fVar40 * fVar39)) | |
-| 26 | `TAIL_ANGLE` | 16 (via fVar38) | |
-| 27 | `TAIL_JOINT_TYPE` | 24 (via fVar38) | |
-| 29 | `TAIL_SPEED` | 167 (combined-with-others (fVar35 / (float)iVar15)), 175 (via fVar35), 176 (via fVar35) | |
-| 30 | `TAIL_FLEXIBILITY` | 26 (via fVar38 (expr: (float)((uint)fVar38 ^ uVar25))), 27 (via fVar38) | |
-| 31 | `TAIL_SHAPE` | 169 (via fVar37) | |
-| 34 | `LEG_TAG` | 37 (via fVar35) | |
-| 35 | `LEG_TYPE` | 123 (via iVar15 (expr: (float)(uint)(iVar15 != 0))) | |
+| 26 | `TAIL_ANGLE` | 16 (via var) | |
+| 27 | `TAIL_JOINT_TYPE` | 24 (via var) | |
+| 28 | `TAIL_STIFF` | 6 (byte-offset 0x19) (via expr: iVar15 == 0) | |
+| 29 | `TAIL_SPEED` | 175 (via var), 176 (via var) | |
+| 30 | `TAIL_FLEXIBILITY` | 26 (via expr: (float)((uint)fVar38 ^ uVar25)), 27 (via var) | |
+| 31 | `TAIL_SHAPE` | 169 (via var) | |
+| 34 | `LEG_TAG` | 37 (via var) | |
+| 35 | `LEG_TYPE` | 123 (via expr: (float)(uint)(iVar15 != 0)) | |
 | 36 | `LEG_LENGTH` | 125 (combined-with-others (fVar39 * (fVar37 + fVar35 + fVar43))) | |
-| 37 | `LEG_STRETCH` | 125 (combined-with-others (fVar39 * (fVar37 + fVar35 + fVar43))), 146 (combined-with-others (fVar42 * (fVar41 + fVar40))), 146 (via fVar40 (expr: param_1[0x92] * fVar40)), 188 (combined-with-others (fVar37 + fVar43 * fVar40)) | |
+| 37 | `LEG_STRETCH` | 125 (combined-with-others (fVar39 * (fVar37 + fVar35 + fVar43))), 146 (combined-with-others (fVar42 * (fVar41 + fVar40))) | |
 | 38 | `LEG_STRETCH2` | 125 (combined-with-others (fVar39 * (fVar37 + fVar35 + fVar43))), 146 (combined-with-others (fVar42 * (fVar41 + fVar40))) | |
-| 39 | `LEG_STRENGTH` | 124 (via fVar35), 124 (via fVar35 (expr: fVar35 + fVar35)), 125 (via fVar35 (expr: fVar35 + fVar35)), 131 (via fVar39 (expr: fVar39 * DAT_140304b30)), 132 (via fVar39) | |
-| 41 | `LEG_JOINT_TYPE` | 43 (via fVar35) | |
-| 42 | `LEG_FLEXIBILITY` | 35 (combined-with-others (fVar39 + fVar35)), 45 (combined-with-others (fVar35 - fVar39)), 45 (via fVar35), 46 (combined-with-others (fVar35 + fVar39)), 106 (via fVar39), 108 (via fVar39) | |
-| 43 | `LEG_FLEX_BIAS` | 35 (combined-with-others (fVar39 + fVar35)), 45 (combined-with-others (fVar35 - fVar39)), 46 (combined-with-others (fVar35 + fVar39)) | |
-| 46 | `LEG_COUNT` | 31 (via fVar35) | |
-| 47 | `LEG_SKEW` | 126 (via fVar39) | |
-| 48 | `LEG_PENCIL` | 124 (via fVar40), 125 (via fVar40 (expr: (param_1[0x7d] * fVar41) / fVar40)), 132 (combined-with-others ((fVar41 * fVar35 * fVar40) / fVar39)) | |
-| 51 | `KNEE_MIN` | 139 (via fVar39) | |
-| 52 | `KNEE_MAX` | 132 (combined-with-others ((fVar41 * fVar35 * fVar40) / fVar39)), 140 (via fVar39) | |
-| 53 | `ARM_TAG` | 56 (via fVar35) | |
-| 54 | `ARM_TYPE` | 144 (via iVar15 (expr: (float)(uint)(iVar15 != 0))) | |
+| 39 | `LEG_STRENGTH` | 124 (via expr: fVar35 + fVar35), 124 (via var), 125 (via expr: fVar35 + fVar35), 131 (via expr: fVar39 * DAT_140304b30), 132 (via var) | |
+| 40 | `LEG_HAS_FOOT` | 35 (byte-offset 0x8d) (via expr: iVar16 != 0) | |
+| 41 | `LEG_JOINT_TYPE` | 43 (via var) | |
+| 42 | `LEG_FLEXIBILITY` | 45 (combined-with-others (fVar35 - fVar39)), 45 (via var), 46 (combined-with-others (fVar35 + fVar39)) | |
+| 43 | `LEG_FLEX_BIAS` | 35 (via expr: fVar39 + fVar35), 45 (combined-with-others (fVar35 - fVar39)), 46 (combined-with-others (fVar35 + fVar39)) | |
+| 46 | `LEG_COUNT` | 31 (via var) | |
+| 47 | `LEG_SKEW` | 126 (via var) | |
+| 49 | `LEG_AND_ARM_LIMP` | 11 (byte-offset 0x2c) (via expr: iVar16 != 0), 15 (byte-offset 0x3f) (via expr: iVar16 != 0) | |
+| 53 | `ARM_TAG` | 56 (via var) | |
+| 54 | `ARM_TYPE` | 144 (via expr: (float)(uint)(iVar15 != 0)) | |
 | 55 | `ARM_LENGTH` | 146 (combined-with-others (fVar42 * (fVar41 + fVar40))) | |
-| 58 | `ARM_STRENGTH` | 15 (via fVar41 (expr: fVar41 * param_1[1])), 71 (via fVar41), 145 (via fVar41 (expr: fVar41 * fVar43)), 152 (combined-with-others (fVar41 * fVar38)), 153 (via fVar41) | |
-| 60 | `ARM_JOINT_TYPE` | 62 (via fVar35) | |
-| 61 | `ARM_FLEXIBILITY` | 54 (combined-with-others (fVar35 + fVar43)), 64 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 64 (via fVar43), 65 (combined-with-others (fVar43 - fVar35)) | |
-| 62 | `ARM_FLEX_BIAS` | 54 (combined-with-others (fVar35 + fVar43)), 64 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 65 (combined-with-others (fVar43 - fVar35)) | |
+| 58 | `ARM_STRENGTH` | 145 (via expr: fVar41 * fVar43), 152 (via expr: fVar41 * fVar38), 153 (via var) | |
+| 59 | `ARM_HAS_HAND` | 40 (byte-offset 0xa2) (via expr: iVar16 != 0) | |
+| 60 | `ARM_JOINT_TYPE` | 62 (via var) | |
+| 61 | `ARM_FLEXIBILITY` | 64 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 64 (via var), 65 (combined-with-others (fVar43 - fVar35)) | |
+| 62 | `ARM_FLEX_BIAS` | 54 (via expr: fVar35 + fVar43), 64 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)), 65 (combined-with-others (fVar43 - fVar35)) | |
 | 63 | `ARM_FORWARD` | 54 (combined-with-others ((float)(uVar44 ^ uVar25) - fVar43)) | |
-| 64 | `ARM_SKEW` | 147 (via fVar43) | |
-| 65 | `ARM_NODE_SCALE` | 55 (via fVar35) | |
-| 67 | `ELBOW_RANGE` | 160 (via fVar43 (expr: (float)((uint)fVar43 ^ uVar25))), 161 (via fVar43) | |
-| 68 | `UPARM_TAG` | 54 (via fVar43 (expr: param_1[0x48] + fVar43)), 71 (via fVar43), 74 (via fVar43) | |
-| 70 | `UPARM_ANGLE` | 72 (via fVar35 (expr: fVar35 - DAT_140304038)) | |
-| 72 | `NECK_TAG` | 106 (combined-with-others (fVar33 - fVar35)), 107 (via fVar35), 107 (via fVar35 (expr: fVar35 + param_1[0x6b])), 110 (via fVar35), 188 (via fVar35 (expr: fVar35 + param_1[0xbc])) | |
-| 73 | `NECK_TYPE` | 186 (via iVar15 (expr: (float)(uint)(iVar15 != 0))) | |
-| 74 | `NECK_LENGTH` | 33 (combined-with-others (param_1[0x7d] * fVar43 + fVar35)), 52 (combined-with-others (fVar35 - param_1[0x7d] * fVar43)), 188 (combined-with-others (fVar37 + fVar43 * fVar40)) | |
+| 64 | `ARM_SKEW` | 147 (via var) | |
+| 65 | `ARM_NODE_SCALE` | 55 (via var) | |
+| 68 | `UPARM_TAG` | 17 (byte-offset 0x45) (via expr: fVar43 != 0.0), 74 (via var) | |
+| 70 | `UPARM_ANGLE` | 72 (via expr: fVar35 - DAT_140304038) | |
+| 72 | `NECK_TAG` | 110 (via var) | |
+| 73 | `NECK_TYPE` | 186 (via expr: (float)(uint)(iVar15 != 0)) | |
+| 74 | `NECK_LENGTH` | 188 (combined-with-others (fVar37 + fVar43 * fVar40)) | |
 | 75 | `NECK_GIRAFFE` | 188 (combined-with-others (fVar37 + fVar43 * fVar40)) | |
-| 76 | `NECK_THICKNESS` | 187 (via fVar37 (expr: fVar37 * local_324 * DAT_14030335c)) | |
+| 76 | `NECK_THICKNESS` | 187 (via expr: fVar37 * local_324 * DAT_14030335c) | |
 | 77 | `NECK_ANGLE` | 108 (combined-with-others (fVar35 - fVar37)) | |
 | 78 | `NECK_COCK` | 108 (combined-with-others (fVar35 - fVar37)) | |
-| 79 | `NECK_JOINT_TYPE` | 116 (via fVar39) | |
-| 80 | `NECK_FLEXIBILITY` | 108 (combined-with-others (fVar38 + fVar39)), 118 (combined-with-others (fVar39 - fVar38)), 118 (via fVar39), 119 (combined-with-others (fVar39 + fVar38)) | |
-| 81 | `NECK_FLEX_BIAS` | 108 (combined-with-others (fVar38 + fVar39)), 118 (combined-with-others (fVar39 - fVar38)), 119 (combined-with-others (fVar39 + fVar38)) | |
-| 82 | `NECK_SLOUCH` | 107 (via fVar40) | |
-| 83 | `NECK_ONTOP` | 107 (via fVar34), 313 (via fVar34) | |
-| 85 | `NECK_SPEED` | 196 (via fVar35), 197 (via fVar35) | |
-| 87 | `FOOT_SIZE` | 209 (combined-with-others (fVar38 + fVar37 + fVar43)), 220 (via fVar38) | |
+| 79 | `NECK_JOINT_TYPE` | 116 (via var) | |
+| 80 | `NECK_FLEXIBILITY` | 118 (combined-with-others (fVar39 - fVar38)), 118 (via var), 119 (combined-with-others (fVar39 + fVar38)) | |
+| 81 | `NECK_FLEX_BIAS` | 108 (via expr: fVar38 + fVar39), 118 (combined-with-others (fVar39 - fVar38)), 119 (combined-with-others (fVar39 + fVar38)) | |
+| 84 | `NECK_STIFF` | 29 (byte-offset 0x75) (via expr: iVar17 == 0) | |
+| 85 | `NECK_SPEED` | 196 (via var), 197 (via var) | |
+| 86 | `HAS_FOOT` | 51 (byte-offset 0xcf) (via expr: 0 < iVar16) | |
+| 87 | `FOOT_SIZE` | 209 (combined-with-others (fVar38 + fVar37 + fVar43)) | |
 | 88 | `FOOT_CLOWN` | 209 (combined-with-others (fVar38 + fVar37 + fVar43)) | |
-| 89 | `FOOT_THICKNESS` | 211 (via fVar43) | |
-| 90 | `FOOT_TOE` | 12 (via fVar43), 210 (via fVar43 (expr: fVar43 * param_1[0xd3] + param_1[0xd1])), 219 (combined-with-others (fVar37 + fVar43)), 224 (via fVar43) | |
-| 94 | `HAND_WIDTH` | 219 (combined-with-others (fVar37 + fVar43)) | |
-| 95 | `HAND_LENGTH` | 221 (via fVar37) | |
-| 96 | `HAND_FINGER` | 223 (via fVar37) | |
-| 98 | `HEAD_THICK_SKULL` | 228 (combined-with-others ((fVar35 + fVar38) * (fVar37 / fVar40))) | |
-| 99 | `HEAD_X_GROWTH` | 90 (via fVar40 (expr: param_1[0x5a] + fVar40)), 227 (via fVar40), 228 (combined-with-others ((fVar35 + fVar38) * (fVar37 / fVar40))) | |
+| 89 | `FOOT_THICKNESS` | 211 (via var) | |
+| 90 | `FOOT_TOE` | 12 (via var) | |
+| 93 | `HAS_HAND` | 54 (byte-offset 0xd9) (via expr: 0 < iVar16) | |
+| 94 | `HAND_WIDTH` | 219 (via expr: fVar37 + fVar43) | |
+| 95 | `HAND_LENGTH` | 221 (via var) | |
+| 96 | `HAND_FINGER` | 223 (via var) | |
+| 99 | `HEAD_X_GROWTH` | 227 (via var), 228 (combined-with-others ((fVar35 + fVar38) * (fVar37 / fVar40))) | |
 | 100 | `HEAD_Y_GROWTH` | 228 (combined-with-others ((fVar35 + fVar38) * (fVar37 / fVar40))) | |
+| 103 | `HEAD_HAS_BACK` | 57 (byte-offset 0xe5) (via expr: iVar15 != 0) | |
 | 104 | `HEAD_GIANT` | 228 (combined-with-others ((fVar35 + fVar38) * (fVar37 / fVar40))) | |
-| 108 | `EYE_STYLE` | 235 (via fVar35) | |
-| 110 | `EYEBOX_X` | 236 (via fVar38) | |
-| 111 | `EYEBOX_Y` | 237 (via fVar35), 239 (combined-with-others (fVar38 * fVar35 * DAT_14039ca34)) | |
-| 113 | `EYE_SIZE` | 239 (combined-with-others (fVar38 * fVar35 * DAT_14039ca34)) | |
-| 114 | `PUPIL_SIZE` | 240 (via fVar35) | |
-| 116 | `BROW_SIZE` | 241 (via fVar35) | |
-| 117 | `BROW_SLANT` | 238 (via fVar35), 242 (via fVar35) | |
-| 118 | `EAR_STYLE` | 243 (via fVar35) | |
-| 119 | `EAR_SHAPE` | 244 (via fVar35) | |
-| 120 | `EAR_FLOP` | 245 (via fVar35) | |
-| 121 | `EAR_X` | 246 (via fVar35) | |
-| 122 | `EAR_SIZE` | 248 (via fVar35), 249 (combined-with-others (fVar38 * fVar35)) | |
+| 108 | `EYE_STYLE` | 235 (via var) | |
+| 110 | `EYEBOX_X` | 236 (via var) | |
+| 111 | `EYEBOX_Y` | 237 (via var) | |
+| 113 | `EYE_SIZE` | 239 (via expr: fVar38 * fVar35 * DAT_14039ca34) | |
+| 114 | `PUPIL_SIZE` | 240 (via var) | |
+| 116 | `BROW_SIZE` | 241 (via var) | |
+| 117 | `BROW_SLANT` | 242 (via var) | |
+| 118 | `EAR_STYLE` | 243 (via var) | |
+| 119 | `EAR_SHAPE` | 244 (via var) | |
+| 120 | `EAR_FLOP` | 245 (via var) | |
+| 121 | `EAR_X` | 246 (via var) | |
+| 122 | `EAR_SIZE` | 248 (via var), 249 (combined-with-others (fVar38 * fVar35)) | |
 | 123 | `EAR_ASPECT` | 249 (combined-with-others (fVar38 * fVar35)) | |
-| 124 | `EAR_SLANT` | 250 (via fVar35) | |
-| 125 | `EAR_INTERIOR` | 251 (via fVar35) | |
-| 126 | `TEETH_SHAPE` | 252 (via fVar35) | |
-| 128 | `MOUTH_Y` | 255 (via fVar35) | |
-| 129 | `MOUTH_SIZE` | 253 (via fVar35), 254 (via fVar35 (expr: fVar35 * _DAT_14030cd20)) | |
-| 130 | `JAW` | 257 (via fVar35) | |
-| 133 | `TONGUE` | 258 (via fVar35) | |
-| 134 | `TONGUE_SEGS` | 259 (via fVar35) | |
-| 135 | `NOSE_STYLE` | 261 (via fVar35) | |
-| 137 | `NOSE_Y` | 263 (via fVar35), 264 (via fVar35) | |
-| 139 | `NOSE_INTERIOR` | 265 (via fVar35) | |
-| 141 | `ANTLER_X` | 266 (via fVar33) | |
-| 142 | `ANTLER_W` | 268 (via fVar33) | |
-| 143 | `ANTLER_H` | 269 (via fVar33) | |
-| 144 | `ANTLER_TAPER` | 270 (via fVar33) | |
-| 145 | `ANTLER_POM` | 271 (via fVar33) | |
-| 146 | `ANTLER_COLOR` | 275 (via fVar33) | |
-| 147 | `POM_COLOR` | 276 (via fVar33) | |
-| 149 | `ANTLER_REC` | 277 (via fVar33) | |
-| 150 | `ANTLER_REC2` | 278 (via fVar33) | |
-| 152 | `ANTLER_MOD` | 289 (via fVar33) | |
-| 153 | `ANTLER_SCALEH` | 285 (via fVar33) | |
-| 154 | `ANTLER_SCALEW` | 283 (via fVar33), 284 (via fVar33) | |
-| 155 | `ANTLER_ANGLE` | 280 (via fVar33) | |
-| 156 | `ANTLER_ANGLE2` | 281 (via fVar33) | |
-| 157 | `ANTLER_ANGLE_RAND` | 282 (via fVar33) | |
-| 158 | `ANTLER_T1` | 287 (via fVar33) | |
-| 159 | `ANTLER_T2` | 288 (via fVar33) | |
-| 161 | `HAT_SIZE` | 290 (via fVar33), 291 (combined-with-others (fVar43 * fVar33)) | |
-| 162 | `HAT_RAKE` | 267 (via fVar33) | |
-| 163 | `HAT_ASPECT` | 291 (combined-with-others (fVar43 * fVar33)), 315 (via fVar43) | |
-| 164 | `HAT_TAPER` | 292 (via fVar33) | |
-| 165 | `HAT_POM` | 293 (via fVar33), 298 (via fVar33) | |
-| 167 | `HAT_CLONE` | 294 (via fVar33) | |
-| 168 | `HAT_BACK_SCALE` | 307 (via fVar33) | |
-| 169 | `HAT_FRONT_SCALE` | 308 (via fVar33) | |
-| 170 | `HAT_BACK_ANGLE` | 302 (via fVar33) | |
-| 171 | `HAT_FRONT_ANGLE` | 303 (via fVar33) | |
-| 172 | `HAT_ANGLE_RAND` | 304 (via fVar33) | |
-| 174 | `HAT_T` | 309 (via fVar33), 310 (via fVar33), 314 (via fVar33), 315 (via fVar33) | |
-| 178 | `BASE_GREEN` | 316 (via iVar17 (expr: local_308[iVar17])) | |
-| 186 | `SWAP_ALT_SPOT` | 317 (via iVar20 (expr: local_318[iVar20])) | |
-| 197 | `RACCOON_EYE` | 231 (via fVar35) | |
-| 198 | `EAR_COMP` | 233 (via fVar35) | |
-| 200 | `PAT_SPLIT` | 333 (via fVar33) | |
-| 201 | `PAT_BELLY` | 15 (via fVar35 (expr: param_1[1] - fVar35)), 334 (via fVar33) | |
-| 202 | `PAT_STRIPE` | 336 (via fVar33) | |
-| 203 | `PAT_SPOT` | 337 (via fVar33) | |
-| 204 | `PAT_PERLIN` | 340 (via fVar33) | |
-| 205 | `PAT_PERLIN2` | 341 (via fVar33), 350 (via fVar34 (expr: fVar34 + fVar34)) | |
-| 206 | `PAT_PERLIN_SIZE` | 342 (via fVar33 (expr: (float)(int)fVar33)), 350 (via fVar33 (expr: param_1[0x15e] * fVar33)) | |
-| 212 | `LITTER_SIZE` | 322 (via fVar33), 349 (via fVar33) | |
-| 213 | `OLD_AGE` | 351 (via iVar15 (expr: (float)(iVar15 + 9))) | |
-| 214 | `LIMP` | 132 (combined-with-others ((fVar41 * fVar35 * fVar40) / fVar39)), 194 (via fVar35 (expr: param_1[0xbb] * fVar35)), 195 (via fVar35 (expr: param_1[0xbb] * fVar35)) | |
-| 218 | `STIFF_JOINTS` | 26 (via fVar33 (expr: fVar33 * param_1[0x1a])), 27 (via fVar33 (expr: fVar33 * param_1[0x1b])), 45 (via fVar33 (expr: fVar33 * param_1[0x2d])), 46 (via fVar33 (expr: fVar33 * param_1[0x2e])), 64 (via fVar33 (expr: fVar33 * param_1[0x40])), 65 (via fVar33 (expr: fVar33 * param_1[0x41])), 82 (via fVar33 (expr: fVar33 * param_1[0x52])), 83 (via fVar33 (expr: fVar33 * param_1[0x53])), 100 (via fVar33 (expr: fVar33 * param_1[100])), 101 (via fVar33 (expr: fVar33 * param_1[0x65])), 118 (via fVar33 (expr: fVar33 * param_1[0x76])), 119 (via fVar33 (expr: fVar33 * param_1[0x77])) | |
-| 219 | `L_LEG_SIGNAL` | 38 (via fVar35) | |
-| 220 | `L_LEG_FTOB_REACT` | 39 (via fVar35) | |
-| 221 | `L_LEG_FTOB_EVENT` | 41 (via fVar35) | |
-| 222 | `L_LEG_BTOF_REACT` | 40 (via fVar35) | |
-| 223 | `L_LEG_BTOF_EVENT` | 42 (via fVar35) | |
-| 224 | `L_ARM_SIGNAL` | 57 (via fVar35) | |
-| 225 | `L_ARM_FTOB_REACT` | 58 (via fVar35) | |
-| 226 | `L_ARM_FTOB_EVENT` | 60 (via fVar35) | |
-| 227 | `L_ARM_BTOF_REACT` | 59 (via fVar35) | |
-| 228 | `L_ARM_BTOF_EVENT` | 61 (via fVar35) | |
-| 229 | `L_TAIL_SIGNAL` | 19 (via fVar35) | |
-| 230 | `L_TAIL_FTOB_REACT` | 20 (via fVar35) | |
-| 231 | `L_TAIL_FTOB_EVENT` | 22 (via fVar35) | |
-| 232 | `L_TAIL_BTOF_REACT` | 21 (via fVar35) | |
-| 233 | `L_TAIL_BTOF_EVENT` | 23 (via fVar35) | |
-| 234 | `L_NECK_SIGNAL` | 111 (via fVar39) | |
-| 235 | `L_NECK_FTOB_REACT` | 112 (via fVar39) | |
-| 236 | `L_NECK_FTOB_EVENT` | 114 (via fVar39) | |
-| 237 | `L_NECK_BTOF_REACT` | 113 (via fVar39) | |
-| 238 | `L_NECK_BTOF_EVENT` | 115 (via fVar39) | |
+| 124 | `EAR_SLANT` | 250 (via var) | |
+| 125 | `EAR_INTERIOR` | 251 (via var) | |
+| 126 | `TEETH_SHAPE` | 252 (via var) | |
+| 128 | `MOUTH_Y` | 255 (via var) | |
+| 129 | `MOUTH_SIZE` | 253 (via var), 254 (via expr: fVar35 * _DAT_14030cd20) | |
+| 130 | `JAW` | 257 (via var) | |
+| 133 | `TONGUE` | 258 (via var) | |
+| 134 | `TONGUE_SEGS` | 259 (via var) | |
+| 135 | `NOSE_STYLE` | 261 (via var) | |
+| 137 | `NOSE_Y` | 264 (via var) | |
+| 139 | `NOSE_INTERIOR` | 265 (via var) | |
+| 141 | `ANTLER_X` | 266 (via var) | |
+| 142 | `ANTLER_W` | 268 (via var) | |
+| 143 | `ANTLER_H` | 269 (via var) | |
+| 144 | `ANTLER_TAPER` | 270 (via var) | |
+| 145 | `ANTLER_POM` | 271 (via var) | |
+| 146 | `ANTLER_COLOR` | 275 (via var) | |
+| 147 | `POM_COLOR` | 276 (via var) | |
+| 149 | `ANTLER_REC` | 277 (via var) | |
+| 150 | `ANTLER_REC2` | 278 (via var) | |
+| 151 | `ANTLER_FLIP` | 69 (byte-offset 0x117) (via expr: iVar15 != 0) | |
+| 152 | `ANTLER_MOD` | 289 (via var) | |
+| 153 | `ANTLER_SCALEH` | 285 (via var) | |
+| 154 | `ANTLER_SCALEW` | 283 (via var), 284 (via var) | |
+| 155 | `ANTLER_ANGLE` | 280 (via var) | |
+| 156 | `ANTLER_ANGLE2` | 281 (via var) | |
+| 157 | `ANTLER_ANGLE_RAND` | 282 (via var) | |
+| 158 | `ANTLER_T1` | 287 (via var) | |
+| 159 | `ANTLER_T2` | 288 (via var) | |
+| 161 | `HAT_SIZE` | 290 (via var), 291 (combined-with-others (fVar43 * fVar33)) | |
+| 162 | `HAT_RAKE` | 267 (via var) | |
+| 163 | `HAT_ASPECT` | 291 (combined-with-others (fVar43 * fVar33)) | |
+| 164 | `HAT_TAPER` | 292 (via var) | |
+| 165 | `HAT_POM` | 293 (via var) | |
+| 167 | `HAT_CLONE` | 294 (via var) | |
+| 168 | `HAT_BACK_SCALE` | 307 (via var) | |
+| 169 | `HAT_FRONT_SCALE` | 308 (via var) | |
+| 170 | `HAT_BACK_ANGLE` | 302 (via var) | |
+| 171 | `HAT_FRONT_ANGLE` | 303 (via var) | |
+| 172 | `HAT_ANGLE_RAND` | 304 (via var) | |
+| 173 | `HAT_FLIP` | 75 (byte-offset 0x12d) (via expr: iVar15 != 0) | |
+| 174 | `HAT_T` | 309 (via var), 310 (via var) | |
+| 191 | `HOOF_COLOR` | 317 (via expr: local_318[iVar20]) | |
+| 193 | `BELLY_ALT` | 83 (byte-offset 0x14f) (via expr: iVar20 != 0) | |
+| 197 | `RACCOON_EYE` | 231 (via var) | |
+| 198 | `EAR_COMP` | 233 (via var) | |
+| 200 | `PAT_SPLIT` | 333 (via var) | |
+| 201 | `PAT_BELLY` | 15 (via expr: param_1[1] - fVar35), 334 (via var) | |
+| 202 | `PAT_STRIPE` | 336 (via var) | |
+| 203 | `PAT_SPOT` | 337 (via var) | |
+| 204 | `PAT_PERLIN` | 340 (via var) | |
+| 205 | `PAT_PERLIN2` | 341 (via var) | |
+| 206 | `PAT_PERLIN_SIZE` | 342 (via expr: (float)(int)fVar33) | |
+| 211 | `OMNIVORE` | 87 (byte-offset 0x15c) (via expr: iVar15 != 0) | |
+| 212 | `LITTER_SIZE` | 349 (via var) | |
+| 213 | `OLD_AGE` | 351 (via expr: (float)(iVar15 + 9)) | |
+| 218 | `STIFF_JOINTS` | 100 (via expr: fVar33 * param_1[100]), 101 (via expr: fVar33 * param_1[0x65]), 118 (via expr: fVar33 * param_1[0x76]), 119 (via expr: fVar33 * param_1[0x77]), 26 (via expr: fVar33 * param_1[0x1a]), 27 (via expr: fVar33 * param_1[0x1b]), 45 (via expr: fVar33 * param_1[0x2d]), 46 (via expr: fVar33 * param_1[0x2e]), 64 (via expr: fVar33 * param_1[0x40]), 65 (via expr: fVar33 * param_1[0x41]), 82 (via expr: fVar33 * param_1[0x52]), 83 (via expr: fVar33 * param_1[0x53]) | |
+| 219 | `L_LEG_SIGNAL` | 38 (via var) | |
+| 220 | `L_LEG_FTOB_REACT` | 39 (via var) | |
+| 221 | `L_LEG_FTOB_EVENT` | 41 (via var) | |
+| 222 | `L_LEG_BTOF_REACT` | 40 (via var) | |
+| 223 | `L_LEG_BTOF_EVENT` | 42 (via var) | |
+| 224 | `L_ARM_SIGNAL` | 57 (via var) | |
+| 225 | `L_ARM_FTOB_REACT` | 58 (via var) | |
+| 226 | `L_ARM_FTOB_EVENT` | 60 (via var) | |
+| 227 | `L_ARM_BTOF_REACT` | 59 (via var) | |
+| 228 | `L_ARM_BTOF_EVENT` | 61 (via var) | |
+| 229 | `L_TAIL_SIGNAL` | 19 (via var) | |
+| 230 | `L_TAIL_FTOB_REACT` | 20 (via var) | |
+| 231 | `L_TAIL_FTOB_EVENT` | 22 (via var) | |
+| 232 | `L_TAIL_BTOF_REACT` | 21 (via var) | |
+| 233 | `L_TAIL_BTOF_EVENT` | 23 (via var) | |
+| 234 | `L_NECK_SIGNAL` | 111 (via var) | |
+| 235 | `L_NECK_FTOB_REACT` | 112 (via var) | |
+| 236 | `L_NECK_FTOB_EVENT` | 114 (via var) | |
+| 237 | `L_NECK_BTOF_REACT` | 113 (via var) | |
+| 238 | `L_NECK_BTOF_EVENT` | 115 (via var) | |
 
 ## Buf-slot -> horse-struct field (consumer reads)
 

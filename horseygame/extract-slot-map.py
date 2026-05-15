@@ -82,9 +82,33 @@ _EVAL_RE = re.compile(
     rf"FUN_1400a5(?:d20|e00)\s*\(\s*\w+\s*,\s*(?P<idx>{_NUM})\s*\)\s*;"
 )
 
+# `var = expr;` where expr might combine other tracked vars.
+# Used to propagate gene-derived values through temp-var chains.
+_VAR_ASSIGN_RE = re.compile(
+    rf"^\s*(?P<var>[a-zA-Z_][\w]*)\s*=\s*(?P<rhs>[^;]+);"
+)
+
 # param_1[N] = something_that_might_reference_var;
 _PARAM1_WRITE_RE = re.compile(
     rf"^\s*param_1\[\s*(?P<slot>{_NUM})\s*\]\s*=\s*(?P<rhs>.+?);"
+)
+
+# `*pfVar24 = expr;`. Write via a pointer alias we've already
+# observed as `pfVar24 = param_1 + N;`.
+_POINTER_WRITE_RE = re.compile(
+    rf"^\s*\*\s*(?P<ptr>[a-zA-Z_][\w]*)\s*=\s*(?P<rhs>[^;]+);"
+)
+
+# `pfVar24 = param_1 + N;` pointer alias.
+_POINTER_ALIAS_RE = re.compile(
+    rf"^\s*(?P<ptr>[a-zA-Z_][\w]*)\s*=\s*param_1\s*\+\s*(?P<slot>{_NUM})\s*;"
+)
+
+# Byte-level write into a slot: `*(undefined1*)(param_1 + 0xMM) = expr;`
+# Maps to slot floor(0xMM / 4).
+_BYTE_WRITE_RE = re.compile(
+    rf"^\s*\*\(\s*(?:undefined\d|bool|char|int|float)\s*\*\s*\)\s*"
+    rf"\(\s*param_1\s*\+\s*(?P<byte_off>{_NUM})\s*\)\s*=\s*(?P<rhs>[^;]+);"
 )
 
 # direct one-liner: param_1[N] = (float)FUN_1400a5d20(local_X, K);
@@ -102,57 +126,115 @@ def parse_num(s):
 def extract_mappings(body_lines):
     """Return list of (gene_idx, slot, how_combined) tuples.
 
-    `how_combined` is "direct" for one-liner writes, "via $varname"
-    for write-from-temp-var, or "complex" for multi-step expressions
-    we can't confidently flatten.
+    v2: tracks multi-step variable mutations, pointer aliases
+    `pfVarN = param_1 + N`, and byte-level writes.
+
+    For each tracked variable we keep a set of gene indices that
+    have contributed to its current value. When the var is mutated
+    (`var = var + something`), the set persists. When the var is
+    reassigned without referencing itself, the set is replaced.
     """
-    # Each variable's most recent gene_idx assignment.
-    var_to_idx = {}
+    var_genes = {}  # var_name -> set of gene_idx that contributed
+    ptr_to_slot = {}  # ptr_name -> slot index (from pfVar = param_1 + N)
     mappings = []
+
+    def record(slot, rhs_text, hits_iterable, slot_repr=None):
+        if not hits_iterable:
+            return
+        hits = list(hits_iterable)
+        s = slot_repr if slot_repr is not None else slot
+        if len(hits) == 1:
+            idx = hits[0]
+            style = (
+                "via var"
+                if rhs_text.strip().isidentifier()
+                else f"via expr: {rhs_text.strip()[:60]}"
+            )
+            mappings.append((idx, s, style))
+        else:
+            for idx in hits:
+                mappings.append(
+                    (idx, s, f"combined-with-others ({rhs_text.strip()[:60]})")
+                )
+
+    def hits_in_rhs(rhs):
+        out = set()
+        for v, idxs in var_genes.items():
+            if re.search(rf"\b{re.escape(v)}\b", rhs):
+                out.update(idxs)
+        return out
+
     for line in body_lines:
         # Direct write first.
         m = _DIRECT_RE.search(line)
         if m:
             mappings.append(
-                (
-                    parse_num(m.group("idx")),
-                    parse_num(m.group("slot")),
-                    "direct",
-                )
+                (parse_num(m.group("idx")), parse_num(m.group("slot")), "direct")
             )
             continue
-        # Track temp-var assignments.
+        # Track temp-var assignments from gene calls.
         m = _EVAL_RE.search(line)
         if m:
-            var_to_idx[m.group("var")] = parse_num(m.group("idx"))
+            var_genes[m.group("var")] = {parse_num(m.group("idx"))}
             continue
-        # Param writes that reference a tracked var.
+        # Pointer aliases.
+        m = _POINTER_ALIAS_RE.search(line)
+        if m:
+            ptr_to_slot[m.group("ptr")] = parse_num(m.group("slot"))
+            continue
+        # Byte-level write.
+        m = _BYTE_WRITE_RE.search(line)
+        if m:
+            byte_off = parse_num(m.group("byte_off"))
+            slot = byte_off // 4
+            rhs = m.group("rhs")
+            record(
+                slot,
+                rhs,
+                hits_in_rhs(rhs),
+                slot_repr=f"{slot} (byte-offset 0x{byte_off:x})",
+            )
+            continue
+        # Param writes.
         m = _PARAM1_WRITE_RE.search(line)
         if m:
             slot = parse_num(m.group("slot"))
             rhs = m.group("rhs")
-            # Look for any tracked var name in the RHS.
-            hits = [
-                (v, idx)
-                for v, idx in var_to_idx.items()
-                if re.search(rf"\b{re.escape(v)}\b", rhs)
-            ]
-            if len(hits) == 1:
-                v, idx = hits[0]
-                # If RHS is just the var, mark as via.
-                # If it contains arithmetic, mark complex but record.
-                style = (
-                    f"via {v}"
-                    if rhs.strip() == v
-                    else f"via {v} (expr: {rhs.strip()[:60]})"
-                )
-                mappings.append((idx, slot, style))
-            elif len(hits) > 1:
-                # Multiple genes combine into one slot.
-                for v, idx in hits:
-                    mappings.append(
-                        (idx, slot, f"combined-with-others ({rhs.strip()[:60]})")
-                    )
+            # If the RHS references the var being assigned (var = var + other),
+            # we handle that below in the var-assign branch. Otherwise normal.
+            record(slot, rhs, hits_in_rhs(rhs))
+            continue
+        # Pointer-deref write.
+        m = _POINTER_WRITE_RE.search(line)
+        if m:
+            ptr = m.group("ptr")
+            if ptr in ptr_to_slot:
+                slot = ptr_to_slot[ptr]
+                rhs = m.group("rhs")
+                record(slot, rhs, hits_in_rhs(rhs))
+            continue
+        # Generic var assignment: ONLY use to CLEAR stale tracking
+        # when a var is reassigned. We do NOT propagate gene credit
+        # through multi-step var chains. Pilot runs showed that
+        # creates huge false positives: any gene that ever touched
+        # fVar33 gets credited to every slot that ever used fVar33,
+        # even after fVar33 was overwritten.
+        #
+        # Trade-off: we miss real multi-step dependencies (gene 3
+        # feeds slot 0 via the SQRT formula). Those are documented
+        # narratively in "Engine internals" instead.
+        m = _VAR_ASSIGN_RE.search(line)
+        if m:
+            dest = m.group("var")
+            rhs = m.group("rhs")
+            self_ref = bool(re.search(rf"\b{re.escape(dest)}\b", rhs))
+            if not self_ref and dest in var_genes:
+                hits = hits_in_rhs(rhs)
+                if hits:
+                    var_genes[dest] = set(hits)
+                else:
+                    del var_genes[dest]
+
     return mappings
 
 
@@ -175,7 +257,7 @@ def main():
             continue
         seen.add(key)
         unique.append(key)
-    unique.sort()
+    unique.sort(key=lambda t: (t[0], str(t[1]), t[2]))
     print(f"after dedupe: {len(unique)} rows")
 
     # Group by gene_idx so we can show all slots a gene drives.
