@@ -533,9 +533,37 @@ pub mod horse_offset {
     }
     /// Skill / fitness counter (int32). Used by retirement.
     pub const SKILL: usize = 0x21c;
+    /// Old decomp constant. Production should call [`litter_size_stat()`].
     /// Litter-size stat (int32). Used in breeding: children =
     /// min(parent_a.litter, parent_b.litter) + rng_bonus.
     pub const LITTER_SIZE_STAT: usize = 0x254;
+
+    /// Pattern-resolved litter-size stat offset. Anchors on the
+    /// BREEDING state-machine body where parent_a.litter and
+    /// parent_b.litter are both loaded for the `min(a, b)` step.
+    /// Scans for `8b 8? <disp32>` (mov r32, [reg+disp32]) within
+    /// an 8KB window from BREEDING's entry, filters to
+    /// `[0x240, 0x270]`, and picks the most-frequent disp (counted
+    /// at least twice since both parents read the same offset).
+    ///
+    /// Falls back to `LITTER_SIZE_STAT` when the resolver chain
+    /// misses.
+    pub fn litter_size_stat() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_litter_size_stat().unwrap_or(LITTER_SIZE_STAT))
+    }
+
+    fn resolve_litter_size_stat() -> Option<usize> {
+        let entry = super::resolve::breeding()?;
+        let hist = modforge::research::in_process_decode_imm_in_window(
+            "8b", 2, 4, entry as u64, 8192,
+        ).ok()?;
+        let mut top: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x240 && *v < 0x270)
+            .collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        top.first().map(|&(d, _)| d as usize)
+    }
 
     /// Old decomp constant for the working-genome offset on the
     /// Horse struct. Production should call [`ctx_offset()`].
