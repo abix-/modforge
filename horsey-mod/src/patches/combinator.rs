@@ -135,7 +135,8 @@ pub fn arm() -> anyhow::Result<()> {
     if is_armed() {
         anyhow::bail!("combinator already armed");
     }
-    let runtime_addr = targets::rebase(fn_addr::GENE_COMBINATOR);
+    let runtime_addr = targets::resolve::gene_combinator()
+        .unwrap_or_else(|| targets::rebase(fn_addr::GENE_COMBINATOR));
     let handler_addr = combinator_handler as *const () as usize;
 
     // SAFETY: target inside our loaded image; 8 bytes readable.

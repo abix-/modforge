@@ -138,7 +138,8 @@ pub fn arm() -> anyhow::Result<()> {
     if is_armed() {
         anyhow::bail!("render_trampoline already armed");
     }
-    let runtime_addr = targets::rebase(fn_addr::APPLY_GENE_TO_HORSE);
+    let runtime_addr = targets::resolve::apply_gene_to_horse()
+        .unwrap_or_else(|| targets::rebase(fn_addr::APPLY_GENE_TO_HORSE));
     let handler_addr = engine_handler as *const () as usize;
 
     // Sanity-log the prologue at arm time so any future regression

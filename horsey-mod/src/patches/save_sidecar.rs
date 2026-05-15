@@ -738,11 +738,20 @@ pub fn dryrun_all() -> [TargetReport; 4] {
 // ---------------------------------------------------------------------------
 
 pub fn arm() -> anyhow::Result<()> {
-    arm_one("SAVE_WRITER", fn_addr::SAVE_WRITER, &SAVE_WRITER_DETOUR, save_writer_handler)
+    let save_writer = targets::resolve::save_writer()
+        .unwrap_or_else(|| targets::rebase(fn_addr::SAVE_WRITER));
+    let load_game = targets::resolve::load_game()
+        .unwrap_or_else(|| targets::rebase(fn_addr::LOAD_GAME));
+    let horse_save_writer = targets::resolve::horse_save_writer()
+        .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_SAVE_WRITER));
+    let horse_save_loader = targets::resolve::horse_save_loader()
+        .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_SAVE_LOADER));
+
+    arm_one("SAVE_WRITER", save_writer, &SAVE_WRITER_DETOUR, save_writer_handler)
         .map_err(|e| anyhow::anyhow!("save_sidecar: arm SAVE_WRITER: {e}"))?;
     if let Err(e) = arm_one(
         "LOAD_GAME",
-        fn_addr::LOAD_GAME,
+        load_game,
         &LOAD_GAME_DETOUR,
         load_game_handler,
     ) {
@@ -751,7 +760,7 @@ pub fn arm() -> anyhow::Result<()> {
     }
     if let Err(e) = arm_one(
         "HORSE_SAVE_WRITER",
-        fn_addr::HORSE_SAVE_WRITER,
+        horse_save_writer,
         &HORSE_WRITER_DETOUR,
         horse_writer_handler,
     ) {
@@ -760,7 +769,7 @@ pub fn arm() -> anyhow::Result<()> {
     }
     if let Err(e) = arm_one(
         "HORSE_SAVE_LOADER",
-        fn_addr::HORSE_SAVE_LOADER,
+        horse_save_loader,
         &HORSE_LOADER_DETOUR,
         horse_loader_handler,
     ) {
@@ -773,7 +782,7 @@ pub fn arm() -> anyhow::Result<()> {
 
 fn arm_one<F: Copy>(
     name: &'static str,
-    rva: usize,
+    runtime_addr: usize,
     slot: &AtomicPtr<GenericDetour<F>>,
     handler: F,
 ) -> anyhow::Result<()>
@@ -783,7 +792,6 @@ where
     if !slot.load(Ordering::Acquire).is_null() {
         anyhow::bail!("{name}: already armed");
     }
-    let runtime_addr = targets::rebase(rva);
     // SAFETY: target inside our loaded image; 8 bytes readable.
     let prologue =
         unsafe { std::slice::from_raw_parts(runtime_addr as *const u8, 8) };

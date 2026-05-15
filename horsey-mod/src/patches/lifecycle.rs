@@ -187,7 +187,8 @@ fn arm_ctor() -> anyhow::Result<()> {
     if is_armed_ctor() {
         anyhow::bail!("lifecycle ctor already armed");
     }
-    let runtime_addr = targets::rebase(fn_addr::HORSE_CONSTRUCTOR);
+    let runtime_addr = targets::resolve::horse_constructor()
+        .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_CONSTRUCTOR));
     log_prologue("HORSE_CONSTRUCTOR", runtime_addr);
 
     // SAFETY: address is the true entry of FUN_1400aac60.
@@ -210,7 +211,8 @@ fn arm_dtor() -> anyhow::Result<()> {
     if is_armed_dtor() {
         anyhow::bail!("lifecycle dtor already armed");
     }
-    let runtime_addr = targets::rebase(fn_addr::HORSE_DESTRUCTOR);
+    let runtime_addr = targets::resolve::horse_destructor()
+        .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_DESTRUCTOR));
     log_prologue("HORSE_DESTRUCTOR", runtime_addr);
 
     // SAFETY: address is the true entry of FUN_1400bf1f0.

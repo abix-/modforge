@@ -505,6 +505,125 @@ pub mod resolve {
         }
     }
 
+    /// Resolved runtime address of `APPLY_GENE_TO_HORSE`. Cached.
+    pub fn apply_gene_to_horse() -> Option<usize> {
+        resolve_function(
+            "APPLY_GENE_TO_HORSE",
+            APPLY_GENE_TO_HORSE_SIGS,
+            super::fn_addr::APPLY_GENE_TO_HORSE,
+        )
+    }
+    /// Resolved runtime address of `HORSE_CONSTRUCTOR`. Cached.
+    pub fn horse_constructor() -> Option<usize> {
+        resolve_function(
+            "HORSE_CONSTRUCTOR",
+            HORSE_CONSTRUCTOR_SIGS,
+            super::fn_addr::HORSE_CONSTRUCTOR,
+        )
+    }
+    /// Resolved runtime address of `HORSE_DESTRUCTOR`. Cached.
+    pub fn horse_destructor() -> Option<usize> {
+        resolve_function(
+            "HORSE_DESTRUCTOR",
+            HORSE_DESTRUCTOR_SIGS,
+            super::fn_addr::HORSE_DESTRUCTOR,
+        )
+    }
+    /// Resolved runtime address of `GENE_COMBINATOR`. Cached.
+    pub fn gene_combinator() -> Option<usize> {
+        resolve_function(
+            "GENE_COMBINATOR",
+            GENE_COMBINATOR_SIGS,
+            super::fn_addr::GENE_COMBINATOR,
+        )
+    }
+    /// Resolved runtime address of `SAVE_WRITER`. Cached.
+    pub fn save_writer() -> Option<usize> {
+        resolve_function(
+            "SAVE_WRITER",
+            SAVE_WRITER_SIGS,
+            super::fn_addr::SAVE_WRITER,
+        )
+    }
+    /// Resolved runtime address of `LOAD_GAME`. Cached.
+    pub fn load_game() -> Option<usize> {
+        resolve_function("LOAD_GAME", LOAD_GAME_SIGS, super::fn_addr::LOAD_GAME)
+    }
+    /// Resolved runtime address of `HORSE_SAVE_WRITER`. Cached.
+    pub fn horse_save_writer() -> Option<usize> {
+        resolve_function(
+            "HORSE_SAVE_WRITER",
+            HORSE_SAVE_WRITER_SIGS,
+            super::fn_addr::HORSE_SAVE_WRITER,
+        )
+    }
+    /// Resolved runtime address of `HORSE_SAVE_LOADER`. Cached.
+    pub fn horse_save_loader() -> Option<usize> {
+        resolve_function(
+            "HORSE_SAVE_LOADER",
+            HORSE_SAVE_LOADER_SIGS,
+            super::fn_addr::HORSE_SAVE_LOADER,
+        )
+    }
+
+    /// 32-byte body sigs captured from the live image
+    /// (2026-05-15, build sha256 prefix 742a6222ba73). Each is the
+    /// first 32 bytes of the function's prologue + initial body.
+    /// 32 random bytes virtually never collide in a 4 MiB `.text`
+    /// section, so these resolve uniquely without further
+    /// wildcarding. When MSVC reorders or restructures, the
+    /// resolver fails and the production call site falls back to
+    /// the hardcoded RVA; that's the migration's safety net.
+    const APPLY_GENE_TO_HORSE_SIGS: &[&str] = &[
+        "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48 8d a8 d8 fb ff ff 48 81 ec e8 04 00 00 0f 29 70",
+    ];
+    const HORSE_CONSTRUCTOR_SIGS: &[&str] = &[
+        "48 89 5c 24 10 48 89 4c 24 08 57 48 83 ec 20 48 8b d9 48 8d 05 ?? ?? ?? ?? 48 89 01 33 ff 48 89",
+    ];
+    const HORSE_DESTRUCTOR_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8d 05 ?? ?? ?? ?? 8b f2 48 89 01 48 8b d9 ff 0d",
+    ];
+    const GENE_COMBINATOR_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 ec 20 4c 8b f9 45",
+    ];
+    const SAVE_WRITER_SIGS: &[&str] = &[
+        "57 41 56 48 81 ec 40 01 00 00 48 8b e9 48 8d 51 18 48 8d 4c 24 30 e8 ?? ?? ?? ?? 48 8b 54 24 48",
+    ];
+    const LOAD_GAME_SIGS: &[&str] = &[
+        "48 89 5c 24 08 55 56 57 41 54 41 55 41 56 41 57 48 8b ec 48 83 ec 70 48 8b f1 44 8b c2 48 8d 15",
+    ];
+    const HORSE_SAVE_WRITER_SIGS: &[&str] = &[
+        "57 41 56 48 83 ec 40 48 8b e9 e8 ?? ?? ?? ?? 48 8d 8d b8 02 00 00 44 8b f0 e8 ?? ?? ?? ?? 48 8b",
+    ];
+    const HORSE_SAVE_LOADER_SIGS: &[&str] = &[
+        "53 57 48 83 ec 58 48 8b f9 48 81 c1 b8 02 00 00 e8 ?? ?? ?? ?? 48 8d 8f a8 02 00 00 e8 ?? ?? ??",
+    ];
+
+    /// Generic function resolver: try each sig in order; first
+    /// match wins; sanity-gate against the rebased hardcoded RVA
+    /// at 0x10000 bytes (1 MiB is too loose; 0x10000 covers
+    /// observed save-target drifts in this codebase).
+    fn resolve_function(
+        name: &'static str,
+        sigs: &'static [&'static str],
+        hardcoded_rva: usize,
+    ) -> Option<usize> {
+        use modforge::patterns::sleuth::{self, Target};
+        let target = Target { name, sigs };
+        let resolution = sleuth::resolve_all(std::slice::from_ref(&target)).ok()?;
+        let resolved = resolution.get(name)?;
+        let hardcoded = super::rebase(hardcoded_rva);
+        let delta = resolved.abs_diff(hardcoded);
+        if delta > 0x10000 {
+            modforge::log!(
+                "R2 {name} sanity gate rejected resolved=0x{resolved:x}; \
+                 hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x10000"
+            );
+            return None;
+        }
+        Some(resolved)
+    }
+
     /// Resolved runtime address of `RACES_COUNTER`
     /// (`DAT_1403eded8`). Cached.
     pub fn races_counter() -> Option<usize> {

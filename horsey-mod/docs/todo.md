@@ -141,7 +141,7 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 
 | Item | Hardcoded RVA | Status | Sig anchor candidate | Used by |
 |---|---|---|---|---|
-| `APPLY_GENE_TO_HORSE` | `0x14009f670` | R-parity (`74846de`) | 32-byte body from live image | D5 render trampoline |
+| `APPLY_GENE_TO_HORSE` | `0x14009f670` | **R** (body sig 32b live-captured) | 32-byte body from live image | D5 render trampoline |
 | `EVAL_DIPLOID_BLEND_A` | `0x1400a5d10` | H | called 233x in APPLY_GENE_TO_HORSE | D1 detour |
 | `EVAL_DIPLOID_BLEND_B` | `0x1400a5df0` | H | sibling of A; same record layout | D1 detour |
 | `GENE_DEATH_DRIFT` | `0x1400c0650` | H | `+/- 5` mutation rate writes | D1 detour (deferred) |
@@ -155,8 +155,8 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | `COMPUTE_HORSE_PRICE` | `0x1400dcab0` | H | `(rand+nice+record)*years+deco` | unused in v1 |
 | `CRISPR_LAB` | `0x140089510` | H | 13-state CRISPR machine | unused in v1 |
 | `BREEDING` | `0x1400e0aa0` | H | BarnMating state machine | unused in v1 |
-| `SAVE_WRITER` | `0x14006d674` | R-parity (`bd95252`) | save_signatures test locks 16-byte prologue | D4 sidecar |
-| `LOAD_GAME` | `0x14006e350` | R-parity (`bd95252`) | same as above | D4 sidecar |
+| `SAVE_WRITER` | `0x14006d674` | **R** (body sig 32b live-captured) | save_signatures test locks 16-byte prologue | D4 sidecar |
+| `LOAD_GAME` | `0x14006e350` | **R** (body sig 32b live-captured) | same as above | D4 sidecar |
 | `DRAW_PAUSE_STATUS` | `0x140066200` | H | contains the cheat-money write | unused in v1 |
 | `TMX_MAP_PARSER` | `0x1400fe2e0` | H | parses `<map`; reads `horsey.tmx` | unused in v1 |
 | `POP_GENOME_BUILDER` | `0x140092820` | H | runtime spawner | unused in v1 |
@@ -167,11 +167,11 @@ Status legend: **R** = resolved (production reads through resolver), **R-parity*
 | `POWER_PLANT` | `0x1400693b0` | H | power-plant building | unused in v1 |
 | `WORLD_ACTION` | `0x140107660` | H | world-action dispatcher | unused in v1 |
 | `BALLOON_CONTROLLER` | `0x14010a5e0` | H | hot-air-balloon controller | unused in v1 |
-| `HORSE_CONSTRUCTOR` | `0x1400aac50` | R-parity (`74846de`) | 32-byte body sig | D3.1 lifecycle |
-| `HORSE_DESTRUCTOR` | `0x1400bf1e0` | R-parity (`74846de`) | 32-byte body sig | D3.2 lifecycle |
-| `GENE_COMBINATOR` | `0x1400a2d70` | R-parity (`74846de`) | 32-byte body sig | D3.4 breeding |
-| `HORSE_SAVE_WRITER` | `0x14006ecfb` | R-parity (`bd95252`) | prologue + body sig | D4.1b sidecar |
-| `HORSE_SAVE_LOADER` | `0x14006f031` | R-parity (`bd95252`) | `add rcx, 0x2b8` is unique | D4.2b sidecar |
+| `HORSE_CONSTRUCTOR` | `0x1400aac50` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.1 lifecycle |
+| `HORSE_DESTRUCTOR` | `0x1400bf1e0` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.2 lifecycle |
+| `GENE_COMBINATOR` | `0x1400a2d70` | **R** (body sig 32b live-captured) | 32-byte body sig | D3.4 breeding |
+| `HORSE_SAVE_WRITER` | `0x14006ecfb` | **R** (body sig 32b live-captured) | prologue + body sig | D4.1b sidecar |
+| `HORSE_SAVE_LOADER` | `0x14006f031` | **R** (body sig 32b live-captured) | `add rcx, 0x2b8` is unique | D4.2b sidecar |
 
 ### Struct field offsets (N/A for pattern-scan)
 
