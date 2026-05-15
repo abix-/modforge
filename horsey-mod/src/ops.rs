@@ -199,6 +199,74 @@ pub fn register_all() {
             },
         ),
 
+        // Find every `.data` position containing a given u32 / u64
+        // / arbitrary-byte value. Backed by patternsleuth
+        // (`sleuth::scan_data_matches`); no hand-rolled scanning.
+        // Use to anchor address resolution on observed live values
+        // (e.g. the player's on-screen money) instead of guessing
+        // MSVC encodings from decomp output.
+        OpDef::new(
+            "mem.scan_data",
+            "Patternsleuth scan of .data for a u32 (default) or u64 value, \
+            or arbitrary bytes. Returns every matching address.",
+            "{value: u64, kind?: 'u32'|'u64'|'bytes', bytes?: 'aa bb ..', max_hits?: usize}",
+            |args| {
+                let kind = args
+                    .get("kind")
+                    .and_then(Json::as_str)
+                    .unwrap_or("u32");
+                let sig = match kind {
+                    "u32" => {
+                        let v = args
+                            .get("value")
+                            .and_then(Json::as_u64)
+                            .ok_or_else(|| "missing or non-u64 arg: value (kind=u32)".to_string())?
+                            as u32;
+                        v.to_le_bytes()
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                    "u64" => {
+                        let v = args
+                            .get("value")
+                            .and_then(Json::as_u64)
+                            .ok_or_else(|| "missing or non-u64 arg: value (kind=u64)".to_string())?;
+                        v.to_le_bytes()
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    }
+                    "bytes" => args
+                        .get("bytes")
+                        .and_then(Json::as_str)
+                        .ok_or_else(|| "missing string arg: bytes (kind=bytes)".to_string())?
+                        .to_string(),
+                    other => return Err(format!("unknown kind: {other}")),
+                };
+                let max_hits = args
+                    .get("max_hits")
+                    .and_then(Json::as_u64)
+                    .unwrap_or(64) as usize;
+                let mut addrs = modforge::patterns::sleuth::scan_data_matches(&sig)
+                    .map_err(|e| format!("sleuth scan_data_matches failed: {e}"))?;
+                let total = addrs.len();
+                addrs.truncate(max_hits);
+                let entries: Vec<Json> = addrs
+                    .iter()
+                    .map(|a| json!({"addr": format!("0x{a:x}")}))
+                    .collect();
+                Ok(json!({
+                    "sig": sig,
+                    "kind": kind,
+                    "total_hits": total,
+                    "hits": entries,
+                }))
+            },
+        ),
+
         // Two-address aliasing probe: write a sentinel byte at A,
         // read at B; if they're the same byte the read returns the
         // sentinel. Used by tests to prove a resolved address points

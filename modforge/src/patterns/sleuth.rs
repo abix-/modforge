@@ -130,19 +130,34 @@ pub fn resolve_all(targets: &[Target<'_>]) -> Result<Resolution> {
 /// Scan the loaded image's `.text` for every position matching a
 /// single patternsleuth signature. Unlike [`resolve_all`], returns
 /// EVERY hit (not just the first per name). Use this for xref
-/// scans (`X0x<target>`), enumerating all writes of a constant,
-/// etc.
+/// scans (`<opcode prefix> X0x<target>`), enumerating all writes of
+/// a constant, etc.
 ///
 /// Addresses are returned sorted ascending, deduplicated.
 pub fn scan_all_matches(sig: &str) -> Result<Vec<usize>> {
+    scan_section(sig, Some(TEXT_SECTION))
+}
+
+/// Patternsleuth scan restricted to mutable initialized data (`.data`).
+/// Use for finding literal values in game state globals (e.g. the
+/// player's current money u32) so we can anchor address resolution
+/// on observed live values instead of guessing MSVC encodings. See
+/// `horsey-mod/docs/todo.md` P0 BLOCKER section for the workflow.
+pub fn scan_data_matches(sig: &str) -> Result<Vec<usize>> {
+    scan_section(sig, Some(object::SectionKind::Data))
+}
+
+/// Patternsleuth scan with a caller-chosen section restriction.
+/// Pass `None` to scan every section the crate walks (note:
+/// patternsleuth's image walker still excludes non-loadable
+/// sections like `.reloc`).
+pub fn scan_section(
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<Vec<usize>> {
     let pat = Pattern::new(sig)
         .with_context(|| format!("sig {sig:?} parse failed"))?;
-    let config = PatternConfig::new(
-        (),
-        "scan_all".to_string(),
-        Some(TEXT_SECTION),
-        pat,
-    );
+    let config = PatternConfig::new((), "scan_all".to_string(), section, pat);
     let image = read_image()
         .map_err(|e| anyhow!("patternsleuth read_image failed: {e}"))?;
     let configs = [config];
