@@ -599,6 +599,120 @@ pub mod resolve {
         "53 57 48 83 ec 58 48 8b f9 48 81 c1 b8 02 00 00 e8 ?? ?? ?? ?? 48 8d 8f a8 02 00 00 e8 ?? ?? ??",
     ];
 
+    // ====================================================================
+    // H batch: unused-in-v1 functions whose hardcoded RVA points at a
+    // valid function prologue in this build. 32-byte body sigs captured
+    // live (2026-05-15). Per-target accessors below.
+    // ====================================================================
+
+    pub fn eval_diploid_blend_a() -> Option<usize> {
+        resolve_function("EVAL_DIPLOID_BLEND_A", EVAL_DIPLOID_BLEND_A_SIGS, super::fn_addr::EVAL_DIPLOID_BLEND_A)
+    }
+    pub fn eval_diploid_blend_b() -> Option<usize> {
+        resolve_function("EVAL_DIPLOID_BLEND_B", EVAL_DIPLOID_BLEND_B_SIGS, super::fn_addr::EVAL_DIPLOID_BLEND_B)
+    }
+    pub fn gene_death_drift() -> Option<usize> {
+        resolve_function("GENE_DEATH_DRIFT", GENE_DEATH_DRIFT_SIGS, super::fn_addr::GENE_DEATH_DRIFT)
+    }
+    pub fn gene_allele_swap() -> Option<usize> {
+        resolve_function("GENE_ALLELE_SWAP", GENE_ALLELE_SWAP_SIGS, super::fn_addr::GENE_ALLELE_SWAP)
+    }
+    pub fn gene_table_xml_writer() -> Option<usize> {
+        resolve_function("GENE_TABLE_XML_WRITER", GENE_TABLE_XML_WRITER_SIGS, super::fn_addr::GENE_TABLE_XML_WRITER)
+    }
+    pub fn gene_table_loader() -> Option<usize> {
+        resolve_function("GENE_TABLE_LOADER", GENE_TABLE_LOADER_SIGS, super::fn_addr::GENE_TABLE_LOADER)
+    }
+    pub fn pop_xml_loader() -> Option<usize> {
+        resolve_function("POP_XML_LOADER", POP_XML_LOADER_SIGS, super::fn_addr::POP_XML_LOADER)
+    }
+    pub fn gene_engine_consumer() -> Option<usize> {
+        resolve_function("GENE_ENGINE_CONSUMER", GENE_ENGINE_CONSUMER_SIGS, super::fn_addr::GENE_ENGINE_CONSUMER)
+    }
+    pub fn tmx_map_parser() -> Option<usize> {
+        resolve_function("TMX_MAP_PARSER", TMX_MAP_PARSER_SIGS, super::fn_addr::TMX_MAP_PARSER)
+    }
+    pub fn daily_horse_event() -> Option<usize> {
+        resolve_function("DAILY_HORSE_EVENT", DAILY_HORSE_EVENT_SIGS, super::fn_addr::DAILY_HORSE_EVENT)
+    }
+    pub fn track_state_machine() -> Option<usize> {
+        resolve_function("TRACK_STATE_MACHINE", TRACK_STATE_MACHINE_SIGS, super::fn_addr::TRACK_STATE_MACHINE)
+    }
+    pub fn circus_handler() -> Option<usize> {
+        resolve_function("CIRCUS_HANDLER", CIRCUS_HANDLER_SIGS, super::fn_addr::CIRCUS_HANDLER)
+    }
+
+    // 32-byte body sigs from live image. RIP-relative disp32 + call
+    // disp32 fields wildcarded so future minor MSVC reorders survive.
+    // EVAL_DIPLOID_BLEND_A and _B are sibling functions back-to-back
+    // in `.text` (B is 0xe0 bytes after A) with identical 32-byte
+    // prologue prefixes; they diverge only in the `lea rbp,
+    // [rip+disp32]` displacement (each points at its own jump table
+    // in `.rdata`). Use the literal disp32 to disambiguate. This is
+    // build-specific; if `.rdata` shifts, these sigs miss and the
+    // production call site falls back to hardcoded.
+    const EVAL_DIPLOID_BLEND_A_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec 20 48 63 da 48 8d 2d 72 87 34 00 48 8b",
+    ];
+    const EVAL_DIPLOID_BLEND_B_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec 20 48 63 da 48 8d 2d 92 86 34 00 48 8b",
+    ];
+    const GENE_DEATH_DRIFT_SIGS: &[&str] = &[
+        "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48 8d a8 b8 fa ff ff 48 81 ec 08 06 00 00 0f 29 70",
+    ];
+    const GENE_ALLELE_SWAP_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 74 24 10 48 89 7c 24 18 48 63 fa 48 be c1 d4 1c 42 29 8f a0 3f 4d 63 d9 45",
+    ];
+    const GENE_TABLE_XML_WRITER_SIGS: &[&str] = &[
+        "41 54 41 55 41 56 41 57 48 8d 6c 24 90 48 81 ec 70 01 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29 40",
+    ];
+    // 32-byte sig collided with another function that has the same
+    // push-r15 + lea rbp prologue. Extended to 48 bytes to include
+    // a unique body fragment (mov [rbx], sil; lea rax, [rip+disp32]
+    // with disp wildcarded; nop padding).
+    const GENE_TABLE_LOADER_SIGS: &[&str] = &[
+        "41 57 48 8d a8 28 ff ff ff 48 81 ec a0 01 00 00 0f 29 70 b8 0f 29 78 a8 44 0f 29 40 98 44 0f 29 48 88 33 f6 8b ce 48 8d 05 ?? ?? ?? ?? 0f 1f 00",
+    ];
+    const POP_XML_LOADER_SIGS: &[&str] = &[
+        "48 8d ac 24 c0 cf ff ff b8 40 31 00 00 e8 ?? ?? ?? ?? 48 2b e0 48 8d 4c 24 50 e8 ?? ?? ?? ?? 90",
+    ];
+    const GENE_ENGINE_CONSUMER_SIGS: &[&str] = &[
+        "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48 8d a8 88 fd ff ff 48 81 ec 38 03 00 00 0f 29 70",
+    ];
+    const TMX_MAP_PARSER_SIGS: &[&str] = &[
+        "48 89 5c 24 08 48 89 7c 24 10 55 48 8b ec 48 83 ec 20 8b fa 33 db 83 fa 0c 7f 25 b9 78 04 00 00",
+    ];
+    const DAILY_HORSE_EVENT_SIGS: &[&str] = &[
+        "48 89 5c 24 10 48 89 74 24 18 48 89 7c 24 20 55 41 54 41 55 41 56 41 57 48 8d 6c 24 c9 48 81 ec",
+    ];
+    const TRACK_STATE_MACHINE_SIGS: &[&str] = &[
+        "48 8b c4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8d 68 a1 48 81 ec e0",
+    ];
+    const CIRCUS_HANDLER_SIGS: &[&str] = &[
+        "48 8b c4 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8d 6c 24 b8 48 81 ec 48 01 00 00 0f",
+    ];
+
+    // ====================================================================
+    // Stale-RVA batch: hardcoded constants in `fn_addr` point at
+    // mid-function bytes (not function prologues) on the current
+    // build. The 32-byte view at these RVAs starts inside the body,
+    // so they need re-derivation (same shape as the save-target re-
+    // derivation in commit bd95252). Tracked for re-derivation when
+    // any of these functions becomes a production target. None are
+    // currently consumed by horsey-mod's active patch stack.
+    //
+    //   CHECK_HORSE_ELIGIBILITY (0x1400dde40)
+    //   RETIRE_HORSE_HANDLER    (0x1400df280)
+    //   COMPUTE_HORSE_PRICE     (0x1400dcab0)
+    //   CRISPR_LAB              (0x140089510)
+    //   BREEDING                (0x1400e0aa0)
+    //   DRAW_PAUSE_STATUS       (0x140066200)
+    //   POP_GENOME_BUILDER      (0x140092820)
+    //   SUMO_HANDLER            (0x14007b2e0)
+    //   POWER_PLANT             (0x1400693b0)
+    //   WORLD_ACTION            (0x140107660)
+    //   BALLOON_CONTROLLER      (0x14010a5e0)
+
     /// Generic function resolver: try each sig in order; first
     /// match wins; sanity-gate against the rebased hardcoded RVA
     /// at 0x10000 bytes (1 MiB is too loose; 0x10000 covers
