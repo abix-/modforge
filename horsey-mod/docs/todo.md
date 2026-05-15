@@ -158,9 +158,6 @@ Current status (2026-05-15): 6/6 data globals on **R**; 30/31 function entries o
 
 The candidate-list pattern from R3 generalizes: each item gets 2-4 candidate signatures (so a single MSVC reorder between builds doesn't break it), cross-validate via warning when candidates disagree, cache the result in a `OnceLock`.
 
-## Session log
-
-Per-session commit tables, test-suite snapshots, completed-this-session lists, and known-limitations risk logs relocated to [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Ship status pointers
 
