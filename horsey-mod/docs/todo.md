@@ -499,29 +499,70 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
-**STATUS: D1.1 + D1.2 + D1.4 AND D5 ALL PROVEN IN-GAME 2026-05-14.**
-With the Ghidra-off-by-16 address correction
-([`DEBUGGING.md`](DEBUGGING.md) §4) and the lock-free
-`AtomicPtr<GenericDetour<T>>` handler discipline
-([`DEBUGGING.md`](DEBUGGING.md) §4b), all four detours
-co-arm cleanly and exercise normally as the player walks
-the game. End-to-end pipeline confirmed.
+**STATUS: FULL PIPELINE PROVEN IN-GAME 2026-05-14.** All four
+detours co-arm cleanly; an authored extended gene
+(`BX_TEST_SLOT0` in `genes-extended.xml`) with a render
+mapping + a default-allele setting writes the computed value
+into the per-horse render buf on EVERY horse render. Visible
+effect not yet confirmed because the slot-to-feature map is
+unknown (see "Open follow-up" below).
 
-Latest in-game numbers (player walked ~10s after arming):
+Latest in-game numbers (player walked ~10s after arming with
+`BX_TEST_SLOT0` authored at ext_idx 0, slot 0 set mode, default
+alleles (3,3) = blend value 200.0):
 
 | Target | Calls | Vanilla path | Ext path | Max idx seen |
 |---|---|---|---|---|
-| EVAL_DIPLOID_BLEND_A | 2084 | 2084 | 0 | 218 |
-| EVAL_DIPLOID_BLEND_B | 1896 | 1896 | 0 | 213 |
+| EVAL_DIPLOID_BLEND_A | 2233 | 2233 | 0 | 218 |
+| EVAL_DIPLOID_BLEND_B | 2012 | 2012 | 0 | 213 |
 | GENE_ALLELE_SWAP | 0 | 0 | 0 | n/a |
-| APPLY_GENE_TO_HORSE (D5 post-hook) | 15 | 15 | n/a | n/a |
+| APPLY_GENE_TO_HORSE (D5 post-hook) | 16 | 16 | n/a | n/a |
+| Extended gene applications via D5 | n/a | n/a | 16 | n/a |
 
 `max_idx_seen=239` across A+B confirms the full vanilla
-[0..240) gene range is being evaluated through our handler.
-`ext_call_count=0` is expected. No extended gene with a
-render mapping is authored yet, so nothing drives idx>=240.
+[0..240) range is evaluated through our handler.
+`genes_applied_total=16` matches `D5.call_count=16` exactly:
+every horse render had our gene's blend value applied to its
+target slot. **The visuals data path works.**
+`ext_call_count=0` on the DI-A side is expected: no vanilla
+caller drives idx>=240 in this scenario (the D5 trampoline
+writes the buf directly without recursing through eval_a/b).
 `allele_swap=0` is expected. It only fires on the rare
 allele-renumber event.
+
+#### Open follow-up: slot-to-feature mapping
+
+The mechanism is proven. We don't yet know which buf-slot
+drives which visible horse feature. From VIABILITY.md
+Q-render-3:
+
+- 353 total float slots in the render buf
+- 258 written by vanilla `FUN_14009f680` (the engine)
+- 61 read by vanilla `FUN_1400ab3d0` (the consumer that
+  transcribes into the horse struct at `+0x124`, `+0x128`,
+  `+0x130`..`+0x154`)
+- Only the 61 consumer-read slots produce visible effects.
+  The other 197 written slots are dead computation.
+
+`BX_TEST_SLOT0` targets slot 0 in set mode with value 200.0.
+If slot 0 is in the 257 "engine writes but consumer ignores"
+set, there is no visible effect even though our value lands
+in the buf. This is the most likely outcome of a
+naively-chosen slot.
+
+Next iteration to find a producible visible effect:
+
+1. Read `FUN_1400ab3d0`'s decomp and enumerate the 61 slot
+   indices it reads (the `param_2[X]` accesses).
+2. Pick one of those 61 known-consumer-read slots (likely
+   candidates: low indices = primary scale / size, slots
+   near color channels or skeletal proportions).
+3. Edit `genes-extended.xml` `slot="N"` to that index, call
+   `genes.ext.reload`, observe.
+4. Once one visible slot is confirmed, document the
+   slot-to-feature map progressively in
+   [`VIABILITY.md`](VIABILITY.md) by iterating through the
+   consumer-read set.
 
 Strategy DI-A approved 2026-05-14. Locked library:
 `retour 0.3`. Lock-free `AtomicPtr<GenericDetour<T>>`

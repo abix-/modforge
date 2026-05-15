@@ -190,6 +190,53 @@ fn horse_genomes() -> &'static RwLock<HashMap<u64, ExtHorseGenome>> {
     T.get_or_init(|| RwLock::new(HashMap::new()))
 }
 
+/// Default extended-genome FALLBACK. Used when `apply_render_to_buf`
+/// is called for a horse that has no entry in `horse_genomes()`.
+/// Models the "every horse gets the same starter extended alleles
+/// until D3 wires per-horse spawn-time generation."
+///
+/// Stored as the same flat `Vec<u8>` layout (`alleles[ext_idx] = m`,
+/// `alleles[ext_idx + EXT_GENE_COUNT] = p`). None means "no fallback;
+/// horses without entries contribute nothing to the render."
+fn default_horse_genome() -> &'static RwLock<Option<ExtHorseGenome>> {
+    static T: OnceLock<RwLock<Option<ExtHorseGenome>>> = OnceLock::new();
+    T.get_or_init(|| RwLock::new(None))
+}
+
+/// Set the default extended alleles for ONE extended gene. Applies to
+/// every rendered horse that doesn't already have a specific entry.
+/// Auto-creates the default genome if not yet initialized.
+pub fn set_default_ext_alleles(
+    ext_gene_idx: usize,
+    maternal: u8,
+    paternal: u8,
+) -> Result<(), String> {
+    if ext_gene_idx >= EXT_GENE_COUNT {
+        return Err(format!(
+            "ext_gene_idx {ext_gene_idx} out of range (max {})",
+            EXT_GENE_COUNT - 1
+        ));
+    }
+    if maternal > 3 || paternal > 3 {
+        return Err("alleles must be 0..3".into());
+    }
+    let mut g = default_horse_genome().write();
+    let genome = g.get_or_insert_with(ExtHorseGenome::empty);
+    genome.alleles[ext_gene_idx] = maternal & 0x3;
+    genome.alleles[ext_gene_idx + EXT_GENE_COUNT] = paternal & 0x3;
+    Ok(())
+}
+
+/// Read the current default extended genome, if any.
+pub fn get_default_ext_genome() -> Option<ExtHorseGenome> {
+    default_horse_genome().read().clone()
+}
+
+/// Clear the default extended genome entirely.
+pub fn clear_default_ext_genome() {
+    *default_horse_genome().write() = None;
+}
+
 // =============================================================================
 // Gene table accessors
 // =============================================================================
@@ -424,7 +471,15 @@ pub unsafe fn apply_render_to_buf(buf: *mut f32, buf_len: usize, horse_id: u64) 
     let mut applied = 0usize;
     let table = gene_table().read();
     let horses = horse_genomes().read();
-    let Some(genome) = horses.get(&horse_id) else {
+    // Use the horse-specific genome if present; otherwise fall back
+    // to the default-allele genome (if any). Caller gets zero work
+    // done only if BOTH are absent.
+    let default_holder = default_horse_genome().read();
+    let genome: &ExtHorseGenome = if let Some(g) = horses.get(&horse_id) {
+        g
+    } else if let Some(g) = default_holder.as_ref() {
+        g
+    } else {
         return 0;
     };
     for (ext_idx, gene) in table.iter().enumerate() {

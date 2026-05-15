@@ -457,6 +457,41 @@ Heavy. Use for debugging.",
             },
         ),
         OpDef::new(
+            "horse.ext.default_alleles.set",
+            "Set one diploid allele pair on the DEFAULT extended genome -- the \
+fallback every horse without its own entry inherits. Use this to give every \
+horse the same extended-gene effect during early bring-up before D3 per-horse \
+spawn hooks are wired.",
+            "{ext_gene_idx: usize, maternal: u8, paternal: u8}",
+            |args| {
+                let ext_gene_idx = args_usize(args, "ext_gene_idx")?;
+                let maternal = args_u32(args, "maternal")? as u8;
+                let paternal = args_u32(args, "paternal")? as u8;
+                genes::set_default_ext_alleles(ext_gene_idx, maternal, paternal)?;
+                Ok(json!({"set": true}))
+            },
+        ),
+        OpDef::new(
+            "horse.ext.default_alleles.get",
+            "Read the default extended genome (the fallback every horse inherits). \
+Returns null if no default is set.",
+            "",
+            |_| match genes::get_default_ext_genome() {
+                Some(g) => Ok(json!({"alleles": g.alleles})),
+                None => Ok(json!(null)),
+            },
+        ),
+        OpDef::new(
+            "horse.ext.default_alleles.clear",
+            "Clear the default extended genome. Horses with no specific entry \
+contribute nothing to render after this.",
+            "",
+            |_| {
+                genes::clear_default_ext_genome();
+                Ok(json!({"cleared": true}))
+            },
+        ),
+        OpDef::new(
             "horse.ext.alleles.set",
             "Set one diploid allele pair for one extended gene of one horse. \
 Auto-creates the horse's extended genome if not present.",
