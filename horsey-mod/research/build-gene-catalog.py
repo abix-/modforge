@@ -45,6 +45,51 @@ def cluster_for(idx):
     return "?"
 
 
+# Manual semantic findings. Merged into GENE-CATALOG.md as a Notes
+# column. Add or edit entries here when a flow is too complex for the
+# regex extractor (multi-step var arithmetic, palette-buffer writes,
+# value-vs-gate dual roles).
+NOTES = {
+    0:  "Body size primary input. Feeds slots 0..3 via SQRT(2*SIZE*(BONES+BONES2+1)*CHEST_SMALL^2*SKINNY*ASPECT*GIANT_DWARF). See SLOT-MAP 'Engine internals'.",
+    2:  "Multi-step input to overall-size SQRT formula (slots 0..3). Lateral thinness factor.",
+    3:  "Skeletal bones count. Adds via (BONES+BONES2+1) term in size formula.",
+    4:  "Skeletal bones secondary. Pairs with BONES.",
+    10: "BIPED toggle. Gates large branch L454-L518 selecting biped vs quadruped formulas for slots 0..3.",
+    50: "HAS_KNEE boolean. Gates fVar39 = KNEE_MIN or 0 at L834. Co-drives slot 0x8b (139) and the matching KNEE_MAX path.",
+    66: "HAS_ELBOW boolean. Same pattern as HAS_KNEE: gates whether ELBOW_RANGE writes its slot, else 0.0.",
+    69: "UPARM_Y. Read at L1850 into auVar47 for upper-arm Y placement. Indirect.",
+    91: "FOOT_IS_CIRCLE boolean. Gates foot-shape branches at L868 and L1042. Co-drives foot geometry slots.",
+    92: "FOOT_BACKWARDS boolean. Gates foot orientation block at L1048.",
+    97: "HEAD_SIZE. L1146 fVar40 = gene; L1148 fVar37 = (HEAD_THICK_SKULL + HEAD_SIZE) * scale-product. Feeds head sizing slots indirectly.",
+    101: "HEAD_ASPECT. Fallback at L1154 when HEAD_SQUARE is 0. Multi-step into head aspect slots.",
+    102: "HEAD_SQUARE. L1150 read; if 0 the code falls back to HEAD_ASPECT (gene 101). Drives head aspect/square slots.",
+    106: "HEAD_JOINTED boolean. Gates head joint behavior at L1126.",
+    115: "HAS_PUPIL boolean. Gates pupil geometry block at L1236.",
+    136: "NOSE_INNY boolean. Gates nose-style variant at L1412.",
+    138: "NOSE_SIZE. Read at L1402; contributes to nose-size composite expression downstream.",
+    148: "POM_USECOLOR boolean. Gates pom color branch at L2228.",
+    160: "HAT_EXISTS boolean. At L2306-2320 gates whether HAT_SIZE (gene 161) value or 0.0 lands in slot 290. Co-drives slot 290.",
+    175: "BASE_BROWN. Allele selector into base-color palette buffer via FUN_1400c6df0(_, 4) and DAT_1403daXXX color constants.",
+    177: "BASE_RED. Same palette-selector mechanism as BASE_BROWN.",
+    178: "BASE_GREEN. Same palette-selector; gated by GREEN_KNOCKOUT at L2420.",
+    179: "GREEN_KNOCKOUT boolean. Gates whether BASE_GREEN contributes (`if (iVar17 == 0)` at L2420).",
+    180: "BASE_CREAM continuous. Feeds palette blend.",
+    182: "SPOT_YELLOW boolean. Gates yellow-spot palette branch at L2578.",
+    191: "HOOF_COLOR. Indexes into local_318[] palette; result lands in slot 317 (already in SLOT-MAP).",
+    207: "RAMPAGE boolean. Conditional at L3100 gates behavioral-effect block.",
+    239: "LOCO_SYNC boolean. Gates locomotion-signal branch at L1690.",
+
+    # Known dead set: defined in genes.xml but never read by the engine.
+    56: "DEAD. Removed sibling of LEG_STRETCH.",
+    57: "DEAD. Removed sibling of LEG_STRETCH2.",
+    107: "DEAD. Removed feature placeholder.",
+    183: "DEAD. Possibly orphaned palette gene.",
+    184: "DEAD. Same.",
+    209: "DEAD. Behavioral, unfinished.",
+    216: "DEAD. Behavioral, unfinished.",
+}
+
+
 CALL_RE = re.compile(
     r"FUN_1400a5(?:d20|e00)\s*\(\s*\w+\s*,\s*(0x[0-9a-fA-F]+|\d+)\s*\)"
 )
