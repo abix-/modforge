@@ -276,11 +276,53 @@ pub mod horse_offset {
     pub const TYPE_OR_SPECIES: usize = 0x1c;
     /// Horse name ID (passed to `name_resolve` / FUN_1400c78c0).
     pub const NAME_ID: usize = 0x1f8;
-    /// Horse age (years; int32).
+    /// Horse age (years; int32). Old decomp constant; production
+    /// should call [`age()`].
     pub const AGE: usize = 0x1fc;
     /// Max age / lifespan threshold (int32). Compared as
     /// `age < max_age - 1` in the release-to-wild branch.
+    /// Old decomp constant; production should call [`max_age()`].
     pub const MAX_AGE: usize = 0x200;
+
+    // Retire handler format string: `"%s retired %s (bails) age %d ch %d"`.
+    // Unique in .rdata. horse.age is the 4th printf arg, loaded into
+    // r9d via `44 8b 8? <disp32>` right after the lea-to-string.
+    const BAILS_AGE_HEX: &str =
+        "25 73 20 72 65 74 69 72 65 64 20 25 73 20 28 62 61 69 6c 73 29 20 61 67 65 20 25 64 20 63 68 20 25 64";
+
+    fn resolve_age() -> Option<usize> {
+        let hist = modforge::research::in_process_decode_field_offset_via_string(
+            BAILS_AGE_HEX, 0, "44 8b", 3, 4, 128,
+        ).ok()?;
+        // Filter to plausible horse-struct field range and pick the
+        // most-frequent disp. AGE is loaded for the printf arg; the
+        // window may also contain the horse.name pointer load
+        // (different opcode, not 44 8b) or other r8d/r9d field loads.
+        let mut sorted: Vec<(i64, usize)> = hist.into_iter()
+            .filter(|(v, _)| *v >= 0x100 && *v < 0x300)
+            .collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.first().map(|&(d, _)| d as usize)
+    }
+
+    /// Pattern-resolved horse-struct age offset. Anchors on the
+    /// `(bails)` retirement format string, finds the lea xref, then
+    /// decodes the `mov r9d, [horse+disp32]` that supplies age as
+    /// the 4th printf arg. Falls back to the hardcoded `AGE` const.
+    pub fn age() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_age().unwrap_or(AGE))
+    }
+
+    /// Pattern-resolved max-age offset. Derived by adjacency from
+    /// [`age`] (documented to sit at `age + 4` as the next int32
+    /// field; verified in retire_horse_handler's release-to-wild
+    /// branch which loads both). Falls back to `MAX_AGE` when the
+    /// AGE resolver misses.
+    pub fn max_age() -> usize {
+        static CACHE: OnceLock<usize> = OnceLock::new();
+        *CACHE.get_or_init(|| resolve_age().map(|a| a + 4).unwrap_or(MAX_AGE))
+    }
     /// "On track / unavailable" flag (uint8). When 0, price doubles.
     pub const ON_TRACK_FLAG: usize = 0x204;
     /// Tiredness flag A (uint8). Zeroed every frame by Yes Tire.

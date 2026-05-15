@@ -447,6 +447,14 @@ pub fn register_all() {
                         "resolved": format!("0x{:x}", crate::targets::horse_offset::breeding_flag()),
                         "hardcoded": format!("0x{:x}", crate::targets::horse_offset::BREEDING_FLAG),
                     },
+                    "age": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::age()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::AGE),
+                    },
+                    "max_age": {
+                        "resolved": format!("0x{:x}", crate::targets::horse_offset::max_age()),
+                        "hardcoded": format!("0x{:x}", crate::targets::horse_offset::MAX_AGE),
+                    },
                     "horses_begin": {
                         "resolved": format!("0x{:x}", crate::targets::gs_offset::horses_begin()),
                         "hardcoded": format!("0x{:x}", crate::targets::gs_offset::HORSES_BEGIN),
