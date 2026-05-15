@@ -1,6 +1,18 @@
 # Hooking strategy review: making 480 genes drive in-game visuals
 
-> **Status:** REVIEW. Decision pending senior-eng signoff.
+> **Status:** APPROVED 2026-05-14 with scope expansion.
+> v1 ships both:
+> (a) **S2** (post-hook trampoline on `FUN_14009f680` via
+>     `retour::GenericDetour`) for visuals,
+> (b) **integration layer for CRISPR UI + death-drift + allele
+>     eval + swap**, using either D1 (per-function detours
+>     via retour) or S6a (heap redirect of `DAT_1403ee4a4`).
+>     The D1-vs-S6a sub-decision is OPEN; see §6.
+>
+> S2 is locked. S1, S3, S4, S5, S6b, S6c rejected outright.
+> The integration sub-decision (D1 vs S6a) is now a v1
+> blocker, not v2 deferred. See §5 for rejection reasoning,
+> §6 for the resulting [`todo.md`](todo.md) deltas.
 >
 > **Author posture:** the problem is not novel. Function
 > hooking in compiled game binaries is a 25-year-old practice.
@@ -359,13 +371,15 @@ stack a pre-hook on the same detour without restructuring.
 
 ## 6. Plan delta for [`todo.md`](todo.md)
 
-Concrete changes if S2 is approved:
+Applied 2026-05-14. Reflected in [`todo.md`](todo.md) D5.
+
+### 6.1 D5 (visuals via S2): LOCKED
 
 - Replace D5.1 ("install detours at 6 caller sites") with
   D5.1' ("install one `retour::GenericDetour` on
   `FUN_14009f680`").
-- Drop D5.4 (post-consumer hook) from v1 scope. Most new
-  visual effects can be expressed via existing
+- Drop the original D5.4 (post-consumer hook) from v1 scope.
+  Most new visual effects can be expressed via existing
   consumer-read slots (61 of them, vs ~10 genes' worth of
   effects in v1). Revisit if v1 hits an effect the
   consumer doesn't read.
@@ -377,6 +391,123 @@ Concrete changes if S2 is approved:
   `patches/ext_genes.rs`. Expose
   `genes.ext.render.dryrun` and `genes.ext.render.arm`
   HTTP ops.
+
+### 6.2 D1 (integration): PROMOTED INTO v1, sub-strategy OPEN
+
+User direction 2026-05-14: CRISPR UI and "all the normal
+integration" (death-drift, allele eval, allele swap)
+ship in v1, not v2. This means vanilla functions other
+than `FUN_14009f680` must see extended genes too. Two
+candidate strategies, both technically viable; pick
+before D1 work starts.
+
+#### Strategy DI-A: per-function detours (the original D1 plan)
+
+Five `retour::GenericDetour` installs on the gene-table
+reader / mutator functions:
+
+| Target | Role | Detour behavior for index >= 240 |
+|---|---|---|
+| `FUN_1400a5d20` | Allele evaluator (formula 1) | Mirror formula against `EXT_GENE_TABLE` |
+| `FUN_1400a5e00` | Allele evaluator (formula 2) | Mirror formula against `EXT_GENE_TABLE` |
+| `FUN_1400c0660` | Death-handler ±5 mutator | Mutate `EXT_GENE_TABLE` |
+| `FUN_1400c03a0` | Allele renumber sync | Sync swap in `EXT_GENE_TABLE` + extended pop weights |
+| `FUN_1400c1cf0` | CRISPR UI | Display extended gene names / values |
+
+Plus sidecar loaders for the 3 table-walking loops
+(`FUN_1400a3eb0:156`, `:984`, `FUN_1400a4880:298`) which
+stay at vanilla bound 0xf0; we run our own init /
+loader / serializer for `EXT_GENE_TABLE`.
+
+Pros: same library / pattern as S2, in-DLL dispatch logic
+in Rust (typesafe), per-function instrumentation easy
+(counters, debug hooks, selective disable for triage).
+
+Cons: 5 entry-point signatures to maintain across game
+updates, 5 separate detour-revert paths, each detour
+adds an indirect call on a hot path.
+
+#### Strategy DI-B: heap redirect (S6a from §3)
+
+One conceptual change: place a 480-slot heap buffer at a
+RIP-relative-reachable address (VirtualAlloc near image
+base), then patch the 4-byte displacements of the 7
+reader LEAs to point at the heap. Also patch the 3
+loop-bound immediates (`0xf0` -> `0x1e0`) so vanilla
+init / load / serialize loops iterate the full 480.
+
+Pros: vanilla functions just work for 240..479 with zero
+per-function dispatch. CRISPR UI iterates the table to
+display names; now iterates 480 slots. Death-drift
+writes through the normal path; now hits our extended
+slots when its index is in range. Same-size byte patches,
+mechanical to apply and revert. **No new hot-path
+indirect calls.**
+
+Cons: 7+3 = 10 byte-patch sites instead of 5 detours.
+RIP-relative-reachable address requires VirtualAlloc
+proximity gymnastics (not insurmountable; retour does
+this already). Save format compat still needs sidecar
+(unchanged from D4 plan). The 3 loop-bound bumps are
+non-trivial: anything walking 0..240 expecting that
+range now walks 0..480; if any of those loops have
+side effects we missed in the decomp pass, we crash.
+Audit risk concentrated in those 3 loops.
+
+#### DI-A vs DI-B scoring
+
+| Criterion | DI-A detours | DI-B heap redirect |
+|---|---|---|
+| Patch sites | 5 detours | 10 byte patches |
+| Hot-path indirect call overhead | 5x indirect calls | 0 (just RIP+disp32) |
+| Library leverage | retour, audited | hand-rolled byte patches |
+| Same pattern as S2 (locked) | **yes** | no (mixed model) |
+| Vanilla loop walks (table init / load / serialize) | run unmodified, we re-do in Rust | walk to 480, depend on loop body being safe at extended indices |
+| Risk concentration | distributed across 5 detours | concentrated in 3 loop bumps + heap proximity |
+| Reverts on detach | retour handles | we hand-roll byte restore (already have `patch_bytes`) |
+| Save / load compat with v1 saves | sidecar (unchanged) | sidecar (unchanged) |
+| Adds new behavior implementations in Rust | yes (5 mirror funcs) | no (vanilla does the work) |
+| Affects unmodded performance when extended gene count is 0 | 5 indirect calls per evaluation | 0 (just reads zeros) |
+| Failure mode if a loop body has unexpected side effects | falls through to vanilla (safe) | crash inside vanilla loop (unsafe) |
+
+**Recommendation (subject to senior-eng signoff):
+DI-A.** Rationale:
+
+1. Pattern uniformity with the already-approved S2.
+   Same library (retour), same install / revert
+   primitive, same address-resolution discipline. The
+   senior-eng team has already reviewed the S2 hook
+   shape; DI-A is "do that 5 more times." DI-B
+   introduces a second mechanism with its own failure
+   modes.
+2. Failure mode for DI-A is safe-by-default: a detour
+   that fails to install means vanilla runs unmodified
+   for that function (extended genes don't get
+   CRISPR / death-drift integration, but the game
+   doesn't crash). DI-B's failure mode is "vanilla
+   loop walks into uncharted memory or writes garbage
+   into the loop body's downstream state."
+3. The 5-indirect-call cost of DI-A only matters if
+   one of these functions is on the per-frame hot
+   path. CRISPR UI is not (called on user click).
+   Death-drift is not (called on horse death, rare).
+   Allele eval IS hot. Called per render frame per
+   horse. Profile-driven: if `FUN_1400a5d20` /
+   `FUN_1400a5e00` cost shows up in D8.5 benchmarks,
+   convert THOSE TWO to DI-B-style heap reads (the
+   other 3 stay as detours). Hybrid is fine.
+4. The 3 loop-bound bumps in DI-B are the genuinely
+   scary part. We'd need a fresh decomp audit of every
+   instruction in each loop body to confirm "0..240" is
+   the only place that range appears. With DI-A we
+   leave those loops alone and never have to answer
+   that question.
+
+The open follow-up before D1 starts: confirm by quick
+disassembly pass that `FUN_1400a5d20` / `FUN_1400a5e00`
+prologues fit a 5-byte JMP (retour handles longer needs
+via relays, but cheaper if the prologue is already a
+push-rbp / sub-rsp pair).
 
 ## 7. References (real shipped code, not theory)
 

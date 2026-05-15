@@ -499,19 +499,26 @@ infrastructure the later phases assume.
 
 ### Phase D1: Static gene table extension
 
-**WIP**. Scaffolding landed (`horsey-mod/src/patches/ext_genes.rs`),
-implementation deferred behind D5. Exposes `genes.ext.dryrun` (safe,
-read-only address+prologue dump) and `genes.ext.arm` (currently a
-stub that errors loudly).
+**STATUS: IN v1 SCOPE.** User direction 2026-05-14: CRISPR
+UI and all normal vanilla integration (death-drift,
+allele evaluators, allele swap) ship in v1, not v2.
 
-**Scope decision 2026-05-14:** for v1 "480 genes producing visible
-effects in-game", D1 (the per-function detours on
-`FUN_1400a5d20`/`a5e00`/`c0660`/`c03a0`) is **not on the critical
-path**. The simpler D5 trampoline (4 call-site patches between
-`FUN_14009f680` and `FUN_1400ab3d0`) gets us extended-gene visuals
-without touching the gene-table readers. D1 is needed only if we
-later want the CRISPR UI / death-driven mutation drift to be aware
-of extended genes. Defer until v2.
+**Strategy: DI-A (per-function detours via retour).**
+Recommended in [`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md)
+§6.2. Same library and pattern as the locked D5 / S2
+trampoline. Sub-strategy DI-B (heap redirect of
+`DAT_1403ee4a4`) considered and rejected for v1 because
+the 3 loop-bound bumps it requires have unsafe failure
+modes (vanilla loop into uncharted memory). DI-B may
+re-enter scope as a perf optimization for
+`FUN_1400a5d20` / `FUN_1400a5e00` (the hot evaluators)
+if D8.5 profiling shows the detour-indirect-call cost
+is meaningful; in that case the other 3 detours stay
+as DI-A. Decision deferred to profiling data.
+
+Scaffolding `horsey-mod/src/patches/ext_genes.rs` (with
+its `dryrun` + `arm` stub) is the foundation. Each D1.x
+becomes a separate `retour::GenericDetour` install.
 
 Make the engine's 240-slot gene table behave as if it
 has N slots, where slots 0..239 are vanilla
@@ -685,52 +692,89 @@ sidecar `save<N>.dat.ext` next to the vanilla save.
 
 ### Phase D5: Gene-effect engine extension (trampoline)
 
-Per Q-render-3 in
-[`VIABILITY.md`](VIABILITY.md): hook the 4 caller sites
-that follow the
-`FUN_14009f680(buf, ...) -> FUN_1400ab3d0(horse, buf)`
-pattern. After vanilla populates the temp buffer, our
-trampoline modifies / extends it before
-`FUN_1400ab3d0` consumes it.
+**Strategy locked 2026-05-14: S2 from
+[`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md).** One
+post-hook trampoline on `FUN_14009f680` via
+`retour::GenericDetour`. Senior eng approved; second-best
+(S1, per-callsite detour at the 6 call pairs) explicitly
+rejected for the reasons in
+[`HOOKING-STRATEGY.md`](HOOKING-STRATEGY.md) §5. Library:
+`retour = "0.3"` (Rust port of MS Detours, used in shipped
+Rust mods for Diablo 2, SAMP, Zoo Tycoon, Garry's Mod,
+Guild Wars 2).
 
-- [ ] **D5.1.** Detour each of the 4 caller sites at
-      the boundary between `FUN_14009f680` and
-      `FUN_1400ab3d0`. Insert our trampoline between
-      the two calls.
-- [ ] **D5.2.** In the trampoline:
-      - Identify which horse this call is for (read
-        from caller's frame or from `FUN_14009f680`'s
-        param_2 = `horse + 0x2b8`, back-compute the
-        horse pointer).
-      - Look up `EXT_HORSE_GENOMES[horse_id]` for the
-        extended diploid alleles.
-      - For each extended gene 240..N-1, evaluate the
-        diploid blend (mirror `FUN_1400a5d20`'s logic)
-        against `EXT_GENE_TABLE[gene_idx - 240]`.
-      - For each extended gene, look up its
-        "render output mapping" (which `param_1[X]`
-        slot it should ADD to or OVERRIDE).
-      - Write to those slots.
-- [ ] **D5.3.** Define the render-output mapping.
-      Each extended gene needs to know which existing
-      `param_1[X]` slot it modifies. e.g.
-      `BX_WING_SIZE` might add to whatever slot
-      controls limb extents. This mapping is per-gene
-      metadata, authored alongside the gene itself in
-      `genes-extended.xml`:
-      ```xml
-      <gene name="BX_WING_SIZE" m="100" s="1"
-            g0="0" g1="20" g2="50" g3="100"
-            extends="param_1[0x42]" mode="add" />
-      ```
-- [ ] **D5.4.** For genuinely new visual modes that
-      don't map to any existing `param_1[X]`, register
-      them as "post-consumer hooks" instead. These run
-      after `FUN_1400ab3d0` and write to NEW horse
-      struct fields at offsets vanilla doesn't use.
-      Requires identifying free offsets in the horse
-      struct (open question, deferred to D5 work
-      itself). Optional in v1.
+Net for D5: 1 patch site (the entry of `FUN_14009f680`),
+1 Rust handler, 1 sidecar module (`render_trampoline.rs`).
+
+- [ ] **D5.0.** Add `retour = "0.3"` to
+      `horsey-mod/Cargo.toml`. Verify build picks it up
+      and that `retour::GenericDetour` resolves.
+- [ ] **D5.1.** Create `horsey-mod/src/patches/render_trampoline.rs`
+      mirroring the arm / revert / dryrun shape of
+      `patches/ext_genes.rs`. Holds the
+      `GenericDetour<extern "system" fn(*mut f32, *mut c_void)>`,
+      the install / uninstall flag, and the handler.
+- [ ] **D5.2.** Implement the post-hook handler:
+      - Call `detour.trampoline()(buf, ctx)` first. This
+        runs the entire vanilla function and populates
+        `buf` with vanilla's 258 slot writes.
+      - Compute `horse = ctx - 0x2b8` (the back-pointer
+        trick from VIABILITY Q-render-3).
+      - Acquire a `RwLock::read()` on `EXT_HORSE_GENOMES`
+        and look up `EXT_HORSE_GENOMES[horse as u64]` (the
+        pointer-as-key approach; see D5.7 open issue).
+      - For each `(ext_idx, ExtGene)` in `EXT_GENE_TABLE`
+        where `gene.render.is_some()`, evaluate the
+        diploid blend (mirror `genes::evaluate_ext_gene`)
+        against the horse's extended alleles, apply the
+        `RenderMode` (add / mul / set) to
+        `buf[render.slot]`.
+- [ ] **D5.3.** (Already shipped in D7.2.) The
+      `<render slot=".." mode=".." />` child element on
+      `<gene>` in `genes-extended.xml` is parsed and
+      stored in `ExtGene.render`. The D5.2 handler
+      consumes it. No further work here.
+- [ ] **D5.4.** HTTP ops. Expose
+      `genes.ext.render.dryrun` (reports detour target
+      address + first 16 prologue bytes) and
+      `genes.ext.render.arm` (installs the detour). Mirror
+      the existing `genes.ext.dryrun` / `genes.ext.arm`
+      semantics so the same operator habits work.
+      Detour stays disarmed by default; arming is manual
+      after dryrun looks sane.
+- [ ] **D5.5.** Wire `revert()` into
+      `patches::revert_all` so a DLL detach restores the
+      original `FUN_14009f680` prologue. Test the
+      hot-reload cycle (inject -> arm -> reload DLL ->
+      verify game survives).
+- [ ] **D5.6.** Validation harness. The handler should
+      keep a counter of (a) total invocations,
+      (b) ext-gene evaluations performed,
+      (c) bytes-modified-in-buf. Expose via
+      `genes.ext.render.stats`. Lets us answer "is the
+      hook firing" without staring at a render.
+- [ ] **D5.7.** Open issue: horse-pointer-as-key. The
+      handler keys per-horse extended genome by the raw
+      horse pointer. This is fine for a session but won't
+      survive save / load (the pointer changes). Save
+      round-trip needs a stable horse-id (D4.4), but
+      runtime evaluation does not. Document the
+      limitation in `ALLELE-MODEL.md` once D5 ships.
+- [ ] **D5.8.** Re-entrancy audit. Confirm the handler
+      never takes a re-entrant `RwLock::write()` while
+      holding `read()`. Confirm `genes-extended.xml`
+      hot-reload (which takes write locks) cannot fire
+      while the handler is mid-evaluation. Add a debug
+      assertion if cheap.
+
+**D5.4 in the original plan is DROPPED from v1 scope.**
+The "post-consumer trampoline writing to new horse struct
+fields" was meant for visual modes the consumer doesn't
+read (slots outside the 61 consumer-read set). Postpone:
+if v1 authoring hits a wall on "this effect needs a slot
+the consumer doesn't see," reopen as a sibling phase. We
+have 61 consumer-read slots and roughly 10 v1 genes; the
+pigeonhole says we won't hit the wall in v1.
 
 ### Phase D6: Save-compat strategy for the population
 mutation drift
