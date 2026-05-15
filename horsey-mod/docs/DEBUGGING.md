@@ -137,6 +137,22 @@ trampoline was built from mid-function bytes, so the
 Tell: in the pre-arm dryrun output the prologue bytes don't
 match Win64-typical prologue patterns. See §5 for the rule.
 
+**The common upstream cause of (C): the game updated.** Steam
+silently pushes new builds. Functions move, get inlined, get
+renamed. Our `targets::fn_addr::*` constants are tied to one
+specific build. When `Horsey.exe`'s mtime is newer than the
+generation date in `horseygame/decompiled/INDEX.md`, assume
+every address is suspect until verified by §5 prologue checks
+or by re-running `horseygame/decompile.py`.
+
+The 2026-05-14 session hit this: the May 2026 build moved
+`FUN_14009f680` and `FUN_1400c03a0` between two decomp runs
+~4 hours apart. EVAL_A/EVAL_B addresses happened to still
+land at function entries; ALLELE_SWAP and APPLY_GENE_TO_HORSE
+did not. Refusing to arm at a non-entry is enforced now in
+`patches/render_trampoline.rs::arm()` and the equivalent
+skip in `patches/ext_genes.rs::arm()`.
+
 ### `0xc0000005` READ at a small constant offset from a deterministic high address
 
 Cause: an integer was misused as a pointer. The offset is

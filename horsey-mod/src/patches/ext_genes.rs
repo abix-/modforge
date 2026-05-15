@@ -377,16 +377,19 @@ pub fn arm() -> anyhow::Result<()> {
         anyhow::bail!("ext_genes already armed");
     }
     install_eval_a()?;
-    // EVAL_B + ALLELE_SWAP intentionally skipped while bringing up
-    // EVAL_A first. Once A is proven stable end-to-end (handler
-    // fires, trampoline returns, no SEH), fan out by uncommenting.
-    modforge::log!(
-        "ext_genes: EVAL_DIPLOID_BLEND_B install SKIPPED (single-detour bringup)"
-    );
+    // EVAL_B added 2026-05-14 after EVAL_A was proven end-to-end
+    // (2222 in-game invocations, game stayed alive). Same handler
+    // discipline; same lock-free AtomicPtr storage.
+    if let Err(e) = install_eval_b() {
+        // Roll back EVAL_A so we never leave the game half-armed.
+        revert();
+        return Err(e);
+    }
+    // ALLELE_SWAP stays disabled until the real entry address is
+    // re-located in the current build. See DEBUGGING.md §5.
     modforge::log!(
         "ext_genes: GENE_ALLELE_SWAP install SKIPPED (mid-function address; see DEBUGGING.md)"
     );
-    let _ = install_eval_b;
     let _ = install_allele_swap;
     reset_stats();
     Ok(())
