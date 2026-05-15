@@ -549,15 +549,6 @@ Build the foundation so future hotkeys are cheap to add. Don't add any hotkeys b
 - [ ] "Move horse to <destination>" op. Wraps whatever vanilla function the click-drag flow calls when the player releases a dragged horse on a valid drop target. Find it via the existing transfer-menu code; reuse rather than re-implement so the move keeps all side effects vanilla expects (fatigue clearing on race-line drop, etc.).
 - [ ] Settings entry for enabling/disabling HK1 (so users can opt out).
 
-#### Deferred (NOT in v1)
-
-Originally listed but never asked for; revisit only if HK1 ships and the user explicitly asks for more. Kept as a parking-lot list so we don't lose the ideas:
-
-- `Ctrl+Click` favorite toggle, `Alt+Click` stats panel
-- `Shift+Click` (item) bulk-buy, `Shift+Click` (roster) quick-feed
-- Keyboard hotkeys: `R` race, `F` feed all, `S` sleep all, `B` breed, `T` transfer menu
-- `Esc+1..9` save-slot switch, `Numpad +` / `Numpad -` sim speed
-
 ---
 
 ### Horse-crowd management (CRITICAL for 50+ horse households)
