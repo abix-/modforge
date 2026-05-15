@@ -1007,18 +1007,6 @@ that:
 - Injected into the daily-event scheduler (we annotated this at
   `0x14002fe00`).
 
-### Multi-currency economy
-
-- Add "research points", "fame", "favor" as separate currencies.
-- Each tied to specific activities.
-- Stored in horsey-mod sidecar state.
-
-### Weather + seasons
-
-- Per-day weather state.
-- Affects horse hunger drain, breeding success, race times.
-- Visible via a UI overlay.
-
 ---
 
 ## Open research questions
