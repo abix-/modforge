@@ -608,10 +608,22 @@ fn resolve_one(
 
     // No candidate worked. Fall back to hint_rva if set.
     if let Some(hint) = def.hint_rva {
+        // Accept hint as either a bare RVA (small, e.g. 0x3d95a5) or a
+        // pre-rebased VA at the conventional x64 PE preferred base of
+        // 0x140000000 (e.g. 0x1403d95a5). The previous formulation
+        // `hint & 0xffff_ffff` was wrong: for a pre-rebased VA above 4GB
+        // it kept the bits including the 0x40000000 nibble below the
+        // preferred-base prefix, producing an off-by-0x40000000 address
+        // that lands past the loaded image.
+        const PE_PREFERRED_BASE_X64: u64 = 0x140000000;
+        let rva = if hint >= PE_PREFERRED_BASE_X64 {
+            hint - PE_PREFERRED_BASE_X64
+        } else {
+            hint
+        };
         let value = match def.kind {
             TargetKind::FieldOffset { .. } => hint, // offset, not address
-            _ => image_base.wrapping_add(hint & 0xffff_ffff)
-                .max(hint), // accept either bare RVA or pre-rebased
+            _ => image_base.wrapping_add(rva),
         };
         log.push(format!("fallback to hint 0x{value:x}"));
         return ResolvedTarget {

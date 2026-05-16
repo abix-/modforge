@@ -24,10 +24,25 @@ use serde_json::{json, Value};
 
 const SMALL_OFFSET: i32 = 10;
 
-fn unwrap_i64(v: &Value, key: &str) -> i64 {
-    v.get(key)
+/// Op responses come wrapped in the standard envelope
+/// `{ok, op, result: {...}, state, error}`. Helpers descend into `result`.
+fn result<'a>(v: &'a Value) -> &'a Value {
+    v.get("result").unwrap_or(v)
+}
+
+fn result_i64(v: &Value, key: &str) -> i64 {
+    result(v)
+        .get(key)
         .and_then(Value::as_i64)
         .unwrap_or_else(|| panic!("missing/non-int field '{key}' in {v}"))
+}
+
+fn assert_ok(v: &Value, ctx: &str) {
+    assert_eq!(
+        v.get("ok").and_then(Value::as_bool),
+        Some(true),
+        "{ctx} returned not-ok: {v}"
+    );
 }
 
 #[test]
@@ -36,8 +51,9 @@ fn input_smoke() {
 
     // ----- L1 cursor round-trip -----
     let base = game.op_json("input.cursor.get", &json!({})).unwrap();
-    let bx = unwrap_i64(&base, "x") as i32;
-    let by = unwrap_i64(&base, "y") as i32;
+    assert_ok(&base, "input.cursor.get baseline");
+    let bx = result_i64(&base, "x") as i32;
+    let by = result_i64(&base, "y") as i32;
     eprintln!("baseline cursor: ({bx}, {by})");
 
     let target_x = bx + SMALL_OFFSET;
@@ -48,12 +64,12 @@ fn input_smoke() {
             &json!({"x": target_x, "y": target_y, "backend": "l1"}),
         )
         .unwrap();
-    assert_eq!(r.get("ok").and_then(Value::as_bool), Some(true), "l1 move: {r}");
+    assert_ok(&r, "input.mouse.move L1");
 
     // Re-read; allow a 4-pixel tolerance for normalized-coord rounding.
     let after = game.op_json("input.cursor.get", &json!({})).unwrap();
-    let ax = unwrap_i64(&after, "x") as i32;
-    let ay = unwrap_i64(&after, "y") as i32;
+    let ax = result_i64(&after, "x") as i32;
+    let ay = result_i64(&after, "y") as i32;
     eprintln!("after L1 move:   ({ax}, {ay}) [wanted ({target_x}, {target_y})]");
     let dx = (ax - target_x).abs();
     let dy = (ay - target_y).abs();
@@ -75,7 +91,7 @@ fn input_smoke() {
             &json!({"key": "f24", "hold_ms": 0, "backend": "l1"}),
         )
         .unwrap();
-    assert_eq!(r.get("ok").and_then(Value::as_bool), Some(true), "key.press f24: {r}");
+    assert_ok(&r, "input.key.press f24");
 
     // ----- L2 PostMessage smoke (I-R5) -----
     //
@@ -85,7 +101,10 @@ fn input_smoke() {
     // regardless of which process happens to own the desktop focus.
     let hwnd_r = game.op_json("input.self.hwnd", &json!({}));
     let hwnd_s = match hwnd_r {
-        Ok(v) => v.get("hwnd").and_then(Value::as_str).map(str::to_string),
+        Ok(v) => {
+            assert_ok(&v, "input.self.hwnd");
+            result(&v).get("hwnd").and_then(Value::as_str).map(str::to_string)
+        }
         Err(e) => {
             eprintln!("input.self.hwnd failed: {e}");
             None
@@ -99,12 +118,7 @@ fn input_smoke() {
                 &json!({"x": 0, "y": 0, "backend": "l2", "hwnd": hwnd}),
             )
             .unwrap();
-        assert_eq!(
-            r.get("ok").and_then(Value::as_bool),
-            Some(true),
-            "l2 move on hwnd {}: {r}",
-            r.get("backend").and_then(Value::as_str).unwrap_or("?")
-        );
+        assert_ok(&r, "input.mouse.move L2");
     } else {
         eprintln!("[INFO] no self hwnd; skipping L2 smoke this run");
     }
