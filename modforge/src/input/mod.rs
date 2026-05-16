@@ -217,3 +217,82 @@ pub fn find_hwnd_by_pid(pid: u32) -> Option<isize> {
     };
     if ctx.found == 0 { None } else { Some(ctx.found) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backend_parse_recognized() {
+        assert_eq!(Backend::parse("l1").unwrap(), Backend::L1);
+        assert_eq!(Backend::parse("L1").unwrap(), Backend::L1);
+        assert_eq!(Backend::parse("SendInput").unwrap(), Backend::L1);
+        assert_eq!(Backend::parse("send_input").unwrap(), Backend::L1);
+        assert_eq!(Backend::parse("l2").unwrap(), Backend::L2);
+        assert_eq!(Backend::parse("postmessage").unwrap(), Backend::L2);
+        assert_eq!(Backend::parse("WindowMessage").unwrap(), Backend::L2);
+    }
+
+    #[test]
+    fn backend_parse_rejects_garbage() {
+        assert!(Backend::parse("l3").is_err());
+        assert!(Backend::parse("").is_err());
+        assert!(Backend::parse("foo").is_err());
+    }
+
+    #[test]
+    fn button_parse() {
+        assert_eq!(Button::parse("left").unwrap(), Button::Left);
+        assert_eq!(Button::parse("L").unwrap(), Button::Left);
+        assert_eq!(Button::parse("lmb").unwrap(), Button::Left);
+        assert_eq!(Button::parse("right").unwrap(), Button::Right);
+        assert_eq!(Button::parse("middle").unwrap(), Button::Middle);
+        assert_eq!(Button::parse("x1").unwrap(), Button::XButton1);
+        assert_eq!(Button::parse("xbutton2").unwrap(), Button::XButton2);
+        assert!(Button::parse("derp").is_err());
+    }
+
+    #[test]
+    fn key_parse_modifiers() {
+        assert_eq!(Key::parse("shift").unwrap().0, 0xA0);
+        assert_eq!(Key::parse("ctrl").unwrap().0, 0xA2);
+        assert_eq!(Key::parse("alt").unwrap().0, 0xA4);
+        assert_eq!(Key::parse("rshift").unwrap().0, 0xA1);
+    }
+
+    #[test]
+    fn key_parse_letters_digits() {
+        assert_eq!(Key::parse("a").unwrap().0, 0x41);
+        assert_eq!(Key::parse("Z").unwrap().0, 0x5A);
+        assert_eq!(Key::parse("0").unwrap().0, 0x30);
+        assert_eq!(Key::parse("9").unwrap().0, 0x39);
+    }
+
+    #[test]
+    fn key_parse_function_keys() {
+        assert_eq!(Key::parse("f1").unwrap().0, 0x70);
+        assert_eq!(Key::parse("F12").unwrap().0, 0x7B);
+        assert_eq!(Key::parse("f24").unwrap().0, 0x87);
+        assert!(Key::parse("f0").is_err());
+        assert!(Key::parse("f25").is_err());
+        assert!(Key::parse("foo").is_err());
+    }
+
+    #[test]
+    fn key_parse_navigation() {
+        assert_eq!(Key::parse("space").unwrap().0, 0x20);
+        assert_eq!(Key::parse("enter").unwrap().0, 0x0D);
+        assert_eq!(Key::parse("return").unwrap().0, 0x0D);
+        assert_eq!(Key::parse("esc").unwrap().0, 0x1B);
+        assert_eq!(Key::parse("escape").unwrap().0, 0x1B);
+        assert_eq!(Key::parse("up").unwrap().0, 0x26);
+        assert_eq!(Key::parse("pageup").unwrap().0, 0x21);
+    }
+
+    #[test]
+    fn key_parse_hex() {
+        assert_eq!(Key::parse("0x10").unwrap().0, 0x10);
+        assert_eq!(Key::parse("0xff").unwrap().0, 0xFF);
+        assert!(Key::parse("0x100").is_err()); // > 0xFF
+    }
+}
