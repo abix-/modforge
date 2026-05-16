@@ -729,11 +729,15 @@ After this lands, the order below resumes:
    - Group ext genes (today they are one flat 240-cell block, no chromosome metadata). Options: `chromosome="X"` attribute in `genes-extended.xml`, or auto-group by render mode (add/mul/set), or prefix match on `BX_<FAMILY>_*`.
    - Bulk per-chromosome buttons: "max this chromosome", "wild-type this chromosome".
 
-5b. **C8. Matrix-view tab [OPEN, NEXT, USER-LOCKED 2026-05-16].** Scales to 100+ horses. Inspired by [Dwarf Therapist](https://github.com/Dwarf-Therapist/Dwarf-Therapist)'s grid: rows = horses, columns = 480 gene cells, each cell a tiny colored square (color encodes tier 0..3). Frozen first column = horse name. Vertical separators between chromosomes group the 240 vanilla columns visually; ext appended on the right. Hover any cell -> tooltip `<HORSE>.<GENE>=tier`. Click cycles tier (writes BOTH diploid banks for vanilla). The big win: spot outliers across the herd at a glance.
-   - Implementation: draw cells via `DrawList` rather than `BeginTable` (480 columns exceeds the 64-col Table cap; manual drawing is simpler and faster). One row per horse: horse-name label + 480 colored rects via `InvisibleButton` per cell so hover/click works.
-   - Virtualization deferred until horse count makes it necessary (ImGuiListClipper). With less than 50 horses there is no need.
-   - Filter / sort row above the grid: text search by name; sort by chromosome-sum (cheapest "interesting horse" metric).
-   - Color palette: 0=dark grey, 1=blue, 2=green, 3=bright yellow. Same palette reused in Detail-view cells (C7).
+5b. **C8. Matrix-view tab.** First cut shipped 2026-05-16: rows = horses, columns = 480 cells (240 vanilla chromosomally grouped + 240 ext flat). Built. **Layout was wrong**: per `/rtfm` review, no real-world tool shows that many columns at once. [Dwarf Therapist](https://github.com/Dwarf-Therapist/Manual) ships ~13 specialized Grid Views; [Morpheus](https://software.broadinstitute.org/morpheus/tutorial.html) (bio heatmaps for 20k+ genes) defaults to top-500-by-variance + search + drill; [PKHeX](https://deepwiki.com/kwsch/PKHeX) never shows 1000 mons as a matrix (paginated boxes). All of them: default = SUBSET, search/sort first-class, drill-down for edit, bulk via expressions.
+
+5c. **C8b. Matrix-view rework [OPEN, NEXT, USER-LOCKED 2026-05-16].** Three zoom levels, each fits on a screen without scrolling:
+   - **Herd overview**: rows = horses, columns = 20 chromosome SUMMARIES + 1 ext summary = 21 cells per row. Each summary = colored square encoding chromosome avg (or sum) of the horse's tiers on that chromosome. 100 horses fit.
+   - **Chromosome zoom**: click any chromosome swatch -> shows that chromosome's ~12 named genes across ALL horses (rows = horses, columns = ~12 named genes). Drill into "everyone's BODY_SIZE column" comparisons.
+   - **Horse detail**: click a horse name -> the existing chromosome-strip Details panel (C7 polish target).
+   - Filter row above: name search, sort by chromosome-N-sum, "show only horses where SIZE > 2".
+   - Saved Views (Dwarf-Therapist style) deferred to follow-up.
+   - Keep palette 0=dark grey, 1=blue, 2=green, 3=bright yellow across all three levels.
 6. **C6. Persistence helpers.** `horse.genome.snapshot.{save,load,list}` HTTP ops backed by JSON files under `<DLL_dir>/snapshots/`. UI: "Save snapshot..." / "Load snapshot..." dropdown on the Details panel.
 2. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml.
 3. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
