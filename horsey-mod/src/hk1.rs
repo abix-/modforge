@@ -131,6 +131,38 @@ fn save_targets(t: Targets) {
     log_line(&format!("targets saved: truck={:?} pasture={:?}", t.truck, t.pasture));
 }
 
+/// Read N bytes from `addr` and return as space-separated hex.
+fn dump_hex(addr: usize, n: usize) -> Option<String> {
+    if n == 0 || !modforge::winproc::is_addr_readable(addr) {
+        return None;
+    }
+    if !modforge::winproc::is_addr_readable(addr + n - 1) {
+        return None;
+    }
+    // SAFETY: both endpoints checked.
+    let slice = unsafe { std::slice::from_raw_parts(addr as *const u8, n) };
+    Some(slice.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" "))
+}
+
+/// Snapshot the Home Location (0x240 bytes) and a horse (0x498 bytes)
+/// to the overlay log with a labeled header. Use before AND after any
+/// state mutation so the diff in the log file reveals what changed.
+pub fn snapshot(label: &str, horse_ptr: usize) {
+    let loc = home_loc_ptr();
+    let loc_s = loc
+        .and_then(|p| dump_hex(p, 0x240))
+        .unwrap_or_else(|| "(no home loc)".into());
+    let horse_s = dump_hex(horse_ptr, 0x498)
+        .unwrap_or_else(|| "(unreadable horse)".into());
+    let cursor = read_cursor().map(|(x, y)| format!("({x},{y})")).unwrap_or("?".into());
+    let loc_ptr_s = loc.map(|p| format!("0x{p:x}")).unwrap_or("(none)".into());
+    log_line(&format!(
+        "SNAPSHOT label='{label}' loc_ptr={loc_ptr_s} horse_ptr=0x{horse_ptr:x} cursor={cursor}"
+    ));
+    log_line(&format!("  LOC[0..0x240]: {loc_s}"));
+    log_line(&format!("  HORSE[0..0x498]: {horse_s}"));
+}
+
 /// Walk GS+0x438 -> *(arr + 0) (the Home Location object).
 pub fn home_loc_ptr() -> Option<usize> {
     let gs = crate::gamestate::ptr();
@@ -167,6 +199,14 @@ pub fn calibrate(which: &str) -> Option<(f32, f32)> {
     save_targets(t);
     log_line(&format!("calibrate {which} -> {pos:?}"));
     Some(pos)
+}
+
+/// Capture LOC + a horse's bytes at the moment the operator clicks
+/// the "Snapshot here" overlay button. Used by the operator to mark
+/// before/after states (e.g. before drag in pasture, after drag onto
+/// truck) so we can diff them offline.
+pub fn snapshot_here(label: &str, horse_ptr: usize) {
+    snapshot(label, horse_ptr);
 }
 
 /// Read the drop-commit function pointer from the Home Location vtable.

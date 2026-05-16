@@ -179,11 +179,19 @@ fn render_horse_details(
         ui.text(format!("HK1 calibration: truck={truck_s}  pasture={pasture_s}"));
         ui.text(format!("    in-game cursor now: {cursor_s}"));
         if ui.small_button(&format!("Save cursor as TRUCK##hk1_calT_{row_idx}")) {
+            hk1::snapshot_here(&format!("cal_truck_pre name='{name}'"), horse_ptr);
             hk1::calibrate("truck");
+            hk1::snapshot_here(&format!("cal_truck_post name='{name}'"), horse_ptr);
         }
         ui.same_line();
         if ui.small_button(&format!("Save cursor as PASTURE##hk1_calP_{row_idx}")) {
+            hk1::snapshot_here(&format!("cal_pasture_pre name='{name}'"), horse_ptr);
             hk1::calibrate("pasture");
+            hk1::snapshot_here(&format!("cal_pasture_post name='{name}'"), horse_ptr);
+        }
+        ui.same_line();
+        if ui.small_button(&format!("Snapshot##hk1_snap_{row_idx}")) {
+            hk1::snapshot_here(&format!("manual name='{name}'"), horse_ptr);
         }
         ui.same_line();
         ui.text_disabled("(log: hk1_overlay.log)");
@@ -191,7 +199,9 @@ fn render_horse_details(
         let pasture_ready = t.pasture.is_some();
         if truck_ready {
             if ui.small_button(&format!(">> Truck##hk1_xfT_{row_idx}")) {
+                hk1::snapshot_here(&format!("xfer_truck_pre name='{name}'"), horse_ptr);
                 hk1::transfer_horse(horse_ptr, "truck");
+                hk1::snapshot_here(&format!("xfer_truck_post name='{name}'"), horse_ptr);
             }
             ui.same_line();
         } else {
@@ -200,7 +210,9 @@ fn render_horse_details(
         }
         if pasture_ready {
             if ui.small_button(&format!(">> Pasture##hk1_xfP_{row_idx}")) {
+                hk1::snapshot_here(&format!("xfer_pasture_pre name='{name}'"), horse_ptr);
                 hk1::transfer_horse(horse_ptr, "pasture");
+                hk1::snapshot_here(&format!("xfer_pasture_post name='{name}'"), horse_ptr);
             }
         } else {
             ui.text_disabled(">> Pasture (calibrate first)");
