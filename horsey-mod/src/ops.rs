@@ -94,6 +94,99 @@ pub fn register_all() {
             |_| Ok(gamestate::diag()),
         ),
 
+        // Walks .text for `cmp ecx, -1` (83 f9 ff) + look forward for a
+        // `lea r64, [rip+disp32]` within 32 bytes. The combination is
+        // the FUN_1400c78c0 name-resolver function entry. Reports each
+        // match with the decoded lea target so we can spot the name
+        // table address directly.
+        OpDef::new(
+            "diag.scan_cmp_neg1",
+            "Scan .text for `cmp ecx, -1` then nearby `lea r64, [rip+disp32]`. Returns hits with decoded targets.",
+            "",
+            |_| {
+                use modforge::patterns::sleuth;
+                use modforge::winproc::is_addr_readable;
+                let sites = sleuth::scan_all_matches("83 f9 ff").unwrap_or_default();
+                let mut hits = Vec::new();
+                for site in &sites {
+                    if !is_addr_readable(*site + 32) {
+                        continue;
+                    }
+                    // SAFETY: site+32 readability checked.
+                    let bytes = unsafe {
+                        std::slice::from_raw_parts(*site as *const u8, 32)
+                    };
+                    for i in 0..bytes.len().saturating_sub(7) {
+                        if bytes[i] != 0x48 || bytes[i + 1] != 0x8d {
+                            continue;
+                        }
+                        let modrm = bytes[i + 2];
+                        if (modrm & 0b1100_0111) != 0b0000_0101 {
+                            continue;
+                        }
+                        let disp = i32::from_le_bytes([
+                            bytes[i + 3], bytes[i + 4], bytes[i + 5], bytes[i + 6],
+                        ]) as isize;
+                        let next_ip = (*site + i + 7) as isize;
+                        let target = (next_ip + disp) as usize;
+                        hits.push(json!({
+                            "site": format!("0x{site:x}"),
+                            "lea_offset": i,
+                            "modrm": format!("0x{modrm:02x}"),
+                            "target": format!("0x{target:x}"),
+                        }));
+                    }
+                }
+                Ok(json!({
+                    "total_cmp_sites": sites.len(),
+                    "hits_with_lea": hits.len(),
+                    "first_30": hits.into_iter().take(30).collect::<Vec<_>>(),
+                }))
+            },
+        ),
+
+        // Diagnostic for the horse name resolver. Given a name_id, dumps
+        // the rebased table base, computed entry address, every gated
+        // deref result, and the bytes the resolver tried to read. Used
+        // to confirm whether NAME_TABLE drifted between game builds.
+        OpDef::new(
+            "horse.name_diag",
+            "Trace the name-resolver chain for one name_id. Body: {name_id: u32}",
+            "{name_id: u32}",
+            |args| {
+                use modforge::winproc::is_addr_readable;
+                let nid = args.get("name_id").and_then(Json::as_u64).unwrap_or(0) as u32;
+                let table = crate::targets::resolve::name_table()
+                    .unwrap_or_else(|| crate::targets::rebase(crate::targets::NAME_TABLE));
+                let entry = table + (nid as usize) * 0x88;
+                let entry_readable = is_addr_readable(entry + 0x88);
+                let mut out = json!({
+                    "name_id": nid,
+                    "name_table_rebased": format!("0x{table:x}"),
+                    "entry": format!("0x{entry:x}"),
+                    "entry_readable": entry_readable,
+                });
+                if entry_readable {
+                    // SAFETY: readability checked above.
+                    let first_qword = unsafe { *(entry as *const usize) };
+                    let qw_at_18 = unsafe { *((entry + 0x18) as *const usize) };
+                    let byte_at_40 = unsafe { *((entry + 0x40) as *const u8) };
+                    let preview: Vec<String> = (0..0x40)
+                        .map(|i| {
+                            // SAFETY: 0x40 < 0x88, page already verified.
+                            let b = unsafe { *((entry + i) as *const u8) };
+                            format!("{b:02x}")
+                        })
+                        .collect();
+                    out["bytes_00_3f"] = json!(preview.join(" "));
+                    out["first_qword"] = json!(format!("0x{first_qword:x}"));
+                    out["size_at_18"] = json!(qw_at_18);
+                    out["invalid_at_40"] = json!(byte_at_40);
+                }
+                Ok(out)
+            },
+        ),
+
         // Probe every slot in *(GS+0x438) to find which sub-system holds
         // the user's owned horses. For slot offset 0..0x200 step 8, deref
         // the slot, then read the +0x130/+0x138 begin/end pair, compute
@@ -190,6 +283,7 @@ pub fn register_all() {
                     let tired_a = crate::horse::tired_a(p);
                     let tired_b = crate::horse::tired_b(p);
                     let name_id = crate::horse::name_id(p);
+                    let name = crate::horse::name(p);
                     let species = crate::horse::species(p);
                     horses.push(json!({
                         "idx": i,
@@ -200,6 +294,7 @@ pub fn register_all() {
                         "tired_a": tired_a,
                         "tired_b": tired_b,
                         "name_id": name_id,
+                        "name": name,
                         "species": species,
                     }));
                 }

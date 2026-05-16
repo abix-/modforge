@@ -54,7 +54,7 @@ fn render_horses() {
     let total = gamestate::horse_count();
     ui::text(&format!("Owned: {owned}    (roster pool: {total})"));
     ui::text_disabled(
-        "idx  species  age/max  skill  tired  name_id  ptr",
+        "idx  name              species  age/max  skill  tired",
     );
     ui::separator();
 
@@ -68,15 +68,16 @@ fn render_horses() {
     let shown = owned.min(MAX_ROWS);
     for i in 0..shown {
         let Some(p) = gamestate::owned_horse_ptr(i) else { continue };
+        let name_id = horse::name_id(p).unwrap_or(0);
+        let name = horse::name(p).unwrap_or_else(|| format!("#{name_id}"));
         let species = horse::species(p).unwrap_or(-1);
         let age = horse::age(p).unwrap_or(-1);
         let max_age = horse::max_age(p).unwrap_or(-1);
         let skill = horse::skill(p).unwrap_or(-1);
         let ta = horse::tired_a(p).unwrap_or(0);
         let tb = horse::tired_b(p).unwrap_or(0);
-        let name_id = horse::name_id(p).unwrap_or(0);
         ui::text(&format!(
-            "{i:>3}  {species:>7}  {age:>3}/{max_age:<3}  {skill:>5}  {ta}/{tb:>3}  {name_id:>7}  0x{p:x}"
+            "{i:>3}  {name:<16}  {species:>7}  {age:>3}/{max_age:<3}  {skill:>5}  {ta}/{tb}"
         ));
     }
     if owned > shown {

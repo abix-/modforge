@@ -58,6 +58,14 @@ pub const DEBUG_MODE_ACTIVE: usize = 0x1403d957b;
 /// Drift -0x20 from old hardcoded.
 pub const DEBUG_LOG_GATE: usize = 0x1403d9506;
 
+/// Horse name table. `FUN_1400c78c0(name_id)` indexes this table at
+/// stride 0x88 to resolve a `name_id` (u32 at horse+0x1f8) into a
+/// std::string. See `horse::name` for the lookup. Decomp evidence at
+/// `:116676-116697`. H-gb. Hardcoded for now; needs an R3 resolver
+/// (anchor: any call site of `FUN_1400c78c0` decodes the RIP-rel
+/// disp32 of the table reference).
+pub const NAME_TABLE: usize = 0x1403f34e0;
+
 // =============================================================================
 // GameState struct field offsets (from DAT_1403fb0d8)
 // =============================================================================
@@ -1130,6 +1138,29 @@ pub mod fn_addr {
 pub mod resolve {
     use modforge::patterns::sleuth::{self, Target};
     use std::sync::OnceLock;
+
+    /// Resolved runtime address of the horse NAME_TABLE
+    /// (`DAT_1403f34e0` in the old decomp). Cached on first success.
+    ///
+    /// Anchor: the unique `imul reg, reg, 0x88` inside the
+    /// `FUN_1400c78c0` name-resolver function (decomp `:116676`).
+    /// Encoding `48 6B XX 88`. Look back 32 bytes for a
+    /// `lea r64, [rip+disp32]` (`48 8D <05|0D|15|1D|25|2D|35|3D>
+    /// <disp32>`) that loads the table base. Histogram the
+    /// decoded targets across all `imul ..., 0x88` sites; top wins.
+    pub fn name_table() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(resolve_name_table_uncached)
+    }
+
+    fn resolve_name_table_uncached() -> Option<usize> {
+        // TODO: name table moved between game builds. Earlier attempts
+        // anchored on `cmp ecx, -1` (FUN_1400c78c0 entry) + nearby
+        // `lea r64, [rip+disp32]`, but the picked target's entries do
+        // not match the documented std::string layout. Needs a proper
+        // R3 resolver. See docs/todo.md "name table resolution".
+        None
+    }
 
     /// Resolved runtime address of GAMESTATE_PTR (the main game-state
     /// struct base, `DAT_1403fb0d8` in the decomp). Cached on first

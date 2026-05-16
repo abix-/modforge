@@ -123,6 +123,57 @@ pub fn name_id(horse: usize) -> Option<u32> {
     Some(unsafe { *((horse + horse_offset::NAME_ID) as *const u32) })
 }
 
+/// Resolve a horse's `name_id` to a UTF-8 name via the global name
+/// table at `targets::NAME_TABLE`. Mirrors vanilla `FUN_1400c78c0`
+/// (decomp `:116676-116697`):
+///   entry = NAME_TABLE + name_id * 0x88
+///   if name_id == 0xFFFFFFFF or *(u8)(entry+0x40) != 0: invalid
+///   size = *(u64)(entry+0x18)
+///   if size > 0xF: heap string, ptr = *(u64)(entry+0x00)
+///   else:          inline string, ptr = entry+0x00 (size bytes)
+///
+/// Every deref is gated with `is_addr_readable` so a stale chain
+/// cannot fault the HTTP worker.
+pub fn name(horse_ptr: usize) -> Option<String> {
+    let nid = name_id(horse_ptr)?;
+    name_by_id(nid)
+}
+
+pub fn name_by_id(name_id: u32) -> Option<String> {
+    if name_id == u32::MAX {
+        return None;
+    }
+    let table = crate::targets::resolve::name_table()
+        .unwrap_or_else(|| crate::targets::rebase(crate::targets::NAME_TABLE));
+    let entry = table + (name_id as usize) * 0x88;
+    if !modforge::winproc::is_addr_readable(entry + 0x88) {
+        return None;
+    }
+    // SAFETY: entry+0x88 readability checked.
+    let invalid = unsafe { *((entry + 0x40) as *const u8) };
+    if invalid != 0 {
+        return None;
+    }
+    // SAFETY: same page as above.
+    let size = unsafe { *((entry + 0x18) as *const usize) };
+    if size == 0 || size > 255 {
+        return None;
+    }
+    let str_ptr = if size > 0xF {
+        // SAFETY: large-string. Read the heap ptr at entry+0x00.
+        let p = unsafe { *(entry as *const usize) };
+        if !modforge::winproc::is_addr_readable(p + size) {
+            return None;
+        }
+        p
+    } else {
+        entry
+    };
+    // SAFETY: str_ptr range readability checked (either entry or heap ptr).
+    let bytes = unsafe { std::slice::from_raw_parts(str_ptr as *const u8, size) };
+    std::str::from_utf8(bytes).ok().map(String::from)
+}
+
 pub fn litter_stat(horse: usize) -> Option<i32> {
     if horse == 0 {
         return None;

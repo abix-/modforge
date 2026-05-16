@@ -705,14 +705,30 @@ Action items:
 - [ ] Verify by naming the 3 horses uniquely and confirming they all appear under slot 0x00. Test `tests/find_horse_tomtato.rs` exists but is parked.
 - [ ] Re-validate slot 0xd0: is it the "owned horses in current scene" subset, or a redundant mirror?
 
-#### 5. Horse name string is NOT inline in the Horse object
+#### 5. Horse name resolution (PARTIAL: function exists, table address unknown)
 
-`tests/find_horse_tomtato.rs` searches the full 0x498 bytes of each Horse via `patterns.read_bytes`. ASCII "tomtato" not present in the object body. The `name_id` field at horse+0x1f8 (u32) indexes a global name table.
+Decomp `FUN_1400c78c0` at `:116676-116697` decodes the name resolver:
+```
+entry = NAME_TABLE + name_id * 0x88
+if name_id == -1 || *(u8)(entry+0x40) != 0: invalid
+size = *(u64)(entry+0x18)
+if size > 0xF: heap string, ptr = *(u64)(entry+0x00)
+else:          inline at entry+0x00 (size bytes)
+```
+
+Wired up `horse::name` + `horse::name_by_id` against this layout. Works in principle. BUT the hardcoded `NAME_TABLE` RVA `0x1403f34e0` is stale in the updated binary, and pattern resolution has not yet found the new address.
+
+Attempts so far:
+- Anchor on `imul reg, reg, 0x88` (`48 6B ?? 88`) + nearby `lea r64, [rip+disp32]`. No matches found, possibly because MSVC decomposed the multiply.
+- Anchor on `cmp ecx, -1` (`83 f9 ff`) + nearby `lea`. Picked 0x7ff6ab494680 (RVA 0x3f4680), drift +0x11a0 from old. Entry bytes do NOT match std::string layout: first qword = 0 for entry 250, first 5 qwords = heap pointers for entry 272. Wrong table.
+
+Likely real entry layout in the new build is a wrapper struct containing multiple sub-objects, not a bare std::string. Or the right table is at a different lea target we haven't validated.
 
 Action items:
-- [ ] Find the global name table. Either via decomp (grep for `name_id` consumer function near horse format strings) or via memory scan with a unique horse name as ground truth.
-- [ ] Add `horse::name_string(horse_ptr) -> Option<String>` that goes through the table.
-- [ ] Surface the resolved name string in `gamestate.owned_horses` (replace `name_id: u32` with `name: String`).
+- [ ] Find name_resolver in new build by anchoring on the `(bails)` format-string xref (already used for `horse_offset::name_id`). The call instruction following `mov ecx, [horse+0x1f8]` is `call FUN_1400c78c0`. Decode its disp32 to recover the function entry in the new build.
+- [ ] Read FUN_1400c78c0's body and decode the disp32 of the table-loading lea. That's NAME_TABLE.
+- [ ] Re-examine the table entry layout. Old decomp may describe one build; the new build may use a wrapper struct (5 sub-pointers per entry observed). Determine which sub-pointer holds the name std::string.
+- [ ] Re-enable `resolve::name_table()`. Currently returns None so UI falls back to numeric `#name_id`.
 
 #### 6. patterns.read_bytes can crash the game (PARTIALLY FIXED)
 
