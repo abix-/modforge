@@ -2670,6 +2670,80 @@ Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
                 "frames": crate::overlay::frame_count(),
             })),
         ),
+
+        // ===== V5: invoke vanilla code through the registry =====
+
+        OpDef::new(
+            "horse.rebuild",
+            "Invoke HORSE_REBUILD (FUN_1400b3070) on a horse_ptr via \
+             modforge::vanilla::Invoker. Body: {addr: \"0x<hex>\"}. \
+             Re-runs the engine's post-genome-edit equipment + physics \
+             pass; use after any allele/gene poke that bypassed the \
+             render trampoline. Crashes contained by SEH; returns \
+             {ok, elapsed_us}.",
+            "{addr: string}",
+            |args| {
+                let addr_s = args.get("addr").and_then(serde_json::Value::as_str)
+                    .ok_or_else(|| "missing or non-string 'addr'".to_string())?;
+                let addr = u64::from_str_radix(
+                    addr_s.trim_start_matches("0x").trim_start_matches("0X"), 16,
+                ).map_err(|e| format!("addr parse: {e}"))?;
+                let invoker = modforge::vanilla::Invoker::new(
+                    &crate::targets_registry::HORSEY_RESOLVER,
+                );
+                let t0 = std::time::Instant::now();
+                let r = invoker.call(
+                    "HORSE_REBUILD",
+                    &[modforge::vanilla::ArgValue::Ptr(addr)],
+                );
+                let elapsed_us = t0.elapsed().as_micros() as u64;
+                match r {
+                    Ok(_) => Ok(json!({"ok": true, "elapsed_us": elapsed_us})),
+                    Err(e) => Ok(json!({
+                        "ok": false,
+                        "error": format!("{e}"),
+                        "elapsed_us": elapsed_us,
+                    })),
+                }
+            },
+        ),
+
+        OpDef::new(
+            "rng.next_modulo",
+            "Invoke RNG_NEXT_MODULO (FUN_1400c6580) via the registry. \
+             Body: {modulus: u32}. Returns {ok, value: u32, elapsed_us}. \
+             Generic-range RNG; replaces ad-hoc per-mod RNG.",
+            "{modulus: u32}",
+            |args| {
+                let m = args.get("modulus").and_then(serde_json::Value::as_u64)
+                    .ok_or_else(|| "missing or non-u64 'modulus'".to_string())?
+                    as u32;
+                let invoker = modforge::vanilla::Invoker::new(
+                    &crate::targets_registry::HORSEY_RESOLVER,
+                );
+                let t0 = std::time::Instant::now();
+                let r = invoker.call(
+                    "RNG_NEXT_MODULO",
+                    &[modforge::vanilla::ArgValue::U32(m)],
+                );
+                let elapsed_us = t0.elapsed().as_micros() as u64;
+                match r {
+                    Ok(modforge::vanilla::RetValue::U32(v)) => Ok(json!({
+                        "ok": true, "value": v, "elapsed_us": elapsed_us,
+                    })),
+                    Ok(other) => Ok(json!({
+                        "ok": false,
+                        "error": format!("unexpected return: {other:?}"),
+                        "elapsed_us": elapsed_us,
+                    })),
+                    Err(e) => Ok(json!({
+                        "ok": false,
+                        "error": format!("{e}"),
+                        "elapsed_us": elapsed_us,
+                    })),
+                }
+            },
+        ),
     ]);
     modforge::log!("horsey-mod: registered ops");
 }
