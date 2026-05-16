@@ -10,9 +10,10 @@
 //! - `invoker`: `Invoker` controller bound to a `sleuth::Resolver`.
 //!   Looks targets up by name, applies SEH wrapping by default.
 
-pub mod sig;
 pub mod dispatch;
 pub mod invoker;
+pub mod ops;
+pub mod sig;
 
-pub use sig::{Signature, ArgKind, RetKind, ArgValue, RetValue};
-pub use invoker::{Invoker, VanillaFn, VanillaError};
+pub use invoker::{Invoker, VanillaError, VanillaFn};
+pub use sig::{ArgKind, ArgValue, RetKind, RetValue, Signature};

@@ -37,6 +37,7 @@ pub mod overlay;
 pub mod patches;
 pub mod snapshot;
 pub mod targets;
+pub mod targets_registry;
 // `crate::ui` (Phase A C++-shim tab content) was deleted with the
 // `ui.native.*` retirement. Step 2 ports the equivalent tab content
 // into `crate::overlay` using imgui-rs.
