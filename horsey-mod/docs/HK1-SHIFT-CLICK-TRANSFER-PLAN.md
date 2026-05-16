@@ -292,6 +292,78 @@ The HK1 module reads everything via these resolvers. If any fails to resolve, HK
 
 ---
 
+## 5b. Session log: live-game findings (2026-05-16)
+
+Real-game research that changed the plan. Read this before reattempting transfer.
+
+### Slot 0x00 IS the Home Location (single-Location-for-home-and-truck-and-pasture)
+
+Confirmed: GS+0x438 slot 0x00 contains a Location object whose first 0x60 bytes hold the strings `"My House"` (at +0x18) and `"Home"` (at +0x40). vtable_rva = `0x30f3d0`. The HOME LOCATION holds the OWNED horse list in its `+0x130/+0x138` vector. There is NO separate "truck Location" or "pasture Location"; the truck is a rectangle drawn inside the home scene.
+
+This kills the original plan section 4.3 "backward search across multiple Location vectors". There is only one vector. The truck/pasture distinction lives PER-HORSE, not per-vector.
+
+### `horse + 0x1d0` (u32) is the container "kind", but it's downstream / display-only
+
+Diff of Coupe DeVille's bytes before vs after a real manual drag (pasture → truck): the only changes outside the position floats were:
+- `horse + 0x1d0` u32: `7` (truck), `9` (pasture), `0` or `2` after a fresh save/load. Small enum.
+- `horse + 0x1dc` u32: sub-state (slot index? frame counter?) varies (`36`, `20`, `0x12`, `0x27`).
+
+Writing `horse + 0x1d0 = 7` directly DOES NOT move the horse visually or logically. The game recomputes from another authoritative source each tick. So this field is a downstream cache, not a control. The user's hypothesis was right.
+
+### `vtable[+0x78]` (RVA 0xde2e0, function `FUN_1400de2e0`) IS the Home Location's drop-commit
+
+Found by reading the click handler `FUN_1400d2ab0:1722`:
+```c
+cVar4 = (**(code **)(*param_1 + 0x78))(param_1);
+```
+
+Resolved at runtime via `image_base + 0x30f3d0 (vtable) + 0x78`. Confirmed by reading the slot. The function is NOT in our decomp dump (binary updated since decomp).
+
+### `vtable[+0x78]` is 3-arg, not 1-arg (the decomp lied)
+
+Ghidra reported `(*param_1)` (one arg). Disassembling the function entry shows otherwise:
+
+```
++0x00a  55 57 41 54 41 56 41 57       push rbp/rdi/r12/r14/r15
++0x012  48 8b ec                       mov rbp, rsp
++0x015  48 81 ec 80 00 00 00           sub rsp, 0x80
++0x021  41 8b d8                       mov ebx, r8d         ; arg3 saved
++0x024  4c 63 e2                       movsxd r12, edx      ; arg2 sign-ext to r12
++0x027  4c 8b f1                       mov r14, rcx         ; this/LOC
++0x02a  48 8b 81 30 01 00 00           mov rax, [rcx+0x130] ; LOC.horses.begin
++0x031  4e 8b 3c e0                    mov r15, [rax+r12*8] ; horses[arg2]   <-- CRASH HERE if arg2 garbage
+```
+
+Signature: `(this: *LOC, drag_idx: i32, param3: i32) -> u8`. The arg2 (drag_idx) is sign-extended into r12 and used as the index into LOC's horse vector. Pass it correctly or the function AVs.
+
+### SEH guard turned crashes into log entries
+
+`modforge::seh::guard` is the difference between "crash kills the game, restart, lose 10 minutes" and "crash logs `SEH ACCESS_VIOLATION (code=0xc0000005) at rip=0x...`, game still alive, retry in 5 seconds". Use it around every call into vanilla. Same applies to anything modforge consumers do with the host game.
+
+### Current status: drop-commit returns 1 (drop ACCEPTED) but horse state unchanged
+
+With the correct 3-arg signature + drag_idx pre-computed from `find_horse_index(horse_ptr, LOC.horses)`, `vtable[+0x78]` returns `1` (drop accepted) and the game survives. BUT `horse + 0x1d0` doesn't update.
+
+Reading the click handler more carefully (FUN_1400d2ab0:1722-1804): vtable[+0x78] is just the HIT-TEST. The actual state writes are done by the click handler AFTER vtable[+0x78] returns non-zero, gated on two globals (`DAT_1403d959b`, `DAT_1403ed730`) which probably mean "real user click this frame". Our synthetic call bypasses those.
+
+The four helpers the click handler runs on success:
+- `FUN_1400b47e0(horse_ptr)`: likely the actual container-update / drop-physics setup.
+- `FUN_1400b3dc0(horse_ptr, LOC[0x13])`: apply parent reference.
+- `FUN_1400b6990(horse_ptr, computed_int, horse_byte_1e0)`: finalize physics?
+- `FUN_1400ccbd0(LOC, horse_ptr)`: append decoration entries per the decomp body.
+
+To complete HK1 we must invoke all four after vtable[+0x78] returns 1, OR find a higher-level "drag complete" function that runs the whole sequence (the click handler does this but reads global input state we'd have to spoof). Stage S5 will test calling the four helpers explicitly.
+
+### Calibrated cursor coords + targets file
+
+`<dll_dir>/hk1_targets.json` persists calibrated cursor positions in LOC's world coord space (the floats at LOC+0x174/+0x178). Captured from the user's manual drag:
+- truck = `(13.263803, 8.902644)`
+- pasture = `(3.407552, 3.0829327)`
+
+These are LOC's internal cursor coords, NOT screen pixel coords. They feed directly into the vtable[+0x78] call setup.
+
+---
+
 ## 6. Sequenced delivery, one ship + checkpoint between each
 
 Per CLAUDE.md, each stage ships its own commit with: tests that prove the primitive works, real game verification (Claude drives `horsey-play` + tests), zero unstaged scope creep.
@@ -344,12 +416,23 @@ Same `hk1.probe.active_location` op, but with player physically at the Race Trac
 
 **Ship gate:** all rule rows in section 4.5 have a passing assert.
 
-### Stage HK1-S5. Transfer primitive (Strategy C wired up)
+### Stage HK1-S5. Transfer primitive (Strategy C, partial 2026-05-16)
 
-- `hotkeys::transfer(horse: HorsePtr, src: Container, dst: Container) -> Result<()>`.
-- Calls pickup vtable on src, drop vtable on dst, wrapped in SEH.
-- HTTP op `horse.transfer` taking `{horse_ptr, dst: "truck"|"pasture"|"race_line"}`. Reads `src` itself via the container resolver from S3.
-- Test: `tests/horse_transfer_truck_pasture.rs`. Game has player at pasture, one horse in pasture. Test calls op with `dst=truck`. Asserts container changes, then calls with `dst=pasture`, asserts it changes back.
+Current state:
+- `hk1::transfer_horse(horse_ptr, dest)` stages LOC[0x29]=horse_ptr, LOC[0x2d]=drag_idx, LOC[0x37]=1, LOC[0x174/0x178]=target cursor. Calls `vtable[+0x78](LOC, drag_idx, 1)` inside `seh::guard`. Returns `1` (drop accepted) without crashing. Game survives. BUT no visible/logical state change yet.
+- HTTP ops `hk1.read_cursor`, `hk1.set_target`, `hk1.transfer`, `hk1.probe.locate_horse`, `hk1.probe.scene_slot_vtables`, `hk1.probe.active_location`, `hk1.loc_bytes`, `mem.poke` are all live.
+- Overlay buttons: `Save cursor as TRUCK/PASTURE`, `Snapshot` (logs LOC + horse bytes), `>> Truck`, `>> Pasture`.
+- Each button click writes pre/post snapshots + transfer parameters to `<dll_dir>/hk1_overlay.log`.
+
+What's still missing for transfer to be visible:
+- After `vtable[+0x78]` returns `1`, call the four helper functions the click handler's success branch runs:
+  - `FUN_1400b47e0(horse_ptr)`
+  - `FUN_1400b3dc0(horse_ptr, LOC[0x13])`
+  - `FUN_1400b6990(horse_ptr, computed_int, *(horse_ptr + 0x1e0))`
+  - `FUN_1400ccbd0(LOC, horse_ptr)`
+- Pattern-resolve each at runtime + invoke under `seh::guard` (any one of them faulting just logs).
+
+Test: `tests/horse_transfer_truck_pasture.rs`. Game has player at home, horse in pasture. Test calls op with `dst=truck`. Asserts visible: `horse + 0x1d0` matches the truck value AND a sprite-position change. Then `dst=pasture`, asserts round-trip.
 
 **Ship gate:** round-trip transfer via HTTP works without crashing; visible in game (horse animates the same way as a manual drag-drop).
 

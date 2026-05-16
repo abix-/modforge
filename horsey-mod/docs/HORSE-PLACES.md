@@ -142,6 +142,42 @@ Production code in `horsey-mod/src/horse.rs::{set_vanilla_allele, set_vanilla_al
 
 Gene-offset table: `DAT_14030d110`. Layout: `i32[chromosome_id][0..17]`. Each chromosome carries up to 17 gene offsets, indexed `chromosome_id * 0x44 + slot * 4`. CRISPR walks the 4 chromosome "types" (cases 3, 2, 4, 1 in the apply function); chromosome stride is 0xb8 in its caller. Not yet mirrored in Rust. Our writers take the raw 0..=239 index, not a chromosome+slot pair.
 
+## Slot 0x00 IS the Home Location (CONFIRMED 2026-05-16)
+
+Earlier text speculated about how `slot 0x00` related to the player's owned-horse list. Live-game evidence from `hk1.probe.active_location` settles it:
+
+- `GS+0x438 -> *(arr + 0)` points at a Location object whose first 0x60 bytes contain inline strings `"My House"` (at +0x18) and `"Home"` (at +0x40).
+- Its vtable RVA is `0x30f3d0`. **Race-lane slots 0x08..0x38 share this vtable RVA** (they're instances of the same Location class.
+- The Home Location's `+0x130/+0x138` vector IS the owned-horse list. There is no separate "truck Location" or "pasture Location" with its own horse vector (the truck and pasture are rectangles drawn inside the home scene, and horses stay in this one list whether they're "in the truck" or "in the pasture."
+
+This shapes any future feature that needs to identify which container a horse is currently in: read per-horse state, not the vector identity.
+
+## Per-horse container kind: `horse + 0x1d0` (DOWNSTREAM ONLY)
+
+Diff of one horse's bytes before/after a real manual drag pasture <-> truck (`hk1_snapshot_diff_horse` test, 2026-05-16) shows only three offsets change:
+
+- `horse + 0x008` u32: animation ticker (ignore).
+- `horse + 0x1d0` u32: container kind. Observed values: `7` = truck, `9` = pasture, `0` or `2` after a fresh save/load. Small enum.
+- `horse + 0x1dc` u32: sub-state. Varies: `36`, `20`, `0x12`, `0x27`. Possibly a slot/position index within the container.
+
+Writing `horse + 0x1d0` directly DOES NOT move the horse visually or logically. The game recomputes this field each tick from another authoritative source. So treat it as a downstream cache (read for display, never write for control. The true mover is the click handler's drop-commit flow described in [`HK1-SHIFT-CLICK-TRANSFER-PLAN.md`](HK1-SHIFT-CLICK-TRANSFER-PLAN.md#5b-session-log-live-game-findings-2026-05-16).
+
+## Home Location vtable layout (resolved 2026-05-16)
+
+For the shared Location class at vtable_rva `0x30f3d0`:
+
+| Slot offset | Function RVA (current build) | Decomp ref | Role |
+|---|---|---|---|
+| `+0x38` | `0xc4b0` | shared with +0x88/+0x90 | default stub (returns 0?) |
+| `+0x60` | `0xdc830` | FUN_1400d2ab0:60-call | pickup VFX / audio |
+| `+0x68` | `0xd5710` | FUN_1400d2ab0:68-call | unknown |
+| `+0x70` | `0xdcf50` | FUN_1400d2ab0:70-call | drag-begin |
+| **`+0x78`** | **`0xde2e0`** | **FUN_1400d2ab0:1722** | **drop-commit hit-test. Signature `(*LOC, drag_idx: i32, param3: i32) -> u8`. Returns 1 if drop is valid at LOC's current cursor floats.** |
+| `+0x88` | `0xc4b0` | default | default stub |
+| `+0x90` | `0xc4b0` | default | default stub |
+
+`vtable[+0x78]` runs only the hit-test; the click handler in vanilla follows up with `FUN_1400b47e0`, `FUN_1400b3dc0`, `FUN_1400b6990`, `FUN_1400ccbd0` to write the actual state. Calling vtable[+0x78] alone returns `1` but leaves the horse unchanged.
+
 ## Lesson: when the game has an in-game editor, READ ITS CODE FIRST
 
 Spent a session writing single-bank vanilla allele setters and chasing "why doesn't the horse change visually" before reading the CRISPR Lab decomp. The decomp gave the answer in under five minutes (two banks, write both). Whenever the game has a player-facing feature that does the thing you're trying to mod, that feature's code is ground truth. Grep `research/decompiled/annotated/` first.

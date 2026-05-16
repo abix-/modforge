@@ -287,15 +287,23 @@ We already do this in `patches/save_sidecar.rs` (calling the original via the tr
 - [ ] Add a tiny `modforge::vanilla::call_fn::<F: Function>(addr) -> F` helper that wraps the transmute safely.
 - [ ] Use it when calling vanilla helpers from inside our patches/detours.
 
-##### 4. SEH-wrap any call into vanilla code
+##### 4. SEH-wrap any call into vanilla code [SHIPPED 2026-05-16]
 
 HLT wraps vanilla-function calls in `__try` (child_blend_hook.cpp around `copy_gene_lanes` / `rebuild_horse`). A crash inside vanilla doesn't kill their DLL; the SEH filter logs + bails.
 
-We have SEH wrappers in `modforge::winproc` for UI render callbacks but don't blanket-wrap our trampolines or vanilla-call sites. Worth auditing.
+**Shipped as `modforge::seh::guard`**: pure-Rust API backed by an MSVC C shim (`modforge/src/seh.c` + `modforge/build.rs` with the `cc` build-dep). `guard<R>(f: impl FnOnce() -> R) -> Result<R, SehError>` runs the closure inside `__try`/`__except`, returns `Err(SehError { code, fault_address })` on any structured exception (access violation, illegal instruction, stack overflow). Four unit tests under `modforge::seh::tests` confirm the success path AND that reading `0xdeadbeef` produces `Err` instead of process death.
+
+**Also shipped `modforge::hook::Hook<F: Function>`** as the generic detour wrapper. Wraps `retour::GenericDetour` with: name + target_addr stored, drop disables the detour, a `REGISTRY` for diagnostics, and the macro `modforge::call_original!(hook, args...)` which calls the trampoline inside `seh::guard` automatically. **HK1 transfer already routes through `seh::guard`**. Confirmed in production: three vtable AVs caught, game survived, fault rip logged, led directly to fixing the call signature.
 
 **Action items:**
-- [ ] Audit all detour/trampoline call sites (`patches/combinator.rs`, `lifecycle.rs`, `render_trampoline.rs`, `save_sidecar.rs`) for SEH coverage.
-- [ ] Wrap each call into vanilla with a `modforge::seh::guard(|| { ... })` helper that returns `Result<T, SehError>`.
+- [x] `modforge::seh::guard` shipped (commit `a9573c2c`).
+- [x] `modforge::hook::Hook` + `call_original!` macro shipped (commit `a9573c2c`).
+- [x] `patches/combinator.rs` migrated as the first consumer (commit `09a24e1c`, net -13 lines, +`vanilla_crashes` counter).
+- [ ] Migrate `patches/lifecycle.rs` to `Hook`.
+- [ ] Migrate `patches/render_trampoline.rs` to `Hook`.
+- [ ] Migrate `patches/save_sidecar.rs` to `Hook`.
+- [ ] Migrate `patches/ext_genes.rs` to `Hook`.
+- [ ] HTTP op `hooks.list` that dumps `modforge::hook::registry()` for diag.
 
 ##### 5. Injector elevation auto-detection + re-launch
 
@@ -643,6 +651,24 @@ Still open (need a save loaded + per-test save fixtures):
 ---
 
 ## Other open work
+
+### HK1 Shift+Click smart-transfer (in progress 2026-05-16)
+
+Authoritative plan: [`HK1-SHIFT-CLICK-TRANSFER-PLAN.md`](HK1-SHIFT-CLICK-TRANSFER-PLAN.md). Status:
+
+- **S0 research probes** shipped. Confirmed slot 0x00 is the Home Location (vtable_rva `0x30f3d0`, strings "My House"/"Home" inline). Slots 0x08..0x38 are race lanes sharing the same Location class. HLT mouse RVAs `0x3ED970/0x3ED978` are stale in current build, drift to `0xffffffff`.
+- **Container kind field found** at `horse + 0x1d0` (u32). Observed values: 7=truck, 9=pasture, 0/2 post-load. Writing this byte directly DOES NOT move horses; field is a downstream cache, not a control.
+- **Drop-commit function found**: `FUN_1400de2e0` (RVA `0xde2e0`), reached via Home Location vtable[+0x78]. NOT in our decomp dump (binary updated since decomp).
+- **Function signature corrected**: Ghidra reported single-arg, disassembly shows three-arg `(this: *LOC, drag_idx: i32, param3: i32) -> u8`. Fault at entry+0x31 was `mov r15, [rax+r12*8]` reading horses[drag_idx] with r12 sign-extended from uninitialized rdx.
+- **vtable[+0x78] now returns 1 (drop accepted!) without crashing** when called with proper signature and full LOC stage (LOC[0x29]=horse_ptr, LOC[0x2d]=drag_idx, LOC[0x37]=1, LOC[0x174/0x178]=target cursor coords).
+- **Open**: returns success but state doesn't change. The click handler's success branch (FUN_1400d2ab0:1786-1804) runs 4 helpers (FUN_1400b47e0, FUN_1400b3dc0, FUN_1400b6990, FUN_1400ccbd0) after vtable[+0x78] returns nonzero. Those helpers do the actual state writes. Need to invoke them post-vtable to complete the transfer.
+
+Backing infrastructure shipped:
+- `modforge::seh::guard` (SEH-protected closure invocation. Crashes inside vanilla return `SehError` instead of killing the game. **Iteration time per crashing experiment: ~5 seconds (read log, adjust, retry) vs ~5 minutes pre-SEH (restart game, recalibrate, reload save).**
+- `modforge::hook::Hook<F>` (generic detour wrapper around `retour::GenericDetour`. Auto-SEH on `call_original!`. Registry of installed hooks. `combinator.rs` migrated as the first consumer (net -13 lines including new `vanilla_crashes` counter).
+- HTTP ops: `hk1.probe.{active_location, scene_slot_vtables, mouse_globals, locate_horse}`, `hk1.{read_cursor, set_target, transfer, loc_bytes}`, `mem.poke`.
+- Overlay UI: per-horse calibration + transfer + snapshot buttons. All actions append to `<dll_dir>/hk1_overlay.log`.
+- 11 tests under `horsey-mod/tests/hk1_*.rs` covering each primitive.
 
 ### NEXT: Proper horse-editing tools (2026-05-16)
 
