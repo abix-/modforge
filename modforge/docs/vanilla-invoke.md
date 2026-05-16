@@ -388,30 +388,39 @@ For grounded2-mod and future consumers:
 
 Same independent-phase shape as the target-registry plan.
 
-1. **Phase 1: Land `modforge::vanilla` primitives.** `Signature`,
-   `ArgValue`, `RetValue`, `VanillaFn`, the asm dispatcher,
-   and unit tests for the dispatcher against a known test
-   function (e.g. a Rust function with each arg/ret type that
-   asserts the right values arrived). ~300 LOC + ~15 unit tests.
-   Zero consumer changes.
+1. **Phase 1: Land `modforge::vanilla` primitives.** SHIPPED 2026-05-16.
+   `Signature`, `ArgValue`, `RetValue`, the Win64 asm dispatcher
+   (global_asm! external function with stable void(Frame*)
+   signature). 13 unit tests covering signature const-construction,
+   ArgValue/RetValue round-trips, and 8 dispatcher cases against
+   `extern "system"` Rust functions (register args, stack args
+   5+, pointer deref, two-f64 add, mixed int/float/int, void
+   return, arg-count/kind validation errors). All pass. Commit
+   `639d8545`.
 
 2. **Phase 2: Extend `sleuth::TargetDef` with optional `Signature`.**
+   SHIPPED 2026-05-16 (part of target-registry Phase 1 / B1).
    `kind: TargetKind::FunctionEntry { signature: Option<&'static Signature> }`.
-   Consumers can opt in per-target without touching anything
-   they don't want callable. Backward-compatible with
-   target-registry's Phase 1 (which itself extends `sleuth`
-   in place, no new module).
+   Backward-compatible.
 
 3. **Phase 3: Land `Invoker` controller + `vanilla.invoke` /
-   `vanilla.list` cmdlets in modforge.** Wires the registry +
-   dispatcher + SEH together. Shared HTTP surface. ~200 LOC.
+   `vanilla.list` cmdlets in modforge.** SHIPPED 2026-05-16.
+   `modforge::vanilla::invoker::Invoker` binds names to
+   `(addr, sig)` via the resolver, dispatches inside `seh::guard`
+   by default. `modforge::vanilla::ops::register(&OpRegistry,
+   &'static Resolver)` registers both HTTP cmdlets. 5 unit tests
+   cover arg parsing and JSON encoding. Commits `12dbcaeb`.
 
-4. **Phase 4: Register horsey-mod's first 5 vanilla functions.**
-   `FUN_horse_rebuild`, `FUN_rng_next_modulo`,
-   `FUN_horse_copy_gene_lane_pairs`, plus 2 more. Add
-   `Signature` to each `TargetDef`. Migrate one existing
-   `transmute`-based call site to use `Invoker::call_safe`.
-   Proves the loop end-to-end against a real game.
+4. **Phase 4 (starter): Register horsey-mod's first vanilla function.**
+   STARTER SHIPPED 2026-05-16. `APPLY_GENE_TO_HORSE` now carries
+   `signature: Some(&APPLY_GENE_SIG)` (takes (Ptr, Ptr), returns
+   Void). horsey-mod's worker init calls
+   `targets_registry::register_vanilla_ops()` so the cmdlets
+   wire against `HORSEY_RESOLVER`. Commits `26938d4e`. **Remaining:
+   add the other 4 functions from the original list
+   (`FUN_horse_rebuild`, `FUN_rng_next_modulo`,
+   `FUN_horse_copy_gene_lane_pairs`, plus 2 more), each with a
+   Signature.**
 
 5. **Phase 5: Migrate the rest of horsey-mod's call sites.**
    Every existing `transmute` + vanilla-call disappears. The
