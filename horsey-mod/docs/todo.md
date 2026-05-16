@@ -586,6 +586,16 @@ Pop records currently hold 240 genes x 4 alleles = 3840 bytes of weights at offs
 - [ ] **D2.3.** When the spawn function picks alleles for a new horse, also pick alleles for genes 240..479 using the pop's extended weights. Write the picks to `EXT_HORSE_GENOMES[horse_ptr]`.
 - [ ] **D2.4.** Sync `FUN_1400c03a0` swaps across `EXT_POP_WEIGHTS` entries.
 
+### Phase D2-spawn (default-pop count multiplier): OPEN
+
+Goal: multiply vanilla spawner counts by a per-pop override declared in [`bestiary/pop-extended.xml`](../bestiary/pop-extended.xml). First customer is `<pop name="default" count_multiplier="2.0" />` which doubles wild-horse density at world load.
+
+Schema lives in `pop-extended.xml`. Reading semantics: for each spawner the engine creates, if the spawner's `class` matches (or inherits from) a `<pop>` entry, multiply the spawner's vanilla `count` by `count_multiplier`. Round half-up at consumption.
+
+- [ ] **D2.5. Stage the file.** Extend `horsey-mod/src/bin/inject.rs::stage_bestiary` to copy `bestiary/pop-extended.xml` next to the staged DLL alongside `genes-extended.xml`. Same idempotency rules (skip if user has a custom copy).
+- [ ] **D2.6. Parser.** New module `horsey-mod/src/pop_xml.rs` mirroring `genes_xml.rs`. Parses `pop-extended.xml` at DLL attach into a static `POP_OVERRIDES: RwLock<HashMap<String, f32>>` keyed by pop name. Tolerate missing file (no overrides applied). Test: `tests/pop_xml_parses.rs` asserts the shipped file round-trips with `default -> 2.0`.
+- [ ] **D2.7. Spawner-count detour.** Detour the TMX spawner-consume call site inside `FUN_140076a10` (tmx_map_loader) at the instruction that reads the `count` int property. Multiply by `POP_OVERRIDES.get(class)` if present. Wrap the multiplied write under `modforge::seh::guard`. Test: `tests/pop_spawn_doubled.rs` loads a save with a known wild-horse count, asserts the live overworld scene reports 2x after detour arms.
+
 ### Phase D4 (save sidecar): code SHIPPED, addresses STALE
 
 Implementation lives in `horsey-mod/src/patches/save_sidecar.rs`. Pipeline, BXSAVEXT binary format, horse-id field investigation, and detour table all documented in [`SAVE-FORMAT.md`](SAVE-FORMAT.md) "Save pipeline functions" + "Horse-id field" + "Sidecar format `save<N>.dat.ext`".

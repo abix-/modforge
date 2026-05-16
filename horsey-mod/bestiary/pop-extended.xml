@@ -40,15 +40,14 @@
     - The same hook can later apply per-spawner overrides (different
       multipliers per map region) by extending the schema.
 
-    Plumbing TODOs (NOT in this file; tracked in horsey-mod/docs/todo.md):
-    - [ ] D2.3: extend bin/inject.rs::stage_bestiary to copy this file
+    Plumbing TODOs (tracked in horsey-mod/docs/todo.md under "Phase
+    D2-spawn (default-pop count multiplier)"):
+    - [ ] D2.5: extend bin/inject.rs::stage_bestiary to copy this file
           next to horsey.dll along with genes-extended.xml.
-    - [ ] D2.3: add a parser in horsey-mod::genes_xml (or sibling
-          module pop_xml.rs) that reads pop-extended.xml at DLL attach
-          and populates a static `POP_OVERRIDES: HashMap<String, f32>`.
-    - [ ] D2.3: detour the TMX spawner-consume function (the call site
-          inside FUN_140076a10 / tmx_map_loader that reads the `count`
-          property) and multiply by POP_OVERRIDES lookup before return.
+    - [ ] D2.6: pop_xml.rs parser at DLL attach -> POP_OVERRIDES.
+    - [ ] D2.7: detour the TMX spawner-consume call site inside
+          FUN_140076a10 (tmx_map_loader) and multiply `count` by
+          POP_OVERRIDES lookup. Wrap under modforge::seh::guard.
 -->
 <pop_overrides>
     <pop name="default" count_multiplier="2.0" />
