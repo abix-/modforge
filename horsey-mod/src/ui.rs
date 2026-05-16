@@ -50,25 +50,24 @@ fn render_horses() {
         ui::text_disabled("(no save loaded -- start a game)");
         return;
     }
-    let live = gamestate::live_horse_count();
+    let owned = gamestate::owned_horse_count();
     let total = gamestate::horse_count();
-    ui::text(&format!("Live horses: {live} / {total} roster slots"));
+    ui::text(&format!("Owned: {owned}    (roster pool: {total})"));
     ui::text_disabled(
         "idx  species  age/max  skill  tired  name_id  ptr",
     );
     ui::separator();
 
-    if live == 0 {
-        ui::text_disabled("(no horses in roster)");
+    if owned == 0 {
+        ui::text_disabled("(no horses owned)");
         return;
     }
 
-    // Cap the on-screen list so a 500-horse roster doesn't melt the
-    // frame budget. Anything beyond gets a tail summary.
+    // Cap the on-screen list so a giant herd doesn't melt the frame budget.
     const MAX_ROWS: usize = 32;
-    let shown = live.min(MAX_ROWS);
+    let shown = owned.min(MAX_ROWS);
     for i in 0..shown {
-        let Some(p) = gamestate::live_horse_ptr(i) else { continue };
+        let Some(p) = gamestate::owned_horse_ptr(i) else { continue };
         let species = horse::species(p).unwrap_or(-1);
         let age = horse::age(p).unwrap_or(-1);
         let max_age = horse::max_age(p).unwrap_or(-1);
@@ -80,8 +79,8 @@ fn render_horses() {
             "{i:>3}  {species:>7}  {age:>3}/{max_age:<3}  {skill:>5}  {ta}/{tb:>3}  {name_id:>7}  0x{p:x}"
         ));
     }
-    if live > shown {
-        ui::text_disabled(&format!("... +{} more (UI cap)", live - shown));
+    if owned > shown {
+        ui::text_disabled(&format!("... +{} more (UI cap)", owned - shown));
     }
 }
 

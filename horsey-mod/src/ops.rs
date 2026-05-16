@@ -94,6 +94,122 @@ pub fn register_all() {
             |_| Ok(gamestate::diag()),
         ),
 
+        // Probe every slot in *(GS+0x438) to find which sub-system holds
+        // the user's owned horses. For slot offset 0..0x200 step 8, deref
+        // the slot, then read the +0x130/+0x138 begin/end pair, compute
+        // count = (end-begin)/8. Caller picks the slot whose count matches
+        // the number of owned horses in-game. Every deref guarded with
+        // is_addr_readable.
+        OpDef::new(
+            "gamestate.scan_438_slots",
+            "Scan *(GS+0x438) slot-by-slot, decode each slot's +0x130/+0x138 \
+             vector<Horse*> count. Used to locate which slot holds owned horses.",
+            "",
+            |_| {
+                use modforge::winproc::is_addr_readable;
+                let gs = gamestate::ptr();
+                let asid = gamestate::active_scene_id();
+                if gs == 0 {
+                    return Ok(json!({
+                        "error": "no gamestate",
+                        "gs_ptr": "0x0",
+                        "active_scene_id": asid,
+                    }));
+                }
+                let hop1_slot = gs + 0x438;
+                if !is_addr_readable(hop1_slot) {
+                    return Ok(json!({
+                        "error": "GS+0x438 unreadable",
+                        "gs_ptr": format!("0x{gs:x}"),
+                        "active_scene_id": asid,
+                    }));
+                }
+                // SAFETY: GS+0x438 readability just checked.
+                let arr_ptr = unsafe { *(hop1_slot as *const usize) };
+                let mut slots = Vec::new();
+                let mut slot_off = 0usize;
+                while slot_off < 0x200 {
+                    let addr = arr_ptr.wrapping_add(slot_off);
+                    if !is_addr_readable(addr) {
+                        slot_off += 8;
+                        continue;
+                    }
+                    // SAFETY: addr readability just checked.
+                    let sub_ptr = unsafe { *(addr as *const usize) };
+                    if sub_ptr != 0
+                        && is_addr_readable(sub_ptr + 0x130)
+                        && is_addr_readable(sub_ptr + 0x138)
+                    {
+                        // SAFETY: both endpoints readability checked above.
+                        let begin = unsafe { *((sub_ptr + 0x130) as *const usize) };
+                        let end = unsafe { *((sub_ptr + 0x138) as *const usize) };
+                        if end >= begin {
+                            let span = end - begin;
+                            if span <= 0x10000 && span % 8 == 0 {
+                                let count = span / 8;
+                                slots.push(json!({
+                                    "slot": format!("0x{slot_off:x}"),
+                                    "sub_ptr": format!("0x{sub_ptr:x}"),
+                                    "begin": format!("0x{begin:x}"),
+                                    "end": format!("0x{end:x}"),
+                                    "count": count,
+                                }));
+                            }
+                        }
+                    }
+                    slot_off += 8;
+                }
+                Ok(json!({
+                    "arr_ptr": format!("0x{arr_ptr:x}"),
+                    "gs_ptr": format!("0x{gs:x}"),
+                    "active_scene_id": asid,
+                    "slots_with_horse_vec": slots,
+                }))
+            },
+        ),
+
+        // Player-owned horse list via the GS+0x438 -> +0x90 -> +0x130/+0x138
+        // chain (per decomp FUN_140107510). Every deref is guarded with
+        // is_addr_readable so a stale chain cannot fault the HTTP worker.
+        OpDef::new(
+            "gamestate.owned_horses",
+            "Player-owned horse vector reached via GS+0x438 -> +0x90 -> +0x130/+0x138. \
+             Returns count and per-entry Horse* + age/skill/tired flags.",
+            "",
+            |_| {
+                let count = gamestate::owned_horse_count();
+                let mut horses = Vec::with_capacity(count);
+                for i in 0..count {
+                    let Some(p) = gamestate::owned_horse_ptr(i) else {
+                        horses.push(json!({"idx": i, "ptr": "0x0", "err": "ptr_unreadable"}));
+                        continue;
+                    };
+                    let age = crate::horse::age(p);
+                    let max_age = crate::horse::max_age(p);
+                    let skill = crate::horse::skill(p);
+                    let tired_a = crate::horse::tired_a(p);
+                    let tired_b = crate::horse::tired_b(p);
+                    let name_id = crate::horse::name_id(p);
+                    let species = crate::horse::species(p);
+                    horses.push(json!({
+                        "idx": i,
+                        "ptr": format!("0x{p:x}"),
+                        "age": age,
+                        "max_age": max_age,
+                        "skill": skill,
+                        "tired_a": tired_a,
+                        "tired_b": tired_b,
+                        "name_id": name_id,
+                        "species": species,
+                    }));
+                }
+                Ok(json!({
+                    "count": count,
+                    "horses": horses,
+                }))
+            },
+        ),
+
         // R3: pattern-scan-resolve the GAMESTATE_PTR data address
         // via modforge::patterns::sleuth. Recovery path for the
         // 'hardcoded address drifted' bug class.
@@ -1660,9 +1776,18 @@ to derive test signatures from known-good function entries. Body: \
                 if n == 0 || n > 4096 {
                     return Err(format!("n out of range: {n}"));
                 }
-                // SAFETY: caller asserts the address is inside the
-                // loaded image. We don't validate further; pattern
-                // search downstream will catch garbage.
+                // Guard with VirtualQuery so a bad address returns
+                // a typed error instead of faulting and tearing down
+                // the HTTP worker. Check both ends of the range.
+                if !modforge::winproc::is_addr_readable(addr)
+                    || !modforge::winproc::is_addr_readable(addr + n - 1)
+                {
+                    return Err(format!(
+                        "addr 0x{addr:x} + {n} bytes not readable (page noaccess / unmapped)"
+                    ));
+                }
+                // SAFETY: VirtualQuery confirmed both endpoints lie in
+                // committed, non-guard, non-NOACCESS pages.
                 let view = unsafe {
                     std::slice::from_raw_parts(addr as *const u8, n)
                 };

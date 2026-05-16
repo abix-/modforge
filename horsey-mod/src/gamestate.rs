@@ -116,7 +116,39 @@ pub fn looks_loaded() -> bool {
 pub fn diag() -> serde_json::Value {
     let p = ptr();
     if p == 0 {
-        return serde_json::json!({"ptr": "0x0"});
+        // Even with no GameState we want to know WHY: dump the slot
+        // address and its raw 8-byte content so we can tell apart a
+        // null slot (no save loaded) from a stale / wrong slot (the
+        // resolver picked the wrong address).
+        let resolved = targets::resolve::gamestate_ptr();
+        let hardcoded_rebased = targets::rebase(targets::GAMESTATE_PTR);
+        let slot = resolved.unwrap_or(hardcoded_rebased);
+        // SAFETY: slot lives in .data of the loaded image; safe to read 8 bytes.
+        let raw = unsafe { *(slot as *const usize) };
+        // Also dump context: 16 qwords at slot-64..slot+64 in case GameState
+        // pointer lives near our resolved address.
+        let mut context = Vec::new();
+        let base = slot.saturating_sub(64);
+        for i in 0..16 {
+            let addr = base + i * 8;
+            // SAFETY: addr is within .data of the image (slot is in .data;
+            // we range +/-64 bytes around it).
+            let v = unsafe { *(addr as *const usize) };
+            context.push(format!(
+                "+0x{:03x} @ 0x{addr:x}: 0x{v:x} {}",
+                (addr as i64 - slot as i64),
+                if is_plausible_gamestate_pointer(v) { "<-- plausible" } else { "" }
+            ));
+        }
+        return serde_json::json!({
+            "ptr": "0x0",
+            "resolved_slot": format!("0x{slot:x}"),
+            "raw_slot_value": format!("0x{raw:x}"),
+            "plausible": is_plausible_gamestate_pointer(raw),
+            "pattern_resolver_returned": resolved.map(|a| format!("0x{a:x}")),
+            "hardcoded_rebased": format!("0x{hardcoded_rebased:x}"),
+            "context_around_slot": context,
+        });
     }
     // SAFETY: GameState is statically embedded; offsets are within
     // its allocated range. We never deref the read pointers.
@@ -469,6 +501,104 @@ pub fn live_horse_ptr(i: usize) -> Option<usize> {
     }
     // SAFETY: read one pointer-sized slot inside the vector.
     Some(unsafe { *((begin + i * 8) as *const usize) })
+}
+
+// =============================================================================
+// Owned-horse list (gamestate +0x438 -> +0x90 -> +0x130 / +0x138)
+// =============================================================================
+//
+// Owned-horse list:
+//   GS + 0x438                       = pointer to sub-system table
+//   *(GS + 0x438) + 0                = sub-struct pointer for OWNED horses
+//   that_sub_struct + 0x130/+0x138   = vector<Horse*> of player-owned horses
+//
+// Slot 0 of the table is the canonical owned list. Cross-validated against
+// user's "I own 3 horses". Slot 0 had count 3 even when active_scene_id was
+// -1 (overworld). HLT did NOT find this; they only iterated whichever scene
+// was active. See docs/HORSE-PLACES.md for the full slot inventory.
+
+const SCENE_TABLE_OFF: usize = 0x438;
+const OWNED_SLOT_OFF: usize = 0x0;
+const ACTIVE_SCENE_ID_OFF: usize = 0x25C;
+const OWNED_VEC_BEGIN_OFF: usize = 0x130;
+const OWNED_VEC_END_OFF: usize = 0x138;
+
+/// Read the currently-active scene id from GS+0x25C. Returns None when
+/// the value isn't in the documented range or GS isn't loaded.
+pub fn active_scene_id() -> Option<i32> {
+    let p = ptr();
+    if p == 0 {
+        return None;
+    }
+    // SAFETY: GameState struct statically mapped; reading u32 at known offset is safe.
+    let id = unsafe { *((p + ACTIVE_SCENE_ID_OFF) as *const i32) };
+    if (-1..256).contains(&id) {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+/// Resolve the player-owned horse-list sub-struct via the sub-system
+/// table at GS+0x438, slot 0. Every deref is gated on `is_addr_readable`
+/// so a stale chain cannot fault the HTTP worker.
+fn owned_stable() -> Option<usize> {
+    let p = ptr();
+    if p == 0 {
+        return None;
+    }
+    let table_slot = p + SCENE_TABLE_OFF;
+    if !modforge::winproc::is_addr_readable(table_slot) {
+        return None;
+    }
+    // SAFETY: GameState page is mapped; readability checked.
+    let table = unsafe { *(table_slot as *const usize) };
+    let entry_slot = table.wrapping_add(OWNED_SLOT_OFF);
+    if !modforge::winproc::is_addr_readable(entry_slot) {
+        return None;
+    }
+    // SAFETY: entry_slot readability checked.
+    let stable = unsafe { *(entry_slot as *const usize) };
+    if stable == 0
+        || !modforge::winproc::is_addr_readable(stable + OWNED_VEC_END_OFF)
+    {
+        return None;
+    }
+    Some(stable)
+}
+
+/// Count of owned horses (vector<Horse*> at `stable+0x130/+0x138`).
+pub fn owned_horse_count() -> usize {
+    let Some(stable) = owned_stable() else { return 0; };
+    // SAFETY: stable+0x130 and stable+0x138 readability checked in owned_stable.
+    let begin = unsafe { *((stable + OWNED_VEC_BEGIN_OFF) as *const usize) };
+    let end = unsafe { *((stable + OWNED_VEC_END_OFF) as *const usize) };
+    if end < begin {
+        0
+    } else {
+        (end - begin) / 8
+    }
+}
+
+/// Get the i-th owned Horse pointer. Returns None if out of range, the
+/// chain is dead, or the resolved slot does not look like a heap pointer.
+pub fn owned_horse_ptr(i: usize) -> Option<usize> {
+    let stable = owned_stable()?;
+    // SAFETY: begin readability via owned_stable's checks.
+    let begin = unsafe { *((stable + OWNED_VEC_BEGIN_OFF) as *const usize) };
+    if begin == 0 || i >= owned_horse_count() {
+        return None;
+    }
+    let slot = begin + i * 8;
+    if !modforge::winproc::is_addr_readable(slot) {
+        return None;
+    }
+    // SAFETY: slot readability just checked.
+    let horse = unsafe { *(slot as *const usize) };
+    if !is_plausible_gamestate_pointer(horse) {
+        return None;
+    }
+    Some(horse)
 }
 
 #[cfg(test)]

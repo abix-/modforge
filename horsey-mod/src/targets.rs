@@ -1941,16 +1941,21 @@ pub mod resolve {
 
     fn resolve_gamestate_ptr_uncached() -> Option<usize> {
         let resolved = resolve_gamestate_ptr_via_constructor()?;
-        // Sanity gate: hardcoded RVA is the cross-check. The resolver
-        // can drift with the binary; if the new resolved address is
-        // wildly far from where we expect the slot to live, something
-        // matched the wrong instruction and we should fall back.
-        let hardcoded = super::rebase(super::GAMESTATE_PTR);
-        let delta = resolved.abs_diff(hardcoded);
-        if delta > 0x1000 {
+        // Sanity gate: resolved address must be inside the loaded
+        // Horsey.exe image (any section). We do NOT compare to the
+        // hardcoded RVA. When Horsey ships a binary update, the
+        // hardcoded slot can drift > 0x1000 from the new one, which
+        // made the previous "delta < 0x1000" gate reject the correct
+        // resolution and silently fall back to a stale slot.
+        if !modforge::winproc::is_addr_readable(resolved) {
             modforge::log!(
-                "R3 GAMESTATE_PTR sanity gate rejected resolved=0x{resolved:x}; \
-                 hardcoded=0x{hardcoded:x}; delta=0x{delta:x} > 0x1000"
+                "R3 GAMESTATE_PTR rejected resolved=0x{resolved:x}; not readable"
+            );
+            return None;
+        }
+        if (resolved & 0x7) != 0 {
+            modforge::log!(
+                "R3 GAMESTATE_PTR rejected resolved=0x{resolved:x}; not 8-aligned"
             );
             return None;
         }

@@ -644,20 +644,89 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
-### Horses tab counts are wrong (live=0, total drifts)
+### Findings session 2026-05-15/16: Horses tab live-count + Horsey binary update
 
-User observation 2026-05-15: in-game owns 2 horses. UI Horses tab showed `0/1`, then `0/2`, then `0/4` across observations. Live count always 0, total count unstable.
+Authoritative catalog of every horse-bearing memory location: [`HORSE-PLACES.md`](HORSE-PLACES.md). This section captures the chase that produced it.
 
-Decomp findings (`all_functions.c`):
-- **Roster (GameState +0x280/+0x288, stride 0x24):** confirmed real at `:53951` (`/0x24`) and `:52322-52323` (begin==end check). Each entry is a 36-byte SUMMARY record, not a Horse object. Owning 2 horses should yield roster_count=2 stably; the drift to 4 means we may be reading the wrong field pair OR `looks_loaded` is letting through a partially-initialized GameState OR the roster also includes non-player horses (NPCs / race participants / dead ancestors).
-- **Live-horse pointer vector (true offset is NOT GameState+0x130/+0x138):** lives on a NESTED struct reached via `*(GameState + 0x438) -> + ?? -> +0x130/+0x138`. Confirmed by `FUN_140107510:156866-156869` and the iterator `FUN_14006d610:64089-64108` (8-byte pointer stride). Our `live_horses_begin/end` read `*(GameState + 0x130)` directly which is garbage. Explains the constant 0.
+#### 1. Horsey binary was updated between sessions
+
+- `image_sha256 = 0a2689fe98232a50b9cf5c83c7c76dc179912bef246b1d8014d918a77d390253`
+- `exe_size = 4374528`, `image_base = 0x7ff6ab0a0000` in this run.
+- Decomp index references the older build. Re-decomp or accept drift on non-anchored consts.
+
+#### 2. Resolver sanity-gate self-defeating bug (FIXED in this session)
+
+Old `targets::resolve::resolve_gamestate_ptr_uncached`:
+```
+let delta = resolved.abs_diff(hardcoded); if delta > 0x1000 { return None; }
+```
+Hardcoded RVA was the cross-check. When Horsey ships an update that shifts the GameState slot more than 4 KB, the gate rejected the CORRECT new resolution and silently fell back to the stale hardcoded, which then pointed at unrelated `.data` (we observed tile data at the stale slot, raw value `0xfffffff90000000a` clearly not a heap ptr).
+
+Fixed: replaced with `is_addr_readable(resolved) && (resolved & 7) == 0`. Pattern is well-anchored on the 1.0f literal write in the constructor, so a false match is unlikely.
 
 Action items:
-- [ ] Write `tests/investigate_horse_count.rs` that, with a save loaded, dumps each 36-byte roster entry as 4 qwords + 4 trailing bytes, plus the candidate Horse* chain via GS+0x438. Identifies which qword inside a roster entry holds a Horse*.
-- [ ] Confirm what the 36-byte roster entry actually contains (id? Horse*? inline horse summary?).
-- [ ] Decide live-count strategy: (a) follow `GS+0x438 -> +?? -> +0x130/+0x138` chain for the true live vector, or (b) walk the roster and deref the Horse* slot from each 36-byte entry.
-- [ ] Fix `gamestate::live_horse_count`, `live_horse_ptr`, and `ui::render_horses` accordingly.
-- [ ] Figure out why roster count drifted from 2 to 4 with no in-game horse change. Suspects: stale GameState pointer (re-resolve each call?), roster including non-player horses, or wrong begin/end offset hitting a different pair.
+- [ ] Audit every OTHER `*_uncached` resolver in `targets.rs` for the same self-defeating "compare to hardcoded" pattern. Replace each with `is_addr_readable` + alignment.
+- [ ] When the resolver succeeds, ALSO log `R3 GAMESTATE_PTR drift detected: hardcoded=X new=Y delta=Z` so we know the hardcoded is stale.
+- [ ] Update the hardcoded `GAMESTATE_PTR` const to the new value once stable.
+- [ ] Once we have a known-builds manifest, refuse to attach when the resolver delta says hardcoded is stale and no manifest entry matches the current SHA.
+
+#### 3. Scene table layout decoded (cross-validated with HLT)
+
+HLT prior art (`research/prior-art/HorseyLiveTweaks/src/core/offsets.h`):
+```
+kRootSceneTable      = 0x438   // on GameState: ptr to scene table
+kRootActiveSceneId   = 0x25C   // on GameState: i32 active scene id, range [-1, 256)
+kMaxSceneSlots       = 256
+kOffSceneHorseVecBegin = 0x130 // on scene struct
+kOffSceneHorseVecEnd   = 0x138
+kNeighborSceneId     = 31
+```
+
+`*(GS+0x438)` is an array of 256 scene pointers, each pointing to a scene struct with a `vector<Horse*>` at `+0x130/+0x138`. The active scene is at index `active_scene_id`.
+
+Our code now follows this chain (see `gamestate::owned_stable`).
+
+#### 4. Slot 0x00 of the scene table holds the 3 owned horses
+
+`gamestate.scan_438_slots` dump in user's save (3 horses owned, `active_scene_id = -1`):
+
+| slot | count | likely role |
+|---|---|---|
+| 0x00 | **3** | **Owned-horse list (matches user's 3 owned)** |
+| 0x08..0x38 | 5 each | Race lanes (per `FUN_140105260` decomp) |
+| 0xb0 | 4 | unknown |
+| 0xd0 | 3 | another 3-horse mirror (selection? scene?) |
+| 0xe0 | 2 | unknown |
+| 0x70..0xc8 (singletons) | 1 each | per-screen selected horse |
+| 0x120 | 5 | "copy all horses" source per `FUN_140107550`; race-context, not stable |
+
+Action items:
+- [ ] Change `owned_stable` to read scene table slot 0x00 unconditionally (NOT `slot_offset = active_scene_id*8`). When `active_scene_id = -1` (overworld / no neighbor scene), the per-scene chain returns None even though the owned list IS available at slot 0x00.
+- [ ] Verify by naming the 3 horses uniquely and confirming they all appear under slot 0x00. Test `tests/find_horse_tomtato.rs` exists but is parked.
+- [ ] Re-validate slot 0xd0: is it the "owned horses in current scene" subset, or a redundant mirror?
+
+#### 5. Horse name string is NOT inline in the Horse object
+
+`tests/find_horse_tomtato.rs` searches the full 0x498 bytes of each Horse via `patterns.read_bytes`. ASCII "tomtato" not present in the object body. The `name_id` field at horse+0x1f8 (u32) indexes a global name table.
+
+Action items:
+- [ ] Find the global name table. Either via decomp (grep for `name_id` consumer function near horse format strings) or via memory scan with a unique horse name as ground truth.
+- [ ] Add `horse::name_string(horse_ptr) -> Option<String>` that goes through the table.
+- [ ] Surface the resolved name string in `gamestate.owned_horses` (replace `name_id: u32` with `name: String`).
+
+#### 6. patterns.read_bytes can crash the game (PARTIALLY FIXED)
+
+Calling `patterns.read_bytes` with a non-readable address used to fault, kill the HTTP worker, and disconnect every client. Added a `is_addr_readable` precheck on both endpoints. Kept the game alive across multiple subsequent runs.
+
+Still vulnerable: any other op that does unguarded raw deref of caller-supplied addresses. Audit all `gamestate.*` / `horse.*` / `mem.*` ops.
+
+#### 7. Old `live_horse_count/live_horse_ptr` was always wrong (SUPERSEDED)
+
+Reading `*(GS+0x130)` directly on GameState returned 0 in every state. The real per-scene horse vector lives on a SUB-STRUCT reached via the `GS+0x438` table. Our `live_horse_*` functions are superseded by `owned_horse_*`. Remove old API once UI fully migrated.
+
+#### 8. Roster (GS+0x280/+0x288) is the global horse POOL, not owned
+
+26 entries in earlier save, 28-29 in this save. Inline 36-byte summary records (no Horse* pointers in entries). Stride 0x24 confirmed via decomp at `:53951` (`/0x24`). Likely contains all named horses ever encountered: player + NPCs + ancestors. Useful as global ID pool, not as owned-list.
 
 ### Hot-reload crash hardening
 
