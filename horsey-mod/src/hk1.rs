@@ -281,22 +281,28 @@ pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
         *((loc + LOC_CURSOR_X) as *mut f32) = target.0;
         *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
     }
-    // Invoke vtable[+0x78](LOC) inside an SEH guard. Earlier attempts
-    // crashed the game because the drop-commit function dereferences
-    // a LOC sub-struct that isn't initialized until the user performs
-    // a real click. With the guard a bad deref now logs + returns Err
-    // instead of taking the game down, so we can iterate on the LOC
-    // staging without losing the session.
-    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
+    // Invoke vtable[+0x78](LOC, drag_idx, param3) inside an SEH guard.
+    // The Ghidra decomp at FUN_1400d2ab0:1722 showed the call as
+    // single-arg `(*param_1)`, but disassembling FUN_1400de2e0's
+    // prologue reveals it actually takes three args:
+    //   rcx = this LOC
+    //   rdx = drag_idx (sign-extended, used as horses-vec index)
+    //   r8d = param3 (stored to ebx; usage further in body)
+    // Confirmed via fault@+0x31 = `mov r15, [rax + r12*8]` where r12
+    // is sign-extended rdx. Without passing rdx the function reads
+    // register garbage and AVs on the vector deref.
+    type DropCommitFn = unsafe extern "system" fn(*mut u8, i32, i32) -> u8;
     // SAFETY: fn_addr was just read from a readable vtable slot in
     // .rdata of the loaded Horsey image.
     let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
-    log_line("staged LOC: calling vtable[+0x78] under SEH guard");
+    log_line(&format!(
+        "staged LOC: calling vtable[+0x78](LOC=0x{loc:x}, drag_idx={drag_idx}, param3=1) under SEH guard"
+    ));
     let outcome = modforge::seh::guard(|| {
         // SAFETY: f points to a real game function; we provide the
-        // expected `this` pointer (LOC). If the function reads
-        // garbage we recover via SEH.
-        unsafe { f(loc as *mut u8) }
+        // expected (this, drag_idx, param3) triple. SEH catches any
+        // remaining bad-state crashes.
+        unsafe { f(loc as *mut u8, drag_idx as i32, 1) }
     });
     match outcome {
         Ok(result) => {
