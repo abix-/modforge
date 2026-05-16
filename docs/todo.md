@@ -275,12 +275,18 @@ Same I-R checklist instantiated per future game.
 
 ### Phase I: implementation (modforge core)
 
-- [/] **I-1: `modforge::input` primitives.** **IN PROGRESS 2026-05-16.** First slice: L1 (`enigo`) + L2 (`win32_message`) backends behind a `Backend` enum; L3 stub via `InputSurface` trait. Skipping drag/scroll/combo/replay until smoke passes.
-- [/] **I-2: HTTP cmdlets.** **IN PROGRESS 2026-05-16.** First slice: `input.mouse.{move,click}`, `input.key.{down,up,press}`. Drag/scroll/combo deferred to next slice.
-- [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, canonical = client-area px; conversions inside.
+- [x] **I-1: `modforge::input` primitives.** Shipped 2026-05-16 commit `e344c5dd`. Decided AGAINST adopting `enigo` after Cargo.toml inspection (would pull `windows` crate alongside our existing `windows-sys`); hand-rolled L1 over `windows-sys` instead (~150 LOC, zero new deps). `Backend` enum (L1/L2), `Button`, `Key::parse` (friendly names + hex + f1-f24 + letters/digits), `InputSurface` trait stub, `SYNTHETIC_EXTRA_INFO` tag for self-event recognition. L1 in `l1.rs` (SendInput + virtual-desktop normalized coords). L2 in `l2.rs` (PostMessage with MK_* modifier mask, client-area coords).
+- [x] **I-2: HTTP cmdlets.** Shipped 2026-05-16 commit `e344c5dd`. 7 ops: `input.mouse.{move,click}`, `input.key.{down,up,press}`, `input.cursor.get`, `input.foreground.hwnd`. Mods array `["shift","ctrl"]` supported on `mouse.click`. Drag/scroll/combo/replay deferred to next slice.
+- [/] **I-5: Test harness.** First smoke `horsey-mod/tests/input_smoke.rs` lands 2026-05-16. Covers L1 cursor round-trip + L1 keyboard + L2 PostMessage no-op. **Smoke run BLOCKED 2026-05-16** on a pre-existing horsey-side resolver regression unrelated to input: NO_TIRE_TOGGLE worker thread writes to wrong address (off by `0x40_00_00_00`, smells like an image-base computation error in the recent B4b/B5 `targets::resolve` -> `TargetRegistry` migration in commits `43363813`/`a35cdbca`/`536f5d33`). Resume once that's fixed.
+- [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, canonical = client-area px; conversions inside. Partly done in L2 (already uses client-area px); needs explicit `input.client_to_screen` + DPI awareness.
 - [ ] **I-4: L3 game-internal pokes** (per surface, opt-in via the per-game `InputSurface` trait).
-- [ ] **I-5: Test harness.** `modforge/tests/input_*.rs` env-driven + per-mod consumer tests.
 - [ ] **I-6: Replay format.** JSON event stream `[(t_ms, event, args)]`; record, save, replay. Shape decided by PR-9 winner.
+
+#### Follow-ups discovered during I-1/I-2
+
+- [ ] **I-2a: `input.find_hwnd_by_pid {pid}` op.** Today L2 falls back to `GetForegroundWindow`; cargo-test runs in a foreground console window, so the foreground HWND is rarely the game. An EnumWindows-by-PID helper lets tests explicitly resolve the game's HWND. Pure modforge; no game launch needed for the impl.
+- [ ] **I-2b: `input.state.get` op.** Reads game's own mouse/keyboard state for verification (so smoke tests don't trust their own writes). Needs per-game `InputSurface` impl; defer until horsey-mod has one.
+- [ ] **I-2c: Drag/scroll/combo cmdlets.** Wait until L2 smoke is green to validate the primitives below them.
 
 ### Definition of done
 

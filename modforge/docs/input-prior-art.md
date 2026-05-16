@@ -8,6 +8,14 @@
 > `modforge::input`. Research-only; no code lands until PR-1..PR-10 are
 > done and a recommendation is on file at the bottom of this doc.
 
+## Implementation status (2026-05-16)
+
+- **I-1 shipped** (commit `e344c5dd`). `modforge::input::{l1, l2, ops}` + `Backend`/`Button`/`Key`/`InputSurface`.
+- **I-2 shipped** (same commit). 7 HTTP cmdlets wired through horsey-mod at attach.
+- **Final crate decision: DID NOT adopt `enigo`.** Cargo.toml inspection showed it pulls the `windows` crate (high-level safe wrappers) alongside our existing `windows-sys` (raw FFI). Hand-rolling L1 over `windows-sys` was ~150 LOC of straight SendInput plumbing for zero new deps. Decision overrides the PR-7 recommendation that said "use enigo." Reasoning preserved here as a lesson: the recommendation was based on stars/license/maintenance; the final call factored in the dependency-tree side effect that only became visible during Cargo.toml inspection.
+- **L2 verification path identified.** `GetForegroundWindow` is not viable from a cargo-test process (test console steals focus). Added a follow-up task `I-2a: input.find_hwnd_by_pid {pid}` so L2 tests can target the game window explicitly.
+- **Smoke run blocked** by an unrelated horsey-side resolver bug in the recent target-registry migration (NO_TIRE_TOGGLE write goes to `image_base + 0x40_3d_95_a5` instead of `image_base + 0x3d_95_a5`, off by `0x40_00_00_00`). Crash happens before HTTP plane comes up; not my code. Resume once other-Claude unblocks it.
+
 ## TL;DR
 
 **Three-layer architecture validated by prior art:**
