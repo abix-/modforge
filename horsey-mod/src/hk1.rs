@@ -112,6 +112,8 @@ fn parse_xy(s: &str, key: &str) -> Option<(f32, f32)> {
     Some((x, y))
 }
 
+pub fn save_targets_pub(t: Targets) { save_targets(t); }
+
 fn save_targets(t: Targets) {
     let Some(path) = calib_path() else { return };
     let fmt_xy = |v: Option<(f32, f32)>| match v {
@@ -213,18 +215,28 @@ pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
         *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
     }
 
-    // Invoke vtable[+0x78](LOC). Returns char; we capture the LSB.
-    // ABI: Microsoft x64; first arg in RCX. The vtable method is a
-    // member function so RCX = this = LOC.
-    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
-    // SAFETY: fn_addr was just read from a readable vtable slot in
-    // .rdata. The function expects (this) per the click-handler
-    // decomp (vtable[+0x78](param_1)).
-    let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
-    // SAFETY: f is a valid Location member fn; LOC pointer is the
-    // game's live Home Location object.
-    let result = unsafe { f(loc as *mut u8) };
-
-    log_line(&format!("transfer result={result}"));
-    Some(result)
+    // The naive `vtable[+0x78](LOC)` call CRASHES the game when LOC is
+    // not in mid-drag state (LOC[0x2d] = -1, LOC[0x2c] = armed-flag,
+    // LOC[0x37] = click state, etc., are all unset). The decomp around
+    // line 1722 of FUN_1400d2ab0 shows the function expects much more
+    // staged state than just LOC[0x29] + cursor floats.
+    //
+    // Crash repro: hk1_transfer_end_to_end test, 2026-05-16. Process
+    // disappeared mid-call. Disabled until we walk all the LOC fields
+    // a real drag touches.
+    //
+    // For now this op only logs what it WOULD do; restore the actual
+    // call once we have a complete LOC stage.
+    log_line(&format!(
+        "transfer DRY-RUN (vtable call disabled) horse=0x{horse_ptr:x} would call fn=0x{fn_addr:x}"
+    ));
+    // Roll back the partial LOC stage so we don't leave the game in a
+    // half-grabbed state.
+    // SAFETY: same range as the writes above.
+    unsafe {
+        *((loc + LOC_GRABBED_HORSE) as *mut usize) = old_grabbed;
+        *((loc + LOC_CURSOR_X) as *mut f32) = old_cx;
+        *((loc + LOC_CURSOR_Y) as *mut f32) = old_cy;
+    }
+    Some(0)
 }

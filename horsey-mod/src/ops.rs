@@ -2354,6 +2354,100 @@ to derive test signatures from known-good function entries. Body: \
             },
         ),
 
+        // HK1 research: dump a configurable window of the Home Location's
+        // bytes. Used by `hk1_watch_loc_during_drag` to log every LOC
+        // field that changes while the user does a real drag, so we
+        // can reproduce the full state-setup.
+        OpDef::new(
+            "hk1.loc_bytes",
+            "Dump bytes from the Home Location object. Body: {offset?: u64, n?: u64}. Defaults to (0, 0x240).",
+            "{offset?: u64, n?: u64}",
+            |args| {
+                use modforge::winproc::is_addr_readable;
+                let off = args.get("offset").and_then(Json::as_u64).unwrap_or(0) as usize;
+                let n = args.get("n").and_then(Json::as_u64).unwrap_or(0x240) as usize;
+                if n == 0 || n > 4096 {
+                    return Err(format!("n out of range: {n}"));
+                }
+                let loc = crate::hk1::home_loc_ptr()
+                    .ok_or_else(|| "no home location".to_string())?;
+                let addr = loc + off;
+                if !is_addr_readable(addr) || !is_addr_readable(addr + n - 1) {
+                    return Err(format!("LOC+{off:#x}..+{n} unreadable"));
+                }
+                // SAFETY: both endpoints checked.
+                let slice = unsafe { std::slice::from_raw_parts(addr as *const u8, n) };
+                let hex: String = slice.iter().map(|b| format!("{b:02x}"))
+                    .collect::<Vec<_>>().join(" ");
+                Ok(json!({
+                    "loc_ptr": format!("0x{loc:x}"),
+                    "offset": format!("0x{off:x}"),
+                    "n": n,
+                    "bytes": hex,
+                }))
+            },
+        ),
+
+        // HK1: read the cursor position the Home Location's click
+        // handler watches (`LOC[0x174]/+0x178`). Floats. Used by the
+        // overlay calibration UI and by automated tests.
+        OpDef::new(
+            "hk1.read_cursor",
+            "Read the Home Location's cursor floats (LOC+0x174, LOC+0x178). Returns {x, y}.",
+            "",
+            |_| {
+                match crate::hk1::read_cursor() {
+                    Some((x, y)) => Ok(json!({ "x": x as f64, "y": y as f64 })),
+                    None => Err("cursor unreadable (gamestate? home location?)".to_string()),
+                }
+            },
+        ),
+
+        // HK1: directly set a calibrated target (truck or pasture) to
+        // arbitrary cursor floats. Lets automated tests bypass the
+        // human-clicks-overlay calibration step.
+        OpDef::new(
+            "hk1.set_target",
+            "Save (x, y) as the named calibration target. Body: {which: 'truck'|'pasture', x: f32, y: f32}",
+            "{which: string, x: f32, y: f32}",
+            |args| {
+                let which = args.get("which").and_then(Json::as_str)
+                    .ok_or_else(|| "missing which".to_string())?;
+                let x = args.get("x").and_then(Json::as_f64)
+                    .ok_or_else(|| "missing x".to_string())? as f32;
+                let y = args.get("y").and_then(Json::as_f64)
+                    .ok_or_else(|| "missing y".to_string())? as f32;
+                let mut t = crate::hk1::load_targets();
+                match which {
+                    "truck"   => t.truck   = Some((x, y)),
+                    "pasture" => t.pasture = Some((x, y)),
+                    _ => return Err(format!("which must be truck|pasture, got {which}")),
+                }
+                crate::hk1::save_targets_pub(t);
+                Ok(json!({ "which": which, "x": x, "y": y }))
+            },
+        ),
+
+        // HK1: invoke the Home Location's drop-commit vtable (the
+        // game's own drag-drop completion path) to transfer a horse
+        // to the calibrated target. Returns the vtable call result
+        // (non-zero == drop accepted).
+        OpDef::new(
+            "hk1.transfer",
+            "Transfer a horse via the game's drop-commit vtable. Body: {horse_ptr: u64, dest: 'truck'|'pasture'}",
+            "{horse_ptr: u64, dest: string}",
+            |args| {
+                let horse_ptr = args.get("horse_ptr").and_then(Json::as_u64)
+                    .ok_or_else(|| "missing horse_ptr".to_string())? as usize;
+                let dest = args.get("dest").and_then(Json::as_str)
+                    .ok_or_else(|| "missing dest".to_string())?;
+                match crate::hk1::transfer_horse(horse_ptr, dest) {
+                    Some(r) => Ok(json!({ "result": r as u64, "dest": dest })),
+                    None => Err("transfer setup failed (no calibration? no gamestate?)".to_string()),
+                }
+            },
+        ),
+
         // HK1 Stage S0 probe: read mouse-screen coordinates at HLT's
         // documented RVAs. Returns NaN-as-null when unresolved. Used to
         // confirm the RVAs still work in our build; if drift > epsilon
