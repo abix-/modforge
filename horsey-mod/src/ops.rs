@@ -2245,6 +2245,74 @@ to derive test signatures from known-good function entries. Body: \
             },
         ),
 
+        // HK1 Stage S0 probe: given a horse pointer, walk every
+        // GS+0x438 slot's +0x130/+0x138 vector and report which slots
+        // contain it (with the index). Used to identify the truck /
+        // paddock / race-line slot by moving a known horse into that
+        // location in-game and seeing where it shows up.
+        OpDef::new(
+            "hk1.probe.locate_horse",
+            "Find which scene-table slot(s) hold the given Horse*. Body: {horse_ptr: '0x...'}",
+            "{horse_ptr: string}",
+            |args| {
+                use modforge::winproc::is_addr_readable;
+                let s = args.get("horse_ptr").and_then(Json::as_str)
+                    .ok_or_else(|| "missing horse_ptr".to_string())?;
+                let s = s.trim_start_matches("0x");
+                let want = usize::from_str_radix(s, 16)
+                    .map_err(|e| format!("bad horse_ptr: {e}"))?;
+                let gs = gamestate::ptr();
+                let image_base = crate::targets::image_base();
+                if gs == 0 { return Ok(json!({ "error": "no gamestate" })); }
+                let arr_slot = gs + 0x438;
+                if !is_addr_readable(arr_slot) {
+                    return Ok(json!({ "error": "GS+0x438 unreadable" }));
+                }
+                // SAFETY: just checked.
+                let arr_ptr = unsafe { *(arr_slot as *const usize) };
+                let mut hits = Vec::new();
+                let mut slot_off = 0usize;
+                while slot_off < 0x200 {
+                    let addr = arr_ptr.wrapping_add(slot_off);
+                    if !is_addr_readable(addr) { slot_off += 8; continue; }
+                    // SAFETY: just checked.
+                    let sub_ptr = unsafe { *(addr as *const usize) };
+                    if sub_ptr == 0 || !is_addr_readable(sub_ptr + 0x138) {
+                        slot_off += 8; continue;
+                    }
+                    // SAFETY: readability checked.
+                    let vtable_ptr = unsafe { *(sub_ptr as *const usize) };
+                    let begin = unsafe { *((sub_ptr + 0x130) as *const usize) };
+                    let end = unsafe { *((sub_ptr + 0x138) as *const usize) };
+                    if end < begin || end - begin > 0x10000 || (end - begin) % 8 != 0 {
+                        slot_off += 8; continue;
+                    }
+                    let count = (end - begin) / 8;
+                    if !is_addr_readable(begin) || (count > 0 && !is_addr_readable(end - 8)) {
+                        slot_off += 8; continue;
+                    }
+                    for i in 0..count {
+                        // SAFETY: range checked.
+                        let p = unsafe { *((begin + i * 8) as *const usize) };
+                        if p == want {
+                            hits.push(json!({
+                                "slot": format!("0x{slot_off:x}"),
+                                "sub_ptr": format!("0x{sub_ptr:x}"),
+                                "vtable_rva": format!("0x{:x}", vtable_ptr.saturating_sub(image_base)),
+                                "index": i,
+                                "vec_count": count,
+                            }));
+                        }
+                    }
+                    slot_off += 8;
+                }
+                Ok(json!({
+                    "horse_ptr": format!("0x{want:x}"),
+                    "hits": hits,
+                }))
+            },
+        ),
+
         // HK1 Stage S0 probe: read mouse-screen coordinates at HLT's
         // documented RVAs. Returns NaN-as-null when unresolved. Used to
         // confirm the RVAs still work in our build; if drift > epsilon
