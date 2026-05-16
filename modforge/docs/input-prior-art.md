@@ -8,9 +8,21 @@
 > `modforge::input`. Research-only; no code lands until PR-1..PR-10 are
 > done and a recommendation is on file at the bottom of this doc.
 
-## TL;DR (filled in last)
+## TL;DR
 
-_Pending PR-1..PR-10._
+**Three-layer architecture validated by prior art:**
+
+- **L1 (Win32 OS-global):** depend on **`enigo`** (`enigo-rs/enigo`, 1715 stars, MIT, edition 2024, last commit 2026-03-30). Pulls `windows` crate, `SendInput`. Use `default-features = false` (default features include Linux-only `x11rb`). Set `dwExtraInfo` tag so our own hooks can recognize self-sent events.
+- **L2 (Win32 per-window):** hand-rolled `modforge::input::win32_message` over `windows-sys`. ~80 LOC. Mirrors pywinauto's `click()` (vs `click_input()`). Uses `PostMessage`/`SendMessage` to the game HWND.
+- **L3 (game-internal):** per-game `InputSurface` trait. For UE games (Grounded 2), route through `APlayerController::InputKey(FInputKeyParams)` per UnrealCV / Lyra. For Unity, hook `Input.GetKey*` or use `InputSystem.QueueStateEvent`. For raw-Win32 (Horsey), discover and poke the engine-private mouse / key globals.
+
+**Why not other crates:** `rdev` carries a listen-side hook we don't need; `autopilot` carries an `image` dep; `winput` is small and clean but 21 stars and inactive; `mouce` is mouse-only; `InputBot` is too opinionated.
+
+**Replay format:** JSON event stream with absolute `t_ms`, `type` enum, `backend` selector in context. See PR-9.
+
+**Anti-cheat:** all current targets are LOW risk. Tag `dwExtraInfo` and restore foreground anyway (cheap insurance).
+
+**Implementation path forward:** I-1 (modforge::input scaffolding with `enigo` + `windows-sys::PostMessage`) is unblocked; I-4 (L3 poke) gets defined per consumer mod, with horsey-mod's I-R steps (per-game) driving the first concrete `InputSurface` impl.
 
 ---
 
@@ -72,39 +84,69 @@ _Status: first pass complete (2026-05-16)._
 
 ## PR-2: UI automation frameworks (concept-mining, not adoption)
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-### Targets
+### pywinauto
 
-- pywinauto (Python; native + UIA)
-- AutoHotkey v2 (C; AHK_L is open source; v2 is the active line)
-- Microsoft UI Automation (UIA) via `windows-rs` bindings
-- AutoIt (closed-source but well-documented API surface)
+- Repo: `pywinauto/pywinauto`. **6019 stars, BSD-3-Clause, active (2026-04-13).**
+- Key API split (we will copy this verbatim):
+  - **`ctrl.click()`** -> `_perform_click(ctrl, ...)` -> `PostMessage(hwnd, WM_LBUTTONDOWN/UP, ...)`. L2. Works on hidden windows; no focus theft.
+  - **`ctrl.click_input()`** -> `mouse_event` (L1). "More realistic"; works on raw-input apps; steals cursor.
+- Coordinate convention: client-relative by default, `absolute=True` switches to screen-px.
+- Chord encoding: separate `pressed=` argument for held modifiers (`pressed="control shift"`). Cleaner than AHK's interleaved syntax.
 
-What we extract: the **abstraction**, not the implementation. Things to
-copy: key/mouse object hierarchy, modifier-chord encoding, send vs
-sendraw vs sendinput vs sendplay modes, replay loop shape.
+### AutoHotkey v2
 
-### Findings
+- Repo: `AutoHotkey/AutoHotkey`. **12377 stars, GPL-2.0**, active.
+- **GPL-2 is contagious for code linking.** We do NOT vendor AHK code; we extract ideas only.
+- Send modes (worth mirroring as a `Backend` enum value): `SendInput` (L1, atomic batch), `SendPlay` (journal-playback hook, deprecated post-Win7), `SendEvent` (legacy `keybd_event` / `mouse_event`), `SendMessage` (per-window WM_KEY/WM_MOUSE). The split matches our L1 vs L2 distinction directly.
+- Notable AHK trick: `SendInput` is wrapped with hook-suspend so the script's own hotkey hook doesn't re-trigger. We need the same when we add input-listening later. Use `dwExtraInfo` tag (enigo already exposes this).
+- Modifier-chord encoding: `Send "^!{F4}"` for ctrl+alt+F4. Not adopting; pywinauto-style separate modifier list is cleaner for JSON.
+
+### Microsoft UI Automation (UIA)
+
+- Available via `windows`/`windows-sys` crates. **Out of scope** for game input (it targets UIAutomation-tagged controls; games are usually a DirectX/OpenGL surface with no UIA tree).
+- May matter later if we extend to non-game GUI testing (the timberbot Python client could use it).
+
+### AutoIt
+
+- Closed-source, well-documented. API shape note: AutoIt's `MouseClick("left", x, y, 1)` is identical to what we want for the HTTP cmdlet shape.
+- Not vendoring; cite for API ergonomics.
+
+### Verdict (PR-2)
+
+Adopt pywinauto's L1 vs L2 method split (`click` vs `click_input`) at the modforge level. Adopt AHK's `dwExtraInfo`-tag pattern for marking our own synthetic events. Modifier-chord encoding: pywinauto-style separate list, JSON friendly.
 
 ---
 
 ## PR-3: Game-bot ecosystems
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-### Targets
+### RuneLite
 
-- RuneLite (RuneScape; permissive plugin API)
-- OSRSBox / Old School RuneScape tooling
-- League/Dota botting communities (mostly GPL'd; cite for L3 patterns)
-- Poker botting (PokerTH OSS bots; vintage but documented)
+- Repo: `runelite/runelite`. **5375 stars, BSD-2-Clause, active.**
+- Architecture: a re-distributable client that injects into the (Java) RuneScape client process and exposes a plugin API. **Same architecture class as us** (in-process mod with side-car HTTP) but on a managed runtime.
+- Input layer (Java AWT): `runelite-client/src/main/java/net/runelite/client/input/MouseAdapter.java` + `MouseManager.java`. Plugins subscribe to `MouseEvent` callbacks; bots that synthesize input call straight into the AWT event queue (`Robot.mouseMove` / `Robot.mousePress`). That maps to our L1 (`SendInput`).
+- **Pattern to copy:** the `Callbacks` / `Hooks` split. RuneLite has a single `Callbacks` interface implemented by the patched client; the patched client calls back into the modding side for every input event. We have the analogue with the modforge `Hook<F>` retour wrapper.
+- **Pattern to NOT copy:** RuneLite enforces no-bot-plugin policy via Jagex contract. Doesn't apply to us.
 
-What we extract: **per-engine click dispatcher catalogs** (which fn
-inside which engine takes the click), and the "humanize the curve"
-pattern for L1 mouse-movement.
+### OSRSBox / RSPS tooling
 
-### Findings
+- Smaller communities, mostly closed bots. Patterns documented in RuneLite + AHK communities; no incremental info beyond PR-3 above.
+
+### League / Dota / MMO botting
+
+- Mostly closed or GPL with anti-cheat dance. We do not target online competitive games; skip.
+
+### Humanize-the-curve pattern
+
+Common across the botting field: instead of an instant `MoveTo(x,y)`, interpolate over `N` ticks along a Bezier curve with jitter, to defeat naive AC heuristics. Worth a `Mouse::move_humanized { duration_ms, jitter_px }` method as a follow-up; not v1.
+
+### Verdict (PR-3)
+
+- Adopt the `Hook<F>` / `Callbacks` event-style read path for future "Claude observes the game's own click stream" work.
+- Defer humanize-curve. v1 is teleport + click.
 
 ---
 
@@ -198,20 +240,20 @@ Driver-level input synthesis is a primary pattern flagged by EAC / BattlEye / Va
 
 ## PR-6: Accessibility / assistive tech
 
-_Status: pending._
+_Status: surveyed but limited yield (2026-05-16)._
 
-The most robust L1 implementations in the wild ship in accessibility
-tools because they have to work across every Windows app and degrade
-gracefully on focus changes.
+A11y tools have to drive arbitrary apps from arbitrary input sources (eye, switch, dwell). They've solved L1 robustness, but for our use case (in-process injection) the lessons are smaller than expected.
 
-### Targets
+### Useful lessons
 
-- Tobii Eye Tracker SDK (closed but with sample code)
-- Camera Mouse (FOSS dwell-click)
-- Sensory Software / The Grid 3 (commercial, but APIs published)
-- AutoControl (Android-side analogue)
+- **All major a11y stacks default to `SendInput` / `mouse_event`.** Camera Mouse (FOSS, MIT-licensed dwell-click for ALS users) uses `SendInput`. Tobii Stream Engine sample code does the same. Confirms L1 is the right choice when we don't have an in-engine path.
+- **Click confirmation is decoupled from click intent.** Dwell-click tools snap the cursor, wait `N ms`, then synthesize. This is a great UX for "show me where I'm about to click" if we add a debug overlay. Not v1.
+- **Focus restoration:** the better a11y tools `SetForegroundWindow(prev)` after the click batch so the keyboard returns to whatever it was on. Worth replicating when we use L1 from a remote terminal.
 
-### Findings
+### Verdict (PR-6)
+
+- L1 backend choice (enigo) validated.
+- Adopt "restore foreground window" post-batch for L1 clicks initiated from outside the game window.
 
 ---
 
@@ -246,71 +288,185 @@ Confirm `enigo` (no features) doesn't pull `tokio` / `serde` / `wayland` / `x11`
 
 ## PR-8: In-process injection precedents
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-The closest match for our architecture: already-in-process mods that
-expose input. They've solved L3 already.
+The closest architectural matches: already-in-process mods that synthesize input. Closest match wins on adoption priority.
 
-### Targets
+### UE4SS
 
-- UE4SS (any plugin that synthesizes input; check repo + community)
-- BepInEx + UnityExplorer / RuntimeUnityEditor (Unity in-process mods)
-- ReShade overlays (DX11/12 hook plus input)
-- Special K
-- ImGui backends (`imgui-impl-win32`). They capture input from the host
-  message pump, so they're a model for the reverse direction too.
+- Repo: `UE4SS-RE/RE-UE4SS`. **2494 stars, MIT, very active (2026-05-16).**
+- `gh search code --owner UE4SS-RE "SendInput OR PostMessage"` returned **empty**. UE4SS routes input through UE's own structures, not Win32, which is exactly what we want for grounded2-mod.
+- UE4SS exposes Lua bindings for `RegisterKeyDownEvent` (listen side) but the canonical "synthesize a key" path inside a UE4SS mod is `APlayerController::InputKey` (same as UnrealCV / Lyra in PR-4).
 
-### Findings
+### BepInEx / MelonLoader (Unity)
+
+- BepInEx: 7826 stars, LGPL-2.1, active. MelonLoader: 3892 stars, Apache-2.0, active.
+- Standard Unity mod pattern: hook `UnityEngine.Input.GetKey*` to lie on read, or use `InputSystem.QueueStateEvent` for the new Unity Input System.
+- LGPL-2.1 is link-friendly for our use (we don't statically embed BepInEx; we extract the pattern).
+- **Relevant for Schedule 1 / Outworld Station / Timberbot lanes.** Not Horsey or Grounded 2.
+
+### ReShade
+
+- DX11/DX12 overlay; hooks `IDXGISwapChain::Present` for rendering and `WndProc` chain for input capture (Alt+key shortcuts). It synthesizes input only to its own ImGui overlay, not to the underlying game. Useful as a model for **input capture** (PR-9 record side); not for input **synthesis**.
+
+### Special K
+
+- Repo: `SpecialKO/SpecialK`. **1872 stars, GPL-3.0**, active. **GPL-3 forbids us linking.**
+- Cite for ideas only. Special K's gamepad-emulation path is a great L3 reference for any future controller work but we're not building that.
+
+### ImGui Win32 backend
+
+- `ocornut/imgui` `backends/imgui_impl_win32.cpp`. The backend swallows `WM_LBUTTONDOWN` etc. when ImGui wants the mouse. We already use ImGui in horsey-mod overlay. Two implications:
+  - Our overlay can **intercept** input destined for the game (good for confirmation dialogs).
+  - When we synthesize via L2 PostMessage to the game HWND, our own ImGui overlay will see the message in WndProc subclassing order. Need to test ordering; may need to bypass ImGui's WndProc tap when our `dwExtraInfo` tag is present.
+
+### Verdict (PR-8)
+
+- For UE games: route through `InputKey` per PR-4 (UE4SS confirms).
+- For Unity games: hook `Input.GetKey*` or `InputSystem.QueueStateEvent` (BepInEx + MelonLoader patterns).
+- For raw-Win32 games (Horsey): L2 PostMessage, but **tag with `dwExtraInfo` so our ImGui overlay can recognize and pass-through our own synthesized events.**
 
 ---
 
 ## PR-9: Replay / record-playback formats
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-Decide canonical JSON event-stream shape for `modforge::input` replay.
+### Surveyed
 
-### Candidates to compare
+| Format | Source | Shape | Determinism | Notes |
+|---|---|---|---|---|
+| AutoHotkey script | `AutoHotkey/AutoHotkey` (12377 stars, GPL-2) | Imperative text DSL (`Send "^!a"`, `Click 100 200`, `Sleep 50`) | NO (wall-clock sleeps) | Human-editable. Sleeps drift; replays diverge across machines. |
+| BizHawk `.bk2` | `TASEmulators/BizHawk` (2655 stars, MIT/custom) | Zip of per-frame input table (rows = frames, cols = buttons) | YES (frame-perfect) | Frame-locked. Requires deterministic engine. Overkill for us; games we target aren't deterministic. |
+| FCEUX `.fm2` | `TASEmulators/fceux` (1488 stars, GPL-2) | Same shape as `.bk2`; NES-only | YES | Frame-locked. Same caveat. |
+| OBS Replay | OBS Studio | Video, not input | n/a | Cite only for timing model. |
+| `xdotool` script | `jordansissel/xdotool` (3794 stars, BSD-3) | Shell commands with explicit delays (`key alt+r`, `mousemove 100 200`, `sleep 0.05`) | NO | Linux-only mechanism (X11 XTEST); syntax is portable. |
+| Cheat Engine macros | `cheat-engine/cheat-engine` (18278 stars, no SPDX) | Lua inside table file | NO | Baroque. Skip. |
 
-- AutoHotkey scripts (text format; well-understood)
-- Cheat Engine table macros (lua; baroque but capable)
-- OBS Replay Buffer / Studio (not input but timing-rigorous)
-- `xdotool` shell scripts (Linux; cite for syntax)
-- Speedrun TAS movie formats (`.bk2`, `.fm2`, `.lsmv`; gold standard
-  for deterministic input replay)
+### Recommended shape: JSON event stream with absolute t_ms
 
-Goal: pick a JSON shape that round-trips losslessly and is human-editable.
+Inspired by `xdotool` (explicit delays, human-readable) plus pywinauto's L1/L2 split:
 
-### Findings
+```json
+{
+  "version": 1,
+  "schema": "modforge.input.replay@v1",
+  "events": [
+    { "t_ms":    0, "type": "mouse.move",  "x": 500, "y": 400 },
+    { "t_ms":   50, "type": "key.down",    "key": "shift" },
+    { "t_ms":   80, "type": "mouse.click", "button": "left", "x": 500, "y": 400 },
+    { "t_ms":  100, "type": "key.up",      "key": "shift" }
+  ],
+  "context": {
+    "game_window_title": "Horsey",
+    "client_size": [1920, 1080],
+    "backend": "l2.postmessage"
+  }
+}
+```
+
+Properties:
+
+- **Absolute `t_ms`** from `events[0]`, not deltas. Trivial to verify monotonicity; easy to seek to a timestamp.
+- **`type` field** = `mouse.move | mouse.click | mouse.drag | mouse.scroll | key.down | key.up | key.press | combo`.
+- **`backend` in `context`** = `l1.sendinput | l2.postmessage | l3.{engine}`. Reproduces the exact path used at record time.
+- **`schema` versioned.** Future fields don't break old replays.
+
+### Verdict (PR-9)
+
+- Adopt the JSON shape above for `modforge::input::Replay`.
+- v1 records what the cmdlets execute; record-the-real-user is out of scope (would need a `WH_MOUSE_LL` hook, separate problem).
 
 ---
 
 ## PR-10: Anti-cheat / legitimacy notes
 
-_Status: pending._
+_Status: first pass (2026-05-16). Per-game stances are best-effort from public knowledge; revisit if any target ships an AC._
 
-Per-game stance. Even if technically possible, some surfaces (online
-MP, leaderboards) treat synthetic input as TOS-violating.
-
-| Game | Online MP? | AC | Stance on synthetic input | Source |
+| Game | Online MP? | AC | Stance on synthetic input | Notes |
 |---|---|---|---|---|
-| Horsey Game | no | none | low risk | tbd |
-| Grounded 2 | co-op (limited) | none | low risk | tbd |
-| Schedule 1 | TBD | TBD | TBD | tbd |
-| Outworld Station | TBD | TBD | TBD | tbd |
+| Horsey Game | no (single-player) | none | LOW risk | Fully single-player; no leaderboards. |
+| Grounded 2 | co-op only | none observed | LOW risk | Co-op with friends; not a competitive ladder. PvE. |
+| Schedule 1 | single-player | none observed | LOW risk | Single-player narrative. |
+| Outworld Station | single-player | none observed | LOW risk | Single-player simulation. |
+| Timberborn (Timberbot) | single-player | none | LOW risk | Single-player city-builder. |
 
-### Findings
+### Patterns the AC field flags
+
+For future reference if we ever target a competitive game:
+
+- **Driver-level synthesis (Interception)**: flagged by EAC, BattlEye, Vanguard.
+- **`SendInput` from a non-foreground process**: heuristically flagged by some AC; safe pattern is to set the game window foreground before the batch.
+- **Hidden hardware ID delta** (`INPUT.mi.dwExtraInfo == 0`): some AC checks this. Tag with a fake nonzero `dwExtraInfo` to look like legit driver state.
+- **Identical mouse-delta patterns** (perfect Bezier, zero jitter): heuristically flagged. Defeated by humanize-curve (deferred per PR-3).
+
+### Verdict (PR-10)
+
+All current target games are LOW risk. Document the patterns above so we know what to switch on if a future target is competitive.
 
 ---
 
-## Recommendation (filled in last)
+## Recommendation
 
-_Pending PR-1..PR-10._
+### Stack
 
-Will cover:
+| Layer | Choice | Reason |
+|---|---|---|
+| L1 | `enigo` 0.6.x, `default-features = false`, Windows-only feature set | Most-starred, most-maintained, MIT, edition 2024, clean `windows`-crate FFI. Beats DIY on bug surface; matches our `Mouse`/`Keyboard` shape. |
+| L2 | Hand-rolled `modforge::input::win32_message` over `windows-sys::Win32::UI::WindowsAndMessaging` | No suitable crate exists; ~80 LOC; targeted per HWND; no focus theft. Lets us pick between `PostMessage` (async) and `SendMessage` (sync, since we are in-process). |
+| L3 | Per-consumer `InputSurface` trait | Engine-specific. UE: `APlayerController::InputKey(FInputKeyParams)`. Unity: `Input.GetKey*` hook or `InputSystem.QueueStateEvent`. Raw Win32: per-game poke of engine globals (Horsey I-R). |
 
-- L1 backend (likely `enigo` or hand-rolled `SendInput` via `windows-sys`).
-- L2 strategy (PostMessage wrapper crate vs hand-rolled).
-- L3 patterns (per-engine table seeded from PR-4 + PR-8).
-- Replay format (per PR-9 winner).
-- Anti-cheat policy (per PR-10).
+### Module shape
+
+```rust
+// modforge::input  (sketch, lands in I-1)
+
+pub enum Backend { L1SendInput, L2WindowMessage, L3GameInternal }
+
+pub trait Mouse {
+    fn move_abs(&self, x: i32, y: i32, b: Backend) -> Result<()>;
+    fn move_rel(&self, dx: i32, dy: i32, b: Backend) -> Result<()>;
+    fn click(&self, btn: Button, x: i32, y: i32, b: Backend) -> Result<()>;
+    fn drag(&self, btn: Button, from: (i32,i32), to: (i32,i32), dur_ms: u32, b: Backend) -> Result<()>;
+    fn scroll(&self, dx: i32, dy: i32, b: Backend) -> Result<()>;
+}
+
+pub trait Keyboard {
+    fn down(&self, k: Key, b: Backend) -> Result<()>;
+    fn up(&self,   k: Key, b: Backend) -> Result<()>;
+    fn press(&self, k: Key, hold_ms: u32, b: Backend) -> Result<()>;
+    fn type_str(&self, s: &str, b: Backend) -> Result<()>;
+}
+
+pub struct Combo { pub mods: Vec<Key>, pub then: Box<dyn FnOnce() -> Result<()>> }
+
+pub trait InputSurface {
+    fn name(&self) -> &'static str;
+    fn click(&self, btn: Button, x: i32, y: i32) -> Result<()>;
+    fn key(&self, k: Key, down: bool) -> Result<()>;
+}
+```
+
+### HTTP cmdlets (I-2)
+
+- `input.mouse.move {x, y, backend?}`
+- `input.mouse.click {button, x?, y?, backend?}`
+- `input.mouse.drag {button, from:[x,y], to:[x,y], duration_ms?, backend?}`
+- `input.mouse.scroll {dx, dy, backend?}`
+- `input.key.down|up|press|type {key|text, hold_ms?, backend?}`
+- `input.combo {keys: [...], then: {...}}`
+- `input.state.get {}` -> reads game's own mouse/key state for verification
+- `input.replay.play {events: [...]}`
+- `input.replay.record.{start,stop}` (deferred to v2)
+
+### Defaults
+
+- `backend` defaults to `l2.postmessage` when a target HWND is known and the consumer hasn't registered an `InputSurface`.
+- `backend` defaults to `l3.<engine>` when `InputSurface::register` has been called.
+- `dwExtraInfo` tag: `0xC1A5DE_xx` per backend (cute, identifiable in logs).
+
+### Open follow-ups (not blockers)
+
+- Humanize-curve mouse moves (PR-3). Defer to v2.
+- Input-recording (capture real-user events) via `WH_MOUSE_LL` + `WH_KEYBOARD_LL`. Separate problem; defer.
+- Interception driver FFI for raw-input-only games. Defer until we hit one.
