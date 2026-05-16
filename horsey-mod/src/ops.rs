@@ -845,6 +845,18 @@ pub fn register_all() {
             },
         ),
         OpDef::new(
+            "targets.resolve.chromosome_table",
+            "Resolve CRISPR's chromosome -> gene-offset table (DAT_14030d110) via patternsleuth.",
+            "",
+            |_| {
+                let addr = crate::targets::resolve::chromosome_table();
+                Ok(json!({
+                    "address": addr.map(|a| format!("0x{a:x}")).unwrap_or_else(|| "0x0".into()),
+                    "image_base": format!("0x{:x}", crate::targets::image_base()),
+                }))
+            },
+        ),
+        OpDef::new(
             "targets.resolve.cheat_globals",
             "Resolve NO_TIRE_TOGGLE, DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE at runtime via patternsleuth.",
             "",

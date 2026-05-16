@@ -1232,6 +1232,142 @@ pub mod resolve {
         score
     }
 
+    /// Resolved runtime address of the CRISPR chromosome -> gene-offset
+    /// table (`DAT_14030d110` in the old decomp). Cached on first
+    /// success.
+    ///
+    /// Layout: `i32[chromosome_id][0..17]`, stride `0x44` bytes per
+    /// chromosome, up to 20 chromosomes. `-1` sentinel = "no gene in
+    /// this slot." Valid entries are FLAT gene indices in `[0, 240)`.
+    /// CRISPR's caller passes `horse + 0x2b8` as the destination
+    /// pointer, so the write `*(u8*)(idx + dest)` lands at
+    /// `horse + 0x2b8 + idx`. Paired bank write uses `idx + 0xf0 + dest`
+    /// = `horse + 0x3a8 + idx`. Exactly 240 valid entries across the
+    /// table (one per vanilla allele).
+    ///
+    /// Anchor: prologue of `FUN_1400b39b0` (CRISPR `apply_chromosome`).
+    /// The unique fingerprint is `movsxd rax, [rcx+0x234]` (load
+    /// `chromosome.id`) immediately followed by `cmp eax, 0x13`
+    /// (reject ids >= 20). No other function in `.text` accesses
+    /// `+0x234` and bounds-checks against 0x13. Inside the body, scan
+    /// for every `lea r64, [rip+disp32]`, decode the target, and pick
+    /// the one whose memory shape passes the table validator.
+    pub fn chromosome_table() -> Option<usize> {
+        static CACHE: OnceLock<Option<usize>> = OnceLock::new();
+        *CACHE.get_or_init(resolve_chromosome_table_uncached)
+    }
+
+    fn resolve_chromosome_table_uncached() -> Option<usize> {
+        // 1. Find FUN_1400b39b0 entry.
+        let prologue_sig = "48 89 54 24 10 55 48 83 ec 50 48 63 81 \
+                            34 02 00 00 48 8b e9 83 f8 13 0f 87";
+        let mut hits = match sleuth::scan_all_matches(prologue_sig) {
+            Ok(h) => h,
+            Err(_) => return None,
+        };
+        hits.sort();
+        hits.dedup();
+        if hits.len() != 1 {
+            modforge::log!(
+                "R3 chromosome_table: prologue sig matched {} sites (want 1); aborting",
+                hits.len()
+            );
+            return None;
+        }
+        let fn_start = hits[0];
+
+        // 2. Walk the body for every `lea r64, [rip+disp32]`. 16
+        //    variants: REX prefix 0x48 (rax-rdi) or 0x4c (r8-r15),
+        //    8 reg-encodings each via modrm = (reg << 3) | 0x05.
+        const BODY_WINDOW: usize = 1024;
+        let mut candidates: std::collections::BTreeSet<usize> =
+            std::collections::BTreeSet::new();
+        for prefix in [0x48u8, 0x4c] {
+            for reg in 0..8u8 {
+                let modrm = (reg << 3) | 0x05;
+                let sig = format!("{prefix:02x} 8d {modrm:02x} ?? ?? ?? ??");
+                let Ok(matches) = sleuth::scan_all_matches(&sig) else { continue };
+                for site in matches {
+                    if site < fn_start || site >= fn_start + BODY_WINDOW {
+                        continue;
+                    }
+                    if !modforge::winproc::is_addr_readable(site + 7) {
+                        continue;
+                    }
+                    // SAFETY: site+7 readability checked.
+                    let bytes = unsafe { std::slice::from_raw_parts(site as *const u8, 7) };
+                    let disp = i32::from_le_bytes(
+                        [bytes[3], bytes[4], bytes[5], bytes[6]]
+                    ) as isize;
+                    let next_ip = (site + 7) as isize;
+                    let target = (next_ip + disp) as usize;
+                    candidates.insert(target);
+                }
+            }
+        }
+
+        // 3. Validate each candidate. The first one that passes the
+        //    table-shape check wins; assert uniqueness (only one
+        //    candidate in the function body should look like a 240-
+        //    entry gene-offset table).
+        let mut winners: Vec<usize> = candidates.into_iter()
+            .filter(|&c| validate_chromosome_table(c))
+            .collect();
+        if winners.is_empty() {
+            modforge::log!(
+                "R3 chromosome_table: no body LEA target passed validation"
+            );
+            return None;
+        }
+        if winners.len() > 1 {
+            modforge::log!(
+                "R3 chromosome_table: {} candidates passed validation; \
+                 returning first ({:#x})",
+                winners.len(),
+                winners[0]
+            );
+        }
+        let addr = winners.remove(0);
+        modforge::log!("R3 chromosome_table resolved to 0x{:x}", addr);
+        Some(addr)
+    }
+
+    /// True if `addr` points at a 20-row x 17-slot i32 table where:
+    /// - each chromosome row terminates at its first `-1` (slots
+    ///   past the sentinel are unused / garbage),
+    /// - across all rows, exactly 240 valid entries appear,
+    /// - every entry is a flat gene index in `[0, 240)`,
+    /// - each index appears at most once.
+    ///
+    /// CRISPR's iterator (`FUN_1400b39b0`) confirms the per-row
+    /// `-1` terminator: `do { ... } while (*(int *)(table + chromo *
+    /// 0x44 + slot * 4) != -1);`.
+    fn validate_chromosome_table(addr: usize) -> bool {
+        const STRIDE: usize = 0x44;
+        const SLOTS_PER_CHROMO: usize = 17;
+        const MAX_CHROMOS: usize = 20;
+        const TABLE_BYTES: usize = STRIDE * MAX_CHROMOS;
+        if (addr & 3) != 0 { return false; }
+        if !modforge::winproc::is_addr_readable(addr + TABLE_BYTES) {
+            return false;
+        }
+        let mut valid_count = 0usize;
+        let mut seen = [false; 240];
+        for chromo_id in 0..MAX_CHROMOS {
+            for slot in 0..SLOTS_PER_CHROMO {
+                let off = chromo_id * STRIDE + slot * 4;
+                // SAFETY: range readability checked above.
+                let v = unsafe { *((addr + off) as *const i32) };
+                if v == -1 { break; }   // end of this chromosome's slots
+                if !(0..240).contains(&v) { return false; }
+                if seen[v as usize] { return false; }
+                seen[v as usize] = true;
+                valid_count += 1;
+            }
+        }
+        valid_count == 240
+    }
+
     /// Resolved runtime address of GAMESTATE_PTR (the main game-state
     /// struct base, `DAT_1403fb0d8` in the decomp). Cached on first
     /// successful resolve. Returns `None` if every candidate
