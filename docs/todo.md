@@ -284,9 +284,10 @@ Same I-R checklist instantiated per future game.
 
 #### Follow-ups discovered during I-1/I-2
 
-- [ ] **I-2a: `input.find_hwnd_by_pid {pid}` op.** Today L2 falls back to `GetForegroundWindow`; cargo-test runs in a foreground console window, so the foreground HWND is rarely the game. An EnumWindows-by-PID helper lets tests explicitly resolve the game's HWND. Pure modforge; no game launch needed for the impl.
+- [x] **I-2a: `input.find_hwnd_by_pid {pid}` + `input.self.hwnd` ops.** Shipped `4f6c6dda`. EnumWindows-by-PID with visibility filter; `self.hwnd` is the in-process shortcut for cmdlets running inside the game.
 - [ ] **I-2b: `input.state.get` op.** Reads game's own mouse/keyboard state for verification (so smoke tests don't trust their own writes). Needs per-game `InputSurface` impl; defer until horsey-mod has one.
-- [ ] **I-2c: Drag/scroll/combo cmdlets.** Wait until L2 smoke is green to validate the primitives below them.
+- [ ] **I-2c: Drag/scroll/combo cmdlets.** Smoke is green (`befe13ad`); unblocked. Drag = move + buttondown + intermediate moves + buttonup. Scroll = single `MOUSEEVENTF_WHEEL` (L1) or `WM_MOUSEWHEEL` (L2). Combo = modifier-down + then-event + modifier-up; pywinauto-style separate `mods: [...]` arg. ~80 LOC + tests.
+- [ ] **I-2d: HK1 Shift+Click migration.** With I-2c, the HK1 transfer becomes `input.combo {mods: ["shift"], then: {type: "mouse.click", x, y}}` followed by a drag to the target slot. The post-vtable-helper RE work documented in [`../horsey-mod/docs/todo.md`](../horsey-mod/docs/todo.md) "HK1 Shift+Click smart-transfer" goes away; the game's own click handler runs the 4 helpers automatically.
 
 ### Definition of done
 

@@ -10,11 +10,12 @@
 
 ## Implementation status (2026-05-16)
 
-- **I-1 shipped** (commit `e344c5dd`). `modforge::input::{l1, l2, ops}` + `Backend`/`Button`/`Key`/`InputSurface`.
+- **I-1 shipped** (commit `e344c5dd`). `modforge::input::{l1, l2, ops}` + `Backend`/`Button`/`Key`/`InputSurface`. 9 HTTP cmdlets total after the I-2a addition. 8 unit tests on parsers green (`054053d3`).
 - **I-2 shipped** (same commit). 7 HTTP cmdlets wired through horsey-mod at attach.
-- **Final crate decision: DID NOT adopt `enigo`.** Cargo.toml inspection showed it pulls the `windows` crate (high-level safe wrappers) alongside our existing `windows-sys` (raw FFI). Hand-rolling L1 over `windows-sys` was ~150 LOC of straight SendInput plumbing for zero new deps. Decision overrides the PR-7 recommendation that said "use enigo." Reasoning preserved here as a lesson: the recommendation was based on stars/license/maintenance; the final call factored in the dependency-tree side effect that only became visible during Cargo.toml inspection.
-- **L2 verification path identified.** `GetForegroundWindow` is not viable from a cargo-test process (test console steals focus). Added a follow-up task `I-2a: input.find_hwnd_by_pid {pid}` so L2 tests can target the game window explicitly.
-- **Smoke run blocked** by an unrelated horsey-side resolver bug in the recent target-registry migration (NO_TIRE_TOGGLE write goes to `image_base + 0x40_3d_95_a5` instead of `image_base + 0x3d_95_a5`, off by `0x40_00_00_00`). Crash happens before HTTP plane comes up; not my code. Resume once other-Claude unblocks it.
+- **I-2a shipped** (`4f6c6dda`). `input.find_hwnd_by_pid` + `input.self.hwnd` so L2 tests can target the game window regardless of desktop focus.
+- **I-5 first slice GREEN** (`befe13ad`, 2026-05-16). `horsey-mod/tests/input_smoke.rs` passes against a live Horsey: L1 cursor round-trip (within 1px of target), L1 keyboard F24 press, L2 PostMessage `WM_MOUSEMOVE` to the Horsey HWND. End-to-end "Claude synthesizes input -> game receives it" path is verified.
+- **Final crate decision: DID NOT adopt `enigo`.** Cargo.toml inspection showed it pulls the `windows` crate alongside our existing `windows-sys`. Hand-rolling L1 over `windows-sys` was ~150 LOC for zero new deps. Decision overrides the PR-7 recommendation; rationale preserved as a lesson: the original recommendation was based on stars/license/maintenance, the final call factored in the dependency-tree side effect that only became visible during Cargo.toml inspection.
+- **Side-effect fix.** During the smoke unblock we found and fixed a `sleuth.rs:613` bug in the `hint_rva` fallback path. The mask `hint & 0xffff_ffff` was too wide for pre-rebased VAs at the conventional x64 preferred base `0x140000000`; corrected to detect "hint looks like a preferred-base VA" and strip the base before adding the runtime image_base. Bug was exposed by other-Claude's recent target-registry migration (`43363813` / `a35cdbca` / `536f5d33`) but the bad math lived inside modforge.
 
 ## TL;DR
 
