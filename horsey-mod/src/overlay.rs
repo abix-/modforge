@@ -8,6 +8,8 @@
 //! and is shared with every other native-PE mod that enables modforge's
 //! `overlay-ui` Cargo feature.
 
+use std::collections::HashSet;
+
 use modforge::ui::overlay::{self, Condition, ImguiRenderLoop, Ui};
 
 use crate::gamestate;
@@ -16,10 +18,15 @@ use crate::horse;
 
 /// Per-frame render callback state.
 ///
-/// Currently only the Horses tab needs persistent UI state: which row
-/// has its Details expand open. Other tabs are stateless.
+/// `expanded_row` is the owned-horse index whose Details panel is open
+/// (only one at a time). `collapsed_chromos` and `ext_collapsed`
+/// remember which chromosome strips the user has closed within the
+/// Details panel. State is global across horses so that flipping
+/// between horses keeps the strip layout stable.
 struct HorseyOverlay {
-    expanded_row: Option<usize>,
+    expanded_row:      Option<usize>,
+    collapsed_chromos: HashSet<u8>,
+    ext_collapsed:     bool,
 }
 
 impl ImguiRenderLoop for HorseyOverlay {
@@ -32,7 +39,12 @@ impl ImguiRenderLoop for HorseyOverlay {
                         render_overview(ui);
                     }
                     if let Some(_t) = ui.tab_item("Horses") {
-                        render_horses(ui, &mut self.expanded_row);
+                        render_horses(
+                            ui,
+                            &mut self.expanded_row,
+                            &mut self.collapsed_chromos,
+                            &mut self.ext_collapsed,
+                        );
                     }
                     if let Some(_t) = ui.tab_item("Debug") {
                         render_debug(ui);
@@ -68,7 +80,12 @@ fn render_overview(ui: &Ui) {
     ui.text(format!("Races:  {races}"));
 }
 
-fn render_horses(ui: &Ui, expanded: &mut Option<usize>) {
+fn render_horses(
+    ui: &Ui,
+    expanded: &mut Option<usize>,
+    collapsed_chromos: &mut HashSet<u8>,
+    ext_collapsed: &mut bool,
+) {
     if !gamestate::looks_loaded() {
         ui.text_disabled("(no save loaded -- start a game)");
         return;
@@ -102,7 +119,7 @@ fn render_horses(ui: &Ui, expanded: &mut Option<usize>) {
         ui.text(format!("{i:>2}  {name:<16}  age {age:>3}/{max_age:<3}  skill {skill:>4}"));
 
         if is_expanded {
-            render_horse_details(ui, i, p);
+            render_horse_details(ui, i, p, collapsed_chromos, ext_collapsed);
             ui.separator();
         }
     }
@@ -111,11 +128,26 @@ fn render_horses(ui: &Ui, expanded: &mut Option<usize>) {
     }
 }
 
-/// Per-horse expanded details panel. Scalar block + 480-cell editable
-/// gene grid (vanilla 0..239, ext 240..479). Click a cell to cycle
-/// 0 -> 1 -> 2 -> 3 -> 0. Bulk buttons set every cell at once.
-fn render_horse_details(ui: &Ui, row_idx: usize, horse_ptr: usize) {
-    use crate::genes;
+/// Per-horse expanded details panel.
+///
+/// Layout: scalar block, bulk-op buttons, then a vertical list of
+/// chromosome strips (vanilla, sourced from the in-game CRISPR table
+/// via [`crate::chromosomes`]) followed by one strip for the extended
+/// gene layer. Each strip has a collapse toggle.
+///
+/// Each cell in a strip is a small button showing the current allele
+/// tier (0..3). Click cycles 0 -> 1 -> 2 -> 3 -> 0. Vanilla writes go
+/// through `horse::set_vanilla_allele` (writes BOTH diploid banks,
+/// matching CRISPR's apply path). Ext writes go through
+/// `genes::set_horse_ext_alleles` (mat = pat = value).
+fn render_horse_details(
+    ui: &Ui,
+    row_idx: usize,
+    horse_ptr: usize,
+    collapsed_chromos: &mut HashSet<u8>,
+    ext_collapsed: &mut bool,
+) {
+    use crate::{chromosomes, genes};
 
     let name_id = horse::name_id(horse_ptr).unwrap_or(0);
     let name = horse::name(horse_ptr).unwrap_or_else(|| format!("#{name_id}"));
@@ -129,7 +161,7 @@ fn render_horse_details(ui: &Ui, row_idx: usize, horse_ptr: usize) {
     ));
     ui.text(format!("ptr=0x{horse_ptr:x}"));
 
-    // Bulk operations.
+    // Bulk operations across the whole genome.
     if ui.button(&format!("All 0##bulk0_{row_idx}")) {
         horse::set_vanilla_alleles(horse_ptr, &[0u8; horse::VANILLA_GENOME_LEN]);
         let horse_id = horse_ptr as u64;
@@ -148,15 +180,35 @@ fn render_horse_details(ui: &Ui, row_idx: usize, horse_ptr: usize) {
     ui.same_line();
     ui.text_disabled("(writes both diploid banks for vanilla)");
 
-    // Vanilla grid (idx 0..=239).
-    ui.text("VANILLA  (idx 0..239, click cell to cycle 0->1->2->3->0)");
+    // Vanilla: one strip per chromosome from CRISPR's table.
     let vanilla = horse::vanilla_alleles(horse_ptr).unwrap_or([0u8; 240]);
-    render_allele_grid(ui, row_idx, "v", &vanilla, |idx, new_val| {
-        horse::set_vanilla_allele(horse_ptr, idx, new_val);
-    });
+    let chromos = chromosomes::chromosome_map();
+    if chromos.is_empty() {
+        ui.text_disabled("(chromosome table not yet resolved -- falling back to flat layout)");
+    }
+    ui.text(format!("VANILLA  ({} chromosomes, click to cycle 0->1->2->3->0)", chromos.len()));
 
-    // Ext grid (idx 240..=479 displayed; internally ext_idx 0..=239).
-    ui.text("EXT      (idx 240..479)");
+    for chromo in chromos {
+        let cid = chromo.id;
+        let is_collapsed = collapsed_chromos.contains(&cid);
+        let toggle_label = if is_collapsed {
+            format!("[>] c{cid:<2} ({} genes)##chr_{row_idx}_{cid}", chromo.slots.len())
+        } else {
+            format!("[v] c{cid:<2} ({} genes)##chr_{row_idx}_{cid}", chromo.slots.len())
+        };
+        if ui.small_button(&toggle_label) {
+            if is_collapsed { collapsed_chromos.remove(&cid); }
+            else { collapsed_chromos.insert(cid); }
+        }
+        if !is_collapsed {
+            ui.same_line();
+            render_chromo_strip(ui, row_idx, cid, &chromo.slots, &vanilla, |flat, new_val| {
+                horse::set_vanilla_allele(horse_ptr, flat as usize, new_val);
+            });
+        }
+    }
+
+    // Ext: one collapsible block (no chromosome metadata for our ext genes).
     let horse_id = horse_ptr as u64;
     let mut ext_vals = [0u8; 240];
     for ext_idx in 0..240 {
@@ -164,34 +216,55 @@ fn render_horse_details(ui: &Ui, row_idx: usize, horse_ptr: usize) {
             ext_vals[ext_idx] = m;
         }
     }
-    render_allele_grid(ui, row_idx, "e", &ext_vals, |idx, new_val| {
-        let _ = genes::set_horse_ext_alleles(horse_id, idx, new_val, new_val);
-    });
+    let ext_label = if *ext_collapsed {
+        format!("[>] ext ({} genes)##ext_{row_idx}", EXT_GENE_COUNT)
+    } else {
+        format!("[v] ext ({} genes)##ext_{row_idx}", EXT_GENE_COUNT)
+    };
+    if ui.small_button(&ext_label) {
+        *ext_collapsed = !*ext_collapsed;
+    }
+    if !*ext_collapsed {
+        // Render as a flat grid (no chromosome metadata for ext yet).
+        for row in 0..15 {
+            for col in 0..16 {
+                let i = row * 16 + col;
+                let v = ext_vals[i].min(3);
+                let label = format!("{v}##e_{row_idx}_{i}");
+                if ui.small_button(&label) {
+                    let new_val = (v + 1) % 4;
+                    let _ = genes::set_horse_ext_alleles(horse_id, i, new_val, new_val);
+                }
+                if col < 15 {
+                    ui.same_line();
+                }
+            }
+        }
+    }
 
     ui.unindent();
 }
 
-/// Render 240 buttons in a 16x15 grid; each is a single-digit label
-/// of the current allele value. `on_click(local_idx, new_value)`
-/// cycles 0 -> 1 -> 2 -> 3 -> 0.
-fn render_allele_grid<F: FnMut(usize, u8)>(
+/// Render one chromosome's slots as a horizontal row of buttons.
+/// Each button shows the current allele tier for the gene at that
+/// slot (looked up via `flat_idx` into `values`). Click cycles the
+/// tier and invokes `on_click(flat_idx, new_value)`.
+fn render_chromo_strip<F: FnMut(u8, u8)>(
     ui: &Ui,
     row_idx: usize,
-    layer_tag: &str,
+    chromo_id: u8,
+    slots: &[u8],
     values: &[u8; 240],
     mut on_click: F,
 ) {
-    for row in 0..15 {
-        for col in 0..16 {
-            let i = row * 16 + col;
-            let v = values[i].min(3);
-            let label = format!("{v}##{layer_tag}_{row_idx}_{i}");
-            if ui.small_button(&label) {
-                on_click(i, (v + 1) % 4);
-            }
-            if col < 15 {
-                ui.same_line();
-            }
+    for (pos, &flat) in slots.iter().enumerate() {
+        let v = values[flat as usize].min(3);
+        let label = format!("{v}##c{row_idx}_{chromo_id}_{pos}");
+        if ui.small_button(&label) {
+            on_click(flat, (v + 1) % 4);
+        }
+        if pos + 1 < slots.len() {
+            ui.same_line();
         }
     }
 }
@@ -275,7 +348,11 @@ fn render_debug(ui: &Ui) {
 
 /// Install the overlay. Idempotent.
 pub fn arm() -> Result<(), String> {
-    overlay::arm(HorseyOverlay { expanded_row: None })
+    overlay::arm(HorseyOverlay {
+        expanded_row:      None,
+        collapsed_chromos: HashSet::new(),
+        ext_collapsed:     false,
+    })
 }
 
 pub fn disarm() {
