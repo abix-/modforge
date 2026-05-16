@@ -14,22 +14,25 @@ use crate::gamestate;
 use crate::genes::EXT_GENE_COUNT;
 use crate::horse;
 
-/// Per-frame render callback state. Currently empty; future tabs that
-/// need to remember UI state (filter strings, last-clicked horse, etc.)
-/// add fields here.
-struct HorseyOverlay;
+/// Per-frame render callback state.
+///
+/// Currently only the Horses tab needs persistent UI state: which row
+/// has its Details expand open. Other tabs are stateless.
+struct HorseyOverlay {
+    expanded_row: Option<usize>,
+}
 
 impl ImguiRenderLoop for HorseyOverlay {
     fn render(&mut self, ui: &mut Ui) {
         ui.window("horsey-mod")
-            .size([520.0, 480.0], Condition::FirstUseEver)
+            .size([720.0, 640.0], Condition::FirstUseEver)
             .build(|| {
                 if let Some(_tb) = ui.tab_bar("horsey_tabs") {
                     if let Some(_t) = ui.tab_item("Overview") {
                         render_overview(ui);
                     }
                     if let Some(_t) = ui.tab_item("Horses") {
-                        render_horses(ui);
+                        render_horses(ui, &mut self.expanded_row);
                     }
                     if let Some(_t) = ui.tab_item("Debug") {
                         render_debug(ui);
@@ -65,7 +68,7 @@ fn render_overview(ui: &Ui) {
     ui.text(format!("Races:  {races}"));
 }
 
-fn render_horses(ui: &Ui) {
+fn render_horses(ui: &Ui, expanded: &mut Option<usize>) {
     if !gamestate::looks_loaded() {
         ui.text_disabled("(no save loaded -- start a game)");
         return;
@@ -73,7 +76,6 @@ fn render_horses(ui: &Ui) {
     let owned = gamestate::owned_horse_count();
     let total = gamestate::horse_count();
     ui.text(format!("Owned: {owned}    (roster pool: {total})"));
-    ui.text_disabled("idx  name              species  age/max  skill  tired");
     ui.separator();
 
     if owned == 0 {
@@ -87,18 +89,110 @@ fn render_horses(ui: &Ui) {
         let Some(p) = gamestate::owned_horse_ptr(i) else { continue };
         let name_id = horse::name_id(p).unwrap_or(0);
         let name = horse::name(p).unwrap_or_else(|| format!("#{name_id}"));
-        let species = horse::species(p).unwrap_or(-1);
         let age = horse::age(p).unwrap_or(-1);
         let max_age = horse::max_age(p).unwrap_or(-1);
         let skill = horse::skill(p).unwrap_or(-1);
-        let ta = horse::tired_a(p).unwrap_or(0);
-        let tb = horse::tired_b(p).unwrap_or(0);
-        ui.text(format!(
-            "{i:>3}  {name:<16}  {species:>7}  {age:>3}/{max_age:<3}  {skill:>5}  {ta}/{tb}"
-        ));
+
+        let is_expanded = *expanded == Some(i);
+        let label = if is_expanded { format!("[-]##h{i}") } else { format!("[+]##h{i}") };
+        if ui.button(&label) {
+            *expanded = if is_expanded { None } else { Some(i) };
+        }
+        ui.same_line();
+        ui.text(format!("{i:>2}  {name:<16}  age {age:>3}/{max_age:<3}  skill {skill:>4}"));
+
+        if is_expanded {
+            render_horse_details(ui, i, p);
+            ui.separator();
+        }
     }
     if owned > shown {
         ui.text_disabled(format!("... +{} more (UI cap)", owned - shown));
+    }
+}
+
+/// Per-horse expanded details panel. Scalar block + 480-cell editable
+/// gene grid (vanilla 0..239, ext 240..479). Click a cell to cycle
+/// 0 -> 1 -> 2 -> 3 -> 0. Bulk buttons set every cell at once.
+fn render_horse_details(ui: &Ui, row_idx: usize, horse_ptr: usize) {
+    use crate::genes;
+
+    let name_id = horse::name_id(horse_ptr).unwrap_or(0);
+    let name = horse::name(horse_ptr).unwrap_or_else(|| format!("#{name_id}"));
+    let species = horse::species(horse_ptr).unwrap_or(-1);
+    let ta = horse::tired_a(horse_ptr).unwrap_or(0);
+    let tb = horse::tired_b(horse_ptr).unwrap_or(0);
+
+    ui.indent();
+    ui.text(format!(
+        "name='{name}' name_id={name_id} species={species} tired={ta}/{tb}"
+    ));
+    ui.text(format!("ptr=0x{horse_ptr:x}"));
+
+    // Bulk operations.
+    if ui.button(&format!("All 0##bulk0_{row_idx}")) {
+        horse::set_vanilla_alleles(horse_ptr, &[0u8; horse::VANILLA_GENOME_LEN]);
+        let horse_id = horse_ptr as u64;
+        for ext_idx in 0..240 {
+            let _ = genes::set_horse_ext_alleles(horse_id, ext_idx, 0, 0);
+        }
+    }
+    ui.same_line();
+    if ui.button(&format!("All 3##bulk3_{row_idx}")) {
+        horse::set_vanilla_alleles(horse_ptr, &[3u8; horse::VANILLA_GENOME_LEN]);
+        let horse_id = horse_ptr as u64;
+        for ext_idx in 0..240 {
+            let _ = genes::set_horse_ext_alleles(horse_id, ext_idx, 3, 3);
+        }
+    }
+    ui.same_line();
+    ui.text_disabled("(writes both diploid banks for vanilla)");
+
+    // Vanilla grid (idx 0..=239).
+    ui.text("VANILLA  (idx 0..239, click cell to cycle 0->1->2->3->0)");
+    let vanilla = horse::vanilla_alleles(horse_ptr).unwrap_or([0u8; 240]);
+    render_allele_grid(ui, row_idx, "v", &vanilla, |idx, new_val| {
+        horse::set_vanilla_allele(horse_ptr, idx, new_val);
+    });
+
+    // Ext grid (idx 240..=479 displayed; internally ext_idx 0..=239).
+    ui.text("EXT      (idx 240..479)");
+    let horse_id = horse_ptr as u64;
+    let mut ext_vals = [0u8; 240];
+    for ext_idx in 0..240 {
+        if let Some((m, _p)) = genes::get_horse_ext_alleles(horse_id, ext_idx) {
+            ext_vals[ext_idx] = m;
+        }
+    }
+    render_allele_grid(ui, row_idx, "e", &ext_vals, |idx, new_val| {
+        let _ = genes::set_horse_ext_alleles(horse_id, idx, new_val, new_val);
+    });
+
+    ui.unindent();
+}
+
+/// Render 240 buttons in a 16x15 grid; each is a single-digit label
+/// of the current allele value. `on_click(local_idx, new_value)`
+/// cycles 0 -> 1 -> 2 -> 3 -> 0.
+fn render_allele_grid<F: FnMut(usize, u8)>(
+    ui: &Ui,
+    row_idx: usize,
+    layer_tag: &str,
+    values: &[u8; 240],
+    mut on_click: F,
+) {
+    for row in 0..15 {
+        for col in 0..16 {
+            let i = row * 16 + col;
+            let v = values[i].min(3);
+            let label = format!("{v}##{layer_tag}_{row_idx}_{i}");
+            if ui.small_button(&label) {
+                on_click(i, (v + 1) % 4);
+            }
+            if col < 15 {
+                ui.same_line();
+            }
+        }
     }
 }
 
@@ -181,7 +275,7 @@ fn render_debug(ui: &Ui) {
 
 /// Install the overlay. Idempotent.
 pub fn arm() -> Result<(), String> {
-    overlay::arm(HorseyOverlay)
+    overlay::arm(HorseyOverlay { expanded_row: None })
 }
 
 pub fn disarm() {

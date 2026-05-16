@@ -660,7 +660,33 @@ Sequenced stages, one commit + push + checkpoint between each:
 
 After this lands, the order below resumes:
 
-1. **Per-horse Details UI** (see [per-horse details view](#per-horse-details-view-horses-tab-details-expand) below). Now backed by real accessors; renders both vanilla 240 and ext 240 grids.
+1. **Per-horse Details UI**. Chromosome-strip layout (see [per-horse details view](#per-horse-details-view-horses-tab-details-expand) below). Backed by real accessors; renders chromosomes-of-strips, not a raw 480-cell grid.
+
+### NEXT-NEXT: Chromosome-strip Details UI (2026-05-16)
+
+[Phase A "raw 480-button grid" SHIPPED 2026-05-16 commit pending] Works but ergonomically unmaintainable: 480 tiny single-digit buttons crammed into a 16x30 grid. User feedback: "too many buttons". Replace with CRISPR-style chromosome strips and beat the in-game CRISPR Lab's UX on every axis.
+
+**Ground truth from CRISPR decomp:**
+- `DAT_14030d110` = chromosome -> gene-offset table.
+- Layout: `i32[chromosome_id][0..17]`, stride `0x44` bytes per chromosome.
+- Up to 20 chromosomes (CRISPR rejects chromosome_id >= 0x14).
+- `-1` sentinel = "no gene in this slot."
+- Valid entry = byte offset on Horse (e.g. `0x2b8` for gene 0 on chromosome 0).
+
+**Stages, ship + checkpoint each:**
+
+1. **C1. Resolve `DAT_14030d110` at runtime.** New `targets::resolve::chromosome_table()`. Anchor on the address-load inside `FUN_1400b39b0` (CRISPR apply): pattern `4c 8d 05 ?? ?? ?? ??` (lea r8, [rip+disp32]) or similar near the `* 0x44` / `* 0x11` constants in the loop. Validate by reading entry [0][0] and asserting it's a plausible horse-byte offset in `[0x2b8, 0x498)`. Test: `tests/probe_chromosome_table.rs` dumps every (chromosome_id, slot_idx) -> offset for ids 0..20.
+2. **C2. `genes::chromosome_map() -> &'static Vec<Chromosome>`.** Walks the table once at first call, caches. `Chromosome { id: u32, name: Option<String>, slots: Vec<ChromoSlot { slot_idx: u8, horse_offset: usize, flat_gene_idx: u8 (= horse_offset - 0x2b8) } > }`. Tests in `genes.rs` assert: 240 total valid slots across all chromosomes, every flat_gene_idx in 0..240 appears exactly once.
+3. **C3. Replace render_horse_details vanilla grid with chromosome strips.** Per horse, render: chromosome list, each strip = caret + chromosome_id + cell row showing the up-to-17 alleles for that chromosome, single click cycles, right-click opens per-cell menu (set 0/1/2/3 + "what does this gene do"). Strips collapsible. EXT layer renders below as "chromosome 20.." (virtual chromosomes we own).
+4. **C4. Beat CRISPR's UX.** Things in-game CRISPR canNOT do that we will:
+   - View ALL current alleles across the whole genome at once (CRISPR only shows incoming chromosomes).
+   - Direct edit (no chromosome-collection minigame).
+   - Snapshot a horse's full genome to clipboard / disk; paste onto another horse. (CRISPR has a clipboard but only for the working chromosome set.)
+   - Side-by-side compare two horses (next/prev arrows on the expand panel; diff highlight).
+   - Bulk per-chromosome ops: "max this chromosome", "wild-type this chromosome", "copy from another horse".
+   - Filter: "show only chromosomes that differ from species default" / "show only nonzero".
+5. **C5. Gene name labels.** Find the gene-name table (likely keyed by horse_offset). Replace `c#_s#` headers with the in-game gene names. Hover for description if the game has one. Optional Phase D continuation.
+6. **C6. Persistence helpers.** `horse.genome.snapshot.{save,load,list}` HTTP ops backed by JSON files under `<DLL_dir>/snapshots/`. UI: "Save snapshot..." / "Load snapshot..." dropdown on the Details panel.
 2. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml.
 3. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
 
