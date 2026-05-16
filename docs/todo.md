@@ -188,19 +188,19 @@ Composes with `modforge::seh` (just landed): every `seh::call` site looks up its
 - [x] **B2: Build horsey-mod's registry beside the existing resolvers.** Shipped 2026-05-16. `horsey-mod/src/targets_registry.rs` declares **41 targets**: 7 data globals + 4 invocable function entries (with Signatures) + 30 hint-only function entries. `hint_only_fn!` macro keeps declarations terse. Parity integration test at `horsey-mod/tests/registry_parity.rs` asserts registry-resolved GAMESTATE_PTR matches the legacy resolver byte-for-byte. Commits `12dbcaeb`, `4b349650`.
 - [x] **B3: Land shared R-tier tests in modforge.** Shipped 2026-05-16. `modforge::testkit::registry` exposes 4 shared assertion functions parameterized over `(&RunningGame, &TargetRegistry, &Resolver)`: `assert_every_target_resolves`, `assert_every_target_passes_validators`, `assert_every_field_offset_matches_hint`, `assert_diagnostic_includes_every_entry`. horsey-mod consumes via 3-LOC thin wrappers in `tests/registry_parity.rs`. Commit `26938d4e`.
 - [ ] **B4: Sig tuning + call-site migration.** Split into two stages:
-  - [ ] **B4a: Sig tuning.** 33 of the 41 registry entries still have empty `candidates` and use hint-only fallback. Per-target work: identify a unique anchor, author the `Candidate { sig, recipe }`, parity-test. Two complex resolvers (DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE) ARE migrated 2026-05-16 using the new `PairedRipDispWithDelta` + `RipDispWithRelOffset` recipes shipped in commit `e885febd`. Remaining 33 need live-game per batch.
-  - [x] **B4b: Call-site migration.** 20 of 24 sites migrated 2026-05-16 via the new `targets_registry::resolve` wrapper module. Commit `43363813`. **Remaining 4 sites**: NAME_TABLE (2) + CHROMOSOME_TABLE (2). Their legacy resolvers do heap-deref + std::string-stride scoring; defer until a `Recipe::HeapScored` variant lands.
-- [ ] **B5: Delete legacy `targets::resolve::*`.** Waits on the last 4 heap-scored sites. Will drop `src/targets.rs` from ~2400 LOC to ~600 LOC.
+  - [ ] **B4a: Sig tuning.** 33 of the 42 registry entries still have empty `candidates` and use hint-only fallback. Per-target work: identify a unique anchor, author the `Candidate { sig, recipe }`, parity-test. 9 targets ARE migrated with real recipes: GAMESTATE_PTR (DecodeRipDisp), APPLY_GENE_TO_HORSE (MatchIsAddress prologue), DEBUG_MODE_ACTIVE (PairedRipDispWithDelta), DEBUG_LOG_GATE (RipDispWithRelOffset), NAME_TABLE (Custom), CHROMOSOME_TABLE (Custom), plus 3 invocable signatures. Remaining 33 need live-game per batch.
+  - [x] **B4b: Call-site migration.** All 24 sites migrated 2026-05-16 via the new `targets_registry::resolve` wrapper module. Last 4 (NAME_TABLE + CHROMOSOME_TABLE) landed via the new `Recipe::Custom` escape hatch. Commits `43363813`, `a35cdbca`.
+- [x] **B5: Delete legacy `targets::resolve::*`.** Shipped 2026-05-16. `pub mod resolve` block deleted from `horsey-mod/src/targets.rs`. File dropped from 2507 LOC to 1286 LOC (-1221 LOC). Commit `a35cdbca`.
 - [x] **B6: Cross-game adoption proof.** Shipped 2026-05-16. `grounded2-mod/src/targets_registry.rs` declares `GROUNDED2_TARGETS` with 5 UE5-Augusta globals (G_OBJECTS, G_NAMES, G_WORLD, APPEND_STRING, PROCESS_EVENT) mirroring `ueforge::ue::offsets::STEAM`. Pre-existing `grounded2-mod/tests/layout.rs` E0432 blocker cleared (test now imports types from `ueforge::ue::*`). Commit `903bb91c`.
 
 ### Definition of done
 
 - [x] `modforge::patterns::sleuth` exposes `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, validators, and Recipe variants. The existing one-shot API is unchanged. ~30 unit tests pass.
 - [x] The three (now four) shared R-tier tests in modforge cover any consumer registry.
-- [x] horsey-mod declares every public legacy RVA as a `TargetDef` (41 entries).
+- [x] horsey-mod declares every public legacy RVA as a `TargetDef` (42 entries).
 - [x] At least one additional consumer mod adopts a `TargetRegistry`. (grounded2-mod, B6.)
-- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC). **Pending B5 + the heap-scored 4 sites.**
-- [ ] No `crate::targets::resolve::*` legacy resolver functions remain. **Pending B5.**
+- [x] No `crate::targets::resolve::*` legacy resolver functions remain. (B5 closed, commit `a35cdbca`.)
+- [/] horsey-mod's `src/targets.rs` is pure `TargetDef` data. Down from 2507 LOC to 1286 LOC after B5; remaining ~1286 LOC is `fn_addr`, `gs_offset`, `horse_offset` modules (field-offset resolvers that don't fit the registry shape today). Hitting the ~600 LOC target requires extending the Recipe enum further or accepting these as game-specific helpers; deferred.
 - [ ] [`../modforge/docs/target-registry.md`](../modforge/docs/target-registry.md) updated from design-doc to shipped-API doc.
 
 ### How to pick up B4a (sig tuning)

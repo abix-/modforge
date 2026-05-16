@@ -6,8 +6,13 @@
 > gates layered on top of the already-shipped scanner. Replaces
 > each consumer mod's hand-rolled `targets::resolve::*` family.
 
-This doc defines the design. Implementation is TBD; the goal here
-is to lock the API and migration path before any code lands.
+**Status 2026-05-16: SHIPPED.** All architecture phases (B1, B3,
+B5, B6) complete. horsey-mod and grounded2-mod both adopt the
+pattern. The legacy `pub mod resolve` block in horsey-mod is
+deleted. The remaining work (per-target sig tuning) is data
+authorship, not architecture; it lands per-batch with live-game
+verification. See the workspace `docs/todo.md` P0 entry for the
+phase-by-phase status with commits.
 
 ## Why
 

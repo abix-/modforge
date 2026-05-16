@@ -6,8 +6,15 @@
 > the mod side. Together they cover the three directions of
 > mod/game interaction.
 
-This doc defines the design. Implementation is TBD; the goal here
-is to lock the API and migration path before any code lands.
+**Status 2026-05-16: SHIPPED.** All phases V1-V5 complete.
+horsey-mod has 4 vanilla functions registered with Signatures and
+2 production HTTP cmdlets (`horse.rebuild`, `rng.next_modulo`)
+that invoke through the SEH-wrapped `Invoker::call` path. The
+`vanilla.invoke` and `vanilla.list` HTTP cmdlets are registered
+against `HORSEY_RESOLVER` at attach. The remaining piece (live-
+game validation of an actual invoke) needs a running game.
+
+This doc captures the original design + final shipped state.
 Same draft-first convention as
 [`target-registry.md`](target-registry.md).
 
