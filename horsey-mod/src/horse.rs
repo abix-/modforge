@@ -197,50 +197,88 @@ pub fn set_litter_stat(horse: usize, value: i32) -> bool {
     true
 }
 
-/// Number of vanilla allele slots on a Horse. Confirmed via
-/// `tests/dump_vanilla_alleles.rs` on 2026-05-16: all 3 owned horses
-/// dumped 240 bytes in the 0..=3 range at `horse + ctx_offset()`.
+/// Number of allele slots PER BANK on a Horse. The vanilla genome is
+/// diploid: two banks of 240 bytes each starting at `horse +
+/// ctx_offset()` (primary / maternal) and `horse + ctx_offset() +
+/// PAIRED_BANK_DELTA` (paired / paternal).
+///
+/// Confirmed 2026-05-16 by reading the in-game CRISPR apply function
+/// (`FUN_1400b39b0`), which writes each gene to BOTH banks. Writing
+/// only the primary leaves the rendered phenotype unchanged because
+/// the render path samples the paired bank (or applies dominance
+/// across both). `tests/probe_paired_genome.rs` verified the paired
+/// bank holds real allele data and survives writes to the primary.
 pub const VANILLA_GENOME_LEN: usize = 240;
 
-/// Read all 240 vanilla allele bytes at `horse + ctx_offset()`.
+/// Byte distance from the primary bank to the paired bank.
+/// CRISPR uses `+ 0xF0` (= 240) hard-coded.
+pub const PAIRED_BANK_DELTA: usize = 0xF0;
+
+fn primary_ptr(horse: usize) -> usize {
+    horse + horse_offset::ctx_offset()
+}
+
+fn paired_ptr(horse: usize) -> usize {
+    horse + horse_offset::ctx_offset() + PAIRED_BANK_DELTA
+}
+
+/// Read all 240 vanilla allele bytes from the PRIMARY bank only.
 pub fn vanilla_alleles(horse: usize) -> Option<[u8; VANILLA_GENOME_LEN]> {
     if horse == 0 {
         return None;
     }
     let mut out = [0u8; VANILLA_GENOME_LEN];
-    // SAFETY: horse is a live Horse*; the genome buffer at
-    // ctx_offset has VANILLA_GENOME_LEN bytes per HORSE-PLACES.md
-    // (confirmed by Stage-1 dump test 2026-05-16).
+    // SAFETY: horse is a live Horse*; primary bank is 240 bytes.
     unsafe {
-        let src = (horse + horse_offset::ctx_offset()) as *const u8;
-        std::ptr::copy_nonoverlapping(src, out.as_mut_ptr(), VANILLA_GENOME_LEN);
+        std::ptr::copy_nonoverlapping(
+            primary_ptr(horse) as *const u8,
+            out.as_mut_ptr(),
+            VANILLA_GENOME_LEN,
+        );
     }
     Some(out)
 }
 
-/// Read a single vanilla allele byte. `idx` must be < 240.
+/// Read both banks as `(primary, paired)`.
+pub fn vanilla_alleles_both(
+    horse: usize,
+) -> Option<([u8; VANILLA_GENOME_LEN], [u8; VANILLA_GENOME_LEN])> {
+    if horse == 0 {
+        return None;
+    }
+    let mut p = [0u8; VANILLA_GENOME_LEN];
+    let mut q = [0u8; VANILLA_GENOME_LEN];
+    // SAFETY: live horse; both banks 240 bytes each.
+    unsafe {
+        std::ptr::copy_nonoverlapping(primary_ptr(horse) as *const u8, p.as_mut_ptr(), VANILLA_GENOME_LEN);
+        std::ptr::copy_nonoverlapping(paired_ptr(horse) as *const u8,  q.as_mut_ptr(), VANILLA_GENOME_LEN);
+    }
+    Some((p, q))
+}
+
+/// Read a single vanilla allele byte from the PRIMARY bank.
 pub fn vanilla_allele(horse: usize, idx: usize) -> Option<u8> {
     if horse == 0 || idx >= VANILLA_GENOME_LEN {
         return None;
     }
     // SAFETY: bounds checked; live horse.
-    Some(unsafe { *((horse + horse_offset::ctx_offset() + idx) as *const u8) })
+    Some(unsafe { *((primary_ptr(horse) + idx) as *const u8) })
 }
 
-/// Write a single vanilla allele byte. `idx` must be < 240. Returns
-/// false on null horse or out-of-range idx.
+/// Write one vanilla allele to BOTH banks (matches CRISPR).
 pub fn set_vanilla_allele(horse: usize, idx: usize, value: u8) -> bool {
     if horse == 0 || idx >= VANILLA_GENOME_LEN {
         return false;
     }
-    // SAFETY: bounds checked; live horse.
+    // SAFETY: bounds checked; live horse; both banks part of Horse.
     unsafe {
-        *((horse + horse_offset::ctx_offset() + idx) as *mut u8) = value;
+        *((primary_ptr(horse) + idx) as *mut u8) = value;
+        *((paired_ptr(horse)  + idx) as *mut u8) = value;
     }
     true
 }
 
-/// Overwrite all 240 vanilla allele bytes in one shot.
+/// Overwrite all 240 vanilla allele bytes in BOTH banks.
 pub fn set_vanilla_alleles(
     horse: usize,
     alleles: &[u8; VANILLA_GENOME_LEN],
@@ -248,10 +286,10 @@ pub fn set_vanilla_alleles(
     if horse == 0 {
         return false;
     }
-    // SAFETY: live horse; 240 bytes are part of the Horse object.
+    // SAFETY: live horse; 240 bytes per bank, both part of Horse.
     unsafe {
-        let dst = (horse + horse_offset::ctx_offset()) as *mut u8;
-        std::ptr::copy_nonoverlapping(alleles.as_ptr(), dst, VANILLA_GENOME_LEN);
+        std::ptr::copy_nonoverlapping(alleles.as_ptr(), primary_ptr(horse) as *mut u8, VANILLA_GENOME_LEN);
+        std::ptr::copy_nonoverlapping(alleles.as_ptr(), paired_ptr(horse)  as *mut u8, VANILLA_GENOME_LEN);
     }
     true
 }
