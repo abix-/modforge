@@ -224,6 +224,87 @@ Field offsets (the 9 remaining `H-gb-low` items from `horsey-mod/docs/todo.md`) 
 
 ---
 
+## P0. Synthetic input: let the mod (and Claude) drive the game like a human (2026-05-16)
+
+User-locked 2026-05-16. Lives in modforge because it applies everywhere: every native-PE mod target (horsey-mod, grounded2-mod, schedule1, outworld-station-mod, future games) needs the same primitive. Horsey is just the first consumer.
+
+**Motivation.** For Claude to make real progress long-term, the mod must expose mouse + keyboard input as first-class HTTP cmdlets, so Claude (driving from a remote terminal) can interact with the game the way the user does at the keyboard. Clicks and drags are the priority. Keyboard second. The HK1 Shift+Click effort is currently blocked precisely because we can't synthesize a shift+click from a test; once this lands, that flow becomes `input.combo {keys: ["shift"], then: {type: "mouse.click", x, y}}` and the rest is whatever the game does naturally. Same for crispr lab, breeding pen, every UI panel, every future game.
+
+**Three layers, ranked by reliability.**
+
+| Layer | Mechanism | Reliability | When chosen |
+|---|---|---|---|
+| L1: Win32 `SendInput` | Synthesize OS-level mouse/key events globally | Lowest | Last resort; steals real mouse, requires game window focused, useless when user is at the machine |
+| L2: `PostMessage` / `SendMessage` to game HWND | Targeted window messages (`WM_LBUTTONDOWN`, `WM_MOUSEMOVE`, `WM_KEYDOWN`, etc.) | Medium | Works without focus stealing; raw-input games ignore it; per-game verify |
+| L3: Game-internal input poke / direct call | Write the game's own input-state buffers, or call the game's click-handler functions directly (vtable-style, like HK1 already does) | Highest | Requires RE per input surface; biggest payoff |
+
+L3 is the long-term home. L2 is the right MVP if the game honors it. L1 only if both L2 and L3 are dead ends.
+
+### Phase I-R0: GitHub prior-art research (heavy `gh` CLI; user-attention free)
+
+> This is a LOT of `gh` work. Many people have shipped synthetic-input layers for game mods, bots, automation frameworks, and accessibility tools. We don't write a line of code until we've harvested what already exists. Output: a single markdown digest at [`../modforge/docs/input-prior-art.md`](../modforge/docs/input-prior-art.md) ranking candidates by fit + license + maintenance.
+
+Per-axis search plan (all via `gh search code` / `gh search repos` + `gh api`):
+
+- [ ] **PR-1: Game-mod input libraries.** Search terms: `SendInput WM_LBUTTONDOWN mod`, `PostMessage game bot`, `input simulation rust windows`, `mouse_event keybd_event hook`, `synthetic input game automation`. Filter language: Rust, C++, C#. Capture: repo, stars, license, last commit, mechanism (L1/L2/L3), API shape, what game(s) it targets.
+- [ ] **PR-2: UI automation frameworks.** Pywinauto, AutoHotkey internals, Microsoft UI Automation, AutoIt. We won't use them directly but their dispatch shapes (key/mouse abstraction, modifier-chord handling, replay format) are battle-tested. Pull the abstraction, not the impl.
+- [ ] **PR-3: Game-bot ecosystems.** RuneScape (OSBuddy / RuneLite plugin authors), poker bots, MMO bots. These have ALL solved L2/L3 for many game engines. Mostly C#/Java; concepts transfer. Focus on the "where do I poke" lists they ship.
+- [ ] **PR-4: Reverse-engineered input pokes per engine.** UE4/UE5 input subsystem (`UPlayerInput`, `FInputKeyParams`, `FSlateApplication::OnControllerButtonPressed`). Unity input system. SDL2 internals. Most engine RE projects on GitHub document the input read sites; we collect them.
+- [ ] **PR-5: Raw-input / `WM_INPUT` handling.** Search `WM_INPUT inject`, `raw input synthesize`, `XInput emulate`. Critical because raw-input games ignore PostMessage by design; we need to know which workaround the field has converged on (ViGEm for gamepad, interception driver for keyboard, etc.).
+- [ ] **PR-6: Accessibility / assistive tech.** Dwell-click software, eye-tracker drivers (Tobii), switch-control software. They've solved "click from arbitrary input source into arbitrary app" robustly and legally; the dispatch layer is usually L1 done well.
+- [ ] **PR-7: Crate audit.** `cargo search` + GitHub: `enigo`, `autopilot`, `rdev`, `winput`, `mouce`, `inputbot`. Compatibility (windows-only ok), license, maintenance, scope (input vs hook vs both), Rust edition. Pick top 2-3 candidates to evaluate.
+- [ ] **PR-8: Existing in-process injection mods that synthesize input.** UE4SS plugins, BepInEx plugins, Reshade-style overlays. These are closest to our architecture (already inside the process) and may have shipped the L3 we want.
+- [ ] **PR-9: Replay / record-playback formats.** Cheat Engine table macros, AHK scripts, OBS replay, Speedrun.com tooling. Decide canonical JSON event-stream shape from prior art.
+- [ ] **PR-10: Anti-cheat / legitimacy notes.** Some games (and some online MP modes) treat synthetic input as a TOS violation. Capture per-game stance; flag affected targets. Horsey, Grounded 2 single-player, Schedule 1, Outworld Station: low risk, but document.
+
+Deliverable: [`../modforge/docs/input-prior-art.md`](../modforge/docs/input-prior-art.md) with one section per PR-N above, a comparison table (top 5 candidates), and a recommendation for which L1 backend (likely `enigo` or hand-rolled `SendInput`), L2 strategy (PostMessage wrapper), and L3 patterns (per-engine).
+
+### Phase I-R: per-game research (game-specific, NOT in modforge)
+
+After I-R0 picks the shape, each consumer mod does its own I-R steps locally. For Horsey:
+
+- [ ] **I-R1: Decomp grep for input read sites** in `research/decompiled/all_functions.c`: `GetCursorPos`, `GetAsyncKeyState`, `GetKeyState`, `SDL_*`, `XInputGetState`, `RAWINPUT`, `PeekMessage` / `DispatchMessage`. Tells us which OS surface Horsey uses; decides L1/L2/L3 viability.
+- [ ] **I-R2: Locate mouse-state globals** (expand from `hk1.probe.mouse_globals` / `hk1.read_cursor`). Pattern-resolve via `targets::resolve::mouse_state()`.
+- [ ] **I-R3: Locate keyboard-state globals.** Likely a 256-byte VK array next to `GetAsyncKeyState` call sites.
+- [ ] **I-R4: Identify the click dispatcher.** HK1 found `FUN_1400de2e0` for drop-commit; need the equivalent for "any-click."
+- [ ] **I-R5: PostMessage smoke** (~5 min live): does `PostMessage(hwnd, WM_LBUTTONDOWN, ...)` trigger an in-game click? Binary answer; decides L2.
+
+Same I-R checklist instantiated per future game.
+
+### Phase I: implementation (modforge core)
+
+- [ ] **I-1: `modforge::input` primitives.** `Mouse { move_abs, move_rel, click, drag, scroll }`, `Keyboard { down, up, press, type_str }`. L1 + L2 backends behind a `Backend` enum; L3 hooked in per-game via a trait (`InputSurface`).
+- [ ] **I-2: HTTP cmdlets.** `input.mouse.{move,click,drag,scroll}`, `input.key.{down,up,press,type}`, `input.combo` (chord), `input.state.get` (reads the game's own state for verification). Coords default to client-area px of the game HWND.
+- [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, canonical = client-area px; conversions inside.
+- [ ] **I-4: L3 game-internal pokes** (per surface, opt-in via the per-game `InputSurface` trait).
+- [ ] **I-5: Test harness.** `modforge/tests/input_*.rs` env-driven + per-mod consumer tests.
+- [ ] **I-6: Replay format.** JSON event stream `[(t_ms, event, args)]`; record, save, replay. Shape decided by PR-9 winner.
+
+### Definition of done
+
+- [ ] [`../modforge/docs/input-prior-art.md`](../modforge/docs/input-prior-art.md) covers PR-1..PR-10 with a recommendation.
+- [ ] `modforge::input` ships L1 + L2 backends, `Mouse`, `Keyboard`, `InputSurface` trait.
+- [ ] `input.*` HTTP cmdlets exposed in horsey-mod at attach.
+- [ ] Claude can run `input.mouse.click {x, y}` from a remote terminal with the game running on the user's machine and the game responds as if the user clicked there.
+- [ ] Chord clicks: `input.combo {keys: ["shift"], then: ...}` registers as shift+click.
+- [ ] At least one end-to-end test exercises a click-driven flow ("open Horses tab, click row 3, assert detail panel opens").
+- [ ] `input.state.get` reads back the game's own state so tests don't trust their own writes.
+- [ ] At least one second consumer (grounded2-mod or schedule1) wires up `InputSurface` for cross-game proof.
+
+### Out of scope (defer)
+
+- Controller / gamepad input (no current need).
+- Recording user-side input for replay (separate hook problem).
+- Cross-process input on obscured / minimized windows. Validate as side effect; don't engineer for.
+
+### Open questions (resolve during I-R0 and I-R)
+
+- Raw-input (`WM_INPUT`) games: PostMessage useless for cursor movement, only GDI cursor moves. L3 mandatory.
+- Per-frame snapshot vs scattered reads inside `GameState`. Affects L3 surface size.
+- DPI / fullscreen coords: physical vs logical px. Decide at I-3 from PR-2 norms.
+
+---
+
 ## P0. Vanilla function invocation (2026-05-16)
 
 > **Design doc:** [`../modforge/docs/vanilla-invoke.md`](../modforge/docs/vanilla-invoke.md). Authoritative on the API + migration phases.

@@ -281,7 +281,22 @@ pub enum Recipe {
     RipDispWithRelOffset {
         disp_off: u8, instr_len: u8, rel_offset: i64,
     },
+    /// Escape hatch for resolvers whose logic doesn't fit any of
+    /// the closed-enum recipes. The function pointer is invoked
+    /// with the resolved image_base and must return the final
+    /// value (address for FunctionEntry/DataGlobal, offset for
+    /// FieldOffset). Use sparingly; prefer extending the closed
+    /// recipe set when a pattern appears more than once.
+    ///
+    /// The `Candidate.sig` is ignored for `Custom`; pass `""` or
+    /// any placeholder. The CustomResolver gets full control over
+    /// scanning, decoding, and validation.
+    Custom(CustomResolver),
 }
+
+/// Function-pointer signature for `Recipe::Custom`. Const-evaluable
+/// in `&'static [Candidate]` because `fn(...)` is `Copy`.
+pub type CustomResolver = fn(image_base: u64) -> Result<u64, String>;
 
 /// Predicate for `Recipe::HistogramDisp`. Filters which disp32
 /// values get counted into the histogram.
@@ -670,6 +685,9 @@ fn decode_candidate(
             let target = match_addr.wrapping_add(instr_len as u64)
                 .wrapping_add(disp as i64 as u64);
             Ok((target as i64).wrapping_add(rel_offset) as u64)
+        }
+        Recipe::Custom(resolver) => {
+            resolver(image_base).map_err(|e| anyhow!("custom resolver: {e}"))
         }
     }
 }

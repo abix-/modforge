@@ -17,10 +17,148 @@
 //! `tests/registry_parity.rs` guards against drift.
 
 use modforge::patterns::sleuth::{
-    Candidate, InImage, Recipe, Resolver, TargetDef, TargetKind, TargetRegistry,
-    Validator,
+    self, Candidate, InImage, Recipe, Resolver, TargetDef, TargetKind,
+    TargetRegistry, Validator,
 };
 use modforge::vanilla::sig::{ArgKind, RetKind, Signature};
+
+// ============================================================================
+// Custom resolvers (Recipe::Custom). For targets whose decoder doesn't fit
+// any of the closed Recipe variants. Each returns the final value (heap
+// pointer for NAME_TABLE, table base for CHROMOSOME_TABLE) per
+// CustomResolver's contract.
+// ============================================================================
+
+/// NAME_TABLE: scan .text for `mov r64, [rip+disp32]` (8 ModR/M variants),
+/// deref each candidate slot, score how many entries at stride 0x88 look
+/// like MSVC std::string. Return the heap pointer of the highest-scoring
+/// slot.
+fn resolve_name_table_custom(_image_base: u64) -> Result<u64, String> {
+    let mov_modrms: [(u8, u8, u8); 8] = [
+        (0x48, 0x8b, 0x05), (0x48, 0x8b, 0x0d), (0x48, 0x8b, 0x15),
+        (0x48, 0x8b, 0x1d), (0x48, 0x8b, 0x2d), (0x48, 0x8b, 0x35),
+        (0x48, 0x8b, 0x3d), (0x4c, 0x8b, 0x05),
+    ];
+    let mut slots: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    for (a, b, c) in mov_modrms {
+        let sig = format!("{a:02x} {b:02x} {c:02x}");
+        if let Ok(hits) = sleuth::scan_all_matches(&sig) {
+            for site in hits {
+                if !modforge::winproc::is_addr_readable(site + 7) { continue; }
+                // SAFETY: site+7 readability checked.
+                let bytes = unsafe { std::slice::from_raw_parts(site as *const u8, 7) };
+                let disp = i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]) as isize;
+                let next_ip = (site + 7) as isize;
+                let slot = (next_ip + disp) as usize;
+                if modforge::winproc::is_addr_readable(slot + 8) {
+                    slots.insert(slot);
+                }
+            }
+        }
+    }
+    let mut best: Option<(u64, i32)> = None;
+    for slot in slots {
+        // SAFETY: slot+8 readability checked above.
+        let heap_ptr = unsafe { *(slot as *const u64) };
+        if heap_ptr < 0x1_0000_0000 || heap_ptr > 0x7fff_ffff_ffff { continue; }
+        if (heap_ptr & 0xF) != 0 { continue; }
+        let score = score_name_table_entries(heap_ptr as usize);
+        if score >= 16 && best.map(|(_, s)| score > s).unwrap_or(true) {
+            best = Some((heap_ptr, score));
+        }
+    }
+    best.map(|(addr, _)| addr).ok_or_else(|| "no slot scored >= 16".into())
+}
+
+fn score_name_table_entries(addr: usize) -> i32 {
+    const STRIDE: usize = 0x88;
+    const N: usize = 16;
+    if !modforge::winproc::is_addr_readable(addr + STRIDE * N) {
+        return 0;
+    }
+    let mut score = 0i32;
+    for i in 0..N {
+        let entry = addr + i * STRIDE;
+        // SAFETY: range readability checked above.
+        let size = unsafe { *((entry + 0x10) as *const usize) };
+        let cap = unsafe { *((entry + 0x18) as *const usize) };
+        let size_ok = size <= 255;
+        let cap_ok = cap < (1 << 24);
+        let sso_default = cap == 15;
+        if size_ok && cap_ok && (size > 0 || sso_default) {
+            score += if sso_default { 2 } else { 1 };
+        }
+    }
+    score
+}
+
+/// CHROMOSOME_TABLE: find FUN_1400b39b0 via its unique prologue sig,
+/// walk its body window for every `lea r64, [rip+disp32]`, validate
+/// each candidate as a 240-entry chromosome -> gene-offset table.
+fn resolve_chromosome_table_custom(_image_base: u64) -> Result<u64, String> {
+    let prologue_sig = "48 89 54 24 10 55 48 83 ec 50 48 63 81 \
+                        34 02 00 00 48 8b e9 83 f8 13 0f 87";
+    let mut hits = sleuth::scan_all_matches(prologue_sig)
+        .map_err(|e| format!("prologue sig scan: {e}"))?;
+    hits.sort();
+    hits.dedup();
+    if hits.len() != 1 {
+        return Err(format!("prologue matched {} sites; want exactly 1", hits.len()));
+    }
+    let fn_start = hits[0];
+
+    const BODY_WINDOW: usize = 1024;
+    let mut candidates: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+    for prefix in [0x48u8, 0x4c] {
+        for reg in 0..8u8 {
+            let modrm = (reg << 3) | 0x05;
+            let sig = format!("{prefix:02x} 8d {modrm:02x} ?? ?? ?? ??");
+            let Ok(matches) = sleuth::scan_all_matches(&sig) else { continue };
+            for site in matches {
+                if site < fn_start || site >= fn_start + BODY_WINDOW { continue; }
+                if !modforge::winproc::is_addr_readable(site + 7) { continue; }
+                // SAFETY: site+7 readability checked.
+                let bytes = unsafe { std::slice::from_raw_parts(site as *const u8, 7) };
+                let disp = i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]) as isize;
+                let next_ip = (site + 7) as isize;
+                candidates.insert((next_ip + disp) as usize);
+            }
+        }
+    }
+
+    for c in candidates {
+        if validate_chromosome_table_shape(c) {
+            return Ok(c as u64);
+        }
+    }
+    Err("no body lea target passed table-shape validation".into())
+}
+
+fn validate_chromosome_table_shape(addr: usize) -> bool {
+    const STRIDE: usize = 0x44;
+    const SLOTS: usize = 17;
+    const MAX_CHROMOS: usize = 20;
+    const TABLE_BYTES: usize = STRIDE * MAX_CHROMOS;
+    if (addr & 3) != 0 { return false; }
+    if !modforge::winproc::is_addr_readable(addr + TABLE_BYTES) {
+        return false;
+    }
+    let mut valid_count = 0usize;
+    let mut seen = [false; 240];
+    for chromo_id in 0..MAX_CHROMOS {
+        for slot in 0..SLOTS {
+            let off = chromo_id * STRIDE + slot * 4;
+            // SAFETY: range readability checked above.
+            let v = unsafe { *((addr + off) as *const i32) };
+            if v == -1 { break; }
+            if !(0..240).contains(&v) { return false; }
+            if seen[v as usize] { return false; }
+            seen[v as usize] = true;
+            valid_count += 1;
+        }
+    }
+    valid_count == 240
+}
 
 // ============================================================================
 // Validator chains (shared by groups of similar targets)
