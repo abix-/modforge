@@ -200,5 +200,31 @@ pub fn all() -> Vec<OpDef> {
                 None => Err("GetForegroundWindow returned NULL".into()),
             },
         ),
+        OpDef::new(
+            "input.find_hwnd_by_pid",
+            "Return the first visible top-level HWND owned by `pid`. Hex string.",
+            "{pid: u32}",
+            |args| {
+                let pid = arg_u32(args, "pid", None)?;
+                match super::find_hwnd_by_pid(pid) {
+                    Some(h) => Ok(json!({"hwnd": format!("0x{:x}", h as usize), "pid": pid})),
+                    None => Err(format!("no visible top-level window for pid {pid}")),
+                }
+            },
+        ),
+        OpDef::new(
+            "input.self.hwnd",
+            "Return the first visible top-level HWND owned by the current process. \
+This is the in-process shortcut for tests / cmdlets running INSIDE the game.",
+            "",
+            |_args| {
+                use windows_sys::Win32::System::Threading::GetCurrentProcessId;
+                let pid = unsafe { GetCurrentProcessId() };
+                match super::find_hwnd_by_pid(pid) {
+                    Some(h) => Ok(json!({"hwnd": format!("0x{:x}", h as usize), "pid": pid})),
+                    None => Err(format!("no visible top-level window for self pid {pid}")),
+                }
+            },
+        ),
     ]
 }

@@ -79,24 +79,20 @@ fn input_smoke() {
 
     // ----- L2 PostMessage smoke (I-R5) -----
     //
-    // We post a no-op `WM_MOUSEMOVE` to the foreground window. The
-    // game window may or may not BE the foreground (cargo-test
-    // launches in a console that may steal focus); the smoke is
-    // just "the L2 backend produces a successful PostMessage call,
-    // not a Win32 error." A future test will resolve Horsey's HWND
-    // explicitly and assert the engine's own cursor-state globals
-    // updated; that needs an `input.find_hwnd_by_pid` op we haven't
-    // shipped yet.
-    let hwnd_r = game.op_json("input.foreground.hwnd", &json!({}));
+    // We post a no-op `WM_MOUSEMOVE` to the Horsey window. Because
+    // the cmdlet runs INSIDE the game process (via the HTTP plane),
+    // `input.self.hwnd` returns Horsey's own top-level window
+    // regardless of which process happens to own the desktop focus.
+    let hwnd_r = game.op_json("input.self.hwnd", &json!({}));
     let hwnd_s = match hwnd_r {
         Ok(v) => v.get("hwnd").and_then(Value::as_str).map(str::to_string),
         Err(e) => {
-            eprintln!("input.foreground.hwnd failed (may be normal in headless CI): {e}");
+            eprintln!("input.self.hwnd failed: {e}");
             None
         }
     };
     if let Some(hwnd) = hwnd_s {
-        eprintln!("foreground hwnd: {hwnd}");
+        eprintln!("Horsey hwnd (in-process): {hwnd}");
         let r = game
             .op_json(
                 "input.mouse.move",
@@ -110,7 +106,7 @@ fn input_smoke() {
             r.get("backend").and_then(Value::as_str).unwrap_or("?")
         );
     } else {
-        eprintln!("[INFO] no foreground hwnd; skipping L2 smoke this run");
+        eprintln!("[INFO] no self hwnd; skipping L2 smoke this run");
     }
 
     eprintln!("[PASS] input_smoke: L1 + L2 backends survived a round-trip");

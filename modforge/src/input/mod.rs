@@ -175,3 +175,45 @@ pub fn foreground_hwnd() -> Option<isize> {
     let h = unsafe { GetForegroundWindow() };
     if h.is_null() { None } else { Some(h as isize) }
 }
+
+/// Enumerate top-level windows; return the first one owned by `pid`
+/// that is visible. Useful when the test process and the game process
+/// are separate: pass the game PID, get the game window.
+///
+/// Visibility filter: skips invisible windows (typical message-only
+/// or hidden helper windows). If multiple visible top-level windows
+/// belong to the same PID (rare for games), returns the first
+/// EnumWindows yields.
+pub fn find_hwnd_by_pid(pid: u32) -> Option<isize> {
+    use std::ffi::c_void;
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindowThreadProcessId, IsWindowVisible,
+    };
+    type BOOL = i32;
+
+    struct Ctx {
+        wanted_pid: u32,
+        found: isize,
+    }
+
+    extern "system" fn cb(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let ctx = unsafe { &mut *(lparam as *mut c_void as *mut Ctx) };
+        let mut pid: u32 = 0;
+        let _tid = unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
+        if pid == ctx.wanted_pid && unsafe { IsWindowVisible(hwnd) } != 0 {
+            ctx.found = hwnd as isize;
+            return 0; // stop enumeration
+        }
+        1 // continue
+    }
+
+    let mut ctx = Ctx { wanted_pid: pid, found: 0 };
+    let _ok = unsafe {
+        EnumWindows(
+            Some(cb),
+            &mut ctx as *mut Ctx as *mut c_void as LPARAM,
+        )
+    };
+    if ctx.found == 0 { None } else { Some(ctx.found) }
+}
