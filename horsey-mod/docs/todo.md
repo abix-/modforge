@@ -644,6 +644,22 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
+### In-game UI: separate ImGui window -> true overlay via DXGI Present hook
+
+Current state: our ImGui lives in its OWN OS window (`WNDCLASS "HorseyImGuiWnd"`), with its own D3D11 device and swap chain. HLT does the same thing (literally the same class name). Easy to ship but a distinct alt-tabbable window, not an overlay.
+
+Timberbot ([abix-/TimberbornMods](https://github.com/abix-/TimberbornMods)) ships an in-game UI that renders INSIDE the game window. That mod is Unity / C# / BepInEx, so the path is different (BepInEx attaches to Unity's render loop), but the point stands: in-game UI overlays are a normal, solved problem with open-source references. The native-PE equivalent is well documented too: hook `IDXGISwapChain::Present`, init `ImGui_ImplDX11` against the game's device on first frame, render before the game's Present. ReShade and every cheat menu does this; the [kiero](https://github.com/Rebzzel/kiero) helper is the canonical minimal implementation (vtable lookup -> MinHook on Present index).
+
+Concrete plan when we pick this up:
+- [ ] Add a `modforge::ui::overlay_dxgi` module: kiero-style vtable scan to find Horsey's `IDXGISwapChain::Present` slot, MinHook it, init `ImGui_ImplDX11` on first call, render the same TabDef set we already use in `ui::native`.
+- [ ] Wire WndProc forwarding so ImGui sees mouse/keyboard from the game's HWND.
+- [ ] Behind a feature flag so existing native-window path stays available as a fallback.
+- [ ] First arming pass: run alongside the current window; once stable, retire the separate window.
+
+Tradeoffs:
+- Win: UI floats over the game, no alt-tab; input handled natively; matches HLT's UX target without their separate-window UX.
+- Cost: pulls in d3d11/dxgi deps, adds a hook on a hot path (Present is per-frame), needs SEH guards on the render callback. Not huge but real.
+
 ### Findings session 2026-05-15/16: Horses tab live-count + Horsey binary update
 
 Authoritative catalog of every horse-bearing memory location: [`HORSE-PLACES.md`](HORSE-PLACES.md). This section captures the chase that produced it.
