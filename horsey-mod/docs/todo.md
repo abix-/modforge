@@ -644,7 +644,32 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
+### Per-horse details view (Horses tab "Details" expand)
+
+Goal: surface ALL data about a single horse, including the 240 vanilla genes and our 240 extension genes (480 total).
+
+UI plan:
+- Add a "Details" button to each row in the Horses tab.
+- Click toggles a single per-horse expanded section below the list (one horse expanded at a time; clicking the button on a different row swaps).
+- Expanded section shows:
+  - Scalar block: age, max_age, skill, tired_a, tired_b, breeding_flag, on_track_flag, name_id, ctx_offset, litter_size_stat, species, horse_ptr.
+  - 24x20 compact gene grid (480 cells), no per-gene labels until we know names. Format: `g000:NN g001:NN ... g023:NN` per row.
+- No new ImGui primitives required (existing text/button is enough).
+
+Research blockers (must do before genes show up):
+- Locate the 240 vanilla allele values on the Horse object. The breeding combinator (`FUN_1400a2d80`) reads them; trace its arg layout to recover the offset.
+- Decide how to render the 240 extension alleles. They live in `EXT_HORSE_GENOMES` keyed by horse_ptr (genes.rs); already accessible from the mod side, just plumb through.
+- Optional: load gene NAMES from `genes.xml` so the grid can show `gSIZE:NN` etc.
+
+Scoped sub-tasks (do in order, ship each on its own):
+- [ ] Phase A: Details button + scalar block only. Genes show as `(not wired)`. Ship today.
+- [ ] Phase B: Vanilla 240 gene values. Decomp combinator arg layout, add `horse::vanilla_alleles(horse_ptr) -> [u8; 240]`, render grid.
+- [ ] Phase C: Extension 240 gene values from `EXT_HORSE_GENOMES`. Render same grid format below vanilla block.
+- [ ] Phase D: gene-name labels from `genes.xml` (vanilla) + `genes-extended.xml` (ext). Hover tooltip or replace `gNNN:` prefix.
+
 ### In-game UI: separate ImGui window -> true overlay via DXGI Present hook
+
+> **Detailed implementation plan:** [`../../docs/IN-GAME-OVERLAY-PLAN.md`](../../docs/IN-GAME-OVERLAY-PLAN.md). 8-step test-first ladder (vtable scan, no-op detour, first-frame init, tab walker, WndProc subclass, ResizeBuffers, lifecycle, consumer flip). The candidate plan below is the summary; the linked doc is authoritative.
 
 Current state: our ImGui lives in its OWN OS window (`WNDCLASS "HorseyImGuiWnd"`), with its own D3D11 device and swap chain. HLT does the same thing (literally the same class name). Easy to ship but a distinct alt-tabbable window, not an overlay.
 
