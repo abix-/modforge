@@ -30,10 +30,13 @@ pub mod genes;
 pub mod genes_xml;
 pub mod horse;
 pub mod ops;
+pub mod overlay;
 pub mod patches;
 pub mod snapshot;
 pub mod targets;
-pub mod ui;
+// `crate::ui` (Phase A C++-shim tab content) was deleted with the
+// `ui.native.*` retirement. Step 2 ports the equivalent tab content
+// into `crate::overlay` using imgui-rs.
 
 // modforge::server::spawn() pushes its SpawnHandle into a global
 // SERVER_REGISTRY and doesn't return it. To stop the server (e.g.
@@ -67,13 +70,16 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
-    // 4a. Register the in-game ImGui tabs AND spawn the window
-    //     immediately. The user wants the UI visible the moment
-    //     the DLL attaches; no separate `ui.native.spawn` HTTP
-    //     call needed. The op stays available for re-spawn after
-    //     an explicit shutdown.
-    modforge::ui::native::register_tabs(ui::TABS);
-    let _armed = modforge::ui::native::spawn("horsey-mod");
+    // 4a. Arm the in-game ImGui overlay via hudhook. Hooks the
+    //     game's IDXGISwapChain::Present so our panel renders
+    //     INSIDE the game window. Step 1 spike: draws a single
+    //     frame-counter panel. Phase A's separate window is retired
+    //     because hudhook bundles its own ImGui via imgui-sys and
+    //     cannot link alongside modforge's vendored C++ ImGui shim.
+    match overlay::arm() {
+        Ok(()) => modforge::log!("horsey-mod: overlay armed"),
+        Err(e) => modforge::log!("horsey-mod: overlay arm FAILED: {e}"),
+    }
 
     // 4b. Auto-load `genes-extended.xml` if it exists next to the DLL.
     //     Failure to find or parse the file is non-fatal: the

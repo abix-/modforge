@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-build = "build.rs"
 
 # Engine-agnostic core consumed natively by both ueforge (UE5 /
 # UE4SS / Rust) and unityforge (Unity Mono / BepInEx / Rust +
@@ -56,6 +55,13 @@ patternsleuth = { workspace = true }
 # uses (currently 0.32.x) via Cargo's unification.
 object = { version = "0.32", default-features = false, features = ["read"] }
 
+# Optional, only when feature `overlay-ui` is enabled. Hudhook handles
+# the DXGI Present hook, MinHook trampolines, ImGui DX11 init, WndProc
+# subclass, and ResizeBuffers. We re-export its public types so
+# consumers don't need to depend on hudhook directly.
+hudhook = { version = "=0.9.0", optional = true }
+imgui = { version = "=0.12", optional = true }
+
 # Used only by the `modforge-deploy` bin target. Cargo only
 # compiles them when that bin is being built; consumers that
 # only link the lib don't pay the compile cost.
@@ -69,15 +75,15 @@ name = "modforge-deploy"
 path = "src/bin/modforge_deploy.rs"
 
 [features]
-# Phase A: standalone ImGui window for native-PE mods (horsey-mod
-# initially). Compiles modforge/cpp/modforge_ui_native.cpp + vendored
-# ImGui at ../ueforge/cpp/imgui/ into a static lib linked into the
-# consuming cdylib. Off by default so non-native-PE consumers
-# (ueforge with its UE4SS-bundled ImGui) don't pay the compile cost.
-native-ui = []
-
-[build-dependencies]
-cc = { workspace = true }
+# In-game ImGui overlay via hudhook. Hooks the host game's
+# IDXGISwapChain::Present so the panel renders INSIDE the game window.
+# Brings in hudhook -> imgui (the imgui-rs Rust wrapper) -> imgui-sys,
+# which vendors and statically links the C++ ImGui library. We write
+# Rust; the underlying library is still C++ (that's where ImGui lives),
+# but we no longer compile our own copy. Off by default so non-overlay
+# consumers (ueforge with its UE4SS-bridge ImGui) pay zero compile cost.
+# See docs/IN-GAME-OVERLAY-PLAN.md.
+overlay-ui = ["dep:hudhook", "dep:imgui"]
 
 [dev-dependencies]
 insta = { workspace = true }

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["grounded2-mod", "horsey-mod", "il2cpp-smoke", "modforge", "outworld-station-mod", "ueforge", "unityforge", "wwm-mod"]
+exclude = ["vendor/hudhook"]
 # Note: `decomp/` is intentionally NOT a workspace member yet. It depends on
 # r2sleigh which depends on libsla-sys, which does not currently build on
 # Windows MSVC. Build decomp via WSL until upstream lands the windows fix.
@@ -74,3 +75,11 @@ strip = "symbols"
 # Release stays on abort for binary size + perf.
 [profile.dev]
 panic = "unwind"
+
+# Use the local hudhook fork that adds an IDXGISwapChain1::Present1
+# hook on top of the upstream DX11 hooks. Required for SDL3-based games
+# (Horsey ships SDL_GPU + SDL_render via SDL3) which call Present1
+# instead of Present. Drop this patch when upstream lands the same fix;
+# tracked at vendor/hudhook/PRESENT1-PATCH.md.
+[patch.crates-io]
+hudhook = { path = "vendor/hudhook" }

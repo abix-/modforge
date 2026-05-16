@@ -27,8 +27,5 @@ pub struct TabDef {
     pub render: fn(),
 }
 
-#[cfg(feature = "native-ui")]
-pub mod native;
-
-#[cfg(feature = "native-ui")]
-pub mod api;
+#[cfg(feature = "overlay-ui")]
+pub mod overlay;

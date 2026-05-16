@@ -54,7 +54,7 @@ game_name_regex = "Horsey"
 game_sub_path   = ""
 
 [dependencies]
-modforge = { path = "../modforge", features = ["native-ui"] }
+modforge = { path = "../modforge", features = ["overlay-ui"] }
 
 anyhow = { workspace = true }
 serde = { workspace = true }

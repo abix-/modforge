@@ -2121,45 +2121,38 @@ Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
             },
         ),
 
-        // ===== Native ImGui window (Phase A) =====
+        // ===== In-game ImGui overlay via hudhook =====
         //
-        // Opens a standalone top-level Win32 + D3D11 + ImGui window
-        // inside the injected DLL. Independent of any host engine;
-        // sits beside Horsey.exe's window and is alt-tabbable.
+        // Hooks IDXGISwapChain::Present so our panel renders INSIDE the
+        // game window. Step 1 spike: a single frame-counter panel.
+        // Phase A `ui.native.*` ops retired: hudhook bundles imgui-sys,
+        // cannot coexist with modforge's vendored C++ ImGui shim in one
+        // DLL. See docs/IN-GAME-OVERLAY-PLAN.md.
         OpDef::new(
-            "ui.native.spawn",
-            "Spawn the standalone ImGui window. Idempotent.",
-            "{window_title?: str}",
-            |args| {
-                let title = args.get("window_title")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("horsey-mod");
-                let armed = modforge::ui::native::spawn(title);
-                Ok(json!({"armed": armed}))
+            "ui.overlay.arm",
+            "Install the DXGI Present hook so the in-game overlay renders. Idempotent.",
+            "",
+            |_| match crate::overlay::arm() {
+                Ok(()) => Ok(json!({"armed": true})),
+                Err(e) => Err(e),
             },
         ),
         OpDef::new(
-            "ui.native.shutdown",
-            "Close the standalone ImGui window + join the render thread.",
+            "ui.overlay.disarm",
+            "Best-effort overlay unhook. Hudhook eject walks the registered hooks.",
             "",
             |_| {
-                modforge::ui::native::shutdown();
-                Ok(json!({"armed": modforge::ui::native::is_visible()}))
+                crate::overlay::disarm();
+                Ok(json!({"armed": crate::overlay::is_armed()}))
             },
         ),
         OpDef::new(
-            "ui.native.is_visible",
-            "True if the standalone ImGui window currently exists.",
-            "",
-            |_| Ok(json!({"visible": modforge::ui::native::is_visible()})),
-        ),
-        OpDef::new(
-            "ui.native.stats",
-            "Render-loop stats (frame count, visibility).",
+            "ui.overlay.stats",
+            "Overlay state: armed flag and per-frame counter.",
             "",
             |_| Ok(json!({
-                "visible": modforge::ui::native::is_visible(),
-                "frames": modforge::ui::native::frame_count(),
+                "armed": crate::overlay::is_armed(),
+                "frames": crate::overlay::frame_count(),
             })),
         ),
     ]);

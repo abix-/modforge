@@ -678,9 +678,14 @@ Scoped sub-tasks (do in order, ship each on its own):
 - [ ] Phase C: Extension 240 gene values from `EXT_HORSE_GENOMES`. Render same grid format below vanilla block.
 - [ ] Phase D: gene-name labels from `genes.xml` (vanilla) + `genes-extended.xml` (ext). Hover tooltip or replace `gNNN:` prefix.
 
-### In-game UI: separate ImGui window -> true overlay via DXGI Present hook
+### In-game UI: hudhook overlay [Step 1 SHIPPED 2026-05-15]
 
-> **Detailed implementation plan:** [`../../docs/IN-GAME-OVERLAY-PLAN.md`](../../docs/IN-GAME-OVERLAY-PLAN.md). 8-step test-first ladder (vtable scan, no-op detour, first-frame init, tab walker, WndProc subclass, ResizeBuffers, lifecycle, consumer flip). The candidate plan below is the summary; the linked doc is authoritative.
+> **Plan:** [`../../docs/IN-GAME-OVERLAY-PLAN.md`](../../docs/IN-GAME-OVERLAY-PLAN.md).
+> Generic `modforge::ui::overlay` module landed behind the `overlay-ui`
+> Cargo feature. horsey-mod consumes via a ~40 LOC `HorseyOverlay` impl.
+> Build clean. Phase A `ui.native.*` ops removed; `crate::ui` deleted.
+> **Steps 2-5 remaining:** port tab bodies to imgui-rs, live-test
+> against running Horsey, delete modforge's `native-ui` files, document.
 
 Current state: our ImGui lives in its OWN OS window (`WNDCLASS "HorseyImGuiWnd"`), with its own D3D11 device and swap chain. HLT does the same thing (literally the same class name). Easy to ship but a distinct alt-tabbable window, not an overlay.
 

@@ -1,3 +1,7 @@
 [submodule "ueforge/cpp/imgui"]
 	path = ueforge/cpp/imgui
 	url = https://github.com/ocornut/imgui
+[submodule "vendor/hudhook"]
+	path = vendor/hudhook
+	url = https://github.com/abix-/hudhook.git
+	branch = present1-hook

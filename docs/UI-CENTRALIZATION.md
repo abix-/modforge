@@ -2,7 +2,23 @@
 
 > **Authoritative on:** the plan to consolidate the Rust ImGui API + C++ shim into modforge so every game-mod (ueforge / horsey-mod / unityforge / outworld-station-mod / grounded2-mod / future) uses the same surface, regardless of which host runtime (UE4SS, BepInEx, none) owns the actual ImGui context.
 
-Status: Phase A SHIPPED 2026-05-15. Phase B + C still open.
+Status (2026-05-15): **Phase A RETIRED.** Replaced by hudhook in-game
+overlay. Phase B + C closed as won't-do.
+
+> **Direction:** native-PE mods use [`modforge::ui::overlay`](IN-GAME-OVERLAY-PLAN.md)
+> (hudhook + imgui-rs, behind the `overlay-ui` Cargo feature). UE4SS-host
+> mods keep their existing UE4SS-bridge ImGui (ueforge's vendored ImGui
+> at `ueforge/cpp/imgui/` linked against UE4SS's ImGui context). Each
+> engine uses what is idiomatic to its host; we do NOT pursue a single
+> Rust API across backends (Phase B, retired).
+>
+> Why Phase A was retired: hudhook bundles imgui-sys, which ships its own
+> static C++ ImGui. modforge's `native-ui` feature compiled a SECOND
+> static ImGui copy from `ueforge/cpp/imgui/`. Two copies in one cdylib
+> produce LNK2005 multiply-defined-symbols at link time. Cannot coexist.
+> Files removed: `modforge/cpp/modforge_ui_native.cpp`,
+> `modforge/src/ui/{api,native}.rs`, the `native-ui` Cargo feature, and
+> the relevant build.rs sections.
 
 ## Current state
 
