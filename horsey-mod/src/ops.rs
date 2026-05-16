@@ -1139,6 +1139,90 @@ The proper fix is sleep_safe_no_tire (already auto-applied at attach).",
             },
         ),
 
+        // ===== Vanilla allele ops (read/write the 240-byte working genome) =====
+        //
+        // Backing offset is `horse_offset::ctx_offset()` (== 0x2b8 on
+        // current Horsey build). Confirmed via dump_vanilla_alleles.rs
+        // on 2026-05-16. Range 0..=3 per byte; one value per gene slot.
+        OpDef::new(
+            "horse.vanilla.alleles.get",
+            "Read one vanilla allele byte. Returns {idx, value}.",
+            "{addr: hex-string, idx: usize}",
+            |args| {
+                let h = args_hex_addr(args, "addr")?;
+                let idx = args_usize(args, "idx")?;
+                match horse::vanilla_allele(h, idx) {
+                    Some(v) => Ok(json!({"idx": idx, "value": v})),
+                    None => Err(format!(
+                        "null horse or idx {idx} >= {}",
+                        horse::VANILLA_GENOME_LEN
+                    )),
+                }
+            },
+        ),
+        OpDef::new(
+            "horse.vanilla.alleles.set",
+            "Write one vanilla allele byte. `value` must fit in u8.",
+            "{addr: hex-string, idx: usize, value: u8}",
+            |args| {
+                let h = args_hex_addr(args, "addr")?;
+                let idx = args_usize(args, "idx")?;
+                let value = args_usize(args, "value")?;
+                if value > 0xff {
+                    return Err(format!("value {value} > 0xff"));
+                }
+                let ok = horse::set_vanilla_allele(h, idx, value as u8);
+                Ok(json!({
+                    "set":   ok,
+                    "idx":   idx,
+                    "value": horse::vanilla_allele(h, idx),
+                }))
+            },
+        ),
+        OpDef::new(
+            "horse.vanilla.genome.get",
+            "Read all 240 vanilla allele bytes for a horse.",
+            "{addr: hex-string}",
+            |args| {
+                let h = args_hex_addr(args, "addr")?;
+                match horse::vanilla_alleles(h) {
+                    Some(g) => Ok(json!({"alleles": g.to_vec()})),
+                    None => Err("null horse".into()),
+                }
+            },
+        ),
+        OpDef::new(
+            "horse.vanilla.genome.set",
+            "Overwrite all 240 vanilla allele bytes for a horse. `alleles` \
+must be exactly 240 u8 values.",
+            "{addr: hex-string, alleles: [u8; 240]}",
+            |args| {
+                let h = args_hex_addr(args, "addr")?;
+                let arr = args
+                    .get("alleles")
+                    .and_then(Json::as_array)
+                    .ok_or("missing array arg: alleles")?;
+                if arr.len() != horse::VANILLA_GENOME_LEN {
+                    return Err(format!(
+                        "expected {} alleles, got {}",
+                        horse::VANILLA_GENOME_LEN,
+                        arr.len()
+                    ));
+                }
+                let mut buf = [0u8; horse::VANILLA_GENOME_LEN];
+                for (i, v) in arr.iter().enumerate() {
+                    let n = v.as_u64()
+                        .ok_or_else(|| format!("alleles[{i}] not a number"))?;
+                    if n > 0xff {
+                        return Err(format!("alleles[{i}] = {n} > 0xff"));
+                    }
+                    buf[i] = n as u8;
+                }
+                let ok = horse::set_vanilla_alleles(h, &buf);
+                Ok(json!({"set": ok}))
+            },
+        ),
+
         // ===== Extended-gene ops (D0 / D7 infra for the bestiary expansion mod) =====
         // These let us author and inspect extended-gene state via HTTP without
         // touching any vanilla data. Backed by `crate::genes`. See the gene-doubling

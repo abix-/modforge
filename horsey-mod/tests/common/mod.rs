@@ -90,3 +90,95 @@ pub fn launch(test_name: &str) -> Option<RunningGame> {
         Err(e) => panic!("harness launch failed: {e}"),
     }
 }
+
+// ===== Generic test helpers (think powershell cmdlets) =====
+//
+// Tests are parameterized via HORSEY_* env vars instead of hardcoded
+// names. A test that needs a horse calls `target_horse(&game)`; that
+// reads `HORSEY_HORSE` (name, case-insensitive) and returns the
+// matching owned horse. With no env set, defaults to the first owned
+// horse so a bare `cargo test` still runs.
+
+use serde_json::{json, Value};
+
+/// One owned horse as returned by `gamestate.owned_horses`.
+#[derive(Debug, Clone)]
+pub struct TargetHorse {
+    pub name:  String,
+    pub ptr_s: String,
+    pub id:    u64,
+}
+
+/// Fetch the full owned-horse list from the running game.
+pub fn list_owned(game: &RunningGame) -> Vec<Value> {
+    let r = game.op_json("gamestate.owned_horses", &json!({})).unwrap_or(Value::Null);
+    r.get("result").and_then(|x| x.get("horses"))
+        .and_then(Value::as_array).cloned().unwrap_or_default()
+}
+
+/// Find an owned horse by case-insensitive name.
+pub fn find_owned(game: &RunningGame, name: &str) -> Option<TargetHorse> {
+    let want = name.to_ascii_lowercase();
+    list_owned(game).into_iter().find_map(|h| {
+        let n = h.get("name").and_then(Value::as_str)?.to_string();
+        if n.to_ascii_lowercase() != want { return None; }
+        let ptr_s = h.get("ptr").and_then(Value::as_str)?.to_string();
+        let id = u64::from_str_radix(ptr_s.trim_start_matches("0x"), 16).ok()?;
+        Some(TargetHorse { name: n, ptr_s, id })
+    })
+}
+
+/// Pick the target horse for a test. Resolution order:
+/// 1. `HORSEY_HORSE` env var -> exact name match.
+/// 2. First owned horse in the roster.
+///
+/// Panics if neither yields a horse.
+pub fn target_horse(game: &RunningGame) -> TargetHorse {
+    if let Ok(name) = std::env::var("HORSEY_HORSE") {
+        return find_owned(game, &name)
+            .unwrap_or_else(|| panic!("HORSEY_HORSE='{name}' not in owned list"));
+    }
+    let h = list_owned(game).into_iter().next()
+        .expect("no owned horses; load a save first");
+    let name = h.get("name").and_then(Value::as_str).unwrap_or("?").to_string();
+    let ptr_s = h.get("ptr").and_then(Value::as_str).unwrap_or("0x0").to_string();
+    let id = u64::from_str_radix(ptr_s.trim_start_matches("0x"), 16).unwrap_or(0);
+    TargetHorse { name, ptr_s, id }
+}
+
+/// Parse an env var as `T`, falling back to `default` if unset.
+/// Panics if the var is set but unparseable.
+pub fn env_or<T: std::str::FromStr>(key: &str, default: T) -> T
+where
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    match std::env::var(key) {
+        Ok(v) => v.parse().unwrap_or_else(|e| panic!("{key} parse: {e}")),
+        Err(_) => default,
+    }
+}
+
+/// Block until `target_horse(game)` resolves successfully. Used as a
+/// pre-test gate when the save may not be loaded yet.
+pub fn wait_for_target_horse(game: &RunningGame, timeout: std::time::Duration) -> TargetHorse {
+    let want = std::env::var("HORSEY_HORSE").ok();
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let horses = list_owned(game);
+        if let Some(ref name) = want {
+            if let Some(h) = find_owned(game, name) {
+                eprintln!("found target horse '{}'", h.name);
+                return h;
+            }
+        } else if !horses.is_empty() {
+            return target_horse(game);
+        }
+        if std::time::Instant::now() >= deadline {
+            let names: Vec<_> = horses.iter().filter_map(|h| {
+                h.get("name").and_then(Value::as_str).map(String::from)
+            }).collect();
+            panic!("timed out waiting for target horse; want={want:?} owned={names:?}");
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}

@@ -196,3 +196,62 @@ pub fn set_litter_stat(horse: usize, value: i32) -> bool {
     }
     true
 }
+
+/// Number of vanilla allele slots on a Horse. Confirmed via
+/// `tests/dump_vanilla_alleles.rs` on 2026-05-16: all 3 owned horses
+/// dumped 240 bytes in the 0..=3 range at `horse + ctx_offset()`.
+pub const VANILLA_GENOME_LEN: usize = 240;
+
+/// Read all 240 vanilla allele bytes at `horse + ctx_offset()`.
+pub fn vanilla_alleles(horse: usize) -> Option<[u8; VANILLA_GENOME_LEN]> {
+    if horse == 0 {
+        return None;
+    }
+    let mut out = [0u8; VANILLA_GENOME_LEN];
+    // SAFETY: horse is a live Horse*; the genome buffer at
+    // ctx_offset has VANILLA_GENOME_LEN bytes per HORSE-PLACES.md
+    // (confirmed by Stage-1 dump test 2026-05-16).
+    unsafe {
+        let src = (horse + horse_offset::ctx_offset()) as *const u8;
+        std::ptr::copy_nonoverlapping(src, out.as_mut_ptr(), VANILLA_GENOME_LEN);
+    }
+    Some(out)
+}
+
+/// Read a single vanilla allele byte. `idx` must be < 240.
+pub fn vanilla_allele(horse: usize, idx: usize) -> Option<u8> {
+    if horse == 0 || idx >= VANILLA_GENOME_LEN {
+        return None;
+    }
+    // SAFETY: bounds checked; live horse.
+    Some(unsafe { *((horse + horse_offset::ctx_offset() + idx) as *const u8) })
+}
+
+/// Write a single vanilla allele byte. `idx` must be < 240. Returns
+/// false on null horse or out-of-range idx.
+pub fn set_vanilla_allele(horse: usize, idx: usize, value: u8) -> bool {
+    if horse == 0 || idx >= VANILLA_GENOME_LEN {
+        return false;
+    }
+    // SAFETY: bounds checked; live horse.
+    unsafe {
+        *((horse + horse_offset::ctx_offset() + idx) as *mut u8) = value;
+    }
+    true
+}
+
+/// Overwrite all 240 vanilla allele bytes in one shot.
+pub fn set_vanilla_alleles(
+    horse: usize,
+    alleles: &[u8; VANILLA_GENOME_LEN],
+) -> bool {
+    if horse == 0 {
+        return false;
+    }
+    // SAFETY: live horse; 240 bytes are part of the Horse object.
+    unsafe {
+        let dst = (horse + horse_offset::ctx_offset()) as *mut u8;
+        std::ptr::copy_nonoverlapping(alleles.as_ptr(), dst, VANILLA_GENOME_LEN);
+    }
+    true
+}

@@ -646,14 +646,22 @@ Still open (need a save loaded + per-test save fixtures):
 
 ### NEXT: Proper horse-editing tools (2026-05-16)
 
-User-locked 2026-05-16: we need first-class read/write for ANY allele on ANY horse, plus a generic field-poke for everything else on the Horse struct. HTTP first, UI follows. Render-path E2E was HTTP-green on the updated binary (`giant_tomtato` test passes, allele writes round-trip) but the visual change is unconfirmed because we currently can only write the EXT layer, and BX_GIANT_BABY's `mode: "set"` override doesn't appear to land visibly. Editing the VANILLA allele directly is the next escalation.
+User-locked 2026-05-16: we need first-class read/write for ANY allele on ANY horse, plus a generic field-poke for everything else on the Horse struct. HTTP first, UI follows.
+
+**Generic-test discipline.** Every primitive ships as a parameterized cmdlet-style test driven by `HORSEY_*` env vars, never a horse-name-specific one-shot. Helpers in `tests/common/mod.rs::{target_horse, find_owned, wait_for_target_horse, env_or}`. Allele tests use a single 0..=479 address space (idx < 240 = vanilla, idx >= 240 = ext). All `*_tomtato.rs` predecessors deleted 2026-05-16.
 
 Sequenced stages, one commit + push + checkpoint between each:
 
-1. **Stage 1. Verify vanilla allele offset.** New `tests/dump_vanilla_alleles.rs`: reads `horse_ptr + 0x2b8` (240 bytes) for every owned horse, dumps as 16x15 grid. User eyeballs whether values look like real diploid allele indices (0-3 range) or junk. If 0x2b8 is wrong, iterate offsets via grep over `research/decompiled/all_functions.c` for `0x2b8`/`+ 0x2c0` etc. anchored by `FUN_1400a2d80` (gene combinator) or `FUN_1400b3070` (regen). Gate: nothing proceeds until the right offset is locked.
-2. **Stage 2. Vanilla allele HTTP ops + tomtato e2e.** `horse::{vanilla_alleles, vanilla_allele, set_vanilla_allele, set_vanilla_alleles}` accessors. Ops `horse.vanilla.alleles.{get,set}`, `horse.vanilla.genome.{get,set}`. Test `tomtato_vanilla_zero.rs` zeros allele[0] on tomtato; user verifies visible change in-game.
-3. **Stage 3. Generic Horse field-poke.** `horse.field.{get,set}` ops taking `{horse_ptr, offset, width: u8|u16|u32|u64, value}`. Bounds-check against `horse_offset::alloc_size`. Lets us experiment with any byte on the Horse without new code per field.
-4. **Stage 4. Named-field pass over HORSE-PLACES.md.** Audit every documented field, add typed `horse.<name>.get/set` ops. 2-3 commits grouped by section.
+1. **Stage 1. Verify vanilla allele offset.** [DONE 2026-05-16] `tests/horse_allele_get.rs` (no env) dumps all 240 vanilla bytes for the first owned horse; confirmed `horse + ctx_offset() == 0x2b8`. Values 0..=3, structure matches across related horses.
+2. **Stage 2. Vanilla allele HTTP ops + generic e2e.** [DONE 2026-05-16] `horse::{vanilla_alleles, vanilla_allele, set_vanilla_allele, set_vanilla_alleles}` accessors. Ops `horse.vanilla.alleles.{get,set}`, `horse.vanilla.genome.{get,set}`. Generic test `horse_allele_set.rs` (env-driven). HTTP round-trip works. **VISIBLE-EFFECT GAP:** writing all 480 alleles (vanilla 0..239 + ext 240..479) to 0 on tomtato produced NO visible in-game change. Same when set to all 3. Hypothesis below in Stage 2.5.
+3. **Stage 2.5. Investigate why vanilla writes don't render.** Hypotheses:
+   - Render samples a derived / cached buffer (phenotype) computed at spawn or save-load, not the live working genome at +0x2b8.
+   - Render uses cached transform / mesh-key state that's invalidated only by re-seat / re-spawn / save-load (try save+load roundtrip after a write).
+   - 0x2b8 IS the genome but the regen path (`FUN_1400b3070`) writes the visible state to a different buffer.
+   - D5 render trampoline armed flag is set but never fires for tomtato (check `genes.ext.render.stats.call_count` after a frame with tomtato on-screen).
+   Plan: run `render_stats` after `horse_allele_set` while looking at tomtato. If `call_count` == 0, trampoline is on wrong function. If non-zero, dig the regen / phenotype derivation path via the new generic `horse.field.{get,set}` ops once Stage 3 lands.
+4. **Stage 3. Generic Horse field-poke.** `horse.field.{get,set}` ops taking `{horse_ptr, offset, width: u8|u16|u32|u64, value}`. Bounds-check against `horse_offset::alloc_size`. Generic test `horse_field_set.rs` env-driven. Needed BEFORE Stage 4 so we can probe arbitrary offsets while hunting the render-source buffer in Stage 2.5.
+5. **Stage 4. Named-field pass over HORSE-PLACES.md.** Audit every documented field, add typed `horse.<name>.get/set` ops. 2-3 commits grouped by section.
 
 After this lands, the order below resumes:
 
