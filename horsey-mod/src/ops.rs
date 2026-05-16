@@ -845,6 +845,21 @@ pub fn register_all() {
             },
         ),
         OpDef::new(
+            "genes.chromosomes.dump",
+            "Dump the parsed chromosome map (CRISPR table). Returns \
+{chromosomes: [{id, slots: [flat_idx, ...]}], total_genes}.",
+            "",
+            |_| {
+                let chromos = crate::chromosomes::chromosome_map();
+                let arr: Vec<_> = chromos.iter().map(|c| json!({
+                    "id":    c.id,
+                    "slots": c.slots,
+                })).collect();
+                let total: usize = chromos.iter().map(|c| c.slots.len()).sum();
+                Ok(json!({"chromosomes": arr, "total_genes": total}))
+            },
+        ),
+        OpDef::new(
             "targets.resolve.chromosome_table",
             "Resolve CRISPR's chromosome -> gene-offset table (DAT_14030d110) via patternsleuth.",
             "",

@@ -24,6 +24,7 @@
 //! game functions we identified during decompilation) is staged
 //! for a follow-up phase.
 
+pub mod chromosomes;
 pub mod fatigue;
 pub mod gamestate;
 pub mod genes;
