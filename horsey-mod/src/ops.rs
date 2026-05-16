@@ -2745,6 +2745,7 @@ Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
             },
         ),
     ]);
+    OP_REGISTRY.register_many(modforge::input::ops::all());
     modforge::log!("horsey-mod: registered ops");
 }
 

@@ -14,6 +14,7 @@ pub mod envelope;
 pub mod harness;
 pub mod hook;
 pub mod hot_reload;
+pub mod input;
 pub mod log;
 pub mod ops;
 pub mod patterns;

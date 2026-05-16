@@ -275,8 +275,8 @@ Same I-R checklist instantiated per future game.
 
 ### Phase I: implementation (modforge core)
 
-- [ ] **I-1: `modforge::input` primitives.** `Mouse { move_abs, move_rel, click, drag, scroll }`, `Keyboard { down, up, press, type_str }`. L1 + L2 backends behind a `Backend` enum; L3 hooked in per-game via a trait (`InputSurface`).
-- [ ] **I-2: HTTP cmdlets.** `input.mouse.{move,click,drag,scroll}`, `input.key.{down,up,press,type}`, `input.combo` (chord), `input.state.get` (reads the game's own state for verification). Coords default to client-area px of the game HWND.
+- [/] **I-1: `modforge::input` primitives.** **IN PROGRESS 2026-05-16.** First slice: L1 (`enigo`) + L2 (`win32_message`) backends behind a `Backend` enum; L3 stub via `InputSurface` trait. Skipping drag/scroll/combo/replay until smoke passes.
+- [/] **I-2: HTTP cmdlets.** **IN PROGRESS 2026-05-16.** First slice: `input.mouse.{move,click}`, `input.key.{down,up,press}`. Drag/scroll/combo deferred to next slice.
 - [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, canonical = client-area px; conversions inside.
 - [ ] **I-4: L3 game-internal pokes** (per surface, opt-in via the per-game `InputSurface` trait).
 - [ ] **I-5: Test harness.** `modforge/tests/input_*.rs` env-driven + per-mod consumer tests.
