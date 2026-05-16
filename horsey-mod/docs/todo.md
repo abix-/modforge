@@ -15,6 +15,7 @@ Roughly ordered by leverage.
 - [Ship status pointers](#ship-status-pointers)
 - [P0. Bestiary Expansion: double the species count](#p0-bestiary-expansion-double-the-species-count)
 - [P0. Gene Table Doubling: 240 -> 480 implementation plan](#p0-gene-table-doubling-240---480-implementation-plan)
+- [P0. Synthetic input: let the mod (and Claude) drive the game like a human](#p0-synthetic-input-let-the-mod-and-claude-drive-the-game-like-a-human-2026-05-16)
 - [Other open work](#other-open-work)
 - [Appendix: Feature wishlist](#appendix-feature-wishlist-merged-from-roadmapmd-2026-05-15)
 
@@ -657,6 +658,60 @@ Still open (need a save loaded + per-test save fixtures):
 | `FUN_1400a5d20`'s detour may be hot enough that the per-call branch costs measurable frame time. | Profile in D8.5. If it's a problem, JIT-patch the detour to skip vanilla frames where no extended genes are defined. |
 | Vanilla's `genes.dat` cache format may include the gene table in a way that doesn't survive our patches. | Recommend deleting `genes.dat` on attach to force regen. Document. |
 | `FUN_14009f680` runs on a non-render thread (audio? AI?) and our trampoline triggers thread-safety issues. | Audit the calling thread context for each of the 4 caller sites in D5.1. |
+
+---
+
+## P0. Synthetic input: let the mod (and Claude) drive the game like a human (2026-05-16)
+
+User-locked 2026-05-16: for Claude to make real progress long-term, the mod must expose mouse + keyboard input as first-class HTTP cmdlets, so Claude can drive the game from a remote terminal exactly the way a human at the keyboard does. Clicks and drags are the priority (most game input). Keyboard second. "Research for sure" can be done without the user at the machine; implementation can land in parallel with other work.
+
+**Why now.** The HK1 Shift+Click effort is currently blocked behind RE'ing the post-vtable helpers because we cannot just "shift+click on the truck slot from a test." Once synthetic input lands, that flow is `input.mouse.move + input.key.down(shift) + input.mouse.click + input.key.up(shift)` and the rest of the transfer is whatever the game does naturally. Same applies to crispr lab, breeding pen, every UI panel.
+
+**Three layers, ranked by reliability (and by user-attention cost during research).**
+
+| Layer | Mechanism | Reliability | When chosen |
+|---|---|---|---|
+| L1: Win32 `SendInput` | Synthesize OS-level mouse/key events globally | Lowest | Last resort; "steals" the real mouse, requires game window focused, useless when user is at the machine |
+| L2: `PostMessage` / `SendMessage` to game HWND | Targeted window messages (`WM_LBUTTONDOWN`, `WM_MOUSEMOVE`, `WM_KEYDOWN`, etc.) | Medium | Works without focus stealing; some UE/SDL/raw-input games ignore it. Need to verify Horsey reads them |
+| L3: Game-internal input poke / direct call | Write the game's own input-state buffers, or call the game's click-handler functions directly (vtable[+0x78]-style, like HK1 already does) | Highest | Requires RE per input surface; biggest payoff |
+
+L3 is the long-term home. L2 is the right MVP if Horsey honors it. L1 only if both L2 and L3 are dead ends for a given surface.
+
+### Research phase (no game launch needed for steps 1-3)
+
+- [ ] **I-R1: Decomp grep for input read sites.** In `research/decompiled/all_functions.c`, find calls to `GetCursorPos`, `GetAsyncKeyState`, `GetKeyState`, `SDL_*` (if any), `XInputGetState`, `RAWINPUT`, Windows message-pump (`PeekMessage` / `DispatchMessage`). This tells us which OS surface the game uses; that decides whether L1 / L2 work at all.
+- [ ] **I-R2: Locate the game's mouse-state globals.** We already have `hk1.probe.mouse_globals` and `hk1.read_cursor`. Expand: cursor x/y, button-down flags, scroll delta, last-frame deltas. Pattern-resolve each. End state: a `targets::resolve::mouse_state()` that exposes a typed `MouseState` struct.
+- [ ] **I-R3: Locate keyboard-state globals.** Same as I-R2 for keys. Likely a 256-byte VK array or per-key bools. Probe `GetAsyncKeyState` callers in the decomp; the buffer is usually right next door.
+- [ ] **I-R4: Identify the click dispatcher.** What function does the game call when LBUTTON transitions 0->1 over the world / a UI panel? HK1 already found `FUN_1400de2e0` for the drop-commit; need the equivalent for "any-click." Decomp + xref into the mouse-state globals from I-R2 finds it.
+- [ ] **I-R5: PostMessage smoke (live, ~5 min).** Once I-R1 says "it reads window messages too," confirm with a tiny C program (or a one-off cmdlet) that `PostMessage(hwnd, WM_LBUTTONDOWN, ...)` triggers an in-game click. Binary answer; tells us whether L2 is viable.
+
+### Implementation phase
+
+- [ ] **I-1: `modforge::input` primitives.** New module. `Mouse { move_abs, move_rel, click, drag, scroll }`, `Keyboard { down, up, press, type_str }`. Each has L1 (`SendInput`) + L2 (`PostMessage`) backends; choice is per-call via arg or env.
+- [ ] **I-2: HTTP cmdlets.** `input.mouse.{move,click,drag,scroll}`, `input.key.{down,up,press,type}`, `input.combo` (chord, e.g. shift+click), `input.state.get` (reads game's own mouse/key state for verification). Coords default to client-area pixels of the game HWND.
+- [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, decide on a single canonical space (client-area px). All cmdlets accept client px; conversion happens inside.
+- [ ] **I-4: L3 game-internal pokes** (per surface, opt-in). When L2 doesn't trigger a specific input read (e.g. UI panel that polls `GetAsyncKeyState`), write to the buffer found in I-R3.
+- [ ] **I-5: Test harness.** `tests/input_*.rs` env-driven. Click at (x,y), assert game state changed (e.g. menu opened, horse selected, cursor moved per `hk1.read_cursor`). Mirrors the HK1 test discipline.
+- [ ] **I-6: Replay format.** JSON log of (`t_ms`, `event`, `args`) so Claude can record a session and replay it deterministically. Useful for regression and for narrating "here's how I made the bug happen."
+
+### Definition of done
+
+- [ ] Claude can run `input.mouse.click {x: 500, y: 400}` from a remote terminal with the game running on the user's machine and the game responds as if the user clicked there.
+- [ ] Claude can chain `input.combo {keys: ["shift"], then: {type: "mouse.click", x, y}}` and have it register as a shift-click.
+- [ ] At least one test exercises a click-driven flow end-to-end (e.g. "open Horses tab via shortcut, then click row 3, assert detail panel opens").
+- [ ] `input.state.get` reads back the game's own mouse / key state so tests don't trust their own writes.
+
+### Out of scope (defer)
+
+- Controller / gamepad input. None of our current work needs it.
+- Recording user-side input for replay. Different problem (would need a hook on `GetAsyncKeyState` etc., harmless but separate).
+- Cross-process input on top of an obscured / minimized window. Validate that this works as a side effect; don't engineer for it.
+
+### Open questions (resolve during I-R*)
+
+- Does Horsey use raw-input (`WM_INPUT`)? If yes, `PostMessage(WM_MOUSEMOVE)` won't move the in-game cursor; only the GDI one. L3 becomes mandatory for movement.
+- Is there a single per-frame "what's the cursor doing" snapshot inside `GameState`, or are reads scattered? Affects whether L3 is one poke or many.
+- DPI / fullscreen: are coords in physical or logical px? Decide at I-3.
 
 ---
 
