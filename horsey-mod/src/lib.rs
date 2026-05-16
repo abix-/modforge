@@ -27,6 +27,7 @@
 pub mod chromosomes;
 pub mod fatigue;
 pub mod gamestate;
+pub mod gene_names;
 pub mod genes;
 pub mod genes_xml;
 pub mod horse;

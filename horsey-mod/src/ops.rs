@@ -845,6 +845,19 @@ pub fn register_all() {
             },
         ),
         OpDef::new(
+            "genes.vanilla.names",
+            "Return the list of 240 vanilla gene names sourced from \
+<game-root>/data/genes.xml, indexed by engine-flat gene_idx.",
+            "",
+            |_| {
+                let names = crate::gene_names::vanilla_gene_names();
+                Ok(json!({
+                    "loaded": names.is_some(),
+                    "names":  names.map(|n| n.to_vec()).unwrap_or_default(),
+                }))
+            },
+        ),
+        OpDef::new(
             "genes.chromosomes.dump",
             "Dump the parsed chromosome map (CRISPR table). Returns \
 {chromosomes: [{id, slots: [flat_idx, ...]}], total_genes}.",

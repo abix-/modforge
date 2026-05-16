@@ -200,8 +200,17 @@ fn render_horse_details(
             if is_collapsed { collapsed_chromos.remove(&cid); }
             else { collapsed_chromos.insert(cid); }
         }
+        // Show a comma-separated preview of the genes on this
+        // chromosome next to its header (works whether expanded or
+        // not). Useful as a one-glance chromosome identifier.
+        ui.same_line();
+        let preview = chromo.slots.iter()
+            .map(|&flat| crate::gene_names::vanilla_gene_name(flat)
+                .unwrap_or("?").to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        ui.text_disabled(format!(" {preview}"));
         if !is_collapsed {
-            ui.same_line();
             render_chromo_strip(ui, row_idx, cid, &chromo.slots, &vanilla, |flat, new_val| {
                 horse::set_vanilla_allele(horse_ptr, flat as usize, new_val);
             });
@@ -262,6 +271,12 @@ fn render_chromo_strip<F: FnMut(u8, u8)>(
         let label = format!("{v}##c{row_idx}_{chromo_id}_{pos}");
         if ui.small_button(&label) {
             on_click(flat, (v + 1) % 4);
+        }
+        if ui.is_item_hovered() {
+            let name = crate::gene_names::vanilla_gene_name(flat).unwrap_or("?");
+            ui.tooltip(|| {
+                ui.text(format!("{name}  (flat {flat}, allele tier {v})"));
+            });
         }
         if pos + 1 < slots.len() {
             ui.same_line();

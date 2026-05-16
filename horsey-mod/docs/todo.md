@@ -685,7 +685,15 @@ After this lands, the order below resumes:
    - Side-by-side compare two horses (next/prev arrows on the expand panel; diff highlight).
    - Bulk per-chromosome ops: "max this chromosome", "wild-type this chromosome", "copy from another horse".
    - Filter: "show only chromosomes that differ from species default" / "show only nonzero".
-5. **C5. Gene name labels.** Find the gene-name table (likely keyed by horse_offset). Replace `c#_s#` headers with the in-game gene names. Hover for description if the game has one. Optional Phase D continuation.
+5. **C5. Gene name labels.** [DONE 2026-05-16] Vanilla gene names sourced from `<game-root>/data/genes.xml`, loaded via `crate::gene_names::vanilla_gene_names()` (OnceLock cache). 240 names in document order; verified XML order == engine flat index (`SIZE`=0, `ASPECT`=1, `SKINNY`=2, ...). UI shows the comma-separated name preview next to each chromosome header; hovering any cell shows `GENE_NAME (flat N, allele tier V)`. Op `genes.vanilla.names` returns the list; test `tests/vanilla_gene_names.rs` asserts the load. **Layout problems remain** (see C7 below): names blow up horizontal width and the preview line wraps unevenly. Ext gene name labels still TODO (load from `genes-extended.xml` which the mod already parses; expose via parallel `gene_names::ext_gene_name(idx)`).
+
+5a. **C7. Layout pass [OPEN 2026-05-16, USER-LOCKED].** Current chromosome-strip overlay works end-to-end but has layout problems flagged by user: gene-name preview lines are too long, button rows overflow window width, ext block is dense. Need to design the actual UX:
+   - Per-cell labels: replace single digit with first-letter or full name? Or keep digit + tooltip?
+   - Wrap long chromosome strips onto multiple visual rows when they exceed window width.
+   - Two-pane layout: left = chromosome list (collapsible), right = currently-selected chromosome's full detail (gene name + tier slider + description) instead of inline expand?
+   - Allele cycling 0->3 in a 0..=3 space is fine numerically but a click-to-pick combo box might be clearer.
+   - Color-code the allele tier (0 = grey, 3 = bright green, etc.) to read at a glance.
+   - Pick one direction before writing more UI code. User to decide.
 6. **C6. Persistence helpers.** `horse.genome.snapshot.{save,load,list}` HTTP ops backed by JSON files under `<DLL_dir>/snapshots/`. UI: "Save snapshot..." / "Load snapshot..." dropdown on the Details panel.
 2. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml.
 3. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
