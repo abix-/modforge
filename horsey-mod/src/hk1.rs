@@ -1,38 +1,62 @@
-//! HK1 transfer experiment plumbing.
+//! HK1 horse-transfer plumbing.
 //!
-//! Backs the per-horse "Send to Truck / Pasture" overlay buttons and a
-//! file logger so the operator can verify in-game behavior without
-//! restarting the game between attempts.
+//! Approach: don't write Horse state directly (the +0x1d0 field is a
+//! downstream display value; writing it doesn't move the horse). Instead,
+//! invoke the game's own drop-commit method from the Home Location's
+//! vtable (`vtable[+0x78]` = `FUN_1400de2e0`, resolved at runtime). That
+//! function reads `LOC[0x29]` (the currently-grabbed horse pointer) plus
+//! `LOC[0x174]/+0x178` (cursor position) and commits a drop at the
+//! cursor's hit-tested target.
 //!
-//! Hypothesis being tested:
-//!   horse_ptr + 0x1d0 (u32) = container kind
-//!     7 = truck, 9 = pasture (observed; other values unknown)
-//!   horse_ptr + 0x1dc (u32) = sub-state / slot index inside container
+//! Flow per transfer:
+//!   1. Set `LOC[0x29] = horse_ptr` (mark horse as grabbed).
+//!   2. Set `LOC[0x174] = target_x`, `LOC[0x178] = target_y` (calibrated
+//!      cursor position over the target container).
+//!   3. Call `vtable[+0x78](LOC)`. Returns non-zero on successful drop.
 //!
-//! Both fields are written without any vtable / animation side-effects
-//! today. The point is to see how the game's render path reacts.
+//! Targets are calibrated once by the operator: they move the in-game
+//! cursor over each container area and click "Save TRUCK" / "Save
+//! PASTURE". The captured (x, y) pair gets persisted to disk.
+//!
+//! Resolved at runtime, not hardcoded:
+//!   - Home Location vtable RVA `0x30f3d0` (from
+//!     `hk1.probe.scene_slot_vtables`).
+//!   - Drop-commit slot offset `+0x78` (from the decomp at
+//!     `FUN_1400d2ab0` line 1722).
+//!
+//! All side-effects (audio, animation, container update) come for free
+//! because the game's own commit method runs.
 
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const OFF_CONTAINER_KIND: usize = 0x1d0;
-pub const OFF_CONTAINER_SUB:  usize = 0x1dc;
+/// Home Location class vtable RVA. Slot 0x00 of the scene table and
+/// the race-lane slots 0x08..0x38 all share this vtable.
+pub const HOME_LOC_VTABLE_RVA: usize = 0x30f3d0;
 
-/// Named container kinds observed so far. Add as we learn them.
-pub const KIND_TRUCK:   u32 = 7;
-pub const KIND_PASTURE: u32 = 9;
+/// Vtable offset for the drop-commit method (param_1.vtable[+0x78]).
+/// Confirmed via FUN_1400d2ab0:1722.
+pub const VTABLE_DROP_COMMIT: usize = 0x78;
+
+/// Location field offsets on the shared Location class.
+pub const LOC_GRABBED_HORSE: usize = 0x29 * 8; // = 0x148 (qword index 0x29)
+pub const LOC_CURSOR_X:      usize = 0x174;     // float
+pub const LOC_CURSOR_Y:      usize = 0x178;     // float
 
 fn log_path() -> Option<PathBuf> {
     modforge::log::dll_dir().map(|d| d.join("hk1_overlay.log"))
 }
 
+fn calib_path() -> Option<PathBuf> {
+    modforge::log::dll_dir().map(|d| d.join("hk1_targets.json"))
+}
+
 static LOG_LOCK: Mutex<()> = Mutex::new(());
 
-/// Append one line to `<dll_dir>/hk1_overlay.log`. Best-effort; silently
-/// drops on IO error so the UI never panics.
+/// Append one line to `<dll_dir>/hk1_overlay.log`.
 pub fn log_line(s: &str) {
     let Some(path) = log_path() else { return };
     let _g = LOG_LOCK.lock().ok();
@@ -45,36 +69,162 @@ pub fn log_line(s: &str) {
     }
 }
 
-/// Read the (kind, sub) pair at `+0x1d0` / `+0x1dc` for a horse.
-/// Returns `None` if the address range isn't readable.
-pub fn read_container(horse_ptr: usize) -> Option<(u32, u32)> {
-    let addr_kind = horse_ptr + OFF_CONTAINER_KIND;
-    let addr_sub = horse_ptr + OFF_CONTAINER_SUB;
-    if !modforge::winproc::is_addr_readable(addr_sub + 3) {
-        return None;
-    }
-    // SAFETY: end-of-range checked above; both u32 reads land in the
-    // same Horse allocation.
-    let kind = unsafe { (addr_kind as *const u32).read_unaligned() };
-    let sub = unsafe { (addr_sub as *const u32).read_unaligned() };
-    Some((kind, sub))
+#[derive(Default, Clone, Copy, Debug)]
+pub struct Targets {
+    pub truck:   Option<(f32, f32)>,
+    pub pasture: Option<(f32, f32)>,
 }
 
-/// Write `value` at `horse + 0x1d0`. Logs the before / after to the
-/// overlay log file. Returns true if the write happened.
-pub fn write_kind(horse_ptr: usize, value: u32, label: &str) -> bool {
-    let addr = horse_ptr + OFF_CONTAINER_KIND;
-    if !modforge::winproc::is_addr_readable(addr + 3) {
-        log_line(&format!("write_kind FAIL horse=0x{horse_ptr:x} addr=0x{addr:x} unreadable"));
-        return false;
+static TARGETS: Mutex<Option<Targets>> = Mutex::new(None);
+
+/// Load the saved (truck, pasture) cursor positions from
+/// `<dll_dir>/hk1_targets.json`. Returns an empty Targets if the file
+/// doesn't exist or fails to parse.
+pub fn load_targets() -> Targets {
+    if let Some(t) = *TARGETS.lock().unwrap() {
+        return t;
     }
-    let before = read_container(horse_ptr);
-    // SAFETY: addr+3 readability checked; write lands in the Horse alloc.
-    unsafe { (addr as *mut u32).write_unaligned(value); }
-    let after = read_container(horse_ptr);
+    let mut t = Targets::default();
+    if let Some(path) = calib_path() {
+        if let Ok(mut f) = File::open(&path) {
+            let mut s = String::new();
+            if f.read_to_string(&mut s).is_ok() {
+                // hand-rolled parser; trivial schema, no serde dependency
+                t.truck   = parse_xy(&s, "truck");
+                t.pasture = parse_xy(&s, "pasture");
+            }
+        }
+    }
+    *TARGETS.lock().unwrap() = Some(t);
+    t
+}
+
+fn parse_xy(s: &str, key: &str) -> Option<(f32, f32)> {
+    let needle = format!("\"{key}\"");
+    let idx = s.find(&needle)?;
+    let rest = &s[idx + needle.len()..];
+    let lbr = rest.find('[')?;
+    let rbr = rest.find(']')?;
+    let inner = &rest[lbr + 1..rbr];
+    let mut nums = inner.split(',').map(|p| p.trim().parse::<f32>());
+    let x = nums.next()?.ok()?;
+    let y = nums.next()?.ok()?;
+    Some((x, y))
+}
+
+fn save_targets(t: Targets) {
+    let Some(path) = calib_path() else { return };
+    let fmt_xy = |v: Option<(f32, f32)>| match v {
+        Some((x, y)) => format!("[{x}, {y}]"),
+        None => "null".into(),
+    };
+    let s = format!(
+        "{{\"truck\": {}, \"pasture\": {}}}\n",
+        fmt_xy(t.truck), fmt_xy(t.pasture)
+    );
+    if let Ok(mut f) = OpenOptions::new().create(true).truncate(true).write(true).open(&path) {
+        let _ = f.write_all(s.as_bytes());
+    }
+    *TARGETS.lock().unwrap() = Some(t);
+    log_line(&format!("targets saved: truck={:?} pasture={:?}", t.truck, t.pasture));
+}
+
+/// Walk GS+0x438 -> *(arr + 0) (the Home Location object).
+pub fn home_loc_ptr() -> Option<usize> {
+    let gs = crate::gamestate::ptr();
+    if gs == 0 { return None; }
+    if !modforge::winproc::is_addr_readable(gs + 0x438) { return None; }
+    // SAFETY: GS+0x438 just checked.
+    let arr_ptr = unsafe { *((gs + 0x438) as *const usize) };
+    if !modforge::winproc::is_addr_readable(arr_ptr) { return None; }
+    // SAFETY: arr_ptr just checked.
+    let loc = unsafe { *(arr_ptr as *const usize) };
+    if loc == 0 || !modforge::winproc::is_addr_readable(loc + 0x300) { return None; }
+    Some(loc)
+}
+
+/// Read the cursor coords the click-handler watches (`LOC[0x174]/+0x178`).
+pub fn read_cursor() -> Option<(f32, f32)> {
+    let loc = home_loc_ptr()?;
+    if !modforge::winproc::is_addr_readable(loc + LOC_CURSOR_Y + 3) { return None; }
+    // SAFETY: range just checked.
+    let x = unsafe { *((loc + LOC_CURSOR_X) as *const f32) };
+    let y = unsafe { *((loc + LOC_CURSOR_Y) as *const f32) };
+    Some((x, y))
+}
+
+/// Capture the current cursor coords as `which`'s calibration.
+pub fn calibrate(which: &str) -> Option<(f32, f32)> {
+    let pos = read_cursor()?;
+    let mut t = load_targets();
+    match which {
+        "truck"   => t.truck   = Some(pos),
+        "pasture" => t.pasture = Some(pos),
+        _ => return None,
+    }
+    save_targets(t);
+    log_line(&format!("calibrate {which} -> {pos:?}"));
+    Some(pos)
+}
+
+/// Read the drop-commit function pointer from the Home Location vtable.
+fn resolve_drop_commit_fn() -> Option<usize> {
+    let image_base = crate::targets::image_base();
+    let slot = image_base + HOME_LOC_VTABLE_RVA + VTABLE_DROP_COMMIT;
+    if !modforge::winproc::is_addr_readable(slot + 7) { return None; }
+    // SAFETY: slot+7 just checked; image_base + RVA is in .rdata.
+    let fn_addr = unsafe { *(slot as *const usize) };
+    if fn_addr == 0 { return None; }
+    Some(fn_addr)
+}
+
+/// Transfer a horse to a calibrated container via the game's own
+/// drop-commit method. Returns `Some(result)` from `vtable[+0x78]`
+/// (non-zero = drop accepted) or `None` if the call could not be made.
+pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
+    let t = load_targets();
+    let target = match dest {
+        "truck"   => t.truck?,
+        "pasture" => t.pasture?,
+        _ => return None,
+    };
+    let loc = home_loc_ptr()?;
+    let fn_addr = resolve_drop_commit_fn()?;
+
+    // Stash old values so we can restore on completion.
+    if !modforge::winproc::is_addr_readable(loc + LOC_GRABBED_HORSE + 7) { return None; }
+    if !modforge::winproc::is_addr_readable(loc + LOC_CURSOR_Y + 3) { return None; }
+    // SAFETY: both ranges checked above; writes land in the Location alloc.
+    let old_grabbed = unsafe { *((loc + LOC_GRABBED_HORSE) as *const usize) };
+    let old_cx      = unsafe { *((loc + LOC_CURSOR_X) as *const f32) };
+    let old_cy      = unsafe { *((loc + LOC_CURSOR_Y) as *const f32) };
+
     log_line(&format!(
-        "write_kind label='{label}' horse=0x{horse_ptr:x} wrote=+0x1d0={value} \
-         before={before:?} after={after:?}"
+        "transfer dest={dest} horse=0x{horse_ptr:x} loc=0x{loc:x} fn=0x{fn_addr:x} \
+         target=({},{}) old_grabbed=0x{old_grabbed:x} old_cursor=({old_cx},{old_cy})",
+        target.0, target.1
     ));
-    true
+
+    // Stage the LOC: grabbed horse + cursor over target.
+    // SAFETY: writes covered by the readability checks above.
+    unsafe {
+        *((loc + LOC_GRABBED_HORSE) as *mut usize) = horse_ptr;
+        *((loc + LOC_CURSOR_X) as *mut f32) = target.0;
+        *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
+    }
+
+    // Invoke vtable[+0x78](LOC). Returns char; we capture the LSB.
+    // ABI: Microsoft x64; first arg in RCX. The vtable method is a
+    // member function so RCX = this = LOC.
+    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
+    // SAFETY: fn_addr was just read from a readable vtable slot in
+    // .rdata. The function expects (this) per the click-handler
+    // decomp (vtable[+0x78](param_1)).
+    let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
+    // SAFETY: f is a valid Location member fn; LOC pointer is the
+    // game's live Home Location object.
+    let result = unsafe { f(loc as *mut u8) };
+
+    log_line(&format!("transfer result={result}"));
+    Some(result)
 }

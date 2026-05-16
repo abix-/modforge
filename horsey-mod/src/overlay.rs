@@ -164,35 +164,47 @@ fn render_horse_details(
     ));
     ui.text(format!("ptr=0x{horse_ptr:x}"));
 
-    // HK1 container experiment. Live readout of horse+0x1d0 / +0x1dc
-    // (the bytes that varied between tomtato's truck-state and
-    // pasture-state byte-dumps) plus poke buttons. Every click writes
-    // a line to <dll_dir>/hk1_overlay.log so the operator can hand
-    // results back to the agent without restarting the game.
+    // HK1 transfer controls. Reads the calibrated truck/pasture cursor
+    // positions and invokes the Home Location's drop-commit vtable
+    // (the game's own drag-drop completion path) to transfer the horse.
+    // Calibration is one-time: hover the in-game cursor over each
+    // container area and click the matching "Save" button.
     {
         use crate::hk1;
-        let (kind_s, sub_s) = match hk1::read_container(horse_ptr) {
-            Some((k, s)) => (format!("{k}"), format!("{s}")),
-            None => ("?".into(), "?".into()),
-        };
-        ui.text(format!("HK1: container kind (+0x1d0) = {kind_s}    sub (+0x1dc) = {sub_s}"));
-        if ui.small_button(&format!("Truck (7)##hk1_truck_{row_idx}")) {
-            hk1::write_kind(horse_ptr, hk1::KIND_TRUCK, &format!("ui:truck name='{name}'"));
+        let t = hk1::load_targets();
+        let truck_s = t.truck.map(|(x, y)| format!("({x:.1},{y:.1})")).unwrap_or("(unset)".into());
+        let pasture_s = t.pasture.map(|(x, y)| format!("({x:.1},{y:.1})")).unwrap_or("(unset)".into());
+        let cursor_s = hk1::read_cursor()
+            .map(|(x, y)| format!("({x:.1},{y:.1})")).unwrap_or("(unreadable)".into());
+        ui.text(format!("HK1 calibration: truck={truck_s}  pasture={pasture_s}"));
+        ui.text(format!("    in-game cursor now: {cursor_s}"));
+        if ui.small_button(&format!("Save cursor as TRUCK##hk1_calT_{row_idx}")) {
+            hk1::calibrate("truck");
         }
         ui.same_line();
-        if ui.small_button(&format!("Pasture (9)##hk1_past_{row_idx}")) {
-            hk1::write_kind(horse_ptr, hk1::KIND_PASTURE, &format!("ui:pasture name='{name}'"));
+        if ui.small_button(&format!("Save cursor as PASTURE##hk1_calP_{row_idx}")) {
+            hk1::calibrate("pasture");
         }
         ui.same_line();
-        // Probe ramp: lets the operator try unknown values 0..=15 to
-        // sweep for race-line / other states without retyping curl.
-        for v in [0u32, 1, 2, 3, 4, 5, 6, 8, 10, 11, 12] {
-            if ui.small_button(&format!("{v}##hk1_v{v}_{row_idx}")) {
-                hk1::write_kind(horse_ptr, v, &format!("ui:try{v} name='{name}'"));
+        ui.text_disabled("(log: hk1_overlay.log)");
+        let truck_ready = t.truck.is_some();
+        let pasture_ready = t.pasture.is_some();
+        if truck_ready {
+            if ui.small_button(&format!(">> Truck##hk1_xfT_{row_idx}")) {
+                hk1::transfer_horse(horse_ptr, "truck");
             }
             ui.same_line();
+        } else {
+            ui.text_disabled(">> Truck (calibrate first)");
+            ui.same_line();
         }
-        ui.text_disabled("(log: hk1_overlay.log)");
+        if pasture_ready {
+            if ui.small_button(&format!(">> Pasture##hk1_xfP_{row_idx}")) {
+                hk1::transfer_horse(horse_ptr, "pasture");
+            }
+        } else {
+            ui.text_disabled(">> Pasture (calibrate first)");
+        }
     }
 
     // Bulk operations across the whole genome.
