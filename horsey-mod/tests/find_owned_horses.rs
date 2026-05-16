@@ -12,7 +12,13 @@
 //!
 //! This test calls `gamestate.owned_horses` (mod-side traversal with
 //! is_addr_readable guards at every hop) and reports count + per-horse
-//! fields. The assertion is permissive: count > 0 and each plausible.
+//! fields.
+//!
+//! Modes (env-driven):
+//! - default: assert count > 0 and per-horse fields plausible.
+//! - `HORSEY_EXPECT_OWNED=<N>`: strict; assert count == N. Use this
+//!   when the save has a known horse count and we want regression
+//!   coverage that the GS+0x438 chain still resolves correctly.
 
 mod common;
 
@@ -73,6 +79,12 @@ fn owned_horses_are_findable() {
         );
         assert!(tired_a <= 1, "horse {h} has implausible tired_a {tired_a}");
         assert!(tired_b <= 1, "horse {h} has implausible tired_b {tired_b}");
+    }
+
+    if let Ok(expect_s) = std::env::var("HORSEY_EXPECT_OWNED") {
+        let expect: usize = expect_s.parse().expect("HORSEY_EXPECT_OWNED not a number");
+        assert_eq!(count, expect,
+            "HORSEY_EXPECT_OWNED={expect}, but GS+0x438 chain reports {count}");
     }
 
     game.pass(&format!("owned_horse_count={count}; chain validated"));

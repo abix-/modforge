@@ -5,11 +5,16 @@
 //! drift may have moved them; this probe just confirms whether those
 //! RVAs still hold readable floats.
 //!
-//! Pass criterion: both reads succeed AND the values are finite. We do
-//! NOT here assert "the value changes when the mouse moves". That
-//! requires SendInput plumbing or a human-in-the-loop step that
-//! Stage S1 will add. For S0 we just want "the address didn't drift
-//! into garbage memory."
+//! Modes (env-driven):
+//! - default: discovery. Reads both, asserts no error from probe.
+//! - `HORSEY_EXPECT_FINITE=1`: strict. Assert both values are finite
+//!   (not NaN / inf). The default is permissive because the values
+//!   may be uninitialized garbage at main menu; once a save is loaded
+//!   they should always be finite.
+//! - `HORSEY_EXPECT_X_RANGE=<lo..hi>` / `HORSEY_EXPECT_Y_RANGE=<lo..hi>`:
+//!   strict. Assert each value is within the named range (decimal
+//!   floats, separator `..`). Use to regression-protect against the
+//!   HLT-published RVAs drifting onto unrelated memory.
 
 mod common;
 
@@ -32,12 +37,28 @@ fn probe_mouse_globals() {
     eprintln!("mouse_x = {x:?} (bits {x_bits})");
     eprintln!("mouse_y = {y:?} (bits {y_bits})");
 
-    // Pass if both reads completed without an error from the op. Whether
-    // the values are sane (in screen bounds) is the next stage's job;
-    // here we only confirm the address is still readable.
     assert!(result.get("error").is_none(), "probe returned an error");
+
+    if std::env::var("HORSEY_EXPECT_FINITE").ok().as_deref() == Some("1") {
+        let xv = x.expect("x missing");
+        let yv = y.expect("y missing");
+        assert!(xv.is_finite(), "HORSEY_EXPECT_FINITE: x={xv} not finite");
+        assert!(yv.is_finite(), "HORSEY_EXPECT_FINITE: y={yv} not finite");
+    }
+
+    for (name, val) in [("HORSEY_EXPECT_X_RANGE", x), ("HORSEY_EXPECT_Y_RANGE", y)] {
+        if let Ok(s) = std::env::var(name) {
+            let (lo, hi) = s.split_once("..").unwrap_or_else(|| panic!("{name}='{s}' must be lo..hi"));
+            let lo: f64 = lo.parse().unwrap_or_else(|e| panic!("{name} lo: {e}"));
+            let hi: f64 = hi.parse().unwrap_or_else(|e| panic!("{name} hi: {e}"));
+            let v = val.unwrap_or_else(|| panic!("{name} set but value missing from probe"));
+            assert!(v >= lo && v <= hi,
+                "{name}={s}: observed {v} outside range");
+        }
+    }
+
     game.pass(&format!(
-        "mouse_x={:?} mouse_y={:?} (drift checks in S1)",
+        "mouse_x={:?} mouse_y={:?}",
         x.unwrap_or(f64::NAN), y.unwrap_or(f64::NAN)
     ));
 }

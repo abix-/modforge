@@ -24,6 +24,7 @@ pub mod server;
 pub mod settings;
 pub mod shutdown;
 pub mod snapshots;
+pub mod testkit;
 pub mod ui;
 pub mod winproc;
 pub mod worker;

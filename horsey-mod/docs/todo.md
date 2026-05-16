@@ -687,13 +687,17 @@ After this lands, the order below resumes:
    - Filter: "show only chromosomes that differ from species default" / "show only nonzero".
 5. **C5. Gene name labels.** [DONE 2026-05-16] Vanilla gene names sourced from `<game-root>/data/genes.xml`, loaded via `crate::gene_names::vanilla_gene_names()` (OnceLock cache). 240 names in document order; verified XML order == engine flat index (`SIZE`=0, `ASPECT`=1, `SKINNY`=2, ...). UI shows the comma-separated name preview next to each chromosome header; hovering any cell shows `GENE_NAME (flat N, allele tier V)`. Op `genes.vanilla.names` returns the list; test `tests/vanilla_gene_names.rs` asserts the load. **Layout problems remain** (see C7 below): names blow up horizontal width and the preview line wraps unevenly. Ext gene name labels still TODO (load from `genes-extended.xml` which the mod already parses; expose via parallel `gene_names::ext_gene_name(idx)`).
 
-5a. **C7. Layout pass [OPEN 2026-05-16, USER-LOCKED].** Current chromosome-strip overlay works end-to-end but has layout problems flagged by user: gene-name preview lines are too long, button rows overflow window width, ext block is dense. Need to design the actual UX:
-   - Per-cell labels: replace single digit with first-letter or full name? Or keep digit + tooltip?
-   - Wrap long chromosome strips onto multiple visual rows when they exceed window width.
-   - Two-pane layout: left = chromosome list (collapsible), right = currently-selected chromosome's full detail (gene name + tier slider + description) instead of inline expand?
-   - Allele cycling 0->3 in a 0..=3 space is fine numerically but a click-to-pick combo box might be clearer.
-   - Color-code the allele tier (0 = grey, 3 = bright green, etc.) to read at a glance.
-   - Pick one direction before writing more UI code. User to decide.
+5a. **C7. Detail-view polish [OPEN].** The chromosome-strip layout is structurally correct (20 chromosomes x 8-16 named genes per CRISPR's grouping). Cells are anonymous digit buttons; preview line overflows. Plan:
+   - Drop the comma-separated preview line. Rely on cell tooltip for the name.
+   - Swap single-digit cell buttons for colored squares with first-letter overlay (e.g. `S` for SIZE). Color saturation encodes tier 0..3.
+   - Group ext genes (today they are one flat 240-cell block, no chromosome metadata). Options: `chromosome="X"` attribute in `genes-extended.xml`, or auto-group by render mode (add/mul/set), or prefix match on `BX_<FAMILY>_*`.
+   - Bulk per-chromosome buttons: "max this chromosome", "wild-type this chromosome".
+
+5b. **C8. Matrix-view tab [OPEN, NEXT, USER-LOCKED 2026-05-16].** Scales to 100+ horses. Inspired by [Dwarf Therapist](https://github.com/Dwarf-Therapist/Dwarf-Therapist)'s grid: rows = horses, columns = 480 gene cells, each cell a tiny colored square (color encodes tier 0..3). Frozen first column = horse name. Vertical separators between chromosomes group the 240 vanilla columns visually; ext appended on the right. Hover any cell -> tooltip `<HORSE>.<GENE>=tier`. Click cycles tier (writes BOTH diploid banks for vanilla). The big win: spot outliers across the herd at a glance.
+   - Implementation: draw cells via `DrawList` rather than `BeginTable` (480 columns exceeds the 64-col Table cap; manual drawing is simpler and faster). One row per horse: horse-name label + 480 colored rects via `InvisibleButton` per cell so hover/click works.
+   - Virtualization deferred until horse count makes it necessary (ImGuiListClipper). With less than 50 horses there is no need.
+   - Filter / sort row above the grid: text search by name; sort by chromosome-sum (cheapest "interesting horse" metric).
+   - Color palette: 0=dark grey, 1=blue, 2=green, 3=bright yellow. Same palette reused in Detail-view cells (C7).
 6. **C6. Persistence helpers.** `horse.genome.snapshot.{save,load,list}` HTTP ops backed by JSON files under `<DLL_dir>/snapshots/`. UI: "Save snapshot..." / "Load snapshot..." dropdown on the Details panel.
 2. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml.
 3. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
@@ -724,6 +728,77 @@ Scoped sub-tasks (do in order, ship each on its own):
 - [ ] Phase B: Vanilla 240 gene values. Decomp combinator arg layout, add `horse::vanilla_alleles(horse_ptr) -> [u8; 240]`, render grid.
 - [ ] Phase C: Extension 240 gene values from `EXT_HORSE_GENOMES`. Render same grid format below vanilla block.
 - [ ] Phase D: gene-name labels from `genes.xml` (vanilla) + `genes-extended.xml` (ext). Hover tooltip or replace `gNNN:` prefix.
+
+### Field-semantic discovery: dual-purpose watch-tests (2026-05-16)
+
+> **Finding from the HLT prior-art deep read** (see [`PRIOR-ART-HorseyLiveTweaks.md`](PRIOR-ART-HorseyLiveTweaks.md#deep-cross-reference-findings-2026-05-16)).
+
+HLT got their offset semantic names (hungry vs tired, stamina vs age, life-stage vs species) by twiddling bytes live in their in-game ImGui UI and watching the game react. Not by static analysis. The reason they have richer field semantics than we do is feedback-loop latency, not RE skill.
+
+Initial reaction was "we need a byte-poker UI panel." Re-examined: that's wrong for our project, and not just wrong by a little. A UI is STRICTLY SLOWER than tests in our setup, because UIs require a human-in-loop for both driving the game and observing the reaction, and that round-trip ("user plays, then tells Claude what happened") is the slowest part of any feedback cycle.
+
+Our HTTP cmdlets already drive state (feed a horse, sleep, race, trigger CRISPR, etc.), not just observe it. That means a test can perform the trigger AND observe the reaction AND assert the result in one closed loop. Claude writes test, runs `cargo test`, reads the diff, iterates. No alt-tab. No human telling Claude what happened. End-to-end automated.
+
+HLT's UI is human-in-loop for both drive (slider) and observe (game window). Ours is human-out-of-loop for both. Not equivalent. Strictly faster, when the driving cmdlet exists.
+
+**Corollary:** when a cmdlet to drive a specific action doesn't exist yet, the right move is to ADD the cmdlet (and ship it as a permanent control surface usable by every future test) rather than reach for a UI workaround. Every offset discovery session ends with two artifacts shipped: the cmdlet that drives the action, and the watch-test that asserts the reaction.
+
+#### The watch-test shape
+
+`tests/watch_region.rs` (env-driven, generic across BASE/OFFSET/LEN/TRIGGER):
+
+```
+HORSEY_WATCH_BASE=horse_ptr       # or gamestate, scene, or raw hex addr
+HORSEY_WATCH_INDEX=0              # which horse / scene
+HORSEY_WATCH_OFFSET=0x1f0
+HORSEY_WATCH_LEN=64
+HORSEY_WATCH_HZ=10
+HORSEY_WATCH_TIMEOUT_MS=2000
+HORSEY_WATCH_TRIGGER=cmd.feed_horse(0)   # optional: cmdlet to drive
+HORSEY_WATCH_EXPECT=0x205:1->0           # optional: assert this transition
+k3sc cargo-lock test -p horsey-mod --test watch_region -- --nocapture
+```
+
+Closed-loop flow when all four are set (the production shape):
+
+1. Test records baseline of the configured region via `mem.read`.
+2. Test invokes `TRIGGER` cmdlet via HTTP.
+3. Test polls the region at `HZ` until either `EXPECT` transition is observed or `TIMEOUT_MS` elapses.
+4. Test asserts the transition was observed within the window AND prints the full byte-diff log (every byte that changed and when).
+
+This is end-to-end automated. No human action. No alt-tab. The test runs, exits with pass/fail, and the diff log captures both the asserted transition and any incidental changes (which are themselves new offset-discovery leads).
+
+Modes are picked by which env vars are set:
+
+- **Discovery mode** (`TRIGGER` set, no `EXPECT`). Test drives the action, prints the full byte-diff log, exits success. Used to find candidate fields when we know the trigger but not which byte responds. Claude reads the log and forms hypotheses.
+- **Assertion mode** (`TRIGGER` + `EXPECT` both set). Full closed loop. The moment we believe "0x205 is hungry, drops from 1 to 0 when fed," we set `EXPECT` and the test ships. Next regression run fails immediately if a game patch moves the field.
+- **Manual mode** (no `TRIGGER`). Falls back to passive watch with `WAIT_SECONDS`; user does the action by hand. Only useful for actions we cannot yet drive via cmdlet. Should be a temporary state; the work item that follows is always "add the missing cmdlet, convert this to closed-loop."
+
+Companion: `tests/watch_until_change.rs`. Polls a single (base, offset, width) tuple, prints the transition timestamp, can optionally assert max-latency-to-change (proves "feeding causes the field to drop within 500ms" not just "it eventually drops").
+
+#### Leverage
+
+- The 9 remaining H-gb-low field offsets, Phase E of the R4 plan: run discovery on the GameState window, trigger each game action one by one, log what changed. Convert each finding to an `EXPECT` assertion.
+- The 3 HLT semantic conflicts (0x1c, 0x1fc/0x200, 0x205): run discovery on horse bytes 0x1c..0x208 across feed/race/age actions, see which field moves with which trigger. The resolved semantics become permanent assertion tests.
+- The 0x280 conflict (pointer pair vs timer): one-shot read as u64. Watch-test asserts the value is in the `0x1F....` heap range (our interpretation) or a small monotonic int (HLT's). Whichever passes is the truth, and the assertion lives forever.
+- Any future RE on Horsey internals or other modforge consumer games inherits the test; extract to `modforge::tools::watch_region` once Horsey proves it.
+
+#### Why not the UI panel?
+
+- A UI is strictly slower than tests in our setup. UI is human-in-loop for both drive (slider) and observe (game window). Test is human-out-of-loop for both. The "user plays, then tells Claude what happened" round-trip is the slowest part of any cycle; tests skip it entirely.
+- A test in the repo is the deliverable that satisfies CLAUDE.md ("every probe ships as a test"). A UI panel is throwaway.
+- Our existing tests already do dual-purpose work (research + correctness assertion in one artifact). The watch-test slots into the same pattern.
+- ~150 LOC vs the overlay-dxgi + ImGui table + bookmarks-file + render-callback-SEH investment a UI would need.
+- The UI's only unique capability is continuous slider sweep across a value range while a human watches the game character. We don't need a human watching; we need transition detection, which the test does deterministically.
+
+#### Tasks
+
+- [ ] Author `tests/watch_region.rs` (rolling region diff in discovery mode; transition assertion in assertion mode; env-driven; output to a reviewable log).
+- [ ] Author `tests/watch_until_change.rs` (single-value transition logger with optional max-latency assertion).
+- [ ] Run on the 3 HLT semantic conflicts; commit one assertion-mode test per resolved semantic; update `horse_offset` names if HLT was right.
+- [ ] Run on Phase E 8 mystery `FIELD_*` offsets; commit assertion tests for each discovered semantic.
+- [ ] Run on the 0x280 conflict; commit the resolved-form assertion.
+- [ ] Once horsey-mod has proven the shape, extract to `modforge::tools::watch_region` so schedule1-mod / grounded2-mod / outworld-station-mod can use it too.
 
 ### In-game UI: hudhook overlay [Step 1 SHIPPED 2026-05-15]
 

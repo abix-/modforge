@@ -79,6 +79,86 @@ those listed above are the immediate path forward.
 
 ---
 
+## P0. Extract cross-game research testkit to modforge (2026-05-16)
+
+> **Driver:** [`../horsey-mod/tests/README.md`](../horsey-mod/tests/README.md). The horsey-mod test directory has hardened a dual-purpose (research + assertion) test pattern over ~70 tests. Many primitives have zero Horsey-specific assumptions and should live in `modforge` so every native-PE mod target (horsey-mod, grounded2-mod, schedule1, outworld-station-mod, future games) gets the same toolkit. "Research this ONCE and reuse what we know."
+
+### Game-agnostic primitives to extract
+
+These currently live in `horsey-mod/tests/`; the cores have zero horsey-specific assumptions.
+
+| Primitive | Source test(s) | Game-agnostic core |
+|---|---|---|
+| Region watcher | `watch_region.rs` | poll bytes at any (addr, len), diff vs previous, optional cmdlet trigger, optional `OFFSET:BEFORE->AFTER` assertion |
+| Single-value watcher | `watch_until_change.rs` | poll u8/u32/u64 at any addr, log transitions, optional max-latency assertion |
+| Op invoker / response contract | `dump_diag.rs` (now `dump_op`) | call any cmdlet, assert `result` or `error` present, optional field-path probe |
+| MSVC x64 prologue recognizer | `dump_apply_gene.rs`, `find_retire_horse_handler.rs` | byte matcher for `48 89 5c 24`, `40 53`, `48 83 ec`, etc. Duplicated across 2 files today. |
+| Function-entry verifier | `dump_apply_gene.rs` (now `verify_fn_entry_bytes`) | read bytes at any RVA, assert prologue |
+| `build_info` contract | `dump_build.rs` | assert image_base/exe_path/exe_size shape |
+| Xref-count scanner | `find_xrefs.rs` | thin wrapper over `mem.find_xrefs` |
+| Asset-next-to-exe locator | `find_genes_xml.rs` (now `find_asset_next_to_exe`) | probe paths relative to exe_path |
+| String-anchored fn locator | `find_retire_horse_handler.rs` (now `locate_fn_by_rdata_string`) | scan rdata -> find xrefs -> walk back past int3 padding -> match prologue |
+| Heap-string scan + MSVC `std::string` parser | `dump_name_table_heap.rs` | scan heap for needle, parse 32-byte SSO + size + cap |
+| Scan-data-find-struct recipe | `find_gamestate_via_money.rs` | scan .data for known u32 field value, verify by adjacent fields, rank |
+| Function-bounds via int3 | planned in `modforge::research::find_function_bounds_via_int3` | walk back/forward through .text until `cc cc cc` padding |
+| Generic binary research | already in `modforge::research` | scan, xref, decode (already shared via `research_*.rs` thin wrappers) |
+
+### Game-specific (stays in horsey-mod)
+
+Cmdlets specific to horsey (`horse.*`, `gamestate.*`, `hk1.*`) and shape-specific assertions (HORSE_ALLOC_SIZE=0x498, GS+0x438 chain, etc.). The horsey-specific tests stay where they are. The primitives they depend on are what we extract.
+
+### Proposed modforge layout
+
+```
+modforge/src/testkit/
+  mod.rs              re-exports, top-of-tree doc
+  watch.rs            region + single-value watchers; env-config parser
+  op.rs               op invoker + response contract
+  fn_entry.rs         is_msvc_prologue, verify_fn_entry, fn_bounds_via_int3
+  build_info.rs       build_info contract
+  xrefs.rs            xref count assertion
+  assets.rs           asset-next-to-exe finder
+  recipes.rs          find_fn_by_rdata_string, find_struct_by_field_value
+  msvc.rs             std::string parser, vtable-equality check
+  snapshot.rs         write/read/diff bytes-at-addr (from hk1_dump_horse_bytes)
+```
+
+Each function takes `&RunningGame` + a config struct (env-parseable). Game-specific resolvers (`base_spec -> u64`) are passed in as closures so they stay game-side.
+
+Per-game test file collapses to ~5 lines:
+
+```rust
+mod common;
+use modforge::testkit::watch;
+
+#[test]
+fn watch_region() {
+    let Some(game) = common::launch("watch_region") else { return };
+    let env = watch::RegionConfig::from_env("HORSEY_WATCH");
+    let cfg = env.resolve(|spec| common::resolve_base(&game, spec));
+    watch::run_region(&game, &cfg).assert_or_panic();
+}
+```
+
+### Tasks (ordered: lowest-risk -> highest-value)
+
+- [x] **A1: `testkit::fn_entry`.** Shipped 2026-05-16. `is_msvc_x64_prologue` (with unit tests), `find_fn_bounds_via_int3`, `verify_fn_entry` config+runner. Deduped across `dump_apply_gene` + `find_retire_horse_handler`.
+- [x] **A2: `testkit::msvc`.** Shipped 2026-05-16. `MsvcStdString` parser (with unit tests) + `is_vtable_at_image_rva` plausibility check.
+- [x] **A3: `testkit::op`.** Shipped 2026-05-16. Generic op invoker + response contract + dot-path field assertion.
+- [x] **A4: `testkit::build_info` + `testkit::xrefs` + `testkit::assets`.** Shipped 2026-05-16.
+- [x] **A5: `testkit::watch`.** Shipped 2026-05-16. Region + single-value watchers, env-parseable, three-mode (assertion / discovery-trigger / manual).
+- [x] **A6: `testkit::snapshot`.** Shipped 2026-05-16. `take` + `diff_against` for bytes-at-addr snapshots.
+- [x] **A7: `testkit::recipes`.** Shipped 2026-05-16. `find_fn_by_rdata_string` + `find_struct_by_field_value`.
+
+### Definition of done
+
+- [x] Each primitive has unit tests in modforge (where pure): `fn_entry` and `msvc` ship with tests.
+- [x] horsey-mod's test files for migrated primitives are ~10 lines each (launch + base resolver + call into modforge::testkit). All 11 thin-wrapper tests compile clean.
+- [ ] **One additional consumer mod (grounded2-mod or schedule1) adopts at least one primitive to prove the abstraction works cross-game.** Not yet started; grounded2-mod has an unrelated pre-existing `layout.rs` E0432 to clear first.
+- [ ] `modforge::testkit` documented in [`../modforge/docs/`](../modforge/docs/) (currently only module-level rustdoc).
+
+---
+
 ## Future: absorb the C# mod repos (Timberbot + Schedule 1)
 
 User direction 2026-05-14: this repo is the home for ALL

@@ -158,6 +158,36 @@ where
     }
 }
 
+/// Horsey-specific resolver for `modforge::testkit::watch` base specs.
+/// Accepts:
+/// - `horse_ptr`  -> [`target_horse(game).id`]
+/// - `gamestate`  -> live `gamestate.diag.ptr`
+/// - `0x<hex>`    -> raw address
+///
+/// Use by passing this into `EnvRegionConfig::resolve` (or the single
+/// variant) when building a watch test.
+pub fn resolve_base(game: &RunningGame, spec: &str) -> u64 {
+    if let Some(hex) = spec.strip_prefix("0x").or_else(|| spec.strip_prefix("0X")) {
+        return u64::from_str_radix(hex, 16)
+            .unwrap_or_else(|e| panic!("base raw hex parse: {e}"));
+    }
+    match spec {
+        "horse_ptr" => target_horse(game).id,
+        "gamestate" => {
+            let r = game.op_json("gamestate.diag", &json!({}))
+                .unwrap_or_else(|e| panic!("gamestate.diag failed: {e}"));
+            let ptr_s = r.get("result").and_then(|x| x.get("ptr")).and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("gamestate.diag returned no ptr: {r}"));
+            let h = ptr_s.trim_start_matches("0x").trim_start_matches("0X");
+            let p = u64::from_str_radix(h, 16)
+                .unwrap_or_else(|e| panic!("gamestate.diag ptr parse: {e}"));
+            assert!(p != 0, "gamestate.diag returned ptr=0; load a save first");
+            p
+        }
+        other => panic!("base must be horse_ptr | gamestate | 0x<hex>, got {other:?}"),
+    }
+}
+
 /// Block until `target_horse(game)` resolves successfully. Used as a
 /// pre-test gate when the save may not be loaded yet.
 pub fn wait_for_target_horse(game: &RunningGame, timeout: std::time::Duration) -> TargetHorse {

@@ -39,38 +39,7 @@ const WINDOW_AFTER: i64 = 2048;
 ///      followed by `48 83 ec ??` (sub rsp, imm8) or `48 81 ec`
 ///      (sub rsp, imm32). HORSE_SAVE_WRITER's true entry matches
 ///      this.
-fn looks_like_msvc_entry_tight(bytes: &[u8]) -> bool {
-    if bytes.len() < 6 {
-        return false;
-    }
-    // Pattern 1: shadow-space rbx save.
-    if bytes[0] == 0x48 && bytes[1] == 0x89 && bytes[2] == 0x5c && bytes[3] == 0x24 {
-        return true;
-    }
-    // Pattern 2: mov rax, rsp + push chain.
-    if bytes[0] == 0x48 && bytes[1] == 0x8b && bytes[2] == 0xc4 {
-        return matches!(bytes[3], 0x55 | 0x53 | 0x56 | 0x57 | 0x40..=0x4f);
-    }
-    // Pattern 3: push rdi + push r12-r15 + sub rsp.
-    if bytes[0] == 0x57 && bytes[1] == 0x41 && matches!(bytes[2], 0x54 | 0x55 | 0x56 | 0x57) {
-        // Followed by either another push or sub rsp.
-        return matches!(bytes[3], 0x41 | 0x48 | 0x55 | 0x56 | 0x57);
-    }
-    // Pattern 4: push rsi + push rdi + sub rsp (variant).
-    if bytes[0] == 0x56 && bytes[1] == 0x57 && bytes[2] == 0x48 {
-        return matches!(bytes[3], 0x83 | 0x81);
-    }
-    // Pattern 5: push rbx + ... + sub rsp.
-    if bytes[0] == 0x53 && (bytes[1] == 0x55 || bytes[1] == 0x56 || bytes[1] == 0x57)
-    {
-        return true;
-    }
-    false
-}
-
-fn looks_like_msvc_entry(bytes: &[u8]) -> bool {
-    looks_like_msvc_entry_tight(bytes)
-}
+use modforge::testkit::fn_entry::is_msvc_x64_prologue as looks_like_msvc_entry;
 
 fn parse_hex(s: &str) -> Vec<u8> {
     s.split_whitespace()

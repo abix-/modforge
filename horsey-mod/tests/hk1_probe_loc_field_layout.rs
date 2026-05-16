@@ -6,9 +6,15 @@
 //!   - LOC[0x2c] armed flag, LOC[0x2d] drag idx, LOC[0x2e] candidate idx
 //!   - first 0x240 bytes of the Location object
 //!
-//! Pass criterion: location ptr resolves AND horse-vec count is plausible
-//! (0..=20). With active_scene_id == -1 (overworld), probe falls back to
-//! slot 0x00 (owned horses); count should match owned-horse count.
+//! Modes (env-driven):
+//! - default: discovery. Logs the dump, asserts horse_count <= 20.
+//! - `HORSEY_EXPECT_OWNED=<N>`: strict. Assert horse_count == N when
+//!   active_scene_id == -1 (the overworld slot-0 fallback should be the
+//!   owned-horse list).
+//! - `HORSEY_EXPECT_LOC_VTABLE_RVA=<hex>`: strict. Assert the vtable RVA
+//!   reported by the probe equals the named value. Use this to lock
+//!   the active Location vtable so a build update that shuffles vtables
+//!   trips the regression.
 //!
 //! Re-run while the player walks into the paddock / home to confirm
 //! the LOC pointer changes and the click-drag fields populate.
@@ -53,6 +59,25 @@ fn probe_active_location_layout() {
 
     let count = horse_count.and_then(|v| v.as_u64()).unwrap_or(u64::MAX);
     assert!(count <= 20, "implausible horse count {count}; LOC layout wrong?");
+
+    if let Ok(s) = std::env::var("HORSEY_EXPECT_OWNED") {
+        let want: u64 = s.parse().expect("HORSEY_EXPECT_OWNED not a number");
+        let asid_int = asid.and_then(|v| v.as_i64()).unwrap_or(0);
+        if asid_int == -1 {
+            assert_eq!(count, want,
+                "HORSEY_EXPECT_OWNED={want}, but overworld slot-0 fallback reports horse_count={count}");
+        } else {
+            eprintln!("note: active_scene_id={asid_int}; not asserting EXPECT_OWNED (only valid on overworld)");
+        }
+    }
+
+    if let Ok(s) = std::env::var("HORSEY_EXPECT_LOC_VTABLE_RVA") {
+        let norm_want = s.trim_start_matches("0x").to_ascii_lowercase();
+        let norm_got = vtable_rva.trim_start_matches("0x").to_ascii_lowercase();
+        assert_eq!(norm_got, norm_want,
+            "HORSEY_EXPECT_LOC_VTABLE_RVA={s}, but probe reports vtable_rva={vtable_rva}");
+    }
+
     game.pass(&format!(
         "active_location loc_ptr={loc_ptr} vtable={vtable_rva} horses={count}"
     ));

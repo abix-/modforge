@@ -10,7 +10,12 @@
 //! identical between banks; long-lived horses may drift via the
 //! breeding / regen path).
 //!
-//! Env: `HORSEY_HORSE=<name>` (default: first owned).
+//! Modes (env-driven):
+//! - `HORSEY_HORSE=<name>` (default: first owned).
+//! - default: print + log; passes regardless of paired-bank content.
+//! - `HORSEY_EXPECT_PAIRED=1`: strict. Assert the paired bank holds
+//!   real allele data (not all zeros) and agreement count >= 100/240.
+//!   Use to lock the diploid-genome hypothesis as regression coverage.
 
 mod common;
 
@@ -62,6 +67,15 @@ fn probe_paired_genome() {
         eprintln!("\n[FAIL?] paired bank is all zeros -- offset may be wrong, or genome is single-bank");
     } else {
         eprintln!("\n[CONFIRMED] paired bank at horse+0x{PAIRED_OFF:x} holds real allele data");
+    }
+
+    if std::env::var("HORSEY_EXPECT_PAIRED").ok().as_deref() == Some("1") {
+        assert!(s_nz > 0,
+            "HORSEY_EXPECT_PAIRED=1: paired bank at horse+0x{PAIRED_OFF:x} is all zeros; \
+             diploid-genome hypothesis failed for {}", h.name);
+        assert!(same >= 100,
+            "HORSEY_EXPECT_PAIRED=1: only {same}/{LEN} slots agree between primary and paired; \
+             banks have drifted too far. {} differ", LEN - same);
     }
 }
 

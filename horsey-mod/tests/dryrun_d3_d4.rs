@@ -27,65 +27,9 @@
 mod common;
 
 use modforge::harness::RunningGame;
+use modforge::testkit::fn_entry::is_msvc_x64_prologue_loose;
 use serde_json::Value;
 use serde_json::json;
-
-/// Returns true if the byte sequence looks like the entry of an
-/// MSVC-compiled Win64 function. Specifically, accepts the shapes
-/// we see across `Horsey.exe` working detours:
-///   - `48 89 ..`   mov [rsp+disp], <reg>   (shadow-space saves)
-///   - `48 8b c4`   mov rax, rsp            (big-frame prologue)
-///   - `48 83 ec`   sub rsp, imm8           (small leaf frame)
-///   - `48 81 ec`   sub rsp, imm32          (large leaf frame)
-///   - `40 53/55/56/57` REX + push reg      (push r12/r13/r14/r15)
-///   - `53/55/56/57`   push rbx/rbp/rsi/rdi (plain push prologue)
-///   - `4c 89 ..`   mov [rsp+disp], r8..r15
-///   - `44 89 ..`   mov [rsp+disp], r8d..r15d
-///   - `41 ..`      REX.B push
-///
-/// Rejects:
-///   - all `cc`     INT3 padding (function-boundary gap)
-///   - all zero    .reloc or BSS
-///   - `e9 ..`      jmp rel32 leading byte (jump table thunk, not
-///                  a real entry)
-fn looks_like_msvc_entry(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 {
-        return false;
-    }
-    // Reject INT3 padding outright.
-    if bytes.iter().take(8).all(|&b| b == 0xcc) {
-        return false;
-    }
-    if bytes.iter().take(8).all(|&b| b == 0x00) {
-        return false;
-    }
-    match bytes[0] {
-        // REX.W (48). Most common Win64 entry prefix.
-        // 48 89 .. : mov [rsp+disp], <reg>  (shadow-space save)
-        // 48 8b c4 : mov rax, rsp           (big-frame prologue)
-        // 48 83 ec : sub rsp, imm8          (leaf prologue)
-        //     Note: `48 83` is ambiguous (also `cmp rXX, imm8`).
-        //     Restrict to `48 83 ec ..` to avoid mid-function false
-        //     positives from `cmp rdx, imm` etc.
-        // 48 81 ec : sub rsp, imm32         (large leaf)
-        0x48 => match bytes[1] {
-            0x89 | 0x8b => true,
-            0x83 => bytes[2] == 0xec,
-            0x81 => bytes[2] == 0xec,
-            0x57 | 0x55 | 0x53 | 0x56 => true,
-            _ => false,
-        },
-        // REX.WR (49) or REX.WB (4c)
-        0x49 | 0x4c => matches!(bytes[1], 0x89 | 0x8b),
-        // REX.WR (44) for r8d..r15d store
-        0x44 => bytes[1] == 0x89,
-        // Plain pushes (rbx, rbp, rsi, rdi)
-        0x53 | 0x55 | 0x56 | 0x57 => true,
-        // REX.B push r12..r15
-        0x41 => matches!(bytes[1], 0x54 | 0x55 | 0x56 | 0x57),
-        _ => false,
-    }
-}
 
 fn parse_prologue_hex(s: &str) -> Vec<u8> {
     s.split_whitespace()
@@ -132,7 +76,7 @@ fn check_target(
         log.event(group, &format!("{name} FAIL: {msg}"));
         return Err(msg);
     }
-    if !looks_like_msvc_entry(&bytes) {
+    if !is_msvc_x64_prologue_loose(&bytes) {
         let first4 = bytes
             .iter()
             .take(4)

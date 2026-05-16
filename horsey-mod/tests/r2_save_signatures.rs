@@ -86,34 +86,7 @@ const SAVE_TARGETS: &[SaveTarget] = &[
     },
 ];
 
-/// Same MSVC-entry classifier as `dryrun_d3_d4.rs`. Catches the
-/// stale-address regression: a signature that resolves to mid-
-/// function code doesn't pass, so a wrong signature is loudly red.
-fn looks_like_msvc_entry(bytes: &[u8]) -> bool {
-    if bytes.len() < 4 {
-        return false;
-    }
-    if bytes.iter().take(8).all(|&b| b == 0xcc) {
-        return false;
-    }
-    if bytes.iter().take(8).all(|&b| b == 0x00) {
-        return false;
-    }
-    match bytes[0] {
-        0x48 => match bytes[1] {
-            0x89 | 0x8b => true,
-            0x83 => bytes[2] == 0xec,
-            0x81 => bytes[2] == 0xec,
-            0x57 | 0x55 | 0x53 | 0x56 => true,
-            _ => false,
-        },
-        0x49 | 0x4c => matches!(bytes[1], 0x89 | 0x8b),
-        0x44 => bytes[1] == 0x89,
-        0x53 | 0x55 | 0x56 | 0x57 => true,
-        0x41 => matches!(bytes[1], 0x54 | 0x55 | 0x56 | 0x57),
-        _ => false,
-    }
-}
+use modforge::testkit::fn_entry::is_msvc_x64_prologue_loose as looks_like_msvc_entry;
 
 fn parse_prologue_hex(s: &str) -> Vec<u8> {
     s.split_whitespace()

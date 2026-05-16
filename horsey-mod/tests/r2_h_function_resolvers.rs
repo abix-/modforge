@@ -3,13 +3,8 @@
 
 mod common;
 
-use serde_json::{json, Value};
-
-fn u64_of(v: &Value, key: &str) -> Option<u64> {
-    v.get(key)
-        .and_then(|x| x.as_str())
-        .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
-}
+use modforge::testkit::json::u64_at_key as u64_of;
+use serde_json::json;
 
 #[test]
 fn h_function_resolvers() {

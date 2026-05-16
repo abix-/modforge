@@ -20,15 +20,21 @@
 //!      of that sub-struct, scans for begin/end pointer pairs with
 //!      a small element count.
 //!
+//! Modes (env-driven):
+//! - default: discovery. Prints findings; assertions are permissive
+//!   (chain returns plausible structure).
+//! - `HORSEY_EXPECT_OWNED=<N>`: strict. Assert at least one slot in
+//!   the GS+0x438 sub-struct has a horse vector of length N.
+//!
 //! Run with the game already running + a save loaded:
 //!   $env:MODFORGE_ATTACH = "1"
+//!   $env:HORSEY_EXPECT_OWNED = "3"
 //!   k3sc cargo-lock test -p horsey-mod --test investigate_horse_count. --nocapture
 
 mod common;
 
 use serde_json::{json, Value};
 
-const EXPECTED_HORSES: usize = 3;
 const ROSTER_STRIDE: usize = 0x24;
 const SUB_STRUCT_OFF: usize = 0x438;
 const HORSE_AGE_OFF: usize = 0x1fc;
@@ -90,6 +96,10 @@ fn investigate_roster_and_live_chain() {
     let Some(game) = common::launch("investigate_horse_count") else {
         return;
     };
+    let expected_owned: Option<usize> = std::env::var("HORSEY_EXPECT_OWNED")
+        .ok()
+        .map(|s| s.parse().expect("HORSEY_EXPECT_OWNED not a number"));
+    let exp = expected_owned.unwrap_or(0);
 
     // --- Step 1: gamestate.diag for ptr + roster span ---
     let diag = game
@@ -174,6 +184,7 @@ fn investigate_roster_and_live_chain() {
         // Scan for begin/end pointer pairs: adjacent qwords where both
         // are heap-shaped and (end - begin) / 8 in [1, 200].
         let mut found_pairs: Vec<(usize, u64, u64, usize)> = Vec::new();
+        let mut matched_expected = false;
         let mut off = 0usize;
         while off + 16 <= sub.len() {
             let b = read_u64(&sub, off);
@@ -193,30 +204,41 @@ fn investigate_roster_and_live_chain() {
             eprintln!(
                 "  pair@+0x{off:03x}: begin=0x{b:x} end=0x{e:x} count={n}",
             );
-            if *n == EXPECTED_HORSES {
+            if expected_owned == Some(*n) {
                 eprintln!(
-                    "  ^^^ MATCH: count == EXPECTED_HORSES ({EXPECTED_HORSES}). Likely live-horse vector at *(GS+0x438)+0x{off:x}"
+                    "  ^^^ MATCH: count == HORSEY_EXPECT_OWNED ({n}). Likely live-horse vector at *(GS+0x438)+0x{off:x}"
                 );
+                matched_expected = true;
             }
         }
         if found_pairs.is_empty() {
             eprintln!("  no pointer pairs found in first 0x300 bytes of sub-struct");
         }
+        if let Some(want) = expected_owned {
+            assert!(
+                matched_expected,
+                "HORSEY_EXPECT_OWNED={want}: no pointer pair in *(GS+0x438) had that count. \
+                 found_pairs={found_pairs:?}"
+            );
+        }
     } else {
         eprintln!("  sub-struct pointer not heap-shaped; chain dead at this offset");
+        if expected_owned.is_some() {
+            panic!("HORSEY_EXPECT_OWNED set but GS+0x438 chain is dead");
+        }
     }
 
     // --- Step 4: report findings ---
     eprintln!("\n=== SUMMARY ===");
-    eprintln!("expected_owned_horses: {EXPECTED_HORSES}");
+    eprintln!("expected_owned_horses: {exp}");
     eprintln!("roster_count (GS+0x280/+0x288 / 0x24): {count}");
     eprintln!(
         "roster_entries_contain_horse_ptr_at_byte_offsets: {:?}",
         horse_ptr_slots
     );
-    if count != EXPECTED_HORSES {
+    if count != exp {
         eprintln!(
-            "NOTE: roster_count ({count}) != owned ({EXPECTED_HORSES}). The roster is not the \
+            "NOTE: roster_count ({count}) != owned ({exp}). The roster is not the \
              owned-horse list; it includes more (NPCs / ancestors / pool)."
         );
     }

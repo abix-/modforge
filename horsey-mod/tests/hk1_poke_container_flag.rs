@@ -24,8 +24,12 @@ use serde_json::{json, Value};
 fn poke_container_flag() {
     let Some(game) = common::launch("hk1_poke_container_flag") else { return; };
     let want = std::env::var("HORSEY_HORSE").unwrap_or_else(|_| "tomtato".to_string());
-    let h = common::find_owned(&game, &want)
-        .unwrap_or_else(|| panic!("'{want}' not owned"));
+    eprintln!("[GATE] waiting for '{want}' to appear in owned list (up to 180s) - load your save");
+    // Set HORSEY_HORSE so the helper waits for the exact horse we need.
+    if std::env::var("HORSEY_HORSE").is_err() {
+        unsafe { std::env::set_var("HORSEY_HORSE", &want); }
+    }
+    let h = common::wait_for_target_horse(&game, std::time::Duration::from_secs(180));
     let horse_ptr = h.id;
     eprintln!("\nhorse '{}' at {}", h.name, h.ptr_s);
 
@@ -63,6 +67,16 @@ fn poke_container_flag() {
     let after_kind = r_kind2.get("result").and_then(|r| r.get("value")).and_then(Value::as_u64);
     let after_sub  = r_sub2.get("result").and_then(|r| r.get("value")).and_then(Value::as_u64);
     eprintln!("AFTER   +0x1d0={after_kind:?}  +0x1dc={after_sub:?}");
+
+    // Pause so the user can visually verify the in-game effect of the
+    // poke before the harness tears the game down. HK1_OBSERVE_SECS=0
+    // skips the pause.
+    let obs: u64 = std::env::var("HK1_OBSERVE_SECS").ok()
+        .and_then(|s| s.parse().ok()).unwrap_or(90);
+    if obs > 0 {
+        eprintln!(">>> OBSERVE NOW: did '{}' visibly move? (sleeping {obs}s)", h.name);
+        std::thread::sleep(std::time::Duration::from_secs(obs));
+    }
 
     game.pass(&format!(
         "container probe: before(kind={before_kind:?}, sub={before_sub:?}) -> after(kind={after_kind:?}, sub={after_sub:?})"
