@@ -287,7 +287,9 @@ Same I-R checklist instantiated per future game.
 - [x] **I-2a: `input.find_hwnd_by_pid {pid}` + `input.self.hwnd` ops.** Shipped `4f6c6dda`. EnumWindows-by-PID with visibility filter; `self.hwnd` is the in-process shortcut for cmdlets running inside the game.
 - [ ] **I-2b: `input.state.get` op.** Reads game's own mouse/keyboard state for verification (so smoke tests don't trust their own writes). Needs per-game `InputSurface` impl; defer until horsey-mod has one.
 - [x] **I-2c: Drag/scroll/combo cmdlets.** Shipped 2026-05-16. `input.mouse.drag` (L1+L2, interpolated steps), `input.mouse.scroll` (L1+L2, vertical+horizontal), `input.combo` (modifier hold + dispatch inner op, LIFO release on success or failure). Live smoke green: drag lands within 1px, scroll + combo succeed.
-- [ ] **I-2d: HK1 Shift+Click migration.** With I-2c, the HK1 transfer becomes `input.combo {keys: ["shift"], then: {op: "input.mouse.drag", args: {...}}}`. The post-vtable-helper RE work documented in [`../horsey-mod/docs/todo.md`](../horsey-mod/docs/todo.md) "HK1 Shift+Click smart-transfer" goes away; the game's own click handler runs the 4 helpers automatically.
+- [/] **I-2d: HK1 Shift+Click migration.**
+  - **I-2d-recon shipped** 2026-05-16. `horsey-mod/tests/input_hk1_calibration.rs` captures the mapping between OS screen pixels (what `modforge::input` sends) and the Home Location's cursor floats (`LOC+0x174`/`+0x178`, what `FUN_1400d2ab0` reads). 5-point plus pattern around baseline. Test ran clean against a no-save process and correctly reported "LOC cursor unreadable at baseline; likely no save loaded." Re-run with a save active to capture the actual transform.
+  - **I-2d-impl: pending.** Once recon gives the screen->game-coord ratio, the migration is: `input.combo {keys: ["shift"], then: {op: "input.mouse.drag", args: {from_screen_px, to_screen_px}}}`. If the ratio is 1:1, no math needed. If not, modforge ships a tiny `input::map_screen_to_game(transform)` helper. The post-vtable-helper RE work in [`../horsey-mod/docs/todo.md`](../horsey-mod/docs/todo.md) "HK1 Shift+Click smart-transfer" goes away regardless.
 
 ### Definition of done
 
