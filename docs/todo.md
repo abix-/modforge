@@ -184,21 +184,36 @@ Composes with `modforge::seh` (just landed): every `seh::call` site looks up its
 
 ### Tasks (ordered: independently shippable, no big-bang cutover)
 
-- [x] **B1: Extend `modforge::patterns::sleuth` in place.** Shipped 2026-05-16. `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, 4 `Recipe` variants, 6 built-in validators added alongside existing `Target`/`Resolution`/`resolve_all` (unchanged). 8 new unit tests in sleuth::tests. Commits `639d8545`.
-- [x] **B2 (starter): Build horsey-mod's registry beside the existing resolvers.** Shipped 2026-05-16. `horsey-mod/src/targets_registry.rs` declares HORSEY_TARGETS + HORSEY_RESOLVER. Starter set: GAMESTATE_PTR (DataGlobal, DecodeRipDisp recipe) + APPLY_GENE_TO_HORSE (FunctionEntry, MatchIsAddress recipe, Signature attached). Parity integration test at `horsey-mod/tests/registry_parity.rs` asserts registry-resolved GAMESTATE_PTR matches the legacy `resolve::gamestate_ptr()` byte-for-byte. **Remaining: B4 expands this from 2 targets to all 80 RVAs + 30 resolvers.**
-- [x] **B3: Land shared R-tier tests in modforge.** Shipped 2026-05-16. `modforge::testkit::registry` exposes 4 shared assertion functions parameterized over `(&RunningGame, &TargetRegistry, &Resolver)`: `assert_every_target_resolves`, `assert_every_target_passes_validators`, `assert_every_field_offset_matches_hint`, `assert_diagnostic_includes_every_entry`. horsey-mod consumes via 3-LOC thin wrappers in `tests/registry_parity.rs`. Commits `26938d4e`.
-- [ ] **B4: Migrate horsey-mod call sites in batches.** Replace `crate::targets::gs_offset::money()` etc. with `REGISTRY.resolver().resolve("GAMESTATE_MONEY")`. Each batch reviewable; B2 parity test catches regressions. ~1 day of grind across 80 RVAs + 30 resolvers. **Largest remaining task; needs live game for sig verification per batch.**
-- [ ] **B5: Delete legacy `targets::resolve::*`.** Once every call site is on the registry and B2's parity test still passes. `src/targets.rs` becomes pure data.
-- [ ] **B6: Cross-game adoption proof.** grounded2-mod (or schedule1) declares its own `sleuth::TargetRegistry` for at least one target. Inherits modforge's R-tier test suite for free. Closes the DoD item from the now-shipped testkit-extraction entry too.
+- [x] **B1: Extend `modforge::patterns::sleuth` in place.** Shipped 2026-05-16. `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, 4 `Recipe` variants, 6 built-in validators added alongside existing `Target`/`Resolution`/`resolve_all` (unchanged). 8 new unit tests in sleuth::tests. Commit `639d8545`.
+- [x] **B2: Build horsey-mod's registry beside the existing resolvers.** Shipped 2026-05-16. `horsey-mod/src/targets_registry.rs` declares **41 targets**: 7 data globals + 4 invocable function entries (with Signatures) + 30 hint-only function entries. `hint_only_fn!` macro keeps declarations terse. Parity integration test at `horsey-mod/tests/registry_parity.rs` asserts registry-resolved GAMESTATE_PTR matches the legacy resolver byte-for-byte. Commits `12dbcaeb`, `4b349650`.
+- [x] **B3: Land shared R-tier tests in modforge.** Shipped 2026-05-16. `modforge::testkit::registry` exposes 4 shared assertion functions parameterized over `(&RunningGame, &TargetRegistry, &Resolver)`: `assert_every_target_resolves`, `assert_every_target_passes_validators`, `assert_every_field_offset_matches_hint`, `assert_diagnostic_includes_every_entry`. horsey-mod consumes via 3-LOC thin wrappers in `tests/registry_parity.rs`. Commit `26938d4e`.
+- [ ] **B4: Sig tuning + call-site migration.** Split into two stages, both needing live-game verification per batch:
+  - [ ] **B4a: Sig tuning.** 35 of the 41 registry entries currently have empty `candidates` (hint-only fallback). Per-target work: identify a unique anchor (function entry prologue, RIP-rel store, etc.), author the `Candidate { sig, recipe }`, run `registry_parity::every_target_in_registry_resolves` against a live game, confirm resolution matches hint. Mechanical; can be split across many short sessions.
+  - [ ] **B4b: Call-site migration.** Replace `crate::targets::gs_offset::money()` etc. with `REGISTRY.resolver().resolve("GAMESTATE_MONEY")` at every call site in horsey-mod. The B2 parity test catches drift. ~1 day of grind across the ~30 legacy resolver function bodies. Can land in parallel with B4a per-target.
+- [ ] **B5: Delete legacy `targets::resolve::*`.** Once B4b is complete and the parity test still passes. `src/targets.rs` drops from ~2400 LOC to ~600 LOC of pure `TargetDef` data.
+- [ ] **B6: Cross-game adoption proof.** grounded2-mod (or schedule1) declares its own `sleuth::TargetRegistry` for at least one target. Inherits modforge's R-tier test suite for free. Closes the DoD item from the now-shipped testkit-extraction entry too. **Blocker: `grounded2-mod/tests/layout.rs` has a pre-existing E0432 unresolved-import that needs clearing first** so grounded2-mod's `cargo check --tests` is green.
 
 ### Definition of done
 
-- [ ] `modforge::patterns::sleuth` exposes `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, validators, and Recipe variants. The existing one-shot API is unchanged. ~30 unit tests pass.
-- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC).
-- [ ] No `crate::targets::resolve::*` legacy resolver functions remain.
-- [ ] The three shared R-tier tests in modforge cover any consumer registry.
-- [ ] At least one additional consumer mod adopts a `TargetRegistry`.
+- [x] `modforge::patterns::sleuth` exposes `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, validators, and Recipe variants. The existing one-shot API is unchanged. ~30 unit tests pass.
+- [x] The three (now four) shared R-tier tests in modforge cover any consumer registry.
+- [x] horsey-mod declares every public legacy RVA as a `TargetDef` (41 entries).
+- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC). **Pending B5.**
+- [ ] No `crate::targets::resolve::*` legacy resolver functions remain. **Pending B5.**
+- [ ] At least one additional consumer mod adopts a `TargetRegistry`. **Pending B6.**
 - [ ] [`../modforge/docs/target-registry.md`](../modforge/docs/target-registry.md) updated from design-doc to shipped-API doc.
+
+### How to pick up B4a (sig tuning)
+
+The fastest path through B4a, per-target:
+
+1. Pick an unmigrated target from the `hint_only_fn!` block in `horsey-mod/src/targets_registry.rs`.
+2. Read the function's prologue in the live image. Either grep the existing decomp (`horsey-mod/research/decompiled/all_functions.c`) for the function name, or use `MODFORGE_RVA=<hint> MODFORGE_N=32 cargo test --test research_dump_bytes -- --nocapture` to print the first 32 bytes.
+3. Author a `Candidate { sig: "...", recipe: Recipe::MatchIsAddress }` based on the 12-16 bytes of prologue, wildcarding any byte that looks build-variable (typically the disp8 of `mov [rsp+disp8], reg`).
+4. Replace the `hint_only_fn!(NAME, RVA);` line with an explicit `static NAME: TargetDef = TargetDef { ..., candidates: &[Candidate { ... }], ... };`.
+5. Run the parity test against a live game. If `every_target_in_registry_resolves` finds the same address the hint reports, ship.
+
+Field offsets (the 9 remaining `H-gb-low` items from `horsey-mod/docs/todo.md`) are a separate per-anchor exercise documented there.
 
 ### Open questions (from the design doc)
 
@@ -206,6 +221,42 @@ Composes with `modforge::seh` (just landed): every `seh::call` site looks up its
 - Recipe extensibility: same trade-off.
 - Cross-target dependencies (one resolver needing another's result). Document order matters initially; add `depends_on` field on `TargetDef` if topological resolution becomes necessary.
 - `unityforge` / `ueforge` parallel: managed-runtime targets follow the same CRD shape but different Recipes (`UEObjectByName`, `MonoTypeByName`). Out of scope; design a parallel `ObjectRegistry` when needed.
+
+---
+
+## P0. Vanilla function invocation (2026-05-16)
+
+> **Design doc:** [`../modforge/docs/vanilla-invoke.md`](../modforge/docs/vanilla-invoke.md). Authoritative on the API + migration phases.
+
+Third primitive in modforge's mod/game interaction triad: `hook` intercepts vanilla calls (shipped), `seh` makes vanilla calls recoverable on fault (shipped), `vanilla` invokes vanilla functions from the mod side (this work). Rides on the target-registry's `TargetKind::FunctionEntry { signature }` field; the asm dispatcher is independent.
+
+### Tasks (independently shippable; foundation already complete)
+
+- [x] **V1: Land `modforge::vanilla` primitives.** Shipped 2026-05-16. `Signature`, `ArgKind`, `RetKind`, `ArgValue`, `RetValue` (sig.rs); Win64 ABI dispatcher as a `global_asm!` external function with a stable `void(Frame*)` signature (dispatch.rs). 13 unit tests including the 8 dispatcher cases (register args, stack overflow, pointer deref, two-f64 add, mixed int/float/int, void return, arg-count/kind validation). All pass against `extern "system"` Rust test functions. Commit `639d8545`.
+- [x] **V2: Extend `sleuth::TargetDef` with optional `Signature`.** Shipped 2026-05-16 (part of B1). `TargetKind::FunctionEntry { signature: Option<&'static Signature> }`. Backward-compatible.
+- [x] **V3: `Invoker` controller + `vanilla.invoke` / `vanilla.list` HTTP cmdlets.** Shipped 2026-05-16. `Invoker::call` is SEH-wrapped by default; `call_unsafe` opt-out for hot paths. The HTTP cmdlets accept `{target, args, safe?}` and return `{ok, ret, elapsed_us}` or `{ok:false, error}`. 5 unit tests cover JSON arg parsing + return encoding + signature serialization. Commit `12dbcaeb`.
+- [x] **V4 (data declaration): Signatures attached to 4 horsey functions.** Shipped 2026-05-16. `APPLY_GENE_TO_HORSE`, `HORSE_REBUILD`, `RNG_NEXT_MODULO`, `HORSE_COPY_GENE_LANE_PAIRS` all carry `signature: Some(...)` in the horsey registry. `worker_main` calls `targets_registry::register_vanilla_ops()` so the cmdlets wire up against `HORSEY_RESOLVER` at attach. Commits `26938d4e`, `4b349650`.
+- [ ] **V4 (validation): Confirm the 4 signatures work against the live game.** Once the game can be launched: `curl POST /op vanilla.list` should enumerate the 4; `vanilla.invoke {target: "RNG_NEXT_MODULO", args: [{kind: "u32", value: 100}]}` should return a u32 in `[0, 100)`. Needs a live-game session; ~15 min.
+- [ ] **V5: Migrate any horsey-mod call sites that invoke vanilla code.** Survey of `transmute` use in horsey-mod's `patches/*.rs` shows most are inside detour handlers chaining back to the original function via retour's trampoline pattern, NOT direct vanilla calls. So V5's actual scope is much smaller than originally estimated. Specific candidates to migrate (each ~5 LOC replaced by 1 `vanilla::call`):
+  - any place that wants to call `FUN_1400b3070` (rebuild) after a gene poke
+  - any place that wants `FUN_1400c6580 % N` for an arbitrary-modulo RNG
+  - any new feature work that invokes vanilla rather than hooking it
+- [ ] **V6: Cross-game adoption.** Same target as B6: when grounded2-mod (or schedule1) ships their first `TargetRegistry`, registering one function with a `Signature` proves the abstraction works across games.
+
+### Definition of done
+
+- [x] `modforge::vanilla` ships `Signature`, `ArgValue`, `RetValue`, `VanillaFn`, `Invoker`, the Win64 asm dispatcher. Unit tests covering each `ArgKind` / `RetKind`.
+- [x] `vanilla.invoke` and `vanilla.list` cmdlets shipped in the modforge HTTP surface and wired into horsey-mod at attach.
+- [x] horsey-mod has 4 vanilla functions registered with signatures.
+- [ ] At least one production call site goes through `Invoker::call_safe` (vs `transmute`). **Pending V5.**
+- [ ] At least one additional consumer mod registers a `Signature` and invokes through `Invoker::call_safe`. **Pending V6.**
+- [ ] [`../modforge/docs/vanilla-invoke.md`](../modforge/docs/vanilla-invoke.md) updated from design-doc to shipped-API doc.
+
+### Open questions
+
+- Non-primitive arg marshalling (passing fresh-allocated buffers). v1 supports pointers as raw u64; v2 could add `ArgKind::Buffer { bytes, mode }`. Defer.
+- Return-by-stack-pointer (large structs). v1 doesn't support; defer to `RetKind::Buffer { bytes }`.
+- Variadic / async. Skip; no current consumer.
 
 ---
 
