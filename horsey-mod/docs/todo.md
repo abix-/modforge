@@ -644,6 +644,17 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
+### Content-authoring path forward (2026-05-16)
+
+Decision: NO hot-reload of `genes-extended.xml`. Iterate the normal way: edit XML, `k3sc cargo-lock run -p horsey-mod --bin horsey-play --release` to relaunch + inject, validate via HTTP + visible in-game effect. Hot-reload is janky and not worth the complexity.
+
+Order of work for efficient content authoring (highest leverage first):
+
+1. **Verify the render path works end-to-end** on the updated binary. Set a known ext gene on tomtato via HTTP, look at tomtato in-game, confirm the visible change. If broken, triage which resolver drifted (same playbook as today's GAMESTATE_PTR / NAME_TABLE fixes). Until this is green, the rest is theoretical.
+2. **Per-horse Details UI** (see [per-horse details view](#per-horse-details-view-horses-tab-details-expand) below). Adds scalar block first, then gene grid. Lets us SEE what alleles are on which horse without HTTP every time.
+3. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml. Without this, every fresh horse has ext-allele = 0 and we can only observe effects on horses we've manually poked.
+4. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
+
 ### Per-horse details view (Horses tab "Details" expand)
 
 Goal: surface ALL data about a single horse, including the 240 vanilla genes and our 240 extension genes (480 total).
