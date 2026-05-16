@@ -41,19 +41,32 @@ findings in this file rather than re-querying.
 
 ## PR-1: Game-mod input libraries
 
-_Status: in progress._
+_Status: first pass complete (2026-05-16)._
 
 ### Search terms
 
-| Query | Result count (top page) | Notes |
+| Query | Hits surveyed | Notes |
 |---|---|---|
+| `gh search code "PostMessageW WM_LBUTTONDOWN" --language=rust` | 1 (`ekicyou/areka`) | small, demonstrates the exact L2 shape we want |
+| `gh search code "FInputKeyParams" --language=cpp` | 8 (UE forks, UnrealCV, Lyra, GSS) | confirms `UPlayerInput::InputKey(FInputKeyParams)` as canonical UE L3 |
+| `gh search repos "rust input simulation windows"` | empty | covered by named-crate dive in PR-7 |
 
 ### Top candidates
 
 | Repo | Stars | License | Last commit | Mechanism | Notes |
 |---|---|---|---|---|---|
+| `unrealcv/unrealcv` | 2178 | MIT | 2026-04-15 | L3 (UE-internal) | HTTP server BURIED in a UE plugin, exposes `vset /action/keyboard <key> <dt>` and routes through `PlayerController->InputKey(FInputKeyParams)`. Same architecture as us. |
+| `gamaspacestation/gss_release` (Lyra fork) | n/a | Epic source | n/a | L3 (UE-internal) | Epic's own `ULyraSimulatedInputWidget::InputKeyValue` calls `UEnhancedPlayerInput::InputKey(FInputKeyParams)`. Authoritative reference. |
+| `bl-sdk/oak2-mod-manager` | n/a | MIT | recent | L3 (UE-internal) | Borderlands 3 / Oak2 modding SDK; uses keybinds inside UE process. |
+| `ekicyou/areka` | n/a | n/a | n/a | L2 (Win32) | Smallest Rust example of `PostMessageW(WM_LBUTTONDOWN)` clicking a target window. Useful as a literal `PostMessage` recipe. |
 
 ### Findings
+
+- **Two clear winning architectures:**
+  - **In-engine (L3) for UE:** route through `UPlayerInput::InputKey` / `UEnhancedPlayerInput::InputKey`. Works regardless of focus, regardless of raw-input mode, regardless of fullscreen. UnrealCV proves the HTTP-driven shape end-to-end.
+  - **Win32 (L1/L2) for raw-Win32 games like Horsey:** `SendInput` (L1) is universal but steals focus. `PostMessage` (L2) targets one HWND, doesn't steal focus, ignored by games that use raw-input or poll `GetAsyncKeyState`.
+- **L2 viability is per-game.** Test inside the consumer mod, not at the modforge layer. The modforge `Mouse`/`Keyboard` abstraction must let the consumer pick L1 vs L2 vs L3 per call; default per game.
+- **Same-process advantage:** because we're injected, we can call the game's WndProc directly with `SendMessage` (synchronous, returns the LRESULT) instead of `PostMessage` (async, fire-and-forget). Worth A/B'ing for HK1 transfer.
 
 ---
 
@@ -97,40 +110,89 @@ pattern for L1 mouse-movement.
 
 ## PR-4: Reverse-engineered input pokes per engine
 
-_Status: pending._
+_Status: first pass complete for UE; other engines pending._
 
 ### Per-engine targets
 
-| Engine | Input class(es) | Known RE projects |
-|---|---|---|
-| UE4 / UE5 | `UPlayerInput`, `FSlateApplication`, `FInputKeyParams` | UE4SS, KismetAnalyzer, Dumper-7 |
-| Unity (Mono) | `UnityEngine.Input` | BepInEx samples, MelonLoader docs |
-| Unity (IL2CPP) | `UnityEngine.Input` via Il2CppInterop | Il2CppInterop docs, MelonLoader |
-| SDL2 | `SDL_PumpEvents`, `SDL_Event` queue | SDL source, official tutorials |
-| Raw Win32 (Horsey-shape) | `GetAsyncKeyState`, `GetCursorPos`, custom message-pump | per-game RE |
+| Engine | Input class(es) | Known RE projects | Status |
+|---|---|---|---|
+| UE4 / UE5 | `UPlayerInput`, `FSlateApplication`, `FInputKeyParams`, `UEnhancedPlayerInput` | UE4SS, Lyra source, UnrealCV | researched |
+| Unity (Mono) | `UnityEngine.Input` | BepInEx samples, MelonLoader docs | pending |
+| Unity (IL2CPP) | `UnityEngine.Input` via Il2CppInterop | Il2CppInterop docs, MelonLoader | pending |
+| SDL2 | `SDL_PumpEvents`, `SDL_Event` queue | SDL source, official tutorials | pending |
+| Raw Win32 (Horsey-shape) | `GetAsyncKeyState`, `GetCursorPos`, custom message-pump | per-game RE | game-specific (I-R) |
 
-This is the **L3 catalogue** we'll grow over time. One subsection per engine.
+### Unreal Engine 4/5
 
-### Findings
+**Canonical L3 path:** `APlayerController::InputKey(FInputKeyParams)` (UE 4.26+) or, with Enhanced Input enabled, `UEnhancedPlayerInput::InputKey(FInputKeyParams)`.
+
+Two confirmed live consumers:
+
+- **UnrealCV** (`unrealcv/unrealcv/Source/UnrealCV/Private/Commands/ActionHandler.cpp`):
+  ```cpp
+  FExecStatus FActionHandler::Keyboard(const TArray<FString>& Args) {
+      // Args[0] = key name, Args[1] = delta time
+      const FKey Key(*KeyName);
+      float Delta = 1, DeltaTime = FCString::Atof(*Args[1]);
+      FInputKeyParams KeyParams(Key, Delta, DeltaTime, /*NumSamples=*/1, /*bGamepad=*/false);
+      World->GetFirstPlayerController()->InputKey(KeyParams);
+      // schedule a release via FTimerManager
+  }
+  ```
+  Run a TCP/HTTP server inside the game process, expose `vset /action/keyboard <key> <dt>`, and route every command through `PlayerController->InputKey`. Same shape as `runtime-control-http`.
+- **Lyra** (`gamaspacestation/gss_release/Source/LyraGame/UI/LyraSimulatedInputWidget.cpp`):
+  ```cpp
+  FInputKeyParams Params;
+  Params.Delta = Value;          // FVector for analog
+  Params.Key = KeyToSimulate;
+  Params.NumSamples = 1;
+  Params.DeltaTime = GetWorld()->GetDeltaSeconds();
+  Params.bIsGamepadOverride = KeyToSimulate.IsGamepadKey();
+  Input->InputKey(Params);
+  ```
+  Epic-authored. UMG widget routes a touch event into a fake key press. Confirms the API is the supported one.
+
+**Mouse cursor:** UE's mouse position lives on the `FSlateApplication` singleton (`FSlateApplication::Get().GetCursorPos()`). To synthesize a click, the safest L3 path is to route through `FSlateApplication::OnMouseDown` / `OnMouseUp`, which fires the same dispatch as a real click. For PE games where Slate isn't easily reachable, fall back to `PostMessage(hwnd, WM_LBUTTONDOWN, ...)` with a `lParam` carrying client coords; UE's Win32 platform layer translates them.
+
+**Grounded 2 specifics:** UE5 + Enhanced Input. The Enhanced Input subsystem (`UEnhancedInputLocalPlayerSubsystem::GetPlayerInput()`) returns the right object to feed `FInputKeyParams` to. ueforge already exposes UObject-by-name lookup; calling `InputKey` is one more `ProcessEvent`-style invocation away.
+
+### Other engines (sketch; fill in later)
+
+- **Unity (Mono/IL2CPP):** the `UnityEngine.Input` class is read-only; can't poke it directly. The canonical approach in the BepInEx / MelonLoader ecosystem is to either hook the `Input.GetKey*` family and lie on read, or use a 3rd-party library like InputSystem (new Unity input) and synthesize via `InputSystem.QueueStateEvent`. Schedule 1 / Outworld Station likely fall here.
+- **SDL2:** `SDL_PumpEvents` reads OS events; `SDL_PushEvent` queues a fabricated one. We'd target `SDL_PushEvent(&SDL_Event{type: SDL_KEYDOWN, ...})`.
+- **Raw Win32 (Horsey):** per-game I-R discovery. Working hypothesis: a small WndProc reads `WM_LBUTTONDOWN` / `WM_MOUSEMOVE` into engine-private globals. PostMessage should work; verify in I-R5.
 
 ---
 
 ## PR-5: Raw-input / `WM_INPUT` handling
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-Raw-input games ignore PostMessage by design (they read deltas, not
-state). Two known workarounds in the field:
+Raw-input games (any game using `RegisterRawInputDevices` to read mouse / keyboard deltas instead of high-level WM_KEY / WM_MOUSE messages) ignore PostMessage by design. The field has converged on driver-level workarounds:
 
-1. **ViGEm** (Virtual Gamepad Emulation Framework) for controllers.
-2. **Interception driver** (`oblitum/Interception`) for keyboard/mouse
-   at the kernel/HID level; bypasses raw-input entirely because it IS
-   raw-input.
+### Interception driver
 
-What we capture here: license, driver-install complexity, anti-cheat
-flagging history, Rust bindings if any.
+- Repo: [`oblitum/Interception`](https://github.com/oblitum/Interception)
+- **1849 stars, no SPDX license declared, last commit 2021-08-09.** Effectively abandoned but battle-tested over a decade in the bot / accessibility scene.
+- Mechanism: a kernel-mode upper filter driver that inserts itself in the keyboard / mouse driver stack. Synthesized events look identical to physical events to anything downstream, including raw-input.
+- Trade-off: requires admin to install the driver (`install-interception.exe /install`) and a reboot. Catastrophic for "drop-in mod"; great for a power-user opt-in.
+- **No first-class Rust binding found** in `gh search repos --language=rust "interception"`. Existing `interception-*` crates on crates.io are all for HTTP / syscall interception, not the driver. We'd write our own FFI wrapper around `interception.dll` if we ever go this route. ~200 LOC.
+- Status flag: **defer**. Horsey doesn't need it (raw Win32 message-pump expected). Revisit only if a target game ignores PostMessage AND we cannot reach an L3.
 
-### Findings
+### ViGEm (Virtual Gamepad Emulation Framework)
+
+- Repo: [`ViGEm/ViGEmBus`](https://github.com/ViGEm/ViGEmBus) (driver) + [`ViGEm/ViGEmClient`](https://github.com/ViGEm/ViGEmClient) (user-mode SDK).
+- For gamepad synthesis only. Out of scope for v1 (no current gamepad-driven targets).
+
+### Anti-cheat flagging
+
+Driver-level input synthesis is a primary pattern flagged by EAC / BattlEye / Vanguard. None of our current targets ship with kernel AC; document and stay clear if any future target does.
+
+### Findings (verdict)
+
+- **L2 PostMessage suffices for raw-WM games (Horsey class).**
+- **L3 in-engine suffices for managed-runtime games (UE / Unity).**
+- **Interception driver is the third-tier escape hatch.** Lift only if we hit a target that uses raw-input + has no reachable L3.
 
 ---
 
@@ -155,21 +217,30 @@ gracefully on focus changes.
 
 ## PR-7: Crate audit (Rust)
 
-_Status: pending._
+_Status: first pass complete (2026-05-16)._
 
-`cargo search` + repo dive on:
+Metadata pulled live from `gh api repos/<owner>/<repo>`. License/stars/last-push are authoritative as of today.
 
-| Crate | Mechanism | Win32 backend | Last release | License | Maintained? |
-|---|---|---|---|---|---|
-| `enigo` | L1 | `SendInput` | tbd | tbd | tbd |
-| `autopilot` | L1 | `SendInput` | tbd | tbd | tbd |
-| `rdev` | L1 + listen | `SendInput` + low-level hook | tbd | tbd | tbd |
-| `winput` | L1 | `SendInput` | tbd | tbd | tbd |
-| `mouce` | L1 (mouse only) | `mouse_event` | tbd | tbd | tbd |
-| `inputbot` | L1 + listen | `SendInput` + hook | tbd | tbd | tbd |
-| `windows`, `windows-sys` | raw bindings | both | tbd | tbd | tbd |
+| Crate | Repo | Stars | License | Last commit | Mechanism | Win32 backend | Verdict |
+|---|---|---|---|---|---|---|---|
+| `enigo` | `enigo-rs/enigo` | 1715 | MIT | 2026-03-30 | L1 | `windows` crate -> `SendInput` | **Top L1 candidate.** Edition 2024. Mouse + keyboard, button-only, abs/rel move, scroll, X-buttons. ~5kb compiled stub. |
+| `rdev` | `Narsil/rdev` | 728 | MIT | 2026-05-12 | L1 + listen (low-level hook) | `winapi` crate -> `SendInput` | Active. Listening side (hook callbacks) bigger than what we need; selectable as L1-only via not enabling features. |
+| `autopilot` | `autopilot-rs/autopilot-rs` | 420 | MIT/Apache-2.0 | 2025-10-29 | L1 | `winapi` crate -> `mouse_event` / `SendInput` | Edition 2024; dual-licensed. Carries `image` dep we don't want. |
+| `InputBot` | `obv-mikhail/InputBot` | 461 | MIT | 2025-08-01 | L1 + global hotkeys (listen) | `winapi` -> `SendInput` + low-level hook | Cute API (`Numrow1Key.bind(...)`); too opinionated for a primitive layer. |
+| `winput` | `gymore-io/winput` | 21 | MIT | 2024-01-30 | L1 | `winapi` -> `SendInput` | Small + clean (`Vk`, `Button`, `Action`, `send_inputs`). Easiest to vendor / fork if we go DIY. |
+| `mouce` | `emrebicer/mouce` | 54 | MIT | 2025-05-17 | L1 (mouse only) | `winapi` -> `mouse_event` | Mouse only; rules itself out. |
+| `windows`, `windows-sys` | `microsoft/windows-rs` | n/a | MIT/Apache | active | raw FFI | both | Always-available. If we go DIY (a la `winput` shape) we'd build directly on `windows-sys`. |
 
-### Findings
+### Findings (verdict)
+
+- **`enigo` is the right L1 dependency.** Most stars, most maintained, edition 2024 (matches our workspace), MIT, uses the modern `windows` crate. Mouse + keyboard + scroll. The `Settings { dw_extra_info, ... }` knob lets us tag synthetic events so we can ignore-our-own when we hook key state later.
+- **No existing crate covers L2 (PostMessage).** All Rust input crates we audited target the OS-global L1 path. We will hand-roll a thin `modforge::input::win32_message` module over `windows-sys` to PostMessage / SendMessage to a target HWND. ~80 LOC.
+- **No existing crate covers L3 (game-internal).** As expected; this is per-game and goes through ueforge / horsey-mod's resolver. Modforge defines the `InputSurface` trait; consumers implement.
+- **Hand-rolled DIY is a real option** if `enigo`'s `windows` crate footprint is unacceptable: `winput`'s 600-LOC shape is the template.
+
+### Cargo footprint check (TODO during I-1)
+
+Confirm `enigo` (no features) doesn't pull `tokio` / `serde` / `wayland` / `x11` on the Windows build. Cargo.toml inspection shows `default = ["x11rb"]` which is Linux-only and won't compile on Windows. We need `default-features = false` on our side.
 
 ---
 
