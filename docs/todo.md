@@ -159,6 +159,56 @@ fn watch_region() {
 
 ---
 
+## P0. Cross-game target registry (2026-05-16)
+
+> **Design doc:** [`../modforge/docs/target-registry.md`](../modforge/docs/target-registry.md). Authoritative on the API + migration phases.
+
+Successor to the now-shipped testkit extraction. Same principle ("research this once and reuse what we know"), applied to address resolution.
+
+**Extends, does not replace.** `modforge::patterns::sleuth` already ships `Target<'a>`, `Resolution`, `resolve_all` as a transient one-shot API. This work promotes those types into a persistent, validator-aware registry. No new top-level module.
+
+Every modforge consumer currently hand-rolls its own `src/targets.rs`: ~80 hardcoded RVAs + ~30 hand-written resolver functions + ad-hoc validators + per-mod R-tier test scaffolding. Universal shapes, only data differs. Standardize into a CRD-style registry following [`../modforge/docs/def-registry.md`](../modforge/docs/def-registry.md):
+
+| Role | Existing in sleuth | After extension |
+|---|---|---|
+| Def | `Target<'a> { name, sigs }` transient | `TargetDef` `'static` with `kind`, `hint_rva`, `hint_tolerance`, `validators`, richer `Candidate { sig, recipe }` |
+| Registry | (none; callers built `Vec<Target>` ad hoc) | `TargetRegistry { name, entries: &'static [&'static TargetDef] }` |
+| Instance | `Resolution { by_name }` one-shot | `ResolvedTarget` cached per-entry in `Resolver` |
+| Controller | `resolve_all(&[Target])` | `Resolver` (caches, runs validators); delegates the scan to the existing `resolve_all` |
+
+Targets become declarative data; the 30 resolver functions collapse into 4 `Recipe` variants on `sleuth::Candidate`. Three shared R-tier tests in modforge replace today's per-mod `r2_*` / `r3_*` / `r4_*` files. Built-in validators (`HeapShape`, `InImage`, `VtableAtRva`, `FieldInRange`, `NestedPtrReadable`, `WithinHintTolerance`) close the HLT-3 / HLT-4 work items as a side effect.
+
+Concrete LOC win: horsey-mod's `src/targets.rs` drops from ~2400 LOC to ~600 LOC of pure `TargetDef` data.
+
+Composes with `modforge::seh` (just landed): every `seh::call` site looks up its target by name from the registry, so a build update that moves a vanilla function is one re-resolve away from being absorbed.
+
+### Tasks (ordered: independently shippable, no big-bang cutover)
+
+- [ ] **B1: Extend `modforge::patterns::sleuth` in place.** Add `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, the 4 `Recipe` variants, and 6 built-in validators to the existing module (or a sibling `sleuth/registry.rs` submodule). The existing `Target`/`Resolution`/`resolve_all` API is unchanged; the new types coexist and `Resolver` delegates scanning to `resolve_all`. ~200-300 LOC of additions + ~30 unit tests. Zero consumer changes.
+- [ ] **B2: Build horsey-mod's registry beside the existing resolvers.** New file `horsey-mod/src/targets/registry.rs` declares every existing target as a `sleuth::TargetDef` with proven sigs + hint RVAs. Existing `targets::resolve::*` stays. Parity integration test asserts `Resolver::resolve_all` agrees byte-for-byte with every existing resolver. ~400 LOC of data + tests.
+- [ ] **B3: Land shared R-tier tests in modforge.** Three tests in `modforge/tests/registry_*.rs` parameterized over a `sleuth::TargetRegistry`: every-target-resolves, every-target-passes-validators, every-field-offset-matches-hint. horsey-mod's `r2_*` / `r3_*` / `r4_*` call into them (or get deleted once the contract is covered).
+- [ ] **B4: Migrate horsey-mod call sites in batches.** Replace `crate::targets::gs_offset::money()` etc. with `REGISTRY.resolver().resolve("GAMESTATE_MONEY")`. Each batch reviewable; B2's parity test catches regressions. ~1 day of grind across 80 RVAs + 30 resolvers.
+- [ ] **B5: Delete legacy `targets::resolve::*`.** Once every call site is on the registry and B2's parity test still passes. `src/targets.rs` becomes pure data.
+- [ ] **B6: Cross-game adoption proof.** grounded2-mod (or schedule1) declares its own `sleuth::TargetRegistry` for at least one target. Inherits modforge's R-tier test suite for free. Closes the DoD item from the now-shipped testkit-extraction entry too.
+
+### Definition of done
+
+- [ ] `modforge::patterns::sleuth` exposes `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, validators, and Recipe variants. The existing one-shot API is unchanged. ~30 unit tests pass.
+- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC).
+- [ ] No `crate::targets::resolve::*` legacy resolver functions remain.
+- [ ] The three shared R-tier tests in modforge cover any consumer registry.
+- [ ] At least one additional consumer mod adopts a `TargetRegistry`.
+- [ ] [`../modforge/docs/target-registry.md`](../modforge/docs/target-registry.md) updated from design-doc to shipped-API doc.
+
+### Open questions (from the design doc)
+
+- Validator type erasure: `&'static dyn Validator` vs closed enum. Probably closed enum for v1.
+- Recipe extensibility: same trade-off.
+- Cross-target dependencies (one resolver needing another's result). Document order matters initially; add `depends_on` field on `TargetDef` if topological resolution becomes necessary.
+- `unityforge` / `ueforge` parallel: managed-runtime targets follow the same CRD shape but different Recipes (`UEObjectByName`, `MonoTypeByName`). Out of scope; design a parallel `ObjectRegistry` when needed.
+
+---
+
 ## Future: absorb the C# mod repos (Timberbot + Schedule 1)
 
 User direction 2026-05-14: this repo is the home for ALL
