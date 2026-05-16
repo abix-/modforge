@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    pop-extended.xml: mod-side population overrides.
+
+    Companion to bestiary/genes-extended.xml. Sits next to the staged
+    horsey.dll (staged by bin/inject.rs::stage_bestiary, copied from
+    this file at mod build/inject time, same as genes-extended.xml).
+
+    Current scope: double the default-pop spawn count.
+
+    Vanilla "default" pop has its spawn counts set per-spawner inside
+    data/horsey.tmx (the Tiled world map). Each spawner object carries
+    a `count` int property and a `class` string property. Spawners with
+    `class="default"` (or any sub-pop inheriting from default) determine
+    how many horses appear at world-load time.
+
+    This file ships the OVERRIDE DECLARATION. The mod-side parser /
+    spawner hook (TODO D2.2 + a new D2.3 for count multipliers) reads
+    it and multiplies the appropriate counts at runtime.
+
+    Schema:
+      <spawn_overrides>
+        <pop name="<vanilla-pop-name>" count_multiplier="<f32>" />
+        ...
+      </spawn_overrides>
+
+    Reading semantics:
+      For each spawner the engine creates, if the spawner's `class`
+      attribute matches a `<pop>` entry below (or inherits from one),
+      multiply the spawner's vanilla `count` by `count_multiplier`
+      before the engine consumes it. Round half-up to an integer at
+      consumption time.
+
+    Why this file format (and not direct horsey.tmx edits):
+    - The vanilla horsey.tmx is shipped binary-ish (XML, but the game
+      caches it into data/genes.dat after first parse). Editing it
+      requires Tiled or matching the engine's parse expectations.
+    - The mod already wraps content via bestiary/*.xml staged alongside
+      the DLL. Adding pop-extended.xml keeps the mod self-contained.
+    - The same hook can later apply per-spawner overrides (different
+      multipliers per map region) by extending the schema.
+
+    Plumbing TODOs (NOT in this file; tracked in horsey-mod/docs/todo.md):
+    - [ ] D2.3: extend bin/inject.rs::stage_bestiary to copy this file
+          next to horsey.dll along with genes-extended.xml.
+    - [ ] D2.3: add a parser in horsey-mod::genes_xml (or sibling
+          module pop_xml.rs) that reads pop-extended.xml at DLL attach
+          and populates a static `POP_OVERRIDES: HashMap<String, f32>`.
+    - [ ] D2.3: detour the TMX spawner-consume function (the call site
+          inside FUN_140076a10 / tmx_map_loader that reads the `count`
+          property) and multiply by POP_OVERRIDES lookup before return.
+-->
+<pop_overrides>
+    <pop name="default" count_multiplier="2.0" />
+</pop_overrides>
