@@ -281,23 +281,42 @@ pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
         *((loc + LOC_CURSOR_X) as *mut f32) = target.0;
         *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
     }
-    // VTABLE CALL DISABLED. Confirmed crash repro 2026-05-16 with full
-    // 4-field stage. The drop-commit function reaches into a LOC
-    // sub-struct (likely via LOC+0x300, the "screen-space state ptr"
-    // mentioned in the decomp) that isn't initialized until the user
-    // performs a real click. Calling it from an idle LOC dereferences
-    // null/garbage. Strategy C (direct vtable invoke) doesn't work
-    // without first triggering the game's own lazy init.
-    log_line("vtable call SKIPPED (would crash). reverting staged state.");
-    // SAFETY: same range as the writes above.
-    unsafe {
-        *((loc + LOC_GRABBED_HORSE) as *mut usize) = old_grabbed;
-        *((loc + LOC_DRAG_IDX) as *mut i32) = old_drag_idx;
-        *((loc + LOC_CLICK_STATE) as *mut u32) = old_click;
-        *((loc + LOC_CURSOR_X) as *mut f32) = old_cx;
-        *((loc + LOC_CURSOR_Y) as *mut f32) = old_cy;
+    // Invoke vtable[+0x78](LOC) inside an SEH guard. Earlier attempts
+    // crashed the game because the drop-commit function dereferences
+    // a LOC sub-struct that isn't initialized until the user performs
+    // a real click. With the guard a bad deref now logs + returns Err
+    // instead of taking the game down, so we can iterate on the LOC
+    // staging without losing the session.
+    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
+    // SAFETY: fn_addr was just read from a readable vtable slot in
+    // .rdata of the loaded Horsey image.
+    let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
+    log_line("staged LOC: calling vtable[+0x78] under SEH guard");
+    let outcome = modforge::seh::guard(|| {
+        // SAFETY: f points to a real game function; we provide the
+        // expected `this` pointer (LOC). If the function reads
+        // garbage we recover via SEH.
+        unsafe { f(loc as *mut u8) }
+    });
+    match outcome {
+        Ok(result) => {
+            log_line(&format!("vtable returned result={result}"));
+            Some(result)
+        }
+        Err(e) => {
+            log_line(&format!("vtable CRASHED but caught: {e}; reverting LOC stage"));
+            // SAFETY: same range as the original writes; restoring the
+            // pre-call values so the game isn't left half-grabbed.
+            unsafe {
+                *((loc + LOC_GRABBED_HORSE) as *mut usize) = old_grabbed;
+                *((loc + LOC_DRAG_IDX) as *mut i32) = old_drag_idx;
+                *((loc + LOC_CLICK_STATE) as *mut u32) = old_click;
+                *((loc + LOC_CURSOR_X) as *mut f32) = old_cx;
+                *((loc + LOC_CURSOR_Y) as *mut f32) = old_cy;
+            }
+            None
+        }
     }
-    Some(0)
 }
 
 /// Walk a `Horse**` vector in `[begin, end)`; return the index of

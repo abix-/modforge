@@ -85,6 +85,12 @@ path = "src/bin/modforge_deploy.rs"
 # See docs/IN-GAME-OVERLAY-PLAN.md.
 overlay-ui = ["dep:hudhook", "dep:imgui"]
 
+[build-dependencies]
+cc = "1"
+
+[dependencies.retour]
+workspace = true
+
 [dev-dependencies]
 insta = { workspace = true }
 proptest = { workspace = true }
