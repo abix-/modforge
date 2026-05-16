@@ -187,20 +187,20 @@ Composes with `modforge::seh` (just landed): every `seh::call` site looks up its
 - [x] **B1: Extend `modforge::patterns::sleuth` in place.** Shipped 2026-05-16. `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, 4 `Recipe` variants, 6 built-in validators added alongside existing `Target`/`Resolution`/`resolve_all` (unchanged). 8 new unit tests in sleuth::tests. Commit `639d8545`.
 - [x] **B2: Build horsey-mod's registry beside the existing resolvers.** Shipped 2026-05-16. `horsey-mod/src/targets_registry.rs` declares **41 targets**: 7 data globals + 4 invocable function entries (with Signatures) + 30 hint-only function entries. `hint_only_fn!` macro keeps declarations terse. Parity integration test at `horsey-mod/tests/registry_parity.rs` asserts registry-resolved GAMESTATE_PTR matches the legacy resolver byte-for-byte. Commits `12dbcaeb`, `4b349650`.
 - [x] **B3: Land shared R-tier tests in modforge.** Shipped 2026-05-16. `modforge::testkit::registry` exposes 4 shared assertion functions parameterized over `(&RunningGame, &TargetRegistry, &Resolver)`: `assert_every_target_resolves`, `assert_every_target_passes_validators`, `assert_every_field_offset_matches_hint`, `assert_diagnostic_includes_every_entry`. horsey-mod consumes via 3-LOC thin wrappers in `tests/registry_parity.rs`. Commit `26938d4e`.
-- [ ] **B4: Sig tuning + call-site migration.** Split into two stages, both needing live-game verification per batch:
-  - [ ] **B4a: Sig tuning.** 35 of the 41 registry entries currently have empty `candidates` (hint-only fallback). Per-target work: identify a unique anchor (function entry prologue, RIP-rel store, etc.), author the `Candidate { sig, recipe }`, run `registry_parity::every_target_in_registry_resolves` against a live game, confirm resolution matches hint. Mechanical; can be split across many short sessions.
-  - [ ] **B4b: Call-site migration.** Replace `crate::targets::gs_offset::money()` etc. with `REGISTRY.resolver().resolve("GAMESTATE_MONEY")` at every call site in horsey-mod. The B2 parity test catches drift. ~1 day of grind across the ~30 legacy resolver function bodies. Can land in parallel with B4a per-target.
-- [ ] **B5: Delete legacy `targets::resolve::*`.** Once B4b is complete and the parity test still passes. `src/targets.rs` drops from ~2400 LOC to ~600 LOC of pure `TargetDef` data.
-- [ ] **B6: Cross-game adoption proof.** grounded2-mod (or schedule1) declares its own `sleuth::TargetRegistry` for at least one target. Inherits modforge's R-tier test suite for free. Closes the DoD item from the now-shipped testkit-extraction entry too. **Blocker: `grounded2-mod/tests/layout.rs` has a pre-existing E0432 unresolved-import that needs clearing first** so grounded2-mod's `cargo check --tests` is green.
+- [ ] **B4: Sig tuning + call-site migration.** Split into two stages:
+  - [ ] **B4a: Sig tuning.** 33 of the 41 registry entries still have empty `candidates` and use hint-only fallback. Per-target work: identify a unique anchor, author the `Candidate { sig, recipe }`, parity-test. Two complex resolvers (DEBUG_MODE_ACTIVE, DEBUG_LOG_GATE) ARE migrated 2026-05-16 using the new `PairedRipDispWithDelta` + `RipDispWithRelOffset` recipes shipped in commit `e885febd`. Remaining 33 need live-game per batch.
+  - [x] **B4b: Call-site migration.** 20 of 24 sites migrated 2026-05-16 via the new `targets_registry::resolve` wrapper module. Commit `43363813`. **Remaining 4 sites**: NAME_TABLE (2) + CHROMOSOME_TABLE (2). Their legacy resolvers do heap-deref + std::string-stride scoring; defer until a `Recipe::HeapScored` variant lands.
+- [ ] **B5: Delete legacy `targets::resolve::*`.** Waits on the last 4 heap-scored sites. Will drop `src/targets.rs` from ~2400 LOC to ~600 LOC.
+- [x] **B6: Cross-game adoption proof.** Shipped 2026-05-16. `grounded2-mod/src/targets_registry.rs` declares `GROUNDED2_TARGETS` with 5 UE5-Augusta globals (G_OBJECTS, G_NAMES, G_WORLD, APPEND_STRING, PROCESS_EVENT) mirroring `ueforge::ue::offsets::STEAM`. Pre-existing `grounded2-mod/tests/layout.rs` E0432 blocker cleared (test now imports types from `ueforge::ue::*`). Commit `903bb91c`.
 
 ### Definition of done
 
 - [x] `modforge::patterns::sleuth` exposes `TargetDef`, `TargetRegistry`, `Resolver`, `ResolvedTarget`, validators, and Recipe variants. The existing one-shot API is unchanged. ~30 unit tests pass.
 - [x] The three (now four) shared R-tier tests in modforge cover any consumer registry.
 - [x] horsey-mod declares every public legacy RVA as a `TargetDef` (41 entries).
-- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC). **Pending B5.**
+- [x] At least one additional consumer mod adopts a `TargetRegistry`. (grounded2-mod, B6.)
+- [ ] horsey-mod's `src/targets.rs` is pure `TargetDef` data (~600 LOC). **Pending B5 + the heap-scored 4 sites.**
 - [ ] No `crate::targets::resolve::*` legacy resolver functions remain. **Pending B5.**
-- [ ] At least one additional consumer mod adopts a `TargetRegistry`. **Pending B6.**
 - [ ] [`../modforge/docs/target-registry.md`](../modforge/docs/target-registry.md) updated from design-doc to shipped-API doc.
 
 ### How to pick up B4a (sig tuning)
