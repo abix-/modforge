@@ -281,23 +281,23 @@ pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
         *((loc + LOC_CURSOR_X) as *mut f32) = target.0;
         *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
     }
-    log_line("staged LOC: about to call vtable[+0x78]");
-
-    // Invoke vtable[+0x78](LOC). MS x64 ABI: this in RCX. Returns char.
-    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
-    // SAFETY: fn_addr was just read from a readable vtable slot in
-    // .rdata. LOC pointer is the game's live Home Location.
-    let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
-    let result = unsafe { f(loc as *mut u8) };
-    log_line(&format!("vtable returned result={result}"));
-
-    // Don't restore: if the game accepted the drop, it just wrote the
-    // post-drop LOC state itself and we don't want to undo that. If
-    // it returned 0 (drop-fail), the game already played DropHorseFail
-    // and reset state per FUN_1400cdae0. Either way the game owns the
-    // LOC after the call. Restoring would corrupt the post-drop state.
-    let _ = (old_grabbed, old_drag_idx, old_click, old_cx, old_cy);
-    Some(result)
+    // VTABLE CALL DISABLED. Confirmed crash repro 2026-05-16 with full
+    // 4-field stage. The drop-commit function reaches into a LOC
+    // sub-struct (likely via LOC+0x300, the "screen-space state ptr"
+    // mentioned in the decomp) that isn't initialized until the user
+    // performs a real click. Calling it from an idle LOC dereferences
+    // null/garbage. Strategy C (direct vtable invoke) doesn't work
+    // without first triggering the game's own lazy init.
+    log_line("vtable call SKIPPED (would crash). reverting staged state.");
+    // SAFETY: same range as the writes above.
+    unsafe {
+        *((loc + LOC_GRABBED_HORSE) as *mut usize) = old_grabbed;
+        *((loc + LOC_DRAG_IDX) as *mut i32) = old_drag_idx;
+        *((loc + LOC_CLICK_STATE) as *mut u32) = old_click;
+        *((loc + LOC_CURSOR_X) as *mut f32) = old_cx;
+        *((loc + LOC_CURSOR_Y) as *mut f32) = old_cy;
+    }
+    Some(0)
 }
 
 /// Walk a `Horse**` vector in `[begin, end)`; return the index of
