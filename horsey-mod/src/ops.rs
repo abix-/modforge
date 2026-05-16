@@ -549,6 +549,47 @@ pub fn register_all() {
             },
         ),
 
+        // Generic byte-poker: write a typed value at a runtime addr.
+        // Use for live RE / experimentation, not production writes.
+        // Always reads back the value after writing for confirmation.
+        OpDef::new(
+            "mem.poke",
+            "Write a u8/u32/u64 at addr. Body: {addr: u64, kind: 'u8'|'u32'|'u64', value: u64}. Returns the readback.",
+            "{addr: u64, kind: 'u8'|'u32'|'u64', value: u64}",
+            |args| {
+                use modforge::winproc::is_addr_readable;
+                let addr = args.get("addr").and_then(Json::as_u64)
+                    .ok_or_else(|| "missing addr".to_string())? as usize;
+                if addr == 0 { return Err("zero address rejected".to_string()); }
+                let kind = args.get("kind").and_then(Json::as_str).unwrap_or("u32");
+                let value = args.get("value").and_then(Json::as_u64)
+                    .ok_or_else(|| "missing value".to_string())?;
+                let nbytes = match kind {
+                    "u8" => 1, "u32" => 4, "u64" => 8,
+                    other => return Err(format!("unknown kind: {other}")),
+                };
+                if !is_addr_readable(addr) || !is_addr_readable(addr + nbytes - 1) {
+                    return Err(format!("addr 0x{addr:x} not readable/writable"));
+                }
+                // SAFETY: caller-controlled write. Misuse will corrupt
+                // game state or crash. Intended for live experimentation.
+                let readback = unsafe {
+                    match kind {
+                        "u8"  => { (addr as *mut u8).write_unaligned(value as u8); json!((addr as *const u8).read_unaligned()) }
+                        "u32" => { (addr as *mut u32).write_unaligned(value as u32); json!((addr as *const u32).read_unaligned()) }
+                        "u64" => { (addr as *mut u64).write_unaligned(value); json!(format!("0x{:x}", (addr as *const u64).read_unaligned())) }
+                        _ => unreachable!(),
+                    }
+                };
+                Ok(json!({
+                    "addr": format!("0x{addr:x}"),
+                    "kind": kind,
+                    "wrote": value,
+                    "readback": readback,
+                }))
+            },
+        ),
+
         // Find every `.data` position containing a given u32 / u64
         // / arbitrary-byte value. Backed by patternsleuth
         // (`sleuth::scan_data_matches`); no hand-rolled scanning.
