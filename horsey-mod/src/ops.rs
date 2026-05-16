@@ -1798,6 +1798,7 @@ FUN_1400a2d80 since arming; `combines_done` = ext combinations actually executed
                     "armed": patches::combinator::is_armed(),
                     "call_count": s.call_count,
                     "combines_done": s.combines_done,
+                    "vanilla_crashes": s.vanilla_crashes,
                 }))
             },
         ),
