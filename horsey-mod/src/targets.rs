@@ -1154,12 +1154,82 @@ pub mod resolve {
     }
 
     fn resolve_name_table_uncached() -> Option<usize> {
-        // TODO: name table moved between game builds. Earlier attempts
-        // anchored on `cmp ecx, -1` (FUN_1400c78c0 entry) + nearby
-        // `lea r64, [rip+disp32]`, but the picked target's entries do
-        // not match the documented std::string layout. Needs a proper
-        // R3 resolver. See docs/todo.md "name table resolution".
-        None
+        // Name table lives on the HEAP; a .data slot holds the heap
+        // pointer. Strategy: scan .text for every
+        // `mov r64, [rip+disp32]`, decode each candidate slot, deref
+        // to a heap address, score by std::string-shape of entries at
+        // 0x88 stride. Highest-scoring slot wins.
+        let mov_modrms: [(u8, u8, u8); 8] = [
+            (0x48, 0x8b, 0x05),
+            (0x48, 0x8b, 0x0d),
+            (0x48, 0x8b, 0x15),
+            (0x48, 0x8b, 0x1d),
+            (0x48, 0x8b, 0x2d),
+            (0x48, 0x8b, 0x35),
+            (0x48, 0x8b, 0x3d),
+            (0x4c, 0x8b, 0x05),
+        ];
+        let mut slots: std::collections::BTreeSet<usize> =
+            std::collections::BTreeSet::new();
+        for (a, b, c) in mov_modrms {
+            let sig = format!("{a:02x} {b:02x} {c:02x}");
+            if let Ok(hits) = sleuth::scan_all_matches(&sig) {
+                for site in hits {
+                    if !modforge::winproc::is_addr_readable(site + 7) {
+                        continue;
+                    }
+                    // SAFETY: site+7 readability checked.
+                    let bytes = unsafe { std::slice::from_raw_parts(site as *const u8, 7) };
+                    let disp = i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]) as isize;
+                    let next_ip = (site + 7) as isize;
+                    let slot = (next_ip + disp) as usize;
+                    if modforge::winproc::is_addr_readable(slot + 8) {
+                        slots.insert(slot);
+                    }
+                }
+            }
+        }
+        let mut best: Option<(usize, i32)> = None;
+        for slot in slots {
+            // SAFETY: slot+8 readability checked above.
+            let heap_ptr = unsafe { *(slot as *const usize) };
+            if heap_ptr < 0x1_0000_0000 || heap_ptr > 0x7fff_ffff_ffff {
+                continue;
+            }
+            if (heap_ptr & 0xF) != 0 {
+                continue;
+            }
+            let score = score_name_table(heap_ptr);
+            if score >= 16 && best.map(|(_, s)| score > s).unwrap_or(true) {
+                best = Some((heap_ptr, score));
+            }
+        }
+        best.map(|(addr, _)| addr)
+    }
+
+    /// Read 16 candidate entries at addr+i*0x88 and score how many
+    /// match MSVC std::string SSO layout: size at +0x10 in [0,255],
+    /// capacity at +0x18 with strong signal at cap == 15 (default).
+    fn score_name_table(addr: usize) -> i32 {
+        const ENTRY_STRIDE: usize = 0x88;
+        const N: usize = 16;
+        if !modforge::winproc::is_addr_readable(addr + ENTRY_STRIDE * N) {
+            return 0;
+        }
+        let mut score = 0i32;
+        for i in 0..N {
+            let entry = addr + i * ENTRY_STRIDE;
+            // SAFETY: range readability checked above.
+            let size = unsafe { *((entry + 0x10) as *const usize) };
+            let cap = unsafe { *((entry + 0x18) as *const usize) };
+            let size_ok = size <= 255;
+            let cap_ok = cap < (1 << 24);
+            let sso_default = cap == 15;
+            if size_ok && cap_ok && (size > 0 || sso_default) {
+                score += if sso_default { 2 } else { 1 };
+            }
+        }
+        score
     }
 
     /// Resolved runtime address of GAMESTATE_PTR (the main game-state

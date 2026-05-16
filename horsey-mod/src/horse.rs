@@ -124,16 +124,22 @@ pub fn name_id(horse: usize) -> Option<u32> {
 }
 
 /// Resolve a horse's `name_id` to a UTF-8 name via the global name
-/// table at `targets::NAME_TABLE`. Mirrors vanilla `FUN_1400c78c0`
-/// (decomp `:116676-116697`):
-///   entry = NAME_TABLE + name_id * 0x88
-///   if name_id == 0xFFFFFFFF or *(u8)(entry+0x40) != 0: invalid
-///   size = *(u64)(entry+0x18)
-///   if size > 0xF: heap string, ptr = *(u64)(entry+0x00)
-///   else:          inline string, ptr = entry+0x00 (size bytes)
+/// table. Entry layout confirmed via live-memory inspection
+/// 2026-05-16 (`tests/dump_name_table_heap.rs`): each entry is a
+/// MSVC `std::string` (`_String_val<_Simple_types<char>>`) at 0x88
+/// stride. SSO buffer at +0x00..+0x10, `_Mysize` at +0x10, `_Myres`
+/// (capacity) at +0x18. The OLD decomp incorrectly labeled +0x18
+/// as size; that's capacity.
 ///
-/// Every deref is gated with `is_addr_readable` so a stale chain
-/// cannot fault the HTTP worker.
+/// Lookup:
+///   table = resolve::name_table_pointer_slot() -> heap ptr
+///   entry = table + name_id * 0x88
+///   size  = *(u64)(entry+0x10)
+///   cap   = *(u64)(entry+0x18)
+///   if cap > 15: string at *(u64)(entry+0x00) (heap)
+///   else:        string inline at entry+0x00 (size bytes)
+///
+/// Every deref is gated with `is_addr_readable`.
 pub fn name(horse_ptr: usize) -> Option<String> {
     let nid = name_id(horse_ptr)?;
     name_by_id(nid)
@@ -143,23 +149,21 @@ pub fn name_by_id(name_id: u32) -> Option<String> {
     if name_id == u32::MAX {
         return None;
     }
-    let table = crate::targets::resolve::name_table()
-        .unwrap_or_else(|| crate::targets::rebase(crate::targets::NAME_TABLE));
+    let table = crate::targets::resolve::name_table()?;
     let entry = table + (name_id as usize) * 0x88;
     if !modforge::winproc::is_addr_readable(entry + 0x88) {
         return None;
     }
     // SAFETY: entry+0x88 readability checked.
-    let invalid = unsafe { *((entry + 0x40) as *const u8) };
-    if invalid != 0 {
+    let size = unsafe { *((entry + 0x10) as *const usize) };
+    let cap = unsafe { *((entry + 0x18) as *const usize) };
+    if size > 255 {
         return None;
     }
-    // SAFETY: same page as above.
-    let size = unsafe { *((entry + 0x18) as *const usize) };
-    if size == 0 || size > 255 {
-        return None;
+    if size == 0 {
+        return Some(String::new());
     }
-    let str_ptr = if size > 0xF {
+    let str_ptr = if cap > 0xF {
         // SAFETY: large-string. Read the heap ptr at entry+0x00.
         let p = unsafe { *(entry as *const usize) };
         if !modforge::winproc::is_addr_readable(p + size) {
@@ -169,7 +173,7 @@ pub fn name_by_id(name_id: u32) -> Option<String> {
     } else {
         entry
     };
-    // SAFETY: str_ptr range readability checked (either entry or heap ptr).
+    // SAFETY: str_ptr range readability checked.
     let bytes = unsafe { std::slice::from_raw_parts(str_ptr as *const u8, size) };
     std::str::from_utf8(bytes).ok().map(String::from)
 }

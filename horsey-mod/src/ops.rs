@@ -94,6 +94,84 @@ pub fn register_all() {
             |_| Ok(gamestate::diag()),
         ),
 
+        // Heap string scanner. Walks the process address space via
+        // VirtualQuery; for every committed, readable, PRIVATE region
+        // (heap allocations), searches for the needle bytes. Returns
+        // up to `max_hits` absolute addresses. Used to find string
+        // names that don't live in image sections.
+        OpDef::new(
+            "mem.scan_heap_string",
+            "Scan process heap for an ASCII string. Body: {needle: string, max_hits?: u32}. Returns hits with 64-byte context.",
+            "{needle: string, max_hits?: u32}",
+            |args| {
+                use windows_sys::Win32::System::Memory::{
+                    MEM_COMMIT, MEM_PRIVATE, MEMORY_BASIC_INFORMATION,
+                    PAGE_NOACCESS, PAGE_READONLY, PAGE_READWRITE, VirtualQuery,
+                };
+                let needle = args
+                    .get("needle")
+                    .and_then(Json::as_str)
+                    .ok_or_else(|| "missing needle".to_string())?;
+                let needle_bytes = needle.as_bytes();
+                if needle_bytes.is_empty() || needle_bytes.len() > 256 {
+                    return Err("needle length out of range (1..=256)".to_string());
+                }
+                let max_hits = args.get("max_hits").and_then(Json::as_u64).unwrap_or(50) as usize;
+                const MAX_REGION: usize = 16 * 1024 * 1024; // 16MB per region
+                const MAX_TOTAL: usize = 256 * 1024 * 1024; // 256MB total
+                let mut scanned: usize = 0;
+                let mut hits: Vec<serde_json::Value> = Vec::new();
+                let mut addr: usize = 0;
+                let mut info: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+                let info_size = std::mem::size_of::<MEMORY_BASIC_INFORMATION>();
+                loop {
+                    // SAFETY: caller-supplied addr is forwarded to VirtualQuery
+                    // which is safe for any address.
+                    let n = unsafe { VirtualQuery(addr as *const _, &mut info, info_size) };
+                    if n == 0 { break; }
+                    let base = info.BaseAddress as usize;
+                    let size = info.RegionSize;
+                    let next_addr = base.saturating_add(size);
+                    if next_addr <= addr { break; }
+                    addr = next_addr;
+                    if info.State != MEM_COMMIT { continue; }
+                    if info.Type != MEM_PRIVATE { continue; }
+                    let prot_ok = matches!(info.Protect, PAGE_READWRITE | PAGE_READONLY);
+                    if !prot_ok { continue; }
+                    if info.Protect == PAGE_NOACCESS { continue; }
+                    if size > MAX_REGION { continue; }
+                    if scanned + size > MAX_TOTAL { break; }
+                    scanned += size;
+                    // SAFETY: region is MEM_COMMIT and readable per VirtualQuery.
+                    let slice = unsafe { std::slice::from_raw_parts(base as *const u8, size) };
+                    let mut i = 0usize;
+                    while i + needle_bytes.len() <= slice.len() {
+                        if &slice[i..i + needle_bytes.len()] == needle_bytes {
+                            let hit_addr = base + i;
+                            let ctx_lo = i.saturating_sub(16);
+                            let ctx_hi = (i + needle_bytes.len() + 16).min(slice.len());
+                            let ctx: Vec<String> = slice[ctx_lo..ctx_hi]
+                                .iter().map(|b| format!("{b:02x}")).collect();
+                            hits.push(json!({
+                                "addr": format!("0x{hit_addr:x}"),
+                                "region_base": format!("0x{base:x}"),
+                                "context_around": ctx.join(" "),
+                            }));
+                            if hits.len() >= max_hits { break; }
+                        }
+                        i += 1;
+                    }
+                    if hits.len() >= max_hits { break; }
+                }
+                Ok(json!({
+                    "needle": needle,
+                    "bytes_scanned": scanned,
+                    "hit_count": hits.len(),
+                    "hits": hits,
+                }))
+            },
+        ),
+
         // Walks .text for `cmp ecx, -1` (83 f9 ff) + look forward for a
         // `lea r64, [rip+disp32]` within 32 bytes. The combination is
         // the FUN_1400c78c0 name-resolver function entry. Reports each
