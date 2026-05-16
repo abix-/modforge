@@ -2096,6 +2096,193 @@ to derive test signatures from known-good function entries. Body: \
                 Ok(json!({ "addr": format!("0x{addr:x}"), "n": n, "bytes": hex }))
             },
         ),
+
+        // HK1 Stage S0 probe: walk GS+0x438 -> *(arr + active_scene_id*8)
+        // to find the active scene's controller (the Location object the
+        // click-drag handler runs against). Returns the location ptr, the
+        // vtable RVA at +0x0, the horse-vec count via +0x130/+0x138 and
+        // the click-drag fields (LOC[0x26], LOC[0x2d], LOC[0x2e]) decoded
+        // from raw bytes. With active_scene_id == -1 (overworld) the
+        // walk reports the no-location state and dumps slot 0x00 instead.
+        OpDef::new(
+            "hk1.probe.active_location",
+            "Walk GS+0x438 -> *(arr + asid*8); dump location_ptr, vtable rva, click-drag fields, 0x240 bytes raw.",
+            "",
+            |_| {
+                use modforge::winproc::is_addr_readable;
+                let gs = gamestate::ptr();
+                let asid = gamestate::active_scene_id();
+                let image_base = crate::targets::image_base();
+                if gs == 0 {
+                    return Ok(json!({ "error": "no gamestate" }));
+                }
+                let arr_slot = gs + 0x438;
+                if !is_addr_readable(arr_slot) {
+                    return Ok(json!({ "error": "GS+0x438 unreadable", "gs_ptr": format!("0x{gs:x}") }));
+                }
+                // SAFETY: arr_slot just checked.
+                let arr_ptr = unsafe { *(arr_slot as *const usize) };
+                // When asid == -1 (overworld), probe slot 0x00 (owned).
+                let slot_off: usize = match asid {
+                    Some(id) if id >= 0 && id < 256 => (id as usize) * 8,
+                    _ => 0,
+                };
+                let slot_addr = arr_ptr.wrapping_add(slot_off);
+                if !is_addr_readable(slot_addr) {
+                    return Ok(json!({
+                        "error": "slot unreadable",
+                        "gs_ptr": format!("0x{gs:x}"),
+                        "arr_ptr": format!("0x{arr_ptr:x}"),
+                        "active_scene_id": asid,
+                        "slot_off": format!("0x{slot_off:x}"),
+                    }));
+                }
+                // SAFETY: just checked.
+                let loc_ptr = unsafe { *(slot_addr as *const usize) };
+                if loc_ptr == 0 || !is_addr_readable(loc_ptr + 0x240) {
+                    return Ok(json!({
+                        "error": "loc_ptr null or short",
+                        "gs_ptr": format!("0x{gs:x}"),
+                        "arr_ptr": format!("0x{arr_ptr:x}"),
+                        "active_scene_id": asid,
+                        "slot_off": format!("0x{slot_off:x}"),
+                        "loc_ptr": format!("0x{loc_ptr:x}"),
+                    }));
+                }
+                // SAFETY: loc_ptr..loc_ptr+0x240 readability checked.
+                let vtable_ptr = unsafe { *(loc_ptr as *const usize) };
+                let vtable_rva = vtable_ptr.saturating_sub(image_base);
+                let vec_begin = unsafe { *((loc_ptr + 0x130) as *const usize) };
+                let vec_end = unsafe { *((loc_ptr + 0x138) as *const usize) };
+                let horse_count = if vec_end >= vec_begin {
+                    let span = vec_end - vec_begin;
+                    if span <= 0x10000 && span % 8 == 0 { Some(span / 8) } else { None }
+                } else { None };
+                // LOC[0x26 .. 0x2f] are qword-indexed in the decomp;
+                // byte offset = idx * 8.
+                let drag_idx = unsafe { *((loc_ptr + 0x2d * 8) as *const i32) };
+                let cand_idx = unsafe { *((loc_ptr + 0x2e * 8) as *const i32) };
+                let armed    = unsafe { *((loc_ptr + 0x2c * 8) as *const u8) };
+                // Dump 0x240 bytes starting at loc_ptr for offline inspection.
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(loc_ptr as *const u8, 0x240)
+                };
+                let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ");
+                Ok(json!({
+                    "gs_ptr": format!("0x{gs:x}"),
+                    "arr_ptr": format!("0x{arr_ptr:x}"),
+                    "active_scene_id": asid,
+                    "slot_off": format!("0x{slot_off:x}"),
+                    "loc_ptr": format!("0x{loc_ptr:x}"),
+                    "vtable_ptr": format!("0x{vtable_ptr:x}"),
+                    "vtable_rva": format!("0x{vtable_rva:x}"),
+                    "image_base": format!("0x{image_base:x}"),
+                    "loc_horse_vec_begin": format!("0x{vec_begin:x}"),
+                    "loc_horse_vec_end": format!("0x{vec_end:x}"),
+                    "loc_horse_count": horse_count,
+                    "loc_drag_idx": drag_idx,
+                    "loc_cand_idx": cand_idx,
+                    "loc_armed": armed,
+                    "bytes_240": hex,
+                }))
+            },
+        ),
+
+        // HK1 Stage S0 probe: for every slot found by scan_438_slots,
+        // also report the slot occupant's vtable RVA so we can classify
+        // which slots are Location objects vs subsystem singletons.
+        OpDef::new(
+            "hk1.probe.scene_slot_vtables",
+            "Walk all GS+0x438 slots with a horse-vec; report each slot's vtable RVA + count.",
+            "",
+            |_| {
+                use modforge::winproc::is_addr_readable;
+                let gs = gamestate::ptr();
+                let image_base = crate::targets::image_base();
+                if gs == 0 { return Ok(json!({ "error": "no gamestate" })); }
+                let arr_slot = gs + 0x438;
+                if !is_addr_readable(arr_slot) {
+                    return Ok(json!({ "error": "GS+0x438 unreadable" }));
+                }
+                // SAFETY: arr_slot just checked.
+                let arr_ptr = unsafe { *(arr_slot as *const usize) };
+                let mut slots = Vec::new();
+                let mut slot_off = 0usize;
+                while slot_off < 0x200 {
+                    let addr = arr_ptr.wrapping_add(slot_off);
+                    if !is_addr_readable(addr) {
+                        slot_off += 8; continue;
+                    }
+                    // SAFETY: addr just checked.
+                    let sub_ptr = unsafe { *(addr as *const usize) };
+                    if sub_ptr != 0
+                        && is_addr_readable(sub_ptr)
+                        && is_addr_readable(sub_ptr + 0x138)
+                    {
+                        // SAFETY: readability of sub_ptr and +0x138 checked above.
+                        let vtable_ptr = unsafe { *(sub_ptr as *const usize) };
+                        let vtable_rva = vtable_ptr.saturating_sub(image_base);
+                        let begin = unsafe { *((sub_ptr + 0x130) as *const usize) };
+                        let end = unsafe { *((sub_ptr + 0x138) as *const usize) };
+                        let count: Option<usize> = if end >= begin {
+                            let span = end - begin;
+                            if span <= 0x10000 && span % 8 == 0 { Some(span / 8) } else { None }
+                        } else { None };
+                        slots.push(json!({
+                            "slot": format!("0x{slot_off:x}"),
+                            "sub_ptr": format!("0x{sub_ptr:x}"),
+                            "vtable_rva": format!("0x{vtable_rva:x}"),
+                            "count": count,
+                        }));
+                    }
+                    slot_off += 8;
+                }
+                Ok(json!({
+                    "image_base": format!("0x{image_base:x}"),
+                    "arr_ptr": format!("0x{arr_ptr:x}"),
+                    "slots": slots,
+                }))
+            },
+        ),
+
+        // HK1 Stage S0 probe: read mouse-screen coordinates at HLT's
+        // documented RVAs. Returns NaN-as-null when unresolved. Used to
+        // confirm the RVAs still work in our build; if drift > epsilon
+        // between two calls while the tester moves the mouse, the
+        // anchor is correct.
+        OpDef::new(
+            "hk1.probe.mouse_globals",
+            "Read mouse_screen_x/y at HLT RVAs (0x3ED970, 0x3ED978). Returns floats + raw u32 bits.",
+            "",
+            |_| {
+                use modforge::winproc::is_addr_readable;
+                let base = crate::targets::image_base();
+                const MOUSE_X_RVA: usize = 0x3ED970;
+                const MOUSE_Y_RVA: usize = 0x3ED978;
+                let x_addr = base + MOUSE_X_RVA;
+                let y_addr = base + MOUSE_Y_RVA;
+                let x = if is_addr_readable(x_addr) {
+                    // SAFETY: just checked.
+                    Some(unsafe { (x_addr as *const f32).read_unaligned() })
+                } else { None };
+                let y = if is_addr_readable(y_addr) {
+                    // SAFETY: just checked.
+                    Some(unsafe { (y_addr as *const f32).read_unaligned() })
+                } else { None };
+                let x_bits = x.map(|v| v.to_bits());
+                let y_bits = y.map(|v| v.to_bits());
+                Ok(json!({
+                    "image_base": format!("0x{base:x}"),
+                    "x_addr": format!("0x{x_addr:x}"),
+                    "y_addr": format!("0x{y_addr:x}"),
+                    "x": x.and_then(|v| if v.is_finite() { Some(v as f64) } else { None }),
+                    "y": y.and_then(|v| if v.is_finite() { Some(v as f64) } else { None }),
+                    "x_bits": x_bits.map(|b| format!("0x{b:08x}")),
+                    "y_bits": y_bits.map(|b| format!("0x{b:08x}")),
+                }))
+            },
+        ),
+
         OpDef::new(
             "genes.ext.save.stats",
             "D4 save-sidecar counters. `save_calls`/`load_calls` = top-level save/load \

@@ -50,23 +50,31 @@ Critically: **the horse's per-location ownership is the `Horse*` membership in `
 
 ### 2.2. Where the truck / pasture / race-line Location objects live
 
-Per `HORSE-PLACES.md` and the scene-table dump:
+Per `HORSE-PLACES.md`, the scene-table dump, AND the S0 probe results (2026-05-16):
 
 | What | Where | Notes |
 |---|---|---|
 | `GS+0x438` | ptr to `void*[256]` | Scene/subsystem table; HLT calls it `kRootSceneTable` |
-| `GS+0x25C` | `i32` | `active_scene_id`, -1 = overworld map |
-| Slot 0x00 of scene table | sub-struct `+0x130/+0x138 = vector<Horse*>` | **owned horses (3 in user's save)**. Canonical "all owned" set |
-| Slots 0x08..0x38 | `vector<Horse*>` each | **7 race lanes** (`FUN_140105260:155484`) |
-| Slot 0x90 | sub-struct | "currently selected horse" context: vector + singleton `Horse*` at `+0x148` |
-| Slot 0x120 | `vector<Horse*>` | "horses available for THIS race" source (race-roster, NOT owned) |
+| `GS+0x25C` | `i32` | `active_scene_id`, -1 = overworld / at Home |
+| **Slot 0x00** | sub-struct with strings `"My House"` + `"Home"` at +0x18 / +0x40 | **PASTURE = HOME LOCATION.** Its `+0x130/+0x138` vector is the owned-horse list. vtable_rva `0x30f3d0`. Confirmed via `hk1.probe.active_location` (S0). |
+| **Slots 0x08..0x38** | `vector<Horse*>` each | **7 race lanes.** All share vtable_rva `0x30f3d0` with slot 0x00 (same Location class). Confirmed via `hk1.probe.scene_slot_vtables` (S0). |
+| Slot 0x90 | sub-struct, vtable_rva `0x30b8a8` | "currently selected horse" context: vector + singleton `Horse*` at `+0x148` |
+| Slot 0xb0 | sub-struct, vtable_rva `0x307c10`, count 4 | unknown role (4-element list in observed save) |
+| Slot 0xb8 | sub-struct, vtable_rva `0x304578`, count 1 | unknown singleton |
+| Slot 0xd0 | sub-struct, vtable_rva `0x30a0c0`, count 3 | candidate mirror of owned (3 in some saves) |
+| Slot 0xf8 | sub-struct, vtable_rva `0x3037d0` | matches HLT's `kNeighborSceneVtableRva = 0x3037D0` -> NEIGHBOR scene |
+| Slot 0x120 | sub-struct, vtable_rva `0x304e08`, count 5 | "horses available for THIS race" source (race-roster, NOT owned) |
 
-The truck and pasture do NOT clearly map to a single scene-table slot we've decoded. Likely:
-- **Pasture** = the Home-scene Location object, reached via `GS+0x438[home_scene_id]`. Its `LOC[0x26]` is the pasture's horse list.
-- **Truck** = a per-Location side-struct or one of the scene-table slots reached via `LOC+0x300` (the "screen-space state" pointer). The truck travels between scenes, so it is probably attached to the GameState directly or to whatever singleton handles map travel.
-- **Race line** = one of slots 0x08..0x38 when the player is at the track. Which lane = which slot is determined by the lane-iterator at `FUN_140105260`.
+Key consequence of the shared vtable: **the pickup vtable slot we resolve from `FUN_1400d2ab0` applies to BOTH the home Location AND each race-lane Location**. One resolver, two destination kinds.
 
-Confirming these mappings is one of the early research tasks (`F1` below).
+The **truck** still isn't classified. Possibilities:
+- A per-Location side-struct on the Home object (e.g. at `LOC+0x300`, the "screen-space state" pointer the decomp dereferences).
+- A separate slot we haven't classified yet (likely one of 0xb0 / 0xb8 / 0xd0; these have unknown roles and the right "small singleton" shape).
+- A field directly on `GameState` outside the `+0x438` table.
+
+Slots 0xb0 (count 4) and 0xd0 (count 3) are the strongest candidates for the truck because: (a) the truck carries multiple horses at once, (b) their counts match the observed in-game truck content in some sessions. Confirming requires (1) loading horses into the truck in-game, (2) re-running `hk1.probe.scene_slot_vtables`, (3) seeing which slot's count changed.
+
+When the player is at the Paddock / Race Track, `active_scene_id` should switch to a positive int. Re-running `hk1.probe.active_location` from inside the paddock will reveal the paddock's slot offset and confirm it uses the same `0x30f3d0` Location class. THIS IS STAGE S0.5 BELOW.
 
 ### 2.3. The mouse / hover globals
 
@@ -288,13 +296,19 @@ The HK1 module reads everything via these resolvers. If any fails to resolve, HK
 
 Per CLAUDE.md, each stage ships its own commit with: tests that prove the primitive works, real game verification (Claude drives `horsey-play` + tests), zero unstaged scope creep.
 
-### Stage HK1-S0. Research probes (no production code)
+### Stage HK1-S0. Research probes (no production code) [DONE 2026-05-16]
 
-- `tests/probe_loc_field_layout.rs`: snapshots `LOC` field bytes at offsets 0x16c..0x240 for the current active Location, dumps to JSON. Used to confirm the field map in section 2.1 in the current build.
-- `tests/probe_scene_slot_inventory.rs`: walks `GS+0x438` slots 0x00..0x130 and reports, per slot, "horse-vec size" and "first-element vtable RVA". Used to map slot -> Location class.
-- `tests/probe_mouse_globals.rs`: reads `MOUSE_SCREEN_X/Y` via the HLT RVAs, asserts they update when the user moves the mouse. (Cursor will be visible in the overlay; tester moves the mouse with the game-paused.)
+- `tests/hk1_probe_loc_field_layout.rs`: passes. With `active_scene_id = -1` (overworld/home), probe walks slot 0x00 and reports `loc_ptr`, `vtable_rva=0x30f3d0`, `loc_horse_count=2` (matches user save), `loc_drag_idx=-1`, `loc_cand_idx=-1`, `loc_armed=0`. Raw bytes reveal strings `"My House"` + `"Home"` confirming slot 0x00 IS the Home Location.
+- `tests/hk1_probe_scene_slot_vtables.rs`: passes. Classifies 30 slots; slot 0x00 + slots 0x08..0x38 all share vtable_rva 0x30f3d0 = the shared Location class. Slot 0xf8 matches HLT's `kNeighborSceneVtableRva = 0x3037D0`.
+- `tests/hk1_probe_mouse_globals.rs`: passes (no error) but values read as `0xffffffff` raw bits -> NaN floats. HLT's mouse RVAs are STALE in our build (binary updated 0a2689fe). S1 must re-anchor via xref from `cursor_input_handler` (FUN_14009d750).
 
-**Ship gate:** decomp evidence in this doc reproduced in live memory dumps.
+Backing ops in `src/ops.rs`: `hk1.probe.active_location`, `hk1.probe.scene_slot_vtables`, `hk1.probe.mouse_globals`.
+
+### Stage HK1-S0.5. Paddock active_location probe [TODO, requires player at paddock]
+
+Same `hk1.probe.active_location` op, but with player physically at the Race Track location in-game (so `active_scene_id` switches to a positive integer). Expected: probe reports the paddock slot offset, confirms vtable_rva is the same `0x30f3d0` Location class, dumps `LOC[0x26]` horse-vec which holds the horses currently at the track. This pins the paddock scene id constant for the `LocationKind` lookup table in section 4.4.
+
+**Ship gate:** S0 + S0.5 both reproduce the decomp evidence in live memory.
 
 ### Stage HK1-S1. Input snapshot
 
