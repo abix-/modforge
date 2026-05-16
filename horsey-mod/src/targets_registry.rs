@@ -16,6 +16,7 @@ use modforge::patterns::sleuth::{
     Candidate, InImage, Recipe, Resolver, TargetDef, TargetKind, TargetRegistry,
     Validator,
 };
+use modforge::vanilla::sig::{ArgKind, RetKind, Signature};
 
 /// Pointer to the global game-state struct (`.data` slot at the
 /// hardcoded RVA 0x1403fb0d8). Two candidates:
@@ -42,14 +43,23 @@ static GAMESTATE_PTR: TargetDef = TargetDef {
     validators: GAMESTATE_PTR_VALIDATORS,
 };
 
+/// Signature for `APPLY_GENE_TO_HORSE`. The vanilla function takes
+/// `(buf_ptr, horse_struct + 0x2b8)` and returns void. Decomp
+/// evidence at FUN_14009f680 in research/decompiled.
+pub static APPLY_GENE_SIG: Signature = Signature::new(
+    &[ArgKind::Ptr, ArgKind::Ptr],
+    RetKind::Void,
+);
+
 /// `APPLY_GENE_TO_HORSE` function entry. This is the D5 render
 /// trampoline's hook target. Hint RVA from old decomp; the live
 /// build's location may drift, but the prologue is stable.
+/// Carries a Signature so it's invocable via `modforge::vanilla`.
 static APPLY_GENE_VALIDATORS: &[&dyn Validator] = &[&InImage];
 
 static APPLY_GENE_TO_HORSE: TargetDef = TargetDef {
     name: "APPLY_GENE_TO_HORSE",
-    kind: TargetKind::FunctionEntry { signature: None },
+    kind: TargetKind::FunctionEntry { signature: Some(&APPLY_GENE_SIG) },
     candidates: &[
         // Function entry prologue. Specific enough to identify
         // APPLY_GENE_TO_HORSE in the live image; the migration

@@ -74,6 +74,12 @@ fn worker_main() {
     // 4. Register Horsey-specific ops on the modforge global registry.
     ops::register_all();
 
+    // 4b. Register modforge::vanilla cmdlets (vanilla.invoke /
+    //     vanilla.list) bound to the horsey target registry. Lets
+    //     external clients invoke any registered vanilla function
+    //     by name via HTTP.
+    targets_registry::register_vanilla_ops();
+
     // 4a. Arm the in-game ImGui overlay via hudhook. Hooks the
     //     game's IDXGISwapChain::Present so our panel renders
     //     INSIDE the game window. Step 1 spike: draws a single

@@ -23,6 +23,7 @@
 pub mod arm_lifecycle;
 pub mod fn_entry;
 pub mod json;
+pub mod registry;
 pub mod msvc;
 pub mod op;
 pub mod build_info;
