@@ -120,6 +120,32 @@ let name_id: u32 = read_u32(horse + 0x1f8);
 
 The full Horse object is `HORSE_ALLOC_SIZE = 0x498` bytes. First qword is the vtable (we observed `0x7ff6ff68d750` in one run = a code address). The fields above are scattered through the body.
 
+## Vanilla genome: DIPLOID, two banks of 240 bytes
+
+Confirmed 2026-05-16 via the CRISPR apply function (`FUN_1400b39b0` at 0x1400b39b0) and the `tests/probe_paired_genome.rs` probe.
+
+```
+horse + 0x2b8 .. horse + 0x3a7   PRIMARY bank   240 bytes, one allele tier per gene (0..=3)
+horse + 0x3a8 .. horse + 0x497   PAIRED  bank   240 bytes, the other diploid copy
+```
+
+The render path samples the PAIRED bank (or applies dominance across both). **Writing only the primary leaves the visible phenotype unchanged.** This is the trap we fell into until reading CRISPR's code: the in-game CRISPR Lab `scan_for_chromosomes` (`FUN_1400fd3e0`) calls `FUN_1400b39b0` which writes each gene to BOTH banks:
+
+```c
+*(u8*)(horse + gene_offset)         = new_value;   // primary
+*(u8*)(horse + gene_offset + 0xF0)  = new_value;   // paired (0xF0 == 240)
+```
+
+Production code in `horsey-mod/src/horse.rs::{set_vanilla_allele, set_vanilla_alleles}` writes both banks. Reads via `vanilla_alleles_both()` return `(primary, paired)`. The single-bank `vanilla_alleles()` returns only the primary. Prefer `_both` when investigating dominance / asymmetry.
+
+`FUN_1400a5370(gene_offset) -> u8` is the value-generator CRISPR uses (likely sources from collected chromosome state). When we want to mirror CRISPR exactly (not just force a value) we'd call that.
+
+Gene-offset table: `DAT_14030d110`. Layout: `i32[chromosome_id][0..17]`. Each chromosome carries up to 17 gene offsets, indexed `chromosome_id * 0x44 + slot * 4`. CRISPR walks the 4 chromosome "types" (cases 3, 2, 4, 1 in the apply function); chromosome stride is 0xb8 in its caller. Not yet mirrored in Rust. Our writers take the raw 0..=239 index, not a chromosome+slot pair.
+
+## Lesson: when the game has an in-game editor, READ ITS CODE FIRST
+
+Spent a session writing single-bank vanilla allele setters and chasing "why doesn't the horse change visually" before reading the CRISPR Lab decomp. The decomp gave the answer in under five minutes (two banks, write both). Whenever the game has a player-facing feature that does the thing you're trying to mod, that feature's code is ground truth. Grep `research/decompiled/annotated/` first.
+
 ## Name table
 
 `name_id` (u32 at +0x1f8) indexes a global table that maps id -> ASCII name. The string is NOT stored inline in the Horse object. We scanned all 0x498 bytes for "tomtato" (a known horse name in the test save) and found no match. The table itself has not yet been located. Once found, document its location here and add `horse::name_string(horse_ptr) -> Option<String>`.
