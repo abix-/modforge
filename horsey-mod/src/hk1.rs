@@ -42,9 +42,18 @@ pub const HOME_LOC_VTABLE_RVA: usize = 0x30f3d0;
 pub const VTABLE_DROP_COMMIT: usize = 0x78;
 
 /// Location field offsets on the shared Location class.
-pub const LOC_GRABBED_HORSE: usize = 0x29 * 8; // = 0x148 (qword index 0x29)
-pub const LOC_CURSOR_X:      usize = 0x174;     // float
-pub const LOC_CURSOR_Y:      usize = 0x178;     // float
+pub const LOC_HORSE_VEC_BEGIN: usize = 0x130;   // ptr to first Horse* (= LOC[0x26])
+pub const LOC_HORSE_VEC_END:   usize = 0x138;   // one-past-last (= LOC[0x27])
+pub const LOC_GRABBED_HORSE:   usize = 0x29 * 8; // = 0x148 (LOC[0x29])
+pub const LOC_DRAG_IDX:        usize = 0x2d * 8; // = 0x168 (LOC[0x2d])
+pub const LOC_CURSOR_X:        usize = 0x174;    // float
+pub const LOC_CURSOR_Y:        usize = 0x178;    // float
+pub const LOC_CLICK_STATE:     usize = 0x37 * 8; // = 0x1b8 (LOC[0x37])
+
+/// Click-state value the drop-commit branch keys on. Observed via the
+/// snap2/snap3 drag diff (the game wrote 0 to +0x1b8 after the drop,
+/// implying it was 1 in the trigger frame).
+pub const CLICK_RELEASE: u32 = 1;
 
 fn log_path() -> Option<PathBuf> {
     modforge::log::dll_dir().map(|d| d.join("hk1_overlay.log"))
@@ -233,50 +242,76 @@ pub fn transfer_horse(horse_ptr: usize, dest: &str) -> Option<u8> {
     let loc = home_loc_ptr()?;
     let fn_addr = resolve_drop_commit_fn()?;
 
-    // Stash old values so we can restore on completion.
-    if !modforge::winproc::is_addr_readable(loc + LOC_GRABBED_HORSE + 7) { return None; }
-    if !modforge::winproc::is_addr_readable(loc + LOC_CURSOR_Y + 3) { return None; }
-    // SAFETY: both ranges checked above; writes land in the Location alloc.
+    // Stash all old values for restore on completion.
+    if !modforge::winproc::is_addr_readable(loc + LOC_CLICK_STATE + 3) { return None; }
+    // SAFETY: range checked.
     let old_grabbed = unsafe { *((loc + LOC_GRABBED_HORSE) as *const usize) };
-    let old_cx      = unsafe { *((loc + LOC_CURSOR_X) as *const f32) };
-    let old_cy      = unsafe { *((loc + LOC_CURSOR_Y) as *const f32) };
+    let old_drag_idx = unsafe { *((loc + LOC_DRAG_IDX) as *const i32) };
+    let old_click    = unsafe { *((loc + LOC_CLICK_STATE) as *const u32) };
+    let old_cx       = unsafe { *((loc + LOC_CURSOR_X) as *const f32) };
+    let old_cy       = unsafe { *((loc + LOC_CURSOR_Y) as *const f32) };
+
+    // Find the horse's index in LOC[0x130/0x138] vector. The drop-commit
+    // function probably dereferences LOC.horses[drag_idx] internally,
+    // so the index must be valid.
+    let vec_begin = unsafe { *((loc + LOC_HORSE_VEC_BEGIN) as *const usize) };
+    let vec_end = unsafe { *((loc + LOC_HORSE_VEC_END) as *const usize) };
+    let drag_idx = find_horse_index(horse_ptr, vec_begin, vec_end);
+    let Some(drag_idx) = drag_idx else {
+        log_line(&format!(
+            "transfer ABORT horse=0x{horse_ptr:x} not in LOC[0x130/0x138] vec ({vec_begin:#x}..{vec_end:#x})"
+        ));
+        return None;
+    };
 
     log_line(&format!(
-        "transfer dest={dest} horse=0x{horse_ptr:x} loc=0x{loc:x} fn=0x{fn_addr:x} \
-         target=({},{}) old_grabbed=0x{old_grabbed:x} old_cursor=({old_cx},{old_cy})",
+        "transfer dest={dest} horse=0x{horse_ptr:x} idx={drag_idx} loc=0x{loc:x} fn=0x{fn_addr:x} \
+         target=({},{}) old_grabbed=0x{old_grabbed:x} old_drag_idx={old_drag_idx} old_click={old_click} \
+         old_cursor=({old_cx},{old_cy})",
         target.0, target.1
     ));
 
-    // Stage the LOC: grabbed horse + cursor over target.
-    // SAFETY: writes covered by the readability checks above.
+    // Stage the full LOC: grabbed horse + drag index + click-release
+    // state + cursor over target.
+    // SAFETY: writes covered by readability checks above.
     unsafe {
         *((loc + LOC_GRABBED_HORSE) as *mut usize) = horse_ptr;
+        *((loc + LOC_DRAG_IDX) as *mut i32) = drag_idx as i32;
+        *((loc + LOC_CLICK_STATE) as *mut u32) = CLICK_RELEASE;
         *((loc + LOC_CURSOR_X) as *mut f32) = target.0;
         *((loc + LOC_CURSOR_Y) as *mut f32) = target.1;
     }
+    log_line("staged LOC: about to call vtable[+0x78]");
 
-    // The naive `vtable[+0x78](LOC)` call CRASHES the game when LOC is
-    // not in mid-drag state (LOC[0x2d] = -1, LOC[0x2c] = armed-flag,
-    // LOC[0x37] = click state, etc., are all unset). The decomp around
-    // line 1722 of FUN_1400d2ab0 shows the function expects much more
-    // staged state than just LOC[0x29] + cursor floats.
-    //
-    // Crash repro: hk1_transfer_end_to_end test, 2026-05-16. Process
-    // disappeared mid-call. Disabled until we walk all the LOC fields
-    // a real drag touches.
-    //
-    // For now this op only logs what it WOULD do; restore the actual
-    // call once we have a complete LOC stage.
-    log_line(&format!(
-        "transfer DRY-RUN (vtable call disabled) horse=0x{horse_ptr:x} would call fn=0x{fn_addr:x}"
-    ));
-    // Roll back the partial LOC stage so we don't leave the game in a
-    // half-grabbed state.
-    // SAFETY: same range as the writes above.
-    unsafe {
-        *((loc + LOC_GRABBED_HORSE) as *mut usize) = old_grabbed;
-        *((loc + LOC_CURSOR_X) as *mut f32) = old_cx;
-        *((loc + LOC_CURSOR_Y) as *mut f32) = old_cy;
+    // Invoke vtable[+0x78](LOC). MS x64 ABI: this in RCX. Returns char.
+    type DropCommitFn = unsafe extern "system" fn(*mut u8) -> u8;
+    // SAFETY: fn_addr was just read from a readable vtable slot in
+    // .rdata. LOC pointer is the game's live Home Location.
+    let f: DropCommitFn = unsafe { std::mem::transmute(fn_addr) };
+    let result = unsafe { f(loc as *mut u8) };
+    log_line(&format!("vtable returned result={result}"));
+
+    // Don't restore: if the game accepted the drop, it just wrote the
+    // post-drop LOC state itself and we don't want to undo that. If
+    // it returned 0 (drop-fail), the game already played DropHorseFail
+    // and reset state per FUN_1400cdae0. Either way the game owns the
+    // LOC after the call. Restoring would corrupt the post-drop state.
+    let _ = (old_grabbed, old_drag_idx, old_click, old_cx, old_cy);
+    Some(result)
+}
+
+/// Walk a `Horse**` vector in `[begin, end)`; return the index of
+/// `horse_ptr` if present.
+fn find_horse_index(horse_ptr: usize, begin: usize, end: usize) -> Option<usize> {
+    if end < begin { return None; }
+    let count = (end - begin) / 8;
+    if count == 0 || count > 0x1000 { return None; }
+    if !modforge::winproc::is_addr_readable(begin) { return None; }
+    if !modforge::winproc::is_addr_readable(end - 1) { return None; }
+    for i in 0..count {
+        // SAFETY: range checked above; each elem is 8 bytes aligned.
+        let p = unsafe { *((begin + i * 8) as *const usize) };
+        if p == horse_ptr { return Some(i); }
     }
-    Some(0)
+    None
 }
