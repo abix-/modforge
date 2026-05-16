@@ -246,16 +246,18 @@ L3 is the long-term home. L2 is the right MVP if the game honors it. L1 only if 
 
 Per-axis search plan (all via `gh search code` / `gh search repos` + `gh api`):
 
-- [ ] **PR-1: Game-mod input libraries.** Search terms: `SendInput WM_LBUTTONDOWN mod`, `PostMessage game bot`, `input simulation rust windows`, `mouse_event keybd_event hook`, `synthetic input game automation`. Filter language: Rust, C++, C#. Capture: repo, stars, license, last commit, mechanism (L1/L2/L3), API shape, what game(s) it targets.
-- [ ] **PR-2: UI automation frameworks.** Pywinauto, AutoHotkey internals, Microsoft UI Automation, AutoIt. We won't use them directly but their dispatch shapes (key/mouse abstraction, modifier-chord handling, replay format) are battle-tested. Pull the abstraction, not the impl.
-- [ ] **PR-3: Game-bot ecosystems.** RuneScape (OSBuddy / RuneLite plugin authors), poker bots, MMO bots. These have ALL solved L2/L3 for many game engines. Mostly C#/Java; concepts transfer. Focus on the "where do I poke" lists they ship.
-- [ ] **PR-4: Reverse-engineered input pokes per engine.** UE4/UE5 input subsystem (`UPlayerInput`, `FInputKeyParams`, `FSlateApplication::OnControllerButtonPressed`). Unity input system. SDL2 internals. Most engine RE projects on GitHub document the input read sites; we collect them.
-- [ ] **PR-5: Raw-input / `WM_INPUT` handling.** Search `WM_INPUT inject`, `raw input synthesize`, `XInput emulate`. Critical because raw-input games ignore PostMessage by design; we need to know which workaround the field has converged on (ViGEm for gamepad, interception driver for keyboard, etc.).
-- [ ] **PR-6: Accessibility / assistive tech.** Dwell-click software, eye-tracker drivers (Tobii), switch-control software. They've solved "click from arbitrary input source into arbitrary app" robustly and legally; the dispatch layer is usually L1 done well.
-- [ ] **PR-7: Crate audit.** `cargo search` + GitHub: `enigo`, `autopilot`, `rdev`, `winput`, `mouce`, `inputbot`. Compatibility (windows-only ok), license, maintenance, scope (input vs hook vs both), Rust edition. Pick top 2-3 candidates to evaluate.
-- [ ] **PR-8: Existing in-process injection mods that synthesize input.** UE4SS plugins, BepInEx plugins, Reshade-style overlays. These are closest to our architecture (already inside the process) and may have shipped the L3 we want.
-- [ ] **PR-9: Replay / record-playback formats.** Cheat Engine table macros, AHK scripts, OBS replay, Speedrun.com tooling. Decide canonical JSON event-stream shape from prior art.
-- [ ] **PR-10: Anti-cheat / legitimacy notes.** Some games (and some online MP modes) treat synthetic input as a TOS violation. Capture per-game stance; flag affected targets. Horsey, Grounded 2 single-player, Schedule 1, Outworld Station: low risk, but document.
+- [x] **PR-1: Game-mod input libraries.** Done 2026-05-16. Top finds: UnrealCV (HTTP-driven UE input via `PlayerController->InputKey`), Lyra's `LyraSimulatedInputWidget`, `ekicyou/areka` PostMessage example. Confirmed L1/L2/L3 split.
+- [x] **PR-2: UI automation frameworks.** Done 2026-05-16. Pywinauto's `click()` (PostMessage) vs `click_input()` (`mouse_event`) split is the model we adopt. AHK's `dwExtraInfo`-tag pattern noted. AHK GPL-2 forbids vendoring; ideas only.
+- [x] **PR-3: Game-bot ecosystems.** Done 2026-05-16. RuneLite's `Callbacks` event interface mirrors our `Hook<F>` retour pattern; humanize-curve deferred to v2.
+- [x] **PR-4: Reverse-engineered input pokes per engine.** Done 2026-05-16. Canonical UE L3 = `APlayerController::InputKey(FInputKeyParams)` (Lyra + UnrealCV both confirm). Unity = `Input.GetKey*` hook or `InputSystem.QueueStateEvent`. Raw Win32 = per-game I-R.
+- [x] **PR-5: Raw-input / `WM_INPUT` handling.** Done 2026-05-16. Interception driver (1849 stars, abandoned 2021, no Rust binding) is the escape hatch. Defer until a target needs it; all current targets are L1/L2/L3 reachable.
+- [x] **PR-6: Accessibility / assistive tech.** Done 2026-05-16. Validates L1 default + "restore foreground window post-batch" pattern.
+- [x] **PR-7: Crate audit.** Done 2026-05-16. **Winner: `enigo` 0.6.x (MIT, 1715 stars, edition 2024, last commit 2026-03-30).** Use `default-features = false`. No existing crate covers L2; hand-roll over `windows-sys`.
+- [x] **PR-8: In-process injection precedents.** Done 2026-05-16. UE4SS routes input via UE's own structures (no SendInput/PostMessage in its tree). BepInEx (LGPL-2.1) + MelonLoader (Apache-2) are the Unity references. Special K is GPL-3 (cite only).
+- [x] **PR-9: Replay / record-playback formats.** Done 2026-05-16. Adopted JSON event stream with absolute `t_ms`, `type` enum, `backend` selector. Inspired by xdotool + pywinauto.
+- [x] **PR-10: Anti-cheat / legitimacy notes.** Done 2026-05-16. All current targets (Horsey, Grounded 2, Schedule 1, Outworld Station, Timberbot) LOW risk. `dwExtraInfo` tag + foreground restore as cheap insurance.
+
+**Recommendation on file** in [`../modforge/docs/input-prior-art.md`](../modforge/docs/input-prior-art.md): L1 = `enigo` (default-features off), L2 = hand-rolled `modforge::input::win32_message` over `windows-sys` (~80 LOC), L3 = per-consumer `InputSurface` trait. Module + cmdlet shapes drafted. I-1 is unblocked.
 
 Deliverable: [`../modforge/docs/input-prior-art.md`](../modforge/docs/input-prior-art.md) with one section per PR-N above, a comparison table (top 5 candidates), and a recommendation for which L1 backend (likely `enigo` or hand-rolled `SendInput`), L2 strategy (PostMessage wrapper), and L3 patterns (per-engine).
 
