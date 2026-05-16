@@ -44,7 +44,7 @@ pub fn ptr() -> usize {
     // Locate the `.data` slot. Resolver-or-hardcoded; the resolver
     // is sanity-gated in targets::resolve and falls through to the
     // hardcoded RVA when no candidate is plausible.
-    let slot = targets::resolve::gamestate_ptr()
+    let slot = crate::targets_registry::resolve::gamestate_ptr()
         .unwrap_or_else(|| targets::rebase(targets::GAMESTATE_PTR));
     // SAFETY: slot lives inside the loaded image's `.data` section;
     // reading 8 bytes from it is safe for the process lifetime.
@@ -120,7 +120,7 @@ pub fn diag() -> serde_json::Value {
         // address and its raw 8-byte content so we can tell apart a
         // null slot (no save loaded) from a stale / wrong slot (the
         // resolver picked the wrong address).
-        let resolved = targets::resolve::gamestate_ptr();
+        let resolved = crate::targets_registry::resolve::gamestate_ptr();
         let hardcoded_rebased = targets::rebase(targets::GAMESTATE_PTR);
         let slot = resolved.unwrap_or(hardcoded_rebased);
         // SAFETY: slot lives in .data of the loaded image; safe to read 8 bytes.
@@ -360,7 +360,7 @@ pub fn frame_tick() -> Option<u32> {
 
 /// Read the "No Tire" toggle byte (true = tiredness disabled).
 pub fn no_tire() -> bool {
-    let abs = targets::resolve::no_tire_toggle()
+    let abs = crate::targets_registry::resolve::no_tire_toggle()
         .unwrap_or_else(|| targets::rebase(targets::NO_TIRE_TOGGLE));
     // SAFETY: NO_TIRE_TOGGLE lives in the .data section of the
     // exe; valid for the process lifetime.
@@ -369,7 +369,7 @@ pub fn no_tire() -> bool {
 
 /// Set the "No Tire" toggle byte.
 pub fn set_no_tire(enabled: bool) {
-    let abs = targets::resolve::no_tire_toggle()
+    let abs = crate::targets_registry::resolve::no_tire_toggle()
         .unwrap_or_else(|| targets::rebase(targets::NO_TIRE_TOGGLE));
     // SAFETY: Same as above; writing a byte to a .data global.
     unsafe {
@@ -379,7 +379,7 @@ pub fn set_no_tire(enabled: bool) {
 
 /// Read the debug-mode active flag.
 pub fn debug_mode() -> bool {
-    let abs = targets::resolve::debug_mode_active()
+    let abs = crate::targets_registry::resolve::debug_mode_active()
         .unwrap_or_else(|| targets::rebase(targets::DEBUG_MODE_ACTIVE));
     // SAFETY: same .data-section global rationale.
     unsafe { *(abs as *const u8) != 0 }
@@ -388,7 +388,7 @@ pub fn debug_mode() -> bool {
 /// Forcibly enable / disable debug mode (without making the user
 /// type "debug" in the pause menu).
 pub fn set_debug_mode(enabled: bool) {
-    let abs = targets::resolve::debug_mode_active()
+    let abs = crate::targets_registry::resolve::debug_mode_active()
         .unwrap_or_else(|| targets::rebase(targets::DEBUG_MODE_ACTIVE));
     // SAFETY: same .data-section global rationale.
     unsafe {
@@ -398,7 +398,7 @@ pub fn set_debug_mode(enabled: bool) {
 
 /// Read the races counter (separate global, not in GameState).
 pub fn races() -> u32 {
-    let abs = targets::resolve::races_counter()
+    let abs = crate::targets_registry::resolve::races_counter()
         .unwrap_or_else(|| targets::rebase(targets::RACES_COUNTER));
     // SAFETY: races counter is a uint32 in .data; always valid.
     unsafe { *(abs as *const u32) }

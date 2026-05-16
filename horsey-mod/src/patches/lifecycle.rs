@@ -187,7 +187,7 @@ fn arm_ctor() -> anyhow::Result<()> {
     if is_armed_ctor() {
         anyhow::bail!("lifecycle ctor already armed");
     }
-    let runtime_addr = targets::resolve::horse_constructor()
+    let runtime_addr = crate::targets_registry::resolve::horse_constructor()
         .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_CONSTRUCTOR));
     log_prologue("HORSE_CONSTRUCTOR", runtime_addr);
 
@@ -211,7 +211,7 @@ fn arm_dtor() -> anyhow::Result<()> {
     if is_armed_dtor() {
         anyhow::bail!("lifecycle dtor already armed");
     }
-    let runtime_addr = targets::resolve::horse_destructor()
+    let runtime_addr = crate::targets_registry::resolve::horse_destructor()
         .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_DESTRUCTOR));
     log_prologue("HORSE_DESTRUCTOR", runtime_addr);
 

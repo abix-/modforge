@@ -738,13 +738,13 @@ pub fn dryrun_all() -> [TargetReport; 4] {
 // ---------------------------------------------------------------------------
 
 pub fn arm() -> anyhow::Result<()> {
-    let save_writer = targets::resolve::save_writer()
+    let save_writer = crate::targets_registry::resolve::save_writer()
         .unwrap_or_else(|| targets::rebase(fn_addr::SAVE_WRITER));
-    let load_game = targets::resolve::load_game()
+    let load_game = crate::targets_registry::resolve::load_game()
         .unwrap_or_else(|| targets::rebase(fn_addr::LOAD_GAME));
-    let horse_save_writer = targets::resolve::horse_save_writer()
+    let horse_save_writer = crate::targets_registry::resolve::horse_save_writer()
         .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_SAVE_WRITER));
-    let horse_save_loader = targets::resolve::horse_save_loader()
+    let horse_save_loader = crate::targets_registry::resolve::horse_save_loader()
         .unwrap_or_else(|| targets::rebase(fn_addr::HORSE_SAVE_LOADER));
 
     arm_one("SAVE_WRITER", save_writer, &SAVE_WRITER_DETOUR, save_writer_handler)

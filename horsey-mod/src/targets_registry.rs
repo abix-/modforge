@@ -319,6 +319,42 @@ pub static HORSEY_TARGETS: TargetRegistry = TargetRegistry::new(
 /// Per-process Resolver singleton bound to `HORSEY_TARGETS`.
 pub static HORSEY_RESOLVER: Resolver = Resolver::new(&HORSEY_TARGETS);
 
+/// Drop-in replacement for the legacy `targets::resolve::*` API.
+/// Each function delegates to the registry by name. Same return
+/// type (`Option<usize>`), same semantics for migrated targets.
+///
+/// NAME_TABLE and CHROMOSOME_TABLE are NOT in this module: the
+/// legacy resolvers do an additional heap-deref + scoring pass
+/// that the current Recipe enum doesn't express. Call sites for
+/// those stay on the legacy path until a Recipe::HeapScored
+/// variant lands.
+pub mod resolve {
+    fn r(name: &str) -> Option<usize> {
+        super::HORSEY_RESOLVER.resolve(name).map(|v| v as usize)
+    }
+
+    // Data globals
+    pub fn gamestate_ptr() -> Option<usize> { r("GAMESTATE_PTR") }
+    pub fn save_version_global() -> Option<usize> { r("SAVE_VERSION_GLOBAL") }
+    pub fn races_counter() -> Option<usize> { r("RACES_COUNTER") }
+    pub fn no_tire_toggle() -> Option<usize> { r("NO_TIRE_TOGGLE") }
+    pub fn debug_mode_active() -> Option<usize> { r("DEBUG_MODE_ACTIVE") }
+    pub fn debug_log_gate() -> Option<usize> { r("DEBUG_LOG_GATE") }
+
+    // Function entries
+    pub fn apply_gene_to_horse() -> Option<usize> { r("APPLY_GENE_TO_HORSE") }
+    pub fn horse_constructor() -> Option<usize> { r("HORSE_CONSTRUCTOR") }
+    pub fn horse_destructor() -> Option<usize> { r("HORSE_DESTRUCTOR") }
+    pub fn gene_combinator() -> Option<usize> { r("GENE_COMBINATOR") }
+    pub fn save_writer() -> Option<usize> { r("SAVE_WRITER") }
+    pub fn load_game() -> Option<usize> { r("LOAD_GAME") }
+    pub fn horse_save_writer() -> Option<usize> { r("HORSE_SAVE_WRITER") }
+    pub fn horse_save_loader() -> Option<usize> { r("HORSE_SAVE_LOADER") }
+    pub fn eval_diploid_blend_a() -> Option<usize> { r("EVAL_DIPLOID_BLEND_A") }
+    pub fn eval_diploid_blend_b() -> Option<usize> { r("EVAL_DIPLOID_BLEND_B") }
+    pub fn gene_allele_swap() -> Option<usize> { r("GENE_ALLELE_SWAP") }
+}
+
 /// Wire `vanilla.invoke` and `vanilla.list` HTTP cmdlets against
 /// the horsey resolver. Call from worker init AFTER the OP_REGISTRY
 /// has been built.

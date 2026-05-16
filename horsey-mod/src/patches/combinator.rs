@@ -144,7 +144,7 @@ pub fn arm() -> anyhow::Result<()> {
     if is_armed() {
         anyhow::bail!("combinator already armed");
     }
-    let runtime_addr = targets::resolve::gene_combinator()
+    let runtime_addr = crate::targets_registry::resolve::gene_combinator()
         .unwrap_or_else(|| targets::rebase(fn_addr::GENE_COMBINATOR));
 
     modforge::log!(

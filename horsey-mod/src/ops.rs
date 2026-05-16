@@ -875,11 +875,11 @@ pub fn register_all() {
                 Ok(json!({
                     "image_base": format!("0x{image_base:x}"),
                     "races_counter": entry(
-                        crate::targets::resolve::races_counter(),
+                        crate::targets_registry::resolve::races_counter(),
                         crate::targets::RACES_COUNTER,
                     ),
                     "save_version_global": entry(
-                        crate::targets::resolve::save_version_global(),
+                        crate::targets_registry::resolve::save_version_global(),
                         crate::targets::SAVE_VERSION_GLOBAL,
                     ),
                 }))
@@ -950,15 +950,15 @@ pub fn register_all() {
                 Ok(json!({
                     "image_base": format!("0x{image_base:x}"),
                     "no_tire_toggle": entry(
-                        crate::targets::resolve::no_tire_toggle(),
+                        crate::targets_registry::resolve::no_tire_toggle(),
                         crate::targets::NO_TIRE_TOGGLE,
                     ),
                     "debug_mode_active": entry(
-                        crate::targets::resolve::debug_mode_active(),
+                        crate::targets_registry::resolve::debug_mode_active(),
                         crate::targets::DEBUG_MODE_ACTIVE,
                     ),
                     "debug_log_gate": entry(
-                        crate::targets::resolve::debug_log_gate(),
+                        crate::targets_registry::resolve::debug_log_gate(),
                         crate::targets::DEBUG_LOG_GATE,
                     ),
                 }))
@@ -973,7 +973,7 @@ pub fn register_all() {
             |_| {
                 let image_base = crate::targets::image_base();
                 let hardcoded_slot = crate::targets::rebase(crate::targets::GAMESTATE_PTR);
-                let resolved_slot = crate::targets::resolve::gamestate_ptr();
+                let resolved_slot = crate::targets_registry::resolve::gamestate_ptr();
                 let resolved_slot_hex = match resolved_slot {
                     Some(a) => format!("0x{a:x}"),
                     None => "0x0".to_string(),
