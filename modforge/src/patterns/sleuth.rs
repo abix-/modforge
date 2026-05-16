@@ -263,6 +263,24 @@ pub enum Recipe {
     /// instructions and the right field offset is the most-common
     /// disp.
     HistogramDisp { window_bytes: u32, predicate: HistPredicate },
+    /// Decode TWO RIP-relative disp32s at byte offsets `disp1_off`
+    /// and `disp2_off` inside the match. Compute their effective
+    /// targets: target_i = (match_addr + next_ip_i) + disp_i. Accept
+    /// the match only if `target2 - target1 == delta`. Return
+    /// `target1`. Used for resolvers like DEBUG_MODE_ACTIVE that
+    /// disambiguate by the relative position of two stores.
+    PairedRipDispWithDelta {
+        disp1_off: u8, disp1_next_ip: u8,
+        disp2_off: u8, disp2_next_ip: u8,
+        delta: i64,
+    },
+    /// Like `DecodeRipDisp` but ADD `rel_offset` (signed) to the
+    /// effective target before returning. Used when the anchor sig
+    /// matches a NEIGHBORING global whose offset to the real target
+    /// is known from decomp.
+    RipDispWithRelOffset {
+        disp_off: u8, instr_len: u8, rel_offset: i64,
+    },
 }
 
 /// Predicate for `Recipe::HistogramDisp`. Filters which disp32
@@ -622,6 +640,36 @@ fn decode_candidate(
         }
         Recipe::HistogramDisp { window_bytes, predicate } => {
             decode_histogram(&hits, window_bytes, predicate, def, image_base)
+        }
+        Recipe::PairedRipDispWithDelta {
+            disp1_off, disp1_next_ip, disp2_off, disp2_next_ip, delta,
+        } => {
+            // Try every match; accept the first one whose two
+            // disp32s form effective-targets whose delta matches.
+            for &m in &hits {
+                let m = m as u64;
+                let d1 = read_i32_at(m + disp1_off as u64)?;
+                let d2 = read_i32_at(m + disp2_off as u64)?;
+                let t1 = m.wrapping_add(disp1_next_ip as u64)
+                    .wrapping_add(d1 as i64 as u64);
+                let t2 = m.wrapping_add(disp2_next_ip as u64)
+                    .wrapping_add(d2 as i64 as u64);
+                let observed = (t2 as i64).wrapping_sub(t1 as i64);
+                if observed == delta {
+                    return Ok(t1);
+                }
+            }
+            Err(anyhow!(
+                "no match passed paired-disp delta {} for sig {:?}",
+                delta, cand.sig
+            ))
+        }
+        Recipe::RipDispWithRelOffset { disp_off, instr_len, rel_offset } => {
+            let match_addr = hits[0] as u64;
+            let disp = read_i32_at(match_addr + disp_off as u64)?;
+            let target = match_addr.wrapping_add(instr_len as u64)
+                .wrapping_add(disp as i64 as u64);
+            Ok((target as i64).wrapping_add(rel_offset) as u64)
         }
     }
 }

@@ -72,19 +72,42 @@ static NO_TIRE_TOGGLE: TargetDef = TargetDef {
     validators: V_IN_IMAGE,
 };
 
+/// `DEBUG_MODE_ACTIVE`. Anchor: the unlock-block
+/// `c6 05 ?? ?? ?? ?? 01 c6 05 ?? ?? ?? ?? 00` (set 1 + set 0).
+/// Two RIP-rel `mov byte ptr [global], imm` instructions, 7 bytes
+/// each. The two targets are at known relative offset -0x79 in
+/// the live build's .data layout.
 static DEBUG_MODE_ACTIVE: TargetDef = TargetDef {
     name: "DEBUG_MODE_ACTIVE",
     kind: TargetKind::DataGlobal,
-    candidates: &[],
+    candidates: &[Candidate {
+        sig: "c6 05 ?? ?? ?? ?? 01 c6 05 ?? ?? ?? ?? 00",
+        recipe: Recipe::PairedRipDispWithDelta {
+            disp1_off: 2, disp1_next_ip: 7,
+            disp2_off: 9, disp2_next_ip: 14,
+            delta: -0x79,
+        },
+    }],
     hint_rva: Some(0x1403d957b),
     hint_tolerance: 0x1000,
     validators: V_IN_IMAGE,
 };
 
+/// `DEBUG_LOG_GATE`. Anchor: the global-init triplet
+/// `c7 05 ?? ?? ?? ?? 00 01 00 00 c7 05 ?? ?? ?? ?? ff ff ff ff`
+/// (3rd write = 0x100 to DAT_1403d9598, then 4th write = 0xffffffff).
+/// The decomp's known offset from the 3rd-write target to
+/// DEBUG_LOG_GATE is -0x72 (cheat globals drift uniformly when
+/// .data is re-laid-out, so this rel-offset is stable across builds).
 static DEBUG_LOG_GATE: TargetDef = TargetDef {
     name: "DEBUG_LOG_GATE",
     kind: TargetKind::DataGlobal,
-    candidates: &[],
+    candidates: &[Candidate {
+        sig: "c7 05 ?? ?? ?? ?? 00 01 00 00 c7 05 ?? ?? ?? ?? ff ff ff ff",
+        recipe: Recipe::RipDispWithRelOffset {
+            disp_off: 2, instr_len: 10, rel_offset: -0x72,
+        },
+    }],
     hint_rva: Some(0x1403d9506),
     hint_tolerance: 0x1000,
     validators: V_IN_IMAGE,
