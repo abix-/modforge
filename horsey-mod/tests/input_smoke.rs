@@ -123,5 +123,60 @@ fn input_smoke() {
         eprintln!("[INFO] no self hwnd; skipping L2 smoke this run");
     }
 
-    eprintln!("[PASS] input_smoke: L1 + L2 backends survived a round-trip");
+    // ----- L1 drag round-trip -----
+    //
+    // Drag from baseline+10 to baseline+50, then back. Verifies the
+    // drag path doesn't error and the cursor lands near the
+    // destination.
+    let drag_from = (bx + 10, by + 10);
+    let drag_to = (bx + 50, by + 50);
+    let r = game
+        .op_json(
+            "input.mouse.drag",
+            &json!({
+                "button": "left",
+                "x1": drag_from.0, "y1": drag_from.1,
+                "x2": drag_to.0,   "y2": drag_to.1,
+                "duration_ms": 80, "steps": 8,
+                "backend": "l1",
+            }),
+        )
+        .unwrap();
+    assert_ok(&r, "input.mouse.drag L1");
+    let after_drag = game.op_json("input.cursor.get", &json!({})).unwrap();
+    let ax = result_i64(&after_drag, "x") as i32;
+    let ay = result_i64(&after_drag, "y") as i32;
+    eprintln!("after drag: ({ax},{ay}) [wanted ({},{})]", drag_to.0, drag_to.1);
+    let dx = (ax - drag_to.0).abs();
+    let dy = (ay - drag_to.1).abs();
+    assert!(dx <= 4 && dy <= 4, "drag landed off: delta=({dx},{dy})");
+
+    // Restore.
+    let _ = game.op_json(
+        "input.mouse.move",
+        &json!({"x": bx, "y": by, "backend": "l1"}),
+    );
+
+    // ----- L1 scroll smoke (3 ticks up; cursor pos unchanged) -----
+    let r = game
+        .op_json("input.mouse.scroll", &json!({"dy": 3, "backend": "l1"}))
+        .unwrap();
+    assert_ok(&r, "input.mouse.scroll L1 dy=3");
+
+    // ----- L1 combo smoke (shift+F24; harmless) -----
+    let r = game
+        .op_json(
+            "input.combo",
+            &json!({
+                "keys": ["shift"],
+                "then": {
+                    "op": "input.key.press",
+                    "args": {"key": "f24", "backend": "l1"}
+                }
+            }),
+        )
+        .unwrap();
+    assert_ok(&r, "input.combo shift+f24");
+
+    eprintln!("[PASS] input_smoke: L1+L2 move/click/key + L1 drag/scroll/combo");
 }

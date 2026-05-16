@@ -213,6 +213,130 @@ pub fn all() -> Vec<OpDef> {
             },
         ),
         OpDef::new(
+            "input.mouse.drag",
+            "Drag `button` from (x1,y1) to (x2,y2). Generates `steps` intermediate \
+moves over `duration_ms`. L1 = screen px; L2 = client-area px of hwnd.",
+            "{button: left|right|middle, x1: i32, y1: i32, x2: i32, y2: i32, \
+duration_ms?: u32, steps?: u32, backend?: l1|l2, hwnd?: hex, mods?: [shift|ctrl]}",
+            |args| {
+                let btn_s = arg_str_opt(args, "button").unwrap_or("left");
+                let button = Button::parse(btn_s)?;
+                let x1 = arg_i32(args, "x1")?;
+                let y1 = arg_i32(args, "y1")?;
+                let x2 = arg_i32(args, "x2")?;
+                let y2 = arg_i32(args, "y2")?;
+                let duration_ms = arg_u32(args, "duration_ms", Some(150))?;
+                let steps = arg_u32(args, "steps", Some(16))?;
+                let backend = parse_backend(args)?;
+                let (shift, ctrl) = parse_mods(args);
+                match backend {
+                    Backend::L1 => {
+                        if shift { l1::key_down(Key(0xA0))?; }
+                        if ctrl  { l1::key_down(Key(0xA2))?; }
+                        let r = l1::drag(button, x1, y1, x2, y2, duration_ms, steps);
+                        if ctrl  { let _ = l1::key_up(Key(0xA2)); }
+                        if shift { let _ = l1::key_up(Key(0xA0)); }
+                        r?
+                    }
+                    Backend::L2 => {
+                        let h = resolve_l2_hwnd(args)?;
+                        let mk_extra = l2::modifier_mask(shift, ctrl);
+                        l2::drag(h, button, x1, y1, x2, y2, duration_ms, steps, mk_extra)?;
+                    }
+                }
+                Ok(json!({
+                    "ok": true, "backend": backend, "button": btn_s,
+                    "from": [x1, y1], "to": [x2, y2],
+                    "duration_ms": duration_ms, "steps": steps,
+                }))
+            },
+        ),
+        OpDef::new(
+            "input.mouse.scroll",
+            "Scroll the wheel by `dy` ticks (positive = up). `dx` for horizontal. \
+L2 requires `hwnd` + `x` + `y` (screen px); L1 scrolls at current cursor.",
+            "{dy?: i32, dx?: i32, x?: i32, y?: i32, backend?: l1|l2, hwnd?: hex}",
+            |args| {
+                let dy = args
+                    .get("dy")
+                    .and_then(Json::as_i64)
+                    .map(|v| v as i32)
+                    .unwrap_or(0);
+                let dx = args
+                    .get("dx")
+                    .and_then(Json::as_i64)
+                    .map(|v| v as i32)
+                    .unwrap_or(0);
+                if dx == 0 && dy == 0 {
+                    return Err("scroll: at least one of dx, dy must be nonzero".into());
+                }
+                let backend = parse_backend(args)?;
+                match backend {
+                    Backend::L1 => l1::scroll(dx, dy)?,
+                    Backend::L2 => {
+                        let h = resolve_l2_hwnd(args)?;
+                        let x = args.get("x").and_then(Json::as_i64).unwrap_or(0) as i32;
+                        let y = args.get("y").and_then(Json::as_i64).unwrap_or(0) as i32;
+                        l2::scroll(h, x, y, dx, dy)?;
+                    }
+                }
+                Ok(json!({"ok": true, "backend": backend, "dx": dx, "dy": dy}))
+            },
+        ),
+        OpDef::new(
+            "input.combo",
+            "Hold `keys` (modifiers or any key list) while invoking `then`. \
+`then` is another input op envelope: `{op: 'input.mouse.click', args: {...}}` \
+or `{op: 'input.key.press', args: {...}}`. Backend on the inner op picks L1/L2; \
+combo runs the modifier presses through the SAME backend.",
+            "{keys: [str], then: {op: str, args: {...}}}",
+            |args| {
+                let keys_arr = args
+                    .get("keys")
+                    .and_then(Json::as_array)
+                    .ok_or("missing arg 'keys' (array of str)")?;
+                let mut keys: Vec<Key> = Vec::with_capacity(keys_arr.len());
+                for (i, k) in keys_arr.iter().enumerate() {
+                    let s = k.as_str().ok_or_else(|| format!("keys[{i}] not str"))?;
+                    keys.push(Key::parse(s)?);
+                }
+                let then = args.get("then").ok_or("missing arg 'then'")?;
+                let inner_op = then.get("op").and_then(Json::as_str)
+                    .ok_or("then.op missing")?;
+                let inner_args = then.get("args").cloned().unwrap_or(json!({}));
+                let backend = parse_backend(&inner_args)?;
+
+                // Press modifiers through the chosen backend.
+                let hwnd_for_l2 = if backend == Backend::L2 {
+                    Some(resolve_l2_hwnd(&inner_args)?)
+                } else { None };
+                for k in &keys {
+                    match backend {
+                        Backend::L1 => l1::key_down(*k)?,
+                        Backend::L2 => l2::key_down(hwnd_for_l2.unwrap(), *k)?,
+                    }
+                }
+                // Dispatch the inner op via the registry. Sibling-call
+                // protection: if dispatch panics or errors, we still
+                // release the modifiers below.
+                let dispatched = crate::ops::OP_REGISTRY.dispatch(inner_op, &inner_args);
+                // Release modifiers in REVERSE order (LIFO).
+                for k in keys.iter().rev() {
+                    let _ = match backend {
+                        Backend::L1 => l1::key_up(*k),
+                        Backend::L2 => l2::key_up(hwnd_for_l2.unwrap(), *k),
+                    };
+                }
+                match dispatched {
+                    Some(Ok(inner_result)) => Ok(json!({
+                        "ok": true, "combo_keys": keys_arr, "inner": inner_result,
+                    })),
+                    Some(Err(e)) => Err(format!("inner op '{inner_op}' failed: {e}")),
+                    None => Err(format!("inner op '{inner_op}' not registered")),
+                }
+            },
+        ),
+        OpDef::new(
             "input.self.hwnd",
             "Return the first visible top-level HWND owned by the current process. \
 This is the in-process shortcut for tests / cmdlets running INSIDE the game.",

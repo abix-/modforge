@@ -130,6 +130,86 @@ pub fn click(button: Button, x: i32, y: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// Drag `button` from `(fx, fy)` to `(tx, ty)`. Generates `steps`
+/// intermediate `move_abs` events over `duration_ms` so the game's
+/// per-frame mouse-sample sees motion rather than teleport. `steps`
+/// is clamped to `1..=256`; `duration_ms` is clamped to `0..=10_000`.
+pub fn drag(
+    button: Button,
+    fx: i32,
+    fy: i32,
+    tx: i32,
+    ty: i32,
+    duration_ms: u32,
+    steps: u32,
+) -> Result<(), String> {
+    let steps = steps.clamp(1, 256);
+    let duration_ms = duration_ms.min(10_000);
+    let sleep_per = if steps > 1 {
+        std::time::Duration::from_millis((duration_ms as u64) / (steps as u64 - 1).max(1))
+    } else {
+        std::time::Duration::ZERO
+    };
+
+    move_abs(fx, fy)?;
+    mouse_button_event(button, true)?;
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        let x = fx + ((tx - fx) as f64 * t).round() as i32;
+        let y = fy + ((ty - fy) as f64 * t).round() as i32;
+        move_abs(x, y)?;
+        if i < steps && !sleep_per.is_zero() {
+            std::thread::sleep(sleep_per);
+        }
+    }
+    mouse_button_event(button, false)?;
+    Ok(())
+}
+
+/// One wheel-tick worth of `MOUSEEVENTF_*WHEEL` data.
+const WHEEL_DELTA: i32 = 120;
+
+/// Vertical / horizontal scroll. `dy > 0` is "scroll up / away from user".
+/// `dx > 0` is "scroll right". Values are in wheel-ticks (one notch each).
+pub fn scroll(dx: i32, dy: i32) -> Result<(), String> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        MOUSEEVENTF_HWHEEL, MOUSEEVENTF_WHEEL,
+    };
+    if dy != 0 {
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: (dy * WHEEL_DELTA) as u32,
+                    dwFlags: MOUSEEVENTF_WHEEL,
+                    time: 0,
+                    dwExtraInfo: SYNTHETIC_EXTRA_INFO,
+                },
+            },
+        };
+        send(&input)?;
+    }
+    if dx != 0 {
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: (dx * WHEEL_DELTA) as u32,
+                    dwFlags: MOUSEEVENTF_HWHEEL,
+                    time: 0,
+                    dwExtraInfo: SYNTHETIC_EXTRA_INFO,
+                },
+            },
+        };
+        send(&input)?;
+    }
+    Ok(())
+}
+
 fn key_event(key: Key, down: bool) -> Result<(), String> {
     let scan = unsafe { MapVirtualKeyW(key.0 as u32, 0 /* MAPVK_VK_TO_VSC */) } as u16;
     let mut flags = KEYEVENTF_SCANCODE;

@@ -14,7 +14,8 @@ use windows_sys::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     PostMessageW, SendMessageW, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
-    WM_MBUTTONUP, WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_XBUTTONDOWN, WM_XBUTTONUP,
+    WM_MBUTTONUP, WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_RBUTTONUP,
+    WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 use super::{Button, Key};
@@ -145,6 +146,79 @@ pub fn key_press(hwnd: isize, key: Key, hold_ms: u32) -> Result<(), String> {
         std::thread::sleep(std::time::Duration::from_millis(hold_ms as u64));
     }
     key_up(hwnd, key)
+}
+
+/// Drag `button` from client-relative `(fx, fy)` to `(tx, ty)` over
+/// `duration_ms`, generating `steps` intermediate `WM_MOUSEMOVE`
+/// events with the button-down mask held. Mirrors L1's drag shape
+/// but per-window.
+pub fn drag(
+    hwnd: isize,
+    button: Button,
+    fx: i32,
+    fy: i32,
+    tx: i32,
+    ty: i32,
+    duration_ms: u32,
+    steps: u32,
+    mk_extra: u32,
+) -> Result<(), String> {
+    let steps = steps.clamp(1, 256);
+    let duration_ms = duration_ms.min(10_000);
+    let sleep_per = if steps > 1 {
+        std::time::Duration::from_millis((duration_ms as u64) / (steps as u64 - 1).max(1))
+    } else {
+        std::time::Duration::ZERO
+    };
+
+    let mk_btn = mk_for_button(button) as u32;
+    let wparam_held = (mk_btn | mk_extra) as WPARAM;
+
+    // Move to start, then press.
+    post(hwnd, WM_MOUSEMOVE, mk_extra as WPARAM, make_lparam(fx, fy))?;
+    let (msg_down, msg_up) = match button {
+        Button::Left => (WM_LBUTTONDOWN, WM_LBUTTONUP),
+        Button::Right => (WM_RBUTTONDOWN, WM_RBUTTONUP),
+        Button::Middle => (WM_MBUTTONDOWN, WM_MBUTTONUP),
+        Button::XButton1 | Button::XButton2 => (WM_XBUTTONDOWN, WM_XBUTTONUP),
+    };
+    post(hwnd, msg_down, wparam_held, make_lparam(fx, fy))?;
+
+    // Intermediate WM_MOUSEMOVE events with the button-down mask.
+    for i in 1..=steps {
+        let t = i as f64 / steps as f64;
+        let x = fx + ((tx - fx) as f64 * t).round() as i32;
+        let y = fy + ((ty - fy) as f64 * t).round() as i32;
+        post(hwnd, WM_MOUSEMOVE, wparam_held, make_lparam(x, y))?;
+        if i < steps && !sleep_per.is_zero() {
+            std::thread::sleep(sleep_per);
+        }
+    }
+
+    // Release at destination.
+    post(hwnd, msg_up, mk_extra as WPARAM, make_lparam(tx, ty))?;
+    Ok(())
+}
+
+/// Vertical / horizontal scroll for `hwnd`. `dy` and `dx` are in
+/// wheel-ticks (one notch each = `WHEEL_DELTA` = 120). Coords are
+/// SCREEN pixels per Win32 wheel-message convention; pass the
+/// current cursor's screen pos or use `client_to_screen` to convert.
+pub fn scroll(hwnd: isize, screen_x: i32, screen_y: i32, dx: i32, dy: i32) -> Result<(), String> {
+    const WHEEL_DELTA: i32 = 120;
+    let lparam_pos =
+        (((screen_y as u32 & 0xFFFF) << 16) | (screen_x as u32 & 0xFFFF)) as LPARAM;
+    if dy != 0 {
+        let delta = (dy * WHEEL_DELTA) as i16 as u32; // sign-extended through i16
+        let wparam = ((delta as u32) << 16) as WPARAM;
+        post(hwnd, WM_MOUSEWHEEL, wparam, lparam_pos)?;
+    }
+    if dx != 0 {
+        let delta = (dx * WHEEL_DELTA) as i16 as u32;
+        let wparam = ((delta as u32) << 16) as WPARAM;
+        post(hwnd, WM_MOUSEHWHEEL, wparam, lparam_pos)?;
+    }
+    Ok(())
 }
 
 /// Convert client-relative `(x, y)` into screen pixels. Useful for
