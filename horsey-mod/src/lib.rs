@@ -30,6 +30,7 @@ pub mod gamestate;
 pub mod gene_names;
 pub mod genes;
 pub mod genes_xml;
+pub mod hk1;
 pub mod horse;
 pub mod ops;
 pub mod overlay;
