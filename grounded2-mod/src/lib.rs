@@ -14,6 +14,7 @@ pub mod patch;
 pub mod rpg;
 pub mod settings;
 pub mod survival;
+pub mod targets_registry;
 
 use ueforge::ue::offsets::{STEAM, XBOX};
 

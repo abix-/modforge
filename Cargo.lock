@@ -635,6 +635,7 @@ dependencies = [
  "anyhow",
  "hex",
  "memoffset",
+ "modforge",
  "parking_lot",
  "serde",
  "serde_json",

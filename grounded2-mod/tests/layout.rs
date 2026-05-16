@@ -3,9 +3,13 @@
 // These run on host, not in-game, so they verify only sizes/offsets of our
 // own #[repr(C)] mirrors. Not the live game layout. The live layout is
 // validated implicitly the first time we read fields successfully.
+//
+// FName / FString / TArray live in `ueforge::ue::*`; grounded2-mod
+// consumes them via the workspace dependency.
 
-use main::sdk::{FName, FString, TArray};
 use std::mem::size_of;
+use ueforge::ue::{FName, FString};
+use ueforge::ue::tarray::TArray;
 
 #[test]
 fn fname_is_8_bytes() {
