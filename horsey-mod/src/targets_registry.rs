@@ -374,6 +374,29 @@ static HORSE_COPY_GENE_LANE_PAIRS: TargetDef = TargetDef {
 // Function entries inherited from existing targets.rs. Hint-only
 // during B4; real sigs land per target as they get tuned.
 
+/// Declarative function-entry target with a known-good 32-byte
+/// prologue sig + MatchIsAddress recipe + hint_rva fallback. Used
+/// for the bulk of horsey-mod's function entries. Sigs sourced
+/// from the deleted `targets::resolve::*` module (live-derived
+/// 2026-05-15) so they're known to match this build.
+macro_rules! prologue_fn {
+    ($name:ident, $rva:expr, $sig:expr) => {
+        static $name: TargetDef = TargetDef {
+            name: stringify!($name),
+            kind: TargetKind::FunctionEntry { signature: None },
+            candidates: &[Candidate {
+                sig: $sig,
+                recipe: Recipe::MatchIsAddress,
+            }],
+            hint_rva: Some($rva),
+            hint_tolerance: 0x4000,
+            validators: V_IN_IMAGE,
+        };
+    };
+}
+
+/// Hint-only entry for targets whose sig hasn't been authored yet.
+/// Falls through to `hint_rva` via the WithinHintTolerance gate.
 macro_rules! hint_only_fn {
     ($name:ident, $rva:expr) => {
         static $name: TargetDef = TargetDef {
@@ -387,36 +410,64 @@ macro_rules! hint_only_fn {
     };
 }
 
-hint_only_fn!(EVAL_DIPLOID_BLEND_A,   0x1400a5d10);
-hint_only_fn!(EVAL_DIPLOID_BLEND_B,   0x1400a5df0);
-hint_only_fn!(GENE_DEATH_DRIFT,       0x1400c0650);
-hint_only_fn!(GENE_ALLELE_SWAP,       0x1400c0390);
-hint_only_fn!(GENE_TABLE_XML_WRITER,  0x1400a4880);
-hint_only_fn!(GENE_TABLE_LOADER,      0x1400a3eb0);
-hint_only_fn!(POP_XML_LOADER,         0x1400a4fe0);
-hint_only_fn!(GENE_ENGINE_CONSUMER,   0x1400ab3c0);
-hint_only_fn!(CHECK_HORSE_ELIGIBILITY,0x1400de230);
-hint_only_fn!(RETIRE_HORSE_HANDLER,   0x1400df675);
-hint_only_fn!(COMPUTE_HORSE_PRICE,    0x1400dc785);
-hint_only_fn!(CRISPR_LAB,             0x1400894bc);
-hint_only_fn!(BREEDING,               0x1400e0817);
-hint_only_fn!(SAVE_WRITER,            0x14006d674);
-hint_only_fn!(LOAD_GAME,              0x14006e350);
-hint_only_fn!(DRAW_PAUSE_STATUS,      0x1400660cc);
-hint_only_fn!(TMX_MAP_PARSER,         0x1400fe2e0);
-hint_only_fn!(POP_GENOME_BUILDER,     0x1400927e7);
-hint_only_fn!(DAILY_HORSE_EVENT,      0x14002fe00);
-hint_only_fn!(TRACK_STATE_MACHINE,    0x14002d7c0);
-hint_only_fn!(CIRCUS_HANDLER,         0x140039190);
-hint_only_fn!(SUMO_HANDLER,           0x14007b28c);
-hint_only_fn!(POWER_PLANT,            0x140069270);
-hint_only_fn!(WORLD_ACTION,           0x1401075a2);
-hint_only_fn!(BALLOON_CONTROLLER,     0x14010a9e0);
-hint_only_fn!(HORSE_CONSTRUCTOR,      0x1400aac50);
-hint_only_fn!(HORSE_DESTRUCTOR,       0x1400bf1e0);
-hint_only_fn!(GENE_COMBINATOR,        0x1400a2d70);
-hint_only_fn!(HORSE_SAVE_WRITER,      0x14006ecfb);
-hint_only_fn!(HORSE_SAVE_LOADER,      0x14006f031);
+prologue_fn!(EVAL_DIPLOID_BLEND_A, 0x1400a5d10,
+    "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec 20 48 63 da 48 8d 2d 72 87 34 00 48 8b");
+prologue_fn!(EVAL_DIPLOID_BLEND_B, 0x1400a5df0,
+    "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 48 83 ec 20 48 63 da 48 8d 2d 92 86 34 00 48 8b");
+prologue_fn!(GENE_DEATH_DRIFT, 0x1400c0650,
+    "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48 8d a8 b8 fa ff ff 48 81 ec 08 06 00 00 0f 29 70");
+prologue_fn!(GENE_ALLELE_SWAP, 0x1400c0390,
+    "48 89 5c 24 08 48 89 74 24 10 48 89 7c 24 18 48 63 fa 48 be c1 d4 1c 42 29 8f a0 3f 4d 63 d9 45");
+prologue_fn!(GENE_TABLE_XML_WRITER, 0x1400a4880,
+    "41 54 41 55 41 56 41 57 48 8d 6c 24 90 48 81 ec 70 01 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29 40");
+prologue_fn!(GENE_TABLE_LOADER, 0x1400a3eb0,
+    "41 57 48 8d a8 28 ff ff ff 48 81 ec a0 01 00 00 0f 29 70 b8 0f 29 78 a8 44 0f 29 40 98 44 0f 29");
+prologue_fn!(POP_XML_LOADER, 0x1400a4fe0,
+    "48 8d ac 24 c0 cf ff ff b8 40 31 00 00 e8 ?? ?? ?? ?? 48 2b e0 48 8d 4c 24 50 e8 ?? ?? ?? ?? 90");
+prologue_fn!(GENE_ENGINE_CONSUMER, 0x1400ab3c0,
+    "48 8b c4 55 53 56 57 41 54 41 55 41 56 41 57 48 8d a8 88 fd ff ff 48 81 ec 38 03 00 00 0f 29 70");
+prologue_fn!(CHECK_HORSE_ELIGIBILITY, 0x1400de230,
+    "48 89 5c 24 10 48 89 74 24 18 55 57 41 54 41 56 41 57 48 8b ec 48 81 ec 80 00 00 00 0f 29 74 24");
+hint_only_fn!(RETIRE_HORSE_HANDLER, 0x1400df675);  // 32-byte sig not captured; uses re-derived RVA
+prologue_fn!(COMPUTE_HORSE_PRICE, 0x1400dc785,
+    "48 89 7c 24 10 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b f9 4c 63 c2 48 8b 91 30 01 00 00 48");
+prologue_fn!(CRISPR_LAB, 0x1400894bc,
+    "57 41 54 41 56 41 57 48 8d a8 58 fe ff ff 48 81 ec 80 02 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29");
+prologue_fn!(BREEDING, 0x1400e0817,
+    "57 41 54 41 55 41 56 41 57 48 8b ec 48 83 ec 68 44 8b f2 4c 8b f9 4c 8b 81 30 01 00 00 48 8b 81");
+prologue_fn!(SAVE_WRITER, 0x14006d674,
+    "57 41 56 48 81 ec 40 01 00 00 48 8b e9 48 8d 51 18 48 8d 4c 24 30 e8 ?? ?? ?? ?? 48 8b 54 24 48");
+prologue_fn!(LOAD_GAME, 0x14006e350,
+    "48 89 5c 24 08 55 56 57 41 54 41 55 41 56 41 57 48 8b ec 48 83 ec 70 48 8b f1 44 8b c2 48 8d 15");
+prologue_fn!(DRAW_PAUSE_STATUS, 0x1400660cc,
+    "57 41 54 41 56 41 57 48 8d 68 a1 48 81 ec c0 00 00 00 0f 29 70 c8 0f 29 78 b8 44 0f 29 40 a8 44");
+prologue_fn!(TMX_MAP_PARSER, 0x1400fe2e0,
+    "48 89 5c 24 08 48 89 7c 24 10 55 48 8b ec 48 83 ec 20 8b fa 33 db 83 fa 0c 7f 25 b9 78 04 00 00");
+prologue_fn!(POP_GENOME_BUILDER, 0x1400927e7,
+    "57 41 54 41 55 41 56 41 57 48 8d 6c 24 d9 48 81 ec e0 00 00 00 0f 29 b4 24 d0 00 00 00 48 8b f9");
+prologue_fn!(DAILY_HORSE_EVENT, 0x14002fe00,
+    "48 89 5c 24 10 48 89 74 24 18 48 89 7c 24 20 55 41 54 41 55 41 56 41 57 48 8d 6c 24 c9 48 81 ec");
+prologue_fn!(TRACK_STATE_MACHINE, 0x14002d7c0,
+    "48 8b c4 48 89 58 10 48 89 70 18 48 89 78 20 55 41 54 41 55 41 56 41 57 48 8d 68 a1 48 81 ec e0");
+prologue_fn!(CIRCUS_HANDLER, 0x140039190,
+    "48 8b c4 48 89 48 08 55 53 56 57 41 54 41 55 41 56 41 57 48 8d 6c 24 b8 48 81 ec 48 01 00 00 0f");
+prologue_fn!(SUMO_HANDLER, 0x14007b28c,
+    "57 41 56 48 8d 68 a1 48 81 ec c0 00 00 00 0f 29 70 d8 0f 29 78 c8 44 0f 29 40 b8 44 0f 29 48 a8");
+prologue_fn!(POWER_PLANT, 0x140069270,
+    "48 89 5c 24 08 55 48 8b ec 48 83 ec 60 0f 29 74 24 50 48 8b d9 ff 81 50 02 00 00 e8 ?? ?? ?? ??");
+prologue_fn!(WORLD_ACTION, 0x1401075a2,
+    "57 41 54 41 55 41 56 41 57 48 83 ec 70 0f 29 70 c8 0f 29 78 b8 44 8b ca 4c 8b f9 0f 57 c0 f3 0f");
+hint_only_fn!(BALLOON_CONTROLLER, 0x14010a9e0);  // sig not captured live
+prologue_fn!(HORSE_CONSTRUCTOR, 0x1400aac50,
+    "48 89 5c 24 10 48 89 4c 24 08 57 48 83 ec 20 48 8b d9 48 8d 05 ?? ?? ?? ?? 48 89 01 33 ff 48 89");
+prologue_fn!(HORSE_DESTRUCTOR, 0x1400bf1e0,
+    "48 89 5c 24 08 48 89 74 24 10 57 48 83 ec 20 48 8d 05 ?? ?? ?? ?? 8b f2 48 89 01 48 8b d9 ff 0d");
+prologue_fn!(GENE_COMBINATOR, 0x1400a2d70,
+    "48 89 5c 24 08 48 89 6c 24 10 48 89 74 24 18 57 41 54 41 55 41 56 41 57 48 83 ec 20 4c 8b f9 45");
+prologue_fn!(HORSE_SAVE_WRITER, 0x14006ecfb,
+    "57 41 56 48 83 ec 40 48 8b e9 e8 ?? ?? ?? ?? 48 8d 8d b8 02 00 00 44 8b f0 e8 ?? ?? ?? ?? 48 8b");
+prologue_fn!(HORSE_SAVE_LOADER, 0x14006f031,
+    "53 57 48 83 ec 58 48 8b f9 48 81 c1 b8 02 00 00 e8 ?? ?? ?? ?? 48 8d 8f a8 02 00 00 e8 ?? ?? ??");
 
 // Silence unused warning for V_NONE (kept for future field-offset
 // entries that don't need validators).
