@@ -644,16 +644,26 @@ Still open (need a save loaded + per-test save fixtures):
 
 ## Other open work
 
-### Content-authoring path forward (2026-05-16)
+### NEXT: Proper horse-editing tools (2026-05-16)
+
+User-locked 2026-05-16: we need first-class read/write for ANY allele on ANY horse, plus a generic field-poke for everything else on the Horse struct. HTTP first, UI follows. Render-path E2E was HTTP-green on the updated binary (`giant_tomtato` test passes, allele writes round-trip) but the visual change is unconfirmed because we currently can only write the EXT layer, and BX_GIANT_BABY's `mode: "set"` override doesn't appear to land visibly. Editing the VANILLA allele directly is the next escalation.
+
+Sequenced stages, one commit + push + checkpoint between each:
+
+1. **Stage 1. Verify vanilla allele offset.** New `tests/dump_vanilla_alleles.rs`: reads `horse_ptr + 0x2b8` (240 bytes) for every owned horse, dumps as 16x15 grid. User eyeballs whether values look like real diploid allele indices (0-3 range) or junk. If 0x2b8 is wrong, iterate offsets via grep over `research/decompiled/all_functions.c` for `0x2b8`/`+ 0x2c0` etc. anchored by `FUN_1400a2d80` (gene combinator) or `FUN_1400b3070` (regen). Gate: nothing proceeds until the right offset is locked.
+2. **Stage 2. Vanilla allele HTTP ops + tomtato e2e.** `horse::{vanilla_alleles, vanilla_allele, set_vanilla_allele, set_vanilla_alleles}` accessors. Ops `horse.vanilla.alleles.{get,set}`, `horse.vanilla.genome.{get,set}`. Test `tomtato_vanilla_zero.rs` zeros allele[0] on tomtato; user verifies visible change in-game.
+3. **Stage 3. Generic Horse field-poke.** `horse.field.{get,set}` ops taking `{horse_ptr, offset, width: u8|u16|u32|u64, value}`. Bounds-check against `horse_offset::alloc_size`. Lets us experiment with any byte on the Horse without new code per field.
+4. **Stage 4. Named-field pass over HORSE-PLACES.md.** Audit every documented field, add typed `horse.<name>.get/set` ops. 2-3 commits grouped by section.
+
+After this lands, the order below resumes:
+
+1. **Per-horse Details UI** (see [per-horse details view](#per-horse-details-view-horses-tab-details-expand) below). Now backed by real accessors; renders both vanilla 240 and ext 240 grids.
+2. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml.
+3. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
+
+### Content-authoring path forward (2026-05-16) [SUPERSEDED by NEXT above]
 
 Decision: NO hot-reload of `genes-extended.xml`. Iterate the normal way: edit XML, `k3sc cargo-lock run -p horsey-mod --bin horsey-play --release` to relaunch + inject, validate via HTTP + visible in-game effect. Hot-reload is janky and not worth the complexity.
-
-Order of work for efficient content authoring (highest leverage first):
-
-1. **Verify the render path works end-to-end** on the updated binary. Set a known ext gene on tomtato via HTTP, look at tomtato in-game, confirm the visible change. If broken, triage which resolver drifted (same playbook as today's GAMESTATE_PTR / NAME_TABLE fixes). Until this is green, the rest is theoretical.
-2. **Per-horse Details UI** (see [per-horse details view](#per-horse-details-view-horses-tab-details-expand) below). Adds scalar block first, then gene grid. Lets us SEE what alleles are on which horse without HTTP every time.
-3. **D2 (per-pop weight extension)** so new horses spawn with non-zero ext alleles based on pop-extended.xml. Without this, every fresh horse has ext-allele = 0 and we can only observe effects on horses we've manually poked.
-4. **D4 (save sidecar) address re-derivation.** Until D4 arms, allele edits don't survive save/load. Same R3 work as GAMESTATE_PTR today.
 
 ### Per-horse details view (Horses tab "Details" expand)
 
