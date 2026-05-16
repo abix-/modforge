@@ -251,13 +251,38 @@ static DEBUG_LOG_GATE: TargetDef = TargetDef {
     validators: V_IN_IMAGE,
 };
 
+/// `NAME_TABLE`. The legacy resolver returns the HEAP address of the
+/// std::string table (NOT the .data slot containing the heap pointer).
+/// Custom resolver scans .text for `mov r64, [rip+disp32]`, derefs
+/// each candidate slot, scores std::string-shape at stride 0x88.
+/// The hint_rva is the .data slot; resolved value is the heap base,
+/// so hint_tolerance is meaningless here (effectively disabled by
+/// being larger than the largest plausible heap delta).
 static NAME_TABLE: TargetDef = TargetDef {
     name: "NAME_TABLE",
     kind: TargetKind::DataGlobal,
-    candidates: &[],
-    hint_rva: Some(0x1403f34e0),
-    hint_tolerance: 0x1000,
-    validators: V_IN_IMAGE,
+    candidates: &[Candidate {
+        sig: "",
+        recipe: Recipe::Custom(resolve_name_table_custom),
+    }],
+    hint_rva: None, // heap pointer; no static hint
+    hint_tolerance: 0,
+    validators: &[], // Custom resolver does its own scoring
+};
+
+/// `CHROMOSOME_TABLE`. Custom resolver finds FUN_1400b39b0 via prologue
+/// sig, walks body for `lea r64, [rip+disp32]`, validates each
+/// candidate as a 240-entry chromosome table.
+static CHROMOSOME_TABLE: TargetDef = TargetDef {
+    name: "CHROMOSOME_TABLE",
+    kind: TargetKind::DataGlobal,
+    candidates: &[Candidate {
+        sig: "",
+        recipe: Recipe::Custom(resolve_chromosome_table_custom),
+    }],
+    hint_rva: None,
+    hint_tolerance: 0,
+    validators: &[],
 };
 
 // ============================================================================
@@ -413,6 +438,7 @@ pub static HORSEY_TARGETS: TargetRegistry = TargetRegistry::new(
         &DEBUG_MODE_ACTIVE,
         &DEBUG_LOG_GATE,
         &NAME_TABLE,
+        &CHROMOSOME_TABLE,
 
         // Invocable functions (with Signature)
         &APPLY_GENE_TO_HORSE,
@@ -478,6 +504,8 @@ pub mod resolve {
     pub fn no_tire_toggle() -> Option<usize> { r("NO_TIRE_TOGGLE") }
     pub fn debug_mode_active() -> Option<usize> { r("DEBUG_MODE_ACTIVE") }
     pub fn debug_log_gate() -> Option<usize> { r("DEBUG_LOG_GATE") }
+    pub fn name_table() -> Option<usize> { r("NAME_TABLE") }
+    pub fn chromosome_table() -> Option<usize> { r("CHROMOSOME_TABLE") }
 
     // Function entries
     pub fn apply_gene_to_horse() -> Option<usize> { r("APPLY_GENE_TO_HORSE") }
@@ -491,6 +519,29 @@ pub mod resolve {
     pub fn eval_diploid_blend_a() -> Option<usize> { r("EVAL_DIPLOID_BLEND_A") }
     pub fn eval_diploid_blend_b() -> Option<usize> { r("EVAL_DIPLOID_BLEND_B") }
     pub fn gene_allele_swap() -> Option<usize> { r("GENE_ALLELE_SWAP") }
+
+    // Function entries referenced by targets.rs internal resolvers
+    // (gs_offset::*, horse_offset::* still in legacy targets.rs).
+    pub fn draw_pause_status() -> Option<usize> { r("DRAW_PAUSE_STATUS") }
+    pub fn breeding() -> Option<usize> { r("BREEDING") }
+    pub fn compute_horse_price() -> Option<usize> { r("COMPUTE_HORSE_PRICE") }
+    pub fn pop_genome_builder() -> Option<usize> { r("POP_GENOME_BUILDER") }
+    pub fn sumo_handler() -> Option<usize> { r("SUMO_HANDLER") }
+    pub fn check_horse_eligibility() -> Option<usize> { r("CHECK_HORSE_ELIGIBILITY") }
+    pub fn retire_horse_handler() -> Option<usize> { r("RETIRE_HORSE_HANDLER") }
+    pub fn crispr_lab() -> Option<usize> { r("CRISPR_LAB") }
+    pub fn gene_table_xml_writer() -> Option<usize> { r("GENE_TABLE_XML_WRITER") }
+    pub fn gene_table_loader() -> Option<usize> { r("GENE_TABLE_LOADER") }
+    pub fn pop_xml_loader() -> Option<usize> { r("POP_XML_LOADER") }
+    pub fn gene_engine_consumer() -> Option<usize> { r("GENE_ENGINE_CONSUMER") }
+    pub fn tmx_map_parser() -> Option<usize> { r("TMX_MAP_PARSER") }
+    pub fn daily_horse_event() -> Option<usize> { r("DAILY_HORSE_EVENT") }
+    pub fn track_state_machine() -> Option<usize> { r("TRACK_STATE_MACHINE") }
+    pub fn circus_handler() -> Option<usize> { r("CIRCUS_HANDLER") }
+    pub fn power_plant() -> Option<usize> { r("POWER_PLANT") }
+    pub fn world_action() -> Option<usize> { r("WORLD_ACTION") }
+    pub fn balloon_controller() -> Option<usize> { r("BALLOON_CONTROLLER") }
+    pub fn gene_death_drift() -> Option<usize> { r("GENE_DEATH_DRIFT") }
 }
 
 /// Wire `vanilla.invoke` and `vanilla.list` HTTP cmdlets against
@@ -536,8 +587,8 @@ mod tests {
     #[test]
     fn registry_target_count() {
         // Sanity that we declared what we think we did.
-        // 7 data globals + 4 invocable functions + 30 hint-only
-        // function entries = 41 total.
-        assert_eq!(HORSEY_TARGETS.entries.len(), 41);
+        // 8 data globals + 4 invocable functions + 30 hint-only
+        // function entries = 42 total.
+        assert_eq!(HORSEY_TARGETS.entries.len(), 42);
     }
 }

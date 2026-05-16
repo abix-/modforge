@@ -39,7 +39,7 @@ struct CachedMap {
 static CACHE: OnceLock<Option<CachedMap>> = OnceLock::new();
 
 fn build() -> Option<CachedMap> {
-    let addr = crate::targets::resolve::chromosome_table()?;
+    let addr = crate::targets_registry::resolve::chromosome_table()?;
     if !modforge::winproc::is_addr_readable(addr + TABLE_BYTES) {
         return None;
     }

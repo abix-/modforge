@@ -234,7 +234,7 @@ pub fn register_all() {
             |args| {
                 use modforge::winproc::is_addr_readable;
                 let nid = args.get("name_id").and_then(Json::as_u64).unwrap_or(0) as u32;
-                let table = crate::targets::resolve::name_table()
+                let table = crate::targets_registry::resolve::name_table()
                     .unwrap_or_else(|| crate::targets::rebase(crate::targets::NAME_TABLE));
                 let entry = table + (nid as usize) * 0x88;
                 let entry_readable = is_addr_readable(entry + 0x88);
@@ -918,7 +918,7 @@ pub fn register_all() {
             "Resolve CRISPR's chromosome -> gene-offset table (DAT_14030d110) via patternsleuth.",
             "",
             |_| {
-                let addr = crate::targets::resolve::chromosome_table();
+                let addr = crate::targets_registry::resolve::chromosome_table();
                 Ok(json!({
                     "address": addr.map(|a| format!("0x{a:x}")).unwrap_or_else(|| "0x0".into()),
                     "image_base": format!("0x{:x}", crate::targets::image_base()),

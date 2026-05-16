@@ -149,7 +149,7 @@ pub fn name_by_id(name_id: u32) -> Option<String> {
     if name_id == u32::MAX {
         return None;
     }
-    let table = crate::targets::resolve::name_table()?;
+    let table = crate::targets_registry::resolve::name_table()?;
     let entry = table + (name_id as usize) * 0x88;
     if !modforge::winproc::is_addr_readable(entry + 0x88) {
         return None;

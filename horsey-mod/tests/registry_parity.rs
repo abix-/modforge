@@ -11,8 +11,7 @@
 
 mod common;
 
-use horsey::targets::resolve;
-use horsey::targets_registry::{HORSEY_RESOLVER, HORSEY_TARGETS};
+use horsey::targets_registry::{HORSEY_RESOLVER, HORSEY_TARGETS, resolve};
 use modforge::testkit::registry as r_tests;
 
 #[test]
