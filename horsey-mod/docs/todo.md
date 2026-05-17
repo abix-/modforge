@@ -669,16 +669,42 @@ Lives in [`../../docs/todo.md`](../../docs/todo.md) under "P0. Synthetic input."
 
 ## Other open work
 
-### HK1 Shift+Click smart-transfer (in progress 2026-05-16)
+### HK1 Shift+Click smart-transfer (REOPENED via L3 input 2026-05-16)
 
-Authoritative plan: [`HK1-SHIFT-CLICK-TRANSFER-PLAN.md`](HK1-SHIFT-CLICK-TRANSFER-PLAN.md). Status:
+> **STATUS CHANGE 2026-05-16:** The synthetic-input axis shipped end-to-end ([modforge::input + HorseyInputSurface](../../modforge/docs/input-prior-art.md)). The 4-helper RE blocker below is **no longer the critical path**. The new recommended approach is to drive the GAME'S NATIVE click handler via synthetic input rather than bypass it: `input.combo` + `input.mouse.drag` with `backend: "l3"` writes `LOC+0x174`/`+0x178` directly so `FUN_1400d2ab0` runs end-to-end (vtable[+0x78] + the 4 helpers automatically). Authoritative plan: [`HK1-SHIFT-CLICK-TRANSFER-PLAN.md`](HK1-SHIFT-CLICK-TRANSFER-PLAN.md) is now superseded for the dispatch path; calibration data is still needed.
+
+Status (legacy bypass-vtable path):
 
 - **S0 research probes** shipped. Confirmed slot 0x00 is the Home Location (vtable_rva `0x30f3d0`, strings "My House"/"Home" inline). Slots 0x08..0x38 are race lanes sharing the same Location class. HLT mouse RVAs `0x3ED970/0x3ED978` are stale in current build, drift to `0xffffffff`.
 - **Container kind field found** at `horse + 0x1d0` (u32). Observed values: 7=truck, 9=pasture, 0/2 post-load. Writing this byte directly DOES NOT move horses; field is a downstream cache, not a control.
 - **Drop-commit function found**: `FUN_1400de2e0` (RVA `0xde2e0`), reached via Home Location vtable[+0x78]. NOT in our decomp dump (binary updated since decomp).
 - **Function signature corrected**: Ghidra reported single-arg, disassembly shows three-arg `(this: *LOC, drag_idx: i32, param3: i32) -> u8`. Fault at entry+0x31 was `mov r15, [rax+r12*8]` reading horses[drag_idx] with r12 sign-extended from uninitialized rdx.
 - **vtable[+0x78] now returns 1 (drop accepted!) without crashing** when called with proper signature and full LOC stage (LOC[0x29]=horse_ptr, LOC[0x2d]=drag_idx, LOC[0x37]=1, LOC[0x174/0x178]=target cursor coords).
-- **Open**: returns success but state doesn't change. The click handler's success branch (FUN_1400d2ab0:1786-1804) runs 4 helpers (FUN_1400b47e0, FUN_1400b3dc0, FUN_1400b6990, FUN_1400ccbd0) after vtable[+0x78] returns nonzero. Those helpers do the actual state writes. Need to invoke them post-vtable to complete the transfer.
+- **Legacy blocker (de-prioritized):** vtable[+0x78] returns success but state doesn't change because the click handler's success branch (FUN_1400d2ab0:1786-1804) runs 4 helpers (FUN_1400b47e0, FUN_1400b3dc0, FUN_1400b6990, FUN_1400ccbd0) afterward. Bypassing the click handler means re-implementing those 4 calls. Now that L3 input is shipped, we just drive the click handler instead. Keep the legacy bypass as a backup path if synthetic input proves insufficient.
+
+**New path (recommended), one in-save session:**
+
+1. Run `cargo test -p horsey-mod --test input_hk1_calibration -- --test-threads=1 --nocapture` with a save loaded. Captures the ratio between OS screen pixels (what `input.mouse.move` accepts) and the game's LOC cursor floats. If the ratio is 1:1 (likely; same ScreenToClient transform), no math is needed; if not, modforge picks up a tiny `screen_to_game` helper.
+2. Resolve the screen coordinates of a horse + the target slot. Several options: read the BPGE entity world position + project via the game's view matrix; or capture them interactively via the existing overlay calibration UI; or use `hk1.locate_horse` if it already returns screen coords.
+3. Synthesize the transfer:
+   ```
+   input.combo {
+     keys: ["shift"],
+     then: {
+       op: "input.mouse.drag",
+       args: {
+         button: "left",
+         x1: horse_screen_x, y1: horse_screen_y,
+         x2: slot_screen_x,  y2: slot_screen_y,
+         backend: "l3",
+         duration_ms: 200, steps: 16
+       }
+     }
+   }
+   ```
+4. Verify via `hk1.locate_horse` that the horse's container changed.
+
+If step 3 fires `FUN_1400d2ab0` end-to-end, the 4 helpers run for free and the transfer completes. No further RE needed.
 
 Backing infrastructure shipped:
 - `modforge::seh::guard` (SEH-protected closure invocation. Crashes inside vanilla return `SehError` instead of killing the game. **Iteration time per crashing experiment: ~5 seconds (read log, adjust, retry) vs ~5 minutes pre-SEH (restart game, recalibrate, reload save).**

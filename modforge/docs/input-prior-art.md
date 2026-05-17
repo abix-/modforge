@@ -10,12 +10,44 @@
 
 ## Implementation status (2026-05-16)
 
-- **I-1 shipped** (commit `e344c5dd`). `modforge::input::{l1, l2, ops}` + `Backend`/`Button`/`Key`/`InputSurface`. 9 HTTP cmdlets total after the I-2a addition. 8 unit tests on parsers green (`054053d3`).
-- **I-2 shipped** (same commit). 7 HTTP cmdlets wired through horsey-mod at attach.
-- **I-2a shipped** (`4f6c6dda`). `input.find_hwnd_by_pid` + `input.self.hwnd` so L2 tests can target the game window regardless of desktop focus.
-- **I-5 first slice GREEN** (`befe13ad`, 2026-05-16). `horsey-mod/tests/input_smoke.rs` passes against a live Horsey: L1 cursor round-trip (within 1px of target), L1 keyboard F24 press, L2 PostMessage `WM_MOUSEMOVE` to the Horsey HWND. End-to-end "Claude synthesizes input -> game receives it" path is verified.
-- **Final crate decision: DID NOT adopt `enigo`.** Cargo.toml inspection showed it pulls the `windows` crate alongside our existing `windows-sys`. Hand-rolling L1 over `windows-sys` was ~150 LOC for zero new deps. Decision overrides the PR-7 recommendation; rationale preserved as a lesson: the original recommendation was based on stars/license/maintenance, the final call factored in the dependency-tree side effect that only became visible during Cargo.toml inspection.
-- **Side-effect fix.** During the smoke unblock we found and fixed a `sleuth.rs:613` bug in the `hint_rva` fallback path. The mask `hint & 0xffff_ffff` was too wide for pre-rebased VAs at the conventional x64 preferred base `0x140000000`; corrected to detect "hint looks like a preferred-base VA" and strip the base before adding the runtime image_base. Bug was exposed by other-Claude's recent target-registry migration (`43363813` / `a35cdbca` / `536f5d33`) but the bad math lived inside modforge.
+End state after the 2026-05-16 session: **all three layers shipped + smoke green**.
+
+| Slice | Commit | What landed |
+|---|---|---|
+| I-1: primitives (L1, L2, traits) | `e344c5dd` | `modforge::input::{l1, l2, ops}` + `Backend`/`Button`/`Key`/`InputSurface`. Hand-rolled over existing `windows-sys` (no new deps). |
+| I-2: HTTP cmdlets (first slice) | `e344c5dd` | `input.mouse.{move,click}`, `input.key.{down,up,press}`, `input.cursor.get`, `input.foreground.hwnd`. Wired through horsey-mod at attach. |
+| I-2a: HWND-by-PID | `4f6c6dda` | `input.find_hwnd_by_pid` + `input.self.hwnd` so L2 tests can target the game window regardless of desktop focus. |
+| I-5: smoke harness | `befe13ad` | `horsey-mod/tests/input_smoke.rs`. End-to-end "Claude synthesizes input -> game receives it" path verified against running Horsey. |
+| Sleuth fix | `befe13ad` | `sleuth.rs:613` `hint_rva` fallback bug (off by `0x40_00_00_00` on pre-rebased VAs at the x64 preferred base `0x140000000`). |
+| I-2c: drag/scroll/combo | `f7706861` | `input.mouse.{drag,scroll}` + `input.combo`. L1 + L2 backends; drag interpolates `steps` over `duration_ms`. |
+| I-2d-recon: HK1 calibration probe | `8803ee0c` | `horsey-mod/tests/input_hk1_calibration.rs`. 5-point screen<->game-coord mapping capture; runs in-save. |
+| I-4: L3 surface + HorseyInputSurface | `6796b7bc` | `Backend::L3` + `set_input_surface`/`input_surface` slot + per-cmdlet `l3_or_fallback`. `HorseyInputSurface` v1 writes `LOC+0x174`/`+0x178` cursor floats directly. Graceful degrade when no save loaded. |
+| Unit tests | `054053d3` | 8 parser tests (`Backend`/`Button`/`Key`). |
+
+**Cmdlets shipped** (12 total under `input.*`):
+
+```
+input.mouse.move    input.mouse.click    input.mouse.drag    input.mouse.scroll
+input.key.down      input.key.up         input.key.press
+input.combo
+input.cursor.get    input.foreground.hwnd    input.find_hwnd_by_pid    input.self.hwnd
+```
+
+**Final crate decision: DID NOT adopt `enigo`.** Cargo.toml inspection showed it pulls the `windows` crate alongside our existing `windows-sys`. Hand-rolling L1 over `windows-sys` was ~150 LOC for zero new deps. Decision overrides the PR-7 recommendation; rationale preserved as a lesson: the original recommendation was based on stars/license/maintenance, the final call factored in the dependency-tree side effect that only became visible during Cargo.toml inspection.
+
+**Engine-internal findings** (Horsey, from decomp pass):
+
+- Per-frame input pump combines `PeekMessage`/`DispatchMessage` (WndProc) + `GetCursorPos`/`GetAsyncKeyState(1..6)` polling. L1 `SendInput` already feeds both paths; L2 PostMessage covers WndProc only.
+- `RegisterRawInputDevices` + `GetRawInputData` present but secondary (probably camera mode).
+- Engine-side mouse-state struct accessed via `FUN_14018c5c0()` (still-unresolved accessor); writing into it bypasses the pump entirely. Deferred to v2 of `HorseyInputSurface`.
+- Keyboard modifier flags at `FUN_140183330(0)+0xe1` (LSHIFT), `+0xe5` (RSHIFT), `+0xe3` (LWIN), `+0xe7` (RWIN). General keys route through `FUN_140183990`. Deferred to v2.
+
+**Open items for future sessions:**
+
+- HorseyInputSurface v2: direct mouse-state struct writes + direct keyboard buffer writes (per the engine-internal findings above).
+- HK1 Shift+Click transfer migration. Now unblocked by L3; pending an in-save smoke run.
+- Cross-game proof: grounded2-mod or schedule1 ships its own `InputSurface` impl.
+- I-6 replay format. Pure JSON shape work; deferred until a successful flow is worth recording.
 
 ## TL;DR
 
