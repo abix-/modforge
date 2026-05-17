@@ -163,6 +163,38 @@ fn input_smoke() {
         .unwrap();
     assert_ok(&r, "input.mouse.scroll L1 dy=3");
 
+    // ----- L3 smoke -----
+    //
+    // The L3 surface is registered at attach. Movement should land
+    // in the OS cursor (via the surface's L1 fallback) AND, if a
+    // save is loaded, in `LOC+0x174/0x178`. We assert OS-cursor
+    // here; the LOC-floats verification is the recon test
+    // (`input_hk1_calibration`) which needs a save.
+    let target_l3 = (bx + 5, by + 5);
+    let r = game
+        .op_json(
+            "input.mouse.move",
+            &json!({"x": target_l3.0, "y": target_l3.1, "backend": "l3"}),
+        )
+        .unwrap();
+    assert_ok(&r, "input.mouse.move L3");
+    let after_l3 = game.op_json("input.cursor.get", &json!({})).unwrap();
+    let lx = result_i64(&after_l3, "x") as i32;
+    let ly = result_i64(&after_l3, "y") as i32;
+    let dlx = (lx - target_l3.0).abs();
+    let dly = (ly - target_l3.1).abs();
+    eprintln!("after L3 move:   ({lx},{ly}) [wanted ({},{})]", target_l3.0, target_l3.1);
+    assert!(
+        dlx <= 4 && dly <= 4,
+        "L3 cursor move missed: delta=({dlx},{dly})"
+    );
+
+    // Restore.
+    let _ = game.op_json(
+        "input.mouse.move",
+        &json!({"x": bx, "y": by, "backend": "l1"}),
+    );
+
     // ----- L1 combo smoke (shift+F24; harmless) -----
     let r = game
         .op_json(

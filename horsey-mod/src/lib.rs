@@ -32,6 +32,7 @@ pub mod genes;
 pub mod genes_xml;
 pub mod hk1;
 pub mod horse;
+pub mod input_surface;
 pub mod ops;
 pub mod overlay;
 pub mod patches;
@@ -79,6 +80,12 @@ fn worker_main() {
     //     external clients invoke any registered vanilla function
     //     by name via HTTP.
     targets_registry::register_vanilla_ops();
+
+    // 4c. Register the L3 input surface for Horsey. After this any
+    //     `input.*` cmdlet with `backend: "l3"` routes through
+    //     `HorseyInputSurface` (writes LOC cursor floats directly,
+    //     bypasses the engine's per-frame Win32 input pump).
+    input_surface::register();
 
     // 4a. Arm the in-game ImGui overlay via hudhook. Hooks the
     //     game's IDXGISwapChain::Present so our panel renders

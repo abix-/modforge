@@ -21,7 +21,23 @@ use serde_json::{json, Value as Json};
 
 use crate::ops::OpDef;
 
-use super::{l1, l2, Backend, Button, Key};
+use super::{l1, l2, Backend, Button, InputSurface, Key};
+
+/// Run an action through the registered L3 [`InputSurface`] if any;
+/// otherwise log a one-line warning and run `fallback` (typically L1).
+fn l3_or_fallback<L3, FB>(action_name: &str, l3_action: L3, fallback: FB) -> Result<(), String>
+where
+    L3: FnOnce(&'static dyn InputSurface) -> Result<(), String>,
+    FB: FnOnce() -> Result<(), String>,
+{
+    match super::input_surface() {
+        Some(surface) => l3_action(surface),
+        None => {
+            crate::log!("[input] L3 '{action_name}' requested but no surface registered; falling back to L1");
+            fallback()
+        }
+    }
+}
 
 fn arg_i32(args: &Json, name: &str) -> Result<i32, String> {
     args.get(name)
@@ -100,6 +116,11 @@ pub fn all() -> Vec<OpDef> {
                         let h = resolve_l2_hwnd(args)?;
                         l2::move_client(h, x, y)?;
                     }
+                    Backend::L3 => l3_or_fallback(
+                        "mouse.move",
+                        |s| s.move_abs(x, y),
+                        || l1::move_abs(x, y),
+                    )?,
                 }
                 Ok(json!({"ok": true, "backend": backend, "x": x, "y": y}))
             },
@@ -130,6 +151,25 @@ pub fn all() -> Vec<OpDef> {
                         let mk_extra = l2::modifier_mask(shift, ctrl);
                         l2::click(h, button, x, y, mk_extra)?;
                     }
+                    Backend::L3 => l3_or_fallback(
+                        "mouse.click",
+                        |s| {
+                            if shift { s.key(Key(0xA0), true)?; }
+                            if ctrl  { s.key(Key(0xA2), true)?; }
+                            let r = s.click(button, x, y);
+                            if ctrl  { let _ = s.key(Key(0xA2), false); }
+                            if shift { let _ = s.key(Key(0xA0), false); }
+                            r
+                        },
+                        || {
+                            if shift { l1::key_down(Key(0xA0))?; }
+                            if ctrl  { l1::key_down(Key(0xA2))?; }
+                            let r = l1::click(button, x, y);
+                            if ctrl  { let _ = l1::key_up(Key(0xA2)); }
+                            if shift { let _ = l1::key_up(Key(0xA0)); }
+                            r
+                        },
+                    )?,
                 }
                 Ok(json!({"ok": true, "backend": backend, "button": btn_s, "x": x, "y": y}))
             },
@@ -145,6 +185,11 @@ pub fn all() -> Vec<OpDef> {
                 match backend {
                     Backend::L1 => l1::key_down(key)?,
                     Backend::L2 => l2::key_down(resolve_l2_hwnd(args)?, key)?,
+                    Backend::L3 => l3_or_fallback(
+                        "key.down",
+                        |s| s.key(key, true),
+                        || l1::key_down(key),
+                    )?,
                 }
                 Ok(json!({"ok": true, "backend": backend, "key": key_s, "vk": key.0}))
             },
@@ -160,6 +205,11 @@ pub fn all() -> Vec<OpDef> {
                 match backend {
                     Backend::L1 => l1::key_up(key)?,
                     Backend::L2 => l2::key_up(resolve_l2_hwnd(args)?, key)?,
+                    Backend::L3 => l3_or_fallback(
+                        "key.up",
+                        |s| s.key(key, false),
+                        || l1::key_up(key),
+                    )?,
                 }
                 Ok(json!({"ok": true, "backend": backend, "key": key_s, "vk": key.0}))
             },
@@ -176,6 +226,17 @@ pub fn all() -> Vec<OpDef> {
                 match backend {
                     Backend::L1 => l1::key_press(key, hold_ms)?,
                     Backend::L2 => l2::key_press(resolve_l2_hwnd(args)?, key, hold_ms)?,
+                    Backend::L3 => l3_or_fallback(
+                        "key.press",
+                        |s| {
+                            s.key(key, true)?;
+                            if hold_ms > 0 {
+                                std::thread::sleep(std::time::Duration::from_millis(hold_ms as u64));
+                            }
+                            s.key(key, false)
+                        },
+                        || l1::key_press(key, hold_ms),
+                    )?,
                 }
                 Ok(json!({
                     "ok": true, "backend": backend, "key": key_s, "vk": key.0, "hold_ms": hold_ms
@@ -243,6 +304,24 @@ duration_ms?: u32, steps?: u32, backend?: l1|l2, hwnd?: hex, mods?: [shift|ctrl]
                         let mk_extra = l2::modifier_mask(shift, ctrl);
                         l2::drag(h, button, x1, y1, x2, y2, duration_ms, steps, mk_extra)?;
                     }
+                    Backend::L3 => {
+                        // No L3 drag trait method yet; the surface uses
+                        // move_abs + simulated press/release.
+                        l3_or_fallback(
+                            "mouse.drag",
+                            |s| {
+                                if shift { s.key(Key(0xA0), true)?; }
+                                if ctrl  { s.key(Key(0xA2), true)?; }
+                                s.move_abs(x1, y1)?;
+                                s.click(button, x1, y1)?; // best-effort: single click sequence
+                                s.move_abs(x2, y2)?;
+                                if ctrl  { let _ = s.key(Key(0xA2), false); }
+                                if shift { let _ = s.key(Key(0xA0), false); }
+                                Ok(())
+                            },
+                            || l1::drag(button, x1, y1, x2, y2, duration_ms, steps),
+                        )?
+                    }
                 }
                 Ok(json!({
                     "ok": true, "backend": backend, "button": btn_s,
@@ -279,6 +358,12 @@ L2 requires `hwnd` + `x` + `y` (screen px); L1 scrolls at current cursor.",
                         let y = args.get("y").and_then(Json::as_i64).unwrap_or(0) as i32;
                         l2::scroll(h, x, y, dx, dy)?;
                     }
+                    // No L3 scroll trait method yet; always falls back.
+                    Backend::L3 => l3_or_fallback(
+                        "mouse.scroll",
+                        |_s| l1::scroll(dx, dy),
+                        || l1::scroll(dx, dy),
+                    )?,
                 }
                 Ok(json!({"ok": true, "backend": backend, "dx": dx, "dy": dy}))
             },
@@ -314,6 +399,11 @@ combo runs the modifier presses through the SAME backend.",
                     match backend {
                         Backend::L1 => l1::key_down(*k)?,
                         Backend::L2 => l2::key_down(hwnd_for_l2.unwrap(), *k)?,
+                        Backend::L3 => l3_or_fallback(
+                            "combo.key.down",
+                            |s| s.key(*k, true),
+                            || l1::key_down(*k),
+                        )?,
                     }
                 }
                 // Dispatch the inner op via the registry. Sibling-call
@@ -325,6 +415,11 @@ combo runs the modifier presses through the SAME backend.",
                     let _ = match backend {
                         Backend::L1 => l1::key_up(*k),
                         Backend::L2 => l2::key_up(hwnd_for_l2.unwrap(), *k),
+                        Backend::L3 => l3_or_fallback(
+                            "combo.key.up",
+                            |s| s.key(*k, false),
+                            || l1::key_up(*k),
+                        ),
                     };
                 }
                 match dispatched {

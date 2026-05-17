@@ -33,6 +33,10 @@ pub enum Backend {
     L1,
     /// `PostMessage`/`SendMessage` to a target HWND.
     L2,
+    /// Game-internal poke via the registered [`InputSurface`].
+    /// Falls back to L1 with a logged warning if no surface is
+    /// registered.
+    L3,
 }
 
 impl Backend {
@@ -40,8 +44,9 @@ impl Backend {
         match s.to_ascii_lowercase().as_str() {
             "l1" | "sendinput" | "send_input" => Ok(Backend::L1),
             "l2" | "postmessage" | "post_message" | "windowmessage" => Ok(Backend::L2),
+            "l3" | "gameinternal" | "game_internal" | "surface" => Ok(Backend::L3),
             other => Err(format!(
-                "unknown input backend '{other}' (expected l1|l2)"
+                "unknown input backend '{other}' (expected l1|l2|l3)"
             )),
         }
     }
@@ -159,6 +164,29 @@ pub trait InputSurface: Send + Sync + 'static {
     fn click(&self, button: Button, x: i32, y: i32) -> Result<(), String>;
     fn move_abs(&self, x: i32, y: i32) -> Result<(), String>;
     fn key(&self, key: Key, down: bool) -> Result<(), String>;
+}
+
+/// Global slot for the registered per-game [`InputSurface`]. First
+/// registration wins; subsequent `set_input_surface` calls are
+/// silently ignored to keep idempotent re-init (hot-reload) safe.
+static INPUT_SURFACE: parking_lot::Mutex<Option<&'static dyn InputSurface>> =
+    parking_lot::Mutex::new(None);
+
+/// Register the L3 input surface for this consumer mod. Call once
+/// at attach. The surface is leaked into `'static` storage so it
+/// can be looked up by op handlers without ownership tracking;
+/// this matches how `OP_REGISTRY` handlers work.
+pub fn set_input_surface<S: InputSurface>(surface: S) {
+    let boxed: &'static dyn InputSurface = Box::leak(Box::new(surface));
+    let mut g = INPUT_SURFACE.lock();
+    if g.is_none() {
+        *g = Some(boxed);
+    }
+}
+
+/// Look up the registered L3 input surface.
+pub fn input_surface() -> Option<&'static dyn InputSurface> {
+    *INPUT_SURFACE.lock()
 }
 
 /// Tag stamped on `INPUT.mi.dwExtraInfo` / `ki.dwExtraInfo` for L1

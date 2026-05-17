@@ -279,7 +279,11 @@ Same I-R checklist instantiated per future game.
 - [x] **I-2: HTTP cmdlets.** Shipped 2026-05-16 commit `e344c5dd`. 7 ops: `input.mouse.{move,click}`, `input.key.{down,up,press}`, `input.cursor.get`, `input.foreground.hwnd`. Mods array `["shift","ctrl"]` supported on `mouse.click`. Drag/scroll/combo/replay deferred to next slice.
 - [x] **I-5: Test harness (first slice).** **SMOKE GREEN 2026-05-16.** `horsey-mod/tests/input_smoke.rs` passes against a live Horsey: L1 cursor round-trip (within 1px), L1 keyboard F24 press, L2 PostMessage WM_MOUSEMOVE to Horsey HWND. Earlier failure was a pre-existing sleuth resolver bug at `sleuth.rs:613` (mask too wide for pre-rebased-VA hints; off by `0x40_00_00_00`); fixed in place to handle the conventional x64 PE preferred base `0x140000000`. Sleuth unit tests still green.
 - [ ] **I-3: Coordinate spaces.** Resolve `hwnd`, canonical = client-area px; conversions inside. Partly done in L2 (already uses client-area px); needs explicit `input.client_to_screen` + DPI awareness.
-- [ ] **I-4: L3 game-internal pokes** (per surface, opt-in via the per-game `InputSurface` trait).
+- [/] **I-4: L3 game-internal pokes** (per surface, opt-in via the per-game `InputSurface` trait).
+  - **L3 routing shipped** in modforge (`Backend::L3` variant + `set_input_surface` / `input_surface` slot + per-cmdlet `l3_or_fallback`).
+  - **HorseyInputSurface v1 shipped** 2026-05-16. Writes `LOC+0x174`/`+0x178` cursor floats directly via the existing `hk1::home_loc_ptr()` machinery. `screen_to_client` conversion via `find_hwnd_by_pid(self_pid)` + `ScreenToClient`. Buttons + keys delegate to L1 (engine polls `GetAsyncKeyState` which L1 `SendInput` updates). Graceful degrade when no save loaded.
+  - **Smoke green:** L3 cursor move tracks target within 1px against running Horsey at main menu (L3 -> L1 fallback path). LOC-float verification waits on an in-save run of `input_hk1_calibration`.
+  - Deferred (v2): direct mouse-state struct writes via `FUN_14018c5c0()` accessor (needs R2 sig-tune); direct keyboard buffer writes via `FUN_140183330(0)+0xe1` (modifiers) and `FUN_140183990` (general keys). See [`../horsey-mod/docs/input-surface.md`](../horsey-mod/docs/input-surface.md).
 - [ ] **I-6: Replay format.** JSON event stream `[(t_ms, event, args)]`; record, save, replay. Shape decided by PR-9 winner.
 
 #### Follow-ups discovered during I-1/I-2
