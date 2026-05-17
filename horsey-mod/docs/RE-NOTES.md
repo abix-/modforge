@@ -161,6 +161,42 @@ The "%s was a good horse today" / "%s ate some hay today" pattern suggests a per
 
 A vtable (virtual table) is how C++ implements polymorphism at runtime. We rely on this heavily for cross-Location code (HK1 transfer, scene-table classification, anything that walks `GS+0x438`).
 
+### Virtual methods (the C++ side)
+
+In C++, a method declared `virtual` can be OVERRIDDEN by a subclass and dispatched dynamically at runtime based on the object's actual type, not the static type of the variable holding it.
+
+```cpp
+class Location {
+public:
+    virtual ~Location();
+    virtual void pickup_vfx(int idx);            // can be overridden
+    virtual void begin_drag(int idx, int state);
+    virtual char drop_commit(int drag_idx, int p3); // SLOT 0x78 in our build
+    void non_virtual_helper();                   // statically dispatched, NO vtable slot
+};
+
+class HomeLocation : public Location {
+public:
+    char drop_commit(int drag_idx, int p3) override; // replaces Location's slot 0x78
+};
+
+class RaceLane : public Location {
+    // inherits drop_commit from Location -- same slot 0x78, same function ptr
+};
+```
+
+When code calls `loc->drop_commit(...)` and `loc` is statically typed `Location*`, the compiler can't know which class the object actually is. It might be a `HomeLocation`, a `RaceLane`, anything inheriting from `Location`. So instead of emitting a direct `call FUN_xxx`, the compiler emits an INDIRECT call through the object's vtable. Whatever vtable that specific instance points to decides which function runs.
+
+Key properties:
+
+- **Only `virtual` methods get vtable slots.** Non-virtual methods are statically dispatched (the compiler bakes in a direct `call FUN_xxx` at the call site, no vtable involved). If you don't see an indirect call through the object, that method is non-virtual.
+- **The vtable slot is a class-level decision, not a per-instance one.** Every `Location` instance shares the same vtable pointer. Every `HomeLocation` shares the HomeLocation vtable. Subclassing produces a new vtable with the overridden slots replaced.
+- **Slot order follows declaration order.** The compiler assigns slots in the order virtual methods are declared (destructor usually first). Adding a new virtual method between existing ones SHIFTS every later slot's offset. This is why vtable slot numbers can drift between game updates, and why we anchor on the calling SITE rather than the slot number.
+- **Slot 0 is conventionally the destructor.** A useful sanity check when validating a candidate vtable: dereference slot 0 and confirm it points into `.text`.
+- **All instances of one class share ONE vtable in `.rdata`.** Not per-object, not per-thread. Two instances of HomeLocation have the same first-qword value.
+
+In our case: `Location` is the base C++ class, `HomeLocation` and `RaceLane` (and the 7 race-lane variants) are subclasses. They all share `vtable_rva = 0x30f3d0` because they're either the same class or the subclasses didn't override the slots we care about (`+0x70` begin_drag, `+0x78` drop_commit). So the drop-commit function we resolve once works on every one of them.
+
 ### The mechanism
 
 When a C++ class has `virtual` methods, the compiler emits ONE vtable per class: a contiguous array of function pointers, one slot per virtual method. Every instance of that class stores the vtable's address as its hidden first field (offset `+0x00`). The vtable itself lives in `.rdata` at a fixed RVA per build.
