@@ -380,6 +380,32 @@ The R3 candidate sigs (`cheat_money_add_1000`, `race_fee_cmp_50`, `field_440_set
 
 The hardcoded slot RVA `0x1403fb0d8` was correct all along. `gamestate::ptr()` was returning the slot's address instead of the heap pointer it holds. The R3 resolver candidates were authored under a wrong mental model and now fall through to the (correct) hardcoded RVA via a sanity gate. `looks_loaded`, the Cheats tab toggles, and every patch that hooks gamestate offsets now operate on the correct address as soon as a save is loaded. The previous false-negative ("UI says no save loaded mid-save") cannot recur without the unit-test regression firing.
 
+### GAMESTATE_PTR drift (FIXED 2026-05-17)
+
+Update: between 2026-05-15 and 2026-05-17 Horsey shipped another build. The `GAMESTATE_PTR` slot drifted from RVA `0x3fb0d8` to `0x3fc1e8` (+0x1110 bytes). The HLT-anchored pattern `48 89 1D ?? ?? ?? ?? 48 89 BB 70 02 00 00` STILL matched correctly at the new build's constructor (verified live: pattern hits `0x7ff72563dac0`, disp32 decodes to `0x7ff72593c1e8`). The bug was in the new `TargetRegistry` framework: `WithinHintTolerance` with `hint_tolerance: 0x1000` rejected the legitimate +0x1110 drift, the resolver fell through to the stale hardcoded slot, and every gamestate-dependent op returned "no gamestate".
+
+Symptoms:
+- `targets.resolve.gamestate_ptr` returned `slot == hardcoded_slot` with `deref = 0xfffffff90000000a` (garbage).
+- `gamestate.owned_horses` returned empty list even with a save loaded.
+- HK1, Cheats tab, every overlay panel silently broken.
+
+Fix (commit pending):
+- `targets_registry.rs`: `GAMESTATE_PTR.hint_rva` -> `0x1403fc1e8`, `hint_tolerance` -> `0x8000`.
+- `targets.rs`: `GAMESTATE_PTR` const -> `0x1403fc1e8`.
+- `tests/gamestate_resolver_lives.rs` (new): asserts `money_at_deref_plus_0x308` is non-null and owned_horses populates. Trips fast on the next drift.
+
+Reusable diagnostic for the next drift (it WILL happen):
+
+1. `targets.resolve.gamestate_ptr` op. If `slot == hardcoded_slot` AND `deref` looks garbage-shaped (very high bits, odd alignment), resolver fell back to hardcoded.
+2. `patterns.sleuth.scan_all { sig: "48 89 1D ?? ?? ?? ??", disp32_offset: 3, instr_len: 7 }` to enumerate every `mov [rip+disp32], rbx` store in `.text`.
+3. For each hit's decoded slot, read 8 bytes; reject any whose deref isn't heap-shaped (>= 0x10000, <= 0x7fff_ffff_ffff, 8-aligned).
+4. For each surviving candidate, read 0x440 bytes from the deref. Validate GameState shape: `active_scene_id` at `+0x25C` in `[-1, 256)`, `scene_table` at `+0x438` is heap-shaped. Exactly one candidate survives.
+5. That candidate's slot RVA is the new `GAMESTATE_PTR`. Update the const and the registry's `hint_rva`.
+
+Test template: `horsey-mod/tests/hk1_detect_state.rs` (kept as the canonical re-derivation script; renaming pending).
+
+Lesson: tight `hint_tolerance` without structural validation is a silent-break trap. The real fix is per-target structural validators in `modforge::patterns::sleuth` that deref candidates and check domain invariants. With those in place, hint tolerance can be wide (or removed) because false matches are filtered structurally. Tracked in [`todo.md` -> "Findings session ... #2"](todo.md).
+
 ### Save-address re-derivation (DONE 2026-05-15, commit `bd95252`)
 
 > Relocated 2026-05-15 from `todo.md` "Save-address re-derivation: DONE" section.

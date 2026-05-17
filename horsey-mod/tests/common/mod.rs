@@ -188,6 +188,109 @@ pub fn resolve_base(game: &RunningGame, spec: &str) -> u64 {
     }
 }
 
+/// Path to `menu_targets.json` next to the staged horsey.dll. Keyed
+/// captures of screen coordinates that automated tests need at a
+/// fresh save-load (e.g. the house door on the world map).
+pub fn menu_targets_path() -> PathBuf {
+    let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+    workspace_root()
+        .join("target")
+        .join("x86_64-pc-windows-msvc")
+        .join(profile)
+        .join("menu_targets.json")
+}
+
+fn read_menu_target(key: &str) -> Option<(i32, i32)> {
+    let s = std::fs::read_to_string(menu_targets_path()).ok()?;
+    let v: Value = serde_json::from_str(&s).ok()?;
+    let o = v.get(key)?;
+    let x = o.get("x")?.as_i64()? as i32;
+    let y = o.get("y")?.as_i64()? as i32;
+    Some((x, y))
+}
+
+/// Read `active_scene_id` (GS+0x25C) via the existing
+/// `hk1.probe.active_location` op. Returns the i32 the game stores,
+/// or `None` if the op failed or omitted the field.
+pub fn active_scene_id(game: &RunningGame) -> Option<i32> {
+    let v = game.op_json("hk1.probe.active_location", &json!({})).ok()?;
+    let r = v.get("result").unwrap_or(&v);
+    r.get("active_scene_id").and_then(Value::as_i64).map(|n| n as i32)
+}
+
+/// HK1 prereq: block until the Home Location scene is active. On
+/// fresh save-load the game spawns the player in the truck on the
+/// world map (active_scene_id != Home). The Home LOC at slot 0x00 of
+/// the scene table EXISTS in memory regardless (it holds the owned
+/// horse list), so `hk1.read_cursor` is NOT a valid gate. Instead we
+/// snapshot `active_scene_id` before clicking the house door, then
+/// poll until it changes.
+///
+/// Click target: `menu_targets.json` key `home_door_from_truck_spawn`,
+/// captured via `tests/hk1_capture_house_coords.rs` while the cursor
+/// hovers the door on the world map.
+///
+/// Panics if the target entry is missing or the scene never
+/// transitions within `timeout`.
+pub fn ensure_home_scene_loaded(game: &RunningGame, timeout: std::time::Duration) {
+    // 1. Wait for the save to finish loading via the proven horse-roster
+    //    poll. If owned_horses populates, GS is alive.
+    let h = wait_for_target_horse(game, std::time::Duration::from_secs(120));
+    eprintln!("[home-scene] save loaded; first owned horse = {} @ {}", h.name, h.ptr_s);
+
+    // 2. Read active_scene_id baseline. If it's None even after save
+    //    load, dump diagnostic state and bail with actionable info.
+    let baseline = match active_scene_id(game) {
+        Some(id) => id,
+        None => {
+            let diag = game.op_json("hk1.probe.active_location", &json!({}))
+                .map(|v| v.to_string()).unwrap_or_else(|e| format!("(probe err: {e})"));
+            panic!(
+                "ensure_home_scene_loaded: save loaded but active_scene_id is None. \
+                 Either the value at GS+0x25C is outside [-1, 256) (need to widen the \
+                 filter in gamestate::active_scene_id) or the gate signal is wrong. \
+                 probe.active_location = {diag}"
+            );
+        }
+    };
+    eprintln!("[home-scene] baseline active_scene_id = {baseline}");
+
+    let (hx, hy) = read_menu_target("home_door_from_truck_spawn").unwrap_or_else(|| {
+        panic!(
+            "menu_targets.json missing 'home_door_from_truck_spawn'; run \
+             `MODFORGE_ATTACH=1 cargo test -p horsey-mod --test \
+             hk1_capture_house_coords -- --nocapture` with the cursor over the house door first"
+        )
+    });
+    eprintln!("[home-scene] clicking house door @ ({hx}, {hy}) backend=l1");
+    if let Err(e) = game.op_json(
+        "input.mouse.click",
+        &json!({"button": "left", "x": hx, "y": hy, "backend": "l1"}),
+    ) {
+        panic!("input.mouse.click failed: {e}");
+    }
+
+    let start = std::time::Instant::now();
+    let deadline = start + timeout;
+    while std::time::Instant::now() < deadline {
+        let now_id = active_scene_id(game);
+        if now_id != Some(baseline) {
+            eprintln!(
+                "[home-scene] active_scene_id transitioned {baseline} -> {now_id:?} \
+                 in {:?}",
+                start.elapsed()
+            );
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    panic!(
+        "ensure_home_scene_loaded: active_scene_id stayed at {baseline} for {timeout:?} \
+         after click @ ({hx}, {hy}). Wrong coords, click didn't reach the game window, \
+         or the gate needs a different signal."
+    );
+}
+
 /// Block until `target_horse(game)` resolves successfully. Used as a
 /// pre-test gate when the save may not be loaded yet.
 pub fn wait_for_target_horse(game: &RunningGame, timeout: std::time::Duration) -> TargetHorse {

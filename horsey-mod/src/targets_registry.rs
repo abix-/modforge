@@ -178,8 +178,14 @@ static GAMESTATE_PTR: TargetDef = TargetDef {
         sig: "48 89 1D ?? ?? ?? ?? 48 89 BB 70 02 00 00",
         recipe: Recipe::DecodeRipDisp { disp_off: 3, instr_len: 7 },
     }],
-    hint_rva: Some(0x1403fb0d8),
-    hint_tolerance: 0x1000,
+    // Slot drifted to RVA 0x3fc1e8 in the 2026-05-17 build (was
+    // 0x3fb0d8). HLT pattern still anchors correctly; the only
+    // change required was bumping the hint window past the +0x1110
+    // drift. Bumped to 0x8000 to absorb future small reorders;
+    // the pattern is unique enough that a false match in that
+    // window is implausible.
+    hint_rva: Some(0x1403fc1e8),
+    hint_tolerance: 0x8000,
     validators: V_IN_IMAGE,
 };
 

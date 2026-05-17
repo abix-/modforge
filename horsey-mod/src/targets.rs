@@ -23,7 +23,13 @@ pub const PREFERRED_IMAGE_BASE: usize = 0x140000000;
 /// Verified from `compute_save_path` callers and the cheat-money
 /// handler at line 60473 of `decompiled/all_functions.c`:
 ///   `*(int *)(DAT_1403fb0d8 + 0x308) += 1000;`
-pub const GAMESTATE_PTR: usize = 0x1403fb0d8;
+///
+/// Re-derived 2026-05-17 against image SHA matching the live build:
+/// slot drifted from RVA 0x3fb0d8 to 0x3fc1e8. The registry pattern
+/// `48 89 1D ?? ?? ?? ?? 48 89 BB 70 02 00 00` still matches
+/// uniquely; the legacy 0x1000 hint tolerance was rejecting the
+/// new slot.
+pub const GAMESTATE_PTR: usize = 0x1403fc1e8;
 
 /// Pointer to the loaded save format VERSION. Set by `load_game`
 /// after reading the first uint32 of the save file.

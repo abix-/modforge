@@ -919,21 +919,29 @@ Authoritative catalog of every horse-bearing memory location: [`HORSE-PLACES.md`
 - `exe_size = 4374528`, `image_base = 0x7ff6ab0a0000` in this run.
 - Decomp index references the older build. Re-decomp or accept drift on non-anchored consts.
 
-#### 2. Resolver sanity-gate self-defeating bug (FIXED in this session)
+#### 2. Resolver sanity-gate self-defeating bug (FIXED 2026-05-15, REGRESSED, REFIXED 2026-05-17)
 
-Old `targets::resolve::resolve_gamestate_ptr_uncached`:
-```
-let delta = resolved.abs_diff(hardcoded); if delta > 0x1000 { return None; }
-```
-Hardcoded RVA was the cross-check. When Horsey ships an update that shifts the GameState slot more than 4 KB, the gate rejected the CORRECT new resolution and silently fell back to the stale hardcoded, which then pointed at unrelated `.data` (we observed tile data at the stale slot, raw value `0xfffffff90000000a` clearly not a heap ptr).
+The 2026-05-15 fix replaced the legacy `abs_diff` check inside the gamestate-specific resolver, but the new `TargetRegistry` framework re-introduced the same class of bug as a generic `hint_tolerance` validator with a 0x1000 ceiling. When the 2026-05-17 Horsey build shifted `GAMESTATE_PTR` from RVA `0x3fb0d8` to `0x3fc1e8` (drift +0x1110), `WithinHintTolerance` rejected the correct pattern match and the resolver silently fell through to the stale hardcoded RVA, which dereffed to `0xfffffff90000000a` (tile data) and tripped `is_plausible_gamestate_pointer`. So every gamestate-dependent op started returning "no gamestate". The mod was effectively broken on the new build until this was found by trying to enter Home scene for HK1.
 
-Fixed: replaced with `is_addr_readable(resolved) && (resolved & 7) == 0`. Pattern is well-anchored on the 1.0f literal write in the constructor, so a false match is unlikely.
+**Diagnostic chain (reusable for the next drift):**
+1. `targets.resolve.gamestate_ptr` returned `slot == hardcoded_slot` and `deref` looked like garbage. That's the resolver-fell-back-to-hardcoded fingerprint.
+2. Live `patterns.sleuth.scan_all` against `48 89 1D ?? ?? ?? ??` found 85 mov-store hits.
+3. Filtered to slots whose deref was heap-shaped -> 24 candidates.
+4. HLT-style structural validation per candidate (active_scene_id at +0x25C in `[-1, 256)`, scene_table at +0x438 heap-shaped) narrowed to 2.
+5. The world-map state (asid=-1) AND scene_table in real heap range identified the winner: slot RVA `0x3fc1e8`.
+
+**Fixed 2026-05-17:**
+- `targets_registry::GAMESTATE_PTR.hint_rva` -> `0x1403fc1e8`, `hint_tolerance` -> `0x8000`. Pattern unchanged; it's the same HLT pattern and it still matches uniquely.
+- `targets::GAMESTATE_PTR` const updated to `0x1403fc1e8`.
+- New regression test `tests/gamestate_resolver_lives.rs` asserts `money_at_deref_plus_0x308` is non-null and owned_horses populates. Catches future drift fast.
+
+**Lesson for the registry-wide audit:** every `TargetDef` with a tight `hint_tolerance` is a future silent-break risk. The real fix is HLT-style: PER-TARGET STRUCTURAL VALIDATORS that reject any candidate whose deref fails domain invariants. With those in place, hint_tolerance can be very wide (or removed entirely) because false matches are filtered structurally.
 
 Action items:
-- [ ] Audit every OTHER `*_uncached` resolver in `targets.rs` for the same self-defeating "compare to hardcoded" pattern. Replace each with `is_addr_readable` + alignment.
-- [ ] When the resolver succeeds, ALSO log `R3 GAMESTATE_PTR drift detected: hardcoded=X new=Y delta=Z` so we know the hardcoded is stale.
-- [ ] Update the hardcoded `GAMESTATE_PTR` const to the new value once stable.
-- [ ] Once we have a known-builds manifest, refuse to attach when the resolver delta says hardcoded is stale and no manifest entry matches the current SHA.
+- [ ] Audit every `TargetDef` in `targets_registry.rs`: if it has `hint_tolerance < 0x4000` AND no custom structural validator, either bump tolerance or add a validator.
+- [ ] Add an `is_probable_gamestate_root` validator type in `modforge::patterns::sleuth` (deref the candidate, check active_scene_id range + scene_table non-null). Apply to GAMESTATE_PTR.
+- [ ] On resolver success log `R3 drift detected: hint=X resolved=Y delta=Z` so stale hardcodes surface in the attach log.
+- [ ] Once we have a known-builds manifest, refuse to attach when resolver delta says hardcoded is stale and no manifest entry matches the current image SHA.
 
 #### 3. Scene table layout decoded (cross-validated with HLT)
 
