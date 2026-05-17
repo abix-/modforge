@@ -682,6 +682,19 @@ Status (legacy bypass-vtable path):
 - **vtable[+0x78] now returns 1 (drop accepted!) without crashing** when called with proper signature and full LOC stage (LOC[0x29]=horse_ptr, LOC[0x2d]=drag_idx, LOC[0x37]=1, LOC[0x174/0x178]=target cursor coords).
 - **Legacy blocker (de-prioritized):** vtable[+0x78] returns success but state doesn't change because the click handler's success branch (FUN_1400d2ab0:1786-1804) runs 4 helpers (FUN_1400b47e0, FUN_1400b3dc0, FUN_1400b6990, FUN_1400ccbd0) afterward. Bypassing the click handler means re-implementing those 4 calls. Now that L3 input is shipped, we just drive the click handler instead. Keep the legacy bypass as a backup path if synthetic input proves insufficient.
 
+**Save-load + scene-entry automation (prereq for everything below):**
+
+When Steam launches Horsey, the most recent save auto-loads, but it lands the player in the TRUCK on the world map, OUTSIDE the house. `active_scene_id = -1` in this state and the Home Location does NOT exist yet (no LOC pointer, `hk1.read_cursor` returns null, the horse vector at slot 0x00 is inaccessible). The user must CLICK THE HOUSE to enter the Home scene. After click, `active_scene_id` flips positive, LOC is constructed, and HK1 work becomes possible.
+
+- **House screen position is STABLE at fresh save-load.** Truck spawn is deterministic; capturing the house door's screen coords once (via `input.cursor.get` + manual hover) and replaying them via `input.mouse.click` backend=l1 will reliably enter the Home scene. **But once the truck moves on the world map, the house's screen position changes**, so the hardcoded-coords approach only works from a fresh launch. Driving the truck back to a known position, or computing the house's screen coords dynamically (world->screen project via view matrix), is a problem for later.
+- **No fast-travel shortcut.** Decomp string `EnterLocationHome` is a candidate `vanilla.invoke` target but rejected for v1 automation: clicking the house and moving around IS the user-experienced pain that HK1 ultimately reduces, so the automation has to drive it the same way.
+
+Tasks:
+
+- [ ] **A1. Capture house door coords.** One-shot interactive: launch game fresh, hover the house door, run `input.cursor.get`, write `{x, y}` to `<dll_dir>/menu_targets.json` keyed as `home_door_from_truck_spawn`.
+- [ ] **A2. `common::ensure_home_scene_loaded(&game, timeout)`** helper in `horsey-mod/tests/common/mod.rs`. Polls `active_scene_id` (new op `gamestate.active_scene_id` if not present, else `hk1.read_cursor` non-null). If scene != Home, replays the captured house-door click via `input.mouse.click` backend=l1; polls until in-scene or timeout. Pre-gate for every in-save test going forward.
+- [ ] **A3. Wire it into `input_hk1_calibration.rs`** as the first call after `launch()`. Then the calibration runs fully unattended from a fresh launch.
+
 **New path (recommended), one in-save session:**
 
 1. Run `cargo test -p horsey-mod --test input_hk1_calibration -- --test-threads=1 --nocapture` with a save loaded. Captures the ratio between OS screen pixels (what `input.mouse.move` accepts) and the game's LOC cursor floats. If the ratio is 1:1 (likely; same ScreenToClient transform), no math is needed; if not, modforge picks up a tiny `screen_to_game` helper.
