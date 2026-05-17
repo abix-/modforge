@@ -54,6 +54,22 @@ A 2026-05-17 decomp pass for [`world-map-detection.md`](world-map-detection.md) 
 
 After D1-D6 land, the existing A1-A3 in todo.md (capture house door coords + replay) become **calibration of the projection affine** rather than fragile fresh-launch-only anchors. The "moving truck = moving house" deferred problem dissolves.
 
+### Addendum 2026-05-17b: scene-id enumeration unlocks more
+
+A second decomp pass produced [HORSE-PLACES.md -> Scene-id enumeration](HORSE-PLACES.md#scene-id-enumeration-the-active_scene_id-semantic-decode) and [HORSE-PLACES.md -> Enter-location handler internals](HORSE-PLACES.md#enter-location-handler-internals). Additional simplifications:
+
+- **`HOME_SCENE_ID = 28` (Sweetie's House) is analytic.** The enter-location handler at `:154976-154981` special-cases scene_id 0x1c with the truck-position-offset + state-flag-reset behavior, which matches the "player's home base / teleport-target" semantic. Concretely: clicking the house on the world map transitions us via `enter_location_handler` with `scene_id == 28`. **This kills the rationale for Stage S0.5 entirely.** We don't need to be physically in the paddock to learn its scene_id either; the same enumeration table covers PADDOCK_SCENE_ID = 13 (track + paddock; money-gated swap to 14 when broke).
+- **`drop_horse_fail_event` at RVA `0x1400cdae0` (733 B, `"DropHorseFail" / "TruckLeaveLocation"`)** is already located. Section S7's "no destination -> play fail audio" becomes a single `vanilla.invoke` of this function, no new audio plumbing.
+- **`enter_location_handler` post-condition** gives `ensure_home_scene_loaded` a deterministic completion signal: the helper hooks `enter_location_handler`, sets a flag when called with `scene_id == HOME_SCENE_ID`, and returns when the flag fires (with timeout fallback to the existing `active_scene_id != baseline` poll). No more guessing what scene we landed in.
+- **`dialog_enqueue` at RVA `0x1400d1c40`** is a free observability surface. Hooking it captures every dialog the game shows (`"Welcome to %s"`, the entry sound name, etc.). Useful for HK1 diagnostics and for the broader agent loop. Not on the HK1 critical path; ship after the core transfer works.
+- **`race_state_machine` at RVA `0x140094a20`** has phase strings: `RaceGetSet`, `Racing`, `CrossFinishLine`, `WonRace`, `TruckEnterLocation`, `TruckLeaveLocation`. Hooking it gives us per-phase notifications for the future "shift+click during race day" variants (load truck before race, unload to race line, reload after). Out of v1 scope but worth a target-registry entry while we're here.
+
+**Updated HK1-S-DECOMP task list (adds D7-D9):**
+
+- [ ] **D7.** Add `HOME_SCENE_ID = 28` and `PADDOCK_SCENE_ID = 13` as analytic constants in `targets_registry.rs` (no pattern needed; document the decomp cite). Helper `gamestate::is_home_scene_active()` / `is_paddock_scene_active()` reading `active_scene_id`.
+- [ ] **D8.** Pattern-resolve `drop_horse_fail_event` (`0x1400cdae0`, anchor `"DropHorseFail"`). Expose as `vanilla.invoke "audio.drop_horse_fail"` for Stage S7.
+- [ ] **D9.** Pattern-resolve `dialog_enqueue` (`0x1400d1c40`). Hook with `seh::guard` to publish dialog strings to a circular buffer + HTTP op `dialogs.recent`. Optional for HK1; high leverage for general agent ops.
+
 The original plan below is preserved for sections that remain accurate (S0 probes shipped, the vtable[+0x78] path, scene-table layout discoveries). Treat the revision above as the source of truth where it conflicts.
 
 ---
