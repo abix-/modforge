@@ -6,6 +6,58 @@
 
 ---
 
+## REVISION 2026-05-17: world-map decomp pass changes the plan
+
+A 2026-05-17 decomp pass for [`world-map-detection.md`](world-map-detection.md) (Findings 1-5e + [`HORSE-PLACES.md` -> Top-level singletons](HORSE-PLACES.md#top-level-singletons)) surfaced primitives that obsolete several decisions below. Apply this revision before reading the older sections. Where revision conflicts with original prose, revision wins.
+
+**What's better now:**
+
+1. **MapState camera (`*DAT_1403f4e00 + 0x254 / +0x258`, both `float`).** Resolves the deferred "truck moves -> house screen pos changes" problem entirely. World->screen projection is exact:
+   `screen_xy = (world_xy - camera_xy) * zoom + screen_offset`. Zoom is likely 1.0 on Horsey; one calibration point + live camera floats determines the affine. Re-projection is per-frame and zero-effort, so the captured `home_door_from_truck_spawn` coords from `menu_targets.json` are no longer a fragile fresh-launch-only anchor. They are one valid sample we can use to derive the affine, then drop in favor of live projection from the TMX object table.
+
+2. **`cursor_input_handler` at RVA `0x14009d750` (1577 B, string anchor `"Pointer"`).** THE cursor dispatcher; every click / drag / hover flows through it. Hook this instead of subclassing the game's WndProc via hudhook. We get correct modifier state for free, and we can choose to either pre-empt the click (own it) or let it pass through, deterministically. Replaces section 4.6.
+
+3. **`enter_location_handler` at RVA `0x1401046c0`** (1004 B, anchors `"EnterLocation"`, `"EnterLocationStable"`) and **`truck_enter_location_handler` at RVA `0x1400cd5a0`** (1326 B, `"TruckEnterLocation"`). Hookable scene-transition events. Eliminates the polling loop in `common::ensure_home_scene_loaded`. The helper becomes "click house door, await event". `enter_location_handler` signature is decoded as `(GS*, int scene_id, char suppress_sound)`.
+
+4. **Scene handler `+0x148` = last-interacted Building**, **`+0x270` = bool modal-visible**. Combined with the active-scene-handler pointer reachable as `*(GS[+0x438] + active_scene_id * 8)`, we can answer "what did the player just click" with zero pixels.
+
+5. **`FUN_1400b4a10(Building*, &out_pair) -> float*`** at RVA `0x1400b4a10`. Canonical Building -> tile-coord accessor. Via `vanilla.invoke` instead of guessing per-building offsets.
+
+6. **Truck object at `*(GS + 0x300)`**, position `+0x28 / +0x2c` (float, scaled by `DAT_140303fb4` -> tile coords), velocity `+0x30 / +0x34`. The truck IS the player's overworld position. Same `(+0x28 pos, +0x30 vel)` actor pattern as horses, NPCs, every movable scene entity. World->screen projection of the truck is one camera-subtract away.
+
+7. **`data/horsey.tmx` on disk** ships the full labeled location table (~30 objects: `type="home"`, `"track"`, `"crispr"`, `"circus"`, ...). Parse it once with `quick-xml`, get a complete `LocationId -> (world_x, world_y, gid, type)` map for free. No more guessing scene-id constants per location; cross-reference `type` against the entry-handler-derived scene-id table.
+
+**What changes in the build order:**
+
+- **Stage S0.5 (paddock probe) is no longer blocking.** Scene-id semantics come from the TMX `type` field + decomp scene-id enumeration ([HORSE-PLACES.md -> Scene-id enumeration](HORSE-PLACES.md#scene-id-enumeration-the-active_scene_id-semantic-decode)). We can resolve PADDOCK_SCENE_ID, HOME_SCENE_ID, etc. analytically before the player ever sets foot in those scenes.
+
+- **Stage S1 (input snapshot) shrinks.** Hooking `cursor_input_handler` gives us per-frame mouse state + modifier state in one place; we don't need to read from hudhook's imgui `Ui`. The input snapshot becomes a passive observer published by the cursor-handler hook.
+
+- **Stage S2 (hovered-horse resolver) is partially replaced.** `cursor_input_handler` already knows what the cursor is over (it dispatches the hover effect). Cleanest path: hook the function, read the hovered-thing pointer it computes. Fallback to the active Location's `LOC[0x2e]` (current approach) only if the hook path doesn't surface the pointer cleanly.
+
+- **Stage S3 (container resolver) is unchanged** (backward search across known horse-vectors stays correct).
+
+- **Stage S5 (transfer primitive) gets a new sub-path:** the existing vtable[+0x78] direct-call work is one option; the synthetic-input-through-cursor-handler option is now strictly better for v1, because it drives the game's own click handler end-to-end (the 4 helpers run for free) AND we can re-project drag endpoints per-frame using MapState camera. The "calibrate truck/pasture cursor floats once and hope they stay valid" approach can be retired; we project live.
+
+- **Stage S6 (hotkey wire-up):** instead of subclassing the game's HWND for click swallowing, the `cursor_input_handler` hook decides per-call whether to pass through (handing the click to the game) or short-circuit (we transfer the horse ourselves and tell the game "I handled it"). Cleaner than the WndProc-based "consumed message" plan in section 4.6.
+
+- **Address-resolution table (section 5) grows by 6 entries:** `MAPSTATE_PTR` (data global), `CAMERA_X_OFFSET`, `CAMERA_Y_OFFSET` (MapState offsets, currently `0x254 / 0x258`), `cursor_input_handler` (fn entry), `enter_location_handler` (fn entry), `building_tile_pos` (`FUN_1400b4a10`, fn entry).
+
+**New prereq stage HK1-S-DECOMP (do FIRST, before S1+):**
+
+- [ ] **D1.** Add `MAPSTATE_PTR` to `targets_registry.rs`. Anchor: `TMX_MAP_PARSER`'s body (`FUN_1400fe2e0`) stores into `DAT_1403f4e00`. The store instruction shape is the same as GAMESTATE_PTR's `48 89 1D ?? ?? ?? ??`. Validators: deref returns heap-shaped ptr, struct shape (vtable at +0x00 is in-image, vector at +0x130 looks sane).
+- [ ] **D2.** Add `MapState +0x254/+0x258` camera offsets. Recipe: read MapState's vtable to confirm class identity, hardcode the offsets (this is a stable layout; document the cite).
+- [ ] **D3.** Pattern-resolve `cursor_input_handler` (RVA `0x14009d750`). String anchor `"Pointer"`, function size 1577 B. Validator: function-bounds shape via `find_function_bounds_via_int3`.
+- [ ] **D4.** Pattern-resolve `enter_location_handler` (RVA `0x1401046c0`, anchors `"EnterLocation" / "EnterLocationStable"`).
+- [ ] **D5.** Pattern-resolve `building_tile_pos` (`FUN_1400b4a10`).
+- [ ] **D6.** Helper `screen::project_world(world_xy) -> (i32, i32)` in modforge (new module). Reads MapState camera, applies the affine. Test: project the truck's world-pos, compare against in-game truck screen position from manual capture, assert within 1 px.
+
+After D1-D6 land, the existing A1-A3 in todo.md (capture house door coords + replay) become **calibration of the projection affine** rather than fragile fresh-launch-only anchors. The "moving truck = moving house" deferred problem dissolves.
+
+The original plan below is preserved for sections that remain accurate (S0 probes shipped, the vtable[+0x78] path, scene-table layout discoveries). Treat the revision above as the source of truth where it conflicts.
+
+---
+
 ## 1. Goal in one paragraph
 
 The vanilla flow forces the player to click-and-drag every single horse, one at a time, between the truck (mobile carrier), the pasture (home), and the race line (track starting position). Race-day routines look like: pasture -> truck (drag every horse), drive to track, truck -> race line (drag every horse), run race, race line -> truck (drag every horse), drive home, truck -> pasture (drag every horse). HK1 collapses each individual transfer into a single Shift+Click on the horse. The mod reads the player's current location and the horse's current container, picks the obvious destination, and commits the move with the same side effects the vanilla drag-drop produces (fatigue clearing on race-line drop, audio cue, animation, etc.).
