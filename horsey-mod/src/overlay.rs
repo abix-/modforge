@@ -15,6 +15,7 @@ use modforge::ui::overlay::{self, Condition, ImguiRenderLoop, Ui};
 use crate::gamestate;
 use crate::genes::EXT_GENE_COUNT;
 use crate::horse;
+use crate::scene;
 
 /// Per-frame render callback state.
 ///
@@ -478,6 +479,8 @@ fn render_debug(ui: &Ui) {
         gamestate::set_debug_mode(debug);
     }
 
+    render_where_am_i(ui);
+
     if !gamestate::looks_loaded() {
         ui.separator();
         ui.text_disabled("(no save loaded -- start a game to enable money/year/horses)");
@@ -541,6 +544,134 @@ fn render_debug(ui: &Ui) {
                 horse::set_age(p, 0);
             }
         }
+    }
+}
+
+/// Live "Where am I" panel for confirming the scene + world-map data we mined
+/// from the decomp. Shows the raw values so the user can launch the game,
+/// move/click around, and report back without guessing.
+///
+/// See `horsey-mod/docs/HORSE-PLACES.md` (Top-level singletons + Scene-handler
+/// factory) and `docs/world-map-detection.md` for what each field means.
+fn render_where_am_i(ui: &Ui) {
+    ui.separator();
+    ui.text("Where Am I");
+    ui.text_disabled("Live readouts to confirm decomp findings -- no guessing.");
+
+    // active_scene_id + label
+    match gamestate::active_scene_id() {
+        Some(id) => {
+            let label = scene::scene_id_label(id).unwrap_or("(unmapped scene_id)");
+            ui.text(format!("active_scene_id: {id} ({})", label));
+            if id == 21 {
+                ui.text_disabled("  ^ if you are currently AT YOUR HOUSE, this confirms scene 21 = Stable!");
+            }
+        }
+        None => ui.text_disabled("active_scene_id: (unreadable -- no save loaded?)"),
+    }
+
+    // Truck position
+    match scene::truck_pos() {
+        Some((x, y)) => {
+            // Tile coords would be x * DAT_140303fb4. We don't have the
+            // const yet, so show the raw float pair + a guess at 1/32 scale.
+            let tile_x_guess = (x / 32.0) as i32;
+            let tile_y_guess = (y / 32.0) as i32;
+            ui.text(format!(
+                "truck pos:       raw ({x:.2}, {y:.2})  tile-guess ({tile_x_guess}, {tile_y_guess})"
+            ));
+        }
+        None => ui.text_disabled("truck pos:       (truck unreadable)"),
+    }
+    if let Some((vx, vy)) = scene::truck_vel() {
+        ui.text(format!("truck vel:       ({vx:.3}, {vy:.3})"));
+    }
+
+    // Camera
+    match scene::camera() {
+        Some((cx, cy)) => {
+            ui.text(format!("camera (world):  ({cx:.2}, {cy:.2})"));
+        }
+        None => ui.text_disabled("camera:          (MapState unreadable)"),
+    }
+    if let Some(active) = scene::map_active() {
+        ui.text(format!("map_active flag: {active}"));
+    }
+
+    // Active scene handler
+    let sh = scene::active_scene_handler();
+    if sh == 0 {
+        ui.text_disabled("scene_handler:   none (overworld; not inside a location)");
+    } else {
+        ui.text(format!("scene_handler:   0x{sh:016X}"));
+        if let Some(self_id) = scene::scene_handler_self_id(sh) {
+            ui.text(format!("  scene+0x08 (self-id):  {self_id}"));
+        }
+        if let Some(d) = scene::scene_display_name(sh) {
+            ui.text(format!("  scene+0x18 (display):  {d:?}"));
+        }
+        if let Some(i) = scene::scene_internal_name(sh) {
+            ui.text(format!("  scene+0x38 (internal): {i:?}"));
+        }
+        if let Some(modal) = scene::scene_modal_visible(sh) {
+            ui.text(format!("  scene+0x270 (modal):   {modal}"));
+        }
+        if let Some(ent) = scene::scene_selected_entity(sh) {
+            // Try to read it as a horse and surface name_id if present.
+            ui.text(format!("  scene+0x148 (entity):  0x{ent:016X}"));
+        } else {
+            ui.text_disabled("  scene+0x148 (entity):  null");
+        }
+    }
+
+    // --- Tile scale + truck tile ---
+    if let Some(s) = scene::tile_scale() {
+        ui.text(format!("tile_scale (DAT_140303fb4): {s} (1/{:.0})", 1.0 / s));
+        if let Some((tx, ty)) = scene::truck_pos()
+            .and_then(|(x, y)| scene::pos_to_tile(x, y))
+        {
+            ui.text(format!("truck tile (scaled): ({tx}, {ty})"));
+        }
+    } else {
+        ui.text_disabled("tile_scale: (unreadable)");
+    }
+
+    // --- Move Player buttons ---
+    ui.separator();
+    ui.text("Move Player");
+    let in_scene = matches!(gamestate::active_scene_id(), Some(id) if id != -1);
+    if !in_scene {
+        ui.text_disabled("(on overworld already; Exit button disabled)");
+    }
+    if ui.button("Exit to overworld") {
+        invoke_exit_to_overworld();
+    }
+}
+
+/// Fire `game.exit_to_overworld` directly (same code path as the HTTP op).
+/// Skips the HTTP round-trip so the button works without a client.
+fn invoke_exit_to_overworld() {
+    let gs = gamestate::ptr();
+    if gs == 0 {
+        modforge::log!("overlay: exit_to_overworld -- GameState not loaded");
+        return;
+    }
+    if gamestate::active_scene_id() == Some(-1) {
+        modforge::log!("overlay: exit_to_overworld -- already overworld; skipping");
+        return;
+    }
+    let invoker = modforge::vanilla::Invoker::new(
+        &crate::targets_registry::HORSEY_RESOLVER,
+    );
+    match invoker.call(
+        "EXIT_TO_OVERWORLD",
+        &[modforge::vanilla::ArgValue::Ptr(gs as u64)],
+    ) {
+        Ok(_) => modforge::log!(
+            "overlay: exit_to_overworld OK; active_scene_id now {:?}",
+            gamestate::active_scene_id()
+        ),
+        Err(e) => modforge::log!("overlay: exit_to_overworld FAILED: {e}"),
     }
 }
 

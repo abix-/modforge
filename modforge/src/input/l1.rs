@@ -124,8 +124,20 @@ fn mouse_button_event(b: Button, down: bool) -> Result<(), String> {
 /// presses + releases. The 1ms gap is omitted; most games sample
 /// state once per frame so back-to-back down/up still register.
 pub fn click(button: Button, x: i32, y: i32) -> Result<(), String> {
+    click_held(button, x, y, 60)
+}
+
+/// `click` with an explicit down-to-up hold in ms. The default 60ms
+/// (used by `click()`) is enough to be observed across ~3 frames at
+/// 60 fps. Many games' input pumps poll `GetAsyncKeyState` once per
+/// frame and would miss a 0ms press entirely. Clamped to 0..=5000.
+pub fn click_held(button: Button, x: i32, y: i32, hold_ms: u32) -> Result<(), String> {
     move_abs(x, y)?;
     mouse_button_event(button, true)?;
+    let hold = hold_ms.min(5000);
+    if hold > 0 {
+        std::thread::sleep(std::time::Duration::from_millis(hold as u64));
+    }
     mouse_button_event(button, false)?;
     Ok(())
 }

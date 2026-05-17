@@ -2744,6 +2744,51 @@ Default path: <DLL_DIR>/genes-extended.xml. Pass `path` to override.",
                 }
             },
         ),
+        OpDef::new(
+            "game.exit_to_overworld",
+            "Invoke EXIT_TO_OVERWORLD (FUN_1401041f0) on the GameState. \
+             This is the same function the in-scene 'Map' button calls: \
+             sets active_scene_id = -1, zeroes scene state, triggers \
+             auto-save, plays the 'World' sound. No-op when already on \
+             the overworld. Returns {ok, prev_scene_id, elapsed_us}.",
+            "{}",
+            |_args| {
+                let prev = crate::gamestate::active_scene_id();
+                let gs = crate::gamestate::ptr();
+                if gs == 0 {
+                    return Ok(json!({"ok": false, "error": "GameState not loaded"}));
+                }
+                if prev == Some(-1) {
+                    return Ok(json!({
+                        "ok": true, "skipped": true,
+                        "prev_scene_id": -1,
+                        "note": "already on overworld",
+                    }));
+                }
+                let invoker = modforge::vanilla::Invoker::new(
+                    &crate::targets_registry::HORSEY_RESOLVER,
+                );
+                let t0 = std::time::Instant::now();
+                let r = invoker.call(
+                    "EXIT_TO_OVERWORLD",
+                    &[modforge::vanilla::ArgValue::Ptr(gs as u64)],
+                );
+                let elapsed_us = t0.elapsed().as_micros() as u64;
+                match r {
+                    Ok(_) => Ok(json!({
+                        "ok": true,
+                        "prev_scene_id": prev,
+                        "new_scene_id": crate::gamestate::active_scene_id(),
+                        "elapsed_us": elapsed_us,
+                    })),
+                    Err(e) => Ok(json!({
+                        "ok": false,
+                        "error": format!("{e}"),
+                        "elapsed_us": elapsed_us,
+                    })),
+                }
+            },
+        ),
     ]);
     OP_REGISTRY.register_many(modforge::input::ops::all());
     modforge::log!("horsey-mod: registered ops");

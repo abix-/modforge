@@ -377,6 +377,26 @@ static HORSE_COPY_GENE_LANE_PAIRS: TargetDef = TargetDef {
     validators: V_IN_IMAGE,
 };
 
+/// `FUN_1401041f0` (`exit_to_overworld`). Called when the in-scene
+/// "Map" button is pressed. Sets `GS+0x25C = -1`, zeroes scene state,
+/// triggers auto-save, plays the "World" sound, calls scene tear-down,
+/// resumes truck driving. Single argument: `GameState*`.
+/// Cite: `all_functions.c:154755`.
+pub static EXIT_TO_OVERWORLD_SIG: Signature = Signature::new(
+    &[ArgKind::Ptr],
+    RetKind::Void,
+);
+static EXIT_TO_OVERWORLD: TargetDef = TargetDef {
+    name: "EXIT_TO_OVERWORLD",
+    kind: TargetKind::FunctionEntry {
+        signature: Some(&EXIT_TO_OVERWORLD_SIG),
+    },
+    candidates: &[],
+    hint_rva: Some(0x1401041f0),
+    hint_tolerance: 0x4000,
+    validators: V_IN_IMAGE,
+};
+
 // Function entries inherited from existing targets.rs. Hint-only
 // during B4; real sigs land per target as they get tuned.
 
@@ -502,6 +522,7 @@ pub static HORSEY_TARGETS: TargetRegistry = TargetRegistry::new(
         &HORSE_REBUILD,
         &RNG_NEXT_MODULO,
         &HORSE_COPY_GENE_LANE_PAIRS,
+        &EXIT_TO_OVERWORLD,
 
         // Function entries (hint-only; sigs land per-target during B4)
         &EVAL_DIPLOID_BLEND_A,

@@ -36,6 +36,7 @@ pub mod input_surface;
 pub mod ops;
 pub mod overlay;
 pub mod patches;
+pub mod scene;
 pub mod snapshot;
 pub mod targets;
 pub mod targets_registry;

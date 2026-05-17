@@ -16,6 +16,7 @@ Roughly ordered by leverage.
 - [P0. Bestiary Expansion: double the species count](#p0-bestiary-expansion-double-the-species-count)
 - [P0. Gene Table Doubling: 240 -> 480 implementation plan](#p0-gene-table-doubling-240---480-implementation-plan)
 - [P0. Synthetic input (delegated to modforge)](#p0-synthetic-input-delegated-to-modforge)
+- [P0. Scene navigation: move the player between locations](#p0-scene-navigation-move-the-player-between-locations-added-2026-05-17)
 - [Other open work](#other-open-work)
 - [Appendix: Feature wishlist](#appendix-feature-wishlist-merged-from-roadmapmd-2026-05-15)
 
@@ -664,6 +665,81 @@ Still open (need a save loaded + per-test save fixtures):
 ## P0. Synthetic input (delegated to modforge)
 
 Lives in [`../../docs/todo.md`](../../docs/todo.md) under "P0. Synthetic input." Cross-game primitive, modforge is the home. Horsey is the first consumer. Per-game research steps I-R1..I-R5 (decomp grep, mouse/keyboard globals, click dispatcher, PostMessage smoke) stay tracked there too. HK1 Shift+Click is the immediate beneficiary.
+
+---
+
+## P0. Scene navigation: move the player between locations (added 2026-05-17)
+
+> Goal: agent loop drives the truck around the world map and enters/exits locations the way a human plays (click on map button, click on a building, wait for truck to path and arrive, scene enters automatically).
+>
+> Builds on: world-map findings in [`HORSE-PLACES.md`](HORSE-PLACES.md), [`world-map-detection.md`](world-map-detection.md), the L3 input axis ([`modforge::input`](../../modforge/docs/input-prior-art.md)), and the "Where Am I" Debug panel shipped 2026-05-17.
+
+**Confirmed live-test findings (2026-05-17):**
+
+- scene_id 0 = PLAYER HOME (scene-table slot 0; allocated at game init, outside the factory dispatcher).
+- scene_id 20 = Lasso-Mart (matches decomp factory dispatcher exactly; validates the rest of the 23-row table by analogy).
+- **Game always starts with truck on the overworld**, even after save load. To enter Home the test harness clicks the house door at the pre-captured coord `home_door_from_truck_spawn = (983, 394)` (in `target/x86_64-pc-windows-msvc/release/menu_targets.json`), already used by `common::ensure_home_scene_loaded`.
+- Each in-scene UI has a `Map` button at top-right. BUT we don't need to click it because the exit-scene function was found in decomp (see Phase 1 below).
+
+**Plan (user-locked 2026-05-17): drive-and-arrive only.**
+
+Direct teleport via `vanilla.invoke FUN_1401046c0` was considered and **rejected**. Reason: it bypasses the truck animation, auto-save, and the natural enter-state-machine. Exactly the code paths the agent loop needs to exercise. If teleport is ever wanted (e.g. CI shortcut), revisit then; do not build it now.
+
+### Status (2026-05-17 in-progress)
+
+| Phase | Status | Notes |
+|---|---|---|
+| **Phase 1**: `game.exit_to_overworld` | **PARTIALLY GREEN** | `EXIT_TO_OVERWORLD` resolved in decomp as `FUN_1401041f0` (RVA `0x1401041f0`); cite `:154755`. Sets `GS+0x25C = -1`, zeroes scene state, auto-saves, plays "World" sound, calls scene tear-down. Registered in `targets_registry.rs` (Signature `(*GameState) -> void`). `game.exit_to_overworld` HTTP op + Debug-tab button. Smoke test ran 2026-05-17. **synthetic click to enter Home WORKED** (scene_id `-1 -> 0` in 502ms after fixing the 0ms click hold; see Phase 1b). The `vanilla.invoke EXIT_TO_OVERWORLD` step **crashed the game** (HTTP worker disconnect). Root cause: vanilla function called from HTTP-worker thread instead of game's main thread; touches scene tear-down / render state concurrently held by the game thread. Same shape as `DEBUGGING.md` Cause A. Fix path: switch to synthetic-click on the in-scene `Map` button (top-right) instead of `vanilla.invoke`. The natural drive-like-a-human path. Map-button click runs the exit function from the game's own UI handler on the right thread. |
+| **Phase 1b**: 60ms click hold fix (modforge::input) | **SHIPPED 2026-05-17** | `l1::click()` was emitting LEFTDOWN then LEFTUP back-to-back with 0ms hold. Horsey's input pump polls `GetAsyncKeyState` once per frame (~16ms at 60 fps) and missed the press entirely. Fixed: `l1::click()` now defaults to a 60ms hold (~3 frames); added `l1::click_held(btn, x, y, hold_ms)` for explicit control. **Confirmed working: click at (983, 394) now triggers scene transition reliably.** |
+| **Phase 2**: tile-scale + camera readers | **CODE SHIPPED** | `TILE_SCALE` registered at RVA `0x140303fb4`; `scene::tile_scale()` + `scene::pos_to_tile()` helpers. Debug tab "Where Am I" panel now shows the live float + truck tile coords. |
+| **Phase 3**: `game.drive_to_location` | TODO | Needs world->screen projection (TILE_SCALE + MapState camera + screen-offset calibration), then `input.mouse.click_at(screen_xy)` + poll for `active_scene_id != -1`. |
+| **Phase 4**: per-scene Debug buttons | TODO | One button per known location (Sue's Glues, The Circus, etc.) calling `game.drive_to_location {scene_id}`. Currently only `[Exit to overworld]` button is in. |
+| **Phase 5**: `tests/drive_to_location_smoke.rs` + `tests/round_trip_smoke.rs` | TODO | Run after Phase 3 ships. The drive-to-location test ALSO auto-fills unknown scene labels by visiting each scene and capturing the resolved `scene+0x18` display name. |
+
+### The drive-and-arrive flow (every primitive exists; just sequence them)
+
+1. [ ] **Exit current scene** -> synthesize a click on the `Map` button at top-right of the in-scene UI.
+   - [ ] One-time calibration: capture `Map` button screen coords (relative to window) via `input.cursor.get` while hovering. Should be screen-position-stable across scenes since it's HUD-anchored.
+   - [ ] Op `game.exit_to_overworld` -> `input.mouse.click_at(map_btn_xy)` -> poll `active_scene_id == -1`.
+   - [ ] OR (alternative): find the in-decomp exit-scene function (grep for `*(GS+0x25C) = -1;` writes; sibling of `FUN_1401046c0` at a nearby RVA). Direct call is more reliable than synthetic click if found.
+2. [ ] **Compute target building's screen coord on the world map**:
+   - [ ] Parse `data/horsey.tmx` once at attach -> `Vec<{type, world_x, world_y}>`. (Asset-based, no in-memory walk needed; see [`world-map-detection.md`](world-map-detection.md) Finding 2.)
+   - [ ] `world_to_screen(world_pos)` via MapState `+0x254/+0x258` camera + zoom. Needs `DAT_140303fb4` value pinned down (one `patterns.read_bytes` test in-save).
+3. [ ] **Click on the building** via `input.mouse.click_at(screen_x, screen_y)` (L1 SendInput; falls back to L2 PostMessage if needed).
+4. [ ] **Wait for truck to path + arrive**: poll `scene::truck_pos()` until tile == target tile, OR poll `active_scene_id != -1`. Reasonable timeout 15s.
+5. [ ] Scene-handler enters automatically (game's `enter_location_handler` fires on truck arrival. No action needed).
+
+HTTP ops to ship:
+
+- [ ] `game.exit_to_overworld`. See step 1.
+- [ ] `game.drive_to_location {scene_id?: i32, world_pos?: (f32,f32), tmx_type?: "circus"}`. Orchestrates steps 1-5. Returns `{route_seconds, final_active_scene_id, final_scene_display_name}`.
+- [ ] `game.click_on_screen {x, y}`. Thin wrapper on `input.mouse.click_at` (already exists; this is just a convenience alias for tests).
+
+### UI in the Debug tab (already has "Where Am I" panel)
+
+- [ ] Add "Move Player" sub-section under "Where Am I".
+- [ ] One button per known location: `[Drive to Sue's Glues]` `[Drive to The Circus]` `[Drive to CRISPR Lab]` `[Drive to Sumo Ring]` `[Drive to The Jockey Club]` .... Each calls `game.drive_to_location {scene_id: N}`.
+- [ ] `[Exit to overworld]` button. Calls `game.exit_to_overworld`.
+
+### Tests-first plan
+
+- [ ] **`tests/exit_to_overworld_smoke.rs`**: from each known scene, hit `game.exit_to_overworld`, confirm `active_scene_id == -1`. First test to land because it depends on only one primitive (Map-button click).
+- [ ] **`tests/drive_to_location_smoke.rs`**: from overworld, `game.drive_to_location {scene_id: N}` for each known TMX-typed building (circus, crispr, lasso-mart, etc.). Assert `active_scene_id` ends up as expected; capture the resolved `scene+0x18` display name for the live-test column of the scene table. Auto-fills the still-unknown scene labels (15, 19, 21, 26, 38, 47) by exhaustive sweep through unmapped scene_ids when there is no matching TMX object.
+- [ ] **`tests/round_trip_smoke.rs`**: drive overworld -> scene N -> exit -> drive to scene M -> exit. Confirms the full agent loop survives chaining without state leaks.
+
+### Prerequisites / blockers
+
+- [ ] **`DAT_140303fb4` value** (tile-to-world-pixel scale). One `patterns.read_bytes` in-save. Trivial.
+- [ ] **`Map` button screen coords** (one calibration). Trivial.
+- [ ] **Exit-scene function in decomp** (optional; synthetic click on Map button is the chosen default). Worth a quick grep but not blocking.
+
+### Estimated effort
+
+End-to-end (full drive-and-arrive + per-scene UI buttons + tests): **~3 hours**.
+
+### Why this is P0
+
+Without it, every scene-internal feature (CRISPR mods, breeding control, race automation) requires the user to manually drive the game to the right scene before any test or development iteration. Shipping this turns the agent loop from "user babysits" into "Claude drives end-to-end."
 
 ---
 

@@ -40,6 +40,19 @@ pub const SAVE_VERSION_GLOBAL: usize = 0x1403fb0e0;
 /// Confirmed at line 84920 (`DAT_1403eded8 = 0;`).
 pub const RACES_COUNTER: usize = 0x1403eded8;
 
+/// MapState pointer slot. `*DAT_1403f4e00` -> MapState* (0x268 bytes).
+/// Populated by `TMX_MAP_PARSER` from `data/horsey.tmx`. Field map in
+/// HORSE-PLACES.md "Top-level singletons" section.
+pub const MAP_STATE_PTR: usize = 0x1403f4e00;
+
+/// World-coords -> tile-index scale factor (float). Multiply actor
+/// position (`actor+0x28/+0x2c`, e.g. truck pos) by this to get a
+/// tile index for `FUN_1401010d0(GS, tile_x, tile_y)` lookup.
+/// Pervasive (62+ references in decomp). Lives in `.rdata`.
+/// Likely `1.0 / 32.0 = 0.03125` (tile size = 32 px) but verify at
+/// runtime via `scene::tile_scale()`.
+pub const TILE_SCALE: usize = 0x140303fb4;
+
 /// The "No Tire" / "Yes Tire" toggle byte. When non-zero, the
 /// per-frame update loop zeroes horse.+0x205 / +0x206 on every
 /// horse, effectively disabling tiredness.
