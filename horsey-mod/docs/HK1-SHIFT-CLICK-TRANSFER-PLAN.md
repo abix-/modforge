@@ -65,7 +65,7 @@ Per `HORSE-PLACES.md`, the scene-table dump, AND the S0 probe results (2026-05-1
 | Slot 0xf8 | sub-struct, vtable_rva `0x3037d0` | matches HLT's `kNeighborSceneVtableRva = 0x3037D0` -> NEIGHBOR scene |
 | Slot 0x120 | sub-struct, vtable_rva `0x304e08`, count 5 | "horses available for THIS race" source (race-roster, NOT owned) |
 
-Key consequence of the shared vtable: **the pickup vtable slot we resolve from `FUN_1400d2ab0` applies to BOTH the home Location AND each race-lane Location**. One resolver, two destination kinds.
+Key consequence of the shared vtable: **the pickup vtable slot we resolve from `FUN_1400d2ab0` applies to BOTH the home Location AND each race-lane Location**. One resolver, two destination kinds. (Vtable primer: [`RE-NOTES.md` -> Vtables](RE-NOTES.md#vtables-c-virtual-dispatch-in-disassembly). Two objects with the same `vtable_rva` are instances of the same C++ class and respond to the same virtual method calls.)
 
 The **truck** still isn't classified. Possibilities:
 - A per-Location side-struct on the Home object (e.g. at `LOC+0x300`, the "screen-space state" pointer the decomp dereferences).

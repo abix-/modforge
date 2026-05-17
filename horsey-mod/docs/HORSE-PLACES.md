@@ -147,7 +147,7 @@ Gene-offset table: `DAT_14030d110`. Layout: `i32[chromosome_id][0..17]`. Each ch
 Earlier text speculated about how `slot 0x00` related to the player's owned-horse list. Live-game evidence from `hk1.probe.active_location` settles it:
 
 - `GS+0x438 -> *(arr + 0)` points at a Location object whose first 0x60 bytes contain inline strings `"My House"` (at +0x18) and `"Home"` (at +0x40).
-- Its vtable RVA is `0x30f3d0`. **Race-lane slots 0x08..0x38 share this vtable RVA** (they're instances of the same Location class.
+- Its vtable RVA is `0x30f3d0`. **Race-lane slots 0x08..0x38 share this vtable RVA** (they're instances of the same Location class. Vtable primer + how shared vtables let one resolver work across many destinations: [`RE-NOTES.md` -> Vtables](RE-NOTES.md#vtables-c-virtual-dispatch-in-disassembly).
 - The Home Location's `+0x130/+0x138` vector IS the owned-horse list. There is no separate "truck Location" or "pasture Location" with its own horse vector (the truck and pasture are rectangles drawn inside the home scene, and horses stay in this one list whether they're "in the truck" or "in the pasture."
 
 This shapes any future feature that needs to identify which container a horse is currently in: read per-horse state, not the vector identity.
