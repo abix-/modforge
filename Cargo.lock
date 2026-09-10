@@ -1275,6 +1275,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "obenseuer-mod"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "unityforge",
+]
+
+[[package]]
 name = "object"
 version = "0.32.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -147,7 +147,7 @@ namespace Unityforge.Shim
             {
                 if (typeof(UnityEngine.Object).IsAssignableFrom(t))
                 {
-                    var all = UnityEngine.Object.FindObjectsOfType(t, includeInactive != 0);
+                    var all = FindObjectsCompat(t, includeInactive != 0);
                     foreach (var o in all)
                     {
                         if (o == null) continue;
@@ -454,6 +454,17 @@ namespace Unityforge.Shim
                 return boxed;
             }
             throw new InvalidOperationException("unsupported target type: " + t.FullName);
+        }
+
+        private static readonly MethodInfo _findObjInactive =
+            typeof(UnityEngine.Object).GetMethod("FindObjectsOfType",
+                new[] { typeof(Type), typeof(bool) });
+
+        private static UnityEngine.Object[] FindObjectsCompat(Type t, bool includeInactive)
+        {
+            if (_findObjInactive != null && includeInactive)
+                return (UnityEngine.Object[])_findObjInactive.Invoke(null, new object[] { t, true });
+            return UnityEngine.Object.FindObjectsOfType(t);
         }
 
         private static int WriteJson(IntPtr outBuf, int cap, JToken value)
