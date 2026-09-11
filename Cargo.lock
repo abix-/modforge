@@ -823,6 +823,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "humanitz-mod"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "memoffset",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "ueforge",
+ "widestring",
+ "windows-sys 0.61.2",
+ "zerocopy",
+]
+
+[[package]]
 name = "hybrid-array"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
