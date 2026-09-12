@@ -22,7 +22,7 @@ Survivalist extraction means moving existing engine-independent code out of the 
 | 1 | MISERY input proof | [ ] Add and run a permanent live test of the exact player E input mechanism at a door | The test aims at an in-range door, sends E through the verified player mechanism, and fails unless MISERY's existing binding changes the observed door state. |
 | 1 | Ueforge input | [ ] Release every held key when input stops, fails, is cancelled, or shuts down | Unit tests and a restarted live failure case prove W/A/S/D/E are released and the player does not continue moving or interacting. |
 | 1 | Ueforge input | [ ] Drive a given player's controller, not only the retained local player: Enhanced Input through that player's own subsystem where the game uses it, legacy InputKey at the PDB-located address where it does not | A live test presses W through the second player's controller in Abiotic Factor and its character moves while the human's does not; MISERY's existing W test still passes. |
-| 1 | Ueforge symbols | [ ] Add a PDB reader (the `pdb` crate, not yet added) that, given a PDB path, prints a symbol's image-relative address and a struct's field layout | A test prints APlayerController::InputKey, UPlayerInput::InputKey, and the FInputKeyParams layout from Abiotic Factor's shipped PDB. Not started. |
+| 1 | Ueforge symbols | [x] Add a PDB reader (the `pdb` crate) that, given a PDB path, returns a function's image-relative address and a struct's field layout | `ueforge::symbols::{functions, layout}`, commit 651801ae. `research_symbols` on Abiotic Factor's PDB: APlayerController::InputKey(const FInputKeyParams&) at 0x3AB2890, UPlayerInput::InputKey at 0x3DA2190, FInputKeyParams 72 bytes (layout in docs/abiotic-factor.md). Awaiting changelog entry before removal. |
 | 1 | Ueforge second player | [ ] Create a second local player through the engine's CreatePlayer and hand its character to modforge as the AI player's body | A live test in Abiotic Factor prints the second character and its controller and the game keeps running. |
 | 1 | Ueforge settings | [ ] Turn split-screen off through the game maps settings default object before a second local player exists | The byte reads 0 after the write, live in Abiotic Factor. |
 | 1 | Ueforge observation | [ ] Observe any given character, not only the retained local player: position, view, health | The observation of the second character in Abiotic Factor matches what the game shows. |
@@ -149,19 +149,21 @@ These are verified facts from live testing. Do not repeat the failed approaches 
 - ActionInstanceData at +0x598 on EnhancedPlayerInput is OUTPUT (writing to it does not move the player). Confirmed by `inject_forward_input` test.
 - KeyStateMap is NOT in the +0x5E8 region. A write watchpoint on +0x5E8 / +0x5F0 caught zero writes on a key press; the earlier before/after diff there was a net change, not a store site. The real per-key FKey->FKeyState TSet is a separate heap block reached through a header on the object (see research.md section 31; the exact object offset is not confirmed reproducible).
 
-### FInputKeyParams struct (unverified layout)
+### FInputKeyParams struct (verified 2026-09-12 from Abiotic Factor's shipped PDB, UE 5.4, so it applies to MISERY too)
+
+The earlier 64-byte guess was wrong: `Delta` is a 3-double vector at
+offset 40, not a 2-double vector after the key. Read by
+`ueforge::symbols::layout` in `abioticfactor-mod/tests/research_symbols.rs`.
 
 ```
-FKey (24 bytes):
-  FName KeyName: comparison_index (i32) + number (u32) = 8 bytes
-  TSharedPtr<FKeyDetails>: pointer (8 bytes) + ref count pointer (8 bytes) = 16 bytes
-FVector2D Delta: likely double (UE5.4 LWC) = 16 bytes
-float DeltaTime: 4 bytes
-int32 NumSamples: 4 bytes
-EInputEvent event: 4 bytes (0=IE_Pressed, 1=IE_Released)
-FInputDeviceId: 4 bytes
-bool bIsGamepadOverride: 1 byte + 7 padding
-Total: 64 bytes (unverified, may be wrong)
+FInputKeyParams, 72 bytes:
+  +0   24  Key                 FKey (KeyName FName at +0, KeyDetails TSharedPtr at +8)
+  +24   4  InputDevice         FInputDeviceId
+  +28   4  Event               EInputEvent
+  +32   4  NumSamples          int32
+  +36   4  DeltaTime           float
+  +40  24  Delta               TVector<double>
+  +64   8  bIsGamepadOverride  bool, padded
 ```
 
 ### Failed attempts (do NOT repeat)
