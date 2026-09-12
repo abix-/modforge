@@ -99,6 +99,7 @@ pub mod ring;
 pub mod rpg;
 pub mod scanner;
 pub mod selector;
+pub mod symbols;
 pub mod server;
 pub mod settings;
 pub mod shutdown;

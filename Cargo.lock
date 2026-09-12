@@ -2119,6 +2119,7 @@ dependencies = [
  "modforge",
  "parking_lot",
  "patternsleuth",
+ "pdb",
  "proptest",
  "region 4.0.0",
  "serde",

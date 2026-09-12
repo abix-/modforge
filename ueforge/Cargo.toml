@@ -72,6 +72,7 @@ smallvec = { workspace = true }
 fastrand = { workspace = true }
 patternsleuth = { workspace = true }
 zerocopy = { workspace = true }
+pdb = { workspace = true }
 
 [dev-dependencies]
 proptest = { workspace = true }

@@ -46,6 +46,10 @@ sha2 = "0.11"
 proptest = "1"
 insta = { version = "1", features = ["json"] }
 zerocopy = { version = "0.8", features = ["derive"] }
+# pdb: Microsoft PDB reader (Sentry-maintained). Games that ship
+# their PDB (Abiotic Factor does) give native function addresses
+# and struct layouts by name, so nothing has to be hunted.
+pdb = "0.8"
 # patternsleuth: UE4SS-blessed Rust sig-scan crate. No crates.io
 # release; pinned to a recent master SHA. Workspace package
 # licensed "MIT OR Apache-2.0" (per the upstream Cargo.toml,
