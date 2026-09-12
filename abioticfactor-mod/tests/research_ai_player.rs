@@ -99,6 +99,261 @@ fn component(api: &Api<Value>, actor: u64, class: &str) -> Option<u64> {
     u64::from_str_radix(text.trim_start_matches("0x"), 16).ok()
 }
 
+fn read_ptr(api: &Api<Value>, addr: u64, offset: u64) -> u64 {
+    let raw = read_bytes(api, addr, offset, 8);
+    raw.get(0..8)
+        .map(|b| u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
+        .unwrap_or(0)
+}
+
+fn full_name(api: &Api<Value>, addr: u64) -> String {
+    if addr == 0 {
+        return "null".into();
+    }
+    let reply = api.op("resolve_selector", json!({"selector": format!("addr:0x{addr:X}")}));
+    reply
+        .result
+        .get("full_name")
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_string()
+}
+
+/// In a multiplayer game more than one player character and controller
+/// can exist. Which character does the local player's controller
+/// possess? Prints every player character with its Controller pointer
+/// and every player controller with its Player (the local player or a
+/// net connection) and its Pawn.
+#[test]
+fn player_characters_and_controllers() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+
+    let Some((controller_offset, _)) = field(&api, "Pawn", "Controller") else {
+        println!("Pawn has no reflected Controller field");
+        return;
+    };
+    let Some((pawn_offset, _)) = field(&api, "Controller", "Pawn") else {
+        println!("Controller has no reflected Pawn field");
+        return;
+    };
+    let Some((player_offset, _)) = field(&api, "PlayerController", "Player") else {
+        println!("PlayerController has no reflected Player field");
+        return;
+    };
+    println!(
+        "offsets: Pawn.Controller +{controller_offset}, Controller.Pawn +{pawn_offset}, PlayerController.Player +{player_offset}"
+    );
+
+    let (total, characters) = instances(&api, "Abiotic_PlayerCharacter_C", 16);
+    println!("player characters: {total}");
+    for character in &characters {
+        let Some(addr) = addr_of(character) else { continue };
+        let controller = read_ptr(&api, addr, controller_offset);
+        println!(
+            "  0x{addr:X} {}\n      Controller -> {}",
+            character.get("name").and_then(Value::as_str).unwrap_or("?"),
+            full_name(&api, controller)
+        );
+    }
+
+    let (total, controllers) = instances(&api, "Abiotic_PlayerController_C", 16);
+    println!("player controllers: {total}");
+    for controller in &controllers {
+        let Some(addr) = addr_of(controller) else { continue };
+        let player = read_ptr(&api, addr, player_offset);
+        let pawn = read_ptr(&api, addr, pawn_offset);
+        println!(
+            "  0x{addr:X} {}\n      Player -> {}\n      Pawn   -> {}",
+            controller.get("name").and_then(Value::as_str).unwrap_or("?"),
+            full_name(&api, player),
+            full_name(&api, pawn)
+        );
+    }
+}
+
+/// Read an FString (TArray<TCHAR>: data pointer, count, capacity) at an offset.
+fn read_fstring(api: &Api<Value>, addr: u64, offset: u64) -> String {
+    let header = read_bytes(api, addr, offset, 16);
+    if header.len() < 16 {
+        return "<unreadable>".into();
+    }
+    let data = u64::from_le_bytes(header[0..8].try_into().unwrap());
+    let count = i32::from_le_bytes(header[8..12].try_into().unwrap());
+    if data == 0 || count <= 0 {
+        return String::new();
+    }
+    let raw = read_bytes(api, data, 0, (count as u64) * 2);
+    let units: Vec<u16> = raw
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&u| u != 0)
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// Every reflected field on a class whose name contains `needle`.
+fn fields_containing(api: &Api<Value>, class: &str, needle: &str) -> Vec<(String, u64, u64)> {
+    let detail = api.op("discover_class_detail", json!({"name": class}));
+    detail
+        .result
+        .get("fields")
+        .and_then(Value::as_array)
+        .map(|fields| {
+            fields
+                .iter()
+                .filter_map(|f| {
+                    let name = f.get("name")?.as_str()?;
+                    name.to_lowercase().contains(needle).then(|| {
+                        (
+                            name.to_string(),
+                            f.get("offset").and_then(Value::as_u64).unwrap_or(0),
+                            f.get("element_size").and_then(Value::as_u64).unwrap_or(0),
+                        )
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The join was refused with "Login failed: Join_PasswordInvalid". Which
+/// object holds the password the game mode compares against, and what
+/// does it hold right now? Walks the live game mode, game state, and
+/// game instance and prints every field with "password" in its name.
+#[test]
+fn password_fields() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for needle in ["GameMode", "GameState", "GameInstance", "GameSession"] {
+        let (total, objects) = instances(&api, needle, 6);
+        println!("{needle}: {total} instance(s)");
+        for object in &objects {
+            let Some(addr) = addr_of(object) else { continue };
+            let full = object.get("full_name").and_then(Value::as_str).unwrap_or("?");
+            let class = full.split(' ').next().unwrap_or("?");
+            println!("  0x{addr:X} {full}");
+            for (name, offset, size) in fields_containing(&api, class, "password") {
+                let value = if size == 16 {
+                    read_fstring(&api, addr, offset)
+                } else {
+                    format!("{:?}", read_bytes(&api, addr, offset, size.min(16)))
+                };
+                println!("      {name} +{offset} size {size} = {value:?}");
+            }
+        }
+    }
+}
+
+/// What does the host run to accept LAN players? Prints every net
+/// driver with its class, its connection class, and its connections,
+/// plus the game session and its session settings, so the join the
+/// mod performs can be the one the host already accepts.
+#[test]
+fn net_driver_and_connections() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let (total, drivers) = instances(&api, "NetDriver", 8);
+    println!("NetDriver instances: {total}");
+    for driver in &drivers {
+        let Some(addr) = addr_of(driver) else { continue };
+        let full = driver.get("full_name").and_then(Value::as_str).unwrap_or("?");
+        println!("  0x{addr:X} {full}");
+        // The fields are declared on the engine's NetDriver base class;
+        // the subclass detail lists only its own additions.
+        let class = "NetDriver";
+        for name in [
+            "NetConnectionClass",
+            "ServerConnection",
+            "ClientConnections",
+            "World",
+            "NetDriverName",
+            "MaxClientRate",
+        ] {
+            let Some((offset, size)) = field(&api, class, name) else {
+                println!("      {name}: not on {class}");
+                continue;
+            };
+            let raw = read_bytes(&api, addr, offset, size.min(16));
+            let value = match name {
+                "NetConnectionClass" | "ServerConnection" | "World" => {
+                    full_name(&api, read_ptr(&api, addr, offset))
+                }
+                "ClientConnections" => {
+                    let data = u64::from_le_bytes(raw[0..8].try_into().unwrap_or([0; 8]));
+                    let count = i32::from_le_bytes(raw[8..12].try_into().unwrap_or([0; 4]));
+                    let mut names = Vec::new();
+                    for i in 0..count.max(0) as u64 {
+                        names.push(full_name(&api, read_ptr(&api, data, i * 8)));
+                    }
+                    format!("{count} connection(s) {names:?}")
+                }
+                _ => format!("{raw:?}"),
+            };
+            println!("      {name} +{offset} size {size} = {value}");
+        }
+    }
+
+    // The EOS driver's own additions (passthrough to plain UDP for a
+    // LAN game, or EOS peer-to-peer) are plain C++ members: the PDB
+    // says UIpNetDriver is 2424 bytes and UNetDriverEOS 2432, so its
+    // state is the last 8 bytes. The world's URL (UWorld +1440, FURL:
+    // Host +16, Port +32, Map +40, Op +72) is the address it listens on.
+    for driver in &drivers {
+        let Some(addr) = addr_of(driver) else { continue };
+        println!(
+            "  driver bytes 2424..2432 (EOS driver's own state) = {:?}",
+            read_bytes(&api, addr, 2424, 8)
+        );
+        let Some((world_offset, _)) = field(&api, "NetDriver", "World") else { continue };
+        let world = read_ptr(&api, addr, world_offset);
+        let url = world + 1440;
+        println!(
+            "  world URL: host {:?} port {} map {:?}",
+            read_fstring(&api, url, 16),
+            i32::from_le_bytes(read_bytes(&api, url, 32, 4).try_into().unwrap_or([0; 4])),
+            read_fstring(&api, url, 40)
+        );
+        let ops = read_bytes(&api, url, 72, 16);
+        let data = u64::from_le_bytes(ops[0..8].try_into().unwrap_or([0; 8]));
+        let count = i32::from_le_bytes(ops[8..12].try_into().unwrap_or([0; 4]));
+        for i in 0..count.max(0) as u64 {
+            println!("      option: {:?}", read_fstring(&api, data, i * 16));
+        }
+    }
+
+    let (total, sessions) = instances(&api, "GameSession", 4);
+    println!("GameSession instances: {total}");
+    for session in &sessions {
+        let Some(addr) = addr_of(session) else { continue };
+        let full = session.get("full_name").and_then(Value::as_str).unwrap_or("?");
+        println!("  0x{addr:X} {full}");
+        for name in ["MaxPlayers", "MaxSpectators", "SessionName", "bRequiresPushToTalk"] {
+            if let Some((offset, size)) = field(&api, "GameSession", name) {
+                println!(
+                    "      {name} +{offset} size {size} = {:?}",
+                    read_bytes(&api, addr, offset, size.min(16))
+                );
+            }
+        }
+    }
+
+    let (total, subsystems) = instances(&api, "OnlineSession", 8);
+    println!("OnlineSession-named objects: {total}");
+    for subsystem in &subsystems {
+        println!(
+            "  {}",
+            subsystem.get("full_name").and_then(Value::as_str).unwrap_or("?")
+        );
+    }
+}
+
 #[test]
 fn navigation_mesh_and_links() {
     let api = api();
