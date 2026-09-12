@@ -59,6 +59,7 @@ struct Connection {
     commands: Option<std::sync::mpsc::Receiver<String>>,
     movement_started: Option<Instant>,
     next_move: Instant,
+    spawn_positions: BTreeMap<u32, [f64; 3]>,
 }
 
 impl Connection {
@@ -90,6 +91,7 @@ impl Connection {
             commands: None,
             movement_started: None,
             next_move: Instant::now(),
+            spawn_positions: BTreeMap::new(),
         }
     }
 
@@ -185,9 +187,11 @@ impl Connection {
         let Some((&channel, _)) = self.channel_objects.iter().find(|(_, guid)| **guid == self.controller.pawn) else {
             return Err(invalid("movement requires the possessed pawn"));
         };
-        let args = crate::movement::input(timestamp, acceleration);
+        let (field, args) = if let Some(position) = self.controller.position {
+            (38, crate::movement::report(timestamp, acceleration, position))
+        } else { (39, crate::movement::input(timestamp, acceleration)) };
         let mut fields = Writer::default();
-        fields.bounded(39, 310); // live Character.ServerMoveOld field
+        fields.bounded(field, 310); // live Character movement RPC cache
         fields.packed(args.len() as u32);
         fields.append(&args);
         let mut payload = Writer::default();
@@ -370,7 +374,8 @@ impl Connection {
                                 return Err(invalid("unexpected split-screen player controller"));
                             }
                         } else if archetype == "Default__Abiotic_PlayerCharacter_C" {
-                            crate::actors::Objects::spawn_body(&mut actor_reader)?;
+                            let position = crate::actors::Objects::spawn_body(&mut actor_reader)?;
+                            self.spawn_positions.insert(guid, position);
                         }
                     } else if bunch.must_map {
                         let count = actor_reader.get(16)?;
@@ -410,6 +415,13 @@ impl Connection {
     }
 
     fn advance_character_setup(&mut self) {
+        if self.controller.position.is_none() {
+            if let Some(position) = self.spawn_positions.get(&self.controller.pawn) {
+                self.controller.position = Some(*position);
+                self.controller.position_source = "actor channel open";
+                eprintln!("[abiotic-client] UDP position {position:?} (actor channel open)");
+            }
+        }
         if !self.controller.initialized && self.spawned.contains(&self.controller.player_state)
             && self.spawned.contains(&self.controller.pawn) {
             if let Some(channel) = self.controller.channel {
@@ -618,7 +630,7 @@ fn run_configured(
             }
         });
         connection.commands = Some(receiver);
-        println!("Commands: forward (two seconds along +X), stop, quit (UDP logout).");
+        println!("Commands: position, forward (two seconds along +X), stop, quit (UDP logout).");
     }
     let mut hello = Writer::default();
     hello.put(0, 8);
@@ -651,6 +663,7 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
         while let Some(command) = connection.commands.as_ref().and_then(|rx| rx.try_recv().ok()) {
             match command.trim() {
                 "quit" => return Ok(()),
+                "position" => eprintln!("[abiotic-client] last received UDP position {:?} ({})", connection.controller.position, connection.controller.position_source),
                 "forward" if connection.controller.initialized => {
                     connection.movement_started = Some(Instant::now());
                     connection.next_move = Instant::now();

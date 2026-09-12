@@ -15,6 +15,25 @@ pub(crate) fn input(timestamp: f32, acceleration: [f32; 3]) -> Writer {
     args
 }
 
+/// Normal move reporting supplies the last server position for error correction.
+pub(crate) fn report(timestamp: f32, acceleration: [f32; 3], position: [f64; 3]) -> Writer {
+    let mut args = Writer::default();
+    args.put(1, 1);
+    args.put(u64::from(timestamp.to_bits()), 32);
+    args.put(1, 1);
+    args.put(0, 7);
+    for value in acceleration { args.put(u64::from(value.to_bits()), 32); }
+    args.put(1, 1);
+    args.put(64, 7); // packed-vector double escape
+    for value in position { args.put(value.to_bits(), 64); }
+    args.put(0, 1); // compressed flags
+    args.put(0, 1); // roll
+    args.put(0, 1); // view, facing +X
+    args.put(1, 1);
+    args.put(1, 8); // walking movement mode
+    args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

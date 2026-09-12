@@ -19,6 +19,8 @@ pub(crate) struct Controller {
     pub skills_ready: bool,
     pub spawn_after_traits: bool,
     pub loading_requested: bool,
+    pub position: Option<[f64; 3]>,
+    pub position_source: &'static str,
 }
 
 impl Controller {
@@ -32,7 +34,14 @@ impl Controller {
             while block.remaining() > 0 {
                 let field = block.bounded(310)?;
                 let size = block.packed()? as usize;
-                block.take(size)?;
+                let mut args = block.take(size)?;
+                if field == 31 {
+                    if let Some(position) = movement_response(&mut args)? {
+                        self.position = Some(position);
+                        self.position_source = "server movement correction";
+                        eprintln!("[abiotic-client] UDP position {position:?} ({})", self.position_source);
+                    }
+                }
                 // Abiotic_PlayerCharacter: Client_EvaluateLoadingScreen and
                 // Client_SetupCharacter. Reply only on our possessed pawn.
                 if matches!(field, 205 | 217) {
@@ -137,6 +146,42 @@ pub(crate) struct Bunch {
     pub final_part: bool,
 }
 
+/// Prefix established from this build's FCharacterMoveResponseDataContainer::Serialize.
+/// A base-relative correction is not a world coordinate without that base's transform.
+fn movement_response(args: &mut Reader<'_>) -> io::Result<Option<[f64; 3]>> {
+    if args.get(1)? == 0 { return Ok(None); }
+    let length = args.packed()? as usize;
+    let mut data = args.take(length)?;
+    let good_move = data.get(1)? != 0;
+    let timestamp = f32::from_bits(data.get(32)? as u32);
+    if !timestamp.is_finite() { return Err(invalid("non-finite correction timestamp")); }
+    if good_move { return Ok(None); }
+    data.get(1)?; // bHasBase
+    let rotation = data.get(1)? != 0;
+    let montage = data.get(1)? != 0;
+    let root_motion = data.get(1)? != 0;
+    let position = Objects::raw_vector(&mut data)?;
+    Objects::raw_vector(&mut data)?; // velocity
+    if data.get(1)? != 0 { Objects::raw_vector(&mut data)?; } // gravity
+    if rotation {
+        for _ in 0..3 { if data.get(1)? != 0 { data.get(16)?; } }
+    }
+    if data.get(1)? != 0 { data.packed()?; } // base object
+    if data.get(1)? != 0 { // base bone name
+        if data.get(1)? != 0 { data.packed()?; }
+        else { data.string()?; data.get(32)?; }
+    }
+    if data.get(1)? != 0 { data.get(8)?; } // movement mode, default walking
+    let relative_position = data.get(1)? != 0;
+    data.get(1)?; // relative velocity
+    if relative_position || montage || root_motion {
+        eprintln!("[abiotic-client] correction requires base/root-motion decoding; position not updated");
+        return Ok(None);
+    }
+    if data.remaining() != 0 || args.remaining() != 0 { return Err(invalid("unexpected movement correction tail")); }
+    Ok(Some(position))
+}
+
 pub(crate) struct Channel {
     pub sequence: u16,
     pub waiting: BTreeMap<u16, Bunch>,
@@ -172,25 +217,51 @@ impl Channel {
 }
 
 impl Objects {
-    pub fn spawn_body(reader: &mut Reader<'_>) -> io::Result<()> {
+    fn raw_vector(reader: &mut Reader<'_>) -> io::Result<[f64; 3]> {
+        let mut vector = [0.0; 3];
+        for value in &mut vector { *value = f64::from_bits(reader.get(64)?); }
+        if vector.iter().any(|v| !v.is_finite()) { return Err(invalid("non-finite raw vector")); }
+        Ok(vector)
+    }
+    pub fn spawn_body(reader: &mut Reader<'_>) -> io::Result<[f64; 3]> {
         reader.packed()?; // level
-        Self::spawn_vector(reader)?;
+        let position = Self::spawn_vector(reader, [0.0; 3])?;
         if reader.get(1)? != 0 {
             for _ in 0..3 { if reader.get(1)? != 0 { reader.get(16)?; } }
         }
-        Self::spawn_vector(reader)?;
-        Self::spawn_vector(reader)?;
-        Ok(())
+        Self::spawn_vector(reader, [1.0; 3])?;
+        Self::spawn_vector(reader, [0.0; 3])?;
+        Ok(position)
     }
 
-    fn spawn_vector(reader: &mut Reader<'_>) -> io::Result<()> {
-        if reader.get(1)? == 0 { return Ok(()); }
+    fn spawn_vector(reader: &mut Reader<'_>, default: [f64; 3]) -> io::Result<[f64; 3]> {
+        if reader.get(1)? == 0 { return Ok(default); }
         if reader.get(1)? != 0 {
-            Self::quantized_vector(reader)?;
+            Self::read_vector(reader, 10.0)
         } else {
-            for _ in 0..3 { reader.get(64)?; }
+            let mut value = [0.0; 3];
+            for component in &mut value { *component = f64::from_bits(reader.get(64)?); }
+            if value.iter().any(|v| !v.is_finite()) { return Err(invalid("non-finite spawn vector")); }
+            Ok(value)
         }
-        Ok(())
+    }
+
+    pub(crate) fn read_vector(reader: &mut Reader<'_>, scale: f64) -> io::Result<[f64; 3]> {
+        let header = reader.get(7)?;
+        let width = (header & 63) as usize;
+        let scaled = header & 64 != 0;
+        let mut value = [0.0; 3];
+        for component in &mut value {
+            *component = if width == 0 {
+                if scaled { f64::from_bits(reader.get(64)?) } else { f64::from(f32::from_bits(reader.get(32)? as u32)) }
+            } else {
+                let bits = reader.get(width)?;
+                let signed = ((bits << (64 - width)) as i64) >> (64 - width);
+                signed as f64 / if scaled { scale } else { 1.0 }
+            };
+        }
+        if value.iter().any(|v| !v.is_finite()) { return Err(invalid("non-finite network vector")); }
+        Ok(value)
     }
 
     fn quantized_vector(reader: &mut Reader<'_>) -> io::Result<()> {
@@ -250,6 +321,44 @@ impl Objects {
 mod tests {
     use super::*;
     use crate::bits::Writer;
+
+    #[test]
+    fn packed_vectors_decode_signed_scaled_and_full_precision_coordinates() {
+        let mut wire = Writer::default();
+        wire.put(64 | 12, 7);
+        for value in [-1234i64, 567, -1] { wire.put(value as u64, 12); }
+        let bytes = wire.finish();
+        assert_eq!(Objects::read_vector(&mut Reader::packet(&bytes).unwrap(), 100.0).unwrap(), [-12.34, 5.67, -0.01]);
+        let mut wire = Writer::default();
+        wire.put(64, 7);
+        for value in [-12018.5f64, 16077.1, 21655.3] { wire.put(value.to_bits(), 64); }
+        let bytes = wire.finish();
+        assert_eq!(Objects::read_vector(&mut Reader::packet(&bytes).unwrap(), 100.0).unwrap(), [-12018.5, 16077.1, 21655.3]);
+        assert!(Objects::read_vector(&mut Reader::packet(&bytes[..10]).unwrap(), 100.0).is_err());
+    }
+
+    #[test]
+    fn correction_does_not_treat_relative_coordinates_as_world_position() {
+        for relative in [false, true] {
+            let mut data = Writer::default();
+            data.put(0, 1); // correction, not good-move acknowledgement
+            data.put(u64::from(1.0f32.to_bits()), 32);
+            data.put(0, 4); // base, rotation and root-motion flags
+            for value in [100.0f64, 200.0, 300.0, 0.0, 0.0, 0.0] { data.put(value.to_bits(), 64); }
+            data.put(0, 4); // gravity, base, bone, nondefault movement mode
+            data.put(u64::from(relative), 1);
+            data.put(0, 1); // relative velocity
+            let mut args = Writer::default();
+            args.put(1, 1);
+            args.packed(data.len() as u32);
+            args.append(&data);
+            let bytes = args.finish();
+            let result = movement_response(&mut Reader::packet(&bytes).unwrap()).unwrap();
+            assert_eq!(result, if relative { None } else { Some([100.0, 200.0, 300.0]) });
+            let truncated = &bytes[..bytes.len() - 1];
+            assert!(Reader::packet(truncated).and_then(|mut reader| movement_response(&mut reader)).is_err());
+        }
+    }
 
     #[test]
     fn controller_references_come_from_replication() {

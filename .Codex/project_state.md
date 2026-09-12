@@ -2,7 +2,7 @@
 
 ## Current focus
 
-Sophia's standalone Rust UDP client now spawns and walks with animations, confirmed by the user. The next agreed step is decoding her own coordinates from incoming UDP and tracking them during movement, then establishing facing/velocity, health/needs, inventory and nearby actor replication one piece at a time. HTTP and shipped code support research only. Preserve the existing mod installation, Sophia's profile and current connection. The user verifies gameplay.
+Sophia's standalone Rust UDP client spawns and walks with animations, confirmed by the user. Own coordinates now decode from actor opening and ordinary absolute movement corrections; live movement produced changing server coordinates. Next establish further received state one piece at a time, starting with facing/velocity. HTTP and shipped code support research only. Preserve the existing mod installation, Sophia's profile and current connection. The user verifies gameplay.
 
 ## Design goals
 
@@ -61,6 +61,7 @@ Sophia's standalone Rust UDP client now spawns and walks with animations, confir
 
 ## Last session summary
 
+- 2026-09-12 position milestone: normal movement report RPC 38 now supplies last received location and receives packed response RPC 31. Shipped code established correction vectors are raw doubles, unlike actor-open packed vectors. Live movement updated coordinates from approximately (-17436.65,13276.37,208.15) to (-17111.93,13396.13,208.15). Build and 19 tests pass. Current live process is exec session 77428 (target/sophia-position); position/forward/stop/quit commands. Final build also exists under target/abioticfactor-client. Old session 12945 had already exited on truncated packet; recorded as unresolved. Later rebuilds used quit and confirmed server logout. Last-received coordinates do not establish idle freshness; relative/root-motion corrections and full prediction remain open.
 - 2026-09-12 acceptance: user confirmed Sophia walked with animations after the repeated two-second +X command. Spawn and bounded movement are confirmed; distance, facing-relative movement and full prediction/correction are not. Current process remains in exec session 12945 and accepts forward/stop/quit. User requested documentation and push, then identified incoming UDP state as the next task, starting with Sophia's coordinates.
 - 2026-09-12 movement attempt: user confirmed spawning and requested movement. Permanent HTTP research identified Character movement RPC indices (ServerMoveOld=39) and parameters; shipped native old-move handler validates timestamps and calls movement simulation. Added stdin forward/stop/quit and bounded +X acceleration over UDP. Built in target/sophia-movement; 17 local tests pass. Old process stopped; permanent log test confirmed server logout before reconnect. Current binary is exec session 12945; forward command sent at 16:03 local. Await user visible movement verification. Command currently uses world +X, not the pawn's facing. Do not launch a duplicate instance; use this session's stdin.
 
@@ -357,7 +358,7 @@ Sophia's standalone Rust UDP client now spawns and walks with animations, confir
 
 ## Next steps
 
-- Decode Sophia's own coordinates from the existing UDP connection and track changes during movement. Establish other replicated state afterward. Preserve her current identity and profile; distinct save identity, owning-level readiness, customization and logout/save completion remain open.
+- Establish facing/velocity from incoming UDP next, then other replicated state one piece at a time. Preserve Sophia's identity and profile; distinct save identity, owning-level readiness, customization, full correction coverage and save completion remain open.
 - Move the current Unreal navigation call and path decoding into Ueforge so MISERY receives the shared path format directly.
 - Make Unityforge inject the same virtual W/A/S/D, mouse, and interaction commands through Unity's normal player input.
 - Prove one live Unity waypoint trip through the same Modforge bot-navigation code used by MISERY.

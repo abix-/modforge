@@ -4,6 +4,7 @@
 
 | Area | Shipped | Verification |
 |---|---|---|
+| Sophia UDP position | Decode initial actor placement and absolute packed movement corrections; expose last received coordinates with `position` | Live two-second movement produced changing server coordinates. Build and 19 local tests pass, including truncated data and relative-position rejection |
 | Sophia spawning | Corrected initial spawn ordering; automatic appearance update disabled after its parameter-read mismatch | User confirmed Sophia spawns successfully |
 | Sophia movement | Two-second +X acceleration over UDP through native Character movement RPC 39; repeated commands use the same connection | User confirmed walking with animations. Client build and 17 local tests pass |
 | Sophia commands | Interactive `forward`, `stop`, and `quit`; quit exits through the UDP disconnect path | Forward exercised live. Previous server logout confirmed before reconnect; interactive quit remains unverified live |

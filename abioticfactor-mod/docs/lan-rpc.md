@@ -6,6 +6,8 @@
 
 | Target | Index / handle | Name | Direction and role |
 |---|---:|---|---|
+| Character RPC | 31 | ClientMoveResponsePacked | Server -> owner; good-move acknowledgement or position correction, decoded for ordinary absolute corrections |
+| Character RPC | 38 | ServerMoveNoBase | Owner -> server; normal movement report with timestamp, acceleration, last reported position, flags, view and movement mode |
 | Character RPC | 39 | ServerMoveOld | Owner -> server; unreliable timestamp, NetQuantize10 acceleration and compressed flags; exercised for bounded movement |
 | Controller RPC | 72 | ServerAcknowledgePossession | Client -> server; own pawn GUID |
 | Controller RPC | 80 | ServerNotifyLoadedWorld | Client -> server; world FName |
@@ -29,6 +31,11 @@ female preference is preserved. This is separate from the earlier spawn-loop
 freeze. Encoding, application/voice and persistence remain open.
 
 ## Confirmed bounded movement
+
+The first implementation below used RPC 39. The position-observation milestone
+now uses RPC 38 when an initial position is known, allowing the server to send
+RPC 31 corrections. The earlier RPC remains the fallback when no position is
+available. This is still not a complete prediction implementation.
 
 On 2026-09-12 the user confirmed Sophia spawning, then walking with animations
 after repeated two-second movement commands through the standalone Rust binary.
@@ -58,3 +65,44 @@ Build with `k3sc cargo-lock build -p abioticfactor-client`, launch
 that process's stdin. Keep one Sophia process. The movement acceptance binary
 was built under target/sophia-movement using CARGO_TARGET_DIR; its executable
 is x86_64-pc-windows-msvc/debug/abioticfactor-client.exe beneath that directory.
+
+## Own position received over UDP
+
+**Observed 2026-09-12:** actor-channel opening supplied Sophia's initial
+placement (-13403.9, 15289.7, 21655.3). After normal movement reporting, the
+server corrected this to her gameplay position. During a two-second +X input,
+corrections progressed from (-17436.65078175383, 13276.37136559606,
+208.14999551063738) to (-17111.929358970614, 13396.128366994613,
+208.1500003922302). These values came from incoming UDP, not HTTP or elapsed
+movement-time estimates. Initial actor allocation position is not final spawn
+position. `position` prints the last received coordinates and their source.
+
+**Decoded:** the actor-open vector has optional serialization and quantization
+bits. Its packed form uses a seven-bit width/scaling header, signed components,
+or float/double escape encoding. Opening positions are retained by network GUID
+and selected using the possessed pawn GUID, avoiding another player's position.
+
+The normal move uses the last known server position as ClientLoc; it does not
+predict local physics. The server's packed correction parameter contains a
+presence bit, packed bit-count and an inner response. The inner response begins
+with bAckGoodMove and a float timestamp. Corrections then carry four flags for
+base, rotation and root-motion variants; position and velocity are three
+64-bit values each, followed by optional gravity, rotation, base and bone,
+movement mode, and relative-position/velocity flags. These correction vectors
+are not the actor-open packed-vector encoding.
+
+Shipped-code evidence: FCharacterMoveResponseDataContainer::Serialize at RVA
+0x34E9F60, packed-bit envelope NetSerialize at 0x34DE080, and vector serializer
+at 0x100CF90. Permanent native research captures these under target's
+movement-response, movement-packed-envelope and movement-response-vector text
+artifacts. The shipped PDB identifies NewLoc, NewVel and relative flags in
+FClientAdjustment. Rust tests cover signed/scaled vectors, double precision,
+truncation and refusing relative coordinates as absolute world positions.
+
+**Limits:** ordinary absolute corrections update Sophia's position. Relative
+or root-motion corrections are recognized but not applied. Good-move replies
+do not contain a new position. Idle updates, world-origin rebasing, moving bases,
+teleports and pawn replacement still need complete handling. General pawn
+property decoding remains unfinished. The interactive command is a last-received
+observation, not proof that the stored value is current while idle. Velocity is
+decoded to advance the message reader but is not exposed as state yet.
