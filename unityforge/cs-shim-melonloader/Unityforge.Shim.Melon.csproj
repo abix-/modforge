@@ -86,21 +86,29 @@
     </Reference>
     <!-- Schedule 1 only: S1API for custom NPC minting
          (S1ApiNpcs.cs). Lazily loaded at first NpcFactory use,
-         so the shim still runs without it. -->
-    <Reference Include="S1API.Il2Cpp.MelonLoader" Condition="'$(MelonLoaderDir)' != ''">
+         so the shim still runs without it. Pass
+         -p:NoSchedule1=true to build the shim for another game
+         (wanderburg-mod does); that drops S1ApiNpcs.cs and these
+         three references, which only exist in a Schedule 1
+         install. -->
+    <Reference Include="S1API.Il2Cpp.MelonLoader" Condition="'$(MelonLoaderDir)' != '' And '$(NoSchedule1)' != 'true'">
       <Private>false</Private>
       <HintPath>$(MelonLoaderDir)\..\Mods\S1API.Il2Cpp.MelonLoader.dll</HintPath>
     </Reference>
     <!-- Schedule 1 game types (behaviours, NPCs, patrol routes)
          and FishNet (Behaviour extends NetworkBehaviour) -->
-    <Reference Include="Assembly-CSharp" Condition="'$(InteropDir)' != ''">
+    <Reference Include="Assembly-CSharp" Condition="'$(InteropDir)' != '' And '$(NoSchedule1)' != 'true'">
       <Private>false</Private>
       <HintPath>$(InteropDir)\Assembly-CSharp.dll</HintPath>
     </Reference>
-    <Reference Include="Il2CppFishNet.Runtime" Condition="'$(InteropDir)' != ''">
+    <Reference Include="Il2CppFishNet.Runtime" Condition="'$(InteropDir)' != '' And '$(NoSchedule1)' != 'true'">
       <Private>false</Private>
       <HintPath>$(InteropDir)\Il2CppFishNet.Runtime.dll</HintPath>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(NoSchedule1)' == 'true'">
+    <Compile Remove="S1ApiNpcs.cs" />
   </ItemGroup>
 
 </Project>
