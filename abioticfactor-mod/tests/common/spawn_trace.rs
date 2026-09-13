@@ -612,14 +612,14 @@ pub fn movement_rpc_schema(api: &Api<Value>) -> Result<(), String> {
             if variant & 1 == 0 || variant == 1 { continue; }
             let object = variant & !1;
             let name = schema_name(api, u64::from_le_bytes(http_read(api, object + 24, 8)?.try_into().unwrap()))?;
-            if name.contains("Move") || name.contains("Adjust") || name.contains("Respawn") {
+            if name.contains("Move") || name.contains("Adjust") || name.contains("Respawn") || name.contains("Melee") || name.contains("Attack") || name.contains("Fire") {
                 println!("RPC {}: {name}", u32::from_le_bytes(field[8..12].try_into().unwrap()));
             }
         }
         cache = u64::from_le_bytes(header[8..16].try_into().unwrap());
     }
-    for name in ["ServerMoveOld", "ServerMoveNoBase", "ServerMovePacked", "Request_RespawnPlayerCharacter"] {
-        let class = if name.contains("Respawn") { "Abiotic_PlayerCharacter_C" } else { "Character" };
+    for name in ["ServerMoveOld", "ServerMoveNoBase", "ServerMovePacked", "Request_RespawnPlayerCharacter", "Request_MeleeAttackDamage", "Request_MeleeAttackFX", "Request_RangedAttack", "DetermineMeleeSwingTarget", "Calculate Next Melee Data"] {
+        let class = if name.starts_with("ServerMove") { "Character" } else { "Abiotic_PlayerCharacter_C" };
         let reply = api.try_op("function_parameters", json!({"class":class,"function":name})).map_err(|e| e.to_string())?;
         if !reply.ok { return Err(format!("{:?}", reply.error)); }
         println!("{name}: {}", reply.result);

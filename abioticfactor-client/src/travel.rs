@@ -12,7 +12,9 @@ pub const ACCELERATION: f64 = 2048.0;
 const GOAL_ARRIVAL: f64 = 150.0;
 const PATH_POINT_RADIUS: f64 = 90.0;
 const STUCK_MIN_PROGRESS: f64 = 40.0;
-const STUCK_AFTER_MS: u64 = 4000;
+/// Eight seconds: four fired on ordinary walks that start from standstill
+/// and pass doors (2026-09-13, every harness walk ended "stuck").
+const STUCK_AFTER_MS: u64 = 8000;
 
 pub struct Travel {
     bot: Bot,

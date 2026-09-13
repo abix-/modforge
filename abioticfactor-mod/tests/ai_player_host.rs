@@ -110,6 +110,14 @@ fn ai_player_host_explore() {
 }
 
 #[test]
+#[ignore = "registers every loaded NPC as a sight source and prints the count"]
+fn ai_player_host_sources() {
+    let sources = api().op("ai_player.sources", json!({}));
+    assert!(sources.ok, "ai_player.sources: {:?}", sources.error);
+    println!("{}", sources.result);
+}
+
+#[test]
 #[ignore = "reads the installed mod's Sophia UDP status"]
 fn ai_player_host_status() {
     let status = api().op("ai_player.status", json!({}));

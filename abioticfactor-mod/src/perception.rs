@@ -77,6 +77,45 @@ unsafe fn enemy_senses(source: &str) -> Result<(String, Vec<u64>), String> {
     best.ok_or("no live NPC with a perception component and sense configs".into())
 }
 
+/// Actors already registered as sight sources, so each is registered once.
+static SOURCES: parking_lot::Mutex<std::collections::BTreeSet<u64>> = parking_lot::Mutex::new(std::collections::BTreeSet::new());
+
+/// Make every loaded NPC visible to sight. The game registers furniture,
+/// containers and players as stimuli sources but never its monsters, since
+/// they never need to see each other; a perceiver walked up to a Pest and
+/// saw nothing (2026-09-13). This is the engine's own
+/// AIPerceptionSystem::RegisterPerceptionStimuliSource, once per actor. It
+/// makes monsters visible in the engine's model; it tells her nothing.
+/// Game thread. Returns how many were newly registered.
+unsafe fn register_npc_sources() -> Result<usize, String> {
+    let world = crate::nav::world_context()?;
+    let world_object = unsafe { &*(world as *const UObject) };
+    let character = ueforge::ue::find_class_fast("Character").ok_or("Character class not found")?;
+    let sight = ueforge::ue::find_class_fast("AISense_Sight").ok_or("AISense_Sight class not found")?;
+    let mut registered = SOURCES.lock();
+    let mut new = 0;
+    for actor in ueforge::ue::actor::actors_of_class(world_object, character)? {
+        let address = actor as u64;
+        // SAFETY: each pointer came from GetAllActorsOfClass for the live world.
+        let Some(object) = (unsafe { actor.as_ref() }) else { continue };
+        let class = object.class().map(|c| c.as_object().name()).unwrap_or_default();
+        if !class.starts_with("NPC_") || registered.contains(&address) { continue; }
+        let (parms, ret) = unsafe { crate::host::call_static("AIPerceptionSystem", "RegisterPerceptionStimuliSource",
+            &[("WorldContextObject", &world.to_le_bytes()), ("Sense", &(sight as *const _ as u64).to_le_bytes()), ("Target", &address.to_le_bytes())])? };
+        if parms.get(ret).copied().unwrap_or(0) != 0 { registered.insert(address); new += 1; }
+    }
+    Ok(new)
+}
+
+/// Op: register loaded NPCs as sight sources now.
+fn sources(_: &Value) -> Result<Value, String> {
+    ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, || {
+        // SAFETY: game thread.
+        let new = unsafe { register_npc_sources()? };
+        Ok(json!({"newly_registered": new, "registered": SOURCES.lock().len()}))
+    })
+}
+
 /// Sophia's perception component, created once on her server-side controller.
 static COMPONENT: parking_lot::Mutex<Option<u64>> = parking_lot::Mutex::new(None);
 
@@ -215,7 +254,8 @@ pub struct Perceived {
 pub(crate) fn perceived_rows(player: &str) -> Result<Vec<Perceived>, String> {
     let player = player.to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
-        // SAFETY: game thread.
+        // SAFETY: game thread. Newly loaded monsters become visible first.
+        if let Err(error) = unsafe { register_npc_sources() } { ueforge::log!("perception: registering NPC sight sources: {error}"); }
         let component = unsafe { component_of(&player)? };
         let (parms, _) = unsafe { call_named(component, "AIPerceptionComponent", "GetCurrentlyPerceivedActors", &[("SenseToUse", &0u64.to_le_bytes())])? };
         let function = ueforge::ue::find_class_fast("AIPerceptionComponent").and_then(|c| c.get_function("AIPerceptionComponent", "GetCurrentlyPerceivedActors")).ok_or("GetCurrentlyPerceivedActors")?;
@@ -245,5 +285,6 @@ pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
         ueforge::ops::OpDef::new("ai_player.perceive", "Add the enemies' AIPerceptionComponent with an enemy's sense configs to the player's server-side controller", "{player?: str}", add),
         ueforge::ops::OpDef::new("ai_player.perceived", "Actors the player's perception component currently perceives", "{player?: str}", perceived),
+        ueforge::ops::OpDef::new("ai_player.sources", "Register every loaded NPC as a sight stimuli source (the game only registers furniture, containers and players)", "{}", sources),
     ]);
 }

@@ -321,6 +321,26 @@ fn npc_spawn_functions() {
     }
 }
 
+/// Which actors can be seen at all: the sight sense reports only registered
+/// stimuli sources. Lists every live AIPerceptionStimuliSourceComponent with
+/// its owner, so it is known whether monsters are visible to a perceiver.
+#[test]
+fn perception_stimuli_sources() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let reply = api.op("walk_class_chain", json!({"needle": "AIPerceptionStimuliSourceComponent", "max": 1024}));
+    assert!(reply.ok, "stimuli sources: {:?}", reply.error);
+    let mut owners: BTreeMap<String, usize> = BTreeMap::new();
+    for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+        let full = instance["full_name"].as_str().unwrap_or("");
+        let owner = full.rsplit('.').nth(1).unwrap_or("").trim_end_matches(|c: char| c.is_ascii_digit() || c == '_').to_owned();
+        *owners.entry(owner).or_insert(0) += 1;
+    }
+    println!("stimuli source owners ({} total): {owners:?}", reply.result["total"]);
+    let (_, monsters) = classes(&api, "NPC_Monster");
+    println!("live monster classes: {monsters:?}");
+}
+
 /// Who counts as an enemy to a perception component: the affiliation bits
 /// on every live sense config (detect enemies / neutrals / friendlies), the
 /// team id on every live AI controller and player controller, and the
@@ -482,16 +502,51 @@ fn sophia_melee_attack_lands() {
     assert!(players.ok, "players: {:?}", players.error);
     let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia is in the game").clone();
     let at = |v: &Value| -> [f64; 3] { let a = v.as_array().expect("location"); [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()] };
-    let from = at(&sophia["location"]);
+    let mut from = at(&sophia["location"]);
     // What she perceives right now; enemies are the NPC_ classes (narrative NPCs and players are not).
-    let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
-    assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
-    let mut enemies: Vec<(f64, Value)> = seen.result["perceived"].as_array().into_iter().flatten()
-        .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
-        .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
-    enemies.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let perceived_enemies = |api: &Api<Value>, from: [f64; 3]| -> Vec<(f64, Value)> {
+        let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
+        assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
+        let mut enemies: Vec<(f64, Value)> = seen.result["perceived"].as_array().into_iter().flatten()
+            .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
+            .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+        enemies.sort_by(|a, b| a.0.total_cmp(&b.0));
+        enemies
+    };
+    let mut enemies = perceived_enemies(&api, from);
+    if enemies.is_empty() {
+        // Exam setup, not her knowledge: the harness walks her toward the nearest
+        // loaded NPC until her own perception reports one. Her fight decision
+        // still comes only from what she perceives.
+        let stopped = api.op("ai_player.follow", json!({"player": ""}));
+        assert!(stopped.ok, "follow stop: {:?}", stopped.error);
+        let context = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
+        assert!(actors.ok, "actors_of_class: {:?}", actors.error);
+        let mut candidates: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
+            .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
+            .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+        candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+        for (distance, npc) in candidates.iter().take(6) { println!("loaded NPC {:.0} units away: {} at {}", distance, npc["class"], npc["location"]); }
+        'walk: for (_, npc) in &candidates {
+            let travel = api.op("ai_player.travel", json!({"to": npc["location"]}));
+            if !travel.ok { println!("cannot path to {}: {:?}", npc["class"], travel.error); continue; }
+            println!("harness walks her toward {} ({} path points)", npc["class"], travel.result["points"].as_array().map_or(0, |p| p.len()));
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+            while std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let players = api.op("players", json!({}));
+                from = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
+                enemies = perceived_enemies(&api, from);
+                if !enemies.is_empty() { break 'walk; }
+                let status = api.op("ai_player.status", json!({}));
+                let travel_status = status.result["udp"]["travel"].as_str().unwrap_or("").to_owned();
+                if travel_status == "arrived" || travel_status == "stuck" { println!("walk ended: {travel_status}, she perceives no NPC here"); break; }
+            }
+        }
+    }
     for (distance, enemy) in enemies.iter().take(5) { println!("{:.0} units: {} at {}", distance, enemy["class"], enemy["location"]); }
-    let (mut distance, enemy) = enemies.first().expect("an NPC_ enemy in her perception; she sees none right now").clone();
+    let (mut distance, enemy) = enemies.first().expect("an NPC_ enemy in her perception; none came into her sight").clone();
     // Walk to it: stop any follow loop, travel to the enemy, wait until within melee range.
     let stopped = api.op("ai_player.follow", json!({"player": ""}));
     assert!(stopped.ok, "follow stop: {:?}", stopped.error);
