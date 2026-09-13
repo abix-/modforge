@@ -57,9 +57,12 @@ struct Connection {
     memory: Option<std::path::PathBuf>,
     remembered: u8,
     commands: Option<std::sync::mpsc::Receiver<String>>,
+    status: Option<std::sync::Arc<parking_lot::Mutex<SessionStatus>>>,
     movement_started: Option<Instant>,
     next_move: Instant,
     spawn_positions: BTreeMap<u32, [f64; 3]>,
+    location_map: Option<crate::location::LocationMap>,
+    reported_position: Option<[f64; 3]>,
 }
 
 impl Connection {
@@ -89,9 +92,25 @@ impl Connection {
             memory: None,
             remembered: 0,
             commands: None,
+            status: None,
             movement_started: None,
             next_move: Instant::now(),
             spawn_positions: BTreeMap::new(),
+            location_map: None,
+            reported_position: None,
+        }
+    }
+
+    fn location(&self) -> io::Result<crate::location::Location> {
+        let position = self.controller.position.ok_or_else(|| io::Error::other("no UDP position received yet"))?;
+        self.location_map.as_ref().ok_or_else(|| io::Error::other("local map data unavailable"))?
+            .locate(&self.world, position)
+    }
+
+    fn report_location(&self) {
+        match self.location() {
+            Ok(location) => eprintln!("[abiotic-client] last received UDP location: {location} ({})", self.controller.position_source),
+            Err(error) => eprintln!("[abiotic-client] location unavailable: {error}"),
         }
     }
 
@@ -183,10 +202,25 @@ impl Connection {
         Ok(())
     }
 
+    fn pawn_channel(&self, purpose: &str) -> io::Result<u32> {
+        self.channel_objects.iter().find(|(_, guid)| **guid == self.controller.pawn).map(|(&channel, _)| channel)
+            .ok_or_else(|| invalid(&format!("{purpose} requires the possessed pawn")))
+    }
+
+    fn request_respawn(&mut self) -> io::Result<()> {
+        // Decoded W_RespawnOptions player-start button: Request_RespawnPlayerCharacter(false, true, None).
+        let channel = self.pawn_channel("respawn")?;
+        let mut args = Writer::default();
+        args.put(0, 1); // RevivedOnSpot
+        args.put(1, 1); // UsePlayerStartOnly
+        args.put(0, 1); // DestinationID: presence bit 0, None equals the default so no value follows
+        self.rpc(channel, 258, args); // live character RPC cache: Request_RespawnPlayerCharacter
+        eprintln!("[abiotic-client] requested respawn at a player start");
+        Ok(())
+    }
+
     fn movement_input(&mut self, socket: &UdpSocket, timestamp: f32, acceleration: [f32; 3]) -> io::Result<()> {
-        let Some((&channel, _)) = self.channel_objects.iter().find(|(_, guid)| **guid == self.controller.pawn) else {
-            return Err(invalid("movement requires the possessed pawn"));
-        };
+        let channel = self.pawn_channel("movement")?;
         let (field, args) = if let Some(position) = self.controller.position {
             (38, crate::movement::report(timestamp, acceleration, position))
         } else { (39, crate::movement::input(timestamp, acceleration)) };
@@ -579,7 +613,7 @@ pub fn run(
     player_id: PlayerId,
     duration: Duration,
 ) -> io::Result<Progress> {
-    run_configured(socket, connected, name, player_id, duration, None)
+    run_configured(socket, connected, name, player_id, duration, None, None)
 }
 
 pub fn run_profile(
@@ -592,7 +626,31 @@ pub fn run_profile(
     let id = PlayerId::new(&profile.bot_id)?;
     // Spawn acceptance only: the server rejected RPC 300 with a parameter-read
     // mismatch. Preserve the saved appearance preference until its wire format is fixed.
-    run_configured(socket, connected, &profile.name, id, duration, Some((false, directory)))
+    run_configured(socket, connected, &profile.name, id, duration, Some((false, directory)), None)
+}
+
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct SessionStatus {
+    pub welcomed: bool,
+    pub join_acknowledged: bool,
+    pub possession_confirmed: bool,
+    pub pawn: u32,
+    pub world: String,
+    pub position: Option<[f64; 3]>,
+}
+
+/// Commands and observation belong to the caller; no console thread is created.
+pub struct SessionControl {
+    pub commands: std::sync::mpsc::Receiver<String>,
+    pub status: std::sync::Arc<parking_lot::Mutex<SessionStatus>>,
+}
+
+pub fn run_controlled(
+    socket: &UdpSocket, connected: Connected, profile: &crate::profile::Profile,
+    directory: &std::path::Path, control: SessionControl,
+) -> io::Result<Progress> {
+    run_configured(socket, connected, &profile.name, PlayerId::new(&profile.bot_id)?,
+        Duration::MAX, Some((false, directory)), Some(control))
 }
 
 fn run_configured(
@@ -602,6 +660,7 @@ fn run_configured(
     player_id: PlayerId,
     duration: Duration,
     profile: Option<(bool, &std::path::Path)>,
+    control: Option<SessionControl>,
 ) -> io::Result<Progress> {
     if name.is_empty()
         || name.len() > 32
@@ -622,6 +681,11 @@ fn run_configured(
     if let Some((female, directory)) = profile {
         connection.female = female;
         connection.memory = Some(directory.to_path_buf());
+        match crate::location::LocationMap::load(directory) {
+            Ok(map) => connection.location_map = Some(map),
+            Err(error) => eprintln!("[abiotic-client] local map unavailable: {error}"),
+        }
+        if control.is_none() {
         let (sender, receiver) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             for line in std::io::stdin().lines() {
@@ -630,7 +694,12 @@ fn run_configured(
             }
         });
         connection.commands = Some(receiver);
-        println!("Commands: position, forward (two seconds along +X), stop, quit (UDP logout).");
+        println!("Commands: where, position, state (last UDP correction), forward (two seconds along +X), stop, respawn (at a player start), quit (UDP logout).");
+        }
+    }
+    if let Some(control) = control {
+        connection.commands = Some(control.commands);
+        connection.status = Some(control.status);
     }
     let mut hello = Writer::default();
     hello.put(0, 8);
@@ -660,10 +729,21 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
     let mut buffer = [0; 65536];
     let mut ack = false;
     while started.elapsed() < duration {
+        if connection.status.is_some() {
+            match connection.commands.as_ref().expect("controlled session commands").try_recv() {
+                Ok(command) if command.trim() == "quit" => return Ok(()),
+                Ok(command) if command.trim() == "respawn" => connection.request_respawn()?,
+                Ok(command) => return Err(invalid(&format!("spawn-only session does not accept {command}"))),
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(()),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {},
+            }
+        }
         while let Some(command) = connection.commands.as_ref().and_then(|rx| rx.try_recv().ok()) {
             match command.trim() {
                 "quit" => return Ok(()),
+                "where" => connection.report_location(),
                 "position" => eprintln!("[abiotic-client] last received UDP position {:?} ({})", connection.controller.position, connection.controller.position_source),
+                "state" => eprintln!("[abiotic-client] last received UDP correction {:?}", connection.controller.last_correction),
                 "forward" if connection.controller.initialized => {
                     connection.movement_started = Some(Instant::now());
                     connection.next_move = Instant::now();
@@ -673,7 +753,8 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
                     connection.movement_started = None;
                     connection.movement_input(socket, started.elapsed().as_secs_f32(), [0.0; 3])?;
                 }
-                _ => eprintln!("[abiotic-client] command unavailable: use forward after possession, stop, or quit"),
+                "respawn" => connection.request_respawn()?,
+                _ => eprintln!("[abiotic-client] command unavailable: use where, position, state, forward after possession, stop, respawn, or quit"),
             }
         }
         if let Some(movement_started) = connection.movement_started {
@@ -696,6 +777,20 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
         match socket.recv(&mut buffer) {
             Ok(size) => {
                 connection.receive(&buffer[..size])?;
+                if let Some(status) = &connection.status {
+                    *status.lock() = SessionStatus {
+                        welcomed: connection.progress.welcomed,
+                        join_acknowledged: connection.progress.join_acknowledged,
+                        possession_confirmed: connection.controller.initialized,
+                        pawn: connection.controller.pawn,
+                        world: connection.world.clone(),
+                        position: connection.controller.position,
+                    };
+                }
+                if connection.location_map.is_some() && connection.controller.position != connection.reported_position {
+                    connection.report_location();
+                    connection.reported_position = connection.controller.position;
+                }
                 if let Some(directory) = &connection.memory {
                     for (bit, happened, event) in [
                         (1, connection.progress.welcomed, "server_welcomed_me"),
@@ -729,6 +824,35 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn controlled_session_quit_or_owner_drop_sends_udp_close_and_returns() {
+        for explicit_quit in [false, true] {
+            let server = UdpSocket::bind("127.0.0.1:0").unwrap();
+            server.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            let socket = crate::handshake::socket(server.local_addr().unwrap()).unwrap();
+            let directory = std::env::temp_dir().join(format!("sophia-controlled-{:016x}", fastrand::u64(..)));
+            let profile = crate::profile::Profile::load_or_create(&directory).unwrap();
+            let (commands, receiver) = std::sync::mpsc::channel();
+            if explicit_quit { commands.send("quit".into()).unwrap(); }
+            drop(commands);
+            let control = SessionControl { commands: receiver, status: Default::default() };
+            let worker = std::thread::spawn(move || {
+                run_controlled(&socket, connection().ids, &profile, &directory, control)
+            });
+            let mut bytes = [0; 2048];
+            let (size, _) = server.recv_from(&mut bytes).expect("UDP close reaches server");
+            let mut packet = Reader::packet(&bytes[..size]).unwrap();
+            packet.get(6).unwrap();
+            packet.get(32).unwrap();
+            for _ in 0..8 { packet.get(32).unwrap(); }
+            assert_eq!(packet.get(1).unwrap(), 0, "no timing field");
+            assert_eq!(packet.get(1).unwrap(), 1, "channel control flags");
+            assert_eq!(packet.get(1).unwrap(), 0, "not a channel open");
+            assert_eq!(packet.get(1).unwrap(), 1, "UDP channel close");
+            assert!(worker.join().unwrap().is_ok(), "controlled session returns without a console reader");
+        }
+    }
 
     fn connection() -> Connection {
         Connection::new(

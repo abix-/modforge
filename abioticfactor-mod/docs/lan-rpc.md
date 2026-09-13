@@ -17,10 +17,17 @@
 | Controller RPC | 167 | Server_SetupInitialTraits | Client -> server; PhDTrait, TraitRows, AmnesiaThreshold |
 | Character RPC | 205 | Client_EvaluateLoadingScreen | Server -> owner; reevaluate loading UI |
 | Character RPC | 217 | Client_SetupCharacter | Server -> owner; FirstTimeSpawn boolean |
+| Character RPC | 258 | Request_RespawnPlayerCharacter | Owner -> server; RevivedOnSpot bool, UsePlayerStartOnly bool, DestinationID FName. W_RespawnOptions buttons: player start (false, true, None), bed (false, false, None), sector entrance (false, false, TerminalRespawnID), vignette (false, false, Entrance Teleporter). Live: player-start form respawned Sophia |
 | Character RPC | 294 | Request_UpdateOwningLevelLoad | Owner -> server; NewState boolean |
 | Character RPC | 300 | Server_ApplyAllCustomizationData | Owner -> server; full customization parameters, offline schema decoded |
 | Controller property | 16 / 17 | PlayerState / Pawn | Network GUID references; not character-readiness signals |
 | PlayerState property | 30 | HasSetUpSkills | Completion fact; must be interpreted within the creation flow |
+
+RPC parameter encoding, confirmed live by the respawn request: a bool parameter
+is one bit. Every other parameter starts with a presence bit; when the value
+equals the default (DestinationID None) that bit is 0 and nothing follows.
+Sending None as a hardcoded name after a presence bit of 1 made the server close
+the connection with ObjectReplicatorReceivedBunchFail.
 
 The full customization schema has 15 parameters: voice SoftObjectProperty,
 13 named customization selections, and SkinTone as a double. Female assets and
@@ -104,5 +111,30 @@ or root-motion corrections are recognized but not applied. Good-move replies
 do not contain a new position. Idle updates, world-origin rebasing, moving bases,
 teleports and pawn replacement still need complete handling. General pawn
 property decoding remains unfinished. The interactive command is a last-received
-observation, not proof that the stored value is current while idle. Velocity is
-decoded to advance the message reader but is not exposed as state yet.
+observation, not proof that the stored value is current while idle.
+
+### Body-state inputs retained from corrections
+
+The client now retains one complete ordinary absolute correction observation:
+timestamp, position, velocity, relative-velocity flag, optional body rotation,
+optional serialized gravity vector and packed movement-mode byte. The `state`
+command reports this last received correction; it does not predict current
+state. Relative positions and root-motion variants still do not update it.
+Absent rotation/gravity fields remain explicitly absent in this wire observation;
+an absent gravity field is not a zero-gravity measurement. Applying native
+defaults and maintaining a complete local body pose remain separate work.
+
+Rotation serializer TRotator<double>::SerializeCompressedShort at 0x10123E0
+reads a presence bit and optional unsigned 16-bit value for each axis, then
+multiplies by 360/65536. Absent axes within a present rotator become zero;
+an entirely absent rotator remains distinct. The native constant at 0x636D620
+is recorded in movement-rotation-decode.txt. The movement-mode field's omitted
+default is byte 1, as supplied by Serialize at 0x34EA209.
+
+Verification: binary build and all 24 client library tests pass. A test feeds
+a complete pawn RPC block through the receiver and checks position, timestamp,
+rotation (90,0,270), gravity, nondefault mode and relative velocity retention.
+Existing tests retain the missing-field, relative-position and truncation checks.
+The later location-report run exercised this decoder live: Sophia's state
+reported zero absolute velocity, mode 1 and omitted rotation/gravity fields.
+The location work adds one library test, bringing the passing total to 25.

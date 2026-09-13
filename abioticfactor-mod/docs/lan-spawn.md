@@ -2,6 +2,46 @@
 
 [Research index](abiotic-factor.md) | [Todo](todo.md)
 
+## Host mod integration
+
+The generic AI player system is part of the existing AbioticFactorMod.
+Sophia is its first named profile. The module loads the selected profile's
+name, bot identity and memory directory; it does not create a new identity.
+The existing UDP handshake, login and possession/spawn sequence below remains
+the gameplay path. No host-side character creation or teleport is added.
+
+The mod exposes ai_player.start with an absolute profile_dir,
+ai_player.status for the last UDP observation, ai_player.respawn for the
+UDP respawn request at a player start (character RPC 258, see lan-rpc.md), and
+ai_player.stop for UDP logout and worker completion. These HTTP operations manage the UDP client;
+they do not replace its gameplay packets with engine calls. Initial support
+is one active session. A profile file lock is shared with the standalone CLI.
+Network processing runs on an owned worker, with no embedded console reader.
+Shutdown prevents new starts, asks the worker to quit and joins it before
+the DLL unloads. Sending a close does not prove the server flushed its save.
+
+The existing restart.ps1 script builds the release DLL in
+target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll. Its BuildOnly option
+builds and validates without deploying/restarting. After the control plane
+answers, its Save parameter (default latest: the world whose metadata file was
+written most recently) hosts that save on LAN through host.saved_world.
+
+host.saved_world reproduces the decoded Continue menu path with the live
+widget and game instance: SelectNewWorldEntry writes SelectedWorld.FolderName
+into the game instance's ActiveWorldSaveName, and the host button ends in
+HostMultiplayerGame(MaxPlayers, HostLAN, MapToHost) on W_HostMenu_Parent_C,
+whose session success handler opens MapToHost with
+"?listen?bIsLanMatch=1?MaxPlayers=N". HostMultiplayerGame first checks
+IsLoggedIn(GetPlayerController(0)) and otherwise calls HostSingleplayerGame,
+observed live as Browse /Game/Maps/Facility with no options. The op makes the
+same check and refuses until login completes; the script retries. Verified
+live: world URL port 7777 with listen, bIsLanMatch=1, MaxPlayers=6, and Sophia
+joining through the mod afterwards. The permanent ai_player_host
+tests invoke start/status/stop; the start test leaves the selected Sophia
+instance connected after possession confirmation for user-visible verification.
+Local protocol, profile-lock and controlled UDP-close tests pass. Live mod
+spawn, logout and reload acceptance remain pending deployment.
+
 ## Possession and the first spawn: who does what
 
 The owning client and server each have their own controller/pawn objects. A
