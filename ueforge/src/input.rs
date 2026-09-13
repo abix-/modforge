@@ -506,6 +506,56 @@ pub fn class_property_offset(object: &UObject, name: &str, minimum_size: u32) ->
     Err(format!("class chain has no reflected {name} field"))
 }
 
+/// The reflected bool property `name` on the object's class chain, as the
+/// byte offset that holds it and the bit mask within that byte. Bitfield
+/// bools (`uint32 bFlag : 1`) share a byte with their neighbours, so the
+/// mask comes from the FBoolProperty itself, never assumed.
+pub fn class_bool_property(object: &UObject, name: &str) -> Result<(usize, u8), String> {
+    let mut class = object.class();
+    let mut depth = 0;
+    while let Some(current) = class {
+        if depth >= 64 {
+            return Err(format!("class chain exceeded 64 entries while resolving {name}"));
+        }
+        if let Some(property) = current.cached_native_properties().iter().find(|p| p.name == name) {
+            let layout = property.address + crate::ue::offsets::fboolproperty::FIELD_SIZE;
+            if property.address == 0 || !crate::winproc::is_addr_readable(layout + 3) {
+                return Err(format!("{name}: its FBoolProperty is not readable"));
+            }
+            // SAFETY: four readable bytes of the live FBoolProperty: FieldSize, ByteOffset, ByteMask, FieldMask.
+            let bytes = unsafe { (layout as *const [u8; 4]).read_unaligned() };
+            if bytes[0] != 1 || bytes[3] == 0 {
+                return Err(format!("{name}: unexpected bool layout {bytes:?}, not a one-byte field"));
+            }
+            return Ok((property.offset as usize + bytes[1] as usize, bytes[3]));
+        }
+        class = current.super_class();
+        depth += 1;
+    }
+    Err(format!("class chain has no reflected {name} field"))
+}
+
+/// Set the reflected bool `name` on a live object, touching only its bit.
+///
+/// # Safety
+/// `object` must be live, on the game thread.
+pub unsafe fn write_class_bool(object: &UObject, name: &str, value: bool) -> Result<(), String> {
+    let (offset, mask) = class_bool_property(object, name)?;
+    // SAFETY: the byte the property describes on the live object.
+    unsafe {
+        let byte = object.field_ptr(offset) as *mut u8;
+        let current = std::ptr::read_volatile(byte);
+        let wanted = if value { current | mask } else { current & !mask };
+        std::ptr::write_volatile(byte, wanted);
+        let readback = std::ptr::read_volatile(byte);
+        crate::log!("write_class_bool: {name} at 0x{:X} (offset 0x{offset:X}, mask 0x{mask:02X}): 0x{current:02X} -> 0x{wanted:02X}, read back 0x{readback:02X}", byte as usize);
+        if readback != wanted {
+            return Err(format!("{name}: wrote 0x{wanted:02X} at 0x{:X} but read back 0x{readback:02X}", byte as usize));
+        }
+    }
+    Ok(())
+}
+
 fn reflected_property_offset(
     properties: &[NativeProperty],
     name: &str,
@@ -565,6 +615,7 @@ mod tests {
             name: "ControlRotation".into(),
             offset: 0x320,
             element_size: 24,
+            address: 0,
         }];
         assert_eq!(
             reflected_property_offset(&properties, "ControlRotation", 24).unwrap(),

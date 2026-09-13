@@ -81,6 +81,59 @@ area; the same test reads them once an Exor spawns or its class is loaded.
   character event graph at 141569: held item check, burst and fire delay
   timers, MeleeAttackSpeed_Multiply stat, then DetermineMeleeSwingTarget).
 
+## The classes, read from the game's Blueprints (2026-09-13)
+
+Exported with FModel (C:\code\FModel, mapping file AbioticFactor-1.4.0.usmap
+from RevontuletCXVII/AbioticFactor-ModdingCommunity) from
+pakchunk0-Windows.pak into C:\code\FModel\Output\Exports: Properties (.json)
+and Decompiled Blueprints (.cpp, class layout only, no function bodies) for
+the whole Blueprints/Characters tree.
+
+```
+AAbioticCharacter (native)
+  Abiotic_Character_ParentBP_C   323 functions; AIPerception component; IsAI flag
+    Abiotic_PlayerCharacter_C    784 functions; inventory, hotbar, skills, customization,
+                                 Try_AutoAttack, Request_MeleeAttackDamage
+    NPC_Base_ParentBP_C          306 functions; TryMeleeAttackCheck, FindBestMeleeAttack,
+                                 ProcessMeleeHits, Server_DoMeleeAttack, NPCData stats
+```
+
+Abiotic_PlayerCharacter_C names Abiotic_AI_Controller_ParentBP_C as its
+AIControllerClass with AutoPossessAI Disabled; NPC_Base_ParentBP_C names the
+same controller with PlacedInWorldOrSpawned. Blueprints have one parent, so no
+class can inherit both; the NPC attack functions exist only on
+NPC_Base_ParentBP_C.
+
+The published way to give one character player and NPC features is not a new
+class. Epic's Lyra (LyraBotCreationComponent::SpawnOneBot), OpenTournament and
+ShooterGame spawn the AI controller with bWantsPlayerState, then run the game
+mode's DispatchPostLogin and RestartPlayer for it: the game mode spawns the
+ordinary player pawn class and the AI controller possesses it. Player features
+come from the pawn and the PlayerState, NPC features from the AI controller.
+`ai_player.bot` in src/bot.rs does this with the game's own classes; the
+research test is tests/research_bot_player.rs. Live, 2026-09-13: the AI
+controller gets a PlayerState (bWantsPlayerState set between begin and finish
+spawn), RestartPlayer spawns it an Abiotic_PlayerCharacter_C, and
+`ai_player.bot_place` teleports the body to one of the nine Abiotic_WorldStart_C
+actors with the character's own TeleportPlayer, the call the decoded player
+spawn flow makes (lan-spawn.md). The user saw the body at the world start.
+The character's possession handler casts its controller to the player
+controller, so with an AI controller it leaves MyPlayerState and
+MyPlayerController null and Request_SpawnMeInWorld never runs: no player save
+loaded, no Client_SetupCharacter, PlayerState name empty.
+
+Two ueforge faults found on the way: a plain pointer write through an object
+reference was dropped by the optimizer (write_class_bool now writes volatile
+and checks the read-back), and the function parameter walker returned an
+empty list for any Blueprint function with local variables, because it
+required the field chain to end after the parameters (it now accepts the
+declared parameter count).
+
+A modkit for making new Blueprint classes in Unreal Editor 5.4 is cloned and
+built at C:\code\AbioticModkit (AbioticExtended/AbioticModkit; UE 5.4 and
+MSVC 14.38 installed for it). Not needed for the bot pattern; kept in case a
+custom behavior tree task is needed later.
+
 ## What Sophia takes from this
 
 - A perception component on her server-side character, where the enemies

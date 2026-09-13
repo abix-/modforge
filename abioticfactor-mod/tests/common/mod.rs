@@ -15,6 +15,14 @@ pub fn api() -> Api<Value> {
     Api::at(port, "/debug").with_timeout(std::time::Duration::from_secs(30))
 }
 
+/// The human is the one player whose name is not the session's.
+pub fn human_name(api: &Api<Value>, session_name: &str) -> String {
+    let reply = api.op("players", json!({}));
+    assert!(reply.ok, "players: {:?}", reply.error);
+    reply.result["players"].as_array().into_iter().flatten()
+        .find(|p| p["name"] != session_name).expect("the human is in the game")["name"].as_str().unwrap().to_owned()
+}
+
 pub fn ping_or_skip(api: &Api<Value>) -> Option<()> {
     match api.try_op("list_ops", json!({})) {
         Ok(r) if r.ok => Some(()),

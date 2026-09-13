@@ -159,6 +159,18 @@ pub mod fproperty {
     pub const OFFSET_INTERNAL: usize = 0x4C; // verified live on OWS UE 5.4
 }
 
+/// FBoolProperty extends FProperty with the bitfield description. A
+/// bitfield bool's value byte is at `Offset_Internal + BYTE_OFFSET` on the
+/// instance and its bit is `FIELD_MASK`; a plain (non-bitfield) bool has
+/// FieldSize 1 and mask 0xFF. Read from Abiotic Factor's shipped PDB
+/// (UE 5.4, abioticfactor-mod/docs/lan-loading.md, 2026-09-12).
+pub mod fboolproperty {
+    pub const FIELD_SIZE: usize = 0x70;
+    pub const BYTE_OFFSET: usize = 0x71;
+    pub const BYTE_MASK: usize = 0x72;
+    pub const FIELD_MASK: usize = 0x73;
+}
+
 pub mod uclass {
     pub const CAST_FLAGS: usize = 0xD8;
     pub const CLASS_DEFAULT_OBJECT: usize = 0x110;

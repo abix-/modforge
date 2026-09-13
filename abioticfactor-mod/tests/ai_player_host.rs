@@ -2,6 +2,8 @@
 #[path = "common/spawn_trace.rs"]
 #[allow(dead_code)]
 mod spawn_trace;
+mod common;
+use common::human_name;
 use modforge::client::Api;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -187,15 +189,6 @@ fn ai_player_host_travel() {
         std::thread::sleep(Duration::from_secs(2));
     }
 }
-
-/// The human is the one player whose name is not the session's.
-fn human_name(api: &Api<Value>, session_name: &str) -> String {
-    let reply = api.op("players", json!({}));
-    assert!(reply.ok, "players: {:?}", reply.error);
-    reply.result["players"].as_array().into_iter().flatten()
-        .find(|p| p["name"] != session_name).expect("the human is in the game")["name"].as_str().unwrap().to_owned()
-}
-
 #[test]
 #[ignore = "starts Sophia following the human and leaves her following; stop with ai_player_host_follow_stop"]
 fn ai_player_host_follow_start() {

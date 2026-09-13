@@ -961,16 +961,19 @@ mod tests {
                 name: "WorldContextObject".into(),
                 offset: 0,
                 element_size: 8,
+                address: 0,
             },
             NativeProperty {
                 name: "ActorClass".into(),
                 offset: 8,
                 element_size: 8,
+                address: 0,
             },
             NativeProperty {
                 name: "OutActors".into(),
                 offset: 16,
                 element_size: 8,
+                address: 0,
             },
         ];
 
@@ -992,11 +995,13 @@ mod tests {
                 name: "WorldContextObject".into(),
                 offset: 0,
                 element_size: 8,
+                address: 0,
             },
             NativeProperty {
                 name: "ActorClass".into(),
                 offset: 8,
                 element_size: 8,
+                address: 0,
             },
         ];
         assert!(ActorEnumerationLayout::from_properties(32, &properties).is_err());
@@ -1006,6 +1011,7 @@ mod tests {
             name: "OutActors".into(),
             offset: 24,
             element_size: 8,
+            address: 0,
         });
         assert!(ActorEnumerationLayout::from_properties(32, &with_output).is_err());
     }
@@ -1017,11 +1023,13 @@ mod tests {
                 name: "ComponentClass".into(),
                 offset: 0,
                 element_size: 8,
+                address: 0,
             },
             NativeProperty {
                 name: "ReturnValue".into(),
                 offset: 8,
                 element_size: 8,
+                address: 0,
             },
         ];
         assert_eq!(
@@ -1041,11 +1049,13 @@ mod tests {
                 name: "ComponentClass".into(),
                 offset: 0,
                 element_size: 8,
+                address: 0,
             },
             NativeProperty {
                 name: "ReturnValue".into(),
                 offset: 8,
                 element_size: 16,
+                address: 0,
             },
         ];
         assert_eq!(

@@ -1,5 +1,6 @@
 #![allow(clippy::missing_safety_doc)]
 mod ai_player;
+mod bot;
 mod combat;
 mod explore;
 mod host;
@@ -66,6 +67,7 @@ unsafe fn worker() {
     ueforge::ops::OP_REGISTRY.register_many(modforge::input::ops::all());
     ueforge::shutdown::register_builtins();
     ai_player::register();
+    bot::register();
     host::register();
     nav::register();
     combat::register();

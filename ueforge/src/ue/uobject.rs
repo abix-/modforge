@@ -61,6 +61,10 @@ pub struct NativeProperty {
     pub name: String,
     pub offset: u32,
     pub element_size: u32,
+    /// The live FProperty this entry was read from (0 in test fixtures).
+    /// Needed when the value alone is not enough: a bitfield bool's mask
+    /// lives on the property, not on the instance.
+    pub address: usize,
 }
 
 #[repr(transparent)]
@@ -467,6 +471,7 @@ fn walk_native_properties(
             },
             offset: offset as u32,
             element_size: element_size as u32,
+            address: current as usize,
         });
         current = unsafe { (next_addr as *const *const u8).read_unaligned() };
     }
@@ -634,10 +639,14 @@ fn walk_function_parameters(
             name,
             offset: offset as u32,
             element_size: element_size as u32,
+            address: current as usize,
         });
         current = unsafe { (next_addr as *const *const u8).read_unaligned() };
     }
-    if current.is_null() && parameters.len() == expected {
+    // The chain may continue past the parameters: a Blueprint function keeps
+    // its local variables (CallFunc_*, K2Node_*) on the same chain. Finding
+    // exactly the declared number of parameters within ParmsSize is the check.
+    if parameters.len() == expected {
         parameters
     } else {
         Vec::new()
