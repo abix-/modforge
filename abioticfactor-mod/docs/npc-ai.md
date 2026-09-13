@@ -8,7 +8,50 @@ exor_soldier_setup, npc_perception_configs, player_combat_functions) and the
 class traces in tests/http_health.rs. Everything below is decoded or observed;
 guesses are marked.
 
+## Current companion: human Grunt
+
+Sophia uses NPCSpawn_SingleGrunt -> NPC_Soldier_Grunt_C with
+AI_Controller_NPC_Soldier_Grunt_C and BT_Main_Soldier. Her persistent persona
+is registered in the mod's named session; this path does not create a player
+body or claim full player features. The spawner supplies NPC initialization.
+
+The spawn operation copies the human's Faction to Sophia in the same
+game-thread job, before her first combat tick. Leaving the Grunt faction
+unchanged caused her to kill the human. The corrected live test returned
+Faction=2 and Friend=true and observed no human combat target for ten seconds.
+Friend=true does not disable the game's friendly-fire damage multiplier.
+
+The user verified following and successful fights against a Pest and an
+Exor on 2026-09-13. These are user-observed combat results. The earlier
+automated Exor-body trial below failed and does not describe the current
+Grunt companion. No custom attack loop or forced setup flag is required.
+
+tests/companion_live.rs contains the live operations. NPC replacement uses
+ai_player.stop/start; placement uses Actor.K2_TeleportTo and follow uses the
+existing MoveToActor loop. Normal UI respawn/place still require NPC adaptation.
+Walking speed was changed from 130 to 260 on the live instance, not persisted.
+Inventory and skill work is stopped. The later lifecycle crash is undiagnosed.
+
 ## The parts of an NPC
+
+### Grunt ammunition and melee
+
+Read-only Blueprint trace on 2026-09-13: the Grunt class defaults specify
+MaxAmmoCount=20 and a reload montage. NPC_Base_ParentBP's reload event enters
+its graph at 33719. Its completion paths assign CurrentAmmoCount directly
+from MaxAmmoCount (3604/3613 and 3688/3697), with no inventory withdrawal in
+those refill paths. The current companion therefore has replenishing NPC
+ammunition with reload delays, not a finite inventory-backed bullet supply.
+The trace used tests/http_health.rs::class_blueprint_research.
+
+The Grunt declares melee attack montages, and the NPC base owns the melee
+attack/damage functions. Reusing that attack is supported by the class;
+equipping an actual player melee item is not yet verified. A finite-ammo
+integration should retain the native aiming/attack AI, consume real rounds
+when reloading, cap the loaded count to available ammunition, and block
+ranged attacks when empty. Test zero, partial and full reloads plus exact
+item consumption before claiming resource parity. This is proposed work,
+not part of the current combat implementation.
 
 | Part | Where it lives | Live count |
 |---|---|---|
@@ -104,13 +147,12 @@ same controller with PlacedInWorldOrSpawned. Blueprints have one parent, so no
 class can inherit both; the NPC attack functions exist only on
 NPC_Base_ParentBP_C.
 
-The published way to give one character player and NPC features is not a new
-class. Epic's Lyra (LyraBotCreationComponent::SpawnOneBot), OpenTournament and
+Earlier player-body experiment, superseded by the Grunt path above: Epic's Lyra (LyraBotCreationComponent::SpawnOneBot), OpenTournament and
 ShooterGame spawn the AI controller with bWantsPlayerState, then run the game
 mode's DispatchPostLogin and RestartPlayer for it: the game mode spawns the
 ordinary player pawn class and the AI controller possesses it. Player features
 come from the pawn and the PlayerState, NPC features from the AI controller.
-`ai_player.start` in src/ai_player.rs does this with the game's own classes;
+The earlier `ai_player.start` in src/ai_player.rs did this with the game's own classes;
 the live test is tests/ai_player_live.rs. Live, 2026-09-13: the AI controller
 gets a PlayerState (bWantsPlayerState set between begin and finish spawn)
 carrying her name, so the players op lists her beside the human; its
@@ -141,6 +183,94 @@ MSVC 14.38 installed for it). Not needed for the bot pattern; kept in case a
 custom behavior tree task is needed later.
 
 ## What an AI player takes from this
+
+### Confirmed combat blocker, 2026-09-13
+
+Historical Exor-body combat test: ai_player.start used NPCSpawn_QuillExor and
+registers its existing controller as Sophia. The deployed code spawned
+NPC_Monster_Exor_C with AI_Controller_NPC_Exor_C. SetupComplete=true and MyPawn
+pointed to her NPC body; BT_Main_Exor was running. After handing it a freshly
+spawned Pest with ForceSpotTargetImmediately=true, the Pest remained at 25
+health for 30 seconds and the controller retained zero combat targets.
+tests/companion_live.rs::sophia_npc_combat failed its damage assertion. This resolves
+the body-dependent initialization failure, but does not prove combat works.
+The user subsequently selected the Grunt and verified its combat, as recorded
+above. Inventory/skill work is outside the current scope.
+
+GitHub source review, 2026-09-13: the failed controller setup below is
+confirmed, but choosing the player body as the solution was premature.
+The common Abiotic_Character_ParentBP_C declares CharacterInventory, and
+the native AbioticCharacter declares SkillLevelMap. Both player and NPC
+bodies inherit these. The current local FModel exports confirm the inventory
+declaration (Abiotic_Character_ParentBP.cpp:246); the Modkit native header
+confirms SkillLevelMap (AbioticCharacter.h:93), matching progression.md.
+The player adds CharacterEquipSlotInventory and CharacterHotbarInventory.
+These declarations prove shared storage, not that an NPC's inventory,
+XP acquisition, perk effects, equipment or persistence are initialized.
+The next comparison must test those existing systems on an NPC before
+committing to controller adaptation.
+
+Live capability inspection found an NPC Pest with CharacterInventory already
+present, MaxSlots=0, InitialInventorySize=0, and no items. Its SkillLevelMap
+and StatModifierMap were empty. Inventory insertion/transfer is still unproven:
+the test stopped before mutation because even the human's 72 inventory slots
+decoded as empty objects. The permanent npc_inventory_layout diagnostic
+identified PropertiesSize at +0x58 (Object=40, RowHandle=32, inventory slot=152),
+while the mod configured +0xB0. SkillRowHandle also inherits its fields from
+RowHandle, which the struct decoder did not walk. Source corrections cover
+the game-specific size offset, inherited fields, and UserDefinedStruct lookup.
+They require deployment and live verification before capability testing resumes.
+
+External source examples inspected through GitHub CLI:
+
+- [ShooterGame bot](https://github.com/Noesis/UE4-ShooterGame/blob/e56eb85c51752045980f0e2818e82a912bf31f48/Source/ShooterGame/Public/Bots/ShooterBot.h)
+  inherits the shared shooter character with inventory and weapons; its
+  [AI controller](https://github.com/Noesis/UE4-ShooterGame/blob/e56eb85c51752045980f0e2818e82a912bf31f48/Source/ShooterGame/Private/Bots/ShooterAIController.cpp)
+  calls the character's existing weapon-fire functions.
+- [OpenTournament character](https://github.com/OpenTournament/OpenTournament/blob/2e5d2b886f97f4584064e37872829500f122e3bd/Source/OpenTournament/Character/UR_Character.h)
+  has inventory and ability interfaces; its separate bot controller obtains
+  a player state. This is shared character capability with AI control.
+- [Lyra player state](https://github.com/BulkheadLtd/Lyra_5_4/blob/db8015cccd495fac10c863825c54c0a2914878a0/Source/LyraGame/Player/LyraPlayerState.cpp)
+  creates the ability system and grants pawn-data ability sets; its bot
+  creation invokes normal game-mode player initialization and restart.
+- [Abiotic SDK common character](https://github.com/igromanru/AF-CXXHeader/blob/ac22c24ea1f4392f9857cdc4599697ca6bfa297c/Abiotic_Character_ParentBP.hpp)
+  exposes CharacterInventory, while native AbioticCharacter in AbioticFactor.hpp
+  exposes SkillLevelMap. These external headers may be older; local matching
+  declarations support the ownership finding. No working Abiotic NPC with
+  full player progression was established by this search.
+
+During the live Pest encounter, the function watch showed Sophia's
+AddOrUpdatePotentialTarget receiving the Pest repeatedly, but her combat
+target count stayed zero. tests/npc_live.rs::sophia_combat_setup read
+SetupComplete=false and MyPawn=null on her Exor controller.
+
+The permanent class_blueprint_research test decoded the controller's
+AddOrUpdatePotentialTarget: byte 0 jumps straight to return at byte 790
+when SetupComplete is false. No target validation or hostility check runs.
+The controller's ExecuteUbergraph_Abiotic_AI_Controller_ParentBP, range
+2950:6342, explains why: it gets its possessed pawn, casts it to
+NPC_Base_ParentBP_C, and only on success assigns MyPawn, initializes the
+blackboard and decision timer, and sets SetupComplete=true. Sophia is
+Abiotic_PlayerCharacter_C, so the cast fails. The fallback checks for a
+narrative NPC, then prints a setup error and exits. Starting a behavior
+tree separately does not complete this setup.
+
+The controller's melee path also calls TryMeleeAttackCheck on MyPawn
+(byte 7647 onward); that function belongs to the NPC body class. A player
+body cannot be made compatible merely by forcing the setup flag. The
+remaining work is to compare NPC-body inventory/progression initialization
+against player-body controller adaptation, then verify live combat and the
+required player capabilities together. No setup fields were forced.
+
+2026-09-13 live encounter setup: tests/npc_live.rs spawned a Pest beside
+Abix using NPCSpawn_Pest and TrySpawnNPC(IsNight=false,
+ForceSuccessByTrigger=true, CheckOnlyNoSpawn=false). The call returned
+Success=true and SpawnedNPC; the returned actor had 25 health and its own
+Pest AI controller, and the user confirmed it appeared. DebugSpawn's decoded
+body only enumerates existing spawned AI and draws debug lines. CurrentNPCs
+stayed empty after success, so it is not valid spawn acceptance evidence.
+The existing npc.spawn operation still calls DebugSpawn; the live setup
+test supplies the actual spawn request without redeploying the mod.
 
 (Written when Sophia, the first persistent named character, was the only AI
 player; every point holds for any of them.)

@@ -2,43 +2,24 @@
 
 ## Current focus
 
-Live 2026-09-12 20:19:43: user loaded the game and requested the spawn test.
-ai_player_joins_from_host_mod passed against the deployed AbioticFactorMod.
-Sophia's UDP session is running, welcomed, join acknowledged, pawn 6 and
-possession confirmed in /Game/Maps/Facility. The reported actor-open position
-is not proof of final spawn placement. Left this same session connected for
-user-visible spawn verification; do not start a duplicate. Automatic restart
-into september2026 remains unfinished and is not needed for this live run.
+Abiotic Factor: Sophia uses a human Grunt NPC, its soldier AI controller
+and combat tree. The spawn copies the human's faction before her first
+combat tick. The user verified following and fights against a Pest and Exor.
+The team test passed: faction 2, Friend=true, no human combat target.
+Current live walking speed is 260 (was 130), not persisted across respawn.
 
-Build instruction: use abioticfactor-mod/scripts/restart.ps1 and its existing
-target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll output. Do not create
-custom target folders. BuildOnly now runs and validates just that script's
-build step; normal invocation retains deployment/restart. The generic AI player
-module and integration-test build passed, along with 27 client tests, before
-switching back to this authoritative release-build path.
+Current session: documenting and publishing the accepted companion changes.
+Live operations are in tests/companion_live.rs. Inventory/skill experiments
+remain uncommitted and stopped. Preserve other unrelated uncommitted work.
+NPC reload directly refills CurrentAmmoCount from MaxAmmoCount; finite
+ammunition and equipping player melee weapons are not implemented.
 
-Current implementation: generic AI player module inside the existing
-AbioticFactorMod, with profile-selected ai_player.start/status/stop operations.
-Sophia is the first instance, not the system name. Existing UDP spawn ordering
-is reused. The old standalone session exited; no new mod session was started
-and no DLL was deployed. Complete build/tests and deploy before live acceptance.
-User also requested researching restart into their existing hosted save;
-game-instance function catalog was captured, automatic save launch is unfinished.
-
-Updated user decision 2026-09-12: embed Sophia's existing Rust UDP client in
-the human's host mod. One game client; Sophia remains a separate LAN player.
-All gameplay actions stay on UDP; host-world reads and native dynamic
-navigation/path queries are allowed. First embed the client with safe
-start/stop/reload ownership and no duplicate connection, then use the shared
-path follower with UDP movement. Local mesh generation is superseded. This
-turn updates the plan only; no runtime changes or new connection were made.
-The preceding research state is retained below as history.
-
-Sophia's next task is local A* navigation using the shared path follower, with gameplay entirely over UDP. Saved navigation research found 62 Facility mesh exports with zero tiles, no separate Office1 mesh exports, and Dynamic generation on all 50 observed live mesh instances. Next identify the collision geometry and settings needed to build Office1's walkable mesh locally. Last known Sophia position is Office1 (-17111.80,13396.19,208.15); the previous diagnostic found her dead. Normal UDP respawn remains necessary before live route acceptance. Session 71760 was not rejoined or moved during navigation research. HTTP remains read-only research, not a gameplay dependency.
+Next: NPC-compatible normal respawn/place controls and finite ammo only
+within requested scope. The 15:54:33 crash remains undiagnosed.
 
 ## Design goals
 
-- Sophia's Rust UDP LAN client runs inside the host mod. Gameplay actions use UDP; host-world reads and native navigation queries support planning. One game client, no direct host character creation or transform-based movement. Preserve her existing identity and memory; engine queries use the game thread and network processing must not block it.
+- Sophia runs in the host mod with an NPC body and its native combat AI. Preserve her persona; copy the human faction during spawn. UDP/player-body work is superseded for this companion.
 - `docs/bot-navigation.md` owns one engine-independent bot-navigation system for both Unreal and Unity. Modforge owns routes, waypoints, the shared path and observation formats, player-input decisions, arrival, failure, and release. Ueforge and Unityforge only return engine paths and observations and inject the selected player input.
 - Topside-style fixed-tick journals remain authoritative for simulations Modforge owns.
 - Injected games use the same producer and consumer separation, but replay operation actions through the existing control plane and advance only after observable condition gates.
@@ -92,6 +73,8 @@ Sophia's next task is local A* navigation using the shared path follower, with g
 - Centroid, spread, point-at-angle, and nearest-point calculations belong to small functions in `modforge::storyteller`; Survivalist retains community selection, minimum spread, angle and radius policy, spawning, hostility, movement, and presentation.
 
 ## Last session summary
+
+- 2026-09-13: Grunt companion, allied faction and follow verified live; user confirmed Pest and Exor combat. Documentation now distinguishes accepted behavior from the failed earlier Exor-body test and deferred player features.
 
 - Generic AI player module and profile-selected controls are implemented in the existing AbioticFactorMod. All 27 client tests and the integration-test build pass. Ran the existing restart.ps1 -BuildOnly successfully; it validated the 3074048-byte release DLL at target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll. No deployment or new join occurred. Live spawn and restart-into-save work remain pending.
 
@@ -423,7 +406,7 @@ Sophia's next task is local A* navigation using the shared path follower, with g
 
 ## Next steps
 
-- Embed the existing Sophia UDP client in the host mod, preserve her profile and connection ownership, then query native navigation and follow paths through UDP. Decode normal UDP respawn before live route acceptance; do not revive through HTTP.
+- Continue Sophia through the accepted NPC path. Adapt normal respawn/place controls when requested; use the existing companion tests for live operations.
 
 - Complete Sophia's local level selection from real map collision, actor overlap and local loading/visibility history, then integrate the verified sector table lookup. Do not substitute host/controller state or coordinate heuristics. Facing/velocity follows this requested sector work. Preserve Sophia's identity and profile; distinct save identity, owning-level readiness, customization, full correction coverage and save completion remain open.
 - Move the current Unreal navigation call and path decoding into Ueforge so MISERY receives the shared path format directly.
@@ -441,7 +424,7 @@ Sophia's next task is local A* navigation using the shared path follower, with g
 
 ## Open questions
 
-- Which host navigation agent/settings and loaded-tile coverage support Sophia's routes, and how does the normal owning client request respawn over UDP?
+- What caused the 15:54:33 NPC lifecycle crash, and how should NPC companion respawn and finite ammo work?
 
 - How should a distinct accepted bot identity preserve Sophia's existing save under numeric key zero?
 - What headless world-data readiness replaces the current unconditional owning-level-loaded reply, and what proves queued saves reached disk before reconnect?

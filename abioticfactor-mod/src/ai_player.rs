@@ -1,6 +1,6 @@
 //! AI players in this game: persistent named characters (modforge::persona;
-//! Sophia is the first, Charles next) joined as players on the host with
-//! no network client, driven by the game's own NPC controller. The
+//! Sophia is the first, Charles next) spawned with NPC bodies on the host,
+//! driven by the game's own NPC controller. The
 //! engine-generic parts live in ueforge (spawn_ops::join_ai_player, the
 //! behavior tree builder, loops, reflection); this module holds only what
 //! is Abiotic Factor: the controller class names, the world starts, the
@@ -11,13 +11,8 @@
 //! AI player joined when there is exactly one. Sessions are kept by name,
 //! so more than one can be in the world at once.
 //!
-//! Epic's Lyra (LyraBotCreationComponent::SpawnOneBot), OpenTournament and
-//! ShooterGame all make a bot the same way: spawn the AI controller class
-//! with bWantsPlayerState so it gets a PlayerState, then hand it to the game
-//! mode's RestartPlayer, which spawns the ordinary player pawn class and
-//! possesses it. Player features come from the pawn and the PlayerState; NPC
-//! features from the AI controller. Abiotic_PlayerCharacter_C already names
-//! Abiotic_AI_Controller_ParentBP_C as its AI controller class (npc-ai.md).
+//! The NPC spawner initializes the body and controller together. The former
+//! RestartPlayer path produced a player body that failed NPC controller setup.
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -27,10 +22,6 @@ use ueforge::ue::UObject;
 /// The first persistent named character; `ai_player.start {name}` picks another.
 pub(crate) const DEFAULT_NAME: &str = "Sophia";
 const DEFAULT_APPEARANCE: &str = "female";
-/// The NPCs' controller, which the player character class already names.
-const CONTROLLER_CLASS: &str = "Abiotic_AI_Controller_ParentBP_C";
-/// Where the game keeps its NPC and AI controller Blueprints (FModel export).
-const NPC_PACKAGE_DIR: &str = "/Game/Blueprints/Characters/NPCs";
 /// The game's world start actors, which its own spawn flow teleports a new
 /// player to (history/lan-spawn.md: Abiotic_WorldStart, TeleportPlayer).
 const WORLD_START_CLASS: &str = "Abiotic_WorldStart_C";
@@ -118,10 +109,8 @@ unsafe fn teleport(pawn: &UObject, location: [f64; 3]) -> Result<bool, String> {
     Ok(reply["ReturnValue"] == true)
 }
 
-/// Join a named character: her AI controller with a PlayerState carrying
-/// her name, the game mode's own spawn and possession of her player
-/// character, then her body at the game's first world start. Idempotent
-/// while she is in the world.
+/// Spawn a named NPC beside the human through the game's NPC spawner.
+/// Keep its own initialized AI controller. Idempotent while joined.
 fn start(args: &Value) -> Result<Value, String> {
     let name = args["name"].as_str().filter(|s| !s.is_empty()).unwrap_or(DEFAULT_NAME).to_owned();
     if let Some(session) = SESSIONS.lock().get(&name) {
@@ -132,9 +121,8 @@ fn start(args: &Value) -> Result<Value, String> {
     let directory = match args["profile_dir"].as_str().filter(|s| !s.is_empty()) { Some(dir) => std::path::PathBuf::from(dir), None => modforge::persona::directory(&name).map_err(|e| e.to_string())? };
     let profile = modforge::persona::Profile::load_or_create(&directory, &name, args["appearance"].as_str().unwrap_or(DEFAULT_APPEARANCE)).map_err(|e| e.to_string())?;
     let near_player = args["near_player"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
-    // Which of the game's AI controllers she gets: the parent by default, or a
-    // monster's own (AI_Controller_NPC_Exor_C carries the Exor's behavior tree).
-    let controller_class = args["controller_class"].as_str().filter(|s| !s.is_empty()).unwrap_or(CONTROLLER_CLASS).to_owned();
+    let spawner = args["spawner"].as_str().unwrap_or("NPCSpawn_SingleGrunt").to_owned();
+    let distance = args["distance"].as_f64().unwrap_or(300.0);
     let name_for_job = profile.name.clone();
     let reply = ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
         let name = name_for_job;
@@ -144,17 +132,24 @@ fn start(args: &Value) -> Result<Value, String> {
             None => unsafe { crate::nav::players()? }.into_iter().map(|(player, _)| player).find(|player| *player != name).ok_or("no human player in the game")?,
         };
         let (_, human_character) = unsafe { crate::nav::player_character(&human)? };
+        let faction = unsafe { ueforge::reflect::get_fields(human_character, &["Faction".into()])? }["Faction"].clone();
+        if !faction.is_u64() { return Err("human player faction unavailable".into()); }
         let (x, y, z) = unsafe { ueforge::ue::transform::world_location(human_character as *const UObject as *const u8) }.ok_or("player character has no location")?;
-        // The controller classes live beside the NPCs; a monster's controller is loaded from the assets when no such monster is in memory.
-        crate::npcs::blueprint_class(NPC_PACKAGE_DIR, controller_class.trim_end_matches("_C"))?;
-        let (actor, player_state, pawn) = unsafe { ueforge::spawn_ops::join_ai_player(human_character, &controller_class, (x + 300.0, y, z), &name)? };
-        // The body waits at the world start holding spot; the player controller's
-        // spawn flow would teleport it down, so do that one step here.
-        let (start, start_location) = unsafe { world_start(0)? };
-        // SAFETY: the pawn RestartPlayer just spawned.
-        let teleported = unsafe { teleport(&*(pawn as *const UObject), start_location)? };
-        Ok(json!({"name": name, "controller": unsafe { describe(actor) }, "player_state": format!("0x{player_state:X}"), "pawn": unsafe { describe(pawn) },
-            "world_start": unsafe { describe(start) }, "teleported": teleported, "near_player": human, "state": "joined"}))
+        // The game's spawner supplies the NPC body, controller and initialization
+        // together. RestartPlayer would replace it with a player body.
+        let class = crate::npcs::blueprint_class("/Game/Blueprints/Environment/Spawns", &spawner)?.as_object().name();
+        let spawn_actor = unsafe { ueforge::spawn_ops::spawn_actor(human_character, &class, (x + distance, y, z), 180.0, &serde_json::Map::new())? };
+        let spawned = unsafe { ueforge::reflect::call(&*(spawn_actor as *const UObject), "Abiotic_NPCSpawn_ParentBP_C", "TrySpawnNPC",
+            json!({"IsNight": false, "ForceSuccessByTrigger": true, "CheckOnlyNoSpawn": false}).as_object().unwrap())? };
+        let pawn = addr(&spawned["SpawnedNPC"]);
+        if spawned["Success"] != true || pawn == 0 { return Err(format!("NPC spawn failed: {spawned}")); }
+        // Assign allegiance in this same game-thread job, before the NPC's
+        // first combat tick. Keep the engine's faction checks authoritative.
+        unsafe { ueforge::reflect::set_fields(&*(pawn as *const UObject), json!({"Faction": faction}).as_object().unwrap())? };
+        let controller = unsafe { object_ptr(&*(pawn as *const UObject), "Controller")? };
+        if controller == 0 { return Err("spawned NPC has no AI controller".into()); }
+        Ok(json!({"name": name, "controller": unsafe { describe(controller) }, "pawn": unsafe { describe(pawn) },
+            "spawner": format!("0x{spawn_actor:X}"), "near_player": human, "faction": faction, "body": "npc", "state": "joined"}))
     })?;
     let controller = addr(&reply["controller"]);
     if let Err(error) = modforge::persona::remember(&directory, "joined", reply["world_start"]["name"].as_str().unwrap_or("")) { ueforge::log!("AI player {name} journal: {error}"); }
@@ -361,7 +356,7 @@ fn brain(args: &Value) -> Result<Value, String> {
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.start", "Join a named character (default Sophia): her AI controller with a PlayerState carrying her name, the game mode's own spawn and possession of her player character, her body at the first world start", "{name?: str, appearance?: str, near_player?: str, profile_dir?: str, controller_class?: str}", start),
+        ueforge::ops::OpDef::new("ai_player.start", "Spawn a named character (default Sophia) with an NPC body and its own AI controller beside the human", "{name?: str, appearance?: str, near_player?: str, profile_dir?: str, spawner?: str, distance?: f64}", start),
         ueforge::ops::OpDef::new("ai_player.status", "An AI player's state: controller, body, move status, brain, blackboard, loops; and who is joined", "{player?: str}", status),
         ueforge::ops::OpDef::new("ai_player.stop", "Leave: stop the player's loops, destroy her body and controller", "{player?: str}", stop),
         ueforge::ops::OpDef::new("ai_player.respawn", "The respawn screen's player start request on the player's body", "{player?: str}", respawn),

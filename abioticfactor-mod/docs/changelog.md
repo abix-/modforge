@@ -1,5 +1,24 @@
 # Abiotic Factor changelog
 
+## 2026-09-13
+
+- Sophia now spawns as a human Grunt through NPCSpawn_SingleGrunt, keeping
+  the game's soldier controller and combat tree. This replaces the player
+  body that failed the NPC controller's initialization.
+- Her faction is copied from the human during spawn. The live team test
+  verified faction 2, Friend=true and no human combat target over ten seconds.
+- Following and NPC replacement beside the human passed live tests. The user
+  confirmed Sophia successfully fought both a Pest and an Exor.
+- Walking speed was doubled on the live instance from 130 to 260 and read
+  back after two seconds. This adjustment does not yet survive respawn.
+- Permanent combat, team, follow, speed and encounter operations are in
+  tests/companion_live.rs. Enemy creation uses TrySpawnNPC; DebugSpawn only
+  draws debug information.
+- Release build and deployment passed. The user-observed fights are combat
+  acceptance; the older Exor-body automated test failed and is historical.
+- A crash after the hostile Grunt encounter remains undiagnosed. Inventory,
+  skills and player-body customization are outside the current combat scope.
+
 ## 2026-09-12
 
 | Area | Shipped | Verification |
