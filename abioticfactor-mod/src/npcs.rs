@@ -15,7 +15,7 @@ const SPAWNER_PACKAGE_DIR: &str = "/Game/Blueprints/Environment/Spawns";
 const SPAWNER_PARENT: &str = "Abiotic_NPCSpawn_ParentBP_C";
 
 /// The loaded class for a Blueprint name, loading `<dir>/<name>` if needed. Game thread.
-fn blueprint_class(dir: &str, name: &str) -> Result<&'static ueforge::ue::UClass, String> {
+pub(crate) fn blueprint_class(dir: &str, name: &str) -> Result<&'static ueforge::ue::UClass, String> {
     let class_name = format!("{name}_C");
     if let Some(class) = ueforge::ue::find_class_fast(&class_name) { return Ok(class); }
     let package = ueforge::ue::fname::from_str(&format!("{dir}/{name}"), ueforge::ue::fname::FindName::Add).ok_or("package FName unavailable")?;

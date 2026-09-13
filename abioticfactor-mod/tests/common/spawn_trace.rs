@@ -3,7 +3,7 @@ use modforge::client::Api;
 use serde_json::{Value, json};
 use windows_sys::Win32::{Foundation::HANDLE, System::Diagnostics::Debug::ReadProcessMemory};
 
-fn http_read(api: &Api<Value>, address: u64, length: usize) -> Result<Vec<u8>, String> {
+pub fn http_read(api: &Api<Value>, address: u64, length: usize) -> Result<Vec<u8>, String> {
     let reply = api.try_op("read_bytes", json!({"instance_selector":format!("addr:0x{address:X}"),"length":length})).map_err(|e| e.to_string())?;
     if !reply.ok { return Err(format!("HTTP read failed: {:?}", reply.error)); }
     hex::decode(reply.result["bytes_hex"].as_str().ok_or("missing bytes_hex")?).map_err(|e| e.to_string())
@@ -112,7 +112,7 @@ pub fn sector_table(api: &Api<Value>) -> Result<(), String> {
 
 /// Every reflected field of a struct or class chain: (name, property class, offset).
 /// Offset is at +0x44, the same field the working object lookup reads.
-fn struct_fields(api: &Api<Value>, mut class: u64) -> Result<Vec<(String, String, u32)>, String> {
+pub fn struct_fields(api: &Api<Value>, mut class: u64) -> Result<Vec<(String, String, u32)>, String> {
     let mut fields = Vec::new();
     for _ in 0..32 {
         if class == 0 { break; }
@@ -140,14 +140,14 @@ pub fn object_fields(api: &Api<Value>, object: u64) -> Result<Vec<(String, Strin
 }
 
 /// The name of a live object (its FName at +24), or None for a null pointer.
-fn object_name(api: &Api<Value>, object: u64) -> Result<Option<String>, String> {
+pub fn object_name(api: &Api<Value>, object: u64) -> Result<Option<String>, String> {
     if object == 0 { return Ok(None); }
     Ok(Some(schema_name(api, u64::from_le_bytes(http_read(api, object + 24, 8)?.try_into().unwrap()))?))
 }
 
 /// Decode one row field by its property class, reading only the fixed byte
 /// width that property type needs (no element-size read, which was unreliable).
-fn decode_field(api: &Api<Value>, kind: &str, address: u64) -> Result<Value, String> {
+pub fn decode_field(api: &Api<Value>, kind: &str, address: u64) -> Result<Value, String> {
     let read = |n: usize| http_read(api, address, n);
     Ok(match kind {
         "NameProperty" => json!(schema_name(api, u64::from_le_bytes(read(8)?.try_into().unwrap()))?),
@@ -698,7 +698,7 @@ pub fn readiness(api: &Api<Value>, process: HANDLE, object: u64) -> Result<(), S
     Ok(())
 }
 
-fn object_field(api: &Api<Value>, object: u64, wanted: &str) -> Result<u64, String> {
+pub fn object_field(api: &Api<Value>, object: u64, wanted: &str) -> Result<u64, String> {
     let offset = field_offset(api, object, wanted)?;
     Ok(u64::from_le_bytes(http_read(api, object + u64::from(offset), 8)?.try_into().unwrap()))
 }

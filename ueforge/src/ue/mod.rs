@@ -46,7 +46,7 @@ pub use player::PlayerRef;
 pub use tarray::TArray;
 pub use typed_field::TypedField;
 pub use uobject::{
-    GObjectsView, ProcessEventFn, Runtime, UClass, UFunction, UObject, find_class_fast,
+    GObjectsView, ProcessEventFn, Runtime, UClass, UFunction, UObject, find_class_fast, find_struct_fast,
     init_runtime, runtime, try_runtime,
 };
 

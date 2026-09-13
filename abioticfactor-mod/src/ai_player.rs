@@ -21,6 +21,8 @@ use ueforge::ue::UObject;
 
 /// The NPCs' controller, which the player character class already names.
 const CONTROLLER_CLASS: &str = "Abiotic_AI_Controller_ParentBP_C";
+/// Where the game keeps its NPC and AI controller Blueprints (FModel export).
+const NPC_PACKAGE_DIR: &str = "/Game/Blueprints/Characters/NPCs";
 /// The game's world start actors, which its own spawn flow teleports a new
 /// player to (lan-spawn.md: Abiotic_WorldStart, Array_Random, TeleportPlayer).
 const WORLD_START_CLASS: &str = "Abiotic_WorldStart_C";
@@ -86,14 +88,14 @@ pub(crate) fn release_walking() -> Result<(), String> {
 }
 
 /// A reflected object pointer field. Game thread.
-unsafe fn object_ptr(object: &UObject, name: &str) -> Result<u64, String> {
+pub(crate) unsafe fn object_ptr(object: &UObject, name: &str) -> Result<u64, String> {
     let offset = ueforge::input::class_property_offset(object, name, 8)?;
     // SAFETY: an eight-byte reflected field on a live object.
     Ok(unsafe { (object.field_ptr(offset) as *const u64).read_unaligned() })
 }
 
 /// Name, class and location of a live actor, or null for a null pointer.
-unsafe fn describe(actor: u64) -> Value {
+pub(crate) unsafe fn describe(actor: u64) -> Value {
     if actor == 0 { return Value::Null; }
     // SAFETY: a non-null actor pointer the engine handed back.
     let object = unsafe { &*(actor as *const UObject) };
@@ -102,7 +104,7 @@ unsafe fn describe(actor: u64) -> Value {
 }
 
 /// Her controller and pawn from the session. Game thread.
-unsafe fn session_controller() -> Result<(&'static UObject, u64), String> {
+pub(crate) unsafe fn session_controller() -> Result<(&'static UObject, u64), String> {
     let address = SESSION.lock().as_ref().map(|s| s.controller).ok_or("Sophia has not joined; run ai_player.start")?;
     if !modforge::winproc::is_addr_readable(address as usize) { return Err("Sophia's controller is gone".into()); }
     // SAFETY: the controller start() spawned, still readable.
@@ -148,6 +150,9 @@ fn start(args: &Value) -> Result<Value, String> {
     let profile = crate::profile::Profile::load_or_create(&directory).map_err(|e| e.to_string())?;
     let name = profile.name.clone();
     let near_player = args["near_player"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+    // Which of the game's AI controllers she gets: the parent by default, or a
+    // monster's own (AI_Controller_NPC_Exor_C carries the Exor's behavior tree).
+    let controller_class = args["controller_class"].as_str().filter(|s| !s.is_empty()).unwrap_or(CONTROLLER_CLASS).to_owned();
     let name_for_job = name.clone();
     let reply = ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
         let name = name_for_job;
@@ -159,16 +164,17 @@ fn start(args: &Value) -> Result<Value, String> {
         let (_, human_character) = unsafe { crate::nav::player_character(&human)? };
         let human_ptr = human_character as *const UObject as *const u8;
         let (x, y, z) = unsafe { ueforge::ue::transform::world_location(human_ptr) }.ok_or("player character has no location")?;
-        let class = ueforge::ue::find_class_fast(CONTROLLER_CLASS).ok_or_else(|| format!("{CONTROLLER_CLASS} is not loaded"))?;
+        // The controller classes live beside the NPCs; a monster's controller is loaded from the assets when no such monster is in memory.
+        let class = crate::npcs::blueprint_class(NPC_PACKAGE_DIR, controller_class.trim_end_matches("_C"))?;
         let location = (x + 300.0, y, z);
         // Deferred, so bWantsPlayerState is set before PostInitializeComponents,
         // where AAIController creates its PlayerState (AIController.cpp, UE 5.4).
         let actor = unsafe { ueforge::ue::spawn::begin_spawn(human_ptr, class as *const _ as u64, location, 180.0, 1.0) };
-        if actor == 0 { return Err(format!("{CONTROLLER_CLASS} did not begin spawning")); }
+        if actor == 0 { return Err(format!("{controller_class} did not begin spawning")); }
         // SAFETY: an actor the engine created and has not finished.
         let controller = unsafe { &*(actor as *const UObject) };
         unsafe { ueforge::input::write_class_bool(controller, "bWantsPlayerState", true)? };
-        if unsafe { ueforge::ue::spawn::finish_spawn(actor, location, 180.0, 1.0) } == 0 { return Err(format!("{CONTROLLER_CLASS} did not finish spawning")); }
+        if unsafe { ueforge::ue::spawn::finish_spawn(actor, location, 180.0, 1.0) } == 0 { return Err(format!("{controller_class} did not finish spawning")); }
         // The controller Blueprint's defaults leave PathFollowingComponent null
         // even though its class carries the subobject, and OnPossess initializes
         // the component only when the pointer is set. So set it before possession
@@ -208,6 +214,48 @@ fn start(args: &Value) -> Result<Value, String> {
     Ok(reply)
 }
 
+/// An FName for a key or asset name, as the bytes a parameter block takes.
+pub(crate) fn fname_bytes(name: &str) -> Result<[u8; 8], String> {
+    let fname = ueforge::ue::fname::from_str(name, ueforge::ue::fname::FindName::Add).ok_or_else(|| format!("FName {name} unavailable"))?;
+    Ok(fname.as_u64().to_le_bytes())
+}
+
+/// Her brain, read from the engine: the controller's BehaviorTree asset, its
+/// BrainComponent and whether it runs, and the blackboard's combat keys the
+/// decoded target choice writes (npc-ai.md: TargetActor, CanSeeTarget,
+/// LastKnownLocation, PotentialCombatTargetCount). Game thread.
+pub(crate) unsafe fn brain_state(controller: &UObject) -> Value {
+    let mut state = serde_json::Map::new();
+    let tree = unsafe { object_ptr(controller, "BehaviorTree") }.unwrap_or(0);
+    // SAFETY: a live asset pointer or null.
+    state.insert("behavior_tree".into(), if tree == 0 { Value::Null } else { json!(unsafe { &*(tree as *const UObject) }.full_name()) });
+    let brain = unsafe { object_ptr(controller, "BrainComponent") }.unwrap_or(0);
+    state.insert("brain".into(), unsafe { describe(brain) });
+    if brain != 0 {
+        // SAFETY: the live brain component.
+        let running = unsafe { crate::perception::call_named(&*(brain as *const UObject), "BrainComponent", "IsRunning", &[]) }.map(|(p, r)| p.get(r).copied().unwrap_or(0) != 0);
+        state.insert("running".into(), running.map(Value::from).unwrap_or_else(|e| json!(e)));
+    }
+    let blackboard = unsafe { object_ptr(controller, "Blackboard") }.unwrap_or(0);
+    if blackboard != 0 {
+        // SAFETY: the live blackboard component.
+        let board = unsafe { &*(blackboard as *const UObject) };
+        let mut keys = serde_json::Map::new();
+        for key in ["TargetActor", "TargetLocked", "CanSeeTarget", "HasHeardSound"] {
+            let value = fname_bytes(key).and_then(|k| unsafe { crate::perception::call_named(board, "BlackboardComponent", if key == "TargetActor" { "GetValueAsObject" } else { "GetValueAsBool" }, &[("KeyName", &k)]) })
+                .map(|(p, r)| if key == "TargetActor" { unsafe { describe(u64::from_le_bytes(p[r..r + 8].try_into().unwrap())) } } else { json!(p.get(r).copied().unwrap_or(0) != 0) });
+            keys.insert(key.into(), value.unwrap_or_else(|e| json!(e)));
+        }
+        let count = fname_bytes("PotentialCombatTargetCount").and_then(|k| unsafe { crate::perception::call_named(board, "BlackboardComponent", "GetValueAsInt", &[("KeyName", &k)]) })
+            .map(|(p, r)| json!(i32::from_le_bytes(p[r..r + 4].try_into().unwrap())));
+        keys.insert("PotentialCombatTargetCount".into(), count.unwrap_or_else(|e| json!(e)));
+        state.insert("blackboard".into(), Value::Object(keys));
+    } else {
+        state.insert("blackboard".into(), Value::Null);
+    }
+    Value::Object(state)
+}
+
 fn status() -> Result<Value, String> {
     let (name, following) = {
         let session = SESSION.lock();
@@ -218,7 +266,33 @@ fn status() -> Result<Value, String> {
         // SAFETY: game thread.
         let (controller, pawn) = unsafe { session_controller()? };
         let (parms, ret) = unsafe { crate::perception::call_named(controller, "AIController", "GetMoveStatus", &[])? };
-        Ok(json!({"name": name, "controller": unsafe { describe(controller as *const UObject as u64) }, "pawn": unsafe { describe(pawn) }, "walking_owned": following, "move_status": parms.get(ret).copied().unwrap_or(255), "state": "joined"}))
+        Ok(json!({"name": name, "controller": unsafe { describe(controller as *const UObject as u64) }, "pawn": unsafe { describe(pawn) }, "walking_owned": following,
+            "move_status": parms.get(ret).copied().unwrap_or(255), "brain": unsafe { brain_state(controller) }, "state": "joined"}))
+    })
+}
+
+/// Run a behavior tree on her controller through the engine's own
+/// RunBehaviorTree: the controller class's tree by default (the Exor's
+/// controller carries BT_Main_Exor), or a named asset path.
+fn brain(args: &Value) -> Result<Value, String> {
+    let asset = args["tree"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
+    ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
+        // SAFETY: game thread.
+        let (controller, _) = unsafe { session_controller()? };
+        let tree = match asset {
+            Some(path) => {
+                let (package, object) = path.rsplit_once('.').ok_or("tree must be a package path like /Game/Blueprints/AI/Exor/BT_Main_Exor.BT_Main_Exor")?;
+                let package = ueforge::ue::fname::from_str(package, ueforge::ue::fname::FindName::Add).ok_or("package FName unavailable")?;
+                let object = ueforge::ue::fname::from_str(object, ueforge::ue::fname::FindName::Add).ok_or("asset FName unavailable")?;
+                ueforge::assets::load_asset(package.as_u64(), object.as_u64())?
+            }
+            None => unsafe { object_ptr(controller, "BehaviorTree")? },
+        };
+        if tree == 0 { return Err("no behavior tree: the controller class names none and no tree was given".into()); }
+        let (parms, ret) = unsafe { crate::perception::call_named(controller, "AIController", "RunBehaviorTree", &[("BTAsset", &tree.to_le_bytes())])? };
+        let started = parms.get(ret).copied().unwrap_or(0) != 0;
+        // SAFETY: the live tree asset.
+        Ok(json!({"tree": unsafe { &*(tree as *const UObject) }.full_name(), "started": started, "brain": unsafe { brain_state(controller) }}))
     })
 }
 
@@ -311,6 +385,45 @@ fn follow(args: &Value) -> Result<Value, String> {
     Ok(reply)
 }
 
+/// Eyes to brain. On an NPC, the body's perception event hands every sighting
+/// to its controller; her player body has no such event, so this loop does
+/// the same: each second, everything her perception lists goes into her
+/// controller's own potential target list through AddOrUpdatePotentialTarget.
+/// The controller's target choice then filters by faction and picks, as for
+/// an Exor. Nothing here decides who is an enemy.
+const TARGETS_PERIOD: Duration = Duration::from_secs(1);
+static TARGETS: Mutex<Option<Arc<std::sync::atomic::AtomicBool>>> = Mutex::new(None);
+
+fn targets(args: &Value) -> Result<Value, String> {
+    if let Some(previous) = TARGETS.lock().take() { previous.store(false, std::sync::atomic::Ordering::Relaxed); }
+    if !args["on"].as_bool().unwrap_or(true) { return Ok(json!({"targets": false})); }
+    let name = SESSION.lock().as_ref().map(|s| s.name.clone()).ok_or("Sophia has not joined; run ai_player.start")?;
+    let on = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    *TARGETS.lock() = Some(on.clone());
+    let reply = json!({"name": name, "targets": true, "period_seconds": TARGETS_PERIOD.as_secs()});
+    std::thread::Builder::new().name("abiotic-ai-player-targets".into()).spawn(move || {
+        while on.load(std::sync::atomic::Ordering::Relaxed) {
+            match crate::perception::perceived_rows(&name) {
+                Ok(rows) => {
+                    let actors: Vec<u64> = rows.iter().filter_map(|r| u64::from_str_radix(r.addr.trim_start_matches("0x"), 16).ok()).collect();
+                    let handed = ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
+                        // SAFETY: game thread.
+                        let (controller, pawn) = unsafe { session_controller()? };
+                        for actor in actors.iter().filter(|a| **a != pawn) {
+                            unsafe { crate::perception::call_named(controller, "Abiotic_AI_Controller_ParentBP_C", "AddOrUpdatePotentialTarget", &[("PotentialTarget", &actor.to_le_bytes()), ("ForceSpotTargetImmediately", &[0])])? };
+                        }
+                        Ok(json!(actors.len()))
+                    });
+                    if let Err(error) = handed { ueforge::log!("AI player {name} targets: {error}"); }
+                }
+                Err(error) => ueforge::log!("AI player {name} targets: {error}"),
+            }
+            std::thread::sleep(TARGETS_PERIOD);
+        }
+    }).map_err(|e| e.to_string())?;
+    Ok(reply)
+}
+
 /// Research: teleport her body beside a named player or to a world start.
 fn place(args: &Value) -> Result<Value, String> {
     let index = args["world_start"].as_u64().unwrap_or(0) as usize;
@@ -336,7 +449,9 @@ fn place(args: &Value) -> Result<Value, String> {
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.start", "Join: spawn Sophia's AI controller with a PlayerState carrying her name, let the game mode spawn and possess her player character, place her at the first world start", "{near_player?: str, profile_dir?: str}", start),
+        ueforge::ops::OpDef::new("ai_player.start", "Join: spawn Sophia's AI controller with a PlayerState carrying her name, let the game mode spawn and possess her player character, place her at the first world start", "{near_player?: str, profile_dir?: str, controller_class?: str}", start),
+        ueforge::ops::OpDef::new("ai_player.brain", "Run a behavior tree on her controller: the controller class's own tree, or a named asset path", "{tree?: str}", brain),
+        ueforge::ops::OpDef::new("ai_player.targets", "Eyes to brain: every second, hand everything her perception lists to her controller's AddOrUpdatePotentialTarget; on=false stops", "{on?: bool}", targets),
         ueforge::ops::OpDef::new("ai_player.status", "Whether Sophia is in the world: her controller, body, walking owner and move status", "{}", |_| status()),
         ueforge::ops::OpDef::new("ai_player.stop", "Leave: destroy her body and controller", "{}", |_| stop()),
         ueforge::ops::OpDef::new("ai_player.respawn", "The respawn screen's player start request on her body", "{}", |_| respawn()),

@@ -169,8 +169,13 @@ fn list_players(_: &Value) -> Result<Value, String> {
             let character = match unsafe { object_field(controller, "PlayerCharacter") } { Ok(c) => c, Err(_) => unsafe { object_field(controller, "Pawn")? } };
             // SAFETY: a live character actor or null.
             let location = if character == 0 { None } else { unsafe { ueforge::ue::transform::world_location(character as *const u8) } };
+            // The Faction byte on the character decides who counts as an enemy (npc-ai.md).
+            let faction = if character == 0 { None } else {
+                let character = unsafe { &*(character as *const UObject) };
+                ueforge::input::class_property_offset(character, "Faction", 1).ok().map(|offset| unsafe { std::ptr::read_volatile(character.field_ptr(offset)) })
+            };
             rows.push(json!({"name": name, "controller": format!("0x{:X}", controller as *const UObject as u64),
-                "character": format!("0x{character:X}"), "location": location.map(|(x, y, z)| [x, y, z])}));
+                "character": format!("0x{character:X}"), "location": location.map(|(x, y, z)| [x, y, z]), "faction": faction}));
         }
         Ok(json!({"count": rows.len(), "players": rows}))
     })

@@ -321,7 +321,13 @@ impl UClass {
                 |fname| unsafe { rt.name_resolver.to_string(fname) },
             )
         })
-        .max_by_key(Vec::len)
+        // A walk under the wrong layout reads garbage until memory becomes
+        // unreadable; under the right one it ends at the chain's null tail.
+        // Prefer the clean walk, then the longer one. Keeping the longer walk
+        // alone chose the garbage for classes with one property
+        // (BTTask_RunBehavior on Abiotic Factor, 2026-09-13).
+        .max_by_key(|walk| (walk.clean, walk.properties.len()))
+        .map(|walk| walk.properties)
         .unwrap_or_default()
     }
 
@@ -431,6 +437,14 @@ impl UClass {
     }
 }
 
+/// One walk of a property chain under one assumed record layout.
+struct PropertyWalk {
+    properties: Vec<NativeProperty>,
+    /// The chain ended at its null tail, not at unreadable memory or an
+    /// implausible record: the layout fit.
+    clean: bool,
+}
+
 fn walk_native_properties(
     mut current: *const u8,
     next_offset: usize,
@@ -439,7 +453,7 @@ fn walk_native_properties(
     size_offset: usize,
     instance_size: u32,
     mut resolve_name: impl FnMut(FName) -> String,
-) -> Vec<NativeProperty> {
+) -> PropertyWalk {
     let mut properties = Vec::new();
     let mut seen = HashSet::with_capacity(64);
     while !current.is_null() && properties.len() < 4096 {
@@ -475,7 +489,7 @@ fn walk_native_properties(
         });
         current = unsafe { (next_addr as *const *const u8).read_unaligned() };
     }
-    properties
+    PropertyWalk { clean: current.is_null(), properties }
 }
 
 #[cfg(test)]
@@ -492,9 +506,12 @@ mod native_property_tests {
         field[0x34..0x38].copy_from_slice(&16i32.to_le_bytes());
         field[0x44..0x48].copy_from_slice(&48i32.to_le_bytes());
 
-        let properties = walk_native_properties(field_ptr, 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
+        let walk = walk_native_properties(field_ptr, 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
             "PathPoints".into()
         });
+        // The fixture's next pointer loops back to itself: not a clean tail.
+        assert!(!walk.clean);
+        let properties = walk.properties;
 
         assert_eq!(properties.len(), 1);
         assert_eq!(properties[0].name, "PathPoints");
@@ -504,12 +521,38 @@ mod native_property_tests {
 
     #[test]
     fn unreadable_ffield_pointer_stops_without_dereferencing() {
-        let properties =
+        let walk =
             walk_native_properties(1usize as *const u8, 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
                 unreachable!("an unreadable field must not resolve its name")
             });
 
-        assert!(properties.is_empty());
+        assert!(walk.properties.is_empty());
+        assert!(!walk.clean, "stopping at unreadable memory is not a clean tail");
+    }
+
+    /// A chain of one record that ends at null is a clean walk. Read raw
+    /// from Abiotic Factor on 2026-09-13: BTTask_RunBehavior has exactly one
+    /// property, BehaviorAsset at 112, and the other layout's garbage walk
+    /// was longer and used to win.
+    #[test]
+    fn a_single_property_chain_ending_at_null_is_clean() {
+        let mut field = vec![0u8; 0x50];
+        field[0x18..0x20].copy_from_slice(&0usize.to_le_bytes());
+        field[0x20..0x24].copy_from_slice(&1i32.to_le_bytes());
+        field[0x34..0x38].copy_from_slice(&8i32.to_le_bytes());
+        field[0x44..0x48].copy_from_slice(&112i32.to_le_bytes());
+
+        let walk = walk_native_properties(field.as_ptr(), 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
+            "BehaviorAsset".into()
+        });
+
+        assert!(walk.clean);
+        assert_eq!(walk.properties.len(), 1);
+        assert_eq!((walk.properties[0].name.as_str(), walk.properties[0].offset), ("BehaviorAsset", 112));
+        // The selection rule: clean first, then longer.
+        let garbage = PropertyWalk { properties: vec![walk.properties[0].clone(); 3], clean: false };
+        let chosen = [garbage, walk].into_iter().max_by_key(|w| (w.clean, w.properties.len())).unwrap();
+        assert!(chosen.clean && chosen.properties.len() == 1);
     }
 }
 
@@ -810,7 +853,40 @@ pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
     None
 }
 
+/// A UScriptStruct by name, returned as a `UClass` so its reflected fields
+/// can be walked with [`UClass::cached_native_properties`] and its size read
+/// with `properties_size`; both live on UStruct, which a script struct is.
+/// Nothing class-specific (default object, functions) is valid on it.
+pub fn find_struct_fast(name: &str) -> Option<&'static UClass> {
+    let rt = try_runtime()?;
+    let cache = struct_cache();
+    if let Some(c) = cache.read().get(name) {
+        return Some(*c);
+    }
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    if !view.is_valid() {
+        return None;
+    }
+    for obj in view.iter() {
+        if obj.name() != name {
+            continue;
+        }
+        if obj.class().map(|c| c.as_object().name()).as_deref() != Some("ScriptStruct") {
+            continue;
+        }
+        let class: &'static UClass = unsafe { &*(obj as *const UObject as *const UClass) };
+        cache.write().insert(name.to_string(), class);
+        return Some(class);
+    }
+    None
+}
+
 // ---- Caches --------------------------------------------------------------
+
+static STRUCT_CACHE: OnceLock<RwLock<HashMap<String, &'static UClass>>> = OnceLock::new();
+fn struct_cache() -> &'static RwLock<HashMap<String, &'static UClass>> {
+    STRUCT_CACHE.get_or_init(|| RwLock::new(HashMap::with_capacity(64)))
+}
 
 static CLASS_CACHE: OnceLock<RwLock<HashMap<String, &'static UClass>>> = OnceLock::new();
 fn class_cache() -> &'static RwLock<HashMap<String, &'static UClass>> {

@@ -7,6 +7,7 @@ mod nav;
 mod npcs;
 mod perception;
 mod profile;
+mod tree;
 mod ui;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
@@ -76,6 +77,7 @@ unsafe fn worker() {
     perception::register();
     npcs::register();
     explore::register();
+    tree::register();
     ueforge::assets::register_ops();
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::game_thread::serve(&DRAIN);
