@@ -1519,6 +1519,356 @@ fn test_inject_action_movement() {
 }
 
 #[test]
+#[ignore = "snapshots the controller before/after you move the mouse to find the view-rotation field"]
+fn find_view_field() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(30));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
+    let controller = client::read_u64(&api, player.addr, 0x2C8);
+    println!("controller 0x{controller:X}, player 0x{:X}", player.addr);
+
+    let region = 0x900u64;
+    let snap = |api: &Api, base: u64| client::read_bytes(api, base, 0, region);
+
+    let c0 = snap(&api, controller);
+    let p0 = snap(&api, player.addr);
+
+    println!("\n=== MOVE THE MOUSE (turn left and right) for 8 seconds; keep the game focused ===");
+    std::thread::sleep(std::time::Duration::from_secs(8));
+
+    let c1 = snap(&api, controller);
+    let p1 = snap(&api, player.addr);
+
+    // Report 8-byte doubles that changed and look like angles/rotations.
+    let report = |label: &str, a: &[u8], b: &[u8]| {
+        let mut any = false;
+        let n = a.len().min(b.len());
+        let mut off = 0usize;
+        while off + 8 <= n {
+            let va = f64::from_le_bytes(a[off..off + 8].try_into().unwrap());
+            let vb = f64::from_le_bytes(b[off..off + 8].try_into().unwrap());
+            if va != vb && va.is_finite() && vb.is_finite() && vb.abs() < 100000.0 {
+                println!("  {label}+0x{off:03X}: {va:.2} -> {vb:.2}");
+                any = true;
+            }
+            off += 8;
+        }
+        if !any {
+            println!("  {label}: nothing changed");
+        }
+    };
+
+    println!("\ncontroller changes:");
+    report("controller", &c0, &c1);
+    println!("player/pawn changes:");
+    report("pawn", &p0, &p1);
+    println!(
+        "\ndone. A pair near the current yaw/pitch that tracks your mouse is the view rotation. \
+         Nothing anywhere = the mouse did not reach the game (focus)."
+    );
+}
+
+#[test]
+#[ignore = "write-watches the view yaw while you move the mouse; captures what turns the view"]
+fn watch_view_yaw() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(45));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
+    let controller = client::read_u64(&api, player.addr, 0x2C8);
+    assert_ne!(controller, 0, "no controller");
+    let controller_class = read_object_class_name(&api, controller);
+    println!("controller 0x{controller:X} class={controller_class}");
+
+    // ControlRotation is FRotator {Pitch, Yaw, Roll} = 3 doubles; Yaw
+    // is the second (+0x08).
+    let cr_off = field_offset(&api, "PlayerController", "ControlRotation")
+        .or_else(|| field_offset(&api, &controller_class, "ControlRotation"))
+        .or_else(|| field_offset(&api, "Controller", "ControlRotation"))
+        .expect("no ControlRotation field");
+    let yaw_addr = controller + cr_off + 8;
+    println!("ControlRotation +0x{cr_off:X}; yaw at 0x{yaw_addr:X}");
+
+    let y = client::read_bytes(&api, yaw_addr, 0, 8);
+    if y.len() == 8 {
+        println!("current yaw = {:.2}", f64::from_le_bytes(y.try_into().unwrap()));
+    }
+
+    let secs = 12u64;
+    println!(
+        "\n=== MOVE THE MOUSE (turn left/right) for the next {secs} seconds ===\n\
+         (write-watching the view yaw; capturing what writes it)\n"
+    );
+
+    let res = api
+        .op("watch_writes", json!({"addr": yaw_addr, "len": 8, "mode": "write", "duration_ms": secs * 1000}))
+        .result;
+    // Did ControlRotation yaw actually change (mouse reached the game)?
+    let y2 = client::read_bytes(&api, yaw_addr, 0, 8);
+    if y2.len() == 8 {
+        println!("yaw after window = {:.2}", f64::from_le_bytes(y2.try_into().unwrap()));
+    }
+    // Also read the pawn's actor rotation, in case the view lives there.
+    let pawn_rot = client::read_bytes(&api, player.addr, 0x140, 24);
+    if pawn_rot.len() >= 16 {
+        let pyaw = f64::from_le_bytes(pawn_rot[8..16].try_into().unwrap());
+        println!("(pawn +0x140 candidate yaw = {pyaw:.2})");
+    }
+    println!(
+        "exe {} base={} armed={} hit_count={}",
+        res["exe_name"].as_str().unwrap_or("?"),
+        res["exe_base"].as_str().unwrap_or("?"),
+        res["threads_armed"], res["hit_count"],
+    );
+
+    let Some(records) = res["records"].as_array() else {
+        println!("no records");
+        return;
+    };
+    if records.is_empty() {
+        println!("no writes to the view yaw. Either the mouse was not moved, or the view yaw is stored elsewhere.");
+        return;
+    }
+    println!("\n{} write(s) to the view yaw:", records.len());
+    // Distinct writing instructions and their call chains.
+    let mut seen = std::collections::BTreeSet::new();
+    for rec in records {
+        let rip = rec["rip_rva"].as_str().unwrap_or("?").to_string();
+        if !seen.insert(rip.clone()) {
+            continue;
+        }
+        println!(
+            "\n--- writer rip {}+{} (tid {}) rcx={} rdx={} ---",
+            rec["rip_module"].as_str().unwrap_or("?"),
+            rip,
+            rec["tid"],
+            rec["rcx"].as_str().unwrap_or("?"),
+            rec["rdx"].as_str().unwrap_or("?"),
+        );
+        if let Some(frames) = rec["stack_return_addrs"].as_array() {
+            for f in frames.iter().take(14) {
+                println!(
+                    "    {} = {}+{}",
+                    f["addr"].as_str().unwrap_or("?"),
+                    f["module"].as_str().unwrap_or("?"),
+                    f["rva"].as_str().unwrap_or("?"),
+                );
+            }
+        }
+    }
+    println!("\ndone. The writer + its call chain is the view-rotation path; trace it to the mouse-delta source.");
+}
+
+#[test]
+#[ignore = "injects every InputAction continuously and reports which one moves the view (yaw/pitch)"]
+fn find_look_action() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(60));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    let pose = |api: &Api| -> (f64, f64) {
+        let p = &api.op("input.player.pose", json!({})).result["pose"];
+        (p["yaw_deg"].as_f64().unwrap_or(0.0), p["pitch_deg"].as_f64().unwrap_or(0.0))
+    };
+
+    let ss = api.op("walk_class", json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}));
+    let subsystem = ss.result["instances"][0]["addr"].as_str().unwrap().to_string();
+
+    let actions = api.op("walk_class", json!({"class": "InputAction", "max": 200}));
+    let list = actions.result["instances"].as_array().cloned().unwrap_or_default();
+    println!("{} InputAction objects\n", list.len());
+
+    for a in &list {
+        let name = a["name"].as_str().unwrap_or("?").to_string();
+        let addr = match a["addr"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()) {
+            Some(v) => v,
+            None => continue,
+        };
+        let (y0, p0) = pose(&api);
+        let mut start = [0u8; 72];
+        start[0..8].copy_from_slice(&addr.to_le_bytes());
+        start[8..16].copy_from_slice(&100.0f64.to_le_bytes());
+        start[32] = 1;
+        let _ = api.call_ufunction("EnhancedInputSubsystemInterface", "StartContinuousInputInjectionForAction", &subsystem, &start);
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let (y1, p1) = pose(&api);
+        let mut stop = [0u8; 8];
+        stop.copy_from_slice(&addr.to_le_bytes());
+        let _ = api.call_ufunction("EnhancedInputSubsystemInterface", "StopContinuousInputInjectionForAction", &subsystem, &stop);
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let dyaw = y1 - y0;
+        let dpitch = p1 - p0;
+        if dyaw.abs() > 0.5 || dpitch.abs() > 0.5 {
+            println!("*** {name}: yaw {dyaw:+.1}, pitch {dpitch:+.1} <== MOVES THE VIEW");
+        }
+    }
+    println!("\ndone. Any action listed above turns the view when injected.");
+}
+
+#[test]
+#[ignore = "injects mouse turn (TurnInput) with no movement and checks the view yaw actually changes"]
+fn test_mouse_turn_only() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(20));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    let yaw = |api: &Api| -> f64 {
+        api.op("input.player.pose", json!({})).result["pose"]["yaw_deg"]
+            .as_f64()
+            .unwrap_or(f64::NAN)
+    };
+
+    println!("start yaw = {:.1}", yaw(&api));
+    for step in 0..5 {
+        let r = api.op(
+            "input.player.commands",
+            json!({"commands": [{"kind": "mouse_delta", "dx": 300, "dy": 0}]}),
+        );
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        println!("after mouse dx=300 #{step}: ok={} yaw = {:.1}", r.ok, yaw(&api));
+    }
+
+    // Now try StartContinuousInputInjectionForAction on TurnInput.
+    let player = client::resolve_selector(&api, "live_player").expect("no player");
+    let controller = client::read_u64(&api, player.addr, 0x2C8);
+    let epi = client::read_u64(&api, controller, 0x408);
+    let ss = api.op("walk_class", json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}));
+    let subsystem = ss.result["instances"][0]["addr"].as_str().unwrap().to_string();
+    // TurnInput action ptr from ActionInstanceData.
+    let aid = client::read_u64(&api, epi, 0x598);
+    let aid_num = client::read_u64(&api, epi, 0x5A0) as u32 as usize;
+    let mut turn = 0u64;
+    for i in 0..aid_num {
+        let ptr = client::read_u64(&api, aid, (i * 0x70) as u64);
+        if client::object_name(&api, ptr).as_deref() == Some("TurnInput") {
+            turn = ptr;
+            break;
+        }
+    }
+    println!("\nTurnInput action: 0x{turn:X}");
+    if turn == 0 {
+        println!("TurnInput not in ActionInstanceData");
+        return;
+    }
+
+    for val in [1.0f64, 5.0, 50.0] {
+        let mut start = [0u8; 72];
+        start[0..8].copy_from_slice(&turn.to_le_bytes());
+        start[8..16].copy_from_slice(&val.to_le_bytes());
+        start[32] = 1;
+        let y0 = yaw(&api);
+        let _ = api.call_ufunction(
+            "EnhancedInputSubsystemInterface",
+            "StartContinuousInputInjectionForAction",
+            &subsystem,
+            &start,
+        );
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let y1 = yaw(&api);
+        let mut stop = [0u8; 8];
+        stop.copy_from_slice(&turn.to_le_bytes());
+        let _ = api.call_ufunction(
+            "EnhancedInputSubsystemInterface",
+            "StopContinuousInputInjectionForAction",
+            &subsystem,
+            &stop,
+        );
+        println!("StartContinuous TurnInput={val}: yaw {y0:.1} -> {y1:.1} (delta {:.1})", y1 - y0);
+    }
+}
+
+#[test]
+#[ignore = "finds an A* path to a point and travels there via player input (bot.find_path + bot.travel_to)"]
+fn test_bot_navigate() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(90));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
+    let sel = format!("addr:0x{:X}", player.addr);
+    let start = actor_location(&api, &sel);
+    println!("player at {:.0}, {:.0}, {:.0}", start[0], start[1], start[2]);
+
+    // Target: offset from the player. Env overrides let a specific
+    // reachable point be tried.
+    let off_x = std::env::var("TGT_DX").ok().and_then(|s| s.parse().ok()).unwrap_or(1200.0);
+    let off_y = std::env::var("TGT_DY").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let tx = start[0] + off_x;
+    let ty = start[1] + off_y;
+    let tz = start[2];
+    println!("target {tx:.0}, {ty:.0}, {tz:.0}\n");
+
+    // 1. A* path.
+    let fp = api.op("bot.find_path", json!({"x": tx, "y": ty, "z": tz}));
+    println!("bot.find_path: ok={} err={:?}", fp.ok, fp.error);
+    if fp.ok {
+        println!("  path points: {}", fp.result["count"]);
+    } else {
+        println!("no path; try a different TGT_DX/TGT_DY toward walkable ground");
+        return;
+    }
+
+    // 2. Travel there via player input.
+    let tr = api.op("bot.travel_to", json!({"x": tx, "y": ty, "z": tz}));
+    println!("\nbot.travel_to: ok={} result={}", tr.ok, tr.result);
+
+    let end = actor_location(&api, &sel);
+    let progressed = {
+        let d0 = ((tx - start[0]).powi(2) + (ty - start[1]).powi(2)).sqrt();
+        let d1 = ((tx - end[0]).powi(2) + (ty - end[1]).powi(2)).sqrt();
+        d0 - d1
+    };
+    let travelled = ((end[0] - start[0]).powi(2) + (end[1] - start[1]).powi(2)).sqrt();
+    println!(
+        "\nplayer now {:.0}, {:.0}, {:.0}\ntravelled {travelled:.0}, closed {progressed:.0} of the gap to target",
+        end[0], end[1], end[2]
+    );
+    if progressed > 200.0 {
+        println!("\n*** SUCCESS: the bot navigated toward the target under its own control ***");
+    }
+}
+
+#[test]
+#[ignore = "finds the Unreal navigation system and the path-query UFunction + parm layout"]
+fn research_navigation() {
+    let Some(api) = api_or_skip() else { return };
+    let api = api.with_timeout(std::time::Duration::from_secs(30));
+    assert!(offsets_live(&api), "MISERY offsets are not live");
+
+    // Navigation system instance(s).
+    for class in ["NavigationSystemV1", "RecastNavMesh"] {
+        let r = api.op("walk_class", json!({"class": class, "max": 3}));
+        let n = r.result["instances"].as_array().map(|a| a.len()).unwrap_or(0);
+        println!("walk_class({class}): {n} instance(s)");
+        if let Some(first) = r.result["instances"].as_array().and_then(|a| a.first()) {
+            println!("  {}", first["full_name"].as_str().unwrap_or("?"));
+        }
+    }
+
+    // Path-query UFunctions and their parm layouts.
+    println!("\n=== path-query functions ===");
+    for (class, func) in [
+        ("NavigationSystemV1", "FindPathToLocationSynchronously"),
+        ("NavigationSystemV1", "FindPathToActorSynchronously"),
+        ("NavigationSystemV1", "GetRandomReachablePointInRadius"),
+        ("NavigationSystemV1", "K2_ProjectPointToNavigation"),
+    ] {
+        print_function_parameters(&api, class, func);
+    }
+
+    // UNavigationPath fields (PathPoints array, IsValid, etc.).
+    println!("\n=== NavigationPath / struct layouts ===");
+    print_all_fields(&api, "NavigationPath");
+    for s in ["NavPathPoint", "Vector"] {
+        let r = api.op("discover_struct_detail", json!({"name": s}));
+        println!("{s}: {}", r.result);
+    }
+}
+
+#[test]
 #[ignore = "finds the Enhanced Input subsystem and InjectInputForAction parm layout"]
 fn research_inject_action() {
     let Some(api) = api_or_skip() else { return };

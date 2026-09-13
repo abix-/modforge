@@ -2,11 +2,43 @@
 
 ## Current focus
 
-Sophia's standalone Rust UDP client spawns and walks with animations, confirmed by the user. Own coordinates now decode from actor opening and ordinary absolute movement corrections; live movement produced changing server coordinates. Next establish further received state one piece at a time, starting with facing/velocity. HTTP and shipped code support research only. Preserve the existing mod installation, Sophia's profile and current connection. The user verifies gameplay.
+Live 2026-09-12 20:19:43: user loaded the game and requested the spawn test.
+ai_player_joins_from_host_mod passed against the deployed AbioticFactorMod.
+Sophia's UDP session is running, welcomed, join acknowledged, pawn 6 and
+possession confirmed in /Game/Maps/Facility. The reported actor-open position
+is not proof of final spawn placement. Left this same session connected for
+user-visible spawn verification; do not start a duplicate. Automatic restart
+into september2026 remains unfinished and is not needed for this live run.
+
+Build instruction: use abioticfactor-mod/scripts/restart.ps1 and its existing
+target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll output. Do not create
+custom target folders. BuildOnly now runs and validates just that script's
+build step; normal invocation retains deployment/restart. The generic AI player
+module and integration-test build passed, along with 27 client tests, before
+switching back to this authoritative release-build path.
+
+Current implementation: generic AI player module inside the existing
+AbioticFactorMod, with profile-selected ai_player.start/status/stop operations.
+Sophia is the first instance, not the system name. Existing UDP spawn ordering
+is reused. The old standalone session exited; no new mod session was started
+and no DLL was deployed. Complete build/tests and deploy before live acceptance.
+User also requested researching restart into their existing hosted save;
+game-instance function catalog was captured, automatic save launch is unfinished.
+
+Updated user decision 2026-09-12: embed Sophia's existing Rust UDP client in
+the human's host mod. One game client; Sophia remains a separate LAN player.
+All gameplay actions stay on UDP; host-world reads and native dynamic
+navigation/path queries are allowed. First embed the client with safe
+start/stop/reload ownership and no duplicate connection, then use the shared
+path follower with UDP movement. Local mesh generation is superseded. This
+turn updates the plan only; no runtime changes or new connection were made.
+The preceding research state is retained below as history.
+
+Sophia's next task is local A* navigation using the shared path follower, with gameplay entirely over UDP. Saved navigation research found 62 Facility mesh exports with zero tiles, no separate Office1 mesh exports, and Dynamic generation on all 50 observed live mesh instances. Next identify the collision geometry and settings needed to build Office1's walkable mesh locally. Last known Sophia position is Office1 (-17111.80,13396.19,208.15); the previous diagnostic found her dead. Normal UDP respawn remains necessary before live route acceptance. Session 71760 was not rejoined or moved during navigation research. HTTP remains read-only research, not a gameplay dependency.
 
 ## Design goals
 
-- The Abiotic Factor AI player joins as a standalone Rust LAN client over UDP, without an injected or in-process game client. Protocol research and offline package inspection support that client.
+- Sophia's Rust UDP LAN client runs inside the host mod. Gameplay actions use UDP; host-world reads and native navigation queries support planning. One game client, no direct host character creation or transform-based movement. Preserve her existing identity and memory; engine queries use the game thread and network processing must not block it.
 - `docs/bot-navigation.md` owns one engine-independent bot-navigation system for both Unreal and Unity. Modforge owns routes, waypoints, the shared path and observation formats, player-input decisions, arrival, failure, and release. Ueforge and Unityforge only return engine paths and observations and inject the selected player input.
 - Topside-style fixed-tick journals remain authoritative for simulations Modforge owns.
 - Injected games use the same producer and consumer separation, but replay operation actions through the existing control plane and advance only after observable condition gates.
@@ -60,6 +92,39 @@ Sophia's standalone Rust UDP client spawns and walks with animations, confirmed 
 - Centroid, spread, point-at-angle, and nearest-point calculations belong to small functions in `modforge::storyteller`; Survivalist retains community selection, minimum spread, angle and radius policy, spawning, hostility, movement, and presentation.
 
 ## Last session summary
+
+- Generic AI player module and profile-selected controls are implemented in the existing AbioticFactorMod. All 27 client tests and the integration-test build pass. Ran the existing restart.ps1 -BuildOnly successfully; it validated the 3074048-byte release DLL at target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll. No deployment or new join occurred. Live spawn and restart-into-save work remain pending.
+
+- User approved the host-mod UDP design. Updated Abiotic todo with client embedding, connection lifecycle and native navigation acceptance. Kept completed research marked done; local navigation generation and physics-free far movement are superseded. Documentation only, no build/run/deploy performed.
+
+- 2026-09-12: Extended the standalone Abiotic map reader to navigation properties and bounded native headers. Facility parsing, Office1 extraction and read-only runtime generation research pass. Both inspected packages lack saved navigation tiles; 50 live meshes use Dynamic generation. Updated lan-loading.md and the existing todo. No A* path or UDP respawn implemented yet.
+
+- User directed next work toward A* navigation using existing shared project code. Inspected Modforge route.rs and Ueforge nav.rs: reuse path/steering/arrival/stuck behavior, supply a local extracted-navmesh provider for Sophia and UDP movement output. Added owning Abiotic todo row; area volumes do not establish walkability.
+- Two-second +X attempt produced no new correction. Permanent named-Sophia research confirms death flag true, not downed or disabled, both loaded flags true, movement mode 1, unchanged server position. Boolean masks verified from shipped PDB. Added death/UDP-respawn row; no further movement or revival attempted. Session 71760 remains the existing connection.
+
+- Added actual convex point containment and a profile-local map/table loader. where reports Sophia's last UDP coordinate and every containing named map region; different world/missing regions remain explicit. Binary build, 25 library tests and standalone location integration pass.
+- Ran updated Sophia once after confirming the old process had exited on host closure. Session 71760 remains live. Sent stop (zero acceleration) to obtain a fresh post-spawn correction; where reports Office Sector / Office1 at (-17111.80368023579,13396.1879664876,208.15000039223014). No walking command or HTTP gameplay query used. Exact HUD selection remains an open separate row.
+
+- Retained ordinary UDP correction body inputs instead of discarding them: timestamp, velocity/relative flag, optional rotation/gravity and packed movement mode; added state command. Native compressed-rotation trace, binary build and 24 library tests pass. No new Sophia run or reconnect performed.
+- Permanent camera function catalog located Update Head Joint Location Rotation; all 3518 bytes decode. Camera height depends on actual crouch interpolation/falling, sitting, death/downed, emotes and size; rotation uses gravity-relative control rotation, head socket and sway. Exact formula/default inputs and local visibility lifecycle remain required before runtime area reporting. Findings in Abiotic lan-loading.md and lan-rpc.md; completed substeps marked done in todo.
+
+- Updated mod is now live. Permanent sector_pose_snapshot_research and character_attachments_match_same_update_snapshot pass at frame 70043. Both character shapes and every attachment match at strict existing tolerances; normal controller reports V_FOG/Flathill. No Sophia movement or reconnect performed.
+- Character capture todo marked done; separate overlap/level capture consistency row remains open. One passing coherent pose does not prove the exact cause of prior failures or full collision parity while moving. Runtime sector reporting still needs Sophia's own UDP/local state.
+- User authorized diagnostic installation. Installed the built DLL as AbioticFactorMod/dlls/main.dll and preserved main-before-read-snapshot.dll; both hashes verified. Earlier unknown-op result was before the updated image loaded and is now superseded.
+
+- Decoded World streaming-array serialization, InitializeLevels and demo filtering. Added map reader output and Rust static registration; permanent comparison matches 59 native levels and all 223 registration decisions. Explicit demo/full cases produce 222/223 registered volumes.
+- Subsequent normal-player captures fail camera transform reconstruction; translation then rotation differ. Separate reads crossing updates are a hypothesis. Recorded capture consistency work in Abiotic todo; strict collision comparison remains failing for the new captures. No movement, reconnect or mod deployment. Runtime sector integration remains unfinished.
+
+- Implemented local convex collision using pinned Parry 0.27.0, including element/brush transforms, nonuniform brush scaling, capsule hemisphere dimensions and camera-sphere attachment reconstruction. Compared all 223 transforms and overlap booleans against permanent read-only game research; all match for the captured pose.
+- Fed computed intersections into the verified native level selector and game table: Office3/The Office Sector matches the normal client. Collision integration and 23 library tests pass. No Sophia reconnect/movement or mod deployment occurred.
+- Earlier collision checkpoint recorded Theatre volume _61 among 223 world volumes but absent from 222 registered volumes. Its exclusion is now explained by the demo gate above. Collision boundary/filter semantics, changed character state and Sophia runtime lifecycle inputs remain open in the Abiotic todo.
+
+- Reproduced native level selection in Rust, including exact initial float bits, double-to-float age calculation, native-order ties and found/empty-asset behavior. Permanent HTTP research captures actual world manager entries and pure actor-overlap queries. Rust matches the recorded 59-instance state, Office3 and The Office Sector; two offline sector comparisons and 21 library tests pass.
+- Observed two player components in the selected volume: a capsule with unscaled half-height 96/radius 32 and a radius-10 sphere attached to FirstPersonCamera. Captured relative transforms and attachment names; camera parent-chain composition, collision filtering and local overlap production remain unfinished. Sophia's session and the mod installation were preserved.
+
+- Traced the normal Abiotic client sector path through actor overlap, LastTimeVisible selection, DT_Levels, FX overrides and HUD state. Documented decoded functions and remaining local-world inputs in abioticfactor-mod/docs/lan-loading.md.
+- Permanent read-only HTTP research exported 64 level/sector/day/night rows and observed the normal controller in Facility_Office3 with The Office Sector. Rust reproduces the table lookup and matches all four observed outputs; offline parity and 20 client library tests pass.
+- Sophia's running session was not restarted or driven for this research. The table lookup is not yet integrated into her session because local actor overlap and level loading/visibility history are still missing. The existing mod and its installation were preserved.
 
 - 2026-09-12 position milestone: normal movement report RPC 38 now supplies last received location and receives packed response RPC 31. Shipped code established correction vectors are raw doubles, unlike actor-open packed vectors. Live movement updated coordinates from approximately (-17436.65,13276.37,208.15) to (-17111.93,13396.13,208.15). Build and 19 tests pass. Current live process is exec session 77428 (target/sophia-position); position/forward/stop/quit commands. Final build also exists under target/abioticfactor-client. Old session 12945 had already exited on truncated packet; recorded as unresolved. Later rebuilds used quit and confirmed server logout. Last-received coordinates do not establish idle freshness; relative/root-motion corrections and full prediction remain open.
 - 2026-09-12 acceptance: user confirmed Sophia walked with animations after the repeated two-second +X command. Spawn and bounded movement are confirmed; distance, facing-relative movement and full prediction/correction are not. Current process remains in exec session 12945 and accepts forward/stop/quit. User requested documentation and push, then identified incoming UDP state as the next task, starting with Sophia's coordinates.
@@ -358,7 +423,9 @@ Sophia's standalone Rust UDP client spawns and walks with animations, confirmed 
 
 ## Next steps
 
-- Establish facing/velocity from incoming UDP next, then other replicated state one piece at a time. Preserve Sophia's identity and profile; distinct save identity, owning-level readiness, customization, full correction coverage and save completion remain open.
+- Embed the existing Sophia UDP client in the host mod, preserve her profile and connection ownership, then query native navigation and follow paths through UDP. Decode normal UDP respawn before live route acceptance; do not revive through HTTP.
+
+- Complete Sophia's local level selection from real map collision, actor overlap and local loading/visibility history, then integrate the verified sector table lookup. Do not substitute host/controller state or coordinate heuristics. Facing/velocity follows this requested sector work. Preserve Sophia's identity and profile; distinct save identity, owning-level readiness, customization, full correction coverage and save completion remain open.
 - Move the current Unreal navigation call and path decoding into Ueforge so MISERY receives the shared path format directly.
 - Make Unityforge inject the same virtual W/A/S/D, mouse, and interaction commands through Unity's normal player input.
 - Prove one live Unity waypoint trip through the same Modforge bot-navigation code used by MISERY.
@@ -373,6 +440,8 @@ Sophia's standalone Rust UDP client spawns and walks with animations, confirmed 
 - Exercise Survivalist's Load/Unload re-init path through a live story switch and confirm `ReinitAfterUnload` works.
 
 ## Open questions
+
+- Which host navigation agent/settings and loaded-tile coverage support Sophia's routes, and how does the normal owning client request respawn over UDP?
 
 - How should a distinct accepted bot identity preserve Sophia's existing save under numeric key zero?
 - What headless world-data readiness replaces the current unconditional owning-level-loaded reply, and what proves queued saves reached disk before reconnect?

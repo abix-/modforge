@@ -21,6 +21,20 @@ pub(crate) struct Controller {
     pub loading_requested: bool,
     pub position: Option<[f64; 3]>,
     pub position_source: &'static str,
+    pub last_correction: Option<MovementCorrection>,
+}
+
+/// One received correction, not a predicted or continuously current pose.
+#[derive(Debug, PartialEq)]
+pub(crate) struct MovementCorrection {
+    pub timestamp: f32,
+    pub position: [f64; 3],
+    pub velocity: [f64; 3],
+    pub velocity_relative_to_base: bool,
+    pub rotation_degrees: Option<[f64; 3]>,
+    // None records an omitted wire field, not zero gravity.
+    pub serialized_gravity: Option<[f64; 3]>,
+    pub packed_movement_mode: u8,
 }
 
 impl Controller {
@@ -36,8 +50,10 @@ impl Controller {
                 let size = block.packed()? as usize;
                 let mut args = block.take(size)?;
                 if field == 31 {
-                    if let Some(position) = movement_response(&mut args)? {
+                    if let Some(correction) = movement_response(&mut args)? {
+                        let position = correction.position;
                         self.position = Some(position);
+                        self.last_correction = Some(correction);
                         self.position_source = "server movement correction";
                         eprintln!("[abiotic-client] UDP position {position:?} ({})", self.position_source);
                     }
@@ -148,7 +164,7 @@ pub(crate) struct Bunch {
 
 /// Prefix established from this build's FCharacterMoveResponseDataContainer::Serialize.
 /// A base-relative correction is not a world coordinate without that base's transform.
-fn movement_response(args: &mut Reader<'_>) -> io::Result<Option<[f64; 3]>> {
+fn movement_response(args: &mut Reader<'_>) -> io::Result<Option<MovementCorrection>> {
     if args.get(1)? == 0 { return Ok(None); }
     let length = args.packed()? as usize;
     let mut data = args.take(length)?;
@@ -161,25 +177,31 @@ fn movement_response(args: &mut Reader<'_>) -> io::Result<Option<[f64; 3]>> {
     let montage = data.get(1)? != 0;
     let root_motion = data.get(1)? != 0;
     let position = Objects::raw_vector(&mut data)?;
-    Objects::raw_vector(&mut data)?; // velocity
-    if data.get(1)? != 0 { Objects::raw_vector(&mut data)?; } // gravity
-    if rotation {
-        for _ in 0..3 { if data.get(1)? != 0 { data.get(16)?; } }
-    }
+    let velocity = Objects::raw_vector(&mut data)?;
+    let serialized_gravity = if data.get(1)? != 0 { Some(Objects::raw_vector(&mut data)?) } else { None };
+    let rotation_degrees = if rotation {
+        let mut angles = [0.0; 3];
+        // TRotator<double>::SerializeCompressedShort, RVA 0x10123E0.
+        for angle in &mut angles {
+            if data.get(1)? != 0 { *angle = data.get(16)? as f64 * (360.0 / 65536.0); }
+        }
+        Some(angles)
+    } else { None };
     if data.get(1)? != 0 { data.packed()?; } // base object
     if data.get(1)? != 0 { // base bone name
         if data.get(1)? != 0 { data.packed()?; }
         else { data.string()?; data.get(32)?; }
     }
-    if data.get(1)? != 0 { data.get(8)?; } // movement mode, default walking
+    let packed_movement_mode = if data.get(1)? != 0 { data.get(8)? as u8 } else { 1 };
     let relative_position = data.get(1)? != 0;
-    data.get(1)?; // relative velocity
+    let velocity_relative_to_base = data.get(1)? != 0;
     if relative_position || montage || root_motion {
         eprintln!("[abiotic-client] correction requires base/root-motion decoding; position not updated");
         return Ok(None);
     }
     if data.remaining() != 0 || args.remaining() != 0 { return Err(invalid("unexpected movement correction tail")); }
-    Ok(Some(position))
+    Ok(Some(MovementCorrection { timestamp, position, velocity, velocity_relative_to_base,
+        rotation_degrees, serialized_gravity, packed_movement_mode }))
 }
 
 pub(crate) struct Channel {
@@ -338,6 +360,50 @@ mod tests {
     }
 
     #[test]
+    fn pawn_rpc_retains_body_correction_and_relative_velocity() {
+        let mut data = Writer::default();
+        data.put(0, 1);
+        data.put(u64::from(12.5_f32.to_bits()), 32);
+        data.put(0, 1); // no base
+        data.put(1, 1); // rotation present
+        data.put(0, 2); // no root motion
+        for value in [100.0_f64, 200.0, 300.0, 4.0, 5.0, 6.0] { data.put(value.to_bits(), 64); }
+        data.put(1, 1);
+        for value in [0.0_f64, 0.0, -1.0] { data.put(value.to_bits(), 64); }
+        for angle in [16384, 0, 49152] {
+            data.put(u64::from(angle != 0), 1);
+            if angle != 0 { data.put(angle, 16); }
+        }
+        data.put(0, 2); // no base object or bone
+        data.put(1, 1);
+        data.put(3, 8); // nondefault packed movement mode
+        data.put(0, 1); // absolute position
+        data.put(1, 1); // velocity relative to base
+        let mut args = Writer::default();
+        args.put(1, 1);
+        args.packed(data.len() as u32);
+        args.append(&data);
+        let mut block = Writer::default();
+        block.bounded(31, 310);
+        block.packed(args.len() as u32);
+        block.append(&args);
+        let mut wire = Writer::default();
+        wire.put(0, 1);
+        wire.put(1, 1);
+        wire.packed(block.len() as u32);
+        wire.append(&block);
+        let bytes = wire.finish();
+        let mut controller = Controller::default();
+        controller.receive_pawn(&mut Reader::packet(&bytes).unwrap()).unwrap();
+        assert_eq!(controller.position, Some([100.0, 200.0, 300.0]));
+        assert_eq!(controller.last_correction, Some(MovementCorrection {
+            timestamp: 12.5, position: [100.0, 200.0, 300.0], velocity: [4.0, 5.0, 6.0],
+            velocity_relative_to_base: true, rotation_degrees: Some([90.0, 0.0, 270.0]),
+            serialized_gravity: Some([0.0, 0.0, -1.0]), packed_movement_mode: 3,
+        }));
+    }
+
+    #[test]
     fn correction_does_not_treat_relative_coordinates_as_world_position() {
         for relative in [false, true] {
             let mut data = Writer::default();
@@ -354,7 +420,12 @@ mod tests {
             args.append(&data);
             let bytes = args.finish();
             let result = movement_response(&mut Reader::packet(&bytes).unwrap()).unwrap();
-            assert_eq!(result, if relative { None } else { Some([100.0, 200.0, 300.0]) });
+            assert_eq!(result.as_ref().map(|c| c.position), if relative { None } else { Some([100.0, 200.0, 300.0]) });
+            if let Some(correction) = result {
+                assert_eq!(correction.rotation_degrees, None);
+                assert_eq!(correction.serialized_gravity, None);
+                assert_eq!(correction.packed_movement_mode, 1);
+            }
             let truncated = &bytes[..bytes.len() - 1];
             assert!(Reader::packet(truncated).and_then(|mut reader| movement_response(&mut reader)).is_err());
         }

@@ -250,9 +250,12 @@ impl UClass {
     /// `[obj_base, obj_base + properties_size)` is the memory
     /// owned by a UObject of this class.
     pub fn properties_size(&self) -> u32 {
+        let Some(rt) = try_runtime() else {
+            return 0;
+        };
         unsafe {
             (self as *const UClass as *const u8)
-                .add(offsets::ustruct::SIZE)
+                .add(rt.platform_offsets.struct_layout.properties_size)
                 .cast::<u32>()
                 .read_unaligned()
         }
@@ -304,9 +307,15 @@ impl UClass {
         ]
         .into_iter()
         .map(|(next, name, offset)| {
-            walk_native_properties(head, next, name, offset, instance_size, |fname| unsafe {
-                rt.name_resolver.to_string(fname)
-            })
+            walk_native_properties(
+                head,
+                next,
+                name,
+                offset,
+                rt.platform_offsets.struct_layout.element_size,
+                instance_size,
+                |fname| unsafe { rt.name_resolver.to_string(fname) },
+            )
         })
         .max_by_key(Vec::len)
         .unwrap_or_default()
@@ -423,6 +432,7 @@ fn walk_native_properties(
     next_offset: usize,
     name_offset: usize,
     value_offset: usize,
+    size_offset: usize,
     instance_size: u32,
     mut resolve_name: impl FnMut(FName) -> String,
 ) -> Vec<NativeProperty> {
@@ -435,7 +445,7 @@ fn walk_native_properties(
         let next_addr = current as usize + next_offset;
         let name_addr = current as usize + name_offset;
         let offset_addr = current as usize + value_offset;
-        let size_addr = current as usize + offsets::fproperty::ELEMENT_SIZE;
+        let size_addr = current as usize + size_offset;
         if !crate::winproc::is_addr_readable(next_addr)
             || !crate::winproc::is_addr_readable(name_addr)
             || !crate::winproc::is_addr_readable(offset_addr)
@@ -477,8 +487,9 @@ mod native_property_tests {
         field[0x34..0x38].copy_from_slice(&16i32.to_le_bytes());
         field[0x44..0x48].copy_from_slice(&48i32.to_le_bytes());
 
-        let properties =
-            walk_native_properties(field_ptr, 0x18, 0x20, 0x44, 0x100, |_| "PathPoints".into());
+        let properties = walk_native_properties(field_ptr, 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
+            "PathPoints".into()
+        });
 
         assert_eq!(properties.len(), 1);
         assert_eq!(properties[0].name, "PathPoints");
@@ -489,7 +500,7 @@ mod native_property_tests {
     #[test]
     fn unreadable_ffield_pointer_stops_without_dereferencing() {
         let properties =
-            walk_native_properties(1usize as *const u8, 0x18, 0x20, 0x44, 0x100, |_| {
+            walk_native_properties(1usize as *const u8, 0x18, 0x20, 0x44, 0x34, 0x100, |_| {
                 unreachable!("an unreadable field must not resolve its name")
             });
 
@@ -599,7 +610,7 @@ fn walk_function_parameters(
         let next_addr = current as usize + next_offset;
         let name_addr = current as usize + name_offset;
         let offset_addr = current as usize + value_offset;
-        let size_addr = current as usize + offsets::fproperty::ELEMENT_SIZE;
+        let size_addr = current as usize + rt.platform_offsets.struct_layout.element_size;
         if !crate::winproc::is_addr_readable(next_addr)
             || !crate::winproc::is_addr_readable(name_addr)
             || !crate::winproc::is_addr_readable(offset_addr)

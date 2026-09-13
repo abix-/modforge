@@ -1,0 +1,15 @@
+[package]
+name = "abiotic-map-reader"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Standalone offline research executable; no game-process dependency.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+serde_json = "1"
+retoc = { git = "https://github.com/trumank/retoc", rev = "885a8dae740cb1ce1e41ff2e74f67f9f0c118237" }
+usmap = { git = "https://github.com/trumank/jmap", rev = "3ba766e3f2b3035f8c4334ed9598e41122823746" }
+byteorder = "1"

@@ -6,8 +6,15 @@ use abioticfactor_client::handshake;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "locate") && args.len() == 5 {
+        let map = abioticfactor_client::location::LocationMap::load(&abioticfactor_client::profile::directory()?)?;
+        let location = map.locate(&args[1], [args[2].parse()?, args[3].parse()?, args[4].parse()?])?;
+        println!("Supplied coordinate lookup: {location}");
+        return Ok(());
+    }
     if args.first().is_some_and(|arg| arg == "sophia") && args.len() <= 3 {
         let directory = abioticfactor_client::profile::directory()?;
+        let _session_lock = abioticfactor_client::profile::lock(&directory)?;
         let profile = abioticfactor_client::profile::Profile::load_or_create(&directory)?;
         let memories = abioticfactor_client::profile::recall(&directory)?;
         println!("{} remembers {} recorded events.", profile.name, memories.len());
@@ -27,12 +34,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !handshake_only && !join {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "usage: abioticfactor-client sophia [ip:port] [seconds] OR handshake <ip:port> <network-version> OR join <ip:port> <network-version> <name> <seconds> <bot-id-32hex>",
+            "usage: abioticfactor-client sophia [ip:port] [seconds] OR locate <world> <x> <y> <z> OR handshake <ip:port> <network-version> OR join <ip:port> <network-version> <name> <seconds> <bot-id-32hex>",
         )
         .into());
     }
     let server: SocketAddr = args[1].parse()?;
     let version = args[2].parse()?;
+    let _session_lock = if join {
+        Some(abioticfactor_client::profile::lock(&abioticfactor_client::profile::directory()?)?)
+    } else { None };
     let socket = handshake::socket(server)?;
     let connected = handshake::connect(&socket, version, Duration::from_secs(5))?;
     println!(

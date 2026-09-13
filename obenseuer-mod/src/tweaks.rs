@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use serde_json::json;
 use unityforge::hook::{HOOK_REGISTRY, HookCtx, patch_postfix, patch_prefix_ctx};
-use unityforge::mono::{MonoObject, json_handle, owned_object};
+use unityforge::mono::{MonoObject, MonoType, json_handle, owned_object};
 
 use crate::settings;
 
@@ -12,6 +12,7 @@ pub const DEFAULT_STACK_MULTIPLIER: i32 = 10;
 
 static INVENTORY_PATCHED: AtomicBool = AtomicBool::new(false);
 static ITEMS_PATCHED: AtomicBool = AtomicBool::new(false);
+static TRADES_DUMPED: AtomicBool = AtomicBool::new(false);
 static ITEM_DB_HANDLE: AtomicI32 = AtomicI32::new(0);
 static INV_HANDLE: AtomicI32 = AtomicI32::new(0);
 
@@ -144,6 +145,8 @@ extern "C" fn on_inventory_start_postfix(_ctx: *const c_void) {
             &format!("obenseuer-mod: inventory UI resize failed: {e}"),
         );
     }
+
+    dump_trade_info();
 }
 
 fn resize_inventory_panel(inv_handle: i32, slot_count: i32) -> Result<(), String> {
@@ -277,4 +280,183 @@ fn apply_stack_multiplier_array(arr: &MonoObject, multiplier: i32) -> Result<usi
         }
     }
     Ok(patched)
+}
+
+fn dump_trade_info() {
+    if TRADES_DUMPED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+
+    let Some(trade_type) = MonoType::find("Trade") else {
+        unityforge::mono::log(
+            unityforge::mono::LogLevel::Warn,
+            "obenseuer-mod: trade dump: Trade type not found",
+        );
+        return;
+    };
+
+    let trades_json = match trade_type.walk(true) {
+        Ok(j) => j,
+        Err(e) => {
+            unityforge::mono::log(
+                unityforge::mono::LogLevel::Warn,
+                &format!("obenseuer-mod: trade dump: walk failed: {e}"),
+            );
+            return;
+        }
+    };
+
+    let Some(trades) = trades_json
+        .get("instances")
+        .and_then(|v| v.as_array())
+    else {
+        unityforge::mono::log(
+            unityforge::mono::LogLevel::Warn,
+            "obenseuer-mod: trade dump: walk returned no instances array",
+        );
+        return;
+    };
+
+    unityforge::mono::log(
+        unityforge::mono::LogLevel::Info,
+        &format!("=== TRADE DUMP: {} traders found ===", trades.len()),
+    );
+
+    for (i, trade_val) in trades.iter().enumerate() {
+        let Some(h) = json_handle(trade_val) else { continue };
+        let obj = owned_object(h);
+
+        let name = obj
+            .invoke("get_name", &json!([]))
+            .ok()
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_else(|| "?".into());
+
+        let sell = obj
+            .read_field("baseSellPrice")
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let buy = obj
+            .read_field("basePurchasePrice")
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0);
+        let money_min = obj
+            .read_field("traderMoneyAmountMin")
+            .ok()
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let money_max = obj
+            .read_field("traderMoneyAmountMax")
+            .ok()
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let current = obj
+            .read_field("currentMoney")
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(-1.0);
+        let stolen = obj
+            .read_field("buysStolen")
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_open = obj
+            .read_field("open")
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let destroy = obj
+            .read_field("destroyPurchasedItems")
+            .ok()
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let sell_mode = obj
+            .read_field("sellPriceMode")
+            .ok()
+            .and_then(|v| v.as_i64())
+            .unwrap_or(1);
+        let buy_mode = obj
+            .read_field("purchasePriceMode")
+            .ok()
+            .and_then(|v| v.as_i64())
+            .unwrap_or(1);
+
+        let currency_name = |mode: i64| if mode == 0 { "RM" } else { "OC" };
+
+        let owner_id = read_owner_id(&obj);
+
+        unityforge::mono::log(
+            unityforge::mono::LogLevel::Info,
+            &format!(
+                "Trade[{i}] \"{name}\" owner={owner_id} open={is_open} sell={sell}/{} buy={buy}/{} money={current:.0}({money_min}-{money_max}) stolen={stolen} destroy={destroy}",
+                currency_name(sell_mode),
+                currency_name(buy_mode),
+            ),
+        );
+
+        if let Ok(arr_val) = obj.read_field("allowedCategories") {
+            let cats = read_mono_string_array(&arr_val);
+            if !cats.is_empty() {
+                unityforge::mono::log(
+                    unityforge::mono::LogLevel::Info,
+                    &format!("  allowed: {}", cats.join(", ")),
+                );
+            }
+        }
+        if let Ok(arr_val) = obj.read_field("forbiddenCategories") {
+            let cats = read_mono_string_array(&arr_val);
+            if !cats.is_empty() {
+                unityforge::mono::log(
+                    unityforge::mono::LogLevel::Info,
+                    &format!("  forbidden: {}", cats.join(", ")),
+                );
+            }
+        }
+    }
+
+    unityforge::mono::log(
+        unityforge::mono::LogLevel::Info,
+        "=== END TRADE DUMP ===",
+    );
+}
+
+fn read_owner_id(obj: &MonoObject) -> i64 {
+    let Ok(owner_val) = obj.read_field("owner") else {
+        return -1;
+    };
+    if let Some(id) = owner_val.get("ID").and_then(|x| x.as_i64()) {
+        return id;
+    }
+    if let Some(oh) = json_handle(&owner_val) {
+        let owner_obj = owned_object(oh);
+        if let Ok(id_val) = owner_obj.read_field("ID") {
+            if let Some(id) = id_val.as_i64() {
+                return id;
+            }
+        }
+    }
+    -1
+}
+
+fn read_mono_string_array(arr_val: &serde_json::Value) -> Vec<String> {
+    let Some(arr_h) = json_handle(arr_val) else {
+        return vec![];
+    };
+    let arr = owned_object(arr_h);
+    let len = arr
+        .read_field("Length")
+        .ok()
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as usize;
+    let mut result = Vec::new();
+    for i in 0..len {
+        if let Ok(s) = arr.invoke("Get", &json!([i as i64])) {
+            if let Some(text) = s.as_str() {
+                result.push(text.to_string());
+            }
+        }
+    }
+    result
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+Abiotic Factor history is maintained in [its project changelog](../abioticfactor-mod/docs/changelog.md).
+
+## 2026-09-11
+
+| Area | Shipped | Verification |
+|---|---|---|
+
 ## 2026-08-29
 
 | Area | Shipped | Verification |

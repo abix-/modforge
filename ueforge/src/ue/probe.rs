@@ -175,8 +175,9 @@ pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
             };
             let offset =
                 (cur.add(offsets::fproperty::OFFSET_INTERNAL) as *const i32).read_unaligned();
-            let element_size =
-                (cur.add(offsets::fproperty::ELEMENT_SIZE) as *const i32).read_unaligned();
+            let element_size = (cur.add(rt.platform_offsets.struct_layout.element_size)
+                as *const i32)
+                .read_unaligned();
             let class = read_ffield_class_name(cur, rt);
             let next: *const u8 =
                 (cur.add(offsets::ffield::NEXT) as *const *const u8).read_unaligned();

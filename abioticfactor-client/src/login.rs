@@ -63,7 +63,15 @@ struct Connection {
     spawn_positions: BTreeMap<u32, [f64; 3]>,
     location_map: Option<crate::location::LocationMap>,
     reported_position: Option<[f64; 3]>,
+    travel: Option<crate::travel::Travel>,
+    travel_status: Option<String>,
+    /// Receives that Windows reported as still pending instead of timed out.
+    pending_receives: u64,
+    started: Instant,
 }
+
+/// Windows ERROR_IO_PENDING, raised by a short socket read timeout on some setups.
+const ERROR_IO_PENDING: i32 = 997;
 
 impl Connection {
     fn new(ids: Connected, name: &str, player_id: PlayerId) -> Self {
@@ -98,7 +106,27 @@ impl Connection {
             spawn_positions: BTreeMap::new(),
             location_map: None,
             reported_position: None,
+            travel: None,
+            travel_status: None,
+            pending_receives: 0,
+            started: Instant::now(),
         }
+    }
+
+    /// One line of session state for error messages.
+    fn describe(&self) -> String {
+        format!("{}s in, welcomed {}, possessed {}, pawn {}, position {:?}, travel {:?}, forward input {}, pending {}, unsent {}",
+            self.started.elapsed().as_secs(), self.progress.welcomed, self.controller.initialized, self.controller.pawn,
+            self.controller.position, self.travel_status, self.movement_started.is_some(), self.pending.len(),
+            self.pending.iter().filter(|p| p.sent.is_none()).count())
+    }
+
+    /// Send one datagram; a failure is logged with the session state before it propagates.
+    fn transmit(&self, socket: &UdpSocket, bytes: &[u8]) -> io::Result<()> {
+        socket.send(bytes).map(|_| ()).map_err(|error| {
+            crate::log!("send of {} bytes failed: {error} (kind {:?}, os error {:?}) while {}", bytes.len(), error.kind(), error.raw_os_error(), self.describe());
+            error
+        })
     }
 
     fn location(&self) -> io::Result<crate::location::Location> {
@@ -109,8 +137,8 @@ impl Connection {
 
     fn report_location(&self) {
         match self.location() {
-            Ok(location) => eprintln!("[abiotic-client] last received UDP location: {location} ({})", self.controller.position_source),
-            Err(error) => eprintln!("[abiotic-client] location unavailable: {error}"),
+            Ok(location) => crate::log!("last received UDP location: {location} ({})", self.controller.position_source),
+            Err(error) => crate::log!("location unavailable: {error}"),
         }
     }
 
@@ -186,7 +214,9 @@ impl Connection {
             packet.put(pending.payload.len() as u64, 13);
             packet.append(&pending.payload);
             packet.put(1, 1); // inner termination
-            socket.send(&packet.finish())?;
+            let bytes = packet.finish();
+            self.transmit(socket, &bytes)?;
+            let pending = &mut self.pending[index];
             pending.packets.push_back(packet_id);
             if pending.packets.len() > 256 {
                 pending.packets.pop_front();
@@ -197,7 +227,8 @@ impl Connection {
         if force_ack && !sent_any {
             let mut packet = self.header();
             packet.put(1, 1);
-            socket.send(&packet.finish())?;
+            let bytes = packet.finish();
+            self.transmit(socket, &bytes)?;
         }
         Ok(())
     }
@@ -215,7 +246,26 @@ impl Connection {
         args.put(1, 1); // UsePlayerStartOnly
         args.put(0, 1); // DestinationID: presence bit 0, None equals the default so no value follows
         self.rpc(channel, 258, args); // live character RPC cache: Request_RespawnPlayerCharacter
-        eprintln!("[abiotic-client] requested respawn at a player start");
+        crate::log!("requested respawn at a player start");
+        Ok(())
+    }
+
+    /// Halt: drop any timed forward input or travel and send zero acceleration once.
+    fn stop_movement(&mut self, socket: &UdpSocket, timestamp: f32) -> io::Result<()> {
+        self.movement_started = None;
+        if self.travel.take().is_some() { self.travel_status = Some("cancelled".into()); }
+        self.movement_input(socket, timestamp, [0.0; 3])
+    }
+
+    /// Follow a navigation path given as `x,y,z x,y,z ...` in server coordinates.
+    fn start_travel(&mut self, points: &str) -> io::Result<()> {
+        if !self.controller.initialized { return Err(invalid("travel requires the possessed pawn")); }
+        let travel = crate::travel::Travel::parse(points).map_err(|e| invalid(&e))?;
+        crate::log!("travel started over {} path points", travel.len());
+        self.movement_started = None;
+        self.next_move = Instant::now();
+        self.travel_status = Some("starting".into());
+        self.travel = Some(travel);
         Ok(())
     }
 
@@ -240,7 +290,8 @@ impl Connection {
         packet.put(payload.len() as u64, 13);
         packet.append(&payload);
         packet.put(1, 1);
-        socket.send(&packet.finish())?;
+        let bytes = packet.finish();
+        self.transmit(socket, &bytes)?;
         Ok(())
     }
 
@@ -398,7 +449,7 @@ impl Connection {
                         self.spawned.insert(guid);
                         self.channel_objects.insert(channel, guid);
                         if archetype.contains("Abiotic_Player") {
-                            eprintln!("[abiotic-client] actor channel {channel}, object {guid}, archetype {archetype}");
+                            crate::log!("actor channel {channel}, object {guid}, archetype {archetype}");
                         }
                         if archetype == "Default__Abiotic_PlayerController_C" {
                             self.controller.channel = Some(channel);
@@ -453,7 +504,7 @@ impl Connection {
             if let Some(position) = self.spawn_positions.get(&self.controller.pawn) {
                 self.controller.position = Some(*position);
                 self.controller.position_source = "actor channel open";
-                eprintln!("[abiotic-client] UDP position {position:?} (actor channel open)");
+                crate::log!("UDP position {position:?} (actor channel open)");
             }
         }
         if !self.controller.initialized && self.spawned.contains(&self.controller.player_state)
@@ -474,7 +525,7 @@ impl Connection {
                 // character references, then initiates spawn. See the decoded
                 // co-op sequence in abioticfactor-mod/docs/lan-spawn.md (11720..12083).
                 self.controller.initialized = true;
-                eprintln!("[abiotic-client] confirmed possession and pawn replication; waiting for server spawn");
+                crate::log!("confirmed possession and pawn replication; waiting for server spawn");
             }
         }
         if self.controller.trait_selection_requested {
@@ -493,7 +544,7 @@ impl Connection {
                 self.rpc(channel, 167, traits);
                 self.controller.traits_sent = true;
                 self.controller.trait_selection_requested = false;
-                eprintln!("[abiotic-client] selected Intern with no optional traits");
+                crate::log!("selected Intern with no optional traits");
             }
         }
         if self.controller.initialized && self.controller.traits_sent
@@ -504,7 +555,7 @@ impl Connection {
                 state.packed(self.controller.player_state);
                 self.rpc(channel, 158, state);
                 self.controller.spawn_after_traits = true;
-                eprintln!("[abiotic-client] requested spawn after server skill initialization");
+                crate::log!("requested spawn after server skill initialization");
             }
         }
         if self.controller.loading_requested {
@@ -512,13 +563,13 @@ impl Connection {
                 if self.female && !self.customized {
                     self.rpc(channel, 300, crate::customization::female());
                     self.customized = true;
-                    eprintln!("[abiotic-client] sent Sophia's female appearance and voice over UDP");
+                    crate::log!("sent Sophia's female appearance and voice over UDP");
                 }
                 let mut loaded = Writer::default();
                 loaded.put(1, 1); // Request_UpdateOwningLevelLoad(NewState=true)
                 self.rpc(channel, 294, loaded);
                 self.controller.loading_requested = false;
-                eprintln!("[abiotic-client] sent character loading completion over UDP");
+                crate::log!("sent character loading completion over UDP");
             }
         }
     }
@@ -530,7 +581,7 @@ impl Connection {
                     let response = reader.string()?;
                     if !self.progress.challenged {
                         self.progress.challenged = true;
-                        eprintln!("[abiotic-client] server challenged login");
+                        crate::log!("server challenged login");
                         let mut login = Writer::default();
                         login.put(5, 8);
                         login.string(&response);
@@ -600,7 +651,8 @@ impl Connection {
         packet.packed(CONTROL_NAME);
         packet.put(0, 13);
         packet.put(1, 1);
-        socket.send(&packet.finish())?;
+        let bytes = packet.finish();
+        self.transmit(socket, &bytes)?;
         Ok(())
     }
 }
@@ -637,6 +689,7 @@ pub struct SessionStatus {
     pub pawn: u32,
     pub world: String,
     pub position: Option<[f64; 3]>,
+    pub travel: Option<String>,
 }
 
 /// Commands and observation belong to the caller; no console thread is created.
@@ -683,7 +736,7 @@ fn run_configured(
         connection.memory = Some(directory.to_path_buf());
         match crate::location::LocationMap::load(directory) {
             Ok(map) => connection.location_map = Some(map),
-            Err(error) => eprintln!("[abiotic-client] local map unavailable: {error}"),
+            Err(error) => crate::log!("local map unavailable: {error}"),
         }
         if control.is_none() {
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -716,8 +769,9 @@ fn run_configured(
             Ok(connection.progress)
         }
         Err(error) => {
+            crate::log!("session ending with error: {error} while {}", connection.describe());
             if let Err(close_error) = closed {
-                eprintln!("[abiotic-client] disconnect send failed: {close_error}");
+                crate::log!("disconnect send failed: {close_error}");
             }
             Err(error)
         }
@@ -733,6 +787,8 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
             match connection.commands.as_ref().expect("controlled session commands").try_recv() {
                 Ok(command) if command.trim() == "quit" => return Ok(()),
                 Ok(command) if command.trim() == "respawn" => connection.request_respawn()?,
+                Ok(command) if command.starts_with("travel ") => connection.start_travel(&command["travel ".len()..])?,
+                Ok(command) if command.trim() == "stop" => connection.stop_movement(socket, started.elapsed().as_secs_f32())?,
                 Ok(command) => return Err(invalid(&format!("spawn-only session does not accept {command}"))),
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => return Ok(()),
                 Err(std::sync::mpsc::TryRecvError::Empty) => {},
@@ -742,19 +798,36 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
             match command.trim() {
                 "quit" => return Ok(()),
                 "where" => connection.report_location(),
-                "position" => eprintln!("[abiotic-client] last received UDP position {:?} ({})", connection.controller.position, connection.controller.position_source),
-                "state" => eprintln!("[abiotic-client] last received UDP correction {:?}", connection.controller.last_correction),
+                "position" => crate::log!("last received UDP position {:?} ({})", connection.controller.position, connection.controller.position_source),
+                "state" => crate::log!("last received UDP correction {:?}", connection.controller.last_correction),
                 "forward" if connection.controller.initialized => {
                     connection.movement_started = Some(Instant::now());
                     connection.next_move = Instant::now();
-                    eprintln!("[abiotic-client] forward input started for two seconds (+X)");
+                    crate::log!("forward input started for two seconds (+X)");
                 }
-                "stop" => {
-                    connection.movement_started = None;
-                    connection.movement_input(socket, started.elapsed().as_secs_f32(), [0.0; 3])?;
-                }
+                "stop" => connection.stop_movement(socket, started.elapsed().as_secs_f32())?,
                 "respawn" => connection.request_respawn()?,
-                _ => eprintln!("[abiotic-client] command unavailable: use where, position, state, forward after possession, stop, respawn, or quit"),
+                travel if travel.starts_with("travel ") => connection.start_travel(&travel["travel ".len()..])?,
+                _ => crate::log!("command unavailable: use where, position, state, forward after possession, stop, respawn, travel <x,y,z ...>, or quit"),
+            }
+        }
+        if connection.travel.is_some() && Instant::now() >= connection.next_move {
+            connection.next_move = Instant::now() + Duration::from_millis(33);
+            let timestamp = started.elapsed().as_secs_f32();
+            match connection.controller.position {
+                None => connection.travel_status = Some("waiting for a UDP position".into()),
+                Some(position) => match connection.travel.as_mut().expect("travel checked above").step(position) {
+                    crate::travel::Step::Move { index, acceleration } => {
+                        connection.travel_status = Some(format!("travelling to point {index}"));
+                        connection.movement_input(socket, timestamp, acceleration)?;
+                    }
+                    crate::travel::Step::Done { status } => {
+                        connection.travel = None;
+                        connection.travel_status = Some(format!("{status:?}").to_lowercase());
+                        connection.movement_input(socket, timestamp, [0.0; 3])?;
+                        crate::log!("travel finished: {status:?}");
+                    }
+                },
             }
         }
         if let Some(movement_started) = connection.movement_started {
@@ -764,7 +837,7 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
                 connection.next_move = Instant::now() + Duration::from_millis(33);
                 if !active {
                     connection.movement_started = None;
-                    eprintln!("[abiotic-client] forward input finished; sent zero acceleration");
+                    crate::log!("forward input finished; sent zero acceleration");
                 }
             }
         }
@@ -773,10 +846,13 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
         if remaining.is_zero() {
             break;
         }
-        socket.set_read_timeout(Some(remaining.min(Duration::from_millis(if connection.movement_started.is_some() { 10 } else { 200 }))))?;
+        socket.set_read_timeout(Some(remaining.min(Duration::from_millis(if connection.movement_started.is_some() || connection.travel.is_some() { 10 } else { 200 }))))?;
         match socket.recv(&mut buffer) {
             Ok(size) => {
-                connection.receive(&buffer[..size])?;
+                if let Err(error) = connection.receive(&buffer[..size]) {
+                    crate::log!("packet of {size} bytes rejected: {error} while {}", connection.describe());
+                    return Err(error);
+                }
                 if let Some(status) = &connection.status {
                     *status.lock() = SessionStatus {
                         welcomed: connection.progress.welcomed,
@@ -785,6 +861,7 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
                         pawn: connection.controller.pawn,
                         world: connection.world.clone(),
                         position: connection.controller.position,
+                        travel: connection.travel_status.clone(),
                     };
                 }
                 if connection.location_map.is_some() && connection.controller.position != connection.reported_position {
@@ -809,7 +886,20 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
             Err(error) if matches!(error.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) => {
                 ack = true; // Keep the established connection alive even without incoming replication.
             }
-            Err(error) => return Err(error),
+            // Windows can answer a short read timeout with "overlapped I/O in
+            // progress" (ERROR_IO_PENDING) instead of a timeout; nothing is
+            // wrong with the connection, so it counts as a missed tick.
+            Err(error) if error.raw_os_error() == Some(ERROR_IO_PENDING) => {
+                connection.pending_receives += 1;
+                if connection.pending_receives == 1 || connection.pending_receives % 100 == 0 {
+                    crate::log!("receive reported pending ({}) while {}; continuing", connection.pending_receives, connection.describe());
+                }
+                ack = true;
+            }
+            Err(error) => {
+                crate::log!("receive failed: {error} (kind {:?}, os error {:?}) while {}", error.kind(), error.raw_os_error(), connection.describe());
+                return Err(error);
+            }
         }
     }
     if !connection.progress.join_acknowledged {

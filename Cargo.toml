@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["abioticfactor-client", "bossgangsters-mod", "fish-mod", "grounded2-mod", "horsey-mod", "humanitz-mod", "il2cpp-smoke", "misery-mod", "modforge", "obenseuer-mod", "outworld-station-mod", "schedule1-mod", "survivalist-mod", "ueforge", "unityforge", "wwm-mod"]
+members = ["abioticfactor-client", "abioticfactor-mod", "bossgangsters-mod", "corsaircove-mod", "fish-mod", "grounded2-mod", "horsey-mod", "humanitz-mod", "il2cpp-smoke", "misery-mod", "modforge", "obenseuer-mod", "outworld-station-mod", "schedule1-mod", "sintopia-mod", "survivalist-mod", "ueforge", "unityforge", "wanderburg-mod", "wwm-mod"]
 exclude = ["decomp", "vendor/hudhook"]
 # Note: `decomp/` is intentionally NOT a workspace member yet. It depends on
 # r2sleigh which depends on libsla-sys, which does not currently build on
@@ -37,6 +37,7 @@ crossbeam-channel = "0.5"
 region = "4"
 smallvec = "1"
 fastrand = "2"
+parry3d-f64 = "=0.27.0"
 # retour: cross-platform detour library, Rust port of MS Detours.
 # Handles RIP-relative rewrites, NOP padding, >2GB JMP relays.
 # Used by the horsey-mod D1 / D5 detours. See

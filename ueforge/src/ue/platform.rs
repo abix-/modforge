@@ -117,6 +117,7 @@ pub fn detect_and_init(table: &[(&str, &'static PlatformOffsets)]) -> &'static c
 pub fn resolve_and_init(
     process_event_idx: usize,
     g_objects_layout: crate::ue::GObjectsLayout,
+    struct_layout: crate::ue::StructLayout,
 ) -> &'static crate::ue::Runtime {
     let image_base = host_image_base();
     let exe = host_exe_name().unwrap_or_default();
@@ -144,6 +145,7 @@ pub fn resolve_and_init(
         g_names: resolved.g_names,
         process_event_idx,
         g_objects_layout,
+        struct_layout,
     }));
 
     let rt = unsafe { crate::ue::init_runtime(image_base, offsets) };

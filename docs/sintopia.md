@@ -73,6 +73,36 @@ discover_structs: ok=true structs_found=5496
 discover_data_tables: ok=true tables_found=43
 ```
 
+## ustruct and fproperty layout on this build (measured 2026-09-11)
+
+`discover_class_detail` on native Sintopia classes returned `fields: []` and a garbage `properties_size`. `tests/research_ustruct_layout.rs` measured the real layout from raw bytes of the UClass objects for Object, Field, Struct, Class and Actor:
+
+```
+offsets where Object reads 0x28 and Field reads 0x30:
+  +0x58: Object=0x28 Field=0x30 Struct=0xb0 Class=0x220
+ueforge assumes +0xb0; Object reads 0xb1c16ad0 there
+Actor +0x40 -> name@+0x18 = "Object"              (SuperStruct)
+Actor +0x48 -> name@+0x18 = "WasRecentlyRendered" (Children, UField chain)
+Actor +0x50 -> name@+0x28 = "PrimaryActorTick"    (ChildProperties, FField chain)
+Actor +0x58 = 0x800000290                         (PropertiesSize 0x290, MinAlignment 8)
+PrimaryActorTick  +0x30=0x45 +0x34=0x0 +0x38=0x1 +0x3c=0x30 +0x40=0x10001 +0x44=0x100000 +0x48=0x0 +0x4c=0x28
+bNetTemporary     +0x30=0x45 +0x34=0x0 +0x38=0x1 +0x3c=0x1  +0x40=0x0     +0x44=0x180010 +0x48=0x0 +0x4c=0x58
+```
+
+| Field | This build | ueforge constant |
+|---|---|---|
+| UStruct::SuperStruct | +0x40 | 0x40, matches |
+| UStruct::Children | +0x48 | 0x48, matches |
+| UStruct::ChildProperties | +0x50 | 0x50, matches |
+| UStruct::PropertiesSize | +0x58 | `ustruct::SIZE` = 0xB0, WRONG here (0xB0 is sizeof UStruct, not the field) |
+| FField::Next | +0x20 | 0x20, matches |
+| FField::NamePrivate | +0x28 | 0x28, matches |
+| FProperty::ArrayDim | +0x38 | `fproperty::ARRAY_DIM` = 0x30, wrong here |
+| FProperty::ElementSize | +0x3C | `fproperty::ELEMENT_SIZE` = 0x34, WRONG here |
+| FProperty::Offset_Internal | +0x4C | 0x4C, matches |
+
+Why the field walk is empty: `walk_native_properties` in `ueforge/src/ue/uobject.rs` reads ElementSize at +0x34, gets 0, and stops on `element_size <= 0` at the first node. Every class detail, struct detail and typed field read in ueforge is blind on this game until PropertiesSize and ElementSize come from the game crate instead of the shared constants.
+
 ## key classes (from runtime discovery)
 
 The game's own nouns: Hummus (the mortals), Imps (workers), Demons (one per sin: Envy, Gluttony, Greed, Lust, Pride, Sloth, Wrath), Guacas (raiders with camps and squads), Hell buildings, Hummu buildings, spells, GPI (hell ground pieces).

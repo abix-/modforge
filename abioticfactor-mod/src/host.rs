@@ -40,8 +40,8 @@ unsafe fn write_fstring(object: &UObject, offset: usize, text: &str) -> Result<(
 
 /// Call a static Blueprint library function on its class default object,
 /// filling named parameters from `set`, and return the parameter block with the
-/// offset of ReturnValue.
-unsafe fn call_static(class: &str, function: &str, set: &[(&str, &[u8])]) -> Result<(Vec<u8>, usize), String> {
+/// offset of ReturnValue (0 when the function returns nothing).
+pub(crate) unsafe fn call_static(class: &str, function: &str, set: &[(&str, &[u8])]) -> Result<(Vec<u8>, usize), String> {
     let cdo = ueforge::selector::resolve(&format!("singleton:{class}"))?;
     let uclass = ueforge::ue::find_class_fast(class).ok_or_else(|| format!("class '{class}' not found"))?;
     let func = uclass.get_function(class, function).ok_or_else(|| format!("function '{class}::{function}' not found"))?;
@@ -54,10 +54,10 @@ unsafe fn call_static(class: &str, function: &str, set: &[(&str, &[u8])]) -> Res
         }
         parms[param.offset as usize..][..bytes.len()].copy_from_slice(bytes);
     }
-    let ret = params.iter().find(|p| p.name == "ReturnValue").ok_or_else(|| format!("{class}::{function} has no ReturnValue"))?;
+    let ret = params.iter().find(|p| p.name == "ReturnValue").map_or(0, |p| p.offset as usize);
     // SAFETY: game thread; the block is sized from the live UFunction.
     unsafe { cdo.process_event(func, parms.as_mut_ptr().cast()) };
-    Ok((parms, ret.offset as usize))
+    Ok((parms, ret))
 }
 
 /// The same check HostMultiplayerGame makes before creating a session:

@@ -19,6 +19,7 @@ name = "wanderburg_mod"
 modforge = { path = "../modforge" }
 unityforge = { path = "../unityforge" }
 serde_json = { workspace = true }
+parking_lot = { workspace = true }
 
 [dev-dependencies]
 serde = { workspace = true }

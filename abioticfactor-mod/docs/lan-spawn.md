@@ -13,7 +13,21 @@ the gameplay path. No host-side character creation or teleport is added.
 The mod exposes ai_player.start with an absolute profile_dir,
 ai_player.status for the last UDP observation, ai_player.respawn for the
 UDP respawn request at a player start (character RPC 258, see lan-rpc.md), and
-ai_player.stop for UDP logout and worker completion. These HTTP operations manage the UDP client;
+ai_player.stop for UDP logout and worker completion. ai_player.travel walks the
+AI player to coordinates or to a named player: the start is the host's copy of
+its own character, the path comes from the host navigation system through
+nav.find_path (the NavigationSystemV1 and dynamic RecastNavMesh objects the
+enemies use), a path ending more than 200 units from the goal is refused as
+partial, and the UDP client follows the points with the shared route follower
+with height ignored. The players op lists every player by the name on its
+player state with controller, character and location; every by-name lookup in
+the mod goes through it. User validated in game 2026-09-12: Sophia walked toward
+the human on both live runs.
+
+Research op nav.simple_move_to runs the engine's SimpleMoveToLocation on a
+named player's controller. Its first version picked the player by position and
+moved the human's character; the by-name version targets the named player's
+controller. These HTTP operations manage the UDP client;
 they do not replace its gameplay packets with engine calls. Initial support
 is one active session. A profile file lock is shared with the standalone CLI.
 Network processing runs on an owned worker, with no embedded console reader.

@@ -28,11 +28,18 @@ fn on_unreal_init() {
 // = 1 in UE4SS-settings.ini for that log line to exist.
 const PROCESS_EVENT_IDX: usize = 0x4D;
 const G_OBJECTS_LAYOUT: ueforge::ue::GObjectsLayout = ueforge::ue::GObjectsLayout::WrappedChunked;
+// PropertiesSize +0x58 and ElementSize +0x3C, measured live
+// 2026-09-11 by tests/research_ustruct_layout.rs.
+const STRUCT_LAYOUT: ueforge::ue::StructLayout = ueforge::ue::StructLayout::UE5_2;
 
 unsafe fn worker() {
     ueforge::log!("sintopia_mod init");
 
-    let _rt = ueforge::ue::platform::resolve_and_init(PROCESS_EVENT_IDX, G_OBJECTS_LAYOUT);
+    let _rt = ueforge::ue::platform::resolve_and_init(
+        PROCESS_EVENT_IDX,
+        G_OBJECTS_LAYOUT,
+        STRUCT_LAYOUT,
+    );
 
     ueforge::selector::register_builtins();
     ueforge::ops::register_builtins();

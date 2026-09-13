@@ -108,6 +108,81 @@ fn player_castle() {
     survey(&api, "AgentVehicle", 1);
 }
 
+/// The player's castle as it is right now: core stats and every
+/// mounted module with its name, levels, damage and cooldowns.
+#[test]
+fn loadout() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    // Unity stops ticking while the game window is unfocused, and
+    // the window is unfocused whenever the operator is typing in
+    // the terminal that launches this test. Wait up to 60 s for
+    // the main-thread queue to drain so they can click back in.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let mut vm = None;
+    while vm.is_none() && std::time::Instant::now() < deadline {
+        let r = api.op("walk_class", json!({"class": "VM", "include_inactive": false}));
+        if r.ok {
+            vm = r
+                .result
+                .get("instances")
+                .and_then(Value::as_array)
+                .or_else(|| r.result.as_array())
+                .and_then(|a| a.first())
+                .and_then(|v| v.get("handle"))
+                .and_then(Value::as_i64);
+            if vm.is_none() {
+                println!("no live VM (not in a run?)");
+                return;
+            }
+        } else {
+            println!("main thread not ticking yet ({:?}); click into the game window", r.error);
+            std::thread::sleep(std::time::Duration::from_secs(3));
+        }
+    }
+    let Some(vm) = vm else {
+        println!("gave up after 60 s: the game never ticked. Focus the game window and rerun.");
+        return;
+    };
+    let read = |h: i64, field: &str| -> Value {
+        api.op("read_field", json!({"handle": h, "field": field})).result
+    };
+    println!("castle:");
+    for f in [
+        "currentHP", "maxHP", "currentArmor", "currentShield", "currentNitro", "maxNitro",
+        "nitroRegenRate", "maxVelocity", "currentSpeed", "vehicleSizeRank",
+        "canAbsorbVehiclesOfSizeRank", "currentVehicleBaseChosenIndex",
+        "frontSlotsTaken", "backSlotsTaken", "topSlotsTaken", "sideSlotsTaken",
+        "captainSlotsTaken", "crewSlotsTaken",
+    ] {
+        println!("  {f} = {}", read(vm, f));
+    }
+    for f in [
+        "module1", "module2", "module3", "module4",
+        "activeModule1", "activeModule2", "activeModule3", "activeModule4",
+    ] {
+        let v = read(vm, f);
+        let Some(mh) = common::handle_of(&v) else {
+            println!("{f}: {v}");
+            continue;
+        };
+        println!("{f}: {}", v.get("str").and_then(Value::as_str).unwrap_or("?"));
+        for mf in [
+            "moduleName", "mountedSlotIndex", "rarity", "generalModuleLevel", "passiveLevel",
+            "cooldownLevel", "ultLevel", "vehicleSizeLevel", "currentActiveBaseDamage",
+            "currentPassiveBaseDamage", "flatDamageAdded", "currentActiveAbilityCooldown",
+            "currentAutoAttackCooldown", "activeAbilityRange", "activeAbilityCurrentSize",
+            "autoAttackCurrentSize",
+        ] {
+            println!("    {mf} = {}", read(mh, mf));
+        }
+        api.op("release_handle", json!({"handle": mh}));
+    }
+    api.op("release_handle", json!({"handle": vm}));
+}
+
 #[test]
 fn modules() {
     let api = api();

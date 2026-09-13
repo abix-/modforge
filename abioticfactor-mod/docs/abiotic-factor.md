@@ -17,5 +17,7 @@ input. See the RPC reference for the implementation, commands and remaining limi
 | [LAN loading and playable readiness](lan-loading.md) | Level loading, disabled state, and readiness gaps |
 | [LAN RPC and property reference](lan-rpc.md) | Inspected RPC handles, properties, and customization schema |
 | [Character saves, disconnect, and persistence](persistence.md) | Save identity, loading/writing saves, disconnect, and persistence gaps |
+| [NPC AI: targets and fighting](npc-ai.md) | Soldier rows, perception numbers, decoded target scoring, the character's attack functions, what Sophia reuses |
+| [Performance](performance.md) | Game-thread cost rules, what is cached, what was measured |
 
 Keep unfinished work in [todo](todo.md) and shipped history in [changelog](changelog.md). Research findings belong in the topic documents, with their source/test evidence and remaining unknowns. The bot joins and acts through UDP; HTTP supports investigation through permanent Rust tests.

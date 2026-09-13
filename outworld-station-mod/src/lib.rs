@@ -36,6 +36,7 @@ const STEAM: PlatformOffsets = PlatformOffsets {
     // UE 5.4 stock. FUObjectArray wraps FChunkedFixedUObjectArray
     // at +0x10. Verified live: NumElements=142650, NumChunks=3.
     g_objects_layout: GObjectsLayout::WrappedChunked,
+    struct_layout: ueforge::ue::StructLayout::UE5_4,
 };
 
 const PLATFORMS: &[(&str, &PlatformOffsets)] = &[("OutworldStation-Win64-Shipping.exe", &STEAM)];

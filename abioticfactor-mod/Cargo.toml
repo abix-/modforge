@@ -1,0 +1,61 @@
+[package]
+name = "abioticfactor-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Abiotic Factor mod. Rust cdylib loaded into the game by UE4SS as a
+# CPPMod via the stock ueforge shim.
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "abioticfactor_mod"
+
+[package.metadata.ueforge]
+mod_folder_name  = "AbioticFactorMod"
+game_name_regex  = "AbioticFactor"
+game_sub_path    = "AbioticFactor/Binaries/Win64"
+zip_prefix       = "abioticfactor-mod"
+target_dir       = "target/abioticfactor-mod"
+
+[features]
+console = []
+default = ["console"]
+
+[dependencies]
+abioticfactor-client = { path = "../abioticfactor-client" }
+anyhow = { workspace = true }
+widestring = { workspace = true }
+memoffset = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ueforge = { path = "../ueforge" }
+modforge = { path = "../modforge" }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Console",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Diagnostics_ToolHelp",
+] }
+
+[build-dependencies]
+ueforge = { path = "../ueforge" }
+
+[dev-dependencies]
+ueforge = { path = "../ueforge" }
+patternsleuth = { workspace = true }
+hex = { workspace = true }
+zerocopy = { workspace = true }
+
+[lints]
+workspace = true

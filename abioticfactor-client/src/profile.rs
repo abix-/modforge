@@ -13,15 +13,18 @@ pub struct Profile {
 }
 
 impl Profile {
+    /// Load an existing instance without creating or changing its identity.
+    pub fn load(directory: &Path) -> io::Result<Self> {
+        let profile: Self = serde_json::from_slice(&fs::read(directory.join("profile.json"))?)?;
+        crate::identity::PlayerId::new(&profile.bot_id)?;
+        Ok(profile)
+    }
+
     pub fn load_or_create(directory: &Path) -> io::Result<Self> {
         fs::create_dir_all(directory)?;
         let path = directory.join("profile.json");
-        match fs::read(&path) {
-            Ok(bytes) => {
-                let profile: Self = serde_json::from_slice(&bytes)?;
-                crate::identity::PlayerId::new(&profile.bot_id)?;
-                Ok(profile)
-            }
+        match Self::load(directory) {
+            Ok(profile) => Ok(profile),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 let profile = Self {
                     name: "Sophia".into(),
@@ -37,6 +40,15 @@ impl Profile {
             Err(error) => Err(error),
         }
     }
+}
+
+/// Held for the entire session; dropping the handle releases the OS lock.
+pub fn lock(directory: &Path) -> io::Result<std::fs::File> {
+    fs::create_dir_all(directory)?;
+    let file = OpenOptions::new().create(true).truncate(false).read(true).write(true)
+        .open(directory.join("session.lock"))?;
+    file.try_lock().map_err(|error| io::Error::other(format!("AI player profile is already in use or cannot be locked: {error}")))?;
+    Ok(file)
 }
 
 /// Stored outside the build directory so rebuilds do not erase Sophia.
@@ -68,6 +80,17 @@ pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_lock_excludes_duplicate_and_releases_after_close() {
+        let directory = std::env::temp_dir().join(format!("sophia-lock-{:016x}", fastrand::u64(..)));
+        let first = lock(&directory).unwrap();
+        assert!(lock(&directory).is_err(), "second session must not acquire the profile");
+        drop(first);
+        drop(lock(&directory).expect("closed session releases ownership"));
+        fs::remove_file(directory.join("session.lock")).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
 
     #[test]
     fn identity_and_memory_survive_reopening() {

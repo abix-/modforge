@@ -555,6 +555,22 @@ where
             move |args| read_bytes(args, resolver),
         ),
         OpDef::new(
+            "read_snapshot",
+            "Read bounded memory ranges together on the game thread",
+            "{reads: [{instance_selector: str, offset?: u64, length: u64}]}",
+            move |args| {
+                let reads = snapshot_requests(args)?;
+                // Unlike on_game_thread, run refuses an unserved queue. A
+                // listener-thread fallback would invalidate this operation.
+                crate::game_thread::run(move || {
+                    let frame = crate::frame::frames();
+                    let results = reads.iter().map(|read| read_bytes(read, resolver))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    Ok(serde_json::json!({"game_thread":true,"frame":frame,"reads":results}))
+                }, WALK_TIMEOUT)
+            },
+        ),
+        OpDef::new(
             "write_bytes",
             "Write hex bytes to a selector + offset",
             "{selector: str, offset?: u64, hex: str}",
@@ -588,6 +604,41 @@ where
 /// Sized to comfortably cover any UE struct walk while preventing
 /// pathological reads from hanging the listener.
 pub const BYTE_OP_CAP: usize = 0x10_0000;
+
+fn snapshot_requests(args: &Json) -> Result<Vec<Json>, String> {
+    let reads = args["reads"].as_array().ok_or("missing snapshot reads")?;
+    if reads.is_empty() || reads.len() > 64 {
+        return Err("snapshot requires 1..64 ranges".into());
+    }
+    let mut total = 0_u64;
+    for read in reads {
+        arg_str(read, "instance_selector")?;
+        let offset = arg_u64(read, "offset", Some(0))?;
+        let length = arg_u64(read, "length", None)?;
+        offset.checked_add(length).ok_or("snapshot range overflow")?;
+        total = total.checked_add(length).ok_or("snapshot total overflow")?;
+        if total > BYTE_OP_CAP as u64 {
+            return Err("snapshot exceeds 1MB total cap".into());
+        }
+    }
+    Ok(reads.clone())
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_rejects_aggregate_overflow_before_reading() {
+        let range = serde_json::json!({"instance_selector":"addr:0x1","length":BYTE_OP_CAP});
+        assert!(snapshot_requests(&serde_json::json!({"reads":[range.clone()]})).is_ok());
+        assert!(snapshot_requests(&serde_json::json!({"reads":[range.clone(), range]})).is_err());
+        assert!(snapshot_requests(&serde_json::json!({"reads":[{
+            "instance_selector":"addr:0x1","offset":u64::MAX,"length":1
+        }]})).is_err());
+        assert!(snapshot_requests(&serde_json::json!({"reads":[]})).is_err());
+    }
+}
 
 /// True only if every page the range `[addr, addr + len)` touches is
 /// committed and readable. A raw `addr:` selector can point anywhere

@@ -10,6 +10,9 @@ publish.workspace = true
 fastrand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+parry3d-f64.workspace = true
+parking_lot.workspace = true
+modforge = { path = "../modforge" }
 
 [lints]
 workspace = true

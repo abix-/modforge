@@ -17,6 +17,8 @@
 
 use unityforge::ModDef;
 
+mod regen;
+
 static MOD_INFO: ModDef = ModDef {
     name: "WanderburgMod",
     version: "0.1.0",
@@ -25,10 +27,15 @@ static MOD_INFO: ModDef = ModDef {
     // crate in this workspace.
     http_port: 17177,
     on_init: Some(on_init),
-    on_tick: None,
+    on_tick: Some(on_tick),
     on_shutdown: Some(on_shutdown),
     tabs: &[],
 };
+
+/// Runs every frame on the Unity main thread after the queue drain.
+fn on_tick(_now: f32) {
+    regen::tick();
+}
 
 unityforge::unityforge_mod!(MOD_INFO);
 

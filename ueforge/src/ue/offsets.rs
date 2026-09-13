@@ -27,6 +27,41 @@ pub struct PlatformOffsets {
     pub process_event_idx: usize,
     /// Layout of the GObjects array.
     pub g_objects_layout: GObjectsLayout,
+    /// Where UStruct::PropertiesSize and FProperty::ElementSize
+    /// sit on this build. They move between engine versions.
+    pub struct_layout: StructLayout,
+}
+
+/// The two reflection field offsets that differ between the UE
+/// builds this workspace runs on. Everything else in `ustruct`,
+/// `ffield` and `fproperty` below matched on every game measured.
+///
+/// Each game crate supplies its own, measured live the way
+/// `sintopia-mod/tests/research_ustruct_layout.rs` does: the i32
+/// that reads 0x28 on the `Object` UClass and 0x30 on `Field` is
+/// PropertiesSize; the i32 on a bool FProperty that reads 1 next
+/// to ArrayDim is ElementSize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StructLayout {
+    /// Offset of `UStruct::PropertiesSize` (i32).
+    pub properties_size: usize,
+    /// Offset of `FProperty::ElementSize` (i32).
+    pub element_size: usize,
+}
+
+impl StructLayout {
+    /// Values the UE 5.4 games (Grounded 2, MISERY, Outworld
+    /// Station, Abiotic Factor) have run on since these constants
+    /// were first recorded.
+    pub const UE5_4: StructLayout = StructLayout {
+        properties_size: 0xB0,
+        element_size: 0x34,
+    };
+    /// Measured on Sintopia (UE 5.2.1, source build), 2026-09-11.
+    pub const UE5_2: StructLayout = StructLayout {
+        properties_size: 0x58,
+        element_size: 0x3C,
+    };
 }
 
 /// UE has used several `UObjectArray` layouts over the years.
@@ -54,6 +89,7 @@ pub const STEAM: PlatformOffsets = PlatformOffsets {
     g_names: 0x09E4_A7B8,
     process_event_idx: 0x4C,
     g_objects_layout: GObjectsLayout::FlatFixed,
+    struct_layout: StructLayout::UE5_4,
 };
 
 pub const XBOX: PlatformOffsets = PlatformOffsets {
@@ -62,6 +98,7 @@ pub const XBOX: PlatformOffsets = PlatformOffsets {
     g_names: 0x09E1_A6B8,
     process_event_idx: 0x4C,
     g_objects_layout: GObjectsLayout::FlatFixed,
+    struct_layout: StructLayout::UE5_4,
 };
 
 impl Platform {
@@ -96,7 +133,7 @@ pub mod ustruct {
     pub const SUPER_STRUCT: usize = 0x40;
     pub const CHILDREN: usize = 0x48; // UField* (functions)
     pub const CHILD_PROPERTIES: usize = 0x50; // FField* (native props)
-    pub const SIZE: usize = 0xB0; // PropertiesSize i32
+    // PropertiesSize moves between builds: see `StructLayout`.
 }
 
 /// FField. UE 5.x lightweight property header. Lives off
@@ -116,7 +153,7 @@ pub mod ffield {
 /// inspect_address uses to map an address back to a field name.
 pub mod fproperty {
     pub const ARRAY_DIM: usize = 0x30;
-    pub const ELEMENT_SIZE: usize = 0x34;
+    // ElementSize moves between builds: see `StructLayout`.
     pub const PROPERTY_FLAGS: usize = 0x38;
     pub const REP_INDEX: usize = 0x40;
     pub const OFFSET_INTERNAL: usize = 0x4C; // verified live on OWS UE 5.4

@@ -28,6 +28,55 @@ use std::collections::HashMap;
 // addresses.
 const TEXT_SECTION: object::SectionKind = object::SectionKind::Text;
 
+/// Inspect a named function's RVA in an on-disk PE without loading game code.
+/// All addresses in the result are image-relative; the decoder follows the
+/// executable's unwind boundaries rather than guessing a byte length.
+pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<String>> {
+    use patternsleuth::MemoryTrait as _;
+    let data = std::fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let image = patternsleuth::image::Image::read(None, &data, Some(path), false)
+        .map_err(|error| anyhow!("parse PE: {error}"))?;
+    let start = image.base_address + u64::from(rva);
+    let mut listing = Vec::new();
+    let mut exceeded = false;
+    patternsleuth::disassemble::disassemble(&image, start, |instruction| {
+        let at = instruction.ip();
+        if image.get_root_function(at)?.map(|function| function.range.start) != Some(start) {
+            return Ok(patternsleuth::disassemble::Control::Break);
+        }
+        if listing.len() >= 4096 {
+            exceeded = true;
+            return Ok(patternsleuth::disassemble::Control::Break);
+        }
+        let mut line = format!("+0x{:X} {instruction}", at - image.base_address);
+        if instruction.is_ip_rel_memory_operand() {
+            let target = instruction.ip_rel_memory_address();
+            for (library, imports) in &image.imports {
+                if let Some((name, _)) = imports.iter().find(|(_, address)| **address == target) {
+                    line.push_str(&format!("  import {library}!{name}"));
+                }
+            }
+            if let Ok(bytes) = image.memory.range_from(target..) {
+                if let Some(prefix) = bytes.get(..8) {
+                    line.push_str(&format!("  data {prefix:02X?}"));
+                }
+                let wide: Vec<u16> = bytes.chunks_exact(2).take(96)
+                    .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
+                    .take_while(|unit| *unit != 0).collect();
+                if !wide.is_empty() && wide.iter().all(|unit| (32..127).contains(unit)) {
+                    line.push_str(&format!("  string {:?}", String::from_utf16_lossy(&wide)));
+                }
+            }
+        }
+        listing.push((at, line));
+        Ok(patternsleuth::disassemble::Control::Continue)
+    }).map_err(|error| anyhow!("inspect RVA 0x{rva:X}: {error}"))?;
+    anyhow::ensure!(!exceeded, "function inspection exceeds 4096 instructions");
+    anyhow::ensure!(!listing.is_empty(), "RVA 0x{rva:X} is not a function start");
+    listing.sort_by_key(|(at, _)| *at);
+    Ok(listing.into_iter().map(|(_, line)| line).collect())
+}
+
 /// One symbol to resolve. `sigs` is tried in order; first match wins.
 /// Empty `sigs` is treated as "no candidates"; resolution returns
 /// `None` for that name.

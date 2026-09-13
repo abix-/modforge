@@ -41,7 +41,7 @@ pub use class_ref::ClassRef;
 pub use core_types::{EStatusEffectValueType, FDataTableRowHandle, FGuid, FWeakObjectPtr};
 pub use fname::FName;
 pub use fstring::FString;
-pub use offsets::{GObjectsLayout, Platform, PlatformOffsets};
+pub use offsets::{GObjectsLayout, Platform, PlatformOffsets, StructLayout};
 pub use player::PlayerRef;
 pub use tarray::TArray;
 pub use typed_field::TypedField;

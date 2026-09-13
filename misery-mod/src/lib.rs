@@ -13,6 +13,7 @@ pub mod gameplay;
 pub mod input;
 
 pub mod autoload;
+pub mod bot;
 pub mod nag;
 pub mod shining;
 pub mod spawning;
@@ -95,7 +96,11 @@ ueforge::ue4ss_mod!(MOD_INFO);
 /// Starts MISERY's enabled features once Unreal and UE4SS are ready.
 /// Stays here because this is the mod's composition root, selecting game features and verified engine settings.
 fn on_unreal_init() {
-    let _rt = ueforge::ue::platform::resolve_and_init(PROCESS_EVENT_IDX, G_OBJECTS_LAYOUT);
+    let _rt = ueforge::ue::platform::resolve_and_init(
+        PROCESS_EVENT_IDX,
+        G_OBJECTS_LAYOUT,
+        ueforge::ue::StructLayout::UE5_4,
+    );
 
     // Our watchers enqueue onto the game-thread drain, which the
     // ProcessEvent hook serves. Hooks tear down at order 100, so
@@ -134,6 +139,7 @@ fn on_unreal_init() {
         .once("input", || {
             ueforge::ops::OP_REGISTRY.register_many(modforge::input::ops::all());
             input::register();
+            bot::register();
         })
         .once("spawning", spawning::install)
         // `strange` is DELETED (2026-08-26). It spawned up to 48

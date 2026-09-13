@@ -92,6 +92,7 @@ pub mod inventory;
 // log!() macro re-export through this single `pub use`.
 pub use modforge::log;
 pub mod mod_main;
+pub mod nav;
 pub mod ops;
 pub mod parms;
 pub mod pe_queue;

@@ -1,6 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 mod ai_player;
+mod combat;
 mod host;
+mod nav;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "AbioticFactorMod",
@@ -57,6 +59,8 @@ unsafe fn worker() {
     ueforge::shutdown::register_builtins();
     ai_player::register();
     host::register();
+    nav::register();
+    combat::register();
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::game_thread::serve(&DRAIN);
     ueforge::debug::register_pe_call(&DRAIN, DRAIN_HINT, ueforge::selector::resolve);
