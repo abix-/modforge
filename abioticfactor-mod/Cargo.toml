@@ -27,6 +27,7 @@ default = ["console"]
 [dependencies]
 abioticfactor-client = { path = "../abioticfactor-client" }
 anyhow = { workspace = true }
+fastrand = { workspace = true }
 widestring = { workspace = true }
 memoffset = { workspace = true }
 parking_lot = { workspace = true }

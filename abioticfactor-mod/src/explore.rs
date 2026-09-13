@@ -48,7 +48,10 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
         // detection, and she stood wedged against a table forever (2026-09-13).
         let status = walker.travel_status().unwrap_or_default();
         let done = status == "arrived" || status == "stuck" || status == "cancelled" || status == "standing";
-        if let Some(thing) = seen.things.get_mut(name) {
+        if name == WANDER {
+            if done { ueforge::log!("AI player {} wander ended: {status}", walker.name); *walking_to = None; }
+            if walking_to.is_some() { return Ok(()); }
+        } else if let Some(thing) = seen.things.get_mut(name) {
             if done || flat_distance(&here, &thing.location) <= VISIT_DISTANCE {
                 thing.visited = true;
                 ueforge::log!("AI player {} finished with {name} ({}): {status}", walker.name, thing.class);
@@ -63,7 +66,7 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
     let next = seen.things.iter().filter(|(_, t)| !t.visited)
         .min_by(|a, b| flat_distance(&here, &a.1.location).total_cmp(&flat_distance(&here, &b.1.location)))
         .map(|(name, thing)| (name.clone(), thing.location, thing.class.clone()));
-    let Some((name, location, class)) = next else { return Ok(()); };
+    let Some((name, location, class)) = next else { return wander(walker, here, walking_to); };
     match crate::ai_player::plan_travel(&walker.name, &walker.commands, crate::nav::Goal::Point(location), VISIT_DISTANCE) {
         Ok(reply) if reply["state"] == "standing" => {
             // Already there: nothing to walk.
@@ -79,6 +82,33 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
     }
     Ok(())
 }
+
+/// Nothing remembered is left to visit: walk somewhere she has not looked,
+/// a reachable point WANDER_DISTANCE away in a random direction, so new
+/// things enter her sight. Directions the mesh cannot path to are skipped.
+const WANDER_DISTANCE: f64 = 1200.0;
+const WANDER_TRIES: usize = 8;
+
+fn wander(walker: &crate::ai_player::Walker, here: [f64; 3], walking_to: &mut Option<String>) -> Result<(), String> {
+    for _ in 0..WANDER_TRIES {
+        let angle = fastrand::f64() * std::f64::consts::TAU;
+        let goal = [here[0] + WANDER_DISTANCE * angle.cos(), here[1] + WANDER_DISTANCE * angle.sin(), here[2]];
+        match crate::ai_player::plan_travel(&walker.name, &walker.commands, crate::nav::Goal::Point(goal), VISIT_DISTANCE) {
+            Ok(reply) if reply["state"] == "travel_requested" => {
+                ueforge::log!("AI player {} wandering {:.0} degrees to {:.0},{:.0}", walker.name, angle.to_degrees(), goal[0], goal[1]);
+                // A wander target is a place, not a thing; it is done when the follower says so.
+                *walking_to = Some(WANDER.into());
+                return Ok(());
+            }
+            _ => continue,
+        }
+    }
+    ueforge::log!("AI player {} found no reachable direction to wander", walker.name);
+    Ok(())
+}
+
+/// The name a wander walk carries in `walking_to`; never a remembered thing.
+const WANDER: &str = "(wander)";
 
 /// Start or stop exploring. Starting takes her walking from follow.
 fn explore(args: &Value) -> Result<Value, String> {
