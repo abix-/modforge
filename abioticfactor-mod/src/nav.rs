@@ -194,11 +194,10 @@ fn simple_move_to(args: &Value) -> Result<Value, String> {
         if character == 0 { return Err(format!("{player}'s controller has no character")); }
         // SAFETY: a live character actor.
         let location = unsafe { ueforge::ue::transform::world_location(character as *const u8) };
-        let mut goal = [0u8; 24];
-        for (i, v) in [to.x, to.y, to.z].iter().enumerate() { goal[i * 8..][..8].copy_from_slice(&v.to_le_bytes()); }
         let controller = controller as *const UObject as u64;
-        // SAFETY: game thread; parameters are filled by reflected name and size.
-        unsafe { crate::host::call_static("AIBlueprintHelperLibrary", "SimpleMoveToLocation", &[("Controller", &controller.to_le_bytes()), ("Goal", &goal)])? };
+        let library = ueforge::selector::resolve("singleton:AIBlueprintHelperLibrary")?;
+        // SAFETY: game thread; parameters are filled by reflected name and type.
+        unsafe { ueforge::reflect::call(library, "AIBlueprintHelperLibrary", "SimpleMoveToLocation", json!({"Controller": format!("0x{controller:X}"), "Goal": {"X": to.x, "Y": to.y, "Z": to.z}}).as_object().unwrap())? };
         Ok(json!({"player": player, "controller": format!("0x{controller:X}"), "character": format!("0x{character:X}"),
             "character_location": location.map(|(x, y, z)| [x, y, z]), "goal": [to.x, to.y, to.z], "state": "move_requested"}))
     })

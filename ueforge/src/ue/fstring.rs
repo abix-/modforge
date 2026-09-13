@@ -28,6 +28,32 @@ impl Default for FString {
     }
 }
 
+/// Replace the FString whose header is at `header` with `text`, growing
+/// its buffer through the engine allocator when the current capacity is
+/// too small. Proved live on a PlayerState name (abioticfactor-mod host.rs,
+/// 2026-09-12).
+///
+/// # Safety
+/// `header` must point at a live FString on the game thread.
+pub unsafe fn write_at(header: *mut u8, text: &str) -> Result<(), String> {
+    let needed = i32::try_from(text.encode_utf16().count() + 1).map_err(|_| "string too long")?;
+    // SAFETY: the TArray header is data pointer, count, capacity.
+    unsafe {
+        let max = ((header as usize + 12) as *const i32).read_unaligned();
+        // An empty string into an empty FString needs no buffer: leave the zero header.
+        if text.is_empty() && max == 0 { return Ok(()); }
+        if max < needed {
+            super::tarray::grow_raw(header, 2, needed)?;
+        }
+        let data = (header as *const *mut u16).read_unaligned();
+        for (index, unit) in text.encode_utf16().chain(std::iter::once(0)).enumerate() {
+            data.add(index).write_unaligned(unit);
+        }
+        ((header as usize + 8) as *mut i32).write_unaligned(needed);
+    }
+    Ok(())
+}
+
 impl FString {
     pub fn len(&self) -> i32 {
         self.num

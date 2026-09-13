@@ -27,8 +27,9 @@ fn exor_brain_on_sophia() {
     let status = api.op("ai_player.status", json!({}));
     assert!(status.ok, "ai_player.status: {:?}", status.error);
     println!("brain after join: {}", status.result["brain"]);
-    let keys = api.op("ai_player.blackboard_keys", json!({}));
-    println!("Exor blackboard keys: {}", if keys.ok { keys.result.to_string() } else { format!("{:?}", keys.error) });
+    let controller = joined.result["controller"]["addr"].as_str().unwrap_or("").to_owned();
+    let keys = api.op("bb.get", json!({"controller": format!("addr:{controller}")}));
+    println!("her blackboard: {}", if keys.ok { keys.result.to_string() } else { format!("{:?}", keys.error) });
     // Her own tree (fight with the Exor's tree while TargetActor is set, else
     // follow) needs an object key for the human: ABIOTIC_FOLLOW_KEY names it.
     // Without it, the Exor's tree runs alone, as the first runs did.

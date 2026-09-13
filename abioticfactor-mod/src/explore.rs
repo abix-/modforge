@@ -1,5 +1,6 @@
-//! Sophia explores: she perceives, remembers what she perceived, and walks
-//! to something she remembers but has not yet been to. Every cycle:
+//! The AI player explores: she perceives, remembers what she perceived, and
+//! walks to something she remembers but has not yet been to. The "explore"
+//! loop runs one cycle (ai_player.explore_cycle) every two seconds:
 //!
 //! 1. perceive (her own AIPerceptionComponent, nothing else),
 //! 2. remember every perceived thing in her profile's seen.json,
@@ -9,17 +10,28 @@
 //!
 //! Nothing here looks the world up; her knowledge is only what she has seen.
 use crate::profile::Seen;
+use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-const EXPLORE_PERIOD: Duration = Duration::from_secs(2);
+const EXPLORE_PERIOD_MS: u64 = 2000;
 /// Close enough to count as having been there.
 const VISIT_DISTANCE: f64 = 300.0;
+/// Nothing remembered is left to visit: walk somewhere she has not looked,
+/// a reachable point this far away in a random direction, so new things
+/// enter her sight. Directions the mesh cannot path to are skipped.
+const WANDER_DISTANCE: f64 = 1200.0;
+const WANDER_TRIES: usize = 8;
+/// The name a wander walk carries in `walking_to`; never a remembered thing.
+const WANDER: &str = "(wander)";
+
+/// What the current walk is toward, between cycles.
+static WALKING_TO: Mutex<Option<String>> = Mutex::new(None);
 
 /// Remember what she perceives right now; returns how many things were new.
-fn remember(walker: &crate::ai_player::Walker) -> Result<usize, String> {
-    let rows = crate::perception::perceived_rows(&walker.name)?;
-    let mut seen = Seen::load(&walker.directory).map_err(|e| e.to_string())?;
+fn remember(name: &str, directory: &std::path::Path) -> Result<usize, String> {
+    let rows = crate::perception::perceived_rows(name)?;
+    let mut seen = Seen::load(directory).map_err(|e| e.to_string())?;
     let mut new = 0;
     for row in rows {
         let Some(location) = row.location else { continue };
@@ -27,7 +39,7 @@ fn remember(walker: &crate::ai_player::Walker) -> Result<usize, String> {
         if row.class == "Abiotic_PlayerCharacter_C" { continue; }
         if seen.note(&row.name, &row.class, location) { new += 1; }
     }
-    seen.save(&walker.directory).map_err(|e| e.to_string())?;
+    seen.save(directory).map_err(|e| e.to_string())?;
     Ok(new)
 }
 
@@ -36,29 +48,32 @@ fn flat_distance(a: &[f64; 3], b: &[f64; 3]) -> f64 {
 }
 
 /// One explore cycle: remember, then walk toward the nearest unvisited memory.
-fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> Result<(), String> {
-    let new = remember(walker)?;
-    if new > 0 { ueforge::log!("AI player {} saw {new} new things", walker.name); }
-    let mut seen = Seen::load(&walker.directory).map_err(|e| e.to_string())?;
+fn cycle(_: &Value) -> Result<Value, String> {
+    let name = crate::ai_player::session_name()?;
+    let directory = crate::ai_player::session_directory()?;
+    let new = remember(&name, &directory)?;
+    if new > 0 { ueforge::log!("AI player {name} saw {new} new things"); }
+    let mut seen = Seen::load(&directory).map_err(|e| e.to_string())?;
     // Where she is: the host's copy of her character, the same read follow uses.
-    let here = crate::nav::plan(&walker.name, crate::nav::Goal::Point([0.0; 3]), f64::INFINITY)?.from;
-    if let Some(name) = walking_to.as_ref() {
+    let here = crate::nav::plan(&name, crate::nav::Goal::Point([0.0; 3]), f64::INFINITY)?.from;
+    let mut walking_to = WALKING_TO.lock();
+    if let Some(target) = walking_to.clone() {
         // The AI controller's path following owns the walk: requested once, it
         // goes idle when it arrives or gives up. Re-requesting every cycle would
         // restart it, and she stood wedged against a table forever (2026-09-13).
         let status = crate::ai_player::move_status()?;
         let done = status == "arrived";
-        if name == WANDER {
-            if done { ueforge::log!("AI player {} wander ended: {status}", walker.name); *walking_to = None; }
-            if walking_to.is_some() { return Ok(()); }
-        } else if let Some(thing) = seen.things.get_mut(name) {
+        if target == WANDER {
+            if done { ueforge::log!("AI player {name} wander ended"); *walking_to = None; }
+            if walking_to.is_some() { return Ok(json!({"walking_to": WANDER, "status": status})); }
+        } else if let Some(thing) = seen.things.get_mut(&target) {
             if done || flat_distance(&here, &thing.location) <= VISIT_DISTANCE {
                 thing.visited = true;
-                ueforge::log!("AI player {} finished with {name} ({}): {status}", walker.name, thing.class);
+                ueforge::log!("AI player {name} finished with {target} ({}): {status}", thing.class);
                 *walking_to = None;
-                seen.save(&walker.directory).map_err(|e| e.to_string())?;
+                seen.save(&directory).map_err(|e| e.to_string())?;
             }
-            if walking_to.is_some() { return Ok(()); }
+            if walking_to.is_some() { return Ok(json!({"walking_to": target, "status": status})); }
         } else {
             *walking_to = None;
         }
@@ -66,83 +81,63 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
     let next = seen.things.iter().filter(|(_, t)| !t.visited)
         .min_by(|a, b| flat_distance(&here, &a.1.location).total_cmp(&flat_distance(&here, &b.1.location)))
         .map(|(name, thing)| (name.clone(), thing.location, thing.class.clone()));
-    let Some((name, location, class)) = next else { return wander(walker, here, walking_to); };
+    let Some((target, location, class)) = next else { return wander(&name, here, &mut walking_to); };
     match crate::ai_player::walk_to(crate::nav::Goal::Point(location), VISIT_DISTANCE) {
         Ok(reply) if reply["state"] == "standing" => {
-            // Already there: nothing to walk.
-            if let Some(thing) = seen.things.get_mut(&name) { thing.visited = true; }
-            seen.save(&walker.directory).map_err(|e| e.to_string())?;
+            if let Some(thing) = seen.things.get_mut(&target) { thing.visited = true; }
+            seen.save(&directory).map_err(|e| e.to_string())?;
+            Ok(json!({"visited_standing": target}))
         }
-        Ok(_) => { ueforge::log!("AI player {} exploring toward {name} ({class})", walker.name); *walking_to = Some(name); }
+        Ok(_) => { ueforge::log!("AI player {name} exploring toward {target} ({class})"); *walking_to = Some(target.clone()); Ok(json!({"walking_to": target})) }
         Err(error) => {
-            ueforge::log!("AI player {} cannot reach {name} ({class}): {error}", walker.name);
-            if let Some(thing) = seen.things.get_mut(&name) { thing.visited = true; }
-            seen.save(&walker.directory).map_err(|e| e.to_string())?;
+            ueforge::log!("AI player {name} cannot reach {target} ({class}): {error}");
+            if let Some(thing) = seen.things.get_mut(&target) { thing.visited = true; }
+            seen.save(&directory).map_err(|e| e.to_string())?;
+            Ok(json!({"unreachable": target}))
         }
     }
-    Ok(())
 }
 
-/// Nothing remembered is left to visit: walk somewhere she has not looked,
-/// a reachable point WANDER_DISTANCE away in a random direction, so new
-/// things enter her sight. Directions the mesh cannot path to are skipped.
-const WANDER_DISTANCE: f64 = 1200.0;
-const WANDER_TRIES: usize = 8;
-
-fn wander(walker: &crate::ai_player::Walker, here: [f64; 3], walking_to: &mut Option<String>) -> Result<(), String> {
+fn wander(name: &str, here: [f64; 3], walking_to: &mut Option<String>) -> Result<Value, String> {
     for _ in 0..WANDER_TRIES {
         let angle = fastrand::f64() * std::f64::consts::TAU;
         let goal = [here[0] + WANDER_DISTANCE * angle.cos(), here[1] + WANDER_DISTANCE * angle.sin(), here[2]];
-        match crate::ai_player::walk_to(crate::nav::Goal::Point(goal), VISIT_DISTANCE) {
-            Ok(reply) if reply["state"] == "travel_requested" => {
-                ueforge::log!("AI player {} wandering {:.0} degrees to {:.0},{:.0}", walker.name, angle.to_degrees(), goal[0], goal[1]);
-                // A wander target is a place, not a thing; it is done when the follower says so.
+        if let Ok(reply) = crate::ai_player::walk_to(crate::nav::Goal::Point(goal), VISIT_DISTANCE) {
+            if reply["state"] == "travel_requested" {
+                ueforge::log!("AI player {name} wandering {:.0} degrees to {:.0},{:.0}", angle.to_degrees(), goal[0], goal[1]);
                 *walking_to = Some(WANDER.into());
-                return Ok(());
+                return Ok(json!({"walking_to": WANDER, "degrees": angle.to_degrees()}));
             }
-            _ => continue,
         }
     }
-    ueforge::log!("AI player {} found no reachable direction to wander", walker.name);
-    Ok(())
+    ueforge::log!("AI player {name} found no reachable direction to wander");
+    Ok(json!({"wander": "no reachable direction"}))
 }
-
-/// The name a wander walk carries in `walking_to`; never a remembered thing.
-const WANDER: &str = "(wander)";
 
 /// Start or stop exploring. Starting takes her walking from follow.
 fn explore(args: &Value) -> Result<Value, String> {
     if !args["on"].as_bool().unwrap_or(true) {
+        *WALKING_TO.lock() = None;
         crate::ai_player::release_walking()?;
         return Ok(json!({"exploring": false}));
     }
-    let walker = crate::ai_player::take_walking()?;
-    let reply = json!({"name": walker.name, "exploring": true, "period_seconds": EXPLORE_PERIOD.as_secs(), "memory": walker.directory.join("seen.json")});
-    std::thread::Builder::new().name("abiotic-ai-player-explore".into()).spawn(move || {
-        let mut walking_to = None;
-        while walker.alive() {
-            if let Err(error) = cycle(&walker, &mut walking_to) { ueforge::log!("AI player {} exploring: {error}", walker.name); }
-            std::thread::sleep(EXPLORE_PERIOD);
-        }
-        ueforge::log!("AI player {} stopped exploring", walker.name);
-    }).map_err(|e| e.to_string())?;
-    Ok(reply)
+    crate::ai_player::session_name()?;
+    crate::ai_player::take_walking("explore")?;
+    *WALKING_TO.lock() = None;
+    ueforge::loops::start("explore", "ai_player.explore_cycle", json!({}), Duration::from_millis(EXPLORE_PERIOD_MS))
 }
 
 /// What she remembers: every thing she has ever seen, with visited flags.
 fn memory(_: &Value) -> Result<Value, String> {
-    let walker = {
-        // Reading memory must not take her walking; only the directory is needed.
-        let directory = crate::ai_player::session_directory()?;
-        Seen::load(&directory).map_err(|e| e.to_string())?
-    };
-    let visited = walker.things.values().filter(|t| t.visited).count();
-    Ok(json!({"things": walker.things.len(), "visited": visited, "seen": walker.things}))
+    let seen = Seen::load(&crate::ai_player::session_directory()?).map_err(|e| e.to_string())?;
+    let visited = seen.things.values().filter(|t| t.visited).count();
+    Ok(json!({"things": seen.things.len(), "visited": visited, "seen": seen.things}))
 }
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.explore", "Explore: perceive, remember everything seen in the profile's seen.json, walk to the nearest remembered unvisited thing; on=false stops", "{on?: bool}", explore),
+        ueforge::ops::OpDef::new("ai_player.explore", "Explore as a loop: perceive, remember everything seen in the profile's seen.json, walk to the nearest remembered unvisited thing; on=false stops", "{on?: bool}", explore),
+        ueforge::ops::OpDef::new("ai_player.explore_cycle", "One explore step (the explore loop runs it every two seconds)", "{}", cycle),
         ueforge::ops::OpDef::new("ai_player.memory", "Everything the AI player has ever perceived, with visited flags", "{}", memory),
     ]);
 }

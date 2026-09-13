@@ -29,6 +29,80 @@ fn follow_start() {
     assert!(following.ok, "ai_player.follow: {:?}", following.error);
 }
 
+/// Her own tree: fight with the Exor's tree while enemies are counted,
+/// otherwise follow the human. Joins with the Exor's controller class so
+/// its tree asset and blackboard are in memory, gives her eyes, hands her
+/// sightings to the controller every second, then builds and runs the tree.
+#[test]
+#[ignore = "joins Sophia with the Exor controller, gives her eyes, and runs her tree following the human; leave with ai_player.stop"]
+fn tree_start() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let human = human_name(&api, "Sophia");
+    for (op, args) in [
+        ("ai_player.start", json!({"controller_class": "AI_Controller_NPC_Exor_C"})),
+        ("ai_player.perceive", json!({"player": "Sophia"})),
+        ("ai_player.targets", json!({"on": true})),
+        ("ai_player.tree", json!({"follow_key": "AllyTarget", "follow_player": human})),
+    ] {
+        let reply = api.op(op, args);
+        println!("{op}: {}", if reply.ok { reply.result.to_string().chars().take(400).collect::<String>() } else { format!("{:?}", reply.error) });
+        assert!(reply.ok, "{op}: {:?}", reply.error);
+    }
+}
+
+#[test]
+#[ignore = "prints where Sophia and the human are and the distance between them"]
+fn where_is_she() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let players = api.op("players", json!({}));
+    assert!(players.ok, "players: {:?}", players.error);
+    let rows = players.result["players"].as_array().cloned().unwrap_or_default();
+    for p in &rows { println!("{} at {} faction {}", p["name"], p["location"], p["faction"]); }
+    if let (Some(a), Some(b)) = (rows.iter().find(|p| p["name"] == "Sophia"), rows.iter().find(|p| p["name"] != "Sophia")) {
+        println!("distance {:.0} units", distance(&a["location"], &b["location"]));
+        // Is there a path between them on the host's navigation mesh?
+        let path = api.op("nav.find_path", json!({"from": a["location"], "to": b["location"]}));
+        println!("path: {}", if path.ok { format!("{} points", path.result["count"]) } else { format!("{:?}", path.error) });
+    }
+    let status = api.op("ai_player.status", json!({}));
+    println!("status: {}", status.result);
+}
+
+/// Record what the game calls on her controller and body: the target
+/// functions the decoded target choice names (npc-ai.md) and possession.
+#[test]
+#[ignore = "installs function watches on her controller and body; read with watch_log"]
+fn watch_start() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    for (class, function) in [
+        ("Abiotic_AI_Controller_ParentBP_C", "AddOrUpdatePotentialTarget"),
+        ("Abiotic_AI_Controller_ParentBP_C", "CheckForNewBestTarget"),
+        ("Abiotic_AI_Controller_ParentBP_C", "SetCurrentCombatTarget"),
+        ("Abiotic_AI_Controller_ParentBP_C", "GetHostilityTowardsTarget"),
+        ("Abiotic_PlayerCharacter_C", "ReceivePossessed"),
+    ] {
+        let reply = api.op("hook.watch", json!({"class": class, "function": function}));
+        println!("hook.watch {class}::{function}: {}", if reply.ok { reply.result.to_string() } else { format!("{:?}", reply.error) });
+    }
+}
+
+#[test]
+#[ignore = "prints the recorded function calls"]
+fn watch_log() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let log = api.op("hook.log", json!({"limit": 60}));
+    assert!(log.ok, "hook.log: {:?}", log.error);
+    println!("watching: {}", log.result["watching"]);
+    for call in log.result["calls"].as_array().into_iter().flatten() {
+        println!("{}ms {} {}::{} {}", call["t_ms"], call["object"], call["class"], call["function"], call["params"]);
+    }
+    println!("{} calls", log.result["count"]);
+}
+
 #[test]
 #[ignore = "stops Sophia following"]
 fn follow_stop() {

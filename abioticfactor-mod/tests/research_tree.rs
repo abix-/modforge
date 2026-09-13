@@ -111,18 +111,13 @@ fn how_the_exor_tree_is_built() {
     assert_ne!(tree, 0, "the Exor controller default has no BehaviorTree");
 
     // Struct layouts from the live reflection: the child entry and the key selector.
-    // The mod's in-process reflection walk (ai_player.blackboard_keys reports
-    // the layouts it uses); discover_struct_detail returns nonsense for this
-    // build (one field "rty" at 437, 2026-09-13).
-    let layouts = api.op("ai_player.blackboard_keys", json!({}));
-    assert!(layouts.ok, "ai_player.blackboard_keys: {:?}", layouts.error);
+    // The in-process reflection walk (struct.layout); discover_struct_detail
+    // returned nonsense for this build (one field "rty" at 437, 2026-09-13).
     let struct_of = |name: &str| -> Vec<(String, String, u32)> {
-        layouts.result["layouts"][name]["fields"].as_array().into_iter().flatten().filter_map(|f| f.as_str()).map(|f| {
-            // "Name@offset+size"
-            let (name, rest) = f.split_once('@').unwrap();
-            let (offset, _) = rest.split_once('+').unwrap();
-            (name.to_owned(), String::new(), offset.parse().unwrap())
-        }).collect()
+        let reply = api.op("struct.layout", json!({"name": name}));
+        assert!(reply.ok, "struct.layout {name}: {:?}", reply.error);
+        reply.result["fields"].as_array().into_iter().flatten()
+            .map(|f| (f["name"].as_str().unwrap_or("").to_owned(), f["type"].as_str().unwrap_or("").to_owned(), f["offset"].as_u64().unwrap_or(0) as u32)).collect()
     };
     let child = struct_of("BTCompositeChild");
     let selector = struct_of("BlackboardKeySelector");

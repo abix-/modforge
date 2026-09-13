@@ -71,6 +71,7 @@
 
 pub mod args;
 pub mod assets;
+pub mod behavior_tree;
 pub mod build;
 pub mod client;
 pub mod counters;
@@ -88,6 +89,7 @@ pub mod hook;
 pub mod hot_reload;
 pub mod input;
 pub mod inventory;
+pub mod loops;
 // log moved to modforge in Phase 0b. Both the module and the
 // log!() macro re-export through this single `pub use`.
 pub use modforge::log;
@@ -96,6 +98,7 @@ pub mod nav;
 pub mod ops;
 pub mod parms;
 pub mod pe_queue;
+pub mod reflect;
 pub mod ring;
 pub mod rpg;
 pub mod scanner;
@@ -104,6 +107,7 @@ pub mod symbols;
 pub mod server;
 pub mod settings;
 pub mod shutdown;
+pub mod spawn_ops;
 pub mod tweak;
 pub mod uasset;
 pub mod ue;
@@ -112,6 +116,7 @@ pub mod ui_class_browser;
 pub mod ui_data_table_browser;
 pub mod ui_dynamic_tweaks;
 pub mod ui_scanner;
+pub mod watch;
 pub mod ui_struct_browser;
 pub mod ui_tweaks;
 pub mod winproc;

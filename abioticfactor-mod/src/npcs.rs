@@ -5,7 +5,8 @@
 //! engine's actor spawn, and told to spawn with its own DebugSpawn. The
 //! NPC then arrives with everything the game gives it. A plain actor spawn
 //! of NPC_Monster_Exor killed the game within two seconds (2026-09-13,
-//! twice); spawners are the supported path.
+//! twice); spawners are the supported path. Everything through ueforge's
+//! generic spawn, call and field tools.
 use serde_json::{Value, json};
 use std::time::Duration;
 use ueforge::ue::UObject;
@@ -18,24 +19,14 @@ const SPAWNER_PARENT: &str = "Abiotic_NPCSpawn_ParentBP_C";
 pub(crate) fn blueprint_class(dir: &str, name: &str) -> Result<&'static ueforge::ue::UClass, String> {
     let class_name = format!("{name}_C");
     if let Some(class) = ueforge::ue::find_class_fast(&class_name) { return Ok(class); }
-    let package = ueforge::ue::fname::from_str(&format!("{dir}/{name}"), ueforge::ue::fname::FindName::Add).ok_or("package FName unavailable")?;
-    let asset = ueforge::ue::fname::from_str(&class_name, ueforge::ue::fname::FindName::Add).ok_or("class FName unavailable")?;
-    let address = ueforge::assets::load_asset(package.as_u64(), asset.as_u64())?;
-    if address == 0 { return Err(format!("{dir}/{name}.{class_name} did not load")); }
+    let address = ueforge::reflect::object_ref(&json!(format!("asset:{dir}/{name}.{class_name}")))?;
     ueforge::ue::find_class_fast(&class_name).ok_or_else(|| format!("{class_name} loaded at 0x{address:X} but is not findable as a class"))
 }
 
-/// Read a reflected TArray of object pointers. Game thread.
-unsafe fn object_array(object: &UObject, name: &str) -> Result<Vec<u64>, String> {
-    let offset = ueforge::input::class_property_offset(object, name, 16)?;
-    // SAFETY: a TArray header is data pointer, count, capacity on the live object.
-    let (data, count) = unsafe {
-        let header = object.field_ptr(offset);
-        ((header as *const u64).read_unaligned(), (header.add(8) as *const i32).read_unaligned())
-    };
-    if data == 0 || count <= 0 { return Ok(Vec::new()); }
-    // SAFETY: count pointers follow the data pointer.
-    Ok((0..count as usize).map(|i| unsafe { ((data as *const u64).add(i)).read_unaligned() }).collect())
+/// The NPCs a spawner tracks: name, class, location.
+unsafe fn current_npcs(spawner: &UObject) -> Result<Vec<Value>, String> {
+    Ok(unsafe { ueforge::reflect::array_get(spawner, "CurrentNPCs", None)? }["elements"].as_array().into_iter().flatten()
+        .filter_map(|npc| { let address = crate::ai_player::addr(npc); if address == 0 { None } else { Some(unsafe { crate::ai_player::describe(address) }) } }).collect())
 }
 
 /// Place a spawner Blueprint `distance` units along +X from a named player's
@@ -48,47 +39,28 @@ fn spawn(args: &Value) -> Result<Value, String> {
         // SAFETY: game thread.
         let (_, character) = unsafe { crate::nav::player_character(&player)? };
         let (x, y, z) = unsafe { ueforge::ue::transform::world_location(character as *const UObject as *const u8) }.ok_or("player character has no location")?;
-        let class = blueprint_class(SPAWNER_PACKAGE_DIR, &spawner)?;
+        let class = blueprint_class(SPAWNER_PACKAGE_DIR, &spawner)?.as_object().name();
         let location = (x + distance, y, z);
-        // SAFETY: the player's live character is the world context; the class is loaded.
-        let actor = unsafe { ueforge::ue::spawn::spawn_actor(character as *const UObject as *const u8, class as *const _ as u64, location, 180.0, 1.0) };
-        if actor == 0 { return Err(format!("{spawner} did not spawn")); }
+        let actor = unsafe { ueforge::spawn_ops::spawn_actor(character, &class, location, 180.0, &serde_json::Map::new())? };
         // SAFETY: a live actor the engine just finished spawning.
         let object = unsafe { &*(actor as *const UObject) };
-        unsafe { crate::perception::call_named(object, SPAWNER_PARENT, "DebugSpawn", &[])? };
-        let npcs: Vec<String> = unsafe { object_array(object, "CurrentNPCs")? }.into_iter().filter(|p| *p != 0)
-            // SAFETY: live NPC actors the spawner tracks.
-            .map(|p| unsafe { &*(p as *const UObject) }.name()).collect();
-        Ok(json!({"spawner": spawner, "actor": format!("0x{actor:X}"), "object": object.name(), "location": [location.0, location.1, location.2], "near_player": player, "npcs": npcs}))
+        unsafe { ueforge::reflect::call(object, SPAWNER_PARENT, "DebugSpawn", &serde_json::Map::new())? };
+        Ok(json!({"spawner": spawner, "actor": format!("0x{actor:X}"), "object": object.name(), "location": [location.0, location.1, location.2], "near_player": player, "npcs": unsafe { current_npcs(object)? }}))
     })
 }
 
-/// What a placed spawner has spawned so far, by the spawner actor's address.
+/// What a placed spawner has spawned so far, and its own gates, by the spawner actor's address.
 fn spawned(args: &Value) -> Result<Value, String> {
     let actor = args["actor"].as_str().filter(|s| !s.is_empty()).ok_or("actor must be the spawner's address from npc.spawn")?.to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
         let spawner = ueforge::selector::resolve(&format!("addr:{actor}"))?;
-        let name = spawner.name();
         // SAFETY: game thread; a live spawner actor.
-        let npcs: Vec<Value> = unsafe { object_array(spawner, "CurrentNPCs")? }.into_iter().filter(|p| *p != 0).map(|p| {
-            let npc = unsafe { &*(p as *const UObject) };
-            let location = unsafe { ueforge::ue::transform::world_location(p as *const u8) };
-            json!({"name": npc.name(), "class": npc.class().map(|c| c.as_object().name()).unwrap_or_default(), "location": location.map(|(x, y, z)| [x, y, z])})
-        }).collect();
-        // The spawner's own gates, so a refusal can be read instead of guessed.
-        let mut gates = serde_json::Map::new();
-        for (field, size) in [("ManualSpawn", 1), ("OnlySpawnOnce", 1), ("HasSpawnedOnce", 1), ("AlwaysPassDistanceCheck", 1), ("ShouldSpawnSkipPlayerChecks", 1), ("Debug", 1), ("CanSpawnInLineOfSight", 1), ("SpawnWithEffect", 1),
-            ("PlayersRequiredToSpawn", 4), ("NPCsAllowedFromSpawn", 4), ("NPC Level", 4), ("DirectorFailCounter", 4), ("PlayerWithinDistanceToSpawn", 8), ("SpawnCooldown_Default", 8)] {
-            let Ok(offset) = ueforge::input::class_property_offset(spawner, field, size) else { continue };
-            // SAFETY: a reflected field of the live spawner, read at its own size.
-            let value = unsafe {
-                let p = spawner.field_ptr(offset);
-                match size { 1 => json!((p as *const u8).read_unaligned()), 4 => json!((p as *const i32).read_unaligned()), _ => json!((p as *const f64).read_unaligned()) }
-            };
-            gates.insert(field.into(), value);
-        }
-        let rows = unsafe { object_array(spawner, "NPCsToSpawn").map(|v| v.len()).unwrap_or(0) };
-        Ok(json!({"spawner": name, "count": npcs.len(), "npcs": npcs, "gates": gates, "npcs_to_spawn_entries": rows}))
+        let npcs = unsafe { current_npcs(spawner)? };
+        let gates: Vec<String> = ["ManualSpawn", "OnlySpawnOnce", "HasSpawnedOnce", "AlwaysPassDistanceCheck", "ShouldSpawnSkipPlayerChecks", "Debug", "CanSpawnInLineOfSight", "SpawnWithEffect",
+            "PlayersRequiredToSpawn", "NPCsAllowedFromSpawn", "NPC Level", "DirectorFailCounter", "PlayerWithinDistanceToSpawn", "SpawnCooldown_Default"].iter().map(|s| s.to_string()).collect();
+        let gates = unsafe { ueforge::reflect::get_fields(spawner, &gates) }.unwrap_or_else(|e| json!(e));
+        let rows = unsafe { ueforge::reflect::array_get(spawner, "NPCsToSpawn", None) }.map(|a| a["count"].clone()).unwrap_or(json!(0));
+        Ok(json!({"spawner": spawner.name(), "count": npcs.len(), "npcs": npcs, "gates": gates, "npcs_to_spawn_entries": rows}))
     })
 }
 

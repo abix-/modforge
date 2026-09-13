@@ -79,6 +79,11 @@ unsafe fn worker() {
     explore::register();
     tree::register();
     ueforge::assets::register_ops();
+    ueforge::reflect::register_ops(&DRAIN, DRAIN_HINT);
+    ueforge::behavior_tree::register_ops(&DRAIN, DRAIN_HINT);
+    ueforge::spawn_ops::register_ops(&DRAIN, DRAIN_HINT);
+    ueforge::loops::register_ops();
+    ueforge::watch::register_ops();
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::game_thread::serve(&DRAIN);
     ueforge::debug::register_pe_call(&DRAIN, DRAIN_HINT, ueforge::selector::resolve);
@@ -105,5 +110,7 @@ unsafe fn worker() {
 }
 
 fn on_shutdown() {
+    // Loops started from the endpoint or the tab must not outlive the DLL.
+    ueforge::loops::stop_all();
     ueforge::log!("abioticfactor_mod shutdown");
 }
