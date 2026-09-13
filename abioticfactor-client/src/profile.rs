@@ -68,6 +68,53 @@ pub fn remember(directory: &Path, event: &str, server: &str) -> io::Result<()> {
     file.sync_data()
 }
 
+/// One thing she has perceived, by the actor's name: what it is, where it
+/// was when last seen, when, how often, and whether she has walked up to it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SeenThing {
+    pub class: String,
+    pub location: [f64; 3],
+    pub first_seen: u64,
+    pub last_seen: u64,
+    pub times_seen: u32,
+    pub visited: bool,
+}
+
+/// Everything she has ever perceived, persisted in her profile as seen.json.
+/// Only perception writes here; nothing is looked up from the world.
+#[derive(Default, Serialize, Deserialize)]
+pub struct Seen {
+    pub things: std::collections::BTreeMap<String, SeenThing>,
+}
+
+impl Seen {
+    pub fn load(directory: &Path) -> io::Result<Self> {
+        match fs::read(directory.join("seen.json")) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error),
+        }
+    }
+
+    pub fn save(&self, directory: &Path) -> io::Result<()> {
+        fs::create_dir_all(directory)?;
+        let bytes = serde_json::to_vec_pretty(self)?;
+        let path = directory.join("seen.json");
+        let temporary = directory.join("seen.json.new");
+        fs::write(&temporary, bytes)?;
+        fs::rename(temporary, path)
+    }
+
+    /// Record one perception; returns true when this thing is new to her.
+    pub fn note(&mut self, name: &str, class: &str, location: [f64; 3]) -> bool {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        match self.things.get_mut(name) {
+            Some(thing) => { thing.location = location; thing.last_seen = now; thing.times_seen += 1; false }
+            None => { self.things.insert(name.to_owned(), SeenThing { class: class.to_owned(), location, first_seen: now, last_seen: now, times_seen: 1, visited: false }); true }
+        }
+    }
+}
+
 pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
     let text = match fs::read_to_string(directory.join("memory.jsonl")) {
         Ok(text) => text,
@@ -80,6 +127,20 @@ pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn seen_things_persist_and_count_repeat_sightings() {
+        let directory = std::env::temp_dir().join(format!("sophia-seen-{:016x}", fastrand::u64(..)));
+        let mut seen = Seen::load(&directory).unwrap();
+        assert!(seen.note("Pest_1", "NPC_Monster_Pest_C", [1.0, 2.0, 3.0]), "first sighting is new");
+        assert!(!seen.note("Pest_1", "NPC_Monster_Pest_C", [4.0, 5.0, 6.0]), "second sighting is not");
+        seen.save(&directory).unwrap();
+        let again = Seen::load(&directory).unwrap();
+        let thing = &again.things["Pest_1"];
+        assert_eq!((thing.times_seen, thing.location, thing.visited), (2, [4.0, 5.0, 6.0], false));
+        fs::remove_file(directory.join("seen.json")).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
 
     #[test]
     fn session_lock_excludes_duplicate_and_releases_after_close() {

@@ -90,6 +90,26 @@ fn ai_player_host_exor() {
 }
 
 #[test]
+#[ignore = "Sophia explores from her own perception for 40 seconds, then prints what she remembers and where she is"]
+fn ai_player_host_explore() {
+    let api = api();
+    let started = api.op("ai_player.explore", json!({"on": true}));
+    assert!(started.ok, "ai_player.explore: {:?}", started.error);
+    println!("{}", started.result);
+    for _ in 0..4 {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        let players = api.op("players", json!({}));
+        if let Some(sophia) = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia") { println!("Sophia at {}", sophia["location"]); }
+    }
+    let memory = api.op("ai_player.memory", json!({}));
+    assert!(memory.ok, "ai_player.memory: {:?}", memory.error);
+    println!("remembers {} things, visited {}", memory.result["things"], memory.result["visited"]);
+    for (name, thing) in memory.result["seen"].as_object().into_iter().flatten() {
+        println!("  {name}: {} at {} seen {} times visited {}", thing["class"], thing["location"], thing["times_seen"], thing["visited"]);
+    }
+}
+
+#[test]
 #[ignore = "reads the installed mod's Sophia UDP status"]
 fn ai_player_host_status() {
     let status = api().op("ai_player.status", json!({}));

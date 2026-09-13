@@ -56,6 +56,12 @@ pub fn render() {
     ui::same_line();
     if ui::button("What she sees") { run("ai_player.perceived", json!({"player": "Sophia"})); }
     ui::same_line();
+    if ui::button("Explore") { run("ai_player.explore", json!({"on": true})); }
+    ui::same_line();
+    if ui::button("Stop exploring") { run("ai_player.explore", json!({"on": false})); }
+    ui::same_line();
+    if ui::button("Memory") { run("ai_player.memory", json!({})); }
+    ui::same_line();
     if ui::button("Leave") { run("ai_player.stop", json!({})); }
     ui::separator();
     let (op, reply) = LAST.lock().clone();

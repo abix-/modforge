@@ -6,11 +6,62 @@ use std::{sync::{Arc, mpsc}, thread::JoinHandle, time::Duration};
 
 struct Session {
     name: String,
+    /// Her profile: identity, journal and what she has seen live here.
+    directory: std::path::PathBuf,
     commands: mpsc::Sender<String>,
     observation: Arc<Mutex<login::SessionStatus>>,
     worker: JoinHandle<Result<(), String>>,
-    /// True while a follow loop owns this session's walking.
+    /// True while a loop (follow or explore) owns this session's walking.
     following: Arc<std::sync::atomic::AtomicBool>,
+}
+
+/// What a walking loop needs: her name, profile directory, command channel,
+/// and the flag that says the loop still owns her walking.
+pub(crate) struct Walker {
+    pub name: String,
+    pub directory: std::path::PathBuf,
+    pub commands: mpsc::Sender<String>,
+    pub owns: Arc<std::sync::atomic::AtomicBool>,
+    /// The client's own observation, for its travel status (arrived, stuck).
+    pub observation: Arc<Mutex<login::SessionStatus>>,
+}
+
+impl Walker {
+    /// The client's current travel status text, if a travel is or was running.
+    pub fn travel_status(&self) -> Option<String> {
+        self.observation.lock().travel.clone()
+    }
+
+    /// Still the owner, and the session is still alive.
+    pub fn alive(&self) -> bool {
+        self.owns.load(std::sync::atomic::Ordering::Relaxed)
+            && SESSION.lock().as_ref().is_some_and(|s| s.name == self.name && !s.worker.is_finished())
+    }
+}
+
+/// Hand her walking to a new loop: the previous loop's flag goes false, so
+/// follow and explore never fight over her. One owner at a time.
+pub(crate) fn take_walking() -> Result<Walker, String> {
+    let mut session = SESSION.lock();
+    let Some(session) = session.as_mut() else { return Err("no AI player session".into()); };
+    if session.worker.is_finished() { return Err("AI player session already finished".into()); }
+    session.following.store(false, std::sync::atomic::Ordering::Relaxed);
+    let owns = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    session.following = owns.clone();
+    Ok(Walker { name: session.name.clone(), directory: session.directory.clone(), commands: session.commands.clone(), owns, observation: session.observation.clone() })
+}
+
+/// Her profile directory, for reading memory without touching her walking.
+pub(crate) fn session_directory() -> Result<std::path::PathBuf, String> {
+    SESSION.lock().as_ref().map(|s| s.directory.clone()).ok_or("no AI player session".into())
+}
+
+/// Stop whichever loop owns her walking and stand still.
+pub(crate) fn release_walking() -> Result<(), String> {
+    let session = SESSION.lock();
+    let Some(session) = session.as_ref() else { return Err("no AI player session".into()); };
+    session.following.store(false, std::sync::atomic::Ordering::Relaxed);
+    session.commands.send("stop".into()).map_err(|e| e.to_string())
 }
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
@@ -28,6 +79,7 @@ fn start(args: &Value) -> Result<Value, String> {
     let guard = profile::lock(&directory).map_err(|e| e.to_string())?;
     let profile = profile::Profile::load(&directory).map_err(|e| e.to_string())?;
     let name = profile.name.clone();
+    let session_directory = directory.clone();
     let (sender, receiver) = mpsc::channel();
     let observation = Arc::new(Mutex::new(login::SessionStatus::default()));
     let control = login::SessionControl { commands: receiver, status: observation.clone() };
@@ -46,7 +98,7 @@ fn start(args: &Value) -> Result<Value, String> {
         ueforge::log!("AI player UDP session ended: {:?}", result);
         result
     }).map_err(|e| e.to_string())?;
-    *session = Some(Session { name: name.clone(), commands: sender, observation, worker, following: Arc::new(std::sync::atomic::AtomicBool::new(false)) });
+    *session = Some(Session { name: name.clone(), directory: session_directory, commands: sender, observation, worker, following: Arc::new(std::sync::atomic::AtomicBool::new(false)) });
     Ok(json!({"name":name,"state":"starting","transport":"udp","server":"127.0.0.1:7777"}))
 }
 
@@ -79,7 +131,7 @@ const FOLLOW_DISTANCE: f64 = 300.0;
 /// the goal and asks the host navigation mesh for the path; partial paths are
 /// refused; the UDP client follows the points, or stands when already within
 /// `stand_within` of the goal.
-fn plan_travel(name: &str, commands: &mpsc::Sender<String>, goal: crate::nav::Goal, stand_within: f64) -> Result<Value, String> {
+pub(crate) fn plan_travel(name: &str, commands: &mpsc::Sender<String>, goal: crate::nav::Goal, stand_within: f64) -> Result<Value, String> {
     let plan = crate::nav::plan(name, goal, stand_within)?;
     if plan.points.is_empty() {
         commands.send("stop".into()).map_err(|e| e.to_string())?;
@@ -118,33 +170,22 @@ fn travel(args: &Value) -> Result<Value, String> {
 fn follow(args: &Value) -> Result<Value, String> {
     let target = args["player"].as_str().unwrap_or("").to_owned();
     let distance = args["distance"].as_f64().unwrap_or(FOLLOW_DISTANCE);
-    let mut session = SESSION.lock();
-    let Some(session) = session.as_mut() else { return Err("no AI player session".into()); };
-    if session.worker.is_finished() { return Err("AI player session already finished".into()); }
-    session.following.store(false, std::sync::atomic::Ordering::Relaxed);
     if target.is_empty() {
-        session.commands.send("stop".into()).map_err(|e| e.to_string())?;
-        return Ok(json!({"name":session.name,"following":null}));
+        release_walking()?;
+        return Ok(json!({"following":null}));
     }
-    let flag = Arc::new(std::sync::atomic::AtomicBool::new(true));
-    session.following = flag.clone();
-    let (name, commands) = (session.name.clone(), session.commands.clone());
+    let walker = take_walking()?;
     let followed = target.clone();
-    let reply = json!({"name":name,"following":target,"distance":distance,"period_seconds":FOLLOW_PERIOD.as_secs()});
+    let reply = json!({"name":walker.name,"following":target,"distance":distance,"period_seconds":FOLLOW_PERIOD.as_secs()});
     std::thread::Builder::new().name("abiotic-ai-player-follow".into()).spawn(move || {
-        while flag.load(std::sync::atomic::Ordering::Relaxed) {
-            // Following ends with the session; a dead session must not keep scanning for its player.
-            let alive = SESSION.lock().as_ref().is_some_and(|s| s.name == name && !s.worker.is_finished());
-            if !alive {
-                ueforge::log!("AI player {name} stopped following {followed}: session ended");
-                break;
-            }
+        while walker.alive() {
             // One game-thread job per cycle: both positions and, if needed, the path.
-            if let Err(error) = plan_travel(&name, &commands, crate::nav::Goal::Player(followed.clone()), distance) {
-                ueforge::log!("AI player {name} following {followed}: {error}");
+            if let Err(error) = plan_travel(&walker.name, &walker.commands, crate::nav::Goal::Player(followed.clone()), distance) {
+                ueforge::log!("AI player {} following {followed}: {error}", walker.name);
             }
             std::thread::sleep(FOLLOW_PERIOD);
         }
+        ueforge::log!("AI player {} stopped following {followed}", walker.name);
     }).map_err(|e| e.to_string())?;
     Ok(reply)
 }

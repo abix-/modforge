@@ -1,6 +1,7 @@
 #![allow(clippy::missing_safety_doc)]
 mod ai_player;
 mod combat;
+mod explore;
 mod host;
 mod nav;
 mod npcs;
@@ -70,6 +71,7 @@ unsafe fn worker() {
     combat::register();
     perception::register();
     npcs::register();
+    explore::register();
     ueforge::assets::register_ops();
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::game_thread::serve(&DRAIN);

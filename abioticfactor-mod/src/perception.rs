@@ -176,9 +176,19 @@ fn add(args: &Value) -> Result<Value, String> {
     })
 }
 
-/// What the perception component currently perceives: the engine's own list.
-fn perceived(args: &Value) -> Result<Value, String> {
-    let player = args["player"].as_str().filter(|s| !s.is_empty()).unwrap_or("Sophia").to_owned();
+/// One perceived actor: address, class, name, location.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Perceived {
+    pub addr: String,
+    pub class: String,
+    pub name: String,
+    pub location: Option<[f64; 3]>,
+}
+
+/// What the perception component currently perceives: the engine's own
+/// list, one game-thread job. The op and the explore loop both use this.
+pub(crate) fn perceived_rows(player: &str) -> Result<Vec<Perceived>, String> {
+    let player = player.to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
         // SAFETY: game thread.
         let component = unsafe { component_of(&player)? };
@@ -194,10 +204,16 @@ fn perceived(args: &Value) -> Result<Value, String> {
             if actor == 0 { continue; }
             let object = unsafe { &*(actor as *const UObject) };
             let location = unsafe { ueforge::ue::transform::world_location(actor as *const u8) };
-            rows.push(json!({"addr": format!("0x{actor:X}"), "class": object.class().map(|c| c.as_object().name()).unwrap_or_default(), "name": object.name(), "location": location.map(|(x, y, z)| [x, y, z])}));
+            rows.push(Perceived { addr: format!("0x{actor:X}"), class: object.class().map(|c| c.as_object().name()).unwrap_or_default(), name: object.name(), location: location.map(|(x, y, z)| [x, y, z]) });
         }
-        Ok(json!({"player": player, "count": rows.len(), "perceived": rows}))
-    })
+        Ok(json!(rows))
+    }).and_then(|v| serde_json::from_value(v).map_err(|e| e.to_string()))
+}
+
+fn perceived(args: &Value) -> Result<Value, String> {
+    let player = args["player"].as_str().filter(|s| !s.is_empty()).unwrap_or("Sophia");
+    let rows = perceived_rows(player)?;
+    Ok(json!({"player": player, "count": rows.len(), "perceived": rows}))
 }
 
 pub fn register() {
