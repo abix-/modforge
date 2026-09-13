@@ -121,8 +121,8 @@ TeleportPlayer, the call the decoded player spawn flow makes
 (history/lan-spawn.md), places her at the first of the nine
 Abiotic_WorldStart_C actors. The user saw the body at the world start.
 `ai_player.follow` re-requests AIController::MoveToActor every two seconds;
-she walked 232 units from the world start and then reported moving without
-progress, cause unread. The character's possession handler casts its
+the user watched her follow him around the facility ("it works. she follow
+me around"). The character's possession handler casts its
 controller to the player controller, so with an AI controller it leaves
 MyPlayerState and MyPlayerController null and Request_SpawnMeInWorld never
 runs: no player save loaded, no Client_SetupCharacter. The UDP client was

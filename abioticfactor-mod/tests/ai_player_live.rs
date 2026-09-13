@@ -16,6 +16,30 @@ fn distance(a: &Value, b: &Value) -> f64 {
 }
 
 #[test]
+#[ignore = "joins Sophia if needed and leaves her following the human; stop with follow_stop"]
+fn follow_start() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let human = human_name(&api, "Sophia");
+    let joined = api.op("ai_player.start", json!({}));
+    println!("ai_player.start: {}", if joined.ok { joined.result.to_string() } else { format!("{:?}", joined.error) });
+    assert!(joined.ok, "ai_player.start: {:?}", joined.error);
+    let following = api.op("ai_player.follow", json!({"player": human}));
+    println!("ai_player.follow: {}", if following.ok { following.result.to_string() } else { format!("{:?}", following.error) });
+    assert!(following.ok, "ai_player.follow: {:?}", following.error);
+}
+
+#[test]
+#[ignore = "stops Sophia following"]
+fn follow_stop() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let stopped = api.op("ai_player.follow", json!({"player": ""}));
+    println!("ai_player.follow: {}", if stopped.ok { stopped.result.to_string() } else { format!("{:?}", stopped.error) });
+    assert!(stopped.ok, "stop following: {:?}", stopped.error);
+}
+
+#[test]
 fn sophia_joins_stands_at_the_world_start_and_follows() {
     let api = api();
     if ping_or_skip(&api).is_none() { return; }
