@@ -521,28 +521,30 @@ fn sophia_melee_attack_lands() {
         let stopped = api.op("ai_player.follow", json!({"player": ""}));
         assert!(stopped.ok, "follow stop: {:?}", stopped.error);
         let context = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
-        let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
-        assert!(actors.ok, "actors_of_class: {:?}", actors.error);
-        let mut candidates: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
-            .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
-            .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
-        candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
-        for (distance, npc) in candidates.iter().take(6) { println!("loaded NPC {:.0} units away: {} at {}", distance, npc["class"], npc["location"]); }
-        'walk: for (_, npc) in &candidates {
-            let travel = api.op("ai_player.travel", json!({"to": npc["location"]}));
-            if !travel.ok { println!("cannot path to {}: {:?}", npc["class"], travel.error); continue; }
-            println!("harness walks her toward {} ({} path points)", npc["class"], travel.result["points"].as_array().map_or(0, |p| p.len()));
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
-            while std::time::Instant::now() < deadline {
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                let players = api.op("players", json!({}));
-                from = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
-                enemies = perceived_enemies(&api, from);
-                if !enemies.is_empty() { break 'walk; }
-                let status = api.op("ai_player.status", json!({}));
-                let travel_status = status.result["udp"]["travel"].as_str().unwrap_or("").to_owned();
-                if travel_status == "arrived" || travel_status == "stuck" { println!("walk ended: {travel_status}, she perceives no NPC here"); break; }
+        // NPCs wander, so every few seconds the harness re-reads where they are now
+        // and re-plans toward the nearest one with a complete path, until she perceives one.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
+        let mut skip: Vec<String> = Vec::new();
+        while enemies.is_empty() && std::time::Instant::now() < deadline {
+            let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
+            assert!(actors.ok, "actors_of_class: {:?}", actors.error);
+            let mut candidates: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
+                .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array() && !skip.contains(&a["name"].as_str().unwrap_or("").to_owned()))
+                .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+            candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut walking = false;
+            for (distance, npc) in &candidates {
+                let travel = api.op("ai_player.travel", json!({"to": npc["location"]}));
+                if !travel.ok { skip.push(npc["name"].as_str().unwrap_or("").to_owned()); continue; }
+                println!("harness re-plans toward {} {:.0} units away ({} path points)", npc["class"], distance, travel.result["points"].as_array().map_or(0, |p| p.len()));
+                walking = true;
+                break;
             }
+            if !walking { println!("no NPC with a complete path from here; skipped {}", skip.len()); skip.clear(); }
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            let players = api.op("players", json!({}));
+            from = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
+            enemies = perceived_enemies(&api, from);
         }
     }
     for (distance, enemy) in enemies.iter().take(5) { println!("{:.0} units: {} at {}", distance, enemy["class"], enemy["location"]); }
@@ -573,11 +575,12 @@ fn sophia_melee_attack_lands() {
         .expect("TotalCombinedHealth or a CurrentHealth_ limb field").clone();
     let before = read_number(&api, address, &kind, offset);
     println!("{name} before: {before}");
-    let attack = api.op("ai_player.attack", json!({"player": "Sophia", "face": enemy["location"]}));
-    assert!(attack.ok, "ai_player.attack: {:?}", attack.error);
-    println!("attack: {}", attack.result);
+    // The real client's melee request with an engine line-trace hit on the perceived enemy.
+    let attack = api.op("ai_player.melee", json!({"player": "Sophia", "target": enemy["addr"]}));
+    assert!(attack.ok, "ai_player.melee: {:?}", attack.error);
+    println!("melee: {}", attack.result);
     std::thread::sleep(std::time::Duration::from_secs(2));
     let after = read_number(&api, address, &kind, offset);
     println!("{name} after: {after} (before {before})");
-    assert!(after < before, "{} {name} did not drop: {before} -> {after}; the direct server-side call does not land, attacks go over UDP", enemy["class"]);
+    assert!(after < before, "{} {name} did not drop: {before} -> {after}; the melee request with this hit does not damage it", enemy["class"]);
 }
