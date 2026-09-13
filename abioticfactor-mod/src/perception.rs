@@ -161,6 +161,31 @@ fn add(args: &Value) -> Result<Value, String> {
             senses.push(class.as_object().name());
             copies.push(copy);
         }
+        // Hearing: only the monsters carry a hearing config and cloning theirs
+        // crashed the game (2026-09-13), so hers is built from the engine
+        // class's defaults with the Peccary's numbers (npc-ai.md: 750 range,
+        // no line-of-sight range, 1 s memory) and the same affiliation bits.
+        if !senses.iter().any(|s| s == "AISenseConfig_Hearing") && (only.is_empty() || only.iter().any(|s| s == "AISenseConfig_Hearing")) {
+            let class = ueforge::ue::find_class_fast("AISenseConfig_Hearing").ok_or("AISenseConfig_Hearing class not found")?;
+            let sense = ueforge::ue::find_class_fast("AISense_Hearing").ok_or("AISense_Hearing class not found")?;
+            let outer = (component as u64).to_le_bytes();
+            let class_bytes = (class as *const _ as u64).to_le_bytes();
+            let (parms, ret) = unsafe { crate::host::call_static("GameplayStatics", "SpawnObject", &[("ObjectClass", &class_bytes), ("Outer", &outer)])? };
+            let hearing = u64::from_le_bytes(parms[ret..ret + 8].try_into().unwrap());
+            if hearing == 0 { return Err("SpawnObject returned null for AISenseConfig_Hearing".into()); }
+            // SAFETY: a fresh config object of a known class; fields written by reflected offset and size.
+            let object = unsafe { &*(hearing as *const UObject) };
+            unsafe {
+                (object.field_ptr(ueforge::input::class_property_offset(object, "Implementation", 8)?) as *mut u64).write_unaligned(sense as *const _ as u64);
+                (object.field_ptr(ueforge::input::class_property_offset(object, "HearingRange", 4)?) as *mut f32).write_unaligned(750.0);
+                (object.field_ptr(ueforge::input::class_property_offset(object, "LoSHearingRange", 4)?) as *mut f32).write_unaligned(0.0);
+                (object.field_ptr(ueforge::input::class_property_offset(object, "MaxAge", 4)?) as *mut f32).write_unaligned(1.0);
+                (object.field_ptr(ueforge::input::class_property_offset(object, "DetectionByAffiliation", 1)?) as *mut u8).write_unaligned(0b111);
+                // bStartsEnabled is a bitfield whose mask is not read here; the class default is already enabled.
+            }
+            senses.push("AISenseConfig_Hearing (defaults)".into());
+            copies.push(hearing);
+        }
         unsafe {
             let header = component_object.field_ptr(offset);
             ueforge::ue::tarray::grow_raw(header, 8, copies.len() as i32)?;
