@@ -75,7 +75,20 @@ fn spawned(args: &Value) -> Result<Value, String> {
             let location = unsafe { ueforge::ue::transform::world_location(p as *const u8) };
             json!({"name": npc.name(), "class": npc.class().map(|c| c.as_object().name()).unwrap_or_default(), "location": location.map(|(x, y, z)| [x, y, z])})
         }).collect();
-        Ok(json!({"spawner": name, "count": npcs.len(), "npcs": npcs}))
+        // The spawner's own gates, so a refusal can be read instead of guessed.
+        let mut gates = serde_json::Map::new();
+        for (field, size) in [("ManualSpawn", 1), ("OnlySpawnOnce", 1), ("HasSpawnedOnce", 1), ("AlwaysPassDistanceCheck", 1), ("ShouldSpawnSkipPlayerChecks", 1), ("Debug", 1), ("CanSpawnInLineOfSight", 1), ("SpawnWithEffect", 1),
+            ("PlayersRequiredToSpawn", 4), ("NPCsAllowedFromSpawn", 4), ("NPC Level", 4), ("DirectorFailCounter", 4), ("PlayerWithinDistanceToSpawn", 8), ("SpawnCooldown_Default", 8)] {
+            let Ok(offset) = ueforge::input::class_property_offset(spawner, field, size) else { continue };
+            // SAFETY: a reflected field of the live spawner, read at its own size.
+            let value = unsafe {
+                let p = spawner.field_ptr(offset);
+                match size { 1 => json!((p as *const u8).read_unaligned()), 4 => json!((p as *const i32).read_unaligned()), _ => json!((p as *const f64).read_unaligned()) }
+            };
+            gates.insert(field.into(), value);
+        }
+        let rows = unsafe { object_array(spawner, "NPCsToSpawn").map(|v| v.len()).unwrap_or(0) };
+        Ok(json!({"spawner": name, "count": npcs.len(), "npcs": npcs, "gates": gates, "npcs_to_spawn_entries": rows}))
     })
 }
 

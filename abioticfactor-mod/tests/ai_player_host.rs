@@ -70,11 +70,16 @@ fn ai_player_host_exor() {
     let spawned = api.op("npc.spawn", json!({"spawner": "NPCSpawn_QuillExor", "near_player": human}));
     assert!(spawned.ok, "npc.spawn: {:?}", spawned.error);
     println!("{}", spawned.result);
-    // The spawner may spawn on its next tick rather than inside DebugSpawn; give it a moment and read back.
-    std::thread::sleep(std::time::Duration::from_secs(3));
-    let npcs = api.op("npc.spawned", json!({"actor": spawned.result["actor"]}));
-    assert!(npcs.ok, "npc.spawned: {:?}", npcs.error);
-    println!("{}", npcs.result);
+    // The spawner may spawn with an effect delay rather than inside DebugSpawn; poll it.
+    let mut npcs = json!({});
+    for _ in 0..10 {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let reply = api.op("npc.spawned", json!({"actor": spawned.result["actor"]}));
+        assert!(reply.ok, "npc.spawned: {:?}", reply.error);
+        npcs = reply.result;
+        if npcs["count"].as_u64().unwrap_or(0) > 0 { break; }
+    }
+    println!("{npcs}");
     let added = api.op("ai_player.perceive", json!({"player": "Sophia"}));
     assert!(added.ok, "ai_player.perceive: {:?}", added.error);
     println!("{}", added.result);

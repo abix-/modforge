@@ -469,11 +469,12 @@ fn read_number(api: &Api<Value>, object: u64, kind: &str, offset: u32) -> f64 {
 }
 
 /// Does a direct server-side attack call on Sophia's UDP-owned character hurt
-/// an enemy? Finds the nearest non-player character to Sophia, reads its
-/// health field, calls ai_player.attack facing it, and reads the health again.
-/// Bring Sophia within melee range of an enemy before running this.
+/// an enemy? The target comes from her own perception (an NPC_ class she
+/// currently sees, the nearest first), never from a world scan. She walks to
+/// it, the test reads its health, calls ai_player.attack facing it, and reads
+/// the health again. Lead her to where she can see a Pest before running.
 #[test]
-#[ignore = "swings Sophia's weapon at the nearest enemy; needs her mod-owned session running and an enemy in melee range"]
+#[ignore = "swings Sophia's weapon at the nearest enemy she perceives; needs her mod-owned session running with the perception component added"]
 fn sophia_melee_attack_lands() {
     let api = api();
     if ping_or_skip(&api).is_none() { return; }
@@ -482,16 +483,15 @@ fn sophia_melee_attack_lands() {
     let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia is in the game").clone();
     let at = |v: &Value| -> [f64; 3] { let a = v.as_array().expect("location"); [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()] };
     let from = at(&sophia["location"]);
-    let context = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
-    // Every character in the world except players; the nearest one is the target.
-    let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
-    assert!(actors.ok, "actors_of_class: {:?}", actors.error);
-    let mut enemies: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
-        .filter(|a| !a["class"].as_str().unwrap_or("").contains("PlayerCharacter") && a["location"].is_array())
+    // What she perceives right now; enemies are the NPC_ classes (narrative NPCs and players are not).
+    let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
+    assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
+    let mut enemies: Vec<(f64, Value)> = seen.result["perceived"].as_array().into_iter().flatten()
+        .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
         .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
     enemies.sort_by(|a, b| a.0.total_cmp(&b.0));
     for (distance, enemy) in enemies.iter().take(5) { println!("{:.0} units: {} at {}", distance, enemy["class"], enemy["location"]); }
-    let (mut distance, enemy) = enemies.first().expect("a non-player character in the world").clone();
+    let (mut distance, enemy) = enemies.first().expect("an NPC_ enemy in her perception; she sees none right now").clone();
     // Walk to it: stop any follow loop, travel to the enemy, wait until within melee range.
     let stopped = api.op("ai_player.follow", json!({"player": ""}));
     assert!(stopped.ok, "follow stop: {:?}", stopped.error);

@@ -5,6 +5,7 @@ mod host;
 mod nav;
 mod npcs;
 mod perception;
+mod ui;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "AbioticFactorMod",
@@ -15,6 +16,10 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     on_unreal_init: on_unreal_init,
     on_shutdown: on_shutdown,
     tabs: &[
+        ueforge::TabDef {
+            name: "Sophia",
+            render: ui::render,
+        },
         ueforge::TabDef {
             name: "Tables",
             render: ueforge::ui_data_table_browser::render,

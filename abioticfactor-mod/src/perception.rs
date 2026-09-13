@@ -194,7 +194,7 @@ fn perceived(args: &Value) -> Result<Value, String> {
             if actor == 0 { continue; }
             let object = unsafe { &*(actor as *const UObject) };
             let location = unsafe { ueforge::ue::transform::world_location(actor as *const u8) };
-            rows.push(json!({"class": object.class().map(|c| c.as_object().name()).unwrap_or_default(), "name": object.name(), "location": location.map(|(x, y, z)| [x, y, z])}));
+            rows.push(json!({"addr": format!("0x{actor:X}"), "class": object.class().map(|c| c.as_object().name()).unwrap_or_default(), "name": object.name(), "location": location.map(|(x, y, z)| [x, y, z])}));
         }
         Ok(json!({"player": player, "count": rows.len(), "perceived": rows}))
     })
