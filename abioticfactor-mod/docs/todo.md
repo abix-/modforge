@@ -1,8 +1,16 @@
 # abioticfactor-mod open issues
 
-Naming: this is a generic AI player system inside AbioticFactorMod. Sophia is
-the first named profile, not the system. The ai_player module owns her
-session; one active AI player at a time, more remains future work.
+What this is (operator, 2026-09-13): a system for adding AI players to any
+Unreal game. The engine-generic parts live in ueforge (the AI player join,
+reflection, loops, behavior trees from descriptions, blackboard access,
+function watching); the engine-agnostic parts in modforge (persona: a
+persistent named character with identity, journal and memory on disk under
+Modforge/<name>, existing across games). This mod holds only what is
+Abiotic Factor: class names, world starts, the character's own calls, the
+hand-off into the game's controller. Sophia is the first persistent named
+character; Charles and others follow. Sessions are kept by name and every
+op takes `player`; more than one AI player in the world at once is
+supported by the code and not yet exercised live.
 
 Current decision 2026-09-13: everything goes through the mod, in the host's
 game. No UDP client. Sophia is the NPCs' AI controller

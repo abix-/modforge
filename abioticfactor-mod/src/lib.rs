@@ -6,7 +6,6 @@ mod host;
 mod nav;
 mod npcs;
 mod perception;
-mod profile;
 mod tree;
 mod ui;
 
@@ -20,7 +19,7 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     on_shutdown: on_shutdown,
     tabs: &[
         ueforge::TabDef {
-            name: "Sophia",
+            name: "AI players",
             render: ui::render,
         },
         ueforge::TabDef {

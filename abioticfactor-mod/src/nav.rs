@@ -1,7 +1,9 @@
-//! Sophia's pathfinding: the host's own navigation mesh through
-//! ueforge::nav (NavigationSystemV1::FindPathToLocationSynchronously).
-//! This only answers path requests on the game thread; steering and
-//! movement stay in Sophia's UDP client.
+//! Players by name and paths on the host's navigation mesh. Every player,
+//! human or AI, is found the same way: the name on the PlayerState of a
+//! live controller. Path queries go through ueforge::nav
+//! (NavigationSystemV1::FindPathToLocationSynchronously) on the game thread;
+//! an AI player's walking is her AI controller's own path following
+//! (ai_player.rs), which plans for itself.
 use modforge::route::Position;
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -53,12 +55,11 @@ unsafe fn object_field(object: &UObject, name: &str) -> Result<u64, String> {
     Ok(unsafe { (object.field_ptr(offset) as *const u64).read_unaligned() })
 }
 
-/// Every live player controller with the name on its player state, the same
-/// identification the Sophia diagnostics use. Game thread.
+/// Every live player, by the name on the player state of its controller. Game thread.
 pub(crate) unsafe fn players() -> Result<Vec<(String, &'static UObject)>, String> {
     let mut found = Vec::new();
-    // Humans hold player controllers; Sophia holds the NPCs' AI controller with
-    // a PlayerState carrying her name (ai_player.rs). Both are players here.
+    // Humans hold player controllers; AI players hold the NPCs' AI controller
+    // with a PlayerState carrying their name (ai_player.rs). Both are players here.
     for pointer in ueforge::ue::actor::find_objects_by_chain("Abiotic_PlayerController_C").into_iter()
         .chain(ueforge::ue::actor::find_objects_by_chain("Abiotic_AI_Controller_ParentBP_C")) {
         // SAFETY: the pointer came from the live object list.
@@ -165,7 +166,7 @@ fn list_players(_: &Value) -> Result<Value, String> {
         let mut rows = Vec::new();
         // SAFETY: game thread.
         for (name, controller) in unsafe { players()? } {
-            // A player controller keeps its character in PlayerCharacter; Sophia's AI controller has only Pawn.
+            // A player controller keeps its character in PlayerCharacter; an AI player's controller has only Pawn.
             let character = match unsafe { object_field(controller, "PlayerCharacter") } { Ok(c) => c, Err(_) => unsafe { object_field(controller, "Pawn")? } };
             // SAFETY: a live character actor or null.
             let location = if character == 0 { None } else { unsafe { ueforge::ue::transform::world_location(character as *const u8) } };

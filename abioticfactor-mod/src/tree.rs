@@ -38,13 +38,14 @@ pub fn default_root(exor_tree: u64, follow_key: &str, follow_radius: f64) -> Val
 /// `follow_key` must be an object key of the Exor blackboard (bt.keys),
 /// `follow_player` the human, written into that key once the tree runs.
 fn run(args: &Value) -> Result<Value, String> {
+    let name = crate::ai_player::player_name(args)?;
     let follow_key = args["follow_key"].as_str().filter(|s| !s.is_empty()).unwrap_or("AllyTarget").to_owned();
     let follow_radius = args["follow_radius"].as_f64().unwrap_or(300.0);
     let follow_player = args["follow_player"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
     let root_override = args["root"].as_object().map(|o| Value::Object(o.clone()));
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
         // SAFETY: game thread.
-        let (controller, _) = unsafe { session_controller()? };
+        let (controller, _) = unsafe { session_controller(&name)? };
         let controller_addr = controller as *const UObject as u64;
         let exor_tree = unsafe { object_ptr(controller, "BehaviorTree")? };
         if exor_tree == 0 { return Err("the controller class names no behavior tree; join with AI_Controller_NPC_Exor_C".into()); }
@@ -68,12 +69,12 @@ fn run(args: &Value) -> Result<Value, String> {
             }
             None => None,
         };
-        Ok(json!({"tree": format!("0x{tree:X}"), "started": started, "follow_key": follow_key, "follow_player": follow_actor, "root": root}))
+        Ok(json!({"name": name, "tree": format!("0x{tree:X}"), "started": started, "follow_key": follow_key, "follow_player": follow_actor, "root": root}))
     })
 }
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.tree", "Build the AI player's behavior tree in memory (default: fight with the Exor's tree while enemies are counted, otherwise follow the actor in follow_key) and run it; root overrides the description", "{follow_key?: str, follow_player?: str, follow_radius?: f64, root?: node}", run),
+        ueforge::ops::OpDef::new("ai_player.tree", "Build an AI player's behavior tree in memory (default: fight with the Exor's tree while enemies are counted, otherwise follow the actor in follow_key) and run it; root overrides the description", "{player?: str, follow_key?: str, follow_player?: str, follow_radius?: f64, root?: node}", run),
     ]);
 }

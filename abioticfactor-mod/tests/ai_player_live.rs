@@ -24,7 +24,7 @@ fn follow_start() {
     let joined = api.op("ai_player.start", json!({}));
     println!("ai_player.start: {}", if joined.ok { joined.result.to_string() } else { format!("{:?}", joined.error) });
     assert!(joined.ok, "ai_player.start: {:?}", joined.error);
-    let following = api.op("ai_player.follow", json!({"player": human}));
+    let following = api.op("ai_player.follow", json!({"target": human}));
     println!("ai_player.follow: {}", if following.ok { following.result.to_string() } else { format!("{:?}", following.error) });
     assert!(following.ok, "ai_player.follow: {:?}", following.error);
 }
@@ -108,7 +108,7 @@ fn watch_log() {
 fn follow_stop() {
     let api = api();
     if ping_or_skip(&api).is_none() { return; }
-    let stopped = api.op("ai_player.follow", json!({"player": ""}));
+    let stopped = api.op("ai_player.follow", json!({"target": ""}));
     println!("ai_player.follow: {}", if stopped.ok { stopped.result.to_string() } else { format!("{:?}", stopped.error) });
     assert!(stopped.ok, "stop following: {:?}", stopped.error);
 }
@@ -140,7 +140,7 @@ fn sophia_joins_stands_at_the_world_start_and_follows() {
     let before = api.op("ai_player.status", json!({}));
     assert!(before.ok, "ai_player.status: {:?}", before.error);
     let start = before.result["pawn"]["location"].clone();
-    let following = api.op("ai_player.follow", json!({"player": human}));
+    let following = api.op("ai_player.follow", json!({"target": human}));
     println!("ai_player.follow: {}", if following.ok { following.result.to_string() } else { format!("{:?}", following.error) });
     assert!(following.ok, "ai_player.follow: {:?}", following.error);
     let mut last = start.clone();
@@ -151,7 +151,7 @@ fn sophia_joins_stands_at_the_world_start_and_follows() {
         last = now.result["pawn"]["location"].clone();
         println!("{second}s: {last} move_status {}", now.result["move_status"]);
     }
-    let stopped = api.op("ai_player.follow", json!({"player": ""}));
+    let stopped = api.op("ai_player.follow", json!({"target": ""}));
     assert!(stopped.ok, "stop following: {:?}", stopped.error);
     let covered = distance(&start, &last);
     println!("followed {covered:.0} units in 10 s");

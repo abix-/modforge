@@ -72,12 +72,12 @@ fn sources(_: &Value) -> Result<Value, String> {
     })
 }
 
-/// Her perception component, created once on her character.
-static COMPONENT: parking_lot::Mutex<Option<u64>> = parking_lot::Mutex::new(None);
+/// Each AI player's perception component, created once on her character.
+static COMPONENTS: parking_lot::Mutex<std::collections::BTreeMap<String, u64>> = parking_lot::Mutex::new(std::collections::BTreeMap::new());
 
 unsafe fn component_of(player: &str) -> Result<&'static UObject, String> {
-    let address = COMPONENT.lock().ok_or_else(|| format!("{player} has no perception component; run ai_player.perceive first"))?;
-    if !modforge::winproc::is_addr_readable(address as usize) { return Err("perception component is gone".into()); }
+    let address = COMPONENTS.lock().get(player).copied().ok_or_else(|| format!("{player} has no perception component; run ai_player.perceive first"))?;
+    if !modforge::winproc::is_addr_readable(address as usize) { return Err(format!("{player}'s perception component is gone")); }
     // SAFETY: created by `add` and still readable.
     Ok(unsafe { &*(address as *const UObject) })
 }
@@ -89,11 +89,11 @@ unsafe fn component_of(player: &str) -> Result<&'static UObject, String> {
 /// SensesConfig set before it registers, because registration builds the
 /// listener's sense filter from the configs present then (2026-09-13).
 fn add(args: &Value) -> Result<Value, String> {
-    let player = args["player"].as_str().filter(|s| !s.is_empty()).unwrap_or("Sophia").to_owned();
+    let player = crate::ai_player::player_name(args)?;
     let only: Vec<String> = args["senses"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_owned)).collect();
     let source = args["source"].as_str().unwrap_or("").to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
-        if let Some(existing) = *COMPONENT.lock() {
+        if let Some(existing) = COMPONENTS.lock().get(&player).copied() {
             if modforge::winproc::is_addr_readable(existing as usize) {
                 return Ok(json!({"player": player, "component": format!("0x{existing:X}"), "state": "already_added"}));
             }
@@ -131,7 +131,7 @@ fn add(args: &Value) -> Result<Value, String> {
         }
         let fields = json!({"SensesConfig": copies.iter().map(|c| format!("0x{c:X}")).collect::<Vec<_>>()});
         let component = unsafe { ueforge::spawn_ops::add_component(character, "AIPerceptionComponent", fields.as_object().unwrap())? };
-        *COMPONENT.lock() = Some(component);
+        COMPONENTS.lock().insert(player.clone(), component);
         Ok(json!({"player": player, "component": format!("0x{component:X}"), "senses": senses, "senses_from": source, "state": "added"}))
     })
 }
@@ -166,15 +166,15 @@ pub(crate) fn perceived_rows(player: &str) -> Result<Vec<Perceived>, String> {
 }
 
 fn perceived(args: &Value) -> Result<Value, String> {
-    let player = args["player"].as_str().filter(|s| !s.is_empty()).unwrap_or("Sophia");
-    let rows = perceived_rows(player)?;
+    let player = crate::ai_player::player_name(args)?;
+    let rows = perceived_rows(&player)?;
     Ok(json!({"player": player, "count": rows.len(), "perceived": rows}))
 }
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.perceive", "Add the enemies' AIPerceptionComponent with an enemy's sense configs to the player's character", "{player?: str, senses?: [str], source?: str}", add),
-        ueforge::ops::OpDef::new("ai_player.perceived", "Actors the player's perception component currently perceives", "{player?: str}", perceived),
+        ueforge::ops::OpDef::new("ai_player.perceive", "Add the enemies' AIPerceptionComponent with an enemy's sense configs to an AI player's character", "{player?: str, senses?: [str], source?: str}", add),
+        ueforge::ops::OpDef::new("ai_player.perceived", "Actors an AI player's perception component currently perceives", "{player?: str}", perceived),
         ueforge::ops::OpDef::new("ai_player.sources", "Register every loaded NPC as a sight stimuli source (the game only registers furniture, containers and players)", "{}", sources),
     ]);
 }

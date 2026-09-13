@@ -32,6 +32,7 @@ pub mod mission;
 pub mod monument;
 pub mod ops;
 pub mod patterns;
+pub mod persona;
 pub mod quality;
 pub mod read_once;
 pub mod research;

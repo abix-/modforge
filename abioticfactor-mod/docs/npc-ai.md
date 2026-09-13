@@ -140,7 +140,10 @@ built at C:\code\AbioticModkit (AbioticExtended/AbioticModkit; UE 5.4 and
 MSVC 14.38 installed for it). Not needed for the bot pattern; kept in case a
 custom behavior tree task is needed later.
 
-## What Sophia takes from this
+## What an AI player takes from this
+
+(Written when Sophia, the first persistent named character, was the only AI
+player; every point holds for any of them.)
 
 - A perception component on her server-side character, where the enemies
   carry theirs, reading its currently perceived actors each cycle. No
@@ -153,7 +156,7 @@ custom behavior tree task is needed later.
   is untested; movement did not, attacks may, since they are events.
 - Everything resolved once and cached, per docs/performance.md.
 
-## Sophia's perception, as built (2026-09-13)
+## An AI player's perception, as built (2026-09-13, on Sophia)
 
 `ai_player.perceive` in src/perception.rs, all through the engine's own
 callable functions:
