@@ -3,6 +3,8 @@ mod ai_player;
 mod combat;
 mod host;
 mod nav;
+mod npcs;
+mod perception;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "AbioticFactorMod",
@@ -61,6 +63,9 @@ unsafe fn worker() {
     host::register();
     nav::register();
     combat::register();
+    perception::register();
+    npcs::register();
+    ueforge::assets::register_ops();
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::game_thread::serve(&DRAIN);
     ueforge::debug::register_pe_call(&DRAIN, DRAIN_HINT, ueforge::selector::resolve);

@@ -298,3 +298,231 @@ fn npc_navigation_systems() {
         println!("brain: {}", brain["full_name"].as_str().unwrap_or(""));
     }
 }
+
+/// How does the game bring an NPC from its asset into the world? Live spawner
+/// objects and every function about spawning NPCs on them, the game mode,
+/// the game state and the engine's asset loading library.
+#[test]
+fn npc_spawn_functions() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let (total, spawners) = classes(&api, "Spawn");
+    println!("Spawn chain: {total} objects, live classes {spawners:?}");
+    let mut wanted: Vec<String> = spawners.keys().cloned().collect();
+    wanted.extend(["Abiotic_Survival_GameMode_C", "Abiotic_Survival_GameState_C", "Abiotic_GameInstance_C", "KismetSystemLibrary", "GameplayStatics"].map(str::to_owned));
+    for class in wanted {
+        let reply = api.op("class_functions_by_name", json!({"class": class}));
+        if !reply.ok { continue; }
+        let names: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten()
+            .filter_map(|f| f["name"].as_str())
+            .filter(|n| n.contains("Spawn") || n.contains("LoadAsset") || n.contains("LoadClass") || n.contains("NPC"))
+            .collect();
+        if !names.is_empty() { println!("{class}: {names:?}"); }
+    }
+}
+
+/// Who counts as an enemy to a perception component: the affiliation bits
+/// on every live sense config (detect enemies / neutrals / friendlies), the
+/// team id on every live AI controller and player controller, and the
+/// perception component fields on Sophia's controller.
+#[test]
+fn perception_affiliation_and_teams() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let read = |address: u64, length: usize| -> Vec<u8> {
+        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        assert!(reply.ok, "read_bytes: {:?}", reply.error);
+        hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
+    };
+    let addr = |i: &Value| u64::from_str_radix(i["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    // FAISenseAffiliationFilter is one byte of bitfields: enemies (1), neutrals (2), friendlies (4).
+    for needle in ["AISenseConfig_Sight", "AISenseConfig_Hearing"] {
+        let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 256}));
+        assert!(reply.ok, "{needle}: {:?}", reply.error);
+        for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+            let address = addr(instance);
+            let fields = spawn_trace::object_fields(&api, address).expect("config fields");
+            let Some((_, _, offset)) = fields.iter().find(|(n, _, _)| n == "DetectionByAffiliation") else { continue };
+            let bits = read(address + u64::from(*offset), 1)[0];
+            println!("{needle} affiliation 0b{bits:03b} (enemies {}, neutrals {}, friendlies {}) on {}", bits & 1, (bits >> 1) & 1, (bits >> 2) & 1, instance["full_name"].as_str().unwrap_or(""));
+        }
+    }
+    // Team ids: AIController carries a TeamID byte (255 = no team); the game may set it per NPC.
+    for needle in ["AIController", "Abiotic_PlayerController_C"] {
+        let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 128}));
+        assert!(reply.ok, "{needle}: {:?}", reply.error);
+        for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+            let address = addr(instance);
+            let fields = spawn_trace::object_fields(&api, address).expect("controller fields");
+            let team: Vec<String> = fields.iter().filter(|(n, _, _)| n.contains("Team") || n.contains("Faction") || n.contains("Affiliation"))
+                .map(|(n, k, o)| format!("{n}:{k}={:?}", read(address + u64::from(*o), if k == "ByteProperty" || k == "BoolProperty" { 1 } else { 4 }))).collect();
+            println!("{} team fields {team:?}", instance["full_name"].as_str().unwrap_or("").split_whitespace().next().unwrap_or(""));
+        }
+    }
+    // The NPC character's faction byte, which the hostility check reads.
+    let characters = api.op("walk_class_chain", json!({"needle": "NPC_", "max": 64}));
+    for instance in characters.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPC_"))) {
+        let address = addr(instance);
+        let fields = spawn_trace::object_fields(&api, address).expect("character fields");
+        let faction: Vec<String> = fields.iter().filter(|(n, _, _)| n.contains("Faction") || n.contains("Team") || n.contains("Hostil"))
+            .map(|(n, k, o)| format!("{n}:{k}@{o}={:?}", read(address + u64::from(*o), if k == "ByteProperty" || k == "BoolProperty" || k == "EnumProperty" { 1 } else { 4 }))).collect();
+        println!("{} faction fields {faction:?}", instance["full_name"].as_str().unwrap_or("").split_whitespace().next().unwrap_or(""));
+        break;
+    }
+}
+
+/// How the game's own NPC spawner works: its class chain, every field and
+/// function on it and its parents, and TrySpawnNPC's parameters. A plain
+/// actor spawn of NPC_Monster_Exor killed the game within two seconds
+/// (2026-09-13, twice), so NPCs go through this instead.
+#[test]
+fn npc_spawner_setup() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    // A live spawner's every reflected field, parents included, plus its class chain.
+    let spawners = api.op("walk_class_chain", json!({"needle": "NPCSpawn_Pest_C", "max": 8}));
+    assert!(spawners.ok, "spawners: {:?}", spawners.error);
+    if let Some(live) = spawners.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))) {
+        println!("live spawner: {} chain {}", live["full_name"], live["chain"]);
+        let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        let fields = spawn_trace::object_fields(&api, address).expect("spawner fields");
+        println!("spawner fields: {}", fields.iter().map(|(n, k, o)| format!("{n}:{k}@{o}")).collect::<Vec<_>>().join(" "));
+    }
+    // discover_class_detail returns nothing for these Blueprint classes; walk the
+    // live spawner's class chain (UObject class at +16, UStruct super at +64,
+    // FName at +24) and ask each class for its own functions.
+    let read = |address: u64, length: usize| -> Vec<u8> {
+        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        assert!(reply.ok, "read_bytes: {:?}", reply.error);
+        hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
+    };
+    let name_of = |object: u64| -> String {
+        let fname = u64::from_le_bytes(read(object + 24, 8).try_into().unwrap());
+        api.op("fname_to_string", json!({"fname": fname})).result["string"].as_str().unwrap_or("?").to_owned()
+    };
+    let live = spawners.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))).expect("a live pest spawner");
+    let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let mut class = u64::from_le_bytes(read(address + 16, 8).try_into().unwrap());
+    let mut chain = Vec::new();
+    while class != 0 && chain.len() < 12 {
+        chain.push(name_of(class));
+        class = u64::from_le_bytes(read(class + 64, 8).try_into().unwrap());
+    }
+    println!("spawner class chain: {chain:?}");
+    for class in &chain {
+        let reply = api.op("class_functions_by_name", json!({"class": class}));
+        if !reply.ok { println!("{class}: {:?}", reply.error); continue; }
+        let functions: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str()).collect();
+        println!("{class} functions: {functions:?}");
+        for function in functions.iter().filter(|f| f.contains("Spawn")) {
+            let parameters = api.op("function_parameters", json!({"class": class, "function": function}));
+            println!("{class}::{function}: {}", if parameters.ok { parameters.result.to_string() } else { format!("{:?}", parameters.error) });
+        }
+    }
+}
+
+/// The Exor from the game assets: find its Blueprint in the asset registry,
+/// load it into memory through the engine's own loader, then list every
+/// Exor object that appeared, including the perception component template
+/// and its sense configs that Sophia borrows.
+#[test]
+fn exor_from_assets() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let inventory = api.op("asset_inventory", json!({"class": "Blueprint", "contains": "Exor"}));
+    assert!(inventory.ok, "asset_inventory: {:?}", inventory.error);
+    let assets = inventory.result["assets"].as_array().cloned().unwrap_or_default();
+    for asset in &assets { println!("asset {} in {}", asset["name"], asset["package"]); }
+    let exor = assets.iter().find(|a| a["name"] == "NPC_Monster_Exor").expect("NPC_Monster_Exor Blueprint in the registry");
+    // Cooked builds strip the Blueprint object; the generated class is what loads.
+    let class = format!("{}_C", exor["name"].as_str().unwrap());
+    let loaded = api.op("load_asset", json!({"package": exor["package"], "asset": class}));
+    assert!(loaded.ok, "load_asset: {:?}", loaded.error);
+    println!("loaded {class}: {}", loaded.result);
+    assert_eq!(loaded.result["loaded"], true, "the Exor class did not load");
+    let objects = api.op("walk_class_chain", json!({"needle": "Exor", "max": 512}));
+    assert!(objects.ok, "walk_class_chain: {:?}", objects.error);
+    println!("Exor objects now: {}", objects.result["total"]);
+    for instance in objects.result["instances"].as_array().into_iter().flatten() {
+        let full = instance["full_name"].as_str().unwrap_or("");
+        if full.contains("Perception") || full.contains("AISense") || full.starts_with("NPC_Monster_Exor_C ") || full.starts_with("BlueprintGeneratedClass") {
+            println!("    {full}");
+        }
+    }
+    let configs = spawn_trace::perception_configs(&api).expect("perception configs");
+    for row in configs.as_array().into_iter().flatten() {
+        if row["owner"].as_str().unwrap_or("").contains("Exor") { println!("Exor sense: {row}"); }
+    }
+}
+
+/// Read one numeric field of a live object through the control plane.
+fn read_number(api: &Api<Value>, object: u64, kind: &str, offset: u32) -> f64 {
+    let length = if kind == "DoubleProperty" { 8 } else { 4 };
+    let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{:X}", object + offset as u64), "length": length}));
+    assert!(reply.ok, "read_bytes: {:?}", reply.error);
+    let bytes = hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex");
+    match kind {
+        "DoubleProperty" => f64::from_le_bytes(bytes.try_into().unwrap()),
+        "IntProperty" => i32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+        _ => f32::from_le_bytes(bytes.try_into().unwrap()) as f64,
+    }
+}
+
+/// Does a direct server-side attack call on Sophia's UDP-owned character hurt
+/// an enemy? Finds the nearest non-player character to Sophia, reads its
+/// health field, calls ai_player.attack facing it, and reads the health again.
+/// Bring Sophia within melee range of an enemy before running this.
+#[test]
+#[ignore = "swings Sophia's weapon at the nearest enemy; needs her mod-owned session running and an enemy in melee range"]
+fn sophia_melee_attack_lands() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let players = api.op("players", json!({}));
+    assert!(players.ok, "players: {:?}", players.error);
+    let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia is in the game").clone();
+    let at = |v: &Value| -> [f64; 3] { let a = v.as_array().expect("location"); [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()] };
+    let from = at(&sophia["location"]);
+    let context = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    // Every character in the world except players; the nearest one is the target.
+    let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
+    assert!(actors.ok, "actors_of_class: {:?}", actors.error);
+    let mut enemies: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
+        .filter(|a| !a["class"].as_str().unwrap_or("").contains("PlayerCharacter") && a["location"].is_array())
+        .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+    enemies.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (distance, enemy) in enemies.iter().take(5) { println!("{:.0} units: {} at {}", distance, enemy["class"], enemy["location"]); }
+    let (mut distance, enemy) = enemies.first().expect("a non-player character in the world").clone();
+    // Walk to it: stop any follow loop, travel to the enemy, wait until within melee range.
+    let stopped = api.op("ai_player.follow", json!({"player": ""}));
+    assert!(stopped.ok, "follow stop: {:?}", stopped.error);
+    let travel = api.op("ai_player.travel", json!({"to": enemy["location"]}));
+    assert!(travel.ok, "ai_player.travel: {:?}", travel.error);
+    println!("walking to {}: {}", enemy["class"], travel.result["points"].as_array().map_or(0, |p| p.len()));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
+    while distance > 250.0 && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let players = api.op("players", json!({}));
+        let here = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
+        let there = at(&enemy["location"]);
+        distance = ((here[0] - there[0]).powi(2) + (here[1] - there[1]).powi(2)).sqrt();
+        println!("Sophia at {here:?}, {distance:.0} units from the enemy");
+    }
+    assert!(distance <= 300.0, "nearest enemy {} is still {distance:.0} units away after the walk", enemy["class"]);
+    let address = u64::from_str_radix(enemy["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let fields = spawn_trace::object_fields(&api, address).expect("enemy fields");
+    let health: Vec<_> = fields.iter().filter(|(n, k, _)| n.contains("Health") && ["FloatProperty", "DoubleProperty", "IntProperty"].contains(&k.as_str())).cloned().collect();
+    println!("{} health fields: {health:?}", enemy["class"]);
+    // Live 2026-09-13: the NPC character carries TotalCombinedHealth (double) plus CurrentHealth_<limb> floats.
+    let (name, kind, offset) = health.iter().find(|(n, _, _)| n == "TotalCombinedHealth")
+        .or_else(|| health.iter().find(|(n, _, _)| n.starts_with("CurrentHealth_") && !n.contains("Texture")))
+        .expect("TotalCombinedHealth or a CurrentHealth_ limb field").clone();
+    let before = read_number(&api, address, &kind, offset);
+    println!("{name} before: {before}");
+    let attack = api.op("ai_player.attack", json!({"player": "Sophia", "face": enemy["location"]}));
+    assert!(attack.ok, "ai_player.attack: {:?}", attack.error);
+    println!("attack: {}", attack.result);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let after = read_number(&api, address, &kind, offset);
+    println!("{name} after: {after} (before {before})");
+    assert!(after < before, "{} {name} did not drop: {before} -> {after}; the direct server-side call does not land, attacks go over UDP", enemy["class"]);
+}

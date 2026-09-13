@@ -177,5 +177,10 @@ pub fn register() {
         ueforge::ops::OpDef::new("ai_player.travel", "Walk the AI player over the host's navigation mesh to coordinates or to another player, moving over UDP", "{to?: [x, y, z], to_player?: str}", travel),
         ueforge::ops::OpDef::new("ai_player.follow", "Follow a named player: re-plan the walk every two seconds while farther than distance; empty player stops", "{player: str, distance?: f64}", follow),
         ueforge::ops::OpDef::new("ai_player.stop", "Send UDP logout and join the AI player worker", "{}", |_| stop()),
+        ueforge::ops::OpDef::new("ai_player.verbose", "Log every UDP position update (off by default)", "{on: bool}", |args| {
+            let on = args["on"].as_bool().ok_or("on must be true or false")?;
+            abioticfactor_client::set_verbose(on);
+            Ok(json!({"verbose": on}))
+        }),
     ]);
 }

@@ -35,6 +35,56 @@ fn ai_player_joins_from_host_mod() {
 }
 
 #[test]
+#[ignore = "prints every player in the hosted game by name with its host-side location"]
+fn ai_player_host_players() {
+    let players = api().op("players", json!({}));
+    assert!(players.ok, "players: {:?}", players.error);
+    for player in players.result["players"].as_array().into_iter().flatten() {
+        println!("{} at {} character {}", player["name"], player["location"], player["character"]);
+    }
+}
+
+#[test]
+#[ignore = "gives Sophia the enemies' perception component and prints what she currently perceives"]
+fn ai_player_host_perceive() {
+    let api = api();
+    // ABIOTIC_SENSES=AISenseConfig_Sight,AISenseConfig_Hearing limits which of the enemy's senses she gets (isolation runs).
+    let senses: Vec<String> = std::env::var("ABIOTIC_SENSES").ok().into_iter().flat_map(|s| s.split(',').map(str::to_owned).collect::<Vec<_>>()).collect();
+    // ABIOTIC_SOURCE picks the enemy component to copy from; ABIOTIC_SHARE=1 shares its config objects instead of cloning.
+    let source = std::env::var("ABIOTIC_SOURCE").unwrap_or_default();
+    let share = std::env::var("ABIOTIC_SHARE").is_ok_and(|v| v == "1");
+    let added = api.op("ai_player.perceive", json!({"player": "Sophia", "senses": senses, "source": source, "share": share}));
+    assert!(added.ok, "ai_player.perceive: {:?}", added.error);
+    println!("{}", added.result);
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
+    assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
+    println!("{}", seen.result);
+}
+
+#[test]
+#[ignore = "spawns a real Exor soldier from the game assets near the human, gives Sophia the Exor's senses, prints what she perceives"]
+fn ai_player_host_exor() {
+    let api = api();
+    let human = human_name(&api, "Sophia");
+    let spawned = api.op("npc.spawn", json!({"spawner": "NPCSpawn_QuillExor", "near_player": human}));
+    assert!(spawned.ok, "npc.spawn: {:?}", spawned.error);
+    println!("{}", spawned.result);
+    // The spawner may spawn on its next tick rather than inside DebugSpawn; give it a moment and read back.
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let npcs = api.op("npc.spawned", json!({"actor": spawned.result["actor"]}));
+    assert!(npcs.ok, "npc.spawned: {:?}", npcs.error);
+    println!("{}", npcs.result);
+    let added = api.op("ai_player.perceive", json!({"player": "Sophia"}));
+    assert!(added.ok, "ai_player.perceive: {:?}", added.error);
+    println!("{}", added.result);
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
+    assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
+    println!("{}", seen.result);
+}
+
+#[test]
 #[ignore = "reads the installed mod's Sophia UDP status"]
 fn ai_player_host_status() {
     let status = api().op("ai_player.status", json!({}));

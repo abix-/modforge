@@ -666,8 +666,8 @@ pub fn register_ops() {
         ),
         crate::ops::OpDef::new(
             "load_asset",
-            "Pull an asset into memory by its package and asset FNames",
-            "{package_fname: u64, asset_fname: u64}",
+            "Pull an asset into memory by its package and asset FNames, or by name strings (a Blueprint class is its asset name plus _C)",
+            "{package_fname?: u64, asset_fname?: u64, package?: str, asset?: str}",
             load_op,
         ),
     ]);
@@ -719,18 +719,25 @@ fn inventory_op(args: &serde_json::Value) -> Result<serde_json::Value, String> {
     }))
 }
 
+/// Load by registry FNames, or by name strings: a cooked build strips the
+/// Blueprint object the registry lists, so a Blueprint class is loaded by
+/// its generated class name, `<asset>_C`, which the registry never holds.
 fn load_op(args: &serde_json::Value) -> Result<serde_json::Value, String> {
-    let package_fname = args
-        .get("package_fname")
-        .and_then(|v| v.as_u64())
-        .ok_or("need {package_fname: u64}")?;
-    let asset_fname = args
-        .get("asset_fname")
-        .and_then(|v| v.as_u64())
-        .ok_or("need {asset_fname: u64}")?;
+    let package_fname = args.get("package_fname").and_then(|v| v.as_u64());
+    let asset_fname = args.get("asset_fname").and_then(|v| v.as_u64());
+    let package = args.get("package").and_then(|v| v.as_str()).map(str::to_owned);
+    let asset = args.get("asset").and_then(|v| v.as_str()).map(str::to_owned);
+    if package_fname.is_none() && package.is_none() || asset_fname.is_none() && asset.is_none() {
+        return Err("need {package_fname: u64, asset_fname: u64} or {package: str, asset: str}".into());
+    }
     crate::game_thread::run(
         move || {
-            let address = load_asset(package_fname, asset_fname)?;
+            let name = |fname: Option<u64>, text: Option<String>| -> Result<u64, String> {
+                if let Some(fname) = fname { return Ok(fname); }
+                let text = text.expect("checked above");
+                Ok(ue::fname::from_str(&text, ue::fname::FindName::Add).ok_or_else(|| format!("FName for '{text}' unavailable"))?.as_u64())
+            };
+            let address = load_asset(name(package_fname, package)?, name(asset_fname, asset)?)?;
             Ok(serde_json::json!({
                 "loaded": address != 0,
                 "address": format!("{address:#x}"),

@@ -95,11 +95,33 @@ fn saved_world(args: &Value) -> Result<Value, String> {
     })
 }
 
+/// Press anything to begin: the master menu widget's own splash key handler
+/// (no parameters), then the early-access notice's continue. Live 2026-09-13,
+/// research_main_menu.
+fn splash(_: &Value) -> Result<Value, String> {
+    ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(5), crate::DRAIN_HINT, || {
+        let master = ueforge::selector::resolve("first_class:W_MainMenu_Master_C")?;
+        unsafe {
+            ueforge::ue::pe_call::call_ufunction_zeroed(master, "W_MainMenu_Master_C", "SplashKeyDown")?;
+            ueforge::ue::pe_call::call_ufunction_zeroed(master, "W_MainMenu_Master_C", "Continue_EarlyAccess")?;
+        }
+        Ok(json!({"state": "splash_dismissed"}))
+    })
+}
+
 pub fn register() {
-    ueforge::ops::OP_REGISTRY.register(ueforge::ops::OpDef::new(
-        "host.saved_world",
-        "Host an existing world save as a LAN game through the main menu's own host path",
-        "{save: str, max_players?: int}",
-        saved_world,
-    ));
+    ueforge::ops::OP_REGISTRY.register_many([
+        ueforge::ops::OpDef::new(
+            "host.saved_world",
+            "Host an existing world save as a LAN game through the main menu's own host path",
+            "{save: str, max_players?: int}",
+            saved_world,
+        ),
+        ueforge::ops::OpDef::new(
+            "host.splash",
+            "Dismiss the press-anything splash and the early-access notice through the master menu widget's own handlers",
+            "{}",
+            splash,
+        ),
+    ]);
 }

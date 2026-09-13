@@ -23,6 +23,24 @@ macro_rules! log {
     ($($arg:tt)*) => { $crate::log_line(format!($($arg)*)) };
 }
 
+/// Per-packet chatter (every position update) is off unless asked for.
+static VERBOSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_verbose(on: bool) {
+    VERBOSE.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[doc(hidden)]
+pub fn verbose() -> bool {
+    VERBOSE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A message written only when verbose logging is on.
+#[macro_export]
+macro_rules! log_verbose {
+    ($($arg:tt)*) => { if $crate::verbose() { $crate::log_line(format!($($arg)*)) } };
+}
+
 mod bits;
 mod actors;
 mod customization;

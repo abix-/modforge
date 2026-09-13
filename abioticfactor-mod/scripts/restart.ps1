@@ -258,6 +258,11 @@ if (-not $menuReady) {
     exit 1
 }
 
+# Press anything to begin: the master menu widget's own splash handler, then
+# the early-access notice. Without this the menu never reaches the login.
+$splash = Invoke-ModOp "host.splash" @{}
+Write-Host "[host] splash: $($splash | ConvertTo-Json -Compress)" -ForegroundColor Gray
+
 Write-Host "[host] hosting '$Save' as a LAN game for $MaxPlayers players" -ForegroundColor Cyan
 # The op refuses until the online login is complete; before that the menu's
 # HostMultiplayerGame silently falls back to single player.

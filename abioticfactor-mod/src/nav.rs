@@ -22,7 +22,7 @@ pub fn position_of(list: &[f64; 3]) -> Position {
 /// happens only when the cached pointer is gone (world change).
 static CONTEXT: parking_lot::Mutex<Option<u64>> = parking_lot::Mutex::new(None);
 
-fn world_context() -> Result<u64, String> {
+pub(crate) fn world_context() -> Result<u64, String> {
     let mut cache = CONTEXT.lock();
     if let Some(address) = *cache {
         if modforge::winproc::is_addr_readable(address as usize) { return Ok(address); }

@@ -60,6 +60,10 @@ struct Connection {
     status: Option<std::sync::Arc<parking_lot::Mutex<SessionStatus>>>,
     movement_started: Option<Instant>,
     next_move: Instant,
+    /// When the previous move left, so the next one knows how long its acceleration applied.
+    last_move: Option<Instant>,
+    /// Where she faces, degrees of yaw in world space; the last push direction.
+    view_yaw: f64,
     spawn_positions: BTreeMap<u32, [f64; 3]>,
     location_map: Option<crate::location::LocationMap>,
     reported_position: Option<[f64; 3]>,
@@ -103,6 +107,8 @@ impl Connection {
             status: None,
             movement_started: None,
             next_move: Instant::now(),
+            last_move: None,
+            view_yaw: 0.0,
             spawn_positions: BTreeMap::new(),
             location_map: None,
             reported_position: None,
@@ -135,7 +141,9 @@ impl Connection {
             .locate(&self.world, position)
     }
 
-    fn report_location(&self) {
+    /// The `where` command always answers; the automatic per-update report is verbose only.
+    fn report_location(&self, always: bool) {
+        if !always && !crate::verbose() { return; }
         match self.location() {
             Ok(location) => crate::log!("last received UDP location: {location} ({})", self.controller.position_source),
             Err(error) => crate::log!("location unavailable: {error}"),
@@ -271,8 +279,18 @@ impl Connection {
 
     fn movement_input(&mut self, socket: &UdpSocket, timestamp: f32, acceleration: [f32; 3]) -> io::Result<()> {
         let channel = self.pawn_channel("movement")?;
-        let (field, args) = if let Some(position) = self.controller.position {
-            (38, crate::movement::report(timestamp, acceleration, position))
+        // The single send point advances the predicted position; a long gap
+        // since the previous move (idle) counts as one tick, not the gap.
+        let now = Instant::now();
+        let dt = self.last_move.map(|last| now.duration_since(last).as_secs_f64().min(0.05)).unwrap_or(0.0);
+        self.last_move = Some(now);
+        // Face the way she pushes; keep the last facing while standing.
+        if acceleration[0] != 0.0 || acceleration[1] != 0.0 {
+            self.view_yaw = f64::from(acceleration[1]).atan2(f64::from(acceleration[0])).to_degrees();
+        }
+        let view = crate::movement::view(self.view_yaw, 0.0);
+        let (field, args) = if let Some(position) = self.controller.advance(acceleration, dt) {
+            (38, crate::movement::report(timestamp, acceleration, position, view))
         } else { (39, crate::movement::input(timestamp, acceleration)) };
         let mut fields = Writer::default();
         fields.bounded(field, 310); // live Character movement RPC cache
@@ -500,11 +518,10 @@ impl Connection {
     }
 
     fn advance_character_setup(&mut self) {
-        if self.controller.position.is_none() {
-            if let Some(position) = self.spawn_positions.get(&self.controller.pawn) {
-                self.controller.position = Some(*position);
-                self.controller.position_source = "actor channel open";
-                crate::log!("UDP position {position:?} (actor channel open)");
+        // A new body (first spawn or respawn) starts where the server created it.
+        if let Some(position) = self.spawn_positions.get(&self.controller.pawn).copied() {
+            if self.controller.body_created(self.controller.pawn, position) {
+                crate::log!("UDP position {position:?} (actor channel open, body {})", self.controller.pawn);
             }
         }
         if !self.controller.initialized && self.spawned.contains(&self.controller.player_state)
@@ -797,7 +814,7 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
         while let Some(command) = connection.commands.as_ref().and_then(|rx| rx.try_recv().ok()) {
             match command.trim() {
                 "quit" => return Ok(()),
-                "where" => connection.report_location(),
+                "where" => connection.report_location(true),
                 "position" => crate::log!("last received UDP position {:?} ({})", connection.controller.position, connection.controller.position_source),
                 "state" => crate::log!("last received UDP correction {:?}", connection.controller.last_correction),
                 "forward" if connection.controller.initialized => {
@@ -865,7 +882,7 @@ fn exchange(socket: &UdpSocket, connection: &mut Connection, duration: Duration)
                     };
                 }
                 if connection.location_map.is_some() && connection.controller.position != connection.reported_position {
-                    connection.report_location();
+                    connection.report_location(false);
                     connection.reported_position = connection.controller.position;
                 }
                 if let Some(directory) = &connection.memory {

@@ -19,8 +19,16 @@ pub(crate) struct Controller {
     pub skills_ready: bool,
     pub spawn_after_traits: bool,
     pub loading_requested: bool,
+    /// Where the current body is. One owner, three inputs: the body's
+    /// starting position when it is created, every server correction, and
+    /// every move this client sends (`advance`). Belongs to `position_body`.
     pub position: Option<[f64; 3]>,
     pub position_source: &'static str,
+    /// The body `position` describes; a respawn changes `pawn` and the
+    /// position must be taken again from the new body.
+    pub position_body: u32,
+    /// Predicted walking velocity, reset by corrections and new bodies.
+    pub velocity: [f64; 3],
     pub last_correction: Option<MovementCorrection>,
 }
 
@@ -38,6 +46,29 @@ pub(crate) struct MovementCorrection {
 }
 
 impl Controller {
+    /// The server created `body` at `position`. Taken only for the possessed
+    /// pawn, and only when the position does not already describe that body.
+    pub fn body_created(&mut self, body: u32, position: [f64; 3]) -> bool {
+        if body != self.pawn || self.position_body == body { return false; }
+        self.position = Some(position);
+        self.position_body = body;
+        self.velocity = [0.0; 3];
+        self.position_source = "actor channel open";
+        true
+    }
+
+    /// This client is sending `acceleration` for `dt` seconds: move the body
+    /// the way the server will, so the position stays current between
+    /// corrections. Returns the position the move reports.
+    pub fn advance(&mut self, acceleration: [f32; 3], dt: f64) -> Option<[f64; 3]> {
+        let position = self.position?;
+        self.velocity = crate::movement::step(self.velocity, acceleration, dt);
+        let moved = [position[0] + self.velocity[0] * dt, position[1] + self.velocity[1] * dt, position[2]];
+        self.position = Some(moved);
+        self.position_source = "predicted from sent moves";
+        Some(moved)
+    }
+
     pub fn receive_pawn(&mut self, reader: &mut Reader<'_>) -> io::Result<()> {
         while reader.remaining() > 0 {
             let properties = reader.get(1)? != 0;
@@ -53,9 +84,11 @@ impl Controller {
                     if let Some(correction) = movement_response(&mut args)? {
                         let position = correction.position;
                         self.position = Some(position);
+                        self.position_body = self.pawn;
+                        self.velocity = if correction.velocity_relative_to_base { [0.0; 3] } else { correction.velocity };
                         self.last_correction = Some(correction);
                         self.position_source = "server movement correction";
-                        eprintln!("[abiotic-client] UDP position {position:?} ({})", self.position_source);
+                        crate::log_verbose!("UDP position {position:?} ({})", self.position_source);
                     }
                 }
                 // Abiotic_PlayerCharacter: Client_EvaluateLoadingScreen and

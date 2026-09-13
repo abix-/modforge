@@ -83,10 +83,9 @@ area; the same test reads them once an Exor spawns or its class is loaded.
 
 ## What Sophia takes from this
 
-- A perception component on her server-side controller with the human
-  values (sight 3000, lose 3500, 90 degrees, 10 s memory, hearing about 750),
-  reading its currently perceived actors each cycle. No scans, no sphere
-  queries; the perception system does the spatial work.
+- A perception component on her server-side character, where the enemies
+  carry theirs, reading its currently perceived actors each cycle. No
+  scans, no sphere queries; the perception system does the spatial work.
 - A faction that Exor (5) and Grunt (3) treat as hostile, so their own target
   scoring picks her up and she picks them.
 - Attacks through the character's own functions, called on the game thread
@@ -94,3 +93,36 @@ area; the same test reads them once an Exor spawns or its class is loaded.
   system. Whether a direct server-side attack call works on a UDP-owned body
   is untested; movement did not, attacks may, since they are events.
 - Everything resolved once and cached, per docs/performance.md.
+
+## Sophia's perception, as built (2026-09-13)
+
+`ai_player.perceive` in src/perception.rs, all through the engine's own
+callable functions:
+
+1. `Actor::AddComponentByClass(AIPerceptionComponent, deferred)` on her
+   server-side character. Deferred, because a perception component builds
+   its sense filter and registers as a listener when it registers; senses
+   added afterwards never enter the filter and the listener perceives
+   nothing. That was the first, empty result.
+2. For each sense config on a live NPC (the Exor when alive, otherwise the
+   narrative human): `GameplayStatics::SpawnObject` creates her own config
+   of the same class owned by her component, and every reflected field is
+   copied over. `ConfigureSense` is not callable by name in this build.
+3. `Actor::FinishAddComponent` registers the component; `OnRegister` sees
+   the configs and registers the listener.
+4. `ai_player.perceived` calls `GetCurrentlyPerceivedActors` and returns the
+   engine's list. Live: the human's character and two cafeteria tables.
+
+Affiliation: every live sense config detects enemies, neutrals and
+friendlies (0b111). No controller carries a team id. Hostility is the
+`Faction` byte on the character; the game's target choice reads it, the
+perception system does not. So her perception reports everything in the
+cone and the fight decision must filter by faction.
+
+Known: cloning the monsters' configs (Pest, Peccary) crashed the game
+three times; the narrative human's never did. Same class, same sense
+implementation, ordinary values. Cause not established. Hearing therefore
+still missing (only the monsters carry hearing configs). A plain actor
+spawn of `NPC_Monster_Exor` killed the game within two seconds, twice; the
+game's spawner Blueprints (`Abiotic_NPCSpawn_ParentBP_C`, `TrySpawnNPC`,
+`DebugSpawn`) are the supported path and are the open row.

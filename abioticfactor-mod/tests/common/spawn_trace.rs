@@ -220,7 +220,7 @@ pub fn perception_configs(api: &Api<Value>) -> Result<Value, String> {
             let mut row = serde_json::Map::new();
             row.insert("owner".into(), json!(instance["full_name"].as_str().unwrap_or("")));
             for (name, kind, offset) in offsets.as_ref().unwrap() {
-                if names.contains(&name.as_str()) || name == "DetectionByAffiliation" {
+                if names.contains(&name.as_str()) || name == "DetectionByAffiliation" || name == "Implementation" || name == "bStartsEnabled" {
                     row.insert(name.clone(), decode_field(api, kind, address + u64::from(*offset))?);
                 }
             }

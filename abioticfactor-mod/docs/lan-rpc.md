@@ -73,6 +73,34 @@ that process's stdin. Keep one Sophia process. The movement acceptance binary
 was built under target/sophia-movement using CARGO_TARGET_DIR; its executable
 is x86_64-pc-windows-msvc/debug/abioticfactor-client.exe beneath that directory.
 
+## Where Sophia is: position authority
+
+Rule, decided 2026-09-13 after a respawn left her standing still while the
+follow loop planned a path every two seconds. Sophia's client owns her
+position, the way every Unreal owning client does. The server never streams
+an owning client its own position. It gives it exactly twice: when it
+creates a body (actor channel open), and when it disagrees with a reported
+move (a correction). Between those, the client knows where it is because it
+is the one moving. So:
+
+- One owner: `Controller.position` in abioticfactor-client, tagged with the
+  body it describes (`position_body`).
+- Three inputs, nothing else: a new body for the possessed pawn takes that
+  body's starting position (`body_created`); every correction overwrites
+  position and velocity; every move this client sends advances the
+  position by the predicted walk (`advance`, using `movement::step` with
+  the live-read walk speed 500 and braking 2048).
+- Every move leaves through one function, `movement_input`, which is where
+  prediction runs, so no caller can send a move without moving the position.
+- Reading her position from the host and pushing it into the client is
+  forbidden. It would make the client a puppet of the host instead of a
+  player; the host's copy of her is for planning only.
+
+What went wrong before: the position was taken from a body only when no
+position existed yet, so a respawn's new body was ignored and the client kept
+steering from the old body's spot; and moves never advanced the position, so
+between corrections it was stale.
+
 ## Own position received over UDP
 
 **Observed 2026-09-12:** actor-channel opening supplied Sophia's initial
@@ -89,8 +117,9 @@ bits. Its packed form uses a seven-bit width/scaling header, signed components,
 or float/double escape encoding. Opening positions are retained by network GUID
 and selected using the possessed pawn GUID, avoiding another player's position.
 
-The normal move uses the last known server position as ClientLoc; it does not
-predict local physics. The server's packed correction parameter contains a
+The normal move reports the client's predicted position as ClientLoc (see
+"Where Sophia is" above; until 2026-09-13 it reported the last server
+position with no prediction). The server's packed correction parameter contains a
 presence bit, packed bit-count and an inner response. The inner response begins
 with bAckGoodMove and a float timestamp. Corrections then carry four flags for
 base, rotation and root-motion variants; position and velocity are three
