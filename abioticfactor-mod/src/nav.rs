@@ -55,9 +55,12 @@ unsafe fn object_field(object: &UObject, name: &str) -> Result<u64, String> {
 
 /// Every live player controller with the name on its player state, the same
 /// identification the Sophia diagnostics use. Game thread.
-unsafe fn players() -> Result<Vec<(String, &'static UObject)>, String> {
+pub(crate) unsafe fn players() -> Result<Vec<(String, &'static UObject)>, String> {
     let mut found = Vec::new();
-    for pointer in ueforge::ue::actor::find_objects_by_chain("Abiotic_PlayerController_C") {
+    // Humans hold player controllers; Sophia holds the NPCs' AI controller with
+    // a PlayerState carrying her name (ai_player.rs). Both are players here.
+    for pointer in ueforge::ue::actor::find_objects_by_chain("Abiotic_PlayerController_C").into_iter()
+        .chain(ueforge::ue::actor::find_objects_by_chain("Abiotic_AI_Controller_ParentBP_C")) {
         // SAFETY: the pointer came from the live object list.
         let controller = unsafe { &*(pointer as *const UObject) };
         if let Some(name) = unsafe { controller_name(controller)? } { found.push((name, controller)); }
@@ -100,7 +103,11 @@ unsafe fn player_controller_named(name: &str) -> Result<&'static UObject, String
 /// The named player's cached controller and its live character. Game thread.
 pub(crate) unsafe fn player_character(name: &str) -> Result<(&'static UObject, &'static UObject), String> {
     let controller = unsafe { player_controller_named(name)? };
-    let character = unsafe { object_field(controller, "PlayerCharacter")? };
+    // A player controller keeps its character in PlayerCharacter; an AI controller has only Pawn.
+    let character = match unsafe { object_field(controller, "PlayerCharacter") } {
+        Ok(character) => character,
+        Err(_) => unsafe { object_field(controller, "Pawn")? },
+    };
     if character == 0 { return Err(format!("{name}'s controller has no character")); }
     // SAFETY: a non-null character pointer the controller replicates.
     Ok((controller, unsafe { &*(character as *const UObject) }))
@@ -158,7 +165,8 @@ fn list_players(_: &Value) -> Result<Value, String> {
         let mut rows = Vec::new();
         // SAFETY: game thread.
         for (name, controller) in unsafe { players()? } {
-            let character = unsafe { object_field(controller, "PlayerCharacter")? };
+            // A player controller keeps its character in PlayerCharacter; Sophia's AI controller has only Pawn.
+            let character = match unsafe { object_field(controller, "PlayerCharacter") } { Ok(c) => c, Err(_) => unsafe { object_field(controller, "Pawn")? } };
             // SAFETY: a live character actor or null.
             let location = if character == 0 { None } else { unsafe { ueforge::ue::transform::world_location(character as *const u8) } };
             rows.push(json!({"name": name, "controller": format!("0x{:X}", controller as *const UObject as u64),

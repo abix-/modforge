@@ -1,6 +1,10 @@
 # LAN RPC and property reference
 
-[Research index](abiotic-factor.md) | [Todo](todo.md)
+[Research index](../abiotic-factor.md) | [Todo](../todo.md)
+
+History. The UDP client this describes was removed on 2026-09-13: Sophia
+now joins on the host as an AI controller with a PlayerState (npc-ai.md).
+The decoded facts remain valid references for the game's own flow.
 
 ## RPC and property reference for the inspected build
 

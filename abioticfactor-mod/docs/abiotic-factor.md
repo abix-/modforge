@@ -12,10 +12,10 @@ input. See the RPC reference for the implementation, commands and remaining limi
 | [Skills, recipes, and difficulty](progression.md) | Skills, XP curve, recipes, and difficulty |
 | [Character health, stats, and input](character.md) | Body-part health, character stats, and native player input |
 | [LAN research method and evidence](research-method.md) | Evidence labels, permanent Rust diagnostics, and reproducible decoding |
-| [LAN transport, identity, and admission](lan-transport.md) | UDP handshake, identity, admission, and early multiplayer notes |
-| [LAN possession, character creation, and spawning](lan-spawn.md) | Possession, saved/new characters, traits, spawn ordering, and confirmed freeze |
-| [LAN loading and playable readiness](lan-loading.md) | Level loading, disabled state, and readiness gaps |
-| [LAN RPC and property reference](lan-rpc.md) | Inspected RPC handles, properties, and customization schema |
+| [LAN transport, identity, and admission](history/lan-transport.md) | History (UDP client removed 2026-09-13): handshake, identity, admission |
+| [LAN possession, character creation, and spawning](history/lan-spawn.md) | History: possession, saved/new characters, traits, the decoded spawn flow ai_player.start reproduces one step of |
+| [LAN loading and playable readiness](history/lan-loading.md) | History: level loading, disabled state, readiness gaps |
+| [LAN RPC and property reference](history/lan-rpc.md) | History: RPC handles, properties, customization schema |
 | [Character saves, disconnect, and persistence](persistence.md) | Save identity, loading/writing saves, disconnect, and persistence gaps |
 | [NPC AI: targets and fighting](npc-ai.md) | Soldier rows, perception numbers, decoded target scoring, the character's attack functions, what Sophia reuses |
 | [Performance](performance.md) | Game-thread cost rules, what is cached, what was measured |

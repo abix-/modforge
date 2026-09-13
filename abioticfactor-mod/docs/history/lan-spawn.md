@@ -1,6 +1,11 @@
 # LAN possession, character creation, and spawning
 
-[Research index](abiotic-factor.md) | [Todo](todo.md)
+[Research index](../abiotic-factor.md) | [Todo](../todo.md)
+
+History. The UDP client this describes was removed on 2026-09-13: Sophia
+now joins on the host as an AI controller with a PlayerState (npc-ai.md).
+The decoded spawn flow below is what ai_player.start reproduces one step of
+(TeleportPlayer to a world start).
 
 ## Host mod integration
 

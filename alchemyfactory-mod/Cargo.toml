@@ -1,24 +1,24 @@
 [package]
-name = "abioticfactor-mod"
+name = "alchemyfactory-mod"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
-# Abiotic Factor mod. Rust cdylib loaded into the game by UE4SS as a
-# CPPMod via the stock ueforge shim.
+# Alchemy Factory mod. Rust cdylib loaded into the game by UE4SS as
+# a CPPMod via the stock ueforge shim.
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-name = "abioticfactor_mod"
+name = "alchemyfactory_mod"
 
 [package.metadata.ueforge]
-mod_folder_name  = "AbioticFactorMod"
-game_name_regex  = "AbioticFactor"
-game_sub_path    = "AbioticFactor/Binaries/Win64"
-zip_prefix       = "abioticfactor-mod"
-target_dir       = "target/abioticfactor-mod"
+mod_folder_name  = "AlchemyFactoryMod"
+game_name_regex  = "AlchemyFactory"
+game_sub_path    = "AlchemyFactory/Binaries/Win64"
+zip_prefix       = "alchemyfactory-mod"
+target_dir       = "target/alchemyfactory-mod"
 
 [features]
 console = []
@@ -26,7 +26,6 @@ default = ["console"]
 
 [dependencies]
 anyhow = { workspace = true }
-fastrand = { workspace = true }
 widestring = { workspace = true }
 memoffset = { workspace = true }
 parking_lot = { workspace = true }
@@ -53,7 +52,6 @@ ueforge = { path = "../ueforge" }
 
 [dev-dependencies]
 ueforge = { path = "../ueforge" }
-patternsleuth = { workspace = true }
 hex = { workspace = true }
 zerocopy = { workspace = true }
 

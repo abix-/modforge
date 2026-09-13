@@ -1,6 +1,9 @@
 # LAN loading and playable readiness
 
-[Research index](abiotic-factor.md) | [Todo](todo.md)
+[Research index](../abiotic-factor.md) | [Todo](../todo.md)
+
+History. The UDP client this describes was removed on 2026-09-13: Sophia
+now joins on the host as an AI controller with a PlayerState (npc-ai.md).
 
 ## Decoded overlap predicate (2026-09-12)
 

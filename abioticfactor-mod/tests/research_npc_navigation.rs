@@ -321,6 +321,72 @@ fn npc_spawn_functions() {
     }
 }
 
+/// How an NPC attacks, function by function: the class chain of a live
+/// monster and of Sophia's character, every attack-related function on each
+/// class, so the shared ones are known; and the melee behaviour-tree task's
+/// own functions and fields, which name what it calls on the character.
+#[test]
+fn npc_attack_functions() {
+    let api = api();
+    if ping_or_skip(&api).is_none() { return; }
+    let read = |address: u64, length: usize| -> Vec<u8> {
+        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        assert!(reply.ok, "read_bytes: {:?}", reply.error);
+        hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
+    };
+    let name_of = |object: u64| -> String {
+        let fname = u64::from_le_bytes(read(object + 24, 8).try_into().unwrap());
+        api.op("fname_to_string", json!({"fname": fname})).result["string"].as_str().unwrap_or("?").to_owned()
+    };
+    let chain_of = |object: u64| -> Vec<String> {
+        let mut class = u64::from_le_bytes(read(object + 16, 8).try_into().unwrap());
+        let mut chain = Vec::new();
+        while class != 0 && chain.len() < 16 { chain.push(name_of(class)); class = u64::from_le_bytes(read(class + 64, 8).try_into().unwrap()); }
+        chain
+    };
+    let words = ["Attack", "Melee", "Swing", "Damage", "Hit", "Combat", "Windup", "Strike", "Bite", "Lunge"];
+    let functions_of = |class: &str| -> Vec<String> {
+        let reply = api.op("class_functions_by_name", json!({"class": class}));
+        reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str())
+            .filter(|n| words.iter().any(|w| n.contains(w))).map(str::to_owned).collect()
+    };
+    let players = api.op("players", json!({}));
+    let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia in game").clone();
+    let sophia_address = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let sophia_chain = chain_of(sophia_address);
+    println!("Sophia's class chain: {sophia_chain:?}");
+    for class in &sophia_chain { let f = functions_of(class); if !f.is_empty() { println!("  {class}: {f:?}"); } }
+    for monster in ["NPC_Monster_Pest_C", "NPC_Monster_Carbuncle_C", "NPC_Monster_Peccary_C"] {
+        let reply = api.op("walk_class_chain", json!({"needle": monster, "max": 8}));
+        let Some(live) = reply.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with(&format!("{monster} ")))) else { println!("{monster}: none live"); continue };
+        let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        let chain = chain_of(address);
+        println!("{monster} class chain: {chain:?}");
+        for class in &chain {
+            let f = functions_of(class);
+            let shared = sophia_chain.contains(class);
+            if !f.is_empty() { println!("  {class}{}: {f:?}", if shared { " (shared with Sophia)" } else { "" }); }
+        }
+    }
+    // The NPC melee steps and the shared damage entry, parameter by parameter.
+    for (class, function) in [("NPC_Base_ParentBP_C", "TryMeleeAttackCheck"), ("NPC_Base_ParentBP_C", "ProcessMeleeHits"), ("NPC_Base_ParentBP_C", "GetMeleeTraceRadius"), ("NPC_Base_ParentBP_C", "GetAttackLocation"), ("NPC_Base_ParentBP_C", "GetMeleeEndLocation"), ("NPC_Base_ParentBP_C", "GetAttackDamageType"), ("NPC_Base_ParentBP_C", "FindBestMeleeAttack"), ("NPC_Base_ParentBP_C", "OnTargetDamaged"), ("NPC_Monster_Pest_C", "Server_DoMeleeAttack"), ("NPC_Monster_Pest_C", "ApplyPestHitDamageToTarget"), ("Abiotic_Character_ParentBP_C", "Request_ApplyDamageToCharacter"), ("Abiotic_Character_ParentBP_C", "ProcessDamage"), ("Abiotic_Character_ParentBP_C", "TryDealLimbDamage")] {
+        let reply = api.op("function_parameters", json!({"class": class, "function": function}));
+        println!("{class}::{function}: {}", if reply.ok { reply.result.to_string() } else { format!("{:?}", reply.error) });
+    }
+    // The melee task and what it touches.
+    for task in ["BTT_DoMeleeAttack_C", "BTT_DoRangedAttack_C", "BTT_DoCombatAbility_C", "BTT_AttackCooldown_C"] {
+        let reply = api.op("class_functions_by_name", json!({"class": task}));
+        let names: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str()).collect();
+        println!("{task} functions: {names:?}");
+        let cdo = api.op("walk_class_chain", json!({"needle": task, "max": 4}));
+        if let Some(instance) = cdo.result["instances"].as_array().into_iter().flatten().next() {
+            let address = u64::from_str_radix(instance["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+            let fields = spawn_trace::object_fields(&api, address).unwrap_or_default();
+            println!("{task} fields: {}", fields.iter().filter(|(_, _, o)| *o >= 200).map(|(n, k, o)| format!("{n}:{k}@{o}")).collect::<Vec<_>>().join(" "));
+        }
+    }
+}
+
 /// Which actors can be seen at all: the sight sense reports only registered
 /// stimuli sources. Lists every live AIPerceptionStimuliSourceComponent with
 /// its owner, so it is known whether monsters are visible to a perceiver.

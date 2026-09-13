@@ -28,10 +28,10 @@ here and what was measured.
 
 | Path | Game-thread work per cycle | Object scans |
 |---|---|---|
-| ai_player.follow, every 2 s | one job: both positions from cached controllers, then the path query only when farther than the follow distance | none after the first lookup of each player |
-| ai_player.travel | one job: start position and the path query | none after first lookup |
+| ai_player.follow, every 2 s | one job: MoveToActor on her AI controller, which plans the path itself (2026-09-13, replaces the UDP route follower) | none after the first lookup of each player |
+| ai_player.explore, every 2 s | perception read, then at most one MoveToLocation | none after first lookup |
 | nav.find_path | one path query; navigation system cached | none after first |
-| UDP walk (client) | none; ServerMove packets at 30 Hz go over the socket | none |
+| walking between requests | none from the mod; the engine's path following moves her like any NPC | none |
 | players op | full controller scan | one per call, research and tests only |
 
 ## What was measured

@@ -1,9 +1,10 @@
 //! The Sophia tab in the mod's in-game window: buttons for what the human
-//! wants on demand (join, respawn, follow me, stop, eyes, attack) and the
-//! last reply. Every button dispatches the same op the tests use; nothing
-//! here has a second implementation. The window renders on UE4SS's render
-//! thread, and every op waits for the game thread, so a button starts the
-//! op on its own thread and the tab shows the reply when it lands.
+//! wants on demand (join, respawn, follow me, stop, eyes, explore, memory,
+//! leave) and the last reply. Every button dispatches the same op the tests
+//! use; nothing here has a second implementation. The window renders on
+//! UE4SS's render thread, and every op waits for the game thread, so a
+//! button starts the op on its own thread and the tab shows the reply when
+//! it lands.
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use ueforge::ui;
@@ -32,12 +33,7 @@ fn human() -> Option<String> {
 pub fn render() {
     ui::text("Sophia");
     ui::separator();
-    if ui::button("Join") {
-        match abioticfactor_client::profile::directory() {
-            Ok(directory) => run("ai_player.start", json!({"profile_dir": directory.to_string_lossy()})),
-            Err(error) => *LAST.lock() = ("ai_player.start".into(), format!("error: {error}")),
-        }
-    }
+    if ui::button("Join") { run("ai_player.start", json!({})); }
     ui::same_line();
     if ui::button("Respawn") { run("ai_player.respawn", json!({})); }
     ui::same_line();

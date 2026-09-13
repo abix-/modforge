@@ -8,7 +8,7 @@
 //!    reaches, or cannot path to, is marked visited.
 //!
 //! Nothing here looks the world up; her knowledge is only what she has seen.
-use abioticfactor_client::profile::Seen;
+use crate::profile::Seen;
 use serde_json::{Value, json};
 use std::time::Duration;
 
@@ -43,11 +43,11 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
     // Where she is: the host's copy of her character, the same read follow uses.
     let here = crate::nav::plan(&walker.name, crate::nav::Goal::Point([0.0; 3]), f64::INFINITY)?.from;
     if let Some(name) = walking_to.as_ref() {
-        // The path follower owns the walk: planned once, it reports arrived or
-        // stuck itself. Re-planning every cycle would restart it and its stuck
-        // detection, and she stood wedged against a table forever (2026-09-13).
-        let status = walker.travel_status().unwrap_or_default();
-        let done = status == "arrived" || status == "stuck" || status == "cancelled" || status == "standing";
+        // The AI controller's path following owns the walk: requested once, it
+        // goes idle when it arrives or gives up. Re-requesting every cycle would
+        // restart it, and she stood wedged against a table forever (2026-09-13).
+        let status = crate::ai_player::move_status()?;
+        let done = status == "arrived";
         if name == WANDER {
             if done { ueforge::log!("AI player {} wander ended: {status}", walker.name); *walking_to = None; }
             if walking_to.is_some() { return Ok(()); }
@@ -67,7 +67,7 @@ fn cycle(walker: &crate::ai_player::Walker, walking_to: &mut Option<String>) -> 
         .min_by(|a, b| flat_distance(&here, &a.1.location).total_cmp(&flat_distance(&here, &b.1.location)))
         .map(|(name, thing)| (name.clone(), thing.location, thing.class.clone()));
     let Some((name, location, class)) = next else { return wander(walker, here, walking_to); };
-    match crate::ai_player::plan_travel(&walker.name, &walker.commands, crate::nav::Goal::Point(location), VISIT_DISTANCE) {
+    match crate::ai_player::walk_to(crate::nav::Goal::Point(location), VISIT_DISTANCE) {
         Ok(reply) if reply["state"] == "standing" => {
             // Already there: nothing to walk.
             if let Some(thing) = seen.things.get_mut(&name) { thing.visited = true; }
@@ -93,7 +93,7 @@ fn wander(walker: &crate::ai_player::Walker, here: [f64; 3], walking_to: &mut Op
     for _ in 0..WANDER_TRIES {
         let angle = fastrand::f64() * std::f64::consts::TAU;
         let goal = [here[0] + WANDER_DISTANCE * angle.cos(), here[1] + WANDER_DISTANCE * angle.sin(), here[2]];
-        match crate::ai_player::plan_travel(&walker.name, &walker.commands, crate::nav::Goal::Point(goal), VISIT_DISTANCE) {
+        match crate::ai_player::walk_to(crate::nav::Goal::Point(goal), VISIT_DISTANCE) {
             Ok(reply) if reply["state"] == "travel_requested" => {
                 ueforge::log!("AI player {} wandering {:.0} degrees to {:.0},{:.0}", walker.name, angle.to_degrees(), goal[0], goal[1]);
                 // A wander target is a place, not a thing; it is done when the follower says so.

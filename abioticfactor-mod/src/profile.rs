@@ -1,4 +1,7 @@
-//! Persistent bot identity and an append-only local memory journal.
+//! Sophia's persistent profile: her name and appearance in profile.json,
+//! an append-only journal in memory.jsonl, and everything she has ever
+//! perceived in seen.json. Stored outside the build directory so rebuilds
+//! never erase her.
 use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
@@ -8,16 +11,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Serialize, Deserialize)]
 pub struct Profile {
     pub name: String,
-    pub bot_id: String,
     pub appearance: String,
 }
 
 impl Profile {
-    /// Load an existing instance without creating or changing its identity.
+    /// Load an existing profile without creating or changing it.
     pub fn load(directory: &Path) -> io::Result<Self> {
-        let profile: Self = serde_json::from_slice(&fs::read(directory.join("profile.json"))?)?;
-        crate::identity::PlayerId::new(&profile.bot_id)?;
-        Ok(profile)
+        Ok(serde_json::from_slice(&fs::read(directory.join("profile.json"))?)?)
     }
 
     pub fn load_or_create(directory: &Path) -> io::Result<Self> {
@@ -26,12 +26,7 @@ impl Profile {
         match Self::load(directory) {
             Ok(profile) => Ok(profile),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                let profile = Self {
-                    name: "Sophia".into(),
-                    // Preserve the identity used for the user's first visible bot.
-                    bot_id: "6d6f64666f7267654149506c61796572".into(),
-                    appearance: "female".into(),
-                };
+                let profile = Self { name: "Sophia".into(), appearance: "female".into() };
                 let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
                 file.write_all(&serde_json::to_vec_pretty(&profile)?)?;
                 file.sync_all()?;
@@ -42,15 +37,6 @@ impl Profile {
     }
 }
 
-/// Held for the entire session; dropping the handle releases the OS lock.
-pub fn lock(directory: &Path) -> io::Result<std::fs::File> {
-    fs::create_dir_all(directory)?;
-    let file = OpenOptions::new().create(true).truncate(false).read(true).write(true)
-        .open(directory.join("session.lock"))?;
-    file.try_lock().map_err(|error| io::Error::other(format!("AI player profile is already in use or cannot be locked: {error}")))?;
-    Ok(file)
-}
-
 /// Stored outside the build directory so rebuilds do not erase Sophia.
 pub fn directory() -> io::Result<PathBuf> {
     if let Some(path) = std::env::var_os("SOPHIA_HOME") { return Ok(path.into()); }
@@ -59,10 +45,10 @@ pub fn directory() -> io::Result<PathBuf> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "set SOPHIA_HOME or LOCALAPPDATA"))
 }
 
-/// Journal only facts observed by the UDP client, never credentials or raw packets.
-pub fn remember(directory: &Path, event: &str, server: &str) -> io::Result<()> {
+/// Journal one observed event.
+pub fn remember(directory: &Path, event: &str, detail: &str) -> io::Result<()> {
     let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_err(io::Error::other)?.as_secs();
-    let entry = serde_json::json!({"time":seconds,"event":event,"server":server});
+    let entry = serde_json::json!({"time":seconds,"event":event,"detail":detail});
     let mut file = OpenOptions::new().create(true).append(true).open(directory.join("memory.jsonl"))?;
     writeln!(file, "{entry}")?;
     file.sync_data()
@@ -115,6 +101,8 @@ impl Seen {
     }
 }
 
+/// The journal, oldest first.
+#[cfg(test)]
 pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
     let text = match fs::read_to_string(directory.join("memory.jsonl")) {
         Ok(text) => text,
@@ -143,26 +131,15 @@ mod tests {
     }
 
     #[test]
-    fn session_lock_excludes_duplicate_and_releases_after_close() {
-        let directory = std::env::temp_dir().join(format!("sophia-lock-{:016x}", fastrand::u64(..)));
-        let first = lock(&directory).unwrap();
-        assert!(lock(&directory).is_err(), "second session must not acquire the profile");
-        drop(first);
-        drop(lock(&directory).expect("closed session releases ownership"));
-        fs::remove_file(directory.join("session.lock")).unwrap();
-        fs::remove_dir(directory).unwrap();
-    }
-
-    #[test]
     fn identity_and_memory_survive_reopening() {
         let directory = std::env::temp_dir().join(format!("sophia-profile-{:016x}", fastrand::u64(..)));
         let first = Profile::load_or_create(&directory).unwrap();
-        remember(&directory, "server_welcomed_me", "127.0.0.1:7777").unwrap();
+        remember(&directory, "joined", "hosted save").unwrap();
         let second = Profile::load_or_create(&directory).unwrap();
-        assert_eq!(first.bot_id, second.bot_id);
+        assert_eq!(first.name, second.name);
         assert_eq!(second.name, "Sophia");
         assert_eq!(second.appearance, "female");
-        assert_eq!(recall(&directory).unwrap()[0]["event"], "server_welcomed_me");
+        assert_eq!(recall(&directory).unwrap()[0]["event"], "joined");
         fs::remove_file(directory.join("profile.json")).unwrap();
         fs::remove_file(directory.join("memory.jsonl")).unwrap();
         fs::remove_dir(directory).unwrap();

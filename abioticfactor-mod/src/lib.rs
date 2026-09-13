@@ -1,12 +1,12 @@
 #![allow(clippy::missing_safety_doc)]
 mod ai_player;
-mod bot;
 mod combat;
 mod explore;
 mod host;
 mod nav;
 mod npcs;
 mod perception;
+mod profile;
 mod ui;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
@@ -37,6 +37,9 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     ],
 };
 
+// The exports UE4SS calls, with the tab bridge that links against UE4SS's
+// imgui; a unit test binary has no UE4SS to link against, so it gets none.
+#[cfg(not(test))]
 ueforge::ue4ss_mod!(MOD_INFO);
 
 fn on_unreal_init() {
@@ -67,7 +70,6 @@ unsafe fn worker() {
     ueforge::ops::OP_REGISTRY.register_many(modforge::input::ops::all());
     ueforge::shutdown::register_builtins();
     ai_player::register();
-    bot::register();
     host::register();
     nav::register();
     combat::register();

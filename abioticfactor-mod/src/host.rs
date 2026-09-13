@@ -23,7 +23,7 @@ struct HostMultiplayerGameParms {
 
 /// Replace the FString at `offset` on `object` with `text`, growing its
 /// buffer through the engine allocator when the current capacity is too small.
-unsafe fn write_fstring(object: &UObject, offset: usize, text: &str) -> Result<(), String> {
+pub(crate) unsafe fn write_fstring(object: &UObject, offset: usize, text: &str) -> Result<(), String> {
     let header = unsafe { object.field_ptr(offset) };
     let needed = i32::try_from(text.encode_utf16().count() + 1).map_err(|_| "save name too long")?;
     let max = unsafe { ((header as usize + 12) as *const i32).read_unaligned() };

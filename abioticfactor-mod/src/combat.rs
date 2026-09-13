@@ -49,6 +49,8 @@ fn attack(args: &Value) -> Result<Value, String> {
 fn melee(args: &Value) -> Result<Value, String> {
     let player = args["player"].as_str().filter(|s| !s.is_empty()).ok_or("player must be a player name")?.to_owned();
     let target = args["target"].as_str().filter(|s| !s.is_empty()).ok_or("target must be the enemy's address from ai_player.perceived")?.to_owned();
+    // Exor melee damage from DT_NPCList (npc-ai.md) unless given.
+    let args_damage = args["damage"].as_f64().unwrap_or(70.0);
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
         // SAFETY: game thread.
         let (controller, character) = unsafe { crate::nav::player_character(&player)? };

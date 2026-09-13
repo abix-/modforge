@@ -110,17 +110,23 @@ ShooterGame spawn the AI controller with bWantsPlayerState, then run the game
 mode's DispatchPostLogin and RestartPlayer for it: the game mode spawns the
 ordinary player pawn class and the AI controller possesses it. Player features
 come from the pawn and the PlayerState, NPC features from the AI controller.
-`ai_player.bot` in src/bot.rs does this with the game's own classes; the
-research test is tests/research_bot_player.rs. Live, 2026-09-13: the AI
-controller gets a PlayerState (bWantsPlayerState set between begin and finish
-spawn), RestartPlayer spawns it an Abiotic_PlayerCharacter_C, and
-`ai_player.bot_place` teleports the body to one of the nine Abiotic_WorldStart_C
-actors with the character's own TeleportPlayer, the call the decoded player
-spawn flow makes (lan-spawn.md). The user saw the body at the world start.
-The character's possession handler casts its controller to the player
-controller, so with an AI controller it leaves MyPlayerState and
-MyPlayerController null and Request_SpawnMeInWorld never runs: no player save
-loaded, no Client_SetupCharacter, PlayerState name empty.
+`ai_player.start` in src/ai_player.rs does this with the game's own classes;
+the live test is tests/ai_player_live.rs. Live, 2026-09-13: the AI controller
+gets a PlayerState (bWantsPlayerState set between begin and finish spawn)
+carrying her name, so the players op lists her beside the human; its
+PathFollowingComponent, which the controller Blueprint's defaults leave null,
+is set through SetPathFollowingComponent before possession; RestartPlayer
+spawns it an Abiotic_PlayerCharacter_C; and the character's own
+TeleportPlayer, the call the decoded player spawn flow makes
+(history/lan-spawn.md), places her at the first of the nine
+Abiotic_WorldStart_C actors. The user saw the body at the world start.
+`ai_player.follow` re-requests AIController::MoveToActor every two seconds;
+she walked 232 units from the world start and then reported moving without
+progress, cause unread. The character's possession handler casts its
+controller to the player controller, so with an AI controller it leaves
+MyPlayerState and MyPlayerController null and Request_SpawnMeInWorld never
+runs: no player save loaded, no Client_SetupCharacter. The UDP client was
+removed the same day; everything goes through the mod.
 
 Two ueforge faults found on the way: a plain pointer write through an object
 reference was dropped by the optimizer (write_class_bool now writes volatile

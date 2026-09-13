@@ -1,6 +1,9 @@
 # LAN transport, identity, and admission
 
-[Research index](abiotic-factor.md) | [Todo](todo.md)
+[Research index](../abiotic-factor.md) | [Todo](../todo.md)
+
+History. The UDP client this describes was removed on 2026-09-13: Sophia
+now joins on the host as an AI controller with a PlayerState (npc-ai.md).
 
 The multiplayer section preserves early investigation notes. The transport section contains the later admission findings; see [spawn](lan-spawn.md) for the current lifecycle.
 
