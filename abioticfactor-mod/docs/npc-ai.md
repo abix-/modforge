@@ -87,11 +87,36 @@ current configuration still selects the Grunt stats row and melee montage
 assets explicitly. The melee map is copied once into our class defaults;
 new bodies inherit it without requiring the donor class at respawn. Those
 data choices are not inheritance from the Grunt
-body or controller. NPC_Coworker_AnimBP provides human rendering; its movement
-updates use the common character parent, while coworker-specific branches
-remain in that reused animation asset. The animation instance resolves the
-custom character, and native knife hits passed. Visible animation quality
-and character appearance customization have not been accepted by the user.
+body or controller. Native knife hits passed.
+
+### Appearance and animation (accepted by the user 2026-09-14)
+
+Sophia's body is scientist parts on SK_Human_Skeleton, the one skeleton every
+human head, torso, skirt and hair mesh in the game shares: head SK_Head_F_02
+(the female head the game's own narrative NPC wears), torso SK_Torso_Jacket_M,
+SK_Legs_Skirt and SK_Hair_RuggedPonytail, each attached to the head mesh and
+following its pose. The game ships five female heads (SK_Head_F_01 to 05) and
+eighteen female torsos under Models/Characters/Scientist/Female; hair and
+glasses are shared. No female animation blueprint or animation sequence
+exists, so the animation asset is the same for either sex. The inventory
+comes from tests/scientist_assets.rs against the live asset registry.
+
+Her animation asset is AnimBP_Pillager_C, the Pillager's. The Pillager is a
+child of NPC_Base_ParentBP_C (the engine's class check, in the same test file)
+that wears scientist parts and stands, walks and fights. The two other human
+assets on base NPC children were rejected: NPC_Coworker_AnimBP made her crawl,
+and ABF_NarrativeNPC_AnimBP crashed the game calling the player-only function
+IsUsingVehicle on her (the narrative human is not a base NPC child).
+
+Every animation blueprint fills its Speed variable in its own update event
+from the owning pawn's velocity, and the Pillager's does so only after casting
+the owner to a Pillager. On Sophia the update ran and Speed stayed at zero
+while she walked at 260, so no walk pose played. The fix is the pattern UE4SS
+mods use (PD3-ZF-Laser, meccamod, rot-radar-minimap: a hook on
+BlueprintUpdateAnimation that writes the variables itself): body.rs installs
+one ProcessEvent hook on AnimBP_Pillager_C, and after each update whose owner
+is Modforge_AIPlayer_C writes Speed from the pawn's velocity length. Real
+Pillagers are untouched. Verified live: she walks with the Pillager asset.
 
 Normal ai_player.start and respawn use the custom class. Live acceptance on
 2026-09-13 passed class inheritance, following within 150 units, walk speed

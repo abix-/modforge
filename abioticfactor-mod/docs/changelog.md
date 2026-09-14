@@ -1,5 +1,17 @@
 # Abiotic Factor changelog
 
+## 2026-09-14
+
+- Sophia is a female scientist who walks: head SK_Head_F_02, skirt and rugged
+  ponytail on SK_Human_Skeleton, animated by the Pillager's AnimBP_Pillager
+  with a BlueprintUpdateAnimation hook that writes Speed from her velocity,
+  since the Pillager asset only fills it for a Pillager owner. The Coworker
+  asset crawled and the narrative human asset crashed on a player-only
+  function. User accepted the look and the walk live.
+- tests/scientist_assets.rs: the female scientist asset inventory from the
+  live registry, the engine's class checks for the human NPCs, and a read of
+  Sophia's animation instance around a follow order.
+
 ## 2026-09-13
 
 - Sophia now spawns and respawns as Modforge_AIPlayer_C, directly derived from

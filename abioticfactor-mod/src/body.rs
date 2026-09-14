@@ -18,6 +18,39 @@ const CLASS_BINDINGS: ueforge::derived_class::ClassBindings = ueforge::derived_c
     class_flags: 0xd4, class_within: 0xe0, config_name: 0xe8,
 };
 
+/// The Pillager's animation asset, the standing human on the base NPC.
+const ANIMATION: &str = "AnimBP_Pillager_C";
+static WALK_FEED: parking_lot::Mutex<Option<ueforge::hook::process_event::ProcessEventHook>> = parking_lot::Mutex::new(None);
+
+/// The Pillager's animation asset fills its Speed from its owner only after
+/// casting it to a Pillager, so on our class it stays at zero and she never
+/// walks. Prior art: UE4SS mods hook BlueprintUpdateAnimation and write the
+/// variables themselves (PD3-ZF-Laser, meccamod, rot-radar-minimap). After
+/// each update on our pawn, Speed becomes her velocity length. Pillagers
+/// themselves are untouched. Installed once, kept for the DLL's life.
+unsafe fn install_walk_feed() -> Result<(), String> {
+    let mut feed = WALK_FEED.lock();
+    if feed.is_some() { return Ok(()); }
+    let hook = ueforge::hook::process_event::ProcessEventHook::install(ANIMATION, |this, function, parms, original| {
+        // SAFETY: the engine's own call on a live animation instance, forwarded unchanged first.
+        unsafe {
+            original.call(this, function, parms);
+            if function.as_object().name() != "BlueprintUpdateAnimation" { return; }
+            let Ok(owner) = call(this, "AnimInstance", "TryGetPawnOwner", json!({})) else { return };
+            let pawn = addr(&owner["ReturnValue"]);
+            if pawn == 0 { return; }
+            let pawn = &*(pawn as *const UObject);
+            if pawn.class().map(|c| c.as_object().name()).as_deref() != Some(AI_PLAYER.name) { return; }
+            let Ok(velocity) = call(pawn, "Actor", "GetVelocity", json!({})) else { return };
+            let v = &velocity["ReturnValue"];
+            let speed = ["X", "Y", "Z"].iter().map(|k| v[k].as_f64().unwrap_or(0.0).powi(2)).sum::<f64>().sqrt();
+            let _ = reflect::set_fields(this, json!({"Speed": speed}).as_object().unwrap());
+        }
+    }).map_err(|e| format!("walk feed hook on {ANIMATION}: {e}"))?;
+    *feed = Some(hook);
+    Ok(())
+}
+
 unsafe fn call(object: &UObject, class: &str, function: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
     // SAFETY: all callers operate on live objects in one game-thread spawn job.
     unsafe { reflect::call(object, class, function, params.as_object().unwrap()) }
@@ -46,9 +79,15 @@ pub(crate) unsafe fn spawn(context: &UObject, location: (f64, f64, f64), faction
                 let mesh = object_ptr(body, "Mesh")?;
                 if mesh == 0 { return Err("base NPC has no native mesh component".into()); }
                 let mesh_object = &*(mesh as *const UObject);
-                call(mesh_object, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": "asset:/Game/Models/Characters/Scientist/Male/SK_Head_M_01.SK_Head_M_01"}))?;
+                // Female head 02, the one the game's own narrative NPC wears. Every
+                // human part shares SK_Human_Skeleton, so the animation asset is unchanged.
+                call(mesh_object, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": "asset:/Game/Models/Characters/Scientist/Female/SK_Head_F_02.SK_Head_F_02"}))?;
                 call(mesh_object, "SceneComponent", "K2_SetRelativeLocation", json!({"NewLocation": {"X": 0.0, "Y": 0.0, "Z": -88.0}, "bSweep": false, "bTeleport": true}))?;
-                call(mesh_object, "SkeletalMeshComponent", "SetAnimClass", json!({"NewClass": "asset:/Game/Models/Characters/Scientist/Male/NPC_Coworker_AnimBP.NPC_Coworker_AnimBP_C"}))?;
+                // The Pillager's animation asset: a base NPC child on scientist parts and the
+                // human skeleton that stands, walks and fights. NPC_Coworker_AnimBP made her
+                // crawl; ABF_NarrativeNPC_AnimBP calls a player-only function and crashed (2026-09-14).
+                call(mesh_object, "SkeletalMeshComponent", "SetAnimClass", json!({"NewClass": format!("asset:/Game/Models/Characters/NPCs/LabRat/AnimBP_Pillager.{ANIMATION}")}))?;
+                install_walk_feed()?;
                 Ok(())
             })?;
         let mut controller = 0;
@@ -58,10 +97,10 @@ pub(crate) unsafe fn spawn(context: &UObject, location: (f64, f64, f64), faction
             // Apply this AI player's relationship before possession and ticking.
             reflect::set_fields(body, json!({"Faction": faction}).as_object().unwrap())?;
             let mesh = object_ptr(body, "Mesh")?;
-            for asset in ["SK_Torso_Jacket_M", "SK_Pants_Regular_01"] {
+            for (folder, asset) in [("Male", "SK_Torso_Jacket_M"), ("Female", "SK_Legs_Skirt"), ("HeadAccessories/Hair", "SK_Hair_RuggedPonytail")] {
                 let component = ueforge::spawn_ops::add_component(body, "SkeletalMeshComponent", json!({"ComponentTags": ["AIPlayerBody"]}).as_object().unwrap())?;
                 let part = &*(component as *const UObject);
-                call(part, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": format!("asset:/Game/Models/Characters/Scientist/Male/{asset}.{asset}")}))?;
+                call(part, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": format!("asset:/Game/Models/Characters/Scientist/{folder}/{asset}.{asset}")}))?;
                 call(part, "SceneComponent", "K2_AttachToComponent", json!({"Parent": format!("0x{mesh:X}"), "SocketName": "None", "LocationRule": 2, "RotationRule": 2, "ScaleRule": 2, "bWeldSimulatedBodies": false}))?;
                 call(part, "SkinnedMeshComponent", "SetLeaderPoseComponent", json!({"NewLeaderBoneComponent": format!("0x{mesh:X}"), "bForceUpdate": true, "bInFollowerShouldTickPose": false}))?;
             }
