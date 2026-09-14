@@ -79,9 +79,9 @@ pub(crate) unsafe fn spawn(context: &UObject, location: (f64, f64, f64), faction
                 let mesh = object_ptr(body, "Mesh")?;
                 if mesh == 0 { return Err("base NPC has no native mesh component".into()); }
                 let mesh_object = &*(mesh as *const UObject);
-                // Female head 02, the one the game's own narrative NPC wears. Every
-                // human part shares SK_Human_Skeleton, so the animation asset is unchanged.
-                call(mesh_object, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": "asset:/Game/Models/Characters/Scientist/Female/SK_Head_F_02.SK_Head_F_02"}))?;
+                // Female head 03 (user rejected 02, 2026-09-14). Every human part shares
+                // SK_Human_Skeleton, so the animation asset is unchanged.
+                call(mesh_object, "SkeletalMeshComponent", "SetSkeletalMeshAsset", json!({"NewMesh": "asset:/Game/Models/Characters/Scientist/Female/SK_Head_F_03.SK_Head_F_03"}))?;
                 call(mesh_object, "SceneComponent", "K2_SetRelativeLocation", json!({"NewLocation": {"X": 0.0, "Y": 0.0, "Z": -88.0}, "bSweep": false, "bTeleport": true}))?;
                 // The Pillager's animation asset: a base NPC child on scientist parts and the
                 // human skeleton that stands, walks and fights. NPC_Coworker_AnimBP made her
