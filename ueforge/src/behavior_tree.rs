@@ -22,6 +22,77 @@ use crate::ue::UObject;
 use crate::reflect;
 use serde_json::{Value, json};
 
+/// Transfer movement ownership between native combat and assignment movement.
+/// The caller prepares game-specific combat keys before entering combat.
+#[derive(Default)]
+pub struct AiOrderExecution {
+    combat: bool,
+    initialized: bool,
+    destination: Option<([f64; 3], f64)>,
+    focus: Option<u64>,
+}
+
+impl AiOrderExecution {
+    /// # Safety
+    /// Controller and combat_tree must be live, on the game thread.
+    pub unsafe fn apply(&mut self, controller: &UObject, combat_tree: u64,
+        action: &modforge::ai_orders::Action) -> Result<(), String> {
+        use modforge::ai_orders::Action;
+        let attacking = matches!(action, Action::Attacking { .. });
+        let fields = unsafe { reflect::get_fields(controller, &["BrainComponent".into()])? };
+        let brain = fields["BrainComponent"]["addr"].as_str().map(|address| reflect::object_ref(&json!(address))).transpose()?.unwrap_or(0);
+        let unexpected_running = !attacking && brain != 0 && unsafe { reflect::call(&*(brain as *const UObject), "BrainComponent", "IsRunning", &serde_json::Map::new())? }["ReturnValue"] == true;
+        if !self.initialized || self.combat != attacking || unexpected_running {
+            // StopLogic aborts the old tree's movement before a new owner starts.
+            if brain != 0 {
+                    unsafe { reflect::call(&*(brain as *const UObject), "BrainComponent", "StopLogic",
+                        json!({"Reason": "AI player assignment"}).as_object().unwrap())? };
+            }
+            unsafe { reflect::call(controller, "Controller", "StopMovement", &serde_json::Map::new())? };
+            if attacking {
+                let started = unsafe { reflect::call(controller, "AIController", "RunBehaviorTree",
+                    json!({"BTAsset": format!("0x{combat_tree:X}")}).as_object().unwrap())? };
+                if started["ReturnValue"] != true { return Err("AI player combat tree refused to start".into()); }
+            }
+            self.combat = attacking;
+            self.initialized = true;
+            self.destination = None;
+        }
+        let focus = match action { Action::Attacking { target } => Some(*target), _ => None };
+        if focus != self.focus {
+            match focus {
+                Some(target) => { unsafe { reflect::call(controller, "AIController", "K2_SetFocus", json!({"NewFocus": format!("0x{target:X}")}).as_object().unwrap())? }; }
+                None => { unsafe { reflect::call(controller, "AIController", "K2_ClearFocus", &serde_json::Map::new())? }; }
+            }
+            self.focus = focus;
+        }
+        let (position, radius) = match action {
+            Action::Following { position, radius } | Action::Holding { position, radius }
+                | Action::Returning { position, radius } => (*position, *radius),
+            Action::Attacking { .. } => return Ok(()),
+            Action::Dead | Action::Blocked { .. } => {
+                unsafe { reflect::call(controller, "Controller", "StopMovement", &serde_json::Map::new())? };
+                self.destination = None;
+                return Ok(());
+            }
+        };
+        let moving = unsafe { reflect::call(controller, "AIController", "GetMoveStatus", &serde_json::Map::new())? }["ReturnValue"].as_u64() == Some(3);
+        if moving && self.destination.is_some_and(|(previous, old_radius)|
+            old_radius == radius && modforge::ai_orders::distance(previous, position) < radius * 0.5) { return Ok(()); }
+        let reply = unsafe { reflect::call(controller, "AIController", "MoveToLocation", json!({
+            "Dest": {"X": position[0], "Y": position[1], "Z": position[2]}, "AcceptanceRadius": radius,
+            "bStopOnOverlap": false, "bUsePathfinding": true, "bProjectDestinationToNavigation": true,
+            "bCanStrafe": true, "FilterClass": null, "bAllowPartialPath": false
+        }).as_object().unwrap())? };
+        if !matches!(reply["ReturnValue"].as_u64(), Some(1 | 2)) {
+            self.destination = None;
+            return Err("no complete path to assignment".into());
+        }
+        self.destination = Some((position, radius));
+        Ok(())
+    }
+}
+
 /// A script struct's element stride and one field's offset from its live
 /// reflection. The stride is the end of the last reflected field rounded up
 /// to pointer alignment; the UStruct size read is not trusted for structs

@@ -41,7 +41,7 @@ fn spawn(args: &Value) -> Result<Value, String> {
         let (x, y, z) = unsafe { ueforge::ue::transform::world_location(character as *const UObject as *const u8) }.ok_or("player character has no location")?;
         let class = blueprint_class(SPAWNER_PACKAGE_DIR, &spawner)?.as_object().name();
         let location = (x + distance, y, z);
-        let actor = unsafe { ueforge::spawn_ops::spawn_actor(character, &class, location, 180.0, &serde_json::Map::new())? };
+        let actor = unsafe { ueforge::spawn_ops::spawn_actor(character, &class, location, 180.0, json!({"OnlySpawnOnce": true}).as_object().unwrap())? };
         // SAFETY: a live actor the engine just finished spawning.
         let object = unsafe { &*(actor as *const UObject) };
         unsafe { ueforge::reflect::call(object, SPAWNER_PARENT, "DebugSpawn", &serde_json::Map::new())? };

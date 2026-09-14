@@ -20,11 +20,26 @@ fn location_of(value: &Value) -> Result<(f64, f64, f64), String> {
 /// # Safety
 /// `context` must be a live actor.
 pub unsafe fn spawn_actor(context: &UObject, class: &str, location: (f64, f64, f64), yaw: f64, fields: &serde_json::Map<String, Value>) -> Result<u64, String> {
+    // SAFETY: same live context and game-thread requirement as this function.
+    unsafe { spawn_actor_configured(context, class, location, yaw, fields, |_| Ok(())) }
+}
+
+/// Configure native components before construction and BeginPlay execute.
+/// # Safety
+/// Context must be live on the game thread; configure must not destroy the actor.
+pub unsafe fn spawn_actor_configured(context: &UObject, class: &str, location: (f64, f64, f64), yaw: f64,
+    fields: &serde_json::Map<String, Value>, configure: impl FnOnce(&UObject) -> Result<(), String>) -> Result<u64, String> {
     let class_ptr = crate::ue::find_class_fast(class).ok_or_else(|| format!("class {class} not found"))?;
     let actor = unsafe { crate::ue::spawn::begin_spawn(context.as_ptr(), class_ptr as *const _ as u64, location, yaw, 1.0) };
     if actor == 0 { return Err(format!("{class} did not begin spawning")); }
     // SAFETY: an actor the engine created and has not finished.
-    unsafe { reflect::set_fields(&*(actor as *const UObject), fields)? };
+    let object = unsafe { &*(actor as *const UObject) };
+    if let Err(error) = unsafe { reflect::set_fields(object, fields) }.and_then(|_| configure(object)) {
+        // SAFETY: this is the actor allocated by begin_spawn in this job.
+        unsafe { reflect::call(object, "Actor", "K2_DestroyActor", &serde_json::Map::new()) }
+            .map_err(|cleanup| format!("{error}; cleanup: {cleanup}"))?;
+        return Err(error);
+    }
     if unsafe { crate::ue::spawn::finish_spawn(actor, location, yaw, 1.0) } == 0 { return Err(format!("{class} did not finish spawning")); }
     Ok(actor)
 }
@@ -45,6 +60,20 @@ pub unsafe fn add_component(actor: &UObject, class: &str, fields: &serde_json::M
     Ok(component)
 }
 
+/// Restore the native path-following component reference before possession.
+/// # Safety
+/// Controller must be a live AIController on the game thread, before possession.
+pub unsafe fn initialize_path_following(controller_object: &UObject) -> Result<(), String> {
+    // Blueprint defaults can leave the field null although the native subobject
+    // exists. Possession needs the field to point at that subobject.
+    let following = unsafe { reflect::call(controller_object, "Actor", "GetComponentByClass", json!({"ComponentClass": "class:PathFollowingComponent"}).as_object().unwrap())? };
+    let following = following["ReturnValue"]["addr"].as_str().and_then(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
+    if following != 0 {
+        unsafe { reflect::call(controller_object, "AIController", "SetPathFollowingComponent", json!({"NewPFComponent": format!("0x{following:X}")}).as_object().unwrap())? };
+    }
+    Ok(())
+}
+
 /// The bot join. Returns the controller, its PlayerState and its pawn. Game thread.
 ///
 /// # Safety
@@ -54,14 +83,7 @@ pub unsafe fn join_ai_player(context: &UObject, controller_class: &str, location
     let controller = unsafe { spawn_actor(context, controller_class, location, 0.0, json!({"bWantsPlayerState": true}).as_object().unwrap())? };
     // SAFETY: the controller the engine just finished.
     let controller_object = unsafe { &*(controller as *const UObject) };
-    // A Blueprint controller's defaults may leave PathFollowingComponent null even
-    // though its class carries the subobject, and OnPossess initializes the
-    // component only when the pointer is set; so set it before possession.
-    let following = unsafe { reflect::call(controller_object, "Actor", "GetComponentByClass", json!({"ComponentClass": "class:PathFollowingComponent"}).as_object().unwrap())? };
-    let following = following["ReturnValue"]["addr"].as_str().and_then(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
-    if following != 0 {
-        unsafe { reflect::call(controller_object, "AIController", "SetPathFollowingComponent", json!({"NewPFComponent": format!("0x{following:X}")}).as_object().unwrap())? };
-    }
+    unsafe { initialize_path_following(controller_object)? };
     let player_state = unsafe { reflect::get_fields(controller_object, &["PlayerState".into()])? }["PlayerState"]["addr"].as_str().and_then(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).ok()).unwrap_or(0);
     if player_state == 0 { return Err("the AI controller got no PlayerState".into()); }
     // SAFETY: the PlayerState the controller just created.

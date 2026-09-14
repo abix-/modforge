@@ -79,6 +79,8 @@
 //! `Queue::drain` from `before` (it runs every fire) or wire your
 //! own per-event hook. The framework doesn't impose either.
 
+pub mod actor;
+
 use std::ffi::c_void;
 use std::sync::OnceLock;
 

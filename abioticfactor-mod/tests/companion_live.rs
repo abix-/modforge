@@ -77,14 +77,14 @@ fn grunt_spawner_asset() {
 }
 
 #[test]
-#[ignore = "replaces Sophia's current body with a human Grunt and enables follow"]
-fn sophia_grunt_near_player() {
+#[ignore = "replaces Sophia's current body with our custom NPC and enables follow"]
+fn sophia_custom_near_player() {
     let api = api();
     let human = human_name(&api, "Sophia");
     checked(&api, "ai_player.stop", json!({"player": "Sophia"})).unwrap();
-    let spawned = checked(&api, "ai_player.start", json!({"name": "Sophia", "near_player": human, "spawner": "NPCSpawn_SingleGrunt", "distance": 200.0})).unwrap();
-    println!("Sophia Grunt: {spawned}");
-    assert!(spawned["pawn"]["class"].as_str().unwrap().contains("Grunt"));
+    let spawned = checked(&api, "ai_player.start", json!({"name": "Sophia", "near_player": human, "distance": 200.0})).unwrap();
+    println!("Sophia custom NPC: {spawned}");
+    assert_eq!(spawned["pawn"]["class"], "Modforge_AIPlayer_C");
     sophia_npc_follow_near_player();
     println!("health: {}", checked(&api, "object.get", json!({"object": format!("addr:{}", spawned["pawn"]["addr"].as_str().unwrap()), "fields": ["TotalCombinedHealth"]})).unwrap());
 }
@@ -123,7 +123,24 @@ fn sophia_npc_follow_near_player() {
 #[ignore = "spawns Sophia with an NPC body and tests combat against a Pest"]
 fn sophia_npc_combat() {
     let api = api();
+    struct ResumeBrain<'a>(&'a modforge::client::Api<serde_json::Value>, String);
+    impl Drop for ResumeBrain<'_> {
+        fn drop(&mut self) {
+            if let Err(error) = call(self.0, &self.1, "BrainComponent", "RestartLogic", json!({})) {
+                eprintln!("restore encounter participant: {error}");
+            }
+        }
+    }
+    let _paused = std::env::var("ABIOTIC_COMBAT_PAUSE_CONTROLLER").ok().map(|controller| {
+        let fields = checked(&api, "object.get", json!({"object": format!("addr:{controller}"), "fields": ["BrainComponent"]})).unwrap();
+        let brain = fields["BrainComponent"]["addr"].as_str().unwrap().to_owned();
+        checked(&api, "bt.stop", json!({"controller": format!("addr:{controller}")})).unwrap();
+        ResumeBrain(&api, brain)
+    });
     let human = human_name(&api, "Sophia");
+    if std::env::var_os("ABIOTIC_COMBAT_PAUSE_CONTROLLER").is_some() {
+        checked(&api, "ai_player.stop", json!({"player": "Sophia"})).unwrap();
+    }
     let sophia = checked(&api, "ai_player.start", json!({"name": "Sophia", "near_player": human, "distance": 900.0})).unwrap();
     println!("Sophia: {sophia}");
     let status = checked(&api, "ai_player.status", json!({"player": "Sophia"})).unwrap();
@@ -135,6 +152,10 @@ fn sophia_npc_combat() {
     let enemy = pest["SpawnedNPC"]["addr"].as_str().expect("spawned Pest");
     let health = || checked(&api, "object.get", json!({"object": format!("addr:{enemy}"), "fields": ["TotalCombinedHealth"]})).unwrap()["TotalCombinedHealth"].as_f64().unwrap();
     let initial = health();
+    checked(&api, "ai_player.follow", json!({"player": "Sophia", "target": ""})).unwrap();
+    let location = &status["pawn"]["location"];
+    let placed = call(&api, enemy, "Actor", "K2_TeleportTo", json!({"DestLocation": {"X": location[0].as_f64().unwrap() + 130.0, "Y": location[1], "Z": location[2]}, "DestRotation": {"Pitch": 0.0, "Yaw": 180.0, "Roll": 0.0}})).unwrap();
+    assert_eq!(placed["ReturnValue"], true);
     for _ in 0..20 {
         let setup = checked(&api, "object.get", json!({"object": format!("addr:{controller}"), "fields": ["SetupComplete", "MyPawn"]})).unwrap();
         println!("setup: {setup}");
@@ -151,12 +172,17 @@ fn sophia_npc_combat() {
         let status = checked(&api, "ai_player.status", json!({"player": "Sophia"})).unwrap();
         println!("Pest health {initial} -> {current}; Sophia: {status}");
         if current < initial {
-            println!("damage evidence: {}", checked(&api, "object.get", json!({"object": format!("addr:{enemy}"), "fields": ["LastPointDamage"]})).unwrap());
+            let evidence = checked(&api, "object.get", json!({"object": format!("addr:{enemy}"), "fields": ["LastPointDamage"]})).unwrap();
+            println!("damage evidence: {evidence}");
+            let hit = evidence["LastPointDamage"].as_object().unwrap();
+            assert_eq!(hit.iter().find(|(k,_)| k.starts_with("DamageCauser_")).unwrap().1["addr"], body);
+            assert_eq!(hit.iter().find(|(k,_)| k.starts_with("DamageType_")).unwrap().1["class"], "DamageType_Sharp_C", "knife combat must not fire bullets");
             damaged = true;
             break;
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
+    checked(&api, "ai_player.follow", json!({"player": "Sophia", "target": human, "distance": 150.0})).unwrap();
     assert!(damaged, "Sophia did not damage the Pest in 30 seconds");
 }
 

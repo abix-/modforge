@@ -42,8 +42,11 @@ fn struct_of(property: &NativeProperty) -> Option<&'static UClass> {
 
 /// Every reflected field of the object's class chain, with its type.
 pub fn fields_of(object: &UObject) -> Vec<(NativeProperty, String)> {
+    fields_in_chain(object.class())
+}
+
+fn fields_in_chain(mut class: Option<&UClass>) -> Vec<(NativeProperty, String)> {
     let mut out = Vec::new();
-    let mut class = object.class();
     let mut depth = 0;
     while let Some(current) = class {
         if depth >= 64 { break; }
@@ -124,7 +127,7 @@ pub unsafe fn write_value(base: *mut u8, property: &NativeProperty, kind: &str, 
             "StrProperty" => crate::ue::fstring::write_at(at, value.as_str().ok_or_else(|| format!("{name} takes a string"))?)?,
             "StructProperty" => {
                 let layout = struct_of(property).ok_or_else(|| format!("{name}: struct type unreadable"))?;
-                let fields: Vec<(NativeProperty, String)> = layout.cached_native_properties().iter().map(|p| (p.clone(), property_type(p).unwrap_or_default())).collect();
+                let fields = fields_in_chain(Some(layout));
                 let map = value.as_object().ok_or_else(|| format!("{name} takes an object of its struct's fields: {:?}", fields.iter().map(|(p, t)| format!("{}:{t}", p.name)).collect::<Vec<_>>()))?;
                 for (sub, sub_value) in map {
                     let (sub_property, sub_kind) = find_field(&fields, sub)?;
@@ -184,9 +187,8 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
             "StructProperty" => match struct_of(property) {
                 Some(layout) => {
                     let mut map = serde_json::Map::new();
-                    for sub in layout.cached_native_properties().iter() {
-                        let kind = property_type(sub).unwrap_or_default();
-                        map.insert(sub.name.clone(), read_value(at, sub, &kind));
+                    for (sub, kind) in fields_in_chain(Some(layout)) {
+                        map.insert(sub.name.clone(), read_value(at, &sub, &kind));
                     }
                     Value::Object(map)
                 }
@@ -194,6 +196,7 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
             },
             "ArrayProperty" => {
                 let (data, count) = ((at as *const *const u8).read_unaligned(), (at.add(8) as *const i32).read_unaligned().max(0) as usize);
+                if count == 0 { return json!([]); }
                 match inner_of(property) {
                     Ok((inner, inner_kind)) if !data.is_null() => {
                         let stride = inner.element_size as usize;
@@ -212,10 +215,31 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
     }
 }
 
-/// The element property of an ArrayProperty (FArrayProperty::Inner, after
-/// the FProperty base), as a property at offset 0 of each element.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_arrays_decode_as_arrays_without_element_memory() {
+        let property = NativeProperty { name: "OutActors".into(), offset: 0, element_size: 16, address: 0 };
+        for data in [0u64, 8u64] {
+            let header = [data, 0u64];
+            // SAFETY: a complete empty TArray header; no element is accessed.
+            let value = unsafe { read_value(header.as_ptr().cast(), &property, "ArrayProperty") };
+            assert_eq!(value, json!([]));
+        }
+    }
+}
+
+/// The element property of an ArrayProperty (FArrayProperty::Inner), as a
+/// property at offset 0 of each element. Read live from Abiotic Factor's
+/// records (2026-09-13, abioticfactor-mod tests/research_tree.rs): the
+/// element record pointer sits at +0x78, one pointer past where a struct
+/// property keeps its struct (+0x70); +0x70 is zero on array records.
+const ARRAY_INNER: usize = PROPERTY_EXTRA + 8;
+
 fn inner_of(property: &NativeProperty) -> Result<(NativeProperty, String), String> {
-    let at = property.address + PROPERTY_EXTRA;
+    let at = property.address + ARRAY_INNER;
     if property.address == 0 || !crate::winproc::is_addr_readable(at + 8) { return Err(format!("{}: array record unreadable", property.name)); }
     // SAFETY: the Inner pointer after the FProperty base of a live array record.
     let inner = unsafe { (at as *const u64).read_unaligned() } as usize;
@@ -268,6 +292,31 @@ pub unsafe fn array_push(object: &UObject, field: &str, value: &Value) -> Result
         (header.add(8) as *mut i32).write_unaligned(count + 1);
         Ok(count as usize + 1)
     }
+}
+
+/// Copy selected inherited fields by the engine's property copier. Unlike a byte copy, this
+/// preserves separate ownership of maps, arrays and soft references.
+///
+/// # Safety
+/// Both objects must be live on the game thread. The supplied RVA must be
+/// this game's FProperty::CopyCompleteValueToScriptVM, verified from symbols.
+pub unsafe fn copy_named_fields(from: &UObject, to: &UObject, names: &[&str], copy_value_rva: u32) -> Result<(), String> {
+    let source = fields_of(from);
+    let destination = fields_of(to);
+    type CopyValue = unsafe extern "system" fn(usize, *mut u8, *const u8);
+    // SAFETY: the caller supplies the verified native method for this image.
+    let copy: CopyValue = unsafe { std::mem::transmute(crate::ue::platform::host_image_base() + copy_value_rva as usize) };
+    for name in names {
+        let (src, _) = find_field(&source, name)?;
+        let (dst, _) = find_field(&destination, name)?;
+        if src.address != dst.address { return Err(format!("{name}: objects do not share the declaring property")); }
+        // SAFETY: the same inherited property describes both live values;
+        // the engine performs deep copying through its virtual property API.
+        modforge::seh::guard(|| unsafe {
+            copy(src.address, to.as_mut_ptr().add(dst.offset as usize), from.as_ptr().add(src.offset as usize))
+        }).map_err(|e| format!("copy {name}: {e}"))?;
+    }
+    Ok(())
 }
 
 /// Copy every reflected field of the classes both objects share, from one
@@ -384,7 +433,7 @@ pub fn register_ops(drain: &'static crate::pe_queue::GameThread, hint: &'static 
         OpDef::new("struct.layout", "A script struct's reflected fields (name, type, offset, size) from the live game", "{name: str}", |args| {
             let name = args["name"].as_str().ok_or("name is required")?;
             let layout = crate::ue::find_struct_fast(name).ok_or_else(|| format!("struct {name} not found"))?;
-            let fields: Vec<Value> = layout.cached_native_properties().iter().map(|p| json!({"name": p.name, "type": property_type(p).unwrap_or_default(), "offset": p.offset, "size": p.element_size})).collect();
+            let fields: Vec<Value> = fields_in_chain(Some(layout)).iter().map(|(p, kind)| json!({"name": p.name, "type": kind, "offset": p.offset, "size": p.element_size})).collect();
             Ok(json!({"name": name, "fields": fields}))
         }),
         OpDef::new("array.get", "Read an array field of a live object: every element (up to 256) or one index, decoded by the element type", "{object: selector, field: str, index?: u64}", move |args| {

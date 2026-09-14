@@ -27,12 +27,6 @@ fn run(op: &'static str, args: Value) {
     }).ok();
 }
 
-/// The human player's name, the one that is not an AI player, from the players op.
-fn human() -> Option<String> {
-    let reply = ueforge::ops::OP_REGISTRY.dispatch("players", &json!({}))?.ok()?;
-    reply["players"].as_array()?.iter().find(|p| p["name"] != PLAYER)?["name"].as_str().map(str::to_owned)
-}
-
 pub fn render() {
     ui::text(&format!("AI player: {PLAYER}"));
     ui::separator();
@@ -40,29 +34,11 @@ pub fn render() {
     ui::same_line();
     if ui::button("Respawn") { run("ai_player.respawn", json!({"player": PLAYER})); }
     ui::same_line();
-    if ui::button("Follow me") {
-        // The players op reads the game thread; resolve the name on the op thread, not here.
-        std::thread::Builder::new().name("abiotic-ui-follow".into()).spawn(|| {
-            match human() {
-                Some(name) => run("ai_player.follow", json!({"player": PLAYER, "target": name})),
-                None => *LAST.lock() = ("ai_player.follow".into(), "error: no human player found".into()),
-            }
-        }).ok();
-    }
-    ui::same_line();
-    if ui::button("Stop following") { run("ai_player.follow", json!({"player": PLAYER, "target": ""})); }
-    if ui::button("Eyes") { run("ai_player.perceive", json!({"player": PLAYER})); }
-    ui::same_line();
-    if ui::button("What she sees") { run("ai_player.perceived", json!({"player": PLAYER})); }
-    ui::same_line();
-    if ui::button("Explore") { run("ai_player.explore", json!({"player": PLAYER, "on": true})); }
-    ui::same_line();
-    if ui::button("Stop exploring") { run("ai_player.explore", json!({"player": PLAYER, "on": false})); }
-    ui::same_line();
     if ui::button("Memory") { run("ai_player.memory", json!({"player": PLAYER})); }
     ui::same_line();
     if ui::button("Leave") { run("ai_player.stop", json!({"player": PLAYER})); }
     ui::separator();
+    ueforge::ui_ai_orders::render(&crate::orders::snapshot(), |args| run("ai_player.command", args));
     let (op, reply) = LAST.lock().clone();
     if !op.is_empty() {
         ui::text_disabled(&op);

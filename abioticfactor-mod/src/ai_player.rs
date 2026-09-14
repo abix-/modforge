@@ -11,8 +11,8 @@
 //! AI player joined when there is exactly one. Sessions are kept by name,
 //! so more than one can be in the world at once.
 //!
-//! The NPC spawner initializes the body and controller together. The former
-//! RestartPlayer path produced a player body that failed NPC controller setup.
+//! Our custom class inherits the game's NPC base and uses the base controller.
+//! The former RestartPlayer path produced a player body that failed NPC setup.
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -26,13 +26,22 @@ const DEFAULT_APPEARANCE: &str = "female";
 /// player to (history/lan-spawn.md: Abiotic_WorldStart, TeleportPlayer).
 const WORLD_START_CLASS: &str = "Abiotic_WorldStart_C";
 const FOLLOW_DISTANCE: f64 = 300.0;
-const FOLLOW_PERIOD_MS: u64 = 2000;
 const TARGETS_PERIOD_MS: u64 = 1000;
 
+#[derive(Clone)]
 struct Session {
     /// Her persona directory: identity, journal and what she has seen live here.
     directory: std::path::PathBuf,
     controller: u64,
+    identity: ueforge::ue::uobject::ObjectIdentity,
+}
+
+impl Session {
+    /// Resolve through the engine object array before touching cached memory.
+    /// Game thread only; a readable address can belong to a destroyed actor.
+    unsafe fn live_controller(&self) -> Option<&'static UObject> {
+        unsafe { self.identity.resolve() }
+    }
 }
 
 static SESSIONS: Mutex<BTreeMap<String, Session>> = Mutex::new(BTreeMap::new());
@@ -80,11 +89,9 @@ pub(crate) unsafe fn describe(actor: u64) -> Value {
 /// still be an object of its class: destroyed controllers leave readable,
 /// reused memory behind (2026-09-13). Game thread.
 pub(crate) unsafe fn session_controller(name: &str) -> Result<(&'static UObject, u64), String> {
-    let address = SESSIONS.lock().get(name).map(|s| s.controller).ok_or_else(|| format!("{name} has not joined; run ai_player.start"))?;
-    if !modforge::winproc::is_addr_readable(address as usize) { return Err(format!("{name}'s controller is gone")); }
-    // SAFETY: the controller start() spawned, still readable; the class check rejects reused memory.
-    let controller = unsafe { &*(address as *const UObject) };
-    if !controller.class().map(|c| c.as_object().name()).unwrap_or_default().contains("Controller") { return Err(format!("{name}'s controller was destroyed; run ai_player.start again")); }
+    let session = SESSIONS.lock().get(name).cloned().ok_or_else(|| format!("{name} has not joined; run ai_player.start"))?;
+    // SAFETY: called on the game thread; resolves the engine-owned object first.
+    let controller = unsafe { session.live_controller() }.ok_or_else(|| format!("{name}'s controller is gone; run ai_player.start"))?;
     let pawn = unsafe { object_ptr(controller, "Pawn")? };
     Ok((controller, pawn))
 }
@@ -109,19 +116,27 @@ unsafe fn teleport(pawn: &UObject, location: [f64; 3]) -> Result<bool, String> {
     Ok(reply["ReturnValue"] == true)
 }
 
-/// Spawn a named NPC beside the human through the game's NPC spawner.
+/// Spawn a named AI player beside the human using our custom NPC type.
 /// Keep its own initialized AI controller. Idempotent while joined.
 fn start(args: &Value) -> Result<Value, String> {
     let name = args["name"].as_str().filter(|s| !s.is_empty()).unwrap_or(DEFAULT_NAME).to_owned();
-    if let Some(session) = SESSIONS.lock().get(&name) {
-        if modforge::winproc::is_addr_readable(session.controller as usize) {
-            return Ok(json!({"name": name, "controller": format!("0x{:X}", session.controller), "state": "already_joined"}));
-        }
+    let existing = SESSIONS.lock().get(&name).cloned();
+    if let Some(session) = existing {
+        let address = session.controller;
+        let active = ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
+            // SAFETY: resolve and inspect the controller on the game thread.
+            let active = match unsafe { session.live_controller() } {
+                Some(controller) => (unsafe { object_ptr(controller, "Pawn")? }) != 0,
+                None => false,
+            };
+            Ok(json!(active))
+        })?;
+        if active == true { return Ok(json!({"name": name, "controller": format!("0x{address:X}"), "state": "already_joined"})); }
+        stop(&json!({"player": name}))?;
     }
     let directory = match args["profile_dir"].as_str().filter(|s| !s.is_empty()) { Some(dir) => std::path::PathBuf::from(dir), None => modforge::persona::directory(&name).map_err(|e| e.to_string())? };
     let profile = modforge::persona::Profile::load_or_create(&directory, &name, args["appearance"].as_str().unwrap_or(DEFAULT_APPEARANCE)).map_err(|e| e.to_string())?;
     let near_player = args["near_player"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);
-    let spawner = args["spawner"].as_str().unwrap_or("NPCSpawn_SingleGrunt").to_owned();
     let distance = args["distance"].as_f64().unwrap_or(300.0);
     let name_for_job = profile.name.clone();
     let reply = ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
@@ -135,25 +150,65 @@ fn start(args: &Value) -> Result<Value, String> {
         let faction = unsafe { ueforge::reflect::get_fields(human_character, &["Faction".into()])? }["Faction"].clone();
         if !faction.is_u64() { return Err("human player faction unavailable".into()); }
         let (x, y, z) = unsafe { ueforge::ue::transform::world_location(human_character as *const UObject as *const u8) }.ok_or("player character has no location")?;
-        // The game's spawner supplies the NPC body, controller and initialization
-        // together. RestartPlayer would replace it with a player body.
-        let class = crate::npcs::blueprint_class("/Game/Blueprints/Environment/Spawns", &spawner)?.as_object().name();
-        let spawn_actor = unsafe { ueforge::spawn_ops::spawn_actor(human_character, &class, (x + distance, y, z), 180.0, &serde_json::Map::new())? };
-        let spawned = unsafe { ueforge::reflect::call(&*(spawn_actor as *const UObject), "Abiotic_NPCSpawn_ParentBP_C", "TrySpawnNPC",
-            json!({"IsNight": false, "ForceSuccessByTrigger": true, "CheckOnlyNoSpawn": false}).as_object().unwrap())? };
-        let pawn = addr(&spawned["SpawnedNPC"]);
-        if spawned["Success"] != true || pawn == 0 { return Err(format!("NPC spawn failed: {spawned}")); }
-        // Assign allegiance in this same game-thread job, before the NPC's
-        // first combat tick. Keep the engine's faction checks authoritative.
-        unsafe { ueforge::reflect::set_fields(&*(pawn as *const UObject), json!({"Faction": faction}).as_object().unwrap())? };
-        let controller = unsafe { object_ptr(&*(pawn as *const UObject), "Controller")? };
-        if controller == 0 { return Err("spawned NPC has no AI controller".into()); }
+        // SAFETY: one game-thread job initializes the custom body and controller
+        // before their first combat tick, including allegiance to this human.
+        let (pawn, controller) = unsafe { crate::body::spawn(human_character, (x + distance, y, z), faction.clone())? };
+        // SAFETY: the native base initialized this NPC and its movement component.
+        unsafe {
+            let body = &*(pawn as *const UObject);
+            let movement = object_ptr(body, "CharacterMovement")?;
+            if movement == 0 { return Err("spawned NPC has no movement component".into()); }
+            let speed = ueforge::reflect::get_fields(body, &["WalkSpeed".into()])?["WalkSpeed"].as_f64().ok_or("NPC walk speed missing")? * 2.0;
+            ueforge::reflect::set_fields(body, json!({"WalkSpeed": speed}).as_object().unwrap())?;
+            ueforge::reflect::set_fields(&*(movement as *const UObject), json!({"MaxWalkSpeed": speed}).as_object().unwrap())?;
+        }
+        let weapon = match unsafe { crate::weapon::equip(&*(pawn as *const UObject)) } {
+            Ok(weapon) => weapon,
+            Err(error) => {
+                for actor in [pawn, controller] {
+                    // SAFETY: these actors were created by this game-thread job.
+                    unsafe { ueforge::reflect::call(&*(actor as *const UObject), "Actor", "K2_DestroyActor", &serde_json::Map::new()) }
+                        .map_err(|cleanup| format!("{error}; spawn cleanup failed: {cleanup}"))?;
+                }
+                return Err(error);
+            }
+        };
+        // RunBehaviorTree creates the blackboard and brain before the first tick.
+        // Stop it in this same job so the shared orders path takes control.
+        let controller_object = unsafe { &*(controller as *const UObject) };
+        let initial_tree = unsafe { object_ptr(controller_object, "BehaviorTree")? };
+        if initial_tree == 0 { return Err("spawned controller has no tree asset".into()); }
+        let initialized = unsafe { ueforge::reflect::call(controller_object, "AIController", "RunBehaviorTree", json!({"BTAsset": format!("0x{initial_tree:X}")}).as_object().unwrap())? };
+        if initialized["ReturnValue"] != true { return Err("spawned controller initialization failed".into()); }
+        let brain = unsafe { object_ptr(controller_object, "BrainComponent")? };
+        if brain == 0 { return Err("spawned NPC brain missing".into()); }
+        unsafe { ueforge::reflect::call(&*(brain as *const UObject), "BrainComponent", "StopLogic", json!({"Reason": "AI player orders initializing"}).as_object().unwrap())? };
         Ok(json!({"name": name, "controller": unsafe { describe(controller) }, "pawn": unsafe { describe(pawn) },
-            "spawner": format!("0x{spawn_actor:X}"), "near_player": human, "faction": faction, "body": "npc", "state": "joined"}))
+            "controller_index": unsafe { (&*(controller as *const UObject)).index() },
+            "near_player": human, "faction": faction, "weapon": weapon, "body": "npc", "state": "joined"}))
     })?;
     let controller = addr(&reply["controller"]);
     if let Err(error) = modforge::persona::remember(&directory, "joined", reply["world_start"]["name"].as_str().unwrap_or("")) { ueforge::log!("AI player {name} journal: {error}"); }
-    SESSIONS.lock().insert(name, Session { directory, controller });
+    let controller_index = reply["controller_index"].as_i64().ok_or("controller index missing")? as i32;
+    let controller_name = reply["controller"]["name"].as_str().ok_or("controller name missing")?.to_owned();
+    let identity = ueforge::ue::uobject::ObjectIdentity { address: controller, index: controller_index, name: controller_name };
+    SESSIONS.lock().insert(name.clone(), Session { directory, controller, identity });
+    // The current spawn operation creates an ally. Orders themselves do not
+    // require human allegiance or a Follow assignment.
+    let defaults = modforge::ai_orders::OrdersDef {
+        assignment: modforge::ai_orders::Assignment::Follow {
+            player: reply["near_player"].as_str().ok_or("spawn has no human")?.into(),
+        },
+        stance: modforge::ai_orders::Stance::Defensive,
+        limits: modforge::ai_orders::Limits {
+            follow_distance: 150.0, hold_radius: 75.0, chase_distance: 1200.0, pursuit_timeout: 20.0,
+        },
+        groups: vec![],
+    };
+    if let Err(error) = crate::orders::start(&name, defaults) {
+        stop(&json!({"player": name})).map_err(|cleanup| format!("{error}; cleanup: {cleanup}"))?;
+        return Err(error);
+    }
     Ok(reply)
 }
 
@@ -186,12 +241,12 @@ fn status(args: &Value) -> Result<Value, String> {
 /// Leave: stop her loops, destroy her body and controller with the engine's own DestroyActor.
 fn stop(args: &Value) -> Result<Value, String> {
     let name = match player_name(args) { Ok(name) => name, Err(_) => return Ok(json!({"state": "not_joined"})) };
+    crate::orders::stop(&name);
     let Some(session) = SESSIONS.lock().remove(&name) else { return Ok(json!({"name": name, "state": "not_joined"})); };
     for purpose in WALKING_LOOPS.iter().chain(["targets"].iter()) { ueforge::loops::stop(&loop_name(&name, purpose)); }
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
-        if !modforge::winproc::is_addr_readable(session.controller as usize) { return Ok(json!({"name": name, "state": "already_gone"})); }
-        // SAFETY: game thread; the controller start() spawned.
-        let controller = unsafe { &*(session.controller as *const UObject) };
+        // SAFETY: game thread; reject a collected or replaced controller.
+        let Some(controller) = (unsafe { session.live_controller() }) else { return Ok(json!({"name": name, "state": "already_gone"})); };
         let pawn = unsafe { object_ptr(controller, "Pawn")? };
         if pawn != 0 { unsafe { ueforge::reflect::call(&*(pawn as *const UObject), "Actor", "K2_DestroyActor", &serde_json::Map::new())? }; }
         unsafe { ueforge::reflect::call(controller, "Actor", "K2_DestroyActor", &serde_json::Map::new())? };
@@ -199,30 +254,30 @@ fn stop(args: &Value) -> Result<Value, String> {
     })
 }
 
-/// The respawn request a dead player's respawn screen sends for the player
-/// start button: Request_RespawnPlayerCharacter(false, true, None).
+/// Replace the NPC body while retaining the named persona and saved orders.
 fn respawn(args: &Value) -> Result<Value, String> {
     let name = player_name(args)?;
-    ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
-        // SAFETY: game thread.
-        let (_, pawn) = unsafe { session_controller(&name)? };
-        if pawn == 0 { return Err(format!("{name} has no body to respawn")); }
-        unsafe { ueforge::reflect::call(&*(pawn as *const UObject), "Abiotic_PlayerCharacter_C", "Request_RespawnPlayerCharacter",
-            json!({"RevivedOnSpot": false, "UsePlayerStartOnly": true, "DestinationID": "None"}).as_object().unwrap())? };
-        Ok(json!({"name": name, "state": "requested", "pawn": unsafe { describe(pawn) }}))
-    })
+    let directory = session_directory(&name)?;
+    stop(&json!({"player": name}))?;
+    start(&json!({"name": name, "profile_dir": directory, "distance": 200.0}))
 }
 
 /// One walk request through a player's AI controller's own path following:
 /// MoveToActor for a player, MoveToLocation for a point. The engine's result:
 /// 0 failed (no path), 1 already at goal, 2 request accepted.
 pub(crate) fn walk_to(name: &str, goal: crate::nav::Goal, acceptance: f64) -> Result<Value, String> {
+    if crate::orders::active(name) { return Err("AI player assignments own movement; use Follow or Hold".into()); }
     let name = name.to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
         // SAFETY: game thread.
         let (controller, _) = unsafe { session_controller(&name)? };
         let reply = match goal {
             crate::nav::Goal::Player(player) => {
+                // Following must not replace the melee tree's approach to its target.
+                let combat = unsafe { ueforge::behavior_tree::blackboard_get(controller, &["CombatMode".into(), "TargetActor".into()])? };
+                if combat["CombatMode"] == true && addr(&combat["TargetActor"]) != 0 {
+                    return Ok(json!({"state": "fighting"}));
+                }
                 let (_, target) = unsafe { crate::nav::player_character(&player)? };
                 unsafe { ueforge::reflect::call(controller, "AIController", "MoveToActor", json!({"Goal": format!("0x{:X}", target as *const UObject as u64), "AcceptanceRadius": acceptance,
                     "bStopOnOverlap": true, "bUsePathfinding": true, "bCanStrafe": true, "FilterClass": null, "bAllowPartialPath": true}).as_object().unwrap())? }
@@ -257,6 +312,7 @@ pub(crate) fn take_walking(name: &str, owner: &str) {
 
 /// Stop a player's walking loops and stand still.
 pub(crate) fn release_walking(name: &str) -> Result<(), String> {
+    if crate::orders::active(name) { return crate::orders::command(&json!({"player": name, "command": "hold"})).map(|_| ()); }
     for purpose in WALKING_LOOPS { ueforge::loops::stop(&loop_name(name, purpose)); }
     let name = name.to_owned();
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, move || {
@@ -280,9 +336,8 @@ fn walk(args: &Value) -> Result<Value, String> {
 fn follow(args: &Value) -> Result<Value, String> {
     let name = player_name(args)?;
     let target = args["target"].as_str().unwrap_or("").to_owned();
-    if target.is_empty() { release_walking(&name)?; return Ok(json!({"name": name, "following": null})); }
-    take_walking(&name, "follow");
-    ueforge::loops::start(&loop_name(&name, "follow"), "ai_player.walk", json!({"player": name, "target": target, "distance": args["distance"].as_f64().unwrap_or(FOLLOW_DISTANCE)}), Duration::from_millis(FOLLOW_PERIOD_MS))
+    crate::orders::command(&json!({"player": name, "command": if target.is_empty() { "hold" } else { "follow" },
+        "target": target, "distance": args["distance"].as_f64().unwrap_or(FOLLOW_DISTANCE)}))
 }
 
 /// One eyes-to-brain step: everything the player's perception lists goes
@@ -342,6 +397,7 @@ fn place(args: &Value) -> Result<Value, String> {
 /// controller carries BT_Main_Exor), or a named asset path.
 fn brain(args: &Value) -> Result<Value, String> {
     let name = player_name(args)?;
+    if crate::orders::active(&name) { return Err("AI player orders own the behavior tree".into()); }
     let asset = args["tree"].as_str().filter(|s| !s.is_empty()).map(|s| format!("asset:{s}"));
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(30), crate::DRAIN_HINT, move || {
         // SAFETY: game thread.
@@ -356,7 +412,7 @@ fn brain(args: &Value) -> Result<Value, String> {
 
 pub fn register() {
     ueforge::ops::OP_REGISTRY.register_many([
-        ueforge::ops::OpDef::new("ai_player.start", "Spawn a named character (default Sophia) with an NPC body and its own AI controller beside the human", "{name?: str, appearance?: str, near_player?: str, profile_dir?: str, spawner?: str, distance?: f64}", start),
+        ueforge::ops::OpDef::new("ai_player.start", "Spawn a named character (default Sophia) with our custom NPC body and the base AI controller beside the human", "{name?: str, appearance?: str, near_player?: str, profile_dir?: str, distance?: f64}", start),
         ueforge::ops::OpDef::new("ai_player.status", "An AI player's state: controller, body, move status, brain, blackboard, loops; and who is joined", "{player?: str}", status),
         ueforge::ops::OpDef::new("ai_player.stop", "Leave: stop the player's loops, destroy her body and controller", "{player?: str}", stop),
         ueforge::ops::OpDef::new("ai_player.respawn", "The respawn screen's player start request on the player's body", "{player?: str}", respawn),

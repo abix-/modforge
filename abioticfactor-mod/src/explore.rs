@@ -119,6 +119,7 @@ fn wander(name: &str, here: [f64; 3]) -> Result<Value, String> {
 /// Start or stop exploring. Starting takes the player's walking from follow.
 fn explore(args: &Value) -> Result<Value, String> {
     let name = crate::ai_player::player_name(args)?;
+    if crate::orders::active(&name) { return Err("AI player has an assignment; exploration is not an assignment yet".into()); }
     WALKING_TO.lock().remove(&name);
     if !args["on"].as_bool().unwrap_or(true) {
         crate::ai_player::release_walking(&name)?;

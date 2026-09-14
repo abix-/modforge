@@ -39,6 +39,7 @@ pub fn default_root(exor_tree: u64, follow_key: &str, follow_radius: f64) -> Val
 /// `follow_player` the human, written into that key once the tree runs.
 fn run(args: &Value) -> Result<Value, String> {
     let name = crate::ai_player::player_name(args)?;
+    if crate::orders::active(&name) { return Err("AI player orders own the behavior tree".into()); }
     let follow_key = args["follow_key"].as_str().filter(|s| !s.is_empty()).unwrap_or("AllyTarget").to_owned();
     let follow_radius = args["follow_radius"].as_f64().unwrap_or(300.0);
     let follow_player = args["follow_player"].as_str().filter(|s| !s.is_empty()).map(str::to_owned);

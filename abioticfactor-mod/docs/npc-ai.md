@@ -1,17 +1,121 @@
-# NPC AI: how enemies find targets and fight
+# Persistent AI players and native NPC behavior
 
 [Research index](abiotic-factor.md) | [Todo](todo.md)
+
+[Sophia readiness table](todo.md#sophia-readiness-playing-alongside-the-human)
+is the single category-by-category status, done criteria and score record.
 
 Read from the live hosted save on 2026-09-12 with the permanent tests in
 tests/research_npc_navigation.rs (npc_navigation_systems, npc_follow_behaviour,
 exor_soldier_setup, npc_perception_configs, player_combat_functions) and the
-class traces in tests/http_health.rs. Everything below is decoded or observed;
-guesses are marked.
+class traces in tests/http_health.rs. Research findings are decoded or observed;
+design sections distinguish intended behavior from implemented capabilities.
 
-## Current companion: human Grunt
+## Direction: persistent AI players
 
-Sophia uses NPCSpawn_SingleGrunt -> NPC_Soldier_Grunt_C with
-AI_Controller_NPC_Soldier_Grunt_C and BT_Main_Soldier. Her persistent persona
+User direction, 2026-09-13: Sophia is the first persistent AI player.
+Companion describes her current allied role, not the scope of the shared
+system. After Sophia can operate independently, a persistent enemy should
+use the same capabilities with different relationships and goals.
+
+The shared design must support identity, memory, perception, goals and
+actions without assuming every AI player serves the human. Sophia's current
+assignments express human commands. Later autonomous goals should use the
+same action capabilities for exploration and resource collection. An enemy
+should be able to pursue its own goals and react to what the human and
+Sophia actually do. Shared rules belong in modforge, Unreal execution in
+ueforge, and Abiotic Factor integration in this mod.
+
+Persistence should eventually preserve consequential experience and
+progression across encounters. Returning enemies should remember prior
+encounters and change their decisions based on that experience. This is a
+design goal, not verified adaptive behavior or implemented learning.
+Return-after-defeat rules, progression and memory-driven decisions remain
+to be designed. The existing fair-play direction applies to both sides;
+memory and perception must not grant undiscovered world knowledge.
+
+Sequence: finish reliable assignments and combat stances, then establish
+Sophia's independent exploration and resource collection, then introduce
+the first persistent enemy using those shared capabilities. Current work
+does not implement autonomous collection, enemy progression or resurrection.
+
+### Shared code and role boundaries
+
+An AI player's persistent identity is distinct from its current body, team,
+assignment and action. Becoming an enemy must not require a second copy of
+perception, movement, combat or memory. Relationships determine which actors
+are hostile and whose commands are accepted; stance determines when eligible
+hostiles are attacked. Aggressive is not another word for enemy.
+
+| Concern | Current owner | Boundary |
+|---|---|---|
+| Persistent identity and recorded observations | modforge/src/persona.rs | Existing profile, journal and seen records; not yet adaptive goal selection |
+| Assignment and combat decisions | modforge/src/ai_orders.rs | OrdersDef and OrdersTracker work from the acting AI player's observations; no human faction is assumed |
+| Unreal movement and combat execution | ueforge/src/behavior_tree.rs | AiOrderExecution applies the selected action through native engine operations |
+| Order UI | ueforge/src/ui_ai_orders.rs | Presents the AI players eligible for commands; grouping does not confer allegiance |
+| Abiotic perception, hostility and damage | abioticfactor-mod/src/orders.rs | Supplies targets relative to the acting character and native melee tasks |
+| Current allied spawn setup | abioticfactor-mod/src/ai_player.rs | Copies human faction and supplies Follow/Defensive defaults; these are current spawn policy, not shared AI rules |
+
+The order adapter accepts an initial definition from the spawn policy and
+restores saved orders when present. The existing abiotic-orders.json shape
+and ai_player command API remain unchanged by the naming alignment.
+Persistent enemies are not currently spawnable through this allied operation.
+Before introducing one, command selection must exclude AI players that do
+not accept the issuing player's commands, including broad all/group commands.
+
+Autonomous goal selection is future work. It must submit actions through the
+same execution path instead of competing with assignment movement. Existing
+persona and working-memory integration must be resolved in their existing
+owners before adding adaptive decisions. Persistence alone is not learning.
+
+## Current custom NPC type
+
+The requested hierarchy is NPC_Base_ParentBP_C -> Modforge_AIPlayer_C,
+with Sophia configured on the custom type. Ueforge creates the empty derived
+class through Unreal's native construction, SetSuperStruct, Bind, StaticLink,
+default-object creation and default-property initialization. It retains the
+base NPC's functions and fields rather than cloning Grunt or Zombie behavior.
+The class is transient and rooted for the process lifetime, and contains no
+Rust callbacks that would become invalid when the mod reloads.
+Sight-source registration uses NPC inheritance so the custom class is included
+without requiring an NPC_ name prefix. The custom body has no Grunt gun to hide.
+
+Abiotic supplies human mesh parts, a human animation asset, native melee
+montages and the base AI controller. The initial controller tree only waits;
+the existing orders path owns follow and the small native melee tree. The
+current configuration still selects the Grunt stats row and melee montage
+assets explicitly. The melee map is copied once into our class defaults;
+new bodies inherit it without requiring the donor class at respawn. Those
+data choices are not inheritance from the Grunt
+body or controller. NPC_Coworker_AnimBP provides human rendering; its movement
+updates use the common character parent, while coworker-specific branches
+remain in that reused animation asset. The animation instance resolves the
+custom character, and native knife hits passed. Visible animation quality
+and character appearance customization have not been accepted by the user.
+
+Normal ai_player.start and respawn use the custom class. Live acceptance on
+2026-09-13 passed class inheritance, following within 150 units, walk speed
+260, kitchen knife attachment, attributed Sharp damage, Passive, explicit
+Attack, self-defense and Recall. Saved orders survive replacement, and a
+destroy/garbage-collect/recreate test passed. Tests are in base_npc.rs,
+companion_orders.rs and companion_weapon.rs. The first trials exposed
+unreflected component method names and rejection of the valid empty FName;
+the component API diagnostic and live body assembly now pass.
+
+The aggressive-sight regression remains unresolved in the current multi-level
+test location. Its Pest fell to a lower floor; the revised encounter did not
+pass either. Human-protection regression is blocked by the human being dead;
+normal respawn requests did not complete. The new Actor damage observer has
+passed self-defense independently. These are limitations of the acceptance
+evidence, not a claim that every control is verified. Remote-client replication
+of the runtime class has not been tested.
+
+## Earlier proof: human Grunt
+
+The earlier Sophia prototype used NPCSpawn_SingleGrunt -> NPC_Soldier_Grunt_C
+with AI_Controller_NPC_Soldier_Grunt_C. Companion control builds a small tree from
+native MoveTo, BTT_DoMeleeAttack and Wait tasks. It uses the game's combat
+entry and focus support without the full Soldier or Zombie tree. Her persistent persona
 is registered in the mod's named session; this path does not create a player
 body or claim full player features. The spawner supplies NPC initialization.
 
@@ -28,9 +132,182 @@ Grunt companion. No custom attack loop or forced setup flag is required.
 
 tests/companion_live.rs contains the live operations. NPC replacement uses
 ai_player.stop/start; placement uses Actor.K2_TeleportTo and follow uses the
-existing MoveToActor loop. Normal UI respawn/place still require NPC adaptation.
-Walking speed was changed from 130 to 260 on the live instance, not persisted.
+shared assignment controller. Normal UI respawn now replaces the NPC and restores
+saved orders. The old research-only place operation still needs NPC adaptation.
+Spawn now doubles the NPC walking speed, 130 to 260 for the Grunt, on both
+the NPC and its movement component.
 Inventory and skill work is stopped. The later lifecycle crash is undiagnosed.
+
+## Crew control model: ATLAS research and agreed Sophia controls
+
+Research date: 2026-09-13. User wants the concepts of ATLAS crew control,
+not its radial menus or keybindings. This section describes documented
+gameplay and the agreed Sophia model. ATLAS source code and DevKit graphs
+were not inspected; no internal class layout or scheduler is claimed.
+
+### What ATLAS documents
+
+- Hired NPCs work aboard ships and accompany players ashore. Food and pay
+  are part of their upkeep. [Developer description](https://store.steampowered.com/app/834910/ATLAS/).
+- Crew can hold station assignments. Assigned crew ignore broad follow
+  whistles while still accepting individually targeted whistles. Equipment
+  is placed in their inventory and equipped separately from assigning work.
+  [Community crew reference](https://atlas.fandom.com/wiki/Crewmember).
+- Follow/stop/move commands, aggression stance, follow distance and command
+  groups are separate controls. Neutral retaliates; passive does not defend;
+  attack-my-target differs from a one-off attack-this-target command.
+  [Community controls reference](https://atlas.fandom.com/wiki/Controls).
+- Red Alert can interrupt station duty, and canceling it returns crew to
+  previous seats. The developer explicitly documented restoring this feature
+  in v102.4. [Developer patch roundup](https://store.steampowered.com/news/posts/?appids=834910&enddate=1562036462&feed=steam_community_announcements).
+- Assigning crew to a wheel enables ship autopilot commands, illustrating
+  that a station adds capabilities to a crew member.
+  [Community autopilot reference](https://atlas.fandom.com/wiki/Autopilot).
+
+The community references are gameplay documentation, not developer source.
+Some controls differ between platforms. Historical patch notes establish
+intent at that version, not proof that every later version behaves identically.
+No claim is made that ATLAS has the exact chase limits proposed below.
+
+### Agreed state for each companion
+
+Accepted by the user on 2026-09-13; implementation is now authorized.
+The first release includes Follow and Hold assignments; Aggressive,
+Defensive and Passive stances; explicit Attack, Recall and Cancel attack;
+follow distance, hold radius, chase distance and pursuit timeout; current
+action/reason; and commands to one, selected or all eligible companions.
+Named groups are part of command selection. Work-at-station is an explicit
+future capability, not a fabricated working station integration.
+Aggressive attacks perceived enemies on sight. Defensive reacts to attacks
+on Sophia or her protected player (within the assignment's permitted area).
+Passive never automatically retaliates. An explicit Attack overrides Passive
+for that target only and leaves stance unchanged. Cancel attack returns to
+normal stance rules; Recall suppresses all pursuit until back at the assignment.
+Hold radius controls repositioning around the post; chase distance separately
+limits combat excursions from it. Defaults are implementation defaults and
+remain adjustable, not hidden changes to the user's stance or assignment.
+
+Implementation defaults: Follow the spawning human; Defensive; follow distance
+150, hold radius 75, chase distance 1200 (game world units); pursuit timeout 20
+seconds. Assignment, stance, limits and groups are atomically saved in the
+persona directory as abiotic-orders.json and restored on NPC replacement.
+Temporary targets are runtime identities and are not saved as actor addresses.
+Combat accepts living hostile characters and rejects friends and deployable
+furniture. Native NPC hostility alone is insufficient: it included a water cooler
+in the live sight test.
+
+| What is recorded | Examples | Lifetime |
+|---|---|---|
+| Assignment | Follow Abix; hold this position; operate this station | Until explicitly replaced or invalidated |
+| Combat stance | Passive; Defensive; Aggressive | Independent of assignment |
+| Temporary order | Attack this enemy; recall to assignment | Until completed, canceled, superseded or blocked |
+| Limits | Follow distance; maximum chase distance from player/post; pursuit timeout | Explicit companion settings |
+| Group and command eligibility | Landing party; station crew excluded from broad follow orders | Resolved when an order is issued |
+| Current action and reason | Returning to Abix; defending Abix; blocked by a closed door | Derived from actual execution |
+
+Equipment determines whether an action is possible. Assigning an attack
+must not silently provide ammunition or replace missing gear. Work assignments
+can later name a station and its allowed supply source; this research does
+not add ship systems, inventory or wages to Abiotic Factor.
+
+An assignment and the currently executing action are different facts. While
+Sophia defends Abix, her assignment remains Follow Abix. Combat completion
+returns to the current assignment, not a saved obsolete movement request.
+If the user changes the assignment during combat, the new assignment wins.
+
+### Decisions and transitions
+
+One controller decision path selects one movement/interaction action:
+
+1. A dead or unavailable body cannot execute orders. Retain persona/intent
+   separately from transient actor pointers; apply the chosen respawn policy.
+2. Apply the latest explicit command. Recall cancels pursuit and prevents
+   immediately reacquiring that target until return completes. Hold replaces
+   the assignment with a fixed post; changing stance alone does not move it.
+3. A valid explicit attack overrides automatic target choice, stays within
+   configured limits, and ends when its target dies, becomes invalid, or
+   cannot be reached within the pursuit timeout.
+4. Automatic defense/assistance is allowed only by the selected stance and
+   assignment limits. Passive never adds defensive attacks. Defend protects
+   the companion and designated player/post, not every ally in the world.
+5. Otherwise execute the assignment, or wait when already in position.
+   No unrelated wandering, investigation, corpse eating or scavenging.
+
+For a station assignment, broad follow commands should exclude stationed
+crew by default and visibly report exclusions. A direct reassignment releases
+the station. Temporary leave permission must be explicit; reserve the post
+while temporarily absent and release it on death or permanent reassignment.
+If the station is destroyed, report the assignment blocked rather than
+choosing unrelated work. These are proposed rules, not verified ATLAS internals.
+
+For the immediate Sophia fix, implement Follow, Hold, Recall, Attack, Cancel
+attack, Passive, Defensive and Aggressive with follow/hold/chase limits.
+Reuse native perception, path
+following and melee execution. Existing src/tree.rs already builds a tree
+combining a combat branch and follow movement. Adapt that path, replace the
+independent follow timer, and give the follow target its own state rather
+than sharing the game's AllyTarget used by other NPC behaviors. Merely
+running the complete Zombie tree behind a gate still retains unwanted
+behaviors inside that subtree; select the required combat behavior explicitly.
+
+### UI and acceptance
+
+Use a crew list with selection for one companion or a named group. Show
+Assignment, Combat stance, Current action and any blocked reason together.
+For example: "Sophia | Follow Abix | Defend | Returning after combat".
+Provide direct Follow, Hold, Attack and Recall actions. Show affected crew
+and excluded station workers before a group command. Keep assignment and
+stance visible after selection changes; issuing a command must not quietly
+change both. Implementation is in progress; live acceptance is required before
+marking it shipped.
+
+Shared ownership: modforge/src/ai_orders.rs owns the assignment, stance,
+pursuit and return rules. ueforge/src/behavior_tree.rs owns the transfer between
+native combat and path following; ueforge/src/ui_ai_orders.rs renders the controls.
+The Abiotic adapter supplies perception, hostility, damage attribution and native
+melee task selection. No full Zombie tree runs during an assignment.
+
+First live integration exposed spawn initialization ordering: the NPC spawner
+can return before creating its brain. Initialize through RunBehaviorTree and stop
+the template in the same game-thread job before installing companion control.
+Do not assume a returned controller already has a brain or blackboard.
+
+Live checks on 2026-09-13: Hold remained within 100 units for eight seconds;
+Passive did not initiate attacks; explicit Attack retained Hold and Passive and
+dealt attributed Sharp knife damage. Native damage-response tests applied point
+damage attributed to a Pest to the human and Sophia separately: Passive ignored
+it, Defensive selected the attacker, and Recall returned to Hold with the tree
+stopped. Group selection, invalid-limit rejection and saved orders across NPC
+replacement passed. Aggressive acquired a perceived Pest and released pursuit
+when it moved beyond the chase limit. The subsequent furniture/friend filter
+change still needs its final live regression run.
+
+Those defense checks used health-loss sampling and LastPointDamage. Source
+now uses the shared native Actor damage observer, but live acceptance of that
+replacement is pending. Multiple attackers, armor-absorbed attacks and
+simultaneous healing are not established by the earlier results. The final
+event-path acceptance remains in todo.md. UI rendering is implemented;
+automated tests exercise its command path, not the visible ImGui panel.
+
+Acceptance for the first implementation:
+
+2026-09-13 19:12 regression: damage observer initialization initially blocked
+all orders with "Actor.ReceiveAnyDamage unavailable". The observer now resolves
+the declaring Actor class rather than searching the concrete NPC class for an
+inherited function. After release deployment and restart, the permanent
+follows_human_after_damage_observer_initializes test measured Sophia following
+Abix at 147.4 horizontal units against a radius of 150. Damage-response tests
+are still pending on this observer; successful initialization is not hit evidence.
+
+- Follow reaches the selected distance and stays nearby without idle drift.
+- Defending against a nearby Pest preserves Follow and returns afterward.
+- A fleeing enemy beyond the chase limit cannot draw her away indefinitely.
+- Recall interrupts pursuit without immediately restarting it.
+- Hold remains anchored during permitted defense and after it ends.
+- Passive prevents automatic retaliation without clearing the assignment.
+- A new assignment during combat replaces the old return destination.
+- Invalid targets, blocked paths and death produce an explicit reason and
+  no stale movement or actor access. UI and runtime report the same assignment.
 
 ## The parts of an NPC
 
@@ -40,13 +317,27 @@ Read-only Blueprint trace on 2026-09-13: the Grunt class defaults specify
 MaxAmmoCount=20 and a reload montage. NPC_Base_ParentBP's reload event enters
 its graph at 33719. Its completion paths assign CurrentAmmoCount directly
 from MaxAmmoCount (3604/3613 and 3688/3697), with no inventory withdrawal in
-those refill paths. The current companion therefore has replenishing NPC
+those refill paths. The original armed Grunt therefore has replenishing NPC
 ammunition with reload delays, not a finite inventory-backed bullet supply.
 The trace used tests/http_health.rs::class_blueprint_research.
 
 The Grunt declares melee attack montages, and the NPC base owns the melee
 attack/damage functions. Reusing that attack is supported by the class;
-equipping an actual player melee item is not yet verified. A finite-ammo
+Sophia now defaults to the kitchen knife mesh SM_Knife_01 attached to the
+item row's r_weapon_melee1 socket. The spawn hides her gun, sets the ranged
+flag false, and copies damage and damage type from ItemTable_Global's knife
+row into her native NPC melee settings. Live attachment and repeat-equip
+verification passed; the knife row supplies base damage 3. This is NPC
+melee with a held knife, without inventory ownership or durability consumption.
+The soldier attack tree ignored the ranged flag: a live Pest received 35
+bullet damage attributed to Sophia. TryRangedAttackCheck checks cooldown and
+target validity, not HasRangedAttack. The current implementation instead selects
+the game's BT_Main_Zombie melee tree on the same Grunt body/controller and lets
+combat movement take priority over following. Live acceptance passed on
+2026-09-13 at 16:45: Pest health fell from 25 to 22, DamageCauser was Sophia,
+DamageType was Sharp and IncomingDamage was 3. The encounter paused an
+interfering security robot and restored its brain afterward. This verifies a
+native melee hit, not player inventory ownership or durability. A finite-ammo
 integration should retain the native aiming/attack AI, consume real rounds
 when reloading, cap the loaded count to available ammunition, and block
 ranged attacks when empty. Test zero, partial and full reloads plus exact

@@ -1,13 +1,16 @@
 #![allow(clippy::missing_safety_doc)]
 mod ai_player;
+mod body;
 mod combat;
 mod explore;
 mod host;
 mod nav;
 mod npcs;
+mod orders;
 mod perception;
 mod tree;
 mod ui;
+mod weapon;
 
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "AbioticFactorMod",
@@ -61,7 +64,8 @@ unsafe fn worker() {
     let _rt = ueforge::ue::platform::resolve_and_init(
         PROCESS_EVENT_IDX,
         G_OBJECTS_LAYOUT,
-        ueforge::ue::StructLayout::UE5_4,
+        // Live Object (40), RowHandle (32), and inventory slot (152) sizes.
+        ueforge::ue::StructLayout { properties_size: 0x58, element_size: 0x34 },
     );
 
     ueforge::selector::register_builtins();
@@ -70,6 +74,8 @@ unsafe fn worker() {
     ueforge::ops::OP_REGISTRY.register_many(modforge::input::ops::all());
     ueforge::shutdown::register_builtins();
     ai_player::register();
+    orders::register();
+    weapon::register();
     host::register();
     nav::register();
     combat::register();
@@ -111,5 +117,6 @@ unsafe fn worker() {
 fn on_shutdown() {
     // Loops started from the endpoint or the tab must not outlive the DLL.
     ueforge::loops::stop_all();
+    orders::shutdown();
     ueforge::log!("abioticfactor_mod shutdown");
 }

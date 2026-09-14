@@ -38,37 +38,36 @@ unsafe fn enemy_senses(source: &str) -> Result<(String, Vec<u64>), String> {
     best.ok_or("no live NPC with a perception component and sense configs".into())
 }
 
-/// Actors already registered as sight sources, so each is registered once.
-static SOURCES: parking_lot::Mutex<std::collections::BTreeSet<u64>> = parking_lot::Mutex::new(std::collections::BTreeSet::new());
-
 /// Make every loaded NPC visible to sight: the game registers furniture,
 /// containers and players as stimuli sources but never its monsters
-/// (2026-09-13). The engine's own RegisterPerceptionStimuliSource, once per
-/// actor. Game thread. Returns how many were newly registered.
-unsafe fn register_npc_sources() -> Result<usize, String> {
+/// (2026-09-13). The engine's own RegisterPerceptionStimuliSource for every
+/// live NPC, every time; it answers false for one already registered, so
+/// nothing here remembers addresses. A remembered-address set skipped a
+/// live Pest whose address an earlier, dead one had used (read live
+/// 2026-09-13). Game thread. Returns (newly registered, NPCs seen).
+pub(crate) unsafe fn register_npc_sources() -> Result<(usize, usize), String> {
     let world = crate::nav::world_context()?;
     let world_object = unsafe { &*(world as *const UObject) };
-    let character = ueforge::ue::find_class_fast("Character").ok_or("Character class not found")?;
+    let character = ueforge::ue::find_class_fast("NPC_Base_ParentBP_C").ok_or("NPC base class not found")?;
     let system = ueforge::selector::resolve("singleton:AIPerceptionSystem")?;
-    let mut registered = SOURCES.lock();
-    let mut new = 0;
+    let (mut new, mut npcs) = (0, 0);
     for actor in ueforge::ue::actor::actors_of_class(world_object, character)? {
-        let address = actor as u64;
         // SAFETY: each pointer came from GetAllActorsOfClass for the live world.
         let Some(object) = (unsafe { actor.as_ref() }) else { continue };
-        if !object.class().map(|c| c.as_object().name()).unwrap_or_default().starts_with("NPC_") || registered.contains(&address) { continue; }
+        let address = object.as_ptr() as u64;
+        npcs += 1;
         let reply = unsafe { ueforge::reflect::call(system, "AIPerceptionSystem", "RegisterPerceptionStimuliSource",
             json!({"WorldContextObject": format!("0x{world:X}"), "Sense": "class:AISense_Sight", "Target": format!("0x{address:X}")}).as_object().unwrap())? };
-        if reply["ReturnValue"] == true { registered.insert(address); new += 1; }
+        if reply["ReturnValue"] == true { new += 1; }
     }
-    Ok(new)
+    Ok((new, npcs))
 }
 
 fn sources(_: &Value) -> Result<Value, String> {
     ueforge::debug::enqueue_pe(&crate::DRAIN, Duration::from_secs(10), crate::DRAIN_HINT, || {
         // SAFETY: game thread.
-        let new = unsafe { register_npc_sources()? };
-        Ok(json!({"newly_registered": new, "registered": SOURCES.lock().len()}))
+        let (new, npcs) = unsafe { register_npc_sources()? };
+        Ok(json!({"newly_registered": new, "npcs": npcs}))
     })
 }
 
@@ -112,6 +111,11 @@ fn add(args: &Value) -> Result<Value, String> {
             let copy = unsafe { ueforge::reflect::spawn_object(&class, character_addr)? };
             // SAFETY: the copy the engine just created, of the same class.
             let copied = unsafe { ueforge::reflect::copy_fields(original, &*(copy as *const UObject))? };
+            // The narrative human's sight detects enemies only, and no controller in
+            // this game carries a team id, so the perception system rates every
+            // actor neutral and would report nothing (read live 2026-09-13). She
+            // detects everyone; the fight decision filters by faction, not her eyes.
+            unsafe { ueforge::reflect::set_fields(&*(copy as *const UObject), json!({"DetectionByAffiliation": {"bDetectEnemies": true, "bDetectNeutrals": true, "bDetectFriendlies": true}}).as_object().unwrap())? };
             ueforge::log!("perception: copied {copied} reflected fields of {class} from the enemy's config");
             senses.push(class);
             copies.push(copy);

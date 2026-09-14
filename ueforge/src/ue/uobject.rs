@@ -72,6 +72,31 @@ pub struct UObject {
     _opaque: [u8; 0],
 }
 
+/// A non-owning identity for game-thread work across ticks. Resolve through
+/// GObjects before dereferencing cached memory, and reject a replaced slot.
+#[derive(Clone, Debug)]
+pub struct ObjectIdentity {
+    pub address: u64,
+    pub index: i32,
+    pub name: String,
+}
+
+impl ObjectIdentity {
+    pub fn capture(object: &UObject) -> Self {
+        Self { address: object as *const UObject as u64, index: object.index(), name: object.name() }
+    }
+
+    /// # Safety
+    /// Resolve and use the returned object only on the game thread.
+    pub unsafe fn resolve(&self) -> Option<&'static UObject> {
+        let rt = runtime();
+        let objects = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+        let object = objects.get(self.index)?;
+        if object as *const UObject as u64 != self.address || object.name() != self.name { return None; }
+        Some(unsafe { &*(object as *const UObject) })
+    }
+}
+
 impl UObject {
     pub fn as_ptr(&self) -> *const u8 {
         self as *const UObject as *const u8
@@ -859,6 +884,7 @@ pub fn find_class_fast(name: &str) -> Option<&'static UClass> {
 /// Nothing class-specific (default object, functions) is valid on it.
 pub fn find_struct_fast(name: &str) -> Option<&'static UClass> {
     let rt = try_runtime()?;
+    let script_struct = find_class_fast("ScriptStruct")?;
     let cache = struct_cache();
     if let Some(c) = cache.read().get(name) {
         return Some(*c);
@@ -871,7 +897,7 @@ pub fn find_struct_fast(name: &str) -> Option<&'static UClass> {
         if obj.name() != name {
             continue;
         }
-        if obj.class().map(|c| c.as_object().name()).as_deref() != Some("ScriptStruct") {
+        if !obj.is_a(script_struct) {
             continue;
         }
         let class: &'static UClass = unsafe { &*(obj as *const UObject as *const UClass) };

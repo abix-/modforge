@@ -2,23 +2,88 @@
 
 ## Current focus
 
-Abiotic Factor: Sophia uses a human Grunt NPC, its soldier AI controller
-and combat tree. The spawn copies the human's faction before her first
-combat tick. The user verified following and fights against a Pest and Exor.
-The team test passed: faction 2, Friend=true, no human combat target.
-Current live walking speed is 260 (was 130), not persisted across respawn.
+Sophia now uses Modforge_AIPlayer_C, an actual direct subclass of
+NPC_Base_ParentBP_C, with Abiotic_AI_Controller_ParentBP_C. Normal start and
+respawn both use this custom type. Ueforge owns native class creation,
+configured spawning and deep property copying. Abiotic owns the human mesh,
+NPC_Coworker_AnimBP rendering asset, baseline stats and melee assets. The
+custom class defaults own the melee map; replacement no longer copies from
+the donor Grunt CDO, which became unavailable during repeated-spawn testing.
 
-Current session: documenting and publishing the accepted companion changes.
-Live operations are in tests/companion_live.rs. Inventory/skill experiments
-remain uncommitted and stopped. Preserve other unrelated uncommitted work.
-NPC reload directly refills CurrentAmmoCount from MaxAmmoCount; finite
-ammunition and equipping player melee weapons are not implemented.
+Release build: 2026-09-13 20:45:42. Verified live: custom class inheritance
+(base NPC yes, Grunt no), Follow within 150 units, walk speed 260, knife
+attachment and native Sharp damage, Passive, explicit Attack, self-defense,
+Recall, saved orders across respawn, destruction/GC and replacement.
+The generic derived class contains no Rust callbacks and is rooted for the
+process lifetime. Character appearance customization remains deferred.
 
-Next: NPC-compatible normal respawn/place controls and finite ammo only
-within requested scope. The 15:54:33 crash remains undiagnosed.
+Remaining acceptance: aggressive sight/chase test fails in the current
+multi-level location. The Pest was observed falling about 400 units below
+Sophia; a revised same-floor fixture also failed to acquire its intended
+enemy, so no final cause or passing aggressive regression is claimed.
+Human-protection acceptance is blocked by Abix being dead (IsDead=true,
+TotalCombinedHealth=0). Normal bed/origin respawn requests did not complete.
+Asked the user what the game currently shows; no answer yet. Do not replace
+this with a guessed fix or report all controls accepted. Self-defense through
+the new native Actor damage observer passed independently at 20:41:33.
+
+Next: finish a valid sight encounter and human-protection acceptance when the
+human is alive. Keep exploration, inventory and skills out of this change.
+The general permanent class-cache lifetime assumption is recorded in todo;
+the custom type's asset ownership and replacement were verified through GC.
+
+Earlier live fix, 2026-09-13 19:12: Sophia was assigned Follow Abix but blocked
+by "Actor.ReceiveAnyDamage unavailable". The damage observer looked for an
+inherited event on the concrete Blueprint class; get_function searches only
+the declaring class's children. It now resolves Actor first. Release build,
+deployment and saved-world restart passed. The focused live follow test passed:
+147.4 horizontal units from Abix against a requested radius of 150. Sophia is
+left following with her existing Aggressive stance. This proves observer
+initialization and following, not the still-pending damage-response acceptance.
+
+The single Sophia readiness table is at the top of abioticfactor-mod/docs/todo.md.
+It records category, evidence/gap, done condition and an assessed score out of ten.
+Scores distinguish limited historical live proof from pending latest-source
+acceptance. Update that table rather than creating another readiness summary.
+
+User requested documentation and code alignment with persistent AI players.
+Companion describes Sophia's allied role. After reliable controls, Sophia
+should explore and collect resources independently. A later persistent enemy
+should reuse the same capabilities, remember encounters and react to the human
+and Sophia. Autonomous goals and adaptive decisions are future work.
+
+The shared order module is now modforge/src/ai_orders.rs (OrdersDef and
+OrdersTracker). Ueforge owns AiOrderExecution and ui_ai_orders. Threats are
+relative to self or the protected player, not an assumed human alliance.
+The Abiotic order adapter accepts initial orders; the current allied spawn
+operation supplies Follow/Defensive defaults and copies the human faction.
+Saved orders and the command API keep their existing format. Persona remains
+the persistent identity and observation owner; no second memory system was added.
+
+Verification for this alignment: all six ai_orders decision tests pass,
+including defense and return to Hold without a human to protect. The Abiotic
+mod development build passes. No live deployment or enemy implementation is
+claimed for this refactor. The pending order implementation and unrelated work
+remain uncommitted.
+
+Sophia's baseline is the human Grunt NPC with a default kitchen knife and
+doubled walking speed (130 to 260). Earlier live tests established Hold,
+Passive, explicit Sharp damage, Recall, saved-order respawn, groups, defense,
+and aggressive sight/chase limits. Native damage observation and the subsequent
+hostile-character/friend filter still need final live acceptance. The last
+restart reached HTTP readiness then lost its connection while hosting; its
+cause is not established. Earlier cleanup tests passed after garbage collection,
+but the historical crashes are not all diagnosed.
+
+Existing npc-ai.md owns the design and evidence; todo.md owns the remaining
+work. Finish current controls before autonomous exploration/resource collection,
+then implement the recurring enemy. Command eligibility, return-after-defeat
+rules and experience-driven progression must be established before enemy release.
+Inventory ownership, durability and finite ammunition remain unimplemented.
 
 ## Design goals
 
+- Persistent AI players share identity, memory, perception and actions. Ally/enemy relationships and command eligibility are distinct from combat stance. Sophia's autonomy comes first; a recurring, adapting enemy follows using the same capabilities.
 - Sophia runs in the host mod with an NPC body and its native combat AI. Preserve her persona; copy the human faction during spawn. UDP/player-body work is superseded for this companion.
 - `docs/bot-navigation.md` owns one engine-independent bot-navigation system for both Unreal and Unity. Modforge owns routes, waypoints, the shared path and observation formats, player-input decisions, arrival, failure, and release. Ueforge and Unityforge only return engine paths and observations and inject the selected player input.
 - Topside-style fixed-tick journals remain authoritative for simulations Modforge owns.
@@ -74,6 +139,7 @@ within requested scope. The 15:54:33 crash remains undiagnosed.
 
 ## Last session summary
 
+- 2026-09-13: aligned the shared order module, types, threat fields and UI with AI players. Moved Follow/Defensive defaults to the allied spawn operation. Updated npc-ai.md and todo.md with role boundaries and the autonomy/enemy sequence. Six decision tests and the Abiotic development build passed. The live order test target compiles; its five runtime tests remain ignored in this verification run. No deployment or live acceptance of the pending damage observer is claimed.
 - 2026-09-13: Grunt companion, allied faction and follow verified live; user confirmed Pest and Exor combat. Documentation now distinguishes accepted behavior from the failed earlier Exor-body test and deferred player features.
 
 - Generic AI player module and profile-selected controls are implemented in the existing AbioticFactorMod. All 27 client tests and the integration-test build pass. Ran the existing restart.ps1 -BuildOnly successfully; it validated the 3074048-byte release DLL at target/x86_64-pc-windows-msvc/release/abioticfactor_mod.dll. No deployment or new join occurred. Live spawn and restart-into-save work remain pending.
@@ -406,7 +472,7 @@ within requested scope. The 15:54:33 crash remains undiagnosed.
 
 ## Next steps
 
-- Continue Sophia through the accepted NPC path. Adapt normal respawn/place controls when requested; use the existing companion tests for live operations.
+- Finish the pending damage-event and friend-filter live acceptance on Sophia's accepted NPC path. Then pursue independent exploration and resource collection through shared actions, followed by the first persistent enemy. Keep game-specific spawn policy separate from shared orders.
 
 - Complete Sophia's local level selection from real map collision, actor overlap and local loading/visibility history, then integrate the verified sector table lookup. Do not substitute host/controller state or coordinate heuristics. Facing/velocity follows this requested sector work. Preserve Sophia's identity and profile; distinct save identity, owning-level readiness, customization, full correction coverage and save completion remain open.
 - Move the current Unreal navigation call and path decoding into Ueforge so MISERY receives the shared path format directly.
@@ -424,6 +490,7 @@ within requested scope. The 15:54:33 crash remains undiagnosed.
 
 ## Open questions
 
+- Before persistent enemies: what permits return after defeat, what experience changes future decisions, and which relationships permit human commands? These remain design questions, not working behavior.
 - What caused the 15:54:33 NPC lifecycle crash, and how should NPC companion respawn and finite ammo work?
 
 - How should a distinct accepted bot identity preserve Sophia's existing save under numeric key zero?

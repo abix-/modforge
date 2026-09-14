@@ -14,6 +14,7 @@ pub mod biome;
 pub mod brain;
 pub mod client;
 pub mod combat;
+pub mod ai_orders;
 pub mod counters;
 pub mod crafting;
 pub mod debug;

@@ -272,7 +272,7 @@ where
     }
 }
 
-fn save_atomic<T: Serialize>(path: &std::path::Path, value: &T) -> std::io::Result<()> {
+pub fn save_atomic<T: Serialize>(path: &std::path::Path, value: &T) -> std::io::Result<()> {
     let json = serde_json::to_string_pretty(value)
         .map_err(|e| std::io::Error::other(format!("serialize: {e}")))?;
     let tmp = path.with_extension("json.tmp");

@@ -89,6 +89,11 @@ type FNameCtor = unsafe extern "system" fn(*mut FName, *const u16, u32) -> *mut 
 ///
 /// Game thread only, like anything that enters the engine.
 pub fn from_str(text: &str, mode: FindName) -> Option<FName> {
+    // NAME_None is a valid explicit value (for example, attachment without a
+    // socket). Distinguish it from an unknown non-empty name in Find mode.
+    if text.is_empty() || text.eq_ignore_ascii_case("None") {
+        return Some(FName { comparison_index: 0, number: 0 });
+    }
     let addr = ctor()?;
     // A null-terminated UTF-16 string, which is what wchar_t is
     // on Windows. It must outlive the call.

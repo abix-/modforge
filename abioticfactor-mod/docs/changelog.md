@@ -2,15 +2,33 @@
 
 ## 2026-09-13
 
-- Sophia now spawns as a human Grunt through NPCSpawn_SingleGrunt, keeping
+- Sophia now spawns and respawns as Modforge_AIPlayer_C, directly derived from
+  NPC_Base_ParentBP_C, with the base AI controller. Ueforge creates the class
+  and Abiotic configures its human rendering and native melee assets. Follow,
+  native knife hits, self-defense/Recall, saved orders across respawn and
+  destruction/GC/replacement passed live. Aggressive-sight and human-protection
+  regressions remain open in todo; full control acceptance is not claimed.
+- Sophia defaults to a kitchen knife and doubled walking speed (130 to 260).
+  Knife mesh, item socket and speed passed live readback on the custom body.
+- Earlier Grunt prototype: the soldier tree ignored HasRangedAttack=false,
+  so the knife loadout used the native BT_Main_Zombie melee tree with the human
+  Grunt body and soldier controller. The custom type now uses its own minimal
+  melee tree. Following yields to an active combat target. A controlled
+  Pest encounter recorded 25 to 22 health, Sharp damage and Sophia as causer.
+  Knife inventory ownership and durability consumption are not implemented.
+- Session cleanup validates the controller's engine object index, address and
+  name before using it. Destroying and collecting the companion's actors, then
+  stopping the session, passed without a crash. This addresses a stale-object
+  risk found after the 16:29 respawn crash; its complete caller remains unresolved.
+
+- Earlier combat proof spawned Sophia as a human Grunt through NPCSpawn_SingleGrunt, keeping
   the game's soldier controller and combat tree. This replaces the player
   body that failed the NPC controller's initialization.
 - Her faction is copied from the human during spawn. The live team test
   verified faction 2, Friend=true and no human combat target over ten seconds.
 - Following and NPC replacement beside the human passed live tests. The user
   confirmed Sophia successfully fought both a Pest and an Exor.
-- Walking speed was doubled on the live instance from 130 to 260 and read
-  back after two seconds. This adjustment does not yet survive respawn.
+- The initial live-only speed adjustment is now applied during every spawn.
 - Permanent combat, team, follow, speed and encounter operations are in
   tests/companion_live.rs. Enemy creation uses TrySpawnNPC; DebugSpawn only
   draws debug information.
