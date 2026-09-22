@@ -325,6 +325,38 @@ the game handling the scroll automatically.
 The field must be set after the save loads (the Item is part of save
 data). Setting it at the main menu has no effect.
 
+## Movement speed
+
+Player movement speed is controlled by two values:
+
+| Location | Field | Type | Vanilla | Notes |
+|---|---|---|---|---|
+| PlayerPhysicsConfig | speed | float | 50.0 | base speed (ScriptableObject) |
+| PlayerPhysicalBody | SpeedMultiplier | float | 1.0 | runtime multiplier |
+
+`SpeedMultiplier` is the clean way to adjust speed. Writing the backing
+field `<SpeedMultiplier>k__BackingField` on the PlayerPhysicalBody works
+at runtime with immediate effect.
+
+Access chain: `MainGame.playerController.get_PhysicalBody()` (property
+getter, not a field).
+
+PlayerPhysicsConfig also has: jumpForce (333), attackDashForce (15),
+attackDashDuration (0.2), attackDashCooldown (0.5).
+
+## Tweaks op
+
+The `tweaks` op reads and writes all player tweaks in one call:
+
+    POST /op {"op":"tweaks","args":{}}
+    -> {"inventory_size":40,"speed":1.5,"energy":100}
+
+    POST /op {"op":"tweaks","args":{"speed":2.0}}
+    -> {"inventory_size":40,"speed":2.0,"energy":100}
+
+Accepts: `inventory_size` (int, min 20), `speed` (float, min 0.1),
+`energy` (float). Omitted fields are left unchanged. No args reads all.
+
 ## Systems to research
 
 - PlayerController: inventory, stats, position, interaction

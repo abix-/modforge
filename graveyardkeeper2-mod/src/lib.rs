@@ -1,5 +1,6 @@
 mod energy;
 mod inventory;
+mod tweaks;
 
 use unityforge::ModDef;
 
@@ -20,6 +21,7 @@ fn on_init() {
     unityforge::selector::register_builtins();
     energy::install();
     inventory::install();
+    tweaks::install();
 
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,
