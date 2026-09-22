@@ -530,6 +530,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dwarf-fortress-mod"
+version = "0.1.0"
+dependencies = [
+ "modforge",
+ "serde_json",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "either"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -761,6 +770,17 @@ name = "glam"
 version = "0.33.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c426daf70099baff33fac0ba85151c42424861c56828cef9ba02dacb78eb6b26"
+
+[[package]]
+name = "graveyardkeeper2-mod"
+version = "0.1.0"
+dependencies = [
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "unityforge",
+]
 
 [[package]]
 name = "grounded2-mod"
