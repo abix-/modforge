@@ -1,9 +1,11 @@
 # graveyardkeeper2-mod research
 
-Game: Graveyard Keeper 2 Demo
+Game: Graveyard Keeper 2
 Developer: Lazy Bear Games
 Engine: Unity 6000.3.9f1 (Mono)
-Steam path: `C:\Games\Steam\steamapps\common\Graveyard Keeper 2 Demo`
+Steam path: `C:\Games\Steam\steamapps\common\Graveyard Keeper 2` (the
+Demo folder beside it is not used; `scripts/restart.ps1` `$GameDir` is the
+authority)
 
 ## Notable assemblies
 
@@ -24,7 +26,7 @@ Steam path: `C:\Games\Steam\steamapps\common\Graveyard Keeper 2 Demo`
 - C# shim built with `-p:BepInExVersion=6`
 - Control plane on port 17178
 - Restart script: `graveyardkeeper2-mod/scripts/restart.ps1`
-- Steam App ID: 5075680
+- Steam App ID: 4358690
 
 ## Key classes
 
@@ -297,6 +299,94 @@ tier likely corresponds to seed quality or an upgrade.
 All craft definitions live in `GameBalance.craftDefs` (825 total).
 `GameBalance.gardenCraftsPerItemCache` maps seed ItemDef to its garden
 CraftDef list (27 entries).
+
+## Craft system
+
+Crafting stations (furnace, distillation cube, and the rest) each own a
+`CraftComponent`. It is a plain C# class, not a Unity object, so
+`walk_class CraftComponent` returns no instances. Reach it through the
+craft system instead.
+
+### Access chain
+
+    MainGame.craftSystem                     (CraftSystem, MonoBehaviour)
+    CraftSystem.get_CraftSystemData()        (static, returns CraftSystemData)
+    CraftSystemData.activeCrafts             (List<CraftComponent>)
+    CraftComponent.craftableObject           (ICraftable, observed as WgoData)
+    WgoData.id                               (station id, e.g. "furnace_1")
+
+`CraftSystem` itself holds only `craftsCheckTimer` (0.4). Its methods:
+`CustomUpdate(1)`, `AddCraftObject(1)`, `RemoveCraftObject(1)`,
+`AddWorker(1)`, `RemoveWorker(1)`, `AddHPWorker(1)`, `RemoveHPWorker(1)`,
+`TryGetCraftActivity(1)`, `TryGetHPActivity(1)`.
+
+`CraftSystemData` fields: `activeCrafts`, `zombieCraftActivities`,
+`zombieHPActivities` (all List).
+
+### CraftComponent fields (observed)
+
+| Field | Type | Observed | Notes |
+|---|---|---|---|
+| status | CraftComponentStatus | QueueDelayed, ReadyToFinishAutoCraft | see statuses below |
+| craftElementsQueue | List | | queued crafts |
+| curCraftQueueIdx | int | 0 | |
+| prevQueueCount | int | 1 | |
+| restartQueueTimer | float | 0.2 | |
+| autoCraftTickDuration | float | 10.0 | |
+| currentAutoCraftTickTime | float | 0.0 | |
+| zombieSubTicks | int | 0 | |
+| hasPreFinishUpdate | bool | false | |
+| finishHeldTimer | float | 0.6 | |
+| preFinishHoldCount | int | 0 | |
+| lastStartedCraftWithRequirements | CraftElementBase | CraftElement | |
+| craftableObject | ICraftable | WgoData | the station |
+| craftsFromBalance | List | | recipes from GameBalance |
+| isRemovingDestroyCraft | bool | false | |
+
+Events: `OnCraftStart`, `OnCraftFinish`, `OnPreFinishHoldReleased`,
+`OnStatusChanged`, `OnCraftCurProgressNormalizedChanged`,
+`OnCraftAddedToQueue`, `OnCraftRemovedFromQueue`, `OnCurCraftIndexUpdate`,
+`OnZombieSubTicksChanged`.
+
+Properties: `Status`, `IsStarted`, `IsQueueDelayed`, `IsFinishDelayed`,
+`HasPreFinishUpdate`, `IsPreFinishHeld`, `IsAutoCraftable`,
+`IsManualActualCraftable`, `HasCraftsInQueue`, `HasCraftsByBalance`,
+`CurrentCraftElement`, `CraftElementsQueue`, `AvailableCrafts`, `CraftsIn`,
+`AutoCraftTickProgressNormalized`, `CraftableObject`,
+`IsDestroyingCraftActive`, `IsRemovingDestroyCraft`.
+
+### Finishing methods (not yet tested)
+
+`TryFinishCurCraft()`, `Finish()`, `TrySetPreFinishState()`,
+`PreFinishUpdate(1)`, `AddPreFinishHold()`, `ReleasePreFinishHold()`,
+`DropItems(1)`, `HandleOutput(2)`, `HandleOutputConveyor(1)`,
+`ContinueAutoCraft()`, `TryContinueFromQueue()`, `TryStartCurCraft()`.
+
+Not yet known: which one the "take all" button calls, whether output goes
+to the player inventory or the ground, and whether the station starts the
+next queued craft on its own.
+
+### Statuses (observed)
+
+| Status | Meaning |
+|---|---|
+| QueueDelayed | idle between queued crafts (IsQueueDelayed true) |
+| ReadyToFinishAutoCraft | craft done, waiting for the player to press E "take all" |
+
+The full `CraftComponentStatus` enum has not been listed yet.
+
+### Live snapshot (2026-09-23)
+
+5 active crafts. Two waiting on "take all":
+
+| Station id | Zone | Status | AutoCraftTickDuration |
+|---|---|---|---|
+| furnace_1 | yard | ReadyToFinishAutoCraft | 15.0 |
+| distillation_cube | alchemy_lab | ReadyToFinishAutoCraft | 15.0 |
+
+The other three were `QueueDelayed`. The first one read has
+`IsAutoCraftable: true`, `IsManualActualCraftable: false`, and
+`HasCraftsInQueue: true`.
 
 ## Inventory
 

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Rebuild, redeploy, and restart Graveyard Keeper 2 Demo with the current mod.
+Rebuild, redeploy, and restart Graveyard Keeper 2 with the current mod.
 
 .DESCRIPTION
 Steps, in order:
@@ -23,11 +23,11 @@ param (
 )
 
 $Repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$GameDir = "C:\Games\Steam\steamapps\common\Graveyard Keeper 2 Demo"
+$GameDir = "C:\Games\Steam\steamapps\common\Graveyard Keeper 2"
 $PluginDir = Join-Path $GameDir "BepInEx\plugins\graveyardkeeper2-mod"
-$AppId = "5075680"
+$AppId = "4358690"
 $Port = 17178
-$ProcessName = "GraveyardKeeper2Demo"
+$ProcessName = "GraveyardKeeper2"
 
 if (-not $SkipBuild) {
     Write-Host "[build] graveyardkeeper2-mod (Rust)" -ForegroundColor Cyan
@@ -40,7 +40,7 @@ if (-not $SkipBuild) {
     dotnet build -c Release `
         -p:BepInExVersion=6 `
         -p:BepInExDir="$GameDir\BepInEx" `
-        -p:UnityDir="$GameDir\GraveyardKeeper2Demo_Data\Managed" `
+        -p:UnityDir="$GameDir\GraveyardKeeper2_Data\Managed" `
         (Join-Path $Repo "unityforge\cs-shim-mono\Unityforge.Shim.Mono.csproj")
     if ($LASTEXITCODE -ne 0) { throw "shim build failed" }
 }
