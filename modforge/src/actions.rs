@@ -44,6 +44,8 @@ pub enum Action {
     /// Dead: go again (topside design.md "Death and difficulty": a
     /// roguelike in a persistent living world).
     Respawn,
+    /// The dodge roll (topside combat.md "The roll").
+    Roll,
 }
 
 /// A key or button, by the name a binding file uses. The consumer
@@ -76,6 +78,7 @@ pub enum Key {
     MouseLeft,
     MouseRight,
     Enter,
+    Space,
 }
 
 /// What a key is bound to. Held keys repeat their action every tick
@@ -124,6 +127,7 @@ impl Bindings {
                 (Key::O, Tapped(Drop)),
                 (Key::T, Tapped(Transfer { half: false })),
                 (Key::Enter, Tapped(Respawn)),
+                (Key::Space, Tapped(Roll)),
             ],
         }
     }

@@ -585,9 +585,68 @@ impl FireTimer {
     }
 }
 
+/// How long a roll lasts, in seconds (topside combat.md "The roll",
+/// Enter the Gungeon's 0.7 s).
+pub const ROLL_TIME: f32 = 0.7;
+/// How much faster than walking a roll carries a person. Tuning.
+pub const ROLL_SPEED_MULT: f32 = 1.4;
+
+/// The dodge roll (topside combat.md "The roll"): `ROLL_TIME` long,
+/// safe from all damage for the first half, the direction locked once
+/// started.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct RollTimer {
+    pub left: f32,
+    pub direction: glam::Vec2,
+}
+
+impl RollTimer {
+    /// Start a roll along `direction` unless one is under way. Returns
+    /// whether it started.
+    pub fn start(&mut self, direction: glam::Vec2) -> bool {
+        let direction = direction.normalize_or_zero();
+        if self.rolling() || direction == glam::Vec2::ZERO {
+            return false;
+        }
+        self.left = ROLL_TIME;
+        self.direction = direction;
+        true
+    }
+
+    pub fn tick(&mut self, dt: f32) {
+        self.left = (self.left - dt).max(0.0);
+    }
+
+    pub fn rolling(&self) -> bool {
+        self.left > 0.0
+    }
+
+    /// The first half of a roll: nothing can hurt the roller.
+    pub fn safe(&self) -> bool {
+        self.left > ROLL_TIME / 2.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_roll_is_safe_for_its_first_half_and_its_direction_holds() {
+        let mut r = RollTimer::default();
+        assert!(!r.rolling());
+        assert!(r.start(glam::Vec2::new(0.0, 2.0)));
+        assert_eq!(r.direction, glam::Vec2::Y);
+        assert!(r.safe());
+        assert!(!r.start(glam::Vec2::X), "no new roll mid roll");
+        assert_eq!(r.direction, glam::Vec2::Y, "the direction held");
+        r.tick(0.3);
+        assert!(r.safe(), "safe at 0.3 s");
+        r.tick(0.1);
+        assert!(r.rolling() && !r.safe(), "open in the second half");
+        r.tick(0.4);
+        assert!(!r.rolling(), "over by 0.7 s");
+    }
 
     fn pipe() -> DamageDef {
         DamageDef {
