@@ -807,30 +807,38 @@ pub struct TileRun {
 /// single tiles.
 pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
     use std::collections::HashMap;
-    let mut tiles: HashMap<(i32, i32), (TileKind, Rgb)> = HashMap::new();
-    let mut put = |x: i32, z: i32, kind: TileKind, color: Rgb| {
-        let keep = tiles.get(&(x, z)).is_some_and(|(k, _)| k.rank() > kind.rank());
+    // Each tile keeps what landed on it with the highest rank. A doorway,
+    // with a door or a plain gap, ranks over the wall it is cut through:
+    // a gap written as floor must never be walled over again.
+    type Tiles = HashMap<(i32, i32), (TileKind, Rgb, u8)>;
+    fn put(tiles: &mut Tiles, x: i32, z: i32, kind: TileKind, color: Rgb, rank: u8) {
+        let keep = tiles.get(&(x, z)).is_some_and(|(_, _, r)| *r > rank);
         if !keep {
-            tiles.insert((x, z), (kind, color));
+            tiles.insert((x, z), (kind, color, rank));
         }
-    };
+    }
+    let mut tiles: Tiles = HashMap::new();
+    const DOORWAY: u8 = 3;
+    // Every doorway tile and the way through it (across its wall).
+    let mut doorways: Vec<((i32, i32), (i32, i32))> = Vec::new();
     for room in def.rooms.iter().filter(|r| r.origin.y.abs() < 0.5) {
         let w = room.interior.x.round().max(1.0) as i32;
         let l = room.interior.z.round().max(1.0) as i32;
         let x0 = (room.origin.x - w as f32 / 2.0).round() as i32;
         let z0 = (room.origin.z - l as f32 / 2.0).round() as i32;
+        let (floor, wall) = (TileKind::Floor.rank(), TileKind::Wall.rank());
         for z in z0..z0 + l {
             for x in x0..x0 + w {
-                put(x, z, TileKind::Floor, def.floor_color);
+                put(&mut tiles, x, z, TileKind::Floor, def.floor_color, floor);
             }
         }
         for x in x0 - 1..=x0 + w {
-            put(x, z0 - 1, TileKind::Wall, def.wall_color);
-            put(x, z0 + l, TileKind::Wall, def.wall_color);
+            put(&mut tiles, x, z0 - 1, TileKind::Wall, def.wall_color, wall);
+            put(&mut tiles, x, z0 + l, TileKind::Wall, def.wall_color, wall);
         }
         for z in z0..z0 + l {
-            put(x0 - 1, z, TileKind::Wall, def.wall_color);
-            put(x0 + w, z, TileKind::Wall, def.wall_color);
+            put(&mut tiles, x0 - 1, z, TileKind::Wall, def.wall_color, wall);
+            put(&mut tiles, x0 + w, z, TileKind::Wall, def.wall_color, wall);
         }
         for o in room.openings.iter().filter(|o| o.sill <= 0.0) {
             let n = o.width.round().max(1.0) as i32;
@@ -841,36 +849,59 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
                     let row = if o.side == Side::North { z0 - 1 } else { z0 + l };
                     let a = (room.origin.x + o.offset - n as f32 / 2.0).round() as i32;
                     for x in a..a + n {
-                        put(x, row, kind, color);
+                        put(&mut tiles, x, row, kind, color, DOORWAY);
+                        doorways.push(((x, row), (0, 1)));
                     }
                 }
                 Side::East | Side::West => {
                     let col = if o.side == Side::West { x0 - 1 } else { x0 + w };
                     let a = (room.origin.z + o.offset - n as f32 / 2.0).round() as i32;
                     for z in a..a + n {
-                        put(col, z, kind, color);
+                        put(&mut tiles, col, z, kind, color, DOORWAY);
+                        doorways.push(((col, z), (1, 0)));
                     }
                 }
             }
         }
     }
-    for f in def.furniture.iter().filter(|f| f.center.y - f.size.y / 2.0 < BODY_HEIGHT) {
+    // A doorway is usable: the tile on each side of it is kept clear, and
+    // where another room's wall stands right behind it (the two rooms'
+    // walls on two rows once rounded to tiles), the doorway goes through
+    // that wall too; both rooms authored it.
+    let mut keep_clear = std::collections::HashSet::new();
+    for (t, (dx, dz)) in &doorways {
+        keep_clear.insert(*t);
+        for s in [-1, 1] {
+            let n = (t.0 + dx * s, t.1 + dz * s);
+            if tiles.get(&n).is_some_and(|(k, _, r)| *k == TileKind::Wall && *r < DOORWAY) {
+                put(&mut tiles, n.0, n.1, TileKind::Floor, def.floor_color, DOORWAY);
+            }
+            keep_clear.insert(n);
+        }
+    }
+    // Furniture on the ground floor that stops a body: not a floor slab
+    // (a landing is walked on), never on a doorway's clear tiles.
+    let stands = |f: &&SolidDef| f.center.y - f.size.y / 2.0 < BODY_HEIGHT && f.size.y > 2.0 * SLAB;
+    for f in def.furniture.iter().filter(stands) {
         let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
         let mut any = false;
         for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
             for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
                 let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
                 if cx >= lo.x && cx <= hi.x && cz >= lo.z && cz <= hi.z {
-                    put(x, z, TileKind::Furniture, f.color);
                     any = true;
+                    if !keep_clear.contains(&(x, z)) {
+                        put(&mut tiles, x, z, TileKind::Furniture, f.color, TileKind::Furniture.rank());
+                    }
                 }
             }
         }
-        if !any {
-            put(f.center.x.floor() as i32, f.center.z.floor() as i32, TileKind::Furniture, f.color);
+        let (x, z) = (f.center.x.floor() as i32, f.center.z.floor() as i32);
+        if !any && !keep_clear.contains(&(x, z)) {
+            put(&mut tiles, x, z, TileKind::Furniture, f.color, TileKind::Furniture.rank());
         }
     }
-    let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles.into_iter().collect();
+    let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles.into_iter().map(|(at, (k, c, _))| (at, (k, c))).collect();
     sorted.sort_by_key(|((x, z), _)| (*z, *x));
     let mut runs: Vec<TileRun> = Vec::new();
     for ((x, z), (kind, color)) in sorted {
@@ -1831,6 +1862,60 @@ mod shape_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two rooms side by side, walls 0.2 m as the building generator
+    /// makes them: the west room has a door east, the east room a plain
+    /// gap west (monument.rs authors connected rooms that way). On the
+    /// tiles, the two floors connect: no wall seals the gap.
+    #[test]
+    fn a_doorway_between_rooms_is_open_on_the_tiles() {
+        let room = |x: f32, opening: Opening| RoomDef {
+            origin: Vec3::new(x, 0.0, 0.0),
+            interior: Vec3::new(5.3, 3.0, 6.0),
+            wall_thickness: 0.2,
+            openings: vec![opening],
+            floor: true,
+            ceiling: true,
+        };
+        let gap = |side| Opening { side, offset: 0.4, width: 1.2, sill: 0.0, door: false };
+        let def = StructureDef {
+            name: "two rooms".to_string(),
+            wall_color: [0.5; 3],
+            floor_color: [0.3; 3],
+            rooms: vec![
+                room(0.0, Opening { door: true, ..gap(Side::East) }),
+                room(5.5, gap(Side::West)),
+            ],
+            stairs: vec![],
+            // A crate right behind the doorway: the doorway stays usable.
+            furniture: vec![SolidDef {
+                center: Vec3::new(3.5, 0.5, 0.5),
+                size: Vec3::ONE,
+                color: [0.5, 0.4, 0.2],
+            }],
+            lights: vec![],
+            parts: vec![],
+        };
+        let mut open = std::collections::HashSet::new();
+        for r in tile_plan(&def) {
+            if !r.kind.solid() {
+                for x in r.from..r.to {
+                    open.insert((x, r.row));
+                }
+            }
+        }
+        // Walk the open tiles from the west room's middle.
+        let mut seen = std::collections::HashSet::from([(0, 0)]);
+        let mut todo = vec![(0, 0)];
+        while let Some((x, z)) = todo.pop() {
+            for n in [(x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)] {
+                if open.contains(&n) && seen.insert(n) {
+                    todo.push(n);
+                }
+            }
+        }
+        assert!(seen.contains(&(5, 0)), "the east room's floor is reached through the doorway");
+    }
 
     /// A 6 by 8 m room with a 1.2 m door north and a bed: 48 floor
     /// tiles, a ring of wall tiles, one door tile in the north ring, the

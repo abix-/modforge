@@ -193,6 +193,50 @@ impl WalkMap {
         !self.blocked(cell_of(p))
     }
 
+    /// The chunk around `p` as the walk grid sees it, for looking at,
+    /// drawn from the tile `p` stands on (marked `mark`): one line per row
+    /// of tiles, top row first. `#` blocked; `.` open and reachable from
+    /// the marked tile inside the chunk; `:` open but not reachable from
+    /// it; `D` a doorway to the next chunk it can reach, `x` one it
+    /// cannot. And how many doorways it reaches.
+    pub fn picture(&mut self, p: Vec2, mark: char) -> ChunkPicture {
+        let at = cell_of(p);
+        let key = chunk_of(at);
+        let (x0, y0) = (key.0 * CHUNK, key.1 * CHUNK);
+        let doors = self.doors_of(key);
+        let flood = self.flood(at, None);
+        let reach = |t: Cell| t == at || flood.way_to(t).is_some();
+        let reached = doors.iter().filter(|d| reach(**d)).count();
+        let rows = (0..CHUNK)
+            .rev()
+            .map(|dy| {
+                (0..CHUNK)
+                    .map(|dx| {
+                        let t = (x0 + dx, y0 + dy);
+                        if t == at {
+                            mark
+                        } else if doors.contains(&t) {
+                            if reach(t) { 'D' } else { 'x' }
+                        } else if self.blocked(t) {
+                            '#'
+                        } else if reach(t) {
+                            '.'
+                        } else {
+                            ':'
+                        }
+                    })
+                    .collect()
+            })
+            .collect();
+        ChunkPicture {
+            chunk: key,
+            tile: at,
+            rows,
+            doorways: doors.len(),
+            reached,
+        }
+    }
+
     /// The centre of the nearest tile a person can stand on, within
     /// `within` tiles of `p`, if any: where to go instead of a blocked
     /// spot.
@@ -499,6 +543,21 @@ impl Flood {
         tiles.reverse();
         Some((cost, tiles))
     }
+}
+
+/// A chunk drawn from the walk grid (`WalkMap::picture`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChunkPicture {
+    pub chunk: ChunkKey,
+    pub tile: Cell,
+    /// Top row first: `#` blocked, `.` open and reachable from the marked
+    /// tile, `:` open and not reachable, `D` a reachable doorway, `x` an
+    /// unreachable one, and the marked tile.
+    pub rows: Vec<String>,
+    /// The chunk's doorways to its neighbours.
+    pub doorways: usize,
+    /// How many of them can be walked to from the tile.
+    pub reached: usize,
 }
 
 /// One chunk's doorways and the ways between them, worked out as needed.
