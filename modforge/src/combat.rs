@@ -227,6 +227,30 @@ impl Protection {
             resistances: self.resistances.clone(),
         }
     }
+
+    /// This actor's protection with no body parts (topside combat.md
+    /// "How deadly"): the base plus the armor of every piece worn in
+    /// its own slot, added into one total that every hit goes through.
+    /// Gear worn in the wrong slot guards nothing.
+    pub fn worn(
+        &self,
+        worn: &crate::item::Equipment,
+        armor_of: impl Fn(&str) -> Option<crate::item::Armor>,
+    ) -> Protection {
+        let worn_armor: f32 = crate::item::EquipSlot::ALL
+            .iter()
+            .filter_map(|&slot| {
+                worn.get(slot)
+                    .and_then(|stack| armor_of(&stack.item))
+                    .filter(|armor| armor.slot == slot)
+                    .map(|armor| armor.amount)
+            })
+            .sum();
+        Protection {
+            armor: self.armor + worn_armor,
+            resistances: self.resistances.clone(),
+        }
+    }
 }
 
 /// The directions of one shot's pellets: the aim, each pellet pushed
@@ -527,6 +551,39 @@ mod tests {
             worn.get(crate::item::EquipSlot::Chest).cloned(),
         );
         assert_eq!(base.for_area(BodyArea::Head, &wrong, armor_of).armor, 0.0);
+    }
+
+    #[test]
+    fn every_worn_piece_adds_into_one_total() {
+        let stack = |name: &str| crate::item::ItemStack {
+            item: name.to_string(),
+            count: 1,
+            quality: None,
+            note: None,
+        };
+        let mut worn = crate::item::Equipment::default();
+        worn.set(crate::item::EquipSlot::Chest, Some(stack("vest")));
+        worn.set(crate::item::EquipSlot::Head, Some(stack("helmet")));
+        let armor_of = |name: &str| match name {
+            "vest" => Some(crate::item::Armor {
+                slot: crate::item::EquipSlot::Chest,
+                amount: 30.0,
+            }),
+            "helmet" => Some(crate::item::Armor {
+                slot: crate::item::EquipSlot::Head,
+                amount: 10.0,
+            }),
+            _ => None,
+        };
+        let base = Protection {
+            armor: 5.0,
+            resistances: vec![],
+        };
+        assert_eq!(base.worn(&worn, armor_of).armor, 45.0);
+        // A vest in the head slot guards nothing.
+        let mut wrong = crate::item::Equipment::default();
+        wrong.set(crate::item::EquipSlot::Head, Some(stack("vest")));
+        assert_eq!(base.worn(&wrong, armor_of).armor, 5.0);
     }
 
     #[test]
