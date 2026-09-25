@@ -50,10 +50,10 @@ pub struct Known {
     pub seen_at: u64,
     /// Tick last checked up close (looted, opened), if ever.
     pub checked_at: Option<u64>,
-    /// The kinds of stacks seen inside it when last checked; None
-    /// until looked (believed to hold something), empty when it was
-    /// found bare.
-    pub held: Option<Vec<String>>,
+    /// What was seen inside it when last checked, each kind with how
+    /// many; None until looked (believed to hold something), empty
+    /// when it was found bare.
+    pub held: Option<Vec<(String, u32)>>,
 }
 
 impl Known {
@@ -64,9 +64,14 @@ impl Known {
 
     /// Seen holding this kind of stack.
     pub fn held_kind(&self, kind: &str) -> bool {
+        self.held_count(kind) > 0
+    }
+
+    /// How many of this kind were seen inside when last checked.
+    pub fn held_count(&self, kind: &str) -> u32 {
         self.held
             .as_ref()
-            .is_some_and(|h| h.iter().any(|k| k == kind))
+            .map_or(0, |h| h.iter().filter(|(k, _)| k == kind).map(|(_, n)| n).sum())
     }
 }
 
@@ -80,13 +85,42 @@ pub fn food_worth(known: &Known, need: Need, items: &crate::item::ItemRegistry) 
         return 0.0;
     };
     held.iter()
-        .filter_map(|kind| items.def(kind).and_then(|d| d.food))
+        .filter_map(|(kind, _)| items.def(kind).and_then(|d| d.food))
         .map(|food| match need {
             Need::Hunger => food.hunger,
             Need::Thirst => food.thirst,
             Need::Rest | Need::Safety => 0.0,
         })
         .fold(0.0, f32::max)
+}
+
+/// What a bunker is short of (topside design.md "Taking loot"): the food
+/// and water in `supplies` (each kind with how many) against what
+/// `people` eat and drink in `days`, `per_day` being one person's
+/// hunger and thirst points a day. Every need that falls short, the
+/// shortest first; empty when the store covers them all.
+pub fn short_of<'a>(
+    supplies: impl IntoIterator<Item = (&'a str, u32)>,
+    people: u32,
+    days: f32,
+    per_day: (f32, f32),
+    items: &crate::item::ItemRegistry,
+) -> Vec<Need> {
+    let (mut hunger, mut thirst) = (0.0, 0.0);
+    for (kind, count) in supplies {
+        if let Some(food) = items.def(kind).and_then(|d| d.food) {
+            hunger += food.hunger * count as f32;
+            thirst += food.thirst * count as f32;
+        }
+    }
+    let wanted = |per: f32| per * people as f32 * days;
+    let cover = |have: f32, per: f32| if wanted(per) > 0.0 { have / wanted(per) } else { f32::INFINITY };
+    let mut short: Vec<(Need, f32)> = [(Need::Hunger, cover(hunger, per_day.0)), (Need::Thirst, cover(thirst, per_day.1))]
+        .into_iter()
+        .filter(|(_, c)| *c < 1.0)
+        .collect();
+    short.sort_by(|a, b| a.1.total_cmp(&b.1));
+    short.into_iter().map(|(n, _)| n).collect()
 }
 
 /// A person's memory: things seen, grudges, the last threat.
@@ -124,9 +158,9 @@ impl Memory {
         }
     }
 
-    /// Note a thing checked up close now: the kinds of stacks found
-    /// inside it (empty when bare).
-    pub fn checked(&mut self, key: u64, held: Vec<String>, now: u64) {
+    /// Note a thing checked up close now: what was found inside it,
+    /// each kind with how many (empty when bare).
+    pub fn checked(&mut self, key: u64, held: Vec<(String, u32)>, now: u64) {
         if let Some(k) = self.known.iter_mut().find(|k| k.key == key) {
             k.checked_at = Some(now);
             k.seen_at = now;
@@ -236,7 +270,7 @@ mod tests {
         let mut memory = Memory::default();
         memory.see(1, "storage box", Vec3::ZERO, 0);
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0, "never looked inside");
-        memory.checked(1, vec!["scrap".to_string(), "canned food".to_string()], 5);
+        memory.checked(1, vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)], 5);
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 50.0, "the cans inside");
         assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 0.0);
     }
@@ -251,8 +285,44 @@ mod tests {
         }
     }
 
-    fn kinds(kinds: &[&str]) -> Vec<String> {
-        kinds.iter().map(|k| k.to_string()).collect()
+    /// One of each kind named.
+    fn kinds(kinds: &[&str]) -> Vec<(String, u32)> {
+        kinds.iter().map(|k| (k.to_string(), 1)).collect()
+    }
+
+    #[test]
+    fn a_bunker_is_short_of_what_does_not_cover_everyone_for_the_days() {
+        use crate::item::{FoodStats, ItemDef, ItemKind, ItemRegistry};
+        let mut items = ItemRegistry::default();
+        for (name, hunger, thirst) in [("canned food", 50.0, 0.0), ("water bottle", 0.0, 50.0)] {
+            items
+                .register(ItemDef {
+                    name: name.to_string(),
+                    unique: false,
+                    kind: ItemKind::Food,
+                    max_stack: 10,
+                    quality_siblings: 1,
+                    combat: None,
+                    food: Some(FoodStats { hunger, thirst, health: 0.0 }),
+                    storage: None,
+                    armor: None,
+                    good_for: Default::default(),
+                    model: None,
+                })
+                .unwrap();
+        }
+        // Two people, one day, 100 hunger and 200 thirst each a day: four
+        // cans and eight bottles cover it.
+        let per_day = (100.0, 200.0);
+        let enough = [("canned food", 4), ("water bottle", 8)];
+        assert!(short_of(enough, 2, 1.0, per_day, &items).is_empty());
+        assert_eq!(short_of([("canned food", 4), ("water bottle", 2)], 2, 1.0, per_day, &items), [Need::Thirst]);
+        assert_eq!(short_of([("canned food", 1), ("water bottle", 8)], 2, 1.0, per_day, &items), [Need::Hunger]);
+        assert_eq!(
+            short_of([("canned food", 2), ("water bottle", 1)], 2, 1.0, per_day, &items),
+            [Need::Thirst, Need::Hunger],
+            "short of both, the shortest first"
+        );
     }
 
     #[test]
@@ -272,10 +342,11 @@ mod tests {
         m.see(7, "storage box", Vec3::ZERO, 10);
         assert!(m.known[0].believed_to_hold(), "never looked: believed full");
         assert!(!m.known[0].held_kind("canned food"), "not seen yet");
-        m.checked(7, kinds(&["canned food", "canned food", "pipe"]), 30);
+        m.checked(7, vec![("canned food".to_string(), 7), ("canned food".to_string(), 3), ("pipe".to_string(), 1)], 30);
         let box_ = &m.known[0];
         assert_eq!(box_.checked_at, Some(30));
         assert!(box_.held_kind("canned food") && box_.held_kind("pipe"));
+        assert_eq!(box_.held_count("canned food"), 10, "every stack counted");
         assert!(!box_.held_kind("cloth"));
         assert!(box_.believed_to_hold());
     }
