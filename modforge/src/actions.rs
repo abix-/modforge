@@ -37,8 +37,17 @@ pub enum Action {
     Hotbar { index: usize },
     /// Drop the hovered stack (O).
     Drop,
-    /// Transfer the hovered stack (T); `half` is Shift+T.
-    Transfer { half: bool },
+    /// Move the stack in `slot` across (T on the hovered slot); `half`
+    /// is Shift+T. The keys give no slot; the consumer fills in the one
+    /// under the cursor, an AI names its own.
+    Transfer {
+        half: bool,
+        slot: Option<crate::hud::SlotRef>,
+    },
+    /// Use what is in `slot` (a click on it): eat, drink, put on.
+    UseSlot { slot: crate::hud::SlotRef },
+    /// Make the open station's recipe at `index` of its list.
+    Craft { index: usize },
     /// Admin: toggle flying through everything (Quake's noclip, V).
     Fly,
     /// Dead: go again (topside design.md "Death and difficulty": a
@@ -125,7 +134,7 @@ impl Bindings {
                 (Key::Digit9, Tapped(Hotbar { index: 8 })),
                 (Key::Digit0, Tapped(Hotbar { index: 9 })),
                 (Key::O, Tapped(Drop)),
-                (Key::T, Tapped(Transfer { half: false })),
+                (Key::T, Tapped(Transfer { half: false, slot: None })),
                 (Key::Enter, Tapped(Respawn)),
                 (Key::Space, Tapped(Roll)),
             ],
@@ -167,7 +176,7 @@ impl Bindings {
                     move_sum = Some((sx + x, sy + y));
                 }
                 Binding::Tapped(Action::Transfer { .. }) => {
-                    out.push(Action::Transfer { half: shift });
+                    out.push(Action::Transfer { half: shift, slot: None });
                 }
                 Binding::Held(a) | Binding::Tapped(a) => out.push(*a),
             }
@@ -320,11 +329,11 @@ mod tests {
         let mut b = Bindings::defaults();
         assert_eq!(
             b.resolve(&[Key::T], &[Key::T]),
-            vec![Action::Transfer { half: false }]
+            vec![Action::Transfer { half: false, slot: None }]
         );
         assert_eq!(
             b.resolve(&[Key::T, Key::ShiftLeft], &[Key::T]),
-            vec![Action::Transfer { half: true }]
+            vec![Action::Transfer { half: true, slot: None }]
         );
         b.bind(Key::MouseRight, Binding::Held(Action::Attack));
         b.bind(Key::MouseLeft, Binding::Tapped(Action::Use));

@@ -170,7 +170,7 @@ impl HudState {
 /// Which slot-indexed holder a slot belongs to: the actor's own
 /// inventory or hotbar, or the container open in front of them.
 /// Equipment is not slot-indexed and is not draggable yet.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Holder {
     Inventory,
     Hotbar,
@@ -178,7 +178,7 @@ pub enum Holder {
 }
 
 /// One slot of one holder.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SlotRef {
     pub holder: Holder,
     pub index: usize,
