@@ -45,6 +45,8 @@ pub enum ItemKind {
     Deployable,
     /// Words someone left: read where it lies (`write` makes one).
     Note,
+    /// Used to heal: a bandage (its `food` says how much).
+    Medicine,
 }
 
 /// How a weapon fires (topside design.md "How a hit works"). Present
