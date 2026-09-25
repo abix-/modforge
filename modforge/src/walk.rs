@@ -193,6 +193,25 @@ impl WalkMap {
         !self.blocked(cell_of(p))
     }
 
+    /// What blocks the tile at `p`: each solid's key and the rectangle of
+    /// it that covers the tile.
+    pub fn solids_on(&self, p: Vec2) -> Vec<(u64, Rect)> {
+        let t = cell_of(p);
+        let Some(keys) = self.by_chunk.get(&chunk_of(t)) else {
+            return Vec::new();
+        };
+        keys.iter()
+            .flat_map(|k| {
+                self.solids
+                    .get(k)
+                    .into_iter()
+                    .flatten()
+                    .filter(|r| r.covers(t))
+                    .map(move |r| (*k, *r))
+            })
+            .collect()
+    }
+
     /// The chunk around `p` as the walk grid sees it, for looking at,
     /// drawn from the tile `p` stands on (marked `mark`): one line per row
     /// of tiles, top row first. `#` blocked; `.` open and reachable from
@@ -477,11 +496,14 @@ impl WalkMap {
         // edge, into the goal.
         let mut tiles = Vec::new();
         for pair in doorways.windows(2) {
+            // The goal may itself be a doorway, reached across an edge or
+            // from inside a chunk, so each step is joined by whichever way
+            // it was found.
             let (a, b) = (pair[0], pair[1]);
-            if a == start {
-                tiles.extend(start_doors[&b].1.iter().copied());
-            } else if b == goal {
-                tiles.extend(goal_doors[&a].1.iter().copied());
+            if let Some((_, way)) = start_doors.get(&b).filter(|_| a == start) {
+                tiles.extend(way.iter().copied());
+            } else if let Some((_, way)) = goal_doors.get(&a).filter(|_| b == goal) {
+                tiles.extend(way.iter().copied());
             } else if let Some((_, _, way)) = self.ways_from(a).into_iter().find(|(d, _, _)| *d == b) {
                 tiles.extend(way);
             } else {
