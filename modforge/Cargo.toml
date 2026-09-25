@@ -50,7 +50,9 @@ windows-sys = { workspace = true, features = [
 ] }
 tiny_http = { workspace = true }
 # Structure vocabulary math used by the runtime and integrations.
-glam = "0.33"
+# The same glam as Bevy 0.19 (0.32), so topside passes Bevy's Vec2 and
+# Vec3 straight in; move only when Bevy moves.
+glam = "0.32"
 # Terrain noise for modforge::worldgen (the crate Endless used).
 noise = "0.9"
 socket2 = { workspace = true }
