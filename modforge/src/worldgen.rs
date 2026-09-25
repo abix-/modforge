@@ -126,6 +126,20 @@ pub struct WorldDef {
     /// join sites to each other, the bunker is found, not followed.
     pub bunker: Vec2,
     pub bunker_clear: f32,
+    /// The other bunkers (topside: every bunker is its own faction).
+    /// Each is kept clear and flat like the player's and stays put
+    /// through every roll; no road leads to one either.
+    pub bunkers: Vec<Vec2>,
+}
+
+impl WorldDef {
+    /// Whether `p` is nearer than `within` to any bunker, the player's
+    /// or another.
+    pub fn near_a_bunker(&self, p: Vec2, within: f32) -> bool {
+        std::iter::once(self.bunker)
+            .chain(self.bunkers.iter().copied())
+            .any(|b| b.distance(p) < within)
+    }
 }
 
 /// One placed monument, type and centre, in world metres.
@@ -351,7 +365,7 @@ impl World {
                     continue;
                 };
                 let p = self.cell_center(c, r);
-                if p.distance(self.def.bunker) < self.def.bunker_clear
+                if self.def.near_a_bunker(p, self.def.bunker_clear)
                     || self.sites.iter().any(|s| s.position.distance(p) < s.spacing * 0.3)
                 {
                     continue;
@@ -508,6 +522,9 @@ pub fn roll_world(
     }
     world.sea_level -= bunker_height;
     world.flatten(def.bunker, def.bunker_clear, 0.0);
+    for &other in &def.bunkers {
+        world.flatten(other, def.bunker_clear, 0.0);
+    }
 
     // The Labyrinth's walls, and which heightmap cells they block.
     if let Generator::Labyrinth {
@@ -531,10 +548,10 @@ pub fn roll_world(
         world.walls = walls_of_maze(&open, n, origin, def, corridor, wall_height, wall_thickness);
     }
     // Cells no site or road may use: a wall stands there, or it is
-    // the bunker's clearing (no road leads to the bunker).
+    // a bunker's clearing (no road leads to a bunker).
     let mut blocked = world.blocked_cells();
     for (i, b) in blocked.iter_mut().enumerate() {
-        if world.cell_center(i % cells, i / cells).distance(def.bunker) < def.bunker_clear {
+        if def.near_a_bunker(world.cell_center(i % cells, i / cells), def.bunker_clear) {
             *b = true;
         }
     }
@@ -594,7 +611,7 @@ pub fn roll_world(
             if blocked[world.index(col, row)] {
                 continue;
             }
-            if p.distance(def.bunker) < spacing.max(def.bunker_clear)
+            if def.near_a_bunker(p, spacing.max(def.bunker_clear))
                 || world
                     .sites
                     .iter()
@@ -1085,6 +1102,7 @@ mod tests {
             landmarks: 1,
             bunker: Vec2::ZERO,
             bunker_clear: 20.0,
+            bunkers: Vec::new(),
         }
     }
 
@@ -1115,6 +1133,46 @@ mod tests {
             // The jitter keeps a piece inside its own cell's half width
             // of 0.3 cells, so its cell is the one it was rolled in.
             assert!(!road[world.index(c, r)], "scatter on a road at {:?}", s.position);
+        }
+    }
+
+    /// Another bunker gets what the player's gets: flat ground at the
+    /// bunker's height, no site, no scatter, no road inside its clearing.
+    #[test]
+    fn other_bunkers_stand_in_clear_flat_ground() {
+        let (biomes, monuments) = registries();
+        let mut scattering = BiomeRegistry::default();
+        for name in ["lowland", "hills"] {
+            let mut def = biomes.def(name).unwrap().clone();
+            def.scatter = vec![crate::biome::ScatterDef {
+                size: Vec3::new(1.0, 3.0, 1.0),
+                color: [0.2, 0.4, 0.2],
+                density: 0.5,
+            }];
+            scattering.register(def).unwrap();
+        }
+        let other = Vec2::new(80.0, -60.0);
+        let mut def = def();
+        def.bunkers = vec![other];
+        for seed in 0..5 {
+            let world = roll_world(&def, seed, &biomes, &monuments).unwrap();
+            let (c, r) = world.cell_of(other);
+            assert_eq!(world.heights[world.index(c, r)], 0.0, "seed {seed}: flat at the bunker's height");
+            assert!(!world.is_water(c, r), "seed {seed}: on land");
+            let near = world.def.bunker_clear - world.def.cell;
+            for s in &world.sites {
+                assert!(s.position.distance(other) >= near, "seed {seed}: a site at the other bunker");
+            }
+            for s in world.scatter(&scattering) {
+                assert!(s.position.distance(other) >= near, "seed {seed}: scatter at the other bunker");
+            }
+            let road = world.road_cells();
+            for (i, on) in road.iter().enumerate() {
+                if *on {
+                    let p = world.cell_center(i % world.cells, i / world.cells);
+                    assert!(p.distance(other) >= near, "seed {seed}: a road at the other bunker");
+                }
+            }
         }
     }
 
