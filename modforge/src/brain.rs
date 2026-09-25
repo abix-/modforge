@@ -315,7 +315,9 @@ fn leash(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<D
 /// Rule 4: a hostile in sight: face it, close on it (hunters), hit
 /// it in reach. The activity is kept underneath (Endless).
 fn fight(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    let (who, at) = p.hostile?;
+    let Some((who, at)) = p.hostile else {
+        return remembered_threat(p, activity, combat);
+    };
     let began_at = match combat {
         CombatState::Fighting { began_at, .. } => *began_at,
         _ => p.position,
@@ -327,6 +329,39 @@ fn fight(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<De
     } else if p.behaviour == Behaviour::Hunter {
         actions.push(step_toward(p, at));
     }
+    Some(Decision {
+        activity: activity.clone(),
+        combat: CombatState::Fighting {
+            target: who,
+            began_at,
+        },
+        actions,
+        do_now: (p.asleep).then_some(Do::Wake),
+    })
+}
+
+/// How long a threat out of sight still drives a fight, in ticks (5 s).
+pub const THREAT_RECENT: u64 = 300;
+
+/// Rule 4, second branch (topside life.md "Perception with belief"):
+/// nothing hostile in sight, but a threat remembered in the last few
+/// seconds (seen, or the one who just hit me): a hunter goes to where it
+/// was, a guard turns to face it. Belief, not truth: the spot is where
+/// it was, not where it is.
+fn remembered_threat(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<Decision> {
+    let (who, at, when) = p.memory.last_threat?;
+    if p.now.saturating_sub(when) > THREAT_RECENT {
+        return None;
+    }
+    let began_at = match combat {
+        CombatState::Fighting { began_at, .. } => *began_at,
+        _ => p.position,
+    };
+    let actions = if p.behaviour == Behaviour::Hunter {
+        walk_toward(p, at)
+    } else {
+        turn_toward(p, at)
+    };
     Some(Decision {
         activity: activity.clone(),
         combat: CombatState::Fighting {
@@ -521,6 +556,21 @@ mod tests {
             personality,
             worth: &worth,
         }
+    }
+
+    #[test]
+    fn a_hunter_goes_after_a_threat_it_remembers_and_forgets_it_later() {
+        let mut memory = Memory::default();
+        memory.threat(ActorId(7), Vec3::new(0.0, 0.0, 10.0), 90);
+        let calm = calm();
+        let p = perception(&memory, &calm);
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert!(matches!(d.combat, CombatState::Fighting { target: ActorId(7), .. }));
+        assert!(d.actions.contains(&Action::Aim { x: 0.0, y: 10.0 }), "to where it was");
+        let mut later = perception(&memory, &calm);
+        later.now = 90 + THREAT_RECENT + 1;
+        let d = decide(&later, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert_eq!(d.combat, CombatState::None, "long gone");
     }
 
     #[test]

@@ -70,6 +70,25 @@ impl Known {
     }
 }
 
+/// What a remembered thing is worth for hunger or thirst, the RimWorld
+/// way (topside life.md "What things are good for"): a box does not
+/// feed anyone, the food seen inside it does. The best `food` number
+/// among the kinds seen inside, from the registry; zero for any other
+/// need, and zero until someone has looked inside.
+pub fn food_worth(known: &Known, need: Need, items: &crate::item::ItemRegistry) -> f32 {
+    let Some(held) = &known.held else {
+        return 0.0;
+    };
+    held.iter()
+        .filter_map(|kind| items.def(kind).and_then(|d| d.food))
+        .map(|food| match need {
+            Need::Hunger => food.hunger,
+            Need::Thirst => food.thirst,
+            Need::Rest | Need::Safety => 0.0,
+        })
+        .fold(0.0, f32::max)
+}
+
 /// A person's memory: things seen, grudges, the last threat.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Memory {
@@ -181,6 +200,37 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_box_is_worth_the_food_seen_inside_it() {
+        use crate::item::{FoodStats, ItemDef, ItemKind, ItemRegistry};
+        let mut items = ItemRegistry::default();
+        items
+            .register(ItemDef {
+                name: "canned food".to_string(),
+                unique: false,
+                kind: ItemKind::Food,
+                max_stack: 10,
+                quality_siblings: 1,
+                combat: None,
+                food: Some(FoodStats {
+                    hunger: 50.0,
+                    thirst: 0.0,
+                    health: 5.0,
+                }),
+                storage: None,
+                armor: None,
+                good_for: Default::default(),
+                model: None,
+            })
+            .unwrap();
+        let mut memory = Memory::default();
+        memory.see(1, "storage box", Vec3::ZERO, 0);
+        assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0, "never looked inside");
+        memory.checked(1, vec!["scrap".to_string(), "canned food".to_string()], 5);
+        assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 50.0, "the cans inside");
+        assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 0.0);
+    }
 
     /// The registry's answer in these tests: a storage box is worth
     /// 50 for hunger, nothing else is worth anything.
