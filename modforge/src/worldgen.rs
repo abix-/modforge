@@ -665,7 +665,11 @@ pub fn roll_world(
             .min_by(|a, b| a.distance(from).total_cmp(&b.distance(from)))
             .copied()
         {
-            let points = path(&world, &blocked, from, to)?;
+            // A site cut off by water or walls simply has no road (roads
+            // go where history put them); the world still rolls.
+            let Ok(points) = path(&world, &blocked, from, to) else {
+                continue;
+            };
             world.roads.push(Road { site: i, points });
         }
         connected.push(from);
