@@ -277,18 +277,47 @@ pub fn pellet_directions(
     let spread = spread_degrees.to_radians();
     (0..pellets)
         .map(|i| {
-            // Two cheap hashes per pellet for angle and radius.
-            let h = seed
-                .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-                .wrapping_add(u64::from(i).wrapping_mul(0xBF58_476D_1CE4_E5B9));
-            let a = (h >> 11) as f32 / (1u64 << 53) as f32;
-            let r = ((h.rotate_left(29) >> 11) as f32 / (1u64 << 53) as f32).sqrt();
+            let (a, r) = pellet_roll(seed, i);
             let angle = a * std::f32::consts::TAU;
-            let off = r * spread;
+            let off = r.sqrt() * spread;
             (forward + (right * angle.cos() + up * angle.sin()) * off.tan()).normalize()
         })
         .collect()
 }
+
+/// Two cheap hashes per pellet, each 0 to 1: the one seeded pattern
+/// both spreads draw from.
+fn pellet_roll(seed: u64, i: u32) -> (f32, f32) {
+    let h = seed
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        .wrapping_add(u64::from(i).wrapping_mul(0xBF58_476D_1CE4_E5B9));
+    let a = (h >> 11) as f32 / (1u64 << 53) as f32;
+    let r = (h.rotate_left(29) >> 11) as f32 / (1u64 << 53) as f32;
+    (a, r)
+}
+
+/// The directions of one shot's pellets on the ground, seen from above
+/// (topside combat.md "Guns"): the aim turned by up to
+/// `spread_degrees` either way, from the same seeded pattern as
+/// `pellet_directions`. One pellet with no spread is the aim itself.
+pub fn pellet_directions_2d(forward: glam::Vec2, spread_degrees: f32, pellets: u32, seed: u64) -> Vec<glam::Vec2> {
+    let forward = forward.normalize_or_zero();
+    if pellets <= 1 || spread_degrees <= 0.0 {
+        return vec![forward; pellets.max(1) as usize];
+    }
+    let spread = spread_degrees.to_radians();
+    (0..pellets)
+        .map(|i| {
+            let (a, _) = pellet_roll(seed, i);
+            glam::Vec2::from_angle((a * 2.0 - 1.0) * spread).rotate(forward)
+        })
+        .collect()
+}
+
+/// How fast a bullet flies, in metres per second: slow enough to see
+/// from above (topside combat.md "Guns": every shot a visible bullet).
+/// Tuning.
+pub const BULLET_SPEED: f32 = 60.0;
 
 /// What one resolved hit did.
 #[derive(Clone, Debug, PartialEq)]
@@ -610,6 +639,19 @@ mod tests {
             worn.get(crate::item::EquipSlot::Chest).cloned(),
         );
         assert_eq!(base.for_area(BodyArea::Head, &wrong, armor_of).armor, 0.0);
+    }
+
+    #[test]
+    fn flat_pellets_spread_inside_the_angle_and_repeat_by_seed() {
+        let aim = glam::Vec2::X;
+        assert_eq!(pellet_directions_2d(aim, 0.0, 1, 7), vec![aim]);
+        let a = pellet_directions_2d(aim, 6.0, 6, 7);
+        assert_eq!(a, pellet_directions_2d(aim, 6.0, 6, 7), "same seed, same pattern");
+        assert_ne!(a, pellet_directions_2d(aim, 6.0, 6, 8), "another seed differs");
+        for d in &a {
+            assert!((d.length() - 1.0).abs() < 1e-4);
+            assert!(d.angle_to(aim).abs() <= 6f32.to_radians() + 1e-4, "{d} strays");
+        }
     }
 
     #[test]
