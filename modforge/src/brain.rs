@@ -81,6 +81,9 @@ pub struct Perception<'a> {
     pub hostile: Option<(ActorId, Vec3)>,
     /// Within reach of the current activity's target.
     pub arrived: bool,
+    /// The storm is coming or here (topside design.md "The storm"):
+    /// hide or die.
+    pub storm_coming: bool,
     pub memory: &'a Memory,
     pub personality: &'a Personality,
     /// The registry's answer for a remembered thing: how much its
@@ -145,6 +148,9 @@ pub fn decide(
     combat: &CombatState,
     roll: &mut Roll,
 ) -> Decision {
+    if let Some(d) = hide(p) {
+        return d;
+    }
     if let Some(d) = arrived(p, activity, combat) {
         return d;
     }
@@ -169,6 +175,22 @@ pub fn decide(
         return d;
     }
     wander(p, activity, combat, roll)
+}
+
+/// Rule 0: the storm is coming: hide or die, before anything else (the
+/// player obeys the same storm). Home is the shelter a person knows;
+/// at home they stay put. With no home there is nowhere to go.
+fn hide(p: &Perception) -> Option<Decision> {
+    if !p.storm_coming {
+        return None;
+    }
+    let home = p.home?;
+    Some(Decision {
+        activity: Activity::GoHome,
+        combat: CombatState::None,
+        actions: if p.at_home { vec![] } else { walk_toward(p, home) },
+        do_now: None,
+    })
 }
 
 /// Rule 1: at the target, start doing; done doing, stop.
@@ -494,10 +516,26 @@ mod tests {
             asleep: false,
             hostile: None,
             arrived: false,
+            storm_coming: false,
             memory,
             personality,
             worth: &worth,
         }
+    }
+
+    #[test]
+    fn a_coming_storm_sends_a_person_home_over_a_fight() {
+        let memory = Memory::default();
+        let calm = calm();
+        let mut p = perception(&memory, &calm);
+        p.home = Some(Vec3::new(0.0, 0.0, 30.0));
+        p.at_home = false;
+        p.hostile = Some((ActorId(4), Vec3::new(2.0, 0.0, 0.0)));
+        p.storm_coming = true;
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert_eq!(d.activity, Activity::GoHome);
+        assert_eq!(d.combat, CombatState::None, "no fighting in a storm");
+        assert!(d.actions.contains(&Action::Aim { x: 0.0, y: 30.0 }), "heading home");
     }
 
     fn has_move(d: &Decision) -> bool {

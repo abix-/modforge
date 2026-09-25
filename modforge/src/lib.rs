@@ -8,13 +8,13 @@
 
 pub mod actions;
 pub mod actor;
+pub mod ai_orders;
 pub mod annex;
 pub mod args;
 pub mod biome;
 pub mod brain;
 pub mod client;
 pub mod combat;
-pub mod ai_orders;
 pub mod counters;
 pub mod crafting;
 pub mod debug;
@@ -47,6 +47,7 @@ pub mod server;
 pub mod settings;
 pub mod shutdown;
 pub mod snapshots;
+pub mod storm;
 pub mod storyteller;
 pub mod structure;
 pub mod studs;
