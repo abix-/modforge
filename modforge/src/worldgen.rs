@@ -304,6 +304,12 @@ impl World {
         }
     }
 
+    /// The seed the monument at site `index` rolls from, so the same
+    /// world always stands the same monument at the same site.
+    pub fn site_seed(&self, index: usize) -> u64 {
+        self.seed ^ (index as u64 + 1).wrapping_mul(0x9E37_79B9)
+    }
+
     /// Per cell, whether a road runs over it: `ROAD_HALF_WIDTH` cells
     /// on either side of every road point.
     pub fn road_cells(&self) -> Vec<bool> {
