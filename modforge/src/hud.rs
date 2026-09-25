@@ -21,6 +21,8 @@ pub enum InteractKind {
     Container,
     /// A note lying where someone left it: E reads it where it is.
     Read,
+    /// A crafting station: E opens its recipes.
+    Station(crate::crafting::StationKind),
 }
 
 /// What the player is looking at right now.
@@ -48,6 +50,7 @@ pub fn prompt_for(kind: InteractKind, item_name: Option<&str>, item_count: Optio
         },
         InteractKind::Container => "[E] open".to_string(),
         InteractKind::Read => "[E] read".to_string(),
+        InteractKind::Station(_) => "[E] craft".to_string(),
     };
     Prompt {
         text,
@@ -68,6 +71,9 @@ pub enum InteractResult {
     OpenContainer,
     /// The note panel toggled; its words are in `HudState.reading`.
     Read,
+    /// The station panel toggled; the consumer shows that station's
+    /// recipes while it is open.
+    OpenStation,
 }
 
 /// Execute an interaction. modforge decides what happens; the
@@ -108,6 +114,10 @@ pub fn interact(
             };
             InteractResult::Read
         }
+        InteractKind::Station(_) => {
+            toggle_panel(state, OpenPanel::Station);
+            InteractResult::OpenStation
+        }
     }
 }
 
@@ -119,6 +129,8 @@ pub enum OpenPanel {
     Inventory,
     /// A note being read.
     Note,
+    /// A crafting station's recipes.
+    Station,
 }
 
 /// The vital bars the HUD always shows.
