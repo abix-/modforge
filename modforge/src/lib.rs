@@ -33,6 +33,7 @@ pub mod memory;
 pub mod mission;
 pub mod monument;
 pub mod path;
+pub mod walk;
 pub mod ops;
 pub mod patterns;
 pub mod persona;
