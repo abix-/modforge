@@ -14,7 +14,7 @@
 use glam::Vec3;
 
 use crate::actions::Action;
-use crate::actor::{ActorId, Behaviour, Personality, TURN_RATE};
+use crate::actor::{ActorId, Behaviour, Personality};
 use crate::memory::{Known, Memory};
 use crate::monument::Roll;
 use crate::survival::{Need, SurvivalStats};
@@ -64,7 +64,8 @@ pub enum CombatState {
 }
 
 /// What the consumer saw this think. Positions are world metres; y
-/// is up; facing is the yaw the actions' `Look` turns.
+/// is up and the ground is x and z. The brain steers with `Aim` at a
+/// ground point and `Move` along the ground's x and z.
 #[derive(Clone)]
 pub struct Perception<'a> {
     pub now: u64,
@@ -302,7 +303,7 @@ fn fight(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<De
     if distance <= reach_of(p) {
         actions.push(Action::Attack);
     } else if p.behaviour == Behaviour::Hunter {
-        actions.push(Action::Move { x: 0.0, y: 1.0 });
+        actions.push(step_toward(p, at));
     }
     Some(Decision {
         activity: activity.clone(),
@@ -433,40 +434,31 @@ fn reach_of(p: &Perception) -> f32 {
     1.8 * p.personality.range_mult()
 }
 
-/// Face a point: the short way round, capped per tick.
+/// Face a point: aim at it on the ground (topside combat.md: a person
+/// faces what they aim at, seen from above).
 fn turn_toward(p: &Perception, to: Vec3) -> Vec<Action> {
-    let dx = to.x - p.position.x;
-    let dz = to.z - p.position.z;
-    if dx.abs() < 1e-4 && dz.abs() < 1e-4 {
+    if (to - p.position).with_y(0.0).length() < 1e-4 {
         return vec![];
     }
-    // The world's forward is -z, yaw turns about y.
-    let wanted = (-dx).atan2(-dz);
-    let mut turn = wanted - p.yaw;
-    while turn > std::f32::consts::PI {
-        turn -= std::f32::consts::TAU;
-    }
-    while turn < -std::f32::consts::PI {
-        turn += std::f32::consts::TAU;
-    }
-    let turn = turn.clamp(-TURN_RATE, TURN_RATE);
-    if turn == 0.0 {
-        return vec![];
-    }
-    vec![Action::Look {
-        yaw: turn,
-        pitch: 0.0,
-    }]
+    vec![Action::Aim { x: to.x, y: to.z }]
 }
 
-/// Face a point and walk forward, unless already there.
+/// A step toward a point along the ground: the move's x is the
+/// world's x and its y is the world's z, the view's right and up seen
+/// from above.
+fn step_toward(p: &Perception, to: Vec3) -> Action {
+    let d = (to - p.position).with_y(0.0).normalize_or_zero();
+    Action::Move { x: d.x, y: d.z }
+}
+
+/// Face a point and walk to it, unless already there.
 fn walk_toward(p: &Perception, to: Vec3) -> Vec<Action> {
     let flat = (to - p.position).with_y(0.0);
     if flat.length() <= REACH {
         return vec![];
     }
     let mut actions = turn_toward(p, to);
-    actions.push(Action::Move { x: 0.0, y: 1.0 });
+    actions.push(step_toward(p, to));
     actions
 }
 
@@ -510,6 +502,26 @@ mod tests {
 
     fn has_move(d: &Decision) -> bool {
         d.actions.iter().any(|a| matches!(a, Action::Move { .. }))
+    }
+
+    #[test]
+    fn a_hunter_aims_at_what_it_hunts_and_steps_toward_it_on_the_ground() {
+        let memory = Memory::default();
+        let calm = calm();
+        let mut p = perception(&memory, &calm);
+        let at = Vec3::new(6.0, 0.0, 8.0);
+        p.hostile = Some((ActorId(3), at));
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert!(d.actions.contains(&Action::Aim { x: 6.0, y: 8.0 }), "{:?}", d.actions);
+        let step = d
+            .actions
+            .iter()
+            .find_map(|a| match a {
+                Action::Move { x, y } => Some((*x, *y)),
+                _ => None,
+            })
+            .expect("closes in");
+        assert!((step.0 - 0.6).abs() < 1e-4 && (step.1 - 0.8).abs() < 1e-4, "{step:?}");
     }
 
     #[test]
