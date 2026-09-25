@@ -756,6 +756,141 @@ pub fn doors_of(def: &StructureDef) -> Vec<DoorPlace> {
     out
 }
 
+/// What stands on one tile of a structure's ground floor, seen from
+/// above (topside docs/pathing.md "One grid": a tile is 1 by 1 m and
+/// buildings sit on the tiles).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TileKind {
+    Floor,
+    Wall,
+    Door,
+    Furniture,
+}
+
+impl TileKind {
+    /// A body cannot stand on it (a door is opened, so it can).
+    pub fn solid(self) -> bool {
+        matches!(self, TileKind::Wall | TileKind::Furniture)
+    }
+
+    /// Which wins when two things land on one tile: a doorway through
+    /// a wall, a wall over another room's floor.
+    fn rank(self) -> u8 {
+        match self {
+            TileKind::Floor => 0,
+            TileKind::Furniture => 1,
+            TileKind::Wall => 2,
+            TileKind::Door => 3,
+        }
+    }
+}
+
+/// A run of tiles of one kind and colour along one row: tiles `from`
+/// up to (not including) `to` on row `row`, structure-local tiles (tile
+/// (x, z) covers x to x + 1 and z to z + 1 metres).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TileRun {
+    pub kind: TileKind,
+    pub row: i32,
+    pub from: i32,
+    pub to: i32,
+    pub color: Rgb,
+}
+
+/// A structure's ground floor on the tile grid: every room's size
+/// rounded to whole tiles with a ring of wall tiles round it, every
+/// doorway cut through the ring as whole tiles (at least one), a window
+/// (a raised sill) left as wall, furniture on the tiles it covers. Where
+/// two things land on one tile, a door beats a wall, a wall beats
+/// furniture and floor. Rooms above or below the ground are not on it.
+/// Runs along each row, so a consumer draws and collides runs, not
+/// single tiles.
+pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
+    use std::collections::HashMap;
+    let mut tiles: HashMap<(i32, i32), (TileKind, Rgb)> = HashMap::new();
+    let mut put = |x: i32, z: i32, kind: TileKind, color: Rgb| {
+        let keep = tiles.get(&(x, z)).is_some_and(|(k, _)| k.rank() > kind.rank());
+        if !keep {
+            tiles.insert((x, z), (kind, color));
+        }
+    };
+    for room in def.rooms.iter().filter(|r| r.origin.y.abs() < 0.5) {
+        let w = room.interior.x.round().max(1.0) as i32;
+        let l = room.interior.z.round().max(1.0) as i32;
+        let x0 = (room.origin.x - w as f32 / 2.0).round() as i32;
+        let z0 = (room.origin.z - l as f32 / 2.0).round() as i32;
+        for z in z0..z0 + l {
+            for x in x0..x0 + w {
+                put(x, z, TileKind::Floor, def.floor_color);
+            }
+        }
+        for x in x0 - 1..=x0 + w {
+            put(x, z0 - 1, TileKind::Wall, def.wall_color);
+            put(x, z0 + l, TileKind::Wall, def.wall_color);
+        }
+        for z in z0..z0 + l {
+            put(x0 - 1, z, TileKind::Wall, def.wall_color);
+            put(x0 + w, z, TileKind::Wall, def.wall_color);
+        }
+        for o in room.openings.iter().filter(|o| o.sill <= 0.0) {
+            let n = o.width.round().max(1.0) as i32;
+            let kind = if o.door { TileKind::Door } else { TileKind::Floor };
+            let color = if o.door { DOOR_COLOR } else { def.floor_color };
+            match o.side {
+                Side::North | Side::South => {
+                    let row = if o.side == Side::North { z0 - 1 } else { z0 + l };
+                    let a = (room.origin.x + o.offset - n as f32 / 2.0).round() as i32;
+                    for x in a..a + n {
+                        put(x, row, kind, color);
+                    }
+                }
+                Side::East | Side::West => {
+                    let col = if o.side == Side::West { x0 - 1 } else { x0 + w };
+                    let a = (room.origin.z + o.offset - n as f32 / 2.0).round() as i32;
+                    for z in a..a + n {
+                        put(col, z, kind, color);
+                    }
+                }
+            }
+        }
+    }
+    for f in def.furniture.iter().filter(|f| f.center.y - f.size.y / 2.0 < BODY_HEIGHT) {
+        let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
+        let mut any = false;
+        for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+            for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+                let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
+                if cx >= lo.x && cx <= hi.x && cz >= lo.z && cz <= hi.z {
+                    put(x, z, TileKind::Furniture, f.color);
+                    any = true;
+                }
+            }
+        }
+        if !any {
+            put(f.center.x.floor() as i32, f.center.z.floor() as i32, TileKind::Furniture, f.color);
+        }
+    }
+    let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles.into_iter().collect();
+    sorted.sort_by_key(|((x, z), _)| (*z, *x));
+    let mut runs: Vec<TileRun> = Vec::new();
+    for ((x, z), (kind, color)) in sorted {
+        match runs.last_mut() {
+            Some(r) if r.row == z && r.to == x && r.kind == kind && r.color == color => r.to += 1,
+            _ => runs.push(TileRun {
+                kind,
+                row: z,
+                from: x,
+                to: x + 1,
+                color,
+            }),
+        }
+    }
+    runs
+}
+
+/// A door's colour on the tile plan.
+pub const DOOR_COLOR: Rgb = [0.35, 0.25, 0.15];
+
 /// The part containing a structure-local point, if any: the hit to
 /// part lookup. A point on a shared face belongs to the first part
 /// in list order.
@@ -1696,6 +1831,56 @@ mod shape_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A 6 by 8 m room with a 1.2 m door north and a bed: 48 floor
+    /// tiles, a ring of wall tiles, one door tile in the north ring, the
+    /// bed on the tiles it covers.
+    #[test]
+    fn a_room_on_the_tile_grid() {
+        let def = StructureDef {
+            name: "room".to_string(),
+            wall_color: [0.5; 3],
+            floor_color: [0.3; 3],
+            rooms: vec![RoomDef {
+                origin: Vec3::ZERO,
+                interior: Vec3::new(6.0, 3.0, 8.0),
+                wall_thickness: 0.2,
+                openings: vec![Opening {
+                    side: Side::North,
+                    offset: 0.0,
+                    width: 1.2,
+                    sill: 0.0,
+                    door: true,
+                }],
+                floor: true,
+                ceiling: true,
+            }],
+            stairs: vec![],
+            furniture: vec![SolidDef {
+                center: Vec3::new(-2.4, 0.25, 3.0),
+                size: Vec3::new(1.0, 0.5, 2.0),
+                color: [0.3, 0.35, 0.55],
+            }],
+            lights: vec![],
+            parts: vec![],
+        };
+        let runs = tile_plan(&def);
+        let count = |kind| runs.iter().filter(|r| r.kind == kind).map(|r| r.to - r.from).sum::<i32>();
+        assert_eq!(count(TileKind::Door), 1, "one door tile");
+        assert_eq!(count(TileKind::Furniture), 2, "the bed on two tiles");
+        assert_eq!(count(TileKind::Floor), 48 - 2, "the floor under all but the bed");
+        // The ring round 6 by 8 is 8 by 10 less the inside: 32 tiles, one a door.
+        assert_eq!(count(TileKind::Wall), 32 - 1);
+        let door = runs.iter().find(|r| r.kind == TileKind::Door).unwrap();
+        assert_eq!(door.row, -5, "in the north wall");
+        // Every run on whole tiles, and no two runs on one tile.
+        let mut seen = std::collections::HashSet::new();
+        for r in &runs {
+            for x in r.from..r.to {
+                assert!(seen.insert((x, r.row)), "tile ({x}, {}) twice", r.row);
+            }
+        }
+    }
 
     fn room(origin: Vec3) -> RoomDef {
         RoomDef {

@@ -120,6 +120,11 @@ pub struct Perception<'a> {
     /// remembers the kind). The consumer builds it from its
     /// registries; the brain never reads the world.
     pub worth: &'a dyn Fn(&Known, Need) -> f32,
+    /// Whether a person can stand at a point (topside pathing.md: never
+    /// head for a place nobody can stand on). The consumer answers from
+    /// its tiles; a stroll or a trip out only ever picks a spot where
+    /// this holds.
+    pub standable: &'a dyn Fn(Vec3) -> bool,
 }
 
 impl std::fmt::Debug for Perception<'_> {
@@ -598,14 +603,25 @@ pub const LOOK_FAR: f32 = 150.0;
 /// way. What is seen goes into memory and the rules that use memory take
 /// over. Arriving with nothing found, the next think rolls another way.
 fn head_out(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Decision {
-    // Already on the way out: keep going the same way.
+    // Already on the way out: keep going the same way. Otherwise a spot
+    // someone can stand on, or stay put this think.
     let to = match activity {
-        Activity::Wander { to } if !p.arrived => *to,
+        Activity::Wander { to } if !p.arrived => Some(*to),
         _ => {
             let centre = p.home.unwrap_or(p.position);
-            let angle = roll.measure(0.0, std::f32::consts::TAU);
-            centre + Vec3::new(angle.cos() * LOOK_FAR, 0.0, angle.sin() * LOOK_FAR)
+            standable_spot(p, roll, |roll| {
+                let angle = roll.measure(0.0, std::f32::consts::TAU);
+                centre + Vec3::new(angle.cos() * LOOK_FAR, 0.0, angle.sin() * LOOK_FAR)
+            })
         }
+    };
+    let Some(to) = to else {
+        return Decision {
+            activity: Activity::Idle,
+            combat,
+            actions: vec![],
+            do_now: None,
+        };
     };
     Decision {
         activity: Activity::Wander { to },
@@ -714,15 +730,34 @@ fn wander(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut R
     }
     let centre = p.home.unwrap_or(p.position);
     let radius = p.behaviour.home_radius();
-    let angle = roll.measure(0.0, std::f32::consts::TAU);
-    let distance = roll.measure(radius * 0.3, radius);
-    let to = centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance);
+    // Only a spot someone can stand on; none in a few tries, stand a
+    // while.
+    let Some(to) = standable_spot(p, roll, |roll| {
+        let angle = roll.measure(0.0, std::f32::consts::TAU);
+        let distance = roll.measure(radius * 0.3, radius);
+        centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
+    }) else {
+        return Decision {
+            activity: Activity::Idle,
+            combat,
+            actions: vec![],
+            do_now: None,
+        };
+    };
     Decision {
         activity: Activity::Wander { to },
         combat,
         actions: walk_toward(p, to),
         do_now: None,
     }
+}
+
+/// How many spots are rolled looking for one a person can stand on.
+const SPOT_TRIES: usize = 8;
+
+/// The first rolled spot a person can stand on, within `SPOT_TRIES`.
+fn standable_spot(p: &Perception, roll: &mut Roll, mut spot: impl FnMut(&mut Roll) -> Vec3) -> Option<Vec3> {
+    (0..SPOT_TRIES).map(|_| spot(roll)).find(|to| (p.standable)(*to))
 }
 
 fn reach_of(p: &Perception) -> f32 {
@@ -799,7 +834,30 @@ mod tests {
             memory,
             personality,
             worth: &worth,
+            standable: &|_| true,
         }
+    }
+
+    /// A stroll and a trip out only pick a spot someone can stand on;
+    /// with none standable, the person stays.
+    #[test]
+    fn strolls_and_trips_out_only_pick_standable_spots() {
+        let memory = Memory::default();
+        let personality = calm();
+        let mut p = perception(&memory, &personality);
+        let east = |at: Vec3| at.x > 0.0;
+        p.standable = &east;
+        p.store = Some((1, Vec3::ZERO));
+        p.bunker_short = vec![Need::Hunger];
+        for seed in 0..40 {
+            if let Activity::Wander { to } = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(seed)).activity {
+                assert!(to.x > 0.0, "seed {seed}: headed for {to}, nobody can stand there");
+            }
+        }
+        let nowhere = |_: Vec3| false;
+        p.standable = &nowhere;
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert_eq!(d.activity, Activity::Idle, "nowhere standable: stays");
     }
 
     /// Nothing known to answer a need (theirs or their bunker's): they
