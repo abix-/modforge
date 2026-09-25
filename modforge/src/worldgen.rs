@@ -11,13 +11,12 @@
 //! Games' "Making maps with noise"; Rust's roads laid between
 //! monuments over the heightmap by easy slope.
 
-use std::collections::{BinaryHeap, HashMap};
-
 use glam::{Vec2, Vec3};
 use noise::{NoiseFn, Simplex};
 
 use crate::biome::BiomeRegistry;
 use crate::monument::Roll;
+use crate::path::{Cell, grid_path};
 use crate::structure::Rgb;
 
 /// One rule mapping a band of height and moisture to a biome name.
@@ -678,78 +677,30 @@ pub fn roll_world(
 /// (Rust's roads follow the easy ground), never through water or a
 /// `blocked` cell (a wall).
 fn path(world: &World, blocked: &[bool], from: Vec2, to: Vec2) -> Result<Vec<Vec2>, String> {
-    #[derive(PartialEq)]
-    struct Open(f32, usize);
-    impl Eq for Open {}
-    impl PartialOrd for Open {
-        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-    impl Ord for Open {
-        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-            other.0.total_cmp(&self.0)
-        }
-    }
-    let n = world.cells;
-    let start = {
-        let (c, r) = world.cell_of(from);
-        r * n + c
-    };
-    let goal = {
-        let (c, r) = world.cell_of(to);
-        r * n + c
-    };
-    let center = |i: usize| world.cell_center(i % n, i / n);
-    let mut best: HashMap<usize, f32> = HashMap::new();
-    let mut came: HashMap<usize, usize> = HashMap::new();
-    let mut open = BinaryHeap::new();
-    best.insert(start, 0.0);
-    open.push(Open(center(start).distance(center(goal)), start));
     const SLOPE_COST: f32 = 8.0;
-    while let Some(Open(_, i)) = open.pop() {
-        if i == goal {
-            let mut points = vec![center(i)];
-            let mut at = i;
-            while let Some(&p) = came.get(&at) {
-                points.push(center(p));
-                at = p;
-            }
-            points.reverse();
-            return Ok(points);
+    let n = world.cells as i32;
+    let cell = |p: Vec2| {
+        let (c, r) = world.cell_of(p);
+        (c as i32, r as i32)
+    };
+    let (start, goal) = (cell(from), cell(to));
+    let center = |c: Cell| world.cell_center(c.0 as usize, c.1 as usize);
+    // Roads keep off water and walls, and pay for every metre climbed.
+    let step = |a: Cell, b: Cell| {
+        if b.0 < 0 || b.1 < 0 || b.0 >= n || b.1 >= n {
+            return None;
         }
-        let g = best[&i];
-        let (c, r) = (i % n, i / n);
-        for (dc, dr) in [
-            (-1isize, 0isize),
-            (1, 0),
-            (0, -1),
-            (0, 1),
-            (-1, -1),
-            (1, -1),
-            (-1, 1),
-            (1, 1),
-        ] {
-            let (nc, nr) = (c as isize + dc, r as isize + dr);
-            if nc < 0 || nr < 0 || nc >= n as isize || nr >= n as isize {
-                continue;
-            }
-            let (nc, nr) = (nc as usize, nr as usize);
-            let j = nr * n + nc;
-            if world.is_water(nc, nr) || (blocked[j] && j != goal) {
-                continue;
-            }
-            let step = world.def.cell * if dc != 0 && dr != 0 { 1.414 } else { 1.0 };
-            let rise = (world.height_at_cell(nc, nr) - world.height_at_cell(c, r)).abs();
-            let cost = g + step + rise * SLOPE_COST;
-            if best.get(&j).is_none_or(|&b| cost < b) {
-                best.insert(j, cost);
-                came.insert(j, i);
-                open.push(Open(cost + center(j).distance(center(goal)), j));
-            }
+        let (bc, br) = (b.0 as usize, b.1 as usize);
+        if world.is_water(bc, br) || (blocked[world.index(bc, br)] && b != goal) {
+            return None;
         }
-    }
-    Err("no road: the site is cut off by water or walls".to_string())
+        let flat = world.def.cell * if a.0 != b.0 && a.1 != b.1 { 1.414 } else { 1.0 };
+        let rise = (world.height_at_cell(bc, br) - world.height_at_cell(a.0 as usize, a.1 as usize)).abs();
+        Some(flat + rise * SLOPE_COST)
+    };
+    grid_path(start, goal, step, |c| center(c).distance(center(goal)), usize::MAX)
+        .map(|cells| cells.into_iter().map(center).collect())
+        .ok_or_else(|| "no road: the site is cut off by water or walls".to_string())
 }
 
 /// Carve a maze of `n` by `n` cells by recursive backtracker: walk
