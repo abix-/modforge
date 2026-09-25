@@ -84,6 +84,10 @@ pub struct Perception<'a> {
     /// The storm is coming or here (topside design.md "The storm"):
     /// hide or die.
     pub storm_coming: bool,
+    /// Something in their own bags answers hunger, and thirst: they
+    /// eat and drink what they carry before going for more.
+    pub carries_food: bool,
+    pub carries_drink: bool,
     pub memory: &'a Memory,
     pub personality: &'a Personality,
     /// The registry's answer for a remembered thing: how much its
@@ -118,6 +122,10 @@ pub enum Do {
     /// Look inside the known thing `key` and note what it held.
     Check {
         key: u64,
+    },
+    /// Eat or drink something they carry that answers `need`.
+    EatCarried {
+        need: Need,
     },
 }
 
@@ -165,6 +173,9 @@ pub fn decide(
     }
     // Out of a fight: the life.
     let combat = CombatState::None;
+    if let Some(d) = eat_carried(p, activity) {
+        return d;
+    }
     if let Some(d) = keep_going(p, activity, combat) {
         return d;
     }
@@ -190,6 +201,25 @@ fn hide(p: &Perception) -> Option<Decision> {
         combat: CombatState::None,
         actions: if p.at_home { vec![] } else { walk_toward(p, home) },
         do_now: None,
+    })
+}
+
+/// Hungry or thirsty with the answer in their own bags: eat or drink
+/// it where they stand, the way the player does, and carry on with
+/// what they were doing.
+fn eat_carried(p: &Perception, activity: &Activity) -> Option<Decision> {
+    let need = if p.needs.hunger < NEED_LINE && p.carries_food {
+        Need::Hunger
+    } else if p.needs.thirst < NEED_LINE && p.carries_drink {
+        Need::Thirst
+    } else {
+        return None;
+    };
+    Some(Decision {
+        activity: activity.clone(),
+        combat: CombatState::None,
+        actions: vec![],
+        do_now: Some(Do::EatCarried { need }),
     })
 }
 
@@ -578,10 +608,34 @@ mod tests {
             hostile: None,
             arrived: false,
             storm_coming: false,
+            carries_food: false,
+            carries_drink: false,
             memory,
             personality,
             worth: &worth,
         }
+    }
+
+    /// Hungry with a can in the bag: eat it where they stand rather than
+    /// walk to the box they know; not hungry, carry it.
+    #[test]
+    fn a_hungry_person_eats_what_it_carries_first() {
+        let mut memory = Memory::default();
+        memory.see(7, "storage box", Vec3::new(10.0, 0.0, 0.0), 1);
+        memory.checked(7, vec!["canned food".to_string()], 1);
+        let personality = calm();
+        let mut p = perception(&memory, &personality);
+        p.needs.hunger = 20.0;
+        p.carries_food = true;
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert_eq!(d.do_now, Some(Do::EatCarried { need: Need::Hunger }));
+        p.needs.hunger = 80.0;
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert_ne!(d.do_now, Some(Do::EatCarried { need: Need::Hunger }), "not hungry, it keeps it");
+        p.needs.hunger = 20.0;
+        p.carries_food = false;
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert!(matches!(d.activity, Activity::Going { key: 7, .. }), "nothing carried: to the box");
     }
 
     #[test]
