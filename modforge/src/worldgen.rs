@@ -18,6 +18,7 @@ use noise::{NoiseFn, Simplex};
 
 use crate::biome::BiomeRegistry;
 use crate::monument::Roll;
+use crate::structure::Rgb;
 
 /// One rule mapping a band of height and moisture to a biome name.
 /// The first rule that matches a cell wins, so order them from the
@@ -302,6 +303,97 @@ impl World {
             }
         }
     }
+
+    /// Per cell, whether a road runs over it: `ROAD_HALF_WIDTH` cells
+    /// on either side of every road point.
+    pub fn road_cells(&self) -> Vec<bool> {
+        let n = self.cells;
+        let w = ROAD_HALF_WIDTH as isize;
+        let mut road = vec![false; n * n];
+        for r in &self.roads {
+            for p in &r.points {
+                let (c, row) = self.cell_of(*p);
+                for dr in -w..=w {
+                    for dc in -w..=w {
+                        let (cc, rr) = (c as isize + dc, row as isize + dr);
+                        if cc >= 0 && rr >= 0 && (cc as usize) < n && (rr as usize) < n {
+                            road[rr as usize * n + cc as usize] = true;
+                        }
+                    }
+                }
+            }
+        }
+        road
+    }
+
+    /// The nature a biome scatters over the land (trees, rocks): per
+    /// cell, each of the biome's scatter defs stands with its density,
+    /// decided by a hash of the seed and the cell so the same seed
+    /// scatters the same. Never on a road, a wall, or water, inside
+    /// the bunker's clear ground, or on a site's own ground.
+    pub fn scatter(&self, biomes: &BiomeRegistry) -> Vec<Scattered> {
+        let n = self.cells;
+        let road = self.road_cells();
+        let walled = self.blocked_cells();
+        let mut out = Vec::new();
+        for r in 0..n {
+            for c in 0..n {
+                let i = self.index(c, r);
+                if road[i] || walled[i] || self.is_water(c, r) {
+                    continue;
+                }
+                let Some(biome) = biomes.def(self.biome_at_cell(c, r)) else {
+                    continue;
+                };
+                let p = self.cell_center(c, r);
+                if p.distance(self.def.bunker) < self.def.bunker_clear
+                    || self.sites.iter().any(|s| s.position.distance(p) < s.spacing * 0.3)
+                {
+                    continue;
+                }
+                for (k, spec) in biome.scatter.iter().enumerate() {
+                    let h = cell_hash(self.seed, c, r, k);
+                    let roll = (h & 0xFFFF) as f32 / 65535.0;
+                    if roll >= spec.density {
+                        continue;
+                    }
+                    let jitter = Vec2::new(
+                        ((h >> 16) & 0xFF) as f32 / 255.0 - 0.5,
+                        ((h >> 24) & 0xFF) as f32 / 255.0 - 0.5,
+                    ) * self.def.cell
+                        * 0.6;
+                    out.push(Scattered {
+                        position: p + jitter,
+                        size: spec.size,
+                        color: spec.color,
+                    });
+                }
+            }
+        }
+        out
+    }
+}
+
+/// Cells on either side of a road's centre line that are road.
+pub const ROAD_HALF_WIDTH: usize = 1;
+
+/// One piece of scattered nature: where it stands and its def's size
+/// (x across, y tall, z deep) and colour.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scattered {
+    pub position: Vec2,
+    pub size: Vec3,
+    pub color: Rgb,
+}
+
+fn cell_hash(seed: u64, c: usize, r: usize, k: usize) -> u64 {
+    let mut h = seed ^ 0xD6E8_FEB8_6659_FD93;
+    for v in [c as u64, r as u64, k as u64] {
+        h ^= v.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        h ^= h >> 31;
+    }
+    h
 }
 
 /// Roll a world. Returns an error when the def names a biome or a
@@ -1032,6 +1124,36 @@ mod tests {
             landmarks: 1,
             bunker: Vec2::ZERO,
             bunker_clear: 20.0,
+        }
+    }
+
+    /// Scatter is the same for the same seed, and never stands on a
+    /// road, on water, or in the bunker's clear ground.
+    #[test]
+    fn scatter_keeps_off_roads_water_and_the_bunker() {
+        let (biomes, monuments) = registries();
+        let mut scattering = BiomeRegistry::default();
+        for name in ["lowland", "hills"] {
+            let mut def = biomes.def(name).unwrap().clone();
+            def.scatter = vec![crate::biome::ScatterDef {
+                size: Vec3::new(1.0, 3.0, 1.0),
+                color: [0.2, 0.4, 0.2],
+                density: 0.5,
+            }];
+            scattering.register(def).unwrap();
+        }
+        let world = roll_world(&def(), 3, &biomes, &monuments).unwrap();
+        let scatter = world.scatter(&scattering);
+        assert!(!scatter.is_empty());
+        assert_eq!(scatter, world.scatter(&scattering), "same seed, same scatter");
+        let road = world.road_cells();
+        for s in &scatter {
+            let (c, r) = world.cell_of(s.position);
+            assert!(!world.is_water(c, r));
+            assert!(s.position.distance(world.def.bunker) >= world.def.bunker_clear - world.def.cell);
+            // The jitter keeps a piece inside its own cell's half width
+            // of 0.3 cells, so its cell is the one it was rolled in.
+            assert!(!road[world.index(c, r)], "scatter on a road at {:?}", s.position);
         }
     }
 
