@@ -41,6 +41,9 @@ pub enum Action {
     Transfer { half: bool },
     /// Admin: toggle flying through everything (Quake's noclip, V).
     Fly,
+    /// Dead: go again (topside design.md "Death and difficulty": a
+    /// roguelike in a persistent living world).
+    Respawn,
 }
 
 /// A key or button, by the name a binding file uses. The consumer
@@ -72,6 +75,7 @@ pub enum Key {
     Digit0,
     MouseLeft,
     MouseRight,
+    Enter,
 }
 
 /// What a key is bound to. Held keys repeat their action every tick
@@ -119,6 +123,7 @@ impl Bindings {
                 (Key::Digit0, Tapped(Hotbar { index: 9 })),
                 (Key::O, Tapped(Drop)),
                 (Key::T, Tapped(Transfer { half: false })),
+                (Key::Enter, Tapped(Respawn)),
             ],
         }
     }
