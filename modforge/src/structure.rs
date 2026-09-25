@@ -11,7 +11,7 @@
 //! Coordinates are structure-local: y up, north = negative z. Each
 //! room carries its own origin (center of its floor).
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use crate::combat::{Health, Hit, HitResult, Protection, resolve_hit};
 
@@ -668,6 +668,92 @@ pub fn parts_of(def: &StructureDef) -> Vec<Part> {
         push(PartKind::Furniture, part.center, part.size, part.color);
     }
     parts
+}
+
+/// Above a floor, how high a part must reach from below to stop a body
+/// walking past: a wall, a bed, or a crate does; a lintel over a
+/// doorway (its bottom above this) does not.
+pub const BODY_HEIGHT: f32 = 1.0;
+
+/// One part of a floor plan seen from above: its footprint (structure
+/// local x and z), its colour, and whether it stops a body.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PlanPart {
+    pub kind: PartKind,
+    pub min: Vec2,
+    pub max: Vec2,
+    pub color: Rgb,
+    pub solid: bool,
+}
+
+/// A structure's parts as the floor plan of the floor whose base is at
+/// height `base` (topside design.md "What 2D changes": one floor at a
+/// time, seen from above). The slabs laid at that base, the walls and
+/// furniture standing on it that reach up past its surface (solid when
+/// they rise from below body height), and the steps and landings that
+/// start from it. Ceilings are never in a plan, so roofs are never
+/// drawn.
+pub fn floor_plan(parts: &[Part], base: f32) -> Vec<PlanPart> {
+    const EPS: f32 = 0.05;
+    let surface = base + SLAB;
+    parts
+        .iter()
+        .filter_map(|p| {
+            let a = p.aabb();
+            let solid = match p.kind {
+                PartKind::Ceiling => return None,
+                PartKind::Floor if (a.min.y - base).abs() < EPS => false,
+                PartKind::Floor => return None,
+                PartKind::Wall | PartKind::Furniture
+                    if a.max.y > surface + EPS && a.min.y < base + BODY_HEIGHT =>
+                {
+                    true
+                }
+                PartKind::Step | PartKind::Landing
+                    if a.min.y > base - EPS && a.min.y < base + BODY_HEIGHT =>
+                {
+                    false
+                }
+                _ => return None,
+            };
+            Some(PlanPart {
+                kind: p.kind,
+                min: Vec2::new(a.min.x, a.min.z),
+                max: Vec2::new(a.max.x, a.max.z),
+                color: p.color,
+                solid,
+            })
+        })
+        .collect()
+}
+
+/// Where a door stands, closed, in its opening: the box that fills the
+/// doorway (structure local), and the side of the room it is on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DoorPlace {
+    pub center: Vec3,
+    pub size: Vec3,
+    pub side: Side,
+}
+
+/// Every door of a structure, closed: one per opening with `door`,
+/// filling the gap in the wall from the sill up to the room's height.
+/// Doors are not parts (they move); the consumer spawns them here.
+pub fn doors_of(def: &StructureDef) -> Vec<DoorPlace> {
+    let mut out = Vec::new();
+    for room in &def.rooms {
+        let t = room.wall_thickness;
+        for o in room.openings.iter().filter(|o| o.door) {
+            let (axis, frame, _) = side_frame(o.side, room.interior, t);
+            let height = room.interior.y - o.sill;
+            out.push(DoorPlace {
+                center: room.origin + frame + axis * o.offset + Vec3::Y * (o.sill + height / 2.0),
+                size: axis * o.width + Vec3::Y * height + (Vec3::ONE - axis - Vec3::Y) * t,
+                side: o.side,
+            });
+        }
+    }
+    out
 }
 
 /// The part containing a structure-local point, if any: the hit to
@@ -1646,6 +1732,51 @@ mod tests {
         // (shared wall plane).
         assert!(validate(&def(vec![room(Vec3::ZERO), room(Vec3::new(0.0, 3.0, 0.0))])).is_ok());
         assert!(validate(&def(vec![room(Vec3::ZERO), room(Vec3::new(6.0, 0.0, 0.0))])).is_ok());
+    }
+
+    #[test]
+    fn the_ground_floor_plan_has_the_floor_and_solid_walls_and_no_roof() {
+        let mut r = room(Vec3::ZERO);
+        r.openings.push(Opening {
+            side: Side::North,
+            offset: 0.0,
+            width: 1.2,
+            sill: 0.0,
+            door: true,
+        });
+        let plan = floor_plan(&parts_of(&def(vec![r.clone()])), 0.0);
+        assert!(plan.iter().all(|p| p.kind != PartKind::Ceiling), "no roof in a plan");
+        let floors: Vec<&PlanPart> = plan.iter().filter(|p| p.kind == PartKind::Floor).collect();
+        assert_eq!(floors.len(), 1);
+        assert!(!floors[0].solid, "the floor is walked on");
+        let walls: Vec<&PlanPart> = plan.iter().filter(|p| p.kind == PartKind::Wall).collect();
+        assert_eq!(walls.len(), 5);
+        assert!(walls.iter().all(|w| w.solid));
+        // Nothing solid in the doorway: the plan leaves the gap open.
+        let gap = Vec2::new(0.0, -4.1);
+        assert!(!plan.iter().any(|p| p.solid
+            && gap.x > p.min.x
+            && gap.x < p.max.x
+            && gap.y > p.min.y
+            && gap.y < p.max.y));
+        // The door fills that gap, closed.
+        let doors = doors_of(&def(vec![r]));
+        assert_eq!(doors.len(), 1);
+        assert!((doors[0].center.x - gap.x).abs() < 1e-4 && (doors[0].center.z - gap.y).abs() < 0.2);
+        assert!((doors[0].size.x - 1.2).abs() < 1e-4);
+    }
+
+    #[test]
+    fn an_upper_floor_is_not_in_the_ground_floor_plan() {
+        let lower = room(Vec3::ZERO);
+        let upper = room(Vec3::new(0.0, 3.0, 0.0));
+        let parts = parts_of(&def(vec![lower, upper]));
+        let ground = floor_plan(&parts, 0.0);
+        let first = floor_plan(&parts, 3.0);
+        assert_eq!(ground.iter().filter(|p| p.kind == PartKind::Floor).count(), 1);
+        assert_eq!(first.iter().filter(|p| p.kind == PartKind::Floor).count(), 1);
+        assert_eq!(ground.iter().filter(|p| p.kind == PartKind::Wall).count(), 4);
+        assert_eq!(first.iter().filter(|p| p.kind == PartKind::Wall).count(), 4);
     }
 
     #[test]
