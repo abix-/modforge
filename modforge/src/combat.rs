@@ -402,7 +402,47 @@ impl Swing {
             Swing::Overhead
         }
     }
+
+    /// From a move along the ground seen from above (the ground's own
+    /// axes, not the person's), read relative to the way the person
+    /// faces (topside combat.md "Melee: the four moves"): forward is
+    /// along `facing`, right a quarter turn clockwise from it. A part
+    /// under `DEAD_ZONE` counts as none, so walking mostly forward is
+    /// still the overhead.
+    pub fn from_ground_move(step: glam::Vec2, facing: glam::Vec2) -> Swing {
+        let facing = facing.normalize_or_zero();
+        let right = glam::Vec2::new(facing.y, -facing.x);
+        let step = step.normalize_or_zero();
+        let part = |v: f32| if v.abs() < DEAD_ZONE { 0.0 } else { v };
+        Swing::from_move(part(step.dot(right)), part(step.dot(facing)))
+    }
+
+    /// Whether a target at `offset` from the swinger is inside this
+    /// swing's shape within `reach` (topside combat.md: the hit is the
+    /// swing's shape in front of the person). The overhead hits a strip
+    /// `STRIP_HALF_WIDTH` either side of straight ahead; a side swing
+    /// sweeps the whole front half; a block hits nothing.
+    pub fn covers(self, offset: glam::Vec2, facing: glam::Vec2, reach: f32) -> bool {
+        let facing = facing.normalize_or_zero();
+        let ahead = offset.dot(facing);
+        if offset.length() > reach || ahead <= 0.0 {
+            return false;
+        }
+        match self {
+            Swing::Overhead => offset.perp_dot(facing).abs() <= STRIP_HALF_WIDTH,
+            Swing::Left | Swing::Right => true,
+            Swing::Block => false,
+        }
+    }
 }
+
+/// Half the width of the overhead's strip, in metres.
+pub const STRIP_HALF_WIDTH: f32 = 0.5;
+/// A move part smaller than this reads as no direction.
+pub const DEAD_ZONE: f32 = 0.3;
+/// How long a block holds, in seconds (topside combat.md: about a
+/// second).
+pub const BLOCK_TIME: f32 = 1.0;
 
 /// Fire rate as a timer on the shooter (Quake 3's `PM_Weapon`): the
 /// weapon is ready when `ready_in` reaches zero; firing adds the
@@ -418,6 +458,9 @@ pub struct FireTimer {
     /// next press can be a chain on the beat (Gothic: a press on the
     /// beat, never a held button).
     pub released: bool,
+    /// The last pull was a melee move: until it ends the person is
+    /// committed to it (topside combat.md "Commitment").
+    pub melee: bool,
 }
 
 impl Default for FireTimer {
@@ -427,6 +470,7 @@ impl Default for FireTimer {
             delay: 0.0,
             swing: Swing::Overhead,
             released: true,
+            melee: false,
         }
     }
 }
@@ -466,6 +510,7 @@ impl FireTimer {
             return Trigger::Waiting;
         }
         self.released = false;
+        self.melee = false;
         if !has_ammo {
             self.ready_in = EMPTY_DELAY;
             self.delay = EMPTY_DELAY;
@@ -479,13 +524,16 @@ impl FireTimer {
 
     /// The attack key with a direction: one of the four moves. Ready
     /// fires; a fresh press on the beat (the last third of the delay)
-    /// chains at once when this person `can_chain`; otherwise wait.
+    /// chains at once when this person `can_chain`; otherwise wait. A
+    /// block holds for `BLOCK_TIME` whatever the weapon.
     pub fn pull_melee(&mut self, delay: f32, swing: Swing, can_chain: bool) -> Trigger {
-        let on_beat = can_chain && self.released && self.ready_in <= delay * BEAT;
+        let on_beat = can_chain && self.released && self.ready_in <= self.delay * BEAT;
         if self.ready_in > 0.0 && !on_beat {
             return Trigger::Waiting;
         }
+        let delay = if swing == Swing::Block { BLOCK_TIME } else { delay };
         self.released = false;
+        self.melee = true;
         self.ready_in = delay;
         self.delay = delay;
         self.swing = swing;
@@ -494,6 +542,17 @@ impl FireTimer {
         } else {
             Trigger::Fire
         }
+    }
+
+    /// Mid swing or mid block: the person is committed and can do
+    /// nothing else until it ends (topside combat.md "Commitment").
+    pub fn committed(&self) -> bool {
+        self.melee && self.ready_in > 0.0
+    }
+
+    /// Holding a block right now: a swing that lands does nothing.
+    pub fn blocking(&self) -> bool {
+        self.melee && self.swing == Swing::Block && self.ready_in > 0.0
     }
 }
 
@@ -551,6 +610,54 @@ mod tests {
             worn.get(crate::item::EquipSlot::Chest).cloned(),
         );
         assert_eq!(base.for_area(BodyArea::Head, &wrong, armor_of).armor, 0.0);
+    }
+
+    #[test]
+    fn a_ground_move_reads_relative_to_facing() {
+        use glam::Vec2;
+        let up = Vec2::Y;
+        // Facing up the screen: W is forward, A is left, D is right,
+        // S is back.
+        assert_eq!(Swing::from_ground_move(Vec2::Y, up), Swing::Overhead);
+        assert_eq!(Swing::from_ground_move(Vec2::NEG_X, up), Swing::Left);
+        assert_eq!(Swing::from_ground_move(Vec2::X, up), Swing::Right);
+        assert_eq!(Swing::from_ground_move(Vec2::NEG_Y, up), Swing::Block);
+        // Facing right: D is forward and W is to the left.
+        assert_eq!(Swing::from_ground_move(Vec2::X, Vec2::X), Swing::Overhead);
+        assert_eq!(Swing::from_ground_move(Vec2::Y, Vec2::X), Swing::Left);
+        // No move is the overhead.
+        assert_eq!(Swing::from_ground_move(Vec2::ZERO, up), Swing::Overhead);
+    }
+
+    #[test]
+    fn the_overhead_hits_a_strip_ahead_and_a_side_swing_the_front() {
+        use glam::Vec2;
+        let facing = Vec2::Y;
+        let ahead = Vec2::new(0.0, 1.5);
+        let beside = Vec2::new(1.2, 0.6);
+        let behind = Vec2::new(0.0, -1.0);
+        assert!(Swing::Overhead.covers(ahead, facing, 1.8));
+        assert!(!Swing::Overhead.covers(beside, facing, 1.8), "the strip misses one beside");
+        assert!(Swing::Left.covers(beside, facing, 1.8));
+        assert!(Swing::Right.covers(ahead, facing, 1.8));
+        assert!(!Swing::Right.covers(behind, facing, 1.8), "never behind");
+        assert!(!Swing::Overhead.covers(Vec2::new(0.0, 3.0), facing, 1.8), "out of reach");
+        assert!(!Swing::Block.covers(ahead, facing, 1.8));
+    }
+
+    #[test]
+    fn a_swing_commits_and_a_block_holds_about_a_second() {
+        let mut t = FireTimer::default();
+        assert!(!t.committed());
+        assert_eq!(t.pull_melee(0.6, Swing::Block, true), Trigger::Block);
+        assert!(t.blocking() && t.committed());
+        t.tick(0.9);
+        assert!(t.blocking(), "still holding at 0.9 s");
+        t.tick(0.2);
+        assert!(!t.blocking() && !t.committed(), "done after a second");
+        // A gun shot is not a commitment.
+        assert_eq!(t.pull(0.6, true), Trigger::Fire);
+        assert!(!t.committed());
     }
 
     #[test]
