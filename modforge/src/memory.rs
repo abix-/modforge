@@ -134,6 +134,15 @@ impl Memory {
         }
     }
 
+    /// A place (not a box) visited up close now: it counts as checked,
+    /// and what it was believed to offer stays as it was.
+    pub fn visited(&mut self, key: u64, now: u64) {
+        if let Some(k) = self.known.iter_mut().find(|k| k.key == key) {
+            k.checked_at = Some(now);
+            k.seen_at = now;
+        }
+    }
+
     /// A thing is gone (despawned): forget it.
     pub fn gone(&mut self, key: u64) {
         self.known.retain(|k| k.key != key);
