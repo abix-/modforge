@@ -340,6 +340,32 @@ fn fight(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<De
     })
 }
 
+/// How quickly a person reacts, by what they are doing (topside life.md
+/// "How often a person thinks"), in seconds.
+pub const COMBAT_REACTION: f32 = 0.25;
+pub const AWAKE_REACTION: f32 = 1.0;
+pub const ASLEEP_REACTION: f32 = 10.0;
+/// The most tiredness slows a person: half as slow again with no rest.
+pub const TIRED_SLOWEST: f32 = 1.5;
+
+/// Ticks (at `ticks_per_sec`) until this person next decides: their
+/// reaction time for what they are doing (asleep, fighting or fleeing,
+/// or otherwise awake), slower the more tired they are, quicker or
+/// slower by personality the way it sets their swing. Being hit does
+/// not shorten it: a person under fire is at the combat rate.
+pub fn reaction_ticks(asleep: bool, combat: &CombatState, rest: f32, personality: &Personality, ticks_per_sec: f32) -> u64 {
+    let base = if asleep {
+        ASLEEP_REACTION
+    } else if matches!(combat, CombatState::None) {
+        AWAKE_REACTION
+    } else {
+        COMBAT_REACTION
+    };
+    let tired = 1.0 + (TIRED_SLOWEST - 1.0) * (1.0 - rest / crate::survival::FULL).clamp(0.0, 1.0);
+    let quickness = personality.swing_delay(1.0);
+    ((base * tired * quickness * ticks_per_sec).round() as u64).max(1)
+}
+
 /// How long a threat out of sight still drives a fight, in ticks (5 s).
 pub const THREAT_RECENT: u64 = 300;
 
@@ -556,6 +582,23 @@ mod tests {
             personality,
             worth: &worth,
         }
+    }
+
+    #[test]
+    fn reaction_time_follows_what_a_person_is_doing_and_how_tired() {
+        let calm = calm();
+        let fighting = CombatState::Fighting {
+            target: ActorId(1),
+            began_at: Vec3::ZERO,
+        };
+        let full = crate::survival::FULL;
+        assert_eq!(reaction_ticks(false, &fighting, full, &calm, 60.0), 15, "combat, 250 ms");
+        assert_eq!(reaction_ticks(false, &CombatState::None, full, &calm, 60.0), 60, "awake, 1 s");
+        assert_eq!(reaction_ticks(true, &CombatState::None, full, &calm, 60.0), 600, "asleep, 10 s");
+        assert_eq!(reaction_ticks(false, &CombatState::None, 0.0, &calm, 60.0), 90, "exhausted, half as slow again");
+        let mut quick = calm;
+        quick.axes[Axis::Agility as usize] = 1.0;
+        assert!(reaction_ticks(false, &CombatState::None, full, &quick, 60.0) < 60, "an agile person is quicker");
     }
 
     #[test]
