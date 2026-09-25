@@ -53,6 +53,25 @@ pub struct Condition {
     pub asleep: bool,
     pub at_home: bool,
     pub threat_in_sight: bool,
+    /// It is night (the day clock): awake, rest drains faster, so
+    /// people go home and sleep (topside todo 11e4).
+    pub night: bool,
+}
+
+/// How much faster rest drains for someone awake at night. Tuning.
+pub const NIGHT_TIREDNESS: f32 = 4.0;
+
+/// The day clock: how far through its day the world is, 0 to 1, from
+/// `elapsed` seconds of a `day_secs` day. The world starts at morning
+/// (a quarter through).
+pub fn day_fraction(elapsed: f32, day_secs: f32) -> f32 {
+    (elapsed / day_secs + 0.25).fract()
+}
+
+/// Night is the quarter either side of midnight: before 0.25 or from
+/// 0.75 on.
+pub fn is_night(fraction: f32) -> bool {
+    !(0.25..0.75).contains(&fraction)
 }
 
 /// How fast each stat moves, per second.
@@ -167,7 +186,8 @@ impl SurvivalStats {
         self.rest = if condition.asleep {
             (self.rest + rates.sleep_per_sec * dt).min(FULL)
         } else {
-            (self.rest - rates.rest_per_sec * dt).max(0.0)
+            let tiring = if condition.night { NIGHT_TIREDNESS } else { 1.0 };
+            (self.rest - rates.rest_per_sec * tiring * dt).max(0.0)
         };
         self.safety = if condition.threat_in_sight {
             (self.safety - rates.fear_per_sec * dt).max(0.0)
@@ -204,35 +224,38 @@ impl SurvivalStats {
     }
 
     /// Eat one of `def`: restore what its food stats say, capped at
-    /// FULL. The caller removes one from the stack on Ok; the
-    /// inventory HUD and the hotbar both enter here.
-    pub fn eat(&mut self, def: &ItemDef) -> Result<(), SurvivalError> {
+    /// FULL. Returns the health it gives, for the caller to heal the
+    /// eater with (health is not a need). The caller removes one from
+    /// the stack on Ok; the inventory HUD and the hotbar both enter
+    /// here.
+    pub fn eat(&mut self, def: &ItemDef) -> Result<f32, SurvivalError> {
         let Some(food) = def.food else {
             return Err(SurvivalError::NotFood(def.name.clone()));
         };
         self.hunger = (self.hunger + food.hunger).min(FULL);
         self.thirst = (self.thirst + food.thirst).min(FULL);
-        Ok(())
+        Ok(food.health)
     }
 
     /// Eat one item out of `slot` of `inventory`. The one path the
     /// inventory HUD and the hotbar both take: look the stack's def
-    /// up in `registry`, refuse non-food, restore, remove one.
+    /// up in `registry`, refuse non-food, restore, remove one. Returns
+    /// the health it gives.
     pub fn eat_from_slot(
         &mut self,
         inventory: &mut Inventory,
         slot: usize,
         registry: &ItemRegistry,
-    ) -> Result<(), SurvivalError> {
+    ) -> Result<f32, SurvivalError> {
         let Some(stack) = inventory.slots.get(slot).and_then(|s| s.as_ref()) else {
             return Err(SurvivalError::EmptySlot(slot));
         };
         let Some(def) = registry.def(&stack.item) else {
             return Err(SurvivalError::Unregistered(stack.item.clone()));
         };
-        self.eat(def)?;
+        let health = self.eat(def)?;
         inventory.remove(slot, 1);
-        Ok(())
+        Ok(health)
     }
 
     pub fn starving(&self) -> bool {
@@ -337,6 +360,26 @@ mod tests {
     }
 
     #[test]
+    fn the_day_starts_at_morning_and_night_tires_the_awake() {
+        assert!(!is_night(day_fraction(0.0, 100.0)), "the world starts at morning");
+        assert!(is_night(day_fraction(60.0, 100.0)), "three fifths in is night");
+        assert!(!is_night(day_fraction(100.0, 100.0)), "a day later it is morning again");
+        let rates = SurvivalRates::lasting(100.0, 50.0, 100.0);
+        let mut day = SurvivalStats::default();
+        let mut night = SurvivalStats::default();
+        day.tick(rates, Condition::default(), 1.0);
+        night.tick(
+            rates,
+            Condition {
+                night: true,
+                ..Default::default()
+            },
+            1.0,
+        );
+        assert!((FULL - night.rest - NIGHT_TIREDNESS * (FULL - day.rest)).abs() < 1e-3);
+    }
+
+    #[test]
     fn eating_restores_and_caps_at_full() {
         let mut stats = SurvivalStats {
             hunger: 20.0,
@@ -348,9 +391,10 @@ mod tests {
             Some(FoodStats {
                 hunger: 50.0,
                 thirst: 20.0,
+                health: 5.0,
             }),
         );
-        stats.eat(&can).unwrap();
+        assert_eq!(stats.eat(&can).unwrap(), 5.0, "it says how much it heals");
         assert_eq!(stats.hunger, 70.0);
         assert_eq!(stats.thirst, FULL);
     }
@@ -363,6 +407,7 @@ mod tests {
             Some(FoodStats {
                 hunger: 50.0,
                 thirst: 0.0,
+                health: 0.0,
             }),
         );
         registry.register(can.clone()).unwrap();

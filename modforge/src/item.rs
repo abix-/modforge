@@ -68,12 +68,15 @@ pub struct CombatStats {
     pub ammo: Option<String>,
 }
 
-/// What eating one of this item restores. Present on food and
-/// drink; None on everything else.
+/// What eating one of this item restores. Present on food, drink, and
+/// medicine; None on everything else. `health` heals (topside todo
+/// 10ca, Valheim's model: each food restores its own mix; a bandage is
+/// all health).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoodStats {
     pub hunger: f32,
     pub thirst: f32,
+    pub health: f32,
 }
 
 /// One item kind as data. `name` is the id; one concept, one name.

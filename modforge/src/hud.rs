@@ -352,14 +352,15 @@ impl Hotbar {
 /// through [`SurvivalStats::eat_from_slot`]; worn gear goes into its
 /// own equipment slot and whatever was there takes its place. A
 /// weapon or tool is not used from here: it is held from the bar
-/// (`hotbar_key`). Other kinds have no use yet.
+/// (`hotbar_key`). Other kinds have no use yet. Returns the health
+/// the use gives (food and medicine), for the caller to heal with.
 pub fn use_slot(
     stats: &mut SurvivalStats,
     inv: &mut Inventory,
     slot: usize,
     registry: &ItemRegistry,
     equipment: &mut Equipment,
-) -> Result<(), SurvivalError> {
+) -> Result<f32, SurvivalError> {
     let Some(stack) = inv.slots.get(slot).and_then(|s| s.as_ref()) else {
         return Err(SurvivalError::EmptySlot(slot));
     };
@@ -369,24 +370,25 @@ pub fn use_slot(
     if let Some(armor) = def.armor {
         let worn = inv.slots[slot].take();
         inv.slots[slot] = equipment.set(armor.slot, worn);
-        return Ok(());
+        return Ok(0.0);
     }
     match def.kind {
-        ItemKind::Weapon | ItemKind::Tool => Ok(()),
+        ItemKind::Weapon | ItemKind::Tool => Ok(0.0),
         _ => stats.eat_from_slot(inv, slot, registry),
     }
 }
 
 /// The hotbar key: a weapon or tool in `slot` is selected into the
 /// hands and stays in the bar (Rust); the same key again puts it
-/// away. Anything else is used as by double click.
+/// away. Anything else is used as by double click. Returns the health
+/// the use gives.
 pub fn hotbar_key(
     stats: &mut SurvivalStats,
     hotbar: &mut Hotbar,
     slot: usize,
     registry: &ItemRegistry,
     equipment: &mut Equipment,
-) -> Result<(), SurvivalError> {
+) -> Result<f32, SurvivalError> {
     let kind = hotbar
         .slots
         .slots
@@ -402,7 +404,7 @@ pub fn hotbar_key(
             } else {
                 Some(slot)
             };
-            Ok(())
+            Ok(0.0)
         }
         _ => use_slot(stats, &mut hotbar.slots, slot, registry, equipment),
     }
