@@ -21,6 +21,10 @@ pub enum Action {
     Move { x: f32, y: f32 },
     /// Turn the view by this much, in radians: yaw then pitch.
     Look { yaw: f32, pitch: f32 },
+    /// Face this point on the ground, in world metres (topside
+    /// combat.md: seen from above, the person faces the mouse; an NPC
+    /// faces what it aims at).
+    Aim { x: f32, y: f32 },
     /// The trigger is held this tick.
     Attack,
     /// Use what is looked at (E).
@@ -212,6 +216,14 @@ impl ActionQueue {
                 _ => None,
             })
             .unwrap_or((0.0, 0.0))
+    }
+
+    /// The point to face this tick: the last `Aim`, if any.
+    pub fn aim(actions: &[Stamped]) -> Option<(f32, f32)> {
+        actions.iter().rev().find_map(|s| match s.action {
+            Action::Aim { x, y } => Some((x, y)),
+            _ => None,
+        })
     }
 
     /// The summed look delta this tick.
