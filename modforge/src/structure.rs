@@ -806,6 +806,31 @@ pub struct TileRun {
 /// Runs along each row, so a consumer draws and collides runs, not
 /// single tiles.
 pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
+    tile_plan_at(def, 0.0)
+}
+
+/// Every level a structure has at or above the ground, as the height of
+/// its floor, lowest first, each with how tall it stands: the levels its
+/// rooms' floors are at, each as tall as the lowest room on it (a stair
+/// tower on the ground spans every level and is taller).
+pub fn levels_above_ground(def: &StructureDef) -> Vec<(f32, f32)> {
+    let mut levels: Vec<(f32, f32)> = Vec::new();
+    for room in def.rooms.iter().filter(|r| r.origin.y > -0.5) {
+        match levels.iter_mut().find(|(y, _)| (*y - room.origin.y).abs() < 0.5) {
+            Some((_, height)) => *height = height.min(room.interior.y),
+            None => levels.push((room.origin.y, room.interior.y)),
+        }
+    }
+    levels.sort_by(|a, b| a.0.total_cmp(&b.0));
+    levels
+}
+
+/// One level of a structure on the tile grid (`tile_plan` for the one at
+/// floor height `level`, 0 the ground): the rooms whose floor is at this
+/// level, and the rooms spanning it (a stair tower: its walls only above
+/// its own bottom, whose slabs are its landings, `parts_of`); the
+/// doorways at this level's floor; the furniture standing on it.
+pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
     use std::collections::HashMap;
     // Each tile keeps what landed on it with the highest rank. A doorway,
     // with a door or a plain gap, ranks over the wall it is cut through:
@@ -836,15 +861,21 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
     const DOORWAY: u8 = 3;
     // Every doorway tile and the way through it (across its wall).
     let mut doorways: Vec<((i32, i32), (i32, i32))> = Vec::new();
-    for room in def.rooms.iter().filter(|r| r.origin.y.abs() < 0.5) {
+    let at_level = |r: &RoomDef| (r.origin.y - level).abs() < 0.5;
+    let spans = |r: &RoomDef| r.origin.y < level - 0.5 && r.origin.y + r.interior.y > level + 0.5;
+    for room in def.rooms.iter().filter(|r| at_level(r) || spans(r)) {
+        let spanning = !at_level(room);
         let w = room.interior.x.round().max(1.0) as i32;
         let l = room.interior.z.round().max(1.0) as i32;
         let x0 = (room.origin.x - w as f32 / 2.0).round() as i32;
         let z0 = (room.origin.z - l as f32 / 2.0).round() as i32;
         let (floor, wall) = (TileKind::Floor.rank(), TileKind::Wall.rank());
+        // A room spanning this level has no floor here: its landings are.
         for z in z0..z0 + l {
             for x in x0..x0 + w {
-                put(&mut tiles, x, z, TileKind::Floor, def.floor_color, floor);
+                if !spanning {
+                    put(&mut tiles, x, z, TileKind::Floor, def.floor_color, floor);
+                }
             }
         }
         for x in x0 - 1..=x0 + w {
@@ -855,7 +886,15 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
             put(&mut tiles, x0 - 1, z, TileKind::Wall, def.wall_color, wall);
             put(&mut tiles, x0 + w, z, TileKind::Wall, def.wall_color, wall);
         }
-        for o in room.openings.iter().filter(|o| o.sill <= 0.0) {
+        // The doorways at this level's floor: a room on this level's at
+        // its own floor; a spanning room's where the sill is this level's
+        // floor, standing on its landing slab.
+        let floor_above = level - room.origin.y;
+        let at_floor = |o: &&Opening| {
+            let sill = o.sill - floor_above;
+            if spanning { (-0.01..=SLAB + 0.01).contains(&sill) } else { sill <= 0.0 }
+        };
+        for o in room.openings.iter().filter(at_floor) {
             let n = o.width.round().max(1.0) as i32;
             let kind = if o.door { TileKind::Door } else { TileKind::Floor };
             let color = if o.door { DOOR_COLOR } else { def.floor_color };
@@ -898,7 +937,10 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
     // (a landing is walked on), never on a doorway's clear tiles, and
     // never sealing floor off: a piece that would leave a floor tile no
     // one can walk to from the doorways is left out.
-    let stands = |f: &&SolidDef| f.center.y - f.size.y / 2.0 < BODY_HEIGHT && f.size.y > 2.0 * SLAB;
+    let stands = |f: &&SolidDef| {
+        let bottom = f.center.y - f.size.y / 2.0 - level;
+        bottom > -0.5 && bottom < BODY_HEIGHT && f.size.y > 2.0 * SLAB
+    };
     for f in def.furniture.iter().filter(stands) {
         let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
         let mut covers = Vec::new();

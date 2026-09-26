@@ -1121,6 +1121,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn every_level_above_ground_has_its_own_tile_plan() {
+        use crate::structure::{TileKind, levels_above_ground, tile_plan, tile_plan_at};
+        let office = building("office", (2, 4), (1, 2), (2, 2), (0, 0));
+        for seed in 0..20 {
+            let def = generate_building(&office, &mut Roll::new(seed));
+            let levels = levels_above_ground(&def);
+            assert_eq!(levels.len(), 2, "seed {seed}: two floors, {levels:?}");
+            let (up, height) = levels[1];
+            assert!((2.8..=3.4).contains(&up) && (up - height).abs() < 1e-3, "seed {seed}: the second floor at the first's height, {levels:?}");
+            assert_eq!(tile_plan_at(&def, 0.0), tile_plan(&def), "seed {seed}: the ground is the ground plan");
+            let upper = tile_plan_at(&def, up);
+            let has = |kind| upper.iter().any(|r| r.kind == kind);
+            assert!(has(TileKind::Floor) && has(TileKind::Wall), "seed {seed}: the upper level has floor and walls");
+        }
+    }
+
     fn registries() -> (BuildingRegistry, MonumentRegistry) {
         let mut b = BuildingRegistry::default();
         b.register(building("shack", (1, 1), (1, 1), (1, 1), (0, 0)))
