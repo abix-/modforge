@@ -267,9 +267,35 @@ impl SurvivalStats {
     }
 }
 
+/// Share of full health a person comes back with.
+pub const RESPAWN_HEALTH: f32 = 0.5;
+
+/// What a person comes back with when they respawn (topside design.md
+/// "Death and difficulty", operator 2026-09-26): half health, full food,
+/// full water. Everyone alike.
+pub fn respawn(health: &mut crate::combat::Health, needs: &mut SurvivalStats) {
+    health.current = health.max * RESPAWN_HEALTH;
+    needs.hunger = FULL;
+    needs.thirst = FULL;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_respawn_gives_half_health_full_food_and_full_water() {
+        let mut health = crate::combat::Health::new(100.0);
+        health.current = 0.0;
+        let mut needs = SurvivalStats::default();
+        needs.hunger = 0.0;
+        needs.thirst = 0.0;
+        needs.rest = 40.0;
+        respawn(&mut health, &mut needs);
+        assert_eq!(health.current, 50.0);
+        assert_eq!((needs.hunger, needs.thirst), (FULL, FULL));
+        assert_eq!(needs.rest, 40.0, "only food and water are restored");
+    }
     use crate::item::{FoodStats, ItemKind};
 
     fn def(name: &str, food: Option<FoodStats>) -> ItemDef {
