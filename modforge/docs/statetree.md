@@ -98,34 +98,33 @@ root, where the person chooses again.
 The tree is data (topside's content), the running is modforge's:
 
 All of the brain is this one tree, fighting included; nothing decides
-beside it.
+beside it (topside content/src/brain.rs).
 
-- The root, in order: hide (the storm), combat, then the day's life.
-- Combat, entered when a hostile is in sight or a threat is remembered
-  from the last few seconds, in order: flee (hurt below their flee
-  line: home, or away with no home), break off (chased past the leash:
-  home), fight (face it, close in, hit it). Fight succeeds when no
-  hostile is in sight and none is remembered; flee and break off
-  succeed on reaching safety.
-- Transitions on the day's life take a person out of any errand when
-  the storm comes or a hostile is seen.
-- After combat, or after any errand ends, the person chooses again from
+- The root is flat (operator, 2026-09-26): every choice sits directly
+  under it, and what the person learned picks among all of them, the
+  storm and fighting included (topside life.md "Learning to stay
+  alive"). With nothing learned, instinct's order decides: hide (the
+  storm), flee, break off, fight, eat what they carry, go to a need,
+  supply the bunker, look, wander. Learning overturns instinct only by
+  more than its lead for each place in that order.
+- Flee, break off, and fight are open when a hostile is in sight or a
+  threat is remembered from the last few seconds: flee when hurt below
+  their flee line (home, or away with no home), break off when chased
+  past the leash (home, or back to where the fight began), fight (face
+  it, close in, hit it). Fight succeeds when no hostile is in sight and
+  none is remembered; flee and break off succeed on reaching safety.
+  Getting hurt or chased past the leash mid-fight chooses again.
+- The storm coming or a threat takes a person out of any errand to
+  choose again.
+- After a fight, or after any errand ends, the person chooses again from
   the root (operator, 2026-09-26). Nothing is held underneath to resume:
-  if they are still thirsty and still remember the well, the day's life
+  if they are still thirsty and still remember the well, the choice
   sends them back to it; if the fight changed things, it may not.
   RimWorld does the same: an interrupted pawn is asked for its next job.
-- The day's life, weighted by learned value: eat what they carry, go to
-  what answers a need, supply the bunker, look, wander.
-- Each of those is going, then doing: going walks the way the pathing
-  queue found (docs/pathing.md), doing eats, drinks, checks, takes, or
-  stocks. Going succeeds on arriving; a way the queue could not find
-  fails it, and the person chooses again.
-
-## Open
-
-- Whether the root's order (the storm, fleeing, fighting) can be
-  learned away. topside life.md "Learning to stay alive" lets learning
-  overturn instinct by more than a minute's worth; every game above
-  keeps these fixed.
-</content>
-</invoke>
+- Supply the bunker tries in order: haul home, fetch, look in a box,
+  head out. Look tries in order: the nearest unchecked thing, head out.
+- Each errand is going, then doing: going walks there, doing eats,
+  drinks, sleeps, checks, takes, or stocks. Going succeeds on arriving.
+  Still to build (topside todo): going walks the way the pathing queue
+  found (docs/pathing.md), and a way the queue could not find fails it,
+  so the person chooses again.

@@ -233,8 +233,9 @@ fn threat(p: &Perception) -> Option<(ActorId, Vec3)> {
     (p.now.saturating_sub(when) <= THREAT_RECENT).then_some((who, at))
 }
 
-/// A threat in sight or just remembered: fight, flee, or break off. The
-/// fight began where they stood, or where it began before.
+/// A threat in sight or just remembered: something to fight, flee, or
+/// break off from. The fight began where they stood, or where it began
+/// before.
 pub fn enter_combat(t: &mut Think, about: &Target) -> Option<Target> {
     let (who, _) = threat(t.p)?;
     let began_at = match about {
@@ -249,8 +250,10 @@ pub fn hurt(t: &mut Think, _: &Target) -> bool {
     t.p.health_fraction < t.p.personality.flee_line()
 }
 
+/// A threat, and hurt past the flee line.
 pub fn enter_flee(t: &mut Think, about: &Target) -> Option<Target> {
-    hurt(t, about).then_some(*about)
+    let threat = enter_combat(t, about)?;
+    hurt(t, &threat).then_some(threat)
 }
 
 /// Run home; with no home, away from the threat (a person with no home
@@ -273,8 +276,10 @@ pub fn past_leash(t: &mut Think, target: &Target) -> bool {
     matches!(target, Target::Threat { began_at, .. } if t.p.position.distance(*began_at) > LEASH)
 }
 
+/// A threat, and chased past the leash.
 pub fn enter_break_off(t: &mut Think, about: &Target) -> Option<Target> {
-    past_leash(t, about).then_some(*about)
+    let threat = enter_combat(t, about)?;
+    past_leash(t, &threat).then_some(threat)
 }
 
 /// Home, or with no home back to where the fight began.
