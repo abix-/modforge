@@ -145,11 +145,14 @@ pub enum Did {
     /// damage's name, or hunger, thirst, the storm.
     Died(Option<ActorId>, String),
     Respawned,
+    /// Went through a doorway.
+    Doorway,
 }
 
 impl Did {
     /// What kind of thing it was, for counting: "ate", "slept", "took",
-    /// "put in", "hit", "was hit", "killed", "died", "respawned".
+    /// "put in", "hit", "was hit", "killed", "died", "respawned",
+    /// "doorway".
     pub fn kind(&self) -> &'static str {
         match self {
             Did::Ate(_) => "ate",
@@ -161,6 +164,7 @@ impl Did {
             Did::Killed(_) => "killed",
             Did::Died(..) => "died",
             Did::Respawned => "respawned",
+            Did::Doorway => "doorway",
         }
     }
 
@@ -178,6 +182,7 @@ impl Did {
             Did::Killed(whom) => format!("killed {}", whom.0),
             Did::Died(by, of) => format!("died of {of}, killed by {}", who(by)),
             Did::Respawned => "respawned".to_string(),
+            Did::Doorway => "went through a doorway".to_string(),
         }
     }
 }
