@@ -55,6 +55,7 @@ pub mod server;
 pub mod settings;
 pub mod shutdown;
 pub mod snapshots;
+pub mod statetree;
 pub mod storm;
 pub mod storyteller;
 pub mod structure;
