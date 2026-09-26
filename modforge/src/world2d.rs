@@ -216,6 +216,16 @@ impl World2d {
                 chunk.ground[index(t)] = Ground::Road;
             }
         }
+        // A site's ground is cleared (topside design.md "2D world
+        // generation"): a river or a lake under it is dry land.
+        for y in 0..CHUNK {
+            for x in 0..CHUNK {
+                let t = (first.0 + x, first.1 + y);
+                if chunk.ground[index(t)] == Ground::Water && on_site(t) {
+                    chunk.ground[index(t)] = Ground::Dirt;
+                }
+            }
+        }
         for c in &self.bunkers {
             for y in 0..CHUNK {
                 for x in 0..CHUNK {

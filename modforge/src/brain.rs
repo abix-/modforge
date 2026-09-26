@@ -573,7 +573,9 @@ fn keep_going(p: &Perception, activity: &Activity, combat: CombatState) -> Optio
 /// inside one they have not opened.
 fn supply(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Option<Decision> {
     let (store, store_at) = p.store?;
-    // The best known box for any need the bunker is short of.
+    // The best known box for any need the bunker is short of: a box seen
+    // holding something, since only what is inside can be carried home (a
+    // well is drunk from where it stands).
     let best = p
         .bunker_short
         .iter()
@@ -581,7 +583,7 @@ fn supply(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut R
         .flat_map(|&need| {
             p.memory
                 .good_for(need, p.worth)
-                .filter(move |(k, _)| k.key != store)
+                .filter(move |(k, _)| k.key != store && k.held.is_some())
                 .map(move |(k, gives)| (k, need, gives - k.position.distance(p.position) / METRES_PER_POINT))
         })
         .max_by(|a, b| a.2.total_cmp(&b.2))
@@ -848,6 +850,8 @@ mod tests {
         match (known.kind.as_str(), need) {
             ("storage box", Need::Hunger) => 50.0,
             ("home", Need::Rest) => 100.0,
+            // A source: worth its water, seen inside or not.
+            ("well", Need::Thirst) => 50.0,
             _ => 0.0,
         }
     }
@@ -971,6 +975,27 @@ mod tests {
         p.carries_for_bunker = false;
         let d = decide(&p, &d.activity, &CombatState::None, &mut Roll::new(1));
         assert_eq!(d.activity, Activity::Idle, "stocked");
+    }
+
+    /// Short of water and knowing only a well: nobody is sent to fetch
+    /// from it, since a well cannot be carried home.
+    #[test]
+    fn a_short_bunker_does_not_fetch_from_a_well() {
+        let mut memory = Memory::default();
+        memory.see(1, "storage box", Vec3::new(2.0, 0.0, 0.0), 1);
+        memory.checked(1, vec![], 1);
+        memory.see(9, "well", Vec3::new(30.0, 0.0, 0.0), 1);
+        memory.visited(9, 1);
+        let personality = calm();
+        let mut p = perception(&memory, &personality);
+        p.store = Some((1, Vec3::new(2.0, 0.0, 0.0)));
+        p.bunker_short = vec![Need::Thirst];
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert!(
+            !matches!(d.activity, Activity::Fetching { key: 9, .. }),
+            "not to the well: {:?}",
+            d.activity
+        );
     }
 
     /// Hungry with a can in the bag: eat it where they stand rather than
