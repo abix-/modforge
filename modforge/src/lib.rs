@@ -27,6 +27,7 @@ pub mod hot_reload;
 pub mod hud;
 pub mod input;
 pub mod item;
+pub mod learn;
 pub mod log;
 pub mod loot;
 pub mod memory;
