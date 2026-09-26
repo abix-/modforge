@@ -30,6 +30,7 @@ pub mod item;
 pub mod learn;
 pub mod log;
 pub mod loot;
+pub mod map;
 pub mod memory;
 pub mod mission;
 pub mod monument;
