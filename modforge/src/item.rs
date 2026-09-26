@@ -240,12 +240,10 @@ impl ItemLedger {
     }
 }
 
-/// What a worn item does: the equipment slots it occupies (a shirt its
-/// chest clothing, a metal facemask both head slots, a full-body suit
-/// `EquipSlot::BODY`), and the protection it adds.
+/// What a worn item does: the protection it adds. Any wearable goes in any
+/// free equipment slot.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Armor {
-    pub occupies: &'static [EquipSlot],
     pub amount: f32,
 }
 
@@ -530,95 +528,49 @@ impl Inventory {
     }
 }
 
-/// Rust's equipment slots (topside design.md; Facepunch's Rust wiki,
-/// "Clothing Slots"): head, chest and legs each have a clothing layer
-/// worn underneath and an armor layer on top; hands and feet take one
-/// item each. The weapon slot is what the hands hold.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum EquipSlot {
-    HeadClothing,
-    HeadArmor,
-    ChestClothing,
-    ChestArmor,
-    LegsClothing,
-    LegsArmor,
-    Hands,
-    Feet,
-    Weapon,
-}
-
-impl EquipSlot {
-    pub const ALL: [EquipSlot; 9] = [
-        EquipSlot::HeadClothing,
-        EquipSlot::HeadArmor,
-        EquipSlot::ChestClothing,
-        EquipSlot::ChestArmor,
-        EquipSlot::LegsClothing,
-        EquipSlot::LegsArmor,
-        EquipSlot::Hands,
-        EquipSlot::Feet,
-        EquipSlot::Weapon,
-    ];
-
-    /// Every slot a full-body suit takes (the Hazmat Suit): all but the
-    /// hands' weapon.
-    pub const BODY: [EquipSlot; 8] = [
-        EquipSlot::HeadClothing,
-        EquipSlot::HeadArmor,
-        EquipSlot::ChestClothing,
-        EquipSlot::ChestArmor,
-        EquipSlot::LegsClothing,
-        EquipSlot::LegsArmor,
-        EquipSlot::Hands,
-        EquipSlot::Feet,
-    ];
-}
+/// How many slots an actor's equipment has: one row of plain slots, as
+/// Rust's inventory screen shows under the character (topside design.md).
+pub const EQUIPMENT_SLOTS: usize = 7;
 
 /// An actor's equipment: the third item holder next to the inventory
-/// and the hotbar, each its own thing. Every item worn with the slots it
-/// occupies; no two items share a slot.
+/// and the hotbar, each its own thing. One row of plain slots: anything
+/// wearable goes in any free slot, one item a slot, no layers.
 #[derive(Clone, Default)]
 pub struct Equipment {
-    worn: Vec<(ItemStack, &'static [EquipSlot])>,
+    slots: [Option<ItemStack>; EQUIPMENT_SLOTS],
 }
 
 impl Equipment {
-    /// The item occupying `slot`, if any.
-    pub fn get(&self, slot: EquipSlot) -> Option<&ItemStack> {
-        self.worn.iter().find(|(_, slots)| slots.contains(&slot)).map(|(stack, _)| stack)
+    /// What is worn in slot `i`, if anything.
+    pub fn get(&self, i: usize) -> Option<&ItemStack> {
+        self.slots.get(i).and_then(|s| s.as_ref())
     }
 
-    /// Every item worn, each once, with the slots it occupies.
-    pub fn items(&self) -> impl Iterator<Item = (&ItemStack, &'static [EquipSlot])> {
-        self.worn.iter().map(|(stack, slots)| (stack, *slots))
+    /// Every item worn.
+    pub fn items(&self) -> impl Iterator<Item = &ItemStack> {
+        self.slots.iter().flatten()
     }
 
-    /// The one way an item goes on: into every slot it `occupies`,
-    /// taking off whatever holds any of them (a metal facemask takes off
-    /// a hat and a helmet; a full-body suit takes off everything).
-    /// Returns what was taken off.
-    pub fn wear(&mut self, stack: ItemStack, occupies: &'static [EquipSlot]) -> Vec<ItemStack> {
-        let mut off = Vec::new();
-        self.worn.retain(|(worn, slots)| {
-            let clashes = slots.iter().any(|s| occupies.contains(s));
-            if clashes {
-                off.push(worn.clone());
+    /// The one way an item goes on: into the first free slot. With every
+    /// slot full it is handed back.
+    pub fn wear(&mut self, stack: ItemStack) -> Result<(), ItemStack> {
+        match self.slots.iter_mut().find(|s| s.is_none()) {
+            Some(free) => {
+                *free = Some(stack);
+                Ok(())
             }
-            !clashes
-        });
-        self.worn.push((stack, occupies));
-        off
+            None => Err(stack),
+        }
     }
 
-    /// Take off whatever occupies `slot`, if anything.
-    pub fn take_off(&mut self, slot: EquipSlot) -> Option<ItemStack> {
-        let i = self.worn.iter().position(|(_, slots)| slots.contains(&slot))?;
-        Some(self.worn.remove(i).0)
+    /// Take off what is worn in slot `i`, if anything.
+    pub fn take_off(&mut self, i: usize) -> Option<ItemStack> {
+        self.slots.get_mut(i).and_then(|s| s.take())
     }
 
     /// Take everything worn, leaving every slot empty.
     pub fn drain_all(&mut self) -> Vec<ItemStack> {
-        self.worn.drain(..).map(|(stack, _)| stack).collect()
+        self.slots.iter_mut().filter_map(|s| s.take()).collect()
     }
 }
 
@@ -738,13 +690,13 @@ mod tests {
         let mut bar = Inventory::new(2);
         bar.slots[0] = Some(plain("pipe", 1));
         let mut worn = Equipment::default();
-        worn.wear(plain("vest", 1), &[EquipSlot::ChestArmor]);
+        worn.wear(plain("vest", 1)).unwrap();
         let loot = loot_all(&mut inv, &mut bar, &mut worn);
         let names: Vec<&str> = loot.iter().map(|s| s.item.as_str()).collect();
         assert_eq!(names, ["scrap", "pipe", "vest"]);
         assert_eq!(inv.count_of("scrap"), 0);
         assert_eq!(bar.count_of("pipe"), 0);
-        assert!(worn.get(EquipSlot::ChestArmor).is_none());
+        assert_eq!(worn.items().count(), 0);
         assert!(
             loot_all(&mut inv, &mut bar, &mut worn).is_empty(),
             "nothing twice"
@@ -761,18 +713,21 @@ mod tests {
     }
 
     #[test]
-    fn equipment_holds_one_stack_per_named_slot() {
+    fn equipment_is_a_row_of_plain_slots_any_wearable_in_any() {
         let mut gear = Equipment::default();
-        for slot in EquipSlot::ALL {
-            assert!(gear.get(slot).is_none());
+        assert_eq!(gear.items().count(), 0);
+        // Anything goes in the first free slot, with no layers or areas.
+        for i in 0..EQUIPMENT_SLOTS {
+            gear.wear(plain(&format!("wearable {i}"), 1)).unwrap();
         }
-        assert!(gear.wear(plain("pipe", 1), &[EquipSlot::Weapon]).is_empty());
-        let swapped = gear.wear(plain("hatchet", 1), &[EquipSlot::Weapon]);
-        assert_eq!(swapped[0].item, "pipe");
-        assert_eq!(gear.get(EquipSlot::Weapon).unwrap().item, "hatchet");
-        assert!(gear.get(EquipSlot::HeadArmor).is_none(), "slots are independent");
-        assert_eq!(gear.take_off(EquipSlot::Weapon).unwrap().item, "hatchet");
-        assert!(gear.get(EquipSlot::Weapon).is_none());
+        assert_eq!(gear.items().count(), EQUIPMENT_SLOTS);
+        // Full: the next is handed back.
+        assert_eq!(gear.wear(plain("one too many", 1)).unwrap_err().item, "one too many");
+        // Taking one off frees its slot for the next.
+        assert_eq!(gear.take_off(2).unwrap().item, "wearable 2");
+        assert!(gear.get(2).is_none());
+        gear.wear(plain("hat", 1)).unwrap();
+        assert_eq!(gear.get(2).unwrap().item, "hat");
     }
 
     #[test]

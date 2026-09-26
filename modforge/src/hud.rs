@@ -390,27 +390,14 @@ pub fn use_slot(
     let Some(def) = registry.def(&stack.item) else {
         return Err(SurvivalError::Unregistered(stack.item.clone()));
     };
-    if let Some(armor) = def.armor {
-        // On, into every slot it occupies; whatever it takes off goes
-        // back to the inventory, the first into the slot it came from.
-        // With no room for all of it, nothing changes.
-        let clashing = equipment
-            .items()
-            .filter(|(_, slots)| slots.iter().any(|s| armor.occupies.contains(s)))
-            .count();
-        let room = 1 + inv.slots.iter().filter(|s| s.is_none()).count();
-        if clashing > room {
-            return Ok(0.0);
-        }
+    if def.armor.is_some() {
+        // On, into a free equipment slot; with every slot full it stays
+        // where it was.
         let Some(worn) = inv.slots[slot].take() else {
             return Err(SurvivalError::EmptySlot(slot));
         };
-        let mut off = equipment.wear(worn, armor.occupies).into_iter();
-        inv.slots[slot] = off.next();
-        for rest in off {
-            if let Some(free) = inv.slots.iter_mut().find(|s| s.is_none()) {
-                *free = Some(rest);
-            }
+        if let Err(back) = equipment.wear(worn) {
+            inv.slots[slot] = Some(back);
         }
         return Ok(0.0);
     }
@@ -847,10 +834,7 @@ mod tests {
         assert_eq!(bar.held, Some(0));
         assert_eq!(bar.held_stack().unwrap().item, "pipe");
         assert!(bar.slots.slots[0].is_some(), "the pipe stays in the bar");
-        assert!(
-            gear.get(crate::item::EquipSlot::Weapon).is_none(),
-            "the hands hold a bar slot, not a copy"
-        );
+        assert_eq!(gear.items().count(), 0, "the hands hold a bar slot, not a copy");
 
         // Another key switches; the same key again puts it away.
         hotbar_key(&mut stats, &mut bar, 1, &reg, &mut gear).unwrap();

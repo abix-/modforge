@@ -195,44 +195,12 @@ impl BodyArea {
         }
     }
 
-    /// The equipment slots whose worn items guard this area: its
-    /// clothing and its armor.
-    pub fn slots(self) -> [crate::item::EquipSlot; 2] {
-        use crate::item::EquipSlot::*;
-        match self {
-            BodyArea::Head => [HeadClothing, HeadArmor],
-            BodyArea::Chest => [ChestClothing, ChestArmor],
-            BodyArea::Legs => [LegsClothing, LegsArmor],
-        }
-    }
 }
 
 impl Protection {
-    /// This actor's protection for a hit on `area`: the base plus the
-    /// armor of every item worn over the area, each once. `armor_of`
-    /// looks an item name up in the consumer's registry.
-    pub fn for_area(
-        &self,
-        area: BodyArea,
-        worn: &crate::item::Equipment,
-        armor_of: impl Fn(&str) -> Option<crate::item::Armor>,
-    ) -> Protection {
-        let worn_armor: f32 = worn
-            .items()
-            .filter(|(_, slots)| slots.iter().any(|s| area.slots().contains(s)))
-            .filter_map(|(stack, _)| armor_of(&stack.item))
-            .map(|armor| armor.amount)
-            .sum();
-        Protection {
-            armor: self.armor + worn_armor,
-            resistances: self.resistances.clone(),
-        }
-    }
-
     /// This actor's protection with no body parts (topside combat.md
-    /// "How deadly"): the base plus the armor of every item worn, each
-    /// once however many slots it occupies (Rust: every item worn adds
-    /// its protection), added into one total that every hit goes through.
+    /// "How deadly"): the base plus the armor of every item worn, added
+    /// into one total that every hit goes through.
     /// Each item's armor comes from `item::numbers_of`, the one place an
     /// item's numbers are worked out from its layers.
     pub fn worn(
@@ -243,7 +211,7 @@ impl Protection {
     ) -> Protection {
         let worn_armor: f32 = worn
             .items()
-            .filter_map(|(stack, _)| {
+            .filter_map(|stack| {
                 let def = items.def(&stack.item)?;
                 crate::item::numbers_of(def, stack, layers).armor
             })
@@ -670,35 +638,6 @@ mod tests {
         assert_eq!(BodyArea::from_height(0.2), BodyArea::Legs);
         assert_eq!(BodyArea::Head.scale(), 2.0);
         assert_eq!(BodyArea::Legs.scale(), 0.75);
-        assert_eq!(
-            BodyArea::Head.slots(),
-            [crate::item::EquipSlot::HeadClothing, crate::item::EquipSlot::HeadArmor]
-        );
-    }
-
-    #[test]
-    fn worn_gear_guards_only_its_own_area() {
-        const VEST: &[crate::item::EquipSlot] = &[crate::item::EquipSlot::ChestArmor];
-        let mut worn = crate::item::Equipment::default();
-        worn.wear(
-            crate::item::ItemStack {
-                item: "vest".to_string(),
-                count: 1,
-                quality: None,
-                note: None,
-                layers: Vec::new(),
-            },
-            VEST,
-        );
-        let armor_of = |name: &str| {
-            (name == "vest").then_some(crate::item::Armor {
-                occupies: VEST,
-                amount: 30.0,
-            })
-        };
-        let base = Protection::default();
-        assert_eq!(base.for_area(BodyArea::Chest, &worn, armor_of).armor, 30.0);
-        assert_eq!(base.for_area(BodyArea::Head, &worn, armor_of).armor, 0.0);
     }
 
     #[test]
@@ -771,30 +710,16 @@ mod tests {
             note: None,
             layers: Vec::new(),
         };
-        use crate::item::EquipSlot::*;
-        const SHIRT: &[crate::item::EquipSlot] = &[ChestClothing];
-        const VEST: &[crate::item::EquipSlot] = &[ChestArmor];
-        const HAT: &[crate::item::EquipSlot] = &[HeadClothing];
-        const HELMET: &[crate::item::EquipSlot] = &[HeadArmor];
-        const FACEMASK: &[crate::item::EquipSlot] = &[HeadClothing, HeadArmor];
-        const SUIT: &[crate::item::EquipSlot] = &crate::item::EquipSlot::BODY;
-        let armors = [
-            ("shirt", SHIRT, 2.0),
-            ("vest", VEST, 30.0),
-            ("hat", HAT, 1.0),
-            ("helmet", HELMET, 10.0),
-            ("metal facemask", FACEMASK, 25.0),
-            ("hazmat suit", SUIT, 40.0),
-        ];
-        let occupies = |name: &str| armors.iter().find(|(n, ..)| *n == name).map(|(_, s, _)| *s).unwrap();
-        // Rust's layers: a shirt under a vest, a hat under a helmet.
+        let armors = [("shirt", 2.0), ("vest", 30.0), ("hat", 1.0), ("helmet", 10.0)];
+        // Any wearable in any free slot: a hat and a helmet together, no
+        // layers, nothing taken off.
         let mut worn = crate::item::Equipment::default();
-        for name in ["shirt", "vest", "hat", "helmet"] {
-            assert!(worn.wear(stack(name), occupies(name)).is_empty(), "{name} fits with the rest");
+        for (name, _) in armors {
+            worn.wear(stack(name)).unwrap();
         }
         // Each piece's armor is on its def, read through `numbers_of`.
         let mut items = crate::item::ItemRegistry::default();
-        for (name, occupies, amount) in armors {
+        for (name, amount) in armors {
             items
                 .register(crate::item::ItemDef {
                     name: name.to_string(),
@@ -805,7 +730,7 @@ mod tests {
                     combat: None,
                     food: None,
                     storage: None,
-                    armor: Some(crate::item::Armor { occupies, amount }),
+                    armor: Some(crate::item::Armor { amount }),
                     good_for: Default::default(),
                     picture: None,
                     layer_slots: Vec::new(),
@@ -819,17 +744,9 @@ mod tests {
         };
         // Every item worn adds its protection: 5 + 2 + 30 + 1 + 10.
         assert_eq!(base.worn(&worn, &items, &layers).armor, 48.0);
-        // A metal facemask takes both head slots: off come the hat and the
-        // helmet, and it counts once.
-        let mut off: Vec<String> = worn.wear(stack("metal facemask"), FACEMASK).into_iter().map(|s| s.item).collect();
-        off.sort();
-        assert_eq!(off, ["hat", "helmet"]);
-        assert_eq!(base.worn(&worn, &items, &layers).armor, 5.0 + 2.0 + 30.0 + 25.0);
-        // A full-body suit takes every slot: everything else comes off.
-        assert_eq!(worn.wear(stack("hazmat suit"), SUIT).len(), 3);
-        assert_eq!(worn.items().count(), 1);
-        assert_eq!(worn.get(Feet).map(|s| s.item.as_str()), Some("hazmat suit"));
-        assert_eq!(base.worn(&worn, &items, &layers).armor, 45.0);
+        // Taking one off takes its protection with it.
+        worn.take_off(1);
+        assert_eq!(base.worn(&worn, &items, &layers).armor, 18.0);
     }
 
     #[test]
