@@ -47,7 +47,7 @@ impl Side {
 ///
 /// Rule for connected rooms: BOTH rooms author the matching opening
 /// in their facing walls.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Opening {
     pub side: Side,
     pub offset: f32,
@@ -60,7 +60,7 @@ pub struct Opening {
 /// y height, z length), wall thickness, openings. `floor` and
 /// `ceiling` are skipped when another room's slab already covers
 /// that face (a stacked room's floor is the room-below's ceiling).
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RoomDef {
     pub origin: Vec3,
     pub interior: Vec3,
@@ -75,7 +75,7 @@ pub struct RoomDef {
 /// `rise`, with a flat `landing` run at the top. Rule: leave flat
 /// approach room in front of the base; stairs must never end at a
 /// wall.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StairDef {
     pub base: Vec3,
     pub side: Side,
@@ -85,14 +85,14 @@ pub struct StairDef {
 }
 
 /// A solid block: furniture, a crate, any obstacle. Collides.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SolidDef {
     pub center: Vec3,
     pub size: Vec3,
     pub color: Rgb,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LightDef {
     pub position: Vec3,
     pub color: Rgb,
@@ -439,7 +439,7 @@ impl Library {
 /// generic machinery (footprints, arrangement, monuments) works
 /// over either, so a game that cannot author rooms still gets
 /// generated places.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StructureDef {
     pub name: String,
     pub wall_color: Rgb,
@@ -817,6 +817,21 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
             tiles.insert((x, z), (kind, color, rank));
         }
     }
+    // How many floor tiles no one can walk to from the doorways, by
+    // straight steps over floor and doors.
+    fn floor_unreached(tiles: &Tiles, doorways: &[((i32, i32), (i32, i32))]) -> usize {
+        let open = |t: &(i32, i32)| tiles.get(t).is_some_and(|(k, _, _)| matches!(k, TileKind::Floor | TileKind::Door));
+        let mut seen = std::collections::HashSet::new();
+        let mut todo: Vec<(i32, i32)> = doorways.iter().map(|(t, _)| *t).filter(|t| open(t) && seen.insert(*t)).collect();
+        while let Some(c) = todo.pop() {
+            for n in [(c.0 + 1, c.1), (c.0 - 1, c.1), (c.0, c.1 + 1), (c.0, c.1 - 1)] {
+                if open(&n) && seen.insert(n) {
+                    todo.push(n);
+                }
+            }
+        }
+        tiles.iter().filter(|(t, (k, _, _))| *k == TileKind::Floor && !seen.contains(*t)).count()
+    }
     let mut tiles: Tiles = HashMap::new();
     const DOORWAY: u8 = 3;
     // Every doorway tile and the way through it (across its wall).
@@ -880,25 +895,36 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
         }
     }
     // Furniture on the ground floor that stops a body: not a floor slab
-    // (a landing is walked on), never on a doorway's clear tiles.
+    // (a landing is walked on), never on a doorway's clear tiles, and
+    // never sealing floor off: a piece that would leave a floor tile no
+    // one can walk to from the doorways is left out.
     let stands = |f: &&SolidDef| f.center.y - f.size.y / 2.0 < BODY_HEIGHT && f.size.y > 2.0 * SLAB;
     for f in def.furniture.iter().filter(stands) {
         let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
-        let mut any = false;
+        let mut covers = Vec::new();
         for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
             for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
                 let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
                 if cx >= lo.x && cx <= hi.x && cz >= lo.z && cz <= hi.z {
-                    any = true;
-                    if !keep_clear.contains(&(x, z)) {
-                        put(&mut tiles, x, z, TileKind::Furniture, f.color, TileKind::Furniture.rank());
-                    }
+                    covers.push((x, z));
                 }
             }
         }
-        let (x, z) = (f.center.x.floor() as i32, f.center.z.floor() as i32);
-        if !any && !keep_clear.contains(&(x, z)) {
-            put(&mut tiles, x, z, TileKind::Furniture, f.color, TileKind::Furniture.rank());
+        if covers.is_empty() {
+            covers.push((f.center.x.floor() as i32, f.center.z.floor() as i32));
+        }
+        let sealed = floor_unreached(&tiles, &doorways);
+        let before: Vec<((i32, i32), Option<(TileKind, Rgb, u8)>)> = covers.iter().map(|t| (*t, tiles.get(t).copied())).collect();
+        for t in covers.iter().filter(|t| !keep_clear.contains(t)) {
+            put(&mut tiles, t.0, t.1, TileKind::Furniture, f.color, TileKind::Furniture.rank());
+        }
+        if floor_unreached(&tiles, &doorways) > sealed {
+            for (t, was) in before {
+                match was {
+                    Some(v) => tiles.insert(t, v),
+                    None => tiles.remove(&t),
+                };
+            }
         }
     }
     let mut sorted: Vec<((i32, i32), (TileKind, Rgb))> = tiles.into_iter().map(|(at, (k, c, _))| (at, (k, c))).collect();
@@ -986,7 +1012,7 @@ pub fn side_frame(side: Side, interior: Vec3, t: f32) -> (Vec3, Vec3, f32) {
 
 /// A member structure placed within a monument: a StructureDef at a
 /// position relative to the monument origin.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MonumentMember {
     pub structure: StructureDef,
     pub offset: Vec3,
@@ -995,7 +1021,7 @@ pub struct MonumentMember {
 /// A spot where loot spawns within the monument. Position is
 /// relative to the monument origin. `danger` scales the loot table
 /// (icarus difficulty: higher danger, better drops).
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LootSpot {
     pub position: Vec3,
     pub danger: u32,
@@ -1003,7 +1029,7 @@ pub struct LootSpot {
 
 /// A spot where an NPC spawns within the monument. Position is
 /// relative to the monument origin. `danger` scales the trait pool.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NpcSpot {
     pub position: Vec3,
     pub danger: u32,
@@ -1011,7 +1037,7 @@ pub struct NpcSpot {
 
 /// A gate: a locked area requiring progression to access. The gate
 /// blocks passage until the player meets the requirement.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Gate {
     pub position: Vec3,
     pub level: u32,
@@ -1032,7 +1058,7 @@ pub struct Prop {
 /// spawn_monument is the one path; members spawn only through
 /// spawn_structure. A minor site has no members: props and a loot
 /// spot.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct MonumentDef {
     /// The rolled name ("Miller's Stop").
     pub name: String,

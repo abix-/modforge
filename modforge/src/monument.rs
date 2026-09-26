@@ -15,7 +15,7 @@
 //!
 //! Prior art: Rust's monuments and its card rooms (the gates).
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use crate::structure::{
     Aabb, Gate, LightDef, LootSpot, MonumentDef, MonumentMember, NpcSpot, Opening, PartDef, Rgb,
@@ -771,13 +771,15 @@ impl MonumentRegistry {
             });
         }
         // Props in a ring around the origin, each at a rolled angle
-        // and distance, never on the loot spot.
+        // and distance, never on the loot spot: the prop's corner at any
+        // angle stays clear of the spot's tile and the tiles round it.
         let mut props = Vec::new();
         for spec in &def.props {
             let count = roll.between(spec.count.0, spec.count.1);
+            let clear = Vec2::new(spec.size.x, spec.size.z).length() / 2.0 + 1.5 * std::f32::consts::SQRT_2;
             for _ in 0..count {
                 let angle = roll.measure(0.0, std::f32::consts::TAU);
-                let distance = roll.measure(spec.radius * 0.4 + 1.0, spec.radius.max(1.5));
+                let distance = roll.measure(clear.max(spec.radius * 0.4 + 1.0), spec.radius.max(clear));
                 props.push(crate::structure::Prop {
                     position: Vec3::new(
                         angle.cos() * distance,
@@ -962,7 +964,9 @@ pub fn arrange(
                 0.0,
                 roll.measure(-slack_z / 2.0, slack_z / 2.0),
             );
-            let offset = cell + jitter - centre.with_y(0.0);
+            // Whole metres, so the building stands on whole tiles
+            // (pathing.md "One grid") with its spots inside it.
+            let offset = (cell + jitter - centre.with_y(0.0)).round();
             MonumentMember { structure, offset }
         })
         .collect()

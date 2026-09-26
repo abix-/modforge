@@ -151,6 +151,14 @@ pub struct Site {
     /// The type's spacing, kept so the consumer knows how much ground
     /// around the site is the site's.
     pub spacing: f32,
+    /// The monument standing here, rolled once when the site was placed
+    /// (topside design.md "A valid world": world generation sees what it
+    /// places); the consumer spawns this, never rolls again.
+    pub rolled: crate::structure::MonumentDef,
+    /// How far from the site its monument reaches (buildings, props, the
+    /// spots for people and boxes), metres: the ground made dry, flat,
+    /// and clear under it.
+    pub ground: f32,
 }
 
 /// A road: a polyline of cell centres from a site (`site` indexes
@@ -366,7 +374,7 @@ impl World {
                 };
                 let p = self.cell_center(c, r);
                 if self.def.near_a_bunker(p, self.def.bunker_clear)
-                    || self.sites.iter().any(|s| s.position.distance(p) < s.spacing * 0.3)
+                    || self.sites.iter().any(|s| s.position.distance(p) < s.ground.max(s.spacing * 0.3))
                 {
                     continue;
                 }
@@ -422,6 +430,7 @@ pub fn roll_world(
     seed: u64,
     biomes: &BiomeRegistry,
     monuments: &crate::monument::MonumentRegistry,
+    buildings: &crate::monument::BuildingRegistry,
 ) -> Result<World, String> {
     for rule in &def.biome_rules {
         if biomes.def(&rule.biome).is_none() {
@@ -639,13 +648,20 @@ pub fn roll_world(
             {
                 continue;
             }
-            // Monuments stand on flat ground.
-            world.flatten(position, spacing * 0.25, height);
+            // The monument is rolled here, so the ground under all of it
+            // (buildings, props, the spots for people and boxes) is made
+            // dry, flat land (topside design.md "A valid world"; Endless
+            // clears the ground under a town).
+            let rolled = monuments.roll(kind, buildings, world.site_seed(world.sites.len()))?;
+            let ground = monument_ground(&rolled);
+            world.flatten(position, ground.max(spacing * 0.25), height);
             world.sites.push(Site {
                 monument: kind.clone(),
                 position,
                 biome,
                 spacing,
+                rolled,
+                ground,
             });
             placed += 1;
         }
@@ -692,6 +708,71 @@ pub fn roll_world(
         connected.push(from);
     }
     Ok(world)
+}
+
+impl World {
+    /// Everything of the ground that stops a body, as rectangles: every
+    /// run of water cells along a row (a run stays inside one block of
+    /// `run_cells` cells so a consumer can group runs by block), every
+    /// piece of scatter by its footprint, every wall of the generator by
+    /// its footprint. The one source the game's colliders and the world
+    /// check are both built from.
+    pub fn ground_solids(&self, scatter: &[Scattered], run_cells: usize) -> Vec<crate::walk::Rect> {
+        let n = self.cells;
+        let cell = self.def.cell;
+        let mut out = Vec::new();
+        for r in 0..n {
+            let mut c = 0;
+            while c < n {
+                if !self.is_water(c, r) {
+                    c += 1;
+                    continue;
+                }
+                let start = c;
+                let end = ((start / run_cells + 1) * run_cells).min(n);
+                while c < end && self.is_water(c, r) {
+                    c += 1;
+                }
+                let (from, to) = (self.cell_center(start, r), self.cell_center(c - 1, r));
+                out.push(crate::walk::Rect::around(
+                    (from + to) / 2.0,
+                    Vec2::new((c - start) as f32 * cell, cell),
+                ));
+            }
+        }
+        for s in scatter {
+            out.push(crate::walk::Rect::around(s.position, Vec2::new(s.size.x, s.size.z)));
+        }
+        for w in &self.walls {
+            let (min, max) = w.footprint();
+            out.push(crate::walk::Rect { min, max });
+        }
+        out
+    }
+}
+
+/// How far from its origin a monument reaches, in metres: every tile of
+/// its buildings' ground floors, every prop, every spot for a person or a
+/// box, and a tile's margin round it.
+pub fn monument_ground(m: &crate::structure::MonumentDef) -> f32 {
+    let mut far: f32 = 0.0;
+    let mut reach = |p: Vec2| far = far.max(p.length());
+    for member in &m.members {
+        let offset = Vec2::new(member.offset.x, member.offset.z);
+        for run in crate::structure::tile_plan(&member.structure) {
+            for (x, z) in [(run.from, run.row), (run.to, run.row), (run.from, run.row + 1), (run.to, run.row + 1)] {
+                reach(offset + Vec2::new(x as f32, z as f32));
+            }
+        }
+    }
+    for p in &m.props {
+        let half = Vec2::new(p.size.x, p.size.z) / 2.0;
+        reach(Vec2::new(p.position.x, p.position.z).abs() + half);
+    }
+    for spot in m.loot_spots.iter().map(|s| s.position).chain(m.npc_spots.iter().map(|s| s.position)) {
+        reach(Vec2::new(spot.x, spot.z));
+    }
+    far + 2.0
 }
 
 /// A* over cells from `from` to `to`, cost by distance plus slope
@@ -981,7 +1062,7 @@ mod tests {
     };
     use glam::Vec3;
 
-    fn registries() -> (BiomeRegistry, MonumentRegistry) {
+    fn registries() -> (BiomeRegistry, MonumentRegistry, BuildingRegistry) {
         let mut biomes = BiomeRegistry::default();
         for (name, allowed) in [
             ("lowland", vec!["roadside stop", "wreck"]),
@@ -1067,7 +1148,7 @@ mod tests {
                 &buildings,
             )
             .unwrap();
-        (biomes, monuments)
+        (biomes, monuments, buildings)
     }
 
     fn def() -> WorldDef {
@@ -1110,7 +1191,7 @@ mod tests {
     /// road, on water, or in the bunker's clear ground.
     #[test]
     fn scatter_keeps_off_roads_water_and_the_bunker() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         let mut scattering = BiomeRegistry::default();
         for name in ["lowland", "hills"] {
             let mut def = biomes.def(name).unwrap().clone();
@@ -1121,7 +1202,7 @@ mod tests {
             }];
             scattering.register(def).unwrap();
         }
-        let world = roll_world(&def(), 3, &biomes, &monuments).unwrap();
+        let world = roll_world(&def(), 3, &biomes, &monuments, &buildings).unwrap();
         let scatter = world.scatter(&scattering);
         assert!(!scatter.is_empty());
         assert_eq!(scatter, world.scatter(&scattering), "same seed, same scatter");
@@ -1140,7 +1221,7 @@ mod tests {
     /// bunker's height, no site, no scatter, no road inside its clearing.
     #[test]
     fn other_bunkers_stand_in_clear_flat_ground() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         let mut scattering = BiomeRegistry::default();
         for name in ["lowland", "hills"] {
             let mut def = biomes.def(name).unwrap().clone();
@@ -1155,7 +1236,7 @@ mod tests {
         let mut def = def();
         def.bunkers = vec![other];
         for seed in 0..5 {
-            let world = roll_world(&def, seed, &biomes, &monuments).unwrap();
+            let world = roll_world(&def, seed, &biomes, &monuments, &buildings).unwrap();
             let (c, r) = world.cell_of(other);
             assert_eq!(world.heights[world.index(c, r)], 0.0, "seed {seed}: flat at the bunker's height");
             assert!(!world.is_water(c, r), "seed {seed}: on land");
@@ -1181,9 +1262,9 @@ mod tests {
     /// behind a hill is not.
     #[test]
     fn the_landmark_is_in_sight_from_the_door() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         for seed in 1..=8u64 {
-            let world = roll_world(&def(), seed, &biomes, &monuments).unwrap();
+            let world = roll_world(&def(), seed, &biomes, &monuments, &buildings).unwrap();
             let door = Vec3::new(0.0, 1.7, 0.0);
             let tower = world
                 .sites
@@ -1206,8 +1287,8 @@ mod tests {
 
     #[test]
     fn sight_stops_at_the_ground_and_at_a_wall() {
-        let (biomes, monuments) = registries();
-        let world = roll_world(&labyrinth_def(), 2, &biomes, &monuments).unwrap();
+        let (biomes, monuments, buildings) = registries();
+        let world = roll_world(&labyrinth_def(), 2, &biomes, &monuments, &buildings).unwrap();
         // Across the clearing: clear. Across a wall: blocked. Over the
         // wall: clear again.
         let eye = Vec3::new(0.0, 1.7, 0.0);
@@ -1232,11 +1313,11 @@ mod tests {
 
     #[test]
     fn the_same_seed_rolls_the_same_world_and_another_differs() {
-        let (biomes, monuments) = registries();
-        let a = roll_world(&def(), 7, &biomes, &monuments).unwrap();
-        let b = roll_world(&def(), 7, &biomes, &monuments).unwrap();
+        let (biomes, monuments, buildings) = registries();
+        let a = roll_world(&def(), 7, &biomes, &monuments, &buildings).unwrap();
+        let b = roll_world(&def(), 7, &biomes, &monuments, &buildings).unwrap();
         assert_eq!(a, b);
-        let c = roll_world(&def(), 8, &biomes, &monuments).unwrap();
+        let c = roll_world(&def(), 8, &biomes, &monuments, &buildings).unwrap();
         assert_ne!(a.heights, c.heights);
         assert_eq!(a.cells, 100);
         assert_eq!(a.heights.len(), 100 * 100);
@@ -1244,9 +1325,9 @@ mod tests {
 
     #[test]
     fn sites_are_spaced_on_land_in_an_allowed_biome_and_every_one_has_a_road() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         for seed in 1..=12u64 {
-            let world = roll_world(&def(), seed, &biomes, &monuments).unwrap();
+            let world = roll_world(&def(), seed, &biomes, &monuments, &buildings).unwrap();
             assert_eq!(world.sites.len(), 35, "seed {seed}");
             for (i, site) in world.sites.iter().enumerate() {
                 let (c, r) = world.cell_of(site.position);
@@ -1317,8 +1398,8 @@ mod tests {
     /// stopping for within 30 seconds of walking.
     #[test]
     fn something_worth_stopping_for_within_reach_of_most_land() {
-        let (biomes, monuments) = registries();
-        let world = roll_world(&def(), 4, &biomes, &monuments).unwrap();
+        let (biomes, monuments, buildings) = registries();
+        let world = roll_world(&def(), 4, &biomes, &monuments, &buildings).unwrap();
         let reach = 150.0;
         let mut roll = Roll::new(99);
         let (mut land, mut covered) = (0, 0);
@@ -1342,8 +1423,8 @@ mod tests {
 
     #[test]
     fn the_bunker_and_every_site_stand_on_flat_ground() {
-        let (biomes, monuments) = registries();
-        let world = roll_world(&def(), 3, &biomes, &monuments).unwrap();
+        let (biomes, monuments, buildings) = registries();
+        let world = roll_world(&def(), 3, &biomes, &monuments, &buildings).unwrap();
         // Inside the flat radius less one cell (the edge cells blend).
         let at = world.height_at(Vec2::ZERO);
         assert!(
@@ -1375,15 +1456,15 @@ mod tests {
 
     #[test]
     fn mountains_and_plateaus_shape_the_base_terrain() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         let mut plain = def();
         plain.generator = Generator::Relief {
             flatness: 1.0,
             mountain_height: 0.0,
             plateau_step: 0.0,
         };
-        let flat = roll_world(&plain, 5, &biomes, &monuments).unwrap();
-        let shaped = roll_world(&def(), 5, &biomes, &monuments).unwrap();
+        let flat = roll_world(&plain, 5, &biomes, &monuments, &buildings).unwrap();
+        let shaped = roll_world(&def(), 5, &biomes, &monuments, &buildings).unwrap();
         let relief = |w: &World| {
             let max = w.heights.iter().cloned().fold(f32::MIN, f32::max);
             let min = w.heights.iter().cloned().fold(f32::MAX, f32::min);
@@ -1425,8 +1506,8 @@ mod tests {
     /// before `Generator` was added.
     #[test]
     fn the_mixed_world_rolls_as_it_always_has() {
-        let (biomes, monuments) = registries();
-        let world = roll_world(&def(), 7, &biomes, &monuments).unwrap();
+        let (biomes, monuments, buildings) = registries();
+        let world = roll_world(&def(), 7, &biomes, &monuments, &buildings).unwrap();
         let mut sum = 0u64;
         for h in &world.heights {
             sum = sum.wrapping_mul(31).wrapping_add(h.to_bits() as u64);
@@ -1521,10 +1602,10 @@ mod tests {
     /// walk, so every road can be found.
     #[test]
     fn the_labyrinths_free_cells_are_one_connected_walk() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         let mut def = labyrinth_def();
         def.monuments.clear();
-        let world = roll_world(&def, 1, &biomes, &monuments).unwrap();
+        let world = roll_world(&def, 1, &biomes, &monuments, &buildings).unwrap();
         let n = world.cells;
         let mut blocked = world.blocked_cells();
         // The strip of ground outside the maze's outer wall is free
@@ -1593,9 +1674,9 @@ mod tests {
 
     #[test]
     fn the_labyrinth_is_flat_with_walls_and_sites_and_roads_in_corridors() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         for seed in 1..=6u64 {
-            let world = roll_world(&labyrinth_def(), seed, &biomes, &monuments).unwrap();
+            let world = roll_world(&labyrinth_def(), seed, &biomes, &monuments, &buildings).unwrap();
             assert!(world.heights.iter().all(|h| *h == 0.0), "seed {seed}: flat");
             assert!(
                 world.walls.len() > 100,
@@ -1643,13 +1724,13 @@ mod tests {
 
     #[test]
     fn unregistered_names_are_refused() {
-        let (biomes, monuments) = registries();
+        let (biomes, monuments, buildings) = registries();
         let mut bad = def();
         bad.monuments.push(("airport".to_string(), 1));
-        assert!(roll_world(&bad, 1, &biomes, &monuments).is_err());
+        assert!(roll_world(&bad, 1, &biomes, &monuments, &buildings).is_err());
         let mut bad = def();
         bad.biome_rules[0].biome = "swamp".to_string();
-        assert!(roll_world(&bad, 1, &biomes, &monuments).is_err());
+        assert!(roll_world(&bad, 1, &biomes, &monuments, &buildings).is_err());
     }
 
     #[test]
