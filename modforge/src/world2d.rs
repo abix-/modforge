@@ -200,7 +200,7 @@ impl World2d {
     }
 
     /// One chunk of the world: the ground chunk, with the bunkers'
-    /// clearings made dirt and bare, nothing growing or lying on a site's
+    /// clearings on land and bare, nothing growing or lying on a site's
     /// ground, and the roads laid on land off the sites' ground.
     pub fn chunk(&mut self, r: Registries, key: ChunkKey) -> GroundChunk {
         let mut chunk = self.ground.chunk(key, r.biomes);
@@ -226,12 +226,16 @@ impl World2d {
                 }
             }
         }
+        // A bunker stands on land (topside design.md "A valid world"): water
+        // or cliff in its clearing is grass; every other tile keeps its own
+        // ground, so the clearing is no circle of dirt.
         for c in &self.bunkers {
             for y in 0..CHUNK {
                 for x in 0..CHUNK {
                     let t = (first.0 + x, first.1 + y);
-                    if centre(t).distance(c.at) < c.radius {
-                        chunk.ground[index(t)] = Ground::Dirt;
+                    let g = &mut chunk.ground[index(t)];
+                    if centre(t).distance(c.at) < c.radius && matches!(g, Ground::Water | Ground::Cliff) {
+                        *g = Ground::Grass;
                     }
                 }
             }
@@ -344,9 +348,9 @@ mod tests {
         World2d::new(ground, places, vec![bunker])
     }
 
-    /// The bunker's clearing is bare dirt; nothing grows on a site's
-    /// ground; roads are laid, on land; one chunk is the same whenever it
-    /// is made.
+    /// The bunker's clearing is bare land in its own ground, no circle of
+    /// dirt; nothing grows on a site's ground; roads are laid, on land;
+    /// one chunk is the same whenever it is made.
     #[test]
     fn bunkers_are_cleared_sites_are_bare_and_roads_are_laid() {
         let (biomes, monuments, buildings) = registries();
@@ -358,14 +362,13 @@ mod tests {
         let mut w = world(&biomes);
         let home = w.chunk(r, (0, 0));
         let first = home.first();
-        for y in 0..CHUNK {
-            for x in 0..CHUNK {
-                let t = (first.0 + x, first.1 + y);
-                if centre(t).length() < 20.0 {
-                    assert_eq!(home.ground_at(t), Ground::Dirt, "the bunker's clearing");
-                }
-            }
-        }
+        let clearing: Vec<Ground> = (0..CHUNK)
+            .flat_map(|y| (0..CHUNK).map(move |x| (first.0 + x, first.1 + y)))
+            .filter(|t| centre(*t).length() < 20.0)
+            .map(|t| home.ground_at(t))
+            .collect();
+        assert!(clearing.iter().all(|g| g.is_land()), "the bunker's clearing is land");
+        assert!(clearing.iter().any(|g| *g != Ground::Dirt), "the clearing keeps its own ground, no circle of dirt");
         assert!(home.things.iter().all(|t| centre(t.tile).length() >= 20.0), "nothing in the clearing");
         let mut roads = 0;
         for cy in -12..12 {
