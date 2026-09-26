@@ -123,7 +123,67 @@ pub fn short_of<'a>(
     short.into_iter().map(|(n, _)| n).collect()
 }
 
-/// A person's memory: things seen, grudges, the last threat.
+/// Something a person did, or had done to them (topside life.md "What a
+/// person did").
+#[derive(Clone, Debug, PartialEq)]
+pub enum Did {
+    /// Ate or drank this item (a can, a water bottle).
+    Ate(String),
+    Slept,
+    /// Took this many of an item from a box.
+    Took(String, u32),
+    /// Put this many of an item into a box (a bunker person's store).
+    Stocked(String, u32),
+    /// Hit this person for this much.
+    Hit(ActorId, f32),
+    /// Was hit by this person (None: not a person, as the storm) for this
+    /// much.
+    WasHit(Option<ActorId>, f32),
+    /// Killed this person.
+    Killed(ActorId),
+    /// Died, killed by this person (None: not a person), of this: the
+    /// damage's name, or hunger, thirst, the storm.
+    Died(Option<ActorId>, String),
+    Respawned,
+}
+
+impl Did {
+    /// What kind of thing it was, for counting: "ate", "slept", "took",
+    /// "put in", "hit", "was hit", "killed", "died", "respawned".
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Did::Ate(_) => "ate",
+            Did::Slept => "slept",
+            Did::Took(..) => "took",
+            Did::Stocked(..) => "put in",
+            Did::Hit(..) => "hit",
+            Did::WasHit(..) => "was hit",
+            Did::Killed(_) => "killed",
+            Did::Died(..) => "died",
+            Did::Respawned => "respawned",
+        }
+    }
+
+    /// In plain words, people by their id: "ate canned food", "was hit by
+    /// 12 for 8", "died of hatchet, killed by 12".
+    pub fn words(&self) -> String {
+        let who = |by: &Option<ActorId>| by.map_or("nobody".to_string(), |a| a.0.to_string());
+        match self {
+            Did::Ate(item) => format!("ate {item}"),
+            Did::Slept => "slept".to_string(),
+            Did::Took(item, n) => format!("took {n} {item}"),
+            Did::Stocked(item, n) => format!("put in {n} {item}"),
+            Did::Hit(whom, amount) => format!("hit {} for {amount:.0}", whom.0),
+            Did::WasHit(by, amount) => format!("was hit by {} for {amount:.0}", who(by)),
+            Did::Killed(whom) => format!("killed {}", whom.0),
+            Did::Died(by, of) => format!("died of {of}, killed by {}", who(by)),
+            Did::Respawned => "respawned".to_string(),
+        }
+    }
+}
+
+/// A person's memory: things seen, grudges, the last threat, and what
+/// they did.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Memory {
     pub known: Vec<Known>,
@@ -131,7 +191,13 @@ pub struct Memory {
     pub hurt_by: Vec<(ActorId, f32)>,
     /// The last hostile seen: who, where, when.
     pub last_threat: Option<(ActorId, Vec3, u64)>,
+    /// Everything they did, and when (tick), oldest first; the oldest go
+    /// past `DONE_KEPT`.
+    pub done: Vec<(u64, Did)>,
 }
+
+/// How many things done a person remembers.
+pub const DONE_KEPT: usize = 1024;
 
 /// Memories older than this are forgotten (ticks at 60 a second: a
 /// game day of 1200 s is 72000 ticks; a thing is remembered for
@@ -180,6 +246,22 @@ impl Memory {
     /// A thing is gone (despawned): forget it.
     pub fn gone(&mut self, key: u64) {
         self.known.retain(|k| k.key != key);
+    }
+
+    /// Note something done now.
+    pub fn did(&mut self, what: Did, now: u64) {
+        self.done.push((now, what));
+        if self.done.len() > DONE_KEPT {
+            self.done.remove(0);
+        }
+    }
+
+    /// Who killed them last, and of what: None if they never died.
+    pub fn killed_by(&self) -> Option<(Option<ActorId>, &str)> {
+        self.done.iter().rev().find_map(|(_, d)| match d {
+            Did::Died(by, of) => Some((*by, of.as_str())),
+            _ => None,
+        })
     }
 
     pub fn hurt(&mut self, by: ActorId, amount: f32) {
@@ -243,6 +325,25 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a person did is kept in order, the oldest going past the
+    /// limit, and the last death says who killed them.
+    #[test]
+    fn a_person_remembers_what_they_did_and_who_killed_them() {
+        let mut m = Memory::default();
+        assert_eq!(m.killed_by(), None);
+        m.did(Did::Ate("canned food".to_string()), 5);
+        m.did(Did::Died(Some(ActorId(7)), "hatchet".to_string()), 9);
+        m.did(Did::Respawned, 10);
+        m.did(Did::Died(None, "hunger".to_string()), 20);
+        assert_eq!(m.killed_by(), Some((None, "hunger")));
+        assert_eq!(m.done[0], (5, Did::Ate("canned food".to_string())));
+        for t in 0..DONE_KEPT as u64 {
+            m.did(Did::Slept, 100 + t);
+        }
+        assert_eq!(m.done.len(), DONE_KEPT);
+        assert_eq!(m.done[0].1, Did::Slept, "the oldest went");
+    }
 
     #[test]
     fn a_box_is_worth_the_food_seen_inside_it() {

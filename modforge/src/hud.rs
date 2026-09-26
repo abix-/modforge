@@ -193,7 +193,7 @@ pub struct Holders<'a> {
 }
 
 impl Holders<'_> {
-    fn get(&self, holder: Holder) -> Option<&Inventory> {
+    pub fn get(&self, holder: Holder) -> Option<&Inventory> {
         match holder {
             Holder::Inventory => Some(self.inventory),
             Holder::Hotbar => Some(self.hotbar),
