@@ -61,7 +61,8 @@ pub enum Activity {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Doing {
-    Eat,
+    /// Eating or drinking for this need, until it is met.
+    Eat(Need),
     Sleep,
     Check,
     /// Taking what they and their bunker need out of a box.
@@ -144,9 +145,10 @@ impl std::fmt::Debug for Perception<'_> {
 /// data, because the brain cannot touch the world.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Do {
-    /// Take food from the known thing `key` and eat it.
+    /// Eat or drink from the known thing `key`, for `need`.
     Eat {
         key: u64,
+        need: Need,
     },
     Sleep,
     Wake,
@@ -182,6 +184,8 @@ pub struct Decision {
 pub const LEASH: f32 = 60.0;
 /// A need below this sends a person to something it knows.
 pub const NEED_LINE: f32 = 50.0;
+/// A need at or above this is met: eating or drinking for it stops.
+pub const FED: f32 = 90.0;
 /// A need below this, with nothing known to answer it, sends a person
 /// looking.
 pub const LOOK_LINE: f32 = 30.0;
@@ -293,7 +297,7 @@ fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<
     match activity {
         Activity::Going { key, need, .. } if p.arrived => {
             let (what, do_now) = match need {
-                Need::Hunger | Need::Thirst => (Doing::Eat, Some(Do::Eat { key: *key })),
+                Need::Hunger | Need::Thirst => (Doing::Eat(*need), Some(Do::Eat { key: *key, need: *need })),
                 Need::Rest => (Doing::Sleep, Some(Do::Sleep)),
                 Need::Safety => (Doing::Check, None),
             };
@@ -332,17 +336,23 @@ fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<
             do_now: Some(Do::Check { key: *key }),
         }),
         Activity::Doing { key, what } => {
-            // Keep eating while hungry and the thing still feeds; keep
-            // sleeping until rested; a check is one look.
+            // Everything is for a need and stops when that need is met:
+            // eat or drink until the need that sent them is met or the
+            // thing holds nothing for it; sleep until rested; a check is
+            // one look.
             let done = match what {
-                Doing::Eat => {
-                    let fed = p.needs.hunger >= 90.0 && p.needs.thirst >= 90.0;
-                    let empty = !p
+                Doing::Eat(need) => {
+                    let met = match need {
+                        Need::Hunger => p.needs.hunger >= FED,
+                        Need::Thirst => p.needs.thirst >= FED,
+                        Need::Rest | Need::Safety => true,
+                    };
+                    let nothing_for_it = !p
                         .memory
                         .known
                         .iter()
-                        .any(|k| k.key == *key && k.believed_to_hold());
-                    fed || empty
+                        .any(|k| k.key == *key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, *need) > 0.0));
+                    met || nothing_for_it
                 }
                 Doing::Sleep => p.needs.rest >= 95.0 || p.hostile.is_some(),
                 Doing::Check => true,
@@ -360,7 +370,7 @@ fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<
             };
             if !done {
                 let do_now = match what {
-                    Doing::Eat => Some(Do::Eat { key: *key }),
+                    Doing::Eat(need) => Some(Do::Eat { key: *key, need: *need }),
                     Doing::Take(_) => Some(Do::Take { key: *key }),
                     Doing::Stock => Some(Do::Stock { key: *key }),
                     _ => None,
@@ -1230,15 +1240,35 @@ mod tests {
         p.arrived = true;
         p.position = Vec3::new(0.0, 0.0, -11.0);
         let d = decide(&p, &d.activity, &CombatState::None, &mut roll);
-        assert_eq!(d.do_now, Some(Do::Eat { key: 7 }));
+        assert_eq!(d.do_now, Some(Do::Eat { key: 7, need: Need::Hunger }));
         let eating = d.activity.clone();
         // Still hungry: eat again. Fed: done.
         let d = decide(&p, &eating, &CombatState::None, &mut roll);
-        assert_eq!(d.do_now, Some(Do::Eat { key: 7 }));
+        assert_eq!(d.do_now, Some(Do::Eat { key: 7, need: Need::Hunger }));
         p.needs.hunger = 95.0;
         let d = decide(&p, &eating, &CombatState::None, &mut roll);
         assert_eq!(d.activity, Activity::Idle);
         assert_eq!(d.do_now, None);
+    }
+
+    /// Drinking at a well for thirst stops when the thirst is met, however
+    /// hungry they still are: everything is for a need.
+    #[test]
+    fn drinking_stops_when_the_thirst_is_met() {
+        let mut memory = Memory::default();
+        memory.see(9, "well", Vec3::ZERO, 1);
+        let personality = calm();
+        let mut p = perception(&memory, &personality);
+        p.arrived = true;
+        p.needs.hunger = 20.0;
+        p.needs.thirst = 40.0;
+        let drinking = Activity::Doing { key: 9, what: Doing::Eat(Need::Thirst) };
+        let d = decide(&p, &drinking, &CombatState::None, &mut Roll::new(1));
+        assert_eq!(d.do_now, Some(Do::Eat { key: 9, need: Need::Thirst }), "still thirsty: another mouthful");
+        p.needs.thirst = 95.0;
+        let d = decide(&p, &drinking, &CombatState::None, &mut Roll::new(1));
+        assert_ne!(d.do_now, Some(Do::Eat { key: 9, need: Need::Thirst }), "thirst met: no more drinking, hungry or not");
+        assert_ne!(d.activity, drinking);
     }
 
     #[test]
