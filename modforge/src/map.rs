@@ -63,6 +63,19 @@ impl Map {
         self.chunks.values().map(|c| c.bits.iter().map(|b| b.count_ones() as usize).sum::<usize>()).sum()
     }
 
+    /// Join `other` into this map (topside life.md: what their bunker tells
+    /// them): every tile either has seen is seen, and each chunk was last
+    /// seen at the later of the two.
+    pub fn join(&mut self, other: &Map) {
+        for (key, theirs) in &other.chunks {
+            let mine = self.chunks.entry(*key).or_default();
+            for (a, b) in mine.bits.iter_mut().zip(theirs.bits) {
+                *a |= b;
+            }
+            mine.seen_at = mine.seen_at.max(theirs.seen_at);
+        }
+    }
+
     /// When chunk `key` was last seen, if ever.
     pub fn chunk_seen_at(&self, key: ChunkKey) -> Option<u64> {
         self.chunks.get(&key).map(|c| c.seen_at)
@@ -139,6 +152,23 @@ impl Map {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two maps joined: every tile either saw, each chunk at the later
+    /// tick (topside todo 11af).
+    #[test]
+    fn two_maps_join() {
+        let (mut a, mut b) = (Map::default(), Map::default());
+        a.see((1, 1), 10);
+        b.see((2, 2), 20);
+        b.see((100, 0), 5);
+        a.join(&b);
+        assert!(a.seen((1, 1)) && a.seen((2, 2)) && a.seen((100, 0)));
+        assert!(!a.seen((3, 3)));
+        assert_eq!(a.chunk_seen_at((0, 0)), Some(20), "the later of the two");
+        assert_eq!(a.chunk_seen_at((3, 0)), Some(5));
+        assert_eq!(a.tiles_seen(), 3);
+        assert_eq!(b.tiles_seen(), 2, "the other map is unchanged");
+    }
 
     /// A closed room: walls round x 10..=16, y -3..=3.
     fn room_wall(c: Cell) -> bool {
