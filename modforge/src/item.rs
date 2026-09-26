@@ -290,6 +290,12 @@ pub struct LayerDef {
     /// The damage def a hit with this layer on lands, in place of the
     /// item's own. None leaves the item's damage as it is.
     pub damage: Option<String>,
+    /// Added to the item's reach, in metres (a gun's barrel, its sight).
+    pub reach: f32,
+    /// Added to the item's spread, in degrees (a barrel, a stock).
+    pub spread_degrees: f32,
+    /// Added to the item's seconds between shots (a grip).
+    pub delay: f32,
     /// The picture drawn for this layer, over the item's own.
     pub picture: Option<String>,
 }
@@ -418,9 +424,15 @@ pub struct Numbers {
 pub fn numbers_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> Numbers {
     let mut combat = def.combat.clone();
     for layer in stack.layers.iter().filter_map(|name| layers.def(name)) {
-        if let (Some(combat), Some(damage)) = (combat.as_mut(), &layer.damage) {
+        let Some(combat) = combat.as_mut() else {
+            break;
+        };
+        if let Some(damage) = &layer.damage {
             combat.damage = damage.clone();
         }
+        combat.reach = (combat.reach + layer.reach).max(0.0);
+        combat.spread_degrees = (combat.spread_degrees + layer.spread_degrees).max(0.0);
+        combat.delay = (combat.delay + layer.delay).max(0.05);
     }
     Numbers { combat, armor: def.armor }
 }
@@ -834,6 +846,9 @@ mod tests {
             name: name.to_string(),
             slot: "head".to_string(),
             damage: Some(damage.to_string()),
+            reach: 0.0,
+            spread_degrees: 0.0,
+            delay: 0.0,
             picture: None,
         };
         layers.register(head("nails", "nail hit")).unwrap();
@@ -863,5 +878,52 @@ mod tests {
         assert!(create_layered(&pipe, &[nails.clone(), nails], &layers, 1, &[], 0.0, 1).is_err());
         assert!(create_layered(&pipe, &["gold".to_string()], &layers, 1, &[], 0.0, 1).is_err(), "no such layer");
         assert_eq!(numbers_of(&can, &create(&can, 1, &[], 0.0, 1), &layers).combat, None);
+    }
+
+    #[test]
+    fn a_gun_s_parts_change_its_reach_spread_and_speed() {
+        let gun = ItemDef {
+            kind: ItemKind::Weapon,
+            max_stack: 1,
+            combat: Some(CombatStats {
+                damage: "shotgun pellet".to_string(),
+                delay: 1.2,
+                reach: 20.0,
+                pellets: 6,
+                spread_degrees: 10.0,
+                ammo: Some("shotgun shell".to_string()),
+            }),
+            layer_slots: ["barrel", "grip", "stock"].map(String::from).to_vec(),
+            ..def("pipe shotgun")
+        };
+        let part = |name: &str, slot: &str, reach, spread_degrees, delay| LayerDef {
+            name: name.to_string(),
+            slot: slot.to_string(),
+            damage: None,
+            reach,
+            spread_degrees,
+            delay,
+            picture: None,
+        };
+        let mut layers = LayerRegistry::default();
+        for p in [
+            part("pipe barrel", "barrel", 20.0, -3.0, 0.0),
+            part("short pipe barrel", "barrel", 5.0, 2.0, 0.0),
+            part("wooden stock", "stock", 0.0, -2.0, 0.0),
+            part("taped grip", "grip", 0.0, 0.0, -0.2),
+        ] {
+            layers.register(p).unwrap();
+        }
+        let with = |parts: &[&str]| {
+            let names: Vec<String> = parts.iter().map(|p| p.to_string()).collect();
+            let stack = create_layered(&gun, &names, &layers, 1, &[], 0.0, 1).unwrap();
+            numbers_of(&gun, &stack, &layers).combat.unwrap()
+        };
+        let long = with(&["pipe barrel"]);
+        let short = with(&["short pipe barrel"]);
+        assert!(short.reach < long.reach && short.spread_degrees > long.spread_degrees, "a short barrel reaches less and spreads more");
+        assert!(with(&["pipe barrel", "wooden stock"]).spread_degrees < long.spread_degrees, "a stock narrows the spread");
+        assert!(with(&["pipe barrel", "taped grip"]).delay < long.delay, "a grip fires sooner");
+        assert_eq!(long.damage, "shotgun pellet", "a part without damage keeps the gun's");
     }
 }
