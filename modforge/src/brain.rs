@@ -778,13 +778,19 @@ fn wander(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut R
     }
     let centre = p.home.unwrap_or(p.position);
     let radius = p.behaviour.home_radius();
-    // Only a spot someone can stand on and reach; none in a few tries,
-    // stand a while.
-    let Some(to) = standable_spot(p, roll, |roll| {
-        let angle = roll.measure(0.0, std::f32::consts::TAU);
-        let distance = roll.measure(radius * 0.3, radius);
-        centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
-    }) else {
+    // A stroll: only a spot someone can stand on and reach with no search;
+    // none in a few tries, stand a while. (A trip out is a real way,
+    // searched for: `head_out`.)
+    let Some(to) = spot_where(
+        p,
+        roll,
+        |roll| {
+            let angle = roll.measure(0.0, std::f32::consts::TAU);
+            let distance = roll.measure(radius * 0.3, radius);
+            centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
+        },
+        |to| (p.reachable)(to),
+    ) else {
         return Decision {
             activity: Activity::Idle,
             combat,
@@ -803,10 +809,20 @@ fn wander(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut R
 /// How many spots are rolled looking for one a person can stand on.
 const SPOT_TRIES: usize = 8;
 
-/// The first rolled spot a person can stand on and reach, within
-/// `SPOT_TRIES`.
-fn standable_spot(p: &Perception, roll: &mut Roll, mut spot: impl FnMut(&mut Roll) -> Vec3) -> Option<Vec3> {
-    (0..SPOT_TRIES).map(|_| spot(roll)).find(|to| (p.standable)(*to) && (p.reachable)(*to))
+/// The first rolled spot a person can stand on, within `SPOT_TRIES`.
+fn standable_spot(p: &Perception, roll: &mut Roll, spot: impl FnMut(&mut Roll) -> Vec3) -> Option<Vec3> {
+    spot_where(p, roll, spot, |_| true)
+}
+
+/// The first rolled spot a person can stand on and `also` holds for,
+/// within `SPOT_TRIES`.
+fn spot_where(
+    p: &Perception,
+    roll: &mut Roll,
+    mut spot: impl FnMut(&mut Roll) -> Vec3,
+    also: impl Fn(Vec3) -> bool,
+) -> Option<Vec3> {
+    (0..SPOT_TRIES).map(|_| spot(roll)).find(|to| (p.standable)(*to) && also(*to))
 }
 
 fn reach_of(p: &Perception) -> f32 {
@@ -912,21 +928,27 @@ mod tests {
         assert_eq!(d.activity, Activity::Idle, "nowhere standable: stays");
     }
 
-    /// A stroll or a trip out only picks a spot the person can reach.
+    /// A stroll only picks a spot reached with no search; a trip out
+    /// still goes, the way searched for (from inside a bunker no straight
+    /// way leads out).
     #[test]
-    fn strolls_and_trips_out_only_pick_reachable_spots() {
+    fn strolls_only_pick_reachable_spots_and_trips_out_still_go() {
         let memory = Memory::default();
         let personality = calm();
         let mut p = perception(&memory, &personality);
         let north = |at: Vec3| at.z > 0.0;
         p.reachable = &north;
-        p.store = Some((1, Vec3::ZERO));
-        p.bunker_short = vec![Need::Hunger];
         for seed in 0..40 {
             if let Activity::Wander { to } = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(seed)).activity {
-                assert!(to.z > 0.0, "seed {seed}: headed for {to}, which cannot be reached");
+                assert!(to.z > 0.0, "seed {seed}: strolled to {to}, which cannot be reached");
             }
         }
+        let nowhere = |_: Vec3| false;
+        p.reachable = &nowhere;
+        p.store = Some((1, Vec3::ZERO));
+        p.bunker_short = vec![Need::Hunger];
+        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
+        assert!(matches!(d.activity, Activity::Wander { .. }), "short, they still head out: {:?}", d.activity);
     }
 
     /// Nothing known to answer a need (theirs or their bunker's): they
