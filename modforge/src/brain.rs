@@ -395,8 +395,22 @@ pub fn enter_need(t: &mut Think, _: &Target) -> Option<Target> {
     need_target(t.p)
 }
 
-/// Walk to what the state is about; there, it succeeds. Rest is had at
-/// home, anywhere in it.
+/// Seeing to one need while another falls past the look line and below
+/// it: that one comes first (seen in the running game, topside
+/// tests/thirst.rs: people slept at their camp until they died of thirst,
+/// knowing the water).
+pub fn worse_need(t: &mut Think, target: &Target) -> bool {
+    let Target::Thing { need: Some(serving), .. } = *target else {
+        return false;
+    };
+    let needs = t.p.needs.needs_worst_first();
+    let value = |n: Need| needs.iter().find(|(m, _)| *m == n).map_or(0.0, |(_, v)| *v);
+    let (worst, lowest) = needs[0];
+    worst != serving && lowest < LOOK_LINE && lowest < value(serving)
+}
+
+/// Walk to what the state is about, awake; there, it succeeds. Rest is
+/// had at home, anywhere in it.
 pub fn going(t: &mut Think, target: &Target) -> Status {
     let (at, need) = match *target {
         Target::Thing { at, need, .. } => (at, need),
@@ -409,7 +423,7 @@ pub fn going(t: &mut Think, target: &Target) -> Status {
         t.act(vec![], None);
         return Status::Succeeded;
     }
-    t.act(walk_toward(p, at), None);
+    t.act(walk_toward(p, at), p.asleep.then_some(Do::Wake));
     Status::Running
 }
 
@@ -831,6 +845,34 @@ mod tests {
                 assert!(to.distance(Vec3::ZERO) <= radius, "seed {seed}: {to} past the home radius");
             }
         }
+    }
+
+    /// Asleep at camp with thirst falling past the look line below their
+    /// rest: the thirst comes first (seen in the running game, topside
+    /// tests/thirst.rs); a need still above the line does not wake them.
+    #[test]
+    fn a_worse_need_takes_them_off_the_one_they_serve() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let sleeping = Target::Thing { key: 1, at: Vec3::ZERO, need: Some(Need::Rest) };
+        p.needs.rest = 40.0;
+        p.needs.thirst = 20.0;
+        let mut roll = Roll::new(1);
+        let mut t = Think::new(&p, &mut roll);
+        assert!(worse_need(&mut t, &sleeping), "thirst 20 under rest 40: drink first");
+        p.needs.thirst = 35.0;
+        let mut t = Think::new(&p, &mut roll);
+        assert!(!worse_need(&mut t, &sleeping), "thirst 35 is not past the look line");
+        p.needs.thirst = 20.0;
+        p.needs.rest = 10.0;
+        let mut t = Think::new(&p, &mut roll);
+        assert!(!worse_need(&mut t, &sleeping), "rest is still the worst");
+        // Walking there, a sleeper wakes.
+        p.asleep = true;
+        let mut t = Think::new(&p, &mut roll);
+        going(&mut t, &Target::Point(Vec3::new(10.0, 0.0, 0.0)));
+        assert_eq!(t.do_now, Some(Do::Wake));
     }
 
     /// Seen in the running game (topside tests/thirst.rs): people worn out
