@@ -8,6 +8,7 @@
 //! are then the same thing with a different hand on the queue.
 
 use crate::combat::{Health, Protection};
+use crate::structure::Rgb;
 
 /// How far from home an actor ranges when left alone (the brain's
 /// wander and leash radius): a guard holds its post, a hunter roams.
@@ -352,9 +353,99 @@ impl Personality {
 /// not a teleport. The brain (crate::brain) turns by this.
 pub const TURN_RATE: f32 = 0.15;
 
+/// One body a person can have, and the slots of pieces it can wear:
+/// each slot is the names that fit it (a hairstyle, a beard), `None`
+/// among them for going without.
+#[derive(Clone, Debug)]
+pub struct BodyLook {
+    pub name: String,
+    pub slots: Vec<Vec<Option<String>>>,
+}
+
+/// Everything a person's look is rolled from (topside design.md "What 2D
+/// changes": people are built from pieces and differ): the bodies, and
+/// the skin tones and hair colours the pieces are tinted.
+#[derive(Clone, Debug)]
+pub struct LookDef {
+    pub bodies: Vec<BodyLook>,
+    pub skins: Vec<Rgb>,
+    pub hair: Vec<Rgb>,
+}
+
+/// One person's look: their body, the piece worn in each of its slots,
+/// and their skin and hair tints.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Look {
+    pub body: String,
+    pub pieces: Vec<String>,
+    pub skin: Rgb,
+    pub hair: Rgb,
+}
+
+impl Look {
+    /// Roll a person's look from their id and the world seed, as
+    /// `Personality::seed` rolls who they are: the same id and seed give
+    /// the same look.
+    pub fn roll(id: ActorId, world_seed: u64, def: &LookDef) -> Look {
+        let key = (id.0 as i64) ^ (world_seed as i64).rotate_left(29);
+        let pick = |salt: i64, n: usize| -> usize {
+            let unit = (crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0;
+            ((unit * n as f64) as usize).min(n.saturating_sub(1))
+        };
+        let body = &def.bodies[pick(1, def.bodies.len())];
+        let pieces = body
+            .slots
+            .iter()
+            .enumerate()
+            .filter_map(|(i, slot)| slot[pick(10 + i as i64, slot.len())].clone())
+            .collect();
+        Look {
+            body: body.name.clone(),
+            pieces,
+            skin: def.skins[pick(2, def.skins.len())],
+            hair: def.hair[pick(3, def.hair.len())],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn looks() -> LookDef {
+        let slot = |names: &[Option<&str>]| names.iter().map(|n| n.map(str::to_string)).collect();
+        LookDef {
+            bodies: vec![
+                BodyLook { name: "a".to_string(), slots: vec![slot(&[Some("short"), Some("long"), None]), slot(&[Some("beard"), None])] },
+                BodyLook { name: "b".to_string(), slots: vec![slot(&[Some("buns"), None])] },
+            ],
+            skins: vec![[0.9, 0.7, 0.6], [0.5, 0.35, 0.25], [0.3, 0.2, 0.15]],
+            hair: vec![[0.1, 0.08, 0.06], [0.6, 0.45, 0.2]],
+        }
+    }
+
+    /// The same id and seed give the same look; over many people every
+    /// body, piece, skin and hair shows up, so people differ.
+    #[test]
+    fn a_look_is_the_same_for_the_same_person_and_people_differ() {
+        let def = looks();
+        assert_eq!(Look::roll(ActorId(7), 3, &def), Look::roll(ActorId(7), 3, &def));
+        let all: Vec<Look> = (0..400).map(|i| Look::roll(ActorId(i), 3, &def)).collect();
+        for body in ["a", "b"] {
+            assert!(all.iter().any(|l| l.body == body), "no body {body}");
+        }
+        for piece in ["short", "long", "beard", "buns"] {
+            assert!(all.iter().any(|l| l.pieces.iter().any(|p| p == piece)), "no {piece}");
+        }
+        assert!(all.iter().any(|l| l.pieces.is_empty()), "nobody goes without");
+        assert!(all.iter().all(|l| l.body == "a" || !l.pieces.iter().any(|p| p == "beard")), "a piece only on the body it fits");
+        for skin in &def.skins {
+            assert!(all.iter().any(|l| l.skin == *skin), "no skin {skin:?}");
+        }
+        for hair in &def.hair {
+            assert!(all.iter().any(|l| l.hair == *hair), "no hair {hair:?}");
+        }
+    }
 
     fn raider() -> ActorDef {
         ActorDef {
