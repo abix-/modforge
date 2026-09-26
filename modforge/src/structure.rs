@@ -1051,6 +1051,8 @@ pub struct Prop {
     pub position: Vec3,
     pub size: Vec3,
     pub color: Rgb,
+    /// Its def's picture, if it has one.
+    pub picture: Option<String>,
 }
 
 /// One monument as data: a destination worth traveling to, composed

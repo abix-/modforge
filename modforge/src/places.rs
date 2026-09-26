@@ -321,6 +321,7 @@ mod tests {
                                 color: [0.4, 0.2, 0.15],
                                 count: (1, 2),
                                 radius: 4.0,
+                                picture: None,
                             }]
                         } else {
                             vec![]

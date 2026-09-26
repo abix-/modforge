@@ -582,13 +582,15 @@ pub struct BuildingSlot {
 }
 
 /// A prop a monument type scatters around its origin on every roll:
-/// size, colour, how many of them, and how far out they stand.
+/// size, colour, how many of them, how far out they stand, and the
+/// picture the game draws it with (none draws it as a box in its colour).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PropDef {
     pub size: Vec3,
     pub color: Rgb,
     pub count: (u32, u32),
     pub radius: f32,
+    pub picture: Option<String>,
 }
 
 /// One monument type as data (design.md "Monument types"). `name`
@@ -788,6 +790,7 @@ impl MonumentRegistry {
                     ),
                     size: spec.size,
                     color: spec.color,
+                    picture: spec.picture.clone(),
                 });
             }
         }
@@ -1271,6 +1274,7 @@ mod tests {
                     color: [0.4, 0.2, 0.15],
                     count: (1, 3),
                     radius: 5.0,
+                    picture: Some("car wreck".into()),
                 }],
                 good_for: Default::default(),
                 height: 2.0,
@@ -1280,6 +1284,7 @@ mod tests {
         .unwrap();
         for seed in 0..5u64 {
             let site = m.roll("wreck", &b, seed).unwrap();
+            assert!(site.props.iter().all(|p| p.picture.as_deref() == Some("car wreck")), "every prop carries its def's picture");
             assert!(site.members.is_empty());
             assert_eq!(site.loot_spots.len(), 1, "one box at the origin");
             assert!(site.npc_spots.is_empty());
