@@ -147,6 +147,10 @@ pub const LEARN_RATE: f32 = 0.3;
 /// What dying loses beyond the measure: all that was still to come,
 /// counted as a game day of staying alive (seconds). Tuning.
 pub const DEATH_COST: f32 = 1200.0;
+/// Instinct's lead for each place higher in its order, in seconds of
+/// staying alive: what was learned must beat it to overturn instinct.
+/// Tuning.
+pub const INSTINCT_STEP: f32 = 60.0;
 /// Below this share a choice no longer takes blame or credit.
 const TRACE_GONE: f32 = 0.01;
 /// The most different a remembered moment may be and still stand in for
@@ -170,26 +174,36 @@ impl Learned {
     /// change since the last, less the time that passed (standing still
     /// scores nothing), goes to the recent choices by their share.
     pub fn score(&mut self, now: u64, alive_for: f32) {
-        if let Some((then, before)) = self.last {
-            let passed = now.saturating_sub(then) as f32 / 60.0;
-            let change = alive_for + passed - before;
-            for (situation, choice, share) in &self.recent {
-                let value = self.values.entry((*situation, *choice)).or_insert(0.0);
-                *value += LEARN_RATE * share * change;
-            }
+        if let Some(change) = self.change(now, alive_for) {
+            self.credit(change);
         }
         self.last = Some((now, alive_for));
+    }
+
+    /// The change in the measure since the last reading, less the time
+    /// that passed.
+    fn change(&self, now: u64, alive_for: f32) -> Option<f32> {
+        let (then, before) = self.last?;
+        let passed = now.saturating_sub(then) as f32 / 60.0;
+        Some(alive_for + passed - before)
+    }
+
+    /// Each recent choice's value moves toward `change` by its share (the
+    /// Q-learning step: a value is what the choice tends to bring, never a
+    /// sum that grows without end).
+    fn credit(&mut self, change: f32) {
+        for (situation, choice, share) in &self.recent {
+            let value = self.values.entry((*situation, *choice)).or_insert(0.0);
+            *value += LEARN_RATE * share * (change - *value);
+        }
     }
 
     /// Died: the measure fell to nothing, and dying loses all that was
     /// still to come as well (`DEATH_COST`), the biggest blame for what
     /// led here; the next life starts fresh, keeping what was learned.
     pub fn died(&mut self, now: u64) {
-        self.score(now, 0.0);
-        for (situation, choice, share) in &self.recent {
-            let value = self.values.entry((*situation, *choice)).or_insert(0.0);
-            *value -= LEARN_RATE * share * DEATH_COST;
-        }
+        let change = self.change(now, 0.0).unwrap_or(0.0) - DEATH_COST;
+        self.credit(change);
         self.recent.clear();
         self.last = None;
     }
@@ -206,27 +220,34 @@ impl Learned {
 
     /// What `choice` is worth in `situation`: learned there, or in the
     /// most similar moment remembered (no more than `MOST_DIFFERENT`
-    /// apart); None if never learned near it.
+    /// apart, and never across what changes what is at stake: a hostile in
+    /// sight, the storm, having a home); None if never learned near it.
     pub fn value(&self, situation: &Situation, choice: Choice) -> Option<f32> {
         if let Some(v) = self.values.get(&(*situation, choice)) {
             return Some(*v);
         }
+        let at_stake = |s: &Situation| (s.hostile_in_sight, s.storm_coming, s.has_home);
         self.values
             .iter()
-            .filter(|((s, c), _)| *c == choice && s.differs(situation) <= MOST_DIFFERENT)
+            .filter(|((s, c), _)| {
+                *c == choice && at_stake(s) == at_stake(situation) && s.differs(situation) <= MOST_DIFFERENT
+            })
             .min_by_key(|((s, _), _)| s.differs(situation))
             .map(|(_, v)| *v)
     }
 
     /// Of the choices offered in order of instinct, the one to take: the
-    /// highest learned value, a choice never learned counting as nothing
-    /// (so one that went badly loses to one not yet tried), instinct's
-    /// order breaking ties. With nothing learned, the first offered.
+    /// highest learned value with instinct's lead added (`INSTINCT_STEP`
+    /// less for each place down the order), a choice never learned
+    /// counting as nothing but its lead. With nothing learned, instinct's
+    /// first choice; what was learned overturns instinct only by more than
+    /// the lead, and a choice that went badly loses to one not yet tried.
     pub fn pick(&self, situation: &Situation, offered: &[Choice]) -> usize {
         let mut best = 0;
         let mut best_value = f32::NEG_INFINITY;
         for (i, choice) in offered.iter().enumerate() {
-            let v = self.value(situation, *choice).unwrap_or(0.0);
+            let lead = -(i as f32) * INSTINCT_STEP;
+            let v = self.value(situation, *choice).unwrap_or(0.0) + lead;
             if v > best_value {
                 best = i;
                 best_value = v;
@@ -349,6 +370,33 @@ mod tests {
         let hungry_out = moment(Band::Low, false);
         assert_eq!(learned.pick(&hungry_out, &offered), 1);
         assert_eq!(learned.value(&hungry_out, Choice::Look), learned.value(&hungry_home, Choice::Look));
+    }
+
+    /// Found in the real game: wandering found a box of food while calm,
+    /// and that stood in for the moment a hostile came into sight, so
+    /// nobody fought. What changes the stakes must match: calm luck says
+    /// nothing about a fight, and instinct fights.
+    #[test]
+    fn a_calm_find_says_nothing_about_a_fight() {
+        let mut learned = Learned::default();
+        let calm = moment(Band::Fine, false);
+        learned.score(0, 100.0);
+        learned.chose(calm, Choice::Wander);
+        learned.score(60, 1900.0);
+        assert!(learned.values[&(calm, Choice::Wander)] > INSTINCT_STEP);
+        let threatened = Situation { hostile_in_sight: true, ..calm };
+        assert_eq!(learned.value(&threatened, Choice::Wander), None);
+        assert_eq!(learned.pick(&threatened, &[Choice::Fight, Choice::Wander]), 0, "fights");
+        // A value is what a choice tends to bring, not a sum: the same
+        // find again does not make it grow without end.
+        let once = learned.values[&(calm, Choice::Wander)];
+        for t in 2..50 {
+            learned.chose(calm, Choice::Wander);
+            learned.score(60 * t, 1900.0 + 1800.0 * (t - 1) as f32);
+        }
+        // Each find adds 1801 s (1800 found, 1 passed): the value nears
+        // that, never more.
+        assert!(learned.values[&(calm, Choice::Wander)] <= 1801.0 && once > 0.0);
     }
 
     /// Standing still scores nothing: time passing is not a loss.
