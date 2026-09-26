@@ -152,7 +152,14 @@ impl Places {
                 rolled,
                 ground,
             };
-            place.footprint().iter().all(|t| m.ground.ground_at(*t).is_land()).then_some(place)
+            // Placed by hand, it stands wherever it is inside the world and
+            // off a cliff: a river or a lake under it is cleared to dry land
+            // (World2d::chunk, topside design.md "2D world generation").
+            place
+                .footprint()
+                .iter()
+                .all(|t| !matches!(m.ground.ground_at(*t), crate::ground::Ground::OutOfMap | crate::ground::Ground::Cliff))
+                .then_some(place)
         })();
         self.fixed_cache.insert(i, found.clone());
         found
