@@ -17,6 +17,7 @@ use crate::actions::Action;
 use crate::actor::{ActorId, Behaviour, Personality};
 use crate::memory::{Known, Memory};
 use crate::monument::Roll;
+use crate::learn::{Band, Choice, Situation};
 use crate::survival::{Need, SurvivalStats};
 
 /// What a person is doing, kept between thinks.
@@ -196,39 +197,60 @@ pub fn decide(
     combat: &CombatState,
     roll: &mut Roll,
 ) -> Decision {
-    if let Some(d) = hide(p) {
-        return d;
-    }
-    if let Some(d) = arrived(p, activity, combat) {
-        return d;
-    }
-    if let Some(d) = flee(p, activity, combat) {
-        return d;
-    }
-    if let Some(d) = leash(p, activity, combat) {
-        return d;
-    }
-    if let Some(d) = fight(p, activity, combat) {
-        return d;
-    }
+    choose(p, activity, combat, roll).0
+}
+
+/// The one way a person decides (topside life.md "Learning to stay
+/// alive"): every rule that fits the moment offers its choice, in the
+/// order of instinct (the storm, finishing what they reached, fleeing,
+/// breaking off, fighting, eating what they carry, carrying on, going to
+/// what answers a need, supplying their bunker, looking, wandering), and
+/// what they learned picks among them; with nothing learned, instinct's
+/// order decides. Returns the decision, the situation it was made in, and
+/// the choice, for the consumer to note in their memory.
+pub fn choose(p: &Perception, activity: &Activity, combat: &CombatState, roll: &mut Roll) -> (Decision, Situation, Choice) {
+    let mut offered: Vec<(Choice, Decision)> = Vec::new();
+    let mut offer = |choice, d: Option<Decision>| {
+        if let Some(d) = d {
+            offered.push((choice, d));
+        }
+    };
+    offer(Choice::Hide, hide(p));
+    offer(Choice::CarryOn, arrived(p, activity, combat));
+    offer(Choice::Flee, flee(p, activity, combat));
+    offer(Choice::BreakOff, leash(p, activity, combat));
+    offer(Choice::Fight, fight(p, activity, combat));
     // Out of a fight: the life.
-    let combat = CombatState::None;
-    if let Some(d) = eat_carried(p, activity) {
-        return d;
+    let calm = CombatState::None;
+    offer(Choice::EatCarried, eat_carried(p, activity));
+    offer(Choice::CarryOn, keep_going(p, activity, calm));
+    offer(Choice::GoToNeed, life(p, calm));
+    offer(Choice::Supply, supply(p, activity, calm, roll));
+    offer(Choice::Look, look(p, activity, calm, roll));
+    offer(Choice::Wander, Some(wander(p, activity, calm, roll)));
+    let situation = situation(p);
+    let choices: Vec<Choice> = offered.iter().map(|(c, _)| *c).collect();
+    let (choice, decision) = offered.swap_remove(p.memory.learned.pick(&situation, &choices));
+    (decision, situation, choice)
+}
+
+/// The moment as the learning sees it, kept small so like moments match.
+pub fn situation(p: &Perception) -> Situation {
+    let need = |v: f32| Band::of(v, LOOK_LINE, NEED_LINE);
+    let knows = |n: Need| p.memory.good_for(n, p.worth).next().is_some();
+    Situation {
+        hunger: need(p.needs.hunger),
+        thirst: need(p.needs.thirst),
+        rest: need(p.needs.rest),
+        health: Band::of(p.health_fraction, 0.3, 0.7),
+        has_home: p.home.is_some(),
+        at_home: p.at_home,
+        hostile_in_sight: p.hostile.is_some(),
+        carries_food: p.carries_food || p.carries_drink,
+        knows_food: knows(Need::Hunger) || knows(Need::Thirst),
+        storm_coming: p.storm_coming,
+        bunker_short: !p.bunker_short.is_empty(),
     }
-    if let Some(d) = keep_going(p, activity, combat) {
-        return d;
-    }
-    if let Some(d) = life(p, combat) {
-        return d;
-    }
-    if let Some(d) = supply(p, activity, combat, roll) {
-        return d;
-    }
-    if let Some(d) = look(p, activity, combat, roll) {
-        return d;
-    }
-    wander(p, activity, combat, roll)
 }
 
 /// Rule 0: the storm is coming: hide or die, before anything else (the

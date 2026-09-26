@@ -194,6 +194,9 @@ pub struct Memory {
     /// Everything they did, and when (tick), oldest first; the oldest go
     /// past `DONE_KEPT`.
     pub done: Vec<(u64, Did)>,
+    /// What they learned about staying alive (topside life.md "Learning
+    /// to stay alive").
+    pub learned: crate::learn::Learned,
 }
 
 /// How many things done a person remembers.
