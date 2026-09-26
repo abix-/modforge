@@ -359,15 +359,14 @@ pub fn transfer_slot(
 /// Slots in the hotbar: its own small [`Inventory`] on the actor,
 /// separate from the main inventory and the equipment, always on
 /// screen (Atlas: items live in the bar, it is not a list of
-/// shortcuts).
-pub const HOTBAR_SLOTS: usize = 10;
+/// shortcuts). Six, Rust's belt.
+pub const HOTBAR_SLOTS: usize = 6;
 
-/// The inventory slot a hotbar digit key uses: 1 to 9 are slots 0
-/// to 8, 0 is slot 9 (Atlas key order). Other digits are nothing.
+/// The hotbar slot a digit key uses: 1 to 6 are slots 0 to 5 (Rust's
+/// belt keys). Other digits are nothing.
 pub fn hotbar_slot(digit: u8) -> Option<usize> {
     match digit {
-        1..=9 => Some(digit as usize - 1),
-        0 => Some(9),
+        1..=6 => Some(digit as usize - 1),
         _ => None,
     }
 }
@@ -967,12 +966,12 @@ mod tests {
     }
 
     #[test]
-    fn hotbar_keys_map_in_atlas_order() {
+    fn hotbar_keys_are_rusts_belt_keys() {
         assert_eq!(hotbar_slot(1), Some(0));
-        assert_eq!(hotbar_slot(9), Some(8));
-        assert_eq!(hotbar_slot(0), Some(9));
-        assert_eq!(hotbar_slot(10), None);
-        assert!(HOTBAR_SLOTS == 10);
+        assert_eq!(hotbar_slot(6), Some(5));
+        assert_eq!(hotbar_slot(7), None);
+        assert_eq!(hotbar_slot(0), None);
+        assert!(HOTBAR_SLOTS == 6);
     }
 
     #[test]
