@@ -179,13 +179,14 @@ impl HudState {
 }
 
 /// Which slot-indexed holder a slot belongs to: the actor's own
-/// inventory or hotbar, or the container open in front of them.
-/// Equipment is not slot-indexed and is not draggable yet.
+/// inventory, hotbar, or equipment row, or the container open in front
+/// of them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Holder {
     Inventory,
     Hotbar,
     Container,
+    Equipment,
 }
 
 /// One slot of one holder.
@@ -201,14 +202,17 @@ pub struct Holders<'a> {
     pub inventory: &'a mut Inventory,
     pub hotbar: &'a mut Inventory,
     pub container: Option<&'a mut Inventory>,
+    pub equipment: &'a mut Equipment,
 }
 
 impl Holders<'_> {
+    /// The holder as an inventory; the equipment row is not one.
     pub fn get(&self, holder: Holder) -> Option<&Inventory> {
         match holder {
             Holder::Inventory => Some(self.inventory),
             Holder::Hotbar => Some(self.hotbar),
             Holder::Container => self.container.as_deref(),
+            Holder::Equipment => None,
         }
     }
 
@@ -217,6 +221,35 @@ impl Holders<'_> {
             Holder::Inventory => Some(self.inventory),
             Holder::Hotbar => Some(self.hotbar),
             Holder::Container => self.container.as_deref_mut(),
+            Holder::Equipment => None,
+        }
+    }
+
+    /// What is in `slot`, in any holder.
+    pub fn stack(&self, slot: SlotRef) -> Option<&ItemStack> {
+        match slot.holder {
+            Holder::Equipment => self.equipment.get(slot.index),
+            holder => self.get(holder).and_then(|inv| inv.slots.get(slot.index)).and_then(|s| s.as_ref()),
+        }
+    }
+
+    /// Swap equipment slot `worn` with `other`, a slot of another
+    /// holder, when what would go on is wearable (has armor) or nothing:
+    /// dragging gear on or off. Anything else changes nothing.
+    fn swap_worn(&mut self, worn: usize, other: SlotRef, registry: &ItemRegistry) {
+        let Some(inv) = self.get_mut(other.holder) else {
+            return;
+        };
+        let Some(slot) = inv.slots.get_mut(other.index) else {
+            return;
+        };
+        if slot.as_ref().is_none_or(|s| registry.def(&s.item).is_some_and(|d| d.armor.is_some())) {
+            // Two borrows of self: the slot above, then the equipment.
+            let mut taken = slot.take();
+            self.equipment.swap_with(worn, &mut taken);
+            if let Some(slot) = self.get_mut(other.holder).and_then(|inv| inv.slots.get_mut(other.index)) {
+                *slot = taken;
+            }
         }
     }
 
@@ -226,6 +259,7 @@ impl Holders<'_> {
             inventory,
             hotbar,
             container,
+            ..
         } = self;
         let container = container.as_deref_mut();
         match (a, b) {
@@ -240,9 +274,7 @@ impl Holders<'_> {
     }
 
     fn max_stack_of(&self, slot: SlotRef, registry: &ItemRegistry) -> u32 {
-        self.get(slot.holder)
-            .and_then(|inv| inv.slots.get(slot.index))
-            .and_then(|s| s.as_ref())
+        self.stack(slot)
             .and_then(|s| registry.def(&s.item))
             .map(|d| d.max_stack)
             .unwrap_or(1)
@@ -251,19 +283,16 @@ impl Holders<'_> {
 
 /// A drag starts on `slot`. Empty slots start nothing.
 pub fn start_drag(state: &mut HudState, holders: &Holders<'_>, slot: SlotRef) {
-    if holders
-        .get(slot.holder)
-        .and_then(|inv| inv.slots.get(slot.index))
-        .is_some_and(Option::is_some)
-    {
+    if holders.stack(slot).is_some() {
         state.dragging = Some(slot);
     }
 }
 
 /// A drag ends on `slot`: the dragged stack moves there, within one
 /// holder ([`move_stack`]) or across two ([`move_between`]), merging
-/// or swapping. Dropping back on its own slot, or with no drag in
-/// progress, changes nothing.
+/// or swapping. Onto or off the equipment row it swaps only when what
+/// would go on is wearable. Dropping back on its own slot, or with no
+/// drag in progress, changes nothing.
 pub fn end_drag(
     state: &mut HudState,
     holders: &mut Holders<'_>,
@@ -277,7 +306,13 @@ pub fn end_drag(
         return;
     }
     let max_stack = holders.max_stack_of(from, registry);
-    if from.holder == slot.holder {
+    if from.holder == Holder::Equipment && slot.holder == Holder::Equipment {
+        holders.equipment.swap(from.index, slot.index);
+    } else if slot.holder == Holder::Equipment {
+        holders.swap_worn(slot.index, from, registry);
+    } else if from.holder == Holder::Equipment {
+        holders.swap_worn(from.index, slot, registry);
+    } else if from.holder == slot.holder {
         if let Some(inv) = holders.get_mut(from.holder) {
             move_stack(inv, from.index, slot.index, max_stack);
         }
@@ -299,6 +334,7 @@ pub fn transfer_slot(
     let other = match slot.holder {
         Holder::Container => Holder::Inventory,
         Holder::Inventory | Holder::Hotbar => Holder::Container,
+        Holder::Equipment => return,
     };
     let max_stack = holders.max_stack_of(slot, registry);
     let Some((src, dst)) = holders.pair_mut(slot.holder, other) else {
@@ -663,10 +699,12 @@ mod tests {
         inv.slots[0] = Some(stack("scrap", 5));
         inv.slots[1] = Some(stack("cloth", 2));
         bar.slots[1] = Some(stack("scrap", 18));
+        let mut worn = Equipment::default();
         let mut holders = Holders {
             inventory: &mut inv,
             hotbar: &mut bar,
             container: None,
+            equipment: &mut worn,
         };
         let inv_ = |i| at(Holder::Inventory, i);
         let bar_ = |i| at(Holder::Hotbar, i);
@@ -715,6 +753,69 @@ mod tests {
     }
 
     #[test]
+    fn dragging_gear_on_and_off_the_equipment_row() {
+        let mut reg = registry();
+        reg.register(crate::item::ItemDef {
+            name: "vest".to_string(),
+            unique: false,
+            kind: crate::item::ItemKind::Material,
+            max_stack: 1,
+            quality_siblings: 1,
+            combat: None,
+            food: None,
+            storage: None,
+            armor: Some(crate::item::Armor { amount: 40.0 }),
+            good_for: Default::default(),
+            picture: None,
+            layer_slots: Vec::new(),
+        })
+        .unwrap();
+        let mut state = HudState::new();
+        let mut inv = Inventory::new(3);
+        let mut bar = Inventory::new(1);
+        let mut worn = Equipment::default();
+        inv.slots[0] = Some(stack("vest", 1));
+        inv.slots[1] = Some(stack("scrap", 5));
+        let mut holders = Holders {
+            inventory: &mut inv,
+            hotbar: &mut bar,
+            container: None,
+            equipment: &mut worn,
+        };
+        let worn_ = |i| at(Holder::Equipment, i);
+
+        // The vest dragged onto slot 3 of the row is worn there.
+        start_drag(&mut state, &holders, at(Holder::Inventory, 0));
+        end_drag(&mut state, &mut holders, worn_(3), &reg);
+        assert_eq!(holders.equipment.get(3).map(|s| s.item.as_str()), Some("vest"));
+        assert!(holders.inventory.slots[0].is_none());
+
+        // Scrap is not wearable: dragged on, nothing moves.
+        start_drag(&mut state, &holders, at(Holder::Inventory, 1));
+        end_drag(&mut state, &mut holders, worn_(0), &reg);
+        assert!(holders.equipment.get(0).is_none());
+        assert_eq!(holders.inventory.slots[1].as_ref().unwrap().item, "scrap");
+
+        // Along the row: slot 3 to slot 6.
+        start_drag(&mut state, &holders, worn_(3));
+        assert_eq!(state.dragging, Some(worn_(3)), "a worn slot starts a drag");
+        end_drag(&mut state, &mut holders, worn_(6), &reg);
+        assert!(holders.equipment.get(3).is_none());
+        assert_eq!(holders.equipment.get(6).map(|s| s.item.as_str()), Some("vest"));
+
+        // Onto the scrap: the scrap would go on, so nothing moves.
+        start_drag(&mut state, &holders, worn_(6));
+        end_drag(&mut state, &mut holders, at(Holder::Inventory, 1), &reg);
+        assert_eq!(holders.equipment.get(6).map(|s| s.item.as_str()), Some("vest"));
+
+        // Off, onto an empty hotbar slot: taken off.
+        start_drag(&mut state, &holders, worn_(6));
+        end_drag(&mut state, &mut holders, at(Holder::Hotbar, 0), &reg);
+        assert_eq!(holders.equipment.items().count(), 0);
+        assert_eq!(holders.hotbar.slots[0].as_ref().unwrap().item, "vest");
+    }
+
+    #[test]
     fn t_transfers_to_the_other_side_and_shift_t_half() {
         let reg = registry();
         let mut inv = Inventory::new(2);
@@ -723,10 +824,12 @@ mod tests {
         inv.slots[0] = Some(stack("scrap", 6));
         crate_.slots[0] = Some(stack("cloth", 4));
         crate_.slots[1] = Some(stack("scrap", 19));
+        let mut worn = Equipment::default();
         let mut holders = Holders {
             inventory: &mut inv,
             hotbar: &mut bar,
             container: Some(&mut crate_),
+            equipment: &mut worn,
         };
 
         // Container to inventory, whole stack.
@@ -785,6 +888,7 @@ mod tests {
             inventory: &mut inv,
             hotbar: &mut bar,
             container: None,
+            equipment: &mut worn,
         };
         transfer_slot(&mut closed, at(Holder::Inventory, 0), false, &reg);
         assert_eq!(closed.inventory.count_of("cloth"), 40);

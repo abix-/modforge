@@ -572,6 +572,22 @@ impl Equipment {
     pub fn drain_all(&mut self) -> Vec<ItemStack> {
         self.slots.iter_mut().filter_map(|s| s.take()).collect()
     }
+
+    /// Swap what is worn in slot `i` with `other` (a slot of another
+    /// holder, dragged on or off). The caller checks that what goes on
+    /// is wearable.
+    pub fn swap_with(&mut self, i: usize, other: &mut Option<ItemStack>) {
+        if let Some(slot) = self.slots.get_mut(i) {
+            std::mem::swap(slot, other);
+        }
+    }
+
+    /// Swap two slots of the row.
+    pub fn swap(&mut self, a: usize, b: usize) {
+        if a < EQUIPMENT_SLOTS && b < EQUIPMENT_SLOTS {
+            self.slots.swap(a, b);
+        }
+    }
 }
 
 impl Inventory {
