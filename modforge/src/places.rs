@@ -353,6 +353,9 @@ mod tests {
             beach: 0.05,
             patch_size: 60.0,
             chunks_across: None,
+            river_size: 400.0,
+            river_width: 0.0,
+            river_fords: 0.3,
         };
         GroundGen::new(def, 5, biomes).unwrap()
     }

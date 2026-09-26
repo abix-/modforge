@@ -23,6 +23,9 @@ pub enum InteractKind {
     Read,
     /// A crafting station: E opens its recipes.
     Station(crate::crafting::StationKind),
+    /// A source (a well, a river's water, a berry bush): E eats or drinks
+    /// from it where it stands.
+    Source,
 }
 
 /// What the player is looking at right now.
@@ -51,6 +54,10 @@ pub fn prompt_for(kind: InteractKind, item_name: Option<&str>, item_count: Optio
         InteractKind::Container => "[E] open".to_string(),
         InteractKind::Read => "[E] read".to_string(),
         InteractKind::Station(_) => "[E] craft".to_string(),
+        InteractKind::Source => match item_name {
+            Some(name) => format!("[E] use the {name}"),
+            None => "[E] use".to_string(),
+        },
     };
     Prompt {
         text,
@@ -74,6 +81,9 @@ pub enum InteractResult {
     /// The station panel toggled; the consumer shows that station's
     /// recipes while it is open.
     OpenStation,
+    /// Eat or drink from the source where it stands: the consumer feeds
+    /// its `food` to the user's survival (`SurvivalStats::eat`).
+    UseSource,
 }
 
 /// Execute an interaction. modforge decides what happens; the
@@ -118,6 +128,7 @@ pub fn interact(
             toggle_panel(state, OpenPanel::Station);
             InteractResult::OpenStation
         }
+        InteractKind::Source => InteractResult::UseSource,
     }
 }
 

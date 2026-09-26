@@ -79,18 +79,26 @@ impl Known {
 /// way (topside life.md "What things are good for"): a box does not
 /// feed anyone, the food seen inside it does. The best `food` number
 /// among the kinds seen inside, from the registry; zero for any other
-/// need, and zero until someone has looked inside.
+/// need, and zero until someone has looked inside. A source (a well, a
+/// river's water, a berry bush) is worth its own `food`: it is eaten or
+/// drunk from where it stands and never runs out.
 pub fn food_worth(known: &Known, need: Need, items: &crate::item::ItemRegistry) -> f32 {
+    let fills = |food: crate::item::FoodStats| match need {
+        Need::Hunger => food.hunger,
+        Need::Thirst => food.thirst,
+        Need::Rest | Need::Safety => 0.0,
+    };
+    if let Some(def) = items.def(&known.kind)
+        && def.kind == crate::item::ItemKind::Source
+    {
+        return def.food.map_or(0.0, fills);
+    }
     let Some(held) = &known.held else {
         return 0.0;
     };
     held.iter()
         .filter_map(|(kind, _)| items.def(kind).and_then(|d| d.food))
-        .map(|food| match need {
-            Need::Hunger => food.hunger,
-            Need::Thirst => food.thirst,
-            Need::Rest | Need::Safety => 0.0,
-        })
+        .map(fills)
         .fold(0.0, f32::max)
 }
 
@@ -382,6 +390,37 @@ mod tests {
         memory.checked(1, vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)], 5);
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 50.0, "the cans inside");
         assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 0.0);
+    }
+
+    /// A well is worth its own water, seen or not, and never runs out.
+    #[test]
+    fn a_source_is_worth_what_it_fills() {
+        use crate::item::{FoodStats, ItemDef, ItemKind, ItemRegistry};
+        let mut items = ItemRegistry::default();
+        items
+            .register(ItemDef {
+                name: "well".to_string(),
+                unique: false,
+                kind: ItemKind::Source,
+                max_stack: 1,
+                quality_siblings: 1,
+                combat: None,
+                food: Some(FoodStats {
+                    hunger: 0.0,
+                    thirst: 100.0,
+                    health: 0.0,
+                }),
+                storage: None,
+                armor: None,
+                good_for: Default::default(),
+                picture: None,
+            })
+            .unwrap();
+        let mut memory = Memory::default();
+        memory.see(1, "well", Vec3::ZERO, 0);
+        assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 100.0, "the well's water");
+        assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0);
+        assert!(memory.known[0].believed_to_hold(), "a source is never empty");
     }
 
     /// The registry's answer in these tests: a storage box is worth

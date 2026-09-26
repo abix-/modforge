@@ -22,6 +22,11 @@ pub struct ScatterDef {
     /// The picture the game draws it with, by name; none draws it as a
     /// shape in its colour.
     pub picture: Option<String>,
+    /// A thing used where it stands to eat or drink (a well, a berry
+    /// bush): the ItemDef of kind `Source` it is, by name. None for a
+    /// thing that only stands there (a tree, a rock); a source never
+    /// stops a body, so it is reached.
+    pub source: Option<String>,
 }
 
 /// The generic definition of a type of area. `name` is the id. The
@@ -81,6 +86,7 @@ mod tests {
                 color: [0.3, 0.25, 0.15],
                 density: 0.02,
                 picture: None,
+                source: None,
             }],
             weather: vec!["rain".to_string()],
             monuments: vec![],

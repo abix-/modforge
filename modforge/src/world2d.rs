@@ -257,6 +257,7 @@ mod tests {
                     color: [0.2, 0.4, 0.2],
                     density: 2.0,
                     picture: None,
+                    source: None,
                 }],
                 weather: vec![],
                 monuments: vec!["stop".to_string()],
@@ -323,6 +324,9 @@ mod tests {
             beach: 0.05,
             patch_size: 60.0,
             chunks_across: None,
+            river_size: 400.0,
+            river_width: 0.0,
+            river_fords: 0.3,
         };
         let ground = GroundGen::new(def, 9, biomes).unwrap();
         let bunker = Clearing { at: Vec2::ZERO, radius: 20.0 };

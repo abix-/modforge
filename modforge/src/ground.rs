@@ -52,6 +52,15 @@ pub struct GroundDef {
     /// design.md "The small world first": 32); None for no edge. Past the
     /// edge every tile is `OutOfMap`, as Factorio's out-of-map tiles.
     pub chunks_across: Option<i32>,
+    /// Metres per period of the river noise: rivers wind where it crosses
+    /// zero (Minecraft's rivers, Red Blob Games' "rivers from noise").
+    pub river_size: f32,
+    /// How near zero the river noise is on a river tile; 0 for no rivers.
+    /// A river's width grows with it.
+    pub river_width: f32,
+    /// Share of a river left as fords, walked across, 0 to 1: nothing is
+    /// ever cut off by a river (topside design.md "A valid world").
+    pub river_fords: f32,
 }
 
 /// What a tile's ground is (topside design.md "2D world generation").
@@ -92,6 +101,9 @@ pub struct Thing {
     pub color: Rgb,
     /// Its scatter's picture, if it has one.
     pub picture: Option<String>,
+    /// Its scatter's source (a well, a berry bush), if it is one: used
+    /// where it stands, it never stops a body.
+    pub source: Option<String>,
 }
 
 impl Thing {
@@ -144,7 +156,7 @@ impl GroundChunk {
                 out.push(Rect { min, max });
             }
         }
-        out.extend(self.things.iter().map(Thing::rect));
+        out.extend(self.things.iter().filter(|t| t.source.is_none()).map(Thing::rect));
         out
     }
 }
@@ -160,6 +172,7 @@ pub struct GroundGen {
     temperature: Simplex,
     gaps: Simplex,
     patches: Simplex,
+    rivers: Simplex,
 }
 
 /// A tile's (or a cell's) own roll, from the seed and its position: the
@@ -207,6 +220,7 @@ impl GroundGen {
             temperature: part(32),
             gaps: part(48),
             patches: part(8),
+            rivers: part(24),
             def,
             seed,
         })
@@ -235,7 +249,7 @@ impl GroundGen {
             return Ground::OutOfMap;
         }
         let e = self.elevation(t);
-        if e < self.def.water_level {
+        if e < self.def.water_level || self.river_at(t) {
             return Ground::Water;
         }
         if self.def.cliff_every > 0.0 {
@@ -261,6 +275,20 @@ impl GroundGen {
         };
         let patch = fbm(&self.patches, crate::walk::centre(t) / self.def.patch_size);
         if patch > 0.3 { rule.patches } else { rule.land }
+    }
+
+    /// Whether a river runs over this tile: the river noise near zero,
+    /// except at the fords.
+    fn river_at(&self, t: Cell) -> bool {
+        if self.def.river_width <= 0.0 {
+            return false;
+        }
+        let p = crate::walk::centre(t);
+        if fbm(&self.rivers, p / self.def.river_size).abs() >= self.def.river_width {
+            return false;
+        }
+        let ford = (fbm(&self.gaps, p / (self.def.river_size * 0.05)) + 1.0) / 2.0;
+        ford >= self.def.river_fords
     }
 
     /// The biome of one tile, as an index into `biomes`.
@@ -306,6 +334,7 @@ impl GroundGen {
                             size: Vec2::new(spec.size.x, spec.size.z).min(Vec2::splat(TILE)),
                             color: spec.color,
                             picture: spec.picture.clone(),
+                            source: spec.source.clone(),
                         });
                         break;
                     }
@@ -337,6 +366,7 @@ mod tests {
                     color: [0.2, 0.4, 0.2],
                     density,
                     picture: Some("tree".to_string()),
+                    source: None,
                 }],
                 weather: vec![],
                 monuments: vec![],
@@ -375,6 +405,9 @@ mod tests {
             beach: 0.05,
             patch_size: 60.0,
             chunks_across: None,
+            river_size: 400.0,
+            river_width: 0.0,
+            river_fords: 0.3,
         }
     }
 
@@ -451,6 +484,27 @@ mod tests {
             .map(|k| solid.chunk(k, &reg).ground.iter().filter(|g| **g == Ground::Cliff).count())
             .sum();
         assert!(solid_cliffs > cliff, "gaps open the cliff lines: {solid_cliffs} without, {cliff} with");
+    }
+
+    /// Rivers: with no lakes and no cliffs, rivers alone make water, a
+    /// long winding band, and fords break it so it is walked across.
+    #[test]
+    fn rivers_wind_through_the_ground_with_fords() {
+        let reg = biomes();
+        let flat = GroundDef { water_level: -2.0, cliff_every: 0.0, ..def() };
+        let dry = GroundGen::new(flat.clone(), 11, &reg).unwrap();
+        let wet = GroundGen::new(GroundDef { river_width: 0.04, ..flat.clone() }, 11, &reg).unwrap();
+        let unforded = GroundGen::new(GroundDef { river_width: 0.04, river_fords: 0.0, ..flat }, 11, &reg).unwrap();
+        let water = |g: &GroundGen| -> usize {
+            (-8..8)
+                .flat_map(|cy| (-8..8).map(move |cx| (cx, cy)))
+                .map(|k| g.chunk(k, &reg).ground.iter().filter(|t| **t == Ground::Water).count())
+                .sum()
+        };
+        let (none, some, all) = (water(&dry), water(&wet), water(&unforded));
+        assert_eq!(none, 0, "no rivers, no water");
+        assert!(some > 1000, "rivers make water: {some} tiles");
+        assert!(all > some, "fords leave river tiles walkable: {all} without fords, {some} with");
     }
 
     /// A thing carries its scatter's picture, so the game draws a tree as

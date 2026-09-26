@@ -1201,6 +1201,7 @@ mod tests {
                 color: [0.2, 0.4, 0.2],
                 density: 0.5,
                 picture: None,
+                source: None,
             }];
             scattering.register(def).unwrap();
         }
@@ -1232,6 +1233,7 @@ mod tests {
                 color: [0.2, 0.4, 0.2],
                 density: 0.5,
                 picture: None,
+                source: None,
             }];
             scattering.register(def).unwrap();
         }

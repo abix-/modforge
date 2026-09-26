@@ -47,6 +47,10 @@ pub enum ItemKind {
     Note,
     /// Used to heal: a bandage (its `food` says how much).
     Medicine,
+    /// Eaten or drunk from where it stands and never used up: a well, a
+    /// river's water, a berry bush (its `food` says what it fills). It
+    /// makes no item (topside authority.md: nothing is conjured).
+    Source,
 }
 
 /// How a weapon fires (topside design.md "How a hit works"). Present
