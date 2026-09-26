@@ -65,6 +65,12 @@ pub struct Perception<'a> {
     /// its tiles; a stroll or a trip out only ever picks a spot where
     /// this holds.
     pub standable: &'a dyn Fn(Vec3) -> bool,
+    /// Where a stroll can go from here, every spot reachable without a
+    /// search (topside life.md "Wander": the walk grid's chunk and its
+    /// doorways). Asked only when they stroll.
+    pub reachable: &'a dyn Fn() -> Vec<Vec3>,
+    /// Whether a spot is off the map this person carries: never seen.
+    pub unknown: &'a dyn Fn(Vec3) -> bool,
 }
 
 impl std::fmt::Debug for Perception<'_> {
@@ -616,19 +622,25 @@ pub fn knows_better(t: &mut Think, _: &Target) -> bool {
 // Wandering.
 
 /// Nothing presses: most thinks they stand; one in ten they stroll to a
-/// rolled point within the home radius, a spot someone can stand on.
+/// spot that is random, reachable, and unknown (topside life.md "Wander"):
+/// one of the spots they can reach without a search, within the home
+/// radius, off their map when any such spot is.
 pub fn enter_wander(t: &mut Think, _: &Target) -> Option<Target> {
     if !t.roll.chance(100) {
         return Some(Target::None);
     }
     let centre = t.p.home.unwrap_or(t.p.position);
     let radius = t.p.behaviour.home_radius();
-    let spot = standable_spot(t.p, t.roll, |roll| {
-        let angle = roll.measure(0.0, std::f32::consts::TAU);
-        let distance = roll.measure(radius * 0.3, radius);
-        centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
-    });
-    Some(spot.map_or(Target::None, Target::Point))
+    let spots: Vec<Vec3> = (t.p.reachable)()
+        .into_iter()
+        .filter(|s| s.distance(centre) <= radius && s.distance(t.p.position) > REACH)
+        .collect();
+    let unknown: Vec<Vec3> = spots.iter().copied().filter(|s| (t.p.unknown)(*s)).collect();
+    let pool = if unknown.is_empty() { spots } else { unknown };
+    if pool.is_empty() {
+        return Some(Target::None);
+    }
+    Some(Target::Point(*t.roll.pick(&pool)))
 }
 
 /// Stand this think, or stroll to the spot.
@@ -743,6 +755,8 @@ mod tests {
             personality,
             worth: &|_, _| 0.0,
             standable: &|_| true,
+            reachable: &Vec::new,
+            unknown: &|_| true,
         }
     }
 
@@ -775,6 +789,47 @@ mod tests {
             let mut t = Think::new(&p, &mut roll);
             assert_eq!(enter_head_out_short(&mut t, &Target::None), None, "nowhere standable: no trip out");
             assert!(!matches!(enter_wander(&mut t, &Target::None), Some(Target::Point(_))), "nor a stroll");
+        }
+    }
+
+    /// A stroll goes only to a spot they can reach, within the home radius,
+    /// and off their map when one is (topside todo 11ag); with every spot
+    /// on their map, any reachable one; with none, they stand.
+    #[test]
+    fn a_stroll_goes_somewhere_reachable_and_unknown() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let radius = p.behaviour.home_radius();
+        let spots = move || {
+            vec![
+                Vec3::new(5.0, 0.0, 0.0),
+                Vec3::new(-5.0, 0.0, 0.0),
+                Vec3::new(0.0, 0.0, 6.0),
+                Vec3::new(radius + 10.0, 0.0, 0.0),
+            ]
+        };
+        p.reachable = &spots;
+        let west = |at: Vec3| at.x < 0.0;
+        p.unknown = &west;
+        let mut strolled = 0;
+        for seed in 0..200 {
+            let mut roll = Roll::new(seed);
+            let mut t = Think::new(&p, &mut roll);
+            if let Some(Target::Point(to)) = enter_wander(&mut t, &Target::None) {
+                strolled += 1;
+                assert_eq!(to, Vec3::new(-5.0, 0.0, 0.0), "seed {seed}: the one reachable spot off their map");
+            }
+        }
+        assert!(strolled > 0, "some thinks stroll");
+        // Everything reachable already seen: any reachable spot in reach.
+        p.unknown = &|_| false;
+        for seed in 0..200 {
+            let mut roll = Roll::new(seed);
+            let mut t = Think::new(&p, &mut roll);
+            if let Some(Target::Point(to)) = enter_wander(&mut t, &Target::None) {
+                assert!(to.distance(Vec3::ZERO) <= radius, "seed {seed}: {to} past the home radius");
+            }
         }
     }
 

@@ -256,6 +256,21 @@ impl WalkMap {
         }
     }
 
+    /// The centre of every tile a person at `p` can walk to without leaving
+    /// its chunk, its doorways to the next chunks among them: where a stroll
+    /// can go, known reachable without a search (topside life.md "Wander").
+    pub fn reachable_in_chunk(&mut self, p: Vec2) -> Vec<Vec2> {
+        let flood = self.flood(cell_of(p), None);
+        let (x0, y0) = (flood.key.0 * CHUNK, flood.key.1 * CHUNK);
+        flood
+            .cost
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.is_finite())
+            .map(|(i, _)| centre((x0 + i as i32 % CHUNK, y0 + i as i32 / CHUNK)))
+            .collect()
+    }
+
     /// The centre of the nearest tile a person can stand on, within
     /// `within` tiles of `p`, if any: where to go instead of a blocked
     /// spot.
