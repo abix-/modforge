@@ -208,19 +208,21 @@ impl SurvivalStats {
         self.safety = (self.safety - health_lost * FEAR_PER_HIT_POINT).max(0.0);
     }
 
-    /// The lowest need and its value; the brain's first question.
-    pub fn worst_need(&self) -> (Need, f32) {
-        let mut worst = (Need::Hunger, self.hunger);
-        for (need, value) in [
+    /// Every need and its value, worst first.
+    pub fn needs_worst_first(&self) -> [(Need, f32); 4] {
+        let mut needs = [
+            (Need::Hunger, self.hunger),
             (Need::Thirst, self.thirst),
             (Need::Rest, self.rest),
             (Need::Safety, self.safety),
-        ] {
-            if value < worst.1 {
-                worst = (need, value);
-            }
-        }
-        worst
+        ];
+        needs.sort_by(|a, b| a.1.total_cmp(&b.1));
+        needs
+    }
+
+    /// The lowest need and its value; the brain's first question.
+    pub fn worst_need(&self) -> (Need, f32) {
+        self.needs_worst_first()[0]
     }
 
     /// Eat one of `def`: restore what its food stats say, capped at

@@ -358,26 +358,31 @@ pub fn eat_carried(t: &mut Think, target: &Target) -> Status {
     Status::Succeeded
 }
 
-/// The worst need, when it presses, picks the best known thing: what it
-/// gives minus the walk, the walk costing a Lazy person more.
+/// The needs that press, worst first: the first that something known
+/// answers picks the best known thing for it, what it gives minus the
+/// walk, the walk costing a Lazy person more. A need nothing known answers
+/// does not hide the next: worn out with nowhere to sleep, a person still
+/// goes to the well they know.
 fn need_target(p: &Perception) -> Option<Target> {
-    let (need, value) = p.needs.worst_need();
-    if value >= NEED_LINE {
-        return None;
-    }
     let diligence = p.personality.get(crate::actor::Axis::Diligence);
     let walk_cost = 1.0 - 0.25 * diligence;
-    let (known, _) = p
-        .memory
-        .good_for(need, p.worth)
-        .map(|(known, gives)| (known, gives - known.position.distance(p.position) / METRES_PER_POINT * walk_cost))
-        .filter(|(_, score)| *score > 0.0)
-        .max_by(|a, b| a.1.total_cmp(&b.1))?;
-    Some(Target::Thing {
-        key: known.key,
-        at: known.position,
-        need: Some(need),
-    })
+    p.needs
+        .needs_worst_first()
+        .into_iter()
+        .take_while(|(_, value)| *value < NEED_LINE)
+        .find_map(|(need, _)| {
+            let (known, _) = p
+                .memory
+                .good_for(need, p.worth)
+                .map(|(known, gives)| (known, gives - known.position.distance(p.position) / METRES_PER_POINT * walk_cost))
+                .filter(|(_, score)| *score > 0.0)
+                .max_by(|a, b| a.1.total_cmp(&b.1))?;
+            Some(Target::Thing {
+                key: known.key,
+                at: known.position,
+                need: Some(need),
+            })
+        })
 }
 
 pub fn enter_need(t: &mut Think, _: &Target) -> Option<Target> {
@@ -771,6 +776,35 @@ mod tests {
             assert_eq!(enter_head_out_short(&mut t, &Target::None), None, "nowhere standable: no trip out");
             assert!(!matches!(enter_wander(&mut t, &Target::None), Some(Target::Point(_))), "nor a stroll");
         }
+    }
+
+    /// Seen in the running game (topside tests/thirst.rs): people worn out
+    /// with no home, thirst at 11, walking past the wells they knew. Rest
+    /// was their worst need and nothing answered it; the thirst below it
+    /// must still send them to the well.
+    #[test]
+    fn a_need_nothing_answers_does_not_hide_the_next() {
+        let mut memory = Memory::default();
+        memory.see(7, "well", Vec3::new(10.0, 0.0, 0.0), 0);
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let well = |k: &crate::memory::Known, n: Need| if k.kind == "well" && n == Need::Thirst { 50.0 } else { 0.0 };
+        p.worth = &well;
+        p.home = None;
+        p.at_home = false;
+        p.needs.rest = 5.0;
+        p.needs.thirst = 11.0;
+        let mut roll = Roll::new(1);
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(
+            enter_need(&mut t, &Target::None),
+            Some(Target::Thing { key: 7, at: Vec3::new(10.0, 0.0, 0.0), need: Some(Need::Thirst) }),
+            "worn out with nowhere to sleep, they still go to the well"
+        );
+        // Nothing known for either: nothing to go to.
+        p.worth = &|_, _| 0.0;
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(enter_need(&mut t, &Target::None), None);
     }
 
     #[test]
