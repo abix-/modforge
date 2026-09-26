@@ -315,6 +315,7 @@ mod tests {
             armor: None,
             good_for: Default::default(),
             picture: None,
+            layer_slots: Vec::new(),
         }
     }
 
@@ -446,6 +447,7 @@ mod tests {
             count: 1,
             quality: None,
             note: None,
+            layers: Vec::new(),
         });
         let mut stats = SurvivalStats {
             hunger: 10.0,

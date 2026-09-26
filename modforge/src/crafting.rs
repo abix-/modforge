@@ -158,6 +158,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
         items
@@ -180,6 +181,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
 
@@ -201,6 +203,7 @@ mod tests {
                 count: 10,
                 quality: None,
                 note: None,
+                layers: Vec::new(),
             },
             20,
         );

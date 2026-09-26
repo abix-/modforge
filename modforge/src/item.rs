@@ -114,6 +114,11 @@ pub struct ItemDef {
     /// one on the ground, in the hand, and as the hotbar icon. None
     /// until one exists; the consumer draws a square then.
     pub picture: Option<String>,
+    /// The layers this item takes on top of itself, by slot (topside
+    /// design.md "What 2D changes": the type of a thing decides its
+    /// layers): a melee weapon's handle takes a "head". Empty for an
+    /// item that is one layer, itself.
+    pub layer_slots: Vec<String>,
 }
 
 #[derive(Default)]
@@ -271,6 +276,44 @@ impl ItemRegistry {
     }
 }
 
+/// One layer an item carries on top of itself (topside design.md "What
+/// 2D changes": every item is made in layers, the way Borderlands guns
+/// carry their parts). The item is its own first layer; these go over
+/// it, each changing both its numbers and how it looks: a melee
+/// weapon's head decides the damage its hits land.
+#[derive(Clone)]
+pub struct LayerDef {
+    pub name: String,
+    /// The slot it goes in; an item takes it only when the item's
+    /// `layer_slots` names this slot.
+    pub slot: String,
+    /// The damage def a hit with this layer on lands, in place of the
+    /// item's own. None leaves the item's damage as it is.
+    pub damage: Option<String>,
+    /// The picture drawn for this layer, over the item's own.
+    pub picture: Option<String>,
+}
+
+/// The collection of checked-in LayerDefs, looked up by name.
+#[derive(Default)]
+pub struct LayerRegistry {
+    defs: Vec<LayerDef>,
+}
+
+impl LayerRegistry {
+    pub fn register(&mut self, def: LayerDef) -> Result<(), String> {
+        if self.defs.iter().any(|d| d.name == def.name) {
+            return Err(format!("layer '{}' registered twice", def.name));
+        }
+        self.defs.push(def);
+        Ok(())
+    }
+
+    pub fn def(&self, name: &str) -> Option<&LayerDef> {
+        self.defs.iter().find(|d| d.name == name)
+    }
+}
+
 /// The quality rolled onto one stack at creation: which tier (index
 /// into the game's tier table, best first) and which statistical
 /// sibling within it.
@@ -289,15 +332,26 @@ pub struct Note {
     pub signed: String,
 }
 
-/// A stack of one item. Stacks merge only when item name AND quality
-/// match; a Rare rifle never stacks on a Normal one. A `Note` item
-/// carries its words on the stack.
+/// A stack of one item. Stacks merge only when item name, quality, AND
+/// layers match; a Rare rifle never stacks on a Normal one, a pipe
+/// with nails never on a plain pipe. A `Note` item carries its words on
+/// the stack.
 #[derive(Clone, PartialEq, Debug)]
 pub struct ItemStack {
     pub item: String,
     pub count: u32,
     pub quality: Option<ItemQuality>,
     pub note: Option<Note>,
+    /// The layers on this item, by `LayerDef` name, bottom to top, over
+    /// the item itself. Set once, when it enters existence.
+    pub layers: Vec<String>,
+}
+
+impl ItemStack {
+    /// Whether `other` may merge into this stack.
+    pub fn stacks_with(&self, other: &ItemStack) -> bool {
+        self.item == other.item && self.quality == other.quality && self.layers == other.layers
+    }
 }
 
 /// The one item-creation function. Every stack that enters existence
@@ -314,7 +368,47 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
         count,
         quality,
         note: None,
+        layers: Vec::new(),
     }
+}
+
+/// The one way an item comes to exist with layers: through `create`,
+/// then each layer put on in order. Refuses a layer the item has no
+/// slot for, or a second layer in one slot (a can takes no head, a
+/// pipe takes one).
+pub fn create_layered(
+    def: &ItemDef,
+    layers: &[&LayerDef],
+    count: u32,
+    odds: &[u64],
+    now: f32,
+    salt: u64,
+) -> Result<ItemStack, String> {
+    for (i, layer) in layers.iter().enumerate() {
+        if !def.layer_slots.contains(&layer.slot) {
+            return Err(format!("'{}' has no {} for '{}'", def.name, layer.slot, layer.name));
+        }
+        if layers[..i].iter().any(|l| l.slot == layer.slot) {
+            return Err(format!("'{}' has one {} only", def.name, layer.slot));
+        }
+    }
+    let mut stack = create(def, count, odds, now, salt);
+    stack.layers = layers.iter().map(|l| l.name.clone()).collect();
+    Ok(stack)
+}
+
+/// How this stack fights: its item's firing, changed by each of its
+/// layers bottom to top (a head's damage in place of the item's own).
+/// The one place a weapon's numbers are worked out; every hit reads
+/// them from here. None for an item that does not fight.
+pub fn combat_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> Option<CombatStats> {
+    let mut combat = def.combat.clone()?;
+    for layer in stack.layers.iter().filter_map(|name| layers.def(name)) {
+        if let Some(damage) = &layer.damage {
+            combat.damage = damage.clone();
+        }
+    }
+    Some(combat)
 }
 
 /// The one way a note comes to exist: a single `Note` item through
@@ -346,7 +440,7 @@ impl Inventory {
     /// slots, splitting at `max_stack`. Returns what did not fit.
     pub fn add(&mut self, mut stack: ItemStack, max_stack: u32) -> Option<ItemStack> {
         for slot in self.slots.iter_mut().flatten() {
-            if slot.item == stack.item && slot.quality == stack.quality && slot.count < max_stack {
+            if slot.stacks_with(&stack) && slot.count < max_stack {
                 let moved = stack.count.min(max_stack - slot.count);
                 slot.count += moved;
                 stack.count -= moved;
@@ -505,7 +599,7 @@ pub fn move_between(
     match (src.as_mut(), dst.as_mut()) {
         (None, _) => {}
         (Some(_), None) => *dst = src.take(),
-        (Some(s), Some(d)) if s.item == d.item && s.quality == d.quality => {
+        (Some(s), Some(d)) if s.stacks_with(d) => {
             let moved = s.count.min(max_stack.saturating_sub(d.count));
             d.count += moved;
             s.count -= moved;
@@ -545,6 +639,7 @@ mod tests {
             armor: None,
             good_for: Default::default(),
             picture: None,
+            layer_slots: Vec::new(),
         }
     }
 
@@ -554,6 +649,7 @@ mod tests {
             count,
             quality: None,
             note: None,
+            layers: Vec::new(),
         }
     }
 
@@ -683,5 +779,73 @@ mod tests {
         // Zero odds everywhere: always base quality.
         assert_eq!(create(&d, 1, &[0, 0], 1.0, 42).quality, None);
         assert_eq!(create(&d, 1, &[], 1.0, 42).quality, None);
+    }
+
+    #[test]
+    fn layers_change_the_numbers_and_only_go_where_the_item_takes_them() {
+        use crate::combat::{DamageDef, DamageRegistry, DamageType, Falloff};
+        let handle = |name: &str, damage: &str, reach: f32| ItemDef {
+            kind: ItemKind::Weapon,
+            max_stack: 1,
+            combat: Some(CombatStats {
+                damage: damage.to_string(),
+                delay: 0.6,
+                reach,
+                pellets: 1,
+                spread_degrees: 0.0,
+                ammo: None,
+            }),
+            layer_slots: vec!["head".to_string()],
+            ..def(name)
+        };
+        let pipe = handle("pipe", "pipe swing", 2.0);
+        let wooden = handle("wooden handle", "handle swing", 1.8);
+        let pole = handle("long pole", "handle swing", 2.8);
+        let mut damage = DamageRegistry::default();
+        for (name, amount) in [("pipe swing", 20.0), ("handle swing", 15.0), ("nail hit", 30.0)] {
+            damage
+                .register(DamageDef {
+                    name: name.to_string(),
+                    amount,
+                    kind: DamageType::Blunt,
+                    knockback: 1.0,
+                    ignores_armor: false,
+                    self_scale: 0.5,
+                    falloff: Falloff::NONE,
+                })
+                .unwrap();
+        }
+        let mut layers = LayerRegistry::default();
+        let head = |name: &str, damage: &str| LayerDef {
+            name: name.to_string(),
+            slot: "head".to_string(),
+            damage: Some(damage.to_string()),
+            picture: None,
+        };
+        layers.register(head("nails", "nail hit")).unwrap();
+        assert!(layers.register(head("nails", "nail hit")).is_err());
+        let nails = layers.def("nails").unwrap();
+
+        // A pipe with nails hits harder than a plain pipe, at the same reach.
+        let plain_pipe = create_layered(&pipe, &[], 1, &[], 0.0, 1).unwrap();
+        let nailed = create_layered(&pipe, &[nails], 1, &[], 0.0, 1).unwrap();
+        assert_eq!(nailed.layers, ["nails"]);
+        let plain_hit = combat_of(&pipe, &plain_pipe, &layers).unwrap();
+        let nail_hit = combat_of(&pipe, &nailed, &layers).unwrap();
+        let amount = |c: &CombatStats| damage.def(&c.damage).unwrap().amount;
+        assert!(amount(&nail_hit) > amount(&plain_hit), "nails hit harder");
+        assert_eq!(nail_hit.reach, plain_hit.reach, "the head does not change reach");
+        assert!(!nailed.stacks_with(&plain_pipe), "a nailed pipe is not a plain pipe");
+
+        // A long pole reaches farther than a wooden handle, the same head on each.
+        let on_pole = create_layered(&pole, &[nails], 1, &[], 0.0, 1).unwrap();
+        let on_wooden = create_layered(&wooden, &[nails], 1, &[], 0.0, 1).unwrap();
+        assert!(combat_of(&pole, &on_pole, &layers).unwrap().reach > combat_of(&wooden, &on_wooden, &layers).unwrap().reach);
+
+        // A can is one layer, itself: it takes no head, and a pipe takes one head only.
+        let can = def("canned food");
+        assert!(create_layered(&can, &[nails], 1, &[], 0.0, 1).is_err());
+        assert!(create_layered(&pipe, &[nails, nails], 1, &[], 0.0, 1).is_err());
+        assert_eq!(combat_of(&can, &create(&can, 1, &[], 0.0, 1), &layers), None);
     }
 }

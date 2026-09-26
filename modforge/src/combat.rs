@@ -680,6 +680,7 @@ mod tests {
                 count: 1,
                 quality: None,
                 note: None,
+                layers: Vec::new(),
             }),
         );
         let armor_of = |name: &str| {
@@ -768,6 +769,7 @@ mod tests {
             count: 1,
             quality: None,
             note: None,
+            layers: Vec::new(),
         };
         let mut worn = crate::item::Equipment::default();
         worn.set(crate::item::EquipSlot::Chest, Some(stack("vest")));

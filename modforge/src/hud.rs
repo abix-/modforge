@@ -470,7 +470,7 @@ pub fn move_stack(inv: &mut Inventory, from: usize, to: usize, max_stack: u32) {
         (Some(_), None) => {
             *dst = src.take();
         }
-        (Some(s), Some(d)) if s.item == d.item && s.quality == d.quality => {
+        (Some(s), Some(d)) if s.stacks_with(d) => {
             let moved = s.count.min(max_stack.saturating_sub(d.count));
             d.count += moved;
             s.count -= moved;
@@ -495,6 +495,7 @@ mod tests {
             count,
             quality: None,
             note: None,
+            layers: Vec::new(),
         }
     }
 
@@ -636,6 +637,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
         }
@@ -797,6 +799,7 @@ mod tests {
             armor: None,
             good_for: Default::default(),
             picture: None,
+            layer_slots: Vec::new(),
         })
         .unwrap();
         reg.register(crate::item::ItemDef {
@@ -811,6 +814,7 @@ mod tests {
             armor: None,
             good_for: Default::default(),
             picture: None,
+            layer_slots: Vec::new(),
         })
         .unwrap();
         let mut stats = crate::survival::SurvivalStats::default();

@@ -277,6 +277,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
         }

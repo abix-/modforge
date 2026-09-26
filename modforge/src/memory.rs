@@ -382,6 +382,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
         let mut memory = Memory::default();
@@ -414,6 +415,7 @@ mod tests {
                 armor: None,
                 good_for: Default::default(),
                 picture: None,
+                layer_slots: Vec::new(),
             })
             .unwrap();
         let mut memory = Memory::default();
@@ -456,6 +458,7 @@ mod tests {
                     armor: None,
                     good_for: Default::default(),
                     picture: None,
+                    layer_slots: Vec::new(),
                 })
                 .unwrap();
         }
