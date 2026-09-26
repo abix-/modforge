@@ -89,6 +89,10 @@ pub struct Places {
     /// Ground kept for the bunkers: a point and how far round it.
     keep_clear: Vec<(Vec2, f32)>,
     cache: HashMap<(usize, Cell), Option<Place>>,
+    /// Sites placed by hand: a monument type and where (topside design.md
+    /// "The small world first": one of each kind at a fixed place).
+    fixed: Vec<(String, Vec2)>,
+    fixed_cache: HashMap<usize, Option<Place>>,
 }
 
 /// Room left between two sites' grounds, metres.
@@ -100,17 +104,58 @@ impl Places {
             kinds,
             keep_clear,
             cache: HashMap::new(),
+            fixed: Vec::new(),
+            fixed_cache: HashMap::new(),
         }
+    }
+
+    /// These sites as well, each where it is given: its monument rolled
+    /// from the seed and its place, standing only if its whole footprint
+    /// is on land, the same as a rolled site. Rolled sites do not keep
+    /// clear of them: a world has one or the other.
+    pub fn with_fixed(mut self, fixed: Vec<(String, Vec2)>) -> Self {
+        self.fixed = fixed;
+        self
     }
 
     fn spacing(&self, m: Makers, k: usize) -> f32 {
         m.monuments.def(&self.kinds[k].monument).map_or(100.0, |d| d.spacing)
     }
 
-    /// The farthest any site's ground reaches from its position: a site's
-    /// ground is at most 30% of its spacing (the rule in `roll_cell`).
-    pub fn widest(&self, m: Makers) -> f32 {
-        (0..self.kinds.len()).map(|k| 0.3 * self.spacing(m, k)).fold(0.0, f32::max)
+    /// The farthest any site's ground reaches from its position: a rolled
+    /// site's ground is at most 30% of its spacing (the rule in
+    /// `roll_cell`); a fixed site's is its own.
+    pub fn widest(&mut self, m: Makers) -> f32 {
+        let rolled = (0..self.kinds.len()).map(|k| 0.3 * self.spacing(m, k)).fold(0.0, f32::max);
+        (0..self.fixed.len())
+            .filter_map(|i| self.fixed_site(m, i))
+            .map(|p| p.ground)
+            .fold(rolled, f32::max)
+    }
+
+    /// Fixed site `i`, if it stands.
+    fn fixed_site(&mut self, m: Makers, i: usize) -> Option<Place> {
+        if let Some(found) = self.fixed_cache.get(&i) {
+            return found.clone();
+        }
+        let (monument, at) = self.fixed[i].clone();
+        let position = at.round();
+        let tile = cell_of(position);
+        let found = (|| {
+            let biome = m.ground.biomes.get(m.ground.biome_at(tile) as usize)?.clone();
+            let rolled = m.monuments.roll(&monument, m.buildings, tile_hash(m.ground.seed, tile, 1)).ok()?;
+            let ground = crate::worldgen::monument_ground(&rolled);
+            let place = Place {
+                monument,
+                position,
+                biome,
+                rolled,
+                ground,
+            };
+            place.footprint().iter().all(|t| m.ground.ground_at(*t).is_land()).then_some(place)
+        })();
+        self.fixed_cache.insert(i, found.clone());
+        found
     }
 
     /// The site of kind `k` in its grid cell `cell`, if one stands there.
@@ -201,6 +246,14 @@ impl Places {
                         out.push(p);
                     }
                 }
+            }
+        }
+        for i in 0..self.fixed.len() {
+            if let Some(p) = self.fixed_site(m, i)
+                && p.position.cmpge(lo).all()
+                && p.position.cmplt(hi).all()
+            {
+                out.push(p);
             }
         }
         out
@@ -298,6 +351,7 @@ mod tests {
             }],
             beach: 0.05,
             patch_size: 60.0,
+            chunks_across: None,
         };
         GroundGen::new(def, 5, biomes).unwrap()
     }
@@ -307,6 +361,26 @@ mod tests {
             SiteKind { monument: "stop".to_string(), chance: 0.6 },
             SiteKind { monument: "wreck".to_string(), chance: 0.5 },
         ]
+    }
+
+    /// A fixed site stands where it is given, found by any area holding
+    /// its position, and nowhere else; the widest reach covers it.
+    #[test]
+    fn a_fixed_site_stands_where_it_is_given() {
+        let (biomes, monuments, buildings) = registries();
+        let g = GroundGen::new(GroundDef { water_level: -2.0, cliff_every: 0.0, ..ground(&biomes).def }, 5, &biomes).unwrap();
+        let m = Makers {
+            ground: &g,
+            biomes: &biomes,
+            monuments: &monuments,
+            buildings: &buildings,
+        };
+        let mut places = Places::new(vec![], vec![]).with_fixed(vec![("stop".to_string(), Vec2::new(40.3, -20.0))]);
+        let found = places.in_area(m, Vec2::splat(-100.0), Vec2::splat(100.0));
+        assert_eq!(found.len(), 1);
+        assert_eq!((found[0].monument.as_str(), found[0].position), ("stop", Vec2::new(40.0, -20.0)));
+        assert!(places.in_area(m, Vec2::splat(50.0), Vec2::splat(100.0)).is_empty());
+        assert!(places.widest(m) >= found[0].ground && found[0].ground > 0.0);
     }
 
     /// Sites stand only on land, never overlap, and a region gives the

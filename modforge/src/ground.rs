@@ -48,6 +48,10 @@ pub struct GroundDef {
     pub beach: f32,
     /// Metres per period of the patch noise (a biome's patches).
     pub patch_size: f32,
+    /// The world's size in chunks across, centred on the origin (topside
+    /// design.md "The small world first": 32); None for no edge. Past the
+    /// edge every tile is `OutOfMap`, as Factorio's out-of-map tiles.
+    pub chunks_across: Option<i32>,
 }
 
 /// What a tile's ground is (topside design.md "2D world generation").
@@ -63,11 +67,13 @@ pub enum Ground {
     Road,
     Water,
     Cliff,
+    /// Past the world's edge: nothing is there and nobody goes.
+    OutOfMap,
 }
 
 impl Ground {
     pub fn blocks(self) -> bool {
-        matches!(self, Ground::Water | Ground::Cliff)
+        matches!(self, Ground::Water | Ground::Cliff | Ground::OutOfMap)
     }
 
     /// Walked on.
@@ -209,8 +215,23 @@ impl GroundGen {
         fbm(&self.elevation, crate::walk::centre(t) / self.def.feature_size)
     }
 
+    /// The chunks inside the edge, lowest first and one past the highest,
+    /// on both axes; None for a world with no edge.
+    pub fn chunk_range(&self) -> Option<(i32, i32)> {
+        self.def.chunks_across.map(|n| (-(n / 2), n - n / 2))
+    }
+
+    /// Whether a chunk is inside the world's edge.
+    pub fn inside(&self, key: ChunkKey) -> bool {
+        self.chunk_range()
+            .is_none_or(|(lo, hi)| key.0 >= lo && key.0 < hi && key.1 >= lo && key.1 < hi)
+    }
+
     /// The ground kind of one tile, from its position alone.
     pub fn ground_at(&self, t: Cell) -> Ground {
+        if !self.inside((t.0.div_euclid(CHUNK), t.1.div_euclid(CHUNK))) {
+            return Ground::OutOfMap;
+        }
         let e = self.elevation(t);
         if e < self.def.water_level {
             return Ground::Water;
@@ -349,7 +370,23 @@ mod tests {
             ],
             beach: 0.05,
             patch_size: 60.0,
+            chunks_across: None,
         }
+    }
+
+    /// A world 4 chunks across ends at its edge: the tiles past it are
+    /// out of the map and stop a body; the tiles inside are not.
+    #[test]
+    fn past_the_edge_is_out_of_the_map() {
+        let reg = biomes();
+        let small = GroundGen::new(GroundDef { chunks_across: Some(4), water_level: -2.0, cliff_every: 0.0, ..def() }, 5, &reg).unwrap();
+        assert_eq!(small.chunk_range(), Some((-2, 2)));
+        assert!(small.inside((-2, 1)) && !small.inside((2, 0)) && !small.inside((0, -3)));
+        assert!(small.chunk((1, 1), &reg).ground.iter().all(|g| g.is_land()), "inside is land");
+        let past = small.chunk((2, 0), &reg);
+        assert!(past.ground.iter().all(|g| *g == Ground::OutOfMap) && past.things.is_empty());
+        assert!(small.ground_at((2 * CHUNK - 1, 0)).is_land(), "the last tile inside");
+        assert_eq!(small.ground_at((2 * CHUNK, 0)), Ground::OutOfMap, "the first tile past");
     }
 
     #[test]

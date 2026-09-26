@@ -271,6 +271,7 @@ mod tests {
             }],
             beach: 0.05,
             patch_size: 60.0,
+            chunks_across: None,
         };
         let ground = GroundGen::new(def, 9, biomes).unwrap();
         let bunker = Clearing { at: Vec2::ZERO, radius: 20.0 };
