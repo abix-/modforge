@@ -86,9 +86,23 @@ root, where the person chooses again.
 
 The tree is data (topside's content), the running is modforge's:
 
-- The root, in order: hide (the storm), flee, break off, fight, then the
-  day's life. Transitions on the root take a person out of the day's
-  life when a hostile is seen or the storm comes.
+All of the brain is this one tree, fighting included; nothing decides
+beside it.
+
+- The root, in order: hide (the storm), combat, then the day's life.
+- Combat, entered when a hostile is in sight or a threat is remembered
+  from the last few seconds, in order: flee (hurt below their flee
+  line: home, or away with no home), break off (chased past the leash:
+  home), fight (face it, close in, hit it). Fight succeeds when no
+  hostile is in sight and none is remembered; flee and break off
+  succeed on reaching safety.
+- Transitions on the day's life take a person out of any errand when
+  the storm comes or a hostile is seen.
+- After combat, or after any errand ends, the person chooses again from
+  the root (operator, 2026-09-26). Nothing is held underneath to resume:
+  if they are still thirsty and still remember the well, the day's life
+  sends them back to it; if the fight changed things, it may not.
+  RimWorld does the same: an interrupted pawn is asked for its next job.
 - The day's life, weighted by learned value: eat what they carry, go to
   what answers a need, supply the bunker, look, wander.
 - Each of those is going, then doing: going walks the way the pathing
