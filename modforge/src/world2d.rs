@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use glam::Vec2;
 
 use crate::biome::BiomeRegistry;
-use crate::ground::{Ground, GroundChunk, GroundGen};
+use crate::ground::{Ground, GroundChunk, GroundGen, tile_hash};
 use crate::monument::{BuildingRegistry, MonumentRegistry};
 use crate::path::{Cell, search};
 use crate::places::{Makers, Place, Places};
@@ -45,7 +45,14 @@ pub struct World2d {
     pub bunkers: Vec<Clearing>,
     /// Each road found once, by the positions of the two sites it joins.
     roads: HashMap<(Cell, Cell), Option<Vec<Cell>>>,
+    /// Topside people world generation places on open land: an actor def
+    /// and how many (topside design.md "The small world first").
+    people: Vec<(String, u32)>,
+    people_spots: Option<Vec<(String, Vec2)>>,
 }
+
+/// Tries at a spot for one topside person before they are left out.
+const PEOPLE_TRIES: u64 = 64;
 
 impl World2d {
     pub fn new(ground: GroundGen, places: Places, bunkers: Vec<Clearing>) -> Self {
@@ -54,7 +61,50 @@ impl World2d {
             places,
             bunkers,
             roads: HashMap::new(),
+            people: Vec::new(),
+            people_spots: None,
         }
+    }
+
+    /// These topside people as well, placed on open land inside the
+    /// world's edge. A world with no edge places none this way.
+    pub fn with_people(mut self, people: Vec<(String, u32)>) -> Self {
+        self.people = people;
+        self
+    }
+
+    /// Where each topside person stands, by actor def: a tile rolled from
+    /// the seed anywhere inside the edge, taken only if it is land with
+    /// nothing on it, off every site's ground and every bunker's clearing.
+    /// The same every time for a seed.
+    pub fn topside_people(&mut self, r: Registries) -> Vec<(String, Vec2)> {
+        if let Some(found) = &self.people_spots {
+            return found.clone();
+        }
+        let mut out = Vec::new();
+        if let Some((lo, hi)) = self.ground.chunk_range() {
+            let (lo, span) = (lo * CHUNK, (hi - lo) * CHUNK);
+            for (i, (def, count)) in self.people.clone().into_iter().enumerate() {
+                for k in 0..count {
+                    for a in 0..PEOPLE_TRIES {
+                        let h = tile_hash(self.ground.seed, (i as i32, k as i32), 0x5EED_0000 + a);
+                        let t = (lo + (h % span as u64) as i32, lo + ((h >> 32) % span as u64) as i32);
+                        let at = centre(t);
+                        let key = (t.0.div_euclid(CHUNK), t.1.div_euclid(CHUNK));
+                        let chunk = self.chunk(r, key);
+                        let open = chunk.ground_at(t).is_land() && !chunk.things.iter().any(|thing| thing.tile == t);
+                        let clear = !self.bunkers.iter().any(|c| c.at.distance(at) < c.radius)
+                            && self.sites_touching(r, at, at).is_empty();
+                        if open && clear {
+                            out.push((def.clone(), at));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        self.people_spots = Some(out.clone());
+        out
     }
 
     fn makers<'a>(ground: &'a GroundGen, r: Registries<'a>) -> Makers<'a> {

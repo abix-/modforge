@@ -142,6 +142,17 @@ pub fn problems(world: &mut World2d, r: Registries, lo: Vec2, hi: Vec2, bunkers:
             }
         }
     }
+    for (def, at) in world.topside_people(r) {
+        if at.cmplt(lo).any() || at.cmpge(hi).any() {
+            continue;
+        }
+        let tile = cell_of(at);
+        if map.blocked(tile) {
+            out.push(format!("a {def} at {at}: nobody can stand there"));
+        } else if !reached.contains(tile) {
+            out.push(format!("a {def} at {at}: not reached from the bunker door"));
+        }
+    }
     for (b, runs) in bunkers.iter().zip(&bunker_plans).skip(1) {
         let door = placed(b.at, runs).find(|(k, _)| *k == TileKind::Door).map(|(_, r)| first_tile(&r));
         if !door.is_some_and(|d| reached.contains(d)) {
