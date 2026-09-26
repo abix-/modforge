@@ -357,7 +357,7 @@ fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<
                 do_now: (*what == Doing::Sleep).then_some(Do::Wake),
             })
         }
-        Activity::GoHome if p.at_home => Some(Decision {
+        Activity::GoHome if p.at_home || p.home.is_none() => Some(Decision {
             activity: Activity::Idle,
             combat: CombatState::None,
             actions: vec![],
@@ -373,7 +373,12 @@ fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<
     }
 }
 
-/// Rule 2: hurt past the flee line, run home.
+/// How far someone with no home runs from a threat, metres.
+pub const FLEE_FAR: f32 = 20.0;
+
+/// Rule 2: hurt past the flee line, run home; with no home, run away
+/// from the threat. A person with no home is never going home: that
+/// never ends.
 fn flee(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<Decision> {
     let from = match combat {
         CombatState::Fighting { target, .. } => *target,
@@ -384,7 +389,7 @@ fn flee(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<De
         // A fleeing person who is safe again stops fleeing.
         if matches!(combat, CombatState::Fleeing { .. }) && p.hostile.is_none() {
             return Some(Decision {
-                activity: Activity::GoHome,
+                activity: if p.home.is_some() { Activity::GoHome } else { Activity::Idle },
                 combat: CombatState::None,
                 actions: vec![],
                 do_now: None,
@@ -392,15 +397,25 @@ fn flee(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<De
         }
         return None;
     }
+    let (activity, to) = match p.home {
+        Some(home) => (Activity::GoHome, home),
+        None => {
+            let away = p.hostile.map_or(p.position, |(_, at)| {
+                p.position + (p.position - at).with_y(0.0).normalize_or_zero() * FLEE_FAR
+            });
+            (Activity::Wander { to: away }, away)
+        }
+    };
     Some(Decision {
-        activity: Activity::GoHome,
+        activity,
         combat: CombatState::Fleeing { from },
-        actions: walk_toward(p, p.home.unwrap_or(p.position)),
+        actions: walk_toward(p, to),
         do_now: None,
     })
 }
 
-/// Rule 3: chased too far from where the fight began, break off.
+/// Rule 3: chased too far from where the fight began, break off: home,
+/// or with no home back to where the fight began.
 fn leash(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<Decision> {
     let CombatState::Fighting { began_at, .. } = combat else {
         return None;
@@ -408,10 +423,14 @@ fn leash(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<D
     if p.position.distance(*began_at) <= LEASH {
         return None;
     }
+    let (activity, to) = match p.home {
+        Some(home) => (Activity::GoHome, home),
+        None => (Activity::Wander { to: *began_at }, *began_at),
+    };
     Some(Decision {
-        activity: Activity::GoHome,
+        activity,
         combat: CombatState::None,
-        actions: walk_toward(p, p.home.unwrap_or(*began_at)),
+        actions: walk_toward(p, to),
         do_now: None,
     })
 }
@@ -1060,6 +1079,39 @@ mod tests {
             matches!(d.combat, CombatState::Fighting { .. }),
             "the brave stand"
         );
+    }
+
+    /// Someone with no home never goes home, which never ends (a raider
+    /// that fled once stood in a bunker for good, killing whoever woke
+    /// there): wounded they run away from the threat, leashed they walk
+    /// back to where the fight began, and a left-over GoHome ends.
+    #[test]
+    fn someone_with_no_home_runs_away_and_never_goes_home() {
+        let memory = Memory::default();
+        let mut coward = calm();
+        coward.axes[Axis::Courage as usize] = -1.0;
+        let mut p = perception(&memory, &coward);
+        p.home = None;
+        p.at_home = false;
+        p.health_fraction = 0.4;
+        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -3.0)));
+        let fight = CombatState::Fighting { target: ActorId(9), began_at: Vec3::ZERO };
+        let d = decide(&p, &Activity::Idle, &fight, &mut Roll::new(1));
+        assert_eq!(d.combat, CombatState::Fleeing { from: ActorId(9) });
+        assert_eq!(d.activity, Activity::Wander { to: Vec3::new(0.0, 0.0, FLEE_FAR) }, "away from the threat");
+        assert!(has_move(&d), "runs");
+
+        let mut leashed = perception(&memory, &coward);
+        leashed.home = None;
+        leashed.position = Vec3::new(0.0, 0.0, -(LEASH + 5.0));
+        leashed.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -(LEASH + 8.0))));
+        let d = decide(&leashed, &Activity::Idle, &fight, &mut Roll::new(1));
+        assert_eq!(d.activity, Activity::Wander { to: Vec3::ZERO }, "back to where the fight began");
+
+        let mut idle = perception(&memory, &coward);
+        idle.home = None;
+        let d = decide(&idle, &Activity::GoHome, &CombatState::None, &mut Roll::new(1));
+        assert_ne!(d.activity, Activity::GoHome, "a GoHome with no home ends");
     }
 
     #[test]
