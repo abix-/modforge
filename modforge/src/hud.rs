@@ -391,8 +391,27 @@ pub fn use_slot(
         return Err(SurvivalError::Unregistered(stack.item.clone()));
     };
     if let Some(armor) = def.armor {
-        let worn = inv.slots[slot].take();
-        inv.slots[slot] = equipment.set(armor.slot, worn);
+        // On, into every slot it occupies; whatever it takes off goes
+        // back to the inventory, the first into the slot it came from.
+        // With no room for all of it, nothing changes.
+        let clashing = equipment
+            .items()
+            .filter(|(_, slots)| slots.iter().any(|s| armor.occupies.contains(s)))
+            .count();
+        let room = 1 + inv.slots.iter().filter(|s| s.is_none()).count();
+        if clashing > room {
+            return Ok(0.0);
+        }
+        let Some(worn) = inv.slots[slot].take() else {
+            return Err(SurvivalError::EmptySlot(slot));
+        };
+        let mut off = equipment.wear(worn, armor.occupies).into_iter();
+        inv.slots[slot] = off.next();
+        for rest in off {
+            if let Some(free) = inv.slots.iter_mut().find(|s| s.is_none()) {
+                *free = Some(rest);
+            }
+        }
         return Ok(0.0);
     }
     match def.kind {
