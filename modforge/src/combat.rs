@@ -231,17 +231,23 @@ impl Protection {
     /// This actor's protection with no body parts (topside combat.md
     /// "How deadly"): the base plus the armor of every piece worn in
     /// its own slot, added into one total that every hit goes through.
-    /// Gear worn in the wrong slot guards nothing.
+    /// Each piece's armor comes from `item::numbers_of`, the one place an
+    /// item's numbers are worked out from its layers. Gear worn in the
+    /// wrong slot guards nothing.
     pub fn worn(
         &self,
         worn: &crate::item::Equipment,
-        armor_of: impl Fn(&str) -> Option<crate::item::Armor>,
+        items: &crate::item::ItemRegistry,
+        layers: &crate::item::LayerRegistry,
     ) -> Protection {
         let worn_armor: f32 = crate::item::EquipSlot::ALL
             .iter()
             .filter_map(|&slot| {
                 worn.get(slot)
-                    .and_then(|stack| armor_of(&stack.item))
+                    .and_then(|stack| {
+                        let def = items.def(&stack.item)?;
+                        crate::item::numbers_of(def, stack, layers).armor
+                    })
                     .filter(|armor| armor.slot == slot)
                     .map(|armor| armor.amount)
             })
@@ -774,26 +780,39 @@ mod tests {
         let mut worn = crate::item::Equipment::default();
         worn.set(crate::item::EquipSlot::Chest, Some(stack("vest")));
         worn.set(crate::item::EquipSlot::Head, Some(stack("helmet")));
-        let armor_of = |name: &str| match name {
-            "vest" => Some(crate::item::Armor {
-                slot: crate::item::EquipSlot::Chest,
-                amount: 30.0,
-            }),
-            "helmet" => Some(crate::item::Armor {
-                slot: crate::item::EquipSlot::Head,
-                amount: 10.0,
-            }),
-            _ => None,
-        };
+        // Each piece's armor is on its def, read through `numbers_of`.
+        let mut items = crate::item::ItemRegistry::default();
+        for (name, slot, amount) in [
+            ("vest", crate::item::EquipSlot::Chest, 30.0),
+            ("helmet", crate::item::EquipSlot::Head, 10.0),
+        ] {
+            items
+                .register(crate::item::ItemDef {
+                    name: name.to_string(),
+                    unique: false,
+                    kind: crate::item::ItemKind::Tool,
+                    max_stack: 1,
+                    quality_siblings: 1,
+                    combat: None,
+                    food: None,
+                    storage: None,
+                    armor: Some(crate::item::Armor { slot, amount }),
+                    good_for: Default::default(),
+                    picture: None,
+                    layer_slots: Vec::new(),
+                })
+                .unwrap();
+        }
+        let layers = crate::item::LayerRegistry::default();
         let base = Protection {
             armor: 5.0,
             resistances: vec![],
         };
-        assert_eq!(base.worn(&worn, armor_of).armor, 45.0);
+        assert_eq!(base.worn(&worn, &items, &layers).armor, 45.0);
         // A vest in the head slot guards nothing.
         let mut wrong = crate::item::Equipment::default();
         wrong.set(crate::item::EquipSlot::Head, Some(stack("vest")));
-        assert_eq!(base.worn(&wrong, armor_of).armor, 5.0);
+        assert_eq!(base.worn(&wrong, &items, &layers).armor, 5.0);
     }
 
     #[test]

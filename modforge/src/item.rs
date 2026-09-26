@@ -402,18 +402,27 @@ pub fn create_layered(
     Ok(stack)
 }
 
-/// How this stack fights: its item's firing, changed by each of its
-/// layers bottom to top (a head's damage in place of the item's own).
-/// The one place a weapon's numbers are worked out; every hit reads
-/// them from here. None for an item that does not fight.
-pub fn combat_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> Option<CombatStats> {
-    let mut combat = def.combat.clone()?;
+/// One stack's numbers, worked out from its layers: how it fights (None
+/// for an item that does not) and the armor it gives worn (None for an
+/// item that is not worn).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Numbers {
+    pub combat: Option<CombatStats>,
+    pub armor: Option<Armor>,
+}
+
+/// The one place an item's numbers are worked out (topside authority.md
+/// Layers): its item's own, changed by each of its layers bottom to top
+/// (a head's damage in place of the item's own). Every hit reads a
+/// weapon's numbers from here and every worn piece's armor.
+pub fn numbers_of(def: &ItemDef, stack: &ItemStack, layers: &LayerRegistry) -> Numbers {
+    let mut combat = def.combat.clone();
     for layer in stack.layers.iter().filter_map(|name| layers.def(name)) {
-        if let Some(damage) = &layer.damage {
+        if let (Some(combat), Some(damage)) = (combat.as_mut(), &layer.damage) {
             combat.damage = damage.clone();
         }
     }
-    Some(combat)
+    Numbers { combat, armor: def.armor }
 }
 
 /// The one way a note comes to exist: a single `Note` item through
@@ -835,8 +844,9 @@ mod tests {
         let plain_pipe = create_layered(&pipe, &[], &layers, 1, &[], 0.0, 1).unwrap();
         let nailed = create_layered(&pipe, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
         assert_eq!(nailed.layers, ["nails"]);
-        let plain_hit = combat_of(&pipe, &plain_pipe, &layers).unwrap();
-        let nail_hit = combat_of(&pipe, &nailed, &layers).unwrap();
+        let fights = |def: &ItemDef, stack: &ItemStack| numbers_of(def, stack, &layers).combat.unwrap();
+        let plain_hit = fights(&pipe, &plain_pipe);
+        let nail_hit = fights(&pipe, &nailed);
         let amount = |c: &CombatStats| damage.def(&c.damage).unwrap().amount;
         assert!(amount(&nail_hit) > amount(&plain_hit), "nails hit harder");
         assert_eq!(nail_hit.reach, plain_hit.reach, "the head does not change reach");
@@ -845,13 +855,13 @@ mod tests {
         // A long pole reaches farther than a wooden handle, the same head on each.
         let on_pole = create_layered(&pole, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
         let on_wooden = create_layered(&wooden, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
-        assert!(combat_of(&pole, &on_pole, &layers).unwrap().reach > combat_of(&wooden, &on_wooden, &layers).unwrap().reach);
+        assert!(fights(&pole, &on_pole).reach > fights(&wooden, &on_wooden).reach);
 
         // A can is one layer, itself: it takes no head, and a pipe takes one head only.
         let can = def("canned food");
         assert!(create_layered(&can, &[nails.clone()], &layers, 1, &[], 0.0, 1).is_err());
         assert!(create_layered(&pipe, &[nails.clone(), nails], &layers, 1, &[], 0.0, 1).is_err());
         assert!(create_layered(&pipe, &["gold".to_string()], &layers, 1, &[], 0.0, 1).is_err(), "no such layer");
-        assert_eq!(combat_of(&can, &create(&can, 1, &[], 0.0, 1), &layers), None);
+        assert_eq!(numbers_of(&can, &create(&can, 1, &[], 0.0, 1), &layers).combat, None);
     }
 }
