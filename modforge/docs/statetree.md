@@ -74,6 +74,16 @@ checked from the leaf up to the root, and the first that fires wins. A
 transition on a parent therefore covers every state under it: the storm
 coming, on the root, takes a person out of anything.
 
+**What the tree remembers.** Each person's tree keeps its own record
+between thinks, and it is the one record of what they are doing: the
+active state and each active state's data (which well, where, for which
+need; who they fight and where the fight began). Unreal keeps the same
+per running tree (its instance data). Nothing beside the tree remembers
+what a person is doing: today's `Activity` and `CombatState` become the
+tree's record (operator, 2026-09-26). The consumer stores the record on
+the person and hands it back each think, and reads it to show what they
+are doing.
+
 **Selection only when a transition fires.** Each think the active tasks
 run and the transitions are checked; nothing is chosen again unless a
 transition fires. A person walking to a well keeps walking to the well.
