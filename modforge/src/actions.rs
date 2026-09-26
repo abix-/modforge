@@ -55,6 +55,9 @@ pub enum Action {
     Respawn,
     /// The dodge roll (topside combat.md "The roll").
     Roll,
+    /// The map: the corner minimap to a full screen overlay and back
+    /// (topside authority.md "Presentation", Diablo 2's automap).
+    Map,
 }
 
 /// A key or button, by the name a binding file uses. The consumer
@@ -67,6 +70,7 @@ pub enum Key {
     D,
     E,
     I,
+    M,
     O,
     T,
     V,
@@ -137,6 +141,7 @@ impl Bindings {
                 (Key::T, Tapped(Transfer { half: false, slot: None })),
                 (Key::Enter, Tapped(Respawn)),
                 (Key::Space, Tapped(Roll)),
+                (Key::M, Tapped(Map)),
             ],
         }
     }
