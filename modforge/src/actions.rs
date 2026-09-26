@@ -35,8 +35,10 @@ pub enum Action {
     Cancel,
     /// Use hotbar slot `index` (the number keys).
     Hotbar { index: usize },
-    /// Drop the hovered stack (O).
-    Drop,
+    /// Drop the stack in `slot` at the feet (O on the hovered slot, or
+    /// Drop in the item information panel). The key gives no slot; the
+    /// consumer fills in the one under the cursor.
+    Drop { slot: Option<crate::hud::SlotRef> },
     /// Move the stack in `slot` across (T on the hovered slot); `half`
     /// is Shift+T. The keys give no slot; the consumer fills in the one
     /// under the cursor, an AI names its own.
@@ -137,7 +139,7 @@ impl Bindings {
                 (Key::Digit8, Tapped(Hotbar { index: 7 })),
                 (Key::Digit9, Tapped(Hotbar { index: 8 })),
                 (Key::Digit0, Tapped(Hotbar { index: 9 })),
-                (Key::O, Tapped(Drop)),
+                (Key::O, Tapped(Drop { slot: None })),
                 (Key::T, Tapped(Transfer { half: false, slot: None })),
                 (Key::Enter, Tapped(Respawn)),
                 (Key::Space, Tapped(Roll)),

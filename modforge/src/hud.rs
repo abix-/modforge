@@ -170,6 +170,12 @@ pub struct HudState {
     pub target: Option<(String, f32, f32)>,
     /// The note open in the note panel, while it is open.
     pub reading: Option<Note>,
+    /// The slot clicked last: its item is shown in the item information
+    /// panel (Rust's) while the inventory is open.
+    pub selected: Option<SlotRef>,
+    /// The amount set on the splitting bar for the selected stack: a drag
+    /// from the selected slot moves only this many. None moves it whole.
+    pub split: Option<u32>,
 }
 
 impl HudState {
@@ -288,6 +294,56 @@ pub fn start_drag(state: &mut HudState, holders: &Holders<'_>, slot: SlotRef) {
     }
 }
 
+/// A click on `slot` selects it for the item information panel (Rust's);
+/// an empty slot selects nothing. The splitting bar starts over.
+pub fn select_slot(state: &mut HudState, holders: &Holders<'_>, slot: SlotRef) {
+    state.selected = holders.stack(slot).is_some().then_some(slot);
+    state.split = None;
+}
+
+/// The splitting bar set to `amount` of the selected stack, kept between
+/// one and the whole stack; nothing selected sets nothing.
+pub fn set_split(state: &mut HudState, holders: &Holders<'_>, amount: u32) {
+    state.split = state
+        .selected
+        .and_then(|slot| holders.stack(slot))
+        .map(|s| amount.clamp(1, s.count.max(1)));
+}
+
+/// `n` of the stack in `from` onto `to`: into an empty slot, or onto the
+/// same item with room for all `n`. Anywhere else nothing moves.
+fn move_some(holders: &mut Holders<'_>, from: SlotRef, to: SlotRef, n: u32, max_stack: u32) {
+    let Some(moving) = holders.stack(from).cloned() else {
+        return;
+    };
+    let fits = match holders.stack(to) {
+        None => holders.get(to.holder).is_some_and(|inv| to.index < inv.slots.len()),
+        Some(there) => there.stacks_with(&moving) && there.count + n <= max_stack,
+    };
+    if !fits {
+        return;
+    }
+    let Some(taken) = holders.get_mut(from.holder).and_then(|inv| inv.remove(from.index, n)) else {
+        return;
+    };
+    if let Some(slot) = holders.get_mut(to.holder).and_then(|inv| inv.slots.get_mut(to.index)) {
+        match slot {
+            Some(there) => there.count += taken.count,
+            None => *slot = Some(taken),
+        }
+    }
+}
+
+/// The Drop action (Rust's item information panel, or O over a slot):
+/// the whole stack in `slot` comes out, worn gear taken off, for the
+/// consumer to put on the ground at the feet.
+pub fn drop_from(holders: &mut Holders<'_>, slot: SlotRef) -> Option<ItemStack> {
+    match slot.holder {
+        Holder::Equipment => holders.equipment.take_off(slot.index),
+        holder => drop_slot(holders.get_mut(holder)?, slot.index),
+    }
+}
+
 /// A drag ends on `slot`: the dragged stack moves there, within one
 /// holder ([`move_stack`]) or across two ([`move_between`]), merging
 /// or swapping. Onto or off the equipment row it swaps only when what
@@ -306,7 +362,14 @@ pub fn end_drag(
         return;
     }
     let max_stack = holders.max_stack_of(from, registry);
-    if from.holder == Holder::Equipment && slot.holder == Holder::Equipment {
+    let count = holders.stack(from).map_or(0, |s| s.count);
+    let split = state.split.filter(|n| state.selected == Some(from) && *n < count);
+    if let Some(n) = split
+        && from.holder != Holder::Equipment
+        && slot.holder != Holder::Equipment
+    {
+        move_some(holders, from, slot, n, max_stack);
+    } else if from.holder == Holder::Equipment && slot.holder == Holder::Equipment {
         holders.equipment.swap(from.index, slot.index);
     } else if slot.holder == Holder::Equipment {
         holders.swap_worn(slot.index, from, registry);
@@ -668,6 +731,7 @@ mod tests {
         for (name, max_stack) in [("scrap", 20), ("cloth", 20)] {
             reg.register(crate::item::ItemDef {
                 name: name.to_string(),
+                description: String::new(),
                 unique: false,
                 kind: crate::item::ItemKind::Material,
                 max_stack,
@@ -756,6 +820,7 @@ mod tests {
         let mut reg = registry();
         reg.register(crate::item::ItemDef {
             name: "vest".to_string(),
+            description: String::new(),
             unique: false,
             kind: crate::item::ItemKind::Material,
             max_stack: 1,
@@ -812,6 +877,60 @@ mod tests {
         end_drag(&mut state, &mut holders, at(Holder::Hotbar, 0), &reg);
         assert_eq!(holders.equipment.items().count(), 0);
         assert_eq!(holders.hotbar.slots[0].as_ref().unwrap().item, "vest");
+    }
+
+    #[test]
+    fn a_click_selects_and_the_splitting_bar_moves_only_its_amount() {
+        let reg = registry();
+        let mut state = HudState::new();
+        let mut inv = Inventory::new(3);
+        let mut bar = Inventory::new(1);
+        let mut worn = Equipment::default();
+        inv.slots[0] = Some(stack("scrap", 10));
+        inv.slots[1] = Some(stack("scrap", 18));
+        let mut holders = Holders {
+            inventory: &mut inv,
+            hotbar: &mut bar,
+            container: None,
+            equipment: &mut worn,
+        };
+        let inv_ = |i| at(Holder::Inventory, i);
+
+        select_slot(&mut state, &holders, inv_(2));
+        assert_eq!(state.selected, None, "an empty slot selects nothing");
+        select_slot(&mut state, &holders, inv_(0));
+        assert_eq!(state.selected, Some(inv_(0)));
+
+        // The bar is kept between one and the whole stack.
+        set_split(&mut state, &holders, 50);
+        assert_eq!(state.split, Some(10));
+        set_split(&mut state, &holders, 3);
+        assert_eq!(state.split, Some(3));
+
+        // 3 dragged to an empty slot: 7 stay.
+        start_drag(&mut state, &holders, inv_(0));
+        end_drag(&mut state, &mut holders, inv_(2), &reg);
+        assert_eq!(holders.inventory.slots[0].as_ref().unwrap().count, 7);
+        assert_eq!(holders.inventory.slots[2].as_ref().unwrap().count, 3);
+
+        // 3 more onto 18 of 20 do not fit: nothing moves.
+        start_drag(&mut state, &holders, inv_(0));
+        end_drag(&mut state, &mut holders, inv_(1), &reg);
+        assert_eq!(holders.inventory.slots[0].as_ref().unwrap().count, 7);
+        assert_eq!(holders.inventory.slots[1].as_ref().unwrap().count, 18);
+
+        // 2 fit: they join.
+        set_split(&mut state, &holders, 2);
+        start_drag(&mut state, &holders, inv_(0));
+        end_drag(&mut state, &mut holders, inv_(1), &reg);
+        assert_eq!(holders.inventory.slots[0].as_ref().unwrap().count, 5);
+        assert_eq!(holders.inventory.slots[1].as_ref().unwrap().count, 20);
+
+        // Drop hands the whole stack back.
+        let dropped = drop_from(&mut holders, inv_(0)).unwrap();
+        assert_eq!((dropped.item.as_str(), dropped.count), ("scrap", 5));
+        assert!(holders.inventory.slots[0].is_none());
+        assert!(drop_from(&mut holders, inv_(0)).is_none(), "an empty slot drops nothing");
     }
 
     #[test]
@@ -898,6 +1017,7 @@ mod tests {
         let mut reg = registry();
         reg.register(crate::item::ItemDef {
             name: "pipe".to_string(),
+            description: String::new(),
             unique: false,
             kind: crate::item::ItemKind::Weapon,
             max_stack: 1,
@@ -913,6 +1033,7 @@ mod tests {
         .unwrap();
         reg.register(crate::item::ItemDef {
             name: "hatchet".to_string(),
+            description: String::new(),
             unique: false,
             kind: crate::item::ItemKind::Tool,
             max_stack: 1,

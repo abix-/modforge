@@ -148,6 +148,7 @@ mod tests {
         items
             .register(ItemDef {
                 name: "scrap".to_string(),
+                description: String::new(),
                 unique: false,
                 kind: ItemKind::Material,
                 max_stack: 20,
@@ -164,6 +165,7 @@ mod tests {
         items
             .register(ItemDef {
                 name: "knife".to_string(),
+                description: String::new(),
                 unique: false,
                 kind: ItemKind::Weapon,
                 max_stack: 1,

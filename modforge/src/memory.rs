@@ -368,6 +368,7 @@ mod tests {
         items
             .register(ItemDef {
                 name: "canned food".to_string(),
+                description: String::new(),
                 unique: false,
                 kind: ItemKind::Food,
                 max_stack: 10,
@@ -401,6 +402,7 @@ mod tests {
         items
             .register(ItemDef {
                 name: "well".to_string(),
+                description: String::new(),
                 unique: false,
                 kind: ItemKind::Source,
                 max_stack: 1,
@@ -448,6 +450,7 @@ mod tests {
             items
                 .register(ItemDef {
                     name: name.to_string(),
+                    description: String::new(),
                     unique: false,
                     kind: ItemKind::Food,
                     max_stack: 10,

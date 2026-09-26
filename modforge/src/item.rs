@@ -91,6 +91,9 @@ pub struct FoodStats {
 #[derive(Clone)]
 pub struct ItemDef {
     pub name: String,
+    /// One line on what it is and how it is used, shown when it is
+    /// selected (Rust's item information panel).
+    pub description: String,
     /// Only one of this item may enter a save.
     pub unique: bool,
     pub kind: ItemKind,
@@ -658,6 +661,7 @@ mod tests {
     fn def(name: &str) -> ItemDef {
         ItemDef {
             name: name.to_string(),
+            description: String::new(),
             unique: false,
             kind: ItemKind::Material,
             max_stack: 10,

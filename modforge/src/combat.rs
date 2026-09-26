@@ -723,6 +723,7 @@ mod tests {
             items
                 .register(crate::item::ItemDef {
                     name: name.to_string(),
+                    description: String::new(),
                     unique: false,
                     kind: crate::item::ItemKind::Tool,
                     max_stack: 1,

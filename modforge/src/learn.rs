@@ -267,6 +267,7 @@ mod tests {
         for (name, hunger, thirst) in [("can", 30.0, 0.0), ("bottle", 0.0, 30.0)] {
             reg.register(ItemDef {
                 name: name.to_string(),
+                description: String::new(),
                 unique: false,
                 kind: ItemKind::Food,
                 max_stack: 10,
