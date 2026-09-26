@@ -256,6 +256,7 @@ mod tests {
                     size: glam::Vec3::new(1.0, 3.0, 1.0),
                     color: [0.2, 0.4, 0.2],
                     density: 2.0,
+                    picture: None,
                 }],
                 weather: vec![],
                 monuments: vec!["stop".to_string()],

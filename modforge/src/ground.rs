@@ -90,6 +90,8 @@ pub struct Thing {
     /// Its footprint in metres, centred on the tile.
     pub size: Vec2,
     pub color: Rgb,
+    /// Its scatter's picture, if it has one.
+    pub picture: Option<String>,
 }
 
 impl Thing {
@@ -303,6 +305,7 @@ impl GroundGen {
                             tile: t,
                             size: Vec2::new(spec.size.x, spec.size.z).min(Vec2::splat(TILE)),
                             color: spec.color,
+                            picture: spec.picture.clone(),
                         });
                         break;
                     }
@@ -333,6 +336,7 @@ mod tests {
                     size: glam::Vec3::new(1.0, 3.0, 1.0),
                     color: [0.2, 0.4, 0.2],
                     density,
+                    picture: Some("tree".to_string()),
                 }],
                 weather: vec![],
                 monuments: vec![],
@@ -447,6 +451,17 @@ mod tests {
             .map(|k| solid.chunk(k, &reg).ground.iter().filter(|g| **g == Ground::Cliff).count())
             .sum();
         assert!(solid_cliffs > cliff, "gaps open the cliff lines: {solid_cliffs} without, {cliff} with");
+    }
+
+    /// A thing carries its scatter's picture, so the game draws a tree as
+    /// the tree picture.
+    #[test]
+    fn a_thing_carries_its_scatters_picture() {
+        let reg = biomes();
+        let maker = GroundGen::new(def(), 11, &reg).unwrap();
+        let things: Vec<Thing> = (-4..4).flat_map(|cx| maker.chunk((cx, 0), &reg).things).collect();
+        assert!(!things.is_empty());
+        assert!(things.iter().all(|t| t.picture.as_deref() == Some("tree")), "every thing is the scatter's tree");
     }
 
     #[test]

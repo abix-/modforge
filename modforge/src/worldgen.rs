@@ -1199,6 +1199,7 @@ mod tests {
                 size: Vec3::new(1.0, 3.0, 1.0),
                 color: [0.2, 0.4, 0.2],
                 density: 0.5,
+                picture: None,
             }];
             scattering.register(def).unwrap();
         }
@@ -1229,6 +1230,7 @@ mod tests {
                 size: Vec3::new(1.0, 3.0, 1.0),
                 color: [0.2, 0.4, 0.2],
                 density: 0.5,
+                picture: None,
             }];
             scattering.register(def).unwrap();
         }

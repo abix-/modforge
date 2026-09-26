@@ -19,6 +19,9 @@ pub struct ScatterDef {
     pub size: Vec3,
     pub color: Rgb,
     pub density: f32,
+    /// The picture the game draws it with, by name; none draws it as a
+    /// shape in its colour.
+    pub picture: Option<String>,
 }
 
 /// The generic definition of a type of area. `name` is the id. The
@@ -77,6 +80,7 @@ mod tests {
                 size: Vec3::new(0.5, 3.0, 0.5),
                 color: [0.3, 0.25, 0.15],
                 density: 0.02,
+                picture: None,
             }],
             weather: vec!["rain".to_string()],
             monuments: vec![],
