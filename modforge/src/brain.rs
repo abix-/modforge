@@ -1,13 +1,12 @@
-//! The brain (topside life.md "The brain"): one pure function that
-//! turns what a person perceives into what it does next. No engine,
-//! no entities: a `Perception` in, a `Decision` out, the state it
-//! keeps between thinks (`Activity`, `CombatState`) owned by the
-//! consumer and handed back each time. Every random choice comes
-//! from a `Roll` the consumer seeds by tick and ActorId, so a replay
-//! decides the same.
+//! The brain's rules (topside life.md "The brain"): what a person may do,
+//! as the enter conditions and tasks of a StateTree (docs/statetree.md).
+//! No engine, no entities: a `Perception` in, actions and one `Do` out.
+//! What a person is doing between thinks is the tree's `Record`; which
+//! states there are, in what order, is the game's tree. Every random
+//! choice comes from a `Roll` the consumer seeds by tick and ActorId, so
+//! a replay decides the same.
 //!
-//! Prior art: Endless's decision system (the ordered hard rules,
-//! activity kept through a fight), The Sims' needs (the worst need
+//! Prior art: Endless's decision system, The Sims' needs (the worst need
 //! drives the pick; what is known, not what exists, is considered),
 //! Halo 2's lesson that the brain never reads the world directly.
 
@@ -15,70 +14,11 @@ use glam::Vec3;
 
 use crate::actions::Action;
 use crate::actor::{ActorId, Behaviour, Personality};
+use crate::learn::{Band, Choice, Situation};
 use crate::memory::{Known, Memory};
 use crate::monument::Roll;
-use crate::learn::{Band, Choice, Situation};
+use crate::statetree::{Context, Status, Target};
 use crate::survival::{Need, SurvivalStats};
-
-/// What a person is doing, kept between thinks.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Activity {
-    Idle,
-    /// Walking to a known thing to satisfy a need.
-    Going {
-        key: u64,
-        to: Vec3,
-        need: Need,
-    },
-    /// At a known thing, doing it.
-    Doing {
-        key: u64,
-        what: Doing,
-    },
-    /// Walking to a known but unchecked thing to see what it holds.
-    Looking {
-        key: u64,
-        to: Vec3,
-    },
-    /// Strolling to a point near home.
-    Wander {
-        to: Vec3,
-    },
-    /// Walking home.
-    GoHome,
-    /// Walking to a known box to take what their bunker is short of.
-    Fetching {
-        key: u64,
-        to: Vec3,
-        need: Need,
-    },
-    /// Carrying food and water home to their bunker's store.
-    Hauling {
-        key: u64,
-        to: Vec3,
-    },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Doing {
-    /// Eating or drinking for this need, until it is met.
-    Eat(Need),
-    Sleep,
-    Check,
-    /// Taking what they and their bunker need out of a box.
-    Take(Need),
-    /// Putting what they carried home into the store.
-    Stock,
-}
-
-/// Whether a person is fighting, kept between thinks and kept apart
-/// from the activity so an errand resumes after a fight (Endless).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum CombatState {
-    None,
-    Fighting { target: ActorId, began_at: Vec3 },
-    Fleeing { from: ActorId },
-}
 
 /// What the consumer saw this think. Positions are world metres; y
 /// is up and the ground is x and z. The brain steers with `Aim` at a
@@ -96,8 +36,6 @@ pub struct Perception<'a> {
     pub asleep: bool,
     /// The nearest hostile in sight, if any.
     pub hostile: Option<(ActorId, Vec3)>,
-    /// Within reach of the current activity's target.
-    pub arrived: bool,
     /// The storm is coming or here (topside design.md "The storm"):
     /// hide or die.
     pub storm_coming: bool,
@@ -136,7 +74,6 @@ impl std::fmt::Debug for Perception<'_> {
             .field("position", &self.position)
             .field("needs", &self.needs)
             .field("hostile", &self.hostile)
-            .field("arrived", &self.arrived)
             .finish_non_exhaustive()
     }
 }
@@ -172,12 +109,37 @@ pub enum Do {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Decision {
-    pub activity: Activity,
-    pub combat: CombatState,
+/// One think of one person: what they perceive, their roll, and what
+/// they will do this tick, written by the tasks.
+pub struct Think<'a> {
+    pub p: &'a Perception<'a>,
+    pub roll: &'a mut Roll,
     pub actions: Vec<Action>,
     pub do_now: Option<Do>,
+}
+
+impl<'a> Think<'a> {
+    pub fn new(p: &'a Perception<'a>, roll: &'a mut Roll) -> Self {
+        Self {
+            p,
+            roll,
+            actions: Vec::new(),
+            do_now: None,
+        }
+    }
+
+    /// What they do this tick.
+    fn act(&mut self, actions: Vec<Action>, do_now: Option<Do>) {
+        self.actions = actions;
+        self.do_now = do_now;
+    }
+}
+
+/// The brain's tree is a tree of `Think`s.
+pub struct Brain;
+
+impl Context for Brain {
+    type Of<'a> = Think<'a>;
 }
 
 /// How far a person chases before breaking off back home.
@@ -186,6 +148,8 @@ pub const LEASH: f32 = 60.0;
 pub const NEED_LINE: f32 = 50.0;
 /// A need at or above this is met: eating or drinking for it stops.
 pub const FED: f32 = 90.0;
+/// Rest at or above this is rested: sleep ends.
+pub const RESTED: f32 = 95.0;
 /// A need below this, with nothing known to answer it, sends a person
 /// looking.
 pub const LOOK_LINE: f32 = 30.0;
@@ -193,50 +157,16 @@ pub const LOOK_LINE: f32 = 30.0;
 pub const REACH: f32 = 1.5;
 /// Metres of walking that cost one point of satisfaction.
 const METRES_PER_POINT: f32 = 4.0;
-
-/// The brain. The first rule that applies wins.
-pub fn decide(
-    p: &Perception,
-    activity: &Activity,
-    combat: &CombatState,
-    roll: &mut Roll,
-) -> Decision {
-    choose(p, activity, combat, roll).0
-}
-
-/// The one way a person decides (topside life.md "Learning to stay
-/// alive"): every rule that fits the moment offers its choice, in the
-/// order of instinct (the storm, finishing what they reached, fleeing,
-/// breaking off, fighting, eating what they carry, carrying on, going to
-/// what answers a need, supplying their bunker, looking, wandering), and
-/// what they learned picks among them; with nothing learned, instinct's
-/// order decides. Returns the decision, the situation it was made in, and
-/// the choice, for the consumer to note in their memory.
-pub fn choose(p: &Perception, activity: &Activity, combat: &CombatState, roll: &mut Roll) -> (Decision, Situation, Choice) {
-    let mut offered: Vec<(Choice, Decision)> = Vec::new();
-    let mut offer = |choice, d: Option<Decision>| {
-        if let Some(d) = d {
-            offered.push((choice, d));
-        }
-    };
-    offer(Choice::Hide, hide(p));
-    offer(Choice::CarryOn, arrived(p, activity, combat));
-    offer(Choice::Flee, flee(p, activity, combat));
-    offer(Choice::BreakOff, leash(p, activity, combat));
-    offer(Choice::Fight, fight(p, activity, combat));
-    // Out of a fight: the life.
-    let calm = CombatState::None;
-    offer(Choice::EatCarried, eat_carried(p, activity));
-    offer(Choice::CarryOn, keep_going(p, activity, calm));
-    offer(Choice::GoToNeed, life(p, calm));
-    offer(Choice::Supply, supply(p, activity, calm, roll));
-    offer(Choice::Look, look(p, activity, calm, roll));
-    offer(Choice::Wander, Some(wander(p, activity, calm, roll)));
-    let situation = situation(p);
-    let choices: Vec<Choice> = offered.iter().map(|(c, _)| *c).collect();
-    let (choice, decision) = offered.swap_remove(p.memory.learned.pick(&situation, &choices));
-    (decision, situation, choice)
-}
+/// How far someone with no home runs from a threat, metres.
+pub const FLEE_FAR: f32 = 20.0;
+/// How long a threat out of sight still drives a fight, in ticks (5 s).
+pub const THREAT_RECENT: u64 = 300;
+/// How far a person heads out to look when nothing they know answers a
+/// need: something worth stopping for stands within this of almost
+/// anywhere (topside design.md "The world", Bethesda's rule).
+pub const LOOK_FAR: f32 = 150.0;
+/// How many spots are rolled looking for one a person can stand on.
+const SPOT_TRIES: usize = 8;
 
 /// The moment as the learning sees it, kept small so like moments match.
 pub fn situation(p: &Perception) -> Situation {
@@ -257,26 +187,154 @@ pub fn situation(p: &Perception) -> Situation {
     }
 }
 
-/// Rule 0: the storm is coming: hide or die, before anything else (the
-/// player obeys the same storm). Home is the shelter a person knows;
-/// at home they stay put. With no home there is nowhere to go.
-fn hide(p: &Perception) -> Option<Decision> {
-    if !p.storm_coming {
-        return None;
-    }
-    let home = p.home?;
-    Some(Decision {
-        activity: Activity::GoHome,
-        combat: CombatState::None,
-        actions: if p.at_home { vec![] } else { walk_toward(p, home) },
-        do_now: None,
-    })
+/// What they learned picks among the day's life (topside life.md
+/// "Learning to stay alive").
+pub fn learned(t: &mut Think, offered: &[Choice]) -> usize {
+    t.p.memory.learned.pick(&situation(t.p), offered)
 }
 
-/// Hungry or thirsty with the answer in their own bags: eat or drink
-/// it where they stand, the way the player does, and carry on with
-/// what they were doing.
-fn eat_carried(p: &Perception, activity: &Activity) -> Option<Decision> {
+// The storm.
+
+/// The storm is coming: hide or die, before anything else (the player
+/// obeys the same storm). Home is the shelter a person knows; with no
+/// home there is nowhere to go.
+pub fn enter_hide(t: &mut Think, _: &Target) -> Option<Target> {
+    if !t.p.storm_coming {
+        return None;
+    }
+    t.p.home.map(Target::Point)
+}
+
+/// Home, then stay put.
+pub fn hide(t: &mut Think, target: &Target) -> Status {
+    let Target::Point(home) = *target else {
+        return Status::Failed;
+    };
+    let actions = if t.p.at_home { vec![] } else { walk_toward(t.p, home) };
+    t.act(actions, None);
+    Status::Running
+}
+
+pub fn storm_over(t: &mut Think, _: &Target) -> bool {
+    !t.p.storm_coming
+}
+
+// Fighting.
+
+/// The threat they face: the nearest hostile in sight, or one
+/// remembered in the last few seconds (topside life.md "Perception with
+/// belief": belief, not truth, so the spot is where it was), and where
+/// it is.
+fn threat(p: &Perception) -> Option<(ActorId, Vec3)> {
+    if let Some(seen) = p.hostile {
+        return Some(seen);
+    }
+    let (who, at, when) = p.memory.last_threat?;
+    (p.now.saturating_sub(when) <= THREAT_RECENT).then_some((who, at))
+}
+
+/// A threat in sight or just remembered: fight, flee, or break off. The
+/// fight began where they stood, or where it began before.
+pub fn enter_combat(t: &mut Think, about: &Target) -> Option<Target> {
+    let (who, _) = threat(t.p)?;
+    let began_at = match about {
+        Target::Threat { began_at, .. } => *began_at,
+        _ => t.p.position,
+    };
+    Some(Target::Threat { who, began_at })
+}
+
+/// Hurt past their flee line (courage moves it).
+pub fn hurt(t: &mut Think, _: &Target) -> bool {
+    t.p.health_fraction < t.p.personality.flee_line()
+}
+
+pub fn enter_flee(t: &mut Think, about: &Target) -> Option<Target> {
+    hurt(t, about).then_some(*about)
+}
+
+/// Run home; with no home, away from the threat (a person with no home
+/// is never going home: that never ends). Safe again, it is over.
+pub fn flee(t: &mut Think, _: &Target) -> Status {
+    let p = t.p;
+    let Some((_, from)) = threat(p) else {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    };
+    let to = p
+        .home
+        .unwrap_or_else(|| p.position + (p.position - from).with_y(0.0).normalize_or_zero() * FLEE_FAR);
+    t.act(walk_toward(p, to), None);
+    Status::Running
+}
+
+/// Chased farther than the leash from where the fight began.
+pub fn past_leash(t: &mut Think, target: &Target) -> bool {
+    matches!(target, Target::Threat { began_at, .. } if t.p.position.distance(*began_at) > LEASH)
+}
+
+pub fn enter_break_off(t: &mut Think, about: &Target) -> Option<Target> {
+    past_leash(t, about).then_some(*about)
+}
+
+/// Home, or with no home back to where the fight began.
+pub fn break_off(t: &mut Think, target: &Target) -> Status {
+    let p = t.p;
+    let Target::Threat { began_at, .. } = *target else {
+        return Status::Failed;
+    };
+    let there = match p.home {
+        Some(_) => p.at_home,
+        None => p.position.distance(began_at) <= REACH,
+    };
+    if there {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    }
+    t.act(walk_toward(p, p.home.unwrap_or(began_at)), None);
+    Status::Running
+}
+
+/// Face the threat, close on it (hunters), hit it in reach; a threat
+/// only remembered, a hunter goes to where it was and a guard turns to
+/// face it. Nothing in sight or remembered: the fight is over.
+pub fn fight(t: &mut Think, _: &Target) -> Status {
+    let p = t.p;
+    let wake = p.asleep.then_some(Do::Wake);
+    if let Some((_, at)) = p.hostile {
+        let mut actions = turn_toward(p, at);
+        if p.position.distance(at) <= reach_of(p) {
+            actions.push(Action::Attack);
+        } else if p.behaviour == Behaviour::Hunter {
+            actions.push(step_toward(p, at));
+        }
+        t.act(actions, wake);
+        return Status::Running;
+    }
+    let Some((_, at)) = threat(p) else {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    };
+    let actions = if p.behaviour == Behaviour::Hunter {
+        walk_toward(p, at)
+    } else {
+        turn_toward(p, at)
+    };
+    t.act(actions, wake);
+    Status::Running
+}
+
+// The day's life.
+
+/// The storm or a threat takes a person out of whatever they are doing.
+pub fn danger(t: &mut Think, _: &Target) -> bool {
+    (t.p.storm_coming && t.p.home.is_some()) || threat(t.p).is_some()
+}
+
+/// Hungry or thirsty with the answer in their own bags: eat or drink it
+/// where they stand, the way the player does.
+pub fn enter_eat_carried(t: &mut Think, _: &Target) -> Option<Target> {
+    let p = t.p;
     let need = if p.needs.hunger < NEED_LINE && p.carries_food {
         Need::Hunger
     } else if p.needs.thirst < NEED_LINE && p.carries_drink {
@@ -284,216 +342,303 @@ fn eat_carried(p: &Perception, activity: &Activity) -> Option<Decision> {
     } else {
         return None;
     };
-    Some(Decision {
-        activity: activity.clone(),
-        combat: CombatState::None,
-        actions: vec![],
-        do_now: Some(Do::EatCarried { need }),
+    Some(Target::Need(need))
+}
+
+pub fn eat_carried(t: &mut Think, target: &Target) -> Status {
+    let Target::Need(need) = *target else {
+        return Status::Failed;
+    };
+    t.act(vec![], Some(Do::EatCarried { need }));
+    Status::Succeeded
+}
+
+/// The worst need, when it presses, picks the best known thing: what it
+/// gives minus the walk, the walk costing a Lazy person more.
+fn need_target(p: &Perception) -> Option<Target> {
+    let (need, value) = p.needs.worst_need();
+    if value >= NEED_LINE {
+        return None;
+    }
+    let diligence = p.personality.get(crate::actor::Axis::Diligence);
+    let walk_cost = 1.0 - 0.25 * diligence;
+    let (known, _) = p
+        .memory
+        .good_for(need, p.worth)
+        .map(|(known, gives)| (known, gives - known.position.distance(p.position) / METRES_PER_POINT * walk_cost))
+        .filter(|(_, score)| *score > 0.0)
+        .max_by(|a, b| a.1.total_cmp(&b.1))?;
+    Some(Target::Thing {
+        key: known.key,
+        at: known.position,
+        need: Some(need),
     })
 }
 
-/// Rule 1: at the target, start doing; done doing, stop.
-fn arrived(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    match activity {
-        Activity::Going { key, need, .. } if p.arrived => {
-            let (what, do_now) = match need {
-                Need::Hunger | Need::Thirst => (Doing::Eat(*need), Some(Do::Eat { key: *key, need: *need })),
-                Need::Rest => (Doing::Sleep, Some(Do::Sleep)),
-                Need::Safety => (Doing::Check, None),
-            };
-            Some(Decision {
-                activity: Activity::Doing { key: *key, what },
-                combat: *combat,
-                actions: vec![],
-                do_now,
-            })
-        }
-        Activity::Fetching { key, need, .. } if p.arrived => Some(Decision {
-            activity: Activity::Doing {
-                key: *key,
-                what: Doing::Take(*need),
-            },
-            combat: *combat,
-            actions: vec![],
-            do_now: Some(Do::Take { key: *key }),
-        }),
-        Activity::Hauling { key, .. } if p.arrived => Some(Decision {
-            activity: Activity::Doing {
-                key: *key,
-                what: Doing::Stock,
-            },
-            combat: *combat,
-            actions: vec![],
-            do_now: Some(Do::Stock { key: *key }),
-        }),
-        Activity::Looking { key, .. } if p.arrived => Some(Decision {
-            activity: Activity::Doing {
-                key: *key,
-                what: Doing::Check,
-            },
-            combat: *combat,
-            actions: vec![],
-            do_now: Some(Do::Check { key: *key }),
-        }),
-        Activity::Doing { key, what } => {
-            // Everything is for a need and stops when that need is met:
-            // eat or drink until the need that sent them is met or the
-            // thing holds nothing for it; sleep until rested; a check is
-            // one look.
-            let done = match what {
-                Doing::Eat(need) => {
-                    let met = match need {
-                        Need::Hunger => p.needs.hunger >= FED,
-                        Need::Thirst => p.needs.thirst >= FED,
-                        Need::Rest | Need::Safety => true,
-                    };
-                    let nothing_for_it = !p
-                        .memory
-                        .known
-                        .iter()
-                        .any(|k| k.key == *key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, *need) > 0.0));
-                    met || nothing_for_it
-                }
-                Doing::Sleep => p.needs.rest >= 95.0 || p.hostile.is_some(),
-                Doing::Check => true,
-                // Needed, so as much as they can carry: until the bags
-                // are full or nothing in the box answers the need.
-                Doing::Take(need) => {
-                    let nothing_left = !p
-                        .memory
-                        .known
-                        .iter()
-                        .any(|k| k.key == *key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, *need) > 0.0));
-                    p.bags_full || nothing_left
-                }
-                Doing::Stock => !p.carries_for_bunker,
-            };
-            if !done {
-                let do_now = match what {
-                    Doing::Eat(need) => Some(Do::Eat { key: *key, need: *need }),
-                    Doing::Take(_) => Some(Do::Take { key: *key }),
-                    Doing::Stock => Some(Do::Stock { key: *key }),
-                    _ => None,
-                };
-                return Some(Decision {
-                    activity: activity.clone(),
-                    combat: *combat,
-                    actions: vec![],
-                    do_now,
-                });
+pub fn enter_need(t: &mut Think, _: &Target) -> Option<Target> {
+    need_target(t.p)
+}
+
+/// Walk to what the state is about; there, it succeeds. Rest is had at
+/// home, anywhere in it.
+pub fn going(t: &mut Think, target: &Target) -> Status {
+    let (at, need) = match *target {
+        Target::Thing { at, need, .. } => (at, need),
+        Target::Point(at) => (at, None),
+        _ => return Status::Failed,
+    };
+    let p = t.p;
+    let arrived = (at - p.position).with_y(0.0).length() <= REACH || (need == Some(Need::Rest) && p.at_home);
+    if arrived {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    }
+    t.act(walk_toward(p, at), None);
+    Status::Running
+}
+
+/// Whether the known thing `key` is still believed to hold something for
+/// `need` (or has not been looked inside yet).
+fn holds_for(p: &Perception, key: u64, need: Need) -> bool {
+    p.memory
+        .known
+        .iter()
+        .any(|k| k.key == key && k.believed_to_hold() && (k.held.is_none() || (p.worth)(k, need) > 0.0))
+}
+
+/// At the thing, for the need that sent them, until that need is met
+/// (everything is for a need): eat or drink until fed or it holds nothing
+/// for it, sleep until rested, a place for safety is one look.
+pub fn use_it(t: &mut Think, target: &Target) -> Status {
+    let Target::Thing { key, need: Some(need), .. } = *target else {
+        return Status::Failed;
+    };
+    let p = t.p;
+    match need {
+        Need::Hunger | Need::Thirst => {
+            let now = if need == Need::Hunger { p.needs.hunger } else { p.needs.thirst };
+            if now >= FED || !holds_for(p, key, need) {
+                t.act(vec![], None);
+                return Status::Succeeded;
             }
-            Some(Decision {
-                activity: Activity::Idle,
-                combat: *combat,
-                actions: vec![],
-                do_now: (*what == Doing::Sleep).then_some(Do::Wake),
-            })
+            t.act(vec![], Some(Do::Eat { key, need }));
+            Status::Running
         }
-        Activity::GoHome if p.at_home || p.home.is_none() => Some(Decision {
-            activity: Activity::Idle,
-            combat: CombatState::None,
-            actions: vec![],
-            do_now: None,
-        }),
-        Activity::Wander { .. } if p.arrived => Some(Decision {
-            activity: Activity::Idle,
-            combat: *combat,
-            actions: vec![],
-            do_now: None,
-        }),
-        _ => None,
+        Need::Rest => {
+            if p.needs.rest >= RESTED {
+                t.act(vec![], Some(Do::Wake));
+                return Status::Succeeded;
+            }
+            t.act(vec![], (!p.asleep).then_some(Do::Sleep));
+            Status::Running
+        }
+        Need::Safety => {
+            t.act(vec![], None);
+            Status::Succeeded
+        }
     }
 }
 
-/// How far someone with no home runs from a threat, metres.
-pub const FLEE_FAR: f32 = 20.0;
-
-/// Rule 2: hurt past the flee line, run home; with no home, run away
-/// from the threat. A person with no home is never going home: that
-/// never ends.
-fn flee(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    let from = match combat {
-        CombatState::Fighting { target, .. } => *target,
-        CombatState::Fleeing { from } => *from,
-        CombatState::None => return None,
+/// Look inside the thing once.
+pub fn check(t: &mut Think, target: &Target) -> Status {
+    let Target::Thing { key, .. } = *target else {
+        return Status::Failed;
     };
-    if p.health_fraction >= p.personality.flee_line() {
-        // A fleeing person who is safe again stops fleeing.
-        if matches!(combat, CombatState::Fleeing { .. }) && p.hostile.is_none() {
-            return Some(Decision {
-                activity: if p.home.is_some() { Activity::GoHome } else { Activity::Idle },
-                combat: CombatState::None,
-                actions: vec![],
-                do_now: None,
-            });
-        }
+    t.act(vec![], Some(Do::Check { key }));
+    Status::Succeeded
+}
+
+/// Take what they and their bunker need, as much as they can carry:
+/// until the bags are full or nothing in the box answers the need.
+pub fn take(t: &mut Think, target: &Target) -> Status {
+    let Target::Thing { key, need: Some(need), .. } = *target else {
+        return Status::Failed;
+    };
+    let p = t.p;
+    if p.bags_full || !holds_for(p, key, need) {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    }
+    t.act(vec![], Some(Do::Take { key }));
+    Status::Running
+}
+
+/// Put what they carried home into the store, until nothing is carried.
+pub fn stock(t: &mut Think, target: &Target) -> Status {
+    let Target::Thing { key, .. } = *target else {
+        return Status::Failed;
+    };
+    if !t.p.carries_for_bunker {
+        t.act(vec![], None);
+        return Status::Succeeded;
+    }
+    t.act(vec![], Some(Do::Stock { key }));
+    Status::Running
+}
+
+// The bunker's needs (topside design.md "Taking loot").
+
+/// Their bunker's store, if they have one.
+pub fn enter_supply(t: &mut Think, _: &Target) -> Option<Target> {
+    t.p.store.map(|_| Target::None)
+}
+
+/// The best known box for any need the bunker is short of: a box seen
+/// holding something, since only what is inside can be carried home (a
+/// well is drunk from where it stands).
+fn supply_best(p: &Perception) -> Option<Target> {
+    let (store, _) = p.store?;
+    if p.bags_full {
         return None;
     }
-    let (activity, to) = match p.home {
-        Some(home) => (Activity::GoHome, home),
-        None => {
-            let away = p.hostile.map_or(p.position, |(_, at)| {
-                p.position + (p.position - at).with_y(0.0).normalize_or_zero() * FLEE_FAR
-            });
-            (Activity::Wander { to: away }, away)
-        }
-    };
-    Some(Decision {
-        activity,
-        combat: CombatState::Fleeing { from },
-        actions: walk_toward(p, to),
-        do_now: None,
+    p.bunker_short
+        .iter()
+        .flat_map(|&need| {
+            p.memory
+                .good_for(need, p.worth)
+                .filter(move |(k, _)| k.key != store && k.held.is_some())
+                .map(move |(k, gives)| (k, need, gives - k.position.distance(p.position) / METRES_PER_POINT))
+        })
+        .max_by(|a, b| a.2.total_cmp(&b.2))
+        .map(|(k, need, _)| Target::Thing {
+            key: k.key,
+            at: k.position,
+            need: Some(need),
+        })
+}
+
+/// The nearest known box not yet looked inside, other than their store.
+fn unopened<'a>(p: &Perception<'a>) -> Option<&'a Known> {
+    let store = p.store.map(|(key, _)| key);
+    p.memory
+        .known
+        .iter()
+        .filter(|k| k.checked_at.is_none() && Some(k.key) != store)
+        .min_by(|a, b| a.position.distance(p.position).total_cmp(&b.position.distance(p.position)))
+}
+
+/// Carrying food or water home: when the bunker is no longer short, the
+/// bags are full, or there is nowhere left to look.
+pub fn enter_haul(t: &mut Think, _: &Target) -> Option<Target> {
+    let p = t.p;
+    let (store, at) = p.store?;
+    let short = !p.bunker_short.is_empty();
+    let nowhere_to_look = supply_best(p).is_none() && unopened(p).is_none();
+    (p.carries_for_bunker && (!short || p.bags_full || nowhere_to_look)).then_some(Target::Thing {
+        key: store,
+        at,
+        need: None,
     })
 }
 
-/// Rule 3: chased too far from where the fight began, break off: home,
-/// or with no home back to where the fight began.
-fn leash(p: &Perception, _activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    let CombatState::Fighting { began_at, .. } = combat else {
-        return None;
-    };
-    if p.position.distance(*began_at) <= LEASH {
+/// While the bunker is short: to the best box they know holds what it
+/// needs.
+pub fn enter_fetch(t: &mut Think, _: &Target) -> Option<Target> {
+    supply_best(t.p)
+}
+
+/// Short with no box known to hold it: look inside one not yet opened.
+pub fn enter_look_in(t: &mut Think, _: &Target) -> Option<Target> {
+    let p = t.p;
+    if p.bags_full || p.bunker_short.is_empty() {
         return None;
     }
-    let (activity, to) = match p.home {
-        Some(home) => (Activity::GoHome, home),
-        None => (Activity::Wander { to: *began_at }, *began_at),
-    };
-    Some(Decision {
-        activity,
-        combat: CombatState::None,
-        actions: walk_toward(p, to),
-        do_now: None,
+    unopened(p).map(|k| Target::Thing {
+        key: k.key,
+        at: k.position,
+        need: None,
     })
 }
 
-/// Rule 4: a hostile in sight: face it, close on it (hunters), hit
-/// it in reach. The activity is kept underneath (Endless).
-fn fight(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    let Some((who, at)) = p.hostile else {
-        return remembered_threat(p, activity, combat);
-    };
-    let began_at = match combat {
-        CombatState::Fighting { began_at, .. } => *began_at,
-        _ => p.position,
-    };
-    let mut actions = turn_toward(p, at);
-    let distance = p.position.distance(at);
-    if distance <= reach_of(p) {
-        actions.push(Action::Attack);
-    } else if p.behaviour == Behaviour::Hunter {
-        actions.push(step_toward(p, at));
+/// Short with nothing known and nothing to open: head out to find out.
+pub fn enter_head_out_short(t: &mut Think, _: &Target) -> Option<Target> {
+    if t.p.bags_full || t.p.bunker_short.is_empty() {
+        return None;
     }
-    Some(Decision {
-        activity: activity.clone(),
-        combat: CombatState::Fighting {
-            target: who,
-            began_at,
-        },
-        actions,
-        do_now: (p.asleep).then_some(Do::Wake),
+    head_out_spot(t)
+}
+
+// Looking.
+
+/// A need pressing hard with nothing known to answer it.
+pub fn enter_look(t: &mut Think, _: &Target) -> Option<Target> {
+    (t.p.needs.worst_need().1 < LOOK_LINE).then_some(Target::None)
+}
+
+/// The nearest known thing never checked.
+pub fn enter_unchecked(t: &mut Think, _: &Target) -> Option<Target> {
+    let p = t.p;
+    p.memory.unchecked_nearest(p.position).map(|k| Target::Thing {
+        key: k.key,
+        at: k.position,
+        need: None,
     })
 }
+
+/// Food and water are out there to be found; rest and safety are not
+/// found by walking off.
+pub fn enter_head_out_need(t: &mut Think, _: &Target) -> Option<Target> {
+    let (need, _) = t.p.needs.worst_need();
+    if !matches!(need, Need::Hunger | Need::Thirst) {
+        return None;
+    }
+    head_out_spot(t)
+}
+
+/// `LOOK_FAR` from home (or from here, with no home) a rolled way, a spot
+/// someone can stand on. What is seen on the way goes into memory, and
+/// the rules that use memory take over.
+fn head_out_spot(t: &mut Think) -> Option<Target> {
+    let centre = t.p.home.unwrap_or(t.p.position);
+    standable_spot(t.p, t.roll, |roll| {
+        let angle = roll.measure(0.0, std::f32::consts::TAU);
+        centre + Vec3::new(angle.cos() * LOOK_FAR, 0.0, angle.sin() * LOOK_FAR)
+    })
+    .map(Target::Point)
+}
+
+/// Out looking, something known now answers: choose again.
+pub fn knows_better(t: &mut Think, _: &Target) -> bool {
+    let p = t.p;
+    need_target(p).is_some() || supply_best(p).is_some() || (!p.bunker_short.is_empty() && unopened(p).is_some())
+}
+
+// Wandering.
+
+/// Nothing presses: most thinks they stand; one in ten they stroll to a
+/// rolled point within the home radius, a spot someone can stand on.
+pub fn enter_wander(t: &mut Think, _: &Target) -> Option<Target> {
+    if !t.roll.chance(100) {
+        return Some(Target::None);
+    }
+    let centre = t.p.home.unwrap_or(t.p.position);
+    let radius = t.p.behaviour.home_radius();
+    let spot = standable_spot(t.p, t.roll, |roll| {
+        let angle = roll.measure(0.0, std::f32::consts::TAU);
+        let distance = roll.measure(radius * 0.3, radius);
+        centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
+    });
+    Some(spot.map_or(Target::None, Target::Point))
+}
+
+/// Stand this think, or stroll to the spot.
+pub fn wander(t: &mut Think, target: &Target) -> Status {
+    match target {
+        Target::Point(_) => going(t, target),
+        _ => {
+            t.act(vec![], None);
+            Status::Succeeded
+        }
+    }
+}
+
+/// A need or their bunker presses: a stroll gives way to it.
+pub fn pressing(t: &mut Think, _: &Target) -> bool {
+    let p = t.p;
+    p.needs.worst_need().1 < NEED_LINE || (p.store.is_some() && (!p.bunker_short.is_empty() || p.carries_for_bunker))
+}
+
+// Reaction.
 
 /// How quickly a person reacts, by what they are doing (topside life.md
 /// "How often a person thinks"), in seconds.
@@ -504,309 +649,24 @@ pub const ASLEEP_REACTION: f32 = 10.0;
 pub const TIRED_SLOWEST: f32 = 1.5;
 
 /// Ticks (at `ticks_per_sec`) until this person next decides: their
-/// reaction time for what they are doing (asleep, fighting or fleeing,
-/// or otherwise awake), slower the more tired they are, quicker or
-/// slower by personality the way it sets their swing. Being hit does
-/// not shorten it: a person under fire is at the combat rate.
-pub fn reaction_ticks(asleep: bool, combat: &CombatState, rest: f32, personality: &Personality, ticks_per_sec: f32) -> u64 {
+/// reaction time for what they are doing (asleep, fighting, or otherwise
+/// awake), slower the more tired they are, quicker or slower by
+/// personality the way it sets their swing. Being hit does not shorten
+/// it: a person under fire is at the combat rate.
+pub fn reaction_ticks(asleep: bool, fighting: bool, rest: f32, personality: &Personality, ticks_per_sec: f32) -> u64 {
     let base = if asleep {
         ASLEEP_REACTION
-    } else if matches!(combat, CombatState::None) {
-        AWAKE_REACTION
-    } else {
+    } else if fighting {
         COMBAT_REACTION
+    } else {
+        AWAKE_REACTION
     };
     let tired = 1.0 + (TIRED_SLOWEST - 1.0) * (1.0 - rest / crate::survival::FULL).clamp(0.0, 1.0);
     let quickness = personality.swing_delay(1.0);
     ((base * tired * quickness * ticks_per_sec).round() as u64).max(1)
 }
 
-/// How long a threat out of sight still drives a fight, in ticks (5 s).
-pub const THREAT_RECENT: u64 = 300;
-
-/// Rule 4, second branch (topside life.md "Perception with belief"):
-/// nothing hostile in sight, but a threat remembered in the last few
-/// seconds (seen, or the one who just hit me): a hunter goes to where it
-/// was, a guard turns to face it. Belief, not truth: the spot is where
-/// it was, not where it is.
-fn remembered_threat(p: &Perception, activity: &Activity, combat: &CombatState) -> Option<Decision> {
-    let (who, at, when) = p.memory.last_threat?;
-    if p.now.saturating_sub(when) > THREAT_RECENT {
-        return None;
-    }
-    let began_at = match combat {
-        CombatState::Fighting { began_at, .. } => *began_at,
-        _ => p.position,
-    };
-    let actions = if p.behaviour == Behaviour::Hunter {
-        walk_toward(p, at)
-    } else {
-        turn_toward(p, at)
-    };
-    Some(Decision {
-        activity: activity.clone(),
-        combat: CombatState::Fighting {
-            target: who,
-            began_at,
-        },
-        actions,
-        do_now: (p.asleep).then_some(Do::Wake),
-    })
-}
-
-/// Rule 5: an errand under way keeps going.
-fn keep_going(p: &Perception, activity: &Activity, combat: CombatState) -> Option<Decision> {
-    // A stroll or a trip out to look is not an errand: anything the
-    // person comes to know on the way may take over (the rules below);
-    // with nothing better, `wander` and `head_out` keep it going.
-    let to = match activity {
-        Activity::Going { to, .. }
-        | Activity::Looking { to, .. }
-        | Activity::Fetching { to, .. }
-        | Activity::Hauling { to, .. } => *to,
-        Activity::GoHome => p.home?,
-        _ => return None,
-    };
-    Some(Decision {
-        activity: activity.clone(),
-        combat,
-        actions: walk_toward(p, to),
-        do_now: None,
-    })
-}
-
-/// Rule 6b, the bunker's needs (topside design.md "Taking loot"): with
-/// no need of their own pressing, a bunker person carrying food or water
-/// home takes it to the store when the bunker is no longer short, the
-/// bags are full, or there is nowhere left to look; while the bunker is
-/// short they go to the best box they know holds what it needs, or look
-/// inside one they have not opened.
-fn supply(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Option<Decision> {
-    let (store, store_at) = p.store?;
-    // The best known box for any need the bunker is short of: a box seen
-    // holding something, since only what is inside can be carried home (a
-    // well is drunk from where it stands).
-    let best = p
-        .bunker_short
-        .iter()
-        .filter(|_| !p.bags_full)
-        .flat_map(|&need| {
-            p.memory
-                .good_for(need, p.worth)
-                .filter(move |(k, _)| k.key != store && k.held.is_some())
-                .map(move |(k, gives)| (k, need, gives - k.position.distance(p.position) / METRES_PER_POINT))
-        })
-        .max_by(|a, b| a.2.total_cmp(&b.2))
-        .map(|(k, need, _)| (k, need));
-    let short = !p.bunker_short.is_empty();
-    let unopened = || {
-        p.memory
-            .known
-            .iter()
-            .filter(|k| k.checked_at.is_none() && k.key != store)
-            .min_by(|a, b| a.position.distance(p.position).total_cmp(&b.position.distance(p.position)))
-    };
-    let go = |activity: Activity, to: Vec3| {
-        Some(Decision {
-            activity,
-            combat,
-            actions: walk_toward(p, to),
-            do_now: None,
-        })
-    };
-    let nowhere_to_look = best.is_none() && unopened().is_none();
-    if p.carries_for_bunker && (!short || p.bags_full || nowhere_to_look) {
-        return go(Activity::Hauling { key: store, to: store_at }, store_at);
-    }
-    if p.bags_full {
-        return None;
-    }
-    if let Some((known, need)) = best {
-        return go(
-            Activity::Fetching {
-                key: known.key,
-                to: known.position,
-                need,
-            },
-            known.position,
-        );
-    }
-    if !short {
-        return None;
-    }
-    match unopened() {
-        Some(known) => go(
-            Activity::Looking {
-                key: known.key,
-                to: known.position,
-            },
-            known.position,
-        ),
-        None => Some(head_out(p, activity, combat, roll)),
-    }
-}
-
-/// How far a person heads out to look when nothing they know answers a
-/// need: something worth stopping for stands within this of almost
-/// anywhere (topside design.md "The world", Bethesda's rule).
-pub const LOOK_FAR: f32 = 150.0;
-
-/// Nothing known answers the need: head out to find out, `LOOK_FAR` from
-/// home (or from here, with no home) a rolled way, looking round on the
-/// way. What is seen goes into memory and the rules that use memory take
-/// over. Arriving with nothing found, the next think rolls another way.
-fn head_out(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Decision {
-    // Already on the way out: keep going the same way. Otherwise a spot
-    // someone can stand on, or stay put this think.
-    let to = match activity {
-        Activity::Wander { to } if !p.arrived => Some(*to),
-        _ => {
-            let centre = p.home.unwrap_or(p.position);
-            standable_spot(p, roll, |roll| {
-                let angle = roll.measure(0.0, std::f32::consts::TAU);
-                centre + Vec3::new(angle.cos() * LOOK_FAR, 0.0, angle.sin() * LOOK_FAR)
-            })
-        }
-    };
-    let Some(to) = to else {
-        return Decision {
-            activity: Activity::Idle,
-            combat,
-            actions: vec![],
-            do_now: None,
-        };
-    };
-    Decision {
-        activity: Activity::Wander { to },
-        combat,
-        actions: walk_toward(p, to),
-        do_now: None,
-    }
-}
-
-/// Rule 6: the worst need, when it presses, picks the best known
-/// thing: what it gives minus the walk, the walk costing a Lazy
-/// person more, plus a little seeded chance (inside `Roll`, the
-/// consumer seeds it) so two people in one spot differ.
-fn life(p: &Perception, combat: CombatState) -> Option<Decision> {
-    let (need, value) = p.needs.worst_need();
-    if value >= NEED_LINE {
-        return None;
-    }
-    let diligence = p.personality.get(crate::actor::Axis::Diligence);
-    let walk_cost = 1.0 - 0.25 * diligence;
-    let best = p
-        .memory
-        .good_for(need, p.worth)
-        .map(|(known, gives)| {
-            let distance = known.position.distance(p.position);
-            let score = gives - distance / METRES_PER_POINT * walk_cost;
-            (known, score)
-        })
-        .filter(|(_, score)| *score > 0.0)
-        .max_by(|a, b| a.1.total_cmp(&b.1))?;
-    let known = best.0;
-    // Rest at home: sleep where you stand if this is home.
-    if need == Need::Rest && p.at_home {
-        return Some(Decision {
-            activity: Activity::Doing {
-                key: known.key,
-                what: Doing::Sleep,
-            },
-            combat,
-            actions: vec![],
-            do_now: Some(Do::Sleep),
-        });
-    }
-    Some(Decision {
-        activity: Activity::Going {
-            key: known.key,
-            to: known.position,
-            need,
-        },
-        combat,
-        actions: walk_toward(p, known.position),
-        do_now: None,
-    })
-}
-
-/// Rule 7: nothing known answers a pressing need: go and look at
-/// the nearest thing never checked, or with none, head out to find
-/// out.
-fn look(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Option<Decision> {
-    let (need, value) = p.needs.worst_need();
-    if value >= LOOK_LINE {
-        return None;
-    }
-    let Some(known) = p.memory.unchecked_nearest(p.position) else {
-        // Food and water are out there to be found; rest and safety are
-        // not found by walking off.
-        let findable = matches!(need, Need::Hunger | Need::Thirst);
-        return findable.then(|| head_out(p, activity, combat, roll));
-    };
-    Some(Decision {
-        activity: Activity::Looking {
-            key: known.key,
-            to: known.position,
-        },
-        combat,
-        actions: walk_toward(p, known.position),
-        do_now: None,
-    })
-}
-
-/// Rule 8: nothing presses: stroll to a rolled point within the home
-/// radius, or stand a while.
-fn wander(p: &Perception, activity: &Activity, combat: CombatState, roll: &mut Roll) -> Decision {
-    if !matches!(activity, Activity::Idle) {
-        // Something else was under way and still is; keep it, still
-        // walking if it was a stroll.
-        let actions = match activity {
-            Activity::Wander { to } => walk_toward(p, *to),
-            _ => vec![],
-        };
-        return Decision {
-            activity: activity.clone(),
-            combat,
-            actions,
-            do_now: None,
-        };
-    }
-    // Most thinks while idle do nothing; one in ten starts a stroll.
-    if !roll.chance(100) {
-        return Decision {
-            activity: Activity::Idle,
-            combat,
-            actions: vec![],
-            do_now: None,
-        };
-    }
-    let centre = p.home.unwrap_or(p.position);
-    let radius = p.behaviour.home_radius();
-    // Only a spot someone can stand on; none in a few tries, stand a
-    // while.
-    let Some(to) = standable_spot(p, roll, |roll| {
-        let angle = roll.measure(0.0, std::f32::consts::TAU);
-        let distance = roll.measure(radius * 0.3, radius);
-        centre + Vec3::new(angle.cos() * distance, 0.0, angle.sin() * distance)
-    }) else {
-        return Decision {
-            activity: Activity::Idle,
-            combat,
-            actions: vec![],
-            do_now: None,
-        };
-    };
-    Decision {
-        activity: Activity::Wander { to },
-        combat,
-        actions: walk_toward(p, to),
-        do_now: None,
-    }
-}
-
-/// How many spots are rolled looking for one a person can stand on.
-const SPOT_TRIES: usize = 8;
+// Steering.
 
 /// The first rolled spot a person can stand on, within `SPOT_TRIES`.
 fn standable_spot(p: &Perception, roll: &mut Roll, mut spot: impl FnMut(&mut Roll) -> Vec3) -> Option<Vec3> {
@@ -850,22 +710,6 @@ mod tests {
     use super::*;
     use crate::actor::Axis;
 
-    fn calm() -> Personality {
-        Personality::default()
-    }
-
-    /// The registry's answer in these tests: a storage box is worth
-    /// 50 for hunger, home 100 for rest, a wreck nothing.
-    fn worth(known: &Known, need: Need) -> f32 {
-        match (known.kind.as_str(), need) {
-            ("storage box", Need::Hunger) => 50.0,
-            ("home", Need::Rest) => 100.0,
-            // A source: worth its water, seen inside or not.
-            ("well", Need::Thirst) => 50.0,
-            _ => 0.0,
-        }
-    }
-
     fn perception<'a>(memory: &'a Memory, personality: &'a Personality) -> Perception<'a> {
         Perception {
             now: 100,
@@ -878,7 +722,6 @@ mod tests {
             at_home: true,
             asleep: false,
             hostile: None,
-            arrived: false,
             storm_coming: false,
             carries_food: false,
             carries_drink: false,
@@ -888,7 +731,7 @@ mod tests {
             bags_full: false,
             memory,
             personality,
-            worth: &worth,
+            worth: &|_, _| 0.0,
             standable: &|_| true,
         }
     }
@@ -898,470 +741,43 @@ mod tests {
     #[test]
     fn strolls_and_trips_out_only_pick_standable_spots() {
         let memory = Memory::default();
-        let personality = calm();
+        let personality = Personality::default();
         let mut p = perception(&memory, &personality);
         let east = |at: Vec3| at.x > 0.0;
         p.standable = &east;
-        p.store = Some((1, Vec3::ZERO));
         p.bunker_short = vec![Need::Hunger];
+        let mut picked = 0;
         for seed in 0..40 {
-            if let Activity::Wander { to } = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(seed)).activity {
-                assert!(to.x > 0.0, "seed {seed}: headed for {to}, nobody can stand there");
+            let mut roll = Roll::new(seed);
+            let mut t = Think::new(&p, &mut roll);
+            for target in [enter_head_out_short(&mut t, &Target::None), enter_wander(&mut t, &Target::None)] {
+                if let Some(Target::Point(to)) = target {
+                    picked += 1;
+                    assert!(to.x > 0.0, "seed {seed}: headed for {to}, nobody can stand there");
+                }
             }
         }
+        assert!(picked > 0, "some spots were picked");
         let nowhere = |_: Vec3| false;
         p.standable = &nowhere;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.activity, Activity::Idle, "nowhere standable: stays");
-    }
-
-    /// Nothing known to answer a need (theirs or their bunker's): they
-    /// head out to find out, as far as something worth stopping for
-    /// (150 m), a different way for different people.
-    #[test]
-    fn short_and_knowing_nothing_they_head_out_to_look() {
-        let memory = Memory::default();
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.store = Some((1, Vec3::ZERO));
-        p.bunker_short = vec![Need::Hunger];
-        let to = |p: &Perception, roll: u64| match decide(p, &Activity::Idle, &CombatState::None, &mut Roll::new(roll)).activity {
-            Activity::Wander { to } => to,
-            other => panic!("expected to head out, got {other:?}"),
-        };
-        let a = to(&p, 1);
-        assert!(a.distance(Vec3::ZERO) >= 100.0, "out past the home ground: {a}");
-        assert_ne!(a, to(&p, 2), "different ways for different rolls");
-        // Hungry themselves with nothing known: the same.
-        p.store = None;
-        p.bunker_short = vec![];
-        p.needs.hunger = 20.0;
-        assert!(to(&p, 3).distance(Vec3::ZERO) >= 100.0);
-    }
-
-    /// The bunker's needs (topside design.md "Taking loot"): short of
-    /// food, a bunker person goes to the box it knows holds food, not
-    /// the store; carrying food with the bunker covered, it hauls home;
-    /// bags full, it hauls home even while the bunker is short.
-    #[test]
-    fn a_short_bunker_sends_its_people_for_food_and_they_haul_it_home() {
-        let mut memory = Memory::default();
-        memory.see(1, "storage box", Vec3::new(2.0, 0.0, 0.0), 1);
-        memory.checked(1, vec![], 1);
-        memory.see(7, "storage box", Vec3::new(40.0, 0.0, 0.0), 1);
-        memory.checked(7, vec![("canned food".to_string(), 6)], 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.store = Some((1, Vec3::new(2.0, 0.0, 0.0)));
-        // Short of water too, with no water known: the food still sends it.
-        p.bunker_short = vec![Need::Thirst, Need::Hunger];
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(
-            matches!(d.activity, Activity::Fetching { key: 7, need: Need::Hunger, .. }),
-            "to the box with food: {:?}",
-            d.activity
-        );
-        // There: take.
-        p.position = Vec3::new(40.0, 0.0, 0.0);
-        p.arrived = true;
-        let d = decide(&p, &d.activity, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Take { key: 7 }));
-        // Carrying it, the bunker covered: home to the store.
-        p.arrived = false;
-        p.carries_for_bunker = true;
-        p.bunker_short = vec![];
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(matches!(d.activity, Activity::Hauling { key: 1, .. }), "{:?}", d.activity);
-        // Still short but the bags are full: home too.
-        p.bunker_short = vec![Need::Hunger];
-        p.bags_full = true;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(matches!(d.activity, Activity::Hauling { key: 1, .. }), "{:?}", d.activity);
-        // At the store: stock it until nothing is carried.
-        p.position = Vec3::new(2.0, 0.0, 0.0);
-        p.arrived = true;
-        let d = decide(&p, &d.activity, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Stock { key: 1 }));
-        p.carries_for_bunker = false;
-        let d = decide(&p, &d.activity, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.activity, Activity::Idle, "stocked");
-    }
-
-    /// Short of water and knowing only a well: nobody is sent to fetch
-    /// from it, since a well cannot be carried home.
-    #[test]
-    fn a_short_bunker_does_not_fetch_from_a_well() {
-        let mut memory = Memory::default();
-        memory.see(1, "storage box", Vec3::new(2.0, 0.0, 0.0), 1);
-        memory.checked(1, vec![], 1);
-        memory.see(9, "well", Vec3::new(30.0, 0.0, 0.0), 1);
-        memory.visited(9, 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.store = Some((1, Vec3::new(2.0, 0.0, 0.0)));
-        p.bunker_short = vec![Need::Thirst];
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(
-            !matches!(d.activity, Activity::Fetching { key: 9, .. }),
-            "not to the well: {:?}",
-            d.activity
-        );
-    }
-
-    /// Hungry with a can in the bag: eat it where they stand rather than
-    /// walk to the box they know; not hungry, carry it.
-    #[test]
-    fn a_hungry_person_eats_what_it_carries_first() {
-        let mut memory = Memory::default();
-        memory.see(7, "storage box", Vec3::new(10.0, 0.0, 0.0), 1);
-        memory.checked(7, vec![("canned food".to_string(), 1)], 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.needs.hunger = 20.0;
-        p.carries_food = true;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::EatCarried { need: Need::Hunger }));
-        p.needs.hunger = 80.0;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_ne!(d.do_now, Some(Do::EatCarried { need: Need::Hunger }), "not hungry, it keeps it");
-        p.needs.hunger = 20.0;
-        p.carries_food = false;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(matches!(d.activity, Activity::Going { key: 7, .. }), "nothing carried: to the box");
+        for seed in 0..40 {
+            let mut roll = Roll::new(seed);
+            let mut t = Think::new(&p, &mut roll);
+            assert_eq!(enter_head_out_short(&mut t, &Target::None), None, "nowhere standable: no trip out");
+            assert!(!matches!(enter_wander(&mut t, &Target::None), Some(Target::Point(_))), "nor a stroll");
+        }
     }
 
     #[test]
     fn reaction_time_follows_what_a_person_is_doing_and_how_tired() {
-        let calm = calm();
-        let fighting = CombatState::Fighting {
-            target: ActorId(1),
-            began_at: Vec3::ZERO,
-        };
+        let calm = Personality::default();
         let full = crate::survival::FULL;
-        assert_eq!(reaction_ticks(false, &fighting, full, &calm, 60.0), 15, "combat, 250 ms");
-        assert_eq!(reaction_ticks(false, &CombatState::None, full, &calm, 60.0), 60, "awake, 1 s");
-        assert_eq!(reaction_ticks(true, &CombatState::None, full, &calm, 60.0), 600, "asleep, 10 s");
-        assert_eq!(reaction_ticks(false, &CombatState::None, 0.0, &calm, 60.0), 90, "exhausted, half as slow again");
+        assert_eq!(reaction_ticks(false, true, full, &calm, 60.0), 15, "combat, 250 ms");
+        assert_eq!(reaction_ticks(false, false, full, &calm, 60.0), 60, "awake, 1 s");
+        assert_eq!(reaction_ticks(true, false, full, &calm, 60.0), 600, "asleep, 10 s");
+        assert_eq!(reaction_ticks(false, false, 0.0, &calm, 60.0), 90, "exhausted, half as slow again");
         let mut quick = calm;
         quick.axes[Axis::Agility as usize] = 1.0;
-        assert!(reaction_ticks(false, &CombatState::None, full, &quick, 60.0) < 60, "an agile person is quicker");
-    }
-
-    #[test]
-    fn a_hunter_goes_after_a_threat_it_remembers_and_forgets_it_later() {
-        let mut memory = Memory::default();
-        memory.threat(ActorId(7), Vec3::new(0.0, 0.0, 10.0), 90);
-        let calm = calm();
-        let p = perception(&memory, &calm);
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(matches!(d.combat, CombatState::Fighting { target: ActorId(7), .. }));
-        assert!(d.actions.contains(&Action::Aim { x: 0.0, y: 10.0 }), "to where it was");
-        let mut later = perception(&memory, &calm);
-        later.now = 90 + THREAT_RECENT + 1;
-        let d = decide(&later, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.combat, CombatState::None, "long gone");
-    }
-
-    #[test]
-    fn a_coming_storm_sends_a_person_home_over_a_fight() {
-        let memory = Memory::default();
-        let calm = calm();
-        let mut p = perception(&memory, &calm);
-        p.home = Some(Vec3::new(0.0, 0.0, 30.0));
-        p.at_home = false;
-        p.hostile = Some((ActorId(4), Vec3::new(2.0, 0.0, 0.0)));
-        p.storm_coming = true;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.activity, Activity::GoHome);
-        assert_eq!(d.combat, CombatState::None, "no fighting in a storm");
-        assert!(d.actions.contains(&Action::Aim { x: 0.0, y: 30.0 }), "heading home");
-    }
-
-    fn has_move(d: &Decision) -> bool {
-        d.actions.iter().any(|a| matches!(a, Action::Move { .. }))
-    }
-
-    #[test]
-    fn a_hunter_aims_at_what_it_hunts_and_steps_toward_it_on_the_ground() {
-        let memory = Memory::default();
-        let calm = calm();
-        let mut p = perception(&memory, &calm);
-        let at = Vec3::new(6.0, 0.0, 8.0);
-        p.hostile = Some((ActorId(3), at));
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert!(d.actions.contains(&Action::Aim { x: 6.0, y: 8.0 }), "{:?}", d.actions);
-        let step = d
-            .actions
-            .iter()
-            .find_map(|a| match a {
-                Action::Move { x, y } => Some((*x, *y)),
-                _ => None,
-            })
-            .expect("closes in");
-        assert!((step.0 - 0.6).abs() < 1e-4 && (step.1 - 0.8).abs() < 1e-4, "{step:?}");
-    }
-
-    #[test]
-    fn a_wounded_coward_flees_home_and_a_brave_one_stands() {
-        let memory = Memory::default();
-        let mut coward = calm();
-        coward.axes[Axis::Courage as usize] = -1.0;
-        let mut p = perception(&memory, &coward);
-        p.home = Some(Vec3::new(0.0, 0.0, 30.0));
-        p.at_home = false;
-        p.health_fraction = 0.4;
-        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -3.0)));
-        let combat = CombatState::Fighting {
-            target: ActorId(9),
-            began_at: Vec3::ZERO,
-        };
-        let mut roll = Roll::new(1);
-        let d = decide(&p, &Activity::Idle, &combat, &mut roll);
-        assert_eq!(d.combat, CombatState::Fleeing { from: ActorId(9) });
-        assert_eq!(d.activity, Activity::GoHome);
-        assert!(has_move(&d), "runs");
-        assert!(!d.actions.contains(&Action::Attack));
-
-        let brave = {
-            let mut b = calm();
-            b.axes[Axis::Courage as usize] = 1.0;
-            b
-        };
-        let p2 = Perception {
-            personality: &brave,
-            ..p.clone()
-        };
-        let d = decide(&p2, &Activity::Idle, &combat, &mut roll);
-        assert!(
-            matches!(d.combat, CombatState::Fighting { .. }),
-            "the brave stand"
-        );
-    }
-
-    /// Someone with no home never goes home, which never ends (a raider
-    /// that fled once stood in a bunker for good, killing whoever woke
-    /// there): wounded they run away from the threat, leashed they walk
-    /// back to where the fight began, and a left-over GoHome ends.
-    #[test]
-    fn someone_with_no_home_runs_away_and_never_goes_home() {
-        let memory = Memory::default();
-        let mut coward = calm();
-        coward.axes[Axis::Courage as usize] = -1.0;
-        let mut p = perception(&memory, &coward);
-        p.home = None;
-        p.at_home = false;
-        p.health_fraction = 0.4;
-        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -3.0)));
-        let fight = CombatState::Fighting { target: ActorId(9), began_at: Vec3::ZERO };
-        let d = decide(&p, &Activity::Idle, &fight, &mut Roll::new(1));
-        assert_eq!(d.combat, CombatState::Fleeing { from: ActorId(9) });
-        assert_eq!(d.activity, Activity::Wander { to: Vec3::new(0.0, 0.0, FLEE_FAR) }, "away from the threat");
-        assert!(has_move(&d), "runs");
-
-        let mut leashed = perception(&memory, &coward);
-        leashed.home = None;
-        leashed.position = Vec3::new(0.0, 0.0, -(LEASH + 5.0));
-        leashed.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -(LEASH + 8.0))));
-        let d = decide(&leashed, &Activity::Idle, &fight, &mut Roll::new(1));
-        assert_eq!(d.activity, Activity::Wander { to: Vec3::ZERO }, "back to where the fight began");
-
-        let mut idle = perception(&memory, &coward);
-        idle.home = None;
-        let d = decide(&idle, &Activity::GoHome, &CombatState::None, &mut Roll::new(1));
-        assert_ne!(d.activity, Activity::GoHome, "a GoHome with no home ends");
-    }
-
-    #[test]
-    fn a_hunter_chased_past_its_leash_goes_home() {
-        let memory = Memory::default();
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.position = Vec3::new(0.0, 0.0, -(LEASH + 5.0));
-        p.at_home = false;
-        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -(LEASH + 8.0))));
-        let combat = CombatState::Fighting {
-            target: ActorId(9),
-            began_at: Vec3::ZERO,
-        };
-        let d = decide(&p, &Activity::Idle, &combat, &mut Roll::new(1));
-        assert_eq!(d.combat, CombatState::None);
-        assert_eq!(d.activity, Activity::GoHome);
-        assert!(has_move(&d));
-    }
-
-    #[test]
-    fn a_hostile_in_sight_is_fought_and_the_errand_is_kept_underneath() {
-        let memory = Memory::default();
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -1.0)));
-        let errand = Activity::Wander {
-            to: Vec3::new(10.0, 0.0, 0.0),
-        };
-        let d = decide(&p, &errand, &CombatState::None, &mut Roll::new(1));
-        assert!(d.actions.contains(&Action::Attack), "in reach: swing");
-        assert_eq!(d.activity, errand, "the stroll waits");
-        assert_eq!(
-            d.combat,
-            CombatState::Fighting {
-                target: ActorId(9),
-                began_at: Vec3::ZERO
-            }
-        );
-        // A guard never chases, a hunter does.
-        p.hostile = Some((ActorId(9), Vec3::new(0.0, 0.0, -10.0)));
-        p.behaviour = Behaviour::Guard;
-        let d = decide(&p, &errand, &CombatState::None, &mut Roll::new(1));
-        assert!(!has_move(&d));
-        p.behaviour = Behaviour::Hunter;
-        let d = decide(&p, &errand, &CombatState::None, &mut Roll::new(1));
-        assert!(has_move(&d));
-    }
-
-    #[test]
-    fn a_hungry_person_goes_to_the_remembered_box_and_eats_until_fed() {
-        let mut memory = Memory::default();
-        memory.see(7, "storage box", Vec3::new(0.0, 0.0, -12.0), 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.needs.hunger = 30.0;
-        let mut roll = Roll::new(1);
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut roll);
-        assert_eq!(
-            d.activity,
-            Activity::Going {
-                key: 7,
-                to: Vec3::new(0.0, 0.0, -12.0),
-                need: Need::Hunger
-            }
-        );
-        assert!(has_move(&d));
-        // Arrived: eat.
-        p.arrived = true;
-        p.position = Vec3::new(0.0, 0.0, -11.0);
-        let d = decide(&p, &d.activity, &CombatState::None, &mut roll);
-        assert_eq!(d.do_now, Some(Do::Eat { key: 7, need: Need::Hunger }));
-        let eating = d.activity.clone();
-        // Still hungry: eat again. Fed: done.
-        let d = decide(&p, &eating, &CombatState::None, &mut roll);
-        assert_eq!(d.do_now, Some(Do::Eat { key: 7, need: Need::Hunger }));
-        p.needs.hunger = 95.0;
-        let d = decide(&p, &eating, &CombatState::None, &mut roll);
-        assert_eq!(d.activity, Activity::Idle);
-        assert_eq!(d.do_now, None);
-    }
-
-    /// Drinking at a well for thirst stops when the thirst is met, however
-    /// hungry they still are: everything is for a need.
-    #[test]
-    fn drinking_stops_when_the_thirst_is_met() {
-        let mut memory = Memory::default();
-        memory.see(9, "well", Vec3::ZERO, 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.arrived = true;
-        p.needs.hunger = 20.0;
-        p.needs.thirst = 40.0;
-        let drinking = Activity::Doing { key: 9, what: Doing::Eat(Need::Thirst) };
-        let d = decide(&p, &drinking, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Eat { key: 9, need: Need::Thirst }), "still thirsty: another mouthful");
-        p.needs.thirst = 95.0;
-        let d = decide(&p, &drinking, &CombatState::None, &mut Roll::new(1));
-        assert_ne!(d.do_now, Some(Do::Eat { key: 9, need: Need::Thirst }), "thirst met: no more drinking, hungry or not");
-        assert_ne!(d.activity, drinking);
-    }
-
-    #[test]
-    fn an_empty_box_sends_a_hungry_person_looking_at_the_nearest_unchecked_thing() {
-        let mut memory = Memory::default();
-        memory.see(7, "storage box", Vec3::new(0.0, 0.0, -2.0), 1);
-        memory.checked(7, vec![], 2);
-        memory.see(8, "wreck", Vec3::new(40.0, 0.0, 0.0), 1);
-        memory.see(9, "wreck", Vec3::new(-20.0, 0.0, 0.0), 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.needs.hunger = 20.0;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(
-            d.activity,
-            Activity::Looking {
-                key: 9,
-                to: Vec3::new(-20.0, 0.0, 0.0)
-            },
-            "the nearer wreck"
-        );
-        // Arrived at it: check it.
-        p.arrived = true;
-        let d = decide(&p, &d.activity, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Check { key: 9 }));
-    }
-
-    #[test]
-    fn a_tired_person_at_home_sleeps_and_wakes_rested() {
-        let mut memory = Memory::default();
-        memory.see(1, "home", Vec3::ZERO, 1);
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.needs.rest = 20.0;
-        let d = decide(&p, &Activity::Idle, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Sleep));
-        let sleeping = d.activity.clone();
-        p.asleep = true;
-        p.needs.rest = 60.0;
-        let d = decide(&p, &sleeping, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.activity, sleeping, "still asleep");
-        p.needs.rest = 96.0;
-        let d = decide(&p, &sleeping, &CombatState::None, &mut Roll::new(1));
-        assert_eq!(d.do_now, Some(Do::Wake));
-        assert_eq!(d.activity, Activity::Idle);
-    }
-
-    #[test]
-    fn idle_people_wander_within_their_home_radius_and_guards_stay_close() {
-        let memory = Memory::default();
-        let personality = calm();
-        let mut p = perception(&memory, &personality);
-        p.home = Some(Vec3::new(100.0, 0.0, 100.0));
-        for behaviour in [Behaviour::Guard, Behaviour::Hunter] {
-            p.behaviour = behaviour;
-            let mut roll = Roll::new(3);
-            let mut farthest: f32 = 0.0;
-            let mut strolls = 0;
-            for _ in 0..400 {
-                let d = decide(&p, &Activity::Idle, &CombatState::None, &mut roll);
-                if let Activity::Wander { to } = d.activity {
-                    strolls += 1;
-                    farthest = farthest.max(to.distance(p.home.unwrap()));
-                    assert!(has_move(&d));
-                }
-            }
-            assert!(
-                strolls > 10 && strolls < 120,
-                "{behaviour:?}: {strolls} strolls in 400"
-            );
-            assert!(
-                farthest <= behaviour.home_radius() + 1e-3,
-                "{behaviour:?}: {farthest}"
-            );
-            assert!(farthest > behaviour.home_radius() * 0.5);
-        }
-    }
-
-    #[test]
-    fn the_same_roll_decides_the_same() {
-        let memory = Memory::default();
-        let personality = calm();
-        let p = perception(&memory, &personality);
-        let a: Vec<Decision> = (0..50)
-            .scan(Roll::new(9), |roll, _| {
-                Some(decide(&p, &Activity::Idle, &CombatState::None, roll))
-            })
-            .collect();
-        let b: Vec<Decision> = (0..50)
-            .scan(Roll::new(9), |roll, _| {
-                Some(decide(&p, &Activity::Idle, &CombatState::None, roll))
-            })
-            .collect();
-        assert_eq!(a, b);
+        assert!(reaction_ticks(false, false, full, &quick, 60.0) < 60, "an agile person is quicker");
     }
 }

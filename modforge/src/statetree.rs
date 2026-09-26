@@ -54,57 +54,67 @@ pub enum Status {
     Failed,
 }
 
+/// What a tree's rules are handed each think. It may borrow from the
+/// person for that think (their memory, their personality), so it is a
+/// type for every lifetime.
+pub trait Context {
+    type Of<'a>;
+}
+
+/// Whether a state can be entered now, handed what its parent (or the
+/// state left) was about; the answer is what it will be about.
+pub type Enter<X> = for<'a, 'b> fn(&'b mut <X as Context>::Of<'a>, &Target) -> Option<Target>;
+/// What a leaf does each think.
+pub type Task<X> = for<'a, 'b> fn(&'b mut <X as Context>::Of<'a>, &Target) -> Status;
+/// Something that holds or not this think.
+pub type Holds<X> = for<'a, 'b> fn(&'b mut <X as Context>::Of<'a>, &Target) -> bool;
+/// What the person learned: handed the choices open, in the tree's
+/// order, it answers the index of the one to take.
+pub type Pick<X> = for<'a, 'b> fn(&'b mut <X as Context>::Of<'a>, &[Choice]) -> usize;
+
 /// How a parent tries its children.
-pub enum Select<C> {
+pub enum Select<X: Context> {
     /// The first child that can be entered.
     InOrder,
     /// What the person learned picks among the children that can be
-    /// entered: handed their choices in the tree's order, it answers the
-    /// index of the one to take.
-    Learned(fn(&mut C, &[Choice]) -> usize),
+    /// entered.
+    Learned(Pick<X>),
 }
 
 /// When a transition fires.
-pub enum When<C> {
+pub enum When<X: Context> {
     /// The active task succeeded.
     Succeeded,
     /// The active task failed.
     Failed,
     /// This holds, checked every think.
-    Holds(fn(&mut C, &Target) -> bool),
+    Holds(Holds<X>),
 }
 
 /// Leave the active state and choose again, starting at `to`.
-pub struct Transition<C> {
-    pub when: When<C>,
+pub struct Transition<X: Context> {
+    pub when: When<X>,
     pub to: StateId,
 }
 
-pub struct StateDef<C> {
+pub struct StateDef<X: Context> {
     pub name: &'static str,
     pub parent: Option<StateId>,
     /// What choosing this state means to the learning, for a child of a
     /// `Select::Learned` parent.
     pub choice: Option<Choice>,
-    /// Whether the state can be entered now, handed what its parent (or
-    /// the state left) was about; the answer is what it will be about.
-    pub enter: fn(&mut C, &Target) -> Option<Target>,
-    pub select: Select<C>,
-    /// What a leaf does each think.
-    pub task: Option<fn(&mut C, &Target) -> Status>,
-    pub transitions: Vec<Transition<C>>,
+    /// None: entered whenever asked, about what its parent is about.
+    pub enter: Option<Enter<X>>,
+    pub select: Select<X>,
+    pub task: Option<Task<X>>,
+    pub transitions: Vec<Transition<X>>,
 }
 
-/// Enter whenever asked, about what the parent is about.
-pub fn always<C>(_: &mut C, target: &Target) -> Option<Target> {
-    Some(*target)
+pub struct StateTree<X: Context> {
+    pub states: Vec<StateDef<X>>,
 }
 
-pub struct StateTree<C> {
-    pub states: Vec<StateDef<C>>,
-}
-
-impl<C> StateTree<C> {
+impl<X: Context> StateTree<X> {
     pub fn name(&self, state: StateId) -> &'static str {
         self.states[state].name
     }
@@ -125,9 +135,12 @@ impl<C> StateTree<C> {
 
     /// Walk down from `from` to a leaf that can be entered, and what it
     /// is about; `chose` gets each learned choice taken on the way.
-    fn select(&self, from: StateId, ctx: &mut C, about: &Target, chose: &mut Vec<Choice>) -> Option<(StateId, Target)> {
+    fn select(&self, from: StateId, ctx: &mut X::Of<'_>, about: &Target, chose: &mut Vec<Choice>) -> Option<(StateId, Target)> {
         let state = &self.states[from];
-        let target = (state.enter)(ctx, about)?;
+        let target = match state.enter {
+            Some(enter) => enter(ctx, about)?,
+            None => *about,
+        };
         let children: Vec<StateId> = self.children(from).collect();
         if children.is_empty() {
             return Some((from, target));
@@ -160,11 +173,14 @@ impl<C> StateTree<C> {
     }
 
     /// One think: run the active task, fire the first transition from
-    /// the leaf up, and choose again only then (or when the task ended,
-    /// from the root). A newly chosen state's task runs in the same think
-    /// so the person acts on it at once; a state already run this think
-    /// is not run twice. Answers the learned choices made, in order.
-    pub fn think(&self, ctx: &mut C, record: &mut Record) -> Vec<Choice> {
+    /// the leaf up, and choose again only then, starting where it
+    /// points. A state chosen by a transition runs in the same think so
+    /// the person acts on it at once; a state already run this think is
+    /// not run twice. A task that ends with no transition to take leaves
+    /// the person to choose again from the root at their next think (a
+    /// failure goes up the tree to it). Answers the learned choices made,
+    /// in order.
+    pub fn think(&self, ctx: &mut X::Of<'_>, record: &mut Record) -> Vec<Choice> {
         let mut chose = Vec::new();
         let mut ran: Vec<StateId> = Vec::new();
         let mut from = match record.state {
@@ -198,13 +214,14 @@ impl<C> StateTree<C> {
                     })
                     .map(|t| t.to)
             });
-            from = match (fired, status) {
-                (Some(to), _) => Some(to),
+            match (fired, status) {
+                (Some(to), _) => from = Some(to),
                 (None, Status::Running) => return chose,
-                // Ended with nowhere named to go: choose again from the
-                // root (a failure goes up the tree to it).
-                (None, _) => Some(ROOT),
-            };
+                (None, _) => {
+                    record.state = None;
+                    return chose;
+                }
+            }
         }
     }
 }
@@ -226,12 +243,17 @@ mod tests {
         take: usize,
     }
 
-    fn state(name: &'static str, parent: Option<StateId>) -> StateDef<Person> {
+    struct Mind;
+    impl Context for Mind {
+        type Of<'a> = Person;
+    }
+
+    fn state(name: &'static str, parent: Option<StateId>) -> StateDef<Mind> {
         StateDef {
             name,
             parent,
             choice: None,
-            enter: always,
+            enter: None,
             select: Select::InOrder,
             task: None,
             transitions: Vec::new(),
@@ -242,56 +264,69 @@ mod tests {
     const LIFE: StateId = 2;
     const WALK: StateId = 4;
 
+    fn enter_hide(p: &mut Person, t: &Target) -> Option<Target> {
+        p.entered.push("hide");
+        p.danger.then_some(*t)
+    }
+    fn hide(p: &mut Person, _: &Target) -> Status {
+        p.ran.push("hide");
+        Status::Running
+    }
+    fn safe(p: &mut Person, _: &Target) -> bool {
+        !p.danger
+    }
+    fn danger(p: &mut Person, _: &Target) -> bool {
+        p.danger
+    }
+    fn learned(p: &mut Person, offered: &[Choice]) -> usize {
+        p.offered = offered.to_vec();
+        p.take.min(offered.len() - 1)
+    }
+    fn enter_eat(p: &mut Person, _: &Target) -> Option<Target> {
+        p.entered.push("eat");
+        p.hungry.then_some(Target::Need(Need::Hunger))
+    }
+    fn eat(p: &mut Person, _: &Target) -> Status {
+        p.ran.push("eat");
+        p.hungry = false;
+        Status::Succeeded
+    }
+    fn enter_walk(p: &mut Person, _: &Target) -> Option<Target> {
+        p.entered.push("walk");
+        Some(Target::Point(Vec3::X))
+    }
+    fn walk(p: &mut Person, _: &Target) -> Status {
+        p.ran.push("walk");
+        p.walk.unwrap_or(Status::Running)
+    }
+
     /// root (in order): hide (when in danger), life (learned): eat (when
     /// hungry), walk. Life leaves for the root when danger comes.
-    fn tree() -> StateTree<Person> {
-        let mut root = state("root", None);
-        root.select = Select::InOrder;
-        let mut hide = state("hide", Some(ROOT));
-        hide.enter = |p, t| {
-            p.entered.push("hide");
-            p.danger.then_some(*t)
-        };
-        hide.task = Some(|p, _| {
-            p.ran.push("hide");
-            Status::Running
-        });
-        hide.transitions.push(Transition {
-            when: When::Holds(|p, _| !p.danger),
+    fn tree() -> StateTree<Mind> {
+        let root = state("root", None);
+        let mut hide_state = state("hide", Some(ROOT));
+        hide_state.enter = Some(enter_hide);
+        hide_state.task = Some(hide);
+        hide_state.transitions.push(Transition {
+            when: When::<Mind>::Holds(safe),
             to: ROOT,
         });
         let mut life = state("life", Some(ROOT));
-        life.select = Select::Learned(|p, offered| {
-            p.offered = offered.to_vec();
-            p.take.min(offered.len() - 1)
-        });
+        life.select = Select::<Mind>::Learned(learned);
         life.transitions.push(Transition {
-            when: When::Holds(|p, _| p.danger),
+            when: When::<Mind>::Holds(danger),
             to: ROOT,
         });
-        let mut eat = state("eat", Some(LIFE));
-        eat.choice = Some(Choice::GoToNeed);
-        eat.enter = |p, _| {
-            p.entered.push("eat");
-            p.hungry.then_some(Target::Need(Need::Hunger))
-        };
-        eat.task = Some(|p, _| {
-            p.ran.push("eat");
-            p.hungry = false;
-            Status::Succeeded
-        });
-        let mut walk = state("walk", Some(LIFE));
-        walk.choice = Some(Choice::Wander);
-        walk.enter = |p, _| {
-            p.entered.push("walk");
-            Some(Target::Point(Vec3::X))
-        };
-        walk.task = Some(|p, _| {
-            p.ran.push("walk");
-            p.walk.unwrap_or(Status::Running)
-        });
+        let mut eat_state = state("eat", Some(LIFE));
+        eat_state.choice = Some(Choice::GoToNeed);
+        eat_state.enter = Some(enter_eat);
+        eat_state.task = Some(eat);
+        let mut walk_state = state("walk", Some(LIFE));
+        walk_state.choice = Some(Choice::Wander);
+        walk_state.enter = Some(enter_walk);
+        walk_state.task = Some(walk);
         StateTree {
-            states: vec![root, hide, life, eat, walk],
+            states: vec![root, hide_state, life, eat_state, walk_state],
         }
     }
 
@@ -344,21 +379,24 @@ mod tests {
     }
 
     #[test]
-    fn a_task_that_ends_chooses_again_from_the_root() {
+    fn a_task_that_ends_chooses_again_from_the_root_at_the_next_think() {
         let tree = tree();
         let mut p = Person {
             hungry: true,
             ..Default::default()
         };
         let mut record = Record::default();
-        let chose = tree.think(&mut p, &mut record);
-        assert_eq!(p.ran.first(), Some(&"eat"));
-        assert_eq!(record.state, Some(WALK), "ate, then chose again: the walk, in the same think");
-        assert_eq!(chose, vec![Choice::GoToNeed, Choice::Wander], "both choices go to the learning");
+        assert_eq!(tree.think(&mut p, &mut record), vec![Choice::GoToNeed]);
+        assert_eq!(p.ran, vec!["eat"]);
+        assert_eq!(record.state, None, "ate: nothing more this think");
+        assert_eq!(tree.think(&mut p, &mut record), vec![Choice::Wander]);
+        assert_eq!(record.state, Some(WALK), "the next think chose again from the root");
         p.walk = Some(Status::Failed);
+        tree.think(&mut p, &mut record);
+        assert_eq!(record.state, None, "the walk failed");
         p.entered.clear();
         tree.think(&mut p, &mut record);
-        assert!(p.entered.contains(&"walk"), "the failed walk went up to the root and chose again");
+        assert!(p.entered.contains(&"walk"), "the failure went up to the root and they chose again");
     }
 
     #[test]
