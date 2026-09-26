@@ -79,8 +79,9 @@ between thinks, and it is the one record of what they are doing: the
 active state and each active state's data (which well, where, for which
 need; who they fight and where the fight began). Unreal keeps the same
 per running tree (its instance data). Nothing beside the tree remembers
-what a person is doing: today's `Activity` and `CombatState` become the
-tree's record (operator, 2026-09-26). The consumer stores the record on
+what a person is doing: today's `Activity` and `CombatState` move out of
+`brain.rs` into the StateTree as its record, and are deleted from
+`brain.rs` (operator, 2026-09-26). The consumer stores the record on
 the person and hands it back each think, and reads it to show what they
 are doing.
 
