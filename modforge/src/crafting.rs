@@ -157,7 +157,7 @@ mod tests {
                 storage: None,
                 armor: None,
                 good_for: Default::default(),
-                model: None,
+                picture: None,
             })
             .unwrap();
         items
@@ -179,7 +179,7 @@ mod tests {
                 storage: None,
                 armor: None,
                 good_for: Default::default(),
-                model: None,
+                picture: None,
             })
             .unwrap();
 

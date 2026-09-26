@@ -373,7 +373,7 @@ mod tests {
                 storage: None,
                 armor: None,
                 good_for: Default::default(),
-                model: None,
+                picture: None,
             })
             .unwrap();
         let mut memory = Memory::default();
@@ -416,7 +416,7 @@ mod tests {
                     storage: None,
                     armor: None,
                     good_for: Default::default(),
-                    model: None,
+                    picture: None,
                 })
                 .unwrap();
         }

@@ -106,10 +106,10 @@ pub struct ItemDef {
     /// (whoever remembers it may come to eat from it). Empty for
     /// things nobody seeks out.
     pub good_for: crate::memory::GoodFor,
-    /// The low poly model file for this item (`pipe.glb`), the same
+    /// The picture the game draws this item with, by name, the same
     /// one on the ground, in the hand, and as the hotbar icon. None
-    /// until one exists; the consumer draws a box then.
-    pub model: Option<String>,
+    /// until one exists; the consumer draws a square then.
+    pub picture: Option<String>,
 }
 
 #[derive(Default)]
@@ -540,7 +540,7 @@ mod tests {
             storage: None,
             armor: None,
             good_for: Default::default(),
-            model: None,
+            picture: None,
         }
     }
 
