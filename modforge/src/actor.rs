@@ -43,6 +43,9 @@ pub struct ActorDef {
     pub protection: Protection,
     /// Item in the weapon slot at spawn, if any.
     pub weapon: Option<String>,
+    /// The layers on that weapon, by `LayerDef` name (a raider's wooden
+    /// handle carries an axe head).
+    pub weapon_layers: Vec<String>,
     /// How far the actor notices a target.
     pub sight: f32,
     /// How close the actor wants to be before attacking.
@@ -455,6 +458,7 @@ mod tests {
             max_health: 80.0,
             protection: Protection::default(),
             weapon: Some("pipe".into()),
+            weapon_layers: Vec::new(),
             sight: 20.0,
             reach: 1.5,
         }

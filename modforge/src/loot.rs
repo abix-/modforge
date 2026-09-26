@@ -7,11 +7,13 @@
 
 use crate::monument::Roll;
 
-/// One thing a table can give: the item, how many, how likely against
-/// the others, and the least danger a spot must have to roll it.
+/// One thing a table can give: the item and its layers (a pipe with
+/// nails), how many, how likely against the others, and the least
+/// danger a spot must have to roll it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LootEntry {
     pub item: String,
+    pub layers: Vec<String>,
     pub count: (u32, u32),
     pub weight: u32,
     pub min_danger: u32,
@@ -26,9 +28,9 @@ pub struct LootTable {
     pub picks_per_danger: u32,
 }
 
-/// Roll a spot of `danger` from `table`: (item, count) stacks, only
-/// from the entries that danger allows, weighted.
-pub fn roll_loot(table: &LootTable, danger: u32, roll: &mut Roll) -> Vec<(String, u32)> {
+/// Roll a spot of `danger` from `table`: (item, layers, count) stacks,
+/// only from the entries that danger allows, weighted.
+pub fn roll_loot(table: &LootTable, danger: u32, roll: &mut Roll) -> Vec<(String, Vec<String>, u32)> {
     let open: Vec<&LootEntry> = table
         .entries
         .iter()
@@ -39,7 +41,7 @@ pub fn roll_loot(table: &LootTable, danger: u32, roll: &mut Roll) -> Vec<(String
         return Vec::new();
     }
     let picks = roll.between(table.picks.0, table.picks.1) + table.picks_per_danger * danger;
-    let mut out: Vec<(String, u32)> = Vec::new();
+    let mut out: Vec<(String, Vec<String>, u32)> = Vec::new();
     for _ in 0..picks {
         let mut at = roll.next(u64::from(total)) as u32;
         let entry = open
@@ -53,9 +55,12 @@ pub fn roll_loot(table: &LootTable, danger: u32, roll: &mut Roll) -> Vec<(String
             })
             .expect("the weights add up to the total");
         let count = roll.between(entry.count.0, entry.count.1);
-        match out.iter_mut().find(|(item, _)| *item == entry.item) {
-            Some((_, n)) => *n += count,
-            None => out.push((entry.item.clone(), count)),
+        match out
+            .iter_mut()
+            .find(|(item, layers, _)| *item == entry.item && *layers == entry.layers)
+        {
+            Some((_, _, n)) => *n += count,
+            None => out.push((entry.item.clone(), entry.layers.clone(), count)),
         }
     }
     out
@@ -68,6 +73,7 @@ mod tests {
     fn table() -> LootTable {
         let e = |item: &str, weight, min_danger| LootEntry {
             item: item.to_string(),
+            layers: Vec::new(),
             count: (1, 1),
             weight,
             min_danger,
@@ -83,7 +89,7 @@ mod tests {
     fn a_safe_spot_never_rolls_what_danger_guards() {
         for seed in 0..200 {
             let loot = roll_loot(&table(), 1, &mut Roll::new(seed));
-            assert!(loot.iter().all(|(item, _)| item != "rifle"));
+            assert!(loot.iter().all(|(item, _, _)| item != "rifle"));
         }
     }
 
@@ -93,7 +99,7 @@ mod tests {
             let mut n = 0;
             let mut rare = false;
             for seed in 0..200 {
-                for (item, c) in roll_loot(&table(), danger, &mut Roll::new(seed)) {
+                for (item, _, c) in roll_loot(&table(), danger, &mut Roll::new(seed)) {
                     n += c;
                     rare |= item == "rifle";
                 }

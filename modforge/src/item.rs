@@ -373,17 +373,22 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
 }
 
 /// The one way an item comes to exist with layers: through `create`,
-/// then each layer put on in order. Refuses a layer the item has no
-/// slot for, or a second layer in one slot (a can takes no head, a
-/// pipe takes one).
+/// then each named layer put on in order. Refuses a layer that is not
+/// registered, a layer the item has no slot for, or a second layer in
+/// one slot (a can takes no head, a pipe takes one).
 pub fn create_layered(
     def: &ItemDef,
-    layers: &[&LayerDef],
+    names: &[String],
+    registry: &LayerRegistry,
     count: u32,
     odds: &[u64],
     now: f32,
     salt: u64,
 ) -> Result<ItemStack, String> {
+    let layers = names
+        .iter()
+        .map(|name| registry.def(name).ok_or_else(|| format!("no layer '{name}'")))
+        .collect::<Result<Vec<_>, _>>()?;
     for (i, layer) in layers.iter().enumerate() {
         if !def.layer_slots.contains(&layer.slot) {
             return Err(format!("'{}' has no {} for '{}'", def.name, layer.slot, layer.name));
@@ -824,11 +829,11 @@ mod tests {
         };
         layers.register(head("nails", "nail hit")).unwrap();
         assert!(layers.register(head("nails", "nail hit")).is_err());
-        let nails = layers.def("nails").unwrap();
+        let nails = "nails".to_string();
 
         // A pipe with nails hits harder than a plain pipe, at the same reach.
-        let plain_pipe = create_layered(&pipe, &[], 1, &[], 0.0, 1).unwrap();
-        let nailed = create_layered(&pipe, &[nails], 1, &[], 0.0, 1).unwrap();
+        let plain_pipe = create_layered(&pipe, &[], &layers, 1, &[], 0.0, 1).unwrap();
+        let nailed = create_layered(&pipe, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
         assert_eq!(nailed.layers, ["nails"]);
         let plain_hit = combat_of(&pipe, &plain_pipe, &layers).unwrap();
         let nail_hit = combat_of(&pipe, &nailed, &layers).unwrap();
@@ -838,14 +843,15 @@ mod tests {
         assert!(!nailed.stacks_with(&plain_pipe), "a nailed pipe is not a plain pipe");
 
         // A long pole reaches farther than a wooden handle, the same head on each.
-        let on_pole = create_layered(&pole, &[nails], 1, &[], 0.0, 1).unwrap();
-        let on_wooden = create_layered(&wooden, &[nails], 1, &[], 0.0, 1).unwrap();
+        let on_pole = create_layered(&pole, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
+        let on_wooden = create_layered(&wooden, &[nails.clone()], &layers, 1, &[], 0.0, 1).unwrap();
         assert!(combat_of(&pole, &on_pole, &layers).unwrap().reach > combat_of(&wooden, &on_wooden, &layers).unwrap().reach);
 
         // A can is one layer, itself: it takes no head, and a pipe takes one head only.
         let can = def("canned food");
-        assert!(create_layered(&can, &[nails], 1, &[], 0.0, 1).is_err());
-        assert!(create_layered(&pipe, &[nails, nails], 1, &[], 0.0, 1).is_err());
+        assert!(create_layered(&can, &[nails.clone()], &layers, 1, &[], 0.0, 1).is_err());
+        assert!(create_layered(&pipe, &[nails.clone(), nails], &layers, 1, &[], 0.0, 1).is_err());
+        assert!(create_layered(&pipe, &["gold".to_string()], &layers, 1, &[], 0.0, 1).is_err(), "no such layer");
         assert_eq!(combat_of(&can, &create(&can, 1, &[], 0.0, 1), &layers), None);
     }
 }
