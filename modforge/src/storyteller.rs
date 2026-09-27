@@ -30,6 +30,53 @@ use serde_json::{Value as Json, json};
 use crate::ops::{OP_REGISTRY, OpDef};
 use crate::roll::Budget;
 
+/// One episode (topside docs/episodes.md): a story that starts with a
+/// storm and ends at the next, running inside a reality it fits.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EpisodeDef {
+    pub name: String,
+    /// The realities it fits, by name; empty fits any.
+    pub fits: Vec<String>,
+}
+
+impl EpisodeDef {
+    pub fn fits(&self, reality: &str) -> bool {
+        self.fits.is_empty() || self.fits.iter().any(|r| r == reality)
+    }
+}
+
+/// Every episode the storyteller can start, in the order registered.
+#[derive(Default)]
+pub struct EpisodeRegistry {
+    defs: Vec<EpisodeDef>,
+}
+
+impl EpisodeRegistry {
+    pub fn register(&mut self, def: EpisodeDef) -> Result<(), String> {
+        if self.defs.iter().any(|d| d.name == def.name) {
+            return Err(format!("episode '{}' registered twice", def.name));
+        }
+        self.defs.push(def);
+        Ok(())
+    }
+
+    pub fn def(&self, name: &str) -> Option<&EpisodeDef> {
+        self.defs.iter().find(|d| d.name == name)
+    }
+
+    /// The episode for the reality a storm has handed over, picked from
+    /// the seed and the storm's number among those that fit it; none if
+    /// no episode fits.
+    pub fn pick(&self, reality: &str, seed: u64, storms: u32) -> Option<&EpisodeDef> {
+        let fitting: Vec<&EpisodeDef> = self.defs.iter().filter(|d| d.fits(reality)).collect();
+        if fitting.is_empty() {
+            return None;
+        }
+        let at = crate::roll::salted_index(seed, u64::from(storms), fitting.len() as u64) as usize;
+        Some(fitting[at])
+    }
+}
+
 /// One thing the director can make happen.
 pub struct Rule {
     pub name: &'static str,
@@ -850,4 +897,51 @@ fn pick_index(state: &mut u64, weights: &[u32]) -> usize {
         }
     }
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn episodes() -> EpisodeRegistry {
+        let mut registry = EpisodeRegistry::default();
+        let episode = |name: &str, fits: &[&str]| EpisodeDef {
+            name: name.to_string(),
+            fits: fits.iter().map(|r| r.to_string()).collect(),
+        };
+        registry.register(episode("anywhere", &[])).unwrap();
+        registry.register(episode("only loop", &["Loop"])).unwrap();
+        registry.register(episode("day or loop", &["Endless Day", "Loop"])).unwrap();
+        registry
+    }
+
+    #[test]
+    fn an_episode_is_only_picked_in_a_reality_it_fits() {
+        let registry = episodes();
+        for storms in 0..100 {
+            for reality in ["Mixed world", "Endless Day", "Loop"] {
+                let picked = registry.pick(reality, 7, storms).unwrap();
+                assert!(picked.fits(reality), "{} picked in {reality}", picked.name);
+            }
+        }
+    }
+
+    #[test]
+    fn every_fitting_episode_can_be_picked() {
+        let registry = episodes();
+        let picked: HashSet<String> = (0..200).map(|storms| registry.pick("Loop", 7, storms).unwrap().name.clone()).collect();
+        assert_eq!(picked.len(), 3);
+    }
+
+    #[test]
+    fn no_episode_when_none_fits() {
+        let mut registry = EpisodeRegistry::default();
+        registry
+            .register(EpisodeDef {
+                name: "only loop".to_string(),
+                fits: vec!["Loop".to_string()],
+            })
+            .unwrap();
+        assert_eq!(registry.pick("Mixed world", 7, 1), None);
+    }
 }
