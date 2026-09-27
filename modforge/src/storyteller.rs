@@ -37,6 +37,71 @@ pub struct EpisodeDef {
     pub name: String,
     /// The realities it fits, by name; empty fits any.
     pub fits: Vec<String>,
+    /// The people it needs, each cast from people who already exist.
+    pub parts: Vec<PartDef>,
+}
+
+/// One person an episode needs (episodes.md "The people"): its name in
+/// the episode and where it is cast from.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PartDef {
+    pub name: String,
+    pub from: CastFrom,
+}
+
+/// Where a part is cast from: always a bunker person, since only bunker
+/// people live on across episodes (realities.md).
+#[derive(Clone, Debug, PartialEq)]
+pub enum CastFrom {
+    /// A random person of the player's bunker.
+    PlayerBunker,
+    /// A random person of the bunker nearest the player's.
+    NearestOtherBunker,
+    /// A random person of the same bunker as the named part.
+    SameBunkerAs(String),
+}
+
+/// One bunker's people, as the consumer sees them, for casting.
+pub struct CastBunker<P> {
+    pub player: bool,
+    /// How far it stands from the player's bunker.
+    pub distance: f32,
+    pub people: Vec<P>,
+}
+
+/// Fill an episode's parts from the bunkers' people, from the seed: each
+/// a random person from where it says, never one already cast. A part
+/// with nobody left to cast is left out.
+pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], seed: u64) -> Vec<(String, P)> {
+    let nearest = bunkers
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| !b.player && !b.people.is_empty())
+        .min_by(|a, b| a.1.distance.total_cmp(&b.1.distance))
+        .map(|(i, _)| i);
+    let mut cast: Vec<(String, P, usize)> = Vec::new();
+    for (salt, part) in parts.iter().enumerate() {
+        let bunker = match &part.from {
+            CastFrom::PlayerBunker => bunkers.iter().position(|b| b.player),
+            CastFrom::NearestOtherBunker => nearest,
+            CastFrom::SameBunkerAs(other) => cast.iter().find(|(n, ..)| n == other).map(|(.., b)| *b),
+        };
+        let Some(bunker) = bunker else {
+            continue;
+        };
+        let free: Vec<P> = bunkers[bunker]
+            .people
+            .iter()
+            .copied()
+            .filter(|p| !cast.iter().any(|(_, c, _)| c == p))
+            .collect();
+        if free.is_empty() {
+            continue;
+        }
+        let at = crate::roll::salted_index(seed, salt as u64, free.len() as u64) as usize;
+        cast.push((part.name.clone(), free[at], bunker));
+    }
+    cast.into_iter().map(|(name, person, _)| (name, person)).collect()
 }
 
 impl EpisodeDef {
@@ -912,6 +977,7 @@ mod tests {
         let episode = |name: &str, fits: &[&str]| EpisodeDef {
             name: name.to_string(),
             fits: fits.iter().map(|r| r.to_string()).collect(),
+            parts: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -953,8 +1019,52 @@ mod tests {
             .register(EpisodeDef {
                 name: "only loop".to_string(),
                 fits: vec!["Loop".to_string()],
+                parts: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
+    }
+
+    /// The player's bunker (people 1 to 4), a near bunker (10 to 13), a
+    /// far one (20 to 23).
+    fn bunkers() -> Vec<CastBunker<u32>> {
+        vec![
+            CastBunker { player: false, distance: 900.0, people: vec![20, 21, 22, 23] },
+            CastBunker { player: true, distance: 0.0, people: vec![1, 2, 3, 4] },
+            CastBunker { player: false, distance: 300.0, people: vec![10, 11, 12, 13] },
+        ]
+    }
+
+    fn the_tap() -> Vec<PartDef> {
+        let part = |name: &str, from| PartDef { name: name.to_string(), from };
+        vec![
+            part("Dell", CastFrom::PlayerBunker),
+            part("Mara", CastFrom::NearestOtherBunker),
+            part("Mara's child", CastFrom::SameBunkerAs("Mara".to_string())),
+        ]
+    }
+
+    #[test]
+    fn each_part_is_cast_from_where_it_says() {
+        for seed in 0..50 {
+            let cast = cast(&the_tap(), &bunkers(), seed);
+            let of = |part: &str| cast.iter().find(|(n, _)| n == part).map(|(_, p)| *p).unwrap();
+            assert!((1..=4).contains(&of("Dell")), "Dell from the player's bunker");
+            assert!((10..=13).contains(&of("Mara")), "Mara from the nearest other bunker");
+            assert!((10..=13).contains(&of("Mara's child")), "the child from Mara's bunker");
+            assert_ne!(of("Mara"), of("Mara's child"), "two parts never get the same person");
+        }
+    }
+
+    #[test]
+    fn the_same_seed_casts_the_same_people() {
+        assert_eq!(cast(&the_tap(), &bunkers(), 7), cast(&the_tap(), &bunkers(), 7));
+    }
+
+    #[test]
+    fn a_part_with_nobody_to_cast_is_left_out() {
+        let lonely = vec![CastBunker { player: true, distance: 0.0, people: vec![1] }];
+        let cast = cast(&the_tap(), &lonely, 7);
+        assert_eq!(cast, vec![("Dell".to_string(), 1)]);
     }
 }
