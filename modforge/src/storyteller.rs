@@ -66,6 +66,10 @@ pub struct ChoiceDef {
     pub ways: Vec<String>,
     pub choice: String,
     pub reply: Vec<String>,
+    /// How the one spoken to feels about hearing it, -1 to 1 (a threat
+    /// below `relationship::HOSTILE`, a kind word above 0; topside life.md
+    /// "How a person feels about others").
+    pub felt: f32,
 }
 
 /// One way of saying something, picked from the seed and `salt` among
@@ -194,6 +198,16 @@ impl EpisodeRegistry {
         }
         let at = crate::roll::salted_index(seed, u64::from(storms), fitting.len() as u64) as usize;
         Some(fitting[at])
+    }
+
+    /// How hearing these words feels (`ChoiceDef::felt`): the choice
+    /// said in them, of any episode; 0 for words no choice says.
+    pub fn felt(&self, words: &str) -> f32 {
+        self.defs
+            .iter()
+            .flat_map(|d| &d.choices)
+            .find(|c| c.ways.iter().any(|w| w == words))
+            .map_or(0.0, |c| c.felt)
     }
 }
 
@@ -1063,6 +1077,30 @@ mod tests {
             assert_eq!(registry.pick("Mixed world", seed, 0).unwrap().name, "anywhere");
             assert_eq!(registry.pick("Loop", seed, 0).unwrap().name, "anywhere");
         }
+    }
+
+    #[test]
+    fn words_heard_feel_as_the_choice_that_says_them() {
+        let mut registry = EpisodeRegistry::default();
+        let choice = |ways: &[&str], felt| ChoiceDef {
+            at: "the meeting".to_string(),
+            ways: ways.iter().map(|w| w.to_string()).collect(),
+            choice: String::new(),
+            reply: Vec::new(),
+            felt,
+        };
+        registry
+            .register(EpisodeDef {
+                name: "the tap".to_string(),
+                fits: Vec::new(),
+                parts: Vec::new(),
+                lines: Vec::new(),
+                choices: vec![choice(&["Step away from it."], -0.6), choice(&["There's enough for both of us."], 0.2)],
+            })
+            .unwrap();
+        assert_eq!(registry.felt("Step away from it."), -0.6);
+        assert_eq!(registry.felt("There's enough for both of us."), 0.2);
+        assert_eq!(registry.felt("Busy."), 0.0);
     }
 
     #[test]
