@@ -57,12 +57,15 @@ pub struct LineDef {
 }
 
 /// One thing the player can say at a moment, several ways of saying it,
-/// and what choosing it is (the pivot point's choice).
+/// what choosing it is (the pivot point's choice), and the other person's
+/// reply, several ways (topside episodes.md "Conversations": every choice
+/// gets a reply, then the conversation ends).
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChoiceDef {
     pub at: String,
     pub ways: Vec<String>,
     pub choice: String,
+    pub reply: Vec<String>,
 }
 
 /// One way of saying something, picked from the seed and `salt` among
