@@ -37,6 +37,22 @@ pub fn feeling(memory: &Memory, toward: ActorId, heard: impl Fn(&str) -> f32) ->
     felt.map(|f| f.clamp(-1.0, 1.0))
 }
 
+/// Every person they have a feeling toward, with it, in the order they
+/// first come up in memory.
+pub fn feelings(memory: &Memory, heard: impl Fn(&str) -> f32) -> Vec<(ActorId, f32)> {
+    let mut people: Vec<ActorId> = Vec::new();
+    for (_, did) in &memory.done {
+        let who = match did {
+            Did::WasHit(Some(by), _) | Did::Died(Some(by), _) | Did::Heard(by, _) => *by,
+            _ => continue,
+        };
+        if !people.contains(&who) {
+            people.push(who);
+        }
+    }
+    people.into_iter().filter_map(|who| feeling(memory, who, &heard).map(|f| (who, f))).collect()
+}
+
 /// A faction's standing toward someone: its members' feelings taken
 /// together (the mean of the members who have one). None when no member
 /// has a feeling.
@@ -134,6 +150,16 @@ mod tests {
         assert_eq!(stands(newcomer, faction, Relation::Neutral), Relation::Hostile);
         // With no faction standing either, the table decides.
         assert_eq!(stands(None, None, Relation::Friendly), Relation::Friendly);
+    }
+
+    #[test]
+    fn feelings_are_toward_everyone_in_memory() {
+        let mut mara = Memory::default();
+        mara.did(Did::Heard(PLAYER, "Step away from it.".to_string()), 1);
+        mara.did(Did::Slept, 2);
+        mara.did(Did::WasHit(Some(OTHER), 10.0), 3);
+        mara.did(Did::Heard(PLAYER, "hello".to_string()), 4);
+        assert_eq!(feelings(&mara, threat), vec![(PLAYER, -0.6), (OTHER, -0.2)]);
     }
 
     #[test]
