@@ -38,7 +38,7 @@ pub fn talk(
     offered: Option<&str>,
     now: u64,
 ) -> Answer {
-    let mut say = |words: String, speaker_memory: &mut Memory, listener_memory: &mut Memory| {
+    let say = |words: String, speaker_memory: &mut Memory, listener_memory: &mut Memory| {
         speaker_memory.did(Did::Talked(listener, words.clone()), now);
         listener_memory.did(Did::Heard(speaker, words), now);
     };
