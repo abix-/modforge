@@ -411,9 +411,33 @@ impl Look {
     }
 }
 
+/// A person's name (everybody has one; topside, operator 2026-09-27),
+/// rolled from the consumer's list of names by their ActorId and the
+/// world seed: the same person always gets the same name.
+pub fn roll_name(names: &[&str], id: ActorId, world_seed: u64) -> String {
+    let at = crate::roll::salted_index(id.0, world_seed, names.len() as u64) as usize;
+    names.get(at).map_or_else(String::new, |n| n.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const NAMES: [&str; 6] = ["Ada", "Bo", "Cy", "Di", "Ed", "Flo"];
+
+    #[test]
+    fn the_same_person_always_gets_the_same_name() {
+        for id in 0..50 {
+            assert_eq!(roll_name(&NAMES, ActorId(id), 7), roll_name(&NAMES, ActorId(id), 7));
+        }
+    }
+
+    #[test]
+    fn people_get_different_names_from_the_list() {
+        let rolled: std::collections::HashSet<String> = (0..50).map(|id| roll_name(&NAMES, ActorId(id), 7)).collect();
+        assert!(rolled.len() > 3, "{rolled:?}");
+        assert!(rolled.iter().all(|n| NAMES.contains(&n.as_str())));
+    }
 
     fn looks() -> LookDef {
         let slot = |names: &[Option<&str>]| names.iter().map(|n| n.map(str::to_string)).collect();
