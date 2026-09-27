@@ -65,12 +65,16 @@ impl EpisodeRegistry {
     }
 
     /// The episode for the reality a storm has handed over, picked from
-    /// the seed and the storm's number among those that fit it; none if
-    /// no episode fits.
+    /// the seed and the storm's number among those that fit it; before
+    /// any storm, the first registered that fits (the first episode);
+    /// none if no episode fits.
     pub fn pick(&self, reality: &str, seed: u64, storms: u32) -> Option<&EpisodeDef> {
         let fitting: Vec<&EpisodeDef> = self.defs.iter().filter(|d| d.fits(reality)).collect();
         if fitting.is_empty() {
             return None;
+        }
+        if storms == 0 {
+            return Some(fitting[0]);
         }
         let at = crate::roll::salted_index(seed, u64::from(storms), fitting.len() as u64) as usize;
         Some(fitting[at])
@@ -931,6 +935,15 @@ mod tests {
         let registry = episodes();
         let picked: HashSet<String> = (0..200).map(|storms| registry.pick("Loop", 7, storms).unwrap().name.clone()).collect();
         assert_eq!(picked.len(), 3);
+    }
+
+    #[test]
+    fn before_any_storm_it_is_the_first_registered_that_fits() {
+        let registry = episodes();
+        for seed in 0..20 {
+            assert_eq!(registry.pick("Mixed world", seed, 0).unwrap().name, "anywhere");
+            assert_eq!(registry.pick("Loop", seed, 0).unwrap().name, "anywhere");
+        }
     }
 
     #[test]
