@@ -142,6 +142,28 @@ pub enum OpenPanel {
     Note,
     /// A crafting station's recipes.
     Station,
+    /// Talking to the person in `HudState::talking_to`: the topics.
+    Talk,
+}
+
+/// The most things a talk panel offers to tell of and ask about.
+pub const TALK_TOPICS: usize = 8;
+
+/// What the talk panel offers (topside, operator 2026-09-27: talking;
+/// Morrowind's topics): to tell of each thing the speaker knows, to ask
+/// about it, the most recently seen first, and to threaten. Each with its
+/// words. The consumer pushes the chosen one as `Action::Talk`.
+pub fn talk_topics(memory: &crate::memory::Memory) -> Vec<(crate::actions::Said, String)> {
+    use crate::actions::Said;
+    let mut known: Vec<&crate::memory::Known> = memory.known.iter().collect();
+    known.sort_by(|a, b| b.seen_at.cmp(&a.seen_at).then(a.key.cmp(&b.key)));
+    let mut topics = Vec::new();
+    for thing in known.into_iter().take(TALK_TOPICS) {
+        topics.push((Said::Tell { key: thing.key }, format!("Tell them of the {}", thing.kind)));
+        topics.push((Said::Ask { key: thing.key }, format!("Ask about the {}", thing.kind)));
+    }
+    topics.push((Said::Threaten, "Threaten them".to_string()));
+    topics
 }
 
 /// The vital bars the HUD always shows.
@@ -176,6 +198,8 @@ pub struct HudState {
     /// The amount set on the splitting bar for the selected stack: a drag
     /// from the selected slot moves only this many. None moves it whole.
     pub split: Option<u32>,
+    /// Who the talk panel talks to (their ActorId), while it is open.
+    pub talking_to: Option<u64>,
 }
 
 impl HudState {
@@ -592,6 +616,19 @@ pub fn move_stack(inv: &mut Inventory, from: usize, to: usize, max_stack: u32) {
 mod tests {
     use super::*;
     use crate::item::ItemStack;
+
+    #[test]
+    fn the_talk_topics_are_what_the_speaker_knows_and_a_threat() {
+        use crate::actions::Said;
+        let mut memory = crate::memory::Memory::default();
+        memory.see(7, "tap", glam::Vec3::ZERO, 10);
+        memory.see(8, "well", glam::Vec3::ZERO, 20);
+        let topics = talk_topics(&memory);
+        let words: Vec<&str> = topics.iter().map(|(_, w)| w.as_str()).collect();
+        assert_eq!(words, ["Tell them of the well", "Ask about the well", "Tell them of the tap", "Ask about the tap", "Threaten them"]);
+        assert_eq!(topics[2].0, Said::Tell { key: 7 });
+        assert_eq!(talk_topics(&crate::memory::Memory::default()).len(), 1, "knowing nothing, only a threat");
+    }
 
     fn stack(name: &str, count: u32) -> ItemStack {
         ItemStack {
