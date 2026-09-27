@@ -71,6 +71,9 @@ pub struct Perception<'a> {
     pub reachable: &'a dyn Fn() -> Vec<Vec3>,
     /// Whether a spot is off the map this person carries: never seen.
     pub unknown: &'a dyn Fn(Vec3) -> bool,
+    /// A place they were asked to go to and wait at (an episode's errand:
+    /// topside episodes.md), weighed like any other choice.
+    pub asked: Option<Vec3>,
 }
 
 impl std::fmt::Debug for Perception<'_> {
@@ -657,6 +660,27 @@ pub fn enter_wander(t: &mut Think, _: &Target) -> Option<Target> {
     Some(Target::Point(*t.roll.pick(&pool)))
 }
 
+// Asked.
+
+/// Asked to go somewhere: there.
+pub fn enter_asked(t: &mut Think, _: &Target) -> Option<Target> {
+    t.p.asked.map(Target::Point)
+}
+
+/// Where they were asked to be: wait there, as long as they are asked.
+pub fn wait(t: &mut Think, _: &Target) -> Status {
+    t.act(vec![], None);
+    Status::Running
+}
+
+/// No longer asked to be where they are headed: choose again.
+pub fn not_asked(t: &mut Think, target: &Target) -> bool {
+    match (t.p.asked, target) {
+        (Some(asked), Target::Point(at)) => asked.distance(*at) > REACH,
+        _ => true,
+    }
+}
+
 /// Stand this think, or stroll to the spot.
 pub fn wander(t: &mut Think, target: &Target) -> Status {
     match target {
@@ -771,7 +795,31 @@ mod tests {
             standable: &|_| true,
             reachable: &Vec::new,
             unknown: &|_| true,
+            asked: None,
         }
+    }
+
+    /// Asked to be somewhere: they head there; asked somewhere else, or no
+    /// longer asked, they choose again.
+    #[test]
+    fn asked_to_a_place_they_go_there_until_no_longer_asked() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let tap = Vec3::new(40.0, 0.0, 10.0);
+        let mut roll = Roll::new(1);
+        assert_eq!(enter_asked(&mut Think::new(&p, &mut roll), &Target::None), None, "not asked");
+        p.asked = Some(tap);
+        let target = enter_asked(&mut Think::new(&p, &mut roll), &Target::None).expect("asked");
+        assert_eq!(target, Target::Point(tap));
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(going(&mut t, &target), Status::Running);
+        assert!(t.actions.iter().any(|a| matches!(a, Action::Move { .. })), "walking there: {:?}", t.actions);
+        assert!(!not_asked(&mut Think::new(&p, &mut roll), &target));
+        p.asked = Some(Vec3::new(-40.0, 0.0, 0.0));
+        assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "asked elsewhere");
+        p.asked = None;
+        assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "no longer asked");
     }
 
     /// A stroll and a trip out only pick a spot someone can stand on;

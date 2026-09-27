@@ -137,6 +137,9 @@ pub enum Choice {
     /// Go and look at something not yet checked, or head out to find food.
     Look,
     Wander,
+    /// Do what they were asked: go to a place and wait there (an
+    /// episode's errand, topside episodes.md).
+    Asked,
 }
 
 /// How much of a change in the measure reaches a choice made one choice
