@@ -45,6 +45,7 @@ pub mod patterns;
 pub mod persona;
 pub mod quality;
 pub mod read_once;
+pub mod reality;
 pub mod research;
 pub mod ring;
 pub mod roll;
