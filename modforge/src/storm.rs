@@ -42,6 +42,21 @@ impl StormDef {
         }
     }
 
+    /// Seconds from `elapsed` until the next warning begins; zero while
+    /// the sky warns or the storm hits. A consumer that runs the storm's
+    /// clock this far ahead brings the next storm now, through the same
+    /// cycle.
+    pub fn until_next_warning(&self, elapsed: f32) -> f32 {
+        if self.phase(elapsed) != StormPhase::Calm {
+            return 0.0;
+        }
+        let first = self.every_secs - self.warning_secs;
+        if elapsed < first {
+            return first - elapsed;
+        }
+        self.every_secs - (elapsed - first) % self.every_secs
+    }
+
     /// How many storms have passed (ended) by `elapsed`: the world has
     /// shifted this many times.
     pub fn passed(&self, elapsed: f32) -> u32 {
@@ -72,6 +87,22 @@ mod tests {
         assert_eq!(DEF.phase(106.0), StormPhase::Calm);
         assert_eq!(DEF.phase(191.0), StormPhase::Warning, "the next one warns too");
         assert_eq!(DEF.phase(202.0), StormPhase::Storm);
+    }
+
+    #[test]
+    fn running_the_clock_ahead_by_until_next_warning_brings_the_warning_now() {
+        for elapsed in [0.0, 50.0, 89.0, 106.0, 150.0, 189.5, 250.0] {
+            let ahead = DEF.until_next_warning(elapsed);
+            assert!(ahead > 0.0, "calm at {elapsed}");
+            assert_eq!(DEF.phase(elapsed + ahead), StormPhase::Warning, "warning after running {ahead} ahead from {elapsed}");
+            assert_eq!(DEF.passed(elapsed + ahead), DEF.passed(elapsed), "no storm counted as passed that never came");
+        }
+    }
+
+    #[test]
+    fn nothing_to_bring_while_the_sky_warns_or_the_storm_hits() {
+        assert_eq!(DEF.until_next_warning(91.0), 0.0);
+        assert_eq!(DEF.until_next_warning(101.0), 0.0);
     }
 
     #[test]
