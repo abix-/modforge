@@ -39,6 +39,54 @@ pub struct EpisodeDef {
     pub fits: Vec<String>,
     /// The people it needs, each cast from people who already exist.
     pub parts: Vec<PartDef>,
+    /// What its parts say (topside episodes.md "The lines").
+    pub lines: Vec<LineDef>,
+    /// What the player can say, at each moment.
+    pub choices: Vec<ChoiceDef>,
+}
+
+/// One thing a part says at a moment of the episode, several ways of
+/// saying it, each with {slots} the consumer fills from the world and the
+/// speaker's memory: never always the same words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LineDef {
+    pub part: String,
+    /// The moment it is said at (a pivot point's name).
+    pub at: String,
+    pub ways: Vec<String>,
+}
+
+/// One thing the player can say at a moment, several ways of saying it,
+/// and what choosing it is (the pivot point's choice).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChoiceDef {
+    pub at: String,
+    pub ways: Vec<String>,
+    pub choice: String,
+}
+
+/// One way of saying something, picked from the seed and `salt` among
+/// the ways whose every {slot} is in `slots`, its slots filled; None when
+/// no way can be filled.
+pub fn say(ways: &[String], slots: &[(&str, &str)], seed: u64, salt: u64) -> Option<String> {
+    let fillable: Vec<&String> = ways
+        .iter()
+        .filter(|way| slots_of(way).all(|slot| slots.iter().any(|(name, _)| *name == slot)))
+        .collect();
+    if fillable.is_empty() {
+        return None;
+    }
+    let way = fillable[crate::roll::salted_index(seed, salt, fillable.len() as u64) as usize];
+    let mut words = way.clone();
+    for (name, value) in slots {
+        words = words.replace(&format!("{{{name}}}"), value);
+    }
+    Some(words)
+}
+
+/// The {slot} names in a way of saying something.
+fn slots_of(way: &str) -> impl Iterator<Item = &str> {
+    way.split('{').skip(1).filter_map(|rest| rest.split_once('}').map(|(name, _)| name))
 }
 
 /// One person an episode needs (episodes.md "The people"): its name in
@@ -978,6 +1026,8 @@ mod tests {
             name: name.to_string(),
             fits: fits.iter().map(|r| r.to_string()).collect(),
             parts: Vec::new(),
+            lines: Vec::new(),
+            choices: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1020,9 +1070,43 @@ mod tests {
                 name: "only loop".to_string(),
                 fits: vec!["Loop".to_string()],
                 parts: Vec::new(),
+                lines: Vec::new(),
+                choices: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
+    }
+
+    fn ways() -> Vec<String> {
+        [
+            "Out the door, then {way}. Keep the {landmark} on your {side}.",
+            "Go {way} out the door. The {place} has a tap.",
+            "It's out there somewhere.",
+        ]
+        .map(str::to_string)
+        .to_vec()
+    }
+
+    #[test]
+    fn the_same_seed_says_it_the_same_way_every_slot_filled() {
+        let slots = [("way", "left"), ("landmark", "radio tower"), ("side", "right"), ("place", "gas station")];
+        for seed in 0..30 {
+            let said = say(&ways(), &slots, seed, 1).unwrap();
+            assert_eq!(Some(said.clone()), say(&ways(), &slots, seed, 1));
+            assert!(!said.contains('{'), "{said}");
+        }
+        let all: HashSet<String> = (0..60).map(|seed| say(&ways(), &slots, seed, 1).unwrap()).collect();
+        assert_eq!(all.len(), 3, "every way gets said");
+    }
+
+    #[test]
+    fn a_way_with_a_slot_missing_is_never_said() {
+        let slots = [("way", "left"), ("place", "gas station")];
+        for seed in 0..30 {
+            let said = say(&ways(), &slots, seed, 1).unwrap();
+            assert!(!said.contains("landmark") && !said.contains('{'), "{said}");
+        }
+        assert_eq!(say(&ways()[..1], &slots, 7, 1), None, "no way can be filled");
     }
 
     /// The player's bunker (people 1 to 4), a near bunker (10 to 13), a

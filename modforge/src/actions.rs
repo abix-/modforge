@@ -77,6 +77,10 @@ pub enum Said {
     Offer { slot: usize },
     /// Threaten them.
     Threaten,
+    /// Say a line (an episode's, or a choice the player made), the words
+    /// the consumer holds as `line`; telling of the thing `key` names too,
+    /// if it is not zero.
+    Line { line: u32, key: u64 },
 }
 
 /// A key or button, by the name a binding file uses. The consumer

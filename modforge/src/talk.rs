@@ -26,16 +26,37 @@ pub enum Answer {
     /// Nothing was said: the speaker does not know what they would tell,
     /// or offered an empty slot.
     Nothing,
+    /// A line was said that told of nothing.
+    Said,
+}
+
+/// Which way to go out of a door facing `outward` to head for `to` (both
+/// on the ground, from the door): "straight out" within 35 degrees, else
+/// "left" or "right" (right is the facing turned a quarter towards +y,
+/// as topside reads WASD).
+pub fn way_out(outward: glam::Vec2, to: glam::Vec2) -> &'static str {
+    if outward.angle_to(to).abs() <= 35f32.to_radians() {
+        "straight out"
+    } else {
+        side_of(outward, to)
+    }
+}
+
+/// Which side of someone walking along `along` a point `at` (from where
+/// they are) stands: "right" or "left", the same hand as `way_out`.
+pub fn side_of(along: glam::Vec2, at: glam::Vec2) -> &'static str {
+    if along.perp_dot(at) > 0.0 { "right" } else { "left" }
 }
 
 /// One person says something to another: `offered` is the item in the
-/// offered slot, if any. Both memories remember what was said; a told
-/// thing is known by the listener, told by the speaker.
+/// offered slot, if any; `words` a line's words (`Said::Line`). Both
+/// memories remember what was said; a told thing is known by the
+/// listener, told by the speaker.
 pub fn talk(
     said: Said,
     (speaker, speaker_memory): (ActorId, &mut Memory),
     (listener, listener_memory): (ActorId, &mut Memory),
-    offered: Option<&str>,
+    (offered, words): (Option<&str>, Option<&str>),
     now: u64,
 ) -> Answer {
     let say = |words: String, speaker_memory: &mut Memory, listener_memory: &mut Memory| {
@@ -73,6 +94,17 @@ pub fn talk(
             say("threatened them".to_string(), speaker_memory, listener_memory);
             Answer::Threatened
         }
+        Said::Line { key, .. } => {
+            let Some(words) = words else {
+                return Answer::Nothing;
+            };
+            let thing = (key != 0).then(|| speaker_memory.known.iter().find(|k| k.key == key).cloned()).flatten();
+            if let Some(thing) = &thing {
+                listener_memory.told(thing, speaker, now);
+            }
+            say(words.to_string(), speaker_memory, listener_memory);
+            thing.map_or(Answer::Said, |t| Answer::Learned(t.key))
+        }
     }
 }
 
@@ -95,7 +127,7 @@ mod tests {
     #[test]
     fn a_told_thing_is_known_with_who_told_it() {
         let (mut dell, mut player) = (dell_knows_the_tap(), Memory::default());
-        let answer = talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), None, 20);
+        let answer = talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), (None, None), 20);
         assert_eq!(answer, Answer::Learned(TAP));
         let known = player.known.iter().find(|k| k.key == TAP).expect("the player knows the tap");
         assert_eq!((known.kind.as_str(), known.told_by), ("tap", Some(DELL)));
@@ -106,34 +138,58 @@ mod tests {
     #[test]
     fn nobody_tells_what_they_do_not_know() {
         let (mut dell, mut player) = (Memory::default(), Memory::default());
-        assert_eq!(talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), None, 20), Answer::Nothing);
+        assert_eq!(talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), (None, None), 20), Answer::Nothing);
         assert!(player.known.is_empty() && player.done.is_empty());
     }
 
     #[test]
     fn an_ask_is_answered_only_with_what_the_listener_knows() {
         let (mut player, mut dell) = (Memory::default(), dell_knows_the_tap());
-        assert_eq!(talk(Said::Ask { key: TAP }, (PLAYER, &mut player), (DELL, &mut dell), None, 20), Answer::ToldBack(TAP));
+        assert_eq!(talk(Said::Ask { key: TAP }, (PLAYER, &mut player), (DELL, &mut dell), (None, None), 20), Answer::ToldBack(TAP));
         assert_eq!(player.known.iter().find(|k| k.key == TAP).and_then(|k| k.told_by), Some(DELL));
         let (mut player, mut stranger) = (Memory::default(), Memory::default());
-        assert_eq!(talk(Said::Ask { key: TAP }, (PLAYER, &mut player), (ActorId(9), &mut stranger), None, 20), Answer::DontKnow);
+        assert_eq!(talk(Said::Ask { key: TAP }, (PLAYER, &mut player), (ActorId(9), &mut stranger), (None, None), 20), Answer::DontKnow);
         assert!(player.known.is_empty());
     }
 
     #[test]
     fn seeing_a_thing_beats_being_told_of_it() {
         let (mut dell, mut player) = (dell_knows_the_tap(), Memory::default());
-        talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), None, 20);
+        talk(Said::Tell { key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), (None, None), 20);
         player.see(TAP, "tap", Vec3::new(150.0, 0.0, 1.0), 30);
         assert_eq!(player.known.iter().find(|k| k.key == TAP).and_then(|k| k.told_by), None);
     }
 
     #[test]
+    fn a_line_is_remembered_by_both_and_tells_what_it_names() {
+        let (mut dell, mut player) = (dell_knows_the_tap(), Memory::default());
+        let words = "Out the door, then left. The gas station has a tap.";
+        let answer = talk(Said::Line { line: 0, key: TAP }, (DELL, &mut dell), (PLAYER, &mut player), (None, Some(words)), 20);
+        assert_eq!(answer, Answer::Learned(TAP));
+        assert_eq!(player.known.iter().find(|k| k.key == TAP).and_then(|k| k.told_by), Some(DELL));
+        assert_eq!(player.done.last(), Some(&(20, Did::Heard(DELL, words.to_string()))));
+        let answer = talk(Said::Line { line: 1, key: 0 }, (PLAYER, &mut player), (DELL, &mut dell), (None, Some("Show me.")), 21);
+        assert_eq!(answer, Answer::Said);
+        assert_eq!(dell.done.last(), Some(&(21, Did::Heard(PLAYER, "Show me.".to_string()))));
+    }
+
+    #[test]
+    fn the_way_out_of_a_door_and_the_side_of_a_landmark() {
+        use glam::Vec2;
+        let out = Vec2::new(0.0, 1.0);
+        assert_eq!(way_out(out, Vec2::new(0.1, 5.0)), "straight out");
+        assert_eq!(way_out(out, Vec2::new(-5.0, 1.0)), "right");
+        assert_eq!(way_out(out, Vec2::new(5.0, 1.0)), "left");
+        assert_eq!(side_of(out, Vec2::new(-3.0, 4.0)), "right");
+        assert_eq!(side_of(out, Vec2::new(3.0, 4.0)), "left");
+    }
+
+    #[test]
     fn a_threat_and_an_offer_are_remembered_by_both() {
         let (mut player, mut mara) = (Memory::default(), Memory::default());
-        assert_eq!(talk(Said::Threaten, (PLAYER, &mut player), (ActorId(8), &mut mara), None, 20), Answer::Threatened);
+        assert_eq!(talk(Said::Threaten, (PLAYER, &mut player), (ActorId(8), &mut mara), (None, None), 20), Answer::Threatened);
         assert_eq!(mara.done.last(), Some(&(20, Did::Heard(PLAYER, "threatened them".to_string()))));
-        let answer = talk(Said::Offer { slot: 0 }, (PLAYER, &mut player), (ActorId(8), &mut mara), Some("water bottle"), 21);
+        let answer = talk(Said::Offer { slot: 0 }, (PLAYER, &mut player), (ActorId(8), &mut mara), (Some("water bottle"), None), 21);
         assert_eq!(answer, Answer::Offered("water bottle".to_string()));
         assert_eq!(player.done.last(), Some(&(21, Did::Talked(ActorId(8), "offered water bottle".to_string()))));
     }
