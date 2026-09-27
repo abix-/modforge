@@ -60,6 +60,23 @@ pub enum Action {
     /// The map: the corner minimap to a full screen overlay and back
     /// (topside authority.md "Presentation", Diablo 2's automap).
     Map,
+    /// Say something to one person in reach (topside: talking, operator
+    /// 2026-09-27). `to` is their ActorId.
+    Talk { to: u64, said: Said },
+}
+
+/// What is said in a `Talk` (crate::talk decides what comes of it).
+/// Things are named by the key memory knows them by.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Said {
+    /// Tell them about a thing the speaker knows.
+    Tell { key: u64 },
+    /// Ask them about a thing.
+    Ask { key: u64 },
+    /// Offer them the item in this slot of the speaker's inventory.
+    Offer { slot: usize },
+    /// Threaten them.
+    Threaten,
 }
 
 /// A key or button, by the name a binding file uses. The consumer

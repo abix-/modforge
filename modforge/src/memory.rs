@@ -54,6 +54,9 @@ pub struct Known {
     /// many; None until looked (believed to hold something), empty
     /// when it was found bare.
     pub held: Option<Vec<(String, u32)>>,
+    /// Who told them of it, if they know it by being told and have not
+    /// seen it since (topside life.md "What a person knows": told).
+    pub told_by: Option<ActorId>,
 }
 
 impl Known {
@@ -155,6 +158,10 @@ pub enum Did {
     Respawned,
     /// Went through a doorway.
     Doorway,
+    /// Said this to this person (crate::talk: "told them of the tap").
+    Talked(ActorId, String),
+    /// Was said this by this person.
+    Heard(ActorId, String),
 }
 
 impl Did {
@@ -173,6 +180,8 @@ impl Did {
             Did::Died(..) => "died",
             Did::Respawned => "respawned",
             Did::Doorway => "doorway",
+            Did::Talked(..) => "talked",
+            Did::Heard(..) => "heard",
         }
     }
 
@@ -191,6 +200,8 @@ impl Did {
             Did::Died(by, of) => format!("died of {of}, killed by {}", who(by)),
             Did::Respawned => "respawned".to_string(),
             Did::Doorway => "went through a doorway".to_string(),
+            Did::Talked(whom, said) => format!("said to {}: {said}", whom.0),
+            Did::Heard(by, said) => format!("heard from {}: {said}", by.0),
         }
     }
 }
@@ -228,6 +239,7 @@ impl Memory {
             Some(k) => {
                 k.seen_at = now;
                 k.position = position;
+                k.told_by = None;
             }
             None => self.known.push(Known {
                 key,
@@ -236,8 +248,23 @@ impl Memory {
                 seen_at: now,
                 checked_at: None,
                 held: None,
+                told_by: None,
             }),
         }
+    }
+
+    /// Told of a thing by someone: known as they know it (where it was,
+    /// what they saw in it, however stale), told by them. A thing already
+    /// known is kept as it is: what was seen beats what was said.
+    pub fn told(&mut self, thing: &Known, by: ActorId, now: u64) {
+        if self.known.iter().any(|k| k.key == thing.key) {
+            return;
+        }
+        self.known.push(Known {
+            seen_at: now,
+            told_by: Some(by),
+            ..thing.clone()
+        });
     }
 
     /// Note a thing checked up close now: what was found inside it,

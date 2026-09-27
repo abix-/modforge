@@ -63,6 +63,7 @@ pub mod storyteller;
 pub mod structure;
 pub mod studs;
 pub mod survival;
+pub mod talk;
 pub mod testkit;
 pub mod ui;
 pub mod unknown;
