@@ -681,6 +681,20 @@ pub fn not_asked(t: &mut Think, target: &Target) -> bool {
     }
 }
 
+/// Leading someone somewhere (topside life.md "Going with someone"; the
+/// escort in Skyrim's AI packages): the leader waits for them once they
+/// fall further behind than this, in metres...
+pub const LEAD_WAIT: f32 = 12.0;
+/// ...and goes on once they are this near again.
+pub const LEAD_NEAR: f32 = 5.0;
+
+/// Whether a leader at `leader` waits for the one they lead at
+/// `follower`, `waiting` already or not.
+pub fn waits_for(leader: Vec3, follower: Vec3, waiting: bool) -> bool {
+    let apart = leader.distance(follower);
+    if waiting { apart > LEAD_NEAR } else { apart > LEAD_WAIT }
+}
+
 /// Stand this think, or stroll to the spot.
 pub fn wander(t: &mut Think, target: &Target) -> Status {
     match target {
@@ -963,5 +977,15 @@ mod tests {
         let mut quick = calm;
         quick.axes[Axis::Agility as usize] = 1.0;
         assert!(reaction_ticks(false, false, full, &quick, 60.0) < 60, "an agile person is quicker");
+    }
+
+    #[test]
+    fn a_leader_waits_when_left_behind_and_goes_on_when_caught_up() {
+        let dell = Vec3::ZERO;
+        let at = |m: f32| Vec3::new(m, 0.0, 0.0);
+        assert!(!waits_for(dell, at(8.0), false), "close enough: go on");
+        assert!(waits_for(dell, at(13.0), false), "left behind: wait");
+        assert!(waits_for(dell, at(8.0), true), "waiting, not near enough yet");
+        assert!(!waits_for(dell, at(4.0), true), "caught up: go on");
     }
 }
