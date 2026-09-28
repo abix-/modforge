@@ -108,6 +108,39 @@ pub fn talk(
     }
 }
 
+/// Word spreads (topside life.md "How a person feels about others"): the
+/// teller tells the listener what was done to them by someone else, each
+/// thing once: hit, killed, or said something that is felt (`heard`, as
+/// `relationship::feeling` reads it). Only what happened to the teller
+/// themselves, never what they were told. The number of things told.
+pub fn share(
+    (teller, teller_memory): (ActorId, &Memory),
+    (listener, listener_memory): (ActorId, &mut Memory),
+    heard: impl Fn(&str) -> f32,
+    now: u64,
+) -> usize {
+    let mut told = 0;
+    for (when, did) in &teller_memory.done {
+        let by = match did {
+            Did::WasHit(Some(by), _) | Did::Died(Some(by), _) => *by,
+            Did::Heard(by, words) if heard(words) != 0.0 => *by,
+            _ => continue,
+        };
+        if by == listener || by == teller {
+            continue;
+        }
+        let already = listener_memory
+            .done
+            .iter()
+            .any(|(_, d)| matches!(d, Did::WasTold(from, at, what) if *from == teller && at == when && **what == *did));
+        if !already {
+            listener_memory.did(Did::WasTold(teller, *when, Box::new(did.clone())), now);
+            told += 1;
+        }
+    }
+    told
+}
+
 #[cfg(test)]
 mod tests {
     use glam::Vec3;
@@ -192,5 +225,45 @@ mod tests {
         let answer = talk(Said::Offer { slot: 0 }, (PLAYER, &mut player), (ActorId(8), &mut mara), (Some("water bottle"), None), 21);
         assert_eq!(answer, Answer::Offered("water bottle".to_string()));
         assert_eq!(player.done.last(), Some(&(21, Did::Talked(ActorId(8), "offered water bottle".to_string()))));
+    }
+
+    fn threat(words: &str) -> f32 {
+        if words == "Step away from it." { -0.6 } else { 0.0 }
+    }
+
+    #[test]
+    fn a_mate_is_told_what_was_done_and_feels_it_less() {
+        const MARA: ActorId = ActorId(8);
+        const MATE: ActorId = ActorId(9);
+        let mut mara = Memory::default();
+        mara.did(Did::Heard(PLAYER, "Step away from it.".to_string()), 5);
+        mara.did(Did::Heard(PLAYER, "Busy.".to_string()), 6);
+        mara.did(Did::WasHit(Some(PLAYER), 30.0), 7);
+        mara.did(Did::Slept, 8);
+        let mut mate = Memory::default();
+        // The threat and the hit; words nobody feels are not worth telling.
+        assert_eq!(share((MARA, &mara), (MATE, &mut mate), threat, 20), 2);
+        assert_eq!(mate.done.first(), Some(&(20, Did::WasTold(MARA, 5, Box::new(Did::Heard(PLAYER, "Step away from it.".to_string()))))));
+        // Each thing once.
+        assert_eq!(share((MARA, &mara), (MATE, &mut mate), threat, 21), 0);
+        // Felt at half: (-0.6 - 0.6) / 2.
+        let felt = crate::relationship::feeling(&mate, PLAYER, threat).unwrap();
+        assert!((felt + 0.6).abs() < 1e-5, "{felt}");
+        assert_eq!(crate::relationship::feelings(&mate, threat).len(), 1);
+    }
+
+    #[test]
+    fn only_what_was_done_to_the_teller_is_told() {
+        const MARA: ActorId = ActorId(8);
+        const MATE: ActorId = ActorId(9);
+        let mut mate = Memory::default();
+        mate.did(Did::WasHit(Some(PLAYER), 30.0), 5);
+        let mut mara = Memory::default();
+        assert_eq!(share((MATE, &mate), (MARA, &mut mara), threat, 10), 1);
+        // What Mara was told she does not tell on, and nobody is told what
+        // they did themselves.
+        let mut other = Memory::default();
+        assert_eq!(share((MARA, &mara), (ActorId(10), &mut other), threat, 11), 0);
+        assert_eq!(share((MATE, &mate), (PLAYER, &mut other), threat, 11), 0);
     }
 }

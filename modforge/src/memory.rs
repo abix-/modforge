@@ -162,6 +162,9 @@ pub enum Did {
     Talked(ActorId, String),
     /// Was said this by this person.
     Heard(ActorId, String),
+    /// Was told by this person what was done to them, and when (tick):
+    /// word of it spreading (crate::talk::share).
+    WasTold(ActorId, u64, Box<Did>),
 }
 
 impl Did {
@@ -182,6 +185,7 @@ impl Did {
             Did::Doorway => "doorway",
             Did::Talked(..) => "talked",
             Did::Heard(..) => "heard",
+            Did::WasTold(..) => "was told",
         }
     }
 
@@ -202,6 +206,7 @@ impl Did {
             Did::Doorway => "went through a doorway".to_string(),
             Did::Talked(whom, said) => format!("said to {}: {said}", whom.0),
             Did::Heard(by, said) => format!("heard from {}: {said}", by.0),
+            Did::WasTold(by, _, what) => format!("was told by {} that they {}", by.0, what.words()),
         }
     }
 }

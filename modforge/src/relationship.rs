@@ -27,14 +27,38 @@ pub fn feeling(memory: &Memory, toward: ActorId, heard: impl Fn(&str) -> f32) ->
     let mut felt = None::<f32>;
     for (_, did) in &memory.done {
         let this = match did {
-            Did::WasHit(Some(by), amount) if *by == toward => -amount / HIT_HATED,
-            Did::Died(Some(by), _) if *by == toward => -1.0,
-            Did::Heard(by, words) if *by == toward => heard(words),
-            _ => continue,
+            // Told by a mate what was done to them: felt, less.
+            Did::WasTold(_, _, what) => felt_of(what, toward, &heard).map(|f| f * TOLD),
+            what => felt_of(what, toward, &heard),
         };
-        felt = Some(felt.unwrap_or(0.0) + this);
+        if let Some(this) = this {
+            felt = Some(felt.unwrap_or(0.0) + this);
+        }
     }
     felt.map(|f| f.clamp(-1.0, 1.0))
+}
+
+/// How much less what one is told counts than what was done to oneself.
+pub const TOLD: f32 = 0.5;
+
+/// How one thing done to someone makes them feel toward `toward`, if it
+/// was `toward` who did it.
+fn felt_of(did: &Did, toward: ActorId, heard: &impl Fn(&str) -> f32) -> Option<f32> {
+    match did {
+        Did::WasHit(Some(by), amount) if *by == toward => Some(-amount / HIT_HATED),
+        Did::Died(Some(by), _) if *by == toward => Some(-1.0),
+        Did::Heard(by, words) if *by == toward => Some(heard(words)),
+        _ => None,
+    }
+}
+
+/// Who did a thing done to someone, if a person did it.
+fn done_by(did: &Did) -> Option<ActorId> {
+    match did {
+        Did::WasHit(Some(by), _) | Did::Died(Some(by), _) | Did::Heard(by, _) => Some(*by),
+        Did::WasTold(_, _, what) => done_by(what),
+        _ => None,
+    }
 }
 
 /// Every person they have a feeling toward, with it, in the order they
@@ -42,9 +66,8 @@ pub fn feeling(memory: &Memory, toward: ActorId, heard: impl Fn(&str) -> f32) ->
 pub fn feelings(memory: &Memory, heard: impl Fn(&str) -> f32) -> Vec<(ActorId, f32)> {
     let mut people: Vec<ActorId> = Vec::new();
     for (_, did) in &memory.done {
-        let who = match did {
-            Did::WasHit(Some(by), _) | Did::Died(Some(by), _) | Did::Heard(by, _) => *by,
-            _ => continue,
+        let Some(who) = done_by(did) else {
+            continue;
         };
         if !people.contains(&who) {
             people.push(who);
