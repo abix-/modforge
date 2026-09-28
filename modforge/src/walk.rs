@@ -25,6 +25,10 @@ use crate::path::{Cell, search};
 pub const TILE: f32 = 1.0;
 /// Tiles per chunk side.
 pub const CHUNK: i32 = 32;
+/// A place whose doorways reach no more than this many is small enough to
+/// know shut in at once (a sealed room, a pocket); a bigger one is left to
+/// the search.
+pub const SHUT_IN: usize = 64;
 
 /// A chunk, by its column and row.
 pub type ChunkKey = (i32, i32);
@@ -78,6 +82,9 @@ pub struct WalkMap {
     ways: HashMap<ChunkKey, ChunkWays>,
     /// How many tiles the last `find_way` flooded: what it cost.
     pub last_searched: usize,
+    /// Why the last `find_way` found no way, and how many doorways it
+    /// searched.
+    pub last_failed: Option<(&'static str, usize)>,
 }
 
 /// The chunks a rectangle touches.
@@ -445,6 +452,28 @@ impl WalkMap {
         out
     }
 
+    /// Whether the doorways `from` are shut in a small place: every
+    /// doorway they reach, inside chunks and across edges, is found within
+    /// `SHUT_IN` of them and none is one of `other`'s. The doorways
+    /// reached when shut in; None when not (the place is bigger, or joins
+    /// the other end).
+    fn shut_in<T>(&mut self, from: impl Iterator<Item = Cell>, other: &HashMap<Cell, T>) -> Option<usize> {
+        let mut seen: HashSet<Cell> = from.collect();
+        let mut todo: Vec<Cell> = seen.iter().copied().collect();
+        while let Some(door) = todo.pop() {
+            if other.contains_key(&door) || seen.len() > SHUT_IN {
+                return None;
+            }
+            let next: Vec<Cell> = self.ways_from(door).into_iter().map(|(d, _, _)| d).chain(self.across(door)).collect();
+            for d in next {
+                if seen.insert(d) {
+                    todo.push(d);
+                }
+            }
+        }
+        Some(seen.len())
+    }
+
     /// The way from `from` to `to` as points to walk through, ending at
     /// `to`; None when there is none (pathing.md "Search by chunk, then
     /// across chunks"). In one chunk: that chunk's tiles only. Otherwise
@@ -454,6 +483,7 @@ impl WalkMap {
     /// thing, a box), always count as open.
     pub fn find_way(&mut self, from: Vec2, to: Vec2, limit: usize) -> Option<Vec<Vec2>> {
         self.last_searched = 0;
+        self.last_failed = None;
         let (start, goal) = (cell_of(from), cell_of(to));
         let points = |tiles: Vec<Cell>| {
             let mut points: Vec<Vec2> = tiles.into_iter().map(centre).collect();
@@ -489,10 +519,23 @@ impl WalkMap {
         // Shut in, at either end: no doorway reached, so no way, known
         // without looking anywhere else.
         if start_doors.is_empty() || goal_doors.is_empty() {
+            self.last_failed = Some((if start_doors.is_empty() { "the start is shut in" } else { "the goal is shut in" }, 0));
             return None;
         }
+        // Either end shut in a small place (a sealed room, a pocket): its
+        // doorways reach only a few others and never the other end's, so
+        // the place cannot be reached, known at once with no search of the
+        // world around (pathing.md "Search by chunk, then across chunks").
+        for (from, other, why) in [(&goal_doors, &start_doors, "the goal is shut in"), (&start_doors, &goal_doors, "the start is shut in")] {
+            if let Some(reached) = self.shut_in(from.keys().copied(), other) {
+                self.last_failed = Some((why, reached));
+                return None;
+            }
+        }
+        let expanded = std::cell::Cell::new(0usize);
         let map = RefCell::new(&mut *self);
         let next = |at: Cell| -> Vec<(Cell, f32)> {
+            expanded.set(expanded.get() + 1);
             if at == start {
                 return start_doors.iter().map(|(d, (c, _))| (*d, *c)).collect();
             }
@@ -506,7 +549,11 @@ impl WalkMap {
             out
         };
         let estimate = |c: Cell| centre(c).distance(centre(goal)) / TILE;
-        let (doorways, _) = search(start, next, estimate, |c| c == goal, limit)?;
+        let Some((doorways, _)) = search(start, next, estimate, |c| c == goal, limit) else {
+            let n = expanded.get();
+            self.last_failed = Some((if n >= limit { "searched too far" } else { "no way across" }, n));
+            return None;
+        };
         // Join the ways: out of the start, inside each chunk, across each
         // edge, into the goal.
         let mut tiles = Vec::new();
@@ -636,6 +683,36 @@ mod tests {
         let (a, b) = (Vec2::new(0.0, -3.0), Vec2::new(0.0, 3.0));
         let way = map.find_way(a, b, 20_000).expect("through the door");
         assert!(way.iter().all(|p| p.x.abs() < 1.0), "straight through the doorway: {way:?}");
+    }
+
+    /// A room 400 m off with no door, across a chunk edge (x 416): the
+    /// goal inside it is shut in, known at once from the doorways between
+    /// its two chunks, never searched for across the world; with a door in
+    /// its wall, the way is found.
+    #[test]
+    fn a_sealed_room_far_off_is_known_shut_in_at_once() {
+        let room = |map: &mut WalkMap, door: bool| {
+            // Walls round x 410..422, y 0..10, a doorway at x 415 on the
+            // south wall when `door`.
+            map.add(1, vec![Rect { min: Vec2::new(409.0, 10.0), max: Vec2::new(423.0, 11.0) }]);
+            map.add(2, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(410.0, 11.0) }]);
+            map.add(3, vec![Rect { min: Vec2::new(422.0, -1.0), max: Vec2::new(423.0, 11.0) }]);
+            if door {
+                map.add(4, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(415.0, 0.0) }]);
+                map.add(5, vec![Rect { min: Vec2::new(416.0, -1.0), max: Vec2::new(423.0, 0.0) }]);
+            } else {
+                map.add(4, vec![Rect { min: Vec2::new(409.0, -1.0), max: Vec2::new(423.0, 0.0) }]);
+                map.remove(5);
+            }
+        };
+        let (from, inside) = (Vec2::new(0.5, 0.5), Vec2::new(412.5, 5.5));
+        let mut map = WalkMap::default();
+        room(&mut map, false);
+        assert_eq!(map.find_way(from, inside, 2_000), None);
+        assert_eq!(map.last_failed.map(|(why, _)| why), Some("the goal is shut in"));
+        assert!(map.last_searched <= 4 * (CHUNK * CHUNK) as usize, "flooded {} tiles", map.last_searched);
+        room(&mut map, true);
+        assert!(map.find_way(from, inside, 2_000).is_some(), "through the door: {:?}", map.last_failed);
     }
 
     #[test]
