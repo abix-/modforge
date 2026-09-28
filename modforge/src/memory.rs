@@ -226,6 +226,9 @@ pub struct Memory {
     /// What they learned about staying alive (topside life.md "Learning
     /// to stay alive").
     pub learned: crate::learn::Learned,
+    /// The things (by key) they keep quiet: never passed on
+    /// (crate::talk::share).
+    pub quiet: Vec<u64>,
 }
 
 /// How many things done a person remembers.
@@ -288,6 +291,13 @@ impl Memory {
         if let Some(k) = self.known.iter_mut().find(|k| k.key == key) {
             k.checked_at = Some(now);
             k.seen_at = now;
+        }
+    }
+
+    /// Keep a thing quiet: asked to, or wanting to.
+    pub fn keep_quiet(&mut self, key: u64) {
+        if !self.quiet.contains(&key) {
+            self.quiet.push(key);
         }
     }
 

@@ -111,8 +111,10 @@ pub fn talk(
 /// Word spreads (topside life.md "How a person feels about others"): the
 /// teller tells the listener what was done to them by someone else, each
 /// thing once: hit, killed, or said something that is felt (`heard`, as
-/// `relationship::feeling` reads it). Only what happened to the teller
-/// themselves, never what they were told. The number of things told.
+/// `relationship::feeling` reads it), only what happened to the teller
+/// themselves, never what they were told; and every place they know that
+/// the listener does not, seen or told of, except what they keep quiet.
+/// The number of things told.
 pub fn share(
     (teller, teller_memory): (ActorId, &Memory),
     (listener, listener_memory): (ActorId, &mut Memory),
@@ -120,6 +122,13 @@ pub fn share(
     now: u64,
 ) -> usize {
     let mut told = 0;
+    for thing in &teller_memory.known {
+        if teller_memory.quiet.contains(&thing.key) || listener_memory.knows(thing.key) {
+            continue;
+        }
+        listener_memory.told(thing, teller, now);
+        told += 1;
+    }
     for (when, did) in &teller_memory.done {
         let by = match did {
             Did::WasHit(Some(by), _) | Did::Died(Some(by), _) => *by,
@@ -250,6 +259,23 @@ mod tests {
         let felt = crate::relationship::feeling(&mate, PLAYER, threat).unwrap();
         assert!((felt + 0.6).abs() < 1e-5, "{felt}");
         assert_eq!(crate::relationship::feelings(&mate, threat).len(), 1);
+    }
+
+    #[test]
+    fn places_are_told_on_except_what_is_kept_quiet() {
+        const ROXANNE: ActorId = ActorId(9);
+        let mut dell = Memory::default();
+        dell.see(TAP, "tap", Vec3::new(10.0, 0.0, 5.0), 1);
+        dell.see(88, "well", Vec3::new(2.0, 0.0, 2.0), 1);
+        dell.keep_quiet(TAP);
+        let mut roxanne = Memory::default();
+        assert_eq!(share((DELL, &dell), (ROXANNE, &mut roxanne), |_| 0.0, 5), 1);
+        assert!(roxanne.knows(88) && !roxanne.knows(TAP), "the well told, the tap kept quiet");
+        assert_eq!(roxanne.known[0].told_by, Some(DELL));
+        // A place told of is told on, and nobody is told twice.
+        let mut mate = Memory::default();
+        assert_eq!(share((ROXANNE, &roxanne), (ActorId(10), &mut mate), |_| 0.0, 6), 1);
+        assert_eq!(share((ROXANNE, &roxanne), (ActorId(10), &mut mate), |_| 0.0, 7), 0);
     }
 
     #[test]
