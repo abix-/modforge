@@ -688,6 +688,17 @@ pub const LEAD_WAIT: f32 = 12.0;
 /// ...and goes on once they are this near again.
 pub const LEAD_NEAR: f32 = 5.0;
 
+/// Following someone (World of Warcraft's auto-follow): the follower
+/// closes in while further off than this, in metres, and stands once this
+/// near.
+pub const FOLLOW_NEAR: f32 = 2.5;
+
+/// Whether a follower at `follower` walks on after the one they follow at
+/// `leader`.
+pub fn follows(follower: Vec3, leader: Vec3) -> bool {
+    follower.distance(leader) > FOLLOW_NEAR
+}
+
 /// Whether a leader at `leader` waits for the one they lead at
 /// `follower`, `waiting` already or not.
 pub fn waits_for(leader: Vec3, follower: Vec3, waiting: bool) -> bool {
@@ -987,5 +998,12 @@ mod tests {
         assert!(waits_for(dell, at(13.0), false), "left behind: wait");
         assert!(waits_for(dell, at(8.0), true), "waiting, not near enough yet");
         assert!(!waits_for(dell, at(4.0), true), "caught up: go on");
+    }
+
+    #[test]
+    fn a_follower_closes_in_and_stands_when_near() {
+        let dell = Vec3::ZERO;
+        assert!(follows(Vec3::new(6.0, 0.0, 0.0), dell));
+        assert!(!follows(Vec3::new(2.0, 0.0, 0.0), dell));
     }
 }
