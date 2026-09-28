@@ -206,7 +206,7 @@ impl Did {
             Did::Doorway => "went through a doorway".to_string(),
             Did::Talked(whom, said) => format!("said to {}: {said}", whom.0),
             Did::Heard(by, said) => format!("heard from {}: {said}", by.0),
-            Did::WasTold(by, _, what) => format!("was told by {} that they {}", by.0, what.words()),
+            Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),
         }
     }
 }
