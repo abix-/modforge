@@ -27,7 +27,9 @@ pub struct Profile {
 impl Profile {
     /// Load an existing profile without creating or changing it.
     pub fn load(directory: &Path) -> io::Result<Self> {
-        Ok(serde_json::from_slice(&fs::read(directory.join("profile.json"))?)?)
+        Ok(serde_json::from_slice(&fs::read(
+            directory.join("profile.json"),
+        )?)?)
     }
 
     /// Load the named character's profile, creating it on first use.
@@ -37,7 +39,10 @@ impl Profile {
         match Self::load(directory) {
             Ok(profile) => Ok(profile),
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                let profile = Self { name: name.to_owned(), appearance: appearance.to_owned() };
+                let profile = Self {
+                    name: name.to_owned(),
+                    appearance: appearance.to_owned(),
+                };
                 let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
                 file.write_all(&serde_json::to_vec_pretty(&profile)?)?;
                 file.sync_all()?;
@@ -51,7 +56,9 @@ impl Profile {
 /// Where a named character lives: $PERSONA_HOME/<name>, else
 /// %LOCALAPPDATA%/Modforge/<name>. Outside every build directory.
 pub fn directory(name: &str) -> io::Result<PathBuf> {
-    if let Some(root) = std::env::var_os("PERSONA_HOME") { return Ok(PathBuf::from(root).join(name)); }
+    if let Some(root) = std::env::var_os("PERSONA_HOME") {
+        return Ok(PathBuf::from(root).join(name));
+    }
     std::env::var_os("LOCALAPPDATA")
         .map(|path| PathBuf::from(path).join("Modforge").join(name))
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "set PERSONA_HOME or LOCALAPPDATA"))
@@ -59,9 +66,15 @@ pub fn directory(name: &str) -> io::Result<PathBuf> {
 
 /// Journal one observed event.
 pub fn remember(directory: &Path, event: &str, detail: &str) -> io::Result<()> {
-    let seconds = SystemTime::now().duration_since(UNIX_EPOCH).map_err(io::Error::other)?.as_secs();
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_secs();
     let entry = serde_json::json!({"time":seconds,"event":event,"detail":detail});
-    let mut file = OpenOptions::new().create(true).append(true).open(directory.join("memory.jsonl"))?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(directory.join("memory.jsonl"))?;
     writeln!(file, "{entry}")?;
     file.sync_data()
 }
@@ -73,7 +86,9 @@ pub fn recall(directory: &Path) -> io::Result<Vec<serde_json::Value>> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
         Err(error) => return Err(error),
     };
-    text.lines().map(|line| serde_json::from_str(line).map_err(io::Error::from)).collect()
+    text.lines()
+        .map(|line| serde_json::from_str(line).map_err(io::Error::from))
+        .collect()
 }
 
 /// One thing she has perceived, by the actor's name: what it is, where it
@@ -115,10 +130,31 @@ impl Seen {
 
     /// Record one perception; returns true when this thing is new to her.
     pub fn note(&mut self, name: &str, class: &str, location: [f64; 3]) -> bool {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
         match self.things.get_mut(name) {
-            Some(thing) => { thing.location = location; thing.last_seen = now; thing.times_seen += 1; false }
-            None => { self.things.insert(name.to_owned(), SeenThing { class: class.to_owned(), location, first_seen: now, last_seen: now, times_seen: 1, visited: false }); true }
+            Some(thing) => {
+                thing.location = location;
+                thing.last_seen = now;
+                thing.times_seen += 1;
+                false
+            }
+            None => {
+                self.things.insert(
+                    name.to_owned(),
+                    SeenThing {
+                        class: class.to_owned(),
+                        location,
+                        first_seen: now,
+                        last_seen: now,
+                        times_seen: 1,
+                        visited: false,
+                    },
+                );
+                true
+            }
         }
     }
 }
@@ -135,12 +171,21 @@ mod tests {
     fn seen_things_persist_and_count_repeat_sightings() {
         let directory = scratch("seen");
         let mut seen = Seen::load(&directory).unwrap();
-        assert!(seen.note("Pest_1", "NPC_Monster_Pest_C", [1.0, 2.0, 3.0]), "first sighting is new");
-        assert!(!seen.note("Pest_1", "NPC_Monster_Pest_C", [4.0, 5.0, 6.0]), "second sighting is not");
+        assert!(
+            seen.note("Pest_1", "NPC_Monster_Pest_C", [1.0, 2.0, 3.0]),
+            "first sighting is new"
+        );
+        assert!(
+            !seen.note("Pest_1", "NPC_Monster_Pest_C", [4.0, 5.0, 6.0]),
+            "second sighting is not"
+        );
         seen.save(&directory).unwrap();
         let again = Seen::load(&directory).unwrap();
         let thing = &again.things["Pest_1"];
-        assert_eq!((thing.times_seen, thing.location, thing.visited), (2, [4.0, 5.0, 6.0], false));
+        assert_eq!(
+            (thing.times_seen, thing.location, thing.visited),
+            (2, [4.0, 5.0, 6.0], false)
+        );
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -150,7 +195,15 @@ mod tests {
         let first = Profile::load_or_create(&directory, "Charles", "male").unwrap();
         remember(&directory, "joined", "hosted save").unwrap();
         let second = Profile::load_or_create(&directory, "Charles", "female").unwrap();
-        assert_eq!((first.name.as_str(), second.name.as_str(), second.appearance.as_str()), ("Charles", "Charles", "male"), "the first creation wins; later calls only load");
+        assert_eq!(
+            (
+                first.name.as_str(),
+                second.name.as_str(),
+                second.appearance.as_str()
+            ),
+            ("Charles", "Charles", "male"),
+            "the first creation wins; later calls only load"
+        );
         assert_eq!(recall(&directory).unwrap()[0]["event"], "joined");
         fs::remove_dir_all(directory).unwrap();
     }

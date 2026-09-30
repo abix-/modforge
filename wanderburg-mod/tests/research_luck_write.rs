@@ -52,7 +52,10 @@ fn modify_luck_once() {
         json!({"read_field": f.error, "getter": g.error})
     };
     let before = read("addedLuck");
-    println!("before: addedLuck={before} CurrentLuck={}", read("CurrentLuck"));
+    println!(
+        "before: addedLuck={before} CurrentLuck={}",
+        read("CurrentLuck")
+    );
     let amount = match (target(), before.as_f64()) {
         (Some(t), Some(cur)) => t - cur,
         (Some(t), None) => {
@@ -66,7 +69,14 @@ fn modify_luck_once() {
         "invoke_method",
         json!({"handle": art, "method": "ModifyLuck", "args": [amount]}),
     );
-    println!("ArtifactSystem.ModifyLuck({amount}): ok={} result={} error={:?}", r.ok, r.result, r.error);
-    println!("after:  addedLuck={} CurrentLuck={}", read("addedLuck"), read("CurrentLuck"));
+    println!(
+        "ArtifactSystem.ModifyLuck({amount}): ok={} result={} error={:?}",
+        r.ok, r.result, r.error
+    );
+    println!(
+        "after:  addedLuck={} CurrentLuck={}",
+        read("addedLuck"),
+        read("CurrentLuck")
+    );
     api.op("release_handle", json!({"handle": art}));
 }

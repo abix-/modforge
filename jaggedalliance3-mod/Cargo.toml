@@ -1,0 +1,23 @@
+[package]
+name = "jaggedalliance3-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Jagged Alliance 3 mod. JA3.exe is Haemimont's Sol engine, native PE
+# with Lua 5.3 built in; every game rule is Lua. modforge-inject loads
+# jaggedalliance3.dll into the running game, where it serves the
+# modforge control plane on 127.0.0.1:33079.
+[lib]
+name = "jaggedalliance3"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde_json = { workspace = true }
+windows-sys = { workspace = true, features = ["Win32_Foundation"] }
+
+[lints]
+workspace = true

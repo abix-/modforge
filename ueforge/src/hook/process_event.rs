@@ -19,26 +19,92 @@ use crate::ue::{self, ProcessEventFn, UClass, UFunction, UObject, find_class_fas
 
 use super::vtable;
 
-/// Wrapper around the original ProcessEvent function pointer. Calling it
-/// dispatches into the engine's real implementation.
+/// What a handler calls to let the call proceed: the remaining hook
+/// entries on the same function table, in install order, and then the
+/// engine's real ProcessEvent. Blueprint classes add no virtual
+/// functions, so every actor built on one native class shares one
+/// table (every character shares ACharacter's): hooks on different
+/// classes land on the same slot, and each must still see the call.
+/// A handler keeps its freedom to run before or after the rest, or to
+/// skip it entirely.
 #[derive(Clone, Copy)]
 pub struct OriginalProcessEvent {
     f: ProcessEventFn,
+    /// The entries still to run before the engine. Points into the
+    /// snapshot the trampoline holds for the whole call, so it
+    /// outlives every handler in the chain.
+    rest: *const &'static HookDef,
+    rest_len: usize,
 }
 
 impl OriginalProcessEvent {
     pub unsafe fn call(&self, this: &UObject, function: &UFunction, parms: *mut c_void) {
-        // Mark "handler already called engine" so the trampoline's
-        // panic-recovery arm does NOT call the engine a second time
-        // if the handler panics AFTER this returns. Double-call on
-        // a kill multicast would double-credit XP.
+        // Mark "handler already passed the call on" so the dispatch's
+        // panic-recovery arm does NOT pass it on a second time if the
+        // handler panics AFTER this returns. Double-call on a kill
+        // multicast would double-credit XP.
         CALLED_ORIGINAL.with(|c| c.set(true));
-        // SAFETY: `self.f` was captured from the patched vtable slot
-        // at install time; it has the engine's ProcessEvent ABI.
-        // Caller's `unsafe fn` contract requires this/function to
-        // be live UObject + UFunction (handed in by the engine
-        // trampoline that called us).
-        unsafe { (self.f)(this as *const UObject, function as *const UFunction, parms) };
+        // SAFETY: `rest` was built by `dispatch` from a snapshot slice
+        // that its frame still holds; the entries are leaked and
+        // 'static. `self.f` was captured from the engine's slot at
+        // the first install on this table; it has the engine's
+        // ProcessEvent ABI. Caller's `unsafe fn` contract requires
+        // this/function to be live UObject + UFunction.
+        unsafe {
+            let rest = std::slice::from_raw_parts(self.rest, self.rest_len);
+            dispatch(rest, self.f, this, function, parms);
+        }
+    }
+}
+
+/// Run `entries` on this call as a chain: the first entry's handler gets
+/// an `original` that runs the remaining entries and then the engine.
+/// With no entries left, the engine is called directly.
+///
+/// SAFETY: this/function are live engine-supplied pointers for the
+/// duration of the call; `entries` are leaked 'static hook records;
+/// `engine` is the engine's ProcessEvent for this table.
+unsafe fn dispatch(
+    entries: &[&'static HookDef],
+    engine: ProcessEventFn,
+    this: &UObject,
+    function: &UFunction,
+    parms: *mut c_void,
+) {
+    let Some((entry, rest)) = entries.split_first() else {
+        unsafe { engine(this as *const UObject, function as *const UFunction, parms) };
+        return;
+    };
+    let original = OriginalProcessEvent {
+        f: engine,
+        rest: rest.as_ptr(),
+        rest_len: rest.len(),
+    };
+
+    entry.active_calls.fetch_add(1, Ordering::AcqRel);
+    // Save/restore the flag around the handler so reentrant fires
+    // (handler -> UFunction -> our hook again) don't corrupt the
+    // outer frame's "passed on" state.
+    let prev_called = CALLED_ORIGINAL.with(|c| c.replace(false));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        (entry.handler)(this, function, parms, original)
+    }));
+    let called_during = CALLED_ORIGINAL.with(|c| c.replace(prev_called));
+    entry.active_calls.fetch_sub(1, Ordering::AcqRel);
+
+    if result.is_err() {
+        // Bump the per-entry panic counter so the snapshot
+        // endpoint can surface "your handler is panicking N
+        // times" instead of silently swallowing.
+        entry.panic_count.fetch_add(1, Ordering::Relaxed);
+        if !called_during {
+            // Closure panicked BEFORE passing the call on; the rest
+            // of the chain and the engine still run so the game
+            // keeps progressing. If the handler had already passed
+            // it on, do NOT do so again. That would double-fire the
+            // multicast (e.g. double-credit XP on a kill).
+            unsafe { dispatch(rest, engine, this, function, parms) };
+        }
     }
 }
 
@@ -150,8 +216,13 @@ pub fn leaked_entry_count() -> u64 {
 /// Already-in-flight handlers continue normally.
 pub(super) static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
+/// The snapshot is grouped by function table (a stable sort keeps
+/// install order within a table), so the trampoline finds one table's
+/// chain as a contiguous sub-slice without allocating on the hot path.
 fn publish_snapshot(reg: &[&'static HookDef]) {
-    SNAPSHOT.store(Arc::new(reg.to_vec()));
+    let mut grouped = reg.to_vec();
+    grouped.sort_by_key(|e| e.vtable as usize);
+    SNAPSHOT.store(Arc::new(grouped));
 }
 
 pub struct ProcessEventHook {
@@ -216,16 +287,31 @@ impl ProcessEventHook {
         // table; slot_idx is the platform-configured index of
         // ProcessEvent within that table.
         let slot = unsafe { vtable.add(slot_idx) };
-        // SAFETY: vtable slots are pointer-sized; the slot
-        // contains the engine's ProcessEvent function pointer.
-        let original_raw = unsafe { *slot };
-        if original_raw.is_null() {
-            return Err("ProcessEvent slot is null");
-        }
-        // SAFETY: original_raw is a *mut c_void that we know is
-        // the engine's ProcessEvent fn pointer. Transmute to the
-        // typed ProcessEventFn matches the engine's ABI signature.
-        let original: ProcessEventFn = unsafe { std::mem::transmute(original_raw) };
+
+        // The registry lock is held from here until the entry is
+        // published and the slot patched, so two installs on one
+        // table cannot both read the slot and both patch it.
+        let mut reg = REGISTRY.lock();
+
+        // A table already hooked keeps the engine pointer its first
+        // entry captured; reading the slot now would capture our own
+        // trampoline and the chain would call itself.
+        let already = reg.iter().find(|e| e.vtable == vtable).map(|e| e.original);
+        let original: ProcessEventFn = match already {
+            Some(engine) => engine,
+            None => {
+                // SAFETY: vtable slots are pointer-sized; the slot
+                // contains the engine's ProcessEvent function pointer.
+                let original_raw = unsafe { *slot };
+                if original_raw.is_null() {
+                    return Err("ProcessEvent slot is null");
+                }
+                // SAFETY: original_raw is a *mut c_void that we know is
+                // the engine's ProcessEvent fn pointer. Transmute to the
+                // typed ProcessEventFn matches the engine's ABI signature.
+                unsafe { std::mem::transmute(original_raw) }
+            }
+        };
 
         // Leak the entry: lifetimes must outlive every dispatch, even if the
         // user drops the ProcessEventHook handle. Drop reverts the slot but
@@ -245,23 +331,21 @@ impl ProcessEventHook {
         }));
         LEAKED_ENTRY_COUNT.fetch_add(1, Ordering::Relaxed);
 
-        {
-            let mut reg = REGISTRY.lock();
-            reg.push(entry);
-            publish_snapshot(&reg);
-        }
+        reg.push(entry);
+        publish_snapshot(&reg);
 
-        // SAFETY: vtable::write_slot wraps the page-protection
-        // dance via region::protect_with_handle. slot is the
-        // ProcessEvent slot we just read from; trampoline is our
-        // static fn whose ABI matches the engine's ProcessEventFn.
-        let prev = unsafe { vtable::write_slot(slot, trampoline as *mut c_void) };
-        if prev.is_none() {
-            // back out: remove from registry, leak entry (rare path)
-            let mut reg = REGISTRY.lock();
-            reg.retain(|e| !std::ptr::eq(*e, entry));
-            publish_snapshot(&reg);
-            return Err("VirtualProtect failed");
+        if already.is_none() {
+            // SAFETY: vtable::write_slot wraps the page-protection
+            // dance via region::protect_with_handle. slot is the
+            // ProcessEvent slot we just read from; trampoline is our
+            // static fn whose ABI matches the engine's ProcessEventFn.
+            let prev = unsafe { vtable::write_slot(slot, trampoline as *mut c_void) };
+            if prev.is_none() {
+                // back out: remove from registry, leak entry (rare path)
+                reg.retain(|e| !std::ptr::eq(*e, entry));
+                publish_snapshot(&reg);
+                return Err("VirtualProtect failed");
+            }
         }
 
         Ok(ProcessEventHook { entry })
@@ -331,23 +415,24 @@ pub fn installed_defs() -> Vec<&'static HookDef> {
 
 impl Drop for ProcessEventHook {
     fn drop(&mut self) {
-        // 1. Restore the engine's original ProcessEvent slot.
-        //    New PE calls go straight to the engine; our trampoline
-        //    is no longer reached.
+        // 1. Remove from registry / snapshot so new fires no longer
+        //    run this handler, and restore the engine's original
+        //    ProcessEvent slot only when this was the last entry on
+        //    the table: other classes' hooks on the same table stay
+        //    live. Under the registry lock, paired with install.
         // SAFETY: self.entry.slot was captured at install time +
         // remains valid for process lifetime (leaked HookDef);
-        // self.entry.original is the engine fn pointer we cached
-        // before patching.
-        unsafe {
-            vtable::write_slot(self.entry.slot, self.entry.original as *mut c_void);
-        }
-        // 2. Remove from registry / snapshot so any straggler
-        //    trampoline fires that already loaded SNAPSHOT but
-        //    haven't found their entry will fall through.
+        // self.entry.original is the engine fn pointer the first
+        // entry on this table cached before patching.
         {
             let mut reg = REGISTRY.lock();
             reg.retain(|e| !std::ptr::eq(*e, self.entry));
             publish_snapshot(&reg);
+            if !reg.iter().any(|e| e.vtable == self.entry.vtable) {
+                unsafe {
+                    vtable::write_slot(self.entry.slot, self.entry.original as *mut c_void);
+                }
+            }
         }
         // 3. Wait for in-flight trampolines that already entered
         //    the handler to drain. Bounded; if a trampoline is
@@ -384,59 +469,38 @@ unsafe extern "system" fn trampoline(
             .read_unaligned()
     };
 
+    // Every entry on this table, in install order: one contiguous run
+    // of the grouped snapshot, no allocation. The snapshot Arc is held
+    // for the whole call, so the slice the chain points into stays
+    // alive through every handler.
     let snap = SNAPSHOT.load();
-    let entry = snap.iter().find(|e| e.vtable == live_vtable).copied();
-
-    let Some(entry) = entry else {
+    let Some(start) = snap.iter().position(|e| e.vtable == live_vtable) else {
         // Shouldn't happen. A hooked vtable always has an entry. Fall
         // through silently to avoid bringing the game down.
         return;
     };
+    let end = start
+        + snap[start..]
+            .iter()
+            .take_while(|e| e.vtable == live_vtable)
+            .count();
+    let entries: &[&'static HookDef] = &snap[start..end];
+    let engine = entries[0].original;
 
-    let original = OriginalProcessEvent { f: entry.original };
-
-    // Hot-reload guard: during shutdown, our handler closure may be
+    // Hot-reload guard: during shutdown, our handler closures may be
     // about to be dropped (the box backs onto the leaked Entry, but
     // the closure may capture state in `static`s about to disappear).
-    // Skip the handler and forward to the engine to avoid touching
+    // Skip every handler and forward to the engine to avoid touching
     // a dying state.
     if SHUTTING_DOWN.load(Ordering::Acquire) {
-        // SAFETY: original wraps the engine's captured fn ptr;
-        // this/function are the engine-supplied call args; we
-        // pass through unchanged during shutdown to avoid
-        // touching a dying handler.
-        unsafe { original.call(&*this, &*function, parms) };
+        // SAFETY: engine is the captured fn ptr; this/function are
+        // the engine-supplied call args, passed through unchanged.
+        unsafe { engine(this, function, parms) };
         return;
     }
 
-    entry.active_calls.fetch_add(1, Ordering::AcqRel);
-    // Save/restore the flag around the handler so reentrant fires
-    // (handler -> UFunction -> our hook again) don't corrupt the
-    // outer frame's "called original" state.
-    let prev_called = CALLED_ORIGINAL.with(|c| c.replace(false));
     // SAFETY: this/function are engine-supplied UObject + UFunction
-    // pointers (live for the duration of the call); we
-    // dereference them to satisfy the handler's typed signature.
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        (entry.handler)(&*this, &*function, parms, original)
-    }));
-    let called_during = CALLED_ORIGINAL.with(|c| c.replace(prev_called));
-    entry.active_calls.fetch_sub(1, Ordering::AcqRel);
-
-    if result.is_err() {
-        // Bump the per-entry panic counter so the snapshot
-        // endpoint can surface "your handler is panicking N
-        // times" instead of silently swallowing.
-        entry.panic_count.fetch_add(1, Ordering::Relaxed);
-        if !called_during {
-            // Closure panicked BEFORE calling the engine; fall
-            // through so the game keeps progressing. If the
-            // handler had already called original, do NOT call it
-            // again. That would double-fire the multicast (e.g.
-            // double-credit XP on a kill).
-            // SAFETY: same as the SHUTTING_DOWN passthrough above;
-            // engine-supplied args, captured fn ptr.
-            unsafe { original.call(&*this, &*function, parms) };
-        }
-    }
+    // pointers (live for the duration of the call); entries are
+    // leaked 'static records; `entries` outlives the chain.
+    unsafe { dispatch(entries, engine, &*this, &*function, parms) };
 }

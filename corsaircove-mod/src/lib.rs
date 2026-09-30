@@ -37,11 +37,8 @@ const STRUCT_LAYOUT: ueforge::ue::StructLayout = ueforge::ue::StructLayout::UE5_
 unsafe fn worker() {
     ueforge::log!("corsaircove_mod init");
 
-    let _rt = ueforge::ue::platform::resolve_and_init(
-        PROCESS_EVENT_IDX,
-        G_OBJECTS_LAYOUT,
-        STRUCT_LAYOUT,
-    );
+    let _rt =
+        ueforge::ue::platform::resolve_and_init(PROCESS_EVENT_IDX, G_OBJECTS_LAYOUT, STRUCT_LAYOUT);
 
     ueforge::selector::register_builtins();
     ueforge::ops::register_builtins();

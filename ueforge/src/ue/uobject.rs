@@ -83,7 +83,11 @@ pub struct ObjectIdentity {
 
 impl ObjectIdentity {
     pub fn capture(object: &UObject) -> Self {
-        Self { address: object as *const UObject as u64, index: object.index(), name: object.name() }
+        Self {
+            address: object as *const UObject as u64,
+            index: object.index(),
+            name: object.name(),
+        }
     }
 
     /// # Safety
@@ -92,7 +96,9 @@ impl ObjectIdentity {
         let rt = runtime();
         let objects = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
         let object = objects.get(self.index)?;
-        if object as *const UObject as u64 != self.address || object.name() != self.name { return None; }
+        if object as *const UObject as u64 != self.address || object.name() != self.name {
+            return None;
+        }
         Some(unsafe { &*(object as *const UObject) })
     }
 }
@@ -514,7 +520,10 @@ fn walk_native_properties(
         });
         current = unsafe { (next_addr as *const *const u8).read_unaligned() };
     }
-    PropertyWalk { clean: current.is_null(), properties }
+    PropertyWalk {
+        clean: current.is_null(),
+        properties,
+    }
 }
 
 #[cfg(test)]
@@ -552,7 +561,10 @@ mod native_property_tests {
             });
 
         assert!(walk.properties.is_empty());
-        assert!(!walk.clean, "stopping at unreadable memory is not a clean tail");
+        assert!(
+            !walk.clean,
+            "stopping at unreadable memory is not a clean tail"
+        );
     }
 
     /// A chain of one record that ends at null is a clean walk. Read raw
@@ -573,10 +585,19 @@ mod native_property_tests {
 
         assert!(walk.clean);
         assert_eq!(walk.properties.len(), 1);
-        assert_eq!((walk.properties[0].name.as_str(), walk.properties[0].offset), ("BehaviorAsset", 112));
+        assert_eq!(
+            (walk.properties[0].name.as_str(), walk.properties[0].offset),
+            ("BehaviorAsset", 112)
+        );
         // The selection rule: clean first, then longer.
-        let garbage = PropertyWalk { properties: vec![walk.properties[0].clone(); 3], clean: false };
-        let chosen = [garbage, walk].into_iter().max_by_key(|w| (w.clean, w.properties.len())).unwrap();
+        let garbage = PropertyWalk {
+            properties: vec![walk.properties[0].clone(); 3],
+            clean: false,
+        };
+        let chosen = [garbage, walk]
+            .into_iter()
+            .max_by_key(|w| (w.clean, w.properties.len()))
+            .unwrap();
         assert!(chosen.clean && chosen.properties.len() == 1);
     }
 }

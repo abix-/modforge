@@ -93,7 +93,10 @@ fn hex_dump(api: &Api, addr: u64, offset: u64, len: u64, label: &str) {
         println!("{label}: read failed");
         return;
     }
-    println!("{label} ({} bytes from 0x{addr:X}+0x{offset:X}):", bytes.len());
+    println!(
+        "{label} ({} bytes from 0x{addr:X}+0x{offset:X}):",
+        bytes.len()
+    );
     for (i, chunk) in bytes.chunks(16).enumerate() {
         let hex_str: Vec<String> = chunk.iter().map(|b| format!("{b:02x}")).collect();
         println!("  {:04x}: {}", i * 16, hex_str.join(" "));
@@ -114,8 +117,8 @@ fn discover_player_input_chain() {
     println!("player: {} at 0x{:X}", player.full_name, player.addr);
 
     // 2. find the controller
-    let controller_offset = field_offset(&api, "Pawn", "Controller")
-        .expect("Pawn has no Controller field");
+    let controller_offset =
+        field_offset(&api, "Pawn", "Controller").expect("Pawn has no Controller field");
     let controller = client::read_u64(&api, player.addr, controller_offset);
     assert_ne!(controller, 0, "the retained player has no controller");
     let controller_class = read_object_class_name(&api, controller);
@@ -139,9 +142,7 @@ fn discover_player_input_chain() {
         let input_comp = client::read_u64(&api, player.addr, ic_off);
         if input_comp != 0 {
             let ic_class = read_object_class_name(&api, input_comp);
-            println!(
-                "input_component: 0x{input_comp:X} class={ic_class} (Actor+0x{ic_off:X})"
-            );
+            println!("input_component: 0x{input_comp:X} class={ic_class} (Actor+0x{ic_off:X})");
         } else {
             println!("input_component: null (Actor+0x{ic_off:X})");
         }
@@ -167,13 +168,13 @@ fn read_player_input_data() {
     let player = client::resolve_selector(&api, "live_player")
         .expect("the current-world MISERY player is not retained");
 
-    let controller_offset = field_offset(&api, "Pawn", "Controller")
-        .expect("Pawn has no Controller field");
+    let controller_offset =
+        field_offset(&api, "Pawn", "Controller").expect("Pawn has no Controller field");
     let controller = client::read_u64(&api, player.addr, controller_offset);
     assert_ne!(controller, 0, "no controller");
 
-    let pi_offset = field_offset(&api, "PlayerController", "PlayerInput")
-        .expect("no PlayerInput field");
+    let pi_offset =
+        field_offset(&api, "PlayerController", "PlayerInput").expect("no PlayerInput field");
     let player_input = client::read_u64(&api, controller, pi_offset);
     assert_ne!(player_input, 0, "no PlayerInput");
 
@@ -213,8 +214,7 @@ fn read_input_mappings() {
     let Some(api) = api_or_skip() else { return };
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
 
     let controller = client::read_u64(
         &api,
@@ -236,9 +236,7 @@ fn read_input_mappings() {
         match offset {
             Some(off) => {
                 let (data, num, max) = client::read_tarray(&api, player_input, off);
-                println!(
-                    "{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}"
-                );
+                println!("{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}");
                 if num > 0 && data != 0 {
                     let read_len = (num * 0x30).min(0x400) as u64;
                     hex_dump(&api, data, 0, read_len, &format!("{field} entries"));
@@ -260,9 +258,7 @@ fn read_input_mappings() {
         match offset {
             Some(off) => {
                 let (data, num, max) = client::read_tarray(&api, player_input, off);
-                println!(
-                    "{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}"
-                );
+                println!("{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}");
                 if num > 0 && data != 0 {
                     let read_len = (num * 0x40).min(0x800) as u64;
                     hex_dump(&api, data, 0, read_len, &format!("{field} entries"));
@@ -279,8 +275,7 @@ fn read_input_component() {
     let Some(api) = api_or_skip() else { return };
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
 
     let ic_offset = field_offset(&api, "Actor", "InputComponent");
     let Some(ic_off) = ic_offset else {
@@ -321,9 +316,7 @@ fn read_input_component() {
         match offset {
             Some(off) => {
                 let (data, num, max) = client::read_tarray(&api, input_comp, off);
-                println!(
-                    "{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}"
-                );
+                println!("{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}");
                 if num > 0 && data != 0 {
                     let read_len = (num * 0x40).min(0x400) as u64;
                     hex_dump(&api, data, 0, read_len, &format!("{field} entries"));
@@ -336,17 +329,12 @@ fn read_input_component() {
     // if it is EnhancedInputComponent, try its fields too
     if ic_class.contains("Enhanced") {
         print_all_fields(&api, "EnhancedInputComponent");
-        for field in [
-            "EnhancedActionBindings",
-            "InputActionBindings",
-        ] {
+        for field in ["EnhancedActionBindings", "InputActionBindings"] {
             let offset = field_offset(&api, "EnhancedInputComponent", field);
             match offset {
                 Some(off) => {
                     let (data, num, max) = client::read_tarray(&api, input_comp, off);
-                    println!(
-                        "{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}"
-                    );
+                    println!("{field}: offset=0x{off:X} data=0x{data:X} num={num} max={max}");
                     if num > 0 && data != 0 {
                         let read_len = (num * 0x60).min(0x800) as u64;
                         hex_dump(&api, data, 0, read_len, &format!("{field} entries"));
@@ -374,8 +362,8 @@ fn dump_input_function_parameters() {
     ];
 
     let input_keywords = [
-        "input", "key", "action", "axis", "mouse", "press", "release",
-        "held", "touch", "inject", "trigger", "bind", "mapping",
+        "input", "key", "action", "axis", "mouse", "press", "release", "held", "touch", "inject",
+        "trigger", "bind", "mapping",
     ];
 
     for class in classes {
@@ -436,8 +424,7 @@ fn decode_enhanced_action_mappings() {
     let api = api.with_timeout(std::time::Duration::from_secs(30));
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let controller = client::read_u64(
         &api,
         player.addr,
@@ -484,13 +471,18 @@ fn decode_enhanced_action_mappings() {
         let mut hits = 0;
         for i in 0..num.min(20) {
             let off = i * stride;
-            if off + 8 > raw.len() { break; }
+            if off + 8 > raw.len() {
+                break;
+            }
             let ptr = u64::from_le_bytes(raw[off..off + 8].try_into().unwrap());
             if ptr > 0x100_0000_0000 && ptr < 0x800_0000_0000_0000 {
                 hits += 1;
             }
         }
-        println!("  stride 0x{stride:02X}: {hits}/{} entries look like pointers", num.min(20));
+        println!(
+            "  stride 0x{stride:02X}: {hits}/{} entries look like pointers",
+            num.min(20)
+        );
         if hits > best_hits {
             best_hits = hits;
             best_stride = stride;
@@ -498,7 +490,10 @@ fn decode_enhanced_action_mappings() {
     }
     println!("best stride: 0x{best_stride:02X} ({best_hits} hits)\n");
 
-    println!("{:>4} {:>20} {:>20} {:>24}", "#", "action_ptr", "action_name", "key_name");
+    println!(
+        "{:>4} {:>20} {:>20} {:>24}",
+        "#", "action_ptr", "action_name", "key_name"
+    );
     println!("{}", "-".repeat(72));
 
     for i in 0..num {
@@ -534,15 +529,16 @@ fn decode_enhanced_action_mappings() {
     if let Some(mc_off) = mc_offset {
         let mc_ptr = client::read_u64(&api, controller, mc_off);
         if mc_ptr != 0 {
-            let mc_name = client::object_name(&api, mc_ptr)
-                .unwrap_or_else(|| "<unreadable>".into());
+            let mc_name =
+                client::object_name(&api, mc_ptr).unwrap_or_else(|| "<unreadable>".into());
             println!("\nMapping Context: 0x{mc_ptr:X} name={mc_name}");
 
             // Mappings TArray at +0x30 inside InputMappingContext
             let mappings_tarray = client::read_bytes(&api, mc_ptr, 0x30, 16);
             if mappings_tarray.len() >= 16 {
                 let mc_data = u64::from_le_bytes(mappings_tarray[0..8].try_into().unwrap());
-                let mc_num = u32::from_le_bytes(mappings_tarray[8..12].try_into().unwrap()) as usize;
+                let mc_num =
+                    u32::from_le_bytes(mappings_tarray[8..12].try_into().unwrap()) as usize;
                 println!("  InputMappingContext.Mappings: {mc_num} entries at 0x{mc_data:X}");
 
                 if mc_num > 0 && mc_num < 500 && mc_data > 0x100_0000_0000 {
@@ -550,7 +546,11 @@ fn decode_enhanced_action_mappings() {
                     let stride: usize = 0x50;
                     let total = mc_num * stride;
                     let mc_raw = client::read_bytes(&api, mc_data, 0, total as u64);
-                    println!("  read {} bytes for {} entries at stride 0x{stride:X}", mc_raw.len(), mc_num);
+                    println!(
+                        "  read {} bytes for {} entries at stride 0x{stride:X}",
+                        mc_raw.len(),
+                        mc_num
+                    );
 
                     println!("\n  {:>3} {:>30} {:>30}", "#", "action", "key");
                     println!("  {}", "-".repeat(66));
@@ -559,18 +559,24 @@ fn decode_enhanced_action_mappings() {
 
                     for i in 0..mc_num {
                         let off = i * stride;
-                        if off + 0x30 > mc_raw.len() { break; }
+                        if off + 0x30 > mc_raw.len() {
+                            break;
+                        }
 
-                        let action_ptr = u64::from_le_bytes(mc_raw[off + 0x20..off + 0x28].try_into().unwrap());
-                        let key_fname = u64::from_le_bytes(mc_raw[off + 0x28..off + 0x30].try_into().unwrap());
+                        let action_ptr =
+                            u64::from_le_bytes(mc_raw[off + 0x20..off + 0x28].try_into().unwrap());
+                        let key_fname =
+                            u64::from_le_bytes(mc_raw[off + 0x28..off + 0x30].try_into().unwrap());
 
-                        let action_name = if action_ptr > 0x1_0000_0000 && action_ptr < 0x800_0000_0000_0000 {
-                            client::object_name(&api, action_ptr).unwrap_or_else(|| format!("0x{action_ptr:X}"))
-                        } else if action_ptr == 0 {
-                            "<null>".into()
-                        } else {
-                            format!("<bad:0x{action_ptr:X}>")
-                        };
+                        let action_name =
+                            if action_ptr > 0x1_0000_0000 && action_ptr < 0x800_0000_0000_0000 {
+                                client::object_name(&api, action_ptr)
+                                    .unwrap_or_else(|| format!("0x{action_ptr:X}"))
+                            } else if action_ptr == 0 {
+                                "<null>".into()
+                            } else {
+                                format!("<bad:0x{action_ptr:X}>")
+                            };
 
                         let key_name = if key_fname != 0 && key_fname < 0x1_0000_0000 {
                             client::fname_to_string(&api, key_fname)
@@ -582,7 +588,9 @@ fn decode_enhanced_action_mappings() {
                         };
 
                         println!("  {i:3} {action_name:>30} {key_name:>30}");
-                        seen.entry(action_name.clone()).or_default().push(key_name.clone());
+                        seen.entry(action_name.clone())
+                            .or_default()
+                            .push(key_name.clone());
                     }
 
                     // summary: unique actions and their bound keys
@@ -605,8 +613,7 @@ fn observe_key_state_fields() {
     let api = api.with_timeout(std::time::Duration::from_secs(30));
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let controller = client::read_u64(
         &api,
         player.addr,
@@ -614,15 +621,18 @@ fn observe_key_state_fields() {
     );
     assert!(controller != 0, "controller is null");
 
-    let epi_offset = field_offset(&api, "PlayerController", "PlayerInput")
-        .expect("no PlayerInput field");
+    let epi_offset =
+        field_offset(&api, "PlayerController", "PlayerInput").expect("no PlayerInput field");
     let epi = client::read_u64(&api, controller, epi_offset);
     assert!(epi != 0, "EnhancedPlayerInput is null");
     println!("EnhancedPlayerInput: 0x{epi:X}");
 
     let dump_range: u64 = 0xA00;
     let snap1 = client::read_bytes(&api, epi, 0, dump_range);
-    println!("snapshot 1 (idle): {} bytes from EnhancedPlayerInput", snap1.len());
+    println!(
+        "snapshot 1 (idle): {} bytes from EnhancedPlayerInput",
+        snap1.len()
+    );
 
     let tarray_offsets: &[(&str, u64)] = &[
         ("EnhancedActionMappings", 0x538),
@@ -633,8 +643,13 @@ fn observe_key_state_fields() {
 
     for &(name, off) in tarray_offsets {
         if (off + 16) as usize <= snap1.len() {
-            let data = u64::from_le_bytes(snap1[off as usize..off as usize + 8].try_into().unwrap());
-            let num = u32::from_le_bytes(snap1[off as usize + 8..off as usize + 12].try_into().unwrap());
+            let data =
+                u64::from_le_bytes(snap1[off as usize..off as usize + 8].try_into().unwrap());
+            let num = u32::from_le_bytes(
+                snap1[off as usize + 8..off as usize + 12]
+                    .try_into()
+                    .unwrap(),
+            );
             println!("  +0x{off:03X} {name}: {num} entries, data=0x{data:X}");
         }
     }
@@ -669,7 +684,9 @@ fn observe_key_state_fields() {
     println!("\n=== DIFF (changed 8-byte values) ===");
     let compare_len = snap1.len().min(snap2.len());
     for off in (0..compare_len).step_by(8) {
-        if off + 8 > compare_len { break; }
+        if off + 8 > compare_len {
+            break;
+        }
         let v1 = u64::from_le_bytes(snap1[off..off + 8].try_into().unwrap());
         let v2 = u64::from_le_bytes(snap2[off..off + 8].try_into().unwrap());
         if v1 != v2 {
@@ -691,8 +708,11 @@ fn observe_key_state_fields() {
             // try every 8-byte value as a possible FName
             for fname_off in (0..64).step_by(8) {
                 let entry_off = i * 64 + fname_off;
-                if entry_off + 8 > kp_raw2.len() { break; }
-                let fname = u64::from_le_bytes(kp_raw2[entry_off..entry_off + 8].try_into().unwrap());
+                if entry_off + 8 > kp_raw2.len() {
+                    break;
+                }
+                let fname =
+                    u64::from_le_bytes(kp_raw2[entry_off..entry_off + 8].try_into().unwrap());
                 if fname != 0 && fname < 0x1_0000_0000 {
                     if let Some(name) = client::fname_to_string(&api, fname) {
                         println!("    entry[{i}]+0x{fname_off:02X}: {name}");
@@ -712,8 +732,7 @@ fn decode_key_state_map() {
     let api = api.with_timeout(std::time::Duration::from_secs(30));
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let controller = client::read_u64(
         &api,
         player.addr,
@@ -721,8 +740,8 @@ fn decode_key_state_map() {
     );
     assert!(controller != 0, "controller is null");
 
-    let epi_offset = field_offset(&api, "PlayerController", "PlayerInput")
-        .expect("no PlayerInput field");
+    let epi_offset =
+        field_offset(&api, "PlayerController", "PlayerInput").expect("no PlayerInput field");
     let epi = client::read_u64(&api, controller, epi_offset);
     assert!(epi != 0, "EnhancedPlayerInput is null");
     println!("EnhancedPlayerInput: 0x{epi:X}");
@@ -765,7 +784,10 @@ fn decode_key_state_map() {
     for row in 0..(region.len() / 16) {
         let off = row * 16;
         let abs_off = 0x400 + off;
-        let hex: Vec<String> = region[off..off + 16].iter().map(|b| format!("{b:02X}")).collect();
+        let hex: Vec<String> = region[off..off + 16]
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect();
         println!("  +0x{abs_off:03X}  {}", hex.join(" "));
     }
 
@@ -798,7 +820,9 @@ fn decode_key_state_map() {
     let region2 = client::read_bytes(&api, epi, 0x400, 0x300);
     println!("\n--- DIFF +0x400..+0x700 (idle vs holding W) ---");
     for off in (0..region.len().min(region2.len())).step_by(8) {
-        if off + 8 > region.len() || off + 8 > region2.len() { break; }
+        if off + 8 > region.len() || off + 8 > region2.len() {
+            break;
+        }
         let v1 = u64::from_le_bytes(region[off..off + 8].try_into().unwrap());
         let v2 = u64::from_le_bytes(region2[off..off + 8].try_into().unwrap());
         if v1 != v2 {
@@ -812,17 +836,29 @@ fn decode_key_state_map() {
     // check the known changed offsets for a data pointer
     for check_off in [0x5E0_u64, 0x5E8, 0x5F0, 0x5F8, 0x600, 0x608, 0x610] {
         let local = (check_off - 0x400) as usize;
-        if local + 16 > region2.len() { continue; }
+        if local + 16 > region2.len() {
+            continue;
+        }
         let ptr = u64::from_le_bytes(region2[local..local + 8].try_into().unwrap());
         let count = u32::from_le_bytes(region2[local + 8..local + 12].try_into().unwrap());
         let cap = u32::from_le_bytes(region2[local + 12..local + 16].try_into().unwrap());
-        if ptr > 0x1_0000_0000 && ptr < 0x800_0000_0000_0000 && count > 0 && count < 1000 && cap >= count {
-            println!("\n  potential TArray at +0x{check_off:03X}: ptr=0x{ptr:X} count={count} cap={cap}");
+        if ptr > 0x1_0000_0000
+            && ptr < 0x800_0000_0000_0000
+            && count > 0
+            && count < 1000
+            && cap >= count
+        {
+            println!(
+                "\n  potential TArray at +0x{check_off:03X}: ptr=0x{ptr:X} count={count} cap={cap}"
+            );
             let content = client::read_bytes(&api, ptr, 0, (count as u64 * 64).min(0x800));
             println!("  content ({} bytes):", content.len());
             for row in 0..(content.len().min(0x200) / 16) {
                 let o = row * 16;
-                let hex: Vec<String> = content[o..o + 16].iter().map(|b| format!("{b:02X}")).collect();
+                let hex: Vec<String> = content[o..o + 16]
+                    .iter()
+                    .map(|b| format!("{b:02X}"))
+                    .collect();
                 println!("    +0x{o:04X}  {}", hex.join(" "));
             }
             // resolve 8-byte values as UObject pointers
@@ -853,7 +889,10 @@ fn decode_key_state_map() {
     for row in 0..(low_region.len() / 16) {
         let off = row * 16;
         let abs_off = 0x28 + off;
-        let hex: Vec<String> = low_region[off..off + 16].iter().map(|b| format!("{b:02X}")).collect();
+        let hex: Vec<String> = low_region[off..off + 16]
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect();
         println!("  +0x{abs_off:03X}  {}", hex.join(" "));
     }
 
@@ -874,7 +913,8 @@ fn decode_key_state_map() {
                     println!("    first {} bytes:", arr.len());
                     for row in 0..(arr.len().min(0x100) / 16) {
                         let o = row * 16;
-                        let hex: Vec<String> = arr[o..o + 16].iter().map(|b| format!("{b:02X}")).collect();
+                        let hex: Vec<String> =
+                            arr[o..o + 16].iter().map(|b| format!("{b:02X}")).collect();
                         println!("      +0x{o:04X}  {}", hex.join(" "));
                     }
                     // try FName resolution on every 8 bytes
@@ -914,8 +954,7 @@ fn inject_forward_input() {
     let api = api.with_timeout(std::time::Duration::from_secs(30));
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let controller = client::read_u64(
         &api,
         player.addr,
@@ -952,7 +991,10 @@ fn inject_forward_input() {
 
     let sel = format!("addr:0x{:X}", player.addr);
     let pos_before = actor_location(&api, &sel);
-    println!("position before: {:.1}, {:.1}, {:.1}", pos_before[0], pos_before[1], pos_before[2]);
+    println!(
+        "position before: {:.1}, {:.1}, {:.1}",
+        pos_before[0], pos_before[1], pos_before[2]
+    );
 
     let start = std::time::Instant::now();
     let mut writes = 0u32;
@@ -969,7 +1011,10 @@ fn inject_forward_input() {
     println!("cleared ForwardInput");
 
     let pos_after = actor_location(&api, &sel);
-    println!("position after:  {:.1}, {:.1}, {:.1}", pos_after[0], pos_after[1], pos_after[2]);
+    println!(
+        "position after:  {:.1}, {:.1}, {:.1}",
+        pos_after[0], pos_after[1], pos_after[2]
+    );
 
     let dx = pos_after[0] - pos_before[0];
     let dy = pos_after[1] - pos_before[1];
@@ -1120,7 +1165,10 @@ fn identify_forward_input_writers() {
     let controller = client::read_u64(&api, player.addr, 0x2C8);
     let epi = client::read_u64(&api, controller, 0x408);
     assert_ne!(epi, 0, "no EnhancedPlayerInput");
-    let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+    let probe = api.op(
+        "watch_writes",
+        json!({"addr": epi, "len": 8, "duration_ms": 1}),
+    );
     let base_str = probe.result["exe_base"].as_str().expect("no exe_base");
     let base = u64::from_str_radix(base_str.trim_start_matches("0x"), 16).expect("bad exe_base");
     println!("exe base: 0x{base:X}");
@@ -1129,8 +1177,9 @@ fn identify_forward_input_writers() {
     // chain; override with WATCH_RVAS (comma-separated hex, first is
     // the writing instruction) to identify any other captured chain.
     let default_writer: u64 = 0x42f14d2;
-    let default_chain: Vec<u64> =
-        vec![0xf590f8, 0xf4dd41, 0xf6682d, 0x11af012, 0x7bf8140, 0x7be5918, 0x3cb9443];
+    let default_chain: Vec<u64> = vec![
+        0xf590f8, 0xf4dd41, 0xf6682d, 0x11af012, 0x7bf8140, 0x7be5918, 0x3cb9443,
+    ];
     let (writer_rva, chain_owned): (u64, Vec<u64>) = match std::env::var("WATCH_RVAS") {
         Ok(s) => {
             let v: Vec<u64> = s
@@ -1176,7 +1225,11 @@ fn identify_forward_input_writers() {
                 let entry_rva = entry - base;
                 let hex: String = prologue.iter().map(|b| format!("{b:02x} ")).collect();
                 let is_inputkey = prologue.len() >= 21 && prologue[..21] == inputkey_sig;
-                let mark = if is_inputkey { "  <== InputKey prologue MATCH" } else { "" };
+                let mark = if is_inputkey {
+                    "  <== InputKey prologue MATCH"
+                } else {
+                    ""
+                };
                 println!(
                     "{label:8} rva=+0x{addr_rva:<8x} fn_entry=+0x{entry_rva:<8x} \
                      prologue: {hex}{mark}"
@@ -1199,7 +1252,10 @@ fn identify_forward_input_writers() {
         for h in hits {
             if let Some(s) = h["fn_addr"].as_str() {
                 if let Ok(a) = u64::from_str_radix(s.trim_start_matches("0x"), 16) {
-                    println!("  prologue-scan hit 0x{a:X} = +0x{:x}", a.wrapping_sub(base));
+                    println!(
+                        "  prologue-scan hit 0x{a:X} = +0x{:x}",
+                        a.wrapping_sub(base)
+                    );
                 }
             }
         }
@@ -1220,7 +1276,12 @@ fn keystatemap_w_entries(api: &Api, epi: u64, w_idx: u32) -> Vec<(u64, u64)> {
         let ptr = u64::from_le_bytes(obj[off..off + 8].try_into().unwrap());
         let count = u32::from_le_bytes(obj[off + 8..off + 12].try_into().unwrap());
         let cap = u32::from_le_bytes(obj[off + 12..off + 16].try_into().unwrap());
-        if ptr < heap_lo || ptr >= heap_hi || count == 0 || count > 1000 || cap < count || cap > 8192
+        if ptr < heap_lo
+            || ptr >= heap_hi
+            || count == 0
+            || count > 1000
+            || cap < count
+            || cap > 8192
         {
             continue;
         }
@@ -1287,7 +1348,9 @@ fn find_inputkey_write() {
 
     for (hdr, entry) in &candidates {
         let addr = entry + woff;
-        println!("\n########## EPI+0x{hdr:X}: watch W entry 0x{entry:X} + 0x{woff:X} = 0x{addr:X} ##########");
+        println!(
+            "\n########## EPI+0x{hdr:X}: watch W entry 0x{entry:X} + 0x{woff:X} = 0x{addr:X} ##########"
+        );
         let res = api
             .op(
                 "watch_writes",
@@ -1296,12 +1359,17 @@ fn find_inputkey_write() {
             .result;
         let hits = res["hit_count"].as_u64().unwrap_or(0);
         println!("armed={} hit_count={}", res["threads_armed"], hits);
-        let Some(records) = res["records"].as_array() else { continue };
+        let Some(records) = res["records"].as_array() else {
+            continue;
+        };
         if records.is_empty() {
             println!("  no writes (not KeyStateMap, or wrong FKeyState offset)");
             continue;
         }
-        println!("  {} write(s) -- this block IS KeyStateMap; the writer is InputKey:", records.len());
+        println!(
+            "  {} write(s) -- this block IS KeyStateMap; the writer is InputKey:",
+            records.len()
+        );
         // One representative record is enough; they repeat.
         let rec = &records[0];
         println!(
@@ -1352,7 +1420,11 @@ fn test_bot_all_keys() {
         let _ = key(&api, vk, false);
         std::thread::sleep(std::time::Duration::from_millis(400));
         let after = actor_location(&api, &sel);
-        let (dx, dy, dz) = (after[0] - before[0], after[1] - before[1], after[2] - before[2]);
+        let (dx, dy, dz) = (
+            after[0] - before[0],
+            after[1] - before[1],
+            after[2] - before[2],
+        );
         let moved = (dx * dx + dy * dy + dz * dz).sqrt();
         println!("{name} (vk 0x{vk:X}): ok={} moved {moved:.1}", r.ok);
     }
@@ -1375,14 +1447,20 @@ fn test_bot_input_wired() {
     let sel = format!("addr:0x{:X}", player.addr);
 
     let before = actor_location(&api, &sel);
-    println!("before: {:.1}, {:.1}, {:.1}", before[0], before[1], before[2]);
+    println!(
+        "before: {:.1}, {:.1}, {:.1}",
+        before[0], before[1], before[2]
+    );
 
     // Press W through the bot's registered input surface (VK 0x57 = W).
     let press = api.op(
         "input.player.commands",
         json!({"commands": [{"kind": "key", "key": 0x57, "down": true}]}),
     );
-    println!("press W via input.player.commands: ok={} err={:?}", press.ok, press.error);
+    println!(
+        "press W via input.player.commands: ok={} err={:?}",
+        press.ok, press.error
+    );
 
     for _ in 0..6 {
         std::thread::sleep(std::time::Duration::from_millis(250));
@@ -1402,13 +1480,19 @@ fn test_bot_input_wired() {
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     let after_w = actor_location(&api, &sel);
-    let (dx, dy, dz) = (after_w[0] - before[0], after_w[1] - before[1], after_w[2] - before[2]);
+    let (dx, dy, dz) = (
+        after_w[0] - before[0],
+        after_w[1] - before[1],
+        after_w[2] - before[2],
+    );
     let moved = (dx * dx + dy * dy + dz * dz).sqrt();
     println!("walked {moved:.1} via bot key input");
 
     // Mouse look: a relative mouse delta through the surface.
     let look_before = api.op("input.player.pose", json!({}));
-    let yaw_before = look_before.result["pose"]["yaw_deg"].as_f64().unwrap_or(0.0);
+    let yaw_before = look_before.result["pose"]["yaw_deg"]
+        .as_f64()
+        .unwrap_or(0.0);
     let m = api.op(
         "input.player.commands",
         json!({"commands": [{"kind": "mouse_delta", "dx": 200, "dy": 0}]}),
@@ -1442,7 +1526,10 @@ fn test_inject_action_movement() {
     let epi = client::read_u64(&api, controller, 0x408);
 
     // The Enhanced Input subsystem instance.
-    let ss = api.op("walk_class", json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}));
+    let ss = api.op(
+        "walk_class",
+        json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}),
+    );
     let subsystem = ss.result["instances"][0]["addr"]
         .as_str()
         .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
@@ -1476,7 +1563,10 @@ fn test_inject_action_movement() {
     start[32] = 1; // ValueType at RawValue+0x18 = Axis1D
 
     let before = actor_location(&api, &sel);
-    println!("before: {:.1}, {:.1}, {:.1}", before[0], before[1], before[2]);
+    println!(
+        "before: {:.1}, {:.1}, {:.1}",
+        before[0], before[1], before[2]
+    );
 
     let r = api.call_ufunction(
         "EnhancedInputSubsystemInterface",
@@ -1484,7 +1574,10 @@ fn test_inject_action_movement() {
         &ss_sel,
         &start,
     );
-    println!("StartContinuousInputInjectionForAction: {:?}", r.map(|_| "ok"));
+    println!(
+        "StartContinuousInputInjectionForAction: {:?}",
+        r.map(|_| "ok")
+    );
 
     for _ in 0..6 {
         std::thread::sleep(std::time::Duration::from_millis(250));
@@ -1508,13 +1601,24 @@ fn test_inject_action_movement() {
     std::thread::sleep(std::time::Duration::from_millis(300));
 
     let after = actor_location(&api, &sel);
-    let (dx, dy, dz) = (after[0] - before[0], after[1] - before[1], after[2] - before[2]);
+    let (dx, dy, dz) = (
+        after[0] - before[0],
+        after[1] - before[1],
+        after[2] - before[2],
+    );
     let moved = (dx * dx + dy * dy + dz * dz).sqrt();
-    println!("after: {:.1}, {:.1}, {:.1}\ntotal moved: {moved:.1}", after[0], after[1], after[2]);
+    println!(
+        "after: {:.1}, {:.1}, {:.1}\ntotal moved: {moved:.1}",
+        after[0], after[1], after[2]
+    );
     if moved > 20.0 {
-        println!("\n*** SUCCESS: Enhanced Input injection walked the character {moved:.0} units ***");
+        println!(
+            "\n*** SUCCESS: Enhanced Input injection walked the character {moved:.0} units ***"
+        );
     } else {
-        println!("\nno movement ({moved:.1}); try ValueType=Boolean(0) or check the character is on foot");
+        println!(
+            "\nno movement ({moved:.1}); try ValueType=Boolean(0) or check the character is on foot"
+        );
     }
 }
 
@@ -1594,7 +1698,10 @@ fn watch_view_yaw() {
 
     let y = client::read_bytes(&api, yaw_addr, 0, 8);
     if y.len() == 8 {
-        println!("current yaw = {:.2}", f64::from_le_bytes(y.try_into().unwrap()));
+        println!(
+            "current yaw = {:.2}",
+            f64::from_le_bytes(y.try_into().unwrap())
+        );
     }
 
     let secs = 12u64;
@@ -1604,12 +1711,18 @@ fn watch_view_yaw() {
     );
 
     let res = api
-        .op("watch_writes", json!({"addr": yaw_addr, "len": 8, "mode": "write", "duration_ms": secs * 1000}))
+        .op(
+            "watch_writes",
+            json!({"addr": yaw_addr, "len": 8, "mode": "write", "duration_ms": secs * 1000}),
+        )
         .result;
     // Did ControlRotation yaw actually change (mouse reached the game)?
     let y2 = client::read_bytes(&api, yaw_addr, 0, 8);
     if y2.len() == 8 {
-        println!("yaw after window = {:.2}", f64::from_le_bytes(y2.try_into().unwrap()));
+        println!(
+            "yaw after window = {:.2}",
+            f64::from_le_bytes(y2.try_into().unwrap())
+        );
     }
     // Also read the pawn's actor rotation, in case the view lives there.
     let pawn_rot = client::read_bytes(&api, player.addr, 0x140, 24);
@@ -1621,7 +1734,8 @@ fn watch_view_yaw() {
         "exe {} base={} armed={} hit_count={}",
         res["exe_name"].as_str().unwrap_or("?"),
         res["exe_base"].as_str().unwrap_or("?"),
-        res["threads_armed"], res["hit_count"],
+        res["threads_armed"],
+        res["hit_count"],
     );
 
     let Some(records) = res["records"].as_array() else {
@@ -1629,7 +1743,9 @@ fn watch_view_yaw() {
         return;
     };
     if records.is_empty() {
-        println!("no writes to the view yaw. Either the mouse was not moved, or the view yaw is stored elsewhere.");
+        println!(
+            "no writes to the view yaw. Either the mouse was not moved, or the view yaw is stored elsewhere."
+        );
         return;
     }
     println!("\n{} write(s) to the view yaw:", records.len());
@@ -1659,7 +1775,9 @@ fn watch_view_yaw() {
             }
         }
     }
-    println!("\ndone. The writer + its call chain is the view-rotation path; trace it to the mouse-delta source.");
+    println!(
+        "\ndone. The writer + its call chain is the view-rotation path; trace it to the mouse-delta source."
+    );
 }
 
 #[test]
@@ -1671,19 +1789,34 @@ fn find_look_action() {
 
     let pose = |api: &Api| -> (f64, f64) {
         let p = &api.op("input.player.pose", json!({})).result["pose"];
-        (p["yaw_deg"].as_f64().unwrap_or(0.0), p["pitch_deg"].as_f64().unwrap_or(0.0))
+        (
+            p["yaw_deg"].as_f64().unwrap_or(0.0),
+            p["pitch_deg"].as_f64().unwrap_or(0.0),
+        )
     };
 
-    let ss = api.op("walk_class", json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}));
-    let subsystem = ss.result["instances"][0]["addr"].as_str().unwrap().to_string();
+    let ss = api.op(
+        "walk_class",
+        json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}),
+    );
+    let subsystem = ss.result["instances"][0]["addr"]
+        .as_str()
+        .unwrap()
+        .to_string();
 
     let actions = api.op("walk_class", json!({"class": "InputAction", "max": 200}));
-    let list = actions.result["instances"].as_array().cloned().unwrap_or_default();
+    let list = actions.result["instances"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     println!("{} InputAction objects\n", list.len());
 
     for a in &list {
         let name = a["name"].as_str().unwrap_or("?").to_string();
-        let addr = match a["addr"].as_str().and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok()) {
+        let addr = match a["addr"]
+            .as_str()
+            .and_then(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).ok())
+        {
             Some(v) => v,
             None => continue,
         };
@@ -1692,12 +1825,22 @@ fn find_look_action() {
         start[0..8].copy_from_slice(&addr.to_le_bytes());
         start[8..16].copy_from_slice(&100.0f64.to_le_bytes());
         start[32] = 1;
-        let _ = api.call_ufunction("EnhancedInputSubsystemInterface", "StartContinuousInputInjectionForAction", &subsystem, &start);
+        let _ = api.call_ufunction(
+            "EnhancedInputSubsystemInterface",
+            "StartContinuousInputInjectionForAction",
+            &subsystem,
+            &start,
+        );
         std::thread::sleep(std::time::Duration::from_millis(200));
         let (y1, p1) = pose(&api);
         let mut stop = [0u8; 8];
         stop.copy_from_slice(&addr.to_le_bytes());
-        let _ = api.call_ufunction("EnhancedInputSubsystemInterface", "StopContinuousInputInjectionForAction", &subsystem, &stop);
+        let _ = api.call_ufunction(
+            "EnhancedInputSubsystemInterface",
+            "StopContinuousInputInjectionForAction",
+            &subsystem,
+            &stop,
+        );
         std::thread::sleep(std::time::Duration::from_millis(100));
         let dyaw = y1 - y0;
         let dpitch = p1 - p0;
@@ -1728,15 +1871,25 @@ fn test_mouse_turn_only() {
             json!({"commands": [{"kind": "mouse_delta", "dx": 300, "dy": 0}]}),
         );
         std::thread::sleep(std::time::Duration::from_millis(250));
-        println!("after mouse dx=300 #{step}: ok={} yaw = {:.1}", r.ok, yaw(&api));
+        println!(
+            "after mouse dx=300 #{step}: ok={} yaw = {:.1}",
+            r.ok,
+            yaw(&api)
+        );
     }
 
     // Now try StartContinuousInputInjectionForAction on TurnInput.
     let player = client::resolve_selector(&api, "live_player").expect("no player");
     let controller = client::read_u64(&api, player.addr, 0x2C8);
     let epi = client::read_u64(&api, controller, 0x408);
-    let ss = api.op("walk_class", json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}));
-    let subsystem = ss.result["instances"][0]["addr"].as_str().unwrap().to_string();
+    let ss = api.op(
+        "walk_class",
+        json!({"class": "EnhancedInputLocalPlayerSubsystem", "max": 1}),
+    );
+    let subsystem = ss.result["instances"][0]["addr"]
+        .as_str()
+        .unwrap()
+        .to_string();
     // TurnInput action ptr from ActionInstanceData.
     let aid = client::read_u64(&api, epi, 0x598);
     let aid_num = client::read_u64(&api, epi, 0x5A0) as u32 as usize;
@@ -1776,7 +1929,10 @@ fn test_mouse_turn_only() {
             &subsystem,
             &stop,
         );
-        println!("StartContinuous TurnInput={val}: yaw {y0:.1} -> {y1:.1} (delta {:.1})", y1 - y0);
+        println!(
+            "StartContinuous TurnInput={val}: yaw {y0:.1} -> {y1:.1} (delta {:.1})",
+            y1 - y0
+        );
     }
 }
 
@@ -1790,12 +1946,21 @@ fn test_bot_navigate() {
     let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let sel = format!("addr:0x{:X}", player.addr);
     let start = actor_location(&api, &sel);
-    println!("player at {:.0}, {:.0}, {:.0}", start[0], start[1], start[2]);
+    println!(
+        "player at {:.0}, {:.0}, {:.0}",
+        start[0], start[1], start[2]
+    );
 
     // Target: offset from the player. Env overrides let a specific
     // reachable point be tried.
-    let off_x = std::env::var("TGT_DX").ok().and_then(|s| s.parse().ok()).unwrap_or(1200.0);
-    let off_y = std::env::var("TGT_DY").ok().and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let off_x = std::env::var("TGT_DX")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1200.0);
+    let off_y = std::env::var("TGT_DY")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.0);
     let tx = start[0] + off_x;
     let ty = start[1] + off_y;
     let tz = start[2];
@@ -1841,7 +2006,10 @@ fn research_navigation() {
     // Navigation system instance(s).
     for class in ["NavigationSystemV1", "RecastNavMesh"] {
         let r = api.op("walk_class", json!({"class": class, "max": 3}));
-        let n = r.result["instances"].as_array().map(|a| a.len()).unwrap_or(0);
+        let n = r.result["instances"]
+            .as_array()
+            .map(|a| a.len())
+            .unwrap_or(0);
         println!("walk_class({class}): {n} instance(s)");
         if let Some(first) = r.result["instances"].as_array().and_then(|a| a.first()) {
             println!("  {}", first["full_name"].as_str().unwrap_or("?"));
@@ -1876,7 +2044,10 @@ fn research_inject_action() {
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
     // Find the EnhancedInputLocalPlayerSubsystem instance.
-    for class in ["EnhancedInputLocalPlayerSubsystem", "EnhancedInputWorldSubsystem"] {
+    for class in [
+        "EnhancedInputLocalPlayerSubsystem",
+        "EnhancedInputWorldSubsystem",
+    ] {
         let r = api.op("walk_class", json!({"class": class, "max": 4}));
         println!("walk_class({class}): ok={} -> {}", r.ok, r.result);
         let r2 = api.op("walk_class_chain", json!({"class": class, "max": 4}));
@@ -1966,7 +2137,10 @@ fn test_inputkey_movement() {
         })
         .expect("no W FKey with valid FKeyDetails");
     let fkey_hex = hex::encode(fkey);
-    let slot = std::env::var("IK_SLOT").ok().and_then(|s| s.parse().ok()).unwrap_or(88u64);
+    let slot = std::env::var("IK_SLOT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(88u64);
 
     // ForwardInput entry in ActionInstanceData, to see if the action fires.
     let aid = client::read_u64(&api, epi, 0x598);
@@ -1981,13 +2155,19 @@ fn test_inputkey_movement() {
     }
 
     let before = actor_location(&api, &sel);
-    println!("before: {:.1}, {:.1}, {:.1}", before[0], before[1], before[2]);
+    println!(
+        "before: {:.1}, {:.1}, {:.1}",
+        before[0], before[1], before[2]
+    );
 
     let press = api.op(
         "try_inputkey",
         json!({"slot": slot, "key_name": "W", "pressed": true, "fkey_hex": fkey_hex}),
     );
-    println!("press slot {slot}: ok={} returned={}", press.ok, press.result["returned"]);
+    println!(
+        "press slot {slot}: ok={} returned={}",
+        press.ok, press.result["returned"]
+    );
 
     // Hold ~1.5s, re-asserting the down event, and sample position +
     // the ForwardInput action state.
@@ -2007,7 +2187,11 @@ fn test_inputkey_movement() {
             let v = client::read_bytes(&api, fi, 0x40, 8);
             (
                 t.first().copied().unwrap_or(0),
-                if v.len() == 8 { f64::from_le_bytes(v.try_into().unwrap()) } else { 0.0 },
+                if v.len() == 8 {
+                    f64::from_le_bytes(v.try_into().unwrap())
+                } else {
+                    0.0
+                },
             )
         } else {
             (0, 0.0)
@@ -2021,14 +2205,20 @@ fn test_inputkey_movement() {
     );
     std::thread::sleep(std::time::Duration::from_millis(300));
     let after = actor_location(&api, &sel);
-    let (dx, dy, dz) = (after[0] - before[0], after[1] - before[1], after[2] - before[2]);
+    let (dx, dy, dz) = (
+        after[0] - before[0],
+        after[1] - before[1],
+        after[2] - before[2],
+    );
     let moved = (dx * dx + dy * dy + dz * dz).sqrt();
     println!("after: {:.1}, {:.1}, {:.1}", after[0], after[1], after[2]);
     println!("total moved: {moved:.1}");
     if moved > 20.0 {
         println!("\n*** SUCCESS: InputKey slot {slot} walked the character {moved:.0} units ***");
     } else {
-        println!("\nplayer did not move much ({moved:.1}); check the character is on foot and free to walk");
+        println!(
+            "\nplayer did not move much ({moved:.1}); check the character is on foot and free to walk"
+        );
     }
 }
 
@@ -2081,7 +2271,14 @@ fn dump_w_fkey() {
              details=0x{details:X} details_ref=0x{details_ref:X}"
         );
         let valid = details > 0x1_0000_0000;
-        println!("  FKeyDetails pointer is {}", if valid { "VALID (usable)" } else { "null/invalid" });
+        println!(
+            "  FKeyDetails pointer is {}",
+            if valid {
+                "VALID (usable)"
+            } else {
+                "null/invalid"
+            }
+        );
     }
 }
 
@@ -2165,7 +2362,9 @@ fn find_inputkey_slot_via_iskeydown() {
         let after = is_down(&api);
         println!("slot {slot}: after press IsInputKeyDown(W)={down}, after release={after}");
         if down && !after {
-            println!("\n*** slot {slot} IS InputKey: it set W down in KeyStateMap and release cleared it ***");
+            println!(
+                "\n*** slot {slot} IS InputKey: it set W down in KeyStateMap and release cleared it ***"
+            );
             let _ = api.op(
                 "try_inputkey",
                 json!({"slot": slot, "key_name": "W", "pressed": false, "fkey_hex": fkey_hex}),
@@ -2173,7 +2372,9 @@ fn find_inputkey_slot_via_iskeydown() {
             return;
         }
     }
-    println!("\nno slot toggled IsInputKeyDown(W). If none worked, InputKey may need a valid FKeyDetails.");
+    println!(
+        "\nno slot toggled IsInputKeyDown(W). If none worked, InputKey may need a valid FKeyDetails."
+    );
 }
 
 #[test]
@@ -2221,14 +2422,20 @@ fn verify_inputkey_via_action() {
     // crashes when called with FInputKeyParams (wrong-shaped callee).
     let slots = [87usize, 88, 89, 90, 91, 92, 94, 95, 96, 97, 98, 99];
     for slot in slots {
-        let press = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": true}));
+        let press = api.op(
+            "try_inputkey",
+            json!({"slot": slot, "key_name": "W", "pressed": true}),
+        );
         if !press.ok {
             println!("slot {slot}: press failed: {:?}", press.error);
             continue;
         }
         std::thread::sleep(std::time::Duration::from_millis(300));
         let (tb, vf) = read_trigger(&api);
-        let _ = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": false}));
+        let _ = api.op(
+            "try_inputkey",
+            json!({"slot": slot, "key_name": "W", "pressed": false}),
+        );
         std::thread::sleep(std::time::Duration::from_millis(200));
         let (tb_after, vf_after) = read_trigger(&api);
         println!(
@@ -2237,12 +2444,17 @@ fn verify_inputkey_via_action() {
         );
         if tb == 2 || vf > 0.5 {
             println!("\n*** slot {slot} IS InputKey: calling it fired the ForwardInput action ***");
-            let _ = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": false}));
+            let _ = api.op(
+                "try_inputkey",
+                json!({"slot": slot, "key_name": "W", "pressed": false}),
+            );
             return;
         }
     }
-    println!("\nno slot fired ForwardInput. If none worked, the game may be paused/at a menu, \
-              or InputKey needs a valid FKeyDetails.");
+    println!(
+        "\nno slot fired ForwardInput. If none worked, the game may be paused/at a menu, \
+              or InputKey needs a valid FKeyDetails."
+    );
 }
 
 #[test]
@@ -2256,15 +2468,24 @@ fn dump_epi_vtable_rvas() {
     let epi = client::read_u64(&api, controller, 0x408);
     assert_ne!(epi, 0, "no EnhancedPlayerInput");
 
-    let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+    let probe = api.op(
+        "watch_writes",
+        json!({"addr": epi, "len": 8, "duration_ms": 1}),
+    );
     let base = u64::from_str_radix(
-        probe.result["exe_base"].as_str().unwrap().trim_start_matches("0x"),
+        probe.result["exe_base"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
         16,
     )
     .unwrap();
     let exe_end = base
         + u64::from_str_radix(
-            probe.result["exe_size"].as_str().unwrap().trim_start_matches("0x"),
+            probe.result["exe_size"]
+                .as_str()
+                .unwrap()
+                .trim_start_matches("0x"),
             16,
         )
         .unwrap();
@@ -2309,20 +2530,32 @@ fn sweep_inputkey_slots() {
 
     // bl-sdk calls InputKey at EnhancedPlayerInput vtable index ~85;
     // MISERY's EnhancedInput plugin virtuals sit at slots 87-99.
-    let start: usize = std::env::var("SLOT_START").ok().and_then(|s| s.parse().ok()).unwrap_or(85);
-    let end: usize = std::env::var("SLOT_END").ok().and_then(|s| s.parse().ok()).unwrap_or(100);
+    let start: usize = std::env::var("SLOT_START")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(85);
+    let end: usize = std::env::var("SLOT_END")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
 
     println!("sweeping EnhancedPlayerInput vtable slots {start}..{end} calling InputKey(W)\n");
 
     for slot in start..end {
         let before = actor_location(&api, &sel);
-        let press = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": true}));
+        let press = api.op(
+            "try_inputkey",
+            json!({"slot": slot, "key_name": "W", "pressed": true}),
+        );
         if !press.ok {
             println!("slot {slot}: press failed: {:?}", press.error);
             continue;
         }
         std::thread::sleep(std::time::Duration::from_millis(700));
-        let _rel = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": false}));
+        let _rel = api.op(
+            "try_inputkey",
+            json!({"slot": slot, "key_name": "W", "pressed": false}),
+        );
         std::thread::sleep(std::time::Duration::from_millis(200));
         let after = actor_location(&api, &sel);
         let dx = after[0] - before[0];
@@ -2334,14 +2567,21 @@ fn sweep_inputkey_slots() {
             press.result["returned"]
         );
         if moved > 5.0 {
-            println!("\n*** slot {slot} IS InputKey: calling it with W moved the player {moved:.1} units ***");
+            println!(
+                "\n*** slot {slot} IS InputKey: calling it with W moved the player {moved:.1} units ***"
+            );
             // Make sure the key is released.
-            let _ = api.op("try_inputkey", json!({"slot": slot, "key_name": "W", "pressed": false}));
+            let _ = api.op(
+                "try_inputkey",
+                json!({"slot": slot, "key_name": "W", "pressed": false}),
+            );
             return;
         }
     }
-    println!("\nno slot in {start}..{end} moved the player. Widen the range, or the \
-              player cannot move right now (menu / not on ground).");
+    println!(
+        "\nno slot in {start}..{end} moved the player. Widen the range, or the \
+              player cannot move right now (menu / not on ground)."
+    );
 }
 
 #[test]
@@ -2371,9 +2611,15 @@ fn find_inputkey_by_param() {
         .unwrap_or(0);
     println!("W FName index = 0x{w_idx:X}, W FKeyDetails ptr = 0x{w_details:X}\n");
 
-    let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+    let probe = api.op(
+        "watch_writes",
+        json!({"addr": epi, "len": 8, "duration_ms": 1}),
+    );
     let base = u64::from_str_radix(
-        probe.result["exe_base"].as_str().unwrap().trim_start_matches("0x"),
+        probe.result["exe_base"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
         16,
     )
     .unwrap();
@@ -2407,8 +2653,11 @@ fn find_inputkey_by_param() {
             continue;
         };
         let reg = |n: &str| {
-            u64::from_str_radix(rec[n].as_str().unwrap_or("0x0").trim_start_matches("0x"), 16)
-                .unwrap_or(0)
+            u64::from_str_radix(
+                rec[n].as_str().unwrap_or("0x0").trim_start_matches("0x"),
+                16,
+            )
+            .unwrap_or(0)
         };
         let mut found = false;
         for n in ["rcx", "rdx", "r8", "r9"] {
@@ -2430,7 +2679,11 @@ fn find_inputkey_by_param() {
                     let strong = w_details != 0 && d == w_details;
                     println!(
                         "*** +0x{rva:x}: W FName in [{n}]+0x{o:X}{} -> this frame receives W's FKey (InputKey)",
-                        if strong { " with matching FKeyDetails" } else { "" }
+                        if strong {
+                            " with matching FKeyDetails"
+                        } else {
+                            ""
+                        }
                     );
                     found = true;
                 }
@@ -2440,7 +2693,10 @@ fn find_inputkey_by_param() {
         if !found {
             println!(
                 "+0x{rva:<8x} ran; args carry no W FKey (rcx=0x{:X} rdx=0x{:X} r8=0x{:X} r9=0x{:X})",
-                reg("rcx"), reg("rdx"), reg("r8"), reg("r9")
+                reg("rcx"),
+                reg("rdx"),
+                reg("r8"),
+                reg("r9")
             );
         }
     }
@@ -2471,7 +2727,10 @@ fn read_op_guards_bad_pointer() {
             json!({"instance_selector": format!("addr:0x{a:X}"), "length": 64}),
         );
         println!("read 0x{a:X}: ok={} error={:?}", r.ok, r.error);
-        assert!(!r.ok, "read of bad address 0x{a:X} should be rejected, not succeed");
+        assert!(
+            !r.ok,
+            "read of bad address 0x{a:X} should be rejected, not succeed"
+        );
     }
 
     // write_bytes must reject the same bad pointers (an unmapped or
@@ -2482,7 +2741,10 @@ fn read_op_guards_bad_pointer() {
             json!({"instance_selector": format!("addr:0x{a:X}"), "bytes_hex": "00"}),
         );
         println!("write 0x{a:X}: ok={} error={:?}", r.ok, r.error);
-        assert!(!r.ok, "write to bad address 0x{a:X} should be rejected, not succeed");
+        assert!(
+            !r.ok,
+            "write to bad address 0x{a:X} should be rejected, not succeed"
+        );
     }
 
     // The decisive proof: the game and its control plane are still
@@ -2493,7 +2755,11 @@ fn read_op_guards_bad_pointer() {
         "read_bytes",
         json!({"instance_selector": format!("addr:0x{:X}", player.addr), "length": 16}),
     );
-    assert!(after.ok, "control plane died after bad reads: {:?}", after.error);
+    assert!(
+        after.ok,
+        "control plane died after bad reads: {:?}",
+        after.error
+    );
     println!("\nSUCCESS: bad pointers rejected, game still alive (valid read still works)");
 }
 
@@ -2516,9 +2782,15 @@ fn decode_inputkeyparams() {
     println!("W FName comparison_index = {w_idx} (0x{w_idx:X})\n");
 
     // exe base.
-    let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+    let probe = api.op(
+        "watch_writes",
+        json!({"addr": epi, "len": 8, "duration_ms": 1}),
+    );
     let base = u64::from_str_radix(
-        probe.result["exe_base"].as_str().unwrap().trim_start_matches("0x"),
+        probe.result["exe_base"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
         16,
     )
     .unwrap();
@@ -2544,10 +2816,18 @@ fn decode_inputkeyparams() {
     };
 
     let reg = |name: &str| -> u64 {
-        u64::from_str_radix(rec[name].as_str().unwrap_or("0x0").trim_start_matches("0x"), 16)
-            .unwrap_or(0)
+        u64::from_str_radix(
+            rec[name].as_str().unwrap_or("0x0").trim_start_matches("0x"),
+            16,
+        )
+        .unwrap_or(0)
     };
-    let regs = [("rcx", reg("rcx")), ("rdx", reg("rdx")), ("r8", reg("r8")), ("r9", reg("r9"))];
+    let regs = [
+        ("rcx", reg("rcx")),
+        ("rdx", reg("rdx")),
+        ("r8", reg("r8")),
+        ("r9", reg("r9")),
+    ];
     for (n, v) in &regs {
         println!("  {n} = 0x{v:X}");
     }
@@ -2581,7 +2861,10 @@ fn decode_inputkeyparams() {
         while off + 4 <= buf.len() {
             let v = u32::from_le_bytes(buf[off..off + 4].try_into().unwrap());
             if v == w_idx {
-                println!("  *** W FName index at {label}+0x{off:X} (abs 0x{:X}) ***", at + off as u64);
+                println!(
+                    "  *** W FName index at {label}+0x{off:X} (abs 0x{:X}) ***",
+                    at + off as u64
+                );
             }
             off += 4;
         }
@@ -2628,9 +2911,15 @@ fn name_inputkey_by_rcx() {
     println!("EnhancedPlayerInput: 0x{epi:X}");
 
     // exe base from a 1 ms throwaway watch.
-    let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+    let probe = api.op(
+        "watch_writes",
+        json!({"addr": epi, "len": 8, "duration_ms": 1}),
+    );
     let base = u64::from_str_radix(
-        probe.result["exe_base"].as_str().expect("no exe_base").trim_start_matches("0x"),
+        probe.result["exe_base"]
+            .as_str()
+            .expect("no exe_base")
+            .trim_start_matches("0x"),
         16,
     )
     .expect("bad exe_base");
@@ -2663,12 +2952,18 @@ fn name_inputkey_by_rcx() {
             continue;
         };
         let rcx = u64::from_str_radix(
-            rec["rcx"].as_str().unwrap_or("0x0").trim_start_matches("0x"),
+            rec["rcx"]
+                .as_str()
+                .unwrap_or("0x0")
+                .trim_start_matches("0x"),
             16,
         )
         .unwrap_or(0);
         let rdx = u64::from_str_radix(
-            rec["rdx"].as_str().unwrap_or("0x0").trim_start_matches("0x"),
+            rec["rdx"]
+                .as_str()
+                .unwrap_or("0x0")
+                .trim_start_matches("0x"),
             16,
         )
         .unwrap_or(0);
@@ -2690,8 +2985,10 @@ fn name_inputkey_by_rcx() {
             println!("  FInputKeyParams at 0x{rdx:X} ({} bytes):", params.len());
             for row in 0..(params.len() / 16) {
                 let o = row * 16;
-                let hex: Vec<String> =
-                    params[o..o + 16].iter().map(|x| format!("{x:02X}")).collect();
+                let hex: Vec<String> = params[o..o + 16]
+                    .iter()
+                    .map(|x| format!("{x:02X}"))
+                    .collect();
                 println!("    +0x{o:02X}  {}", hex.join(" "));
             }
             // FKey FName is the first 4 bytes; resolve it.
@@ -2754,7 +3051,12 @@ fn decode_keystatemap_find_w() {
         let ptr = u64::from_le_bytes(obj[off..off + 8].try_into().unwrap());
         let count = u32::from_le_bytes(obj[off + 8..off + 12].try_into().unwrap());
         let cap = u32::from_le_bytes(obj[off + 12..off + 16].try_into().unwrap());
-        if ptr < heap_lo || ptr >= heap_hi || count == 0 || count > 1000 || cap < count || cap > 8192
+        if ptr < heap_lo
+            || ptr >= heap_hi
+            || count == 0
+            || count > 1000
+            || cap < count
+            || cap > 8192
         {
             continue;
         }
@@ -2782,9 +3084,7 @@ fn decode_keystatemap_find_w() {
             continue;
         }
 
-        println!(
-            "CANDIDATE header at EPI+0x{hdr_off:X}: ptr=0x{ptr:X} count={count} cap={cap}"
-        );
+        println!("CANDIDATE header at EPI+0x{hdr_off:X}: ptr=0x{ptr:X} count={count} cap={cap}");
         for (name, boff) in &found {
             println!(
                 "  key {name:10} at block+0x{boff:X}  ->  entry FName addr 0x{:X}",
@@ -2800,8 +3100,10 @@ fn decode_keystatemap_find_w() {
             let entry = client::read_bytes(&api, w_addr, 0, 0x60);
             for row in 0..(entry.len() / 16) {
                 let o = row * 16;
-                let hex: Vec<String> =
-                    entry[o..o + 16].iter().map(|x| format!("{x:02X}")).collect();
+                let hex: Vec<String> = entry[o..o + 16]
+                    .iter()
+                    .map(|x| format!("{x:02X}"))
+                    .collect();
                 println!("    +0x{o:02X}  {}", hex.join(" "));
             }
         }
@@ -2836,9 +3138,15 @@ fn verify_inputkey_candidate_executes() {
         let player = client::resolve_selector(&api, "live_player").expect("no live player");
         let controller = client::read_u64(&api, player.addr, 0x2C8);
         let epi = client::read_u64(&api, controller, 0x408);
-        let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+        let probe = api.op(
+            "watch_writes",
+            json!({"addr": epi, "len": 8, "duration_ms": 1}),
+        );
         let base = u64::from_str_radix(
-            probe.result["exe_base"].as_str().expect("no exe_base").trim_start_matches("0x"),
+            probe.result["exe_base"]
+                .as_str()
+                .expect("no exe_base")
+                .trim_start_matches("0x"),
             16,
         )
         .expect("bad exe_base");
@@ -2874,7 +3182,10 @@ fn verify_inputkey_candidate_executes() {
             } else {
                 "many threads (hot utility)"
             };
-            println!("  fn +0x{rva:<8x} hits={hits:<3} distinct_tids={} -> {verdict}", tids.len());
+            println!(
+                "  fn +0x{rva:<8x} hits={hits:<3} distinct_tids={} -> {verdict}",
+                tids.len()
+            );
         }
         println!("\ndone. The single-thread, few-hits function is InputKey.");
         return;
@@ -2884,14 +3195,21 @@ fn verify_inputkey_candidate_executes() {
     // (hex), so a known-good function can be used as a positive
     // control. Default: the prologue-scan InputKey candidate.
     let candidate = if let Ok(rva_s) = std::env::var("WATCH_EXEC_RVA") {
-        let rva = u64::from_str_radix(rva_s.trim_start_matches("0x"), 16).expect("bad WATCH_EXEC_RVA");
+        let rva =
+            u64::from_str_radix(rva_s.trim_start_matches("0x"), 16).expect("bad WATCH_EXEC_RVA");
         // Fetch base from a 1 ms throwaway watch on the live EPI.
         let player = client::resolve_selector(&api, "live_player").expect("no live player");
         let controller = client::read_u64(&api, player.addr, 0x2C8);
         let epi = client::read_u64(&api, controller, 0x408);
-        let probe = api.op("watch_writes", json!({"addr": epi, "len": 8, "duration_ms": 1}));
+        let probe = api.op(
+            "watch_writes",
+            json!({"addr": epi, "len": 8, "duration_ms": 1}),
+        );
         let base = u64::from_str_radix(
-            probe.result["exe_base"].as_str().expect("no exe_base").trim_start_matches("0x"),
+            probe.result["exe_base"]
+                .as_str()
+                .expect("no exe_base")
+                .trim_start_matches("0x"),
             16,
         )
         .expect("bad exe_base");
@@ -2979,7 +3297,10 @@ fn dump_inputkey_fn_bytes() {
     // and look for functions that take 2 params (this + FInputKeyParams*).
     // Dump controller slot 130 (thunk target from slot 100) in detail
     println!("=== CONTROLLER slot 130 (512 bytes) ===");
-    let r = api.op("dump_fn_bytes", json!({"target": "controller", "slot": 130, "count": 512}));
+    let r = api.op(
+        "dump_fn_bytes",
+        json!({"target": "controller", "slot": 130, "count": 512}),
+    );
     if let Some(lines) = r.result["hex"].as_array() {
         for line in lines {
             println!("{}", line.as_str().unwrap_or(""));
@@ -2988,7 +3309,10 @@ fn dump_inputkey_fn_bytes() {
 
     // Also dump controller slots 97 and 98 (both check rdx null)
     println!("\n=== CONTROLLER slot 97 (256 bytes) ===");
-    let r = api.op("dump_fn_bytes", json!({"target": "controller", "slot": 97, "count": 256}));
+    let r = api.op(
+        "dump_fn_bytes",
+        json!({"target": "controller", "slot": 97, "count": 256}),
+    );
     if let Some(lines) = r.result["hex"].as_array() {
         for line in lines {
             println!("{}", line.as_str().unwrap_or(""));
@@ -2996,7 +3320,10 @@ fn dump_inputkey_fn_bytes() {
     }
 
     println!("\n=== CONTROLLER slot 98 (256 bytes) ===");
-    let r = api.op("dump_fn_bytes", json!({"target": "controller", "slot": 98, "count": 256}));
+    let r = api.op(
+        "dump_fn_bytes",
+        json!({"target": "controller", "slot": 98, "count": 256}),
+    );
     if let Some(lines) = r.result["hex"].as_array() {
         for line in lines {
             println!("{}", line.as_str().unwrap_or(""));
@@ -3005,11 +3332,14 @@ fn dump_inputkey_fn_bytes() {
 
     println!("=== CONTROLLER vtable (first 16 bytes per slot, slots 125-200) ===");
     for slot in 125u64..200 {
-        let r = api.op("dump_fn_bytes", json!({
-            "target": "controller",
-            "slot": slot,
-            "count": 32,
-        }));
+        let r = api.op(
+            "dump_fn_bytes",
+            json!({
+                "target": "controller",
+                "slot": slot,
+                "count": 32,
+            }),
+        );
         if r.ok {
             let addr = r.result["fn_addr"].as_str().unwrap_or("?");
             if let Some(lines) = r.result["hex"].as_array() {
@@ -3040,7 +3370,10 @@ fn find_inputkey_by_scan() {
 
     let r = api.op("find_inputkey", json!({}));
     println!("find_inputkey: ok={} error={:?}", r.ok, r.error);
-    println!("{}", serde_json::to_string_pretty(&r.result).unwrap_or_default());
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&r.result).unwrap_or_default()
+    );
 }
 
 #[test]
@@ -3068,9 +3401,15 @@ fn find_inputkey_ufunction() {
             })
             .collect();
         if matches.is_empty() {
-            println!("{class}: no InputKey-related UFunctions found among {} total", functions.len());
+            println!(
+                "{class}: no InputKey-related UFunctions found among {} total",
+                functions.len()
+            );
         } else {
-            println!("{class}: found {} InputKey-related UFunctions:", matches.len());
+            println!(
+                "{class}: found {} InputKey-related UFunctions:",
+                matches.len()
+            );
             for f in &matches {
                 let name = f["name"].as_str().unwrap_or("?");
                 let parms = f["parms_size"].as_u64().unwrap_or(0);
@@ -3088,8 +3427,7 @@ fn dump_playerinput_vtable() {
     let Some(api) = api_or_skip() else { return };
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let controller_addr = client::read_u64(&api, player.addr, 0x2C8);
     assert_ne!(controller_addr, 0, "no controller");
     let pi_addr = client::read_u64(&api, controller_addr, 0x408);
@@ -3125,7 +3463,10 @@ fn dump_playerinput_vtable() {
         .filter(|(_, addr)| *addr >= 0x7FF6A5590000 && *addr < 0x7FF6A5C00000)
         .copied()
         .collect();
-    println!("\n--- EnhancedInput plugin functions ({} unique) ---", enhanced_input_slots.len());
+    println!(
+        "\n--- EnhancedInput plugin functions ({} unique) ---",
+        enhanced_input_slots.len()
+    );
     for (slot, addr) in &enhanced_input_slots {
         let bytes = client::read_bytes(&api, *addr, 0, 256);
         if bytes.is_empty() {
@@ -3143,20 +3484,28 @@ fn call_inputkey_vtable() {
     let Some(api) = api_or_skip() else { return };
     assert!(offsets_live(&api), "MISERY offsets are not live");
 
-    let player = client::resolve_selector(&api, "live_player")
-        .expect("no live player");
+    let player = client::resolve_selector(&api, "live_player").expect("no live player");
     let sel = format!("addr:0x{:X}", player.addr);
     let pos_before = actor_location(&api, &sel);
-    println!("position before: {:.1}, {:.1}, {:.1}", pos_before[0], pos_before[1], pos_before[2]);
+    println!(
+        "position before: {:.1}, {:.1}, {:.1}",
+        pos_before[0], pos_before[1], pos_before[2]
+    );
 
     let slot: u64 = 0; // unused, InputKey found by patternsleuth now
     println!("calling InputKey (found by patternsleuth) on controller with W pressed...");
-    let r = api.op("try_inputkey", json!({
-        "slot": slot,
-        "key_name": "W",
-        "pressed": true,
-    }));
-    println!("press result: ok={} result={} error={:?}", r.ok, r.result, r.error);
+    let r = api.op(
+        "try_inputkey",
+        json!({
+            "slot": slot,
+            "key_name": "W",
+            "pressed": true,
+        }),
+    );
+    println!(
+        "press result: ok={} result={} error={:?}",
+        r.ok, r.result, r.error
+    );
     if !r.ok {
         println!("FAILED: try_inputkey returned error");
         return;
@@ -3164,15 +3513,24 @@ fn call_inputkey_vtable() {
 
     std::thread::sleep(std::time::Duration::from_secs(2));
 
-    let r = api.op("try_inputkey", json!({
-        "slot": slot,
-        "key_name": "W",
-        "pressed": false,
-    }));
-    println!("release result: ok={} result={} error={:?}", r.ok, r.result, r.error);
+    let r = api.op(
+        "try_inputkey",
+        json!({
+            "slot": slot,
+            "key_name": "W",
+            "pressed": false,
+        }),
+    );
+    println!(
+        "release result: ok={} result={} error={:?}",
+        r.ok, r.result, r.error
+    );
 
     let pos_after = actor_location(&api, &sel);
-    println!("position after:  {:.1}, {:.1}, {:.1}", pos_after[0], pos_after[1], pos_after[2]);
+    println!(
+        "position after:  {:.1}, {:.1}, {:.1}",
+        pos_after[0], pos_after[1], pos_after[2]
+    );
 
     let dx = pos_after[0] - pos_before[0];
     let dy = pos_after[1] - pos_before[1];

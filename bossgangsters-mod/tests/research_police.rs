@@ -25,7 +25,10 @@ fn police_live_tuning() {
         return;
     };
 
-    let rel = api.op("read_field", json!({"handle": police, "field": "relationship"}));
+    let rel = api.op(
+        "read_field",
+        json!({"handle": police, "field": "relationship"}),
+    );
     if rel.ok {
         if let Some(h) = handle_in(&rel.result) {
             let v = api.op("read_field", json!({"handle": h, "field": "Value"}));
@@ -35,7 +38,10 @@ fn police_live_tuning() {
         }
     }
 
-    let table = api.op("read_field", json!({"handle": police, "field": "crimeTable"}));
+    let table = api.op(
+        "read_field",
+        json!({"handle": police, "field": "crimeTable"}),
+    );
     if table.ok {
         if let Some(h) = handle_in(&table.result) {
             let dump = api.op("inspect_object", json!({"handle": h}));
@@ -51,19 +57,35 @@ fn police_live_tuning() {
     // {score, cooldown}. CrimeType 0..12 (13 entries counted).
     if let Some(h) = table.ok.then(|| handle_in(&table.result)).flatten() {
         let names = [
-            "PedestrianKill", "DrugDealer", "DrugDealAttempt", "HumanTrafficker", "CarSteal",
-            "ClubRaid", "TributeCapture", "TaxiScam", "Pickpocket", "PoliceShoot", "PoliceKill",
-            "VehicleExplosion", "IllegalDrinkFatality",
+            "PedestrianKill",
+            "DrugDealer",
+            "DrugDealAttempt",
+            "HumanTrafficker",
+            "CarSteal",
+            "ClubRaid",
+            "TributeCapture",
+            "TaxiScam",
+            "Pickpocket",
+            "PoliceShoot",
+            "PoliceKill",
+            "VehicleExplosion",
+            "IllegalDrinkFatality",
         ];
         for (i, name) in names.iter().enumerate() {
-            let item = api.op("invoke_method", json!({"handle": h, "method": "get_Item", "args": [i]}));
+            let item = api.op(
+                "invoke_method",
+                json!({"handle": h, "method": "get_Item", "args": [i]}),
+            );
             let Some(data) = item.ok.then(|| handle_in(&item.result)).flatten() else {
                 println!("crime {name}: not in table");
                 continue;
             };
             let score = api.op("read_field", json!({"handle": data, "field": "score"}));
             let cooldown = api.op("read_field", json!({"handle": data, "field": "cooldown"}));
-            println!("crime {name}: score {} cooldown {}", score.result, cooldown.result);
+            println!(
+                "crime {name}: score {} cooldown {}",
+                score.result, cooldown.result
+            );
         }
     }
 
@@ -86,7 +108,10 @@ fn police_live_tuning() {
             "enableChaseShooting",
         ] {
             let r = api.op("read_field", json!({"handle": h, "field": field}));
-            println!("settings.{field} = {}", if r.ok { r.result } else { json!(r.error) });
+            println!(
+                "settings.{field} = {}",
+                if r.ok { r.result } else { json!(r.error) }
+            );
         }
     } else {
         println!("settings: read failed ({:?})", settings.error);

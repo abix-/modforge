@@ -22,12 +22,7 @@ const GRID_COLUMNS: i32 = 5;
 pub fn install() {
     let cfg = settings::get().get();
 
-    match patch_prefix_ctx(
-        "Inventory",
-        "Awake",
-        HookCtx::Instance,
-        on_inventory_awake,
-    ) {
+    match patch_prefix_ctx("Inventory", "Awake", HookCtx::Instance, on_inventory_awake) {
         Ok(hook) => {
             HOOK_REGISTRY.register(hook);
             unityforge::mono::log(
@@ -44,7 +39,12 @@ pub fn install() {
         ),
     }
 
-    match patch_prefix_ctx("Inventory", "Start", HookCtx::Instance, on_inventory_start_prefix) {
+    match patch_prefix_ctx(
+        "Inventory",
+        "Start",
+        HookCtx::Instance,
+        on_inventory_start_prefix,
+    ) {
         Ok(hook) => HOOK_REGISTRY.register(hook),
         Err(e) => unityforge::mono::log(
             unityforge::mono::LogLevel::Warn,
@@ -306,10 +306,7 @@ fn dump_trade_info() {
         }
     };
 
-    let Some(trades) = trades_json
-        .get("instances")
-        .and_then(|v| v.as_array())
-    else {
+    let Some(trades) = trades_json.get("instances").and_then(|v| v.as_array()) else {
         unityforge::mono::log(
             unityforge::mono::LogLevel::Warn,
             "obenseuer-mod: trade dump: walk returned no instances array",
@@ -323,7 +320,9 @@ fn dump_trade_info() {
     );
 
     for (i, trade_val) in trades.iter().enumerate() {
-        let Some(h) = json_handle(trade_val) else { continue };
+        let Some(h) = json_handle(trade_val) else {
+            continue;
+        };
         let obj = owned_object(h);
 
         let name = obj
@@ -416,10 +415,7 @@ fn dump_trade_info() {
         }
     }
 
-    unityforge::mono::log(
-        unityforge::mono::LogLevel::Info,
-        "=== END TRADE DUMP ===",
-    );
+    unityforge::mono::log(unityforge::mono::LogLevel::Info, "=== END TRADE DUMP ===");
 }
 
 fn read_owner_id(obj: &MonoObject) -> i64 {

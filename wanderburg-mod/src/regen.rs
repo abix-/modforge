@@ -41,7 +41,10 @@ pub fn tick() {
         // A failed read means the cached castle is gone; forget it
         // and try the walk again next second. Say so once per loss.
         if VM_HANDLE.swap(0, Ordering::Relaxed) != 0 {
-            mono::log(LogLevel::Info, &format!("wanderburg-mod regen: castle lost ({e}); will look again"));
+            mono::log(
+                LogLevel::Info,
+                &format!("wanderburg-mod regen: castle lost ({e}); will look again"),
+            );
         }
     }
 }
@@ -61,7 +64,10 @@ fn castle_handle() -> Result<i32, String> {
     VM_HANDLE.store(h, Ordering::Relaxed);
     let mut announced = ANNOUNCED.lock();
     if !*announced {
-        mono::log(LogLevel::Info, &format!("wanderburg-mod regen: castle found, {HEAL_PER_SECOND} hp/s"));
+        mono::log(
+            LogLevel::Info,
+            &format!("wanderburg-mod regen: castle found, {HEAL_PER_SECOND} hp/s"),
+        );
         *announced = true;
     }
     Ok(h)
@@ -70,7 +76,10 @@ fn castle_handle() -> Result<i32, String> {
 fn heal_step() -> Result<(), String> {
     let h = castle_handle()?;
     mono::with_object(h, |vm| {
-        let cur = vm.read_field("currentHP")?.as_f64().ok_or("currentHP unreadable")?;
+        let cur = vm
+            .read_field("currentHP")?
+            .as_f64()
+            .ok_or("currentHP unreadable")?;
         let max = vm.read_field("maxHP")?.as_f64().ok_or("maxHP unreadable")?;
         if cur < max {
             vm.invoke("Heal", &json!([HEAL_PER_SECOND]))?;

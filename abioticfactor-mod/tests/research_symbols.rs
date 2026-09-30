@@ -88,14 +88,22 @@ fn lan_join_symbols() {
             Ok(found) if found.is_empty() => println!("{class}::{method}: not in the PDB"),
             Ok(found) => {
                 for symbol in found {
-                    println!("{class}::{method}: rva 0x{:X} {}", symbol.rva, symbol.decorated);
+                    println!(
+                        "{class}::{method}: rva 0x{:X} {}",
+                        symbol.rva, symbol.decorated
+                    );
                 }
             }
             Err(error) => println!("{class}::{method}: {error:#}"),
         }
     }
-    for symbol in symbols::functions(&path, "", "StaticConstructObject_Internal").unwrap_or_default() {
-        println!("StaticConstructObject_Internal: rva 0x{:X} {}", symbol.rva, symbol.decorated);
+    for symbol in
+        symbols::functions(&path, "", "StaticConstructObject_Internal").unwrap_or_default()
+    {
+        println!(
+            "StaticConstructObject_Internal: rva 0x{:X} {}",
+            symbol.rva, symbol.decorated
+        );
     }
     for class in ["UNetConnection", "UIpConnection", "FURL"] {
         match symbols::layout(&path, class) {
@@ -104,12 +112,25 @@ fn lan_join_symbols() {
                 for field in layout.fields.iter().filter(|f| {
                     matches!(
                         f.name.as_str(),
-                        "Driver" | "PlayerController" | "OwningActor" | "URL" | "PlayerId"
-                            | "State" | "RemoteAddr" | "Socket" | "SocketPrivate"
-                            | "Op" | "Map" | "Host" | "Port"
+                        "Driver"
+                            | "PlayerController"
+                            | "OwningActor"
+                            | "URL"
+                            | "PlayerId"
+                            | "State"
+                            | "RemoteAddr"
+                            | "Socket"
+                            | "SocketPrivate"
+                            | "Op"
+                            | "Map"
+                            | "Host"
+                            | "Port"
                     )
                 }) {
-                    println!("  +{:<5} {:<24} {}", field.offset, field.name, field.type_name);
+                    println!(
+                        "  +{:<5} {:<24} {}",
+                        field.offset, field.name, field.type_name
+                    );
                 }
             }
             Err(error) => println!("{class}: {error:#}"),
@@ -124,10 +145,39 @@ fn lan_join_symbols() {
 fn net_driver_layout_symbols() {
     let Some(path) = pdb_path() else { return };
     for (class, names) in [
-        ("UNetDriverEOS", &["bIsPassthrough", "bIsUsingP2PSockets"][..]),
-        ("UIpNetDriver", &["SocketPrivate", "Socket", "LocalAddr", "ServerDesiredSocketReceiveBufferBytes"][..]),
-        ("UNetDriver", &["NetConnectionClass", "ServerConnection", "ClientConnections", "World", "LocalAddr"][..]),
-        ("UWorld", &["URL", "NetDriver", "AuthorityGameMode", "GameState", "PersistentLevel"][..]),
+        (
+            "UNetDriverEOS",
+            &["bIsPassthrough", "bIsUsingP2PSockets"][..],
+        ),
+        (
+            "UIpNetDriver",
+            &[
+                "SocketPrivate",
+                "Socket",
+                "LocalAddr",
+                "ServerDesiredSocketReceiveBufferBytes",
+            ][..],
+        ),
+        (
+            "UNetDriver",
+            &[
+                "NetConnectionClass",
+                "ServerConnection",
+                "ClientConnections",
+                "World",
+                "LocalAddr",
+            ][..],
+        ),
+        (
+            "UWorld",
+            &[
+                "URL",
+                "NetDriver",
+                "AuthorityGameMode",
+                "GameState",
+                "PersistentLevel",
+            ][..],
+        ),
     ] {
         match symbols::layout(&path, class) {
             Ok(layout) => {
@@ -140,7 +190,10 @@ fn net_driver_layout_symbols() {
                     .iter()
                     .filter(|f| all || names.contains(&f.name.as_str()))
                 {
-                    println!("  +{:<5} {:<40} {}", field.offset, field.name, field.type_name);
+                    println!(
+                        "  +{:<5} {:<40} {}",
+                        field.offset, field.name, field.type_name
+                    );
                 }
             }
             Err(error) => println!("{class}: {error:#}"),
@@ -182,7 +235,10 @@ fn pending_net_game_symbols() {
             Ok(found) if found.is_empty() => println!("{class}::{method}: not in the PDB"),
             Ok(found) => {
                 for symbol in found {
-                    println!("{class}::{method}: rva 0x{:X} {}", symbol.rva, symbol.decorated);
+                    println!(
+                        "{class}::{method}: rva 0x{:X} {}",
+                        symbol.rva, symbol.decorated
+                    );
                 }
             }
             Err(error) => println!("{class}::{method}: {error:#}"),
@@ -209,7 +265,10 @@ fn pending_net_game_symbols() {
             Ok(layout) => {
                 println!("{class}: size {}", layout.size);
                 for field in &layout.fields {
-                    println!("  +{:<5} {:<36} {}", field.offset, field.name, field.type_name);
+                    println!(
+                        "  +{:<5} {:<36} {}",
+                        field.offset, field.name, field.type_name
+                    );
                 }
             }
             Err(error) => println!("{class}: {error:#}"),
@@ -223,7 +282,11 @@ fn pending_net_game_symbols() {
 #[test]
 fn join_constructor_symbols() {
     let Some(path) = pdb_path() else { return };
-    for needle in ["StaticConstructObject_Internal", "FURL::FURL", "UObjectBaseUtility::AddToRoot"] {
+    for needle in [
+        "StaticConstructObject_Internal",
+        "FURL::FURL",
+        "UObjectBaseUtility::AddToRoot",
+    ] {
         match symbols::procedures(&path, needle) {
             Ok(found) if found.is_empty() => println!("{needle}: not in the module symbols"),
             Ok(found) => {
@@ -238,7 +301,10 @@ fn join_constructor_symbols() {
         Ok(layout) => {
             println!("FURL: size {}", layout.size);
             for field in &layout.fields {
-                println!("  +{:<5} {:<24} {}", field.offset, field.name, field.type_name);
+                println!(
+                    "  +{:<5} {:<24} {}",
+                    field.offset, field.name, field.type_name
+                );
             }
         }
         Err(error) => println!("FURL: {error:#}"),
@@ -267,15 +333,18 @@ fn approve_login_references() {
     let Some(path) = pdb_path() else { return };
     let exe_path = path.with_file_name("AbioticFactor-Win64-Shipping.exe");
     let data = std::fs::read(&exe_path).expect("read exe");
-    let image = patternsleuth::image::Image::read(None, &data, Some(&exe_path), false)
-        .expect("parse exe");
+    let image =
+        patternsleuth::image::Image::read(None, &data, Some(&exe_path), false).expect("parse exe");
 
-    let approve = symbols::functions(&path, "AAbioticGameSession", "ApproveLogin")
-        .expect("read pdb");
+    let approve =
+        symbols::functions(&path, "AAbioticGameSession", "ApproveLogin").expect("read pdb");
     for symbol in &approve {
         print_references(&image, &path, &symbol.decorated, symbol.rva as u64);
     }
-    assert!(!approve.is_empty(), "AAbioticGameSession::ApproveLogin not in the PDB");
+    assert!(
+        !approve.is_empty(),
+        "AAbioticGameSession::ApproveLogin not in the PDB"
+    );
 
     // What a real client appends to its login URL: the game's own
     // override of ULocalPlayer::GetGameLoginOptions.
@@ -283,7 +352,10 @@ fn approve_login_references() {
     for symbol in &login_options {
         print_references(&image, &path, &symbol.decorated, symbol.rva as u64);
     }
-    assert!(!login_options.is_empty(), "GetGameLoginOptions not in the PDB");
+    assert!(
+        !login_options.is_empty(),
+        "GetGameLoginOptions not in the PDB"
+    );
 }
 
 /// Walk one function's instructions in the exe and print every string
@@ -329,12 +401,16 @@ fn print_references(
                     .take(96)
                     .take_while(|&u| u != 0)
                     .collect();
-                let printable =
-                    |u: &u16| (0x20..0x7F).contains(u);
+                let printable = |u: &u16| (0x20..0x7F).contains(u);
                 if wide.len() >= 2 && wide.iter().all(printable) {
                     format!("L{:?}", String::from_utf16_lossy(&wide))
                 } else {
-                    let narrow: Vec<u8> = bytes.iter().copied().take(96).take_while(|&b| b != 0).collect();
+                    let narrow: Vec<u8> = bytes
+                        .iter()
+                        .copied()
+                        .take(96)
+                        .take_while(|&b| b != 0)
+                        .collect();
                     if narrow.len() >= 3 && narrow.iter().all(|b| (0x20..0x7F).contains(b)) {
                         format!("{:?}", String::from_utf8_lossy(&narrow))
                     } else {
@@ -357,7 +433,10 @@ fn print_references(
     for (at, target) in &calls {
         println!(
             "  at +0x{at:X} -> rva 0x{target:X} {}",
-            names.get(&(*target as u32)).map(String::as_str).unwrap_or("?")
+            names
+                .get(&(*target as u32))
+                .map(String::as_str)
+                .unwrap_or("?")
         );
     }
 }
@@ -398,9 +477,16 @@ fn unique_net_id_symbols() {
             Ok(layout) => {
                 println!("{class}: size {}", layout.size);
                 for field in layout.fields.iter().filter(|f| {
-                    class != "UNetConnection" || matches!(f.name.as_str(), "PlayerId" | "Challenge" | "ClientResponse" | "RequestURL")
+                    class != "UNetConnection"
+                        || matches!(
+                            f.name.as_str(),
+                            "PlayerId" | "Challenge" | "ClientResponse" | "RequestURL"
+                        )
                 }) {
-                    println!("  +{:<5} {:<28} {}", field.offset, field.name, field.type_name);
+                    println!(
+                        "  +{:<5} {:<28} {}",
+                        field.offset, field.name, field.type_name
+                    );
                 }
             }
             Err(error) => println!("{class}: {error:#}"),
@@ -415,7 +501,9 @@ fn udp_packet_framing_symbols() {
     for method in ["ReceivedPacket", "SendRawBunch", "ReceivedRawPacket"] {
         let found = symbols::functions(&path, "UNetConnection", method).expect("read symbols");
         assert!(!found.is_empty(), "UNetConnection::{method} missing");
-        for symbol in found { println!("UNetConnection::{method} +0x{:X}", symbol.rva); }
+        for symbol in found {
+            println!("UNetConnection::{method} +0x{:X}", symbol.rva);
+        }
     }
 }
 
@@ -425,9 +513,14 @@ fn player_spawn_protocol_layouts() {
     for name in ["FRepLayout", "FRepLayoutCmd", "FRepParentCmd", "FField"] {
         let layout = symbols::layout(&path, name).expect("read protocol layout");
         println!("{name}: size {}", layout.size);
-        for field in layout.fields { println!("  +{} {} {}", field.offset, field.name, field.type_name); }
+        for field in layout.fields {
+            println!("  +{} {} {}", field.offset, field.name, field.type_name);
+        }
     }
-    println!("command types: {:?}", symbols::enumeration(&path, "ERepLayoutCmdType").expect("command enum"));
+    println!(
+        "command types: {:?}",
+        symbols::enumeration(&path, "ERepLayoutCmdType").expect("command enum")
+    );
     for (class, method) in [("UPackageMapClient", "SerializeNewActor")] {
         for symbol in symbols::functions(&path, class, method).expect("read symbols") {
             println!("{class}::{method} +0x{:X}", symbol.rva);
@@ -439,15 +532,21 @@ fn player_spawn_protocol_layouts() {
 fn actor_spawn_receive_functions() {
     let path = pdb_path().expect("Abiotic PDB");
     for method in ["ProcessBunch", "ReadContentBlockHeader"] {
-        for symbol in symbols::functions(&path, "UActorChannel", method).expect("actor protocol symbols") {
+        for symbol in
+            symbols::functions(&path, "UActorChannel", method).expect("actor protocol symbols")
+        {
             println!("UActorChannel::{method} +0x{:X}", symbol.rva);
         }
     }
-    for symbol in symbols::functions(&path, "FByteProperty", "NetSerializeItem").expect("byte serialization") {
+    for symbol in
+        symbols::functions(&path, "FByteProperty", "NetSerializeItem").expect("byte serialization")
+    {
         println!("FByteProperty::NetSerializeItem +0x{:X}", symbol.rva);
     }
     for method in ["OnSerializeNewActor", "OnActorChannelOpen"] {
-        for symbol in symbols::functions(&path, "APlayerController", method).expect("controller spawn symbols") {
+        for symbol in symbols::functions(&path, "APlayerController", method)
+            .expect("controller spawn symbols")
+        {
             println!("APlayerController::{method} +0x{:X}", symbol.rva);
         }
     }
@@ -457,7 +556,9 @@ fn actor_spawn_receive_functions() {
 fn rpc_parameter_serialization_functions() {
     let path = pdb_path().expect("Abiotic PDB");
     for method in ["ReceivePropertiesForRPC", "SendPropertiesForRPC"] {
-        for symbol in symbols::functions(&path, "FRepLayout", method).expect("RPC parameter symbols") {
+        for symbol in
+            symbols::functions(&path, "FRepLayout", method).expect("RPC parameter symbols")
+        {
             println!("FRepLayout::{method} +0x{:X}", symbol.rva);
         }
     }
@@ -466,8 +567,15 @@ fn rpc_parameter_serialization_functions() {
 #[test]
 fn player_possession_initialization_functions() {
     let path = pdb_path().expect("Abiotic PDB");
-    for method in ["ServerNotifyLoadedWorld", "TickActor", "ShouldPerformFullTick", "HasClientLoadedCurrentWorld"] {
-        for symbol in symbols::functions(&path, "APlayerController", method).expect("possession symbols") {
+    for method in [
+        "ServerNotifyLoadedWorld",
+        "TickActor",
+        "ShouldPerformFullTick",
+        "HasClientLoadedCurrentWorld",
+    ] {
+        for symbol in
+            symbols::functions(&path, "APlayerController", method).expect("possession symbols")
+        {
             println!("APlayerController::{method} +0x{:X}", symbol.rva);
         }
     }

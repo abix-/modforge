@@ -98,6 +98,46 @@ pub fn on_tick() {
     }
 }
 
+/// Runs once the save has loaded (tweaks' MainGame.AfterSceneHasLoaded
+/// tick, when the player exists): every station with a craft
+/// (CraftSystemData.activeCrafts) goes through resume.
+pub(crate) fn resume_all() -> Result<(), String> {
+    let data = obj(invoke_static("CraftSystem", "get_CraftSystemData", &json!([]))?)
+        .ok_or("no CraftSystemData")?;
+    let crafts = read_handle(&data, "activeCrafts")?;
+    let n = crafts.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+    for i in 0..n {
+        let Some(cc) = call(&crafts, "get_Item", json!([i]))? else {
+            continue;
+        };
+        if let Err(e) = resume(&cc) {
+            log(LogLevel::Warn, &format!("replant: resume: {e}"));
+        }
+    }
+    Ok(())
+}
+
+/// A bed with its planting craft started but not worked (a job that gave
+/// up, or planting left by the player): works it the same way a new
+/// planting is worked.
+fn resume(cc: &MonoObject) -> Result<(), String> {
+    let bed = read_handle(cc, "craftableObject")?;
+    if bed.read_field("id")? != json!("garden_empty") || cc.invoke("get_IsStarted", &json!([]))? != json!(true) {
+        return Ok(());
+    }
+    let Some(el) = call(cc, "get_CurrentCraftElement", json!([]))? else {
+        return Ok(());
+    };
+    let def = call(&el, "get_Def", json!([]))?.ok_or("craft has no Def")?;
+    let craft = def.read_field("id")?;
+    if !craft.as_str().is_some_and(|s| s.contains("_planting")) {
+        return Ok(());
+    }
+    log(LogLevel::Info, &format!("replant: resuming {craft}"));
+    work::queue(bed, "replant", planted);
+    Ok(())
+}
+
 /// The planting is worked once the bed is no longer empty.
 fn planted(bed: &MonoObject) -> Result<bool, String> {
     Ok(bed.read_field("id")? != json!("garden_empty"))

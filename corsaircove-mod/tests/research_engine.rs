@@ -15,7 +15,7 @@
 //! ```
 
 mod common;
-use common::{api, ping_or_skip, UE4SS_LOG};
+use common::{UE4SS_LOG, api, ping_or_skip};
 use modforge::client;
 use serde_json::json;
 

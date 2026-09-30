@@ -26,20 +26,30 @@ const LOG_CAPACITY: usize = 512;
 
 fn record(this: &UObject, function: &UFunction, parms: *mut std::ffi::c_void, class_name: &str) {
     let name = function.as_object().name();
-    let wanted = FILTERS.lock().get(class_name).map(|f| f.is_empty() || f.contains(&name)).unwrap_or(false);
-    if !wanted { return; }
+    let wanted = FILTERS
+        .lock()
+        .get(class_name)
+        .map(|f| f.is_empty() || f.contains(&name))
+        .unwrap_or(false);
+    if !wanted {
+        return;
+    }
     let started = *STARTED.lock().get_or_insert_with(Instant::now);
     let mut params = serde_json::Map::new();
     if !parms.is_null() {
         for property in function.iter_parameters() {
             let kind = reflect::property_type(&property).unwrap_or_default();
             // SAFETY: the engine's parameter block for this call, laid out by the function.
-            params.insert(property.name.clone(), unsafe { reflect::read_value(parms as *const u8, &property, &kind) });
+            params.insert(property.name.clone(), unsafe {
+                reflect::read_value(parms as *const u8, &property, &kind)
+            });
         }
     }
     let entry = json!({"t_ms": started.elapsed().as_millis() as u64, "object": this.name(), "class": this.class().map(|c| c.as_object().name()).unwrap_or_default(), "function": name, "params": params});
     let mut log = LOG.lock();
-    if log.len() >= LOG_CAPACITY { log.pop_front(); }
+    if log.len() >= LOG_CAPACITY {
+        log.pop_front();
+    }
     log.push_back(entry);
 }
 
@@ -49,18 +59,32 @@ fn record(this: &UObject, function: &UFunction, parms: *mut std::ffi::c_void, cl
 pub fn watch(class: &str, function: Option<&str>) -> Result<Value, String> {
     let mut filters = FILTERS.lock();
     let filter = filters.entry(class.to_owned()).or_default();
-    if let Some(function) = function { filter.insert(function.to_owned()); } else { filter.clear(); }
+    if let Some(function) = function {
+        filter.insert(function.to_owned());
+    } else {
+        filter.clear();
+    }
     let functions = filter.clone();
     drop(filters);
     let mut watched = WATCHED.lock();
-    if let Some(existing) = watched.get_mut(class) { existing.functions = functions.clone(); return Ok(json!({"class": class, "functions": functions, "state": "filter_updated"})); }
+    if let Some(existing) = watched.get_mut(class) {
+        existing.functions = functions.clone();
+        return Ok(json!({"class": class, "functions": functions, "state": "filter_updated"}));
+    }
     let leaked: &'static str = Box::leak(class.to_owned().into_boxed_str());
     let hook = ProcessEventHook::install(leaked, move |this, function, parms, original| {
         // SAFETY: the engine's own call, forwarded unchanged after recording.
         unsafe { original.call(this, function, parms) };
         record(this, function, parms, leaked);
-    }).map_err(|e| format!("hook on {class}: {e}"))?;
-    watched.insert(class.to_owned(), Watched { _hook: hook, functions: functions.clone() });
+    })
+    .map_err(|e| format!("hook on {class}: {e}"))?;
+    watched.insert(
+        class.to_owned(),
+        Watched {
+            _hook: hook,
+            functions: functions.clone(),
+        },
+    );
     Ok(json!({"class": class, "functions": functions, "state": "installed"}))
 }
 

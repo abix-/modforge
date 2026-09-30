@@ -268,7 +268,7 @@ namespace Unityforge.Shim
                 }
                 catch (Exception e)
                 {
-                    return WriteJsonReturn(outBuf, cap, new JObject { ["error"] = e.Message }, -3);
+                    return WriteJsonReturn(outBuf, cap, new JObject { ["error"] = InvokeError(e) }, -3);
                 }
             }
             return -2;
@@ -277,7 +277,8 @@ namespace Unityforge.Shim
         // v6: invoke a STATIC method on a named class. Mirrors
         // InvokeMethod (same arg conversion, same result marshal,
         // same return codes) with a type-name resolve and a null
-        // invocation target.
+        // invocation target. The method name ".ctor" calls a
+        // constructor instead and returns the new object.
         private static int InvokeStatic(IntPtr classNameUtf8, IntPtr methodNameUtf8, IntPtr argsJsonUtf8, IntPtr outBuf, int cap)
         {
             var className = Marshal.PtrToStringAnsi(classNameUtf8);
@@ -287,6 +288,31 @@ namespace Unityforge.Shim
             var t = TypeCache.Resolve(className);
             if (t == null) return -1;
             var argTokens = JArray.Parse(argsJson);
+            if (method == ".ctor")
+            {
+                foreach (var ci in t.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
+                {
+                    var pars = ci.GetParameters();
+                    if (pars.Length != argTokens.Count) continue;
+                    object[] callArgs;
+                    try
+                    {
+                        callArgs = new object[pars.Length];
+                        for (int i = 0; i < pars.Length; i++)
+                            callArgs[i] = ConvertFromJsonToken(argTokens[i], pars[i].ParameterType);
+                    }
+                    catch { continue; }
+                    try
+                    {
+                        return WriteJson(outBuf, cap, JsonValue(ci.Invoke(callArgs)));
+                    }
+                    catch (Exception e)
+                    {
+                        return WriteJsonReturn(outBuf, cap, new JObject { ["error"] = InvokeError(e) }, -3);
+                    }
+                }
+                return -2;
+            }
             var candidates = t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic
                 | BindingFlags.Static | BindingFlags.FlattenHierarchy);
             foreach (var mi in candidates)
@@ -309,7 +335,7 @@ namespace Unityforge.Shim
                 }
                 catch (Exception e)
                 {
-                    return WriteJsonReturn(outBuf, cap, new JObject { ["error"] = e.Message }, -3);
+                    return WriteJsonReturn(outBuf, cap, new JObject { ["error"] = InvokeError(e) }, -3);
                 }
             }
             return -2;
@@ -391,6 +417,15 @@ namespace Unityforge.Shim
             return ConvertFromJsonToken(JToken.Parse(json), t);
         }
 
+        // Reflection wraps what the target threw in a
+        // TargetInvocationException; report the real one with its stack,
+        // capped so it fits the Rust side's reply buffer.
+        private static string InvokeError(Exception e)
+        {
+            var s = (e.InnerException ?? e).ToString();
+            return s.Length > 2000 ? s.Substring(0, 2000) : s;
+        }
+
         private static object ConvertFromJsonToken(JToken tok, Type t)
         {
             // JSON null -> null argument (e.g. the trailing object
@@ -398,7 +433,15 @@ namespace Unityforge.Shim
             if (tok == null || tok.Type == JTokenType.Null) return null;
             // {"$handle": N} -> live object from the handle table
             // (HandleArg, shared with the IL2CPP backend).
-            if (HandleArg.TryResolve(tok, Lookup, out var handleValue)) return handleValue;
+            // A handle whose object is not the parameter's type throws, so
+            // overload resolution moves on (WgoData.MakeDrop(List<Item>) vs
+            // MakeDrop(Item)).
+            if (HandleArg.TryResolve(tok, Lookup, out var handleValue))
+            {
+                if (handleValue != null && !t.IsInstanceOfType(handleValue))
+                    throw new ArgumentException($"handle is {handleValue.GetType().Name}, not {t.Name}");
+                return handleValue;
+            }
             if (t == typeof(bool)) return tok.Value<bool>();
             if (t == typeof(int)) return tok.Value<int>();
             if (t == typeof(uint)) return (uint)tok.Value<long>();

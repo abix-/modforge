@@ -17,7 +17,7 @@ namespace Unityforge.Shim
     public static class BridgeConstants
     {
         public const uint Magic = 0x52424655u; // "UFBR"
-        public const uint Version = 7u;        // bumped: added HarmonyPatchPrefixInstanceArgs
+        public const uint Version = 10u;       // bumped: added HarmonyPatchPostfixResult
     }
 
     public enum RuntimeKind : uint
@@ -70,6 +70,25 @@ namespace Unityforge.Shim
         // Prefix that passes __instance (handle) plus all
         // arguments serialized to JSON to the Rust callback.
         public IntPtr HarmonyPatchPrefixInstanceArgs;
+
+        // ---- v8 ----------------------------------------------------
+        // Postfix on a float-returning method: the Rust callback gets
+        // __instance (handle), the arguments as JSON, and the result,
+        // and returns the new one.
+        public IntPtr HarmonyPatchPostfixFloatResult;
+
+        // ---- v9 ----------------------------------------------------
+        // Postfix on an int-returning method behind an argument
+        // filter: the Rust callback gets __instance (handle), the
+        // arguments as JSON, and the result, and returns the new one.
+        public IntPtr HarmonyPatchPostfixIntResult;
+
+        // ---- v10 ---------------------------------------------------
+        // Postfix on a method of any return type behind an argument
+        // filter: the Rust callback gets __instance (handle), the
+        // arguments and the result as JSON, and writes a replacement
+        // result as JSON (or keeps the original).
+        public IntPtr HarmonyPatchPostfixResult;
     }
 
     /// <summary>
@@ -129,6 +148,12 @@ namespace Unityforge.Shim
                 InvokeStatic = backend.InvokeStatic,
 
                 HarmonyPatchPrefixInstanceArgs = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPrefixInstanceArgsDelegate),
+
+                HarmonyPatchPostfixFloatResult = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixFloatResultDelegate),
+
+                HarmonyPatchPostfixIntResult = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixIntResultDelegate),
+
+                HarmonyPatchPostfixResult = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixResultDelegate),
             };
         }
     }

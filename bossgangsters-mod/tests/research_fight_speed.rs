@@ -31,7 +31,10 @@ fn player_speed_reflects_fight_level() {
         "invoke_method",
         json!({"handle": fighter, "method": "GetSkillLevel", "args": [1]}),
     );
-    let bot = api.op("invoke_method", json!({"handle": fighter, "method": "GetBot", "args": []}));
+    let bot = api.op(
+        "invoke_method",
+        json!({"handle": fighter, "method": "GetBot", "args": []}),
+    );
     let bot = handle_in(&bot.result).expect("no bot handle");
     let walk = api.op("read_field", json!({"handle": bot, "field": "walkSpeed"}));
     let run = api.op("read_field", json!({"handle": bot, "field": "runSpeed"}));

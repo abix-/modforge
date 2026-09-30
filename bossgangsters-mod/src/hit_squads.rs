@@ -37,17 +37,19 @@ fn hit_squad_op(args: &Json) -> Result<Json, String> {
     if family != "ViceFamily" && family != "KurohanaFamily" {
         return Err("family must be ViceFamily or KurohanaFamily".into());
     }
-    let size = args.get("size").and_then(Json::as_i64).unwrap_or(2).clamp(1, 8);
+    let size = args
+        .get("size")
+        .and_then(Json::as_i64)
+        .unwrap_or(2)
+        .clamp(1, 8);
     let tier = args
         .get("weapon_tier")
         .and_then(Json::as_i64)
         .unwrap_or(1)
         .clamp(0, 4);
-    MAIN_QUEUE.run(
-        "hit_squad",
-        std::time::Duration::from_secs(10),
-        move || spawn_squad(&family, size, tier),
-    )?
+    MAIN_QUEUE.run("hit_squad", std::time::Duration::from_secs(10), move || {
+        spawn_squad(&family, size, tier)
+    })?
 }
 
 fn singleton(type_name: &str) -> Result<MonoObject, String> {
@@ -74,9 +76,11 @@ fn spawn_squad(family: &str, size: i64, tier: i64) -> Result<Json, String> {
     let player_json = club_player.read_field("playerFighterHandler")?;
     let player_handle = json_handle(&player_json).ok_or("no playerFighterHandler")?;
     let player = owned_object(player_handle);
-    let player_bot = owned_object(json_handle(&player.invoke("GetBot", &json!([]))?).ok_or("no player bot")?);
+    let player_bot =
+        owned_object(json_handle(&player.invoke("GetBot", &json!([]))?).ok_or("no player bot")?);
     let player_transform_json = player_bot.read_field("transform")?;
-    let player_transform = owned_object(json_handle(&player_transform_json).ok_or("no player transform")?);
+    let player_transform =
+        owned_object(json_handle(&player_transform_json).ok_or("no player transform")?);
     let pos = player_transform.read_field("position")?;
     let (px, py, pz) = (
         pos.get("x").and_then(Json::as_f64).ok_or("position.x")?,
@@ -110,7 +114,8 @@ fn spawn_squad(family: &str, size: i64, tier: i64) -> Result<Json, String> {
                 "HitSquad"
             ]),
         )?;
-        let fighter = owned_object(json_handle(&fighter_json).ok_or("CreateFighter returned no handle")?);
+        let fighter =
+            owned_object(json_handle(&fighter_json).ok_or("CreateFighter returned no handle")?);
         fighter.invoke("SetAbilities", &json!([tier]))?;
 
         let weapon_json = fight_manager_weapon(&weapon_manager, tier)?;
@@ -120,26 +125,34 @@ fn spawn_squad(family: &str, size: i64, tier: i64) -> Result<Json, String> {
                 json_handle(&weapon.read_field("itemData")?).ok_or("weapon itemData")?,
             );
             let mode = item.read_field("attackMode")?;
-            let mode = mode.as_str().map(str::to_string).unwrap_or_else(|| mode.to_string());
+            let mode = mode
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| mode.to_string());
             fighter.invoke("SetWeapon", &json!([{"$handle": wh}, mode, true]))?;
         }
 
         // Teleport via NavMeshAgent.Warp: writing the transform
         // directly gets snapped back by the agent (measured live:
         // the squad spawned 276 m away and jogged over).
-        let bot = owned_object(json_handle(&fighter.invoke("GetBot", &json!([]))?).ok_or("no bot")?);
-        let agent = owned_object(
-            json_handle(&bot.read_field("NavMeshAgent")?).ok_or("no NavMeshAgent")?,
-        );
+        let bot =
+            owned_object(json_handle(&fighter.invoke("GetBot", &json!([]))?).ok_or("no bot")?);
+        let agent =
+            owned_object(json_handle(&bot.read_field("NavMeshAgent")?).ok_or("no NavMeshAgent")?);
         agent.invoke("Warp", &json!([{"x": px + ox, "y": py, "z": pz + oz}]))?;
 
-        fighter.invoke("SetTarget", &json!([{"$handle": player_handle}, true, null]))?;
+        fighter.invoke(
+            "SetTarget",
+            &json!([{"$handle": player_handle}, true, null]),
+        )?;
         spawned += 1;
     }
 
     unityforge::mono::log(
         unityforge::mono::LogLevel::Info,
-        &format!("bossgangsters-mod: hit squad spawned: {family} size {spawned} weapon tier {tier}"),
+        &format!(
+            "bossgangsters-mod: hit squad spawned: {family} size {spawned} weapon tier {tier}"
+        ),
     );
     Ok(json!({"family": family, "spawned": spawned, "weapon_tier": tier}))
 }

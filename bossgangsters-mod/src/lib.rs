@@ -69,5 +69,8 @@ fn on_init() {
 }
 
 fn on_shutdown() {
-    unityforge::mono::log(unityforge::mono::LogLevel::Info, "bossgangsters-mod: shutdown");
+    unityforge::mono::log(
+        unityforge::mono::LogLevel::Info,
+        "bossgangsters-mod: shutdown",
+    );
 }

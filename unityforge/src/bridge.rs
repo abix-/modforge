@@ -27,10 +27,13 @@ pub const BRIDGE_MAGIC: u32 = 0x52424655;
 
 /// Current ABI version. v4 added `list_methods`; v5 added
 /// `harmony_patch_prefix_ctx`; v6 added `invoke_static`; v7
-/// added `harmony_patch_prefix_instance_args` (the Rust side
-/// also accepts the previous version's table and leaves the new
-/// tail None until the game restarts on the upgraded shim).
-pub const BRIDGE_VERSION: u32 = 7;
+/// added `harmony_patch_prefix_instance_args`; v8 added
+/// `harmony_patch_postfix_float_result`; v9 added
+/// `harmony_patch_postfix_int_result`; v10 added
+/// `harmony_patch_postfix_result` (the Rust side also accepts
+/// the previous version's table and leaves the new tail None until
+/// the game restarts on the upgraded shim).
+pub const BRIDGE_VERSION: u32 = 10;
 
 /// Unity runtime backend. Stored in the bridge struct at init;
 /// read via [`runtime_kind`] for code that must branch on
@@ -246,7 +249,78 @@ pub struct BridgeTable {
             prefix_fn: extern "C" fn(instance: *const c_void, args_json_utf8: *const c_char) -> i32,
         ) -> PatchHandle,
     >,
+
+    // ---- v8 ---------------------------------------------------------
+    /// Postfix patch on a method returning `float`. The callback
+    /// receives the patched method's `__instance` (a FRESH handle
+    /// the callback owns, cast the pointer value to i32; 0 =
+    /// static method), the arguments as JSON UTF-8 (same
+    /// convention as `harmony_patch_prefix_instance_args`; handles
+    /// in it are owned by the callback too; valid only during the
+    /// callback), and the original result, and returns the result
+    /// the caller sees. The shim refuses a target that does not
+    /// return float. None when the running shim is pre-v8.
+    pub harmony_patch_postfix_float_result: Option<
+        extern "C" fn(
+            type_name_utf8: *const c_char,
+            method_name_utf8: *const c_char,
+            postfix_fn: extern "C" fn(
+                instance: *const c_void,
+                args_json_utf8: *const c_char,
+                result: f32,
+            ) -> f32,
+        ) -> PatchHandle,
+    >,
+
+    // ---- v9 ---------------------------------------------------------
+    /// Postfix patch on a method returning `int`, same callback
+    /// contract as `harmony_patch_postfix_float_result`, behind an
+    /// argument filter the shim checks before calling Rust: JSON
+    /// `{"<arg index>": value}` with number (enum or integer
+    /// argument) or bool values; null or empty = every call. None
+    /// when the running shim is pre-v9.
+    pub harmony_patch_postfix_int_result: Option<
+        extern "C" fn(
+            type_name_utf8: *const c_char,
+            method_name_utf8: *const c_char,
+            filter_json_utf8: *const c_char,
+            postfix_fn: extern "C" fn(
+                instance: *const c_void,
+                args_json_utf8: *const c_char,
+                result: i32,
+            ) -> i32,
+        ) -> PatchHandle,
+    >,
+
+    // ---- v10 --------------------------------------------------------
+    /// Postfix patch on a method of any return type, behind the same
+    /// argument filter as `harmony_patch_postfix_int_result`. The
+    /// callback gets a FRESH `__instance` handle (0 for static), the
+    /// arguments and the original result as JSON UTF-8 (the args
+    /// convention: primitives, enums as numbers, strings by value,
+    /// other objects as `{"handle": n}` the callback owns; valid
+    /// only during the callback), and an output buffer. It writes a
+    /// replacement result as JSON (`{"$handle": n}` for a live
+    /// object) and returns its byte length, or -1 to keep the
+    /// original. None when the running shim is pre-v10.
+    pub harmony_patch_postfix_result: Option<
+        extern "C" fn(
+            type_name_utf8: *const c_char,
+            method_name_utf8: *const c_char,
+            filter_json_utf8: *const c_char,
+            postfix_fn: PostfixResultFn,
+        ) -> PatchHandle,
+    >,
 }
+
+/// Callback of `harmony_patch_postfix_result`.
+pub type PostfixResultFn = extern "C" fn(
+    instance: *const c_void,
+    args_json_utf8: *const c_char,
+    result_json_utf8: *const c_char,
+    out_utf8: *mut c_char,
+    out_cap: i32,
+) -> i32;
 
 static BRIDGE: OnceLock<BridgeTable> = OnceLock::new();
 
@@ -278,13 +352,13 @@ pub fn install(bridge: *const BridgeTable) -> bool {
         let mut mu = std::mem::MaybeUninit::<BridgeTable>::zeroed();
         // SAFETY: the previous version's table is a byte prefix of
         // this layout ending right before
-        // `harmony_patch_prefix_instance_args`; the zeroed tail is
-        // a valid None for the Option fn pointer.
+        // `harmony_patch_postfix_result`; the zeroed tail is a
+        // valid None for the Option fn pointer.
         unsafe {
             std::ptr::copy_nonoverlapping(
                 bridge as *const u8,
                 mu.as_mut_ptr() as *mut u8,
-                std::mem::offset_of!(BridgeTable, harmony_patch_prefix_instance_args),
+                std::mem::offset_of!(BridgeTable, harmony_patch_postfix_result),
             );
             mu.assume_init()
         }

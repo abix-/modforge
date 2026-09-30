@@ -41,7 +41,9 @@ pub unsafe fn write_at(header: *mut u8, text: &str) -> Result<(), String> {
     unsafe {
         let max = ((header as usize + 12) as *const i32).read_unaligned();
         // An empty string into an empty FString needs no buffer: leave the zero header.
-        if text.is_empty() && max == 0 { return Ok(()); }
+        if text.is_empty() && max == 0 {
+            return Ok(());
+        }
         if max < needed {
             super::tarray::grow_raw(header, 2, needed)?;
         }

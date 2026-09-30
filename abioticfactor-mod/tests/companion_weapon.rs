@@ -21,7 +21,10 @@ fn companion_order_inputs() {
     let relation = api.op("object.call", json!({"object": format!("addr:{pawn}"), "class": "Abiotic_Character_ParentBP_C", "function": "CheckFriendlyAllyOrHostile", "params": {"PawnToTest": human}}));
     assert!(relation.ok, "{:?}", relation.error);
     println!("relationship: {}", relation.result);
-    let board = api.op("bb.get", json!({"controller": format!("addr:{controller}")}));
+    let board = api.op(
+        "bb.get",
+        json!({"controller": format!("addr:{controller}")}),
+    );
     assert!(board.ok);
     println!("blackboard: {}", board.result);
 }
@@ -46,7 +49,11 @@ fn destroyed_companion_cleanup() {
     assert!(stopped.ok, "{:?}", stopped.error);
     println!("cleanup: {}", stopped.result);
     let replacement = api.op("ai_player.start", json!({"name": name, "distance": 200.0}));
-    assert!(replacement.ok, "replacement after GC: {:?}", replacement.error);
+    assert!(
+        replacement.ok,
+        "replacement after GC: {:?}",
+        replacement.error
+    );
     assert_eq!(replacement.result["pawn"]["class"], "Modforge_AIPlayer_C");
     assert!(api.op("ai_player.stop", json!({"player": name})).ok);
     let healthy = api.op("list_ops", json!({}));
@@ -59,9 +66,15 @@ fn kitchen_knife_melee_tree() {
     let api = api();
     let status = api.op("ai_player.status", json!({"player": "Sophia"}));
     assert!(status.ok);
-    let controller = format!("addr:{}", status.result["controller"]["addr"].as_str().unwrap());
+    let controller = format!(
+        "addr:{}",
+        status.result["controller"]["addr"].as_str().unwrap()
+    );
     let tree = "asset:/Game/Blueprints/AI/Zombie/BT_Main_Zombie.BT_Main_Zombie";
-    let assigned = api.op("object.set", json!({"object": controller, "fields": {"BehaviorTree": tree}}));
+    let assigned = api.op(
+        "object.set",
+        json!({"object": controller, "fields": {"BehaviorTree": tree}}),
+    );
     assert!(assigned.ok, "{:?}", assigned.error);
     let started = api.op("bt.run", json!({"controller": controller, "tree": tree}));
     assert!(started.ok, "{:?}", started.error);
@@ -75,10 +88,22 @@ fn kitchen_knife_combat_state() {
     let status = api.op("ai_player.status", json!({"player": "Sophia"}));
     assert!(status.ok);
     for (op, args) in [
-        ("object.get", json!({"object": format!("addr:{}", status.result["pawn"]["addr"].as_str().unwrap()), "fields": ["NPCData"]})),
-        ("bb.get", json!({"controller": format!("addr:{}", status.result["controller"]["addr"].as_str().unwrap())})),
-        ("asset_inventory", json!({"class": "Blueprint", "contains": "Ranged"})),
-        ("asset_inventory", json!({"class": "BehaviorTree", "contains": ""})),
+        (
+            "object.get",
+            json!({"object": format!("addr:{}", status.result["pawn"]["addr"].as_str().unwrap()), "fields": ["NPCData"]}),
+        ),
+        (
+            "bb.get",
+            json!({"controller": format!("addr:{}", status.result["controller"]["addr"].as_str().unwrap())}),
+        ),
+        (
+            "asset_inventory",
+            json!({"class": "Blueprint", "contains": "Ranged"}),
+        ),
+        (
+            "asset_inventory",
+            json!({"class": "BehaviorTree", "contains": ""}),
+        ),
     ] {
         let reply = api.op(op, args);
         assert!(reply.ok, "{op}: {:?}", reply.error);
@@ -90,7 +115,10 @@ fn kitchen_knife_combat_state() {
 #[ignore = "spawns Sophia with her default knife and verifies attachment and melee configuration"]
 fn kitchen_knife_equipped() {
     let api = api();
-    let started = api.op("ai_player.start", json!({"player": "Sophia", "distance": 200.0}));
+    let started = api.op(
+        "ai_player.start",
+        json!({"player": "Sophia", "distance": 200.0}),
+    );
     assert!(started.ok, "start: {:?}", started.error);
     println!("start: {}", started.result);
     let equipped = api.op("ai_player.equip_knife", json!({"player": "Sophia"}));
@@ -106,21 +134,50 @@ fn kitchen_knife_equipped() {
     assert!(state.ok, "{:?}", state.error);
     assert_eq!(state.result["WalkSpeed"], 260.0);
     let movement = state.result["CharacterMovement"]["addr"].as_str().unwrap();
-    let speed = api.op("object.get", json!({"object": format!("addr:{movement}"), "fields": ["MaxWalkSpeed"]}));
+    let speed = api.op(
+        "object.get",
+        json!({"object": format!("addr:{movement}"), "fields": ["MaxWalkSpeed"]}),
+    );
     assert!(speed.ok);
     assert_eq!(speed.result["MaxWalkSpeed"], 260.0);
     let npc = state.result["NPCData"].as_object().unwrap();
-    assert_eq!(npc.iter().find(|(k,_)| k.starts_with("HasRangedAttack_")).unwrap().1, false);
-    assert_eq!(npc.iter().find(|(k,_)| k.starts_with("MeleeAttackDamagePerHit_")).unwrap().1, &equipped.result["damage"]);
+    assert_eq!(
+        npc.iter()
+            .find(|(k, _)| k.starts_with("HasRangedAttack_"))
+            .unwrap()
+            .1,
+        false
+    );
+    assert_eq!(
+        npc.iter()
+            .find(|(k, _)| k.starts_with("MeleeAttackDamagePerHit_"))
+            .unwrap()
+            .1,
+        &equipped.result["damage"]
+    );
     let mesh = equipped.result["component"].as_str().unwrap();
     let attachment = api.op("object.get", json!({"object": format!("addr:{mesh}"), "fields": ["StaticMesh", "AttachParent", "AttachSocketName"]}));
     assert!(attachment.ok, "{:?}", attachment.error);
     println!("attachment: {}", attachment.result);
-    assert_eq!(attachment.result["AttachParent"]["addr"], state.result["Mesh"]["addr"]);
-    assert_eq!(attachment.result["AttachSocketName"], equipped.result["socket"]);
-    assert!(attachment.result["StaticMesh"]["name"].as_str().unwrap().contains("SM_Knife_01"));
+    assert_eq!(
+        attachment.result["AttachParent"]["addr"],
+        state.result["Mesh"]["addr"]
+    );
+    assert_eq!(
+        attachment.result["AttachSocketName"],
+        equipped.result["socket"]
+    );
+    assert!(
+        attachment.result["StaticMesh"]["name"]
+            .as_str()
+            .unwrap()
+            .contains("SM_Knife_01")
+    );
     let human = common::human_name(&api, "Sophia");
-    let follow = api.op("ai_player.follow", json!({"player": "Sophia", "target": human, "distance": 150.0, "period_ms": 2000}));
+    let follow = api.op(
+        "ai_player.follow",
+        json!({"player": "Sophia", "target": human, "distance": 150.0, "period_ms": 2000}),
+    );
     assert!(follow.ok, "follow: {:?}", follow.error);
 }
 
@@ -129,21 +186,39 @@ fn kitchen_knife_equipped() {
 fn kitchen_knife_setup() {
     let api = api();
     for class in ["StaticMesh", "SkeletalMesh"] {
-        let reply = api.op("asset_inventory", json!({"class": class, "contains": "Knife"}));
+        let reply = api.op(
+            "asset_inventory",
+            json!({"class": class, "contains": "Knife"}),
+        );
         assert!(reply.ok, "{:?}", reply.error);
         println!("assets {class}: {}", reply.result);
     }
     let rows = api.op("list_row_names", json!({"table_name": "ItemTable_Global"}));
     assert!(rows.ok);
-    println!("knife rows: {:?}", rows.result["rows"].as_array().unwrap().iter().filter(|r| r.as_str().unwrap_or("").to_lowercase().contains("knife")).collect::<Vec<_>>());
+    println!(
+        "knife rows: {:?}",
+        rows.result["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r.as_str().unwrap_or("").to_lowercase().contains("knife"))
+            .collect::<Vec<_>>()
+    );
     let status = api.op("ai_player.status", json!({"player": "Sophia"}));
     assert!(status.ok);
     let pawn = status.result["pawn"]["addr"].as_str().unwrap();
     let state = api.op("object.get", json!({"object": format!("addr:{pawn}"), "fields": ["Mesh", "NPCData", "MeleeOriginBone", "MeleeTraceRadius"]}));
     assert!(state.ok, "{:?}", state.error);
     println!("Sophia: {}", state.result);
-    for (class, function) in [("SceneComponent", "K2_AttachToComponent"), ("SceneComponent", "SetVisibility"), ("StaticMeshComponent", "SetStaticMesh")] {
-        let schema = api.op("function_parameters", json!({"class": class, "function": function}));
+    for (class, function) in [
+        ("SceneComponent", "K2_AttachToComponent"),
+        ("SceneComponent", "SetVisibility"),
+        ("StaticMeshComponent", "SetStaticMesh"),
+    ] {
+        let schema = api.op(
+            "function_parameters",
+            json!({"class": class, "function": function}),
+        );
         assert!(schema.ok);
         println!("{function}: {}", schema.result);
     }

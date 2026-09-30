@@ -91,10 +91,13 @@ pub fn on_tick() {
             }
             Ok(Worked::NoTool) => false,
             Ok(Worked::Swinging) => true,
-            Ok(Worked::Wait) => {
+            Ok(Worked::Wait(why)) => {
                 job.waits += 1;
                 if job.waits >= MAX_WAIT_TICKS {
-                    log(LogLevel::Warn, &format!("{}: gave up after {MAX_WAIT_TICKS} ticks", job.label));
+                    log(
+                        LogLevel::Warn,
+                        &format!("{}: gave up after {MAX_WAIT_TICKS} ticks, waiting on: {why}", job.label),
+                    );
                     false
                 } else {
                     true
@@ -122,7 +125,8 @@ enum Worked {
     Swinging,
     /// Try again next tick: the player is working something themselves, or
     /// the craft is between steps (finishing, or waiting on its queue).
-    Wait,
+    /// Carries what it is waiting on, for the give-up log line.
+    Wait(&'static str),
     /// No tool of the needed type on the belt; left for the player.
     NoTool,
 }
@@ -142,10 +146,11 @@ fn work(
     let player = read_handle(&mg, "playerController")?;
     let pwc = call(&player, "get_PlayerWorkComponent", json!([]))?.ok_or("no PlayerWorkComponent")?;
     let tc = call(&pwc, "get_ToolComponent", json!([]))?.ok_or("no ToolComponent")?;
-    if tc.invoke("get_IsActionActive", &json!([]))? == json!(true)
-        || !player.invoke("get_WorkerActivity", &json!([]))?.is_null()
-    {
-        return Ok(Worked::Wait);
+    if tc.invoke("get_IsActionActive", &json!([]))? == json!(true) {
+        return Ok(Worked::Wait("the player's tool action is active"));
+    }
+    if !player.invoke("get_WorkerActivity", &json!([]))?.is_null() {
+        return Ok(Worked::Wait("the player is working something"));
     }
     player.invoke("SetCraftActivity", &json!([arg(station)]))?;
     let result = hits(&player, station, label, done, next_hit, now);
@@ -172,11 +177,11 @@ fn hits(
         // Between crafts the swing stops; the next craft starts a new one.
         if cc.invoke("get_IsFinishDelayed", &json!([]))? == json!(true) {
             *next_hit = None;
-            return Ok(Worked::Wait);
+            return Ok(Worked::Wait("the craft is finishing"));
         }
         let Some(el) = call(&cc, "get_CurrentCraftElement", json!([]))? else {
             *next_hit = None;
-            return Ok(Worked::Wait);
+            return Ok(Worked::Wait("the station has no current craft"));
         };
         let def = call(&el, "get_Def", json!([]))?.ok_or("craft has no Def")?;
         let Some((tool, tool_type)) = belt_tool(player, station, &def, label)? else {

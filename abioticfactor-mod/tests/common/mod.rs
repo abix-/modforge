@@ -4,8 +4,8 @@
 //! lives on port 31260, endpoint /debug.
 #![allow(dead_code, unused_imports)]
 
-use serde_json::{json, Value};
 use modforge::client::Api;
+use serde_json::{Value, json};
 
 pub fn api() -> Api<Value> {
     let port = std::env::var("ABIOTICFACTOR_MOD_PORT")
@@ -19,8 +19,15 @@ pub fn api() -> Api<Value> {
 pub fn human_name(api: &Api<Value>, session_name: &str) -> String {
     let reply = api.op("players", json!({}));
     assert!(reply.ok, "players: {:?}", reply.error);
-    reply.result["players"].as_array().into_iter().flatten()
-        .find(|p| p["name"] != session_name).expect("the human is in the game")["name"].as_str().unwrap().to_owned()
+    reply.result["players"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|p| p["name"] != session_name)
+        .expect("the human is in the game")["name"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 pub fn ping_or_skip(api: &Api<Value>) -> Option<()> {

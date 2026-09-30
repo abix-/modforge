@@ -41,7 +41,11 @@ pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<Str
     let mut exceeded = false;
     patternsleuth::disassemble::disassemble(&image, start, |instruction| {
         let at = instruction.ip();
-        if image.get_root_function(at)?.map(|function| function.range.start) != Some(start) {
+        if image
+            .get_root_function(at)?
+            .map(|function| function.range.start)
+            != Some(start)
+        {
             return Ok(patternsleuth::disassemble::Control::Break);
         }
         if listing.len() >= 4096 {
@@ -60,9 +64,12 @@ pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<Str
                 if let Some(prefix) = bytes.get(..8) {
                     line.push_str(&format!("  data {prefix:02X?}"));
                 }
-                let wide: Vec<u16> = bytes.chunks_exact(2).take(96)
+                let wide: Vec<u16> = bytes
+                    .chunks_exact(2)
+                    .take(96)
                     .map(|pair| u16::from_le_bytes([pair[0], pair[1]]))
-                    .take_while(|unit| *unit != 0).collect();
+                    .take_while(|unit| *unit != 0)
+                    .collect();
                 if !wide.is_empty() && wide.iter().all(|unit| (32..127).contains(unit)) {
                     line.push_str(&format!("  string {:?}", String::from_utf16_lossy(&wide)));
                 }
@@ -70,7 +77,8 @@ pub fn inspect_file_function(path: &std::path::Path, rva: u32) -> Result<Vec<Str
         }
         listing.push((at, line));
         Ok(patternsleuth::disassemble::Control::Continue)
-    }).map_err(|error| anyhow!("inspect RVA 0x{rva:X}: {error}"))?;
+    })
+    .map_err(|error| anyhow!("inspect RVA 0x{rva:X}: {error}"))?;
     anyhow::ensure!(!exceeded, "function inspection exceeds 4096 instructions");
     anyhow::ensure!(!listing.is_empty(), "RVA 0x{rva:X} is not a function start");
     listing.sort_by_key(|(at, _)| *at);
@@ -208,9 +216,92 @@ pub fn scan_rdata_matches(sig: &str) -> Result<Vec<usize>> {
 /// patternsleuth's image walker still excludes non-loadable
 /// sections like `.reloc`).
 pub fn scan_section(sig: &str, section: Option<object::SectionKind>) -> Result<Vec<usize>> {
+    let image = read_image().map_err(|e| anyhow!("patternsleuth read_image failed: {e}"))?;
+    scan_image(&image, sig, section)
+}
+
+/// Like [`scan_all_matches`], but over the `.text` of a named module
+/// loaded in this process instead of the main executable. For games
+/// whose code is not in the `.exe`, such as Unity IL2CPP games
+/// (`GameAssembly.dll`). patternsleuth's `read_image` only reads the
+/// main module, so this builds the image the same way for the named
+/// one.
+pub fn scan_module_matches(module: &str, sig: &str) -> Result<Vec<usize>> {
+    scan_module_section(module, sig, Some(TEXT_SECTION))
+}
+
+/// Like [`scan_module_matches`] with a caller-chosen section, for
+/// example `object::SectionKind::ReadOnlyData` to find a constant in a
+/// named module's `.rdata`.
+pub fn scan_module_section(
+    module: &str,
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<Vec<usize>> {
+    let image = read_module_image(module)?;
+    scan_image(&image, sig, section)
+}
+
+#[cfg(windows)]
+fn read_module_image(module: &str) -> Result<patternsleuth::image::Image<'static>> {
+    use object::{Object, ObjectSection};
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows_sys::Win32::System::ProcessStatus::{GetModuleInformation, MODULEINFO};
+    use windows_sys::Win32::System::Threading::GetCurrentProcess;
+
+    let wide: Vec<u16> = module.encode_utf16().chain(std::iter::once(0)).collect();
+    // SAFETY: wide is a NUL-terminated UTF-16 string.
+    let handle = unsafe { GetModuleHandleW(wide.as_ptr()) };
+    if handle.is_null() {
+        return Err(anyhow!("module {module:?} is not loaded"));
+    }
+    let mut info = MODULEINFO {
+        lpBaseOfDll: std::ptr::null_mut(),
+        SizeOfImage: 0,
+        EntryPoint: std::ptr::null_mut(),
+    };
+    // SAFETY: handle is a loaded module of this process; info is a
+    // correctly sized out-parameter.
+    let ok = unsafe {
+        GetModuleInformation(
+            GetCurrentProcess(),
+            handle,
+            &mut info,
+            std::mem::size_of::<MODULEINFO>() as u32,
+        )
+    };
+    if ok == 0 {
+        return Err(anyhow!("GetModuleInformation({module:?}) failed"));
+    }
+    // SAFETY: a loaded module stays mapped for the life of the
+    // process (none of the game's modules are unloaded).
+    let memory: &'static [u8] = unsafe {
+        std::slice::from_raw_parts(info.lpBaseOfDll as *const u8, info.SizeOfImage as usize)
+    };
+    let object = object::File::parse(memory)?;
+    let base = object.relative_address_base();
+    let mut sections = vec![];
+    for section in object.sections() {
+        let addr = (section.address() - base) as usize;
+        let size = section.size() as usize;
+        sections.push((section, &memory[addr..addr + size]));
+    }
+    let memory = patternsleuth::Memory::new_internal_data(sections)?;
+    patternsleuth::image::pe::PEImage::read_inner_memory::<String>(base, None, false, memory, object)
+}
+
+#[cfg(not(windows))]
+fn read_module_image(module: &str) -> Result<patternsleuth::image::Image<'static>> {
+    Err(anyhow!("scan_module_matches({module:?}): Windows only"))
+}
+
+fn scan_image(
+    image: &patternsleuth::image::Image<'_>,
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<Vec<usize>> {
     let pat = Pattern::new(sig).with_context(|| format!("sig {sig:?} parse failed"))?;
     let config = PatternConfig::new((), "scan_all".to_string(), section, pat);
-    let image = read_image().map_err(|e| anyhow!("patternsleuth read_image failed: {e}"))?;
     let configs = [config];
     let scan_result: ScanResult<()> = image
         .scan(&configs)

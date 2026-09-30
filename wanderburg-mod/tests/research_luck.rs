@@ -35,7 +35,11 @@ fn methods_matching(api: &Api<Value>, class: &str, needle: Option<&str>) {
                 "  {class}::{name}({}) -> {}{}",
                 m["params"].as_i64().unwrap_or(0),
                 m["return"].as_str().unwrap_or("?"),
-                if m["static"].as_bool().unwrap_or(false) { " [static]" } else { "" }
+                if m["static"].as_bool().unwrap_or(false) {
+                    " [static]"
+                } else {
+                    ""
+                }
             );
         }
     }
@@ -86,7 +90,11 @@ fn luck_classes() {
     if ping_or_skip(&api).is_none() {
         return;
     }
-    for class in ["FallbackLuckArtifact", "LuckOnEnemyVehicleKill", "LuckPerLevel"] {
+    for class in [
+        "FallbackLuckArtifact",
+        "LuckOnEnemyVehicleKill",
+        "LuckPerLevel",
+    ] {
         println!("\n== {class}");
         fields_matching(&api, class, None, 3);
         methods_matching(&api, class, None);
@@ -101,12 +109,22 @@ fn luck_value_and_weights() {
         return;
     }
     if let Some(gm) = common::first_handle(&api, "GM") {
-        let r = api.op("invoke_method", json!({"handle": gm, "method": "get_CurrentLuck", "args": []}));
+        let r = api.op(
+            "invoke_method",
+            json!({"handle": gm, "method": "get_CurrentLuck", "args": []}),
+        );
         println!("GM.CurrentLuck = {} (ok={})", r.result, r.ok);
         api.op("release_handle", json!({"handle": gm}));
     }
     println!("\n== rarity, weight and ramp fields");
-    for class in ["GM", "ModuleSelection", "NewModuleOption", "ModuleUpgradeOption", "VehicleUpgrade", "AM"] {
+    for class in [
+        "GM",
+        "ModuleSelection",
+        "NewModuleOption",
+        "ModuleUpgradeOption",
+        "VehicleUpgrade",
+        "AM",
+    ] {
         for needle in ["rarity", "weight", "ramp", "legendary", "epic", "chance"] {
             fields_matching(&api, class, Some(needle), 1);
         }
@@ -123,10 +141,28 @@ fn luck_owners() {
     }
     println!("\n== fields and methods containing 'luck'");
     for class in [
-        "GM", "VM", "VS", "VP", "VMBaseStats", "AM", "MC", "ArtifactSystem", "ArtifactTagSystem",
-        "ModuleSelection", "NewModuleOption", "ModuleUpgradeOption", "VehicleUpgrade",
-        "RerollEnabler", "RerollButton", "StatisticsManager", "GameStatisticsTracker",
-        "RunBalancingRecorder", "SaveGame", "PlayerPrefList", "Module2", "BonusVehicleStats",
+        "GM",
+        "VM",
+        "VS",
+        "VP",
+        "VMBaseStats",
+        "AM",
+        "MC",
+        "ArtifactSystem",
+        "ArtifactTagSystem",
+        "ModuleSelection",
+        "NewModuleOption",
+        "ModuleUpgradeOption",
+        "VehicleUpgrade",
+        "RerollEnabler",
+        "RerollButton",
+        "StatisticsManager",
+        "GameStatisticsTracker",
+        "RunBalancingRecorder",
+        "SaveGame",
+        "PlayerPrefList",
+        "Module2",
+        "BonusVehicleStats",
     ] {
         fields_matching(&api, class, Some("luck"), 1);
         methods_matching(&api, class, Some("luck"));

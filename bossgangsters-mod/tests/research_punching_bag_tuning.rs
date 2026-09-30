@@ -25,7 +25,10 @@ fn punching_bag_live_tuning() {
         json!({"class": "PunchingBagStation", "include_inactive": true}),
     );
     assert!(res.ok, "walk_class failed: {:?}", res.error);
-    let instances = res.result["instances"].as_array().cloned().unwrap_or_default();
+    let instances = res.result["instances"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     println!("PunchingBagStation instances: {}", instances.len());
 
     for inst in &instances {

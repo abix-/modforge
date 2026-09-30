@@ -1,0 +1,21 @@
+# The Walking Trade open work
+
+Built and deployed but not yet proven in play. A row moves to
+`docs/changelog.md` only with the proof in `Done when`.
+
+| Priority | System | Todo | Done when |
+|---:|---|---|---|
+| 1 | Hires | [ ] Prove a hire survives a killing hit (`no_death`: health set to 1 in a prefix on `StaffMobObject.OnDamagedCheckLowHp`) | Log shows `saved <name> from death at 1 HP` and the hire is alive and still hired afterwards. |
+| 1 | Hires | [ ] Prove a hurt hire flees, is healed on reaching home, and goes back to work the same day (`flee_return`) | Log shows `<name> fled; job saved`, then `<name> healed to <n> and back to work`, and the hire walks back in and works. |
+| 1 | Skill tree | [ ] Prove the +1 hire repeat raises the hire limit | The in-game hire limit reads 2 higher than without the two repeats in `thewalkingtrade.json`. `ModifiableInt.Add` not yet read. |
+| 2 | Cleaner | [ ] Prove a level 2 cleaner carries bodies to the disposal point with organising off | `cleaner_disposal_state` shows `CanDisposeCorpses:true` for the level 2 cleaner, and bodies get disposed in play. |
+| 2 | Skill tree | [ ] Decide which upgrades may repeat, then confirm each kept type's `Unlock` adds itself to a modifiable total | Every class the repeat allows has its `Unlock` read in the Cpp2IL dump; types that do not stack are removed from the allow rule. Today every `...MultiplierSkillNode` plus `MaximumStaffCountSkillNode` is allowed; only crafting speed and +1 hire were read. |
+| 1 | Spiked wall | [ ] Prove a spiked wall loses a tenth of the mob's health per hit | Log shows `spiked wall: own damage x1.0 -> x0.1`; `spiked_wall_handlers` reads a wall's health after a zombie hit dropping by about a tenth of that zombie's health (300 max). |
+| 2 | Barbed wire | [ ] Prove a newly placed wire gets 0.2 from the `Awake` hook | `barbed_wire` shows one more wire than before, at `_ownDamagePerTick=0.2`. One disabled wire still reads 2.0; which object it is has not been checked. |
+| 1 | Cleaners | [ ] Find why cleaners juggle items (pick up, no place, drop, repeat) since 2026-09-30, then fix it at the cause | One juggled item followed from pickup to drop shows which destination check fails; after the fix `_dbgNoPlacement` stays low and cleaners stop dropping items. See `docs/research.md` "Cleaners juggling items". |
+| 1 | Cleaners | [ ] Replace `nav_snap` with a change that only touches high shelf standing spots (it currently changes every cleaner trip, ground items included) | Shelf standing spots above the floor are moved to the floor on shelf load/placement; the byte patch and 3 m radius are gone; ground items behave as vanilla. |
+| 1 | Cleaners | [ ] Stop cleaners hanging when stocking a wall shelf mounted high (cause proven: front point in the air, no path; fix built in `nav_snap.rs`) | Log shows `cleaner destination snaps to floor, patched at 0x...`; a cleaner stocks a 2.2 m wall shelf and walks on; `stuck_probe` shows no hire idle with an item; no hire snaps onto a wrong floor. See `docs/research.md` "Cleaner stuck carrying an item". |
+| 2 | Cleaners | [ ] Match Caroline's `(-103.44, 2.33, -60.21)` and Opal's knife case to a cause | Each traced to the point the cleaner was sent to and why it has no path. |
+| 1 | Crafting bench | [ ] Prove crafting uses materials outside the normal area, with the boxes left at normal size | A craft succeeds with the materials outside the original box; `craft_station_item_boxes` reads the original sizes after crafting; a crafted item in the warehouse no longer shows `craftStationZoneOwner` in `item_shelving_trace`. Risk: Unity may not update `collider.bounds` inside the same call after `set_size`. |
+| 2 | Performance | [ ] Re-measure after moving no-death onto the hire-only handler | `perf_window` in a fight: `twt: hook: hire damaged (no death)` calls only on hits to hires, no row for every damage event. |
+| 3 | Research tests | [ ] Remove `craft_station_boxes_write` and `cleaner_disposal_level_write`, which repeat what the mod now does | Tests gone, research still documented in `docs/research.md`. |

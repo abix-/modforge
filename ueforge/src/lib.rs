@@ -93,22 +93,22 @@ pub mod loops;
 // log moved to modforge in Phase 0b. Both the module and the
 // log!() macro re-export through this single `pub use`.
 pub use modforge::log;
+pub mod derived_class;
 pub mod mod_main;
 pub mod nav;
 pub mod ops;
 pub mod parms;
 pub mod pe_queue;
 pub mod reflect;
-pub mod derived_class;
 pub mod ring;
 pub mod rpg;
 pub mod scanner;
 pub mod selector;
-pub mod symbols;
 pub mod server;
 pub mod settings;
 pub mod shutdown;
 pub mod spawn_ops;
+pub mod symbols;
 pub mod tweak;
 pub mod uasset;
 pub mod ue;
@@ -118,9 +118,9 @@ pub mod ui_class_browser;
 pub mod ui_data_table_browser;
 pub mod ui_dynamic_tweaks;
 pub mod ui_scanner;
-pub mod watch;
 pub mod ui_struct_browser;
 pub mod ui_tweaks;
+pub mod watch;
 pub mod winproc;
 pub mod worker;
 

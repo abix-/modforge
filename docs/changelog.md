@@ -1,6 +1,16 @@
 # Changelog
 
 Abiotic Factor history is maintained in [its project changelog](../abioticfactor-mod/docs/changelog.md).
+The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
+
+## 2026-09-30
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `unityforge` | [x] Bridge v10: `patch_postfix_result`, a postfix on a method of any return type whose result crosses as JSON and can be replaced (JSON, or `{"$handle": N}` for a live object), with the same argument filter as the int postfix | Rust and the MelonLoader shim build. Live in The Walking Trade: the postfix installed on `SkillNode.CanUnlock` (returns bool, slot `ref object __result`) and its replacement changed how owned upgrades draw in the skill tree. Argument filter parsing moved into one `ParseArgFilter` shared by the int and generic postfixes. The existing float and int postfixes remain (used by terrainvicta-mod, not migrated, not tested here). |
+| `unityforge` | [x] `HarmonyBridge.LookupHandle` seam, set in all four shim entries (il2cpp, melonloader, mono, survivalist), so a result can be returned as a live object | Set in each entry next to `AcquireHandle`; exercised only through the MelonLoader shim. |
+| `modforge::patterns::sleuth` | [x] `scan_module_matches(module, sig)`: patternsleuth scan of a named loaded module, for games whose code is not in the exe (Unity IL2CPP `GameAssembly.dll`) | The Walking Trade's two cleaner level patterns each matched exactly once in `GameAssembly.dll`, on game 1.2.4 and again after the 1.2.5 update (log `3 -> 2 at 0x...`). `scan_section` shares the same scan code. |
+| `modforge::code_patch` | [x] In-memory byte patch with revert (`patch_bytes`, `revert_all`, `applied_names`) moved from horsey-mod into modforge; horsey-mod now calls it | The Walking Trade applies its two byte patches through it on every start (log). horsey-mod passes `cargo check`; not run in its game. |
 
 ## 2026-09-11
 

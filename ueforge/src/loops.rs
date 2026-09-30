@@ -30,31 +30,57 @@ pub fn start(name: &str, op: &str, args: Value, period: Duration) -> Result<Valu
     let last = Arc::new(Mutex::new(String::new()));
     let (thread_on, thread_runs, thread_last) = (on.clone(), runs.clone(), last.clone());
     let (thread_name, thread_op, thread_args) = (name.to_owned(), op.to_owned(), args.clone());
-    std::thread::Builder::new().name(format!("ueforge-loop-{name}")).spawn(move || {
-        while thread_on.load(Ordering::Relaxed) {
-            let reply = crate::ops::OP_REGISTRY.dispatch(&thread_op, &thread_args);
-            thread_runs.fetch_add(1, Ordering::Relaxed);
-            match reply {
-                Some(Ok(value)) => {
-                    *thread_last.lock() = value.to_string();
-                    if value["stop"] == true { crate::log!("loop {thread_name}: {thread_op} asked to stop"); break; }
+    std::thread::Builder::new()
+        .name(format!("ueforge-loop-{name}"))
+        .spawn(move || {
+            while thread_on.load(Ordering::Relaxed) {
+                let reply = crate::ops::OP_REGISTRY.dispatch(&thread_op, &thread_args);
+                thread_runs.fetch_add(1, Ordering::Relaxed);
+                match reply {
+                    Some(Ok(value)) => {
+                        *thread_last.lock() = value.to_string();
+                        if value["stop"] == true {
+                            crate::log!("loop {thread_name}: {thread_op} asked to stop");
+                            break;
+                        }
+                    }
+                    Some(Err(error)) => {
+                        *thread_last.lock() = format!("error: {error}");
+                        crate::log!("loop {thread_name}: {thread_op}: {error}");
+                    }
+                    None => {
+                        *thread_last.lock() = format!("unknown op {thread_op}");
+                        crate::log!("loop {thread_name}: unknown op {thread_op}");
+                        break;
+                    }
                 }
-                Some(Err(error)) => { *thread_last.lock() = format!("error: {error}"); crate::log!("loop {thread_name}: {thread_op}: {error}"); }
-                None => { *thread_last.lock() = format!("unknown op {thread_op}"); crate::log!("loop {thread_name}: unknown op {thread_op}"); break; }
+                std::thread::sleep(period);
             }
-            std::thread::sleep(period);
-        }
-        thread_on.store(false, Ordering::Relaxed);
-        crate::log!("loop {thread_name} ended");
-    }).map_err(|e| e.to_string())?;
-    LOOPS.lock().insert(name.to_owned(), Loop { op: op.to_owned(), args, period, on, runs, last });
+            thread_on.store(false, Ordering::Relaxed);
+            crate::log!("loop {thread_name} ended");
+        })
+        .map_err(|e| e.to_string())?;
+    LOOPS.lock().insert(
+        name.to_owned(),
+        Loop {
+            op: op.to_owned(),
+            args,
+            period,
+            on,
+            runs,
+            last,
+        },
+    );
     Ok(json!({"loop": name, "op": op, "period_ms": period.as_millis() as u64, "state": "started"}))
 }
 
 /// Stop the named loop; true when one was running.
 pub fn stop(name: &str) -> bool {
     match LOOPS.lock().remove(name) {
-        Some(entry) => { entry.on.store(false, Ordering::Relaxed); true }
+        Some(entry) => {
+            entry.on.store(false, Ordering::Relaxed);
+            true
+        }
         None => false,
     }
 }
@@ -68,7 +94,9 @@ pub fn list() -> Value {
 
 /// Stop every loop, for shutdown and hot reload.
 pub fn stop_all() {
-    for (_, entry) in std::mem::take(&mut *LOOPS.lock()) { entry.on.store(false, Ordering::Relaxed); }
+    for (_, entry) in std::mem::take(&mut *LOOPS.lock()) {
+        entry.on.store(false, Ordering::Relaxed);
+    }
 }
 
 pub fn register_ops() {

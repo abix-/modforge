@@ -913,6 +913,11 @@ struct WatchRecord {
     rdx: u64,
     r8: u64,
     r9: u64,
+    // Data watchpoints trap after the instruction executes. Capturing the
+    // watched bytes here identifies which hit actually wrote the sought
+    // value when several instructions touch the same field.
+    value_after: [u8; 8],
+    value_after_len: u8,
     frame_count: u32,
     frames: [usize; WATCH_MAX_FRAMES],
 }
@@ -934,6 +939,8 @@ static WATCH_BUF: WatchBuf = WatchBuf {
             rdx: 0,
             r8: 0,
             r9: 0,
+            value_after: [0; 8],
+            value_after_len: 0,
             frame_count: 0,
             frames: [0; WATCH_MAX_FRAMES],
         })
@@ -943,6 +950,8 @@ static WATCH_COUNT: AtomicUsize = AtomicUsize::new(0);
 static WATCH_ACTIVE: AtomicBool = AtomicBool::new(false);
 static WATCH_EXE_BASE: AtomicUsize = AtomicUsize::new(0);
 static WATCH_EXE_END: AtomicUsize = AtomicUsize::new(0);
+static WATCH_ADDR: AtomicUsize = AtomicUsize::new(0);
+static WATCH_LEN: AtomicUsize = AtomicUsize::new(0);
 // An execution breakpoint traps BEFORE the instruction runs (a fault,
 // not a trap), so the handler must clear this thread's breakpoint on
 // every hit or the same instruction re-traps forever.
@@ -986,7 +995,29 @@ unsafe extern "system" fn watch_handler(
         slot.rdx = ctx.Rdx;
         slot.r8 = ctx.R8;
         slot.r9 = ctx.R9;
+        slot.value_after = [0; 8];
+        slot.value_after_len = 0;
         slot.frame_count = 0;
+
+        let watch_addr = WATCH_ADDR.load(Ordering::Relaxed);
+        let watch_len = WATCH_LEN
+            .load(Ordering::Relaxed)
+            .min(slot.value_after.len());
+        let mut value_got = 0usize;
+        if watch_addr != 0 && watch_len != 0 {
+            // SAFETY: ReadProcessMemory is fault-safe for an address that may
+            // have become invalid during the watched instruction.
+            let _ = unsafe {
+                windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory(
+                    windows_sys::Win32::System::Threading::GetCurrentProcess(),
+                    watch_addr as *const _,
+                    slot.value_after.as_mut_ptr() as *mut _,
+                    watch_len,
+                    &mut value_got,
+                )
+            };
+            slot.value_after_len = value_got.min(watch_len) as u8;
+        }
 
         // Copy a window of the interrupted thread's stack via a
         // fault-safe read, then keep the qwords that point into the
@@ -1181,12 +1212,15 @@ pub fn capture_write_watchpoint(
 
     let modules = loaded_modules();
     // The main exe is the first module EnumProcessModules returns.
-    let (exe_base, exe_size, exe_name) = modules
-        .first()
-        .cloned()
-        .unwrap_or((0, 0, String::from("<unknown>")));
+    let (exe_base, exe_size, exe_name) =
+        modules
+            .first()
+            .cloned()
+            .unwrap_or((0, 0, String::from("<unknown>")));
     WATCH_EXE_BASE.store(exe_base as usize, Ordering::Relaxed);
     WATCH_EXE_END.store((exe_base + exe_size) as usize, Ordering::Relaxed);
+    WATCH_ADDR.store(addr, Ordering::Relaxed);
+    WATCH_LEN.store(if mode_exec { 1 } else { len as usize }, Ordering::Relaxed);
     WATCH_COUNT.store(0, Ordering::Release);
 
     // SAFETY: the callback signature matches PVECTORED_EXCEPTION_HANDLER.
@@ -1223,6 +1257,7 @@ pub fn capture_write_watchpoint(
         // this slot now, and indices below `recorded` were populated.
         let slot = unsafe { *WATCH_BUF.slots[i].get() };
         let (rip_mod, rip_rva) = resolve(slot.rip as u64);
+        let value_len = usize::from(slot.value_after_len).min(slot.value_after.len());
         let frames: Vec<serde_json::Value> = (0..slot.frame_count as usize)
             .map(|f| {
                 let a = slot.frames[f] as u64;
@@ -1243,6 +1278,7 @@ pub fn capture_write_watchpoint(
             "rdx": format!("0x{:x}", slot.rdx),
             "r8": format!("0x{:x}", slot.r8),
             "r9": format!("0x{:x}", slot.r9),
+            "value_after_hex": hex::encode(&slot.value_after[..value_len]),
             "stack_return_addrs": frames,
         }));
     }

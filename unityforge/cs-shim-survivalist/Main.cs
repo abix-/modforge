@@ -68,6 +68,7 @@ public class Main
         }
 
         HarmonyBridge.AcquireHandle = MonoBridge.Acquire;
+        HarmonyBridge.LookupHandle = MonoBridge.Lookup;
         HarmonyBridge.EnsureHarmony("abix.unityforge.shim.survivalist");
 
         var loader = new GenerationLoader(new MonoBackendBridge(), MonoBridge.ClearHandles);

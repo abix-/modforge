@@ -56,7 +56,8 @@ const G_OBJECTS_LAYOUT: ueforge::ue::GObjectsLayout = ueforge::ue::GObjectsLayou
 /// input) enqueue; `UEngine::Tick` drains it every frame, at the menu
 /// and in play alike.
 pub(crate) static DRAIN: ueforge::pe_queue::GameThread = ueforge::pe_queue::GameThread::new();
-pub(crate) const DRAIN_HINT: &str = "abioticfactor: is the UEngine::Tick hook installed? see pe_stats.game_thread";
+pub(crate) const DRAIN_HINT: &str =
+    "abioticfactor: is the UEngine::Tick hook installed? see pe_stats.game_thread";
 
 unsafe fn worker() {
     ueforge::log!("abioticfactor_mod init");
@@ -65,7 +66,10 @@ unsafe fn worker() {
         PROCESS_EVENT_IDX,
         G_OBJECTS_LAYOUT,
         // Live Object (40), RowHandle (32), and inventory slot (152) sizes.
-        ueforge::ue::StructLayout { properties_size: 0x58, element_size: 0x34 },
+        ueforge::ue::StructLayout {
+            properties_size: 0x58,
+            element_size: 0x34,
+        },
     );
 
     ueforge::selector::register_builtins();

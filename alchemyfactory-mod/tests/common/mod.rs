@@ -5,7 +5,7 @@
 #![allow(dead_code, unused_imports)]
 
 use modforge::client::Api;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub const GAME_DIR: &str = "C:/Games/Steam/steamapps/common/Alchemy Factory";
 pub const UE4SS_LOG: &str =

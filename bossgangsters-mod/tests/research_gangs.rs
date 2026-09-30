@@ -32,7 +32,10 @@ fn territories_and_prestige() {
         println!("TerritoryManager: no live instance");
         return;
     };
-    let count = api.op("read_field", json!({"handle": tm, "field": "TerritoryCount"}));
+    let count = api.op(
+        "read_field",
+        json!({"handle": tm, "field": "TerritoryCount"}),
+    );
     println!("territories: {}", count.result);
     let n = count.result.as_i64().unwrap_or(0);
     for i in 0..n {
@@ -49,7 +52,10 @@ fn territories_and_prestige() {
             println!("territory {i}: definition or state unreadable");
             continue;
         };
-        let name = api.op("read_field", json!({"handle": def_h, "field": "DisplayName"}));
+        let name = api.op(
+            "read_field",
+            json!({"handle": def_h, "field": "DisplayName"}),
+        );
         let stars = api.op("read_field", json!({"handle": def_h, "field": "StarLevel"}));
         let owner = api.op(
             "read_field",

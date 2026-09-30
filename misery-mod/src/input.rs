@@ -31,8 +31,10 @@ fn register_ops() {
             "{slot: u64, key_name: str, pressed: bool, fkey_hex?: str}",
             |args| {
                 let slot = args["slot"].as_u64().ok_or("missing slot")? as usize;
-                let key_name =
-                    args["key_name"].as_str().ok_or("missing key_name")?.to_string();
+                let key_name = args["key_name"]
+                    .as_str()
+                    .ok_or("missing key_name")?
+                    .to_string();
                 let pressed = args["pressed"].as_bool().ok_or("missing pressed")?;
                 let dry_run = args["dry_run"].as_bool().unwrap_or(false);
                 // Optional real 24-byte FKey (FName + a valid
@@ -107,14 +109,17 @@ fn dump_fn_bytes(target: &str, slot: usize, count: usize) -> Result<serde_json::
 
     let fn_ptr = unsafe { obj.vtable_fn(slot) };
     let count = count.min(4096);
-    let bytes: Vec<u8> =
-        unsafe { std::slice::from_raw_parts(fn_ptr as *const u8, count).to_vec() };
+    let bytes: Vec<u8> = unsafe { std::slice::from_raw_parts(fn_ptr as *const u8, count).to_vec() };
 
     let hex_lines: Vec<String> = bytes
         .chunks(16)
         .enumerate()
         .map(|(i, chunk)| {
-            let hex = chunk.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ");
+            let hex = chunk
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
             format!("+0x{:03x}: {}", i * 16, hex)
         })
         .collect();
@@ -197,9 +202,7 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
                     }
 
                     let first_bytes: Vec<u8> = if fn_addr != 0 {
-                        unsafe {
-                            std::slice::from_raw_parts(fn_addr as *const u8, 16).to_vec()
-                        }
+                        unsafe { std::slice::from_raw_parts(fn_addr as *const u8, 16).to_vec() }
                     } else {
                         Vec::new()
                     };
@@ -221,8 +224,7 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
                 "string_found": false,
             }));
         } else if all_results.iter().all(|r| {
-            r["search_string"].as_str() != Some(search_str)
-                || r.get("string_found").is_some()
+            r["search_string"].as_str() != Some(search_str) || r.get("string_found").is_some()
         }) {
             all_results.push(serde_json::json!({
                 "search_string": search_str,
@@ -238,16 +240,15 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
     if let Some(player) = crate::speed::PLAYER.retained() {
         let controller_addr: usize = unsafe { player.read_field(0x2C8) };
         if controller_addr != 0 {
-            let controller =
-                unsafe { &*(controller_addr as *const ueforge::ue::UObject) };
+            let controller = unsafe { &*(controller_addr as *const ueforge::ue::UObject) };
             let pi_addr: usize = unsafe { controller.read_field(0x408) };
 
             let fn_entries: Vec<usize> = all_results
                 .iter()
                 .filter_map(|r| {
-                    r["fn_entry"].as_str().and_then(|s| {
-                        usize::from_str_radix(s.trim_start_matches("0x"), 16).ok()
-                    })
+                    r["fn_entry"]
+                        .as_str()
+                        .and_then(|s| usize::from_str_radix(s.trim_start_matches("0x"), 16).ok())
                 })
                 .filter(|&a| a != 0)
                 .collect();
@@ -266,8 +267,7 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
 
             // Check PlayerInput vtable (up to 120 slots)
             if pi_addr != 0 {
-                let player_input =
-                    unsafe { &*(pi_addr as *const ueforge::ue::UObject) };
+                let player_input = unsafe { &*(pi_addr as *const ueforge::ue::UObject) };
                 for slot in 0..120usize {
                     let slot_fn = unsafe { player_input.vtable_fn(slot) } as usize;
                     if fn_entries.contains(&slot_fn) {
@@ -288,16 +288,18 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
     // and 48 8b 81 a0 01 00 00 (mov rax, [rcx+0x1A0] = PlayerInput)
     // This combination is likely unique to APlayerController::InputKey.
     let prologue_sig = "40 55 57 41 57 48 8d 6c 24 b9 48 81 ec f0 00 00 00 f6 41 58 10";
-    let prologue_hits = scan_all_matches(prologue_sig)
-        .map_err(|e| format!("prologue scan failed: {e}"))?;
+    let prologue_hits =
+        scan_all_matches(prologue_sig).map_err(|e| format!("prologue scan failed: {e}"))?;
 
     // For each hit, check if it reads PlayerInput at [rcx+0x1A0]
     let mut prologue_results: Vec<serde_json::Value> = Vec::new();
     for &addr in &prologue_hits {
-        let fn_bytes: Vec<u8> = unsafe {
-            std::slice::from_raw_parts(addr as *const u8, 64).to_vec()
-        };
-        let hex = fn_bytes.iter().map(|b| format!("{b:02x}")).collect::<String>();
+        let fn_bytes: Vec<u8> =
+            unsafe { std::slice::from_raw_parts(addr as *const u8, 64).to_vec() };
+        let hex = fn_bytes
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
         prologue_results.push(serde_json::json!({
             "fn_addr": format!("0x{addr:x}"),
             "first_64_bytes": hex,
@@ -314,10 +316,7 @@ fn find_inputkey_by_scan() -> Result<serde_json::Value, String> {
     }))
 }
 
-fn dry_run_inputkey(
-    slot: usize,
-    key_name: &str,
-) -> Result<serde_json::Value, String> {
+fn dry_run_inputkey(slot: usize, key_name: &str) -> Result<serde_json::Value, String> {
     let player = crate::speed::PLAYER
         .retained()
         .ok_or("no retained player")?;
@@ -338,8 +337,7 @@ fn dry_run_inputkey(
         .ok_or_else(|| format!("FName not found for key '{key_name}'"))?;
 
     let fn_ptr = unsafe { player_input.vtable_fn(slot) };
-    let first_bytes: [u8; 16] =
-        unsafe { std::ptr::read_unaligned(fn_ptr as *const [u8; 16]) };
+    let first_bytes: [u8; 16] = unsafe { std::ptr::read_unaligned(fn_ptr as *const [u8; 16]) };
 
     Ok(serde_json::json!({
         "slot": slot,
@@ -360,25 +358,25 @@ fn dry_run_inputkey(
 struct FInputKeyParams {
     // FKey Key: FName KeyName (8) + TSharedPtr<FKeyDetails> (16). A null
     // KeyDetails is fine; UE resolves it lazily from KeyName.
-    key_fname_ci: i32,       // +0x00
-    key_fname_num: u32,      // +0x04
-    key_details_ptr: usize,  // +0x08
-    key_details_ref: usize,  // +0x10
+    key_fname_ci: i32,      // +0x00
+    key_fname_num: u32,     // +0x04
+    key_details_ptr: usize, // +0x08
+    key_details_ref: usize, // +0x10
     // FInputDeviceId InputDevice (int32 wrapper)
-    input_device: i32,       // +0x18
+    input_device: i32, // +0x18
     // EInputEvent Event (0 = IE_Pressed, 1 = IE_Released)
-    event: i32,              // +0x1C
+    event: i32, // +0x1C
     // int32 NumSamples
-    num_samples: i32,        // +0x20
+    num_samples: i32, // +0x20
     // float DeltaTime
-    delta_time: f32,         // +0x24
+    delta_time: f32, // +0x24
     // FVector Delta (3 doubles, 8-aligned at +0x28)
-    delta_x: f64,            // +0x28
-    delta_y: f64,            // +0x30
-    delta_z: f64,            // +0x38
+    delta_x: f64, // +0x28
+    delta_y: f64, // +0x30
+    delta_z: f64, // +0x38
     // bool bIsGamepadOverride
-    is_gamepad: u8,          // +0x40
-    _pad: [u8; 7],           // to size 0x48
+    is_gamepad: u8, // +0x40
+    _pad: [u8; 7],  // to size 0x48
 }
 
 #[repr(C)]
@@ -480,9 +478,7 @@ fn try_inputkey(
     let fn_ptr = unsafe { epi.vtable_fn(slot) };
     type InputKeyFn = unsafe extern "system" fn(*const c_void, *const c_void) -> bool;
     let input_key: InputKeyFn = unsafe { std::mem::transmute(fn_ptr) };
-    let result = unsafe {
-        input_key(epi_addr as *const c_void, buf.as_ptr() as *const c_void)
-    };
+    let result = unsafe { input_key(epi_addr as *const c_void, buf.as_ptr() as *const c_void) };
 
     Ok(serde_json::json!({
         "key": key_name,

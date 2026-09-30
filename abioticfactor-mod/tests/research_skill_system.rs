@@ -54,7 +54,11 @@ fn read_skill_levels() {
             "length": 16
         }),
     );
-    let hex = tmap.result.get("bytes_hex").and_then(|h| h.as_str()).unwrap_or("");
+    let hex = tmap
+        .result
+        .get("bytes_hex")
+        .and_then(|h| h.as_str())
+        .unwrap_or("");
     let raw: Vec<u8> = (0..hex.len())
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
@@ -78,7 +82,11 @@ fn read_skill_levels() {
             "length": total_bytes
         }),
     );
-    let hex = entries.result.get("bytes_hex").and_then(|h| h.as_str()).unwrap_or("");
+    let hex = entries
+        .result
+        .get("bytes_hex")
+        .and_then(|h| h.as_str())
+        .unwrap_or("");
     let raw: Vec<u8> = (0..hex.len())
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
@@ -87,11 +95,23 @@ fn read_skill_levels() {
     println!("\nskill levels:");
     for i in 0..count as usize {
         let base = i * TMAP_ENTRY_STRIDE;
-        let fname = u64::from_le_bytes(raw[base + FNAME_OFFSET_IN_ENTRY..base + FNAME_OFFSET_IN_ENTRY + 8].try_into().unwrap());
-        let level = i32::from_le_bytes(raw[base + LEVEL_OFFSET_IN_ENTRY..base + LEVEL_OFFSET_IN_ENTRY + 4].try_into().unwrap());
+        let fname = u64::from_le_bytes(
+            raw[base + FNAME_OFFSET_IN_ENTRY..base + FNAME_OFFSET_IN_ENTRY + 8]
+                .try_into()
+                .unwrap(),
+        );
+        let level = i32::from_le_bytes(
+            raw[base + LEVEL_OFFSET_IN_ENTRY..base + LEVEL_OFFSET_IN_ENTRY + 4]
+                .try_into()
+                .unwrap(),
+        );
 
         let name_result = api.op("fname_to_string", json!({"fname": fname}));
-        let name = name_result.result.get("string").and_then(|s| s.as_str()).unwrap_or("?");
+        let name = name_result
+            .result
+            .get("string")
+            .and_then(|s| s.as_str())
+            .unwrap_or("?");
         println!("  {:20} level {}", name, level);
     }
 }
@@ -117,13 +137,24 @@ fn skill_xp_function_signatures() {
             "function_parameters",
             json!({"class": "Abiotic_PlayerCharacter_C", "function": func}),
         );
-        let num = params.result.get("num_parms").and_then(|n| n.as_i64()).unwrap_or(0);
-        let size = params.result.get("parms_size").and_then(|n| n.as_i64()).unwrap_or(0);
+        let num = params
+            .result
+            .get("num_parms")
+            .and_then(|n| n.as_i64())
+            .unwrap_or(0);
+        let size = params
+            .result
+            .get("parms_size")
+            .and_then(|n| n.as_i64())
+            .unwrap_or(0);
         print!("  {} ({} params, {} bytes):", func, num, size);
         if let Some(p) = params.result.get("parameters").and_then(|p| p.as_array()) {
             for param in p {
                 let pname = param.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-                let psize = param.get("element_size").and_then(|n| n.as_i64()).unwrap_or(0);
+                let psize = param
+                    .get("element_size")
+                    .and_then(|n| n.as_i64())
+                    .unwrap_or(0);
                 print!(" {}({})", pname, psize);
             }
         }

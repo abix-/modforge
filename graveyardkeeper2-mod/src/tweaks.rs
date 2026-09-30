@@ -58,6 +58,9 @@ pub fn on_tick(_now: f32) {
     if let Err(e) = crate::stacks::apply() {
         log(LogLevel::Warn, &format!("stacks: {e}"));
     }
+    if let Err(e) = crate::replant::resume_all() {
+        log(LogLevel::Warn, &format!("replant: resume: {e}"));
+    }
     match auto_apply() {
         Ok(()) => log(
             LogLevel::Info,

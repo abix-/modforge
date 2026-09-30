@@ -36,12 +36,21 @@ fn game_types() {
         json!({"class": "Il2CppSystem.AppDomain", "method": "get_CurrentDomain", "args": []}),
     );
     let Some(domain_h) = handle_of(&domain.result) else {
-        println!("AppDomain.get_CurrentDomain carried no handle: ok={} result={} error={:?}", domain.ok, domain.result, domain.error);
+        println!(
+            "AppDomain.get_CurrentDomain carried no handle: ok={} result={} error={:?}",
+            domain.ok, domain.result, domain.error
+        );
         return;
     };
-    let asms = api.op("invoke_method", json!({"handle": domain_h, "method": "GetAssemblies", "args": []}));
+    let asms = api.op(
+        "invoke_method",
+        json!({"handle": domain_h, "method": "GetAssemblies", "args": []}),
+    );
     let Some(asms_h) = handle_of(&asms.result) else {
-        println!("GetAssemblies carried no handle: ok={} result={} error={:?}", asms.ok, asms.result, asms.error);
+        println!(
+            "GetAssemblies carried no handle: ok={} result={} error={:?}",
+            asms.ok, asms.result, asms.error
+        );
         return;
     };
     let Some(asm_count) = count_of(&api, asms_h) else {
@@ -50,11 +59,17 @@ fn game_types() {
     };
     let mut asm_h = None;
     for i in 0..asm_count {
-        let item = api.op("invoke_method", json!({"handle": asms_h, "method": "get_Item", "args": [i]}));
+        let item = api.op(
+            "invoke_method",
+            json!({"handle": asms_h, "method": "get_Item", "args": [i]}),
+        );
         let Some(h) = handle_of(&item.result) else {
             continue;
         };
-        let full = api.op("invoke_method", json!({"handle": h, "method": "get_FullName", "args": []}));
+        let full = api.op(
+            "invoke_method",
+            json!({"handle": h, "method": "get_FullName", "args": []}),
+        );
         let name = full.result.as_str().unwrap_or("");
         if name.starts_with("Assembly-CSharp,") {
             println!("found {name}");
@@ -70,9 +85,15 @@ fn game_types() {
         return;
     };
 
-    let types = api.op("invoke_method", json!({"handle": asm_h, "method": "GetTypes", "args": []}));
+    let types = api.op(
+        "invoke_method",
+        json!({"handle": asm_h, "method": "GetTypes", "args": []}),
+    );
     let Some(seq) = handle_of(&types.result) else {
-        println!("GetTypes carried no handle: ok={} result={} error={:?}", types.ok, types.result, types.error);
+        println!(
+            "GetTypes carried no handle: ok={} result={} error={:?}",
+            types.ok, types.result, types.error
+        );
         return;
     };
     let Some(n) = count_of(&api, seq) else {
@@ -83,11 +104,17 @@ fn game_types() {
 
     let mut by_namespace: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for i in 0..n {
-        let item = api.op("invoke_method", json!({"handle": seq, "method": "get_Item", "args": [i]}));
+        let item = api.op(
+            "invoke_method",
+            json!({"handle": seq, "method": "get_Item", "args": [i]}),
+        );
         let Some(th) = handle_of(&item.result) else {
             continue;
         };
-        let name = api.op("invoke_method", json!({"handle": th, "method": "get_FullName", "args": []}));
+        let name = api.op(
+            "invoke_method",
+            json!({"handle": th, "method": "get_FullName", "args": []}),
+        );
         api.op("release_handle", json!({"handle": th}));
         let Some(full) = name.result.as_str().map(str::to_string) else {
             continue;

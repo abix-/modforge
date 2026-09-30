@@ -35,15 +35,32 @@
     </Compile>
   </ItemGroup>
 
+  <PropertyGroup>
+    <!-- BepInEx major version: 5 (monolithic BepInEx.dll) or 6
+         (split into BepInEx.Core + BepInEx.Unity.Mono). Pass
+         -p:BepInExVersion=6 for Unity 6 games. -->
+    <BepInExVersion Condition="'$(BepInExVersion)' == ''">5</BepInExVersion>
+    <DefineConstants Condition="'$(BepInExVersion)' == '6'">$(DefineConstants);BEPINEX6</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <!--
-      BepInEx 5 (Mono) + HarmonyX + Unity references. Adjust
+      BepInEx (Mono) + HarmonyX + Unity references. Adjust
       HintPaths via -p:BepInExDir / -p:UnityDir when building
-      against a specific install.
+      against a specific install. Pass -p:BepInExVersion=6 for
+      BepInEx 6 (split assemblies).
     -->
-    <Reference Include="BepInEx" Condition="'$(BepInExDir)' != ''">
+    <Reference Include="BepInEx" Condition="'$(BepInExDir)' != '' AND '$(BepInExVersion)' == '5'">
       <Private>false</Private>
       <HintPath>$(BepInExDir)\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx.Core" Condition="'$(BepInExDir)' != '' AND '$(BepInExVersion)' == '6'">
+      <Private>false</Private>
+      <HintPath>$(BepInExDir)\core\BepInEx.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx.Unity.Mono" Condition="'$(BepInExDir)' != '' AND '$(BepInExVersion)' == '6'">
+      <Private>false</Private>
+      <HintPath>$(BepInExDir)\core\BepInEx.Unity.Mono.dll</HintPath>
     </Reference>
     <Reference Include="0Harmony" Condition="'$(BepInExDir)' != ''">
       <Private>false</Private>

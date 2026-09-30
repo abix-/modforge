@@ -562,12 +562,17 @@ where
                 let reads = snapshot_requests(args)?;
                 // Unlike on_game_thread, run refuses an unserved queue. A
                 // listener-thread fallback would invalidate this operation.
-                crate::game_thread::run(move || {
-                    let frame = crate::frame::frames();
-                    let results = reads.iter().map(|read| read_bytes(read, resolver))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Ok(serde_json::json!({"game_thread":true,"frame":frame,"reads":results}))
-                }, WALK_TIMEOUT)
+                crate::game_thread::run(
+                    move || {
+                        let frame = crate::frame::frames();
+                        let results = reads
+                            .iter()
+                            .map(|read| read_bytes(read, resolver))
+                            .collect::<Result<Vec<_>, _>>()?;
+                        Ok(serde_json::json!({"game_thread":true,"frame":frame,"reads":results}))
+                    },
+                    WALK_TIMEOUT,
+                )
             },
         ),
         OpDef::new(
@@ -615,7 +620,9 @@ fn snapshot_requests(args: &Json) -> Result<Vec<Json>, String> {
         arg_str(read, "instance_selector")?;
         let offset = arg_u64(read, "offset", Some(0))?;
         let length = arg_u64(read, "length", None)?;
-        offset.checked_add(length).ok_or("snapshot range overflow")?;
+        offset
+            .checked_add(length)
+            .ok_or("snapshot range overflow")?;
         total = total.checked_add(length).ok_or("snapshot total overflow")?;
         if total > BYTE_OP_CAP as u64 {
             return Err("snapshot exceeds 1MB total cap".into());
@@ -633,9 +640,12 @@ mod snapshot_tests {
         let range = serde_json::json!({"instance_selector":"addr:0x1","length":BYTE_OP_CAP});
         assert!(snapshot_requests(&serde_json::json!({"reads":[range.clone()]})).is_ok());
         assert!(snapshot_requests(&serde_json::json!({"reads":[range.clone(), range]})).is_err());
-        assert!(snapshot_requests(&serde_json::json!({"reads":[{
-            "instance_selector":"addr:0x1","offset":u64::MAX,"length":1
-        }]})).is_err());
+        assert!(
+            snapshot_requests(&serde_json::json!({"reads":[{
+                "instance_selector":"addr:0x1","offset":u64::MAX,"length":1
+            }]}))
+            .is_err()
+        );
         assert!(snapshot_requests(&serde_json::json!({"reads":[]})).is_err());
     }
 }

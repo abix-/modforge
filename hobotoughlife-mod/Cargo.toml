@@ -1,0 +1,29 @@
+[package]
+name = "hobotoughlife-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Hobo: Tough Life mod. Unity IL2CPP game by LAPA Games (AppID
+# 632300, exe HoboRPG.exe). Rust cdylib loaded by
+# Unityforge.Shim.Melon (MelonLoader entry) through unityforge.
+
+[lib]
+crate-type = ["cdylib"]
+name = "hobotoughlife_mod"
+
+[dependencies]
+modforge = { path = "../modforge" }
+unityforge = { path = "../unityforge" }
+
+[dev-dependencies]
+unityforge = { path = "../unityforge" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.unityforge]
+deploy_name = "hobotoughlife_mod.unityforge.dll"

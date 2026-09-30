@@ -24,13 +24,20 @@ fn heal_once() {
         return;
     };
     let read = |field: &str| -> Value {
-        api.op("read_field", json!({"handle": vm, "field": field})).result
+        api.op("read_field", json!({"handle": vm, "field": field}))
+            .result
     };
     let before = read("currentHP");
     let max = read("maxHP");
     println!("before: currentHP={before} maxHP={max}");
-    let r = api.op("invoke_method", json!({"handle": vm, "method": "Heal", "args": [10.0]}));
-    println!("Heal(10): ok={} result={} error={:?}", r.ok, r.result, r.error);
+    let r = api.op(
+        "invoke_method",
+        json!({"handle": vm, "method": "Heal", "args": [10.0]}),
+    );
+    println!(
+        "Heal(10): ok={} result={} error={:?}",
+        r.ok, r.result, r.error
+    );
     let after = read("currentHP");
     println!("after:  currentHP={after} maxHP={max}");
     api.op("release_handle", json!({"handle": vm}));

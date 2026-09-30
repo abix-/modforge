@@ -21,11 +21,14 @@
 mod common;
 use common::{api, ping_or_skip};
 use modforge::client::{self, Api};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 
 fn class_objects(api: &Api<Value>) -> HashMap<String, u64> {
-    let r = api.op("walk_class", json!({"class": "Class", "max": 8000, "include_cdo": false}));
+    let r = api.op(
+        "walk_class",
+        json!({"class": "Class", "max": 8000, "include_cdo": false}),
+    );
     let mut out = HashMap::new();
     if let Some(arr) = r.result.get("instances").and_then(|v| v.as_array()) {
         for i in arr {
@@ -55,7 +58,12 @@ fn properties_size_slot() {
         return;
     }
     let classes = class_objects(&api);
-    let want = [("Object", 0x28), ("Field", 0x30), ("Struct", 0xB0), ("Class", 0x200)];
+    let want = [
+        ("Object", 0x28),
+        ("Field", 0x30),
+        ("Struct", 0xB0),
+        ("Class", 0x200),
+    ];
     let mut bytes = HashMap::new();
     for (name, _) in want {
         let Some(addr) = classes.get(name) else {
@@ -79,7 +87,10 @@ fn properties_size_slot() {
             );
         }
     }
-    println!("ueforge UE5_4 assumes +0xb0; Object reads {:#x} there", i32_at(&bytes["Object"], 0xB0));
+    println!(
+        "ueforge UE5_4 assumes +0xb0; Object reads {:#x} there",
+        i32_at(&bytes["Object"], 0xB0)
+    );
 }
 
 #[test]
@@ -112,7 +123,10 @@ fn child_properties_slot() {
             let r = api.op("fname_to_string", json!({"fname": fname}));
             println!(
                 "Actor +{slot:#x} -> {p:#x}, name@+{name_off:#x} = {:?}",
-                r.result.get("string").and_then(|s| s.as_str()).unwrap_or("?")
+                r.result
+                    .get("string")
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("?")
             );
         }
     }
@@ -153,7 +167,10 @@ fn fproperty_slots() {
             .collect();
         println!(
             "{:<32} {}",
-            name.result.get("string").and_then(|s| s.as_str()).unwrap_or("?"),
+            name.result
+                .get("string")
+                .and_then(|s| s.as_str())
+                .unwrap_or("?"),
             ints.join(" ")
         );
         p = client::from_le_u64(&node, 0x20);

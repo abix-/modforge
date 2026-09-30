@@ -14,7 +14,7 @@
 //! ```
 
 mod common;
-use common::{api, ping_or_skip, UE4SS_LOG};
+use common::{UE4SS_LOG, api, ping_or_skip};
 use modforge::client;
 use serde_json::json;
 
@@ -48,7 +48,9 @@ fn discovery_counts() {
         if op == "discover_classes" {
             // Names that only this game would use, from the
             // Content/Descriptors folder names in the pak manifest.
-            let words = ["Demon", "Hummu", "Hell", "Guaca", "Imp", "Spell", "Sintopia"];
+            let words = [
+                "Demon", "Hummu", "Hell", "Guaca", "Imp", "Spell", "Sintopia",
+            ];
             let mut names: Vec<&str> = r
                 .result
                 .get(array_key)

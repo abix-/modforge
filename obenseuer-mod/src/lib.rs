@@ -21,15 +21,9 @@ fn on_init() {
 
     tweaks::install();
 
-    unityforge::mono::log(
-        unityforge::mono::LogLevel::Info,
-        "obenseuer-mod: ready",
-    );
+    unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: ready");
 }
 
 fn on_shutdown() {
-    unityforge::mono::log(
-        unityforge::mono::LogLevel::Info,
-        "obenseuer-mod: shutdown",
-    );
+    unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: shutdown");
 }

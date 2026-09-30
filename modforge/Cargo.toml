@@ -85,6 +85,12 @@ zip = { workspace = true }
 name = "modforge-deploy"
 path = "src/bin/modforge_deploy.rs"
 
+# Injector for native-PE games (horsey-mod, jaggedalliance3-mod):
+# CreateRemoteThread(LoadLibraryW) the mod DLL into the running game.
+[[bin]]
+name = "modforge-inject"
+path = "src/bin/modforge_inject.rs"
+
 [features]
 # In-game ImGui overlay via hudhook. Hooks the host game's
 # IDXGISwapChain::Present so the panel renders INSIDE the game window.

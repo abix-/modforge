@@ -86,14 +86,20 @@ struct Watch {
 enum Step {
     /// Pressed; watch for the registered result under this
     /// header, starting from this feedbackVersion.
-    Punched { header: String, version_before: i64 },
+    Punched {
+        header: String,
+        version_before: i64,
+    },
     Wait,
     SessionOver,
 }
 
 fn watch_prompt(mut w: Watch) {
     MAIN_QUEUE.push(move || match check_and_punch(&mut w) {
-        Ok(Step::Punched { header, version_before }) => {
+        Ok(Step::Punched {
+            header,
+            version_before,
+        }) => {
             // Rhythm double-tap: the same press again a beat
             // later, while the first punch is still mid-swing.
             second_press(
@@ -138,7 +144,13 @@ fn second_press(
     MAIN_QUEUE.push(move || {
         if first_press.elapsed().as_secs_f64() < SECOND_PRESS_GAP {
             if frames_left > 0 {
-                second_press(station, header, version_before, first_press, frames_left - 1);
+                second_press(
+                    station,
+                    header,
+                    version_before,
+                    first_press,
+                    frames_left - 1,
+                );
             }
             return;
         }
@@ -212,10 +224,7 @@ fn check_and_punch(w: &mut Watch) -> Result<Step, String> {
         .ok_or("promptActive not a bool")?;
     let timer = read_f64(station, "reactionWindowTimer")?;
     let ratio = read_f64(station, "signedBagAngle")? / read_f64(station, "maximumAwayAngle")?;
-    let tier = station
-        .read_field("difficultyTier")?
-        .as_i64()
-        .unwrap_or(1);
+    let tier = station.read_field("difficultyTier")?.as_i64().unwrap_or(1);
     let left = station
         .read_field("expectsLeftHand")?
         .as_bool()
@@ -235,5 +244,8 @@ fn check_and_punch(w: &mut Watch) -> Result<Step, String> {
         if left { "left (A)" } else { "right (D)" },
         if prompt_active { "on" } else { "off" },
     );
-    Ok(Step::Punched { header, version_before })
+    Ok(Step::Punched {
+        header,
+        version_before,
+    })
 }

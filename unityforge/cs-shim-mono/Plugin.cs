@@ -12,6 +12,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using BepInEx;
+#if BEPINEX6
+using BepInEx.Unity.Mono;
+#endif
 using UnityEngine;
 
 namespace Unityforge.Shim
@@ -51,6 +54,7 @@ namespace Unityforge.Shim
             }
 
             HarmonyBridge.AcquireHandle = MonoBridge.Acquire;
+            HarmonyBridge.LookupHandle = MonoBridge.Lookup;
             HarmonyBridge.EnsureHarmony(PluginGuid);
 
             _loader = new GenerationLoader(new MonoBackendBridge(), MonoBridge.ClearHandles);

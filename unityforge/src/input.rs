@@ -187,6 +187,7 @@ pub enum KeyCode {
     Alpha7 = 55,
     Alpha8 = 56,
     Alpha9 = 57,
+    BackQuote = 96,
 }
 
 /// Register a callback that fires on every fresh keypress (one

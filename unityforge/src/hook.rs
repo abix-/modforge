@@ -157,6 +157,129 @@ pub fn patch_prefix_instance_args(
     })
 }
 
+/// Install a postfix patch on a method returning `float` that can
+/// replace its result. The callback receives the `__instance` as
+/// a FRESH handle (same ownership contract as `patch_prefix_ctx`;
+/// 0 for a static method), the arguments as JSON (same convention
+/// and ownership as `patch_prefix_instance_args`; the pointer is
+/// valid only during the callback), and the original result, and
+/// returns the result the caller sees. Needs a v8+ shim.
+pub fn patch_postfix_float_result(
+    class_name: &str,
+    method_name: &str,
+    postfix_fn: extern "C" fn(*const c_void, *const std::os::raw::c_char, f32) -> f32,
+) -> Result<Hook, String> {
+    let bridge = bridge::try_get()?;
+    let patch = bridge.harmony_patch_postfix_float_result.ok_or_else(|| {
+        "harmony_patch_postfix_float_result: shim is pre-v8; rebuild and redeploy the C# shim"
+            .to_string()
+    })?;
+    let c_class = CString::new(class_name).map_err(|e| format!("bad class: {e}"))?;
+    let c_method = CString::new(method_name).map_err(|e| format!("bad method: {e}"))?;
+    let handle = patch(c_class.as_ptr(), c_method.as_ptr(), postfix_fn);
+    if handle.0 == 0 {
+        return Err(format!(
+            "harmony_patch_postfix_float_result({class_name}, {method_name}) failed"
+        ));
+    }
+    Ok(Hook {
+        handle,
+        class_name: class_name.to_string(),
+        method_name: method_name.to_string(),
+        when: HookWhen::Postfix,
+    })
+}
+
+/// Install a postfix patch on a method returning `int` that can
+/// replace its result, same callback contract as
+/// [`patch_postfix_float_result`]. `filter` is a JSON object
+/// `{"<arg index>": value}` (number for enum or integer arguments,
+/// bool for bool ones) that the shim checks before calling Rust;
+/// the callback runs only when every listed argument matches. Use
+/// it on hot methods. Needs a v9+ shim.
+pub fn patch_postfix_int_result(
+    class_name: &str,
+    method_name: &str,
+    filter: &serde_json::Value,
+    postfix_fn: extern "C" fn(*const c_void, *const std::os::raw::c_char, i32) -> i32,
+) -> Result<Hook, String> {
+    let bridge = bridge::try_get()?;
+    let patch = bridge.harmony_patch_postfix_int_result.ok_or_else(|| {
+        "harmony_patch_postfix_int_result: shim is pre-v9; rebuild and redeploy the C# shim"
+            .to_string()
+    })?;
+    let c_class = CString::new(class_name).map_err(|e| format!("bad class: {e}"))?;
+    let c_method = CString::new(method_name).map_err(|e| format!("bad method: {e}"))?;
+    let c_filter = CString::new(filter.to_string()).map_err(|e| format!("bad filter: {e}"))?;
+    let handle = patch(c_class.as_ptr(), c_method.as_ptr(), c_filter.as_ptr(), postfix_fn);
+    if handle.0 == 0 {
+        return Err(format!(
+            "harmony_patch_postfix_int_result({class_name}, {method_name}) failed"
+        ));
+    }
+    Ok(Hook {
+        handle,
+        class_name: class_name.to_string(),
+        method_name: method_name.to_string(),
+        when: HookWhen::Postfix,
+    })
+}
+
+/// Install a postfix patch on a method of ANY return type that can
+/// replace its result. The callback receives the `__instance` as a
+/// FRESH handle (same ownership contract as `patch_prefix_ctx`; 0 for
+/// a static method), the arguments and the original result as JSON
+/// (the args convention of `patch_prefix_instance_args`; handles in
+/// them are owned by the callback; valid only during the callback),
+/// and an output buffer. Write the replacement result there as JSON
+/// (`{"$handle": n}` for a live object) with [`write_result`] and
+/// return what it returns, or return -1 to keep the original. The
+/// `filter` is the same as [`patch_postfix_int_result`]'s. Needs a
+/// v10+ shim.
+pub fn patch_postfix_result(
+    class_name: &str,
+    method_name: &str,
+    filter: &serde_json::Value,
+    postfix_fn: bridge::PostfixResultFn,
+) -> Result<Hook, String> {
+    let bridge = bridge::try_get()?;
+    let patch = bridge.harmony_patch_postfix_result.ok_or_else(|| {
+        "harmony_patch_postfix_result: shim is pre-v10; rebuild and redeploy the C# shim".to_string()
+    })?;
+    let c_class = CString::new(class_name).map_err(|e| format!("bad class: {e}"))?;
+    let c_method = CString::new(method_name).map_err(|e| format!("bad method: {e}"))?;
+    let c_filter = CString::new(filter.to_string()).map_err(|e| format!("bad filter: {e}"))?;
+    let handle = patch(c_class.as_ptr(), c_method.as_ptr(), c_filter.as_ptr(), postfix_fn);
+    if handle.0 == 0 {
+        return Err(format!(
+            "harmony_patch_postfix_result({class_name}, {method_name}) failed"
+        ));
+    }
+    Ok(Hook {
+        handle,
+        class_name: class_name.to_string(),
+        method_name: method_name.to_string(),
+        when: HookWhen::Postfix,
+    })
+}
+
+/// Write a replacement result into a `patch_postfix_result`
+/// callback's output buffer. Returns the length to hand back to
+/// the shim, or -1 (keep the original) when it does not fit.
+///
+/// # Safety
+/// `out` and `cap` must be the buffer the shim passed to the
+/// callback.
+pub unsafe fn write_result(out: *mut std::os::raw::c_char, cap: i32, value: &serde_json::Value) -> i32 {
+    let s = value.to_string();
+    if out.is_null() || s.len() > cap.max(0) as usize {
+        return -1;
+    }
+    // SAFETY: caller guarantees out..out+cap is the shim's buffer.
+    unsafe { std::ptr::copy_nonoverlapping(s.as_ptr(), out as *mut u8, s.len()) };
+    s.len() as i32
+}
+
 /// Install a postfix patch. The trampoline must be an `extern
 /// "C" fn(*const c_void)`.
 pub fn patch_postfix(

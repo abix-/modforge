@@ -136,62 +136,25 @@ pub fn describe_data_table(obj: &UObject) -> Json {
 
 /// Walk `ChildProperties` on any UStruct-derived UObject
 /// (UScriptStruct / UClass / UFunction) and emit one JSON entry
-/// per FProperty. Mirrors `UClass::iter_native_properties` but
+/// per FProperty. Uses `UClass::cached_native_properties` but
 /// takes a bare UObject so it works on `UScriptStruct` (the row
 /// struct of a UDataTable) without a transmute at the call site.
 pub fn walk_struct_fields(struct_obj: &UObject) -> Vec<Json> {
-    let Some(rt) = ue::try_runtime() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    let head_addr = struct_obj.as_ptr() as usize + offsets::ustruct::CHILD_PROPERTIES;
-    if !crate::winproc::is_addr_readable(head_addr) {
-        return out;
-    }
-    let mut cur: *const u8 = unsafe { (head_addr as *const *const u8).read_unaligned() };
-    let mut depth = 0;
-    let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::with_capacity(64);
-    while !cur.is_null() && depth < 4096 {
-        // Validate that the entire FField head is in mapped memory
-        // before any read. The chain walk hits stub / freed nodes
-        // in late content-loaded GObjects on some games.
-        if !crate::winproc::is_addr_readable(cur as usize + offsets::ffield::SIZE - 1) {
-            break;
-        }
-        // Cycle detection: a corrupt RowStruct on OWS produces a
-        // Next chain that points back into the FFieldClass list /
-        // self-loops. Break the moment we revisit a node.
-        if !seen.insert(cur as usize) {
-            break;
-        }
-        unsafe {
-            let name_ptr = cur.add(offsets::ffield::NAME_PRIVATE);
-            let name_fname: crate::ue::fname::FName =
-                (name_ptr as *const crate::ue::fname::FName).read_unaligned();
-            let name = if name_fname.is_none() {
-                String::from("<none>")
-            } else {
-                rt.name_resolver.to_string(name_fname)
-            };
-            let offset =
-                (cur.add(offsets::fproperty::OFFSET_INTERNAL) as *const i32).read_unaligned();
-            let element_size = (cur.add(rt.platform_offsets.struct_layout.element_size)
-                as *const i32)
-                .read_unaligned();
-            let class = read_ffield_class_name(cur, rt);
-            let next: *const u8 =
-                (cur.add(offsets::ffield::NEXT) as *const *const u8).read_unaligned();
-            out.push(json!({
-                "name": name,
-                "class": class,
-                "offset": offset,
-                "element_size": element_size,
-            }));
-            cur = next;
-        }
-        depth += 1;
-    }
-    out
+    // SAFETY: the caller provides a UStruct-derived object. Only shared
+    // UStruct reflection methods are used, never UClass-specific members.
+    let layout = unsafe { &*(struct_obj.as_ptr() as *const ue::UClass) };
+    layout
+        .cached_native_properties()
+        .iter()
+        .map(|property| {
+            json!({
+                "name": property.name,
+                "class": crate::reflect::property_type(property).unwrap_or_default(),
+                "offset": property.offset,
+                "element_size": property.element_size,
+            })
+        })
+        .collect()
 }
 
 /// Read the `FFieldClass::Name` for the FField at `field_ptr`.

@@ -35,7 +35,10 @@ fn health_climbs_under_regen() {
         assert!(h.ok, "Health read failed: {:?}", h.error);
         let health = h.result["handle"].as_i64().expect("no Health handle");
         let hp = api.op("read_field", json!({"handle": health, "field": "health"}));
-        let max = api.op("read_field", json!({"handle": health, "field": "maxHealth"}));
+        let max = api.op(
+            "read_field",
+            json!({"handle": health, "field": "maxHealth"}),
+        );
         assert!(hp.ok && max.ok, "health fields read failed");
         (hp.result.as_f64().unwrap(), max.result.as_f64().unwrap())
     };
@@ -46,7 +49,9 @@ fn health_climbs_under_regen() {
     let (after, _) = read_health();
     println!("health after 4s: {after:.1}");
     if before >= max {
-        println!("player at max health; regen has nothing to do (damage the player to see it climb)");
+        println!(
+            "player at max health; regen has nothing to do (damage the player to see it climb)"
+        );
         return;
     }
     println!("delta: {:+.1} over 4s", after - before);

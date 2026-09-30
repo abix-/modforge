@@ -13,7 +13,7 @@
 
 mod common;
 use common::{api, ping_or_skip};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const WORDS: [&str; 4] = ["Map", "Expansion", "Grid", "SubLevel"];
 
@@ -41,7 +41,10 @@ fn map_classes() {
     }
     let mut names = class_names(&api);
     names.sort_unstable();
-    println!("classes naming Map/Expansion/Grid/SubLevel ({}):", names.len());
+    println!(
+        "classes naming Map/Expansion/Grid/SubLevel ({}):",
+        names.len()
+    );
     for n in &names {
         println!("  {n}");
     }
@@ -53,7 +56,12 @@ fn map_class_fields() {
     if ping_or_skip(&api).is_none() {
         return;
     }
-    for class in ["MapDescriptor", "HellExpansionDescriptor", "HellSubLevelDescriptor", "HellGridElementDescriptor"] {
+    for class in [
+        "MapDescriptor",
+        "HellExpansionDescriptor",
+        "HellSubLevelDescriptor",
+        "HellGridElementDescriptor",
+    ] {
         let r = api.op("discover_class_detail", json!({"name": class}));
         println!("== {class}: ok={}", r.ok);
         match r.result.get("properties").and_then(|v| v.as_array()) {
@@ -81,7 +89,11 @@ fn map_instances() {
     for class in ["MapDescriptor", "HellExpansionDescriptor"] {
         let r = api.op("walk_class_chain", json!({"needle": class, "max": 200}));
         let insts = r.result.get("instances").and_then(|v| v.as_array());
-        println!("== live {class}: ok={} count={}", r.ok, insts.map(|a| a.len()).unwrap_or(0));
+        println!(
+            "== live {class}: ok={} count={}",
+            r.ok,
+            insts.map(|a| a.len()).unwrap_or(0)
+        );
         if let Some(insts) = insts {
             for i in insts {
                 println!(

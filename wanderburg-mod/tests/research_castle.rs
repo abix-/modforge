@@ -77,7 +77,11 @@ fn survey(api: &Api<Value>, class: &str, max: usize) {
             m["name"].as_str().unwrap_or("?"),
             m["params"].as_i64().unwrap_or(0),
             m["return"].as_str().unwrap_or("?"),
-            if m["static"].as_bool().unwrap_or(false) { " [static]" } else { "" }
+            if m["static"].as_bool().unwrap_or(false) {
+                " [static]"
+            } else {
+                ""
+            }
         );
     }
 }
@@ -123,7 +127,10 @@ fn loadout() {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
     let mut vm = None;
     while vm.is_none() && std::time::Instant::now() < deadline {
-        let r = api.op("walk_class", json!({"class": "VM", "include_inactive": false}));
+        let r = api.op(
+            "walk_class",
+            json!({"class": "VM", "include_inactive": false}),
+        );
         if r.ok {
             vm = r
                 .result
@@ -138,7 +145,10 @@ fn loadout() {
                 return;
             }
         } else {
-            println!("main thread not ticking yet ({:?}); click into the game window", r.error);
+            println!(
+                "main thread not ticking yet ({:?}); click into the game window",
+                r.error
+            );
             std::thread::sleep(std::time::Duration::from_secs(3));
         }
     }
@@ -147,33 +157,67 @@ fn loadout() {
         return;
     };
     let read = |h: i64, field: &str| -> Value {
-        api.op("read_field", json!({"handle": h, "field": field})).result
+        api.op("read_field", json!({"handle": h, "field": field}))
+            .result
     };
     println!("castle:");
     for f in [
-        "currentHP", "maxHP", "currentArmor", "currentShield", "currentNitro", "maxNitro",
-        "nitroRegenRate", "maxVelocity", "currentSpeed", "vehicleSizeRank",
-        "canAbsorbVehiclesOfSizeRank", "currentVehicleBaseChosenIndex",
-        "frontSlotsTaken", "backSlotsTaken", "topSlotsTaken", "sideSlotsTaken",
-        "captainSlotsTaken", "crewSlotsTaken",
+        "currentHP",
+        "maxHP",
+        "currentArmor",
+        "currentShield",
+        "currentNitro",
+        "maxNitro",
+        "nitroRegenRate",
+        "maxVelocity",
+        "currentSpeed",
+        "vehicleSizeRank",
+        "canAbsorbVehiclesOfSizeRank",
+        "currentVehicleBaseChosenIndex",
+        "frontSlotsTaken",
+        "backSlotsTaken",
+        "topSlotsTaken",
+        "sideSlotsTaken",
+        "captainSlotsTaken",
+        "crewSlotsTaken",
     ] {
         println!("  {f} = {}", read(vm, f));
     }
     for f in [
-        "module1", "module2", "module3", "module4",
-        "activeModule1", "activeModule2", "activeModule3", "activeModule4",
+        "module1",
+        "module2",
+        "module3",
+        "module4",
+        "activeModule1",
+        "activeModule2",
+        "activeModule3",
+        "activeModule4",
     ] {
         let v = read(vm, f);
         let Some(mh) = common::handle_of(&v) else {
             println!("{f}: {v}");
             continue;
         };
-        println!("{f}: {}", v.get("str").and_then(Value::as_str).unwrap_or("?"));
+        println!(
+            "{f}: {}",
+            v.get("str").and_then(Value::as_str).unwrap_or("?")
+        );
         for mf in [
-            "moduleName", "mountedSlotIndex", "rarity", "generalModuleLevel", "passiveLevel",
-            "cooldownLevel", "ultLevel", "vehicleSizeLevel", "currentActiveBaseDamage",
-            "currentPassiveBaseDamage", "flatDamageAdded", "currentActiveAbilityCooldown",
-            "currentAutoAttackCooldown", "activeAbilityRange", "activeAbilityCurrentSize",
+            "moduleName",
+            "mountedSlotIndex",
+            "rarity",
+            "generalModuleLevel",
+            "passiveLevel",
+            "cooldownLevel",
+            "ultLevel",
+            "vehicleSizeLevel",
+            "currentActiveBaseDamage",
+            "currentPassiveBaseDamage",
+            "flatDamageAdded",
+            "currentActiveAbilityCooldown",
+            "currentAutoAttackCooldown",
+            "activeAbilityRange",
+            "activeAbilityCurrentSize",
             "autoAttackCurrentSize",
         ] {
             println!("    {mf} = {}", read(mh, mf));

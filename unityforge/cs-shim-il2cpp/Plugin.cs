@@ -50,6 +50,7 @@ namespace Unityforge.Shim
             }
 
             HarmonyBridge.AcquireHandle = Il2CppBridge.Acquire;
+            HarmonyBridge.LookupHandle = Il2CppBridge.Lookup;
             HarmonyBridge.EnsureHarmony(PluginGuid);
 
             _loader = new GenerationLoader(new Il2CppBackendBridge(), Il2CppBridge.ClearHandles);

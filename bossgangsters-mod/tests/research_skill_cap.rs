@@ -71,7 +71,10 @@ fn add_skill_xp_levels_past_10() {
     assert!(fh.ok, "playerFighterHandler read failed: {:?}", fh.error);
     let fighter = handle_in(&fh.result).expect("playerFighterHandler has no handle");
 
-    let fd = api.op("read_field", json!({"handle": fighter, "field": "fighterData"}));
+    let fd = api.op(
+        "read_field",
+        json!({"handle": fighter, "field": "fighterData"}),
+    );
     assert!(fd.ok, "fighterData read failed: {:?}", fd.error);
     let fighter_data = handle_in(&fd.result).expect("fighterData has no handle");
     let ab = api.op(
@@ -90,7 +93,10 @@ fn add_skill_xp_levels_past_10() {
     let read_i64 = |field: &str| -> i64 {
         let r = api.op("read_field", json!({"handle": ability, "field": field}));
         assert!(r.ok, "{field} read failed: {:?}", r.error);
-        r.result.as_i64().or_else(|| r.result.as_f64().map(|f| f as i64)).unwrap()
+        r.result
+            .as_i64()
+            .or_else(|| r.result.as_f64().map(|f| f as i64))
+            .unwrap()
     };
     let read_f64 = |field: &str| -> f64 {
         let r = api.op("read_field", json!({"handle": ability, "field": field}));
@@ -121,7 +127,9 @@ fn add_skill_xp_levels_past_10() {
 
     let after_level = read_i64("abilityValue");
     let after_progress = read_f64("progressValue");
-    println!("Lockpicking after 600 XP at level 10: level {after_level}, progress {after_progress}");
+    println!(
+        "Lockpicking after 600 XP at level 10: level {after_level}, progress {after_progress}"
+    );
 
     // Restore before asserting so a failure does not leave the
     // save altered.

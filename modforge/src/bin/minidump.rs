@@ -167,6 +167,20 @@ fn symbolize(pdb_path: &str, rva: u32) -> Option<(String, u32)> {
 }
 
 fn main() {
+    if env::args().nth(1).as_deref() == Some("--symbol") {
+        let pdb = env::args()
+            .nth(2)
+            .expect("--symbol requires a PDB and hexadecimal RVAs");
+        for address in env::args().skip(3) {
+            let rva =
+                u32::from_str_radix(address.trim_start_matches("0x"), 16).expect("hexadecimal RVA");
+            match symbolize(&pdb, rva) {
+                Some((name, start)) => println!("{rva:#x}: {name} + {:#x}", rva - start),
+                None => println!("{rva:#x}: no symbol"),
+            }
+        }
+        return;
+    }
     let Some(path) = env::args().nth(1) else {
         eprintln!("usage: minidump <path-to-dmp> [pdb ...]");
         eprintln!("  pdb files are matched to modules by file name");

@@ -43,7 +43,10 @@ fn player_money_and_game_manager_exist() {
     }
 
     if let Some(player) = first_handle(&api, "ClubPlayer") {
-        let read = api.op("read_field", json!({"handle": player, "field": "playerBot"}));
+        let read = api.op(
+            "read_field",
+            json!({"handle": player, "field": "playerBot"}),
+        );
         if read.ok {
             println!("ClubPlayer.playerBot = {}", read.result);
         } else {

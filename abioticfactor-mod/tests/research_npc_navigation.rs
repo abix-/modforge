@@ -24,8 +24,16 @@ fn classes(api: &Api<Value>, needle: &str) -> (u64, BTreeMap<String, usize>) {
     let total = reply.result["total"].as_u64().unwrap_or(0);
     let mut histogram = BTreeMap::new();
     for instance in reply.result["instances"].as_array().into_iter().flatten() {
-        if instance["is_cdo"] == true { continue; }
-        let class = instance["full_name"].as_str().unwrap_or("").split_whitespace().next().unwrap_or("").to_owned();
+        if instance["is_cdo"] == true {
+            continue;
+        }
+        let class = instance["full_name"]
+            .as_str()
+            .unwrap_or("")
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_owned();
         *histogram.entry(class).or_insert(0) += 1;
     }
     (total, histogram)
@@ -36,22 +44,46 @@ fn classes(api: &Api<Value>, needle: &str) -> (u64, BTreeMap<String, usize>) {
 #[test]
 fn path_between_player_characters() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    let first = api.op("walk_class_chain", json!({"needle": "Abiotic_PlayerCharacter_C", "max": 8}));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let first = api.op(
+        "walk_class_chain",
+        json!({"needle": "Abiotic_PlayerCharacter_C", "max": 8}),
+    );
     assert!(first.ok, "characters: {:?}", first.error);
-    let context = first.result["instances"].as_array().into_iter().flatten()
-        .find(|i| i["is_cdo"] == false).and_then(|i| i["addr"].as_str())
+    let context = first.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| i["is_cdo"] == false)
+        .and_then(|i| i["addr"].as_str())
         .map(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).expect("hex address"))
         .expect("a live player character as world context");
-    let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Abiotic_PlayerCharacter_C"}));
+    let actors = api.op(
+        "actors_of_class",
+        json!({"world_context": context, "class": "Abiotic_PlayerCharacter_C"}),
+    );
     assert!(actors.ok, "actors: {:?}", actors.error);
-    let rows = actors.result["actors"].as_array().cloned().unwrap_or_default();
-    for row in &rows { println!("character {} at {}", row["name"], row["location"]); }
-    assert!(rows.len() >= 2, "need the human and Sophia in the world: {}", actors.result);
+    let rows = actors.result["actors"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for row in &rows {
+        println!("character {} at {}", row["name"], row["location"]);
+    }
+    assert!(
+        rows.len() >= 2,
+        "need the human and Sophia in the world: {}",
+        actors.result
+    );
     let (from, to) = (rows[0]["location"].clone(), rows[1]["location"].clone());
     let path = api.op("nav.find_path", json!({"from": from, "to": to}));
     assert!(path.ok, "nav.find_path: {:?}", path.error);
-    println!("path {} -> {}: {}", rows[0]["name"], rows[1]["name"], path.result);
+    println!(
+        "path {} -> {}: {}",
+        rows[0]["name"], rows[1]["name"], path.result
+    );
     let back = api.op("nav.find_path", json!({"from": to, "to": from}));
     assert!(back.ok, "nav.find_path back: {:?}", back.error);
     println!("path back: {} points", back.result["count"]);
@@ -64,35 +96,76 @@ fn path_between_player_characters() {
 #[ignore = "moves Sophia through the engine's path following; needs her mod-owned session running"]
 fn engine_path_following_moves_udp_player() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     // Players by the name on their player state; never by position.
     let players = |api: &Api<Value>| {
         let reply = api.op("players", json!({}));
         assert!(reply.ok, "players: {:?}", reply.error);
-        reply.result["players"].as_array().cloned().unwrap_or_default()
+        reply.result["players"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
     };
     let rows = players(&api);
-    let sophia = rows.iter().find(|p| p["name"] == "Sophia").expect("Sophia is in the game").clone();
-    let human = rows.iter().find(|p| p["name"] != "Sophia").expect("the human is in the game").clone();
-    println!("Sophia at {} (character {}), {} at {}", sophia["location"], sophia["character"], human["name"], human["location"]);
+    let sophia = rows
+        .iter()
+        .find(|p| p["name"] == "Sophia")
+        .expect("Sophia is in the game")
+        .clone();
+    let human = rows
+        .iter()
+        .find(|p| p["name"] != "Sophia")
+        .expect("the human is in the game")
+        .clone();
+    println!(
+        "Sophia at {} (character {}), {} at {}",
+        sophia["location"], sophia["character"], human["name"], human["location"]
+    );
     let start = sophia["location"].clone();
     let human_start = human["location"].clone();
-    let requested = api.op("nav.simple_move_to", json!({"player": "Sophia", "to": human["location"]}));
+    let requested = api.op(
+        "nav.simple_move_to",
+        json!({"player": "Sophia", "to": human["location"]}),
+    );
     assert!(requested.ok, "simple_move_to: {:?}", requested.error);
-    assert_eq!(requested.result["character"], sophia["character"], "the move must target Sophia's character");
+    assert_eq!(
+        requested.result["character"], sophia["character"],
+        "the move must target Sophia's character"
+    );
     println!("requested: {}", requested.result);
-    let distance = |a: &Value, b: &Value| (0..3).map(|i| (a[i].as_f64().unwrap() - b[i].as_f64().unwrap()).powi(2)).sum::<f64>().sqrt();
+    let distance = |a: &Value, b: &Value| {
+        (0..3)
+            .map(|i| (a[i].as_f64().unwrap() - b[i].as_f64().unwrap()).powi(2))
+            .sum::<f64>()
+            .sqrt()
+    };
     let mut moved = 0.0f64;
     for second in 1..=15 {
         std::thread::sleep(std::time::Duration::from_secs(1));
         let now = players(&api);
-        let sophia_now = now.iter().find(|p| p["name"] == "Sophia").expect("Sophia still present");
-        let human_now = now.iter().find(|p| p["name"] == human["name"]).expect("human still present");
+        let sophia_now = now
+            .iter()
+            .find(|p| p["name"] == "Sophia")
+            .expect("Sophia still present");
+        let human_now = now
+            .iter()
+            .find(|p| p["name"] == human["name"])
+            .expect("human still present");
         let delta = distance(&sophia_now["location"], &start);
         moved = moved.max(delta);
-        println!("{second}s: Sophia at {} moved {delta:.1}; {} moved {:.1}", sophia_now["location"], human["name"], distance(&human_now["location"], &human_start));
+        println!(
+            "{second}s: Sophia at {} moved {delta:.1}; {} moved {:.1}",
+            sophia_now["location"],
+            human["name"],
+            distance(&human_now["location"], &human_start)
+        );
     }
-    println!("engine path following moved the UDP player's body: {} (max {moved:.1} units)", moved > 100.0);
+    println!(
+        "engine path following moved the UDP player's body: {} (max {moved:.1} units)",
+        moved > 100.0
+    );
 }
 
 /// How do NPCs follow a player? Lists the loaded behavior tree assets, every
@@ -102,13 +175,17 @@ fn engine_path_following_moves_udp_player() {
 #[test]
 fn npc_follow_behaviour() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     for needle in ["BehaviorTree", "BlackboardData"] {
         let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 256}));
         assert!(reply.ok, "{needle}: {:?}", reply.error);
         for instance in reply.result["instances"].as_array().into_iter().flatten() {
             let name = instance["full_name"].as_str().unwrap_or("");
-            if name.starts_with(needle) && instance["is_cdo"] == false { println!("{needle} asset: {name}"); }
+            if name.starts_with(needle) && instance["is_cdo"] == false {
+                println!("{needle} asset: {name}");
+            }
         }
     }
     let mut by_tree: BTreeMap<String, Vec<String>> = BTreeMap::new();
@@ -116,35 +193,75 @@ fn npc_follow_behaviour() {
         let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 4096}));
         assert!(reply.ok, "{needle}: {:?}", reply.error);
         for instance in reply.result["instances"].as_array().into_iter().flatten() {
-            if instance["is_cdo"] == true { continue; }
+            if instance["is_cdo"] == true {
+                continue;
+            }
             let full = instance["full_name"].as_str().unwrap_or("");
             let (class, path) = full.split_once(' ').unwrap_or((full, ""));
             // /Game/.../BT_Pest.BT_Pest:BTTask_MoveTo_0 -> tree BT_Pest, node BTTask_MoveTo_0
-            let tree = path.rsplit('/').next().unwrap_or(path).split(['.', ':']).nth(1).unwrap_or(path).to_owned();
+            let tree = path
+                .rsplit('/')
+                .next()
+                .unwrap_or(path)
+                .split(['.', ':'])
+                .nth(1)
+                .unwrap_or(path)
+                .to_owned();
             let node = path.rsplit(':').next().unwrap_or(path);
-            by_tree.entry(tree).or_default().push(format!("{class} {node}"));
+            by_tree
+                .entry(tree)
+                .or_default()
+                .push(format!("{class} {node}"));
         }
     }
     for (tree, nodes) in &by_tree {
         println!("tree {tree}: {} nodes", nodes.len());
-        for node in nodes { println!("    {node}"); }
+        for node in nodes {
+            println!("    {node}");
+        }
     }
     // Every AI controller class, parents included (their default objects are in the chain),
     // with the functions that choose targets, fight, and perceive.
-    let reply = api.op("walk_class_chain", json!({"needle": "AI_Controller", "max": 2048}));
+    let reply = api.op(
+        "walk_class_chain",
+        json!({"needle": "AI_Controller", "max": 2048}),
+    );
     assert!(reply.ok, "AI controllers: {:?}", reply.error);
     let mut controller_classes = std::collections::BTreeSet::new();
     for instance in reply.result["instances"].as_array().into_iter().flatten() {
         let full = instance["full_name"].as_str().unwrap_or("");
         let class = full.split_whitespace().next().unwrap_or("").to_owned();
-        if instance["is_cdo"] == true { controller_classes.insert(full.rsplit(['.', ':']).next().unwrap_or("").trim_start_matches("Default__").to_owned()); }
+        if instance["is_cdo"] == true {
+            controller_classes.insert(
+                full.rsplit(['.', ':'])
+                    .next()
+                    .unwrap_or("")
+                    .trim_start_matches("Default__")
+                    .to_owned(),
+            );
+        }
         controller_classes.insert(class);
     }
     for class in &controller_classes {
         let functions = api.op("class_functions_by_name", json!({"class": class}));
-        if !functions.ok { println!("{class}: {:?}", functions.error); continue; }
-        let names: Vec<&str> = functions.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str())
-            .filter(|n| ["Target", "Combat", "Attack", "Hostil", "Percep", "Aggro", "Threat", "Damage", "Sense", "Alert"].iter().any(|p| n.contains(p))).collect();
+        if !functions.ok {
+            println!("{class}: {:?}", functions.error);
+            continue;
+        }
+        let names: Vec<&str> = functions.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["name"].as_str())
+            .filter(|n| {
+                [
+                    "Target", "Combat", "Attack", "Hostil", "Percep", "Aggro", "Threat", "Damage",
+                    "Sense", "Alert",
+                ]
+                .iter()
+                .any(|p| n.contains(p))
+            })
+            .collect();
         println!("{class} combat functions: {names:?}");
     }
     for needle in ["Carbuncle"] {
@@ -153,12 +270,21 @@ fn npc_follow_behaviour() {
         for class in histogram.keys() {
             let detail = api.op("discover_class_detail", json!({"name": class}));
             assert!(detail.ok, "{class}: {:?}", detail.error);
-            let fields: Vec<String> = detail.result["fields"].as_array().into_iter().flatten()
-                .map(|f| format!("{}@{}", f["name"].as_str().unwrap_or(""), f["offset"])).collect();
+            let fields: Vec<String> = detail.result["fields"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|f| format!("{}@{}", f["name"].as_str().unwrap_or(""), f["offset"]))
+                .collect();
             println!("{class} fields: {fields:?}");
             let functions = api.op("class_functions_by_name", json!({"class": class}));
             assert!(functions.ok, "{class}: {:?}", functions.error);
-            let names: Vec<&str> = functions.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str()).collect();
+            let names: Vec<&str> = functions.result["functions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|f| f["name"].as_str())
+                .collect();
             println!("{class} functions: {names:?}");
         }
     }
@@ -171,32 +297,109 @@ fn npc_follow_behaviour() {
 #[test]
 fn player_combat_functions() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    let words = ["Attack", "Fire", "Melee", "Swing", "Weapon", "Block", "Aim", "Damage", "Hit", "Throw", "Reload", "Equip", "Holster", "Combat", "Targetable"];
-    for class in ["Abiotic_PlayerCharacter_C", "Abiotic_PlayerController_C", "Abiotic_CharacterBase_C", "AbioticCharacter", "Abiotic_InventoryComponent_C"] {
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let words = [
+        "Attack",
+        "Fire",
+        "Melee",
+        "Swing",
+        "Weapon",
+        "Block",
+        "Aim",
+        "Damage",
+        "Hit",
+        "Throw",
+        "Reload",
+        "Equip",
+        "Holster",
+        "Combat",
+        "Targetable",
+    ];
+    for class in [
+        "Abiotic_PlayerCharacter_C",
+        "Abiotic_PlayerController_C",
+        "Abiotic_CharacterBase_C",
+        "AbioticCharacter",
+        "Abiotic_InventoryComponent_C",
+    ] {
         let functions = api.op("class_functions_by_name", json!({"class": class}));
-        if !functions.ok { println!("{class}: {:?}", functions.error); continue; }
+        if !functions.ok {
+            println!("{class}: {:?}", functions.error);
+            continue;
+        }
         println!("{class}:");
-        for function in functions.result["functions"].as_array().into_iter().flatten() {
+        for function in functions.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
             let name = function["name"].as_str().unwrap_or("");
-            if words.iter().any(|w| name.contains(w)) { println!("    {function}"); }
+            if words.iter().any(|w| name.contains(w)) {
+                println!("    {function}");
+            }
         }
     }
     // The enemy character's health fields, for watching an attack land.
     println!("live Pest classes: {:?}", classes(&api, "Pest").1);
-    let pests = api.op("walk_class_chain", json!({"needle": "NPC_Monster_Pest_C", "max": 64}));
+    let pests = api.op(
+        "walk_class_chain",
+        json!({"needle": "NPC_Monster_Pest_C", "max": 64}),
+    );
     // Exact class match: the AI controller's class name contains the character's, so a substring match picks the controller.
-    if let Some(pest) = pests.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPC_Monster_Pest_C "))) {
-        let address = u64::from_str_radix(pest["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    if let Some(pest) = pests.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| {
+            i["is_cdo"] == false
+                && i["full_name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("NPC_Monster_Pest_C "))
+        })
+    {
+        let address =
+            u64::from_str_radix(pest["addr"].as_str().unwrap().trim_start_matches("0x"), 16)
+                .unwrap();
         let fields = spawn_trace::object_fields(&api, address).expect("pest fields");
-        let health: Vec<_> = fields.iter().filter(|(n, _, _)| n.contains("Health") || n.contains("HP") || n.contains("Dead")).collect();
+        let health: Vec<_> = fields
+            .iter()
+            .filter(|(n, _, _)| n.contains("Health") || n.contains("HP") || n.contains("Dead"))
+            .collect();
         println!("Pest character health fields: {health:?}");
-        println!("Pest character all fields: {}", fields.iter().map(|(n, k, o)| format!("{n}:{k}@{o}")).collect::<Vec<_>>().join(" "));
+        println!(
+            "Pest character all fields: {}",
+            fields
+                .iter()
+                .map(|(n, k, o)| format!("{n}:{k}@{o}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
     }
     // Exact parameter layouts of the melee path, for calling them on the game thread.
-    for function in ["Request_MeleeAttackDamage", "Request_MeleeAttackFX", "Local_DoMeleeAttack_Event", "DetermineMeleeSwingTarget", "Try_AutoAttack", "Calculate Next Melee Data", "Request_RangedAttack", "Request_FireProjectileWeapon"] {
-        let reply = api.op("function_parameters", json!({"class": "Abiotic_PlayerCharacter_C", "function": function}));
-        println!("{function}: {}", if reply.ok { reply.result.to_string() } else { format!("{:?}", reply.error) });
+    for function in [
+        "Request_MeleeAttackDamage",
+        "Request_MeleeAttackFX",
+        "Local_DoMeleeAttack_Event",
+        "DetermineMeleeSwingTarget",
+        "Try_AutoAttack",
+        "Calculate Next Melee Data",
+        "Request_RangedAttack",
+        "Request_FireProjectileWeapon",
+    ] {
+        let reply = api.op(
+            "function_parameters",
+            json!({"class": "Abiotic_PlayerCharacter_C", "function": function}),
+        );
+        println!(
+            "{function}: {}",
+            if reply.ok {
+                reply.result.to_string()
+            } else {
+                format!("{:?}", reply.error)
+            }
+        );
     }
 }
 
@@ -206,31 +409,68 @@ fn player_combat_functions() {
 #[test]
 fn exor_soldier_setup() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    for needle in ["Exor", "Soldier", "Order", "Military", "Symphonist", "AISenseConfig", "AIPerceptionComponent"] {
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for needle in [
+        "Exor",
+        "Soldier",
+        "Order",
+        "Military",
+        "Symphonist",
+        "AISenseConfig",
+        "AIPerceptionComponent",
+    ] {
         let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 512}));
         assert!(reply.ok, "{needle}: {:?}", reply.error);
         let mut names: BTreeMap<String, usize> = BTreeMap::new();
         for instance in reply.result["instances"].as_array().into_iter().flatten() {
             let full = instance["full_name"].as_str().unwrap_or("");
-            let key = if instance["is_cdo"] == true { format!("default {full}") } else { full.split_whitespace().next().unwrap_or("").to_owned() };
+            let key = if instance["is_cdo"] == true {
+                format!("default {full}")
+            } else {
+                full.split_whitespace().next().unwrap_or("").to_owned()
+            };
             *names.entry(key).or_insert(0) += 1;
         }
         println!("{needle}: {} objects", reply.result["total"]);
-        for (name, count) in names { println!("    {count} x {name}"); }
+        for (name, count) in names {
+            println!("    {count} x {name}");
+        }
     }
     // The NPC data: tables named like NPCs or spawns, and their rows, where the soldiers are defined.
     let tables = api.op("discover_data_tables", json!({"refresh": true}));
     assert!(tables.ok, "tables: {:?}", tables.error);
     println!("data tables: {}", tables.result);
-    let names: Vec<String> = serde_json::to_string(&tables.result).unwrap_or_default()
-        .split('"').filter(|s| s.starts_with("DT_")).map(str::to_owned).collect();
-    for table in names.iter().filter(|t| ["NPC", "Spawn", "Enemy", "Monster", "Creature"].iter().any(|w| t.contains(w))) {
+    let names: Vec<String> = serde_json::to_string(&tables.result)
+        .unwrap_or_default()
+        .split('"')
+        .filter(|s| s.starts_with("DT_"))
+        .map(str::to_owned)
+        .collect();
+    for table in names.iter().filter(|t| {
+        ["NPC", "Spawn", "Enemy", "Monster", "Creature"]
+            .iter()
+            .any(|w| t.contains(w))
+    }) {
         let rows = api.op("list_row_names", json!({"table_name": table}));
         println!("{table} rows: {}", rows.result);
     }
     // The soldier rows in full, decoded field by field: character class, controller, numbers.
-    let rows = spawn_trace::table_rows(&api, "DT_NPCList", &["Exor", "Exor_Armored", "Exor_Monk", "Exor_Pikeman", "Grunt", "Grunt_Captain", "Pest"]).expect("NPC rows");
+    let rows = spawn_trace::table_rows(
+        &api,
+        "DT_NPCList",
+        &[
+            "Exor",
+            "Exor_Armored",
+            "Exor_Monk",
+            "Exor_Pikeman",
+            "Grunt",
+            "Grunt_Captain",
+            "Pest",
+        ],
+    )
+    .expect("NPC rows");
     println!("NPC rows: {}", serde_json::to_string_pretty(&rows).unwrap());
 }
 
@@ -239,20 +479,35 @@ fn exor_soldier_setup() {
 #[test]
 fn npc_perception_configs() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     let configs = spawn_trace::perception_configs(&api).expect("perception configs");
     // Collapse identical setups so the table is readable: one line per distinct numbers, with owner classes.
     let mut distinct: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for row in configs.as_array().into_iter().flatten() {
         // Owner path: ...PersistentLevel.AI_Controller_X_C_123.AIPerception.AISenseConfig_Sight_0 -> AI_Controller_X_C
-        let owner = row["owner"].as_str().unwrap_or("").split(['.', ':']).find(|s| s.contains("_C_") && s.rsplit('_').next().is_some_and(|d| d.chars().all(|c| c.is_ascii_digit())))
-            .map(|s| s.rsplit_once('_').map(|(c, _)| c).unwrap_or(s)).unwrap_or("").to_owned();
+        let owner = row["owner"]
+            .as_str()
+            .unwrap_or("")
+            .split(['.', ':'])
+            .find(|s| {
+                s.contains("_C_")
+                    && s.rsplit('_')
+                        .next()
+                        .is_some_and(|d| d.chars().all(|c| c.is_ascii_digit()))
+            })
+            .map(|s| s.rsplit_once('_').map(|(c, _)| c).unwrap_or(s))
+            .unwrap_or("")
+            .to_owned();
         let mut numbers = row.clone();
         numbers.as_object_mut().unwrap().remove("owner");
         distinct.entry(numbers.to_string()).or_default().push(owner);
     }
     for (numbers, owners) in distinct {
-        let mut owners = owners; owners.sort(); owners.dedup();
+        let mut owners = owners;
+        owners.sort();
+        owners.dedup();
         println!("{numbers}\n    on {owners:?}");
     }
 }
@@ -260,14 +515,28 @@ fn npc_perception_configs() {
 #[test]
 fn npc_navigation_systems() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    for needle in ["NavigationSystemV1", "RecastNavMesh", "NavMeshBoundsVolume", "NavLinkProxy", "NavModifierVolume"] {
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for needle in [
+        "NavigationSystemV1",
+        "RecastNavMesh",
+        "NavMeshBoundsVolume",
+        "NavLinkProxy",
+        "NavModifierVolume",
+    ] {
         let (total, histogram) = classes(&api, needle);
         println!("{needle}: {total} objects, live classes {histogram:?}");
     }
     let (total, controllers) = classes(&api, "AIController");
     println!("AIController chain: {total} objects, live classes {controllers:?}");
-    for needle in ["PathFollowingComponent", "BrainComponent", "BlackboardComponent", "CrowdFollowingComponent", "AIPerceptionComponent"] {
+    for needle in [
+        "PathFollowingComponent",
+        "BrainComponent",
+        "BlackboardComponent",
+        "CrowdFollowingComponent",
+        "AIPerceptionComponent",
+    ] {
         let (total, histogram) = classes(&api, needle);
         println!("{needle}: {total} objects, live classes {histogram:?}");
     }
@@ -275,26 +544,57 @@ fn npc_navigation_systems() {
     for class in controllers.keys() {
         let reply = api.op("class_functions_by_name", json!({"class": class}));
         assert!(reply.ok, "{class}: {:?}", reply.error);
-        let names: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten()
+        let names: Vec<&str> = reply.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
             .filter_map(|f| f["name"].as_str())
-            .filter(|n| ["Move", "Path", "Nav", "Patrol", "Wander", "Chase", "Target", "Follow"].iter().any(|part| n.contains(part)))
+            .filter(|n| {
+                [
+                    "Move", "Path", "Nav", "Patrol", "Wander", "Chase", "Target", "Follow",
+                ]
+                .iter()
+                .any(|part| n.contains(part))
+            })
             .collect();
         println!("{class} movement functions: {names:?}");
         let detail = api.op("discover_class_detail", json!({"name": class}));
         assert!(detail.ok, "{class} detail: {:?}", detail.error);
         let mut summary = detail.result.clone();
-        if let Some(object) = summary.as_object_mut() { object.remove("fields"); object.remove("functions"); }
+        if let Some(object) = summary.as_object_mut() {
+            object.remove("fields");
+            object.remove("functions");
+        }
         println!("{class} detail: {summary}");
     }
     // Which behavior tree asset each brain runs, from the component's reflected fields.
-    let brains = api.op("walk_class_chain", json!({"needle": "BehaviorTreeComponent", "max": 64}));
+    let brains = api.op(
+        "walk_class_chain",
+        json!({"needle": "BehaviorTreeComponent", "max": 64}),
+    );
     assert!(brains.ok, "brains: {:?}", brains.error);
-    let detail = api.op("discover_class_detail", json!({"name": "BehaviorTreeComponent"}));
-    assert!(detail.ok, "BehaviorTreeComponent detail: {:?}", detail.error);
-    let fields: Vec<String> = detail.result["fields"].as_array().into_iter().flatten()
-        .map(|f| format!("{}@{}", f["name"].as_str().unwrap_or(""), f["offset"])).collect();
+    let detail = api.op(
+        "discover_class_detail",
+        json!({"name": "BehaviorTreeComponent"}),
+    );
+    assert!(
+        detail.ok,
+        "BehaviorTreeComponent detail: {:?}",
+        detail.error
+    );
+    let fields: Vec<String> = detail.result["fields"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|f| format!("{}@{}", f["name"].as_str().unwrap_or(""), f["offset"]))
+        .collect();
     println!("BehaviorTreeComponent fields: {fields:?}");
-    for brain in brains.result["instances"].as_array().into_iter().flatten().take(12) {
+    for brain in brains.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .take(12)
+    {
         println!("brain: {}", brain["full_name"].as_str().unwrap_or(""));
     }
 }
@@ -305,19 +605,42 @@ fn npc_navigation_systems() {
 #[test]
 fn npc_spawn_functions() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     let (total, spawners) = classes(&api, "Spawn");
     println!("Spawn chain: {total} objects, live classes {spawners:?}");
     let mut wanted: Vec<String> = spawners.keys().cloned().collect();
-    wanted.extend(["Abiotic_Survival_GameMode_C", "Abiotic_Survival_GameState_C", "Abiotic_GameInstance_C", "KismetSystemLibrary", "GameplayStatics"].map(str::to_owned));
+    wanted.extend(
+        [
+            "Abiotic_Survival_GameMode_C",
+            "Abiotic_Survival_GameState_C",
+            "Abiotic_GameInstance_C",
+            "KismetSystemLibrary",
+            "GameplayStatics",
+        ]
+        .map(str::to_owned),
+    );
     for class in wanted {
         let reply = api.op("class_functions_by_name", json!({"class": class}));
-        if !reply.ok { continue; }
-        let names: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten()
+        if !reply.ok {
+            continue;
+        }
+        let names: Vec<&str> = reply.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
             .filter_map(|f| f["name"].as_str())
-            .filter(|n| n.contains("Spawn") || n.contains("LoadAsset") || n.contains("LoadClass") || n.contains("NPC"))
+            .filter(|n| {
+                n.contains("Spawn")
+                    || n.contains("LoadAsset")
+                    || n.contains("LoadClass")
+                    || n.contains("NPC")
+            })
             .collect();
-        if !names.is_empty() { println!("{class}: {names:?}"); }
+        if !names.is_empty() {
+            println!("{class}: {names:?}");
+        }
     }
 }
 
@@ -328,61 +651,176 @@ fn npc_spawn_functions() {
 #[test]
 fn npc_attack_functions() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     let read = |address: u64, length: usize| -> Vec<u8> {
-        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        let reply = api.op(
+            "read_bytes",
+            json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}),
+        );
         assert!(reply.ok, "read_bytes: {:?}", reply.error);
         hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
     };
     let name_of = |object: u64| -> String {
         let fname = u64::from_le_bytes(read(object + 24, 8).try_into().unwrap());
-        api.op("fname_to_string", json!({"fname": fname})).result["string"].as_str().unwrap_or("?").to_owned()
+        api.op("fname_to_string", json!({"fname": fname})).result["string"]
+            .as_str()
+            .unwrap_or("?")
+            .to_owned()
     };
     let chain_of = |object: u64| -> Vec<String> {
         let mut class = u64::from_le_bytes(read(object + 16, 8).try_into().unwrap());
         let mut chain = Vec::new();
-        while class != 0 && chain.len() < 16 { chain.push(name_of(class)); class = u64::from_le_bytes(read(class + 64, 8).try_into().unwrap()); }
+        while class != 0 && chain.len() < 16 {
+            chain.push(name_of(class));
+            class = u64::from_le_bytes(read(class + 64, 8).try_into().unwrap());
+        }
         chain
     };
-    let words = ["Attack", "Melee", "Swing", "Damage", "Hit", "Combat", "Windup", "Strike", "Bite", "Lunge"];
+    let words = [
+        "Attack", "Melee", "Swing", "Damage", "Hit", "Combat", "Windup", "Strike", "Bite", "Lunge",
+    ];
     let functions_of = |class: &str| -> Vec<String> {
         let reply = api.op("class_functions_by_name", json!({"class": class}));
-        reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str())
-            .filter(|n| words.iter().any(|w| n.contains(w))).map(str::to_owned).collect()
+        reply.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["name"].as_str())
+            .filter(|n| words.iter().any(|w| n.contains(w)))
+            .map(str::to_owned)
+            .collect()
     };
     let players = api.op("players", json!({}));
-    let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia in game").clone();
-    let sophia_address = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let sophia = players.result["players"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|p| p["name"] == "Sophia")
+        .expect("Sophia in game")
+        .clone();
+    let sophia_address = u64::from_str_radix(
+        sophia["character"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("0x"),
+        16,
+    )
+    .unwrap();
     let sophia_chain = chain_of(sophia_address);
     println!("Sophia's class chain: {sophia_chain:?}");
-    for class in &sophia_chain { let f = functions_of(class); if !f.is_empty() { println!("  {class}: {f:?}"); } }
-    for monster in ["NPC_Monster_Pest_C", "NPC_Monster_Carbuncle_C", "NPC_Monster_Peccary_C"] {
+    for class in &sophia_chain {
+        let f = functions_of(class);
+        if !f.is_empty() {
+            println!("  {class}: {f:?}");
+        }
+    }
+    for monster in [
+        "NPC_Monster_Pest_C",
+        "NPC_Monster_Carbuncle_C",
+        "NPC_Monster_Peccary_C",
+    ] {
         let reply = api.op("walk_class_chain", json!({"needle": monster, "max": 8}));
-        let Some(live) = reply.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with(&format!("{monster} ")))) else { println!("{monster}: none live"); continue };
-        let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        let Some(live) = reply.result["instances"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|i| {
+                i["is_cdo"] == false
+                    && i["full_name"]
+                        .as_str()
+                        .is_some_and(|n| n.starts_with(&format!("{monster} ")))
+            })
+        else {
+            println!("{monster}: none live");
+            continue;
+        };
+        let address =
+            u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16)
+                .unwrap();
         let chain = chain_of(address);
         println!("{monster} class chain: {chain:?}");
         for class in &chain {
             let f = functions_of(class);
             let shared = sophia_chain.contains(class);
-            if !f.is_empty() { println!("  {class}{}: {f:?}", if shared { " (shared with Sophia)" } else { "" }); }
+            if !f.is_empty() {
+                println!(
+                    "  {class}{}: {f:?}",
+                    if shared { " (shared with Sophia)" } else { "" }
+                );
+            }
         }
     }
     // The NPC melee steps and the shared damage entry, parameter by parameter.
-    for (class, function) in [("NPC_Base_ParentBP_C", "TryMeleeAttackCheck"), ("NPC_Base_ParentBP_C", "ProcessMeleeHits"), ("NPC_Base_ParentBP_C", "GetMeleeTraceRadius"), ("NPC_Base_ParentBP_C", "GetAttackLocation"), ("NPC_Base_ParentBP_C", "GetMeleeEndLocation"), ("NPC_Base_ParentBP_C", "GetAttackDamageType"), ("NPC_Base_ParentBP_C", "FindBestMeleeAttack"), ("NPC_Base_ParentBP_C", "OnTargetDamaged"), ("NPC_Monster_Pest_C", "Server_DoMeleeAttack"), ("NPC_Monster_Pest_C", "ApplyPestHitDamageToTarget"), ("Abiotic_Character_ParentBP_C", "Request_ApplyDamageToCharacter"), ("Abiotic_Character_ParentBP_C", "ProcessDamage"), ("Abiotic_Character_ParentBP_C", "TryDealLimbDamage")] {
-        let reply = api.op("function_parameters", json!({"class": class, "function": function}));
-        println!("{class}::{function}: {}", if reply.ok { reply.result.to_string() } else { format!("{:?}", reply.error) });
+    for (class, function) in [
+        ("NPC_Base_ParentBP_C", "TryMeleeAttackCheck"),
+        ("NPC_Base_ParentBP_C", "ProcessMeleeHits"),
+        ("NPC_Base_ParentBP_C", "GetMeleeTraceRadius"),
+        ("NPC_Base_ParentBP_C", "GetAttackLocation"),
+        ("NPC_Base_ParentBP_C", "GetMeleeEndLocation"),
+        ("NPC_Base_ParentBP_C", "GetAttackDamageType"),
+        ("NPC_Base_ParentBP_C", "FindBestMeleeAttack"),
+        ("NPC_Base_ParentBP_C", "OnTargetDamaged"),
+        ("NPC_Monster_Pest_C", "Server_DoMeleeAttack"),
+        ("NPC_Monster_Pest_C", "ApplyPestHitDamageToTarget"),
+        (
+            "Abiotic_Character_ParentBP_C",
+            "Request_ApplyDamageToCharacter",
+        ),
+        ("Abiotic_Character_ParentBP_C", "ProcessDamage"),
+        ("Abiotic_Character_ParentBP_C", "TryDealLimbDamage"),
+    ] {
+        let reply = api.op(
+            "function_parameters",
+            json!({"class": class, "function": function}),
+        );
+        println!(
+            "{class}::{function}: {}",
+            if reply.ok {
+                reply.result.to_string()
+            } else {
+                format!("{:?}", reply.error)
+            }
+        );
     }
     // The melee task and what it touches.
-    for task in ["BTT_DoMeleeAttack_C", "BTT_DoRangedAttack_C", "BTT_DoCombatAbility_C", "BTT_AttackCooldown_C"] {
+    for task in [
+        "BTT_DoMeleeAttack_C",
+        "BTT_DoRangedAttack_C",
+        "BTT_DoCombatAbility_C",
+        "BTT_AttackCooldown_C",
+    ] {
         let reply = api.op("class_functions_by_name", json!({"class": task}));
-        let names: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str()).collect();
+        let names: Vec<&str> = reply.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["name"].as_str())
+            .collect();
         println!("{task} functions: {names:?}");
         let cdo = api.op("walk_class_chain", json!({"needle": task, "max": 4}));
-        if let Some(instance) = cdo.result["instances"].as_array().into_iter().flatten().next() {
-            let address = u64::from_str_radix(instance["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        if let Some(instance) = cdo.result["instances"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .next()
+        {
+            let address = u64::from_str_radix(
+                instance["addr"].as_str().unwrap().trim_start_matches("0x"),
+                16,
+            )
+            .unwrap();
             let fields = spawn_trace::object_fields(&api, address).unwrap_or_default();
-            println!("{task} fields: {}", fields.iter().filter(|(_, _, o)| *o >= 200).map(|(n, k, o)| format!("{n}:{k}@{o}")).collect::<Vec<_>>().join(" "));
+            println!(
+                "{task} fields: {}",
+                fields
+                    .iter()
+                    .filter(|(_, _, o)| *o >= 200)
+                    .map(|(n, k, o)| format!("{n}:{k}@{o}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
         }
     }
 }
@@ -393,16 +831,34 @@ fn npc_attack_functions() {
 #[test]
 fn perception_stimuli_sources() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    let reply = api.op("walk_class_chain", json!({"needle": "AIPerceptionStimuliSourceComponent", "max": 1024}));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let reply = api.op(
+        "walk_class_chain",
+        json!({"needle": "AIPerceptionStimuliSourceComponent", "max": 1024}),
+    );
     assert!(reply.ok, "stimuli sources: {:?}", reply.error);
     let mut owners: BTreeMap<String, usize> = BTreeMap::new();
-    for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+    for instance in reply.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| i["is_cdo"] == false)
+    {
         let full = instance["full_name"].as_str().unwrap_or("");
-        let owner = full.rsplit('.').nth(1).unwrap_or("").trim_end_matches(|c: char| c.is_ascii_digit() || c == '_').to_owned();
+        let owner = full
+            .rsplit('.')
+            .nth(1)
+            .unwrap_or("")
+            .trim_end_matches(|c: char| c.is_ascii_digit() || c == '_')
+            .to_owned();
         *owners.entry(owner).or_insert(0) += 1;
     }
-    println!("stimuli source owners ({} total): {owners:?}", reply.result["total"]);
+    println!(
+        "stimuli source owners ({} total): {owners:?}",
+        reply.result["total"]
+    );
     let (_, monsters) = classes(&api, "NPC_Monster");
     println!("live monster classes: {monsters:?}");
 }
@@ -414,45 +870,131 @@ fn perception_stimuli_sources() {
 #[test]
 fn perception_affiliation_and_teams() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     let read = |address: u64, length: usize| -> Vec<u8> {
-        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        let reply = api.op(
+            "read_bytes",
+            json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}),
+        );
         assert!(reply.ok, "read_bytes: {:?}", reply.error);
         hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
     };
-    let addr = |i: &Value| u64::from_str_radix(i["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let addr = |i: &Value| {
+        u64::from_str_radix(i["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap()
+    };
     // FAISenseAffiliationFilter is one byte of bitfields: enemies (1), neutrals (2), friendlies (4).
     for needle in ["AISenseConfig_Sight", "AISenseConfig_Hearing"] {
         let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 256}));
         assert!(reply.ok, "{needle}: {:?}", reply.error);
-        for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+        for instance in reply.result["instances"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|i| i["is_cdo"] == false)
+        {
             let address = addr(instance);
             let fields = spawn_trace::object_fields(&api, address).expect("config fields");
-            let Some((_, _, offset)) = fields.iter().find(|(n, _, _)| n == "DetectionByAffiliation") else { continue };
+            let Some((_, _, offset)) = fields
+                .iter()
+                .find(|(n, _, _)| n == "DetectionByAffiliation")
+            else {
+                continue;
+            };
             let bits = read(address + u64::from(*offset), 1)[0];
-            println!("{needle} affiliation 0b{bits:03b} (enemies {}, neutrals {}, friendlies {}) on {}", bits & 1, (bits >> 1) & 1, (bits >> 2) & 1, instance["full_name"].as_str().unwrap_or(""));
+            println!(
+                "{needle} affiliation 0b{bits:03b} (enemies {}, neutrals {}, friendlies {}) on {}",
+                bits & 1,
+                (bits >> 1) & 1,
+                (bits >> 2) & 1,
+                instance["full_name"].as_str().unwrap_or("")
+            );
         }
     }
     // Team ids: AIController carries a TeamID byte (255 = no team); the game may set it per NPC.
     for needle in ["AIController", "Abiotic_PlayerController_C"] {
         let reply = api.op("walk_class_chain", json!({"needle": needle, "max": 128}));
         assert!(reply.ok, "{needle}: {:?}", reply.error);
-        for instance in reply.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false) {
+        for instance in reply.result["instances"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|i| i["is_cdo"] == false)
+        {
             let address = addr(instance);
             let fields = spawn_trace::object_fields(&api, address).expect("controller fields");
-            let team: Vec<String> = fields.iter().filter(|(n, _, _)| n.contains("Team") || n.contains("Faction") || n.contains("Affiliation"))
-                .map(|(n, k, o)| format!("{n}:{k}={:?}", read(address + u64::from(*o), if k == "ByteProperty" || k == "BoolProperty" { 1 } else { 4 }))).collect();
-            println!("{} team fields {team:?}", instance["full_name"].as_str().unwrap_or("").split_whitespace().next().unwrap_or(""));
+            let team: Vec<String> = fields
+                .iter()
+                .filter(|(n, _, _)| {
+                    n.contains("Team") || n.contains("Faction") || n.contains("Affiliation")
+                })
+                .map(|(n, k, o)| {
+                    format!(
+                        "{n}:{k}={:?}",
+                        read(
+                            address + u64::from(*o),
+                            if k == "ByteProperty" || k == "BoolProperty" {
+                                1
+                            } else {
+                                4
+                            }
+                        )
+                    )
+                })
+                .collect();
+            println!(
+                "{} team fields {team:?}",
+                instance["full_name"]
+                    .as_str()
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+            );
         }
     }
     // The NPC character's faction byte, which the hostility check reads.
     let characters = api.op("walk_class_chain", json!({"needle": "NPC_", "max": 64}));
-    for instance in characters.result["instances"].as_array().into_iter().flatten().filter(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPC_"))) {
+    for instance in characters.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| {
+            i["is_cdo"] == false
+                && i["full_name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("NPC_"))
+        })
+    {
         let address = addr(instance);
         let fields = spawn_trace::object_fields(&api, address).expect("character fields");
-        let faction: Vec<String> = fields.iter().filter(|(n, _, _)| n.contains("Faction") || n.contains("Team") || n.contains("Hostil"))
-            .map(|(n, k, o)| format!("{n}:{k}@{o}={:?}", read(address + u64::from(*o), if k == "ByteProperty" || k == "BoolProperty" || k == "EnumProperty" { 1 } else { 4 }))).collect();
-        println!("{} faction fields {faction:?}", instance["full_name"].as_str().unwrap_or("").split_whitespace().next().unwrap_or(""));
+        let faction: Vec<String> = fields
+            .iter()
+            .filter(|(n, _, _)| n.contains("Faction") || n.contains("Team") || n.contains("Hostil"))
+            .map(|(n, k, o)| {
+                format!(
+                    "{n}:{k}@{o}={:?}",
+                    read(
+                        address + u64::from(*o),
+                        if k == "ByteProperty" || k == "BoolProperty" || k == "EnumProperty" {
+                            1
+                        } else {
+                            4
+                        }
+                    )
+                )
+            })
+            .collect();
+        println!(
+            "{} faction fields {faction:?}",
+            instance["full_name"]
+                .as_str()
+                .unwrap_or("")
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+        );
         break;
     }
 }
@@ -464,30 +1006,74 @@ fn perception_affiliation_and_teams() {
 #[test]
 fn npc_spawner_setup() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     // A live spawner's every reflected field, parents included, plus its class chain.
-    let spawners = api.op("walk_class_chain", json!({"needle": "NPCSpawn_Pest_C", "max": 8}));
+    let spawners = api.op(
+        "walk_class_chain",
+        json!({"needle": "NPCSpawn_Pest_C", "max": 8}),
+    );
     assert!(spawners.ok, "spawners: {:?}", spawners.error);
-    if let Some(live) = spawners.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))) {
-        println!("live spawner: {} chain {}", live["full_name"], live["chain"]);
-        let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    if let Some(live) = spawners.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| {
+            i["is_cdo"] == false
+                && i["full_name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))
+        })
+    {
+        println!(
+            "live spawner: {} chain {}",
+            live["full_name"], live["chain"]
+        );
+        let address =
+            u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16)
+                .unwrap();
         let fields = spawn_trace::object_fields(&api, address).expect("spawner fields");
-        println!("spawner fields: {}", fields.iter().map(|(n, k, o)| format!("{n}:{k}@{o}")).collect::<Vec<_>>().join(" "));
+        println!(
+            "spawner fields: {}",
+            fields
+                .iter()
+                .map(|(n, k, o)| format!("{n}:{k}@{o}"))
+                .collect::<Vec<_>>()
+                .join(" ")
+        );
     }
     // discover_class_detail returns nothing for these Blueprint classes; walk the
     // live spawner's class chain (UObject class at +16, UStruct super at +64,
     // FName at +24) and ask each class for its own functions.
     let read = |address: u64, length: usize| -> Vec<u8> {
-        let reply = api.op("read_bytes", json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}));
+        let reply = api.op(
+            "read_bytes",
+            json!({"instance_selector": format!("addr:0x{address:X}"), "length": length}),
+        );
         assert!(reply.ok, "read_bytes: {:?}", reply.error);
         hex::decode(reply.result["bytes_hex"].as_str().expect("bytes_hex")).expect("hex")
     };
     let name_of = |object: u64| -> String {
         let fname = u64::from_le_bytes(read(object + 24, 8).try_into().unwrap());
-        api.op("fname_to_string", json!({"fname": fname})).result["string"].as_str().unwrap_or("?").to_owned()
+        api.op("fname_to_string", json!({"fname": fname})).result["string"]
+            .as_str()
+            .unwrap_or("?")
+            .to_owned()
     };
-    let live = spawners.result["instances"].as_array().into_iter().flatten().find(|i| i["is_cdo"] == false && i["full_name"].as_str().is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))).expect("a live pest spawner");
-    let address = u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    let live = spawners.result["instances"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|i| {
+            i["is_cdo"] == false
+                && i["full_name"]
+                    .as_str()
+                    .is_some_and(|n| n.starts_with("NPCSpawn_Pest_C "))
+        })
+        .expect("a live pest spawner");
+    let address =
+        u64::from_str_radix(live["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
     let mut class = u64::from_le_bytes(read(address + 16, 8).try_into().unwrap());
     let mut chain = Vec::new();
     while class != 0 && chain.len() < 12 {
@@ -497,12 +1083,30 @@ fn npc_spawner_setup() {
     println!("spawner class chain: {chain:?}");
     for class in &chain {
         let reply = api.op("class_functions_by_name", json!({"class": class}));
-        if !reply.ok { println!("{class}: {:?}", reply.error); continue; }
-        let functions: Vec<&str> = reply.result["functions"].as_array().into_iter().flatten().filter_map(|f| f["name"].as_str()).collect();
+        if !reply.ok {
+            println!("{class}: {:?}", reply.error);
+            continue;
+        }
+        let functions: Vec<&str> = reply.result["functions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|f| f["name"].as_str())
+            .collect();
         println!("{class} functions: {functions:?}");
         for function in functions.iter().filter(|f| f.contains("Spawn")) {
-            let parameters = api.op("function_parameters", json!({"class": class, "function": function}));
-            println!("{class}::{function}: {}", if parameters.ok { parameters.result.to_string() } else { format!("{:?}", parameters.error) });
+            let parameters = api.op(
+                "function_parameters",
+                json!({"class": class, "function": function}),
+            );
+            println!(
+                "{class}::{function}: {}",
+                if parameters.ok {
+                    parameters.result.to_string()
+                } else {
+                    format!("{:?}", parameters.error)
+                }
+            );
         }
     }
 }
@@ -514,15 +1118,31 @@ fn npc_spawner_setup() {
 #[test]
 fn exor_from_assets() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
-    let inventory = api.op("asset_inventory", json!({"class": "Blueprint", "contains": "Exor"}));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let inventory = api.op(
+        "asset_inventory",
+        json!({"class": "Blueprint", "contains": "Exor"}),
+    );
     assert!(inventory.ok, "asset_inventory: {:?}", inventory.error);
-    let assets = inventory.result["assets"].as_array().cloned().unwrap_or_default();
-    for asset in &assets { println!("asset {} in {}", asset["name"], asset["package"]); }
-    let exor = assets.iter().find(|a| a["name"] == "NPC_Monster_Exor").expect("NPC_Monster_Exor Blueprint in the registry");
+    let assets = inventory.result["assets"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for asset in &assets {
+        println!("asset {} in {}", asset["name"], asset["package"]);
+    }
+    let exor = assets
+        .iter()
+        .find(|a| a["name"] == "NPC_Monster_Exor")
+        .expect("NPC_Monster_Exor Blueprint in the registry");
     // Cooked builds strip the Blueprint object; the generated class is what loads.
     let class = format!("{}_C", exor["name"].as_str().unwrap());
-    let loaded = api.op("load_asset", json!({"package": exor["package"], "asset": class}));
+    let loaded = api.op(
+        "load_asset",
+        json!({"package": exor["package"], "asset": class}),
+    );
     assert!(loaded.ok, "load_asset: {:?}", loaded.error);
     println!("loaded {class}: {}", loaded.result);
     assert_eq!(loaded.result["loaded"], true, "the Exor class did not load");
@@ -531,13 +1151,19 @@ fn exor_from_assets() {
     println!("Exor objects now: {}", objects.result["total"]);
     for instance in objects.result["instances"].as_array().into_iter().flatten() {
         let full = instance["full_name"].as_str().unwrap_or("");
-        if full.contains("Perception") || full.contains("AISense") || full.starts_with("NPC_Monster_Exor_C ") || full.starts_with("BlueprintGeneratedClass") {
+        if full.contains("Perception")
+            || full.contains("AISense")
+            || full.starts_with("NPC_Monster_Exor_C ")
+            || full.starts_with("BlueprintGeneratedClass")
+        {
             println!("    {full}");
         }
     }
     let configs = spawn_trace::perception_configs(&api).expect("perception configs");
     for row in configs.as_array().into_iter().flatten() {
-        if row["owner"].as_str().unwrap_or("").contains("Exor") { println!("Exor sense: {row}"); }
+        if row["owner"].as_str().unwrap_or("").contains("Exor") {
+            println!("Exor sense: {row}");
+        }
     }
 }
 
@@ -563,19 +1189,46 @@ fn read_number(api: &Api<Value>, object: u64, kind: &str, offset: u32) -> f64 {
 #[ignore = "swings Sophia's weapon at the nearest enemy she perceives; needs her mod-owned session running with the perception component added"]
 fn sophia_melee_attack_lands() {
     let api = api();
-    if ping_or_skip(&api).is_none() { return; }
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
     let players = api.op("players", json!({}));
     assert!(players.ok, "players: {:?}", players.error);
-    let sophia = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").expect("Sophia is in the game").clone();
-    let at = |v: &Value| -> [f64; 3] { let a = v.as_array().expect("location"); [a[0].as_f64().unwrap(), a[1].as_f64().unwrap(), a[2].as_f64().unwrap()] };
+    let sophia = players.result["players"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|p| p["name"] == "Sophia")
+        .expect("Sophia is in the game")
+        .clone();
+    let at = |v: &Value| -> [f64; 3] {
+        let a = v.as_array().expect("location");
+        [
+            a[0].as_f64().unwrap(),
+            a[1].as_f64().unwrap(),
+            a[2].as_f64().unwrap(),
+        ]
+    };
     let mut from = at(&sophia["location"]);
     // What she perceives right now; enemies are the NPC_ classes (narrative NPCs and players are not).
     let perceived_enemies = |api: &Api<Value>, from: [f64; 3]| -> Vec<(f64, Value)> {
         let seen = api.op("ai_player.perceived", json!({"player": "Sophia"}));
         assert!(seen.ok, "ai_player.perceived: {:?}", seen.error);
-        let mut enemies: Vec<(f64, Value)> = seen.result["perceived"].as_array().into_iter().flatten()
-            .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array())
-            .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+        let mut enemies: Vec<(f64, Value)> = seen.result["perceived"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|a| {
+                a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array()
+            })
+            .map(|a| {
+                let p = at(&a["location"]);
+                (
+                    ((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(),
+                    a.clone(),
+                )
+            })
+            .collect();
         enemies.sort_by(|a, b| a.0.total_cmp(&b.0));
         enemies
     };
@@ -586,67 +1239,155 @@ fn sophia_melee_attack_lands() {
         // still comes only from what she perceives.
         let stopped = api.op("ai_player.follow", json!({"player": ""}));
         assert!(stopped.ok, "follow stop: {:?}", stopped.error);
-        let context = u64::from_str_radix(sophia["character"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+        let context = u64::from_str_radix(
+            sophia["character"]
+                .as_str()
+                .unwrap()
+                .trim_start_matches("0x"),
+            16,
+        )
+        .unwrap();
         // NPCs wander, so every few seconds the harness re-reads where they are now
         // and re-plans toward the nearest one with a complete path, until she perceives one.
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(180);
         let mut skip: Vec<String> = Vec::new();
         while enemies.is_empty() && std::time::Instant::now() < deadline {
-            let actors = api.op("actors_of_class", json!({"world_context": context, "class": "Character"}));
+            let actors = api.op(
+                "actors_of_class",
+                json!({"world_context": context, "class": "Character"}),
+            );
             assert!(actors.ok, "actors_of_class: {:?}", actors.error);
-            let mut candidates: Vec<(f64, Value)> = actors.result["actors"].as_array().into_iter().flatten()
-                .filter(|a| a["class"].as_str().unwrap_or("").starts_with("NPC_") && a["location"].is_array() && !skip.contains(&a["name"].as_str().unwrap_or("").to_owned()))
-                .map(|a| { let p = at(&a["location"]); (((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(), a.clone()) }).collect();
+            let mut candidates: Vec<(f64, Value)> = actors.result["actors"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter(|a| {
+                    a["class"].as_str().unwrap_or("").starts_with("NPC_")
+                        && a["location"].is_array()
+                        && !skip.contains(&a["name"].as_str().unwrap_or("").to_owned())
+                })
+                .map(|a| {
+                    let p = at(&a["location"]);
+                    (
+                        ((p[0] - from[0]).powi(2) + (p[1] - from[1]).powi(2)).sqrt(),
+                        a.clone(),
+                    )
+                })
+                .collect();
             candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
             let mut walking = false;
             for (distance, npc) in &candidates {
                 let travel = api.op("ai_player.travel", json!({"to": npc["location"]}));
-                if !travel.ok { skip.push(npc["name"].as_str().unwrap_or("").to_owned()); continue; }
-                println!("harness re-plans toward {} {:.0} units away ({} path points)", npc["class"], distance, travel.result["points"].as_array().map_or(0, |p| p.len()));
+                if !travel.ok {
+                    skip.push(npc["name"].as_str().unwrap_or("").to_owned());
+                    continue;
+                }
+                println!(
+                    "harness re-plans toward {} {:.0} units away ({} path points)",
+                    npc["class"],
+                    distance,
+                    travel.result["points"].as_array().map_or(0, |p| p.len())
+                );
                 walking = true;
                 break;
             }
-            if !walking { println!("no NPC with a complete path from here; skipped {}", skip.len()); skip.clear(); }
+            if !walking {
+                println!(
+                    "no NPC with a complete path from here; skipped {}",
+                    skip.len()
+                );
+                skip.clear();
+            }
             std::thread::sleep(std::time::Duration::from_secs(5));
             let players = api.op("players", json!({}));
-            from = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
+            from = players.result["players"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|p| p["name"] == "Sophia")
+                .map(|p| at(&p["location"]))
+                .expect("Sophia");
             enemies = perceived_enemies(&api, from);
         }
     }
-    for (distance, enemy) in enemies.iter().take(5) { println!("{:.0} units: {} at {}", distance, enemy["class"], enemy["location"]); }
-    let (mut distance, enemy) = enemies.first().expect("an NPC_ enemy in her perception; none came into her sight").clone();
+    for (distance, enemy) in enemies.iter().take(5) {
+        println!(
+            "{:.0} units: {} at {}",
+            distance, enemy["class"], enemy["location"]
+        );
+    }
+    let (mut distance, enemy) = enemies
+        .first()
+        .expect("an NPC_ enemy in her perception; none came into her sight")
+        .clone();
     // Walk to it: stop any follow loop, travel to the enemy, wait until within melee range.
     let stopped = api.op("ai_player.follow", json!({"player": ""}));
     assert!(stopped.ok, "follow stop: {:?}", stopped.error);
     let travel = api.op("ai_player.travel", json!({"to": enemy["location"]}));
     assert!(travel.ok, "ai_player.travel: {:?}", travel.error);
-    println!("walking to {}: {}", enemy["class"], travel.result["points"].as_array().map_or(0, |p| p.len()));
+    println!(
+        "walking to {}: {}",
+        enemy["class"],
+        travel.result["points"].as_array().map_or(0, |p| p.len())
+    );
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(90);
     while distance > 250.0 && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_secs(2));
         let players = api.op("players", json!({}));
-        let here = players.result["players"].as_array().into_iter().flatten().find(|p| p["name"] == "Sophia").map(|p| at(&p["location"])).expect("Sophia");
+        let here = players.result["players"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|p| p["name"] == "Sophia")
+            .map(|p| at(&p["location"]))
+            .expect("Sophia");
         let there = at(&enemy["location"]);
         distance = ((here[0] - there[0]).powi(2) + (here[1] - there[1]).powi(2)).sqrt();
         println!("Sophia at {here:?}, {distance:.0} units from the enemy");
     }
-    assert!(distance <= 300.0, "nearest enemy {} is still {distance:.0} units away after the walk", enemy["class"]);
-    let address = u64::from_str_radix(enemy["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
+    assert!(
+        distance <= 300.0,
+        "nearest enemy {} is still {distance:.0} units away after the walk",
+        enemy["class"]
+    );
+    let address =
+        u64::from_str_radix(enemy["addr"].as_str().unwrap().trim_start_matches("0x"), 16).unwrap();
     let fields = spawn_trace::object_fields(&api, address).expect("enemy fields");
-    let health: Vec<_> = fields.iter().filter(|(n, k, _)| n.contains("Health") && ["FloatProperty", "DoubleProperty", "IntProperty"].contains(&k.as_str())).cloned().collect();
+    let health: Vec<_> = fields
+        .iter()
+        .filter(|(n, k, _)| {
+            n.contains("Health")
+                && ["FloatProperty", "DoubleProperty", "IntProperty"].contains(&k.as_str())
+        })
+        .cloned()
+        .collect();
     println!("{} health fields: {health:?}", enemy["class"]);
     // Live 2026-09-13: the NPC character carries TotalCombinedHealth (double) plus CurrentHealth_<limb> floats.
-    let (name, kind, offset) = health.iter().find(|(n, _, _)| n == "TotalCombinedHealth")
-        .or_else(|| health.iter().find(|(n, _, _)| n.starts_with("CurrentHealth_") && !n.contains("Texture")))
-        .expect("TotalCombinedHealth or a CurrentHealth_ limb field").clone();
+    let (name, kind, offset) = health
+        .iter()
+        .find(|(n, _, _)| n == "TotalCombinedHealth")
+        .or_else(|| {
+            health
+                .iter()
+                .find(|(n, _, _)| n.starts_with("CurrentHealth_") && !n.contains("Texture"))
+        })
+        .expect("TotalCombinedHealth or a CurrentHealth_ limb field")
+        .clone();
     let before = read_number(&api, address, &kind, offset);
     println!("{name} before: {before}");
     // The real client's melee request with an engine line-trace hit on the perceived enemy.
-    let attack = api.op("ai_player.melee", json!({"player": "Sophia", "target": enemy["addr"]}));
+    let attack = api.op(
+        "ai_player.melee",
+        json!({"player": "Sophia", "target": enemy["addr"]}),
+    );
     assert!(attack.ok, "ai_player.melee: {:?}", attack.error);
     println!("melee: {}", attack.result);
     std::thread::sleep(std::time::Duration::from_secs(2));
     let after = read_number(&api, address, &kind, offset);
     println!("{name} after: {after} (before {before})");
-    assert!(after < before, "{} {name} did not drop: {before} -> {after}; the melee request with this hit does not damage it", enemy["class"]);
+    assert!(
+        after < before,
+        "{} {name} did not drop: {before} -> {after}; the melee request with this hit does not damage it",
+        enemy["class"]
+    );
 }

@@ -23,38 +23,12 @@ use crate::patches;
 /// Register every Horsey op on the modforge global registry.
 /// Called once from the worker thread at DLL init.
 pub fn register_all() {
+    // Hot-reload protocol: `horsey-inject --reload` sends `_shutdown`
+    // before remotely calling FreeLibrary on our HMODULE.
+    modforge::inject::register_ops();
+
     OP_REGISTRY.register_many(vec![
         OpDef::new("ping", "Liveness check", "", |_| Ok(json!("pong"))),
-
-        // ===== Hot-reload protocol =====
-        //
-        // The injector (`horsey-inject.exe --reload`) issues this op
-        // before remotely calling FreeLibrary on our HMODULE. After the
-        // op returns we drop every SpawnHandle in modforge's registry
-        // so the HTTP listener thread joins and releases port 33077.
-        //
-        // We schedule the actual shutdown on a fresh thread so we can
-        // RETURN the success response to the client first. If we
-        // shut the server down before returning, the client never
-        // sees the OK and may panic.
-        OpDef::new(
-            "_shutdown",
-            "Stop the HTTP server. Used by the injector before unloading the DLL for hot-reload.",
-            "",
-            |_| {
-                std::thread::Builder::new()
-                    .name("horsey-shutdown".into())
-                    .spawn(|| {
-                        // Tiny delay so the in-flight HTTP response
-                        // has time to flush to the client socket.
-                        std::thread::sleep(std::time::Duration::from_millis(100));
-                        modforge::log!("horsey-mod: _shutdown -> dropping server");
-                        modforge::server::shutdown_all();
-                    })
-                    .ok();
-                Ok(json!({"shutting_down": true}))
-            },
-        ),
 
         OpDef::new(
             "list_ops",

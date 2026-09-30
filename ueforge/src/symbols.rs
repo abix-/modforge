@@ -124,7 +124,9 @@ pub fn names_at(pdb_path: &Path, rvas: &[u32]) -> Result<HashMap<u32, String>> {
             continue;
         };
         if wanted.contains(&rva.0) {
-            names.entry(rva.0).or_insert_with(|| data.name.to_string().into_owned());
+            names
+                .entry(rva.0)
+                .or_insert_with(|| data.name.to_string().into_owned());
         }
     }
     if names.len() == wanted.len() {
@@ -146,7 +148,9 @@ pub fn names_at(pdb_path: &Path, rvas: &[u32]) -> Result<HashMap<u32, String>> {
                 continue;
             };
             if wanted.contains(&rva.0) {
-                names.entry(rva.0).or_insert_with(|| procedure.name.to_string().into_owned());
+                names
+                    .entry(rva.0)
+                    .or_insert_with(|| procedure.name.to_string().into_owned());
             }
         }
     }
@@ -214,7 +218,10 @@ pub fn layout(pdb_path: &Path, type_name: &str) -> Result<Layout> {
             fields,
         });
     }
-    Err(anyhow!("type '{type_name}' has no full definition in {}", pdb_path.display()))
+    Err(anyhow!(
+        "type '{type_name}' has no full definition in {}",
+        pdb_path.display()
+    ))
 }
 
 /// The named values of the enum called `enum_name` (undecorated, as in
@@ -231,8 +238,7 @@ pub fn enumeration(pdb_path: &Path, enum_name: &str) -> Result<Vec<(String, i64)
         let Ok(TypeData::Enumeration(enumeration)) = item.parse() else {
             continue;
         };
-        if enumeration.properties.forward_reference() || enumeration.name.to_string() != enum_name
-        {
+        if enumeration.properties.forward_reference() || enumeration.name.to_string() != enum_name {
             continue;
         }
         let TypeData::FieldList(list) = finder.find(enumeration.fields)?.parse()? else {
@@ -242,15 +248,19 @@ pub fn enumeration(pdb_path: &Path, enum_name: &str) -> Result<Vec<(String, i64)
             .fields
             .into_iter()
             .filter_map(|field| match field {
-                TypeData::Enumerate(value) => {
-                    Some((value.name.to_string().into_owned(), variant_i64(value.value)))
-                }
+                TypeData::Enumerate(value) => Some((
+                    value.name.to_string().into_owned(),
+                    variant_i64(value.value),
+                )),
                 _ => None,
             })
             .collect();
         return Ok(values);
     }
-    Err(anyhow!("enum '{enum_name}' has no full definition in {}", pdb_path.display()))
+    Err(anyhow!(
+        "enum '{enum_name}' has no full definition in {}",
+        pdb_path.display()
+    ))
 }
 
 fn variant_i64(value: Variant) -> i64 {

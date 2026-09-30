@@ -1,0 +1,34 @@
+[package]
+name = "thewalkingtrade-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The Walking Trade mod. Unity 6000.0.58f2 IL2CPP game (AppID
+# 3398110). Rust cdylib loaded by Unityforge.Shim.Melon
+# (MelonLoader entry) through unityforge.
+
+[lib]
+crate-type = ["cdylib"]
+name = "thewalkingtrade_mod"
+
+[dependencies]
+modforge = { path = "../modforge" }
+unityforge = { path = "../unityforge" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+# Same version modforge uses: its SectionKind picks the section for
+# patterns::sleuth::scan_module_section.
+object = { version = "0.32", default-features = false, features = ["read"] }
+
+[dev-dependencies]
+unityforge = { path = "../unityforge" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
+
+[package.metadata.unityforge]
+deploy_name = "thewalkingtrade_mod.unityforge.dll"

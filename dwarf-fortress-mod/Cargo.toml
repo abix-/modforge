@@ -1,0 +1,27 @@
+[package]
+name = "dwarf-fortress-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Native Dwarf Fortress research adapter. DFHack's dfhooks chainloader loads
+# this library beside Dwarf Fortress.exe as dfhooks_modforge.dll. The first
+# phase deliberately exposes process research only; DFHack remains the owner
+# of typed game structures.
+[lib]
+name = "dfhooks_modforge"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde_json = { workspace = true }
+windows-sys = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
+] }
+
+[lints]
+workspace = true

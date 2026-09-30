@@ -21,13 +21,19 @@ const STUCK_MIN_PROGRESS: f64 = 40.0;
 const STUCK_AFTER_MS: u64 = 4000;
 
 fn arg_pos(args: &Json) -> Result<Position, String> {
-    let f = |k: &str| args.get(k).and_then(Json::as_f64).ok_or(format!("missing arg '{k}'"));
+    let f = |k: &str| {
+        args.get(k)
+            .and_then(Json::as_f64)
+            .ok_or(format!("missing arg '{k}'"))
+    };
     Ok(Position::new(f("x")?, f("y")?, f("z")?))
 }
 
 /// Path from the retained player to `end` via Unreal A*. Game thread.
 fn find_path_from_player(end: Position) -> Result<Path, String> {
-    let player = crate::speed::PLAYER.retained().ok_or("no retained player")?;
+    let player = crate::speed::PLAYER
+        .retained()
+        .ok_or("no retained player")?;
     let world_ctx = player as *const ueforge::ue::UObject as u64;
     // SAFETY: the retained player is live on the game thread.
     let (x, y, z) = unsafe { ueforge::ue::transform::world_location(player.as_ptr() as *const u8) }
@@ -69,15 +75,13 @@ fn strafe_keys(pose: PlayerObservation, target: Position, tol: f64) -> (bool, bo
     // Facing at yaw: (cos, sin) (yaw 90 -> +Y, confirmed live).
     let (fx, fy) = (yaw.cos(), yaw.sin());
     // Right of facing (yaw - 90).
-    let (rx, ry) = ((yaw - std::f64::consts::FRAC_PI_2).cos(), (yaw - std::f64::consts::FRAC_PI_2).sin());
+    let (rx, ry) = (
+        (yaw - std::f64::consts::FRAC_PI_2).cos(),
+        (yaw - std::f64::consts::FRAC_PI_2).sin(),
+    );
     let forward = tx * fx + ty * fy;
     let right = tx * rx + ty * ry;
-    (
-        forward > tol,
-        right < -tol,
-        forward < -tol,
-        right > tol,
-    )
+    (forward > tol, right < -tol, forward < -tol, right > tol)
 }
 
 /// Only the keys whose held state changed, so continuous injection is
@@ -126,7 +130,11 @@ fn travel_to(end: Position) -> Result<Json, String> {
     loop {
         let pose = surface.observe_player()?;
         let final_point = idx + 1 >= points.len();
-        let radius = if final_point { GOAL_ARRIVAL } else { steering().path_point_radius };
+        let radius = if final_point {
+            GOAL_ARRIVAL
+        } else {
+            steering().path_point_radius
+        };
         let target = points[idx];
         let dist = pose.position.distance(target);
 

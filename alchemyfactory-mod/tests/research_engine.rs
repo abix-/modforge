@@ -14,7 +14,7 @@
 //! ```
 
 mod common;
-use common::{api, ping_or_skip, UE4SS_LOG};
+use common::{UE4SS_LOG, api, ping_or_skip};
 use modforge::client;
 use serde_json::json;
 
@@ -49,8 +49,16 @@ fn discovery_counts() {
             // Words a potion-making factory game would use in its
             // own class names. Refine once the real names are seen.
             let words = [
-                "Alchemy", "Potion", "Cauldron", "Ingredient", "Recipe", "Brew", "Conveyor",
-                "Machine", "Herb", "Essence",
+                "Alchemy",
+                "Potion",
+                "Cauldron",
+                "Ingredient",
+                "Recipe",
+                "Brew",
+                "Conveyor",
+                "Machine",
+                "Herb",
+                "Essence",
             ];
             let mut names: Vec<&str> = r
                 .result

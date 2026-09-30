@@ -725,17 +725,29 @@ fn inventory_op(args: &serde_json::Value) -> Result<serde_json::Value, String> {
 fn load_op(args: &serde_json::Value) -> Result<serde_json::Value, String> {
     let package_fname = args.get("package_fname").and_then(|v| v.as_u64());
     let asset_fname = args.get("asset_fname").and_then(|v| v.as_u64());
-    let package = args.get("package").and_then(|v| v.as_str()).map(str::to_owned);
-    let asset = args.get("asset").and_then(|v| v.as_str()).map(str::to_owned);
+    let package = args
+        .get("package")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+    let asset = args
+        .get("asset")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
     if package_fname.is_none() && package.is_none() || asset_fname.is_none() && asset.is_none() {
-        return Err("need {package_fname: u64, asset_fname: u64} or {package: str, asset: str}".into());
+        return Err(
+            "need {package_fname: u64, asset_fname: u64} or {package: str, asset: str}".into(),
+        );
     }
     crate::game_thread::run(
         move || {
             let name = |fname: Option<u64>, text: Option<String>| -> Result<u64, String> {
-                if let Some(fname) = fname { return Ok(fname); }
+                if let Some(fname) = fname {
+                    return Ok(fname);
+                }
                 let text = text.expect("checked above");
-                Ok(ue::fname::from_str(&text, ue::fname::FindName::Add).ok_or_else(|| format!("FName for '{text}' unavailable"))?.as_u64())
+                Ok(ue::fname::from_str(&text, ue::fname::FindName::Add)
+                    .ok_or_else(|| format!("FName for '{text}' unavailable"))?
+                    .as_u64())
             };
             let address = load_asset(name(package_fname, package)?, name(asset_fname, asset)?)?;
             Ok(serde_json::json!({

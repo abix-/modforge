@@ -40,6 +40,27 @@
 //     would produce invalid IL). The Rust callback OWNS the
 //     handle and must release it (MonoObject::from_handle +
 //     Drop). Zero when the context object is null.
+//   - postfix_float_result (bridge v8): Rust float(IntPtr, IntPtr,
+//     float) on a method returning float. Receives a FRESH
+//     __instance handle (0 for static methods), the arguments as
+//     JSON (same convention as prefix_instance_args; handles in it
+//     are owned by the callback too), and the original result, and
+//     returns the result the caller sees. Slot signature
+//     `object __instance, object[] __args, ref float __result`.
+//   - postfix_int_result (bridge v9): the same for a method
+//     returning int, plus an argument filter checked here before
+//     anything crosses to Rust: JSON {"<arg index>": value}, value a
+//     number (enum or integer argument) or bool. The Rust callback
+//     runs only when every listed argument matches, so a patch on a
+//     hot method costs a few comparisons on the calls it skips.
+//   - postfix_result (bridge v10): the same for a method of ANY
+//     return type. Slot signature `object __instance, object[]
+//     __args, ref object __result` (Harmony boxes a value-type
+//     result). The result crosses as JSON in the ArgToJson
+//     convention; the Rust callback writes a replacement into the
+//     output buffer (JSON; {"$handle": N} for a live object) and
+//     returns its length, or -1 to keep the original. Same argument
+//     filter as postfix_int_result.
 
 using System;
 using System.Collections.Generic;
@@ -65,17 +86,26 @@ namespace Unityforge.Shim
         private delegate int RustPrefixDelegate(IntPtr ctx);
         private delegate void RustPostfixDelegate(IntPtr ctx);
         private delegate int RustPrefixInstanceArgsDelegate(IntPtr instance, IntPtr argsJsonUtf8);
+        private delegate float RustPostfixFloatResultDelegate(IntPtr instance, IntPtr argsJsonUtf8, float result);
+        private delegate int RustPostfixIntResultDelegate(IntPtr instance, IntPtr argsJsonUtf8, int result);
+        private delegate int RustPostfixResultDelegate(IntPtr instance, IntPtr argsJsonUtf8, IntPtr resultJsonUtf8, IntPtr outUtf8, int outCap);
 
         public delegate int PatchPrefixFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr rustFnPtr);
         public delegate int PatchPostfixFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr rustFnPtr);
         public delegate int PatchPrefixCtxFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, int ctxKind, IntPtr rustFnPtr);
         public delegate int PatchPrefixInstanceArgsFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr rustFnPtr);
+        public delegate int PatchPostfixFloatResultFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr rustFnPtr);
+        public delegate int PatchPostfixIntResultFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr filterJsonUtf8, IntPtr rustFnPtr);
+        public delegate int PatchPostfixResultFn(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr filterJsonUtf8, IntPtr rustFnPtr);
         public delegate void UnpatchFn(int handle);
 
         public static readonly PatchPrefixFn PatchPrefixDelegate = PatchPrefix;
         public static readonly PatchPostfixFn PatchPostfixDelegate = PatchPostfix;
         public static readonly PatchPrefixCtxFn PatchPrefixCtxDelegate = PatchPrefixCtx;
         public static readonly PatchPrefixInstanceArgsFn PatchPrefixInstanceArgsDelegate = PatchPrefixInstanceArgs;
+        public static readonly PatchPostfixFloatResultFn PatchPostfixFloatResultDelegate = PatchPostfixFloatResult;
+        public static readonly PatchPostfixIntResultFn PatchPostfixIntResultDelegate = PatchPostfixIntResult;
+        public static readonly PatchPostfixResultFn PatchPostfixResultDelegate = PatchPostfixResult;
         public static readonly UnpatchFn UnpatchDelegate = Unpatch;
 
         /// <summary>
@@ -87,6 +117,13 @@ namespace Unityforge.Shim
         /// bringing up the MelonLoader shim).
         /// </summary>
         public static Func<object, int> AcquireHandle;
+
+        /// <summary>
+        /// Backend handle-lookup seam, the reverse of AcquireHandle:
+        /// resolves a {"$handle": N} replacement result to the live
+        /// object. Each entry assigns its backend's Lookup.
+        /// </summary>
+        public static Func<int, object> LookupHandle;
 
         public static void EnsureHarmony(string instanceId)
         {
@@ -135,6 +172,14 @@ namespace Unityforge.Shim
             // Rust prefix needs the values to reimplement the
             // original, not to mutate them.
             PrefixInstanceArgs,
+            // __instance plus the float return value, replaced by
+            // what the Rust callback returns (bridge v8).
+            PostfixFloatResult,
+            // Same for an int return, behind an argument filter
+            // (bridge v9).
+            PostfixIntResult,
+            // Same for any return type, as JSON (bridge v10).
+            PostfixResult,
         }
 
         private class PatchEntry
@@ -155,6 +200,17 @@ namespace Unityforge.Shim
         private static readonly RustPrefixDelegate[] _prefixArg0Slots = new RustPrefixDelegate[SlotsPerKind];
         private static readonly RustPrefixDelegate[] _prefixArgs0Slots = new RustPrefixDelegate[SlotsPerKind];
         private static readonly RustPrefixInstanceArgsDelegate[] _prefixInstanceArgsSlots = new RustPrefixInstanceArgsDelegate[SlotsPerKind];
+        private static readonly RustPostfixFloatResultDelegate[] _postfixFloatResultSlots = new RustPostfixFloatResultDelegate[SlotsPerKind];
+        private static readonly RustPostfixIntResultDelegate[] _postfixIntResultSlots = new RustPostfixIntResultDelegate[SlotsPerKind];
+        // Per slot: (argument index, required value) pairs.
+        private static readonly KeyValuePair<int, long>[][] _postfixIntResultFilters = new KeyValuePair<int, long>[SlotsPerKind][];
+        private static readonly RustPostfixResultDelegate[] _postfixResultSlots = new RustPostfixResultDelegate[SlotsPerKind];
+        private static readonly KeyValuePair<int, long>[][] _postfixResultFilters = new KeyValuePair<int, long>[SlotsPerKind][];
+        // Per slot: the patched method's return type, to convert a
+        // JSON replacement back.
+        private static readonly Type[] _postfixResultTypes = new Type[SlotsPerKind];
+        // Replacement result buffer size handed to Rust.
+        private const int ResultOutCap = 16 * 1024;
 
         private static bool RunPrefixSlot(int i)
         {
@@ -282,17 +338,25 @@ namespace Unityforge.Shim
             return new Newtonsoft.Json.Linq.JObject { ["handle"] = handle };
         }
 
-        private static bool RunPrefixInstanceArgsSlot(int i, object instance, object[] args)
+        /// <summary>
+        /// All arguments as NUL-terminated UTF-8 JSON, per ArgToJson.
+        /// </summary>
+        private static byte[] ArgsToJsonBytes(object[] args)
         {
-            var d = _prefixInstanceArgsSlots[i];
-            if (d == null) return true;
-            var instanceHandle = (instance != null && AcquireHandle != null) ? AcquireHandle(instance) : 0;
             var json = new Newtonsoft.Json.Linq.JArray();
             if (args != null)
             {
                 foreach (var a in args) json.Add(ArgToJson(a));
             }
-            var bytes = System.Text.Encoding.UTF8.GetBytes(json.ToString(Newtonsoft.Json.Formatting.None) + "\0");
+            return System.Text.Encoding.UTF8.GetBytes(json.ToString(Newtonsoft.Json.Formatting.None) + "\0");
+        }
+
+        private static bool RunPrefixInstanceArgsSlot(int i, object instance, object[] args)
+        {
+            var d = _prefixInstanceArgsSlots[i];
+            if (d == null) return true;
+            var instanceHandle = (instance != null && AcquireHandle != null) ? AcquireHandle(instance) : 0;
+            var bytes = ArgsToJsonBytes(args);
             var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
             try
             {
@@ -325,6 +389,153 @@ namespace Unityforge.Shim
         private static bool PrefixInstanceArgsSlot13(object __instance, object[] __args) => RunPrefixInstanceArgsSlot(13, __instance, __args);
         private static bool PrefixInstanceArgsSlot14(object __instance, object[] __args) => RunPrefixInstanceArgsSlot(14, __instance, __args);
         private static bool PrefixInstanceArgsSlot15(object __instance, object[] __args) => RunPrefixInstanceArgsSlot(15, __instance, __args);
+
+        private static void RunPostfixFloatResultSlot(int i, object instance, object[] args, ref float result)
+        {
+            var d = _postfixFloatResultSlots[i];
+            if (d == null) return;
+            var instanceHandle = (instance != null && AcquireHandle != null) ? AcquireHandle(instance) : 0;
+            var bytes = ArgsToJsonBytes(args);
+            var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            try
+            {
+                result = d(new IntPtr(instanceHandle), pin.AddrOfPinnedObject(), result);
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge: postfix_float_result slot " + i + " threw: " + e);
+            }
+            finally
+            {
+                pin.Free();
+            }
+        }
+
+        private static void PostfixFloatResultSlot0(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(0, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot1(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(1, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot2(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(2, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot3(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(3, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot4(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(4, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot5(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(5, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot6(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(6, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot7(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(7, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot8(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(8, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot9(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(9, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot10(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(10, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot11(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(11, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot12(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(12, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot13(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(13, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot14(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(14, __instance, __args, ref __result);
+        private static void PostfixFloatResultSlot15(object __instance, object[] __args, ref float __result) => RunPostfixFloatResultSlot(15, __instance, __args, ref __result);
+
+        private static bool ArgsMatch(KeyValuePair<int, long>[] filter, object[] args)
+        {
+            if (filter == null) return true;
+            foreach (var kv in filter)
+            {
+                if (args == null || kv.Key >= args.Length) return false;
+                var a = args[kv.Key];
+                long v;
+                if (a is bool b) v = b ? 1 : 0;
+                else if (a != null && (a.GetType().IsEnum || a is int || a is long || a is short || a is byte || a is uint)) v = Convert.ToInt64(a);
+                else return false;
+                if (v != kv.Value) return false;
+            }
+            return true;
+        }
+
+        private static void RunPostfixIntResultSlot(int i, object instance, object[] args, ref int result)
+        {
+            var d = _postfixIntResultSlots[i];
+            if (d == null || !ArgsMatch(_postfixIntResultFilters[i], args)) return;
+            var instanceHandle = (instance != null && AcquireHandle != null) ? AcquireHandle(instance) : 0;
+            var bytes = ArgsToJsonBytes(args);
+            var pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+            try
+            {
+                result = d(new IntPtr(instanceHandle), pin.AddrOfPinnedObject(), result);
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge: postfix_int_result slot " + i + " threw: " + e);
+            }
+            finally
+            {
+                pin.Free();
+            }
+        }
+
+        private static void PostfixIntResultSlot0(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(0, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot1(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(1, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot2(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(2, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot3(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(3, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot4(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(4, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot5(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(5, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot6(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(6, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot7(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(7, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot8(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(8, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot9(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(9, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot10(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(10, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot11(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(11, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot12(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(12, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot13(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(13, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot14(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(14, __instance, __args, ref __result);
+        private static void PostfixIntResultSlot15(object __instance, object[] __args, ref int __result) => RunPostfixIntResultSlot(15, __instance, __args, ref __result);
+
+        private static void RunPostfixResultSlot(int i, object instance, object[] args, ref object result)
+        {
+            var d = _postfixResultSlots[i];
+            if (d == null || !ArgsMatch(_postfixResultFilters[i], args)) return;
+            var instanceHandle = (instance != null && AcquireHandle != null) ? AcquireHandle(instance) : 0;
+            var argBytes = ArgsToJsonBytes(args);
+            var resultBytes = System.Text.Encoding.UTF8.GetBytes(ArgToJson(result).ToString(Newtonsoft.Json.Formatting.None) + "\0");
+            var outBytes = new byte[ResultOutCap];
+            var argPin = GCHandle.Alloc(argBytes, GCHandleType.Pinned);
+            var resultPin = GCHandle.Alloc(resultBytes, GCHandleType.Pinned);
+            var outPin = GCHandle.Alloc(outBytes, GCHandleType.Pinned);
+            try
+            {
+                int n = d(new IntPtr(instanceHandle), argPin.AddrOfPinnedObject(), resultPin.AddrOfPinnedObject(), outPin.AddrOfPinnedObject(), ResultOutCap);
+                if (n < 0) return;
+                if (n > ResultOutCap)
+                {
+                    ShimLogger.Error("HarmonyBridge: postfix_result slot " + i + " replacement is " + n + " bytes, cap " + ResultOutCap);
+                    return;
+                }
+                var tok = Newtonsoft.Json.Linq.JToken.Parse(System.Text.Encoding.UTF8.GetString(outBytes, 0, n));
+                if (HandleArg.TryResolve(tok, h => LookupHandle != null ? LookupHandle(h) : null, out var live))
+                    result = live;
+                else
+                    result = tok.ToObject(_postfixResultTypes[i]);
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge: postfix_result slot " + i + " threw: " + e);
+            }
+            finally
+            {
+                argPin.Free();
+                resultPin.Free();
+                outPin.Free();
+            }
+        }
+
+        private static void PostfixResultSlot0(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(0, __instance, __args, ref __result);
+        private static void PostfixResultSlot1(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(1, __instance, __args, ref __result);
+        private static void PostfixResultSlot2(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(2, __instance, __args, ref __result);
+        private static void PostfixResultSlot3(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(3, __instance, __args, ref __result);
+        private static void PostfixResultSlot4(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(4, __instance, __args, ref __result);
+        private static void PostfixResultSlot5(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(5, __instance, __args, ref __result);
+        private static void PostfixResultSlot6(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(6, __instance, __args, ref __result);
+        private static void PostfixResultSlot7(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(7, __instance, __args, ref __result);
+        private static void PostfixResultSlot8(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(8, __instance, __args, ref __result);
+        private static void PostfixResultSlot9(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(9, __instance, __args, ref __result);
+        private static void PostfixResultSlot10(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(10, __instance, __args, ref __result);
+        private static void PostfixResultSlot11(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(11, __instance, __args, ref __result);
+        private static void PostfixResultSlot12(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(12, __instance, __args, ref __result);
+        private static void PostfixResultSlot13(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(13, __instance, __args, ref __result);
+        private static void PostfixResultSlot14(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(14, __instance, __args, ref __result);
+        private static void PostfixResultSlot15(object __instance, object[] __args, ref object __result) => RunPostfixResultSlot(15, __instance, __args, ref __result);
 
         private static bool PrefixArgs0Slot0(object[] __args) => RunPrefixCtxSlot(_prefixArgs0Slots, 0, Args0(__args));
         private static bool PrefixArgs0Slot1(object[] __args) => RunPrefixCtxSlot(_prefixArgs0Slots, 1, Args0(__args));
@@ -469,7 +680,109 @@ namespace Unityforge.Shim
             }
         }
 
-        private static int ApplySlotPatch(MethodBase target, PatchKind kind, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null)
+        private static int PatchPostfixFloatResult(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr rustFnPtr)
+        {
+            try
+            {
+                if (_harmony == null || rustFnPtr == IntPtr.Zero) return 0;
+                if (AcquireHandle == null)
+                {
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixFloatResult: AcquireHandle not set by the shim entry; refusing patch");
+                    return 0;
+                }
+                var target = ResolveTarget(typeNameUtf8, methodNameUtf8);
+                if (target == null) return 0;
+                if (!(target is MethodInfo mi) || mi.ReturnType != typeof(float))
+                {
+                    // `ref float __result` on any other return type is
+                    // rejected by Harmony or reads the wrong bytes.
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixFloatResult: " + target.Name + " does not return float");
+                    return 0;
+                }
+                var del = (RustPostfixFloatResultDelegate)Marshal.GetDelegateForFunctionPointer(rustFnPtr, typeof(RustPostfixFloatResultDelegate));
+                return ApplySlotPatch(target, PatchKind.PostfixFloatResult, null, null, null, del);
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge.PatchPostfixFloatResult: " + e);
+                return 0;
+            }
+        }
+
+        private static int PatchPostfixIntResult(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr filterJsonUtf8, IntPtr rustFnPtr)
+        {
+            try
+            {
+                if (_harmony == null || rustFnPtr == IntPtr.Zero) return 0;
+                if (AcquireHandle == null)
+                {
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixIntResult: AcquireHandle not set by the shim entry; refusing patch");
+                    return 0;
+                }
+                var target = ResolveTarget(typeNameUtf8, methodNameUtf8);
+                if (target == null) return 0;
+                if (!(target is MethodInfo mi) || mi.ReturnType != typeof(int))
+                {
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixIntResult: " + target.Name + " does not return int");
+                    return 0;
+                }
+                var del = (RustPostfixIntResultDelegate)Marshal.GetDelegateForFunctionPointer(rustFnPtr, typeof(RustPostfixIntResultDelegate));
+                return ApplySlotPatch(target, PatchKind.PostfixIntResult, null, null, null, null, del, ParseArgFilter(filterJsonUtf8));
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge.PatchPostfixIntResult: " + e);
+                return 0;
+            }
+        }
+
+        private static int PatchPostfixResult(IntPtr typeNameUtf8, IntPtr methodNameUtf8, IntPtr filterJsonUtf8, IntPtr rustFnPtr)
+        {
+            try
+            {
+                if (_harmony == null || rustFnPtr == IntPtr.Zero) return 0;
+                if (AcquireHandle == null || LookupHandle == null)
+                {
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixResult: AcquireHandle/LookupHandle not set by the shim entry; refusing patch");
+                    return 0;
+                }
+                var target = ResolveTarget(typeNameUtf8, methodNameUtf8);
+                if (target == null) return 0;
+                if (!(target is MethodInfo mi) || mi.ReturnType == typeof(void))
+                {
+                    ShimLogger.Error("HarmonyBridge.PatchPostfixResult: " + target.Name + " returns nothing");
+                    return 0;
+                }
+                var del = (RustPostfixResultDelegate)Marshal.GetDelegateForFunctionPointer(rustFnPtr, typeof(RustPostfixResultDelegate));
+                return ApplySlotPatch(target, PatchKind.PostfixResult, null, null, null, null, null, ParseArgFilter(filterJsonUtf8), del, mi.ReturnType);
+            }
+            catch (Exception e)
+            {
+                ShimLogger.Error("HarmonyBridge.PatchPostfixResult: " + e);
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Argument filter JSON {"<arg index>": value}, value a number
+        /// (enum or integer argument) or bool. Null for none.
+        /// </summary>
+        private static KeyValuePair<int, long>[] ParseArgFilter(IntPtr filterJsonUtf8)
+        {
+            var filterText = filterJsonUtf8 == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(filterJsonUtf8);
+            if (string.IsNullOrEmpty(filterText)) return null;
+            var filter = new List<KeyValuePair<int, long>>();
+            foreach (var p in Newtonsoft.Json.Linq.JObject.Parse(filterText).Properties())
+            {
+                long v = p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Boolean
+                    ? ((bool)p.Value ? 1 : 0)
+                    : (long)p.Value;
+                filter.Add(new KeyValuePair<int, long>(int.Parse(p.Name), v));
+            }
+            return filter.Count > 0 ? filter.ToArray() : null;
+        }
+
+        private static int ApplySlotPatch(MethodBase target, PatchKind kind, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null, RustPostfixFloatResultDelegate floatResultDel = null, RustPostfixIntResultDelegate intResultDel = null, KeyValuePair<int, long>[] argFilter = null, RustPostfixResultDelegate resultDel = null, Type resultType = null)
         {
             lock (_lock)
             {
@@ -487,10 +800,10 @@ namespace Unityforge.Shim
                 // Assign the delegate BEFORE patching so the slot
                 // is live the instant the patch applies; clear on
                 // failure.
-                SetSlot(kind, slot, prefixDel, postfixDel, instanceArgsDel);
+                SetSlot(kind, slot, prefixDel, postfixDel, instanceArgsDel, floatResultDel, intResultDel, argFilter, resultDel, resultType);
                 try
                 {
-                    if (kind == PatchKind.Postfix) _harmony.Patch(target, postfix: hm);
+                    if (kind == PatchKind.Postfix || kind == PatchKind.PostfixFloatResult || kind == PatchKind.PostfixIntResult || kind == PatchKind.PostfixResult) _harmony.Patch(target, postfix: hm);
                     else _harmony.Patch(target, prefix: hm);
                 }
                 catch
@@ -514,6 +827,9 @@ namespace Unityforge.Shim
                 case PatchKind.PrefixInstanceCtx: return "PrefixInstanceSlot";
                 case PatchKind.PrefixArg0Ctx: return "PrefixArg0Slot";
                 case PatchKind.PrefixInstanceArgs: return "PrefixInstanceArgsSlot";
+                case PatchKind.PostfixFloatResult: return "PostfixFloatResultSlot";
+                case PatchKind.PostfixIntResult: return "PostfixIntResultSlot";
+                case PatchKind.PostfixResult: return "PostfixResultSlot";
                 default: return "PrefixArgs0Slot";
             }
         }
@@ -530,6 +846,9 @@ namespace Unityforge.Shim
                     case PatchKind.PrefixInstanceCtx: free = _prefixInstanceSlots[i] == null; break;
                     case PatchKind.PrefixArg0Ctx: free = _prefixArg0Slots[i] == null; break;
                     case PatchKind.PrefixInstanceArgs: free = _prefixInstanceArgsSlots[i] == null; break;
+                    case PatchKind.PostfixFloatResult: free = _postfixFloatResultSlots[i] == null; break;
+                    case PatchKind.PostfixIntResult: free = _postfixIntResultSlots[i] == null; break;
+                    case PatchKind.PostfixResult: free = _postfixResultSlots[i] == null; break;
                     default: free = _prefixArgs0Slots[i] == null; break;
                 }
                 if (free) return i;
@@ -537,15 +856,28 @@ namespace Unityforge.Shim
             return -1;
         }
 
-        private static void SetSlot(PatchKind kind, int slot, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null)
+        private static void SetSlot(PatchKind kind, int slot, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null, RustPostfixFloatResultDelegate floatResultDel = null, RustPostfixIntResultDelegate intResultDel = null, KeyValuePair<int, long>[] argFilter = null, RustPostfixResultDelegate resultDel = null, Type resultType = null)
         {
             switch (kind)
             {
+                case PatchKind.PostfixResult:
+                    // Filter and type first: a live slot must never run
+                    // unfiltered or without its return type.
+                    _postfixResultFilters[slot] = argFilter;
+                    _postfixResultTypes[slot] = resultType;
+                    _postfixResultSlots[slot] = resultDel;
+                    break;
                 case PatchKind.Prefix: _prefixSlots[slot] = prefixDel; break;
                 case PatchKind.Postfix: _postfixSlots[slot] = postfixDel; break;
                 case PatchKind.PrefixInstanceCtx: _prefixInstanceSlots[slot] = prefixDel; break;
                 case PatchKind.PrefixArg0Ctx: _prefixArg0Slots[slot] = prefixDel; break;
                 case PatchKind.PrefixInstanceArgs: _prefixInstanceArgsSlots[slot] = instanceArgsDel; break;
+                case PatchKind.PostfixFloatResult: _postfixFloatResultSlots[slot] = floatResultDel; break;
+                case PatchKind.PostfixIntResult:
+                    // Filter first: a live slot must never run unfiltered.
+                    _postfixIntResultFilters[slot] = argFilter;
+                    _postfixIntResultSlots[slot] = intResultDel;
+                    break;
                 default: _prefixArgs0Slots[slot] = prefixDel; break;
             }
         }
@@ -580,7 +912,30 @@ namespace Unityforge.Shim
                 ShimLogger.Error($"HarmonyBridge: type '{tname}' not found");
                 return null;
             }
-            var m = AccessTools.Method(t, mname);
+            // "Name(Type1,Type2)" picks one overload; a bare name is
+            // ambiguous when the method is overloaded (WgoData.MakeDrop).
+            Type[] args = null;
+            int paren = mname.IndexOf('(');
+            if (paren > 0 && mname.EndsWith(")"))
+            {
+                var list = mname.Substring(paren + 1, mname.Length - paren - 2);
+                mname = mname.Substring(0, paren);
+                // char[] binds Split(params char[]); a bare char binds
+                // Split(char, StringSplitOptions), which Unity 2020.3's
+                // Mono lacks (MissingMethodException in Terra Invicta).
+                var names = list.Length == 0 ? new string[0] : list.Split(new[] { ',' });
+                args = new Type[names.Length];
+                for (int i = 0; i < names.Length; i++)
+                {
+                    args[i] = TypeCache.Resolve(names[i].Trim());
+                    if (args[i] == null)
+                    {
+                        ShimLogger.Error($"HarmonyBridge: argument type '{names[i].Trim()}' not found for {tname}.{mname}");
+                        return null;
+                    }
+                }
+            }
+            var m = AccessTools.Method(t, mname, args);
             if (m == null)
             {
                 ShimLogger.Error($"HarmonyBridge: method '{mname}' not found on {t.FullName} (assembly {t.Assembly.GetName().Name})");

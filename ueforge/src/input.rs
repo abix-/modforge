@@ -104,7 +104,11 @@ impl FInputKeyParams {
 
     /// A key going down or up, as the viewport reports a physical key.
     pub fn key(key_name: &str, pressed: bool) -> Result<Self, String> {
-        let (event, amount) = if pressed { (IE_PRESSED, 1.0) } else { (IE_RELEASED, 0.0) };
+        let (event, amount) = if pressed {
+            (IE_PRESSED, 1.0)
+        } else {
+            (IE_RELEASED, 0.0)
+        };
         Self::with_key(key_name, event, amount)
     }
 
@@ -339,8 +343,9 @@ pub fn register(name: &'static str, player: &'static LiveActor, bindings: Action
 /// The same surface for a legacy `PlayerInput` game. `bindings.input_key_rva`
 /// comes from the game's PDB through `crate::symbols::functions`.
 pub fn register_legacy(name: &'static str, player: &'static LiveActor, bindings: LegacyBindings) {
-    let surface: &'static UnrealInputSurface =
-        Box::leak(Box::new(UnrealInputSurface::new_legacy(name, player, bindings)));
+    let surface: &'static UnrealInputSurface = Box::leak(Box::new(UnrealInputSurface::new_legacy(
+        name, player, bindings,
+    )));
     modforge::input::set_input_surface(surface);
 }
 
@@ -427,7 +432,11 @@ mod enhanced {
         crate::ops::exec_call(subsystem, IFACE, function, parms).map(|_| ())
     }
 
-    pub fn start_continuous(subsystem: &UObject, action_ptr: u64, value: f64) -> Result<(), String> {
+    pub fn start_continuous(
+        subsystem: &UObject,
+        action_ptr: u64,
+        value: f64,
+    ) -> Result<(), String> {
         call(
             subsystem,
             "StartContinuousInputInjectionForAction",
@@ -487,7 +496,11 @@ unsafe fn read_control_rotation(player: &UObject) -> Result<(f64, f64), String> 
 }
 
 /// Offset of the reflected property `name` on the object's class or any super class.
-pub fn class_property_offset(object: &UObject, name: &str, minimum_size: u32) -> Result<usize, String> {
+pub fn class_property_offset(
+    object: &UObject,
+    name: &str,
+    minimum_size: u32,
+) -> Result<usize, String> {
     let mut class = object.class();
     let mut depth = 0;
     while let Some(current) = class {
@@ -515,9 +528,15 @@ pub fn class_bool_property(object: &UObject, name: &str) -> Result<(usize, u8), 
     let mut depth = 0;
     while let Some(current) = class {
         if depth >= 64 {
-            return Err(format!("class chain exceeded 64 entries while resolving {name}"));
+            return Err(format!(
+                "class chain exceeded 64 entries while resolving {name}"
+            ));
         }
-        if let Some(property) = current.cached_native_properties().iter().find(|p| p.name == name) {
+        if let Some(property) = current
+            .cached_native_properties()
+            .iter()
+            .find(|p| p.name == name)
+        {
             let layout = property.address + crate::ue::offsets::fboolproperty::FIELD_SIZE;
             if property.address == 0 || !crate::winproc::is_addr_readable(layout + 3) {
                 return Err(format!("{name}: its FBoolProperty is not readable"));
@@ -525,7 +544,9 @@ pub fn class_bool_property(object: &UObject, name: &str) -> Result<(usize, u8), 
             // SAFETY: four readable bytes of the live FBoolProperty: FieldSize, ByteOffset, ByteMask, FieldMask.
             let bytes = unsafe { (layout as *const [u8; 4]).read_unaligned() };
             if bytes[0] != 1 || bytes[3] == 0 {
-                return Err(format!("{name}: unexpected bool layout {bytes:?}, not a one-byte field"));
+                return Err(format!(
+                    "{name}: unexpected bool layout {bytes:?}, not a one-byte field"
+                ));
             }
             return Ok((property.offset as usize + bytes[1] as usize, bytes[3]));
         }
@@ -545,12 +566,22 @@ pub unsafe fn write_class_bool(object: &UObject, name: &str, value: bool) -> Res
     unsafe {
         let byte = object.field_ptr(offset) as *mut u8;
         let current = std::ptr::read_volatile(byte);
-        let wanted = if value { current | mask } else { current & !mask };
+        let wanted = if value {
+            current | mask
+        } else {
+            current & !mask
+        };
         std::ptr::write_volatile(byte, wanted);
         let readback = std::ptr::read_volatile(byte);
-        crate::log!("write_class_bool: {name} at 0x{:X} (offset 0x{offset:X}, mask 0x{mask:02X}): 0x{current:02X} -> 0x{wanted:02X}, read back 0x{readback:02X}", byte as usize);
+        crate::log!(
+            "write_class_bool: {name} at 0x{:X} (offset 0x{offset:X}, mask 0x{mask:02X}): 0x{current:02X} -> 0x{wanted:02X}, read back 0x{readback:02X}",
+            byte as usize
+        );
         if readback != wanted {
-            return Err(format!("{name}: wrote 0x{wanted:02X} at 0x{:X} but read back 0x{readback:02X}", byte as usize));
+            return Err(format!(
+                "{name}: wrote 0x{wanted:02X} at 0x{:X} but read back 0x{readback:02X}",
+                byte as usize
+            ));
         }
     }
     Ok(())

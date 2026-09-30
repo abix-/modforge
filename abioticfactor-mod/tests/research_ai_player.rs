@@ -17,7 +17,10 @@ use serde_json::{Value, json};
 const PLAYER: &str = "first_class:Abiotic_PlayerCharacter_C";
 
 fn hex_bytes(result: &Value) -> Vec<u8> {
-    let hex = result.get("bytes_hex").and_then(Value::as_str).unwrap_or("");
+    let hex = result
+        .get("bytes_hex")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     (0..hex.len())
         .step_by(2)
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
@@ -32,7 +35,11 @@ fn addr_of(instance: &Value) -> Option<u64> {
 /// Every non-default object whose class chain contains `needle`.
 fn instances(api: &Api<Value>, needle: &str, max: u64) -> (u64, Vec<Value>) {
     let reply = api.op("walk_class_chain", json!({"needle": needle, "max": max}));
-    let total = reply.result.get("total").and_then(Value::as_u64).unwrap_or(0);
+    let total = reply
+        .result
+        .get("total")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
     let list = reply
         .result
         .get("instances")
@@ -83,9 +90,9 @@ fn print_float(api: &Api<Value>, class: &str, addr: u64, name: &str) {
         }
         Some((offset, 8)) => {
             let raw = read_bytes(api, addr, offset, 8);
-            let value = raw.get(0..8).map(|b| {
-                f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
-            });
+            let value = raw
+                .get(0..8)
+                .map(|b| f64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]));
             println!("  {name:24} +{offset:<5} f64 {value:?}");
         }
         Some((offset, size)) => println!("  {name:24} +{offset:<5} size {size} (not a float)"),
@@ -94,7 +101,10 @@ fn print_float(api: &Api<Value>, class: &str, addr: u64, name: &str) {
 }
 
 fn component(api: &Api<Value>, actor: u64, class: &str) -> Option<u64> {
-    let reply = api.op("component_of_class", json!({"actor": actor, "class": class}));
+    let reply = api.op(
+        "component_of_class",
+        json!({"actor": actor, "class": class}),
+    );
     let text = reply.result.get("component")?.as_str()?;
     u64::from_str_radix(text.trim_start_matches("0x"), 16).ok()
 }
@@ -110,7 +120,10 @@ fn full_name(api: &Api<Value>, addr: u64) -> String {
     if addr == 0 {
         return "null".into();
     }
-    let reply = api.op("resolve_selector", json!({"selector": format!("addr:0x{addr:X}")}));
+    let reply = api.op(
+        "resolve_selector",
+        json!({"selector": format!("addr:0x{addr:X}")}),
+    );
     reply
         .result
         .get("full_name")
@@ -150,7 +163,9 @@ fn player_characters_and_controllers() {
     let (total, characters) = instances(&api, "Abiotic_PlayerCharacter_C", 16);
     println!("player characters: {total}");
     for character in &characters {
-        let Some(addr) = addr_of(character) else { continue };
+        let Some(addr) = addr_of(character) else {
+            continue;
+        };
         let controller = read_ptr(&api, addr, controller_offset);
         println!(
             "  0x{addr:X} {}\n      Controller -> {}",
@@ -162,12 +177,17 @@ fn player_characters_and_controllers() {
     let (total, controllers) = instances(&api, "Abiotic_PlayerController_C", 16);
     println!("player controllers: {total}");
     for controller in &controllers {
-        let Some(addr) = addr_of(controller) else { continue };
+        let Some(addr) = addr_of(controller) else {
+            continue;
+        };
         let player = read_ptr(&api, addr, player_offset);
         let pawn = read_ptr(&api, addr, pawn_offset);
         println!(
             "  0x{addr:X} {}\n      Player -> {}\n      Pawn   -> {}",
-            controller.get("name").and_then(Value::as_str).unwrap_or("?"),
+            controller
+                .get("name")
+                .and_then(Value::as_str)
+                .unwrap_or("?"),
             full_name(&api, player),
             full_name(&api, pawn)
         );
@@ -233,8 +253,13 @@ fn password_fields() {
         let (total, objects) = instances(&api, needle, 6);
         println!("{needle}: {total} instance(s)");
         for object in &objects {
-            let Some(addr) = addr_of(object) else { continue };
-            let full = object.get("full_name").and_then(Value::as_str).unwrap_or("?");
+            let Some(addr) = addr_of(object) else {
+                continue;
+            };
+            let full = object
+                .get("full_name")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
             let class = full.split(' ').next().unwrap_or("?");
             println!("  0x{addr:X} {full}");
             for (name, offset, size) in fields_containing(&api, class, "password") {
@@ -262,8 +287,13 @@ fn net_driver_and_connections() {
     let (total, drivers) = instances(&api, "NetDriver", 8);
     println!("NetDriver instances: {total}");
     for driver in &drivers {
-        let Some(addr) = addr_of(driver) else { continue };
-        let full = driver.get("full_name").and_then(Value::as_str).unwrap_or("?");
+        let Some(addr) = addr_of(driver) else {
+            continue;
+        };
+        let full = driver
+            .get("full_name")
+            .and_then(Value::as_str)
+            .unwrap_or("?");
         println!("  0x{addr:X} {full}");
         // The fields are declared on the engine's NetDriver base class;
         // the subclass detail lists only its own additions.
@@ -306,12 +336,16 @@ fn net_driver_and_connections() {
     // state is the last 8 bytes. The world's URL (UWorld +1440, FURL:
     // Host +16, Port +32, Map +40, Op +72) is the address it listens on.
     for driver in &drivers {
-        let Some(addr) = addr_of(driver) else { continue };
+        let Some(addr) = addr_of(driver) else {
+            continue;
+        };
         println!(
             "  driver bytes 2424..2432 (EOS driver's own state) = {:?}",
             read_bytes(&api, addr, 2424, 8)
         );
-        let Some((world_offset, _)) = field(&api, "NetDriver", "World") else { continue };
+        let Some((world_offset, _)) = field(&api, "NetDriver", "World") else {
+            continue;
+        };
         let world = read_ptr(&api, addr, world_offset);
         let url = world + 1440;
         println!(
@@ -331,10 +365,20 @@ fn net_driver_and_connections() {
     let (total, sessions) = instances(&api, "GameSession", 4);
     println!("GameSession instances: {total}");
     for session in &sessions {
-        let Some(addr) = addr_of(session) else { continue };
-        let full = session.get("full_name").and_then(Value::as_str).unwrap_or("?");
+        let Some(addr) = addr_of(session) else {
+            continue;
+        };
+        let full = session
+            .get("full_name")
+            .and_then(Value::as_str)
+            .unwrap_or("?");
         println!("  0x{addr:X} {full}");
-        for name in ["MaxPlayers", "MaxSpectators", "SessionName", "bRequiresPushToTalk"] {
+        for name in [
+            "MaxPlayers",
+            "MaxSpectators",
+            "SessionName",
+            "bRequiresPushToTalk",
+        ] {
             if let Some((offset, size)) = field(&api, "GameSession", name) {
                 println!(
                     "      {name} +{offset} size {size} = {:?}",
@@ -349,7 +393,10 @@ fn net_driver_and_connections() {
     for subsystem in &subsystems {
         println!(
             "  {}",
-            subsystem.get("full_name").and_then(Value::as_str).unwrap_or("?")
+            subsystem
+                .get("full_name")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
         );
     }
 }
@@ -389,7 +436,10 @@ fn navigation_mesh_and_links() {
     for volume in &volumes {
         println!(
             "  {}",
-            volume.get("full_name").and_then(Value::as_str).unwrap_or("?")
+            volume
+                .get("full_name")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
         );
     }
 
@@ -480,7 +530,10 @@ fn enhanced_input_setup() {
     for context in &contexts {
         println!(
             "  {}",
-            context.get("full_name").and_then(Value::as_str).unwrap_or("?")
+            context
+                .get("full_name")
+                .and_then(Value::as_str)
+                .unwrap_or("?")
         );
     }
 
@@ -517,8 +570,14 @@ fn split_screen_setting() {
     for object in &settings {
         println!(
             "  {} cdo={}",
-            object.get("full_name").and_then(Value::as_str).unwrap_or("?"),
-            object.get("is_cdo").and_then(Value::as_bool).unwrap_or(false)
+            object
+                .get("full_name")
+                .and_then(Value::as_str)
+                .unwrap_or("?"),
+            object
+                .get("is_cdo")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
         );
     }
 
@@ -527,7 +586,9 @@ fn split_screen_setting() {
         return;
     };
     for object in &settings {
-        let Some(addr) = addr_of(object) else { continue };
+        let Some(addr) = addr_of(object) else {
+            continue;
+        };
         let raw = read_bytes(&api, addr, offset, size.max(1));
         println!(
             "  0x{addr:X} bUseSplitscreen +{offset} size {size} raw byte {:?} (bitfield: bit position not reported by the class walk)",
