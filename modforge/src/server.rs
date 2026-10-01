@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread;
 
-use parking_lot::Mutex;
 use socket2::{Domain, Protocol, Socket, Type};
 use tiny_http::{Header, Method, Response, Server};
 
@@ -57,55 +56,17 @@ pub struct Config {
     pub auth_token: Option<&'static str>,
 }
 
-/// Handle to a spawned listener. Drop or call [`stop`](Self::stop)
-/// to break the listener's `incoming_requests` loop and join the
-/// thread. Required for hot-reload-safe shutdown. The DLL can't
-/// unload while the listener thread holds code on its stack.
-pub struct SpawnHandle {
-    server: Arc<Server>,
-    join: Mutex<Option<thread::JoinHandle<()>>>,
-}
-
-impl SpawnHandle {
-    /// Unblock the listener loop and join the thread. Idempotent.
-    pub fn stop(&self) {
-        // unblock() makes server.incoming_requests() return None
-        // on its next iteration, breaking the for-loop in run().
-        self.server.unblock();
-        if let Some(j) = self.join.lock().take() {
-            let _ = j.join();
-        }
-    }
-}
-
-impl Drop for SpawnHandle {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
-
-/// Global registry of `SpawnHandle`s so `shutdown_all` can stop
-/// listeners owned by call sites that don't hang on to the handle
-/// (typical for `debug::spawn` callers that fire-and-forget).
-static SERVER_REGISTRY: Mutex<Vec<SpawnHandle>> = Mutex::new(Vec::new());
-
-/// Stop every server registered via [`spawn`]. Called from the
-/// framework's hot-reload shutdown path.
+/// Stop every listener started by [`spawn`] now, by running their
+/// recorded undos. The generation's shutdown does this anyway; this
+/// is for a caller that must stop the listener early.
 pub fn shutdown_all() {
-    let mut g = SERVER_REGISTRY.lock();
-    let n = g.len();
-    g.clear();
-    drop(g);
-    if n > 0 {
-        crate::log!("server: shutdown_all stopped {n} listener(s)");
-    }
+    crate::shutdown::SHUTDOWN_REGISTRY.undo_all("server");
 }
 
 /// Spawn the listener thread. Returns immediately. If bind fails the
 /// error is reported via `on_log` and the thread is not started.
-/// On success the handle is registered into the framework's
-/// shutdown registry; pass `register: false` to opt out (e.g. tests
-/// that own the handle directly).
+/// On success its undo (unblock the listener loop, join the thread)
+/// is recorded on the shutdown registry and kept until shutdown.
 pub fn spawn<H, L>(cfg: Config, handler: H, on_log: L)
 where
     H: Fn(&str) -> Vec<u8> + Send + Sync + 'static,
@@ -165,10 +126,14 @@ where
         .spawn(move || run(server_for_thread, endpoint, handler, auth_token))
         .expect("spawn listener thread");
 
-    SERVER_REGISTRY.lock().push(SpawnHandle {
-        server,
-        join: Mutex::new(Some(join)),
-    });
+    crate::shutdown::SHUTDOWN_REGISTRY
+        .record("server", addr_str, 200, move || {
+            // unblock() makes server.incoming_requests() return None
+            // on its next iteration, breaking the for-loop in run().
+            server.unblock();
+            let _ = join.join();
+        })
+        .keep();
 }
 
 fn run<H>(

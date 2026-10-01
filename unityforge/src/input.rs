@@ -194,11 +194,21 @@ pub enum KeyCode {
 /// fire per press, same semantics as `Input.GetKeyDown`).
 /// Returns a binding handle that can be passed to
 /// [`unregister`]. Returns `None` if the bridge isn't
-/// installed yet.
+/// installed yet. The unregister is recorded on modforge's
+/// shutdown registry as the binding is made, so the generation's
+/// shutdown removes it even if nobody calls [`unregister`]. The
+/// shim never reuses a binding number, so that undo is harmless
+/// after an early [`unregister`].
 pub fn register_key_press(key: KeyCode, callback: extern "C" fn()) -> Option<i32> {
     let bridge = bridge::get()?;
     let handle = (bridge.register_key_binding)(key as i32, callback);
-    if handle == 0 { None } else { Some(handle) }
+    if handle == 0 {
+        return None;
+    }
+    modforge::shutdown::SHUTDOWN_REGISTRY
+        .record("key binding", format!("{key:?}"), 100, move || unregister(handle))
+        .keep();
+    Some(handle)
 }
 
 /// Drop a key binding. Idempotent.

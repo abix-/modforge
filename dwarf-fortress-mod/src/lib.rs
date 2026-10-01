@@ -490,7 +490,6 @@ fn start() {
     });
     modforge::log!("dwarf-fortress-mod: dfhooks init");
 
-    modforge::shutdown::register_modforge_builtins();
     register_ops();
     modforge::server::spawn(
         modforge::server::Config {

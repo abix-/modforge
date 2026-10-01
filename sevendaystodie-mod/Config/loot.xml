@@ -1,0 +1,5 @@
+<configs>
+	<!-- The backpack dropped on death holds the bag plus the toolbelt.
+	     Vanilla 7x10 = 70 fits 45 + 10; 90 + 10 needs 10x10. -->
+	<set xpath="//lootcontainer[@name='playerBackpack']/@size">10,10</set>
+</configs>

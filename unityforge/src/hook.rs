@@ -9,16 +9,19 @@
 
 use std::ffi::{CString, c_void};
 
-use parking_lot::Mutex;
-
 use crate::bridge::{self, PatchHandle};
 
-/// One installed Harmony patch.
+/// One installed Harmony patch. Its unpatch is recorded on
+/// modforge's shutdown registry when the patch is made: dropping
+/// the `Hook` unpatches now, [`Hook::keep`] leaves the patch on
+/// until the generation shuts down, and a `Hook` held in a static
+/// is still unpatched at shutdown.
 pub struct Hook {
     handle: PatchHandle,
     pub class_name: String,
     pub method_name: String,
     pub when: HookWhen,
+    undo: modforge::shutdown::Undo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,16 +31,35 @@ pub enum HookWhen {
 }
 
 impl Hook {
+    /// The one place a `Hook` is made: right after the shim
+    /// returned a live patch handle, record its unpatch.
+    fn new(handle: PatchHandle, class_name: &str, method_name: &str, when: HookWhen) -> Hook {
+        let undo = modforge::shutdown::SHUTDOWN_REGISTRY.record(
+            "hook",
+            format!("{class_name}.{method_name}"),
+            100,
+            move || {
+                if let Some(bridge) = bridge::get() {
+                    (bridge.harmony_unpatch)(handle);
+                }
+            },
+        );
+        Hook {
+            handle,
+            class_name: class_name.to_string(),
+            method_name: method_name.to_string(),
+            when,
+            undo,
+        }
+    }
+
     pub fn handle(&self) -> PatchHandle {
         self.handle
     }
-}
 
-impl Drop for Hook {
-    fn drop(&mut self) {
-        if let Some(bridge) = bridge::get() {
-            (bridge.harmony_unpatch)(self.handle);
-        }
+    /// Leave the patch on until the generation shuts down.
+    pub fn keep(self) {
+        self.undo.keep();
     }
 }
 
@@ -58,12 +80,7 @@ pub fn patch_prefix(
             "harmony_patch_prefix({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Prefix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Prefix))
 }
 
 /// Which object a `patch_prefix_ctx` callback receives as its
@@ -113,12 +130,7 @@ pub fn patch_prefix_ctx(
             "harmony_patch_prefix_ctx({class_name}, {method_name}, {ctx:?}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Prefix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Prefix))
 }
 
 /// Install a prefix patch whose callback receives BOTH the
@@ -149,12 +161,7 @@ pub fn patch_prefix_instance_args(
             "harmony_patch_prefix_instance_args({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Prefix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Prefix))
 }
 
 /// Install a postfix patch on a method returning `float` that can
@@ -182,12 +189,7 @@ pub fn patch_postfix_float_result(
             "harmony_patch_postfix_float_result({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Postfix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Postfix))
 }
 
 /// Install a postfix patch on a method returning `int` that can
@@ -217,12 +219,7 @@ pub fn patch_postfix_int_result(
             "harmony_patch_postfix_int_result({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Postfix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Postfix))
 }
 
 /// Install a postfix patch on a method of ANY return type that can
@@ -255,12 +252,7 @@ pub fn patch_postfix_result(
             "harmony_patch_postfix_result({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Postfix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Postfix))
 }
 
 /// Write a replacement result into a `patch_postfix_result`
@@ -296,49 +288,41 @@ pub fn patch_postfix(
             "harmony_patch_postfix({class_name}, {method_name}) failed"
         ));
     }
-    Ok(Hook {
-        handle,
-        class_name: class_name.to_string(),
-        method_name: method_name.to_string(),
-        when: HookWhen::Postfix,
-    })
+    Ok(Hook::new(handle, class_name, method_name, HookWhen::Postfix))
 }
 
-/// Workspace-standard registry for live hooks. Game crates push
-/// here at worker init; `shutdown_all` releases them all on mod
-/// teardown.
-pub struct HookRegistry {
-    entries: Mutex<Vec<Hook>>,
-}
+/// Live hooks, as seen on modforge's shutdown registry (kind
+/// "hook"). Holds no list of its own: every hook's unpatch was
+/// recorded there when it was made.
+pub struct HookRegistry;
 
 impl HookRegistry {
     pub const fn new() -> Self {
-        Self {
-            entries: Mutex::new(Vec::new()),
-        }
+        Self
     }
 
+    /// Same as [`Hook::keep`]: leave the patch on until the
+    /// generation shuts down.
     pub fn register(&self, hook: Hook) {
-        self.entries.lock().push(hook);
+        hook.keep();
     }
 
+    /// Unpatch every live hook now.
     pub fn shutdown_all(&self) {
-        let n = self.entries.lock().len();
-        self.entries.lock().clear();
-        if n > 0 {
-            crate::mono::log(
-                crate::mono::LogLevel::Info,
-                &format!("unityforge: dropped {n} hook(s)"),
-            );
-        }
+        modforge::shutdown::SHUTDOWN_REGISTRY.undo_all("hook");
+    }
+
+    /// `Class.Method` of every live hook, oldest first.
+    pub fn list(&self) -> Vec<String> {
+        modforge::shutdown::SHUTDOWN_REGISTRY.list("hook")
     }
 
     pub fn len(&self) -> usize {
-        self.entries.lock().len()
+        self.list().len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entries.lock().is_empty()
+        self.list().is_empty()
     }
 }
 

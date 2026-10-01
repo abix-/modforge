@@ -1,107 +1,202 @@
-//! Shutdown-handler registry. The workspace-standard
-//! `<Subject>Def` + `<Subject>Registry` for the
-//! `ueforge_mod_shutdown` teardown sequence.
+//! Shutdown registry: the ONE list of undos for everything this
+//! generation of the mod has done.
 //!
 //! ```text
 //! K8s slot: Def=ShutdownHandlerDef, Registry=ShutdownRegistry
 //!           (SHUTDOWN_REGISTRY singleton),
-//!           Instance=per-call invocation, Controller=run_all()
+//!           Instance=Undo, Controller=run_all()
 //! ```
 //!
-//! Per [architecture.md](../docs/architecture.md), the framework's
-//! shutdown sequence used to be a hardcoded match-equivalent
-//! inside the `ueforge_mod_shutdown` macro: every new ueforge
-//! subsystem that spawned threads had to edit the macro to add
-//! its `shutdown_all()` line. Easy to forget; the cost showed
-//! up as a hot-reload thread leak.
+//! ## Do the thing, record its undo, in the same call
 //!
-//! Now the macro just runs `SHUTDOWN_REGISTRY.run_all()`. Each
-//! ueforge subsystem registers itself via [`register_builtins`]
-//! (called by the macro before the run). Game crates extend the
-//! same registry from their `worker()` init for game-specific
-//! cleanup (e.g. a custom poller's stop flag).
+//! Every action that changes something outside our own memory (a
+//! Harmony hook, a byte patch, a listener thread, a poller, an
+//! input binding) records its undo here AT THE MOMENT IT ACTS, via
+//! [`ShutdownRegistry::record`], and hands back an [`Undo`]:
+//!
+//! - drop the [`Undo`] to undo the action now;
+//! - [`Undo::keep`] to leave it on until the generation shuts down;
+//! - [`ShutdownRegistry::run_all`] (the generation's shutdown) runs
+//!   every undo still on the list.
+//!
+//! So shutdown never has to guess what was done: there is no
+//! second list per subsystem, and an action held somewhere the
+//! framework cannot see (a static that is never dropped) is still
+//! undone, because its undo was recorded when it was done.
+//!
+//! Prior art: Linux kernel managed device resources (`devm_*`),
+//! released automatically in reverse order when the device goes
+//! away; .NET `CompositeDisposable`; Go's `defer` and `t.Cleanup`.
 //!
 //! ## Ordering
 //!
-//! Each handler carries an `order: u32`. `run_all` sorts ascending
-//! before running, so lower numbers fire first. The framework's
-//! built-ins use `100, 200, 300, 400` to leave room between them
-//! for game-specific handlers that must interleave (e.g. a custom
-//! poller that should stop BEFORE hooks tear down). Game crates
-//! typically want their own cleanup at `50` (before framework)
-//! or `500+` (after framework).
+//! Each undo carries an `order: u32`. `run_all` runs lower orders
+//! first and, within one order, the most recently done first (undo
+//! in reverse of doing). Conventions:
 //!
-//! ## Why not Drop?
+//! - `100`. Hooks, so trampolines stop firing before threads join
+//! - `150`. Byte patches, so the next generation finds the game's
+//!   original bytes
+//! - `200`. HTTP listeners
+//! - `250`. Pollers
+//! - `300`. `Settings::watch` watchers
+//! - `400`. Scanner freeze sweeper
 //!
-//! Drop runs at unpredictable times relative to UE4SS's
-//! `FreeLibrary` call. The shutdown registry is invoked
-//! synchronously from `ueforge_mod_shutdown` BEFORE the DLL
-//! unloads, so handlers can safely touch heap memory + spin on
-//! atomics. After `run_all` returns, no thread is on a stack in
-//! our DLL via a registered subsystem.
+//! Game crates that must interleave register at `50` (before the
+//! framework) or `500+` (after).
+//!
+//! ## Why not plain Drop?
+//!
+//! A value in a static is never dropped, and nothing is dropped
+//! when a generation is swapped out: its image just stops being
+//! called. The list is run synchronously from the generation's
+//! shutdown entry point, before the next generation loads.
+
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use parking_lot::Mutex;
 
-/// One shutdown step.
+/// One fixed shutdown step, for a subsystem whose undo is not tied
+/// to one action. Recorded with [`ShutdownRegistry::register`].
 pub struct ShutdownHandlerDef {
-    /// Used in the log line emitted before each step runs.
+    /// Used in the log line emitted before the step runs.
     pub name: &'static str,
-    /// Lower runs first. Framework built-ins use multiples of
-    /// 100 to leave gaps for game-specific interleaving.
+    /// Lower runs first.
     pub order: u32,
-    /// Cleanup function. Must be sync; idempotent + safe-to-call-
-    /// when-nothing-was-spawned (the registry `run_all` calls it
-    /// unconditionally).
+    /// Cleanup function. Must be sync.
     pub run: fn(),
 }
 
-/// Workspace-standard registry of shutdown handlers.
+struct Entry {
+    id: u64,
+    /// Kind of action, e.g. "hook", "server". [`ShutdownRegistry::undo_all`]
+    /// and [`ShutdownRegistry::list`] select by it.
+    name: &'static str,
+    /// What exactly was done, for the log and [`ShutdownRegistry::list`].
+    what: String,
+    order: u32,
+    undo: Box<dyn FnOnce() + Send>,
+}
+
+/// The one list of recorded undos.
 pub struct ShutdownRegistry {
-    entries: Mutex<Vec<ShutdownHandlerDef>>,
+    entries: Mutex<Vec<Entry>>,
+    next_id: AtomicU64,
+}
+
+/// The undo of one recorded action. Dropping it undoes the action
+/// now; [`Undo::keep`] leaves it on the list for the generation's
+/// shutdown.
+#[must_use = "dropping an Undo undoes the action immediately; call .keep() to leave it on until shutdown"]
+pub struct Undo {
+    registry: &'static ShutdownRegistry,
+    id: u64,
+}
+
+impl Undo {
+    /// Leave the action in place until the generation shuts down.
+    pub fn keep(self) {
+        std::mem::forget(self);
+    }
+}
+
+impl Drop for Undo {
+    fn drop(&mut self) {
+        self.registry.undo_one(self.id);
+    }
 }
 
 impl ShutdownRegistry {
     pub const fn new() -> Self {
         Self {
             entries: Mutex::new(Vec::new()),
+            next_id: AtomicU64::new(1),
         }
     }
 
-    pub fn register(&self, def: ShutdownHandlerDef) {
-        self.entries.lock().push(def);
+    /// Record the undo of something just done. Call this in the
+    /// same function that does the thing, straight after it
+    /// succeeds.
+    pub fn record<F>(&'static self, name: &'static str, what: String, order: u32, undo: F) -> Undo
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        self.entries.lock().push(Entry {
+            id,
+            name,
+            what,
+            order,
+            undo: Box::new(undo),
+        });
+        Undo { registry: self, id }
     }
 
-    pub fn register_many<I: IntoIterator<Item = ShutdownHandlerDef>>(&self, defs: I) {
-        let mut g = self.entries.lock();
+    /// Record a fixed shutdown step, run once by [`Self::run_all`].
+    pub fn register(&'static self, def: ShutdownHandlerDef) {
+        let run = def.run;
+        self.record(def.name, String::new(), def.order, run).keep();
+    }
+
+    pub fn register_many<I: IntoIterator<Item = ShutdownHandlerDef>>(&'static self, defs: I) {
         for d in defs {
-            g.push(d);
+            self.register(d);
         }
     }
 
-    /// Run every registered handler in `order` ascending. Logs
-    /// each step. Stable sort: handlers at the same `order`
-    /// preserve registration order.
-    pub fn run_all(&self) {
-        let snapshot: Vec<ShutdownHandlerDef> = {
+    fn undo_one(&self, id: u64) {
+        let entry = {
             let mut g = self.entries.lock();
-            // Stable sort by order. Handlers don't move; we just
-            // observe them in order.
-            g.sort_by_key(|d| d.order);
-            // Take the entries out so handlers can re-register if
-            // they want (rare; mostly defensive against double-run
-            // during weird hot-reload races).
-            std::mem::take(&mut *g)
+            g.iter().position(|e| e.id == id).map(|i| g.remove(i))
         };
-        let n = snapshot.len();
-        for d in &snapshot {
-            crate::log!("shutdown: '{}' (order {})", d.name, d.order);
-            (d.run)();
+        if let Some(e) = entry {
+            run_entry(e);
         }
-        crate::log!("shutdown: {n} handler(s) complete");
+    }
+
+    /// Undo every recorded action of one kind now, most recent
+    /// first. For a caller that has to stop one kind of thing
+    /// early (the injector stopping the listener before it
+    /// unloads the DLL).
+    pub fn undo_all(&self, name: &str) {
+        let mut taken: Vec<Entry> = {
+            let mut g = self.entries.lock();
+            let (take, keep): (Vec<Entry>, Vec<Entry>) =
+                std::mem::take(&mut *g).into_iter().partition(|e| e.name == name);
+            *g = keep;
+            take
+        };
+        taken.sort_by(|a, b| b.id.cmp(&a.id));
+        for e in taken {
+            run_entry(e);
+        }
+    }
+
+    /// Run every undo still on the list: lower `order` first,
+    /// within one order the most recently done first. Each undo
+    /// runs even if an earlier one panicked.
+    pub fn run_all(&self) {
+        let mut snapshot: Vec<Entry> = std::mem::take(&mut *self.entries.lock());
+        snapshot.sort_by(|a, b| a.order.cmp(&b.order).then(b.id.cmp(&a.id)));
+        let n = snapshot.len();
+        for e in snapshot {
+            run_entry(e);
+        }
+        crate::log!("shutdown: {n} undo(s) complete");
+    }
+
+    /// What is recorded for one kind, oldest first.
+    pub fn list(&self, name: &str) -> Vec<String> {
+        self.entries
+            .lock()
+            .iter()
+            .filter(|e| e.name == name)
+            .map(|e| e.what.clone())
+            .collect()
     }
 
     pub fn names(&self) -> Vec<&'static str> {
-        self.entries.lock().iter().map(|d| d.name).collect()
+        self.entries.lock().iter().map(|e| e.name).collect()
     }
 
     pub fn len(&self) -> usize {
@@ -110,6 +205,18 @@ impl ShutdownRegistry {
 
     pub fn is_empty(&self) -> bool {
         self.entries.lock().is_empty()
+    }
+}
+
+fn run_entry(e: Entry) {
+    if e.what.is_empty() {
+        crate::log!("shutdown: undo '{}' (order {})", e.name, e.order);
+    } else {
+        crate::log!("shutdown: undo '{}' {} (order {})", e.name, e.what, e.order);
+    }
+    let name = e.name;
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(e.undo)).is_err() {
+        crate::log!("shutdown: undo '{name}' panicked; continuing");
     }
 }
 
@@ -122,42 +229,56 @@ impl Default for ShutdownRegistry {
 /// Process-wide shutdown registry singleton.
 pub static SHUTDOWN_REGISTRY: ShutdownRegistry = ShutdownRegistry::new();
 
-/// Register modforge's own shutdown handlers (server, settings,
-/// scanner). Each per-framework crate has its own
-/// `register_builtins` that calls this PLUS its own
-/// engine-specific handlers (hooks, etc.) in the right order.
-///
-/// Order convention:
-/// - `100`. Hooks (per-framework; must run before any thread
-///   join so trampolines stop firing first)
-/// - `200`. HTTP listeners
-/// - `300`. `Settings::watch` mtime pollers
-/// - `400`. Scanner freeze sweeper
-///
-/// Game crates that need to interleave (e.g. their own poller
-/// that drains via the framework's main-thread queue, must stop
-/// BEFORE hooks tear down) register at `50` from `worker()`.
-pub fn register_modforge_builtins() {
-    SHUTDOWN_REGISTRY.register_many([
-        ShutdownHandlerDef {
-            name: "server::shutdown_all",
-            order: 200,
-            run: || crate::server::shutdown_all(),
-        },
-        ShutdownHandlerDef {
-            name: "rpg::poller::shutdown_all",
-            order: 250,
-            run: || crate::rpg::poller::shutdown_all(),
-        },
-        ShutdownHandlerDef {
-            name: "settings::shutdown_all",
-            order: 300,
-            run: || crate::settings::shutdown_all(),
-        },
-        ShutdownHandlerDef {
-            name: "scanner::shutdown_sweeper_if_running",
-            order: 400,
-            run: || crate::scanner::shutdown_sweeper_if_running(),
-        },
-    ]);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU32;
+
+    #[test]
+    fn drop_undoes_now_keep_waits_for_run_all() {
+        static REG: ShutdownRegistry = ShutdownRegistry::new();
+        static N: AtomicU32 = AtomicU32::new(0);
+        let u = REG.record("t", "a".into(), 100, || {
+            N.fetch_add(1, Ordering::SeqCst);
+        });
+        drop(u);
+        assert_eq!(N.load(Ordering::SeqCst), 1);
+        assert!(REG.is_empty());
+
+        REG.record("t", "b".into(), 100, || {
+            N.fetch_add(10, Ordering::SeqCst);
+        })
+        .keep();
+        assert_eq!(N.load(Ordering::SeqCst), 1);
+        REG.run_all();
+        assert_eq!(N.load(Ordering::SeqCst), 11);
+        assert!(REG.is_empty());
+    }
+
+    #[test]
+    fn run_all_orders_then_newest_first_and_survives_panic() {
+        static REG: ShutdownRegistry = ShutdownRegistry::new();
+        static SEEN: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
+        REG.record("x", String::new(), 200, || SEEN.lock().push("200-old")).keep();
+        REG.record("x", String::new(), 100, || panic!("boom")).keep();
+        REG.record("x", String::new(), 200, || SEEN.lock().push("200-new")).keep();
+        REG.record("x", String::new(), 100, || SEEN.lock().push("100")).keep();
+        REG.run_all();
+        assert_eq!(*SEEN.lock(), vec!["100", "200-new", "200-old"]);
+    }
+
+    #[test]
+    fn undo_all_takes_one_kind_and_a_dropped_undo_after_it_is_a_no_op() {
+        static REG: ShutdownRegistry = ShutdownRegistry::new();
+        static N: AtomicU32 = AtomicU32::new(0);
+        let u = REG.record("server", "s".into(), 200, || {
+            N.fetch_add(1, Ordering::SeqCst);
+        });
+        REG.record("hook", "h".into(), 100, || {}).keep();
+        REG.undo_all("server");
+        assert_eq!(N.load(Ordering::SeqCst), 1);
+        drop(u);
+        assert_eq!(N.load(Ordering::SeqCst), 1);
+        assert_eq!(REG.list("hook"), vec!["h".to_string()]);
+    }
 }

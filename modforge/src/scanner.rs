@@ -395,6 +395,9 @@ fn ensure_sweeper() {
             .name("ueforge-freeze-sweeper".into())
             .spawn(move || sweeper_loop(stop_clone))
             .expect("spawn freeze sweeper");
+        crate::shutdown::SHUTDOWN_REGISTRY
+            .record("freeze sweeper", String::new(), 400, shutdown_sweeper_if_running)
+            .keep();
         Sweeper {
             stop,
             join: Mutex::new(Some(join)),

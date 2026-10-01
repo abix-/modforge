@@ -1,0 +1,5 @@
+<configs>
+	<!-- Steroids set carry capacity to 50 (vanilla base 27). With the
+	     base doubled to 54 that would LOWER it, so double it too. -->
+	<set xpath="//buff[@name='buffDrugSteroids']//passive_effect[@name='CarryCapacity']/@value">100</set>
+</configs>

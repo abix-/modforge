@@ -1,0 +1,29 @@
+[package]
+name = "sevendaystodie-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# 7 Days To Die mod. Unity Mono game by The Fun Pimps (AppID
+# 251570). Rust cdylib loaded by Unityforge.Shim.SevenDaysToDie
+# through the game's OFFICIAL mod loader (Mods/<name>/, IModApi),
+# not BepInEx. Harmony is the game's own (Mods/0_TFP_Harmony).
+
+[lib]
+crate-type = ["cdylib"]
+name = "sevendaystodie_mod"
+
+[dependencies]
+modforge = { path = "../modforge" }
+unityforge = { path = "../unityforge" }
+
+[lints]
+workspace = true
+
+# Deploy convention: the shim looks for `*.unityforge.dll` in the
+# native/ subfolder of the mod folder, because the game's loader
+# Assembly.LoadFrom's every DLL at the top of the mod folder.
+[package.metadata.unityforge]
+deploy_name = "sevendaystodie_mod.unityforge.dll"

@@ -59,18 +59,11 @@ macro_rules! unityforge_mod {
             if !$crate::bridge::install(bridge) {
                 return -2;
             }
-            // Wire modforge's shutdown handlers (HTTP listener
-            // join at order 200, settings watcher, scanner).
-            // Without this, `unityforge_shutdown`'s
-            // SHUTDOWN_REGISTRY.run_all() runs an EMPTY registry:
-            // the old generation's HTTP listener survives every
-            // hot reload, keeps the port, and answers with its
-            // STALE op registry (live-verified on Survivalist
-            // 2026-07-04; ueforge always did this in its own
-            // shutdown::register_builtins, unityforge never did).
-            // Once-guarded: a re-init after unload/rollback must
-            // not double-register.
-            $crate::mod_main::register_shutdown_builtins_once();
+            // Nothing to register for shutdown here: every hook,
+            // listener, poller, watcher, byte patch and input
+            // binding records its own undo on modforge's
+            // SHUTDOWN_REGISTRY as it is made, and
+            // `unityforge_shutdown` runs that list.
             $crate::mod_main::log_init_line(&$mod_info);
             if let Some(cb) = $mod_info.on_init {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(cb));
@@ -92,33 +85,17 @@ macro_rules! unityforge_mod {
 
         #[unsafe(no_mangle)]
         pub extern "C" fn unityforge_shutdown() {
-            // Every stage is catch_unwind'd independently so a
-            // panic in one stage (e.g. a Harmony unpatch hitting
-            // an IL Compile Error) doesn't prevent the following
-            // stages from running. Critical for hot reload:
-            // SHUTDOWN_REGISTRY.run_all must run even if hook
-            // teardown faults so the HTTP listener actually
-            // releases its port and threads actually join.
+            // The mod's own on_shutdown first, then every undo this
+            // generation recorded (hooks at order 100, byte patches,
+            // listener, pollers, watchers, input bindings). run_all
+            // catches a panic in each undo, so one failing unpatch
+            // cannot stop the listener releasing its port.
             if let Some(cb) = $mod_info.on_shutdown {
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(cb));
             }
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                $crate::hook::HOOK_REGISTRY.shutdown_all();
-            }));
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                modforge::shutdown::SHUTDOWN_REGISTRY.run_all();
-            }));
+            modforge::shutdown::SHUTDOWN_REGISTRY.run_all();
         }
     };
-}
-
-/// Register modforge's shutdown handlers exactly once per loaded
-/// generation (each generation is its own dll image with its own
-/// statics). See the call site in `unityforge_mod!` for why this
-/// is load-bearing for hot reload.
-pub fn register_shutdown_builtins_once() {
-    static ONCE: std::sync::Once = std::sync::Once::new();
-    ONCE.call_once(modforge::shutdown::register_modforge_builtins);
 }
 
 /// Start the modforge HTTP listener on `127.0.0.1:<port>`,

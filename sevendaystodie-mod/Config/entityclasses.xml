@@ -1,0 +1,7 @@
+<configs>
+	<!-- Double the backpack: 45 slots on the UI (BagSize), 27 usable
+	     before encumbrance (CarryCapacity via .carryCapacityBase).
+	     Vanilla: Data/Config/entityclasses.xml playerMale. -->
+	<set xpath="//entity_class[@name='playerMale']//passive_effect[@name='BagSize']/@value">90</set>
+	<set xpath="//entity_class[@name='playerMale']//triggered_effect[@cvar='.carryCapacityBase'][@operation='set']/@value">54</set>
+</configs>

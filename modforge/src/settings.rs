@@ -35,61 +35,26 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
 use std::time::{Duration, SystemTime};
 
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// Global registry of spawned `Settings::watch` worker threads.
-/// `Settings::watch` registers each spawn so [`shutdown_all`] can
-/// stop and join them on hot-reload teardown. The previous
-/// design relied on the caller holding the `WatchHandle` and
-/// dropping it before unload, which silently leaked the thread
-/// across DLL unloads when the caller forgot.
-struct WatchEntry {
-    stop: Arc<AtomicBool>,
-    join: Option<thread::JoinHandle<()>>,
-}
-
-static WATCH_REGISTRY: Mutex<Vec<WatchEntry>> = Mutex::new(Vec::new());
-
-/// Stop and join every registered settings watcher. Called by the
-/// framework's hot-reload teardown path
-/// ([`crate::mod_main::ueforge_mod_shutdown`]) so no watcher
-/// thread is on a stack inside our DLL when UE4SS calls
-/// `FreeLibrary`.
-pub fn shutdown_all() {
-    let entries: Vec<WatchEntry> = std::mem::take(&mut *WATCH_REGISTRY.lock());
-    let n = entries.len();
-    for mut e in entries {
-        e.stop.store(true, Ordering::Release);
-        if let Some(j) = e.join.take() {
-            let _ = j.join();
-        }
-    }
-    if n > 0 {
-        crate::log!("settings: shutdown_all stopped {n} watcher(s)");
-    }
-}
-
 /// Handle returned by [`Settings::watch`]. Holding it keeps the
-/// hot-reload poller running; dropping it asks the poller to stop
-/// at its next tick.
+/// watcher running; dropping it runs the undo recorded when the
+/// watcher started (stop + join). If the caller lets go of it with
+/// `std::mem::forget` or a static, the generation's shutdown still
+/// runs that undo.
 pub struct WatchHandle {
     stop: Arc<AtomicBool>,
+    _undo: crate::shutdown::Undo,
 }
 
 impl WatchHandle {
+    /// Ask the watcher to stop at its next tick, without waiting.
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
-    }
-}
-
-impl Drop for WatchHandle {
-    fn drop(&mut self) {
-        self.stop();
     }
 }
 
@@ -212,9 +177,9 @@ where
     /// new value (the game crate uses this to push the new
     /// settings into per-feature atomics / re-apply CDO writes).
     ///
-    /// Drop the returned [`WatchHandle`] to stop the poller.
-    /// The handle's `stop()` is checked once per tick, so the
-    /// thread exits within `interval` of the drop.
+    /// Drop the returned [`WatchHandle`] to stop the watcher. The
+    /// stop flag is checked once per tick, so the drop waits up to
+    /// `interval` for the thread to exit.
     ///
     /// Parse errors are logged and skipped. The live in-memory
     /// state is untouched. Subsequent successful reloads recover.
@@ -226,6 +191,7 @@ where
         let stop_clone = stop.clone();
         let this = self.clone();
         let path = self.path.clone();
+        let path_for_undo = path.display().to_string();
 
         let join = std::thread::Builder::new()
             .name("ueforge-settings-watch".into())
@@ -261,14 +227,18 @@ where
             })
             .expect("spawn settings watcher");
 
-        // Register so hot-reload teardown can join the thread even
-        // if the caller forgot to keep the WatchHandle around.
-        WATCH_REGISTRY.lock().push(WatchEntry {
-            stop: stop.clone(),
-            join: Some(join),
-        });
+        let stop_for_undo = stop.clone();
+        let undo = crate::shutdown::SHUTDOWN_REGISTRY.record(
+            "settings watch",
+            path_for_undo,
+            300,
+            move || {
+                stop_for_undo.store(true, Ordering::Release);
+                let _ = join.join();
+            },
+        );
 
-        WatchHandle { stop }
+        WatchHandle { stop, _undo: undo }
     }
 }
 

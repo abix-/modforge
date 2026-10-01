@@ -1,0 +1,11 @@
+<configs>
+	<!-- The stack count label in item_stack has a fixed font_size 26 /
+	     height 28, which overflows the 40px backpack slots. Make both
+	     template parameters whose defaults are the vanilla values, so
+	     only a slot that sets them (the backpack grid, windows.xml)
+	     changes. -->
+	<setattribute xpath="//item_stack[@controller='ItemStack']" name="stack_font_size">26</setattribute>
+	<setattribute xpath="//item_stack[@controller='ItemStack']" name="stack_label_height">28</setattribute>
+	<set xpath="//item_stack[@controller='ItemStack']//label[@name='stackValue']/@font_size">${stack_font_size}</set>
+	<set xpath="//item_stack[@controller='ItemStack']//label[@name='stackValue']/@height">${stack_label_height}</set>
+</configs>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<xml>
+	<Name value="Unityforge" />
+	<DisplayName value="Unityforge" />
+	<Description value="Rust mod host (modforge / unityforge) with an HTTP control plane on port 17182" />
+	<Author value="abix" />
+	<Version value="0.1.0" />
+	<SkipWithAntiCheat value="true" />
+</xml>

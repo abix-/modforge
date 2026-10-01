@@ -25,10 +25,11 @@
 //! and `stop()` blocks until the thread has exited. Required for
 //! hot-reload-safe shutdown.
 //!
-//! Spawned handles are also auto-registered into
-//! [`POLLER_REGISTRY`]; the framework's shutdown sequence
-//! ([`shutdown_all`]) stops every running poller without the
-//! caller needing to thread its handle through.
+//! Every spawn records its undo (stop + join) on
+//! [`crate::shutdown::SHUTDOWN_REGISTRY`] as it starts the thread,
+//! so the generation's shutdown stops every running poller without
+//! the caller needing to thread its handle through. Dropping the
+//! handle runs that undo early.
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
@@ -42,6 +43,9 @@ use parking_lot::{Condvar, Mutex};
 /// Idempotent. Auto-called on drop.
 pub struct PollerHandle {
     inner: Arc<HandleInner>,
+    /// Recorded when the thread started; dropping the handle runs
+    /// it (stop + join).
+    _undo: crate::shutdown::Undo,
 }
 
 struct HandleInner {
@@ -57,10 +61,7 @@ impl PollerHandle {
     /// Signal the worker to exit, wake it from sleep, and join
     /// the thread. Idempotent.
     pub fn stop(&self) {
-        self.stop_soon();
-        if let Some(j) = self.inner.join.lock().take() {
-            let _ = j.join();
-        }
+        self.inner.stop_and_join();
     }
 
     /// Ask the worker to exit, without waiting for it.
@@ -88,36 +89,32 @@ impl PollerHandle {
     }
 }
 
-impl Drop for PollerHandle {
-    fn drop(&mut self) {
-        self.stop();
-    }
-}
-
-/// Process-global registry so the framework's shutdown sequence
-/// can stop every running poller without threading individual
-/// handles around. Populated by every `SlotPoller::spawn` call.
-static POLLER_REGISTRY: Mutex<Vec<Arc<HandleInner>>> = Mutex::new(Vec::new());
-
-/// Stop every running poller. Called from
-/// [`crate::shutdown::SHUTDOWN_REGISTRY`] during
-/// `unityforge_shutdown` / `ueforge_shutdown`.
-pub fn shutdown_all() {
-    let inners: Vec<Arc<HandleInner>> = {
-        let mut g = POLLER_REGISTRY.lock();
-        std::mem::take(&mut *g)
-    };
-    let n = inners.len();
-    for inner in inners {
-        inner.stop.store(true, Ordering::Release);
-        inner.wake.notify_all();
-        if let Some(j) = inner.join.lock().take() {
+impl HandleInner {
+    /// Signal, wake, and join. Idempotent. The undo recorded for
+    /// every poller.
+    fn stop_and_join(&self) {
+        self.stop.store(true, Ordering::Release);
+        self.wake.notify_all();
+        if let Some(j) = self.join.lock().take() {
             let _ = j.join();
         }
     }
-    if n > 0 {
-        crate::log!("rpg/poller: shutdown_all stopped {n} poller(s)");
-    }
+}
+
+/// Record the undo of a started poller and wrap it in its handle.
+fn handle_for(name: &'static str, inner: Arc<HandleInner>) -> PollerHandle {
+    let for_undo = inner.clone();
+    let undo = crate::shutdown::SHUTDOWN_REGISTRY.record("poller", name.to_string(), 250, move || {
+        for_undo.stop_and_join()
+    });
+    PollerHandle { inner, _undo: undo }
+}
+
+/// Stop every running poller now, by running their recorded undos.
+/// The generation's shutdown does this anyway; this is for a game
+/// whose pollers must stop before something else it tears down.
+pub fn shutdown_all() {
+    crate::shutdown::SHUTDOWN_REGISTRY.undo_all("poller");
 }
 
 /// Spawn a plain interval worker: run `tick` every `interval`
@@ -192,8 +189,7 @@ where
         }
     }
 
-    POLLER_REGISTRY.lock().push(inner.clone());
-    PollerHandle { inner }
+    handle_for(name, inner)
 }
 
 fn panic_message(e: &Box<dyn std::any::Any + Send>) -> String {
@@ -257,9 +253,7 @@ impl SlotPoller {
             }
         }
 
-        POLLER_REGISTRY.lock().push(inner.clone());
-
-        PollerHandle { inner }
+        handle_for("modforge/rpg/slot-poller", inner)
     }
 }
 

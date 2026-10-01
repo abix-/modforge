@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net48, matching the game's own TfpHarmony.dll
+         (TargetFramework .NETFramework v4.8). -->
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>Unityforge.Shim.SevenDaysToDie</AssemblyName>
+    <Version>0.1.0</Version>
+    <LangVersion>9.0</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\cs-shim-common\Bridge.cs">
+      <Link>Common\Bridge.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\GenerationLoader.cs">
+      <Link>Common\GenerationLoader.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\HarmonyBridge.cs">
+      <Link>Common\HarmonyBridge.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\Logger.cs">
+      <Link>Common\Logger.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\InputBridge.cs">
+      <Link>Common\InputBridge.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\HandleArg.cs">
+      <Link>Common\HandleArg.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-common\TypeCache.cs">
+      <Link>Common\TypeCache.cs</Link>
+    </Compile>
+    <Compile Include="..\cs-shim-mono\MonoBridge.cs">
+      <Link>Common\MonoBridge.cs</Link>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Every reference is the game's own copy, never shipped with the
+      mod. Harmony is the HarmonyX the game loads from
+      Mods/0_TFP_Harmony; Newtonsoft.Json and Unity come from the
+      game's Managed dir. Pass -p:GameDir="...\7 Days To Die".
+    -->
+    <Reference Include="0Harmony" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\Mods\0_TFP_Harmony\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\7DaysToDie_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\7DaysToDie_Data\Managed\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\7DaysToDie_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\7DaysToDie_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule" Condition="'$(GameDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(GameDir)\7DaysToDie_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

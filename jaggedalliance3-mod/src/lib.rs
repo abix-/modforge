@@ -33,7 +33,6 @@ fn worker_main() {
     });
     modforge::log!("jaggedalliance3-mod: worker started");
 
-    modforge::shutdown::register_modforge_builtins();
     register_ops();
     modforge::server::spawn(
         modforge::server::Config {
