@@ -1,3 +1,5 @@
+mod crime;
+mod deposit;
 mod settings;
 mod tweaks;
 
@@ -20,6 +22,9 @@ fn on_init() {
     unityforge::selector::register_builtins();
 
     tweaks::install();
+    deposit::install();
+    crime::install();
+    settings::get().register_hud_op();
 
     unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: ready");
 }

@@ -384,7 +384,7 @@ fn dump_trade_info() {
 
         let currency_name = |mode: i64| if mode == 0 { "RM" } else { "OC" };
 
-        let owner_id = read_owner_id(&obj);
+        let owner_id = read_owner_id(&obj, "owner");
 
         unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
@@ -418,8 +418,8 @@ fn dump_trade_info() {
     unityforge::mono::log(unityforge::mono::LogLevel::Info, "=== END TRADE DUMP ===");
 }
 
-fn read_owner_id(obj: &MonoObject) -> i64 {
-    let Ok(owner_val) = obj.read_field("owner") else {
+pub(crate) fn read_owner_id(obj: &MonoObject, field: &str) -> i64 {
+    let Ok(owner_val) = obj.read_field(field) else {
         return -1;
     };
     if let Some(id) = owner_val.get("ID").and_then(|x| x.as_i64()) {

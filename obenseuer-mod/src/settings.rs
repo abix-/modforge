@@ -10,6 +10,27 @@ pub struct TweaksSettings {
     pub inventory: InventorySettings,
     #[serde(default)]
     pub stacks: StacksSettings,
+    #[serde(default)]
+    pub deposit: DepositSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepositSettings {
+    /// Metres from the player a box may be to receive items.
+    #[serde(default = "default_deposit_range")]
+    pub range: f64,
+}
+
+impl Default for DepositSettings {
+    fn default() -> Self {
+        Self {
+            range: default_deposit_range(),
+        }
+    }
+}
+
+fn default_deposit_range() -> f64 {
+    crate::deposit::DEFAULT_RANGE
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,19 @@
+1 door trips watched
+
+trip 1: Open Sewer Tenement -> Interior Player Tenement
+  fade   2.14s  save and read back   0.00s  bar   4.67s  restore   0.00s  total   6.81s  longest freeze 1.90s
+  SaveController         KEPT         count 1 -> 1  ids [852246] -> [852246]
+  LoadingScreen          KEPT         count 1 -> 1  ids [852752] -> [852752]
+  Inventory              REBUILT      count 1 -> 1  ids [6879408] -> [7119596]
+  BackpackStorage        REBUILT      count 1 -> 1  ids [6879410] -> [7119598]
+  PlayerStats            REBUILT      count 1 -> 1  ids [6874938] -> [7114958]
+  TimeOfDayAzure         REBUILT      count 1 -> 1  ids [6839382] -> [7086676]
+  Crime                  REBUILT      count 1 -> 1  ids [6871766] -> [7111538]
+  Money                  REBUILT      count 1 -> 1  ids [6877460] -> [7117526]
+  DifficultyController   REBUILT      count 1 -> 1  ids [6878464] -> [7118562]
+  WaitingController      REBUILT      count 1 -> 1  ids [6872406] -> [7112096]
+  TenementController     REBUILT      count 1 -> 1  ids [6839384] -> [7086678]
+  GameUIController       REBUILT      count 1 -> 1  ids [6867236] -> [7106652]
+  Notifications          REBUILT      count 1 -> 1  ids [6867052] -> [7106504]
+  InteractObjects        REBUILT      count 1 -> 1  ids [6874246] -> [7114116]
+  main camera            REBUILT      count 1 -> 1  ids [6655738] -> [6981904]

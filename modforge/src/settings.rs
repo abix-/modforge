@@ -111,6 +111,21 @@ where
         self.inner.lock().clone()
     }
 
+    /// Register the `settings` op: the current settings as JSON,
+    /// marked for the mini HUD, so the player sees what the mod is
+    /// set to without opening the file.
+    pub fn register_hud_op(&'static self)
+    where
+        T: Send + 'static,
+    {
+        crate::ops::OP_REGISTRY.register(
+            crate::ops::OpDef::new("settings", "The mod's settings", "{}", move |_| {
+                serde_json::to_value(self.get()).map_err(|e| e.to_string())
+            })
+            .hud(),
+        );
+    }
+
     /// Mutate settings and save the new state to disk. The
     /// closure runs under the lock; keep it short. Returns the
     /// mutated value.

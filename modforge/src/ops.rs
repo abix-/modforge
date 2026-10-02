@@ -21,6 +21,10 @@ pub struct OpDef {
     /// response. Free-form: `"{slot: str, count?: u32}"`. Empty
     /// string for ops with no args.
     pub args: &'static str,
+    /// For the player, not for debugging: the Claude Code modforge
+    /// pane shows this op's answer in its mini HUD. A hud op takes
+    /// no args and only reads.
+    pub hud: bool,
     pub handler: OpHandler,
 }
 
@@ -34,8 +38,15 @@ impl OpDef {
             name,
             summary,
             args,
+            hud: false,
             handler: std::sync::Arc::new(handler),
         }
+    }
+
+    /// Mark the op for the mini HUD.
+    pub fn hud(mut self) -> Self {
+        self.hud = true;
+        self
     }
 }
 
@@ -118,6 +129,7 @@ impl OpRegistry {
                 "name": o.name,
                 "summary": o.summary,
                 "args": o.args,
+                "hud": o.hud,
             })).collect::<Vec<_>>()
         })
     }
@@ -186,4 +198,20 @@ pub fn metrics_json() -> Json {
         })
         .collect();
     serde_json::json!({ "ops": entries })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{OpDef, OpRegistry};
+    use serde_json::json;
+
+    #[test]
+    fn list_ops_says_which_ops_are_for_the_hud() {
+        let r = OpRegistry::new();
+        r.register(OpDef::new("walk_class", "debug", "{class: str}", |_| Ok(json!(null))));
+        r.register(OpDef::new("settings", "the mod's settings", "{}", |_| Ok(json!(null))).hud());
+        let ops = r.list_json()["ops"].clone();
+        assert_eq!(ops[0]["hud"], json!(false));
+        assert_eq!(ops[1]["hud"], json!(true));
+    }
 }
