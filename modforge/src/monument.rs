@@ -413,11 +413,13 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
         let east_lane = stairwell_x + STAIR_WIDTH / 2.0;
         let west_lane = stairwell_x - STAIR_WIDTH / 2.0;
 
+        // One doorway a level, on the front room's into the tower at z 0:
+        // an offset runs along z from the tower's own centre.
         let mut openings = Vec::new();
         for level in -basements..floors {
             openings.push(Opening {
                 side: Side::West,
-                offset: 0.0,
+                offset: -tower_z,
                 width: DOOR_WIDTH,
                 sill: (level as f32 * height - bottom)
                     + if level > -basements { SLAB } else { 0.0 },
@@ -1138,6 +1140,13 @@ mod tests {
         // stair width in front of it, then the flights, then a stair width.
         let run = ((def.stairs[0].rise / STEP_RISE_MAX).ceil()) * STEP_DEPTH;
         assert!((tower.interior.z - (ELEVATOR + 1.8 + run + 1.8)).abs() < 1e-3, "length {}", tower.interior.z);
+        // One doorway a level: the tower's in line with the room's at z 0.
+        let room = def.rooms.iter().find(|r| r.origin.y.abs() < 0.5 && r.interior.y < 6.0).expect("the ground room");
+        let into_tower = room.openings.iter().find(|o| o.side == Side::East).expect("the room's doorway into the tower");
+        for o in &tower.openings {
+            assert!((tower.origin.z + o.offset - (room.origin.z + into_tower.offset)).abs() < 1e-3, "the tower's doorway at z {} beside the room's at {}", tower.origin.z + o.offset, room.origin.z + into_tower.offset);
+        }
+        assert_eq!(tower.openings.len(), 3, "one doorway on each of the three levels");
     }
 
     #[test]
