@@ -70,6 +70,7 @@ pub mod studs;
 pub mod survival;
 pub mod talk;
 pub mod testkit;
+pub mod trade;
 pub mod ui;
 pub mod unknown;
 pub mod upgrade;

@@ -58,6 +58,11 @@ pub enum Action {
     UseSlot { slot: crate::hud::SlotRef },
     /// Make the open station's recipe at `index` of its list.
     Craft { index: usize },
+    /// Trading: put the stack in `slot` (one's own, or theirs) into the
+    /// offer, or take it out (a click on it while trading).
+    OfferSlot { slot: crate::hud::SlotRef },
+    /// Trading: make the deal on the table, if they take it.
+    Deal,
     /// Admin: toggle flying through everything (Quake's noclip, V).
     Fly,
     /// Dead: go again (topside design.md "Death and difficulty": a
@@ -85,6 +90,8 @@ pub enum Said {
     Offer { slot: usize },
     /// Threaten them.
     Threaten,
+    /// Ask them to trade (crate::trade).
+    Trade,
     /// Say a line (an episode's, or a choice the player made), the words
     /// the consumer holds as `line`; telling of the thing `key` names too,
     /// if it is not zero.

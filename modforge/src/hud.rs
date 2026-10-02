@@ -142,6 +142,46 @@ pub enum OpenPanel {
     Note,
     /// A crafting station's recipes.
     Station,
+    /// Trading with someone: the player's things and theirs side by side,
+    /// and what each puts on the table (`HudState::trading`).
+    Trade,
+}
+
+/// A trade being made (crate::trade): with whom, and what each side puts
+/// on the table, by slot of their own inventory; and whether the last deal
+/// put to them was refused (not worth it to them), or could not be made
+/// (no room for what one side would get).
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Trading {
+    pub with: u64,
+    pub name: String,
+    pub mine: crate::trade::Offer,
+    pub theirs: crate::trade::Offer,
+    pub refused: bool,
+    pub no_room: bool,
+}
+
+impl Trading {
+    /// A click on a slot while trading (`Action::OfferSlot`): the whole
+    /// stack (`count`) onto the table, or off it if it is on it. The
+    /// player's own inventory is their side; `Holder::Theirs` is the
+    /// other's.
+    pub fn toggle(&mut self, slot: SlotRef, count: u32) {
+        let side = match slot.holder {
+            Holder::Inventory => &mut self.mine,
+            Holder::Theirs => &mut self.theirs,
+            _ => return,
+        };
+        match side.iter().position(|&(s, _)| s == slot.index) {
+            Some(i) => {
+                side.remove(i);
+            }
+            None if count > 0 => side.push((slot.index, count)),
+            None => {}
+        }
+        self.refused = false;
+        self.no_room = false;
+    }
 }
 
 /// The prompt while the player looks at a person in talking distance
@@ -260,6 +300,8 @@ pub struct HudState {
     pub split: Option<u32>,
     /// The player's conversation, while they are in one.
     pub talking: Option<Talking>,
+    /// The trade being made, while the trade panel is open.
+    pub trading: Option<Trading>,
 }
 
 impl HudState {
@@ -277,6 +319,8 @@ pub enum Holder {
     Hotbar,
     Container,
     Equipment,
+    /// The one traded with: their inventory, shown while trading.
+    Theirs,
 }
 
 /// One slot of one holder.
@@ -296,13 +340,15 @@ pub struct Holders<'a> {
 }
 
 impl Holders<'_> {
-    /// The holder as an inventory; the equipment row is not one.
+    /// The holder as an inventory; the equipment row is not one, nor the
+    /// inventory of the one traded with (things change hands there only
+    /// by a deal).
     pub fn get(&self, holder: Holder) -> Option<&Inventory> {
         match holder {
             Holder::Inventory => Some(self.inventory),
             Holder::Hotbar => Some(self.hotbar),
             Holder::Container => self.container.as_deref(),
-            Holder::Equipment => None,
+            Holder::Equipment | Holder::Theirs => None,
         }
     }
 
@@ -311,7 +357,7 @@ impl Holders<'_> {
             Holder::Inventory => Some(self.inventory),
             Holder::Hotbar => Some(self.hotbar),
             Holder::Container => self.container.as_deref_mut(),
-            Holder::Equipment => None,
+            Holder::Equipment | Holder::Theirs => None,
         }
     }
 
@@ -481,7 +527,7 @@ pub fn transfer_slot(
     let other = match slot.holder {
         Holder::Container => Holder::Inventory,
         Holder::Inventory | Holder::Hotbar => Holder::Container,
-        Holder::Equipment => return,
+        Holder::Equipment | Holder::Theirs => return,
     };
     let max_stack = holders.max_stack_of(slot, registry);
     let Some((src, dst)) = holders.pair_mut(slot.holder, other) else {
@@ -676,6 +722,22 @@ pub fn move_stack(inv: &mut Inventory, from: usize, to: usize, max_stack: u32) {
 mod tests {
     use super::*;
     use crate::item::ItemStack;
+
+    #[test]
+    fn a_click_puts_a_stack_on_the_table_and_a_second_takes_it_off() {
+        let mut t = Trading { with: 3, name: "Roxanne".to_string(), ..Default::default() };
+        t.toggle(SlotRef { holder: Holder::Inventory, index: 2 }, 5);
+        t.toggle(SlotRef { holder: Holder::Theirs, index: 0 }, 1);
+        assert_eq!((t.mine.clone(), t.theirs.clone()), (vec![(2, 5)], vec![(0, 1)]));
+        t.refused = true;
+        t.toggle(SlotRef { holder: Holder::Inventory, index: 2 }, 5);
+        assert!(t.mine.is_empty(), "clicked again: off the table");
+        assert!(!t.refused, "a changed offer is a new offer");
+        t.toggle(SlotRef { holder: Holder::Hotbar, index: 0 }, 1);
+        assert!(t.mine.is_empty(), "the hotbar is not traded from");
+        t.toggle(SlotRef { holder: Holder::Inventory, index: 4 }, 0);
+        assert!(t.mine.is_empty(), "an empty slot puts nothing on the table");
+    }
 
     #[test]
     fn a_number_key_says_the_choice_of_that_number() {

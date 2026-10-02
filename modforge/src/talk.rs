@@ -31,6 +31,8 @@ pub enum Answer {
     Offered(String),
     /// The speaker threatened the listener.
     Threatened,
+    /// The speaker asked the listener to trade.
+    AskedToTrade,
     /// Nothing was said: the speaker does not know what they would tell,
     /// or offered an empty slot.
     Nothing,
@@ -103,6 +105,12 @@ pub fn talk(
         Said::Threaten => {
             say("threatened", "threatened them".to_string(), speaker_memory, listener_memory);
             Answer::Threatened
+        }
+        // Whether they will, and at what prices, is how they stand toward
+        // the speaker (crate::trade::terms), the consumer's to read.
+        Said::Trade => {
+            say("asked to trade", "asked to trade".to_string(), speaker_memory, listener_memory);
+            Answer::AskedToTrade
         }
         Said::Line { key, .. } => {
             let Some((name, words)) = line else {
