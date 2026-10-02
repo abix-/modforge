@@ -18,6 +18,18 @@ use crate::actor::ActorId;
 use crate::memory::{Did, Line, Memory};
 use crate::storyteller::{LineDef, When};
 
+/// How fast a line is read, in characters a second (subtitle practice:
+/// about 15), and the least time any line stays to be read, in seconds.
+pub const READ_CHARS_PER_SEC: f64 = 15.0;
+pub const READ_LEAST_SECS: f64 = 1.5;
+
+/// How long these words take to read, in real seconds: the one rule for
+/// how long a conversation waits on a line before the next line, the
+/// player's choices, or its end.
+pub fn reading_secs(words: &str) -> f64 {
+    (words.chars().count() as f64 / READ_CHARS_PER_SEC).max(READ_LEAST_SECS)
+}
+
 /// What came of one `Talk`.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Answer {
@@ -333,6 +345,14 @@ mod tests {
     use glam::Vec3;
 
     use super::*;
+
+    #[test]
+    fn a_line_stays_as_long_as_it_takes_to_read_and_never_less_than_the_least() {
+        assert_eq!(reading_secs("Busy."), READ_LEAST_SECS, "a word: the least");
+        let long = "Out the door, then left. There's a sewer out there, and a tap inside it that runs.";
+        assert!((reading_secs(long) - long.len() as f64 / 15.0).abs() < 1e-9, "a long line: by its length");
+        assert!(reading_secs(long) > 5.0);
+    }
 
     const DELL: ActorId = ActorId(3);
     const PLAYER: ActorId = ActorId(1);
