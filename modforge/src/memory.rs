@@ -150,6 +150,8 @@ pub struct Line {
 pub enum Did {
     /// Ate or drank this item (a can, a water bottle).
     Ate(String),
+    /// Read this item (a note).
+    Read(String),
     Slept,
     /// Took this many of an item from a box.
     Took(String, u32),
@@ -194,6 +196,7 @@ impl Did {
     pub fn kind(&self) -> &'static str {
         match self {
             Did::Ate(_) => "ate",
+            Did::Read(_) => "read",
             Did::Slept => "slept",
             Did::Took(..) => "took",
             Did::Stocked(..) => "put in",
@@ -219,6 +222,7 @@ impl Did {
         let who = |by: &Option<ActorId>| by.map_or("nobody".to_string(), |a| a.0.to_string());
         match self {
             Did::Ate(item) => format!("ate {item}"),
+            Did::Read(item) => format!("read {item}"),
             Did::Slept => "slept".to_string(),
             Did::Took(item, n) => format!("took {n} {item}"),
             Did::Stocked(item, n) => format!("put in {n} {item}"),

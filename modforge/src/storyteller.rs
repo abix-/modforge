@@ -43,6 +43,40 @@ pub struct EpisodeDef {
     /// lines"): rules like any line, each needing its part, so they win
     /// over plain talk while the episode runs.
     pub lines: Vec<LineDef>,
+    /// What its parts do, on their own, when the player has done
+    /// something (topside the-tap.md "How it opens": the note read, Dell
+    /// comes down and knocks): rules like the lines, each fired once.
+    pub cues: Vec<CueDef>,
+}
+
+/// One cue, as a rule: when the player has done `did` (a `Did`'s words,
+/// "read note"), the person cast as `part` does `does`; once an episode,
+/// remembered as the pivot point `name` reached.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CueDef {
+    pub name: String,
+    pub did: String,
+    pub part: String,
+    pub does: CueAct,
+}
+
+/// The cues due now: each whose deed the player has done since the episode
+/// started (`done`, the player's memory: tick and deed), and not reached
+/// yet (`reached`, the pivot points reached by name). In the episode's
+/// order.
+pub fn cues_due<'a>(def: &'a EpisodeDef, done: &[(u64, crate::memory::Did)], started: u64, reached: &[&str]) -> Vec<&'a CueDef> {
+    def.cues
+        .iter()
+        .filter(|cue| !reached.contains(&cue.name.as_str()))
+        .filter(|cue| done.iter().any(|(at, did)| *at >= started && did.words() == cue.did))
+        .collect()
+}
+
+/// What a cue has its part do: the same orders a command gives.
+#[derive(Clone, Debug, PartialEq)]
+pub enum CueAct {
+    /// Go to the door between them and the player and knock on it.
+    KnockOnThePlayer,
 }
 
 /// One line, as a rule (topside episodes.md "One way for every
@@ -1081,6 +1115,26 @@ fn pick_index(state: &mut u64, weights: &[u32]) -> usize {
 mod tests {
     use super::*;
 
+    /// A cue is due once the player has done its deed since the episode
+    /// started, and never again once reached.
+    #[test]
+    fn a_cue_is_due_once_its_deed_is_done_and_not_after() {
+        use crate::memory::Did;
+        let def = EpisodeDef {
+            name: "the tap".to_string(),
+            fits: Vec::new(),
+            parts: Vec::new(),
+            lines: Vec::new(),
+            cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: CueAct::KnockOnThePlayer }],
+        };
+        assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
+        assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
+        assert!(cues_due(&def, &[(12, Did::Read("map".to_string()))], 10, &[]).is_empty(), "another deed");
+        let done = [(12, Did::Read("note".to_string()))];
+        assert_eq!(cues_due(&def, &done, 10, &[]).len(), 1, "the note read: due");
+        assert!(cues_due(&def, &done, 10, &["the note read"]).is_empty(), "once reached, never again");
+    }
+
     fn episodes() -> EpisodeRegistry {
         let mut registry = EpisodeRegistry::default();
         let episode = |name: &str, fits: &[&str]| EpisodeDef {
@@ -1088,6 +1142,7 @@ mod tests {
             fits: fits.iter().map(|r| r.to_string()).collect(),
             parts: Vec::new(),
             lines: Vec::new(),
+            cues: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1140,6 +1195,7 @@ mod tests {
                 fits: Vec::new(),
                 parts: Vec::new(),
                 lines: vec![line("threatens Mara", -0.6), line("talks with Mara", 0.2)],
+                cues: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1156,6 +1212,7 @@ mod tests {
                 fits: vec!["Loop".to_string()],
                 parts: Vec::new(),
                 lines: Vec::new(),
+                cues: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
