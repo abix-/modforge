@@ -12,14 +12,14 @@ use crate::path::Cell;
 use crate::walk::{CHUNK, ChunkKey};
 
 /// One chunk of a map: which of its tiles were seen, and when last.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChunkSeen {
     bits: [u64; 16],
     pub seen_at: u64,
 }
 
 /// What one person has seen of the world.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Map {
     chunks: HashMap<ChunkKey, ChunkSeen>,
 }

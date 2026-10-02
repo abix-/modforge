@@ -18,7 +18,7 @@ pub const FULL: f32 = 100.0;
 /// Hunger and thirst are the survival pressures; rest is what sends
 /// a person home at night; safety is what makes one flee or a camp
 /// move.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurvivalStats {
     pub hunger: f32,
     pub thirst: f32,
@@ -38,7 +38,7 @@ impl Default for SurvivalStats {
 }
 
 /// Which need a person has.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Need {
     Hunger,
     Thirst,
@@ -48,7 +48,7 @@ pub enum Need {
 
 /// What is true of a person this tick, for the needs that depend on
 /// it. The consumer fills it from its world; the brain sets `asleep`.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Condition {
     pub asleep: bool,
     pub at_home: bool,

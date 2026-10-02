@@ -7,7 +7,7 @@ use crate::item::{Equipment, Inventory, ItemKind, ItemRegistry, ItemStack, Note,
 use crate::survival::{SurvivalError, SurvivalStats};
 
 /// What kind of thing can be interacted with.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum InteractKind {
     Door {
         open: bool,
@@ -29,7 +29,7 @@ pub enum InteractKind {
 }
 
 /// What the player is looking at right now.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Prompt {
     pub text: String,
     pub can_interact: bool,
@@ -133,7 +133,7 @@ pub fn interact(
 }
 
 /// Which panel is open. Only one panel open at a time (or none).
-#[derive(Clone, Copy, PartialEq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum OpenPanel {
     #[default]
     None,
@@ -151,7 +151,7 @@ pub enum OpenPanel {
 /// on the table, by slot of their own inventory; and whether the last deal
 /// put to them was refused (not worth it to them), or could not be made
 /// (no room for what one side would get).
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Trading {
     pub with: u64,
     pub name: String,
@@ -197,7 +197,7 @@ pub fn talk_prompt(name: &str) -> Prompt {
 /// "How a conversation looks"): Fallout: New Vegas's box, the world going
 /// on. The last line said, with who said it; the player's choices under
 /// it, numbered, each said by its number key (`choice_for_key`).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Talking {
     /// Who the player talks to (their ActorId) and their name.
     pub with: u64,
@@ -211,7 +211,7 @@ pub struct Talking {
 }
 
 /// One of the player's choices as the box shows it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Choice {
     pub said: crate::actions::Said,
     pub words: String,
@@ -221,7 +221,7 @@ pub struct Choice {
 /// The basic controls, shown once each until done (topside design.md
 /// "The bunker you start in": shown in the player's room, all ignorable;
 /// Fallout: New Vegas's walk-past tutorial).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Hint {
     Move,
     Look,
@@ -267,7 +267,7 @@ pub fn choice_for_key(talking: &Talking, index: usize) -> Option<crate::actions:
 }
 
 /// The vital bars the HUD always shows.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Vitals {
     pub health: f32,
     pub health_max: f32,
@@ -279,7 +279,7 @@ pub struct Vitals {
 /// its game systems and reads them to paint. No binder trait.
 /// Inventories are not here: they belong to the actor or container
 /// that owns them, and the HUD reads those when it paints.
-#[derive(Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct HudState {
     pub vitals: Vitals,
     pub prompt: Prompt,
@@ -573,7 +573,7 @@ pub fn drop_slot(inv: &mut Inventory, slot: usize) -> Option<ItemStack> {
 /// The hotbar with the slot in the hands (Rust: the item stays in
 /// the belt, the selected slot is what you hold). Every actor has
 /// one; the fire system reads the weapon from `held`.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Hotbar {
     pub slots: Inventory,
     /// The selected slot, if any. Selecting an empty slot is allowed

@@ -326,7 +326,7 @@ impl LayerRegistry {
 /// The quality rolled onto one stack at creation: which tier (index
 /// into the game's tier table, best first) and which statistical
 /// sibling within it.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ItemQuality {
     pub tier: usize,
     pub sibling: u64,
@@ -335,7 +335,7 @@ pub struct ItemQuality {
 /// What a note says (topside design.md "The first hour": the note
 /// that tells you not to go outside). Written once, read by whoever
 /// finds it.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Note {
     pub text: String,
     pub signed: String,
@@ -345,7 +345,7 @@ pub struct Note {
 /// layers match; a Rare rifle never stacks on a Normal one, a pipe
 /// with nails never on a plain pipe. A `Note` item carries its words on
 /// the stack.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ItemStack {
     pub item: String,
     pub count: u32,
@@ -453,7 +453,7 @@ pub fn write(def: &ItemDef, note: Note, now: f32, salt: u64) -> Result<ItemStack
 
 /// Slots holding stacks. The ONE inventory type: the player, NPCs,
 /// crates, and stores all carry this.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Inventory {
     pub slots: Vec<Option<ItemStack>>,
 }
@@ -538,7 +538,7 @@ pub const EQUIPMENT_SLOTS: usize = 7;
 /// An actor's equipment: the third item holder next to the inventory
 /// and the hotbar, each its own thing. One row of plain slots: anything
 /// wearable goes in any free slot, one item a slot, no layers.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Equipment {
     slots: [Option<ItemStack>; EQUIPMENT_SLOTS],
 }

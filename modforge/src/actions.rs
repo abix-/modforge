@@ -247,7 +247,7 @@ pub struct Stamped {
 
 /// An actor's pending actions. The producer (keyboard or AI) pushes;
 /// the systems drain what applies to the current tick.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ActionQueue {
     pending: Vec<Stamped>,
 }

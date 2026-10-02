@@ -12,7 +12,7 @@
 //! distance (Facepunch devblog 123).
 
 /// What kind of hurt a hit is. Resistances multiply per type.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum DamageType {
     Blunt,
     Slash,
@@ -101,7 +101,7 @@ impl DamageRegistry {
 }
 
 /// Health for any combatant: player, NPCs, and building parts.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Health {
     pub current: f32,
     pub max: f32,
@@ -128,7 +128,7 @@ impl Health {
 /// pool Quake 3 style (absorbs a share until spent); `resistances`
 /// multiply by damage type (Valheim). Worn gear per body area feeds
 /// this once actors have parts.
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Protection {
     pub armor: f32,
     pub resistances: Vec<(DamageType, f32)>,
@@ -374,7 +374,7 @@ impl<T: PartialEq + Clone> MultiDamage<T> {
 
 /// Gothic's four melee moves (design.md "How a hit works" rule 4):
 /// the attack key plus whatever move direction is held.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum Swing {
     /// Forward, or no direction: the overhead that steps in and
     /// chains into a combo on the beat.
@@ -449,7 +449,7 @@ pub const BLOCK_TIME: f32 = 1.0;
 /// weapon's delay; firing empty adds a penalty instead. `delay` and
 /// `swing` are the last shot's, so a consumer can draw the swing as
 /// "how far through the delay" without a second timer.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FireTimer {
     pub ready_in: f32,
     pub delay: f32,
@@ -565,7 +565,7 @@ pub const ROLL_SPEED_MULT: f32 = 1.4;
 /// The dodge roll (topside combat.md "The roll"): `ROLL_TIME` long,
 /// safe from all damage for the first half, the direction locked once
 /// started.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct RollTimer {
     pub left: f32,
     pub direction: glam::Vec2,

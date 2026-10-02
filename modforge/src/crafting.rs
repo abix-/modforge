@@ -37,7 +37,7 @@ pub fn advance_pending_results<T>(
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum StationKind {
     CraftingBench,
     ChemistryTable,

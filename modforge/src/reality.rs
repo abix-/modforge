@@ -7,7 +7,7 @@
 use crate::roll::salted_index;
 
 /// How dangerous a reality is (realities.md "Danger").
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Danger {
     /// A reality to breathe in.
     Calm,
@@ -29,7 +29,7 @@ impl Danger {
 }
 
 /// One reality: its name, its danger, and the rules it changes.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RealityDef {
     pub name: String,
     pub danger: Danger,

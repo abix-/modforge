@@ -23,7 +23,7 @@ pub type StateId = usize;
 pub const ROOT: StateId = 0;
 
 /// What the active state is about.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Target {
     #[default]
     None,
@@ -43,7 +43,7 @@ pub enum Target {
 
 /// What a person is doing: the active leaf and what it is about. The
 /// consumer keeps it on the person and hands it back each think.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Record {
     pub state: Option<StateId>,
     pub target: Target,

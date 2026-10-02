@@ -41,7 +41,7 @@ impl GoodFor {
 /// `kind` names the def, and the registry says what that kind does.
 /// No copy of the def's numbers lives here (life.md "What things are
 /// good for": memory stores only what it saw).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Known {
     pub key: u64,
     pub kind: String,
@@ -138,7 +138,7 @@ pub fn short_of<'a>(
 /// `LineDef::name`; for telling, asking, offering and threatening the
 /// kind: "told", "asked", "offered", "threatened") and its words as said.
 /// Replies, pivot points, and feelings go by the name, never the words.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Line {
     pub name: String,
     pub words: String,
@@ -146,7 +146,7 @@ pub struct Line {
 
 /// Something a person did, or had done to them (topside life.md "What a
 /// person did").
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Did {
     /// Ate or drank this item (a can, a water bottle).
     Ate(String),
@@ -241,7 +241,7 @@ impl Did {
 
 /// A person's memory: things seen, grudges, the last threat, and what
 /// they did.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Memory {
     pub known: Vec<Known>,
     /// Who hurt me, and how much, most recent last.

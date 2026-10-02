@@ -59,7 +59,7 @@ pub fn alive_for(
 }
 
 /// How a need or health stands, in three bands, so like moments match.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Band {
     Low,
     Middle,
@@ -80,7 +80,7 @@ impl Band {
 }
 
 /// The moment a choice is made in, kept small so that like moments match.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct Situation {
     pub hunger: Band,
     pub thirst: Band,
@@ -119,7 +119,7 @@ impl Situation {
 
 /// Which of the brain's rules was acted on (topside life.md "The
 /// brain"): what a person is born able to do.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Choice {
     /// Home before the storm.
     Hide,
@@ -165,7 +165,7 @@ pub const MOST_DIFFERENT: u32 = 2;
 /// What a person has learned: each choice's value in each situation (the
 /// seconds of staying alive it tended to add), and the recent choices
 /// still taking credit or blame. Part of their memory; never shared.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Learned {
     pub values: HashMap<(Situation, Choice), f32>,
     /// Recent choices and their share of the next change, latest last.

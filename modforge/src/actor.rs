@@ -84,11 +84,11 @@ impl ActorRegistry {
 /// The one persistent identity of an actor: issued once by the
 /// `ActorMap`, never reused, kept across save and load. The host's
 /// runtime handle and the GPU row are bookkeeping; this is the name.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct ActorId(pub u64);
 
 /// A record of one live actor: its host handle and its GPU row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ActorRecord<H> {
     pub handle: H,
     pub row: usize,
@@ -99,8 +99,14 @@ pub struct ActorRecord<H> {
 /// answers lookups by id, by handle, and by row. Generic over the
 /// host's runtime handle so any game can use it. Two counts, two
 /// methods: `row_count` is the high-water mark for sizing buffers,
-/// `live_count` is how many actors exist now. Never one number.
-#[derive(Debug)]
+/// `live_count` is how many actors exist now. Never one number. Saved
+/// whole, so ids are kept and never reused across a load; the host's
+/// handles change on a load and are swapped by `map_handles`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(bound(
+    serialize = "H: serde::Serialize + Eq + std::hash::Hash",
+    deserialize = "H: serde::Deserialize<'de> + Eq + std::hash::Hash"
+))]
 pub struct ActorMap<H> {
     next_id: u64,
     free_rows: Vec<usize>,
@@ -155,6 +161,21 @@ impl<H: Copy + Eq + std::hash::Hash> ActorMap<H> {
         self.by_row[record.row] = None;
         self.free_rows.push(record.row);
         Some(record)
+    }
+
+    /// After a load, each actor's host handle swapped for its new one
+    /// (`new_of`), ids and rows kept; an actor whose handle has no new one
+    /// is forgotten and its row freed.
+    pub fn map_handles(&mut self, new_of: impl Fn(H) -> Option<H>) {
+        let gone: Vec<ActorId> = self.by_id.iter().filter(|(_, r)| new_of(r.handle).is_none()).map(|(id, _)| *id).collect();
+        for id in gone {
+            self.remove(id);
+        }
+        self.by_handle.clear();
+        for (id, record) in self.by_id.iter_mut() {
+            record.handle = new_of(record.handle).expect("kept above");
+            self.by_handle.insert(record.handle, *id);
+        }
     }
 
     pub fn handle_of(&self, id: ActorId) -> Option<H> {
@@ -243,7 +264,7 @@ pub static PEOPLE: crate::genome::Pool = crate::genome::Pool::new(crate::genome:
 });
 
 /// One person's personality: the seven axes.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Personality {
     pub axes: [f32; 7],
 }
@@ -377,7 +398,7 @@ pub struct LookDef {
 
 /// One person's look: their body, the piece worn in each of its slots,
 /// and their skin and hair tints.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Look {
     pub body: String,
     pub pieces: Vec<String>,
@@ -541,6 +562,27 @@ mod tests {
         assert!(map.spawn(2).is_some());
         assert!(map.spawn(3).is_none());
         assert_eq!(map.live_count(), 2);
+    }
+
+    /// A load: the map comes back as saved, every handle swapped for its
+    /// new one, ids and rows as they were, the next id still past every id
+    /// ever given; an actor not loaded is forgotten.
+    #[test]
+    fn a_loaded_map_keeps_its_ids_with_new_handles() {
+        let mut map: ActorMap<u32> = ActorMap::new(8);
+        let (a, ra) = map.spawn(10).unwrap();
+        let (b, _) = map.spawn(11).unwrap();
+        let (gone, _) = map.spawn(12).unwrap();
+        let saved = serde_json::to_string(&map).unwrap();
+        let mut loaded: ActorMap<u32> = serde_json::from_str(&saved).unwrap();
+        loaded.map_handles(|h| (h != 12).then_some(h + 100));
+        assert_eq!(loaded.handle_of(a), Some(110));
+        assert_eq!(loaded.id_of(111), Some(b));
+        assert_eq!(loaded.row_of(a), Some(ra));
+        assert_eq!(loaded.id_of(10), None, "the old handle is no one");
+        assert_eq!(loaded.handle_of(gone), None);
+        let (next, _) = loaded.spawn(13).unwrap();
+        assert!(next.0 > gone.0, "ids never come back after a load");
     }
 
     #[test]
