@@ -197,7 +197,7 @@ fn instance_id(o: &MonoObject) -> Result<i64, String> {
         .ok_or_else(|| "GetInstanceID is not a number".to_string())
 }
 
-fn instances(class: &str) -> Result<Vec<MonoObject>, String> {
+pub(crate) fn instances(class: &str) -> Result<Vec<MonoObject>, String> {
     let walk = MonoType::find(class)
         .ok_or_else(|| format!("{class} type not found"))?
         .walk(false)?;

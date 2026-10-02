@@ -1,0 +1,35 @@
+first area "Open Sewer Tenement", scenes loaded 1
+memory before: allocated 2916 MB  reserved 3438 MB  managed 381 MB
+
+loaded Interior Tenement Gatehouse alongside in 2.43s
+active area null, scenes loaded null
+memory after: allocated ?  reserved ?  managed 424 MB
+
+managers: live copies before -> after; which copy `instance` points at before -> after
+  SaveController         copies 1 -> 1  [852246] -> [852246]  instance 852246 -> 852246 same
+  LoadingScreen          copies 1 -> 1  [852752] -> [852752]  instance 852752 -> 852752 same
+  Inventory              copies 1 -> 1  [3223108] -> [3223108]  instance 3223108 -> 0 SWITCHED
+  BackpackStorage        copies 1 -> 1  [3223110] -> [3223110]  instance 3223110 -> 0 SWITCHED
+  PlayerStats            copies 1 -> 1  [3218638] -> [3218638]  instance 3218638 -> 0 SWITCHED
+  TimeOfDayAzure         copies 1 -> 1  [3183082] -> [3183082]  instance 3183082 -> 0 SWITCHED
+  Crime                  copies 1 -> 1  [3215466] -> [3215466]  instance 3215466 -> 0 SWITCHED
+  Money                  copies 1 -> 1  [3221160] -> [3221160]  instance 3221160 -> 0 SWITCHED
+  DifficultyController   copies 1 -> 1  [3222164] -> [3222164]  instance 3222164 -> 0 SWITCHED
+  WaitingController      copies 1 -> 1  [3216106] -> [3216106]  instance 3216106 -> 0 SWITCHED
+  TenementController     copies 1 -> 1  [3183084] -> [3183084]  instance 3183084 -> 0 SWITCHED
+  GameUIController       copies 1 -> 1  [3210936] -> [3210936]  instance 3210936 -> 0 SWITCHED
+  Notifications          copies 1 -> 1  [3210752] -> [3210752]  instance 3210752 -> 0 SWITCHED
+  InteractObjects        copies 1 -> 2  [3217946] -> [3217946, 3339936]  instance 3217946 -> 3339936 SWITCHED
+
+cameras 4 -> 9; main camera Some(2999438) -> Some(2999438)
+
+doors: 57 in "Open Sewer Tenement", 6 new from Interior Tenement Gatehouse
+  blast_door_001_usable_changelevel        to                                     at (12.3, -102.7, -7.7)
+  Door_002_usable_changelevel              to Open Sewer Bazaar                   at (36.6, -97.4, -11.9)
+  Door_002_usable_changelevel (1)          to Open Sewer Bazaar                   at (39.7, -100.0, -10.4)
+  Door_002_usable_changelevel (1)          to Open Sewer Bazaar                   at (41.3, -97.4, -13.0)
+  wooden_door_001                          to Open Sewer Tenement                 at (45.2, -99.0, -9.0)
+  wooden_door_001                          to Interior Tenement B                 at (38.9, -108.7, 2.0)
+"Open Sewer Tenement" doors span [-9.0, -500.0, -56.9] to [110.2, -84.8, 58.5]
+Interior Tenement Gatehouse doors span [12.3, -108.7, -13.0] to [45.2, -97.4, 2.0]
+door areas overlap in space: true

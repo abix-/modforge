@@ -1,0 +1,185 @@
+__MAIN in "Interior Player Tenement", 183 objects ([off] = switched off)
+
+__MAIN  
+  info_player_spawn  info_player_spawn
+  info_navigation  info_navigation
+    Navigation  AstarPath, RVOSimulator
+  info_game_logic  info_game_logic
+  Post Processing  PostProcessVolume
+  Soundscapes  SoundscapeGlobal
+    Global Soundscapes Tenement  
+      Global Day  SoundscapeArea, AudioSource, AudioSource
+        Music Tenement B  AudioSource
+        Music Deekula A  AudioSource
+        Music Bazaar  AudioSource
+        Bazaar Talking  AudioSource
+        Bazaar Children  AudioSource
+        Powerplant  AudioSource
+        Traffic  AudioSource
+        Factory  AudioSource
+      Global Night  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource, AudioSource, AudioSource
+        Music Tenement A  AudioSource
+        Music Kolhola  AudioSource
+        Music Deekula A  AudioSource
+        Music Deekula C  AudioSource
+        Bazaar talking  AudioSource
+        Night party  AudioSource
+        Owl  AudioSource
+        Morning birds  AudioSource
+        Morning birds deekula  AudioSource
+        Powerplant  AudioSource
+        Traffic  AudioSource
+    Basement  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+      Trigger 2  BoxCollider, SoundscapeTrigger
+      Trigger 4  BoxCollider, SoundscapeTrigger
+    Utility Room  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+    Basement Hallway  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+      Trigger 2  BoxCollider, SoundscapeTrigger
+      Trigger 3  BoxCollider, SoundscapeTrigger
+    Mushroom Room  SoundscapeArea, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+    Basement Sauna Entrance  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+      Trigger 2  BoxCollider, SoundscapeTrigger
+      Trigger 3  BoxCollider, SoundscapeTrigger
+    Basement Pool Room  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+    Basement Sauna  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger  BoxCollider, SoundscapeTrigger
+    Stairs  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+      Locations [off]  
+        People  
+        People 2  
+        Piano  
+        Pipe  
+        Light  
+      Trigger Floor 1  BoxCollider, SoundscapeTrigger
+      Trigger Floor 2 Apartment 3  BoxCollider, SoundscapeTrigger
+      Trigger Floor 2 Apartment 4  BoxCollider, SoundscapeTrigger
+      Trigger Floor 2 Apartment 5  BoxCollider, SoundscapeTrigger
+      Trigger Floor 3 Apartment 6  BoxCollider, SoundscapeTrigger
+      Trigger Floor 3 Apartment 7  BoxCollider, SoundscapeTrigger
+      Trigger Floor 3 Apartment 8  BoxCollider, SoundscapeTrigger
+      Trigger Floor 4 Apartment 9  BoxCollider, SoundscapeTrigger
+      Trigger Floor 4 Apartment 10  BoxCollider, SoundscapeTrigger
+      Trigger Floor 4 Apartment 11  BoxCollider, SoundscapeTrigger
+      Trigger Floor 5 Apartment 12  BoxCollider, SoundscapeTrigger
+      Trigger Floor 5 Apartment 13  BoxCollider, SoundscapeTrigger
+      Trigger Floor 5 Apartment 14  BoxCollider, SoundscapeTrigger
+      Trigger Floor 6 Apartment 15  BoxCollider, SoundscapeTrigger
+      Trigger Floor 6 Apartment 16  BoxCollider, SoundscapeTrigger
+      Trigger Floor 6 Apartment 17  BoxCollider, SoundscapeTrigger
+      Trigger Floor 7 Greenhouse  BoxCollider, SoundscapeTrigger
+    Apartments  
+      Apartment 1  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 1 Balcony [off]  SoundscapeArea
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+      Apartment 3  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 3 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 4  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 4 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 5  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 5 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+      Apartment 6  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 6 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 7  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 7 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 8  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 8 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+      Apartment 9  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 9 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 10  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 10 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 11  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 11 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+      Apartment 12  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 12 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 13  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 13 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 14  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 14 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+      Apartment 15  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 15 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 16  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 16 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  SoundscapeTrigger, BoxCollider
+      Apartment 17  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider, BoxCollider
+      Apartment 17 Balcony  SoundscapeArea, AudioSource, AudioSource, AudioSource, AudioSource
+        Trigger  BoxCollider, SoundscapeTrigger, BoxCollider
+    Reverb Zones  
+      Audio Reverb Zone  AudioReverbZone
+  info_map  info_map

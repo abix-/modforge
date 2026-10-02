@@ -39,7 +39,8 @@
 //     loaded as-is with no boxing, so a value-type first arg
 //     would produce invalid IL). The Rust callback OWNS the
 //     handle and must release it (MonoObject::from_handle +
-//     Drop). Zero when the context object is null.
+//     Drop). Zero when the context object is null. One Rust
+//     callback patched onto many methods shares one slot.
 //   - postfix_float_result (bridge v8): Rust float(IntPtr, IntPtr,
 //     float) on a method returning float. Receives a FRESH
 //     __instance handle (0 for static methods), the arguments as
@@ -198,7 +199,19 @@ namespace Unityforge.Shim
             public MethodBase Target;
             public PatchKind Kind;
             public int Slot;
+            // Set when the slot is shared by every patch of one Rust
+            // callback (see ApplySlotPatch); null for a slot of its own.
+            public string ShareKey;
         }
+
+        // Shared slots: one Rust callback patched onto many methods
+        // takes one slot, not one per method (obenseuer-mod's
+        // first_copy_wins puts one prefix on ~370 Awake/OnDestroy
+        // methods; SlotsPerKind is 16). Key "kind:fnptr" -> slot, and
+        // how many live patches use it. The callback tells the methods
+        // apart by its context object.
+        private static readonly Dictionary<string, int> _sharedSlot = new Dictionary<string, int>();
+        private static readonly Dictionary<string, int> _sharedUsers = new Dictionary<string, int>();
 
         // ---- slot tables -------------------------------------------------
         // One delegate per live patch. The pre-compiled slot
@@ -660,7 +673,7 @@ namespace Unityforge.Shim
                 var kind = (ctxKind == 0) ? PatchKind.PrefixInstanceCtx
                     : (ctxKind == 1) ? PatchKind.PrefixArg0Ctx
                     : PatchKind.PrefixArgs0Ctx;
-                return ApplySlotPatch(target, kind, del, null);
+                return ApplySlotPatch(target, kind, del, null, shareKey: kind + ":" + rustFnPtr.ToInt64());
             }
             catch (Exception e)
             {
@@ -793,7 +806,7 @@ namespace Unityforge.Shim
             return filter.Count > 0 ? filter.ToArray() : null;
         }
 
-        private static int ApplySlotPatch(MethodBase target, PatchKind kind, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null, RustPostfixFloatResultDelegate floatResultDel = null, RustPostfixIntResultDelegate intResultDel = null, KeyValuePair<int, long>[] argFilter = null, RustPostfixResultDelegate resultDel = null, Type resultType = null)
+        private static int ApplySlotPatch(MethodBase target, PatchKind kind, RustPrefixDelegate prefixDel, RustPostfixDelegate postfixDel, RustPrefixInstanceArgsDelegate instanceArgsDel = null, RustPostfixFloatResultDelegate floatResultDel = null, RustPostfixIntResultDelegate intResultDel = null, KeyValuePair<int, long>[] argFilter = null, RustPostfixResultDelegate resultDel = null, Type resultType = null, string shareKey = null)
         {
             lock (_lock)
             {
@@ -817,7 +830,10 @@ namespace Unityforge.Shim
                     }
                 }
 
-                int slot = FindFreeSlot(kind);
+                // The same callback already holds a slot: patch this
+                // method onto it too.
+                bool reuse = shareKey != null && _sharedSlot.ContainsKey(shareKey);
+                int slot = reuse ? _sharedSlot[shareKey] : FindFreeSlot(kind);
                 if (slot < 0)
                 {
                     ShimLogger.Error($"HarmonyBridge: no free {namePrefix} (cap {SlotsPerKind}); unpatch something or raise SlotsPerKind");
@@ -829,7 +845,7 @@ namespace Unityforge.Shim
                 // Assign the delegate BEFORE patching so the slot
                 // is live the instant the patch applies; clear on
                 // failure.
-                SetSlot(kind, slot, prefixDel, postfixDel, instanceArgsDel, floatResultDel, intResultDel, argFilter, resultDel, resultType);
+                if (!reuse) SetSlot(kind, slot, prefixDel, postfixDel, instanceArgsDel, floatResultDel, intResultDel, argFilter, resultDel, resultType);
                 try
                 {
                     if (kind == PatchKind.Postfix || kind == PatchKind.PostfixFloatResult || kind == PatchKind.PostfixIntResult || kind == PatchKind.PostfixResult) _harmony.Patch(target, postfix: hm);
@@ -837,12 +853,17 @@ namespace Unityforge.Shim
                 }
                 catch
                 {
-                    SetSlot(kind, slot, null, null);
+                    if (!reuse) SetSlot(kind, slot, null, null);
                     throw;
                 }
 
+                if (shareKey != null)
+                {
+                    _sharedSlot[shareKey] = slot;
+                    _sharedUsers[shareKey] = (reuse ? _sharedUsers[shareKey] : 0) + 1;
+                }
                 int handle = _next++;
-                _patches[handle] = new PatchEntry { Target = target, Kind = kind, Slot = slot };
+                _patches[handle] = new PatchEntry { Target = target, Kind = kind, Slot = slot, ShareKey = shareKey };
                 _everPatched.Add(target);
                 return handle;
             }
@@ -956,6 +977,17 @@ namespace Unityforge.Shim
             string namePrefix = SlotNamePrefix(entry.Kind);
             try { _harmony?.Unpatch(entry.Target, SlotMi(namePrefix, entry.Slot)); }
             catch (Exception e) { ShimLogger.Error("HarmonyBridge.Unpatch: " + e); }
+            if (entry.ShareKey != null && _sharedUsers.TryGetValue(entry.ShareKey, out var users))
+            {
+                // Other methods still use this callback's slot.
+                if (users > 1)
+                {
+                    _sharedUsers[entry.ShareKey] = users - 1;
+                    return;
+                }
+                _sharedUsers.Remove(entry.ShareKey);
+                _sharedSlot.Remove(entry.ShareKey);
+            }
             SetSlot(entry.Kind, entry.Slot, null, null);
         }
 

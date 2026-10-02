@@ -1,5 +1,8 @@
 mod crime;
 mod deposit;
+mod first_copy_wins;
+mod investigate;
+mod save_timing;
 mod settings;
 mod tweaks;
 
@@ -24,6 +27,9 @@ fn on_init() {
     tweaks::install();
     deposit::install();
     crime::install();
+    save_timing::install();
+    first_copy_wins::install();
+    investigate::install();
     settings::get().register_hud_op();
 
     unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: ready");

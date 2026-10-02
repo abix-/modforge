@@ -1,0 +1,328 @@
+first area "Interior Player Tenement"; main camera id 1809714 at {"x":99.4568,"y":-94.52959,"z":12.7817459}
+loaded Interior Tenement Gatehouse alongside in 2.86s
+main camera now id 1809714 at {"x":99.4568,"y":-94.52959,"z":12.7817459}
+
+classes with new copies (name: new copies, settings; instance before -> after):
+  NPCManager: 1 before, 0 new; instance 1934480 -> 0
+  AnimalController: 1 before, 0 new; instance 1932068 -> 0
+  MiscAudioPlayer: 1 before, 0 new; instance 1914452 -> 0
+  PlayerAudioListener: 1 before, 1 new; instance 1927278 -> 2056322
+    Player Camera (id 2056322) active true enabled true
+  RandomAudioLibrary: 1 before, 0 new; instance 1922128 -> 0
+  ShopController: 1 before, 0 new; instance 1944468 -> 0
+  FurnitureBlueprintController: 1 before, 0 new; instance 1914484 -> 0
+  JanitorController: 1 before, 0 new; instance 1923406 -> 0
+  BuildingSystem: 1 before, 0 new; instance 1943716 -> 0
+  BuildingSystemMenu: 1 before, 0 new; instance 1934308 -> 0
+  AppearanceController: 1 before, 0 new; instance 1945656 -> 0
+  CharacterDatabase: 1 before, 0 new; instance 1931310 -> 0
+  CharacterRentDatabase: 1 before, 0 new; instance 1934478 -> 0
+  DialogueCommonMethods: 1 before, 0 new; instance 1940136 -> 0
+  ContestController: 1 before, 0 new; instance 1924864 -> 0
+  Crime: 1 before, 0 new; instance 1939348 -> 0
+  DialogueController: 1 before, 0 new; instance 1921196 -> 0
+  GenericComments: 1 before, 0 new; instance 1937508 -> 0
+  PhoneNumberDatabase: 1 before, 0 new; instance 1946188 -> 0
+  DifficultyController: 1 before, 0 new; instance 1946372 -> 0
+  DoctorController: 1 before, 0 new; instance 1923826 -> 0
+  CameraRotate: 1 before, 1 new; instance 1928770 -> 2057358
+    Player Camera (id 2057358) active true enabled true
+  CameraShake: 1 before, 1 new; instance 1941924 -> 2065628
+    Player Camera (id 2065628) active true enabled true
+  EffectsController: 1 before, 0 new; instance 1914458 -> 0
+  SMVEffects: 1 before, 0 new; instance 1943434 -> 0
+  UnderwaterEffect: 1 before, 0 new; instance 1920088 -> 0
+  SleepEventController: 1 before, 0 new; instance 1946474 -> 0
+  TenementEventController: 1 before, 0 new; instance 1938070 -> 0
+  FastTravelController: 1 before, 0 new; instance 1935578 -> 0
+  BackpackStorage: 1 before, 0 new; instance 1947408 -> 0
+  FaceSlotController: 1 before, 0 new; instance 1922032 -> 0
+  HeadSlotController: 1 before, 0 new; instance 1921466 -> 0
+  Inventory: 1 before, 0 new; instance 1947406 -> 0
+  Money: 1 before, 0 new; instance 1945336 -> 0
+  ToolTip: 1 before, 0 new; instance 1934476 -> 0
+  WatchSlotController: 1 before, 0 new; instance 1942452 -> 0
+  ItemDatabase: 1 before, 0 new; instance 1913930 -> 0
+  ItemSounds: 1 before, 0 new; instance 1931034 -> 0
+  ItemSpecialEffects: 1 before, 0 new; instance 1925752 -> 0
+  ItemVariantManager: 1 before, 0 new; instance 1926884 -> 0
+  OsratManager: 1 before, 0 new; instance 1923696 -> 0
+  LightsController: 1 before, 0 new; instance 1913934 -> null
+  DestructibleList: 1 before, 0 new; instance 1914456 -> 0
+  GameController: 1 before, 0 new; instance 1948132 -> 0
+  GameUIController: 1 before, 0 new; instance 1934462 -> 0
+  GlobalState: 1 before, 0 new; instance 1944966 -> 0
+  KeyBindingsMenu: 1 before, 1 new; instance -17636 -> -17636
+    KeyBindings (id -161532) active false enabled true
+  OptionsController: 1 before, 0 new; instance 1932694 -> 0
+  SetControls: 1 before, 1 new; instance 1941918 -> 2065632
+    Player Camera (id 2065632) active true enabled true
+  PauseMenu: 1 before, 1 new; instance -7740 -> -151636
+    Pause Menu(Clone) (id -151636) active true enabled true
+  PauseMenuGlow: 1 before, 1 new; instance 1948098 -> 2069184
+    Pause Menu Glow (id 2069184) active true enabled true
+  PlayerLevelEntrypoints: 1 before, 0 new; instance 1913932 -> 0
+  PlayerLocator: 1 before, 0 new; instance 1916514 -> 0
+  InvoiceController: 1 before, 0 new; instance 1938090 -> 0
+  LegalServicesController: 1 before, 0 new; instance 1923642 -> 0
+  MailController: 1 before, 0 new; instance 1930900 -> 0
+  PlayerSubscriptionsController: 1 before, 0 new; instance 1919222 -> 0
+  RadiationController: 1 before, 0 new; instance 1926810 -> 0
+  RelationshipController: 1 before, 0 new; instance 1944358 -> 0
+  UnderMapTrigger: 1 before, 0 new; instance 1936990 -> 0
+  DepressionEffect: 1 before, 0 new; instance 1922122 -> 0
+  DrunkEffect: 1 before, 0 new; instance 1939258 -> 0
+  HealthEffect: 1 before, 0 new; instance 1919646 -> 0
+  MushroomEffect: 1 before, 0 new; instance 1926458 -> 0
+  OrangeMushroomEffect: 1 before, 0 new; instance 1926652 -> 0
+  SMVEffect: 1 before, 0 new; instance 1926998 -> 0
+  SleepyEffect: 1 before, 0 new; instance 1922432 -> 0
+  NoteController: 1 before, 0 new; instance 1917654 -> 0
+  DamageController: 1 before, 0 new; instance 1938290 -> 0
+  Death: 1 before, 0 new; instance 1926172 -> 0
+  FirstPersonHands: 1 before, 1 new; instance 1934716 -> 2061196
+    First person hands (id 2061196) active true enabled true
+  InteractObjects: 1 before, 1 new; instance 1941926 -> 2065626
+    Player Camera (id 2065626) active true enabled true
+  PlayerCamera: 1 before, 1 new; instance 1925248 -> 2054982
+    Player Camera (id 2054982) active true enabled true
+  PlayerCameraAnimations: 1 before, 1 new; instance 1938714 -> 2063630
+    Player Camera Animation (id 2063630) active true enabled true
+  PlayerDrunkControls: 1 before, 0 new; instance 1943066 -> 0
+  PlayerHandItems: 1 before, 0 new; instance 1932778 -> 0
+  PlayerSkillIncreaseUI: 1 before, 0 new; instance 1927560 -> 0
+  PlayerStats: 1 before, 0 new; instance 1942768 -> 0
+  OpenSewerCharacterController: 1 before, 0 new; instance 1916512 -> 0
+  ThirdPersonCameraCollision: 1 before, 1 new; instance 1913924 -> 2048532
+    Player Camera (id 2048532) active true enabled true
+  ThirdPersonCameraController: 1 before, 1 new; instance 1941908 -> 2065622
+    Player Camera Base (id 2065622) active true enabled true
+  WallDetection: 1 before, 0 new; instance 1925560 -> 0
+  WaitingController: 1 before, 0 new; instance 1939906 -> 0
+  RecipeController: 1 before, 0 new; instance 1918228 -> 0
+  RecipeDatabase: 1 before, 0 new; instance 1928750 -> 0
+  SoundscapeController: 1 before, 0 new; instance 1926584 -> 0
+  SoundscapeGlobal: 1 before, 1 new; instance 1948148 -> 2069232
+    Soundscapes (id 2069232) active true enabled true
+  StartManager: 1 before, 0 new; instance 1923684 -> 0
+  StorageCategoryDatabase: 1 before, 0 new; instance 1913926 -> 0
+  StorageSpawnCategoryDatabase: 1 before, 0 new; instance 1942020 -> 0
+  TaskItemsManager: 1 before, 0 new; instance 1947402 -> 0
+  TaskController: 1 before, 0 new; instance 1923686 -> 0
+  TenementController: 1 before, 0 new; instance 1914488 -> 0
+  BankPanel: 1 before, 0 new; instance 1940430 -> 0
+  BlackCanvas: 1 before, 0 new; instance 1917842 -> 0
+  MouseBlocker: 1 before, 0 new; instance 1937792 -> 0
+  WhiteCanvas: 1 before, 0 new; instance 1929020 -> 0
+  DoubleClickController: 1 before, 0 new; instance 1938116 -> 0
+  HandItemsUI: 1 before, 0 new; instance 1947410 -> 0
+  HoldController: 1 before, 0 new; instance 1934502 -> 0
+  ItemUIController: 1 before, 0 new; instance 1922936 -> 0
+  ItemsUIPanel: 1 before, 0 new; instance 1943574 -> 0
+  LockpickUI: 1 before, 0 new; instance 1936650 -> 0
+  MapController: 1 before, 0 new; instance 1919894 -> 0
+  Notifications: 1 before, 0 new; instance 1934314 -> 0
+  DeathMessage: 1 before, 1 new; instance -7742 -> -151638
+    Pause Menu(Clone) (id -151638) active true enabled true
+  LoadMenu: 1 before, 1 new; instance -8190 -> -8190
+    LoadMenu (id -152086) active false enabled true
+  BottleRecyclingPanel: 1 before, 0 new; instance 1925372 -> 0
+  GeneratorPanel: 1 before, 0 new; instance 1918204 -> null
+  GrowingPanel: 1 before, 0 new; instance 1926442 -> null
+  ManufacturingPanel: 1 before, 0 new; instance 1923726 -> null
+  ManufacturingProcessPanel: 1 before, 0 new; instance 1929922 -> null
+  ModifierSprites: 1 before, 0 new; instance 1921968 -> 0
+  PutItemSelectionPanel: 1 before, 0 new; instance 1931516 -> 0
+  SelectionButtonPanel: 1 before, 0 new; instance 1930998 -> 0
+  TradePanel: 1 before, 0 new; instance 1922326 -> 0
+  VendingMachinePanel: 1 before, 0 new; instance 1944198 -> 0
+  SavingUI: 1 before, 0 new; instance 1928178 -> 0
+  Subtitles: 1 before, 0 new; instance 1945086 -> 0
+  TaskPanel: 1 before, 0 new; instance 1921412 -> 0
+  Tutorial: 1 before, 0 new; instance 1934452 -> 0
+  HoldToUseController: 1 before, 0 new; instance 1937800 -> 0
+  UseText: 1 before, 0 new; instance 1918040 -> 0
+  WaitingUI: 1 before, 0 new; instance 1927982 -> 0
+  Crosshair: 1 before, 0 new; instance 1942896 -> 0
+  CullingController: 1 before, 0 new; instance 1926750 -> 0
+  FadeGameObjectController: 1 before, 0 new; instance 1926996 -> 0
+  GameUIInstance: 1 before, 0 new; instance 1934470 -> 0
+  BlackoutController: 1 before, 0 new; instance 1919972 -> 0
+  TrainController: 1 before, 0 new; instance 1935832 -> 0
+  WaterSourceController: 1 before, 0 new; instance 1939598 -> 0
+  ShowTime: 6 before, 0 new; instance 1928766 -> 0
+  TimeOfDayAzure: 1 before, 0 new; instance 1914486 -> 0
+  WaterController: 1 before, 0 new; instance 1928560 -> 0
+  WeatherManager: 1 before, 0 new; instance 1943688 -> 0
+  WindowNaturalLight: 1 before, 0 new; instance 1943706 -> null
+  info_map: 1 before, 1 new; instance 1928658 -> 2057302
+    info_map (id 2057302) active true enabled true
+  UnityStandardAssets.Characters.ThirdPerson.FirstPersonSettings: 1 before, 1 new; instance 1941922 -> 2065634
+    Player Camera (id 2065634) active true enabled true
+  UnityEngine.Camera: 7 before, 6 new
+    screenshot_camera (3) (id 1991096) active false enabled true depth 0.0 display 0 tag "Untagged"
+    screenshot_camera (1) (id 1991098) active false enabled true depth 0.0 display 0 tag "Untagged"
+    screenshot_camera (2) (id 1991100) active false enabled true depth 0.0 display 0 tag "Untagged"
+    screenshot_camera (id 1991102) active false enabled true depth 0.0 display 0 tag "Untagged"
+    FirstPersonCamera (id 1991104) active true enabled true depth 0.0 display 0 tag "Untagged"
+    Player Camera (id 1991106) active true enabled true depth -1.0 display 0 tag "MainCamera"
+  UnityEngine.Canvas: 672 before, 1 new
+    Pause Menu(Clone) (id -151630) active true enabled true renderMode "ScreenSpaceOverlay" sortingOrder 7
+  UnityEngine.AudioListener: 6 before, 5 new
+    screenshot_camera (3) (id 2010886) active false enabled true
+    screenshot_camera (1) (id 2010888) active false enabled true
+    screenshot_camera (2) (id 2010890) active false enabled true
+    screenshot_camera (id 2010892) active false enabled true
+    Player Camera (id 2010894) active true enabled true
+  UnityEngine.Light: 354 before, 151 new
+    Point Light (id 2012664) active false enabled true type "Point"
+    Point Light (id 2012666) active true enabled true type "Point"
+    Point Light (id 2012668) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012670) active true enabled true type "Point"
+    Point Light (id 2012672) active true enabled true type "Spot"
+    Volumetric Point Light (1) (id 2012674) active true enabled false type "Point"
+    Point Light (id 2012676) active false enabled true type "Point"
+    Volumetric Point Light (1) (id 2012678) active true enabled true type "Point"
+    Point Light (id 2012680) active true enabled true type "Point"
+    Point Light (2) (id 2012682) active true enabled true type "Point"
+    Point Light (id 2012684) active true enabled true type "Point"
+    Point Light (2) (id 2012686) active false enabled true type "Point"
+    Point Light (id 2012688) active false enabled true type "Point"
+    Light Red (id 2012690) active true enabled true type "Point"
+    Point Light (id 2012692) active true enabled true type "Spot"
+    Point Light (id 2012694) active true enabled true type "Point"
+    Light Red (id 2012696) active true enabled true type "Point"
+    Point Light (id 2012698) active true enabled true type "Point"
+    Light Green (id 2012700) active false enabled true type "Point"
+    Point Light (2) (id 2012702) active false enabled true type "Point"
+    Point Light (id 2012704) active true enabled true type "Point"
+    Light Green (id 2012706) active false enabled true type "Point"
+    Point Light (id 2012708) active true enabled true type "Point"
+    Volumetric Spot Light (id 2012710) active true enabled true type "Spot"
+    Volumetric Spot Light (id 2012712) active true enabled true type "Spot"
+    Point Light (id 2012714) active true enabled true type "Point"
+    Volumetric Spot Light (id 2012716) active true enabled true type "Spot"
+    Point Light (id 2012718) active true enabled true type "Spot"
+    Point Light (id 2012720) active true enabled true type "Point"
+    Point Light (id 2012722) active true enabled true type "Point"
+    Point Light (1) (id 2012724) active true enabled true type "Point"
+    Point Light (id 2012726) active true enabled true type "Spot"
+    Point Light (id 2012728) active true enabled true type "Spot"
+    Point Light (id 2012730) active true enabled true type "Point"
+    Point Light (id 2012732) active true enabled true type "Point"
+    Volumetric Spot Light (id 2012734) active true enabled true type "Spot"
+    Volumetric Spot Light (id 2012736) active true enabled true type "Spot"
+    Point Light (id 2012738) active true enabled true type "Point"
+    Volumetric Spot Light (id 2012740) active false enabled true type "Spot"
+    Point Light (id 2012742) active true enabled true type "Point"
+    Point Light (id 2012744) active true enabled true type "Point"
+    Point Light (id 2012746) active true enabled true type "Point"
+    Point Light (1) (id 2012748) active true enabled true type "Point"
+    Point Light (id 2012750) active true enabled true type "Point"
+    Point Light (id 2012752) active true enabled false type "Point"
+    Point Light (id 2012754) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012756) active true enabled false type "Point"
+    Point Light (id 2012758) active true enabled true type "Point"
+    Point Light (id 2012760) active true enabled true type "Spot"
+    Point Light (id 2012762) active true enabled false type "Point"
+    Point Light (2) (id 2012764) active false enabled true type "Point"
+    Point Light (id 2012766) active true enabled false type "Point"
+    Point Light (id 2012768) active true enabled true type "Point"
+    Point Light (id 2012770) active true enabled true type "Point"
+    Volumetric Spot Light (id 2012772) active true enabled true type "Spot"
+    Point Light (id 2012774) active true enabled true type "Point"
+    Point Light (id 2012776) active true enabled true type "Spot"
+    Point Light (id 2012778) active true enabled true type "Point"
+    Point Light (id 2012780) active true enabled true type "Point"
+    Point Light (id 2012782) active true enabled true type "Spot"
+    Point Light (id 2012784) active true enabled true type "Point"
+    Point Light (id 2012786) active true enabled true type "Point"
+    Point Light (id 2012788) active true enabled true type "Point"
+    Point Light (id 2012790) active true enabled true type "Point"
+    Volumetric Point Light (id 2012792) active true enabled true type "Point"
+    Volumetric Point Light (id 2012794) active true enabled true type "Point"
+    Volumetric Point Light (id 2012796) active true enabled true type "Point"
+    Volumetric Point Light (id 2012798) active true enabled true type "Point"
+    Volumetric Point Light (id 2012800) active true enabled true type "Point"
+    Volumetric Point Light (id 2012802) active true enabled true type "Point"
+    Volumetric Point Light (id 2012804) active true enabled true type "Point"
+    Volumetric Point Light (id 2012806) active true enabled true type "Point"
+    Volumetric Point Light (id 2012808) active true enabled true type "Point"
+    Volumetric Point Light (id 2012810) active true enabled true type "Point"
+    Volumetric Point Light (id 2012812) active true enabled true type "Point"
+    Point Light (id 2012814) active true enabled true type "Point"
+    Point Light (id 2012816) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012818) active false enabled true type "Point"
+    Volumetric Point Light (1) (id 2012820) active true enabled true type "Point"
+    Point Light (id 2012822) active true enabled true type "Point"
+    Point Light (id 2012824) active false enabled true type "Point"
+    Point Light (id 2012826) active false enabled true type "Point"
+    Point Light (id 2012828) active false enabled true type "Point"
+    Point Light (id 2012830) active false enabled true type "Point"
+    Point Light (id 2012832) active false enabled true type "Point"
+    Point Light (id 2012834) active false enabled true type "Point"
+    Point Light (id 2012836) active false enabled true type "Point"
+    Volumetric Point Light (id 2012838) active true enabled true type "Point"
+    Volumetric Point Light (id 2012840) active false enabled true type "Point"
+    Volumetric Point Light (id 2012842) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012844) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012846) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012848) active true enabled true type "Point"
+    Volumetric Point Light (1) (id 2012850) active true enabled true type "Point"
+    Point Light (2) (id 2012852) active false enabled true type "Point"
+    Point Light (2) (id 2012854) active true enabled true type "Point"
+    Point Light (2) (id 2012856) active true enabled true type "Point"
+    Point Light (2) (id 2012858) active true enabled true type "Point"
+    Point Light (2) (id 2012860) active true enabled true type "Point"
+    Point Light (2) (id 2012862) active true enabled true type "Point"
+    Point Light (2) (id 2012864) active true enabled true type "Point"
+    Point Light (2) (id 2012866) active true enabled true type "Point"
+    Volumetric Point Light (id 2012868) active true enabled true type "Point"
+    Volumetric Point Light (id 2012870) active true enabled true type "Point"
+    Volumetric Point Light (id 2012872) active true enabled true type "Point"
+    Volumetric Point Light (id 2012874) active true enabled false type "Point"
+    Volumetric Point Light (id 2012876) active true enabled true type "Point"
+    Volumetric Point Light (id 2012878) active true enabled false type "Point"
+    Volumetric Point Light (id 2012880) active true enabled false type "Point"
+    Volumetric Point Light (id 2012882) active true enabled false type "Point"
+    Volumetric Point Light (id 2012884) active true enabled true type "Point"
+    Volumetric Point Light (id 2012886) active true enabled true type "Point"
+    Volumetric Point Light (id 2012888) active true enabled true type "Spot"
+    Point Light (id 2012890) active true enabled true type "Point"
+    Point Light (id 2012892) active true enabled true type "Point"
+    Volumetric Point Light (2) (id 2012896) active true enabled true type "Point"
+    Volumetric Point Light (2) (id 2012898) active true enabled true type "Point"
+    Volumetric Point Light (2) (id 2012900) active true enabled false type "Point"
+    Volumetric Point Light (2) (id 2012902) active true enabled false type "Point"
+    Volumetric Point Light (2) (id 2012904) active true enabled true type "Point"
+    Point Light (id 2012906) active false enabled true type "Point"
+    Point Light (id 2012908) active false enabled true type "Point"
+    Point Light (id 2012910) active true enabled true type "Point"
+    Volumetric Point Light (id 2012912) active true enabled true type "Point"
+    Volumetric Point Light (id 2012914) active true enabled true type "Point"
+    Volumetric Point Light (id 2012916) active true enabled true type "Point"
+    Volumetric Point Light (id 2012918) active true enabled true type "Point"
+    Volumetric Point Light (id 2012920) active true enabled true type "Point"
+    Volumetric Point Light (id 2012922) active true enabled true type "Point"
+    Volumetric Point Light (id 2012924) active false enabled true type "Point"
+    Volumetric Spot Light (id 2012926) active true enabled true type "Spot"
+    Volumetric Point Light (id 2012928) active false enabled true type "Point"
+    Point Light (id 2012930) active false enabled false type "Point"
+    Light (id 2012932) active false enabled true type "Point"
+    Point Light (id 2012934) active false enabled true type "Point"
+    Point Light (id 2012936) active false enabled true type "Point"
+    Point light (id 2012938) active true enabled false type "Point"
+    Point light (id 2012940) active true enabled false type "Point"
+    Point light (id 2012942) active true enabled false type "Point"
+    Point light (id 2012944) active true enabled false type "Point"
+    Point light (id 2012946) active true enabled false type "Point"
+    Point light (id 2012948) active true enabled false type "Point"
+    Point light (id 2012950) active true enabled false type "Point"
+    Point light (id 2012952) active true enabled false type "Point"
+    Point light (id 2012954) active true enabled false type "Point"
+    Point light (id 2012956) active true enabled false type "Point"
+    Point light (id 2012958) active true enabled false type "Point"
+    Point light (id 2012960) active true enabled false type "Point"
+    Point light (id 2012962) active true enabled false type "Point"
+    Point light (id 2012964) active true enabled false type "Point"
+    Volumetric Point Light (1) (id 2012966) active true enabled false type "Point"

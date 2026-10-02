@@ -1,0 +1,16 @@
+scenes loaded 2, active area "Interior Player Tenement"
+baked light data (LightmapSettings.lightmaps): Some(Number(0))
+lightmap mode: "NonDirectional"
+light probes (LightmapSettings.lightProbes count): Some(Number(0))
+UnityEngine.ReflectionProbe: 122 live, 32 switched on
+ftLightmapsStorage: 2 live, 2 switched on
+UnityEngine.Rendering.PostProcessing.PostProcessVolume: 27 live, 13 switched on
+UnityEngine.Light: 506 live, 8 switched on
+RenderSettings.ambientMode: "Flat"
+RenderSettings.ambientLight: {"a":1.0,"b":0.0,"g":0.0,"r":0.0}
+RenderSettings.ambientIntensity: 0.0
+RenderSettings.fog: false
+RenderSettings.fogColor: {"a":1.0,"b":0.074614875,"g":0.0373793431,"r":0.0548410341}
+RenderSettings.fogDensity: 0.0005
+RenderSettings.skybox: {"handle":9014,"name":"Sky","type":"Material"}
+RenderSettings.sun: {"handle":9015,"name":"Directional Light","type":"Light"}
