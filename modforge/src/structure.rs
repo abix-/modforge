@@ -532,6 +532,9 @@ pub fn validate(def: &StructureDef) -> Result<(), String> {
 pub const SLAB: f32 = 0.1;
 pub const STEP_DEPTH: f32 = 0.28;
 pub const STEP_RISE_MAX: f32 = 0.19;
+/// How thick a stair is under each tread: more than a step's rise, so the
+/// treads overlap into one stepped slab with the space under it open.
+pub const STAIR_THICK: f32 = 0.35;
 /// Health of a freshly built part until grades land.
 pub const PART_HEALTH: f32 = 100.0;
 
@@ -648,11 +651,15 @@ pub fn parts_of(def: &StructureDef) -> Vec<Part> {
         let steps = (stair.rise / STEP_RISE_MAX).ceil().max(1.0) as usize;
         let step_rise = stair.rise / steps as f32;
         for i in 0..steps {
-            let height = step_rise * (i + 1) as f32;
+            // A tread on the stair's slab, not a block down to the base: the
+            // flight is open under it, so the flight below has headroom
+            // (topside: a body walks up a switchback under the next flight).
+            let top = step_rise * (i + 1) as f32;
+            let bottom = (top - STAIR_THICK).max(0.0);
             push(
                 PartKind::Step,
-                stair.base + dir * (STEP_DEPTH * (i as f32 + 0.5)) + Vec3::Y * (height / 2.0),
-                dir.abs() * STEP_DEPTH + across * stair.width + Vec3::Y * height,
+                stair.base + dir * (STEP_DEPTH * (i as f32 + 0.5)) + Vec3::Y * ((top + bottom) / 2.0),
+                dir.abs() * STEP_DEPTH + across * stair.width + Vec3::Y * (top - bottom),
                 def.floor_color,
             );
         }
@@ -830,13 +837,23 @@ pub fn levels(def: &StructureDef) -> Vec<(f32, f32)> {
 
 /// The ground tiles a structure leaves open to the levels below: inside
 /// every room that rises through the ground from below (a stair tower
-/// going down), structure-local tiles as `tile_plan` counts them. The
-/// consumer draws no ground there, so the way down is seen.
+/// going down), structure-local tiles as `tile_plan` counts them, but not
+/// where a slab is walked on at the ground (its landing): only over the
+/// way down. The consumer puts no ground there, so the way down is seen
+/// and walked into, and the landing joins the floor beside it.
 pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
+    let walked_at_ground = |x: i32, z: i32| {
+        let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
+        def.furniture.iter().any(|f| {
+            let top = f.center.y + f.size.y / 2.0;
+            let (lo, hi) = (f.center - f.size / 2.0, f.center + f.size / 2.0);
+            top.abs() < 0.05 && f.size.y <= 2.0 * SLAB && cx >= lo.x && cx <= hi.x && cz >= lo.z && cz <= hi.z
+        })
+    };
     let mut tiles = Vec::new();
     for room in def.rooms.iter().filter(|r| r.origin.y < -0.5 && r.origin.y + r.interior.y > 0.5) {
         let (x0, z0, w, l) = room_tiles(room);
-        tiles.extend((z0..z0 + l).flat_map(|z| (x0..x0 + w).map(move |x| (x, z))));
+        tiles.extend((z0..z0 + l).flat_map(|z| (x0..x0 + w).map(move |x| (x, z))).filter(|&(x, z)| !walked_at_ground(x, z)));
     }
     tiles
 }

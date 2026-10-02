@@ -13,12 +13,14 @@ use serde::{Deserialize, Serialize};
 use crate::actions::Action;
 use crate::brain::{turn_toward, walk_toward, MELEE_REACH};
 
-/// One order. `who` is a person's ActorId; a point is on the ground.
+/// One order. `who` is a person's ActorId; a point is in the world, its
+/// height included: x and z on the ground, y up (topside: everything is
+/// 3D).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
 pub enum Command {
-    /// Walk to the point.
-    MoveTo { x: f32, y: f32 },
+    /// Go to the point by the way there.
+    MoveTo { x: f32, y: f32, z: f32 },
     /// Follow them, until a move of one's own or they are gone (the
     /// consumer's following does it).
     Follow { who: u64 },
@@ -49,7 +51,7 @@ pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, ta
     let Some(to) = target.filter(|_| !ended) else {
         return Step::Done;
     };
-    let apart = (to - here).with_y(0.0).length();
+    let apart = (to - here).length();
     match command {
         Command::MoveTo { .. } => {
             let actions = walk_toward(here, to);
@@ -103,18 +105,19 @@ mod tests {
     const TALK: f32 = 3.0;
 
     #[test]
-    fn move_to_walks_there_and_is_done_there() {
-        let to = Vec3::new(10.0, 0.0, 0.0);
-        let far = step(&Command::MoveTo { x: 10.0, y: 0.0 }, Vec3::ZERO, Some(to), false, TALK);
-        assert_eq!(far, Step::Act(vec![Action::Aim { x: 10.0, y: 0.0 }, Action::Move { x: 1.0, y: 0.0 }]));
-        assert_eq!(step(&Command::MoveTo { x: 10.0, y: 0.0 }, Vec3::new(9.5, 0.0, 0.0), Some(to), false, TALK), Step::Done);
+    fn move_to_goes_there_and_is_done_there() {
+        let command = Command::MoveTo { x: 10.0, y: -6.0, z: 0.0 };
+        let to = Vec3::new(10.0, -6.0, 0.0);
+        assert_eq!(step(&command, Vec3::ZERO, Some(to), false, TALK), Step::Act(vec![Action::Go { x: 10.0, y: -6.0, z: 0.0 }]));
+        assert_eq!(step(&command, Vec3::new(9.5, -6.0, 0.0), Some(to), false, TALK), Step::Done);
+        assert!(matches!(step(&command, Vec3::new(10.0, 0.0, 0.0), Some(to), false, TALK), Step::Act(_)), "right above it, two levels up: not there");
     }
 
     #[test]
     fn talk_to_walks_near_then_faces_and_uses_until_talking() {
         let them = Vec3::new(0.0, 0.0, 10.0);
         let command = Command::TalkTo { who: 7 };
-        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, TALK), Step::Act(a) if a.contains(&Action::Move { x: 0.0, y: 1.0 })));
+        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, TALK), Step::Act(a) if a.contains(&Action::Go { x: 0.0, y: 0.0, z: 10.0 })));
         let near = Vec3::new(0.0, 0.0, 8.0);
         assert_eq!(step(&command, near, Some(them), false, TALK), Step::Act(vec![Action::Aim { x: 0.0, y: 10.0 }, Action::Use]));
         assert_eq!(step(&command, near, Some(them), true, TALK), Step::Done, "talking with them: done");

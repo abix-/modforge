@@ -25,6 +25,11 @@ pub enum Action {
     /// combat.md: seen from above, the person faces the mouse; an NPC
     /// faces what it aims at).
     Aim { x: f32, y: f32 },
+    /// Go to this point by the way there, in world metres, its height
+    /// included (topside: x and z on the ground, y up; the navigation
+    /// mesh finds and walks the way, up and down stairs). The brain's,
+    /// a command's, following's: anyone sent somewhere.
+    Go { x: f32, y: f32, z: f32 },
     /// The trigger is held this tick.
     Attack,
     /// Use what is looked at (E).

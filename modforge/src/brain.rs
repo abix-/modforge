@@ -320,7 +320,7 @@ pub fn fight(t: &mut Think, _: &Target) -> Status {
         if p.position.distance(at) <= reach_of(p) {
             actions.push(Action::Attack);
         } else if p.behaviour == Behaviour::Hunter {
-            actions.push(step_toward(p.position, at));
+            actions.extend(walk_toward(p.position, at));
         }
         t.act(actions, wake);
         return Status::Running;
@@ -774,23 +774,14 @@ pub fn turn_toward(from: Vec3, to: Vec3) -> Vec<Action> {
     vec![Action::Aim { x: to.x, y: to.z }]
 }
 
-/// A step from `from` toward a point along the ground: the move's x is the
-/// world's x and its y is the world's z, the view's right and up seen
-/// from above.
-pub fn step_toward(from: Vec3, to: Vec3) -> Action {
-    let d = (to - from).with_y(0.0).normalize_or_zero();
-    Action::Move { x: d.x, y: d.z }
-}
-
-/// Face a point and walk to it from `from`, unless already there.
+/// Go to a point from `from` by the way there, unless already there: in
+/// reach of it, its height included (topside: everything is 3D; the
+/// consumer's navigation mesh finds and walks the way).
 pub fn walk_toward(from: Vec3, to: Vec3) -> Vec<Action> {
-    let flat = (to - from).with_y(0.0);
-    if flat.length() <= REACH {
+    if (to - from).length() <= REACH {
         return vec![];
     }
-    let mut actions = turn_toward(from, to);
-    actions.push(step_toward(from, to));
-    actions
+    vec![Action::Go { x: to.x, y: to.y, z: to.z }]
 }
 
 #[cfg(test)]
@@ -842,7 +833,7 @@ mod tests {
         assert_eq!(target, Target::Point(tap));
         let mut t = Think::new(&p, &mut roll);
         assert_eq!(going(&mut t, &target), Status::Running);
-        assert!(t.actions.iter().any(|a| matches!(a, Action::Move { .. })), "walking there: {:?}", t.actions);
+        assert!(t.actions.contains(&Action::Go { x: 40.0, y: 0.0, z: 10.0 }), "going there: {:?}", t.actions);
         assert!(!not_asked(&mut Think::new(&p, &mut roll), &target));
         p.asked = Some(Vec3::new(-40.0, 0.0, 0.0));
         assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "asked elsewhere");

@@ -1158,6 +1158,25 @@ mod tests {
     }
 
     #[test]
+    fn every_step_has_headroom_under_the_flight_above() {
+        use crate::structure::{DOORWAY_HEIGHT, PartKind, parts_of};
+        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
+        let parts = parts_of(&def);
+        let solid: Vec<_> = parts.iter().filter(|p| matches!(p.kind, PartKind::Step | PartKind::Landing | PartKind::Furniture)).collect();
+        for step in parts.iter().filter(|p| p.kind == PartKind::Step) {
+            let top = step.center.y + step.size.y / 2.0;
+            let (lo, hi) = (step.center - step.size / 2.0, step.center + step.size / 2.0);
+            for above in &solid {
+                let (alo, ahi) = (above.center - above.size / 2.0, above.center + above.size / 2.0);
+                let overlaps = alo.x < hi.x - 1e-3 && ahi.x > lo.x + 1e-3 && alo.z < hi.z - 1e-3 && ahi.z > lo.z + 1e-3;
+                if overlaps && alo.y > top + 1e-3 {
+                    assert!(alo.y - top >= DOORWAY_HEIGHT, "only {:.2} m over a step at {:.2} up to a part at {:.2}", alo.y - top, top, alo.y);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_stairwell_fits_two_side_by_side_and_an_elevator() {
         use crate::structure::{STEP_DEPTH, STEP_RISE_MAX};
         let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
