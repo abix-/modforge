@@ -25,7 +25,9 @@ use crate::structure::{
 use crate::unknown::rng;
 
 const WALL: f32 = 0.2;
-const DOOR_WIDTH: f32 = 1.2;
+/// Every doorway a standard door block wide (topside design.md "Built in 1
+/// m blocks, doors as blocks").
+const DOOR_WIDTH: f32 = crate::structure::DOOR_BLOCK;
 const WINDOW_WIDTH: f32 = 1.0;
 const WINDOW_SILL: f32 = 1.0;
 /// Most floors a building goes up, and most it goes down.
@@ -1126,6 +1128,33 @@ mod tests {
             carve: 400,
             palette: vec![[0.5, 0.4, 0.3], [0.3, 0.3, 0.35]],
         }
+    }
+
+    #[test]
+    fn every_door_is_a_two_tile_block_with_a_doorway_in_its_frame() {
+        use crate::structure::{DOORWAY, TileKind, door_blocks, tile_plan};
+        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
+        let blocks = door_blocks(&def);
+        assert!(!blocks.is_empty(), "the front door at least");
+        for b in &blocks {
+            assert!((b.width - 2.0).abs() < 1e-3, "a 2 tile block: {b:?}");
+            assert!((b.doorway() - DOORWAY).abs() < 1e-3);
+            let [l, r] = b.posts();
+            assert!((l.1 - 0.4).abs() < 1e-3 && (r.1 - 0.4).abs() < 1e-3, "two 0.4 m posts");
+            assert!((b.hinge() - (b.centre - b.along * 0.6)).length() < 1e-3, "the hinge at the doorway's edge");
+        }
+        // The front door's block on the ground plan's door tiles.
+        let front = blocks.iter().find(|b| b.floor.abs() < 0.01).expect("the front door on the ground");
+        let doors: Vec<(i32, i32)> = tile_plan(&def)
+            .iter()
+            .filter(|r| r.kind == TileKind::Door)
+            .flat_map(|r| (r.from..r.to).map(move |x| (x, r.row)))
+            .collect();
+        for t in &doors {
+            let centre = Vec2::new(t.0 as f32 + 0.5, t.1 as f32 + 0.5);
+            assert!((centre - front.centre).length() < 1.0, "door tile {t:?} in the block at {:?}", front.centre);
+        }
+        assert_eq!(doors.len(), 2, "the ground's door is 2 tiles");
     }
 
     #[test]

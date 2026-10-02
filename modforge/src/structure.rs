@@ -841,6 +841,93 @@ pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
     tiles
 }
 
+/// The wall tiles an opening is cut through, along the wall from its
+/// first whole tile: its width rounded to whole tiles, in the ring of wall
+/// tiles round the room (`tile_plan_at`).
+pub fn opening_tiles(room: &RoomDef, o: &Opening) -> Vec<(i32, i32)> {
+    let (x0, z0, w, l) = room_tiles(room);
+    let n = o.width.round().max(1.0) as i32;
+    match o.side {
+        Side::North | Side::South => {
+            let row = if o.side == Side::North { z0 - 1 } else { z0 + l };
+            let a = (room.origin.x + o.offset - n as f32 / 2.0).round() as i32;
+            (a..a + n).map(|x| (x, row)).collect()
+        }
+        Side::East | Side::West => {
+            let col = if o.side == Side::West { x0 - 1 } else { x0 + w };
+            let a = (room.origin.z + o.offset - n as f32 / 2.0).round() as i32;
+            (a..a + n).map(|z| (col, z)).collect()
+        }
+    }
+}
+
+/// A door block (topside design.md "Built in 1 m blocks, doors as
+/// blocks"; 7 Days to Die's door blocks): whole tiles of wall, as tall as
+/// its level, a frame in them, and in the frame the doorway and its door.
+/// The standard door block is `DOOR_BLOCK` tiles wide with a doorway
+/// `DOORWAY` wide and `DOORWAY_HEIGHT` tall.
+pub const DOOR_BLOCK: f32 = 2.0;
+pub const DOORWAY: f32 = 1.2;
+pub const DOORWAY_HEIGHT: f32 = 2.1;
+
+/// One door block of a structure, structure local, on the ground (x, z):
+/// its middle, which way its wall runs, how many tiles wide it is, the
+/// height of its doorway's floor, and the side of the room it is on.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DoorBlock {
+    pub centre: Vec2,
+    pub along: Vec2,
+    pub width: f32,
+    pub floor: f32,
+    pub side: Side,
+}
+
+impl DoorBlock {
+    /// The doorway in the frame: `DOORWAY`, or the whole block when it is
+    /// narrower.
+    pub fn doorway(&self) -> f32 {
+        DOORWAY.min(self.width)
+    }
+
+    /// The hinge, at one side of the doorway, where the door turns.
+    pub fn hinge(&self) -> Vec2 {
+        self.centre - self.along * self.doorway() / 2.0
+    }
+
+    /// The frame's two posts either side of the doorway: each one's middle
+    /// and its width along the wall (they fill the wall tile's depth).
+    pub fn posts(&self) -> [(Vec2, f32); 2] {
+        let post = (self.width - self.doorway()) / 2.0;
+        let off = self.along * (self.doorway() / 2.0 + post / 2.0);
+        [(self.centre - off, post), (self.centre + off, post)]
+    }
+}
+
+/// Every door of a structure as a door block on the tile grid: one per
+/// opening with `door`, on the tiles `tile_plan_at` cuts for it.
+pub fn door_blocks(def: &StructureDef) -> Vec<DoorBlock> {
+    let mut out = Vec::new();
+    for room in &def.rooms {
+        for o in room.openings.iter().filter(|o| o.door) {
+            let tiles = opening_tiles(room, o);
+            let (Some(first), Some(last)) = (tiles.first(), tiles.last()) else {
+                continue;
+            };
+            let along = if matches!(o.side, Side::North | Side::South) { Vec2::X } else { Vec2::Y };
+            let lo = Vec2::new(first.0 as f32, first.1 as f32);
+            let hi = Vec2::new(last.0 as f32, last.1 as f32) + Vec2::ONE;
+            out.push(DoorBlock {
+                centre: (lo + hi) / 2.0,
+                along,
+                width: tiles.len() as f32,
+                floor: room.origin.y + o.sill,
+                side: o.side,
+            });
+        }
+    }
+    out
+}
+
 /// A room's interior on the tile grid: its first tile (x, z) and how many
 /// tiles across and deep, its size rounded to whole tiles.
 fn room_tiles(room: &RoomDef) -> (i32, i32, i32, i32) {
@@ -918,26 +1005,12 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
             if spanning { (-0.01..=SLAB + 0.01).contains(&sill) } else { sill <= 0.0 }
         };
         for o in room.openings.iter().filter(at_floor) {
-            let n = o.width.round().max(1.0) as i32;
             let kind = if o.door { TileKind::Door } else { TileKind::Floor };
             let color = if o.door { DOOR_COLOR } else { def.floor_color };
-            match o.side {
-                Side::North | Side::South => {
-                    let row = if o.side == Side::North { z0 - 1 } else { z0 + l };
-                    let a = (room.origin.x + o.offset - n as f32 / 2.0).round() as i32;
-                    for x in a..a + n {
-                        put(&mut tiles, x, row, kind, color, DOORWAY);
-                        doorways.push(((x, row), (0, 1)));
-                    }
-                }
-                Side::East | Side::West => {
-                    let col = if o.side == Side::West { x0 - 1 } else { x0 + w };
-                    let a = (room.origin.z + o.offset - n as f32 / 2.0).round() as i32;
-                    for z in a..a + n {
-                        put(&mut tiles, col, z, kind, color, DOORWAY);
-                        doorways.push(((col, z), (1, 0)));
-                    }
-                }
+            let through = if matches!(o.side, Side::North | Side::South) { (0, 1) } else { (1, 0) };
+            for t in opening_tiles(room, o) {
+                put(&mut tiles, t.0, t.1, kind, color, DOORWAY);
+                doorways.push((t, through));
             }
         }
     }
