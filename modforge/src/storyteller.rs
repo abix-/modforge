@@ -122,6 +122,9 @@ pub enum When {
     To(String),
     /// The one spoken to started this conversation (the player's E).
     Opened,
+    /// The speaker is knocking on a shut door now: the line is called
+    /// through it, heard like the knock, no conversation opened.
+    Knocking,
     /// Nothing has been said in this conversation yet: the speaker's
     /// first word. A plain question asked once, not offered after every
     /// reply (a conversation ends after the last reply).

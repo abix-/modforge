@@ -164,6 +164,9 @@ pub struct Speaking<'a> {
     /// The speaker's needs by name ("hunger", "thirst"), as the survival
     /// numbers have them.
     pub needs: &'a [(String, f32)],
+    /// The speaker is knocking on a shut door now: a line said is called
+    /// through it, heard like the knock (topside authority.md "Talking").
+    pub knocking: bool,
 }
 
 impl Speaking<'_> {
@@ -193,6 +196,7 @@ impl Speaking<'_> {
         match when {
             When::To(part) => self.to_part == part,
             When::Opened => self.opened,
+            When::Knocking => self.knocking,
             When::First => self.last().is_none(),
             When::Heard(name) => matches!(self.last(), Some((true, line)) if line.name == *name),
             When::HasHeard(name) => {
@@ -542,6 +546,7 @@ mod tests {
                 reached: &[],
                 near: &[],
                 needs: &self.needs,
+                knocking: false,
             }
         }
     }
