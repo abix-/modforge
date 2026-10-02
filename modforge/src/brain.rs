@@ -74,6 +74,10 @@ pub struct Perception<'a> {
     /// A place they were asked to go to and wait at (an episode's errand:
     /// topside episodes.md), weighed like any other choice.
     pub asked: Option<Vec3>,
+    /// Someone in sight, not hostile, carrying more than they need of what
+    /// answers one of this person's needs (crate::trade): who, where, and
+    /// the need. The consumer finds them from what people carry.
+    pub trader: Option<(ActorId, Vec3, Need)>,
 }
 
 impl std::fmt::Debug for Perception<'_> {
@@ -115,6 +119,12 @@ pub enum Do {
     /// carry.
     Stock {
         key: u64,
+    },
+    /// At `with`: trade for one thing that answers `need`, paying with
+    /// what they can spare, if `with` takes it (crate::trade).
+    Trade {
+        with: ActorId,
+        need: Need,
     },
 }
 
@@ -412,18 +422,48 @@ pub fn worse_need(t: &mut Think, target: &Target) -> bool {
     worst != serving && lowest < LOOK_LINE && lowest < value(serving)
 }
 
+// Trade.
+
+/// Near enough to someone to trade with them, in metres: talking distance
+/// (topside's is 3), short of it.
+pub const TRADE_REACH: f32 = 2.5;
+
+/// A need under the need line and someone in sight carrying more than
+/// they need of what answers it: to them, to trade (topside design.md
+/// "Trading": people trade with each other when one has extra of what the
+/// other needs; operator, 2026-10-02).
+pub fn enter_trade(t: &mut Think, _: &Target) -> Option<Target> {
+    let (who, at, need) = t.p.trader?;
+    let value = t.p.needs.needs_worst_first().into_iter().find(|(n, _)| *n == need).map(|(_, v)| v)?;
+    (value < NEED_LINE).then_some(Target::Trader { who, at, need })
+}
+
+/// At the one they trade with: the trade (`Do::Trade`), once; done.
+pub fn trade_with(t: &mut Think, target: &Target) -> Status {
+    let Target::Trader { who, need, .. } = *target else {
+        return Status::Failed;
+    };
+    t.act(vec![], Some(Do::Trade { with: who, need }));
+    Status::Succeeded
+}
+
 /// Walk to what the state is about, awake; there, it succeeds. Rest is
 /// had at home, anywhere in it.
 pub fn going(t: &mut Think, target: &Target) -> Status {
     let (at, need) = match *target {
         Target::Thing { at, need, .. } => (at, need),
+        Target::Trader { at, need, .. } => (at, Some(need)),
         Target::Point(at) => (at, None),
         _ => return Status::Failed,
     };
     let p = t.p;
     // There as walking there counts it (`walk_toward`, in 3D: right above or
-    // below is not there).
-    let arrived = walk_toward(p.position, at).is_empty() || (need == Some(Need::Rest) && p.at_home);
+    // below is not there); to someone to trade with, near enough to talk
+    // (their own body keeps others about that far).
+    let arrived = match *target {
+        Target::Trader { .. } => (at - p.position).length() <= TRADE_REACH,
+        _ => walk_toward(p.position, at).is_empty() || (need == Some(Need::Rest) && p.at_home),
+    };
     if arrived {
         t.act(vec![], None);
         return Status::Succeeded;
@@ -827,7 +867,27 @@ mod tests {
             reachable: &Vec::new,
             unknown: &|_| true,
             asked: None,
+            trader: None,
         }
+    }
+
+    #[test]
+    fn short_of_a_need_with_a_trader_in_sight_they_go_and_trade() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let trader = (ActorId(7), Vec3::new(4.0, 0.0, 0.0), Need::Thirst);
+        p.trader = Some(trader);
+        let mut roll = Roll::new(1);
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(enter_trade(&mut t, &Target::None), None, "not thirsty enough: no trade");
+        p.needs.thirst = NEED_LINE - 1.0;
+        let mut t = Think::new(&p, &mut roll);
+        let target = enter_trade(&mut t, &Target::None).expect("thirsty, a trader in sight");
+        assert_eq!(target, Target::Trader { who: ActorId(7), at: trader.1, need: Need::Thirst });
+        assert_eq!(going(&mut t, &target), Status::Running, "4 m off: walking there");
+        assert_eq!(trade_with(&mut t, &target), Status::Succeeded);
+        assert_eq!(t.do_now, Some(Do::Trade { with: ActorId(7), need: Need::Thirst }));
     }
 
     /// Asked to be somewhere: they head there; asked somewhere else, or no

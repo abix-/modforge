@@ -36,6 +36,9 @@ pub enum Target {
     Threat { who: ActorId, began_at: Vec3 },
     /// A need met from what they carry.
     Need(Need),
+    /// Someone carrying more than they need of what answers `need`, to
+    /// trade with (crate::trade): who, and where they were.
+    Trader { who: ActorId, at: Vec3, need: Need },
 }
 
 /// What a person is doing: the active leaf and what it is about. The

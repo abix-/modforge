@@ -140,6 +140,8 @@ pub enum Choice {
     /// Do what they were asked: go to a place and wait there (an
     /// episode's errand, topside episodes.md).
     Asked,
+    /// Trade with someone for what answers a need (crate::trade).
+    Trade,
 }
 
 /// How much of a change in the measure reaches a choice made one choice

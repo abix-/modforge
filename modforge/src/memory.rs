@@ -172,6 +172,12 @@ pub enum Did {
     Knocked,
     /// Heard this person knock on a closed door.
     HeardKnocking(ActorId),
+    /// Traded with this person (crate::trade): gave the first, got the
+    /// second, each "item xN" joined.
+    Traded(ActorId, String, String),
+    /// Asked this person to trade and was refused (not worth it to them,
+    /// or nothing to pay with).
+    TradeRefused(ActorId),
     /// Said this line to this person (crate::talk).
     Talked(ActorId, Line),
     /// Was said this line by this person.
@@ -199,6 +205,8 @@ impl Did {
             Did::Doorway => "doorway",
             Did::Knocked => "knocked",
             Did::HeardKnocking(_) => "heard knocking",
+            Did::Traded(..) => "traded",
+            Did::TradeRefused(_) => "refused a trade",
             Did::Talked(..) => "talked",
             Did::Heard(..) => "heard",
             Did::WasTold(..) => "was told",
@@ -222,6 +230,8 @@ impl Did {
             Did::Doorway => "went through a doorway".to_string(),
             Did::Knocked => "knocked on a door".to_string(),
             Did::HeardKnocking(by) => format!("heard {} knock", by.0),
+            Did::Traded(with, gave, got) => format!("traded with {}: gave {gave}, got {got}", with.0),
+            Did::TradeRefused(by) => format!("was refused a trade by {}", by.0),
             Did::Talked(whom, said) => format!("said to {}: {}", whom.0, said.words),
             Did::Heard(by, said) => format!("heard from {}: {}", by.0, said.words),
             Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),

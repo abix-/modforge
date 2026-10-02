@@ -61,6 +61,28 @@ pub fn accepts(values: &Values, terms: Terms, gives: &[ItemStack], gets: &[ItemS
 /// One side's offer: which slot of their inventory, and how many from it.
 pub type Offer = Vec<(usize, u32)>;
 
+/// What someone pays for `wanted` from `purse`: scrap first, then the
+/// things they can spare (`spare` says which), one at a time, until a
+/// trader with `terms` takes it; None if all they can spare is not enough.
+pub fn pay_for(values: &Values, terms: Terms, wanted: &[ItemStack], purse: &Inventory, spare: impl Fn(&str) -> bool) -> Option<Offer> {
+    let mut slots: Vec<usize> = (0..purse.slots.len()).filter(|&i| purse.slots[i].as_ref().is_some_and(|s| s.item == CURRENCY || spare(&s.item))).collect();
+    slots.sort_by_key(|&i| purse.slots[i].as_ref().is_some_and(|s| s.item != CURRENCY));
+    let mut offer: Offer = Vec::new();
+    for slot in slots {
+        let have = purse.slots[slot].as_ref().map_or(0, |s| s.count);
+        for _ in 0..have {
+            match offer.iter_mut().find(|(s, _)| *s == slot) {
+                Some((_, n)) => *n += 1,
+                None => offer.push((slot, 1)),
+            }
+            if accepts(values, terms, wanted, &offered(purse, &offer)?) {
+                return Some(offer);
+            }
+        }
+    }
+    None
+}
+
 /// The stacks an offer comes to, from the inventory it is made from; None
 /// if a slot is empty or holds fewer than offered.
 pub fn offered(inventory: &Inventory, offer: &Offer) -> Option<Vec<ItemStack>> {
@@ -137,6 +159,22 @@ mod tests {
         assert!(!accepts(&v, terms(Relation::Neutral).unwrap(), &[stack("water bottle", 1)], &food_and_scrap));
         assert!(!accepts(&v, friend, &[stack("water bottle", 1)], &[stack("canned food", 1)]));
         assert!(!accepts(&v, friend, &[], &[]), "nothing for nothing is no trade");
+    }
+
+    #[test]
+    fn one_pays_with_scrap_first_then_what_they_can_spare_and_only_enough() {
+        let v = values();
+        let neutral = terms(Relation::Neutral).unwrap();
+        let mut purse = Inventory::new(3);
+        purse.add(stack("canned food", 2), 10);
+        purse.add(stack("scrap", 25), 100);
+        let water = [stack("water bottle", 1)];
+        // Water asked at 15, scrap paid at 0.5: 25 scrap is 12.5, then one
+        // can (6) makes 18.5: enough.
+        let paid = pay_for(&v, neutral, &water, &purse, |item| item == "canned food").expect("enough with the food");
+        assert_eq!(paid, vec![(1, 25), (0, 1)], "all the scrap first, then one can");
+        assert_eq!(pay_for(&v, neutral, &water, &purse, |_| false), None, "the scrap alone is not enough, and nothing else is spared");
+        assert_eq!(pay_for(&v, terms(Relation::Friendly).unwrap(), &water, &purse, |_| false), Some(vec![(1, 13)]), "a friend: 13 scrap (11.7 for 11)");
     }
 
     #[test]
