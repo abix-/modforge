@@ -34,6 +34,9 @@ pub enum Action {
     Attack,
     /// Use what is looked at (E).
     Use,
+    /// Knock on the closed door in reach: whoever is on its other side
+    /// hears it.
+    Knock,
     /// Open or close the inventory.
     Inventory,
     /// Close whatever panel is open.

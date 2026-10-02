@@ -168,6 +168,10 @@ pub enum Did {
     Respawned,
     /// Went through a doorway.
     Doorway,
+    /// Knocked on a closed door.
+    Knocked,
+    /// Heard this person knock on a closed door.
+    HeardKnocking(ActorId),
     /// Said this line to this person (crate::talk).
     Talked(ActorId, Line),
     /// Was said this line by this person.
@@ -193,6 +197,8 @@ impl Did {
             Did::Died(..) => "died",
             Did::Respawned => "respawned",
             Did::Doorway => "doorway",
+            Did::Knocked => "knocked",
+            Did::HeardKnocking(_) => "heard knocking",
             Did::Talked(..) => "talked",
             Did::Heard(..) => "heard",
             Did::WasTold(..) => "was told",
@@ -214,6 +220,8 @@ impl Did {
             Did::Died(by, of) => format!("died of {of}, killed by {}", who(by)),
             Did::Respawned => "respawned".to_string(),
             Did::Doorway => "went through a doorway".to_string(),
+            Did::Knocked => "knocked on a door".to_string(),
+            Did::HeardKnocking(by) => format!("heard {} knock", by.0),
             Did::Talked(whom, said) => format!("said to {}: {}", whom.0, said.words),
             Did::Heard(by, said) => format!("heard from {}: {}", by.0, said.words),
             Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),

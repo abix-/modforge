@@ -26,6 +26,10 @@ pub enum Command {
     Follow { who: u64 },
     /// Walk to them, face them, and use, as E does, until talking with them.
     TalkTo { who: u64 },
+    /// Walk to the closed door between one and them, on one's own side,
+    /// and knock on it, once (the consumer finds the door: the closed one
+    /// nearest them).
+    Knock { who: u64 },
     /// Walk to them, face them, and attack in reach until they are dead.
     Attack { who: u64 },
     /// Attack the nearest living person one stands hostile to (the
@@ -62,6 +66,12 @@ pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, ta
             let mut actions = turn_toward(here, to);
             actions.push(Action::Use);
             Step::Act(actions)
+        }
+        // `to` is the spot before the door; there, the knock, until it is
+        // knocked (`ended`).
+        Command::Knock { .. } => {
+            let actions = walk_toward(here, to);
+            Step::Act(if actions.is_empty() { vec![Action::Knock] } else { actions })
         }
         Command::Attack { .. } if apart > MELEE_REACH => Step::Act(walk_toward(here, to)),
         Command::Attack { .. } => {
@@ -122,6 +132,16 @@ mod tests {
         assert_eq!(step(&command, near, Some(them), false, TALK), Step::Act(vec![Action::Aim { x: 0.0, y: 10.0 }, Action::Use]));
         assert_eq!(step(&command, near, Some(them), true, TALK), Step::Done, "talking with them: done");
         assert_eq!(step(&command, near, None, false, TALK), Step::Done, "gone: done");
+    }
+
+    #[test]
+    fn knock_walks_to_the_door_and_knocks_until_knocked() {
+        let before_the_door = Vec3::new(0.0, -6.0, 4.0);
+        let command = Command::Knock { who: 7 };
+        assert_eq!(step(&command, Vec3::ZERO, Some(before_the_door), false, TALK), Step::Act(vec![Action::Go { x: 0.0, y: -6.0, z: 4.0 }]));
+        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), false, TALK), Step::Act(vec![Action::Knock]));
+        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), true, TALK), Step::Done, "knocked: done");
+        assert_eq!(step(&command, Vec3::ZERO, None, false, TALK), Step::Done, "no door: done");
     }
 
     #[test]
