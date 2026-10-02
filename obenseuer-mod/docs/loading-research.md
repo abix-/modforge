@@ -506,6 +506,34 @@ reflection probes (`alongside_off`, `research_alongside_lighting.rs`)
 did not fix it and with `Game_Logic` off was not needed: the lighting
 looked right with them still on. Checked in one area pair only.
 
+## Moving into an area kept loaded (works)
+
+`research_move.rs` (2026-10-02): reloaded the save (Interior Player
+Tenement), loaded Interior Tenement Gatehouse alongside, and set the
+player's character (OpenSewerCharacterController, its transform and
+Rigidbody) to the Gatehouse's `info_player_spawn` position. The areas
+share one world space, so the move is a position change.
+
+```text
+loaded Interior Tenement Gatehouse alongside in 1.87s
+player at {"x":99.602356,"y":-96.01,"z":16.56256}, the second area's start at {"x":45.642,"y":-99.9853,"z":-9.385}
+moved in 0.098s; player now at {"x":45.642025,"y":-99.9853,"z":-9.384989}
+player 3 s later at {"x":45.64433,"y":-99.9853,"z":-9.382685}
+errors since the move: 1
+  1  "ArgumentException: The agent is not added to this simulation"  at "Pathfinding.RVO.Simulator.RemoveAgent (Pathfinding.RVO.IAgent agent)"
+```
+
+The player was in the Gatehouse, it looked right and they could walk
+around. 0.1 s against 3 to 18 s for a door. The one error (NPC crowd
+movement removing an agent it never added) happened once; its source is
+not checked.
+
+Not handled yet: the game still treats the first area as current (save
+area name, the area's sky and radiation settings, which area's NPC
+pathfinding and sounds are on); doors still do the save and load; the
+second area's 1.87 s load happened before the move, not in the
+background; memory with several areas kept loaded is not measured.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:

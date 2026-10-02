@@ -4,12 +4,76 @@
 
 pub use unityforge::client::{find_instances, handle_of, parse_vec3, ping_or_skip};
 
-use serde_json::Value;
+use std::time::{Duration, Instant};
+
+use serde_json::{Value, json};
 use unityforge::client::Api;
 
 pub fn api() -> Api<Value> {
     let port = std::env::var("OBENSEUER_MOD_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(17175);
     Api::at(port, "/op")
+}
+
+/// One op that must succeed.
+pub fn op(api: &Api<Value>, name: &str, args: Value) -> Value {
+    let r = api.op(name, args);
+    assert!(r.ok, "{name} failed: {:?}", r.error);
+    r.result
+}
+
+/// A method on a live object; JSON null when it failed.
+pub fn call(api: &Api<Value>, h: i64, method: &str, args: Value) -> Value {
+    api.op("invoke_method", json!({"handle": h, "method": method, "args": args})).result
+}
+
+/// A static method; JSON null when it failed.
+pub fn call_static(api: &Api<Value>, class: &str, method: &str, args: Value) -> Value {
+    api.op("invoke_static", json!({"class": class, "method": method, "args": args})).result
+}
+
+/// Live copies of a class: (instance id, handle). The caller releases.
+pub fn copies(api: &Api<Value>, class: &str) -> Vec<(i64, i64)> {
+    let r = api.op("walk_class", json!({"class": class, "include_inactive": true}));
+    let list = r.result.get("instances").and_then(Value::as_array).cloned().unwrap_or_default();
+    list.iter()
+        .filter_map(handle_of)
+        .filter_map(|h| Some((call(api, h, "GetInstanceID", json!([])).as_i64()?, h)))
+        .collect()
+}
+
+pub fn scenes_loaded(api: &Api<Value>) -> i64 {
+    call_static(api, "UnityEngine.SceneManagement.SceneManager", "get_sceneCount", json!([])).as_i64().unwrap_or(0)
+}
+
+/// `reload_save` and wait until the save has loaded (src/investigate.rs).
+pub fn reload_save(api: &Api<Value>) {
+    op(api, "reload_save", json!({}));
+    let start = Instant::now();
+    std::thread::sleep(Duration::from_secs(2));
+    while call_static(api, "SaveController", "get_Loading", json!([])).as_bool() != Some(false) {
+        assert!(start.elapsed() < Duration::from_secs(120), "save did not finish loading in 120s");
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    std::thread::sleep(Duration::from_secs(3));
+}
+
+/// Turn on first_copy_wins and load `area` alongside the one area loaded
+/// now (src/first_copy_wins.rs, docs/loading-research.md). Returns the
+/// seconds the load took.
+pub fn load_alongside(api: &Api<Value>, area: &str) -> f64 {
+    assert_eq!(scenes_loaded(api), 1, "need exactly one area loaded");
+    op(api, "first_copy_wins", json!({"on": true}));
+    let start = Instant::now();
+    let load = call_static(api, "UnityEngine.SceneManagement.SceneManager", "LoadSceneAsync", json!([area, "Additive"]));
+    let load = handle_of(&load).expect("LoadSceneAsync gave an AsyncOperation");
+    while call(api, load, "get_isDone", json!([])).as_bool() != Some(true) {
+        assert!(start.elapsed() < Duration::from_secs(180), "{area} did not load in 180s");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let secs = start.elapsed().as_secs_f64();
+    api.op("release_handle", json!({"handle": load}));
+    std::thread::sleep(Duration::from_secs(3)); // its Awake and Start, and the switch-offs a frame later
+    secs
 }
 
 /// A component's object and its parents from the top down: "Top / ... /
