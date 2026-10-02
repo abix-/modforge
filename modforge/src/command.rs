@@ -37,6 +37,11 @@ pub enum Command {
     AttackNearestEnemy,
 }
 
+/// How near the spot beside a door a knocker stands to knock, in metres:
+/// nearer than the brain's `REACH`, so they stand beside the doorway and
+/// not in it.
+pub const KNOCK_ARRIVE: f32 = 0.5;
+
 /// What carrying out a command comes to this step.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Step {
@@ -49,9 +54,10 @@ pub enum Step {
 /// One step of a move to, talk to, or attack for someone at `here`.
 /// `target` is the point, or where the one named stands (None: gone or
 /// dead); `ended` is whether what it was for has happened (talking with
-/// them). Follow and attack the nearest enemy are the consumer's to turn
-/// into its following and an attack first; here they are done.
-pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, talk_reach: f32) -> Step {
+/// them); `seen` is whether the one named is looked at (nothing between).
+/// Follow and attack the nearest enemy are the consumer's to turn into its
+/// following and an attack first; here they are done.
+pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, seen: bool, talk_reach: f32) -> Step {
     let Some(to) = target.filter(|_| !ended) else {
         return Step::Done;
     };
@@ -62,17 +68,19 @@ pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, ta
             if actions.is_empty() { Step::Done } else { Step::Act(actions) }
         }
         Command::TalkTo { .. } if apart > talk_reach => Step::Act(walk_toward(here, to)),
+        // Near enough but not seen (a tree, a post between): closer, to the
+        // brain's reach.
+        Command::TalkTo { .. } if !seen && !walk_toward(here, to).is_empty() => Step::Act(walk_toward(here, to)),
         Command::TalkTo { .. } => {
             let mut actions = turn_toward(here, to);
             actions.push(Action::Use);
             Step::Act(actions)
         }
-        // `to` is the spot before the door; there, the knock, until it is
-        // knocked (`ended`).
-        Command::Knock { .. } => {
-            let actions = walk_toward(here, to);
-            Step::Act(if actions.is_empty() { vec![Action::Knock] } else { actions })
-        }
+        // `to` is the spot beside the door; there (nearer than the brain's
+        // reach, so the knocker stands clear of the doorway), the knock,
+        // until it is knocked (`ended`).
+        Command::Knock { .. } if apart > KNOCK_ARRIVE => Step::Act(vec![Action::Go { x: to.x, y: to.y, z: to.z }]),
+        Command::Knock { .. } => Step::Act(vec![Action::Knock]),
         Command::Attack { .. } if apart > MELEE_REACH => Step::Act(walk_toward(here, to)),
         Command::Attack { .. } => {
             let mut actions = turn_toward(here, to);
@@ -118,40 +126,51 @@ mod tests {
     fn move_to_goes_there_and_is_done_there() {
         let command = Command::MoveTo { x: 10.0, y: -6.0, z: 0.0 };
         let to = Vec3::new(10.0, -6.0, 0.0);
-        assert_eq!(step(&command, Vec3::ZERO, Some(to), false, TALK), Step::Act(vec![Action::Go { x: 10.0, y: -6.0, z: 0.0 }]));
-        assert_eq!(step(&command, Vec3::new(9.5, -6.0, 0.0), Some(to), false, TALK), Step::Done);
-        assert!(matches!(step(&command, Vec3::new(10.0, 0.0, 0.0), Some(to), false, TALK), Step::Act(_)), "right above it, two levels up: not there");
+        assert_eq!(step(&command, Vec3::ZERO, Some(to), false, true, TALK), Step::Act(vec![Action::Go { x: 10.0, y: -6.0, z: 0.0 }]));
+        assert_eq!(step(&command, Vec3::new(9.5, -6.0, 0.0), Some(to), false, true, TALK), Step::Done);
+        assert!(matches!(step(&command, Vec3::new(10.0, 0.0, 0.0), Some(to), false, true, TALK), Step::Act(_)), "right above it, two levels up: not there");
     }
 
     #[test]
     fn talk_to_walks_near_then_faces_and_uses_until_talking() {
         let them = Vec3::new(0.0, 0.0, 10.0);
         let command = Command::TalkTo { who: 7 };
-        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, TALK), Step::Act(a) if a.contains(&Action::Go { x: 0.0, y: 0.0, z: 10.0 })));
+        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, true, TALK), Step::Act(a) if a.contains(&Action::Go { x: 0.0, y: 0.0, z: 10.0 })));
         let near = Vec3::new(0.0, 0.0, 8.0);
-        assert_eq!(step(&command, near, Some(them), false, TALK), Step::Act(vec![Action::Aim { x: 0.0, y: 10.0 }, Action::Use]));
-        assert_eq!(step(&command, near, Some(them), true, TALK), Step::Done, "talking with them: done");
-        assert_eq!(step(&command, near, None, false, TALK), Step::Done, "gone: done");
+        assert_eq!(step(&command, near, Some(them), false, true, TALK), Step::Act(vec![Action::Aim { x: 0.0, y: 10.0 }, Action::Use]));
+        assert_eq!(
+            step(&command, near, Some(them), false, false, TALK),
+            Step::Act(vec![Action::Go { x: 0.0, y: 0.0, z: 10.0 }]),
+            "near enough but not seen (something between): closer"
+        );
+        assert_eq!(step(&command, Vec3::new(0.0, 0.0, 9.0), Some(them), false, false, TALK), Step::Act(vec![Action::Aim { x: 0.0, y: 10.0 }, Action::Use]), "at reach: face them and use");
+        assert_eq!(step(&command, near, Some(them), true, true, TALK), Step::Done, "talking with them: done");
+        assert_eq!(step(&command, near, None, false, true, TALK), Step::Done, "gone: done");
     }
 
     #[test]
     fn knock_walks_to_the_door_and_knocks_until_knocked() {
         let before_the_door = Vec3::new(0.0, -6.0, 4.0);
         let command = Command::Knock { who: 7 };
-        assert_eq!(step(&command, Vec3::ZERO, Some(before_the_door), false, TALK), Step::Act(vec![Action::Go { x: 0.0, y: -6.0, z: 4.0 }]));
-        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), false, TALK), Step::Act(vec![Action::Knock]));
-        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), true, TALK), Step::Done, "knocked: done");
-        assert_eq!(step(&command, Vec3::ZERO, None, false, TALK), Step::Done, "no door: done");
+        assert_eq!(step(&command, Vec3::ZERO, Some(before_the_door), false, true, TALK), Step::Act(vec![Action::Go { x: 0.0, y: -6.0, z: 4.0 }]));
+        assert_eq!(
+            step(&command, Vec3::new(0.0, -6.0, 3.0), Some(before_the_door), false, true, TALK),
+            Step::Act(vec![Action::Go { x: 0.0, y: -6.0, z: 4.0 }]),
+            "within the brain's reach but not at the spot: still going"
+        );
+        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), false, true, TALK), Step::Act(vec![Action::Knock]));
+        assert_eq!(step(&command, Vec3::new(0.0, -6.0, 3.8), Some(before_the_door), true, true, TALK), Step::Done, "knocked: done");
+        assert_eq!(step(&command, Vec3::ZERO, None, false, true, TALK), Step::Done, "no door: done");
     }
 
     #[test]
     fn attack_closes_then_hits_in_reach_until_dead() {
         let them = Vec3::new(5.0, 0.0, 0.0);
         let command = Command::Attack { who: 3 };
-        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, TALK), Step::Act(a) if !a.contains(&Action::Attack)));
+        assert!(matches!(step(&command, Vec3::ZERO, Some(them), false, true, TALK), Step::Act(a) if !a.contains(&Action::Attack)));
         let near = Vec3::new(4.0, 0.0, 0.0);
-        assert_eq!(step(&command, near, Some(them), false, TALK), Step::Act(vec![Action::Aim { x: 5.0, y: 0.0 }, Action::Attack]));
-        assert_eq!(step(&command, near, None, false, TALK), Step::Done, "dead: done");
+        assert_eq!(step(&command, near, Some(them), false, true, TALK), Step::Act(vec![Action::Aim { x: 5.0, y: 0.0 }, Action::Attack]));
+        assert_eq!(step(&command, near, None, false, true, TALK), Step::Done, "dead: done");
     }
 
     #[test]
