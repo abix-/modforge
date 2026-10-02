@@ -2105,6 +2105,168 @@ fn shelf_fronts_near() {
     }
 }
 
+/// Do cleaner item trips fail during a window? When the item step's
+/// `SetDestination` returns false it calls `MarkAgentUnreachable` on
+/// the chosen front, which raises that front's `_agentUnreachableUntil`
+/// (a game time). Reads it on every shelf front and pallet edge, plus
+/// each cleaner search's `_dbgNoPlacement`, at the start and end of
+/// `TWT_SECS` (default 60) of play, and prints what changed. Read-only.
+#[test]
+fn cleaner_unreachable_window() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let secs: u64 = std::env::var("TWT_SECS").ok().and_then(|s| s.parse().ok()).unwrap_or(60);
+    let now = || {
+        api.op("invoke_static", json!({"class": "UnityEngine.Time", "method": "get_timeAsDouble", "args": []}))
+            .result
+    };
+    let mut fronts: Vec<(String, i64)> = Vec::new();
+    for (class, field) in [
+        ("Runtime.Item.Shelving.ShelfObject", "_FrontTransforms_k__BackingField"),
+        ("Runtime.Item.Containers.PalletObject", "_EdgeTransforms_k__BackingField"),
+    ] {
+        let list = common::find_instances(&api, class, false).unwrap_or_default();
+        for v in &list {
+            let Some(h) = handle_of(v) else { continue };
+            let name = api.op("invoke_method", json!({"handle": h, "method": "ToString", "args": []})).result;
+            let fr = api.op("read_field", json!({"handle": h, "field": field}));
+            if let Some(fh) = handle_of(&fr.result) {
+                let n = count_of(&api, fh).unwrap_or(0);
+                for k in 0..n {
+                    let it = api.op("invoke_method", json!({"handle": fh, "method": "get_Item", "args": [k]}));
+                    if let Some(ih) = handle_of(&it.result) {
+                        fronts.push((format!("{name} front {k}"), ih));
+                    }
+                }
+                release(&api, fh);
+            } else {
+                println!("{name}: {field} {} {:?}", fr.result, fr.error);
+            }
+            release(&api, h);
+        }
+    }
+    let searches = common::find_instances(&api, "Runtime.Mob.Actions.SearchForCleanableMobActionState", false)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(handle_of)
+        .collect::<Vec<_>>();
+    let until = |ih: i64| api.op("read_field", json!({"handle": ih, "field": "_agentUnreachableUntil"})).result;
+    let no_place = |sh: i64| api.op("read_field", json!({"handle": sh, "field": "_dbgNoPlacement"})).result;
+
+    let t0 = now();
+    let before: Vec<Value> = fronts.iter().map(|(_, ih)| until(*ih)).collect();
+    let np0: Vec<Value> = searches.iter().map(|sh| no_place(*sh)).collect();
+    println!("{} fronts, {} cleaner searches, game time {t0}; watching {secs} s", fronts.len(), searches.len());
+    std::thread::sleep(std::time::Duration::from_secs(secs));
+    let t1 = now();
+    let mut marked = 0;
+    for ((label, ih), b) in fronts.iter().zip(&before) {
+        let a = until(*ih);
+        if a != *b {
+            marked += 1;
+            println!("marked: {label} until {b} -> {a}");
+        }
+    }
+    println!("game time {t0} -> {t1}: {marked} front(s) newly marked unreachable");
+    for (sh, n0) in searches.iter().zip(&np0) {
+        println!("cleaner search {sh}: _dbgNoPlacement {n0} -> {}", no_place(*sh));
+    }
+    for (_, ih) in &fronts {
+        release(&api, *ih);
+    }
+    for sh in &searches {
+        release(&api, *sh);
+    }
+}
+
+/// The shelves parked at the world origin (within 4 m of 0,0,0, far
+/// from the shop): where each sits in the scene (parent chain), whether
+/// it is switched on, and whether it is in the game's own shelf set
+/// `StageManager.Model.Shelves`, the set both cleaner steps go through.
+/// Read-only.
+#[test]
+fn origin_shelves() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let call = |h: i64, m: &str| api.op("invoke_method", json!({"handle": h, "method": m, "args": []})).result;
+    let id_of = |h: i64| call(h, "GetInstanceID").as_i64().unwrap_or(0);
+
+    // Instance ids of every shelf in StageModel.Shelves.
+    let mgr = common::find_instances(&api, "Runtime.Stage.StageManager", false).unwrap_or_default();
+    let mh = mgr.iter().find_map(handle_of).expect("no StageManager");
+    let model = handle_of(&api.op("read_field", json!({"handle": mh, "field": "_Model_k__BackingField"})).result)
+        .expect("no StageModel");
+    let set = handle_of(&api.op("read_field", json!({"handle": model, "field": "_Shelves_k__BackingField"})).result)
+        .expect("no Shelves");
+    let en = handle_of(&call(set, "GetEnumerator")).expect("no enumerator");
+    let mut in_model = std::collections::BTreeSet::new();
+    while call(en, "MoveNext").as_bool() == Some(true) {
+        if let Some(sh) = handle_of(&call(en, "get_Current")) {
+            in_model.insert(id_of(sh));
+            release(&api, sh);
+        }
+    }
+    for h in [en, set, model, mh] {
+        release(&api, h);
+    }
+    println!("StageModel.Shelves holds {}", in_model.len());
+
+    let list = common::find_instances(&api, "Runtime.Item.Shelving.ShelfObject", false).unwrap_or_default();
+    let (mut at_origin, mut origin_in_model) = (0, 0);
+    for v in &list {
+        let Some(h) = handle_of(v) else { continue };
+        let Some(tr) = handle_of(&call(h, "get_transform")) else {
+            release(&api, h);
+            continue;
+        };
+        let (x, _, z) = common::parse_vec3(&call(tr, "get_position")).unwrap_or((1e9, 0.0, 1e9));
+        if x.hypot(z) > 4.0 {
+            release(&api, tr);
+            release(&api, h);
+            continue;
+        }
+        at_origin += 1;
+        let listed = in_model.contains(&id_of(h));
+        origin_in_model += usize::from(listed);
+        // Parent chain up to the scene root.
+        let mut chain = Vec::new();
+        let mut cur = tr;
+        while let Some(p) = handle_of(&call(cur, "get_parent")) {
+            chain.push(call(p, "ToString").as_str().unwrap_or("?").replace(" (UnityEngine.Transform)", ""));
+            if cur != tr {
+                release(&api, cur);
+            }
+            cur = p;
+            if chain.len() > 12 {
+                break;
+            }
+        }
+        if cur != tr {
+            release(&api, cur);
+        }
+        let go = handle_of(&call(h, "get_gameObject"));
+        let active = go.map(|g| {
+            let a = call(g, "get_activeInHierarchy");
+            release(&api, g);
+            a
+        });
+        println!(
+            "{} in StageModel.Shelves {listed} active {:?} enabled {} parents [{}]",
+            call(h, "ToString"),
+            active,
+            call(h, "get_enabled"),
+            chain.join(" <- "),
+        );
+        release(&api, tr);
+        release(&api, h);
+    }
+    println!("{at_origin} shelves at the origin, {origin_in_model} of them in StageModel.Shelves");
+}
+
 /// Can the floor under a point be found through the shim?
 /// `Physics.RaycastAll(TWT_DEST, down, 5 m)`: each hit's collider,
 /// point and distance. Read-only.
@@ -2219,7 +2381,39 @@ fn item_shelf_candidates() {
         }
         release(&api, h);
     }
-    let item = found.expect("no cleaner is carrying such an item");
+    // Else one the item step just dropped (it carries the "no placement"
+    // flag), from every item the game tracks: `StageManager.Model.Items`.
+    // (`ItemObject.NoPlacementItems` comes back typed as an interface
+    // the bridge cannot enumerate.)
+    if found.is_none() {
+        let mgr = common::find_instances(&api, "Runtime.Stage.StageManager", false).unwrap_or_default();
+        let mh = mgr.iter().find_map(handle_of).expect("no StageManager");
+        let model = handle_of(&api.op("read_field", json!({"handle": mh, "field": "_Model_k__BackingField"})).result)
+            .expect("no StageModel");
+        let items = handle_of(&api.op("read_field", json!({"handle": model, "field": "_Items_k__BackingField"})).result)
+            .expect("no Items");
+        let e = api.op("invoke_method", json!({"handle": items, "method": "GetEnumerator", "args": []}));
+        let en = handle_of(&e.result).unwrap_or_else(|| panic!("GetEnumerator: {} {:?}", e.result, e.error));
+        let mut n = 0;
+        while found.is_none() && call(en, "MoveNext").as_bool() == Some(true) && n < 5000 {
+            n += 1;
+            if let Some(ih) = handle_of(&call(en, "get_Current")) {
+                if call(ih, "ToString").as_str().is_some_and(|s| s.contains(want.as_str()))
+                    && call(ih, "get_IsNoPlacementAvailable").as_bool() == Some(true)
+                {
+                    found = Some(ih);
+                } else {
+                    release(&api, ih);
+                }
+            }
+        }
+        println!("looked at {n} item(s)");
+        for h in [en, items, model, mh] {
+            release(&api, h);
+        }
+    }
+    let item = found.expect("no cleaner is carrying such an item and none is flagged");
+    println!("item {}", call(item, "ToString"));
     let data = handle_of(&call(item, "get_Data")).expect("no data");
     let sv = handle_of(&api.op("read_field", json!({"handle": item, "field": "_shelvableObject"})).result)
         .expect("not shelvable");
@@ -2258,11 +2452,30 @@ fn item_shelf_candidates() {
                 })
                 .unwrap_or_default();
             println!(
-                "{} zone {own} dedicated {}: standing spot {fs} {:?}",
+                "{} zone {own} enabled {} dedicated {}: standing spot {fs} {:?}",
                 call(h, "ToString"),
+                call(h, "get_enabled"),
                 call(h, "get_IsDedicated"),
                 front.error
             );
+            // The four filters of GetInsideFrontTransform, per front:
+            // zone Inside(0)/Warehouse(3), not blocked by an obstacle,
+            // not marked unreachable, same zone as the shelf.
+            let fr = api.op("read_field", json!({"handle": h, "field": "_FrontTransforms_k__BackingField"}));
+            if let Some(fh) = handle_of(&fr.result) {
+                for k in 0..count_of(&api, fh).unwrap_or(0) {
+                    if let Some(ih) = handle_of(&api.op("invoke_method", json!({"handle": fh, "method": "get_Item", "args": [k]})).result) {
+                        println!(
+                            "    front {k}: zone {} blockedByObstacle {} agentUnreachable {}",
+                            call(ih, "get_CurrentZone"),
+                            call(ih, "IsBlockedByObstacle"),
+                            call(ih, "get_IsAgentUnreachable"),
+                        );
+                        release(&api, ih);
+                    }
+                }
+                release(&api, fh);
+            }
         }
         release(&api, h);
     }

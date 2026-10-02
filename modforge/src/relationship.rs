@@ -21,8 +21,8 @@ pub const HIT_HATED: f32 = 50.0;
 
 /// How a person feels toward `toward`, from -1 (hate) to 1 (love), from
 /// their own memory: hit by them, killed by them, and what they heard
-/// from them (`heard`: how hearing those words feels, from the content
-/// that wrote them). None when they have nothing of them in memory.
+/// from them (`heard`: how hearing that line feels, by its name, from the
+/// content that wrote it). None when they have nothing of them in memory.
 pub fn feeling(memory: &Memory, toward: ActorId, heard: impl Fn(&str) -> f32) -> Option<f32> {
     let mut felt = None::<f32>;
     for (_, did) in &memory.done {
@@ -47,7 +47,7 @@ fn felt_of(did: &Did, toward: ActorId, heard: &impl Fn(&str) -> f32) -> Option<f
     match did {
         Did::WasHit(Some(by), amount) if *by == toward => Some(-amount / HIT_HATED),
         Did::Died(Some(by), _) if *by == toward => Some(-1.0),
-        Did::Heard(by, words) if *by == toward => Some(heard(words)),
+        Did::Heard(by, line) if *by == toward => Some(heard(&line.name)),
         _ => None,
     }
 }
@@ -112,8 +112,13 @@ mod tests {
     const PLAYER: ActorId = ActorId(1);
     const OTHER: ActorId = ActorId(2);
 
-    fn threat(words: &str) -> f32 {
-        if words == "Step away from it." { -0.6 } else { 0.0 }
+    fn threat(line: &str) -> f32 {
+        if line == "threatens Mara" { -0.6 } else { 0.0 }
+    }
+
+    /// A line heard, by its name.
+    fn said(name: &str) -> crate::memory::Line {
+        crate::memory::Line { name: name.to_string(), words: format!("({name})") }
     }
 
     #[test]
@@ -135,7 +140,7 @@ mod tests {
     #[test]
     fn a_threat_heard_is_hostile() {
         let mut mara = Memory::default();
-        mara.did(Did::Heard(PLAYER, "Step away from it.".to_string()), 1);
+        mara.did(Did::Heard(PLAYER, said("threatens Mara")), 1);
         assert_eq!(stands(feeling(&mara, PLAYER, threat), None, Relation::Neutral), Relation::Hostile);
     }
 
@@ -143,7 +148,7 @@ mod tests {
     fn killed_by_them_is_full_hate() {
         let mut mara = Memory::default();
         mara.did(Did::Died(Some(PLAYER), "hatchet".to_string()), 1);
-        mara.did(Did::Heard(PLAYER, "Step away from it.".to_string()), 2);
+        mara.did(Did::Heard(PLAYER, said("threatens Mara")), 2);
         assert_eq!(feeling(&mara, PLAYER, threat), Some(-1.0));
     }
 
@@ -178,17 +183,17 @@ mod tests {
     #[test]
     fn feelings_are_toward_everyone_in_memory() {
         let mut mara = Memory::default();
-        mara.did(Did::Heard(PLAYER, "Step away from it.".to_string()), 1);
+        mara.did(Did::Heard(PLAYER, said("threatens Mara")), 1);
         mara.did(Did::Slept, 2);
         mara.did(Did::WasHit(Some(OTHER), 10.0), 3);
-        mara.did(Did::Heard(PLAYER, "hello".to_string()), 4);
+        mara.did(Did::Heard(PLAYER, said("hello")), 4);
         assert_eq!(feelings(&mara, threat), vec![(PLAYER, -0.6), (OTHER, -0.2)]);
     }
 
     #[test]
     fn own_feeling_comes_before_the_faction() {
         let mut friend = Memory::default();
-        friend.did(Did::Heard(PLAYER, "hello".to_string()), 1);
+        friend.did(Did::Heard(PLAYER, said("hello")), 1);
         let warm = |_: &str| 0.6;
         assert_eq!(stands(feeling(&friend, PLAYER, warm), Some(-0.9), Relation::Hostile), Relation::Friendly);
     }

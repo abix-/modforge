@@ -203,6 +203,57 @@ read, not its exception handling). Next step: switch on
 `NavigationManager._enableDebugLogs` and read Player.log at the next
 stuck hire.
 
+### Third capture: Opal, with our cleaner changes off (2026-09-30)
+
+`nav_snap`, `craft_bench` and `cleaner_level` not installed, so the
+game's own code only. Opal stood still outside by the car park
+(`-91.12, -0.02, -43.09`), holding a beer.
+
+```text
+stuck_probe:
+nav 140: calculating true moving false unreachable false reached false destination "(0.00, 0.12, 0.00)" path corners -1
+t=0..9: pos unchanged, stuckTimer 0.0, pathFailures 0
+hire_action_state:
+ProcessItemObjectCleanableMobActionState
+    _targetItem = "BeerItemPrefab(Clone)"
+    _retryCount = 1
+    _targetShelf = null
+    _lastChosenTransform = null
+    _shouldPlaceOnShelf = true
+    _failedTargets count = 0
+```
+
+Cause (found later the same evening): **the mod's own diagnosis hook**,
+not the game. The cleaner trace had a postfix on the item step's
+`TrySelectShelf(candidates, out shelf, out front, out position)` from
+18:43 (hot reload generation 2). After it, the item step sent cleaners
+to `(0.00, y, 0.00)`: the chosen shelf and front were right, but the
+`out Vector3 position` the game copies into the trip destination
+(`TrySelectShelf` steps 136-137, `MoveToMostAppropriatePosition` steps
+1913-1920) came back zero. Trace line:
+
+```text
+set destination: mob_name_opal to "(0.00, -0.02, 0.00)" ...; NEAR ORIGIN, item step: item "BeerItemPrefab(Clone)", item zone 1,
+  place on shelf true, shelf "FlimsyWoodenShelfItemPrefab(Clone)", front "Front" at "(-91.49, 0.49, -61.57)", retries 0
+```
+
+Removing the postfix by hot reload did not stop it; a game restart
+without it did: 116 cleaner trips, 0 near the origin
+(`set dest 116  near origin 0`). Likely reading (not checked in the
+HarmonyX / Il2CppInterop source): patching an IL2CPP method wraps it,
+the wrapper does not write an `out` struct back to the caller, and
+unpatching leaves the wrapper until restart.
+
+Rule taken from this: never patch an IL2CPP method that has `out` or
+`ref` struct parameters; read its results from the caller or from the
+fields it sets instead. After removing any patch, restart the game
+before trusting what follows.
+
+The 25 shelves found at the world origin are the game's switched-off
+furniture templates (`origin_shelves`: `active false`, 0 of 25 in
+`StageModel.Shelves`); cleaners never consider them. They had nothing
+to do with this.
+
 ### Tested since (2026-09-30)
 
 - Replacement, `path_replace_test` on idle Jeremy: two `SetDestination`
@@ -276,6 +327,14 @@ holding the item.
 - That stocking uses the shelf's own slots, not the front point, so a
   front point on the floor would still let the cleaner stock the shelf.
 
+### Wrong fix: `nav_snap`
+
+`nav_snap` was built on the reading that `useSamplePosition: true` moves
+the destination onto the navmesh. It does not: it moves the cleaner's
+own start point (see "Cleaners juggling items", `nav_snap` section). So
+it does not fix this hang, and it is the change that reaches the item
+trip behind the juggling.
+
 ### Tests
 
 `shelf_fronts_near`: shelves within 4 m of `TWT_DEST` with their front
@@ -309,6 +368,18 @@ picking items up and dropping them, all the time.
 - `cleaner_search_state` counters, morning vs after the changes:
   `_dbgNoPlacement` 3 -> about 470, `_dbgFloorNoDest` 387 -> 0,
   `_dbgNotCleanable` 376 -> about 460, `_dbgGenericNoSpace` 73 -> 86.
+- What those counters are (`FindMisplacedItem`, steps 229-231 and
+  304-316): all six are zeroed at the start of every search pass, then
+  each item looked at adds one to the first that fits: not cleanable
+  (`_dbgNotCleanable`), `IsCleanUnreachable` (`_dbgUnreachable`),
+  `IsNoPlacementAvailable` (`_dbgNoPlacement`). So `_dbgNoPlacement` is
+  how many items carry the "no placement" flag right now, not a count
+  of drops. The flag is `ItemObject._noPlacementAvailableUntil`
+  (`0x150`, a game time, raised by `MarkNoPlacementAvailable(seconds)`),
+  and every flagged item is in the static set
+  `ItemObject.NoPlacementItems`. 470 means many items were dropped
+  within the flag's duration (constant at `0x183648E44`, not read); it
+  does not give a drop rate.
 - `IsNoPlacementAvailable` is set only by the item step: at the end of
   `MoveToMostAppropriatePosition`, when no shelf and no pallet was
   selected and the item is from Inside or the Warehouse (not Outside,
@@ -383,23 +454,155 @@ or `AnyPalletHasSpaceForExact`). The item step then finds no place.
 - A class search over every `ItemObject` now fails in the shim:
   `mono_walk_class: buffer too small (cap=65536)`.
 
+### Found: `nav_snap` is the change that reaches the item trip (1.2.5 dump)
+
+Of the three mod changes that touch cleaners, only `nav_snap` is on the
+item step's path:
+
+- `cleaner_level` only turns on `FloorWorkerWorkPolicy.CanDisposeCorpses`
+  (`GetCurrentPolicy`). `SearchForCleanableMobActionState.SearchForObject`
+  reads it (policy byte `[this+89]`, step 029) only to look for bodies
+  first; the item search (`FindMisplacedItem`, step 135) and the item
+  step are unchanged.
+- `craft_bench` runs only inside
+  `ItemObjectProvider.GetConsumableItemsPresentFromBox` / `...FromBoxes`
+  and puts the box back before the call returns. No cleaner method calls
+  them.
+- `nav_snap` changes the item step's own `SetDestination` call.
+
+What `useSamplePosition: true` does
+(`RigidbodyNavigator.<TryCalculateAndApplyPathAsync>d__150`, steps
+083-126): it takes the **cleaner's own position**
+(`Component.get_transform`, `Transform.get_position`), moves it to
+`NavMesh.SamplePosition` within `_offMeshRecoveryRadius` (`0x114`, which
+`nav_snap` raised to 3 m on hires), and uses that as the path start. The
+destination (`[state+44]`) goes to `NavigationManager.CalculatePathAsync`
+unchanged. So `nav_snap` never moved a high shelf's front point down to
+the floor; it moves the start of every item trip to the nearest walkable
+point up to 3 m away.
+
+How a failed trip ends in a drop
+(`ProcessItemObjectCleanableMobActionState.<MoveToMostAppropriatePosition>d__21`):
+
+- Step 2096 reads the `SetDestination` result. On false: step 2141
+  `WorldTransformZoneProvider.MarkAgentUnreachable(seconds)` on the chosen
+  front (constant at `0x183648C2C`), step 2149 counts one retry, and under
+  10 retries it goes back to choosing a shelf.
+- The front marked unreachable is then not offered (the unnamed filter in
+  `GetInsideFrontTransform` is the likely reader of `IsAgentUnreachable`;
+  not read). No other shelf is chosen, so step 1662 or 1840
+  `MarkNoPlacementAvailable` and `OnCompleted`: the item is dropped.
+- The search's `HasAcceptingShelfWithSpace` does not check reach, so it
+  picks the item again: juggling.
+- The mark is timed and on the front itself, which fits
+  `shelf_fronts_near` reading "not unreachable" at one moment and
+  `_failedTargets` staying 0 (a different list).
+
+### Measured: no item trip failed in 62 s (2026-09-30)
+
+`cleaner_unreachable_window` (`TWT_SECS=60`, game running):
+
+```text
+118 fronts, 13 cleaner searches, game time 1077.0653836522108; watching 60 s
+game time 1077.0653836522108 -> 1139.6091973497732: 0 front(s) newly marked unreachable
+cleaner search 14809: _dbgNoPlacement 353 -> 179
+cleaner search 14810: _dbgNoPlacement 354 -> 225
+```
+
+No front or pallet edge was marked unreachable, so the `nav_snap` path
+to a drop did not happen in that window. The flagged-item counts fell,
+so fewer items were being dropped than flags were running out. Whether
+cleaners were juggling during the window was not recorded.
+
+### Measured: juggling still happens with our cleaner changes off (2026-09-30)
+
+Game restarted with `nav_snap`, `craft_bench` and `cleaner_level` not
+installed (`lib.rs`). The operator saw cleaners working again, and
+still juggling. The upgrades repeated by `skill_repeat` were checked
+(`thewalkingtrade.json`: death reputation x6, hire limit x2, hire
+combat power x1); none touches shelves or items. Nothing else the mod
+installs touches cleaners.
+
+### Measured: the cleaner trace (`cleaner_trace.rs`, 2026-09-30)
+
+Three lines per item in Player.log: the game's own reason line
+(`[SearchForCleanable:Actions] tiers -> dedicated=... consolidate=...
+inference=...`, from `FindMisplacedItem` with `_debugLogging` on; it
+does not name the cleaner), then `pick:` (cleaner, item, instance id),
+`select shelf:` per `TrySelectShelf` call (list size, result), and
+`end:` (cleaner, item, shelf, pallet, retries, dropped).
+
+One run, new copy loaded by hot reload:
+
+```text
+gen1 picks 288 ends 266 dropped 249
+--- which tier held the dropped item at pick:
+272 inference
+1 dedicated
+```
+
+```text
+select shelf: "mob_name_evan" from 0 candidate(s) -> false, shelf "-"   (x7)
+end: "mob_name_evan" item "CopperPipeItemPrefab(Clone)" #-1212258 from zone 3: shelf "-", pallet "-", retries 0, dropped with no place true
+```
+
+- Almost every drop is an item the search picked as "inference" (no
+  dedicated shelf with room; it believes an accepting shelf or a pallet
+  has room).
+- The item step then hands `TrySelectShelf` empty lists (0 shelves on
+  every call) and drops the item without walking anywhere. So its own
+  shelf loop (`MoveToMostAppropriatePosition`, steps 899-1059) throws
+  out every shelf; the standing spot lookup is never reached.
+- `item_shelf_candidates` on a flagged item (from `StageManager.Model
+  .Items`): many shelves accept it, fit it, and every front passes all
+  four standing spot filters (zone, not blocked, not unreachable, same
+  zone as the shelf).
+- The game's shelf set `StageModel.Shelves` (what both the search and
+  the item step go through) held 45 shelves; a scene search found 93
+  `ShelfObject`s, among them the special item units' shelves
+  (`SpecialItemShelfItemPrefab`, `TopShelf1`, `Base2`, `MiddleShelf1`,
+  ...). Which of the 93 are in the 45 is not checked.
+
+The `select shelf:` lines came from a postfix on `TrySelectShelf`
+(generations 2-6) that broke the item step's trip destinations (see
+"Third capture: Opal"); the list sizes it read are inputs and are
+believed right, but that hook is gone for good. The 249-of-266 drop
+count above was measured before it (generation 1).
+
+After a clean game restart without it (19:07): 1 drop in 65 item steps
+over about 90 s of play. Too short to say whether the juggling is gone
+or comes and goes.
+
+### Found: both steps use the same shelf tests (1.2.5 dump)
+
+- Search, `HasAcceptingShelfWithSpace`: every shelf in
+  `StageModel.Shelves` passing `IsUsableShelf` (alive, enabled, has a
+  stocking setup, has its own item, that item's zone Inside or
+  Warehouse), `AcceptsItem(item data)` and `CanFitItem`. Cached per item
+  data (`[info+18]` computed, `[info+19]` result).
+- Item step shelf loop: same set, `AcceptsItem(item data)`,
+  `CanFitItem(_shelvableComponent)` (the target item's own
+  `ShelvableObject`, filled at step 197), shelf has its own item, not in
+  `_failedTargets`, zone Inside or Warehouse. It then tries every list
+  it built, one after another, with no conditions.
+- `GetInsideFrontTransform(startPosition)`: fronts with zone Inside or
+  Warehouse, not `IsBlockedByObstacle`, not the unnamed check (likely
+  `IsAgentUnreachable`), zone equal to the shelf's own item's zone; the
+  start position only sorts by distance.
+
 ### Not proven
 
-- The cause. Which check makes the item step find no place for worn
-  cloth / gunpowder / bandages / beer from Inside or the Warehouse while
-  the search sees "inference" room.
-- Which change started it. Candidates: the crafting reach fix (bench
-  boxes back to normal size, hundreds of warehouse items no longer
-  vetoed) and `nav_snap` (changes every cleaner trip, including ground
-  items).
-
-### Next step (not built)
-
-Follow one juggled item from start to end: with the search log on for
-one cleaner, read the item step at the moment it picks up a worn cloth
-or bandage (its shelf lists and which `TrySelectShelf` /
-`TrySelectPallet` calls fail and why), instead of checking conditions
-one at a time.
+- Which of the item step's shelf tests empties its lists for a dropped
+  item. `cleaner_trace` now counts, at each drop, how many shelves pass
+  each test in order; no drop has been counted yet.
+- Whether the search's cached answer is stale (it is kept per item
+  data), which would explain the search seeing room the item step does
+  not.
+- Whether the special item units' shelves are in `StageModel.Shelves`.
+- That `nav_snap` causes the juggling: it does not (juggling continues
+  with it off).
+- That the unnamed filter in `GetInsideFrontTransform` is the
+  `IsAgentUnreachable` check.
 
 ## Staff working hours
 

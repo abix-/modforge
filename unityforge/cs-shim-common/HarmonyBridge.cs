@@ -182,6 +182,17 @@ namespace Unityforge.Shim
             PostfixResult,
         }
 
+        /// <summary>
+        /// Kinds whose slot methods take Harmony's object[] __args,
+        /// which Harmony writes back into the arguments afterwards.
+        /// </summary>
+        private static bool UsesArgsArray(PatchKind kind) =>
+            kind == PatchKind.PrefixArgs0Ctx
+            || kind == PatchKind.PrefixInstanceArgs
+            || kind == PatchKind.PostfixFloatResult
+            || kind == PatchKind.PostfixIntResult
+            || kind == PatchKind.PostfixResult;
+
         private class PatchEntry
         {
             public MethodBase Target;
@@ -788,6 +799,24 @@ namespace Unityforge.Shim
             {
                 string namePrefix = SlotNamePrefix(kind);
 
+                // Harmony copies __args back into the arguments after
+                // the patch. On a ref/out parameter that overwrites
+                // what the method wrote with the value from its start:
+                // The Walking Trade 2026-09-30, a PostfixResult on
+                // TrySelectShelf(..., out Vector3 position) handed the
+                // caller (0,0,0) and cleaners walked to the world origin.
+                if (UsesArgsArray(kind))
+                {
+                    foreach (var p in target.GetParameters())
+                    {
+                        if (p.ParameterType.IsByRef)
+                        {
+                            ShimLogger.Error($"HarmonyBridge: refusing {kind} on {target.DeclaringType?.FullName}.{target.Name}: parameter '{p.Name}' is ref/out and Harmony's __args write-back would overwrite it; use a patch kind without __args, or read the result from the caller");
+                            return 0;
+                        }
+                    }
+                }
+
                 int slot = FindFreeSlot(kind);
                 if (slot < 0)
                 {
@@ -814,7 +843,37 @@ namespace Unityforge.Shim
 
                 int handle = _next++;
                 _patches[handle] = new PatchEntry { Target = target, Kind = kind, Slot = slot };
+                _everPatched.Add(target);
                 return handle;
+            }
+        }
+
+        /// <summary>
+        /// Every method patched since the game started. On IL2CPP a
+        /// patched method keeps a generated wrapper after its last
+        /// patch is removed (Il2CppInterop's DetourTo re-detours
+        /// instead of restoring the native code), so a hot reload
+        /// that drops a hook does not give the game its method back.
+        /// </summary>
+        private static readonly HashSet<MethodBase> _everPatched = new HashSet<MethodBase>();
+
+        /// <summary>
+        /// Methods patched earlier this game session that no patch
+        /// covers now. Called after a hot swap; each one needs a game
+        /// restart to be the game's own code again.
+        /// </summary>
+        public static List<string> WrappedButUnpatched()
+        {
+            lock (_lock)
+            {
+                var live = new HashSet<MethodBase>();
+                foreach (var kv in _patches) live.Add(kv.Value.Target);
+                var dropped = new List<string>();
+                foreach (var m in _everPatched)
+                {
+                    if (!live.Contains(m)) dropped.Add(m.DeclaringType?.FullName + "." + m.Name);
+                }
+                return dropped;
             }
         }
 

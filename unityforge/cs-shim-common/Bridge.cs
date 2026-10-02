@@ -17,7 +17,7 @@ namespace Unityforge.Shim
     public static class BridgeConstants
     {
         public const uint Magic = 0x52424655u; // "UFBR"
-        public const uint Version = 10u;       // bumped: added HarmonyPatchPostfixResult
+        public const uint Version = 11u;       // bumped: added KeepHandle
     }
 
     public enum RuntimeKind : uint
@@ -89,6 +89,13 @@ namespace Unityforge.Shim
         // arguments and the result as JSON, and writes a replacement
         // result as JSON (or keeps the original).
         public IntPtr HarmonyPatchPostfixResult;
+
+        // ---- v11 ---------------------------------------------------
+        // Mark a handle to survive a hot reload (keep != 0) or clear
+        // the mark: the backend's handle clear between generations
+        // skips marked handles, so the next generation can take the
+        // object over.
+        public IntPtr KeepHandle;
     }
 
     /// <summary>
@@ -110,6 +117,7 @@ namespace Unityforge.Shim
         IntPtr ReleaseHandle { get; }
         IntPtr ListMethods { get; }
         IntPtr InvokeStatic { get; }
+        IntPtr KeepHandle { get; }
     }
 
     public static class Bridge
@@ -154,6 +162,8 @@ namespace Unityforge.Shim
                 HarmonyPatchPostfixIntResult = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixIntResultDelegate),
 
                 HarmonyPatchPostfixResult = Marshal.GetFunctionPointerForDelegate(HarmonyBridge.PatchPostfixResultDelegate),
+
+                KeepHandle = backend.KeepHandle,
             };
         }
     }

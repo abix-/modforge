@@ -102,8 +102,22 @@ $game = Get-Process $ProcessName -ErrorAction SilentlyContinue
 $shimSame = (Test-Path $ShimDeployed) -and
     ((Get-FileHash $ShimBuilt).Hash -eq (Get-FileHash $ShimDeployed).Hash)
 $configSame = (Get-ConfigHashes $ConfigSrc) -eq (Get-ConfigHashes $ConfigDeployed)
+# A running game is only hot-reloadable if the mod is loaded in it:
+# started with EasyAntiCheat (Steam's default launch), the game
+# skips the mod and nothing is there to swap.
+$modLoaded = $false
+if ($game) {
+    try {
+        Invoke-RestMethod -Uri "http://127.0.0.1:$Port/op" -Method Post `
+            -Body '{"op":"ping","args":{}}' -ContentType "application/json" -TimeoutSec 2 | Out-Null
+        $modLoaded = $true
+    }
+    catch {
+        Write-Host "[check] game running but the mod is not answering (started with EasyAntiCheat?); full restart" -ForegroundColor Yellow
+    }
+}
 
-if ($game -and $shimSame -and $configSame -and -not $Full) {
+if ($game -and $modLoaded -and $shimSame -and $configSame -and -not $Full) {
     $gens = Get-ChildItem $NativeDir -Filter "$RustName.gen*.dll" -ErrorAction SilentlyContinue |
         ForEach-Object { if ($_.Name -match '\.gen(\d+)\.dll$') { [int]$Matches[1] } }
     $next = 1 + (($gens | Measure-Object -Maximum).Maximum ?? 0)

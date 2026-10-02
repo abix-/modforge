@@ -57,6 +57,7 @@ namespace Unityforge.Shim
         public IntPtr InvokeStatic => Marshal.GetFunctionPointerForDelegate(Il2CppBridge.InvokeStaticDelegate);
         public IntPtr ReleaseHandle => Marshal.GetFunctionPointerForDelegate(Il2CppBridge.ReleaseHandleDelegate);
         public IntPtr ListMethods => Marshal.GetFunctionPointerForDelegate(Il2CppBridge.ListMethodsDelegate);
+        public IntPtr KeepHandle => Marshal.GetFunctionPointerForDelegate(Il2CppBridge.KeepHandleDelegate);
     }
 
     public static class Il2CppBridge
@@ -89,11 +90,24 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// Drop every cached handle. Used during hot reload.
+        /// Drop every cached handle except those marked with
+        /// KeepHandle. Used during hot reload; the next generation
+        /// takes the kept ones over.
         /// </summary>
         public static void ClearHandles()
         {
-            lock (_lock) { _handles.Clear(); _next = 1; }
+            lock (_lock) HandleKeep.Clear(_handles, _kept, ref _next);
+        }
+
+        /// <summary>Handles marked to survive ClearHandles.</summary>
+        private static readonly HashSet<int> _kept = new HashSet<int>();
+
+        public delegate void KeepHandleFn(int handle, int keep);
+        public static readonly KeepHandleFn KeepHandleDelegate = KeepHandle;
+
+        private static void KeepHandle(int handle, int keep)
+        {
+            lock (_lock) HandleKeep.Mark(_kept, handle, keep);
         }
 
         // ---- delegate types --------------------------------------------
@@ -427,7 +441,11 @@ namespace Unityforge.Shim
         private static void ReleaseHandle(int handle)
         {
             if (handle == 0) return;
-            lock (_lock) _handles.Remove(handle);
+            lock (_lock)
+            {
+                _handles.Remove(handle);
+                _kept.Remove(handle);
+            }
         }
 
         /// <summary>

@@ -219,7 +219,7 @@ pub fn hide(t: &mut Think, target: &Target) -> Status {
     let Target::Point(home) = *target else {
         return Status::Failed;
     };
-    let actions = if t.p.at_home { vec![] } else { walk_toward(t.p, home) };
+    let actions = if t.p.at_home { vec![] } else { walk_toward(t.p.position, home) };
     t.act(actions, None);
     Status::Running
 }
@@ -276,7 +276,7 @@ pub fn flee(t: &mut Think, _: &Target) -> Status {
     let to = p
         .home
         .unwrap_or_else(|| p.position + (p.position - from).with_y(0.0).normalize_or_zero() * FLEE_FAR);
-    t.act(walk_toward(p, to), None);
+    t.act(walk_toward(p.position, to), None);
     Status::Running
 }
 
@@ -305,7 +305,7 @@ pub fn break_off(t: &mut Think, target: &Target) -> Status {
         t.act(vec![], None);
         return Status::Succeeded;
     }
-    t.act(walk_toward(p, p.home.unwrap_or(began_at)), None);
+    t.act(walk_toward(p.position, p.home.unwrap_or(began_at)), None);
     Status::Running
 }
 
@@ -316,11 +316,11 @@ pub fn fight(t: &mut Think, _: &Target) -> Status {
     let p = t.p;
     let wake = p.asleep.then_some(Do::Wake);
     if let Some((_, at)) = p.hostile {
-        let mut actions = turn_toward(p, at);
+        let mut actions = turn_toward(p.position, at);
         if p.position.distance(at) <= reach_of(p) {
             actions.push(Action::Attack);
         } else if p.behaviour == Behaviour::Hunter {
-            actions.push(step_toward(p, at));
+            actions.push(step_toward(p.position, at));
         }
         t.act(actions, wake);
         return Status::Running;
@@ -330,9 +330,9 @@ pub fn fight(t: &mut Think, _: &Target) -> Status {
         return Status::Succeeded;
     };
     let actions = if p.behaviour == Behaviour::Hunter {
-        walk_toward(p, at)
+        walk_toward(p.position, at)
     } else {
-        turn_toward(p, at)
+        turn_toward(p.position, at)
     };
     t.act(actions, wake);
     Status::Running
@@ -426,7 +426,7 @@ pub fn going(t: &mut Think, target: &Target) -> Status {
         t.act(vec![], None);
         return Status::Succeeded;
     }
-    t.act(walk_toward(p, at), p.asleep.then_some(Do::Wake));
+    t.act(walk_toward(p.position, at), p.asleep.then_some(Do::Wake));
     Status::Running
 }
 
@@ -758,35 +758,38 @@ fn standable_spot(p: &Perception, roll: &mut Roll, mut spot: impl FnMut(&mut Rol
     (0..SPOT_TRIES).map(|_| spot(roll)).find(|to| (p.standable)(*to))
 }
 
+/// How near a person comes to hit, before their personality's range.
+pub const MELEE_REACH: f32 = 1.8;
+
 fn reach_of(p: &Perception) -> f32 {
-    1.8 * p.personality.range_mult()
+    MELEE_REACH * p.personality.range_mult()
 }
 
-/// Face a point: aim at it on the ground (topside combat.md: a person
-/// faces what they aim at, seen from above).
-fn turn_toward(p: &Perception, to: Vec3) -> Vec<Action> {
-    if (to - p.position).with_y(0.0).length() < 1e-4 {
+/// Face a point from `from`: aim at it on the ground (topside combat.md: a
+/// person faces what they aim at, seen from above).
+pub fn turn_toward(from: Vec3, to: Vec3) -> Vec<Action> {
+    if (to - from).with_y(0.0).length() < 1e-4 {
         return vec![];
     }
     vec![Action::Aim { x: to.x, y: to.z }]
 }
 
-/// A step toward a point along the ground: the move's x is the
+/// A step from `from` toward a point along the ground: the move's x is the
 /// world's x and its y is the world's z, the view's right and up seen
 /// from above.
-fn step_toward(p: &Perception, to: Vec3) -> Action {
-    let d = (to - p.position).with_y(0.0).normalize_or_zero();
+pub fn step_toward(from: Vec3, to: Vec3) -> Action {
+    let d = (to - from).with_y(0.0).normalize_or_zero();
     Action::Move { x: d.x, y: d.z }
 }
 
-/// Face a point and walk to it, unless already there.
-fn walk_toward(p: &Perception, to: Vec3) -> Vec<Action> {
-    let flat = (to - p.position).with_y(0.0);
+/// Face a point and walk to it from `from`, unless already there.
+pub fn walk_toward(from: Vec3, to: Vec3) -> Vec<Action> {
+    let flat = (to - from).with_y(0.0);
     if flat.length() <= REACH {
         return vec![];
     }
-    let mut actions = turn_toward(p, to);
-    actions.push(step_toward(p, to));
+    let mut actions = turn_toward(from, to);
+    actions.push(step_toward(from, to));
     actions
 }
 

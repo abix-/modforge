@@ -37,6 +37,7 @@ namespace Unityforge.Shim
         public IntPtr ReleaseHandle => Marshal.GetFunctionPointerForDelegate(MonoBridge.ReleaseHandleDelegate);
         public IntPtr ListMethods => Marshal.GetFunctionPointerForDelegate(MonoBridge.ListMethodsDelegate);
         public IntPtr InvokeStatic => Marshal.GetFunctionPointerForDelegate(MonoBridge.InvokeStaticDelegate);
+        public IntPtr KeepHandle => Marshal.GetFunctionPointerForDelegate(MonoBridge.KeepHandleDelegate);
     }
 
     public static class MonoBridge
@@ -69,12 +70,24 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// Drop every cached handle. Used during hot reload so
-        /// the new Rust image starts with a fresh handle space.
+        /// Drop every cached handle except those marked with
+        /// KeepHandle. Used during hot reload; the new Rust image
+        /// takes the kept ones over.
         /// </summary>
         public static void ClearHandles()
         {
-            lock (_lock) { _handles.Clear(); _next = 1; }
+            lock (_lock) HandleKeep.Clear(_handles, _kept, ref _next);
+        }
+
+        /// <summary>Handles marked to survive ClearHandles.</summary>
+        private static readonly HashSet<int> _kept = new HashSet<int>();
+
+        public delegate void KeepHandleFn(int handle, int keep);
+        public static readonly KeepHandleFn KeepHandleDelegate = KeepHandle;
+
+        private static void KeepHandle(int handle, int keep)
+        {
+            lock (_lock) HandleKeep.Mark(_kept, handle, keep);
         }
 
         // ---- delegate types --------------------------------------------
@@ -352,7 +365,11 @@ namespace Unityforge.Shim
         private static void ReleaseHandle(int handle)
         {
             if (handle == 0) return;
-            lock (_lock) { _handles.Remove(handle); }
+            lock (_lock)
+            {
+                _handles.Remove(handle);
+                _kept.Remove(handle);
+            }
         }
 
         // ---- helpers ---------------------------------------------------

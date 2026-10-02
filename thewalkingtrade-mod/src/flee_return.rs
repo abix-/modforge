@@ -26,7 +26,9 @@ use serde_json::json;
 use unityforge::hook::{HOOK_REGISTRY, HookCtx, patch_prefix_ctx};
 
 use crate::ctx_object;
-use unityforge::mono::{LogLevel, MonoObject, invoke_static, json_handle, log, owned_object};
+use unityforge::mono::{
+    LogLevel, MonoObject, invoke_static, json_handle, keep_through_reload, log, owned_object, take_kept,
+};
 
 /// Saved job clone per hire instance id. The MonoObject keeps the
 /// clone alive until it is handed back.
@@ -56,6 +58,47 @@ pub fn install() {
             ),
         }
     }
+    take_over_saved();
+    modforge::shutdown::SHUTDOWN_REGISTRY.register(modforge::shutdown::ShutdownHandlerDef {
+        name: "twt flee_return: hand saved jobs over",
+        order: 50,
+        run: hand_over_saved,
+    });
+}
+
+/// `modforge::handoff` key: `[[hire instance id, kept job handle], ...]`.
+const HANDOFF: &str = "twt_flee_return_saved";
+
+/// Hot reload: keep every saved job through the swap and leave the
+/// list for the next generation, so a hire who fled before the reload
+/// still comes back healed to that job.
+fn hand_over_saved() {
+    let saved: Vec<(i64, MonoObject)> = SAVED.lock().map(|mut s| s.drain().collect()).unwrap_or_default();
+    let mut kept = Vec::new();
+    for (id, job) in saved {
+        match keep_through_reload(job) {
+            Ok(h) => kept.push(json!([id, h])),
+            Err(e) => log(LogLevel::Warn, &format!("thewalkingtrade-mod: flee: saved job dropped: {e}")),
+        }
+    }
+    if !kept.is_empty() {
+        modforge::handoff::put(HANDOFF, &json!(kept));
+    }
+}
+
+/// The saved jobs a previous generation handed over, if any.
+fn take_over_saved() {
+    let Some(list) = modforge::handoff::take(HANDOFF) else { return };
+    let mut n = 0;
+    if let Ok(mut saved) = SAVED.lock() {
+        for pair in list.as_array().into_iter().flatten() {
+            if let (Some(id), Some(h)) = (pair[0].as_i64(), pair[1].as_i64()) {
+                saved.insert(id, take_kept(h as i32));
+                n += 1;
+            }
+        }
+    }
+    log(LogLevel::Info, &format!("thewalkingtrade-mod: flee: took over {n} saved job(s)"));
 }
 
 fn instance_id(staff: &MonoObject) -> Result<i64, String> {

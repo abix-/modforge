@@ -809,13 +809,13 @@ pub fn tile_plan(def: &StructureDef) -> Vec<TileRun> {
     tile_plan_at(def, 0.0)
 }
 
-/// Every level a structure has at or above the ground, as the height of
-/// its floor, lowest first, each with how tall it stands: the levels its
-/// rooms' floors are at, each as tall as the lowest room on it (a stair
-/// tower on the ground spans every level and is taller).
-pub fn levels_above_ground(def: &StructureDef) -> Vec<(f32, f32)> {
+/// Every level a structure has, below the ground and above it, as the
+/// height of its floor, lowest first, each with how tall it stands: the
+/// levels its rooms' floors are at, each as tall as the lowest room on it
+/// (a stair tower spans every level and is taller).
+pub fn levels(def: &StructureDef) -> Vec<(f32, f32)> {
     let mut levels: Vec<(f32, f32)> = Vec::new();
-    for room in def.rooms.iter().filter(|r| r.origin.y > -0.5) {
+    for room in &def.rooms {
         match levels.iter_mut().find(|(y, _)| (*y - room.origin.y).abs() < 0.5) {
             Some((_, height)) => *height = height.min(room.interior.y),
             None => levels.push((room.origin.y, room.interior.y)),
@@ -823,6 +823,29 @@ pub fn levels_above_ground(def: &StructureDef) -> Vec<(f32, f32)> {
     }
     levels.sort_by(|a, b| a.0.total_cmp(&b.0));
     levels
+}
+
+/// The ground tiles a structure leaves open to the levels below: inside
+/// every room that rises through the ground from below (a stair tower
+/// going down), structure-local tiles as `tile_plan` counts them. The
+/// consumer draws no ground there, so the way down is seen.
+pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
+    let mut tiles = Vec::new();
+    for room in def.rooms.iter().filter(|r| r.origin.y < -0.5 && r.origin.y + r.interior.y > 0.5) {
+        let (x0, z0, w, l) = room_tiles(room);
+        tiles.extend((z0..z0 + l).flat_map(|z| (x0..x0 + w).map(move |x| (x, z))));
+    }
+    tiles
+}
+
+/// A room's interior on the tile grid: its first tile (x, z) and how many
+/// tiles across and deep, its size rounded to whole tiles.
+fn room_tiles(room: &RoomDef) -> (i32, i32, i32, i32) {
+    let w = room.interior.x.round().max(1.0) as i32;
+    let l = room.interior.z.round().max(1.0) as i32;
+    let x0 = (room.origin.x - w as f32 / 2.0).round() as i32;
+    let z0 = (room.origin.z - l as f32 / 2.0).round() as i32;
+    (x0, z0, w, l)
 }
 
 /// One level of a structure on the tile grid (`tile_plan` for the one at
@@ -865,10 +888,7 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
     let spans = |r: &RoomDef| r.origin.y < level - 0.5 && r.origin.y + r.interior.y > level + 0.5;
     for room in def.rooms.iter().filter(|r| at_level(r) || spans(r)) {
         let spanning = !at_level(room);
-        let w = room.interior.x.round().max(1.0) as i32;
-        let l = room.interior.z.round().max(1.0) as i32;
-        let x0 = (room.origin.x - w as f32 / 2.0).round() as i32;
-        let z0 = (room.origin.z - l as f32 / 2.0).round() as i32;
+        let (x0, z0, w, l) = room_tiles(room);
         let (floor, wall) = (TileKind::Floor.rank(), TileKind::Wall.rank());
         // A room spanning this level has no floor here: its landings are.
         for z in z0..z0 + l {

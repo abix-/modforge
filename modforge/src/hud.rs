@@ -142,8 +142,6 @@ pub enum OpenPanel {
     Note,
     /// A crafting station's recipes.
     Station,
-    /// Talking to the person in `HudState::talking_to`: the topics.
-    Talk,
 }
 
 /// The prompt while the player looks at a person in talking distance
@@ -153,6 +151,79 @@ pub fn talk_prompt(name: &str) -> Prompt {
         text: format!("[E] Talk to {name}"),
         can_interact: true,
     }
+}
+
+/// The player's conversation as the HUD shows it (topside episodes.md
+/// "How a conversation looks"): Fallout: New Vegas's box, the world going
+/// on. The last line said, with who said it; the player's choices under
+/// it, numbered, each said by its number key (`choice_for_key`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Talking {
+    /// Who the player talks to (their ActorId) and their name.
+    pub with: u64,
+    pub name: String,
+    /// The last line of the conversation: who said it ("You" or their
+    /// name) and its words.
+    pub line: Option<(String, String)>,
+    /// What the player can say now: each line, its words, and whether it
+    /// is a threat (shown <Threaten>). Empty while it is not their turn.
+    pub choices: Vec<Choice>,
+}
+
+/// One of the player's choices as the box shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Choice {
+    pub said: crate::actions::Said,
+    pub words: String,
+    pub threat: bool,
+}
+
+/// The basic controls, shown once each until done (topside design.md
+/// "The bunker you start in": shown in the player's room, all ignorable;
+/// Fallout: New Vegas's walk-past tutorial).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hint {
+    Move,
+    Look,
+    Use,
+    Inventory,
+    Hotbar,
+}
+
+impl Hint {
+    /// Every hint, in the order shown.
+    pub const ALL: [Hint; 5] = [Hint::Move, Hint::Look, Hint::Use, Hint::Inventory, Hint::Hotbar];
+
+    /// The key and what it does.
+    pub fn text(self) -> &'static str {
+        match self {
+            Hint::Move => "WASD  move",
+            Hint::Look => "Mouse  look",
+            Hint::Use => "E  use",
+            Hint::Inventory => "I  inventory",
+            Hint::Hotbar => "1-6  hotbar",
+        }
+    }
+
+    /// The hint an action does: a move, a look, a use, the inventory, a
+    /// hotbar key. A move standing still does none.
+    pub fn of(action: &crate::actions::Action) -> Option<Hint> {
+        use crate::actions::Action;
+        match action {
+            Action::Move { x, y } if *x != 0.0 || *y != 0.0 => Some(Hint::Move),
+            Action::Look { yaw, pitch } if *yaw != 0.0 || *pitch != 0.0 => Some(Hint::Look),
+            Action::Use => Some(Hint::Use),
+            Action::Inventory => Some(Hint::Inventory),
+            Action::Hotbar { .. } => Some(Hint::Hotbar),
+            _ => None,
+        }
+    }
+}
+
+/// The choice a number key says: the hotbar key's slot `index` (1 is 0)
+/// is the choice of that number, while choices show.
+pub fn choice_for_key(talking: &Talking, index: usize) -> Option<crate::actions::Said> {
+    talking.choices.get(index).map(|c| c.said)
 }
 
 /// The vital bars the HUD always shows.
@@ -187,8 +258,8 @@ pub struct HudState {
     /// The amount set on the splitting bar for the selected stack: a drag
     /// from the selected slot moves only this many. None moves it whole.
     pub split: Option<u32>,
-    /// Who the talk panel talks to (their ActorId), while it is open.
-    pub talking_to: Option<u64>,
+    /// The player's conversation, while they are in one.
+    pub talking: Option<Talking>,
 }
 
 impl HudState {
@@ -605,6 +676,38 @@ pub fn move_stack(inv: &mut Inventory, from: usize, to: usize, max_stack: u32) {
 mod tests {
     use super::*;
     use crate::item::ItemStack;
+
+    #[test]
+    fn a_number_key_says_the_choice_of_that_number() {
+        use crate::actions::Said;
+        let talking = Talking {
+            choices: (0..3)
+                .map(|i| Choice {
+                    said: Said::Line { line: i, key: 0 },
+                    words: format!("choice {i}"),
+                    threat: false,
+                })
+                .collect(),
+            ..Talking::default()
+        };
+        assert_eq!(choice_for_key(&talking, 0), Some(Said::Line { line: 0, key: 0 }), "1 says the first");
+        assert_eq!(choice_for_key(&talking, 2), Some(Said::Line { line: 2, key: 0 }), "3 says the third");
+        assert_eq!(choice_for_key(&talking, 3), None, "a number past the last says nothing");
+        assert_eq!(choice_for_key(&Talking::default(), 0), None, "no choices, nothing");
+    }
+
+    #[test]
+    fn each_control_done_is_its_hint() {
+        use crate::actions::Action;
+        assert_eq!(Hint::of(&Action::Move { x: 0.0, y: 1.0 }), Some(Hint::Move));
+        assert_eq!(Hint::of(&Action::Move { x: 0.0, y: 0.0 }), None, "standing still moves nothing");
+        assert_eq!(Hint::of(&Action::Look { yaw: 0.1, pitch: 0.0 }), Some(Hint::Look));
+        assert_eq!(Hint::of(&Action::Use), Some(Hint::Use));
+        assert_eq!(Hint::of(&Action::Inventory), Some(Hint::Inventory));
+        assert_eq!(Hint::of(&Action::Hotbar { index: 2 }), Some(Hint::Hotbar));
+        assert_eq!(Hint::of(&Action::Attack), None);
+        assert!(Hint::ALL.iter().all(|h| !h.text().is_empty()));
+    }
 
     #[test]
     fn the_talk_prompt_names_the_person() {

@@ -30,10 +30,10 @@ pub const BRIDGE_MAGIC: u32 = 0x52424655;
 /// added `harmony_patch_prefix_instance_args`; v8 added
 /// `harmony_patch_postfix_float_result`; v9 added
 /// `harmony_patch_postfix_int_result`; v10 added
-/// `harmony_patch_postfix_result` (the Rust side also accepts
-/// the previous version's table and leaves the new tail None until
-/// the game restarts on the upgraded shim).
-pub const BRIDGE_VERSION: u32 = 10;
+/// `harmony_patch_postfix_result`; v11 added `keep_handle` (the
+/// Rust side also accepts the previous version's table and leaves
+/// the new tail None until the game restarts on the upgraded shim).
+pub const BRIDGE_VERSION: u32 = 11;
 
 /// Unity runtime backend. Stored in the bridge struct at init;
 /// read via [`runtime_kind`] for code that must branch on
@@ -311,6 +311,13 @@ pub struct BridgeTable {
             postfix_fn: PostfixResultFn,
         ) -> PatchHandle,
     >,
+
+    /// Mark a handle to survive a hot reload (`keep` != 0) or clear
+    /// the mark. The shim's handle clear between generations skips
+    /// marked handles, so the next generation can take the object
+    /// over by the same id. Releasing a handle clears its mark.
+    /// None when the running shim is pre-v11.
+    pub keep_handle: Option<extern "C" fn(handle: MonoHandle, keep: i32)>,
 }
 
 /// Callback of `harmony_patch_postfix_result`.
@@ -351,14 +358,13 @@ pub fn install(bridge: *const BridgeTable) -> bool {
     } else {
         let mut mu = std::mem::MaybeUninit::<BridgeTable>::zeroed();
         // SAFETY: the previous version's table is a byte prefix of
-        // this layout ending right before
-        // `harmony_patch_postfix_result`; the zeroed tail is a
-        // valid None for the Option fn pointer.
+        // this layout ending right before `keep_handle`; the zeroed
+        // tail is a valid None for the Option fn pointer.
         unsafe {
             std::ptr::copy_nonoverlapping(
                 bridge as *const u8,
                 mu.as_mut_ptr() as *mut u8,
-                std::mem::offset_of!(BridgeTable, harmony_patch_postfix_result),
+                std::mem::offset_of!(BridgeTable, keep_handle),
             );
             mu.assume_init()
         }

@@ -8,6 +8,7 @@
 // handle-table lookup.
 
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 
 namespace Unityforge.Shim
@@ -33,6 +34,45 @@ namespace Unityforge.Shim
                 return true;
             }
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Handles that survive a hot reload. Both backends keep the
+    /// same handle table shape (Dictionary + next id); this is the
+    /// one implementation of marking a handle and of the clear that
+    /// spares the marked ones, so the next generation can take the
+    /// object over by the same id. Callers hold their table lock.
+    /// </summary>
+    public static class HandleKeep
+    {
+        public static void Mark(HashSet<int> kept, int handle, int keep)
+        {
+            if (handle == 0) return;
+            if (keep != 0) kept.Add(handle);
+            else kept.Remove(handle);
+        }
+
+        /// <summary>
+        /// Empty the table except marked handles; the marks stay so
+        /// they survive later reloads until released or unmarked.
+        /// </summary>
+        public static void Clear(Dictionary<int, object> handles, HashSet<int> kept, ref int next)
+        {
+            var survivors = new Dictionary<int, object>();
+            foreach (var h in kept)
+            {
+                if (handles.TryGetValue(h, out var v)) survivors[h] = v;
+            }
+            handles.Clear();
+            kept.Clear();
+            next = 1;
+            foreach (var kv in survivors)
+            {
+                handles[kv.Key] = kv.Value;
+                kept.Add(kv.Key);
+                if (kv.Key >= next) next = kv.Key + 1;
+            }
         }
     }
 }

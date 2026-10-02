@@ -20,8 +20,22 @@ Status: **proven** means shown in the live game (see `changelog.md`);
 | Repeatable skill upgrades | An owned multiplier upgrade or +1 hire upgrade can be bought again for a point, stacking once more each time | `skill_repeat.rs`: `CanUnlock` result postfix, unlock button shown after `OnNodePressed`, copy made on `TryUnlockNode`, copies removed on `Skill.Load` and restored after | `skill_repeats` (counts, one set for every save) | Buying and restore proven; +1 hire raising the limit not proven |
 | Barbed wire durability | Wire wears out 10 times slower; slow and damage unchanged | `barbed_wire.rs`: `_ownDamagePerTick` 2.0 to 0.2 in a prefix on `BarbedWireDamageTrigger.Awake` | none | Proven on 9 active wires |
 | Spiked wall durability | Wall takes a tenth of the damage from each mob it hits; the damage it deals is unchanged | `spiked_wall.rs`: byte patch at startup, the wall's own `ApplyDamage` multiplier load (`movss xmm3`) repointed from the game's 1.0f to its 0.1f, both found by patternsleuth | none | Not proven |
-| Cleaners reach high wall shelves | A cleaner sent to a point above the floor (a high wall shelf's front) walks to the floor below it instead of hanging | `nav_snap.rs`: byte patch so the cleaner item step's `SetDestination` passes `useSamplePosition: true`; hires' navigators get a 3 m snap reach (`_offMeshRecoveryRadius`) in a prefix on `RigidbodyNavigator.Awake` | none | Not proven |
+| Cleaners reach high wall shelves | Meant to send a cleaner to the floor below a high wall shelf's front. Wrong: `useSamplePosition` moves the cleaner's own start point, not the destination (see `research.md`) | `nav_snap.rs`: byte patch so the cleaner item step's `SetDestination` passes `useSamplePosition: true`; hires' navigators get a 3 m snap reach (`_offMeshRecoveryRadius`) in a prefix on `RigidbodyNavigator.Awake` | none | Wrong fix, to be removed |
 | Shop opens each morning | After sleeping, the shop is opened | `store_open.rs`: postfix on `GameController.OnPlayerSleepCompleted` calls `StoreManager.TryToggleStoreOpen` | none | Proven |
+
+**Switched off since 2026-09-30** (not installed in `lib.rs`, while
+finding the cleaner bugs): crafting reach (`craft_bench`), body disposal
+at level 2 (`cleaner_level`), and `nav_snap`. The first two are to be
+put back (`todo.md`).
+
+| Diagnosis | What it does | How |
+|---|---|---|
+| Cleaner trace | Writes to Player.log why each cleaner picked an item and how its item step ended; at a drop, counts how many shelves pass each of the item step's shelf tests | `cleaner_trace.rs`: search `_debugLogging` switched on in a prefix on its `OnEnter`; postfixes on `FindMisplacedItem` and `TrySelectShelf`; prefix on the item step's `OnExit`. Written with `UnityEngine.Debug.Log` |
+
+Rust-only changes load without restarting the game:
+`pwsh -NoProfile -File thewalkingtrade-mod/scripts/reload.ps1` (hot
+reload through the shim's generation loader; a C# shim change still
+needs `restart.ps1`).
 
 ## Cost
 

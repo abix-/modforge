@@ -39,37 +39,85 @@ pub struct EpisodeDef {
     pub fits: Vec<String>,
     /// The people it needs, each cast from people who already exist.
     pub parts: Vec<PartDef>,
-    /// What its parts say (topside episodes.md "The lines").
+    /// What its parts and the player say (topside episodes.md "The
+    /// lines"): rules like any line, each needing its part, so they win
+    /// over plain talk while the episode runs.
     pub lines: Vec<LineDef>,
-    /// What the player can say, at each moment.
-    pub choices: Vec<ChoiceDef>,
 }
 
-/// One thing a part says at a moment of the episode, several ways of
-/// saying it, each with {slots} the consumer fills from the world and the
-/// speaker's memory: never always the same words.
+/// One line, as a rule (topside episodes.md "One way for every
+/// conversation"; Valve's response rules): who may say it, what must be
+/// true when they do, several ways of saying it with {slots} filled from
+/// the world and the speaker's memory, what it tells, and how hearing it
+/// feels. An episode's line, a plain line, and the player's choice are
+/// all this; `crate::talk::pick` says the best matching one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LineDef {
+    /// What saying it is ("believes Dell", "the way"): memory keeps it
+    /// beside the words, and replies, pivot points, and feelings go by it.
+    /// Rules may share a name (the same line said at two moments).
+    pub name: String,
+    /// Who may say it: a part of the episode ("Dell"), "player" for the
+    /// player's choices, or "" for anyone but the player.
     pub part: String,
-    /// The moment it is said at (a pivot point's name).
-    pub at: String,
+    /// What must all be true of the speaker.
+    pub when: Vec<When>,
     pub ways: Vec<String>,
-}
-
-/// One thing the player can say at a moment, several ways of saying it,
-/// what choosing it is (the pivot point's choice), and the other person's
-/// reply, several ways (topside episodes.md "Conversations": every choice
-/// gets a reply, then the conversation ends).
-#[derive(Clone, Debug, PartialEq)]
-pub struct ChoiceDef {
-    pub at: String,
-    pub ways: Vec<String>,
-    pub choice: String,
-    pub reply: Vec<String>,
+    /// What it tells the listener of: a thing the episode brought into the
+    /// world by name ("tap"), else the kind of a thing the speaker knows
+    /// ("well"), else "" for nothing. The {slots} of a way are filled for
+    /// this thing.
+    pub tells: String,
     /// How the one spoken to feels about hearing it, -1 to 1 (a threat
     /// below `relationship::HOSTILE`, a kind word above 0; topside life.md
     /// "How a person feels about others").
     pub felt: f32,
+    /// Silence (topside episodes.md: doing nothing is always a choice;
+    /// Firewatch, Oxenfree, Cyberpunk 2077): a player's line with no ways
+    /// is never shown as a choice; when it matches, it is said by itself
+    /// if the player chooses nothing within this many real seconds. 0 for
+    /// every other line.
+    pub wait: f32,
+}
+
+/// One thing that must be true of the speaker for a line to be said, read
+/// from their memory and the moment (`crate::talk::Speaking`).
+#[derive(Clone, Debug, PartialEq)]
+pub enum When {
+    /// The one spoken to is cast as this part, or "player".
+    To(String),
+    /// The one spoken to started this conversation (the player's E).
+    Opened,
+    /// Nothing has been said in this conversation yet: the speaker's
+    /// first word. A plain question asked once, not offered after every
+    /// reply (a conversation ends after the last reply).
+    First,
+    /// What the speaker last heard from the one they talk to, in this
+    /// conversation and not yet answered, was this line.
+    Heard(String),
+    /// The speaker has heard this line from the one they talk to, at any
+    /// time: a moment left open when a conversation ended without an
+    /// answer is still open the next time.
+    HasHeard(String),
+    /// What the speaker last said to the one they talk to, in this
+    /// conversation, was this line, and nothing was heard since: they go
+    /// on.
+    JustSaid(String),
+    /// The speaker has said this line, to anyone, ever.
+    Said(String),
+    /// This pivot point of the episode has been reached.
+    Reached(String),
+    /// The speaker knows a thing of this kind and may tell of it (not one
+    /// they keep quiet).
+    Knows(String),
+    /// The speaker stands within this many metres of the thing the episode
+    /// brought in by this name.
+    Near(String, f32),
+    /// The speaker's need (hunger, thirst) is this low or lower.
+    Needs(String, f32),
+    Not(Box<When>),
+    /// Any one of these.
+    Any(Vec<When>),
 }
 
 /// One way of saying something, picked from the seed and `salt` among
@@ -200,14 +248,10 @@ impl EpisodeRegistry {
         Some(fitting[at])
     }
 
-    /// How hearing these words feels (`ChoiceDef::felt`): the choice
-    /// said in them, of any episode; 0 for words no choice says.
-    pub fn felt(&self, words: &str) -> f32 {
-        self.defs
-            .iter()
-            .flat_map(|d| &d.choices)
-            .find(|c| c.ways.iter().any(|w| w == words))
-            .map_or(0.0, |c| c.felt)
+    /// How hearing this line feels (`LineDef::felt`), by its name, of any
+    /// episode; 0 for a line no episode has.
+    pub fn felt(&self, line: &str) -> f32 {
+        self.defs.iter().flat_map(|d| &d.lines).find(|l| l.name == line).map_or(0.0, |l| l.felt)
     }
 }
 
@@ -1044,7 +1088,6 @@ mod tests {
             fits: fits.iter().map(|r| r.to_string()).collect(),
             parts: Vec::new(),
             lines: Vec::new(),
-            choices: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1080,27 +1123,28 @@ mod tests {
     }
 
     #[test]
-    fn words_heard_feel_as_the_choice_that_says_them() {
+    fn a_line_heard_feels_as_its_rule_says() {
         let mut registry = EpisodeRegistry::default();
-        let choice = |ways: &[&str], felt| ChoiceDef {
-            at: "the meeting".to_string(),
-            ways: ways.iter().map(|w| w.to_string()).collect(),
-            choice: String::new(),
-            reply: Vec::new(),
+        let line = |name: &str, felt| LineDef {
+            name: name.to_string(),
+            part: "player".to_string(),
+            when: Vec::new(),
+            ways: vec!["words".to_string()],
+            tells: String::new(),
             felt,
+            wait: 0.0,
         };
         registry
             .register(EpisodeDef {
                 name: "the tap".to_string(),
                 fits: Vec::new(),
                 parts: Vec::new(),
-                lines: Vec::new(),
-                choices: vec![choice(&["Step away from it."], -0.6), choice(&["There's enough for both of us."], 0.2)],
+                lines: vec![line("threatens Mara", -0.6), line("talks with Mara", 0.2)],
             })
             .unwrap();
-        assert_eq!(registry.felt("Step away from it."), -0.6);
-        assert_eq!(registry.felt("There's enough for both of us."), 0.2);
-        assert_eq!(registry.felt("Busy."), 0.0);
+        assert_eq!(registry.felt("threatens Mara"), -0.6);
+        assert_eq!(registry.felt("talks with Mara"), 0.2);
+        assert_eq!(registry.felt("nothing to say"), 0.0);
     }
 
     #[test]
@@ -1112,7 +1156,6 @@ mod tests {
                 fits: vec!["Loop".to_string()],
                 parts: Vec::new(),
                 lines: Vec::new(),
-                choices: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);

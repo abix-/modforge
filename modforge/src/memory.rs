@@ -134,6 +134,16 @@ pub fn short_of<'a>(
     short.into_iter().map(|(n, _)| n).collect()
 }
 
+/// One thing said: which line it was (its rule's name, storyteller
+/// `LineDef::name`; for telling, asking, offering and threatening the
+/// kind: "told", "asked", "offered", "threatened") and its words as said.
+/// Replies, pivot points, and feelings go by the name, never the words.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Line {
+    pub name: String,
+    pub words: String,
+}
+
 /// Something a person did, or had done to them (topside life.md "What a
 /// person did").
 #[derive(Clone, Debug, PartialEq)]
@@ -158,10 +168,10 @@ pub enum Did {
     Respawned,
     /// Went through a doorway.
     Doorway,
-    /// Said this to this person (crate::talk: "told them of the tap").
-    Talked(ActorId, String),
-    /// Was said this by this person.
-    Heard(ActorId, String),
+    /// Said this line to this person (crate::talk).
+    Talked(ActorId, Line),
+    /// Was said this line by this person.
+    Heard(ActorId, Line),
     /// Was told by this person what was done to them, and when (tick):
     /// word of it spreading (crate::talk::share).
     WasTold(ActorId, u64, Box<Did>),
@@ -204,8 +214,8 @@ impl Did {
             Did::Died(by, of) => format!("died of {of}, killed by {}", who(by)),
             Did::Respawned => "respawned".to_string(),
             Did::Doorway => "went through a doorway".to_string(),
-            Did::Talked(whom, said) => format!("said to {}: {said}", whom.0),
-            Did::Heard(by, said) => format!("heard from {}: {said}", by.0),
+            Did::Talked(whom, said) => format!("said to {}: {}", whom.0, said.words),
+            Did::Heard(by, said) => format!("heard from {}: {}", by.0, said.words),
             Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),
         }
     }

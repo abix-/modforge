@@ -1,14 +1,14 @@
 <configs>
-	<!-- Backpack window for 90 slots: 6 rows x 15 cols at 40px
+	<!-- Backpack window for 135 slots: 9 rows x 15 cols at 40px
 	     (vanilla 5 x 9 at 67px). 15 x 40 = 600 fits the vanilla
-	     width 606; the grid is 6 x 40 = 240 tall, 95 less than the
-	     vanilla 5 x 67 = 335, so the window shrinks by 95 and stays
-	     clear of the toolbelt. (9 rows x 10 cols at 60px reached
-	     into the toolbelt, live 2026-10-01.) -->
-	<set xpath="//window[@name='windowBackpack']/@height">254</set>
-	<set xpath="//window[@name='windowBackpack']//rect[@name='content']/@height">208</set>
-	<set xpath="//window[@name='windowBackpack']//sprite[@name='backgroundMain']/@height">241</set>
-	<set xpath="//window[@name='windowBackpack']//grid[@name='inventory']/@rows">6</set>
+	     width 606; the grid is 9 x 40 = 360 tall, 25 more than the
+	     vanilla 5 x 67 = 335. About 360px of grid clears the toolbelt
+	     (9 rows x 10 cols at 60px showed 6 clear rows, live
+	     2026-10-01). -->
+	<set xpath="//window[@name='windowBackpack']/@height">374</set>
+	<set xpath="//window[@name='windowBackpack']//rect[@name='content']/@height">328</set>
+	<set xpath="//window[@name='windowBackpack']//sprite[@name='backgroundMain']/@height">361</set>
+	<set xpath="//window[@name='windowBackpack']//grid[@name='inventory']/@rows">9</set>
 	<set xpath="//window[@name='windowBackpack']//grid[@name='inventory']/@cols">15</set>
 	<set xpath="//window[@name='windowBackpack']//grid[@name='inventory']/@cell_width">40</set>
 	<set xpath="//window[@name='windowBackpack']//grid[@name='inventory']/@cell_height">40</set>
@@ -18,4 +18,22 @@
 	     slot (24px), so 16 high ends at the slot's bottom edge. -->
 	<setattribute xpath="//window[@name='windowBackpack']//grid[@name='inventory']/item_stack" name="stack_font_size">16</setattribute>
 	<setattribute xpath="//window[@name='windowBackpack']//grid[@name='inventory']/item_stack" name="stack_label_height">16</setattribute>
+
+	<!-- Dropped backpack window. A backpack dropped on death opens
+	     windowBagStorage (Entity: XUiC_BagStorageWindowGroup.Open with
+	     the entity's bag), not windowLooting. It makes one slot per
+	     grid cell, vanilla 11 x 10 = 110, so slots 110+ of the 150-slot
+	     dropped backpack (loot.xml 15 x 10) were not shown: live
+	     2026-10-01, items in slots 110-114 missing and "7 rows and 5"
+	     on screen. 15 x 10 = 150 cells at 50px keeps it 750 wide
+	     (vanilla 10 x 67 = 670). -->
+	<set xpath="//window[@name='windowBagStorage']//grid[@name='queue']/@rows">10</set>
+	<set xpath="//window[@name='windowBagStorage']//grid[@name='queue']/@cols">15</set>
+	<set xpath="//window[@name='windowBagStorage']//grid[@name='queue']/@cell_width">50</set>
+	<set xpath="//window[@name='windowBagStorage']//grid[@name='queue']/@cell_height">50</set>
+	<set xpath="//window[@name='windowBagStorage']//grid[@name='queue']/item_stack/@cell_size">50</set>
+	<!-- Stack count for a 50px slot: the label sits 3/5 down (30px),
+	     so 20 high ends at the slot's bottom edge. -->
+	<setattribute xpath="//window[@name='windowBagStorage']//grid[@name='queue']/item_stack" name="stack_font_size">20</setattribute>
+	<setattribute xpath="//window[@name='windowBagStorage']//grid[@name='queue']/item_stack" name="stack_label_height">20</setattribute>
 </configs>

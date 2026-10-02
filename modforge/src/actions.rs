@@ -134,7 +134,8 @@ pub struct Bindings {
 impl Bindings {
     /// The stock layout: WASD, mouse to attack, E to use, I or Tab
     /// for the inventory, Escape to cancel, digits for the hotbar,
-    /// O to drop, T to transfer.
+    /// O to drop, T to transfer; while a conversation's choices show, the
+    /// digits say them instead (topside input).
     pub fn defaults() -> Self {
         use Action::*;
         use Binding::*;

@@ -1122,12 +1122,26 @@ mod tests {
     }
 
     #[test]
-    fn every_level_above_ground_has_its_own_tile_plan() {
-        use crate::structure::{TileKind, levels_above_ground, tile_plan, tile_plan_at};
+    fn every_level_has_its_own_tile_plan_and_the_way_down_is_open() {
+        use crate::structure::{TileKind, levels, open_to_below, tile_plan, tile_plan_at};
+        let bunker = building("bunker", (1, 1), (1, 1), (1, 1), (2, 2));
+        for seed in 0..20 {
+            let def = generate_building(&bunker, &mut Roll::new(seed));
+            let all = levels(&def);
+            assert_eq!(all.len(), 3, "seed {seed}: the ground and two below, {all:?}");
+            assert!(all[0].0 < all[1].0 && all[1].0 < 0.0 && all[2].0.abs() < 1e-3, "seed {seed}: lowest first, the ground last, {all:?}");
+            for (y, _) in &all[..2] {
+                let below = tile_plan_at(&def, *y);
+                assert!(below.iter().any(|r| r.kind == TileKind::Floor) && below.iter().any(|r| r.kind == TileKind::Wall), "seed {seed}: the level at {y} has floor and walls");
+            }
+            assert!(!open_to_below(&def).is_empty(), "seed {seed}: the stair tower leaves the ground open over the way down");
+        }
+        let shack = generate_building(&building("shack", (1, 1), (1, 1), (1, 1), (0, 0)), &mut Roll::new(1));
+        assert!(open_to_below(&shack).is_empty(), "nothing below: the ground is whole");
         let office = building("office", (2, 4), (1, 2), (2, 2), (0, 0));
         for seed in 0..20 {
             let def = generate_building(&office, &mut Roll::new(seed));
-            let levels = levels_above_ground(&def);
+            let levels = levels(&def);
             assert_eq!(levels.len(), 2, "seed {seed}: two floors, {levels:?}");
             let (up, height) = levels[1];
             assert!((2.8..=3.4).contains(&up) && (up - height).abs() < 1e-3, "seed {seed}: the second floor at the first's height, {levels:?}");

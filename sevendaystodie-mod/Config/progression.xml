@@ -1,0 +1,6 @@
+<configs>
+	<!-- Healing Factor x5. Vanilla HealthChangeOT (health per second)
+	     .011,.022,.05,.1,.16 for ranks 1-5: a full heal of ~100 health
+	     took ~10 minutes at rank 5; x5 makes it ~2 minutes. -->
+	<set xpath="//perk[@name='perkHealingFactor']//passive_effect[@name='HealthChangeOT']/@value">.055,.11,.25,.5,.8</set>
+</configs>

@@ -11,6 +11,7 @@ use unityforge::ModDef;
 
 mod barbed_wire;
 mod cleaner_level;
+mod cleaner_trace;
 mod craft_bench;
 mod flee_return;
 mod nav_snap;
@@ -42,11 +43,13 @@ fn on_init() {
     settings::install();
     skill_repeat::install();
     store_open::install();
-    cleaner_level::install();
+    // Off while finding which change stops cleaners (todo.md).
+    // cleaner_level::install();
     barbed_wire::install();
-    craft_bench::install();
+    // craft_bench::install();
     spiked_wall::install();
-    nav_snap::install();
+    // nav_snap::install();
+    cleaner_trace::install();
     match unityforge::hook::patch_postfix("Il2CppRuntime.Progression.Skills.Skill", "Load", after_skill_load) {
         Ok(h) => unityforge::hook::HOOK_REGISTRY.register(h),
         Err(e) => unityforge::mono::log(

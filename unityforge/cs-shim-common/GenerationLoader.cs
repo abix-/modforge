@@ -323,6 +323,12 @@ namespace Unityforge.Shim
             NotifyGenerationActivated(fresh);
             ShimLogger.Info(
                 $"Unityforge.Shim: hot reload complete (now generation {newGen}; {_quiesced.Count} draining)");
+            // A hook the new generation dropped leaves its method
+            // wrapped until restart (HarmonyBridge.WrappedButUnpatched).
+            foreach (var m in HarmonyBridge.WrappedButUnpatched())
+            {
+                ShimLogger.Warn($"Unityforge.Shim: hot reload: {m} is no longer patched but keeps its Harmony wrapper; restart the game to get the original back");
+            }
         }
 
         private void NotifyGenerationActivated(Generation generation)

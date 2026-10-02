@@ -46,8 +46,6 @@ const VIEW: &str = "Il2CppRuntime.Progression.Skills.Views.SkillViewController";
 /// (controller, node) of the OnNodePressed call in progress, from its
 /// prefix to its postfix (plain postfixes get no context).
 static PRESSED: Mutex<Option<(MonoObject, MonoObject)>> = Mutex::new(None);
-/// (class, copy name) of every copy currently added.
-static COPIES: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
 
 pub fn install() {
     let results = [
@@ -199,25 +197,24 @@ fn add_copy(class: &str, name: &str, node: &MonoObject) -> Result<(), String> {
         &json!([{"$handle": node.handle().0}]),
     )?;
     let ch = json_handle(&copy).ok_or("Instantiate returned no object")?;
-    let copy_name = {
-        let copies = COPIES.lock().map_err(|e| e.to_string())?;
-        format!("{name}{COPY_MARK}{}", copies.len())
-    };
+    // Unique across hot reloads and removals: the copy must be found
+    // again by this exact name below.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let copy_name = format!("{name}{COPY_MARK}{stamp}");
     owned_object(ch).invoke("set_name", &json!([copy_name]))?;
     // The Instantiate handle is typed UnityEngine.Object; a class
     // search hands the copy back typed as its own class.
     let typed = find(class, &copy_name)?.ok_or("copy not found by class search")?;
     typed.invoke("Reset", &json!([]))?;
     typed.invoke("Unlock", &json!([]))?;
-    COPIES
-        .lock()
-        .map_err(|e| e.to_string())?
-        .push((class.to_string(), copy_name));
     Ok(())
 }
 
-/// The live object of `class` named `name`, typed as `class`.
-fn find(class: &str, name: &str) -> Result<Option<MonoObject>, String> {
+/// Every live object of `class`, typed as `class`, with its name.
+fn instances(class: &str) -> Result<Vec<(String, MonoObject)>, String> {
     let ty = MonoType::find(&format!("Il2Cpp{class}")).ok_or_else(|| format!("type {class} not found"))?;
     let walked = ty.walk(true)?;
     let list = walked
@@ -226,15 +223,25 @@ fn find(class: &str, name: &str) -> Result<Option<MonoObject>, String> {
         .or_else(|| walked.as_array())
         .cloned()
         .unwrap_or_default();
-    let mut found = None;
-    for v in &list {
-        let Some(h) = json_handle(v) else { continue };
-        let obj = owned_object(h);
-        if found.is_none() && v.get("name").and_then(Json::as_str) == Some(name) {
-            found = Some(obj);
-        }
-    }
-    Ok(found)
+    Ok(list
+        .iter()
+        .filter_map(|v| {
+            let name = v.get("name").and_then(Json::as_str).unwrap_or("").to_string();
+            json_handle(v).map(|h| (name, owned_object(h)))
+        })
+        .collect())
+}
+
+/// The live object of `class` named `name`, typed as `class`.
+fn find(class: &str, name: &str) -> Result<Option<MonoObject>, String> {
+    Ok(instances(class)?.into_iter().find(|(n, _)| n == name).map(|(_, o)| o))
+}
+
+/// Every copy of `class` in the scene, found by its name mark. The
+/// copies themselves are the record, so a hot reload (which clears
+/// the mod's memory and the shim's handles) loses nothing.
+fn copies(class: &str) -> Result<Vec<MonoObject>, String> {
+    Ok(instances(class)?.into_iter().filter(|(n, _)| n.contains(COPY_MARK)).map(|(_, o)| o).collect())
 }
 
 extern "C" fn on_load(instance: *const c_void) -> i32 {
@@ -246,11 +253,17 @@ extern "C" fn on_load(instance: *const c_void) -> i32 {
     0
 }
 
-/// Take every copy back out of its total and destroy it.
+/// Take every copy back out of its total and destroy it: every marked
+/// object of each upgrade type the settings count.
 fn remove_copies() -> Result<(), String> {
-    let copies: Vec<_> = COPIES.lock().map_err(|e| e.to_string())?.drain(..).collect();
-    for (class, name) in copies {
-        if let Some(copy) = find(&class, &name)? {
+    let classes: std::collections::BTreeSet<String> = settings()
+        .get()
+        .skill_repeats
+        .keys()
+        .filter_map(|k| k.split_once('|').map(|(c, _)| c.to_string()))
+        .collect();
+    for class in classes {
+        for copy in copies(&class)? {
             copy.invoke("Reset", &json!([]))?;
             invoke_static("UnityEngine.Object", "Destroy", &json!([{"$handle": copy.handle().0}]))?;
         }

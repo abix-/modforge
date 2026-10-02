@@ -253,6 +253,30 @@ pub fn owned_object(handle: i32) -> MonoObject {
     MonoObject::from_owned_handle(MonoHandle(handle))
 }
 
+/// Keep an object through a hot reload: its handle is not released,
+/// and the shim's handle clear between generations skips it. Hand the
+/// returned id to the next generation (`modforge::handoff`), which
+/// takes the object back with [`take_kept`]. Needs bridge v11.
+pub fn keep_through_reload(obj: MonoObject) -> Result<i32, String> {
+    let bridge = bridge::try_get()?;
+    let keep = bridge
+        .keep_handle
+        .ok_or("keep_handle: shim is pre-v11; rebuild and redeploy the C# shim")?;
+    let handle = obj.handle();
+    keep(handle, 1);
+    std::mem::forget(obj);
+    Ok(handle.0)
+}
+
+/// Take over an object an earlier generation kept with
+/// [`keep_through_reload`]; the handle is an ordinary owned one again.
+pub fn take_kept(handle: i32) -> MonoObject {
+    if let Some(keep) = bridge::get().and_then(|b| b.keep_handle) {
+        keep(MonoHandle(handle), 0);
+    }
+    owned_object(handle)
+}
+
 /// Borrow a managed handle for one operation without releasing it.
 pub fn with_object<R>(handle: i32, f: impl FnOnce(&MonoObject) -> R) -> R {
     let object = ManuallyDrop::new(owned_object(handle));

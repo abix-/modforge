@@ -19,6 +19,10 @@ name = "sevendaystodie_mod"
 modforge = { path = "../modforge" }
 unityforge = { path = "../unityforge" }
 
+[dev-dependencies]
+unityforge = { path = "../unityforge" }
+serde_json = { workspace = true }
+
 [lints]
 workspace = true
 
