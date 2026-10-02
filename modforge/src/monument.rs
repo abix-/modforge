@@ -30,16 +30,20 @@ const WINDOW_WIDTH: f32 = 1.0;
 const WINDOW_SILL: f32 = 1.0;
 /// Most floors a building goes up, and most it goes down.
 pub const MAX_LEVELS: u32 = 10;
-/// The stair tower: two flights per level side by side (a
-/// switchback), each STAIR_WIDTH wide, with a half landing at the
-/// far end and a landing slab at the near end where every level's
-/// doorway sits.
-const STAIRWELL_WIDTH: f32 = 2.0 * STAIR_WIDTH + 3.0 * WALL;
+/// The stairwell, a room of its own on every level (topside design.md
+/// "The bunker you start in", sized from Obenseuer's tenement): two
+/// flights per level side by side (a switchback), each STAIR_WIDTH wide
+/// so two people walk side by side, nothing between them; a half landing
+/// at the far end, the full width; and at the near end the landing every
+/// level's doorway opens onto, deep enough for a future elevator's spot
+/// beside the stairs and a stair width of clear floor in front of it.
 const STAIR_WIDTH: f32 = 1.8;
-const HALF_LANDING: f32 = 1.8;
-/// Flat room in front of the first step, and the slab each level's
-/// doorway opens onto.
-const STAIR_APPROACH: f32 = 1.0;
+const STAIRWELL_WIDTH: f32 = 2.0 * STAIR_WIDTH;
+const HALF_LANDING: f32 = STAIR_WIDTH;
+/// The future elevator's spot, square, in the near landing's corner
+/// beside the up flight; empty floor for now.
+pub const ELEVATOR: f32 = 2.0;
+const DOOR_LANDING: f32 = ELEVATOR + STAIR_WIDTH;
 
 /// A seeded roll stream: every draw advances the salt, so one seed
 /// yields one reproducible sequence. Built on the one random
@@ -388,25 +392,26 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
 
     // The stair tower: one room spanning every level east of the
     // front row. Each level climbs by a switchback: the up flight
-    // in the east lane from the south landing slab to a half
-    // landing at the north end, the return flight in the west lane
-    // back to the next level's landing slab at the south end. Every
-    // level's doorway opens onto its landing slab at z 0.
+    // in the east lane from the door landing to a half landing at
+    // the north end, the return flight in the west lane back to the
+    // next level's door landing at the south end. Every level's
+    // doorway opens onto its door landing at z 0, west of the
+    // elevator's spot in the landing's south-east corner.
     let mut stairs = Vec::new();
     if levels > 1 {
         let half_steps = ((height / 2.0) / STEP_RISE_MAX).ceil().max(1.0);
         let run = half_steps * STEP_DEPTH;
-        // South to north: approach, slab zone, up flight, half landing.
-        let slab_depth = STAIR_APPROACH + HALF_LANDING;
-        let length = slab_depth + run + HALF_LANDING + WALL;
-        // The tower's z origin puts the slab zone's centre at z 0.
+        // South to north: door landing, flights, half landing.
+        let slab_depth = DOOR_LANDING;
+        let length = slab_depth + run + HALF_LANDING;
+        // The tower's z origin puts the door landing's centre at z 0.
         let south_wall = length / 2.0;
         let slab_centre_local = south_wall - slab_depth / 2.0;
         let tower_z = -slab_centre_local;
         let bottom = -(basements as f32) * height;
         let total = levels as f32 * height;
-        let east_lane = stairwell_x + STAIR_WIDTH / 2.0 + WALL / 2.0;
-        let west_lane = stairwell_x - STAIR_WIDTH / 2.0 - WALL / 2.0;
+        let east_lane = stairwell_x + STAIR_WIDTH / 2.0;
+        let west_lane = stairwell_x - STAIR_WIDTH / 2.0;
 
         let mut openings = Vec::new();
         for level in -basements..floors {
@@ -1119,6 +1124,20 @@ mod tests {
             carve: 400,
             palette: vec![[0.5, 0.4, 0.3], [0.3, 0.3, 0.35]],
         }
+    }
+
+    #[test]
+    fn the_stairwell_fits_two_side_by_side_and_an_elevator() {
+        use crate::structure::{STEP_DEPTH, STEP_RISE_MAX};
+        let def = generate_building(&building("bunker", (1, 1), (1, 1), (1, 1), (2, 2)), &mut Roll::new(1));
+        let tower = def.rooms.iter().find(|r| r.interior.y > 6.0).expect("a stair tower spanning the levels");
+        assert!((tower.interior.x - 2.0 * 1.8).abs() < 1e-3, "two 1.8 m flights side by side: {}", tower.interior.x);
+        assert!(def.stairs.iter().all(|s| (s.width - 1.8).abs() < 1e-3), "every flight 1.8 m wide");
+        assert!(STEP_RISE_MAX <= 0.19 && STEP_DEPTH >= 0.28, "a comfortable climb");
+        // Door landing, flights, half landing: the elevator's 2 m and a
+        // stair width in front of it, then the flights, then a stair width.
+        let run = ((def.stairs[0].rise / STEP_RISE_MAX).ceil()) * STEP_DEPTH;
+        assert!((tower.interior.z - (ELEVATOR + 1.8 + run + 1.8)).abs() < 1e-3, "length {}", tower.interior.z);
     }
 
     #[test]

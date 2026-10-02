@@ -525,10 +525,13 @@ pub fn validate(def: &StructureDef) -> Result<(), String> {
 }
 
 /// Floor and landing slab thickness, step depth, and the most one
-/// step may rise. Shared by the part builder and the generators.
+/// step may rise: a comfortable climb, not a ladder (topside design.md
+/// "The bunker you start in"; building codes' rise of about 0.18 m and
+/// tread of at least 0.28 m). Shared by the part builder and the
+/// generators.
 pub const SLAB: f32 = 0.1;
-pub const STEP_DEPTH: f32 = 0.3;
-pub const STEP_RISE_MAX: f32 = 0.31;
+pub const STEP_DEPTH: f32 = 0.28;
+pub const STEP_RISE_MAX: f32 = 0.19;
 /// Health of a freshly built part until grades land.
 pub const PART_HEALTH: f32 = 100.0;
 
