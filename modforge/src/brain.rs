@@ -421,7 +421,9 @@ pub fn going(t: &mut Think, target: &Target) -> Status {
         _ => return Status::Failed,
     };
     let p = t.p;
-    let arrived = (at - p.position).with_y(0.0).length() <= REACH || (need == Some(Need::Rest) && p.at_home);
+    // There as walking there counts it (`walk_toward`, in 3D: right above or
+    // below is not there).
+    let arrived = walk_toward(p.position, at).is_empty() || (need == Some(Need::Rest) && p.at_home);
     if arrived {
         t.act(vec![], None);
         return Status::Succeeded;
@@ -683,10 +685,20 @@ pub fn not_asked(t: &mut Think, target: &Target) -> bool {
 
 /// Leading someone somewhere (topside life.md "Going with someone"; the
 /// escort in Skyrim's AI packages): the leader waits for them once they
-/// fall further behind than this, in metres...
-pub const LEAD_WAIT: f32 = 12.0;
+/// fall further behind than this, in metres (operator, 2026-10-02)...
+pub const LEAD_WAIT: f32 = 8.0;
 /// ...and goes on once they are this near again.
 pub const LEAD_NEAR: f32 = 5.0;
+/// A lead is done once both are this near the spot, in metres (operator,
+/// 2026-10-02); the leader there, the one led comes to the spot itself, not
+/// to the leader.
+pub const LEAD_DONE: f32 = 2.0;
+
+/// Whether a leader at `leader` has brought the one they lead at
+/// `follower` to `to`.
+pub fn led_there(leader: Vec3, follower: Vec3, to: Vec3) -> bool {
+    leader.distance(to) <= LEAD_DONE && follower.distance(to) <= LEAD_DONE
+}
 
 /// Following someone (World of Warcraft's auto-follow): the follower
 /// closes in while further off than this, in metres, and stands once this
@@ -843,6 +855,29 @@ mod tests {
 
     /// A stroll and a trip out only pick a spot someone can stand on;
     /// with none standable, the person stays.
+    #[test]
+    fn going_somewhere_right_above_is_not_being_there() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        p.position = Vec3::new(0.0, -6.0, 0.0);
+        let mut roll = Roll::new(1);
+        let mut t = Think::new(&p, &mut roll);
+        let up = Target::Point(Vec3::new(0.5, 0.0, 0.5));
+        assert_eq!(going(&mut t, &up), Status::Running, "two levels up: still going");
+        assert_eq!(going(&mut t, &Target::Point(Vec3::new(0.5, -6.0, 0.5))), Status::Succeeded, "on their level, near: there");
+    }
+
+    #[test]
+    fn a_lead_waits_past_8_m_and_is_done_once_both_are_at_the_spot() {
+        let spot = Vec3::new(0.0, 0.0, 20.0);
+        assert!(!waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -7.9), false), "7.9 m behind: walk on");
+        assert!(waits_for(Vec3::ZERO, Vec3::new(0.0, 0.0, -8.1), false), "8.1 m behind: wait");
+        assert!(!led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(0.0, 0.0, 16.5), spot), "the leader there, the one led not yet");
+        assert!(led_there(Vec3::new(0.0, 0.0, 19.0), Vec3::new(1.0, 0.0, 19.0), spot), "both within 2 m: done");
+        assert!(!led_there(Vec3::new(0.0, -3.0, 20.0), Vec3::new(0.0, -3.0, 20.0), spot), "a level below: not there");
+    }
+
     #[test]
     fn strolls_and_trips_out_only_pick_standable_spots() {
         let memory = Memory::default();

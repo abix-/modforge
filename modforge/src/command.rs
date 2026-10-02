@@ -24,6 +24,10 @@ pub enum Command {
     /// Follow them, until a move of one's own or they are gone (the
     /// consumer's following does it).
     Follow { who: u64 },
+    /// Lead them to the point, waiting when they fall behind, until both
+    /// are there (`brain::led_there`; the consumer's leading does it). The
+    /// one led follows by their own command or choice.
+    Lead { who: u64, x: f32, y: f32, z: f32 },
     /// Walk to them, face them, and use, as E does, until talking with them.
     TalkTo { who: u64 },
     /// Walk to the closed door between one and them, on one's own side,
@@ -55,8 +59,8 @@ pub enum Step {
 /// `target` is the point, or where the one named stands (None: gone or
 /// dead); `ended` is whether what it was for has happened (talking with
 /// them); `seen` is whether the one named is looked at (nothing between).
-/// Follow and attack the nearest enemy are the consumer's to turn into its
-/// following and an attack first; here they are done.
+/// Follow, lead and attack the nearest enemy are the consumer's to turn
+/// into its following, its leading and an attack first; here they are done.
 pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, seen: bool, talk_reach: f32) -> Step {
     let Some(to) = target.filter(|_| !ended) else {
         return Step::Done;
@@ -87,7 +91,7 @@ pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, se
             actions.push(Action::Attack);
             Step::Act(actions)
         }
-        Command::Follow { .. } | Command::AttackNearestEnemy => Step::Done,
+        Command::Follow { .. } | Command::Lead { .. } | Command::AttackNearestEnemy => Step::Done,
     }
 }
 
