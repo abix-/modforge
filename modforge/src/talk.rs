@@ -558,7 +558,7 @@ mod tests {
     /// Who said what, written into both memories the one talk path writes.
     fn say(lines: &[LineDef], i: usize, from: (ActorId, &mut Memory), to: (ActorId, &mut Memory), now: u64) {
         let name = lines[i].name.clone();
-        talk(Said::Line { line: i as u32, key: 0 }, from, to, (None, Some((&name, &name))), now);
+        talk(Said::Line { line: lines[i].id(), key: 0 }, from, to, (None, Some((&name, &name))), now);
     }
 
     #[test]

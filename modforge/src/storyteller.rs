@@ -114,6 +114,22 @@ pub struct LineDef {
     pub wait: f32,
 }
 
+impl LineDef {
+    /// The line's own id, what a choice and a saved talk name it by: its
+    /// name and its ways, hashed (FNV-1a, the same in every build). Lines
+    /// added or moved never change another's id, so a saved choice keeps
+    /// saying the line it said; editing this line's words changes its id
+    /// (and a save's content hash, topside save.rs).
+    pub fn id(&self) -> u64 {
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for byte in self.name.bytes().chain([0]).chain(self.ways.iter().flat_map(|w| w.bytes().chain([0]))) {
+            hash ^= u64::from(byte);
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        hash
+    }
+}
+
 /// One thing that must be true of the speaker for a line to be said, read
 /// from their memory and the moment (`crate::talk::Speaking`).
 #[derive(Clone, Debug, PartialEq)]
@@ -257,6 +273,11 @@ pub struct EpisodeRegistry {
 }
 
 impl EpisodeRegistry {
+    /// Every episode, in the order registered.
+    pub fn all(&self) -> &[EpisodeDef] {
+        &self.defs
+    }
+
     pub fn register(&mut self, def: EpisodeDef) -> Result<(), String> {
         if self.defs.iter().any(|d| d.name == def.name) {
             return Err(format!("episode '{}' registered twice", def.name));

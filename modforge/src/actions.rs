@@ -92,10 +92,11 @@ pub enum Said {
     Threaten,
     /// Ask them to trade (crate::trade).
     Trade,
-    /// Say a line (an episode's, or a choice the player made), the words
-    /// the consumer holds as `line`; telling of the thing `key` names too,
-    /// if it is not zero.
-    Line { line: u32, key: u64 },
+    /// Say a line (an episode's, or a choice the player made), named by its
+    /// id (storyteller `LineDef::id`, never its place in a list, so a saved
+    /// choice says the same line after lines are added); telling of the
+    /// thing `key` names too, if it is not zero.
+    Line { line: u64, key: u64 },
 }
 
 /// A key or button, by the name a binding file uses. The consumer

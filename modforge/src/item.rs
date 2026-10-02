@@ -88,7 +88,7 @@ pub struct FoodStats {
 /// One item kind as data. `name` is the id; one concept, one name.
 /// `quality_siblings` is how many statistical siblings each quality
 /// tier has (see [`crate::quality`]).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ItemDef {
     pub name: String,
     /// One line on what it is and how it is used, shown when it is
@@ -258,6 +258,11 @@ pub struct ItemRegistry {
 }
 
 impl ItemRegistry {
+    /// Every def, in the order registered.
+    pub fn all(&self) -> &[ItemDef] {
+        &self.defs
+    }
+
     pub fn register(&mut self, def: ItemDef) -> Result<(), String> {
         if self.defs.iter().any(|d| d.name == def.name) {
             return Err(format!("item '{}' registered twice", def.name));
