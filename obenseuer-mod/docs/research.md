@@ -715,6 +715,41 @@ Start for `X.instance.` writes and calls, 31 classes):
   and general prefabs, resource storages), TenementEventController,
   ToolTip, SMVEffects (SMVHierarchy), NPCManager (NPCInfo).
 
+### 9.38 Coroutines, manager instance events, NPC objects (what assumes one area)
+
+- Unity stops a switched-off object's coroutines and does not restart
+  them when it is switched on; Start does not run again. Coroutines
+  started in Start that run for good: BottleRecyclingLights.Blinking,
+  BottleRecyclingLightsUI.Blinking (`while (true)`), PulseLight.LightEffect,
+  randomAnimation.randomAnims (until switched off),
+  RagdollAnimation.StepTimer (restarts itself). Most others wait for
+  `TimeOfDayAzure.instance.updateTimeDisabled` to clear, then initialize
+  once (Storage, Spawner, Growing, VendingMachine, LiquidStorage, Bank,
+  NPCManager, NPCDirector, PlayerStats, ...): cut short if the object is
+  switched off before that.
+- Events on a manager's instance, subscribed by area objects:
+  StrictArea subscribes to `Inventory.instance.ItemConsumed` and
+  `PlayerStats.instance.PlayerDefecatedInPublic` while the player is in
+  it (OnTriggerStay) and unsubscribes on OnTriggerExit or OnDestroy
+  (StrictArea.cs); its handlers commit an Administrative crime when
+  smoking, alcohol, mushrooms or defecation is witnessed. Unity sends no
+  trigger exit when the object is switched off. Others: FadeGameObject
+  (FadeGameObjectController.UpdateFade), InteractableListItem (undone in
+  OnDisable), InventoryNavigationHandler (panel PowerOnOffEvent),
+  ItemAchievementList (Inventory.ItemConsumed), DefaultUIButton
+  (InputManager.InputTypeChanged).
+- NPCs: `NPCDirector` (kept through loads) holds every NPC's data
+  (`globalDatabase`); an NPC in the player's area has an object
+  (`NPCData.Controller`), the rest are simulated as data
+  (NPCDirector.DeltaSeconds, NPCDirector.cs:245-290: an NPC whose
+  `state.currentScene` is not `NPCManager.ActiveScene` moves along its
+  path or schedule, NPCSceneUtilities.HandleNPCChangeScene). On a save,
+  `NPCData.OnSavingGame` (NPCData.cs:113-121) writes, for every NPC that
+  has an object, `currentScene = NPCManager.instance.ActiveScene` and the
+  object's position. The game assumes only the current area's NPCs have
+  objects; OnMapChanging only records a follow target
+  (NPCDataState.OnMapChange).
+
 ### 9.37 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
