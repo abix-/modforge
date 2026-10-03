@@ -70,11 +70,36 @@ namespace Unityforge.Shim
             return found;
         }
 
+        // Classes marked: their class has the marker field, or holds a plain
+        // object (not a Unity object) whose type has it.
+        private static readonly Dictionary<Type, bool> Marked = new Dictionary<Type, bool>();
+
+        private static bool HasMark(Type t, string field)
+        {
+            if (string.IsNullOrEmpty(field)) return false;
+            if (Marked.TryGetValue(t, out var marked)) return marked;
+            const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+            marked = false;
+            for (var c = t; c != null && c != typeof(MonoBehaviour) && !marked; c = c.BaseType)
+            {
+                foreach (var f in c.GetFields(any | BindingFlags.DeclaredOnly))
+                {
+                    if (f.Name == field || (!f.FieldType.IsPrimitive && f.FieldType != typeof(string) && !typeof(UnityEngine.Object).IsAssignableFrom(f.FieldType) && f.FieldType.GetField(field, any) != null))
+                    {
+                        marked = true;
+                        break;
+                    }
+                }
+            }
+            Marked[t] = marked;
+            return marked;
+        }
+
         // Takes out of one event the handlers of switched-off objects in the
-        // scene; returns how many. On a kept event ("Class.Field", the game's
-        // clock: an area left keeps time) only area-owned managers' handlers
-        // are taken out.
-        private static int TakeOut(object owner, FieldInfo field, int scene, List<Taken> kept, HashSet<string> keep)
+        // scene; returns how many. On a kept event ("Class.Field": the game's
+        // clock, an area left keeps time) the handlers of marked classes
+        // (the game catches them up on load) stay.
+        private static int TakeOut(object owner, FieldInfo field, int scene, List<Taken> kept, HashSet<string> keep, string mark)
         {
             var all = field.GetValue(owner) as Delegate;
             if (all == null) return 0;
@@ -84,7 +109,7 @@ namespace Unityforge.Shim
             foreach (var d in all.GetInvocationList())
             {
                 if (d.Target is Component c && c != null && c.gameObject.scene.handle == scene && !c.gameObject.activeInHierarchy
-                    && (!kepth || FirstCopyGuard.IsAreaOwned(c.GetType())))
+                    && !(kepth && HasMark(c.GetType(), mark)))
                 {
                     left = Delegate.Remove(left, d);
                     kept.Add(new Taken { Owner = owner, Field = field, Handler = d });
@@ -100,10 +125,11 @@ namespace Unityforge.Shim
         /// static event of the assembly, and every event on the managers'
         /// live copies, the handlers whose object is in that area and
         /// switched off (the live player and managers stay on, so theirs
-        /// stay). `keepCsv` names events ("Class.Field") on which only
-        /// area-owned managers' handlers are taken out. Returns how many.
+        /// stay). `keepCsv` names events ("Class.Field") on which the
+        /// handlers of classes marked by the field `mark` stay. Returns how
+        /// many.
         /// </summary>
-        public static int LeaveArea(string assemblyOfType, string sceneName, string keepCsv)
+        public static int LeaveArea(string assemblyOfType, string sceneName, string keepCsv, string mark)
         {
             var keep = new HashSet<string>(keepCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
             var scene = SceneManager.GetSceneByName(sceneName);
@@ -119,10 +145,10 @@ namespace Unityforge.Shim
                 Kept[scene.handle] = kept;
             }
             int n = 0;
-            foreach (var f in Statics(assemblyOfType)) n += TakeOut(null, f, scene.handle, kept, keep);
+            foreach (var f in Statics(assemblyOfType)) n += TakeOut(null, f, scene.handle, kept, keep, mark);
             foreach (var copy in FirstCopyGuard.LiveCopies())
             {
-                foreach (var f in InstanceEvents(copy.GetType())) n += TakeOut(copy, f, scene.handle, kept, keep);
+                foreach (var f in InstanceEvents(copy.GetType())) n += TakeOut(copy, f, scene.handle, kept, keep, mark);
             }
             return n;
         }

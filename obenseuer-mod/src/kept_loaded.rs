@@ -863,13 +863,14 @@ static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new(
 /// would (rule 1, game-wide events). Returns how many handlers.
 fn leave_finish(area: &str) -> Result<String, String> {
     switch_area(area, false)?;
-    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, CLOCK_EVENTS]))?;
+    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, CLOCK_EVENTS, "savedTimeAndDay"]))?;
     Ok(format!("event handlers out {out}"))
 }
 
-/// The game's clock: an area left keeps hearing it, so it ticks along as
-/// the game's load would catch it up (docs/kept-areas.md, rule 2, time while
-/// away); only its area-owned managers' handlers are taken out.
+/// The game's clock: in an area left, the objects the game catches up on
+/// load (marked by `savedTimeAndDay`) keep hearing it and tick along as the
+/// catch-up would; every other listener is taken out (docs/kept-areas.md,
+/// rule 2, time while away).
 const CLOCK_EVENTS: &str = "TimeOfDayAzure.SecondsPassed,TimeOfDayAzure.MinutePassed,TimeOfDayAzure.DayChanged,TimeOfDayAzure.CurrentTimeAndDay";
 
 /// The area's navigation file into the one pathfinder, as

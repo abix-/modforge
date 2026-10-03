@@ -169,9 +169,8 @@ left area's Spawners keep their timers. So:
   FadeGameObjectController.UpdateFade, ...), the handlers whose object is
   in that area and now switched off are taken out and kept for that load
   of the area (`Scene.handle`). The live player and managers stay on, so
-  theirs stay. The game's clock events stay subscribed (time while away,
-  rule 2), except for the area-owned managers (SoundscapeGlobal would set
-  the game-wide sound to the left area's).
+  theirs stay. On the game's clock events, the handlers of objects the
+  game catches up on load stay (time while away, rule 2).
 - Entering an area (rule 2, after the Starts run again): its kept
   handlers go back, each only if the event does not already hold it (a
   Start run again subscribes again).
@@ -227,11 +226,16 @@ keep what is live in the area: its data never left memory.
 Time while away (research.md 9.37): in the game an area not loaded does
 not run, and its load catches it up from the time recorded when it was
 saved (`savedTimeAndDay`: growing, storage restock, spawners, shops,
-animals, NPC needs, fuel...). An area kept loaded instead keeps hearing
-the game's clock while away (`TimeOfDayAzure.SecondsPassed`,
-`MinutePassed`, `DayChanged`, `CurrentTimeAndDay` stay subscribed; game-wide
-events, below), so it ticks along and reaches the same state the catch-up
-would give. Re-running the load steps on a later visit was tried and is
+animals, NPC needs, fuel...); everything else in it does not move on
+while it is not loaded. So in an area kept loaded, while away, the
+objects the game catches up (their class has a `savedTimeAndDay`, or
+holds a plain object with one, as Fuel's owners do) keep hearing the
+game's clock (`TimeOfDayAzure.SecondsPassed`, `MinutePassed`,
+`DayChanged`, `CurrentTimeAndDay`) and tick along to the state the
+catch-up would give; every other clock listener is taken out with the
+rest (game-wide events, below): Prison would keep lowering crimes after
+the player left it, RelayPlayerDistance would fire each day,
+SoundscapeGlobal would set the game-wide sound (research.md 9.37). Re-running the load steps on a later visit was tried and is
 not safe: `Collectible.OnLoadingGame` calls Start on a live object, and
 the load steps that create objects (DestructibleList, ParcelLocker,
 RatFightArena, CollectibleItemSpawner) would duplicate them.
