@@ -117,6 +117,43 @@ pub enum Cond {
     Opened { who: Who, store: Store, holds: Option<Measure> },
     /// An errand's window has ended.
     Ended(String),
+    /// This condition has held without a break for at least `secs` game
+    /// seconds (the consumer keeps when it began, `Facts::held_secs`).
+    For { cond: Box<Cond>, secs: f32 },
+}
+
+impl Cond {
+    /// Every condition inside a `For`, in this one and all it joins: what
+    /// the consumer keeps the start of.
+    pub fn held<'a>(&'a self, out: &mut Vec<&'a Cond>) {
+        match self {
+            Cond::All(cs) | Cond::Any(cs) => cs.iter().for_each(|c| c.held(out)),
+            Cond::Not(c) => c.held(out),
+            Cond::For { cond, .. } => {
+                out.push(cond);
+                cond.held(out);
+            }
+            _ => {}
+        }
+    }
+}
+
+impl EpisodeDef {
+    /// Every condition inside a `For` in its deeds and errands
+    /// (`Cond::held`).
+    pub fn held(&self) -> Vec<&Cond> {
+        let mut out = Vec::new();
+        for d in &self.deeds {
+            d.when.held(&mut out);
+        }
+        for e in &self.errands {
+            e.when.held(&mut out);
+            if let Some(end) = &e.ends {
+                end.held(&mut out);
+            }
+        }
+        out
+    }
 }
 
 /// Someone an episode names: the player, a part, a group, or anyone.
@@ -156,6 +193,10 @@ pub enum DidKind {
     Ate(String),
     Told(String),
     Knocked,
+    /// Saw a person (`memory::Did::Saw`).
+    Saw,
+    /// A conversation with a person ended (`memory::Did::TalkEnded`).
+    TalkEnded,
 }
 
 /// From when a deed counts: the episode's start, a pivot point reached, or
@@ -221,6 +262,9 @@ pub trait Facts {
     fn at_home(&self, id: crate::actor::ActorId) -> bool;
     fn storm(&self) -> crate::storm::StormPhase;
     fn opened(&self, id: crate::actor::ActorId) -> Option<OpenStore>;
+    /// How long a condition inside a `For` has held without a break, in
+    /// game seconds; 0 if it does not hold now.
+    fn held_secs(&self, cond: &Cond) -> f32;
 }
 
 /// Whether a condition holds, and if it does, who it is about and when:
@@ -252,7 +296,11 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
         Target::Thing(_) | Target::Nobody => true,
     };
     let matches = |by: crate::actor::ActorId, kind: &DidKind, target: &Target, did: &Did| match (kind, did) {
-        (DidKind::Hit, Did::Hit(id, _)) | (DidKind::Killed, Did::Killed(id)) | (DidKind::Talked, Did::Talked(id, _)) => toward(target, *id),
+        (DidKind::Hit, Did::Hit(id, _))
+        | (DidKind::Killed, Did::Killed(id))
+        | (DidKind::Talked, Did::Talked(id, _))
+        | (DidKind::Saw, Did::Saw(id))
+        | (DidKind::TalkEnded, Did::TalkEnded(id)) => toward(target, *id),
         (DidKind::Heard(line), Did::Heard(id, said)) => line.as_ref().is_none_or(|l| *l == said.name) && toward(target, *id),
         (DidKind::Ate(thing), Did::Ate(item)) => *item == facts.item_of(thing),
         (DidKind::Told(thing), Did::Talked(id, said)) => said.words == facts.told_words(by, thing) && toward(target, *id),
@@ -343,6 +391,7 @@ pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, 
         })
         .then_some(now),
         Cond::Ended(errand) => facts.window(errand).and_then(|(_, end)| end).map(|t| (now.0, t)),
+        Cond::For { cond, secs } => (holds(cond, facts).is_some() && facts.held_secs(cond) >= *secs).then_some(now),
     }
 }
 
@@ -1676,6 +1725,7 @@ mod tests {
         home: Vec<ActorId>,
         storm: Option<crate::storm::StormPhase>,
         open: Vec<(ActorId, OpenStore)>,
+        held: Vec<(Cond, f32)>,
     }
 
     impl Facts for World {
@@ -1734,6 +1784,9 @@ mod tests {
         }
         fn opened(&self, id: ActorId) -> Option<OpenStore> {
             self.open.iter().find(|(o, _)| *o == id).map(|(_, s)| *s)
+        }
+        fn held_secs(&self, cond: &Cond) -> f32 {
+            self.held.iter().find(|(c, _)| c == cond).map_or(0.0, |(_, s)| *s)
         }
     }
 
@@ -1823,6 +1876,39 @@ mod tests {
         w.open.push((ActorId(1), OpenStore { theirs: true, drawn_from: false, dry: false, days: (3.0, 12.0) }));
         assert!(holds(&over, &w).is_some(), "12 days of water, over 10");
         assert!(holds(&Cond::Opened { who: Who::ThePlayer, store: Store::DrawnFrom, holds: Some(Measure::Dry) }, &w).is_none());
+    }
+
+    /// Hide and watch: near them for 10 seconds without a break, seen by
+    /// none of them. For holds once the consumer says its condition has
+    /// held long enough, and only while it holds; a sighting and a talk
+    /// ended are remembered toward a person.
+    #[test]
+    fn held_for_and_seen_and_talk_ended() {
+        let maras = Who::Group(Group::BunkerOf("Mara".into()));
+        let mut w = World { now: 600, ..Default::default() };
+        person(&mut w, 1, glam::Vec3::ZERO, &[]);
+        person(&mut w, 2, glam::Vec3::new(20.0, 0.0, 0.0), &[]);
+        w.groups.push((Group::BunkerOf("Mara".into()), vec![ActorId(2)]));
+        let near = Cond::Near { who: Who::ThePlayer, to: Target::Who(maras.clone()), within: 25.0 };
+        let watched = Cond::For { cond: Box::new(near.clone()), secs: 10.0 };
+        let unseen = Cond::Not(Box::new(Cond::Remembered { by: maras.clone(), did: DidKind::Saw, toward: Target::Who(Who::ThePlayer), since: Since::EpisodeStart, every: false }));
+        let hide_and_watch = Cond::All(vec![watched.clone(), unseen]);
+        let def = EpisodeDef { deeds: vec![DeedDef { pivot: "hides and watches".into(), when: hide_and_watch.clone() }], ..episode("the tap") };
+        assert_eq!(def.held(), vec![&near], "the condition inside the For is what the consumer keeps");
+        w.held.push((near.clone(), 9.0));
+        assert!(holds(&hide_and_watch, &w).is_none(), "9 seconds is not 10");
+        w.held[0].1 = 10.0;
+        assert!(holds(&hide_and_watch, &w).is_some(), "10 seconds near, unseen");
+        w.people[1].3.saw(ActorId(1), 500, 3600);
+        w.people[1].3.saw(ActorId(1), 550, 3600);
+        assert_eq!(w.people[1].3.done.iter().filter(|(_, d)| *d == Did::Saw(ActorId(1))).count(), 1, "one sighting, not one a think");
+        assert!(holds(&hide_and_watch, &w).is_none(), "seen by one of them");
+        w.people[1].2 = glam::Vec3::new(40.0, 0.0, 0.0);
+        assert!(holds(&watched, &w).is_none(), "no longer near: the For does not hold, whatever was kept");
+        let ended = Cond::Remembered { by: Who::ThePlayer, did: DidKind::TalkEnded, toward: Target::Who(Who::Group(Group::BunkerOf("Mara".into()))), since: Since::EpisodeStart, every: false };
+        assert!(holds(&ended, &w).is_none());
+        w.people[0].3.did(Did::TalkEnded(ActorId(2)), 590);
+        assert_eq!(holds(&ended, &w), Some((ActorId(1), 590)));
     }
 
     /// All, Any, Not, an errand's window ended, and the first morning after;

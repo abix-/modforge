@@ -198,6 +198,10 @@ pub enum Did {
     /// Was told by this person what was done to them, and when (tick):
     /// word of it spreading (crate::talk::share).
     WasTold(ActorId, u64, Box<Did>),
+    /// Saw this person (`Memory::saw`).
+    Saw(ActorId),
+    /// The conversation with this person ended, closed by either of them.
+    TalkEnded(ActorId),
 }
 
 impl Did {
@@ -224,6 +228,8 @@ impl Did {
             Did::Talked(..) => "talked",
             Did::Heard(..) => "heard",
             Did::WasTold(..) => "was told",
+            Did::Saw(_) => "saw",
+            Did::TalkEnded(_) => "talk ended",
         }
     }
 
@@ -250,6 +256,8 @@ impl Did {
             Did::Talked(whom, said) => format!("said to {}: {}", whom.0, said.words),
             Did::Heard(by, said) => format!("heard from {}: {}", by.0, said.words),
             Did::WasTold(by, _, what) => format!("was told by {}: {}", by.0, what.words()),
+            Did::Saw(whom) => format!("saw {}", whom.0),
+            Did::TalkEnded(with) => format!("ended a talk with {}", with.0),
         }
     }
 }
@@ -347,6 +355,16 @@ impl Memory {
     /// A thing is gone (despawned): forget it.
     pub fn gone(&mut self, key: u64) {
         self.known.retain(|k| k.key != key);
+    }
+
+    /// Saw this person now: noted, unless they were noted seen within
+    /// `again` ticks (someone in view every think is one sighting, not one
+    /// a think, so the deeds kept are not all sightings).
+    pub fn saw(&mut self, who: ActorId, now: u64, again: u64) {
+        let recent = self.done.iter().rev().take_while(|(t, _)| now.saturating_sub(*t) <= again).any(|(_, d)| *d == Did::Saw(who));
+        if !recent {
+            self.did(Did::Saw(who), now);
+        }
     }
 
     /// Note something done now.
