@@ -20,6 +20,7 @@ pub mod combat;
 pub mod counters;
 pub mod crafting;
 pub mod debug;
+pub mod edge;
 pub mod envelope;
 pub mod faction;
 pub mod genome;
