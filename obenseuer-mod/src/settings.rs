@@ -21,7 +21,8 @@ pub struct KeptLoadedSettings {
     /// Load the areas the current area's doors lead to alongside it.
     #[serde(default = "default_true")]
     pub auto: bool,
-    /// Most areas kept loaded besides the one the player is in.
+    /// Most areas kept loaded besides the one the player is in; 0 is no
+    /// limit (operator 2026-10-02: every area stays loaded once seen).
     #[serde(default = "default_max_areas")]
     pub max_areas: usize,
 }
@@ -40,7 +41,7 @@ fn default_true() -> bool {
 }
 
 fn default_max_areas() -> usize {
-    10
+    0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

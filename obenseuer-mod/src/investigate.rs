@@ -30,6 +30,15 @@ pub fn install() {
     if register_key_press(UNSTUCK_KEY, on_unstuck_key).is_none() {
         log(LogLevel::Error, "obenseuer-mod: unstuck key binding failed");
     }
+    // Who turns the screen black (operator 2026-10-02: the game went black
+    // with BlackCanvas alpha 1 and no caller found by reading the code):
+    // the call stack of every ShowBlackCanvas and FadeIn, in the log.
+    for method in ["ShowBlackCanvas", "FadeIn"] {
+        match unityforge::hook::patch_prefix("BlackCanvas", method, on_black_canvas) {
+            Ok(h) => unityforge::hook::HOOK_REGISTRY.register(h),
+            Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: BlackCanvas.{method} patch failed: {e}")),
+        }
+    }
     OP_REGISTRY.register(OpDef::new(
         "reload_save",
         "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded",
@@ -71,6 +80,15 @@ fn reload_save() -> Result<Json, String> {
         let _ = game.write_field("GameIsPaused", &json!(false));
     }
     Ok(json!({"loading": format!("{character}/{save}")}))
+}
+
+extern "C" fn on_black_canvas(_ctx: *const std::ffi::c_void) -> i32 {
+    let stack = invoke_static("System.Environment", "get_StackTrace", &json!([]))
+        .ok()
+        .and_then(|v| v.as_str().map(String::from))
+        .unwrap_or_else(|| "?".into());
+    log(LogLevel::Warn, &format!("obenseuer-mod: black canvas turned on by:\n{stack}"));
+    0
 }
 
 extern "C" fn on_unstuck_key() {

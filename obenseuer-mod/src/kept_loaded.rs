@@ -39,6 +39,9 @@ static DOOR_HOOK: Mutex<Option<Hook>> = Mutex::new(None);
 static TRIPS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// The area the player is in: the only one switched on.
 static CURRENT: Mutex<Option<String>> = Mutex::new(None);
+/// Area -> ids of the top objects the area swap switched off (and only
+/// those are switched back on).
+static SWAPPED_OFF: Mutex<BTreeMap<String, Vec<i64>>> = Mutex::new(BTreeMap::new());
 /// Every area's top object holding its screenshot cameras
 /// (research_area_player_setup.rs); never switched on by the area swap.
 const SCREENSHOT_ROOT: &str = "___Screenshot Taking Stuff";
@@ -62,9 +65,13 @@ pub(crate) fn reset() {
     LOADING.lock().unwrap().clear();
     TRIPS.lock().unwrap().clear();
     QUEUE.lock().unwrap().clear();
+    SWAPPED_OFF.lock().unwrap().clear();
     *CURRENT.lock().unwrap() = None;
     *DOOR_HOOK.lock().unwrap() = None;
-    set_loading_priority(false);
+    if let Some(d) = PENDING_DOOR.lock().unwrap().take() {
+        drop(owned_object(d.door_object)); // release the kept handle
+    }
+    set_loading_priority(None);
 }
 
 /// Areas to load alongside next, nearest door first.
@@ -110,7 +117,7 @@ pub(crate) fn tick() {
         return;
     }
     let kept = AREAS.lock().unwrap().len().saturating_sub(1);
-    if kept >= cfg.max_areas {
+    if cfg.max_areas > 0 && kept >= cfg.max_areas {
         return;
     }
     let next = {
@@ -172,6 +179,35 @@ fn measure_frame() {
     }
 }
 
+/// The game process's memory in use (its working set), e.g. "4.8 GB", from
+/// Windows: the game's Mono reports 0 for Process.WorkingSet64.
+fn game_memory() -> String {
+    #[repr(C)]
+    #[derive(Default)]
+    struct ProcessMemoryCounters {
+        cb: u32,
+        page_fault_count: u32,
+        peak_working_set_size: usize,
+        working_set_size: usize,
+        quota_peak_paged_pool_usage: usize,
+        quota_paged_pool_usage: usize,
+        quota_peak_non_paged_pool_usage: usize,
+        quota_non_paged_pool_usage: usize,
+        pagefile_usage: usize,
+        peak_pagefile_usage: usize,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentProcess() -> isize;
+        fn K32GetProcessMemoryInfo(process: isize, counters: *mut ProcessMemoryCounters, cb: u32) -> i32;
+    }
+    let mut c = ProcessMemoryCounters { cb: std::mem::size_of::<ProcessMemoryCounters>() as u32, ..Default::default() };
+    // SAFETY: c is a ProcessMemoryCounters of the size passed; the pseudo
+    // handle needs no closing.
+    let ok = unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut c, c.cb) };
+    if ok == 0 { "?".into() } else { format!("{:.2} GB", c.working_set_size as f64 / 1073741824.0) }
+}
+
 /// The game's background loading priority before the mod lowered it.
 static PREVIOUS_PRIORITY: Mutex<Option<Json>> = Mutex::new(None);
 
@@ -179,14 +215,17 @@ static PREVIOUS_PRIORITY: Mutex<Option<Json>> = Mutex::new(None);
 /// alongside, so play stays smooth; the game's own value (its loading
 /// screen loads fast) when nothing is loading alongside. Unity:
 /// Application.backgroundLoadingPriority.
-fn set_loading_priority(low: bool) {
+/// `Some(level)`: Unity ThreadPriority name, "Low" for background loads,
+/// "High" for a door waiting behind the loading screen. `None`: the
+/// game's own value back once nothing loads alongside.
+fn set_loading_priority(level: Option<&str>) {
     const APP: &str = "UnityEngine.Application";
     let mut previous = PREVIOUS_PRIORITY.lock().unwrap();
-    if low {
+    if let Some(level) = level {
         if previous.is_none() {
             *previous = invoke_static(APP, "get_backgroundLoadingPriority", &json!([])).ok();
         }
-        let _ = invoke_static(APP, "set_backgroundLoadingPriority", &json!(["Low"]));
+        let _ = invoke_static(APP, "set_backgroundLoadingPriority", &json!([level]));
     } else if LOADING.lock().unwrap().is_empty() {
         if let Some(p) = previous.take() {
             let _ = invoke_static(APP, "set_backgroundLoadingPriority", &json!([p]));
@@ -207,6 +246,7 @@ fn load_alongside(area: Option<String>) -> Result<Json, String> {
         }
         *LOAD_STARTED.lock().unwrap() = Some(std::time::Instant::now());
         *LONGEST_FRAME.lock().unwrap() = 0.0;
+        first_copy_wins::take_prefix_secs();
         let before = arrival_point_ids()?;
         let current = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([]))?
             .as_str()
@@ -214,7 +254,7 @@ fn load_alongside(area: Option<String>) -> Result<Json, String> {
             .ok_or("no current area name")?;
         AREAS.lock().unwrap().entry(current.clone()).or_insert_with(|| before.clone());
         CURRENT.lock().unwrap().get_or_insert(current);
-        set_loading_priority(true);
+        set_loading_priority(Some("Low"));
         let load = obj(invoke_static("UnityEngine.SceneManagement.SceneManager", "LoadSceneAsync", &json!([area, "Additive"]))?)
             .ok_or_else(|| format!("LoadSceneAsync({area}) gave nothing"))?;
         LOADING.lock().unwrap().push(area.clone());
@@ -259,16 +299,21 @@ fn finish_load_when_done(area: String, handle: i32, before: Vec<i64>) {
         unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
             &format!(
-                "obenseuer-mod: kept_loaded: {area} ready: load {load:.2}s, longest frame while loading {:.3}s, switching it off {switching:.3}s",
-                *LONGEST_FRAME.lock().unwrap()
+                "obenseuer-mod: kept_loaded: {area} ready: load {load:.2}s, longest frame while loading {:.3}s (first_copy_wins prefix {:.3}s of the load), switching it off {switching:.3}s, game memory {}",
+                *LONGEST_FRAME.lock().unwrap(),
+                first_copy_wins::take_prefix_secs(),
+                game_memory()
             ),
         );
-        set_loading_priority(false);
-        AREAS.lock().unwrap().insert(area, new);
-        let mut hook = DOOR_HOOK.lock().unwrap();
-        if hook.is_none() {
-            *hook = patch_prefix_ctx("Changelevel", "ChangeLevel", HookCtx::Instance, on_door).ok();
+        set_loading_priority(None);
+        AREAS.lock().unwrap().insert(area.clone(), new);
+        {
+            let mut hook = DOOR_HOOK.lock().unwrap();
+            if hook.is_none() {
+                *hook = patch_prefix_ctx("Changelevel", "ChangeLevel", HookCtx::Instance, on_door).ok();
+            }
         }
+        finish_pending_door(&area);
     });
 }
 
@@ -332,6 +377,68 @@ extern "C" fn on_door(ctx: *const c_void) -> i32 {
 fn door_into_loaded_area(door: &MonoObject) -> Result<bool, String> {
     let to = door.read_field("OtherLevel")?.as_str().unwrap_or("").to_string();
     let arrival = door.read_field("OtherEntrypoint")?.as_str().unwrap_or("").to_string();
+    if to.is_empty() {
+        return Ok(false);
+    }
+    let door_object = obj(door.invoke("get_gameObject", &json!([]))?).ok_or("door has no game object")?;
+    let door_name = door.invoke("get_name", &json!([]))?.as_str().unwrap_or("?").to_string();
+    if AREAS.lock().unwrap().contains_key(&to) {
+        return move_into(&to, &arrival, &door_object, &door_name);
+    }
+    // Not loaded yet: load it alongside at full speed behind the game's
+    // loading screen and move in when it is ready. Never the game's normal
+    // load, which would unload every area (operator 2026-10-02: areas stay
+    // loaded once seen).
+    let screen = one_copy("LoadingScreen")?;
+    screen.invoke("Fade", &json!([true, true, 0.0, true, ""]))?;
+    let handle = door_object.handle().0;
+    std::mem::forget(door_object); // the pending move takes it over
+    *PENDING_DOOR.lock().unwrap() = Some(PendingDoor { to: to.clone(), arrival, door_object: handle, door_name });
+    if !LOADING.lock().unwrap().contains(&to) {
+        load_alongside(Some(to.clone()))?;
+    }
+    set_loading_priority(Some("High"));
+    unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: door into {to}, not loaded yet: loading it behind the loading screen"));
+    Ok(true)
+}
+
+/// A door used into an area still loading: moved into when it is ready.
+struct PendingDoor {
+    to: String,
+    arrival: String,
+    door_object: i32,
+    door_name: String,
+}
+
+static PENDING_DOOR: Mutex<Option<PendingDoor>> = Mutex::new(None);
+
+/// After `area` finished loading: a door waiting for it moves the player in
+/// and the loading screen fades.
+fn finish_pending_door(area: &str) {
+    let pending = {
+        let mut p = PENDING_DOOR.lock().unwrap();
+        if p.as_ref().is_some_and(|d| d.to == area) { p.take() } else { None }
+    };
+    let Some(d) = pending else { return };
+    let door_object = owned_object(d.door_object);
+    let moved = move_into(&d.to, &d.arrival, &door_object, &d.door_name);
+    if !matches!(moved, Ok(true)) {
+        unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: move into {area} failed: {moved:?}"));
+        // The door disabled the controls (DoorChangelevel.cs:206): give them back.
+        if let Ok(game) = one_copy("GameController") {
+            let _ = game.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]));
+        }
+    }
+    if let Ok(screen) = one_copy("LoadingScreen") {
+        let _ = screen.invoke("Fade", &json!([false, true, 0.0, false, ""]));
+    }
+}
+
+/// Moves the player into a loaded area at its arrival point `arrival`:
+/// that area becomes the active scene and switches on, the player is
+/// teleported, the area left switches off.
+fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str) -> Result<bool, String> {
+    let to = to.to_string();
     let Some(ids) = AREAS.lock().unwrap().get(&to).cloned() else {
         return Ok(false);
     };
@@ -341,6 +448,9 @@ fn door_into_loaded_area(door: &MonoObject) -> Result<bool, String> {
         if name != arrival || !location_id(&e).is_some_and(|id| ids.contains(&id)) {
             continue;
         }
+        // Objects the game creates from now on go into the area the player
+        // is in, and switch on and off with it.
+        invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([to]))?;
         switch_area(&to, true)?;
         e.invoke("TeleportPlayer", &json!([]))?;
         let from = CURRENT.lock().unwrap().replace(to.clone());
@@ -350,16 +460,14 @@ fn door_into_loaded_area(door: &MonoObject) -> Result<bool, String> {
         // DoorChangelevel.OpenDoor disabled the controls for this door
         // before calling ChangeLevel (DoorChangelevel.cs:206); a scene
         // load would have thrown that away, the move does not.
-        let door_object = obj(door.invoke("get_gameObject", &json!([]))?).ok_or("door has no game object")?;
         one_copy("GameController")?.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]))?;
         plan_neighbours();
         let secs = start.elapsed().as_secs_f64();
         crate::deposit::notify("Areas", &format!("No loading screen ({secs:.2}s)"));
-        let from = door.invoke("get_name", &json!([]))?.as_str().unwrap_or("?").to_string();
-        TRIPS.lock().unwrap().push(format!("{from} to {to}/{arrival} ({secs:.3}s)"));
+        TRIPS.lock().unwrap().push(format!("{door_name} to {to}/{arrival} ({secs:.3}s)"));
         return Ok(true);
     }
-    TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}; normal door"));
+    TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
     Ok(false)
 }
 
@@ -368,25 +476,46 @@ fn door_into_loaded_area(door: &MonoObject) -> Result<bool, String> {
 /// own game logic, player and pause menu), and never switches off the top
 /// objects of the live player and managers.
 fn switch_area(area: &str, on: bool) -> Result<(), String> {
-    let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?)
-        .ok_or_else(|| format!("no top objects for {area}"))?;
     let never_on = first_copy_wins::switched_off_ids();
     let keep = if on { Vec::new() } else { live_roots() };
-    let n = roots.read_field("Length")?.as_i64().unwrap_or(0);
-    for i in 0..n {
-        let Some(root) = obj(roots.invoke("GetValue", &json!([i]))?) else { continue };
+    // Switching on restores only what the swap switched off: the game
+    // keeps some top objects off itself ("Test", "_LIGHT_BLOCKERS" in the
+    // player's building; research_areas_on.rs), and switching everything
+    // on put their strangers in the lobby.
+    let was_on = if on { SWAPPED_OFF.lock().unwrap().remove(area).unwrap_or_default() } else { Vec::new() };
+    let mut turned_off = Vec::new();
+    for root in roots(area)? {
         let Some(id) = root.invoke("GetInstanceID", &json!([]))?.as_i64() else { continue };
         if never_on.contains(&id) || keep.contains(&id) {
             continue;
         }
-        // An area's screenshot cameras: on in the outdoor area, and drawn
-        // over the player's camera (research_cameras.rs).
-        if on && root.invoke("get_name", &json!([]))?.as_str() == Some(SCREENSHOT_ROOT) {
-            continue;
+        if on {
+            // An area's screenshot cameras: on in the outdoor area, and
+            // drawn over the player's camera (research_cameras.rs).
+            if was_on.contains(&id) && root.invoke("get_name", &json!([]))?.as_str() != Some(SCREENSHOT_ROOT) {
+                root.invoke("SetActive", &json!([true]))?;
+            }
+        } else if root.invoke("get_activeSelf", &json!([]))?.as_bool() == Some(true) {
+            root.invoke("SetActive", &json!([false]))?;
+            turned_off.push(id);
         }
-        root.invoke("SetActive", &json!([on]))?;
+    }
+    if !on {
+        SWAPPED_OFF.lock().unwrap().entry(area.to_string()).or_default().extend(turned_off);
     }
     Ok(())
+}
+
+/// An area's top objects, on or off (SceneTools.RootsOf in the shim).
+fn roots(area: &str) -> Result<Vec<MonoObject>, String> {
+    let arr = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?)
+        .ok_or_else(|| format!("no top objects for {area}"))?;
+    let n = arr.read_field("Length")?.as_i64().unwrap_or(0);
+    let mut out = Vec::new();
+    for i in 0..n {
+        out.extend(obj(arr.invoke("GetValue", &json!([i]))?));
+    }
+    Ok(out)
 }
 
 /// Top objects holding the live player and managers.

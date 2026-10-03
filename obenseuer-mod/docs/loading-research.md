@@ -657,6 +657,140 @@ patch off, loading priority back) and load the save last loaded. Used
 live when the player could not move after a door: the game came back to
 one clean area.
 
+## Black screen from an area loaded alongside
+
+The game went black twice with areas kept loaded (BlackCanvas alpha 1.0,
+research_screen.rs), and a Harmony patch logging every
+`BlackCanvas.ShowBlackCanvas` and `FadeIn` logged nothing. The cause:
+"Interior Start", the new-game area, loaded alongside both times. Its
+`StartOpenSewer.Start` (StartOpenSewer.cs:50-60) runs the new-game intro
+unless the save says it ran (`skipStart`, `tutorialStarted`, read in its
+OnLoadingGame, line 40): it disables the controls and the game menu, sets
+`BlackCanvas.instance.canvasGroup.alpha = 1` directly (line 72), and only
+after 3 s gives them back and fades out (73-87). An area loaded alongside
+never gets its saved data, so the intro ran; switching the area off
+stopped it halfway, black.
+
+## The game's save and load, as the design must follow them
+
+From SaveController.cs:
+
+- `SaveGame` (416-484): `LevelName` is the active scene's name (438).
+  Every save phase runs on the active scene's top objects only (453-459):
+  `ExecuteSaveLoadFunctions` takes top objects and calls every
+  SavableScript under them whose object is on (1113-1131). Global scripts
+  (`SerializeData(this, global: true)`) go to `Globals.tnmt`, the rest to
+  `<LevelName>.tnmt` (461-475). The save folder is copied from the last
+  one first (469-472), so other areas' files are kept. A door
+  (`ChangeLevelDelay`, 344) is a SaveGame into the older autosave.
+- `LoadGameWithMigration` (1205-): reads `Globals.tnmt` and
+  `<level>.tnmt` into `tempSavedata_Global` and `tempSavedata_Level`
+  (1232, 1277-1311), then `LoadSaveGameDifferentScene` (618-666) loads the
+  scene and runs the load phases on the active scene's top objects
+  (641-650), OnMapChanged when the area changed (651-654), moves the
+  player to the arrival point (655), applies the dialogue data (656-659),
+  and fires `LoadingDone` (663).
+- Each SavableScript finds its entry by its `GUID` and takes it out of
+  the list (`DeSerializeData`, 707-).
+
+So with the mod's door move today:
+
+- An area loaded alongside never gets its `<area>.tnmt` or its global
+  entries: its scripts start as on a new game (the intro above; box
+  contents and events in that area are likely their defaults; not checked).
+- After a door move the active scene is the area entered (the mod sets
+  it), but the live player and managers stay in the area the save loaded
+  into. A save then runs only on the entered area's top objects and
+  leaves the live managers out of `Globals.tnmt`. Not checked in a save
+  file yet, but it follows from 438-461. Until fixed: press F7 before
+  saving after a door move.
+
+## Proper design (proposal, 2026-10-02, not built)
+
+Reproduce the game's own enter and leave steps for areas kept loaded,
+with the game's own code, instead of patching what each skipped step
+broke.
+
+1. Loading alongside starts nothing. The shim catches Unity's
+   `SceneManager.sceneLoaded` for areas the mod loads and switches their
+   top objects off there, before any Start runs (today the mod switches
+   them off a frame or more later, after Start: the intro, events and
+   spawns got through). Awake and OnEnable still run at load; Start runs
+   when the player walks in, as in a normal visit.
+2. Walking in, as a normal load does it (order measured, question 1
+   below): the area becomes the active scene and switches on (its
+   objects start), and on the next frame its saved data is applied: read
+   `<area>.tnmt` (and its global entries from `Globals.tnmt`) from the
+   current save folder into the game's temp lists and run the load phases
+   on the area's top objects, then OnMapChanged; then the arrival point.
+   The load pass skips objects that are off (1131), so the data cannot go
+   in before switching on. Only on the first visit after a save load;
+   later visits keep the live state.
+3. Walking out captures the area left, while it is still on: OnMapChanging
+   (the NPC director and others, question 4), then the save phases on its
+   own top objects, kept as that area's entries; then it switches off.
+4. Every save writes each visited area's file from its own captured
+   entries (the active area's taken fresh), merged with what the file
+   held; global data from the live managers wherever they are. Each area's
+   copies save under their own GUIDs, so entries never move between
+   areas' files.
+
+Answered (2026-10-02):
+
+- Question 2, `research_live_roots_saving.rs`: the live top objects hold
+  area-file scripts as well as global ones. Game_Logic: 38 global classes
+  (Inventory, PlayerStats, Money, Crime, TimeOfDayAzure...) and 85 Relay,
+  13 EditTask, DestructibleList, the slot controllers,
+  SleepEventController, TriggerChangelevel, InteractableTalk in the area
+  file. Player: PlayerStats, PlayerHandItems global; PersistLocation (the
+  player's position) and relays in the area file. Pause Menu(Clone): 429
+  Relay, area file.
+- `research_save_ids.rs`: each area's copies save under their own GUIDs
+  (SleepEventController: a different GUID per area; PersistLocation on the
+  live player 79edc4c2..., on most areas' copies c0f9412e...). So step 4
+  as written is wrong: saving the live top objects with another area
+  writes the first area's entries into the other area's file, where that
+  area's copies never read them, and the first area's file stops being
+  written. And in a kept area its own Game_Logic copy is off, so the save
+  pass (SaveController.cs:1131) drops its entries from that area's file
+  (the level file is rewritten from what is on, 462/475).
+  Step 4 becomes: each area's file is written from its own objects,
+  captured while that area is on (when the player leaves it), merged with
+  the entries its file already held; global data from the live managers.
+- Inventory and PlayerStats read no GUID field; how the game matches
+  global managers to their saved entries is not checked.
+- 35 Game_Logic copies were live: 34 areas kept loaded at once.
+
+- Question 1, order in a normal load (frame numbers logged by temporary
+  prefixes on LoadGameWithMigration, ExecuteSaveLoadFunctions and
+  Relay.Start, one save load):
+
+  ```text
+  save load begins at frame 17868
+  load phase pass at frame 18794; Relay.Start so far 105 (first at frame 18793)
+  load phase pass at frame 18795; Relay.Start so far 189 (first at frame 18793)
+  ```
+
+  The area's objects start first, its saved data goes in on the next
+  frame; scripts that need the data wait (Relay fires its start events 3
+  frames after Start, Relay.cs:88-93). Step 2 follows that order.
+- Question 3, a save at every door: not needed. Step 3 captures the area
+  left into memory (the save phases' output for its objects); the files
+  are written at the game's next save (step 4).
+- Question 4, what reacts to an area change or a load:
+
+  | Trigger | Scripts |
+  |---|---|
+  | OnMapChanging (leaving) | NPCDirector (every NPC's state.OnMapChange, NPCDirector.cs:91-104), AnimalController, BuildingSystem, Teleport |
+  | OnMapChanged (arrived) | NPCDirector, AnimalController, Collectible, Spawner, RelayTimer, RelayOnDayChange, TenementEventController |
+  | LoadingDone | BlackoutController, ItemAchievementList, NaturalLightSourceChecker |
+  | PlayerWillChangeLevel | InteractableChair, InteractableLadder (stop sitting, climbing) |
+  | PlayerWillLoadGame | Act_Police, Act_Robber |
+  | Unity sceneLoaded | LoadOnLevelIni, SalsaConfigGuard (these already run for every area loaded alongside) |
+
+  Steps 2 and 3 run the OnMapChanged and OnMapChanging phases and fire
+  PlayerWillChangeLevel, as a door does.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:

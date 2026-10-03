@@ -28,8 +28,6 @@ use unityforge::mono::{MonoObject, invoke_static, json_handle, owned_object};
 static HOOKS: Mutex<Vec<Hook>> = Mutex::new(Vec::new());
 /// Skipped calls while on: "Class.Method" -> count.
 static SKIPPED: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
-/// Guarded class -> the static field holding its one copy.
-static FIELD_OF: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
 /// Top objects switched off: their names.
 static SWITCHED_OFF: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// The same objects' instance ids: an area's own setup, never switched
@@ -83,7 +81,6 @@ pub fn install() {
 fn turn_on() -> Result<usize, String> {
     let mut fields = one_copy_classes()?;
     fields.extend(OTHER_FIELDS.iter().map(|(t, _, f)| (t.to_string(), f.to_string())));
-    *FIELD_OF.lock().unwrap() = fields.iter().cloned().collect();
     let mut hooks = Vec::new();
     for (class, _) in fields {
         for (method, cb) in [("Awake", on_awake as extern "C" fn(*const c_void) -> i32), ("OnDestroy", on_destroy)] {
@@ -138,6 +135,22 @@ extern "C" fn on_destroy(ctx: *const c_void) -> i32 {
 /// 1 (skip the original) when the class's `instance` already holds a live
 /// copy that is not this one.
 fn skip_if_newcomer(ctx: *const c_void, method: &str, disable: bool) -> i32 {
+    let start = std::time::Instant::now();
+    let r = skip_if_newcomer_inner(ctx, method, disable);
+    PREFIX_NANOS.fetch_add(start.elapsed().as_nanos() as u64, std::sync::atomic::Ordering::Relaxed);
+    r
+}
+
+/// Time spent in the prefix since the last take (kept_loaded logs it per
+/// area loaded alongside: how much of the load's longest frame is the
+/// mod's own).
+static PREFIX_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub(crate) fn take_prefix_secs() -> f64 {
+    PREFIX_NANOS.swap(0, std::sync::atomic::Ordering::Relaxed) as f64 / 1e9
+}
+
+fn skip_if_newcomer_inner(ctx: *const c_void, method: &str, disable: bool) -> i32 {
     let h = ctx as isize as i32;
     if h == 0 {
         return 0;
@@ -159,29 +172,13 @@ fn skip_if_newcomer(ctx: *const c_void, method: &str, disable: bool) -> i32 {
 }
 
 /// The class name when another live copy is already the one copy.
+/// The class name when another live copy is already the one copy, in one
+/// call to the shim's FirstCopyGuard.Newcomer (which also lets the managers
+/// the game keeps through scene changes destroy their own new copies,
+/// LoadingScreen.cs:83). Done from here it took about eight bridge calls.
 fn newcomer(me: &MonoObject) -> Result<Option<String>, String> {
-    let ty = obj(me.invoke("GetType", &json!([]))?).ok_or("no type")?;
-    let class = ty.invoke("get_FullName", &json!([]))?.as_str().map(String::from).ok_or("no type name")?;
-    let name = FIELD_OF.lock().unwrap().get(&class).cloned().unwrap_or_else(|| "instance".into());
-    let field = obj(ty.invoke("GetField", &json!([name]))?).ok_or("no one-copy field")?;
-    let current = field.invoke("GetValue", &json!([null]))?;
-    // The shim names a destroyed Unity object "<null>".
-    if current.get("name").and_then(Json::as_str) == Some("<null>") {
-        return Ok(None);
-    }
-    let Some(current) = obj(current) else { return Ok(None) };
-    let id = |o: &MonoObject| o.invoke("GetInstanceID", &json!([])).ok().and_then(|v| v.as_i64());
-    if id(&current) == id(me) {
-        return Ok(None);
-    }
-    // A live copy the game keeps through scene changes (LoadingScreen,
-    // SaveController, InputManager...) guards itself: the new copy's own
-    // Awake destroys it (LoadingScreen.cs:83). Let it run.
-    let kept = invoke_static("Unityforge.Shim.SceneTools", "KeptThroughLoads", &json!([{"handle": current.handle().0}]))?;
-    if kept.as_bool() == Some(true) {
-        return Ok(None);
-    }
-    Ok(Some(class))
+    let class = invoke_static("Unityforge.Shim.FirstCopyGuard", "Newcomer", &json!([{"handle": me.handle().0}]))?;
+    Ok(class.as_str().filter(|c| !c.is_empty()).map(String::from))
 }
 
 /// Switches off the top object of a new copy one frame later: Unity can

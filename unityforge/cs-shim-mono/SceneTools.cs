@@ -26,13 +26,14 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// True when the component's object is kept through scene changes
-        /// (DontDestroyOnLoad): it lives in Unity's own
-        /// "DontDestroyOnLoad" scene, not in any area.
+        /// Makes a loaded scene the active one: objects created while the
+        /// game runs go into the active scene. False when no loaded scene
+        /// has that name.
         /// </summary>
-        public static bool KeptThroughLoads(Component component)
+        public static bool SetActive(string sceneName)
         {
-            return component != null && component.gameObject.scene.name == "DontDestroyOnLoad";
+            var scene = SceneManager.GetSceneByName(sceneName);
+            return scene.IsValid() && scene.isLoaded && SceneManager.SetActiveScene(scene);
         }
     }
 }
