@@ -109,6 +109,28 @@ does not set is not a manager: `Storage.active` is the box open now.
     later visit (rule 2, step 3's frame); on the first visit Unity runs
     them itself.
 
+### NPCs
+
+In the game (research.md 9.37): the door save records every NPC that has
+an object (`NPCDirector.OnSavingGameSpecial` -> `NPCData.OnSavingGame`:
+its area and position); the unload destroys those objects, whose
+OnDestroy unsubscribes their schedule (`scheduler.OnDestroy()`), and the
+NPC lives on as data, moved by `NPCDirector.DeltaSeconds`; entering, the
+area's `NPCManager.StartDelay` moves or spawns the NPCs whose data says
+they are there and switches off the objects of NPCs that are elsewhere.
+
+- Leaving an area (rule 3, step 6): for each NPC object of that area (its
+  NPCManager's list), the game's `NPCData.OnSavingGame()` records it, then
+  what destroying its object does: `scheduler.OnDestroy()`, and its data
+  no longer points at the object (`scheduler.NPC` and the cached
+  `controller` emptied). Only the current area's NPCs then have an
+  object, as in the game, so a save records them right.
+- Entering an area: `NPCManager.Start` runs again on later visits (with
+  info_game_logic and SoundscapeGlobal), so its `StartDelay` reconciles
+  the area's NPCs on every visit.
+- Not known: NPCs following the player through a door (their arrival
+  point is recorded in OnMapChanging, NPCDataState.OnMapChange).
+
 ### Game-wide events
 
 The game's 28 static events (research.md 9.36) keep their handlers until

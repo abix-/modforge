@@ -174,6 +174,31 @@ fn kept_areas_played_through() {
 
     // 3. Save into the test slot and load it.
     call_static(&api, "SaveController", "SaveGame", json!(["ModTest", "", "NONE"]));
+    // NPCs of the area away keep their own area in the save (docs/kept-areas.md,
+    // NPCs): the game's save records an NPC that has an object as being in the
+    // current area, and kept areas' NPC objects were still bound.
+    if kept_on {
+        let mut misfiled = Vec::new();
+        let mut seen = 0;
+        if let Some(manager) = handle_of(&call_static(&api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["NPCManager", away]))) {
+            if let Some(list) = handle_of(&call(&api, manager, "GetAllNPCs", json!([]))) {
+                let n = call(&api, list, "get_Count", json!([])).as_i64().unwrap_or(0);
+                for i in 0..n {
+                    let Some(info) = handle_of(&call(&api, list, "get_Item", json!([i]))) else { continue };
+                    let Some(ctrl) = handle_of(&api.op("read_field", json!({"handle": info, "field": "npcController"})).result) else { continue };
+                    let Some(data) = handle_of(&api.op("read_field", json!({"handle": ctrl, "field": "Data"})).result) else { continue };
+                    let Some(state) = handle_of(&api.op("read_field", json!({"handle": data, "field": "state"})).result) else { continue };
+                    seen += 1;
+                    let scene = api.op("read_field", json!({"handle": state, "field": "currentScene"})).result;
+                    if scene.as_str() == Some(home.as_str()) {
+                        misfiled.push(call(&api, info, "get_name", json!([])));
+                    }
+                }
+            }
+        }
+        println!("NPCs of {away} after the save: {seen}, recorded as in {home}: {misfiled:?}");
+        assert!(misfiled.is_empty(), "NPCs of {away} saved as in {home}: {misfiled:?}");
+    }
     let controller = instance_now(&api, "GameController");
     op(&api, "reload_save", json!({}));
     wait_for_normal_load(&api, &controller);

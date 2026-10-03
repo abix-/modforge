@@ -773,7 +773,7 @@ fn leave_area(area: &str) -> Result<String, String> {
 
 /// Area-owned managers whose Start pushes the area's settings into the
 /// live set, run again on every later visit (docs/kept-areas.md).
-const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal"];
+const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal", "NPCManager"];
 
 /// Steps 1 to 10 of rule 3.
 fn leave_steps(area: &str) -> Result<String, String> {
@@ -796,7 +796,9 @@ fn leave_steps(area: &str) -> Result<String, String> {
     // Step 5: the area's DestructibleList (still the game's: the area
     // entered becomes the game's only in rule 2, step 2).
     one_copy("DestructibleList")?.invoke("OnSavingGameDestructibleList", &json!([]))?;
-    // Step 7 (6 is not run).
+    // Step 6 for the area's NPCs (the rest of 6 is game-wide data, not run).
+    let npcs = npcs_leave(area)?;
+    // Step 7.
     for phase in ["OnSavingGame", "OnSavingGameLatePrimary"] {
         run_phase(area, phase, false)?;
     }
@@ -814,7 +816,34 @@ fn leave_steps(area: &str) -> Result<String, String> {
         drop(owned_object(l));
         drop(owned_object(g));
     }
-    Ok(format!("{} area entries, {} global entries", counts.0, counts.1))
+    Ok(format!("{} area entries, {} global entries, {npcs} NPCs recorded", counts.0, counts.1))
+}
+
+/// Rule 3, step 6 for NPCs (docs/kept-areas.md, NPCs): each NPC object of
+/// the area left is recorded by the game's `NPCData.OnSavingGame` (its area
+/// and position), then its data stops pointing at it, as destroying it in
+/// the game's unload would (`scheduler.OnDestroy()` unsubscribes its
+/// schedule). Returns how many.
+fn npcs_leave(area: &str) -> Result<usize, String> {
+    let Some(manager) = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["NPCManager", area]))?) else {
+        return Ok(0);
+    };
+    let list = obj(manager.invoke("GetAllNPCs", &json!([]))?).ok_or("no NPC list")?;
+    let n = list.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+    let mut done = 0;
+    for i in 0..n {
+        let Some(info) = obj(list.invoke("get_Item", &json!([i]))?) else { continue };
+        let Some(controller) = obj(info.read_field("npcController")?) else { continue };
+        let Some(data) = obj(controller.read_field("Data")?) else { continue };
+        data.invoke("OnSavingGame", &json!([]))?;
+        if let Some(schedule) = obj(data.read_field("scheduler")?) {
+            schedule.invoke("OnDestroy", &json!([]))?;
+            schedule.write_field("NPC", &Json::Null)?;
+        }
+        data.write_field("controller", &Json::Null)?;
+        done += 1;
+    }
+    Ok(done)
 }
 
 /// After every game save (SaveController.SaveGame, which writes only the
