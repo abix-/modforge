@@ -137,7 +137,7 @@ normal load.
 | Difference | Why | Status |
 |---|---|---|
 | Areas left are switched off, not unloaded: their objects keep subscriptions to game-wide events (a switched-off Spawner still gets `TimeOfDayAzure.SecondsPassed`) | Unloading is what makes doors slow | Not measured; operator to decide |
-| No autosave at a door | Writing files at a door stutters | Operator to decide |
+| No autosave at a door | Writing files at a door stutters | Decided by the operator (2026-10-03): no autosave at doors; the player saves |
 | Objects in an area never entered woke but never started; OnDestroy of a class with Start and no Awake is skipped for them, and an exception their OnDisable throws is swallowed | Nothing may start before the player walks in (an area's intro ran and left the screen black) | Built |
 
 ## Proof

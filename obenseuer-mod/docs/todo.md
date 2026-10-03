@@ -13,7 +13,6 @@
 | 13 | kept_loaded.rs | [ ] Check the classes whose OnEnable/OnDisable run each time an area is switched on and off (98 / 68) | Result in docs/loading-research.md, fixes as their own rows |
 | 14 | kept_loaded.rs | [ ] Check the 2 sceneLoaded listeners and the game's searches that skip switched-off objects | Result in docs/loading-research.md |
 | 17 | kept_loaded.rs | [ ] Check NPCManager.ActiveScene after a kept door | Test shows it names the area the player is in |
-| 18 | kept_loaded.rs | [ ] Decide: autosave at a kept door, as a normal door does (docs/kept-areas.md, differences) | Operator's decision in docs/kept-areas.md |
 | 19 | kept_loaded.rs | [ ] Use kept areas for doors used right after a save loads (door hook goes on only after the first area loads alongside) | First door after a load has no loading screen |
 | 20 | kept_loaded.rs | [ ] Find whether kept areas add a LightController.Awake NullReferenceException (the game logs it too: 1 with kept areas off, 2 on, one run each) | 3 runs each way in docs/loading-research.md |
 | 21 | first_copy_wins.rs | [ ] Stop the shim logging an error for each one-copy class without OnDestroy (about 37 "method 'OnDestroy' not found" at mod start) | No "not found" errors at mod start in LogOutput.log |
