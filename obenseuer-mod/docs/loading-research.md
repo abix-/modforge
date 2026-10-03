@@ -965,6 +965,37 @@ on and once off (OBENSEUER_KEPT_OFF=1, the game's own loads):
 RemoveAgent is the mod's. LightController.Awake is also the game's own;
 whether the second one is the mod's is not known from one run each.
 
+## Between doors, read from the code (2026-10-03)
+
+- AlarmClock, ToiletPaperHolder: add themselves to a game-wide list in
+  OnEnable and remove themselves in OnDisable (AlarmClock.cs:15-41): a
+  switched-off kept area takes its copies out. Same as the game.
+- LoadOnLevelIni: Awake destroys any second copy (`spawned`, 18-37); its
+  sceneLoaded listener exists only after a load from the menu and leaves
+  on the first area. Same as the game.
+- SlotMachineGameplay: every machine's Awake replaces one shared array
+  (`_runResults`, 148); the game does that with several machines in one
+  area already. A machine loading alongside while one is played matters
+  only with a different reel count.
+- Whole-game searches (FindObjectOfType, FindObjectsOfType,
+  GameObject.Find, Camera.main): all skip switched-off objects, so they
+  find the current area and the live player and managers, as in the game.
+- SalsaConfigGuard: on every scene load, the mod's loads alongside too,
+  and again a second later, it checks every Salsa, Emoter and Eyes in
+  every loaded area, switched-off ones included. Only settings; its cost
+  grows with areas kept loaded.
+- OnEnable and OnDisable at every door: all 17 subscriptions made in an
+  OnEnable are undone in the class's OnDisable, so nothing subscribes
+  twice.
+- NPCManager.ActiveScene: a name cached in Start (NPCManager.cs:60), read
+  by 20 NPC code paths (spawning, schedules, the NPC director,
+  pathfinding between areas). The live NPCManager is home's, so after a
+  kept door it still names home. NPCManager is area-owned.
+- LightController.Awake NullReferenceException: a LightController on an
+  object with no Light (`cullLight.intensity`, offset 0x0c). The game's
+  own scene mistake; it is logged when such an area loads, alongside or
+  not.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:
