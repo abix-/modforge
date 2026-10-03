@@ -51,6 +51,26 @@ pub struct EpisodeDef {
     /// when the game starts in it (topside design.md "What 2D changes":
     /// not in The Tap's opening, the first fight comes later).
     pub door_enemy: bool,
+    /// How it can end, in order: the first whose pivot points are all
+    /// reached and whose parts are alive is the ending (topside the-tap.md
+    /// "Which ending"); the last needs nothing.
+    pub endings: Vec<EndingDef>,
+}
+
+/// One ending: its name, what it says happened, the pivot points it needs,
+/// and the parts who must be alive for it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EndingDef {
+    pub name: String,
+    pub words: String,
+    pub needs: Vec<String>,
+    pub alive: Vec<String>,
+}
+
+/// The ending an episode comes to: the first of its endings whose pivot
+/// points are all `reached` and whose parts `alive` holds.
+pub fn ending<'a>(def: &'a EpisodeDef, reached: &[&str], alive: impl Fn(&str) -> bool) -> Option<&'a EndingDef> {
+    def.endings.iter().find(|e| e.needs.iter().all(|n| reached.contains(&n.as_str())) && e.alive.iter().all(|p| alive(p)))
 }
 
 /// One cue, as a rule: when the player has done `did` (a `Did`'s words,
@@ -227,6 +247,17 @@ pub enum CastFrom {
     NearestOtherBunker,
     /// A random person of the same bunker as the named part.
     SameBunkerAs(String),
+    /// Of the player's bunker, the one who feels most toward the player,
+    /// from their own memory (topside the-fever.md: "whoever in the
+    /// player's bunker trusted the player most").
+    MostTrustingOfPlayerBunker,
+    /// Whoever played this part in the episode before, if living, wherever
+    /// they are now (the-fever.md: Mara).
+    PlayedBefore(String),
+    /// Whoever played this part in the episode before, only if still of
+    /// the player's bunker (the-fever.md: "Dell: in it only if Dell stayed
+    /// home").
+    PlayedBeforeAtHome(String),
 }
 
 /// One bunker's people, as the consumer sees them, for casting.
@@ -240,19 +271,50 @@ pub struct CastBunker<P> {
 /// Fill an episode's parts from the bunkers' people, from the seed: each
 /// a random person from where it says, never one already cast. A part
 /// with nobody left to cast is left out.
-pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], seed: u64) -> Vec<(String, P)> {
+/// `before`: who played which part in the episode before; `feels`: how a
+/// person feels toward the player, from their memory (None: nothing of
+/// them).
+pub fn cast<P: Copy + PartialEq>(parts: &[PartDef], bunkers: &[CastBunker<P>], before: &[(String, P)], feels: impl Fn(P) -> Option<f32>, seed: u64) -> Vec<(String, P)> {
     let nearest = bunkers
         .iter()
         .enumerate()
         .filter(|(_, b)| !b.player && !b.people.is_empty())
         .min_by(|a, b| a.1.distance.total_cmp(&b.1.distance))
         .map(|(i, _)| i);
+    let bunker_of = |p: P| bunkers.iter().position(|b| b.people.contains(&p));
+    let player_bunker = bunkers.iter().position(|b| b.player);
     let mut cast: Vec<(String, P, usize)> = Vec::new();
     for (salt, part) in parts.iter().enumerate() {
+        let taken = |p: &P| cast.iter().any(|(_, c, _)| c == p);
+        // Parts drawn from memory name one person, or no one.
+        let named = match &part.from {
+            CastFrom::MostTrustingOfPlayerBunker => player_bunker.and_then(|b| {
+                bunkers[b]
+                    .people
+                    .iter()
+                    .copied()
+                    .filter(|p| !taken(p))
+                    .filter_map(|p| feels(p).map(|f| (p, f)))
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(p, _)| p)
+            }),
+            CastFrom::PlayedBefore(other) => before.iter().find(|(n, p)| n == other && !taken(p) && bunker_of(*p).is_some()).map(|(_, p)| *p),
+            CastFrom::PlayedBeforeAtHome(other) => before.iter().find(|(n, p)| n == other && !taken(p) && bunker_of(*p) == player_bunker).map(|(_, p)| *p),
+            _ => None,
+        };
+        if matches!(part.from, CastFrom::MostTrustingOfPlayerBunker | CastFrom::PlayedBefore(_) | CastFrom::PlayedBeforeAtHome(_)) {
+            if let Some(p) = named
+                && let Some(b) = bunker_of(p)
+            {
+                cast.push((part.name.clone(), p, b));
+            }
+            continue;
+        }
         let bunker = match &part.from {
-            CastFrom::PlayerBunker => bunkers.iter().position(|b| b.player),
+            CastFrom::PlayerBunker => player_bunker,
             CastFrom::NearestOtherBunker => nearest,
             CastFrom::SameBunkerAs(other) => cast.iter().find(|(n, ..)| n == other).map(|(.., b)| *b),
+            _ => None,
         };
         let Some(bunker) = bunker else {
             continue;
@@ -1163,6 +1225,7 @@ mod tests {
             lines: Vec::new(),
             cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: CueAct::KnockOnThePlayer }],
             door_enemy: false,
+            endings: Vec::new(),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1181,6 +1244,7 @@ mod tests {
             lines: Vec::new(),
             cues: Vec::new(),
             door_enemy: true,
+            endings: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1235,6 +1299,7 @@ mod tests {
                 lines: vec![line("threatens Mara", -0.6), line("talks with Mara", 0.2)],
                 cues: Vec::new(),
                 door_enemy: false,
+            endings: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1253,6 +1318,7 @@ mod tests {
                 lines: Vec::new(),
                 cues: Vec::new(),
                 door_enemy: true,
+            endings: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
@@ -1312,7 +1378,7 @@ mod tests {
     #[test]
     fn each_part_is_cast_from_where_it_says() {
         for seed in 0..50 {
-            let cast = cast(&the_tap(), &bunkers(), seed);
+            let cast = cast(&the_tap(), &bunkers(), &[], |_| None, seed);
             let of = |part: &str| cast.iter().find(|(n, _)| n == part).map(|(_, p)| *p).unwrap();
             assert!((1..=4).contains(&of("Dell")), "Dell from the player's bunker");
             assert!((10..=13).contains(&of("Mara")), "Mara from the nearest other bunker");
@@ -1323,13 +1389,37 @@ mod tests {
 
     #[test]
     fn the_same_seed_casts_the_same_people() {
-        assert_eq!(cast(&the_tap(), &bunkers(), 7), cast(&the_tap(), &bunkers(), 7));
+        assert_eq!(cast(&the_tap(), &bunkers(), &[], |_| None, 7), cast(&the_tap(), &bunkers(), &[], |_| None, 7));
     }
 
     #[test]
     fn a_part_with_nobody_to_cast_is_left_out() {
         let lonely = vec![CastBunker { player: true, distance: 0.0, people: vec![1] }];
-        let cast = cast(&the_tap(), &lonely, 7);
+        let cast = cast(&the_tap(), &lonely, &[], |_| None, 7);
         assert_eq!(cast, vec![("Dell".to_string(), 1)]);
+    }
+
+    #[test]
+    fn parts_drawn_from_memory_name_who_remembers_and_who_played_before() {
+        let part = |name: &str, from| PartDef { name: name.to_string(), from };
+        let parts = vec![
+            part("the first sick person", CastFrom::MostTrustingOfPlayerBunker),
+            part("Dell", CastFrom::PlayedBeforeAtHome("Dell".to_string())),
+            part("Mara", CastFrom::PlayedBefore("Mara".to_string())),
+        ];
+        let before = vec![("Dell".to_string(), 2), ("Mara".to_string(), 11)];
+        // 3 feels most toward the player; 2 played Dell and is home.
+        let feels = |p: u32| match p {
+            1 => Some(0.1),
+            2 => Some(0.3),
+            3 => Some(0.6),
+            _ => None,
+        };
+        let cast = cast(&parts, &bunkers(), &before, feels, 7);
+        assert_eq!(cast, vec![("the first sick person".to_string(), 3), ("Dell".to_string(), 2), ("Mara".to_string(), 11)]);
+        // Dell gone from the player's bunker: Dell is left out.
+        let moved = vec![("Dell".to_string(), 12), ("Mara".to_string(), 11)];
+        let cast = super::cast(&parts, &bunkers(), &moved, feels, 7);
+        assert!(!cast.iter().any(|(n, _)| n == "Dell"), "Dell, no longer home, is cast: {cast:?}");
     }
 }

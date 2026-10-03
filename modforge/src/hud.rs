@@ -302,6 +302,16 @@ pub struct HudState {
     pub talking: Option<Talking>,
     /// The trade being made, while the trade panel is open.
     pub trading: Option<Trading>,
+    /// The episode's ending, shown as a text screen before the storm
+    /// (topside the-tap.md "The endings"; todo 11ae).
+    pub ending: Option<Ending>,
+}
+
+/// An ending as the screen shows it: its name and what it says happened.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Ending {
+    pub name: String,
+    pub words: String,
 }
 
 impl HudState {
