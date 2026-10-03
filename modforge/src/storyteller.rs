@@ -63,6 +63,60 @@ pub struct EpisodeDef {
     /// conditions, RimWorld's quest parts): for each part the first whose
     /// pivot points hold applies.
     pub errands: Vec<ErrandDef>,
+    /// Its pivot points reached by what someone does, not by a line (topside
+    /// todo 11ai), each read from memory and the world.
+    pub deeds: Vec<DeedDef>,
+}
+
+/// A pivot point reached by a deed: its name, the deed, and its group, if
+/// any: of a group, the first in order that holds is reached, and none of
+/// the group after it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DeedDef {
+    pub pivot: String,
+    pub deed: Deed,
+    pub group: Option<String>,
+}
+
+/// A deed that reaches a pivot point, each read from memory and the world.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Deed {
+    /// Anyone remembers eating or drinking from the episode's thing since
+    /// it started; reached by the first who did.
+    Ate { thing: String },
+    /// The player comes within `within` metres of the episode's thing with
+    /// this company.
+    CameNear { thing: String, within: f32, with: Company },
+    /// The player comes home after eating or drinking from the thing,
+    /// having told these of it.
+    HomeAfterAte { thing: String, told: Told },
+    /// The episode's thing is gone from the world while the storm warns or
+    /// comes.
+    GoneInTheStorm { thing: String },
+    /// The player has open a store that something draws from, and it reads
+    /// dry.
+    OpenedDrawnStoreDry,
+    /// The player has open their own bunker's store, and it holds more than
+    /// `days` of what answers `need` for its living people.
+    OpenedOwnStoreOver { need: crate::survival::Need, days: f32 },
+}
+
+/// Who is with the player: a part leading or following them, one of their
+/// bunker doing so, or no one (always holds: the last of a group).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Company {
+    Part(String),
+    BunkerMember,
+    NoOne,
+}
+
+/// Whom the player told of a thing: everyone of their bunker, a part, or
+/// no one (always holds: the last of a group).
+#[derive(Clone, Debug, PartialEq)]
+pub enum Told {
+    AllOfTheirBunker,
+    Part(String),
+    NoOne,
 }
 
 /// One errand: the part asked, what they are asked to do, the pivot points
@@ -1321,6 +1375,7 @@ mod tests {
                 errand(ErrandAct::GoHome, &["sent", "looked"], &["told again"]),
                 errand(ErrandAct::StayHome, &[], &["the note read"]),
             ],
+            deeds: Vec::new(),
         };
         let does = |reached: &[&str]| errand_for(&def, "Dell", reached).map(|e| e.does.clone());
         assert_eq!(does(&[]), Some(ErrandAct::StayHome), "home until the note");
@@ -1346,6 +1401,7 @@ mod tests {
             endings: Vec::new(),
             things: Vec::new(),
             errands: Vec::new(),
+            deeds: Vec::new(),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1367,6 +1423,7 @@ mod tests {
             endings: Vec::new(),
             things: Vec::new(),
             errands: Vec::new(),
+            deeds: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1424,6 +1481,7 @@ mod tests {
             endings: Vec::new(),
             things: Vec::new(),
             errands: Vec::new(),
+            deeds: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1445,6 +1503,7 @@ mod tests {
             endings: Vec::new(),
             things: Vec::new(),
             errands: Vec::new(),
+            deeds: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
