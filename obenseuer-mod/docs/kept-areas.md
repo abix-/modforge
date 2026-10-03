@@ -105,9 +105,9 @@ does not set is not a manager: `Storage.active` is the box open now.
   - `SoundscapeGlobal` (`__MAIN/Soundscapes`, with its 4 children, all the
     area's content) is area-owned too: it holds the area's day and night
     sound, plays it in Start and sets it every minute
-    (research.md 9.36).
+    (areas.md, what area objects do in Start).
   - `info_navigation` (loads its area's navigation file into the one
-    pathfinder, research.md 9.37) and `SkyCamera` (the area's 3D sky
+    pathfinder, pathfinding.md) and `SkyCamera` (the area's 3D sky
     camera) are area-owned too. In the game a new area's pathfinder holds
     that area's map from the start. On entering, before the area switches
     on, the mod loads the area's navigation file into the pathfinder with
@@ -116,7 +116,7 @@ does not set is not a manager: `Storage.active` is the box open now.
     `info_navigation` loaded. Loaded a frame after switching on (from its
     OnEnable), animals got paths on the previous area's map
     (NavmeshTile.GetVertex IndexOutOfRangeException).
-  - Coroutines that run for good, started in Start (research.md 9.37):
+  - Coroutines that run for good, started in Start (areas.md, coroutines):
     Unity stops them when the area switches off and does not restart
     them. On a later visit the mod starts them again on the area's
     objects: BottleRecyclingLights.Blinking,
@@ -136,7 +136,7 @@ does not set is not a manager: `Storage.active` is the box open now.
 
 ### NPCs
 
-In the game (research.md 9.37): the door save records every NPC that has
+In the game (npcs.md): the door save records every NPC that has
 an object (`NPCDirector.OnSavingGameSpecial` -> `NPCData.OnSavingGame`:
 its area and position); the unload destroys those objects, whose
 OnDestroy unsubscribes their schedule (`scheduler.OnDestroy()`), and the
@@ -158,7 +158,7 @@ they are there and switches off the objects of NPCs that are elsewhere.
 
 ### Game-wide events
 
-The game's 28 static events (research.md 9.36) keep their handlers until
+The game's 28 static events (areas.md, game-wide events) keep their handlers until
 OnDestroy, and an area left is switched off, not destroyed. In the game
 it is destroyed, so its objects stop reacting: home's `SoundscapeGlobal`
 otherwise sets home's sound every minute wherever the player is, and a
@@ -223,7 +223,7 @@ SaveController.cs:640-664), on the area entered, in this order:
 "First visit" means the first time since the save was loaded. Later visits
 keep what is live in the area: its data never left memory.
 
-Time while away (research.md 9.37): in the game an area not loaded does
+Time while away (time.md): in the game an area not loaded does
 not run, and its load catches it up from the time recorded when it was
 saved (`savedTimeAndDay`: growing, storage restock, spawners, shops,
 animals, NPC needs, fuel...); everything else in it does not move on
@@ -235,7 +235,7 @@ game's clock (`TimeOfDayAzure.SecondsPassed`, `MinutePassed`,
 catch-up would give; every other clock listener is taken out with the
 rest (game-wide events, below): Prison would keep lowering crimes after
 the player left it, RelayPlayerDistance would fire each day,
-SoundscapeGlobal would set the game-wide sound (research.md 9.37). Re-running the load steps on a later visit was tried and is
+SoundscapeGlobal would set the game-wide sound (time.md, clock listeners). Re-running the load steps on a later visit was tried and is
 not safe: `Collectible.OnLoadingGame` calls Start on a live object, and
 the load steps that create objects (DestructibleList, ParcelLocker,
 RatFightArena, CollectibleItemSpawner) would duplicate them.
@@ -277,7 +277,7 @@ normal load.
 
 | Difference | Why | Status |
 |---|---|---|
-| Areas left are switched off, not unloaded | Unloading is what makes doors slow | Their handlers on the game's static events are taken out while away (rule 1, game-wide events); instance events on managers and lists that collect every area's objects stay (research.md 9.36: none breaks play) |
+| Areas left are switched off, not unloaded | Unloading is what makes doors slow | Their handlers on the game's static events are taken out while away (rule 1, game-wide events); instance events on managers and lists that collect every area's objects stay (areas.md, what area objects do in Start: none breaks play) |
 | No autosave at a door | Writing files at a door stutters | Decided by the operator (2026-10-03): no autosave at doors; the player saves |
 | Objects in an area never entered woke but never started; OnDestroy of a class with Start and no Awake is skipped for them, and an exception their OnDisable throws is swallowed | Nothing may start before the player walks in (an area's intro ran and left the screen black) | Built |
 

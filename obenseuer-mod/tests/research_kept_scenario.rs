@@ -154,7 +154,7 @@ fn kept_areas_played_through() {
     let home = level_now(&api);
     let loaded: Vec<String> = kept(&api)["loaded"].as_object().into_iter().flatten().map(|(a, _)| a.clone()).collect();
     // OBENSEUER_AWAY picks the area (Under Map: its own sky and radiation
-    // 89, so its settings following the player shows; research.md 9.30).
+    // 89, so its settings following the player shows; docs/areas.md, info_game_logic).
     let wanted = std::env::var("OBENSEUER_AWAY").ok();
     let away = door_destinations(&api)
         .into_iter()

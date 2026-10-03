@@ -911,7 +911,7 @@ fn load_navigation(area: &str) -> Result<(), String> {
 const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal", "NPCManager"];
 
 /// Coroutines that run for good, started in Start, started again on every
-/// later visit (docs/kept-areas.md, rule 1, which copy; research.md 9.37).
+/// later visit (docs/kept-areas.md, rule 1, which copy; docs/npcs.md, followers).
 const COROUTINES_AGAIN: &[(&str, &str)] = &[
     ("BottleRecyclingLights", "Blinking"),
     ("BottleRecyclingLightsUI", "Blinking"),

@@ -1,14 +1,13 @@
 # Obenseuer loading screens
 
-Why Obenseuer shows a loading screen at every door between areas, where
-the time goes, and what a mod could change. Started 2026-10-02.
-
-The game's own systems learned here (the door, save and load step by
-step, what an area holds, managers, arrival points, DestructibleList,
-NPCManager, events and listeners, lifecycle patterns, pathfinding) are
-gathered in [research.md](research.md) sections 9.25 and 9.29 to 9.38:
-the reference. This file is the investigation and its history; the mod's
-design is [kept-areas.md](kept-areas.md).
+> **Authoritative on:** the history of the loading work: why Obenseuer
+> shows a loading screen at every door, where the time goes, what was
+> tried and measured. Started 2026-10-02.
+>
+> Not authoritative on the game's systems: each has its own doc, listed
+> in [research.md](research.md) (the door and the save in save.md, areas
+> and managers in areas.md, NPCs in npcs.md, pathfinding in
+> pathfinding.md). The mod's design is [kept-areas.md](kept-areas.md).
 
 Sources: the decompiled game code (Assembly-CSharp.dll, ilspycmd), the
 game's own timing lines in Player.log, and the research test
