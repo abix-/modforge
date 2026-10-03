@@ -99,11 +99,32 @@ does not set is not a manager: `Storage.active` is the box open now.
     "Esko_Virtanen"). With the order below it finds itself.
   - Order on entering (rule 2): the area-owned managers become the game's
     before the area switches on, as Awake runs before OnEnable in a load.
+  - `SoundscapeGlobal` (`__MAIN/Soundscapes`, with its 4 children, all the
+    area's content) is area-owned too: it holds the area's day and night
+    sound, plays it in Start and sets it every minute
+    (research.md 9.36).
   - Unity runs Start once per object; in the game every visit is a fresh
-    load, so `info_game_logic.Start` runs on every visit. The mod runs the
-    area's `info_game_logic.Start` on every entering (rule 2, step 3's
-    frame). It only sets values and switches the sky, so the first
-    visit's own Start running too does no harm.
+    load, so these Starts run on every visit. The mod runs the area's
+    `info_game_logic.Start` and `SoundscapeGlobal.Start` again on every
+    later visit (rule 2, step 3's frame); on the first visit Unity runs
+    them itself.
+
+### Game-wide events
+
+The game's 28 static events (research.md 9.36) keep their handlers until
+OnDestroy, and an area left is switched off, not destroyed. In the game
+it is destroyed, so its objects stop reacting: home's `SoundscapeGlobal`
+otherwise sets home's sound every minute wherever the player is, and a
+left area's Spawners keep their timers. So:
+
+- Leaving an area (rule 3, after step 11): from every static event, the
+  handlers whose object is in that area and now switched off are taken
+  out and kept for that load of the area (`Scene.handle`). The live
+  player and managers stay on, so theirs stay.
+- Entering an area (rule 2, after the Starts run again): its kept
+  handlers go back, each only if the event does not already hold it (a
+  Start run again subscribes again).
+- Kept handlers of a load are dropped when it unloads.
 
 ## Rule 2: entering an area
 
@@ -165,7 +186,7 @@ normal load.
 
 | Difference | Why | Status |
 |---|---|---|
-| Areas left are switched off, not unloaded: their objects keep subscriptions to game-wide events (a switched-off Spawner still gets `TimeOfDayAzure.SecondsPassed`) | Unloading is what makes doors slow | Not measured; operator to decide |
+| Areas left are switched off, not unloaded | Unloading is what makes doors slow | Their handlers on the game's static events are taken out while away (rule 1, game-wide events); instance events on managers and lists that collect every area's objects stay (research.md 9.36: none breaks play) |
 | No autosave at a door | Writing files at a door stutters | Decided by the operator (2026-10-03): no autosave at doors; the player saves |
 | Objects in an area never entered woke but never started; OnDestroy of a class with Start and no Awake is skipped for them, and an exception their OnDisable throws is swallowed | Nothing may start before the player walks in (an area's intro ran and left the screen black) | Built |
 

@@ -526,15 +526,23 @@ fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
     *CURRENT.lock().unwrap() = Some(area.to_string());
     let area = area.to_string();
     MAIN_QUEUE.push(move || {
-        // The frame its objects start: the area's info_game_logic.Start
-        // pushes its sky and radiation into the live set, as on every
-        // visit in the game (Unity runs Start once; docs/kept-areas.md,
-        // rule 1, which copy).
-        let settings = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["info_game_logic", area])).unwrap_or(Json::Null))
-            .map(|g| g.invoke("Start", &json!([])).map(|_| ()));
-        if let Some(Err(e)) = settings {
-            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: info_game_logic.Start failed: {e}"));
+        // The frame its objects start. On a later visit, the area-owned
+        // managers whose Start pushes the area's settings into the live
+        // set run it again, as on every visit in the game (Unity runs Start
+        // once; on the first visit Unity runs it): info_game_logic (sky,
+        // radiation), SoundscapeGlobal (the area's sound). Then the
+        // handlers taken out when it was left go back (docs/kept-areas.md,
+        // rule 1, which copy and game-wide events).
+        if DATA_APPLIED.lock().unwrap().iter().any(|a| *a == area) {
+            for class in START_AGAIN {
+                let ran = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!([class, area])).unwrap_or(Json::Null))
+                    .map(|g| g.invoke("Start", &json!([])).map(|_| ()));
+                if let Some(Err(e)) = ran {
+                    unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.Start failed: {e}"));
+                }
+            }
         }
+        let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area]));
         // Step 3, then 4 and 6 on the first visit.
         let started = fire_save_event("LoadingStarted");
         let data = saved_data_first_frame(&area);
@@ -546,7 +554,7 @@ fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
             unityforge::mono::log(
                 unityforge::mono::LogLevel::Info,
                 &format!(
-                    "obenseuer-mod: kept_loaded: entered {area}: LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
+                    "obenseuer-mod: kept_loaded: entered {area}: event handlers back {back:?}, LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
                 ),
             );
         });
@@ -749,8 +757,15 @@ fn leave_area(area: &str) -> Result<String, String> {
     // Step 11: switched off, not unloaded; always, or the area left would
     // stay on over the one entered (areas are built in the same place).
     switch_area(area, false)?;
-    kept
+    // Its handlers on the game's static events taken out, as its unload
+    // would (docs/kept-areas.md, rule 1, game-wide events).
+    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area]))?;
+    kept.map(|k| format!("{k}, event handlers out {out}"))
 }
+
+/// Area-owned managers whose Start pushes the area's settings into the
+/// live set, run again on every later visit (docs/kept-areas.md).
+const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal"];
 
 /// Steps 1 to 10 of rule 3.
 fn leave_steps(area: &str) -> Result<String, String> {

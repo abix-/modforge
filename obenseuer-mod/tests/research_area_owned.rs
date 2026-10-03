@@ -25,7 +25,7 @@ fn area_owned() {
     let area = kept["loaded"].as_object().into_iter().flatten().map(|(a, _)| a.clone()).find(|a| *a != current).expect("an area kept loaded");
     let mb = handle_of(&call_static(&api, "System.Type", "GetType", json!(["UnityEngine.MonoBehaviour, UnityEngine.CoreModule"]))).expect("MonoBehaviour type");
     println!("area {area}");
-    for class in ["DestructibleList", "PlayerLevelEntrypoints", "SleepEventController", "NPCManager", "info_game_logic", "info_map", "info_water_source"] {
+    for class in ["DestructibleList", "PlayerLevelEntrypoints", "SleepEventController", "NPCManager", "info_game_logic", "info_map", "info_water_source", "SoundscapeGlobal"] {
         let r = api.op("walk_class", json!({"class": class, "include_inactive": true}));
         for c in r.result.get("instances").and_then(Value::as_array).cloned().unwrap_or_default().iter().filter_map(handle_of) {
             if call_static(&api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": c}])).as_str() != Some(area.as_str()) {

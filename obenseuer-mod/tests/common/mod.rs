@@ -9,9 +9,13 @@ use std::time::{Duration, Instant};
 use serde_json::{Value, json};
 use unityforge::client::Api;
 
+/// The mod's control plane. Requests wait up to 30 s, the longest the
+/// mod's own ops wait for the game's main thread (load_alongside): right
+/// after doors it is busy loading areas alongside, and the client's 5 s
+/// default timed out while every manager was live.
 pub fn api() -> Api<Value> {
     let port = std::env::var("OBENSEUER_MOD_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(17175);
-    Api::at(port, "/op")
+    Api::at(port, "/op").with_timeout(Duration::from_secs(30))
 }
 
 /// One op that must succeed.
@@ -43,17 +47,45 @@ pub fn copies(api: &Api<Value>, class: &str) -> Vec<(i64, i64)> {
 
 /// What a class's static `instance` holds: its id, "destroyed" or "null".
 pub fn instance_now(api: &Api<Value>, class: &str) -> String {
-    let r = api.op("invoke_static", json!({"class": "System.Type", "method": "GetType", "args": [format!("{class}, Assembly-CSharp")]}));
-    let Some(t) = handle_of(&r.result) else { return format!("type not found ({:?}, {})", r.error, r.result) };
-    let Some(f) = handle_of(&call(api, t, "GetField", json!(["instance"]))) else { return "no field".into() };
-    let v = call(api, f, "GetValue", json!([null]));
-    if v.get("name").and_then(Value::as_str) == Some("<null>") {
-        return "destroyed".into();
+    match instance_of(api, class) {
+        Ok(Some(h)) => call(api, h, "GetInstanceID", json!([])).as_i64().map_or("?".into(), |i| i.to_string()),
+        Ok(None) => "null".into(),
+        Err(e) => e,
     }
-    match handle_of(&v) {
-        Some(h) => call(api, h, "GetInstanceID", json!([])).as_i64().map_or("?".into(), |i| i.to_string()),
-        None => "null".into(),
+}
+
+/// A class's static `instance`: Some(handle), None when it holds nothing,
+/// Err("destroyed") or the bridge's error. A read that fails is tried
+/// again: right after doors the game is busy loading areas alongside and
+/// single reads failed while every manager was live
+/// (research_managers_live.rs).
+pub fn instance_of(api: &Api<Value>, class: &str) -> Result<Option<i64>, String> {
+    let mut last = String::new();
+    for _ in 0..3 {
+        let r = api.op("invoke_static", json!({"class": "System.Type", "method": "GetType", "args": [format!("{class}, Assembly-CSharp")]}));
+        let Some(t) = handle_of(&r.result) else {
+            last = format!("type not found ({:?}, {})", r.error, r.result);
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        };
+        let r = api.op("invoke_method", json!({"handle": t, "method": "GetField", "args": ["instance"]}));
+        let Some(f) = handle_of(&r.result) else {
+            last = format!("no field ({:?}, {})", r.error, r.result);
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        };
+        let r = api.op("invoke_method", json!({"handle": f, "method": "GetValue", "args": [null]}));
+        if !r.ok {
+            last = format!("read failed ({:?})", r.error);
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        }
+        if r.result.get("name").and_then(Value::as_str) == Some("<null>") {
+            return Err("destroyed".into());
+        }
+        return Ok(handle_of(&r.result));
     }
+    Err(last)
 }
 
 /// One-copy classes earlier tests saw switched, emptied, or left on a

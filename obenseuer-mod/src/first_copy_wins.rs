@@ -71,6 +71,7 @@ const AREA_OWNED: &[&str] = &[
     "info_game_logic",
     "info_map",
     "info_water_source",
+    "SoundscapeGlobal",
 ];
 
 pub fn install() {

@@ -26,7 +26,7 @@
 mod common;
 use std::time::{Duration, Instant};
 
-use common::{WATCHED, api, call, call_static, handle_of, instance_now, op, ping_or_skip, wait_for_normal_load};
+use common::{WATCHED, api, call, call_static, handle_of, instance_now, instance_of, op, ping_or_skip, wait_for_normal_load};
 use serde_json::{Value, json};
 use unityforge::client::Api;
 
@@ -85,19 +85,30 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
         println!("  trip: {}", kept(api)["trips"].as_array().and_then(|t| t.last().cloned()).unwrap_or_default());
         // The NPC system's idea of the player's area (NPCManager.ActiveScene,
         // read by 20 NPC code paths) is the area entered.
-        let t = handle_of(&call_static(api, "System.Type", "GetType", json!(["NPCManager, Assembly-CSharp"]))).expect("NPCManager type");
-        let f = handle_of(&call(api, t, "GetField", json!(["instance"]))).expect("instance field");
-        let npc = handle_of(&call(api, f, "GetValue", json!([null]))).expect("NPCManager.instance");
+        let npc = instance_of(api, "NPCManager").ok().flatten().expect("NPCManager.instance");
         assert_eq!(call(api, npc, "get_ActiveScene", json!([])).as_str(), Some(to), "NPCManager.ActiveScene after the door");
         // The area's settings in the live set: the background radiation its
         // info_game_logic.Start pushes into RadiationController.
         let own = handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["info_game_logic", to]))).expect("the area's info_game_logic");
         let want = api.op("read_field", json!({"handle": own, "field": "backgroundRadiation"})).result.as_f64();
-        let t = handle_of(&call_static(api, "System.Type", "GetType", json!(["RadiationController, Assembly-CSharp"]))).expect("RadiationController type");
-        let f = handle_of(&call(api, t, "GetField", json!(["instance"]))).expect("instance field");
-        let radiation = handle_of(&call(api, f, "GetValue", json!([null]))).expect("RadiationController.instance");
+        let radiation = instance_of(api, "RadiationController").ok().flatten().expect("RadiationController.instance");
         wait_for("the area's background radiation", 5, || api.op("read_field", json!({"handle": radiation, "field": "backgroundRadiation"})).result.as_f64() == want);
         println!("  background radiation {want:?}");
+        // The area's own sound: the global soundscape belongs to the area
+        // entered, and stays so (a left area's SoundscapeGlobal, still
+        // subscribed to MinutePassed, set its own every game minute).
+        if handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["SoundscapeGlobal", to]))).is_some() {
+            let sc = instance_of(api, "SoundscapeController").ok().flatten().expect("SoundscapeController.instance");
+            let sound_area = || {
+                handle_of(&api.op("read_field", json!({"handle": sc, "field": "currentGlobalSoundscape"})).result)
+                    .map(|s| call_static(api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": s}])))
+                    .and_then(|v| v.as_str().map(String::from))
+            };
+            wait_for("the area's own sound", 10, || sound_area().as_deref() == Some(to));
+            std::thread::sleep(Duration::from_secs(3)); // time for a left area's handler to set its own (not checked to be a game minute)
+            assert_eq!(sound_area().as_deref(), Some(to), "the global sound after a game minute");
+            println!("  sound: the area's own");
+        }
     } else {
         wait_for_normal_load(api, &controller);
         wait_for(&format!("in {to}"), 30, || level_now(api) == to);
