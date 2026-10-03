@@ -7,6 +7,7 @@ The Walking Trade history is maintained in [its project changelog](../thewalking
 
 | Area | Shipped | Verification |
 |---|---|---|
+| `obenseuer-mod` research_kept_scenario.rs | [x] Leave the game's save name as it was after the check saves to ModTest | The check ends with `back on the player's save: "Tom_Tomato/Slot1"` (the reload_save op takes an optional `save`) |
 | `obenseuer-mod` FirstCopyGuard.cs | [x] Run OnDestroy of classes with an Awake in areas never entered | research_kept_scenario.rs passed (c2ba7b23): no "left ... Err ... InteractableChair.StopSitEnd" line |
 | `obenseuer-mod` FirstCopyGuard.cs | [x] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors (c2ba7b23) |
 | `obenseuer-mod` research_kept_scenario.rs | [x] Find why WaitingUI gives "type not found" in the watched list | The check reports WaitingUI live (cause of the earlier miss unknown; the test now prints the bridge error if it happens again) |

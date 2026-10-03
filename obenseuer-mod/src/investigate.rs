@@ -41,9 +41,12 @@ pub fn install() {
     }
     OP_REGISTRY.register(OpDef::new(
         "reload_save",
-        "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded",
-        "{}",
-        |_| MAIN_QUEUE.run_result("reload_save", Duration::from_secs(10), reload_save),
+        "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded, or `save` of the same character",
+        r#"{"save": "name"}  (optional)"#,
+        |args| {
+            let save = args.get("save").and_then(Json::as_str).map(String::from);
+            MAIN_QUEUE.run_result("reload_save", Duration::from_secs(10), move || reload_save(save))
+        },
     ));
     OP_REGISTRY.register(OpDef::new(
         "near_player",
@@ -67,11 +70,14 @@ pub fn install() {
 
 /// Getting unstuck: one path for the op and the in-game key. Puts the mod
 /// back to its starting state (no areas kept loaded, no door patch), then
-/// loads the save last loaded, which unloads every other area.
-fn reload_save() -> Result<Json, String> {
+/// loads the save last loaded (or `save`), which unloads every other area.
+fn reload_save(save: Option<String>) -> Result<Json, String> {
     crate::kept_loaded::reset();
     let character = save_controller_static("CharacterName")?;
-    let save = save_controller_static("SaveName")?;
+    let save = match save {
+        Some(s) => s,
+        None => save_controller_static("SaveName")?,
+    };
     let routine = obj(invoke_static("SaveController", "LoadGameWithMigration", &json!([character, save, true]))?)
         .ok_or("LoadGameWithMigration gave no coroutine")?;
     let controller = crate::deposit::first_instance("SaveController")?;
@@ -92,7 +98,7 @@ extern "C" fn on_black_canvas(_ctx: *const std::ffi::c_void) -> i32 {
 }
 
 extern "C" fn on_unstuck_key() {
-    match reload_save() {
+    match reload_save(None) {
         Ok(r) => log(LogLevel::Info, &format!("obenseuer-mod: unstuck: {r}")),
         Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: unstuck failed: {e}")),
     }

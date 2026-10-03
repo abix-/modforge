@@ -9,6 +9,7 @@
 //! 2. use a door of the home area into a kept area (the game's own
 //!    Interact, as the use key calls it), then a door back
 //! 3. save into the slot "ModTest" (not one of the player's), load it
+//! 4. load the player's own save again (the save name is theirs again)
 //!
 //! Changes the game: loads, moves the player, writes Saves/<character>/ModTest.
 //!
@@ -77,7 +78,8 @@ fn kept_areas_played_through() {
 
     // 1. A normal load, then areas kept loaded around the home area.
     let controller = instance_now(&api, "GameController");
-    op(&api, "reload_save", json!({}));
+    let loading = op(&api, "reload_save", json!({}))["loading"].as_str().unwrap_or("").to_string();
+    let players_save = loading.rsplit('/').next().unwrap_or("").to_string();
     wait_for_normal_load(&api, &controller);
     wait_for("areas kept loaded around home", 180, || {
         let k = kept(&api);
@@ -119,6 +121,12 @@ fn kept_areas_played_through() {
     for g in errors["groups"].as_array().into_iter().flatten() {
         println!("  {}  {}  at {}", g["count"], g["error"], g["at"]);
     }
+
+    // Back to the player's own save, so their next save goes to their slot.
+    let controller = instance_now(&api, "GameController");
+    let back = op(&api, "reload_save", json!({"save": players_save}));
+    wait_for_normal_load(&api, &controller);
+    println!("back on the player's save: {}", back["loading"]);
     assert!(dead.is_empty(), "one-copy fields not live: {dead:?}");
     assert_eq!(me.as_ref().and_then(|v| v.as_str()), Some("Tom"), "player identity lost");
 }

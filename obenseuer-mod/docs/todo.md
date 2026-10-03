@@ -6,7 +6,6 @@
 | 3 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 3 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |
 | 3 | research | [ ] Map the NPC scheduler: how Timetable entries drive NPC movement | Scheduler flow documented |
-| 4 | research_kept_scenario.rs | [ ] Leave the game's save name as it was after the check saves to ModTest | After the check, a manual save goes to the player's own slot |
 | 5 | kept_loaded.rs | [ ] Find which of the check's errors the base game also logs, with the mod's kept areas off | The same door trips with auto off, errors listed side by side in docs/loading-research.md |
 | 7 | kept_loaded.rs | [ ] Stop Pathfinding.RVO.Simulator.RemoveAgent "agent is not added" (2 per check) | The check shows 0 RemoveAgent errors |
 | 8 | kept_loaded.rs | [ ] Stop LightController.Awake NullReferenceException (2 per check) | The check shows 0 LightController errors |
