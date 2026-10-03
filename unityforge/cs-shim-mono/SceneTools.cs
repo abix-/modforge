@@ -125,11 +125,13 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// Starts again a coroutine method on every switched-on object of a
-        /// class in a loaded scene (Unity stops coroutines when an object
+        /// Runs a method again on every switched-on object of a class (its
+        /// subclasses too) in a loaded scene: a Start (Unity runs it once
+        /// per object, the game on every load of the area), or a coroutine
+        /// method, which is started (Unity stops coroutines when an object
         /// switches off and does not restart them). Returns how many.
         /// </summary>
-        public static int StartCoroutineAgain(string sceneName, string assemblyOfType, string className, string method)
+        public static int RunAgain(string sceneName, string assemblyOfType, string className, string method)
         {
             var scene = SceneManager.GetSceneByName(sceneName);
             var anchor = System.Type.GetType(assemblyOfType);
@@ -140,13 +142,34 @@ namespace Unityforge.Shim
             foreach (var o in Resources.FindObjectsOfTypeAll(type))
             {
                 if (!(o is MonoBehaviour b) || b == null || b.gameObject.scene.handle != scene.handle || !b.isActiveAndEnabled) continue;
-                if (m.Invoke(b, null) is System.Collections.IEnumerator routine)
+                try
                 {
-                    b.StartCoroutine(routine);
+                    if (m.Invoke(b, null) is System.Collections.IEnumerator routine) b.StartCoroutine(routine);
                     n++;
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogException(e);
                 }
             }
             return n;
+        }
+
+        /// <summary>
+        /// Every switched-on object of a class (its subclasses too) in a
+        /// loaded scene.
+        /// </summary>
+        public static Component[] ComponentsIn(string sceneName, string assemblyOfType, string className)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            var type = System.Type.GetType(assemblyOfType)?.Assembly.GetType(className);
+            var found = new List<Component>();
+            if (!scene.IsValid() || type == null) return found.ToArray();
+            foreach (var o in Resources.FindObjectsOfTypeAll(type))
+            {
+                if (o is Component c && c != null && c.gameObject.scene.handle == scene.handle && c.gameObject.activeInHierarchy) found.Add(c);
+            }
+            return found.ToArray();
         }
 
         /// <summary>

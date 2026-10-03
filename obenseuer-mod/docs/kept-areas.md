@@ -177,6 +177,23 @@ left area's Spawners keep their timers. So:
   Start run again subscribes again).
 - Kept handlers of a load are dropped when it unloads.
 
+### Game-wide lists
+
+In the game an area's objects leave the game-wide lists when the area is
+destroyed (their OnDestroy, or the list's owner rebuilt by the load):
+tenement resource storages, build spaces, lights and light zones,
+talkable NPCs, tenement residents and scene events, the game's timers.
+An area left keeps its objects, so (the shim's `EventTools.LeaveAreaLists`
+and `EnterAreaLists`, same scope as the events):
+
+- Leaving (after its handlers are taken out): its switched-off objects,
+  and plain objects whose callbacks point at them (`TimeOfDayAzure.Timer`),
+  are taken out of every static list, dictionary and set of the game's
+  assembly and of those on the managers' live copies; kept for that load
+  of the area.
+- Entering, after its load steps (a timer's `OnLoading` puts itself back
+  with the time passed): each goes back unless its list holds it already.
+
 ## The door
 
 The game's door (doors.md) moves the player out of the area, then unloads it. The
@@ -224,6 +241,36 @@ SaveController.cs:640-664), on the area entered, in this order:
 "First visit" means the first time since the save was loaded. Later visits
 keep what is live in the area: its data never left memory.
 
+Later visits (2026-10-03): in the game every visit is a fresh load, so the
+load steps run on every visit, not only the first:
+
+- Steps 4 and 8 run on the area with the entries captured when it was left
+  (rule 3). Those entries hold the area's live objects, so the steps
+  restore nothing stale and do their work: delayed relay outputs restart,
+  door locks sync, relays and trigger zones fire on load, timers catch up
+  (docs/relays.md, docs/doors.md).
+- Not run on a later visit (kept_loaded.rs `CREATES_OBJECTS`, the shim's
+  `EventTools.RunStep`): step 6 (the DestructibleList steps) and the
+  classes whose load step creates objects that are still there
+  (CollectibleItemSpawner, FurnitureBlueprintSpawner, FurnitureManager,
+  ParcelLocker, RatFightArena; docs/save.md); and the classes marked by
+  `savedTimeAndDay`, which kept the game's clock while away (time while
+  away, below): their catch-up already ran.
+- What area objects do in Start runs again, after the area switches on
+  (`RUN_AGAIN`, the shim's `SceneTools.RunAgain`): the area-owned
+  managers' Start (info_game_logic, SoundscapeGlobal, NPCManager), the
+  coroutines that run for good, the relay start delay (`triggerAtStart`),
+  and the Start of RelayAuto, RelayDialogueVariable, RelayRandom,
+  RelayRandomValue, RelayTaskStatus, RelayWeekdays. Shops fire their open
+  or closed relay for the state their clock kept (`shops_again`; the
+  game's Trade start coroutine also subscribes to the clock).
+- The NPC waypoint graph is mapped after the area switches on
+  (`map_waypoints`): `MapWaypoints` sees switched-on waypoints only.
+
+Not covered yet: the map (MapController's current map and the map panel,
+docs/map.md) and the build space the player is in (FurnitureManager's
+load step is skipped, docs/building.md).
+
 Time while away (time.md): in the game an area not loaded does
 not run, and its load catches it up from the time recorded when it was
 saved (`savedTimeAndDay`: growing, storage restock, spawners, shops,
@@ -236,10 +283,10 @@ game's clock (`TimeOfDayAzure.SecondsPassed`, `MinutePassed`,
 catch-up would give; every other clock listener is taken out with the
 rest (game-wide events, below): Prison would keep lowering crimes after
 the player left it, RelayPlayerDistance would fire each day,
-SoundscapeGlobal would set the game-wide sound (time.md, clock listeners). Re-running the load steps on a later visit was tried and is
-not safe: `Collectible.OnLoadingGame` calls Start on a live object, and
-the load steps that create objects (DestructibleList, ParcelLocker,
-RatFightArena, CollectibleItemSpawner) would duplicate them.
+SoundscapeGlobal would set the game-wide sound (time.md, clock listeners). Re-running every load step on a later visit was tried first
+and is not safe: `Collectible.OnLoadingGame` calls Start on a live object
+(Collectible is marked, so now skipped), and the load steps that create
+objects would duplicate them (now skipped; later visits, above).
 
 ## Rule 3: leaving an area
 

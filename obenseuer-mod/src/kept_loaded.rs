@@ -624,6 +624,13 @@ fn enter_area(area: &str) -> Result<(), String> {
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
     switch_area(area, true)?;
+    // The waypoint graph from its switched-on waypoints (the navigation
+    // file went in before switching on).
+    if nav.is_ok() {
+        if let Err(e) = map_waypoints() {
+            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: waypoints: {e}"));
+        }
+    }
     // Step 10 (the player at the arrival point) is done by the door before
     // the area left switches off (docs/kept-areas.md, the door).
     *CURRENT.lock().unwrap() = Some(area.to_string());
@@ -637,17 +644,13 @@ fn enter_area(area: &str) -> Result<(), String> {
         // handlers taken out when it was left go back (docs/kept-areas.md,
         // rule 1, which copy and game-wide events).
         if DATA_APPLIED.lock().unwrap().iter().any(|a| *a == area) {
-            for class in START_AGAIN {
-                let ran = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!([class, area])).unwrap_or(Json::Null))
-                    .map(|g| g.invoke("Start", &json!([])).map(|_| ()));
-                if let Some(Err(e)) = ran {
-                    unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.Start failed: {e}"));
+            for (class, method) in RUN_AGAIN {
+                if let Err(e) = invoke_static("Unityforge.Shim.SceneTools", "RunAgain", &json!([area, "Inventory, Assembly-CSharp", class, method])) {
+                    unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.{method} failed: {e}"));
                 }
             }
-            // Coroutines that run for good, started in Start: Unity stopped
-            // them when the area switched off.
-            for (class, method) in COROUTINES_AGAIN {
-                let _ = invoke_static("Unityforge.Shim.SceneTools", "StartCoroutineAgain", &json!([area, "Inventory, Assembly-CSharp", class, method]));
+            if let Err(e) = shops_again(&area) {
+                unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: shops: {e}"));
             }
         }
         let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area]));
@@ -657,12 +660,15 @@ fn enter_area(area: &str) -> Result<(), String> {
         MAIN_QUEUE.push(move || {
             // Step 7 was the frame between; 8 on the first visit, 9, 12.
             let rest = saved_data_next_frame(&area);
+            // Its list entries back, after its load steps (a timer's
+            // OnLoading puts itself back with the time passed).
+            let entries = invoke_static("Unityforge.Shim.EventTools", "EnterAreaLists", &json!([area]));
             let changed = area_change_phase(&area, "OnMapChanged");
             let done = fire_save_event("LoadingDone");
             unityforge::mono::log(
                 unityforge::mono::LogLevel::Info,
                 &format!(
-                    "obenseuer-mod: kept_loaded: entered {area}: event handlers back {back:?}, LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
+                    "obenseuer-mod: kept_loaded: entered {area}: event handlers back {back:?}, list entries back {entries:?}, LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
                 ),
             );
         });
@@ -754,7 +760,18 @@ static DATA_APPLIED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// the game's temp lists, the Primary to Tertiary phases.
 fn saved_data_first_frame(area: &str) -> Result<String, String> {
     if DATA_APPLIED.lock().unwrap().iter().any(|a| a == area) {
-        return Ok("already applied".into());
+        // A later visit: in the game every visit is a fresh load, so its
+        // load steps run every time (docs/kept-areas.md, rule 2). The data
+        // is what the area held when it was left: the entries captured then
+        // hold its live objects (rule 3), so the steps restore nothing stale
+        // and do their work (delayed outputs restarted, door locks synced,
+        // relays fired on load...). The DestructibleList steps and the steps
+        // that create objects are not run: those objects are still there.
+        let entries = fill_from_captured(area)?;
+        for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary"] {
+            run_phase(area, phase, true)?;
+        }
+        return Ok(format!("{entries} area entries captured when it was left"));
     }
     let folder = save_static("LastSaveFolderPath")?.as_str().map(String::from).ok_or("no save folder yet")?;
     let header_type = obj(invoke_static("System.Type", "GetType", &json!(["SaveController+SaveDataHeader, Assembly-CSharp"]))?)
@@ -784,41 +801,62 @@ fn saved_data_first_frame(area: &str) -> Result<String, String> {
     // removes destroyed map items, over switched-off objects too (645-646).
     let list = one_copy("DestructibleList")?;
     list.invoke("OnLoadingGameDestructibleList", &json!([]))?;
-    run_phase(area, "OnLoadingGameDestructibleListCheck", true)?;
+    run_phase(area, "OnLoadingGameDestructibleListCheck", false)?;
     Ok(format!("{entries} area entries from {area}.tnmt"))
 }
 
 /// The next frame (SaveController.cs:647-649, 660-661): OnLoadingGame and
 /// LatePrimary from the same temp lists, then the lists cleared.
 fn saved_data_next_frame(area: &str) -> Result<(), String> {
-    if DATA_APPLIED.lock().unwrap().iter().any(|a| a == area) {
-        return Ok(());
-    }
+    let again = DATA_APPLIED.lock().unwrap().iter().any(|a| a == area);
     for phase in ["OnLoadingGame", "OnLoadingGameLatePrimary"] {
-        run_phase(area, phase, false)?;
+        run_phase(area, phase, again)?;
     }
-    // Step 8: the check again (650).
-    run_phase(area, "OnLoadingGameDestructibleListCheck", true)?;
+    // Step 8: the check again (650), on the first visit.
+    if !again {
+        run_phase(area, "OnLoadingGameDestructibleListCheck", false)?;
+    }
     for name in ["tempSavedata_Level", "tempSavedata_Global"] {
         if let Some(list) = obj(save_static(name)?) {
             list.invoke("Clear", &json!([]))?;
         }
     }
-    DATA_APPLIED.lock().unwrap().push(area.to_string());
+    if !again {
+        DATA_APPLIED.lock().unwrap().push(area.to_string());
+    }
     Ok(())
 }
 
+/// The game's temp lists filled with the entries captured when the player
+/// left `area` (rule 3), for its load steps on a later visit. Returns how
+/// many area entries.
+fn fill_from_captured(area: &str) -> Result<i64, String> {
+    let (level_entries, global_entries) = CAPTURED.lock().unwrap().get(area).copied().ok_or_else(|| format!("nothing captured for {area}"))?;
+    let level = obj(save_static("tempSavedata_Level")?).ok_or("no level list")?;
+    let global = obj(save_static("tempSavedata_Global")?).ok_or("no global list")?;
+    level.invoke("Clear", &json!([]))?;
+    global.invoke("Clear", &json!([]))?;
+    level.invoke("AddRange", &json!([{"handle": level_entries}]))?;
+    global.invoke("AddRange", &json!([{"handle": global_entries}]))?;
+    Ok(level.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0))
+}
+
 /// One of the game's save or load phases (SaveController.LoadSaveType) on
-/// an area's top objects, through the game's own ExecuteSaveLoadFunctions:
-/// it calls every SavableScript under them whose object is on
-/// (SaveController.cs:1113-1131).
-/// `include_inactive` as the game passes it (the DestructibleList check
-/// runs over switched-off objects too, SaveController.cs:646).
-fn run_phase(area: &str, phase: &str, include_inactive: bool) -> Result<(), String> {
-    let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?).ok_or("no top objects")?;
-    invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, include_inactive]))?;
+/// an area's top objects, as the game's ExecuteSaveLoadFunctions calls them
+/// (every SavableScript under them whose object is on,
+/// SaveController.cs:1113-1198; the shim's EventTools.RunStep). `again`: a
+/// load phase on a later visit, which skips the classes that kept the
+/// game's clock while away (their catch-up already ran) and those whose
+/// step creates objects (docs/kept-areas.md, rule 2).
+fn run_phase(area: &str, phase: &str, again: bool) -> Result<(), String> {
+    let (mark, skip) = if again { ("savedTimeAndDay", CREATES_OBJECTS) } else { ("", "") };
+    invoke_static("Unityforge.Shim.EventTools", "RunStep", &json!(["Inventory, Assembly-CSharp", area, phase, mark, skip]))?;
     Ok(())
 }
+
+/// Classes whose load step creates objects (docs/save.md, load steps that
+/// create objects): on a later visit those objects are still there.
+const CREATES_OBJECTS: &str = "CollectibleItemSpawner,FurnitureBlueprintSpawner,FurnitureManager,ParcelLocker,RatFightArena";
 
 /// The area the save loaded into: its scene holds the live player and
 /// managers (Game_Logic, Player...), switched on wherever the player is.
@@ -864,7 +902,10 @@ static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new(
 fn leave_finish(area: &str) -> Result<String, String> {
     switch_area(area, false)?;
     let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, CLOCK_EVENTS, "savedTimeAndDay"]))?;
-    Ok(format!("event handlers out {out}"))
+    // Its objects (and timers calling back into them) out of the game-wide
+    // lists, as its destruction would (rule 1, game-wide lists).
+    let entries = invoke_static("Unityforge.Shim.EventTools", "LeaveAreaLists", &json!(["Inventory, Assembly-CSharp", area]))?;
+    Ok(format!("event handlers out {out}, list entries out {entries}"))
 }
 
 /// The game's clock: in an area left, the objects the game catches up on
@@ -894,30 +935,75 @@ fn load_navigation(area: &str) -> Result<(), String> {
     let astar = obj(field.invoke("GetValue", &json!([null]))?).ok_or("no live AstarPath")?;
     let data = obj(astar.read_field("data")?).ok_or("no pathfinder data")?;
     data.invoke("DeserializeGraphs", &json!([{"handle": bytes.handle().0}]))?;
-    if let Some(waypoints) = obj(invoke_static("System.Type", "GetType", &json!(["NPC.WaypointGraph, Assembly-CSharp"]))?)
-        .and_then(|t| obj(t.invoke("GetField", &json!(["instance"])).ok()?))
-        .and_then(|f| obj(f.invoke("GetValue", &json!([null])).ok()?))
-    {
-        waypoints.invoke("MapWaypoints", &json!([]))?;
-    }
     if let Some(nav) = nav {
         nav.write_field("loaded", &json!(true))?;
     }
     Ok(())
 }
 
-/// Area-owned managers whose Start pushes the area's settings into the
-/// live set, run again on every later visit (docs/kept-areas.md).
-const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal", "NPCManager"];
+/// The NPC waypoint graph of the area the player is in, as info_navigation
+/// .LoadCO does after the navigation file (info_navigation.cs:105):
+/// `WaypointGraph.instance.MapWaypoints()`. It maps switched-on waypoints
+/// only (FindObjectsOfType, docs/pathfinding.md), so it runs after the area
+/// switched on.
+fn map_waypoints() -> Result<(), String> {
+    if let Some(waypoints) = obj(invoke_static("System.Type", "GetType", &json!(["NPC.WaypointGraph, Assembly-CSharp"]))?)
+        .and_then(|t| obj(t.invoke("GetField", &json!(["instance"])).ok()?))
+        .and_then(|f| obj(f.invoke("GetValue", &json!([null])).ok()?))
+    {
+        waypoints.invoke("MapWaypoints", &json!([]))?;
+    }
+    Ok(())
+}
 
-/// Coroutines that run for good, started in Start, started again on every
-/// later visit (docs/kept-areas.md, rule 1, which copy; docs/npcs.md, followers).
-const COROUTINES_AGAIN: &[(&str, &str)] = &[
+/// What area objects do in Start, which the game does on every load of the
+/// area and Unity only once per object, run again on every later visit
+/// (docs/kept-areas.md, rule 2), as (class, method; subclasses too):
+/// - Start of area-owned managers that push the area's settings into the
+///   live set: info_game_logic (sky, radiation), SoundscapeGlobal (sound),
+///   NPCManager (reconciles the area's NPCs).
+/// - Coroutines started in Start that run for good, stopped by Unity when
+///   the area switched off.
+/// - What fires at Start (docs/relays.md, when things fire): the relay
+///   start delay (fires `triggerAtStart`; not Start: RelayTimer's would
+///   restart its timer), and the Start of the relays whose Start only does
+///   that. RelayWeekdays.Start also subscribes again; the handler taken out
+///   when the area was left is then not put back twice (EventTools.EnterArea).
+const RUN_AGAIN: &[(&str, &str)] = &[
+    ("info_game_logic", "Start"),
+    ("SoundscapeGlobal", "Start"),
+    ("NPCManager", "Start"),
     ("BottleRecyclingLights", "Blinking"),
     ("BottleRecyclingLightsUI", "Blinking"),
     ("PulseLight", "LightEffect"),
     ("RagdollAnimation", "StepTimer"),
+    ("Relay", "StartDelay"),
+    ("RelayAuto", "Start"),
+    ("RelayDialogueVariable", "Start"),
+    ("RelayRandom", "Start"),
+    ("RelayRandomValue", "Start"),
+    ("RelayTaskStatus", "Start"),
+    ("RelayWeekdays", "Start"),
 ];
+
+/// Shops (docs/economy.md, Trade): the game fires each shop's open or
+/// closed relay for its hours 0.5 s after Start, on every load
+/// (Trade.cs:224-236). The same coroutine also subscribes to the clock, and
+/// a shop keeps the clock while away (it catches up, `savedTimeAndDay`), so
+/// on a later visit only the relay is fired, for the state the clock kept
+/// (`open`). Returns how many shops.
+fn shops_again(area: &str) -> Result<usize, String> {
+    let shops = obj(invoke_static("Unityforge.Shim.SceneTools", "ComponentsIn", &json!([area, "Inventory, Assembly-CSharp", "Trade"]))?).ok_or("no shop list")?;
+    let n = shops.read_field("Length")?.as_i64().unwrap_or(0);
+    for i in 0..n {
+        let Some(shop) = obj(shops.invoke("GetValue", &json!([i]))?) else { continue };
+        let relay = if shop.read_field("open")?.as_bool() == Some(true) { "onOpen" } else { "onClosed" };
+        if let Some(relay) = obj(shop.read_field(relay)?) {
+            relay.invoke("triggerOutputs", &json!([]))?;
+        }
+    }
+    Ok(n as usize)
+}
 
 /// Steps 1 to 10 of rule 3.
 fn leave_steps(area: &str) -> Result<String, String> {
