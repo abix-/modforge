@@ -19,6 +19,10 @@ ueforge/cpp/target/
 # Their source has its own .git history and must not be redistributed in our MIT tree.
 horsey-mod/research/prior-art/
 
+# Raw output the obenseuer research tests write on every run. The
+# findings are in the docs; rerun the test to get the output again.
+obenseuer-mod/docs/*.txt
+
 # C# shim build output (dotnet build artifacts)
 unityforge/cs-shim-*/bin/
 unityforge/cs-shim-*/obj/
