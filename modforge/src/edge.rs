@@ -62,13 +62,36 @@ impl Edge {
     }
 }
 
+/// How far inside a world's bounds the edge stands, metres.
+const INSIDE: f32 = 2.0;
+
 /// Where the edge is at a rolled angle: as far from `centre` as the
-/// farthest of `places`, so past every place and still in the world.
-pub fn edge_point(centre: (f32, f32), places: &[(f32, f32)], roll: u64) -> Option<(f32, f32)> {
+/// farthest of `places`, so past every place, and in the world: where that
+/// lies past the world's `bounds` (its lowest and highest corner; None for
+/// a world with no edge), pulled back along the same line to just inside
+/// them (a square world's corners reach farther than its sides, so a place
+/// near a corner sets the circle past the sides).
+pub fn edge_point(centre: (f32, f32), places: &[(f32, f32)], bounds: Option<((f32, f32), (f32, f32))>, roll: u64) -> Option<(f32, f32)> {
     let rim = places.iter().map(|p| ((p.0 - centre.0).powi(2) + (p.1 - centre.1).powi(2)).sqrt()).fold(None, |m: Option<f32>, d| Some(m.map_or(d, |m| m.max(d))))?;
     let angle = (roll % 6283) as f64 / 1000.0;
     let (x, y) = point_at_angle((centre.0 as i64, centre.1 as i64), angle, rim as f64);
-    Some((x as f32, y as f32))
+    let (x, y) = (x as f32, y as f32);
+    let Some(((lo_x, lo_y), (hi_x, hi_y))) = bounds else {
+        return Some((x, y));
+    };
+    // Along the line from the centre, the farthest share of it still inside.
+    let (dx, dy) = (x - centre.0, y - centre.1);
+    let inside = |d: f32, lo: f32, hi: f32, c: f32| {
+        if d > 0.0 {
+            ((hi - INSIDE - c) / d).min(1.0)
+        } else if d < 0.0 {
+            ((lo + INSIDE - c) / d).min(1.0)
+        } else {
+            1.0
+        }
+    };
+    let share = inside(dx, lo_x, hi_x, centre.0).min(inside(dy, lo_y, hi_y, centre.1)).max(0.0);
+    Some((centre.0 + dx * share, centre.1 + dy * share))
 }
 
 /// How many come in a group, rolled.
@@ -105,10 +128,24 @@ mod tests {
 
     #[test]
     fn the_edge_is_as_far_out_as_the_farthest_place() {
-        let at = edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], 1571).expect("a point");
+        let at = edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point");
         let d = (at.0.powi(2) + at.1.powi(2)).sqrt();
         assert!((d - 300.0).abs() < 2.0, "the edge at {at:?}, {d} out");
-        assert_eq!(edge_point((0.0, 0.0), &[], 3), None);
+        assert_eq!(edge_point((0.0, 0.0), &[], None, 3), None);
+    }
+
+    /// A square world 1000 m across with a place near a corner (700 m out):
+    /// the edge straight down a side is pulled in to just inside the side,
+    /// on the same line; one already inside is kept as it is.
+    #[test]
+    fn the_edge_stays_inside_the_world() {
+        let bounds = Some(((-500.0, -500.0), (500.0, 500.0)));
+        let corner = [(495.0, 495.0)];
+        // Angle 4.712 (three quarter turn): straight toward -y.
+        let at = edge_point((0.0, 0.0), &corner, bounds, 4712).expect("a point");
+        assert!(at.1 >= -500.0 && at.1 <= -497.0 && at.0.abs() < 2.0, "pulled in to just inside the side: {at:?}");
+        let near = edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], bounds, 1571).expect("a point");
+        assert_eq!(near, edge_point((0.0, 0.0), &[(100.0, 0.0), (0.0, 300.0)], None, 1571).expect("a point"), "inside already: unchanged");
     }
 
     #[test]
