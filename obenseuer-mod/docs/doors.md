@@ -160,7 +160,8 @@ directly.
    active scene's top objects; `OnLoadingGameSpecial` on the
    kept-through-loads objects; `DestructibleList.instance
    .OnLoadingGameDestructibleList()`; `OnLoadingGameDestructibleListCheck`
-   including inactive objects (640-646).
+   (called with `includeInactive: true`, but switched-off objects are
+   still skipped, [`save.md`](save.md)) (640-646).
 3. Next frame: `OnLoadingGame`, `OnLoadingGameLatePrimary`, the check
    again (647-650).
 4. `OnMapChanged` on the active scene when `playerLevel != LevelName &&
