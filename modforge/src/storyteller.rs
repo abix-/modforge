@@ -59,6 +59,56 @@ pub struct EpisodeDef {
     /// filled with things placed where the quest says): topside the-tap.md
     /// "How it opens", the tap.
     pub things: Vec<ThingDef>,
+    /// Where it asks its parts to be, and when (Skyrim's quest stages with
+    /// conditions, RimWorld's quest parts): for each part the first whose
+    /// pivot points hold applies.
+    pub errands: Vec<ErrandDef>,
+}
+
+/// One errand: the part asked, what they are asked to do, the pivot points
+/// that must all be reached (`when`) and none of which may be (`unless`),
+/// and the pivot point reached when they arrive, if any.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ErrandDef {
+    pub part: String,
+    pub does: ErrandAct,
+    pub when: Vec<String>,
+    pub unless: Vec<String>,
+    pub reached_on_arrival: Option<String>,
+}
+
+/// What an errand asks.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ErrandAct {
+    /// Stand beside the episode's thing of this name, at this side of it
+    /// (radians round it).
+    GoTo { thing: String, side: f32 },
+    /// Lead someone to stand beside it.
+    Lead { who: Who, thing: String, side: f32 },
+    /// Go back home, after an errand.
+    GoHome,
+    /// Be home, never taken out of a talk for it.
+    StayHome,
+}
+
+/// Someone an episode names: the player, or a part.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Who {
+    ThePlayer,
+    Part(String),
+}
+
+impl ErrandDef {
+    /// Whether it applies with these pivot points reached.
+    pub fn applies(&self, reached: &[&str]) -> bool {
+        self.when.iter().all(|p| reached.contains(&p.as_str())) && !self.unless.iter().any(|p| reached.contains(&p.as_str()))
+    }
+}
+
+/// The errand that applies to `part` now: the first in the def whose pivot
+/// points hold.
+pub fn errand_for<'a>(def: &'a EpisodeDef, part: &str, reached: &[&str]) -> Option<&'a ErrandDef> {
+    def.errands.iter().find(|e| e.part == part && e.applies(reached))
 }
 
 /// One thing an episode brings into the world: its name in the episode
@@ -1244,6 +1294,43 @@ fn pick_index(state: &mut u64, weights: &[u32]) -> usize {
 mod tests {
     use super::*;
 
+    /// For a part, the first errand whose pivot points hold applies: stay
+    /// home until the note is read, then nothing; sent, go to the thing
+    /// until arrived; arrived, go home.
+    #[test]
+    fn the_first_errand_whose_pivot_points_hold_applies() {
+        let errand = |does: ErrandAct, when: &[&str], unless: &[&str]| ErrandDef {
+            part: "Dell".to_string(),
+            does,
+            when: when.iter().map(|s| s.to_string()).collect(),
+            unless: unless.iter().map(|s| s.to_string()).collect(),
+            reached_on_arrival: None,
+        };
+        let go = ErrandAct::GoTo { thing: "tap".to_string(), side: 0.0 };
+        let def = EpisodeDef {
+            name: "test".to_string(),
+            fits: Vec::new(),
+            parts: Vec::new(),
+            lines: Vec::new(),
+            cues: Vec::new(),
+            door_enemy: false,
+            endings: Vec::new(),
+            things: Vec::new(),
+            errands: vec![
+                errand(go.clone(), &["sent"], &["looked"]),
+                errand(ErrandAct::GoHome, &["sent", "looked"], &["told again"]),
+                errand(ErrandAct::StayHome, &[], &["the note read"]),
+            ],
+        };
+        let does = |reached: &[&str]| errand_for(&def, "Dell", reached).map(|e| e.does.clone());
+        assert_eq!(does(&[]), Some(ErrandAct::StayHome), "home until the note");
+        assert_eq!(does(&["the note read"]), None, "then nothing asked");
+        assert_eq!(does(&["the note read", "sent"]), Some(go), "sent: to the tap");
+        assert_eq!(does(&["the note read", "sent", "looked"]), Some(ErrandAct::GoHome), "looked: home");
+        assert_eq!(does(&["the note read", "sent", "looked", "told again"]), None);
+        assert_eq!(errand_for(&def, "Mara", &[]), None, "nothing asked of a part with no errand");
+    }
+
     /// A cue is due once the player has done its deed since the episode
     /// started, and never again once reached.
     #[test]
@@ -1258,6 +1345,7 @@ mod tests {
             door_enemy: false,
             endings: Vec::new(),
             things: Vec::new(),
+            errands: Vec::new(),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1278,6 +1366,7 @@ mod tests {
             door_enemy: true,
             endings: Vec::new(),
             things: Vec::new(),
+            errands: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1334,6 +1423,7 @@ mod tests {
                 door_enemy: false,
             endings: Vec::new(),
             things: Vec::new(),
+            errands: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1354,6 +1444,7 @@ mod tests {
                 door_enemy: true,
             endings: Vec::new(),
             things: Vec::new(),
+            errands: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
