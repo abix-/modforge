@@ -681,7 +681,7 @@ to other areas.
   such an area loads; DifficultyUI.OnEnable and
   ItemAchievementList.Start NullReferenceExceptions at start.
 
-### 9.37 What area objects do in Start, and undo only in OnDestroy
+### 9.36 What area objects do in Start, and undo only in OnDestroy
 
 The game's 28 public static events include SaveController's six
 (PlayerWillChangeLevel, PlayerWillLoadGame, SavingStarted, SavingDone,
@@ -709,13 +709,13 @@ Start for `X.instance.` writes and calls, 31 classes):
   (Waypoint_LevelChange).
 - Registers and never removes: ShopController (one reference, the last
   FurnitureShopUI/TrainShopUI; each exists in one area), TradePanel
-  (`marketShops`, found by owner id, ShopController... TradePanel.cs:44-60),
+  (`marketShops`, found by owner id, TradePanel.cs:44-60),
   Money (`moneyPanels`; panels skip themselves when switched off,
   MoneyPanel.cs:102), BuildingAreaWalls, TenementController (apartment
   and general prefabs, resource storages), TenementEventController,
   ToolTip, SMVEffects (SMVHierarchy), NPCManager (NPCInfo).
 
-### 9.36 Pathfinding (AstarPathfindingProject.dll)
+### 9.37 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
 (property, set in Awake and OnEnable, nulled in OnDestroy;
