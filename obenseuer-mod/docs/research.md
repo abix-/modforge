@@ -901,6 +901,79 @@ fire again on later visits, and a countdown stopped when the area is
 switched off (Unity stops a switched-off object's coroutines) is not
 restarted.
 
+The tenement (2026-10-03, from the code): TenementController and
+TenementEventController are game-wide managers in Game_Logic (9.29) and
+sign up to the clock in Start (TenementController.cs:230-234,
+TenementEventController.cs:71-74), the same with kept areas.
+- The contractor in use (`currentSceneContractor`) is the one whose menu
+  the player last opened (TenementContractor.ShowMenu, :58;
+  TenementController.cs:454-459); nothing per area.
+- `currentSceneResidents` (resident to its NPC object): NPCInfo adds its
+  object when it is a resident not spawned in an apartment (ResidentCheck,
+  NPCInfo.cs:374-380, called from 173, 283, 367) and removes it only in
+  OnDestroy (318-324). In the game leaving an area destroys its NPCs, so
+  it holds the current area's residents only. With kept areas the left
+  area's NPC objects are switched off, not destroyed, and stay in it.
+  Used by renting a resident (RentFade, TenementController.cs:804-815),
+  which hides the resident's object found there; the loop over its count
+  in TenementEventController.DeltaSeconds (101-103) is empty.
+- Tenement scene events: each `TenementSceneEvents` adds itself to the
+  manager's list in Start (TenementSceneEvents.cs:23-26), never removed.
+  A tenement event looks up the first entry for its NPC (no area check)
+  and runs it: its relay's outputs, and one of its spawners' `TrySpawn`
+  (TenementEventController.cs:159-168, TenementSceneEvents.cs:28-56). In
+  the game every visit adds a new entry and the old ones are destroyed
+  objects. With kept areas there is one entry per object, live but
+  switched off when its area is left: the relay does nothing then
+  (Relay.cs:106) but `TrySpawn` has no switched-off check
+  (Spawner.cs:206-), so it can spawn into the area left.
+
+Building (2026-10-03, from the code): BuildingSystem is game-wide (saves
+into Globals, BuildingSystem.cs:507-541). Each area's build space is a
+`FurnitureManager` (area content, saves per area): it adds itself to
+`BuildingSystem.furnitureManagers` in Start and removes itself in
+OnDestroy (FurnitureManager.cs:201-209), so in the game the list holds the
+current area's managers only. Placed furniture finds its manager in that
+list by GUID: when loaded (FurnitureInfo.LoadFromPath, BuildingSystem.cs:
+313-322, the last match wins) and after load (FurniturePlaceable.OnLoadDelay,
+FurniturePlaceable.cs:201-215). With kept areas the list holds the managers
+of every kept area; if two areas' managers share a GUID, furniture loaded
+on a first visit can go under the other area's manager (not measured).
+- The build space the player is in: `BuildingSystem.activeManager` is set
+  by walking into a `BuildingArea` (BuildingArea.cs:45-80) and on load from
+  the manager's saved `isActive` (FurnitureManager.cs:170-178), and
+  cleared with `inBuildingArea` by OnMapChanging (BuildingSystem.cs:569-575).
+  `BuildingArea.currentManager` (static) is never cleared on an area
+  change. With kept areas the door runs OnMapChanging (rule 3) but the load
+  steps only on a first visit, so on a later visit `activeManager` comes
+  back only by walking into the build space.
+- Connection indicators look up `FindObjectsOfType<CraftingBase>` and
+  `<CraftingUpgrade>` (BuildingSystem.cs:721, 732), which skip switched-off
+  objects: the same as the game with kept areas.
+
+Area changes other than doors (2026-10-03, from the code): the mod's door
+prefix is on `Changelevel.ChangeLevel` (kept_loaded.rs:61), the door
+component, which calls `SaveController.ChangeLevel` (Changelevel.cs:86).
+These call `SaveController.ChangeLevel` directly, so they take the game's
+normal save and load (9.25), not the kept door:
+- Going to prison: `Crime.TeleportToPrison` (Crime.cs:322-330) to
+  `info_game_logic.prisonLevelName`.
+- A sleep event: SleepEventController.cs:341 to "Interior Player
+  Tenement".
+- A blackout: BlackoutTrigger.cs:123.
+- `ChangeScene.Change` (ChangeScene.cs:9-31): teleports when the scene is
+  `NPCManager.ActiveScene`, else a normal load.
+- The developer console (DeveloperConsoleRoutines.cs:33).
+Fast travel: FastTravelController only opens its menu
+(FastTravelController.cs:12-15); no code calls a level change from it, so
+the move is set on the menu's buttons in the scene (not read yet; likely
+ChangeScene.Change).
+
+Crime (2026-10-03, from the code): `Crime` is game-wide (saves into
+Globals); it registers its Lua functions in Start and unregisters them in
+OnDestroy (Crime.cs:120-135, 591-); OnLoadingGame clears
+`arrestInProgress` (100-113). Nothing per area.
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
