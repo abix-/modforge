@@ -790,6 +790,15 @@ VendingMachine, WorkableResourceSource; Fuel (a plain class) catches up in
 `LoadedGame`, called by its owner. Timers that catch up in OnMapChanged:
 RelayTimer, RelayOnDayChange, Spawner.
 
+Clock listeners (`TimeOfDayAzure` SecondsPassed, MinutePassed, DayChanged,
+CurrentTimeAndDay; 64 handlers) that act beyond their own object: Prison
+(lowers every crime record each second while subscribed), RelayPlayerDistance
+(fires its outputs on a new day when the player is far), Trade (restocks
+money, opens and closes by schedule, checks player distance), Sauna and
+TriggerRadiation (act on the player only while the player is inside),
+Clock (plays its sound), SoundscapeGlobal (sets the game-wide sound); the
+rest tick their own object, or are the player's own managers.
+
 Load steps that create objects (would duplicate them on objects that were
 not destroyed): DestructibleList.OnLoadingGameDestructibleList (dropped
 items), ParcelLocker.OnLoadingGame, RatFightArena.OnLoadingGameLatePrimary
