@@ -400,19 +400,32 @@ namespace Unityforge.Shim
         /// is on. Skips classes marked by the field `mark` (they kept the
         /// game's clock while away: their catch-up already ran) and classes
         /// named in `skipCsv` or deriving from one (their step creates
-        /// objects that still exist). Returns how many ran.
+        /// objects that still exist). `skipLiveSet`: also skips the top
+        /// objects holding the managers' live copies (the live player and
+        /// game-wide managers, in the area the save loaded): on a later
+        /// visit they are not the area's content (re-running
+        /// TenementController's load rebuilt another area's doors). Returns
+        /// how many ran.
         /// </summary>
-        public static int RunStep(string assemblyOfType, string sceneName, string step, string mark, string skipCsv)
+        public static int RunStep(string assemblyOfType, string sceneName, string step, string mark, string skipCsv, bool skipLiveSet)
         {
             var scene = SceneManager.GetSceneByName(sceneName);
             var savable = Type.GetType(assemblyOfType)?.Assembly.GetType("SavableScript");
             var method = savable?.GetMethod(step, BindingFlags.Instance | BindingFlags.Public);
             if (!scene.IsValid() || !scene.isLoaded || method == null) return 0;
             var skip = new HashSet<string>(skipCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
+            var liveTops = new HashSet<GameObject>();
+            if (skipLiveSet)
+            {
+                foreach (var copy in FirstCopyGuard.LiveCopies())
+                {
+                    if (copy is Component c && c != null) liveTops.Add(c.transform.root.gameObject);
+                }
+            }
             int n = 0;
             foreach (var top in scene.GetRootGameObjects())
             {
-                if (top == null || top.transform.parent != null) continue;
+                if (top == null || top.transform.parent != null || liveTops.Contains(top)) continue;
                 foreach (var c in top.GetComponentsInChildren(savable, false))
                 {
                     if (c == null || !c.gameObject.activeInHierarchy) continue;

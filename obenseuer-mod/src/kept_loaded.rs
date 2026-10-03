@@ -846,11 +846,12 @@ fn fill_from_captured(area: &str) -> Result<i64, String> {
 /// (every SavableScript under them whose object is on,
 /// SaveController.cs:1113-1198; the shim's EventTools.RunStep). `again`: a
 /// load phase on a later visit, which skips the classes that kept the
-/// game's clock while away (their catch-up already ran) and those whose
-/// step creates objects (docs/kept-areas.md, rule 2).
+/// game's clock while away (their catch-up already ran), those whose
+/// step creates objects, and the live player and managers (not the area's
+/// content; in the area the save loaded) (docs/kept-areas.md, rule 2).
 fn run_phase(area: &str, phase: &str, again: bool) -> Result<(), String> {
     let (mark, skip) = if again { ("savedTimeAndDay", CREATES_OBJECTS) } else { ("", "") };
-    invoke_static("Unityforge.Shim.EventTools", "RunStep", &json!(["Inventory, Assembly-CSharp", area, phase, mark, skip]))?;
+    invoke_static("Unityforge.Shim.EventTools", "RunStep", &json!(["Inventory, Assembly-CSharp", area, phase, mark, skip, again]))?;
     Ok(())
 }
 
