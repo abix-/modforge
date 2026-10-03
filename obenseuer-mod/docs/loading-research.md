@@ -6,7 +6,7 @@ the time goes, and what a mod could change. Started 2026-10-02.
 The game's own systems learned here (the door, save and load step by
 step, what an area holds, managers, arrival points, DestructibleList,
 NPCManager, events and listeners, lifecycle patterns, pathfinding) are
-gathered in [research.md](research.md) sections 9.25 and 9.29 to 9.36:
+gathered in [research.md](research.md) sections 9.25 and 9.29 to 9.37:
 the reference. This file is the investigation and its history; the mod's
 design is [kept-areas.md](kept-areas.md).
 
