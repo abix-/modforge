@@ -456,6 +456,68 @@ Each SavableScript has a GUID for serialization targeting.
 Global data (crime, difficulty, player stats) saves separately
 from per-scene data.
 
+Files, in `persistentDataPath/Saves/<CharacterName>/<SaveName>/`:
+`Info.tnmt`, `Globals.tnmt` (scripts saved with
+`SerializeData(this, global: true)`), `<Level>.tnmt` per area
+(`SerializeData(this)`), `Globals.dialogue` (the Dialogue System's
+data). UTF-8 with a byte order mark (the game's reader drops it; its
+parser rejects it). `CharacterName` and `SaveName` are private statics
+(SaveController.cs:185-187). `SaveGame` copies the last save folder into
+the new one first (469-472), so areas not visited keep their files.
+An `ObjectDataHeader` holds a live object and is serialized at write
+time; `SaveDataHeader(list, save, level, character, entrypoint)`.
+
+`ExecuteSaveLoadFunctions(roots, phase, includeInactive)` calls the
+phase on every SavableScript under the given top objects whose object
+is on, unless `includeInactive` (1113-1131). Each SavableScript finds its
+saved entry by `GUID` and takes it out of the list (`DeSerializeData`,
+707-).
+
+**A door, step by step** (`Changelevel.ChangeLevel`, Changelevel.cs:72-87,
+then `SaveController.ChangeLevel` 270 and `ChangeLevelDelay` 344-359):
+
+1. `PlayerWillChangeLevel` (270): InteractableChair and
+   InteractableLadder stop sitting and climbing.
+2. Fade to the loading screen, wait for it (347-355).
+3. `SaveGame(GetOldestAutosave(), newLevel, entrypoint)` (356-357), into
+   the older of Autosave and Autosave2, which sets `SaveName` to it:
+   OnMapChanging on the active area's top objects and the
+   kept-through-loads objects (446-447); new temp lists (449-450);
+   `SavingStarted` (452); save phases Primary, Secondary, Tertiary
+   (453-455); `DestructibleList.instance.OnSavingGameDestructibleList()`
+   (456); kept-through-loads OnSavingGameSpecial (457); OnSavingGame,
+   OnSavingGameLatePrimary (458-459); files written (460-476);
+   OnSavingFile (477); `SavingDone` (478). `LevelName` is the active
+   scene's name (438).
+4. `LoadGameWithMigration(CharacterName, autosave)` (1205-): sets
+   `CharacterName`, `SaveName` (1208-1209), `PlayerWillLoadGame`,
+   `Loading = true`, reads `Globals.tnmt` and `<level>.tnmt` into
+   `tempSavedata_Global` and `tempSavedata_Level`, then
+   `LoadSaveGameDifferentScene` (618-666):
+5. The scene loads in single mode (624-639): every object of the old
+   area gets OnDisable then OnDestroy; the new area's objects Awake and
+   OnEnable, Start on the next frame.
+6. `LoadingStarted` (640); load phases Primary, Secondary, Tertiary
+   (641-643); kept-through-loads OnLoadingGameSpecial (644);
+   `DestructibleList.instance.OnLoadingGameDestructibleList()` (645);
+   OnLoadingGameDestructibleListCheck including switched-off objects
+   (646); next frame (647); OnLoadingGame, OnLoadingGameLatePrimary, the
+   check again (648-650); OnMapChanged on the active area only when the
+   area changed (651-654); player to the arrival point (655); dialogue
+   data applied (656-659); temp lists cleared, `Loading = false`,
+   `LoadingDone`, fade out (660-664).
+
+Measured order in a normal load (frame numbers): the area's objects run
+Start one frame before its saved data goes in (load phases); scripts that
+need the data wait (Relay fires its start events 3 frames after Start,
+Relay.cs:88-93). Times on one trip: save 0.58s, scene load 4.25s,
+restore about 1.0s, fade back 0.6s; the bar fills at 1 per second
+(LoadingScreen.cs:85), so even an instant load waits about 1s.
+
+The menu loads a save with `StartCoroutine(LoadGameWithMigration(
+folder, save, fromMenu: true))` on its LoadMenu (LoadMenu.cs:539);
+`SaveController.Loading` is not on until the coroutine runs.
+
 ### 9.26 Weather (Weather)
 
 ScriptableObject with weatherName, probability, duration range,
@@ -472,3 +534,146 @@ state checked by NPC reactions and quest conditions.
 
 1148 decompiled classes total across the global namespace, OS.Items
 (37 classes), and NPC (41 classes).
+
+### 9.29 Areas: what each area's scene holds
+
+Every area is one scene. Each carries its own copy of the player setup,
+so a normal load replaces all of it (a trip measured: Inventory,
+PlayerStats, TimeOfDayAzure, Crime, Money, GameUIController,
+InteractObjects and the camera all new objects; SaveController and
+LoadingScreen kept). Top objects of an area: `Game_Logic`, `Player` (or
+`Player And Camera`), `Pause Menu(Clone)`, `__MAIN`, the area's own
+content (named per area), `___Screenshot Taking Stuff` (screenshot
+cameras, on in outdoor areas), and objects the game keeps off itself
+(`Test`, `_LIGHT_BLOCKERS` in the player's building).
+
+`Game_Logic` has 9 children (Open Sewer Tenement, research_game_logic.rs):
+
+| Child | Holds |
+|---|---|
+| Controllers | GameController, GameUIController, NPCManager (`NPC/NPCManager`), WaitingController (with `SleepEventController` under it), TenementController, LightsController, TaskController, the panels' controllers, ... |
+| Other | DestructibleList (object `LoadSavegame`), PlayerLevelEntrypoints, Crime, PlayerIdentity, RelationshipController, RecipeDatabase, MailController, ... |
+| Globals | TimeOfDayAzure, WeatherManager, WindowNaturalLight, GlobalState (the sky) |
+| Game UI | Inventory, Money, every UI panel, BlackCanvas, WhiteCanvas, ItemDatabase |
+| Effects | SMVEffects and the screen effects |
+| Backpack Storage, Dialogue Manager, Mouse blocker | as named |
+
+`__MAIN` holds `info_game_logic`, `info_map`, SoundscapeGlobal, AstarPath
+and RVOSimulator (NPC pathfinding).
+
+Kept through scene changes (DontDestroyOnLoad): SaveController,
+LoadingScreen (its Awake destroys any second copy, LoadingScreen.cs:83),
+InputManager, SteamManager, Achievements, NPCDirector,
+InterScenePathfindingGraph, NPCPathfinding, WaypointGraph,
+LoadOnLevelIni, ReadSceneNames, the settings savers.
+
+### 9.30 Managers (one copy)
+
+A manager is a class whose Awake (or OnEnable) sets a public static of
+its own type to itself: `instance = this` (GameController,
+TimeOfDayAzure also in Start, PauseMenu, ThirdPersonCameraController),
+`identity` (PlayerIdentity), `active` (AstarPath field, RVOSimulator
+property). 199 classes in Assembly-CSharp. A static of its own type that
+nothing sets on waking is a "current" pointer, not a manager:
+`Storage.active` / `currentStorage` (the box open), `LiquidStorage`,
+`VendingMachine.active`, `ItemData.currentHoverItemData`,
+`InteractableTalk.CurrentInteractableTalk`,
+`CraftingBase.currentCraftingBase`, `Toilet.currentToilet`.
+
+`info_game_logic` (`__MAIN/info_game_logic`) owns its area's player
+setup: Awake and OnEnable destroy their own object when `instance` is
+another copy (info_game_logic.cs:73-95); OnDestroy destroys `Main`, the
+setup (177-183). Its Start applies the area's settings: sky (`DelaySet`),
+`RadiationController` background radiation (97-115). It holds the
+prison area (`prisonLevelName`, read by Crime.TeleportToPrison) and
+`baseSafetyFactor` (read by SleepEventController.cs:68).
+
+Per-area managers (their data is the area's): PlayerLevelEntrypoints,
+DestructibleList, SleepEventController (saved in the area's file),
+NPCManager, `info_map`, `info_water_source`. Each sits alone on its own
+object with no children (research_area_owned.rs).
+
+### 9.31 Arrival points (PlayerLevelEntrypoints)
+
+Each area's `PlayerLevelEntrypoints` holds a list of `Entrypoint`
+(Name, Location transform, OtherEntyPoint), built in the editor from
+every `Entrypoint` field in the scene (PlayerLevelEntrypoints.cs:121-151;
+Awake sets `instance`, 60-63). Every door's Awake also inserts its own
+entry into the current `instance`'s list (`Changelevel.cs:44-50`); a
+door re-created during play inserts a fresh one. Readers:
+SaveController.MovePlayerToEntrypoint (688-697), Teleport.cs:93,
+Prison.cs:127. A door: `OtherLevel` (area), `OtherEntrypoint` (arrival
+name), `ThisEntrypoint`; `DoorChangelevel.OpenDoor` disables the
+controls before ChangeLevel (DoorChangelevel.cs:206).
+
+### 9.32 DestructibleList
+
+GUID "DestructibleList", saved in the area's file (DestructibleList.cs:
+11-25): `DestroyedGuids` (map items destroyed) and `prefabs` (items
+dropped, re-spawned on load from `Resources`, parented 2 frames later,
+68-86). Its Awake resets `Collectible.allCollectibles` (91). Called
+directly by SaveGame (456) and the load (645).
+
+### 9.33 NPCManager.ActiveScene
+
+A name cached in Start (`activeScene = GetActiveScene()`,
+NPCManager.cs:60; empty until then, when it reads the active scene
+live). Read by 20 NPC code paths to tell which NPCs are in the player's
+area: spawning (info_NPCSpawn, NPCSpawnUtilities), schedules
+(Schedule.cs:140), the NPC director (NPCDirector.cs:108-277), scene
+utilities, pathfinding between areas (InterScenePathfindingGraph.cs:98,
+NPCController.cs:420). `levelChangeWaypoints` holds the area's waypoints
+to other areas.
+
+### 9.34 Game-wide events and their listeners
+
+| Event | Listeners |
+|---|---|
+| SaveController.PlayerWillChangeLevel | InteractableChair (subscribes in Awake, unsubscribes in OnDestroy), InteractableLadder |
+| SaveController.PlayerWillLoadGame | Act_Police, Act_Robber |
+| SaveController.SavingStarted / SavingDone | FadeGameObjectController (ShowAll so hidden objects are saved), SMVHierarchy (subscribes in OnEnable) |
+| SaveController.LoadingStarted | none found |
+| SaveController.LoadingDone | BlackoutController, ItemAchievementList, NaturalLightSourceChecker |
+| OnMapChanging phase | NPCDirector (every NPC's state, NPCDirector.cs:91-104), AnimalController, BuildingSystem, Teleport |
+| OnMapChanged phase | NPCDirector, AnimalController, Collectible, Spawner, RelayTimer, RelayOnDayChange, TenementEventController |
+| TimeOfDayAzure time events | `SecondsPassed`: Spawner (subscribes in Start's coroutine, Spawner.cs:175; unsubscribes only in OnDestroy, 388). Also called from TimeOfDayAzure's time update (seen in stacks, subscriptions not read): Trade.DeltaSeconds, VendingMachine.MinutePassed, RelayWeekdays.Check, Clock.CurrentTime |
+| Unity sceneLoaded | LoadOnLevelIni (only after a load from the menu, leaves after the first area), SalsaConfigGuard (every load, again 1s later: checks every Salsa, Emoter, Eyes in every loaded scene, inactive too) |
+
+### 9.35 Lifecycle patterns that matter when objects outlive their area
+
+- Lists of all copies kept in OnEnable/OnDisable (AlarmClock,
+  ToiletPaperHolder, AlarmClock.cs:15-41): a switched-off copy leaves the
+  list. Every OnEnable subscription in the game (17) is undone in the
+  class's OnDisable.
+- Awake subscribes, OnDestroy unsubscribes: InteractableChair
+  (InteractableChair.cs:181, 228-235).
+- Start sets what OnDestroy or OnDisable uses: LavaLamp (Start clones
+  its material; OnDestroy destroys `material`, the shared asset if Start
+  never ran), MoneyPanel (OnDisable reads text lists only Start fills),
+  NPCController, cakeslice.OutlineEffect, Cull_light, LightController,
+  InteractableCashRegister, OnNPCStateChange.
+- Start subscribes, OnDestroy unsubscribes (Spawner, RelayWeekdays,
+  VendingMachine, Clock, Trade): a destroyed one whose OnDestroy did not
+  run stays subscribed and throws every tick.
+- Intros run from Start: `StartOpenSewer.Start` (StartOpenSewer.cs:50-87)
+  in "Interior Start" disables controls and sets
+  `BlackCanvas.instance.canvasGroup.alpha = 1` unless the save says the
+  intro ran.
+- Shared static array: SlotMachineGameplay's Awake replaces
+  `_runResults` (148) for every machine.
+- Whole-game searches (FindObjectOfType, FindObjectsOfType,
+  GameObject.Find, Camera.main) skip switched-off objects.
+- The game's own errors: LightController.Awake NullReferenceException on
+  a LightController with no Light (`cullLight.intensity`), logged when
+  such an area loads; DifficultyUI.OnEnable and
+  ItemAchievementList.Start NullReferenceExceptions at start.
+
+### 9.36 Pathfinding (AstarPathfindingProject.dll)
+
+`AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
+(property, set in Awake and OnEnable, nulled in OnDestroy;
+RVOSimulator.cs:30-74). `RVOController.OnEnable` takes the simulator
+from `RVOSimulator.active` and adds its agent; with none it logs "No
+RVOSimulator component found" and disables itself, whose OnDisable then
+removes an agent never added ("The agent is not added to this
+simulation", RVOController.cs:270-301).
