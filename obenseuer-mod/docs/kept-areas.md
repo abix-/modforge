@@ -39,8 +39,9 @@ door that the mod does not do, or does differently, is listed under
 ### Which copy the game uses
 
 Every area brings its own copy of each manager. A manager is a class whose
-Awake (or OnEnable) sets a public static field or property of its own type
-to itself (`instance = this`). A static field of its own type that Awake
+Awake (or OnEnable) sets a static field or property of its own type, public
+or not, to itself (`instance = this`; `info_navigation`, `SkyCamera`,
+`OutlineEffect`, `SteamManager` keep theirs private). A static field of its own type that Awake
 does not set is not a manager: `Storage.active` is the box open now.
 
 - Game-wide managers (the player's: Inventory, PlayerStats, Money, the
@@ -56,8 +57,10 @@ does not set is not a manager: `Storage.active` is the box open now.
   player setup (`Game_Logic`), which the mod keeps switched off, so the
   mod separates them:
   - When the area has loaded alongside (in `sceneLoaded`, rule 1 step 2),
-    each one's object is taken out of `Game_Logic` and made a top object
-    of the same area. It is then the area's content: switched on and off
+    each one inside `Game_Logic` has its object taken out of it and made a
+    top object of the same area (the others are already the area's
+    content and stay where they are: `SkyCamera` is placed relative to its
+    parent). It is then the area's content: switched on and off
     with the area, saved and loaded with it by the game's own steps (rules
     2 and 3), and able to run its coroutines. Each sits alone on its own
     object with no children (research_area_owned.rs), so nothing else
@@ -103,6 +106,24 @@ does not set is not a manager: `Storage.active` is the box open now.
     area's content) is area-owned too: it holds the area's day and night
     sound, plays it in Start and sets it every minute
     (research.md 9.36).
+  - `info_navigation` (loads its area's navigation file into the one
+    pathfinder, research.md 9.37) and `SkyCamera` (the area's 3D sky
+    camera) are area-owned too. `info_navigation` loads once per object
+    (`loaded`): on entering, its `loaded` is cleared before the area
+    switches on, so its OnEnable loads the area's navigation on every
+    visit, as a fresh load does.
+  - Coroutines that run for good, started in Start (research.md 9.37):
+    Unity stops them when the area switches off and does not restart
+    them. On a later visit the mod starts them again on the area's
+    objects: BottleRecyclingLights.Blinking,
+    BottleRecyclingLightsUI.Blinking, PulseLight.LightEffect,
+    RagdollAnimation.StepTimer (their Start must not run again: PulseLight
+    would record a dimmed light as its maximum).
+  - Followers: the game takes the player's area from the player object's
+    scene (NPCSceneUtilities.OnFollowingTarget), and the live player
+    object stays in the area the save loaded into. A prefix gives that
+    method the area the player is in (the active scene) when the follow
+    target is switched on in another scene, and otherwise lets it run.
   - Unity runs Start once per object; in the game every visit is a fresh
     load, so these Starts run on every visit. The mod runs the area's
     `info_game_logic.Start` and `SoundscapeGlobal.Start` again on every

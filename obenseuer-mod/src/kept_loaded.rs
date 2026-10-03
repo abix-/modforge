@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
-use unityforge::hook::{Hook, HookCtx, patch_prefix_ctx};
+use unityforge::hook::{Hook, HookCtx, patch_prefix_ctx, patch_prefix_instance_args};
 use unityforge::main_thread_queue::MAIN_QUEUE;
 use unityforge::mono::{MonoObject, invoke_static, json_handle, owned_object};
 
@@ -61,6 +61,12 @@ pub fn install() {
     match patch_prefix_ctx("Changelevel", "ChangeLevel", HookCtx::Instance, on_door) {
         Ok(h) => *DOOR_HOOK.lock().unwrap() = Some(h),
         Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: kept_loaded: door patch failed: {e}")),
+    }
+    // Followers (docs/kept-areas.md, rule 1, which copy): the player's area
+    // for them is the area the player is in.
+    match patch_prefix_instance_args("NPC.NPCSceneUtilities", "OnFollowingTarget", on_following_target) {
+        Ok(h) => unityforge::hook::HOOK_REGISTRY.register(h),
+        Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: kept_loaded: follower patch failed: {e}")),
     }
     OP_REGISTRY.register(OpDef::new(
         "load_alongside",
@@ -401,6 +407,45 @@ fn location_id(entry: &MonoObject) -> Option<i64> {
     obj(entry.read_field("Location").ok()?)?.invoke("GetInstanceID", &json!([])).ok()?.as_i64()
 }
 
+/// Prefix on `NPCSceneUtilities.OnFollowingTarget(npc, followTarget)`
+/// (NPCSceneUtilities.cs:11-20): the game takes the player's area from the
+/// follow target's scene, and the live player stays in the scene the save
+/// loaded into. When the target is switched on in another scene than the
+/// active one (the live player away from that area), the method's own
+/// steps run with the area the player is in and the original is skipped;
+/// otherwise the original runs.
+extern "C" fn on_following_target(_instance: *const c_void, args: *const std::os::raw::c_char) -> i32 {
+    if args.is_null() || !crate::settings::get().get().kept_loaded.auto {
+        return 0;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(args) }.to_string_lossy().into_owned();
+    let Ok(Json::Array(a)) = serde_json::from_str::<Json>(&text) else { return 0 };
+    // The callback owns the argument handles.
+    let npc = a.first().and_then(json_handle).map(owned_object);
+    let target = a.get(1).and_then(json_handle).map(owned_object);
+    match (npc, target) {
+        (Some(npc), Some(target)) => follow_in_players_area(&npc, &target).unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn follow_in_players_area(npc: &MonoObject, target: &MonoObject) -> Result<i32, String> {
+    let scene = invoke_static("Unityforge.Shim.SceneTools", "SceneOf", &json!([{"handle": target.handle().0}]))?;
+    let active = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([]))?;
+    if scene == active || target.invoke("get_activeInHierarchy", &json!([]))?.as_bool() != Some(true) {
+        return Ok(0);
+    }
+    let active = active.as_str().unwrap_or("").to_string();
+    let state = obj(npc.read_field("state")?).ok_or("NPC has no state")?;
+    let on_path = !state.read_field("activePath")?.is_null();
+    let heading_here = state.read_field("targetScene")?.as_str() == Some(active.as_str());
+    if state.read_field("currentScene")?.as_str() != Some(active.as_str()) && !(on_path && heading_here) {
+        let entry = state.read_field("targetEntrypoint")?;
+        invoke_static("NPC.NPCSceneUtilities", "CalculateNPCTransition", &json!([{"handle": npc.handle().0}, active, entry]))?;
+    }
+    Ok(1)
+}
+
 extern "C" fn on_door(ctx: *const c_void) -> i32 {
     let h = ctx as isize as i32;
     // Kept areas off: the game's own door.
@@ -567,6 +612,12 @@ fn enter_area(area: &str) -> Result<(), String> {
     // `instance` before OnEnable): its area-owned managers are the game's,
     // so one that checks `instance` in OnEnable finds itself.
     invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([area]))?;
+    // Its navigation loads again when it switches on, as on every fresh
+    // load: info_navigation loads once per object (`loaded`), from OnEnable
+    // (docs/kept-areas.md, rule 1, which copy).
+    if let Some(nav) = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["info_navigation", area]))?) {
+        nav.write_field("loaded", &json!(false))?;
+    }
     // Step 1: the area is the active scene (objects the game creates go
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
@@ -590,6 +641,11 @@ fn enter_area(area: &str) -> Result<(), String> {
                 if let Some(Err(e)) = ran {
                     unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.Start failed: {e}"));
                 }
+            }
+            // Coroutines that run for good, started in Start: Unity stopped
+            // them when the area switched off.
+            for (class, method) in COROUTINES_AGAIN {
+                let _ = invoke_static("Unityforge.Shim.SceneTools", "StartCoroutineAgain", &json!([area, "Inventory, Assembly-CSharp", class, method]));
             }
         }
         let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area]));
@@ -812,6 +868,15 @@ fn leave_finish(area: &str) -> Result<String, String> {
 /// Area-owned managers whose Start pushes the area's settings into the
 /// live set, run again on every later visit (docs/kept-areas.md).
 const START_AGAIN: &[&str] = &["info_game_logic", "SoundscapeGlobal", "NPCManager"];
+
+/// Coroutines that run for good, started in Start, started again on every
+/// later visit (docs/kept-areas.md, rule 1, which copy; research.md 9.37).
+const COROUTINES_AGAIN: &[(&str, &str)] = &[
+    ("BottleRecyclingLights", "Blinking"),
+    ("BottleRecyclingLightsUI", "Blinking"),
+    ("PulseLight", "LightEffect"),
+    ("RagdollAnimation", "StepTimer"),
+];
 
 /// Steps 1 to 10 of rule 3.
 fn leave_steps(area: &str) -> Result<String, String> {

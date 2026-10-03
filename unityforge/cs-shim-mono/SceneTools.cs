@@ -84,9 +84,12 @@ namespace Unityforge.Shim
             // Area-owned managers out of the area's copy of the player setup
             // (Game_Logic, kept off) to the top of the area: its content, on
             // and off with it, saved and loaded with it (docs/kept-areas.md,
-            // rule 1, which copy). Each sits alone on its own object.
+            // rule 1, which copy). Each sits alone on its own object. The
+            // others are already the area's content and stay put
+            // (SkyCamera is placed relative to its parent).
             foreach (var top in scene.GetRootGameObjects())
             {
+                if (top.name != "Game_Logic") continue;
                 foreach (var m in top.GetComponentsInChildren<MonoBehaviour>(true))
                 {
                     if (m != null && m.transform.parent != null && FirstCopyGuard.IsAreaOwned(m.GetType())) m.transform.SetParent(null, true);
@@ -119,6 +122,31 @@ namespace Unityforge.Shim
             if (!scene.IsValid() || !SwitchedOff.TryGetValue(scene.handle, out var off)) return new GameObject[0];
             SwitchedOff.Remove(scene.handle);
             return off.ToArray();
+        }
+
+        /// <summary>
+        /// Starts again a coroutine method on every switched-on object of a
+        /// class in a loaded scene (Unity stops coroutines when an object
+        /// switches off and does not restart them). Returns how many.
+        /// </summary>
+        public static int StartCoroutineAgain(string sceneName, string assemblyOfType, string className, string method)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            var anchor = System.Type.GetType(assemblyOfType);
+            var type = anchor?.Assembly.GetType(className);
+            var m = type?.GetMethod(method, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic, null, System.Type.EmptyTypes, null);
+            if (!scene.IsValid() || m == null) return 0;
+            int n = 0;
+            foreach (var o in Resources.FindObjectsOfTypeAll(type))
+            {
+                if (!(o is MonoBehaviour b) || b == null || b.gameObject.scene.handle != scene.handle || !b.isActiveAndEnabled) continue;
+                if (m.Invoke(b, null) is System.Collections.IEnumerator routine)
+                {
+                    b.StartCoroutine(routine);
+                    n++;
+                }
+            }
+            return n;
         }
 
         /// <summary>

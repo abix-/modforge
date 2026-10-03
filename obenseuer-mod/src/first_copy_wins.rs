@@ -72,6 +72,8 @@ const AREA_OWNED: &[&str] = &[
     "info_map",
     "info_water_source",
     "SoundscapeGlobal",
+    "info_navigation",
+    "SkyCamera",
 ];
 
 pub fn install() {

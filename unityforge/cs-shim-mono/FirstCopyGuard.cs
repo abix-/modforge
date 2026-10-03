@@ -168,7 +168,8 @@ namespace Unityforge.Shim
         /// </summary>
         private static MemberInfo FindOneCopy(Type type)
         {
-            const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
+            // Public or not: info_navigation, SkyCamera keep theirs private.
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly;
             foreach (var f in type.GetFields(flags))
             {
                 if (f.FieldType == type && WrittenOnWaking(type, f)) return f;
