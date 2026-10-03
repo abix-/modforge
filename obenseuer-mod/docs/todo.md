@@ -2,29 +2,10 @@
 
 | Priority | Area | Todo | Done when |
 |---:|---|---|---|
-| 1 | setup | [x] Install BepInEx 5.4.23.5 into the game directory | `BepInEx/` exists and the game launches with the BepInEx console |
-| 1 | setup | [x] Deploy the unityforge C# shim as a BepInEx plugin | The shim loads and prints its init message in the BepInEx log |
-| 1 | setup | [x] Build and deploy obenseuer_mod.unityforge.dll | The Rust cdylib loads and `on_init` runs (confirmed by log) |
-| 1 | setup | [x] Verify the control plane answers a ping | Control plane answers on port 17175 |
-| 1 | setup | [x] Restart script | `obenseuer-mod/scripts/restart.ps1` builds, deploys, restarts |
-| 2 | research | [x] Decompile Assembly-CSharp.dll and document key classes | research.md section 9 |
-| 2 | research | [x] Map how Items.json is loaded | research.md 9.16: ItemDatabase.Awake, File.ReadAllText, FullSerializer |
 | 2 | research | [ ] Map the save/load flow: which SavableScript subclasses hold player state, in what order | Save flow documented |
-| 1 | mod | [x] Decide initial mod goals | bigger inventory, increased stack sizes |
-| 1 | mod | [x] Inventory: 70 slots (10 columns x 7 rows), UI panel widened left | Inventory opens with 10x7 grid in-game |
-| 1 | mod | [x] Stacks: 10x multiplier on all stackable items (632 items) | Items stack to 990 in-game |
 | 3 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 3 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |
 | 3 | research | [ ] Map the NPC scheduler: how Timetable entries drive NPC movement | Scheduler flow documented |
-| 1 | deposit.rs | [x] F6 puts inventory and worn backpack items into nearby boxes that already hold the same item, range in settings | Committed; worked in game |
-| 1 | kept_loaded.rs | [x] Load the areas behind the doors alongside, keep them switched off, move through a door with no loading screen | research_kept_scenario.rs: trips of 0.416s and 0.291s |
-| 1 | first_copy_wins.rs | [x] A second copy of a one-copy class (public static field of its own type) does not take over | research_kept_scenario.rs: identity "Tom", 20 of 20 watched fields live (c2ba7b23) |
-| 1 | kept_loaded.rs | [x] Saved data applied on entering, captured on leaving, every visited area written on save | A save made away from home loaded back correctly (operator, 2026-10-02) |
-| 1 | FirstCopyGuard.cs | [x] Skip OnDestroy of lava lamps in areas never entered | research_kept_scenario.rs: 0 LavaLamp errors across two normal loads |
-| 1 | FirstCopyGuard.cs | [x] Run OnDestroy of classes with an Awake in areas never entered | research_kept_scenario.rs passed (c2ba7b23): no "left ... Err ... InteractableChair.StopSitEnd" line |
-| 2 | research_kept_scenario.rs | [x] Find why WaitingUI gives "type not found" in the watched list | The check reports WaitingUI live (cause of the earlier miss unknown; the test now prints the bridge error if it happens again) |
-| 3 | research_kept_scenario.rs | [x] Commit the automatic check | Pushed in c2ba7b23 |
-| 6 | FirstCopyGuard.cs | [x] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors (c2ba7b23) |
 | 4 | research_kept_scenario.rs | [ ] Leave the game's save name as it was after the check saves to ModTest | After the check, a manual save goes to the player's own slot |
 | 5 | kept_loaded.rs | [ ] Find which of the check's errors the base game also logs, with the mod's kept areas off | The same door trips with auto off, errors listed side by side in docs/loading-research.md |
 | 7 | kept_loaded.rs | [ ] Stop Pathfinding.RVO.Simulator.RemoveAgent "agent is not added" (2 per check) | The check shows 0 RemoveAgent errors |

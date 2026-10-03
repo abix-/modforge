@@ -3,6 +3,30 @@
 Abiotic Factor history is maintained in [its project changelog](../abioticfactor-mod/docs/changelog.md).
 The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
 
+## 2026-10-03
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `obenseuer-mod` FirstCopyGuard.cs | [x] Run OnDestroy of classes with an Awake in areas never entered | research_kept_scenario.rs passed (c2ba7b23): no "left ... Err ... InteractableChair.StopSitEnd" line |
+| `obenseuer-mod` FirstCopyGuard.cs | [x] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors (c2ba7b23) |
+| `obenseuer-mod` research_kept_scenario.rs | [x] Find why WaitingUI gives "type not found" in the watched list | The check reports WaitingUI live (cause of the earlier miss unknown; the test now prints the bridge error if it happens again) |
+| `obenseuer-mod` research_kept_scenario.rs | [x] Commit the automatic check | Pushed in c2ba7b23 |
+| `obenseuer-mod` FirstCopyGuard.cs | [x] Skip OnDestroy of lava lamps in areas never entered | research_kept_scenario.rs: 0 LavaLamp errors across two normal loads |
+| `obenseuer-mod` first_copy_wins.rs | [x] A second copy of a one-copy class (public static field of its own type) does not take over | research_kept_scenario.rs: identity "Tom", 20 of 20 watched fields live (c2ba7b23) |
+| `obenseuer-mod` kept_loaded.rs | [x] Saved data applied on entering, captured on leaving, every visited area written on save | A save made away from home loaded back correctly (operator, 2026-10-02) |
+| `obenseuer-mod` kept_loaded.rs | [x] Load the areas behind the doors alongside, keep them switched off, move through a door with no loading screen | research_kept_scenario.rs: trips of 0.416s and 0.291s |
+| `obenseuer-mod` deposit.rs | [x] F6 puts inventory and worn backpack items into nearby boxes that already hold the same item, range in settings | Committed; worked in game |
+| `obenseuer-mod` mod | [x] Stacks: 10x multiplier on all stackable items (632 items) | Items stack to 990 in-game (done before this date, moved from the todo) |
+| `obenseuer-mod` mod | [x] Inventory: 70 slots (10 columns x 7 rows), UI panel widened left | Inventory opens with 10x7 grid in-game (done before this date, moved from the todo) |
+| `obenseuer-mod` mod | [x] Decide initial mod goals | bigger inventory, increased stack sizes (done before this date, moved from the todo) |
+| `obenseuer-mod` research | [x] Map how Items.json is loaded | research.md 9.16: ItemDatabase.Awake, File.ReadAllText, FullSerializer (done before this date, moved from the todo) |
+| `obenseuer-mod` research | [x] Decompile Assembly-CSharp.dll and document key classes | research.md section 9 (done before this date, moved from the todo) |
+| `obenseuer-mod` setup | [x] Restart script | `obenseuer-mod/scripts/restart.ps1` builds, deploys, restarts (done before this date, moved from the todo) |
+| `obenseuer-mod` setup | [x] Verify the control plane answers a ping | Control plane answers on port 17175 (done before this date, moved from the todo) |
+| `obenseuer-mod` setup | [x] Build and deploy obenseuer_mod.unityforge.dll | The Rust cdylib loads and `on_init` runs (confirmed by log) (done before this date, moved from the todo) |
+| `obenseuer-mod` setup | [x] Deploy the unityforge C# shim as a BepInEx plugin | The shim loads and prints its init message in the BepInEx log (done before this date, moved from the todo) |
+| `obenseuer-mod` setup | [x] Install BepInEx 5.4.23.5 into the game directory | `BepInEx/` exists and the game launches with the BepInEx console (done before this date, moved from the todo) |
+
 ## 2026-09-30
 
 | Area | Shipped | Verification |
