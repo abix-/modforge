@@ -2,7 +2,6 @@
 
 | Priority | Area | Todo | Done when |
 |---:|---|---|---|
-| 4 | kept_loaded.rs | [ ] The mod's own state (docs/kept-areas.md): cleared on every normal load, not only the mod's own reload | After a normal load the mod did not start (the menu), the load_alongside op shows only the new area |
 | 5 | research | [ ] Map the save/load flow: which SavableScript subclasses hold player state, in what order | Save flow documented |
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 6 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |

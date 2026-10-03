@@ -156,4 +156,4 @@ must also move without a loading screen.
 | 2 | Yes: `enter_area`, the arrival point read from the area's own list first (`arrival_point`) | |
 | 3 | Yes: `leave_area` | |
 | 4 | Yes | |
-| The mod's own state | Shim state per load | Rust state cleared only by the mod's own reload (`reset()`), not by every normal load |
+| The mod's own state | Yes: shim state per load; Rust state cleared on every normal load (`tick`: a new GameController calls `reset()`, kept_loaded.rs:121-123) | |
