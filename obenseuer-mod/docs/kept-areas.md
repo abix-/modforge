@@ -33,7 +33,25 @@ door that the mod does not do, or does differently, is listed under
    before any Start; there the shim switches its top objects off
    (`SceneTools.LoadQuietly`). Nothing in it starts until the player walks
    in.
-3. Its copies of the game's managers do not take over (rule 5).
+3. Its copies of the game's managers do not take over, except the
+   area-owned ones (below).
+
+### Which copy the game uses
+
+Every area brings its own copy of each manager. A manager is a class whose
+Awake (or OnEnable) sets a public static field or property of its own type
+to itself (`instance = this`). A static field of its own type that Awake
+does not set is not a manager: `Storage.active` is the box open now.
+
+- Game-wide managers (the player's: Inventory, PlayerStats, Money, the
+  clock, the camera, the UI): the copies the save loaded stay the game's
+  in every area. A copy from an area loaded alongside does not take over
+  (its Awake and OnDestroy are skipped, first_copy_wins.rs).
+- Area-owned managers: hold the area's own data, so the game uses the
+  copy of the area the player is in, as that area's Awake would have set
+  it (rule 2, step 2). Known: `PlayerLevelEntrypoints` (arrival points),
+  `DestructibleList` (dropped and destroyed items, saved in the area's
+  file), `SleepEventController` (saved in the area's file).
 
 ## Rule 2: entering an area
 
@@ -43,7 +61,7 @@ SaveController.cs:640-664), on the area entered, in this order:
 | # | Game step | Line | Mod |
 |---|---|---|---|
 | 1 | Area loaded: Awake, OnEnable, then Start | 624-639 | Area switched on (Start runs now), made the active scene |
-| 2 | Area-owned managers are the area's | (their Awake) | Their `instance` set to the area's copy (rule 5) |
+| 2 | Area-owned managers are the area's | (their Awake) | Their `instance` set to the area's copy (rule 1, which copy) |
 | 3 | `LoadingStarted` | 640 | Fired |
 | 4 | Load phases Primary, Secondary, Tertiary | 641-643 | First visit: from the area's saved file |
 | 5 | Kept-through-loads OnLoadingGameSpecial | 644 | Not run: game-wide data, already live |
@@ -84,24 +102,7 @@ captured in rule 3 to the save folder: each area's file from its own
 captured entries, merged with what the file already held. The area the
 player is in is saved by the game itself.
 
-## Rule 5: which copy the game uses
-
-Every area brings its own copy of each manager. A manager is a class whose
-Awake (or OnEnable) sets a public static field or property of its own type
-to itself (`instance = this`). A static field of its own type that Awake
-does not set is not a manager: `Storage.active` is the box open now.
-
-- Game-wide managers (the player's: Inventory, PlayerStats, Money, the
-  clock, the camera, the UI): the copies the save loaded stay the game's
-  in every area. A copy from an area loaded alongside does not take over
-  (its Awake and OnDestroy are skipped, first_copy_wins.rs).
-- Area-owned managers: hold the area's own data, so the game uses the
-  copy of the area the player is in, as that area's Awake would have set
-  it. Known: `PlayerLevelEntrypoints` (arrival points), `DestructibleList`
-  (dropped and destroyed items, saved in the area's file),
-  `SleepEventController` (saved in the area's file).
-
-## Rule 6: the mod's own state
+## The mod's own state
 
 State about a loaded area belongs to that load (Unity's `Scene.handle`,
 new on every load), never to the area's name, and is dropped when that
@@ -128,9 +129,8 @@ must also move without a loading screen.
 
 | Rule | Built | Missing |
 |---|---|---|
-| 1 | Yes | |
+| 1 | Loading alongside, game-wide managers kept | Which copy: the definition (any self-typed static field counts today, `Storage.active` included); area-owned managers |
 | 2 | Steps 1, 4, 8 (one frame), 9, 10 | 2 (area-owned managers), 3 and 12 events and the frame split (written, not deployed), 6 |
 | 3 | Steps 1, 2, 4, 7, 11 | 3 and 10 (written, not deployed), 5 |
 | 4 | Yes | |
-| 5 | Game-wide managers kept | The definition (any self-typed static field counts today, `Storage.active` included); area-owned managers |
-| 6 | Shim state per load | Rust state cleared only by the mod's own reload (`reset()`), not by every normal load |
+| The mod's own state | Shim state per load | Rust state cleared only by the mod's own reload (`reset()`), not by every normal load |
