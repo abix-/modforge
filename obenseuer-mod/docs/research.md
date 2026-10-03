@@ -715,7 +715,7 @@ Start for `X.instance.` writes and calls, 31 classes):
   and general prefabs, resource storages), TenementEventController,
   ToolTip, SMVEffects (SMVHierarchy), NPCManager (NPCInfo).
 
-### 9.38 Coroutines, manager instance events, NPC objects (what assumes one area)
+### 9.37 Coroutines, manager instance events, NPC objects (what assumes one area)
 
 - Unity stops a switched-off object's coroutines and does not restart
   them when it is switched on; Start does not run again. Coroutines
@@ -750,7 +750,7 @@ Start for `X.instance.` writes and calls, 31 classes):
   objects; OnMapChanging only records a follow target
   (NPCDataState.OnMapChange).
 
-### 9.37 Pathfinding (AstarPathfindingProject.dll)
+### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
 (property, set in Awake and OnEnable, nulled in OnDestroy;
