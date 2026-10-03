@@ -6,7 +6,6 @@
 | 3 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 3 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |
 | 3 | research | [ ] Map the NPC scheduler: how Timetable entries drive NPC movement | Scheduler flow documented |
-| 5 | kept_loaded.rs | [ ] Stop Pathfinding.RVO.Simulator.RemoveAgent "agent is not added" (2 per check with kept areas on, 0 with them off: the mod's) | The check shows 0 RemoveAgent errors |
 | 6 | kept_loaded.rs | [ ] Find where the dead Spawner in TimeOfDayAzure's list comes from: NullReferenceException at Spawner.DeltaSeconds every frame (166631 in Player.log) after loading Tom_Tomato/Autosave, after failed kept-areas-off runs | The line that keeps the dead Spawner is named in docs/loading-research.md |
 | 7 | scripts/restart.ps1 | [ ] Hot reload when only the Rust changed: the script finds the shim's hash changed after every build and closes the game | A Rust-only change deploys with "[ready] generation N answering; the game kept running" |
 | 9 | kept_loaded.rs | [ ] Find the source of the one Transform.get_position NullReferenceException (not seen in the last check) | Its caller is named in docs/loading-research.md, or 3 checks in a row without it |

@@ -14,9 +14,10 @@ namespace Unityforge.Shim
 {
     public static class FirstCopyGuard
     {
-        // Class -> its one-copy static field ("instance", or "active" as on
-        // AstarPath); null when it has none.
-        private static readonly Dictionary<Type, FieldInfo> Fields = new Dictionary<Type, FieldInfo>();
+        // Class -> reads its one-copy static field or property ("instance",
+        // AstarPath's "active" field, RVOSimulator's "active" property);
+        // null when it has none.
+        private static readonly Dictionary<Type, Func<object>> Fields = new Dictionary<Type, Func<object>>();
 
         /// <summary>
         /// The class's full name when `me` is a new copy and a different,
@@ -28,14 +29,14 @@ namespace Unityforge.Shim
         {
             if (!(me is Component)) return "";
             var type = me.GetType();
-            if (!Fields.TryGetValue(type, out var field))
+            if (!Fields.TryGetValue(type, out var read))
             {
-                field = FindField(type);
-                Fields[type] = field;
+                read = FindOneCopy(type);
+                Fields[type] = read;
             }
-            if (field == null) return "";
+            if (read == null) return "";
             // Unity's == treats a destroyed object as null.
-            var current = field.GetValue(null) as UnityEngine.Object;
+            var current = read() as UnityEngine.Object;
             if (current == null || ReferenceEquals(current, me)) return "";
             if (current is Component kept && kept.gameObject.scene.name == "DontDestroyOnLoad") return "";
             return type.FullName;
@@ -147,23 +148,31 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// A class's one-copy field: a public static field of the class's
-        /// own type, whatever its name ("instance", AstarPath's "active",
-        /// PlayerIdentity's "identity"). Null when it has none.
+        /// Reads a class's one copy: a public static field or property of
+        /// the class's own type, whatever its name ("instance", AstarPath's
+        /// "active" field, PlayerIdentity's "identity", RVOSimulator's
+        /// "active" property: missed as a field only, a kept area's copy
+        /// took it over and NPCs entering found none, RemoveAgent threw).
+        /// Null when it has none.
         /// </summary>
-        private static FieldInfo FindField(Type type)
+        private static Func<object> FindOneCopy(Type type)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
             foreach (var f in type.GetFields(flags))
             {
-                if (f.FieldType == type) return f;
+                if (f.FieldType == type) return () => f.GetValue(null);
+            }
+            foreach (var p in type.GetProperties(flags))
+            {
+                if (p.PropertyType == type && p.CanRead && p.GetIndexParameters().Length == 0) return () => p.GetValue(null, null);
             }
             return null;
         }
 
         /// <summary>
         /// Every MonoBehaviour class in an assembly with a one-copy field
-        /// (FindField): the classes obenseuer-mod's first_copy_wins guards.
+        /// or property (FindOneCopy): the classes obenseuer-mod's
+        /// first_copy_wins guards.
         /// The assembly is named by one of its types ("Inventory,
         /// Assembly-CSharp").
         /// </summary>
@@ -178,9 +187,9 @@ namespace Unityforge.Shim
             foreach (var t in types)
             {
                 if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
-                var f = FindField(t);
-                Fields[t] = f;
-                if (f != null) found.Add(t.FullName);
+                var read = FindOneCopy(t);
+                Fields[t] = read;
+                if (read != null) found.Add(t.FullName);
             }
             return found.ToArray();
         }

@@ -119,12 +119,13 @@ fn state() -> Result<Json, String> {
     }))
 }
 
-/// Every class in an assembly with a one-copy field: a public static field
-/// of its own type, whatever the name (FirstCopyGuard.OneCopyClasses in
-/// the shim). Found by name only first ("instance", then AstarPath's
+/// Every class in an assembly with a one copy: a public static field or
+/// property of its own type, whatever the name (FirstCopyGuard.OneCopyClasses
+/// in the shim). Found by name only first ("instance", then AstarPath's
 /// "active"); PlayerIdentity's "identity" was missed and areas loaded
 /// alongside took over the player's identity (the save fell back to the
-/// name "Esko_Virtanen").
+/// name "Esko_Virtanen"). RVOSimulator's "active" is a property: missed,
+/// NPCs entering a kept area found no simulator (RemoveAgent threw).
 /// `list`: FirstCopyGuard.OneCopyClasses or StartWithoutAwakeClasses.
 fn class_list(list: &str, assembly_of_type: &str) -> Result<Vec<String>, String> {
     let arr = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", list, &json!([assembly_of_type]))?)
