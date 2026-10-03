@@ -52,14 +52,19 @@ namespace Unityforge.Shim
         {
             var newcomer = Newcomer(me);
             if (newcomer.Length > 0) return newcomer;
-            return SceneTools.InAreaNeverEntered(me) ? me.GetType().FullName + " (never started)" : "";
+            // Only when its OnDestroy can only undo Start (StartWithoutAwakeClasses).
+            return !HasAwake(me.GetType()) && SceneTools.InAreaNeverEntered(me) ? me.GetType().FullName + " (never started)" : "";
         }
 
         /// <summary>
         /// Every MonoBehaviour class in an assembly that declares OnDestroy
-        /// and has a Start: whose OnDestroy may undo what Start did.
+        /// and has a Start but no Awake: its OnDestroy can only undo what
+        /// Start did. A class with an Awake is left out: Awake runs in an
+        /// area loaded quietly, and its OnDestroy must undo it
+        /// (InteractableChair subscribes to SaveController.PlayerWillChangeLevel
+        /// in Awake; skipped, destroyed chairs stayed subscribed and threw).
         /// </summary>
-        public static string[] StartAndOnDestroyClasses(string assemblyOfType)
+        public static string[] StartWithoutAwakeClasses(string assemblyOfType)
         {
             var anchor = Type.GetType(assemblyOfType);
             if (anchor == null) return new string[0];
@@ -73,9 +78,72 @@ namespace Unityforge.Shim
                 if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
                 if (t.GetMethod("OnDestroy", any | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null) == null) continue;
                 if (t.GetMethod("Start", any, null, Type.EmptyTypes, null) == null) continue;
+                if (HasAwake(t)) continue;
                 found.Add(t.FullName);
             }
             return found.ToArray();
+        }
+
+        /// <summary>OnDisable exceptions swallowed by NeverStartedFinalizer.</summary>
+        public static int SwallowedOnDisable { get; private set; }
+
+        private static bool _onDisablePatched;
+
+        /// <summary>
+        /// Patches OnDisable of every MonoBehaviour class in an assembly
+        /// that declares OnDisable and has a Start, once. The area loaded
+        /// quietly is switched off before any Start, so OnDisable runs on
+        /// objects that never started: it still runs (SMVHierarchy and
+        /// InteractableListItem unsubscribe there what OnEnable subscribed),
+        /// and only the exception it throws reaching what Start would have
+        /// set is swallowed (MoneyPanel's OSMoneyTextList, filled in Start).
+        /// Returns the count patched.
+        /// </summary>
+        public static int FinishOnDisableOfNeverStarted(string assemblyOfType)
+        {
+            if (_onDisablePatched) return 0;
+            var anchor = Type.GetType(assemblyOfType);
+            if (anchor == null) return 0;
+            const BindingFlags any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var finalizer = typeof(FirstCopyGuard).GetMethod(nameof(NeverStartedFinalizer), BindingFlags.NonPublic | BindingFlags.Static);
+            Type[] types;
+            try { types = anchor.Assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { types = e.Types; }
+            int n = 0;
+            foreach (var t in types)
+            {
+                if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
+                var onDisable = t.GetMethod("OnDisable", any | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null);
+                if (onDisable == null || onDisable.IsAbstract) continue;
+                if (t.GetMethod("Start", any, null, Type.EmptyTypes, null) == null) continue;
+                if (HarmonyBridge.PatchFinalizer(onDisable, finalizer)) n++;
+            }
+            _onDisablePatched = true;
+            return n;
+        }
+
+        // Harmony finalizer: returning null swallows the exception.
+        private static Exception NeverStartedFinalizer(Exception __exception, object __instance)
+        {
+            if (__exception == null) return null;
+            if (!SceneTools.InAreaNeverEntered(__instance)) return __exception;
+            SwallowedOnDisable++;
+            return null;
+        }
+
+        /// <summary>
+        /// True when the class or a game class it derives from declares
+        /// Awake (a private Awake of a base class is not found by
+        /// GetMethod on the derived class, so each class is asked).
+        /// </summary>
+        private static bool HasAwake(Type t)
+        {
+            const BindingFlags declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+            for (; t != null && t != typeof(MonoBehaviour); t = t.BaseType)
+            {
+                if (t.GetMethod("Awake", declared, null, Type.EmptyTypes, null) != null) return true;
+            }
+            return false;
         }
 
         /// <summary>

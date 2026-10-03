@@ -799,8 +799,8 @@ these rules the game's code relies on:
 | Rule | How kept areas break it | Bugs so far |
 |---|---|---|
 | 1. one copy of each manager, static data set once | areas bring copies; their Awake writes statics | managers, identity, sky, camera |
-| 2. an object that wakes also starts | kept areas Awake but Start only when entered (LoadQuietly) | the intro; lava lamps |
-| 3. objects switch off only when their area unloads | the area swap switches them off and on | MoneyPanel.OnDisable errors |
+| 2. an object that wakes also starts | kept areas Awake but Start only when entered (LoadQuietly) | the intro; lava lamps; MoneyPanel.OnDisable errors; chairs left subscribed |
+| 3. objects switch off only when their area unloads | the area swap switches them off and on | none seen yet |
 | 4. only the current area exists | whole-game searches and scene events see every area | (scene-event listeners run per area) |
 | 5. the current area's data is loaded and saved | kept areas need it done by hand | design steps 2 to 4 |
 
@@ -834,9 +834,17 @@ MonoBehaviour-like classes) found, per rule:
 Fixes, one per rule:
 
 1. Done: first_copy_wins. To check: the four classes above.
-2. One shared patch: OnDestroy and OnDisable are skipped on objects in an
-   area never entered (their Start never ran). Covers the 7 and any the
-   scan missed.
+2. Objects in an area never entered woke (Awake, OnEnable) but never
+   started. OnDestroy is skipped for them only in classes with a Start and
+   no Awake (FirstCopyGuard.StartWithoutAwakeClasses): with an Awake, its
+   OnDestroy must undo Awake (InteractableChair unsubscribes from
+   SaveController.PlayerWillChangeLevel; skipped, destroyed chairs stayed
+   subscribed and leaving an area threw). OnDisable is never skipped
+   (SMVHierarchy and InteractableListItem unsubscribe there what OnEnable
+   subscribed); it runs, and only an exception it throws on an object
+   never started is swallowed, by a Harmony finalizer on every OnDisable
+   of a class with a Start (FirstCopyGuard.FinishOnDisableOfNeverStarted;
+   MoneyPanel.OnDisable reads lists only Start fills).
 3. Fix the classes the error count shows (MoneyPanel first).
 4. Nothing for the searches; check the 2 sceneLoaded listeners.
 5. Design steps 2 to 4 (built).

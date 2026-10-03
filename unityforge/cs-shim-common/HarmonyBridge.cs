@@ -132,6 +132,18 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
+        /// A Harmony finalizer written in C# (no Rust callback), on the
+        /// shim's one Harmony instance. Not dropped on hot reload: it
+        /// calls nothing in the Rust DLL. False when Harmony is not set up.
+        /// </summary>
+        public static bool PatchFinalizer(MethodBase target, MethodInfo finalizer)
+        {
+            if (_harmony == null) return false;
+            _harmony.Patch(target, finalizer: new HarmonyMethod(finalizer));
+            return true;
+        }
+
+        /// <summary>
         /// Drop every active patch. Used during hot reload so
         /// Harmony doesn't dispatch into a freed Rust DLL.
         /// Per-slot unpatch, not UnpatchSelf: UnpatchSelf is

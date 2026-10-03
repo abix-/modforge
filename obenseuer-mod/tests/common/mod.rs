@@ -43,8 +43,8 @@ pub fn copies(api: &Api<Value>, class: &str) -> Vec<(i64, i64)> {
 
 /// What a class's static `instance` holds: its id, "destroyed" or "null".
 pub fn instance_now(api: &Api<Value>, class: &str) -> String {
-    let t = call_static(api, "System.Type", "GetType", json!([format!("{class}, Assembly-CSharp")]));
-    let Some(t) = handle_of(&t) else { return "type not found".into() };
+    let r = api.op("invoke_static", json!({"class": "System.Type", "method": "GetType", "args": [format!("{class}, Assembly-CSharp")]}));
+    let Some(t) = handle_of(&r.result) else { return format!("type not found ({:?}, {})", r.error, r.result) };
     let Some(f) = handle_of(&call(api, t, "GetField", json!(["instance"]))) else { return "no field".into() };
     let v = call(api, f, "GetValue", json!([null]));
     if v.get("name").and_then(Value::as_str) == Some("<null>") {

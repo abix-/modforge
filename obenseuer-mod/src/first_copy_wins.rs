@@ -83,11 +83,11 @@ fn turn_on() -> Result<usize, String> {
     for assembly in ONE_COPY_ASSEMBLIES {
         one_copy.extend(class_list("OneCopyClasses", assembly)?);
     }
-    // OnDestroy also on every class whose OnDestroy may undo what its Start
-    // did: objects in areas never entered never started (docs, "The
-    // lifecycle rules kept areas break", rule 2).
+    // OnDestroy also on every class whose OnDestroy can only undo what its
+    // Start did (no Awake): objects in areas never entered never started
+    // (docs, "The lifecycle rules kept areas break", rule 2).
     let mut on_destroy_classes: std::collections::BTreeSet<String> = one_copy.iter().cloned().collect();
-    on_destroy_classes.extend(class_list("StartAndOnDestroyClasses", ONE_COPY_ASSEMBLIES[0])?);
+    on_destroy_classes.extend(class_list("StartWithoutAwakeClasses", ONE_COPY_ASSEMBLIES[0])?);
     let mut hooks = Vec::new();
     // Classes without that method: nothing to patch.
     for class in &one_copy {
@@ -102,12 +102,18 @@ fn turn_on() -> Result<usize, String> {
     }
     let n = hooks.len();
     *HOOKS.lock().unwrap() = hooks;
-    Ok(n)
+    // OnDisable of objects that never started: run, with only its exception
+    // swallowed (FirstCopyGuard.FinishOnDisableOfNeverStarted; docs rule 2).
+    let on_disable = invoke_static("Unityforge.Shim.FirstCopyGuard", "FinishOnDisableOfNeverStarted", &json!([ONE_COPY_ASSEMBLIES[0]]))?
+        .as_i64()
+        .unwrap_or(0) as usize;
+    Ok(n + on_disable)
 }
 
 fn state() -> Result<Json, String> {
     Ok(json!({
         "patches": HOOKS.lock().unwrap().len(),
+        "OnDisable exceptions swallowed (never started)": invoke_static("Unityforge.Shim.FirstCopyGuard", "get_SwallowedOnDisable", &json!([])).ok(),
         "skipped": SKIPPED.lock().unwrap().clone(),
         "switched off": SWITCHED_OFF.lock().unwrap().clone(),
     }))
@@ -119,7 +125,7 @@ fn state() -> Result<Json, String> {
 /// "active"); PlayerIdentity's "identity" was missed and areas loaded
 /// alongside took over the player's identity (the save fell back to the
 /// name "Esko_Virtanen").
-/// `list`: FirstCopyGuard.OneCopyClasses or StartAndOnDestroyClasses.
+/// `list`: FirstCopyGuard.OneCopyClasses or StartWithoutAwakeClasses.
 fn class_list(list: &str, assembly_of_type: &str) -> Result<Vec<String>, String> {
     let arr = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", list, &json!([assembly_of_type]))?)
         .ok_or("no class list")?;
