@@ -149,6 +149,10 @@ pub enum When {
     /// line is called to them, heard where they are, no conversation opened
     /// (topside todo 11z).
     Warning,
+    /// The speaker feels at least this toward the one spoken to (from -1
+    /// to 1, relationship::feeling; topside todo 11af: a stranger says yes
+    /// to staying when they feel well enough toward the one asking).
+    Feels(f32),
     /// Nothing has been said in this conversation yet: the speaker's
     /// first word. A plain question asked once, not offered after every
     /// reply (a conversation ends after the last reply).

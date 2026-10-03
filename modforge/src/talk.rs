@@ -170,6 +170,9 @@ pub struct Speaking<'a> {
     /// The speaker holds a place and warns off one who comes for it: a
     /// line said is called to them (topside todo 11z).
     pub warning: bool,
+    /// How the speaker feels toward the one spoken to (relationship::
+    /// feeling, 0 with none), for `When::Feels`.
+    pub feels: f32,
 }
 
 impl Speaking<'_> {
@@ -201,6 +204,7 @@ impl Speaking<'_> {
             When::Opened => self.opened,
             When::Knocking => self.knocking,
             When::Warning => self.warning,
+            When::Feels(at_least) => self.feels >= *at_least,
             When::First => self.last().is_none(),
             When::Heard(name) => matches!(self.last(), Some((true, line)) if line.name == *name),
             When::HasHeard(name) => {
@@ -552,6 +556,7 @@ mod tests {
                 needs: &self.needs,
                 knocking: false,
                 warning: false,
+                feels: 0.0,
             }
         }
     }
