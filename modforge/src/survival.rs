@@ -116,6 +116,8 @@ pub enum SurvivalError {
     EmptySlot(usize),
     /// The stack names an item the registry does not know.
     Unregistered(String),
+    /// The container holds no water to drink.
+    Empty(String),
 }
 
 /// A settlement's survival pressure, from stable to collapse.

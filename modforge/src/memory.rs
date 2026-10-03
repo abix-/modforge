@@ -54,6 +54,10 @@ pub struct Known {
     /// many; None until looked (believed to hold something), empty
     /// when it was found bare.
     pub held: Option<Vec<(String, u32)>>,
+    /// The water its containers held when last checked, in litres
+    /// (crate::fluid).
+    #[serde(default)]
+    pub litres: f32,
     /// Who told them of it, if they know it by being told and have not
     /// seen it since (topside life.md "What a person knows": told).
     pub told_by: Option<ActorId>,
@@ -310,6 +314,7 @@ impl Memory {
                 seen_at: now,
                 checked_at: None,
                 held: None,
+                litres: 0.0,
                 told_by: None,
             }),
         }
@@ -330,12 +335,14 @@ impl Memory {
     }
 
     /// Note a thing checked up close now: what was found inside it,
-    /// each kind with how many (empty when bare).
-    pub fn checked(&mut self, key: u64, held: Vec<(String, u32)>, now: u64) {
+    /// each kind with how many (empty when bare), and the water its
+    /// containers held (crate::fluid).
+    pub fn checked(&mut self, key: u64, held: Vec<(String, u32)>, litres: f32, now: u64) {
         if let Some(k) = self.known.iter_mut().find(|k| k.key == key) {
             k.checked_at = Some(now);
             k.seen_at = now;
             k.held = Some(held);
+            k.litres = litres;
         }
     }
 
@@ -497,7 +504,7 @@ mod tests {
         let mut memory = Memory::default();
         memory.see(1, "storage box", Vec3::ZERO, 0);
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 0.0, "never looked inside");
-        memory.checked(1, vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)], 5);
+        memory.checked(1, vec![("scrap".to_string(), 2), ("canned food".to_string(), 1)], 0.0, 5);
         assert_eq!(food_worth(&memory.known[0], Need::Hunger, &items), 50.0, "the cans inside");
         assert_eq!(food_worth(&memory.known[0], Need::Thirst, &items), 0.0);
     }
@@ -606,7 +613,7 @@ mod tests {
         m.see(7, "storage box", Vec3::ZERO, 10);
         assert!(m.known[0].believed_to_hold(), "never looked: believed full");
         assert!(!m.known[0].held_kind("canned food"), "not seen yet");
-        m.checked(7, vec![("canned food".to_string(), 7), ("canned food".to_string(), 3), ("pipe".to_string(), 1)], 30);
+        m.checked(7, vec![("canned food".to_string(), 7), ("canned food".to_string(), 3), ("pipe".to_string(), 1)], 0.0, 30);
         let box_ = &m.known[0];
         assert_eq!(box_.checked_at, Some(30));
         assert!(box_.held_kind("canned food") && box_.held_kind("pipe"));
@@ -625,13 +632,13 @@ mod tests {
             0,
             "a box is not a bed"
         );
-        m.checked(7, vec![], 30);
+        m.checked(7, vec![], 0.0, 30);
         assert_eq!(m.good_for(Need::Hunger, &worth).count(), 0, "known empty");
         assert!(
             m.unchecked_nearest(Vec3::ZERO).is_none(),
             "checked, so not a place to look"
         );
-        m.checked(7, kinds(&["canned food"]), 40);
+        m.checked(7, kinds(&["canned food"]), 0.0, 40);
         assert_eq!(m.good_for(Need::Hunger, &worth).count(), 1);
     }
 
@@ -641,7 +648,7 @@ mod tests {
         m.see(1, "wreck", Vec3::new(50.0, 0.0, 0.0), 1);
         m.see(2, "wreck", Vec3::new(10.0, 0.0, 0.0), 1);
         m.see(3, "wreck", Vec3::new(5.0, 0.0, 0.0), 1);
-        m.checked(3, vec![], 2);
+        m.checked(3, vec![], 0.0, 2);
         assert_eq!(m.unchecked_nearest(Vec3::ZERO).unwrap().key, 2);
     }
 

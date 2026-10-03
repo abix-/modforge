@@ -641,6 +641,18 @@ pub fn use_slot(
     }
     match def.kind {
         ItemKind::Weapon | ItemKind::Tool => Ok(0.0),
+        // A container is drunk from, a mouthful (crate::fluid::drink).
+        ItemKind::Container => {
+            let Some(held) = inv.slots[slot].as_mut() else {
+                return Err(SurvivalError::EmptySlot(slot));
+            };
+            let drunk = crate::fluid::drink(&mut held.litres);
+            if drunk <= 0.0 {
+                return Err(SurvivalError::Empty(held.item.clone()));
+            }
+            stats.drink(drunk);
+            Ok(0.0)
+        }
         _ => stats.eat_from_slot(inv, slot, registry),
     }
 }

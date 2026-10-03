@@ -318,7 +318,7 @@ mod tests {
         assert_eq!(alive(needs(50.0, 80.0), 1.0, &held(&[("can", 2)]), None, &memory), 80.0, "two cans: thirst first now");
         let mut knows = Memory::default();
         knows.see(1, "storage box", glam::Vec3::ZERO, 0);
-        knows.checked(1, held(&[("can", 10), ("bottle", 10)]), 0);
+        knows.checked(1, held(&[("can", 10), ("bottle", 10)]), 0.0, 0);
         assert_eq!(alive(needs(50.0, 80.0), 1.0, &[], Some(1), &knows), 350.0, "their own store adds days");
         assert_eq!(alive(needs(50.0, 80.0), 1.0, &[], None, &knows), 200.0, "a box out there counts half");
         assert_eq!(alive(needs(50.0, 80.0), 0.5, &[], None, &memory), 25.0, "a hit takes from it");

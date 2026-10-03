@@ -58,6 +58,29 @@ pub fn drink(from: &mut f32) -> f32 {
     transfer(from, &mut drunk, f32::INFINITY, MOUTHFUL)
 }
 
+/// Takes up to `most` litres out of what an inventory's containers hold
+/// (a store's barrel and bottles: a source drawn from it, a drink from
+/// it). Answers the litres taken.
+pub fn take_from(held: &mut Inventory, most: f32) -> f32 {
+    let mut taken = 0.0;
+    for stack in held.slots.iter_mut().flatten().filter(|s| s.count == 1) {
+        let left = most - taken;
+        transfer(&mut stack.litres, &mut taken, f32::INFINITY, left);
+    }
+    taken
+}
+
+/// Pours `from` into an inventory's containers with room (a store's
+/// barrel). Answers the litres poured.
+pub fn pour_into(held: &mut Inventory, from: &mut f32, items: &ItemRegistry) -> f32 {
+    let mut poured = 0.0;
+    for stack in held.slots.iter_mut().flatten().filter(|s| s.count == 1) {
+        let room = room(stack, items);
+        poured += transfer(from, &mut stack.litres, room, f32::INFINITY);
+    }
+    poured
+}
+
 /// Every litre an inventory's containers hold.
 pub fn litres_in(held: &Inventory) -> f32 {
     held.slots.iter().flatten().map(|s| s.litres * s.count as f32).sum()
@@ -147,6 +170,13 @@ mod tests {
         inventory.slots[2] = Some(stack("water barrel", 10.0));
         assert_eq!(litres_in(&inventory), 12.0);
         assert_eq!(room_in(&inventory, &items), 3.0 + 190.0);
+        // A store gives from its containers and takes into those with room.
+        assert_eq!(take_from(&mut inventory, 11.0), 11.0);
+        assert_eq!(litres_in(&inventory), 1.0);
+        let mut carried = 4.0;
+        assert_eq!(pour_into(&mut inventory, &mut carried, &items), 4.0);
+        assert_eq!((carried, litres_in(&inventory)), (0.0, 5.0));
+        assert_eq!(take_from(&mut inventory, 9.0), 5.0, "no more than it holds");
         // A mouthful drunk fills thirst at THIRST_PER_LITRE a litre.
         let mut stats = crate::survival::SurvivalStats { thirst: 10.0, ..Default::default() };
         stats.drink(MOUTHFUL);

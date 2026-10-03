@@ -56,6 +56,12 @@ pub enum Action {
     },
     /// Use what is in `slot` (a click on it): eat, drink, put on.
     UseSlot { slot: crate::hud::SlotRef },
+    /// Fill the container in `slot` at the source aimed at, in reach
+    /// (crate::fluid::fill).
+    Fill { slot: crate::hud::SlotRef },
+    /// Pour the container in `slot` into the open box's containers
+    /// (crate::fluid::pour).
+    Pour { slot: crate::hud::SlotRef },
     /// Make the open station's recipe at `index` of its list.
     Craft { index: usize },
     /// Trading: put the stack in `slot` (one's own, or theirs) into the
