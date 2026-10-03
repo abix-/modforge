@@ -18,18 +18,18 @@
 | 3 | research | [ ] Map the NPC scheduler: how Timetable entries drive NPC movement | Scheduler flow documented |
 | 1 | deposit.rs | [x] F6 puts inventory and worn backpack items into nearby boxes that already hold the same item, range in settings | Committed; worked in game |
 | 1 | kept_loaded.rs | [x] Load the areas behind the doors alongside, keep them switched off, move through a door with no loading screen | research_kept_scenario.rs: trips of 0.416s and 0.291s |
-| 1 | first_copy_wins.rs | [x] A second copy of a one-copy class (public static field of its own type) does not take over | research_kept_scenario.rs: identity "Tom", 19 of 20 watched fields live |
+| 1 | first_copy_wins.rs | [x] A second copy of a one-copy class (public static field of its own type) does not take over | research_kept_scenario.rs: identity "Tom", 20 of 20 watched fields live (c2ba7b23) |
 | 1 | kept_loaded.rs | [x] Saved data applied on entering, captured on leaving, every visited area written on save | A save made away from home loaded back correctly (operator, 2026-10-02) |
 | 1 | FirstCopyGuard.cs | [x] Skip OnDestroy of lava lamps in areas never entered | research_kept_scenario.rs: 0 LavaLamp errors across two normal loads |
-| 1 | FirstCopyGuard.cs | [ ] Run OnDestroy of classes with an Awake in areas never entered (written, not built: the shim change needs a game restart) | research_kept_scenario.rs shows no "left ... Err ... InteractableChair.StopSitEnd" line |
-| 2 | research_kept_scenario.rs | [ ] Find why WaitingUI gives "type not found" in the watched list | The check reports WaitingUI live, or the reason is in the test |
-| 3 | research_kept_scenario.rs | [ ] Commit the automatic check | The file is in git and pushed |
+| 1 | FirstCopyGuard.cs | [x] Run OnDestroy of classes with an Awake in areas never entered | research_kept_scenario.rs passed (c2ba7b23): no "left ... Err ... InteractableChair.StopSitEnd" line |
+| 2 | research_kept_scenario.rs | [x] Find why WaitingUI gives "type not found" in the watched list | The check reports WaitingUI live (cause of the earlier miss unknown; the test now prints the bridge error if it happens again) |
+| 3 | research_kept_scenario.rs | [x] Commit the automatic check | Pushed in c2ba7b23 |
+| 6 | FirstCopyGuard.cs | [x] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors (c2ba7b23) |
 | 4 | research_kept_scenario.rs | [ ] Leave the game's save name as it was after the check saves to ModTest | After the check, a manual save goes to the player's own slot |
 | 5 | kept_loaded.rs | [ ] Find which of the check's errors the base game also logs, with the mod's kept areas off | The same door trips with auto off, errors listed side by side in docs/loading-research.md |
-| 6 | kept_loaded.rs | [ ] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors |
 | 7 | kept_loaded.rs | [ ] Stop Pathfinding.RVO.Simulator.RemoveAgent "agent is not added" (2 per check) | The check shows 0 RemoveAgent errors |
 | 8 | kept_loaded.rs | [ ] Stop LightController.Awake NullReferenceException (2 per check) | The check shows 0 LightController errors |
-| 9 | kept_loaded.rs | [ ] Find the source of the one Transform.get_position NullReferenceException | Its caller is named in docs/loading-research.md |
+| 9 | kept_loaded.rs | [ ] Find the source of the one Transform.get_position NullReferenceException (not seen in the last check) | Its caller is named in docs/loading-research.md, or 3 checks in a row without it |
 | 10 | kept_loaded.rs | [ ] Check AlarmClock, ToiletPaperHolder, SlotMachineGameplay, LoadOnLevelIni, which keep data in statics | Each one's result is in docs/loading-research.md |
 | 11 | kept_loaded.rs | [ ] Check the classes whose OnEnable/OnDisable run each time an area is switched on and off (98 / 68) | Result in docs/loading-research.md, fixes as their own rows |
 | 12 | kept_loaded.rs | [ ] Check the 2 sceneLoaded listeners and the game's searches that skip switched-off objects | Result in docs/loading-research.md |
