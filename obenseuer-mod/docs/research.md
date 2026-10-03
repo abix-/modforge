@@ -750,6 +750,31 @@ Start for `X.instance.` writes and calls, 31 classes):
   objects; OnMapChanging only records a follow target
   (NPCDataState.OnMapChange).
 
+More that assumes one area (2026-10-03):
+
+- Followers: `NPCSceneUtilities.OnFollowingTarget` (NPCSceneUtilities.cs:11-20)
+  takes the player's area from the follow target's scene
+  (`followTarget.scene.name`), the only place the game reads an object's
+  scene; every game minute it moves a follower towards that scene.
+- Navigation: `info_navigation` (private static `instance`) loads its
+  area's navigation file `StreamingAssets/NavigationData/<active
+  scene>.nav` into the one pathfinder (`AstarPath.active.data
+  .DeserializeGraphs`) and maps the waypoints, once per object (`loaded`),
+  from Awake and OnEnable; a second copy destroys itself
+  (info_navigation.cs:29-111).
+- `info_lighting_settings`: one copy, destroys a second copy in Awake and
+  OnEnable; nothing reads it.
+- Coroutines started in Start that run for good, by class:
+  BottleRecyclingLights and BottleRecyclingLightsUI (Start only starts
+  `Blinking`), PulseLight (Start records the light's current intensity as
+  its maximum, then starts `LightEffect`), RagdollAnimation (Start looks
+  up its bones, starts `StepTimer`). randomAnimation restarts its loop in
+  OnEnable; Storage restarts `Initialize` in OnEnable.
+- OnEnable side effects besides subscriptions: UI refreshes, wieldable
+  items adding their animator to FirstPersonHands, EventCamera
+  (disables controls and the player camera while on), AlarmClock and
+  ToiletPaperHolder connecting to nearby beds and toilets.
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
