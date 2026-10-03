@@ -707,6 +707,9 @@ So with the mod's door move today:
 
 ## Proper design (proposal, 2026-10-02, not built)
 
+Superseded by the design in [kept-areas.md](kept-areas.md) (2026-10-03);
+kept here as the history of how it was reached.
+
 Reproduce the game's own enter and leave steps for areas kept loaded,
 with the game's own code, instead of patching what each skipped step
 broke.
@@ -851,6 +854,40 @@ one of them:
    subscribed to and keep running for game-wide events (a switched-off
    Spawner still gets `SecondsPassed`). Not yet measured what that does in
    play.
+
+## One copy for the game, or one copy per area (2026-10-03)
+
+Every area's scene carries its own managers; their Awake sets
+`instance = this`. The game has one area at a time, so "the one copy" is
+both the game's copy and the current area's copy. With areas kept loaded
+those part, and the first-copy guard (first_copy_wins.rs) treats every
+one-copy class as the game's: `instance` stays on the copy of the area the
+save loaded into. For a class that belongs to an area, that is the wrong
+copy in every other area:
+
+- `PlayerLevelEntrypoints` holds its area's arrival points
+  (PlayerLevelEntrypoints.cs:56-62, list built in the editor, 121-151).
+- `DestructibleList` holds the items dropped in its area and the map items
+  destroyed there, saved in the area's file (GUID "DestructibleList",
+  DestructibleList.cs:11-25); with `instance` on another area's copy, drops
+  in a kept area likely go into that area's list and file (not checked).
+
+Where each one-copy class saves, from the decompiled source (a public
+static field or property of its own type; `SerializeData(this, global:
+true)` is the game's file, `SerializeData(this)` the area's):
+
+| Saves | Count | Classes |
+|---|---|---|
+| Game's file | 41 | Inventory, PlayerStats, Money, Crime, TimeOfDayAzure, NPCDirector, PlayerIdentity, ... |
+| Area's file | 3 | DestructibleList, SleepEventController, VendingMachine |
+| Nothing | 171 | UI and player (PauseMenu, PlayerCamera, ...) and area (PlayerLevelEntrypoints, info_map, info_lighting_settings, WaterController, WaypointGraph, NodeNetwork, ...) mixed |
+
+So where it saves does not sort the 171. Rule to measure next: a copy
+under the top objects every area has for the player and managers
+(Game_Logic, Player And Camera, Pause Menu(Clone), ...) is the game's; a
+copy under the area's own top objects is the area's, and its `instance`
+should follow the area the player is in, as the area's own Awake would
+have set it on a normal load.
 
 ## The lifecycle rules kept areas break: full scan (2026-10-02)
 
