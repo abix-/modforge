@@ -435,10 +435,12 @@ pub fn enter_need(t: &mut Think, _: &Target) -> Option<Target> {
     need_target(t.p)
 }
 
-/// Seeing to one need while another falls past the look line and below
-/// it: that one comes first (seen in the running game, topside
+/// Seeing to one need while another goes critical (below `NEED_CRITICAL`,
+/// the one line that takes anyone off what they are doing, asked or not)
+/// and below it: that one comes first (seen in the running game, topside
 /// tests/thirst.rs: people slept at their camp until they died of thirst,
-/// knowing the water).
+/// knowing the water). Hungrier than thirsty but not critical, they keep
+/// drinking.
 pub fn worse_need(t: &mut Think, target: &Target) -> bool {
     let Target::Thing { need: Some(serving), .. } = *target else {
         return false;
@@ -446,7 +448,7 @@ pub fn worse_need(t: &mut Think, target: &Target) -> bool {
     let needs = t.p.needs.needs_worst_first();
     let value = |n: Need| needs.iter().find(|(m, _)| *m == n).map_or(0.0, |(_, v)| *v);
     let (worst, lowest) = needs[0];
-    worst != serving && lowest < LOOK_LINE && lowest < value(serving)
+    worst != serving && lowest < NEED_CRITICAL && lowest < value(serving)
 }
 
 /// A need below `NEED_CRITICAL` that they can do something about (what
@@ -1069,25 +1071,30 @@ mod tests {
         }
     }
 
-    /// Asleep at camp with thirst falling past the look line below their
-    /// rest: the thirst comes first (seen in the running game, topside
-    /// tests/thirst.rs); a need still above the line does not wake them.
+    /// Asleep at camp with thirst falling below their rest (seen in the
+    /// running game, topside tests/thirst.rs: they slept until they died
+    /// of thirst): they sleep on until it goes critical, then the thirst
+    /// comes first.
     #[test]
     fn a_worse_need_takes_them_off_the_one_they_serve() {
         let memory = Memory::default();
         let personality = Personality::default();
         let mut p = perception(&memory, &personality);
         let sleeping = Target::Thing { key: 1, at: Vec3::ZERO, need: Some(Need::Rest) };
+        p.asleep = true;
         p.needs.rest = 40.0;
-        p.needs.thirst = 20.0;
         let mut roll = Roll::new(1);
+        for thirst in [35.0, 25.0, NEED_CRITICAL + 1.0] {
+            p.needs.thirst = thirst;
+            let mut t = Think::new(&p, &mut roll);
+            assert!(!worse_need(&mut t, &sleeping), "thirst {thirst} under rest 40, not critical: asleep still");
+        }
+        p.needs.thirst = NEED_CRITICAL - 1.0;
         let mut t = Think::new(&p, &mut roll);
-        assert!(worse_need(&mut t, &sleeping), "thirst 20 under rest 40: drink first");
-        p.needs.thirst = 35.0;
-        let mut t = Think::new(&p, &mut roll);
-        assert!(!worse_need(&mut t, &sleeping), "thirst 35 is not past the look line");
-        p.needs.thirst = 20.0;
-        p.needs.rest = 10.0;
+        assert!(worse_need(&mut t, &sleeping), "thirst {} critical: drink first", p.needs.thirst);
+        p.asleep = false;
+        p.needs.thirst = 10.0;
+        p.needs.rest = 5.0;
         let mut t = Think::new(&p, &mut roll);
         assert!(!worse_need(&mut t, &sleeping), "rest is still the worst");
         // Walking there, a sleeper wakes.
