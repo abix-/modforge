@@ -19,34 +19,9 @@
 mod common;
 use std::time::{Duration, Instant};
 
-use common::{api, handle_of, ping_or_skip};
+use common::{WATCHED, api, handle_of, instance_now, ping_or_skip};
 use serde_json::{Value, json};
 use unityforge::client::Api;
-
-/// One-copy classes the earlier tests saw switched, emptied, or left on a
-/// destroyed object by a second area.
-const WATCHED: &[&str] = &[
-    "PlayerCamera",
-    "CameraRotate",
-    "SetControls",
-    "InteractObjects",
-    "ThirdPersonCameraController",
-    "FirstPersonHands",
-    "PauseMenu",
-    "SoundscapeGlobal",
-    "info_map",
-    "LightsController",
-    "GameUIController",
-    "GameController",
-    "DialogueController",
-    "Inventory",
-    "PlayerStats",
-    "TimeOfDayAzure",
-    "Crime",
-    "Money",
-    "WaitingUI",
-    "RadiationController",
-];
 
 fn op(api: &Api<Value>, name: &str, args: Value) -> Result<Value, String> {
     let r = api.op(name, args);
@@ -55,23 +30,6 @@ fn op(api: &Api<Value>, name: &str, args: Value) -> Result<Value, String> {
 
 fn call(api: &Api<Value>, h: i64, method: &str, args: Value) -> Result<Value, String> {
     op(api, "invoke_method", json!({"handle": h, "method": method, "args": args}))
-}
-
-/// What a class's static `instance` holds: its id, "destroyed" or "null".
-fn instance_now(api: &Api<Value>, class: &str) -> String {
-    let t = op(api, "invoke_static", json!({"class": "System.Type", "method": "GetType", "args": [format!("{class}, Assembly-CSharp")]}));
-    let Some(t) = t.ok().as_ref().and_then(handle_of) else { return "type not found".into() };
-    let Some(f) = call(api, t, "GetField", json!(["instance"])).ok().as_ref().and_then(handle_of) else {
-        return "no field".into();
-    };
-    match call(api, f, "GetValue", json!([null])) {
-        Ok(v) if v.get("name").and_then(Value::as_str) == Some("<null>") => "destroyed".into(),
-        Ok(v) => match handle_of(&v) {
-            Some(h) => call(api, h, "GetInstanceID", json!([])).ok().and_then(|v| v.as_i64()).map_or("?".into(), |i| i.to_string()),
-            None => "null".into(),
-        },
-        Err(e) => format!("read failed ({e})"),
-    }
 }
 
 #[test]

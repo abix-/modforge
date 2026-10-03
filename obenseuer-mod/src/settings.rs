@@ -12,6 +12,35 @@ pub struct TweaksSettings {
     pub stacks: StacksSettings,
     #[serde(default)]
     pub deposit: DepositSettings,
+    #[serde(default)]
+    pub kept_loaded: KeptLoadedSettings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeptLoadedSettings {
+    /// Load the areas the current area's doors lead to alongside it.
+    #[serde(default = "default_true")]
+    pub auto: bool,
+    /// Most areas kept loaded besides the one the player is in.
+    #[serde(default = "default_max_areas")]
+    pub max_areas: usize,
+}
+
+impl Default for KeptLoadedSettings {
+    fn default() -> Self {
+        Self {
+            auto: true,
+            max_areas: default_max_areas(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_max_areas() -> usize {
+    10
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,9 +1,10 @@
 //! Ops for investigating in the running game without restarting it
 //! (operator 2026-10-02: stop relaunching the game after every try).
 //!
-//! - `reload_save`: load the save last loaded, the way the game's load
-//!   menu does (SaveController.LoadGameWithMigration, LoadMenu.cs:539).
-//!   Gets back one clean area after a try left the game broken.
+//! - `reload_save`, also the F7 key: getting unstuck. Puts the mod back to
+//!   its starting state, then loads the save last loaded the way the
+//!   game's load menu does (SaveController.LoadGameWithMigration,
+//!   LoadMenu.cs:539). One clean area after a try left the game broken.
 //! - `errors`: the errors the game logged since a mark, grouped by the
 //!   game code that threw them, read from the game's own log
 //!   (Application.consoleLogPath).
@@ -13,20 +14,36 @@ use std::time::Duration;
 
 use modforge::ops::{OP_REGISTRY, OpDef};
 use serde_json::{Value as Json, json};
+use unityforge::input::{KeyCode, register_key_press};
 use unityforge::main_thread_queue::MAIN_QUEUE;
-use unityforge::mono::{MonoObject, invoke_static, json_handle, owned_object};
+use unityforge::mono::{LogLevel, MonoObject, invoke_static, json_handle, log, owned_object};
 
-use crate::first_copy_wins;
 
 /// Where `errors` starts reading: (log path, byte offset).
 static MARK: Mutex<Option<(String, u64)>> = Mutex::new(None);
 
+/// The in-game key for getting unstuck (the game's code uses F1, F11, F12;
+/// deposit uses F6).
+const UNSTUCK_KEY: KeyCode = KeyCode::F7;
+
 pub fn install() {
+    if register_key_press(UNSTUCK_KEY, on_unstuck_key).is_none() {
+        log(LogLevel::Error, "obenseuer-mod: unstuck key binding failed");
+    }
     OP_REGISTRY.register(OpDef::new(
         "reload_save",
-        "Load the save last loaded, as the game's load menu does; turns first_copy_wins off first",
+        "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded",
         "{}",
         |_| MAIN_QUEUE.run_result("reload_save", Duration::from_secs(10), reload_save),
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "near_player",
+        "Doors and drawn objects near the camera, in one frame: doors' state, and objects whose baked lighting index points past the baked lighting list",
+        r#"{"metres": 20}"#,
+        |args| {
+            let metres = args.get("metres").and_then(Json::as_f64).unwrap_or(20.0);
+            MAIN_QUEUE.run_result("near_player", Duration::from_secs(30), move || near_player(metres))
+        },
     ));
     OP_REGISTRY.register(OpDef::new(
         "errors",
@@ -39,8 +56,11 @@ pub fn install() {
     ));
 }
 
+/// Getting unstuck: one path for the op and the in-game key. Puts the mod
+/// back to its starting state (no areas kept loaded, no door patch), then
+/// loads the save last loaded, which unloads every other area.
 fn reload_save() -> Result<Json, String> {
-    first_copy_wins::set(Some(false))?;
+    crate::kept_loaded::reset();
     let character = save_controller_static("CharacterName")?;
     let save = save_controller_static("SaveName")?;
     let routine = obj(invoke_static("SaveController", "LoadGameWithMigration", &json!([character, save, true]))?)
@@ -53,6 +73,13 @@ fn reload_save() -> Result<Json, String> {
     Ok(json!({"loading": format!("{character}/{save}")}))
 }
 
+extern "C" fn on_unstuck_key() {
+    match reload_save() {
+        Ok(r) => log(LogLevel::Info, &format!("obenseuer-mod: unstuck: {r}")),
+        Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: unstuck failed: {e}")),
+    }
+}
+
 /// A private static string on SaveController.
 fn save_controller_static(field: &str) -> Result<String, String> {
     let ty = obj(invoke_static("System.Type", "GetType", &json!(["SaveController, Assembly-CSharp"]))?)
@@ -63,6 +90,84 @@ fn save_controller_static(field: &str) -> Result<String, String> {
         .as_str()
         .map(String::from)
         .ok_or_else(|| format!("SaveController.{field} is not set (no save loaded yet)"))
+}
+
+fn near_player(metres: f64) -> Result<Json, String> {
+    let camera = obj(invoke_static("UnityEngine.Camera", "get_main", &json!([]))?).ok_or("no main camera")?;
+    let me = position(&camera)?;
+    let maps = obj(invoke_static("UnityEngine.LightmapSettings", "get_lightmaps", &json!([]))?)
+        .and_then(|m| m.read_field("Length").ok())
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+
+    let mut doors = Vec::new();
+    for d in crate::deposit::instances_with("Changelevel", true)? {
+        let Ok(p) = position(&d) else { continue };
+        let dist = distance(me, p);
+        if dist > metres {
+            continue;
+        }
+        let collider = obj(d.invoke("GetComponent", &json!(["Collider"]))?)
+            .map(|c| c.invoke("get_enabled", &json!([])).unwrap_or(Json::Null))
+            .unwrap_or(json!("none"));
+        doors.push(json!({
+            "metres": (dist * 10.0).round() / 10.0,
+            "to": d.read_field("OtherLevel")?,
+            "on": d.invoke("get_isActiveAndEnabled", &json!([]))?,
+            "open": d.read_field("isOpen").unwrap_or(Json::Null),
+            "collider on": collider,
+            "where": path(&d),
+        }));
+    }
+
+    let near = obj(invoke_static("UnityEngine.Physics", "OverlapSphere", &json!([{"x": me[0], "y": me[1], "z": me[2]}, metres]))?)
+        .ok_or("OverlapSphere gave nothing")?;
+    let n = near.read_field("Length")?.as_i64().unwrap_or(0);
+    let mut by_index: std::collections::BTreeMap<i64, u64> = Default::default();
+    let mut past_the_list = Vec::new();
+    for i in 0..n {
+        let Some(c) = obj(near.invoke("GetValue", &json!([i]))?) else { continue };
+        let Some(r) = obj(c.invoke("GetComponent", &json!(["Renderer"]))?) else { continue };
+        if r.invoke("get_enabled", &json!([]))?.as_bool() != Some(true) {
+            continue;
+        }
+        let index = r.invoke("get_lightmapIndex", &json!([]))?.as_i64().unwrap_or(-1);
+        *by_index.entry(index).or_default() += 1;
+        // 65534/65535: Unity's "no baked lighting" markers.
+        if index >= maps && index < 65534 && past_the_list.len() < 40 {
+            past_the_list.push(format!("{index}  {}", path(&c)));
+        }
+    }
+    Ok(json!({
+        "camera": me,
+        "baked lighting list length": maps,
+        "doors": doors,
+        "colliders": n,
+        "drawn objects by baked lighting index": by_index,
+        "drawn objects with an index past the list (first 40)": past_the_list,
+    }))
+}
+
+fn position(o: &MonoObject) -> Result<[f64; 3], String> {
+    let t = obj(o.invoke("get_transform", &json!([]))?).ok_or("no transform")?;
+    let p = t.invoke("get_position", &json!([]))?;
+    let c = |k: &str| p.get(k).and_then(Json::as_f64).ok_or_else(|| format!("position has no {k}"));
+    Ok([c("x")?, c("y")?, c("z")?])
+}
+
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    (0..3).map(|i| (a[i] - b[i]).powi(2)).sum::<f64>().sqrt()
+}
+
+/// "Top / Object": the object's top parent and its own name.
+fn path(o: &MonoObject) -> String {
+    let name = |x: &MonoObject| x.invoke("get_name", &json!([])).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or("?".into());
+    let t = o.invoke("get_transform", &json!([])).ok().and_then(obj);
+    let top = t.as_ref().and_then(|t| t.invoke("get_root", &json!([])).ok()).and_then(obj);
+    match (top, t) {
+        (Some(top), Some(t)) => format!("{} / {}", name(&top), name(&t)),
+        _ => name(o),
+    }
 }
 
 fn errors(mark: bool) -> Result<Json, String> {

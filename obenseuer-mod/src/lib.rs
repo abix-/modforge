@@ -2,6 +2,7 @@ mod crime;
 mod deposit;
 mod first_copy_wins;
 mod investigate;
+mod kept_loaded;
 mod save_timing;
 mod settings;
 mod tweaks;
@@ -13,7 +14,7 @@ static MOD_INFO: ModDef = ModDef {
     version: "0.1.0",
     http_port: 17175,
     on_init: Some(on_init),
-    on_tick: None,
+    on_tick: Some(on_tick),
     on_shutdown: Some(on_shutdown),
     tabs: &[],
 };
@@ -30,9 +31,14 @@ fn on_init() {
     save_timing::install();
     first_copy_wins::install();
     investigate::install();
+    kept_loaded::install();
     settings::get().register_hud_op();
 
     unityforge::mono::log(unityforge::mono::LogLevel::Info, "obenseuer-mod: ready");
+}
+
+fn on_tick(_now: f32) {
+    kept_loaded::tick();
 }
 
 fn on_shutdown() {

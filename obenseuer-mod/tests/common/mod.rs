@@ -41,6 +41,46 @@ pub fn copies(api: &Api<Value>, class: &str) -> Vec<(i64, i64)> {
         .collect()
 }
 
+/// What a class's static `instance` holds: its id, "destroyed" or "null".
+pub fn instance_now(api: &Api<Value>, class: &str) -> String {
+    let t = call_static(api, "System.Type", "GetType", json!([format!("{class}, Assembly-CSharp")]));
+    let Some(t) = handle_of(&t) else { return "type not found".into() };
+    let Some(f) = handle_of(&call(api, t, "GetField", json!(["instance"]))) else { return "no field".into() };
+    let v = call(api, f, "GetValue", json!([null]));
+    if v.get("name").and_then(Value::as_str) == Some("<null>") {
+        return "destroyed".into();
+    }
+    match handle_of(&v) {
+        Some(h) => call(api, h, "GetInstanceID", json!([])).as_i64().map_or("?".into(), |i| i.to_string()),
+        None => "null".into(),
+    }
+}
+
+/// One-copy classes earlier tests saw switched, emptied, or left on a
+/// destroyed object by a second area.
+pub const WATCHED: &[&str] = &[
+    "PlayerCamera",
+    "CameraRotate",
+    "SetControls",
+    "InteractObjects",
+    "ThirdPersonCameraController",
+    "FirstPersonHands",
+    "PauseMenu",
+    "SoundscapeGlobal",
+    "info_map",
+    "LightsController",
+    "GameUIController",
+    "GameController",
+    "DialogueController",
+    "Inventory",
+    "PlayerStats",
+    "TimeOfDayAzure",
+    "Crime",
+    "Money",
+    "WaitingUI",
+    "RadiationController",
+];
+
 pub fn scenes_loaded(api: &Api<Value>) -> i64 {
     call_static(api, "UnityEngine.SceneManagement.SceneManager", "get_sceneCount", json!([])).as_i64().unwrap_or(0)
 }

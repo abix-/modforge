@@ -35,7 +35,7 @@ extern "C" fn on_deposit() {
         Ok((items, boxes)) => {
             let text = format!("{items} items into {boxes} boxes");
             log(LogLevel::Info, &format!("obenseuer-mod: deposit: {text}"));
-            notify(&text);
+            notify("Deposit", &text);
         }
         Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: deposit failed: {e}")),
     }
@@ -140,14 +140,15 @@ fn takes_deposits(
     Ok(true)
 }
 
-fn notify(text: &str) {
+/// A message in the game's own notification box.
+pub(crate) fn notify(title: &str, text: &str) {
     match first_instance("Notifications") {
         Ok(n) => {
-            if let Err(e) = n.invoke("CreateNotification", &json!(["Deposit", text, false])) {
-                log(LogLevel::Warn, &format!("obenseuer-mod: deposit notification failed: {e}"));
+            if let Err(e) = n.invoke("CreateNotification", &json!([title, text, false])) {
+                log(LogLevel::Warn, &format!("obenseuer-mod: notification failed: {e}"));
             }
         }
-        Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: deposit notification failed: {e}")),
+        Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: notification failed: {e}")),
     }
 }
 
@@ -198,9 +199,15 @@ fn instance_id(o: &MonoObject) -> Result<i64, String> {
 }
 
 pub(crate) fn instances(class: &str) -> Result<Vec<MonoObject>, String> {
+    instances_with(class, false)
+}
+
+/// Live instances of a class; `include_inactive` also takes those on
+/// switched-off objects.
+pub(crate) fn instances_with(class: &str, include_inactive: bool) -> Result<Vec<MonoObject>, String> {
     let walk = MonoType::find(class)
         .ok_or_else(|| format!("{class} type not found"))?
-        .walk(false)?;
+        .walk(include_inactive)?;
     Ok(walk
         .get("instances")
         .and_then(Json::as_array)

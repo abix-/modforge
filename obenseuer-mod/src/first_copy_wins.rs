@@ -10,8 +10,8 @@
 //! such class: when the field already holds a live, different copy, the
 //! original method is skipped and the new copy is disabled.
 //!
-//! Off until the `first_copy_wins` op turns it on; proven by
-//! tests/research_first_copy_wins.rs.
+//! On from mod start (see install); the `first_copy_wins` op reads what it
+//! did. Proven by tests/research_first_copy_wins.rs.
 
 use std::collections::BTreeMap;
 use std::ffi::c_void;
@@ -32,6 +32,13 @@ static SKIPPED: Mutex<BTreeMap<String, u64>> = Mutex::new(BTreeMap::new());
 static FIELD_OF: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
 /// Top objects switched off: their names.
 static SWITCHED_OFF: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// The same objects' instance ids: an area's own setup, never switched
+/// back on (kept_loaded.rs).
+static SWITCHED_OFF_IDS: Mutex<Vec<i64>> = Mutex::new(Vec::new());
+
+pub(crate) fn switched_off_ids() -> Vec<i64> {
+    SWITCHED_OFF_IDS.lock().unwrap().clone()
+}
 
 /// One-copy fields not named `instance`: (type, assembly, field).
 /// AstarPath.active: the NPC pathfinding grid
@@ -44,95 +51,56 @@ const OTHER_FIELDS: &[(&str, &str, &str)] = &[("AstarPath", "AstarPathfindingPro
 /// "Pause Menu(Clone)"; research_azure_sky.rs: TimeOfDayAzure under the
 /// area's own "Game_Logic", whose Azure sky otherwise keeps writing the
 /// game-wide lighting every frame).
-const PLAYER_SETUP: &[&str] = &["ThirdPersonCameraController", "PauseMenu", "TimeOfDayAzure"];
+/// OpenSewerCharacterController: the player character, a top object of its
+/// own in the player's building (research_cameras.rs), kept on by the area
+/// swap.
+pub(crate) const PLAYER_SETUP: &[&str] = &["ThirdPersonCameraController", "PauseMenu", "TimeOfDayAzure", "OpenSewerCharacterController"];
 
-/// What an area loaded alongside still lights the first with (operator
-/// 2026-10-02: "the lighting seems off"): the name the
-/// `alongside_off` op takes, and the Unity class.
-const LIGHTING: &[(&str, &str)] = &[
-    ("post_processing", "UnityEngine.Rendering.PostProcessing.PostProcessVolume"),
-    ("lights", "UnityEngine.Light"),
-    ("reflection_probes", "UnityEngine.ReflectionProbe"),
-];
-/// Ids of every LIGHTING component when first_copy_wins turned on, so
-/// the ones an area loaded after it brought can be told apart.
-static BEFORE: Mutex<BTreeMap<String, Vec<i64>>> = Mutex::new(BTreeMap::new());
-
+/// Patched once when the mod starts, and left on: Harmony patches cost
+/// what they cost (pardeike/Harmony#609, "It is as fast as you can get
+/// it"), so BepInEx mods patch once at start (MSchmoecker/FasterLoading,
+/// Plugin.Awake), never per load. Patching on every save load froze the
+/// game 0.62 s. The guard does nothing while no live copy exists, which is
+/// all of normal play.
 pub fn install() {
+    let start = std::time::Instant::now();
+    match turn_on() {
+        Ok(n) => unityforge::mono::log(
+            unityforge::mono::LogLevel::Info,
+            &format!("obenseuer-mod: first_copy_wins on: {n} patches in {:.3}s", start.elapsed().as_secs_f64()),
+        ),
+        Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: first_copy_wins failed: {e}")),
+    }
     OP_REGISTRY.register(OpDef::new(
         "first_copy_wins",
-        "Research: stop a second copy of a one-copy game class from taking over (on/off, and what it skipped)",
-        r#"{"on": true|false}  (omit to only read)"#,
-        |args| {
-            let on = args.get("on").and_then(Json::as_bool);
-            MAIN_QUEUE.run_result("first_copy_wins", Duration::from_secs(30), move || set(on))
-        },
-    ));
-    OP_REGISTRY.register(OpDef::new(
-        "alongside_off",
-        "Research: switch off one kind of lighting an area loaded alongside brought (new since first_copy_wins turned on)",
-        r#"{"what": "post_processing" | "lights" | "reflection_probes"}"#,
-        |args| {
-            let what = args.get("what").and_then(Json::as_str).unwrap_or("").to_string();
-            MAIN_QUEUE.run_result("alongside_off", Duration::from_secs(30), move || alongside_off(&what))
-        },
+        "Stops a second copy of a one-copy game class from taking over: its patches, and what it skipped",
+        "{}",
+        |_| MAIN_QUEUE.run_result("first_copy_wins", Duration::from_secs(5), state),
     ));
 }
 
-/// Disables every component of one LIGHTING kind that was not there when
-/// first_copy_wins turned on.
-fn alongside_off(what: &str) -> Result<Json, String> {
-    let (_, class) = LIGHTING.iter().find(|(w, _)| *w == what).ok_or_else(|| format!("what: one of {LIGHTING:?}"))?;
-    let before = BEFORE.lock().unwrap().get(*class).cloned().ok_or("turn first_copy_wins on before loading the area")?;
-    let mut names = Vec::new();
-    for c in crate::deposit::instances(class)? {
-        let Some(id) = c.invoke("GetInstanceID", &json!([]))?.as_i64() else { continue };
-        if before.contains(&id) || c.invoke("get_enabled", &json!([]))?.as_bool() != Some(true) {
-            continue;
-        }
-        c.invoke("set_enabled", &json!([false]))?;
-        names.push(c.invoke("get_name", &json!([]))?.as_str().unwrap_or("?").to_string());
-    }
-    Ok(json!({"switched off": names.len(), "names": names.iter().take(20).collect::<Vec<_>>()}))
-}
-
-/// Instance ids of every live component of a class.
-fn ids(class: &str) -> Vec<i64> {
-    crate::deposit::instances(class)
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|c| c.invoke("GetInstanceID", &json!([])).ok()?.as_i64())
-        .collect()
-}
-
-pub(crate) fn set(on: Option<bool>) -> Result<Json, String> {
-    let mut failed = Vec::new();
-    match on {
-        Some(true) if HOOKS.lock().unwrap().is_empty() => {
-            SKIPPED.lock().unwrap().clear();
-            SWITCHED_OFF.lock().unwrap().clear();
-            *BEFORE.lock().unwrap() = LIGHTING.iter().map(|(_, class)| (class.to_string(), ids(class))).collect();
-            let mut fields = one_copy_classes()?;
-            fields.extend(OTHER_FIELDS.iter().map(|(t, _, f)| (t.to_string(), f.to_string())));
-            *FIELD_OF.lock().unwrap() = fields.iter().cloned().collect();
-            let mut hooks = Vec::new();
-            for (class, _) in fields {
-                for (method, cb) in [("Awake", on_awake as extern "C" fn(*const c_void) -> i32), ("OnDestroy", on_destroy)] {
-                    match patch_prefix_ctx(&class, method, HookCtx::Instance, cb) {
-                        Ok(h) => hooks.push(h),
-                        Err(_) => failed.push(format!("{class}.{method}")),
-                    }
-                }
+/// Patches Awake and OnDestroy of every one-copy class. Returns the count.
+fn turn_on() -> Result<usize, String> {
+    let mut fields = one_copy_classes()?;
+    fields.extend(OTHER_FIELDS.iter().map(|(t, _, f)| (t.to_string(), f.to_string())));
+    *FIELD_OF.lock().unwrap() = fields.iter().cloned().collect();
+    let mut hooks = Vec::new();
+    for (class, _) in fields {
+        for (method, cb) in [("Awake", on_awake as extern "C" fn(*const c_void) -> i32), ("OnDestroy", on_destroy)] {
+            // Classes without that method: nothing to patch.
+            if let Ok(h) = patch_prefix_ctx(&class, method, HookCtx::Instance, cb) {
+                hooks.push(h);
             }
-            *HOOKS.lock().unwrap() = hooks;
         }
-        Some(false) => HOOKS.lock().unwrap().clear(),
-        _ => {}
     }
+    let n = hooks.len();
+    *HOOKS.lock().unwrap() = hooks;
+    Ok(n)
+}
+
+fn state() -> Result<Json, String> {
     Ok(json!({
-        "on": !HOOKS.lock().unwrap().is_empty(),
         "patches": HOOKS.lock().unwrap().len(),
-        "not patched (no such method)": failed.len(),
         "skipped": SKIPPED.lock().unwrap().clone(),
         "switched off": SWITCHED_OFF.lock().unwrap().clone(),
     }))
@@ -206,6 +174,13 @@ fn newcomer(me: &MonoObject) -> Result<Option<String>, String> {
     if id(&current) == id(me) {
         return Ok(None);
     }
+    // A live copy the game keeps through scene changes (LoadingScreen,
+    // SaveController, InputManager...) guards itself: the new copy's own
+    // Awake destroys it (LoadingScreen.cs:83). Let it run.
+    let kept = invoke_static("Unityforge.Shim.SceneTools", "KeptThroughLoads", &json!([{"handle": current.handle().0}]))?;
+    if kept.as_bool() == Some(true) {
+        return Ok(None);
+    }
     Ok(Some(class))
 }
 
@@ -233,6 +208,9 @@ fn switch_off_top_next_frame(me: &MonoObject) {
             Err(e) => format!("{name} (failed: {e})"),
         };
         SWITCHED_OFF.lock().unwrap().push(done);
+        if let Some(id) = top.invoke("GetInstanceID", &json!([])).ok().and_then(|v| v.as_i64()) {
+            SWITCHED_OFF_IDS.lock().unwrap().push(id);
+        }
     });
 }
 
