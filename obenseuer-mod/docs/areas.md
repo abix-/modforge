@@ -62,13 +62,30 @@ the area's file), NPCManager, `info_map` ([`map.md`](map.md)),
 
 ## info_game_logic
 
-`info_game_logic` (`__MAIN/info_game_logic`) owns its area's player
-setup: Awake and OnEnable destroy their own object when `instance` is
-another copy (info_game_logic.cs:73-95); OnDestroy destroys `Main`, the
-setup (177-183). Its Start applies the area's settings: sky (`DelaySet`),
-`RadiationController` background radiation (97-115). It holds the
-prison area (`prisonLevelName`, read by Crime.TeleportToPrison) and
-`baseSafetyFactor` (read by SleepEventController.cs:68).
+`public class info_game_logic : MonoBehaviour`, `[ExecuteInEditMode]`
+(info_game_logic.cs), at `__MAIN/info_game_logic`. The area's settings.
+Not saved.
+
+| Field | Default | Read by |
+|---|---|---|
+| `static info_game_logic instance` | | Many (5 files) |
+| `bool overrideSky`, `AzureWeatherProfile overrideProfile`, `bool disableOverrideSkyOnPlay` | | Start's `DelaySet` ([`weather.md`](weather.md)); WeatherManager thunder |
+| `bool _3dSkybox` | | |
+| `bool hideMainMap` | | Map ([`map.md`](map.md)) |
+| `string prisonLevelName`, `prisonEntrypoint` | "Interior Tenement Gatehouse", "prison" | `Crime.TeleportToPrison` |
+| `float baseSafetyFactor` | 0 | SleepEventController.cs:68 |
+| `int itemExpirationTimeMinutes` | 600 | |
+| `float backgroundRadiation`, `backgroundRadiationWasteland` | 0.0004, 25 | Start -> `RadiationController` |
+| `float timeline`, `int year`, `month`, `day`, `bool setTimeAtStart`, `float overrideTimeSpeed` | 9, 2026, 11, 16 | Start, editor only |
+| `bool hideUI`, `ShowGameLogic` | | Editor |
+| `GameObject Main` (private) | | The area's player setup |
+
+| Method | Does |
+|---|---|
+| `Awake()`, `OnEnable()` (73-95) | `instance` null -> this; another live copy -> **destroys its own object** (and so, through OnDestroy, `Main`) |
+| `Start()` (97-114) | `DelaySet` unless `disableOverrideSkyOnPlay`; `RadiationController.instance.backgroundRadiation` and `backgroundRadiationWasteland`; editor time settings |
+| `DelaySet()` (116-127) | 0.1 s realtime: `overrideSky` -> `TimeOfDayAzure.DisableSky(overrideProfile)`, else `EnableSky()` |
+| `OnDestroy()` (177-183) | `DestroyImmediate(Main)`: the area's player setup |
 
 Values per area (research_area_settings.rs, 2026-10-03):
 
