@@ -122,6 +122,10 @@ pub struct ItemDef {
     /// layers): a melee weapon's handle takes a "head". Empty for an
     /// item that is one layer, itself.
     pub layer_slots: Vec<String>,
+    /// Standing in the world, it breaks, and is gone, when used with a
+    /// melee weapon in hand, by anyone (topside's tap). False for
+    /// everything else.
+    pub breaks_when_struck: bool,
 }
 
 #[derive(Default)]
@@ -678,6 +682,7 @@ mod tests {
             good_for: Default::default(),
             picture: None,
             layer_slots: Vec::new(),
+            breaks_when_struck: false,
         }
     }
 
@@ -836,6 +841,7 @@ mod tests {
                 ammo: None,
             }),
             layer_slots: vec!["head".to_string()],
+            breaks_when_struck: false,
             ..def(name)
         };
         let pipe = handle("pipe", "pipe swing", 2.0);
@@ -908,6 +914,7 @@ mod tests {
                 ammo: Some("shotgun shell".to_string()),
             }),
             layer_slots: ["barrel", "grip", "stock"].map(String::from).to_vec(),
+            breaks_when_struck: false,
             ..def("pipe shotgun")
         };
         let part = |name: &str, slot: &str, reach, spread_degrees, delay| LayerDef {

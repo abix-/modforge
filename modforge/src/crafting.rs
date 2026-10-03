@@ -160,6 +160,7 @@ mod tests {
                 good_for: Default::default(),
                 picture: None,
                 layer_slots: Vec::new(),
+                breaks_when_struck: false,
             })
             .unwrap();
         items
@@ -184,6 +185,7 @@ mod tests {
                 good_for: Default::default(),
                 picture: None,
                 layer_slots: Vec::new(),
+                breaks_when_struck: false,
             })
             .unwrap();
 

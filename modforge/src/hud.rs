@@ -936,6 +936,7 @@ mod tests {
                 good_for: Default::default(),
                 picture: None,
                 layer_slots: Vec::new(),
+                breaks_when_struck: false,
             })
             .unwrap();
         }
@@ -1025,6 +1026,7 @@ mod tests {
             good_for: Default::default(),
             picture: None,
             layer_slots: Vec::new(),
+            breaks_when_struck: false,
         })
         .unwrap();
         let mut state = HudState::new();
@@ -1222,6 +1224,7 @@ mod tests {
             good_for: Default::default(),
             picture: None,
             layer_slots: Vec::new(),
+            breaks_when_struck: false,
         })
         .unwrap();
         reg.register(crate::item::ItemDef {
@@ -1238,6 +1241,7 @@ mod tests {
             good_for: Default::default(),
             picture: None,
             layer_slots: Vec::new(),
+            breaks_when_struck: false,
         })
         .unwrap();
         let mut stats = crate::survival::SurvivalStats::default();
