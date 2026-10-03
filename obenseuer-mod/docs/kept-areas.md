@@ -159,15 +159,18 @@ normal load.
 |---|---|---|
 | Areas left are switched off, not unloaded: their objects keep subscriptions to game-wide events (a switched-off Spawner still gets `TimeOfDayAzure.SecondsPassed`) | Unloading is what makes doors slow | Not measured; operator to decide |
 | No autosave at a door | Writing files at a door stutters | Decided by the operator (2026-10-03): no autosave at doors; the player saves |
+| `info_game_logic`'s per-area settings (prison area, sleep safety, background radiation, sky) stay those of the area the save loaded into | It owns its area's player setup, so it cannot be area-owned (rule 1, which copy) | Todo: apply the entered area's settings the way its Start does |
 | Objects in an area never entered woke but never started; OnDestroy of a class with Start and no Awake is skipped for them, and an exception their OnDisable throws is swallowed | Nothing may start before the player walks in (an area's intro ran and left the screen black) | Built |
 
 ## Proof
 
 `tests/research_kept_scenario.rs`, after every change: through a door and
-back, save, load. With kept areas on and off (`OBENSEUER_KEPT_OFF=1`), it
-must end with no error the game does not also log, every manager live, and
-the player's identity intact. A second visit to an area that is not home
-must also move without a loading screen.
+back twice (the second visit to an area that is not home must also move
+without a loading screen), save, load, then back to the player's own save.
+With kept areas on and off (`OBENSEUER_KEPT_OFF=1`), it must end with no
+error the game does not also log, every manager live, the player's
+identity intact, and after every kept door `NPCManager.ActiveScene` naming
+the area entered.
 
 ## Status (2026-10-03)
 
