@@ -70,6 +70,10 @@ pub struct EpisodeDef {
     /// (a thing it brings into the world is one of them).
     #[serde(default)]
     pub items: Vec<crate::item::ItemDef>,
+    /// When its storm comes, in game days after it starts: a range, rolled
+    /// when it starts (`storm::storm_at`; topside design.md "The session
+    /// rhythm": it depends on the story and on chance).
+    pub storm_in: (f32, f32),
 }
 
 /// A pivot point reached by what is done (topside todo 11ai): its name, and
@@ -1701,6 +1705,7 @@ mod tests {
             errands: Vec::new(),
             deeds: Vec::new(),
             items: Vec::new(),
+            storm_in: (1.0, 1.0),
         }
     }
 
@@ -1951,6 +1956,7 @@ mod tests {
             errands: Vec::new(),
             deeds: Vec::new(),
             items: Vec::new(),
+            storm_in: (1.0, 1.0),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1974,6 +1980,7 @@ mod tests {
             errands: Vec::new(),
             deeds: Vec::new(),
             items: Vec::new(),
+            storm_in: (1.0, 1.0),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -2034,6 +2041,7 @@ mod tests {
             errands: Vec::new(),
             deeds: Vec::new(),
             items: Vec::new(),
+            storm_in: (1.0, 1.0),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -2057,6 +2065,7 @@ mod tests {
             errands: Vec::new(),
             deeds: Vec::new(),
             items: Vec::new(),
+            storm_in: (1.0, 1.0),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
