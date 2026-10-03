@@ -808,7 +808,7 @@ only one area exists at any time:
 | 7 | `LoadingStarted`; load phases Primary, Secondary, Tertiary on the active area (640-643) | First visit only: the same phases (`apply_saved_data`). `LoadingStarted` not fired |
 | 8 | Kept-through-loads `OnLoadingGameSpecial`, `DestructibleList.OnLoadingGameDestructibleList`, the DestructibleList check including switched-off objects (644-646) | Not run |
 | 9 | Next frame: OnLoadingGame, OnLoadingGameLatePrimary, the DestructibleList check again (647-650) | OnLoadingGame and LatePrimary, same frame. The check not run |
-| 10 | OnMapChanged on the active area only (651-654) | On the area, the home area, and the kept-through-loads objects: the last is not what the game does |
+| 10 | OnMapChanged on the active area only (651-654) | On the area and the home area (where the live player and managers are). Until 2026-10-03 also on the kept-through-loads objects; removed, the check passes with no new errors |
 | 11 | Player to the arrival point, dialogue data (655-659) | Player moved (TeleportPlayer); dialogue data not applied |
 | 12 | Temp lists cleared, `Loading` false, `LoadingDone` (BlackoutController, ItemAchievementList, NaturalLightSourceChecker), fade out (660-664) | Lists cleared; `LoadingDone` not fired |
 | 13 | A save load from anywhere: the same, from step 5, with every area unloaded | `reset()` clears the mod's Rust state, the game loads; the shim's own state is not cleared (below) |
@@ -845,8 +845,8 @@ one of them:
 2. It leaves out steps of the game's sequence: the autosave, `SavingStarted`
    and `SavingDone`, `LoadingStarted`, the DestructibleList steps, the
    frame between steps 7 and 9, dialogue data, `LoadingDone`.
-3. It adds a step the game does not take: OnMapChanged on the
-   kept-through-loads objects.
+3. It added a step the game does not take: OnMapChanged on the
+   kept-through-loads objects. Fixed 2026-10-03.
 4. An area left is switched off, not unloaded: its objects keep what they
    subscribed to and keep running for game-wide events (a switched-off
    Spawner still gets `SecondsPassed`). Not yet measured what that does in
