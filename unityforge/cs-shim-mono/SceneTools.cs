@@ -81,6 +81,17 @@ namespace Unityforge.Shim
             // Before switching off: OnDisable on objects never started is
             // told apart by this (FirstCopyGuard.NeverStartedFinalizer).
             NeverEntered.Add(scene.handle);
+            // Area-owned managers out of the area's copy of the player setup
+            // (Game_Logic, kept off) to the top of the area: its content, on
+            // and off with it, saved and loaded with it (docs/kept-areas.md,
+            // rule 1, which copy). Each sits alone on its own object.
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                foreach (var m in top.GetComponentsInChildren<MonoBehaviour>(true))
+                {
+                    if (m != null && m.transform.parent != null && FirstCopyGuard.IsAreaOwned(m.GetType())) m.transform.SetParent(null, true);
+                }
+            }
             var off = new List<GameObject>();
             foreach (var top in scene.GetRootGameObjects())
             {

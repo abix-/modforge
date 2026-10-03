@@ -483,6 +483,11 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         return Ok(false);
     }
     let start = std::time::Instant::now();
+    // Rule 2, step 2 before step 10, as in the game: the area-owned
+    // managers are the area's first, so its arrival points are read from
+    // its own PlayerLevelEntrypoints. If none matches, the game's normal
+    // load follows and replaces every area anyway.
+    invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([to]))?;
     for e in arrival_points()? {
         let name = e.read_field("Name")?.as_str().unwrap_or("").to_string();
         // An arrival point is the area's when its location is a live object

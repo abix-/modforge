@@ -14,10 +14,18 @@ namespace Unityforge.Shim
 {
     public static class FirstCopyGuard
     {
-        // Class -> reads its one-copy static field or property ("instance",
+        // Class -> its one-copy static field or property ("instance",
         // AstarPath's "active" field, RVOSimulator's "active" property);
         // null when it has none.
-        private static readonly Dictionary<Type, Func<object>> Fields = new Dictionary<Type, Func<object>>();
+        private static readonly Dictionary<Type, MemberInfo> Fields = new Dictionary<Type, MemberInfo>();
+
+        private static object Read(MemberInfo m) => m is FieldInfo f ? f.GetValue(null) : ((PropertyInfo)m).GetValue(null, null);
+
+        private static void Write(MemberInfo m, object value)
+        {
+            if (m is FieldInfo f) f.SetValue(null, value);
+            else ((PropertyInfo)m).SetValue(null, value, null);
+        }
 
         /// <summary>
         /// The class's full name when `me` is a new copy and a different,
@@ -29,14 +37,14 @@ namespace Unityforge.Shim
         {
             if (!(me is Component)) return "";
             var type = me.GetType();
-            if (!Fields.TryGetValue(type, out var read))
+            if (!Fields.TryGetValue(type, out var member))
             {
-                read = FindOneCopy(type);
-                Fields[type] = read;
+                member = FindOneCopy(type);
+                Fields[type] = member;
             }
-            if (read == null) return "";
+            if (member == null) return "";
             // Unity's == treats a destroyed object as null.
-            var current = read() as UnityEngine.Object;
+            var current = Read(member) as UnityEngine.Object;
             if (current == null || ReferenceEquals(current, me)) return "";
             if (current is Component kept && kept.gameObject.scene.name == "DontDestroyOnLoad") return "";
             return type.FullName;
@@ -148,25 +156,106 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
-        /// Reads a class's one copy: a public static field or property of
-        /// the class's own type, whatever its name ("instance", AstarPath's
-        /// "active" field, PlayerIdentity's "identity", RVOSimulator's
-        /// "active" property: missed as a field only, a kept area's copy
-        /// took it over and NPCs entering found none, RemoveAgent threw).
-        /// Null when it has none.
+        /// A class's one copy (docs/kept-areas.md, rule 1, which copy): a
+        /// public static field or property of the class's own type, whatever
+        /// its name ("instance", AstarPath's "active" field, PlayerIdentity's
+        /// "identity", RVOSimulator's "active" property), that the class's
+        /// own Awake or OnEnable writes: the game's way of making a manager
+        /// (`instance = this`). A field of its own type nothing writes on
+        /// waking is not one: `Storage.active` is the box open now, and
+        /// counting it held back every box of an area loaded while one was
+        /// open. Null when it has none.
         /// </summary>
-        private static Func<object> FindOneCopy(Type type)
+        private static MemberInfo FindOneCopy(Type type)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
             foreach (var f in type.GetFields(flags))
             {
-                if (f.FieldType == type) return () => f.GetValue(null);
+                if (f.FieldType == type && WrittenOnWaking(type, f)) return f;
             }
             foreach (var p in type.GetProperties(flags))
             {
-                if (p.PropertyType == type && p.CanRead && p.GetIndexParameters().Length == 0) return () => p.GetValue(null, null);
+                if (p.PropertyType == type && p.CanRead && p.GetIndexParameters().Length == 0 && WrittenOnWaking(type, p.GetSetMethod(true))) return p;
             }
             return null;
+        }
+
+        /// <summary>
+        /// True when the class's own Awake or OnEnable stores to the field
+        /// (stsfld) or calls the property's setter, read with Harmony's IL
+        /// reader (PatchProcessor.ReadMethodBody).
+        /// </summary>
+        private static bool WrittenOnWaking(Type type, MemberInfo target)
+        {
+            if (target == null) return false;
+            const BindingFlags declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.DeclaredOnly;
+            foreach (var name in new[] { "Awake", "OnEnable" })
+            {
+                var method = type.GetMethod(name, declared, null, Type.EmptyTypes, null);
+                if (method == null) continue;
+                foreach (var op in HarmonyLib.PatchProcessor.ReadMethodBody(method))
+                {
+                    if (op.Value is MemberInfo m && m.MetadataToken == target.MetadataToken && m.Module == target.Module) return true;
+                }
+            }
+            return false;
+        }
+
+        // Area-owned managers (docs/kept-areas.md, rule 1, which copy): their
+        // full class names, set once by the mod.
+        private static readonly HashSet<string> AreaOwnedNames = new HashSet<string>();
+        private static readonly List<Type> AreaOwnedTypes = new List<Type>();
+
+        /// <summary>
+        /// The area-owned managers, by class name, in the assembly named by
+        /// one of its types. Returns how many were found.
+        /// </summary>
+        public static int SetAreaOwned(string assemblyOfType, string commaNames)
+        {
+            var anchor = Type.GetType(assemblyOfType);
+            if (anchor == null) return 0;
+            AreaOwnedNames.Clear();
+            AreaOwnedTypes.Clear();
+            foreach (var name in commaNames.Split(','))
+            {
+                var t = anchor.Assembly.GetType(name.Trim());
+                if (t == null) continue;
+                AreaOwnedNames.Add(t.FullName);
+                AreaOwnedTypes.Add(t);
+            }
+            return AreaOwnedTypes.Count;
+        }
+
+        internal static bool IsAreaOwned(Type t) => AreaOwnedNames.Contains(t.FullName);
+
+        /// <summary>
+        /// Entering an area (rule 2, step 2): each area-owned manager's one
+        /// copy is the area's, switched on, as its own Awake would have set
+        /// it on a normal load. Returns how many were set.
+        /// </summary>
+        public static int EnterArea(string sceneName)
+        {
+            var scene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(sceneName);
+            if (!scene.IsValid()) return 0;
+            int n = 0;
+            foreach (var t in AreaOwnedTypes)
+            {
+                if (!Fields.TryGetValue(t, out var member))
+                {
+                    member = FindOneCopy(t);
+                    Fields[t] = member;
+                }
+                if (member == null) continue;
+                foreach (var o in Resources.FindObjectsOfTypeAll(t))
+                {
+                    if (!(o is MonoBehaviour m) || m == null || m.gameObject.scene.handle != scene.handle) continue;
+                    Write(member, m);
+                    m.enabled = true;
+                    n++;
+                    break;
+                }
+            }
+            return n;
         }
 
         /// <summary>
@@ -187,9 +276,9 @@ namespace Unityforge.Shim
             foreach (var t in types)
             {
                 if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
-                var read = FindOneCopy(t);
-                Fields[t] = read;
-                if (read != null) found.Add(t.FullName);
+                var member = FindOneCopy(t);
+                Fields[t] = member;
+                if (member != null) found.Add(t.FullName);
             }
             return found.ToArray();
         }

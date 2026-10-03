@@ -4,7 +4,7 @@
 |---:|---|---|---|
 | 1 | kept_loaded.rs | [ ] Rule 2 (docs/kept-areas.md): entering an area is one function that runs the table's steps 1 to 12 in order, area-owned managers set to the area's copy | The check passes with no new errors; a second visit to an area that is not home moves without a loading screen |
 | 2 | kept_loaded.rs | [ ] Rule 3 (docs/kept-areas.md): leaving an area is one function that runs the table's steps 1 to 11 in order | The check passes with no new errors |
-| 3 | FirstCopyGuard.cs | [ ] Rule 1, which copy (docs/kept-areas.md): a manager is a class whose Awake or OnEnable sets its self-typed static field or property to itself; `Storage.active` and the like stop counting | The guard's class list has no Storage, LiquidStorage, VendingMachine, ItemData, InteractableTalk, CraftingBase, Toilet; the check passes |
+| 23 | FirstCopyGuard.cs | [ ] Mod start takes 3.2s since the one-copy check reads Awake and OnEnable (was 0.6s); measure which part | first_copy_wins on under 1s in the log |
 | 4 | kept_loaded.rs | [ ] The mod's own state (docs/kept-areas.md): cleared on every normal load, not only the mod's own reload | After a normal load the mod did not start (the menu), the load_alongside op shows only the new area |
 | 5 | research | [ ] Map the save/load flow: which SavableScript subclasses hold player state, in what order | Save flow documented |
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |

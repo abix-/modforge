@@ -60,8 +60,16 @@ pub(crate) const PLAYER_SETUP: &[&str] = &["ThirdPersonCameraController", "Pause
 /// Plugin.Awake), never per load. Patching on every save load froze the
 /// game 0.62 s. The guard does nothing while no live copy exists, which is
 /// all of normal play.
+/// Area-owned managers (docs/kept-areas.md, rule 1, which copy): they hold
+/// their area's own data, so they are the area's content, and the game uses
+/// the copy of the area the player is in.
+const AREA_OWNED: &[&str] = &["PlayerLevelEntrypoints", "DestructibleList", "SleepEventController"];
+
 pub fn install() {
     let start = std::time::Instant::now();
+    if let Err(e) = invoke_static("Unityforge.Shim.FirstCopyGuard", "SetAreaOwned", &json!([ONE_COPY_ASSEMBLIES[0], AREA_OWNED.join(",")])) {
+        unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: area-owned managers not set: {e}"));
+    }
     match turn_on() {
         Ok(n) => unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
