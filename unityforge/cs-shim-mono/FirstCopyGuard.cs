@@ -42,6 +42,43 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
+        /// Why an OnDestroy should not run, or empty when it should: a new
+        /// copy of a one-copy class (Newcomer: its OnDestroy would empty the
+        /// field), or an object that never started (in a scene loaded
+        /// quietly and never entered: its OnDestroy undoes what its Start
+        /// never did; LavaLamp destroyed the shared material).
+        /// </summary>
+        public static string SkipOnDestroy(object me)
+        {
+            var newcomer = Newcomer(me);
+            if (newcomer.Length > 0) return newcomer;
+            return SceneTools.InAreaNeverEntered(me) ? me.GetType().FullName + " (never started)" : "";
+        }
+
+        /// <summary>
+        /// Every MonoBehaviour class in an assembly that declares OnDestroy
+        /// and has a Start: whose OnDestroy may undo what Start did.
+        /// </summary>
+        public static string[] StartAndOnDestroyClasses(string assemblyOfType)
+        {
+            var anchor = Type.GetType(assemblyOfType);
+            if (anchor == null) return new string[0];
+            const BindingFlags any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            var found = new List<string>();
+            Type[] types;
+            try { types = anchor.Assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { types = e.Types; }
+            foreach (var t in types)
+            {
+                if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
+                if (t.GetMethod("OnDestroy", any | BindingFlags.DeclaredOnly, null, Type.EmptyTypes, null) == null) continue;
+                if (t.GetMethod("Start", any, null, Type.EmptyTypes, null) == null) continue;
+                found.Add(t.FullName);
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>
         /// A class's one-copy field: a public static field of the class's
         /// own type, whatever its name ("instance", AstarPath's "active",
         /// PlayerIdentity's "identity"). Null when it has none.

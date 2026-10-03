@@ -791,6 +791,60 @@ Answered (2026-10-02):
   Steps 2 and 3 run the OnMapChanged and OnMapChanging phases and fire
   PlayerWillChangeLevel, as a door does.
 
+## The lifecycle rules kept areas break: full scan (2026-10-02)
+
+The game assumes one area exists at a time. Every bug so far broke one of
+these rules the game's code relies on:
+
+| Rule | How kept areas break it | Bugs so far |
+|---|---|---|
+| 1. one copy of each manager, static data set once | areas bring copies; their Awake writes statics | managers, identity, sky, camera |
+| 2. an object that wakes also starts | kept areas Awake but Start only when entered (LoadQuietly) | the intro; lava lamps |
+| 3. objects switch off only when their area unloads | the area swap switches them off and on | MoneyPanel.OnDisable errors |
+| 4. only the current area exists | whole-game searches and scene events see every area | (scene-event listeners run per area) |
+| 5. the current area's data is loaded and saved | kept areas need it done by hand | design steps 2 to 4 |
+
+A read-only scan of the decompiled code (scratchpad `scan_rules.py`, 950
+MonoBehaviour-like classes) found, per rule:
+
+- Rule 2, Start sets something that OnDestroy or OnDisable uses: 7
+  classes. LavaLamp (OnDestroy destroys `material`, the shared asset when
+  Start never ran: then every lamp started later fails, `new Material(null)`,
+  ArgumentNullException at LavaLamp.Start and a NullReferenceException at
+  LavaLamp.Update every frame, 3533 seen), NPCController (destroys `Data`),
+  cakeslice.OutlineEffect (render textures), Cull_light, LightController,
+  InteractableCashRegister, OnNPCStateChange.
+- Rule 3: 68 classes with OnDisable, 98 with OnEnable; 12 OnDisable use a
+  one-copy manager. The game switches objects on and off itself, so most
+  should cope; MoneyPanel errors and the scan did not flag it, so this rule
+  is read from the errors seen, not the scan.
+- Rule 4: FindObjectOfType/FindObjectsOfType in 18 classes,
+  GameObject.Find in 6, Camera.main in 13: all skip switched-off objects,
+  so the area swap hides kept areas from them. sceneLoaded listeners: 2
+  (LoadOnLevelIni, SalsaConfigGuard). GetActiveScene users: 12 (NPCManager
+  among them); the mod makes the entered area the active scene.
+- Rule 1, static data written in Awake or OnEnable: 14 classes. Covered:
+  LightsController, ItemDatabase (one-copy, guarded), SaveController,
+  SteamManager and the NPC graphs and director (kept through loads, guard
+  themselves), MenuLocalization, NotesPanel (a folder path). To check:
+  AlarmClock (alarmClocks) and ToiletPaperHolder (allHolders) add every
+  copy to a game-wide list; SlotMachineGameplay resets `_runResults`;
+  LoadOnLevelIni.
+
+Fixes, one per rule:
+
+1. Done: first_copy_wins. To check: the four classes above.
+2. One shared patch: OnDestroy and OnDisable are skipped on objects in an
+   area never entered (their Start never ran). Covers the 7 and any the
+   scan missed.
+3. Fix the classes the error count shows (MoneyPanel first).
+4. Nothing for the searches; check the 2 sceneLoaded listeners.
+5. Design steps 2 to 4 (built).
+
+And an automatic check after every build: the mod walks through doors
+itself with the game's own door call, saves and loads, and must end with 0
+new errors and every one-copy field live.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:

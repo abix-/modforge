@@ -79,17 +79,25 @@ pub fn install() {
 
 /// Patches Awake and OnDestroy of every one-copy class. Returns the count.
 fn turn_on() -> Result<usize, String> {
-    let mut classes = Vec::new();
+    let mut one_copy = Vec::new();
     for assembly in ONE_COPY_ASSEMBLIES {
-        classes.extend(one_copy_classes(assembly)?);
+        one_copy.extend(class_list("OneCopyClasses", assembly)?);
     }
+    // OnDestroy also on every class whose OnDestroy may undo what its Start
+    // did: objects in areas never entered never started (docs, "The
+    // lifecycle rules kept areas break", rule 2).
+    let mut on_destroy_classes: std::collections::BTreeSet<String> = one_copy.iter().cloned().collect();
+    on_destroy_classes.extend(class_list("StartAndOnDestroyClasses", ONE_COPY_ASSEMBLIES[0])?);
     let mut hooks = Vec::new();
-    for class in classes {
-        for (method, cb) in [("Awake", on_awake as extern "C" fn(*const c_void) -> i32), ("OnDestroy", on_destroy)] {
-            // Classes without that method: nothing to patch.
-            if let Ok(h) = patch_prefix_ctx(&class, method, HookCtx::Instance, cb) {
-                hooks.push(h);
-            }
+    // Classes without that method: nothing to patch.
+    for class in &one_copy {
+        if let Ok(h) = patch_prefix_ctx(class, "Awake", HookCtx::Instance, on_awake) {
+            hooks.push(h);
+        }
+    }
+    for class in &on_destroy_classes {
+        if let Ok(h) = patch_prefix_ctx(class, "OnDestroy", HookCtx::Instance, on_destroy) {
+            hooks.push(h);
         }
     }
     let n = hooks.len();
@@ -111,8 +119,9 @@ fn state() -> Result<Json, String> {
 /// "active"); PlayerIdentity's "identity" was missed and areas loaded
 /// alongside took over the player's identity (the save fell back to the
 /// name "Esko_Virtanen").
-fn one_copy_classes(assembly_of_type: &str) -> Result<Vec<String>, String> {
-    let arr = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "OneCopyClasses", &json!([assembly_of_type]))?)
+/// `list`: FirstCopyGuard.OneCopyClasses or StartAndOnDestroyClasses.
+fn class_list(list: &str, assembly_of_type: &str) -> Result<Vec<String>, String> {
+    let arr = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", list, &json!([assembly_of_type]))?)
         .ok_or("no class list")?;
     let n = arr.read_field("Length")?.as_i64().unwrap_or(0);
     let mut out = Vec::new();
@@ -156,7 +165,10 @@ fn skip_if_newcomer_inner(ctx: *const c_void, method: &str, disable: bool) -> i3
         return 0;
     }
     let me = owned_object(h);
-    match newcomer(&me) {
+    // Awake: only a new copy is held back. OnDestroy: a new copy, or an
+    // object that never started (FirstCopyGuard.SkipOnDestroy).
+    let check = if method == "OnDestroy" { "SkipOnDestroy" } else { "Newcomer" };
+    match newcomer(&me, check) {
         Ok(Some(class)) => {
             if disable {
                 let _ = me.invoke("set_enabled", &json!([false]));
@@ -176,8 +188,8 @@ fn skip_if_newcomer_inner(ctx: *const c_void, method: &str, disable: bool) -> i3
 /// call to the shim's FirstCopyGuard.Newcomer (which also lets the managers
 /// the game keeps through scene changes destroy their own new copies,
 /// LoadingScreen.cs:83). Done from here it took about eight bridge calls.
-fn newcomer(me: &MonoObject) -> Result<Option<String>, String> {
-    let class = invoke_static("Unityforge.Shim.FirstCopyGuard", "Newcomer", &json!([{"handle": me.handle().0}]))?;
+fn newcomer(me: &MonoObject, check: &str) -> Result<Option<String>, String> {
+    let class = invoke_static("Unityforge.Shim.FirstCopyGuard", check, &json!([{"handle": me.handle().0}]))?;
     Ok(class.as_str().filter(|c| !c.is_empty()).map(String::from))
 }
 

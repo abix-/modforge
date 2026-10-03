@@ -47,6 +47,26 @@ namespace Unityforge.Shim
                 _hooked = true;
             }
             Quiet.Add(sceneName);
+            NeverEntered.Add(sceneName);
+        }
+
+        // Scenes loaded quietly and not switched on since: their objects
+        // woke (Awake, OnEnable) but never started.
+        private static readonly HashSet<string> NeverEntered = new HashSet<string>();
+
+        /// <summary>The player entered a scene loaded quietly: its objects start.</summary>
+        public static void Entered(string sceneName)
+        {
+            NeverEntered.Remove(sceneName);
+        }
+
+        /// <summary>
+        /// True when the component's object is in a scene loaded quietly and
+        /// never entered, so its Start never ran.
+        /// </summary>
+        public static bool InAreaNeverEntered(object me)
+        {
+            return me is Component c && c != null && NeverEntered.Contains(c.gameObject.scene.name);
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)

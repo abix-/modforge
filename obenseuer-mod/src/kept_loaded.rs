@@ -47,6 +47,12 @@ static SWAPPED_OFF: Mutex<BTreeMap<String, Vec<i64>>> = Mutex::new(BTreeMap::new
 const SCREENSHOT_ROOT: &str = "___Screenshot Taking Stuff";
 
 pub fn install() {
+    // Design step 4: after every game save, the areas kept loaded are
+    // written too.
+    match unityforge::hook::patch_postfix("SaveController", "SaveGame", on_save_done) {
+        Ok(h) => unityforge::hook::HOOK_REGISTRY.register(h),
+        Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: kept_loaded: SaveGame patch failed: {e}")),
+    }
     OP_REGISTRY.register(OpDef::new(
         "load_alongside",
         "Load an area alongside the current one; its doors and the current area's doors then move the player without a loading screen",
@@ -67,6 +73,11 @@ pub(crate) fn reset() {
     QUEUE.lock().unwrap().clear();
     SWAPPED_OFF.lock().unwrap().clear();
     DATA_APPLIED.lock().unwrap().clear();
+    *HOME.lock().unwrap() = None;
+    for (_, (l, g)) in std::mem::take(&mut *CAPTURED.lock().unwrap()) {
+        drop(owned_object(l)); // release the kept handles
+        drop(owned_object(g));
+    }
     *CURRENT.lock().unwrap() = None;
     *DOOR_HOOK.lock().unwrap() = None;
     if let Some(d) = PENDING_DOOR.lock().unwrap().take() {
@@ -108,8 +119,10 @@ pub(crate) fn tick() {
         let area = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([])).ok().and_then(|v| v.as_str().map(String::from));
         reset();
         *CURRENT.lock().unwrap() = area.clone();
-        // The game loaded this area's saved data itself.
+        // The game loaded this area's saved data itself, and its scene holds
+        // the live player and managers.
         DATA_APPLIED.lock().unwrap().extend(area.clone());
+        *HOME.lock().unwrap() = area.clone();
         plan_neighbours();
         unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
@@ -465,20 +478,31 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         if name != arrival || !location_id(&e).is_some_and(|id| ids.contains(&id)) {
             continue;
         }
+        // Step 3: the area left is captured while still on, as a door does.
+        let from = CURRENT.lock().unwrap().clone().filter(|f| *f != to);
+        if let Some(from) = &from {
+            let captured = capture_leaving(from);
+            unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {captured:?}"));
+        }
         // Objects the game creates from now on go into the area the player
         // is in, and switch on and off with it.
         invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([to]))?;
         switch_area(&to, true)?;
-        // Step 2: the area's saved data goes in the next frame, after its
-        // objects started, as in a normal load.
+        // Step 2: the next frame, after its objects started (as in a normal
+        // load): the area's saved data on the first visit, then OnMapChanged
+        // on every visit, as a door runs it.
         let area = to.clone();
         MAIN_QUEUE.push(move || {
-            let result = apply_saved_data(&area);
-            unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: saved data for {area}: {result:?}"));
+            let data = apply_saved_data(&area);
+            let changed = area_change_phase(&area, "OnMapChanged");
+            unityforge::mono::log(
+                unityforge::mono::LogLevel::Info,
+                &format!("obenseuer-mod: kept_loaded: entered {area}: saved data {data:?}, OnMapChanged {changed:?}"),
+            );
         });
         e.invoke("TeleportPlayer", &json!([]))?;
-        let from = CURRENT.lock().unwrap().replace(to.clone());
-        if let Some(from) = from.filter(|f| *f != to) {
+        *CURRENT.lock().unwrap() = Some(to.clone());
+        if let Some(from) = from {
             switch_area(&from, false)?;
         }
         // DoorChangelevel.OpenDoor disabled the controls for this door
@@ -508,6 +532,10 @@ fn switch_area(area: &str, on: bool) -> Result<(), String> {
     // player's building; research_areas_on.rs), and switching everything
     // on put their strangers in the lobby.
     let was_on = if on { SWAPPED_OFF.lock().unwrap().remove(area).unwrap_or_default() } else { Vec::new() };
+    if on {
+        // Its objects start now; their OnDestroy runs again (first_copy_wins).
+        invoke_static("Unityforge.Shim.SceneTools", "Entered", &json!([area]))?;
+    }
     let mut turned_off = Vec::new();
     for root in roots(area)? {
         let Some(id) = root.invoke("GetInstanceID", &json!([]))?.as_i64() else { continue };
@@ -566,9 +594,8 @@ fn apply_saved_data(area: &str) -> Result<String, String> {
     let entries = level.as_ref().and_then(|l| l.invoke("get_Count", &json!([])).ok()?.as_i64()).unwrap_or(0);
     set_save_static("tempSavedata_Level", level.as_ref())?;
     set_save_static("tempSavedata_Global", globals.as_ref())?;
-    let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?).ok_or("no top objects")?;
-    for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary", "OnLoadingGame", "OnLoadingGameLatePrimary", "OnMapChanged"] {
-        invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, false]))?;
+    for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary", "OnLoadingGame", "OnLoadingGameLatePrimary"] {
+        run_phase(area, phase)?;
     }
     // As the game does after a load (SaveController.cs:660-661).
     for list in [&level, &globals].into_iter().flatten() {
@@ -576,6 +603,242 @@ fn apply_saved_data(area: &str) -> Result<String, String> {
     }
     DATA_APPLIED.lock().unwrap().push(area.to_string());
     Ok(format!("{entries} area entries from {area}.tnmt"))
+}
+
+/// One of the game's save or load phases (SaveController.LoadSaveType) on
+/// an area's top objects, through the game's own ExecuteSaveLoadFunctions:
+/// it calls every SavableScript under them whose object is on
+/// (SaveController.cs:1113-1131).
+fn run_phase(area: &str, phase: &str) -> Result<(), String> {
+    let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?).ok_or("no top objects")?;
+    invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, false]))?;
+    Ok(())
+}
+
+/// The area the save loaded into: its scene holds the live player and
+/// managers (Game_Logic, Player...), switched on wherever the player is.
+static HOME: Mutex<Option<String>> = Mutex::new(None);
+
+/// An area-change phase (OnMapChanging, OnMapChanged) as a door runs it on
+/// the active scene and the objects kept through scene changes
+/// (SaveController.cs:446-447, 653): on the area, on the home area (only
+/// its live player and managers are on away from home: the NPC director
+/// and the rest live there), and on the kept-through-loads objects.
+fn area_change_phase(area: &str, phase: &str) -> Result<(), String> {
+    run_phase(area, phase)?;
+    if let Some(home) = HOME.lock().unwrap().clone().filter(|h| h != area) {
+        run_phase(&home, phase)?;
+    }
+    invoke_static("SaveController", "ExecuteDontDestroyOnLoadSaveLoadFunctions", &json!([phase]))?;
+    Ok(())
+}
+
+/// Fires one of SaveController's static events (PlayerWillChangeLevel:
+/// stop sitting, stop climbing) the way the game does, when it has any
+/// listener.
+fn fire_save_event(name: &str) -> Result<(), String> {
+    if let Some(handler) = obj(save_static(name)?) {
+        handler.invoke("Invoke", &json!([]))?;
+    }
+    Ok(())
+}
+
+/// Area -> its save entries captured when the player left it, (area file,
+/// global file), as arrays of the game's ObjectDataHeader; written at the
+/// game's next save (design step 4). Handles kept alive here.
+static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new());
+
+/// Design step 3: the player leaves `area`, still on. As a door does
+/// (SaveController.cs:439-459): PlayerWillChangeLevel, OnMapChanging, then
+/// the save phases on the area's own top objects into the game's temp
+/// lists, kept as that area's entries.
+fn capture_leaving(area: &str) -> Result<String, String> {
+    fire_save_event("PlayerWillChangeLevel")?;
+    area_change_phase(area, "OnMapChanging")?;
+    let level = obj(save_static("tempSavedata_Level")?).ok_or("no level list")?;
+    let global = obj(save_static("tempSavedata_Global")?).ok_or("no global list")?;
+    level.invoke("Clear", &json!([]))?;
+    global.invoke("Clear", &json!([]))?;
+    for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary", "OnSavingGame", "OnSavingGameLatePrimary"] {
+        run_phase(area, phase)?;
+    }
+    let level_entries = obj(level.invoke("ToArray", &json!([]))?).ok_or("no level entries")?;
+    let global_entries = obj(global.invoke("ToArray", &json!([]))?).ok_or("no global entries")?;
+    let counts = (level.invoke("get_Count", &json!([]))?, global.invoke("get_Count", &json!([]))?);
+    level.invoke("Clear", &json!([]))?;
+    global.invoke("Clear", &json!([]))?;
+    let kept = (level_entries.handle().0, global_entries.handle().0);
+    std::mem::forget(level_entries); // kept in CAPTURED until replaced or reset
+    std::mem::forget(global_entries);
+    if let Some((l, g)) = CAPTURED.lock().unwrap().insert(area.to_string(), kept) {
+        drop(owned_object(l));
+        drop(owned_object(g));
+    }
+    Ok(format!("{} area entries, {} global entries", counts.0, counts.1))
+}
+
+/// After every game save (SaveController.SaveGame, which writes only the
+/// active area's file and globals from the active scene's objects,
+/// SaveController.cs:438-475): write what it could not see.
+extern "C" fn on_save_done(_ctx: *const c_void) {
+    if CAPTURED.lock().unwrap().is_empty() {
+        return;
+    }
+    let start = std::time::Instant::now();
+    let result = write_kept_areas();
+    unityforge::mono::log(
+        unityforge::mono::LogLevel::Info,
+        &format!("obenseuer-mod: kept_loaded: save: {result:?} ({:.2}s)", start.elapsed().as_secs_f64()),
+    );
+}
+
+/// Design step 4. Save entries hold the live objects (ObjectDataHeader.Data
+/// is the component, SaveController.cs:54-65) and are serialized when
+/// written, so entries captured when the player left an area save that
+/// area's state now, switched off or not.
+fn write_kept_areas() -> Result<String, String> {
+    let character = save_static("CharacterName")?.as_str().map(String::from).ok_or("no character name")?;
+    let save = save_static("SaveName")?.as_str().map(String::from).ok_or("no save name")?;
+    let data_path = invoke_static("UnityEngine.Application", "get_persistentDataPath", &json!([]))?.as_str().map(String::from).ok_or("no data path")?;
+    let folder = format!("{data_path}/Saves/{character}/{save}");
+    let active = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([]))?.as_str().map(String::from).ok_or("no active area")?;
+    let captured: Vec<(String, (i32, i32))> = CAPTURED.lock().unwrap().iter().map(|(a, h)| (a.clone(), *h)).collect();
+    let names = (save.as_str(), character.as_str());
+    let mut written = Vec::new();
+    // 1. Every area captured when the player left it, but the one the game
+    //    just wrote.
+    for (area, (level, _)) in &captured {
+        if *area != active {
+            write_merged(&format!("{folder}/{area}.tnmt"), entries_of(*level)?, Some(area), names)?;
+            written.push(area.clone());
+        }
+    }
+    // 3. Away from home the active area's own player copy is off, so the
+    //    game wrote no position for it: its position entries, pointed at the
+    //    live player.
+    if HOME.lock().unwrap().as_deref().is_some_and(|h| h != active) {
+        let position = player_position_entries(&active)?;
+        if !position.is_empty() {
+            write_merged(&format!("{folder}/{active}.tnmt"), position, Some(&active), names)?;
+        }
+    }
+    // 2. Global entries of every area captured (the live managers among
+    //    them, captured when the player left home). The file's header keeps
+    //    the area to load and its arrival point.
+    let mut globals = Vec::new();
+    for (_, (_, global)) in &captured {
+        globals.extend(entries_of(*global)?);
+    }
+    write_merged(&format!("{folder}/Globals.tnmt"), globals, None, names)?;
+    Ok(format!("{} areas written ({}), globals merged, into {folder}", written.len(), written.join(", ")))
+}
+
+/// The entries of a kept array of ObjectDataHeader (kept handle not
+/// released).
+fn entries_of(handle: i32) -> Result<Vec<MonoObject>, String> {
+    unityforge::mono::with_object(handle, |arr| {
+        let n = arr.read_field("Length")?.as_i64().unwrap_or(0);
+        let mut out = Vec::new();
+        for i in 0..n {
+            out.extend(obj(arr.invoke("GetValue", &json!([i]))?));
+        }
+        Ok(out)
+    })
+}
+
+/// Writes `path` as the game writes a save file (SaveDataHeader through its
+/// Serialize, SaveController.cs:460-475): `entries`, then the file's own
+/// entries whose GUID is not among them. `level`: the header's LevelName,
+/// or the file's own (with its NewlevelEntrypoint) when None.
+fn write_merged(path: &str, entries: Vec<MonoObject>, level: Option<&str>, (save, character): (&str, &str)) -> Result<(), String> {
+    let header_type = obj(invoke_static("System.Type", "GetType", &json!(["SaveController+SaveDataHeader, Assembly-CSharp"]))?)
+        .ok_or("SaveDataHeader type not found")?;
+    // The game's own list between saves as the scratch list (empty then,
+    // cleared after).
+    let scratch = obj(save_static("tempSavedata_Level")?).ok_or("no scratch list")?;
+    scratch.invoke("Clear", &json!([]))?;
+    let mut guids = std::collections::HashSet::new();
+    for e in &entries {
+        if let Some(g) = e.read_field("GUID")?.as_str() {
+            guids.insert(g.to_string());
+        }
+        scratch.invoke("Add", &json!([{"handle": e.handle().0}]))?;
+    }
+    let mut level_name = level.map(String::from);
+    let mut entrypoint = "NONE".to_string();
+    if let Ok(text) = std::fs::read_to_string(path) {
+        let text = text.trim_start_matches('\u{feff}');
+        let file = path.rsplit('/').next().unwrap_or(path);
+        if let Some(existing) = obj(invoke_static("SaveController", "Deserialize", &json!([file, {"handle": header_type.handle().0}, text, null]))?) {
+            if level_name.is_none() {
+                level_name = existing.read_field("LevelName")?.as_str().map(String::from);
+                entrypoint = existing.read_field("NewlevelEntrypoint")?.as_str().unwrap_or("NONE").to_string();
+            }
+            if let Some(data) = obj(existing.read_field("Data")?) {
+                let n = data.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+                for i in 0..n {
+                    let Some(e) = obj(data.invoke("get_Item", &json!([i]))?) else { continue };
+                    let g = e.read_field("GUID")?.as_str().unwrap_or("").to_string();
+                    if !guids.contains(&g) {
+                        scratch.invoke("Add", &json!([{"handle": e.handle().0}]))?;
+                    }
+                }
+            }
+        }
+    }
+    let level_name = level_name.ok_or_else(|| format!("no area name for {path}"))?;
+    let header = obj(invoke_static("SaveController+SaveDataHeader", ".ctor", &json!([{"handle": scratch.handle().0}, save, level_name, character, entrypoint]))?)
+        .ok_or("SaveDataHeader not made")?;
+    let written = invoke_static(
+        "Unityforge.Shim.FileTools",
+        "SerializeToFile",
+        &json!(["SaveController", "Serialize", {"handle": header_type.handle().0}, {"handle": header.handle().0}, path]),
+    );
+    scratch.invoke("Clear", &json!([]))?;
+    if written?.as_bool() != Some(true) {
+        return Err(format!("{path} not written"));
+    }
+    Ok(())
+}
+
+/// Save entries for the area's own player position objects
+/// (PersistLocation on its switched-off player copy, under its own GUIDs,
+/// research_save_ids.rs), each pointing at the live player's matching
+/// PersistLocation (by object name: ECM_Player, Player Camera Base).
+fn player_position_entries(area: &str) -> Result<Vec<MonoObject>, String> {
+    let home = HOME.lock().unwrap().clone().ok_or("no home area")?;
+    let live: BTreeMap<String, MonoObject> = components_under(&home, "PersistLocation")?
+        .into_iter()
+        .filter(|c| c.invoke("get_isActiveAndEnabled", &json!([])).ok().and_then(|v| v.as_bool()) == Some(true))
+        .filter_map(|c| Some((object_name(&c)?, c)))
+        .collect();
+    let mut out = Vec::new();
+    for own in components_under(area, "PersistLocation")? {
+        let (Some(name), Some(guid)) = (object_name(&own), own.read_field("GUID")?.as_str().map(String::from)) else { continue };
+        let Some(live) = live.get(&name) else { continue };
+        if let Some(entry) = obj(invoke_static("SaveController+ObjectDataHeader", ".ctor", &json!([{"handle": live.handle().0}, guid]))?) {
+            out.push(entry);
+        }
+    }
+    Ok(out)
+}
+
+/// Every component of a class under an area's top objects, on or off.
+fn components_under(area: &str, class: &str) -> Result<Vec<MonoObject>, String> {
+    let ty = obj(invoke_static("System.Type", "GetType", &json!([format!("{class}, Assembly-CSharp")]))?).ok_or_else(|| format!("{class} type"))?;
+    let mut out = Vec::new();
+    for root in roots(area)? {
+        let Some(arr) = obj(root.invoke("GetComponentsInChildren", &json!([{"handle": ty.handle().0}, true]))?) else { continue };
+        let n = arr.read_field("Length")?.as_i64().unwrap_or(0);
+        for i in 0..n {
+            out.extend(obj(arr.invoke("GetValue", &json!([i]))?));
+        }
+    }
+    Ok(out)
+}
+
+fn object_name(c: &MonoObject) -> Option<String> {
+    obj(c.invoke("get_gameObject", &json!([])).ok()?)?.invoke("get_name", &json!([])).ok()?.as_str().map(String::from)
 }
 
 /// A static field of SaveController, public or private.
