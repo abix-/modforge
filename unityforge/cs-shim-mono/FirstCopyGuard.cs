@@ -228,6 +228,21 @@ namespace Unityforge.Shim
 
         internal static bool IsAreaOwned(Type t) => AreaOwnedNames.Contains(t.FullName);
 
+        /// <summary>The managers' live copies: each one-copy field's value, alive.</summary>
+        internal static List<UnityEngine.Object> LiveCopies()
+        {
+            var live = new List<UnityEngine.Object>();
+            foreach (var member in Fields.Values)
+            {
+                if (member == null) continue;
+                object value;
+                try { value = Read(member); }
+                catch (Exception) { continue; }
+                if (value is UnityEngine.Object o && o != null && !live.Contains(o)) live.Add(o);
+            }
+            return live;
+        }
+
         /// <summary>
         /// An area-owned manager's copy in a loaded scene (by class name, as
         /// given to SetAreaOwned); null when there is none.

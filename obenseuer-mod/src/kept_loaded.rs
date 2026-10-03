@@ -498,29 +498,71 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
         return Ok(false);
     };
-    // Rule 3 then rule 2, as the game leaves an area before it loads the
-    // next.
-    if let Some(from) = CURRENT.lock().unwrap().clone().filter(|f| *f != to) {
-        let left = leave_area(&from);
-        unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {left:?}"));
-    }
-    enter_area(&to, &point)?;
-    // DoorChangelevel.OpenDoor disabled the controls for this door before
-    // calling ChangeLevel (DoorChangelevel.cs:206); a scene load would have
-    // thrown that away, the move does not.
-    one_copy("GameController")?.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]))?;
-    plan_neighbours();
-    let secs = start.elapsed().as_secs_f64();
-    crate::deposit::notify("Areas", &format!("No loading screen ({secs:.2}s)"));
-    TRIPS.lock().unwrap().push(format!("{door_name} to {to}/{arrival} ({secs:.3}s)"));
+    // The door as the game's (docs/kept-areas.md, the door): rule 3's steps
+    // on the area left while it is on, the player moves out to the arrival
+    // point, and after a physics step (its zones see the player leave) the
+    // area switches off and rule 2 runs on the area entered.
+    let from = CURRENT.lock().unwrap().clone().filter(|f| *f != to);
+    let steps = from.as_ref().map(|f| leave_steps(f));
+    point.invoke("TeleportPlayer", &json!([]))?;
+    let fixed = invoke_static("UnityEngine.Time", "get_fixedTime", &json!([]))?.as_f64().unwrap_or(0.0);
+    // A handle of its own for the job below (the caller releases its own);
+    // the job takes it over.
+    let held = obj(door_object.invoke("get_gameObject", &json!([]))?).ok_or("door has no game object")?;
+    let door = held.handle().0;
+    std::mem::forget(held);
+    let moved = Moved { from, to, arrival: arrival.to_string(), door, door_name: door_name.to_string(), start, steps: format!("{steps:?}") };
+    after_physics_step(moved, fixed);
     Ok(true)
+}
+
+/// A door move waiting for a physics step.
+struct Moved {
+    from: Option<String>,
+    to: String,
+    arrival: String,
+    door: i32,
+    door_name: String,
+    start: std::time::Instant,
+    steps: String,
+}
+
+/// Once Unity has run a physics step since `fixed` (its zones saw the
+/// player leave the area), the area left switches off and the area
+/// entered switches on.
+fn after_physics_step(moved: Moved, fixed: f64) {
+    MAIN_QUEUE.push(move || {
+        let now = invoke_static("UnityEngine.Time", "get_fixedTime", &json!([])).ok().and_then(|v| v.as_f64()).unwrap_or(fixed + 1.0);
+        if now <= fixed {
+            after_physics_step(moved, fixed);
+            return;
+        }
+        let door_object = owned_object(moved.door);
+        if let Some(from) = &moved.from {
+            let off = leave_finish(from);
+            unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {}, {off:?}", moved.steps));
+        }
+        if let Err(e) = enter_area(&moved.to) {
+            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: entering {} failed: {e}", moved.to));
+        }
+        // DoorChangelevel.OpenDoor disabled the controls for this door
+        // before calling ChangeLevel (DoorChangelevel.cs:206); a scene load
+        // would have thrown that away, the move does not.
+        if let Ok(game) = one_copy("GameController") {
+            let _ = game.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]));
+        }
+        plan_neighbours();
+        let secs = moved.start.elapsed().as_secs_f64();
+        crate::deposit::notify("Areas", &format!("No loading screen ({secs:.2}s)"));
+        TRIPS.lock().unwrap().push(format!("{} to {}/{} ({secs:.3}s)", moved.door_name, moved.to, moved.arrival));
+    });
 }
 
 /// Rule 2 (docs/kept-areas.md): entering an area, the game's own steps
 /// after a load (SaveController.cs:640-664) in the table's order. Steps 1,
 /// 2 and 10 now; 3, 4 and 6 the next frame (after the area's objects
 /// started, as in a normal load); 8, 9 and 12 the frame after.
-fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
+fn enter_area(area: &str) -> Result<(), String> {
     // Step 2 before the switch-on of step 1, as in a load (Awake sets
     // `instance` before OnEnable): its area-owned managers are the game's,
     // so one that checks `instance` in OnEnable finds itself.
@@ -529,8 +571,8 @@ fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
     switch_area(area, true)?;
-    // Step 10: the player to the arrival point.
-    point.invoke("TeleportPlayer", &json!([]))?;
+    // Step 10 (the player at the arrival point) is done by the door before
+    // the area left switches off (docs/kept-areas.md, the door).
     *CURRENT.lock().unwrap() = Some(area.to_string());
     let area = area.to_string();
     MAIN_QUEUE.push(move || {
@@ -756,19 +798,15 @@ fn fire_save_event(name: &str) -> Result<(), String> {
 /// game's next save (design step 4). Handles kept alive here.
 static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new());
 
-/// Rule 3 (docs/kept-areas.md): leaving an area, the game's own steps at a
-/// door (ChangeLevel 270, SaveGame 416-478) in the table's order, on the
-/// area left while it is still on; its entries kept in memory for the next
-/// save (rule 4); then it switches off. Returns what was kept.
-fn leave_area(area: &str) -> Result<String, String> {
-    let kept = leave_steps(area);
-    // Step 11: switched off, not unloaded; always, or the area left would
-    // stay on over the one entered (areas are built in the same place).
+/// Rule 3, step 11 (docs/kept-areas.md): after the player moved out and a
+/// physics step passed, the area left switches off, not unloaded (always,
+/// or it would stay on over the one entered: areas are built in the same
+/// place), and its handlers on game-wide events are taken out as its unload
+/// would (rule 1, game-wide events). Returns how many handlers.
+fn leave_finish(area: &str) -> Result<String, String> {
     switch_area(area, false)?;
-    // Its handlers on the game's static events taken out, as its unload
-    // would (docs/kept-areas.md, rule 1, game-wide events).
     let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area]))?;
-    kept.map(|k| format!("{k}, event handlers out {out}"))
+    Ok(format!("event handlers out {out}"))
 }
 
 /// Area-owned managers whose Start pushes the area's settings into the

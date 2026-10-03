@@ -139,10 +139,12 @@ it is destroyed, so its objects stop reacting: home's `SoundscapeGlobal`
 otherwise sets home's sound every minute wherever the player is, and a
 left area's Spawners keep their timers. So:
 
-- Leaving an area (rule 3, after step 11): from every static event, the
-  handlers whose object is in that area and now switched off are taken
-  out and kept for that load of the area (`Scene.handle`). The live
-  player and managers stay on, so theirs stay.
+- Leaving an area (rule 3, after step 11): from every static event, and
+  from every event on the live managers' copies (Inventory.ItemConsumed,
+  FadeGameObjectController.UpdateFade, ...), the handlers whose object is
+  in that area and now switched off are taken out and kept for that load
+  of the area (`Scene.handle`). The live player and managers stay on, so
+  theirs stay.
 - Entering an area (rule 2, after the Starts run again): its kept
   handlers go back, each only if the event does not already hold it (a
   Start run again subscribes again).
@@ -150,10 +152,23 @@ left area's Spawners keep their timers. So:
 
 ## The door
 
+The game's door moves the player out of the area, then unloads it. The
+mod mirrors that, with the area switched off instead of unloaded:
+
+1. Rule 3, steps 1 to 10, on the area left, still on.
+2. The player moves to the door's arrival point.
+3. At least one physics step passes with the area left still on: its
+   zones (triggers) see the player leave, as when walking out of them
+   (StrictArea stops watching the player and clears its flag).
+4. Rule 3, step 11: the area left switches off; its handlers on
+   game-wide events are taken out (game-wide events, below).
+5. Rule 2 on the area entered: it switches on, its zones see the player
+   arrive.
+
 The mod's prefix on `Changelevel.ChangeLevel` (kept_loaded.rs `on_door`)
 is put on once at mod start, as every Harmony patch of the mod, and does
-nothing with kept areas off. A door into an area kept loaded runs rule 3
-then rule 2; into an area not loaded yet (right after a save load, or
+nothing with kept areas off. A door into an area kept loaded runs the
+steps above; into an area not loaded yet (right after a save load, or
 one never reached), the game's loading screen fades in, the area loads
 alongside at full speed, then rules 3 and 2 run and it fades out. The
 game's own door (its normal load) runs only when the area has no arrival
