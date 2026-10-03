@@ -122,11 +122,15 @@ fn kept_areas_played_through() {
         .expect("an area a home door leads to");
     println!("home {home}, away {away}");
 
-    // 2. Out and back through doors.
-    use_door(&api, &away, kept_on);
-    std::thread::sleep(Duration::from_secs(2));
-    use_door(&api, &home, kept_on);
-    std::thread::sleep(Duration::from_secs(2));
+    // 2. Out and back through doors, twice: the second visit to the area
+    // away from home must also move without a loading screen.
+    for round in 1..=2 {
+        use_door(&api, &away, kept_on);
+        std::thread::sleep(Duration::from_secs(2));
+        use_door(&api, &home, kept_on);
+        std::thread::sleep(Duration::from_secs(2));
+        println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
+    }
 
     // 3. Save into the test slot and load it.
     call_static(&api, "SaveController", "SaveGame", json!(["ModTest", "", "NONE"]));

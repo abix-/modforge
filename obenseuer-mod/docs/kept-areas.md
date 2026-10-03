@@ -130,7 +130,7 @@ must also move without a loading screen.
 | Rule | Built | Missing |
 |---|---|---|
 | 1 | Loading alongside, game-wide managers kept | Which copy: the definition (any self-typed static field counts today, `Storage.active` included); area-owned managers |
-| 2 | Steps 1, 4, 8 (one frame), 9, 10 | 2 (area-owned managers), 3 and 12 events and the frame split (written, not deployed), 6 |
-| 3 | Steps 1, 2, 4, 7, 11 | 3 and 10 (written, not deployed), 5 |
+| 2 | Steps 1, 3, 4, 7, 8, 9, 10 (arrival point found by the area its location is in), 12 | 2 (area-owned managers), 6; not yet one function |
+| 3 | Steps 1, 2, 3, 4, 7, 10, 11 | 5; not yet one function |
 | 4 | Yes | |
 | The mod's own state | Shim state per load | Rust state cleared only by the mod's own reload (`reset()`), not by every normal load |

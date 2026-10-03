@@ -111,6 +111,17 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
+        /// The name of the scene a component or game object is in; empty
+        /// when it is destroyed or not one.
+        /// </summary>
+        public static string SceneOf(object o)
+        {
+            if (o is Component c && c != null) return c.gameObject.scene.name;
+            if (o is GameObject g && g != null) return g.scene.name;
+            return "";
+        }
+
+        /// <summary>
         /// Makes a loaded scene the active one: objects created while the
         /// game runs go into the active scene. False when no loaded scene
         /// has that name.

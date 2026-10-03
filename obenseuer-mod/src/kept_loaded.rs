@@ -383,6 +383,13 @@ fn arrival_points() -> Result<Vec<MonoObject>, String> {
     Ok(out)
 }
 
+/// The area an arrival point's location is in; None when it is destroyed.
+fn location_area(entry: &MonoObject) -> Option<String> {
+    let location = obj(entry.read_field("Location").ok()?)?;
+    let area = invoke_static("Unityforge.Shim.SceneTools", "SceneOf", &json!([{"handle": location.handle().0}])).ok()?;
+    area.as_str().filter(|a| !a.is_empty()).map(String::from)
+}
+
 fn location_id(entry: &MonoObject) -> Option<i64> {
     obj(entry.read_field("Location").ok()?)?.invoke("GetInstanceID", &json!([])).ok()?.as_i64()
 }
@@ -472,13 +479,19 @@ fn finish_pending_door(area: &str) {
 /// teleported, the area left switches off.
 fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str) -> Result<bool, String> {
     let to = to.to_string();
-    let Some(ids) = AREAS.lock().unwrap().get(&to).cloned() else {
+    if !AREAS.lock().unwrap().contains_key(&to) {
         return Ok(false);
-    };
+    }
     let start = std::time::Instant::now();
     for e in arrival_points()? {
         let name = e.read_field("Name")?.as_str().unwrap_or("").to_string();
-        if name != arrival || !location_id(&e).is_some_and(|id| ids.contains(&id)) {
+        // An arrival point is the area's when its location is a live object
+        // in that area, as in the game, where the one area holds them all.
+        // Not ids recorded when the area loaded: the game re-creates a door
+        // during play and its Awake adds a fresh arrival point
+        // (Changelevel.cs:49), and the recorded one went stale (second
+        // visit to Open Sewer Tenement, PlayerTenement_Out).
+        if name != arrival || location_area(&e).as_deref() != Some(to.as_str()) {
             continue;
         }
         // Step 3: the area left is captured while still on, as a door does.
@@ -494,14 +507,24 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         // Step 2: the next frame, after its objects started (as in a normal
         // load): the area's saved data on the first visit, then OnMapChanged
         // on every visit, as a door runs it.
+        // In the game's order (SaveController.cs:640-663): LoadingStarted
+        // and the first load phases, the rest one frame later, then
+        // OnMapChanged and LoadingDone.
         let area = to.clone();
         MAIN_QUEUE.push(move || {
-            let data = apply_saved_data(&area);
-            let changed = area_change_phase(&area, "OnMapChanged");
-            unityforge::mono::log(
-                unityforge::mono::LogLevel::Info,
-                &format!("obenseuer-mod: kept_loaded: entered {area}: saved data {data:?}, OnMapChanged {changed:?}"),
-            );
+            let started = fire_save_event("LoadingStarted");
+            let data = saved_data_first_frame(&area);
+            MAIN_QUEUE.push(move || {
+                let rest = saved_data_next_frame(&area);
+                let changed = area_change_phase(&area, "OnMapChanged");
+                let done = fire_save_event("LoadingDone");
+                unityforge::mono::log(
+                    unityforge::mono::LogLevel::Info,
+                    &format!(
+                        "obenseuer-mod: kept_loaded: entered {area}: LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
+                    ),
+                );
+            });
         });
         e.invoke("TeleportPlayer", &json!([]))?;
         *CURRENT.lock().unwrap() = Some(to.clone());
@@ -518,8 +541,22 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         TRIPS.lock().unwrap().push(format!("{door_name} to {to}/{arrival} ({secs:.3}s)"));
         return Ok(true);
     }
+    // What the game's list holds under that name: the area each location
+    // is in ("" when destroyed).
+    let points = arrival_points()?;
+    let named: Vec<String> = points
+        .iter()
+        .filter(|e| e.read_field("Name").ok().and_then(|v| v.as_str().map(String::from)).as_deref() == Some(arrival))
+        .map(|e| format!("in {:?}", location_area(e).unwrap_or_default()))
+        .collect();
     TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
-    unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: no arrival point {arrival} in {to}, normal load instead"));
+    unityforge::mono::log(
+        unityforge::mono::LogLevel::Warn,
+        &format!(
+            "obenseuer-mod: kept_loaded: no arrival point {arrival} in {to}, normal load instead; the game's list: {} arrival points, named {arrival}: {named:?}",
+            points.len()
+        ),
+    );
     Ok(false)
 }
 
@@ -573,7 +610,9 @@ static DATA_APPLIED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 /// from the save folder the game last loaded or saved, with the game's own
 /// Deserialize, into the game's temp lists, then runs the load phases and
 /// OnMapChanged on the area's top objects.
-fn apply_saved_data(area: &str) -> Result<String, String> {
+/// The first frame of it (SaveController.cs:641-643): the files read into
+/// the game's temp lists, the Primary to Tertiary phases.
+fn saved_data_first_frame(area: &str) -> Result<String, String> {
     if DATA_APPLIED.lock().unwrap().iter().any(|a| a == area) {
         return Ok("already applied".into());
     }
@@ -597,15 +636,28 @@ fn apply_saved_data(area: &str) -> Result<String, String> {
     let entries = level.as_ref().and_then(|l| l.invoke("get_Count", &json!([])).ok()?.as_i64()).unwrap_or(0);
     set_save_static("tempSavedata_Level", level.as_ref())?;
     set_save_static("tempSavedata_Global", globals.as_ref())?;
-    for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary", "OnLoadingGame", "OnLoadingGameLatePrimary"] {
+    for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary"] {
         run_phase(area, phase)?;
     }
-    // As the game does after a load (SaveController.cs:660-661).
-    for list in [&level, &globals].into_iter().flatten() {
-        list.invoke("Clear", &json!([]))?;
+    Ok(format!("{entries} area entries from {area}.tnmt"))
+}
+
+/// The next frame (SaveController.cs:647-649, 660-661): OnLoadingGame and
+/// LatePrimary from the same temp lists, then the lists cleared.
+fn saved_data_next_frame(area: &str) -> Result<(), String> {
+    if DATA_APPLIED.lock().unwrap().iter().any(|a| a == area) {
+        return Ok(());
+    }
+    for phase in ["OnLoadingGame", "OnLoadingGameLatePrimary"] {
+        run_phase(area, phase)?;
+    }
+    for name in ["tempSavedata_Level", "tempSavedata_Global"] {
+        if let Some(list) = obj(save_static(name)?) {
+            list.invoke("Clear", &json!([]))?;
+        }
     }
     DATA_APPLIED.lock().unwrap().push(area.to_string());
-    Ok(format!("{entries} area entries from {area}.tnmt"))
+    Ok(())
 }
 
 /// One of the game's save or load phases (SaveController.LoadSaveType) on
@@ -665,9 +717,14 @@ fn capture_leaving(area: &str) -> Result<String, String> {
     let global = obj(save_static("tempSavedata_Global")?).ok_or("no global list")?;
     level.invoke("Clear", &json!([]))?;
     global.invoke("Clear", &json!([]))?;
+    // SavingStarted first, as SaveGame (SaveController.cs:452): its
+    // listeners show what they hide so it is saved (FadeGameObjectController
+    // ShowAll, SMVHierarchy), and SavingDone after (478) hides it again.
+    fire_save_event("SavingStarted")?;
     for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary", "OnSavingGame", "OnSavingGameLatePrimary"] {
         run_phase(area, phase)?;
     }
+    fire_save_event("SavingDone")?;
     let level_entries = obj(level.invoke("ToArray", &json!([]))?).ok_or("no level entries")?;
     let global_entries = obj(global.invoke("ToArray", &json!([]))?).ok_or("no global entries")?;
     let counts = (level.invoke("get_Count", &json!([]))?, global.invoke("get_Count", &json!([]))?);
