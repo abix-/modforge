@@ -534,6 +534,129 @@ pathfinding and sounds are on); doors still do the save and load; the
 second area's 1.87 s load happened before the move, not in the
 background; memory with several areas kept loaded is not measured.
 
+## Doors between areas kept loaded (src/kept_loaded.rs)
+
+Every door calls the inherited `Changelevel.ChangeLevel()`
+(DoorChangelevel.cs:219, TriggerChangelevel.cs:59). A Harmony prefix on
+it: when the door's `OtherLevel` is an area kept loaded, the player is
+moved to that area's arrival point named by the door's `OtherEntrypoint`,
+with the game's own `PlayerLevelEntrypoints.Entrypoint.TeleportPlayer()`,
+and the save and load are skipped. Every door's Awake adds its arrival
+point to the one `PlayerLevelEntrypoints.instance.Entrypoints` list, so an
+area loaded alongside adds its arrival points there too; the mod records
+which belong to which area when it loads one.
+
+`DoorChangelevel.OpenDoor` disables the controls for the door before
+calling ChangeLevel (`GameController.ControlsDisabled(door)`,
+DoorChangelevel.cs:206); a scene load throws that away, the move does
+not, so the mod calls `GameController.ControlsEnabled(door)`
+(GameController.cs:324) after the move. Without it the player could not
+move.
+
+`research_doors.rs` (2026-10-02), Interior Player Tenement with Open Sewer
+Tenement loaded alongside:
+
+```text
+trip: "Door_002_usable_changelevel to Interior Player Tenement/PlayerTenement_In (0.005s)"
+trip: "Door_002_usable_changelevel to Open Sewer Tenement/PlayerTenement_Out (0.003s)"
+```
+
+## Areas are built in the same place
+
+With both areas on, the player's first trip from inside went "in", and
+outside the building looked black with no door back: the building's
+interior is built where the building stands in the outdoor area, so the
+outdoor door sat on the inside door and answered the use key first.
+
+Only the area the player is in is switched on. The shim's
+`SceneTools.RootsOf(area)` (cs-shim-mono/SceneTools.cs; a Scene is a
+struct, so its GetRootGameObjects is out of the bridge's reach) lists an
+area's top objects. An area switches off when it finishes loading
+alongside; at a door the destination switches on, the player moves, and
+the area left switches off. Never switched on: the area's own setup
+first_copy_wins switched off, and `___Screenshot Taking Stuff`
+(research_cameras.rs: in the outdoor area one screenshot camera is on and
+drew over the player's camera, depth 0 against -1). Never switched off:
+the top objects of the live player and managers (ThirdPersonCameraController,
+PauseMenu, TimeOfDayAzure, OpenSewerCharacterController; in the player's
+building the character is a top object of its own, and switching it off
+left the player unable to move).
+
+With the area swap a door trip took 0.288 to 0.292 s (switching an area
+on), the camera was right and the door back was there.
+
+## Loading door destinations automatically
+
+kept_loaded's tick (src/lib.rs on_tick): when the player arrives in an
+area by a normal load, the current area's door destinations are queued,
+nearest door first, and loaded alongside one at a time, up to
+`kept_loaded.max_areas` (settings.json, default 10, operator's choice)
+besides the current area. A door move plans again from the new area.
+Arriving is detected by the game's one GameController becoming a new
+object: only a normal load does that (save, menu, F7, a door into an area
+not kept loaded), since loads alongside keep the first copy. Polling
+`SaveController.Loading` from a test missed save loads the game's log
+shows; the mod's earlier "no current area and in a game area" rule
+started loads alongside during a save load (140 skips in
+research_always_on.rs). Nothing starts while no live GameController
+exists.
+
+In-game messages say "Nearby area ready" and "No loading screen (0.29s)";
+area names go to the mod log only, so places not found yet are not given
+away. From the player's building the destinations were Open Sewer
+Tenement and "Under Map" (the game's area for falling through the world).
+
+## Background loading cost
+
+While an area loads alongside, `Application.backgroundLoadingPriority` is
+Low (2 ms of loading work per frame; Unity documents Low 2, BelowNormal
+4, Normal 10, High 50); the game's value is put back when nothing loads
+alongside and on every reset.
+
+The mod logged each load (2026-10-02):
+
+```text
+first_copy_wins on took 0.619s
+Open Sewer Tenement ready: load 4.00s, longest frame while loading 0.653s, switching it off 0.077s
+Under Map ready: load 1.44s, longest frame while loading 0.014s, switching it off 0.012s
+```
+
+The delay was the mod turning first_copy_wins on (patching ~220 methods)
+on every save load. Harmony's author on patch speed: "It is as fast as
+you can get it" (pardeike/Harmony#609); BepInEx mods patch once at start
+(MSchmoecker/FasterLoading, Plugin.Awake). first_copy_wins now patches
+once when the mod starts and stays on:
+
+```text
+obenseuer-mod: first_copy_wins on: 220 patches in 0.709s
+```
+
+Staying on through normal loads: the managers the game keeps through
+scene changes (LoadingScreen, SaveController, InputManager, Achievements,
+the settings savers, the NPC director and graphs) are brought again by
+every area and destroy themselves in their own Awake (LoadingScreen.cs:83);
+the guard was stopping that. The shim's `SceneTools.KeptThroughLoads`
+tells them apart, and the guard lets their Awake run.
+`research_always_on.rs`, a save load with the guard on:
+
+```text
+loaded in 4.1s; skipped during the load: 2
+skipped during the load: ["SoundscapeGlobal.OnDestroy +1", "info_game_logic.OnDestroy +1"]
+one-copy fields not on a live object: []
+```
+
+No Awake skipped; the two OnDestroy skips are the old area's, after the
+new copies took over (running them would empty the new copies' fields).
+
+Whether the play-time delay is gone is not yet confirmed by the player.
+
+## Getting unstuck
+
+`reload_save`, and the F7 key, reset the mod (no areas kept loaded, door
+patch off, loading priority back) and load the save last loaded. Used
+live when the player could not move after a door: the game came back to
+one clean area.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:
@@ -545,10 +668,10 @@ background; memory with several areas kept loaded is not measured.
 - `errors`: what the game logged since a mark, grouped by the game code
   that threw it, read from Application.consoleLogPath.
 
-A mod change goes in without a restart through `restart.ps1`'s in-place
-swap, except after `first_copy_wins` was on: the swap refuses while
-patched methods would be left behind. That check exists for IL2CPP;
-whether Mono needs it is not checked.
+`restart.ps1`'s in-place swap refuses while patched methods would be left
+behind, and first_copy_wins is now always on, so every mod change
+restarts the game. That check exists for IL2CPP; whether Mono needs it is
+not checked.
 
 The game must have its "run in background" option on (OptionsMenu.cs:276),
 or it stops answering while unfocused ("main-thread queue timed out").
