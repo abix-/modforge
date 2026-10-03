@@ -105,18 +105,15 @@ pub fn food_worth(known: &Known, need: Need, items: &crate::item::ItemRegistry) 
         .fold(0.0, f32::max)
 }
 
-/// What a bunker is short of (topside design.md "Taking loot"): the food
-/// and water in `supplies` (each kind with how many) against what
-/// `people` eat and drink in `days`, `per_day` being one person's
-/// hunger and thirst points a day. Every need that falls short, the
-/// shortest first; empty when the store covers them all.
-pub fn short_of<'a>(
+/// How many days the food and water in `supplies` (each kind with how
+/// many) last `people`, `per_day` being one person's hunger and thirst
+/// points a day: (food, water). Infinite when nobody eats or drinks.
+pub fn days_of<'a>(
     supplies: impl IntoIterator<Item = (&'a str, u32)>,
     people: u32,
-    days: f32,
     per_day: (f32, f32),
     items: &crate::item::ItemRegistry,
-) -> Vec<Need> {
+) -> (f32, f32) {
     let (mut hunger, mut thirst) = (0.0, 0.0);
     for (kind, count) in supplies {
         if let Some(food) = items.def(kind).and_then(|d| d.food) {
@@ -124,9 +121,23 @@ pub fn short_of<'a>(
             thirst += food.thirst * count as f32;
         }
     }
-    let wanted = |per: f32| per * people as f32 * days;
-    let cover = |have: f32, per: f32| if wanted(per) > 0.0 { have / wanted(per) } else { f32::INFINITY };
-    let mut short: Vec<(Need, f32)> = [(Need::Hunger, cover(hunger, per_day.0)), (Need::Thirst, cover(thirst, per_day.1))]
+    let days = |have: f32, per: f32| if per * people as f32 > 0.0 { have / (per * people as f32) } else { f32::INFINITY };
+    (days(hunger, per_day.0), days(thirst, per_day.1))
+}
+
+/// What a bunker is short of (topside design.md "Taking loot"): the food
+/// and water in `supplies` against what `people` eat and drink in `days`
+/// (food days, water days; `days_of`). Every need that falls short, the
+/// shortest first; empty when the store covers them all.
+pub fn short_of<'a>(
+    supplies: impl IntoIterator<Item = (&'a str, u32)>,
+    people: u32,
+    days: (f32, f32),
+    per_day: (f32, f32),
+    items: &crate::item::ItemRegistry,
+) -> Vec<Need> {
+    let (food, water) = days_of(supplies, people, per_day, items);
+    let mut short: Vec<(Need, f32)> = [(Need::Hunger, food / days.0), (Need::Thirst, water / days.1)]
         .into_iter()
         .filter(|(_, c)| *c < 1.0)
         .collect();
@@ -543,11 +554,11 @@ mod tests {
         // cans and eight bottles cover it.
         let per_day = (100.0, 200.0);
         let enough = [("canned food", 4), ("water bottle", 8)];
-        assert!(short_of(enough, 2, 1.0, per_day, &items).is_empty());
-        assert_eq!(short_of([("canned food", 4), ("water bottle", 2)], 2, 1.0, per_day, &items), [Need::Thirst]);
-        assert_eq!(short_of([("canned food", 1), ("water bottle", 8)], 2, 1.0, per_day, &items), [Need::Hunger]);
+        assert!(short_of(enough, 2, (1.0, 1.0), per_day, &items).is_empty());
+        assert_eq!(short_of([("canned food", 4), ("water bottle", 2)], 2, (1.0, 1.0), per_day, &items), [Need::Thirst]);
+        assert_eq!(short_of([("canned food", 1), ("water bottle", 8)], 2, (1.0, 1.0), per_day, &items), [Need::Hunger]);
         assert_eq!(
-            short_of([("canned food", 2), ("water bottle", 1)], 2, 1.0, per_day, &items),
+            short_of([("canned food", 2), ("water bottle", 1)], 2, (1.0, 1.0), per_day, &items),
             [Need::Thirst, Need::Hunger],
             "short of both, the shortest first"
         );

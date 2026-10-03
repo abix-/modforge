@@ -230,10 +230,17 @@ pub enum Axis {
     Precision,
     /// Berserker (+) hits harder when hurt; Timid (-) flees more.
     Ferocity,
+    /// Fear of not having enough, 0 to 1 (topside todo 11ag): the most
+    /// fearful stock up to twice what is needed; zero stops at what is
+    /// needed. Rolled on its own, after the seven above.
+    Fear,
 }
 
+/// How many of the axes are the signed seven rolled together.
+const SIGNED_AXES: usize = 7;
+
 impl Axis {
-    pub const ALL: [Axis; 7] = [
+    pub const ALL: [Axis; 8] = [
         Axis::Courage,
         Axis::Diligence,
         Axis::Vitality,
@@ -241,9 +248,10 @@ impl Axis {
         Axis::Agility,
         Axis::Precision,
         Axis::Ferocity,
+        Axis::Fear,
     ];
 
-    pub const NAMES: [&'static str; 7] = [
+    pub const NAMES: [&'static str; 8] = [
         "courage",
         "diligence",
         "vitality",
@@ -251,6 +259,7 @@ impl Axis {
         "agility",
         "precision",
         "ferocity",
+        "fear of not having enough",
     ];
 }
 
@@ -263,15 +272,15 @@ pub static PEOPLE: crate::genome::Pool = crate::genome::Pool::new(crate::genome:
     max: 1.5,
 });
 
-/// One person's personality: the seven axes.
+/// One person's personality: the axes, by `Axis`.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Personality {
-    pub axes: [f32; 7],
+    pub axes: [f32; 8],
 }
 
 impl Default for Personality {
     fn default() -> Self {
-        Self { axes: [0.0; 7] }
+        Self { axes: [0.0; 8] }
     }
 }
 
@@ -283,7 +292,7 @@ impl Personality {
     pub fn seed(id: ActorId, world_seed: u64) -> Personality {
         let key = (id.0 as i64) ^ (world_seed as i64).rotate_left(17);
         let values = PEOPLE.get_or_seed(key, || {
-            let mut axes = vec![0.0f64; 7];
+            let mut axes = vec![0.0f64; Axis::ALL.len()];
             // How many axes: 0, 1, or 2, weighted toward 1.
             let count = match (crate::genome::jitter(key, 1, 1.0) + 1.0) * 1.5 {
                 x if x < 0.6 => 0,
@@ -293,8 +302,8 @@ impl Personality {
             let mut picked = Vec::new();
             let mut salt = 10;
             while picked.len() < count {
-                let axis = (((crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0) * 7.0) as usize;
-                let axis = axis.min(6);
+                let axis = (((crate::genome::jitter(key, salt, 1.0) + 1.0) / 2.0) * SIGNED_AXES as f64) as usize;
+                let axis = axis.min(SIGNED_AXES - 1);
                 salt += 1;
                 if picked.contains(&axis) {
                     continue;
@@ -309,10 +318,15 @@ impl Personality {
                 axes[axis] = sign * magnitude;
                 salt += 1;
             }
+            // Fear of not having enough, on its own: one in six afraid,
+            // from a little (0.3) to wholly (1.0); the rest not at all.
+            if (crate::genome::jitter(key, 1000, 1.0) + 1.0) / 2.0 < 1.0 / 6.0 {
+                axes[Axis::Fear as usize] = 0.3 + 0.7 * ((crate::genome::jitter(key, 1001, 1.0) + 1.0) / 2.0);
+            }
             axes
         });
-        let mut axes = [0.0f32; 7];
-        for (i, v) in values.iter().enumerate().take(7) {
+        let mut axes = [0.0f32; 8];
+        for (i, v) in values.iter().enumerate().take(Axis::ALL.len()) {
             axes[i] = *v as f32;
         }
         Personality { axes }
@@ -596,11 +610,14 @@ mod tests {
         let mut with_traits = 0;
         for id in 1..=100u64 {
             let p = Personality::seed(ActorId(id), 42);
-            let set: Vec<f32> = p.axes.iter().copied().filter(|v| *v != 0.0).collect();
+            let set: Vec<f32> = p.axes[..SIGNED_AXES].iter().copied().filter(|v| *v != 0.0).collect();
             assert!(set.len() <= 2, "{id}: {:?}", p.axes);
             for v in &set {
                 assert!((0.5..=1.5).contains(&v.abs()), "{id}: {v}");
             }
+            // Fear of not having enough, on its own: none, or 0.3 to 1.
+            let fear = p.get(Axis::Fear);
+            assert!(fear == 0.0 || (0.3..=1.0).contains(&fear), "{id}: fear {fear}");
             if !set.is_empty() {
                 with_traits += 1;
             }
