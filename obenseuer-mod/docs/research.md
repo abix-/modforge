@@ -818,6 +818,60 @@ Bar 22), none directional: the mode is NonDirectional for every area.
 With that many areas loaded the game used 13.6 GB, and loads alongside
 took over 8 s with single frames of 1.7 to 1.8 s.
 
+NPC scheduler, timetable to movement (2026-10-03):
+
+1. Each NPC's data (`NPCData`, NPCDirector.globalDatabase, kept through
+   loads) has a `Schedule`: a `Timetable` of ScheduledActions (start, duration,
+   activity with a target area).
+2. Every game minute `NPCDirector.DeltaSeconds` (NPCDirector.cs:245-290)
+   goes over every NPC: follow target first (OnFollowingTarget), else
+   `Schedule.UpdateScheduler` (Schedule.cs:137): an NPC in the player's area
+   with an object runs its schedule live (`scheduler.CurrentTime`: picks the
+   timetable entry, starts its activity, the object walks); every other NPC
+   runs on data (`UpdateScheduleWithoutController`), its area tracked through
+   InterScenePathfindingGraph's area connections. Then, for an NPC not in
+   the player's area, `NPCSceneUtilities.HandleNPCChangeScene` sets a path
+   to the activity's target area (`CalculateNPCTransition`, a timed
+   transit with `interSceneProgress`).
+3. An NPC with an object leaving the player's area walks to a door
+   waypoint; there `Waypoint_LevelChange.ChangeNPCState` sets its
+   `currentScene` to the door's other area and destroys the object
+   (Waypoint_LevelChange.cs:54-66).
+4. An NPC whose data reaches the player's area gets an object:
+   `NPCSpawnUtilities.ChangeNPCLevel` (NPCSpawnUtilities.cs:115-) spawns
+   it at the arrival point of its entry (through the door waypoint's
+   `OnSpawn`, which opens the door), or moves its existing object there.
+5. On an area load, `NPCManager.StartDelay` moves or spawns the area's NPCs
+   from their data and switches off placed NPCs that are elsewhere
+   (NPCManager.cs:64-117).
+6. A schedule subscribes to `TimeOfDayAzure.CurrentTimeAndDay` once
+   (`started`) and unsubscribes in OnDestroy (Schedule.cs:34-42, 275-278):
+   after an NPC's object is destroyed once, its schedule runs only from
+   NPCDirector's tick.
+
+Player state in the save: the scripts that save into Globals.tnmt
+(`SerializeData(this, global: true)`), 46 classes: Achievements,
+AnimalController, BlackoutController, BuildingSystem,
+CharacterSlotController, Crime, DialogueCommonMethods, DifficultyController,
+DrunkEffect, FurnitureBlueprintController, GlobalState, Inventory,
+InvoiceController, ItemsUIPanel, JanitorController, Keypad,
+LegalServicesController, MailController, MapController, Money,
+MushroomEffect, NPCDirector (every NPC's state, in OnSavingGameSpecial),
+NoteController, Notifications, OrangeMushroomEffect, PlayerHandItems,
+PlayerIdentity, PlayerStatUI, PlayerStats, PlayerSubscriptionsController,
+RandommailSender, RecipeController, RelationshipController, Sauna,
+SaveSceneManager, StartManager, StartOpenSewer, TaskController,
+TaskItemsManager, TenementController, TenementEventController,
+ThirdPersonCameraCollision, ThirdPersonCameraController, TimeOfDayAzure,
+Tutorial, WeatherManager. Keypad and Sauna are objects in areas, not
+managers: their entries go to Globals from whichever area they are in. Order: the save phases in SaveGame's order (9.25: Primary,
+Secondary, Tertiary, DestructibleList, kept-through-loads Special,
+OnSavingGame, LatePrimary, OnSavingFile); within a phase, the order of the
+active area's top objects and their children (ExecuteSaveLoadFunctions,
+SaveController.cs:1113-1131), then the kept-through-loads objects for the
+Special phases. Loading reads both files first, then runs the load phases
+in 9.25's order; each script takes its own entry by GUID.
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
