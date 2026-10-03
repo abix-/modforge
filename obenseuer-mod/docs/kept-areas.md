@@ -190,7 +190,8 @@ and `EnterAreaLists`, same scope as the events):
   and plain objects whose callbacks point at them (`TimeOfDayAzure.Timer`),
   are taken out of every static list, dictionary and set of the game's
   assembly and of those on the managers' live copies; kept for that load
-  of the area.
+  of the area. Not from the area's own managers (area-owned, in the area
+  left): their lists are its own data (its arrival points, its NPCs).
 - Entering, after its load steps (a timer's `OnLoading` puts itself back
   with the time passed): each goes back unless its list holds it already.
 
@@ -255,7 +256,12 @@ load steps run on every visit, not only the first:
   (CollectibleItemSpawner, FurnitureBlueprintSpawner, FurnitureManager,
   ParcelLocker, RatFightArena; docs/save.md); and the classes marked by
   `savedTimeAndDay`, which kept the game's clock while away (time while
-  away, below): their catch-up already ran.
+  away, below): their catch-up already ran; and the top objects holding
+  the managers' live copies (the live player and game-wide managers, in
+  the area the save loaded): they are not the area's content, and
+  re-running their load re-did game-wide work (TenementController's load
+  rebuilt the building's doors in Open Sewer Tenement, leaving that area's
+  arrival point list with destroyed doors; research_kept_arrivals.rs).
 - What area objects do in Start runs again, after the area switches on
   (`RUN_AGAIN`, the shim's `SceneTools.RunAgain`): the area-owned
   managers' Start (info_game_logic, SoundscapeGlobal, NPCManager), the
