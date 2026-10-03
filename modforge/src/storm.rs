@@ -17,7 +17,7 @@ pub struct StormDef {
 }
 
 /// Where the world is in the storm's cycle.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum StormPhase {
     Calm,
     /// The sky has changed: get under a roof.

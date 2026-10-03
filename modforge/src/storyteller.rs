@@ -32,7 +32,7 @@ use crate::roll::Budget;
 
 /// One episode (topside docs/episodes.md): a story that starts with a
 /// storm and ends at the next, running inside a reality it fits.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EpisodeDef {
     pub name: String,
     /// The realities it fits, by name; empty fits any.
@@ -68,71 +68,317 @@ pub struct EpisodeDef {
     pub deeds: Vec<DeedDef>,
 }
 
-/// A pivot point reached by a deed: its name, the deed, and its group, if
-/// any: of a group, the first in order that holds is reached, and none of
-/// the group after it.
-#[derive(Clone, Debug, PartialEq)]
+/// A pivot point reached by what is done (topside todo 11ai): its name, and
+/// the condition, in the one condition language (`Cond`), whose holding
+/// reaches it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeedDef {
     pub pivot: String,
-    pub deed: Deed,
-    pub group: Option<String>,
+    pub when: Cond,
 }
 
-/// A deed that reaches a pivot point, each read from memory and the world.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Deed {
-    /// Anyone remembers eating or drinking from the episode's thing since
-    /// it started; reached by the first who did.
-    Ate { thing: String },
-    /// The player comes within `within` metres of the episode's thing with
-    /// this company.
-    CameNear { thing: String, within: f32, with: Company },
-    /// The player comes home after eating or drinking from the thing,
-    /// having told these of it.
-    HomeAfterAte { thing: String, told: Told },
-    /// The episode's thing is gone from the world while the storm warns or
-    /// comes.
-    GoneInTheStorm { thing: String },
-    /// The player has open a store that something draws from, and it reads
-    /// dry.
-    OpenedDrawnStoreDry,
-    /// The player has open their own bunker's store, and it holds more than
-    /// `days` of what answers `need` for its living people.
-    OpenedOwnStoreOver { need: crate::survival::Need, days: f32 },
+/// One condition, the one way an episode says what must be true (Skyrim's
+/// condition functions joined with AND and OR on quest stages and AI
+/// packages): a few pieces read from memory and the world, joined with
+/// All, Any, Not and First. Used by deeds and errands alike; `holds`
+/// decides it.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Cond {
+    All(Vec<Cond>),
+    Any(Vec<Cond>),
+    Not(Box<Cond>),
+    /// A pivot point reached.
+    Reached(String),
+    /// Someone remembers doing this toward them since then; `every`: toward
+    /// every member of a group (told everyone of their bunker).
+    Remembered { by: Who, did: DidKind, toward: Target, since: Since, every: bool },
+    /// Of the deeds `of` someone did toward them since then, the first is
+    /// `is` (shot before they spoke: of Hit and Talked, the first a Hit).
+    First { by: Who, of: Vec<DidKind>, toward: Target, is: DidKind, since: Since },
+    /// One of them within `within` metres of the target.
+    Near { who: Who, to: Target, within: f32 },
+    /// One of them leading or following one of `of`.
+    With { who: Who, of: Who },
+    /// One of them alive, near a target if given.
+    Alive { who: Who, near: Option<(Target, f32)> },
+    /// One of them holding a place at the episode's thing.
+    Holds { who: Who, thing: String },
+    /// One of them home, in their bunker below the ground.
+    AtHome { who: Who },
+    /// The episode's thing is no longer in the world.
+    Gone(String),
+    /// The storm's phase now.
+    Phase(crate::storm::StormPhase),
+    /// One of them has a store open, of this kind, holding this, if given.
+    Opened { who: Who, store: Store, holds: Option<Measure> },
+    /// An errand's window has ended.
+    Ended(String),
 }
 
-/// Who is with the player: a part leading or following them, one of their
-/// bunker doing so, or no one (always holds: the last of a group).
-#[derive(Clone, Debug, PartialEq)]
-pub enum Company {
+/// Someone an episode names: the player, a part, a group, or anyone.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Who {
+    ThePlayer,
     Part(String),
-    BunkerMember,
-    NoOne,
+    Group(Group),
+    Anyone,
 }
 
-/// Whom the player told of a thing: everyone of their bunker, a part, or
-/// no one (always holds: the last of a group).
-#[derive(Clone, Debug, PartialEq)]
-pub enum Told {
-    AllOfTheirBunker,
-    Part(String),
-    NoOne,
+/// A group an episode names: a part's bunker, the people the edge sent for
+/// word of the episode's thing, or the player's bunker.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Group {
+    BunkerOf(String),
+    CameFor(String),
+    ThePlayersBunker,
 }
 
-/// One errand: the part asked, what they are asked to do, the pivot points
-/// that must all be reached (`when`) and none of which may be (`unless`),
-/// and the pivot point reached when they arrive, if any.
-#[derive(Clone, Debug, PartialEq)]
+/// What a deed is toward: someone, the episode's thing, or nothing.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Target {
+    Who(Who),
+    Thing(String),
+    Nobody,
+}
+
+/// A kind of deed as memory keeps it (`memory::Did`): the episode's thing
+/// by name (ate from it, told of it), a line by name (heard it).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum DidKind {
+    Hit,
+    Killed,
+    Talked,
+    Heard(Option<String>),
+    Ate(String),
+    Told(String),
+    Knocked,
+}
+
+/// From when a deed counts: the episode's start, a pivot point reached, or
+/// within an errand's window.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Since {
+    EpisodeStart,
+    Pivot(String),
+    During(String),
+}
+
+/// Which store: their bunker's own, or one something draws from.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Store {
+    TheirOwn,
+    DrawnFrom,
+}
+
+/// What a store holds: reads dry, or more than so many days of what
+/// answers a need for its living people.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Measure {
+    Dry,
+    DaysOver(crate::survival::Need, f32),
+}
+
+/// A store someone has open, as the world has it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OpenStore {
+    pub theirs: bool,
+    pub drawn_from: bool,
+    pub dry: bool,
+    /// Days of what answers hunger and thirst, for its living people.
+    pub days: (f32, f32),
+}
+
+/// What a game knows for deciding a condition: the one place the world is
+/// read (topside fills it once a game second). Every person by ActorId.
+pub trait Facts {
+    fn now(&self) -> u64;
+    fn player(&self) -> crate::actor::ActorId;
+    fn episode_started(&self) -> u64;
+    /// When a pivot point was reached, if it was.
+    fn reached_at(&self, pivot: &str) -> Option<u64>;
+    /// An errand's window: when it started, and when it ended if it has.
+    fn window(&self, errand: &str) -> Option<(u64, Option<u64>)>;
+    /// Everyone the `Who` names, living or dead.
+    fn members(&self, who: &Who) -> Vec<crate::actor::ActorId>;
+    fn alive(&self, id: crate::actor::ActorId) -> bool;
+    fn memory(&self, id: crate::actor::ActorId) -> Option<&crate::memory::Memory>;
+    fn feet(&self, id: crate::actor::ActorId) -> Option<glam::Vec3>;
+    /// Where the episode's thing stands, if it is in the world.
+    fn thing_at(&self, thing: &str) -> Option<glam::Vec3>;
+    /// The item the episode's thing is (what eating from it is remembered
+    /// as).
+    fn item_of(&self, thing: &str) -> String;
+    /// The words someone says telling of the thing ("told of the tap").
+    fn told_words(&self, by: crate::actor::ActorId, thing: &str) -> String;
+    /// Whether `a` leads or follows `b`.
+    fn with(&self, a: crate::actor::ActorId, b: crate::actor::ActorId) -> bool;
+    /// Whether they hold a place at the thing.
+    fn holds_at(&self, id: crate::actor::ActorId, thing: &str) -> bool;
+    fn at_home(&self, id: crate::actor::ActorId) -> bool;
+    fn storm(&self) -> crate::storm::StormPhase;
+    fn opened(&self, id: crate::actor::ActorId) -> Option<OpenStore>;
+}
+
+/// Whether a condition holds, and if it does, who it is about and when:
+/// a deed remembered by its doer at its tick (the first, for anyone), every
+/// other condition by the player, now. The one decider of the condition
+/// language.
+pub fn holds(cond: &Cond, facts: &impl Facts) -> Option<(crate::actor::ActorId, u64)> {
+    use crate::memory::Did;
+    let now = (facts.player(), facts.now());
+    let any_of = |who: &Who, test: &dyn Fn(crate::actor::ActorId) -> bool| facts.members(who).into_iter().any(test);
+    let at = |target: &Target| -> Vec<glam::Vec3> {
+        match target {
+            Target::Who(w) => facts.members(w).into_iter().filter(|id| facts.alive(*id)).filter_map(|id| facts.feet(id)).collect(),
+            Target::Thing(t) => facts.thing_at(t).into_iter().collect(),
+            Target::Nobody => Vec::new(),
+        }
+    };
+    // The ticks a deed counts in.
+    let window = |since: &Since| -> Option<(u64, u64)> {
+        match since {
+            Since::EpisodeStart => Some((facts.episode_started(), u64::MAX)),
+            Since::Pivot(p) => facts.reached_at(p).map(|t| (t, u64::MAX)),
+            Since::During(e) => facts.window(e).map(|(from, to)| (from, to.unwrap_or(u64::MAX))),
+        }
+    };
+    // Whether a remembered deed is of this kind and toward this target.
+    let toward = |target: &Target, id: crate::actor::ActorId| match target {
+        Target::Who(w) => facts.members(w).contains(&id),
+        Target::Thing(_) | Target::Nobody => true,
+    };
+    let matches = |by: crate::actor::ActorId, kind: &DidKind, target: &Target, did: &Did| match (kind, did) {
+        (DidKind::Hit, Did::Hit(id, _)) | (DidKind::Killed, Did::Killed(id)) | (DidKind::Talked, Did::Talked(id, _)) => toward(target, *id),
+        (DidKind::Heard(line), Did::Heard(id, said)) => line.as_ref().is_none_or(|l| *l == said.name) && toward(target, *id),
+        (DidKind::Ate(thing), Did::Ate(item)) => *item == facts.item_of(thing),
+        (DidKind::Told(thing), Did::Talked(id, said)) => said.words == facts.told_words(by, thing) && toward(target, *id),
+        (DidKind::Knocked, Did::Knocked) => true,
+        _ => false,
+    };
+    match cond {
+        Cond::All(all) => {
+            let mut first = None;
+            for c in all {
+                let held = holds(c, facts)?;
+                first.get_or_insert(held);
+            }
+            first.or(Some(now))
+        }
+        Cond::Any(any) => any.iter().find_map(|c| holds(c, facts)),
+        Cond::Not(c) => holds(c, facts).is_none().then_some(now),
+        Cond::Reached(p) => facts.reached_at(p).map(|t| (now.0, t)),
+        Cond::Remembered { by, did, toward: target, since, every } => {
+            let (from, to) = window(since)?;
+            let done = |doer: crate::actor::ActorId, test: &dyn Fn(&Did) -> bool| {
+                facts.memory(doer)?.done.iter().find(|(t, d)| *t >= from && *t <= to && test(d)).map(|(t, _)| *t)
+            };
+            if *every {
+                let Target::Who(group) = target else {
+                    return None;
+                };
+                let all = facts.members(group);
+                // By one of them, toward each member of the group (each one
+                // the deed was toward), at the last of those deeds.
+                return facts.members(by).into_iter().find_map(|doer| {
+                    let ticks: Option<Vec<u64>> = all
+                        .iter()
+                        .filter(|m| **m != doer)
+                        .map(|m| done(doer, &|d| matches(doer, did, target, d) && done_toward(d) == Some(*m)))
+                        .collect();
+                    ticks.filter(|t| !t.is_empty()).map(|t| (doer, t.into_iter().max().unwrap_or(from)))
+                });
+            }
+            facts.members(by).into_iter().filter_map(|doer| done(doer, &|d| matches(doer, did, target, d)).map(|t| (doer, t))).min_by_key(|(_, t)| *t)
+        }
+        Cond::First { by, of, toward: target, is, since } => {
+            let (from, to) = window(since)?;
+            facts.members(by).into_iter().find_map(|doer| {
+                let memory = facts.memory(doer)?;
+                let (t, first) = memory.done.iter().find(|(t, d)| *t >= from && *t <= to && of.iter().any(|k| matches(doer, k, target, d)))?;
+                matches(doer, is, target, first).then_some((doer, *t))
+            })
+        }
+        Cond::Near { who, to, within } => {
+            let spots = at(to);
+            any_of(who, &|id| facts.alive(id) && facts.feet(id).is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within))).then_some(now)
+        }
+        Cond::With { who, of } => {
+            let others = facts.members(of);
+            any_of(who, &|id| facts.alive(id) && others.iter().any(|o| facts.with(id, *o))).then_some(now)
+        }
+        Cond::Alive { who, near } => {
+            let spots = near.as_ref().map(|(t, _)| at(t));
+            any_of(who, &|id| {
+                facts.alive(id)
+                    && match (&spots, near) {
+                        (Some(spots), Some((_, within))) => facts.feet(id).is_some_and(|f| spots.iter().any(|s| s.distance(f) <= *within)),
+                        _ => true,
+                    }
+            })
+            .then_some(now)
+        }
+        Cond::Holds { who, thing } => any_of(who, &|id| facts.alive(id) && facts.holds_at(id, thing)).then_some(now),
+        Cond::AtHome { who } => any_of(who, &|id| facts.alive(id) && facts.at_home(id)).then_some(now),
+        Cond::Gone(thing) => facts.thing_at(thing).is_none().then_some(now),
+        Cond::Phase(phase) => (facts.storm() == *phase).then_some(now),
+        Cond::Opened { who, store, holds: measure } => any_of(who, &|id| {
+            facts.opened(id).is_some_and(|open| {
+                let kind = match store {
+                    Store::TheirOwn => open.theirs,
+                    Store::DrawnFrom => open.drawn_from,
+                };
+                kind && match measure {
+                    None => true,
+                    Some(Measure::Dry) => open.dry,
+                    Some(Measure::DaysOver(need, days)) => match need {
+                        crate::survival::Need::Thirst => open.days.1 > *days,
+                        _ => open.days.0 > *days,
+                    },
+                }
+            })
+        })
+        .then_some(now),
+        Cond::Ended(errand) => facts.window(errand).and_then(|(_, end)| end).map(|t| (now.0, t)),
+    }
+}
+
+/// Whom a remembered deed was toward, if anyone.
+fn done_toward(did: &crate::memory::Did) -> Option<crate::actor::ActorId> {
+    use crate::memory::Did;
+    match did {
+        Did::Hit(id, _) | Did::Killed(id) | Did::Talked(id, _) | Did::Heard(id, _) | Did::HeardKnocking(id) | Did::Traded(id, ..) | Did::TradeRefused(id) => Some(*id),
+        _ => None,
+    }
+}
+
+/// One errand (Skyrim's quest stages giving AI packages to aliases,
+/// RimWorld's quest parts giving lord jobs to groups): whom it asks (a
+/// part, a group: each member), what, when (a condition in the one
+/// language), from when (now, or the first game morning after its
+/// condition first holds), and, for a named errand, when its window ends:
+/// its name is reached as a pivot point when it starts, and its window
+/// (start to end) is what `Since::During` reads.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrandDef {
-    pub part: String,
+    pub name: Option<String>,
+    pub who: Who,
     pub does: ErrandAct,
-    pub when: Vec<String>,
-    pub unless: Vec<String>,
+    pub when: Cond,
+    pub at: ErrandStart,
+    pub ends: Option<Cond>,
+    /// The pivot point reached when they arrive where it sends them.
     pub reached_on_arrival: Option<String>,
 }
 
+/// When an errand starts once its condition holds.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ErrandStart {
+    Now,
+    FirstMorningAfter,
+}
+
 /// What an errand asks.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ErrandAct {
     /// Stand beside the episode's thing of this name, at this side of it
     /// (radians round it).
@@ -143,32 +389,42 @@ pub enum ErrandAct {
     GoHome,
     /// Be home, never taken out of a talk for it.
     StayHome,
+    /// An order, through the one command path: whom it names (a group:
+    /// each one given the nearest living member of it) and where (a thing)
+    /// worked out when given.
+    Order(crate::command::Command<Who, ThingRef>),
 }
 
-/// Someone an episode names: the player, or a part.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Who {
-    ThePlayer,
-    Part(String),
+/// Where an order in data goes: beside the episode's thing of this name
+/// (a struct, as a command's point is flattened: `thing: tap`).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ThingRef {
+    pub thing: String,
 }
 
-impl ErrandDef {
-    /// Whether it applies with these pivot points reached.
-    pub fn applies(&self, reached: &[&str]) -> bool {
-        self.when.iter().all(|p| reached.contains(&p.as_str())) && !self.unless.iter().any(|p| reached.contains(&p.as_str()))
+/// The tick an errand starting at `start` starts, its condition first
+/// holding at `held`: then, or the start of the first game day after it
+/// (a game day starts at morning, `survival::day_fraction`), a day being
+/// `day` ticks.
+pub fn starts_at(start: ErrandStart, held: u64, day: u64) -> u64 {
+    match start {
+        ErrandStart::Now => held,
+        ErrandStart::FirstMorningAfter => (held / day.max(1) + 1) * day.max(1),
     }
 }
 
-/// The errand that applies to `part` now: the first in the def whose pivot
-/// points hold.
-pub fn errand_for<'a>(def: &'a EpisodeDef, part: &str, reached: &[&str]) -> Option<&'a ErrandDef> {
-    def.errands.iter().find(|e| e.part == part && e.applies(reached))
+/// The errand that applies to someone now: the first in the def that names
+/// them (`names`) whose condition holds and whose start has come
+/// (`started`: an errand's start tick worked out by the game, None when it
+/// has not started).
+pub fn errand_for<'a>(def: &'a EpisodeDef, names: impl Fn(&Who) -> bool, facts: &impl Facts, started: impl Fn(&ErrandDef) -> bool) -> Option<&'a ErrandDef> {
+    def.errands.iter().find(|e| names(&e.who) && started(e) && holds(&e.when, facts).is_some())
 }
 
 /// One thing an episode brings into the world: its name in the episode
 /// (what its lines and pivot points call it), the item it is, where it
 /// stands, and who it belongs to and who knows it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ThingDef {
     pub name: String,
     pub item: String,
@@ -186,7 +442,7 @@ pub struct ThingDef {
 }
 
 /// A place an episode names: the player's bunker door, or a part's home.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Place {
     PlayerBunkerDoor,
     HomeOf(String),
@@ -194,7 +450,7 @@ pub enum Place {
 
 /// One ending: its name, what it says happened, the pivot points it needs,
 /// and the parts who must be alive for it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EndingDef {
     pub name: String,
     pub words: String,
@@ -214,12 +470,12 @@ pub fn ending<'a>(def: &'a EpisodeDef, reached: &[&str], alive: impl Fn(&str) ->
 /// and where (an episode thing, by name) worked out when given
 /// (`Command::resolve`); once an episode, remembered as the pivot point
 /// `name` reached.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CueDef {
     pub name: String,
     pub did: String,
     pub part: String,
-    pub does: crate::command::Command<Who, String>,
+    pub does: crate::command::Command<Who, ThingRef>,
 }
 
 /// The cues due now: each whose deed the player has done since the episode
@@ -240,7 +496,7 @@ pub fn cues_due<'a>(def: &'a EpisodeDef, done: &[(u64, crate::memory::Did)], sta
 /// the world and the speaker's memory, what it tells, and how hearing it
 /// feels. An episode's line, a plain line, and the player's choice are
 /// all this; `crate::talk::pick` says the best matching one.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LineDef {
     /// What saying it is ("believes Dell", "the way"): memory keeps it
     /// beside the words, and replies, pivot points, and feelings go by it.
@@ -287,7 +543,7 @@ impl LineDef {
 
 /// One thing that must be true of the speaker for a line to be said, read
 /// from their memory and the moment (`crate::talk::Speaking`).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum When {
     /// The one spoken to is cast as this part, or "player".
     To(String),
@@ -362,7 +618,7 @@ fn slots_of(way: &str) -> impl Iterator<Item = &str> {
 
 /// One person an episode needs (episodes.md "The people"): its name in
 /// the episode and where it is cast from.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PartDef {
     pub name: String,
     pub from: CastFrom,
@@ -370,7 +626,7 @@ pub struct PartDef {
 
 /// Where a part is cast from: always a bunker person, since only bunker
 /// people live on across episodes (realities.md).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum CastFrom {
     /// A random person of the player's bunker.
     PlayerBunker,
@@ -1348,17 +1604,36 @@ mod tests {
     /// home until the note is read, then nothing; sent, go to the thing
     /// until arrived; arrived, go home.
     #[test]
-    fn the_first_errand_whose_pivot_points_hold_applies() {
-        let errand = |does: ErrandAct, when: &[&str], unless: &[&str]| ErrandDef {
-            part: "Dell".to_string(),
-            does,
-            when: when.iter().map(|s| s.to_string()).collect(),
-            unless: unless.iter().map(|s| s.to_string()).collect(),
-            reached_on_arrival: None,
-        };
+    fn the_first_errand_whose_condition_holds_applies() {
+        let reached = |p: &[&str]| Cond::All(p.iter().map(|s| Cond::Reached(s.to_string())).collect());
+        let not = |p: &str| Cond::Not(Box::new(Cond::Reached(p.to_string())));
+        let errand = |does: ErrandAct, when: Cond| ErrandDef { name: None, who: Who::Part("Dell".to_string()), does, when, at: ErrandStart::Now, ends: None, reached_on_arrival: None };
         let go = ErrandAct::GoTo { thing: "tap".to_string(), side: 0.0 };
-        let def = EpisodeDef {
-            name: "test".to_string(),
+        let mut def = episode("test");
+        def.errands = vec![
+            errand(go.clone(), Cond::All(vec![reached(&["sent"]), not("looked")])),
+            errand(ErrandAct::GoHome, Cond::All(vec![reached(&["sent", "looked"]), not("told again")])),
+            errand(ErrandAct::StayHome, not("the note read")),
+        ];
+        let does = |reached: &[&str]| {
+            let mut facts = World::default();
+            for (i, p) in reached.iter().enumerate() {
+                facts.pivots.push((p.to_string(), i as u64));
+            }
+            errand_for(&def, |w| *w == Who::Part("Dell".to_string()), &facts, |_| true).map(|e| e.does.clone())
+        };
+        assert_eq!(does(&[]), Some(ErrandAct::StayHome), "home until the note");
+        assert_eq!(does(&["the note read"]), None, "then nothing asked");
+        assert_eq!(does(&["the note read", "sent"]), Some(go), "sent: to the tap");
+        assert_eq!(does(&["the note read", "sent", "looked"]), Some(ErrandAct::GoHome), "looked: home");
+        assert_eq!(does(&["the note read", "sent", "looked", "told again"]), None);
+        assert_eq!(errand_for(&def, |w| *w == Who::Part("Mara".to_string()), &World::default(), |_| true), None, "nothing asked of a part with no errand");
+    }
+
+    /// An episode with nothing in it but its name.
+    fn episode(name: &str) -> EpisodeDef {
+        EpisodeDef {
+            name: name.to_string(),
             fits: Vec::new(),
             parts: Vec::new(),
             lines: Vec::new(),
@@ -1366,20 +1641,202 @@ mod tests {
             door_enemy: false,
             endings: Vec::new(),
             things: Vec::new(),
-            errands: vec![
-                errand(go.clone(), &["sent"], &["looked"]),
-                errand(ErrandAct::GoHome, &["sent", "looked"], &["told again"]),
-                errand(ErrandAct::StayHome, &[], &["the note read"]),
-            ],
+            errands: Vec::new(),
             deeds: Vec::new(),
-        };
-        let does = |reached: &[&str]| errand_for(&def, "Dell", reached).map(|e| e.does.clone());
-        assert_eq!(does(&[]), Some(ErrandAct::StayHome), "home until the note");
-        assert_eq!(does(&["the note read"]), None, "then nothing asked");
-        assert_eq!(does(&["the note read", "sent"]), Some(go), "sent: to the tap");
-        assert_eq!(does(&["the note read", "sent", "looked"]), Some(ErrandAct::GoHome), "looked: home");
-        assert_eq!(does(&["the note read", "sent", "looked", "told again"]), None);
-        assert_eq!(errand_for(&def, "Mara", &[]), None, "nothing asked of a part with no errand");
+        }
+    }
+
+    use crate::actor::ActorId;
+    use crate::memory::{Did, Line, Memory};
+
+    /// Facts given by hand: the player is 1; each person's memory, place and
+    /// whether alive; the parts and groups by name; the episode's things,
+    /// pivot points and errand windows; who is with whom, who holds what,
+    /// who is home, the storm, an open store.
+    #[derive(Default)]
+    struct World {
+        now: u64,
+        people: Vec<(ActorId, bool, glam::Vec3, Memory)>,
+        parts: Vec<(String, ActorId)>,
+        groups: Vec<(Group, Vec<ActorId>)>,
+        things: Vec<(String, glam::Vec3)>,
+        pivots: Vec<(String, u64)>,
+        windows: Vec<(String, u64, Option<u64>)>,
+        with: Vec<(ActorId, ActorId)>,
+        holding: Vec<(ActorId, String)>,
+        home: Vec<ActorId>,
+        storm: Option<crate::storm::StormPhase>,
+        open: Vec<(ActorId, OpenStore)>,
+    }
+
+    impl Facts for World {
+        fn now(&self) -> u64 {
+            self.now
+        }
+        fn player(&self) -> ActorId {
+            ActorId(1)
+        }
+        fn episode_started(&self) -> u64 {
+            0
+        }
+        fn reached_at(&self, pivot: &str) -> Option<u64> {
+            self.pivots.iter().find(|(p, _)| p == pivot).map(|(_, t)| *t)
+        }
+        fn window(&self, errand: &str) -> Option<(u64, Option<u64>)> {
+            self.windows.iter().find(|(e, ..)| e == errand).map(|(_, from, to)| (*from, *to))
+        }
+        fn members(&self, who: &Who) -> Vec<ActorId> {
+            match who {
+                Who::ThePlayer => vec![ActorId(1)],
+                Who::Part(p) => self.parts.iter().filter(|(n, _)| n == p).map(|(_, id)| *id).collect(),
+                Who::Group(g) => self.groups.iter().filter(|(n, _)| n == g).flat_map(|(_, ids)| ids.clone()).collect(),
+                Who::Anyone => self.people.iter().map(|p| p.0).collect(),
+            }
+        }
+        fn alive(&self, id: ActorId) -> bool {
+            self.people.iter().any(|p| p.0 == id && p.1)
+        }
+        fn memory(&self, id: ActorId) -> Option<&Memory> {
+            self.people.iter().find(|p| p.0 == id).map(|p| &p.3)
+        }
+        fn feet(&self, id: ActorId) -> Option<glam::Vec3> {
+            self.people.iter().find(|p| p.0 == id).map(|p| p.2)
+        }
+        fn thing_at(&self, thing: &str) -> Option<glam::Vec3> {
+            self.things.iter().find(|(n, _)| n == thing).map(|(_, at)| *at)
+        }
+        fn item_of(&self, thing: &str) -> String {
+            thing.to_string()
+        }
+        fn told_words(&self, _: ActorId, thing: &str) -> String {
+            format!("told of the {thing}")
+        }
+        fn with(&self, a: ActorId, b: ActorId) -> bool {
+            self.with.contains(&(a, b))
+        }
+        fn holds_at(&self, id: ActorId, thing: &str) -> bool {
+            self.holding.iter().any(|(h, t)| *h == id && t == thing)
+        }
+        fn at_home(&self, id: ActorId) -> bool {
+            self.home.contains(&id)
+        }
+        fn storm(&self) -> crate::storm::StormPhase {
+            self.storm.unwrap_or(crate::storm::StormPhase::Calm)
+        }
+        fn opened(&self, id: ActorId) -> Option<OpenStore> {
+            self.open.iter().find(|(o, _)| *o == id).map(|(_, s)| *s)
+        }
+    }
+
+    fn person(world: &mut World, id: u64, at: glam::Vec3, did: &[(u64, Did)]) {
+        let mut memory = Memory::default();
+        for (t, d) in did {
+            memory.did(d.clone(), *t);
+        }
+        world.people.push((ActorId(id), true, at, memory));
+    }
+
+    fn line(name: &str, words: &str) -> Line {
+        Line { name: name.to_string(), words: words.to_string() }
+    }
+
+    /// Remembered: anyone's first drink is reached by whoever drank first,
+    /// at their tick; told every member of a group holds only when each was
+    /// told; a deed out of its window does not count.
+    #[test]
+    fn remembered_reads_memory_by_whom_toward_whom_and_when() {
+        let mut w = World { now: 100, ..Default::default() };
+        person(&mut w, 1, glam::Vec3::ZERO, &[(40, Did::Ate("tap".into())), (50, Did::Talked(ActorId(2), line("tell", "told of the tap")))]);
+        person(&mut w, 2, glam::Vec3::ZERO, &[(30, Did::Ate("tap".into()))]);
+        person(&mut w, 3, glam::Vec3::ZERO, &[]);
+        w.groups.push((Group::ThePlayersBunker, vec![ActorId(1), ActorId(2), ActorId(3)]));
+        let drank = Cond::Remembered { by: Who::Anyone, did: DidKind::Ate("tap".into()), toward: Target::Nobody, since: Since::EpisodeStart, every: false };
+        assert_eq!(holds(&drank, &w), Some((ActorId(2), 30)), "the first who drank, at their tick");
+        let told_all = Cond::Remembered { by: Who::ThePlayer, did: DidKind::Told("tap".into()), toward: Target::Who(Who::Group(Group::ThePlayersBunker)), since: Since::EpisodeStart, every: true };
+        assert_eq!(holds(&told_all, &w), None, "3 was never told");
+        w.people[0].3.did(Did::Talked(ActorId(3), line("tell", "told of the tap")), 60);
+        assert_eq!(holds(&told_all, &w), Some((ActorId(1), 60)), "all told, at the last telling");
+        w.windows.push(("the fight".into(), 70, Some(90)));
+        let ate_during = Cond::Remembered { by: Who::ThePlayer, did: DidKind::Ate("tap".into()), toward: Target::Nobody, since: Since::During("the fight".into()), every: false };
+        assert_eq!(holds(&ate_during, &w), None, "the drink at 40 is outside the window 70 to 90");
+    }
+
+    /// First: shoots first is the first of hit or talked toward a group being
+    /// a hit; a word first and a hit after does not hold.
+    #[test]
+    fn first_is_the_first_of_those_deeds() {
+        let maras = Group::BunkerOf("Mara".into());
+        let shoots_first = Cond::First { by: Who::ThePlayer, of: vec![DidKind::Hit, DidKind::Talked], toward: Target::Who(Who::Group(maras.clone())), is: DidKind::Hit, since: Since::EpisodeStart };
+        let mut w = World::default();
+        person(&mut w, 1, glam::Vec3::ZERO, &[(10, Did::Hit(ActorId(5), 20.0)), (20, Did::Talked(ActorId(5), line("hi", "hi")))]);
+        w.groups.push((maras.clone(), vec![ActorId(5)]));
+        assert_eq!(holds(&shoots_first, &w), Some((ActorId(1), 10)));
+        let mut w = World::default();
+        person(&mut w, 1, glam::Vec3::ZERO, &[(10, Did::Talked(ActorId(5), line("hi", "hi"))), (20, Did::Hit(ActorId(5), 20.0))]);
+        w.groups.push((maras, vec![ActorId(5)]));
+        assert_eq!(holds(&shoots_first, &w), None, "spoke first");
+    }
+
+    /// The world pieces: near a thing, with someone, alive near a thing (the
+    /// dead do not count), holding at a thing, home, the thing gone, the
+    /// storm's phase, a store open.
+    #[test]
+    fn the_world_pieces_read_the_world() {
+        let tap = glam::Vec3::new(10.0, 0.0, 0.0);
+        let mut w = World { now: 5, ..Default::default() };
+        person(&mut w, 1, glam::Vec3::new(8.0, 0.0, 0.0), &[]);
+        person(&mut w, 2, glam::Vec3::new(9.0, 0.0, 0.0), &[]);
+        person(&mut w, 3, glam::Vec3::new(10.0, 0.0, 1.0), &[]);
+        w.people[2].1 = false;
+        w.things.push(("tap".into(), tap));
+        w.parts.push(("Dell".into(), ActorId(2)));
+        w.groups.push((Group::CameFor("tap".into()), vec![ActorId(3)]));
+        let near = |within: f32| Cond::Near { who: Who::ThePlayer, to: Target::Thing("tap".into()), within };
+        assert!(holds(&near(4.0), &w).is_some() && holds(&near(1.0), &w).is_none());
+        let with_dell = Cond::With { who: Who::Part("Dell".into()), of: Who::ThePlayer };
+        assert!(holds(&with_dell, &w).is_none());
+        w.with.push((ActorId(2), ActorId(1)));
+        assert!(holds(&with_dell, &w).is_some(), "Dell follows the player");
+        let strangers_near = Cond::Alive { who: Who::Group(Group::CameFor("tap".into())), near: Some((Target::Thing("tap".into()), 4.0)) };
+        assert!(holds(&strangers_near, &w).is_none(), "the one stranger there is dead");
+        w.holding.push((ActorId(2), "tap".into()));
+        assert!(holds(&Cond::Holds { who: Who::Part("Dell".into()), thing: "tap".into() }, &w).is_some());
+        assert!(holds(&Cond::AtHome { who: Who::ThePlayer }, &w).is_none());
+        w.home.push(ActorId(1));
+        assert!(holds(&Cond::AtHome { who: Who::ThePlayer }, &w).is_some());
+        assert!(holds(&Cond::Gone("tap".into()), &w).is_none());
+        w.things.clear();
+        assert!(holds(&Cond::Gone("tap".into()), &w).is_some());
+        assert!(holds(&Cond::Phase(crate::storm::StormPhase::Storm), &w).is_none());
+        w.storm = Some(crate::storm::StormPhase::Storm);
+        assert!(holds(&Cond::Phase(crate::storm::StormPhase::Storm), &w).is_some());
+        let over = Cond::Opened { who: Who::ThePlayer, store: Store::TheirOwn, holds: Some(Measure::DaysOver(crate::survival::Need::Thirst, 10.0)) };
+        w.open.push((ActorId(1), OpenStore { theirs: true, drawn_from: false, dry: false, days: (3.0, 12.0) }));
+        assert!(holds(&over, &w).is_some(), "12 days of water, over 10");
+        assert!(holds(&Cond::Opened { who: Who::ThePlayer, store: Store::DrawnFrom, holds: Some(Measure::Dry) }, &w).is_none());
+    }
+
+    /// All, Any, Not, an errand's window ended, and the first morning after;
+    /// a condition writes and reads back (the episode files' data).
+    #[test]
+    fn conditions_join_and_errand_windows_and_mornings() {
+        let mut w = World { now: 7, ..Default::default() };
+        w.pivots.push(("a".into(), 3));
+        let a = Cond::Reached("a".into());
+        let b = Cond::Reached("b".into());
+        assert!(holds(&Cond::All(vec![a.clone(), b.clone()]), &w).is_none());
+        assert!(holds(&Cond::Any(vec![a.clone(), b.clone()]), &w).is_some());
+        assert!(holds(&Cond::Not(Box::new(b.clone())), &w).is_some());
+        w.windows.push(("the fight".into(), 2, None));
+        assert!(holds(&Cond::Ended("the fight".into()), &w).is_none(), "still on");
+        w.windows[0].2 = Some(6);
+        assert_eq!(holds(&Cond::Ended("the fight".into()), &w), Some((ActorId(1), 6)));
+        assert_eq!(starts_at(ErrandStart::Now, 250, 100), 250);
+        assert_eq!(starts_at(ErrandStart::FirstMorningAfter, 250, 100), 300, "the next day's start");
+        let stays_out = Cond::All(vec![Cond::Ended("the fight".into()), Cond::Not(Box::new(Cond::Remembered { by: Who::ThePlayer, did: DidKind::Hit, toward: Target::Who(Who::Anyone), since: Since::During("the fight".into()), every: false }))]);
+        let text = serde_json::to_string(&stays_out).expect("a condition writes");
+        let back: Cond = serde_json::from_str(&text).expect("and reads back");
+        assert_eq!(back, stays_out, "{text}");
     }
 
     /// A cue is due once the player has done its deed since the episode
