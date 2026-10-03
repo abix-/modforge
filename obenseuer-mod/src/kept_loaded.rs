@@ -490,15 +490,13 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
         return Ok(false);
     };
-    let from = CURRENT.lock().unwrap().clone().filter(|f| *f != to);
-    if let Some(from) = &from {
-        let captured = capture_leaving(from);
-        unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {captured:?}"));
+    // Rule 3 then rule 2, as the game leaves an area before it loads the
+    // next.
+    if let Some(from) = CURRENT.lock().unwrap().clone().filter(|f| *f != to) {
+        let left = leave_area(&from);
+        unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {left:?}"));
     }
     enter_area(&to, &point)?;
-    if let Some(from) = from {
-        switch_area(&from, false)?;
-    }
     // DoorChangelevel.OpenDoor disabled the controls for this door before
     // calling ChangeLevel (DoorChangelevel.cs:206); a scene load would have
     // thrown that away, the move does not.
@@ -731,24 +729,44 @@ fn fire_save_event(name: &str) -> Result<(), String> {
 /// game's next save (design step 4). Handles kept alive here.
 static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new());
 
-/// Design step 3: the player leaves `area`, still on. As a door does
-/// (SaveController.cs:439-459): PlayerWillChangeLevel, OnMapChanging, then
-/// the save phases on the area's own top objects into the game's temp
-/// lists, kept as that area's entries.
-fn capture_leaving(area: &str) -> Result<String, String> {
+/// Rule 3 (docs/kept-areas.md): leaving an area, the game's own steps at a
+/// door (ChangeLevel 270, SaveGame 416-478) in the table's order, on the
+/// area left while it is still on; its entries kept in memory for the next
+/// save (rule 4); then it switches off. Returns what was kept.
+fn leave_area(area: &str) -> Result<String, String> {
+    let kept = leave_steps(area);
+    // Step 11: switched off, not unloaded; always, or the area left would
+    // stay on over the one entered (areas are built in the same place).
+    switch_area(area, false)?;
+    kept
+}
+
+/// Steps 1 to 10 of rule 3.
+fn leave_steps(area: &str) -> Result<String, String> {
+    // Step 1.
     fire_save_event("PlayerWillChangeLevel")?;
+    // Step 2.
     area_change_phase(area, "OnMapChanging")?;
+    // The game's temp lists, emptied as SaveGame makes new ones (449-450).
     let level = obj(save_static("tempSavedata_Level")?).ok_or("no level list")?;
     let global = obj(save_static("tempSavedata_Global")?).ok_or("no global list")?;
     level.invoke("Clear", &json!([]))?;
     global.invoke("Clear", &json!([]))?;
-    // SavingStarted first, as SaveGame (SaveController.cs:452): its
-    // listeners show what they hide so it is saved (FadeGameObjectController
-    // ShowAll, SMVHierarchy), and SavingDone after (478) hides it again.
+    // Step 3: its listeners show what they hide so it is saved
+    // (FadeGameObjectController ShowAll, SMVHierarchy).
     fire_save_event("SavingStarted")?;
-    for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary", "OnSavingGame", "OnSavingGameLatePrimary"] {
+    // Step 4.
+    for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary"] {
         run_phase(area, phase, false)?;
     }
+    // Step 5: the area's DestructibleList (still the game's: the area
+    // entered becomes the game's only in rule 2, step 2).
+    one_copy("DestructibleList")?.invoke("OnSavingGameDestructibleList", &json!([]))?;
+    // Step 7 (6 is not run).
+    for phase in ["OnSavingGame", "OnSavingGameLatePrimary"] {
+        run_phase(area, phase, false)?;
+    }
+    // Step 10 (8 and 9 are not run): SavingStarted's listeners hide again.
     fire_save_event("SavingDone")?;
     let level_entries = obj(level.invoke("ToArray", &json!([]))?).ok_or("no level entries")?;
     let global_entries = obj(global.invoke("ToArray", &json!([]))?).ok_or("no global entries")?;
