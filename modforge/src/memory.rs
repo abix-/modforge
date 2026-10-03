@@ -105,16 +105,18 @@ pub fn food_worth(known: &Known, need: Need, items: &crate::item::ItemRegistry) 
         .fold(0.0, f32::max)
 }
 
-/// How many days the food and water in `supplies` (each kind with how
-/// many) last `people`, `per_day` being one person's hunger and thirst
-/// points a day: (food, water). Infinite when nobody eats or drinks.
+/// How many days the food in `supplies` (each kind with how many) and
+/// the water in `litres` (crate::fluid, what its containers hold) last
+/// `people`, `per_day` being one person's hunger and thirst points a day:
+/// (food, water). Infinite when nobody eats or drinks.
 pub fn days_of<'a>(
     supplies: impl IntoIterator<Item = (&'a str, u32)>,
+    litres: f32,
     people: u32,
     per_day: (f32, f32),
     items: &crate::item::ItemRegistry,
 ) -> (f32, f32) {
-    let (mut hunger, mut thirst) = (0.0, 0.0);
+    let (mut hunger, mut thirst) = (0.0, litres * crate::fluid::THIRST_PER_LITRE);
     for (kind, count) in supplies {
         if let Some(food) = items.def(kind).and_then(|d| d.food) {
             hunger += food.hunger * count as f32;
@@ -126,17 +128,18 @@ pub fn days_of<'a>(
 }
 
 /// What a bunker is short of (topside design.md "Taking loot"): the food
-/// and water in `supplies` against what `people` eat and drink in `days`
-/// (food days, water days; `days_of`). Every need that falls short, the
-/// shortest first; empty when the store covers them all.
+/// in `supplies` and the water in `litres` against what `people` eat and
+/// drink in `days` (food days, water days; `days_of`). Every need that
+/// falls short, the shortest first; empty when the store covers them all.
 pub fn short_of<'a>(
     supplies: impl IntoIterator<Item = (&'a str, u32)>,
+    litres: f32,
     people: u32,
     days: (f32, f32),
     per_day: (f32, f32),
     items: &crate::item::ItemRegistry,
 ) -> Vec<Need> {
-    let (food, water) = days_of(supplies, people, per_day, items);
+    let (food, water) = days_of(supplies, litres, people, per_day, items);
     let mut short: Vec<(Need, f32)> = [(Need::Hunger, food / days.0), (Need::Thirst, water / days.1)]
         .into_iter()
         .filter(|(_, c)| *c < 1.0)
@@ -488,6 +491,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
         let mut memory = Memory::default();
@@ -523,6 +527,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
         let mut memory = Memory::default();
@@ -551,38 +556,37 @@ mod tests {
     fn a_bunker_is_short_of_what_does_not_cover_everyone_for_the_days() {
         use crate::item::{FoodStats, ItemDef, ItemKind, ItemRegistry};
         let mut items = ItemRegistry::default();
-        for (name, hunger, thirst) in [("canned food", 50.0, 0.0), ("water bottle", 0.0, 50.0)] {
-            items
-                .register(ItemDef {
-                    name: name.to_string(),
-                    description: String::new(),
-                    unique: false,
-                    kind: ItemKind::Food,
-                    max_stack: 10,
-                    quality_siblings: 1,
-                    combat: None,
-                    food: Some(FoodStats { hunger, thirst, health: 0.0 }),
-                    storage: None,
-                    armor: None,
-                    good_for: Default::default(),
-                    picture: None,
-                    layer_slots: Vec::new(),
-                    breaks_when_struck: false,
-                })
-                .unwrap();
-        }
+        items
+            .register(ItemDef {
+                name: "canned food".to_string(),
+                description: String::new(),
+                unique: false,
+                kind: ItemKind::Food,
+                max_stack: 10,
+                quality_siblings: 1,
+                combat: None,
+                food: Some(FoodStats { hunger: 50.0, thirst: 0.0, health: 0.0 }),
+                storage: None,
+                armor: None,
+                good_for: Default::default(),
+                picture: None,
+                layer_slots: Vec::new(),
+                breaks_when_struck: false,
+                holds_litres: None,
+            })
+            .unwrap();
         // Two people, one day, 100 hunger and 200 thirst each a day: four
-        // cans and eight bottles cover it.
+        // cans and 4 litres (100 thirst a litre) cover it.
         let per_day = (100.0, 200.0);
-        let enough = [("canned food", 4), ("water bottle", 8)];
-        assert!(short_of(enough, 2, (1.0, 1.0), per_day, &items).is_empty());
-        assert_eq!(short_of([("canned food", 4), ("water bottle", 2)], 2, (1.0, 1.0), per_day, &items), [Need::Thirst]);
-        assert_eq!(short_of([("canned food", 1), ("water bottle", 8)], 2, (1.0, 1.0), per_day, &items), [Need::Hunger]);
+        assert!(short_of([("canned food", 4)], 4.0, 2, (1.0, 1.0), per_day, &items).is_empty());
+        assert_eq!(short_of([("canned food", 4)], 1.0, 2, (1.0, 1.0), per_day, &items), [Need::Thirst]);
+        assert_eq!(short_of([("canned food", 1)], 4.0, 2, (1.0, 1.0), per_day, &items), [Need::Hunger]);
         assert_eq!(
-            short_of([("canned food", 2), ("water bottle", 1)], 2, (1.0, 1.0), per_day, &items),
+            short_of([("canned food", 2)], 0.5, 2, (1.0, 1.0), per_day, &items),
             [Need::Thirst, Need::Hunger],
             "short of both, the shortest first"
         );
+        assert_eq!(days_of([], 80.0, 2, per_day, &items).1, 20.0, "80 L is 20 days for two");
     }
 
     #[test]

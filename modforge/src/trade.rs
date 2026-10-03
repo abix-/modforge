@@ -129,7 +129,7 @@ mod tests {
     use super::*;
 
     fn stack(item: &str, count: u32) -> ItemStack {
-        ItemStack { item: item.to_string(), count, quality: None, note: None, layers: Vec::new() }
+        ItemStack { item: item.to_string(), count, quality: None, note: None, layers: Vec::new(), litres: 0.0 }
     }
 
     fn values() -> Values {

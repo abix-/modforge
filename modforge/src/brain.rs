@@ -49,10 +49,15 @@ pub struct Perception<'a> {
     /// and what they carry (topside design.md "Taking loot"): the needs
     /// that send them topside for more, the shortest first.
     pub bunker_short: Vec<Need>,
-    /// They carry food or water that belongs in the store.
+    /// They carry food that belongs in the store.
     pub carries_for_bunker: bool,
     /// Their bags hold no more.
     pub bags_full: bool,
+    /// The water in the containers they carry, and the room left in them,
+    /// in litres (crate::fluid): what they pour into their bunker's water,
+    /// and what they can still fill at a source.
+    pub carried_litres: f32,
+    pub water_room: f32,
     pub memory: &'a Memory,
     pub personality: &'a Personality,
     /// The registry's answer for a remembered thing: how much its
@@ -115,9 +120,18 @@ pub enum Do {
     Take {
         key: u64,
     },
-    /// At their bunker's store `key`: put in the food and water they
-    /// carry.
+    /// At their bunker's store `key`: put in the food they carry.
     Stock {
+        key: u64,
+    },
+    /// At the known source `key` (crate::fluid): fill the containers they
+    /// carry.
+    Fill {
+        key: u64,
+    },
+    /// At their bunker's store `key`: pour the water they carry into its
+    /// water (crate::fluid).
+    Pour {
         key: u64,
     },
     /// At `with`: trade for one thing that answers `need`, paying with
@@ -562,30 +576,41 @@ pub fn check(t: &mut Think, target: &Target) -> Status {
 }
 
 /// Take what they and their bunker need, as much as they can carry:
-/// until the bags are full or nothing in the box answers the need.
+/// until the bags are full or nothing in the box answers the need. Water
+/// is filled at a source (crate::fluid) until their containers are full
+/// or it gives no more.
 pub fn take(t: &mut Think, target: &Target) -> Status {
     let Target::Thing { key, need: Some(need), .. } = *target else {
         return Status::Failed;
     };
     let p = t.p;
-    if p.bags_full || !holds_for(p, key, need) {
+    let (full, act) = match need {
+        Need::Thirst => (p.water_room <= 0.0, Do::Fill { key }),
+        _ => (p.bags_full, Do::Take { key }),
+    };
+    if full || !holds_for(p, key, need) {
         t.act(vec![], None);
         return Status::Succeeded;
     }
-    t.act(vec![], Some(Do::Take { key }));
+    t.act(vec![], Some(act));
     Status::Running
 }
 
-/// Put what they carried home into the store, until nothing is carried.
+/// Put what they carried home into the store, until nothing is carried:
+/// the water poured into its water first, then the food put in.
 pub fn stock(t: &mut Think, target: &Target) -> Status {
     let Target::Thing { key, .. } = *target else {
         return Status::Failed;
     };
-    if !t.p.carries_for_bunker {
+    let act = if t.p.carried_litres > 0.0 {
+        Do::Pour { key }
+    } else if t.p.carries_for_bunker {
+        Do::Stock { key }
+    } else {
         t.act(vec![], None);
         return Status::Succeeded;
-    }
-    t.act(vec![], Some(Do::Stock { key }));
+    };
+    t.act(vec![], Some(act));
     Status::Running
 }
 
@@ -596,20 +621,19 @@ pub fn enter_supply(t: &mut Think, _: &Target) -> Option<Target> {
     t.p.store.map(|_| Target::None)
 }
 
-/// The best known box for any need the bunker is short of: a box seen
-/// holding something, since only what is inside can be carried home (a
-/// well is drunk from where it stands).
+/// The best known place for any need the bunker is short of: for water, a
+/// source where they fill the containers they carry (crate::fluid), while
+/// those have room; for food, a box seen holding something, since only
+/// what is inside can be carried home.
 fn supply_best(p: &Perception) -> Option<Target> {
     let (store, _) = p.store?;
-    if p.bags_full {
-        return None;
-    }
     p.bunker_short
         .iter()
+        .filter(|&&need| if need == Need::Thirst { p.water_room > 0.0 } else { !p.bags_full })
         .flat_map(|&need| {
             p.memory
                 .good_for(need, p.worth)
-                .filter(move |(k, _)| k.key != store && k.held.is_some())
+                .filter(move |(k, _)| k.key != store && (k.held.is_some() != (need == Need::Thirst)))
                 .map(move |(k, gives)| (k, need, gives - k.position.distance(p.position) / METRES_PER_POINT))
         })
         .max_by(|a, b| a.2.total_cmp(&b.2))
@@ -631,13 +655,16 @@ fn unopened<'a>(p: &Perception<'a>) -> Option<&'a Known> {
 }
 
 /// Carrying food or water home: when the bunker is no longer short, the
-/// bags are full, or there is nowhere left to look.
+/// bags (or, for water, the containers) are full, or there is nowhere
+/// left to look.
 pub fn enter_haul(t: &mut Think, _: &Target) -> Option<Target> {
     let p = t.p;
     let (store, at) = p.store?;
     let short = !p.bunker_short.is_empty();
     let nowhere_to_look = supply_best(p).is_none() && unopened(p).is_none();
-    (p.carries_for_bunker && (!short || p.bags_full || nowhere_to_look)).then_some(Target::Thing {
+    let food = p.carries_for_bunker && (!short || p.bags_full || nowhere_to_look);
+    let water = p.carried_litres > 0.0 && (!p.bunker_short.contains(&Need::Thirst) || p.water_room <= 0.0 || nowhere_to_look);
+    (food || water).then_some(Target::Thing {
         key: store,
         at,
         need: None,
@@ -810,7 +837,7 @@ pub fn wander(t: &mut Think, target: &Target) -> Status {
 /// A need or their bunker presses: a stroll gives way to it.
 pub fn pressing(t: &mut Think, _: &Target) -> bool {
     let p = t.p;
-    p.needs.worst_need().1 < NEED_LINE || (p.store.is_some() && (!p.bunker_short.is_empty() || p.carries_for_bunker))
+    p.needs.worst_need().1 < NEED_LINE || (p.store.is_some() && (!p.bunker_short.is_empty() || p.carries_for_bunker || p.carried_litres > 0.0))
 }
 
 // Reaction.
@@ -898,6 +925,8 @@ mod tests {
             bunker_short: Vec::new(),
             carries_for_bunker: false,
             bags_full: false,
+            carried_litres: 0.0,
+            water_room: 0.0,
             memory,
             personality,
             worth: &|_, _| 0.0,
@@ -1102,6 +1131,41 @@ mod tests {
         let mut t = Think::new(&p, &mut roll);
         going(&mut t, &Target::Point(Vec3::new(10.0, 0.0, 0.0)));
         assert_eq!(t.do_now, Some(Do::Wake));
+    }
+
+    /// A bunker short of water: with room in the containers they carry,
+    /// to the well they know to fill them (never to a box), filling until
+    /// full; then home, pouring into the store's water until none is
+    /// carried.
+    #[test]
+    fn short_of_water_they_fill_at_a_source_and_pour_it_home() {
+        let mut memory = Memory::default();
+        memory.see(7, "well", Vec3::new(10.0, 0.0, 0.0), 0);
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let well = |k: &crate::memory::Known, n: Need| if k.kind == "well" && n == Need::Thirst { 50.0 } else { 0.0 };
+        p.worth = &well;
+        p.store = Some((99, Vec3::new(0.0, 0.0, -5.0)));
+        p.bunker_short = vec![Need::Thirst];
+        p.water_room = 10.0;
+        let mut roll = Roll::new(1);
+        let fetch = enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).expect("to the well");
+        assert_eq!(fetch, Target::Thing { key: 7, at: Vec3::new(10.0, 0.0, 0.0), need: Some(Need::Thirst) });
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(take(&mut t, &fetch), Status::Running);
+        assert_eq!(t.do_now, Some(Do::Fill { key: 7 }), "filling");
+        p.water_room = 0.0;
+        p.carried_litres = 10.0;
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(take(&mut t, &fetch), Status::Succeeded, "full");
+        assert!(enter_fetch(&mut Think::new(&p, &mut roll), &Target::None).is_none(), "no room: not to the well");
+        let home = enter_haul(&mut Think::new(&p, &mut roll), &Target::None).expect("home with the water");
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(stock(&mut t, &home), Status::Running);
+        assert_eq!(t.do_now, Some(Do::Pour { key: 99 }), "pouring");
+        p.carried_litres = 0.0;
+        let mut t = Think::new(&p, &mut roll);
+        assert_eq!(stock(&mut t, &home), Status::Succeeded, "poured");
     }
 
     /// Seen in the running game (topside tests/thirst.rs): people worn out

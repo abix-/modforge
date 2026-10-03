@@ -709,6 +709,7 @@ mod tests {
             quality: None,
             note: None,
             layers: Vec::new(),
+            litres: 0.0,
         };
         let armors = [("shirt", 2.0), ("vest", 30.0), ("hat", 1.0), ("helmet", 10.0)];
         // Any wearable in any free slot: a hat and a helmet together, no
@@ -736,6 +737,7 @@ mod tests {
                     picture: None,
                     layer_slots: Vec::new(),
                     breaks_when_struck: false,
+                    holds_litres: None,
                 })
                 .unwrap();
         }

@@ -23,6 +23,7 @@ pub mod debug;
 pub mod edge;
 pub mod envelope;
 pub mod faction;
+pub mod fluid;
 pub mod genome;
 pub mod handoff;
 pub mod harness;

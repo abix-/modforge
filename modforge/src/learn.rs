@@ -285,6 +285,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
         }

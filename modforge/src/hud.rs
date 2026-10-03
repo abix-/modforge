@@ -793,6 +793,7 @@ mod tests {
             quality: None,
             note: None,
             layers: Vec::new(),
+            litres: 0.0,
         }
     }
 
@@ -937,6 +938,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
         }
@@ -1027,7 +1029,8 @@ mod tests {
             picture: None,
             layer_slots: Vec::new(),
             breaks_when_struck: false,
-        })
+            holds_litres: None,
+})
         .unwrap();
         let mut state = HudState::new();
         let mut inv = Inventory::new(3);
@@ -1225,7 +1228,8 @@ mod tests {
             picture: None,
             layer_slots: Vec::new(),
             breaks_when_struck: false,
-        })
+            holds_litres: None,
+})
         .unwrap();
         reg.register(crate::item::ItemDef {
             name: "hatchet".to_string(),
@@ -1242,7 +1246,8 @@ mod tests {
             picture: None,
             layer_slots: Vec::new(),
             breaks_when_struck: false,
-        })
+            holds_litres: None,
+})
         .unwrap();
         let mut stats = crate::survival::SurvivalStats::default();
         let mut gear = Equipment::default();

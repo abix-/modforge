@@ -43,6 +43,9 @@ pub enum ItemKind {
     /// Placed in the world and used there: a storage box, a crafting
     /// bench. A deployable with `storage` slots holds an inventory.
     Deployable,
+    /// Holds water up to its `holds_litres` (crate::fluid): a bottle, a
+    /// barrel. Drunk from, filled at a source, poured from.
+    Container,
     /// Words someone left: read where it lies (`write` makes one).
     Note,
     /// Used to heal: a bandage (its `food` says how much).
@@ -126,6 +129,10 @@ pub struct ItemDef {
     /// melee weapon in hand, by anyone (topside's tap). False for
     /// everything else.
     pub breaks_when_struck: bool,
+    /// A container's size in litres (crate::fluid): a bottle, a barrel.
+    /// None for everything that holds no water.
+    #[serde(default)]
+    pub holds_litres: Option<f32>,
 }
 
 #[derive(Default)]
@@ -363,12 +370,17 @@ pub struct ItemStack {
     /// The layers on this item, by `LayerDef` name, bottom to top, over
     /// the item itself. Set once, when it enters existence.
     pub layers: Vec<String>,
+    /// The water in each container of the stack, in litres
+    /// (crate::fluid); 0 for everything that holds none.
+    #[serde(default)]
+    pub litres: f32,
 }
 
 impl ItemStack {
-    /// Whether `other` may merge into this stack.
+    /// Whether `other` may merge into this stack: containers only when they
+    /// hold the same.
     pub fn stacks_with(&self, other: &ItemStack) -> bool {
-        self.item == other.item && self.quality == other.quality && self.layers == other.layers
+        self.item == other.item && self.quality == other.quality && self.layers == other.layers && self.litres == other.litres
     }
 }
 
@@ -381,12 +393,15 @@ pub fn create(def: &ItemDef, count: u32, odds: &[u64], now: f32, salt: u64) -> I
         tier,
         sibling: quality::roll_sibling(def.quality_siblings, now, salt),
     });
+    // A container comes into existence empty; whoever makes it with water
+    // in it (a store's barrel, a bottle found full) fills it after.
     ItemStack {
         item: def.name.clone(),
         count,
         quality,
         note: None,
         layers: Vec::new(),
+        litres: 0.0,
     }
 }
 
@@ -683,6 +698,7 @@ mod tests {
             picture: None,
             layer_slots: Vec::new(),
             breaks_when_struck: false,
+            holds_litres: None,
         }
     }
 
@@ -693,6 +709,7 @@ mod tests {
             quality: None,
             note: None,
             layers: Vec::new(),
+            litres: 0.0,
         }
     }
 

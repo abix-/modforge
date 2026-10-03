@@ -161,6 +161,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
         items
@@ -186,6 +187,7 @@ mod tests {
                 picture: None,
                 layer_slots: Vec::new(),
                 breaks_when_struck: false,
+                holds_litres: None,
             })
             .unwrap();
 
@@ -208,6 +210,7 @@ mod tests {
                 quality: None,
                 note: None,
                 layers: Vec::new(),
+                litres: 0.0,
             },
             20,
         );

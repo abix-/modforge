@@ -260,6 +260,12 @@ impl SurvivalStats {
         Ok(health)
     }
 
+    /// Drink `litres` of water (crate::fluid: what a container or a
+    /// source gave): thirst fills `THIRST_PER_LITRE` a litre, up to FULL.
+    pub fn drink(&mut self, litres: f32) {
+        self.thirst = (self.thirst + litres * crate::fluid::THIRST_PER_LITRE).min(FULL);
+    }
+
     pub fn starving(&self) -> bool {
         self.hunger <= 0.0
     }
@@ -320,6 +326,7 @@ mod tests {
             picture: None,
             layer_slots: Vec::new(),
             breaks_when_struck: false,
+            holds_litres: None,
         }
     }
 
@@ -452,6 +459,7 @@ mod tests {
             quality: None,
             note: None,
             layers: Vec::new(),
+            litres: 0.0,
         });
         let mut stats = SurvivalStats {
             hunger: 10.0,
