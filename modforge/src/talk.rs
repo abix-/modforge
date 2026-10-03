@@ -513,7 +513,7 @@ mod tests {
     // ---- lines as rules ----------------------------------------------
 
     fn rule(name: &str, part: &str, when: Vec<When>) -> LineDef {
-        LineDef { name: name.to_string(), part: part.to_string(), when, ways: vec![name.to_string()], tells: String::new(), felt: 0.0, wait: 0.0 }
+        LineDef { name: name.to_string(), part: part.to_string(), when, ways: vec![name.to_string()], tells: String::new(), felt: 0.0, wait: 0.0, gives: String::new() }
     }
 
     /// The Tap's opening and plain talk, as rules.

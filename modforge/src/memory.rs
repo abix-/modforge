@@ -14,7 +14,7 @@ use crate::survival::Need;
 /// by how much, as a field on its def (an item's `good_for`, a
 /// monument type's, the bunker's). A box of food is good for hunger;
 /// a camp for rest and safety.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GoodFor {
     pub needs: Vec<(Need, f32)>,
 }

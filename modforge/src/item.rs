@@ -34,7 +34,7 @@ impl GoodsFilter {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ItemKind {
     Food,
     Material,
@@ -57,7 +57,7 @@ pub enum ItemKind {
 /// on weapons and tools that can deal damage; None on food,
 /// materials, and non-combat items. What a hit does is the damage
 /// def it names (`crate::combat::DamageDef`); this is the firing.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CombatStats {
     /// The damage def this weapon lands.
     pub damage: String,
@@ -78,7 +78,7 @@ pub struct CombatStats {
 /// medicine; None on everything else. `health` heals (topside todo
 /// 10ca, Valheim's model: each food restores its own mix; a bandage is
 /// all health).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoodStats {
     pub hunger: f32,
     pub thirst: f32,
@@ -88,7 +88,7 @@ pub struct FoodStats {
 /// One item kind as data. `name` is the id; one concept, one name.
 /// `quality_siblings` is how many statistical siblings each quality
 /// tier has (see [`crate::quality`]).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemDef {
     pub name: String,
     /// One line on what it is and how it is used, shown when it is
@@ -249,7 +249,7 @@ impl ItemLedger {
 
 /// What a worn item does: the protection it adds. Any wearable goes in any
 /// free equipment slot.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Armor {
     pub amount: f32,
 }

@@ -66,6 +66,10 @@ pub struct EpisodeDef {
     /// Its pivot points reached by what someone does, not by a line (topside
     /// todo 11ai), each read from memory and the world.
     pub deeds: Vec<DeedDef>,
+    /// Its own items, registered with every other item when it is read
+    /// (a thing it brings into the world is one of them).
+    #[serde(default)]
+    pub items: Vec<crate::item::ItemDef>,
 }
 
 /// A pivot point reached by what is done (topside todo 11ai): its name, and
@@ -523,6 +527,10 @@ pub struct LineDef {
     /// if the player chooses nothing within this many real seconds. 0 for
     /// every other line.
     pub wait: f32,
+    /// What saying it hands over: the speaker gives one of this item to
+    /// the one spoken to, if they carry one. "" for nothing.
+    #[serde(default)]
+    pub gives: String,
 }
 
 impl LineDef {
@@ -1643,6 +1651,7 @@ mod tests {
             things: Vec::new(),
             errands: Vec::new(),
             deeds: Vec::new(),
+            items: Vec::new(),
         }
     }
 
@@ -1855,6 +1864,7 @@ mod tests {
             things: Vec::new(),
             errands: Vec::new(),
             deeds: Vec::new(),
+            items: Vec::new(),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1877,6 +1887,7 @@ mod tests {
             things: Vec::new(),
             errands: Vec::new(),
             deeds: Vec::new(),
+            items: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1922,6 +1933,7 @@ mod tests {
             tells: String::new(),
             felt,
             wait: 0.0,
+            gives: String::new(),
         };
         registry
             .register(EpisodeDef {
@@ -1935,6 +1947,7 @@ mod tests {
             things: Vec::new(),
             errands: Vec::new(),
             deeds: Vec::new(),
+            items: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1957,6 +1970,7 @@ mod tests {
             things: Vec::new(),
             errands: Vec::new(),
             deeds: Vec::new(),
+            items: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
