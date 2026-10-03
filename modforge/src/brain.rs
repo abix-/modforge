@@ -207,9 +207,15 @@ pub fn situation(p: &Perception) -> Situation {
 }
 
 /// What they learned picks among the day's life (topside life.md
-/// "Learning to stay alive").
+/// "Learning to stay alive"). Asked to be somewhere (an episode's errand,
+/// held to talk, holding a place), what was asked outranks their own
+/// errands after it in the tree (supplying, looking, wandering), whatever
+/// they learned; what comes before it (danger, their own needs) still
+/// weighs against it (topside orchestrator, 2026-10-03: Roxanne left the
+/// talk to look in a box).
 pub fn learned(t: &mut Think, offered: &[Choice]) -> usize {
-    t.p.memory.learned.pick(&situation(t.p), offered)
+    let up_to = offered.iter().position(|c| *c == Choice::Asked).map_or(offered.len(), |i| i + 1);
+    t.p.memory.learned.pick(&situation(t.p), &offered[..up_to])
 }
 
 // The storm.
@@ -353,6 +359,12 @@ pub fn fight(t: &mut Think, _: &Target) -> Status {
 /// The storm or a threat takes a person out of whatever they are doing.
 pub fn danger(t: &mut Think, _: &Target) -> bool {
     (t.p.storm_coming && t.p.home.is_some()) || threat(t.p).is_some()
+}
+
+/// Asked to be somewhere takes a person out of their own errands
+/// (supplying, looking, wandering), which `learned` ranks below it.
+pub fn asked_now(t: &mut Think, _: &Target) -> bool {
+    t.p.asked.is_some()
 }
 
 /// Hungry or thirsty with the answer in their own bags: eat or drink it
