@@ -2,6 +2,15 @@
 
 | Priority | Area | Todo | Done when |
 |---:|---|---|---|
+| 1 | research | [ ] Research how the map uses the current area (MapController, Map, PlayerMarker; MapController.Start and OnLoadingGame call GetCurrentSceneMap) | research.md says, with lines, what picks the area's map and when; any kept-area gap is its own row |
+| 1 | research | [ ] Research how relays and area logic start (Relay, RelayAuto, TriggerMultiple, ...; Relay.OnLoadingGame re-fires its start outputs on every load) | research.md says, with lines, which start outputs fire on which load or Start; any kept-area gap is its own row |
+| 2 | research | [ ] Research how tasks and quests use areas (TaskController, TaskItemsManager, task triggers) | research.md says, with lines, which tasks check or react to the area; any kept-area gap is its own row |
+| 2 | research | [ ] Research how dialogue triggers start (Pixel Crushers Dialogue System triggers on start or on area load) | research.md says, with lines, which triggers fire per load or Start; any kept-area gap is its own row |
+| 3 | research | [ ] Research how the tenement uses areas (TenementController, TenementEventController.currentSceneResidents) | research.md says, with lines, what is per area; any kept-area gap is its own row |
+| 3 | research | [ ] Research how police and crime follow the player through doors (Act_Police, pursuit) | research.md says, with lines, what a chasing NPC does at a door; any kept-area gap is its own row |
+| 3 | research | [ ] Research how weather and indoor or outdoor areas work (WeatherManager, weather zones) | research.md says, with lines, how weather follows the area; any kept-area gap is its own row |
+| 4 | research | [ ] Research how building and placed furniture use areas (BuildingSystem, FurniturePlaceable) | research.md says, with lines, what is per area; any kept-area gap is its own row |
+| 4 | research | [ ] Research how fast travel moves the player (FastTravelController) | research.md says, with lines, whether it uses doors or normal loads; any kept-area gap is its own row |
 | 5 | research | [ ] Map the save/load flow: which SavableScript subclasses hold player state, in what order | Save flow documented |
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 6 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |
