@@ -26,52 +26,61 @@ namespace Unityforge.Shim
             return scene.IsValid() && scene.isLoaded ? scene.GetRootGameObjects() : new GameObject[0];
         }
 
-        // Scenes to switch off the moment they finish loading, and what was
-        // switched off in each.
+        // Scene names to load quietly, waiting for their load alongside to
+        // finish. A name, because the scene does not exist yet.
         private static readonly HashSet<string> Quiet = new HashSet<string>();
-        private static readonly Dictionary<string, List<GameObject>> SwitchedOff = new Dictionary<string, List<GameObject>>();
+        // Per load of a scene (Scene.handle, new on every load; the game
+        // never has two loads of one area, so a name is not a load: kept by
+        // name, a later normal load of an area loaded quietly once counted
+        // as never entered and its Spawners' OnDestroy was skipped).
+        // Loads loaded quietly and not switched on since: their objects
+        // woke (Awake, OnEnable) but never started.
+        private static readonly HashSet<int> NeverEntered = new HashSet<int>();
+        // The top objects switched off in each load loaded quietly.
+        private static readonly Dictionary<int, List<GameObject>> SwitchedOff = new Dictionary<int, List<GameObject>>();
         private static bool _hooked;
 
         /// <summary>
-        /// Call before loading a scene alongside: when it has loaded, its
-        /// top objects that are on are switched off in Unity's sceneLoaded,
-        /// which runs after Awake and OnEnable and before any Start, so
-        /// nothing in the scene starts (no Start, no coroutines, no start
-        /// events) until it is switched on.
+        /// Call before loading a scene alongside (LoadSceneMode.Additive):
+        /// when it has loaded, its top objects that are on are switched off
+        /// in Unity's sceneLoaded, which runs after Awake and OnEnable and
+        /// before any Start, so nothing in the scene starts (no Start, no
+        /// coroutines, no start events) until it is switched on. The game's
+        /// own loads (single mode) are never taken.
         /// </summary>
         public static void LoadQuietly(string sceneName)
         {
             if (!_hooked)
             {
                 SceneManager.sceneLoaded += OnSceneLoaded;
+                SceneManager.sceneUnloaded += OnSceneUnloaded;
                 _hooked = true;
             }
             Quiet.Add(sceneName);
-            NeverEntered.Add(sceneName);
         }
-
-        // Scenes loaded quietly and not switched on since: their objects
-        // woke (Awake, OnEnable) but never started.
-        private static readonly HashSet<string> NeverEntered = new HashSet<string>();
 
         /// <summary>The player entered a scene loaded quietly: its objects start.</summary>
         public static void Entered(string sceneName)
         {
-            NeverEntered.Remove(sceneName);
+            var scene = SceneManager.GetSceneByName(sceneName);
+            if (scene.IsValid()) NeverEntered.Remove(scene.handle);
         }
 
         /// <summary>
-        /// True when the component's object is in a scene loaded quietly and
+        /// True when the component's object is in a load loaded quietly and
         /// never entered, so its Start never ran.
         /// </summary>
         public static bool InAreaNeverEntered(object me)
         {
-            return me is Component c && c != null && NeverEntered.Contains(c.gameObject.scene.name);
+            return me is Component c && c != null && NeverEntered.Contains(c.gameObject.scene.handle);
         }
 
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (!Quiet.Remove(scene.name)) return;
+            if (mode != LoadSceneMode.Additive || !Quiet.Remove(scene.name)) return;
+            // Before switching off: OnDisable on objects never started is
+            // told apart by this (FirstCopyGuard.NeverStartedFinalizer).
+            NeverEntered.Add(scene.handle);
             var off = new List<GameObject>();
             foreach (var top in scene.GetRootGameObjects())
             {
@@ -79,17 +88,25 @@ namespace Unityforge.Shim
                 top.SetActive(false);
                 off.Add(top);
             }
-            SwitchedOff[scene.name] = off;
+            SwitchedOff[scene.handle] = off;
+        }
+
+        // A load is gone: what was kept about it goes with it.
+        private static void OnSceneUnloaded(Scene scene)
+        {
+            NeverEntered.Remove(scene.handle);
+            SwitchedOff.Remove(scene.handle);
         }
 
         /// <summary>
-        /// The top objects LoadQuietly switched off in a scene, once; empty
-        /// when none.
+        /// The top objects LoadQuietly switched off in the loaded scene of
+        /// that name, once; empty when none.
         /// </summary>
         public static GameObject[] TakeSwitchedOff(string sceneName)
         {
-            if (!SwitchedOff.TryGetValue(sceneName, out var off)) return new GameObject[0];
-            SwitchedOff.Remove(sceneName);
+            var scene = SceneManager.GetSceneByName(sceneName);
+            if (!scene.IsValid() || !SwitchedOff.TryGetValue(scene.handle, out var off)) return new GameObject[0];
+            SwitchedOff.Remove(scene.handle);
             return off.ToArray();
         }
 

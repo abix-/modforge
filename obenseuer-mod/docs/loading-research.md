@@ -791,6 +791,67 @@ Answered (2026-10-02):
   Steps 2 and 3 run the OnMapChanged and OnMapChanging phases and fire
   PlayerWillChangeLevel, as a door does.
 
+## The game's door, step by step, and what the mod does at each step (2026-10-03)
+
+The game's door, from the decompiled source. Every object of the area left
+and of the area entered goes through it exactly once, in this order, and
+only one area exists at any time:
+
+| # | The game (SaveController.cs unless named) | Kept areas, the mod (kept_loaded.rs) |
+|---|---|---|
+| 1 | Door: `Changelevel.ChangeLevel` (Changelevel.cs:72-87), fade in (`ChangeLevelDelay`, 344-355) | Door prefix moves the player without the fade |
+| 2 | `PlayerWillChangeLevel` (InteractableChair, InteractableLadder) | Fired (`capture_leaving`, 659) |
+| 3 | `SaveGame` into the older autosave (356-357): OnMapChanging on the active area and the kept-through-loads objects (446-447) | OnMapChanging on the area left, the home area, the kept-through-loads objects (`area_change_phase`). No autosave |
+| 4 | `SavingStarted`, save phases on the active area, files written (452-484) | Save phases on the area left, kept in memory, written at the next save. `SavingStarted` and `SavingDone` not fired |
+| 5 | Scene swap, single mode (634 or LoadingScreen): every object of the old area gets OnDisable, then OnDestroy, and is gone | The area left is switched off: OnDisable only. Its objects stay, and stay subscribed to game-wide events they subscribed to in Awake, OnEnable or Start (Spawner to `TimeOfDayAzure.SecondsPassed`, Spawner.cs:175, released only in OnDestroy, 388) |
+| 6 | New area: Awake, OnEnable; Start on the next frame | First visit: Awake and OnEnable ran when it loaded alongside (switched off in sceneLoaded, `SceneTools.LoadQuietly`); Start when switched on. Later visits: OnEnable only, no Start |
+| 7 | `LoadingStarted`; load phases Primary, Secondary, Tertiary on the active area (640-643) | First visit only: the same phases (`apply_saved_data`). `LoadingStarted` not fired |
+| 8 | Kept-through-loads `OnLoadingGameSpecial`, `DestructibleList.OnLoadingGameDestructibleList`, the DestructibleList check including switched-off objects (644-646) | Not run |
+| 9 | Next frame: OnLoadingGame, OnLoadingGameLatePrimary, the DestructibleList check again (647-650) | OnLoadingGame and LatePrimary, same frame. The check not run |
+| 10 | OnMapChanged on the active area only (651-654) | On the area, the home area, and the kept-through-loads objects: the last is not what the game does |
+| 11 | Player to the arrival point, dialogue data (655-659) | Player moved (TeleportPlayer); dialogue data not applied |
+| 12 | Temp lists cleared, `Loading` false, `LoadingDone` (BlackoutController, ItemAchievementList, NaturalLightSourceChecker), fade out (660-664) | Lists cleared; `LoadingDone` not fired |
+| 13 | A save load from anywhere: the same, from step 5, with every area unloaded | `reset()` clears the mod's Rust state, the game loads; the shim's own state is not cleared (below) |
+
+What the mod keeps between steps, and whether it lives as long as what it
+describes:
+
+| State | Where | Kept by | Cleared | Right? |
+|---|---|---|---|---|
+| Areas loaded quietly, still loading | `SceneTools.Quiet` | scene name | when its sceneLoaded comes | No: a load cut off by `reset()` leaves the name, and the game's own next load of that area is then switched off whole |
+| Areas never entered | `SceneTools.NeverEntered` | scene name | on entering only | No: never cleared on a normal load, so a later normal load of the same area counts as never entered. Its objects started, but OnDestroy is skipped for them; a Spawner stays subscribed after it is destroyed. This fits the flood (NullReferenceException at Spawner.DeltaSeconds every frame after loading an autosave, after runs that loaded Open Sewer Tenement both ways); not proven |
+| Top objects LoadQuietly switched off | `SceneTools.SwitchedOff` | scene name | taken once | Same name risk as `Quiet` |
+| Areas loaded, swapped-off tops, captured entries, data applied, home | `kept_loaded.rs` statics | area name | `reset()` | Yes, while every normal load goes through `reset()`. A normal load the mod did not start (a door before the door prefix is on, the menu, a game over) does not: not checked |
+| An area's own setup tops switched off | `first_copy_wins::SWITCHED_OFF_IDS` | instance id | never | Harmless: ids are not reused in one run |
+
+Proven and fixed (2026-10-03): research_kept_scenario.rs with kept areas
+off, after Open Sewer Tenement had loaded alongside, with state kept by
+name: 12684 game errors in one run (12540 at Spawner.DeltaSeconds, 88
+RelayWeekdays.Check, 32 VendingMachine.MinutePassed, 16 Clock.CurrentTime,
+7 Trade.DeltaSeconds: all subscribe to a game-wide event when they start
+and unsubscribe in OnDestroy). SceneTools now keeps loaded quietly, never
+entered and switched off per load (`Scene.handle`), takes only the mod's
+own loads alongside (additive mode), and drops a load's state when it
+unloads. The same run: 1 error (LightController.Awake, also the game's
+own); with kept areas on: 2 (LightController.Awake).
+
+So the mod departs from the game in four ways, and every bug so far is
+one of them:
+
+1. It keeps state by area name. The game never has two loads of one area
+   alive, so a name is not a load. The mod's state has to belong to one
+   load of an area (Unity's `Scene.handle`, new on every load), or be
+   cleared whenever the game loads.
+2. It leaves out steps of the game's sequence: the autosave, `SavingStarted`
+   and `SavingDone`, `LoadingStarted`, the DestructibleList steps, the
+   frame between steps 7 and 9, dialogue data, `LoadingDone`.
+3. It adds a step the game does not take: OnMapChanged on the
+   kept-through-loads objects.
+4. An area left is switched off, not unloaded: its objects keep what they
+   subscribed to and keep running for game-wide events (a switched-off
+   Spawner still gets `SecondsPassed`). Not yet measured what that does in
+   play.
+
 ## The lifecycle rules kept areas break: full scan (2026-10-02)
 
 The game assumes one area exists at a time. Every bug so far broke one of
