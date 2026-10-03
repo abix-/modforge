@@ -494,6 +494,7 @@ pub fn generate_building(def: &BuildingTypeDef, roll: &mut Roll) -> StructureDef
         floor_color,
         rooms,
         stairs,
+        hatches: Vec::new(),
         furniture,
         lights,
         parts: Vec::new(),
@@ -1018,6 +1019,7 @@ mod tests {
             floor_color: [0.3, 0.3, 0.3],
             rooms: Vec::new(),
             stairs: Vec::new(),
+            hatches: Vec::new(),
             furniture: Vec::new(),
             lights: Vec::new(),
             parts: (0..n)

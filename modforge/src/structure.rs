@@ -84,6 +84,40 @@ pub struct StairDef {
     pub landing: f32,
 }
 
+/// A hatch: a door lying in a floor over a way down (topside: the
+/// player's room's door in the bunker you start in, lying in the surface
+/// room's floor over the stairs). Its hole is whole tiles in the floor of
+/// the level at `level`: `min` its first tile (structure local x, z) and
+/// `size` how many tiles across x and z. It turns up on its `hinge` edge.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Hatch {
+    pub level: f32,
+    pub min: (i32, i32),
+    pub size: (i32, i32),
+    pub hinge: Side,
+}
+
+impl Hatch {
+    /// The tiles of its hole.
+    pub fn tiles(&self) -> Vec<(i32, i32)> {
+        let (x0, z0) = self.min;
+        (z0..z0 + self.size.1).flat_map(|z| (x0..x0 + self.size.0).map(move |x| (x, z))).collect()
+    }
+
+    /// Its hinge edge, structure local on the ground: its two ends, and the
+    /// way across the hole from it (a unit step) with how far that is.
+    pub fn hinge_edge(&self) -> ([Vec2; 2], Vec2, f32) {
+        let lo = Vec2::new(self.min.0 as f32, self.min.1 as f32);
+        let hi = lo + Vec2::new(self.size.0 as f32, self.size.1 as f32);
+        match self.hinge {
+            Side::East => ([Vec2::new(hi.x, lo.y), Vec2::new(hi.x, hi.y)], Vec2::NEG_X, hi.x - lo.x),
+            Side::West => ([Vec2::new(lo.x, lo.y), Vec2::new(lo.x, hi.y)], Vec2::X, hi.x - lo.x),
+            Side::South => ([Vec2::new(lo.x, hi.y), Vec2::new(hi.x, hi.y)], Vec2::NEG_Y, hi.y - lo.y),
+            Side::North => ([Vec2::new(lo.x, lo.y), Vec2::new(hi.x, lo.y)], Vec2::Y, hi.y - lo.y),
+        }
+    }
+}
+
 /// A solid block: furniture, a crate, any obstacle. Collides.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SolidDef {
@@ -342,6 +376,7 @@ pub fn capture(
             floor_color,
             rooms: Vec::new(),
             stairs: Vec::new(),
+            hatches: Vec::new(),
             furniture: Vec::new(),
             lights: Vec::new(),
             parts: group,
@@ -446,6 +481,8 @@ pub struct StructureDef {
     pub floor_color: Rgb,
     pub rooms: Vec<RoomDef>,
     pub stairs: Vec<StairDef>,
+    /// Doors lying in its floors over the ways down.
+    pub hatches: Vec<Hatch>,
     pub furniture: Vec<SolidDef>,
     pub lights: Vec<LightDef>,
     /// Captured parts. Empty for authored structures.
@@ -775,6 +812,8 @@ pub enum TileKind {
     Wall,
     Door,
     Furniture,
+    /// A hatch's hole: no floor, a door lying over the way down.
+    Hatch,
 }
 
 impl TileKind {
@@ -784,13 +823,14 @@ impl TileKind {
     }
 
     /// Which wins when two things land on one tile: a doorway through
-    /// a wall, a wall over another room's floor.
+    /// a wall, a wall over another room's floor, a hatch's hole over the
+    /// floor it is cut in.
     fn rank(self) -> u8 {
         match self {
             TileKind::Floor => 0,
             TileKind::Furniture => 1,
             TileKind::Wall => 2,
-            TileKind::Door => 3,
+            TileKind::Door | TileKind::Hatch => 3,
         }
     }
 }
@@ -839,8 +879,9 @@ pub fn levels(def: &StructureDef) -> Vec<(f32, f32)> {
 /// every room that rises through the ground from below (a stair tower
 /// going down), structure-local tiles as `tile_plan` counts them, but not
 /// where a slab is walked on at the ground (its landing): only over the
-/// way down. The consumer puts no ground there, so the way down is seen
-/// and walked into, and the landing joins the floor beside it.
+/// way down; and every hatch's hole in the ground floor. The consumer puts
+/// no ground there, so the way down is seen and walked into, and the
+/// landing joins the floor beside it.
 pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
     let walked_at_ground = |x: i32, z: i32| {
         let (cx, cz) = (x as f32 + 0.5, z as f32 + 0.5);
@@ -854,6 +895,9 @@ pub fn open_to_below(def: &StructureDef) -> Vec<(i32, i32)> {
     for room in def.rooms.iter().filter(|r| r.origin.y < -0.5 && r.origin.y + r.interior.y > 0.5) {
         let (x0, z0, w, l) = room_tiles(room);
         tiles.extend((z0..z0 + l).flat_map(|z| (x0..x0 + w).map(move |x| (x, z))).filter(|&(x, z)| !walked_at_ground(x, z)));
+    }
+    for hatch in def.hatches.iter().filter(|h| h.level.abs() < 0.5) {
+        tiles.extend(hatch.tiles());
     }
     tiles
 }
@@ -1029,6 +1073,12 @@ pub fn tile_plan_at(def: &StructureDef, level: f32) -> Vec<TileRun> {
                 put(&mut tiles, t.0, t.1, kind, color, DOORWAY);
                 doorways.push((t, through));
             }
+        }
+    }
+    // A hatch in this level's floor: its hole, no floor.
+    for hatch in def.hatches.iter().filter(|h| (h.level - level).abs() < 0.5) {
+        for (x, z) in hatch.tiles() {
+            put(&mut tiles, x, z, TileKind::Hatch, DOOR_COLOR, TileKind::Hatch.rank());
         }
     }
     // A doorway is usable: the tile on each side of it is kept clear, and
@@ -1931,6 +1981,7 @@ mod shape_tests {
             floor_color: CONCRETE_FLOOR,
             rooms: Vec::new(),
             stairs: Vec::new(),
+            hatches: Vec::new(),
             furniture: Vec::new(),
             lights: Vec::new(),
             parts: Vec::new(),
@@ -2070,6 +2121,7 @@ mod tests {
                 room(5.5, gap(Side::West)),
             ],
             stairs: vec![],
+            hatches: vec![],
             // A crate right behind the doorway: the doorway stays usable.
             furniture: vec![SolidDef {
                 center: Vec3::new(3.5, 0.5, 0.5),
@@ -2124,6 +2176,7 @@ mod tests {
                 ceiling: true,
             }],
             stairs: vec![],
+            hatches: vec![],
             furniture: vec![SolidDef {
                 center: Vec3::new(-2.4, 0.25, 3.0),
                 size: Vec3::new(1.0, 0.5, 2.0),
@@ -2168,10 +2221,34 @@ mod tests {
             floor_color: CONCRETE_FLOOR,
             rooms,
             stairs: vec![],
+            hatches: vec![],
             furniture: vec![],
             lights: vec![],
             parts: vec![],
         }
+    }
+
+    /// A room on the ground over a room below, a hatch in the ground
+    /// floor: its tiles are the hatch's hole on the ground's plan, not
+    /// floor; the ground is left open over it; the level below has its own
+    /// floor; the hinge edge runs along the hatch's side.
+    #[test]
+    fn a_hatch_is_a_hole_in_its_floor_left_open_to_below() {
+        let mut d = def(vec![room(Vec3::ZERO), room(Vec3::new(0.0, -3.0, 0.0))]);
+        d.hatches.push(Hatch { level: 0.0, min: (1, -2), size: (2, 4), hinge: Side::East });
+        let kind_at = |plan: &[TileRun], t: (i32, i32)| plan.iter().find(|r| r.row == t.1 && t.0 >= r.from && t.0 < r.to).map(|r| r.kind);
+        let ground = tile_plan_at(&d, 0.0);
+        let hole = d.hatches[0].tiles();
+        assert_eq!(hole.len(), 8);
+        assert!(hole.iter().all(|t| kind_at(&ground, *t) == Some(TileKind::Hatch)), "the hole is the hatch's on the ground");
+        assert_eq!(kind_at(&ground, (0, 0)), Some(TileKind::Floor), "the rest is floor");
+        let below = tile_plan_at(&d, -3.0);
+        assert!(hole.iter().all(|t| kind_at(&below, *t) == Some(TileKind::Floor)), "the room below keeps its floor");
+        let open = open_to_below(&d);
+        assert!(hole.iter().all(|t| open.contains(t)) && open.len() == hole.len(), "the ground open over the hole only: {open:?}");
+        let ([a, b], across, width) = d.hatches[0].hinge_edge();
+        assert_eq!((a, b), (Vec2::new(3.0, -2.0), Vec2::new(3.0, 2.0)), "the east edge");
+        assert_eq!((across, width), (Vec2::NEG_X, 2.0));
     }
 
     #[test]
