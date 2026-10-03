@@ -7,6 +7,7 @@ The Walking Trade history is maintained in [its project changelog](../thewalking
 
 | Area | Shipped | Verification |
 |---|---|---|
+| `obenseuer-mod` first_copy_wins.rs, kept_loaded.rs | [x] NPCManager, info_map, info_water_source area-owned (the rule and the scan of 199 managers in docs); area-owned managers set before the area switches on | The check passes with two round trips and asserts NPCManager.ActiveScene names the area entered after every kept door; only the check's own loads |
 | `obenseuer-mod` kept_loaded.rs | [x] Decide: autosave at a kept door | Operator: no autosave at doors, the player saves (docs/kept-areas.md, differences) |
 | `obenseuer-mod` kept_loaded.rs | [x] Rule 3 (docs/kept-areas.md): leaving an area is one function (`leave_area`) that runs the table's steps 1 to 11 in order, the area's DestructibleList saved (step 5), the area always switched off (step 11) | The check passes with two round trips and 1 game error (LightController.Awake, the game's own); every leaving logs Ok |
 | `obenseuer-mod` kept_loaded.rs | [x] Rule 2 (docs/kept-areas.md): entering an area is one function (`enter_area`) that runs the table's steps 1 to 12 in order, area-owned managers set to the area's copy, the arrival point read from the area's own list | The check passes with two round trips, no new errors; every entry logs LoadingStarted, saved data (with the DestructibleList steps on a first visit), OnMapChanged, LoadingDone all Ok |

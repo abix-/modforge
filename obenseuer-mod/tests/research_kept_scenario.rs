@@ -83,6 +83,12 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
             k["trips"].as_array().map_or(0, |t| t.len()) > trips && k["current"].as_str() == Some(to)
         });
         println!("  trip: {}", kept(api)["trips"].as_array().and_then(|t| t.last().cloned()).unwrap_or_default());
+        // The NPC system's idea of the player's area (NPCManager.ActiveScene,
+        // read by 20 NPC code paths) is the area entered.
+        let t = handle_of(&call_static(api, "System.Type", "GetType", json!(["NPCManager, Assembly-CSharp"]))).expect("NPCManager type");
+        let f = handle_of(&call(api, t, "GetField", json!(["instance"]))).expect("instance field");
+        let npc = handle_of(&call(api, f, "GetValue", json!([null]))).expect("NPCManager.instance");
+        assert_eq!(call(api, npc, "get_ActiveScene", json!([])).as_str(), Some(to), "NPCManager.ActiveScene after the door");
     } else {
         wait_for_normal_load(api, &controller);
         wait_for(&format!("in {to}"), 30, || level_now(api) == to);

@@ -513,12 +513,14 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
 /// 2 and 10 now; 3, 4 and 6 the next frame (after the area's objects
 /// started, as in a normal load); 8, 9 and 12 the frame after.
 fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
+    // Step 2 before the switch-on of step 1, as in a load (Awake sets
+    // `instance` before OnEnable): its area-owned managers are the game's,
+    // so one that checks `instance` in OnEnable finds itself.
+    invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([area]))?;
     // Step 1: the area is the active scene (objects the game creates go
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
     switch_area(area, true)?;
-    // Step 2: its area-owned managers are the game's.
-    invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([area]))?;
     // Step 10: the player to the arrival point.
     point.invoke("TeleportPlayer", &json!([]))?;
     *CURRENT.lock().unwrap() = Some(area.to_string());

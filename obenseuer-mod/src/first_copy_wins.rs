@@ -63,7 +63,14 @@ pub(crate) const PLAYER_SETUP: &[&str] = &["ThirdPersonCameraController", "Pause
 /// Area-owned managers (docs/kept-areas.md, rule 1, which copy): they hold
 /// their area's own data, so they are the area's content, and the game uses
 /// the copy of the area the player is in.
-const AREA_OWNED: &[&str] = &["PlayerLevelEntrypoints", "DestructibleList", "SleepEventController"];
+const AREA_OWNED: &[&str] = &[
+    "PlayerLevelEntrypoints",
+    "DestructibleList",
+    "SleepEventController",
+    "NPCManager",
+    "info_map",
+    "info_water_source",
+];
 
 pub fn install() {
     let start = std::time::Instant::now();

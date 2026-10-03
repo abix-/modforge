@@ -991,6 +991,17 @@ whether the second one is the mod's is not known from one run each.
   by 20 NPC code paths (spawning, schedules, the NPC director,
   pathfinding between areas). The live NPCManager is home's, so after a
   kept door it still names home. NPCManager is area-owned.
+- Which managers are area-owned: of the game's 199 managers (a class
+  whose Awake or OnEnable sets its own static to `this`), 13 save into the
+  area's file or use the area's name. Read one by one: JanitorController,
+  SaveSceneManager, PlayerIdentity, WaterSourceController read the active
+  scene's name when they need it (right: the area entered is the active
+  scene); ReadSceneNames, LoadMenu, LoadOnLevelIni, SaveController are kept
+  through loads or menu only; Crime reads info_game_logic. Area-owned:
+  DestructibleList, SleepEventController (area file), NPCManager (name
+  cached in Start), and the per-area settings `info_game_logic` (read in 5
+  files), `info_map` (4), `info_water_source` (1), with
+  PlayerLevelEntrypoints (the area's arrival points).
 - LightController.Awake NullReferenceException: a LightController on an
   object with no Light (`cullLight.intensity`, offset 0x0c). The game's
   own scene mistake; it is logged when such an area loads, alongside or

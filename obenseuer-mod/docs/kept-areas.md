@@ -73,8 +73,29 @@ does not set is not a manager: `Storage.active` is the box open now.
     dropped and destroyed items, saved in the area's file),
     `SleepEventController`
     (`Game_Logic/Controllers/WaitingController/SleepEventController`, saved
-    in the area's file). Found by where they save and what they hold; a
-    class shown to be area-owned later is added here first.
+    in the area's file), `NPCManager` (`Game_Logic/Controllers/NPC/NPCManager`,
+    caches the area's name in Start, NPCManager.cs:60, read by 20 NPC code
+    paths), `info_map` (`__MAIN/info_map`), `info_water_source`
+    (the area's water source, where it has one). Each sits alone on its
+    own object with no children (research_area_owned.rs).
+  - How they are found: a manager is area-owned when it saves into the
+    area's file, caches the area's name instead of reading it when needed,
+    or holds settings or objects built for its area (the `info_*`
+    classes, arrival points). Reading the area's name when needed is not
+    area-owned: the area entered is the active scene (rule 2, step 1). The
+    scan of the game's 199 managers and its reading are in
+    loading-research.md; a class shown to be area-owned later is added
+    here first.
+  - Not area-owned although it holds area settings: `info_game_logic`. It
+    owns its area's player setup: its OnEnable destroys its own object
+    when `instance` is another copy, and its OnDestroy destroys `Main`,
+    the setup (info_game_logic.cs:85-95, 177-183). Made area-owned, walking
+    back home destroyed the live player and managers (the identity fell
+    back to "Esko_Virtanen"). It stays a game-wide manager; its per-area
+    settings (prison, sleep safety, background radiation, sky) stay
+    home's in kept areas: todo.
+  - Order on entering (rule 2): the area-owned managers become the game's
+    before the area switches on, as Awake runs before OnEnable in a load.
 
 ## Rule 2: entering an area
 
