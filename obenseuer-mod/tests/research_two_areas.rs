@@ -14,7 +14,7 @@
 //!
 //! OBENSEUER_SECOND_AREA picks the area to load (default "Interior Tenement
 //! Gatehouse"). SKIPs (prints why and passes) when the game is not running.
-//! Results go to docs/two-areas.txt.
+//! Results go to output/two-areas.txt.
 
 mod common;
 use std::collections::HashSet;
@@ -214,7 +214,7 @@ fn second_area_loaded_alongside_and_kept() {
         say(format!("door areas overlap in space: {overlap}"));
     }
 
-    let path = format!("{}/docs/two-areas.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("two-areas.txt");
     std::fs::write(&path, out.join("\n") + "\n").expect("write the results");
     println!("\nwritten to {path}; both areas stay loaded");
 }

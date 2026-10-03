@@ -13,7 +13,7 @@
 //!
 //! OBENSEUER_SECOND_AREA picks the area (default "Interior Tenement
 //! Gatehouse"). SKIPs (prints why and passes) when the game is not running.
-//! Results go to docs/area-player-setup.txt.
+//! Results go to output/area-player-setup.txt.
 
 mod common;
 use std::collections::{BTreeMap, HashSet};
@@ -160,7 +160,7 @@ fn second_area_player_setup_parents() {
         }
     }
 
-    let path = format!("{}/docs/area-player-setup.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("area-player-setup.txt");
     std::fs::write(&path, out.join("\n") + "\n").expect("write the results");
     println!("\nwritten to {path}; both areas stay loaded, load a save afterwards");
 }

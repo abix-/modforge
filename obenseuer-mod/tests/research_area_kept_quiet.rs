@@ -17,7 +17,7 @@
 //!
 //! OBENSEUER_SECOND_AREA picks the area (default "Interior Tenement
 //! Gatehouse"). SKIPs (prints why and passes) when the game is not running.
-//! Results go to docs/area-kept-quiet.txt.
+//! Results go to output/area-kept-quiet.txt.
 
 mod common;
 use std::collections::HashSet;
@@ -258,7 +258,7 @@ fn second_area_kept_quiet() {
     }
 
     say(format!("\nmain camera {}, audio listeners on {}", main_camera(&api), listeners(&api)));
-    let path = format!("{}/docs/area-kept-quiet.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("area-kept-quiet.txt");
     std::fs::write(&path, out.join("\n") + "\n").expect("write the results");
     println!("\nwritten to {path}; both areas stay loaded: check the HUD and the view in the game");
 }

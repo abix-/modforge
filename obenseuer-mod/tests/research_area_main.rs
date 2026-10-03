@@ -11,7 +11,7 @@
 //! ```
 //!
 //! SKIPs (prints why and passes) when the game is not running. Results go
-//! to docs/area-main.txt.
+//! to output/area-main.txt.
 
 mod common;
 use common::{api, handle_of, ping_or_skip};
@@ -109,7 +109,7 @@ fn what_main_holds() {
 
     let text = format!("__MAIN in {area}, {} objects ([off] = switched off)\n\n{}\n", out.len(), out.join("\n"));
     println!("{text}");
-    let path = format!("{}/docs/area-main.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("area-main.txt");
     std::fs::write(&path, &text).expect("write the results");
     println!("written to {path}");
     assert!(out.len() > 1, "__MAIN has nothing under it");

@@ -304,7 +304,7 @@ file), NPCManager (name cached in Start), and the per-area settings
 `research_two_areas.rs` (2026-10-02): in Open Sewer Tenement, loaded
 Interior Tenement Gatehouse alongside with
 `SceneManager.LoadSceneAsync(area, Additive)` and kept both loaded. Full
-output in `docs/two-areas.txt`.
+output in `output/two-areas.txt` (local, [`testing.md`](testing.md)).
 
 ```text
 memory before: allocated 2916 MB  reserved 3438 MB  managed 381 MB
@@ -353,7 +353,7 @@ background" option on (the game answers while unfocused): in Interior
 Player Tenement, loaded Interior Tenement Gatehouse alongside and compared
 every Assembly-CSharp class with a static `instance` field (187 of 3182
 types) plus Unity's cameras, canvases, audio listeners, event systems and
-lights. Full output in `docs/area-takeover.txt`.
+lights. Full output in `output/area-takeover.txt`.
 
 ```text
 loaded Interior Tenement Gatehouse alongside in 2.86s
@@ -404,7 +404,7 @@ area's own player setup so the first one stays in charge.
 `research_area_player_setup.rs` (2026-10-02): loaded Interior Tenement
 Gatehouse alongside Interior Player Tenement and followed every copy of
 the duplicated classes up to its top parent object. Full output in
-`docs/area-player-setup.txt`.
+`output/area-player-setup.txt`.
 
 ```text
 second: Player Camera Base (top object id 1974670), 11 parts:
@@ -434,7 +434,7 @@ it is not switched off blindly; what it holds is the next question.
 
 `research_area_main.rs` (2026-10-02), read-only, in Interior Player
 Tenement: everything under `__MAIN`, 183 objects. Full list in
-`docs/area-main.txt`.
+`output/area-main.txt`.
 
 ```text
 __MAIN

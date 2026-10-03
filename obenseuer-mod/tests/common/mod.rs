@@ -148,6 +148,14 @@ pub fn wait_for_normal_load(api: &Api<Value>, old_controller: &str) {
     println!("normal load finished ({:.1}s)", start.elapsed().as_secs_f64());
 }
 
+/// Where a research test writes its raw output: `output/<name>` in the
+/// mod's folder, local only (ignored by git). Creates the folder.
+pub fn output_path(name: &str) -> String {
+    let dir = format!("{}/output", env!("CARGO_MANIFEST_DIR"));
+    std::fs::create_dir_all(&dir).expect("create the output folder");
+    format!("{dir}/{name}")
+}
+
 /// Turn on first_copy_wins and load `area` alongside the one area loaded
 /// now (src/first_copy_wins.rs, docs/kept-areas.md). Returns the
 /// seconds the load took.

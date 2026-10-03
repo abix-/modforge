@@ -389,7 +389,7 @@ what an area's __MAIN holds).
 alongside, switched off its `Player Camera Base`, `Pause Menu(Clone)`,
 `___Screenshot Taking Stuff` and `Soundscapes`, and set 23 one-copy
 fields back to the first area's copies. Output in
-`docs/area-kept-quiet.txt`. The player could then not move, look or open
+`output/area-kept-quiet.txt`. The player could then not move, look or open
 the pause menu. `research_player_frozen.rs` showed the game's own
 movement blocks were all off (time scale 1, no menu, nothing in
 `disabledList`); Player.log showed errors every frame:

@@ -24,7 +24,7 @@
 //!
 //! OBENSEUER_WATCH_SECS (default 600) and OBENSEUER_WATCH_TRIPS (default
 //! 3) bound the watch. SKIPs (prints why and passes) when the game is not
-//! running. Results go to docs/loading-trips.txt.
+//! running. Results go to output/loading-trips.txt.
 
 mod common;
 use std::time::{Duration, Instant};
@@ -277,7 +277,7 @@ fn door_trips_timed_and_managers_tracked() {
 
 /// Written after every trip, so a stopped watch keeps what it saw.
 fn write_results(trips: usize, lines: &[String]) {
-    let path = format!("{}/docs/loading-trips.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("loading-trips.txt");
     let text = format!("{trips} door trips watched\n\n{}\n", lines.join("\n"));
     std::fs::write(&path, text).expect("write the results");
     println!("{trips} trips written to {path}");

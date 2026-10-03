@@ -16,7 +16,7 @@
 //! ```
 //!
 //! OBENSEUER_NEAR_METRES (default 20). SKIPs (prints why and passes) when
-//! the game is not running. Results go to docs/near-player.txt.
+//! the game is not running. Results go to output/near-player.txt.
 
 mod common;
 use common::{api, op, ping_or_skip};
@@ -32,7 +32,7 @@ fn what_is_near_the_player() {
     let near = op(&api, "near_player", json!({"metres": metres}));
     let text = serde_json::to_string_pretty(&near).unwrap();
     println!("{text}");
-    let path = format!("{}/docs/near-player.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("near-player.txt");
     std::fs::write(&path, text + "\n").expect("write the results");
     println!("written to {path}");
 }

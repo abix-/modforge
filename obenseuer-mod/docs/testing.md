@@ -20,8 +20,15 @@ k3sc cargo-lock test -p obenseuer-mod --test research_loading -- --test-threads=
 ```
 
 It stops after one door trip (`OBENSEUER_WATCH_TRIPS`, default 1, and
-`OBENSEUER_WATCH_SECS`, default 600) and writes `docs/loading-trips.txt`.
+`OBENSEUER_WATCH_SECS`, default 600) and writes `output/loading-trips.txt`.
 Its results: [`doors.md`](doors.md), where a door's time goes.
+
+## Raw output
+
+Research tests write their full raw output to `obenseuer-mod/output/`
+(`common::output_path`, tests/common/mod.rs), a local folder that git
+ignores. The findings go into the docs; rerun a test to get its output
+again.
 
 ## Getting unstuck
 

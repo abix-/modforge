@@ -14,7 +14,7 @@
 //!
 //! OBENSEUER_SECOND_AREA picks the area (default "Interior Tenement
 //! Gatehouse"). SKIPs (prints why and passes) when the game is not running.
-//! Results go to docs/first-copy-wins.txt.
+//! Results go to output/first-copy-wins.txt.
 
 mod common;
 use std::time::{Duration, Instant};
@@ -82,7 +82,7 @@ fn second_area_loaded_with_first_copy_wins() {
         say(format!("  {}  {}  at {}", g["count"], g["error"], g["at"]));
     }
 
-    let path = format!("{}/docs/first-copy-wins.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("first-copy-wins.txt");
     std::fs::write(&path, out.join("\n") + "\n").expect("write the results");
     println!("\nwritten to {path}; check the HUD, the view and moving in the game");
 }

@@ -25,7 +25,7 @@ fn bounds_of(text: &str) -> Option<([f64; 3], [f64; 3])> {
 
 /// Every collider within 12 m of the player's camera: its name, type,
 /// centre and size in metres, sorted by name, in
-/// docs/apartment-colliders.txt.
+/// output/apartment-colliders.txt.
 #[test]
 fn every_collider_near_the_player_measured() {
     let api = api();
@@ -54,7 +54,7 @@ fn every_collider_near_the_player_measured() {
         api.op("release_handle", json!({"handle": h}));
     }
     rows.sort();
-    let path = format!("{}/docs/apartment-colliders.txt", env!("CARGO_MANIFEST_DIR"));
+    let path = common::output_path("apartment-colliders.txt");
     let text = format!("camera at {p}\n{} colliders within 12 m (y is up)\n\n{}\n", rows.len(), rows.join("\n"));
     std::fs::write(&path, text).expect("write the measurements");
     println!("{} colliders measured into {path}", rows.len());
