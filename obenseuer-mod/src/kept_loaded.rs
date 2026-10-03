@@ -66,6 +66,7 @@ pub(crate) fn reset() {
     TRIPS.lock().unwrap().clear();
     QUEUE.lock().unwrap().clear();
     SWAPPED_OFF.lock().unwrap().clear();
+    DATA_APPLIED.lock().unwrap().clear();
     *CURRENT.lock().unwrap() = None;
     *DOOR_HOOK.lock().unwrap() = None;
     if let Some(d) = PENDING_DOOR.lock().unwrap().take() {
@@ -107,6 +108,8 @@ pub(crate) fn tick() {
         let area = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([])).ok().and_then(|v| v.as_str().map(String::from));
         reset();
         *CURRENT.lock().unwrap() = area.clone();
+        // The game loaded this area's saved data itself.
+        DATA_APPLIED.lock().unwrap().extend(area.clone());
         plan_neighbours();
         unityforge::mono::log(
             unityforge::mono::LogLevel::Info,
@@ -255,6 +258,11 @@ fn load_alongside(area: Option<String>) -> Result<Json, String> {
         AREAS.lock().unwrap().entry(current.clone()).or_insert_with(|| before.clone());
         CURRENT.lock().unwrap().get_or_insert(current);
         set_loading_priority(Some("Low"));
+        // Nothing in the area starts until the player walks in: the shim
+        // switches its top objects off in sceneLoaded, before any Start
+        // (an area's start sequence ran and left the screen black, docs
+        // "Black screen from an area loaded alongside").
+        invoke_static("Unityforge.Shim.SceneTools", "LoadQuietly", &json!([area]))?;
         let load = obj(invoke_static("UnityEngine.SceneManagement.SceneManager", "LoadSceneAsync", &json!([area, "Additive"]))?)
             .ok_or_else(|| format!("LoadSceneAsync({area}) gave nothing"))?;
         LOADING.lock().unwrap().push(area.clone());
@@ -288,10 +296,13 @@ fn finish_load_when_done(area: String, handle: i32, before: Vec<i64>) {
         }
         let new: Vec<i64> = arrival_point_ids().unwrap_or_default().into_iter().filter(|id| !before.contains(id)).collect();
         LOADING.lock().unwrap().retain(|a| *a != area);
-        // Loaded but switched off until the player walks in: areas can be
-        // built in the same place (the player's building inside and out).
+        // Loaded but switched off until the player walks in (areas can be
+        // built in the same place, the player's building inside and out):
+        // the shim switched it off before any Start (LoadQuietly). Record
+        // what it switched off, so walking in switches exactly that on.
         let switching = std::time::Instant::now();
-        let _ = switch_area(&area, false);
+        let off = taken_switched_off(&area);
+        SWAPPED_OFF.lock().unwrap().insert(area.clone(), off);
         let switching = switching.elapsed().as_secs_f64();
         // No area names on screen: they would spoil places not found yet.
         crate::deposit::notify("Areas", "Nearby area ready");
@@ -368,7 +379,13 @@ extern "C" fn on_door(ctx: *const c_void) -> i32 {
     let door = owned_object(h);
     match door_into_loaded_area(&door) {
         Ok(true) => 1,
-        _ => 0,
+        Ok(false) => 0,
+        Err(e) => {
+            // The game's own door runs: a normal load that unloads every
+            // kept area. Say why.
+            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: door failed, normal load instead: {e}"));
+            0
+        }
     }
 }
 
@@ -452,6 +469,13 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         // is in, and switch on and off with it.
         invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([to]))?;
         switch_area(&to, true)?;
+        // Step 2: the area's saved data goes in the next frame, after its
+        // objects started, as in a normal load.
+        let area = to.clone();
+        MAIN_QUEUE.push(move || {
+            let result = apply_saved_data(&area);
+            unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: saved data for {area}: {result:?}"));
+        });
         e.invoke("TeleportPlayer", &json!([]))?;
         let from = CURRENT.lock().unwrap().replace(to.clone());
         if let Some(from) = from.filter(|f| *f != to) {
@@ -468,6 +492,7 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         return Ok(true);
     }
     TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
+    unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: no arrival point {arrival} in {to}, normal load instead"));
     Ok(false)
 }
 
@@ -504,6 +529,89 @@ fn switch_area(area: &str, on: bool) -> Result<(), String> {
         SWAPPED_OFF.lock().unwrap().entry(area.to_string()).or_default().extend(turned_off);
     }
     Ok(())
+}
+
+/// Areas whose saved data went in since the last normal load.
+static DATA_APPLIED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+/// Design step 2 (docs/loading-research.md, "Proper design"): the area's
+/// saved data goes into its objects as LoadSaveGameDifferentScene does
+/// (SaveController.cs:641-654), once per normal load, the frame after the
+/// area switched on (a normal load starts the objects first and loads the
+/// data the next frame, question 1). Reads `<area>.tnmt` and `Globals.tnmt`
+/// from the save folder the game last loaded or saved, with the game's own
+/// Deserialize, into the game's temp lists, then runs the load phases and
+/// OnMapChanged on the area's top objects.
+fn apply_saved_data(area: &str) -> Result<String, String> {
+    if DATA_APPLIED.lock().unwrap().iter().any(|a| a == area) {
+        return Ok("already applied".into());
+    }
+    let folder = save_static("LastSaveFolderPath")?.as_str().map(String::from).ok_or("no save folder yet")?;
+    let header_type = obj(invoke_static("System.Type", "GetType", &json!(["SaveController+SaveDataHeader, Assembly-CSharp"]))?)
+        .ok_or("SaveDataHeader type not found")?;
+    let read = |file: &str| -> Result<Option<MonoObject>, String> {
+        let path = format!("{folder}/{file}");
+        let Ok(text) = std::fs::read_to_string(&path) else { return Ok(None) };
+        // The game's files start with a UTF-8 byte order mark, which its
+        // own reader (SaveController.ReadSaveFile, File.ReadAllText) drops
+        // and its parser rejects ("invalid token"). Read here, not through
+        // ReadSaveFile: its 2 MB result would not fit the bridge's return
+        // buffer.
+        let text = text.trim_start_matches('\u{feff}');
+        let header = invoke_static("SaveController", "Deserialize", &json!([file, {"handle": header_type.handle().0}, text, null]))?;
+        Ok(obj(header).and_then(|h| obj(h.read_field("Data").ok()?)))
+    };
+    let level = read(&format!("{area}.tnmt"))?;
+    let globals = read("Globals.tnmt")?;
+    let entries = level.as_ref().and_then(|l| l.invoke("get_Count", &json!([])).ok()?.as_i64()).unwrap_or(0);
+    set_save_static("tempSavedata_Level", level.as_ref())?;
+    set_save_static("tempSavedata_Global", globals.as_ref())?;
+    let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?).ok_or("no top objects")?;
+    for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary", "OnLoadingGame", "OnLoadingGameLatePrimary", "OnMapChanged"] {
+        invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, false]))?;
+    }
+    // As the game does after a load (SaveController.cs:660-661).
+    for list in [&level, &globals].into_iter().flatten() {
+        list.invoke("Clear", &json!([]))?;
+    }
+    DATA_APPLIED.lock().unwrap().push(area.to_string());
+    Ok(format!("{entries} area entries from {area}.tnmt"))
+}
+
+/// A static field of SaveController, public or private.
+fn save_static(field: &str) -> Result<Json, String> {
+    save_field(field)?.invoke("GetValue", &json!([null]))
+}
+
+fn set_save_static(field: &str, value: Option<&MonoObject>) -> Result<(), String> {
+    // An area with no saved file gets an empty list, as the game does
+    // (SaveController.cs:1311).
+    let v = match value {
+        Some(o) => json!({"handle": o.handle().0}),
+        None => {
+            let list = obj(save_static(field)?).ok_or("no list to empty")?;
+            list.invoke("Clear", &json!([]))?;
+            json!({"handle": list.handle().0})
+        }
+    };
+    save_field(field)?.invoke("SetValue", &json!([null, v]))?;
+    Ok(())
+}
+
+fn save_field(field: &str) -> Result<MonoObject, String> {
+    let ty = obj(invoke_static("System.Type", "GetType", &json!(["SaveController, Assembly-CSharp"]))?).ok_or("SaveController type")?;
+    obj(ty.invoke("GetField", &json!([field, "Public, NonPublic, Static"]))?).ok_or_else(|| format!("SaveController.{field} not found"))
+}
+
+/// Ids of the top objects the shim's LoadQuietly switched off in an area.
+fn taken_switched_off(area: &str) -> Vec<i64> {
+    let Some(arr) = invoke_static("Unityforge.Shim.SceneTools", "TakeSwitchedOff", &json!([area])).ok().and_then(obj) else {
+        return Vec::new();
+    };
+    let n = arr.read_field("Length").ok().and_then(|v| v.as_i64()).unwrap_or(0);
+    (0..n)
+        .filter_map(|i| obj(arr.invoke("GetValue", &json!([i])).ok()?)?.invoke("GetInstanceID", &json!([])).ok()?.as_i64())
+        .collect()
 }
 
 /// An area's top objects, on or off (SceneTools.RootsOf in the shim).

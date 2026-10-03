@@ -41,15 +41,43 @@ namespace Unityforge.Shim
             return type.FullName;
         }
 
+        /// <summary>
+        /// A class's one-copy field: a public static field of the class's
+        /// own type, whatever its name ("instance", AstarPath's "active",
+        /// PlayerIdentity's "identity"). Null when it has none.
+        /// </summary>
         private static FieldInfo FindField(Type type)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly;
-            foreach (var name in new[] { "instance", "active" })
+            foreach (var f in type.GetFields(flags))
             {
-                var f = type.GetField(name, flags);
-                if (f != null && type.IsAssignableFrom(f.FieldType)) return f;
+                if (f.FieldType == type) return f;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Every MonoBehaviour class in an assembly with a one-copy field
+        /// (FindField): the classes obenseuer-mod's first_copy_wins guards.
+        /// The assembly is named by one of its types ("Inventory,
+        /// Assembly-CSharp").
+        /// </summary>
+        public static string[] OneCopyClasses(string assemblyOfType)
+        {
+            var anchor = Type.GetType(assemblyOfType);
+            if (anchor == null) return new string[0];
+            var found = new List<string>();
+            Type[] types;
+            try { types = anchor.Assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { types = e.Types; }
+            foreach (var t in types)
+            {
+                if (t == null || !typeof(MonoBehaviour).IsAssignableFrom(t)) continue;
+                var f = FindField(t);
+                Fields[t] = f;
+                if (f != null) found.Add(t.FullName);
+            }
+            return found.ToArray();
         }
     }
 }

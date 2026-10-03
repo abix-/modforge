@@ -7,6 +7,7 @@
 // First user: obenseuer-mod's kept_loaded (areas kept loaded, only the
 // one the player is in switched on).
 
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -23,6 +24,53 @@ namespace Unityforge.Shim
         {
             var scene = SceneManager.GetSceneByName(sceneName);
             return scene.IsValid() && scene.isLoaded ? scene.GetRootGameObjects() : new GameObject[0];
+        }
+
+        // Scenes to switch off the moment they finish loading, and what was
+        // switched off in each.
+        private static readonly HashSet<string> Quiet = new HashSet<string>();
+        private static readonly Dictionary<string, List<GameObject>> SwitchedOff = new Dictionary<string, List<GameObject>>();
+        private static bool _hooked;
+
+        /// <summary>
+        /// Call before loading a scene alongside: when it has loaded, its
+        /// top objects that are on are switched off in Unity's sceneLoaded,
+        /// which runs after Awake and OnEnable and before any Start, so
+        /// nothing in the scene starts (no Start, no coroutines, no start
+        /// events) until it is switched on.
+        /// </summary>
+        public static void LoadQuietly(string sceneName)
+        {
+            if (!_hooked)
+            {
+                SceneManager.sceneLoaded += OnSceneLoaded;
+                _hooked = true;
+            }
+            Quiet.Add(sceneName);
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            if (!Quiet.Remove(scene.name)) return;
+            var off = new List<GameObject>();
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                if (!top.activeSelf) continue;
+                top.SetActive(false);
+                off.Add(top);
+            }
+            SwitchedOff[scene.name] = off;
+        }
+
+        /// <summary>
+        /// The top objects LoadQuietly switched off in a scene, once; empty
+        /// when none.
+        /// </summary>
+        public static GameObject[] TakeSwitchedOff(string sceneName)
+        {
+            if (!SwitchedOff.TryGetValue(sceneName, out var off)) return new GameObject[0];
+            SwitchedOff.Remove(sceneName);
+            return off.ToArray();
         }
 
         /// <summary>

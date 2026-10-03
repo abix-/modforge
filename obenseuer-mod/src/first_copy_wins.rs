@@ -38,10 +38,10 @@ pub(crate) fn switched_off_ids() -> Vec<i64> {
     SWITCHED_OFF_IDS.lock().unwrap().clone()
 }
 
-/// One-copy fields not named `instance`: (type, assembly, field).
-/// AstarPath.active: the NPC pathfinding grid
-/// (research_first_copy_wins.rs: "No AstarPath object found").
-const OTHER_FIELDS: &[(&str, &str, &str)] = &[("AstarPath", "AstarPathfindingProject", "active")];
+/// Assemblies whose one-copy classes are guarded, each named by one of its
+/// types: the game's, and the NPC pathfinding's (AstarPath.active,
+/// research_first_copy_wins.rs: "No AstarPath object found").
+const ONE_COPY_ASSEMBLIES: &[&str] = &["Inventory, Assembly-CSharp", "AstarPath, AstarPathfindingProject"];
 
 /// Classes whose new copy marks an area's own setup: the new copy's top
 /// object is switched off (research_area_player_setup.rs:
@@ -79,10 +79,12 @@ pub fn install() {
 
 /// Patches Awake and OnDestroy of every one-copy class. Returns the count.
 fn turn_on() -> Result<usize, String> {
-    let mut fields = one_copy_classes()?;
-    fields.extend(OTHER_FIELDS.iter().map(|(t, _, f)| (t.to_string(), f.to_string())));
+    let mut classes = Vec::new();
+    for assembly in ONE_COPY_ASSEMBLIES {
+        classes.extend(one_copy_classes(assembly)?);
+    }
     let mut hooks = Vec::new();
-    for (class, _) in fields {
+    for class in classes {
         for (method, cb) in [("Awake", on_awake as extern "C" fn(*const c_void) -> i32), ("OnDestroy", on_destroy)] {
             // Classes without that method: nothing to patch.
             if let Ok(h) = patch_prefix_ctx(&class, method, HookCtx::Instance, cb) {
@@ -103,22 +105,20 @@ fn state() -> Result<Json, String> {
     }))
 }
 
-/// Every Assembly-CSharp class with a static `instance` field:
-/// (class, "instance").
-fn one_copy_classes() -> Result<Vec<(String, String)>, String> {
-    let ty = obj(invoke_static("System.Type", "GetType", &json!(["Inventory, Assembly-CSharp"]))?)
-        .ok_or("Assembly-CSharp not found")?;
-    let types = obj(obj(ty.invoke("get_Assembly", &json!([]))?).ok_or("no assembly")?.invoke("GetTypes", &json!([]))?)
-        .ok_or("no types")?;
-    let n = types.read_field("Length")?.as_i64().unwrap_or(0);
+/// Every class in an assembly with a one-copy field: a public static field
+/// of its own type, whatever the name (FirstCopyGuard.OneCopyClasses in
+/// the shim). Found by name only first ("instance", then AstarPath's
+/// "active"); PlayerIdentity's "identity" was missed and areas loaded
+/// alongside took over the player's identity (the save fell back to the
+/// name "Esko_Virtanen").
+fn one_copy_classes(assembly_of_type: &str) -> Result<Vec<String>, String> {
+    let arr = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "OneCopyClasses", &json!([assembly_of_type]))?)
+        .ok_or("no class list")?;
+    let n = arr.read_field("Length")?.as_i64().unwrap_or(0);
     let mut out = Vec::new();
     for i in 0..n {
-        let Some(t) = obj(types.invoke("Get", &json!([i]))?) else { continue };
-        let Some(f) = obj(t.invoke("GetField", &json!(["instance"]))?) else { continue };
-        if f.invoke("get_IsStatic", &json!([]))?.as_bool() == Some(true) {
-            if let Some(name) = t.invoke("get_FullName", &json!([]))?.as_str() {
-                out.push((name.to_string(), "instance".to_string()));
-            }
+        if let Some(name) = arr.invoke("GetValue", &json!([i]))?.as_str() {
+            out.push(name.to_string());
         }
     }
     Ok(out)
