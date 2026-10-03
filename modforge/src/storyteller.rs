@@ -47,6 +47,10 @@ pub struct EpisodeDef {
     /// something (topside the-tap.md "How it opens": the note read, Dell
     /// comes down and knocks): rules like the lines, each fired once.
     pub cues: Vec<CueDef>,
+    /// Whether the door's enemy stands outside the player's bunker door
+    /// when the game starts in it (topside design.md "What 2D changes":
+    /// not in The Tap's opening, the first fight comes later).
+    pub door_enemy: bool,
 }
 
 /// One cue, as a rule: when the player has done `did` (a `Did`'s words,
@@ -1150,6 +1154,7 @@ mod tests {
             parts: Vec::new(),
             lines: Vec::new(),
             cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: CueAct::KnockOnThePlayer }],
+            door_enemy: false,
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1167,6 +1172,7 @@ mod tests {
             parts: Vec::new(),
             lines: Vec::new(),
             cues: Vec::new(),
+            door_enemy: true,
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1220,6 +1226,7 @@ mod tests {
                 parts: Vec::new(),
                 lines: vec![line("threatens Mara", -0.6), line("talks with Mara", 0.2)],
                 cues: Vec::new(),
+                door_enemy: false,
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1237,6 +1244,7 @@ mod tests {
                 parts: Vec::new(),
                 lines: Vec::new(),
                 cues: Vec::new(),
+                door_enemy: true,
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
