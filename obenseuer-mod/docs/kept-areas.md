@@ -108,10 +108,14 @@ does not set is not a manager: `Storage.active` is the box open now.
     (research.md 9.36).
   - `info_navigation` (loads its area's navigation file into the one
     pathfinder, research.md 9.37) and `SkyCamera` (the area's 3D sky
-    camera) are area-owned too. `info_navigation` loads once per object
-    (`loaded`): on entering, its `loaded` is cleared before the area
-    switches on, so its OnEnable loads the area's navigation on every
-    visit, as a fresh load does.
+    camera) are area-owned too. In the game a new area's pathfinder holds
+    that area's map from the start. On entering, before the area switches
+    on, the mod loads the area's navigation file into the pathfinder with
+    the game's own steps (`AstarPath.active.data.DeserializeGraphs`, then
+    `WaypointGraph.MapWaypoints`, as info_navigation.LoadCO) and marks its
+    `info_navigation` loaded. Loaded a frame after switching on (from its
+    OnEnable), animals got paths on the previous area's map
+    (NavmeshTile.GetVertex IndexOutOfRangeException).
   - Coroutines that run for good, started in Start (research.md 9.37):
     Unity stops them when the area switches off and does not restart
     them. On a later visit the mod starts them again on the area's
@@ -165,7 +169,9 @@ left area's Spawners keep their timers. So:
   FadeGameObjectController.UpdateFade, ...), the handlers whose object is
   in that area and now switched off are taken out and kept for that load
   of the area (`Scene.handle`). The live player and managers stay on, so
-  theirs stay.
+  theirs stay. The game's clock events stay subscribed (time while away,
+  rule 2), except for the area-owned managers (SoundscapeGlobal would set
+  the game-wide sound to the left area's).
 - Entering an area (rule 2, after the Starts run again): its kept
   handlers go back, each only if the event does not already hold it (a
   Start run again subscribes again).
@@ -217,6 +223,18 @@ SaveController.cs:640-664), on the area entered, in this order:
 
 "First visit" means the first time since the save was loaded. Later visits
 keep what is live in the area: its data never left memory.
+
+Time while away (research.md 9.37): in the game an area not loaded does
+not run, and its load catches it up from the time recorded when it was
+saved (`savedTimeAndDay`: growing, storage restock, spawners, shops,
+animals, NPC needs, fuel...). An area kept loaded instead keeps hearing
+the game's clock while away (`TimeOfDayAzure.SecondsPassed`,
+`MinutePassed`, `DayChanged`, `CurrentTimeAndDay` stay subscribed; game-wide
+events, below), so it ticks along and reaches the same state the catch-up
+would give. Re-running the load steps on a later visit was tried and is
+not safe: `Collectible.OnLoadingGame` calls Start on a live object, and
+the load steps that create objects (DestructibleList, ParcelLocker,
+RatFightArena, CollectibleItemSpawner) would duplicate them.
 
 ## Rule 3: leaving an area
 

@@ -612,11 +612,13 @@ fn enter_area(area: &str) -> Result<(), String> {
     // `instance` before OnEnable): its area-owned managers are the game's,
     // so one that checks `instance` in OnEnable finds itself.
     invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([area]))?;
-    // Its navigation loads again when it switches on, as on every fresh
-    // load: info_navigation loads once per object (`loaded`), from OnEnable
-    // (docs/kept-areas.md, rule 1, which copy).
-    if let Some(nav) = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["info_navigation", area]))?) {
-        nav.write_field("loaded", &json!(false))?;
+    // Its navigation, before it switches on (docs/kept-areas.md, rule 1,
+    // which copy): in the game a new area's pathfinder holds its map from
+    // the start; loaded a frame later, animals got paths on the previous
+    // area's map.
+    let nav = load_navigation(area);
+    if let Err(e) = &nav {
+        unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: navigation: {e}"));
     }
     // Step 1: the area is the active scene (objects the game creates go
     // into it) and switches on: its objects start.
@@ -861,8 +863,46 @@ static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new(
 /// would (rule 1, game-wide events). Returns how many handlers.
 fn leave_finish(area: &str) -> Result<String, String> {
     switch_area(area, false)?;
-    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area]))?;
+    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, CLOCK_EVENTS]))?;
     Ok(format!("event handlers out {out}"))
+}
+
+/// The game's clock: an area left keeps hearing it, so it ticks along as
+/// the game's load would catch it up (docs/kept-areas.md, rule 2, time while
+/// away); only its area-owned managers' handlers are taken out.
+const CLOCK_EVENTS: &str = "TimeOfDayAzure.SecondsPassed,TimeOfDayAzure.MinutePassed,TimeOfDayAzure.DayChanged,TimeOfDayAzure.CurrentTimeAndDay";
+
+/// The area's navigation file into the one pathfinder, as
+/// info_navigation.LoadCO does (info_navigation.cs:85-111):
+/// `AstarPath.active.data.DeserializeGraphs(bytes)`, then
+/// `WaypointGraph.instance.MapWaypoints()`; its info_navigation is marked
+/// loaded so its OnEnable does not load it again. Without a file, its
+/// OnEnable does what the game does (rebuilds the map).
+fn load_navigation(area: &str) -> Result<(), String> {
+    let nav = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["info_navigation", area]))?);
+    let assets = invoke_static("UnityEngine.Application", "get_streamingAssetsPath", &json!([]))?;
+    let path = format!("{}/NavigationData/{area}.nav", assets.as_str().unwrap_or(""));
+    let Some(bytes) = obj(invoke_static("Unityforge.Shim.FileTools", "ReadBytes", &json!([path]))?) else {
+        if let Some(nav) = nav {
+            nav.write_field("loaded", &json!(false))?;
+        }
+        return Ok(());
+    };
+    let ty = obj(invoke_static("System.Type", "GetType", &json!(["AstarPath, AstarPathfindingProject"]))?).ok_or("no AstarPath type")?;
+    let field = obj(ty.invoke("GetField", &json!(["active"]))?).ok_or("no AstarPath.active")?;
+    let astar = obj(field.invoke("GetValue", &json!([null]))?).ok_or("no live AstarPath")?;
+    let data = obj(astar.read_field("data")?).ok_or("no pathfinder data")?;
+    data.invoke("DeserializeGraphs", &json!([{"handle": bytes.handle().0}]))?;
+    if let Some(waypoints) = obj(invoke_static("System.Type", "GetType", &json!(["NPC.WaypointGraph, Assembly-CSharp"]))?)
+        .and_then(|t| obj(t.invoke("GetField", &json!(["instance"])).ok()?))
+        .and_then(|f| obj(f.invoke("GetValue", &json!([null])).ok()?))
+    {
+        waypoints.invoke("MapWaypoints", &json!([]))?;
+    }
+    if let Some(nav) = nav {
+        nav.write_field("loaded", &json!(true))?;
+    }
+    Ok(())
 }
 
 /// Area-owned managers whose Start pushes the area's settings into the

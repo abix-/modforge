@@ -18,7 +18,7 @@ fn managers_live() {
     if ping_or_skip(&api).is_none() {
         return;
     }
-    for class in WATCHED.iter().copied().chain(["SoundscapeController"]) {
+    for class in WATCHED.iter().copied().chain(["SoundscapeController", "OpenSewerCharacterController"]) {
         println!("{class}: {}", instance_now(&api, class));
     }
 }

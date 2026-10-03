@@ -71,16 +71,20 @@ namespace Unityforge.Shim
         }
 
         // Takes out of one event the handlers of switched-off objects in the
-        // scene; returns how many.
-        private static int TakeOut(object owner, FieldInfo field, int scene, List<Taken> kept)
+        // scene; returns how many. On a kept event ("Class.Field", the game's
+        // clock: an area left keeps time) only area-owned managers' handlers
+        // are taken out.
+        private static int TakeOut(object owner, FieldInfo field, int scene, List<Taken> kept, HashSet<string> keep)
         {
             var all = field.GetValue(owner) as Delegate;
             if (all == null) return 0;
+            bool kepth = keep.Contains(field.DeclaringType.Name + "." + field.Name);
             var left = all;
             int n = 0;
             foreach (var d in all.GetInvocationList())
             {
-                if (d.Target is Component c && c != null && c.gameObject.scene.handle == scene && !c.gameObject.activeInHierarchy)
+                if (d.Target is Component c && c != null && c.gameObject.scene.handle == scene && !c.gameObject.activeInHierarchy
+                    && (!kepth || FirstCopyGuard.IsAreaOwned(c.GetType())))
                 {
                     left = Delegate.Remove(left, d);
                     kept.Add(new Taken { Owner = owner, Field = field, Handler = d });
@@ -96,10 +100,12 @@ namespace Unityforge.Shim
         /// static event of the assembly, and every event on the managers'
         /// live copies, the handlers whose object is in that area and
         /// switched off (the live player and managers stay on, so theirs
-        /// stay). Returns how many.
+        /// stay). `keepCsv` names events ("Class.Field") on which only
+        /// area-owned managers' handlers are taken out. Returns how many.
         /// </summary>
-        public static int LeaveArea(string assemblyOfType, string sceneName)
+        public static int LeaveArea(string assemblyOfType, string sceneName, string keepCsv)
         {
+            var keep = new HashSet<string>(keepCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
             var scene = SceneManager.GetSceneByName(sceneName);
             if (!scene.IsValid()) return 0;
             if (!_hooked)
@@ -113,10 +119,10 @@ namespace Unityforge.Shim
                 Kept[scene.handle] = kept;
             }
             int n = 0;
-            foreach (var f in Statics(assemblyOfType)) n += TakeOut(null, f, scene.handle, kept);
+            foreach (var f in Statics(assemblyOfType)) n += TakeOut(null, f, scene.handle, kept, keep);
             foreach (var copy in FirstCopyGuard.LiveCopies())
             {
-                foreach (var f in InstanceEvents(copy.GetType())) n += TakeOut(copy, f, scene.handle, kept);
+                foreach (var f in InstanceEvents(copy.GetType())) n += TakeOut(copy, f, scene.handle, kept, keep);
             }
             return n;
         }

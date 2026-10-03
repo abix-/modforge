@@ -17,6 +17,13 @@ namespace Unityforge.Shim
     public static class FileTools
     {
         /// <summary>
+        /// A file's bytes as a byte array object, for a method that takes
+        /// them (a large file does not fit the bridge's JSON). Null when the
+        /// file does not exist.
+        /// </summary>
+        public static byte[] ReadBytes(string path) => File.Exists(path) ? File.ReadAllBytes(path) : null;
+
+        /// <summary>
         /// Calls the static method `className.method(Type type, object
         /// value)` that returns a string and writes the result to `path` as
         /// UTF-8 with a byte order mark (what File.WriteAllText with
