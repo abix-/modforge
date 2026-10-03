@@ -153,7 +153,7 @@ must also move without a loading screen.
 | Rule | Built | Missing |
 |---|---|---|
 | 1 | Yes | |
-| 2 | Steps 1, 2 (before 10: the arrival point is read from the area's own list), 3, 4, 7, 8, 9, 10, 12 | 6; not yet one function |
+| 2 | Yes: `enter_area`, the arrival point read from the area's own list first (`arrival_point`) | |
 | 3 | Steps 1, 2, 3, 4, 7, 10, 11 | 5; not yet one function |
 | 4 | Yes | |
 | The mod's own state | Shim state per load | Rust state cleared only by the mod's own reload (`reset()`), not by every normal load |

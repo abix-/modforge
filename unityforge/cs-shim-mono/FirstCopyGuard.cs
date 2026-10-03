@@ -229,6 +229,25 @@ namespace Unityforge.Shim
         internal static bool IsAreaOwned(Type t) => AreaOwnedNames.Contains(t.FullName);
 
         /// <summary>
+        /// An area-owned manager's copy in a loaded scene (by class name, as
+        /// given to SetAreaOwned); null when there is none.
+        /// </summary>
+        public static object AreaCopy(string className, string sceneName)
+        {
+            var scene = UnityEngine.SceneManagement.SceneManager.GetSceneByName(sceneName);
+            if (!scene.IsValid()) return null;
+            foreach (var t in AreaOwnedTypes)
+            {
+                if (t.Name != className && t.FullName != className) continue;
+                foreach (var o in Resources.FindObjectsOfTypeAll(t))
+                {
+                    if (o is MonoBehaviour m && m != null && m.gameObject.scene.handle == scene.handle) return m;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
         /// Entering an area (rule 2, step 2): each area-owned manager's one
         /// copy is the area's, switched on, as its own Awake would have set
         /// it on a normal load. Returns how many were set.

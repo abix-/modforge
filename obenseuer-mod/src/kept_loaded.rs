@@ -483,86 +483,96 @@ fn move_into(to: &str, arrival: &str, door_object: &MonoObject, door_name: &str)
         return Ok(false);
     }
     let start = std::time::Instant::now();
-    // Rule 2, step 2 before step 10, as in the game: the area-owned
-    // managers are the area's first, so its arrival points are read from
-    // its own PlayerLevelEntrypoints. If none matches, the game's normal
-    // load follows and replaces every area anyway.
-    invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([to]))?;
-    for e in arrival_points()? {
-        let name = e.read_field("Name")?.as_str().unwrap_or("").to_string();
-        // An arrival point is the area's when its location is a live object
-        // in that area, as in the game, where the one area holds them all.
-        // Not ids recorded when the area loaded: the game re-creates a door
-        // during play and its Awake adds a fresh arrival point
-        // (Changelevel.cs:49), and the recorded one went stale (second
-        // visit to Open Sewer Tenement, PlayerTenement_Out).
-        if name != arrival || location_area(&e).as_deref() != Some(to.as_str()) {
+    // The door's arrival point, from the area's own PlayerLevelEntrypoints
+    // (its arrival points; docs/kept-areas.md rule 1, which copy). Found
+    // before anything changes: with none, the game's normal load runs.
+    let Some(point) = arrival_point(&to, arrival)? else {
+        TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
+        return Ok(false);
+    };
+    let from = CURRENT.lock().unwrap().clone().filter(|f| *f != to);
+    if let Some(from) = &from {
+        let captured = capture_leaving(from);
+        unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {captured:?}"));
+    }
+    enter_area(&to, &point)?;
+    if let Some(from) = from {
+        switch_area(&from, false)?;
+    }
+    // DoorChangelevel.OpenDoor disabled the controls for this door before
+    // calling ChangeLevel (DoorChangelevel.cs:206); a scene load would have
+    // thrown that away, the move does not.
+    one_copy("GameController")?.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]))?;
+    plan_neighbours();
+    let secs = start.elapsed().as_secs_f64();
+    crate::deposit::notify("Areas", &format!("No loading screen ({secs:.2}s)"));
+    TRIPS.lock().unwrap().push(format!("{door_name} to {to}/{arrival} ({secs:.3}s)"));
+    Ok(true)
+}
+
+/// Rule 2 (docs/kept-areas.md): entering an area, the game's own steps
+/// after a load (SaveController.cs:640-664) in the table's order. Steps 1,
+/// 2 and 10 now; 3, 4 and 6 the next frame (after the area's objects
+/// started, as in a normal load); 8, 9 and 12 the frame after.
+fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
+    // Step 1: the area is the active scene (objects the game creates go
+    // into it) and switches on: its objects start.
+    invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
+    switch_area(area, true)?;
+    // Step 2: its area-owned managers are the game's.
+    invoke_static("Unityforge.Shim.FirstCopyGuard", "EnterArea", &json!([area]))?;
+    // Step 10: the player to the arrival point.
+    point.invoke("TeleportPlayer", &json!([]))?;
+    *CURRENT.lock().unwrap() = Some(area.to_string());
+    let area = area.to_string();
+    MAIN_QUEUE.push(move || {
+        // Step 3, then 4 and 6 on the first visit.
+        let started = fire_save_event("LoadingStarted");
+        let data = saved_data_first_frame(&area);
+        MAIN_QUEUE.push(move || {
+            // Step 7 was the frame between; 8 on the first visit, 9, 12.
+            let rest = saved_data_next_frame(&area);
+            let changed = area_change_phase(&area, "OnMapChanged");
+            let done = fire_save_event("LoadingDone");
+            unityforge::mono::log(
+                unityforge::mono::LogLevel::Info,
+                &format!(
+                    "obenseuer-mod: kept_loaded: entered {area}: LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
+                ),
+            );
+        });
+    });
+    Ok(())
+}
+
+/// The arrival point named `arrival` in `area`'s own PlayerLevelEntrypoints
+/// list whose location is a live object in that area. Not ids recorded when
+/// the area loaded: the game re-creates a door during play and its Awake
+/// adds a fresh arrival point (Changelevel.cs:49), and a recorded one went
+/// stale (second visit to Open Sewer Tenement). None, logged, when there is
+/// no such point.
+fn arrival_point(area: &str, arrival: &str) -> Result<Option<MonoObject>, String> {
+    let own = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["PlayerLevelEntrypoints", area]))?)
+        .ok_or_else(|| format!("no PlayerLevelEntrypoints in {area}"))?;
+    let list = obj(own.read_field("Entrypoints")?).ok_or("no Entrypoints list")?;
+    let n = list.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+    let mut named = Vec::new();
+    for i in 0..n {
+        let Some(e) = obj(list.invoke("get_Item", &json!([i]))?) else { continue };
+        if e.read_field("Name")?.as_str() != Some(arrival) {
             continue;
         }
-        // Step 3: the area left is captured while still on, as a door does.
-        let from = CURRENT.lock().unwrap().clone().filter(|f| *f != to);
-        if let Some(from) = &from {
-            let captured = capture_leaving(from);
-            unityforge::mono::log(unityforge::mono::LogLevel::Info, &format!("obenseuer-mod: kept_loaded: left {from}: {captured:?}"));
+        let at = location_area(&e);
+        if at.as_deref() == Some(area) {
+            return Ok(Some(e));
         }
-        // Objects the game creates from now on go into the area the player
-        // is in, and switch on and off with it.
-        invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([to]))?;
-        switch_area(&to, true)?;
-        // Step 2: the next frame, after its objects started (as in a normal
-        // load): the area's saved data on the first visit, then OnMapChanged
-        // on every visit, as a door runs it.
-        // In the game's order (SaveController.cs:640-663): LoadingStarted
-        // and the first load phases, the rest one frame later, then
-        // OnMapChanged and LoadingDone.
-        let area = to.clone();
-        MAIN_QUEUE.push(move || {
-            let started = fire_save_event("LoadingStarted");
-            let data = saved_data_first_frame(&area);
-            MAIN_QUEUE.push(move || {
-                let rest = saved_data_next_frame(&area);
-                let changed = area_change_phase(&area, "OnMapChanged");
-                let done = fire_save_event("LoadingDone");
-                unityforge::mono::log(
-                    unityforge::mono::LogLevel::Info,
-                    &format!(
-                        "obenseuer-mod: kept_loaded: entered {area}: LoadingStarted {started:?}, saved data {data:?} {rest:?}, OnMapChanged {changed:?}, LoadingDone {done:?}"
-                    ),
-                );
-            });
-        });
-        e.invoke("TeleportPlayer", &json!([]))?;
-        *CURRENT.lock().unwrap() = Some(to.clone());
-        if let Some(from) = from {
-            switch_area(&from, false)?;
-        }
-        // DoorChangelevel.OpenDoor disabled the controls for this door
-        // before calling ChangeLevel (DoorChangelevel.cs:206); a scene
-        // load would have thrown that away, the move does not.
-        one_copy("GameController")?.invoke("ControlsEnabled", &json!([{"handle": door_object.handle().0}, false]))?;
-        plan_neighbours();
-        let secs = start.elapsed().as_secs_f64();
-        crate::deposit::notify("Areas", &format!("No loading screen ({secs:.2}s)"));
-        TRIPS.lock().unwrap().push(format!("{door_name} to {to}/{arrival} ({secs:.3}s)"));
-        return Ok(true);
+        named.push(format!("in {:?}", at.unwrap_or_default()));
     }
-    // What the game's list holds under that name: the area each location
-    // is in ("" when destroyed).
-    let points = arrival_points()?;
-    let named: Vec<String> = points
-        .iter()
-        .filter(|e| e.read_field("Name").ok().and_then(|v| v.as_str().map(String::from)).as_deref() == Some(arrival))
-        .map(|e| format!("in {:?}", location_area(e).unwrap_or_default()))
-        .collect();
-    TRIPS.lock().unwrap().push(format!("no arrival point {arrival} in {to}"));
     unityforge::mono::log(
         unityforge::mono::LogLevel::Warn,
-        &format!(
-            "obenseuer-mod: kept_loaded: no arrival point {arrival} in {to}, normal load instead; the game's list: {} arrival points, named {arrival}: {named:?}",
-            points.len()
-        ),
+        &format!("obenseuer-mod: kept_loaded: no arrival point {arrival} in {area}, normal load instead; its list: {n} arrival points, named {arrival}: {named:?}"),
     );
-    Ok(false)
+    Ok(None)
 }
 
 /// Switches an area's top objects on or off (SceneTools.RootsOf in the
@@ -642,8 +652,14 @@ fn saved_data_first_frame(area: &str) -> Result<String, String> {
     set_save_static("tempSavedata_Level", level.as_ref())?;
     set_save_static("tempSavedata_Global", globals.as_ref())?;
     for phase in ["OnLoadingGamePrimary", "OnLoadingGameSecondary", "OnLoadingGameTertiary"] {
-        run_phase(area, phase)?;
+        run_phase(area, phase, false)?;
     }
+    // Step 6 (644 is step 5, not run): the area's DestructibleList (the
+    // game's since step 2) restores dropped items, then the check that
+    // removes destroyed map items, over switched-off objects too (645-646).
+    let list = one_copy("DestructibleList")?;
+    list.invoke("OnLoadingGameDestructibleList", &json!([]))?;
+    run_phase(area, "OnLoadingGameDestructibleListCheck", true)?;
     Ok(format!("{entries} area entries from {area}.tnmt"))
 }
 
@@ -654,8 +670,10 @@ fn saved_data_next_frame(area: &str) -> Result<(), String> {
         return Ok(());
     }
     for phase in ["OnLoadingGame", "OnLoadingGameLatePrimary"] {
-        run_phase(area, phase)?;
+        run_phase(area, phase, false)?;
     }
+    // Step 8: the check again (650).
+    run_phase(area, "OnLoadingGameDestructibleListCheck", true)?;
     for name in ["tempSavedata_Level", "tempSavedata_Global"] {
         if let Some(list) = obj(save_static(name)?) {
             list.invoke("Clear", &json!([]))?;
@@ -669,9 +687,11 @@ fn saved_data_next_frame(area: &str) -> Result<(), String> {
 /// an area's top objects, through the game's own ExecuteSaveLoadFunctions:
 /// it calls every SavableScript under them whose object is on
 /// (SaveController.cs:1113-1131).
-fn run_phase(area: &str, phase: &str) -> Result<(), String> {
+/// `include_inactive` as the game passes it (the DestructibleList check
+/// runs over switched-off objects too, SaveController.cs:646).
+fn run_phase(area: &str, phase: &str, include_inactive: bool) -> Result<(), String> {
     let roots = obj(invoke_static("Unityforge.Shim.SceneTools", "RootsOf", &json!([area]))?).ok_or("no top objects")?;
-    invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, false]))?;
+    invoke_static("SaveController", "ExecuteSaveLoadFunctions", &json!([{"handle": roots.handle().0}, phase, include_inactive]))?;
     Ok(())
 }
 
@@ -686,9 +706,9 @@ static HOME: Mutex<Option<String>> = Mutex::new(None);
 /// changes get OnMapChanging only, as in the game (SaveController.cs:446-447;
 /// OnMapChanged runs on the active area alone, 653).
 fn area_change_phase(area: &str, phase: &str) -> Result<(), String> {
-    run_phase(area, phase)?;
+    run_phase(area, phase, false)?;
     if let Some(home) = HOME.lock().unwrap().clone().filter(|h| h != area) {
-        run_phase(&home, phase)?;
+        run_phase(&home, phase, false)?;
     }
     if phase == "OnMapChanging" {
         invoke_static("SaveController", "ExecuteDontDestroyOnLoadSaveLoadFunctions", &json!([phase]))?;
@@ -727,7 +747,7 @@ fn capture_leaving(area: &str) -> Result<String, String> {
     // ShowAll, SMVHierarchy), and SavingDone after (478) hides it again.
     fire_save_event("SavingStarted")?;
     for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary", "OnSavingGame", "OnSavingGameLatePrimary"] {
-        run_phase(area, phase)?;
+        run_phase(area, phase, false)?;
     }
     fire_save_event("SavingDone")?;
     let level_entries = obj(level.invoke("ToArray", &json!([]))?).ok_or("no level entries")?;
