@@ -53,6 +53,15 @@ pub fn install() {
         Ok(h) => unityforge::hook::HOOK_REGISTRY.register(h),
         Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: kept_loaded: SaveGame patch failed: {e}")),
     }
+    // The door patch, once at mod start (Harmony patches cost what they
+    // cost; patch once at start, as first_copy_wins does). It was put on
+    // after the first area loaded alongside, so the first door after a
+    // save load was the game's normal load. It does nothing with kept
+    // areas off.
+    match patch_prefix_ctx("Changelevel", "ChangeLevel", HookCtx::Instance, on_door) {
+        Ok(h) => *DOOR_HOOK.lock().unwrap() = Some(h),
+        Err(e) => unityforge::mono::log(unityforge::mono::LogLevel::Error, &format!("obenseuer-mod: kept_loaded: door patch failed: {e}")),
+    }
     OP_REGISTRY.register(OpDef::new(
         "load_alongside",
         "Load an area alongside the current one; its doors and the current area's doors then move the player without a loading screen",
@@ -82,7 +91,6 @@ pub(crate) fn reset() {
         drop(owned_object(g));
     }
     *CURRENT.lock().unwrap() = None;
-    *DOOR_HOOK.lock().unwrap() = None;
     if let Some(d) = PENDING_DOOR.lock().unwrap().take() {
         drop(owned_object(d.door_object)); // release the kept handle
     }
@@ -334,12 +342,6 @@ fn finish_load_when_done(area: String, handle: i32, before: Vec<i64>) {
         );
         set_loading_priority(None);
         AREAS.lock().unwrap().insert(area.clone(), new);
-        {
-            let mut hook = DOOR_HOOK.lock().unwrap();
-            if hook.is_none() {
-                *hook = patch_prefix_ctx("Changelevel", "ChangeLevel", HookCtx::Instance, on_door).ok();
-            }
-        }
         finish_pending_door(&area);
     });
 }
@@ -396,7 +398,8 @@ fn location_id(entry: &MonoObject) -> Option<i64> {
 
 extern "C" fn on_door(ctx: *const c_void) -> i32 {
     let h = ctx as isize as i32;
-    if h == 0 {
+    // Kept areas off: the game's own door.
+    if h == 0 || !crate::settings::get().get().kept_loaded.auto {
         return 0;
     }
     let door = owned_object(h);

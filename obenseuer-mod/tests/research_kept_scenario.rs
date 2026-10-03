@@ -105,6 +105,11 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
                     .and_then(|v| v.as_str().map(String::from))
             };
             wait_for("the area's own sound", 10, || sound_area().as_deref() == Some(to));
+            // And the sound playing now (a sound zone of the area left
+            // could still be playing).
+            let playing = handle_of(&api.op("read_field", json!({"handle": sc, "field": "currentSoundscape"})).result)
+                .map(|s| call_static(api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": s}])));
+            assert_eq!(playing.as_ref().and_then(Value::as_str), Some(to), "the sound playing after the door");
             std::thread::sleep(Duration::from_secs(3)); // time for a left area's handler to set its own (not checked to be a game minute)
             assert_eq!(sound_area().as_deref(), Some(to), "the global sound after a game minute");
             println!("  sound: the area's own");
@@ -133,13 +138,19 @@ fn kept_areas_played_through() {
     let loading = op(&api, "reload_save", json!({}))["loading"].as_str().unwrap_or("").to_string();
     let players_save = loading.rsplit('/').next().unwrap_or("").to_string();
     wait_for_normal_load(&api, &controller);
-    if kept_on {
+    // OBENSEUER_DOOR_AT_ONCE=1: the first door right after the load, before
+    // the area behind it has loaded alongside (it loads behind the loading
+    // screen; the door must still go through the mod).
+    let at_once = std::env::var("OBENSEUER_DOOR_AT_ONCE").is_ok();
+    if kept_on && !at_once {
         wait_for("areas kept loaded around home", 180, || {
             let k = kept(&api);
             k["loaded"].as_object().map_or(0, |m| m.len()) >= 2 && k["loading"].as_array().is_some_and(|l| l.is_empty())
         });
     }
     std::thread::sleep(Duration::from_secs(2));
+    // Read right after a load, the name came back empty.
+    wait_for("the area's name", 30, || !level_now(&api).is_empty());
     let home = level_now(&api);
     let loaded: Vec<String> = kept(&api)["loaded"].as_object().into_iter().flatten().map(|(a, _)| a.clone()).collect();
     // OBENSEUER_AWAY picks the area (Under Map: its own sky and radiation
@@ -147,7 +158,7 @@ fn kept_areas_played_through() {
     let wanted = std::env::var("OBENSEUER_AWAY").ok();
     let away = door_destinations(&api)
         .into_iter()
-        .find(|a| *a != home && (!kept_on || loaded.contains(a)) && wanted.as_deref().is_none_or(|w| w == a))
+        .find(|a| *a != home && (!kept_on || at_once || loaded.contains(a)) && wanted.as_deref().is_none_or(|w| w == a))
         .expect("an area a home door leads to");
     println!("home {home}, away {away}");
 

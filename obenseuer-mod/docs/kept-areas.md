@@ -126,6 +126,17 @@ left area's Spawners keep their timers. So:
   Start run again subscribes again).
 - Kept handlers of a load are dropped when it unloads.
 
+## The door
+
+The mod's prefix on `Changelevel.ChangeLevel` (kept_loaded.rs `on_door`)
+is put on once at mod start, as every Harmony patch of the mod, and does
+nothing with kept areas off. A door into an area kept loaded runs rule 3
+then rule 2; into an area not loaded yet (right after a save load, or
+one never reached), the game's loading screen fades in, the area loads
+alongside at full speed, then rules 3 and 2 run and it fades out. The
+game's own door (its normal load) runs only when the area has no arrival
+point for the door.
+
 ## Rule 2: entering an area
 
 The game's own steps after a load (`LoadSaveGameDifferentScene`,
