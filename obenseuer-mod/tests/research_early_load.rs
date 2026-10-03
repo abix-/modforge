@@ -1,7 +1,7 @@
 //! The game's early load of the next area (LoadSceneAsyncTrigger): which
 //! doors in the current area have one, which area each loads, and how many
-//! scenes are loaded right now (research for docs/loading-research.md,
-//! operator 2026-10-02).
+//! scenes are loaded right now (results in docs/doors.md, the game already
+//! loads some areas early; operator 2026-10-02).
 //!
 //! Read-only: walk_class, read_field, invoke_method and invoke_static on
 //! getters only.

@@ -1,4 +1,4 @@
-//! One copy for the game, or one copy per area (docs/loading-research.md):
+//! One copy for the game, or one copy per area (docs/areas.md):
 //! for every one-copy class (FirstCopyGuard.OneCopyClasses, the same list
 //! first_copy_wins guards), where each copy sits: its area and its top
 //! object. Read-only. Needs areas kept loaded (at least two areas).

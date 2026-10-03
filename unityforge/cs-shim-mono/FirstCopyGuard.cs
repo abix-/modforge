@@ -2,7 +2,7 @@
 // prefix, done here in one call: from Rust it took about eight reflection
 // calls across the bridge per Awake/OnDestroy, each marshalled as JSON,
 // and made up 40 to 70% of the longest frame while an area loaded
-// alongside (obenseuer-mod docs/loading-research.md). Here the static
+// alongside (obenseuer-mod docs/performance.md). Here the static
 // field is found once per class and kept.
 
 using System;

@@ -27,7 +27,12 @@
 | Items, consumables, inventory, item and recipe loading | [`items.md`](items.md) |
 | Crafting, trade, storage, banks, locks | [`economy.md`](economy.md) |
 
-The mod's own docs: [`kept-areas.md`](kept-areas.md) (the design for
-keeping areas loaded), [`loading-research.md`](loading-research.md)
-(history of the loading work), [`todo.md`](todo.md),
-[`changelog.md`](changelog.md).
+The mod's own docs:
+
+| Subject | Doc |
+|---|---|
+| The design for keeping areas loaded, and how it was reached | [`kept-areas.md`](kept-areas.md) |
+| What the mod costs: loading alongside, mod start, memory | [`performance.md`](performance.md) |
+| Running tests against the live game, recovering, investigating | [`testing.md`](testing.md) |
+| Open work | [`todo.md`](todo.md) |
+| Done work | [`changelog.md`](changelog.md) |

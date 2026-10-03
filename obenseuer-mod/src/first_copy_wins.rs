@@ -2,7 +2,8 @@
 //! alongside another brings its own copies of classes that keep one copy
 //! in a static `instance` field. Their Awake overwrites the field, then
 //! info_game_logic destroys them, leaving the field on a destroyed object
-//! (docs/loading-research.md).
+//! (docs/kept-areas.md, history, "Switching off after the load is not
+//! enough" and "First copy wins").
 //!
 //! The usual Unity guard, which the game itself uses in LoadingScreen and
 //! info_game_logic: a new copy that finds a live copy already in the field

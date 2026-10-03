@@ -1,4 +1,4 @@
-//! Design question 2 (docs/loading-research.md, "Proper design"): do the
+//! Design question 2 (docs/kept-areas.md, history, "Proper design"): do the
 //! top objects holding the live player and managers also hold scripts that
 //! save to their area's file, not the global one? If they do, saving them
 //! along with another area would write their area entries into that

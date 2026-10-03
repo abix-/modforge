@@ -18,11 +18,13 @@
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in items.md |
 | 6 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in items.md |
 | 10 | scripts/restart.ps1 | [ ] Hot reload when only the Rust changed: the script finds the shim's hash changed after every build and closes the game | A Rust-only change deploys with "[ready] generation N answering; the game kept running" |
-| 11 | kept_loaded.rs | [ ] Find the source of the one Transform.get_position NullReferenceException (seen in 3 of 5 checks with kept areas on) | Its caller is named in docs/loading-research.md |
-| 19 | kept_loaded.rs | [ ] A door into an area still loading moved the player in the frame it finished loading, before its player setup was switched off (cause in docs/loading-research.md, "First door right after a load"); the waiting door now moves one frame later (built, not deployed) | 3 `OBENSEUER_DOOR_AT_ONCE=1` checks without a MoneyPanel.OnDisable error |
+| 11 | kept_loaded.rs | [ ] Find the source of the one Transform.get_position NullReferenceException (seen in 3 of 5 checks with kept areas on) | Its caller is named in docs/kept-areas.md, history |
+| 19 | kept_loaded.rs | [ ] A door into an area still loading moved the player in the frame it finished loading, before its player setup was switched off (cause in docs/kept-areas.md, "First door right after a load"); the waiting door now moves one frame later (built, not deployed) | 3 `OBENSEUER_DOOR_AT_ONCE=1` checks without a MoneyPanel.OnDisable error |
 | 21 | first_copy_wins.rs | [ ] Stop the shim logging an error for each one-copy class without OnDestroy (about 37 "method 'OnDestroy' not found" at mod start) | No "not found" errors at mod start in LogOutput.log |
-| 22 | kept_loaded.rs | [ ] Measure what areas left (switched off, not unloaded) do with game-wide events they still get (docs/kept-areas.md, differences) | Result in docs/loading-research.md and a decision by the operator |
+| 22 | kept_loaded.rs | [ ] Measure what areas left (switched off, not unloaded) do with game-wide events they still get (docs/kept-areas.md, differences) | Result in docs/kept-areas.md and a decision by the operator |
 | 23 | FirstCopyGuard.cs | [ ] Mod start takes 3.2s since the one-copy check reads Awake and OnEnable (was 0.6s); measure which part | first_copy_wins on under 1s in the log |
 | 30 | kept_loaded.rs | [ ] Remove the 0.2 to 0.6s hitch when some areas are switched on | Longest frame on entering under 0.05s in the log |
 | 31 | kept_loaded.rs | [ ] Cut the mod's part of a save (1.75s) | "save took" in the log under 0.5s |
-| 32 | kept_loaded.rs | [ ] Measure and decide on memory (about 7 GB with about 30 areas) | Memory per area in docs/loading-research.md and a decision by the operator |
+| 32 | kept_loaded.rs | [ ] Measure and decide on memory (about 7 GB with about 30 areas) | Memory per area in docs/performance.md and a decision by the operator |
+| 33 | research | [ ] Name the files that keep their own link to a rebuilt manager (areas.md, links to managers) and whether the game sets those links in the level editor | areas.md lists them |
+| 33 | research | [ ] Count how many doors in other areas already load the next area early (LoadSceneAsyncTrigger; Open Sewer Tenement has 0, doors.md) | doors.md has the count per area |

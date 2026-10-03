@@ -149,7 +149,7 @@ pub fn wait_for_normal_load(api: &Api<Value>, old_controller: &str) {
 }
 
 /// Turn on first_copy_wins and load `area` alongside the one area loaded
-/// now (src/first_copy_wins.rs, docs/loading-research.md). Returns the
+/// now (src/first_copy_wins.rs, docs/kept-areas.md). Returns the
 /// seconds the load took.
 pub fn load_alongside(api: &Api<Value>, area: &str) -> f64 {
     assert_eq!(scenes_loaded(api), 1, "need exactly one area loaded");

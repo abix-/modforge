@@ -1,6 +1,6 @@
 //! Logs how long SaveController.SaveGame takes: the full save the game
-//! writes at every door between areas (research for
-//! docs/loading-research.md).
+//! writes at every door between areas (results in docs/doors.md, where a
+//! door's time goes).
 
 use std::ffi::c_void;
 use std::sync::Mutex;

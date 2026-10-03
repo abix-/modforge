@@ -1,5 +1,5 @@
 //! Areas kept loaded, and doors between them without a loading screen
-//! (operator 2026-10-02; research in docs/loading-research.md).
+//! (operator 2026-10-02; design and its history in docs/kept-areas.md).
 //!
 //! - `load_alongside {area}`: loads an area alongside the current one in
 //!   the background, with first_copy_wins on so its own copies of the
@@ -742,7 +742,7 @@ fn switch_area(area: &str, on: bool) -> Result<(), String> {
 /// Areas whose saved data went in since the last normal load.
 static DATA_APPLIED: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
-/// Design step 2 (docs/loading-research.md, "Proper design"): the area's
+/// Design step 2 (docs/kept-areas.md, history, "Proper design"): the area's
 /// saved data goes into its objects as LoadSaveGameDifferentScene does
 /// (SaveController.cs:641-654), once per normal load, the frame after the
 /// area switched on (a normal load starts the objects first and loads the

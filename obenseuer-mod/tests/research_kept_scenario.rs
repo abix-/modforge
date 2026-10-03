@@ -1,5 +1,5 @@
-//! The automatic check for areas kept loaded (docs/loading-research.md,
-//! "The lifecycle rules kept areas break"): the game is played through the
+//! The automatic check for areas kept loaded (docs/kept-areas.md, proof,
+//! and history, "The lifecycle rules kept areas break"): the game is played through the
 //! kept-area paths without the player, and must end with every one-copy
 //! field live and the player's identity intact. Every game error logged
 //! along the way is listed, to gate on once the game's own errors are

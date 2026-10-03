@@ -102,3 +102,121 @@ tick sees a new GameController (126-135), forgets every kept area (reset,
 (136-142), and loads its door destinations alongside again, nearest door
 first (143, 171-194). So such a change shows the game's loading screen as
 in the game, and the kept areas load again in the background after it.
+
+## A door in short (2026-10-02)
+
+Code: `SaveController.ChangeLevelDelay` (SaveController.cs:344).
+
+1. The screen fades to the loading screen (`LoadingScreen.Fade`).
+2. The game writes a full save into the older of the two autosave slots
+   (`SaveGame`).
+3. It loads that save back (`LoadGameWithMigration`, SaveController.cs:1205).
+   This swaps in the new area's scene with `SceneManager.LoadSceneAsync`
+   in single mode, which destroys the old area
+   (`LoadingScreen.LoadAsynchronously`).
+4. It restores what was saved for the new area: boxes, NPCs, the clock.
+   The fade back in waits until this is done: `TimeOfDayAzure` holds
+   `updateTimeDisabled` until `SaveController.Loading` is false
+   (TimeOfDayAzure.cs:345).
+
+The save in step 2 is how the player's state reaches the next area: the
+objects holding it are destroyed with the old area and rebuilt from the
+save in the new one ([`areas.md`](areas.md), every area brings its own
+player and managers).
+
+## Where a door's time goes (2026-10-02)
+
+Sources: the game's own timing lines in Player.log, and the research test
+`tests/research_loading.rs` run against the live game.
+
+Game's own Player.log lines (seconds from the start of the load):
+
+| Destination | Bar done | Back in game |
+|---|---|---|
+| Interior Tenement Gatehouse | 2.4 | 3.3 |
+| Interior Tenement Deekula A | 2.6 | 4.0 |
+| Interior Tenement Deekula C | 14.9 | 17.5 |
+| Open Sewer Tenement | 14.6 | 16.3 |
+| Open Sewer Tenement (later trip) | 4.6 | 7.7 |
+| (destination not in these lines) | 4.9 | 18.1 |
+
+Player.log does not time the save before the bar.
+
+`research_loading.rs`, one trip Open Sewer Tenement to Interior Player
+Tenement:
+
+```text
+fade   2.14s  save and read back   0.00s  bar   4.67s  restore   0.00s  total   6.81s  longest freeze 1.90s
+```
+
+The fade, bar and total are measured. The save and restore parts read
+0.00s because the game froze for 1.90s once during the trip and the test
+cannot ask the game anything while it is frozen; both parts fell inside
+freezes. That the 1.90s freeze is the save is likely but not proven.
+
+The save itself, timed by a Harmony prefix and postfix on
+`SaveController.SaveGame` (`src/save_timing.rs`), one door trip to Open
+Sewer Tenement (2026-10-02), with the game's own lines for that trip:
+
+```text
+obenseuer-mod: save took 0.582s
+Load scene async done (4.2537571s)...
+After small delay (5.2849259s)...
+Fade out done (5.8932484s)...
+```
+
+| Part | Time |
+|---|---|
+| Save | 0.58s |
+| Bar (the area's scene loading) | 4.25s |
+| Restore (boxes, NPCs, clock) | about 1.0s |
+| Fade back in | about 0.6s |
+
+The fade to black before the save is not in these lines; the test
+measured 2.14s on an earlier trip.
+
+So keeping one copy of the managers would remove the save and part of the
+restore, about 1.5s at most on this trip. The bar is the largest part and
+keeping the managers does not touch it; loading the next area early does.
+
+Other costs in the code:
+
+- The bar fills at a fixed speed (`Mathf.MoveTowards` at 1 per second,
+  LoadingScreen.cs:85) and the new area is only shown once it is full, so
+  even an instant load waits about 1 second.
+- Fades step the alpha by 0.05 per frame, 20 frames each way.
+
+Running the test: [`testing.md`](testing.md).
+
+## The game already loads some areas early
+
+`LoadSceneAsyncTrigger` starts loading the next area alongside the
+current one when the player walks into a trigger near some doors. When
+the door is used, `LoadingScreen.LoadAsynchronously` reuses that load if
+it is in `LoadSceneAsyncTrigger.currentAsyncScenes`.
+
+The early load only helps if the door is used before it finishes: when
+the load completes, its `completed` handler removes the area from
+`currentAsyncScenes` (LoadSceneAsyncTrigger.cs:33-41), so a door used
+after that loads the area again from scratch. The early-loaded area then
+seems to stay loaded alongside the current one until the door's load
+replaces everything (not confirmed live).
+
+Live game, `research_early_load.rs`, in Open Sewer Tenement (the main
+outdoor area, 2026-10-02):
+
+```text
+area "Open Sewer Tenement", scenes loaded now 1
+57 doors to other areas (Changelevel):
+0 early-load triggers (LoadSceneAsyncTrigger):
+```
+
+- All 57 doors are active and lead to about 40 different areas (shops,
+  tenements, bars, the metro). 6 have no destination (`to ""`), among
+  them two elevator doors.
+- No door in this area loads early: every door here does the full load.
+- Other areas were not checked; the test sees only the area the player
+  is in.
+
+A door's early load tried by the mod: [`kept-areas.md`](kept-areas.md),
+how the design was reached.

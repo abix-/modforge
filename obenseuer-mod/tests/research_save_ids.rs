@@ -1,4 +1,4 @@
-//! Design question 2, second half (docs/loading-research.md, "Proper
+//! Design question 2, second half (docs/kept-areas.md, history, "Proper
 //! design"): do every area's own copies of the live player and managers
 //! save under the same GUIDs? research_live_roots_saving.rs found the live
 //! top objects (Game_Logic, Player, Player Camera Base) hold area-file
