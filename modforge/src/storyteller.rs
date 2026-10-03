@@ -209,14 +209,17 @@ pub fn ending<'a>(def: &'a EpisodeDef, reached: &[&str], alive: impl Fn(&str) ->
 }
 
 /// One cue, as a rule: when the player has done `did` (a `Did`'s words,
-/// "read note"), the person cast as `part` does `does`; once an episode,
-/// remembered as the pivot point `name` reached.
+/// "read note"), the person cast as `part` is given the order `does`, the
+/// one command a person carries out, whom it names (the player or a part)
+/// and where (an episode thing, by name) worked out when given
+/// (`Command::resolve`); once an episode, remembered as the pivot point
+/// `name` reached.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CueDef {
     pub name: String,
     pub did: String,
     pub part: String,
-    pub does: CueAct,
+    pub does: crate::command::Command<Who, String>,
 }
 
 /// The cues due now: each whose deed the player has done since the episode
@@ -229,13 +232,6 @@ pub fn cues_due<'a>(def: &'a EpisodeDef, done: &[(u64, crate::memory::Did)], sta
         .filter(|cue| !reached.contains(&cue.name.as_str()))
         .filter(|cue| done.iter().any(|(at, did)| *at >= started && did.words() == cue.did))
         .collect()
-}
-
-/// What a cue has its part do: the same orders a command gives.
-#[derive(Clone, Debug, PartialEq)]
-pub enum CueAct {
-    /// Go to the door between them and the player and knock on it.
-    KnockOnThePlayer,
 }
 
 /// One line, as a rule (topside episodes.md "One way for every
@@ -1396,7 +1392,7 @@ mod tests {
             fits: Vec::new(),
             parts: Vec::new(),
             lines: Vec::new(),
-            cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: CueAct::KnockOnThePlayer }],
+            cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: crate::command::Command::Knock { who: Who::ThePlayer } }],
             door_enemy: false,
             endings: Vec::new(),
             things: Vec::new(),

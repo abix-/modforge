@@ -13,36 +13,86 @@ use serde::{Deserialize, Serialize};
 use crate::actions::Action;
 use crate::brain::{turn_toward, walk_toward, MELEE_REACH};
 
-/// One order. `who` is a person's ActorId; a point is in the world, its
-/// height included: x and z on the ground, y up (topside: everything is
-/// 3D).
+/// One order. `who` is a person (`W`: in the game a person's ActorId; in an
+/// episode's data whom it names, resolved when given); a point (`P`: in the
+/// game a `Point` in the world, its height included; in data what it names)
+/// is where (topside: everything is 3D). The points are flattened, so a
+/// command reads `{"do": "move_to", "x", "y", "z"}`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "do", rename_all = "snake_case")]
-pub enum Command {
+pub enum Command<W = u64, P = Point> {
     /// Go to the point by the way there.
-    MoveTo { x: f32, y: f32, z: f32 },
+    MoveTo {
+        #[serde(flatten)]
+        to: P,
+    },
     /// Follow them, until a move of one's own or they are gone (the
     /// consumer's following does it).
-    Follow { who: u64 },
+    Follow { who: W },
     /// Lead them to the point, waiting when they fall behind, until both
     /// are there (`brain::led_there`; the consumer's leading does it). The
     /// one led follows by their own command or choice.
-    Lead { who: u64, x: f32, y: f32, z: f32 },
+    Lead {
+        who: W,
+        #[serde(flatten)]
+        to: P,
+    },
     /// Walk to them, face them, and use, as E does, until talking with them.
-    TalkTo { who: u64 },
+    TalkTo { who: W },
     /// Walk to the closed door between one and them, on one's own side,
     /// and knock on it, once (the consumer finds the door: the closed one
     /// nearest them).
-    Knock { who: u64 },
+    Knock { who: W },
     /// Walk to them, face them, and attack in reach until they are dead.
-    Attack { who: u64 },
+    Attack { who: W },
     /// Attack the nearest living person one stands hostile to (the
     /// consumer names them, by the brain's one rule).
     AttackNearestEnemy,
     /// Hold the point: stay at it, warn off anyone one stands hostile to
     /// who comes for it, and fight them if they stay (topside todo 11z; the
     /// consumer's holding does it). It does not end on its own.
-    Hold { x: f32, y: f32, z: f32 },
+    Hold {
+        #[serde(flatten)]
+        at: P,
+    },
+}
+
+/// A point in the world: x and z on the ground, y up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Point {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+}
+
+impl From<Point> for Vec3 {
+    fn from(p: Point) -> Self {
+        Vec3::new(p.x, p.y, p.z)
+    }
+}
+
+impl From<Vec3> for Point {
+    fn from(v: Vec3) -> Self {
+        Point { x: v.x, y: v.y, z: v.z }
+    }
+}
+
+impl<W, P> Command<W, P> {
+    /// The same order with whom and where it names worked out (`who`,
+    /// `at`): the one map from an order in data to one given. None when
+    /// either cannot be.
+    pub fn resolve<W2, P2>(self, who: impl Fn(W) -> Option<W2>, at: impl Fn(P) -> Option<P2>) -> Option<Command<W2, P2>> {
+        Some(match self {
+            Command::MoveTo { to } => Command::MoveTo { to: at(to)? },
+            Command::Follow { who: w } => Command::Follow { who: who(w)? },
+            Command::Lead { who: w, to } => Command::Lead { who: who(w)?, to: at(to)? },
+            Command::TalkTo { who: w } => Command::TalkTo { who: who(w)? },
+            Command::Knock { who: w } => Command::Knock { who: who(w)? },
+            Command::Attack { who: w } => Command::Attack { who: who(w)? },
+            Command::AttackNearestEnemy => Command::AttackNearestEnemy,
+            Command::Hold { at: p } => Command::Hold { at: at(p)? },
+        })
+    }
 }
 
 /// How near the spot beside a door a knocker stands to knock, in metres:
@@ -132,7 +182,7 @@ mod tests {
 
     #[test]
     fn move_to_goes_there_and_is_done_there() {
-        let command = Command::MoveTo { x: 10.0, y: -6.0, z: 0.0 };
+        let command = Command::MoveTo { to: Point { x: 10.0, y: -6.0, z: 0.0 } };
         let to = Vec3::new(10.0, -6.0, 0.0);
         assert_eq!(step(&command, Vec3::ZERO, Some(to), false, true, TALK), Step::Act(vec![Action::Go { x: 10.0, y: -6.0, z: 0.0 }]));
         assert_eq!(step(&command, Vec3::new(9.5, -6.0, 0.0), Some(to), false, true, TALK), Step::Done);
@@ -179,6 +229,25 @@ mod tests {
         let near = Vec3::new(4.0, 0.0, 0.0);
         assert_eq!(step(&command, near, Some(them), false, true, TALK), Step::Act(vec![Action::Aim { x: 5.0, y: 0.0 }, Action::Attack]));
         assert_eq!(step(&command, near, None, false, true, TALK), Step::Done, "dead: done");
+    }
+
+    /// A command's JSON keeps its points flat (`{"do": "move_to", "x", "y",
+    /// "z"}`, what the command op and saved replays hold), and an order in
+    /// data resolves to one given: whom and where worked out, or none.
+    #[test]
+    fn a_command_reads_flat_and_an_order_in_data_resolves() {
+        let json = serde_json::json!({"do": "lead", "who": 4, "x": 1.0, "y": 0.5, "z": -2.0});
+        let lead: Command = serde_json::from_value(json.clone()).expect("a lead reads");
+        assert_eq!(lead, Command::Lead { who: 4, to: Point { x: 1.0, y: 0.5, z: -2.0 } });
+        assert_eq!(serde_json::to_value(lead).expect("a lead writes"), json);
+        let hold: Command = serde_json::from_value(serde_json::json!({"do": "hold", "x": 3.0, "y": 0.0, "z": 4.0})).expect("a hold reads");
+        assert_eq!(hold, Command::Hold { at: Point { x: 3.0, y: 0.0, z: 4.0 } });
+        // In data: whom by name, where by a thing's name.
+        let order: Command<&str, &str> = Command::Lead { who: "the player", to: "tap" };
+        let given = order.resolve(|w| (w == "the player").then_some(1u64), |p| (p == "tap").then_some(Point { x: 9.0, y: 0.0, z: 9.0 }));
+        assert_eq!(given, Some(Command::Lead { who: 1, to: Point { x: 9.0, y: 0.0, z: 9.0 } }));
+        let knock: Command<&str, &str> = Command::Knock { who: "nobody" };
+        assert_eq!(knock.resolve(|_| None::<u64>, |_| None::<Point>), None, "whom it names is not there: no order");
     }
 
     #[test]
