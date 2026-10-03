@@ -805,6 +805,19 @@ items), ParcelLocker.OnLoadingGame, RatFightArena.OnLoadingGameLatePrimary
 (Instantiate), CollectibleItemSpawner.OnLoadingGame (SpawnItem); Relay's
 OnLoadingGame re-fires its start outputs (`delayTrigger`).
 
+Lighting (research_light_probes.rs, every area loaded alongside, 106 scenes,
+2026-10-03): the game uses no light probes (0) and never touches
+LightProbes or LightmapSettings. Baked lightmaps come from Bakery
+(BakeryRuntimeAssembly.dll): one `ftLightmapsStorage` per area adds its
+lightmaps in Awake (`ftLightmaps.RefreshScene`, reference counted) and
+removes them in OnDestroy (`UnloadScene`); the game-wide lightmap mode is
+the last store's (`directionalMode`), applied on every active scene
+change. 50 stores: 47 without lightmaps, 3 with (Interior Tenement
+Deekula Mine Entrance 32, Interior Tenement Caravan 22, Interior Bazaar
+Bar 22), none directional: the mode is NonDirectional for every area.
+With that many areas loaded the game used 13.6 GB, and loads alongside
+took over 8 s with single frames of 1.7 to 1.8 s.
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
