@@ -145,6 +145,10 @@ pub enum When {
     /// The speaker is knocking on a shut door now: the line is called
     /// through it, heard like the knock, no conversation opened.
     Knocking,
+    /// The speaker holds a place and warns off one who comes for it: the
+    /// line is called to them, heard where they are, no conversation opened
+    /// (topside todo 11z).
+    Warning,
     /// Nothing has been said in this conversation yet: the speaker's
     /// first word. A plain question asked once, not offered after every
     /// reply (a conversation ends after the last reply).

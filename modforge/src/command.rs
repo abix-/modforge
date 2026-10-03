@@ -39,6 +39,10 @@ pub enum Command {
     /// Attack the nearest living person one stands hostile to (the
     /// consumer names them, by the brain's one rule).
     AttackNearestEnemy,
+    /// Hold the point: stay at it, warn off anyone one stands hostile to
+    /// who comes for it, and fight them if they stay (topside todo 11z; the
+    /// consumer's holding does it). It does not end on its own.
+    Hold { x: f32, y: f32, z: f32 },
 }
 
 /// How near the spot beside a door a knocker stands to knock, in metres:
@@ -91,7 +95,7 @@ pub fn step(command: &Command, here: Vec3, target: Option<Vec3>, ended: bool, se
             actions.push(Action::Attack);
             Step::Act(actions)
         }
-        Command::Follow { .. } | Command::Lead { .. } | Command::AttackNearestEnemy => Step::Done,
+        Command::Follow { .. } | Command::Lead { .. } | Command::Hold { .. } | Command::AttackNearestEnemy => Step::Done,
     }
 }
 

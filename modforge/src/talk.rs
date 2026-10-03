@@ -167,6 +167,9 @@ pub struct Speaking<'a> {
     /// The speaker is knocking on a shut door now: a line said is called
     /// through it, heard like the knock (topside authority.md "Talking").
     pub knocking: bool,
+    /// The speaker holds a place and warns off one who comes for it: a
+    /// line said is called to them (topside todo 11z).
+    pub warning: bool,
 }
 
 impl Speaking<'_> {
@@ -197,6 +200,7 @@ impl Speaking<'_> {
             When::To(part) => self.to_part == part,
             When::Opened => self.opened,
             When::Knocking => self.knocking,
+            When::Warning => self.warning,
             When::First => self.last().is_none(),
             When::Heard(name) => matches!(self.last(), Some((true, line)) if line.name == *name),
             When::HasHeard(name) => {
@@ -547,6 +551,7 @@ mod tests {
                 near: &[],
                 needs: &self.needs,
                 knocking: false,
+                warning: false,
             }
         }
     }
