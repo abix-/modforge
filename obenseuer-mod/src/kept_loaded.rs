@@ -342,7 +342,12 @@ fn finish_load_when_done(area: String, handle: i32, before: Vec<i64>) {
         );
         set_loading_priority(None);
         AREAS.lock().unwrap().insert(area.clone(), new);
-        finish_pending_door(&area);
+        // A door waiting for this area moves the player in one frame later:
+        // the area's player setup is switched off by jobs its Awakes queued
+        // (first_copy_wins switch_off_top_next_frame), which run after this
+        // one. Moving in now switched its Game_Logic on for a frame (a
+        // MoneyPanel.OnDisable error in the first-door-at-once check).
+        MAIN_QUEUE.push(move || finish_pending_door(&area));
     });
 }
 

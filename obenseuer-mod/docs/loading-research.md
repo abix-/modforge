@@ -1014,6 +1014,19 @@ whether the second one is the mod's is not known from one run each.
   own scene mistake; it is logged when such an area loads, alongside or
   not.
 
+## First door right after a load (2026-10-03)
+
+The door patch is on from mod start, so a door used right after a save
+load goes through the mod: the area behind it loads alongside behind the
+loading screen, then the player moves in (OBENSEUER_DOOR_AT_ONCE=1 check
+passed). One MoneyPanel.OnDisable NullReferenceException in that run,
+stack: the mod's `SetActive` (MonoBridge.InvokeMethod). The player moved
+in the same frame the area finished loading; the jobs its Awakes queued
+to switch its player setup off (first_copy_wins
+switch_off_top_next_frame) had not run, so entering switched the area's
+Game_Logic on for a frame, and the queued job then switched an entered
+MoneyPanel off. Fix: the waiting door moves the player in one frame later.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:
