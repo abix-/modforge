@@ -87,14 +87,33 @@ pub fn scenes_loaded(api: &Api<Value>) -> i64 {
 
 /// `reload_save` and wait until the save has loaded (src/investigate.rs).
 pub fn reload_save(api: &Api<Value>) {
-    op(api, "reload_save", json!({}));
-    let start = Instant::now();
-    std::thread::sleep(Duration::from_secs(2));
-    while call_static(api, "SaveController", "get_Loading", json!([])).as_bool() != Some(false) {
-        assert!(start.elapsed() < Duration::from_secs(120), "save did not finish loading in 120s");
-        std::thread::sleep(Duration::from_millis(500));
-    }
+    load_save(api, json!({}));
+}
+
+/// `reload_save` with its arguments (`save`, `character`), and wait until
+/// the save has loaded. Returns the op's result.
+pub fn load_save(api: &Api<Value>, args: Value) -> Value {
+    let controller = instance_now(api, "GameController");
+    let r = op(api, "reload_save", args);
+    wait_for_normal_load(api, &controller);
     std::thread::sleep(Duration::from_secs(3));
+    r
+}
+
+/// Waits for a normal load to finish: the game's one GameController is a
+/// new live object. SaveController.Loading is not on yet seconds after a
+/// load from the main menu starts, so it cannot tell.
+pub fn wait_for_normal_load(api: &Api<Value>, old_controller: &str) {
+    let start = Instant::now();
+    loop {
+        let now = instance_now(api, "GameController");
+        if now != old_controller && now.parse::<i64>().is_ok() {
+            break;
+        }
+        assert!(start.elapsed() < Duration::from_secs(120), "normal load did not finish in 120s");
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    println!("normal load finished ({:.1}s)", start.elapsed().as_secs_f64());
 }
 
 /// Turn on first_copy_wins and load `area` alongside the one area loaded

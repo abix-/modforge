@@ -15,14 +15,18 @@
 //!
 //! ```text
 //! k3sc cargo-lock test -p obenseuer-mod --test research_kept_scenario -- --nocapture
+//! OBENSEUER_KEPT_OFF=1 k3sc cargo-lock test ...   (same run, kept areas off)
 //! ```
+//!
+//! Kept areas off is saved in the settings; the run switches them back on
+//! at its end, but not when it fails before that.
 //!
 //! SKIPs (prints why and passes) when the game is not running.
 
 mod common;
 use std::time::{Duration, Instant};
 
-use common::{WATCHED, api, call, call_static, handle_of, instance_now, op, ping_or_skip};
+use common::{WATCHED, api, call, call_static, handle_of, instance_now, op, ping_or_skip, wait_for_normal_load};
 use serde_json::{Value, json};
 use unityforge::client::Api;
 
@@ -39,15 +43,6 @@ fn kept(api: &Api<Value>) -> Value {
     op(api, "load_alongside", json!({}))
 }
 
-/// Waits for a normal load to finish: the game's one GameController is a
-/// new live object.
-fn wait_for_normal_load(api: &Api<Value>, old_controller: &str) {
-    wait_for("normal load finished", 120, || {
-        let now = instance_now(api, "GameController");
-        now != old_controller && now.parse::<i64>().is_ok()
-    });
-}
-
 /// An active door (switched-on Changelevel) leading to `to`.
 fn door_to(api: &Api<Value>, to: &str) -> Option<i64> {
     let r = api.op("walk_class", json!({"class": "Changelevel", "include_inactive": false}));
@@ -57,15 +52,41 @@ fn door_to(api: &Api<Value>, to: &str) -> Option<i64> {
     })
 }
 
-fn use_door(api: &Api<Value>, to: &str) {
+/// The area the player is in (the active scene).
+fn level_now(api: &Api<Value>) -> String {
+    call_static(api, "UnityEngine.Application", "get_loadedLevelName", json!([])).as_str().unwrap_or("").to_string()
+}
+
+/// Every area an active door here leads to, sorted.
+fn door_destinations(api: &Api<Value>) -> Vec<String> {
+    let r = api.op("walk_class", json!({"class": "Changelevel", "include_inactive": false}));
+    let mut to: Vec<String> = r.result.get("instances").and_then(Value::as_array).cloned().unwrap_or_default().iter().filter_map(handle_of)
+        .filter(|h| call(api, *h, "get_isActiveAndEnabled", json!([])).as_bool() == Some(true))
+        .filter_map(|h| api.op("read_field", json!({"handle": h, "field": "OtherLevel"})).result.as_str().map(String::from))
+        .filter(|to| !to.is_empty()) // doors that lead nowhere
+        .collect();
+    to.sort();
+    to.dedup();
+    to
+}
+
+/// Through a door with the game's own Interact. Kept areas on: the mod's
+/// trip. Off: the game's normal load.
+fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
     let trips = kept(api)["trips"].as_array().map_or(0, |t| t.len());
+    let controller = instance_now(api, "GameController");
     let door = door_to(api, to).unwrap_or_else(|| panic!("no door to {to} here"));
     call(api, door, "Interact", json!([]));
-    wait_for(&format!("moved to {to}"), 30, || {
-        let k = kept(api);
-        k["trips"].as_array().map_or(0, |t| t.len()) > trips && k["current"].as_str() == Some(to)
-    });
-    println!("  trip: {}", kept(api)["trips"].as_array().and_then(|t| t.last().cloned()).unwrap_or_default());
+    if kept_on {
+        wait_for(&format!("moved to {to}"), 30, || {
+            let k = kept(api);
+            k["trips"].as_array().map_or(0, |t| t.len()) > trips && k["current"].as_str() == Some(to)
+        });
+        println!("  trip: {}", kept(api)["trips"].as_array().and_then(|t| t.last().cloned()).unwrap_or_default());
+    } else {
+        wait_for_normal_load(api, &controller);
+        wait_for(&format!("in {to}"), 30, || level_now(api) == to);
+    }
 }
 
 #[test]
@@ -74,6 +95,11 @@ fn kept_areas_played_through() {
     if ping_or_skip(&api).is_none() {
         return;
     }
+    // OBENSEUER_KEPT_OFF=1: the same run with kept areas off (the game's
+    // own loads), to tell the game's own errors from the mod's.
+    let kept_on = std::env::var("OBENSEUER_KEPT_OFF").is_err();
+    op(&api, "load_alongside", json!({"auto": kept_on}));
+    println!("kept areas {}", if kept_on { "on" } else { "OFF" });
     op(&api, "errors", json!({"mark": true}));
 
     // 1. A normal load, then areas kept loaded around the home area.
@@ -81,25 +107,25 @@ fn kept_areas_played_through() {
     let loading = op(&api, "reload_save", json!({}))["loading"].as_str().unwrap_or("").to_string();
     let players_save = loading.rsplit('/').next().unwrap_or("").to_string();
     wait_for_normal_load(&api, &controller);
-    wait_for("areas kept loaded around home", 180, || {
-        let k = kept(&api);
-        k["loaded"].as_object().map_or(0, |m| m.len()) >= 2 && k["loading"].as_array().is_some_and(|l| l.is_empty())
-    });
-    let k = kept(&api);
-    let home = k["current"].as_str().unwrap_or("").to_string();
-    let away = k["loaded"]
-        .as_object()
+    if kept_on {
+        wait_for("areas kept loaded around home", 180, || {
+            let k = kept(&api);
+            k["loaded"].as_object().map_or(0, |m| m.len()) >= 2 && k["loading"].as_array().is_some_and(|l| l.is_empty())
+        });
+    }
+    std::thread::sleep(Duration::from_secs(2));
+    let home = level_now(&api);
+    let loaded: Vec<String> = kept(&api)["loaded"].as_object().into_iter().flatten().map(|(a, _)| a.clone()).collect();
+    let away = door_destinations(&api)
         .into_iter()
-        .flatten()
-        .map(|(a, _)| a.clone())
-        .find(|a| *a != home && door_to(&api, a).is_some())
-        .expect("a kept area a home door leads to");
+        .find(|a| *a != home && (!kept_on || loaded.contains(a)))
+        .expect("an area a home door leads to");
     println!("home {home}, away {away}");
 
     // 2. Out and back through doors.
-    use_door(&api, &away);
+    use_door(&api, &away, kept_on);
     std::thread::sleep(Duration::from_secs(2));
-    use_door(&api, &home);
+    use_door(&api, &home, kept_on);
     std::thread::sleep(Duration::from_secs(2));
 
     // 3. Save into the test slot and load it.
@@ -124,9 +150,10 @@ fn kept_areas_played_through() {
 
     // Back to the player's own save, so their next save goes to their slot.
     let controller = instance_now(&api, "GameController");
+    op(&api, "load_alongside", json!({"auto": true}));
     let back = op(&api, "reload_save", json!({"save": players_save}));
     wait_for_normal_load(&api, &controller);
-    println!("back on the player's save: {}", back["loading"]);
+    println!("back on the player's save: {}, kept areas on", back["loading"]);
     assert!(dead.is_empty(), "one-copy fields not live: {dead:?}");
     assert_eq!(me.as_ref().and_then(|v| v.as_str()), Some("Tom"), "player identity lost");
 }

@@ -7,6 +7,7 @@ The Walking Trade history is maintained in [its project changelog](../thewalking
 
 | Area | Shipped | Verification |
 |---|---|---|
+| `obenseuer-mod` kept_loaded.rs | [x] Find which of the check's errors the base game also logs, with the mod's kept areas off | docs/loading-research.md "The check's errors: the game's own or the mod's": RemoveAgent 2 on / 0 off, LightController.Awake 2 on / 1 off (OBENSEUER_KEPT_OFF=1 run passed, back on Tom_Tomato/Slot7) |
 | `obenseuer-mod` research_kept_scenario.rs | [x] Leave the game's save name as it was after the check saves to ModTest | The check ends with `back on the player's save: "Tom_Tomato/Slot1"` (the reload_save op takes an optional `save`) |
 | `obenseuer-mod` FirstCopyGuard.cs | [x] Run OnDestroy of classes with an Awake in areas never entered | research_kept_scenario.rs passed (c2ba7b23): no "left ... Err ... InteractableChair.StopSitEnd" line |
 | `obenseuer-mod` FirstCopyGuard.cs | [x] Stop MoneyPanel.OnDisable NullReferenceException (5 per check) | The check shows 0 MoneyPanel errors (c2ba7b23) |

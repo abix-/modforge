@@ -41,11 +41,12 @@ pub fn install() {
     }
     OP_REGISTRY.register(OpDef::new(
         "reload_save",
-        "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded, or `save` of the same character",
-        r#"{"save": "name"}  (optional)"#,
+        "Get unstuck (also the F7 key): mod back to its starting state, then load the save last loaded, or `save` (of `character`, or the same character)",
+        r#"{"save": "Slot1", "character": "Tom_Tomato"}  (both optional; from the main menu give both)"#,
         |args| {
             let save = args.get("save").and_then(Json::as_str).map(String::from);
-            MAIN_QUEUE.run_result("reload_save", Duration::from_secs(10), move || reload_save(save))
+            let character = args.get("character").and_then(Json::as_str).map(String::from);
+            MAIN_QUEUE.run_result("reload_save", Duration::from_secs(10), move || reload_save(save, character))
         },
     ));
     OP_REGISTRY.register(OpDef::new(
@@ -70,10 +71,14 @@ pub fn install() {
 
 /// Getting unstuck: one path for the op and the in-game key. Puts the mod
 /// back to its starting state (no areas kept loaded, no door patch), then
-/// loads the save last loaded (or `save`), which unloads every other area.
-fn reload_save(save: Option<String>) -> Result<Json, String> {
+/// loads the save last loaded (or `save` of `character`), which unloads
+/// every other area.
+fn reload_save(save: Option<String>, character: Option<String>) -> Result<Json, String> {
     crate::kept_loaded::reset();
-    let character = save_controller_static("CharacterName")?;
+    let character = match character {
+        Some(c) => c,
+        None => save_controller_static("CharacterName")?,
+    };
     let save = match save {
         Some(s) => s,
         None => save_controller_static("SaveName")?,
@@ -98,7 +103,7 @@ extern "C" fn on_black_canvas(_ctx: *const std::ffi::c_void) -> i32 {
 }
 
 extern "C" fn on_unstuck_key() {
-    match reload_save(None) {
+    match reload_save(None, None) {
         Ok(r) => log(LogLevel::Info, &format!("obenseuer-mod: unstuck: {r}")),
         Err(e) => log(LogLevel::Warn, &format!("obenseuer-mod: unstuck failed: {e}")),
     }

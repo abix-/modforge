@@ -56,9 +56,12 @@ pub fn install() {
     OP_REGISTRY.register(OpDef::new(
         "load_alongside",
         "Load an area alongside the current one; its doors and the current area's doors then move the player without a loading screen",
-        r#"{"area": "Interior Tenement Gatehouse"}  (omit area to only read)"#,
+        r#"{"area": "Interior Tenement Gatehouse", "auto": true}  (omit both to only read; auto sets the kept_loaded.auto setting, saved)"#,
         |args| {
             let area = args.get("area").and_then(Json::as_str).map(String::from);
+            if let Some(auto) = args.get("auto").and_then(Json::as_bool) {
+                crate::settings::get().update(|s| s.kept_loaded.auto = auto);
+            }
             MAIN_QUEUE.run_result("load_alongside", Duration::from_secs(30), move || load_alongside(area))
         },
     ));

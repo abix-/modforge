@@ -853,6 +853,20 @@ And an automatic check after every build: the mod walks through doors
 itself with the game's own door call, saves and loads, and must end with 0
 new errors and every one-copy field live.
 
+## The check's errors: the game's own or the mod's (2026-10-03)
+
+research_kept_scenario.rs from Interior Player Tenement (door to Open
+Sewer Tenement and back, save to ModTest, load it), once with kept areas
+on and once off (OBENSEUER_KEPT_OFF=1, the game's own loads):
+
+| Error | Kept areas on | Off |
+|---|---|---|
+| Pathfinding.RVO.Simulator.RemoveAgent "The agent is not added to this simulation" | 2 | 0 |
+| LightController.Awake NullReferenceException | 2 | 1 |
+
+RemoveAgent is the mod's. LightController.Awake is also the game's own;
+whether the second one is the mod's is not known from one run each.
+
 ## Investigating without restarts
 
 `src/investigate.rs`:
