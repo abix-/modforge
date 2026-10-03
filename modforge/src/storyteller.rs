@@ -55,6 +55,37 @@ pub struct EpisodeDef {
     /// reached and whose parts are alive is the ending (topside the-tap.md
     /// "Which ending"); the last needs nothing.
     pub endings: Vec<EndingDef>,
+    /// What it brings into the world once cast (Skyrim's quest aliases
+    /// filled with things placed where the quest says): topside the-tap.md
+    /// "How it opens", the tap.
+    pub things: Vec<ThingDef>,
+}
+
+/// One thing an episode brings into the world: its name in the episode
+/// (what its lines and pivot points call it), the item it is, where it
+/// stands, and who it belongs to and who knows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ThingDef {
+    pub name: String,
+    pub item: String,
+    /// In a building of the site nearest the middle between these two
+    /// places.
+    pub between: (Place, Place),
+    /// The part whose bunker's store it draws from, if any (a tap on
+    /// Mara's water).
+    pub draws_from: Option<String>,
+    /// The part who found it: they know it as a place they have been, and
+    /// every site near the way to it from the first place.
+    pub found_by: Option<String>,
+    /// Whether whoever found it keeps it to themselves.
+    pub kept_quiet: bool,
+}
+
+/// A place an episode names: the player's bunker door, or a part's home.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Place {
+    PlayerBunkerDoor,
+    HomeOf(String),
 }
 
 /// One ending: its name, what it says happened, the pivot points it needs,
@@ -1226,6 +1257,7 @@ mod tests {
             cues: vec![CueDef { name: "the note read".to_string(), did: "read note".to_string(), part: "Dell".to_string(), does: CueAct::KnockOnThePlayer }],
             door_enemy: false,
             endings: Vec::new(),
+            things: Vec::new(),
         };
         assert!(cues_due(&def, &[], 10, &[]).is_empty(), "nothing done, nothing due");
         assert!(cues_due(&def, &[(5, Did::Read("note".to_string()))], 10, &[]).is_empty(), "read before the episode started");
@@ -1245,6 +1277,7 @@ mod tests {
             cues: Vec::new(),
             door_enemy: true,
             endings: Vec::new(),
+            things: Vec::new(),
         };
         registry.register(episode("anywhere", &[])).unwrap();
         registry.register(episode("only loop", &["Loop"])).unwrap();
@@ -1300,6 +1333,7 @@ mod tests {
                 cues: Vec::new(),
                 door_enemy: false,
             endings: Vec::new(),
+            things: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.felt("threatens Mara"), -0.6);
@@ -1319,6 +1353,7 @@ mod tests {
                 cues: Vec::new(),
                 door_enemy: true,
             endings: Vec::new(),
+            things: Vec::new(),
             })
             .unwrap();
         assert_eq!(registry.pick("Mixed world", 7, 1), None);
