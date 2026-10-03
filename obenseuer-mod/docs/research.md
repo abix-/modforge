@@ -681,6 +681,40 @@ to other areas.
   such an area loads; DifficultyUI.OnEnable and
   ItemAchievementList.Start NullReferenceExceptions at start.
 
+### 9.37 What area objects do in Start, and undo only in OnDestroy
+
+The game's 28 public static events include SaveController's six
+(PlayerWillChangeLevel, PlayerWillLoadGame, SavingStarted, SavingDone,
+LoadingStarted, LoadingDone, SaveController.cs:221-231), TimeOfDayAzure's
+SecondsPassed, MinutePassed, DayChanged (313-317), WeatherManager's
+WeatherUpdated, WeatherTransitioning (74-76), WindowNaturalLight's
+SourcesChanged (34).
+
+Area objects whose Start writes to or calls a manager (scan of every
+Start for `X.instance.` writes and calls, 31 classes):
+
+- Pushes the area's settings into the live managers: `info_game_logic`
+  (sky, radiation), `SoundscapeGlobal` (playAtStart: plays the area's
+  sound; subscribes `TimeOfDayAzure.MinutePassed` and every minute sets
+  the global soundscape to its own day or night sound,
+  SoundscapeGlobal.cs, unsubscribes only in OnDestroy, 65-68),
+  `SoundscapeArea` (playAtStart; adds itself to
+  `SoundscapeController.soundscapeAreas`), `StartOpenSewer` (the intro).
+- Registers in a manager's list in Start, removes only in OnDestroy:
+  CullingController (Cull_light, LightController), WindowNaturalLight
+  (LightController: it only sets each light's colour from the weather,
+  WindowNaturalLight.cs:178-209), TrainController (TrackTrain,
+  Track_Segment), JanitorController (RelayJanitor, StorageJanitorAction,
+  keyed by level name), SMVEffects (WastelandMaterial), NPCManager
+  (Waypoint_LevelChange).
+- Registers and never removes: ShopController (one reference, the last
+  FurnitureShopUI/TrainShopUI; each exists in one area), TradePanel
+  (`marketShops`, found by owner id, ShopController... TradePanel.cs:44-60),
+  Money (`moneyPanels`; panels skip themselves when switched off,
+  MoneyPanel.cs:102), BuildingAreaWalls, TenementController (apartment
+  and general prefabs, resource storages), TenementEventController,
+  ToolTip, SMVEffects (SMVHierarchy), NPCManager (NPCInfo).
+
 ### 9.36 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
