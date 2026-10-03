@@ -622,17 +622,20 @@ fn run_phase(area: &str, phase: &str) -> Result<(), String> {
 /// managers (Game_Logic, Player...), switched on wherever the player is.
 static HOME: Mutex<Option<String>> = Mutex::new(None);
 
-/// An area-change phase (OnMapChanging, OnMapChanged) as a door runs it on
-/// the active scene and the objects kept through scene changes
-/// (SaveController.cs:446-447, 653): on the area, on the home area (only
-/// its live player and managers are on away from home: the NPC director
-/// and the rest live there), and on the kept-through-loads objects.
+/// An area-change phase (OnMapChanging, OnMapChanged) as a door runs it:
+/// on the area, and on the home area (only its live player and managers
+/// are on away from home: the NPC director and the rest live there, where
+/// the game has them in the active area). The objects kept through scene
+/// changes get OnMapChanging only, as in the game (SaveController.cs:446-447;
+/// OnMapChanged runs on the active area alone, 653).
 fn area_change_phase(area: &str, phase: &str) -> Result<(), String> {
     run_phase(area, phase)?;
     if let Some(home) = HOME.lock().unwrap().clone().filter(|h| h != area) {
         run_phase(&home, phase)?;
     }
-    invoke_static("SaveController", "ExecuteDontDestroyOnLoadSaveLoadFunctions", &json!([phase]))?;
+    if phase == "OnMapChanging" {
+        invoke_static("SaveController", "ExecuteDontDestroyOnLoadSaveLoadFunctions", &json!([phase]))?;
+    }
     Ok(())
 }
 

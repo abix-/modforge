@@ -7,6 +7,7 @@ The Walking Trade history is maintained in [its project changelog](../thewalking
 
 | Area | Shipped | Verification |
 |---|---|---|
+| `obenseuer-mod` kept_loaded.rs | [x] Run OnMapChanged on entering on the area and home only, not on the kept-through-loads objects (SaveController.cs:653) | The check passes with 2 errors (LightController.Awake), no new ones |
 | `unityforge` SceneTools.cs | [x] Keep "loaded quietly", "never entered" and "switched off" per load of an area (Scene.handle), not per area name, and only for the mod's own loads alongside | Kept areas off after an area loaded alongside: 12684 errors with the old shim (12540 Spawner.DeltaSeconds), 1 with the new (LightController.Awake, the game's own); kept areas on: the check passes with 2 (LightController.Awake) |
 | `unityforge` FirstCopyGuard.cs | [x] Stop Pathfinding.RVO.Simulator.RemoveAgent "agent is not added" (2 per check with kept areas on, 0 with them off): a one copy is also a public static property of the class's own type (RVOSimulator.active) | The check shows 0 RemoveAgent errors; first_copy_wins on: 359 patches (was 336) |
 | `obenseuer-mod` kept_loaded.rs | [x] Find which of the check's errors the base game also logs, with the mod's kept areas off | docs/loading-research.md "The check's errors: the game's own or the mod's": RemoveAgent 2 on / 0 off, LightController.Awake 2 on / 1 off (OBENSEUER_KEPT_OFF=1 run passed, back on Tom_Tomato/Slot7) |

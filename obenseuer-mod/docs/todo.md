@@ -6,7 +6,7 @@
 | 3 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 3 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |
 | 3 | research | [ ] Map the NPC scheduler: how Timetable entries drive NPC movement | Scheduler flow documented |
-| 5 | kept_loaded.rs | [ ] Run OnMapChanged on entering on the area and home only, not on the kept-through-loads objects (SaveController.cs:653) | The check passes with no new errors |
+| 5 | kept_loaded.rs | [ ] A second visit to an area that is not home finds no arrival point and falls back to a normal load (tenement, Open Sewer Tenement, tenement, Open Sewer Tenement: "no arrival point PlayerTenement_Out") | That trip moves without a loading screen, shown by the check |
 | 6 | kept_loaded.rs | [ ] Fire SavingStarted and SavingDone around the capture on leaving, as SaveGame does (SaveController.cs:452) | The check passes; listeners run, shown by a test |
 | 7 | kept_loaded.rs | [ ] Fire LoadingStarted before the load phases on entering (SaveController.cs:640) | Listeners run on entering, shown by a test |
 | 8 | kept_loaded.rs | [ ] Run OnLoadingGame and LatePrimary one frame after Primary to Tertiary, as the game does (SaveController.cs:647) | The check passes with no new errors |
