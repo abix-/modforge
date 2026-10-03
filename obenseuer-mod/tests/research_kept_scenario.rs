@@ -89,6 +89,15 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
         let f = handle_of(&call(api, t, "GetField", json!(["instance"]))).expect("instance field");
         let npc = handle_of(&call(api, f, "GetValue", json!([null]))).expect("NPCManager.instance");
         assert_eq!(call(api, npc, "get_ActiveScene", json!([])).as_str(), Some(to), "NPCManager.ActiveScene after the door");
+        // The area's settings in the live set: the background radiation its
+        // info_game_logic.Start pushes into RadiationController.
+        let own = handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["info_game_logic", to]))).expect("the area's info_game_logic");
+        let want = api.op("read_field", json!({"handle": own, "field": "backgroundRadiation"})).result.as_f64();
+        let t = handle_of(&call_static(api, "System.Type", "GetType", json!(["RadiationController, Assembly-CSharp"]))).expect("RadiationController type");
+        let f = handle_of(&call(api, t, "GetField", json!(["instance"]))).expect("instance field");
+        let radiation = handle_of(&call(api, f, "GetValue", json!([null]))).expect("RadiationController.instance");
+        wait_for("the area's background radiation", 5, || api.op("read_field", json!({"handle": radiation, "field": "backgroundRadiation"})).result.as_f64() == want);
+        println!("  background radiation {want:?}");
     } else {
         wait_for_normal_load(api, &controller);
         wait_for(&format!("in {to}"), 30, || level_now(api) == to);
@@ -122,9 +131,12 @@ fn kept_areas_played_through() {
     std::thread::sleep(Duration::from_secs(2));
     let home = level_now(&api);
     let loaded: Vec<String> = kept(&api)["loaded"].as_object().into_iter().flatten().map(|(a, _)| a.clone()).collect();
+    // OBENSEUER_AWAY picks the area (Under Map: its own sky and radiation
+    // 89, so its settings following the player shows; research.md 9.30).
+    let wanted = std::env::var("OBENSEUER_AWAY").ok();
     let away = door_destinations(&api)
         .into_iter()
-        .find(|a| *a != home && (!kept_on || loaded.contains(a)))
+        .find(|a| *a != home && (!kept_on || loaded.contains(a)) && wanted.as_deref().is_none_or(|w| w == a))
         .expect("an area a home door leads to");
     println!("home {home}, away {away}");
 

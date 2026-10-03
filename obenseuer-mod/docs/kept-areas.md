@@ -86,16 +86,24 @@ does not set is not a manager: `Storage.active` is the box open now.
     scan of the game's 199 managers and its reading are in
     loading-research.md; a class shown to be area-owned later is added
     here first.
-  - Not area-owned although it holds area settings: `info_game_logic`. It
-    owns its area's player setup: its OnEnable destroys its own object
-    when `instance` is another copy, and its OnDestroy destroys `Main`,
-    the setup (info_game_logic.cs:85-95, 177-183). Made area-owned, walking
-    back home destroyed the live player and managers (the identity fell
-    back to "Esko_Virtanen"). It stays a game-wide manager; its per-area
-    settings (prison, sleep safety, background radiation, sky) stay
-    home's in kept areas: todo.
+  - `info_game_logic` (`__MAIN/info_game_logic`) is area-owned too: its
+    fields are the area's settings, read through `instance` (prison area,
+    `baseSafetyFactor`, item expiry, map and skybox settings,
+    info_game_logic.cs:8-65), and its Start pushes the area's sky and
+    background radiation into the live `TimeOfDayAzure` and
+    `RadiationController` (97-127). Its Awake and OnEnable destroy their
+    own object when `instance` is another copy, and its OnDestroy
+    destroys `Main` (73-95, 177-183): made area-owned while the area
+    switched on before `instance` was set, walking back home destroyed
+    the live player and managers (identity fell back to
+    "Esko_Virtanen"). With the order below it finds itself.
   - Order on entering (rule 2): the area-owned managers become the game's
     before the area switches on, as Awake runs before OnEnable in a load.
+  - Unity runs Start once per object; in the game every visit is a fresh
+    load, so `info_game_logic.Start` runs on every visit. The mod runs the
+    area's `info_game_logic.Start` on every entering (rule 2, step 3's
+    frame). It only sets values and switches the sky, so the first
+    visit's own Start running too does no harm.
 
 ## Rule 2: entering an area
 
@@ -159,7 +167,6 @@ normal load.
 |---|---|---|
 | Areas left are switched off, not unloaded: their objects keep subscriptions to game-wide events (a switched-off Spawner still gets `TimeOfDayAzure.SecondsPassed`) | Unloading is what makes doors slow | Not measured; operator to decide |
 | No autosave at a door | Writing files at a door stutters | Decided by the operator (2026-10-03): no autosave at doors; the player saves |
-| `info_game_logic`'s per-area settings (prison area, sleep safety, background radiation, sky) stay those of the area the save loaded into | It owns its area's player setup, so it cannot be area-owned (rule 1, which copy) | Todo: apply the entered area's settings the way its Start does |
 | Objects in an area never entered woke but never started; OnDestroy of a class with Start and no Awake is skipped for them, and an exception their OnDisable throws is swallowed | Nothing may start before the player walks in (an area's intro ran and left the screen black) | Built |
 
 ## Proof

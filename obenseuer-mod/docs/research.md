@@ -588,6 +588,19 @@ setup (177-183). Its Start applies the area's settings: sky (`DelaySet`),
 prison area (`prisonLevelName`, read by Crime.TeleportToPrison) and
 `baseSafetyFactor` (read by SleepEventController.cs:68).
 
+`info_game_logic` values per area (research_area_settings.rs, 2026-10-03):
+
+| Area | overrideSky / profile | disableOverrideSkyOnPlay | backgroundRadiation | prisonLevelName |
+|---|---|---|---|---|
+| Open Sewer Tenement | false / Obenseuer Default (sky on) | false | 0.0004 | Interior Tenement Gatehouse |
+| Open Sewer Bazaar | false / none (sky on) | false | 0.0004 | Interior Bazaar Police and Jail |
+| Interior Tenement Gatehouse | true / none (no sky) | false | 0.0004 | Interior Tenement Gatehouse |
+| Interior Tenement B | true / Obenseuer No Sky Deekula | true (Start leaves the sky as it is) | 0.0004 | Interior Tenement Gatehouse |
+| Under Map | true / Obenseuer Under Map | false | 89.0 (wasteland 89.0) | Interior Tenement Gatehouse |
+
+All five: baseSafetyFactor 0, itemExpirationTimeMinutes 600, hideMainMap
+false, _3dSkybox false, backgroundRadiationWasteland 25 (Under Map 89).
+
 Per-area managers (their data is the area's): PlayerLevelEntrypoints,
 DestructibleList, SleepEventController (saved in the area's file),
 NPCManager, `info_map`, `info_water_source`. Each sits alone on its own

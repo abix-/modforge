@@ -2,7 +2,6 @@
 
 | Priority | Area | Todo | Done when |
 |---:|---|---|---|
-| 2 | first_copy_wins.rs | [ ] info_game_logic's per-area settings (prison area, sleep safety, background radiation, sky in its Start) stay home's in kept areas; it cannot be area-owned (it owns the area's player setup, docs/kept-areas.md). Read its Start and DelaySet and apply the entered area's settings the way its Start does | After a kept door, RadiationController.instance.backgroundRadiation is the entered area's info_game_logic value, shown by the check |
 | 5 | research | [ ] Map the save/load flow: which SavableScript subclasses hold player state, in what order | Save flow documented |
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in research.md |
 | 6 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in research.md |

@@ -526,6 +526,15 @@ fn enter_area(area: &str, point: &MonoObject) -> Result<(), String> {
     *CURRENT.lock().unwrap() = Some(area.to_string());
     let area = area.to_string();
     MAIN_QUEUE.push(move || {
+        // The frame its objects start: the area's info_game_logic.Start
+        // pushes its sky and radiation into the live set, as on every
+        // visit in the game (Unity runs Start once; docs/kept-areas.md,
+        // rule 1, which copy).
+        let settings = obj(invoke_static("Unityforge.Shim.FirstCopyGuard", "AreaCopy", &json!(["info_game_logic", area])).unwrap_or(Json::Null))
+            .map(|g| g.invoke("Start", &json!([])).map(|_| ()));
+        if let Some(Err(e)) = settings {
+            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: info_game_logic.Start failed: {e}"));
+        }
         // Step 3, then 4 and 6 on the first visit.
         let started = fire_save_event("LoadingStarted");
         let data = saved_data_first_frame(&area);

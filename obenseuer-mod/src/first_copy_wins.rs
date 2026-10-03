@@ -68,6 +68,7 @@ const AREA_OWNED: &[&str] = &[
     "DestructibleList",
     "SleepEventController",
     "NPCManager",
+    "info_game_logic",
     "info_map",
     "info_water_source",
 ];

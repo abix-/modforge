@@ -26,6 +26,7 @@ These rules govern `docs/changelog.md`. Follow them exactly.
 
 | System | Item | Done when |
 |---|---|---|
+| first_copy_wins.rs, kept_loaded.rs | [x] info_game_logic area-owned (the area's settings: prison, safety, radiation, sky), its Start run on every entering as every visit is a fresh load in the game | `OBENSEUER_AWAY="Under Map"` check: after the door the live RadiationController.backgroundRadiation is Under Map's own 89.0 (the tenement's is 0.0004); identity "Tom" kept; research_area_settings.rs values in research.md 9.30 |
 | first_copy_wins.rs, kept_loaded.rs | [x] NPCManager, info_map, info_water_source area-owned (the rule and the scan of 199 managers in docs); area-owned managers set before the area switches on | The check passes with two round trips and asserts NPCManager.ActiveScene names the area entered after every kept door; only the check's own loads |
 | kept_loaded.rs | [x] Decide: autosave at a kept door | Operator: no autosave at doors, the player saves (docs/kept-areas.md, differences) |
 | kept_loaded.rs | [x] Rule 3 (docs/kept-areas.md): leaving an area is one function (`leave_area`) that runs the table's steps 1 to 11 in order, the area's DestructibleList saved (step 5), the area always switched off (step 11) | The check passes with two round trips and 1 game error (LightController.Awake, the game's own); every leaving logs Ok |
