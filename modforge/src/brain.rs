@@ -172,6 +172,11 @@ pub const RESTED: f32 = 95.0;
 /// A need below this, with nothing known to answer it, sends a person
 /// looking.
 pub const LOOK_LINE: f32 = 30.0;
+/// A need below this is critical: it outranks what they were asked to do
+/// (an episode's errand), and once it is met they go back to it
+/// (RimWorld's ThinkTree: critical needs above assigned jobs). Claude's
+/// number (topside orchestrator, 2026-10-03), for the operator to change.
+pub const NEED_CRITICAL: f32 = 15.0;
 /// Within this of a target counts as there.
 pub const REACH: f32 = 1.5;
 /// Metres of walking that cost one point of satisfaction.
@@ -213,8 +218,18 @@ pub fn situation(p: &Perception) -> Situation {
 /// they learned; what comes before it (danger, their own needs) still
 /// weighs against it (topside orchestrator, 2026-10-03: Roxanne left the
 /// talk to look in a box).
+///
+/// A critical need they can answer (`critical_need`) outranks what was
+/// asked: then the choices are only those before it (eating what they
+/// carry, going to a need, trading for it); met, the next choice offers
+/// what was asked again, and they go back to it.
 pub fn learned(t: &mut Think, offered: &[Choice]) -> usize {
-    let up_to = offered.iter().position(|c| *c == Choice::Asked).map_or(offered.len(), |i| i + 1);
+    let critical = critical_need(t, &Target::None);
+    let up_to = match offered.iter().position(|c| *c == Choice::Asked) {
+        Some(asked) if critical && asked > 0 => asked,
+        Some(asked) => asked + 1,
+        None => offered.len(),
+    };
     t.p.memory.learned.pick(&situation(t.p), &offered[..up_to])
 }
 
@@ -432,6 +447,15 @@ pub fn worse_need(t: &mut Think, target: &Target) -> bool {
     let value = |n: Need| needs.iter().find(|(m, _)| *m == n).map_or(0.0, |(_, v)| *v);
     let (worst, lowest) = needs[0];
     worst != serving && lowest < LOOK_LINE && lowest < value(serving)
+}
+
+/// A need below `NEED_CRITICAL` that they can do something about (what
+/// they carry, a thing they know, someone to trade with): it outranks what
+/// they were asked to do (`learned`; the asked state's way back to the
+/// root). One they can do nothing about leaves them where they were asked.
+pub fn critical_need(t: &mut Think, target: &Target) -> bool {
+    t.p.needs.worst_need().1 < NEED_CRITICAL
+        && (enter_eat_carried(t, target).is_some() || need_target(t.p).is_some() || enter_trade(t, target).is_some())
 }
 
 // Trade.
@@ -923,6 +947,30 @@ mod tests {
         assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "asked elsewhere");
         p.asked = None;
         assert!(not_asked(&mut Think::new(&p, &mut roll), &target), "no longer asked");
+    }
+
+    /// A need below NEED_CRITICAL that they can answer outranks being asked
+    /// (topside: Mara waited at the tap and did not drink at thirst 0); one
+    /// they can do nothing about, or one not yet critical, does not.
+    #[test]
+    fn a_critical_need_they_can_answer_outranks_being_asked() {
+        let memory = Memory::default();
+        let personality = Personality::default();
+        let mut p = perception(&memory, &personality);
+        let mut roll = Roll::new(1);
+        p.asked = Some(Vec3::new(40.0, 0.0, 10.0));
+        p.needs.thirst = NEED_CRITICAL - 10.0;
+        p.carries_drink = true;
+        assert!(critical_need(&mut Think::new(&p, &mut roll), &Target::None), "thirst {} carrying drink", p.needs.thirst);
+        // Offered eating what they carry and what was asked: what was asked
+        // is not offered while the need is critical.
+        let offered = [Choice::EatCarried, Choice::Asked];
+        assert_eq!(learned(&mut Think::new(&p, &mut roll), &offered), 0, "critical: the need first");
+        p.carries_drink = false;
+        assert!(!critical_need(&mut Think::new(&p, &mut roll), &Target::None), "nothing to answer it with: they stay asked");
+        p.carries_drink = true;
+        p.needs.thirst = NEED_CRITICAL + 10.0;
+        assert!(!critical_need(&mut Think::new(&p, &mut roll), &Target::None), "not critical yet");
     }
 
     /// A stroll and a trip out only pick a spot someone can stand on;
