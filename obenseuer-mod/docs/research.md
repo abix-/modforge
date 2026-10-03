@@ -775,6 +775,27 @@ More that assumes one area (2026-10-03):
   (disables controls and the player camera while on), AlarmClock and
   ToiletPaperHolder connecting to nearby beds and toilets.
 
+Time while an area is not loaded (2026-10-03): nothing in it runs; the
+load catches it up. A class records the time in its OnSavingGame
+(`savedTimeAndDay.SetToCurrentTimeAndDay()`) and, from its OnLoadingGame,
+starts a coroutine that applies the time since
+(`savedTimeAndDay.GetDifferenceToCurrentTimeInSeconds()`): grow.LoadDelay
+(`UpdateGrow`), Storage.LoadDelay (restock `SpawnItems` when due, power,
+outputs), Spawner.LoadDelay (`timetospawn`), and AnimalBreeder,
+AnimalStats, BaseShop, BatteryPowerSource, Collectible
+(OnLoadingGameDelay), GasStation, InteractableItemGiver,
+InteractableShower (OnLoadingGameDelay), LiquidStorage, logic_gauge,
+NPCInfo (OnLoadDelay: needs after more than 6000 s and 30000 s), Trade,
+VendingMachine, WorkableResourceSource; Fuel (a plain class) catches up in
+`LoadedGame`, called by its owner. Timers that catch up in OnMapChanged:
+RelayTimer, RelayOnDayChange, Spawner.
+
+Load steps that create objects (would duplicate them on objects that were
+not destroyed): DestructibleList.OnLoadingGameDestructibleList (dropped
+items), ParcelLocker.OnLoadingGame, RatFightArena.OnLoadingGameLatePrimary
+(Instantiate), CollectibleItemSpawner.OnLoadingGame (SpawnItem); Relay's
+OnLoadingGame re-fires its start outputs (`delayTrigger`).
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
