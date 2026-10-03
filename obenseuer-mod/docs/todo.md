@@ -2,8 +2,10 @@
 
 | Priority | Area | Todo | Done when |
 |---:|---|---|---|
-| 1 | research | [ ] Research how the map uses the current area (MapController, Map, PlayerMarker; MapController.Start and OnLoadingGame call GetCurrentSceneMap) | research.md says, with lines, what picks the area's map and when; any kept-area gap is its own row |
-| 1 | research | [ ] Research how relays and area logic start (Relay, RelayAuto, TriggerMultiple, ...; Relay.OnLoadingGame re-fires its start outputs on every load) | research.md says, with lines, which start outputs fire on which load or Start; any kept-area gap is its own row |
+| 1 | kept_loaded.rs | [ ] The map does not follow a kept door: MapController's current map (`currentSceneMapInfo`, landmarks) and the map panel's image are set only in their Start and MapController's OnLoadingGame (research.md 9.37, the map); landmarks found in another area go into the save's area's map record | After a kept door the map panel shows the entered area's map image and landmarks, shown by a test |
+| 1 | kept_loaded.rs | [ ] Relays with `triggerAtStart` fire only on the first visit to a kept area; in the game they fire on every area load (research.md 9.37, relays) | A test shows a start relay's outputs fire again on a second kept door into its area |
+| 1 | kept_loaded.rs | [ ] A relay's delayed output stops when its kept area is switched off and is never restarted; in the game OnLoadingGame restarts it from the saved `delayLeft` (research.md 9.37, relays) | A test shows a delayed output started before a kept door fires after coming back |
+| 1 | research | [ ] Research the other area logic that starts like relays (RelayAuto, TriggerMultiple, ...) and count relays per area with one in-game call that returns only the counts | research.md says, with lines, which start outputs fire on which load or Start; any kept-area gap is its own row |
 | 2 | research | [ ] Research how tasks and quests use areas (TaskController, TaskItemsManager, task triggers) | research.md says, with lines, which tasks check or react to the area; any kept-area gap is its own row |
 | 2 | research | [ ] Research how dialogue triggers start (Pixel Crushers Dialogue System triggers on start or on area load) | research.md says, with lines, which triggers fire per load or Start; any kept-area gap is its own row |
 | 3 | research | [ ] Research how the tenement uses areas (TenementController, TenementEventController.currentSceneResidents) | research.md says, with lines, what is per area; any kept-area gap is its own row |

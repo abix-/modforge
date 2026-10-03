@@ -872,6 +872,35 @@ SaveController.cs:1113-1131), then the kept-through-loads objects for the
 Special phases. Loading reads both files first, then runs the load phases
 in 9.25's order; each script takes its own entry by GUID.
 
+The map (2026-10-03): the area's map is `info_map` (area content; its
+`mapImage`, `requiredTaskItem`, `GetRelativePosition`). `MapController` (a
+game-wide manager in Game_Logic, saves into Globals) keeps a map record per
+map id (`mapInfos`) and the current one (`currentSceneMapInfo`, the area's
+landmarks), set only in its Start and in OnLoadingGame's delayed step
+(GetCurrentSceneMap, MapController.cs:102-171; id from info_map.instance,
+196-211); `AddLandMark` adds a discovered landmark to `currentSceneMapInfo`
+(173-193). The map panel `Map` sets its image from info_map only in Start
+(Map.cs:73-88); its player marker reads info_map live
+(`UpdatePlayerMarker`, 128-139). In the game both run on every area load.
+
+Relays (2026-10-03, from Relay.cs; per-area counts not measured yet): a
+relay with `triggerAtStart` fires its outputs from Start, three
+end-of-frames later (StartDelay, Relay.cs:83-97). `triggerOutputs` does
+nothing when the relay's object is switched off, when it is
+`fireOnceOnly` and already fired, or when its required task items,
+objectives or dialogue variables are not met (106-117). An output with a
+`delay` runs a coroutine that counts `delayLeft` down by `Time.deltaTime`
+each frame, then fires (delayTrigger, 218-237). `delayLeft` and
+`firedOnce` are saved (only `fsIgnore` fields are not, 9-54);
+OnLoadingGame restarts the countdown for every output with `delayLeft`
+left (65-81). In the game, Start and OnLoadingGame run on every area load,
+so start outputs fire on every visit and delayed outputs resume. In kept
+areas: Start runs on the first visit only (Relay is not in START_AGAIN),
+and the load phases run on the first visit only, so start outputs do not
+fire again on later visits, and a countdown stopped when the area is
+switched off (Unity stops a switched-off object's coroutines) is not
+restarted.
+
 ### 9.38 Pathfinding (AstarPathfindingProject.dll)
 
 `AstarPath.active` (field) and `Pathfinding.RVO.RVOSimulator.active`
