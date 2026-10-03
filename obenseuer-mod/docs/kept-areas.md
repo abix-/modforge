@@ -47,11 +47,34 @@ does not set is not a manager: `Storage.active` is the box open now.
   clock, the camera, the UI): the copies the save loaded stay the game's
   in every area. A copy from an area loaded alongside does not take over
   (its Awake and OnDestroy are skipped, first_copy_wins.rs).
-- Area-owned managers: hold the area's own data, so the game uses the
-  copy of the area the player is in, as that area's Awake would have set
-  it (rule 2, step 2). Known: `PlayerLevelEntrypoints` (arrival points),
-  `DestructibleList` (dropped and destroyed items, saved in the area's
-  file), `SleepEventController` (saved in the area's file).
+- Area-owned managers: hold the area's own data, so they belong to the
+  area's content, not to the player setup. This is Unity's standard
+  pattern for levels loaded alongside a persistent scene: one persistent
+  set of player and managers, and a level's own managers live and work in
+  the level (loading-research.md, "One copy for the game, or one copy per
+  area"). Obenseuer's scenes bundle them inside each area's copy of the
+  player setup (`Game_Logic`), which the mod keeps switched off, so the
+  mod separates them:
+  - When the area has loaded alongside (in `sceneLoaded`, rule 1 step 2),
+    each one's object is taken out of `Game_Logic` and made a top object
+    of the same area. It is then the area's content: switched on and off
+    with the area, saved and loaded with it by the game's own steps (rules
+    2 and 3), and able to run its coroutines. Each sits alone on its own
+    object with no children (research_area_owned.rs), so nothing else
+    moves with it.
+  - Its Awake is still held back at load (it would take over while the
+    player is elsewhere). Entering the area sets its `instance` to the
+    area's copy and switches the script on (rule 2, step 2), as its Awake
+    would have on a normal load. `DestructibleList.Awake` also empties
+    `Collectible.allCollectibles` (DestructibleList.cs:91): whether entering
+    must do that too is not checked yet.
+  - Known: `PlayerLevelEntrypoints` (`Game_Logic/Other/PlayerLevelEntrypoints`,
+    arrival points), `DestructibleList` (`Game_Logic/Other/LoadSavegame`,
+    dropped and destroyed items, saved in the area's file),
+    `SleepEventController`
+    (`Game_Logic/Controllers/WaitingController/SleepEventController`, saved
+    in the area's file). Found by where they save and what they hold; a
+    class shown to be area-owned later is added here first.
 
 ## Rule 2: entering an area
 
