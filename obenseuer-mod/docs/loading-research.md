@@ -5,7 +5,7 @@
 > tried and measured. Started 2026-10-02.
 >
 > Not authoritative on the game's systems: each has its own doc, listed
-> in [research.md](research.md) (the door and the save in save.md, areas
+> in [research.md](research.md) (doors in doors.md, the save in save.md, areas
 > and managers in areas.md, NPCs in npcs.md, pathfinding in
 > pathfinding.md). The mod's design is [kept-areas.md](kept-areas.md).
 

@@ -23,8 +23,8 @@ area.
 
 `Crime.TeleportToPrison` (Crime.cs:322-330) sends the player to
 `info_game_logic.prisonLevelName` with `SaveController.ChangeLevel`, a
-normal load (see [`areas.md`](areas.md), area changes other than doors;
-each area's prison is in its `info_game_logic`, same doc). Prison lowers
+normal load (see [`doors.md`](doors.md), area changes other than doors;
+each area's prison is in its `info_game_logic`, [`areas.md`](areas.md)). Prison lowers
 every crime record each second while subscribed to the clock
 ([`time.md`](time.md)).
 

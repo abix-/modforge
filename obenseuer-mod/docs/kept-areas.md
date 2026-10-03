@@ -178,7 +178,7 @@ left area's Spawners keep their timers. So:
 
 ## The door
 
-The game's door moves the player out of the area, then unloads it. The
+The game's door (doors.md) moves the player out of the area, then unloads it. The
 mod mirrors that, with the area switched off instead of unloaded:
 
 1. Rule 3, steps 1 to 10, on the area left, still on.

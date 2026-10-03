@@ -129,4 +129,4 @@ WatchingTV, Talking. Sleep events can interrupt (crazy neighbor).
 Arrest chance during sleep = 10% if crimes pending. Has alarm
 clock support. A sleep event can send the player to "Interior Player
 Tenement" with a normal load (SleepEventController.cs:341; see
-[`areas.md`](areas.md), area changes other than doors).
+[`doors.md`](doors.md), area changes other than doors).

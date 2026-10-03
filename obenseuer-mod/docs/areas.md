@@ -2,10 +2,10 @@
 
 > **Authoritative on:** how the game is built from areas (one scene each):
 > what each area's scene holds, managers (one copy) and per-area managers,
-> info_game_logic, arrival points, game-wide events and their listeners,
-> what area objects do in Awake, OnEnable, Start, OnDisable and OnDestroy,
-> coroutines, and every way the game changes area. The mod's design for
-> keeping areas loaded: [`kept-areas.md`](kept-areas.md).
+> info_game_logic, game-wide events and their listeners, what area
+> objects do in Awake, OnEnable, Start, OnDisable and OnDestroy, and
+> coroutines. Doors and moving between areas: [`doors.md`](doors.md). The
+> mod's design for keeping areas loaded: [`kept-areas.md`](kept-areas.md).
 >
 > Index of every game system's doc: [`research.md`](research.md).
 
@@ -83,52 +83,11 @@ Values per area (research_area_settings.rs, 2026-10-03):
 All five: baseSafetyFactor 0, itemExpirationTimeMinutes 600, hideMainMap
 false, _3dSkybox false, backgroundRadiationWasteland 25 (Under Map 89).
 
-## Arrival points (PlayerLevelEntrypoints)
+## Doors and arrival points
 
-Each area's `PlayerLevelEntrypoints` holds a list of `Entrypoint`
-(Name, Location transform, OtherEntyPoint), built in the editor from
-every `Entrypoint` field in the scene (PlayerLevelEntrypoints.cs:121-151;
-Awake sets `instance`, 60-63). Every door's Awake also inserts its own
-entry into the current `instance`'s list (`Changelevel.cs:44-50`); a
-door re-created during play inserts a fresh one. Readers:
-SaveController.MovePlayerToEntrypoint (688-697), Teleport.cs:93,
-Prison.cs:127. A door: `OtherLevel` (area), `OtherEntrypoint` (arrival
-name), `ThisEntrypoint`; `DoorChangelevel.OpenDoor` disables the
-controls before ChangeLevel (DoorChangelevel.cs:206).
-
-## Area changes
-
-The game's door, step by step: [`save.md`](save.md).
-
-Area changes other than doors (2026-10-03, from the code): the mod's door
-prefix is on `Changelevel.ChangeLevel` (kept_loaded.rs:61), the door
-component, which calls `SaveController.ChangeLevel` (Changelevel.cs:86).
-These call `SaveController.ChangeLevel` directly, so they take the game's
-normal save and load, not the kept door:
-
-- Going to prison: `Crime.TeleportToPrison` (Crime.cs:322-330) to
-  `info_game_logic.prisonLevelName`.
-- A sleep event: SleepEventController.cs:341 to "Interior Player
-  Tenement".
-- A blackout: BlackoutTrigger.cs:123.
-- `ChangeScene.Change` (ChangeScene.cs:9-31): teleports when the scene is
-  `NPCManager.ActiveScene`, else a normal load.
-- The developer console (DeveloperConsoleRoutines.cs:33).
-
-Fast travel: FastTravelController only opens its menu
-(FastTravelController.cs:12-15); no code calls a level change from it, so
-the move is set on the menu's buttons in the scene (not read yet; likely
-ChangeScene.Change).
-
-What the mod does on such a normal load (kept_loaded.rs): the game's save
-before the load also writes the kept areas, from the postfix on SaveGame
-(52-55, on_save_done). The scene load in single mode unloads every area,
-kept ones included. The mod's tick sees a new GameController (126-135),
-forgets every kept area (reset, 87-104), takes the area loaded as the one
-whose data the game applied (136-142), and loads its door destinations
-alongside again, nearest door first (143, 171-194). So such a change
-shows the game's loading screen as in the game, and the kept areas load
-again in the background after it.
+Each area has its own arrival points (PlayerLevelEntrypoints, a
+per-area manager). Doors, arrival points and every other way the game
+changes area: [`doors.md`](doors.md).
 
 ## Game-wide events and their listeners
 

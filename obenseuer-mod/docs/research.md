@@ -9,8 +9,9 @@
 | Game system | Doc |
 |---|---|
 | The install, assemblies, libraries, JSON data files, modding, how the mod loads | [`game.md`](game.md) |
-| Areas: scenes, managers, info_game_logic, arrival points, area changes, game-wide events, lifecycle, coroutines | [`areas.md`](areas.md) |
-| The save system, the game's door step by step, player state in the save, DestructibleList | [`save.md`](save.md) |
+| Doors and moving between areas: the door step by step, arrival points, every other area change | [`doors.md`](doors.md) |
+| Areas: scenes, managers, info_game_logic, game-wide events, lifecycle, coroutines | [`areas.md`](areas.md) |
+| The save system, player state in the save, DestructibleList | [`save.md`](save.md) |
 | Time: the clock, its listeners, catching up while not loaded | [`time.md`](time.md) |
 | NPCs: data, classes, ActiveScene, NPCDirector, the scheduler, followers | [`npcs.md`](npcs.md) |
 | Pathfinding and the area's navigation | [`pathfinding.md`](pathfinding.md) |

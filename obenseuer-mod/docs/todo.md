@@ -14,7 +14,7 @@
 | 3 | research | [ ] Research how weather and indoor or outdoor areas work (WeatherManager, weather zones) | weather.md says, with lines, how weather follows the area; any kept-area gap is its own row |
 | 4 | research | [ ] List every FurnitureManager GUID per area with one in-game call; a GUID shared by two areas puts furniture under the wrong area's manager with kept areas (building.md) | building.md has the list and says whether any GUID is shared |
 | 4 | kept_loaded.rs | [ ] On a later visit to a kept area the player's build space (`activeManager`) is not set back from the save, only by walking into it; in the game the load sets it (building.md) | A test shows a door out of and back into a build space leaves the build menu as the game does |
-| 4 | research | [ ] Read what the fast travel menu's buttons call (set in the scene, not in code) | areas.md names the method and whether it is a normal load |
+| 4 | research | [ ] Read what the fast travel menu's buttons call (set in the scene, not in code) | doors.md names the method and whether it is a normal load |
 | 6 | research | [ ] Dump the full Items.json item count and category list | Category list in items.md |
 | 6 | research | [ ] Dump the full Recipes.json recipe count and type list | Recipe types in items.md |
 | 10 | scripts/restart.ps1 | [ ] Hot reload when only the Rust changed: the script finds the shim's hash changed after every build and closes the game | A Rust-only change deploys with "[ready] generation N answering; the game kept running" |

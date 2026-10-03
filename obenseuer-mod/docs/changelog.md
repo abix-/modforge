@@ -26,14 +26,15 @@ These rules govern `docs/changelog.md`. Follow them exactly.
 
 | System | Item | Done when |
 |---|---|---|
+| docs | [x] Doors and moving between areas get one doc: the door step by step (from save.md), arrival points and area changes other than doors (from areas.md) | doors.md, listed in research.md; save.md and areas.md link to it |
 | docs | [x] One doc per game system, each with an "Authoritative on" line; research.md is the index | research.md lists game.md, areas.md, save.md, time.md, npcs.md, pathfinding.md, relays.md, map.md, tenement.md, building.md, crime.md, weather.md, dialogue.md, lighting.md, player.md, items.md, economy.md |
 | research | [x] Map the save/load flow: which SavableScript subclasses hold player state, in what order | save.md, player state in the save |
 | research | [x] Map the NPC scheduler: how Timetable entries drive NPC movement | npcs.md, the scheduler, timetable to movement |
-| research | [x] Find what the mod does with kept areas on a normal load (prison, sleep events, blackouts, ChangeScene) | areas.md, area changes, with kept_loaded.rs lines |
+| research | [x] Find what the mod does with kept areas on a normal load (prison, sleep events, blackouts, ChangeScene) | doors.md, with kept_loaded.rs lines |
 | research | [x] Research how relays start (Relay.cs) | relays.md, with lines; two gaps in the todo |
 | research | [x] Research how the tenement uses areas | tenement.md, with lines; two gaps in the todo |
 | research | [x] Research how building and placed furniture use areas | building.md, with lines; two rows in the todo |
-| research | [x] Research crime and the area changes that are not doors | crime.md and areas.md, area changes, with lines |
+| research | [x] Research crime and the area changes that are not doors | crime.md and doors.md, with lines |
 | kept_loaded.rs, unityforge EventTools.cs | [x] In areas left only the objects the game catches up on load (`savedTimeAndDay`) keep the game's clock; every other clock listener is taken out (Prison kept lowering crimes, RelayPlayerDistance fired each day) | The check passes with only LightController.Awake; handlers out leaving Open Sewer Tenement 1288 (631 with the whole clock kept, 1584 with none) |
 | kept_loaded.rs, unityforge EventTools.cs, FileTools.cs | [x] Areas left keep hearing the game's clock (SecondsPassed, MinutePassed, DayChanged, CurrentTimeAndDay; not their area-owned managers), so time passes there as the game's load would catch it up; the area's navigation loads before it switches on | The check passes with only LightController.Awake (the game's own); the NavmeshTile.GetVertex and CollectibleTaskItem.Start errors of the load-step catch-up and the late navigation load are gone; handlers out leaving Open Sewer Tenement 631, the tenement 71 |
 | kept_loaded.rs, first_copy_wins.rs, unityforge FirstCopyGuard.cs, SceneTools.cs | [x] A manager's static may be private (info_navigation, SkyCamera); info_navigation and SkyCamera area-owned; the area's navigation loads on every entering; only Game_Logic's area-owned objects are moved; the 4 loops started in Start start again on later visits; followers follow into the area the player is in | The check passes (two round trips, NPCs, sound, radiation, managers, identity); Player.log "Nav file loaded!" 7 times in the run (4 kept doors, 3 normal loads); follower and door patches on, no "patch failed". Followers and the loops not checked in play |

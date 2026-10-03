@@ -2,8 +2,9 @@
 
 > **Authoritative on:** how the game saves and loads (SaveController,
 > SavableScript, the save files, the save and load phases and their
-> order), the game's door step by step, which scripts save player state,
-> DestructibleList, and the load steps that create objects.
+> order), which scripts save player state, DestructibleList, and the load
+> steps that create objects. A door's steps, which use these:
+> [`doors.md`](doors.md).
 >
 > Index of every game system's doc: [`research.md`](research.md).
 
@@ -40,48 +41,12 @@ is on, unless `includeInactive` (1113-1131). Each SavableScript finds its
 saved entry by `GUID` and takes it out of the list (`DeSerializeData`,
 707-).
 
-## A door, step by step
+## A door's save and load
 
-`Changelevel.ChangeLevel` (Changelevel.cs:72-87), then
-`SaveController.ChangeLevel` (270) and `ChangeLevelDelay` (344-359):
-
-1. `PlayerWillChangeLevel` (270): InteractableChair and
-   InteractableLadder stop sitting and climbing.
-2. Fade to the loading screen, wait for it (347-355).
-3. `SaveGame(GetOldestAutosave(), newLevel, entrypoint)` (356-357), into
-   the older of Autosave and Autosave2, which sets `SaveName` to it:
-   OnMapChanging on the active area's top objects and the
-   kept-through-loads objects (446-447); new temp lists (449-450);
-   `SavingStarted` (452); save phases Primary, Secondary, Tertiary
-   (453-455); `DestructibleList.instance.OnSavingGameDestructibleList()`
-   (456); kept-through-loads OnSavingGameSpecial (457); OnSavingGame,
-   OnSavingGameLatePrimary (458-459); files written (460-476);
-   OnSavingFile (477); `SavingDone` (478). `LevelName` is the active
-   scene's name (438).
-4. `LoadGameWithMigration(CharacterName, autosave)` (1205-): sets
-   `CharacterName`, `SaveName` (1208-1209), `PlayerWillLoadGame`,
-   `Loading = true`, reads `Globals.tnmt` and `<level>.tnmt` into
-   `tempSavedata_Global` and `tempSavedata_Level`, then
-   `LoadSaveGameDifferentScene` (618-666):
-5. The scene loads in single mode (624-639): every object of the old
-   area gets OnDisable then OnDestroy; the new area's objects Awake and
-   OnEnable, Start on the next frame.
-6. `LoadingStarted` (640); load phases Primary, Secondary, Tertiary
-   (641-643); kept-through-loads OnLoadingGameSpecial (644);
-   `DestructibleList.instance.OnLoadingGameDestructibleList()` (645);
-   OnLoadingGameDestructibleListCheck including switched-off objects
-   (646); next frame (647); OnLoadingGame, OnLoadingGameLatePrimary, the
-   check again (648-650); OnMapChanged on the active area only when the
-   area changed (651-654); player to the arrival point (655); dialogue
-   data applied (656-659); temp lists cleared, `Loading = false`,
-   `LoadingDone`, fade out (660-664).
-
-Measured order in a normal load (frame numbers): the area's objects run
-Start one frame before its saved data goes in (load phases); scripts that
-need the data wait (Relay fires its start events 3 frames after Start,
-[`relays.md`](relays.md)). Times on one trip: save 0.58s, scene load
-4.25s, restore about 1.0s, fade back 0.6s; the bar fills at 1 per second
-(LoadingScreen.cs:85), so even an instant load waits about 1s.
+A door saves into an autosave, then loads it into the new area
+(SaveGame, then LoadGameWithMigration and LoadSaveGameDifferentScene,
+SaveController.cs:416-478, 618-666, 1205-). The steps in order, with
+lines and measured times: [`doors.md`](doors.md).
 
 The menu loads a save with `StartCoroutine(LoadGameWithMigration(
 folder, save, fromMenu: true))` on its LoadMenu (LoadMenu.cs:539);
