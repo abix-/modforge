@@ -1,12 +1,15 @@
 # Items and inventory
 
-> **Authoritative on:** the item data (Items.json, the OS.Items classes),
-> consumables and special effects, the player's inventory, and how the
-> item and recipe databases load.
+> **Authoritative on:** item data (Items.json, `Item`, the `OS.Items`
+> action classes), `ItemDatabase` and `RecipeDatabase` loading,
+> `ItemStack`, consumables and special effects, and the player's
+> `Inventory` (slots, save, item queries, Lua functions).
 >
 > Index of every game system's doc: [`research.md`](research.md).
 
-## Item structure (from Items.json)
+## Items.json
+
+`StreamingAssets/Items.json` (UTF-8): `List<Item>`.
 
 ```json
 {
@@ -31,14 +34,36 @@
 }
 ```
 
+## ItemDatabase
+
+`public class ItemDatabase : MonoBehaviour` (ItemDatabase.cs). In
+`Game_Logic/Game UI`.
+
+| Member | Does |
+|---|---|
+| `static List<Item> database` | Every item; static, so loaded once per game run |
+| `static ItemDatabase instance` | |
+| `Awake()` (19-44) | `instance`; if `database` is empty: `File.ReadAllText(Application.dataPath + "/StreamingAssets/Items.json")`, FullSerializer into `List<Item>`; per item `Appearance.LoadSprite()`, `GetColor()`, `LoadItemReferencedAssets` (logs items with no appearance) |
+| `OnEnable()` (45-61) | Same when `instance` is null |
+| `Reload()` (63-70) | Re-reads Items.json (a mod can edit the file and reload) |
+| `static LoadItemReferencedAssets(Item, bool onlyMeta)` (72-) | Loads referenced assets |
+| `Item FetchItemByID(int id)`, `FetchItemByID(int, string itemnamespace)` (115-142) | |
+| `FindByString(string)`, `FindByString(string, string)`, `ListItemsByID()`, `ListItemsByCategory(string)`, `GetDatabase()` | |
+| `static DeSerialize(Type, string)`, `static Serialize(Type, object)` | FullSerializer |
+
+`RecipeDatabase` (RecipeDatabase.cs): reads `Recipes.json` with
+`Encoding.Unicode` (UTF-16) into a `RecipesHeader`; `LoadDatabase()`,
+`AddRecipe()`, `RemoveRecipe()`, `EditRecipe()`, `Reload()`. In
+`Game_Logic/Other`. Characters.json (UTF-16) and NPCBehavior.json
+(UTF-8): [`npcs.md`](npcs.md).
+
 ## Item data model (OS.Items namespace)
 
-Items are composed via ItemAction subclasses attached to the base
-Item. The OS.Items namespace holds all data components:
+Items are composed of `ItemAction` subclasses on the base `Item`:
 
 | Class | Purpose |
 |---|---|
-| ItemConsumable | food/drink/medicine stats (consumption below) |
+| ItemConsumable | food/drink/medicine stats (below) |
 | ItemPerishabledata | spoilage, age, freshness |
 | ItemLiquidData | liquid contents |
 | ItemFueldata | fuel value |
@@ -57,10 +82,45 @@ Item. The OS.Items namespace holds all data components:
 | ItemReloadable | ammo/reload data |
 | ItemTrapData | trap configuration |
 
-## Item consumption (OS.Items.ItemConsumable)
+## ItemStack
 
-Items with consumable actions carry these float fields, applied
-on use:
+`public class ItemStack` (ItemStack.cs): one slot's contents.
+
+| Member | Meaning |
+|---|---|
+| `ItemReference itemReference` | The item (rebuilt from `itemId` after load) |
+| `int itemAmount` | |
+| `itemId` | Item ID (read by Inventory's load; declaration not read) |
+| `float refigerated`, `bool spoilDisabled` | |
+| `object[] _meta` | Per-stack data (`ItemQualityData`, ammo, wallet, package, stolen, ...); `GetMetaOfType<T>()`, `AddMeta(object)` |
+| `IsEmpty()`, `AddItemToPanel(...)` (161-238), `RemoveItemAmount(int)`, `RemoveStack()`, `ChangeItem(ItemReference, int)`, `CopyItemStack()`, `static CreateStackFromItem(Item, amount, ownerId, meta)`, `GetAmmodata()`, `GetQualitydata()`, `GetWalletdata()`, `GetPackagedata()`, `ChangeSkin(int)` | |
+
+## Inventory
+
+`public class Inventory : SavableScript` (Inventory.cs). In
+`Game_Logic/Game UI` (rebuilt by every load). Saves into Globals.
+
+| Member | Meaning |
+|---|---|
+| `static Inventory instance` | Awake (187-190) |
+| `SlotController[] Slots` | 35 inventory slots |
+| `SlotController[] CharacterSlots` | 8 equipment slots: 3 head, 4 face, 5 backpack, 6 right hand, 7 left hand |
+| `SlotController[] _savingSlots`, `_savingCharacterSlots` | Saved copies of the slots |
+| `event ItemConsumed(Item, SlotController, int amount, int owner, object[] meta)` | Fired by `OnItemConsumed`; StrictArea and ItemAchievementList listen |
+| `OnSavingGame()` (124-137) | Copies the slots into `_savingSlots`, writes its entry |
+| `OnLoadingGame()` (139-168) | Reads its entry; each saved non-empty slot: categories, `itemStack`, `itemReference` from `ItemDatabase.FetchItemByID`; `StartInit()`, `ForceCharacterItemsUpdate()` |
+| `Start()` (192-) | Lua: `CheckForItemDialogue`, `CheckForItemDialogueAmount`, `CheckForItemDialogueLiquidAmount`, `CheckForItemDialogueOwner`, `SellItemDialogue`, `SellItemDialogueCategory`, `RemoveItemDialogue`, ... |
+| `DeltaSeconds(int)` (298-304) | Refreshes slots while the inventory panel is open |
+| `AllSlots(bool ignoreBackpack, bool ignoreCharacterSlots)` (170-) | |
+| `GiveStartItems()`, `OnItemConsumed(...)`, `CheckForAddedStolenItems(...)` (379-) | |
+| `CheckForItem(...)` (1227-1265), `CheckForItemQuality`, `CheckForCategoryItem`, `GetItemAmountInInventory(int id or Item, bool ignoreBackpack)` (1370-1387), `CountItems(...)`, `FindItem(...)`, `IsInventoryEmpty()`, `GetEmptySlotsAmount`, `InventoryIsNotFull(...)` | Queries |
+| `RemoveItems(...)` (945-975), `RemoveItem(...)`, `RemoveLiquid(...)`, `RemoveItemQuality(...)`, `RemoveStack(int)` | Removing |
+| `SellItems(...)` (824-849), `GetStolenItems(int)`, `GetPlayerItems(...)` | |
+| `SwapItems`, `RemoveEquippedItem`, `CheckIfEquipped`, `CheckIfPlayerWieldsItem(...)`, `ForceCharacterItemsUpdate()`, `ForceHandItemUpdate()`, `SortSlots(...)` | Equipment and UI |
+
+## Consumption (OS.Items.ItemConsumable)
+
+Float fields applied on use (`PlayerStats.UpdateValues`, [`player.md`](player.md)):
 
 | Field | Target stat |
 |---|---|
@@ -83,39 +143,13 @@ on use:
 | SmokingAddiction | smoking addiction level |
 
 ConsumableType: Food, Drink, Smoke, Medicine, Bandage, Container,
-Slaughter, Hygiene. Special effects: Coffee (reduces tiredness),
-SleepingPills, Laxative, Radiation.
+Slaughter, Hygiene. Special effects (`ItemSpecialEffects`, applied over
+time by `PlayerStats.ProcessItemSpecialEffects`): Caffeine (reduces
+tiredness), Laxative (adds bowel), Methanol (reduces SMV progression),
+PiggyBank (spawns money), SleepingPill (adds tiredness), ScratchCard
+(gambling), Radiation (dose).
 
-## Special item effects (ItemSpecialEffects)
+## With areas kept loaded
 
-Caffeine (reduces tiredness), Laxative (adds bowel), Methanol
-(reduces SMV progression), PiggyBank (spawns money), SleepingPill
-(adds tiredness), ScratchCard (gambling).
-
-## Inventory (Inventory)
-
-Singleton, 35 inventory slots plus 8 character slots (equipped).
-Character slots: index 3 = head, 4 = face, 5 = backpack,
-6 = right hand, 7 = left hand. Uses `SlotController` for each
-slot. Starting items configurable. `ItemDatabase` is the static
-item registry loaded from Items.json.
-
-## Data loading
-
-| Data file | Loader class | Method | Encoding |
-|---|---|---|---|
-| Items.json | ItemDatabase | Awake() / OnEnable() / Reload() | UTF-8 |
-| Recipes.json | RecipeDatabase | LoadDatabase() | UTF-16 (Encoding.Unicode) |
-| Characters.json | (not traced yet) | | UTF-16 |
-| NPCBehavior.json | (not traced yet) | | UTF-8 |
-
-ItemDatabase reads `Application.dataPath + "/StreamingAssets/Items.json"`
-using `File.ReadAllText`, deserializes with FullSerializer, loads
-sprites and prefabs. Has a public `Reload()` method.
-
-RecipeDatabase reads `Recipes.json` with `Encoding.Unicode`,
-wraps in a `RecipesHeader` object. Also has `AddRecipe()`,
-`RemoveRecipe()`, `EditRecipe()`, `Reload()`.
-
-Both databases have public `Reload()` methods, so a mod can
-modify the JSON and call Reload to hot-swap data.
+`Inventory` is the live copy from the area the save loaded (one copy).
+`ItemDatabase.database` is static and loaded once.
