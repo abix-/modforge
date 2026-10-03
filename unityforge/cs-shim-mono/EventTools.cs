@@ -344,6 +344,10 @@ namespace Unityforge.Shim
             foreach (var f in StaticLists(assemblyOfType)) n += TakeEntries(null, f, scene.handle, kept);
             foreach (var copy in FirstCopyGuard.LiveCopies())
             {
+                // The area's own managers (area-owned, in the area left):
+                // their lists are the area's own data (its arrival points,
+                // its NPCs), destroyed with it in the game, not taken from.
+                if (copy is Component own && own != null && own.gameObject.scene.handle == scene.handle) continue;
                 foreach (var f in ListsOf(copy.GetType())) n += TakeEntries(copy, f, scene.handle, kept);
             }
             return n;
