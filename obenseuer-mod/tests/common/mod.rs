@@ -190,3 +190,53 @@ pub fn top_path(api: &Api<Value>, component: i64) -> String {
     names.reverse();
     names.join(" / ")
 }
+
+/// Every object of a class (subclasses too) in an area, switched on or
+/// off, as handles (SceneTools.ComponentsIn).
+pub fn components_in(api: &Api<Value>, area: &str, class: &str) -> Vec<i64> {
+    let Some(arr) = handle_of(&call_static(api, "Unityforge.Shim.SceneTools", "ComponentsIn", json!([area, "Inventory, Assembly-CSharp", class, true]))) else {
+        return Vec::new();
+    };
+    let n = api.op("read_field", json!({"handle": arr, "field": "Length"})).result.as_i64().unwrap_or(0);
+    (0..n).filter_map(|i| handle_of(&call(api, arr, "GetValue", json!([i])))).collect()
+}
+
+/// The relays of `area` (every kind, Relay and its subclasses), switched on
+/// or off, but not fire-once ones (cleared, they would fire a second time:
+/// docs/relays.md).
+pub fn relays_in(api: &Api<Value>, area: &str) -> Vec<i64> {
+    components_in(api, area, "Relay")
+        .into_iter()
+        .filter(|&r| api.op("read_field", json!({"handle": r, "field": "fireOnceOnly"})).result.as_bool() != Some(true))
+        .collect()
+}
+
+/// Clears `firedOnce` on these relays, so firing again shows.
+pub fn clear_fired(api: &Api<Value>, relays: &[i64]) {
+    for r in relays {
+        api.op("write_field", json!({"handle": r, "field": "firedOnce", "value": false}));
+    }
+}
+
+/// The relays among these that fired since `clear_fired`.
+pub fn fired(api: &Api<Value>, relays: &[i64]) -> Vec<i64> {
+    relays.iter().copied().filter(|r| api.op("read_field", json!({"handle": r, "field": "firedOnce"})).result.as_bool() == Some(true)).collect()
+}
+
+/// Why a relay would not fire (Relay.triggerOutputs, Relay.cs:104-117): its
+/// object's path, switched on in the scene, and how many required task
+/// items, objectives and dialogue variables it has.
+pub fn relay_why(api: &Api<Value>, r: i64) -> String {
+    let count = |f: &str| {
+        handle_of(&api.op("read_field", json!({"handle": r, "field": f})).result).map(|l| call(api, l, "get_Count", json!([])).as_i64().unwrap_or(-1)).unwrap_or(-1)
+    };
+    let obj = handle_of(&call(api, r, "get_gameObject", json!([])));
+    let on = obj.map(|o| call(api, o, "get_activeInHierarchy", json!([]))).unwrap_or(Value::Null);
+    format!(
+        "{}: object on {on}, required task items {}, objectives {}, dialogue variables {}",
+        top_path(api, r),
+        count("requiredTaskItems"),
+        count("requiredObjectives"),
+        count("requiredDialogueVariables")
+    )
+}

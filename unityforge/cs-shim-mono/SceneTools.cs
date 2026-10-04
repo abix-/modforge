@@ -171,13 +171,22 @@ namespace Unityforge.Shim
         /// </summary>
         public static Component[] ComponentsIn(string sceneName, string assemblyOfType, string className)
         {
+            return ComponentsIn(sceneName, assemblyOfType, className, false);
+        }
+
+        /// <summary>
+        /// Every object of a class (its subclasses too) in a loaded scene;
+        /// with `switchedOff`, also those switched off (an area away).
+        /// </summary>
+        public static Component[] ComponentsIn(string sceneName, string assemblyOfType, string className, bool switchedOff)
+        {
             var scene = SceneManager.GetSceneByName(sceneName);
             var type = System.Type.GetType(assemblyOfType)?.Assembly.GetType(className);
             var found = new List<Component>();
             if (!scene.IsValid() || type == null) return found.ToArray();
             foreach (var o in Resources.FindObjectsOfTypeAll(type))
             {
-                if (o is Component c && c != null && c.gameObject.scene.handle == scene.handle && c.gameObject.activeInHierarchy) found.Add(c);
+                if (o is Component c && c != null && c.gameObject.scene.handle == scene.handle && (switchedOff || c.gameObject.activeInHierarchy)) found.Add(c);
             }
             return found.ToArray();
         }

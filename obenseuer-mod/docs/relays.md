@@ -191,10 +191,42 @@ no task items, no AllExit, no fire on load; checks `disabled`.
 ## With areas kept loaded
 
 The mod's steps: [`kept-areas.md`](kept-areas.md). Start runs on the
-first visit only; load steps on the first visit only; OnMapChanged on
-every visit; coroutines stop when an area switches off; handlers on
-static events are taken out on leaving (clock handlers kept only for
-classes with `savedTimeAndDay`).
+first visit, and on later visits only for the classes in `RUN_AGAIN`;
+load steps on every visit, but on later visits not for classes with
+`savedTimeAndDay` or that create objects; OnMapChanged on every visit;
+coroutines stop when an area switches off; handlers on static events are
+taken out on leaving (clock handlers kept only for classes with
+`savedTimeAndDay`).
+
+### Measured: relays fired on entering (2026-10-04)
+
+`research_kept_scenario.rs` clears `firedOnce` on every relay of an area
+that is not fire-once (every kind) while the area is away, goes through
+the door, and lists the relays that fired; with `OBENSEUER_SAVE_AWAY=1`
+it also clears them before a save in the area and lists what the game's
+own load of that save fires. Tom_Tomato/Slot7:
+
+| Area | Relays | Game's load | First kept door | Later kept door |
+|---|---:|---:|---:|---:|
+| Interior Player Tenement | 787 | 1 | 1 | 1 (the same one) |
+| Open Sewer Tenement | 711 | 94 | 128 | 24 |
+
+- The later kept door misses 74 of the game's 94: relays fired by the
+  load of objects that keep the game's clock while away, so their load
+  step is skipped on later visits: `Storage.LoadDelay` fires `onUpdate`
+  and `onSpawnItems` (beer crates, bird nests, log storage, wine racks),
+  `WorkableResourceSource.OnLoadingGame` fires `onStock` and
+  `onCurrentStock` (breakable rocks' Relay1 to Relay4, wood piles'
+  Stocklevel relays). It fires 4 the game's load did not (a kitchen oven,
+  a bear trap's onload, a field kitchen, an electrical box's onTurnOn).
+- The first kept door fires 105 the later one does not, more than the
+  game's load: among them shop OnOpen and OnClose, the speakeasy's
+  relay_start and relay_end, bridge doors, a RelayOnDayChange. Not
+  explained yet (todo).
+- The relays that fire at Start (`triggerAtStart`, plain Relay) fire on
+  every kept door: 4 of 4 in Open Sewer Tenement on both doors; in the
+  player's tenement the same 1 of 3 as the game's load (the other two
+  are under switched-off objects).
 
 | Class | Differs from the game |
 |---|---|
