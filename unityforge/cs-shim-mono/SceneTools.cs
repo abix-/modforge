@@ -200,6 +200,42 @@ namespace Unityforge.Shim
             return found.ToArray();
         }
 
+        /// <summary>
+        /// Writes to `path` every switched-on object in a loaded scene that
+        /// the game saves (a `baseClass` with a non-empty GUID field), one
+        /// line each: "GUID \t kind \t path \t json", the json from the
+        /// game's own serializer (`serializerClass.Serialize(Type, object)`),
+        /// which reads the fields without running the save step. For
+        /// comparing an area after a kept door with the game's load of it.
+        /// Returns how many.
+        /// </summary>
+        public static int SavedState(string sceneName, string assemblyOfType, string baseClass, string serializerClass, string path)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            var asm = System.Type.GetType(assemblyOfType)?.Assembly;
+            var savable = asm?.GetType(baseClass);
+            var serialize = asm?.GetType(serializerClass)?.GetMethod("Serialize", new[] { typeof(System.Type), typeof(object) });
+            if (!scene.IsValid() || savable == null || serialize == null) return -1;
+            var lines = new List<string>();
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                foreach (var c in top.GetComponentsInChildren(savable, false))
+                {
+                    if (c == null || !c.gameObject.activeInHierarchy) continue;
+                    var guid = c.GetType().GetField("GUID")?.GetValue(c) as string;
+                    if (string.IsNullOrEmpty(guid)) continue;
+                    var names = new List<string>();
+                    for (var t = c.transform; t != null; t = t.parent) names.Insert(0, t.name);
+                    string json;
+                    try { json = (string)serialize.Invoke(null, new object[] { c.GetType(), c }); }
+                    catch (System.Exception e) { json = "error: " + (e.InnerException ?? e).Message; }
+                    lines.Add(guid + "\t" + c.GetType().Name + "\t" + string.Join(" / ", names) + "\t" + json);
+                }
+            }
+            System.IO.File.WriteAllLines(path, lines.ToArray());
+            return lines.Count;
+        }
+
         // Per load of a scene: the AudioSources that were playing when it was
         // switched off (RememberPlaying), started again on switch-on.
         private static readonly Dictionary<int, List<AudioSource>> Playing = new Dictionary<int, List<AudioSource>>();

@@ -327,6 +327,23 @@ captured in rule 3 to the save folder: each area's file from its own
 captured entries, merged with what the file already held. The area the
 player is in is saved by the game itself.
 
+The game's save runs the save steps on the active scene only
+(SaveController.cs:452-459). Away from home the live player and managers
+(the clock, the player's stats, inventory, money, tasks) are in home's
+scene, so the game does not save them. The mod runs the same save steps on
+home's switched-on objects (its own content is off away from home, so
+these are the live player and managers; `live_set_entries`) and writes
+their entries first: in Globals.tnmt before what the game wrote and before
+the global entries captured from areas, in home's file before home's
+captured entries (`write_merged`: an entry of a GUID comes from the first
+source that has it). Before 2026-10-04 they came from the entries captured
+when the player last left home: save steps set fields (the clock's
+`savedTimeAndDay`, TimeOfDayAzure.cs:323; the inventory's saved slots,
+Inventory.cs:124), so the save held them as at that moment, and a save
+made away from home and loaded put the clock back (600 game seconds in the
+check; `research_kept_scenario.rs` asserts the clock after the load is not
+before the clock at the save).
+
 ## The mod's own state
 
 State about a loaded area belongs to that load (Unity's `Scene.handle`,

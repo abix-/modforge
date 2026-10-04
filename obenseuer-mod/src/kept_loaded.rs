@@ -1191,33 +1191,73 @@ fn write_kept_areas() -> Result<String, String> {
     let active = invoke_static("UnityEngine.Application", "get_loadedLevelName", &json!([]))?.as_str().map(String::from).ok_or("no active area")?;
     let captured: Vec<(String, (i32, i32))> = CAPTURED.lock().unwrap().iter().map(|(a, h)| (a.clone(), *h)).collect();
     let names = (save.as_str(), character.as_str());
+    let home = HOME.lock().unwrap().clone().filter(|h| *h != active);
+    // 0. Away from home the live player and managers are in home's scene,
+    //    which the game's save does not see (it saves the active scene):
+    //    their save steps run now, as the game's would on them (the clock's
+    //    savedTimeAndDay, the inventory's saved slots are set in them;
+    //    without, the save held them as when the player left home: the
+    //    clock went back 600 s on load).
+    let (live_level, live_global) = match &home {
+        Some(h) => live_set_entries(h)?,
+        None => (Vec::new(), Vec::new()),
+    };
     let mut written = Vec::new();
+    let mut live_level = Some(live_level);
     // 1. Every area captured when the player left it, but the one the game
-    //    just wrote.
+    //    just wrote; home's live set fresh first.
     for (area, (level, _)) in &captured {
         if *area != active {
-            write_merged(&format!("{folder}/{area}.tnmt"), entries_of(*level)?, Some(area), names)?;
+            let mut before = if home.as_deref() == Some(area.as_str()) { live_level.take().unwrap_or_default() } else { Vec::new() };
+            before.extend(entries_of(*level)?);
+            write_merged(&format!("{folder}/{area}.tnmt"), before, Vec::new(), Some(area), names)?;
             written.push(area.clone());
         }
     }
     // 3. Away from home the active area's own player copy is off, so the
     //    game wrote no position for it: its position entries, pointed at the
     //    live player.
-    if HOME.lock().unwrap().as_deref().is_some_and(|h| h != active) {
+    if home.is_some() {
         let position = player_position_entries(&active)?;
         if !position.is_empty() {
-            write_merged(&format!("{folder}/{active}.tnmt"), position, Some(&active), names)?;
+            write_merged(&format!("{folder}/{active}.tnmt"), position, Vec::new(), Some(&active), names)?;
         }
     }
-    // 2. Global entries of every area captured (the live managers among
-    //    them, captured when the player left home). The file's header keeps
-    //    the area to load and its arrival point.
+    // 2. Globals: the live set's fresh entries, then what the game wrote,
+    //    then the global entries of every area captured. The file's header
+    //    keeps the area to load and its arrival point.
     let mut globals = Vec::new();
     for (_, (_, global)) in &captured {
         globals.extend(entries_of(*global)?);
     }
-    write_merged(&format!("{folder}/Globals.tnmt"), globals, None, names)?;
+    write_merged(&format!("{folder}/Globals.tnmt"), live_global, globals, None, names)?;
     Ok(format!("{} areas written ({}), globals merged, into {folder}", written.len(), written.join(", ")))
+}
+
+/// The save steps of the game's save (SaveController.cs:452-459) on home's
+/// switched-on objects (away from home, its own content is switched off,
+/// so these are the live player and managers), into the game's temp lists;
+/// returns their (level, global) entries.
+fn live_set_entries(home: &str) -> Result<(Vec<MonoObject>, Vec<MonoObject>), String> {
+    let level = obj(save_static("tempSavedata_Level")?).ok_or("no level list")?;
+    let global = obj(save_static("tempSavedata_Global")?).ok_or("no global list")?;
+    level.invoke("Clear", &json!([]))?;
+    global.invoke("Clear", &json!([]))?;
+    for phase in ["OnSavingGamePrimary", "OnSavingGameSecondary", "OnSavingGameTertiary", "OnSavingGame", "OnSavingGameLatePrimary"] {
+        run_phase(home, phase, false)?;
+    }
+    let take = |list: &MonoObject| -> Result<Vec<MonoObject>, String> {
+        let n = list.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+        let mut out = Vec::new();
+        for i in 0..n {
+            out.extend(obj(list.invoke("get_Item", &json!([i]))?));
+        }
+        Ok(out)
+    };
+    let entries = (take(&level)?, take(&global)?);
+    level.invoke("Clear", &json!([]))?;
+    global.invoke("Clear", &json!([]))?;
+    Ok(entries)
 }
 
 /// The entries of a kept array of ObjectDataHeader (kept handle not
@@ -1237,22 +1277,16 @@ fn entries_of(handle: i32) -> Result<Vec<MonoObject>, String> {
 /// Serialize, SaveController.cs:460-475): `entries`, then the file's own
 /// entries whose GUID is not among them. `level`: the header's LevelName,
 /// or the file's own (with its NewlevelEntrypoint) when None.
-fn write_merged(path: &str, entries: Vec<MonoObject>, level: Option<&str>, (save, character): (&str, &str)) -> Result<(), String> {
+/// Writes `path` from three sources, an entry of a GUID taken from the first
+/// that has it: `before`, then the entries already in the file, then
+/// `after`.
+fn write_merged(path: &str, before: Vec<MonoObject>, after: Vec<MonoObject>, level: Option<&str>, (save, character): (&str, &str)) -> Result<(), String> {
     let header_type = obj(invoke_static("System.Type", "GetType", &json!(["SaveController+SaveDataHeader, Assembly-CSharp"]))?)
         .ok_or("SaveDataHeader type not found")?;
-    // The game's own list between saves as the scratch list (empty then,
-    // cleared after).
-    let scratch = obj(save_static("tempSavedata_Level")?).ok_or("no scratch list")?;
-    scratch.invoke("Clear", &json!([]))?;
-    let mut guids = std::collections::HashSet::new();
-    for e in &entries {
-        if let Some(g) = e.read_field("GUID")?.as_str() {
-            guids.insert(g.to_string());
-        }
-        scratch.invoke("Add", &json!([{"handle": e.handle().0}]))?;
-    }
+    let guid_of = |e: &MonoObject| -> Result<String, String> { Ok(e.read_field("GUID")?.as_str().unwrap_or("").to_string()) };
     let mut level_name = level.map(String::from);
     let mut entrypoint = "NONE".to_string();
+    let mut existing_entries = Vec::new();
     if let Ok(text) = std::fs::read_to_string(path) {
         let text = text.trim_start_matches('\u{feff}');
         let file = path.rsplit('/').next().unwrap_or(path);
@@ -1264,13 +1298,19 @@ fn write_merged(path: &str, entries: Vec<MonoObject>, level: Option<&str>, (save
             if let Some(data) = obj(existing.read_field("Data")?) {
                 let n = data.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
                 for i in 0..n {
-                    let Some(e) = obj(data.invoke("get_Item", &json!([i]))?) else { continue };
-                    let g = e.read_field("GUID")?.as_str().unwrap_or("").to_string();
-                    if !guids.contains(&g) {
-                        scratch.invoke("Add", &json!([{"handle": e.handle().0}]))?;
-                    }
+                    existing_entries.extend(obj(data.invoke("get_Item", &json!([i]))?));
                 }
             }
+        }
+    }
+    // The game's own list between saves as the scratch list (empty then,
+    // cleared after).
+    let scratch = obj(save_static("tempSavedata_Level")?).ok_or("no scratch list")?;
+    scratch.invoke("Clear", &json!([]))?;
+    let mut guids = std::collections::HashSet::new();
+    for e in before.iter().chain(existing_entries.iter()).chain(after.iter()) {
+        if guids.insert(guid_of(e)?) {
+            scratch.invoke("Add", &json!([{"handle": e.handle().0}]))?;
         }
     }
     let level_name = level_name.ok_or_else(|| format!("no area name for {path}"))?;

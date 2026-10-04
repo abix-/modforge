@@ -279,6 +279,16 @@ fn kept_areas_played_through() {
     };
     let mut off_away: Vec<String> = Vec::new();
     let mut off_home: Vec<String> = Vec::new();
+    // What the game saves of every object in the area (SceneTools.SavedState,
+    // the game's own serializer), written to output/state-<name>.txt.
+    let saved_state = |area: &str, name: &str| -> String {
+        let path = common::output_path(&format!("state-{name}.txt"));
+        let n = call_static(&api, "Unityforge.Shim.SceneTools", "SavedState", json!([area, "Inventory, Assembly-CSharp", "SavableScript", "SaveController", path]));
+        println!("  saved state of {area}: {n} objects, {path}");
+        path
+    };
+    let mut state_away = String::new();
+    let mut state_home = String::new();
     const LISTS: [&str; 2] = ["AnimatorStates", "PlayingSounds"];
     let all_lists = |area: &str| -> Vec<Vec<String>> { LISTS.iter().map(|what| listed(what, area)).collect() };
     let mut lists_away: Vec<Vec<String>> = Vec::new();
@@ -294,6 +304,7 @@ fn kept_areas_played_through() {
         if kept_on {
             fired_away.push(traced(&format!("{away}-{round}")));
             lists_away = all_lists(&away);
+            state_away = saved_state(&away, &format!("{away}-{round}"));
             off_away = off_tops(&away);
         }
         if save_away && round == 2 {
@@ -313,6 +324,7 @@ fn kept_areas_played_through() {
         if kept_on {
             fired_home.push(traced(&format!("{home}-{round}")));
             lists_home = all_lists(&home);
+            state_home = saved_state(&home, &format!("{home}-{round}"));
             off_home = off_tops(&home);
         }
         println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
@@ -330,6 +342,16 @@ fn kept_areas_played_through() {
     } else {
         None
     };
+
+    // The game's clock in seconds (TimeAndDay.TotalSeconds): a load of the
+    // save must not put it back (before 2026-10-04 the merged Globals.tnmt
+    // held the clock from when the player last left home).
+    let clock = || -> f64 {
+        let t = instance_of(&api, "TimeOfDayAzure").ok().flatten().expect("TimeOfDayAzure.instance");
+        let now = handle_of(&api.op("read_field", json!({"handle": t, "field": "currentTimeAndDay"})).result).expect("currentTimeAndDay");
+        call(&api, now, "get_TotalSeconds", json!([])).as_f64().unwrap_or(-1.0)
+    };
+    let clock_at_save = clock();
 
     // 3. Save into the test slot and load it.
     call_static(&api, "SaveController", "SaveGame", json!(["ModTest", "", "NONE"]));
@@ -365,6 +387,9 @@ fn kept_areas_played_through() {
     op(&api, "reload_save", json!({}));
     wait_for_normal_load(&api, &controller);
     std::thread::sleep(Duration::from_secs(3));
+    let clock_after_load = clock();
+    println!("clock: at the save {clock_at_save}, after its load {clock_after_load}");
+    let clock_put_back = clock_after_load + 1.0 < clock_at_save;
     if let Some(kept_fired) = &kept_fired {
         let off = if saved_in == home { &off_home } else { &off_away };
         // "Kind: Top / ..." for relays, "Top / ... | ..." for animators.
@@ -380,6 +405,9 @@ fn kept_areas_played_through() {
         println!("  left out (the area's top objects off while entered): {off:?}");
         let game_fired = area_own(traced(&format!("{saved_in}-game-load")));
         relay_diffs.extend(names_diff(&format!("{saved_in}: the game's load"), &game_fired, "the later kept door", &area_own(kept_fired.clone())));
+        let kept_state = if saved_in == home { &state_home } else { &state_away };
+        let game_state = saved_state(&saved_in, &format!("{saved_in}-game-load"));
+        state_diff(kept_state, &game_state);
         let kept_lists = if saved_in == home { &lists_home } else { &lists_away };
         for (what, (kept, game)) in LISTS.iter().zip(kept_lists.iter().zip(all_lists(&saved_in))) {
             let (kept, game) = (area_own(kept.clone()), area_own(game));
@@ -435,9 +463,55 @@ fn kept_areas_played_through() {
     let back = op(&api, "reload_save", json!({"save": players_save}));
     wait_for_normal_load(&api, &controller);
     println!("back on the player's save: {}, kept areas on", back["loading"]);
+    assert!(!clock_put_back, "the save's load put the clock back: {clock_at_save} at the save, {clock_after_load} after its load");
     assert!(dead.is_empty(), "one-copy fields not live: {dead:?}");
     assert_eq!(me.as_ref().and_then(|v| v.as_str()), Some("Tom"), "player identity lost");
     assert!(relay_diffs.is_empty(), "relays fired on entering differ (listed above)");
+}
+
+/// The saved state after the later kept door against the game's load, by
+/// GUID: per kind of object how many match, differ, or are on one side only;
+/// the differing ones written to output/state-diff.txt (both lines).
+fn state_diff(kept_path: &str, game_path: &str) {
+    use std::collections::BTreeMap;
+    let read = |p: &str| -> BTreeMap<String, (String, String)> {
+        std::fs::read_to_string(p)
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| {
+                let mut f = l.splitn(4, '\t');
+                let (guid, kind, path, json) = (f.next()?, f.next()?, f.next()?, f.next()?);
+                Some((guid.to_string(), (format!("{kind}\t{path}"), json.to_string())))
+            })
+            .collect()
+    };
+    let (kept, game) = (read(kept_path), read(game_path));
+    // kind -> (same, differ, kept only, game only)
+    let mut by_kind: BTreeMap<String, [u32; 4]> = BTreeMap::new();
+    let mut out = Vec::new();
+    let kind = |k: &str| k.split('\t').next().unwrap_or("").to_string();
+    for (guid, (k, json)) in &kept {
+        let e = by_kind.entry(kind(k)).or_default();
+        match game.get(guid) {
+            Some((_, g)) if g == json => e[0] += 1,
+            Some((_, g)) => {
+                e[1] += 1;
+                out.push(format!("{guid}\t{k}\n  kept: {json}\n  game: {g}"));
+            }
+            None => {
+                e[2] += 1;
+                out.push(format!("{guid}\t{k}\n  kept only"));
+            }
+        }
+    }
+    for (guid, (k, _)) in game.iter().filter(|(g, _)| !kept.contains_key(*g)) {
+        by_kind.entry(kind(k)).or_default()[3] += 1;
+        out.push(format!("{guid}\t{k}\n  game only"));
+    }
+    std::fs::write(common::output_path("state-diff.txt"), out.join("\n")).expect("write the state diff");
+    let differ: Vec<String> = by_kind.iter().filter(|(_, c)| c[1] + c[2] + c[3] > 0).map(|(k, c)| format!("{k} same {} differ {} kept only {} game only {}", c[0], c[1], c[2], c[3])).collect();
+    let same: u32 = by_kind.values().map(|c| c[0]).sum();
+    println!("saved state, the later kept door against the game's load: {same} objects the same; differing kinds:\n  {}", differ.join("\n  "));
 }
 
 /// Two lists of fired relays compared by name; one line per side when they
