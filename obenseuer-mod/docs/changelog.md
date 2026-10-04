@@ -22,7 +22,13 @@ These rules govern `docs/changelog.md`. Follow them exactly.
 - Use plain terms. Do not use vague descriptions, invented language, or design
   essays.
 
-## 2026-10-03
+## 2026-10-04
+
+| System | Item | Done when |
+|---|---|---|
+| kept_loaded.rs | [x] On a later visit to a kept area the player's build space (`activeManager`) is set back as the game's load does: the area's FurnitureManager saved as `isActive` (`build_space_again`; building.md) | `research_kept_scenario.rs` after every door: Interior Player Tenement 23 build spaces, the active one set on the first and the later visit; Open Sewer Tenement and Under Map none; passed |
+| kept_loaded.rs | [x] The sound starts from nothing on every kept door, as the game's rebuilt SoundscapeController does (`fresh_sound`; new sound.md) | `research_kept_scenario.rs`: global sound the area's after every door (none in Under Map, which has no day or night sound, research_soundscape.rs), the sound playing the area's; passed with Open Sewer Tenement and Under Map |
+| unityforge FirstCopyGuard.cs, SceneTools.cs | [x] An area without a copy of an area-owned manager leaves its `instance` empty, and a copy in an area loading alongside or never entered never takes it (kept-areas.md, rule 1) | research_map.rs in Under Map before: info_map.instance in Interior Tenement B; `research_kept_scenario.rs` after: "map: none in Under Map", one-copy fields all live (an empty one only where the area has no object of the class) |
 
 | System | Item | Done when |
 |---|---|---|

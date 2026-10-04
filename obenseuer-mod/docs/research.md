@@ -17,6 +17,7 @@
 | Pathfinding and the area's navigation | [`pathfinding.md`](pathfinding.md) |
 | Relays | [`relays.md`](relays.md) |
 | The map | [`map.md`](map.md) |
+| Sound: soundscapes, an area's global sound, sound zones | [`sound.md`](sound.md) |
 | The tenement | [`tenement.md`](tenement.md) |
 | Building and furniture | [`building.md`](building.md) |
 | Crime, prison and police | [`crime.md`](crime.md) |

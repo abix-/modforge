@@ -97,27 +97,81 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
         // The area's own sound: the global soundscape belongs to the area
         // entered, and stays so (a left area's SoundscapeGlobal, still
         // subscribed to MinutePassed, set its own every game minute).
-        if handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["SoundscapeGlobal", to]))).is_some() {
+        // An area whose SoundscapeGlobal has no day or night soundscape
+        // (Under Map) has no global sound: in the game the rebuilt
+        // SoundscapeController holds none (docs/sound.md).
+        if let Some(own) = handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["SoundscapeGlobal", to]))) {
+            let has = |f: &str| handle_of(&api.op("read_field", json!({"handle": own, "field": f})).result).is_some();
+            let want = (has("soundscapeDay") || has("soundscapeNight")).then_some(to);
             let sc = instance_of(api, "SoundscapeController").ok().flatten().expect("SoundscapeController.instance");
-            let sound_area = || {
-                handle_of(&api.op("read_field", json!({"handle": sc, "field": "currentGlobalSoundscape"})).result)
+            let area_of = |field: &str| {
+                handle_of(&api.op("read_field", json!({"handle": sc, "field": field})).result)
                     .map(|s| call_static(api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": s}])))
                     .and_then(|v| v.as_str().map(String::from))
             };
-            wait_for("the area's own sound", 10, || sound_area().as_deref() == Some(to));
-            // And the sound playing now (a sound zone of the area left
-            // could still be playing).
-            let playing = handle_of(&api.op("read_field", json!({"handle": sc, "field": "currentSoundscape"})).result)
-                .map(|s| call_static(api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": s}])));
-            assert_eq!(playing.as_ref().and_then(Value::as_str), Some(to), "the sound playing after the door");
+            wait_for("the area's own sound", 10, || area_of("currentGlobalSoundscape").as_deref() == want);
+            // And the sound playing now is the area's or none (a sound zone
+            // of the area left could still be playing).
+            let playing = area_of("currentSoundscape");
+            assert!(playing.is_none() || playing.as_deref() == Some(to), "the sound playing after the door is in {playing:?}");
             std::thread::sleep(Duration::from_secs(3)); // time for a left area's handler to set its own (not checked to be a game minute)
-            assert_eq!(sound_area().as_deref(), Some(to), "the global sound after a game minute");
-            println!("  sound: the area's own");
+            assert_eq!(area_of("currentGlobalSoundscape").as_deref(), want, "the global sound after a game minute");
+            println!("  sound: global in {want:?}, playing in {playing:?}");
         }
     } else {
         wait_for_normal_load(api, &controller);
         wait_for(&format!("in {to}"), 30, || level_now(api) == to);
     }
+    map_is_the_areas(api, to);
+    build_space_is_the_loads(api, to);
+}
+
+/// The map after a door is the area's (docs/map.md): the panel shows the
+/// area's info_map image, MapController's current record is the area's
+/// map id, and the panel holds that record's landmarks only.
+fn map_is_the_areas(api: &Api<Value>, to: &str) {
+    let Some(info) = instance_of(api, "info_map").ok().flatten() else {
+        println!("  map: none in {to}");
+        return;
+    };
+    let name = |h: Option<i64>| h.map(|h| call(api, h, "get_name", json!([]))).and_then(|v| v.as_str().map(String::from));
+    let image = name(handle_of(&api.op("read_field", json!({"handle": info, "field": "mapImage"})).result));
+    let Some(image) = image else {
+        println!("  map: {to} has no map image");
+        return;
+    };
+    let task = handle_of(&api.op("read_field", json!({"handle": info, "field": "requiredTaskItem"})).result);
+    let id = task.map(|t| call(api, t, "get_Id", json!([])).as_str().unwrap_or("").to_string()).unwrap_or_else(|| image.clone());
+    let controller = instance_of(api, "MapController").ok().flatten().expect("MapController.instance");
+    let panel = handle_of(&api.op("read_field", json!({"handle": controller, "field": "map"})).result).expect("MapController.map");
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let shown = || field(panel, "mapImage").and_then(|img| name(handle_of(&call(api, img, "get_sprite", json!([])))));
+    let record = || field(controller, "currentSceneMapInfo");
+    let record_id = || record().and_then(|r| api.op("read_field", json!({"handle": r, "field": "taskItemId"})).result.as_str().map(String::from));
+    wait_for("the area's map", 5, || shown().as_deref() == Some(image.as_str()) && record_id().as_deref() == Some(id.as_str()));
+    let count = |h: Option<i64>| h.map(|l| call(api, l, "get_Count", json!([])).as_i64().unwrap_or(-1)).unwrap_or(-1);
+    let recorded = count(record().and_then(|r| field(r, "landmarkInfos")));
+    let markers = count(field(panel, "landmarks"));
+    println!("  map: {image} (id {id}), landmarks recorded {recorded}, on the panel {markers}");
+    assert_eq!(markers, recorded, "landmarks on the map panel after the door to {to}");
+}
+
+/// The build space after a door is what the game's load makes it
+/// (docs/building.md): the area's FurnitureManager saved as `isActive`, or
+/// none.
+fn build_space_is_the_loads(api: &Api<Value>, to: &str) {
+    let managers = call_static(api, "Unityforge.Shim.SceneTools", "ComponentsIn", json!([to, "Inventory, Assembly-CSharp", "FurnitureManager"]));
+    let arr = handle_of(&managers);
+    let n = arr.map(|a| api.op("read_field", json!({"handle": a, "field": "Length"})).result.as_i64().unwrap_or(0)).unwrap_or(0);
+    let want = (0..n)
+        .filter_map(|i| handle_of(&call(api, arr.unwrap(), "GetValue", json!([i]))))
+        .find(|m| api.op("read_field", json!({"handle": m, "field": "isActive"})).result.as_bool() == Some(true))
+        .and_then(|m| call(api, m, "GetInstanceID", json!([])).as_i64());
+    let t = handle_of(&call_static(api, "System.Type", "GetType", json!(["BuildingSystem, Assembly-CSharp"]))).expect("BuildingSystem");
+    let f = handle_of(&call(api, t, "GetField", json!(["activeManager"]))).expect("activeManager field");
+    let now = || handle_of(&call(api, f, "GetValue", json!([null]))).and_then(|m| call(api, m, "GetInstanceID", json!([])).as_i64());
+    wait_for("the build space", 5, || now() == want);
+    println!("  build space: {n} in {to}, active {want:?}");
 }
 
 #[test]
@@ -167,6 +221,12 @@ fn kept_areas_played_through() {
     for round in 1..=2 {
         use_door(&api, &away, kept_on);
         std::thread::sleep(Duration::from_secs(2));
+        // Some areas have no door back (Under Map): the one door in is
+        // checked, then the save.
+        if door_to(&api, &home).is_none() {
+            println!("  no door back to {home} from {away}: one way only");
+            break;
+        }
         use_door(&api, &home, kept_on);
         std::thread::sleep(Duration::from_secs(2));
         println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
@@ -205,7 +265,19 @@ fn kept_areas_played_through() {
     std::thread::sleep(Duration::from_secs(3));
 
     // Checks.
-    let dead: Vec<String> = WATCHED.iter().map(|c| (c, instance_now(&api, c))).filter(|(_, v)| v.parse::<i64>().is_err()).map(|(c, v)| format!("{c}: {v}")).collect();
+    // A class the loaded area has no object of is empty in the game too
+    // (Under Map has no info_map).
+    let level = level_now(&api);
+    let has_one = |c: &str| {
+        let found = call_static(&api, "Unityforge.Shim.SceneTools", "ComponentsIn", json!([level, "Inventory, Assembly-CSharp", c]));
+        handle_of(&found).is_some_and(|a| api.op("read_field", json!({"handle": a, "field": "Length"})).result.as_i64().unwrap_or(0) > 0)
+    };
+    let dead: Vec<String> = WATCHED
+        .iter()
+        .map(|c| (c, instance_now(&api, c)))
+        .filter(|(c, v)| v.parse::<i64>().is_err() && (v != "null" || has_one(c)))
+        .map(|(c, v)| format!("{c}: {v}"))
+        .collect();
     let t = handle_of(&call_static(&api, "System.Type", "GetType", json!(["PlayerIdentity, Assembly-CSharp"]))).expect("PlayerIdentity");
     let f = handle_of(&call(&api, t, "GetField", json!(["identity"]))).expect("identity field");
     let me = handle_of(&call(&api, f, "GetValue", json!([null]))).map(|h| api.op("read_field", json!({"handle": h, "field": "firstName"})).result);

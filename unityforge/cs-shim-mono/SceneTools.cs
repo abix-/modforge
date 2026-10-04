@@ -75,6 +75,16 @@ namespace Unityforge.Shim
             return me is Component c && c != null && NeverEntered.Contains(c.gameObject.scene.handle);
         }
 
+        /// <summary>
+        /// `me` is in an area the mod is loading alongside or loaded
+        /// alongside and never entered. Its Awake runs before sceneLoaded,
+        /// so the area is still only in the quiet list then.
+        /// </summary>
+        public static bool InQuietArea(object me)
+        {
+            return me is Component c && c != null && (Quiet.Contains(c.gameObject.scene.name) || NeverEntered.Contains(c.gameObject.scene.handle));
+        }
+
         private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
             if (mode != LoadSceneMode.Additive || !Quiet.Remove(scene.name)) return;

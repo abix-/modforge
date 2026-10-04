@@ -143,9 +143,14 @@ GUID lookups in it (`FurnitureInfo.LoadFromPath`,
   can be parented under the other area's manager (last match wins); not
   measured (todo).
 - The build space the player is in: the door runs `OnMapChanging` (rule
-  3), clearing `activeManager`; the load steps run on the first visit
-  only, so on a later visit `activeManager` comes back only by walking
-  into a `BuildingArea` (todo). `BuildingArea.currentManager` is never
-  cleared, as in the game.
+  3), clearing `activeManager`. On a later visit FurnitureManager's load
+  step is skipped (it creates objects), so the mod does its `isActive`
+  part only: the area's manager saved as active becomes `activeManager`
+  (`build_space_again`, kept_loaded.rs). `BuildingArea.currentManager` is
+  never cleared, as in the game.
+- Checked by `research_kept_scenario.rs` after every door (2026-10-04):
+  `activeManager` is the area's FurnitureManager with `isActive`, or none
+  (Interior Player Tenement: 23 build spaces, one active, on the first and
+  the later visit; Open Sewer Tenement and Under Map: none).
 - `UpdateConnectionIndicator` searches active objects only: the same as
   the game.

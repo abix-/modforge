@@ -238,13 +238,28 @@ picks the map's record and adds its markers again, `RevealCamera
 - `info_map` is area-owned (kept-areas.md, rule 1): entering a kept area
   points `info_map.instance` at its copy, so everything that reads it live
   follows the area: `UpdatePlayerMarker`, `AddLandmark` placement,
-  `MapPanel`, `GetCurrentMapId`.
+  `MapPanel`, `GetCurrentMapId`. An area without one (Under Map) leaves it
+  empty, as in the game; an area loaded alongside never takes it
+  (FirstCopyGuard.Newcomer).
 - `MapController.currentSceneMapInfo` and `Map.Start` (the image) run only
-  in Start and OnLoadingGame, which do not run again on a kept door.
-  After a kept door: the panel keeps the previous area's image and
-  markers, and `AddLandMark` writes a new landmark into the previous
-  map's record (it calls `GetCurrentSceneMap` only when the record is
-  null). Todo row.
+  in Start and OnLoadingGame, which do not run again on a kept door. So on
+  every kept door the mod sets the panel back to a fresh one (markers
+  destroyed, reveal layer off, player arrow on, map shown) and runs
+  `Map.Start` and `MapController.Start` again (`map_again`, kept_loaded.rs).
+  The reveal layer off and the arrow on are assumed to be the panel's
+  starting state, not read from the game.
+- Checked by `research_kept_scenario.rs` after every door (2026-10-04): the
+  panel's image and MapController's record are the area's map, and the
+  panel's markers equal the record's landmarks (21 and 21 in Interior
+  Player Tenement and Open Sewer Tenement, which share the Tenement Map;
+  "none" in Under Map). Two areas with different map images not checked
+  yet.
+- Measured by `research_map.rs` (2026-10-04): Interior Player Tenement,
+  Interior Tenement B and Open Sewer Tenement share map_tenement_001 (task
+  item Tenement Map, radius 200); Under Map has no info_map. After a
+  normal load in the player's tenement the panel held 28 markers for a
+  record of 21: not checked whether the game does the same with kept
+  areas off (todo).
 - `RevealCamera.Start` runs once per area load. Its camera is made a top
   object of the area's scene (`parent = null`); whether it switches off
   with its kept area,

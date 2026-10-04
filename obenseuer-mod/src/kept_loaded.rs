@@ -620,6 +620,12 @@ fn enter_area(area: &str) -> Result<(), String> {
     if let Err(e) = &nav {
         unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: navigation: {e}"));
     }
+    // The sound starts from nothing, as the game's rebuilt
+    // SoundscapeController does (docs/sound.md), before the area's objects
+    // start and pick their sound.
+    if let Err(e) = fresh_sound() {
+        unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: sound: {e}"));
+    }
     // Step 1: the area is the active scene (objects the game creates go
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
@@ -652,6 +658,12 @@ fn enter_area(area: &str) -> Result<(), String> {
             if let Err(e) = shops_again(&area) {
                 unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: shops: {e}"));
             }
+            if let Err(e) = build_space_again(&area) {
+                unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: build space: {e}"));
+            }
+        }
+        if let Err(e) = map_again() {
+            unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: map: {e}"));
         }
         let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area]));
         // Step 3, then 4 and 6 on the first visit.
@@ -1004,6 +1016,65 @@ fn shops_again(area: &str) -> Result<usize, String> {
         }
     }
     Ok(n as usize)
+}
+
+/// The build space the player is in (docs/building.md): the game's load
+/// makes the area's FurnitureManager saved as `isActive` the active one
+/// (FurnitureManager.cs:175-178). On a later visit FurnitureManager's load
+/// step is skipped (it creates objects), so only that part is done here.
+fn build_space_again(area: &str) -> Result<(), String> {
+    let managers = obj(invoke_static("Unityforge.Shim.SceneTools", "ComponentsIn", &json!([area, "Inventory, Assembly-CSharp", "FurnitureManager"]))?).ok_or("no manager list")?;
+    let n = managers.read_field("Length")?.as_i64().unwrap_or(0);
+    for i in 0..n {
+        let Some(manager) = obj(managers.invoke("GetValue", &json!([i]))?) else { continue };
+        if manager.read_field("isActive")?.as_bool() == Some(true) {
+            let ty = obj(invoke_static("System.Type", "GetType", &json!(["BuildingSystem, Assembly-CSharp"]))?).ok_or("no BuildingSystem type")?;
+            let field = obj(ty.invoke("GetField", &json!(["activeManager"]))?).ok_or("no BuildingSystem.activeManager")?;
+            field.invoke("SetValue", &json!([null, {"handle": manager.handle().0}]))?;
+        }
+    }
+    Ok(())
+}
+
+/// The map (docs/map.md): in the game the map panel and MapController are
+/// rebuilt with every area, so their Start runs on every load: Map.Start
+/// shows the area's map image, MapController.Start picks the area's map
+/// record and puts its landmarks on the panel. Here the panel is kept, so
+/// it is set back to a fresh panel first (markers removed, the reveal layer
+/// off, the player arrow on, the map shown), then both Starts run again.
+fn map_again() -> Result<(), String> {
+    let controller = one_copy("MapController")?;
+    // The panel MapController puts the landmarks on.
+    let map = obj(controller.read_field("map")?).ok_or("no MapController.map")?;
+    let markers = obj(map.read_field("landmarks")?).ok_or("no landmarks list")?;
+    let n = markers.invoke("get_Count", &json!([]))?.as_i64().unwrap_or(0);
+    for i in 0..n {
+        if let Some(marker) = obj(markers.invoke("get_Item", &json!([i]))?) {
+            invoke_static("UnityEngine.Object", "Destroy", &json!([{"handle": marker.handle().0}]))?;
+        }
+    }
+    markers.invoke("Clear", &json!([]))?;
+    obj(map.read_field("selectedLandmarks")?).ok_or("no selectedLandmarks list")?.invoke("Clear", &json!([]))?;
+    let reveal = obj(map.read_field("revealingImage")?).ok_or("no revealingImage")?;
+    obj(reveal.invoke("get_gameObject", &json!([]))?).ok_or("no reveal object")?.invoke("SetActive", &json!([false]))?;
+    obj(map.read_field("playerMarker")?).ok_or("no playerMarker")?.invoke("SetActive", &json!([true]))?;
+    map.invoke("ShowMainMap", &json!([]))?;
+    map.invoke("Start", &json!([]))?;
+    controller.invoke("Start", &json!([]))?;
+    Ok(())
+}
+
+/// The sound (docs/sound.md): SoundscapeController is rebuilt with every
+/// area in the game, so after a door it holds no global, current or
+/// background soundscape and no trigger. Here it is kept, so those are set
+/// back to nothing; the area's soundscapes, triggers and SoundscapeGlobal
+/// then set them as on a load.
+fn fresh_sound() -> Result<(), String> {
+    let sc = one_copy("SoundscapeController")?;
+    for field in ["currentGlobalSoundscape", "previousSoundscape", "currentSoundscape", "currentBackgroundSoundscape", "currentBackgroundLocation", "currentTrigger"] {
+        sc.write_field(field, &Json::Null)?;
+    }
+    Ok(())
 }
 
 /// Steps 1 to 10 of rule 3.

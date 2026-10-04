@@ -103,6 +103,13 @@ does not set is not a manager: `Storage.active` is the box open now.
     "Esko_Virtanen"). With the order below it finds itself.
   - Order on entering (rule 2): the area-owned managers become the game's
     before the area switches on, as Awake runs before OnEnable in a load.
+  - An area without a copy of one leaves its `instance` empty, as in the
+    game the previous area's copy is destroyed with its area (Under Map
+    has no info_map; FirstCopyGuard.EnterArea). A copy in an area loading
+    alongside or never entered never takes an area-owned `instance`, also
+    an empty one (FirstCopyGuard.Newcomer, SceneTools.InQuietArea): before
+    2026-10-04 Interior Tenement B, loading alongside after a door into
+    Under Map, took the empty info_map (research_map.rs).
   - `SoundscapeGlobal` (`__MAIN/Soundscapes`, with its 4 children, all the
     area's content) is area-owned too: it holds the area's day and night
     sound, plays it in Start and sets it every minute

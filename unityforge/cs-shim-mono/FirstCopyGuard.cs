@@ -43,6 +43,10 @@ namespace Unityforge.Shim
                 Fields[type] = member;
             }
             if (member == null) return "";
+            // An area-owned manager in an area loaded alongside never takes
+            // the field, also when it is empty (the area entered has no copy,
+            // Under Map's info_map): EnterArea sets it when the area is entered.
+            if (AreaOwnedTypes.Contains(type) && SceneTools.InQuietArea(me)) return type.FullName;
             // Unity's == treats a destroyed object as null.
             var current = Read(member) as UnityEngine.Object;
             if (current == null || ReferenceEquals(current, me)) return "";
@@ -266,7 +270,9 @@ namespace Unityforge.Shim
         /// <summary>
         /// Entering an area (rule 2, step 2): each area-owned manager's one
         /// copy is the area's, switched on, as its own Awake would have set
-        /// it on a normal load. Returns how many were set.
+        /// it on a normal load. An area without a copy leaves it empty, as
+        /// in the game the previous area's copy is destroyed with its area
+        /// (Under Map has no info_map). Returns how many were set.
         /// </summary>
         public static int EnterArea(string sceneName)
         {
@@ -281,14 +287,17 @@ namespace Unityforge.Shim
                     Fields[t] = member;
                 }
                 if (member == null) continue;
+                MonoBehaviour own = null;
                 foreach (var o in Resources.FindObjectsOfTypeAll(t))
                 {
                     if (!(o is MonoBehaviour m) || m == null || m.gameObject.scene.handle != scene.handle) continue;
-                    Write(member, m);
-                    m.enabled = true;
-                    n++;
+                    own = m;
                     break;
                 }
+                Write(member, own);
+                if (own == null) continue;
+                own.enabled = true;
+                n++;
             }
             return n;
         }
