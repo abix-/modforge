@@ -67,6 +67,108 @@ pub fn install() {
             MAIN_QUEUE.run_result("errors", Duration::from_secs(10), move || errors(mark))
         },
     ));
+    OP_REGISTRY.register(OpDef::new(
+        "trace",
+        "Record, in one area, every relay fired (Relay.triggerOutputs, with the game code that called it) and every object whose saved data was not found (SaveController.DeSerializeData false); the patches are on only while tracing",
+        r#"{"area": "Open Sewer Tenement"} starts (records cleared); {} reads; {"stop": true} reads and removes the patches"#,
+        |args| {
+            let area = args.get("area").and_then(Json::as_str).map(String::from);
+            let stop = args.get("stop").and_then(Json::as_bool) == Some(true);
+            MAIN_QUEUE.run_result("trace", Duration::from_secs(10), move || trace(area, stop))
+        },
+    ));
+}
+
+/// The area `trace` records in; None: not tracing.
+static TRACE_AREA: Mutex<Option<String>> = Mutex::new(None);
+/// What `trace` recorded.
+static TRACE: Mutex<Vec<Json>> = Mutex::new(Vec::new());
+/// Its patches, removed (dropped) on stop.
+static TRACE_HOOKS: Mutex<Vec<unityforge::hook::Hook>> = Mutex::new(Vec::new());
+
+fn trace(area: Option<String>, stop: bool) -> Result<Json, String> {
+    if let Some(area) = area {
+        TRACE.lock().unwrap().clear();
+        let mut hooks = TRACE_HOOKS.lock().unwrap();
+        if hooks.is_empty() {
+            hooks.push(unityforge::hook::patch_prefix_ctx("Relay", "triggerOutputs(System.Object)", unityforge::hook::HookCtx::Instance, on_relay_fired)?);
+            hooks.push(unityforge::hook::patch_postfix_result("SaveController", "DeSerializeData(UnityEngine.Object,System.Boolean)", &json!({}), on_deserialized)?);
+        }
+        *TRACE_AREA.lock().unwrap() = Some(area);
+        return Ok(json!({"tracing": true}));
+    }
+    let records = TRACE.lock().unwrap().clone();
+    if stop {
+        *TRACE_AREA.lock().unwrap() = None;
+        TRACE_HOOKS.lock().unwrap().clear();
+    }
+    Ok(json!({"records": records}))
+}
+
+/// The area an object is in, when it is the one traced.
+fn traced(o: &MonoObject) -> bool {
+    let Some(area) = TRACE_AREA.lock().unwrap().clone() else { return false };
+    invoke_static("Unityforge.Shim.SceneTools", "SceneOf", &json!([json!({"handle": o.handle().0})])).ok().and_then(|v| v.as_str().map(String::from)).as_deref() == Some(area.as_str())
+}
+
+/// An object's path from the top of its area: "Top / ... / Object".
+fn path_of(o: &MonoObject) -> String {
+    let mut names = Vec::new();
+    let mut t = o.invoke("get_transform", &json!([])).ok().and_then(obj);
+    while let Some(tr) = t {
+        names.push(tr.invoke("get_name", &json!([])).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default());
+        t = tr.invoke("get_parent", &json!([])).ok().and_then(obj);
+    }
+    names.reverse();
+    names.join(" / ")
+}
+
+/// The game's frames of the current call stack, without the patch's own.
+fn game_frames() -> Vec<String> {
+    let stack = invoke_static("System.Environment", "get_StackTrace", &json!([])).ok().and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
+    stack
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.contains("Unityforge") && !l.contains("System.Environment") && !l.contains("HarmonyBridge") && !l.contains("(wrapper"))
+        .take(8)
+        .map(String::from)
+        .collect()
+}
+
+extern "C" fn on_relay_fired(ctx: *const std::ffi::c_void) -> i32 {
+    let h = ctx as isize as i32;
+    if h == 0 {
+        return 0;
+    }
+    let relay = owned_object(h);
+    if traced(&relay) {
+        let kind = relay.invoke("GetType", &json!([])).ok().and_then(obj).and_then(|t| t.invoke("get_Name", &json!([])).ok()).unwrap_or(Json::Null);
+        TRACE.lock().unwrap().push(json!({"relay": format!("{}: {}", kind.as_str().unwrap_or("?"), path_of(&relay)), "by": game_frames()}));
+    }
+    0
+}
+
+extern "C" fn on_deserialized(
+    _instance: *const std::ffi::c_void,
+    args: *const std::os::raw::c_char,
+    result: *const std::os::raw::c_char,
+    _out: *mut std::os::raw::c_char,
+    _cap: i32,
+) -> i32 {
+    // SAFETY: the shim passes NUL-terminated UTF-8 valid during the call.
+    let text = |p: *const std::os::raw::c_char| if p.is_null() { String::new() } else { unsafe { std::ffi::CStr::from_ptr(p) }.to_string_lossy().into_owned() };
+    let args: Json = serde_json::from_str(&text(args)).unwrap_or(Json::Null);
+    let Some(data) = args.get(0).and_then(json_handle).map(owned_object) else { return -1 };
+    if text(result) == "false" && traced(&data) {
+        let guid = data.read_field("GUID").unwrap_or(Json::Null);
+        let kind = data.invoke("GetType", &json!([])).ok().and_then(obj).and_then(|t| t.invoke("get_Name", &json!([])).ok()).unwrap_or(Json::Null);
+        TRACE.lock().unwrap().push(json!({
+            "no_saved_data": format!("{}: {}", kind.as_str().unwrap_or("?"), path_of(&data)),
+            "guid": guid,
+            "global": args.get(1).cloned().unwrap_or(Json::Null),
+        }));
+    }
+    -1
 }
 
 /// Getting unstuck: one path for the op and the in-game key. Puts the mod

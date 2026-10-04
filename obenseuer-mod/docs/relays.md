@@ -200,11 +200,36 @@ taken out on leaving (clock handlers kept only for classes with
 
 ### Measured: relays fired on entering (2026-10-04)
 
-`research_kept_scenario.rs` clears `firedOnce` on every relay of an area
-that is not fire-once (every kind) while the area is away, goes through
-the door, and lists the relays that fired; with `OBENSEUER_SAVE_AWAY=1`
-it also clears them before a save in the area and lists what the game's
-own load of that save fires. Tom_Tomato/Slot7:
+Now measured with the `trace` op (src/investigate.rs): it records every
+`Relay.triggerOutputs(object)` call in one area with the game code that
+called it, and every object whose `DeSerializeData` found no saved data.
+`research_kept_scenario.rs` traces each door and the game's load of the
+test's save (`OBENSEUER_SAVE_AWAY=1` saves in the area away), compares the
+later kept door with the game's load, and writes each trace to
+`output/trace-<area>-<n>.json`. Open Sewer Tenement, Tom_Tomato/Slot7:
+the game's load 184 firings, the later kept door 165; every relay the
+kept door fires the game's load fires too. The differences:
+
+| Relay | Game's load | Kept door | Why |
+|---|---:|---:|---|
+| The area's own Game_Logic Backpack Storage `Relay_Backpack_OnUpdate` | 3 | 0 | That copy of the player setup stays off with kept areas; the live one is used |
+| Storages' `onSpawnItems` (beer crates, bird nests, wine racks, log storage) | 2 | 4 | `Storage.TriggerOutputsLate` after `SpawnItems`: the load's catch-up restocked them for the game minutes the area was away; the game's load came from a save made seconds before |
+| Rocks' and wood piles' stock relays (Relay1 to Relay4, Stocklevel_*) | 2 | 1 | The game fires them in the fresh object's `WorkableResourceSource.Start` and again in `OnLoadingGame`; the kept object's Start ran once (`startDone`), so only `OnLoadingGame` fires them. Both end with the loaded stock |
+| Sirkku Maltanen's lamps OnTurnOn, the street electrical box Relay_onTurnOn | 3, 2 | 2, 1 | The game fires them once more from `LightTurnOffOn.Awake` of the fresh object |
+| The market grill fan `Relay_on` | 1 | 0 | `TelevisionNoise.Start` turns it on in the fresh object; not run again on later visits |
+| Henrik's `RelayOnDayChange` and "Henrik Has Soup" | 1 | 0 | The game's load found its saved `lastDay` before today; not explained yet |
+
+Objects whose saved data was not found on the later door and not in the
+game's load: about 190 spawned items (bottles, cans, trash, coins, all
+`(Clone)`), every one with an empty GUID: spawned items get none
+(Collectible.cs:393), `DeSerializeData` returns false at once, and their
+`OnLoadingGame` then does nothing more. Harmless.
+
+The earlier measurement below read the relays' `firedOnce`, which the load
+restores from the save: on a first visit from the save file, so relays
+fired long ago showed as fired (the first door's 36 "extra" relays were
+that, none of them in the trace); and the game's load restores the saved
+value over firings made in `Awake`. Kept for the record:
 
 | Area | Relays | Game's load | First kept door | Later kept door |
 |---|---:|---:|---:|---:|

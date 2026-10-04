@@ -26,7 +26,7 @@
 mod common;
 use std::time::{Duration, Instant};
 
-use common::{WATCHED, api, call, call_static, clear_fired, fired, handle_of, instance_now, instance_of, op, ping_or_skip, relays_in, wait_for_normal_load};
+use common::{WATCHED, api, call, call_static, handle_of, instance_now, instance_of, op, ping_or_skip, wait_for_normal_load};
 use serde_json::{Value, json};
 use unityforge::client::Api;
 
@@ -86,7 +86,8 @@ fn use_door(api: &Api<Value>, to: &str, kept_on: bool) {
         // The NPC system's idea of the player's area (NPCManager.ActiveScene,
         // read by 20 NPC code paths) is the area entered.
         let npc = instance_of(api, "NPCManager").ok().flatten().expect("NPCManager.instance");
-        assert_eq!(call(api, npc, "get_ActiveScene", json!([])).as_str(), Some(to), "NPCManager.ActiveScene after the door");
+        let r = api.op("invoke_method", json!({"handle": npc, "method": "get_ActiveScene", "args": []}));
+        assert_eq!(r.result.as_str(), Some(to), "NPCManager.ActiveScene after the door (error {:?}, NPCManager in {})", r.error, call_static(api, "Unityforge.Shim.SceneTools", "SceneOf", json!([{"handle": npc}])));
         // The area's settings in the live set: the background radiation its
         // info_game_logic.Start pushes into RadiationController.
         let own = handle_of(&call_static(api, "Unityforge.Shim.FirstCopyGuard", "AreaCopy", json!(["info_game_logic", to]))).expect("the area's info_game_logic");
@@ -218,28 +219,36 @@ fn kept_areas_played_through() {
 
     // 2. Out and back through doors, twice: the second visit to the area
     // away from home must also move without a loading screen.
-    // Relays that fire on entering (docs/relays.md: at Start, from the load
+    // Relays fired on entering (docs/relays.md: at Start, from the load
     // steps, or from another relay): the game fires them on every load of
-    // their area, so they must fire on every kept door in. Every kind but
-    // the fire-once ones. Their `firedOnce` is cleared while their area is
-    // away, then read after the door. Round 1 is the first door into each
-    // area since the normal load; round 2 a later one.
-    let relays_away = if kept_on { relays_in(&api, &away) } else { Vec::new() };
-    let relays_home = if kept_on { relays_in(&api, &home) } else { Vec::new() };
-    println!("relays: {} in {away}, {} in {home}", relays_away.len(), relays_home.len());
-    clear_fired(&api, &relays_away);
-    let mut fired_away: Vec<Vec<i64>> = Vec::new();
-    let mut fired_home: Vec<Vec<i64>> = Vec::new();
+    // their area, so the later kept door into an area must fire the same
+    // relays as the game's load of it. Recorded by the `trace` op
+    // (Relay.triggerOutputs), written to output/trace-<n>.json with the
+    // objects whose saved data was not found. Not the relays' `firedOnce`:
+    // the load restores it from the save (on a first visit from the save
+    // file, so relays fired long ago showed as fired).
     // OBENSEUER_SAVE_AWAY=1: the save is made in the area away after the
-    // round 2 door (the game's own relays of that area are then compared).
+    // round 2 door (that area's relays are then compared with the game's).
     let save_away = std::env::var("OBENSEUER_SAVE_AWAY").is_ok();
+    let traced = |name: &str| -> Vec<String> {
+        let r = op(&api, "trace", json!({}));
+        let path = common::output_path(&format!("trace-{name}.json"));
+        std::fs::write(&path, serde_json::to_string_pretty(&r).unwrap_or_default()).expect("write the trace");
+        let mut fired: Vec<String> = r["records"].as_array().into_iter().flatten().filter_map(|x| x["relay"].as_str().map(String::from)).collect();
+        fired.sort();
+        println!("  relays fired: {}, {path}", fired.len());
+        fired
+    };
+    let mut fired_away: Vec<Vec<String>> = Vec::new();
+    let mut fired_home: Vec<Vec<String>> = Vec::new();
     for round in 1..=2 {
+        if kept_on {
+            op(&api, "trace", json!({"area": away}));
+        }
         use_door(&api, &away, kept_on);
         std::thread::sleep(Duration::from_secs(2));
         if kept_on {
-            fired_away.push(fired(&api, &relays_away));
-            clear_fired(&api, &relays_home);
-            println!("  round {round}: fired again in {away}: {} of {}", fired_away.last().unwrap().len(), relays_away.len());
+            fired_away.push(traced(&format!("{away}-{round}")));
         }
         if save_away && round == 2 {
             break;
@@ -250,34 +259,26 @@ fn kept_areas_played_through() {
             println!("  no door back to {home} from {away}: one way only");
             break;
         }
+        if kept_on {
+            op(&api, "trace", json!({"area": home}));
+        }
         use_door(&api, &home, kept_on);
         std::thread::sleep(Duration::from_secs(2));
         if kept_on {
-            fired_home.push(fired(&api, &relays_home));
-            clear_fired(&api, &relays_away);
-            println!("  round {round}: fired again in {home}: {} of {}", fired_home.last().unwrap().len(), relays_home.len());
+            fired_home.push(traced(&format!("{home}-{round}")));
         }
         println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
     }
-    // The same relays fire on the first and the later door into an area.
     let mut relay_diffs: Vec<String> = Vec::new();
-    for (area, f) in [(&away, &fired_away), (&home, &fired_home)] {
-        if f.len() == 2 {
-            relay_diffs.extend(relay_diff(&api, &format!("{area}: first door"), &f[0], "later door", &f[1]));
-        }
-    }
 
-    // What the game itself fires on entering the area saved in: the
-    // relays' `firedOnce` cleared before the save, read after its load.
+    // The later kept door into the area saved in, against the game's load.
     let saved_in = level_now(&api);
     let kept_fired: Option<Vec<String>> = if !kept_on {
         None
     } else if saved_in == home && fired_home.len() == 2 {
-        clear_fired(&api, &relays_home);
-        Some(fired_home[1].iter().map(|r| relay_name(&api, *r)).collect())
+        Some(fired_home[1].clone())
     } else if saved_in == away && fired_away.len() == 2 {
-        clear_fired(&api, &relays_away);
-        Some(fired_away[1].iter().map(|r| relay_name(&api, *r)).collect())
+        Some(fired_away[1].clone())
     } else {
         None
     };
@@ -310,13 +311,17 @@ fn kept_areas_played_through() {
         assert!(misfiled.is_empty(), "NPCs of {away} saved as in {home}: {misfiled:?}");
     }
     let controller = instance_now(&api, "GameController");
+    if kept_fired.is_some() {
+        op(&api, "trace", json!({"area": saved_in}));
+    }
     op(&api, "reload_save", json!({}));
     wait_for_normal_load(&api, &controller);
     std::thread::sleep(Duration::from_secs(3));
     if let Some(kept_fired) = &kept_fired {
-        let game_fired: Vec<String> = fired(&api, &relays_in(&api, &saved_in)).iter().map(|r| relay_name(&api, *r)).collect();
+        let game_fired = traced(&format!("{saved_in}-game-load"));
         relay_diffs.extend(names_diff(&format!("{saved_in}: the game's load"), &game_fired, "the later kept door", kept_fired));
     }
+    op(&api, "trace", json!({"stop": true}));
     for d in &relay_diffs {
         println!("{d}");
     }
@@ -357,12 +362,6 @@ fn kept_areas_played_through() {
     assert!(relay_diffs.is_empty(), "relays fired on entering differ (listed above)");
 }
 
-/// A relay as its kind and its object's path ("RelayAuto: Top / ... / Obj").
-fn relay_name(api: &Api<Value>, r: i64) -> String {
-    let kind = handle_of(&call(api, r, "GetType", json!([]))).map(|t| call(api, t, "get_Name", json!([]))).and_then(|v| v.as_str().map(String::from)).unwrap_or_default();
-    format!("{kind}: {}", common::top_path(api, r))
-}
-
 /// Two lists of fired relays compared by name; one line per side when they
 /// differ, listing the relays only that side fired.
 fn names_diff(a_label: &str, a: &[String], b_label: &str, b: &[String]) -> Vec<String> {
@@ -380,9 +379,4 @@ fn names_diff(a_label: &str, a: &[String], b_label: &str, b: &[String]) -> Vec<S
         format!("relays fired, {a_label} {} vs {b_label} {}; only {a_label} ({}):\n    {}", a.len(), b.len(), only_a.len(), only_a.join("\n    ")),
         format!("  only {b_label} ({}):\n    {}", only_b.len(), only_b.join("\n    ")),
     ]
-}
-
-fn relay_diff(api: &Api<Value>, a_label: &str, a: &[i64], b_label: &str, b: &[i64]) -> Vec<String> {
-    let names = |x: &[i64]| x.iter().map(|r| relay_name(api, *r)).collect::<Vec<_>>();
-    names_diff(a_label, &names(a), b_label, &names(b))
 }
