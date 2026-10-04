@@ -209,20 +209,31 @@ own load of that save fires. Tom_Tomato/Slot7:
 | Area | Relays | Game's load | First kept door | Later kept door |
 |---|---:|---:|---:|---:|
 | Interior Player Tenement | 787 | 1 | 1 | 1 (the same one) |
-| Open Sewer Tenement | 711 | 94 | 128 | 24 |
+| Open Sewer Tenement, objects with `savedTimeAndDay` kept the clock | 711 | 94 | 128 | 24 |
+| Open Sewer Tenement, catch-up on load as the game | 711 | 93 | 128 | 93 |
 
-- The later kept door misses 74 of the game's 94: relays fired by the
-  load of objects that keep the game's clock while away, so their load
-  step is skipped on later visits: `Storage.LoadDelay` fires `onUpdate`
-  and `onSpawnItems` (beer crates, bird nests, log storage, wine racks),
+- With the clock kept while away, the later door missed 74 of the game's
+  94: `Storage.LoadDelay` fires `onUpdate` and `onSpawnItems` (beer
+  crates, bird nests, log storage, wine racks),
   `WorkableResourceSource.OnLoadingGame` fires `onStock` and
   `onCurrentStock` (breakable rocks' Relay1 to Relay4, wood piles'
-  Stocklevel relays). It fires 4 the game's load did not (a kitchen oven,
-  a bear trap's onload, a field kitchen, an electrical box's onTurnOn).
-- The first kept door fires 105 the later one does not, more than the
-  game's load: among them shop OnOpen and OnClose, the speakeasy's
-  relay_start and relay_end, bridge doors, a RelayOnDayChange. Not
+  Stocklevel relays), and their load steps were skipped. Fixed by doing
+  what the game does (kept-areas.md, time while away).
+- Later door against the game's load, now: 5 only in the game's load
+  (the area's own Game_Logic Backpack Storage relay: that copy of the
+  player setup stays off with kept areas, the live one is used; and the
+  Pier Sauna upgrade's locker OnOpen and OnClose, red beer crate and log
+  storage); 5 only on the kept door (the market grill's kitchen oven, a
+  breakable rock's Relay4, a lot shack bear trap's onload, the Salvation
+  Militia field kitchen, a street electrical box's Relay_onTurnOn). Not
   explained yet (todo).
+- The first kept door fires 36 that both the game's load and the later
+  door do not: shops' OnOpen and OnClose, Sirkku Maltanen's lamps
+  OnTurnOff, the Roinaa doorphone relays, the speakeasy's
+  Relay_unlock_speakeasy, relay_start and relay_end, the One Stop Shop's
+  OnClosed, storages' OnOpen and OnClose (suitcases, a locker), the toll
+  bridge's door relays, Henrik's RelayOnDayChange and "Henrik Has Soup",
+  Tatyana's Start Trigger. Not explained yet (todo).
 - The relays that fire at Start (`triggerAtStart`, plain Relay) fire on
   every kept door: 4 of 4 in Open Sewer Tenement on both doors; in the
   player's tenement the same 1 of 3 as the game's load (the other two

@@ -163,20 +163,25 @@ namespace Unityforge.Shim
 
         /// <summary>
         /// On entering an area: puts back the handlers taken out when it was
-        /// left, each only when the event does not hold it already (a Start
-        /// run again subscribes again), and not for destroyed objects or
-        /// owners. Returns how many.
+        /// left, each only when the event does not hold it already, and not
+        /// for destroyed objects or owners. Not the handlers named in
+        /// `subscribedAgainCsv` ("Class.Method" of the handler): the Start
+        /// work run again on entering subscribes them, as a fresh object's
+        /// does in the game (Trade.StartDelay subscribes 1.1 s later, so
+        /// putting it back too would subscribe it twice). Returns how many.
         /// </summary>
-        public static int EnterArea(string sceneName)
+        public static int EnterArea(string sceneName, string subscribedAgainCsv)
         {
             var scene = SceneManager.GetSceneByName(sceneName);
             if (!scene.IsValid() || !Kept.TryGetValue(scene.handle, out var kept)) return 0;
             Kept.Remove(scene.handle);
+            var again = new HashSet<string>(subscribedAgainCsv.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries));
             int n = 0;
             foreach (var t in kept)
             {
                 if (t.Handler.Target is UnityEngine.Object o && o == null) continue;
                 if (t.Owner is UnityEngine.Object owner && owner == null) continue;
+                if (again.Contains(t.Handler.Method.DeclaringType.Name + "." + t.Handler.Method.Name)) continue;
                 var all = t.Field.GetValue(t.Owner) as Delegate;
                 if (all != null && Array.IndexOf(all.GetInvocationList(), t.Handler) >= 0) continue;
                 t.Field.SetValue(t.Owner, Delegate.Combine(all, t.Handler));

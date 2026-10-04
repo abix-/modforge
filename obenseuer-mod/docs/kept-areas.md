@@ -261,9 +261,7 @@ load steps run on every visit, not only the first:
   `EventTools.RunStep`): step 6 (the DestructibleList steps) and the
   classes whose load step creates objects that are still there
   (CollectibleItemSpawner, FurnitureBlueprintSpawner, FurnitureManager,
-  ParcelLocker, RatFightArena; docs/save.md); and the classes marked by
-  `savedTimeAndDay`, which kept the game's clock while away (time while
-  away, below): their catch-up already ran; and the top objects holding
+  ParcelLocker, RatFightArena; docs/save.md); and the top objects holding
   the managers' live copies (the live player and game-wide managers, in
   the area the save loaded): they are not the area's content, and
   re-running their load re-did game-wide work (TenementController's load
@@ -274,32 +272,34 @@ load steps run on every visit, not only the first:
   managers' Start (info_game_logic, SoundscapeGlobal, NPCManager), the
   coroutines that run for good, the relay start delay (`triggerAtStart`),
   and the Start of RelayAuto, RelayDialogueVariable, RelayRandom,
-  RelayRandomValue, RelayTaskStatus, RelayWeekdays. Shops fire their open
-  or closed relay for the state their clock kept (`shops_again`; the
-  game's Trade start coroutine also subscribes to the clock).
+  RelayRandomValue, RelayTaskStatus, RelayWeekdays, and the shops' start
+  coroutine (Trade.StartDelay: the open or closed relay for the hours).
+  The clock handler such work subscribes again (SoundscapeGlobal,
+  RelayWeekdays and Trade `DeltaSeconds`) is not put back on entering, as
+  a fresh object subscribes once (EventTools.EnterArea).
 - The NPC waypoint graph is mapped after the area switches on
   (`map_waypoints`): `MapWaypoints` sees switched-on waypoints only.
 
-Not covered yet: the map (MapController's current map and the map panel,
-docs/map.md) and the build space the player is in (FurnitureManager's
-load step is skipped, docs/building.md).
+The map and the build space the player is in are set back on entering
+(`map_again`, `build_space_again`; docs/map.md, docs/building.md).
 
-Time while away (time.md): in the game an area not loaded does
-not run, and its load catches it up from the time recorded when it was
-saved (`savedTimeAndDay`: growing, storage restock, spawners, shops,
-animals, NPC needs, fuel...); everything else in it does not move on
-while it is not loaded. So in an area kept loaded, while away, the
-objects the game catches up (their class has a `savedTimeAndDay`, or
-holds a plain object with one, as Fuel's owners do) keep hearing the
-game's clock (`TimeOfDayAzure.SecondsPassed`, `MinutePassed`,
-`DayChanged`, `CurrentTimeAndDay`) and tick along to the state the
-catch-up would give; every other clock listener is taken out with the
-rest (game-wide events, below): Prison would keep lowering crimes after
-the player left it, RelayPlayerDistance would fire each day,
-SoundscapeGlobal would set the game-wide sound (time.md, clock listeners). Re-running every load step on a later visit was tried first
-and is not safe: `Collectible.OnLoadingGame` calls Start on a live object
-(Collectible is marked, so now skipped), and the load steps that create
-objects would duplicate them (now skipped; later visits, above).
+Time while away (time.md): in the game an area not loaded does not run,
+and its load catches it up from the time recorded when it was saved
+(`savedTimeAndDay`: growing, storage restock, spawners, shops, animals,
+NPC needs, fuel...). The mod does the same: leaving takes every handler
+of the area out, the clock's too (`TimeOfDayAzure.SecondsPassed`,
+`MinutePassed`, `DayChanged`, `CurrentTimeAndDay`), and leaving's save
+steps record `savedTimeAndDay`; a later visit's load steps catch up from
+it. Until 2026-10-04 the objects with `savedTimeAndDay` kept the clock
+while away and their load steps were skipped on later visits; the relays
+their load fires (Storage `onUpdate`, WorkableResourceSource `onStock`)
+then never fired: 24 relays on a later door into Open Sewer Tenement
+against the game's 94; with the game's catch-up, 93 against 93
+(docs/relays.md, measured; operator: "we do what the game does").
+`Collectible.OnLoadingGame` calls Start on a live object: harmless, its
+Start returns once it has run (`startDone`, Collectible.cs:203;
+CollectibleItem and CollectibleRecipeBook check it too; the others set
+their title again).
 
 ## Rule 3: leaving an area
 

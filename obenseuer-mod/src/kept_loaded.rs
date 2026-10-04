@@ -649,14 +649,16 @@ fn enter_area(area: &str) -> Result<(), String> {
         // radiation), SoundscapeGlobal (the area's sound). Then the
         // handlers taken out when it was left go back (docs/kept-areas.md,
         // rule 1, which copy and game-wide events).
-        if DATA_APPLIED.lock().unwrap().iter().any(|a| *a == area) {
-            for (class, method) in RUN_AGAIN {
+        let later = DATA_APPLIED.lock().unwrap().iter().any(|a| *a == area);
+        let mut subscribed_again = Vec::new();
+        if later {
+            for (class, method, subscribes) in RUN_AGAIN {
                 if let Err(e) = invoke_static("Unityforge.Shim.SceneTools", "RunAgain", &json!([area, "Inventory, Assembly-CSharp", class, method])) {
                     unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.{method} failed: {e}"));
                 }
-            }
-            if let Err(e) = shops_again(&area) {
-                unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: shops: {e}"));
+                if !subscribes.is_empty() {
+                    subscribed_again.push(*subscribes);
+                }
             }
             if let Err(e) = build_space_again(&area) {
                 unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: build space: {e}"));
@@ -665,7 +667,7 @@ fn enter_area(area: &str) -> Result<(), String> {
         if let Err(e) = map_again() {
             unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: map: {e}"));
         }
-        let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area]));
+        let back = invoke_static("Unityforge.Shim.EventTools", "EnterArea", &json!([area, subscribed_again.join(",")]));
         // Step 3, then 4 and 6 on the first visit.
         let started = fire_save_event("LoadingStarted");
         let data = saved_data_first_frame(&area);
@@ -857,13 +859,12 @@ fn fill_from_captured(area: &str) -> Result<i64, String> {
 /// an area's top objects, as the game's ExecuteSaveLoadFunctions calls them
 /// (every SavableScript under them whose object is on,
 /// SaveController.cs:1113-1198; the shim's EventTools.RunStep). `again`: a
-/// load phase on a later visit, which skips the classes that kept the
-/// game's clock while away (their catch-up already ran), those whose
-/// step creates objects, and the live player and managers (not the area's
-/// content; in the area the save loaded) (docs/kept-areas.md, rule 2).
+/// load phase on a later visit, which skips the classes whose step creates
+/// objects and the live player and managers (not the area's content; in
+/// the area the save loaded) (docs/kept-areas.md, rule 2).
 fn run_phase(area: &str, phase: &str, again: bool) -> Result<(), String> {
-    let (mark, skip) = if again { ("savedTimeAndDay", CREATES_OBJECTS) } else { ("", "") };
-    invoke_static("Unityforge.Shim.EventTools", "RunStep", &json!(["Inventory, Assembly-CSharp", area, phase, mark, skip, again]))?;
+    let skip = if again { CREATES_OBJECTS } else { "" };
+    invoke_static("Unityforge.Shim.EventTools", "RunStep", &json!(["Inventory, Assembly-CSharp", area, phase, "", skip, again]))?;
     Ok(())
 }
 
@@ -914,18 +915,15 @@ static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new(
 /// would (rule 1, game-wide events). Returns how many handlers.
 fn leave_finish(area: &str) -> Result<String, String> {
     switch_area(area, false)?;
-    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, CLOCK_EVENTS, "savedTimeAndDay"]))?;
+    // Every handler, the clock's too: in the game an area not loaded does
+    // not run; its load steps catch it up from `savedTimeAndDay` (rule 2,
+    // time while away).
+    let out = invoke_static("Unityforge.Shim.EventTools", "LeaveArea", &json!(["Inventory, Assembly-CSharp", area, "", ""]))?;
     // Its objects (and timers calling back into them) out of the game-wide
     // lists, as its destruction would (rule 1, game-wide lists).
     let entries = invoke_static("Unityforge.Shim.EventTools", "LeaveAreaLists", &json!(["Inventory, Assembly-CSharp", area]))?;
     Ok(format!("event handlers out {out}, list entries out {entries}"))
 }
-
-/// The game's clock: in an area left, the objects the game catches up on
-/// load (marked by `savedTimeAndDay`) keep hearing it and tick along as the
-/// catch-up would; every other listener is taken out (docs/kept-areas.md,
-/// rule 2, time while away).
-const CLOCK_EVENTS: &str = "TimeOfDayAzure.SecondsPassed,TimeOfDayAzure.MinutePassed,TimeOfDayAzure.DayChanged,TimeOfDayAzure.CurrentTimeAndDay";
 
 /// The area's navigation file into the one pathfinder, as
 /// info_navigation.LoadCO does (info_navigation.cs:85-111):
@@ -980,43 +978,30 @@ fn map_waypoints() -> Result<(), String> {
 /// - What fires at Start (docs/relays.md, when things fire): the relay
 ///   start delay (fires `triggerAtStart`; not Start: RelayTimer's would
 ///   restart its timer), and the Start of the relays whose Start only does
-///   that. RelayWeekdays.Start also subscribes again; the handler taken out
-///   when the area was left is then not put back twice (EventTools.EnterArea).
-const RUN_AGAIN: &[(&str, &str)] = &[
-    ("info_game_logic", "Start"),
-    ("SoundscapeGlobal", "Start"),
-    ("NPCManager", "Start"),
-    ("BottleRecyclingLights", "Blinking"),
-    ("BottleRecyclingLightsUI", "Blinking"),
-    ("PulseLight", "LightEffect"),
-    ("RagdollAnimation", "StepTimer"),
-    ("Relay", "StartDelay"),
-    ("RelayAuto", "Start"),
-    ("RelayDialogueVariable", "Start"),
-    ("RelayRandom", "Start"),
-    ("RelayRandomValue", "Start"),
-    ("RelayTaskStatus", "Start"),
-    ("RelayWeekdays", "Start"),
+///   that.
+/// - Shops (docs/economy.md, Trade): StartDelay fires the open or closed
+///   relay for the hours (Trade.cs:224-237).
+///
+/// The third value names the handler ("Class.Method") the work subscribes
+/// again, as a fresh object's does: the one taken out when the area was
+/// left is not put back (EventTools.EnterArea), or it would be there twice.
+const RUN_AGAIN: &[(&str, &str, &str)] = &[
+    ("info_game_logic", "Start", ""),
+    ("SoundscapeGlobal", "Start", "SoundscapeGlobal.DeltaSeconds"),
+    ("NPCManager", "Start", ""),
+    ("BottleRecyclingLights", "Blinking", ""),
+    ("BottleRecyclingLightsUI", "Blinking", ""),
+    ("PulseLight", "LightEffect", ""),
+    ("RagdollAnimation", "StepTimer", ""),
+    ("Relay", "StartDelay", ""),
+    ("RelayAuto", "Start", ""),
+    ("RelayDialogueVariable", "Start", ""),
+    ("RelayRandom", "Start", ""),
+    ("RelayRandomValue", "Start", ""),
+    ("RelayTaskStatus", "Start", ""),
+    ("RelayWeekdays", "Start", "RelayWeekdays.DeltaSeconds"),
+    ("Trade", "StartDelay", "Trade.DeltaSeconds"),
 ];
-
-/// Shops (docs/economy.md, Trade): the game fires each shop's open or
-/// closed relay for its hours 0.5 s after Start, on every load
-/// (Trade.cs:224-236). The same coroutine also subscribes to the clock, and
-/// a shop keeps the clock while away (it catches up, `savedTimeAndDay`), so
-/// on a later visit only the relay is fired, for the state the clock kept
-/// (`open`). Returns how many shops.
-fn shops_again(area: &str) -> Result<usize, String> {
-    let shops = obj(invoke_static("Unityforge.Shim.SceneTools", "ComponentsIn", &json!([area, "Inventory, Assembly-CSharp", "Trade"]))?).ok_or("no shop list")?;
-    let n = shops.read_field("Length")?.as_i64().unwrap_or(0);
-    for i in 0..n {
-        let Some(shop) = obj(shops.invoke("GetValue", &json!([i]))?) else { continue };
-        let relay = if shop.read_field("open")?.as_bool() == Some(true) { "onOpen" } else { "onClosed" };
-        if let Some(relay) = obj(shop.read_field(relay)?) {
-            relay.invoke("triggerOutputs", &json!([]))?;
-        }
-    }
-    Ok(n as usize)
-}
 
 /// The build space the player is in (docs/building.md): the game's load
 /// makes the area's FurnitureManager saved as `isActive` the active one
