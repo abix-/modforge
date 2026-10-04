@@ -189,8 +189,9 @@ RelayOnDayChange, Spawner.
 
 `TimeOfDayAzure` is the live one from the area the save loaded (one copy,
 [`kept-areas.md`](kept-areas.md)); it keeps running through kept doors
-(no `_updateTimeDisabled` period). Every timer in `timers` keeps counting,
-including timers of kept areas away. In areas left, clock handlers stay
-only for classes with a `savedTimeAndDay` field or holding one (Fuel);
-the rest are taken out until the area is entered again (kept-areas.md,
-time while away).
+(no `_updateTimeDisabled` period). In areas left, every clock handler is
+taken out until the area is entered again, and the load steps on entering
+catch the area up from `savedTimeAndDay`, as the game's load does
+(kept-areas.md, time while away; since 2026-10-04, before that classes
+with `savedTimeAndDay` kept the clock while away). Timers of kept areas
+away leave `timers` too (kept-areas.md, game-wide lists).
