@@ -166,6 +166,116 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
+        /// Every running Animator in a loaded scene as "path | parameters |
+        /// state": its object's path, its bool, int and float parameters
+        /// (floats to 2 decimals; triggers left out) and the short name hash
+        /// of each layer's current state. For comparing an area after a
+        /// kept door with the game's load of it.
+        /// </summary>
+        public static string[] AnimatorStates(string sceneName)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            var found = new List<string>();
+            if (!scene.IsValid()) return found.ToArray();
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                foreach (var a in top.GetComponentsInChildren<Animator>(false))
+                {
+                    if (a == null || !a.isActiveAndEnabled || a.runtimeAnimatorController == null) continue;
+                    var path = new List<string>();
+                    for (var t = a.transform; t != null; t = t.parent) path.Insert(0, t.name);
+                    var values = new List<string>();
+                    foreach (var p in a.parameters)
+                    {
+                        var kind = p.type.ToString();
+                        if (kind == "Bool") values.Add(p.name + "=" + a.GetBool(p.nameHash));
+                        else if (kind == "Int") values.Add(p.name + "=" + a.GetInteger(p.nameHash));
+                        else if (kind == "Float") values.Add(p.name + "=" + a.GetFloat(p.nameHash).ToString("0.00"));
+                    }
+                    var states = new List<string>();
+                    for (int l = 0; l < a.layerCount; l++) states.Add(a.GetCurrentAnimatorStateInfo(l).shortNameHash.ToString());
+                    found.Add(string.Join(" / ", path) + " | " + string.Join(",", values) + " | " + string.Join(",", states));
+                }
+            }
+            return found.ToArray();
+        }
+
+        // Per load of a scene: the AudioSources that were playing when it was
+        // switched off (RememberPlaying), started again on switch-on.
+        private static readonly Dictionary<int, List<AudioSource>> Playing = new Dictionary<int, List<AudioSource>>();
+
+        /// <summary>
+        /// Before an area is switched off: remembers its playing
+        /// AudioSources, but not those under a soundscape (`ownerClass`,
+        /// named by `assemblyOfType`; the game's soundscape code starts
+        /// those). A sound a script started in Start stops when its object is
+        /// switched off and nothing starts it again; in the game the fresh
+        /// object's Start does (a machine's hum, a fan). Returns how many.
+        /// </summary>
+        public static int RememberPlaying(string sceneName, string assemblyOfType, string ownerClass)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            if (!scene.IsValid()) return 0;
+            var owner = System.Type.GetType(assemblyOfType)?.Assembly.GetType(ownerClass);
+            var list = new List<AudioSource>();
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                foreach (var s in top.GetComponentsInChildren<AudioSource>(false))
+                {
+                    if (s == null || !s.isActiveAndEnabled || !s.isPlaying) continue;
+                    if (owner != null && s.GetComponentInParent(owner) != null) continue;
+                    list.Add(s);
+                }
+            }
+            Playing[scene.handle] = list;
+            return list.Count;
+        }
+
+        /// <summary>
+        /// After an area is switched on: starts again the sounds
+        /// RememberPlaying recorded, those still there and not playing.
+        /// Returns how many.
+        /// </summary>
+        public static int ResumePlaying(string sceneName)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            if (!scene.IsValid() || !Playing.TryGetValue(scene.handle, out var list)) return 0;
+            Playing.Remove(scene.handle);
+            int n = 0;
+            foreach (var s in list)
+            {
+                if (s == null || !s.isActiveAndEnabled || s.isPlaying) continue;
+                s.Play();
+                n++;
+            }
+            return n;
+        }
+
+        /// <summary>
+        /// Every AudioSource playing in a loaded scene as "path | clip": for
+        /// comparing an area after a kept door with the game's load of it
+        /// (a sound a script started stops when its object is switched off
+        /// and does not start again when it is switched on).
+        /// </summary>
+        public static string[] PlayingSounds(string sceneName)
+        {
+            var scene = SceneManager.GetSceneByName(sceneName);
+            var found = new List<string>();
+            if (!scene.IsValid()) return found.ToArray();
+            foreach (var top in scene.GetRootGameObjects())
+            {
+                foreach (var s in top.GetComponentsInChildren<AudioSource>(false))
+                {
+                    if (s == null || !s.isActiveAndEnabled || !s.isPlaying) continue;
+                    var path = new List<string>();
+                    for (var t = s.transform; t != null; t = t.parent) path.Insert(0, t.name);
+                    found.Add(string.Join(" / ", path) + " | " + (s.clip != null ? s.clip.name : ""));
+                }
+            }
+            return found.ToArray();
+        }
+
+        /// <summary>
         /// Every switched-on object of a class (its subclasses too) in a
         /// loaded scene.
         /// </summary>

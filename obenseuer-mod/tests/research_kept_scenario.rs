@@ -239,6 +239,50 @@ fn kept_areas_played_through() {
         println!("  relays fired: {}, {path}", fired.len());
         fired
     };
+    // Animators (Unity resets an Animator's parameters when its object is
+    // switched off) and the sounds playing (a sound a script started stops
+    // when its object is switched off): after the door, compared like the
+    // relays (SceneTools.AnimatorStates, SceneTools.PlayingSounds).
+    let listed = |what: &str, area: &str| -> Vec<String> {
+        let arr = handle_of(&call_static(&api, "Unityforge.Shim.SceneTools", what, json!([area])));
+        let n = arr.map(|a| api.op("read_field", json!({"handle": a, "field": "Length"})).result.as_i64().unwrap_or(0)).unwrap_or(0);
+        let mut v: Vec<String> = (0..n).filter_map(|i| call(&api, arr.unwrap(), "GetValue", json!([i])).as_str().map(String::from)).collect();
+        v.sort();
+        v
+    };
+    // The area's top objects switched off while it is entered: its own copy
+    // of the player setup (Game_Logic, Player...; the live one is used,
+    // docs/kept-areas.md, rule 1) and what the game keeps off itself. In the
+    // game's load the player setup is the area's own, so its relays and
+    // animators are left out of both sides of the comparison.
+    let off_tops = |area: &str| -> Vec<String> {
+        let names = |arr: Option<i64>, only_off: bool| -> Vec<String> {
+            let n = arr.map(|a| api.op("read_field", json!({"handle": a, "field": "Length"})).result.as_i64().unwrap_or(0)).unwrap_or(0);
+            (0..n)
+                .filter_map(|i| {
+                    let v = call(&api, arr.unwrap(), "GetValue", json!([i]));
+                    match handle_of(&v) {
+                        Some(r) if only_off && call(&api, r, "get_activeSelf", json!([])).as_bool() != Some(false) => None,
+                        Some(r) => call(&api, r, "get_name", json!([])).as_str().map(String::from),
+                        None => v.as_str().map(String::from),
+                    }
+                })
+                .collect()
+        };
+        let roots = handle_of(&call_static(&api, "Unityforge.Shim.SceneTools", "RootsOf", json!([area])));
+        let all_roots = names(roots, false);
+        let mut v = names(roots, true);
+        // And the live player and managers' top objects elsewhere, when the
+        // area has no top object of that name (its own content stays in).
+        v.extend(names(handle_of(&call_static(&api, "Unityforge.Shim.FirstCopyGuard", "LiveTopsOutside", json!([area]))), false).into_iter().filter(|n| !all_roots.contains(n)));
+        v
+    };
+    let mut off_away: Vec<String> = Vec::new();
+    let mut off_home: Vec<String> = Vec::new();
+    const LISTS: [&str; 2] = ["AnimatorStates", "PlayingSounds"];
+    let all_lists = |area: &str| -> Vec<Vec<String>> { LISTS.iter().map(|what| listed(what, area)).collect() };
+    let mut lists_away: Vec<Vec<String>> = Vec::new();
+    let mut lists_home: Vec<Vec<String>> = Vec::new();
     let mut fired_away: Vec<Vec<String>> = Vec::new();
     let mut fired_home: Vec<Vec<String>> = Vec::new();
     for round in 1..=2 {
@@ -249,6 +293,8 @@ fn kept_areas_played_through() {
         std::thread::sleep(Duration::from_secs(2));
         if kept_on {
             fired_away.push(traced(&format!("{away}-{round}")));
+            lists_away = all_lists(&away);
+            off_away = off_tops(&away);
         }
         if save_away && round == 2 {
             break;
@@ -266,6 +312,8 @@ fn kept_areas_played_through() {
         std::thread::sleep(Duration::from_secs(2));
         if kept_on {
             fired_home.push(traced(&format!("{home}-{round}")));
+            lists_home = all_lists(&home);
+            off_home = off_tops(&home);
         }
         println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
     }
@@ -318,8 +366,38 @@ fn kept_areas_played_through() {
     wait_for_normal_load(&api, &controller);
     std::thread::sleep(Duration::from_secs(3));
     if let Some(kept_fired) = &kept_fired {
-        let game_fired = traced(&format!("{saved_in}-game-load"));
-        relay_diffs.extend(names_diff(&format!("{saved_in}: the game's load"), &game_fired, "the later kept door", kept_fired));
+        let off = if saved_in == home { &off_home } else { &off_away };
+        // "Kind: Top / ..." for relays, "Top / ... | ..." for animators.
+        let area_own = |v: Vec<String>| -> Vec<String> {
+            v.into_iter()
+                .filter(|e| {
+                    let path = e.split(" | ").next().unwrap_or("");
+                    let path = if path.contains(": ") && path.find(": ") < path.find(" / ") { path.split_once(": ").map_or(path, |(_, p)| p) } else { path };
+                    !off.iter().any(|t| path == t || path.starts_with(&format!("{t} / ")))
+                })
+                .collect()
+        };
+        println!("  left out (the area's top objects off while entered): {off:?}");
+        let game_fired = area_own(traced(&format!("{saved_in}-game-load")));
+        relay_diffs.extend(names_diff(&format!("{saved_in}: the game's load"), &game_fired, "the later kept door", &area_own(kept_fired.clone())));
+        let kept_lists = if saved_in == home { &lists_home } else { &lists_away };
+        for (what, (kept, game)) in LISTS.iter().zip(kept_lists.iter().zip(all_lists(&saved_in))) {
+            let (kept, game) = (area_own(kept.clone()), area_own(game));
+            std::fs::write(common::output_path(&format!("{what}-kept.txt")), kept.join("\n")).expect("write");
+            std::fs::write(common::output_path(&format!("{what}-game.txt")), game.join("\n")).expect("write");
+            let diff = names_diff(&format!("{saved_in}: {what}, the game's load"), &game, "the later kept door", &kept);
+            // Soundscape loops play by chance (`probabilityToPlay`, rolled on
+            // every play; SoundscapeAudioPlayer.PlayLoopAudio): printed, not
+            // counted.
+            let chance = |e: &String| e.contains(" / Soundscapes / ");
+            if *what == "PlayingSounds" && game.iter().chain(kept.iter()).filter(|e| !kept.contains(e) || !game.contains(e)).all(chance) {
+                for d in &diff {
+                    println!("{d}\n  (soundscape loops only: by chance)");
+                }
+                continue;
+            }
+            relay_diffs.extend(diff);
+        }
     }
     op(&api, "trace", json!({"stop": true}));
     for d in &relay_diffs {

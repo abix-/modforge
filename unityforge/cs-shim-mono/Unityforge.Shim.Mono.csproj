@@ -78,6 +78,14 @@
       <Private>false</Private>
       <HintPath>$(UnityDir)\UnityEngine.InputLegacyModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.AnimationModule" Condition="'$(UnityDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(UnityDir)\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule" Condition="'$(UnityDir)' != ''">
+      <Private>false</Private>
+      <HintPath>$(UnityDir)\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" PrivateAssets="all" />
   </ItemGroup>
 

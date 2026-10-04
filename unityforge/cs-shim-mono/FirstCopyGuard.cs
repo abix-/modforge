@@ -234,6 +234,24 @@ namespace Unityforge.Shim
         internal static bool IsAreaOwned(Type t) => AreaOwnedNames.Contains(t.FullName);
 
         /// <summary>The managers' live copies: each one-copy field's value, alive.</summary>
+        /// <summary>
+        /// The names of the top objects holding live copies that are not in
+        /// `sceneName`: the live player and managers an area entered with
+        /// kept areas uses instead of its own (in the game's load of it they
+        /// are the area's own).
+        /// </summary>
+        public static string[] LiveTopsOutside(string sceneName)
+        {
+            var names = new List<string>();
+            foreach (var o in LiveCopies())
+            {
+                if (!(o is Component c) || c.gameObject.scene.name == sceneName) continue;
+                var top = c.transform.root.name;
+                if (!names.Contains(top)) names.Add(top);
+            }
+            return names.ToArray();
+        }
+
         internal static List<UnityEngine.Object> LiveCopies()
         {
             var live = new List<UnityEngine.Object>();

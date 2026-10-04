@@ -630,6 +630,11 @@ fn enter_area(area: &str) -> Result<(), String> {
     // into it) and switches on: its objects start.
     invoke_static("Unityforge.Shim.SceneTools", "SetActive", &json!([area]))?;
     switch_area(area, true)?;
+    // The sounds its scripts had started, before its load steps (which can
+    // stop one, as the game's do: a machine whose fuel ran out while away).
+    if let Err(e) = invoke_static("Unityforge.Shim.SceneTools", "ResumePlaying", &json!([area])) {
+        unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: sounds: {e}"));
+    }
     // The waypoint graph from its switched-on waypoints (the navigation
     // file went in before switching on).
     if nav.is_ok() {
@@ -652,6 +657,9 @@ fn enter_area(area: &str) -> Result<(), String> {
         let later = DATA_APPLIED.lock().unwrap().iter().any(|a| *a == area);
         let mut subscribed_again = Vec::new();
         if later {
+            if let Err(e) = fresh_soundscapes(&area) {
+                unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: soundscapes: {e}"));
+            }
             for (class, method, subscribes) in RUN_AGAIN {
                 if let Err(e) = invoke_static("Unityforge.Shim.SceneTools", "RunAgain", &json!([area, "Inventory, Assembly-CSharp", class, method])) {
                     unityforge::mono::log(unityforge::mono::LogLevel::Warn, &format!("obenseuer-mod: kept_loaded: {area}: {class}.{method} failed: {e}"));
@@ -914,6 +922,9 @@ static CAPTURED: Mutex<BTreeMap<String, (i32, i32)>> = Mutex::new(BTreeMap::new(
 /// place), and its handlers on game-wide events are taken out as its unload
 /// would (rule 1, game-wide events). Returns how many handlers.
 fn leave_finish(area: &str) -> Result<String, String> {
+    // The sounds its scripts started, to start again on entering
+    // (docs/sound.md, sounds scripts started).
+    let sounds = invoke_static("Unityforge.Shim.SceneTools", "RememberPlaying", &json!([area, "Inventory, Assembly-CSharp", "SoundscapeArea"]))?;
     switch_area(area, false)?;
     // Every handler, the clock's too: in the game an area not loaded does
     // not run; its load steps catch it up from `savedTimeAndDay` (rule 2,
@@ -922,7 +933,7 @@ fn leave_finish(area: &str) -> Result<String, String> {
     // Its objects (and timers calling back into them) out of the game-wide
     // lists, as its destruction would (rule 1, game-wide lists).
     let entries = invoke_static("Unityforge.Shim.EventTools", "LeaveAreaLists", &json!(["Inventory, Assembly-CSharp", area]))?;
-    Ok(format!("event handlers out {out}, list entries out {entries}"))
+    Ok(format!("event handlers out {out}, list entries out {entries}, sounds playing {sounds}"))
 }
 
 /// The area's navigation file into the one pathfinder, as
@@ -1058,6 +1069,26 @@ fn fresh_sound() -> Result<(), String> {
     let sc = one_copy("SoundscapeController")?;
     for field in ["currentGlobalSoundscape", "previousSoundscape", "currentSoundscape", "currentBackgroundSoundscape", "currentBackgroundLocation", "currentTrigger"] {
         sc.write_field(field, &Json::Null)?;
+    }
+    Ok(())
+}
+
+/// The area's soundscapes as fresh ones (docs/sound.md): a SoundscapeArea
+/// starts a loop only when its index is not in `loopSoundsStartCoroutines`
+/// (SoundscapeArea.PlayLoopSound); switching the area off stopped those
+/// coroutines but left their entries, so on a later visit every loop was
+/// skipped and the area was silent. The game's are new on every load, with
+/// the lists empty.
+fn fresh_soundscapes(area: &str) -> Result<(), String> {
+    let all = obj(invoke_static("Unityforge.Shim.SceneTools", "ComponentsIn", &json!([area, "Inventory, Assembly-CSharp", "SoundscapeArea"]))?).ok_or("no soundscape list")?;
+    let n = all.read_field("Length")?.as_i64().unwrap_or(0);
+    for i in 0..n {
+        let Some(s) = obj(all.invoke("GetValue", &json!([i]))?) else { continue };
+        for list in ["loopSoundsStartCoroutines", "loopSoundsStopCoroutines", "randomSoundsCoroutines"] {
+            if let Some(l) = obj(s.read_field(list)?) {
+                l.invoke("Clear", &json!([]))?;
+            }
+        }
     }
     Ok(())
 }

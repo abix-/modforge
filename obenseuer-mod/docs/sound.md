@@ -101,3 +101,26 @@ player was in plays its sound.
 - `soundscapeAreas` holds the soundscapes of every kept area entered; ids
   shared by two areas would make `FindSoundscapeAreaById` find the wrong
   one. Not checked.
+- The loops of an area's soundscapes: `SoundscapeArea.PlayLoopSound`
+  starts a loop only when its index is not in `loopSoundsStartCoroutines`.
+  Switching the area off stopped those coroutines but left their entries,
+  so on a later kept door every loop was skipped: Open Sewer Tenement's
+  city, traffic, factory, bazaar music and radios were silent (12 sounds
+  the game's load plays). On a later visit the mod empties the area's
+  soundscapes' coroutine lists before its Start work runs again, as a
+  fresh SoundscapeArea has them (`fresh_soundscapes`, kept_loaded.rs).
+- Sounds scripts started: a sound started by a script (a machine's hum in
+  PutItemSelection.Start through its power, a fan's in TelevisionNoise
+  Start) stops when its object is switched off, and nothing starts it
+  again: its Start does not run again (`startDone`, or it creates
+  objects). In the game the fresh object's Start plays the sound its
+  state calls for; nothing changes the object while away, so the mod
+  starts again the sounds that were playing when the area was switched
+  off (not soundscape ones), before the load steps, which stop one the
+  catch-up turned off (SceneTools.RememberPlaying, ResumePlaying).
+- Checked by `research_kept_scenario.rs` (`OBENSEUER_SAVE_AWAY=1`): the
+  sounds playing after the later kept door against the game's load
+  (SceneTools.PlayingSounds), 2026-10-04 in Open Sewer Tenement: 45 and
+  41, the 4 different all soundscape loops, which play by chance
+  (`probabilityToPlay`, rolled on every play). Before the two fixes 43
+  and 32.

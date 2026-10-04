@@ -216,7 +216,7 @@ kept door fires the game's load fires too. The differences:
 | Storages' `onSpawnItems` (beer crates, bird nests, wine racks, log storage) | 2 | 4 | `Storage.TriggerOutputsLate` after `SpawnItems`: the load's catch-up restocked them for the game minutes the area was away; the game's load came from a save made seconds before |
 | Rocks' and wood piles' stock relays (Relay1 to Relay4, Stocklevel_*) | 2 | 1 | The game fires them in the fresh object's `WorkableResourceSource.Start` and again in `OnLoadingGame`; the kept object's Start ran once (`startDone`), so only `OnLoadingGame` fires them. Both end with the loaded stock |
 | Sirkku Maltanen's lamps OnTurnOn, the street electrical box Relay_onTurnOn | 3, 2 | 2, 1 | The game fires them once more from `LightTurnOffOn.Awake` of the fresh object |
-| The market grill fan `Relay_on` | 1 | 0 | `TelevisionNoise.Start` turns it on in the fresh object; not run again on later visits |
+| The market grill fan `Relay_on` | 1 | 0 | `TelevisionNoise.Start` turns it on in the fresh object; not run again on later visits. Its sound is started again (sound.md, sounds scripts started); what the relay itself drives is not checked |
 | Henrik's `RelayOnDayChange` and "Henrik Has Soup" | 1 | 0 | The game's load found its saved `lastDay` before today; not explained yet |
 
 Objects whose saved data was not found on the later door and not in the
