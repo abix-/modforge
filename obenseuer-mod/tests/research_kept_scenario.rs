@@ -287,8 +287,6 @@ fn kept_areas_played_through() {
         println!("  saved state of {area}: {n} objects, {path}");
         path
     };
-    let mut state_away = String::new();
-    let mut state_home = String::new();
     const LISTS: [&str; 2] = ["AnimatorStates", "PlayingSounds"];
     let all_lists = |area: &str| -> Vec<Vec<String>> { LISTS.iter().map(|what| listed(what, area)).collect() };
     let mut lists_away: Vec<Vec<String>> = Vec::new();
@@ -304,7 +302,7 @@ fn kept_areas_played_through() {
         if kept_on {
             fired_away.push(traced(&format!("{away}-{round}")));
             lists_away = all_lists(&away);
-            state_away = saved_state(&away, &format!("{away}-{round}"));
+            saved_state(&away, &format!("{away}-{round}"));
             off_away = off_tops(&away);
         }
         if save_away && round == 2 {
@@ -317,6 +315,9 @@ fn kept_areas_played_through() {
             break;
         }
         if kept_on {
+            saved_state(&away, &format!("{away}-{round}-leaving"));
+        }
+        if kept_on {
             op(&api, "trace", json!({"area": home}));
         }
         use_door(&api, &home, kept_on);
@@ -324,7 +325,7 @@ fn kept_areas_played_through() {
         if kept_on {
             fired_home.push(traced(&format!("{home}-{round}")));
             lists_home = all_lists(&home);
-            state_home = saved_state(&home, &format!("{home}-{round}"));
+            saved_state(&home, &format!("{home}-{round}"));
             off_home = off_tops(&home);
         }
         println!("  after round {round}: arrival point ids per area {}", kept(&api)["loaded"]);
@@ -355,6 +356,11 @@ fn kept_areas_played_through() {
 
     // 3. Save into the test slot and load it.
     call_static(&api, "SaveController", "SaveGame", json!(["ModTest", "", "NONE"]));
+    // The kept side's saved state right after the save: what was saved (its
+    // save steps set fields: savedTimeAndDay, a train's currentPosition).
+    // Taken after the door, it was minutes of ticking older than the game's
+    // side (a spawner's countdown 514 s apart: the checks in between).
+    let kept_state = if kept_on { saved_state(&saved_in, &format!("{saved_in}-saved")) } else { String::new() };
     // NPCs of the area away keep their own area in the save (docs/kept-areas.md,
     // NPCs): the game's save records an NPC that has an object as being in the
     // current area, and kept areas' NPC objects were still bound.
@@ -405,9 +411,8 @@ fn kept_areas_played_through() {
         println!("  left out (the area's top objects off while entered): {off:?}");
         let game_fired = area_own(traced(&format!("{saved_in}-game-load")));
         relay_diffs.extend(names_diff(&format!("{saved_in}: the game's load"), &game_fired, "the later kept door", &area_own(kept_fired.clone())));
-        let kept_state = if saved_in == home { &state_home } else { &state_away };
         let game_state = saved_state(&saved_in, &format!("{saved_in}-game-load"));
-        state_diff(kept_state, &game_state);
+        state_diff(&kept_state, &game_state);
         let kept_lists = if saved_in == home { &lists_home } else { &lists_away };
         for (what, (kept, game)) in LISTS.iter().zip(kept_lists.iter().zip(all_lists(&saved_in))) {
             let (kept, game) = (area_own(kept.clone()), area_own(game));
