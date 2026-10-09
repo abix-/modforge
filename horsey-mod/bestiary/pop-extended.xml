@@ -40,8 +40,8 @@
     - The same hook can later apply per-spawner overrides (different
       multipliers per map region) by extending the schema.
 
-    Plumbing TODOs (tracked in horsey-mod/docs/todo.md under "Phase
-    D2-spawn (default-pop count multiplier)"):
+    Plumbing TODOs (tracked in the horsey-mod todo in onelog,
+    D2-spawn (default-pop count multiplier)):
     - [ ] D2.5: extend bin/inject.rs::stage_bestiary to copy this file
           next to horsey.dll along with genes-extended.xml.
     - [ ] D2.6: pop_xml.rs parser at DLL attach -> POP_OVERRIDES.

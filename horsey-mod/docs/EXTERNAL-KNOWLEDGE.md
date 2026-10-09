@@ -158,7 +158,7 @@ Treat the JumboDS64 facts as high confidence where they intersect with our findi
 ## Things to verify against our decompilation
 
 
-> **Action items** for this doc are tracked in [`todo.md`](todo.md#external-knowledge-verification-gaps).
+> **Action items** for this doc are tracked in the horsey-mod todo in onelog.
 
 ## Prior-art repos (surveyed 2026-05-15 via `gh search repos "horsey game"`)
 

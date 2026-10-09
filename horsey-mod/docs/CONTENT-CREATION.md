@@ -765,4 +765,4 @@ These claims need verification against our decompilation:
 
 Where the guide and our decompilation agree (debug mode unlock), confidence is very high. Where the guide is the only source (e.g. item ID list), treat as community-verified but not engine-verified.
 
-> **Action items** for this doc are tracked in [`todo.md`](todo.md#content-creation-verification-gaps).
+> **Action items** for this doc are tracked in the horsey-mod todo in onelog.

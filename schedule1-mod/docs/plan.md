@@ -62,7 +62,7 @@ What already exists in this workspace:
   (Bridge, HarmonyBridge, GenerationLoader shared sources).
 - `il2cpp-smoke/`: a finished smoke crate (ping, walk_class,
   read/write field, one Harmony postfix) waiting for a target.
-- `docs/todo.md`: known gap, the IL2CPP shim lacks the
+- the schedule1-mod todo in onelog: known gap, the IL2CPP shim lacks the
   generation-loader that the Mono shim has.
 - `unityforge-plan.md` deferred a "MelonLoader shim variant"
   until a target demands it. Schedule 1 demands it now.
@@ -104,7 +104,7 @@ Known risks to verify first:
 ### 2. Generation-loader parity
 
 Mirror the generation-loader wiring into the MelonLoader entry
-(the existing todo.md item), so Rust-side hot reload works the
+(the existing todo row), so Rust-side hot reload works the
 same as the Mono shim. Rust-only changes then need no game
 restart.
 

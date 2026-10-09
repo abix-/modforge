@@ -129,7 +129,7 @@ The decompilation engine has done its part. The remaining work is human (or AI-d
 
 ## Next steps
 
-Action items tracked in [`todo.md`](todo.md) under "Decompilation next steps".
+Action items tracked in the horsey-mod todo in onelog.
 
 ## Scripts in this repo
 

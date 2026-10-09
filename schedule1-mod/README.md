@@ -53,7 +53,7 @@ Copy both DLLs into the MelonLoader mods directory:
 - [Current status](docs/status.md)
 - [Research](docs/research.md)
 - [Certainty tracking](docs/certainty-tracking.md)
-- [Open issues](docs/todo.md)
+- Open issues: the schedule1-mod todo in onelog
 - [Plan](docs/plan.md)
 
 ## File layout
@@ -65,7 +65,6 @@ schedule1-mod/
   docs/
     research.md
     certainty-tracking.md
-    todo.md
   scripts/
     restart.ps1
   src/

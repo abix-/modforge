@@ -21,7 +21,7 @@ Research gates everything; then levelling; then loot drops;
 then mob farming areas; then faction war in slices (ownership
 map, NPC-vs-player contests, player takeover, territory
 pressure, NPC-vs-NPC, director split). The goal checklist lives
-in the repo's docs/todo.md.
+in the schedule1-mod todo in onelog.
 
 ## Scores
 

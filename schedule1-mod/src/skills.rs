@@ -106,7 +106,7 @@ static HEAVY_HANDS_EFFECT: UnityGuardedMainThreadEffect<UnityInstancePropMultipl
 // (generated setter AND direct il2cpp_field_static_set_value)
 // crash or corrupt the 0.4.6f12 game; fallout of the patched
 // interop generator skipping metadata init on scan failure.
-// They return when the generator fix lands (docs/todo.md).
+// They return when the generator fix lands (the todo in onelog).
 // Instance-property writes are proven safe (probe 2026-08-08:
 // MinPunchDamage 20 -> 12 -> 20 round trip, game healthy).
 pub static CATALOG: SkillRegistry = SkillRegistry::new(&[SkillDef {

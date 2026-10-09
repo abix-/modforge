@@ -1,6 +1,6 @@
 //! Extended-gene state for the bestiary expansion mod.
 //!
-//! Per the D0..D9 plan in `horsey-mod/docs/todo.md`, extending the
+//! Per the D0..D9 plan in the horsey-mod todo in onelog, extending the
 //! engine's gene capacity from 240 to 480 means storing the extended
 //! state in our own buffers (the design principle: layer on top of
 //! vanilla, never modify vanilla data). This module owns all three

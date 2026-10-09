@@ -52,7 +52,7 @@ A 2026-05-17 decomp pass for [`world-map-detection.md`](world-map-detection.md) 
 - [ ] **D5.** Pattern-resolve `building_tile_pos` (`FUN_1400b4a10`).
 - [ ] **D6.** Helper `screen::project_world(world_xy) -> (i32, i32)` in modforge (new module). Reads MapState camera, applies the affine. Test: project the truck's world-pos, compare against in-game truck screen position from manual capture, assert within 1 px.
 
-After D1-D6 land, the existing A1-A3 in todo.md (capture house door coords + replay) become **calibration of the projection affine** rather than fragile fresh-launch-only anchors. The "moving truck = moving house" deferred problem dissolves.
+After D1-D6 land, the existing A1-A3 in the horsey-mod todo in onelog (capture house door coords + replay) become **calibration of the projection affine** rather than fragile fresh-launch-only anchors. The "moving truck = moving house" deferred problem dissolves.
 
 ### Addendum 2026-05-17b: scene-id enumeration unlocks more
 
@@ -174,7 +174,7 @@ These are not yet pattern-resolved. Resolution work is part of the plan.
 Find the source vector and the destination vector, swap-remove the `Horse*` from the source, push it to the destination.
 
 - **Pro:** trivially understood, no calls into game code.
-- **Con:** skips every side effect (fatigue clearing on race-line drop is a known one per `todo.md`, plus animation, audio, scene flags). HLT explicitly notes that "the scene keeps multiple live indices into [its vectors]; do not compact from the DLL" (`world_map_tools.cpp:179`). The same warning applies here. Game state will be subtly wrong and probably crash within seconds.
+- **Con:** skips every side effect (fatigue clearing on race-line drop is a known one per the horsey-mod todo in onelog, plus animation, audio, scene flags). HLT explicitly notes that "the scene keeps multiple live indices into [its vectors]; do not compact from the DLL" (`world_map_tools.cpp:179`). The same warning applies here. Game state will be subtly wrong and probably crash within seconds.
 - **Verdict:** rejected.
 
 ### Strategy B. Synthesize click + drop via Location state
@@ -1032,7 +1032,7 @@ The full test list:
 
 ## 10. References to other docs
 
-- `docs/todo.md` -> "Hotkeys" -> HK1 spec, groundwork list.
+- the horsey-mod todo in onelog: HK1 spec, groundwork list.
 - `docs/HORSE-PLACES.md` -> scene-table layout, horse vector locations, slot inventory.
 - `docs/ADDRESS-RESOLUTION.md` -> migration tracker; new resolvers from section 5 add to its tables.
 - `docs/PRIOR-ART-HorseyLiveTweaks.md` -> what HLT does and does not do (HLT does NOT have horse transfer; HK1 is novel territory).

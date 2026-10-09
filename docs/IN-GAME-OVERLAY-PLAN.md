@@ -325,8 +325,8 @@ dogfooding:
   horsey-mod. The separate-window backend in modforge stays in tree
   (other future native-PE mods may want it).
 - Remove horsey-mod's `native-ui` Cargo feature.
-- Update `horsey-mod/docs/todo.md` to mark the overlay item shipped and
-  link this doc as the implementation reference.
+- Finish the overlay row in the horsey-mod todo in onelog, naming this doc
+  as the implementation reference in the changelog row.
 
 ### Step 5. Documentation
 

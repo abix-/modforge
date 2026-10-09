@@ -198,7 +198,7 @@ pub fn scan_all_matches(sig: &str) -> Result<Vec<usize>> {
 /// Use for finding literal values in game state globals (e.g. the
 /// player's current money u32) so we can anchor address resolution
 /// on observed live values instead of guessing MSVC encodings. See
-/// `horsey-mod/docs/todo.md` P0 BLOCKER section for the workflow.
+/// `horsey-mod/docs/ADDRESS-RESOLUTION.md` "Definition of done" for the workflow.
 pub fn scan_data_matches(sig: &str) -> Result<Vec<usize>> {
     scan_section(sig, Some(object::SectionKind::Data))
 }

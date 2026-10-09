@@ -220,7 +220,7 @@ worth it.
   being written. Outputs land in
   `C:/code/horsey-mods/decompiled` and will be mirrored.
 
-> **Action items** for this doc are tracked in [`todo.md`](todo.md#address-resolution-r1-r5-phased-plan).
+> **Action items** for this doc are tracked in the horsey-mod todo in onelog.
 
 ## Game install location (Steam)
 
@@ -404,7 +404,7 @@ Reusable diagnostic for the next drift (it WILL happen):
 
 Test template: `horsey-mod/tests/hk1_detect_state.rs` (kept as the canonical re-derivation script; renaming pending).
 
-Lesson: tight `hint_tolerance` without structural validation is a silent-break trap. The real fix is per-target structural validators in `modforge::patterns::sleuth` that deref candidates and check domain invariants. With those in place, hint tolerance can be wide (or removed) because false matches are filtered structurally. Tracked in [`todo.md` -> "Findings session ... #2"](todo.md).
+Lesson: tight `hint_tolerance` without structural validation is a silent-break trap. The real fix is per-target structural validators in `modforge::patterns::sleuth` that deref candidates and check domain invariants. With those in place, hint tolerance can be wide (or removed) because false matches are filtered structurally. Tracked in the horsey-mod todo in onelog.
 
 ### Save-address re-derivation (DONE 2026-05-15, commit `bd95252`)
 

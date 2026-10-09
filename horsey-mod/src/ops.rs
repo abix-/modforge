@@ -448,8 +448,8 @@ pub fn register_all() {
         // disp32 resolves to `target_addr`. Backed by
         // `modforge::patterns::sleuth::scan_all_matches` with a
         // patternsleuth `X<target>` xref pattern; no hand-rolled
-        // byte scanning (rule locked in horsey-mod/docs/todo.md
-        // "P0 RULE: USE PATTERNSLEUTH" and in global CLAUDE.md).
+        // byte scanning (rule locked in horsey-mod/docs/ADDRESS-RESOLUTION.md
+        // "P0 rule: use patternsleuth" and in global CLAUDE.md).
         // For each hit returns a 16-byte context window so
         // signatures can be authored directly from real compiler
         // output.
@@ -1365,7 +1365,7 @@ must be exactly 240 u8 values.",
         // ===== Extended-gene ops (D0 / D7 infra for the bestiary expansion mod) =====
         // These let us author and inspect extended-gene state via HTTP without
         // touching any vanilla data. Backed by `crate::genes`. See the gene-doubling
-        // implementation plan in `horsey-mod/docs/todo.md`.
+        // implementation plan in the horsey-mod todo in onelog.
         OpDef::new(
             "genes.ext.count",
             "Return the configured extended-gene count and total (vanilla + ext).",
@@ -2901,5 +2901,5 @@ fn args_hex_addr(args: &Json, key: &str) -> Result<usize, String> {
 
 // `scan_xrefs` removed in favour of patternsleuth-backed
 // `modforge::patterns::sleuth::scan_all_matches` with an `X<target>`
-// pattern. See horsey-mod/docs/todo.md "P0 RULE: USE PATTERNSLEUTH"
+// pattern. See horsey-mod/docs/ADDRESS-RESOLUTION.md "P0 rule: use patternsleuth"
 // and global CLAUDE.md.
