@@ -10,6 +10,19 @@ fn main() {
         return;
     }
 
+    // Each program's icon (icons/<program>.res, made by onelog's
+    // tools/make-icons), linked into its exe.
+    let dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    for (program, icon) in [
+        ("modforge-deploy", "modforge-deploy"),
+        ("modforge-inject", "modforge-inject"),
+        ("minidump", "minidump"),
+        ("inspect_function", "inspect-function"),
+    ] {
+        println!("cargo:rerun-if-changed=icons/{icon}.res");
+        println!("cargo:rustc-link-arg-bin={program}={dir}/icons/{icon}.res");
+    }
+
     println!("cargo:rerun-if-changed=src/seh.c");
     cc::Build::new()
         .file("src/seh.c")

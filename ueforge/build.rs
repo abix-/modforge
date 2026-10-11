@@ -116,6 +116,18 @@ fn main() {
         .warnings(false)
         .compile("ueforge_native");
 
+    // Each program's icon (icons/<program>.res, made by onelog's
+    // tools/make-icons), linked into its exe. cc above already needs MSVC.
+    if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        for program in ["dump-strings", "read-property"] {
+            println!("cargo:rerun-if-changed=icons/{program}.res");
+            println!(
+                "cargo:rustc-link-arg-bin={program}={}",
+                manifest.join("icons").join(format!("{program}.res")).display()
+            );
+        }
+    }
+
     // No UE4SS.lib link here. ueforge_ui.cpp has no UE4SS deps.
     // the context bridge lives in ueforge_shim.cpp, which only the
     // game's cdylib link pulls in (via ueforge::build::CppShim).

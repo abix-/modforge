@@ -4,6 +4,15 @@ Abiotic Factor history is maintained in [its project changelog](../abioticfactor
 The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
 Obenseuer history is maintained in [its project changelog](../obenseuer-mod/docs/changelog.md).
 
+## 2026-10-11
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `modforge` | [x] Each program has its own icon (orange, made by onelog's tools/make-icons): modforge-deploy a rocket, modforge-inject a syringe, minidump a bug, inspect_function a file search; build.rs links `icons/<program>.res` into that one exe | `k3sc cargo-lock build --release -p modforge --bins` finished; Windows' `ExtractAssociatedIcon` read each icon from its exe |
+| `ueforge` | [x] dump-strings has a quote icon and read-property a list tree; build.rs links them | `k3sc cargo-lock build --release -p ueforge --bins` finished; `ExtractAssociatedIcon` read both from their exes |
+| `dwarf-fortress-mod` | [x] dfmod-install has a package icon; a new build.rs links it | `k3sc cargo-lock build --release -p dwarf-fortress-mod --bins` finished; `ExtractAssociatedIcon` read it from the exe |
+| `horsey-mod` | [x] horsey-inject has a syringe icon and horsey-play a play icon (brown, horsey-mod's color); a new build.rs links them | `k3sc cargo-lock build --release -p horsey-mod --bins` finished; `ExtractAssociatedIcon` read both from their exes |
+
 ## 2026-09-30
 
 | Area | Shipped | Verification |
