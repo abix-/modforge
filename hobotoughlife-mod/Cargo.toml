@@ -17,6 +17,7 @@ name = "hobotoughlife_mod"
 [dependencies]
 modforge = { path = "../modforge" }
 unityforge = { path = "../unityforge" }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 unityforge = { path = "../unityforge" }

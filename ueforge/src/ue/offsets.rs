@@ -62,6 +62,14 @@ impl StructLayout {
         properties_size: 0x58,
         element_size: 0x3C,
     };
+    /// UE4SS's own tables for UE 5.7, logged at startup on Alchemy
+    /// Factory and Nuclear Epoch (`UStruct::PropertiesSize = 0x58`,
+    /// `FProperty::ElementSize = 0x34`). Not yet measured by a
+    /// research test on either game.
+    pub const UE5_7: StructLayout = StructLayout {
+        properties_size: 0x58,
+        element_size: 0x34,
+    };
 }
 
 /// UE has used several `UObjectArray` layouts over the years.
@@ -77,10 +85,27 @@ impl StructLayout {
 ///   int32 MaxChunks; int32 NumChunks; }`. Used by stock UE 5.x
 ///   (including Outworld Station). Each chunk holds 64K
 ///   `FUObjectItem`s.
+/// - `WrappedChunkedUE5_7`: the same arrays, but UE 5.7 moved
+///   `FlagsAndRefCount` to the front of `FUObjectItem`, so the
+///   object pointer is at +0x8 (`fuobject_item::OBJECT_UE5_7`).
+///   The item is still 0x18. From UE4SS's 5.7 tables, logged on
+///   Nuclear Epoch and Alchemy Factory; reading +0x0 as the pointer
+///   crashed both in `UObject::name` during the load walk.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GObjectsLayout {
     FlatFixed,
     WrappedChunked,
+    WrappedChunkedUE5_7,
+}
+
+impl GObjectsLayout {
+    /// Where the object pointer sits inside one `FUObjectItem`.
+    pub fn item_object(self) -> usize {
+        match self {
+            GObjectsLayout::FlatFixed | GObjectsLayout::WrappedChunked => fuobject_item::OBJECT,
+            GObjectsLayout::WrappedChunkedUE5_7 => fuobject_item::OBJECT_UE5_7,
+        }
+    }
 }
 
 pub const STEAM: PlatformOffsets = PlatformOffsets {
@@ -211,6 +236,8 @@ pub mod chunked_uobject_array {
 
 pub mod fuobject_item {
     pub const OBJECT: usize = 0x00;
+    /// UE 5.7: `FlagsAndRefCount` first, then the object.
+    pub const OBJECT_UE5_7: usize = 0x08;
     pub const SIZE: usize = 0x18;
 }
 

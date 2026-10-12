@@ -761,7 +761,7 @@ impl GObjectsView {
         let g_objects = (image_base + offsets.g_objects) as *const u8;
         let inner = match offsets.g_objects_layout {
             GObjectsLayout::FlatFixed => g_objects,
-            GObjectsLayout::WrappedChunked => unsafe {
+            GObjectsLayout::WrappedChunked | GObjectsLayout::WrappedChunkedUE5_7 => unsafe {
                 g_objects.add(chunked_uobject_array::OBJ_OBJECTS)
             },
         };
@@ -781,7 +781,9 @@ impl GObjectsView {
         }
         let off = match self.layout {
             GObjectsLayout::FlatFixed => tuobject_array::NUM_ELEMENTS,
-            GObjectsLayout::WrappedChunked => chunked_uobject_array::NUM_ELEMENTS,
+            GObjectsLayout::WrappedChunked | GObjectsLayout::WrappedChunkedUE5_7 => {
+                chunked_uobject_array::NUM_ELEMENTS
+            }
         };
         unsafe { self.inner.add(off).cast::<i32>().read_unaligned() }
     }
@@ -799,7 +801,7 @@ impl GObjectsView {
                     .read_unaligned();
                 objects.add(index as usize * fuobject_item::SIZE)
             },
-            GObjectsLayout::WrappedChunked => unsafe {
+            GObjectsLayout::WrappedChunked | GObjectsLayout::WrappedChunkedUE5_7 => unsafe {
                 // Objects[chunk_idx] is a pointer to a chunk, each
                 // chunk is NUM_ELEMENTS_PER_CHUNK FUObjectItems.
                 let chunks: *const *const u8 = self
@@ -818,7 +820,7 @@ impl GObjectsView {
         };
         unsafe {
             let obj: *const UObject = item
-                .add(fuobject_item::OBJECT)
+                .add(self.layout.item_object())
                 .cast::<*const UObject>()
                 .read_unaligned();
             obj.as_ref()
