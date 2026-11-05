@@ -70,6 +70,16 @@ impl StructLayout {
         properties_size: 0x58,
         element_size: 0x34,
     };
+    /// Measured on Queens' Domain (UE 4.27), 2026-11-05, by
+    /// `queensdomain-mod/tests/research_ustruct_layout.rs`: Object
+    /// reads 0x28 and Field 0x30 at +0x58; bool properties read 1
+    /// at +0x3C next to ArrayDim 1 at +0x38. UE4SS's own tables on
+    /// the same run agree (`UStruct::PropertiesSize = 0x58`,
+    /// `FProperty::ElementSize = 0x3C`).
+    pub const UE4_27: StructLayout = StructLayout {
+        properties_size: 0x58,
+        element_size: 0x3C,
+    };
 }
 
 /// UE has used several `UObjectArray` layouts over the years.

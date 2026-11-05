@@ -23,19 +23,14 @@ fn on_unreal_init() {
 // Queens' Domain is UE 4.27 (exe carries "Release-4.27", pak is
 // WindowsNoEditor, PhysX3). The first UE4 game in this workspace.
 //
-// UNMEASURED, taken from the UE 4.27 source layout: FUObjectItem has
-// Object at +0x0 (the stock chunked array), UStruct::PropertiesSize
-// at +0x58, FProperty::ElementSize at +0x3C. Check each against the
-// "UStruct::PropertiesSize", "FProperty::ElementSize" and
-// "FUObjectItem::Object" lines UE4SS.log prints at startup, and
-// against tests/research_ustruct_layout.rs. The ProcessEvent slot is
-// the placeholder from the UE 5.4 games.
+// Measured 2026-11-05 by tests/research_ustruct_layout.rs, and UE4SS's
+// startup tables agree: FUObjectItem::Object +0x0 (the stock chunked
+// array), UStruct::PropertiesSize +0x58, FProperty::ElementSize +0x3C,
+// Offset_Internal +0x4C. The ProcessEvent slot is still the
+// placeholder from the UE 5.4 games.
 const PROCESS_EVENT_IDX: usize = 0x4D;
 const G_OBJECTS_LAYOUT: ueforge::ue::GObjectsLayout = ueforge::ue::GObjectsLayout::WrappedChunked;
-const STRUCT_LAYOUT: ueforge::ue::StructLayout = ueforge::ue::StructLayout {
-    properties_size: 0x58,
-    element_size: 0x3C,
-};
+const STRUCT_LAYOUT: ueforge::ue::StructLayout = ueforge::ue::StructLayout::UE4_27;
 
 unsafe fn worker() {
     ueforge::log!("queensdomain_mod init");
