@@ -1641,6 +1641,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "queensdomain-mod"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hex",
+ "memoffset",
+ "modforge",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "ueforge",
+ "widestring",
+ "windows-sys 0.61.2",
+ "zerocopy",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
