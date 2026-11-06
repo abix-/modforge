@@ -79,6 +79,109 @@ fn weapon_xp_owners() {
 /// through their class chains.
 #[test]
 fn swords() {
+    item_stats(&["sword", "endu"]);
+}
+
+/// The operator asks how the Azure Torch works. Same dump as swords.
+#[test]
+fn azure_torch() {
+    item_stats(&["azure", "torch"]);
+}
+
+/// How the Azure Torch behaves: every loaded Blueprint class whose
+/// name says torch, azure, fireball, blaze or burn (not anim), with
+/// parents, the fields of one live object and a bytecode scan of each
+/// function (common::scan_script); plus Torch_WeaponStats CustomStats
+/// (FS_ItemStats +0x30, a TMap read as FName key and f32 value at
+/// stride 24, as DataTags in research_charms) and the raw DamageTypes.
+#[test]
+fn azure_torch_logic() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    if let Some((stats, _)) = instances(&api, "FS_WeaponStats", 2000)
+        .into_iter()
+        .find(|(_, n)| n == "Torch_WeaponStats")
+    {
+        let h = modforge::client::read_bytes(&api, stats, 0x30, 16);
+        let data = modforge::client::from_le_u64(&h, 0);
+        let num = i32::from_le_bytes(h[8..12].try_into().unwrap()).clamp(0, 64) as u64;
+        let b = modforge::client::read_bytes(&api, data, 0, num * 24);
+        for i in 0..num as usize {
+            if b.len() < i * 24 + 12 {
+                break;
+            }
+            let f = modforge::client::from_le_u64(&b, i * 24);
+            let r = api.op("fname_to_string", json!({"fname": f}));
+            let v = f32::from_le_bytes(b[i * 24 + 8..i * 24 + 12].try_into().unwrap());
+            println!(
+                "custom stat {} = {v}",
+                r.result.get("string").and_then(|s| s.as_str()).unwrap_or("?")
+            );
+        }
+        let d = modforge::client::read_bytes(&api, stats, 0x250, 32);
+        println!("DamageTypes raw: {}", hex::encode(&d));
+        let dp = modforge::client::from_le_u64(&d, 0);
+        let dn = i32::from_le_bytes(d[8..12].try_into().unwrap()).clamp(0, 16) as u64;
+        if dp != 0 && dn > 0 {
+            println!("DamageTypes elements: {}", hex::encode(modforge::client::read_bytes(&api, dp, 0, dn * 8)));
+        }
+    }
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let l = name.to_ascii_lowercase();
+        if !["torch", "azure", "fireball", "blaze", "burn"].iter().any(|w| l.contains(w)) || l.contains("anim") {
+            continue;
+        }
+        let parents = common::super_chain(&api, addr);
+        println!("#### {name} <- {}", parents.iter().take(3).cloned().collect::<Vec<_>>().join(" <- "));
+        if let Some((obj, _)) = instances(&api, &name, 1).into_iter().next() {
+            common::dump(&api, obj, &name, None);
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            if common::class_of(&api, f) == "Function" && !n.starts_with("ExecuteUbergraph") {
+                common::scan_script(&api, f, &n);
+            }
+        }
+    }
+}
+
+/// The torch's event graph and the magic fire it deals: scans
+/// ExecuteUbergraph_Torch_WeaponScript (left out of azure_torch_logic),
+/// every DamageUtils_C function about magic fire, PlayerBalance fields
+/// about fire, burn, magic or torch, and every loaded class whose name
+/// says magicfire or burn with its fields on one live object.
+#[test]
+fn azure_torch_fire() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    if let Some((pb, _)) = instances(&api, "PlayerBalance_C", 2).into_iter().next() {
+        println!("== PlayerBalance");
+        common::dump(&api, pb, "PlayerBalance_C", Some(&["fire", "burn", "magic", "torch", "ablaze", "light"]));
+    }
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let l = name.to_ascii_lowercase();
+        if name == "Torch_WeaponScript_C" || name == "DamageUtils_C" {
+            for (f, n) in common::class_functions(&api, addr) {
+                let ln = n.to_ascii_lowercase();
+                if (name == "Torch_WeaponScript_C" && n.starts_with("ExecuteUbergraph"))
+                    || (name == "DamageUtils_C" && (ln.contains("fire") || ln.contains("burn")))
+                {
+                    common::scan_script(&api, f, &format!("{name}::{n}"));
+                }
+            }
+        } else if (l.contains("magicfire") || l.contains("burn") || l.contains("onfire")) && !l.contains("anim") {
+            println!("#### {name} <- {}", common::super_chain(&api, addr).first().cloned().unwrap_or_default());
+            if let Some((obj, _)) = instances(&api, &name, 1).into_iter().next() {
+                common::dump(&api, obj, &name, None);
+            }
+        }
+    }
+}
+
+fn item_stats(words: &[&str]) {
     let api = api();
     if ping_or_skip(&api).is_none() {
         return;
@@ -86,7 +189,7 @@ fn swords() {
     for (addr, name) in instances(&api, "FS_ItemData_C", 5000) {
         let shown = common::ftext(&api, addr, 0x110).unwrap_or_default();
         let l = format!("{name} {shown}").to_ascii_lowercase();
-        if !(l.contains("sword") || l.contains("endu")) {
+        if !words.iter().any(|w| l.contains(w)) {
             continue;
         }
         let desc = common::ftext(&api, addr, 0x128).unwrap_or_default();

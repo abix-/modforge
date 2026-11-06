@@ -174,6 +174,107 @@ pub fn ftext(api: &Api<Value>, obj: u64, off: u64) -> Option<String> {
     fstring_at(api, entry + 0x20)
 }
 
+/// Blueprint functions of `class_addr` by name: walks UStruct::Children
+/// (+0x48 on UE 4.27) along UField::Next (+0x28). Measured on Queens'
+/// Domain 2026-11-06 (research_dash dash_code found the dash functions).
+pub fn class_functions(api: &Api<Value>, class_addr: u64) -> Vec<(u64, String)> {
+    let mut out = Vec::new();
+    let mut f = ptr_at(api, class_addr, 0x48);
+    for _ in 0..2000 {
+        let Some(p) = f else { break };
+        out.push((p, object_name(api, p)));
+        f = ptr_at(api, p, 0x28);
+    }
+    out
+}
+
+/// Name of an FField (FProperty) at `p`: FField::NamePrivate at +0x28
+/// on UE 4.27 (vtable, ClassPrivate, Owner 16 bytes, Next, Name).
+pub fn ffield_name(api: &Api<Value>, p: u64) -> Option<String> {
+    let b = modforge::client::read_bytes(api, p, 0x28, 8);
+    if b.len() < 8 {
+        return None;
+    }
+    let r = api.op("fname_to_string", json!({"fname": modforge::client::from_le_u64(&b, 0)}));
+    let s = r.result.get("string")?.as_str()?.to_string();
+    (!s.is_empty() && !s.starts_with('<') && s != "None" && s.is_ascii()).then_some(s)
+}
+
+/// Print what one UFunction's bytecode touches, without a full
+/// disassembler. Reads UStruct::Script (TArray at +0x60 on UE 4.27;
+/// a good read ends with EX_EndOfScript 0x53) and lists:
+/// - float constants (EX_FloatConst 0x1E + f32),
+/// - properties after variable opcodes (0x00 local, 0x01 instance,
+///   0x48 local out, 0x6C default, 0x42 struct member) as FField names,
+/// - objects after 0x20 EX_ObjectConst, 0x1C EX_FinalFunction and
+///   0x68 EX_CallMath as UObject names.
+/// Pointer candidates are kept only in the heap range seen so far, and
+/// each is resolved once. A byte that only looks like an opcode can
+/// add a stray name; treat the lists as what the code probably uses.
+pub fn scan_script(api: &Api<Value>, f: u64, name: &str) {
+    let heap = |p: u64| (0x100_0000_0000..0x7FF0_0000_0000).contains(&p);
+    let mut cache: std::collections::HashMap<u64, Option<String>> = Default::default();
+    let h = modforge::client::read_bytes(api, f, 0x60, 16);
+    if h.len() < 16 {
+        return;
+    }
+    let data = modforge::client::from_le_u64(&h, 0);
+    let num = i32::from_le_bytes(h[8..12].try_into().unwrap()).clamp(0, 1 << 20) as u64;
+    let code = modforge::client::read_bytes(api, data, 0, num);
+    println!(
+        "== {name}: {num} bytes of bytecode, ends with {:#04x}",
+        code.last().copied().unwrap_or(0)
+    );
+    let mut floats = Vec::new();
+    let mut props = Vec::new();
+    let mut objs = Vec::new();
+    for i in 0..code.len().saturating_sub(4) {
+        let op = code[i];
+        if op == 0x1E {
+            let v = f32::from_le_bytes(code[i + 1..i + 5].try_into().unwrap());
+            if v.is_finite() && (v == 0.0 || (v.abs() > 1e-3 && v.abs() < 1e6)) {
+                floats.push(v);
+            }
+        }
+        if i + 9 > code.len() {
+            continue;
+        }
+        let p = modforge::client::from_le_u64(&code, i + 1);
+        if !heap(p) {
+            continue;
+        }
+        match op {
+            0x00 | 0x01 | 0x48 | 0x6C | 0x42 => {
+                let n = cache.entry(p).or_insert_with(|| ffield_name(api, p)).clone();
+                if let Some(n) = n {
+                    if !props.contains(&n) {
+                        props.push(n);
+                    }
+                }
+            }
+            0x20 | 0x1C | 0x68 => {
+                let n = cache
+                    .entry(p | 1 << 63)
+                    .or_insert_with(|| {
+                        let s = object_name(api, p);
+                        (!s.starts_with('<') && s != "?" && s != "None").then_some(s)
+                    })
+                    .clone();
+                if let Some(n) = n {
+                    let tag = format!("{n} ({})", class_of(api, p));
+                    if !objs.contains(&tag) {
+                        objs.push(tag);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    println!("   floats: {floats:?}");
+    println!("   variables: {}", props.join(", "));
+    println!("   objects and calls: {}", objs.join(", "));
+}
+
 /// Parent class names, nearest first, from UStruct::SuperStruct
 /// (+0x40 on UE 4.27). `class_addr` is the UClass object.
 pub fn super_chain(api: &Api<Value>, class_addr: u64) -> Vec<String> {
