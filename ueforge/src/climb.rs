@@ -180,8 +180,19 @@ fn walk_path(ctx: u64, a: [f64; 3], b: [f64; 3]) -> Option<(Vec<[f64; 3]>, f64)>
     // SAFETY: game thread, live path object.
     let pts = unsafe { crate::reflect::array_get(obj(path).ok()?, "PathPoints", None) }.ok()?;
     let pts: Vec<[f64; 3]> = pts["elements"].as_array()?.iter().filter_map(vec3).collect();
-    (pts.len() >= 2).then_some((pts, len))
+    // The search snaps both ends onto the nearest walkable ground, which
+    // can be another level: a "complete" path that ends on the floor below
+    // the point asked for is not a path to it.
+    let (first, last) = (*pts.first()?, *pts.last()?);
+    (pts.len() >= 2 && dist(first, a) <= ENDS && dist(last, b) <= ENDS).then_some((pts, len))
 }
+
+/// A walking path must start and end this close to the points asked for.
+const ENDS: f64 = 60.0;
+
+/// Steps this high are walked up, not hit (CharacterMovement MaxStepHeight
+/// is 45 in Queens' Domain); a walking sweep rides this much higher.
+const STEP: f64 = 50.0;
 
 /// The body's centre along a move from floor point p to floor point q:
 /// a jump at the body's launch speed and gravity, with the run speed
@@ -326,6 +337,8 @@ fn run(s: Search) -> Result<Value, String> {
         r
     }
     let shared = Arc::new(samples.clone());
+    // Proven walks between samples, so a walking leg is drawn along them.
+    let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for i in 0..n {
         let near: Vec<usize> = (i + 1..n).filter(|&j| flat(samples[i], samples[j]) <= step * 1.5 && (samples[i][2] - samples[j][2]).abs() <= step).collect();
         let near: Vec<usize> = near.into_iter().filter(|&j| root(&mut patch, i) != root(&mut patch, j)).collect();
@@ -340,6 +353,8 @@ fn run(s: Search) -> Result<Value, String> {
                 .collect::<Vec<_>>())
         })?;
         for j in joined {
+            adj[i].push(j);
+            adj[j].push(i);
             let (ri, rj) = (root(&mut patch, i), root(&mut patch, j));
             patch[ri] = rj;
         }
@@ -362,7 +377,7 @@ fn run(s: Search) -> Result<Value, String> {
     let groups_arc = Arc::new(groups.clone());
     let max_across = s.dash + 2.0 * body.run * body.jump / body.gravity;
     let dash = s.dash;
-    let mut prev: Vec<Option<(usize, String, [f64; 3], [f64; 3])>> = vec![None; groups.len()];
+    let mut prev: Vec<Option<(usize, String, usize, usize)>> = vec![None; groups.len()];
     let mut seen = vec![false; groups.len()];
     seen[from] = true;
     let mut queue = std::collections::VecDeque::from([from]);
@@ -378,18 +393,19 @@ fn run(s: Search) -> Result<Value, String> {
                 let mut out = Vec::new();
                 let mut tried = 0usize;
                 for b in unseen {
-                    let mut pairs: Vec<(f64, [f64; 3], [f64; 3])> = Vec::new();
+                    let mut pairs: Vec<(f64, usize, usize)> = Vec::new();
                     for &i in &gs[a] {
                         for &j in &gs[b] {
                             let (p, q) = (sm[i], sm[j]);
                             let d = flat(p, q);
                             if q[2] - p[2] <= body.jump * body.jump / (2.0 * body.gravity) && d <= max_across {
-                                pairs.push((d, p, q));
+                                pairs.push((d, i, j));
                             }
                         }
                     }
                     pairs.sort_by(|x, y| x.0.total_cmp(&y.0));
-                    for (_, p, q) in pairs.into_iter().take(6) {
+                    for (_, i, j) in pairs.into_iter().take(6) {
+                        let (p, q) = (sm[i], sm[j]);
                         let (kind, pts) = match arc(&body, p, q, None) {
                             Some(pts) => (if q[2] < p[2] - 60.0 { "drop" } else { "jump" }, pts),
                             None => match (dash > 0.0).then(|| arc(&body, p, q, Some(dash))).flatten() {
@@ -399,7 +415,7 @@ fn run(s: Search) -> Result<Value, String> {
                         };
                         tried += 1;
                         if sweep_clear(probe, &body, centre, &pts) {
-                            out.push((b, kind.to_string(), p, q));
+                            out.push((b, kind.to_string(), i, j));
                             break;
                         }
                     }
@@ -431,72 +447,178 @@ fn run(s: Search) -> Result<Value, String> {
             d(x).total_cmp(&d(y))
         }).unwrap_or(from)
     };
-    let end_point = groups[end_group].iter().map(|&i| samples[i]).min_by(|x, y| dist(*x, goal).total_cmp(&dist(*y, goal))).unwrap_or(start);
+    let start_idx = n - if goal_ground.is_some() { 2 } else { 1 };
+    let end_idx = groups[end_group].iter().copied().min_by(|&x, &y| dist(samples[x], goal).total_cmp(&dist(samples[y], goal))).unwrap_or(start_idx);
     let mut steps = Vec::new();
     let mut g = end_group;
-    while let Some((a, kind, p, q)) = prev[g].clone() {
-        steps.push((kind, p, q));
+    while let Some((a, kind, i, j)) = prev[g].clone() {
+        steps.push((kind, i, j));
         g = a;
     }
     steps.reverse();
-    let mut points = vec![start];
-    let mut moves: Vec<String> = Vec::new();
-    for (kind, p, q) in &steps {
-        points.push(*p);
-        moves.push("walk".into());
-        points.push(*q);
-        moves.push(kind.clone());
+    // Legs: walks along proven sample-to-sample walks, then each move.
+    let mut legs: Vec<Leg> = Vec::new();
+    let mut cur = start_idx;
+    for (kind, i, j) in &steps {
+        legs.push(Leg::Walk(chain(&adj, cur, *i).ok_or("walk chain missing")?));
+        legs.push(Leg::Move(kind.clone(), *i, *j));
+        cur = *j;
     }
-    points.push(end_point);
-    moves.push("walk".into());
+    legs.push(Leg::Walk(chain(&adj, cur, end_idx).ok_or("walk chain missing")?));
 
-    let pipes = if s.draw { draw(player, &body, &points, &moves)? } else { 0 };
+    // The line, every piece swept with the body; it stops at the first
+    // piece that touches anything.
+    let checked = check_line(player, &body, centre, &legs, shared.clone())?;
+    let pipes = if s.draw { draw(player, &checked.line)? } else { 0 };
+    let line_end = checked.line.last().map(|p| p.0).unwrap_or(start);
     Ok(json!({
-        "reached_target": reached_target,
-        "end": end_point,
-        "end_from_target_m": dist(end_point, goal) / 100.0,
-        "points": points,
-        "moves": moves,
-        "steps": steps.iter().map(|(k, p, q)| json!({"move": k, "from": p, "to": q, "across_m": flat(*p, *q) / 100.0, "up_m": (q[2] - p[2]) / 100.0})).collect::<Vec<_>>(),
+        "reached_target": reached_target && checked.blocked.is_none(),
+        "end": line_end,
+        "end_from_target_m": dist(line_end, goal) / 100.0,
+        "blocked": checked.blocked,
+        "steps": steps.iter().map(|(k, i, j)| { let (p, q) = (samples[*i], samples[*j]); json!({"move": k, "from": p, "to": q, "across_m": flat(p, q) / 100.0, "up_m": (q[2] - p[2]) / 100.0}) }).collect::<Vec<_>>(),
         "samples": n,
         "patches": groups.len(),
         "swept": swept,
+        "line_pieces": checked.line.len().saturating_sub(1),
         "pipes": pipes,
         "seconds": t.elapsed().as_secs_f64(),
         "body": {"radius": body.radius, "half_height": body.half, "jump_speed": body.jump, "gravity": body.gravity, "run": body.run},
     }))
 }
 
-/// Pipes along the route at head height: walking legs from the game's
-/// path cut into PIECE pieces each put on the ground under it, moves
-/// along their arcs. Returns how many were spawned.
-fn draw(player: u64, body: &Body, points: &[[f64; 3]], moves: &[String]) -> Result<usize, String> {
-    clear_pipes()?;
-    let (points, moves, body) = (points.to_vec(), moves.to_vec(), *body);
-    let line = game(move || {
-        let mut line: Vec<[f64; 3]> = vec![points[0]];
-        for (w, kind) in points.windows(2).zip(&moves) {
-            let (a, b) = (w[0], w[1]);
-            if kind == "walk" {
-                let pts = walk_path(player, a, b).map(|(p, _)| p).unwrap_or_else(|| vec![a, b]);
-                for seg in pts.windows(2) {
-                    let pieces = ((flat(seg[0], seg[1]) / PIECE).ceil() as usize).max(1);
-                    for k in 1..=pieces {
-                        let t = k as f64 / pieces as f64;
-                        let p = [seg[0][0] + (seg[1][0] - seg[0][0]) * t, seg[0][1] + (seg[1][1] - seg[0][1]) * t, seg[0][2] + (seg[1][2] - seg[0][2]) * t];
-                        line.push(if k < pieces { project(player, p, [50.0, 50.0, 300.0]).unwrap_or(p) } else { p });
+enum Leg {
+    /// Sample indices joined by proven walks.
+    Walk(Vec<usize>),
+    /// A jump, drop or dash from one sample to another.
+    Move(String, usize, usize),
+}
+
+/// The shortest chain of proven walks from u to v.
+fn chain(adj: &[Vec<usize>], u: usize, v: usize) -> Option<Vec<usize>> {
+    let mut prev = vec![usize::MAX; adj.len()];
+    prev[u] = u;
+    let mut queue = std::collections::VecDeque::from([u]);
+    while let Some(a) = queue.pop_front() {
+        if a == v {
+            let mut out = vec![v];
+            let mut c = v;
+            while c != u {
+                c = prev[c];
+                out.push(c);
+            }
+            out.reverse();
+            return Some(out);
+        }
+        for &b in &adj[a] {
+            if prev[b] == usize::MAX {
+                prev[b] = a;
+                queue.push_back(b);
+            }
+        }
+    }
+    None
+}
+
+struct Checked {
+    /// (floor point, body centre) along the route, all swept clear.
+    line: Vec<([f64; 3], [f64; 3])>,
+    /// Where and why the line stops early.
+    blocked: Option<Value>,
+}
+
+/// Build the route's line and sweep the body along every piece of it:
+/// walking pieces ride a step height up (steps are walked up, floors and
+/// slopes under the body are not walls), moves follow their arcs. The
+/// line ends at the first piece that touches anything.
+fn check_line(player: u64, body: &Body, player_at: [f64; 3], legs: &[Leg], samples: Arc<Vec<[f64; 3]>>) -> Result<Checked, String> {
+    // Plain data for the game thread.
+    let legs: Vec<(Option<String>, Vec<usize>)> = legs
+        .iter()
+        .map(|l| match l {
+            Leg::Walk(c) => (None, c.clone()),
+            Leg::Move(k, i, j) => (Some(k.clone()), vec![*i, *j]),
+        })
+        .collect();
+    let body = *body;
+    game(move || {
+        let walk_up = body.half + STEP + 2.0;
+        let mut pieces: Vec<([f64; 3], [f64; 3], bool, String)> = Vec::new();
+        let first = samples[legs[0].1[0]];
+        pieces.push((first, [first[0], first[1], first[2] + walk_up], true, "start".into()));
+        let mut stop: Option<String> = None;
+        'legs: for (kind, idx) in &legs {
+            match kind {
+                None => {
+                    for w in idx.windows(2) {
+                        let (a, b) = (samples[w[0]], samples[w[1]]);
+                        let Some((pts, _)) = walk_path(player, a, b) else {
+                            stop = Some(format!("the game's walk from ({:.0}, {:.0}, {:.0}) to ({:.0}, {:.0}, {:.0}) failed", a[0], a[1], a[2], b[0], b[1], b[2]));
+                            break 'legs;
+                        };
+                        for seg in pts.windows(2) {
+                            let n = ((flat(seg[0], seg[1]) / PIECE).ceil() as usize).max(1);
+                            for k in 1..=n {
+                                let t = k as f64 / n as f64;
+                                let p = [seg[0][0] + (seg[1][0] - seg[0][0]) * t, seg[0][1] + (seg[1][1] - seg[0][1]) * t, seg[0][2] + (seg[1][2] - seg[0][2]) * t];
+                                // On the ground under it, unless that is another level.
+                                let g = if k < n { project(player, p, [50.0, 50.0, 150.0]).filter(|g| (g[2] - p[2]).abs() < 60.0).unwrap_or(p) } else { p };
+                                pieces.push((g, [g[0], g[1], g[2] + walk_up], true, "walk".into()));
+                            }
+                        }
                     }
                 }
-            } else {
-                let dash = (kind == "jump and dash").then_some(flat(a, b));
-                match arc(&body, a, b, dash) {
-                    Some(pts) => line.extend(pts.into_iter().skip(1).map(|p| [p[0], p[1], p[2] - body.half - 2.0])),
-                    None => line.push(b),
+                Some(k) => {
+                    let (p, q) = (samples[idx[0]], samples[idx[1]]);
+                    let dash = (k == "jump and dash").then_some(flat(p, q));
+                    let Some(pts) = arc(&body, p, q, dash) else {
+                        stop = Some(format!("{k} from ({:.0}, {:.0}, {:.0}) cannot be made", p[0], p[1], p[2]));
+                        break 'legs;
+                    };
+                    for c in pts {
+                        pieces.push(([c[0], c[1], c[2] - body.half - 2.0], c, false, k.clone()));
+                    }
                 }
             }
         }
-        Ok(line)
-    })?;
+        let probe = spawn_probe(player, &body, first)?;
+        let mv = |p: [f64; 3], swept: bool| call(probe, "Actor", "K2_SetActorLocation", json!({"NewLocation": xyz(p), "bSweep": swept, "bTeleport": true}));
+        let mut line = vec![(pieces[0].0, pieces[0].1)];
+        let mut blocked = None;
+        let swept = (|| -> Result<(), String> {
+            mv(pieces[0].1, false)?;
+            for (k, (floor, c, walking, kind)) in pieces.iter().enumerate().skip(1) {
+                let r = mv(*c, true)?;
+                let hit = &r["SweepHitResult"];
+                if hit["bBlockingHit"] == true {
+                    let point = vec3(&hit["ImpactPoint"]).unwrap_or(*c);
+                    let up = hit["ImpactNormal"]["Z"].as_f64().unwrap_or(0.0);
+                    let own = flat(point, player_at) < body.radius * 2.0 + 20.0 && (point[2] - player_at[2]).abs() < body.half + 20.0;
+                    // Ground under a walking body, or the landing of a move.
+                    let ground = up > 0.7 && (*walking || pieces.get(k + 1).is_none_or(|n| n.2));
+                    if !own && !ground {
+                        blocked = Some(json!({"at": point, "during": kind, "normal_z": up}));
+                        // Stand the probe where it stopped and go no further.
+                        return Ok(());
+                    }
+                    // Put the body exactly on the line again.
+                    mv(*c, false)?;
+                }
+                line.push((*floor, *c));
+            }
+            Ok(())
+        })();
+        let _ = call(probe, "Actor", "K2_DestroyActor", json!({}));
+        swept?;
+        let blocked = blocked.or(stop.map(|s| json!({"reason": s})));
+        Ok(Checked { line, blocked })
+    })
+}
+
+/// Pipes along the checked line at head height. Returns how many were spawned.
+fn draw(player: u64, checked: &[([f64; 3], [f64; 3])]) -> Result<usize, String> {
+    clear_pipes()?;
+    let line: Vec<[f64; 3]> = checked.iter().map(|p| p.0).collect();
     let spawned = game(move || {
         let cylinder = crate::ue::actor::find_objects_by_chain("StaticMesh")
             .into_iter()
