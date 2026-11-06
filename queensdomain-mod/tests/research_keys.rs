@@ -210,6 +210,64 @@ fn shrine_route() {
     }
 }
 
+/// The operator sees lifts and gates near the shrine key but none
+/// are open and nothing says how to open them. Dump every field of
+/// the lifts, levers and gates within 80 m of the key, through the
+/// class chain down to (not including) the shared save and actor
+/// bases, so open/locked state and which lever points at which gate
+/// or lift are visible. Pointer fields print the target's name.
+#[test]
+fn shrine_mechanisms() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let (Some(root), Some(loc)) = (
+        field_off(&api, "Actor", "RootComponent"),
+        field_off(&api, "SceneComponent", "RelativeLocation"),
+    ) else {
+        return;
+    };
+    let Some(k) = instances(&api, "SwordShrineKey_BP_C", 2)
+        .first()
+        .and_then(|(a, _)| position(&api, *a, root, loc))
+    else {
+        println!("shrine key not loaded");
+        return;
+    };
+    for class in [
+        "IntroDungerLift_BP_C",
+        "Wood_Elevator_Lever_C",
+        "AquaGate_00_BP_C",
+        "AquaGate_01_BP_C",
+        "AquaLever_00_C",
+        "SwordShrineGate_BP_C",
+    ] {
+        for (addr, name) in instances(&api, class, 64) {
+            let Some(pos) = position(&api, addr, root, loc) else { continue };
+            let d = ((pos[0] - k[0]).powi(2) + (pos[1] - k[1]).powi(2) + (pos[2] - k[2]).powi(2))
+                .sqrt()
+                / 100.0;
+            if d > 80.0 {
+                continue;
+            }
+            println!(
+                "\n===== {name} ({class}) {d:.0} m from key, z {:.0}",
+                pos[2] / 100.0
+            );
+            let cls =
+                modforge::client::from_le_u64(&modforge::client::read_bytes(&api, addr, 0x10, 8), 0);
+            let mut chain = vec![common::object_name(&api, cls)];
+            chain.extend(common::super_chain(&api, cls));
+            for c in chain.iter().take_while(|c| {
+                !matches!(c.as_str(), "SavableActor_C" | "FS_Actor" | "Actor" | "StaticMeshActor")
+            }) {
+                dump(&api, addr, c, None);
+            }
+        }
+    }
+}
+
 #[test]
 fn keys() {
     let api = api();
