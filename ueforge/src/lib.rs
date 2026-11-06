@@ -85,6 +85,7 @@ pub mod fall;
 pub mod features;
 pub mod frame;
 pub mod game_thread;
+pub mod gps;
 pub mod hook;
 pub mod hot_reload;
 pub mod input;

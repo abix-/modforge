@@ -16,4 +16,5 @@
 - `tests/research_path.rs`: the game's own navigation from the player to a point, a mesh map of an area, and a climb route using walking, jumps (1.2 m up), air dashes (10 m) and drops. Found a route to the third beacon's unlit brazier.
 - Route markers: `research_path.rs` mark_route, draw_route and clear_route_marks spawn lights, pillars and rods along the route. Terrain hides most of them.
 - Screen overlay (`ueforge/src/overlay.rs`, ops overlay.lines and overlay.clear): lines drawn in the HUD pass with the game's own ProjectWorldLocationToScreen and HUD DrawLine, seen through hills. `research_path.rs overlay_route` draws the whole route at head height. Not yet tried in game.
+- GPS (`ueforge/src/gps.rs`, ops gps.to, gps.clear and gps.state): a route of waypoints and moves, redrawn from the player once a second with the game's own navigation for walking legs; reached waypoints drop off. `research_path.rs gps_route` sends the beacon route, `gps_state` reads progress. Not yet tried in game.
 - Hot reload (Ctrl+R) crashes this game: deploy with it closed and swap main-new.dll in by hand.

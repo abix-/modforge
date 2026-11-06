@@ -601,6 +601,38 @@ fn overlay_route() {
     println!("overlay: {} {:?}", r.result, r.error);
 }
 
+/// Set the mod's GPS route: the beacon route (LINE), or PATH_TO="x,y,z"
+/// for a plain walk there. The mod keeps the line drawn from the player.
+/// A write, so ignored by default.
+#[test]
+#[ignore]
+fn gps_route() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let args = match std::env::var("PATH_TO") {
+        Ok(_) => json!({"points": [target()]}),
+        Err(_) => json!({
+            "points": LINE.iter().map(|(p, _)| p.to_vec()).collect::<Vec<_>>(),
+            "moves": LINE[..LINE.len() - 1].iter().map(|(_, k)| *k).collect::<Vec<_>>(),
+        }),
+    };
+    let r = api.op("gps.to", args);
+    println!("gps: {} {:?}", r.result, r.error);
+}
+
+/// Where the player is on the mod's GPS route.
+#[test]
+fn gps_state() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let r = api.op("gps.state", json!({}));
+    println!("{} {:?}", r.result, r.error);
+}
+
 /// Draw the route as a line of rods 0.5 m above the ground: the game's
 /// path for walking legs, straight rods for jumps and dashes, a glowing
 /// material when one is loaded. Rods are added to the marks file, so

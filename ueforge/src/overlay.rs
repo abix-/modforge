@@ -108,7 +108,7 @@ fn resolve(hud: &UObject) -> Result<&'static Calls, String> {
 }
 
 /// Write `v` at a parameter as f32s or f64s, whichever its size says.
-fn write_reals(buf: &mut [u8], p: &NativeProperty, v: &[f64]) {
+pub(crate) fn write_reals(buf: &mut [u8], p: &NativeProperty, v: &[f64]) {
     let o = p.offset as usize;
     let wide = p.element_size as usize == v.len() * 8;
     for (i, x) in v.iter().enumerate() {
@@ -120,7 +120,7 @@ fn write_reals(buf: &mut [u8], p: &NativeProperty, v: &[f64]) {
     }
 }
 
-fn read_reals(buf: &[u8], p: &NativeProperty, n: usize) -> Vec<f64> {
+pub(crate) fn read_reals(buf: &[u8], p: &NativeProperty, n: usize) -> Vec<f64> {
     let o = p.offset as usize;
     let wide = p.element_size as usize == n * 8;
     (0..n)
@@ -149,14 +149,17 @@ unsafe fn project(c: &Calls, pc: &UObject, p: [f64; 3]) -> Option<[f64; 2]> {
     Some([s[0], s[1]])
 }
 
+/// Called every frame before drawing with the HUD's player controller,
+/// on the game thread; may replace the lines (the GPS does).
+static FRAME: Mutex<Option<fn(&UObject)>> = Mutex::new(None);
+
+/// Run `f` every frame before the lines are drawn.
+pub fn set_frame_hook(f: Option<fn(&UObject)>) {
+    *FRAME.lock() = f;
+}
+
 /// Draw every line. Game thread, inside the HUD draw.
 unsafe fn draw(c: &Calls, hud: &UObject) {
-    let Some(lines) = LINES.try_lock() else {
-        return;
-    };
-    if lines.is_empty() {
-        return;
-    }
     // SAFETY: PlayerOwner is a reflected pointer field of the live HUD.
     let pc = unsafe { (hud.field_ptr(c.player_owner) as *const usize).read_unaligned() };
     if pc == 0 || !crate::ue::is_live(pc) {
@@ -164,6 +167,16 @@ unsafe fn draw(c: &Calls, hud: &UObject) {
     }
     // SAFETY: just checked live in GObjects.
     let pc = unsafe { &*(pc as *const UObject) };
+    let frame = *FRAME.lock();
+    if let Some(f) = frame {
+        f(pc);
+    }
+    let Some(lines) = LINES.try_lock() else {
+        return;
+    };
+    if lines.is_empty() {
+        return;
+    }
     let mut buf = vec![0u8; c.draw_line.parms_size().max(1) as usize];
     for line in lines.iter() {
         let [r, g, b, a] = line.color;
