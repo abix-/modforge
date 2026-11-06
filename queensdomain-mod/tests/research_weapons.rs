@@ -16,7 +16,7 @@
 //! ```
 
 mod common;
-use common::{api, fields, instances, ping_or_skip};
+use common::{api, class_of, fields, instances, ping_or_skip};
 use serde_json::json;
 
 const WORDS: &[&str] = &["xp", "exp", "level", "kill", "damage", "upgrade", "rank", "mastery"];
@@ -178,6 +178,156 @@ fn azure_torch_fire() {
                 common::dump(&api, obj, &name, None);
             }
         }
+    }
+}
+
+/// How fast does the torch's secondary recharge? Its stats say
+/// MaxCharges 2, AbilityPointsPerCharge 10, ChargeOverTime true.
+/// Prints where charge state and rates live: player, weapon script
+/// base and PlayerBalance fields about ability points, charges and
+/// regen, with values, and a bytecode scan of the functions whose
+/// names say charge or ability on the player and weapon script base.
+#[test]
+fn torch_recharge() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let words = ["ability", "charge", "point", "regen", "overtime", "over time", "resource"];
+    if let Some((pb, _)) = instances(&api, "PlayerBalance_C", 2).into_iter().next() {
+        common::dump(&api, pb, "PlayerBalance_C", Some(&words));
+    }
+    if let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() {
+        common::dump(&api, player, "FS_PlayerChar_C", Some(&["ability", "weaponcharge", "abilitypoint", "regen"]));
+    }
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        if name != "WeaponScriptBase_C" && name != "Torch_WeaponScript_C" && name != "FS_PlayerChar_C" {
+            continue;
+        }
+        if let Some((obj, _)) = instances(&api, &name, 1).into_iter().next() {
+            if name != "FS_PlayerChar_C" {
+                common::dump(&api, obj, &name, None);
+            }
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            let l = n.to_ascii_lowercase();
+            if (l.contains("charge") || l.contains("ability")) && !l.contains("flying") && !l.contains("dagger") && !l.contains("ultra") {
+                common::scan_script(&api, f, &format!("{name}::{n}"));
+            }
+        }
+    }
+}
+
+/// Where the weapon-charge code is called from: every function of the
+/// weapon script, torch script and player classes whose bytecode
+/// touches a charge name, printed as the run of names around each
+/// touch in bytecode order. Shows what drives the over-time refill
+/// (ApplyCooldownWeaponAbilityPointGen), whether ChargeOverTime gates
+/// it, and where hits add points (AddToCharge, Resource Conversion).
+#[test]
+fn torch_recharge_callers() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let targets = [
+        "ApplyCooldownWeaponAbilityPointGen",
+        "ApplyBindingAbilityPointDegen",
+        "AddToCharge",
+        "Gained A Charge",
+        "ChargeOverTime",
+        "Resource Conversion To Weapon Ability Points",
+        "Resource Gen Per Weapon Ability Point Spent",
+        "LastSpentAbilityPoints",
+        "HeldInHand",
+        "ChargeViaResourceGen",
+        "LastWeaponAbilityPointsGeneratedFromResources",
+    ];
+    if let Some((stats, _)) = instances(&api, "FS_WeaponStats", 2000).into_iter().find(|(_, n)| n == "Torch_WeaponStats") {
+        common::dump(&api, stats, "FS_WeaponStats", Some(&["charge", "ability", "resource"]));
+    }
+    let classes = ["WeaponScriptBase_C", "Torch_WeaponScript_C", "FS_PlayerChar_C", "FS_Full_PlayerChar_C"];
+    let mut cache = Default::default();
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        if !classes.contains(&name.as_str()) {
+            continue;
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            let Some((_, _, refs)) = common::script_refs(&api, f, &mut cache) else { continue };
+            let hit = |r: &common::ScriptRef| {
+                let s = r.to_string();
+                targets.iter().any(|t| s.contains(t))
+            };
+            let hits: Vec<usize> = refs.iter().enumerate().filter(|(_, r)| hit(&r.1)).map(|(i, _)| i).collect();
+            if hits.is_empty() {
+                continue;
+            }
+            println!("== {name}::{n} ({} refs, {} touches)", refs.len(), hits.len());
+            let mut shown_to = 0usize;
+            for &h in &hits {
+                let from = h.saturating_sub(10).max(shown_to);
+                let to = (h + 11).min(refs.len());
+                if from >= to {
+                    continue;
+                }
+                if from > shown_to {
+                    println!("   ...");
+                }
+                let run: Vec<String> = refs[from..to].iter().map(|(o, r)| format!("{o:#x}:{r}")).collect();
+                println!("   {}", run.join("  "));
+                shown_to = to;
+            }
+        }
+    }
+}
+
+/// Measures the torch's recharge: every live Torch_WeaponScript_C's
+/// CurrentAbilityPoints (WeaponScriptBase_C field) once a second for
+/// 60 s, printing each change with the rate since the last one.
+/// PlayerBalance says 0.33 points per second over time and the torch
+/// needs 10 per charge, 2 charges max.
+#[test]
+fn torch_recharge_sampler() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some(off) = fields(&api, "WeaponScriptBase_C").into_iter().find(|f| f.0 == "CurrentAbilityPoints").map(|f| f.1) else {
+        println!("CurrentAbilityPoints not found");
+        return;
+    };
+    println!("sampling 90 s: equip the torch, fire the secondary until empty, then do not attack");
+    let read = |a: u64| {
+        let b = modforge::client::read_bytes(&api, a, off, 4);
+        if b.len() == 4 { f32::from_le_bytes(b[..4].try_into().unwrap()) } else { f32::NAN }
+    };
+    let t0 = std::time::Instant::now();
+    // address -> (label, last value, time of last change)
+    let mut seen: std::collections::HashMap<u64, (String, f32, f32)> = Default::default();
+    let mut next_look = 0.0f32;
+    while t0.elapsed().as_secs() < 90 {
+        let now = t0.elapsed().as_secs_f32();
+        if now >= next_look {
+            next_look = now + 2.0;
+            for (a, n) in instances(&api, "WeaponScriptBase_C", 16) {
+                seen.entry(a).or_insert_with(|| {
+                    let label = format!("{n} ({})", class_of(&api, a));
+                    let v = read(a);
+                    println!("   {now:5.1} s {label}: {v:.2} points");
+                    (label, v, now)
+                });
+            }
+        }
+        for (a, (label, last, at)) in seen.iter_mut() {
+            let v = read(*a);
+            if (v - *last).abs() > 0.05 {
+                let rate = (v - *last) / (now - *at);
+                println!("   {now:5.1} s {label}: {last:.2} -> {v:.2} points ({rate:+.3}/s)");
+                *last = v;
+                *at = now;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }
 

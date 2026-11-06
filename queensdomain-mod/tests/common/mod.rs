@@ -212,28 +212,95 @@ pub fn ffield_name(api: &Api<Value>, p: u64) -> Option<String> {
 /// each is resolved once. A byte that only looks like an opcode can
 /// add a stray name; treat the lists as what the code probably uses.
 pub fn scan_script(api: &Api<Value>, f: u64, name: &str) {
+    let mut cache = Default::default();
+    let Some((num, last, refs)) = script_refs(api, f, &mut cache) else {
+        return;
+    };
+    println!("== {name}: {num} bytes of bytecode, ends with {last:#04x}");
+    let mut floats = Vec::new();
+    let mut props: Vec<String> = Vec::new();
+    let mut objs: Vec<String> = Vec::new();
+    for (_, r) in refs {
+        match r {
+            ScriptRef::Float(v) => floats.push(v),
+            ScriptRef::Var(n) if !props.contains(&n) => props.push(n),
+            ScriptRef::Object(n) if !objs.contains(&n) => objs.push(n),
+            _ => {}
+        }
+    }
+    println!("   floats: {floats:?}");
+    println!("   variables: {}", props.join(", "));
+    println!("   objects and calls: {}", objs.join(", "));
+}
+
+/// One thing a function's bytecode touches; see `scan_script`.
+#[derive(Clone, Debug)]
+pub enum ScriptRef {
+    Float(f32),
+    Var(String),
+    /// "name (class)" of an object or called function.
+    Object(String),
+}
+
+impl std::fmt::Display for ScriptRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            ScriptRef::Float(v) => write!(f, "{v}"),
+            ScriptRef::Var(n) => write!(f, "{n}"),
+            ScriptRef::Object(n) => write!(f, "[{n}]"),
+        }
+    }
+}
+
+/// Everything `scan_script` finds in one UFunction, in bytecode order
+/// with the byte offset: (bytecode length, last byte, refs). `cache`
+/// keeps resolved pointers across calls so scanning many functions
+/// asks for each name once.
+pub fn script_refs(
+    api: &Api<Value>,
+    f: u64,
+    cache: &mut std::collections::HashMap<u64, Option<String>>,
+) -> Option<(u64, u8, Vec<(usize, ScriptRef)>)> {
     let heap = |p: u64| (0x100_0000_0000..0x7FF0_0000_0000).contains(&p);
-    let mut cache: std::collections::HashMap<u64, Option<String>> = Default::default();
     let h = modforge::client::read_bytes(api, f, 0x60, 16);
     if h.len() < 16 {
-        return;
+        return None;
     }
     let data = modforge::client::from_le_u64(&h, 0);
     let num = i32::from_le_bytes(h[8..12].try_into().unwrap()).clamp(0, 1 << 20) as u64;
+    if data == 0 || num == 0 {
+        return None;
+    }
     let code = modforge::client::read_bytes(api, data, 0, num);
-    println!(
-        "== {name}: {num} bytes of bytecode, ends with {:#04x}",
-        code.last().copied().unwrap_or(0)
-    );
-    let mut floats = Vec::new();
-    let mut props = Vec::new();
-    let mut objs = Vec::new();
+    let mut out = Vec::new();
     for i in 0..code.len().saturating_sub(4) {
         let op = code[i];
         if op == 0x1E {
             let v = f32::from_le_bytes(code[i + 1..i + 5].try_into().unwrap());
             if v.is_finite() && (v == 0.0 || (v.abs() > 1e-3 && v.abs() < 1e6)) {
-                floats.push(v);
+                out.push((i, ScriptRef::Float(v)));
+            }
+        }
+        // 0x1B EX_VirtualFunction and 0x45 EX_LocalVirtualFunction call
+        // by FScriptName {ComparisonIndex, DisplayIndex, Number}; a real
+        // one has DisplayIndex == ComparisonIndex.
+        if (op == 0x1B || op == 0x45) && i + 13 <= code.len() {
+            let w = |k: usize| u32::from_le_bytes(code[i + 1 + k..i + 5 + k].try_into().unwrap());
+            let (cmp, disp, num) = (w(0), w(4), w(8));
+            if cmp != 0 && cmp == disp && num < 64 {
+                let key = (cmp as u64 | (num as u64) << 32) | 1 << 62;
+                let n = cache
+                    .entry(key)
+                    .or_insert_with(|| {
+                        let r = api.op("fname_to_string", json!({"fname": cmp as u64 | (num as u64) << 32}));
+                        let s = r.result.get("string")?.as_str()?.to_string();
+                        (!s.is_empty() && !s.starts_with('<') && s != "None" && s.is_ascii())
+                            .then(|| format!("{s} (virtual call)"))
+                    })
+                    .clone();
+                if let Some(n) = n {
+                    out.push((i, ScriptRef::Object(n)));
+                }
             }
         }
         if i + 9 > code.len() {
@@ -245,34 +312,27 @@ pub fn scan_script(api: &Api<Value>, f: u64, name: &str) {
         }
         match op {
             0x00 | 0x01 | 0x48 | 0x6C | 0x42 => {
-                let n = cache.entry(p).or_insert_with(|| ffield_name(api, p)).clone();
-                if let Some(n) = n {
-                    if !props.contains(&n) {
-                        props.push(n);
-                    }
+                if let Some(n) = cache.entry(p).or_insert_with(|| ffield_name(api, p)).clone() {
+                    out.push((i, ScriptRef::Var(n)));
                 }
             }
-            0x20 | 0x1C | 0x68 => {
+            0x20 | 0x1C | 0x68 | 0x46 => {
                 let n = cache
                     .entry(p | 1 << 63)
                     .or_insert_with(|| {
                         let s = object_name(api, p);
-                        (!s.starts_with('<') && s != "?" && s != "None").then_some(s)
+                        (!s.starts_with('<') && s != "?" && s != "None")
+                            .then(|| format!("{s} ({})", class_of(api, p)))
                     })
                     .clone();
                 if let Some(n) = n {
-                    let tag = format!("{n} ({})", class_of(api, p));
-                    if !objs.contains(&tag) {
-                        objs.push(tag);
-                    }
+                    out.push((i, ScriptRef::Object(n)));
                 }
             }
             _ => {}
         }
     }
-    println!("   floats: {floats:?}");
-    println!("   variables: {}", props.join(", "));
-    println!("   objects and calls: {}", objs.join(", "));
+    Some((num, code.last().copied().unwrap_or(0), out))
 }
 
 /// Parent class names, nearest first, from UStruct::SuperStruct
