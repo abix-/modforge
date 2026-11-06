@@ -129,6 +129,58 @@ fn swords() {
     }
 }
 
+/// How does Endu's Wind Dash work? Lists loaded Blueprint classes
+/// whose names say flyingsword, dash or wind (not anim), with parents,
+/// their fields with values on the CDO-free live object when one is
+/// loaded, and their functions; plus the player's dash fields.
+#[test]
+fn wind_dash() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let words = ["dash", "fly", "flight", "charge", "wind", "gem", "air", "glide"];
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let l = name.to_ascii_lowercase();
+        if !(l.contains("flyingsword") || l.contains("dash") || l.contains("wind"))
+            || l.contains("anim")
+            || l.contains("window")
+        {
+            continue;
+        }
+        let parents = common::super_chain(&api, addr);
+        println!("== {name} <- {}", parents.iter().take(3).cloned().collect::<Vec<_>>().join(" <- "));
+        if let Some((obj, _)) = instances(&api, &name, 1).into_iter().next() {
+            common::dump(&api, obj, &name, None);
+        }
+        let fns = functions(&api, &name);
+        if !fns.is_empty() {
+            println!("   functions: {}", fns.join(", "));
+        }
+    }
+    println!("== player dash fields");
+    if let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() {
+        common::dump(&api, player, "FS_PlayerChar_C", Some(&words));
+    }
+    for f in functions(&api, "FS_PlayerChar_C") {
+        if matches(&f, &words) {
+            println!("   fn {f}");
+        }
+    }
+    // The player's own Endu charge counter, not the first instance
+    // the walk returns: FS_PlayerChar_C::FlyingSwordChargeLogic.
+    if let (Some((player, _)), Some(off)) = (
+        instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next(),
+        fields(&api, "FS_PlayerChar_C").into_iter().find(|f| f.0 == "FlyingSwordChargeLogic").map(|f| f.1),
+    ) {
+        let comp = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, player, off, 8), 0);
+        if comp != 0 {
+            println!("== player's FlyingSwordChargeLogic");
+            common::dump(&api, comp, "FlyingSwordChargeLogic_C", None);
+        }
+    }
+}
+
 #[test]
 fn weapon_xp() {
     let api = api();
