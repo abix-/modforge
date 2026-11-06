@@ -109,6 +109,107 @@ fn shrine_key() {
     );
 }
 
+/// How does the player get from 100_GR down into 110_GR_dungeon,
+/// where the shrine key is? List every live object in those two
+/// levels whose class chain names a way between places (door,
+/// ladder, lift, gate, hatch, stairs, teleport, entrance, drop,
+/// streaming), with distance from the player and from the key.
+#[test]
+fn shrine_route() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let (Some(root), Some(loc)) = (
+        field_off(&api, "Actor", "RootComponent"),
+        field_off(&api, "SceneComponent", "RelativeLocation"),
+    ) else {
+        return;
+    };
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() else {
+        return;
+    };
+    let Some(p) = position(&api, player, root, loc) else { return };
+    let k = instances(&api, "SwordShrineKey_BP_C", 2)
+        .first()
+        .and_then(|(a, _)| position(&api, *a, root, loc));
+    println!("player {p:?}  key {k:?}");
+    let dist = |a: [f32; 3], b: [f32; 3]| {
+        ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt() / 100.0
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut rows = Vec::new();
+    for needle in [
+        "Door", "Ladder", "Elevator", "Lift", "Gate", "Hatch", "Stair", "Teleport", "Entrance",
+        "Drop", "Streaming", "Shortcut", "Lever", "Bridge", "Rope", "Hole",
+    ] {
+        let r = api.op("walk_class_chain", json!({"needle": needle, "max": 3000}));
+        for i in r
+            .result
+            .get("instances")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+        {
+            let full = i.get("full_name").and_then(|v| v.as_str()).unwrap_or("");
+            if !(full.contains("/100_GR.") || full.contains("/110_GR_dungeon.")) {
+                continue;
+            }
+            // Only actors directly in the level, not their components.
+            let after = full.split("PersistentLevel.").nth(1).unwrap_or("");
+            if after.contains('.') {
+                continue;
+            }
+            let Some(addr) = i
+                .get("addr")
+                .and_then(|a| a.as_str())
+                .and_then(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).ok())
+            else {
+                continue;
+            };
+            // DropDown_Markup: over 300 ledge markers in 100_GR, which
+            // drown out every lift and gate.
+            if full.starts_with("DropDown_Markup") || !seen.insert(addr) {
+                continue;
+            }
+            let Some(pos) = position(&api, addr, root, loc) else { continue };
+            let to_key = k.map(|k| dist(pos, k)).unwrap_or(f32::NAN);
+            rows.push((dist(pos, p), to_key, pos, full.to_string()));
+        }
+    }
+    let yaw = field_off(&api, "Pawn", "Controller")
+        .zip(field_off(&api, "Controller", "ControlRotation"))
+        .map(|(ctrl, rot)| {
+            let pc =
+                modforge::client::from_le_u64(&modforge::client::read_bytes(&api, player, ctrl, 8), 0);
+            let r = modforge::client::read_bytes(&api, pc, rot, 12);
+            f32::from_le_bytes(r[4..8].try_into().unwrap())
+        })
+        .unwrap_or(0.0);
+    let turn = |pos: [f32; 3]| {
+        let mut a = (pos[1] - p[1]).atan2(pos[0] - p[0]).to_degrees() - yaw;
+        while a > 180.0 {
+            a -= 360.0;
+        }
+        while a < -180.0 {
+            a += 360.0;
+        }
+        a
+    };
+    if let Some(k) = k {
+        println!("key: {:+.0} deg from camera (+ is right)", turn(k));
+    }
+    rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    println!("{} ways found, nearest the player first:", rows.len());
+    for (dp, dk, pos, full) in &rows {
+        println!(
+            "  {dp:>5.0} m from you {:>+5.0} deg  {dk:>5.0} m from key  z {:>6.0}  {full}",
+            turn(*pos),
+            pos[2] / 100.0
+        );
+    }
+}
+
 #[test]
 fn keys() {
     let api = api();
