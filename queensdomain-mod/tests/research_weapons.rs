@@ -88,6 +88,71 @@ fn azure_torch() {
     item_stats(&["azure", "torch"]);
 }
 
+/// The operator has 2 wind gems: what are they for? The item data for
+/// "wind", then PlayerMathFunctions_C::GetFSChargeCount (counts an item
+/// and an item tag in the inventory) and every player, wind dash and
+/// HUD function that calls it.
+#[test]
+fn wind_gems() {
+    item_stats(&["wind"]);
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    if let Some((pb, _)) = instances(&api, "PlayerBalance_C", 2).into_iter().next() {
+        common::dump(&api, pb, "PlayerBalance_C", Some(&["fs ", "gem", "charge", "dash", "flyingsword"]));
+        // FSChargeTimeAtChargeCount: TArray<f32>, the dash cooldown by gem count.
+        if let Some(off) = fields(&api, "PlayerBalance_C").into_iter().find(|f| f.0 == "FSChargeTimeAtChargeCount").map(|f| f.1) {
+            let h = modforge::client::read_bytes(&api, pb, off, 16);
+            let data = modforge::client::from_le_u64(&h, 0);
+            let num = i32::from_le_bytes(h[8..12].try_into().unwrap()).clamp(0, 64) as u64;
+            let b = modforge::client::read_bytes(&api, data, 0, num * 4);
+            let v: Vec<f32> = b.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect();
+            println!("FSChargeTimeAtChargeCount = {v:?}");
+        }
+    }
+    if let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() {
+        if let Some(off) = fields(&api, "FS_PlayerChar_C").into_iter().find(|f| f.0 == "FlyingSwordChargeLogic").map(|f| f.1) {
+            if let Some(logic) = modforge::client::read_bytes(&api, player, off, 8).get(..8).map(|b| modforge::client::from_le_u64(b, 0)) {
+                let class = class_of(&api, logic);
+                println!("player FlyingSwordChargeLogic is {class}");
+                common::dump(&api, logic, &class, None);
+            }
+        }
+    }
+    let mut cache = Default::default();
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let cl = name.to_ascii_lowercase();
+        if !(cl.contains("player") || cl.contains("math") || cl.contains("flyingsword") || cl.contains("hud") || cl.contains("utils")) {
+            continue;
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            if n == "GetFSChargeCount" {
+                common::scan_script(&api, f, &format!("{name}::{n}"));
+                continue;
+            }
+            let Some((_, _, refs)) = common::script_refs(&api, f, &mut cache) else { continue };
+            let hits: Vec<usize> = refs
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| {
+                    let s = r.1.to_string();
+                    s.contains("GetFSChargeCount") || s.contains("GetFlyingSwordChargeCount")
+                })
+                .map(|(i, _)| i)
+                .collect();
+            if hits.is_empty() {
+                continue;
+            }
+            println!("== {name}::{n} calls the charge count {} times", hits.len());
+            for h in hits {
+                let run: Vec<String> = refs[h.saturating_sub(8)..(h + 16).min(refs.len())].iter().map(|(_, r)| r.to_string()).collect();
+                println!("   {}", run.join("  "));
+            }
+        }
+    }
+}
+
 /// How the Azure Torch behaves: every loaded Blueprint class whose
 /// name says torch, azure, fireball, blaze or burn (not anim), with
 /// parents, the fields of one live object and a bytecode scan of each
