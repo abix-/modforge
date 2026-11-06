@@ -110,9 +110,14 @@ const WALK_RISE: f64 = 60.0;
 /// brazier? Samples the navigation mesh in a box between where the
 /// game's walking path ends and the brazier, groups the samples into
 /// patches, and searches patch to patch using walking, jumps (up to
-/// JUMP_UP higher), air dashes (gaps up to DASH) and drops. Read only.
-/// Walls between two patches are not checked yet.
+/// JUMP_UP higher), air dashes (gaps up to DASH) and drops. Every walk
+/// between samples is a complete path from the game's navigation, and
+/// every jump or dash is swept with a body the player's size along its
+/// arc (check_moves); a move that hits anything is not used. Spawns one
+/// invisible probe and destroys it, so ignored by default. Starts from
+/// the player unless PATH_FROM is set.
 #[test]
+#[ignore]
 fn climb_route() {
     let api = api();
     if ping_or_skip(&api).is_none() {
@@ -127,7 +132,12 @@ fn climb_route() {
     let env3 = |k: &str, n: usize| {
         std::env::var(k).ok().map(|s| s.split(',').filter_map(|c| c.trim().parse::<f64>().ok()).collect::<Vec<_>>()).filter(|v| v.len() == n)
     };
-    let start: [f64; 3] = env3("PATH_FROM", 3).map(|v| [v[0], v[1], v[2]]).unwrap_or([-6000.0, -8310.0, 553.0]);
+    let here = api.op("object.call", json!({"object": format!("addr:0x{player:X}"), "class": "Actor", "function": "K2_GetActorLocation", "params": {}}));
+    let feet = vec3(&here.result["ReturnValue"]).map(|p| [p[0], p[1], p[2] - 92.0]);
+    let Some(start) = env3("PATH_FROM", 3).map(|v| [v[0], v[1], v[2]]).or(feet) else {
+        println!("no player position");
+        return;
+    };
     let goal = target();
     let (mut x0, mut x1) = (start[0].min(goal[0]) - 600.0, start[0].max(goal[0]) + 600.0);
     let (mut y0, mut y1) = (start[1].min(goal[1]) - 600.0, start[1].max(goal[1]) + 600.0);
@@ -157,7 +167,9 @@ fn climb_route() {
     }
     println!("{} mesh samples in {:.0} s", samples.len(), t.elapsed().as_secs_f64());
 
-    // Patches: union of samples that are walkably close.
+    // The player's own spot is a sample too, so the search starts there.
+    samples.push(start);
+    // Patches: union of samples the game's navigation walks between.
     let n = samples.len();
     let mut patch: Vec<usize> = (0..n).collect();
     fn root(p: &mut Vec<usize>, i: usize) -> usize {
@@ -171,8 +183,15 @@ fn climb_route() {
     for i in 0..n {
         for j in i + 1..n {
             let (a, b) = (samples[i], samples[j]);
-            if ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt() <= WALK_STEP && (a[2] - b[2]).abs() <= WALK_RISE {
-                let (ri, rj) = (root(&mut patch, i), root(&mut patch, j));
+            let flat = ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2)).sqrt();
+            if flat > WALK_STEP * 1.5 || (a[2] - b[2]).abs() > WALK_STEP {
+                continue;
+            }
+            let (ri, rj) = (root(&mut patch, i), root(&mut patch, j));
+            if ri == rj {
+                continue;
+            }
+            if walk_len(&api, player, a, b, flat * 1.5 + 100.0).is_some() {
                 patch[ri] = rj;
             }
         }
@@ -199,32 +218,39 @@ fn climb_route() {
     };
     println!("{} patches; start in patch {from}, brazier in patch {to}", groups.len());
 
-    // Best move between two patches: the closest pair of samples, as a
-    // jump, dash or drop when the player can make it.
-    let link = |a: usize, b: usize| -> Option<(f64, &'static str, [f64; 3], [f64; 3])> {
-        let mut best: Option<(f64, &'static str, [f64; 3], [f64; 3])> = None;
+    // A move between two patches: the closest sample pairs first, each
+    // simulated as a jump (or a jump and dash when a jump falls short) and
+    // swept with the probe; the first clear one is the move.
+    let Some(probe) = spawn_probe(&api, player, start) else {
+        return;
+    };
+    let mut checked = 0;
+    let mut link = |a: usize, b: usize| -> Option<(f64, &'static str, [f64; 3], [f64; 3])> {
+        let mut pairs: Vec<(f64, [f64; 3], [f64; 3])> = Vec::new();
         for &i in &groups[a] {
             for &j in &groups[b] {
                 let (p, q) = (samples[i], samples[j]);
                 let flat = ((p[0] - q[0]).powi(2) + (p[1] - q[1]).powi(2)).sqrt();
-                let rise = q[2] - p[2];
-                let kind = if rise > JUMP_UP {
-                    continue;
-                } else if flat <= WALK_STEP && rise > WALK_RISE {
-                    "jump"
-                } else if flat <= WALK_STEP {
-                    "drop"
-                } else if flat <= DASH {
-                    if rise > 0.0 { "jump and dash" } else { "dash" }
-                } else {
-                    continue;
-                };
-                if best.is_none_or(|b| flat < b.0) {
-                    best = Some((flat, kind, p, q));
+                if q[2] - p[2] <= JUMP_UP && flat <= DASH + 2.0 * RUN * JUMP_SPEED / GRAVITY {
+                    pairs.push((flat, p, q));
                 }
             }
         }
-        best
+        pairs.sort_by(|x, y| x.0.total_cmp(&y.0));
+        for (flat, p, q) in pairs.into_iter().take(6) {
+            let (kind, pts) = match arc(p, q, false) {
+                Some(pts) => (if q[2] < p[2] - WALK_RISE { "drop" } else { "jump" }, pts),
+                None => match arc(p, q, true) {
+                    Some(pts) => ("jump and dash", pts),
+                    None => continue,
+                },
+            };
+            checked += 1;
+            if sweep(&api, &probe, &pts, player).is_none() {
+                return Some((flat, kind, p, q));
+            }
+        }
+        None
     };
     // Breadth first over patches: fewest moves.
     let mut prev: Vec<Option<(usize, &'static str, [f64; 3], [f64; 3])>> = vec![None; groups.len()];
@@ -246,6 +272,9 @@ fn climb_route() {
             }
         }
     }
+    println!("{checked} jumps and dashes swept");
+    let r = api.op("object.call", json!({"object": probe, "class": "Actor", "function": "K2_DestroyActor", "params": {}}));
+    println!("probe removed: {:?}", r.error);
     let top = |g: usize| groups[g].iter().map(|&i| samples[i][2]).fold(f64::MIN, f64::max);
     if !seen[to] {
         let reach: Vec<usize> = (0..groups.len()).filter(|&g| seen[g]).collect();
@@ -552,7 +581,9 @@ fn route_line(api: &modforge::client::Api<Value>, player: u64) -> Vec<[f64; 3]> 
     if let Some(p) = vec3(&loc.result["ReturnValue"]) {
         legs.push(([p[0], p[1], p[2] - 92.0], "walk"));
     }
-    legs.extend(LINE);
+    // ROUTE_UPTO=n: only the first n route points (the start of the route).
+    let upto = std::env::var("ROUTE_UPTO").ok().and_then(|v| v.parse().ok()).unwrap_or(LINE.len());
+    legs.extend(&LINE[..upto.min(LINE.len())]);
     let mut line: Vec<[f64; 3]> = vec![legs[0].0];
     for w in legs.windows(2) {
         let (a, kind) = w[0];
@@ -599,6 +630,187 @@ fn overlay_route() {
     println!("{} line points", line.len());
     let r = api.op("overlay.lines", json!({"lines": [{"points": line, "color": [0.0, 1.0, 1.0, 1.0], "thickness": 4.0}]}));
     println!("overlay: {} {:?}", r.result, r.error);
+}
+
+/// The player's real movement and collision numbers, read from the
+/// game: the inputs for simulating jumps and dashes. Read only.
+#[test]
+fn movement_numbers() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 4).into_iter().next() else {
+        return;
+    };
+    let me = format!("addr:0x{player:X}");
+    let parts = api.op("object.get", json!({"object": me, "fields": ["CharacterMovement", "CapsuleComponent"]}));
+    println!("parts: {} {:?}", parts.result, parts.error);
+    let get = |part: &str, fields: Value| {
+        let Some(a) = parts.result[part]["addr"].as_str() else { return };
+        let r = api.op("object.get", json!({"object": format!("addr:{a}"), "fields": fields}));
+        println!("{part}: {} {:?}", r.result, r.error);
+    };
+    get(
+        "CharacterMovement",
+        json!(["JumpZVelocity", "GravityScale", "MaxStepHeight", "WalkableFloorZ", "WalkableFloorAngle", "AirControl", "MaxWalkSpeed", "MaxAcceleration", "BrakingDecelerationFalling", "FallingLateralFriction", "JumpOffJumpZFactor"]),
+    );
+    get("CapsuleComponent", json!(["CapsuleRadius", "CapsuleHalfHeight"]));
+    let jump = api.op("object.get", json!({"object": me, "fields": ["JumpMaxHoldTime", "JumpMaxCount"]}));
+    println!("character: {} {:?}", jump.result, jump.error);
+}
+
+/// The player's body and moves, read by movement_numbers 2026-11-06.
+const BODY_RADIUS: f64 = 35.0;
+const BODY_HALF: f64 = 96.0;
+const JUMP_SPEED: f64 = 480.0;
+const GRAVITY: f64 = 980.0;
+const RUN: f64 = 400.0;
+
+/// The body's centre along a jump from floor point p to floor point q:
+/// launch at JUMP_SPEED, gravity, the run speed needed to cover the
+/// distance in the air time. None when the jump cannot make it (too high,
+/// or faster than running). The dash form keeps the apex height across
+/// DASH and then falls, which is a guess at the game's own dash.
+fn arc(p: [f64; 3], q: [f64; 3], dash: bool) -> Option<Vec<[f64; 3]>> {
+    let lift = BODY_HALF + 2.0;
+    let flat = ((q[0] - p[0]).powi(2) + (q[1] - p[1]).powi(2)).sqrt();
+    let rise = q[2] - p[2];
+    let disc = JUMP_SPEED * JUMP_SPEED - 2.0 * GRAVITY * rise;
+    if disc < 0.0 {
+        return None;
+    }
+    let air = (JUMP_SPEED + disc.sqrt()) / GRAVITY;
+    let at = |s: f64, z: f64| [p[0] + (q[0] - p[0]) * s, p[1] + (q[1] - p[1]) * s, z + lift];
+    let mut pts = Vec::new();
+    if !dash {
+        if flat / air > RUN {
+            return None;
+        }
+        for k in 0..=12 {
+            let t = air * k as f64 / 12.0;
+            pts.push(at(t / air, p[2] + JUMP_SPEED * t - GRAVITY * t * t / 2.0));
+        }
+        return Some(pts);
+    }
+    // Dash: up to the apex, straight across, then a fall to q.
+    let apex_t = JUMP_SPEED / GRAVITY;
+    let apex = p[2] + JUMP_SPEED * apex_t / 2.0;
+    if apex < q[2] || flat > DASH + RUN * apex_t * 2.0 {
+        return None;
+    }
+    pts.push(at(0.0, p[2]));
+    pts.push(at(0.1, apex));
+    let fall = ((2.0 * (apex - q[2]) / GRAVITY).sqrt() * RUN / flat.max(1.0)).min(0.3);
+    for k in 1..=8 {
+        pts.push(at(0.1 + (0.9 - fall) * k as f64 / 8.0, apex));
+    }
+    pts.push(at(1.0, q[2]));
+    Some(pts)
+}
+
+/// Sweep a body the player's size along `pts` with the game's own
+/// movement collision (a Character's capsule moved with sweep on). None
+/// when clear; else what it hit. A landing on the floor at the end is
+/// clear.
+fn sweep(api: &modforge::client::Api<Value>, probe: &str, pts: &[[f64; 3]], player: u64) -> Option<String> {
+    let xyz = |p: [f64; 3]| json!({"X": p[0], "Y": p[1], "Z": p[2]});
+    let mv = |p: [f64; 3], swept: bool| {
+        api.op("object.call", json!({"object": probe, "class": "Actor", "function": "K2_SetActorLocation", "params": {"NewLocation": xyz(p), "bSweep": swept, "bTeleport": true}}))
+    };
+    mv(pts[0], false);
+    for (k, p) in pts.iter().enumerate().skip(1) {
+        let r = mv(*p, true);
+        let hit = &r.result["SweepHitResult"];
+        if hit["bBlockingHit"] != true {
+            continue;
+        }
+        let actor = hit["Actor"].to_string();
+        if actor.contains(&format!("{player:X}")) {
+            continue;
+        }
+        let up = hit["ImpactNormal"]["Z"].as_f64().unwrap_or(0.0);
+        if k == pts.len() - 1 && up > 0.7 {
+            return None;
+        }
+        return Some(format!("piece {k}/{}: {} at {} normal z {up:.2}", pts.len() - 1, hit["Actor"], hit["ImpactPoint"]));
+    }
+    None
+}
+
+/// Check the old route's jumps and dashes with the game's collision: a
+/// body the player's size swept along each arc. Spawns one invisible
+/// probe and destroys it. A write, so ignored by default.
+#[test]
+#[ignore]
+fn check_moves() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 4).into_iter().next() else {
+        return;
+    };
+    let Some(probe) = spawn_probe(&api, player, LINE[0].0) else {
+        return;
+    };
+    for w in LINE.windows(2) {
+        let ((p, kind), (q, _)) = (w[0], w[1]);
+        if kind == "walk" || kind == "end" {
+            continue;
+        }
+        let path = arc(p, q, kind == "dash").or_else(|| arc(p, q, true));
+        let verdict = match &path {
+            None => "cannot make it with these numbers".to_string(),
+            Some(pts) => sweep(&api, &probe, pts, player).map(|h| format!("BLOCKED {h}")).unwrap_or_else(|| "clear".into()),
+        };
+        println!("{kind} ({:.0}, {:.0}, {:.0}) -> ({:.0}, {:.0}, {:.0}): {verdict}", p[0], p[1], p[2], q[0], q[1], q[2]);
+    }
+    let r = api.op("object.call", json!({"object": probe, "class": "Actor", "function": "K2_DestroyActor", "params": {}}));
+    println!("probe removed: {:?}", r.error);
+}
+
+/// An invisible Character the player's size with its movement off, for
+/// sweep. Returns its selector; the caller destroys it.
+fn spawn_probe(api: &modforge::client::Api<Value>, player: u64, at: [f64; 3]) -> Option<String> {
+    let ctx = format!("0x{player:X}");
+    let me = format!("addr:{ctx}");
+    let call = |object: &str, class: &str, function: &str, params: Value| {
+        api.op("object.call", json!({"object": object, "class": class, "function": function, "params": params}))
+    };
+    let transform = json!({"Rotation": {"X": 0, "Y": 0, "Z": 0, "W": 1}, "Translation": {"X": at[0], "Y": at[1], "Z": at[2] + 400.0}, "Scale3D": {"X": 1, "Y": 1, "Z": 1}});
+    let begin = call(&me, "GameplayStatics", "BeginDeferredActorSpawnFromClass", json!({"WorldContextObject": ctx, "ActorClass": "class:Character", "SpawnTransform": transform, "CollisionHandlingOverride": 1}));
+    let Some(actor) = begin.result["ReturnValue"]["addr"].as_str().map(str::to_owned) else {
+        println!("probe spawn failed: {:?}", begin.error);
+        return None;
+    };
+    call(&me, "GameplayStatics", "FinishSpawningActor", json!({"Actor": actor, "SpawnTransform": transform}));
+    let probe = format!("addr:{actor}");
+    let parts = api.op("object.get", json!({"object": probe, "fields": ["CapsuleComponent", "CharacterMovement"]}));
+    if let Some(c) = parts.result["CapsuleComponent"]["addr"].as_str() {
+        let r = call(&format!("addr:{c}"), "CapsuleComponent", "SetCapsuleSize", json!({"InRadius": BODY_RADIUS, "InHalfHeight": BODY_HALF, "bUpdateOverlaps": false}));
+        println!("probe size: {:?}", r.error);
+    }
+    if let Some(m) = parts.result["CharacterMovement"]["addr"].as_str() {
+        let r = call(&format!("addr:{m}"), "CharacterMovementComponent", "SetMovementMode", json!({"NewMovementMode": 0, "NewCustomMode": 0}));
+        println!("probe movement off: {:?}", r.error);
+    }
+    Some(probe)
+}
+
+/// A complete walking path from the game's navigation from a to b, no
+/// longer than `most`: its length, or None.
+fn walk_len(api: &modforge::client::Api<Value>, player: u64, a: [f64; 3], b: [f64; 3], most: f64) -> Option<f64> {
+    let ctx = format!("0x{player:X}");
+    let xyz = |p: [f64; 3]| json!({"X": p[0], "Y": p[1], "Z": p[2]});
+    let r = api.op("object.call", json!({"object": format!("addr:{ctx}"), "class": "NavigationSystemV1", "function": "FindPathToLocationSynchronously", "params": {"WorldContextObject": ctx, "PathStart": xyz(a), "PathEnd": xyz(b)}}));
+    let path = format!("addr:{}", r.result["ReturnValue"]["addr"].as_str()?);
+    let partial = api.op("object.call", json!({"object": path, "class": "NavigationPath", "function": "IsPartial", "params": {}}));
+    if partial.result["ReturnValue"] != false {
+        return None;
+    }
+    let len = api.op("object.call", json!({"object": path, "class": "NavigationPath", "function": "GetPathLength", "params": {}}));
+    len.result["ReturnValue"].as_f64().filter(|l| *l <= most)
 }
 
 /// Set the mod's GPS route: the beacon route (LINE), or PATH_TO="x,y,z"
@@ -652,7 +864,20 @@ fn draw_route() {
     };
     let ctx = format!("0x{player:X}");
     let me = format!("addr:{ctx}");
-    let line = route_line(&api, player);
+    let coarse = route_line(&api, player);
+    // Cut into 2 m pieces, each put on the ground under it (the nav mesh),
+    // so a pipe never runs through a bulge in the ground.
+    let mut line: Vec<[f64; 3]> = vec![coarse[0]];
+    for w in coarse.windows(2) {
+        let d = [w[1][0] - w[0][0], w[1][1] - w[0][1], w[1][2] - w[0][2]];
+        let n = (((d[0] * d[0] + d[1] * d[1]).sqrt() / 200.0).ceil() as usize).max(1);
+        for k in 1..=n {
+            let t = k as f64 / n as f64;
+            let p = [w[0][0] + d[0] * t, w[0][1] + d[1] * t, w[0][2] + d[2] * t];
+            let on_ground = if k < n { project(&api, player, p, [50.0, 50.0, 300.0]) } else { None };
+            line.push(on_ground.unwrap_or(p));
+        }
+    }
     println!("{} line points", line.len());
 
     let cylinder = instances(&api, "StaticMesh", 20000).into_iter().find(|(_, n)| n == "Cylinder").map(|(a, _)| format!("0x{a:X}"));
