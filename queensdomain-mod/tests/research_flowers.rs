@@ -278,6 +278,29 @@ fn looker_state() {
         }
         println!("   {class}.{name}: {}", vals.join(" "));
     }
+    // Which Lookers are in trap mode (EnemyBase_C.InTrapMode,
+    // +0x8C6), and what the enemy base does about traps.
+    for ((_, name), b) in lookers.iter().zip(&mem) {
+        let trap = b.get(0x8C6).copied().unwrap_or(255);
+        println!("   InTrapMode={trap}  {name}");
+    }
+    let r = api.op("discover_class_detail", json!({"name": "EnemyBase_C"}));
+    for f in r
+        .result
+        .get("functions")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let n = f.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let l = n.to_ascii_lowercase();
+        if ["trap", "aggro", "wake", "trigger", "sight", "los"]
+            .iter()
+            .any(|w| l.contains(w))
+        {
+            println!("   EnemyBase_C function: {n}");
+        }
+    }
 }
 
 /// The Blueprints from `flower_blueprints` that could be a flower
