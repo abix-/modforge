@@ -31,14 +31,17 @@ pub fn property_type(property: &NativeProperty) -> Option<String> {
 }
 
 /// FStructProperty::Struct and FObjectProperty::PropertyClass follow the
-/// FProperty base, which ends at 0x70 in this engine (FBoolProperty's own
+/// FProperty base, which ends at 0x70 on UE 5.4 (FBoolProperty's own
 /// fields start there, read from the shipped PDB: abioticfactor-mod
-/// docs/history/lan-loading.md).
-const PROPERTY_EXTRA: usize = 0x70;
+/// docs/history/lan-loading.md) and at 0x78 on UE 4.27 (measured on
+/// Queens' Domain, queensdomain-mod tests/research_ustruct_layout.rs).
+fn property_extra() -> usize {
+    crate::ue::offsets::property_size()
+}
 
 /// The UScriptStruct a StructProperty holds, walkable as a UClass.
 fn struct_of(property: &NativeProperty) -> Option<&'static UClass> {
-    let at = property.address + PROPERTY_EXTRA;
+    let at = property.address + property_extra();
     if property.address == 0 || !crate::winproc::is_addr_readable(at + 8) {
         return None;
     }
@@ -55,7 +58,8 @@ pub fn fields_of(object: &UObject) -> Vec<(NativeProperty, String)> {
     fields_in_chain(object.class())
 }
 
-fn fields_in_chain(mut class: Option<&UClass>) -> Vec<(NativeProperty, String)> {
+/// Every reflected field of a class and its super classes, with its type.
+pub fn fields_in_chain(mut class: Option<&UClass>) -> Vec<(NativeProperty, String)> {
     let mut out = Vec::new();
     let mut depth = 0;
     while let Some(current) = class {
@@ -162,7 +166,7 @@ pub unsafe fn write_value(
     unsafe {
         match kind {
             "BoolProperty" => {
-                let layout = property.address + crate::ue::offsets::fboolproperty::FIELD_SIZE;
+                let layout = property.address + crate::ue::offsets::fboolproperty::field_size();
                 let bytes = (layout as *const [u8; 4]).read_unaligned();
                 if bytes[0] != 1 || bytes[3] == 0 {
                     return Err(format!("{name}: unexpected bool layout {bytes:?}"));
@@ -282,7 +286,7 @@ pub unsafe fn read_value(base: *const u8, property: &NativeProperty, kind: &str)
     unsafe {
         match kind {
             "BoolProperty" => {
-                let layout = property.address + crate::ue::offsets::fboolproperty::FIELD_SIZE;
+                let layout = property.address + crate::ue::offsets::fboolproperty::field_size();
                 let bytes = (layout as *const [u8; 4]).read_unaligned();
                 json!(std::ptr::read_volatile(at.add(bytes[1] as usize)) & bytes[3] != 0)
             }
@@ -369,10 +373,16 @@ mod tests {
 /// records (2026-09-13, abioticfactor-mod tests/research_tree.rs): the
 /// element record pointer sits at +0x78, one pointer past where a struct
 /// property keeps its struct (+0x70); +0x70 is zero on array records.
-const ARRAY_INNER: usize = PROPERTY_EXTRA + 8;
+/// Also +0x78 on UE 4.27, where it sits straight after the 0x78-byte
+/// FProperty base with no flags in front: Actor's Tags and Children
+/// records name themselves there (Queens' Domain, 2026-11-05,
+/// queensdomain-mod tests/research_ustruct_layout.rs property_extra_slot).
+fn array_inner() -> usize {
+    0x78
+}
 
 fn inner_of(property: &NativeProperty) -> Result<(NativeProperty, String), String> {
-    let at = property.address + ARRAY_INNER;
+    let at = property.address + array_inner();
     if property.address == 0 || !crate::winproc::is_addr_readable(at + 8) {
         return Err(format!("{}: array record unreadable", property.name));
     }

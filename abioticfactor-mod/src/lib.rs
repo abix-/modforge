@@ -69,6 +69,7 @@ unsafe fn worker() {
         ueforge::ue::StructLayout {
             properties_size: 0x58,
             element_size: 0x34,
+            property_size: 0x70,
         },
     );
 

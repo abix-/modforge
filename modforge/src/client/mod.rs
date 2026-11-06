@@ -678,6 +678,50 @@ pub fn read_u64<S: DeserializeOwned>(api: &Api<S>, addr: u64, offset: u64) -> u6
     u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 }
 
+/// Vtable slots where `derived`'s function calls or jumps straight to
+/// `base`'s function in the same slot, the shape of an override that
+/// calls Super. Unreal's AActor::ProcessEvent calls
+/// UObject::ProcessEvent, so with a plain object as `base` and an
+/// actor as `derived` the ProcessEvent slot is among the results,
+/// without UE4SS's "ProcessEvent address" log line. Reads the first
+/// `slots` vtable entries and `body` bytes of each overriding
+/// function, looking for E8 (call) and E9 (jmp) rel32.
+pub fn super_call_slots<S: DeserializeOwned>(
+    api: &Api<S>,
+    base: u64,
+    derived: u64,
+    slots: usize,
+    body: u64,
+) -> Result<Vec<usize>, String> {
+    let vtable_of = |obj: u64| -> Result<Vec<u8>, String> {
+        let vt = read_u64(api, obj, 0);
+        let table = read_bytes(api, vt, 0, (slots * 8) as u64);
+        if vt == 0 || table.len() != slots * 8 {
+            return Err(format!("could not read the vtable of {obj:#x}"));
+        }
+        Ok(table)
+    };
+    let (vb, vd) = (vtable_of(base)?, vtable_of(derived)?);
+    let mut out = Vec::new();
+    for i in 0..slots {
+        let (b, d) = (from_le_u64(&vb, i * 8), from_le_u64(&vd, i * 8));
+        if b == d || b == 0 || d == 0 {
+            continue;
+        }
+        let code = read_bytes(api, d, 0, body);
+        let calls_base = (0..code.len().saturating_sub(4)).any(|k| {
+            (code[k] == 0xE8 || code[k] == 0xE9) && {
+                let rel = from_le_i32(&code, k + 1) as i64;
+                (d as i64 + k as i64 + 5 + rel) as u64 == b
+            }
+        });
+        if calls_base {
+            out.push(i);
+        }
+    }
+    Ok(out)
+}
+
 pub fn from_le_i32(buf: &[u8], off: usize) -> i32 {
     i32::from_le_bytes(buf[off..off + 4].try_into().unwrap())
 }

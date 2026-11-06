@@ -125,6 +125,56 @@ fn child_properties_slot() {
     }
 }
 
+/// Where an FProperty's own data ends: the first slot after it is
+/// FStructProperty::Struct, so on Actor's struct properties the right
+/// offset names a script struct (RepMovement and the like). ueforge's
+/// reflect.rs reads it at +0x70, the UE 5.4 size; on this game the
+/// location call came back undecoded, 2026-11-05.
+#[test]
+fn property_extra_slot() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let classes = class_objects(&api);
+    let Some(actor) = classes.get("Actor") else {
+        println!("no UClass named Actor");
+        return;
+    };
+    let name = |fname: u64| {
+        let r = api.op("fname_to_string", json!({"fname": fname}));
+        r.result.get("string").and_then(|s| s.as_str()).unwrap_or("?").to_string()
+    };
+    let mut p = client::read_u64(&api, *actor, 0x50);
+    let mut shown = 0;
+    for _ in 0..200 {
+        if p == 0 || shown == 8 {
+            break;
+        }
+        let node = client::read_bytes(&api, p, 0, 0x90);
+        if node.len() < 0x90 {
+            break;
+        }
+        let kind = name(client::read_u64(&api, client::from_le_u64(&node, 0x8), 0));
+        // A struct property's slot names a UObject (the struct); an
+        // array property's names an FField (its element record).
+        if kind == "StructProperty" || kind == "ArrayProperty" {
+            shown += 1;
+            println!("{} ({kind}) @ {p:#x}", name(client::from_le_u64(&node, 0x28)));
+            for off in (0x68..0x90).step_by(8) {
+                let q = client::from_le_u64(&node, off);
+                let n = if q > 0x10000 && q < 0x7FFF_FFFF_FFFF {
+                    format!("object {} / field {:?}", common::object_name(&api, q), common::ffield_name(&api, q))
+                } else {
+                    "-".into()
+                };
+                println!("   +{off:#x} = {q:#x} {n}");
+            }
+        }
+        p = client::from_le_u64(&node, 0x20);
+    }
+}
+
 /// Walk the first few FProperty nodes off Actor's ChildProperties
 /// (+0x50, name at +0x28, next at +0x20) and print every i32 from
 /// +0x30 to +0x58. src/lib.rs boots with ElementSize +0x3C;

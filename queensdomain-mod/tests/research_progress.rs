@@ -269,6 +269,7 @@ fn beacon_brazier() {
         (r.len() == 12).then(|| f32::from_le_bytes(r[4..8].try_into().unwrap()))
     })()
     .unwrap_or(0.0);
+    println!("camera yaw {yaw:.0}");
     let facing = |dx: f32, dy: f32| {
         let mut rel = dy.atan2(dx).to_degrees() - yaw;
         while rel > 180.0 {
@@ -302,6 +303,93 @@ fn beacon_brazier() {
             for (f, n) in common::class_functions(&api, addr) {
                 common::scan_script(&api, f, &format!("{name}::{n}"));
             }
+        }
+    }
+}
+
+/// How to get up to the third beacon site, whose two braziers stand
+/// about 20 m above the ground the player reached (2026-11-06): live
+/// actors within 60 m of the site whose class or own name suggests a
+/// way up (lift, ladder, stairs, climb, vine, rope, jump pad, updraft,
+/// wind, launch, platform, bridge, door, gate, lever, switch), nearest
+/// first, with height against the braziers and the compass direction
+/// from the site (-X south, +Y east).
+#[test]
+fn beacon_way_up() {
+    const SITE: [f32; 3] = [-3900.0, -10600.0, 2773.0];
+    const WORDS: &[&str] = &[
+        "lift", "elevator", "ladder", "stair", "step", "climb", "vine", "rope", "ledge", "jump",
+        "launch", "bounce", "updraft", "wind", "geyser", "platform", "bridge", "door", "gate",
+        "lever", "switch", "button", "ramp", "path", "plank", "grapple", "teleport", "portal",
+    ];
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let (Some(root), Some(loc)) = (
+        field_off(&api, "Actor", "RootComponent"),
+        field_off(&api, "SceneComponent", "RelativeLocation"),
+    ) else {
+        println!("a reflected offset was not found");
+        return;
+    };
+    let mut rows: Vec<(f32, String)> = Vec::new();
+    let mut look = |class: &str, only_named: bool| {
+        for (a, n) in instances(&api, class, 20000) {
+            if only_named && !hit(&n, WORDS) {
+                continue;
+            }
+            let Some(q) = position(&api, a, root, loc) else { continue };
+            let (dx, dy) = (q[0] - SITE[0], q[1] - SITE[1]);
+            let d = (dx * dx + dy * dy).sqrt() / 100.0;
+            if d > 60.0 {
+                continue;
+            }
+            let compass = (dy.atan2(dx).to_degrees() + 360.0) % 360.0;
+            rows.push((
+                d,
+                format!(
+                    "   {n} ({class}) {d:.0} m from the site, compass {compass:.0}, height {:+.0} m against the braziers",
+                    (q[2] - SITE[2]) / 100.0
+                ),
+            ));
+        }
+    };
+    for (_, class) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        if hit(&class, WORDS) {
+            look(&class, false);
+        }
+    }
+    for class in ["StaticMeshActor", "InstancedFoliageActor"] {
+        look(class, true);
+    }
+    rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+    println!("{} candidates within 60 m of the site", rows.len());
+    for r in rows.iter().take(60) {
+        println!("{}", r.1);
+    }
+}
+
+/// What a JumpHelper_C / JumpAcrossHelper_C is (beacon_way_up found
+/// three level with the third beacon's braziers): each class's parent
+/// chain, one live object's fields, and a scan of every function.
+#[test]
+fn jump_helper() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        if name != "JumpHelper_C" && name != "JumpAcrossHelper_C" {
+            continue;
+        }
+        println!("== {name}: parents {:?}", common::super_chain(&api, addr));
+        if let Some((obj, n)) = instances(&api, &name, 2).into_iter().next() {
+            println!("-- {n}");
+            dump(&api, obj, &name, None);
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            common::scan_script(&api, f, &format!("{name}::{n}"));
         }
     }
 }

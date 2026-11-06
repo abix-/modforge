@@ -537,7 +537,7 @@ pub fn class_bool_property(object: &UObject, name: &str) -> Result<(usize, u8), 
             .iter()
             .find(|p| p.name == name)
         {
-            let layout = property.address + crate::ue::offsets::fboolproperty::FIELD_SIZE;
+            let layout = property.address + crate::ue::offsets::fboolproperty::field_size();
             if property.address == 0 || !crate::winproc::is_addr_readable(layout + 3) {
                 return Err(format!("{name}: its FBoolProperty is not readable"));
             }

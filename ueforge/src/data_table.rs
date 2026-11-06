@@ -1086,10 +1086,22 @@ impl<T: Copy + PartialEq + Send + 'static> ClassNamedFieldTweak<T> {
         if let Some(t) = self.inner.get() {
             return Ok(t);
         }
-        let (offset, _size) =
-            resolve_class_field(self.class_name, self.field_name).ok_or_else(|| {
+        // The discovery cache first; without it (discovery not run, or
+        // the field on a super class), the live class chain's reflected
+        // fields. Not through the default object: on Queens' Domain
+        // (UE 4.27) that lookup found no fields, 2026-11-06.
+        let offset = resolve_class_field(self.class_name, self.field_name)
+            .map(|(offset, _)| offset)
+            .or_else(|| {
+                let class = ue::find_class_fast(self.class_name)?;
+                crate::reflect::fields_in_chain(Some(class))
+                    .into_iter()
+                    .find(|(p, _)| p.name == self.field_name)
+                    .map(|(p, _)| p.offset as usize)
+            })
+            .ok_or_else(|| {
                 format!(
-                    "ClassNamedFieldTweak: field '{}.{}' not in discovery cache",
+                    "ClassNamedFieldTweak: no field '{}.{}'",
                     self.class_name, self.field_name
                 )
             })?;

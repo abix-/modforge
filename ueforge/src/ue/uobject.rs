@@ -930,6 +930,24 @@ pub fn find_struct_fast(name: &str) -> Option<&'static UClass> {
     None
 }
 
+/// True while the object at `addr` is still the one GObjects holds at
+/// its own index. One indexed read, no walk, so a cached object can be
+/// re-checked on every tick of a repeating job; false once the engine
+/// has freed it or reused the slot.
+pub fn is_live(addr: usize) -> bool {
+    let Some(rt) = try_runtime() else {
+        return false;
+    };
+    if addr == 0 || !crate::winproc::is_addr_readable(addr + offsets::uobject::INDEX + 4) {
+        return false;
+    }
+    // SAFETY: the index field of the object header was just checked readable.
+    let index: i32 = unsafe { ((addr + offsets::uobject::INDEX) as *const i32).read_unaligned() };
+    // SAFETY: the runtime's image base and offsets were validated at init.
+    let view = unsafe { GObjectsView::from_image(rt.image_base, rt.platform_offsets) };
+    view.is_valid() && view.get(index).is_some_and(|o| o.as_ptr() as usize == addr)
+}
+
 // ---- Caches --------------------------------------------------------------
 
 static STRUCT_CACHE: OnceLock<RwLock<HashMap<String, &'static UClass>>> = OnceLock::new();

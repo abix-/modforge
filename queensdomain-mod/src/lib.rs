@@ -1,5 +1,8 @@
 #![allow(clippy::missing_safety_doc)]
 
+mod tweaks;
+mod weapon_level;
+
 static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     name: "QueensDomainMod",
     version: "0.1.0",
@@ -8,9 +11,8 @@ static MOD_INFO: ueforge::ModDef = ueforge::ModDef {
     console: cfg!(feature = "console"),
     on_unreal_init: on_unreal_init,
     on_shutdown: on_shutdown,
-    // Minimal on purpose: no ImGui tabs, no watchers. The control
-    // plane on port 31310 is the only surface until a research
-    // test asks for more.
+    // No ImGui tabs. The control plane on port 31310 plus the
+    // weapon level watcher (weapon_level.rs) are the whole surface.
     tabs: &[],
 };
 
@@ -26,9 +28,13 @@ fn on_unreal_init() {
 // Measured 2026-11-05 by tests/research_ustruct_layout.rs, and UE4SS's
 // startup tables agree: FUObjectItem::Object +0x0 (the stock chunked
 // array), UStruct::PropertiesSize +0x58, FProperty::ElementSize +0x3C,
-// Offset_Internal +0x4C. The ProcessEvent slot is still the
-// placeholder from the UE 5.4 games.
-const PROCESS_EVENT_IDX: usize = 0x4D;
+// Offset_Internal +0x4C. The ProcessEvent slot 0x44 was measured
+// 2026-11-05 by tests/research_engine.rs: the player's function in that
+// slot calls the GameInstance's, as AActor::ProcessEvent calls
+// UObject::ProcessEvent, and the base function is 924 bytes.
+const PROCESS_EVENT_IDX: usize = 0x44;
+static DRAIN: ueforge::pe_queue::GameThread = ueforge::pe_queue::GameThread::new();
+const DRAIN_HINT: &str = "queensdomain: is the UEngine::Tick hook installed? see pe_stats.game_thread";
 const G_OBJECTS_LAYOUT: ueforge::ue::GObjectsLayout = ueforge::ue::GObjectsLayout::WrappedChunked;
 const STRUCT_LAYOUT: ueforge::ue::StructLayout = ueforge::ue::StructLayout::UE4_27;
 
@@ -42,6 +48,11 @@ unsafe fn worker() {
     ueforge::ops::register_builtins();
     ueforge::ops::register_with_resolver(ueforge::selector::resolve);
     ueforge::shutdown::register_builtins();
+    // Engine calls (object.call and friends) run on the game thread,
+    // drained from UEngine::Tick.
+    ueforge::reflect::register_ops(&DRAIN, DRAIN_HINT);
+    ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
+    ueforge::game_thread::serve(&DRAIN);
 
     ueforge::spawn(
         ueforge::Config {
@@ -60,6 +71,12 @@ unsafe fn worker() {
         },
         |msg| ueforge::log!("{}", msg),
     );
+
+    // Also puts tweaks.rs back on every game load. The crash first
+    // blamed on it was the hot reload: weapon_level_steps ran every step
+    // clean in game on 2026-11-06.
+    weapon_level::start();
+    weapon_level::register_ops();
 
     ueforge::log!("queensdomain_mod ready, http on port 31310");
 }

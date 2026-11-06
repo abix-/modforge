@@ -47,6 +47,10 @@ pub struct StructLayout {
     pub properties_size: usize,
     /// Offset of `FProperty::ElementSize` (i32).
     pub element_size: usize,
+    /// Size of the `FProperty` base: where a subclass's own fields
+    /// start (FStructProperty::Struct, FObjectProperty::PropertyClass,
+    /// FBoolProperty's FieldSize, ByteOffset, ByteMask, FieldMask).
+    pub property_size: usize,
 }
 
 impl StructLayout {
@@ -56,11 +60,15 @@ impl StructLayout {
     pub const UE5_4: StructLayout = StructLayout {
         properties_size: 0xB0,
         element_size: 0x34,
+        property_size: 0x70,
     };
     /// Measured on Sintopia (UE 5.2.1, source build), 2026-09-11.
+    /// `property_size` is not measured there: 0x70 is the value
+    /// reflect.rs used for every game before it moved here.
     pub const UE5_2: StructLayout = StructLayout {
         properties_size: 0x58,
         element_size: 0x3C,
+        property_size: 0x70,
     };
     /// UE4SS's own tables for UE 5.7, logged at startup on Alchemy
     /// Factory and Nuclear Epoch (`UStruct::PropertiesSize = 0x58`,
@@ -69,16 +77,21 @@ impl StructLayout {
     pub const UE5_7: StructLayout = StructLayout {
         properties_size: 0x58,
         element_size: 0x34,
+        property_size: 0x70,
     };
     /// Measured on Queens' Domain (UE 4.27), 2026-11-05, by
     /// `queensdomain-mod/tests/research_ustruct_layout.rs`: Object
     /// reads 0x28 and Field 0x30 at +0x58; bool properties read 1
     /// at +0x3C next to ArrayDim 1 at +0x38. UE4SS's own tables on
     /// the same run agree (`UStruct::PropertiesSize = 0x58`,
-    /// `FProperty::ElementSize = 0x3C`).
+    /// `FProperty::ElementSize = 0x3C`). `property_size` 0x78 by
+    /// `property_extra_slot` in the same test: Actor's struct
+    /// properties name RepMovement and ActorTickFunction at +0x78,
+    /// and +0x70 is null.
     pub const UE4_27: StructLayout = StructLayout {
         properties_size: 0x58,
         element_size: 0x3C,
+        property_size: 0x78,
     };
 }
 
@@ -198,12 +211,22 @@ pub mod fproperty {
 /// bitfield bool's value byte is at `Offset_Internal + BYTE_OFFSET` on the
 /// instance and its bit is `FIELD_MASK`; a plain (non-bitfield) bool has
 /// FieldSize 1 and mask 0xFF. Read from Abiotic Factor's shipped PDB
-/// (UE 5.4, abioticfactor-mod/docs/lan-loading.md, 2026-09-12).
+/// (UE 5.4, abioticfactor-mod/docs/lan-loading.md, 2026-09-12). The four
+/// bytes FieldSize, ByteOffset, ByteMask, FieldMask start at
+/// [`property_size`], 0x70 there.
 pub mod fboolproperty {
-    pub const FIELD_SIZE: usize = 0x70;
-    pub const BYTE_OFFSET: usize = 0x71;
-    pub const BYTE_MASK: usize = 0x72;
-    pub const FIELD_MASK: usize = 0x73;
+    pub fn field_size() -> usize {
+        super::property_size()
+    }
+}
+
+/// Where an FProperty subclass's own fields start on the running game:
+/// its [`StructLayout::property_size`], or the UE 5.4 value before the
+/// runtime is up.
+pub fn property_size() -> usize {
+    crate::ue::try_runtime()
+        .map(|rt| rt.platform_offsets.struct_layout.property_size)
+        .unwrap_or(StructLayout::UE5_4.property_size)
 }
 
 pub mod uclass {

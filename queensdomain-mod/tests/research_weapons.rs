@@ -456,6 +456,68 @@ fn set_weapon_max_level() {
     println!("{changed} weapons set to max level {want}; kept: {}", kept.join(", "));
 }
 
+/// Where the save keeps weapon levels, for the mod's level-scaled
+/// torch recharge. GetWeaponLevel (weapon_level_code) does
+/// Map_Find(save.WeaponLevels, item data). This finds every loaded
+/// class with a save in its name that has a WeaponLevels field, its
+/// live objects, and each map entry: key read as a pointer (the item
+/// data) and value as i32 (the level). Slot stride 24, value at +8
+/// (ueforge::ue::tmap layout).
+#[test]
+fn weapon_levels_in_save() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for (_, class) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        if !class.to_ascii_lowercase().contains("save") {
+            continue;
+        }
+        let Some((_, off, size)) = fields(&api, &class).into_iter().find(|f| f.0 == "WeaponLevels") else { continue };
+        println!("-- {class}: WeaponLevels at +{off:#x} ({size} bytes)");
+        for (a, n) in instances(&api, &class, 8) {
+            let h = modforge::client::read_bytes(&api, a, off, 16);
+            if h.len() < 16 {
+                continue;
+            }
+            let data = modforge::client::from_le_u64(&h, 0);
+            let num = i32::from_le_bytes(h[8..12].try_into().unwrap()).clamp(0, 512) as u64;
+            println!("   {n} @ {a:#x}: {num} slots");
+            let b = modforge::client::read_bytes(&api, data, 0, num * 24);
+            for i in 0..num as usize {
+                if b.len() < i * 24 + 12 {
+                    break;
+                }
+                let key = modforge::client::from_le_u64(&b, i * 24);
+                let level = i32::from_le_bytes(b[i * 24 + 8..i * 24 + 12].try_into().unwrap());
+                println!("      {} = level {level}", common::object_name(&api, key));
+            }
+        }
+    }
+}
+
+/// The weapon level watcher (src/weapon_level.rs) took the game down on
+/// its first tick, 2026-11-05, with no log line and no dump. This runs
+/// its steps one at a time through the mod's weapon_level_step op, read
+/// only. Each step is logged in the mod before it runs, so if the game
+/// dies the mod log's last line names the step.
+#[test]
+fn weapon_level_steps() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for step in ["class", "save", "stats", "level"] {
+        match api.try_op("weapon_level_step", serde_json::json!({"step": step})) {
+            Ok(r) => println!("{step}: ok {} {} {}", r.ok, r.result, r.error.unwrap_or_default()),
+            Err(e) => {
+                println!("{step}: no answer ({e}); the game may be down, read the mod log");
+                return;
+            }
+        }
+    }
+}
+
 /// Sets the Azure Torch's AbilityPointsPerCharge on the loaded
 /// Torch_WeaponStats asset (env TORCH_POINTS_PER_CHARGE, default 10,
 /// the game's own value) and reads it back. The torch refills 0.33
