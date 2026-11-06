@@ -73,6 +73,7 @@ pub mod args;
 pub mod assets;
 pub mod behavior_tree;
 pub mod build;
+pub mod climb;
 pub mod client;
 pub mod counters;
 pub mod damage;

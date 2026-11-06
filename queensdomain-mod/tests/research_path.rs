@@ -770,6 +770,61 @@ fn check_moves() {
     println!("probe removed: {:?}", r.error);
 }
 
+/// Find a route to PATH_TO (default: the third beacon's brazier) with
+/// the mod's own search (ueforge climb: checked walks, swept jumps and
+/// dashes), wait for it, and print it; the mod draws it as pipes.
+/// ROUTE_DRAW=0 skips the pipes. A write, so ignored by default.
+#[test]
+#[ignore]
+fn find_route() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let draw = std::env::var("ROUTE_DRAW").map_or(true, |v| v != "0");
+    // "FS Air Distance", set to 1000 by tweaks.rs.
+    let r = api.op("route.find", json!({"player": "first_class:FS_Full_PlayerChar_C", "to": target(), "dash": DASH, "draw": draw}));
+    println!("start: {} {:?}", r.result, r.error);
+    if r.error.is_some() {
+        return;
+    }
+    let t = std::time::Instant::now();
+    let mut last = String::new();
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        let s = api.op("route.state", json!({}));
+        let phase = s.result["phase"].as_str().unwrap_or("").to_string();
+        if phase != last {
+            println!("{:>4.0} s: {phase}", t.elapsed().as_secs_f64());
+            last = phase.clone();
+        }
+        if phase == "done" || phase == "failed" || t.elapsed().as_secs() > 900 {
+            println!("{}", serde_json::to_string_pretty(&s.result).unwrap_or_default());
+            break;
+        }
+    }
+}
+
+/// Destroy every plain Character (the probes; the player's class is
+/// FS_Full_PlayerChar_C), for a search stopped before its cleanup.
+#[test]
+#[ignore]
+fn remove_probes() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let all = instances(&api, "Character", 200);
+    println!("{} characters: {:?}", all.len(), all.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>());
+    for (a, name) in all {
+        if !name.starts_with("Character_") {
+            continue;
+        }
+        let r = api.op("object.call", json!({"object": format!("addr:0x{a:X}"), "class": "Actor", "function": "K2_DestroyActor", "params": {}}));
+        println!("{name} 0x{a:X}: removed {:?}", r.error);
+    }
+}
+
 /// An invisible Character the player's size with its movement off, for
 /// sweep. Returns its selector; the caller destroys it.
 fn spawn_probe(api: &modforge::client::Api<Value>, player: u64, at: [f64; 3]) -> Option<String> {

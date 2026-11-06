@@ -54,6 +54,7 @@ unsafe fn worker() {
     ueforge::game_thread::register_ops(&DRAIN, DRAIN_HINT);
     ueforge::overlay::register_ops();
     ueforge::gps::register_ops();
+    ueforge::climb::register_ops();
     ueforge::game_thread::serve(&DRAIN);
 
     ueforge::spawn(
