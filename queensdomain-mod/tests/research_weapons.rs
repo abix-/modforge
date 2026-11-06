@@ -71,6 +71,64 @@ fn weapon_xp_owners() {
     }
 }
 
+/// The operator has "Holy Sword Endu" and a rusty sword and asks how
+/// they differ. Prints every FS_ItemData_C whose display name (FText
+/// +0x110) says sword or endu: its asset name, description, DataTags
+/// (+0x88, TMap of tag to f32 at stride 24, see research_charms) and
+/// every field of the item data and of its StatData object (+0x30)
+/// through their class chains.
+#[test]
+fn swords() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for (addr, name) in instances(&api, "FS_ItemData_C", 5000) {
+        let shown = common::ftext(&api, addr, 0x110).unwrap_or_default();
+        let l = format!("{name} {shown}").to_ascii_lowercase();
+        if !(l.contains("sword") || l.contains("endu")) {
+            continue;
+        }
+        let desc = common::ftext(&api, addr, 0x128).unwrap_or_default();
+        println!("== {name} \"{shown}\"\n   desc: {desc}");
+        let h = modforge::client::read_bytes(&api, addr, 0x88, 16);
+        if h.len() == 16 {
+            let data = modforge::client::from_le_u64(&h, 0);
+            let num = i32::from_le_bytes(h[8..12].try_into().unwrap());
+            if data != 0 && (1..64).contains(&num) {
+                let b = modforge::client::read_bytes(&api, data, 0, num as u64 * 24);
+                for i in 0..num as usize {
+                    let o = i * 24;
+                    if b.len() < o + 12 {
+                        break;
+                    }
+                    let f = modforge::client::from_le_u64(&b, o);
+                    let r = api.op("fname_to_string", json!({"fname": f}));
+                    let v = f32::from_le_bytes(b[o + 8..o + 12].try_into().unwrap());
+                    println!(
+                        "   tag {} = {v}",
+                        r.result.get("string").and_then(|s| s.as_str()).unwrap_or("?")
+                    );
+                }
+            }
+        }
+        let stat = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, addr, 0x30, 8), 0);
+        for obj in [addr, stat] {
+            if obj == 0 {
+                continue;
+            }
+            let cls = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, obj, 0x10, 8), 0);
+            let mut chain = vec![common::object_name(&api, cls)];
+            chain.extend(common::super_chain(&api, cls));
+            for c in chain.iter().take_while(|c| {
+                !matches!(c.as_str(), "DataAsset" | "PrimaryDataAsset" | "Object")
+            }) {
+                common::dump(&api, obj, c, None);
+            }
+        }
+    }
+}
+
 #[test]
 fn weapon_xp() {
     let api = api();
