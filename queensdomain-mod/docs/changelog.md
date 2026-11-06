@@ -14,4 +14,6 @@
 - ProcessEvent slot 0x44, measured by `tests/research_engine.rs` (the player's function calls the GameInstance's in that slot). Game-thread queue served from UEngine::Tick (slot 86), with the object.call, get, set and array ops.
 - FProperty base is 0x78 bytes on UE 4.27 (0x70 on UE 5.4), measured by `research_ustruct_layout.rs property_extra_slot`; now `StructLayout::property_size` in ueforge. Array element records sit at +0x78 on both.
 - `tests/research_path.rs`: the game's own navigation from the player to a point, a mesh map of an area, and a climb route using walking, jumps (1.2 m up), air dashes (10 m) and drops. Found a route to the third beacon's unlit brazier.
+- Route markers: `research_path.rs` mark_route, draw_route and clear_route_marks spawn lights, pillars and rods along the route. Terrain hides most of them.
+- Screen overlay (`ueforge/src/overlay.rs`, ops overlay.lines and overlay.clear): lines drawn in the HUD pass with the game's own ProjectWorldLocationToScreen and HUD DrawLine, seen through hills. `research_path.rs overlay_route` draws the whole route at head height. Not yet tried in game.
 - Hot reload (Ctrl+R) crashes this game: deploy with it closed and swap main-new.dll in by hand.

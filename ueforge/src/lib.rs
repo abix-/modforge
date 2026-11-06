@@ -97,6 +97,7 @@ pub mod derived_class;
 pub mod mod_main;
 pub mod nav;
 pub mod ops;
+pub mod overlay;
 pub mod parms;
 pub mod pe_queue;
 pub mod reflect;
