@@ -219,7 +219,21 @@ fn live_hud() -> Option<&'static UObject> {
         .into_iter()
         // SAFETY: addresses from the GObjects walk.
         .map(|p| unsafe { &*(p as *const UObject) })
-        .find(|o| !o.is_default_object())
+        // The chain search matches by substring, so widgets named like
+        // WBP_HUD come back too; the HUD actor has a class named exactly HUD.
+        .find(|o| !o.is_default_object() && is_hud(o))
+}
+
+fn is_hud(o: &UObject) -> bool {
+    let mut class = o.class();
+    for _ in 0..32 {
+        let Some(c) = class else { return false };
+        if c.as_object().name() == "HUD" {
+            return true;
+        }
+        class = c.super_class();
+    }
+    false
 }
 
 /// Hook the current HUD if it is not hooked yet (a new HUD class after a
