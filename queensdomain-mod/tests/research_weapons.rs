@@ -281,6 +281,39 @@ fn torch_recharge_callers() {
     }
 }
 
+/// Sets the Azure Torch's AbilityPointsPerCharge on the loaded
+/// Torch_WeaponStats asset (env TORCH_POINTS_PER_CHARGE, default 10,
+/// the game's own value) and reads it back. The torch refills 0.33
+/// points per second (torch_recharge_callers), so 10 is about 30 s per
+/// charge and 5 about 15 s. Only the torch changes; the shared rate in
+/// PlayerBalance is left alone. A live memory change: lost on restart.
+#[test]
+#[ignore = "writes to the game; run by name"]
+fn set_torch_points_per_charge() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let want: f32 = std::env::var("TORCH_POINTS_PER_CHARGE").ok().and_then(|v| v.parse().ok()).unwrap_or(10.0);
+    let Some((stats, _)) = instances(&api, "FS_WeaponStats", 2000).into_iter().find(|(_, n)| n == "Torch_WeaponStats") else {
+        println!("Torch_WeaponStats not loaded");
+        return;
+    };
+    let Some(off) = fields(&api, "FS_WeaponStats").into_iter().find(|f| f.0 == "AbilityPointsPerCharge").map(|f| f.1) else {
+        println!("AbilityPointsPerCharge not found");
+        return;
+    };
+    let f32_here = || {
+        let b = modforge::client::read_bytes(&api, stats, off, 4);
+        f32::from_le_bytes(b[..4].try_into().unwrap())
+    };
+    let before = f32_here();
+    let ok = modforge::client::write_bytes(&api, stats, off, &want.to_le_bytes());
+    let after = f32_here();
+    println!("Torch AbilityPointsPerCharge {before} -> {after} (write ok: {ok}); about {:.1} s per charge at 0.33/s", after / 0.33);
+    assert_eq!(after, want);
+}
+
 /// Measures the torch's recharge: every live Torch_WeaponScript_C's
 /// CurrentAbilityPoints (WeaponScriptBase_C field) once a second for
 /// 60 s, printing each change with the rate since the last one.
