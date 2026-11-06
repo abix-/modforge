@@ -313,6 +313,84 @@ fn weapon_max_levels() {
     println!("{} weapons", rows.len());
 }
 
+/// How is the XP for each weapon level worked out, and does anything
+/// past level 25 break? Scans every function whose name mentions a
+/// weapon level or weapon XP on the utility, player, weapon, stats and
+/// save classes.
+#[test]
+fn weapon_level_code() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    if let Some((pb, _)) = instances(&api, "PlayerBalance_C", 2).into_iter().next() {
+        common::dump(&api, pb, "PlayerBalance_C", Some(&["level", "xp"]));
+    }
+    let class_words = ["utils", "player", "weapon", "stats", "save", "xp", "level", "math"];
+    for (addr, name) in instances(&api, "BlueprintGeneratedClass", 20000) {
+        let cl = name.to_ascii_lowercase();
+        if !class_words.iter().any(|w| cl.contains(w)) || cl.contains("weaponscript_c") && cl != "weaponscriptbase_c" {
+            continue;
+        }
+        for (f, n) in common::class_functions(&api, addr) {
+            let l = n.to_ascii_lowercase();
+            let about_level = (l.contains("weapon") && (l.contains("level") || l.contains("xp")))
+                || name == "PlayerMathFunctions_C"
+                || l.contains("xpforlevel")
+                || l.contains("xptolevel")
+                || l.contains("levelfromxp");
+            if about_level && !l.starts_with("executeubergraph") {
+                common::scan_script(&api, f, &format!("{name}::{n}"));
+            }
+        }
+    }
+}
+
+/// Sets MaxWeaponLevel to env WEAPON_MAX_LEVEL on every loaded
+/// FS_WeaponStats asset whose max is above 5 (the 1, 2 and 5 weapons
+/// stay as they are), and reads each back. Safe past 25 because the
+/// weapon level is a formula, not a table (weapon_level_code):
+/// PlayerMathFunctions_C::CalculateLevelWithValues gives
+/// min(floor(total XP / AmtPerLevel), MaxLevel), with AmtPerLevel =
+/// PlayerBalance "Weapon XP Needed Per Level" 100 x XPPerWeaponLevelMult.
+/// A live memory change: lost on restart, which restores the game's own
+/// 10 and 25.
+#[test]
+#[ignore = "writes to the game; run by name"]
+fn set_weapon_max_level() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some(want) = std::env::var("WEAPON_MAX_LEVEL").ok().and_then(|v| v.parse::<i32>().ok()) else {
+        println!("set WEAPON_MAX_LEVEL");
+        return;
+    };
+    let Some(off) = fields(&api, "FS_WeaponStats").into_iter().find(|f| f.0 == "MaxWeaponLevel").map(|f| f.1) else {
+        println!("MaxWeaponLevel not found");
+        return;
+    };
+    let i32_at = |a: u64| {
+        let b = modforge::client::read_bytes(&api, a, off, 4);
+        i32::from_le_bytes(b[..4].try_into().unwrap())
+    };
+    let (mut changed, mut kept) = (0, Vec::new());
+    for (a, n) in instances(&api, "FS_WeaponStats", 2000) {
+        let before = i32_at(a);
+        if before <= 5 {
+            kept.push(format!("{n}={before}"));
+            continue;
+        }
+        if before != want {
+            modforge::client::write_bytes(&api, a, off, &want.to_le_bytes());
+            changed += 1;
+        }
+        let after = i32_at(a);
+        assert_eq!(after, want, "{n}");
+    }
+    println!("{changed} weapons set to max level {want}; kept: {}", kept.join(", "));
+}
+
 /// Sets the Azure Torch's AbilityPointsPerCharge on the loaded
 /// Torch_WeaponStats asset (env TORCH_POINTS_PER_CHARGE, default 10,
 /// the game's own value) and reads it back. The torch refills 0.33
