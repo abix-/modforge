@@ -294,6 +294,39 @@ fn player_config() {
     }
 }
 
+/// Sets PlayerBalance "FS Air Distance" (env FS_AIR_DISTANCE, in cm,
+/// default 675, the game's own value) and "FS Grounded Distance"
+/// (env FS_GROUNDED_DISTANCE, default 465), and reads both back. A
+/// live memory change on the loaded PlayerBalance asset: lost on
+/// restart. Run dash_sampler after to measure.
+#[test]
+#[ignore = "writes to the game; run by name"]
+fn set_dash_distance() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some((pb, _)) = instances(&api, "PlayerBalance_C", 4).into_iter().next() else {
+        println!("PlayerBalance not loaded");
+        return;
+    };
+    for (field, env, default) in [
+        ("FS Air Distance", "FS_AIR_DISTANCE", 675.0f32),
+        ("FS Grounded Distance", "FS_GROUNDED_DISTANCE", 465.0),
+    ] {
+        let want: f32 = std::env::var(env).ok().and_then(|v| v.parse().ok()).unwrap_or(default);
+        let Some(off) = field_off(&api, "PlayerBalance_C", field) else {
+            println!("{field} not found");
+            continue;
+        };
+        let before = f32_at(&modforge::client::read_bytes(&api, pb, off, 4), 0);
+        let ok = modforge::client::write_bytes(&api, pb, off, &want.to_le_bytes());
+        let after = f32_at(&modforge::client::read_bytes(&api, pb, off, 4), 0);
+        println!("{field} {before} -> {after} (write ok: {ok})");
+        assert_eq!(after, want);
+    }
+}
+
 /// Does DashSpeedMult change how far the dash goes? Writes
 /// FS_PlayerChar_C::DashSpeedMult on the live player (env
 /// DASH_SPEED_MULT, default 1.0, the game's own value) and reads it
