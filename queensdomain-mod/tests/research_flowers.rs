@@ -195,6 +195,91 @@ fn looker() {
     }
 }
 
+/// Why are some Lookers open and shooting and others closed? Print
+/// the fields of the Looker and its enemy base classes, then read
+/// every 1-byte and 4-byte field on each live Looker, so the fields
+/// that differ between open and closed ones stand out. 4-byte values
+/// print as both f32 and i32 since the dump carries no type.
+#[test]
+fn looker_state() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let mut fields: Vec<(String, String, u64, u64)> = Vec::new();
+    for class in ["Looker_Base_BP_C", "EnemyBase_C", "FS_EnemyCharacterBase"] {
+        let r = api.op("discover_class_detail", json!({"name": class}));
+        let list = r
+            .result
+            .get("fields")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        println!("== {class}: {} fields", list.len());
+        for f in &list {
+            let name = f.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+            let off = f.get("offset").and_then(|v| v.as_u64()).unwrap_or(0);
+            let size = f.get("element_size").and_then(|v| v.as_u64()).unwrap_or(0);
+            println!("   +{off:#06x} {size:>3}  {name}");
+            if size == 1 || size == 4 {
+                fields.push((class.to_string(), name.to_string(), off, size));
+            }
+        }
+    }
+    let r = api.op("walk_class", json!({"class": "Looker_Base_BP_C", "max": 64}));
+    let lookers: Vec<(u64, String)> = r
+        .result
+        .get("instances")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|i| {
+            let a = i.get("addr")?.as_str()?;
+            let n = i.get("name")?.as_str()?.to_string();
+            Some((u64::from_str_radix(a.trim_start_matches("0x"), 16).ok()?, n))
+        })
+        .collect();
+    println!("== {} live Lookers", lookers.len());
+    if lookers.is_empty() {
+        println!("no Lookers loaded; stand where some are and rerun");
+        return;
+    }
+    let max_off = fields.iter().map(|f| f.2 + f.3).max().unwrap_or(0);
+    let mem: Vec<Vec<u8>> = lookers
+        .iter()
+        .map(|(a, _)| modforge::client::read_bytes(&api, *a, 0, max_off))
+        .collect();
+    // Only fields whose value is not the same on every Looker.
+    for (class, name, off, size) in &fields {
+        let (o, s) = (*off as usize, *size as usize);
+        let vals: Vec<String> = mem
+            .iter()
+            .map(|b| {
+                if b.len() < o + s {
+                    return "?".to_string();
+                }
+                if s == 1 {
+                    format!("{}", b[o])
+                } else {
+                    let raw: [u8; 4] = b[o..o + 4].try_into().unwrap();
+                    let f = f32::from_le_bytes(raw);
+                    let i = i32::from_le_bytes(raw);
+                    if f.is_finite() && f.abs() > 1e-6 && f.abs() < 1e7 {
+                        format!("{f}")
+                    } else {
+                        format!("{i}")
+                    }
+                }
+            })
+            .collect();
+        let first = &vals[0];
+        if vals.iter().all(|v| v == first) {
+            continue;
+        }
+        println!("   {class}.{name}: {}", vals.join(" "));
+    }
+}
+
 /// The Blueprints from `flower_blueprints` that could be a flower
 /// that shoots. For each: the parent class chain (read from
 /// UStruct::SuperStruct, +0x40 on UE 4.27) and how many live
