@@ -281,6 +281,38 @@ fn torch_recharge_callers() {
     }
 }
 
+/// Do all weapons max at level 10? Every loaded FS_WeaponStats asset's
+/// fields about levels and xp, one line per weapon.
+#[test]
+fn weapon_max_levels() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let fs: Vec<_> = fields(&api, "FS_WeaponStats")
+        .into_iter()
+        .filter(|f| {
+            let l = f.0.to_ascii_lowercase();
+            l.contains("level") || l.contains("xp")
+        })
+        .collect();
+    println!("level fields: {:?}", fs.iter().map(|f| (&f.0, f.1, f.2)).collect::<Vec<_>>());
+    let end = fs.iter().map(|f| f.1 + f.2).max().unwrap_or(0);
+    let mut rows: Vec<(String, String)> = instances(&api, "FS_WeaponStats", 2000)
+        .into_iter()
+        .map(|(a, n)| {
+            let b = modforge::client::read_bytes(&api, a, 0, end);
+            let vals: Vec<String> = fs.iter().map(|(f, o, s)| format!("{f}={}", common::show(&api, &b, *o, *s))).collect();
+            (n, vals.join("  "))
+        })
+        .collect();
+    rows.sort();
+    for (n, v) in &rows {
+        println!("{n:<40} {v}");
+    }
+    println!("{} weapons", rows.len());
+}
+
 /// Sets the Azure Torch's AbilityPointsPerCharge on the loaded
 /// Torch_WeaponStats asset (env TORCH_POINTS_PER_CHARGE, default 10,
 /// the game's own value) and reads it back. The torch refills 0.33
