@@ -38,6 +38,77 @@ fn position(api: &modforge::client::Api<serde_json::Value>, actor: u64, root: u6
     Some([f(0), f(4), f(8)])
 }
 
+/// The guide says "key to the shrine": SwordShrineKey_BP_C. Print
+/// whether its root is attached to anything (if not, its relative
+/// location is its world location), its fields through the class
+/// chain, and its direction from the player relative to where the
+/// player's camera faces (Controller::ControlRotation yaw).
+#[test]
+fn shrine_key() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let off = |c: &str, n: &str| field_off(&api, c, n);
+    let (Some(root), Some(loc), Some(parent), Some(ctrl), Some(rot)) = (
+        off("Actor", "RootComponent"),
+        off("SceneComponent", "RelativeLocation"),
+        off("SceneComponent", "AttachParent"),
+        off("Pawn", "Controller"),
+        off("Controller", "ControlRotation"),
+    ) else {
+        println!("a reflected offset was not found");
+        return;
+    };
+    let Some((key, full)) = instances(&api, "SwordShrineKey_BP_C", 4).into_iter().next() else {
+        println!("SwordShrineKey_BP_C is not loaded (picked up, or its level is unloaded)");
+        return;
+    };
+    println!("key: {full}");
+    let kroot = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, key, root, 8), 0);
+    let kparent =
+        modforge::client::from_le_u64(&modforge::client::read_bytes(&api, kroot, parent, 8), 0);
+    println!(
+        "key root {kroot:#x} attached to {}",
+        if kparent == 0 { "nothing".to_string() } else { common::object_name(&api, kparent) }
+    );
+    let cls = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, key, 0x10, 8), 0);
+    let mut chain = vec![common::object_name(&api, cls)];
+    chain.extend(common::super_chain(&api, cls));
+    println!("chain: {}", chain.join(" <- "));
+    for c in chain.iter().take_while(|c| c.as_str() != "Actor") {
+        dump(&api, key, c, None);
+    }
+
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() else {
+        println!("no player");
+        return;
+    };
+    let (Some(k), Some(p)) = (position(&api, key, root, loc), position(&api, player, root, loc)) else {
+        println!("no positions");
+        return;
+    };
+    let pc = modforge::client::from_le_u64(&modforge::client::read_bytes(&api, player, ctrl, 8), 0);
+    let r = modforge::client::read_bytes(&api, pc, rot, 12);
+    let yaw = f32::from_le_bytes(r[4..8].try_into().unwrap());
+    let (dx, dy, dz) = (k[0] - p[0], k[1] - p[1], k[2] - p[2]);
+    let bearing = dy.atan2(dx).to_degrees();
+    let mut rel = bearing - yaw;
+    while rel > 180.0 {
+        rel -= 360.0;
+    }
+    while rel < -180.0 {
+        rel += 360.0;
+    }
+    println!(
+        "player {p:?} camera yaw {yaw:.0}; key {k:?}\n\
+         flat distance {:.0} m, height {:+.0} m, bearing {bearing:.0}, \
+         {rel:+.0} deg from where the camera faces (+ is right)",
+        (dx * dx + dy * dy).sqrt() / 100.0,
+        dz / 100.0
+    );
+}
+
 #[test]
 fn keys() {
     let api = api();
