@@ -130,6 +130,50 @@ pub fn dump(api: &Api<Value>, addr: u64, class: &str, filter: Option<&[&str]>) {
     }
 }
 
+/// Read an FString {TCHAR* data, i32 num, i32 max} at `addr`.
+pub fn fstring_at(api: &Api<Value>, addr: u64) -> Option<String> {
+    let h = modforge::client::read_bytes(api, addr, 0, 16);
+    if h.len() < 16 {
+        return None;
+    }
+    let data = modforge::client::from_le_u64(&h, 0);
+    let num = i32::from_le_bytes(h[8..12].try_into().unwrap());
+    if data == 0 || !(1..4096).contains(&num) {
+        return None;
+    }
+    let b = modforge::client::read_bytes(api, data, 0, num as u64 * 2);
+    let u: Vec<u16> = b
+        .chunks_exact(2)
+        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .take_while(|&c| c != 0)
+        .collect();
+    Some(String::from_utf16_lossy(&u))
+}
+
+fn ptr_at(api: &Api<Value>, addr: u64, off: u64) -> Option<u64> {
+    let b = modforge::client::read_bytes(api, addr, off, 8);
+    if b.len() < 8 {
+        return None;
+    }
+    let p = modforge::client::from_le_u64(&b, 0);
+    (p > 0x10000 && p < 0x7FFF_FFFF_FFFF).then_some(p)
+}
+
+/// Display string of a string-table FText field at `obj + off`.
+/// Measured on Queens' Domain 2026-11-05 (research_charms
+/// text_layout_probe): FText +0x0 text data; text data +0x18 the
+/// string-table entry (key FString at +0x20); entry +0x38 the
+/// display string holder, FString at +0x10. Returns the key when the
+/// display string is missing.
+pub fn ftext(api: &Api<Value>, obj: u64, off: u64) -> Option<String> {
+    let data = ptr_at(api, obj, off)?;
+    let entry = ptr_at(api, data, 0x18)?;
+    if let Some(s) = ptr_at(api, entry, 0x38).and_then(|d| fstring_at(api, d + 0x10)) {
+        return Some(s);
+    }
+    fstring_at(api, entry + 0x20)
+}
+
 /// Parent class names, nearest first, from UStruct::SuperStruct
 /// (+0x40 on UE 4.27). `class_addr` is the UClass object.
 pub fn super_chain(api: &Api<Value>, class_addr: u64) -> Vec<String> {
