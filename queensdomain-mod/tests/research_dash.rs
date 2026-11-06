@@ -113,6 +113,34 @@ fn dash_params() {
     }
 }
 
+/// Does DashSpeedMult change how far the dash goes? Writes
+/// FS_PlayerChar_C::DashSpeedMult on the live player (env
+/// DASH_SPEED_MULT, default 1.0, the game's own value) and reads it
+/// back. A live memory change: lost on restart. Run dash_sampler
+/// after to measure.
+#[test]
+#[ignore = "writes to the game; run by name"]
+fn set_dash_speed_mult() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let want: f32 = std::env::var("DASH_SPEED_MULT").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
+    let Some((player, _)) = instances(&api, "FS_Full_PlayerChar_C", 2).into_iter().next() else {
+        println!("no player");
+        return;
+    };
+    let Some(off) = field_off(&api, "FS_PlayerChar_C", "DashSpeedMult") else {
+        println!("DashSpeedMult not found");
+        return;
+    };
+    let before = f32_at(&modforge::client::read_bytes(&api, player, off, 4), 0);
+    let ok = modforge::client::write_bytes(&api, player, off, &want.to_le_bytes());
+    let after = f32_at(&modforge::client::read_bytes(&api, player, off, 4), 0);
+    println!("DashSpeedMult {before} -> {after} (write ok: {ok})");
+    assert_eq!(after, want);
+}
+
 /// Read once per poll: position, Dashing flag, dash times.
 struct Probe {
     root: u64,
@@ -189,6 +217,12 @@ fn dash_sampler() {
                     trav / 100.0,
                     track.len()
                 );
+                if let Some(m) = o("FS_PlayerChar_C", "DashSpeedMult") {
+                    let b = modforge::client::read_bytes(&api, player, m, 4);
+                    if b.len() == 4 {
+                        println!("   DashSpeedMult now {}", f32_at(&b, 0));
+                    }
+                }
             }
             track.clear();
         }
