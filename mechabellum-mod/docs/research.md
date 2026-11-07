@@ -174,6 +174,26 @@ From `tests/research_deploy.rs` on the deploy screen of round 1.
 - The recommended formations were 9 player plans ("from Bearlike");
   their `areas` lists were empty on that screen.
 
+## The game's own fight simulation (2026-11-07)
+
+From `tests/research_simulation.rs`.
+
+- `GameRiver.SimpleSimulator` (GRClient): `Run(BattleSetting)` then
+  `GetFightResult() -> GameRiver.Fight.FightResult`. Its steps are
+  `MatchInit`, `PreparePlayerData`, `MatchStart`, `MatchLoop`,
+  `MatchUpdate`, `MatchRelease`; it runs a `FastSimulationMatch`.
+- `FastSimulationMatch` (base `Match`): `AddPlayer(PlayerController,
+  PlayerRecord)`, `battleSetting`, `simulateCount`, `aiControllers`.
+- `BattleSetting` (base `BattleInfo`, the class the live match's
+  `battleInfo` is) holds the players (`AddPlayerData(PlayerAgent)`,
+  `GetPlayerRecord(index)`) and `GetBattleRecord()`.
+- `SnapshotSystem` takes and applies match snapshots and keeps
+  `lastRecord` (a `BattleRecord`); `MatchSnapshotController` and
+  `PlayerSnapshotController` do it per match and per player.
+- The AI keeps `VirtualMatchFightActorSnapshot` copies of fight actors.
+- Not yet run: whether `SimpleSimulator.Run` can be called beside the
+  live match without changing it or crashing the game.
+
 ## Next
 
 The live objects behind these names only exist inside a match. The
