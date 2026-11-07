@@ -26,7 +26,7 @@ use std::collections::HashMap;
 // Scan only the executable .text section, so 16-byte runs of 0xff
 // (or other innocuous data) in .rdata/.data don't pass for function
 // addresses.
-const TEXT_SECTION: object::SectionKind = object::SectionKind::Text;
+pub const TEXT_SECTION: object::SectionKind = object::SectionKind::Text;
 
 /// Inspect a named function's RVA in an on-disk PE without loading game code.
 /// All addresses in the result are image-relative; the decoder follows the
@@ -384,6 +384,25 @@ pub fn scan_rip_targets(
     targets.sort_unstable();
     targets.dedup();
     Ok(targets)
+}
+
+/// The one address `sig`'s RIP-relative operand points at. Several
+/// matches are fine when they all point at the same place; no match,
+/// or matches pointing at different places, is an error naming them.
+pub fn unique_rip_target(
+    image: &patternsleuth::image::Image<'_>,
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<u64> {
+    one_target(scan_rip_targets(image, sig, section)?)
+}
+
+fn one_target(targets: Vec<u64>) -> Result<u64> {
+    match targets.as_slice() {
+        [one] => Ok(*one),
+        [] => Err(anyhow!("no match")),
+        many => Err(anyhow!("{} different targets: {many:x?}", many.len())),
+    }
 }
 
 /// Every address in `section` of `image` where `sig` matches (moved
@@ -1149,6 +1168,13 @@ mod tests {
             "no lea in .text points at MARKER {marker:#x} ({} targets)",
             targets.len()
         );
+    }
+
+    #[test]
+    fn one_target_needs_exactly_one_place() {
+        assert_eq!(one_target(vec![0x10]).unwrap(), 0x10);
+        assert!(one_target(vec![]).is_err());
+        assert!(one_target(vec![0x10, 0x20]).is_err());
     }
 
     #[test]
