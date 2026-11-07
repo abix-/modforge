@@ -81,8 +81,11 @@ fn skill_table() {
     }
     // dataDic: skill id -> ConfigData (the concrete SkillData subclass).
     let dic = handle_of(&api.op("read_field", json!({"handle": group, "field": "dataDic"})).result).expect("dataDic");
-    // Lineup units of the first two games (2026-11-07).
-    for id in [5031001, 5024001, 5010001, 5030001, 5022001, 5021001, 5028001, 5013001, 5015001] {
+    // Lineup units of the first three games (2026-11-07).
+    for id in [
+        5031001, 5024001, 5010001, 5030001, 5022001, 5021001, 5028001, 5013001, 5015001, 5020001, 5002001,
+        5007001, 5009001,
+    ] {
         let r = api.op("invoke_method", json!({"handle": dic, "method": "get_Item", "args": [id]}));
         let Some(h) = handle_of(&r.result) else {
             println!("skill {id}: not in dataDic ({:?})", r.error);

@@ -1280,6 +1280,7 @@ name = "mechabellum-mod"
 version = "0.1.0"
 dependencies = [
  "modforge",
+ "parking_lot",
  "serde_json",
  "unityforge",
 ]

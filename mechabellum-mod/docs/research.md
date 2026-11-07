@@ -150,6 +150,30 @@ From `tests/research_units.rs`.
   `GetDamage(0)` returned 0 for all three; the damage that counts is
   still the mech row's `damage` until the skill's damage list is read.
 
+## Deployment (2026-11-07)
+
+From `tests/research_deploy.rs` on the deploy screen of round 1.
+
+- `deploy_types` lists the deploy-related classes (GRFight 13, GRCore
+  13, GRClient 60). `MechPositionManager` and `DeployStateController`
+  are in `GameRiver` (GRCore) and are plain classes, not Unity
+  objects, so the object search finds none.
+- The match (`NormalMatch`) is reached from the recommended formation
+  panel's `match` field. `battleInfo`: map 1102, 12 rounds, fight time
+  120 s, game mode 5.
+- Map 600 by 300 (`MapRegionGridView`); `GridView` is 60 by 62 cells
+  of side 10.
+- Each side's placed cards: `match.playerManager.playerControllers`,
+  each controller's `unitManager.units`, one `CardElement` per card
+  bought. A CardElement holds `unitData` (the card),
+  `mapElement.bound` (x, y, width, height) and `mapElement.facing`
+  (ours 0 with negative y, the enemy 2 with positive y), and a
+  `mechPositionManager` with each unit's offset (`mechPositions`).
+- **A lineup slot's "x2" is two purchases.** Hound x2 from the lineup
+  is two Hound CardElements on the field.
+- The recommended formations were 9 player plans ("from Bearlike");
+  their `areas` lists were empty on that screen.
+
 ## Next
 
 The live objects behind these names only exist inside a match. The

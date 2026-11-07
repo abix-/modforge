@@ -8,6 +8,10 @@
 
 use unityforge::ModDef;
 
+mod deploy;
+mod lineup;
+mod units;
+
 static MOD_INFO: ModDef = ModDef {
     name: "MechabellumMod",
     version: "0.1.0",
@@ -24,6 +28,9 @@ unityforge::unityforge_mod!(MOD_INFO);
 fn on_init() {
     unityforge::ops::register_builtins();
     unityforge::selector::register_builtins();
+    units::install();
+    lineup::install();
+    deploy::install();
 
     let kind = unityforge::unity::runtime_kind()
         .map(|k| format!("{k:?}"))

@@ -74,6 +74,86 @@ fn live_match() {
     unityforge::client::print_declared_methods(&api, "Il2CppGameRiver.Client.NormalMatch");
 }
 
+/// The match's player side: localPlayerController (PlayerController)
+/// fields, and the map system the GridView holds (GridView.mapSystem).
+/// MechPositionManager and the deploy state are plain classes, not
+/// Unity objects, so the object search finds none (2026-11-07); they
+/// should hang off one of these.
+#[test]
+fn player_side() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    if let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) {
+        for f in ["localPlayerController", "playerManager", "battleInfo", "battleOpeningController"] {
+            if let Some(h) = field(m, f) {
+                println!("--- match.{f}:");
+                show(&api, h, "  ");
+            }
+        }
+    } else {
+        println!("no panel holds a match");
+    }
+    let grids = find_instances(&api, "GameRiver.Client.GridView", false).unwrap_or_default();
+    if let Some(ms) = grids.iter().filter_map(handle_of).find_map(|g| field(g, "mapSystem")) {
+        println!("--- GridView.mapSystem:");
+        show(&api, ms, "  ");
+    }
+}
+
+/// Every player's units: match.playerManager.playerControllers, each
+/// one's unitManager fields, and the fields of its first unit.
+#[test]
+fn units_on_field() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let item = |h: i64, i: i64| handle_of(&api.op("invoke_method", json!({"handle": h, "method": "get_Item", "args": [i]})).result);
+    unityforge::client::print_declared_methods(&api, "Il2CppGameRiver.UnitManager");
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no panel holds a match");
+        return;
+    };
+    let local = field(m, "localPlayerController");
+    let pcs = field(m, "playerManager").and_then(|pm| field(pm, "playerControllers")).expect("playerControllers");
+    for i in 0..common::count_of(&api, pcs).unwrap_or(0) {
+        let Some(pc) = item(pcs, i) else { continue };
+        let is_local = local.is_some_and(|l| {
+            api.op("invoke_method", json!({"handle": pc, "method": "Equals", "args": [{"$handle": l}]})).result == json!(true)
+        });
+        println!("=== player {i} (local: {is_local})");
+        if let Some(p) = field(pc, "player") {
+            show(&api, p, "  player ");
+        }
+        let Some(um) = field(pc, "unitManager") else { continue };
+        show(&api, um, "  unitManager ");
+        // unitManager.units: CardElement, one per placed card.
+        let Some(units) = field(um, "units") else { continue };
+        for u in 0..common::count_of(&api, units).unwrap_or(0) {
+            let Some(card) = item(units, u) else { continue };
+            let data = field(card, "unitData");
+            let read = |h: Option<i64>, f: &str| h.map(|h| api.op("read_field", json!({"handle": h, "field": f})).result);
+            println!("  --- unit {u}: card {:?} {:?}", read(data, "id"), read(data, "name"));
+            // Where it stands: the CardElement's mapElement, and (first
+            // unit only, it is long) its mechPositionManager.
+            if let Some(me) = field(card, "mapElement") {
+                show(&api, me, "    mapElement ");
+            }
+            if u == 0
+                && let Some(mpm) = field(card, "mechPositionManager")
+            {
+                show(&api, mpm, "    mechPositionManager ");
+            }
+        }
+    }
+}
+
 /// The game's recommended formations: each RecommendFormItem's text
 /// and the fields of each of its FormAreas.
 #[test]
@@ -110,12 +190,16 @@ fn live_deploy() {
         return;
     }
     let mut classes: Vec<String> = [
+        // Namespaces from deploy_types (2026-11-07).
         "GameRiver.Client.DeployStateController",
-        "GameRiver.Client.DeployWarningTip",
-        "GameRiver.Client.MechPositionManager",
+        "GameRiver.DeployStateController",
+        "GameRiver.MechPositionManager",
+        "GameRiver.Client.DeployJobModel",
+        "GameRiver.Client.DragController",
+        "GameRiver.Client.StartPositionView",
+        "GameRiver.Client.MapRegionGridView",
+        "GameRiver.Client.GridView",
         "GameRiver.Client.BattleArea",
-        "GameRiver.Client.ChooseRecommendFormPanel",
-        "GameRiver.Client.RecommendFormItem",
     ]
     .iter()
     .map(|s| s.to_string())

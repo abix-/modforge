@@ -19,6 +19,7 @@ name = "mechabellum_mod"
 modforge = { path = "../modforge" }
 unityforge = { path = "../unityforge" }
 serde_json = { workspace = true }
+parking_lot = { workspace = true }
 
 # Deploy convention: the MelonLoader shim looks for exactly ONE
 # `*.unityforge.dll` in the game's Mods folder. scripts/restart.ps1
