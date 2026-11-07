@@ -64,6 +64,41 @@ against a live object yet.
 - **Deploying units:** `DeployJobModel`, `CreateMechInDeployment`,
   `DestroyMechInDeployment`, `DeployWarningTip`.
 
+## Star Expedition (2026-11-07)
+
+From `tests/research_star_expedition.rs` with the mode open:
+
+- Live windows: `AsyncBattleWindow`, `AsyncBattleSoloWindow`,
+  `AsyncBattleCoopWindow`, `AsyncBattleMapWindow` (10
+  `AsyncBattleMapStarView`s), `AsyncBattlePluginsPanel`,
+  `InterstellarExpeditionShow`. They hold UI only (buttons, round
+  text, ship animation).
+- The mode's state is in `AsyncBattleProxy` (PureMVC). Its methods
+  are server requests and pushes (`RequestEnterScene`,
+  `RequestTeamReady`, `RequestContinueAsyncMode`,
+  `OnPushAsyncSceneSettlement`, ...) plus 1v1 and 2v2 rank points,
+  so the server keeps the save and the results.
+- Not yet read: the live proxy. `Facade.instance` and
+  `Model.instance` come back typed as the interface (`IFacade`,
+  `IModel`), and calling a class method on that handle returns no
+  handle.
+
+## Lineup screen (2026-11-07)
+
+From `tests/research_lineup.rs`. The starting lineup is
+`ChooseAdvanceTeamWindow` (the game calls it the advance team).
+`chooseTime` 3600 s. Each choice (`AdvanceTeamIcon`) holds an
+`openingData.advanceTeam` and two unit slots, each a `CardData`
+with name, cost (`baseMoney`), and description. The first game
+offered four choices, each 4 reactor core:
+
+| Choice | Top | Bottom |
+|---:|---|---|
+| 0 | Tarantula x1 (200) | Vortex x2 (100) |
+| 1 | Tarantula x1 (200) | Marksman x2 (100) |
+| 2 | Mustang x1 (200) | Vortex x2 (100) |
+| 3 | Sabertooth x1 (200) | Crawler x2 (100) |
+
 ## Next
 
 The live objects behind these names only exist inside a match. The
