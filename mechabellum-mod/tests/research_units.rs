@@ -84,7 +84,7 @@ fn skill_table() {
     // Lineup units of the first three games (2026-11-07).
     for id in [
         5031001, 5024001, 5010001, 5030001, 5022001, 5021001, 5028001, 5013001, 5015001, 5020001, 5002001,
-        5007001, 5009001,
+        5007001, 5009001, 5026001, 5008001, 5023001,
     ] {
         let r = api.op("invoke_method", json!({"handle": dic, "method": "get_Item", "args": [id]}));
         let Some(h) = handle_of(&r.result) else {

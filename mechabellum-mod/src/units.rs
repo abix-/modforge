@@ -82,7 +82,11 @@ fn read_all() -> Result<HashMap<i64, UnitStats>, String> {
             speed: mech.read_field("moveSpeed")?.as_f64().unwrap_or(0.0),
             ..Default::default()
         };
-        if let Some(skill) = object(skill_dic.invoke("get_Item", &json!([int(mech, "mainSkillID")?]))?) {
+        // Some mechs have no main skill (id 0, not in the table), and
+        // get_Item on a missing key throws.
+        let skill_id = int(mech, "mainSkillID")?;
+        let has_skill = skill_dic.invoke("ContainsKey", &json!([skill_id]))?.as_bool() == Some(true);
+        if has_skill && let Some(skill) = object(skill_dic.invoke("get_Item", &json!([skill_id]))?) {
             u.range = fixed(&call(&skill, "GetAttackRange")?);
             u.attack_interval = fixed(&call(&skill, "GetAttackInterval")?);
             u.splash = fixed(&call(&skill, "GetSplashRange")?);

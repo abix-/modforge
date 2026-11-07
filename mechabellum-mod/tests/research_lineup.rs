@@ -154,3 +154,28 @@ fn lineup_screen() {
         }
     }
 }
+
+/// The mod's lineup op: every choice on screen with its units and
+/// totals, most damage per second first.
+#[test]
+fn lineup_op() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let r = api.op("lineup", json!({}));
+    if !r.ok {
+        println!("lineup: {:?}", r.error);
+        return;
+    }
+    for c in r.result.as_array().into_iter().flatten() {
+        let t = &c["totals"];
+        println!("choice {}: life {:.0}, dps {:.0}, hits air {}", c["choice"], t["life"].as_f64().unwrap_or(0.0), t["dps"].as_f64().unwrap_or(0.0), t["hits_air"]);
+        for u in c["units"].as_array().into_iter().flatten() {
+            println!(
+                "  {} (card {}) x{} life {:.0} dps {:.0} range {} splash {} air {}",
+                u["name"], u["card"], u["count"], u["life"].as_f64().unwrap_or(0.0), u["dps"].as_f64().unwrap_or(0.0), u["range"], u["splash"], u["hits_air"]
+            );
+        }
+    }
+}
