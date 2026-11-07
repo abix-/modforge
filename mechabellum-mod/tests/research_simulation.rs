@@ -12,7 +12,8 @@
 //! SKIPs (prints why and passes) when the game is not running.
 
 mod common;
-use common::{api, ping_or_skip};
+use common::{api, handle_of, ping_or_skip};
+use serde_json::json;
 
 const WORDS: &[&str] = &["Simulat", "Forecast", "Replay", "SpeedUp", "FightRecord", "Snapshot", "Predict"];
 
@@ -65,6 +66,76 @@ fn record_signatures() {
         ("GameRiver.Client.Tool.ReplayTestToolJob", "GRClient"),
     ] {
         unityforge::client::print_method_signatures(&api, class, asm, &[]);
+    }
+}
+
+/// The live match's battle setting and record: the runtime class of
+/// match.battleInfo, its GetBattleRecord(), the record's player and
+/// round counts, and each player's record name and round count.
+#[test]
+fn live_record() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let call = |h: i64, m: &str, args: serde_json::Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let panels = unityforge::client::find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no match open");
+        return;
+    };
+    let info = api.op("read_field", json!({"handle": m, "field": "battleInfo"}));
+    println!("battleInfo is {}", info.result["il2cpp_type"]);
+    // battleInfo is a plain BattleInfo, not a BattleSetting, so it has
+    // no GetBattleRecord (2026-11-07). The record should be on a match
+    // module (SnapshotSystem.lastRecord) or the player's replaySystem.
+    let mut record = None;
+    if let Some(mods) = field(m, "modules") {
+        for i in 0..common::count_of(&api, mods).unwrap_or(0) {
+            let md = call(mods, "get_Item", json!([i]));
+            println!("module {i}: {}", md.result["il2cpp_type"]);
+            if md.result["il2cpp_type"].as_str().is_some_and(|t| t.ends_with("SnapshotSystem"))
+                && let Some(h) = handle_of(&md.result)
+            {
+                let last = api.op("read_field", json!({"handle": h, "field": "lastRecord"}));
+                println!("  SnapshotSystem.lastRecord -> {}", last.result["il2cpp_type"]);
+                record = record.or(handle_of(&last.result));
+            }
+        }
+    }
+    if let Some(rs) = field(m, "localPlayerController").and_then(|pc| field(pc, "replaySystem")) {
+        println!("--- localPlayerController.replaySystem:");
+        for (k, v) in api.op("inspect_object", json!({"handle": rs})).result["fields"].as_object().cloned().unwrap_or_default() {
+            println!("  {k} = {}", v.get("str").cloned().unwrap_or(v));
+        }
+        record = record.or(field(rs, "battleRecord")).or(field(rs, "record"));
+    }
+    unityforge::client::print_method_signatures(&api, "GameRiver.ReplaySystem", "GRCore", &[]);
+    let Some(rec_h) = record else {
+        println!("no battle record found");
+        return;
+    };
+    for g in ["GetPlayerCount", "GetRoundCount", "IsValid", "GetGameMode", "GetMapID", "GetBattleID", "GetAvaliableStartRound"] {
+        println!("  {g} = {}", call(rec_h, g, json!([])).result);
+    }
+    let players = call(rec_h, "GetPlayerCount", json!([])).result.as_i64().unwrap_or(0);
+    for i in 0..players {
+        let pr = call(rec_h, "GetPlayerRecord", json!([i]));
+        let Some(pr_h) = handle_of(&pr.result) else { continue };
+        println!(
+            "  player {i}: {} rounds {} final {} ai {}",
+            call(pr_h, "GetName", json!([])).result,
+            call(pr_h, "GetRoundCount", json!([])).result,
+            call(pr_h, "GetFinalRound", json!([])).result,
+            call(pr_h, "IsAIRecord", json!([])).result,
+        );
+        if let Some(rr) = handle_of(&call(pr_h, "GetRoundRecord", json!([0])).result) {
+            println!("    round 0 record:");
+            for (k, v) in api.op("inspect_object", json!({"handle": rr})).result["fields"].as_object().cloned().unwrap_or_default() {
+                println!("      {k} = {}", v.get("str").cloned().unwrap_or(v));
+            }
+        }
     }
 }
 
