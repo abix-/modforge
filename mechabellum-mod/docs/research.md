@@ -191,8 +191,16 @@ From `tests/research_simulation.rs`.
   `lastRecord` (a `BattleRecord`); `MatchSnapshotController` and
   `PlayerSnapshotController` do it per match and per player.
 - The AI keeps `VirtualMatchFightActorSnapshot` copies of fight actors.
-- Not yet run: whether `SimpleSimulator.Run` can be called beside the
-  live match without changing it or crashing the game.
+- **It runs beside the live match** (`run_game_simulation`, round 1 of
+  the third game). The record is `replaySystem.battleRecorder
+  .GetCurrentRecord()` (it has no `Clone`), the setting
+  `Config.GetMatchSetting(mapID)`, then `new BattleSetting(2, setting,
+  record, false, 0, startRound 1, null)` and
+  `MatchUtility.StartFastBattleSimulation`: 0.28 s, no crash.
+- The `FightResult` has one `FightReport` per player: `AliveMechCount`,
+  `Score`, and `unitDatas` (card id, position, exp). A unit's position
+  is its deploy bound's centre (bound x -20, y -170, 50 by 20 is
+  (5, -160)), so the simulation fought the deploy on screen.
 
 ## Next
 

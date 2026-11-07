@@ -232,6 +232,25 @@ fn run_game_simulation() {
     println!("GetFightResult -> {} {:?}", fr.result["il2cpp_type"], fr.error);
     if let Some(fr_h) = handle_of(&fr.result) {
         dump("fight result", fr_h);
+        if let Some(reports) = field(fr_h, "reports") {
+            for i in 0..common::count_of(&api, reports).unwrap_or(0) {
+                if let Some(r) = handle_of(&call(reports, "get_Item", json!([i])).result) {
+                    dump(&format!("report {i}"), r);
+                    if let Some(rec) = field(r, "_FightRecord_k__BackingField") {
+                        dump(&format!("report {i} fight record"), rec);
+                    }
+                    if let Some(units) = field(r, "unitDatas") {
+                        let n = common::count_of(&api, units).unwrap_or(0);
+                        println!("report {i}: {n} unit datas");
+                        for j in 0..n {
+                            let Some(u) = handle_of(&call(units, "get_Item", json!([j])).result) else { continue };
+                            let f = api.op("inspect_object", json!({"handle": u})).result["fields"].clone();
+                            println!("  card {} at ({}, {}) rotated {} exp {}", f["id"], f["position"]["x"], f["position"]["y"], f["isRotate"], f["exp"]);
+                        }
+                    }
+                }
+            }
+        }
     } else {
         println!("  {}", fr.result);
     }
