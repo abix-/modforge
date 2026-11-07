@@ -104,6 +104,27 @@ fn lineup_choices() {
     api.op("release_handle", json!({"handle": icons_h}));
 }
 
+/// Where unit stats live: the declared methods of the config and
+/// unit data classes in GRCore.
+#[test]
+fn stat_sources() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for class in [
+        "Il2CppGameRiver.Config",
+        "Il2CppGameRiver.ConfigData",
+        "Il2CppGameRiver.ConfigDataContainer",
+        "Il2CppGameRiver.CardData",
+        "Il2CppGameRiver.MechData",
+        "Il2CppGameRiver.WeaponData",
+        "Il2CppGameRiver.MechUtility",
+    ] {
+        unityforge::client::print_declared_methods(&api, class);
+    }
+}
+
 #[test]
 fn lineup_screen() {
     let api = api();

@@ -99,6 +99,37 @@ offered four choices, each 4 reactor core:
 | 2 | Mustang x1 (200) | Vortex x2 (100) |
 | 3 | Sabertooth x1 (200) | Crawler x2 (100) |
 
+## Unit stats (2026-11-07)
+
+From `tests/research_units.rs`.
+
+- The game's config is `GameRiver.Config`, a Unity object (base
+  `GRSingletonMonoStatic<Config>`), found by the object search. Its
+  `dataContainer` (`ConfigDataContainer`) holds every table:
+  `get_cardDatas` (101 rows), `get_mechDatas` (101 rows), and the
+  rest.
+- A card (`CardData`) is what the player buys: `baseMoney` (cost),
+  `mechCount` (units per purchase), `mechID`. A mech (`MechData`) is
+  the unit: `life`, `damage` (per hit), `moveSpeed`, `isFly`,
+  `mechType` (0 light, 1 medium, 2 giant, read off the subtitles),
+  `mainSkillID`, `attackAngle`, `radius`.
+- **Star Expedition has its own unit rows.** The lineup cards are ids
+  5001 to 5203; normal play uses 1 to 32 and 2001, 2002. They
+  differ: Vortex (31 / 5031) 8538 / 9723 life, 1633 / 1856 damage;
+  Crawler (10 / 5010) x24 / x15 per purchase, 250 / 416 life.
+- Fixed point (`FPoint`): value is `RawValue / 2^32` (attackAngle
+  raw 85899345920 is 20, radius 8589934592 is 2).
+- Attack range, interval, splash and air/ground targeting are on the
+  unit's main skill, `SkillData` (`GetAttackRange`,
+  `GetAttackInterval`, `GetSplashRange`, `GetDamageRate`,
+  `IsAirAttack`, `IsGroundAttack`, ...), kept in
+  `Config.mechSkillDatas.dataDic` (skill id to skill).
+- Not yet read: the skill numbers. `dataDic` hands back each skill
+  typed as its base `ConfigData`, so none of the skill getters are
+  found. Same cause as the PureMVC proxy. Fix written in
+  `unityforge/cs-shim-il2cpp/Il2CppBridge.cs` (handles carry the
+  object's runtime class); not yet deployed.
+
 ## Next
 
 The live objects behind these names only exist inside a match. The
