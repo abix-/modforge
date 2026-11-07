@@ -8,6 +8,7 @@
 
 use unityforge::ModDef;
 
+mod act;
 mod deploy;
 mod lineup;
 mod sim;
@@ -33,6 +34,7 @@ fn on_init() {
     lineup::install();
     deploy::install();
     sim::install();
+    act::install();
 
     let kind = unityforge::unity::runtime_kind()
         .map(|k| format!("{k:?}"))

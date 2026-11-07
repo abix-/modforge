@@ -480,6 +480,39 @@ fn plan_deploy_op() {
     println!("{}", serde_json::to_string_pretty(&r.result).unwrap_or_default());
 }
 
+/// Plan the deploy, then buy and place the best plan through the game's
+/// own actions. CHANGES THE FIELD, so it runs only with
+/// MECHABELLUM_APPLY=1. Prints the plan, every buy and move, and our
+/// cards and supply afterwards.
+#[test]
+fn apply_deploy_op() {
+    if std::env::var("MECHABELLUM_APPLY").ok().as_deref() != Some("1") {
+        println!("SKIP: set MECHABELLUM_APPLY=1 to buy and place on the field");
+        return;
+    }
+    let api = api().with_timeout(std::time::Duration::from_secs(1800));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let budget: u64 = std::env::var("MECHABELLUM_PLAN_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let r = api.op("plan_deploy", json!({"budget": budget}));
+    if !r.ok {
+        println!("plan_deploy: {:?}", r.error);
+        return;
+    }
+    let Some(best) = r.result["plans"].get(0).cloned() else {
+        println!("no plan: {}", r.result);
+        return;
+    };
+    println!("plan: {}", serde_json::to_string_pretty(&best).unwrap_or_default());
+    let a = api.op("apply_deploy", json!({"buy": best["buy"], "units": best["units"]}));
+    if !a.ok {
+        println!("apply_deploy: {:?}", a.error);
+        return;
+    }
+    println!("{}", serde_json::to_string_pretty(&a.result).unwrap_or_default());
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

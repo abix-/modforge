@@ -36,6 +36,8 @@ struct Held {
     /// Our live CardElements, in the record's unit order.
     cards: Vec<i32>,
     card_ids: Vec<i64>,
+    /// Units on the field at the start (units per purchase, summed).
+    units: i64,
     seat: i64,
     round: i64,
 }
@@ -44,6 +46,9 @@ struct Held {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Outcome {
     pub ours_alive: i64,
+    /// Our units at the start of the fight (each card's units per
+    /// purchase, summed); the fight report has no such count.
+    pub ours_total: i64,
     pub enemy_alive: i64,
     pub ours_score: i64,
     pub enemy_score: i64,
@@ -52,7 +57,9 @@ pub struct Outcome {
 impl Outcome {
     fn to_json(self) -> Json {
         json!({
-            "ours_alive": self.ours_alive, "enemy_alive": self.enemy_alive,
+            "ours_alive": self.ours_alive, "ours_total": self.ours_total,
+            "ours_left_percent": (self.left() * 1000.0).round() / 10.0,
+            "enemy_alive": self.enemy_alive,
             "ours_score": self.ours_score, "enemy_score": self.enemy_score, "won": self.won(),
         })
     }
@@ -61,10 +68,17 @@ impl Outcome {
         self.enemy_alive == 0 && self.ours_alive > 0
     }
 
-    /// Higher is better: any win above any loss, then our units alive,
-    /// then fewer enemy units alive (so a closer loss still ranks).
+    /// Share of our units still alive, 0 to 1.
+    pub fn left(&self) -> f64 {
+        if self.ours_total > 0 { self.ours_alive as f64 / self.ours_total as f64 } else { 0.0 }
+    }
+
+    /// Higher is better: any win above any loss, then the share of our
+    /// units left (operator 2026-11-07: "highest PERCENTAGE of units
+    /// left ... 100% being perfect"), then fewer enemy units alive (so
+    /// a closer loss still ranks).
     pub fn value(&self) -> f64 {
-        (self.won() as i64 as f64) * 1e6 + self.ours_alive as f64 * 1e3 - self.enemy_alive as f64
+        (self.won() as i64 as f64) * 1e6 + self.left() * 1e4 - self.enemy_alive as f64
     }
 }
 
@@ -143,6 +157,7 @@ fn hold() -> Result<(Held, Vec<Piece>), String> {
         setting: keep(setting),
         territory: keep(territory),
         cards: cards.into_iter().map(keep).collect(),
+        units: card_ids.iter().map(|&id| crate::units::unit(id).map(|u| u.count as i64)).sum::<Result<i64, _>>()?,
         card_ids,
         seat,
         round,
@@ -188,6 +203,8 @@ struct Buy {
     card: i64,
     level: i64,
     price: i64,
+    /// Units per purchase.
+    count: i64,
 }
 
 /// The shop's unit items and our supply. Main thread only.
@@ -205,7 +222,9 @@ fn shop() -> Result<(Vec<Buy>, i64), String> {
         if int(&cfg, "handCardType")? != 2 {
             continue;
         }
-        out.push(Buy { slot: i, card: int(&cfg, "relatedID")?, level: int(&cfg, "level")?, price: int(&it, "reinforcePrice")? });
+        let card = int(&cfg, "relatedID")?;
+        let count = crate::units::unit(card)?.count as i64;
+        out.push(Buy { slot: i, card, level: int(&cfg, "level")?, price: int(&it, "reinforcePrice")?, count });
     }
     Ok((out, supply))
 }
@@ -249,7 +268,7 @@ fn simulate(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, String>
         .ok_or("StartFastBattleSimulation gave nothing")?;
     let fr = object(sim.invoke("GetFightResult", &json!([]))?).ok_or("no FightResult")?;
     let reports = field(&fr, "reports")?.ok_or("no reports")?;
-    let mut out = Outcome::default();
+    let mut out = Outcome { ours_total: h.units + buys.iter().map(|b| b.count).sum::<i64>(), ..Default::default() };
     for i in 0..reports.list_len_or_zero()? {
         let Some(r) = get(&reports, i)? else { continue };
         let alive = int(&r, "_AliveMechCount_k__BackingField")?;
@@ -432,12 +451,16 @@ mod tests {
 
     #[test]
     fn any_win_beats_any_loss_then_survivors_count() {
-        let win = Outcome { ours_alive: 1, enemy_alive: 0, ..Default::default() };
-        let big_loss = Outcome { ours_alive: 0, enemy_alive: 16, ..Default::default() };
-        let close_loss = Outcome { ours_alive: 0, enemy_alive: 2, ..Default::default() };
-        let better_win = Outcome { ours_alive: 9, enemy_alive: 0, ..Default::default() };
+        let win = Outcome { ours_alive: 1, ours_total: 10, enemy_alive: 0, ..Default::default() };
+        let big_loss = Outcome { ours_alive: 0, ours_total: 10, enemy_alive: 16, ..Default::default() };
+        let close_loss = Outcome { ours_alive: 0, ours_total: 10, enemy_alive: 2, ..Default::default() };
+        let better_win = Outcome { ours_alive: 9, ours_total: 10, enemy_alive: 0, ..Default::default() };
         assert!(win.value() > close_loss.value());
         assert!(close_loss.value() > big_loss.value());
         assert!(better_win.value() > win.value());
+        // 40 of 48 left (83%) beats 42 of 60 left (70%).
+        let few_lost = Outcome { ours_alive: 40, ours_total: 48, ..Default::default() };
+        let many_alive = Outcome { ours_alive: 42, ours_total: 60, ..Default::default() };
+        assert!(few_lost.value() > many_alive.value());
     }
 }
