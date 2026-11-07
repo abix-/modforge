@@ -139,6 +139,104 @@ fn live_record() {
     }
 }
 
+/// Runs the game's own simulator on the live deploy, the way its fight
+/// check does (FightAuth Main.SimpleAuth in the Cpp2IL dump): a
+/// BattleSetting(matchType 2, matchSetting, record, singlePlayer
+/// false, playerRecordIndex 0, startRound) handed to
+/// MatchUtility.StartFastBattleSimulation, then the simulator's
+/// GetFightResult. The record is a clone, so the live match is not
+/// handed to the simulator. MECHABELLUM_SIM_START_ROUND overrides the
+/// start round (default: the record's last round).
+///
+/// Needs the deploy screen open. This runs a whole fight on the main
+/// thread; it can stall or crash the game.
+#[test]
+fn run_game_simulation() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let call = |h: i64, m: &str, args: serde_json::Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let dump = |label: &str, h: i64| {
+        println!("{label}:");
+        for (k, v) in api.op("inspect_object", json!({"handle": h})).result["fields"].as_object().cloned().unwrap_or_default() {
+            println!("  {k} = {}", v.get("str").cloned().unwrap_or(v));
+        }
+    };
+    let panels = unityforge::client::find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no match open");
+        return;
+    };
+
+    // The record: the recorder's current one, else the snapshot's last.
+    let recorder = field(m, "localPlayerController").and_then(|pc| field(pc, "replaySystem")).and_then(|rs| field(rs, "battleRecorder"));
+    let mut record = recorder.and_then(|r| handle_of(&call(r, "GetCurrentRecord", json!([])).result));
+    println!("battleRecorder.GetCurrentRecord -> {record:?}");
+    if record.is_none()
+        && let Some(mods) = field(m, "modules")
+    {
+        for i in 0..common::count_of(&api, mods).unwrap_or(0) {
+            let md = call(mods, "get_Item", json!([i]));
+            if md.result["il2cpp_type"].as_str().is_some_and(|t| t.ends_with("SnapshotSystem")) {
+                record = handle_of(&md.result).and_then(|h| field(h, "lastRecord"));
+            }
+        }
+        println!("SnapshotSystem.lastRecord -> {record:?}");
+    }
+    let Some(live_rec) = record else {
+        println!("no battle record");
+        return;
+    };
+    let clone = call(live_rec, "Clone", json!([]));
+    println!("record.Clone -> {} {:?}", clone.result["il2cpp_type"], clone.error);
+    let rec = handle_of(&clone.result).unwrap_or(live_rec);
+    let rounds = call(rec, "GetRoundCount", json!([])).result.as_i64().unwrap_or(0);
+    let map = call(rec, "GetMapID", json!([])).result.as_i64().unwrap_or(0);
+    println!("record: {rounds} rounds, map {map}, players {}", call(rec, "GetPlayerCount", json!([])).result);
+
+    // The match setting: the match's own, else the config's for the map.
+    let mut setting = field(m, "matchSetting");
+    println!("match.matchSetting -> {setting:?}");
+    if setting.is_none() {
+        let cfg = unityforge::client::first_handle_inactive(&api, "GameRiver.Config");
+        setting = cfg.and_then(|c| {
+            let r = call(c, "GetMatchSetting", json!([map]));
+            println!("Config.GetMatchSetting({map}) -> {} {:?}", r.result["il2cpp_type"], r.error);
+            handle_of(&r.result)
+        });
+    }
+    let Some(ms) = setting else {
+        println!("no match setting");
+        return;
+    };
+
+    let start: i64 = std::env::var("MECHABELLUM_SIM_START_ROUND").ok().and_then(|s| s.parse().ok()).unwrap_or((rounds - 1).max(0));
+    let ctor_args = json!([2, {"$handle": ms}, {"$handle": rec}, false, 0, start, null]).to_string();
+    let bs = api.op(
+        "invoke_static",
+        json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "NewObject", "args": ["Il2CppGameRiver.BattleSetting", ctor_args]}),
+    );
+    println!("new BattleSetting(start round {start}) -> {} {:?}", bs.result["il2cpp_type"], bs.error);
+    let Some(bs_h) = handle_of(&bs.result) else { return };
+
+    let t = std::time::Instant::now();
+    let sim = api.op(
+        "invoke_static",
+        json!({"class": "Il2CppGameRiver.Client.MatchUtility", "method": "StartFastBattleSimulation", "args": [{"$handle": bs_h}], "timeout_s": 120}),
+    );
+    println!("StartFastBattleSimulation -> {} {:?} in {:.2}s", sim.result["il2cpp_type"], sim.error, t.elapsed().as_secs_f64());
+    let Some(sim_h) = handle_of(&sim.result) else { return };
+    let fr = call(sim_h, "GetFightResult", json!([]));
+    println!("GetFightResult -> {} {:?}", fr.result["il2cpp_type"], fr.error);
+    if let Some(fr_h) = handle_of(&fr.result) {
+        dump("fight result", fr_h);
+    } else {
+        println!("  {}", fr.result);
+    }
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

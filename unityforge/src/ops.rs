@@ -267,9 +267,12 @@ fn invoke_static(args: &Json) -> Result<Json, String> {
     let class = arg_str(args, "class")?.to_string();
     let method = arg_str(args, "method")?.to_string();
     let m_args = args.get("args").cloned().unwrap_or(Json::Array(vec![]));
+    // A static that runs a whole job (a simulated fight) takes longer
+    // than a getter; the caller can allow more with timeout_s.
+    let secs = arg_u64(args, "timeout_s", Some(2))?;
     on_main(
         "invoke_static",
-        std::time::Duration::from_secs(2),
+        std::time::Duration::from_secs(secs),
         move || crate::mono::invoke_static(&class, &method, &m_args),
     )?
 }

@@ -698,6 +698,42 @@ namespace Unityforge.Shim
         }
 
         /// <summary>
+        /// A new game object of `className` (the interop name,
+        /// "Il2CppGameRiver.BattleSetting") built by its constructor
+        /// with `argsJson.Length` parameters, the args converted the
+        /// way invoke_method converts them ({"$handle": N} for an
+        /// object, numbers for enums). Overloads with that count are
+        /// tried in turn. Called through invoke_static; the result
+        /// comes back as a handle. Mechabellum, 2026-11-07: the game's
+        /// own fight check builds a BattleSetting this way.
+        /// </summary>
+        public static object NewObject(string className, string argsJson)
+        {
+            var t = TypeCache.Resolve(className);
+            if (t == null) throw new ArgumentException("type '" + className + "' not found");
+            var args = JArray.Parse(string.IsNullOrEmpty(argsJson) ? "[]" : argsJson);
+            Exception last = null;
+            foreach (var c in t.GetConstructors(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var pars = c.GetParameters();
+                if (pars.Length != args.Count) continue;
+                try
+                {
+                    var converted = new object[args.Count];
+                    for (int i = 0; i < args.Count; i++)
+                        converted[i] = ResolveArg(args[i], pars[i].ParameterType);
+                    return c.Invoke(converted);
+                }
+                catch (Exception e)
+                {
+                    last = e.InnerException ?? e;
+                }
+            }
+            throw new ArgumentException("no " + className + " constructor with " + args.Count + " args fits"
+                + (last == null ? "" : ": " + last.Message));
+        }
+
+        /// <summary>
         /// Namespace.Name of a native class, Outer+Inner when nested.
         /// </summary>
         private static string NativeClassName(IntPtr klass)
