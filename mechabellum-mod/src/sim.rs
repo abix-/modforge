@@ -229,9 +229,39 @@ fn shop() -> Result<(Vec<Buy>, i64), String> {
     Ok((out, supply))
 }
 
+/// Every on/off field of the game's global settings (Config.extraSettings).
+fn switches(extra: &MonoObject) -> Result<Vec<(String, bool)>, String> {
+    let d = extra.dump()?;
+    Ok(d["fields"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(k, v)| v.as_bool().map(|b| (k.clone(), b)))
+        .collect())
+}
+
 /// One simulated fight with our units at `pieces` (the field's cards
 /// first, then one per `buys`). Main thread only.
+///
+/// Starting a simulation sets Config.extraSettings fastBattleSimulation
+/// on and enableBattleView off and never sets them back; the live game
+/// then threw on every buy and move (research_simulation
+/// fast_simulation_flags, 2026-11-07). Every on/off setting is saved
+/// before and put back after, in the same frame.
 fn simulate(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, String> {
+    let extra = object(crate::units::config()?.invoke("get_extraSettings", &json!([]))?).ok_or("no Config.extraSettings")?;
+    let saved = switches(&extra)?;
+    let r = simulate_once(h, pieces, buys);
+    let now = switches(&extra)?;
+    for (k, v) in &saved {
+        if now.iter().any(|(n, b)| n == k && b != v) {
+            extra.write_field(k, &json!(v))?;
+        }
+    }
+    r
+}
+
+fn simulate_once(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, String> {
     let rec = with_object(h.base, |b| b.invoke("GetDeepCopy", &json!([])))?;
     let rec = object(rec).ok_or("GetDeepCopy gave no record")?;
     for (u, p) in record_units(&rec, h.seat, h.round)?.iter().zip(pieces) {

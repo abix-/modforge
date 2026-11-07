@@ -513,6 +513,44 @@ fn apply_deploy_op() {
     println!("{}", serde_json::to_string_pretty(&a.result).unwrap_or_default());
 }
 
+/// Which global settings starting a simulation leaves changed.
+/// MatchUtility.StartFastBattleSimulation calls
+/// Config.SetFastBattleSimulationData, which sets three bools on
+/// Config.extraSettings (Cpp2IL dump: bytes 97 on, 98 and 99 off; 97 is
+/// what IsFastBattleSimulation reads, 98 IsEnableBattleView) and never
+/// sets them back. Live buys and moves after a plan then threw inside
+/// the fight code (2026-11-07). This calls the setter, prints every
+/// field that changed, and writes the old values back.
+#[test]
+fn fast_simulation_flags() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let Some(cfg) = unityforge::client::find_instances(&api, "GameRiver.Config", true).unwrap_or_default().iter().find_map(handle_of) else {
+        println!("no live Config");
+        return;
+    };
+    let Some(extra) = handle_of(&api.op("invoke_method", json!({"handle": cfg, "method": "get_extraSettings", "args": []})).result) else {
+        println!("no extraSettings");
+        return;
+    };
+    let read = || api.op("inspect_object", json!({"handle": extra})).result["fields"].as_object().cloned().unwrap_or_default();
+    let before = read();
+    let r = api.op("invoke_method", json!({"handle": cfg, "method": "SetFastBattleSimulationData", "args": []}));
+    println!("SetFastBattleSimulationData ok {} {:?}", r.ok, r.error);
+    let after = read();
+    for (k, v) in &after {
+        if before.get(k) != Some(v) {
+            println!("changed {k}: {} -> {}", before.get(k).cloned().unwrap_or_default(), v);
+            let w = api.op("write_field", json!({"handle": extra, "field": k, "value": before[k]}));
+            println!("  put back: ok {} {:?}", w.ok, w.error);
+        }
+    }
+    let back = read();
+    println!("all back as before: {}", back == before);
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]
