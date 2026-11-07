@@ -295,7 +295,101 @@ fn read_module_image(module: &str) -> Result<patternsleuth::image::Image<'static
     Err(anyhow!("scan_module_matches({module:?}): Windows only"))
 }
 
-fn scan_image(
+/// Bytes read for the PE headers before the section table is known.
+const PROCESS_HEADER_BYTES: usize = 0x1000;
+
+/// Build a patternsleuth image of `module` in ANOTHER process, read
+/// through [`ProcessMemory`] (read access only). patternsleuth's own
+/// `process::external::read_image_from_pid` does the same but never
+/// closes its process handle, reads only the exe, and fails on one
+/// unreadable page anywhere in the image; this reads the headers, then
+/// each section on its own, and names the section that failed.
+///
+/// The loader writes the real load address into the in-memory header,
+/// so the section addresses are the live ones; a header that disagrees
+/// with `module.base` is an error.
+pub fn read_process_image(
+    mem: &crate::process_memory::ProcessMemory,
+    module: &crate::process_memory::Module,
+) -> Result<patternsleuth::image::Image<'static>> {
+    use object::{Object, ObjectSection};
+
+    let mut image = vec![0u8; module.size as usize];
+    let header_len = image.len().min(PROCESS_HEADER_BYTES);
+    mem.read(module.base, &mut image[..header_len])
+        .with_context(|| format!("read PE headers at {:#x}", module.base))?;
+    let section_ranges: Vec<(String, usize, usize)> = {
+        let headers = object::File::parse(&image[..header_len])?;
+        if headers.relative_address_base() != module.base {
+            return Err(anyhow!(
+                "header image base {:#x} is not the load address {:#x}",
+                headers.relative_address_base(),
+                module.base
+            ));
+        }
+        headers
+            .sections()
+            .map(|s| {
+                let start = (s.address() - module.base) as usize;
+                let end = (start + s.size() as usize).min(image.len());
+                (s.name().unwrap_or("?").to_string(), start, end)
+            })
+            .collect()
+    };
+    for (name, start, end) in &section_ranges {
+        mem.read(module.base + *start as u64, &mut image[*start..*end])
+            .with_context(|| {
+                format!("read section {name} at {:#x}", module.base + *start as u64)
+            })?;
+    }
+    let object = object::File::parse(image.as_slice())?;
+    let sections = object
+        .sections()
+        .map(|s| {
+            let start = (s.address() - module.base) as usize;
+            let end = (start + s.size() as usize).min(image.len());
+            (s, image[start..end].to_vec())
+        })
+        .collect();
+    let memory = patternsleuth::Memory::new_external_data(sections)?;
+    patternsleuth::image::pe::PEImage::read_inner_memory::<String>(
+        module.base,
+        None,
+        false,
+        memory,
+        object,
+    )
+}
+
+/// Every address a RIP-relative operand points at, for each match of
+/// `sig` in `section`. `sig` marks the operand's first byte with `|`
+/// (GameHelper2 writes `^` for the same mark): the target is the
+/// operand's address plus 4 plus the signed 32-bit value stored there.
+/// Sorted, deduplicated.
+pub fn scan_rip_targets(
+    image: &patternsleuth::image::Image<'_>,
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<Vec<u64>> {
+    use patternsleuth::MemoryTrait as _;
+    let mut targets = scan_image(image, sig, section)?
+        .into_iter()
+        .map(|operand| {
+            image
+                .memory
+                .rip4(operand as u64)
+                .map_err(|e| anyhow!("read operand at {operand:#x}: {e}"))
+        })
+        .collect::<Result<Vec<u64>>>()?;
+    targets.sort_unstable();
+    targets.dedup();
+    Ok(targets)
+}
+
+/// Every address in `section` of `image` where `sig` matches (moved
+/// forward to the `|` mark when the pattern has one). Sorted,
+/// deduplicated.
+pub fn scan_image(
     image: &patternsleuth::image::Image<'_>,
     sig: &str,
     section: Option<object::SectionKind>,
@@ -1002,6 +1096,60 @@ mod tests {
     // wrappers behaves. Live-image resolution is tested in
     // `horsey-mod/tests/r2_resolver.rs` because it requires a
     // running game.
+
+    use crate::process_memory::ProcessMemory;
+
+    fn own_process_image() -> (ProcessMemory, patternsleuth::image::Image<'static>) {
+        let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
+        let exe = mem.main_module().expect("main module");
+        let image = read_process_image(&mem, &exe).expect("read own exe like another process");
+        assert_eq!(image.base_address, exe.base);
+        (mem, image)
+    }
+
+    #[inline(never)]
+    fn marker_fn() -> u64 {
+        std::hint::black_box(0x1234_5678_9abc_def0)
+    }
+
+    static MARKER: [u8; 32] = [0x5a; 32];
+
+    #[inline(never)]
+    fn marker_addr() -> usize {
+        std::hint::black_box(&MARKER) as *const _ as usize
+    }
+
+    #[test]
+    fn process_image_finds_a_function_like_the_loaded_image() {
+        let (mem, image) = own_process_image();
+        let at = marker_fn as *const () as u64;
+        let bytes = mem.read_vec(at, 16).expect("read function bytes");
+        let sig = bytes
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let from_process = scan_image(&image, &sig, Some(TEXT_SECTION)).unwrap();
+        assert!(
+            from_process.contains(&(at as usize)),
+            "{at:#x} not in {from_process:x?}"
+        );
+        assert_eq!(from_process, scan_all_matches(&sig).unwrap());
+        assert_eq!(marker_fn(), 0x1234_5678_9abc_def0);
+    }
+
+    #[test]
+    fn rip_operand_leads_to_the_static() {
+        let (_mem, image) = own_process_image();
+        let marker = marker_addr() as u64;
+        let targets =
+            scan_rip_targets(&image, "48 8d ?? | ?? ?? ?? ??", Some(TEXT_SECTION)).unwrap();
+        assert!(
+            targets.contains(&marker),
+            "no lea in .text points at MARKER {marker:#x} ({} targets)",
+            targets.len()
+        );
+    }
 
     #[test]
     fn resolution_get_returns_inner() {
