@@ -47,7 +47,9 @@ fn game_states_pattern_found_by_both_tools() {
 
 #[test]
 fn reads_current_game_state() {
-    let Some(state) = op("game_state") else { return };
+    let Some(state) = op("game_state") else {
+        return;
+    };
     println!("{}", serde_json::to_string_pretty(&state).unwrap());
     assert!(
         state["current_name"].is_string(),

@@ -13,7 +13,10 @@ publish.workspace = true
 [dependencies]
 modforge = { path = "../modforge" }
 parking_lot = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+# poe.ninja is https; the workspace ureq has no TLS.
+ureq = { workspace = true, features = ["rustls"] }
 
 [lints]
 workspace = true

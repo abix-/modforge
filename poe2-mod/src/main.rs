@@ -5,6 +5,10 @@
 //! game, never writes to it, never presses keys.
 
 mod game;
+mod item_rules;
+mod loot_value;
+mod model;
+mod preload;
 
 use modforge::ops::{OP_REGISTRY, OpDef};
 use modforge::patterns::sleuth::{TEXT_SECTION, read_process_image, unique_rip_target};
@@ -112,7 +116,9 @@ fn statics_op(_args: &Json) -> Result<Json, String> {
         let all_found_and_equal = same.iter().all(|x| x.is_some() && *x == same[0]);
         agree.insert(f.pattern.name.to_string(), json!(all_found_and_equal));
     }
-    Ok(json!({"pid": a.pid, "base": format!("{:#x}", a.exe.base), "patterns": patterns, "agree": agree}))
+    Ok(
+        json!({"pid": a.pid, "base": format!("{:#x}", a.exe.base), "patterns": patterns, "agree": agree}),
+    )
 }
 
 /// The current game state, read the way GameHelper2's GameStates does:
@@ -181,7 +187,96 @@ fn game_op(_args: &Json) -> Result<Json, String> {
     }))
 }
 
+/// The last poe.ninja price list fetched, and its league.
+static PRICES: Mutex<Option<(String, loot_value::PriceList)>> = Mutex::new(None);
+
+/// GameHelper2 LootValue's default league.
+const DEFAULT_LEAGUE: &str = "Forbidden Rites";
+
+fn parse<T: serde::de::DeserializeOwned>(args: &Json, key: &str) -> Result<T, String> {
+    serde_json::from_value(args[key].clone()).map_err(|e| format!("{key}: {e}"))
+}
+
+/// Fetch poe.ninja prices for a league and keep them.
+fn prices_op(args: &Json) -> Result<Json, String> {
+    let league = args["league"]
+        .as_str()
+        .unwrap_or(DEFAULT_LEAGUE)
+        .to_string();
+    let (list, failed) = loot_value::fetch(&league);
+    let count = list.count();
+    *PRICES.lock() = Some((league.clone(), list));
+    Ok(json!({"league": league, "prices": count, "failed": failed}))
+}
+
+/// Price each item and say which rule it passes. Items and rules come
+/// in the arguments until the inventory and stash readers exist.
+fn items_op(args: &Json) -> Result<Json, String> {
+    let items: Vec<model::Item> = parse(args, "items")?;
+    let rules: Vec<item_rules::ItemRule> = if args["rules"].is_null() {
+        Vec::new()
+    } else {
+        parse(args, "rules")?
+    };
+    let prices = PRICES.lock();
+    let stack = |item: &model::Item| prices.as_ref().and_then(|(_, p)| p.stack(item));
+    let matched: std::collections::HashMap<usize, &str> =
+        item_rules::matching(&rules, &items, stack)
+            .into_iter()
+            .collect();
+    let out: Vec<Json> = items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            json!({
+                "base": item.base,
+                "name": item.name,
+                "exalted": stack(item),
+                "rule": matched.get(&i),
+            })
+        })
+        .collect();
+    Ok(json!({
+        "league": prices.as_ref().map(|(l, _)| l),
+        "items": out,
+    }))
+}
+
+/// The preloads found in an area. The loaded files and area change
+/// counter come in the arguments until the data files reader exists.
+fn preload_op(args: &Json) -> Result<Json, String> {
+    let files: Vec<model::LoadedFile> = parse(args, "files")?;
+    let counter = args["area_change_counter"]
+        .as_i64()
+        .ok_or("area_change_counter: missing")? as i32;
+    let defs: Vec<preload::PreloadDef> = match args["list"].as_str() {
+        Some(path) => preload::load(std::path::Path::new(path))?,
+        None => parse(args, "defs")?,
+    };
+    let area = preload::files_this_area(&files, counter);
+    let found = preload::found(&defs, &area);
+    Ok(json!({"area_files": area.len(), "found": found}))
+}
+
 fn main() {
+    OP_REGISTRY.register(OpDef::new(
+        "prices",
+        "fetch poe.ninja prices in exalted orbs for a league (default Forbidden Rites) and keep them",
+        "league?",
+        prices_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "items",
+        "price each given item from the kept prices and name the first item rule it passes",
+        "items, rules?",
+        items_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "preload",
+        "the preloads found among the given loaded files for the given area change counter",
+        "files, area_change_counter, list? | defs",
+        preload_op,
+    ));
     OP_REGISTRY.register(OpDef::new(
         "game",
         "find the running game, open it read-only, report exe and build stamp from memory and disk",
@@ -211,9 +306,11 @@ fn main() {
             auth_token: None,
         },
         |body| {
-            let response = modforge::envelope::handle_request(body, &OP_REGISTRY, || {
-                json!({"process": "poe2-mod"})
-            });
+            let response = modforge::envelope::handle_request(
+                body,
+                &OP_REGISTRY,
+                || json!({"process": "poe2-mod"}),
+            );
             serde_json::to_vec(&response).unwrap_or_default()
         },
         |message| println!("{message}"),
