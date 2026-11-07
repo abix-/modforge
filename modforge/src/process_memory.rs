@@ -153,6 +153,19 @@ impl ProcessMemory {
         Ok(value)
     }
 
+    /// Read `count` plain-data values laid end to end, under the same
+    /// contract as [`Self::read_value`].
+    pub fn read_array<T: Copy + Default>(&self, addr: u64, count: usize) -> io::Result<Vec<T>> {
+        let mut values = vec![T::default(); count];
+        // SAFETY: values is a live Vec<T> of count elements; we view its
+        // bytes for the length of the read. T is plain data.
+        let bytes = unsafe {
+            std::slice::from_raw_parts_mut(values.as_mut_ptr().cast::<u8>(), count * size_of::<T>())
+        };
+        self.read(addr, bytes)?;
+        Ok(values)
+    }
+
     /// Every module loaded in the process, exe first.
     pub fn modules(&self) -> io::Result<Vec<Module>> {
         let mut handles: Vec<HMODULE> = vec![std::ptr::null_mut(); 1024];
@@ -209,8 +222,9 @@ impl ProcessMemory {
     /// same build.
     pub fn image_timestamp(&self, module: &Module) -> io::Result<u32> {
         let header = self.read_vec(module.base, PE_HEADER_BYTES)?;
-        pe_timestamp(&header)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no PE header at module base"))
+        pe_timestamp(&header).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, "no PE header at module base")
+        })
     }
 }
 
@@ -268,7 +282,8 @@ mod tests {
         let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
         let exe = mem.main_module().expect("main module");
         let in_memory = mem.image_timestamp(&exe).expect("stamp from memory");
-        let on_disk = pe_timestamp(&std::fs::read(&exe.path).expect("read exe")).expect("stamp from disk");
+        let on_disk =
+            pe_timestamp(&std::fs::read(&exe.path).expect("read exe")).expect("stamp from disk");
         assert_eq!(in_memory, on_disk);
     }
 
