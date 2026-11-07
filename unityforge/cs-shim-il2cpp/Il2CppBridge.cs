@@ -578,6 +578,91 @@ namespace Unityforge.Shim
             }
         }
 
+        // Native class pointer -> interop proxy type (null when the
+        // class has no proxy we can name, e.g. a generic instance).
+        private static readonly Dictionary<IntPtr, Type> _proxyByClass = new Dictionary<IntPtr, Type>();
+
+        /// <summary>
+        /// Rewrap an interop object as the proxy of its RUNTIME class.
+        /// A value comes back typed as the declared type of the field,
+        /// return or collection that held it: an IModel interface, a
+        /// ConfigData base in Dictionary&lt;int, ConfigData&gt;. Methods
+        /// of the real class are then not found on its handle
+        /// (Mechabellum, 2026-11-07: Model.instance as IModel, a
+        /// ProjectileSkillData as ConfigData). Falls back to the
+        /// value as given.
+        /// </summary>
+        private static object AsRuntimeClass(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase v)
+        {
+            try
+            {
+                var klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(v.Pointer);
+                if (klass == IntPtr.Zero) return v;
+                Type proxy;
+                lock (_lock)
+                {
+                    if (!_proxyByClass.TryGetValue(klass, out proxy))
+                    {
+                        proxy = ProxyTypeFor(klass);
+                        _proxyByClass[klass] = proxy;
+                    }
+                }
+                if (proxy == null || proxy == v.GetType()) return v;
+                return Activator.CreateInstance(proxy, v.Pointer) ?? v;
+            }
+            catch
+            {
+                return v;
+            }
+        }
+
+        /// <summary>
+        /// The interop proxy type generated for a native class, by
+        /// name: Il2CppInterop prefixes game namespaces with
+        /// "Il2Cpp" (GameRiver -> Il2CppGameRiver, the global
+        /// namespace -> Il2Cpp) and leaves Unity's own as they are,
+        /// so both spellings are tried. Nested classes are
+        /// Outer+Inner. Exact names only: no short-name scan.
+        /// </summary>
+        private static Type ProxyTypeFor(IntPtr klass)
+        {
+            var name = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_name(klass));
+            if (string.IsNullOrEmpty(name) || name.Contains("`")) return null;
+            var outer = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_declaring_type(klass);
+            var candidates = new List<string>();
+            if (outer != IntPtr.Zero)
+            {
+                var outerType = ProxyTypeFor(outer);
+                if (outerType == null) return null;
+                candidates.Add(outerType.FullName + "+" + name);
+            }
+            else
+            {
+                var ns = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_namespace(klass)) ?? "";
+                if (ns.Length == 0)
+                {
+                    candidates.Add("Il2Cpp." + name);
+                    candidates.Add(name);
+                }
+                else
+                {
+                    candidates.Add("Il2Cpp" + ns + "." + name);
+                    candidates.Add(ns + "." + name);
+                }
+            }
+            foreach (var c in candidates)
+            {
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    var found = asm.GetType(c);
+                    if (found != null
+                        && typeof(Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase).IsAssignableFrom(found))
+                        return found;
+                }
+            }
+            return null;
+        }
+
         private static object SerializeSafe(object v)
         {
             if (v == null) return null;
@@ -594,6 +679,8 @@ namespace Unityforge.Shim
             // get_Item(key). release_handle frees them.
             if (v is Il2CppInterop.Runtime.InteropTypes.Il2CppObjectBase il2cpp)
             {
+                v = AsRuntimeClass(il2cpp);
+                t = v.GetType();
                 string s;
                 try { s = v.ToString(); } catch { s = "<tostring failed>"; }
                 return new JObject
