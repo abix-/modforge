@@ -79,6 +79,7 @@ fn read_all() -> Result<HashMap<i64, UnitStats>, String> {
             life: mech.read_field("life")?.as_f64().unwrap_or(0.0),
             damage: mech.read_field("damage")?.as_f64().unwrap_or(0.0),
             flies: mech.read_field("isFly")?.as_bool().unwrap_or(false),
+            speed: mech.read_field("moveSpeed")?.as_f64().unwrap_or(0.0),
             ..Default::default()
         };
         if let Some(skill) = object(skill_dic.invoke("get_Item", &json!([int(mech, "mainSkillID")?]))?) {
