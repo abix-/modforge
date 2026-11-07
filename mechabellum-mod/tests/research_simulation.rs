@@ -551,6 +551,30 @@ fn fast_simulation_flags() {
     println!("all back as before: {}", back == before);
 }
 
+/// The live fight survives a plan: FightController.Current before and
+/// after one plan_placement try (the simulator's own FightController
+/// makes itself Current and its Clear sets Current to null; sim.rs puts
+/// the live one back). Needs the deploy screen; runs one simulation.
+#[test]
+fn current_fight_kept() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let current = || {
+        let r = api.op("invoke_static", json!({"class": "Il2CppGameRiver.Fight.FightController", "method": "get_Current", "args": []}));
+        if !r.ok {
+            println!("get_Current: {:?}", r.error);
+        }
+        r.result.get("ptr").cloned().unwrap_or(r.result)
+    };
+    let before = current();
+    let p = api.op("plan_placement", json!({"budget": 1}));
+    println!("plan_placement ok {} {:?}", p.ok, p.error);
+    let after = current();
+    println!("FightController.Current before {before} after {after}: kept {}", before == after && !before.is_null());
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

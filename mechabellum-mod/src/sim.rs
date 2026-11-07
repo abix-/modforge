@@ -248,10 +248,20 @@ fn switches(extra: &MonoObject) -> Result<Vec<(String, bool)>, String> {
 /// then threw on every buy and move (research_simulation
 /// fast_simulation_flags, 2026-11-07). Every on/off setting is saved
 /// before and put back after, in the same frame.
+///
+/// The simulator's own FightController also makes itself
+/// FightController.Current and its Clear sets Current to null (Cpp2IL
+/// dump, GRFight FightController .ctor and Clear); the live game's
+/// mech creation and event dispatch read Current, so the live one is
+/// put back too.
 fn simulate(h: &Held, pieces: &[Piece], buys: &[Buy]) -> Result<Outcome, String> {
+    const FIGHT: &str = "Il2CppGameRiver.Fight.FightController";
     let extra = object(crate::units::config()?.invoke("get_extraSettings", &json!([]))?).ok_or("no Config.extraSettings")?;
     let saved = switches(&extra)?;
+    let current = object(invoke_static(FIGHT, "get_Current", &json!([]))?);
     let r = simulate_once(h, pieces, buys);
+    let back = current.as_ref().map(|c| json!({"$handle": c.handle().0})).unwrap_or(Json::Null);
+    invoke_static(FIGHT, "set_Current", &json!([back]))?;
     let now = switches(&extra)?;
     for (k, v) in &saved {
         if now.iter().any(|(n, b)| n == k && b != v) {
