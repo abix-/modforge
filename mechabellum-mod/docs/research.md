@@ -135,6 +135,17 @@ From `tests/research_units.rs`.
   | 5031001 Vortex | SkillData | 85 | 1.5 | 0 | ground |
   | 5024001 Tarantula | ProjectileSkillData | 80 | 0.6 | 5 | ground |
   | 5010001 Crawler | SkillData | 6 | 0.6 | 0 | ground, melee |
+  | 5030001 Void Eye | ProjectileSkillData | 100 | 3.0 | 0 | ground |
+  | 5022001 Typhoon | ProjectileSkillData | 100 | 0.2 | 5 | air, ground (2 weapons) |
+  | 5021001 Sabertooth | ProjectileSkillData | 95 | 3.4 | 5 | ground (2 weapons) |
+  | 5028001 Hound | ProjectileSkillData | 70 | 2.4 | 6 | ground |
+  | 5013001 Sledgehammer | ProjectileSkillData | 95 | 4.5 | 5 | ground |
+  | 5015001 Arclight | ProjectileSkillData | 95 | 0.9 | 7 | ground |
+
+  The second game's lineup choices: Tarantula x1 + Void Eye x2,
+  Typhoon x1 + Void Eye x1, Sabertooth x1 + Hound x2, Sledgehammer
+  x1 + Arclight x2. Whether the mech row's `damage` is per weapon or
+  per attack is not yet known.
 
   `GetDamage(0)` returned 0 for all three; the damage that counts is
   still the mech row's `damage` until the skill's damage list is read.
