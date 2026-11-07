@@ -88,7 +88,32 @@ fn first_handle_opts<S: DeserializeOwned>(
 /// are IL2CPP objects and chain like any game object. Host-side
 /// System.Reflection objects come back stringified, not as handles.
 /// Moved here from megabonk-mod and wanderburg-mod's research tests.
+///
+/// Asks the shim first (Il2CppBridge.AssemblyTypeNames, one call for
+/// the whole assembly); the walk below, one round trip per type, is
+/// for a shim loaded before that method existed.
 pub fn assembly_type_names<S: DeserializeOwned>(api: &Api<S>, assembly: &str) -> Option<Vec<String>> {
+    let one = api.op(
+        "invoke_static",
+        json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "AssemblyTypeNames", "args": [assembly]}),
+    );
+    if let Some(text) = one.result.as_str() {
+        if text.is_empty() {
+            println!("{assembly}: no loaded assembly by that name");
+            return None;
+        }
+        return Some(text.lines().map(str::to_string).collect());
+    }
+    let err = one.error.unwrap_or_default();
+    if !err.contains("not found") {
+        println!("{assembly}: AssemblyTypeNames failed: {err}");
+        return None;
+    }
+    println!("AssemblyTypeNames not in the running shim ({err}); walking type by type");
+    assembly_type_names_walk(api, assembly)
+}
+
+fn assembly_type_names_walk<S: DeserializeOwned>(api: &Api<S>, assembly: &str) -> Option<Vec<String>> {
     let invoke = |h: i64, method: &str, args: Value| {
         api.op("invoke_method", json!({"handle": h, "method": method, "args": args}))
     };

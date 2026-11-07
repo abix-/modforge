@@ -663,6 +663,57 @@ namespace Unityforge.Shim
             return null;
         }
 
+        /// <summary>
+        /// Full names of every class in one IL2CPP assembly ("GRClient"),
+        /// one per line, nested classes as Outer+Inner and
+        /// compiler-generated ones (a '<' in the name) left out. Read
+        /// straight from the runtime's image in one call; the
+        /// AppDomain walk it replaces took one round trip per type
+        /// (GRClient's 2717 types took about 4.5 minutes, 2026-11-07).
+        /// Called through invoke_static. Empty when no assembly has
+        /// that name.
+        /// </summary>
+        public static unsafe string AssemblyTypeNames(string assembly)
+        {
+            var domain = Il2CppInterop.Runtime.IL2CPP.il2cpp_domain_get();
+            uint count = 0;
+            var asms = Il2CppInterop.Runtime.IL2CPP.il2cpp_domain_get_assemblies(domain, ref count);
+            var want = assembly + ".dll";
+            var sb = new StringBuilder();
+            for (uint i = 0; i < count; i++)
+            {
+                var image = Il2CppInterop.Runtime.IL2CPP.il2cpp_assembly_get_image(asms[i]);
+                var imageName = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_name(image));
+                if (imageName != want && imageName != assembly) continue;
+                var n = Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class_count(image);
+                for (uint c = 0; c < n; c++)
+                {
+                    var full = NativeClassName(Il2CppInterop.Runtime.IL2CPP.il2cpp_image_get_class(image, c));
+                    if (full == null || full.Contains("<")) continue;
+                    sb.Append(full).Append('\n');
+                }
+                break;
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Namespace.Name of a native class, Outer+Inner when nested.
+        /// </summary>
+        private static string NativeClassName(IntPtr klass)
+        {
+            if (klass == IntPtr.Zero) return null;
+            var name = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_name(klass));
+            var outer = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_declaring_type(klass);
+            if (outer != IntPtr.Zero)
+            {
+                var o = NativeClassName(outer);
+                return o == null ? null : o + "+" + name;
+            }
+            var ns = Marshal.PtrToStringAnsi(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_namespace(klass)) ?? "";
+            return ns.Length == 0 ? name : ns + "." + name;
+        }
+
         private static object SerializeSafe(object v)
         {
             if (v == null) return null;

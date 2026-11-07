@@ -327,7 +327,10 @@ pub fn invoke_static(class: &str, method: &str, args: &Json) -> Result<Json, Str
     let method_c = CString::new(method).map_err(|e| format!("bad method: {e}"))?;
     let args_s = serde_json::to_string(args).map_err(|e| format!("bad args: {e}"))?;
     let args_c = CString::new(args_s).map_err(|e| format!("bad args: {e}"))?;
-    let mut buf = vec![0u8; 8192];
+    // 1 MB: an assembly's type list (Il2CppBridge.AssemblyTypeNames,
+    // GRClient about 150 KB) comes back in one reply. The shim returns
+    // -1 when the reply does not fit, the same code as "not found".
+    let mut buf = vec![0u8; 1 << 20];
     let r = f(
         class_c.as_ptr(),
         method_c.as_ptr(),
