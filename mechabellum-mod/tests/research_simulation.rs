@@ -359,6 +359,91 @@ fn record_copy_units() {
     }
 }
 
+/// Can a bought unit be added to a copy of the record? A new
+/// NewUnitData (it has a public empty constructor and setters for
+/// Index, Position, IsRotate, SellSupply; Cpp2IL dump GRCore
+/// NewUnitData) with the card id, the player data's next unitIndex,
+/// added to playerData.units, supply taken off. Then the copy is
+/// simulated and our report should list one more card. Card and spot:
+/// MECHABELLUM_BUY_CARD (default 5028 Hound), at (-200, -200).
+#[test]
+fn bought_unit_in_copy() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let call = |h: i64, m: &str, args: serde_json::Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let fields = |h: i64| api.op("inspect_object", json!({"handle": h})).result["fields"].as_object().cloned().unwrap_or_default();
+    let card: i64 = std::env::var("MECHABELLUM_BUY_CARD").ok().and_then(|s| s.parse().ok()).unwrap_or(5028);
+    let panels = unityforge::client::find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no match open");
+        return;
+    };
+    let Some(rec) = field(m, "localPlayerController")
+        .and_then(|pc| field(pc, "replaySystem"))
+        .and_then(|rs| field(rs, "battleRecorder"))
+        .and_then(|r| handle_of(&call(r, "GetCurrentRecord", json!([])).result))
+        .and_then(|live| handle_of(&call(live, "GetDeepCopy", json!([])).result))
+    else {
+        println!("no record copy");
+        return;
+    };
+    let seat = fields(rec)["_Seat_k__BackingField"].as_i64().unwrap_or(0);
+    let round = call(rec, "GetRoundCount", json!([])).result.as_i64().unwrap_or(1) - 1;
+    let Some(pd) = field(rec, "playerRecords")
+        .and_then(|l| handle_of(&call(l, "get_Item", json!([seat])).result))
+        .and_then(|p| handle_of(&call(p, "GetRoundRecord", json!([round])).result))
+        .and_then(|r| field(r, "playerData"))
+    else {
+        println!("no player data");
+        return;
+    };
+    let pdf = fields(pd);
+    println!("seat {seat} round {round}: supply {} unitIndex {} reactorCore {}", pdf["supply"], pdf["unitIndex"], pdf["reactorCore"]);
+    let Some(units) = field(pd, "units") else { return };
+    let before = common::count_of(&api, units).unwrap_or(0);
+    let nu = api.op("invoke_static", json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "NewObject", "args": ["Il2CppGameRiver.NewUnitData", "[]"]}));
+    let Some(u) = handle_of(&nu.result) else {
+        println!("new NewUnitData: {:?}", nu.error);
+        return;
+    };
+    let index = pdf["unitIndex"].as_i64().unwrap_or(before);
+    for (f, v) in [("id", json!(card)), ("index", json!(index)), ("position", json!({"x": -200, "y": -200})), ("sellSupply", json!(100))] {
+        let w = api.op("write_field", json!({"handle": u, "field": f, "value": v}));
+        println!("  set {f} = {v}: ok {} {:?}", w.ok, w.error);
+    }
+    let add = call(units, "Add", json!([{"$handle": u}]));
+    println!("units.Add: {:?}; {} -> {} units", add.error, before, common::count_of(&api, units).unwrap_or(0));
+    api.op("write_field", json!({"handle": pd, "field": "unitIndex", "value": index + 1}));
+
+    let ms = unityforge::client::first_handle_inactive(&api, "GameRiver.Config")
+        .and_then(|c| handle_of(&call(c, "GetMatchSetting", json!([call(rec, "GetMapID", json!([])).result])).result));
+    let Some(ms) = ms else { return };
+    let ctor = json!([2, {"$handle": ms}, {"$handle": rec}, false, seat, round, null]).to_string();
+    let bs = handle_of(&api.op("invoke_static", json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "NewObject", "args": ["Il2CppGameRiver.BattleSetting", ctor]})).result);
+    let Some(bs) = bs else { return };
+    let sim = api.op("invoke_static", json!({"class": "Il2CppGameRiver.Client.MatchUtility", "method": "StartFastBattleSimulation", "args": [{"$handle": bs}], "timeout_s": 120}));
+    let Some(fr) = handle_of(&sim.result).and_then(|s| handle_of(&call(s, "GetFightResult", json!([])).result)) else {
+        println!("simulation: {:?}", sim.error);
+        return;
+    };
+    let Some(reports) = field(fr, "reports") else { return };
+    for i in 0..common::count_of(&api, reports).unwrap_or(0) {
+        let Some(r) = handle_of(&call(reports, "get_Item", json!([i])).result) else { continue };
+        let f = fields(r);
+        println!("report {i}: alive {} score {}", f["_AliveMechCount_k__BackingField"], f["_Score_k__BackingField"]);
+        if let Some(ul) = field(r, "unitDatas") {
+            for j in 0..common::count_of(&api, ul).unwrap_or(0) {
+                let Some(x) = handle_of(&call(ul, "get_Item", json!([j])).result) else { continue };
+                let xf = fields(x);
+                println!("  card {} at ({}, {}) index {}", xf["id"], xf["position"]["x"], xf["position"]["y"], xf["index"]);
+            }
+        }
+    }
+}
+
 /// The mod's plan_placement op on the live deploy: the start and best
 /// placement with their simulated outcomes. Nothing on the field moves.
 /// MECHABELLUM_PLAN_BUDGET sets the number of tries (default 80).

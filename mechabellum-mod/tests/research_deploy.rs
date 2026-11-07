@@ -205,6 +205,57 @@ fn can_move_unit() {
     }
 }
 
+/// What can be bought now: the local player's ShopManager (Cpp2IL dump,
+/// GRCore ShopManager): buy count and its cap, unlock count and its
+/// cap, and each unlocked shop card with its cost, units per purchase
+/// and CanBuyUnit answer (0 is allowed). Also the player's supply.
+#[test]
+fn shop() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let call = |h: i64, m: &str, args: Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no panel holds a match");
+        return;
+    };
+    let Some(pc) = field(m, "localPlayerController") else { return };
+    let pcf = api.op("inspect_object", json!({"handle": pc})).result["fields"].as_object().cloned().unwrap_or_default();
+    for (k, v) in &pcf {
+        let l = k.to_lowercase();
+        if l.contains("shop") || l.contains("supply") {
+            println!("localPlayerController.{k} = {}", v.get("str").cloned().unwrap_or(v.clone()));
+        }
+    }
+    if let Some(p) = field(pc, "player") {
+        show(&api, p, "  player ");
+    }
+    let Some(sm) = ["shopManager", "ShopManager"].iter().find_map(|f| field(pc, f)) else {
+        println!("no shopManager on the local player controller");
+        return;
+    };
+    for g in ["GetBuyCount", "GetMaxBuyCount", "GetUnlockCount", "GetMaxUnlockCount", "IsBuyCountPerUnitLimit", "CanUnlockUnit"] {
+        println!("ShopManager.{g} = {}", call(sm, g, json!([])).result);
+    }
+    let Some(list) = handle_of(&call(sm, "GetUnlockedUnits", json!([])).result) else {
+        println!("GetUnlockedUnits gave no list");
+        return;
+    };
+    for i in 0..common::count_of(&api, list).unwrap_or(0) {
+        let Some(card) = handle_of(&call(list, "get_Item", json!([i])).result) else { continue };
+        let data = field(card, "unitData");
+        let read = |f: &str| data.map(|d| api.op("read_field", json!({"handle": d, "field": f})).result).unwrap_or_default();
+        let id = read("id");
+        println!(
+            "  shop {i}: card {id} {} cost {} x{} can buy {}",
+            read("name"), read("baseMoney"), read("mechCount"), call(sm, "CanBuyUnit", json!([id])).result
+        );
+    }
+}
+
 /// The game's recommended formations: each RecommendFormItem's text
 /// and the fields of each of its FormAreas.
 #[test]
