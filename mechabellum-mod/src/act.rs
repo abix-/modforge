@@ -10,15 +10,17 @@
 //! same check, the same call. The AI does both the same way (AIBrain
 //! BuyUnit and MoveUnit).
 //!
-//! A card is named by its unit index (unitData.index), which stays the
-//! same while cards are bought and moved. Each action is its own main
+//! A CardElement carries no unit index (its unitData is the card's
+//! config row), so a card is the object itself: handles are kept from
+//! one main thread job to the next, and a bought card is one that
+//! Equals none of the cards there before. Each action is its own main
 //! thread job, so the game updates between them.
 
 use std::time::Duration;
 
 use serde_json::{Value as Json, json};
 use unityforge::main_thread_queue::MAIN_QUEUE;
-use unityforge::mono::{MonoObject, invoke_static};
+use unityforge::mono::{MonoObject, invoke_static, owned_object, with_object};
 
 use crate::deploy::{bound, current_match, field, object};
 
@@ -30,16 +32,32 @@ fn int(o: &MonoObject, f: &str) -> Result<i64, String> {
     o.read_field(f)?.as_i64().ok_or_else(|| format!("{f} is not a number"))
 }
 
-/// Our cards on the field: (unit index, card id, card).
-fn our_cards(pc: &MonoObject) -> Result<Vec<(i64, i64, MonoObject)>, String> {
+/// Our cards on the field, in the field's order: (card id, card).
+fn our_cards(pc: &MonoObject) -> Result<Vec<(i64, MonoObject)>, String> {
     let list = field(pc, "unitManager")?.and_then(|um| field(&um, "units").ok().flatten()).ok_or("no unitManager.units")?;
     let mut out = Vec::new();
     for i in 0..list.list_len_or_zero()? {
         let Some(card) = object(list.invoke("get_Item", &json!([i]))?) else { continue };
         let d = field(&card, "unitData")?.ok_or("card has no unitData")?;
-        out.push((int(&d, "index")?, int(&d, "id")?, card));
+        out.push((int(&d, "id")?, card));
     }
     Ok(out)
+}
+
+/// A handle kept past its job; given back by `release`.
+fn keep(o: MonoObject) -> i32 {
+    let h = o.handle().0;
+    std::mem::forget(o);
+    h
+}
+
+fn release(hs: Vec<i32>) {
+    let _ = job("act release", move || {
+        for h in hs {
+            drop(owned_object(h));
+        }
+        Ok(())
+    });
 }
 
 /// A new action object of the game's class.
@@ -73,13 +91,11 @@ fn buy(slot: i64) -> Result<(), String> {
     perform(&pc, &a)
 }
 
-/// Move the card with unit index `index` so its centre is at (x, y).
-/// Main thread only.
-fn move_card(index: i64, x: i64, y: i64) -> Result<(), String> {
+/// Move the card so its centre is at (x, y). Main thread only.
+fn move_card(card: i32, x: i64, y: i64) -> Result<(), String> {
     let pc = controller()?;
-    let (_, _, card) = our_cards(&pc)?.into_iter().find(|c| c.0 == index).ok_or_else(|| format!("no card with unit index {index}"))?;
     let a = action("Il2CppGameRiver.PAD_MoveUnit")?;
-    a.invoke("AddMoveData", &json!([{"$handle": pc.handle().0}, {"$handle": card.handle().0}, {"x": x, "y": y}, false]))?;
+    a.invoke("AddMoveData", &json!([{"$handle": pc.handle().0}, {"$handle": card}, {"x": x, "y": y}, false]))?;
     perform(&pc, &a)
 }
 
@@ -87,20 +103,47 @@ fn job<T: Send + 'static>(name: &'static str, f: impl FnOnce() -> Result<T, Stri
     MAIN_QUEUE.run_result(name, Duration::from_secs(10), f)
 }
 
-/// (unit index, card id) of our cards.
-fn indexes() -> Result<Vec<(i64, i64)>, String> {
-    job("act cards", || Ok(our_cards(&controller()?)?.into_iter().map(|(i, id, _)| (i, id)).collect()))
+/// (card id, kept handle) of our cards, in the field's order.
+fn cards() -> Result<Vec<(i64, i32)>, String> {
+    job("act cards", || Ok(our_cards(&controller()?)?.into_iter().map(|(id, c)| (id, keep(c))).collect()))
+}
+
+/// The cards in `after` that Equal none in `before`, in field order.
+fn new_cards(before: &[(i64, i32)], after: &[(i64, i32)]) -> Result<Vec<(i64, i32)>, String> {
+    let (before, after) = (before.to_vec(), after.to_vec());
+    job("act new cards", move || {
+        let mut out = Vec::new();
+        for &(id, h) in &after {
+            let mut seen = false;
+            for &(_, b) in &before {
+                if with_object(h, |o| o.invoke("Equals", &json!([{"$handle": b}])))?.as_bool() == Some(true) {
+                    seen = true;
+                    break;
+                }
+            }
+            if !seen {
+                out.push((id, h));
+            }
+        }
+        Ok(out)
+    })
 }
 
 /// Buy `slots`, then put every unit where `units` says: the field's
 /// cards first in their order, then one per bought slot (the plan
 /// from plan_deploy, its `buy` and `units`).
 fn apply(slots: Vec<i64>, units: Vec<(i64, i64, i64)>) -> Result<Json, String> {
-    let before = indexes()?;
+    let before = cards()?;
+    let r = apply_with(&before, slots, units);
+    release(before.iter().map(|c| c.1).collect());
+    r
+}
+
+fn apply_with(before: &[(i64, i32)], slots: Vec<i64>, units: Vec<(i64, i64, i64)>) -> Result<Json, String> {
     if units.len() != before.len() + slots.len() {
         return Err(format!("{} units given for {} cards and {} buys", units.len(), before.len(), slots.len()));
     }
-    for (n, ((_, id), (card, _, _))) in before.iter().zip(&units).enumerate() {
+    for (n, ((id, _), (card, _, _))) in before.iter().zip(&units).enumerate() {
         if id != card {
             return Err(format!("unit {n}: field has card {id}, plan has {card}"));
         }
@@ -110,16 +153,32 @@ fn apply(slots: Vec<i64>, units: Vec<(i64, i64, i64)>) -> Result<Json, String> {
         let r = job("act buy", move || buy(slot));
         steps.push(json!({"buy": slot, "ok": r.is_ok(), "error": r.err()}));
     }
-    let after = indexes()?;
-    let mut bought: Vec<(i64, i64)> = after.iter().filter(|c| !before.iter().any(|b| b.0 == c.0)).copied().collect();
-    bought.sort();
-    let mut order: Vec<(i64, i64)> = before.clone();
+    let after = cards()?;
+    let bought = new_cards(before, &after);
+    // Handles in `after` that are not bought are let go now.
+    let bought = match bought {
+        Ok(b) => {
+            release(after.iter().filter(|a| !b.iter().any(|x| x.1 == a.1)).map(|a| a.1).collect());
+            b
+        }
+        Err(e) => {
+            release(after.iter().map(|a| a.1).collect());
+            return Err(e);
+        }
+    };
+    let r = place(before, &bought, &units, steps, slots.len());
+    release(bought.iter().map(|b| b.1).collect());
+    r
+}
+
+fn place(before: &[(i64, i32)], bought: &[(i64, i32)], units: &[(i64, i64, i64)], mut steps: Vec<Json>, asked: usize) -> Result<Json, String> {
+    let mut order: Vec<(i64, i32)> = before.to_vec();
     order.extend(bought.iter().copied());
     // A bought card goes to the plan's spot for a bought unit of the
     // same card, first unused first.
-    let mut targets: Vec<Option<(i64, i64)>> = before.iter().zip(&units).map(|(_, u)| Some((u.1, u.2))).collect();
+    let mut targets: Vec<Option<(i64, i64)>> = before.iter().zip(units).map(|(_, u)| Some((u.1, u.2))).collect();
     let mut free: Vec<(i64, i64, i64)> = units[before.len()..].to_vec();
-    for (_, id) in &bought {
+    for (id, _) in bought {
         let at = free.iter().position(|u| u.0 == *id);
         targets.push(at.map(|k| {
             let u = free.remove(k);
@@ -132,11 +191,11 @@ fn apply(slots: Vec<i64>, units: Vec<(i64, i64, i64)>) -> Result<Json, String> {
     for _ in 0..3 {
         let mut left = Vec::new();
         for k in todo {
-            let (index, (x, y)) = (order[k].0, targets[k].unwrap_or_default());
-            match job("act move", move || move_card(index, x, y)) {
-                Ok(()) => steps.push(json!({"move": index, "card": order[k].1, "x": x, "y": y, "ok": true})),
+            let (handle, (x, y)) = (order[k].1, targets[k].unwrap_or_default());
+            match job("act move", move || move_card(handle, x, y)) {
+                Ok(()) => steps.push(json!({"move": k, "card": order[k].0, "x": x, "y": y, "ok": true})),
                 Err(e) => {
-                    steps.push(json!({"move": index, "card": order[k].1, "x": x, "y": y, "ok": false, "error": e}));
+                    steps.push(json!({"move": k, "card": order[k].0, "x": x, "y": y, "ok": false, "error": e}));
                     left.push(k);
                 }
             }
@@ -150,16 +209,16 @@ fn apply(slots: Vec<i64>, units: Vec<(i64, i64, i64)>) -> Result<Json, String> {
         let pc = controller()?;
         let supply = field(&pc, "player")?.map(|p| int(&p, "supply")).transpose()?;
         let mut cards = Vec::new();
-        for (index, id, card) in our_cards(&pc)? {
+        for (id, card) in our_cards(&pc)? {
             let b = field(&card, "mapElement")?.and_then(|me| me.read_field("bound").ok()).and_then(|v| v.as_str().and_then(bound));
-            cards.push(json!({"index": index, "card": id, "bound": b}));
+            cards.push(json!({"card": id, "bound": b}));
         }
         Ok(json!({"supply": supply, "cards": cards}))
     })?;
     Ok(json!({
         "bought": bought.len(),
-        "asked_to_buy": slots.len(),
-        "not_moved": todo.iter().map(|&k| order[k].0).collect::<Vec<_>>(),
+        "asked_to_buy": asked,
+        "not_moved": todo.iter().map(|&k| json!({"unit": k, "card": order[k].0})).collect::<Vec<_>>(),
         "steps": steps,
         "now": now,
     }))

@@ -140,6 +140,14 @@ fn units_on_field() {
             let data = field(card, "unitData");
             let read = |h: Option<i64>, f: &str| h.map(|h| api.op("read_field", json!({"handle": h, "field": f})).result);
             println!("  --- unit {u}: card {:?} {:?}", read(data, "id"), read(data, "name"));
+            // The first unit's card data and card fields: what names a
+            // card for the game's buy and move actions.
+            if u == 0 {
+                if let Some(d) = data {
+                    show(&api, d, "    unitData ");
+                }
+                show(&api, card, "    card ");
+            }
             // Where it stands: the CardElement's mapElement, and (first
             // unit only, it is long) its mechPositionManager.
             if let Some(me) = field(card, "mapElement") {
