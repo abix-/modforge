@@ -256,6 +256,109 @@ fn run_game_simulation() {
     }
 }
 
+/// Where a copy of the record keeps each player's units, and whether
+/// moving one in the copy moves it in the simulation without touching
+/// the live record. The copy is CloneableObject.GetDeepCopy (Cpp2IL
+/// dump, GRUtility CloneableObject`1).
+#[test]
+fn record_copy_units() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let call = |h: i64, m: &str, args: serde_json::Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let fields = |h: i64| api.op("inspect_object", json!({"handle": h})).result["fields"].as_object().cloned().unwrap_or_default();
+    let dump = |label: &str, h: i64| {
+        println!("{label}:");
+        for (k, v) in fields(h) {
+            println!("  {k} = {}", v.get("str").cloned().unwrap_or(v));
+        }
+    };
+    let panels = unityforge::client::find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no match open");
+        return;
+    };
+    let Some(live) = field(m, "localPlayerController")
+        .and_then(|pc| field(pc, "replaySystem"))
+        .and_then(|rs| field(rs, "battleRecorder"))
+        .and_then(|r| handle_of(&call(r, "GetCurrentRecord", json!([])).result))
+    else {
+        println!("no battle record");
+        return;
+    };
+    let copy = call(live, "GetDeepCopy", json!([]));
+    println!("GetDeepCopy -> {} {:?}", copy.result["il2cpp_type"], copy.error);
+    let Some(rec) = handle_of(&copy.result) else { return };
+    let rounds = call(rec, "GetRoundCount", json!([])).result.as_i64().unwrap_or(0);
+    // GetPlayerRecord has a PlayerController overload the int binds to
+    // wrongly; the list field is the same data.
+    let got = field(rec, "playerRecords").map(|l| call(l, "get_Item", json!([0])));
+    let Some(pr) = got.as_ref().and_then(|g| handle_of(&g.result)) else {
+        println!("playerRecords[0] -> {:?}", got.map(|g| (g.result, g.error)));
+        dump("battle record copy", rec);
+        return;
+    };
+    dump("player record 0", pr);
+    let Some(rr) = handle_of(&call(pr, "GetRoundRecord", json!([rounds - 1])).result) else {
+        println!("no round record {}", rounds - 1);
+        return;
+    };
+    dump(&format!("round record {}", rounds - 1), rr);
+    let Some(units) = field(rr, "playerData").and_then(|pd| field(pd, "units")) else {
+        println!("no playerData.units");
+        return;
+    };
+    let pos = |rec_h: i64| -> serde_json::Value {
+        let u = field(rec_h, "playerRecords")
+            .and_then(|l| handle_of(&call(l, "get_Item", json!([0])).result))
+            .and_then(|p| handle_of(&call(p, "GetRoundRecord", json!([rounds - 1])).result))
+            .and_then(|r| field(r, "playerData"))
+            .and_then(|pd| field(pd, "units"))
+            .and_then(|l| handle_of(&call(l, "get_Item", json!([0])).result));
+        u.map(|u| fields(u).get("position").cloned().unwrap_or_default()).unwrap_or_default()
+    };
+    let Some(u0) = handle_of(&call(units, "get_Item", json!([0])).result) else { return };
+    let before = fields(u0)["position"].clone();
+    let (x, y) = (before["x"].as_i64().unwrap_or(0), before["y"].as_i64().unwrap_or(0));
+    let w = api.op("write_field", json!({"handle": u0, "field": "position", "value": {"x": x - 200, "y": y}}));
+    println!("copy unit 0 at ({x}, {y}), write x {} -> ok {} {:?}", x - 200, w.ok, w.error);
+    println!("copy unit 0 now {}", pos(rec));
+    println!("live unit 0 now {}", pos(live));
+
+    let ms = unityforge::client::first_handle_inactive(&api, "GameRiver.Config")
+        .and_then(|c| handle_of(&call(c, "GetMatchSetting", json!([call(rec, "GetMapID", json!([])).result])).result));
+    let Some(ms) = ms else {
+        println!("no match setting");
+        return;
+    };
+    let ctor = json!([2, {"$handle": ms}, {"$handle": rec}, false, 0, rounds - 1, null]).to_string();
+    let bs = api.op("invoke_static", json!({"class": "Unityforge.Shim.Il2CppBridge", "method": "NewObject", "args": ["Il2CppGameRiver.BattleSetting", ctor]}));
+    let Some(bs) = handle_of(&bs.result) else {
+        println!("BattleSetting: {:?}", bs.error);
+        return;
+    };
+    let sim = api.op("invoke_static", json!({"class": "Il2CppGameRiver.Client.MatchUtility", "method": "StartFastBattleSimulation", "args": [{"$handle": bs}], "timeout_s": 120}));
+    let Some(fr) = handle_of(&sim.result).and_then(|s| handle_of(&call(s, "GetFightResult", json!([])).result)) else {
+        println!("simulation: {:?}", sim.error);
+        return;
+    };
+    let Some(reports) = field(fr, "reports") else { return };
+    for i in 0..common::count_of(&api, reports).unwrap_or(0) {
+        let Some(r) = handle_of(&call(reports, "get_Item", json!([i])).result) else { continue };
+        let f = fields(r);
+        println!("report {i}: alive {} score {}", f["_AliveMechCount_k__BackingField"], f["_Score_k__BackingField"]);
+        if let Some(ul) = field(r, "unitDatas") {
+            for j in 0..common::count_of(&api, ul).unwrap_or(0) {
+                let Some(u) = handle_of(&call(ul, "get_Item", json!([j])).result) else { continue };
+                let uf = fields(u);
+                println!("  card {} at ({}, {})", uf["id"], uf["position"]["x"], uf["position"]["y"]);
+            }
+        }
+    }
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

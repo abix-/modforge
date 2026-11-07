@@ -201,6 +201,15 @@ From `tests/research_simulation.rs`.
   `Score`, and `unitDatas` (card id, position, exp). A unit's position
   is its deploy bound's centre (bound x -20, y -170, 50 by 20 is
   (5, -160)), so the simulation fought the deploy on screen.
+- **A copy can be changed and simulated** (`record_copy_units`).
+  `BattleRecord.GetDeepCopy()` copies the record. A player's units are
+  `playerRecords[i]` (not `GetPlayerRecord(i)`, whose int binds to a
+  PlayerController overload), `GetRoundRecord(round)`, `playerData`
+  (`PlayerSnapshotData`: `supply`, `reactorCore`, `shop`, `units`,
+  `activeTechnologies`, `equipmentDatas`, `commanderSkills`, ...), then
+  `units` (`NewUnitData`: `id` card, `position`, `isRotate`, `level`,
+  `exp`, `equipments`). Writing a unit's `position` in the copy moved it
+  in the simulation and left the live record as it was.
 
 ## Next
 
