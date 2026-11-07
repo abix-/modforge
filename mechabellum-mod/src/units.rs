@@ -35,7 +35,7 @@ fn int(o: &MonoObject, field: &str) -> Result<i64, String> {
 }
 
 /// The live Config, a Unity object (GRSingletonMonoStatic<Config>).
-fn config() -> Result<MonoObject, String> {
+pub(crate) fn config() -> Result<MonoObject, String> {
     let ty = MonoType::find("Il2CppGameRiver.Config").ok_or("type GameRiver.Config not found")?;
     let all = ty.walk(true)?;
     let list = all.get("instances").cloned().unwrap_or(all);

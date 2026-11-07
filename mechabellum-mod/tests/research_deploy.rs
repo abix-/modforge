@@ -154,6 +154,57 @@ fn units_on_field() {
     }
 }
 
+/// Where the game lets our first unit go: TerritoryManager.CanMoveUnit
+/// (unit, position, isForce false), the game's own check (Cpp2IL dump,
+/// GRCore TerritoryManager), asked over a grid of positions. Prints the
+/// answer at the unit's own place first, then the grid as a map
+/// (`#` allowed, `.` refused).
+#[test]
+fn can_move_unit() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no panel holds a match");
+        return;
+    };
+    let Some(pc) = field(m, "localPlayerController") else { return };
+    let pcf = api.op("inspect_object", json!({"handle": pc})).result["fields"].as_object().cloned().unwrap_or_default();
+    for (k, v) in &pcf {
+        if k.to_lowercase().contains("territor") {
+            println!("localPlayerController.{k} = {}", v.get("str").cloned().unwrap_or(v.clone()));
+        }
+    }
+    let tm = ["territoryManager", "TerritoryManager", "territory"].iter().find_map(|f| field(pc, f));
+    let Some(tm) = tm else {
+        println!("no territory manager on the local player controller");
+        return;
+    };
+    let Some(unit) = field(pc, "unitManager")
+        .and_then(|um| field(um, "units"))
+        .and_then(|l| handle_of(&api.op("invoke_method", json!({"handle": l, "method": "get_Item", "args": [0]})).result))
+    else {
+        println!("no unit 0");
+        return;
+    };
+    let bound = field(unit, "mapElement").map(|me| api.op("read_field", json!({"handle": me, "field": "bound"})).result);
+    println!("unit 0 bound {bound:?}");
+    let ask = |x: i64, y: i64| api.op("invoke_method", json!({"handle": tm, "method": "CanMoveUnit", "args": [{"$handle": unit}, {"x": x, "y": y}, false]}));
+    for (x, y) in [(-20, -170), (5, -160), (0, 0), (0, 100)] {
+        let r = ask(x, y);
+        println!("CanMoveUnit({x}, {y}) -> {} {:?}", r.result, r.error);
+    }
+    let first = ask(5, -160).result;
+    println!("grid: x -300..300 step 25, y 300..-300 step 20; '#' answers like the unit's own place");
+    for y in (-15..=15).rev().map(|i| i * 20) {
+        let row: String = (-12..=12).map(|i| if ask(i * 25, y).result == first { '#' } else { '.' }).collect();
+        println!("  y {y:>4} {row}");
+    }
+}
+
 /// The game's recommended formations: each RecommendFormItem's text
 /// and the fields of each of its FormAreas.
 #[test]

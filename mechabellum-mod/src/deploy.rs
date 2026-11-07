@@ -14,16 +14,16 @@ use unityforge::mono::{MonoObject, MonoType, json_handle, owned_object};
 
 use crate::units;
 
-fn object(v: Json) -> Option<MonoObject> {
+pub(crate) fn object(v: Json) -> Option<MonoObject> {
     json_handle(&v).map(owned_object)
 }
 
-fn field(o: &MonoObject, f: &str) -> Result<Option<MonoObject>, String> {
+pub(crate) fn field(o: &MonoObject, f: &str) -> Result<Option<MonoObject>, String> {
     Ok(object(o.read_field(f)?))
 }
 
 /// "(x:-20, y:-170, width:40, height:20)" -> [x, y, width, height].
-fn bound(text: &str) -> Option<[f64; 4]> {
+pub(crate) fn bound(text: &str) -> Option<[f64; 4]> {
     let mut out = [0.0; 4];
     let mut n = 0;
     for part in text.trim_matches(|c| c == '(' || c == ')').split(',') {
@@ -35,7 +35,7 @@ fn bound(text: &str) -> Option<[f64; 4]> {
 }
 
 /// The live match. Main thread only.
-fn current_match() -> Result<MonoObject, String> {
+pub(crate) fn current_match() -> Result<MonoObject, String> {
     let ty = MonoType::find("Il2CppGameRiver.Client.ChooseRecommendFormPanel").ok_or("type ChooseRecommendFormPanel not found")?;
     let all = ty.walk(true)?;
     let list = all.get("instances").cloned().unwrap_or(all);

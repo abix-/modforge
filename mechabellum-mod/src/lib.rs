@@ -10,6 +10,7 @@ use unityforge::ModDef;
 
 mod deploy;
 mod lineup;
+mod sim;
 mod units;
 
 static MOD_INFO: ModDef = ModDef {
@@ -31,6 +32,7 @@ fn on_init() {
     units::install();
     lineup::install();
     deploy::install();
+    sim::install();
 
     let kind = unityforge::unity::runtime_kind()
         .map(|k| format!("{k:?}"))

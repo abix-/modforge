@@ -359,6 +359,24 @@ fn record_copy_units() {
     }
 }
 
+/// The mod's plan_placement op on the live deploy: the start and best
+/// placement with their simulated outcomes. Nothing on the field moves.
+/// MECHABELLUM_PLAN_BUDGET sets the number of tries (default 80).
+#[test]
+fn plan_placement_op() {
+    let api = api().with_timeout(std::time::Duration::from_secs(900));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let budget: u64 = std::env::var("MECHABELLUM_PLAN_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(80);
+    let r = api.op("plan_placement", json!({"budget": budget}));
+    if !r.ok {
+        println!("plan_placement: {:?}", r.error);
+        return;
+    }
+    println!("{}", serde_json::to_string_pretty(&r.result).unwrap_or_default());
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]
