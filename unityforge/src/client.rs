@@ -79,6 +79,73 @@ fn first_handle_opts<S: DeserializeOwned>(
     }
 }
 
+/// Full names of every type in the IL2CPP assembly whose simple name
+/// is `assembly` (for example "Assembly-CSharp"), compiler-generated
+/// closures left out. None when no loaded assembly has that name.
+///
+/// The walk goes through the IL2CPP side of the runtime: the
+/// interop proxy Il2CppSystem.AppDomain, whose assemblies and types
+/// are IL2CPP objects and chain like any game object. Host-side
+/// System.Reflection objects come back stringified, not as handles.
+/// Moved here from megabonk-mod and wanderburg-mod's research tests.
+pub fn assembly_type_names<S: DeserializeOwned>(api: &Api<S>, assembly: &str) -> Option<Vec<String>> {
+    let invoke = |h: i64, method: &str, args: Value| {
+        api.op("invoke_method", json!({"handle": h, "method": method, "args": args}))
+    };
+    let release = |h: i64| {
+        api.op("release_handle", json!({"handle": h}));
+    };
+    let domain = api.op(
+        "invoke_static",
+        json!({"class": "Il2CppSystem.AppDomain", "method": "get_CurrentDomain", "args": []}),
+    );
+    let Some(domain_h) = handle_of(&domain.result) else {
+        println!("AppDomain.get_CurrentDomain carried no handle: {:?}", domain.error);
+        return None;
+    };
+    let asms = invoke(domain_h, "GetAssemblies", json!([]));
+    release(domain_h);
+    let Some(asms_h) = handle_of(&asms.result) else {
+        println!("GetAssemblies carried no handle: {:?}", asms.error);
+        return None;
+    };
+    let prefix = format!("{assembly},");
+    let mut asm_h = None;
+    for i in 0..count_of(api, asms_h).unwrap_or(0) {
+        let Some(h) = handle_of(&invoke(asms_h, "get_Item", json!([i])).result) else {
+            continue;
+        };
+        if invoke(h, "get_FullName", json!([])).result.as_str().unwrap_or("").starts_with(&prefix) {
+            asm_h = Some(h);
+            break;
+        }
+        release(h);
+    }
+    release(asms_h);
+    let asm_h = asm_h?;
+    let types = invoke(asm_h, "GetTypes", json!([]));
+    release(asm_h);
+    let Some(seq) = handle_of(&types.result) else {
+        println!("{assembly}: GetTypes carried no handle: {:?}", types.error);
+        return None;
+    };
+    let mut out = Vec::new();
+    for i in 0..count_of(api, seq).unwrap_or(0) {
+        let Some(th) = handle_of(&invoke(seq, "get_Item", json!([i])).result) else {
+            continue;
+        };
+        let name = invoke(th, "get_FullName", json!([]));
+        release(th);
+        if let Some(full) = name.result.as_str()
+            && !full.contains('<')
+        {
+            out.push(full.to_string());
+        }
+    }
+    release(seq);
+    Some(out)
+}
+
 /// True when inspect_object on a live instance of `class` lists
 /// `field`. Prints the verdict either way.
 pub fn field_exists<S: DeserializeOwned>(api: &Api<S>, class: &str, field: &str) -> bool {
