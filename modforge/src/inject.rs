@@ -27,10 +27,8 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
+use crate::process_memory::find_pid_by_name;
 use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HMODULE};
-use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
-};
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress};
 use windows_sys::Win32::System::Memory::{
     MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, VirtualAllocEx, VirtualFreeEx,
@@ -229,40 +227,6 @@ fn stage_dll(source: &Path) -> anyhow::Result<PathBuf> {
 // =============================================================================
 // Process / remote-call primitives
 // =============================================================================
-
-fn find_pid_by_name(name: &str) -> anyhow::Result<u32> {
-    // SAFETY: CreateToolhelp32Snapshot is safe; we close the handle.
-    let snap = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
-    if snap.is_null() || (snap as isize) == -1 {
-        anyhow::bail!("CreateToolhelp32Snapshot failed");
-    }
-    let mut found_pid: u32 = 0;
-    let target = name.to_ascii_lowercase();
-    // SAFETY: PROCESSENTRY32W is plain data; all-zero is a valid value.
-    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
-    entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
-    // SAFETY: snap is valid; entry has its dwSize set.
-    if unsafe { Process32FirstW(snap, &mut entry) } != 0 {
-        loop {
-            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
-            let proc_name = String::from_utf16_lossy(&entry.szExeFile[..len]);
-            if proc_name.to_ascii_lowercase() == target {
-                found_pid = entry.th32ProcessID;
-                break;
-            }
-            // SAFETY: same as the first read.
-            if unsafe { Process32NextW(snap, &mut entry) } == 0 {
-                break;
-            }
-        }
-    }
-    // SAFETY: snap was created above.
-    unsafe { CloseHandle(snap) };
-    if found_pid == 0 {
-        anyhow::bail!("process not found: {name}");
-    }
-    Ok(found_pid)
-}
 
 fn open_process(pid: u32) -> anyhow::Result<HANDLE> {
     // SAFETY: OpenProcess never UB. Returns NULL on failure.

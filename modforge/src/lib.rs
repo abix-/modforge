@@ -51,6 +51,7 @@ pub mod world2d;
 pub mod valid;
 pub mod ops;
 pub mod patterns;
+pub mod process_memory;
 pub mod persona;
 pub mod quality;
 pub mod read_once;

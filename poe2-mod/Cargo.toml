@@ -1,0 +1,18 @@
+[package]
+name = "poe2-mod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Path of Exile 2 helper. Runs as its own program next to the game and
+# reads its memory read-only (modforge::process_memory). Never loaded
+# into the game, never writes to it.
+
+[dependencies]
+modforge = { path = "../modforge" }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
