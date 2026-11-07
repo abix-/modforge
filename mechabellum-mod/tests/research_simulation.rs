@@ -43,8 +43,28 @@ fn simulation_signatures() {
     }
     unityforge::client::print_method_signatures(&api, "GameRiver.SimpleSimulator", "GRClient", &[]);
     unityforge::client::print_method_signatures(&api, "GameRiver.Client.FastSimulationMatch", "GRClient", &[]);
-    for asm in ["GRCore", "GRClient", "GRFight"] {
-        unityforge::client::print_method_signatures(&api, "GameRiver.BattleSetting", asm, &[]);
+    unityforge::client::print_method_signatures(&api, "GameRiver.BattleSetting", "GRCore", &[]);
+}
+
+/// What goes in and comes out: PlayerRecord, BattleRecord, the fight
+/// result, the snapshot system (it takes one for the async mode, Star
+/// Expedition) and the replay test tool (a likely caller of the
+/// simulator).
+#[test]
+fn record_signatures() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    for (class, asm) in [
+        ("GameRiver.PlayerRecord", "GRCore"),
+        ("GameRiver.BattleRecord", "GRCore"),
+        ("GameRiver.Fight.FightResult", "GRFight"),
+        ("GameRiver.SnapshotSystem", "GRCore"),
+        ("GameRiver.Client.Tool.ReplayTestTool", "GRClient"),
+        ("GameRiver.Client.Tool.ReplayTestToolJob", "GRClient"),
+    ] {
+        unityforge::client::print_method_signatures(&api, class, asm, &[]);
     }
 }
 
