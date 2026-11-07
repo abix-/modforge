@@ -124,11 +124,20 @@ From `tests/research_units.rs`.
   `GetAttackInterval`, `GetSplashRange`, `GetDamageRate`,
   `IsAirAttack`, `IsGroundAttack`, ...), kept in
   `Config.mechSkillDatas.dataDic` (skill id to skill).
-- Not yet read: the skill numbers. `dataDic` hands back each skill
-  typed as its base `ConfigData`, so none of the skill getters are
-  found. Same cause as the PureMVC proxy. Fix written in
+- `dataDic` hands back each skill typed as its base `ConfigData`;
+  until 2026-11-07 none of the skill getters were found. Fixed in
   `unityforge/cs-shim-il2cpp/Il2CppBridge.cs` (handles carry the
-  object's runtime class); not yet deployed.
+  object's runtime class, commit 793aab90). After it, three skills
+  read (range, attack interval in seconds, splash range):
+
+  | Skill | Class | Range | Interval | Splash | Targets |
+  |---|---|---:|---:|---:|---|
+  | 5031001 Vortex | SkillData | 85 | 1.5 | 0 | ground |
+  | 5024001 Tarantula | ProjectileSkillData | 80 | 0.6 | 5 | ground |
+  | 5010001 Crawler | SkillData | 6 | 0.6 | 0 | ground, melee |
+
+  `GetDamage(0)` returned 0 for all three; the damage that counts is
+  still the mech row's `damage` until the skill's damage list is read.
 
 ## Next
 
