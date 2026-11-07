@@ -171,6 +171,62 @@ fn assembly_type_names_walk<S: DeserializeOwned>(api: &Api<S>, assembly: &str) -
     Some(out)
 }
 
+/// Prints every method `class` declares with its parameter types,
+/// read through the IL2CPP side's own reflection
+/// (Il2CppSystem.Type.GetType("Ns.Name, Assembly")). The shim's
+/// list_methods gives the parameter count only. `class` is the game's
+/// name ("GameRiver.SimpleSimulator"), `assembly` its assembly
+/// ("GRClient"). Methods named in `only` (all when empty).
+pub fn print_method_signatures<S: DeserializeOwned>(api: &Api<S>, class: &str, assembly: &str, only: &[&str]) {
+    let invoke = |h: i64, method: &str, args: Value| {
+        api.op("invoke_method", json!({"handle": h, "method": method, "args": args})).result
+    };
+    let ty = api.op(
+        "invoke_static",
+        json!({"class": "Il2CppSystem.Type", "method": "GetType", "args": [format!("{class}, {assembly}")]}),
+    );
+    let Some(t) = handle_of(&ty.result) else {
+        println!("{class}: Type.GetType carried no handle ({:?})", ty.error);
+        return;
+    };
+    let base = handle_of(&invoke(t, "get_BaseType", json!([]))).map(|b| invoke(b, "get_FullName", json!([])));
+    println!("{class} (base {}):", base.unwrap_or(Value::Null));
+    let Some(methods) = handle_of(&invoke(t, "GetMethods", json!([]))) else {
+        println!("  GetMethods carried no handle");
+        return;
+    };
+    for i in 0..count_of(api, methods).unwrap_or(0) {
+        let Some(m) = handle_of(&invoke(methods, "get_Item", json!([i]))) else { continue };
+        let name = invoke(m, "get_Name", json!([])).as_str().unwrap_or("?").to_string();
+        let declaring = handle_of(&invoke(m, "get_DeclaringType", json!([])))
+            .map(|d| invoke(d, "get_FullName", json!([])).as_str().unwrap_or("").to_string())
+            .unwrap_or_default();
+        if declaring != class || (!only.is_empty() && !only.contains(&name.as_str())) {
+            api.op("release_handle", json!({"handle": m}));
+            continue;
+        }
+        let mut params = Vec::new();
+        if let Some(ps) = handle_of(&invoke(m, "GetParameters", json!([]))) {
+            for j in 0..count_of(api, ps).unwrap_or(0) {
+                let Some(p) = handle_of(&invoke(ps, "get_Item", json!([j]))) else { continue };
+                let pn = invoke(p, "get_Name", json!([])).as_str().unwrap_or("?").to_string();
+                let pt = handle_of(&invoke(p, "get_ParameterType", json!([])))
+                    .map(|h| invoke(h, "get_FullName", json!([])).as_str().unwrap_or("?").to_string())
+                    .unwrap_or_default();
+                params.push(format!("{pt} {pn}"));
+                api.op("release_handle", json!({"handle": p}));
+            }
+            api.op("release_handle", json!({"handle": ps}));
+        }
+        let ret = handle_of(&invoke(m, "get_ReturnType", json!([])))
+            .map(|h| invoke(h, "get_FullName", json!([])).as_str().unwrap_or("?").to_string())
+            .unwrap_or_default();
+        println!("  {name}({}) -> {ret}", params.join(", "));
+        api.op("release_handle", json!({"handle": m}));
+    }
+    api.op("release_handle", json!({"handle": methods}));
+}
+
 /// True when inspect_object on a live instance of `class` lists
 /// `field`. Prints the verdict either way.
 pub fn field_exists<S: DeserializeOwned>(api: &Api<S>, class: &str, field: &str) -> bool {
