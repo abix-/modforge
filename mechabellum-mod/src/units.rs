@@ -16,6 +16,15 @@ use serde_json::{Value as Json, json};
 use unityforge::mono::{MonoObject, MonoType, json_handle, owned_object};
 
 static CACHE: Mutex<Option<HashMap<i64, UnitStats>>> = Mutex::new(None);
+/// Each card's footprint on the deploy field, width and height
+/// (CardData.cardBaseSize, "{40, 20}"; a placed Hound's bound is 40 by 20).
+static SIZES: Mutex<Option<HashMap<i64, (i32, i32)>>> = Mutex::new(None);
+
+/// "{40, 20}" -> (40, 20).
+fn size(text: &str) -> Option<(i32, i32)> {
+    let mut it = text.trim_matches(|c| c == '{' || c == '}').split(',').map(|s| s.trim().parse::<i32>().ok());
+    Some((it.next()??, it.next()??))
+}
 
 fn object(v: Json) -> Option<MonoObject> {
     json_handle(&v).map(owned_object)
@@ -72,6 +81,9 @@ fn read_all() -> Result<HashMap<i64, UnitStats>, String> {
         let Some(card) = object(card_list.invoke("get_Item", &json!([i]))?) else { continue };
         let Some(mech) = mechs.get(&int(&card, "mechID")?) else { continue };
         let id = int(&card, "id")?;
+        if let Some(s) = card.read_field("cardBaseSize")?.as_str().and_then(size) {
+            SIZES.lock().get_or_insert_with(HashMap::new).insert(id, s);
+        }
         let mut u = UnitStats {
             id,
             name: card.read_field("name")?.as_str().unwrap_or("").to_string(),
@@ -108,6 +120,12 @@ pub fn unit(card_id: i64) -> Result<UnitStats, String> {
     g.as_ref().and_then(|m| m.get(&card_id).cloned()).ok_or_else(|| format!("no card {card_id}"))
 }
 
+/// A card's footprint on the deploy field. Main thread only.
+pub fn card_size(card_id: i64) -> Result<(i32, i32), String> {
+    unit(card_id)?;
+    SIZES.lock().as_ref().and_then(|m| m.get(&card_id).copied()).ok_or_else(|| format!("no size for card {card_id}"))
+}
+
 pub fn install() {
     modforge::ops::OP_REGISTRY.register(modforge::ops::OpDef::new(
         "units",
@@ -126,4 +144,13 @@ pub fn install() {
             })
         },
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn size_reads_the_game_text() {
+        assert_eq!(super::size("{40, 20}"), Some((40, 20)));
+        assert_eq!(super::size("nonsense"), None);
+    }
 }

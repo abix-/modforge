@@ -30,6 +30,44 @@ impl Piece {
     }
 }
 
+/// A rectangular area a whole piece must stay inside.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct Area {
+    pub x0: i32,
+    pub x1: i32,
+    pub y0: i32,
+    pub y1: i32,
+}
+
+impl Area {
+    pub fn holds(&self, p: &Piece) -> bool {
+        p.x * 2 - p.w >= self.x0 * 2 && p.x * 2 + p.w <= self.x1 * 2 && p.y * 2 - p.h >= self.y0 * 2 && p.y * 2 + p.h <= self.y1 * 2
+    }
+}
+
+/// The free spot for a new `w` by `h` piece nearest to `near`, on a
+/// grid of `step`, inside `area` and clear of `pieces`.
+pub fn free_spot(pieces: &[Piece], w: i32, h: i32, area: Area, near: (i32, i32), step: i32) -> Option<Piece> {
+    let step = step.max(1);
+    let mut best: Option<(i64, Piece)> = None;
+    let mut y = area.y0;
+    while y <= area.y1 {
+        let mut x = area.x0;
+        while x <= area.x1 {
+            let p = Piece { x, y, w, h };
+            if area.holds(&p) && pieces.iter().all(|o| !o.overlaps(&p)) {
+                let d = ((x - near.0) as i64).pow(2) + ((y - near.1) as i64).pow(2);
+                if best.is_none_or(|(bd, _)| d < bd) {
+                    best = Some((d, p));
+                }
+            }
+            x += step;
+        }
+        y += step;
+    }
+    best.map(|(_, p)| p)
+}
+
 /// The best placement found.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct Found {
@@ -131,6 +169,16 @@ mod tests {
             assert!(!ps[0].overlaps(&ps[1]));
         }
         assert_eq!((f.pieces[1].x - f.pieces[0].x).abs(), 20);
+    }
+
+    #[test]
+    fn free_spot_is_clear_inside_and_nearest() {
+        let area = Area { x0: -100, x1: 100, y0: -50, y1: 0 };
+        let taken = [p(0, -20)];
+        let s = free_spot(&taken, 20, 10, area, (0, -20), 10).expect("a spot");
+        assert!(area.holds(&s) && !s.overlaps(&taken[0]));
+        assert_eq!((s.x - 0).abs() + (s.y + 20).abs(), 10);
+        assert!(free_spot(&[], 300, 10, area, (0, 0), 10).is_none());
     }
 
     #[test]

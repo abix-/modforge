@@ -462,6 +462,24 @@ fn plan_placement_op() {
     println!("{}", serde_json::to_string_pretty(&r.result).unwrap_or_default());
 }
 
+/// The mod's plan_deploy op: every way to spend the supply in the shop,
+/// each with a placement search, best first. Nothing is bought or moved.
+/// MECHABELLUM_PLAN_BUDGET sets tries per choice (default 30).
+#[test]
+fn plan_deploy_op() {
+    let api = api().with_timeout(std::time::Duration::from_secs(1800));
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let budget: u64 = std::env::var("MECHABELLUM_PLAN_BUDGET").ok().and_then(|s| s.parse().ok()).unwrap_or(30);
+    let r = api.op("plan_deploy", json!({"budget": budget}));
+    if !r.ok {
+        println!("plan_deploy: {:?}", r.error);
+        return;
+    }
+    println!("{}", serde_json::to_string_pretty(&r.result).unwrap_or_default());
+}
+
 /// Declared methods of the simulation candidates. More names go in
 /// MECHABELLUM_SIM_CLASSES (comma separated, with the Il2Cpp prefix).
 #[test]

@@ -240,19 +240,87 @@ fn shop() {
     for g in ["GetBuyCount", "GetMaxBuyCount", "GetUnlockCount", "GetMaxUnlockCount", "IsBuyCountPerUnitLimit", "CanUnlockUnit"] {
         println!("ShopManager.{g} = {}", call(sm, g, json!([])).result);
     }
-    let Some(list) = handle_of(&call(sm, "GetUnlockedUnits", json!([])).result) else {
-        println!("GetUnlockedUnits gave no list");
+    show(&api, sm, "  shopManager ");
+    if let Some(shop) = handle_of(&call(sm, "GetShop", json!([])).result) {
+        show(&api, shop, "  shop ");
+    }
+    if let Some(ss) = field(pc, "shopSystem") {
+        show(&api, ss, "  shopSystem ");
+    }
+    // GetUnlockedUnits hands back an IReadOnlyList the count helper
+    // cannot read; Shop.unlockedUnits and lockedUnits are plain Lists.
+    let Some(shop) = field(sm, "shop") else {
+        println!("no shopManager.shop");
         return;
     };
-    for i in 0..common::count_of(&api, list).unwrap_or(0) {
-        let Some(card) = handle_of(&call(list, "get_Item", json!([i])).result) else { continue };
-        let data = field(card, "unitData");
-        let read = |f: &str| data.map(|d| api.op("read_field", json!({"handle": d, "field": f})).result).unwrap_or_default();
-        let id = read("id");
-        println!(
-            "  shop {i}: card {id} {} cost {} x{} can buy {}",
-            read("name"), read("baseMoney"), read("mechCount"), call(sm, "CanBuyUnit", json!([id])).result
-        );
+    for which in ["unlockedUnits", "lockedUnits"] {
+        let Some(list) = field(shop, which) else {
+            println!("no shop.{which}");
+            continue;
+        };
+        println!("shop.{which}: {}", common::count_of(&api, list).unwrap_or(0));
+        for i in 0..common::count_of(&api, list).unwrap_or(0) {
+            let Some(card) = handle_of(&call(list, "get_Item", json!([i])).result) else { continue };
+            let data = field(card, "unitData");
+            let read = |f: &str| data.map(|d| api.op("read_field", json!({"handle": d, "field": f})).result).unwrap_or_default();
+            let id = read("id");
+            println!(
+                "  {which} {i}: card {id} {} cost {} x{} unlock price {} can buy {}",
+                read("name"), read("baseMoney"), read("mechCount"), read("unlockPrice"), call(sm, "CanBuyUnit", json!([id])).result
+            );
+        }
+    }
+}
+
+/// Star Expedition's shop, the one on screen (5 items, refresh, buy
+/// population): the local player's ReinforcementShopManager (Cpp2IL
+/// dump, GRCore). Its counters and costs, then every field, and the
+/// items of each list field.
+#[test]
+fn reinforcement_shop() {
+    let api = api();
+    if ping_or_skip(&api).is_none() {
+        return;
+    }
+    let field = |h: i64, f: &str| handle_of(&api.op("read_field", json!({"handle": h, "field": f})).result);
+    let call = |h: i64, m: &str, args: Value| api.op("invoke_method", json!({"handle": h, "method": m, "args": args}));
+    let panels = find_instances(&api, "GameRiver.Client.ChooseRecommendFormPanel", true).unwrap_or_default();
+    let Some(m) = panels.iter().filter_map(handle_of).find_map(|p| field(p, "match")) else {
+        println!("no panel holds a match");
+        return;
+    };
+    let Some(rs) = field(m, "localPlayerController").and_then(|pc| field(pc, "reinforcementShopManager")) else {
+        println!("no reinforcementShopManager");
+        return;
+    };
+    for g in [
+        "get_supply", "get_maxUnitCount", "IsMechFull", "GetAddUnitCount", "GetAddUnitCountCost", "get_canBuyMaxMechCount",
+        "get_extraBuyPopulationCost", "get_extraBuyPuplationCount", "get_extraRefreshCost", "get_freeRefreshCount",
+        "get_maxFreeRefreshCount", "get_maxManualRefreshCount", "get_canManualRefresh", "get_maxBuyItemCount",
+        "get_currentBuyItemCount", "get_discountItemCount",
+    ] {
+        let r = call(rs, g, json!([]));
+        println!("{g} = {} {}", r.result, r.error.unwrap_or_default());
+    }
+    let fields = api.op("inspect_object", json!({"handle": rs})).result["fields"].as_object().cloned().unwrap_or_default();
+    for (k, v) in &fields {
+        let s = v.get("str").cloned().unwrap_or(v.clone());
+        if s.as_str().is_some_and(|t| t.starts_with("<getter")) {
+            continue;
+        }
+        println!("  {k} = {s}");
+        if s.as_str().is_some_and(|t| t.contains("List`1"))
+            && let Some(list) = handle_of(v)
+        {
+            for i in 0..common::count_of(&api, list).unwrap_or(0).min(12) {
+                let Some(it) = handle_of(&call(list, "get_Item", json!([i])).result) else { continue };
+                println!("    [{i}] {}", api.op("inspect_object", json!({"handle": it})).result["il2cpp_type"]);
+                show(&api, it, "      ");
+                if let Some(cfg) = field(it, "_config_k__BackingField") {
+                    show(&api, cfg, "      config ");
+                }
+            }
+        }
     }
 }
 
