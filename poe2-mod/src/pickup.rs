@@ -35,7 +35,8 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            range: 50.0,
+            // The whole screen, as attack (operator, 2026-11-07).
+            range: 120.0,
             pause: Wait::new(120, 260),
             same_item_ms: 600,
             tries: 3,

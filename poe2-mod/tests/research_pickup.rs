@@ -29,6 +29,32 @@ fn matching(r: &Remote) -> Vec<Value> {
         .collect()
 }
 
+/// Switch pickup on and leave it on (`--ignored`, so a plain test run
+/// never takes the mouse): `research_pickup switch_on -- --ignored`.
+#[test]
+#[ignore = "takes the mouse until switched off"]
+fn switch_on() {
+    let r = Remote::at(17185);
+    let out = r.op("pickup", json!({"on": true})).expect("pickup on");
+    println!(
+        "pickup on: {} range {}",
+        out["pickup_on"], out["pickup"]["range"]
+    );
+}
+
+/// Switch pickup off: `research_pickup switch_off -- --ignored`.
+#[test]
+#[ignore = "pairs with switch_on"]
+fn switch_off() {
+    let r = Remote::at(17185);
+    let out = r.op("pickup", json!({"on": false})).expect("pickup off");
+    println!("pickup on: {}", out["pickup_on"]);
+    for c in out["clicks"].as_array().cloned().unwrap_or_default() {
+        println!("click: {c}");
+    }
+    println!("waiting: {}", out["waiting"]);
+}
+
 #[test]
 fn pickup_takes_the_matching_items() {
     let r = Remote::at(17185);
@@ -40,7 +66,10 @@ fn pickup_takes_the_matching_items() {
         }
     };
     for l in &before {
-        println!("before: {} ({}) {:.1} cells", l["candidate"]["name"], l["candidate"]["rule"], l["candidate"]["distance"]);
+        println!(
+            "before: {} ({}) {:.1} cells",
+            l["candidate"]["name"], l["candidate"]["rule"], l["candidate"]["distance"]
+        );
     }
     r.op("pickup", json!({"on": true})).expect("pickup on");
     std::thread::sleep(RUN);
@@ -51,9 +80,18 @@ fn pickup_takes_the_matching_items() {
     println!("last error: {}", out["last_error"]);
     let after = matching(&r);
     for l in &after {
-        println!("left: {} ({}) {:.1} cells", l["candidate"]["name"], l["candidate"]["rule"], l["candidate"]["distance"]);
+        println!(
+            "left: {} ({}) {:.1} cells",
+            l["candidate"]["name"], l["candidate"]["rule"], l["candidate"]["distance"]
+        );
     }
     let clicks = out["clicks"].as_array().map_or(0, Vec::len);
-    assert!(before.is_empty() || clicks > 0, "matching items but no click");
-    assert!(after.len() < before.len() || before.is_empty(), "nothing left the ground");
+    assert!(
+        before.is_empty() || clicks > 0,
+        "matching items but no click"
+    );
+    assert!(
+        after.len() < before.len() || before.is_empty(),
+        "nothing left the ground"
+    );
 }
