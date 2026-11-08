@@ -87,7 +87,14 @@ pub enum Subtype {
     BreachChest,
     Strongbox,
     SpecialNpc,
+    /// A monster with the PinnacleAtlasBoss mod.
+    PinnacleBoss,
 }
+
+/// The mod GameHelper2 marks pinnacle bosses by.
+pub const PINNACLE_MOD: &str = "PinnacleAtlasBoss";
+/// The buff a pinnacle boss has while it cannot be attacked.
+pub const HIDDEN_BUFF: &str = "hidden_monster";
 
 /// RemoteEnums/Entity/EntityStates.cs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -97,6 +104,8 @@ pub enum State {
     Useless,
     PlayerLeader,
     MonsterFriendly,
+    /// A pinnacle boss that cannot be attacked yet.
+    PinnacleBossHidden,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -189,6 +198,7 @@ pub fn subtype(e: &Entity, kind: Type, local_player: u32, s: &Settings) -> Optio
         }
         Type::Player if e.id == local_player => Subtype::PlayerSelf,
         Type::Player => Subtype::PlayerOther,
+        Type::Monster if e.mods.iter().any(|m| m == PINNACLE_MOD) => Subtype::PinnacleBoss,
         Type::Npc if s.special_npcs.iter().any(|p| e.path.starts_with(p)) => Subtype::SpecialNpc,
         _ => Subtype::None,
     })
@@ -207,6 +217,11 @@ pub fn state(e: &Entity, kind: Type, subtype: Subtype, s: &Settings) -> State {
         Type::DeliriumSpawner if no_life => State::Useless,
         Type::Monster if monster_dead => State::Useless,
         Type::Monster if e.friendly == Some(true) => State::MonsterFriendly,
+        Type::Monster
+            if subtype == Subtype::PinnacleBoss && e.buffs.iter().any(|b| b == HIDDEN_BUFF) =>
+        {
+            State::PinnacleBossHidden
+        }
         Type::Player
             if subtype == Subtype::PlayerOther
                 && !s.leader.is_empty()
@@ -285,6 +300,14 @@ pub(crate) mod tests {
         wolf.stats = Some(st);
         assert_eq!(classify(&wolf, 1, &s).unwrap().state, State::Useless);
         wolf.stats = None;
+        wolf.mods = vec!["MonsterSpeed1".into(), PINNACLE_MOD.into()];
+        let k = classify(&wolf, 1, &s).unwrap();
+        assert_eq!((k.subtype, k.state), (Subtype::PinnacleBoss, State::None));
+        wolf.buffs = vec![HIDDEN_BUFF.into()];
+        assert_eq!(
+            classify(&wolf, 1, &s).unwrap().state,
+            State::PinnacleBossHidden
+        );
         wolf.friendly = Some(true);
         assert_eq!(
             classify(&wolf, 1, &s).unwrap().state,

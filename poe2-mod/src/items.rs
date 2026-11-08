@@ -43,8 +43,9 @@ fn wide_at_pointer(mem: &ProcessMemory, at: u64) -> Result<String> {
     Ok(mem.read_wide_cstr(p, TEXT_UNITS)?)
 }
 
-/// Every mod id on the Mods part at `mods`.
-fn read_mod_ids(mem: &ProcessMemory, mods: u64) -> Vec<String> {
+/// Every mod id in the five mod vectors of the mods data at `mods`
+/// (the Mods part, or ObjectMagicProperties' second copy at 0xB0).
+pub fn read_mod_ids(mem: &ProcessMemory, mods: u64) -> Vec<String> {
     let mut ids = Vec::new();
     for v in 0..MODS_VECTOR_COUNT {
         let Ok(vector): Result<Vector> = read_vector_header(mem, mods + MODS_VECTORS + v * 0x18)

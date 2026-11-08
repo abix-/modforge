@@ -183,6 +183,11 @@ pub struct Entity {
     pub targetable: Option<bool>,
     pub player: Option<PlayerPart>,
     pub stats: Option<Stats>,
+    /// The mod ids on the ObjectMagicProperties part (GameHelper2
+    /// ObjectMagicProperties.ModNames).
+    pub mods: Vec<String>,
+    /// The status effect names on the Buffs part.
+    pub buffs: Vec<String>,
 }
 
 /// GameStats ids the features read (RemoteEnums/GameStats.cs).
@@ -339,6 +344,13 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         })
         .and_then(rarity);
     let stats = get("Stats").and_then(|p| read_stats(mem, p).ok());
+    let mods = get("ObjectMagicProperties")
+        .map(|p| crate::items::read_mod_ids(mem, p + part::MAGIC_PROPERTIES_DETAILS))
+        .unwrap_or_default();
+    let buffs = get("Buffs")
+        .and_then(|p| read_buffs(mem, p).ok())
+        .map(|b| b.into_iter().map(|b| b.name).collect())
+        .unwrap_or_default();
     let player = get("Player").and_then(|p| {
         Some(PlayerPart {
             name: read_wstring(mem, p + part::PLAYER_NAME).ok()?,
@@ -361,6 +373,8 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         model_bounds,
         strongbox,
         stats,
+        mods,
+        buffs,
         friendly,
         rarity,
         player,
@@ -538,7 +552,8 @@ pub(crate) mod tests {
         life: Box<[u8; 0x320]>,
         _render: Box<[u8; 0x1C0]>,
         _positioned: Box<[u8; 0x1E8]>,
-        _magic: Box<[u8; 0x148]>,
+        _magic: Box<[u8; 0x1E0]>,
+        _mod: (Vec<u16>, Box<[u8; 8]>, Box<[u8; 0x40]>),
     }
 
     pub(crate) fn put<T: Copy>(buf: &mut [u8], at: usize, value: T) {
@@ -561,8 +576,25 @@ pub(crate) mod tests {
         put(&mut render[..], 0x144, [1.0f32, 2.0, 90.0]);
         let mut positioned = Box::new([0u8; 0x1E8]);
         positioned[0x1E0] = 0x02;
-        let mut magic = Box::new([0u8; 0x148]);
+        let mut magic = Box::new([0u8; 0x1E0]);
         put(&mut magic[..], 0x144, 3i32);
+        // One explicit mod (the second of five vectors at 0xB0 + 0xA0):
+        // a 0x40 entry whose row at 0x28 points at the mod id.
+        let id: Vec<u16> = "PinnacleAtlasBoss\0".encode_utf16().collect();
+        let mut row = Box::new([0u8; 8]);
+        put(&mut row[..], 0, id.as_ptr() as u64);
+        let mut entry = Box::new([0u8; 0x40]);
+        put(&mut entry[..], 0x28, row.as_ptr() as u64);
+        let first = entry.as_ptr() as u64;
+        put(
+            &mut magic[..],
+            0xB0 + 0xA0 + 0x18,
+            Vector {
+                first,
+                last: first + 0x40,
+                end: first + 0x40,
+            },
+        );
         let entity = fake_entity(
             "Metadata/Monsters/Wolf/Wolf",
             &[
@@ -578,6 +610,7 @@ pub(crate) mod tests {
             _render: render,
             _positioned: positioned,
             _magic: magic,
+            _mod: (id, row, entry),
         }
     }
 
@@ -629,6 +662,8 @@ pub(crate) mod tests {
         assert_eq!(e.position, Some([10.0, 20.0, 1.5]));
         assert_eq!(e.terrain_height, Some(-3.25));
         assert_eq!(e.model_bounds, Some([1.0, 2.0, 90.0]));
+        assert_eq!(e.mods, ["PinnacleAtlasBoss"]);
+        assert!(e.buffs.is_empty());
         assert_eq!(life.ward.total, 30);
         assert!(life.alive());
         assert_eq!(e.friendly, Some(false));

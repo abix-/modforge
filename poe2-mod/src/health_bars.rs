@@ -65,7 +65,7 @@ pub fn combined_percent(life: &Life) -> i32 {
 /// The style and cull rarity for an entity of `kind`, None when it gets
 /// no bar (DrawUI's switch).
 pub fn style(e: &Entity, kind: &Kind) -> Option<(Style, usize)> {
-    if !e.valid || kind.state == State::Useless {
+    if !e.valid || kind.state == State::Useless || kind.state == State::PinnacleBossHidden {
         return None;
     }
     let rare = rarity_index(Rarity::Rare);
