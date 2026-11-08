@@ -9,9 +9,11 @@ mod camera;
 mod entities;
 mod files;
 mod game;
+mod health_bars;
 mod inventory;
 mod item_rules;
 mod items;
+mod kinds;
 mod loot_value;
 mod model;
 mod preload;
@@ -308,16 +310,7 @@ fn ritual_op(args: &Json) -> Result<Json, String> {
         .map_err(|e| format!("player: {e:#}"))?
         .position
         .ok_or("player has no position")?;
-    let addresses = entities::map_addresses(
-        &a.mem,
-        area + entities::AREA_AWAKE_ENTITIES,
-        entities::MAX_AWAKE,
-    )
-    .map_err(|e| format!("{e:#}"))?;
-    let all: Vec<entities::Entity> = addresses
-        .iter()
-        .filter_map(|at| entities::read(&a.mem, *at).ok())
-        .collect();
+    let all = awake_entities(a, area)?;
     let radius = args["radius_meters"]
         .as_f64()
         .map_or(ritual::RADIUS_METERS, |v| v as f32);
@@ -333,6 +326,67 @@ fn ritual_op(args: &Json) -> Result<Json, String> {
         })
         .collect();
     Ok(json!({"player": player, "radius_meters": radius, "wisps": wisps}))
+}
+
+/// Every awake entity, read; unreadable ones are left out.
+fn awake_entities(a: &Attached, area: u64) -> Result<Vec<entities::Entity>, String> {
+    let addresses = entities::map_addresses(
+        &a.mem,
+        area + entities::AREA_AWAKE_ENTITIES,
+        entities::MAX_AWAKE,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    Ok(addresses
+        .iter()
+        .filter_map(|at| entities::read(&a.mem, *at).ok())
+        .collect())
+}
+
+/// A health bar for each awake player and monster GameHelper2 would
+/// draw one for, with its screen position (`leader` names the party
+/// leader).
+fn health_bars_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let (m, _, size) = screen(a, args)?;
+    let me = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .map_err(|e| format!("player: {e:#}"))?;
+    let settings = kinds::Settings {
+        leader: args["leader"].as_str().unwrap_or_default().to_string(),
+        ..kinds::Settings::default()
+    };
+    let bars: Vec<Json> = awake_entities(a, area)?
+        .iter()
+        .filter_map(|e| {
+            let kind = kinds::classify(e, me.id, &settings)?;
+            let b = health_bars::bar(e, &kind)?;
+            let [x, y, z] = b.anchor;
+            let at = camera::world_to_screen(&m, x, y, z, size);
+            Some(json!({"bar": b, "path": e.path, "screen": at}))
+        })
+        .collect();
+    Ok(json!({"bars": bars}))
+}
+
+/// What GameHelper2 takes each awake entity for: type, subtype, state.
+fn kinds_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let me = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .map_err(|e| format!("player: {e:#}"))?;
+    let settings = kinds::Settings {
+        leader: args["leader"].as_str().unwrap_or_default().to_string(),
+        ..kinds::Settings::default()
+    };
+    let list: Vec<Json> = awake_entities(a, area)?
+        .iter()
+        .map(|e| json!({"id": e.id, "path": e.path, "kind": kinds::classify(e, me.id, &settings)}))
+        .collect();
+    Ok(json!({"entities": list}))
 }
 
 fn camera_op(args: &Json) -> Result<Json, String> {
@@ -746,6 +800,18 @@ fn main() {
         "the zone's points of interest from its tile files (important places, boss arenas, stairs, temples, runestones); paths: walking path from the player to each; files: every tile key",
         "paths?, files?",
         radar_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "kinds",
+        "what each awake entity is, by GameHelper2's rules: type, subtype, state",
+        "leader?",
+        kinds_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "health_bars",
+        "a health bar for each awake player and monster: style, health and ward percent, shield or mana, cull range, screen position",
+        "leader?, width?, height?",
+        health_bars_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "ritual",

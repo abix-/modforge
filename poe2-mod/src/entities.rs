@@ -52,6 +52,7 @@ pub mod part {
     pub const LIFE_HEALTH: u64 = 0x1B0;
     pub const LIFE_MANA: u64 = 0x208;
     pub const LIFE_ENERGY_SHIELD: u64 = 0x248;
+    pub const LIFE_WARD: u64 = 0x2E8;
     /// VitalStruct fields.
     pub const VITAL_RESERVED_FLAT: u64 = 0x10;
     pub const VITAL_RESERVED_PERCENT: u64 = 0x14;
@@ -60,8 +61,12 @@ pub mod part {
     pub const VITAL_CURRENT: u64 = 0x30;
     pub const POSITIONED_REACTION: u64 = 0x1E0;
     pub const RENDER_WORLD_POSITION: u64 = 0x138;
+    pub const RENDER_MODEL_BOUNDS: u64 = 0x144;
     pub const RENDER_TERRAIN_HEIGHT: u64 = 0x1B0;
+    pub const CHEST_DATA: u64 = 0x160;
     pub const CHEST_IS_OPENED: u64 = 0x168;
+    /// ChestsStructInternal.StrongboxDatPtr: not 0 on a strongbox.
+    pub const CHEST_DATA_STRONGBOX: u64 = 0x50;
     pub const SHRINE_IS_USED: u64 = 0x24;
     pub const TARGETABLE_IS_TARGETABLE: u64 = 0x51;
     pub const PLAYER_NAME: u64 = 0x1B0;
@@ -112,6 +117,37 @@ pub struct Life {
     pub health: Vital,
     pub mana: Vital,
     pub energy_shield: Vital,
+    pub ward: Vital,
+}
+
+impl Vital {
+    /// VitalStruct.ReservedTotal.
+    pub fn reserved(&self) -> i32 {
+        (self.reserved_percent as f32 / 10000.0 * self.total as f32).ceil() as i32
+            + self.reserved_flat
+    }
+
+    /// VitalStruct.Unreserved.
+    pub fn unreserved(&self) -> i32 {
+        self.total - self.reserved()
+    }
+
+    /// VitalStruct.CurrentInPercent: of the unreserved part, 0 when
+    /// there is none.
+    pub fn percent(&self) -> i32 {
+        let unreserved = self.unreserved();
+        if self.total == 0 || unreserved <= 0 {
+            return 0;
+        }
+        (100.0 * f64::from(self.current) / f64::from(unreserved)).round() as i32
+    }
+}
+
+impl Life {
+    /// Life.IsAlive.
+    pub fn alive(&self) -> bool {
+        self.health.current > 0
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
@@ -136,6 +172,10 @@ pub struct Entity {
     pub position: Option<[f32; 3]>,
     /// The ground height under the entity (Render.TerrainHeight).
     pub terrain_height: Option<f32>,
+    /// The model's size (Render.ModelBounds); z is its height.
+    pub model_bounds: Option<[f32; 3]>,
+    /// Chest.IsStrongbox, read through the chest's data.
+    pub strongbox: Option<bool>,
     pub friendly: Option<bool>,
     pub rarity: Option<Rarity>,
     pub chest_opened: Option<bool>,
@@ -216,11 +256,19 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
             health: read_vital(mem, p + part::LIFE_HEALTH).ok()?,
             mana: read_vital(mem, p + part::LIFE_MANA).ok()?,
             energy_shield: read_vital(mem, p + part::LIFE_ENERGY_SHIELD).ok()?,
+            ward: read_vital(mem, p + part::LIFE_WARD).ok()?,
         })
     });
     let position = get("Render").and_then(|p| mem.read_value(p + part::RENDER_WORLD_POSITION).ok());
     let terrain_height =
         get("Render").and_then(|p| mem.read_value(p + part::RENDER_TERRAIN_HEIGHT).ok());
+    let model_bounds =
+        get("Render").and_then(|p| mem.read_value(p + part::RENDER_MODEL_BOUNDS).ok());
+    let strongbox = get("Chest")
+        .and_then(|p| mem.read_value::<u64>(p + part::CHEST_DATA).ok())
+        .filter(|d| *d != 0)
+        .and_then(|d| mem.read_value::<u64>(d + part::CHEST_DATA_STRONGBOX).ok())
+        .map(|s| s != 0);
     let friendly = get("Positioned")
         .and_then(|p| mem.read_value::<u8>(p + part::POSITIONED_REACTION).ok())
         .map(is_friendly);
@@ -249,6 +297,8 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         life,
         position,
         terrain_height,
+        model_bounds,
+        strongbox,
         friendly,
         rarity,
         player,
@@ -419,7 +469,7 @@ pub(crate) mod tests {
     /// A monster: the fake entity and its parts' memory.
     struct Monster {
         entity: FakeEntity,
-        life: Box<[u8; 0x280]>,
+        life: Box<[u8; 0x320]>,
         _render: Box<[u8; 0x1C0]>,
         _positioned: Box<[u8; 0x1E8]>,
         _magic: Box<[u8; 0x148]>,
@@ -434,13 +484,15 @@ pub(crate) mod tests {
     }
 
     fn fake_monster() -> Monster {
-        let mut life = Box::new([0u8; 0x280]);
+        let mut life = Box::new([0u8; 0x320]);
+        put(&mut life[..], 0x2E8 + 0x2C, 30i32);
         put(&mut life[..], 0x1B0 + 0x2C, 120i32);
         put(&mut life[..], 0x1B0 + 0x30, 80i32);
         put(&mut life[..], 0x248 + 0x2C, 40i32);
         let mut render = Box::new([0u8; 0x1C0]);
         put(&mut render[..], 0x138, [10.0f32, 20.0, 1.5]);
         put(&mut render[..], 0x1B0, -3.25f32);
+        put(&mut render[..], 0x144, [1.0f32, 2.0, 90.0]);
         let mut positioned = Box::new([0u8; 0x1E8]);
         positioned[0x1E0] = 0x02;
         let mut magic = Box::new([0u8; 0x148]);
@@ -481,6 +533,9 @@ pub(crate) mod tests {
         assert_eq!(life.energy_shield.total, 40);
         assert_eq!(e.position, Some([10.0, 20.0, 1.5]));
         assert_eq!(e.terrain_height, Some(-3.25));
+        assert_eq!(e.model_bounds, Some([1.0, 2.0, 90.0]));
+        assert_eq!(life.ward.total, 30);
+        assert!(life.alive());
         assert_eq!(e.friendly, Some(false));
         assert_eq!(e.rarity, Some(Rarity::Unique));
         assert_eq!((e.chest_opened, e.player), (None, None));
