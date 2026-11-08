@@ -112,6 +112,12 @@ fn atlas() {
     op("atlas", json!({}));
 }
 
+/// The inspector's view of the player, with its Render part's words.
+#[test]
+fn inspect() {
+    op("inspect", json!({"part": "Render", "n": 0x40}));
+}
+
 /// Open the large map (Tab) first, or this prints no shapes.
 #[test]
 fn radar_view() {

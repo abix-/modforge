@@ -224,6 +224,54 @@ fn entities_op(args: &Json) -> Result<Json, String> {
     Ok(Json::Object(out))
 }
 
+/// The inspector's entity view (GameHelper2 Entity.ToImGui): one entity,
+/// by `id` among the awake ones, by `addr`, or the player when neither
+/// is given, with every part's name and address and what is read from
+/// them. `part` with `n` adds that part's first `n` bytes as words.
+fn inspect_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let at = if let Some(id) = args["id"].as_u64() {
+        let addresses = entities::map_addresses(
+            &a.mem,
+            area + entities::AREA_AWAKE_ENTITIES,
+            entities::MAX_AWAKE,
+        )
+        .map_err(|e| format!("{e:#}"))?;
+        addresses
+            .into_iter()
+            .find(|at| entities::read(&a.mem, *at).is_ok_and(|e| u64::from(e.id) == id))
+            .ok_or(format!("no awake entity with id {id}"))?
+    } else if !args["addr"].is_null() {
+        modforge::memory_research::address_arg(&args["addr"])?
+    } else {
+        entities::local_player(&a.mem, area).map_err(|e| format!("{e:#}"))?
+    };
+    let e = entities::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    let parts: serde_json::Map<String, Json> = e
+        .parts
+        .iter()
+        .map(|(name, p)| (name.clone(), json!(format!("{p:#x}"))))
+        .collect();
+    let mut out = json!({"address": format!("{at:#x}"), "parts": parts, "entity": e});
+    if let Some(name) = args["part"].as_str() {
+        let p = *e.parts.get(name).ok_or(format!("no part {name}"))?;
+        let n = args["n"].as_u64().unwrap_or(0x100).min(0x1000) as usize;
+        let words: Vec<u64> = a
+            .mem
+            .read_array(p, n / 8)
+            .map_err(|e| format!("read part {name}: {e}"))?;
+        let rows: Vec<String> = words
+            .iter()
+            .enumerate()
+            .map(|(i, w)| format!("+{:#05x}: {w:#018x}", i * 8))
+            .collect();
+        out["part"] = json!({"name": name, "words": rows});
+    }
+    Ok(out)
+}
+
 /// The buffs on an entity, none when it has no Buffs part.
 fn player_buffs(a: &Attached, e: &entities::Entity) -> Result<Vec<entities::Buff>, String> {
     match e.parts.get("Buffs") {
@@ -1298,6 +1346,12 @@ fn main() {
         "read-only: n bytes (at most 4096) at addr as hex, for offset research",
         "addr, n",
         read_bytes_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "inspect",
+        "inspector: one entity (awake id, addr, or the player) with every part's address and what is read, and a part's words",
+        "id? | addr?, part?, n?",
+        inspect_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "radar_view",
