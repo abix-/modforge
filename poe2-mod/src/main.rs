@@ -22,6 +22,7 @@ mod preload;
 mod radar;
 mod ritual;
 mod skills;
+mod slots;
 mod states;
 mod terrain;
 mod ui;
@@ -721,6 +722,20 @@ fn items_op(args: &Json) -> Result<Json, String> {
         let positions = vec![None; items.len()];
         (items, positions, 0)
     };
+    let (league, mut out) = judge(&items, args)?;
+    for (o, p) in out.iter_mut().zip(positions) {
+        o["position"] = json!(p);
+    }
+    Ok(json!({
+        "league": league,
+        "unreadable": unreadable,
+        "items": out,
+    }))
+}
+
+/// Each item with its unique name, its stack's price and the first
+/// rule in `rules` it passes; and the league the prices are for.
+fn judge(items: &[model::Item], args: &Json) -> Result<(Option<String>, Vec<Json>), String> {
     let rules: Vec<item_rules::ItemRule> = if args["rules"].is_null() {
         Vec::new()
     } else {
@@ -729,25 +744,69 @@ fn items_op(args: &Json) -> Result<Json, String> {
     let prices = PRICES.lock();
     let stack = |item: &model::Item| prices.as_ref().and_then(|(_, p)| p.stack(item));
     let matched: std::collections::HashMap<usize, &str> =
-        item_rules::matching(&rules, &items, stack)
+        item_rules::matching(&rules, items, stack)
             .into_iter()
             .collect();
-    let out: Vec<Json> = items
+    let out = items
         .iter()
         .enumerate()
         .map(|(i, item)| {
             json!({
                 "item": item,
                 "unique": prices.as_ref().and_then(|(_, p)| p.unique_name(&item.art)),
-                "position": positions[i],
                 "exalted": stack(item),
                 "rule": matched.get(&i),
             })
         })
         .collect();
+    Ok((prices.as_ref().map(|(l, _)| l.clone()), out))
+}
+
+/// The items shown in an open panel (GameHelper2 LootValue's slot
+/// scan): the left panel (stash), the right panel (inventory, vendor)
+/// or the ritual rewards, each priced and matched against `rules`.
+fn panel_items_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let (manager, controller) = ui_manager(a)?;
+    let which = args["panel"].as_str().unwrap_or("left_panel");
+    let at = if which == "ritual" {
+        ui::child_path(&a.mem, manager, &slots::RITUAL_REWARD_GRID)
+    } else {
+        ui::panel(&a.mem, manager, controller, which)
+    };
+    let Some(at) = at else {
+        return Ok(json!({"panel": which, "open": false, "reason": "no such panel"}));
+    };
+    if !ui::is_visible(&a.mem, at).map_err(|e| format!("{e:#}"))? {
+        return Ok(json!({"panel": which, "open": false, "address": at}));
+    }
+    let cull: i32 = a
+        .mem
+        .read_value(a.static_address("GameCullSize")?)
+        .map_err(|e| format!("read cull size: {e}"))?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid).and_then(modforge::input::client_area);
+    let (w, h) = window.map_or((0, 0), |(_, _, w, h)| (w, h));
+    let scale = slots::Scale::new(w as f32, h as f32, cull);
+    let area = slots::absolute_rect(&a.mem, at, &scale).ok_or("panel has no rectangle")?;
+    let exe = a.exe.base..a.exe.base + a.exe.size;
+    let (found, report) = slots::scan(&a.mem, at, area, &scale, &exe);
+    let items: Vec<model::Item> = found.iter().map(|s| s.item.clone()).collect();
+    let (league, mut out) = judge(&items, args)?;
+    for (o, s) in out.iter_mut().zip(&found) {
+        o["address"] = json!(s.address);
+        o["rect"] = json!(s.rect);
+        o["scroll"] = json!(s.scroll);
+    }
     Ok(json!({
-        "league": prices.as_ref().map(|(l, _)| l),
-        "unreadable": unreadable,
+        "panel": which,
+        "open": true,
+        "address": at,
+        "area": area,
+        "scale": scale,
+        "window": window,
+        "league": league,
+        "report": report,
         "items": out,
     }))
 }
@@ -798,6 +857,12 @@ fn main() {
         "price the items on the ground (or the given items) from the kept prices and name the first item rule each passes",
         "items?, rules?",
         items_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "panel_items",
+        "the items shown in an open panel (left_panel: stash, right_panel: inventory or vendor, ritual: rewards), priced and matched against the rules, like GameHelper2 LootValue's slot scan",
+        "panel?, rules?",
+        panel_items_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "preload",

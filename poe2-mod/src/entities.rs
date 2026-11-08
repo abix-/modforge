@@ -469,6 +469,10 @@ pub(crate) mod tests {
         pub(crate) fn address(&self) -> u64 {
             self.entity.as_ptr() as u64
         }
+
+        pub(crate) fn set_vtable(&mut self, vtable: u64) {
+            put(&mut self.entity[..], 0, vtable);
+        }
     }
 
     pub(crate) fn fake_entity(path: &str, parts: &[(&str, u64)]) -> FakeEntity {
