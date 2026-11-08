@@ -341,10 +341,8 @@ fn terrain_op(_args: &Json) -> Result<Json, String> {
 fn ui_op(args: &Json) -> Result<Json, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
-    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
-    let in_game = s.get("InGameState").ok_or("no InGameState")?;
-    let ui_struct = ui::ui_struct(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
-    let panels: Vec<Json> = ui::panels(&a.mem, ui_struct)
+    let (manager, controller) = ui_manager(a)?;
+    let panels: Vec<Json> = ui::panels(&a.mem, manager, controller)
         .into_iter()
         .map(|(name, found)| match found {
             Some((at, shown)) => json!({"name": name, "address": at, "visible": shown}),
@@ -357,12 +355,25 @@ fn ui_op(args: &Json) -> Result<Json, String> {
     } else {
         let from = match args["at"].as_u64() {
             Some(at) => at,
-            None => ui::root(&a.mem, ui_struct).map_err(|e| format!("{e:#}"))?,
+            None => ui::root(&a.mem, manager).map_err(|e| format!("{e:#}"))?,
         };
         let max = args["max"].as_u64().unwrap_or(2000) as usize;
         ui::walk(&a.mem, from, depth, max)
     };
-    Ok(json!({"ui_struct": ui_struct, "panels": panels, "tree": tree}))
+    Ok(json!({
+        "manager": manager,
+        "controller_mode": controller,
+        "panels": panels,
+        "tree": tree,
+    }))
+}
+
+/// The UI manager from the in-game state, and whether it is the
+/// controller one.
+fn ui_manager(a: &Attached) -> Result<(u64, bool), String> {
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    ui::manager(&a.mem, in_game).map_err(|e| format!("{e:#}"))
 }
 
 /// The zone the player is in, from the in-game state.
