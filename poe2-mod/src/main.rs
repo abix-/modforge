@@ -14,6 +14,7 @@ mod loot_value;
 mod model;
 mod preload;
 mod states;
+mod ui;
 mod zone;
 
 use modforge::ops::{OP_REGISTRY, OpDef};
@@ -261,6 +262,35 @@ fn inventories_op(args: &Json) -> Result<Json, String> {
     Ok(json!({"inventories": out}))
 }
 
+/// Which important panels are open, and with depth > 0 the UI tree
+/// from the root (or from `at`).
+fn ui_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let ui_struct = ui::ui_struct(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let panels: Vec<Json> = ui::panels(&a.mem, ui_struct)
+        .into_iter()
+        .map(|(name, found)| match found {
+            Some((at, shown)) => json!({"name": name, "address": at, "visible": shown}),
+            None => json!({"name": name, "address": null, "visible": false}),
+        })
+        .collect();
+    let depth = args["depth"].as_u64().unwrap_or(0) as usize;
+    let tree = if depth == 0 {
+        Vec::new()
+    } else {
+        let from = match args["at"].as_u64() {
+            Some(at) => at,
+            None => ui::root(&a.mem, ui_struct).map_err(|e| format!("{e:#}"))?,
+        };
+        let max = args["max"].as_u64().unwrap_or(2000) as usize;
+        ui::walk(&a.mem, from, depth, max)
+    };
+    Ok(json!({"ui_struct": ui_struct, "panels": panels, "tree": tree}))
+}
+
 /// The zone the player is in, from the in-game state.
 fn zone_op(_args: &Json) -> Result<Json, String> {
     let guard = attached()?;
@@ -495,6 +525,12 @@ fn main() {
         "the player's inventories (or the one named) with each item, its boxes and its price from the kept prices",
         "name?",
         inventories_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "ui",
+        "which important UI panels are open; depth > 0 adds the UI tree from the root or from at",
+        "depth?, at?, max?",
+        ui_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())
