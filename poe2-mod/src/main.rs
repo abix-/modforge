@@ -1119,6 +1119,16 @@ fn pickup_op(args: &Json) -> Result<Json, String> {
             run.running = true;
             std::thread::spawn(pickup_loop);
         }
+        // The uniques rule needs prices; fetch them once if none are kept.
+        if on && PRICES.lock().is_none() {
+            std::thread::spawn(|| {
+                let (list, _) = loot_value::fetch(DEFAULT_LEAGUE);
+                let mut p = PRICES.lock();
+                if p.is_none() {
+                    *p = Some((DEFAULT_LEAGUE.to_string(), list));
+                }
+            });
+        }
     }
     Ok(json!({
         "on": run.on,
