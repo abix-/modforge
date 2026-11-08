@@ -1032,14 +1032,15 @@ fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack:
         .filter_map(|e| {
             let k = kinds::classify(&e, me.id, &settings)?;
             // A real enemy: valid (GameHelper2 HealthBars skips the rest),
-            // a live hostile monster, and targetable said yes. Taking
-            // "not said no" fired 16 casts at an unseen HedgehogSlow
-            // (2026-11-07).
+            // a hostile monster with the Monster part and health left.
+            // The targetable flag is not read: on this build it moved
+            // from 0x51 and reads false on every monster
+            // (research_enemies, 2026-11-07).
             let real = e.valid
                 && k.kind == kinds::Type::Monster
                 && k.state == kinds::State::None
-                && e.targetable == Some(true)
-                && e.parts.contains_key("Monster");
+                && e.parts.contains_key("Monster")
+                && e.life.as_ref().is_some_and(|l| l.health.current > 0);
             if !real {
                 return None;
             }
