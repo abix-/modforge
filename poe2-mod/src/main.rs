@@ -213,7 +213,11 @@ fn player_op(_args: &Json) -> Result<Json, String> {
     let a = guard.as_ref().ok_or("not attached")?;
     let at = entities::local_player(&a.mem, area_instance(a)?).map_err(|e| format!("{e:#}"))?;
     let e = entities::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
-    Ok(json!({"entity": e, "parts": e.parts.keys().collect::<Vec<_>>()}))
+    let buffs = match e.parts.get("Buffs") {
+        Some(p) => entities::read_buffs(&a.mem, *p).map_err(|e| format!("{e:#}"))?,
+        None => Vec::new(),
+    };
+    Ok(json!({"entity": e, "buffs": buffs, "parts": e.parts.keys().collect::<Vec<_>>()}))
 }
 
 /// The zone the player is in, from the in-game state.
@@ -441,7 +445,7 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "player",
-        "the local player's entity: name, level, life, mana, energy shield, position, and its part names",
+        "the local player: name, level, life, mana, energy shield, position, buffs and charges, and its part names",
         "",
         player_op,
     ));

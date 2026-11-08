@@ -249,6 +249,53 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
     })
 }
 
+/// BuffsOffsets.StatusEffectPtr: a vector of status effect pointers.
+pub const BUFFS_EFFECTS: u64 = 0x160;
+/// StatusEffectStruct.
+pub mod effect {
+    pub const DEFINITION: u64 = 0x08;
+    pub const TOTAL_TIME: u64 = 0x18;
+    pub const TIME_LEFT: u64 = 0x1C;
+    pub const CHARGES: u64 = 0x40;
+    pub const FLASK_SLOT: u64 = 0x42;
+}
+/// GameHelper2 ReadUnicodeString reads 256 bytes.
+const TEXT_UNITS: usize = 128;
+
+/// One status effect on an entity (GameHelper2 Buffs).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Buff {
+    /// BuffDefinitions.dat id, such as `power_charge`.
+    pub name: String,
+    /// Seconds; infinite for buffs that do not run out (shown as null).
+    pub total_time: f32,
+    pub time_left: f32,
+    pub charges: i16,
+    /// The flask that gave it, for flask buffs.
+    pub flask_slot: i16,
+}
+
+/// Every status effect on the Buffs part at `buffs`. An effect that
+/// cannot be read is skipped.
+pub fn read_buffs(mem: &ProcessMemory, buffs: u64) -> Result<Vec<Buff>> {
+    let effects: Vec<u64> =
+        read_vector(mem, buffs + BUFFS_EFFECTS).context("read status effects")?;
+    Ok(effects
+        .into_iter()
+        .filter_map(|at| {
+            let def: u64 = mem.read_value(at + effect::DEFINITION).ok()?;
+            let name_ptr: u64 = mem.read_value(def).ok()?;
+            Some(Buff {
+                name: mem.read_wide_cstr(name_ptr, TEXT_UNITS).ok()?,
+                total_time: mem.read_value(at + effect::TOTAL_TIME).ok()?,
+                time_left: mem.read_value(at + effect::TIME_LEFT).ok()?,
+                charges: mem.read_value(at + effect::CHARGES).ok()?,
+                flask_slot: mem.read_value(at + effect::FLASK_SLOT).ok()?,
+            })
+        })
+        .collect())
+}
+
 /// EntityNodeKey: the id and padding, before the entity pointer.
 const ENTITY_KEY_SIZE: u64 = 8;
 
@@ -429,6 +476,35 @@ pub(crate) mod tests {
         assert_eq!(e.friendly, Some(false));
         assert_eq!(e.rarity, Some(Rarity::Unique));
         assert_eq!((e.chest_opened, e.player), (None, None));
+    }
+
+    #[test]
+    fn reads_buffs() {
+        let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
+        let mut name: Vec<u16> = "power_charge".encode_utf16().collect();
+        name.resize(TEXT_UNITS, 0);
+        let def = [name.as_ptr() as u64];
+        let mut fx = [0u8; 0x48];
+        put(&mut fx[..], 0x08, def.as_ptr() as u64);
+        put(&mut fx[..], 0x18, f32::INFINITY);
+        put(&mut fx[..], 0x1C, f32::INFINITY);
+        put(&mut fx[..], 0x40, 3i16);
+        let effects = [fx.as_ptr() as u64, 0x10];
+        let first = effects.as_ptr() as u64;
+        let mut buffs = [0u8; 0x178];
+        put(
+            &mut buffs[..],
+            0x160,
+            Vector {
+                first,
+                last: first + 16,
+                end: first + 16,
+            },
+        );
+        let got = read_buffs(&mem, buffs.as_ptr() as u64).unwrap();
+        assert_eq!(got.len(), 1, "the unreadable effect is skipped");
+        assert_eq!((got[0].name.as_str(), got[0].charges), ("power_charge", 3));
+        assert!(got[0].time_left.is_infinite());
     }
 
     #[test]
