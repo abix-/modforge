@@ -13,6 +13,7 @@ mod draw;
 mod entities;
 mod files;
 mod game;
+mod ground_labels;
 mod health_bars;
 mod inventory;
 mod item_rules;
@@ -876,6 +877,129 @@ fn ground_items(a: &Attached) -> Result<(Vec<GroundItem>, usize), String> {
     Ok((items, unreadable))
 }
 
+/// One ground item label as pickup sees it.
+struct LabelRow {
+    label: ground_labels::Label,
+    visible: bool,
+    /// On the screen, the game window's client area added.
+    screen: Option<[f32; 4]>,
+    item: Option<model::Item>,
+    exalted: Option<f64>,
+    candidate: Option<pickup::Candidate>,
+}
+
+/// Every ground item label joined with its item (by entity id among the
+/// awake entities), its distance from the player in grid cells, its
+/// rectangle on the screen and the first rule in `rules` it passes.
+fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelRow>, String> {
+    let (manager, _) = ui_manager(a)?;
+    let Some(at) = ui::child_path(&a.mem, manager, &ground_labels::PATH) else {
+        return Ok(Vec::new());
+    };
+    let labels = ground_labels::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    if labels.is_empty() {
+        return Ok(Vec::new());
+    }
+    let area = area_instance(a)?;
+    let player = entities::local_player(&a.mem, area)
+        .and_then(|p| entities::read(&a.mem, p))
+        .map_err(|e| format!("{e:#}"))?;
+    let addresses = entities::map_addresses(
+        &a.mem,
+        area + entities::AREA_AWAKE_ENTITIES,
+        entities::MAX_AWAKE,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    let mut ground: std::collections::HashMap<u32, (u64, model::Item, Option<[f32; 3]>)> =
+        std::collections::HashMap::new();
+    for at in addresses {
+        let Ok(e) = entities::read(&a.mem, at) else {
+            continue;
+        };
+        let Some(world_item) = e.parts.get("WorldItem") else {
+            continue;
+        };
+        if let Ok(item) = items::on_ground(&a.mem, *world_item) {
+            ground.insert(e.id, (e.address, item, e.position));
+        }
+    }
+    let cull: i32 = a
+        .mem
+        .read_value(a.static_address("GameCullSize")?)
+        .map_err(|e| format!("read cull size: {e}"))?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid).and_then(modforge::input::client_area);
+    let (left, top, w, h) = window.unwrap_or((0, 0, 0, 0));
+    let scale = slots::Scale::new(w as f32, h as f32, cull);
+    let prices = PRICES.lock();
+    let cell = terrain::world_per_cell();
+    let rows = labels
+        .into_iter()
+        .map(|label| {
+            let visible = ui::is_visible(&a.mem, label.element).unwrap_or(false);
+            let screen = slots::absolute_rect(&a.mem, label.element, &scale)
+                .map(|r| [r.x + left as f32, r.y + top as f32, r.w, r.h]);
+            let found = ground.get(&label.id);
+            let item = found.map(|f| f.1.clone());
+            let exalted = item
+                .as_ref()
+                .and_then(|i| prices.as_ref().and_then(|(_, p)| p.stack(i)));
+            let candidate = match (found, screen, player.position) {
+                (Some((key, item, Some(pos))), Some(rect), Some(me)) if visible => {
+                    Some(pickup::Candidate {
+                        key: *key,
+                        name: if item.name.is_empty() { item.base.clone() } else { item.name.clone() },
+                        distance: (pos[0] - me[0]).hypot(pos[1] - me[1]) / cell,
+                        label: rect,
+                        rule: rules
+                            .iter()
+                            .find(|r| r.matches(item, exalted))
+                            .map(|r| r.name.clone()),
+                    })
+                }
+                _ => None,
+            };
+            LabelRow {
+                label,
+                visible,
+                screen,
+                item,
+                exalted,
+                candidate,
+            }
+        })
+        .collect();
+    Ok(rows)
+}
+
+/// The ground item labels with their items, screen rectangles,
+/// distances and the rule each passes (the first pickup rules when
+/// none are given).
+fn ground_labels_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let rules: Vec<item_rules::ItemRule> = if args["rules"].is_null() {
+        pickup::default_rules()
+    } else {
+        parse(args, "rules")?
+    };
+    let rows = label_rows(a, &rules)?;
+    let out: Vec<Json> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "element": r.label.element,
+                "id": r.label.id,
+                "visible": r.visible,
+                "screen": r.screen,
+                "item": r.item,
+                "exalted": r.exalted,
+                "candidate": r.candidate,
+            })
+        })
+        .collect();
+    Ok(json!({"labels": out}))
+}
+
 /// Price each item and say which rule it passes. The items are the
 /// ones on the ground, or the given ones.
 fn items_op(args: &Json) -> Result<Json, String> {
@@ -1490,6 +1614,12 @@ fn main() {
         "price the items on the ground (or the given items) from the kept prices and name the first item rule each passes",
         "items?, rules?",
         items_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "ground_labels",
+        "the ground item labels: each one's item, screen rectangle, distance from the player and the pickup rule it passes (the first pickup rules unless rules are given)",
+        "rules?",
+        ground_labels_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "panel_items",
