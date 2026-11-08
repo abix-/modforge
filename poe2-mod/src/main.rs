@@ -274,24 +274,26 @@ fn inventories_op(args: &Json) -> Result<Json, String> {
     Ok(json!({"inventories": out}))
 }
 
-/// The world to screen matrix and the player's point on a window of
-/// width by height (the game window's size, given until it is read).
+/// The world to screen matrix, the game window's client area, and the
+/// player's point on it (width and height override the window's size).
 fn camera_op(args: &Json) -> Result<Json, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
     let in_game = s.get("InGameState").ok_or("no InGameState")?;
     let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid).and_then(modforge::input::client_area);
+    let (w, h) = window.map_or((1920, 1080), |(_, _, w, h)| (w, h));
     let size = (
-        args["width"].as_f64().unwrap_or(1920.0) as f32,
-        args["height"].as_f64().unwrap_or(1080.0) as f32,
+        args["width"].as_f64().map_or(w as f32, |v| v as f32),
+        args["height"].as_f64().map_or(h as f32, |v| v as f32),
     );
     let player = entities::local_player(&a.mem, area_instance(a)?)
         .and_then(|at| entities::read(&a.mem, at))
         .ok()
         .and_then(|e| e.position)
         .map(|[x, y, z]| json!({"world": [x, y, z], "screen": camera::world_to_screen(&m, x, y, z, size)}));
-    Ok(json!({"matrix": m, "size": [size.0, size.1], "player": player}))
+    Ok(json!({"matrix": m, "window": window, "size": [size.0, size.1], "player": player}))
 }
 
 /// The zone's terrain size and, at the player, the ground height and
@@ -606,7 +608,7 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "camera",
-        "the world to screen matrix and the player's world and screen point for a window of width by height",
+        "the world to screen matrix, the game window's client area, and the player's world and screen point (width and height override the size)",
         "width?, height?",
         camera_op,
     ));

@@ -335,6 +335,30 @@ pub fn focus_hwnd(hwnd: isize) -> bool {
     }
 }
 
+/// A window's client area on screen: left, top, width, height.
+pub fn client_area(hwnd: isize) -> Option<(i32, i32, i32, i32)> {
+    use windows_sys::Win32::Foundation::{POINT, RECT};
+    use windows_sys::Win32::Graphics::Gdi::ClientToScreen;
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetClientRect;
+    let h = hwnd as windows_sys::Win32::Foundation::HWND;
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    let mut origin = POINT { x: 0, y: 0 };
+    // SAFETY: Windows treats the HWND as opaque and writes only to the
+    // live `rect` and `origin` locals.
+    let ok = unsafe { GetClientRect(h, &mut rect) != 0 && ClientToScreen(h, &mut origin) != 0 };
+    ok.then_some((
+        origin.x,
+        origin.y,
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+    ))
+}
+
 /// Enumerate top-level windows and return the largest visible client
 /// area owned by `pid`. Games may create a visible diagnostics console
 /// before their viewport, so enumeration order is not authoritative.
@@ -393,6 +417,16 @@ pub fn find_hwnd_by_pid(pid: u32) -> Option<isize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn desktop_client_area_starts_at_origin() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
+        // SAFETY: no arguments; returns the desktop's handle.
+        let desktop = unsafe { GetDesktopWindow() } as isize;
+        let (x, y, w, h) = client_area(desktop).expect("desktop client area");
+        assert_eq!((x, y), (0, 0));
+        assert!(w > 0 && h > 0, "{w}x{h}");
+    }
 
     #[test]
     fn backend_parse_recognized() {
