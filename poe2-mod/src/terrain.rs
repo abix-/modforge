@@ -110,7 +110,7 @@ impl Terrain {
         if x / 2 >= self.bytes_per_row {
             return 0;
         }
-        let shift = if x % 2 == 0 { 0 } else { 4 };
+        let shift = if x.is_multiple_of(2) { 0 } else { 4 };
         self.walkable
             .get(y * self.bytes_per_row + x / 2)
             .map_or(0, |b| (b >> shift) & 0xF)
