@@ -90,15 +90,19 @@ pub fn style(e: &Entity, kind: &Kind) -> Option<(Style, usize)> {
     }
 }
 
+/// Config.Shift.Y: the bar sits this far above the model's top.
+pub const SHIFT_UP: f32 = 11.0;
+
 /// The bar for one entity, None when it gets none or lacks a position
-/// or life (DrawHealthbar).
-pub fn bar(e: &Entity, kind: &Kind) -> Option<Bar> {
+/// or life (DrawHealthbar). `mana_on_self` is GameHelper2's
+/// ShowManaRatherThanESOnSelf, off by default.
+pub fn bar(e: &Entity, kind: &Kind, mana_on_self: bool) -> Option<Bar> {
     let (style, rarity) = style(e, kind)?;
     let [x, y, z] = e.position?;
     let life = e.life?;
-    let up = e.model_bounds.map_or(0.0, |b| b[2]);
+    let up = e.model_bounds.map_or(0.0, |b| b[2]) + SHIFT_UP;
     let health_percent = combined_percent(&life);
-    let second_percent = if style == Style::PlayerSelf {
+    let second_percent = if style == Style::PlayerSelf && mana_on_self {
         Some(life.mana.percent())
     } else {
         (life.energy_shield.total > 0).then(|| life.energy_shield.percent())
@@ -144,9 +148,9 @@ mod tests {
         };
         wolf.life = Some(life);
         let k = classify(&wolf, 0, &Settings::default()).unwrap();
-        let b = bar(&wolf, &k).unwrap();
+        let b = bar(&wolf, &k, false).unwrap();
         assert_eq!(b.style, Style::Rare);
-        assert_eq!(b.anchor, [100.0, 200.0, -90.0]);
+        assert_eq!(b.anchor, [100.0, 200.0, -101.0]);
         // (5 + 4) of 200 rounds to 5 percent: under the rare cull of 10.
         assert_eq!((b.health_percent, b.cullable), (5, true));
         assert_eq!(b.second_percent, Some(50));
@@ -154,11 +158,11 @@ mod tests {
 
         wolf.life = alive(0);
         let k = classify(&wolf, 0, &Settings::default()).unwrap();
-        assert_eq!(bar(&wolf, &k), None);
+        assert_eq!(bar(&wolf, &k, false), None);
     }
 
     #[test]
-    fn the_players_own_bar_shows_mana() {
+    fn the_players_own_bar_shows_mana_when_asked() {
         let mut me = with_parts("Metadata/Characters/Int", &["Render", "Player", "Life"]);
         me.id = 7;
         me.position = Some([0.0, 0.0, 0.0]);
@@ -171,10 +175,12 @@ mod tests {
         };
         me.life = Some(life);
         let k = classify(&me, 7, &Settings::default()).unwrap();
-        let b = bar(&me, &k).unwrap();
+        let b = bar(&me, &k, true).unwrap();
         assert_eq!(b.style, Style::PlayerSelf);
         // 30 of the 60 unreserved.
         assert_eq!(b.second_percent, Some(50));
+        // By default it shows energy shield, and there is none.
+        assert_eq!(bar(&me, &k, false).unwrap().second_percent, None);
         assert!(!b.cullable);
     }
 }

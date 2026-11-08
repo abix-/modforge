@@ -8,6 +8,7 @@ mod atlas;
 mod atlas_routes;
 mod buff_bar;
 mod camera;
+mod draw;
 mod entities;
 mod files;
 mod game;
@@ -409,7 +410,7 @@ fn health_bars_op(args: &Json) -> Result<Json, String> {
         .iter()
         .filter_map(|e| {
             let kind = kinds::classify(e, me.id, &settings)?;
-            let b = health_bars::bar(e, &kind)?;
+            let b = health_bars::bar(e, &kind, args["mana_on_self"].as_bool() == Some(true))?;
             let [x, y, z] = b.anchor;
             let at = camera::world_to_screen(&m, x, y, z, size);
             Some(json!({"bar": b, "path": e.path, "screen": at}))
@@ -845,7 +846,174 @@ fn preload_op(args: &Json) -> Result<Json, String> {
     }))
 }
 
+/// What the overlay draws.
+#[derive(Clone, Copy, Debug)]
+struct Layers {
+    zone: bool,
+    player: bool,
+    items: bool,
+    health_bars: bool,
+    ritual: bool,
+    mana_on_self: bool,
+}
+
+/// One overlay frame from the game: over the game window's client
+/// area, every layer turned on. An empty frame when the window is not
+/// found or the player is not in a zone.
+fn overlay_frame(layers: &Layers) -> Result<modforge::overlay::Frame, String> {
+    use modforge::overlay::Frame;
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let Some(hwnd) = modforge::input::find_hwnd_by_pid(a.pid) else {
+        return Ok(Frame::default());
+    };
+    let Some(window) = modforge::input::client_area(hwnd) else {
+        return Ok(Frame::default());
+    };
+    let size = (window.2 as f32, window.3 as f32);
+    let mut frame = Frame {
+        area: window,
+        shapes: Vec::new(),
+    };
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let Some(in_game) = s.get("InGameState") else {
+        return Ok(frame);
+    };
+    if s.current_name() != Some("InGameState") {
+        return Ok(frame);
+    }
+    if layers.zone
+        && let Ok(z) = zone::read(&a.mem, in_game)
+    {
+        frame
+            .shapes
+            .push(draw::zone_line(&z.name, Some(i32::from(z.level))));
+    }
+    let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let to_screen = |[x, y, z]: [f32; 3]| camera::world_to_screen(&m, x, y, z, size);
+    let area = area_instance(a)?;
+    let me = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .map_err(|e| format!("player: {e:#}"))?;
+    if layers.player
+        && let Some(at) = me.position.and_then(to_screen)
+    {
+        frame.shapes.push(draw::player_mark(at));
+    }
+    let all = awake_entities(a, area)?;
+    if layers.health_bars {
+        let settings = kinds::Settings::default();
+        for e in &all {
+            let Some(kind) = kinds::classify(e, me.id, &settings) else {
+                continue;
+            };
+            let Some(b) = health_bars::bar(e, &kind, layers.mana_on_self) else {
+                continue;
+            };
+            if let Some(at) = to_screen(b.anchor) {
+                frame.shapes.extend(draw::health_bar(&b, at));
+            }
+        }
+    }
+    if layers.ritual
+        && let Some(player) = me.position
+    {
+        for w in ritual::wisps(player, &all, ritual::RADIUS_METERS) {
+            let ring: Vec<_> = w.circle.iter().map(|p| to_screen(*p)).collect();
+            frame.shapes.extend(draw::wisp(w.inside, &ring));
+        }
+    }
+    if layers.items {
+        let prices = PRICES.lock();
+        for e in &all {
+            let Some(world_item) = e.parts.get("WorldItem") else {
+                continue;
+            };
+            let (Ok(item), Some(at)) = (
+                items::on_ground(&a.mem, *world_item),
+                e.position.and_then(to_screen),
+            ) else {
+                continue;
+            };
+            let list = prices.as_ref().map(|(_, p)| p);
+            let unique = list.and_then(|p| p.unique_name(&item.art));
+            let name = match unique {
+                Some(u) => u.to_string(),
+                None if !item.base.is_empty() => item.base.clone(),
+                None => loot_value::file_basename(&item.path).to_string(),
+            };
+            let exalted = list.and_then(|p| p.stack(&item));
+            frame
+                .shapes
+                .push(draw::item_label(&name, exalted, false, at));
+        }
+    }
+    Ok(frame)
+}
+
+/// The running overlay and the thread that feeds it.
+struct OverlayRun {
+    overlay: std::sync::Arc<modforge::overlay::Overlay>,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    feeder: std::thread::JoinHandle<()>,
+}
+
+static OVERLAY: Mutex<Option<OverlayRun>> = Mutex::new(None);
+
+/// Start (on: true) or stop (on: false) the overlay over the game. It
+/// reads the game `fps` times a second and draws the layers asked for.
+fn overlay_op(args: &Json) -> Result<Json, String> {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let mut run = OVERLAY.lock();
+    if let Some(r) = run.take() {
+        r.stop.store(true, Ordering::Release);
+        let _ = r.feeder.join();
+        drop(r.overlay);
+    }
+    if args["on"].as_bool() == Some(false) {
+        return Ok(json!({"on": false}));
+    }
+    let layer = |name: &str| args[name].as_bool().unwrap_or(true);
+    let layers = Layers {
+        zone: layer("zone"),
+        player: layer("player"),
+        items: layer("items"),
+        health_bars: layer("health_bars"),
+        ritual: layer("ritual"),
+        mana_on_self: args["mana_on_self"].as_bool() == Some(true),
+    };
+    let fps = args["fps"].as_u64().unwrap_or(20).clamp(1, 60) as u32;
+    let overlay = Arc::new(modforge::overlay::Overlay::start("poe2-mod overlay", fps)?);
+    let stop = Arc::new(AtomicBool::new(false));
+    let (o, s) = (overlay.clone(), stop.clone());
+    let feeder = std::thread::Builder::new()
+        .name("overlay feeder".into())
+        .spawn(move || {
+            let period = std::time::Duration::from_millis(1000 / u64::from(fps));
+            while !s.load(Ordering::Acquire) {
+                // A frame that fails to read clears the screen.
+                o.show(overlay_frame(&layers).unwrap_or_default());
+                std::thread::sleep(period);
+            }
+        })
+        .map_err(|e| format!("overlay feeder: {e}"))?;
+    let hwnd = overlay.hwnd();
+    *run = Some(OverlayRun {
+        overlay,
+        stop,
+        feeder,
+    });
+    Ok(json!({"on": true, "fps": fps, "window": hwnd, "layers": format!("{layers:?}")}))
+}
+
 fn main() {
+    OP_REGISTRY.register(OpDef::new(
+        "overlay",
+        "on: true draws over the game (zone, player, ground items with prices, health bars, ritual range) in a click-through window; on: false closes it",
+        "on, fps?, zone?, player?, items?, health_bars?, ritual?, mana_on_self?",
+        overlay_op,
+    ));
     OP_REGISTRY.register(OpDef::new(
         "prices",
         "fetch poe.ninja prices in exalted orbs for a league (default Forbidden Rites) and keep them",
