@@ -16,6 +16,7 @@ mod loot_value;
 mod model;
 mod preload;
 mod radar;
+mod ritual;
 mod skills;
 mod states;
 mod terrain;
@@ -278,9 +279,11 @@ fn inventories_op(args: &Json) -> Result<Json, String> {
 
 /// The world to screen matrix, the game window's client area, and the
 /// player's point on it (width and height override the window's size).
-fn camera_op(args: &Json) -> Result<Json, String> {
-    let guard = attached()?;
-    let a = guard.as_ref().ok_or("not attached")?;
+/// The camera matrix, the game window's client area and the screen size
+/// to draw for (`width` and `height` given, else the window's).
+type Screen = (camera::Matrix, Option<(i32, i32, i32, i32)>, (f32, f32));
+
+fn screen(a: &Attached, args: &Json) -> Result<Screen, String> {
     let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
     let in_game = s.get("InGameState").ok_or("no InGameState")?;
     let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
@@ -290,6 +293,52 @@ fn camera_op(args: &Json) -> Result<Json, String> {
         args["width"].as_f64().map_or(w as f32, |v| v as f32),
         args["height"].as_f64().map_or(h as f32, |v| v as f32),
     );
+    Ok((m, window, size))
+}
+
+/// Each awake ritual wisp, whether the player is in its range, and its
+/// range circle in world and screen positions.
+fn ritual_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let (m, _, size) = screen(a, args)?;
+    let player = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .map_err(|e| format!("player: {e:#}"))?
+        .position
+        .ok_or("player has no position")?;
+    let addresses = entities::map_addresses(
+        &a.mem,
+        area + entities::AREA_AWAKE_ENTITIES,
+        entities::MAX_AWAKE,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    let all: Vec<entities::Entity> = addresses
+        .iter()
+        .filter_map(|at| entities::read(&a.mem, *at).ok())
+        .collect();
+    let radius = args["radius_meters"]
+        .as_f64()
+        .map_or(ritual::RADIUS_METERS, |v| v as f32);
+    let wisps: Vec<Json> = ritual::wisps(player, &all, radius)
+        .into_iter()
+        .map(|w| {
+            let on_screen: Vec<_> = w
+                .circle
+                .iter()
+                .map(|p| camera::world_to_screen(&m, p[0], p[1], p[2], size))
+                .collect();
+            json!({"wisp": w, "screen": on_screen})
+        })
+        .collect();
+    Ok(json!({"player": player, "radius_meters": radius, "wisps": wisps}))
+}
+
+fn camera_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let (m, window, size) = screen(a, args)?;
     let player = entities::local_player(&a.mem, area_instance(a)?)
         .and_then(|at| entities::read(&a.mem, at))
         .ok()
@@ -697,6 +746,12 @@ fn main() {
         "the zone's points of interest from its tile files (important places, boss arenas, stairs, temples, runestones); paths: walking path from the player to each; files: every tile key",
         "paths?, files?",
         radar_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "ritual",
+        "each awake ritual wisp, whether the player is in its range, and the range circle in world and screen positions",
+        "radius_meters?, width?, height?",
+        ritual_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "atlas",

@@ -60,6 +60,7 @@ pub mod part {
     pub const VITAL_CURRENT: u64 = 0x30;
     pub const POSITIONED_REACTION: u64 = 0x1E0;
     pub const RENDER_WORLD_POSITION: u64 = 0x138;
+    pub const RENDER_TERRAIN_HEIGHT: u64 = 0x1B0;
     pub const CHEST_IS_OPENED: u64 = 0x168;
     pub const SHRINE_IS_USED: u64 = 0x24;
     pub const TARGETABLE_IS_TARGETABLE: u64 = 0x51;
@@ -133,6 +134,8 @@ pub struct Entity {
     pub parts: BTreeMap<String, u64>,
     pub life: Option<Life>,
     pub position: Option<[f32; 3]>,
+    /// The ground height under the entity (Render.TerrainHeight).
+    pub terrain_height: Option<f32>,
     pub friendly: Option<bool>,
     pub rarity: Option<Rarity>,
     pub chest_opened: Option<bool>,
@@ -216,6 +219,8 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         })
     });
     let position = get("Render").and_then(|p| mem.read_value(p + part::RENDER_WORLD_POSITION).ok());
+    let terrain_height =
+        get("Render").and_then(|p| mem.read_value(p + part::RENDER_TERRAIN_HEIGHT).ok());
     let friendly = get("Positioned")
         .and_then(|p| mem.read_value::<u8>(p + part::POSITIONED_REACTION).ok())
         .map(is_friendly);
@@ -243,6 +248,7 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         parts,
         life,
         position,
+        terrain_height,
         friendly,
         rarity,
         player,
@@ -414,7 +420,7 @@ pub(crate) mod tests {
     struct Monster {
         entity: FakeEntity,
         life: Box<[u8; 0x280]>,
-        _render: Box<[u8; 0x150]>,
+        _render: Box<[u8; 0x1C0]>,
         _positioned: Box<[u8; 0x1E8]>,
         _magic: Box<[u8; 0x148]>,
     }
@@ -432,8 +438,9 @@ pub(crate) mod tests {
         put(&mut life[..], 0x1B0 + 0x2C, 120i32);
         put(&mut life[..], 0x1B0 + 0x30, 80i32);
         put(&mut life[..], 0x248 + 0x2C, 40i32);
-        let mut render = Box::new([0u8; 0x150]);
+        let mut render = Box::new([0u8; 0x1C0]);
         put(&mut render[..], 0x138, [10.0f32, 20.0, 1.5]);
+        put(&mut render[..], 0x1B0, -3.25f32);
         let mut positioned = Box::new([0u8; 0x1E8]);
         positioned[0x1E0] = 0x02;
         let mut magic = Box::new([0u8; 0x148]);
@@ -473,6 +480,7 @@ pub(crate) mod tests {
         assert_eq!((life.health.current, life.health.total), (80, 120));
         assert_eq!(life.energy_shield.total, 40);
         assert_eq!(e.position, Some([10.0, 20.0, 1.5]));
+        assert_eq!(e.terrain_height, Some(-3.25));
         assert_eq!(e.friendly, Some(false));
         assert_eq!(e.rarity, Some(Rarity::Unique));
         assert_eq!((e.chest_opened, e.player), (None, None));
