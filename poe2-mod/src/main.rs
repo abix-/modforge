@@ -16,6 +16,7 @@ mod model;
 mod preload;
 mod skills;
 mod states;
+mod terrain;
 mod ui;
 mod zone;
 
@@ -293,6 +294,46 @@ fn camera_op(args: &Json) -> Result<Json, String> {
     Ok(json!({"matrix": m, "size": [size.0, size.1], "player": player}))
 }
 
+/// The zone's terrain size and, at the player, the ground height and
+/// walkable value.
+fn terrain_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let table = |name: &str, len: usize| -> Result<Vec<u8>, String> {
+        a.mem
+            .read_array(a.static_address(name)?, len)
+            .map_err(|e| format!("read {name}: {e:#}"))
+    };
+    let t = terrain::read(
+        &a.mem,
+        area,
+        table("Terrain Rotation Selector", terrain::ROTATION_SELECTOR_LEN)?,
+        table("Terrain Rotator Helper", terrain::ROTATOR_HELPER_LEN)?,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    let player = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .ok()
+        .and_then(|e| e.position)
+        .map(|[x, y, z]| {
+            let (cx, cy) = terrain::Terrain::cell_of(x, y);
+            json!({
+                "world": [x, y, z],
+                "cell": [cx, cy],
+                "ground_height": t.height(cx, cy),
+                "walkable": t.walkable(cx, cy),
+            })
+        });
+    Ok(json!({
+        "tiles": [t.tiles_x, t.tiles_y],
+        "cells": t.cells(),
+        "height_multiplier": t.height_multiplier,
+        "bytes_per_row": t.bytes_per_row,
+        "player": player,
+    }))
+}
+
 /// Which important panels are open, and with depth > 0 the UI tree
 /// from the root (or from `at`).
 fn ui_op(args: &Json) -> Result<Json, String> {
@@ -568,6 +609,12 @@ fn main() {
         "the world to screen matrix and the player's world and screen point for a window of width by height",
         "width?, height?",
         camera_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "terrain",
+        "the zone's terrain size and the ground height and walkable value at the player",
+        "",
+        terrain_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())
