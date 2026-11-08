@@ -66,7 +66,11 @@ pub mod part {
     pub const PLAYER_NAME: u64 = 0x1B0;
     pub const PLAYER_XP: u64 = 0x1D8;
     pub const PLAYER_LEVEL: u64 = 0x204;
-    pub const MAGIC_PROPERTIES_RARITY: u64 = 0x94;
+    /// ObjectMagicPropertiesOffsets.Details1 (0xB0), then
+    /// ModsAndObjectMagicProperties.Rarity (0x94). On items the Mods
+    /// part has the same details at 0, see [`crate::items`].
+    pub const MAGIC_PROPERTIES_DETAILS: u64 = 0xB0;
+    pub const MAGIC_PROPERTIES_RARITY: u64 = MAGIC_PROPERTIES_DETAILS + 0x94;
 }
 
 /// GameHelper2 ReadString reads 128 bytes.
@@ -268,7 +272,7 @@ pub fn local_player(mem: &ProcessMemory, area_instance: u64) -> Result<u64> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use modforge::msvc_std::Vector;
 
@@ -283,54 +287,36 @@ mod tests {
         assert_eq!(rarity(9), None);
     }
 
-    /// Memory laid out like one monster: entity, details, lookup,
-    /// part names and the parts themselves.
-    struct Fake {
+    /// Memory laid out like one entity: the entity, its details, the
+    /// part lookup with names, and the part address list. The parts
+    /// themselves belong to the caller.
+    pub(crate) struct FakeEntity {
         entity: Box<[u8; 0x90]>,
         _details: Box<[u8; 0x30]>,
-        _lookup: Box<[u8; 0x50]>,
+        lookup: Box<[u8; 0x50]>,
         _names: Vec<PartName>,
-        _name_text: Vec<&'static [u8]>,
+        _name_text: Vec<Vec<u8>>,
         _parts: Vec<u64>,
         _path: Vec<u16>,
-        life: Box<[u8; 0x280]>,
-        _render: Box<[u8; 0x150]>,
-        _positioned: Box<[u8; 0x1E8]>,
-        _magic: Box<[u8; 0x98]>,
     }
 
-    fn put<T: Copy>(buf: &mut [u8], at: usize, value: T) {
-        // SAFETY: test only; T is plain data and fits at `at`.
-        let bytes = unsafe {
-            std::slice::from_raw_parts((&value as *const T).cast::<u8>(), size_of::<T>())
-        };
-        buf[at..at + bytes.len()].copy_from_slice(bytes);
+    impl FakeEntity {
+        pub(crate) fn address(&self) -> u64 {
+            self.entity.as_ptr() as u64
+        }
     }
 
-    fn fake_monster() -> Fake {
-        let path: Vec<u16> = "Metadata/Monsters/Wolf/Wolf".encode_utf16().collect();
-        let mut life = Box::new([0u8; 0x280]);
-        put(&mut life[..], 0x1B0 + 0x2C, 120i32);
-        put(&mut life[..], 0x1B0 + 0x30, 80i32);
-        put(&mut life[..], 0x248 + 0x2C, 40i32);
-        let mut render = Box::new([0u8; 0x150]);
-        put(&mut render[..], 0x138, [10.0f32, 20.0, 1.5]);
-        let mut positioned = Box::new([0u8; 0x1E8]);
-        positioned[0x1E0] = 0x02;
-        let mut magic = Box::new([0u8; 0x98]);
-        put(&mut magic[..], 0x94, 3i32);
-        let parts = vec![
-            life.as_ptr() as u64,
-            render.as_ptr() as u64,
-            positioned.as_ptr() as u64,
-            magic.as_ptr() as u64,
-        ];
-        let name_text: Vec<&'static [u8]> = vec![
-            b"Life\0".as_slice(),
-            b"Render\0",
-            b"Positioned\0",
-            b"ObjectMagicProperties\0",
-        ];
+    pub(crate) fn fake_entity(path: &str, parts: &[(&str, u64)]) -> FakeEntity {
+        let path: Vec<u16> = path.encode_utf16().collect();
+        let name_text: Vec<Vec<u8>> = parts
+            .iter()
+            .map(|(n, _)| {
+                let mut t = n.as_bytes().to_vec();
+                t.resize(PART_NAME_BYTES, 0);
+                t
+            })
+            .collect();
+        let addresses: Vec<u64> = parts.iter().map(|(_, a)| *a).collect();
         let names: Vec<PartName> = name_text
             .iter()
             .enumerate()
@@ -340,17 +326,16 @@ mod tests {
                 _pad: 0,
             })
             .collect();
+        let vector = |first: u64, bytes: usize| Vector {
+            first,
+            last: first + bytes as u64,
+            end: first + bytes as u64,
+        };
         let mut lookup = Box::new([0u8; 0x50]);
-        let first = names.as_ptr() as u64;
-        let last = first + (names.len() * size_of::<PartName>()) as u64;
         put(
             &mut lookup[..],
             0x28,
-            Vector {
-                first,
-                last,
-                end: last,
-            },
+            vector(names.as_ptr() as u64, names.len() * size_of::<PartName>()),
         );
         put(&mut lookup[..], 0x48, names.len() as i32);
         let mut details = Box::new([0u8; 0x30]);
@@ -360,27 +345,63 @@ mod tests {
         put(&mut details[..], 0x28, lookup.as_ptr() as u64);
         let mut entity = Box::new([0u8; 0x90]);
         put(&mut entity[..], 0x08, details.as_ptr() as u64);
-        let pf = parts.as_ptr() as u64;
-        let pl = pf + (parts.len() * 8) as u64;
         put(
             &mut entity[..],
             0x10,
-            Vector {
-                first: pf,
-                last: pl,
-                end: pl,
-            },
+            vector(addresses.as_ptr() as u64, addresses.len() * 8),
         );
         put(&mut entity[..], 0x88, 77u32);
         entity[0x8C] = 0x0C;
-        Fake {
+        FakeEntity {
             entity,
             _details: details,
-            _lookup: lookup,
+            lookup,
             _names: names,
             _name_text: name_text,
-            _parts: parts,
+            _parts: addresses,
             _path: path,
+        }
+    }
+
+    /// A monster: the fake entity and its parts' memory.
+    struct Monster {
+        entity: FakeEntity,
+        life: Box<[u8; 0x280]>,
+        _render: Box<[u8; 0x150]>,
+        _positioned: Box<[u8; 0x1E8]>,
+        _magic: Box<[u8; 0x148]>,
+    }
+
+    pub(crate) fn put<T: Copy>(buf: &mut [u8], at: usize, value: T) {
+        // SAFETY: test only; T is plain data and fits at `at`.
+        let bytes = unsafe {
+            std::slice::from_raw_parts((&value as *const T).cast::<u8>(), size_of::<T>())
+        };
+        buf[at..at + bytes.len()].copy_from_slice(bytes);
+    }
+
+    fn fake_monster() -> Monster {
+        let mut life = Box::new([0u8; 0x280]);
+        put(&mut life[..], 0x1B0 + 0x2C, 120i32);
+        put(&mut life[..], 0x1B0 + 0x30, 80i32);
+        put(&mut life[..], 0x248 + 0x2C, 40i32);
+        let mut render = Box::new([0u8; 0x150]);
+        put(&mut render[..], 0x138, [10.0f32, 20.0, 1.5]);
+        let mut positioned = Box::new([0u8; 0x1E8]);
+        positioned[0x1E0] = 0x02;
+        let mut magic = Box::new([0u8; 0x148]);
+        put(&mut magic[..], 0x144, 3i32);
+        let entity = fake_entity(
+            "Metadata/Monsters/Wolf/Wolf",
+            &[
+                ("Life", life.as_ptr() as u64),
+                ("Render", render.as_ptr() as u64),
+                ("Positioned", positioned.as_ptr() as u64),
+                ("ObjectMagicProperties", magic.as_ptr() as u64),
+            ],
+        );
+        Monster {
+            entity,
             life,
             _render: render,
             _positioned: positioned,
@@ -392,7 +413,7 @@ mod tests {
     fn reads_an_entity_and_its_parts() {
         let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
         let fake = fake_monster();
-        let e = read(&mem, fake.entity.as_ptr() as u64).unwrap();
+        let e = read(&mem, fake.entity.address()).unwrap();
         assert_eq!(e.path, "Metadata/Monsters/Wolf/Wolf");
         assert_eq!(e.id, 77);
         assert!(e.valid);
@@ -414,7 +435,7 @@ mod tests {
     fn too_many_parts_is_not_an_entity() {
         let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
         let mut fake = fake_monster();
-        put(&mut fake._lookup[..], 0x48, 51i32);
-        assert!(read(&mem, fake.entity.as_ptr() as u64).is_err());
+        put(&mut fake.entity.lookup[..], 0x48, 51i32);
+        assert!(read(&mem, fake.entity.address()).is_err());
     }
 }

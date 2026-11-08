@@ -27,8 +27,12 @@ pub struct Item {
     pub rarity: Option<Rarity>,
     /// Stack size; 1 for items that do not stack.
     pub stack: u32,
-    /// Mod text as the game shows it.
+    /// Mod ids from the game's mod table, such as `IncreasedLife3`.
     pub mods: Vec<String>,
+    /// The art file's name without folder or extension, such as
+    /// `Headhunter`; how a unique's name is found (GameHelper2 LootValue).
+    #[serde(default)]
+    pub art: String,
 }
 
 /// One file the game has loaded, from the loaded files list. The game

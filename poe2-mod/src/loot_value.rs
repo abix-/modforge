@@ -63,8 +63,34 @@ fn league_param(league: &str) -> String {
         .collect()
 }
 
+/// GameHelper2 PoeNinjaPriceFetcher.NormalizeKey: lower case, letters
+/// and digits only.
 fn key(text: &str) -> String {
-    text.trim().to_lowercase()
+    text.to_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        .collect()
+}
+
+/// GameHelper2 ExtractIconBasename and ExtractArtBasename: the file name
+/// without folder, query or extension.
+pub fn file_basename(path: &str) -> &str {
+    let path = path.split('?').next().unwrap_or_default();
+    let file = path.rsplit(['/', '\\']).next().unwrap_or_default();
+    match file.rfind('.') {
+        Some(dot) if dot > 0 => &file[..dot],
+        _ => file,
+    }
+}
+
+/// GameHelper2 ArtKeyVariants: art names and poe.ninja disagree on a
+/// leading "The", both ways.
+fn art_variants(art: &str) -> [String; 2] {
+    let other = match art.get(..3) {
+        Some(the) if the.eq_ignore_ascii_case("the") && art.len() > 3 => art[3..].to_string(),
+        _ => format!("The{art}"),
+    };
+    [art.to_string(), other]
 }
 
 fn unique_key(name: &str, base: &str) -> String {
@@ -89,6 +115,8 @@ fn to_exalted(value: f64, data: &Value) -> Option<f64> {
 #[derive(Debug, Default)]
 pub struct PriceList {
     prices: HashMap<String, f64>,
+    /// A unique's name by its icon's file name (GameHelper2 pathNames).
+    unique_by_art: HashMap<String, String>,
 }
 
 impl PriceList {
@@ -129,6 +157,12 @@ impl PriceList {
                 continue;
             };
             let base = line["baseType"].as_str().unwrap_or_default();
+            if let Some(icon) = line["icon"].as_str() {
+                let art = key(file_basename(icon));
+                if !art.is_empty() {
+                    self.unique_by_art.insert(art, name.to_string());
+                }
+            }
             if let Some(exalted) = to_exalted(value, data) {
                 self.add(unique_key(name, base), exalted);
                 self.add(key(name), exalted);
@@ -136,14 +170,29 @@ impl PriceList {
         }
     }
 
+    /// A unique's name from its art file's name, trying it with and
+    /// without a leading "The" (GameHelper2 LootValue TryPriceItem).
+    pub fn unique_name(&self, art: &str) -> Option<&str> {
+        art_variants(art)
+            .iter()
+            .find_map(|a| self.unique_by_art.get(&key(a)))
+            .map(String::as_str)
+    }
+
     /// Price of one of `item`, in exalted orbs. A unique is looked up by
-    /// its name and base, then its name; anything else by its base.
+    /// its name (or the name its art gives) and base, then that name;
+    /// anything else by its base.
     pub fn each(&self, item: &Item) -> Option<f64> {
-        if item.rarity == Some(Rarity::Unique) && !item.name.is_empty() {
+        if item.rarity == Some(Rarity::Unique) {
+            let name = if item.name.is_empty() {
+                self.unique_name(&item.art)?
+            } else {
+                item.name.as_str()
+            };
             return self
                 .prices
-                .get(&unique_key(&item.name, &item.base))
-                .or_else(|| self.prices.get(&key(&item.name)))
+                .get(&unique_key(name, &item.base))
+                .or_else(|| self.prices.get(&key(name)))
                 .copied();
         }
         self.prices.get(&key(&item.base)).copied()
@@ -257,6 +306,40 @@ mod tests {
         );
         // A rare with that base is not priced as the unique.
         assert_eq!(list.each(&item("", "Heavy Belt", Rarity::Rare, 1)), None);
+    }
+
+    #[test]
+    fn unidentified_unique_named_by_its_art() {
+        let mut list = PriceList::default();
+        list.add_stash(&json!({
+            "core": {"primary": "exalted"},
+            "lines": [{
+                "name": "The Road Warrior",
+                "baseType": "Leather Vest",
+                "primaryValue": 12.0,
+                "icon": "https://web.poecdn.com/gen/image/abc/RoadWarrior.png?scale=1",
+            }],
+        }));
+        assert_eq!(list.unique_name("TheRoadWarrior"), Some("The Road Warrior"));
+        assert_eq!(list.unique_name("RoadWarrior"), Some("The Road Warrior"));
+        let item = Item {
+            base: "Leather Vest".into(),
+            rarity: Some(Rarity::Unique),
+            stack: 1,
+            art: "TheRoadWarrior".into(),
+            ..Item::default()
+        };
+        assert_eq!(list.each(&item), Some(12.0));
+    }
+
+    #[test]
+    fn keys_and_basenames_like_gamehelper2() {
+        assert_eq!(key("  Orb of  Alchemy's! "), "orbofalchemys");
+        assert_eq!(
+            file_basename("Art/2DItems/Armours/RoadWarrior.dds"),
+            "RoadWarrior"
+        );
+        assert_eq!(file_basename("a\\b\\c.png?x=1"), "c");
     }
 
     #[test]

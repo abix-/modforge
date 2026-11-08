@@ -8,6 +8,7 @@ mod entities;
 mod files;
 mod game;
 mod item_rules;
+mod items;
 mod loot_value;
 mod model;
 mod preload;
@@ -280,10 +281,50 @@ fn prices_op(args: &Json) -> Result<Json, String> {
     Ok(json!({"league": league, "prices": count, "failed": failed}))
 }
 
-/// Price each item and say which rule it passes. Items and rules come
-/// in the arguments until the inventory and stash readers exist.
+/// An item on the ground and where it lies.
+type GroundItem = (model::Item, Option<[f32; 3]>);
+
+/// The items on the ground among the awake entities, with each one's
+/// position; the second value counts ground items that could not be read.
+fn ground_items(a: &Attached) -> Result<(Vec<GroundItem>, usize), String> {
+    let area = area_instance(a)?;
+    let addresses = entities::map_addresses(
+        &a.mem,
+        area + entities::AREA_AWAKE_ENTITIES,
+        entities::MAX_AWAKE,
+    )
+    .map_err(|e| format!("{e:#}"))?;
+    let mut items = Vec::new();
+    let mut unreadable = 0;
+    for at in addresses {
+        let Ok(e) = entities::read(&a.mem, at) else {
+            continue;
+        };
+        let Some(world_item) = e.parts.get("WorldItem") else {
+            continue;
+        };
+        match items::on_ground(&a.mem, *world_item) {
+            Ok(item) => items.push((item, e.position)),
+            Err(_) => unreadable += 1,
+        }
+    }
+    Ok((items, unreadable))
+}
+
+/// Price each item and say which rule it passes. The items are the
+/// ones on the ground, or the given ones.
 fn items_op(args: &Json) -> Result<Json, String> {
-    let items: Vec<model::Item> = parse(args, "items")?;
+    let (items, positions, unreadable) = if args["items"].is_null() {
+        let guard = attached()?;
+        let a = guard.as_ref().ok_or("not attached")?;
+        let (found, unreadable) = ground_items(a)?;
+        let (items, positions): (Vec<_>, Vec<_>) = found.into_iter().unzip();
+        (items, positions, unreadable)
+    } else {
+        let items: Vec<model::Item> = parse(args, "items")?;
+        let positions = vec![None; items.len()];
+        (items, positions, 0)
+    };
     let rules: Vec<item_rules::ItemRule> = if args["rules"].is_null() {
         Vec::new()
     } else {
@@ -300,8 +341,9 @@ fn items_op(args: &Json) -> Result<Json, String> {
         .enumerate()
         .map(|(i, item)| {
             json!({
-                "base": item.base,
-                "name": item.name,
+                "item": item,
+                "unique": prices.as_ref().and_then(|(_, p)| p.unique_name(&item.art)),
+                "position": positions[i],
                 "exalted": stack(item),
                 "rule": matched.get(&i),
             })
@@ -309,6 +351,7 @@ fn items_op(args: &Json) -> Result<Json, String> {
         .collect();
     Ok(json!({
         "league": prices.as_ref().map(|(l, _)| l),
+        "unreadable": unreadable,
         "items": out,
     }))
 }
@@ -356,8 +399,8 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "items",
-        "price each given item from the kept prices and name the first item rule it passes",
-        "items, rules?",
+        "price the items on the ground (or the given items) from the kept prices and name the first item rule each passes",
+        "items?, rules?",
         items_op,
     ));
     OP_REGISTRY.register(OpDef::new(
