@@ -2,7 +2,8 @@
 //!
 //! Reads game memory read-only and answers on a localhost control
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
-//! game, never writes to it, never presses keys.
+//! game, never writes to it. Its only input is pickup's mouse moves
+//! and clicks, while the operator has pickup switched on.
 
 mod abyss;
 mod atlas;
@@ -947,7 +948,11 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
                 (Some((key, item, Some(pos))), Some(rect), Some(me)) if visible => {
                     Some(pickup::Candidate {
                         key: *key,
-                        name: if item.name.is_empty() { item.base.clone() } else { item.name.clone() },
+                        name: [&item.name, &item.base]
+                            .into_iter()
+                            .find(|n| !n.is_empty())
+                            .cloned()
+                            .unwrap_or_else(|| item.path.rsplit('/').next().unwrap_or("").to_string()),
                         distance: (pos[0] - me[0]).hypot(pos[1] - me[1]) / cell,
                         label: rect,
                         rule: rules
@@ -969,6 +974,160 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
         })
         .collect();
     Ok(rows)
+}
+
+/// Pickup's switch, rules and what it did; its thread runs while `on`.
+struct PickupRun {
+    on: bool,
+    running: bool,
+    rules: Vec<item_rules::ItemRule>,
+    settings: pickup::Settings,
+    /// The last clicks, newest last.
+    clicks: std::collections::VecDeque<Json>,
+    last_error: Option<String>,
+}
+
+static PICKUP: Mutex<Option<PickupRun>> = Mutex::new(None);
+/// How often pickup looks at the labels.
+const PICKUP_TICK_MS: u64 = 40;
+const PICKUP_KEEP_CLICKS: usize = 20;
+
+/// The label to click now and where, or none. Acts only while the game
+/// window is in front, the game is in play and neither large side
+/// panel is open (GameHelper2 PickupHelper); a new zone forgets every
+/// item.
+fn pickup_target(
+    run: &PickupRun,
+    state: &mut pickup::State,
+    zone: &mut u64,
+    rng: &mut fastrand::Rng,
+) -> Result<Option<(pickup::Candidate, [f32; 2])>, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let Some(hwnd) = modforge::input::find_hwnd_by_pid(a.pid) else {
+        return Ok(None);
+    };
+    if modforge::input::foreground_hwnd() != Some(hwnd) {
+        return Ok(None);
+    }
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    if s.current_name() != Some("InGameState") {
+        return Ok(None);
+    }
+    let area = area_instance(a)?;
+    if area != *zone {
+        *zone = area;
+        state.clear();
+    }
+    let (manager, controller) = ui_manager(a)?;
+    for side in ["left_panel", "right_panel"] {
+        if ui::panel(&a.mem, manager, controller, side)
+            .is_some_and(|p| ui::is_visible(&a.mem, p).unwrap_or(false))
+        {
+            return Ok(None);
+        }
+    }
+    let rows = label_rows(a, &run.rules)?;
+    let candidates: Vec<pickup::Candidate> = rows.into_iter().filter_map(|r| r.candidate).collect();
+    let Some(c) = state.choose(&run.settings, &candidates, std::time::Instant::now()) else {
+        return Ok(None);
+    };
+    let at = modforge::input::human::point_in(c.label, run.settings.margin, rng);
+    Ok(Some((c.clone(), at)))
+}
+
+/// Pickup's thread: look, choose, move and click with drawn waits,
+/// until switched off. The game is not held locked while the mouse moves.
+fn pickup_loop() {
+    let mut state = pickup::State::default();
+    let mut zone = 0u64;
+    let mut rng = fastrand::Rng::new();
+    loop {
+        let run = {
+            let mut g = PICKUP.lock();
+            let Some(run) = g.as_mut() else { return };
+            if !run.on {
+                run.running = false;
+                return;
+            }
+            PickupRun {
+                on: true,
+                running: true,
+                rules: run.rules.clone(),
+                settings: run.settings.clone(),
+                clicks: Default::default(),
+                last_error: None,
+            }
+        };
+        let picked = pickup_target(&run, &mut state, &mut zone, &mut rng);
+        let mut error = None;
+        if let Ok(Some((c, at))) = &picked {
+            let result =
+                modforge::input::human::click(modforge::input::Button::Left, *at, &run.settings.timing, &mut rng);
+            state.clicked(&run.settings, c.key, std::time::Instant::now(), &mut rng);
+            let mut g = PICKUP.lock();
+            if let Some(r) = g.as_mut() {
+                r.clicks.push_back(json!({
+                    "name": c.name,
+                    "rule": c.rule,
+                    "distance": c.distance,
+                    "at": at,
+                    "result": result.as_ref().err(),
+                }));
+                while r.clicks.len() > PICKUP_KEEP_CLICKS {
+                    r.clicks.pop_front();
+                }
+            }
+            error = result.err();
+        } else if let Err(e) = &picked {
+            error = Some(e.clone());
+        }
+        if let Some(r) = PICKUP.lock().as_mut()
+            && error.is_some()
+        {
+            r.last_error = error;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(PICKUP_TICK_MS));
+    }
+}
+
+/// Switch pickup on or off; rules and settings replace the kept ones.
+/// With no arguments it says what pickup is doing.
+fn pickup_op(args: &Json) -> Result<Json, String> {
+    let rules: Option<Vec<item_rules::ItemRule>> =
+        if args["rules"].is_null() { None } else { Some(parse(args, "rules")?) };
+    let settings: Option<pickup::Settings> =
+        if args["settings"].is_null() { None } else { Some(parse(args, "settings")?) };
+    let mut g = PICKUP.lock();
+    let run = g.get_or_insert_with(|| PickupRun {
+        on: false,
+        running: false,
+        rules: pickup::default_rules(),
+        settings: pickup::Settings::default(),
+        clicks: Default::default(),
+        last_error: None,
+    });
+    if let Some(r) = rules {
+        run.rules = r;
+    }
+    if let Some(s) = settings {
+        run.settings = s;
+    }
+    if let Some(on) = args["on"].as_bool() {
+        run.on = on;
+        if on && !run.running {
+            run.running = true;
+            std::thread::spawn(pickup_loop);
+        }
+    }
+    Ok(json!({
+        "on": run.on,
+        "running": run.running,
+        "rules": run.rules,
+        "settings": run.settings,
+        "clicks": run.clicks,
+        "last_error": run.last_error,
+    }))
 }
 
 /// The ground item labels with their items, screen rectangles,
@@ -1620,6 +1779,12 @@ fn main() {
         "the ground item labels: each one's item, screen rectangle, distance from the player and the pickup rule it passes (the first pickup rules unless rules are given)",
         "rules?",
         ground_labels_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "pickup",
+        "pick up ground items that pass the rules (default: currency, waystones, uniques worth 5 exalted): on true moves the mouse and clicks the nearest match with drawn waits, only while the game is in front and no side panel is open; no arguments says what it is doing",
+        "on?, rules?, settings?",
+        pickup_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "panel_items",
