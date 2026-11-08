@@ -81,8 +81,11 @@ fn find_game() -> Option<(&'static str, u32)> {
 /// Open the running game read-only and search its exe for every static
 /// pattern, unless that was already done for this pid.
 fn attached() -> Result<MutexGuard<'static, Option<Attached>>, String> {
-    let (_, pid) = find_game().ok_or("game not running")?;
     let mut guard = ATTACHED.lock();
+    if guard.as_ref().is_some_and(|a| a.mem.is_running()) {
+        return Ok(guard);
+    }
+    let (_, pid) = find_game().ok_or("game not running")?;
     if guard.as_ref().is_some_and(|a| a.pid == pid) {
         return Ok(guard);
     }
@@ -662,6 +665,62 @@ fn game_op(_args: &Json) -> Result<Json, String> {
     }))
 }
 
+/// Read-only bytes for offset research (modforge memory_research).
+fn read_bytes_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    modforge::memory_research::read_bytes_reply(&a.mem, args)
+}
+
+/// Every match of `sig` in the exe's code and where its operand points
+/// (modforge memory_research), for finding a moved global.
+fn rip_sites_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let image = read_process_image(&a.mem, &a.exe).map_err(|e| format!("read exe image: {e:#}"))?;
+    let exe = a.exe.base..a.exe.base + a.exe.size;
+    modforge::memory_research::rip_sites_reply(&image, &exe, args)
+}
+
+/// How many loaded files carry each area change count: the newest count
+/// is the area change counter's value now.
+fn file_counts_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let counts = std::cell::RefCell::new(std::collections::BTreeMap::<i32, usize>::new());
+    let (_, unreadable) = files::loaded_files(&a.mem, a.static_address("File Root")?, |c| {
+        *counts.borrow_mut().entry(c).or_insert(0) += 1;
+        false
+    })
+    .map_err(|e| format!("{e:#}"))?;
+    let counts = counts.into_inner();
+    let newest: Vec<_> = counts.iter().rev().take(8).collect();
+    Ok(json!({"distinct": counts.len(), "newest": newest, "unreadable": unreadable}))
+}
+
+/// The game's text (std::wstring) at `addr`, or why it is not one.
+fn wstring_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    modforge::memory_research::wstring_reply(&a.mem, args)
+}
+
+/// The roots offset research starts from: InGameState, its area
+/// instance and world data pointers at GameHelper2's offsets.
+fn roots_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let read = |off: u64| a.mem.read_value::<u64>(in_game + off).unwrap_or(0);
+    Ok(json!({
+        "in_game_state": format!("{in_game:#x}"),
+        "area_instance": format!("{:#x}", read(zone::IN_GAME_AREA_INSTANCE)),
+        "world_data": format!("{:#x}", read(zone::IN_GAME_WORLD_DATA)),
+        "exe": [format!("{:#x}", a.exe.base), format!("{:#x}", a.exe.base + a.exe.size)],
+    }))
+}
+
 /// The last poe.ninja price list fetched, and its league.
 static PRICES: Mutex<Option<(String, loot_value::PriceList)>> = Mutex::new(None);
 
@@ -1061,6 +1120,36 @@ fn main() {
         "the preloads found in this area's loaded files: read from the game, or the given files and area change counter",
         "list | defs, files?, area_change_counter?",
         preload_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "patterns.read_bytes",
+        "read-only: n bytes (at most 4096) at addr as hex, for offset research",
+        "addr, n",
+        read_bytes_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "patterns.rip_sites",
+        "read-only: every match of sig in the exe's code, its operand address and where it points",
+        "sig",
+        rip_sites_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "file_counts",
+        "how many loaded files carry each area change count, newest first",
+        "",
+        file_counts_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "mem.wstring",
+        "read-only: the game's text (std::wstring) at addr",
+        "addr",
+        wstring_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "roots",
+        "InGameState and its area instance and world data pointers, where offset research starts",
+        "",
+        roots_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "game",

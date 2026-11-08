@@ -18,11 +18,14 @@ use std::collections::BTreeMap;
 use crate::model::Rarity;
 
 /// AreaInstanceOffsets.Entities: AwakeEntities then SleepingEntities,
-/// each a std::map (0x10 bytes).
-pub const AREA_AWAKE_ENTITIES: u64 = 0x6F0;
-pub const AREA_SLEEPING_ENTITIES: u64 = 0x700;
-/// AreaInstanceOffsets.PlayerInfo.LocalPlayerPtr (0x5B0 + 0x20).
-pub const AREA_LOCAL_PLAYER: u64 = 0x5D0;
+/// each a std::map (0x10 bytes). GameHelper2 has 0x6F0; on the build
+/// of 2026-11-06 they moved 0x28 on (research_offsets).
+pub const AREA_AWAKE_ENTITIES: u64 = 0x718;
+pub const AREA_SLEEPING_ENTITIES: u64 = 0x728;
+/// AreaInstanceOffsets.PlayerInfo.LocalPlayerPtr (PlayerInfo + 0x20).
+/// GameHelper2 has PlayerInfo at 0x5B0; on the build of 2026-11-06 it
+/// is at 0x5B8 (research_offsets).
+pub const AREA_LOCAL_PLAYER: u64 = 0x5D8;
 /// GameHelper2 AreaInstance reads at most this many awake entities, and
 /// this many sleeping ones.
 pub const MAX_AWAKE: usize = 100_000;

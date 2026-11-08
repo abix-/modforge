@@ -42,6 +42,7 @@ pub mod log;
 pub mod loot;
 pub mod map;
 pub mod memory;
+pub mod memory_research;
 pub mod mission;
 pub mod monument;
 pub mod msvc_std;

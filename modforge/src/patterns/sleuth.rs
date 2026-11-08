@@ -287,7 +287,9 @@ fn read_module_image(module: &str) -> Result<patternsleuth::image::Image<'static
         sections.push((section, &memory[addr..addr + size]));
     }
     let memory = patternsleuth::Memory::new_internal_data(sections)?;
-    patternsleuth::image::pe::PEImage::read_inner_memory::<String>(base, None, false, memory, object)
+    patternsleuth::image::pe::PEImage::read_inner_memory::<String>(
+        base, None, false, memory, object,
+    )
 }
 
 #[cfg(not(windows))]
@@ -384,6 +386,27 @@ pub fn scan_rip_targets(
     targets.sort_unstable();
     targets.dedup();
     Ok(targets)
+}
+
+/// Each match of `sig` in `section` as (operand address, the address
+/// its RIP-relative operand points at), for research that needs to know
+/// which instruction found which target. Sorted by operand address.
+pub fn rip_sites(
+    image: &patternsleuth::image::Image<'_>,
+    sig: &str,
+    section: Option<object::SectionKind>,
+) -> Result<Vec<(u64, u64)>> {
+    use patternsleuth::MemoryTrait as _;
+    scan_image(image, sig, section)?
+        .into_iter()
+        .map(|operand| {
+            let target = image
+                .memory
+                .rip4(operand as u64)
+                .map_err(|e| anyhow!("read operand at {operand:#x}: {e}"))?;
+            Ok((operand as u64, target))
+        })
+        .collect()
 }
 
 /// The one address `sig`'s RIP-relative operand points at. Several

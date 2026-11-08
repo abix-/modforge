@@ -20,7 +20,7 @@
 use std::ffi::c_void;
 use std::io;
 
-use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HMODULE};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, HMODULE, STILL_ACTIVE};
 use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW, TH32CS_SNAPPROCESS,
@@ -29,7 +29,7 @@ use windows_sys::Win32::System::ProcessStatus::{
     EnumProcessModulesEx, GetModuleFileNameExW, GetModuleInformation, LIST_MODULES_ALL, MODULEINFO,
 };
 use windows_sys::Win32::System::Threading::{
-    OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 
 /// The only access this module ever asks for.
@@ -104,6 +104,17 @@ impl ProcessMemory {
 
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// The process has not exited (GetExitCodeProcess still says
+    /// STILL_ACTIVE), without walking every process like
+    /// [`find_pid_by_name`].
+    pub fn is_running(&self) -> bool {
+        let mut code: u32 = 0;
+        // SAFETY: see module contract; `code` is ours and the handle
+        // has PROCESS_QUERY_INFORMATION.
+        let ok = unsafe { GetExitCodeProcess(self.handle, &mut code) };
+        ok != 0 && code == STILL_ACTIVE as u32
     }
 
     /// Fill `buf` from `addr` in the other process. Fails unless every

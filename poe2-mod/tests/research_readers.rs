@@ -114,5 +114,7 @@ fn atlas() {
 
 #[test]
 fn preload() {
-    op("preload", json!({}));
+    // No preload list ships yet; an empty one still reads the counter
+    // and this area's files.
+    op("preload", json!({"defs": []}));
 }

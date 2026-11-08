@@ -50,6 +50,15 @@ pub const STATIC_PATTERNS: &[StaticPattern] = &[
         source: "ExileCore2 Offsets \"File Root\"",
         sig: "33 ?? ?? 89 ?? | ?? ?? ?? ?? ?? 8B ?? ?? 8B ?? ?? ?? ?? 8B ?? ?? ?? ?? 8B ?? ?? ?? 0F 28 ?? ?? ?? ?? 83",
     },
+    // GameHelper2's shape (inc the counter, then load through r14) on the
+    // build of 2026-11-06, where its own pattern points outside the exe;
+    // found by research_offsets area_change_counter. First, as the first
+    // pattern that resolves wins.
+    StaticPattern {
+        name: "AreaChangeCounter",
+        source: "research_offsets (build 2026-11-06)",
+        sig: "FF 05 | ?? ?? ?? ?? 49 8B 16 44 0F B6",
+    },
     StaticPattern {
         name: "AreaChangeCounter",
         source: "GameHelper2 StaticOffsetsPatterns.cs",

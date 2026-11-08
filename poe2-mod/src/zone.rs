@@ -12,14 +12,16 @@ use serde::Serialize;
 pub const IN_GAME_AREA_INSTANCE: u64 = 0x290;
 /// InGameStateOffset.WorldData.
 pub const IN_GAME_WORLD_DATA: u64 = 0x368;
-/// AreaInstanceOffsets.CurrentAreaLevel (a byte).
-pub const AREA_LEVEL: u64 = 0xBC;
-/// AreaInstanceOffsets.CurrentAreaHash.
-pub const AREA_HASH: u64 = 0x114;
-/// WorldDataOffset.WorldAreaDetailsPtr, then
-/// WorldAreaDetailsStruct.WorldAreaDetailsRowPtr: both at 0x98.
+/// AreaInstanceOffsets.CurrentAreaLevel (a byte). GameHelper2 has
+/// 0xBC; on the build of 2026-11-06 it is 0xC4 (research_offsets).
+pub const AREA_LEVEL: u64 = 0xC4;
+/// AreaInstanceOffsets.CurrentAreaHash: GameHelper2 0x114, now 0x11C.
+pub const AREA_HASH: u64 = 0x11C;
+/// WorldDataOffset.WorldAreaDetailsPtr at 0x98 (on this build it points
+/// to the area instance), then WorldAreaDetailsStruct
+/// .WorldAreaDetailsRowPtr: GameHelper2 0x98, now 0xA0 (research_offsets).
 pub const WORLD_AREA_DETAILS: u64 = 0x98;
-pub const WORLD_AREA_ROW: u64 = 0x98;
+pub const WORLD_AREA_ROW: u64 = 0xA0;
 /// The WorldArea.dat row.
 pub mod row {
     pub const ID: u64 = 0x00;
@@ -131,13 +133,14 @@ mod tests {
         row[8..16].copy_from_slice(&(name.as_ptr() as u64).to_le_bytes());
         row[0x10..0x14].copy_from_slice(&1i32.to_le_bytes());
         row[0x15] = 1;
-        let mut details = [0u64; 0xA0 / 8];
-        details[0x98 / 8] = row.as_ptr() as u64;
+        let mut details = [0u64; 0xA8 / 8];
+        details[WORLD_AREA_ROW as usize / 8] = row.as_ptr() as u64;
         let mut world = [0u64; 0xA0 / 8];
-        world[0x98 / 8] = details.as_ptr() as u64;
-        let mut area = [0u8; 0x118];
-        area[0xBC] = 3;
-        area[0x114..0x118].copy_from_slice(&0xDEADu32.to_le_bytes());
+        world[WORLD_AREA_DETAILS as usize / 8] = details.as_ptr() as u64;
+        let mut area = [0u8; 0x120];
+        area[AREA_LEVEL as usize] = 3;
+        let h = AREA_HASH as usize;
+        area[h..h + 4].copy_from_slice(&0xDEADu32.to_le_bytes());
         let mut state = [0u64; 0x370 / 8];
         state[0x290 / 8] = area.as_ptr() as u64;
         state[0x368 / 8] = world.as_ptr() as u64;

@@ -16,8 +16,9 @@ use modforge::msvc_std::{Vector, read_vector};
 use modforge::process_memory::ProcessMemory;
 use std::collections::HashMap;
 
-/// AreaInstanceOffsets.TerrainMetadata.
-pub const AREA_TERRAIN: u64 = 0x8D0;
+/// AreaInstanceOffsets.TerrainMetadata. GameHelper2 has 0x8D0; on the
+/// build of 2026-11-06 it moved 0x28 on (research_offsets).
+pub const AREA_TERRAIN: u64 = 0x8F8;
 /// TerrainStruct.
 pub mod meta {
     pub const TOTAL_TILES: u64 = 0x18;
@@ -114,6 +115,21 @@ impl Terrain {
         self.walkable
             .get(y * self.bytes_per_row + x / 2)
             .map_or(0, |b| (b >> shift) & 0xF)
+    }
+
+    /// A flat terrain of only walkable data, for tests.
+    #[cfg(test)]
+    pub fn with_walkable(bytes_per_row: usize, walkable: Vec<u8>) -> Self {
+        Self {
+            bytes_per_row,
+            walkable,
+            ..Self::default()
+        }
+    }
+
+    /// MapEdgeDetector.TotalRows: rows of walkable data.
+    pub fn rows(&self) -> usize {
+        self.walkable.len().checked_div(self.bytes_per_row).unwrap_or(0)
     }
 
     /// The tiles, row by row.
@@ -297,12 +313,13 @@ mod tests {
         tiles[1].sub_tiles = &sub as *const _ as u64;
         tiles[1].height = -1;
         let walk = [0x11u8; 24];
-        let mut area = vec![0u8; 0x8D0 + 0x140];
-        put(&mut area[..], 0x8D0 + 0x18, [2i64, 1]);
-        put(&mut area[..], 0x8D0 + 0x28, vector_of(&tiles));
-        put(&mut area[..], 0x8D0 + 0xD0, vector_of(&walk));
-        put(&mut area[..], 0x8D0 + 0x130, 12i32);
-        put(&mut area[..], 0x8D0 + 0x134, 3i16);
+        let t0 = AREA_TERRAIN as usize;
+        let mut area = vec![0u8; t0 + 0x140];
+        put(&mut area[..], t0 + 0x18, [2i64, 1]);
+        put(&mut area[..], t0 + 0x28, vector_of(&tiles));
+        put(&mut area[..], t0 + 0xD0, vector_of(&walk));
+        put(&mut area[..], t0 + 0x130, 12i32);
+        put(&mut area[..], t0 + 0x134, 3i16);
 
         let t = read(&mem, area.as_ptr() as u64, vec![0; 9], vec![0; 25]).unwrap();
         assert_eq!((t.tiles_x, t.tiles_y), (2, 1));

@@ -16,20 +16,23 @@ use modforge::process_memory::ProcessMemory;
 
 /// GameHelper2 LoadedFilesRootObject.TotalCount.
 pub const ROOT_BUCKETS: u64 = 0x10;
-/// Size of one root bucket (GameHelper2 StdBucket).
-pub const BUCKET_SIZE: u64 = 0x40;
+/// Size of one root bucket. GameHelper2's StdBucket is 0x40; on the
+/// build of 2026-11-06 the next bucket's vector starts 0x38 on
+/// (research_offsets loaded_file_records).
+pub const BUCKET_SIZE: u64 = 0x38;
 /// FileInfoValueStruct.Name.
 pub const FILE_NAME: u64 = 0x08;
 /// FileInfoValueStruct.AreaChangeCount.
 pub const FILE_AREA_CHANGE_COUNT: u64 = 0x40;
 
-/// GameHelper2 FilesPointerStructure: the middle pointer is the file.
+/// One bucket entry. GameHelper2's FilesPointerStructure is three words
+/// with the file in the middle; on the build of 2026-11-06 it is two, a
+/// hash then the file (research_offsets loaded_file_records).
 #[derive(Clone, Copy, Debug, Default)]
 #[repr(C)]
 pub struct FilePointer {
-    _useless0: u64,
+    _hash: u64,
     pub file: u64,
-    _useless1: u64,
 }
 
 pub fn area_change_counter(mem: &ProcessMemory, global: u64) -> Result<i32> {
@@ -99,7 +102,7 @@ mod tests {
         data: Vector,
         _unknown: u64,
         capacity: i32,
-        _rest: [i32; 7],
+        _rest: [i32; 5],
     }
 
     fn info(name: &[u16], count: i32) -> FileInfo {
@@ -115,14 +118,14 @@ mod tests {
     }
 
     #[test]
-    fn layout_matches_gamehelper2() {
+    fn layout_matches_the_game() {
         assert_eq!(std::mem::offset_of!(FileInfo, name_ptr) as u64, FILE_NAME);
         assert_eq!(
             std::mem::offset_of!(FileInfo, count) as u64,
             FILE_AREA_CHANGE_COUNT
         );
         assert_eq!(size_of::<Bucket>() as u64, BUCKET_SIZE);
-        assert_eq!(size_of::<FilePointer>(), 0x18);
+        assert_eq!(size_of::<FilePointer>(), 0x10);
     }
 
     #[test]
@@ -133,9 +136,8 @@ mod tests {
         let c: Vec<u16> = "Metadata/Old.ao".encode_utf16().collect();
         let infos = [info(&a, 9), info(&b, 9), info(&c, 4)];
         let ptr = |i: usize| FilePointer {
-            _useless0: 0,
+            _hash: 0,
             file: &infos[i] as *const FileInfo as u64,
-            _useless1: 0,
         };
         let first = [ptr(0), ptr(2)];
         let last = [ptr(1)];

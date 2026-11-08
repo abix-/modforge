@@ -9,8 +9,9 @@ use modforge::msvc_std::read_vector;
 use modforge::process_memory::ProcessMemory;
 use serde::Serialize;
 
-/// AreaInstanceOffsets.PlayerInfo.ServerDataPtr (0x5B0 + 0).
-pub const AREA_SERVER_DATA: u64 = 0x5B0;
+/// AreaInstanceOffsets.PlayerInfo.ServerDataPtr (PlayerInfo + 0),
+/// PlayerInfo at 0x5B8 on the build of 2026-11-06 (GameHelper2 0x5B0).
+pub const AREA_SERVER_DATA: u64 = 0x5B8;
 /// ServerDataOffsets.PlayerServerDataPtr: a vector whose first entry is
 /// the player's server data.
 pub const SERVER_PLAYER_DATA: u64 = 0x48;
@@ -200,8 +201,8 @@ mod tests {
         let players = [player.as_ptr() as u64];
         let mut server = [0u8; 0x60];
         put(&mut server[..], 0x48, vector_of(&players));
-        let mut area = [0u8; 0x5B8];
-        put(&mut area[..], 0x5B0, server.as_ptr() as u64);
+        let mut area = [0u8; AREA_SERVER_DATA as usize + 8];
+        put(&mut area[..], AREA_SERVER_DATA as usize, server.as_ptr() as u64);
 
         let found = list(&mem, area.as_ptr() as u64).unwrap();
         assert_eq!(found, [(1, inventory.as_ptr() as u64)]);
