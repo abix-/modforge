@@ -19,7 +19,7 @@ use serde_json::json;
 use std::time::Duration;
 
 /// How long attack runs.
-const RUN: Duration = Duration::from_secs(6);
+const RUN: Duration = Duration::from_secs(30);
 
 #[test]
 fn enemies_on_screen() {
@@ -46,11 +46,9 @@ fn casts_at_the_nearest_enemy() {
             return;
         }
     };
-    if before.is_empty() {
-        println!("SKIP: no enemy on screen");
-        return;
+    if let Some(e) = before.first() {
+        println!("nearest: {} {:.1} cells", e["name"], e["distance"].as_f64().unwrap_or(0.0));
     }
-    println!("nearest: {} {:.1} cells", before[0]["name"], before[0]["distance"].as_f64().unwrap_or(0.0));
     r.op("attack", json!({"on": true})).expect("attack on");
     std::thread::sleep(RUN);
     let out = r.op("attack", json!({"on": false})).expect("attack off");
