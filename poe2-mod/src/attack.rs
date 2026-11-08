@@ -28,7 +28,11 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            range: 40.0,
+            // Chaos Bolt reaches the whole screen (operator, 2026-11-07):
+            // 1920x1080 is about 211 by 119 cells (research_screen_cells),
+            // so the middle to a corner is about 120; enemies off the
+            // screen are never taken anyway.
+            range: 120.0,
             pause: Wait::new(300, 700),
             spread: [10.0, 15.0],
             timing: Timing {
@@ -121,7 +125,7 @@ mod tests {
         let mut st = State::default();
         let mut rng = fastrand::Rng::with_seed(4);
         let t0 = Instant::now();
-        let all = [enemy(1, 30.0), enemy(2, 12.0), enemy(3, 50.0)];
+        let all = [enemy(1, 30.0), enemy(2, 12.0), enemy(3, 150.0)];
         assert_eq!(st.choose(&s, &all, t0).map(|e| e.key), Some(2));
         st.cast(&s, 2, t0, &mut rng);
         // The pause after a cast.
@@ -133,7 +137,7 @@ mod tests {
         // The target is gone: the nearest.
         assert_eq!(st.choose(&s, &[enemy(1, 5.0), enemy(4, 9.0)], t1).map(|e| e.key), Some(1));
         // None in range.
-        assert_eq!(st.choose(&s, &[enemy(3, 50.0)], t1), None);
+        assert_eq!(st.choose(&s, &[enemy(3, 150.0)], t1), None);
     }
 
     #[test]

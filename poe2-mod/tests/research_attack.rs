@@ -21,6 +21,29 @@ use std::time::Duration;
 /// How long attack runs.
 const RUN: Duration = Duration::from_secs(30);
 
+/// Switch attack on and leave it on (`--ignored`, so a plain test run
+/// never takes the mouse): `research_attack switch_on -- --ignored`.
+#[test]
+#[ignore = "takes the mouse until switched off"]
+fn switch_on() {
+    let r = Remote::at(17185);
+    let out = r.op("attack", json!({"on": true})).expect("attack on");
+    println!("attack on: {} range {}", out["attack_on"], out["attack"]["range"]);
+}
+
+/// Switch attack off: `research_attack switch_off -- --ignored`.
+#[test]
+#[ignore = "pairs with switch_on"]
+fn switch_off() {
+    let r = Remote::at(17185);
+    let out = r.op("attack", json!({"on": false})).expect("attack off");
+    println!("attack on: {}", out["attack_on"]);
+    for c in out["clicks"].as_array().cloned().unwrap_or_default() {
+        println!("click: {c}");
+    }
+    println!("waiting: {}", out["waiting"]);
+}
+
 #[test]
 fn enemies_on_screen() {
     let r = Remote::at(17185);
