@@ -34,15 +34,73 @@ fn every_monster_and_why_it_counts() {
         .iter()
         .map(|e| e["key"].as_u64().unwrap_or(0))
         .collect();
-    for e in list["awake"]["entities"].as_array().cloned().unwrap_or_default() {
+    for e in list["awake"]["entities"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+    {
         let address = e["address"].as_u64().unwrap_or(0);
         let parts = r
             .op("inspect", json!({"addr": format!("{address:#x}")}))
-            .map(|v| v["parts"].as_object().map(|o| o.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default())
+            .map(|v| {
+                v["parts"]
+                    .as_object()
+                    .map(|o| o.keys().cloned().collect::<Vec<_>>().join(","))
+                    .unwrap_or_default()
+            })
             .unwrap_or_default();
+        // GameHelper2 TargetableOffsets: 0x51 IsTargetable, 0x52
+        // IsHighlightable, 0x53 IsTargettedByPlayer, 0x56
+        // MeetsQuestState, 0x58 NeedsTrue, 0x59 HiddenfromPlayer, 0x5A
+        // NeedsFalse. All zero on this build (2026-11-07); a block of
+        // flags sits at 0x68 instead. The header (0x00 and 0x08, the
+        // owner entity in GameHelper2 ComponentHeader) is shown as words,
+        // then bytes 0x10..0x80.
+        let words: Vec<u64> = r
+            .op(
+                "inspect",
+                json!({"addr": format!("{address:#x}"), "part": "Targetable", "n": 0x80}),
+            )
+            .map(|v| {
+                v["part"]["words"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|w| {
+                        w.as_str()?
+                            .split("0x")
+                            .last()
+                            .and_then(|h| u64::from_str_radix(h, 16).ok())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let header = words
+            .iter()
+            .take(2)
+            .map(|w| format!("{w:#x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let owner = if words.get(1) == Some(&address) {
+            "owner is the entity"
+        } else {
+            "OWNER DIFFERS"
+        };
+        let bytes = words
+            .iter()
+            .skip(2)
+            .flat_map(|w| w.to_le_bytes())
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
         println!(
-            "{} {} valid {} targetable {} friendly {} life {}/{} rarity {} buffs {} parts [{parts}]",
-            if taken_keys.contains(&address) { "TAKEN" } else { "     " },
+            "{} {} entity {address:#x} valid {} targetable {} friendly {} life {}/{} rarity {} buffs {} targetable header [{header}] {owner} 0x10.. [{bytes}] parts [{parts}]",
+            if taken_keys.contains(&address) {
+                "TAKEN"
+            } else {
+                "     "
+            },
             e["path"],
             e["valid"],
             e["targetable"],
