@@ -14,10 +14,11 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use std::thread::JoinHandle;
 use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen, CreateSolidBrush,
-    DeleteDC, DeleteObject, Ellipse, EndPaint, FillRect, GetStockObject, HDC, InvalidateRect,
-    LineTo, MoveToEx, NULL_BRUSH, PAINTSTRUCT, PS_SOLID, Polyline, Rectangle, SRCCOPY,
-    SelectObject, SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleBitmap,
+    CreateCompatibleDC, CreateDIBSection, CreatePen, CreateSolidBrush, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, Ellipse, EndPaint, FillRect, GetStockObject, HBITMAP, HDC, InvalidateRect,
+    LineTo, MoveToEx, NULL_BRUSH, PAINTSTRUCT, PS_SOLID, PlgBlt, Polyline, Rectangle, SRCCOPY,
+    SelectObject, SetBkMode, SetStretchBltMode, SetTextColor, TRANSPARENT, TextOutW, WHITEONBLACK,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -68,6 +69,28 @@ pub enum Shape {
         text: String,
         color: Rgb,
     },
+    /// A picture drawn into the parallelogram whose top left, top right
+    /// and bottom left corners are `corners` (GDI PlgBlt, what ImGui's
+    /// AddImageQuad does for a flat map). Black pixels are not drawn;
+    /// when the picture shrinks, lit pixels win over black ones.
+    Image {
+        corners: [[f32; 2]; 3],
+        image: Arc<Image>,
+    },
+}
+
+/// A picture as 0xRRGGBB pixels, row by row from the top.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Image {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<Rgb>,
+}
+
+impl std::fmt::Debug for Image {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Image({}x{})", self.width, self.height)
+    }
 }
 
 /// Where the window sits (left, top, width, height in screen pixels)
@@ -96,6 +119,62 @@ thread_local! {
     static FRAME: std::cell::RefCell<Option<Arc<Mutex<Frame>>>> =
         const { std::cell::RefCell::new(None) };
     static AREA: std::cell::Cell<(i32, i32, i32, i32)> = const { std::cell::Cell::new((0, 0, 0, 0)) };
+    /// The last picture turned into a GDI bitmap, kept while frames
+    /// keep handing the same one.
+    static PICTURE: std::cell::RefCell<Option<(Arc<Image>, HBITMAP)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// The GDI bitmap for `image`, made once and kept until another picture
+/// comes. None when the picture is empty or GDI fails.
+fn bitmap_for(image: &Arc<Image>) -> Option<HBITMAP> {
+    PICTURE.with(|p| {
+        let mut p = p.borrow_mut();
+        if let Some((kept, bitmap)) = p.as_ref()
+            && Arc::ptr_eq(kept, image)
+        {
+            return Some(*bitmap);
+        }
+        if let Some((_, old)) = p.take() {
+            // SAFETY: a bitmap this thread made and no DC holds.
+            unsafe { DeleteObject(old) };
+        }
+        let (w, h) = (image.width as usize, image.height as usize);
+        if w == 0 || h == 0 || image.pixels.len() != w * h {
+            return None;
+        }
+        // SAFETY: BITMAPINFO is plain data; the header says 32-bit top
+        // down rows of `w` by `h`, which CreateDIBSection allocates and
+        // the copy fills exactly.
+        unsafe {
+            let mut info: BITMAPINFO = std::mem::zeroed();
+            info.bmiHeader = BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w as i32,
+                biHeight: -(h as i32),
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB,
+                ..std::mem::zeroed()
+            };
+            let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+            let bitmap = CreateDIBSection(
+                std::ptr::null_mut(),
+                &info,
+                DIB_RGB_COLORS,
+                &mut bits,
+                std::ptr::null_mut(),
+                0,
+            );
+            if bitmap.is_null() || bits.is_null() {
+                return None;
+            }
+            // 0x00RRGGBB in memory is blue, green, red, 0: the DIB's order.
+            std::ptr::copy_nonoverlapping(image.pixels.as_ptr(), bits.cast::<u32>(), w * h);
+            *p = Some((image.clone(), bitmap));
+            Some(bitmap)
+        }
+    })
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -318,6 +397,11 @@ unsafe fn draw(dc: HDC, shape: &Shape) {
         | Shape::Path { color, width, .. }
         | Shape::Circle { color, width, .. } => (*color, *width),
         Shape::Rect { color, .. } | Shape::Text { color, .. } => (*color, 1),
+        Shape::Image { corners, image } => {
+            // SAFETY: the caller's live `dc`.
+            unsafe { draw_image(dc, corners, image) };
+            return;
+        }
     };
     // SAFETY: the caller's live `dc`; every object made here is selected
     // out and freed before return.
@@ -376,10 +460,46 @@ unsafe fn draw(dc: HDC, shape: &Shape) {
                 SetTextColor(dc, colorref(color));
                 TextOutW(dc, x, y, t.as_ptr(), t.len() as i32);
             }
+            Shape::Image { .. } => {}
         }
         SelectObject(dc, old_brush);
         SelectObject(dc, old_pen);
         DeleteObject(pen);
+    }
+}
+
+/// Draw a picture into its parallelogram.
+///
+/// # Safety
+/// `dc` is a live device context on this thread.
+unsafe fn draw_image(dc: HDC, corners: &[[f32; 2]; 3], image: &Arc<Image>) {
+    let Some(bitmap) = bitmap_for(image) else {
+        return;
+    };
+    let pts = corners.map(|[x, y]| POINT {
+        x: x.round() as i32,
+        y: y.round() as i32,
+    });
+    // SAFETY: the caller's live `dc`; the source DC is made, used and
+    // freed here, and the kept bitmap is selected out before it goes.
+    unsafe {
+        let src = CreateCompatibleDC(dc);
+        let old = SelectObject(src, bitmap);
+        SetStretchBltMode(dc, WHITEONBLACK);
+        PlgBlt(
+            dc,
+            pts.as_ptr(),
+            src,
+            0,
+            0,
+            image.width as i32,
+            image.height as i32,
+            std::ptr::null_mut(),
+            0,
+            0,
+        );
+        SelectObject(src, old);
+        DeleteDC(src);
     }
 }
 
@@ -389,6 +509,55 @@ mod tests {
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GWL_EXSTYLE, GetWindowLongPtrW, IsWindow, IsWindowVisible, WindowFromPoint,
     };
+
+    /// A 2 by 2 picture with one grey pixel, drawn twice its size into a
+    /// memory bitmap: the grey covers its quarter, black stays black.
+    #[test]
+    fn a_picture_lands_in_its_parallelogram() {
+        let target = Arc::new(Image {
+            width: 4,
+            height: 4,
+            pixels: vec![0; 16],
+        });
+        let picture = Arc::new(Image {
+            width: 2,
+            height: 2,
+            pixels: vec![0x969696, 0, 0, 0],
+        });
+        let dest = bitmap_for(&target).expect("target bitmap");
+        // Keep the target out of the one-picture cache.
+        PICTURE.with(|p| p.borrow_mut().take());
+        // SAFETY: a memory DC made, used and freed here; the target
+        // bitmap is selected out before it is read and freed.
+        let pixels = unsafe {
+            let dc = CreateCompatibleDC(std::ptr::null_mut());
+            let old = SelectObject(dc, dest);
+            draw(
+                dc,
+                &Shape::Image {
+                    corners: [[0.0, 0.0], [4.0, 0.0], [0.0, 4.0]],
+                    image: picture,
+                },
+            );
+            SelectObject(dc, old);
+            DeleteDC(dc);
+            let mut out = [0u32; 16];
+            use windows_sys::Win32::Graphics::Gdi::{BITMAP, GetObjectW};
+            let mut b: BITMAP = std::mem::zeroed();
+            GetObjectW(
+                dest,
+                std::mem::size_of::<BITMAP>() as i32,
+                (&raw mut b).cast(),
+            );
+            std::ptr::copy_nonoverlapping(b.bmBits.cast::<u32>(), out.as_mut_ptr(), 16);
+            DeleteObject(dest);
+            out
+        };
+        assert_eq!(pixels[0] & 0xFFFFFF, 0x969696);
+        assert_eq!(pixels[5] & 0xFFFFFF, 0x969696);
+        assert_eq!(pixels[2] & 0xFFFFFF, 0);
+        assert_eq!(pixels[15] & 0xFFFFFF, 0);
+    }
 
     #[test]
     fn colours_swap_to_gdi_order_and_avoid_the_key() {
