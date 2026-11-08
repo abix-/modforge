@@ -46,6 +46,8 @@ pub mod mission;
 pub mod monument;
 pub mod msvc_std;
 pub mod ops;
+#[cfg(windows)]
+pub mod overlay;
 pub mod path;
 pub mod patterns;
 pub mod persona;
