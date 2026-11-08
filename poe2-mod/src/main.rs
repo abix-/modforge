@@ -5,6 +5,7 @@
 //! game, never writes to it, never presses keys.
 
 mod atlas;
+mod atlas_routes;
 mod buff_bar;
 mod camera;
 mod entities;
@@ -566,7 +567,7 @@ fn ui_op(args: &Json) -> Result<Json, String> {
 }
 
 /// The atlas map nodes, while the atlas shows.
-fn atlas_op(_args: &Json) -> Result<Json, String> {
+fn atlas_op(args: &Json) -> Result<Json, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let (manager, controller) = ui_manager(a)?;
@@ -577,7 +578,30 @@ fn atlas_op(_args: &Json) -> Result<Json, String> {
         return Ok(json!({"open": false, "address": at}));
     }
     let atlas = atlas::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
-    Ok(json!({"open": true, "atlas": atlas}))
+    let given: Vec<&str> = args["targets"]
+        .as_array()
+        .map(|v| v.iter().filter_map(Json::as_str).collect())
+        .unwrap_or_default();
+    let targets: &[&str] = if given.is_empty() {
+        &atlas_routes::TOWERS
+    } else {
+        &given
+    };
+    let max_hops = args["max_hops"]
+        .as_u64()
+        .map_or(atlas_routes::MAX_HOPS, |v| v as usize);
+    let names = atlas_routes::names();
+    let shown: Vec<&str> = atlas
+        .nodes
+        .iter()
+        .map(|n| atlas_routes::display_name(&names, &n.map_id))
+        .collect();
+    Ok(json!({
+        "open": true,
+        "atlas": atlas,
+        "names": shown,
+        "routes": atlas_routes::routes(&atlas, targets, max_hops),
+    }))
 }
 
 /// The UI manager from the in-game state, and whether it is the
@@ -873,8 +897,8 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "atlas",
-        "while the atlas shows: each map node's id, state (locked, open, done), grid, links, content and effect lines",
-        "",
+        "while the atlas shows: each map node's id, name, state (locked, open, done), grid, links, content and effect lines, and the shortest routes from open maps to the target maps (towers by default)",
+        "targets?, max_hops?",
         atlas_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
