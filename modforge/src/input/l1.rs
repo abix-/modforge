@@ -263,6 +263,16 @@ pub fn scroll(dx: i32, dy: i32) -> Result<(), String> {
 }
 
 fn key_event(key: Key, down: bool) -> Result<(), String> {
+    key_event_tagged(key, down, SYNTHETIC_EXTRA_INFO)
+}
+
+/// A press without our tag, as the keyboard hook sees the operator's.
+#[cfg(test)]
+pub(crate) fn key_event_untagged(key: Key, down: bool) -> Result<(), String> {
+    key_event_tagged(key, down, 0)
+}
+
+fn key_event_tagged(key: Key, down: bool, extra: usize) -> Result<(), String> {
     let scan = unsafe {
         MapVirtualKeyW(key.0 as u32, 0 /* MAPVK_VK_TO_VSC */)
     } as u16;
@@ -278,7 +288,7 @@ fn key_event(key: Key, down: bool) -> Result<(), String> {
                 wScan: scan,
                 dwFlags: flags,
                 time: 0,
-                dwExtraInfo: SYNTHETIC_EXTRA_INFO,
+                dwExtraInfo: extra,
             },
         },
     };
@@ -302,6 +312,89 @@ pub fn key_held(key: Key) -> bool {
         as u16
         & 0x8000)
         != 0
+}
+
+/// Keys the operator holds, by virtual key, as a low-level keyboard
+/// hook sees them with our own [`SYNTHETIC_EXTRA_INFO`] events left
+/// out: AutoHotkey's GetKeyState "P" mode reads its keyboard hook the
+/// same way. `GetAsyncKeyState` cannot tell a key we let go of from
+/// one the operator let go of.
+static PHYSICAL: [std::sync::atomic::AtomicBool; 256] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; 256];
+static WATCHING: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+unsafe extern "system" fn keyboard_hook(
+    code: i32,
+    wparam: windows_sys::Win32::Foundation::WPARAM,
+    lparam: windows_sys::Win32::Foundation::LPARAM,
+) -> windows_sys::Win32::Foundation::LRESULT {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, HC_ACTION, KBDLLHOOKSTRUCT, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN,
+        WM_SYSKEYUP,
+    };
+    if code == HC_ACTION as i32 && lparam != 0 {
+        let k = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
+        let down = match wparam as u32 {
+            WM_KEYDOWN | WM_SYSKEYDOWN => Some(true),
+            WM_KEYUP | WM_SYSKEYUP => Some(false),
+            _ => None,
+        };
+        if let Some(down) = down
+            && k.dwExtraInfo != SYNTHETIC_EXTRA_INFO
+            && let Some(slot) = PHYSICAL.get(k.vkCode as usize)
+        {
+            slot.store(down, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+    unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+}
+
+/// Start watching the operator's own key presses, once; later calls
+/// return at once. Keys already down count as held. False when the
+/// hook could not be set.
+pub fn watch_physical_keys() -> bool {
+    *WATCHING.get_or_init(|| {
+        for (vk, slot) in PHYSICAL.iter().enumerate() {
+            let held = (unsafe {
+                windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk as i32)
+            } as u16
+                & 0x8000)
+                != 0;
+            slot.store(held, std::sync::atomic::Ordering::Relaxed);
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("keyboard-hook".into())
+            .spawn(move || {
+                use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+                use windows_sys::Win32::UI::WindowsAndMessaging::{
+                    GetMessageW, MSG, SetWindowsHookExW, WH_KEYBOARD_LL,
+                };
+                let module = unsafe { GetModuleHandleW(std::ptr::null()) };
+                let hook =
+                    unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook), module, 0) };
+                let _ = tx.send(!hook.is_null());
+                if hook.is_null() {
+                    return;
+                }
+                // The hook runs on this thread's message loop.
+                let mut msg: MSG = unsafe { std::mem::zeroed() };
+                while unsafe { GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) } > 0 {}
+            })
+            .is_ok()
+            && rx.recv().unwrap_or(false)
+    })
+}
+
+/// Does the operator hold the key, our own presses left out? None
+/// until [`watch_physical_keys`] has started.
+pub fn physically_held(key: Key) -> Option<bool> {
+    if WATCHING.get() != Some(&true) {
+        return None;
+    }
+    PHYSICAL
+        .get(key.0 as usize)
+        .map(|s| s.load(std::sync::atomic::Ordering::Relaxed))
 }
 
 /// Press + release. `hold_ms` (if > 0) sleeps between down and up.

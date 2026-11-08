@@ -130,7 +130,9 @@ pub fn click(
 /// Keys in `lift` that are down now (the operator's own, as a held W
 /// against a roll to the S side) go up first and down again after,
 /// so the operator's hold is back when this ends; keys in `hold` that
-/// are down already are left alone.
+/// are down already are left alone. Call [`l1::watch_physical_keys`]
+/// first so a key the operator lets go of meanwhile is not pressed
+/// again.
 pub fn press_holding(
     hold: &[Key],
     lift: &[Key],
@@ -151,12 +153,19 @@ pub fn press_holding(
     timing.settle.sleep(rng);
     out = out.and(l1::key_press(press, timing.hold.draw(rng)));
     timing.step.sleep(rng);
-    // Always let go and give back, even after an error.
+    // Always let go and give back, even after an error. With the
+    // keyboard hook watching, only what the operator still holds is
+    // given back and what they took hold of meanwhile stays down, so
+    // a key let go during the roll does not stick.
     for k in &pressed {
-        let _ = l1::key_up(*k);
+        if l1::physically_held(*k) != Some(true) {
+            let _ = l1::key_up(*k);
+        }
     }
     for k in &lifted {
-        let _ = l1::key_down(*k);
+        if l1::physically_held(*k) != Some(false) {
+            let _ = l1::key_down(*k);
+        }
     }
     out
 }
@@ -210,5 +219,32 @@ mod tests {
         assert_eq!(stroke([0.0, 0.0], [5.0, 5.0], &mut rng).len(), 10);
         assert_eq!(stroke([0.0, 0.0], [2000.0, 0.0], &mut rng).len(), 50);
         assert_eq!(stroke([7.0, 7.0], [7.0, 7.0], &mut rng), vec![[7, 7]; 10]);
+    }
+
+    /// Our own presses are not the operator's: a synthetic F24 shows as
+    /// down to `GetAsyncKeyState` but not to the keyboard hook. Ignored:
+    /// it sends a real key to the desktop (F24, bound to nothing).
+    #[test]
+    #[ignore = "sends F24 to the desktop"]
+    fn the_hook_leaves_out_our_own_presses() {
+        let f24 = Key(0x87);
+        assert!(l1::watch_physical_keys(), "hook not set");
+        assert_eq!(l1::physically_held(f24), Some(false));
+        l1::key_down(f24).expect("down");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let async_held = l1::key_held(f24);
+        let physical = l1::physically_held(f24);
+        l1::key_up(f24).expect("up");
+        assert!(async_held, "GetAsyncKeyState missed the synthetic press");
+        assert_eq!(physical, Some(false));
+        // An untagged press stands in for the operator's: the hook
+        // counts it.
+        l1::key_event_untagged(f24, true).expect("down");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let operator = l1::physically_held(f24);
+        l1::key_event_untagged(f24, false).expect("up");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(operator, Some(true), "the hook saw no press");
+        assert_eq!(l1::physically_held(f24), Some(false));
     }
 }

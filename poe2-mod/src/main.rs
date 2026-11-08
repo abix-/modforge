@@ -1404,6 +1404,10 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
             run.waiting.clear();
             run.last_error = None;
         }
+        // Roll gives back only the move keys the operator still holds.
+        if on && which == "roll" && !modforge::input::l1::watch_physical_keys() {
+            run.last_error = Some("keyboard hook not set: a move key may stick".into());
+        }
         if on && !run.running {
             run.running = true;
             std::thread::spawn(hands_loop);
