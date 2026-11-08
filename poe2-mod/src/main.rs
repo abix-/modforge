@@ -2,11 +2,12 @@
 //!
 //! Reads game memory read-only and answers on a localhost control
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
-//! game, never writes to it. Its only input is pickup's mouse moves
-//! and clicks, while the operator has pickup switched on.
+//! game, never writes to it. Its only input is attack's and pickup's
+//! left clicks, while the operator has them switched on.
 
 mod abyss;
 mod atlas;
+mod attack;
 mod atlas_routes;
 mod buff_bar;
 mod camera;
@@ -976,32 +977,88 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
     Ok(rows)
 }
 
-/// Pickup's switch, rules and what it did; its thread runs while `on`.
-struct PickupRun {
-    on: bool,
+/// The mouse work: attack and pickup, each switched on or off, with
+/// their settings and what they did. One thread does both, so they
+/// never move the mouse at once; it runs while either is on.
+#[derive(Clone)]
+struct Hands {
+    attack_on: bool,
+    pickup_on: bool,
     running: bool,
     rules: Vec<item_rules::ItemRule>,
-    settings: pickup::Settings,
+    pickup: pickup::Settings,
+    attack: attack::Settings,
     /// The last clicks, newest last.
     clicks: std::collections::VecDeque<Json>,
     last_error: Option<String>,
 }
 
-static PICKUP: Mutex<Option<PickupRun>> = Mutex::new(None);
-/// How often pickup looks at the labels.
-const PICKUP_TICK_MS: u64 = 40;
-const PICKUP_KEEP_CLICKS: usize = 20;
+static HANDS: Mutex<Option<Hands>> = Mutex::new(None);
+/// How often the mouse thread looks.
+const HANDS_TICK_MS: u64 = 40;
+const HANDS_KEEP_CLICKS: usize = 20;
 
-/// The label to click now and where, or none. Acts only while the game
-/// window is in front, the game is in play and neither large side
+/// One click to make.
+struct Click {
+    what: &'static str,
+    key: u64,
+    name: String,
+    rule: Option<String>,
+    distance: f32,
+    at: [f32; 2],
+}
+
+/// The enemies on the screen: live hostile monsters as GameHelper2's
+/// HealthBars takes them, aimed at the middle of the body.
+fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack::Enemy>, String> {
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid).and_then(modforge::input::client_area);
+    let Some((left, top, w, h)) = window else {
+        return Ok(Vec::new());
+    };
+    let size = (w as f32, h as f32);
+    let Some(mine) = me.position else {
+        return Ok(Vec::new());
+    };
+    let cell = terrain::world_per_cell();
+    let settings = kinds::Settings::default();
+    Ok(awake_entities(a, area)?
+        .into_iter()
+        .filter_map(|e| {
+            let k = kinds::classify(&e, me.id, &settings)?;
+            if k.kind != kinds::Type::Monster || k.state != kinds::State::None || e.targetable == Some(false) {
+                return None;
+            }
+            let [x, y, z] = e.position?;
+            let up = e.model_bounds.map_or(0.0, |b| b[2] * 0.5);
+            let (sx, sy) = camera::world_to_screen(&m, x, y, z - up, size)?;
+            if !(0.0..size.0).contains(&sx) || !(0.0..size.1).contains(&sy) {
+                return None;
+            }
+            Some(attack::Enemy {
+                key: e.address,
+                name: e.path.rsplit('/').next().unwrap_or("").to_string(),
+                distance: (x - mine[0]).hypot(y - mine[1]) / cell,
+                screen: [sx + left as f32, sy + top as f32],
+            })
+        })
+        .collect())
+}
+
+/// The click to make now, or none: an enemy while attack is on and one
+/// is in range, else an item while pickup is on. Acts only while the
+/// game window is in front, the game is in play and neither large side
 /// panel is open (GameHelper2 PickupHelper); a new zone forgets every
-/// item.
-fn pickup_target(
-    run: &PickupRun,
+/// item and the target.
+fn next_click(
+    run: &Hands,
     state: &mut pickup::State,
+    fight: &mut attack::State,
     zone: &mut u64,
     rng: &mut fastrand::Rng,
-) -> Result<Option<(pickup::Candidate, [f32; 2])>, String> {
+) -> Result<Option<Click>, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let Some(hwnd) = modforge::input::find_hwnd_by_pid(a.pid) else {
@@ -1018,6 +1075,7 @@ fn pickup_target(
     if area != *zone {
         *zone = area;
         state.clear();
+        fight.clear();
     }
     let (manager, controller) = ui_manager(a)?;
     for side in ["left_panel", "right_panel"] {
@@ -1027,100 +1085,143 @@ fn pickup_target(
             return Ok(None);
         }
     }
+    let now = std::time::Instant::now();
+    if run.attack_on {
+        let me = entities::local_player(&a.mem, area)
+            .and_then(|p| entities::read(&a.mem, p))
+            .map_err(|e| format!("{e:#}"))?;
+        let found = enemies(a, area, &me)?;
+        let in_range = found.iter().any(|e| e.distance <= run.attack.range);
+        if let Some(e) = fight.choose(&run.attack, &found, now) {
+            let at = modforge::input::human::point_in(e.aim_box(run.attack.spread), [0.0, 0.0], rng);
+            return Ok(Some(Click {
+                what: "attack",
+                key: e.key,
+                name: e.name.clone(),
+                rule: None,
+                distance: e.distance,
+                at,
+            }));
+        }
+        // Enemies in range but the pause runs: no pickup in a fight.
+        if in_range {
+            return Ok(None);
+        }
+    }
+    if !run.pickup_on {
+        return Ok(None);
+    }
     let rows = label_rows(a, &run.rules)?;
     let candidates: Vec<pickup::Candidate> = rows.into_iter().filter_map(|r| r.candidate).collect();
-    let Some(c) = state.choose(&run.settings, &candidates, std::time::Instant::now()) else {
+    let Some(c) = state.choose(&run.pickup, &candidates, now) else {
         return Ok(None);
     };
-    let at = modforge::input::human::point_in(c.label, run.settings.margin, rng);
-    Ok(Some((c.clone(), at)))
+    Ok(Some(Click {
+        what: "pickup",
+        key: c.key,
+        name: c.name.clone(),
+        rule: c.rule.clone(),
+        distance: c.distance,
+        at: modforge::input::human::point_in(c.label, run.pickup.margin, rng),
+    }))
 }
 
-/// Pickup's thread: look, choose, move and click with drawn waits,
-/// until switched off. The game is not held locked while the mouse moves.
-fn pickup_loop() {
+/// The mouse thread: look, choose, move and click with drawn waits,
+/// until both are switched off. The game is not held locked while the
+/// mouse moves.
+fn hands_loop() {
     let mut state = pickup::State::default();
+    let mut fight = attack::State::default();
     let mut zone = 0u64;
     let mut rng = fastrand::Rng::new();
     loop {
         let run = {
-            let mut g = PICKUP.lock();
+            let mut g = HANDS.lock();
             let Some(run) = g.as_mut() else { return };
-            if !run.on {
+            if !run.attack_on && !run.pickup_on {
                 run.running = false;
                 return;
             }
-            PickupRun {
-                on: true,
-                running: true,
-                rules: run.rules.clone(),
-                settings: run.settings.clone(),
-                clicks: Default::default(),
-                last_error: None,
-            }
+            run.clone()
         };
-        let picked = pickup_target(&run, &mut state, &mut zone, &mut rng);
+        let next = next_click(&run, &mut state, &mut fight, &mut zone, &mut rng);
         let mut error = None;
-        if let Ok(Some((c, at))) = &picked {
-            let result =
-                modforge::input::human::click(modforge::input::Button::Left, *at, &run.settings.timing, &mut rng);
-            state.clicked(&run.settings, c.key, std::time::Instant::now(), &mut rng);
-            let mut g = PICKUP.lock();
-            if let Some(r) = g.as_mut() {
-                r.clicks.push_back(json!({
-                    "name": c.name,
-                    "rule": c.rule,
-                    "distance": c.distance,
-                    "at": at,
-                    "result": result.as_ref().err(),
-                }));
-                while r.clicks.len() > PICKUP_KEEP_CLICKS {
-                    r.clicks.pop_front();
+        match &next {
+            Ok(Some(c)) => {
+                let timing = if c.what == "attack" { &run.attack.timing } else { &run.pickup.timing };
+                let result = modforge::input::human::click(modforge::input::Button::Left, c.at, timing, &mut rng);
+                let now = std::time::Instant::now();
+                if c.what == "attack" {
+                    fight.cast(&run.attack, c.key, now, &mut rng);
+                } else {
+                    state.clicked(&run.pickup, c.key, now, &mut rng);
                 }
+                if let Some(r) = HANDS.lock().as_mut() {
+                    r.clicks.push_back(json!({
+                        "what": c.what,
+                        "name": c.name,
+                        "rule": c.rule,
+                        "distance": c.distance,
+                        "at": c.at,
+                        "result": result.as_ref().err(),
+                    }));
+                    while r.clicks.len() > HANDS_KEEP_CLICKS {
+                        r.clicks.pop_front();
+                    }
+                }
+                error = result.err();
             }
-            error = result.err();
-        } else if let Err(e) = &picked {
-            error = Some(e.clone());
+            Ok(None) => {}
+            Err(e) => error = Some(e.clone()),
         }
-        if let Some(r) = PICKUP.lock().as_mut()
+        if let Some(r) = HANDS.lock().as_mut()
             && error.is_some()
         {
             r.last_error = error;
         }
-        std::thread::sleep(std::time::Duration::from_millis(PICKUP_TICK_MS));
+        std::thread::sleep(std::time::Duration::from_millis(HANDS_TICK_MS));
     }
 }
 
-/// Switch pickup on or off; rules and settings replace the kept ones.
-/// With no arguments it says what pickup is doing.
-fn pickup_op(args: &Json) -> Result<Json, String> {
+/// Switch attack (`which` "attack") or pickup on or off; rules and
+/// settings replace the kept ones. Without `on` it says what the mouse
+/// thread is doing.
+fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
     let rules: Option<Vec<item_rules::ItemRule>> =
         if args["rules"].is_null() { None } else { Some(parse(args, "rules")?) };
-    let settings: Option<pickup::Settings> =
-        if args["settings"].is_null() { None } else { Some(parse(args, "settings")?) };
-    let mut g = PICKUP.lock();
-    let run = g.get_or_insert_with(|| PickupRun {
-        on: false,
+    let mut g = HANDS.lock();
+    let run = g.get_or_insert_with(|| Hands {
+        attack_on: false,
+        pickup_on: false,
         running: false,
         rules: pickup::default_rules(),
-        settings: pickup::Settings::default(),
+        pickup: pickup::Settings::default(),
+        attack: attack::Settings::default(),
         clicks: Default::default(),
         last_error: None,
     });
     if let Some(r) = rules {
         run.rules = r;
     }
-    if let Some(s) = settings {
-        run.settings = s;
+    if !args["settings"].is_null() {
+        if which == "attack" {
+            run.attack = parse(args, "settings")?;
+        } else {
+            run.pickup = parse(args, "settings")?;
+        }
     }
     if let Some(on) = args["on"].as_bool() {
-        run.on = on;
+        if which == "attack" {
+            run.attack_on = on;
+        } else {
+            run.pickup_on = on;
+        }
         if on && !run.running {
             run.running = true;
-            std::thread::spawn(pickup_loop);
+            std::thread::spawn(hands_loop);
         }
         // The uniques rule needs prices; fetch them once if none are kept.
-        if on && PRICES.lock().is_none() {
+        if on && which == "pickup" && PRICES.lock().is_none() {
             std::thread::spawn(|| {
                 let (list, _) = loot_value::fetch(DEFAULT_LEAGUE);
                 let mut p = PRICES.lock();
@@ -1130,14 +1231,40 @@ fn pickup_op(args: &Json) -> Result<Json, String> {
             });
         }
     }
+    let on = if which == "attack" { run.attack_on } else { run.pickup_on };
     Ok(json!({
-        "on": run.on,
+        "on": on,
+        "attack_on": run.attack_on,
+        "pickup_on": run.pickup_on,
         "running": run.running,
         "rules": run.rules,
-        "settings": run.settings,
+        "attack": run.attack,
+        "pickup": run.pickup,
         "clicks": run.clicks,
         "last_error": run.last_error,
     }))
+}
+
+fn pickup_op(args: &Json) -> Result<Json, String> {
+    hands_op("pickup", args)
+}
+
+/// The enemies attack would aim at, nearest first, without clicking.
+fn enemies_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let me = entities::local_player(&a.mem, area)
+        .and_then(|p| entities::read(&a.mem, p))
+        .map_err(|e| format!("{e:#}"))?;
+    let mut found = enemies(a, area, &me)?;
+    found.sort_by(|x, y| x.distance.total_cmp(&y.distance));
+    Ok(json!({"enemies": found}))
+}
+
+/// Left click the nearest enemy, one cast a click.
+fn attack_op(args: &Json) -> Result<Json, String> {
+    hands_op("attack", args)
 }
 
 /// The ground item labels with their items, screen rectangles,
@@ -1795,6 +1922,18 @@ fn main() {
         "pick up ground items that pass the rules (default: currency, waystones, uniques worth 5 exalted): on true moves the mouse and clicks the nearest match with drawn waits, only while the game is in front and no side panel is open; no arguments says what it is doing",
         "on?, rules?, settings?",
         pickup_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "attack",
+        "left click the nearest live enemy on screen within range (one cast a click), staying on it until it dies or leaves range, with human moves and drawn pauses; shares the mouse with pickup and goes first; only while the game is in front, in play and no side panel is open",
+        "on?, settings?",
+        attack_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "enemies",
+        "the live enemies on screen attack would aim at, nearest first: name, distance in grid cells, the body's middle on the screen",
+        "",
+        enemies_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "panel_items",
