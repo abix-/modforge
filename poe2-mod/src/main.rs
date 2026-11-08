@@ -10,6 +10,8 @@ mod item_rules;
 mod loot_value;
 mod model;
 mod preload;
+mod states;
+mod zone;
 
 use modforge::ops::{OP_REGISTRY, OpDef};
 use modforge::patterns::sleuth::{TEXT_SECTION, read_process_image, unique_rip_target};
@@ -127,37 +129,36 @@ fn statics_op(_args: &Json) -> Result<Json, String> {
 /// entry 0x10 before its end is the current state, and an array of the
 /// thirteen states in a fixed order.
 fn game_state_op(_args: &Json) -> Result<Json, String> {
-    use game::game_states as gs;
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
-    let read_ptr = |addr: u64| {
-        a.mem
-            .read_value::<u64>(addr)
-            .map_err(|e| format!("read pointer at {addr:#x}: {e}"))
-    };
     let global = a.static_address("Game States")?;
-    let object = read_ptr(global)?;
-    let vector_last = read_ptr(object + gs::CURRENT_STATE_VECTOR + 8)?;
-    let current = read_ptr(
-        vector_last
-            .checked_sub(gs::CURRENT_STATE_FROM_END)
-            .ok_or("current state vector is empty")?,
-    )?;
-    let mut states = Vec::with_capacity(gs::NAMES.len());
-    for (i, name) in gs::NAMES.iter().enumerate() {
-        let at = read_ptr(object + gs::STATES + i as u64 * gs::STATE_STRIDE)?;
-        states.push((*name, at));
-    }
-    let current_name = states
-        .iter()
-        .find(|(_, at)| *at == current && current != 0)
-        .map(|(name, _)| *name);
+    let s = states::read(&a.mem, global).map_err(|e| format!("{e:#}"))?;
     Ok(json!({
         "game_states_global": format!("{global:#x}"),
-        "game_states": format!("{object:#x}"),
-        "current": format!("{current:#x}"),
-        "current_name": current_name,
-        "states": states.iter().map(|(name, at)| json!({"name": name, "address": format!("{at:#x}")})).collect::<Vec<_>>(),
+        "game_states": format!("{:#x}", s.object),
+        "current": format!("{:#x}", s.current),
+        "current_name": s.current_name(),
+        "states": game::game_states::NAMES
+            .iter()
+            .zip(s.all)
+            .map(|(name, at)| json!({"name": name, "address": format!("{at:#x}")}))
+            .collect::<Vec<_>>(),
+    }))
+}
+
+/// The zone the player is in, from the in-game state.
+fn zone_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let zone = zone::read(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let counter = files::area_change_counter(&a.mem, a.static_address("AreaChangeCounter")?)
+        .map_err(|e| format!("{e:#}"))?;
+    Ok(json!({
+        "current_state": s.current_name(),
+        "zone": zone,
+        "area_change_counter": counter,
     }))
 }
 
@@ -313,6 +314,12 @@ fn main() {
         "the current game state and the thirteen state addresses, read like GameHelper2's GameStates",
         "",
         game_state_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "zone",
+        "the zone: id, name, act, level, instance hash, town, hideout, waypoint, and the area change counter",
+        "",
+        zone_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())

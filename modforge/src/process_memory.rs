@@ -153,6 +153,20 @@ impl ProcessMemory {
         Ok(value)
     }
 
+    /// UTF-16 text at `addr` ending at the first 0 unit, at most
+    /// `max_units` long (GameHelper2 ReadUnicodeString reads 256 bytes).
+    /// Text without its end inside `max_units` is an error.
+    pub fn read_wide_cstr(&self, addr: u64, max_units: usize) -> io::Result<String> {
+        let units: Vec<u16> = self.read_array(addr, max_units)?;
+        let end = units.iter().position(|u| *u == 0).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("no text end within {max_units} units at {addr:#x}"),
+            )
+        })?;
+        Ok(String::from_utf16_lossy(&units[..end]))
+    }
+
     /// Read `count` plain-data values laid end to end, under the same
     /// contract as [`Self::read_value`].
     pub fn read_array<T: Copy + Default>(&self, addr: u64, count: usize) -> io::Result<Vec<T>> {
@@ -297,6 +311,17 @@ mod tests {
     fn unreadable_address_is_an_error() {
         let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
         assert!(mem.read_vec(0x10, 8).is_err());
+    }
+
+    #[test]
+    fn wide_text_ends_at_zero() {
+        let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
+        let mut text: Vec<u16> = "Clearfell".encode_utf16().collect();
+        text.extend([0, 0x41, 0x42]);
+        text.resize(16, 0x41);
+        let at = text.as_ptr() as u64;
+        assert_eq!(mem.read_wide_cstr(at, 16).unwrap(), "Clearfell");
+        assert!(mem.read_wide_cstr(at, 4).is_err());
     }
 
     #[test]
