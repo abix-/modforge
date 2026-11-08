@@ -12,6 +12,7 @@ publish.workspace = true
 
 [dependencies]
 anyhow = { workspace = true }
+fastrand = { workspace = true }
 modforge = { path = "../modforge" }
 parking_lot = { workspace = true }
 serde = { workspace = true }

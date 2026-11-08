@@ -1608,6 +1608,7 @@ name = "poe2-mod"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "fastrand",
  "modforge",
  "parking_lot",
  "serde",

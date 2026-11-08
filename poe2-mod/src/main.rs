@@ -20,6 +20,7 @@ mod items;
 mod kinds;
 mod loot_value;
 mod model;
+mod pickup;
 mod preload;
 mod radar;
 mod ritual;

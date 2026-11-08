@@ -18,6 +18,7 @@
 //! down/up/press. Drag/scroll/combo/replay deferred. The HTTP cmdlets
 //! in [`ops`] expose these primitives over the modforge op registry.
 
+pub mod human;
 pub mod l1;
 pub mod l2;
 pub mod ops;
