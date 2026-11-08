@@ -124,6 +124,12 @@ fn radar_view() {
     op("radar_view", json!({}));
 }
 
+/// Open the atlas first, or this prints no shapes.
+#[test]
+fn atlas_view() {
+    op("atlas_view", json!({}));
+}
+
 #[test]
 fn preload() {
     // No preload list ships yet; an empty one still reads the counter

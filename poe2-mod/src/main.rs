@@ -567,7 +567,6 @@ fn radar_op(args: &Json) -> Result<Json, String> {
 /// with the large map's centre and zoom, for checking it without the
 /// overlay.
 fn radar_view_op(_args: &Json) -> Result<Json, String> {
-    use modforge::overlay::Shape;
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
@@ -581,7 +580,27 @@ fn radar_view_op(_args: &Json) -> Result<Json, String> {
         .ok_or("no game window")?;
     let size = (window.2 as f32, window.3 as f32);
     let shapes = radar_shapes(a, in_game, area, &me, size)?;
-    let rows: Vec<Json> = shapes
+    Ok(json!({"window": [size.0, size.1], "shapes": shape_rows(&shapes)}))
+}
+
+/// What the atlas layer draws now (empty when the atlas is closed).
+fn atlas_view_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid)
+        .and_then(modforge::input::client_area)
+        .ok_or("no game window")?;
+    let size = (window.2 as f32, window.3 as f32);
+    let shapes = atlas_shapes(a, in_game, size)?;
+    Ok(json!({"window": [size.0, size.1], "shapes": shape_rows(&shapes)}))
+}
+
+/// Shapes as short rows for a research printout.
+fn shape_rows(shapes: &[modforge::overlay::Shape]) -> Vec<Json> {
+    use modforge::overlay::Shape;
+    shapes
         .iter()
         .map(|s| match s {
             Shape::Image { corners, image } => {
@@ -594,8 +613,7 @@ fn radar_view_op(_args: &Json) -> Result<Json, String> {
             Shape::Rect { at, size, .. } => json!({"box": at, "size": size}),
             other => json!(format!("{other:?}")),
         })
-        .collect();
-    Ok(json!({"window": [size.0, size.1], "shapes": rows}))
+        .collect()
 }
 
 /// The zone's terrain size and, at the player, the ground height and
@@ -1004,6 +1022,7 @@ struct Layers {
     buffs: bool,
     mana_on_self: bool,
     radar: bool,
+    atlas: bool,
 }
 
 /// What the radar keeps for one zone instance (Radar.GenerateMapTexture
@@ -1135,6 +1154,65 @@ fn radar_shapes(
     ))
 }
 
+/// The atlas's shapes while the atlas is open (Atlas2.DrawUI): every
+/// map's label at its node element's centre and a route to each tower.
+fn atlas_shapes(
+    a: &Attached,
+    in_game: u64,
+    size: (f32, f32),
+) -> Result<Vec<modforge::overlay::Shape>, String> {
+    let (manager, controller) = ui::manager(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let Some(at) = ui::panel(&a.mem, manager, controller, "atlas")
+        .filter(|p| ui::is_visible(&a.mem, *p).unwrap_or(false))
+    else {
+        return Ok(Vec::new());
+    };
+    let atlas = atlas::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    let cull: i32 = a
+        .mem
+        .read_value(a.static_address("GameCullSize")?)
+        .map_err(|e| format!("read cull size: {e}"))?;
+    let scale = slots::Scale::new(size.0, size.1, cull);
+    let names = atlas_routes::names();
+    let centres: std::collections::HashMap<[i32; 2], [f32; 2]> = atlas
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            let r = slots::absolute_rect(&a.mem, n.address, &scale)?;
+            Some((n.grid, [r.x + r.w * 0.5, r.y + r.h * 0.5]))
+        })
+        .collect();
+    let nodes: Vec<draw::AtlasNode> = atlas
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            Some(draw::AtlasNode {
+                name: atlas_routes::display_name(&names, &n.map_id),
+                centre: *centres.get(&n.grid)?,
+                done: n.state == atlas::NodeState::Done,
+                biome: n.biome,
+                content: &n.content,
+            })
+        })
+        .collect();
+    let towers = draw::MAP_GROUPS
+        .iter()
+        .find(|g| g.name == "Towers")
+        .ok_or("no towers group")?;
+    let color = draw::most_colorful(towers.font, towers.background);
+    let routes = atlas_routes::routes(&atlas, towers.maps, atlas_routes::MAX_HOPS);
+    let routes: Vec<draw::AtlasRoute> = routes
+        .iter()
+        .map(|r| draw::AtlasRoute {
+            name: &r.name,
+            hops: r.hops,
+            points: r.path.iter().filter_map(|g| centres.get(g).copied()).collect(),
+            color,
+        })
+        .collect();
+    Ok(draw::atlas(&nodes, &routes, size))
+}
+
 /// One overlay frame from the game: over the game window's client
 /// area, every layer turned on. An empty frame when the window is not
 /// found or the player is not in a zone.
@@ -1178,6 +1256,11 @@ fn overlay_frame(layers: &Layers) -> Result<modforge::overlay::Frame, String> {
         frame
             .shapes
             .extend(radar_shapes(a, in_game, area, &me, size).unwrap_or_default());
+    }
+    if layers.atlas {
+        frame
+            .shapes
+            .extend(atlas_shapes(a, in_game, size).unwrap_or_default());
     }
     if layers.player
         && let Some(at) = me.position.and_then(to_screen)
@@ -1285,6 +1368,7 @@ fn overlay_op(args: &Json) -> Result<Json, String> {
         buffs: layer("buffs"),
         mana_on_self: args["mana_on_self"].as_bool() == Some(true),
         radar: layer("radar"),
+        atlas: layer("atlas"),
     };
     let fps = args["fps"].as_u64().unwrap_or(20).clamp(1, 60) as u32;
     let overlay = Arc::new(modforge::overlay::Overlay::start("poe2-mod overlay", fps)?);
@@ -1358,6 +1442,12 @@ fn main() {
         "what the radar layer draws now over the large map (empty when it is closed)",
         "",
         radar_view_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "atlas_view",
+        "what the atlas layer draws now: map labels and tower routes (empty when the atlas is closed)",
+        "",
+        atlas_view_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "patterns.rip_sites",
