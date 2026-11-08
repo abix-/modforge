@@ -15,6 +15,8 @@ pub struct ItemRule {
     pub name: String,
     /// The unique name or base contains one of these.
     pub names: Vec<String>,
+    /// The name, base or metadata path contains none of these.
+    pub not_names: Vec<String>,
     /// The metadata path contains this, such as `Currency` or `Rings`.
     pub path_contains: Option<String>,
     /// One of these rarities; empty means any.
@@ -38,6 +40,10 @@ impl ItemRule {
                 .names
                 .iter()
                 .any(|n| contains(&item.name, n) || contains(&item.base, n));
+        let not_ok = !self
+            .not_names
+            .iter()
+            .any(|n| contains(&item.name, n) || contains(&item.base, n) || contains(&item.path, n));
         let path_ok = self
             .path_contains
             .as_deref()
@@ -51,7 +57,7 @@ impl ItemRule {
             .mods
             .iter()
             .all(|want| item.mods.iter().any(|m| contains(m, want)));
-        name_ok && path_ok && rarity_ok && value_ok && mods_ok
+        name_ok && not_ok && path_ok && rarity_ok && value_ok && mods_ok
     }
 }
 
@@ -116,6 +122,26 @@ mod tests {
             ),
             None
         ));
+    }
+
+    #[test]
+    fn not_names_leaves_an_item_by_name_or_path() {
+        let rule = ItemRule {
+            path_contains: Some("Rings".into()),
+            not_names: vec!["gold".into()],
+            ..ItemRule::default()
+        };
+        assert!(!rule.matches(&ring(Rarity::Normal, &[]), None));
+        let iron = Item {
+            base: "Iron Ring".into(),
+            ..ring(Rarity::Normal, &[])
+        };
+        assert!(rule.matches(&iron, None));
+        let by_path = ItemRule {
+            not_names: vec!["ring1".into()],
+            ..ItemRule::default()
+        };
+        assert!(!by_path.matches(&iron, None));
     }
 
     #[test]

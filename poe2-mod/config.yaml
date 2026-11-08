@@ -66,6 +66,7 @@ roll:
 # Items pickup takes. An item passes a rule when every condition given
 # holds; the first rule it passes names the click. Conditions:
 #   names: [..]          the name or base contains one of these
+#   not_names: [..]      the name, base or path contains none of these
 #   path_contains: ".."  the metadata path contains this
 #   rarity: [Normal, Magic, Rare, Unique]
 #   min_exalted: 5       the stack is worth at least this (poe.ninja)
@@ -74,6 +75,8 @@ roll:
 rules:
   - name: currency
     path_contains: Metadata/Items/Currency
+    # 200 chromite picked up (2026-11-07): not wanted.
+    not_names: [Chromite]
   - name: scrolls
     names: [Scroll of Wisdom]
   - name: waystones
@@ -85,5 +88,7 @@ rules:
 # Pickup opens every closed chest, any kind (anything with a Chest
 # part: chests, lockers, eggs, urns): by its label when it has one
 # (ExileCore2 PickIt), else by a click on it, the nearest first.
+# skip: chests whose path contains one of these stay shut.
 chests:
   open: true
+  skip: [SirenEgg]

@@ -928,7 +928,11 @@ fn label_rows(
             continue;
         };
         if e.parts.contains_key("Chest") {
-            if chest_cfg.open && e.valid && e.chest_opened == Some(false) {
+            if chest_cfg.open
+                && e.valid
+                && e.chest_opened == Some(false)
+                && !chest_cfg.skips(&e.path)
+            {
                 let name = e.path.rsplit('/').next().unwrap_or("").to_string();
                 let up = e.model_bounds.map_or(0.0, |b| b[2] * 0.5);
                 chests.insert(e.id, (e.address, name, e.position, up));

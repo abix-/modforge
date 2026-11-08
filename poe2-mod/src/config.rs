@@ -25,11 +25,21 @@ pub struct Config {
 }
 
 /// Does pickup open closed chests: every entity with a Chest part, of
-/// any kind (operator, 2026-11-07: "need ALL chest types").
+/// any kind (operator, 2026-11-07: "need ALL chest types"), except
+/// those whose path contains one of `skip` (operator, 2026-11-07: it
+/// "targetted eggs ... that snot right").
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Chests {
     pub open: bool,
+    pub skip: Vec<String>,
+}
+
+impl Chests {
+    pub fn skips(&self, path: &str) -> bool {
+        let path = path.to_lowercase();
+        self.skip.iter().any(|s| path.contains(&s.to_lowercase()))
+    }
 }
 
 pub fn path() -> PathBuf {
@@ -150,6 +160,14 @@ mod tests {
             Some(50.0)
         ));
         assert!(c.chests.open);
+        assert!(c.chests.skips("Metadata/Chests/SirenEggs/SirenEgg_02"));
+        assert!(!c.chests.skips("Metadata/Chests/MuddyChest2"));
+        assert!(!take(
+            "Metadata/Items/Currency/Chromite",
+            "Chromite",
+            Some(Rarity::Normal),
+            None
+        ));
         assert_eq!(c.attack.range, 120.0);
         assert_eq!(c.pickup.range, 120.0);
         assert_eq!(c.pickup.margin, [5.0, 3.0]);
