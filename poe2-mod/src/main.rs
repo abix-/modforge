@@ -1031,7 +1031,16 @@ fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack:
         .into_iter()
         .filter_map(|e| {
             let k = kinds::classify(&e, me.id, &settings)?;
-            if k.kind != kinds::Type::Monster || k.state != kinds::State::None || e.targetable == Some(false) {
+            // A real enemy: valid (GameHelper2 HealthBars skips the rest),
+            // a live hostile monster, and targetable said yes. Taking
+            // "not said no" fired 16 casts at an unseen HedgehogSlow
+            // (2026-11-07).
+            let real = e.valid
+                && k.kind == kinds::Type::Monster
+                && k.state == kinds::State::None
+                && e.targetable == Some(true)
+                && e.parts.contains_key("Monster");
+            if !real {
                 return None;
             }
             let [x, y, z] = e.position?;
@@ -1042,7 +1051,7 @@ fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack:
             }
             Some(attack::Enemy {
                 key: e.address,
-                name: e.path.rsplit('/').next().unwrap_or("").to_string(),
+                name: e.path.clone(),
                 distance: (x - mine[0]).hypot(y - mine[1]) / cell,
                 screen: [sx + left as f32, sy + top as f32],
             })
