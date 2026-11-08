@@ -4,6 +4,7 @@
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it, never presses keys.
 
+mod atlas;
 mod camera;
 mod entities;
 mod files;
@@ -368,6 +369,21 @@ fn ui_op(args: &Json) -> Result<Json, String> {
     }))
 }
 
+/// The atlas map nodes, while the atlas shows.
+fn atlas_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let (manager, controller) = ui_manager(a)?;
+    let Some(at) = ui::panel(&a.mem, manager, controller, "atlas") else {
+        return Ok(json!({"open": false, "reason": "no atlas panel"}));
+    };
+    if !ui::is_visible(&a.mem, at).map_err(|e| format!("{e:#}"))? {
+        return Ok(json!({"open": false, "address": at}));
+    }
+    let atlas = atlas::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    Ok(json!({"open": true, "atlas": atlas}))
+}
+
 /// The UI manager from the in-game state, and whether it is the
 /// controller one.
 fn ui_manager(a: &Attached) -> Result<(u64, bool), String> {
@@ -628,6 +644,12 @@ fn main() {
         "the zone's terrain size and the ground height and walkable value at the player",
         "",
         terrain_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "atlas",
+        "while the atlas shows: each map node's id, state (locked, open, done), grid, links, content and effect lines",
+        "",
+        atlas_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())
