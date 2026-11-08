@@ -11,6 +11,7 @@ publish.workspace = true
 # into the game, never writes to it.
 
 [dependencies]
+anyhow = { workspace = true }
 modforge = { path = "../modforge" }
 parking_lot = { workspace = true }
 serde = { workspace = true }

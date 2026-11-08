@@ -28,15 +28,18 @@ fn enabled_default() -> bool {
     true
 }
 
+/// Was a file marked with `count` used in the current area?
+pub fn loaded_this_area(count: i32, area_change_counter: i32) -> bool {
+    count > IGNORE_FIRST_AREAS && count == area_change_counter
+}
+
 /// The files loaded for the current area: marked with the current
 /// area change count, past the startup ones, with the `@...` suffix cut
 /// off (GameHelper2 LoadedFiles.AddFileIfLoadedInCurrentArea).
 pub fn files_this_area(files: &[LoadedFile], area_change_counter: i32) -> HashSet<String> {
     files
         .iter()
-        .filter(|f| {
-            f.area_change_count > IGNORE_FIRST_AREAS && f.area_change_count == area_change_counter
-        })
+        .filter(|f| loaded_this_area(f.area_change_count, area_change_counter))
         .map(|f| f.path.split('@').next().unwrap_or_default().to_string())
         .collect()
 }

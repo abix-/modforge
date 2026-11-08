@@ -4,6 +4,7 @@
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it, never presses keys.
 
+mod files;
 mod game;
 mod item_rules;
 mod loot_value;
@@ -245,17 +246,35 @@ fn items_op(args: &Json) -> Result<Json, String> {
 /// The preloads found in an area. The loaded files and area change
 /// counter come in the arguments until the data files reader exists.
 fn preload_op(args: &Json) -> Result<Json, String> {
-    let files: Vec<model::LoadedFile> = parse(args, "files")?;
-    let counter = args["area_change_counter"]
-        .as_i64()
-        .ok_or("area_change_counter: missing")? as i32;
+    let (files, counter, unreadable) = if args["files"].is_null() {
+        let guard = attached()?;
+        let a = guard.as_ref().ok_or("not attached")?;
+        let counter = files::area_change_counter(&a.mem, a.static_address("AreaChangeCounter")?)
+            .map_err(|e| format!("{e:#}"))?;
+        let (files, unreadable) =
+            files::loaded_files(&a.mem, a.static_address("File Root")?, |c| {
+                preload::loaded_this_area(c, counter)
+            })
+            .map_err(|e| format!("{e:#}"))?;
+        (files, counter, unreadable)
+    } else {
+        let counter = args["area_change_counter"]
+            .as_i64()
+            .ok_or("area_change_counter: missing")? as i32;
+        (parse(args, "files")?, counter, 0)
+    };
     let defs: Vec<preload::PreloadDef> = match args["list"].as_str() {
         Some(path) => preload::load(std::path::Path::new(path))?,
         None => parse(args, "defs")?,
     };
     let area = preload::files_this_area(&files, counter);
     let found = preload::found(&defs, &area);
-    Ok(json!({"area_files": area.len(), "found": found}))
+    Ok(json!({
+        "area_change_counter": counter,
+        "area_files": area.len(),
+        "unreadable_files": unreadable,
+        "found": found,
+    }))
 }
 
 fn main() {
@@ -273,8 +292,8 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "preload",
-        "the preloads found among the given loaded files for the given area change counter",
-        "files, area_change_counter, list? | defs",
+        "the preloads found in this area's loaded files: read from the game, or the given files and area change counter",
+        "list | defs, files?, area_change_counter?",
         preload_op,
     ));
     OP_REGISTRY.register(OpDef::new(
