@@ -59,6 +59,7 @@ fn casts_at_the_nearest_enemy() {
         println!("click: {c}");
     }
     println!("last error: {}", out["last_error"]);
+    println!("waiting: {}", out["waiting"]);
     let after = r.op("enemies", json!({})).expect("enemies")["enemies"]
         .as_array()
         .cloned()

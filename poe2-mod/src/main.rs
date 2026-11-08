@@ -991,6 +991,9 @@ struct Hands {
     /// The last clicks, newest last.
     clicks: std::collections::VecDeque<Json>,
     last_error: Option<String>,
+    /// Why it did not click, and how many looks each reason held up,
+    /// since it was last switched on.
+    waiting: std::collections::BTreeMap<&'static str, u32>,
 }
 
 static HANDS: Mutex<Option<Hands>> = Mutex::new(None);
@@ -1058,18 +1061,18 @@ fn next_click(
     fight: &mut attack::State,
     zone: &mut u64,
     rng: &mut fastrand::Rng,
-) -> Result<Option<Click>, String> {
+) -> Result<Result<Click, &'static str>, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let Some(hwnd) = modforge::input::find_hwnd_by_pid(a.pid) else {
-        return Ok(None);
+        return Ok(Err("no game window"));
     };
     if modforge::input::foreground_hwnd() != Some(hwnd) {
-        return Ok(None);
+        return Ok(Err("game window not in front"));
     }
     let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
     if s.current_name() != Some("InGameState") {
-        return Ok(None);
+        return Ok(Err("not in play"));
     }
     let area = area_instance(a)?;
     if area != *zone {
@@ -1082,7 +1085,7 @@ fn next_click(
         if ui::panel(&a.mem, manager, controller, side)
             .is_some_and(|p| ui::is_visible(&a.mem, p).unwrap_or(false))
         {
-            return Ok(None);
+            return Ok(Err("a side panel is open"));
         }
     }
     let now = std::time::Instant::now();
@@ -1094,7 +1097,7 @@ fn next_click(
         let in_range = found.iter().any(|e| e.distance <= run.attack.range);
         if let Some(e) = fight.choose(&run.attack, &found, now) {
             let at = modforge::input::human::point_in(e.aim_box(run.attack.spread), [0.0, 0.0], rng);
-            return Ok(Some(Click {
+            return Ok(Ok(Click {
                 what: "attack",
                 key: e.key,
                 name: e.name.clone(),
@@ -1105,18 +1108,25 @@ fn next_click(
         }
         // Enemies in range but the pause runs: no pickup in a fight.
         if in_range {
-            return Ok(None);
+            return Ok(Err("pause between casts"));
+        }
+        if !run.pickup_on {
+            return Ok(Err(if found.is_empty() {
+                "no enemy on screen"
+            } else {
+                "no enemy in range"
+            }));
         }
     }
     if !run.pickup_on {
-        return Ok(None);
+        return Ok(Err("pickup off"));
     }
     let rows = label_rows(a, &run.rules)?;
     let candidates: Vec<pickup::Candidate> = rows.into_iter().filter_map(|r| r.candidate).collect();
     let Some(c) = state.choose(&run.pickup, &candidates, now) else {
-        return Ok(None);
+        return Ok(Err("nothing to pick up"));
     };
-    Ok(Some(Click {
+    Ok(Ok(Click {
         what: "pickup",
         key: c.key,
         name: c.name.clone(),
@@ -1146,8 +1156,13 @@ fn hands_loop() {
         };
         let next = next_click(&run, &mut state, &mut fight, &mut zone, &mut rng);
         let mut error = None;
+        if let Ok(Err(why)) = &next
+            && let Some(r) = HANDS.lock().as_mut()
+        {
+            *r.waiting.entry(why).or_default() += 1;
+        }
         match &next {
-            Ok(Some(c)) => {
+            Ok(Ok(c)) => {
                 let timing = if c.what == "attack" { &run.attack.timing } else { &run.pickup.timing };
                 let result = modforge::input::human::click(modforge::input::Button::Left, c.at, timing, &mut rng);
                 let now = std::time::Instant::now();
@@ -1171,7 +1186,7 @@ fn hands_loop() {
                 }
                 error = result.err();
             }
-            Ok(None) => {}
+            Ok(Err(_)) => {}
             Err(e) => error = Some(e.clone()),
         }
         if let Some(r) = HANDS.lock().as_mut()
@@ -1199,6 +1214,7 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
         attack: attack::Settings::default(),
         clicks: Default::default(),
         last_error: None,
+        waiting: Default::default(),
     });
     if let Some(r) = rules {
         run.rules = r;
@@ -1215,6 +1231,10 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
             run.attack_on = on;
         } else {
             run.pickup_on = on;
+        }
+        if on {
+            run.waiting.clear();
+            run.last_error = None;
         }
         if on && !run.running {
             run.running = true;
@@ -1242,6 +1262,7 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
         "pickup": run.pickup,
         "clicks": run.clicks,
         "last_error": run.last_error,
+        "waiting": run.waiting,
     }))
 }
 
