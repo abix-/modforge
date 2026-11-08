@@ -182,6 +182,66 @@ pub struct Entity {
     pub shrine_used: Option<bool>,
     pub targetable: Option<bool>,
     pub player: Option<PlayerPart>,
+    pub stats: Option<Stats>,
+}
+
+/// GameStats ids the features read (RemoteEnums/GameStats.cs).
+pub mod stat {
+    pub const CURRENT_ENDURANCE_CHARGES: i32 = 5;
+    pub const CURRENT_FRENZY_CHARGES: i32 = 6;
+    pub const CURRENT_POWER_CHARGES: i32 = 7;
+    pub const IS_DEAD: i32 = 2423;
+    pub const CURRENT_RAGE: i32 = 6995;
+}
+
+/// StatsOffsets and StatsStructInternal.
+pub mod stats_part {
+    pub const BY_ITEMS: u64 = 0x160;
+    pub const WEAPON_INDEX: u64 = 0x168;
+    pub const SHAPESHIFT_ROW: u64 = 0x170;
+    pub const BY_BUFFS_AND_ACTIONS: u64 = 0x1C8;
+    /// The (stat, value) vector inside either.
+    pub const LIST: u64 = 0xF8;
+}
+
+/// The Stats part: stat id to value, from items and from buffs and
+/// actions.
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+pub struct Stats {
+    pub by_items: BTreeMap<i32, i32>,
+    pub by_buffs_and_actions: BTreeMap<i32, i32>,
+    pub weapon_index: i32,
+    pub shapeshifted: bool,
+}
+
+impl Stats {
+    /// GameHelper2's stat lookup: buffs and actions first, then items.
+    pub fn get(&self, id: i32) -> Option<i32> {
+        self.by_buffs_and_actions
+            .get(&id)
+            .or_else(|| self.by_items.get(&id))
+            .copied()
+    }
+}
+
+/// The Stats part at `at` (Stats.UpdateData). A missing list is empty.
+pub fn read_stats(mem: &ProcessMemory, at: u64) -> Result<Stats> {
+    let list = |ptr_at: u64| -> BTreeMap<i32, i32> {
+        mem.read_value::<u64>(ptr_at)
+            .ok()
+            .filter(|p| *p != 0)
+            .and_then(|p| read_vector::<[i32; 2]>(mem, p + stats_part::LIST).ok())
+            .map(|v| v.into_iter().map(|[k, v]| (k, v)).collect())
+            .unwrap_or_default()
+    };
+    Ok(Stats {
+        by_items: list(at + stats_part::BY_ITEMS),
+        by_buffs_and_actions: list(at + stats_part::BY_BUFFS_AND_ACTIONS),
+        weapon_index: mem
+            .read_value(at + stats_part::WEAPON_INDEX)
+            .context("read weapon index")?,
+        shapeshifted: mem.read_value::<u64>(at + stats_part::SHAPESHIFT_ROW)? != 0,
+    })
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -278,6 +338,7 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
                 .ok()
         })
         .and_then(rarity);
+    let stats = get("Stats").and_then(|p| read_stats(mem, p).ok());
     let player = get("Player").and_then(|p| {
         Some(PlayerPart {
             name: read_wstring(mem, p + part::PLAYER_NAME).ok()?,
@@ -299,6 +360,7 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Entity> {
         terrain_height,
         model_bounds,
         strongbox,
+        stats,
         friendly,
         rarity,
         player,
@@ -513,6 +575,35 @@ pub(crate) mod tests {
             _positioned: positioned,
             _magic: magic,
         }
+    }
+
+    #[test]
+    fn reads_stats_buffs_first() {
+        let mem = ProcessMemory::open(std::process::id()).expect("open own pid read-only");
+        let items: [[i32; 2]; 2] = [[stat::CURRENT_POWER_CHARGES, 1], [stat::IS_DEAD, 0]];
+        let buffs: [[i32; 2]; 1] = [[stat::CURRENT_POWER_CHARGES, 3]];
+        let vector = |s: &[[i32; 2]]| {
+            let first = s.as_ptr() as u64;
+            let last = first + size_of_val(s) as u64;
+            Vector {
+                first,
+                last,
+                end: last,
+            }
+        };
+        let mut by_items = [0u8; 0x110];
+        put(&mut by_items, 0xF8, vector(&items));
+        let mut by_buffs = [0u8; 0x110];
+        put(&mut by_buffs, 0xF8, vector(&buffs));
+        let mut part = [0u8; 0x1D0];
+        put(&mut part, 0x160, by_items.as_ptr() as u64);
+        put(&mut part, 0x168, 1i32);
+        put(&mut part, 0x1C8, by_buffs.as_ptr() as u64);
+        let s = read_stats(&mem, part.as_ptr() as u64).unwrap();
+        assert_eq!(s.get(stat::CURRENT_POWER_CHARGES), Some(3));
+        assert_eq!(s.get(stat::IS_DEAD), Some(0));
+        assert_eq!(s.get(stat::CURRENT_RAGE), None);
+        assert_eq!((s.weapon_index, s.shapeshifted), (1, false));
     }
 
     #[test]

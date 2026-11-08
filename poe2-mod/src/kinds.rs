@@ -5,10 +5,9 @@
 //!
 //! Not copied yet: the pinnacle boss subtype and its hidden state (they
 //! need the monster's mod names and buff names), points of interest
-//! monsters (GameHelper2's default list is empty), and the is_dead stat
-//! (the Life part decides death, GameHelper2's fallback).
+//! monsters (GameHelper2's default list is empty).
 
-use crate::entities::Entity;
+use crate::entities::{Entity, stat};
 use crate::model::Rarity;
 use serde::Serialize;
 
@@ -197,11 +196,16 @@ pub fn subtype(e: &Entity, kind: Type, local_player: u32, s: &Settings) -> Optio
 
 /// CalculateEntityState.
 pub fn state(e: &Entity, kind: Type, subtype: Subtype, s: &Settings) -> State {
-    let dead = e.life.is_some_and(|l| !l.alive());
+    let no_life = e.life.is_some_and(|l| !l.alive());
+    // The is_dead stat decides when the monster has it, else its life.
+    let monster_dead = match e.stats.as_ref().and_then(|st| st.get(stat::IS_DEAD)) {
+        Some(v) => v > 0,
+        None => no_life,
+    };
     match kind {
         Type::Chest if e.chest_opened == Some(true) => State::Useless,
-        Type::DeliriumSpawner if dead => State::Useless,
-        Type::Monster if dead => State::Useless,
+        Type::DeliriumSpawner if no_life => State::Useless,
+        Type::Monster if monster_dead => State::Useless,
         Type::Monster if e.friendly == Some(true) => State::MonsterFriendly,
         Type::Player
             if subtype == Subtype::PlayerOther
@@ -271,7 +275,16 @@ pub(crate) mod tests {
         );
         wolf.life = alive(0);
         assert_eq!(classify(&wolf, 1, &s).unwrap().state, State::Useless);
+        // The is_dead stat wins over life when the monster has it.
+        let mut st = crate::entities::Stats::default();
+        st.by_items.insert(stat::IS_DEAD, 0);
+        wolf.stats = Some(st.clone());
+        assert_eq!(classify(&wolf, 1, &s).unwrap().state, State::None);
         wolf.life = alive(50);
+        st.by_buffs_and_actions.insert(stat::IS_DEAD, 1);
+        wolf.stats = Some(st);
+        assert_eq!(classify(&wolf, 1, &s).unwrap().state, State::Useless);
+        wolf.stats = None;
         wolf.friendly = Some(true);
         assert_eq!(
             classify(&wolf, 1, &s).unwrap().state,

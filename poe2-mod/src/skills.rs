@@ -89,6 +89,8 @@ pub struct Actor {
     pub skills: Vec<Skill>,
     /// Deployed entities by GameHelper2's DeployedObjectType.
     pub deployed: BTreeMap<i32, u32>,
+    /// The deployed entities' ids (DeployedEntityRecords).
+    pub deployed_ids: Vec<u32>,
 }
 
 /// DeployedEntityStructure: 24 bytes in PoE2.
@@ -159,13 +161,16 @@ pub fn read(mem: &ProcessMemory, at: u64) -> Result<Actor> {
         });
     }
     let mut deployed = BTreeMap::new();
+    let mut deployed_ids = Vec::new();
     for d in read_vector::<Deployed>(mem, at + ACTOR_DEPLOYED).unwrap_or_default() {
         *deployed.entry(d.kind).or_insert(0) += 1;
+        deployed_ids.push(d.entity_id as u32);
     }
     Ok(Actor {
         animation,
         skills,
         deployed,
+        deployed_ids,
     })
 }
 
@@ -233,10 +238,12 @@ mod tests {
         put(&mut cd[0][..], 0x3C, key);
         let deployed = [
             Deployed {
+                entity_id: 40,
                 kind: 9,
                 ..Deployed::default()
             },
             Deployed {
+                entity_id: 41,
                 kind: 9,
                 ..Deployed::default()
             },
@@ -258,5 +265,6 @@ mod tests {
             (1, Some(1), false)
         );
         assert_eq!(a.deployed, BTreeMap::from([(9, 2)]));
+        assert_eq!(a.deployed_ids, [40, 41]);
     }
 }

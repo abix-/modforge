@@ -5,6 +5,7 @@
 //! game, never writes to it, never presses keys.
 
 mod atlas;
+mod buff_bar;
 mod camera;
 mod entities;
 mod files;
@@ -215,6 +216,51 @@ fn entities_op(args: &Json) -> Result<Json, String> {
         );
     }
     Ok(Json::Object(out))
+}
+
+/// The player buff bar: watched buffs (`watch`, a list, else
+/// GameHelper2's default) with stacks and time left, charges and rage,
+/// and the player's living totems.
+fn buff_bar_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let at = entities::local_player(&a.mem, area).map_err(|e| format!("{e:#}"))?;
+    let e = entities::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    let buffs = match e.parts.get("Buffs") {
+        Some(p) => entities::read_buffs(&a.mem, *p).map_err(|e| format!("{e:#}"))?,
+        None => Vec::new(),
+    };
+    let given: Vec<&str> = args["watch"]
+        .as_array()
+        .map(|v| v.iter().filter_map(Json::as_str).collect())
+        .unwrap_or_default();
+    let watch: &[&str] = if given.is_empty() {
+        &buff_bar::DEFAULT_WATCHLIST
+    } else {
+        &given
+    };
+    let show_inactive = args["show_inactive"].as_bool().unwrap_or(true);
+    let resources = e
+        .stats
+        .as_ref()
+        .map(|s| buff_bar::resources(s, args["hide_empty"].as_bool().unwrap_or(true)));
+    let deployed = e
+        .parts
+        .get("Actor")
+        .and_then(|p| skills::read(&a.mem, *p).ok())
+        .map(|actor| actor.deployed_ids)
+        .unwrap_or_default();
+    let totems = if deployed.is_empty() {
+        Default::default()
+    } else {
+        buff_bar::totems(&deployed, &awake_entities(a, area)?)
+    };
+    Ok(json!({
+        "buffs": buff_bar::entries(&buffs, watch, show_inactive),
+        "resources": resources,
+        "totems": totems,
+    }))
 }
 
 /// The local player's entity with its parts and every part name.
@@ -800,6 +846,12 @@ fn main() {
         "the zone's points of interest from its tile files (important places, boss arenas, stairs, temples, runestones); paths: walking path from the player to each; files: every tile key",
         "paths?, files?",
         radar_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "buff_bar",
+        "the player buff bar: watched buffs with stacks and time left, charges and rage, own totems",
+        "watch?, show_inactive?, hide_empty?",
+        buff_bar_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "kinds",
