@@ -7,6 +7,7 @@
 mod entities;
 mod files;
 mod game;
+mod inventory;
 mod item_rules;
 mod items;
 mod loot_value;
@@ -218,6 +219,46 @@ fn player_op(_args: &Json) -> Result<Json, String> {
         None => Vec::new(),
     };
     Ok(json!({"entity": e, "buffs": buffs, "parts": e.parts.keys().collect::<Vec<_>>()}))
+}
+
+/// The player's inventories with their items and prices.
+fn inventories_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let wanted = args["name"].as_str();
+    let all = inventory::list(&a.mem, area_instance(a)?).map_err(|e| format!("{e:#}"))?;
+    let prices = PRICES.lock();
+    let mut out = Vec::new();
+    for (id, at) in all {
+        if wanted.is_some_and(|w| !inventory::name(id).eq_ignore_ascii_case(w)) {
+            continue;
+        }
+        let inv = match inventory::read(&a.mem, id, at) {
+            Ok(inv) => inv,
+            Err(e) => {
+                out.push(json!({"id": id, "name": inventory::name(id), "error": format!("{e:#}")}));
+                continue;
+            }
+        };
+        let items: Vec<Json> = inv
+            .items
+            .iter()
+            .map(|placed| match items::read(&a.mem, placed.item) {
+                Ok(item) => json!({
+                    "start": placed.start,
+                    "end": placed.end,
+                    "exalted": prices.as_ref().and_then(|(_, p)| p.stack(&item)),
+                    "unique": prices.as_ref().and_then(|(_, p)| p.unique_name(&item.art)),
+                    "item": item,
+                }),
+                Err(e) => {
+                    json!({"start": placed.start, "end": placed.end, "error": format!("{e:#}")})
+                }
+            })
+            .collect();
+        out.push(json!({"id": inv.id, "name": inv.name, "boxes": inv.boxes, "items": items}));
+    }
+    Ok(json!({"inventories": out}))
 }
 
 /// The zone the player is in, from the in-game state.
@@ -448,6 +489,12 @@ fn main() {
         "the local player: name, level, life, mana, energy shield, position, buffs and charges, and its part names",
         "",
         player_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "inventories",
+        "the player's inventories (or the one named) with each item, its boxes and its price from the kept prices",
+        "name?",
+        inventories_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())
