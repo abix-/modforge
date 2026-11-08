@@ -40,6 +40,9 @@ fn switch_on() {
         "pickup on: {} range {}",
         out["pickup_on"], out["pickup"]["range"]
     );
+    println!("config {} error {}", out["config"], out["config_error"]);
+    println!("rules {}", out["rules"]);
+    println!("chests {}", out["chests"]);
 }
 
 /// Switch pickup off: `research_pickup switch_off -- --ignored`.

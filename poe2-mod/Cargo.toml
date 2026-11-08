@@ -17,6 +17,8 @@ modforge = { path = "../modforge" }
 parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# config.yaml, as lotj/jbot reads its config.
+serde_yaml = "0.9"
 # poe.ninja is https; the workspace ureq has no TLS.
 ureq = { workspace = true, features = ["rustls"] }
 

@@ -1,0 +1,64 @@
+# poe2-mod settings. Edit while poe2-mod runs: the file is read again
+# when it changes, no rebuild or restart. A field left out takes its
+# default. If the file does not parse, the last good one stays and the
+# error shows in the pickup and attack ops.
+#
+# Distances are grid cells from the player; 1920x1080 is about 211 by
+# 119 cells (research_screen_cells). Waits are milliseconds, drawn
+# evenly from min to max.
+
+attack:
+  # Chaos Bolt reaches the whole screen; the middle to a corner is
+  # about 120 cells, and enemies off the screen are never taken.
+  range: 120
+  pause: {min: 300, max: 700}
+  # How far from the body's middle a click may land: half width, half
+  # height, pixels.
+  spread: [10, 15]
+  timing:
+    react: {min: 5, max: 80}
+    step: {min: 1, max: 4}
+    settle: {min: 20, max: 70}
+    hold: {min: 30, max: 90}
+
+pickup:
+  range: 120
+  pause: {min: 120, max: 260}
+  # Before the same item is clicked again.
+  same_item_ms: 600
+  # Clicks on one item before it is left alone.
+  tries: 3
+  # How far in from the label's edges a click lands, pixels.
+  margin: [5, 3]
+  timing:
+    react: {min: 5, max: 150}
+    step: {min: 1, max: 4}
+    settle: {min: 20, max: 70}
+    hold: {min: 30, max: 90}
+
+# Items pickup takes. An item passes a rule when every condition given
+# holds; the first rule it passes names the click. Conditions:
+#   names: [..]          the name or base contains one of these
+#   path_contains: ".."  the metadata path contains this
+#   rarity: [Normal, Magic, Rare, Unique]
+#   min_exalted: 5       the stack is worth at least this (poe.ninja)
+#   mods: [..]           every one appears in some mod's text
+# Text matches ignore case.
+rules:
+  - name: currency
+    path_contains: Metadata/Items/Currency
+  - name: scrolls
+    names: [Scroll of Wisdom]
+  - name: waystones
+    path_contains: Metadata/Items/Waystones
+  - name: uniques 5 ex
+    rarity: [Unique]
+    min_exalted: 5
+
+# Closed chests pickup opens by clicking their label (ExileCore2 PickIt
+# UpdateChestList): a Chest part and a path that starts with one of
+# path_starts or contains one of path_contains.
+chests:
+  open: true
+  path_starts: [Metadata/Chests]
+  path_contains: [CampsiteChest]

@@ -8,8 +8,6 @@
 //! come at a regular beat; the move and click are
 //! modforge::input::human's.
 
-use crate::item_rules::ItemRule;
-use crate::model::Rarity;
 use modforge::input::human::{Timing, Wait};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -44,36 +42,6 @@ impl Default for Settings {
             timing: Timing::default(),
         }
     }
-}
-
-/// The first rules (operator, 2026-11-07): all currency, Scrolls of
-/// Wisdom, waystones, and uniques whose price is 5 exalted or more.
-/// Closed chests are opened too, outside these rules (main.rs
-/// label_rows).
-pub fn default_rules() -> Vec<ItemRule> {
-    vec![
-        ItemRule {
-            name: "currency".into(),
-            path_contains: Some("Metadata/Items/Currency".into()),
-            ..Default::default()
-        },
-        ItemRule {
-            name: "scrolls".into(),
-            names: vec!["Scroll of Wisdom".into()],
-            ..Default::default()
-        },
-        ItemRule {
-            name: "waystones".into(),
-            path_contains: Some("Metadata/Items/Waystones".into()),
-            ..Default::default()
-        },
-        ItemRule {
-            name: "uniques 5 ex".into(),
-            rarity: vec![Rarity::Unique],
-            min_exalted: Some(5.0),
-            ..Default::default()
-        },
-    ]
 }
 
 /// An item on the ground with its label on the screen.
@@ -137,7 +105,6 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Item;
 
     fn item(key: u64, distance: f32, rule: bool) -> Candidate {
         Candidate {
@@ -188,24 +155,5 @@ mod tests {
             seen.insert(st.pause);
         }
         assert!(seen.len() > 10);
-    }
-
-    #[test]
-    fn the_first_rules_take_currency_waystones_and_dear_uniques() {
-        let rules = default_rules();
-        let take = |path: &str, rarity: Option<Rarity>, price: Option<f64>| {
-            let i = Item {
-                path: path.into(),
-                rarity,
-                ..Default::default()
-            };
-            rules.iter().any(|r| r.matches(&i, price))
-        };
-        assert!(take("Metadata/Items/Currency/CurrencyRerollRare", Some(Rarity::Normal), None));
-        assert!(take("Metadata/Items/Waystones/Waystone5", Some(Rarity::Magic), None));
-        assert!(take("Metadata/Items/Rings/Ring1", Some(Rarity::Unique), Some(6.0)));
-        assert!(!take("Metadata/Items/Rings/Ring1", Some(Rarity::Unique), Some(2.0)));
-        assert!(!take("Metadata/Items/Rings/Ring1", Some(Rarity::Unique), None));
-        assert!(!take("Metadata/Items/Rings/Ring1", Some(Rarity::Rare), Some(50.0)));
     }
 }

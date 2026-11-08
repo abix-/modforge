@@ -11,6 +11,7 @@ mod attack;
 mod atlas_routes;
 mod buff_bar;
 mod camera;
+mod config;
 mod draw;
 mod entities;
 mod files;
@@ -893,7 +894,11 @@ struct LabelRow {
 /// Every ground item label joined with its item (by entity id among the
 /// awake entities), its distance from the player in grid cells, its
 /// rectangle on the screen and the first rule in `rules` it passes.
-fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelRow>, String> {
+fn label_rows(
+    a: &Attached,
+    rules: &[item_rules::ItemRule],
+    chest_paths: &config::Chests,
+) -> Result<Vec<LabelRow>, String> {
     let (manager, _) = ui_manager(a)?;
     let Some(at) = ui::child_path(&a.mem, manager, &ground_labels::PATH) else {
         return Ok(Vec::new());
@@ -914,18 +919,15 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
     .map_err(|e| format!("{e:#}"))?;
     let mut ground: std::collections::HashMap<u32, (u64, model::Item, Option<[f32; 3]>)> =
         std::collections::HashMap::new();
-    // Closed chests by id: ExileCore2 PickIt UpdateChestList takes a
-    // path under Metadata/Chests or with CampsiteChest and a Chest part.
+    // Closed chests by id: a Chest part and a path config.yaml names
+    // (ExileCore2 PickIt UpdateChestList).
     let mut chests: std::collections::HashMap<u32, (u64, String, Option<[f32; 3]>)> =
         std::collections::HashMap::new();
     for at in addresses {
         let Ok(e) = entities::read(&a.mem, at) else {
             continue;
         };
-        if e.parts.contains_key("Chest")
-            && (e.path.starts_with("Metadata/Chests") || e.path.contains("CampsiteChest"))
-            && e.chest_opened != Some(true)
-        {
+        if e.parts.contains_key("Chest") && chest_paths.wants(&e.path) && e.chest_opened != Some(true) {
             let name = e.path.rsplit('/').next().unwrap_or("").to_string();
             chests.insert(e.id, (e.address, name, e.position));
             continue;
@@ -1010,9 +1012,6 @@ struct Hands {
     attack_on: bool,
     pickup_on: bool,
     running: bool,
-    rules: Vec<item_rules::ItemRule>,
-    pickup: pickup::Settings,
-    attack: attack::Settings,
     /// The last clicks, newest last.
     clicks: std::collections::VecDeque<Json>,
     last_error: Option<String>,
@@ -1092,6 +1091,7 @@ fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack:
 /// item and the target.
 fn next_click(
     run: &Hands,
+    cfg: &config::Config,
     state: &mut pickup::State,
     fight: &mut attack::State,
     zone: &mut u64,
@@ -1129,9 +1129,9 @@ fn next_click(
             .and_then(|p| entities::read(&a.mem, p))
             .map_err(|e| format!("{e:#}"))?;
         let found = enemies(a, area, &me)?;
-        let in_range = found.iter().any(|e| e.distance <= run.attack.range);
-        if let Some(e) = fight.choose(&run.attack, &found, now) {
-            let at = modforge::input::human::point_in(e.aim_box(run.attack.spread), [0.0, 0.0], rng);
+        let in_range = found.iter().any(|e| e.distance <= cfg.attack.range);
+        if let Some(e) = fight.choose(&cfg.attack, &found, now) {
+            let at = modforge::input::human::point_in(e.aim_box(cfg.attack.spread), [0.0, 0.0], rng);
             return Ok(Ok(Click {
                 what: "attack",
                 key: e.key,
@@ -1156,9 +1156,9 @@ fn next_click(
     if !run.pickup_on {
         return Ok(Err("pickup off"));
     }
-    let rows = label_rows(a, &run.rules)?;
+    let rows = label_rows(a, &cfg.rules, &cfg.chests)?;
     let candidates: Vec<pickup::Candidate> = rows.into_iter().filter_map(|r| r.candidate).collect();
-    let Some(c) = state.choose(&run.pickup, &candidates, now) else {
+    let Some(c) = state.choose(&cfg.pickup, &candidates, now) else {
         return Ok(Err("nothing to pick up"));
     };
     Ok(Ok(Click {
@@ -1167,7 +1167,7 @@ fn next_click(
         name: c.name.clone(),
         rule: c.rule.clone(),
         distance: c.distance,
-        at: modforge::input::human::point_in(c.label, run.pickup.margin, rng),
+        at: modforge::input::human::point_in(c.label, cfg.pickup.margin, rng),
     }))
 }
 
@@ -1189,7 +1189,9 @@ fn hands_loop() {
             }
             run.clone()
         };
-        let next = next_click(&run, &mut state, &mut fight, &mut zone, &mut rng);
+        // config.yaml, read again when it changed.
+        let (cfg, _) = config::current();
+        let next = next_click(&run, &cfg, &mut state, &mut fight, &mut zone, &mut rng);
         let mut error = None;
         if let Ok(Err(why)) = &next
             && let Some(r) = HANDS.lock().as_mut()
@@ -1198,13 +1200,13 @@ fn hands_loop() {
         }
         match &next {
             Ok(Ok(c)) => {
-                let timing = if c.what == "attack" { &run.attack.timing } else { &run.pickup.timing };
+                let timing = if c.what == "attack" { &cfg.attack.timing } else { &cfg.pickup.timing };
                 let result = modforge::input::human::click(modforge::input::Button::Left, c.at, timing, &mut rng);
                 let now = std::time::Instant::now();
                 if c.what == "attack" {
-                    fight.cast(&run.attack, c.key, now, &mut rng);
+                    fight.cast(&cfg.attack, c.key, now, &mut rng);
                 } else {
-                    state.clicked(&run.pickup, c.key, now, &mut rng);
+                    state.clicked(&cfg.pickup, c.key, now, &mut rng);
                 }
                 if let Some(r) = HANDS.lock().as_mut() {
                     r.clicks.push_back(json!({
@@ -1233,34 +1235,20 @@ fn hands_loop() {
     }
 }
 
-/// Switch attack (`which` "attack") or pickup on or off; rules and
-/// settings replace the kept ones. Without `on` it says what the mouse
+/// Switch attack (`which` "attack") or pickup on or off. Rules and
+/// settings come from config.yaml. Without `on` it says what the mouse
 /// thread is doing.
 fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
-    let rules: Option<Vec<item_rules::ItemRule>> =
-        if args["rules"].is_null() { None } else { Some(parse(args, "rules")?) };
+    let (cfg, config_error) = config::current();
     let mut g = HANDS.lock();
     let run = g.get_or_insert_with(|| Hands {
         attack_on: false,
         pickup_on: false,
         running: false,
-        rules: pickup::default_rules(),
-        pickup: pickup::Settings::default(),
-        attack: attack::Settings::default(),
         clicks: Default::default(),
         last_error: None,
         waiting: Default::default(),
     });
-    if let Some(r) = rules {
-        run.rules = r;
-    }
-    if !args["settings"].is_null() {
-        if which == "attack" {
-            run.attack = parse(args, "settings")?;
-        } else {
-            run.pickup = parse(args, "settings")?;
-        }
-    }
     if let Some(on) = args["on"].as_bool() {
         if which == "attack" {
             run.attack_on = on;
@@ -1292,9 +1280,12 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
         "attack_on": run.attack_on,
         "pickup_on": run.pickup_on,
         "running": run.running,
-        "rules": run.rules,
-        "attack": run.attack,
-        "pickup": run.pickup,
+        "config": config::path(),
+        "config_error": config_error,
+        "rules": cfg.rules,
+        "chests": cfg.chests,
+        "attack": cfg.attack,
+        "pickup": cfg.pickup,
         "clicks": run.clicks,
         "last_error": run.last_error,
         "waiting": run.waiting,
@@ -1324,17 +1315,15 @@ fn attack_op(args: &Json) -> Result<Json, String> {
 }
 
 /// The ground item labels with their items, screen rectangles,
-/// distances and the rule each passes (the first pickup rules when
-/// none are given).
+/// distances and the rule each passes (config.yaml's rules when none
+/// are given), closed chests included.
 fn ground_labels_op(args: &Json) -> Result<Json, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
-    let rules: Vec<item_rules::ItemRule> = if args["rules"].is_null() {
-        pickup::default_rules()
-    } else {
-        parse(args, "rules")?
-    };
-    let rows = label_rows(a, &rules)?;
+    let (cfg, _) = config::current();
+    let rules: Vec<item_rules::ItemRule> =
+        if args["rules"].is_null() { cfg.rules } else { parse(args, "rules")? };
+    let rows = label_rows(a, &rules, &cfg.chests)?;
     let out: Vec<Json> = rows
         .iter()
         .map(|r| {
@@ -1975,14 +1964,14 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "pickup",
-        "pick up ground items that pass the rules (default: currency, waystones, uniques worth 5 exalted): on true moves the mouse and clicks the nearest match with drawn waits, only while the game is in front and no side panel is open; no arguments says what it is doing",
-        "on?, rules?, settings?",
+        "pick up ground items that pass config.yaml's rules and open its closed chests: on true moves the mouse and clicks the nearest with drawn waits, only while the game is in front and no side panel is open; no arguments says what it is doing",
+        "on?",
         pickup_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "attack",
-        "left click the nearest live enemy on screen within range (one cast a click), staying on it until it dies or leaves range, with human moves and drawn pauses; shares the mouse with pickup and goes first; only while the game is in front, in play and no side panel is open",
-        "on?, settings?",
+        "left click the nearest live enemy on screen within range (one cast a click), staying on it until it dies or leaves range, with human moves and drawn pauses; settings from config.yaml; shares the mouse with pickup and goes first; only while the game is in front, in play and no side panel is open",
+        "on?",
         attack_op,
     ));
     OP_REGISTRY.register(OpDef::new(
