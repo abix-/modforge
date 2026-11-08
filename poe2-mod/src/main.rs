@@ -13,6 +13,7 @@ mod items;
 mod loot_value;
 mod model;
 mod preload;
+mod skills;
 mod states;
 mod ui;
 mod zone;
@@ -219,7 +220,16 @@ fn player_op(_args: &Json) -> Result<Json, String> {
         Some(p) => entities::read_buffs(&a.mem, *p).map_err(|e| format!("{e:#}"))?,
         None => Vec::new(),
     };
-    Ok(json!({"entity": e, "buffs": buffs, "parts": e.parts.keys().collect::<Vec<_>>()}))
+    let actor = match e.parts.get("Actor") {
+        Some(p) => Some(skills::read(&a.mem, *p).map_err(|e| format!("{e:#}"))?),
+        None => None,
+    };
+    Ok(json!({
+        "entity": e,
+        "buffs": buffs,
+        "actor": actor,
+        "parts": e.parts.keys().collect::<Vec<_>>(),
+    }))
 }
 
 /// The player's inventories with their items and prices.
@@ -516,7 +526,7 @@ fn main() {
     ));
     OP_REGISTRY.register(OpDef::new(
         "player",
-        "the local player: name, level, life, mana, energy shield, position, buffs and charges, and its part names",
+        "the local player: name, level, life, mana, energy shield, position, buffs and charges, skills with cooldowns, deployed counts, and its part names",
         "",
         player_op,
     ));
