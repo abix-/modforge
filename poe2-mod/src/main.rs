@@ -4,6 +4,7 @@
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it, never presses keys.
 
+mod entities;
 mod files;
 mod game;
 mod item_rules;
@@ -144,6 +145,74 @@ fn game_state_op(_args: &Json) -> Result<Json, String> {
             .map(|(name, at)| json!({"name": name, "address": format!("{at:#x}")}))
             .collect::<Vec<_>>(),
     }))
+}
+
+/// The area instance, from the in-game state.
+fn area_instance(a: &Attached) -> Result<u64, String> {
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let area: u64 = a
+        .mem
+        .read_value(in_game + zone::IN_GAME_AREA_INSTANCE)
+        .map_err(|e| format!("read area instance pointer: {e}"))?;
+    if area == 0 {
+        return Err("no area instance: not in game".into());
+    }
+    Ok(area)
+}
+
+/// Entities in the zone: awake ones, or sleeping ones too, optionally
+/// only those whose path contains `path`.
+fn entities_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let area = area_instance(a)?;
+    let filter = args["path"].as_str().map(str::to_lowercase);
+    let mut maps = vec![(
+        "awake",
+        area + entities::AREA_AWAKE_ENTITIES,
+        entities::MAX_AWAKE,
+    )];
+    if args["sleeping"].as_bool() == Some(true) {
+        maps.push((
+            "sleeping",
+            area + entities::AREA_SLEEPING_ENTITIES,
+            entities::MAX_SLEEPING,
+        ));
+    }
+    let mut out = serde_json::Map::new();
+    for (name, map, max) in maps {
+        let addresses = entities::map_addresses(&a.mem, map, max).map_err(|e| format!("{e:#}"))?;
+        let mut unreadable = 0;
+        let mut list = Vec::new();
+        for at in &addresses {
+            match entities::read(&a.mem, *at) {
+                Ok(e) => {
+                    if filter
+                        .as_ref()
+                        .is_none_or(|f| e.path.to_lowercase().contains(f))
+                    {
+                        list.push(e);
+                    }
+                }
+                Err(_) => unreadable += 1,
+            }
+        }
+        out.insert(
+            name.into(),
+            json!({"in_map": addresses.len(), "unreadable": unreadable, "entities": list}),
+        );
+    }
+    Ok(Json::Object(out))
+}
+
+/// The local player's entity with its parts and every part name.
+fn player_op(_args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let at = entities::local_player(&a.mem, area_instance(a)?).map_err(|e| format!("{e:#}"))?;
+    let e = entities::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
+    Ok(json!({"entity": e, "parts": e.parts.keys().collect::<Vec<_>>()}))
 }
 
 /// The zone the player is in, from the in-game state.
@@ -320,6 +389,18 @@ fn main() {
         "the zone: id, name, act, level, instance hash, town, hideout, waypoint, and the area change counter",
         "",
         zone_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "entities",
+        "entities in the zone with path, life, position, rarity, chest, shrine; sleeping: true adds far ones",
+        "path?, sleeping?",
+        entities_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "player",
+        "the local player's entity: name, level, life, mana, energy shield, position, and its part names",
+        "",
+        player_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())

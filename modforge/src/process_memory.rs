@@ -153,6 +153,21 @@ impl ProcessMemory {
         Ok(value)
     }
 
+    /// Byte text at `addr` ending at the first 0, at most `max_bytes`
+    /// long (GameHelper2 ReadString reads 128 bytes). Text without its
+    /// end inside `max_bytes` is an error; bytes that are not UTF-8 are
+    /// replaced.
+    pub fn read_cstr(&self, addr: u64, max_bytes: usize) -> io::Result<String> {
+        let bytes = self.read_vec(addr, max_bytes)?;
+        let end = bytes.iter().position(|b| *b == 0).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("no text end within {max_bytes} bytes at {addr:#x}"),
+            )
+        })?;
+        Ok(String::from_utf8_lossy(&bytes[..end]).into_owned())
+    }
+
     /// UTF-16 text at `addr` ending at the first 0 unit, at most
     /// `max_units` long (GameHelper2 ReadUnicodeString reads 256 bytes).
     /// Text without its end inside `max_units` is an error.
@@ -322,6 +337,9 @@ mod tests {
         let at = text.as_ptr() as u64;
         assert_eq!(mem.read_wide_cstr(at, 16).unwrap(), "Clearfell");
         assert!(mem.read_wide_cstr(at, 4).is_err());
+        let bytes = *b"Life\0Render\0\0\0\0\0";
+        assert_eq!(mem.read_cstr(bytes.as_ptr() as u64, 16).unwrap(), "Life");
+        assert!(mem.read_cstr(bytes.as_ptr() as u64, 3).is_err());
     }
 
     #[test]
