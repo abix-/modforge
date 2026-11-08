@@ -914,10 +914,22 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
     .map_err(|e| format!("{e:#}"))?;
     let mut ground: std::collections::HashMap<u32, (u64, model::Item, Option<[f32; 3]>)> =
         std::collections::HashMap::new();
+    // Closed chests by id: ExileCore2 PickIt UpdateChestList takes a
+    // path under Metadata/Chests or with CampsiteChest and a Chest part.
+    let mut chests: std::collections::HashMap<u32, (u64, String, Option<[f32; 3]>)> =
+        std::collections::HashMap::new();
     for at in addresses {
         let Ok(e) = entities::read(&a.mem, at) else {
             continue;
         };
+        if e.parts.contains_key("Chest")
+            && (e.path.starts_with("Metadata/Chests") || e.path.contains("CampsiteChest"))
+            && e.chest_opened != Some(true)
+        {
+            let name = e.path.rsplit('/').next().unwrap_or("").to_string();
+            chests.insert(e.id, (e.address, name, e.position));
+            continue;
+        }
         let Some(world_item) = e.parts.get("WorldItem") else {
             continue;
         };
@@ -962,7 +974,20 @@ fn label_rows(a: &Attached, rules: &[item_rules::ItemRule]) -> Result<Vec<LabelR
                             .map(|r| r.name.clone()),
                     })
                 }
-                _ => None,
+                _ => match (chests.get(&label.id), screen, player.position) {
+                    // A chest's label is clicked like an item's (PickIt
+                    // ClickChests), the nearer of the two first.
+                    (Some((key, name, Some(pos))), Some(rect), Some(me)) if visible => {
+                        Some(pickup::Candidate {
+                            key: *key,
+                            name: name.clone(),
+                            distance: (pos[0] - me[0]).hypot(pos[1] - me[1]) / cell,
+                            label: rect,
+                            rule: Some("chest".into()),
+                        })
+                    }
+                    _ => None,
+                },
             };
             LabelRow {
                 label,

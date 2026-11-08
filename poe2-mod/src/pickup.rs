@@ -46,13 +46,20 @@ impl Default for Settings {
     }
 }
 
-/// The first rules (operator, 2026-11-07): all currency, waystones,
-/// and uniques whose price is 5 exalted or more.
+/// The first rules (operator, 2026-11-07): all currency, Scrolls of
+/// Wisdom, waystones, and uniques whose price is 5 exalted or more.
+/// Closed chests are opened too, outside these rules (main.rs
+/// label_rows).
 pub fn default_rules() -> Vec<ItemRule> {
     vec![
         ItemRule {
             name: "currency".into(),
             path_contains: Some("Metadata/Items/Currency".into()),
+            ..Default::default()
+        },
+        ItemRule {
+            name: "scrolls".into(),
+            names: vec!["Scroll of Wisdom".into()],
             ..Default::default()
         },
         ItemRule {
