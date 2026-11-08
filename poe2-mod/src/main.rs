@@ -4,6 +4,7 @@
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it, never presses keys.
 
+mod camera;
 mod entities;
 mod files;
 mod game;
@@ -270,6 +271,26 @@ fn inventories_op(args: &Json) -> Result<Json, String> {
         out.push(json!({"id": inv.id, "name": inv.name, "boxes": inv.boxes, "items": items}));
     }
     Ok(json!({"inventories": out}))
+}
+
+/// The world to screen matrix and the player's point on a window of
+/// width by height (the game window's size, given until it is read).
+fn camera_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let size = (
+        args["width"].as_f64().unwrap_or(1920.0) as f32,
+        args["height"].as_f64().unwrap_or(1080.0) as f32,
+    );
+    let player = entities::local_player(&a.mem, area_instance(a)?)
+        .and_then(|at| entities::read(&a.mem, at))
+        .ok()
+        .and_then(|e| e.position)
+        .map(|[x, y, z]| json!({"world": [x, y, z], "screen": camera::world_to_screen(&m, x, y, z, size)}));
+    Ok(json!({"matrix": m, "size": [size.0, size.1], "player": player}))
 }
 
 /// Which important panels are open, and with depth > 0 the UI tree
@@ -541,6 +562,12 @@ fn main() {
         "which important UI panels are open; depth > 0 adds the UI tree from the root or from at",
         "depth?, at?, max?",
         ui_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "camera",
+        "the world to screen matrix and the player's world and screen point for a window of width by height",
+        "width?, height?",
+        camera_op,
     ));
     OP_REGISTRY.register(OpDef::new("list_ops", "every op", "", |_| {
         Ok(OP_REGISTRY.list_json())
