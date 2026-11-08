@@ -22,6 +22,9 @@ pub struct Settings {
     /// How far from the body's middle a click may land, in pixels:
     /// half width, half height.
     pub spread: [f32; 2],
+    /// Only enemies with no wall between: no cell of terrain targeting
+    /// 0 on the line from the player.
+    pub line_of_sight: bool,
     pub timing: Timing,
 }
 
@@ -35,6 +38,7 @@ impl Default for Settings {
             range: 120.0,
             pause: Wait::new(300, 700),
             spread: [10.0, 15.0],
+            line_of_sight: true,
             timing: Timing {
                 // Shorter than pickup's: the enemy moves while we wait.
                 react: Wait::new(5, 80),
@@ -54,6 +58,8 @@ pub struct Enemy {
     pub distance: f32,
     /// The middle of its body, in screen pixels.
     pub screen: [f32; 2],
+    /// Its grid cell, for line of sight.
+    pub cell: [i32; 2],
 }
 
 impl Enemy {
@@ -80,8 +86,16 @@ impl State {
     /// The enemy to cast at now: the one already aimed at while it is
     /// still in range, else the nearest in range; none while the pause
     /// after the last cast runs.
-    pub fn choose<'a>(&self, s: &Settings, enemies: &'a [Enemy], now: Instant) -> Option<&'a Enemy> {
-        if self.last_cast.is_some_and(|t| now.duration_since(t) < self.pause) {
+    pub fn choose<'a>(
+        &self,
+        s: &Settings,
+        enemies: &'a [Enemy],
+        now: Instant,
+    ) -> Option<&'a Enemy> {
+        if self
+            .last_cast
+            .is_some_and(|t| now.duration_since(t) < self.pause)
+        {
             return None;
         }
         let in_range = || enemies.iter().filter(|e| e.distance <= s.range);
@@ -116,6 +130,7 @@ mod tests {
             name: format!("enemy {key}"),
             distance,
             screen: [500.0, 400.0],
+            cell: [0, 0],
         }
     }
 
@@ -135,7 +150,11 @@ mod tests {
         let nearer = [enemy(1, 5.0), enemy(2, 20.0)];
         assert_eq!(st.choose(&s, &nearer, t1).map(|e| e.key), Some(2));
         // The target is gone: the nearest.
-        assert_eq!(st.choose(&s, &[enemy(1, 5.0), enemy(4, 9.0)], t1).map(|e| e.key), Some(1));
+        assert_eq!(
+            st.choose(&s, &[enemy(1, 5.0), enemy(4, 9.0)], t1)
+                .map(|e| e.key),
+            Some(1)
+        );
         // None in range.
         assert_eq!(st.choose(&s, &[enemy(3, 150.0)], t1), None);
     }
@@ -152,6 +171,9 @@ mod tests {
             seen.insert(st.pause);
         }
         assert!(seen.len() > 10);
-        assert_eq!(enemy(1, 1.0).aim_box([10.0, 15.0]), [490.0, 385.0, 20.0, 30.0]);
+        assert_eq!(
+            enemy(1, 1.0).aim_box([10.0, 15.0]),
+            [490.0, 385.0, 20.0, 30.0]
+        );
     }
 }

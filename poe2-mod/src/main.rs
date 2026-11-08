@@ -3,7 +3,8 @@
 //! Reads game memory read-only and answers on a localhost control
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it. Its only input is attack's and pickup's
-//! left clicks, while the operator has them switched on.
+//! left clicks and roll's move and roll keys, while the operator has
+//! them switched on.
 
 mod abyss;
 mod atlas;
@@ -28,6 +29,7 @@ mod pickup;
 mod preload;
 mod radar;
 mod ritual;
+mod roll;
 mod skills;
 mod slots;
 mod states;
@@ -897,16 +899,13 @@ struct LabelRow {
 fn label_rows(
     a: &Attached,
     rules: &[item_rules::ItemRule],
-    chest_paths: &config::Chests,
-) -> Result<Vec<LabelRow>, String> {
+    chest_cfg: &config::Chests,
+) -> Result<(Vec<LabelRow>, Vec<pickup::Candidate>), String> {
     let (manager, _) = ui_manager(a)?;
-    let Some(at) = ui::child_path(&a.mem, manager, &ground_labels::PATH) else {
-        return Ok(Vec::new());
+    let labels = match ui::child_path(&a.mem, manager, &ground_labels::PATH) {
+        Some(at) => ground_labels::read(&a.mem, at).map_err(|e| format!("{e:#}"))?,
+        None => Vec::new(),
     };
-    let labels = ground_labels::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
-    if labels.is_empty() {
-        return Ok(Vec::new());
-    }
     let area = area_instance(a)?;
     let player = entities::local_player(&a.mem, area)
         .and_then(|p| entities::read(&a.mem, p))
@@ -919,17 +918,21 @@ fn label_rows(
     .map_err(|e| format!("{e:#}"))?;
     let mut ground: std::collections::HashMap<u32, (u64, model::Item, Option<[f32; 3]>)> =
         std::collections::HashMap::new();
-    // Closed chests by id: a Chest part and a path config.yaml names
-    // (ExileCore2 PickIt UpdateChestList).
-    let mut chests: std::collections::HashMap<u32, (u64, String, Option<[f32; 3]>)> =
+    // Closed chests by id: every entity with a Chest part, any kind
+    // (ExileCore2 PickIt UpdateChestList takes only some paths). With
+    // the half height of its model, to aim at its middle.
+    let mut chests: std::collections::HashMap<u32, (u64, String, Option<[f32; 3]>, f32)> =
         std::collections::HashMap::new();
     for at in addresses {
         let Ok(e) = entities::read(&a.mem, at) else {
             continue;
         };
-        if e.parts.contains_key("Chest") && chest_paths.wants(&e.path) && e.chest_opened != Some(true) {
-            let name = e.path.rsplit('/').next().unwrap_or("").to_string();
-            chests.insert(e.id, (e.address, name, e.position));
+        if e.parts.contains_key("Chest") {
+            if chest_cfg.open && e.valid && e.chest_opened == Some(false) {
+                let name = e.path.rsplit('/').next().unwrap_or("").to_string();
+                let up = e.model_bounds.map_or(0.0, |b| b[2] * 0.5);
+                chests.insert(e.id, (e.address, name, e.position, up));
+            }
             continue;
         }
         let Some(world_item) = e.parts.get("WorldItem") else {
@@ -979,7 +982,7 @@ fn label_rows(
                 _ => match (chests.get(&label.id), screen, player.position) {
                     // A chest's label is clicked like an item's (PickIt
                     // ClickChests), the nearer of the two first.
-                    (Some((key, name, Some(pos))), Some(rect), Some(me)) if visible => {
+                    (Some((key, name, Some(pos), _)), Some(rect), Some(me)) if visible => {
                         Some(pickup::Candidate {
                             key: *key,
                             name: name.clone(),
@@ -1000,8 +1003,42 @@ fn label_rows(
                 candidate,
             }
         })
-        .collect();
-    Ok(rows)
+        .collect::<Vec<LabelRow>>();
+    // Chests with no label taken above (eggs, urns: most have none) are
+    // clicked on the screen at their middle, as attack aims.
+    let labelled: std::collections::HashSet<u64> =
+        rows.iter().filter_map(|r| r.candidate.as_ref().map(|c| c.key)).collect();
+    let mut unlabelled = Vec::new();
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    if let (Some(in_game), Some(me)) = (s.get("InGameState"), player.position)
+        && w > 0
+        && h > 0
+    {
+        let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+        let size = (w as f32, h as f32);
+        for (key, name, pos, up) in chests.values() {
+            let Some([x, y, z]) = *pos else { continue };
+            if labelled.contains(key) {
+                continue;
+            }
+            let Some((sx, sy)) = camera::world_to_screen(&m, x, y, z - up, size) else {
+                continue;
+            };
+            if !(0.0..size.0).contains(&sx) || !(0.0..size.1).contains(&sy) {
+                continue;
+            }
+            unlabelled.push(pickup::Candidate {
+                key: *key,
+                name: name.clone(),
+                distance: (x - me[0]).hypot(y - me[1]) / cell,
+                // A small box at the middle; pickup's margin keeps the
+                // click inside it.
+                label: [sx + left as f32 - 8.0, sy + top as f32 - 8.0, 16.0, 16.0],
+                rule: Some("chest".into()),
+            });
+        }
+    }
+    Ok((rows, unlabelled))
 }
 
 /// The mouse work: attack and pickup, each switched on or off, with
@@ -1011,6 +1048,7 @@ fn label_rows(
 struct Hands {
     attack_on: bool,
     pickup_on: bool,
+    roll_on: bool,
     running: bool,
     /// The last clicks, newest last.
     clicks: std::collections::VecDeque<Json>,
@@ -1025,7 +1063,7 @@ static HANDS: Mutex<Option<Hands>> = Mutex::new(None);
 const HANDS_TICK_MS: u64 = 40;
 const HANDS_KEEP_CLICKS: usize = 20;
 
-/// One click to make.
+/// One click (or, for a roll, key press) to make.
 struct Click {
     what: &'static str,
     key: u64,
@@ -1033,25 +1071,65 @@ struct Click {
     rule: Option<String>,
     distance: f32,
     at: [f32; 2],
+    /// A roll: the move keys to hold, the other move keys to lift, and
+    /// the roll key.
+    roll: Option<RollKeys>,
+}
+
+/// The move keys toward `ways` and the other move keys, from the
+/// names in config.yaml.
+type RollKeys = (Vec<modforge::input::Key>, Vec<modforge::input::Key>, modforge::input::Key);
+
+fn roll_keys(s: &roll::Settings, ways: &[roll::Way]) -> Result<RollKeys, String> {
+    use modforge::input::Key;
+    let named = [
+        (roll::Way::Up, &s.up),
+        (roll::Way::Left, &s.left),
+        (roll::Way::Down, &s.down),
+        (roll::Way::Right, &s.right),
+    ];
+    let mut hold = Vec::new();
+    let mut lift = Vec::new();
+    for (way, name) in named {
+        let k = Key::parse(name).map_err(|e| format!("roll key {name}: {e}"))?;
+        if ways.contains(&way) { hold.push(k) } else { lift.push(k) }
+    }
+    let press = Key::parse(&s.key).map_err(|e| format!("roll key {}: {e}", s.key))?;
+    Ok((hold, lift, press))
 }
 
 /// The enemies on the screen: live hostile monsters as GameHelper2's
 /// HealthBars takes them, aimed at the middle of the body.
 fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack::Enemy>, String> {
+    Ok(enemies_and_me(a, area, me)?.0)
+}
+
+/// The enemies, and the player's feet on the screen (window client
+/// area added), from the same camera read.
+fn enemies_and_me(
+    a: &Attached,
+    area: u64,
+    me: &entities::Entity,
+) -> Result<(Vec<attack::Enemy>, Option<[f32; 2]>), String> {
     let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
     let in_game = s.get("InGameState").ok_or("no InGameState")?;
     let m = camera::matrix(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
     let window = modforge::input::find_hwnd_by_pid(a.pid).and_then(modforge::input::client_area);
     let Some((left, top, w, h)) = window else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), None));
     };
     let size = (w as f32, h as f32);
     let Some(mine) = me.position else {
-        return Ok(Vec::new());
+        return Ok((Vec::new(), None));
     };
+    // The body's middle, as the enemies are aimed at, so a level
+    // neighbour reads level.
+    let me_up = me.model_bounds.map_or(0.0, |b| b[2] * 0.5);
+    let me_screen = camera::world_to_screen(&m, mine[0], mine[1], mine[2] - me_up, size)
+        .map(|(x, y)| [x + left as f32, y + top as f32]);
     let cell = terrain::world_per_cell();
     let settings = kinds::Settings::default();
-    Ok(awake_entities(a, area)?
+    let found: Vec<attack::Enemy> = awake_entities(a, area)?
         .into_iter()
         .filter_map(|e| {
             let k = kinds::classify(&e, me.id, &settings)?;
@@ -1079,13 +1157,16 @@ fn enemies(a: &Attached, area: u64, me: &entities::Entity) -> Result<Vec<attack:
                 name: e.path.clone(),
                 distance: (x - mine[0]).hypot(y - mine[1]) / cell,
                 screen: [sx + left as f32, sy + top as f32],
+                cell: [(x / cell) as i32, (y / cell) as i32],
             })
         })
-        .collect())
+        .collect();
+    Ok((found, me_screen))
 }
 
-/// The click to make now, or none: an enemy while attack is on and one
-/// is in range, else an item while pickup is on. Acts only while the
+/// The click to make now, or none: a roll away while roll is on and an
+/// enemy is too close, else an enemy while attack is on and one is in
+/// range, else an item while pickup is on. Acts only while the
 /// game window is in front, the game is in play and neither large side
 /// panel is open (GameHelper2 PickupHelper); a new zone forgets every
 /// item and the target.
@@ -1094,6 +1175,8 @@ fn next_click(
     cfg: &config::Config,
     state: &mut pickup::State,
     fight: &mut attack::State,
+    dodge: &mut roll::State,
+    sight: &mut Option<(u64, terrain::Targeting)>,
     zone: &mut u64,
     rng: &mut fastrand::Rng,
 ) -> Result<Result<Click, &'static str>, String> {
@@ -1124,11 +1207,54 @@ fn next_click(
         }
     }
     let now = std::time::Instant::now();
-    if run.attack_on {
+    let mut me_cell = None;
+    let found = if run.roll_on || run.attack_on {
         let me = entities::local_player(&a.mem, area)
             .and_then(|p| entities::read(&a.mem, p))
             .map_err(|e| format!("{e:#}"))?;
-        let found = enemies(a, area, &me)?;
+        let cell = terrain::world_per_cell();
+        me_cell = me.position.map(|[x, y, _]| ((x / cell) as i32, (y / cell) as i32));
+        Some(enemies_and_me(a, area, &me)?)
+    } else {
+        None
+    };
+    // A roll away goes before anything else.
+    if run.roll_on
+        && dodge.ready(now)
+        && let Some((list, Some(me_screen))) = &found
+    {
+        let close: Vec<&attack::Enemy> = list.iter().filter(|e| e.distance <= cfg.roll.danger).collect();
+        if let Some(nearest) = close.iter().min_by(|x, y| x.distance.total_cmp(&y.distance)) {
+            let points: Vec<[f32; 2]> = close.iter().map(|e| e.screen).collect();
+            let ways = roll::ways(roll::away(*me_screen, &points));
+            if !ways.is_empty() {
+                return Ok(Ok(Click {
+                    what: "roll",
+                    key: nearest.key,
+                    name: format!("{} away {:?}", nearest.name, ways),
+                    rule: None,
+                    distance: nearest.distance,
+                    at: nearest.screen,
+                    roll: Some(roll_keys(&cfg.roll, &ways)?),
+                }));
+            }
+        }
+    }
+    if run.attack_on {
+        let mut found = found.map(|f| f.0).unwrap_or_default();
+        // Line of sight: no cell of terrain targeting 0 between the
+        // player and the enemy (operator, 2026-11-07).
+        if cfg.attack.line_of_sight
+            && let Some(from) = me_cell
+        {
+            if sight.as_ref().is_none_or(|(at, _)| *at != area) {
+                let t = terrain::read_targeting(&a.mem, area).map_err(|e| format!("{e:#}"))?;
+                *sight = Some((area, t));
+            }
+            if let Some((_, t)) = sight.as_ref() {
+                found.retain(|e| t.clear(from, (e.cell[0], e.cell[1])));
+            }
+        }
         let in_range = found.iter().any(|e| e.distance <= cfg.attack.range);
         if let Some(e) = fight.choose(&cfg.attack, &found, now) {
             let at = modforge::input::human::point_in(e.aim_box(cfg.attack.spread), [0.0, 0.0], rng);
@@ -1139,6 +1265,7 @@ fn next_click(
                 rule: None,
                 distance: e.distance,
                 at,
+                roll: None,
             }));
         }
         // Enemies in range but the pause runs: no pickup in a fight.
@@ -1156,8 +1283,9 @@ fn next_click(
     if !run.pickup_on {
         return Ok(Err("pickup off"));
     }
-    let rows = label_rows(a, &cfg.rules, &cfg.chests)?;
-    let candidates: Vec<pickup::Candidate> = rows.into_iter().filter_map(|r| r.candidate).collect();
+    let (rows, unlabelled) = label_rows(a, &cfg.rules, &cfg.chests)?;
+    let candidates: Vec<pickup::Candidate> =
+        rows.into_iter().filter_map(|r| r.candidate).chain(unlabelled).collect();
     let Some(c) = state.choose(&cfg.pickup, &candidates, now) else {
         return Ok(Err("nothing to pick up"));
     };
@@ -1168,6 +1296,7 @@ fn next_click(
         rule: c.rule.clone(),
         distance: c.distance,
         at: modforge::input::human::point_in(c.label, cfg.pickup.margin, rng),
+        roll: None,
     }))
 }
 
@@ -1177,13 +1306,15 @@ fn next_click(
 fn hands_loop() {
     let mut state = pickup::State::default();
     let mut fight = attack::State::default();
+    let mut dodge = roll::State::default();
+    let mut sight = None;
     let mut zone = 0u64;
     let mut rng = fastrand::Rng::new();
     loop {
         let run = {
             let mut g = HANDS.lock();
             let Some(run) = g.as_mut() else { return };
-            if !run.attack_on && !run.pickup_on {
+            if !run.attack_on && !run.pickup_on && !run.roll_on {
                 run.running = false;
                 return;
             }
@@ -1191,7 +1322,9 @@ fn hands_loop() {
         };
         // config.yaml, read again when it changed.
         let (cfg, _) = config::current();
-        let next = next_click(&run, &cfg, &mut state, &mut fight, &mut zone, &mut rng);
+        let next = next_click(
+            &run, &cfg, &mut state, &mut fight, &mut dodge, &mut sight, &mut zone, &mut rng,
+        );
         let mut error = None;
         if let Ok(Err(why)) = &next
             && let Some(r) = HANDS.lock().as_mut()
@@ -1200,13 +1333,17 @@ fn hands_loop() {
         }
         match &next {
             Ok(Ok(c)) => {
-                let timing = if c.what == "attack" { &cfg.attack.timing } else { &cfg.pickup.timing };
-                let result = modforge::input::human::click(modforge::input::Button::Left, c.at, timing, &mut rng);
-                let now = std::time::Instant::now();
-                if c.what == "attack" {
-                    fight.cast(&cfg.attack, c.key, now, &mut rng);
+                let result = if let Some((hold, lift, press)) = &c.roll {
+                    modforge::input::human::press_holding(hold, lift, *press, &cfg.roll.timing, &mut rng)
                 } else {
-                    state.clicked(&cfg.pickup, c.key, now, &mut rng);
+                    let timing = if c.what == "attack" { &cfg.attack.timing } else { &cfg.pickup.timing };
+                    modforge::input::human::click(modforge::input::Button::Left, c.at, timing, &mut rng)
+                };
+                let now = std::time::Instant::now();
+                match c.what {
+                    "roll" => dodge.rolled(&cfg.roll, now, &mut rng),
+                    "attack" => fight.cast(&cfg.attack, c.key, now, &mut rng),
+                    _ => state.clicked(&cfg.pickup, c.key, now, &mut rng),
                 }
                 if let Some(r) = HANDS.lock().as_mut() {
                     r.clicks.push_back(json!({
@@ -1235,7 +1372,7 @@ fn hands_loop() {
     }
 }
 
-/// Switch attack (`which` "attack") or pickup on or off. Rules and
+/// Switch attack, pickup or roll (`which`) on or off. Rules and
 /// settings come from config.yaml. Without `on` it says what the mouse
 /// thread is doing.
 fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
@@ -1244,16 +1381,17 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
     let run = g.get_or_insert_with(|| Hands {
         attack_on: false,
         pickup_on: false,
+        roll_on: false,
         running: false,
         clicks: Default::default(),
         last_error: None,
         waiting: Default::default(),
     });
     if let Some(on) = args["on"].as_bool() {
-        if which == "attack" {
-            run.attack_on = on;
-        } else {
-            run.pickup_on = on;
+        match which {
+            "attack" => run.attack_on = on,
+            "roll" => run.roll_on = on,
+            _ => run.pickup_on = on,
         }
         if on {
             run.waiting.clear();
@@ -1274,11 +1412,16 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
             });
         }
     }
-    let on = if which == "attack" { run.attack_on } else { run.pickup_on };
+    let on = match which {
+        "attack" => run.attack_on,
+        "roll" => run.roll_on,
+        _ => run.pickup_on,
+    };
     Ok(json!({
         "on": on,
         "attack_on": run.attack_on,
         "pickup_on": run.pickup_on,
+        "roll_on": run.roll_on,
         "running": run.running,
         "config": config::path(),
         "config_error": config_error,
@@ -1286,6 +1429,7 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
         "chests": cfg.chests,
         "attack": cfg.attack,
         "pickup": cfg.pickup,
+        "roll": cfg.roll,
         "clicks": run.clicks,
         "last_error": run.last_error,
         "waiting": run.waiting,
@@ -1294,6 +1438,10 @@ fn hands_op(which: &str, args: &Json) -> Result<Json, String> {
 
 fn pickup_op(args: &Json) -> Result<Json, String> {
     hands_op("pickup", args)
+}
+
+fn roll_op(args: &Json) -> Result<Json, String> {
+    hands_op("roll", args)
 }
 
 /// The enemies attack would aim at, nearest first, without clicking.
@@ -1306,7 +1454,19 @@ fn enemies_op(_args: &Json) -> Result<Json, String> {
         .map_err(|e| format!("{e:#}"))?;
     let mut found = enemies(a, area, &me)?;
     found.sort_by(|x, y| x.distance.total_cmp(&y.distance));
-    Ok(json!({"enemies": found}))
+    // Each with its line of sight from the player, as attack checks it.
+    let t = terrain::read_targeting(&a.mem, area).map_err(|e| format!("{e:#}"))?;
+    let cell = terrain::world_per_cell();
+    let from = me.position.map(|[x, y, _]| ((x / cell) as i32, (y / cell) as i32));
+    let out: Vec<Json> = found
+        .iter()
+        .map(|e| {
+            let mut v = json!(e);
+            v["sight"] = json!(from.map(|f| t.clear(f, (e.cell[0], e.cell[1]))));
+            v
+        })
+        .collect();
+    Ok(json!({"enemies": out, "me_cell": from}))
 }
 
 /// Left click the nearest enemy, one cast a click.
@@ -1323,7 +1483,7 @@ fn ground_labels_op(args: &Json) -> Result<Json, String> {
     let (cfg, _) = config::current();
     let rules: Vec<item_rules::ItemRule> =
         if args["rules"].is_null() { cfg.rules } else { parse(args, "rules")? };
-    let rows = label_rows(a, &rules, &cfg.chests)?;
+    let (rows, unlabelled) = label_rows(a, &rules, &cfg.chests)?;
     let out: Vec<Json> = rows
         .iter()
         .map(|r| {
@@ -1338,7 +1498,7 @@ fn ground_labels_op(args: &Json) -> Result<Json, String> {
             })
         })
         .collect();
-    Ok(json!({"labels": out}))
+    Ok(json!({"labels": out, "chests_without_label": unlabelled}))
 }
 
 /// Price each item and say which rule it passes. The items are the
@@ -1973,6 +2133,12 @@ fn main() {
         "left click the nearest live enemy on screen within range (one cast a click), staying on it until it dies or leaves range, with human moves and drawn pauses; settings from config.yaml; shares the mouse with pickup and goes first; only while the game is in front, in play and no side panel is open",
         "on?",
         attack_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "roll",
+        "press the dodge roll key while holding the move keys that point away from the live enemies within config.yaml's danger distance, with drawn waits; goes before attack and pickup; only while the game is in front, in play and no side panel is open",
+        "on?",
+        roll_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "enemies",

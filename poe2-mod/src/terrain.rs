@@ -24,6 +24,12 @@ pub mod meta {
     pub const TOTAL_TILES: u64 = 0x18;
     pub const TILES: u64 = 0x28;
     pub const WALKABLE: u64 = 0xD0;
+    /// GameHelper2 GridLandscapeData; ExileCore2 reads it as its terrain
+    /// targeting data (IngameData ctor b__19_6 copies the struct and
+    /// takes the vector 0x60 from its 0x148-byte end, b__19_5 the
+    /// pathfinding one 0x78 from it, which is WALKABLE), unpacked as
+    /// walkable is (GetTerrainLayerData for both).
+    pub const TARGETING: u64 = 0xE8;
     pub const BYTES_PER_ROW: u64 = 0x130;
     pub const HEIGHT_MULTIPLIER: u64 = 0x134;
 }
@@ -108,13 +114,7 @@ impl Terrain {
     /// the low four bits. 0 is not walkable; 1 to 5 are walkable for
     /// entities up to that size.
     pub fn walkable(&self, x: usize, y: usize) -> u8 {
-        if x / 2 >= self.bytes_per_row {
-            return 0;
-        }
-        let shift = if x.is_multiple_of(2) { 0 } else { 4 };
-        self.walkable
-            .get(y * self.bytes_per_row + x / 2)
-            .map_or(0, |b| (b >> shift) & 0xF)
+        nibble(&self.walkable, self.bytes_per_row, x, y)
     }
 
     /// A flat terrain of only walkable data, for tests.
@@ -150,6 +150,75 @@ impl Terrain {
         let w = world_per_cell();
         ((x / w).max(0.0) as usize, (y / w).max(0.0) as usize)
     }
+}
+
+/// One cell of a packed grid: two cells per byte, the even one in the
+/// low four bits; 0 outside it.
+fn nibble(data: &[u8], bytes_per_row: usize, x: usize, y: usize) -> u8 {
+    if x / 2 >= bytes_per_row {
+        return 0;
+    }
+    let shift = if x.is_multiple_of(2) { 0 } else { 4 };
+    data.get(y * bytes_per_row + x / 2).map_or(0, |b| (b >> shift) & 0xF)
+}
+
+/// The terrain targeting grid alone, light enough to read each zone
+/// for line of sight.
+#[derive(Debug, Default)]
+pub struct Targeting {
+    bytes_per_row: usize,
+    data: Vec<u8>,
+}
+
+impl Targeting {
+    #[cfg(test)]
+    pub fn with(bytes_per_row: usize, data: Vec<u8>) -> Self {
+        Self { bytes_per_row, data }
+    }
+
+    pub fn value(&self, x: i32, y: i32) -> u8 {
+        match (usize::try_from(x), usize::try_from(y)) {
+            (Ok(x), Ok(y)) => nibble(&self.data, self.bytes_per_row, x, y),
+            _ => 0,
+        }
+    }
+
+    /// Every cell on the straight line from `from` to `to` (Bresenham)
+    /// has a targeting value above 0, the end cells left out: they hold
+    /// the bodies.
+    pub fn clear(&self, from: (i32, i32), to: (i32, i32)) -> bool {
+        let (mut x, mut y) = from;
+        let (dx, dy) = ((to.0 - x).abs(), -(to.1 - y).abs());
+        let (sx, sy) = (if x < to.0 { 1 } else { -1 }, if y < to.1 { 1 } else { -1 });
+        let mut err = dx + dy;
+        loop {
+            if (x, y) == to {
+                return true;
+            }
+            if (x, y) != from && self.value(x, y) == 0 {
+                return false;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+        }
+    }
+}
+
+/// The zone's terrain targeting grid.
+pub fn read_targeting(mem: &ProcessMemory, area: u64) -> Result<Targeting> {
+    let at = area + AREA_TERRAIN;
+    let bytes_per_row: i32 = mem.read_value(at + meta::BYTES_PER_ROW)?;
+    Ok(Targeting {
+        bytes_per_row: usize::try_from(bytes_per_row).unwrap_or(0),
+        data: read_vector(mem, at + meta::TARGETING).context("read targeting grid")?,
+    })
 }
 
 /// GameHelper2 GetSubTerrainHeight: the small heights are packed by
@@ -329,5 +398,21 @@ mod tests {
         assert_eq!(t.height(30, 10), Some(-7.8125));
         assert_eq!(t.height(46, 0), None);
         assert_eq!(t.walkable(3, 1), 1);
+    }
+
+    #[test]
+    fn a_wall_between_blocks_the_line() {
+        // 8 cells wide (4 bytes a row), 3 rows, all 1, then a wall of
+        // 0 at x 4 in the middle row.
+        let mut data = vec![0x11u8; 12];
+        data[4 + 2] = 0x10; // row 1, x 4 is the low nibble
+        let t = Targeting::with(4, data);
+        assert_eq!(t.value(4, 1), 0);
+        assert_eq!(t.value(5, 1), 1);
+        assert!(!t.clear((0, 1), (7, 1)));
+        assert!(t.clear((0, 0), (7, 0)));
+        // The end cells do not count.
+        assert!(t.clear((4, 1), (7, 1)));
+        assert!(t.clear((2, 1), (2, 1)));
     }
 }

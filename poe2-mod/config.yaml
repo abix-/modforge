@@ -15,6 +15,10 @@ attack:
   # How far from the body's middle a click may land: half width, half
   # height, pixels.
   spread: [10, 15]
+  # Only enemies with no wall between: every cell on the line from you
+  # has terrain targeting above 0 (the grid ExileCore2 calls terrain
+  # targeting). Set false if it skips enemies you can hit.
+  line_of_sight: true
   timing:
     react: {min: 5, max: 80}
     step: {min: 1, max: 4}
@@ -36,6 +40,29 @@ pickup:
     settle: {min: 20, max: 70}
     hold: {min: 30, max: 90}
 
+roll:
+  # A live enemy this many cells away or nearer sets off a roll away
+  # from all of them. A first guess: tune it to where monsters start
+  # to hit.
+  danger: 15
+  pause: {min: 900, max: 1400}
+  # The game's dodge roll key, and the move keys (WASD movement): the
+  # roll holds the ones pointing away, lifts the others for a moment
+  # if you hold them, and gives them back.
+  key: space
+  up: w
+  left: a
+  down: s
+  right: d
+  timing:
+    react: {min: 5, max: 40}
+    # After the roll key is let go, before the move keys are.
+    step: {min: 30, max: 60}
+    # Move keys down before the roll key.
+    settle: {min: 15, max: 35}
+    # The roll key held.
+    hold: {min: 30, max: 70}
+
 # Items pickup takes. An item passes a rule when every condition given
 # holds; the first rule it passes names the click. Conditions:
 #   names: [..]          the name or base contains one of these
@@ -55,10 +82,8 @@ rules:
     rarity: [Unique]
     min_exalted: 5
 
-# Closed chests pickup opens by clicking their label (ExileCore2 PickIt
-# UpdateChestList): a Chest part and a path that starts with one of
-# path_starts or contains one of path_contains.
+# Pickup opens every closed chest, any kind (anything with a Chest
+# part: chests, lockers, eggs, urns): by its label when it has one
+# (ExileCore2 PickIt), else by a click on it, the nearest first.
 chests:
   open: true
-  path_starts: [Metadata/Chests]
-  path_contains: [CampsiteChest]

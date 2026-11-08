@@ -7,7 +7,7 @@
 //! The file is `POE2_MOD_CONFIG` when that is set, else `config.yaml`
 //! in this crate's folder.
 
-use crate::{attack, item_rules::ItemRule, pickup};
+use crate::{attack, item_rules::ItemRule, pickup, roll};
 use anyhow::{Context, Result};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -21,27 +21,15 @@ pub struct Config {
     pub pickup: pickup::Settings,
     pub rules: Vec<ItemRule>,
     pub chests: Chests,
+    pub roll: roll::Settings,
 }
 
-/// Which closed chests pickup opens (ExileCore2 PickIt UpdateChestList).
+/// Does pickup open closed chests: every entity with a Chest part, of
+/// any kind (operator, 2026-11-07: "need ALL chest types").
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Chests {
     pub open: bool,
-    pub path_starts: Vec<String>,
-    pub path_contains: Vec<String>,
-}
-
-impl Chests {
-    /// Should a closed chest at `path` be opened?
-    pub fn wants(&self, path: &str) -> bool {
-        self.open
-            && (self
-                .path_starts
-                .iter()
-                .any(|p| path.starts_with(p.as_str()))
-                || self.path_contains.iter().any(|p| path.contains(p.as_str())))
-    }
 }
 
 pub fn path() -> PathBuf {
@@ -161,12 +149,15 @@ mod tests {
             Some(Rarity::Rare),
             Some(50.0)
         ));
-        assert!(c.chests.wants("Metadata/Chests/Barrel1"));
-        assert!(c.chests.wants("Metadata/Terrain/CampsiteChest"));
-        assert!(!c.chests.wants("Metadata/Monsters/Wolves/RottenWolf1_"));
+        assert!(c.chests.open);
         assert_eq!(c.attack.range, 120.0);
         assert_eq!(c.pickup.range, 120.0);
         assert_eq!(c.pickup.margin, [5.0, 3.0]);
+        assert_eq!(c.roll.key, "space");
+        assert_eq!(
+            [&c.roll.up, &c.roll.left, &c.roll.down, &c.roll.right],
+            ["w", "a", "s", "d"]
+        );
     }
 
     #[test]

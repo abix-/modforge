@@ -28,7 +28,10 @@ const RUN: Duration = Duration::from_secs(30);
 fn switch_on() {
     let r = Remote::at(17185);
     let out = r.op("attack", json!({"on": true})).expect("attack on");
-    println!("attack on: {} range {}", out["attack_on"], out["attack"]["range"]);
+    println!(
+        "attack on: {} range {}",
+        out["attack_on"], out["attack"]["range"]
+    );
 }
 
 /// Switch attack off: `research_attack switch_off -- --ignored`.
@@ -54,8 +57,16 @@ fn enemies_on_screen() {
             return;
         }
     };
+    // sight: no terrain targeting 0 on the line from the player; the
+    // operator checks a false one is behind a wall.
     for e in out["enemies"].as_array().cloned().unwrap_or_default() {
-        println!("{} {:.1} cells at {}", e["name"], e["distance"].as_f64().unwrap_or(0.0), e["screen"]);
+        println!(
+            "{} {:.1} cells at {} sight {}",
+            e["name"],
+            e["distance"].as_f64().unwrap_or(0.0),
+            e["screen"],
+            e["sight"]
+        );
     }
 }
 
@@ -70,7 +81,11 @@ fn casts_at_the_nearest_enemy() {
         }
     };
     if let Some(e) = before.first() {
-        println!("nearest: {} {:.1} cells", e["name"], e["distance"].as_f64().unwrap_or(0.0));
+        println!(
+            "nearest: {} {:.1} cells",
+            e["name"],
+            e["distance"].as_f64().unwrap_or(0.0)
+        );
     }
     r.op("attack", json!({"on": true})).expect("attack on");
     std::thread::sleep(RUN);

@@ -9,7 +9,7 @@
 //! seeded so it is tested without moving the real cursor; [`click`]
 //! carries it out over [`super::l1`].
 
-use super::{Button, l1};
+use super::{Button, Key, l1};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -107,7 +107,12 @@ pub fn stroke(from: [f32; 2], to: [f32; 2], rng: &mut fastrand::Rng) -> Vec<[i32
 /// Move from where the cursor is to `to` (screen pixels) along a
 /// [`stroke`], wait, and click `button` there, every wait from
 /// `timing`.
-pub fn click(button: Button, to: [f32; 2], timing: &Timing, rng: &mut fastrand::Rng) -> Result<(), String> {
+pub fn click(
+    button: Button,
+    to: [f32; 2],
+    timing: &Timing,
+    rng: &mut fastrand::Rng,
+) -> Result<(), String> {
     timing.react.sleep(rng);
     let (x, y) = l1::cursor_pos()?;
     let path = stroke([x as f32, y as f32], to, rng);
@@ -118,6 +123,42 @@ pub fn click(button: Button, to: [f32; 2], timing: &Timing, rng: &mut fastrand::
     timing.settle.sleep(rng);
     let end = path.last().copied().unwrap_or([x, y]);
     l1::click_held(button, end[0], end[1], timing.hold.draw(rng))
+}
+
+/// Hold `hold`, press `press`, let `hold` go, every wait from
+/// `timing`: a move key held while a dodge or skill key goes down.
+/// Keys in `lift` that are down now (the operator's own, as a held W
+/// against a roll to the S side) go up first and down again after,
+/// so the operator's hold is back when this ends; keys in `hold` that
+/// are down already are left alone.
+pub fn press_holding(
+    hold: &[Key],
+    lift: &[Key],
+    press: Key,
+    timing: &Timing,
+    rng: &mut fastrand::Rng,
+) -> Result<(), String> {
+    timing.react.sleep(rng);
+    let lifted: Vec<Key> = lift.iter().copied().filter(|k| l1::key_held(*k)).collect();
+    let pressed: Vec<Key> = hold.iter().copied().filter(|k| !l1::key_held(*k)).collect();
+    let mut out = Ok(());
+    for k in &lifted {
+        out = out.and(l1::key_up(*k));
+    }
+    for k in &pressed {
+        out = out.and(l1::key_down(*k));
+    }
+    timing.settle.sleep(rng);
+    out = out.and(l1::key_press(press, timing.hold.draw(rng)));
+    timing.step.sleep(rng);
+    // Always let go and give back, even after an error.
+    for k in &pressed {
+        let _ = l1::key_up(*k);
+    }
+    for k in &lifted {
+        let _ = l1::key_down(*k);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -131,7 +172,11 @@ mod tests {
         let draws: Vec<u32> = (0..200).map(|_| w.draw(&mut rng)).collect();
         assert!(draws.iter().all(|d| (5..=150).contains(d)));
         let distinct: std::collections::HashSet<_> = draws.iter().collect();
-        assert!(distinct.len() > 50, "only {} distinct waits", distinct.len());
+        assert!(
+            distinct.len() > 50,
+            "only {} distinct waits",
+            distinct.len()
+        );
         assert_eq!(Wait::new(9, 3).draw(&mut rng), 9);
     }
 
@@ -144,7 +189,10 @@ mod tests {
             assert!((53.0..=67.0).contains(&y), "{y}");
         }
         // Smaller than its margins: the middle.
-        assert_eq!(point_in([0.0, 0.0, 4.0, 2.0], [5.0, 3.0], &mut rng), [2.0, 1.0]);
+        assert_eq!(
+            point_in([0.0, 0.0, 4.0, 2.0], [5.0, 3.0], &mut rng),
+            [2.0, 1.0]
+        );
     }
 
     #[test]

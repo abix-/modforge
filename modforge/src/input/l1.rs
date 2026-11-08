@@ -295,6 +295,15 @@ pub fn key_up(key: Key) -> Result<(), String> {
     key_event(key, false)
 }
 
+/// Is the key down now (`GetAsyncKeyState`, our own synthetic presses
+/// included)?
+pub fn key_held(key: Key) -> bool {
+    (unsafe { windows_sys::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(i32::from(key.0)) }
+        as u16
+        & 0x8000)
+        != 0
+}
+
 /// Press + release. `hold_ms` (if > 0) sleeps between down and up.
 pub fn key_press(key: Key, hold_ms: u32) -> Result<(), String> {
     key_event(key, true)?;
