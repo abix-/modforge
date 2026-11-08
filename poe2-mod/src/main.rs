@@ -221,6 +221,14 @@ fn entities_op(args: &Json) -> Result<Json, String> {
     Ok(Json::Object(out))
 }
 
+/// The buffs on an entity, none when it has no Buffs part.
+fn player_buffs(a: &Attached, e: &entities::Entity) -> Result<Vec<entities::Buff>, String> {
+    match e.parts.get("Buffs") {
+        Some(p) => entities::read_buffs(&a.mem, *p).map_err(|e| format!("{e:#}")),
+        None => Ok(Vec::new()),
+    }
+}
+
 /// The player buff bar: watched buffs (`watch`, a list, else
 /// GameHelper2's default) with stacks and time left, charges and rage,
 /// and the player's living totems.
@@ -230,10 +238,7 @@ fn buff_bar_op(args: &Json) -> Result<Json, String> {
     let area = area_instance(a)?;
     let at = entities::local_player(&a.mem, area).map_err(|e| format!("{e:#}"))?;
     let e = entities::read(&a.mem, at).map_err(|e| format!("{e:#}"))?;
-    let buffs = match e.parts.get("Buffs") {
-        Some(p) => entities::read_buffs(&a.mem, *p).map_err(|e| format!("{e:#}"))?,
-        None => Vec::new(),
-    };
+    let buffs = player_buffs(a, &e)?;
     let given: Vec<&str> = args["watch"]
         .as_array()
         .map(|v| v.iter().filter_map(Json::as_str).collect())
@@ -854,6 +859,7 @@ struct Layers {
     items: bool,
     health_bars: bool,
     ritual: bool,
+    buffs: bool,
     mana_on_self: bool,
 }
 
@@ -899,6 +905,23 @@ fn overlay_frame(layers: &Layers) -> Result<modforge::overlay::Frame, String> {
         && let Some(at) = me.position.and_then(to_screen)
     {
         frame.shapes.push(draw::player_mark(at));
+    }
+    // ResolveHealthBarAnchor: the top of the player's model.
+    let head = me
+        .position
+        .map(|[x, y, z]| [x, y, z - me.model_bounds.map_or(0.0, |b| b[2])])
+        .and_then(to_screen);
+    if layers.buffs
+        && let Some(head) = head
+    {
+        if let Some(s) = &me.stats {
+            frame
+                .shapes
+                .extend(draw::resource_row(&buff_bar::resources(s, true), head));
+        }
+        let buffs = player_buffs(a, &me)?;
+        let row = buff_bar::entries(&buffs, &buff_bar::DEFAULT_WATCHLIST, true);
+        frame.shapes.extend(draw::buff_row(&row, head));
     }
     let all = awake_entities(a, area)?;
     if layers.health_bars {
@@ -981,6 +1004,7 @@ fn overlay_op(args: &Json) -> Result<Json, String> {
         items: layer("items"),
         health_bars: layer("health_bars"),
         ritual: layer("ritual"),
+        buffs: layer("buffs"),
         mana_on_self: args["mana_on_self"].as_bool() == Some(true),
     };
     let fps = args["fps"].as_u64().unwrap_or(20).clamp(1, 60) as u32;
@@ -1010,8 +1034,8 @@ fn overlay_op(args: &Json) -> Result<Json, String> {
 fn main() {
     OP_REGISTRY.register(OpDef::new(
         "overlay",
-        "on: true draws over the game (zone, player, ground items with prices, health bars, ritual range) in a click-through window; on: false closes it",
-        "on, fps?, zone?, player?, items?, health_bars?, ritual?, mana_on_self?",
+        "on: true draws over the game (zone, player, ground items with prices, health bars, ritual range, buff bar) in a click-through window; on: false closes it",
+        "on, fps?, zone?, player?, items?, health_bars?, ritual?, buffs?, mana_on_self?",
         overlay_op,
     ));
     OP_REGISTRY.register(OpDef::new(

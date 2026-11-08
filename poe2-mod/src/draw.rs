@@ -194,6 +194,179 @@ pub fn zone_line(name: &str, level: Option<i32>) -> Shape {
     }
 }
 
+/// PlayerBuffBarSettings: icon size and spacing, and how far below the
+/// player's health bar the resource row and the buff row sit.
+pub const ICON_SIZE: f32 = 28.0;
+pub const ICON_SPACING: f32 = 4.0;
+pub const RESOURCE_OFFSET: [f32; 2] = [0.0, 8.0];
+pub const BUFF_OFFSET: [f32; 2] = [0.0, 36.0];
+/// ActiveColor, the inactive border, BuffTextColor, ChargeTextColor and
+/// RageTextColor.
+pub const BUFF_ACTIVE: Rgb = 0x33D959;
+pub const BUFF_INACTIVE: Rgb = 0x666666;
+pub const BUFF_TEXT: Rgb = 0xFFFFFF;
+pub const CHARGE_TEXT: Rgb = 0xFFEB59;
+pub const RAGE_TEXT: Rgb = 0xFF7333;
+/// The overlay draws without alpha, so an inactive icon's text is white
+/// at InactiveIconAlpha (0.35) over black.
+pub const INACTIVE_TEXT: Rgb = 0x595959;
+/// The overlay's system font: about this wide per character, for
+/// centring text.
+pub const CHAR_WIDTH: f32 = 8.0;
+
+/// GetRowWidth.
+pub fn row_width(count: usize) -> f32 {
+    count as f32 * ICON_SIZE + count.saturating_sub(1) as f32 * ICON_SPACING
+}
+
+/// ResolveBarTopLeft anchored to the health bar: centred under it.
+fn row_start(anchor: (f32, f32), offset: [f32; 2], count: usize) -> [f32; 2] {
+    [
+        anchor.0 + offset[0] - row_width(count) / 2.0,
+        anchor.1 + offset[1],
+    ]
+}
+
+/// A box outline `width` pixels thick.
+fn outline(at: [f32; 2], size: f32, color: Rgb, width: i32) -> Shape {
+    let [x, y] = at;
+    Shape::Path {
+        points: vec![[x, y], [x + size, y], [x + size, y + size], [x, y + size]],
+        color,
+        width,
+        closed: true,
+    }
+}
+
+/// Text centred across a cell `size` wide starting at `x`.
+fn centred(x: f32, y: f32, size: f32, text: String, color: Rgb) -> Shape {
+    let w = text.len() as f32 * CHAR_WIDTH;
+    Shape::Text {
+        at: [x + (size - w) / 2.0, y],
+        text,
+        color,
+    }
+}
+
+/// The count in a black badge at the cell's bottom
+/// (ShowResourceCountBackground, on by default).
+fn badge(at: [f32; 2], text: String, color: Rgb) -> [Shape; 2] {
+    let h = (FONT + 2.0).max(12.0);
+    let top = at[1] + ICON_SIZE - h;
+    [
+        Shape::Rect {
+            at: [at[0], top],
+            size: [ICON_SIZE, h],
+            color: BAR_BACKGROUND,
+            filled: true,
+        },
+        centred(at[0], top + (h - FONT) / 2.0, ICON_SIZE, text, color),
+    ]
+}
+
+/// FormatSeconds: whole minutes from 60 seconds up, else whole seconds,
+/// both rounded up.
+pub fn seconds(s: f32) -> String {
+    if s >= 60.0 {
+        format!("{}m", (s / 60.0).ceil() as i32)
+    } else {
+        format!("{}s", s.ceil() as i32)
+    }
+}
+
+/// The resource row (DrawResourceIconCell, no icon pictures): a black
+/// cell framed in the charge's colour, its letter and its count.
+pub fn resource_row(resources: &[(&str, i32)], anchor: (f32, f32)) -> Vec<Shape> {
+    let start = row_start(anchor, RESOURCE_OFFSET, resources.len());
+    let mut out = Vec::new();
+    for (i, (id, count)) in resources.iter().enumerate() {
+        let at = [start[0] + i as f32 * (ICON_SIZE + ICON_SPACING), start[1]];
+        let active = *count > 0;
+        let (border, letter) = match *id {
+            "power_charge" => (0x598CFF, "P"),
+            "frenzy_charge" => (0x59F273, "F"),
+            "endurance_charge" => (0xF2594D, "E"),
+            "rage" => (RAGE_TEXT, "R"),
+            _ => (0x999999, "?"),
+        };
+        out.push(Shape::Rect {
+            at,
+            size: [ICON_SIZE, ICON_SIZE],
+            color: BAR_BACKGROUND,
+            filled: true,
+        });
+        out.push(outline(at, ICON_SIZE, border, if active { 2 } else { 1 }));
+        let tint = if active { BUFF_TEXT } else { INACTIVE_TEXT };
+        out.push(centred(
+            at[0],
+            at[1] + (ICON_SIZE - FONT) / 2.0,
+            ICON_SIZE,
+            letter.into(),
+            tint,
+        ));
+        let color = if *id == "rage" {
+            RAGE_TEXT
+        } else {
+            CHARGE_TEXT
+        };
+        out.extend(badge(at, (*count).max(0).to_string(), color));
+    }
+    out
+}
+
+/// The buff row (DrawBuffIconCell, no icon pictures): a black cell with
+/// the watch id's first two letters, a green frame when on and grey
+/// when not, the stacks from 2 up and the time left under the cell.
+pub fn buff_row(entries: &[crate::buff_bar::Entry], anchor: (f32, f32)) -> Vec<Shape> {
+    let start = row_start(anchor, BUFF_OFFSET, entries.len());
+    let mut out = Vec::new();
+    for (i, e) in entries.iter().enumerate() {
+        let at = [start[0] + i as f32 * (ICON_SIZE + ICON_SPACING), start[1]];
+        out.push(Shape::Rect {
+            at,
+            size: [ICON_SIZE, ICON_SIZE],
+            color: BAR_BACKGROUND,
+            filled: true,
+        });
+        let short: String = if e.watch.chars().count() >= 2 {
+            e.watch.chars().take(2).collect::<String>().to_uppercase()
+        } else {
+            "?".into()
+        };
+        let tint = if e.active { BUFF_TEXT } else { INACTIVE_TEXT };
+        out.push(centred(
+            at[0],
+            at[1] + (ICON_SIZE - FONT) / 2.0,
+            ICON_SIZE,
+            short,
+            tint,
+        ));
+        out.push(if e.active {
+            outline(at, ICON_SIZE, BUFF_ACTIVE, 2)
+        } else {
+            outline(at, ICON_SIZE, BUFF_INACTIVE, 1)
+        });
+        if e.active && e.stacks > 1 {
+            out.extend(badge(at, e.stacks.to_string(), BUFF_TEXT));
+        }
+        if let (true, Some(t)) = (e.active, e.time_left) {
+            let label = seconds(t);
+            let y = at[1] + ICON_SIZE + 1.0;
+            if let Shape::Text { at: p, text, .. } =
+                centred(at[0], y, ICON_SIZE, label.clone(), BAR_BACKGROUND)
+            {
+                out.push(Shape::Text {
+                    at: [p[0] + 1.0, p[1] + 1.0],
+                    text,
+                    color: BAR_BACKGROUND,
+                });
+            }
+            out.push(centred(at[0], y, ICON_SIZE, label, BUFF_TEXT));
+        }
+    }
+    out
+}
+
 /// A small ring on the player's feet.
 pub fn player_mark(at: (f32, f32)) -> Shape {
     Shape::Circle {
@@ -307,6 +480,85 @@ mod tests {
             ruled,
             Shape::Text {
                 color: PRICE_HIGHLIGHT,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn buff_and_resource_rows_like_gamehelper2() {
+        use crate::buff_bar::Entry;
+        assert_eq!(row_width(3), 3.0 * 28.0 + 2.0 * 4.0);
+        assert_eq!((seconds(4.2), seconds(61.0)), ("5s".into(), "2m".into()));
+        let r = resource_row(&[("power_charge", 3), ("rage", 0)], (100.0, 50.0));
+        // Per cell: background, frame, letter, badge and count.
+        assert_eq!(r.len(), 10);
+        // Two cells are 60 wide, centred on x 100, 8 below the anchor.
+        assert!(matches!(
+            r[0],
+            Shape::Rect {
+                at: [70.0, 58.0],
+                ..
+            }
+        ));
+        assert!(matches!(
+            r[1],
+            Shape::Path {
+                color: 0x598CFF,
+                width: 2,
+                ..
+            }
+        ));
+        assert!(matches!(
+            r[6],
+            Shape::Path {
+                color: RAGE_TEXT,
+                width: 1,
+                ..
+            }
+        ));
+        assert!(matches!(r[9], Shape::Text { ref text, color: RAGE_TEXT, .. } if text == "0"));
+        let entry = |watch: &str, active, stacks, time_left| Entry {
+            watch: watch.into(),
+            active,
+            buff: None,
+            stacks,
+            time_left,
+        };
+        let b = buff_row(
+            &[
+                entry("fortify", true, 3, Some(2.5)),
+                entry("haste", false, 0, None),
+            ],
+            (100.0, 50.0),
+        );
+        // Fortify: background, "FO", frame, badge, count, shadow, time.
+        // Haste: background, "HA" in grey, grey frame.
+        assert_eq!(b.len(), 7 + 3);
+        assert!(matches!(
+            b[0],
+            Shape::Rect {
+                at: [70.0, 86.0],
+                ..
+            }
+        ));
+        assert!(matches!(b[1], Shape::Text { ref text, color: BUFF_TEXT, .. } if text == "FO"));
+        assert!(matches!(
+            b[2],
+            Shape::Path {
+                color: BUFF_ACTIVE,
+                width: 2,
+                ..
+            }
+        ));
+        assert!(matches!(b[4], Shape::Text { ref text, .. } if text == "3"));
+        assert!(matches!(b[6], Shape::Text { ref text, at: [_, 115.0], .. } if text == "3s"));
+        assert!(matches!(b[8], Shape::Text { ref text, color: INACTIVE_TEXT, .. } if text == "HA"));
+        assert!(matches!(
+            b[9],
+            Shape::Path {
+                color: BUFF_INACTIVE,
+                width: 1,
                 ..
             }
         ));
