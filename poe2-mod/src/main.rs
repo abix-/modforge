@@ -515,6 +515,41 @@ fn radar_op(args: &Json) -> Result<Json, String> {
     }))
 }
 
+/// What the radar layer would draw now: each shape's kind and where,
+/// with the large map's centre and zoom, for checking it without the
+/// overlay.
+fn radar_view_op(_args: &Json) -> Result<Json, String> {
+    use modforge::overlay::Shape;
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let area = area_instance(a)?;
+    let me = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .map_err(|e| format!("player: {e:#}"))?;
+    let window = modforge::input::find_hwnd_by_pid(a.pid)
+        .and_then(modforge::input::client_area)
+        .ok_or("no game window")?;
+    let size = (window.2 as f32, window.3 as f32);
+    let shapes = radar_shapes(a, in_game, area, &me, size)?;
+    let rows: Vec<Json> = shapes
+        .iter()
+        .map(|s| match s {
+            Shape::Image { corners, image } => {
+                json!({"image": [image.width, image.height], "corners": corners})
+            }
+            Shape::Text { at, text, .. } => json!({"text": text, "at": at}),
+            Shape::Path { points, .. } => {
+                json!({"path": points.len(), "from": points.first(), "to": points.last()})
+            }
+            Shape::Rect { at, size, .. } => json!({"box": at, "size": size}),
+            other => json!(format!("{other:?}")),
+        })
+        .collect();
+    Ok(json!({"window": [size.0, size.1], "shapes": rows}))
+}
+
 /// The zone's terrain size and, at the player, the ground height and
 /// walkable value.
 fn terrain_op(_args: &Json) -> Result<Json, String> {
@@ -920,6 +955,136 @@ struct Layers {
     ritual: bool,
     buffs: bool,
     mana_on_self: bool,
+    radar: bool,
+}
+
+/// What the radar keeps for one zone instance (Radar.GenerateMapTexture
+/// runs once per area, paths every PathRecomputeIntervalMs).
+struct RadarZone {
+    hash: u32,
+    terrain: terrain::Terrain,
+    picture: Option<std::sync::Arc<modforge::overlay::Image>>,
+    /// Name, cell, and whether the radar draws a path to it.
+    labels: Vec<(String, modforge::path::Cell, bool)>,
+    paths: Vec<Option<Vec<modforge::path::Cell>>>,
+    reached: std::collections::HashSet<usize>,
+    paths_at: Option<std::time::Instant>,
+}
+
+static RADAR: Mutex<Option<RadarZone>> = Mutex::new(None);
+
+/// The radar's shapes over the large map, when it is open and the world
+/// map is not.
+fn radar_shapes(
+    a: &Attached,
+    in_game: u64,
+    area: u64,
+    me: &entities::Entity,
+    size: (f32, f32),
+) -> Result<Vec<modforge::overlay::Shape>, String> {
+    let (manager, controller) = ui::manager(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let shown = |name: &str| {
+        ui::panel(&a.mem, manager, controller, name)
+            .filter(|p| ui::is_visible(&a.mem, *p).unwrap_or(false))
+    };
+    let Some(large) = shown("large_map") else {
+        return Ok(Vec::new());
+    };
+    if shown("world_map").is_some() {
+        return Ok(Vec::new());
+    }
+    let cull: i32 = a
+        .mem
+        .read_value(a.static_address("GameCullSize")?)
+        .map_err(|e| format!("read cull size: {e}"))?;
+    let scale = slots::Scale::new(size.0, size.1, cull);
+    let map = radar::read_large_map(&a.mem, large, &scale).ok_or("large map unreadable")?;
+    let view = radar::MapView::large_map(&map, size.1);
+    let zone = zone::read(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let mut cache = RADAR.lock();
+    if cache.as_ref().map(|c| c.hash) != Some(zone.hash) {
+        let t = read_terrain(a, area)?;
+        let files = radar::read_tile_files(&a.mem, &t);
+        let lists = radar::Lists::gamehelper2().map_err(|e| format!("tile lists: {e}"))?;
+        let labels: Vec<_> = radar::points(&files, &lists, &zone.id)
+            .into_iter()
+            .map(|p| (p.name, p.cell, p.kind == radar::Kind::Important))
+            .collect();
+        *cache = Some(RadarZone {
+            hash: zone.hash,
+            picture: radar::walkable_picture(&t, draw::WALKABLE_MAP).map(std::sync::Arc::new),
+            terrain: t,
+            paths: vec![None; labels.len()],
+            labels,
+            reached: Default::default(),
+            paths_at: None,
+        });
+    }
+    let z = cache.as_mut().ok_or("no radar zone")?;
+    let Some([x, y, _]) = me.position else {
+        return Ok(Vec::new());
+    };
+    let w = terrain::world_per_cell();
+    let player = [x / w, y / w];
+    let player_cell = (player[0] as i32, player[1] as i32);
+    let player_height = me.terrain_height.unwrap_or(0.0);
+    // MarkReachedIfClose: a path ends once the player gets near.
+    for (i, (_, cell, with_path)) in z.labels.iter().enumerate() {
+        let d = (cell.0 as f32 - player[0]).hypot(cell.1 as f32 - player[1]);
+        if *with_path && d <= radar::REACHED_DISTANCE {
+            z.reached.insert(i);
+        }
+    }
+    let due = z.paths_at.is_none_or(|t| {
+        t.elapsed() >= std::time::Duration::from_millis(radar::PATH_RECOMPUTE_MS)
+    });
+    if due {
+        let t = &z.terrain;
+        for (i, (_, cell, with_path)) in z.labels.iter().enumerate() {
+            z.paths[i] = (*with_path && !z.reached.contains(&i))
+                .then(|| radar::path(player_cell, *cell, |c| t.open(c)))
+                .flatten();
+        }
+        z.paths_at = Some(std::time::Instant::now());
+    }
+    let height = |c: modforge::path::Cell| {
+        let (Ok(x), Ok(y)) = (usize::try_from(c.0), usize::try_from(c.1)) else {
+            return 0.0;
+        };
+        z.terrain.height(x, y).unwrap_or(0.0)
+    };
+    let labels: Vec<draw::RadarLabel> = z
+        .labels
+        .iter()
+        .map(|(name, cell, _)| draw::RadarLabel {
+            name,
+            cell: [cell.0 as f32, cell.1 as f32],
+            height: height(*cell),
+        })
+        .collect();
+    // Colours go round the points that can have a path, in order.
+    let paths: Vec<_> = z
+        .labels
+        .iter()
+        .zip(&z.paths)
+        .filter(|((_, _, with_path), _)| *with_path)
+        .map(|(_, p)| {
+            p.as_ref().map(|cells| {
+                cells
+                    .iter()
+                    .map(|c| ([c.0 as f32, c.1 as f32], height(*c)))
+                    .collect()
+            })
+        })
+        .collect();
+    Ok(draw::radar(
+        &view,
+        player,
+        player_height,
+        z.picture.as_ref(),
+        &labels,
+        &paths,
+    ))
 }
 
 /// One overlay frame from the game: over the game window's client
@@ -960,6 +1125,12 @@ fn overlay_frame(layers: &Layers) -> Result<modforge::overlay::Frame, String> {
     let me = entities::local_player(&a.mem, area)
         .and_then(|at| entities::read(&a.mem, at))
         .map_err(|e| format!("player: {e:#}"))?;
+    if layers.radar {
+        // Under everything else, as the map is.
+        frame
+            .shapes
+            .extend(radar_shapes(a, in_game, area, &me, size).unwrap_or_default());
+    }
     if layers.player
         && let Some(at) = me.position.and_then(to_screen)
     {
@@ -1065,6 +1236,7 @@ fn overlay_op(args: &Json) -> Result<Json, String> {
         ritual: layer("ritual"),
         buffs: layer("buffs"),
         mana_on_self: args["mana_on_self"].as_bool() == Some(true),
+        radar: layer("radar"),
     };
     let fps = args["fps"].as_u64().unwrap_or(20).clamp(1, 60) as u32;
     let overlay = Arc::new(modforge::overlay::Overlay::start("poe2-mod overlay", fps)?);
@@ -1093,8 +1265,8 @@ fn overlay_op(args: &Json) -> Result<Json, String> {
 fn main() {
     OP_REGISTRY.register(OpDef::new(
         "overlay",
-        "on: true draws over the game (zone, player, ground items with prices, health bars, ritual range, buff bar) in a click-through window; on: false closes it",
-        "on, fps?, zone?, player?, items?, health_bars?, ritual?, buffs?, mana_on_self?",
+        "on: true draws over the game (zone, player, ground items with prices, health bars, ritual range, buff bar, radar on the large map) in a click-through window; on: false closes it",
+        "on, fps?, zone?, player?, items?, health_bars?, ritual?, buffs?, mana_on_self?, radar?",
         overlay_op,
     ));
     OP_REGISTRY.register(OpDef::new(
@@ -1126,6 +1298,12 @@ fn main() {
         "read-only: n bytes (at most 4096) at addr as hex, for offset research",
         "addr, n",
         read_bytes_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "radar_view",
+        "what the radar layer draws now over the large map (empty when it is closed)",
+        "",
+        radar_view_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "patterns.rip_sites",

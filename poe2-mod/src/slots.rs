@@ -157,6 +157,15 @@ fn unscaled_position(
     Some((pos, e))
 }
 
+/// UiElementBase.Position: the element's top left on the screen, with
+/// no need for a size.
+pub fn position(mem: &ProcessMemory, at: u64, scale: &Scale) -> Option<[f32; 2]> {
+    let (pos, e) = unscaled_position(mem, at, 0, scale)?;
+    let (w, h) = scale.get(e.scale_index, e.local_scale);
+    let p = [pos[0] * w + scale.cull, pos[1] * h];
+    p.iter().all(|v| v.is_finite()).then_some(p)
+}
+
 /// TryGetAbsoluteRect: the element's rectangle on the screen.
 pub fn absolute_rect(mem: &ProcessMemory, at: u64, scale: &Scale) -> Option<Rect> {
     let (pos, e) = unscaled_position(mem, at, 0, scale)?;

@@ -8,6 +8,7 @@
 use crate::terrain::{TILE_CELLS, Terrain, Tile};
 use modforge::grid;
 use modforge::msvc_std::read_wstring;
+use modforge::overlay::{Image, Rgb};
 use modforge::path::Cell;
 use modforge::process_memory::ProcessMemory;
 use serde::Serialize;
@@ -180,10 +181,200 @@ pub fn path(from: Cell, to: Cell, open: impl Fn(Cell) -> bool) -> Option<Vec<Cel
     Some(grid::smooth(&cells, &open))
 }
 
+/// MapUiElementOffset: the large map's shift, default shift and zoom.
+pub mod map_element {
+    pub const SHIFT: u64 = 0x350;
+    pub const DEFAULT_SHIFT: u64 = 0x358;
+    pub const ZOOM: u64 = 0x390;
+}
+/// Helper.CameraAngle, in degrees.
+pub const CAMERA_ANGLE: f64 = 38.7;
+/// Helper.DeltaInWorldToMapDelta: world height per grid cell.
+pub const HEIGHT_PER_CELL: f32 = 10.86957;
+/// Radar.DrawUI LargeMapScaleBaseline.
+pub const LARGE_MAP_SCALE: f32 = 0.187812;
+/// Radar.DrawUI LargeMapXBias and LargeMapYBias.
+pub const LARGE_MAP_BIAS: [f32; 2] = [0.6, 0.3];
+/// Pictures larger than this many pixels are not made
+/// (GenerateMapTexture's guard).
+pub const MAX_PICTURE_PIXELS: usize = 200_000_000;
+/// RadarSettings.ReachedPathDistance, in cells: a path stops being drawn
+/// once the player is this close to its end.
+pub const REACHED_DISTANCE: f32 = 50.0;
+/// RadarSettings.PathRecomputeIntervalMs.
+pub const PATH_RECOMPUTE_MS: u64 = 250;
+
+/// Where the large map's middle is and how big it draws, from the
+/// game's large map element.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+pub struct LargeMap {
+    /// Center + Shift + DefaultShift + the bias.
+    pub centre: [f32; 2],
+    pub zoom: f32,
+}
+
+/// The large map element at `at`: its screen position (GameHelper2's
+/// LargeMapUiElement.Center) plus its shifts and the bias.
+pub fn read_large_map(mem: &ProcessMemory, at: u64, scale: &crate::slots::Scale) -> Option<LargeMap> {
+    let pos = crate::slots::position(mem, at, scale)?;
+    let shift: [f32; 2] = mem.read_value(at + map_element::SHIFT).ok()?;
+    let default: [f32; 2] = mem.read_value(at + map_element::DEFAULT_SHIFT).ok()?;
+    let zoom: f32 = mem.read_value(at + map_element::ZOOM).ok()?;
+    let centre = [
+        pos[0] + shift[0] + default[0] + LARGE_MAP_BIAS[0],
+        pos[1] + shift[1] + default[1] + LARGE_MAP_BIAS[1],
+    ];
+    (centre.iter().all(|v| v.is_finite()) && zoom.is_finite() && zoom > 0.0)
+        .then_some(LargeMap { centre, zoom })
+}
+
+/// Grid cells to map pixels (GameHelper2 Helper): the map turns the
+/// grid 45 degrees and tilts it by the camera angle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MapView {
+    pub centre: [f32; 2],
+    cos: f32,
+    sin: f32,
+}
+
+impl MapView {
+    /// Helper.UpdateCosSin for a map of `scale` and `diagonal` pixels.
+    pub fn new(centre: [f32; 2], scale: f32, diagonal: f64) -> Self {
+        let map_scale = f64::from(240.0 / scale);
+        let angle = CAMERA_ANGLE.to_radians();
+        Self {
+            centre,
+            cos: (diagonal * angle.cos() / map_scale) as f32,
+            sin: (diagonal * angle.sin() / map_scale) as f32,
+        }
+    }
+
+    /// The large map in a window `window_height` pixels high
+    /// (Radar.UpdateLargeMapDetails: the base resolution's diagonal at
+    /// the window's height).
+    pub fn large_map(map: &LargeMap, window_height: f32) -> Self {
+        let (w, h) = crate::slots::BASE_RESOLUTION;
+        let diagonal = f64::from(w).hypot(f64::from(h)) * f64::from(window_height) / f64::from(h);
+        Self::new(map.centre, map.zoom * LARGE_MAP_SCALE, diagonal)
+    }
+
+    /// Helper.DeltaInWorldToMapDelta plus the centre: where a point
+    /// `delta` cells from the player and `dz` higher draws.
+    pub fn at(&self, delta: [f32; 2], dz: f32) -> [f32; 2] {
+        let dz = dz / HEIGHT_PER_CELL;
+        [
+            self.centre[0] + (delta[0] - delta[1]) * self.cos,
+            self.centre[1] + (dz - (delta[0] + delta[1])) * self.sin,
+        ]
+    }
+}
+
+/// MapEdgeDetector.IsBorder: a cell that is blocked, or walkable only
+/// for the smallest size (to make the line thicker), next to a walkable
+/// cell.
+pub fn is_border(t: &Terrain, x: usize, y: usize) -> bool {
+    let here = t.walkable(x, y);
+    if here != 0 && here != 1 {
+        return false;
+    }
+    let open = |x: Option<usize>, y: Option<usize>| match (x, y) {
+        (Some(x), Some(y)) => t.walkable(x, y) != 0,
+        _ => false,
+    };
+    open(Some(x), Some(y + 1))
+        || open(Some(x), y.checked_sub(1))
+        || open(x.checked_sub(1), Some(y))
+        || open(Some(x + 1), Some(y))
+}
+
+/// Radar.GenerateMapTexture: the zone's walkable outline as a picture,
+/// one pixel per cell, each border cell moved up and left by its height
+/// so the outline sits where the tilted ground does. None when the zone
+/// has no walkable data or is too big.
+pub fn walkable_picture(t: &Terrain, color: Rgb) -> Option<Image> {
+    let width = t.bytes_per_row * 2;
+    let rows = t.rows();
+    if width == 0 || rows == 0 || width * rows > MAX_PICTURE_PIXELS {
+        return None;
+    }
+    let mut pixels = vec![0; width * rows];
+    let lift = crate::terrain::world_per_cell() * 2.0;
+    let (cells_x, cells_y) = t.cells();
+    for y in 0..cells_y {
+        for x in 1..cells_x.saturating_sub(1) {
+            if !is_border(t, x, y) {
+                continue;
+            }
+            let h = (t.height(x, y).unwrap_or(0.0) / lift) as i64;
+            let (px, py) = (x as i64 - h, y as i64 - h);
+            if (0..width as i64).contains(&px) && (0..rows as i64).contains(&py) {
+                pixels[py as usize * width + px as usize] = color;
+            }
+        }
+    }
+    Some(Image {
+        width: width as u32,
+        height: rows as u32,
+        pixels,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::entities::tests::put;
+
+    #[test]
+    fn map_view_turns_and_tilts_like_gamehelper2() {
+        // Zoom 1 on a 1080 high window.
+        let view = MapView::large_map(
+            &LargeMap {
+                centre: [960.0, 540.0],
+                zoom: 1.0,
+            },
+            1080.0,
+        );
+        let diagonal = 2560f64.hypot(1600.0) * 1080.0 / 1600.0;
+        let map_scale = 240.0 / f64::from(LARGE_MAP_SCALE);
+        let cos = (diagonal * 38.7f64.to_radians().cos() / map_scale) as f32;
+        let sin = (diagonal * 38.7f64.to_radians().sin() / map_scale) as f32;
+        assert_eq!(view.at([0.0, 0.0], 0.0), [960.0, 540.0]);
+        // One cell along x goes right and up; along y left and up.
+        assert_eq!(view.at([1.0, 0.0], 0.0), [960.0 + cos, 540.0 - sin]);
+        assert_eq!(view.at([0.0, 1.0], 0.0), [960.0 - cos, 540.0 - sin]);
+        // Higher ground (in world units) draws lower on the map.
+        let up = view.at([0.0, 0.0], HEIGHT_PER_CELL);
+        assert!((up[1] - (540.0 + sin)).abs() < 1e-3);
+    }
+
+    #[test]
+    fn the_picture_outlines_walkable_cells() {
+        // 6 cells wide (3 bytes per row), 3 rows; the middle row's cells
+        // 2 and 3 are walkable (value 2), the rest blocked.
+        // Cells 1 and 2 of the middle row are walkable (value 2).
+        let t = Terrain::with_walkable(3, vec![0, 0, 0, 0x20, 0x02, 0, 0, 0, 0]);
+        assert!(is_border(&t, 0, 1));
+        assert!(is_border(&t, 3, 1));
+        assert!(is_border(&t, 1, 0));
+        assert!(is_border(&t, 2, 2));
+        assert!(!is_border(&t, 1, 1), "walkable cells are not border");
+        assert!(!is_border(&t, 0, 0), "a corner touches no walkable cell");
+        assert!(walkable_picture(&Terrain::default(), 1).is_none());
+
+        // One tile (23 by 23 cells, flat): one walkable cell at (5, 5)
+        // gets its four neighbours drawn.
+        let mut walk = vec![0u8; 12 * 23];
+        walk[5 * 12 + 2] = 0x20;
+        let mut t = Terrain::with_walkable(12, walk);
+        (t.tiles_x, t.tiles_y) = (1, 1);
+        let p = walkable_picture(&t, 0x969696).unwrap();
+        assert_eq!((p.width, p.height), (24, 23));
+        let lit: Vec<(u32, u32)> = (0..p.height)
+            .flat_map(|y| (0..p.width).map(move |x| (x, y)))
+            .filter(|(x, y)| p.pixels[(y * p.width + x) as usize] != 0)
+            .collect();
+        assert_eq!(lit, [(5, 4), (4, 5), (6, 5), (5, 6)]);
+    }
 
     fn tile(tgt_file: u64, id_x: u8, id_y: u8, rotation: u8) -> Tile {
         let mut t = Tile::default();

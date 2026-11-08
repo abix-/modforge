@@ -367,6 +367,89 @@ pub fn buff_row(entries: &[crate::buff_bar::Entry], anchor: (f32, f32)) -> Vec<S
     out
 }
 
+/// RadarSettings.WalkableMapColor: 150 grey.
+pub const WALKABLE_MAP: Rgb = 0x969696;
+/// RadarSettings.POIColor (1, 0.5, 0.5).
+pub const POI_TEXT: Rgb = 0xFF7F7F;
+/// Radar.DrawDirectionLines poiPalette, one colour per point in turn.
+pub const PATH_PALETTE: [Rgb; 8] = [
+    0x00DCFF, 0xFFC800, 0xFF69B4, 0x00FF7F, 0xFF6347, 0x7B68EE, 0xFFA500, 0x32CD32,
+];
+/// DirectionLineThickness 0.1 plus 1, rounded to whole pixels.
+pub const PATH_WIDTH: i32 = 1;
+
+/// A named point on the radar: its grid cell and ground height.
+pub struct RadarLabel<'a> {
+    pub name: &'a str,
+    pub cell: [f32; 2],
+    pub height: f32,
+}
+
+/// The large map radar after Radar.DrawLargeMap, DrawTgtFiles and
+/// DrawDirectionLines: the walkable outline picture under the map, each
+/// label's name on a black box, and a path from the player to each
+/// label (`paths[i]` goes with `labels[i]`, None when it has none), in
+/// grid cells with ground heights. `player` is the player's grid
+/// position and `player_height` its ground height.
+pub fn radar(
+    view: &crate::radar::MapView,
+    player: [f32; 2],
+    player_height: f32,
+    picture: Option<&std::sync::Arc<modforge::overlay::Image>>,
+    labels: &[RadarLabel],
+    paths: &[Option<Vec<([f32; 2], f32)>>],
+) -> Vec<Shape> {
+    let mut out = Vec::new();
+    let from_player = |cell: [f32; 2], height: f32| {
+        view.at(
+            [cell[0] - player[0], cell[1] - player[1]],
+            -player_height + height,
+        )
+    };
+    if let Some(image) = picture {
+        let (w, h) = (image.width as f32, image.height as f32);
+        let corner = |x: f32, y: f32| view.at([x - player[0], y - player[1]], -player_height);
+        out.push(Shape::Image {
+            corners: [corner(0.0, 0.0), corner(w, 0.0), corner(0.0, h)],
+            image: image.clone(),
+        });
+    }
+    for l in labels {
+        let at = from_player(l.cell, l.height);
+        let half = [l.name.len() as f32 * CHAR_WIDTH / 2.0, FONT / 2.0];
+        let min = [at[0] - half[0], at[1] - half[1]];
+        out.push(Shape::Rect {
+            at: min,
+            size: [half[0] * 2.0, half[1] * 2.0],
+            color: BAR_BACKGROUND,
+            filled: true,
+        });
+        out.push(Shape::Text {
+            at: min,
+            text: l.name.to_string(),
+            color: POI_TEXT,
+        });
+    }
+    // Paths draw over the names, as DrawDirectionLines runs after
+    // DrawTgtFiles.
+    let me = from_player(player, player_height);
+    for (i, path) in paths.iter().enumerate() {
+        let Some(path) = path else { continue };
+        if path.len() < 2 {
+            continue;
+        }
+        let mut points = vec![me];
+        points.extend(path[1..].iter().map(|(c, h)| from_player(*c, *h)));
+        out.push(Shape::Path {
+            points,
+            color: PATH_PALETTE[i % PATH_PALETTE.len()],
+            width: PATH_WIDTH,
+            closed: false,
+        });
+    }
+    out
+}
+
 /// A small ring on the player's feet.
 pub fn player_mark(at: (f32, f32)) -> Shape {
     Shape::Circle {
@@ -577,5 +660,62 @@ mod tests {
             })
         );
         assert_eq!(wisp(false, &[None, Some((1.0, 1.0))]), None);
+    }
+
+    #[test]
+    fn the_radar_puts_the_map_names_and_paths_around_the_player() {
+        use crate::radar::{LargeMap, MapView};
+        let view = MapView::large_map(
+            &LargeMap {
+                centre: [500.0, 400.0],
+                zoom: 1.0,
+            },
+            1080.0,
+        );
+        let image = std::sync::Arc::new(modforge::overlay::Image {
+            width: 100,
+            height: 50,
+            pixels: vec![0; 5000],
+        });
+        let player = [40.0, 20.0];
+        let labels = [RadarLabel {
+            name: "Exit",
+            cell: [60.0, 20.0],
+            height: -10.0,
+        }];
+        let paths = [Some(vec![
+            ([40.0, 20.0], -10.0),
+            ([50.0, 20.0], -10.0),
+            ([60.0, 20.0], -10.0),
+        ])];
+        let s = radar(&view, player, -10.0, Some(&image), &labels, &paths);
+        assert_eq!(s.len(), 4, "picture, name box, name, path: {s:?}");
+        // The picture's top left corner is the grid origin.
+        let Shape::Image { corners, .. } = &s[0] else {
+            panic!("{:?}", s[0])
+        };
+        assert_eq!(corners[0], view.at([-40.0, -20.0], 10.0));
+        assert_eq!(corners[1], view.at([60.0, -20.0], 10.0));
+        assert_eq!(corners[2], view.at([-40.0, 30.0], 10.0));
+        // The name is centred on its point, on a black box.
+        let at = view.at([20.0, 0.0], 0.0);
+        assert_eq!(
+            s[1],
+            Shape::Rect {
+                at: [at[0] - 16.0, at[1] - 8.0],
+                size: [32.0, 16.0],
+                color: BAR_BACKGROUND,
+                filled: true
+            }
+        );
+        assert!(matches!(&s[2], Shape::Text { text, color: POI_TEXT, .. } if text == "Exit"));
+        // The path starts at the player, the map's centre.
+        let Shape::Path { points, color, .. } = &s[3] else {
+            panic!("{:?}", s[3])
+        };
+        assert_eq!(points[0], [500.0, 400.0]);
+        assert_eq!(points.len(), 3);
+        assert_eq!(*color, PATH_PALETTE[0]);
+        assert_eq!(radar(&view, player, 0.0, None, &[], &[None]), vec![]);
     }
 }
