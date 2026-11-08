@@ -116,6 +116,19 @@ impl Terrain {
             .map_or(0, |b| (b >> shift) & 0xF)
     }
 
+    /// The tiles, row by row.
+    pub fn tiles(&self) -> &[Tile] {
+        &self.tiles
+    }
+
+    /// The cell can be walked on (LineWalker.IsWalkable without doors).
+    pub fn open(&self, c: (i32, i32)) -> bool {
+        match (usize::try_from(c.0), usize::try_from(c.1)) {
+            (Ok(x), Ok(y)) => self.walkable(x, y) != 0,
+            _ => false,
+        }
+    }
+
     /// The grid cell of a world position.
     pub fn cell_of(x: f32, y: f32) -> (usize, usize) {
         let w = world_per_cell();

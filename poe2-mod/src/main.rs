@@ -15,6 +15,7 @@ mod items;
 mod loot_value;
 mod model;
 mod preload;
+mod radar;
 mod skills;
 mod states;
 mod terrain;
@@ -297,24 +298,70 @@ fn camera_op(args: &Json) -> Result<Json, String> {
     Ok(json!({"matrix": m, "window": window, "size": [size.0, size.1], "player": player}))
 }
 
+/// The zone's terrain, with the rotation tables from the game's code.
+fn read_terrain(a: &Attached, area: u64) -> Result<terrain::Terrain, String> {
+    let table = |name: &str, len: usize| -> Result<Vec<u8>, String> {
+        a.mem
+            .read_array(a.static_address(name)?, len)
+            .map_err(|e| format!("read {name}: {e:#}"))
+    };
+    terrain::read(
+        &a.mem,
+        area,
+        table("Terrain Rotation Selector", terrain::ROTATION_SELECTOR_LEN)?,
+        table("Terrain Rotator Helper", terrain::ROTATOR_HELPER_LEN)?,
+    )
+    .map_err(|e| format!("{e:#}"))
+}
+
+/// The zone's points of interest from its tile files, each with the
+/// walking path from the player (with `paths`), and with `files` every
+/// tile key found.
+fn radar_op(args: &Json) -> Result<Json, String> {
+    let guard = attached()?;
+    let a = guard.as_ref().ok_or("not attached")?;
+    let s = states::read(&a.mem, a.static_address("Game States")?).map_err(|e| format!("{e:#}"))?;
+    let in_game = s.get("InGameState").ok_or("no InGameState")?;
+    let zone = zone::read(&a.mem, in_game).map_err(|e| format!("{e:#}"))?;
+    let area = area_instance(a)?;
+    let t = read_terrain(a, area)?;
+    let files = radar::read_tile_files(&a.mem, &t);
+    let lists = radar::Lists::gamehelper2().map_err(|e| format!("tile lists: {e}"))?;
+    let player = entities::local_player(&a.mem, area)
+        .and_then(|at| entities::read(&a.mem, at))
+        .ok()
+        .and_then(|e| e.position)
+        .map(|[x, y, _]| {
+            let (cx, cy) = terrain::Terrain::cell_of(x, y);
+            (cx as i32, cy as i32)
+        });
+    let with_paths = args["paths"].as_bool().unwrap_or(false);
+    let points: Vec<Json> = radar::points(&files, &lists, &zone.id)
+        .into_iter()
+        .map(|p| {
+            let route = with_paths
+                .then_some(player)
+                .flatten()
+                .map(|from| radar::path(from, p.cell, |c| t.open(c)));
+            json!({"kind": p.kind, "name": p.name, "cell": p.cell, "path": route})
+        })
+        .collect();
+    Ok(json!({
+        "zone": zone.id,
+        "player_cell": player,
+        "points": points,
+        "tile_keys": files.len(),
+        "files": args["files"].as_bool().unwrap_or(false).then_some(&files),
+    }))
+}
+
 /// The zone's terrain size and, at the player, the ground height and
 /// walkable value.
 fn terrain_op(_args: &Json) -> Result<Json, String> {
     let guard = attached()?;
     let a = guard.as_ref().ok_or("not attached")?;
     let area = area_instance(a)?;
-    let table = |name: &str, len: usize| -> Result<Vec<u8>, String> {
-        a.mem
-            .read_array(a.static_address(name)?, len)
-            .map_err(|e| format!("read {name}: {e:#}"))
-    };
-    let t = terrain::read(
-        &a.mem,
-        area,
-        table("Terrain Rotation Selector", terrain::ROTATION_SELECTOR_LEN)?,
-        table("Terrain Rotator Helper", terrain::ROTATOR_HELPER_LEN)?,
-    )
-    .map_err(|e| format!("{e:#}"))?;
+    let t = read_terrain(a, area)?;
     let player = entities::local_player(&a.mem, area)
         .and_then(|at| entities::read(&a.mem, at))
         .ok()
@@ -644,6 +691,12 @@ fn main() {
         "the zone's terrain size and the ground height and walkable value at the player",
         "",
         terrain_op,
+    ));
+    OP_REGISTRY.register(OpDef::new(
+        "radar",
+        "the zone's points of interest from its tile files (important places, boss arenas, stairs, temples, runestones); paths: walking path from the player to each; files: every tile key",
+        "paths?, files?",
+        radar_op,
     ));
     OP_REGISTRY.register(OpDef::new(
         "atlas",
