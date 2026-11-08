@@ -4,6 +4,7 @@
 //! server (`POST http://127.0.0.1:17185/op`). Never loads into the
 //! game, never writes to it, never presses keys.
 
+mod abyss;
 mod atlas;
 mod atlas_routes;
 mod buff_bar;
@@ -1036,9 +1037,36 @@ struct RadarZone {
     paths: Vec<Option<Vec<modforge::path::Cell>>>,
     reached: std::collections::HashSet<usize>,
     paths_at: Option<std::time::Instant>,
+    /// Paths to the abyss nodes shown, in [`abyss::Tracked::shown`]
+    /// order.
+    abyss_paths: Vec<Option<Vec<modforge::path::Cell>>>,
+    abyss_scan_at: Option<std::time::Instant>,
 }
 
 static RADAR: Mutex<Option<RadarZone>> = Mutex::new(None);
+
+/// Abyss nodes by zone hash (Radar.trackedNodesByArea), so a trip to
+/// town and back keeps them.
+static ABYSS: Mutex<Option<std::collections::HashMap<u32, abyss::Tracked>>> = Mutex::new(None);
+
+/// RebuildTrackedNodes: record every awake and sleeping crack and pit.
+fn scan_abyss(a: &Attached, area: u64, t: &mut abyss::Tracked) {
+    for (map, max) in [
+        (entities::AREA_AWAKE_ENTITIES, entities::MAX_AWAKE),
+        (entities::AREA_SLEEPING_ENTITIES, entities::MAX_SLEEPING),
+    ] {
+        let Ok(addresses) = entities::map_addresses(&a.mem, area + map, max) else {
+            continue;
+        };
+        for at in addresses {
+            let wanted = entities::read_parts(&a.mem, at)
+                .is_ok_and(|(path, _)| abyss::classify(&path).is_some());
+            if wanted && let Ok(e) = entities::read(&a.mem, at) {
+                t.record(&e);
+            }
+        }
+    }
+}
 
 /// The radar's shapes over the large map, when it is open and the world
 /// map is not.
@@ -1085,6 +1113,8 @@ fn radar_shapes(
             labels,
             reached: Default::default(),
             paths_at: None,
+            abyss_paths: Vec::new(),
+            abyss_scan_at: None,
         });
     }
     let z = cache.as_mut().ok_or("no radar zone")?;
@@ -1144,14 +1174,61 @@ fn radar_shapes(
             })
         })
         .collect();
-    Ok(draw::radar(
+    let mut shapes = draw::radar(
         &view,
         player,
         player_height,
         z.picture.as_ref(),
         &labels,
         &paths,
-    ))
+    );
+    // Abyss nodes: scanned once a second, retired when reached, a path
+    // to each shown one with the other paths.
+    let mut all_abyss = ABYSS.lock();
+    let tracked = all_abyss
+        .get_or_insert_with(Default::default)
+        .entry(z.hash)
+        .or_default();
+    let scan_due = z.abyss_scan_at.is_none_or(|t| {
+        t.elapsed() >= std::time::Duration::from_millis(abyss::SCAN_MS)
+    });
+    if scan_due {
+        scan_abyss(a, area, tracked);
+        z.abyss_scan_at = Some(std::time::Instant::now());
+    }
+    tracked.retire_near(player, radar::REACHED_DISTANCE);
+    let shown: Vec<abyss::Node> = tracked.shown().copied().collect();
+    if due || z.abyss_paths.len() != shown.len() {
+        let t = &z.terrain;
+        z.abyss_paths = shown
+            .iter()
+            .map(|n| {
+                let to = (n.cell[0] as i32, n.cell[1] as i32);
+                radar::path(player_cell, to, |c| t.open(c))
+            })
+            .collect();
+    }
+    let marks: Vec<_> = shown
+        .iter()
+        .zip(&z.abyss_paths)
+        .map(|(n, p)| {
+            let cells = p.as_ref().map(|cells| {
+                cells
+                    .iter()
+                    .map(|c| ([c.0 as f32, c.1 as f32], height(*c)))
+                    .collect()
+            });
+            (n.cell, n.height, cells)
+        })
+        .collect();
+    shapes.extend(draw::radar_marks(
+        &view,
+        player,
+        player_height,
+        &marks,
+        abyss::PATH_COLOR,
+    ));
+    Ok(shapes)
 }
 
 /// The atlas's shapes while the atlas is open (Atlas2.DrawUI): every

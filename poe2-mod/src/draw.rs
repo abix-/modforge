@@ -434,18 +434,53 @@ pub fn radar(
     // DrawTgtFiles.
     let me = from_player(player, player_height);
     for (i, path) in paths.iter().enumerate() {
-        let Some(path) = path else { continue };
-        if path.len() < 2 {
-            continue;
-        }
-        let mut points = vec![me];
-        points.extend(path[1..].iter().map(|(c, h)| from_player(*c, *h)));
-        out.push(Shape::Path {
-            points,
-            color: PATH_PALETTE[i % PATH_PALETTE.len()],
-            width: PATH_WIDTH,
-            closed: false,
-        });
+        let color = PATH_PALETTE[i % PATH_PALETTE.len()];
+        out.extend(radar_path(me, path.as_deref(), &from_player, color));
+    }
+    out
+}
+
+/// A path on the radar from the player's point `me` along `path`'s
+/// cells after the first; none when it is shorter than two.
+fn radar_path(
+    me: [f32; 2],
+    path: Option<&[([f32; 2], f32)]>,
+    from_player: &dyn Fn([f32; 2], f32) -> [f32; 2],
+    color: Rgb,
+) -> Option<Shape> {
+    let path = path.filter(|p| p.len() >= 2)?;
+    let mut points = vec![me];
+    points.extend(path[1..].iter().map(|(c, h)| from_player(*c, *h)));
+    Some(Shape::Path {
+        points,
+        color,
+        width: PATH_WIDTH,
+        closed: false,
+    })
+}
+
+/// A tracked node on the radar (Radar.cs DrawMapIcons and the tracked
+/// node paths): a dot where its icon goes, then its path from the
+/// player, both in `color`. Each mark is its cell, ground height and
+/// path cells with heights.
+pub fn radar_marks(
+    view: &crate::radar::MapView,
+    player: [f32; 2],
+    player_height: f32,
+    marks: &[([f32; 2], f32, Option<Vec<([f32; 2], f32)>>)],
+    color: Rgb,
+) -> Vec<Shape> {
+    let from_player = |cell: [f32; 2], height: f32| {
+        view.at(
+            [cell[0] - player[0], cell[1] - player[1]],
+            -player_height + height,
+        )
+    };
+    let me = from_player(player, player_height);
+    let mut out = Vec::new();
+    for (cell, height, path) in marks {
+        out.push(dot(from_player(*cell, *height), 8.0, color));
+        out.extend(radar_path(me, path.as_deref(), &from_player, color));
     }
     out
 }
