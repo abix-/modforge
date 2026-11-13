@@ -63,6 +63,44 @@ pub fn shutdown_all() {
     crate::shutdown::SHUTDOWN_REGISTRY.undo_all("server");
 }
 
+/// Serve the workspace op registry on `127.0.0.1:<port>/op`: every
+/// POST is parsed as an op envelope and dispatched through
+/// [`crate::ops::OP_REGISTRY`]. The listener unityforge and
+/// godotforge both start; `on_log` reports bind failures.
+pub fn serve_ops<L>(port: u16, thread_name: &'static str, on_log: L)
+where
+    L: Fn(&str) + Send + 'static,
+{
+    use crate::envelope::{OpResponse, parse_request};
+
+    let cfg = Config {
+        port,
+        endpoint: "/op",
+        thread_name,
+        auth_token: None,
+    };
+    spawn(
+        cfg,
+        |body| {
+            let (op, args) = match parse_request(body) {
+                Ok(v) => v,
+                Err(e) => {
+                    let r: OpResponse<serde_json::Value> =
+                        OpResponse::err("<parse-error>", e, serde_json::json!({}));
+                    return serde_json::to_vec(&r).unwrap_or_default();
+                }
+            };
+            let result = crate::ops::OP_REGISTRY
+                .dispatch(&op, &args)
+                .unwrap_or_else(|| Err(format!("unknown op '{op}'")));
+            let r: OpResponse<serde_json::Value> =
+                OpResponse::from_result(&op, result, serde_json::json!({}));
+            serde_json::to_vec(&r).unwrap_or_default()
+        },
+        on_log,
+    );
+}
+
 /// Spawn the listener thread. Returns immediately. If bind fails the
 /// error is reported via `on_log` and the thread is not started.
 /// On success its undo (unblock the listener loop, join the thread)

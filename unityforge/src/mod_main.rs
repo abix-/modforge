@@ -102,38 +102,9 @@ macro_rules! unityforge_mod {
 /// dispatching every POST through `modforge::ops::OP_REGISTRY`.
 /// Called by `unityforge_init` when ModDef::http_port is nonzero.
 pub fn start_http_server(port: u16) {
-    use modforge::envelope::{OpResponse, parse_request};
-    use modforge::server::{Config, spawn};
-
-    let cfg = Config {
-        port,
-        endpoint: "/op",
-        thread_name: "unityforge-debug-http",
-        auth_token: None,
-    };
-
-    spawn(
-        cfg,
-        |body| {
-            let (op, args) = match parse_request(body) {
-                Ok(v) => v,
-                Err(e) => {
-                    let r: OpResponse<serde_json::Value> =
-                        OpResponse::err("<parse-error>", e, serde_json::json!({}));
-                    return serde_json::to_vec(&r).unwrap_or_default();
-                }
-            };
-            let result = modforge::ops::OP_REGISTRY
-                .dispatch(&op, &args)
-                .unwrap_or_else(|| Err(format!("unknown op '{op}'")));
-            let r: OpResponse<serde_json::Value> =
-                OpResponse::from_result(&op, result, serde_json::json!({}));
-            serde_json::to_vec(&r).unwrap_or_default()
-        },
-        |msg| {
-            crate::mono::log(crate::mono::LogLevel::Info, msg);
-        },
-    );
+    modforge::server::serve_ops(port, "unityforge-debug-http", |msg| {
+        crate::mono::log(crate::mono::LogLevel::Info, msg);
+    });
 }
 
 /// Register the declarative-UI ops against the workspace

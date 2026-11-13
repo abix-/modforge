@@ -40,6 +40,7 @@ pub mod item;
 pub mod learn;
 pub mod log;
 pub mod loot;
+pub mod main_thread_queue;
 pub mod map;
 pub mod memory;
 pub mod memory_research;

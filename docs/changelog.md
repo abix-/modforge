@@ -9,6 +9,7 @@ Obenseuer history is maintained in [its project changelog](../obenseuer-mod/docs
 | Area | Shipped | Verification |
 |---|---|---|
 | `contrabandpolice-mod` | [x] New mod for Contraband Police (Unity 2022.3.62f2, IL2CPP) on unityforge through MelonLoader, control plane on port 17186; restart.ps1 installs MelonLoader from the Schedule 1 install, builds the shim and deploys | `restart.ps1` exit 0, control plane answered; MelonLoader log: `contrabandpolice-mod: ready (runtime=Il2Cpp), http on port 17186`; `research_load` passed live, 67 assemblies including Assembly-CSharp |
+| `modforge` | [x] The main-thread queue moved here from unityforge (it names no engine), and `server::serve_ops` starts the op listener unityforge used to build itself; unityforge keeps its old paths so callers are unchanged | `k3sc cargo-lock test -p modforge --lib main_thread_queue` 2 passed; `cargo check` of unityforge, schedule1-mod, wwm-mod, mechabellum-mod, contrabandpolice-mod clean; contrabandpolice-mod built on it answered live on 17186 |
 
 ## 2026-10-11
 
