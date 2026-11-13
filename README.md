@@ -100,6 +100,7 @@ See [`unityforge/README.md`](unityforge/README.md) and
 | [Schedule 1](schedule1-mod/) | unityforge (IL2CPP / MelonLoader) | Adds combat progression, farming rewards, and kill-driven loot. | 3/10 |
 | [Survivalist](survivalist-mod/) | unityforge (native mod loader) | Builds an evolving survival sandbox around factions, settlements, missions, and adaptive events. | 1/10 |
 | [Wild West Miner](wwm-mod/) | unityforge (Mono / BepInEx) | Experiments with RPG progression and removes demo movement restrictions. | 2/10 |
+| [Contraband Police](contrabandpolice-mod/) | unityforge (IL2CPP / MelonLoader) | Control plane for live research into the border post, cars and smugglers. | 1/10 |
 | [Horsey Game](horsey-mod/) | modforge (PE inject) | Provides an injectable research and control layer for Horsey Game state. | 3/10 |
 | [Scrap Mechanic](scrapmechanic-mod/) | Lua (native) | Rebalances survival inventory, fuel use, building limits, and respawn rates. | 3/10 |
 | [Quasimorph](quasimorph-mod/) | C# (native mod API) | Provides a minimal C# scaffold for the game's first-party mod API. | 1/10 |

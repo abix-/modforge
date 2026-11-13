@@ -4,6 +4,12 @@ Abiotic Factor history is maintained in [its project changelog](../abioticfactor
 The Walking Trade history is maintained in [its project changelog](../thewalkingtrade-mod/docs/changelog.md).
 Obenseuer history is maintained in [its project changelog](../obenseuer-mod/docs/changelog.md).
 
+## 2026-11-13
+
+| Area | Shipped | Verification |
+|---|---|---|
+| `contrabandpolice-mod` | [x] New mod for Contraband Police (Unity 2022.3.62f2, IL2CPP) on unityforge through MelonLoader, control plane on port 17186; restart.ps1 installs MelonLoader from the Schedule 1 install, builds the shim and deploys | `restart.ps1` exit 0, control plane answered; MelonLoader log: `contrabandpolice-mod: ready (runtime=Il2Cpp), http on port 17186`; `research_load` passed live, 67 assemblies including Assembly-CSharp |
+
 ## 2026-10-11
 
 | Area | Shipped | Verification |
