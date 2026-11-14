@@ -186,8 +186,14 @@ fn run<H>(
         let url = req.url().to_string();
         let method = req.method().clone();
 
-        if method != Method::Post || url != endpoint {
+        if url != endpoint {
             let _ = req.respond(Response::from_string("not found").with_status_code(404));
+            continue;
+        }
+        // Only POST is served: an MCP client's GET for a stream of its own
+        // is told so (MCP "Streamable HTTP": 405 when no stream is offered).
+        if method != Method::Post {
+            let _ = req.respond(Response::from_string("method not allowed").with_status_code(405));
             continue;
         }
 
@@ -231,6 +237,11 @@ fn run<H>(
         };
 
         let payload = handler(&body);
+        // No answer: taken (an MCP notification).
+        if payload.is_empty() {
+            let _ = req.respond(Response::empty(202));
+            continue;
+        }
         let len = payload.len();
         let resp = Response::new(
             200.into(),

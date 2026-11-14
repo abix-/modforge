@@ -188,13 +188,41 @@ pub struct Given {
     pub command: Command,
 }
 
-/// The commands given in a run, in order, each at the tick it was given,
-/// and the world they were given in. Played from a save of that run, it
-/// does the same things again from the save's tick on.
+/// What a person does at once, asked of them, not an order carried out
+/// over time: use what is somewhere, or say something. The `do` names it,
+/// as a command's does.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "do", rename_all = "snake_case")]
+pub enum Act {
+    /// Stand by the point and use what is there (y the floor's height).
+    UseAt {
+        #[serde(flatten)]
+        at: Point,
+    },
+    /// Stand by the person, where they are then, and use them.
+    UsePerson { whom: u64 },
+    /// Say this to them.
+    Talk { to: u64, said: crate::actions::Said },
+}
+
+/// An act as done: by whom, at which tick.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Done {
+    pub tick: u64,
+    pub who: u64,
+    pub act: Act,
+}
+
+/// The commands given in a run and the acts done in it, in order, each at
+/// the tick it was given or done, and the world they were in. Played from a
+/// save of that run, it does the same things again from the save's tick on.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Replay {
     pub seed: u64,
     pub given: Vec<Given>,
+    /// Left out by a replay saved before acts were kept: none.
+    #[serde(default)]
+    pub done: Vec<Done>,
 }
 
 impl Replay {
@@ -203,6 +231,12 @@ impl Replay {
     /// save already holds them.
     pub fn from_tick(&self, tick: u64) -> Vec<Given> {
         self.given.iter().filter(|g| g.tick >= tick).copied().collect()
+    }
+
+    /// The acts still to do from `tick` on, each at its own tick, as
+    /// `from_tick` gives the commands.
+    pub fn done_from(&self, tick: u64) -> Vec<Done> {
+        self.done.iter().filter(|d| d.tick >= tick).copied().collect()
     }
 }
 
@@ -468,6 +502,7 @@ mod tests {
                     command: Command::AttackNearestEnemy,
                 },
             ],
+            done: vec![],
         };
         // From the start: every command, at its own tick.
         let played = replay.from_tick(100);
@@ -486,5 +521,24 @@ mod tests {
             serde_json::from_str::<Replay>(&saved).expect("and loads"),
             replay
         );
+    }
+
+    #[test]
+    fn a_replay_does_each_act_at_its_own_tick_and_an_old_one_has_none() {
+        let mut replay: Replay =
+            serde_json::from_str(r#"{"seed": 9, "given": []}"#).expect("a replay saved before acts loads");
+        assert!(replay.done.is_empty());
+        replay.done = vec![
+            Done { tick: 100, who: 1, act: Act::UsePerson { whom: 2 } },
+            Done {
+                tick: 160,
+                who: 1,
+                act: Act::Talk { to: 2, said: crate::actions::Said::Line { line: 7, key: 0 } },
+            },
+        ];
+        let done = replay.done_from(101);
+        assert_eq!(done.iter().map(|d| d.tick).collect::<Vec<_>>(), vec![160]);
+        let saved = serde_json::to_string(&replay).expect("a replay saves");
+        assert_eq!(serde_json::from_str::<Replay>(&saved).expect("and loads"), replay);
     }
 }

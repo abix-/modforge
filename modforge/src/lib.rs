@@ -42,6 +42,7 @@ pub mod log;
 pub mod loot;
 pub mod main_thread_queue;
 pub mod map;
+pub mod mcp;
 pub mod memory;
 pub mod memory_research;
 pub mod mission;
