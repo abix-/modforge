@@ -8,7 +8,7 @@
 //!   loot-related components each has;
 //! - sends `loot.all`: a LootInteractionEvent with lootAll and
 //!   bypassInteraction set, as the game sends when you hold E;
-//! - auto loot, on by default (`loot.auto`): once a second, every
+//! - auto loot, on by default (`loot.auto`): 6 times a second, every
 //!   ground item and dead enemy within 6 m gets that loot-all.
 //!
 //! Requests come in on the control-plane thread and run in the hook, on
@@ -152,10 +152,15 @@ static SCAN_WORST_US: AtomicU64 = AtomicU64::new(0);
 static SENT_AT: Mutex<Option<HashMap<u32, u64>>> = Mutex::new(None);
 /// Corpses seen and not looted yet.
 static VISITS: Mutex<Option<HashMap<u32, Visit>>> = Mutex::new(None);
-/// A new corpse waits 1 s before it is opened, so the game can fill it
-/// (kiln-auto-loot's OpenDelay default).
-const OPEN_DELAY_STEPS: u64 = 60;
-/// Auto loot scans once a second (60 steps).
+/// The entities near the player, from the last full scan.
+static NEAR: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+/// The slowest quick check so far, in microseconds.
+static CHECK_WORST_US: AtomicU64 = AtomicU64::new(0);
+/// The near list reaches this far past the loot radius.
+const NEAR_EXTRA_M: f64 = 15.0;
+/// The near list is checked 6 times a second (every 10 steps).
+const CHECK_STEPS: u64 = 10;
+/// The full scan for the near list runs once a second (60 steps).
 const SCAN_STEPS: u64 = 60;
 /// A host is sent again after 10 s if it is still there.
 const RESEND_STEPS: u64 = 600;
@@ -260,10 +265,41 @@ fn component_hash(name: &str) -> Result<u32, String> {
 impl Armed {
     /// Auto loot: every ground item and dead enemy within the radius
     /// gets a loot-all, as holding E does.
+    /// The entities within [`NEAR_EXTRA_M`] past the radius: the whole
+    /// entity map walked once a second, so the quick checks between
+    /// look at a short list. A dying enemy is already on it.
+    unsafe fn refresh_near(&self, storage: usize) {
+        let started = std::time::Instant::now();
+        let radius = f64::from_bits(AUTO_RADIUS.load(Ordering::Relaxed)) + NEAR_EXTRA_M;
+        let world = storage - self.world_storage;
+        // SAFETY: on the sim thread before delivery.
+        let near: Vec<u32> = unsafe {
+            let Some(me) = self.position(world, PLAYER) else {
+                return;
+            };
+            map_keys(storage + ENTITY_MAP)
+                .into_iter()
+                .filter(|id| {
+                    *id != PLAYER
+                        && self.position(world, *id).is_some_and(|p| {
+                            (p[0] - me[0]).powi(2) + (p[1] - me[1]).powi(2) + (p[2] - me[2]).powi(2)
+                                <= radius * radius
+                        })
+                })
+                .collect()
+        };
+        *NEAR.lock().unwrap() = near;
+        let us = started.elapsed().as_micros() as u64;
+        if us > SCAN_WORST_US.fetch_max(us, Ordering::Relaxed) {
+            modforge::log!("auto loot: slowest full scan so far {us} us");
+        }
+    }
+
     unsafe fn auto_loot(&self, storage: usize, step: u64) {
         let started = std::time::Instant::now();
         let radius = f64::from_bits(AUTO_RADIUS.load(Ordering::Relaxed));
         let world = storage - self.world_storage;
+        let near = NEAR.lock().unwrap().clone();
         let mut sent_at = SENT_AT.lock().unwrap();
         let sent_at = sent_at.get_or_insert_with(HashMap::new);
         sent_at.retain(|_, at| step - *at < RESEND_STEPS);
@@ -276,8 +312,8 @@ impl Armed {
                 return;
             };
             let mut sent = 0;
-            for id in map_keys(storage + ENTITY_MAP) {
-                if id == PLAYER || sent_at.contains_key(&id) {
+            for id in near {
+                if sent_at.contains_key(&id) {
                     continue;
                 }
                 let Some(p) = self.position(world, id) else {
@@ -294,16 +330,12 @@ impl Armed {
                     continue;
                 }
                 if corpse {
-                    // kiln-auto-loot's container steps: wait for the
-                    // game to fill it, open it as E does, then loot-all
-                    // in the next scan.
+                    // kiln-auto-loot's container steps: open it as E
+                    // does, then loot-all in the next check.
                     let v = visits.entry(id).or_insert(Visit {
                         first: step,
                         opened: false,
                     });
-                    if step - v.first < OPEN_DELAY_STEPS {
-                        continue;
-                    }
                     if !v.opened {
                         v.opened = true;
                         if let Some((offer, true)) = self.offer_of(world, id) {
@@ -332,8 +364,8 @@ impl Armed {
             }
         }
         let us = started.elapsed().as_micros() as u64;
-        if us > SCAN_WORST_US.fetch_max(us, Ordering::Relaxed) {
-            modforge::log!("auto loot: slowest scan so far {us} us");
+        if us > CHECK_WORST_US.fetch_max(us, Ordering::Relaxed) {
+            modforge::log!("auto loot: slowest check so far {us} us");
         }
     }
 
@@ -514,8 +546,13 @@ unsafe extern "system" fn on_deliver(storage: usize) -> usize {
                     }
                 }
                 let step = SERVER_STEPS.fetch_add(1, Ordering::Relaxed);
-                if AUTO.load(Ordering::Relaxed) && step.is_multiple_of(SCAN_STEPS) {
-                    a.auto_loot(storage, step);
+                if AUTO.load(Ordering::Relaxed) {
+                    if step.is_multiple_of(SCAN_STEPS) {
+                        a.refresh_near(storage);
+                    }
+                    if step.is_multiple_of(CHECK_STEPS) {
+                        a.auto_loot(storage, step);
+                    }
                 }
             }
             a.pending.each(storage, |hash, data, size| {
@@ -700,6 +737,7 @@ pub fn register() {
                     "loot_sent": LOOT_SENT.load(Ordering::Relaxed),
                     "loot_program": LOOT_PROGRAM.load(Ordering::Relaxed),
                     "slowest_scan_us": SCAN_WORST_US.load(Ordering::Relaxed),
+                    "slowest_check_us": CHECK_WORST_US.load(Ordering::Relaxed),
                 }))
             },
         ),
